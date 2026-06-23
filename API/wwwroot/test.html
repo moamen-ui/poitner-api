@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Pointer · test host page</title>
+    <style>
+      body { font-family: -apple-system, sans-serif; margin: 0; padding: 48px; color: #0f172a; }
+      .hero { max-width: 640px; margin: 40px auto; text-align: center; }
+      h1 { font-size: 40px; margin: 0 0 12px; }
+      .join-btn { display: inline-block; margin-top: 20px; padding: 12px 28px; border: 1px solid #2563eb;
+        color: #2563eb; background: #fff; border-radius: 10px; font-size: 16px; font-weight: 600; cursor: pointer; }
+      .card { border: 1px solid #e2e8f0; border-radius: 12px; padding: 24px; margin: 24px auto; max-width: 640px; }
+    </style>
+  </head>
+  <body>
+    <div class="hero" data-component-source="test.html:hero">
+      <h1>Pointer test page</h1>
+      <p>A standalone page to exercise the <code>&lt;pointer-feedback&gt;</code> component.</p>
+      <button class="join-btn" data-component-source="test.html:join-button">Join the club</button>
+    </div>
+    <div class="card" data-component-source="test.html:card">
+      <h2>Some content</h2>
+      <p>Click "+ Comment" in the toolbar, then click any element to leave feedback.</p>
+    </div>
+
+    <script src="/pointer.js" defer></script>
+    <pointer-feedback project="tuwaiq-clubs" environment="staging" server="http://localhost:8090"></pointer-feedback>
+  </body>
+</html>

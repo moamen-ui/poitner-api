@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Pointer · Admin</title>
+    <link rel="stylesheet" href="./style.css" />
+  </head>
+  <body>
+    <!-- Login view -->
+    <div id="login-view" class="login-wrap" hidden>
+      <form id="login-form" class="login-card">
+        <div class="brand"><span class="dot"></span> Pointer Admin</div>
+        <p class="muted">Sign in with an admin account to manage users and projects.</p>
+        <label>Email <input id="login-email" type="email" autocomplete="username" required /></label>
+        <label>Password <input id="login-password" type="password" autocomplete="current-password" required /></label>
+        <div id="login-error" class="error"></div>
+        <button type="submit" class="btn primary" id="login-btn">Sign in</button>
+      </form>
+    </div>
+
+    <!-- App view -->
+    <div id="app-view" hidden>
+      <header class="topbar">
+        <div class="brand"><span class="dot"></span> Pointer Admin</div>
+        <div class="topbar-right">
+          <span id="whoami" class="muted"></span>
+          <button id="logout-btn" class="btn ghost">Sign out</button>
+        </div>
+      </header>
+
+      <main class="grid">
+        <!-- Roles -->
+        <section class="panel">
+          <div class="panel-head">
+            <h2>Roles</h2>
+            <span id="roles-count" class="pill"></span>
+          </div>
+
+          <form id="role-form" class="row-form">
+            <input id="r-name" type="text" placeholder="role name (e.g. Designer)" required />
+            <label class="check"><input id="r-admin" type="checkbox" /> Grants admin</label>
+            <button type="submit" class="btn primary">Add role</button>
+          </form>
+          <div id="role-form-error" class="error"></div>
+
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr><th>Name</th><th>Grants admin</th><th>Status</th><th></th></tr>
+              </thead>
+              <tbody id="roles-body"></tbody>
+            </table>
+          </div>
+        </section>
+
+        <!-- Users -->
+        <section class="panel">
+          <div class="panel-head">
+            <h2>Users</h2>
+            <span id="users-count" class="pill"></span>
+          </div>
+
+          <form id="user-form" class="row-form">
+            <input id="u-email" type="email" placeholder="email" required />
+            <input id="u-name" type="text" placeholder="display name" required />
+            <input id="u-password" type="text" placeholder="password" required />
+            <select id="u-role"></select>
+            <button type="submit" class="btn primary">Add user</button>
+          </form>
+          <div id="user-form-error" class="error"></div>
+
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr><th>Email</th><th>Name</th><th>Role</th><th>Status</th><th></th></tr>
+              </thead>
+              <tbody id="users-body"></tbody>
+            </table>
+          </div>
+        </section>
+
+        <!-- Projects -->
+        <section class="panel">
+          <div class="panel-head">
+            <h2>Projects</h2>
+            <span id="projects-count" class="pill"></span>
+          </div>
+
+          <form id="project-form" class="row-form">
+            <input id="p-key" type="text" placeholder="key (e.g. tuwaiq-clubs)" required />
+            <input id="p-name" type="text" placeholder="display name" required />
+            <button type="submit" class="btn primary">Add project</button>
+          </form>
+          <div id="project-form-error" class="error"></div>
+
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr><th>Key</th><th>Name</th><th>Status</th><th></th></tr>
+              </thead>
+              <tbody id="projects-body"></tbody>
+            </table>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <div id="toast" class="toast" hidden></div>
+    <script src="./app.js"></script>
+  </body>
+</html>

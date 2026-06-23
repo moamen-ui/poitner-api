@@ -1,0 +1,16 @@
+services:
+  db:
+    image: postgres:15
+    environment:
+      POSTGRES_USER: pointer
+      POSTGRES_PASSWORD: pointer
+      POSTGRES_DB: pointer
+    ports: ["5433:5432"]
+    volumes: ["pgdata:/var/lib/postgresql/data"]
+  api:
+    build: { context: ., target: dev }
+    env_file: .env
+    ports: ["8090:8080"]
+    depends_on: [db]
+    volumes: ["./:/src"]
+volumes: { pgdata: {} }
