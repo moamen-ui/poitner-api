@@ -19,6 +19,7 @@ public class Result<T> : Result
     public static Result<T> Success(T data, string? msg = null) =>
         new() { IsSuccess = true, Data = data, Message = msg };
     public new static Result<T> Failure(string msg) => new() { IsSuccess = false, Message = msg };
+    public static Result<T> Failure(string msg, T data) => new() { IsSuccess = false, Message = msg, Data = data };
     public new static Result<T> NotFound(string msg) => new() { IsNotFound = true, Message = msg };
     public new static Result<T> Conflict(string msg) => new() { IsConflict = true, Message = msg };
 }

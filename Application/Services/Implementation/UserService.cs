@@ -5,6 +5,7 @@ using Pointer.Application.Resources;
 using Pointer.Application.Response;
 using Pointer.Application.Services.Interfaces;
 using Pointer.Domain.Entity;
+using Pointer.Domain.Enums;
 
 namespace Pointer.Application.Services.Implementation;
 
@@ -52,18 +53,62 @@ public class UserService : IUserService
         return Result<UserResponse>.Success(MapToResponse(user, role));
     }
 
-    public async Task<Result<List<UserResponse>>> ListAsync()
+    public async Task<Result<List<UserResponse>>> ListAsync(ApprovalStatus? status = null)
     {
-        var users = await _unitOfWork.Repository<User>()
+        var query = _unitOfWork.Repository<User>()
             .Query()
             .AsNoTracking()
             .Include(u => u.Role)
-            .Where(u => u.DeletedAt == null)
+            .Where(u => u.DeletedAt == null);
+
+        if (status.HasValue)
+            query = query.Where(u => u.ApprovalStatus == status.Value);
+
+        var users = await query
             .OrderBy(u => u.Id)
             .ToListAsync();
 
         return Result<List<UserResponse>>.Success(
             users.Select(u => MapToResponse(u, u.Role)).ToList());
+    }
+
+    public async Task<Result<UserResponse>> ApproveAsync(int id, ApproveUserRequest request)
+    {
+        var user = await _unitOfWork.Repository<User>().GetByIdAsync(id);
+
+        if (user == null || user.DeletedAt != null)
+            return Result<UserResponse>.NotFound(MessageKeys.User.NotFound);
+
+        // Admin MAY grant an admin-granting role at this step — only active/non-deleted is required.
+        var role = await GetActiveRoleAsync(request.RoleId);
+        if (role == null)
+            return Result<UserResponse>.Failure(MessageKeys.Role.Invalid);
+
+        user.ApprovalStatus = ApprovalStatus.Approved;
+        user.IsActive = true;
+        user.RoleId = role.Id;
+
+        _unitOfWork.Repository<User>().Update(user);
+        await _unitOfWork.SaveChangesAsync();
+
+        return Result<UserResponse>.Success(MapToResponse(user, role));
+    }
+
+    public async Task<Result<UserResponse>> RejectAsync(int id)
+    {
+        var user = await _unitOfWork.Repository<User>().GetByIdAsync(id);
+
+        if (user == null || user.DeletedAt != null)
+            return Result<UserResponse>.NotFound(MessageKeys.User.NotFound);
+
+        user.ApprovalStatus = ApprovalStatus.Rejected;
+        user.IsActive = false;
+
+        _unitOfWork.Repository<User>().Update(user);
+        await _unitOfWork.SaveChangesAsync();
+
+        var role = await GetActiveRoleAsync(user.RoleId);
+        return Result<UserResponse>.Success(MapToResponse(user, role));
     }
 
     public async Task<Result<UserResponse>> UpdateAsync(int id, UpdateUserRequest request)
@@ -109,6 +154,7 @@ public class UserService : IUserService
         RoleId = user.RoleId,
         RoleName = role?.Name ?? string.Empty,
         IsAdmin = role?.GrantsAdmin ?? false,
-        IsActive = user.IsActive
+        IsActive = user.IsActive,
+        ApprovalStatus = user.ApprovalStatus
     };
 }

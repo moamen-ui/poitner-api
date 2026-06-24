@@ -93,6 +93,37 @@
 
   $('logout-btn').addEventListener('click', logout);
 
+  // --- stats / overview ----------------------------------------------------
+  async function loadStats() {
+    const { ok, body } = await api('/api/admin/stats');
+    if (!ok) { toast('Failed to load stats', 'error'); return; }
+    const t = body.data.totals;
+    const cards = [
+      { l: 'Projects', n: t.projects, cls: '' },
+      { l: 'Users', n: t.users, cls: '' },
+      { l: 'Comments', n: t.comments, cls: '' },
+      { l: 'Open', n: t.open, cls: 'open' },
+      { l: 'Pending', n: t.pending, cls: 'pending' },
+      { l: 'Completed', n: t.completed, cls: 'completed' },
+    ];
+    $('stat-cards').innerHTML = cards.map((c) =>
+      `<div class="card ${c.cls}"><div class="n">${c.n}</div><div class="l">${c.l}</div></div>`).join('');
+
+    const rows = body.data.projects || [];
+    $('stats-projects-body').innerHTML = rows.map((p) => `
+      <tr>
+        <td><code>${esc(p.key)}</code></td>
+        <td>${p.comments}</td>
+        <td>${p.open}</td>
+        <td>${p.pending}</td>
+        <td>${p.completed}</td>
+        <td><span class="status ${p.isActive ? 'active' : 'inactive'}">${p.isActive ? 'Active' : 'Disabled'}</span></td>
+      </tr>`).join('') ||
+      '<tr><td colspan="6" class="muted" style="padding:16px;text-align:center;">No projects yet.</td></tr>';
+  }
+
+  $('stats-refresh').addEventListener('click', loadStats);
+
   // --- roles ---------------------------------------------------------------
   function roleOptions(selectedId) {
     return roles
@@ -257,6 +288,7 @@
   });
 
   async function loadAll() {
+    loadStats();
     await loadRoles();          // roles first — user selects depend on the catalog
     populateCreateUserRoleSelect();
     loadUsers();

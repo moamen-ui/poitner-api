@@ -151,6 +151,8 @@ All under `/api`. Lowercase routes. `Bearer` required unless noted.
 - `PATCH /api/comments/{id}` `{ status: "Applied", reply, appliedByLabel }` — mark applied + reply.
 
 ### Admin (roles that grant admin)
+- `GET /api/admin/stats` — dashboard analytics: global totals (projects, users, comments, open,
+  pending, completed) + a per-project breakdown.
 - `GET/POST /api/admin/roles`, `PATCH /api/admin/roles/{id}` (add / rename / disable / toggle GrantsAdmin).
 - `GET/POST /api/admin/users`, `PATCH /api/admin/users/{id}` (set roleId / disable).
 - `GET/POST /api/admin/projects`, `PATCH /api/admin/projects/{id}`.
@@ -200,6 +202,8 @@ A small, **build-free static page** served by the API (vanilla HTML/JS, no SPA t
 Pointer's zero-build ethos). Pages:
 
 - **Login** (admin account).
+- **Overview:** summary cards (projects, users, comments, open, pending, completed) + a per-project
+  table — fed by `GET /api/admin/stats`.
 - **Roles:** table + "add role" (name, grants-admin) + rename/disable + grants-admin toggle (the `Admin`
   system role is protected). User role dropdowns are populated from this catalog.
 - **Users:** table + "add user" (email, password, display name, role) + disable toggle + role change.

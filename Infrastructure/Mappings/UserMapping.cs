@@ -28,6 +28,9 @@ public class UserMapping : IEntityTypeConfiguration<User>
         b.Property(x => x.DisplayName).HasColumnName("display_name").IsRequired().HasMaxLength(128);
         b.Property(x => x.RoleId).HasColumnName("role_id").IsRequired();
         b.Property(x => x.IsActive).HasColumnName("is_active");
+        b.Property(x => x.ApprovalStatus).HasColumnName("approval_status").HasDefaultValue(Pointer.Domain.Enums.ApprovalStatus.Approved);
+        b.Property(x => x.Language).HasColumnName("language").HasMaxLength(8);
+        b.Property(x => x.Theme).HasColumnName("theme").HasMaxLength(8);
 
         b.HasOne(x => x.Role)
             .WithMany(r => r.Users)

@@ -1,0 +1,97 @@
+{
+  "common": {
+    "save": "Save",
+    "cancel": "Cancel",
+    "active": "Active",
+    "disabled": "Disabled",
+    "refresh": "Refresh",
+    "add": "Add",
+    "rename": "Rename",
+    "disable": "Disable",
+    "enable": "Enable",
+    "yes": "Yes",
+    "no": "No",
+    "confirmDisable": "Disable {{ name }}?"
+  },
+  "nav": {
+    "overview": "Overview",
+    "roles": "Roles",
+    "users": "Users",
+    "projects": "Projects"
+  },
+  "header": {
+    "brand": "Pointer Admin",
+    "signOut": "Sign out"
+  },
+  "login": {
+    "title": "Pointer Admin",
+    "email": "Email",
+    "password": "Password",
+    "signIn": "Sign in",
+    "notAdmin": "This account is not an admin.",
+    "failed": "Login failed"
+  },
+  "overview": {
+    "projects": "Projects",
+    "users": "Users",
+    "comments": "Comments",
+    "private": "Private",
+    "privateHidden": "{{ count }} private (hidden)",
+    "privateHiddenTooltip": "Private comments are counted but their content is hidden from admins.",
+    "open": "Open",
+    "pending": "Pending",
+    "completed": "Completed",
+    "breakdown": "Projects Breakdown",
+    "key": "Key",
+    "name": "Name",
+    "status": "Status",
+    "pendingApprovals": "Pending approvals",
+    "noPending": "No pending sign-up requests.",
+    "requestedRole": "Requested role",
+    "requested": "Requested",
+    "approveAs": "Approve as",
+    "approve": "Approve",
+    "reject": "Reject",
+    "confirm": "Confirm",
+    "confirmReject": "Reject the request from {{ name }}?"
+  },
+  "roles": {
+    "title": "Roles",
+    "addRole": "Add Role",
+    "name": "Name",
+    "grantsAdmin": "Grants admin",
+    "system": "system",
+    "status": "Status",
+    "actions": "Actions"
+  },
+  "users": {
+    "title": "Users",
+    "addUser": "Add User",
+    "email": "Email",
+    "displayName": "Display Name",
+    "password": "Password",
+    "role": "Role",
+    "status": "Status",
+    "actions": "Actions",
+    "name": "Name",
+    "filter": "Show",
+    "filterApproved": "Approved",
+    "filterPending": "Pending",
+    "filterRejected": "Rejected",
+    "approvalStatus": "Approval",
+    "approveAs": "Approve as",
+    "approve": "Approve",
+    "reject": "Reject",
+    "confirm": "Confirm",
+    "confirmReject": "Reject the request from {{ name }}?",
+    "empty": "No users to show."
+  },
+  "projects": {
+    "title": "Projects",
+    "addProject": "Add Project",
+    "key": "Key",
+    "name": "Name",
+    "status": "Status",
+    "actions": "Actions"
+  }
+}

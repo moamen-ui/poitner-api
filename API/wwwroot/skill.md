@@ -43,11 +43,21 @@ the browser) — read them from the shell environment or a gitignored local file
      (`grep -oE 'setAttribute\("project", *"[^"]+"' "$APP_DIR/index.html"`) or the app dir name.
    - If `SERVER` is empty, ask the user for the Pointer server URL.
 
-3. **Read automation credentials** (NOT Vite-prefixed; from your shell or a gitignored file):
+3. **Read automation credentials.** These must NOT live in the app `.env` (it's Vite-loaded and is
+   often git-tracked). Read them from a **gitignored `.pointer/credentials.env`** at the repo root,
+   falling back to the shell environment. **Never commit or hardcode them.**
    ```bash
-   POINTER_EMAIL="${POINTER_EMAIL:?set POINTER_EMAIL to the automation account email}"
-   POINTER_PASSWORD="${POINTER_PASSWORD:?set POINTER_PASSWORD}"
+   # repo-root .pointer/credentials.env (gitignored) — KEY=VALUE lines:
+   #   POINTER_EMAIL=automation@pointer.local
+   #   POINTER_PASSWORD=...
+   CRED=.pointer/credentials.env
+   [ -f "$CRED" ] && { set -a; . "$CRED"; set +a; }
+   POINTER_EMAIL="${POINTER_EMAIL:?set POINTER_EMAIL in .pointer/credentials.env or the shell}"
+   POINTER_PASSWORD="${POINTER_PASSWORD:?set POINTER_PASSWORD in .pointer/credentials.env or the shell}"
    ```
+   The account is a Pointer user an admin created in the dashboard (any role works for fetch/apply; a
+   dedicated `Developer`-role "automation" user is conventional). If `.pointer/` isn't gitignored yet,
+   add it: `echo '.pointer/' >> .gitignore`.
 
 You now have `SERVER`, `PROJECT`, `POINTER_EMAIL`, `POINTER_PASSWORD`.
 

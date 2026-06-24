@@ -3,3 +3,5 @@ obj/
 .env
 *.user
 .superpowers/
+API/wwwroot/uploads/
+.playwright-cli/

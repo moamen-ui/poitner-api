@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Mvc;
 using Pointer.API.Auth;
 using Pointer.Application.DTOs.User;
 using Pointer.Application.Services.Interfaces;
+using Pointer.Domain.Enums;
 
 namespace Pointer.API.Controllers.Admin;
 
@@ -12,9 +13,35 @@ namespace Pointer.API.Controllers.Admin;
 public class UsersController(IUserService userService) : ControllerBase
 {
     [HttpGet]
-    public async Task<IActionResult> List()
+    public async Task<IActionResult> List([FromQuery] string? status = null)
     {
-        var result = await userService.ListAsync();
+        ApprovalStatus? filter = null;
+        if (!string.IsNullOrWhiteSpace(status))
+        {
+            if (!Enum.TryParse<ApprovalStatus>(status, ignoreCase: true, out var parsed))
+                return BadRequest();
+            filter = parsed;
+        }
+
+        var result = await userService.ListAsync(filter);
+        if (result.IsNotFound) return NotFound(result);
+        if (result.IsConflict) return Conflict(result);
+        return result.IsSuccess ? Ok(result) : BadRequest(result);
+    }
+
+    [HttpPost("{id:int}/approve")]
+    public async Task<IActionResult> Approve(int id, [FromBody] ApproveUserRequest request)
+    {
+        var result = await userService.ApproveAsync(id, request);
+        if (result.IsNotFound) return NotFound(result);
+        if (result.IsConflict) return Conflict(result);
+        return result.IsSuccess ? Ok(result) : BadRequest(result);
+    }
+
+    [HttpPost("{id:int}/reject")]
+    public async Task<IActionResult> Reject(int id)
+    {
+        var result = await userService.RejectAsync(id);
         if (result.IsNotFound) return NotFound(result);
         if (result.IsConflict) return Conflict(result);
         return result.IsSuccess ? Ok(result) : BadRequest(result);

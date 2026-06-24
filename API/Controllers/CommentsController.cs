@@ -22,7 +22,7 @@ public class CommentsController(ICommentService commentService) : ControllerBase
     [HttpGet("api/projects/{key}/comments")]
     public async Task<IActionResult> List(string key, [FromQuery] CommentFilter filter)
     {
-        var result = await commentService.ListAsync(key, filter);
+        var result = await commentService.ListAsync(key, filter, User.GetId());
         if (result.IsNotFound) return NotFound(result);
         if (result.IsConflict) return Conflict(result);
         return result.IsSuccess ? Ok(result) : BadRequest(result);
@@ -31,7 +31,7 @@ public class CommentsController(ICommentService commentService) : ControllerBase
     [HttpGet("api/comments/{id:int}")]
     public async Task<IActionResult> GetById(int id)
     {
-        var result = await commentService.GetByIdAsync(id);
+        var result = await commentService.GetByIdAsync(id, User.GetId());
         if (result.IsNotFound) return NotFound(result);
         if (result.IsConflict) return Conflict(result);
         return result.IsSuccess ? Ok(result) : BadRequest(result);
@@ -41,6 +41,16 @@ public class CommentsController(ICommentService commentService) : ControllerBase
     public async Task<IActionResult> UpdateStatus(int id, [FromBody] UpdateCommentStatusRequest request)
     {
         var result = await commentService.UpdateStatusAsync(id, request, User.GetId());
+        if (result.IsNotFound) return NotFound(result);
+        if (result.IsConflict) return Conflict(result);
+        return result.IsSuccess ? Ok(result) : BadRequest(result);
+    }
+
+    // Edit a comment's body and/or remove its uploaded image. Author-only (enforced in the service).
+    [HttpPut("api/comments/{id:int}")]
+    public async Task<IActionResult> Edit(int id, [FromBody] EditCommentRequest request)
+    {
+        var result = await commentService.EditAsync(id, request, User.GetId());
         if (result.IsNotFound) return NotFound(result);
         if (result.IsConflict) return Conflict(result);
         return result.IsSuccess ? Ok(result) : BadRequest(result);

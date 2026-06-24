@@ -138,9 +138,34 @@ just db-update  # apply migrations
 just psql       # psql into the db
 ```
 
+## Admin Web (Angular)
+
+A standalone **Angular 22** SPA in [`admin-web/`](admin-web/) is the primary admin dashboard
+(Overview/stats, Roles, Users, Projects), built with Angular Material and talking to this API. The
+build-free `/admin/` page served by the .NET app is kept as a zero-dependency fallback.
+
+```bash
+cd admin-web
+npm install
+npm start            # → http://localhost:4200  (needs Node ≥ 22.22)
+```
+
+- Talks to the API at `apiBase` in `src/environments/environment.ts` (default `http://localhost:8090`);
+  CORS is already open server-side.
+- Sign in with an admin account (e.g. the seeded `admin@pointer.local` / `ChangeMe123!`). Auth is the
+  same local-account JWT; the SPA stores it and sends `Authorization: Bearer …`, and only roles whose
+  `GrantsAdmin` is true can enter.
+- `npm run build` → static bundle in `admin-web/dist/` (deployable to any static host).
+- **Language + theme:** header toggles for **AR/EN** (Arabic flips to RTL) and **light/dark**. Each
+  user's choice is saved in the DB (`PATCH /api/me/preferences`, columns on `users`) and restored on
+  next login/device; first visit falls back to browser language + system theme (then `en`/`dark`).
+- See [`docs/ADMIN_WEB_DESIGN.md`](docs/ADMIN_WEB_DESIGN.md) and
+  [`docs/ADMIN_PREFS_I18N_DESIGN.md`](docs/ADMIN_PREFS_I18N_DESIGN.md) for the designs.
+
 ## Docs
 
 - [`docs/DESIGN.md`](docs/DESIGN.md) — full architecture, auth, data model, endpoints, web-component & apply flow, admin UI.
+- [`docs/ADMIN_WEB_DESIGN.md`](docs/ADMIN_WEB_DESIGN.md) — the Angular admin SPA design.
 - [`docs/PLAN.md`](docs/PLAN.md) — phased implementation plan.
 - [`docs/TASKS.md`](docs/TASKS.md) — living implementation tracker.
 

@@ -9,4 +9,5 @@ public class ElementCaptureDto
     public string? AppliedCssRules { get; set; }
     public string? SourcePath { get; set; }
     public string? ParentInfo { get; set; }
+    public string? ScreenshotUrl { get; set; }
 }

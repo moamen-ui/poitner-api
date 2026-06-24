@@ -29,6 +29,26 @@
         </div>
       </header>
 
+      <!-- Overview / analytics -->
+      <section class="stats">
+        <div class="stats-head">
+          <h2>Overview</h2>
+          <button id="stats-refresh" class="btn ghost" title="Refresh stats">&#8635; Refresh</button>
+        </div>
+        <div class="cards" id="stat-cards"></div>
+        <div class="panel" style="margin-top:16px;">
+          <div class="panel-head"><h3 style="margin:0;font-size:14px;">Per project</h3></div>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr><th>Project</th><th>Comments</th><th>Open</th><th>Pending</th><th>Completed</th><th>Status</th></tr>
+              </thead>
+              <tbody id="stats-projects-body"></tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
       <main class="grid">
         <!-- Roles -->
         <section class="panel">

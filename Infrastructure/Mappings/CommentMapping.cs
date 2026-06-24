@@ -25,9 +25,12 @@ public class CommentMapping : IEntityTypeConfiguration<Comment>
         b.Property(x => x.Status).HasColumnName("status");
         b.Property(x => x.AuthorId).HasColumnName("author_id");
         b.Property(x => x.Body).HasColumnName("body").IsRequired();
+        b.Property(x => x.IsPrivate).HasColumnName("is_private").HasDefaultValue(false);
         b.Property(x => x.AppliedAt).HasColumnName("applied_at");
         b.Property(x => x.AppliedBy).HasColumnName("applied_by");
         b.Property(x => x.AppliedByLabel).HasColumnName("applied_by_label").HasMaxLength(256);
+        b.Property(x => x.EditedAt).HasColumnName("edited_at");
+        b.Property(x => x.EditedBy).HasColumnName("edited_by");
         b.OwnsOne(x => x.Element, e => e.ToJson("element"));
         b.HasOne(x => x.Project).WithMany(p => p.Comments).HasForeignKey(x => x.ProjectId).OnDelete(DeleteBehavior.Restrict);
         b.HasIndex(x => new { x.ProjectId, x.Status });

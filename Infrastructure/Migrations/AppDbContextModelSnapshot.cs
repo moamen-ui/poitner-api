@@ -69,9 +69,23 @@ namespace Pointer.Infrastructure.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("deleted_by");
 
+                    b.Property<DateTime?>("EditedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("edited_at");
+
+                    b.Property<Guid?>("EditedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("edited_by");
+
                     b.Property<int>("Environment")
                         .HasColumnType("integer")
                         .HasColumnName("environment");
+
+                    b.Property<bool>("IsPrivate")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("boolean")
+                        .HasDefaultValue(false)
+                        .HasColumnName("is_private");
 
                     b.Property<int>("ProjectId")
                         .HasColumnType("integer")
@@ -274,6 +288,12 @@ namespace Pointer.Infrastructure.Migrations
 
                     NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
 
+                    b.Property<int>("ApprovalStatus")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer")
+                        .HasDefaultValue(1)
+                        .HasColumnName("approval_status");
+
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("created_at");
@@ -306,6 +326,11 @@ namespace Pointer.Infrastructure.Migrations
                         .HasColumnType("boolean")
                         .HasColumnName("is_active");
 
+                    b.Property<string>("Language")
+                        .HasMaxLength(8)
+                        .HasColumnType("character varying(8)")
+                        .HasColumnName("language");
+
                     b.Property<string>("PasswordHash")
                         .IsRequired()
                         .HasColumnType("text")
@@ -318,6 +343,11 @@ namespace Pointer.Infrastructure.Migrations
                     b.Property<int>("RoleId")
                         .HasColumnType("integer")
                         .HasColumnName("role_id");
+
+                    b.Property<string>("Theme")
+                        .HasMaxLength(8)
+                        .HasColumnType("character varying(8)")
+                        .HasColumnName("theme");
 
                     b.Property<DateTime?>("UpdatedAt")
                         .HasColumnType("timestamp with time zone")
@@ -363,6 +393,9 @@ namespace Pointer.Infrastructure.Migrations
                                 .HasColumnType("text");
 
                             b1.Property<string>("ParentInfo")
+                                .HasColumnType("text");
+
+                            b1.Property<string>("ScreenshotUrl")
                                 .HasColumnType("text");
 
                             b1.Property<string>("Selector")

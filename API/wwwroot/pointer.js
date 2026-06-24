@@ -31,6 +31,14 @@
   const STATUS_STR = { 1: 'open', 2: 'pending-apply', 3: 'applied' };
   const STATUS_INT = { 'open': 1, 'pending-apply': 2, 'applied': 3 };
 
+  // Inline SVG icons (monochrome, inherit currentColor) for compact card actions.
+  const ICON = {
+    flag: '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><line x1="4" y1="22" x2="4" y2="15"/></svg>',
+    check: '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>',
+    trash: '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>',
+    pencil: '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4z"/></svg>',
+  };
+
   // One global style for the host-page hover highlight (lives in light DOM by
   // necessity — it decorates the host app's own elements, not our shadow UI).
   const ensureHighlightStyle = () => {
@@ -110,87 +118,170 @@
     { key: 'applied', label: 'Completed' },
   ];
 
-  const STYLES = `
-    :host{ all: initial; }
-    *{ box-sizing: border-box; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; }
-    .pf-toolbar{ position: fixed; top: 16px; right: 16px; z-index: 2147483646; display: flex; gap: 8px;
-      background: #fff; border: 1px solid #e2e8f0; border-radius: 12px; padding: 8px;
-      box-shadow: 0 6px 24px rgba(0,0,0,.12); pointer-events: auto; }
-    .pf-btn{ display: inline-flex; align-items: center; gap: 6px; border: none; border-radius: 8px;
-      padding: 8px 12px; font-size: 13px; font-weight: 600; cursor: pointer; background: #f1f5f9; color: #0f172a; }
-    .pf-btn:hover{ background: #e2e8f0; }
-    .pf-btn.primary{ background: #2563eb; color: #fff; }
-    .pf-btn.primary:hover{ background: #1d4ed8; }
-    .pf-btn.active{ background: #1d4ed8; color: #fff; }
-    .pf-badge{ background: #2563eb; color:#fff; border-radius: 999px; padding: 1px 7px; font-size: 11px; }
+  // --- Styles: loaded at runtime from pointer.css (sibling of this script) ---
+  // Kept in a separate .css file so styles can be edited directly (with editor
+  // tooling) without touching this JS. Loaded via <link> inside the shadow root
+  // — deliberately NOT fetch(): a <link> is not subject to CORS, so it works
+  // cross-origin (host app → Pointer server) even though static files aren't
+  // served with CORS headers. To change styles: edit pointer.css and refresh —
+  // no build step.
+  const CSS_URL = SCRIPT_SRC ? new URL('pointer.css', SCRIPT_SRC).href : 'pointer.css';
 
-    .pf-sidebar{ position: fixed; top: 0; right: 0; height: 100vh; width: 360px; max-width: 92vw; z-index: 2147483646;
-      background: #fff; border-left: 1px solid #e2e8f0; box-shadow: -8px 0 24px rgba(0,0,0,.08);
-      transform: translateX(100%); transition: transform .2s ease; display: flex; flex-direction: column; pointer-events: auto; }
-    .pf-sidebar.open{ transform: translateX(0); }
-    .pf-sidebar-head{ padding: 16px; border-bottom: 1px solid #eef2f7; display:flex; align-items:center; justify-content: space-between; }
-    .pf-sidebar-head h2{ margin:0; font-size: 16px; color:#0f172a; }
-    .pf-filters{ display:flex; gap:6px; flex-wrap:wrap; padding: 10px 12px; border-bottom: 1px solid #eef2f7; }
-    .pf-chip{ border:1px solid #e2e8f0; background:#fff; color:#475569; border-radius:999px; padding:4px 10px;
-      font-size:12px; font-weight:600; cursor:pointer; display:inline-flex; align-items:center; gap:6px; }
-    .pf-chip:hover{ background:#f8fafc; }
-    .pf-chip-n{ background:#eef2f7; color:#475569; border-radius:999px; padding:0 6px; font-size:11px; }
-    .pf-chip.active{ background:#0f172a; color:#fff; border-color:#0f172a; }
-    .pf-chip.active .pf-chip-n{ background:rgba(255,255,255,.25); color:#fff; }
-    .pf-chip.chip-pending.active{ background:#92400e; border-color:#92400e; }
-    .pf-chip.chip-completed.active{ background:#166534; border-color:#166534; }
-    .pf-sidebar-body{ overflow-y: auto; padding: 12px; flex: 1; }
-    .pf-empty{ color:#64748b; font-size: 13px; text-align:center; padding: 32px 12px; }
+  // --- Screenshot capture library (lazy-loaded) ------------------------------
+  // We vendor snapdom (https://github.com/zumerlab/snapdom, MIT) under
+  // vendor/snapdom.js and self-host it — never a CDN, so it works offline and
+  // under strict host-app CSPs. The UMD build assigns `window.snapdom`. It is
+  // injected ONLY when a capture actually happens (see _loadSnapdom): a normal
+  // page load never pulls it in. snapdom is a single ~123KB no-dependency file
+  // and is markedly faster/smaller than html2canvas while reconstructing the
+  // DOM with high fidelity.
+  const SNAPDOM_URL = SCRIPT_SRC ? new URL('vendor/snapdom.js', SCRIPT_SRC).href : 'vendor/snapdom.js';
+  const SHOT_MAX_WIDTH = 1280;   // downscale cap for the exported screenshot
+  const SHOT_HIGHLIGHT = '#2563eb';
 
-    .pf-card{ border: 1px solid #eef2f7; border-radius: 10px; padding: 12px; margin-bottom: 10px; }
-    .pf-card.pending{ border-color: #f59e0b; background: #fffbeb; }
-    .pf-card.applied{ border-color: #16a34a; background: #f0fdf4; }
-    .pf-meta{ display:flex; gap:6px; align-items:center; flex-wrap: wrap; margin-bottom: 6px; }
-    .pf-pill{ font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing:.03em; padding: 2px 6px; border-radius: 6px; background:#eef2f7; color:#475569; }
-    .pf-pill.role{ background:#dbeafe; color:#1e40af; }
-    .pf-pill.env{ background:#f3e8ff; color:#7c3aed; }
-    .pf-pill.status-applied{ background:#dcfce7; color:#166534; }
-    .pf-pill.status-pending{ background:#fef3c7; color:#92400e; }
-    .pf-text{ font-size: 14px; color:#0f172a; margin: 4px 0 8px; white-space: pre-wrap; }
-    .pf-sub{ font-size: 11px; color:#94a3b8; }
-    .pf-src{ font-size: 11px; color:#0369a1; font-family: ui-monospace, monospace; word-break: break-all; }
-    .pf-actions{ display:flex; gap:6px; flex-wrap: wrap; margin-top: 8px; }
-    .pf-mini{ border:none; background:#f1f5f9; color:#0f172a; border-radius:6px; padding:5px 9px; font-size:12px; cursor:pointer; }
-    .pf-mini:hover{ background:#e2e8f0; }
-    .pf-mini.apply{ background:#fef3c7; color:#92400e; }
-    .pf-mini.applied{ background:#dcfce7; color:#166534; }
-    .pf-mini.danger:hover{ background:#fee2e2; color:#b91c1c; }
-    .pf-replies{ margin-top: 8px; border-top: 1px dashed #e2e8f0; padding-top: 8px; }
-    .pf-reply{ font-size: 13px; color:#334155; padding: 4px 0; }
-    .pf-reply.ai{ color:#166534; }
-    .pf-reply-row{ display:flex; gap:6px; margin-top: 6px; }
-    .pf-input, .pf-textarea{ width:100%; border:1px solid #cbd5e1; border-radius:8px; padding:8px; font-size:13px; }
-    .pf-textarea{ resize: vertical; min-height: 64px; }
+  // --- Templates: all component markup lives here (pure string builders) ------
+  // Edit these to change the UI's HTML. Event wiring stays in the class methods,
+  // which call these and then attach listeners to the rendered nodes. Values
+  // interpolated here are pre-escaped by callers via escapeHtml where needed.
+  const TPL = {
+    // The auth modal hosts two swappable bodies (sign-in / sign-up) inside one
+    // shell. showLoginModal() renders the shell once and then swaps #pf-auth-body
+    // between TPL.loginBody and TPL.signupBody. The shell keeps the Skip control
+    // so deferred-login dismissal works from either view.
+    loginModal: (project) => `
+        <div class="pf-modal-overlay">
+          <div class="pf-modal">
+            <h2>Pointer</h2>
+            <p>Leave feedback on <b>${escapeHtml(project)}</b>.</p>
+            <div id="pf-auth-body"></div>
+            <button class="pf-btn pf-link" id="pf-login-skip" style="width:100%; justify-content:center; margin-top:8px;">Skip for now</button>
+          </div>
+        </div>`,
 
-    .pf-pin{ position: fixed; z-index: 2147483645; width: 24px; height: 24px; border-radius: 50% 50% 50% 0;
-      background:#2563eb; color:#fff; font-size: 12px; font-weight: 700; display:flex; align-items:center; justify-content:center;
-      transform: rotate(-45deg); box-shadow: 0 2px 6px rgba(0,0,0,.3); cursor: pointer; pointer-events: auto; }
-    .pf-pin span{ transform: rotate(45deg); }
-    .pf-pin.pending{ background:#f59e0b; }
-    .pf-pin.applied{ background:#16a34a; }
+    // Sign-in body. After a "rejected" login it also renders an inline re-apply
+    // block (role select + "Request again"); pass rejected=true to show it.
+    loginBody: (rejected) => `
+        <input class="pf-input" id="pf-email" type="email" placeholder="Email" style="margin-bottom:8px;" />
+        <input class="pf-input" id="pf-password" type="password" placeholder="Password" style="margin-bottom:8px;" />
+        <div class="pf-modal-error" id="pf-login-error"></div>
+        <button class="pf-btn primary" id="pf-login-submit" style="width:100%; justify-content:center;">Sign in</button>
+        ${rejected ? `
+        <div class="pf-reapply" id="pf-reapply">
+          <label class="pf-field-label" for="pf-reapply-role">Choose a role to request again</label>
+          <select class="pf-input" id="pf-reapply-role" style="margin-bottom:8px;"></select>
+          <button class="pf-btn primary" id="pf-reapply-submit" style="width:100%; justify-content:center;">Request again</button>
+        </div>` : ''}
+        <div class="pf-auth-foot">
+          No account? <button class="pf-btn pf-link pf-link-inline" id="pf-show-signup">Create account</button>
+        </div>`,
 
-    .pf-popover{ position: fixed; z-index: 2147483647; width: 280px; background:#fff; border:1px solid #e2e8f0;
-      border-radius: 12px; box-shadow: 0 12px 32px rgba(0,0,0,.18); padding: 12px; pointer-events: auto; }
-    .pf-popover h3{ margin:0 0 8px; font-size: 13px; color:#0f172a; }
-    .pf-snippet{ font-size: 11px; font-family: ui-monospace, monospace; color:#475569; background:#f8fafc; border-radius:6px; padding:6px; margin-bottom:8px; max-height: 60px; overflow:auto; }
+    // Sign-up body. The role <select> is populated at runtime from GET /api/roles.
+    signupBody: () => `
+        <input class="pf-input" id="pf-su-name" type="text" placeholder="Name" style="margin-bottom:8px;" />
+        <input class="pf-input" id="pf-su-email" type="email" placeholder="Email" style="margin-bottom:8px;" />
+        <input class="pf-input" id="pf-su-password" type="password" placeholder="Password" style="margin-bottom:8px;" />
+        <label class="pf-field-label" for="pf-su-role">Role</label>
+        <select class="pf-input" id="pf-su-role" style="margin-bottom:8px;"></select>
+        <div class="pf-modal-error" id="pf-signup-error"></div>
+        <div class="pf-modal-success" id="pf-signup-success"></div>
+        <button class="pf-btn primary" id="pf-signup-submit" style="width:100%; justify-content:center;">Create account</button>
+        <div class="pf-auth-foot">
+          Already have an account? <button class="pf-btn pf-link pf-link-inline" id="pf-show-login">Back to sign in</button>
+        </div>`,
 
-    .pf-modal-overlay{ position: fixed; inset: 0; z-index: 2147483647; background: rgba(15,23,42,.5);
-      display:flex; align-items:center; justify-content:center; pointer-events: auto; }
-    .pf-modal{ background:#fff; border-radius: 14px; padding: 24px; width: 340px; max-width: 92vw; box-shadow: 0 20px 50px rgba(0,0,0,.3); }
-    .pf-modal h2{ margin:0 0 6px; font-size: 18px; color:#0f172a; }
-    .pf-modal p{ margin:0 0 14px; font-size: 13px; color:#64748b; }
-    .pf-modal-error{ color:#b91c1c; font-size: 12px; margin: 0 0 10px; min-height: 16px; }
+    chrome: (displayName, roleLabel) => `
+        <div class="pf-toolbar">
+          <button class="pf-btn primary" id="pf-add">+ Comment</button>
+          <button class="pf-btn" id="pf-toggle">Comments <span class="pf-badge" id="pf-count">0</span></button>
+          <button class="pf-btn" id="pf-refresh" title="Refresh comments">&#8635;</button>
+          ${displayName ? `<span class="pf-btn" style="cursor:default;" title="${roleLabel}">${displayName}</span>` : ''}
+        </div>
+        <div class="pf-sidebar" id="pf-sidebar">
+          <div class="pf-sidebar-head">
+            <h2>Comments</h2>
+            <button class="pf-mini" id="pf-close">&#x2715;</button>
+          </div>
+          <div class="pf-filters" id="pf-filters"></div>
+          <div class="pf-sidebar-body" id="pf-list"></div>
+        </div>
+        <div id="pf-pins"></div>
+        <div id="pf-popover-host"></div>`,
 
-    .pf-toast{ position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); z-index: 2147483647;
-      background:#0f172a; color:#fff; padding: 10px 16px; border-radius: 8px; font-size: 13px; box-shadow: 0 8px 24px rgba(0,0,0,.3); pointer-events: none; }
-    .pf-toast.error{ background:#b91c1c; }
-    .pf-toast.success{ background:#16a34a; }
-  `;
+    empty: (msg) => `<div class="pf-empty">${msg}</div>`,
+
+    filterChip: (f, active, count) =>
+      `<button class="pf-chip ${active ? 'active' : ''} chip-${STATUS_LABEL[f.key] || 'all'}" data-filter="${f.key}">
+             ${f.label} <span class="pf-chip-n">${count}</span>
+           </button>`,
+
+    // "Mine only" toggle — a chip that composes with the status chips above.
+    // Rendered only when a user is logged in.
+    mineToggle: (active) =>
+      `<button class="pf-chip pf-mine ${active ? 'active' : ''}" id="pf-mine-toggle" title="Show only my comments" aria-pressed="${active ? 'true' : 'false'}">
+             &#x1f464; Mine only
+           </button>`,
+
+    card: (c, i) => {
+      const cls = c.status === 'pending-apply' ? 'pending' : c.status === 'applied' ? 'applied' : '';
+      const statusPill = c.status === 'applied'
+        ? '<span class="pf-pill status-applied">&#x2713; completed</span>'
+        : c.status === 'pending-apply' ? '<span class="pf-pill status-pending">pending</span>' : '';
+      const replies = (c.replies || []).map(r =>
+        `<div class="pf-reply ${r.isAi ? 'ai' : ''}"><b>${escapeHtml(r.authorName || r.authorLabel || 'User')}:</b> ${escapeHtml(r.body || r.text || '')}</div>`).join('');
+      const envInt = c.environment;
+      const envLabel = envInt === 1 ? 'Local' : envInt === 2 ? 'Staging' : envInt === 3 ? 'Production' : (envInt ? String(envInt) : '');
+      const authorLabel = c.authorName || '';
+      const shotUrl = c.element && c.element.screenshotUrl;
+      const shot = shotUrl
+        ? `<a class="pf-shot-link" href="${escapeHtml(shotUrl)}" target="_blank" rel="noopener noreferrer" title="Open full screenshot">
+            <img class="pf-shot" src="${escapeHtml(shotUrl)}" alt="Element screenshot" loading="lazy" />
+          </a>`
+        : '';
+      return `
+          <div class="pf-card ${cls}" data-id="${c.id}">
+            <div class="pf-meta">
+              <span class="pf-badge">${i + 1}</span>
+              ${envLabel ? `<span class="pf-pill env">${escapeHtml(envLabel)}</span>` : ''}
+              ${c.isPrivate ? '<span class="pf-pill private">&#x1f512; Private</span>' : ''}
+              ${statusPill}
+            </div>
+            <div class="pf-text">${escapeHtml(c.body || c.text || '')}</div>
+            ${shot}
+            <div class="pf-sub">${escapeHtml(authorLabel)} &middot; ${c.createdAt ? new Date(c.createdAt).toLocaleDateString() : ''}${c.editedAt ? ' &middot; <span style="font-style:italic;">edited</span>' : ''}</div>
+            ${replies ? `<div class="pf-replies">${replies}</div>` : ''}
+            <div class="pf-reply-row">
+              <input class="pf-input pf-reply-input" placeholder="Reply…" data-id="${c.id}" />
+            </div>
+            <div class="pf-actions">
+              <button class="pf-mini ${c.status === 'pending-apply' ? 'apply' : c.status === 'applied' ? 'applied' : 'ready'}" data-act="apply" data-id="${c.id}" ${c.status === 'applied' ? 'disabled' : ''} title="${c.status === 'applied' ? 'Completed' : c.status === 'pending-apply' ? 'Marked ready — click to unmark' : 'Mark ready to apply'}">
+                ${c.status === 'applied' ? ICON.check : ICON.flag}<span>${c.status === 'applied' ? 'Done' : 'Ready'}</span>
+              </button>
+              ${c.status !== 'applied' ? `<button class="pf-mini done pf-icon" data-act="complete" data-id="${c.id}" title="Mark completed" aria-label="Mark completed">${ICON.check}</button>` : ''}
+              ${c._mine ? `<button class="pf-mini pf-icon" data-act="edit" data-id="${c.id}" title="Edit" aria-label="Edit">${ICON.pencil}</button>` : ''}
+              ${c.status === 'open' ? `<button class="pf-mini danger pf-icon" data-act="delete" data-id="${c.id}" title="Delete" aria-label="Delete">${ICON.trash}</button>` : ''}
+            </div>
+          </div>`;
+    },
+
+    popover: (meta, left, top, shotEnabled) => `
+        <div class="pf-popover" style="left:${left}px; top:${top}px;">
+          <h3>Comment on &lt;${escapeHtml(meta._tag)}&gt;</h3>
+          <div class="pf-snippet">${escapeHtml(meta._snapshotPreview.slice(0, 200))}</div>
+          ${meta._sourcePath ? `<div class="pf-src">&#x26ec; ${escapeHtml(meta._sourcePath)}</div>` : ''}
+          <textarea class="pf-textarea" id="pf-comment-text" placeholder="What should change here?"></textarea>
+          ${shotEnabled ? `<label class="pf-check"><input type="checkbox" id="pf-comment-shot" checked /> &#x1f4f7; Attach screenshot</label>` : ''}
+          <label class="pf-check"><input type="checkbox" id="pf-comment-private" /> &#x1f512; Keep private — only me</label>
+          <div class="pf-reply-row">
+            <button class="pf-btn primary" id="pf-submit" style="flex:1; justify-content:center;">Add</button>
+            <button class="pf-mini" id="pf-cancel">Cancel</button>
+          </div>
+        </div>`,
+
+    pin: (c, i, rect) => {
+      const cls = c.status === 'pending-apply' ? 'pending' : c.status === 'applied' ? 'applied' : '';
+      return `<div class="pf-pin ${cls}" data-id="${c.id}" style="left:${rect.left}px; top:${rect.top}px;"><span>${i + 1}</span></div>`;
+    },
+  };
 
   class PointerFeedback extends HTMLElement {
     connectedCallback() {
@@ -200,6 +291,8 @@
       this.project = this.getAttribute('project');
       this.environmentAttr = this.getAttribute('environment') || '';
       this.sourceAttr = this.getAttribute('source-attr') || 'data-component-source';
+      // Screenshot capture is ON by default; opt out with screenshot="false".
+      this.screenshotEnabled = (this.getAttribute('screenshot') || '').toLowerCase() !== 'false';
       this.server = (this.getAttribute('server') ||
         (SCRIPT_SRC ? new URL(SCRIPT_SRC).origin : window.location.origin)).replace(/\/$/, '');
 
@@ -208,6 +301,8 @@
 
       this.comments = [];
       this.statusFilter = 'all';
+      this.mineOnly = false;
+      this.hiddenPrivateCount = 0;
       this.picking = false;
       this.sidebarOpen = false;
       this.hovered = null;
@@ -223,9 +318,12 @@
       this.style.pointerEvents = 'none';
 
       this.attachShadow({ mode: 'open' });
-      const style = document.createElement('style');
-      style.textContent = STYLES;
-      this.shadowRoot.appendChild(style);
+      // External stylesheet loaded into the shadow root (see _boot for the
+      // load gate). Using <link> avoids CORS issues with cross-origin fetch.
+      this._styleLink = document.createElement('link');
+      this._styleLink.rel = 'stylesheet';
+      this._styleLink.href = CSS_URL || `${this.server}/pointer.css`;
+      this.shadowRoot.appendChild(this._styleLink);
       this.root = document.createElement('div');
       this.shadowRoot.appendChild(this.root);
 
@@ -242,8 +340,30 @@
       window.addEventListener('scroll', this._reposition, true);
       window.addEventListener('resize', this._reposition);
 
-      if (!this.token) this.showLoginModal();
-      else this.init();
+      this._boot();
+    }
+
+    // Wait for the stylesheet to load, then render the first view. Gating the
+    // first render on the stylesheet avoids a flash of unstyled UI. A short
+    // timeout guarantees we never hang if the CSS is slow/unreachable.
+    async _boot() {
+      await this._stylesReady();
+      // Login is deferred: on load just show the toolbar. The popup only appears
+      // when the user acts (+ Comment / Comments) and there's no token yet.
+      if (this.token) this.init();
+      else this.renderChrome();
+    }
+
+    _stylesReady() {
+      return new Promise((resolve) => {
+        const link = this._styleLink;
+        if (!link || link.sheet) return resolve();
+        let done = false;
+        const finish = () => { if (!done) { done = true; resolve(); } };
+        link.addEventListener('load', finish, { once: true });
+        link.addEventListener('error', finish, { once: true });
+        setTimeout(finish, 1500);
+      });
     }
 
     disconnectedCallback() {
@@ -303,6 +423,28 @@
       return r;
     }
 
+    // Anonymous: fetch active non-admin roles for the signup / re-apply dropdowns.
+    // Plain fetch (no Bearer) — the endpoint allows anonymous. Returns
+    // [{ id, name }]; resolves [] on any failure (caller surfaces an error).
+    async apiRoles() {
+      const r = await fetch(`${this.server}/api/roles`, {
+        headers: { 'Content-Type': 'application/json' }
+      });
+      const envelope = await r.json();
+      if (!r.ok || !envelope.isSuccess) throw new Error(envelope.message || 'Could not load roles.');
+      return envelope.data || [];
+    }
+
+    // Anonymous: self-signup AND re-apply (one endpoint). No token returned.
+    async apiRegister(body) {
+      const r = await fetch(`${this.server}/api/auth/register`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body)
+      });
+      return r;
+    }
+
     api(path, opts = {}) {
       const headers = {
         'Content-Type': 'application/json',
@@ -325,6 +467,8 @@
         if (!r.ok) throw new Error('HTTP ' + r.status);
         const envelope = await r.json();
         const items = (envelope.data && envelope.data.items) || [];
+        // Count of others' private comments hidden from this viewer (server-side).
+        this.hiddenPrivateCount = (envelope.data && Number(envelope.data.hiddenPrivateCount)) || 0;
         // Normalize int status → string for internal UI use
         this.comments = items.map(c => ({
           ...c,
@@ -335,6 +479,7 @@
           this.toast('Could not reach Pointer server', 'error');
         }
         this.comments = [];
+        this.hiddenPrivateCount = 0;
       }
     }
 
@@ -344,26 +489,69 @@
       return this.comments;
     }
 
-    // --- Identity / Login modal ----------------------------------------------
+    // --- Identity / Auth modal -----------------------------------------------
+    // One modal shell, two swappable bodies (sign-in / sign-up). The shell owns
+    // the Skip control (deferred-login dismissal); renderLoginView /
+    // renderSignupView fill #pf-auth-body and wire their own events.
     showLoginModal(afterLogin) {
       // afterLogin: optional callback to run after successful login
       this._afterLogin = afterLogin || null;
-      this.root.innerHTML = `
-        <div class="pf-modal-overlay">
-          <div class="pf-modal">
-            <h2>Pointer</h2>
-            <p>Sign in to leave feedback on <b>${escapeHtml(this.project)}</b>.</p>
-            <input class="pf-input" id="pf-email" type="email" placeholder="Email" style="margin-bottom:8px;" />
-            <input class="pf-input" id="pf-password" type="password" placeholder="Password" style="margin-bottom:8px;" />
-            <div class="pf-modal-error" id="pf-login-error"></div>
-            <button class="pf-btn primary" id="pf-login-submit" style="width:100%; justify-content:center;">Sign in</button>
-          </div>
-        </div>`;
+      this.root.innerHTML = TPL.loginModal(this.project);
 
-      const emailEl = this.root.querySelector('#pf-email');
-      const passEl = this.root.querySelector('#pf-password');
-      const errEl = this.root.querySelector('#pf-login-error');
-      const submitBtn = this.root.querySelector('#pf-login-submit');
+      // Skip → dismiss the popup without logging in; restore the toolbar so the
+      // user can come back to it later by clicking the tool again.
+      const skipBtn = this.root.querySelector('#pf-login-skip');
+      if (skipBtn) skipBtn.addEventListener('click', () => { this._afterLogin = null; this.renderChrome(); });
+
+      this.renderLoginView();
+    }
+
+    // Populate a <select> with [{id,name}] roles fetched anonymously. Disables
+    // the element while loading and on failure (shows a placeholder option).
+    async _populateRoles(selectEl, errEl) {
+      if (!selectEl) return;
+      selectEl.disabled = true;
+      selectEl.innerHTML = '<option value="">Loading roles…</option>';
+      try {
+        const roles = await this.apiRoles();
+        if (!roles.length) {
+          selectEl.innerHTML = '<option value="">No roles available</option>';
+          return;
+        }
+        selectEl.innerHTML = roles.map(r =>
+          `<option value="${escapeHtml(r.id)}">${escapeHtml(r.name)}</option>`).join('');
+        selectEl.disabled = false;
+      } catch (e) {
+        selectEl.innerHTML = '<option value="">Could not load roles</option>';
+        if (errEl) errEl.textContent = e.message || 'Could not load roles.';
+      }
+    }
+
+    // Finish a successful login: persist auth, clear the modal, run the deferred
+    // callback (or init the full UI).
+    _afterAuthOk(token, user) {
+      this._saveAuth(token, user);
+      this.root.innerHTML = '';
+      if (this._afterLogin) {
+        const cb = this._afterLogin;
+        this._afterLogin = null;
+        cb();
+      } else {
+        this.init();
+      }
+    }
+
+    // --- Sign-in view --------------------------------------------------------
+    renderLoginView(opts = {}) {
+      // opts.rejected → render the re-apply block (role select + Request again).
+      const body = this.root.querySelector('#pf-auth-body');
+      if (!body) return;
+      body.innerHTML = TPL.loginBody(!!opts.rejected);
+
+      const emailEl = body.querySelector('#pf-email');
+      const passEl = body.querySelector('#pf-password');
+      const errEl = body.querySelector('#pf-login-error');
+      const submitBtn = body.querySelector('#pf-login-submit');
 
       const doLogin = async () => {
         const email = emailEl.value.trim();
@@ -373,56 +561,149 @@
         errEl.textContent = '';
         submitBtn.disabled = true;
         submitBtn.textContent = 'Signing in…';
+        const restore = () => { submitBtn.disabled = false; submitBtn.textContent = 'Sign in'; };
         try {
           const r = await this.apiLogin(email, password);
           const envelope = await r.json();
-          if (!r.ok || !envelope.isSuccess) {
-            errEl.textContent = envelope.message || 'Invalid email or password.';
-            submitBtn.disabled = false;
-            submitBtn.textContent = 'Sign in';
+          const data = envelope.data || null;
+          const status = data && data.status;
+          if (status === 'ok' && data.token) {
+            this._afterAuthOk(data.token, data.user);
             return;
           }
-          this._saveAuth(envelope.data.token, envelope.data.user);
-          this.root.innerHTML = '';
-          if (this._afterLogin) {
-            const cb = this._afterLogin;
-            this._afterLogin = null;
-            cb();
-          } else {
-            this.init();
+          if (status === 'pending') {
+            errEl.textContent = envelope.message || 'Your request is awaiting admin approval.';
+            restore();
+            return;
           }
+          if (status === 'disabled') {
+            errEl.textContent = envelope.message || 'Your account is disabled.';
+            restore();
+            return;
+          }
+          if (status === 'rejected') {
+            // Re-render the sign-in view with the re-apply block, preserving the
+            // typed credentials so "Request again" can reuse them.
+            this.renderLoginView({ rejected: true });
+            const re = this.root.querySelector('#pf-auth-body');
+            re.querySelector('#pf-email').value = email;
+            re.querySelector('#pf-password').value = password;
+            re.querySelector('#pf-login-error').textContent =
+              envelope.message || 'Your request was rejected.';
+            return;
+          }
+          // Missing/unknown status with failure → generic message.
+          errEl.textContent = envelope.message || 'Invalid email or password.';
+          restore();
         } catch (e) {
           errEl.textContent = 'Network error. Please try again.';
-          submitBtn.disabled = false;
-          submitBtn.textContent = 'Sign in';
+          restore();
         }
       };
 
       submitBtn.addEventListener('click', doLogin);
       passEl.addEventListener('keydown', (e) => { if (e.key === 'Enter') doLogin(); });
+
+      body.querySelector('#pf-show-signup').addEventListener('click', () => this.renderSignupView());
+
+      // Rejected re-apply block: populate roles and wire "Request again".
+      if (opts.rejected) {
+        const roleEl = body.querySelector('#pf-reapply-role');
+        const reBtn = body.querySelector('#pf-reapply-submit');
+        this._populateRoles(roleEl, errEl);
+        reBtn.addEventListener('click', async () => {
+          const email = emailEl.value.trim();
+          const password = passEl.value;
+          const roleId = roleEl.value;
+          if (!roleId) { errEl.textContent = 'Please choose a role.'; return; }
+          if (!email || !password) { errEl.textContent = 'Enter your email and password to request again.'; return; }
+          errEl.textContent = '';
+          reBtn.disabled = true;
+          reBtn.textContent = 'Submitting…';
+          try {
+            const r = await this.apiRegister({ email, password, displayName: '', roleId });
+            const envelope = await r.json();
+            if (!r.ok || !envelope.isSuccess) {
+              errEl.textContent = envelope.message || 'Could not submit your request.';
+              reBtn.disabled = false;
+              reBtn.textContent = 'Request again';
+              return;
+            }
+            // Success → collapse the re-apply block; show the submitted message.
+            this.renderLoginView();
+            this.root.querySelector('#pf-auth-body').querySelector('#pf-email').value = email;
+            this.root.querySelector('#pf-auth-body').querySelector('#pf-login-error').textContent =
+              envelope.message || 'Request submitted — an admin will review it.';
+          } catch (e) {
+            errEl.textContent = 'Network error. Please try again.';
+            reBtn.disabled = false;
+            reBtn.textContent = 'Request again';
+          }
+        });
+      }
+    }
+
+    // --- Sign-up view --------------------------------------------------------
+    renderSignupView() {
+      const body = this.root.querySelector('#pf-auth-body');
+      if (!body) return;
+      body.innerHTML = TPL.signupBody();
+
+      const nameEl = body.querySelector('#pf-su-name');
+      const emailEl = body.querySelector('#pf-su-email');
+      const passEl = body.querySelector('#pf-su-password');
+      const roleEl = body.querySelector('#pf-su-role');
+      const errEl = body.querySelector('#pf-signup-error');
+      const okEl = body.querySelector('#pf-signup-success');
+      const submitBtn = body.querySelector('#pf-signup-submit');
+
+      // Populate the role <select> from /api/roles when the form opens.
+      this._populateRoles(roleEl, errEl);
+
+      body.querySelector('#pf-show-login').addEventListener('click', () => this.renderLoginView());
+
+      const doSignup = async () => {
+        const displayName = nameEl.value.trim();
+        const email = emailEl.value.trim();
+        const password = passEl.value;
+        const roleId = roleEl.value;
+        errEl.textContent = '';
+        okEl.textContent = '';
+        if (!displayName) { errEl.textContent = 'Please enter your name.'; return; }
+        if (!email) { errEl.textContent = 'Please enter your email.'; return; }
+        if (!password) { errEl.textContent = 'Please choose a password.'; return; }
+        if (!roleId) { errEl.textContent = 'Please choose a role.'; return; }
+        submitBtn.disabled = true;
+        submitBtn.textContent = 'Submitting…';
+        const restore = () => { submitBtn.disabled = false; submitBtn.textContent = 'Create account'; };
+        try {
+          const r = await this.apiRegister({ email, password, displayName, roleId });
+          const envelope = await r.json();
+          if (!r.ok || !envelope.isSuccess) {
+            errEl.textContent = envelope.message || 'Could not create your account.';
+            restore();
+            return;
+          }
+          // Success: lock the form, show the inline message + a way back to sign in.
+          okEl.textContent = envelope.message || 'Request submitted — an admin will review it.';
+          submitBtn.textContent = 'Request submitted';
+          submitBtn.disabled = true;
+          [nameEl, emailEl, passEl, roleEl].forEach(el => { el.disabled = true; });
+        } catch (e) {
+          errEl.textContent = 'Network error. Please try again.';
+          restore();
+        }
+      };
+
+      submitBtn.addEventListener('click', doSignup);
+      passEl.addEventListener('keydown', (e) => { if (e.key === 'Enter') doSignup(); });
     }
 
     // --- Chrome (toolbar + sidebar shell) -----------------------------------
     renderChrome() {
       const displayName = this.user ? escapeHtml(this.user.displayName || this.user.email) : '';
       const roleLabel = this.user ? escapeHtml(this.user.roleName || '') : '';
-      this.root.innerHTML = `
-        <div class="pf-toolbar">
-          <button class="pf-btn primary" id="pf-add">+ Comment</button>
-          <button class="pf-btn" id="pf-toggle">Comments <span class="pf-badge" id="pf-count">0</span></button>
-          <button class="pf-btn" id="pf-refresh" title="Refresh comments">&#8635;</button>
-          ${displayName ? `<span class="pf-btn" style="cursor:default;" title="${roleLabel}">${displayName}</span>` : ''}
-        </div>
-        <div class="pf-sidebar" id="pf-sidebar">
-          <div class="pf-sidebar-head">
-            <h2>Comments</h2>
-            <button class="pf-mini" id="pf-close">&#x2715;</button>
-          </div>
-          <div class="pf-filters" id="pf-filters"></div>
-          <div class="pf-sidebar-body" id="pf-list"></div>
-        </div>
-        <div id="pf-pins"></div>
-        <div id="pf-popover-host"></div>`;
+      this.root.innerHTML = TPL.chrome(displayName, roleLabel);
 
       this.root.querySelector('#pf-add').addEventListener('click', () => {
         if (!this.token) {
@@ -431,8 +712,12 @@
         }
         this.togglePicking();
       });
-      this.root.querySelector('#pf-toggle').addEventListener('click', () => this.toggleSidebar());
+      this.root.querySelector('#pf-toggle').addEventListener('click', () => {
+        if (!this.token) { this.showLoginModal(() => { this.init().then(() => this.toggleSidebar(true)); }); return; }
+        this.toggleSidebar();
+      });
       this.root.querySelector('#pf-refresh').addEventListener('click', async () => {
+        if (!this.token) { this.showLoginModal(() => this.init()); return; }
         await this.fetchComments(); this.renderSidebar(); this.renderPins(); this.toast('Refreshed');
       });
       this.root.querySelector('#pf-close').addEventListener('click', () => this.toggleSidebar(false));
@@ -486,9 +771,150 @@
       e.preventDefault();
       e.stopPropagation();
       const el = e.target;
+      const x = e.clientX, y = e.clientY;
       this.clearHover();
       this.stopPicking();
-      this.showPopover(e.clientX, e.clientY, el);
+      // Open the popover IMMEDIATELY — no waiting on the screenshot. Capture runs
+      // in the background and is held as a promise; the submit handler attaches it
+      // after the comment is created. The Pointer UI (popover included) lives in
+      // the Shadow DOM, which snapdom excludes, so opening the popover first does
+      // not put it in the shot. Capture is best-effort (resolves null on failure).
+      this._pendingShotPromise = null;
+      this.showPopover(x, y, el);
+      if (this.screenshotEnabled) {
+        this._pendingShotPromise = this.captureScreenshot(el).catch((err) => {
+          console.warn('[pointer-feedback] screenshot capture failed', err);
+          return null;
+        });
+      }
+    }
+
+    // --- Screenshot capture --------------------------------------------------
+    // Lazily inject the vendored snapdom UMD build exactly once. Returns a
+    // promise that resolves to the global capture fn. Self-hosted (no CDN), so
+    // it survives offline use and strict CSPs on the host app.
+    _loadSnapdom() {
+      if (window.snapdom) return Promise.resolve(window.snapdom);
+      if (this._snapdomPromise) return this._snapdomPromise;
+      this._snapdomPromise = new Promise((resolve, reject) => {
+        const s = document.createElement('script');
+        s.src = SNAPDOM_URL;
+        s.async = true;
+        s.onload = () => window.snapdom
+          ? resolve(window.snapdom)
+          : reject(new Error('snapdom loaded but window.snapdom missing'));
+        s.onerror = () => reject(new Error('failed to load ' + SNAPDOM_URL));
+        document.head.appendChild(s);
+      });
+      return this._snapdomPromise;
+    }
+
+    // Capture the current viewport, draw a highlight over the picked element,
+    // downscale to <= SHOT_MAX_WIDTH and export a WebP (JPEG fallback) Blob.
+    // Resolves null on any failure — capture must never block commenting.
+    async captureScreenshot(el) {
+      try {
+        const snapdom = await this._loadSnapdom();
+        // snapdom reconstructs the DOM into an image; capturing <body> gives us
+        // the rendered page. We then crop to the current viewport.
+        const full = await snapdom.toCanvas(document.body, {
+          backgroundColor: '#fff',
+          // Skip our own shadow host entirely as a belt-and-braces measure.
+          exclude: ['pointer-feedback'],
+          fast: true
+        });
+
+        const dpr = window.devicePixelRatio || 1;
+        // Map viewport (CSS px) → full-page canvas pixels. snapdom rasterizes at
+        // dpr, and the body canvas origin aligns with the document origin, so
+        // the scroll offset (×dpr) is where the viewport begins.
+        const sx = Math.max(0, Math.round(window.scrollX * dpr));
+        const sy = Math.max(0, Math.round(window.scrollY * dpr));
+        const vw = Math.round(window.innerWidth * dpr);
+        const vh = Math.round(window.innerHeight * dpr);
+        const cw = Math.min(vw, full.width - sx);
+        const ch = Math.min(vh, full.height - sy);
+
+        // Crop to viewport.
+        const view = document.createElement('canvas');
+        view.width = Math.max(1, cw);
+        view.height = Math.max(1, ch);
+        const vctx = view.getContext('2d');
+        vctx.drawImage(full, sx, sy, view.width, view.height, 0, 0, view.width, view.height);
+
+        // Highlight the picked element at its viewport-relative rect.
+        const rect = el.getBoundingClientRect();
+        const lineW = Math.max(2, Math.round(2 * dpr));
+        vctx.strokeStyle = SHOT_HIGHLIGHT;
+        vctx.lineWidth = lineW;
+        vctx.strokeRect(
+          Math.round(rect.left * dpr) + lineW / 2,
+          Math.round(rect.top * dpr) + lineW / 2,
+          Math.max(0, Math.round(rect.width * dpr) - lineW),
+          Math.max(0, Math.round(rect.height * dpr) - lineW)
+        );
+
+        // Downscale so max width ~SHOT_MAX_WIDTH.
+        let out = view;
+        if (view.width > SHOT_MAX_WIDTH) {
+          const scale = SHOT_MAX_WIDTH / view.width;
+          const small = document.createElement('canvas');
+          small.width = SHOT_MAX_WIDTH;
+          small.height = Math.max(1, Math.round(view.height * scale));
+          small.getContext('2d').drawImage(view, 0, 0, small.width, small.height);
+          out = small;
+        }
+
+        return await this._canvasToBlob(out);
+      } catch (err) {
+        console.warn('[pointer-feedback] screenshot capture failed', err);
+        return null;
+      }
+    }
+
+    // Export a canvas to a WebP Blob, falling back to JPEG where unsupported.
+    _canvasToBlob(canvas) {
+      return new Promise((resolve) => {
+        const done = (b) => resolve(b || null);
+        try {
+          canvas.toBlob((b) => {
+            if (b) return done(b);
+            // WebP unsupported (older Safari) → JPEG fallback.
+            canvas.toBlob(done, 'image/jpeg', 0.6);
+          }, 'image/webp', 0.6);
+        } catch (e) {
+          try { canvas.toBlob(done, 'image/jpeg', 0.6); } catch (e2) { done(null); }
+        }
+      });
+    }
+
+    // Upload a screenshot Blob to /api/uploads via multipart/form-data. Returns
+    // the absolute URL on success, or null on failure (caller proceeds without
+    // a screenshot). NOTE: deliberately NOT using api() — it forces
+    // application/json; for FormData we must let the browser set the multipart
+    // boundary itself.
+    async uploadToServer(blob) {
+      try {
+        const ext = blob.type === 'image/jpeg' ? 'jpg' : 'webp';
+        const fd = new FormData();
+        fd.append('file', blob, `screenshot.${ext}`);
+        fd.append('project', this.project);
+        const r = await fetch(`${this.server}/api/uploads`, {
+          method: 'POST',
+          headers: { ...(this.token ? { 'Authorization': `Bearer ${this.token}` } : {}) },
+          body: fd
+        });
+        if (r.status === 401) { this._handle401(); return null; }
+        if (!r.ok) throw new Error('HTTP ' + r.status);
+        const envelope = await r.json();
+        if (!envelope || !envelope.isSuccess || !envelope.data || !envelope.data.url) {
+          throw new Error('upload response missing data.url');
+        }
+        return envelope.data.url;
+      } catch (err) {
+        console.warn('[pointer-feedback] screenshot upload failed', err);
+        return null;
+      }
     }
 
     // --- Metadata capture (ported from inject.js) ---------------------------
@@ -556,41 +982,55 @@
       const host = this.root.querySelector('#pf-popover-host');
       const left = Math.min(x, window.innerWidth - 300);
       const top = Math.min(y, window.innerHeight - 220);
-      host.innerHTML = `
-        <div class="pf-popover" style="left:${left}px; top:${top}px;">
-          <h3>Comment on &lt;${escapeHtml(meta._tag)}&gt;</h3>
-          <div class="pf-snippet">${escapeHtml(meta._snapshotPreview.slice(0, 200))}</div>
-          ${meta._sourcePath ? `<div class="pf-src">&#x26ec; ${escapeHtml(meta._sourcePath)}</div>` : ''}
-          <textarea class="pf-textarea" id="pf-comment-text" placeholder="What should change here?"></textarea>
-          <div class="pf-reply-row">
-            <button class="pf-btn primary" id="pf-submit" style="flex:1; justify-content:center;">Add</button>
-            <button class="pf-mini" id="pf-cancel">Cancel</button>
-          </div>
-        </div>`;
+      host.innerHTML = TPL.popover(meta, left, top, this.screenshotEnabled);
       const ta = host.querySelector('#pf-comment-text');
       ta.focus();
-      host.querySelector('#pf-cancel').addEventListener('click', () => { host.innerHTML = ''; });
+      host.querySelector('#pf-cancel').addEventListener('click', () => { host.innerHTML = ''; this._pendingShotPromise = null; });
       host.querySelector('#pf-submit').addEventListener('click', async () => {
         const text = ta.value.trim();
         if (!text) return this.toast('Comment cannot be empty', 'error');
+        const privateEl = host.querySelector('#pf-comment-private');
+        const isPrivate = !!(privateEl && privateEl.checked);
+        const shotEl = host.querySelector('#pf-comment-shot');
+        const attachShot = !!(shotEl && shotEl.checked);   // toggle: on by default
+        const shotPromise = this._pendingShotPromise;
+        this._pendingShotPromise = null;
+        const submitBtn = host.querySelector('#pf-submit');
+        submitBtn.disabled = true; submitBtn.textContent = 'Saving…';
+        await this.createComment({ ...meta, text, isPrivate, attachShot, shotPromise });
         host.innerHTML = '';
-        await this.createComment({ ...meta, text });
       });
     }
 
     async createComment(data) {
+      const element = {
+        selector: data.selector,
+        snapshot: data.snapshot,
+        classes: data.classes,
+        computedStyles: data.computedStyles,
+        appliedCssRules: data.appliedCssRules,
+        sourcePath: data.sourcePath,
+        parentInfo: data.parentInfo
+      };
+
+      // Screenshot is opt-in (toggle, on by default). When on, await the capture
+      // that started on pick, upload it via /api/uploads, and put the returned
+      // URL on the comment so it's created in one shot. When off, the whole
+      // upload is skipped. A failed upload is non-fatal — comment still saves.
+      if (data.attachShot && data.shotPromise) {
+        const blob = await Promise.resolve(data.shotPromise).catch(() => null);
+        if (blob) {
+          const url = await this.uploadToServer(blob);
+          if (url) element.screenshotUrl = url;
+          else this.toast('Screenshot upload failed — saving without it', 'error');
+        }
+      }
+
       const body = {
         body: data.text,
         environment: this.environmentInt,
-        element: {
-          selector: data.selector,
-          snapshot: data.snapshot,
-          classes: data.classes,
-          computedStyles: data.computedStyles,
-          appliedCssRules: data.appliedCssRules,
-          sourcePath: data.sourcePath,
-          parentInfo: data.parentInfo
-        }
+        isPrivate: !!data.isPrivate,
+        element
       };
       try {
         const r = await this.api(`/api/projects/${encodeURIComponent(this.project)}/comments`, {
@@ -645,81 +1085,164 @@
       }
     }
 
+    async markCompleted(comment) {
+      // Mark done directly — for changes already applied outside Pointer.
+      // PATCH status → Applied (3), stamping who marked it.
+      const label = this.user ? (this.user.displayName || this.user.email) : null;
+      try {
+        const r = await this.api(`/api/comments/${comment.id}`, {
+          method: 'PATCH',
+          body: JSON.stringify({ status: STATUS_INT['applied'], appliedByLabel: label })
+        });
+        if (!r.ok) throw new Error('HTTP ' + r.status);
+        comment.status = 'applied';
+        if (label) comment.appliedByLabel = label;
+        this.renderSidebar(); this.renderPins();
+        this.toast('Marked completed');
+      } catch (e) {
+        if (e.message !== 'HTTP 401 Unauthorized') this.toast('Update failed', 'error');
+      }
+    }
+
+    async deleteComment(id) {
+      // DELETE /api/comments/{id} — soft-deletes on the server (JWT-scoped).
+      try {
+        const r = await this.api(`/api/comments/${id}`, { method: 'DELETE' });
+        if (!r.ok) {
+          // Surface the API's reason (e.g. permission denied) instead of a generic error.
+          const body = await r.json().catch(() => null);
+          throw new Error((body && body.message) || ('HTTP ' + r.status));
+        }
+        this.comments = this.comments.filter(c => String(c.id) !== String(id));
+        this.renderSidebar(); this.renderPins();
+        this.toast('Deleted');
+      } catch (e) {
+        if (e.message !== 'HTTP 401 Unauthorized') this.toast(e.message || 'Delete failed', 'error');
+      }
+    }
+
+    // Inline edit (own comments only): swap the body text for a textarea + controls.
+    startEdit(id) {
+      const card = this.root && this.root.querySelector(`.pf-card[data-id="${id}"]`);
+      if (!card || card.querySelector('.pf-edit')) return;
+      const comment = (this.comments || []).find(x => String(x.id) === String(id));
+      if (!comment) return;
+      const textEl = card.querySelector('.pf-text');
+      if (!textEl) return;
+      const hasShot = !!(comment.element && comment.element.screenshotUrl);
+      const editor = document.createElement('div');
+      editor.className = 'pf-edit';
+      editor.style.margin = '6px 0';
+      editor.innerHTML = `
+        <textarea class="pf-textarea pf-edit-body">${escapeHtml(comment.body || '')}</textarea>
+        ${hasShot ? `<label style="display:flex;gap:6px;align-items:center;font-size:12px;color:#475569;margin:6px 0;"><input type="checkbox" class="pf-edit-rmshot" /> Remove image</label>` : ''}
+        <div class="pf-reply-row">
+          <button class="pf-btn primary pf-edit-save" style="flex:1;justify-content:center;">Save</button>
+          <button class="pf-mini pf-edit-cancel">Cancel</button>
+        </div>`;
+      textEl.style.display = 'none';
+      textEl.insertAdjacentElement('afterend', editor);
+      const ta = editor.querySelector('.pf-edit-body');
+      ta.focus();
+      editor.querySelector('.pf-edit-cancel').addEventListener('click', () => { editor.remove(); textEl.style.display = ''; });
+      editor.querySelector('.pf-edit-save').addEventListener('click', () => {
+        const body = ta.value.trim();
+        if (!body) { this.toast('Comment cannot be empty', 'error'); return; }
+        const removeScreenshot = !!(editor.querySelector('.pf-edit-rmshot') && editor.querySelector('.pf-edit-rmshot').checked);
+        this.saveEdit(id, body, removeScreenshot);
+      });
+    }
+
+    async saveEdit(id, body, removeScreenshot) {
+      // PUT /api/comments/{id} — author-only edit (enforced server-side).
+      try {
+        const r = await this.api(`/api/comments/${id}`, {
+          method: 'PUT',
+          body: JSON.stringify({ body, removeScreenshot })
+        });
+        if (!r.ok) {
+          const b = await r.json().catch(() => null);
+          throw new Error((b && b.message) || ('HTTP ' + r.status));
+        }
+        await this.fetchComments();
+        this.renderSidebar();
+        this.renderPins();
+        this.toast('Comment updated', 'success');
+      } catch (e) {
+        if (e.message !== 'HTTP 401 Unauthorized') this.toast(e.message || 'Failed to update comment', 'error');
+      }
+    }
+
+    // True when comment `c` was authored by the current logged-in user.
+    // Compared case-insensitively as strings (authorId vs user.id GUIDs).
+    isMine(c) {
+      const uid = this.user && this.user.id;
+      if (!uid) return false;
+      return String(c.authorId || '').toLowerCase() === String(uid).toLowerCase();
+    }
+
     // --- Sidebar render ------------------------------------------------------
     renderSidebar() {
       const all = this.pageComments();
+      // "Mine only" composes with the status chips: when on, every downstream
+      // view (counts, list, empty-state) is restricted to the user's own comments.
+      const canMine = !!(this.user && this.user.id);
+      if (!canMine) this.mineOnly = false;
+      const scoped = this.mineOnly ? all.filter((c) => this.isMine(c)) : all;
       const counts = {
-        all: all.length,
-        open: all.filter((c) => c.status === 'open').length,
-        'pending-apply': all.filter((c) => c.status === 'pending-apply').length,
-        applied: all.filter((c) => c.status === 'applied').length,
+        all: scoped.length,
+        open: scoped.filter((c) => c.status === 'open').length,
+        'pending-apply': scoped.filter((c) => c.status === 'pending-apply').length,
+        applied: scoped.filter((c) => c.status === 'applied').length,
       };
 
       const countEl = this.root.querySelector('#pf-count');
       if (countEl) countEl.textContent = all.length;
 
-      // Status filter chips
+      // Status filter chips + (optional) "Mine only" toggle.
       const filtersEl = this.root.querySelector('#pf-filters');
       if (filtersEl) {
         filtersEl.innerHTML = FILTERS.map((f) =>
-          `<button class="pf-chip ${this.statusFilter === f.key ? 'active' : ''} chip-${STATUS_LABEL[f.key] || 'all'}" data-filter="${f.key}">
-             ${f.label} <span class="pf-chip-n">${counts[f.key]}</span>
-           </button>`).join('');
+          TPL.filterChip(f, this.statusFilter === f.key, counts[f.key])).join('')
+          + (canMine ? TPL.mineToggle(this.mineOnly) : '');
         filtersEl.querySelectorAll('[data-filter]').forEach((b) =>
           b.addEventListener('click', () => { this.statusFilter = b.dataset.filter; this.renderSidebar(); }));
+        const mineBtn = filtersEl.querySelector('#pf-mine-toggle');
+        if (mineBtn) mineBtn.addEventListener('click', () => {
+          this.mineOnly = !this.mineOnly; this.renderSidebar(); this.renderPins();
+        });
       }
 
       const list = this.root.querySelector('#pf-list');
       if (!list) return;
 
-      const shown = this.statusFilter === 'all' ? all : all.filter((c) => c.status === this.statusFilter);
-      if (!all.length) {
-        list.innerHTML = `<div class="pf-empty">No comments on this project yet.<br/>Click "+ Comment", then click an element.</div>`;
+      const shown = this.statusFilter === 'all' ? scoped : scoped.filter((c) => c.status === this.statusFilter);
+      const hiddenNote = this.hiddenPrivateCount > 0
+        ? `<div class="pf-hidden-note">&#x1f512; ${this.hiddenPrivateCount} private comment${this.hiddenPrivateCount === 1 ? '' : 's'} hidden</div>`
+        : '';
+      if (!scoped.length) {
+        list.innerHTML = hiddenNote + TPL.empty(this.mineOnly
+          ? 'You haven\'t left any comments yet.'
+          : 'No comments on this project yet.<br/>Click "+ Comment", then click an element.');
         return;
       }
       if (!shown.length) {
-        list.innerHTML = `<div class="pf-empty">No ${FILTERS.find((f) => f.key === this.statusFilter).label.toLowerCase()} comments.</div>`;
+        list.innerHTML = hiddenNote + TPL.empty(`No ${FILTERS.find((f) => f.key === this.statusFilter).label.toLowerCase()} comments${this.mineOnly ? ' of yours' : ''}.`);
         return;
       }
 
-      list.innerHTML = shown.map((c, i) => {
-        const cls = c.status === 'pending-apply' ? 'pending' : c.status === 'applied' ? 'applied' : '';
-        const statusPill = c.status === 'applied'
-          ? '<span class="pf-pill status-applied">&#x2713; completed</span>'
-          : c.status === 'pending-apply' ? '<span class="pf-pill status-pending">pending</span>' : '';
-        // Replies: from GET /api/comments/{id} response; list items may not include them
-        const replies = (c.replies || []).map(r =>
-          `<div class="pf-reply ${r.isAi ? 'ai' : ''}"><b>${escapeHtml(r.authorLabel || r.authorId || 'User')}:</b> ${escapeHtml(r.body || r.text || '')}</div>`).join('');
-        // Environment label
-        const envInt = c.environment;
-        const envLabel = envInt === 1 ? 'Local' : envInt === 2 ? 'Staging' : envInt === 3 ? 'Production' : (envInt ? String(envInt) : '');
-        // Author label from appliedByLabel or authorId
-        const authorLabel = c.appliedByLabel || c.authorId || '';
-        return `
-          <div class="pf-card ${cls}" data-id="${c.id}">
-            <div class="pf-meta">
-              <span class="pf-badge">${i + 1}</span>
-              ${envLabel ? `<span class="pf-pill env">${escapeHtml(envLabel)}</span>` : ''}
-              ${statusPill}
-            </div>
-            <div class="pf-text">${escapeHtml(c.body || c.text || '')}</div>
-            <div class="pf-sub">${escapeHtml(authorLabel)} &middot; ${c.createdAt ? new Date(c.createdAt).toLocaleDateString() : ''}</div>
-            ${replies ? `<div class="pf-replies">${replies}</div>` : ''}
-            <div class="pf-reply-row">
-              <input class="pf-input pf-reply-input" placeholder="Reply…" data-id="${c.id}" />
-            </div>
-            <div class="pf-actions">
-              <button class="pf-mini ${c.status === 'pending-apply' ? 'apply' : c.status === 'applied' ? 'applied' : ''}" data-act="apply" data-id="${c.id}" ${c.status === 'applied' ? 'disabled' : ''}>
-                ${c.status === 'applied' ? '&#x2713; Completed' : c.status === 'pending-apply' ? '&#x23F3; Pending &#x2014; unmark' : 'Ready to Apply'}
-              </button>
-            </div>
-          </div>`;
-      }).join('');
+      list.innerHTML = hiddenNote + shown.map((c, i) => { c._mine = this.isMine(c); return TPL.card(c, i); }).join('');
 
       list.querySelectorAll('[data-act="apply"]').forEach(b => b.addEventListener('click', () => {
         const c = this.comments.find(x => String(x.id) === String(b.dataset.id));
         if (c && c.status !== 'applied') this.toggleApply(c);
       }));
+      list.querySelectorAll('[data-act="complete"]').forEach(b => b.addEventListener('click', () => {
+        const c = this.comments.find(x => String(x.id) === String(b.dataset.id));
+        if (c && c.status !== 'applied') this.markCompleted(c);
+      }));
+      list.querySelectorAll('[data-act="delete"]').forEach(b => b.addEventListener('click', () => this.deleteComment(b.dataset.id)));
+      list.querySelectorAll('[data-act="edit"]').forEach(b => b.addEventListener('click', () => this.startEdit(b.dataset.id)));
       list.querySelectorAll('.pf-reply-input').forEach(inp => inp.addEventListener('keydown', (e) => {
         if (e.key === 'Enter' && inp.value.trim()) { this.addReply(inp.dataset.id, inp.value.trim()); inp.value = ''; }
       }));
@@ -729,14 +1252,14 @@
     renderPins() {
       const wrap = this.root && this.root.querySelector('#pf-pins');
       if (!wrap) return;
-      const here = this.pageComments();
+      const all = this.pageComments();
+      const here = this.mineOnly ? all.filter((c) => this.isMine(c)) : all;
       wrap.innerHTML = here.map((c, i) => {
         const el = matchElement(c);
         if (!el) return '';
         const rect = el.getBoundingClientRect();
         if (rect.width === 0 && rect.height === 0) return '';
-        const cls = c.status === 'pending-apply' ? 'pending' : c.status === 'applied' ? 'applied' : '';
-        return `<div class="pf-pin ${cls}" data-id="${c.id}" style="left:${rect.left}px; top:${rect.top}px;"><span>${i + 1}</span></div>`;
+        return TPL.pin(c, i, rect);
       }).join('');
       wrap.querySelectorAll('.pf-pin').forEach(p => p.addEventListener('click', () => {
         this.toggleSidebar(true);

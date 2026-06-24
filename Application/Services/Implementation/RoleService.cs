@@ -55,6 +55,19 @@ public class RoleService : IRoleService
         return Result<List<RoleResponse>>.Success(roles.Select(MapToResponse).ToList());
     }
 
+    public async Task<Result<List<PublicRoleResponse>>> ListPublicAsync()
+    {
+        var roles = await _unitOfWork.Repository<Role>()
+            .Query()
+            .AsNoTracking()
+            .Where(r => r.DeletedAt == null && r.IsActive && !r.GrantsAdmin)
+            .OrderBy(r => r.Id)
+            .Select(r => new PublicRoleResponse { Id = r.Id, Name = r.Name })
+            .ToListAsync();
+
+        return Result<List<PublicRoleResponse>>.Success(roles);
+    }
+
     public async Task<Result<RoleResponse>> UpdateAsync(int id, UpdateRoleRequest request)
     {
         var role = await _unitOfWork.Repository<Role>().GetByIdAsync(id);

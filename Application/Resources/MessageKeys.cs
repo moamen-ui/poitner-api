@@ -6,6 +6,11 @@ public static class MessageKeys
     {
         public const string InvalidCredentials = "Invalid email or password.";
         public const string Inactive = "Account is disabled.";
+        public const string PendingApproval = "Your request is awaiting admin approval.";
+        public const string Rejected = "Your request was rejected.";
+        public const string Disabled = "Your account is disabled.";
+        public const string RegistrationSubmitted = "Request submitted for approval.";
+        public const string AccountExists = "An account with this email already exists.";
     }
 
     public static class User
@@ -33,6 +38,12 @@ public static class MessageKeys
         public const string NameRequired = "Role name is required.";
         public const string SystemImmutable = "System roles cannot be modified or disabled.";
         public const string Invalid = "The selected role does not exist or is inactive.";
+    }
+
+    public static class Preferences
+    {
+        public const string Invalid = "Invalid preference value.";
+        public const string NotFound = "User not found.";
     }
 
     public static class Comment

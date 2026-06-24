@@ -6,5 +6,6 @@ public class CreateCommentRequest
 {
     public string Body { get; set; } = string.Empty;
     public EnvironmentTag Environment { get; set; }
+    public bool IsPrivate { get; set; }
     public ElementCaptureDto Element { get; set; } = new();
 }
