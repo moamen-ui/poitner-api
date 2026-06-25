@@ -26,7 +26,7 @@ layer so SSO can be dropped in later without schema or endpoint churn.
 
 ## 2. Architecture
 
-A standalone Clean-Architecture solution that mirrors `tuwaiq-clubs-api-dotnet-revamp`:
+A standalone Clean-Architecture solution:
 
 ```
 pointer-api/
@@ -39,10 +39,10 @@ pointer-api/
 │                     #   Repository/UnitOfWork, BCrypt password hasher, JWT token service
 ├── Dockerfile
 ├── docker-compose.yaml   # Postgres + API
-└── justfile              # up / down / build / migrate / db-update / fmt  (same DX as clubs API)
+└── justfile              # up / down / build / migrate / db-update / fmt  (same DX as the reference .NET API)
 ```
 
-### Conventions inherited from the clubs API
+### Conventions inherited from the reference .NET API
 - **`Result` / `Result<T>`** return type from every service method — no exceptions for flow control.
 - **Soft deletes** — `DeletedAt`/`DeletedBy`; every query filters `DeletedAt == null`.
 - **Audit fields** auto-populated in `SaveChangesAsync` from the current user's `sub` claim.
@@ -51,7 +51,7 @@ pointer-api/
 - **snake_case** DB columns; file-scoped namespaces; nullable enabled; CSharpier formatting.
 
 ### Deliberate difference: local auth
-The clubs API validates a Keycloak JWT. This service **issues its own JWT** (HS256, symmetric
+The reference .NET API validates a Keycloak JWT. This service **issues its own JWT** (HS256, symmetric
 signing key from env). The `sub` claim is a Pointer `User.Id` (`Guid`, matching `BaseEntity`'s
 audit field types). All identity reads go through one `ICurrentUser` abstraction and one
 `ITokenService`, so a future swap to Keycloak is contained to those two seams.
@@ -101,7 +101,7 @@ roles never weakens security. The JWT carries `role` (name), `role_id`, and `is_
 
 ```
 User      Guid Id, Email (unique), PasswordHash, DisplayName, Role, IsActive, + audit
-Project   int Id, Key (unique, e.g. "tuwaiq-clubs"), Name, IsActive, + audit
+Project   int Id, Key (unique, e.g. "my-app"), Name, IsActive, + audit
 Comment   int Id, ProjectId → Project, Environment,
           Status (Open | ReadyToApply | Applied),
           AuthorId → User,                 # verified identity — NOT self-reported
@@ -117,7 +117,7 @@ Reply     int Id, CommentId → Comment, AuthorId → User, Body (text), + audit
 ### Notes
 - **Element capture is a single `jsonb` column.** The AI consumes the whole blob to resolve source
   and apply CSS changes — normalizing selectors/CSS rules into tables adds cost with no benefit.
-- **`project` stays first-class** so the service remains multi-project (clubs today, other apps
+- **`project` stays first-class** so the service remains multi-project (the host app today, other apps
   later). Projects **self-register**: the first time a developer's app (with `VITE_POINTER_PROJECT=<key>`)
   loads or comments, `ProjectService.EnsureAsync` lazily creates the project (active, name = key), so it
   appears in the dashboard automatically. An admin can rename or disable it; a disabled project blocks
@@ -175,7 +175,7 @@ The current component shows a **name + role modal** and writes anonymous comment
 5. Everything else (element capture: selector, snapshot, classes, computed styles, applied CSS
    rules, source path; pins; sidebar) is **unchanged** — only the identity/transport layer moves.
 
-The host-app integration in `tuwaiq-clubs/index.html` stays the same shape (env-gated inline
+The host-app integration in `my-app/index.html` stays the same shape (env-gated inline
 loader); only `VITE_POINTER_SERVER` points at the new API.
 
 ---
@@ -213,9 +213,9 @@ It calls the same `/api/admin/*` endpoints with the admin's JWT. Kept intentiona
 
 ---
 
-## 9. Host-app (clubs) integration delta
+## 9. Host-app (host app) integration delta
 
-Minimal change in `tuwaiq-academy-mono-spa/apps/tuwaiq-clubs`:
+Minimal change in `apps/my-app`:
 - `.env`: `VITE_POINTER_SERVER` → new API URL.
 - `index.html`: unchanged loader shape (the component now self-manages login).
 

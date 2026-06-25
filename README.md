@@ -5,10 +5,9 @@ A standalone **.NET 8** backend that replaces the original zero-dependency Node 
 storage to **PostgreSQL**, secures every comment behind a **real account** (no more anonymous,
 self-reported names), and serves the browser web component + the AI apply skill.
 
-It is built as its own service (own repo, own DB, own deploy) but **mirrors the conventions of
-the `tuwaiq-clubs-api-dotnet-revamp` codebase** (Clean Architecture, EF Core, `Result<T>`,
-Scrutor auto-registration, FluentValidation, CSharpier, Docker + `just`) so it feels native to
-the team.
+It is built as its own service (own repo, own DB, own deploy) and **follows mainstream .NET API
+conventions** (Clean Architecture, EF Core, `Result<T>`, Scrutor auto-registration,
+FluentValidation, CSharpier, Docker + `just`).
 
 ## Why this exists
 
@@ -21,7 +20,7 @@ Pointer's multi-project, AI-apply workflow.
 
 | Decision | Choice |
 |---|---|
-| Where the backend lives | **Standalone .NET service** (own repo/DB/deploy), patterns cloned from clubs API |
+| Where the backend lives | **Standalone .NET service** (own repo/DB/deploy), patterns cloned from the reference .NET API |
 | Who can comment | **Only authenticated accounts** — identity comes from the token, never self-reported |
 | Auth system (for now) | **Local email/password accounts** (BCrypt), JWT issued by this service. **No Keycloak yet** — designed to swap to SSO later |
 | Account provisioning | **Minimal admin UI** to create/disable users and assign roles |
@@ -46,10 +45,22 @@ future swap to Keycloak is contained to those two seams.
 
 ### Prerequisites
 
-- **Docker** + Docker Compose — runs Postgres (and, optionally, the API).
-- **.NET 8 SDK** — only if you want to run the API outside Docker.
-- **Node ≥ 22.22 + npm** — only for the Angular admin dashboard (`admin-web/`).
-- **`just`** (optional) — convenience commands; each recipe has a raw equivalent shown below.
+**Backend (API + database) — required:**
+- **Docker** + Docker Compose — runs Postgres and (in Option A) the API.
+- **.NET 8 SDK** — only if you run the API outside Docker (Option B).
+
+**Dashboard frontend (`admin-web/`) — optional:**
+- **Node ≥ 22.22 + npm** — Angular CLI 22 requires it.
+
+**`just`** (optional) — convenience commands; each recipe has a raw equivalent shown below.
+
+Verify your toolchain before installing:
+
+```bash
+docker --version && docker compose version   # backend (required)
+dotnet --version                              # backend Option B only — expect 8.x
+node --version && npm --version               # dashboard only — Node must be ≥ 22.22
+```
 
 ### 1. Clone & configure
 
@@ -132,7 +143,7 @@ The app keeps the same env-gated loader in `index.html`; just point it at this A
 # apps/<app>/.env
 VITE_POINTER_ENABLED=true
 VITE_POINTER_SERVER=http://localhost:8090
-VITE_POINTER_PROJECT=tuwaiq-clubs
+VITE_POINTER_PROJECT=my-app
 ```
 
 On first use the toolbar appears without a popup; signing in (or self-signing-up) happens when the
@@ -146,18 +157,25 @@ per comment, supports **private** comments (visible only to their author), and *
 
 ## Install the Pointer skills (in a consuming repo)
 
-Both skills are **served by the API** and install the same way — drop them into your repo's
-`.claude/skills/` and run them:
+Both skills are **served by the API**, are plain **tool-agnostic markdown**, and are
+**self-configuring**: when fetched from your Pointer server they arrive **pre-filled with that
+server's URL** (the `<POINTER_SERVER>` placeholder is replaced with the request's origin) — no
+localhost, nothing to ask. Fetch them from **your** server and save them wherever your AI tool reads
+skills/rules:
 
 ```bash
-# pointer-init — add the <pointer-feedback> widget to this app
-mkdir -p .claude/skills/pointer-init
-curl -s http://localhost:8090/pointer-init.md -o .claude/skills/pointer-init/SKILL.md
+POINTER=https://pointer.example.com    # your deployed Pointer URL (or http://localhost:8090 for dev)
 
-# pointer-feedback — list / apply the feedback queue with an AI tool
-mkdir -p .claude/skills/pointer-feedback
-curl -s http://localhost:8090/skill.md -o .claude/skills/pointer-feedback/SKILL.md
+# Claude Code layout (the served markdown is pre-filled with $POINTER):
+mkdir -p .claude/skills/pointer-init .claude/skills/pointer-feedback
+curl -s "$POINTER/pointer-init.md" -o .claude/skills/pointer-init/SKILL.md       # add the widget
+curl -s "$POINTER/skill.md"        -o .claude/skills/pointer-feedback/SKILL.md   # list / apply feedback
 ```
+
+Using a different tool? Save the same markdown where it looks for skills/rules — e.g. **Cursor**
+`.cursor/rules/pointer-init.mdc`, **Windsurf** `.windsurf/rules/`, **opencode** `.opencode/` — or just
+hand the file to your agent. (Behind a TLS proxy, enable forwarded headers so the injected URL uses
+`https`.)
 
 Then set the automation account credentials in your shell (NOT a Vite-exposed file):
 

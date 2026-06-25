@@ -13,12 +13,17 @@ given project key, it appears in the Pointer dashboard.
 
 This skill wires the widget into the **current** app. Do not guess the variables — **ask the user**.
 
+> **Server URL** = the deployed Pointer origin (the one you fetched this skill from). When this skill
+> is served by a running Pointer server, the examples below are **auto-filled** with that URL; if you
+> see a literal `<POINTER_SERVER>` placeholder, replace it with your deployed Pointer URL.
+> `http://localhost:8090` is only the local-dev default — **never ship `localhost` to production.**
+
 ## Step 1 — Ask the user for the variables
 
 | Variable | Required | Meaning / guidance |
 |---|---|---|
-| **Project key** | ✅ | URL-safe slug, `^[A-Za-z0-9._-]+$` (e.g. `tuwaiq-clubs`). Identifies this app's feedback; self-registers in the dashboard. |
-| **Pointer server URL** | ✅ | Origin of the Pointer API/component, e.g. `http://localhost:8090` (dev) or the deployed URL. No trailing slash. |
+| **Project key** | ✅ | URL-safe slug, `^[A-Za-z0-9._-]+$` (e.g. `my-app`). Identifies this app's feedback; self-registers in the dashboard. |
+| **Pointer server URL** | ✅ | The **deployed** Pointer origin your team gave you (e.g. `https://pointer.example.com`). No trailing slash. `http://localhost:8090` only for local dev. |
 | **Environment** | optional | `local` \| `staging` \| `production` — tags each comment. Default `staging`. |
 | **Enabled?** | optional | Whether to mount the widget now. Default `true` for dev; usually `false` in production builds unless feedback is wanted in prod. |
 | **Screenshots?** | optional | The widget captures an element screenshot per comment by default. Pass `screenshot="false"` to disable. |
@@ -32,7 +37,7 @@ This skill wires the widget into the **current** app. Do not guess the variables
 
 ## Step 3 — Inject the loader
 
-The loader loads `<server>/pointer.js`, then appends a configured `<pointer-feedback>` element.
+The loader loads `<POINTER_SERVER>/pointer.js`, then appends a configured `<pointer-feedback>` element.
 Always set `source-attr="data-component-source"` so the widget can capture the source path of
 clicked elements (apps may stamp that attribute on elements).
 
@@ -64,7 +69,7 @@ Add the env keys to `.env` (and document them in `.env.example`):
 
 ```
 VITE_POINTER_ENABLED=true
-VITE_POINTER_SERVER=http://localhost:8090
+VITE_POINTER_SERVER=<POINTER_SERVER>          # deployed Pointer URL; http://localhost:8090 only for local dev
 VITE_POINTER_PROJECT=<project-key>
 VITE_POINTER_ENV=staging
 ```
@@ -77,10 +82,10 @@ Vite substitutes `%VITE_*%` in `index.html`; the `enabled` guard means a product
 Inline literal values before `</body>`:
 
 ```html
-<script src="https://YOUR-POINTER-SERVER/pointer.js" defer></script>
+<script src="<POINTER_SERVER>/pointer.js" defer></script>
 <pointer-feedback
   project="<project-key>"
-  server="https://YOUR-POINTER-SERVER"
+  server="<POINTER_SERVER>"
   environment="staging"
   source-attr="data-component-source"></pointer-feedback>
 ```
@@ -109,14 +114,15 @@ POINTER_PASSWORD=
 ```
 
 Add `.pointer/` to `.gitignore`. The apply workflow itself is the separate Pointer skill served at
-`<server>/skill.md` (install it into `.claude/skills/pointer-feedback/SKILL.md`).
+`<POINTER_SERVER>/skill.md` — install it wherever your AI tool reads skills/rules (e.g. Claude Code
+`.claude/skills/pointer-feedback/SKILL.md`, Cursor `.cursor/rules/`, or just hand the file to your agent).
 
 ## Step 5 — Verify
 
-1. Start the app and ensure `<server>` is reachable.
+1. Start the app and ensure `<POINTER_SERVER>` is reachable.
 2. Load a page — a Pointer toolbar appears (no login popup on load; it's deferred).
 3. Click **+ Comment** → sign in or **Create account** → click an element → leave a comment.
-4. Confirm the project appears in the Pointer dashboard (`<server>/admin/`) with the comment.
+4. Confirm the project appears in the Pointer dashboard (`<POINTER_SERVER>/admin/`) with the comment.
 
 ## Notes & gotchas
 

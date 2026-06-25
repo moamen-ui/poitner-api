@@ -40,8 +40,8 @@
 | 6.2 | Updated skill.md (auth + new endpoints) | ✅ |
 | **Phase 7** | **Admin UI (build-free)** | |
 | 7.1 | Login + Users + Projects pages | ✅ |
-| **Phase 8** | **Clubs cutover + skill install** | |
-| 8.1 | Point clubs `.env` at new API + full e2e | ✅ |
+| **Phase 8** | **Host-app cutover + skill install** | |
+| 8.1 | Point the host app `.env` at new API + full e2e | ✅ |
 | 8.2 | Install AI skill in consuming repos | ✅ |
 | **Phase 9** | **Docs sync** | |
 | 9.1 | Finalize README; keep DESIGN/TASKS current | ✅ |
@@ -55,7 +55,7 @@
   `?status=2` queue, the nested camelCase `element` (stringified sub-fields), and PATCH apply.
 - **7.1:** `API/wwwroot/admin/{index.html,app.js,style.css}` — admin login + Users (add/role/disable)
   + Projects (add/disable). Browser-verified: login, panels render, data loads.
-- **8.1:** `apps/tuwaiq-clubs/.env` → `VITE_POINTER_SERVER=http://localhost:8090` (loader unchanged).
+- **8.1:** `apps/my-app/.env` → `VITE_POINTER_SERVER=http://localhost:8090` (loader unchanged).
 - **e2e (curl + Playwright):** admin login (role 1) · project list · comment create w/ element ·
   list & `?status=2` queue carry `element.sourcePath` · ReadyToApply → Applied + reply + `appliedByLabel`
   + `appliedAt` · authz: Tester (role 4) → **403** on admin, can comment (author bound to account) ·

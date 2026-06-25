@@ -31,13 +31,13 @@ the browser) — read them from the shell environment or a gitignored local file
    ```bash
    grep -rl "VITE_POINTER_SERVER" apps/*/.env 2>/dev/null || grep -rl "pointer-feedback" apps/*/index.html
    ```
-   Let `APP_DIR` be that app's directory (e.g. `apps/tuwaiq-clubs`).
+   Let `APP_DIR` be that app's directory (e.g. `apps/my-app`).
 
 2. **Read server + project** from `$APP_DIR/.env`:
    ```bash
    envval(){ grep -E "^$1=" "$APP_DIR/.env" | head -1 | cut -d= -f2- | tr -d "'\""; }
    SERVER=$(envval VITE_POINTER_SERVER)       # e.g. http://localhost:8090
-   PROJECT=$(envval VITE_POINTER_PROJECT)      # e.g. tuwaiq-clubs
+   PROJECT=$(envval VITE_POINTER_PROJECT)      # e.g. my-app
    ```
    - If `PROJECT` is empty, fall back to the `project` in the inline snippet
      (`grep -oE 'setAttribute\("project", *"[^"]+"' "$APP_DIR/index.html"`) or the app dir name.
@@ -115,7 +115,7 @@ Shape of one item (note the nested camelCase `element`; the heavier capture fiel
     "classes": "[\"border\",\"border-primary-500\",\"text-primary-500\"]",
     "computedStyles": "{\"color\":\"…\"}",
     "appliedCssRules": "[{\"selector\":\"…\",\"styles\":\"…\"}]",
-    "sourcePath": "tuwaiq-clubs/src/app/components/landing/TopClubsSection.tsx:42",
+    "sourcePath": "my-app/src/components/Header.tsx:42",
     "parentInfo": "{\"tag\":\"div\",\"classes\":[…]}"
   },
   "replies": [ … ] }

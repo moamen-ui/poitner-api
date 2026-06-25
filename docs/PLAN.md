@@ -4,7 +4,7 @@
 
 **Goal:** Replace Pointer's flat-file Node server with a standalone .NET 8 backend that stores element-level feedback in PostgreSQL, authenticates every comment against a real local account, and serves the web component + AI apply skill.
 
-**Architecture:** Clean Architecture (`API` / `Application` / `Domain` / `Infrastructure`) mirroring `tuwaiq-clubs-api-dotnet-revamp` — `Result<T>` returns, Scrutor auto-registration, FluentValidation, EF Core + Postgres with snake_case mappings, audit fields auto-populated from the JWT `sub`. Auth is **local** (email/password, BCrypt, service-issued HS256 JWT) behind `ITokenService`/`ICurrentUser` seams so SSO can replace it later.
+**Architecture:** Clean Architecture (`API` / `Application` / `Domain` / `Infrastructure`) — `Result<T>` returns, Scrutor auto-registration, FluentValidation, EF Core + Postgres with snake_case mappings, audit fields auto-populated from the JWT `sub`. Auth is **local** (email/password, BCrypt, service-issued HS256 JWT) behind `ITokenService`/`ICurrentUser` seams so SSO can replace it later.
 
 **Tech Stack:** .NET 8, EF Core 8 (Npgsql), FluentValidation, Scrutor, BCrypt.Net-Next, System.IdentityModel.Tokens.Jwt, Docker Compose (Postgres), `just`, CSharpier, xUnit (focused tests only).
 
@@ -16,7 +16,7 @@
 - Services MUST end with `Service` (Scrutor auto-registers); all services/repos **scoped**.
 - Every service method returns `Result` or `Result<T>` — no exceptions for flow control.
 - Soft delete only — never hard delete; every query filters `DeletedAt == null`.
-- Use `DateTime.UtcNow` (this is a greenfield service — unlike clubs, we standardize on UTC).
+- Use `DateTime.UtcNow` (this is a greenfield service — unlike the host app, we standardize on UTC).
 - Routes lowercase; controllers under `/api`; static files `/pointer.js`, `/skill.md`.
 - JWT: HS256, symmetric key from `JWT__SIGNING_KEY` env; 12h lifetime; no refresh token in v1.
 - Password hashing: **BCrypt** (work factor 11).
@@ -963,13 +963,13 @@ TOKEN=$(curl -s localhost:8090/api/auth/login -H 'Content-Type: application/json
   -d '{"email":"admin@pointer.local","password":"ChangeMe123!"}' | jq -r .data.token)
 # create a project
 curl -s localhost:8090/api/admin/projects -H "Authorization: Bearer $TOKEN" \
-  -H 'Content-Type: application/json' -d '{"key":"tuwaiq-clubs","name":"Tuwaiq Clubs"}'
+  -H 'Content-Type: application/json' -d '{"key":"my-app","name":"My App"}'
 # create a comment
-curl -s localhost:8090/api/projects/tuwaiq-clubs/comments -H "Authorization: Bearer $TOKEN" \
+curl -s localhost:8090/api/projects/my-app/comments -H "Authorization: Bearer $TOKEN" \
   -H 'Content-Type: application/json' \
-  -d '{"body":"Make this 24px","environment":2,"element":{"selector":".title","sourcePath":"apps/tuwaiq-clubs/src/x.tsx:14"}}'
+  -d '{"body":"Make this 24px","environment":2,"element":{"selector":".title","sourcePath":"apps/my-app/src/x.tsx:14"}}'
 # fetch queue
-curl -s "localhost:8090/api/projects/tuwaiq-clubs/comments?status=1" -H "Authorization: Bearer $TOKEN"
+curl -s "localhost:8090/api/projects/my-app/comments?status=1" -H "Authorization: Bearer $TOKEN"
 ```
 Expected: login returns a token; project + comment created (`isSuccess:true`); list returns the comment with its `element` jsonb.
 
@@ -986,7 +986,7 @@ Expected: login returns a token; project + comment created (`isSuccess:true`); l
 - [ ] **Step 1:** Copy the existing component. Replace the **name/role identity modal** with an **email/password login modal**: on submit `POST {server}/api/auth/login`, store `data.token` in `localStorage['pointer_token']` and `data.user` in `localStorage['pointer_user']`.
 - [ ] **Step 2:** Add `Authorization: Bearer ${token}` to every fetch (create comment, list, patch, reply). On HTTP 401 clear token+user and re-open the login modal.
 - [ ] **Step 3:** Remove the self-reported role dropdown; show `pointer_user.displayName`/role from the stored account. Comment POST body uses the new `element` shape (`{selector,snapshot,classes,computedStyles,appliedCssRules,sourcePath,parentInfo}`) + `environment` (read from the `environment` attribute, default Staging).
-- [ ] **Step 4: Verify** — load `http://localhost:8090/pointer.js` in a `test.html` with `<pointer-feedback project="tuwaiq-clubs" server="http://localhost:8090">`; log in as a seeded user; leave a comment; confirm it appears via the `GET` smoke call. (Use the playwright-cli skill for the browser check.)
+- [ ] **Step 4: Verify** — load `http://localhost:8090/pointer.js` in a `test.html` with `<pointer-feedback project="my-app" server="http://localhost:8090">`; log in as a seeded user; leave a comment; confirm it appears via the `GET` smoke call. (Use the playwright-cli skill for the browser check.)
 - [ ] **Step 5: Commit** — `git commit -m "feat(web): pointer.js login + bearer auth + new element payload"`.
 
 ### Task 6.2: Updated skill.md
@@ -1012,15 +1012,15 @@ Expected: login returns a token; project + comment created (`isSuccess:true`); l
 
 ---
 
-## Phase 8 — Clubs cutover + AI apply skill install
+## Phase 8 — Host-app cutover + AI apply skill install
 
-### Task 8.1: Point clubs app at the new API
+### Task 8.1: Point host app at the new API
 
-**Files:** Modify `tuwaiq-academy-mono-spa/apps/tuwaiq-clubs/.env` (`VITE_POINTER_SERVER=http://localhost:8090`). `index.html` loader shape unchanged.
+**Files:** Modify `apps/my-app/.env` (`VITE_POINTER_SERVER=http://localhost:8090`). `index.html` loader shape unchanged.
 
-- [ ] **Step 1:** Update `.env`; run the clubs dev server; confirm the overlay loads `pointer.js` from the new API and the login modal appears.
-- [ ] **Step 2: End-to-end** — provision a clubs user via admin UI → log in through the overlay → leave a comment on a real element → mark "Ready to Apply" → run the AI skill (login with automation account) → fetch → apply → `PATCH` to Applied → verify status in DB (`just psql`).
-- [ ] **Step 3: Commit (clubs repo)** — `git commit -m "chore(clubs): point Pointer at .NET backend"` (in the monorepo, only with explicit user permission per repo rules).
+- [ ] **Step 1:** Update `.env`; run the host app dev server; confirm the overlay loads `pointer.js` from the new API and the login modal appears.
+- [ ] **Step 2: End-to-end** — provision a host-app user via admin UI → log in through the overlay → leave a comment on a real element → mark "Ready to Apply" → run the AI skill (login with automation account) → fetch → apply → `PATCH` to Applied → verify status in DB (`just psql`).
+- [ ] **Step 3: Commit (the host app repo)** — `git commit -m "chore(app): point Pointer at .NET backend"` (in the monorepo, only with explicit user permission per repo rules).
 
 ### Task 8.2: Install the AI skill in consuming repos
 
@@ -1046,4 +1046,4 @@ Expected: login returns a token; project + comment created (`isSuccess:true`); l
 - **CORS** → required because the component runs on the host app origin; added in 5.1.
 - **Env binding** → `JWT__SigningKey` style double-underscore keys map to `JWT:SigningKey`; `.env.example` updated in 3.5.
 - **No active-test reference codebase** → focused unit tests on hasher/token/validator only; everything else verified via build + curl/browser smoke (explicit steps in 5.5, 6.1, 7.1, 8.1).
-- **Spec coverage:** auth (P3/P4.1/P5.1-2), local accounts+roles+provisioning admin UI (P4.2/5.3/7), multi-project (P4.3), comments+element jsonb (P1.2/3.1/4.4), apply flow + skill (P4.4/6.2/8), web component login (P6.1), clubs cutover (P8.1) — all mapped.
+- **Spec coverage:** auth (P3/P4.1/P5.1-2), local accounts+roles+provisioning admin UI (P4.2/5.3/7), multi-project (P4.3), comments+element jsonb (P1.2/3.1/4.4), apply flow + skill (P4.4/6.2/8), web component login (P6.1), host-app cutover (P8.1) — all mapped.

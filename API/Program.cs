@@ -66,6 +66,31 @@ if (builder.Configuration.GetValue<bool>("DBMigrationEnabled"))
 app.UseSwagger();
 app.UseSwaggerUI();
 
+// Serve the skill markdown with the request origin injected into the
+// <POINTER_SERVER> placeholder, so any AI tool that fetches a skill from the
+// deployed URL gets it pre-filled with that URL (no localhost, nothing to ask).
+// Runs before UseStaticFiles so it takes precedence over the raw file.
+var skillFiles = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "/pointer-init.md", "/skill.md" };
+app.Use(async (ctx, next) =>
+{
+    var path = ctx.Request.Path.Value ?? string.Empty;
+    if (HttpMethods.IsGet(ctx.Request.Method) && skillFiles.Contains(path))
+    {
+        var webRoot = app.Environment.WebRootPath
+            ?? Path.Combine(app.Environment.ContentRootPath, "wwwroot");
+        var file = Path.Combine(webRoot, path.TrimStart('/'));
+        if (File.Exists(file))
+        {
+            var origin = $"{ctx.Request.Scheme}://{ctx.Request.Host}";
+            var text = (await File.ReadAllTextAsync(file)).Replace("<POINTER_SERVER>", origin);
+            ctx.Response.ContentType = "text/markdown; charset=utf-8";
+            await ctx.Response.WriteAsync(text);
+            return;
+        }
+    }
+    await next();
+});
+
 app.UseDefaultFiles();
 app.UseStaticFiles();
 
