@@ -64,7 +64,26 @@ if (builder.Configuration.GetValue<bool>("DBMigrationEnabled"))
 }
 
 app.UseSwagger();
-app.UseSwaggerUI();
+app.UseSwaggerUI(c =>
+{
+    // Embed the Pointer feedback widget on this API's own Swagger as a consumer.
+    // EVERY setting comes from the "Pointer" section of appsettings*.json, so it's
+    // toggled/tuned per environment (appsettings.{Environment}.json or env vars):
+    //   Enabled      — turn the embed on/off
+    //   Server       — absolute Pointer server URL (used for embed.js + pointer.js)
+    //   Project      — dashboard project key; blank → this app's name (assembly)
+    //   Environment  — comment environment tag (local|staging|production)
+    var pointer = app.Configuration.GetSection("Pointer");
+    if (pointer.GetValue("Enabled", false))
+    {
+        var server = (pointer["Server"] ?? "http://localhost:8090").TrimEnd('/');
+        var project = pointer["Project"];
+        if (string.IsNullOrWhiteSpace(project)) project = app.Environment.ApplicationName;
+        var environment = pointer["Environment"];
+        if (string.IsNullOrWhiteSpace(environment)) environment = "staging";
+        c.InjectJavascript($"{server}/embed.js?project={Uri.EscapeDataString(project)}&environment={Uri.EscapeDataString(environment)}");
+    }
+});
 
 // Serve the skill markdown with the request origin injected into the
 // <POINTER_SERVER> placeholder, so any AI tool that fetches a skill from the
@@ -98,6 +117,45 @@ app.UseCors();
 
 app.UseAuthentication();
 app.UseAuthorization();
+
+// Self-configuring embed loader: any page (e.g. another API's Swagger UI) can add
+//   <script src="https://<pointer-server>/embed.js?project=<key>"></script>
+// and it injects pointer.js + a configured <pointer-feedback>, with server = this
+// origin. Reusable across projects; the project key comes from the query string.
+app.MapGet("/embed.js", (HttpContext ctx) =>
+{
+    var origin = $"{ctx.Request.Scheme}://{ctx.Request.Host}";
+    static bool Safe(string s) => s.Length > 0 && s.All(ch => char.IsLetterOrDigit(ch) || ch is '.' or '_' or '-');
+    var project = ctx.Request.Query["project"].ToString();
+    var environment = ctx.Request.Query["environment"].ToString();
+    var safeProject = Safe(project) ? project : "";
+    var safeEnv = Safe(environment) ? environment : "staging";
+    var js =
+$$"""
+(function () {
+  if (window.__pointerEmbedded) return;
+  window.__pointerEmbedded = true;
+  var server = '{{origin}}';
+  function mount() {
+    var s = document.createElement('script');
+    s.src = server + '/pointer.js';
+    s.defer = true;
+    document.head.appendChild(s);
+    var el = document.createElement('pointer-feedback');
+    el.setAttribute('project', '{{safeProject}}');
+    el.setAttribute('server', server);
+    el.setAttribute('environment', '{{safeEnv}}');
+    el.setAttribute('source-attr', 'data-component-source');
+    document.body.appendChild(el);
+  }
+  // embed.js may run in <head> before <body> exists — wait for the DOM.
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', mount);
+  else mount();
+})();
+""";
+    ctx.Response.ContentType = "application/javascript; charset=utf-8";
+    return ctx.Response.WriteAsync(js);
+});
 
 app.MapControllers();
 

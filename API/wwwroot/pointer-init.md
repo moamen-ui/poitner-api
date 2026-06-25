@@ -34,6 +34,8 @@ This skill wires the widget into the **current** app. Do not guess the variables
 - **Plain static HTML** — a hand-written `index.html`, no bundler → Step 3b.
 - **Angular** — `angular.json` + `src/index.html` → Step 3c.
 - **Next.js** — `next.config.*`, `app/` or `pages/` → Step 3d.
+- **API Swagger / OpenAPI docs page** (Swashbuckle/.NET, Scalar, Redoc, swagger-ui) — embed it so
+  consumers can comment directly on endpoints → Step 3e.
 
 ## Step 3 — Inject the loader
 
@@ -101,6 +103,67 @@ Angular does not substitute `%ENV%` in `index.html`. Easiest: add a literal load
 Use a client component (e.g. in the root `app/layout.tsx` via a `'use client'` effect, or a
 `<Script>` for pointer.js + an effect that creates `<pointer-feedback>`), reading values from
 `NEXT_PUBLIC_POINTER_*` env vars. Guard on an `enabled` flag so prod can opt out.
+
+### 3e. API Swagger / OpenAPI docs page
+
+A Swagger UI is just an HTML page — embed Pointer so consumers can leave element-level comments on
+endpoints. The Pointer server hosts a one-line loader at **`<POINTER_SERVER>/embed.js?project=<key>`**
+that injects `pointer.js` and mounts a configured `<pointer-feedback>` (server pre-filled). The page
+owner just (1) references that loader and (2) — if the page sends a CSP — allowlists the Pointer origin.
+
+**ASP.NET / Swashbuckle (recommended: config-driven).** Put every Pointer setting in a `Pointer`
+section of `appsettings.json` so it's toggled/tuned per environment (override in
+`appsettings.{Environment}.json` or `Pointer__*` env vars):
+
+```json
+"Pointer": {
+  "Enabled": true,
+  "Server": "<POINTER_SERVER>",
+  "Project": "",
+  "Environment": "staging"
+}
+```
+
+Read it once after `builder.Build()` and drive **both** the embed and the CSP from it:
+
+```csharp
+var p = app.Configuration.GetSection("Pointer");
+var pEnabled = p.GetValue("Enabled", false);
+var pServer  = (p["Server"] ?? "<POINTER_SERVER>").TrimEnd('/');
+var pProject = string.IsNullOrWhiteSpace(p["Project"]) ? app.Environment.ApplicationName : p["Project"]!;
+var pEnv     = string.IsNullOrWhiteSpace(p["Environment"]) ? "staging" : p["Environment"]!;
+var pAllow   = pEnabled ? $" {pServer}" : "";   // origins to add to the Swagger CSP
+
+app.UseSwaggerUI(c =>
+{
+    if (pEnabled)
+        c.InjectJavascript($"{pServer}/embed.js?project={Uri.EscapeDataString(pProject)}&environment={Uri.EscapeDataString(pEnv)}");
+});
+```
+
+`Enabled` turns the whole thing on/off (per environment); `Project` blank → this app's own name;
+`Server` is the Pointer URL; `Environment` tags the comments.
+
+**⚠️ CSP — the common gotcha.** If the docs page sends a `Content-Security-Policy` (many API
+templates do, scoped to `/swagger`), the cross-origin widget is blocked until you allowlist the
+Pointer origin. Build the `/swagger` CSP with `pAllow` so it follows the same config (and the hole
+disappears when disabled):
+
+```csharp
+$"default-src 'self'; script-src 'self' 'unsafe-inline'{pAllow}; connect-src 'self'{pAllow}; " +
+$"style-src 'self' 'unsafe-inline'{pAllow}; img-src 'self' data:{pAllow}; frame-ancestors 'none'"
+```
+
+(`script-src` loads embed.js/pointer.js; `connect-src` the comments/login/upload API; `style-src`
+the shadow-DOM `pointer.css` `<link>`; `img-src` screenshot thumbnails.)
+
+**Other renderers** (Scalar, Redoc, standalone swagger-ui, static docs): just add one script tag
+wherever that renderer allows custom JS — and, if the page has a CSP, allowlist `<POINTER_SERVER>`
+in the same directives above:
+
+```html
+<script src="<POINTER_SERVER>/embed.js?project=<your-api>"></script>
+```
 
 ## Step 4 — (Optional) wire the AI apply-tool credentials
 

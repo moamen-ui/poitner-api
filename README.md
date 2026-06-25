@@ -155,6 +155,56 @@ per comment, supports **private** comments (visible only to their author), and *
 > variables (project key, server URL, environment), detects the stack (Vite/Angular/Next/static),
 > injects the loader, wires env, and verifies (see below).
 
+## Embed in an API's Swagger page (manual)
+
+A Swagger UI is just an HTML page, so any API can show the feedback widget on its own docs — let
+consumers comment directly on endpoints. The Pointer server hosts a self-configuring loader at
+**`<pointer-server>/embed.js?project=<key>`** that injects `pointer.js` and mounts a configured
+`<pointer-feedback>`. The API owner does two things.
+
+**1. Config (`appsettings.json`)** — all settings live here, so they're per-environment overridable
+(`appsettings.{Environment}.json` or `Pointer__*` env vars):
+
+```json
+"Pointer": {
+  "Enabled": true,
+  "Server": "http://localhost:8090",   // your deployed Pointer URL in staging/prod
+  "Project": "",                        // blank → this app's name
+  "Environment": "staging"
+}
+```
+
+**2. Wire it (Swashbuckle, `Program.cs`)** — read the section once and drive **both** the embed and
+the `/swagger` CSP from it:
+
+```csharp
+var p = app.Configuration.GetSection("Pointer");
+var pEnabled = p.GetValue("Enabled", false);
+var pServer  = (p["Server"] ?? "http://localhost:8090").TrimEnd('/');
+var pProject = string.IsNullOrWhiteSpace(p["Project"]) ? app.Environment.ApplicationName : p["Project"]!;
+var pEnv     = string.IsNullOrWhiteSpace(p["Environment"]) ? "staging" : p["Environment"]!;
+var pAllow   = pEnabled ? $" {pServer}" : "";   // origins added to the Swagger CSP
+
+app.UseSwaggerUI(c =>
+{
+    if (pEnabled)
+        c.InjectJavascript($"{pServer}/embed.js?project={Uri.EscapeDataString(pProject)}&environment={Uri.EscapeDataString(pEnv)}");
+});
+```
+
+**⚠️ CSP.** If the docs page sends a `Content-Security-Policy` (common, scoped to `/swagger`), the
+cross-origin widget is blocked until the Pointer origin is allowlisted. Build that CSP with `pAllow`
+so it follows the same config (and the hole closes when disabled):
+
+```csharp
+$"default-src 'self'; script-src 'self' 'unsafe-inline'{pAllow}; connect-src 'self'{pAllow}; " +
+$"style-src 'self' 'unsafe-inline'{pAllow}; img-src 'self' data:{pAllow}; frame-ancestors 'none'"
+```
+
+Non-.NET docs (Scalar, Redoc, swagger-ui, static): add `<script src="<pointer-server>/embed.js?project=<key>"></script>`
+and allowlist the Pointer origin in the page's CSP if it has one. The `pointer-init` skill's
+**"API Swagger / OpenAPI docs page"** section automates all of this.
+
 ## Install the Pointer skills (in a consuming repo)
 
 Both skills are **served by the API**, are plain **tool-agnostic markdown**, and are
