@@ -1,4 +1,4 @@
-import { Component, inject, signal, OnInit, ViewChild } from '@angular/core';
+import { Component, inject, signal, computed, effect, ViewChild } from '@angular/core';
 import { DatePipe } from '@angular/common';
 import { MatCardModule } from '@angular/material/card';
 import { MatTableModule, MatTableDataSource } from '@angular/material/table';
@@ -12,10 +12,12 @@ import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatSelectModule } from '@angular/material/select';
 import { FormsModule } from '@angular/forms';
 import { TranslocoModule } from '@jsverse/transloco';
-import { StatsService } from '../../core/api/stats.service';
-import { UsersService } from '../../core/api/users.service';
-import { RolesService } from '../../core/api/roles.service';
-import { StatsResponse, ProjectStats, UserResponse, RoleResponse } from '../../core/api/models';
+import { UsersService } from '@api/users/users.service';
+import { getApiAdminStatsResource } from '@api/stats/stats.service';
+import { getApiAdminUsersResource } from '@api/users/users.service';
+import { getApiAdminRolesResource } from '@api/roles/roles.service';
+import { extractMessage } from '../../core/api/extract-message';
+import type { ProjectStats, UserResponse, RoleResponse } from '@api/model';
 
 @Component({
   selector: 'app-overview',
@@ -39,28 +41,28 @@ import { StatsResponse, ProjectStats, UserResponse, RoleResponse } from '../../c
       <mat-progress-bar mode="indeterminate" class="progress-bar"></mat-progress-bar>
     }
 
-    @if (stats()) {
+    @if (stats(); as s) {
       <div class="stat-grid">
         <mat-card class="stat-card" appearance="outlined">
           <mat-card-content>
             <div class="stat-icon icon-slate"><mat-icon>folder</mat-icon></div>
-            <div class="stat-text"><div class="stat-value">{{ stats()!.totals.projects }}</div><div class="stat-label">{{ 'overview.projects' | transloco }}</div></div>
+            <div class="stat-text"><div class="stat-value">{{ s.totals?.projects }}</div><div class="stat-label">{{ 'overview.projects' | transloco }}</div></div>
           </mat-card-content>
         </mat-card>
         <mat-card class="stat-card" appearance="outlined">
           <mat-card-content>
             <div class="stat-icon icon-slate"><mat-icon>group</mat-icon></div>
-            <div class="stat-text"><div class="stat-value">{{ stats()!.totals.users }}</div><div class="stat-label">{{ 'overview.users' | transloco }}</div></div>
+            <div class="stat-text"><div class="stat-value">{{ s.totals?.users }}</div><div class="stat-label">{{ 'overview.users' | transloco }}</div></div>
           </mat-card-content>
         </mat-card>
         <mat-card class="stat-card" appearance="outlined">
           <mat-card-content>
             <div class="stat-icon icon-slate"><mat-icon>chat_bubble_outline</mat-icon></div>
             <div class="stat-text">
-              <div class="stat-value">{{ stats()!.totals.comments }}</div>
+              <div class="stat-value">{{ s.totals?.comments }}</div>
               <div class="stat-label">{{ 'overview.comments' | transloco }}</div>
-              @if (stats()!.totals.privateComments > 0) {
-                <div class="stat-subnote">{{ 'overview.privateHidden' | transloco: { count: stats()!.totals.privateComments } }}</div>
+              @if ((s.totals?.privateComments ?? 0) > 0) {
+                <div class="stat-subnote">{{ 'overview.privateHidden' | transloco: { count: s.totals?.privateComments ?? 0 } }}</div>
               }
             </div>
           </mat-card-content>
@@ -68,19 +70,25 @@ import { StatsResponse, ProjectStats, UserResponse, RoleResponse } from '../../c
         <mat-card class="stat-card accent-blue" appearance="outlined">
           <mat-card-content>
             <div class="stat-icon icon-blue"><mat-icon>radio_button_unchecked</mat-icon></div>
-            <div class="stat-text"><div class="stat-value">{{ stats()!.totals.open }}</div><div class="stat-label">{{ 'overview.open' | transloco }}</div></div>
+            <div class="stat-text"><div class="stat-value">{{ s.totals?.open }}</div><div class="stat-label">{{ 'overview.open' | transloco }}</div></div>
           </mat-card-content>
         </mat-card>
         <mat-card class="stat-card accent-amber" appearance="outlined">
           <mat-card-content>
             <div class="stat-icon icon-amber"><mat-icon>schedule</mat-icon></div>
-            <div class="stat-text"><div class="stat-value">{{ stats()!.totals.pending }}</div><div class="stat-label">{{ 'overview.pending' | transloco }}</div></div>
+            <div class="stat-text"><div class="stat-value">{{ s.totals?.pending }}</div><div class="stat-label">{{ 'overview.pending' | transloco }}</div></div>
           </mat-card-content>
         </mat-card>
         <mat-card class="stat-card accent-green" appearance="outlined">
           <mat-card-content>
             <div class="stat-icon icon-green"><mat-icon>check_circle</mat-icon></div>
-            <div class="stat-text"><div class="stat-value">{{ stats()!.totals.completed }}</div><div class="stat-label">{{ 'overview.completed' | transloco }}</div></div>
+            <div class="stat-text"><div class="stat-value">{{ s.totals?.completed }}</div><div class="stat-label">{{ 'overview.completed' | transloco }}</div></div>
+          </mat-card-content>
+        </mat-card>
+        <mat-card class="stat-card accent-slate" appearance="outlined">
+          <mat-card-content>
+            <div class="stat-icon icon-slate"><mat-icon>archive</mat-icon></div>
+            <div class="stat-text"><div class="stat-value">{{ s.totals?.archived }}</div><div class="stat-label">{{ 'overview.archived' | transloco }}</div></div>
           </mat-card-content>
         </mat-card>
       </div>
@@ -90,7 +98,7 @@ import { StatsResponse, ProjectStats, UserResponse, RoleResponse } from '../../c
           <mat-card-title class="pending-title">
             <mat-icon>how_to_reg</mat-icon>
             {{ 'overview.pendingApprovals' | transloco }}
-            <span class="count-badge">{{ stats()!.totals.pendingUsers }}</span>
+            <span class="count-badge">{{ pendingCount() }}</span>
           </mat-card-title>
         </mat-card-header>
         <mat-card-content>
@@ -105,21 +113,21 @@ import { StatsResponse, ProjectStats, UserResponse, RoleResponse } from '../../c
                     <div class="pending-meta">
                       <span>{{ u.email }}</span>
                       <span class="chip chip-neutral">{{ u.roleName }}</span>
-                      @if (u.createdAt) {
-                        <span class="pending-date">{{ u.createdAt | date:'mediumDate' }}</span>
+                      @if ($any(u).createdAt) {
+                        <span class="pending-date">{{ $any(u).createdAt | date:'mediumDate' }}</span>
                       }
                     </div>
                   </div>
                   <div class="pending-actions">
                     <button mat-flat-button color="primary" [matMenuTriggerFor]="approveMenu"
-                      (menuOpened)="approveSelection[u.id] = u.roleId" [disabled]="busy()">
+                      (menuOpened)="approveSelection[u.id!] = u.roleId ?? 0" [disabled]="busy()">
                       {{ 'overview.approve' | transloco }}
                     </button>
-                    <mat-menu #approveMenu="matMenu" class="approve-menu">
+                    <mat-menu #approveMenu="matMenu">
                       <div class="approve-panel" (click)="$event.stopPropagation()">
                         <mat-form-field appearance="outline" subscriptSizing="dynamic" class="approve-field">
                           <mat-label>{{ 'overview.approveAs' | transloco }}</mat-label>
-                          <mat-select [(value)]="approveSelection[u.id]">
+                          <mat-select [(value)]="approveSelection[u.id!]">
                             @for (r of activeRoles(); track r.id) {
                               <mat-option [value]="r.id">{{ r.name }}</mat-option>
                             }
@@ -144,7 +152,7 @@ import { StatsResponse, ProjectStats, UserResponse, RoleResponse } from '../../c
 
       <div class="table-header">
         <h2>{{ 'overview.breakdown' | transloco }}</h2>
-        <button mat-stroked-button (click)="load()" [disabled]="loading()">
+        <button mat-stroked-button (click)="statsResource.reload()" [disabled]="loading()">
           <mat-icon>refresh</mat-icon> {{ 'common.refresh' | transloco }}
         </button>
       </div>
@@ -187,6 +195,10 @@ import { StatsResponse, ProjectStats, UserResponse, RoleResponse } from '../../c
             <th mat-header-cell *matHeaderCellDef mat-sort-header>{{ 'overview.completed' | transloco }}</th>
             <td mat-cell *matCellDef="let row" class="col-green">{{ row.completed }}</td>
           </ng-container>
+          <ng-container matColumnDef="archived">
+            <th mat-header-cell *matHeaderCellDef mat-sort-header>{{ 'overview.archived' | transloco }}</th>
+            <td mat-cell *matCellDef="let row" class="col-slate">{{ row.archived }}</td>
+          </ng-container>
           <ng-container matColumnDef="status">
             <th mat-header-cell *matHeaderCellDef mat-sort-header>{{ 'overview.status' | transloco }}</th>
             <td mat-cell *matCellDef="let row">
@@ -203,18 +215,13 @@ import { StatsResponse, ProjectStats, UserResponse, RoleResponse } from '../../c
     } @else if (!loading()) {
       <div class="empty-state">
         <p>No data available.</p>
-        <button mat-stroked-button (click)="load()">{{ 'common.refresh' | transloco }}</button>
+        <button mat-stroked-button (click)="statsResource.reload()">{{ 'common.refresh' | transloco }}</button>
       </div>
     }
   `,
   styles: [`
     .progress-bar { position: fixed; top: 0; inset-inline: 0; z-index: 1000; }
-    .stat-grid {
-      display: grid;
-      grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
-      gap: 16px;
-      margin-bottom: 32px;
-    }
+    .stat-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 16px; margin-bottom: 32px; }
     .stat-card { background: var(--panel-bg); color: var(--ink); border-radius: 14px; }
     .stat-card mat-card-content { display: flex; align-items: center; gap: 14px; padding: 16px; }
     .stat-icon { width: 44px; height: 44px; border-radius: 12px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
@@ -249,96 +256,74 @@ import { StatsResponse, ProjectStats, UserResponse, RoleResponse } from '../../c
     .table-header h2 { margin: 0; font-size: 1.1rem; }
     .table-container { overflow-x: auto; }
     table { width: 100%; }
+    .accent-slate .stat-value { color: #475569; }
     .col-blue { color: #1976d2; font-weight: 500; }
     .col-amber { color: #f57c00; font-weight: 500; }
     .col-green { color: #388e3c; font-weight: 500; }
-    /* status chip styles are global (theme-aware) — see styles.scss */
+    .col-slate { color: #475569; font-weight: 500; }
     .chip-private { display: inline-flex; align-items: center; gap: 3px; background: #eef2f7; color: #475569; font-size: 0.78rem; font-weight: 600; padding: 1px 8px; border-radius: 11px; }
     .chip-icon { font-size: 14px; width: 14px; height: 14px; }
     .muted-dash { color: var(--muted); }
     .empty-state { text-align: center; padding: 48px; }
   `],
 })
-export class OverviewComponent implements OnInit {
-  private statsService = inject(StatsService);
+export class OverviewComponent {
   private usersService = inject(UsersService);
-  private rolesService = inject(RolesService);
   private snack = inject(MatSnackBar);
 
-  // Setter ViewChild: the table lives inside @if (stats()), so MatSort doesn't
-  // exist at ngAfterViewInit time. This fires when the table enters the DOM
-  // (once stats() is truthy), wiring sort correctly.
+  statsResource = getApiAdminStatsResource();
+  pendingResource = getApiAdminUsersResource(signal({ status: 'pending' }));
+  rolesResource = getApiAdminRolesResource();
+
+  stats = computed(() => this.statsResource.value());
+  pendingUsers = computed(() => this.pendingResource.value() ?? []);
+  pendingCount = computed(() => this.pendingResource.value()?.length ?? 0);
+  roles = computed(() => this.rolesResource.value() ?? []);
+
+  busy = signal(false);
+  loading = computed(() => this.statsResource.isLoading() || this.busy());
+
+  approveSelection: Record<number, number> = {};
+  tableDataSource = new MatTableDataSource<ProjectStats>([]);
+  displayedColumns = ['key', 'name', 'comments', 'privateComments', 'open', 'pending', 'completed', 'archived', 'status'];
+
   @ViewChild(MatSort) set sort(value: MatSort) {
     if (value) this.tableDataSource.sort = value;
   }
 
-  stats = signal<StatsResponse | null>(null);
-  loading = signal(false);
-  busy = signal(false);
-  pendingUsers = signal<UserResponse[]>([]);
-  roles = signal<RoleResponse[]>([]);
-  // Per-user selected role for the approve role-confirm dropdown (keyed by user id).
-  approveSelection: Record<number, number> = {};
-  tableDataSource = new MatTableDataSource<ProjectStats>([]);
-
-  displayedColumns = ['key', 'name', 'comments', 'privateComments', 'open', 'pending', 'completed', 'status'];
-
-  activeRoles() { return this.roles().filter(r => r.isActive); }
-
-  ngOnInit() { this.load(); this.loadPending(); }
-
-  load() {
-    this.loading.set(true);
-    this.statsService.get().subscribe({
-      next: (data) => {
-        this.stats.set(data);
-        this.tableDataSource.data = data.projects;
-        this.loading.set(false);
-      },
-      error: (e) => { this.loading.set(false); this.snack.open(e.message || 'Failed to load stats', 'OK', { duration: 4000 }); },
+  constructor() {
+    effect(() => {
+      const stats = this.statsResource.value();
+      if (stats?.projects) {
+        this.tableDataSource.data = stats.projects;
+      }
     });
   }
 
-  private loadPending() {
-    this.rolesService.list().subscribe({
-      next: (roles) => this.roles.set(roles),
-      error: () => { /* roles are non-critical for display */ },
-    });
-    this.usersService.list('Pending').subscribe({
-      next: (users) => this.pendingUsers.set(users),
-      error: (e) => this.snack.open(e.message || 'Failed to load pending users', 'OK', { duration: 4000 }),
-    });
-  }
-
-  // Decrement the pending badge locally so the count updates without a reload.
-  private bumpPendingCount(delta: number) {
-    const s = this.stats();
-    if (!s) return;
-    this.stats.set({ ...s, totals: { ...s.totals, pendingUsers: Math.max(0, s.totals.pendingUsers + delta) } });
-  }
+  activeRoles(): RoleResponse[] { return this.roles().filter(r => r.isActive); }
 
   approve(user: UserResponse) {
-    const roleId = this.approveSelection[user.id] ?? user.roleId;
+    const roleId = this.approveSelection[user.id!] ?? user.roleId;
     this.busy.set(true);
-    this.usersService.approve(user.id, roleId).subscribe({
+    this.usersService.postApiAdminUsersIdApprove(user.id!, { roleId }).subscribe({
       next: () => {
-        this.pendingUsers.update(list => list.filter(u => u.id !== user.id));
-        this.bumpPendingCount(-1);
         this.busy.set(false);
+        this.pendingResource.reload();
+        this.statsResource.reload();
       },
-      error: (e) => { this.busy.set(false); this.snack.open(e.message || 'Failed to approve user', 'OK', { duration: 4000 }); },
+      error: (e) => { this.busy.set(false); this.snack.open(extractMessage(e), 'OK', { duration: 4000 }); },
     });
   }
 
   reject(user: UserResponse) {
     this.busy.set(true);
-    this.usersService.reject(user.id).subscribe({
+    this.usersService.postApiAdminUsersIdReject(user.id!).subscribe({
       next: () => {
-        this.pendingUsers.update(list => list.filter(u => u.id !== user.id));
-        this.bumpPendingCount(-1);
         this.busy.set(false);
+        this.pendingResource.reload();
+        this.statsResource.reload();
       },
-      error: (e) => { this.busy.set(false); this.snack.open(e.message || 'Failed to reject user', 'OK', { duration: 4000 }); },
+      error: (e) => { this.busy.set(false); this.snack.open(extractMessage(e), 'OK', { duration: 4000 }); },
     });
   }
 }

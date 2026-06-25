@@ -1,0 +1,132 @@
+---
+name: pointer-init
+description: Use when the user wants to add, install, init, or integrate the Pointer feedback widget (<pointer-feedback>) into an app — e.g. "add Pointer to this app", "set up Pointer feedback", "integrate the feedback widget". Asks the user for the variables (project key, Pointer server URL, environment), detects the host stack (Vite/Angular/Next/static), injects the loader, wires the env, and verifies. No build step required.
+---
+
+# Add Pointer to this app
+
+Pointer is an element-level feedback widget delivered as a single Web Component,
+`<pointer-feedback>`, loaded from a Pointer server's `/pointer.js`. It renders entirely inside a
+Shadow DOM (no CSS collisions), shows a small toolbar, and lets authenticated stakeholders click any
+element and leave a comment. Projects **self-register**: the first time an app loads/comments with a
+given project key, it appears in the Pointer dashboard.
+
+This skill wires the widget into the **current** app. Do not guess the variables — **ask the user**.
+
+## Step 1 — Ask the user for the variables
+
+| Variable | Required | Meaning / guidance |
+|---|---|---|
+| **Project key** | ✅ | URL-safe slug, `^[A-Za-z0-9._-]+$` (e.g. `tuwaiq-clubs`). Identifies this app's feedback; self-registers in the dashboard. |
+| **Pointer server URL** | ✅ | Origin of the Pointer API/component, e.g. `http://localhost:8090` (dev) or the deployed URL. No trailing slash. |
+| **Environment** | optional | `local` \| `staging` \| `production` — tags each comment. Default `staging`. |
+| **Enabled?** | optional | Whether to mount the widget now. Default `true` for dev; usually `false` in production builds unless feedback is wanted in prod. |
+| **Screenshots?** | optional | The widget captures an element screenshot per comment by default. Pass `screenshot="false"` to disable. |
+
+## Step 2 — Detect the host stack
+
+- **Vite (React/Vue/Svelte)** — `vite.config.*` + an `index.html` using `%VITE_*%` placeholders → Step 3a.
+- **Plain static HTML** — a hand-written `index.html`, no bundler → Step 3b.
+- **Angular** — `angular.json` + `src/index.html` → Step 3c.
+- **Next.js** — `next.config.*`, `app/` or `pages/` → Step 3d.
+
+## Step 3 — Inject the loader
+
+The loader loads `<server>/pointer.js`, then appends a configured `<pointer-feedback>` element.
+Always set `source-attr="data-component-source"` so the widget can capture the source path of
+clicked elements (apps may stamp that attribute on elements).
+
+### 3a. Vite (canonical pattern)
+
+Add to `index.html` before `</body>`:
+
+```html
+<script>
+  if (
+    '%VITE_POINTER_ENABLED%' === 'true' &&
+    '%VITE_POINTER_SERVER%'.indexOf('http') === 0
+  ) {
+    var s = document.createElement('script');
+    s.src = '%VITE_POINTER_SERVER%/pointer.js';
+    s.defer = true;
+    document.head.appendChild(s);
+    var el = document.createElement('pointer-feedback');
+    el.setAttribute('project', '%VITE_POINTER_PROJECT%');
+    el.setAttribute('server', '%VITE_POINTER_SERVER%');
+    el.setAttribute('environment', '%VITE_POINTER_ENV%');
+    el.setAttribute('source-attr', 'data-component-source');
+    document.body.appendChild(el);
+  }
+</script>
+```
+
+Add the env keys to `.env` (and document them in `.env.example`):
+
+```
+VITE_POINTER_ENABLED=true
+VITE_POINTER_SERVER=http://localhost:8090
+VITE_POINTER_PROJECT=<project-key>
+VITE_POINTER_ENV=staging
+```
+
+Vite substitutes `%VITE_*%` in `index.html`; the `enabled` guard means a production build with
+`VITE_POINTER_ENABLED=false` ships zero Pointer code paths.
+
+### 3b. Plain static HTML
+
+Inline literal values before `</body>`:
+
+```html
+<script src="https://YOUR-POINTER-SERVER/pointer.js" defer></script>
+<pointer-feedback
+  project="<project-key>"
+  server="https://YOUR-POINTER-SERVER"
+  environment="staging"
+  source-attr="data-component-source"></pointer-feedback>
+```
+
+### 3c. Angular
+
+Angular does not substitute `%ENV%` in `index.html`. Easiest: add a literal loader to
+`src/index.html` before `</body>` (markup as in 3b). For env-switching, read from
+`src/environments/environment*.ts` and append the element in `main.ts` after bootstrap.
+
+### 3d. Next.js
+
+Use a client component (e.g. in the root `app/layout.tsx` via a `'use client'` effect, or a
+`<Script>` for pointer.js + an effect that creates `<pointer-feedback>`), reading values from
+`NEXT_PUBLIC_POINTER_*` env vars. Guard on an `enabled` flag so prod can opt out.
+
+## Step 4 — (Optional) wire the AI apply-tool credentials
+
+If the team wants an AI agent to later **pull and apply** the feedback queue, create a gitignored
+`.pointer/credentials.env`:
+
+```
+# .pointer/credentials.env  (gitignored — never commit)
+POINTER_EMAIL=
+POINTER_PASSWORD=
+```
+
+Add `.pointer/` to `.gitignore`. The apply workflow itself is the separate Pointer skill served at
+`<server>/skill.md` (install it into `.claude/skills/pointer-feedback/SKILL.md`).
+
+## Step 5 — Verify
+
+1. Start the app and ensure `<server>` is reachable.
+2. Load a page — a Pointer toolbar appears (no login popup on load; it's deferred).
+3. Click **+ Comment** → sign in or **Create account** → click an element → leave a comment.
+4. Confirm the project appears in the Pointer dashboard (`<server>/admin/`) with the comment.
+
+## Notes & gotchas
+
+- **`project` is required**; the component disables itself without it.
+- **`server`** defaults to the script's origin if omitted — set it explicitly when the app and the
+  Pointer server are different origins (the usual case).
+- **Cross-origin is fine:** `pointer.js` (script), `pointer.css` (link), and uploaded images (`<img>`)
+  aren't CORS-restricted; API calls use the server's permissive CORS policy.
+- **Auth:** stakeholders need a Pointer account; self-signup (an admin-approved request) is built into
+  the widget. The token is stored in `localStorage` (`pointer_token`).
+- **Source mapping:** add `data-component-source="path/to/Component:line"` to host elements to capture
+  where they live; the widget walks up to the nearest ancestor carrying that attribute.
+- Keep the `enabled` guard so production builds can ship without the widget when desired.

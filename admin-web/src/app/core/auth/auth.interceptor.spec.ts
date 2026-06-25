@@ -5,10 +5,9 @@ import {
   HttpTestingController,
 } from '@angular/common/http/testing';
 import { HttpClient } from '@angular/common/http';
-import { authInterceptor } from './auth.interceptor';
+import { apiInterceptor } from './auth.interceptor';
 import { provideRouter } from '@angular/router';
 
-// Provide a simple localStorage mock for node test environment
 const localStorageMock = (() => {
   let store: Record<string, string> = {};
   return {
@@ -24,7 +23,7 @@ Object.defineProperty(globalThis, 'localStorage', {
   writable: true,
 });
 
-describe('authInterceptor', () => {
+describe('apiInterceptor', () => {
   let http: HttpClient;
   let controller: HttpTestingController;
 
@@ -33,7 +32,7 @@ describe('authInterceptor', () => {
     await TestBed.configureTestingModule({
       providers: [
         provideRouter([]),
-        provideHttpClient(withInterceptors([authInterceptor])),
+        provideHttpClient(withInterceptors([apiInterceptor])),
         provideHttpClientTesting(),
       ],
     }).compileComponents();
@@ -51,16 +50,42 @@ describe('authInterceptor', () => {
 
     http.get('/api/test').subscribe();
 
-    const req = controller.expectOne('/api/test');
+    const req = controller.expectOne('http://localhost:8090/api/test');
     expect(req.request.headers.get('Authorization')).toBe('Bearer test-jwt-token');
-    req.flush({});
+    req.flush({ isSuccess: true, message: null, data: {} });
   });
 
   it('does not add Authorization header when no token in localStorage', () => {
     http.get('/api/test').subscribe();
 
-    const req = controller.expectOne('/api/test');
+    const req = controller.expectOne('http://localhost:8090/api/test');
     expect(req.request.headers.has('Authorization')).toBe(false);
-    req.flush({});
+    req.flush({ isSuccess: true, message: null, data: {} });
+  });
+
+  it('unwraps Result envelope and returns data', (done) => {
+    http.get<{ name: string }>('/api/test').subscribe({
+      next: (data) => {
+        expect(data).toEqual({ name: 'hello' });
+        done();
+      },
+      error: done.fail,
+    });
+
+    const req = controller.expectOne('http://localhost:8090/api/test');
+    req.flush({ isSuccess: true, message: null, data: { name: 'hello' } });
+  });
+
+  it('throws when envelope isSuccess is false', (done) => {
+    http.get('/api/test').subscribe({
+      next: () => done.fail('should have thrown'),
+      error: (err) => {
+        expect(err.message).toBe('Something went wrong');
+        done();
+      },
+    });
+
+    const req = controller.expectOne('http://localhost:8090/api/test');
+    req.flush({ isSuccess: false, message: 'Something went wrong', data: null });
   });
 });

@@ -56,6 +56,16 @@ public class CommentsController(ICommentService commentService) : ControllerBase
         return result.IsSuccess ? Ok(result) : BadRequest(result);
     }
 
+    // Toggle a comment's private flag. Author-only (enforced in the service).
+    [HttpPatch("api/comments/{id:int}/visibility")]
+    public async Task<IActionResult> SetVisibility(int id, [FromBody] SetVisibilityRequest request)
+    {
+        var result = await commentService.SetVisibilityAsync(id, User.GetId(), request.IsPrivate);
+        if (result.IsNotFound) return NotFound(result);
+        if (result.IsConflict) return Conflict(result);
+        return result.IsSuccess ? Ok(result) : BadRequest(result);
+    }
+
     [HttpDelete("api/comments/{id:int}")]
     public async Task<IActionResult> Delete(int id)
     {

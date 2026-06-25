@@ -205,6 +205,29 @@ public class CommentService : ICommentService
         return Result<CommentResponse>.Success(MapToResponse(comment, editNames), "Comment updated.");
     }
 
+    public async Task<Result<CommentResponse>> SetVisibilityAsync(int id, Guid callerId, bool isPrivate)
+    {
+        var comment = await _unitOfWork.Repository<Comment>()
+            .Query()
+            .Include(c => c.Replies)
+            .Where(c => c.Id == id && c.DeletedAt == null)
+            .FirstOrDefaultAsync();
+
+        if (comment == null)
+            return Result<CommentResponse>.NotFound(MessageKeys.Comment.NotFound);
+
+        // Own comments only — privacy is the author's call, not even admins'.
+        if (comment.AuthorId != callerId)
+            return Result<CommentResponse>.Failure("You can only change the visibility of your own comments.");
+
+        comment.IsPrivate = isPrivate;
+        _unitOfWork.Repository<Comment>().Update(comment);
+        await _unitOfWork.SaveChangesAsync();
+
+        var names = await ResolveNamesAsync(AuthorIds(comment));
+        return Result<CommentResponse>.Success(MapToResponse(comment, names));
+    }
+
     public async Task<Result<ReplyResponse>> AddReplyAsync(int commentId, AddReplyRequest request, Guid authorId)
     {
         var comment = await _unitOfWork.Repository<Comment>()

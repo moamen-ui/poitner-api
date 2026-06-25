@@ -8,6 +8,7 @@
  *      project="checkout-app"              // required: which project this feedback belongs to
  *      environment="staging"               // optional: "local"|"staging"|"production" (default Staging)
  *      source-attr="data-component-source" // optional: DOM attribute carrying the source file path
+ *      launcher-position="bottom-end"      // optional: top-start | top-end | bottom-start | bottom-end (collapsed launcher corner)
  *      server="https://pointer.example.com"></pointer-feedback>  // optional: defaults to this script's origin
  *
  * The UI lives inside a Shadow DOM so it never collides with the host app's CSS.
@@ -27,9 +28,9 @@
   // Environment string → int mapping (API contract: 1=Local, 2=Staging, 3=Production)
   const ENV_MAP = { local: 1, staging: 2, production: 3 };
 
-  // Status int → string mapping (API contract: 1=Open, 2=ReadyToApply, 3=Applied)
-  const STATUS_STR = { 1: 'open', 2: 'pending-apply', 3: 'applied' };
-  const STATUS_INT = { 'open': 1, 'pending-apply': 2, 'applied': 3 };
+  // Status int → string mapping (API contract: 1=Open, 2=ReadyToApply, 3=Applied, 4=Archived)
+  const STATUS_STR = { 1: 'open', 2: 'pending-apply', 3: 'applied', 4: 'archived' };
+  const STATUS_INT = { 'open': 1, 'pending-apply': 2, 'applied': 3, 'archived': 4 };
 
   // Inline SVG icons (monochrome, inherit currentColor) for compact card actions.
   const ICON = {
@@ -37,6 +38,13 @@
     check: '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>',
     trash: '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>',
     pencil: '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4z"/></svg>',
+    reopen: '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/></svg>',
+    archive: '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="21 8 21 21 3 21 3 8"/><rect x="1" y="3" width="22" height="5"/><line x1="10" y1="12" x2="14" y2="12"/></svg>',
+    eyeOff: '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>',
+    pin: '<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>',
+    user: '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>',
+    lock: '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>',
+    unlock: '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 9.9-1"/></svg>',
   };
 
   // One global style for the host-page hover highlight (lives in light DOM by
@@ -110,12 +118,13 @@
 
   // Status model: open | pending-apply | applied. The UI groups these as the
   // filter chips All / Open / Pending / Completed.
-  const STATUS_LABEL = { 'open': 'open', 'pending-apply': 'pending', 'applied': 'completed' };
+  const STATUS_LABEL = { 'open': 'open', 'pending-apply': 'pending', 'applied': 'completed', 'archived': 'archived' };
   const FILTERS = [
     { key: 'all', label: 'All' },
     { key: 'open', label: 'Open' },
     { key: 'pending-apply', label: 'Pending' },
     { key: 'applied', label: 'Completed' },
+    { key: 'archived', label: 'Archived' },
   ];
 
   // --- Styles: loaded at runtime from pointer.css (sibling of this script) ---
@@ -191,10 +200,11 @@
 
     chrome: (displayName, roleLabel) => `
         <div class="pf-toolbar">
-          <button class="pf-btn primary" id="pf-add">+ Comment</button>
-          <button class="pf-btn" id="pf-toggle">Comments <span class="pf-badge" id="pf-count">0</span></button>
+          <button class="pf-btn primary" id="pf-add" title="Add a comment on an element">+ Comment</button>
+          <button class="pf-btn" id="pf-toggle" title="Show comments">Comments <span class="pf-badge" id="pf-count">0</span></button>
           <button class="pf-btn" id="pf-refresh" title="Refresh comments">&#8635;</button>
-          ${displayName ? `<span class="pf-btn" style="cursor:default;" title="${roleLabel}">${displayName}</span>` : ''}
+          ${displayName ? `<button class="pf-btn pf-icon-btn" id="pf-user" title="Signed in as ${displayName}${roleLabel ? ' · ' + roleLabel : ''}" aria-label="Signed in as ${displayName}">${ICON.user}</button>` : ''}
+          <button class="pf-btn pf-icon-btn" id="pf-hide" title="Hide Pointer" aria-label="Hide Pointer">${ICON.eyeOff}</button>
         </div>
         <div class="pf-sidebar" id="pf-sidebar">
           <div class="pf-sidebar-head">
@@ -206,6 +216,15 @@
         </div>
         <div id="pf-pins"></div>
         <div id="pf-popover-host"></div>`,
+
+    // Collapsed state: a small floating launcher that re-opens the overlay.
+    // `rtl` makes start/end resolve against the host page direction (the shadow
+    // UI is otherwise forced LTR), so e.g. `top-end` lands top-left on an RTL page.
+    launcher: (count, position, rtl) => `
+        <button class="pf-launcher pf-pos-${position || 'bottom-end'}${rtl ? ' pf-rtl' : ''}" id="pf-launcher" title="Open Pointer feedback" aria-label="Open Pointer feedback">
+          ${ICON.pin}
+          ${count ? `<span class="pf-launcher-badge">${count > 99 ? '99+' : count}</span>` : ''}
+        </button>`,
 
     empty: (msg) => `<div class="pf-empty">${msg}</div>`,
 
@@ -221,11 +240,19 @@
              &#x1f464; Mine only
            </button>`,
 
+    // User filter — only rendered when the list has comments from >1 author.
+    authorFilter: (authors, selectedId) =>
+      `<select class="pf-userfilter" id="pf-author-filter" title="Filter by user">
+             <option value="">&#x1f465; All users</option>
+             ${authors.map((a) => `<option value="${escapeHtml(a.id)}" ${a.id === selectedId ? 'selected' : ''}>${escapeHtml(a.name)}</option>`).join('')}
+           </select>`,
+
     card: (c, i) => {
-      const cls = c.status === 'pending-apply' ? 'pending' : c.status === 'applied' ? 'applied' : '';
+      const cls = c.status === 'pending-apply' ? 'pending' : c.status === 'applied' ? 'applied' : c.status === 'archived' ? 'archived' : '';
       const statusPill = c.status === 'applied'
         ? '<span class="pf-pill status-applied">&#x2713; completed</span>'
-        : c.status === 'pending-apply' ? '<span class="pf-pill status-pending">pending</span>' : '';
+        : c.status === 'pending-apply' ? '<span class="pf-pill status-pending">pending</span>'
+        : c.status === 'archived' ? '<span class="pf-pill status-archived">&#x1f4e6; archived</span>' : '';
       const replies = (c.replies || []).map(r =>
         `<div class="pf-reply ${r.isAi ? 'ai' : ''}"><b>${escapeHtml(r.authorName || r.authorLabel || 'User')}:</b> ${escapeHtml(r.body || r.text || '')}</div>`).join('');
       const envInt = c.environment;
@@ -242,7 +269,6 @@
             <div class="pf-meta">
               <span class="pf-badge">${i + 1}</span>
               ${envLabel ? `<span class="pf-pill env">${escapeHtml(envLabel)}</span>` : ''}
-              ${c.isPrivate ? '<span class="pf-pill private">&#x1f512; Private</span>' : ''}
               ${statusPill}
             </div>
             <div class="pf-text">${escapeHtml(c.body || c.text || '')}</div>
@@ -253,12 +279,18 @@
               <input class="pf-input pf-reply-input" placeholder="Reply…" data-id="${c.id}" />
             </div>
             <div class="pf-actions">
-              <button class="pf-mini ${c.status === 'pending-apply' ? 'apply' : c.status === 'applied' ? 'applied' : 'ready'}" data-act="apply" data-id="${c.id}" ${c.status === 'applied' ? 'disabled' : ''} title="${c.status === 'applied' ? 'Completed' : c.status === 'pending-apply' ? 'Marked ready — click to unmark' : 'Mark ready to apply'}">
-                ${c.status === 'applied' ? ICON.check : ICON.flag}<span>${c.status === 'applied' ? 'Done' : 'Ready'}</span>
-              </button>
-              ${c.status !== 'applied' ? `<button class="pf-mini done pf-icon" data-act="complete" data-id="${c.id}" title="Mark completed" aria-label="Mark completed">${ICON.check}</button>` : ''}
-              ${c._mine ? `<button class="pf-mini pf-icon" data-act="edit" data-id="${c.id}" title="Edit" aria-label="Edit">${ICON.pencil}</button>` : ''}
-              ${c.status === 'open' ? `<button class="pf-mini danger pf-icon" data-act="delete" data-id="${c.id}" title="Delete" aria-label="Delete">${ICON.trash}</button>` : ''}
+              ${(c.status === 'applied' || c.status === 'archived') ? '' : `<button class="pf-mini ${c.status === 'pending-apply' ? 'apply' : 'ready'}" data-act="apply" data-id="${c.id}" title="${c.status === 'pending-apply' ? 'Marked ready — click to unmark' : 'Mark ready to apply'}">
+                ${ICON.flag}<span>Ready</span>
+              </button>`}
+              ${(c.status === 'open' || c.status === 'pending-apply') ? `<button class="pf-mini done pf-icon" data-act="complete" data-id="${c.id}" title="Mark completed" aria-label="Mark completed">${ICON.check}</button>` : ''}
+              ${c.status === 'applied' ? `<button class="pf-mini ready" data-act="reopen" data-id="${c.id}" title="Re-open">${ICON.reopen}<span>Re-open</span></button>
+              <button class="pf-mini pf-icon" data-act="archive" data-id="${c.id}" title="Archive" aria-label="Archive">${ICON.archive}</button>` : ''}
+              ${c.status === 'archived' ? `<button class="pf-mini ready" data-act="reopen" data-id="${c.id}" title="Re-open">${ICON.reopen}<span>Re-open</span></button>` : ''}
+              <div class="pf-actions-end">
+                ${c._mine ? `<button class="pf-mini pf-icon${c.isPrivate ? ' private-on' : ''}" data-act="visibility" data-id="${c.id}" data-private="${c.isPrivate ? 'false' : 'true'}" title="${c.isPrivate ? 'Private — click to make public' : 'Make private (only you)'}" aria-label="${c.isPrivate ? 'Make public' : 'Make private'}">${c.isPrivate ? ICON.lock : ICON.unlock}</button>` : ''}
+                ${c._mine ? `<button class="pf-mini pf-icon" data-act="edit" data-id="${c.id}" title="Edit" aria-label="Edit">${ICON.pencil}</button>` : ''}
+                ${c.status === 'open' ? `<button class="pf-mini danger pf-icon" data-act="delete" data-id="${c.id}" title="Delete" aria-label="Delete">${ICON.trash}</button>` : ''}
+              </div>
             </div>
           </div>`;
     },
@@ -293,6 +325,10 @@
       this.sourceAttr = this.getAttribute('source-attr') || 'data-component-source';
       // Screenshot capture is ON by default; opt out with screenshot="false".
       this.screenshotEnabled = (this.getAttribute('screenshot') || '').toLowerCase() !== 'false';
+      // Collapsed-launcher corner: top-start | top-end | bottom-start | bottom-end (default bottom-end).
+      const POSITIONS = ['top-start', 'top-end', 'bottom-start', 'bottom-end'];
+      const pos = (this.getAttribute('launcher-position') || '').toLowerCase();
+      this.launcherPosition = POSITIONS.includes(pos) ? pos : 'bottom-end';
       this.server = (this.getAttribute('server') ||
         (SCRIPT_SRC ? new URL(SCRIPT_SRC).origin : window.location.origin)).replace(/\/$/, '');
 
@@ -302,7 +338,10 @@
       this.comments = [];
       this.statusFilter = 'all';
       this.mineOnly = false;
+      this.authorFilter = null;   // when set (an authorId), show only that user's comments
       this.hiddenPrivateCount = 0;
+      // Whether the overlay is collapsed to a small launcher (persisted per browser).
+      this._collapsed = (() => { try { return localStorage.getItem('pointer_hidden') === '1'; } catch (e) { return false; } })();
       this.picking = false;
       this.sidebarOpen = false;
       this.hovered = null;
@@ -407,6 +446,8 @@
       await this.fetchComments();
       this.renderSidebar();
       this.renderPins();
+      // When collapsed, re-render so the launcher badge reflects the loaded count.
+      if (this._collapsed) this.renderChrome();
     }
 
     // --- API ----------------------------------------------------------------
@@ -700,10 +741,42 @@
     }
 
     // --- Chrome (toolbar + sidebar shell) -----------------------------------
+    // True when the host page renders right-to-left. Read live (not cached) so
+    // the launcher corner tracks a page that toggles direction at runtime.
+    _pageIsRtl() {
+      try {
+        const html = document.documentElement;
+        const attr = (html.getAttribute('dir') || document.body?.getAttribute('dir') || '').toLowerCase();
+        if (attr === 'rtl' || attr === 'ltr') return attr === 'rtl';
+        return getComputedStyle(html).direction === 'rtl';
+      } catch (e) {
+        return false;
+      }
+    }
+
     renderChrome() {
+      // Collapsed: show only a small launcher that re-opens the overlay.
+      if (this._collapsed) {
+        const n = (this.comments || []).filter((c) => c.status !== 'archived').length;
+        this.root.innerHTML = TPL.launcher(n, this.launcherPosition, this._pageIsRtl());
+        const launcher = this.root.querySelector('#pf-launcher');
+        if (launcher) launcher.addEventListener('click', () => this.showOverlay());
+        return;
+      }
+
       const displayName = this.user ? escapeHtml(this.user.displayName || this.user.email) : '';
       const roleLabel = this.user ? escapeHtml(this.user.roleName || '') : '';
       this.root.innerHTML = TPL.chrome(displayName, roleLabel);
+
+      const hideBtn = this.root.querySelector('#pf-hide');
+      if (hideBtn) hideBtn.addEventListener('click', () => this.hideOverlay());
+
+      // User icon — placeholder action for now (identity is in the tooltip);
+      // ready to grow into a profile/sign-out menu later.
+      const userBtn = this.root.querySelector('#pf-user');
+      if (userBtn) userBtn.addEventListener('click', () => {
+        if (this.user) this.toast(`Signed in as ${this.user.displayName || this.user.email}${this.user.roleName ? ' · ' + this.user.roleName : ''}`);
+      });
 
       this.root.querySelector('#pf-add').addEventListener('click', () => {
         if (!this.token) {
@@ -721,6 +794,26 @@
         await this.fetchComments(); this.renderSidebar(); this.renderPins(); this.toast('Refreshed');
       });
       this.root.querySelector('#pf-close').addEventListener('click', () => this.toggleSidebar(false));
+    }
+
+    // Collapse the overlay to the floating launcher (persists across reloads).
+    hideOverlay() {
+      if (this.picking) this.stopPicking();
+      this.sidebarOpen = false;
+      this._collapsed = true;
+      try { localStorage.setItem('pointer_hidden', '1'); } catch (e) {}
+      this.renderChrome();
+      this.toast('Pointer hidden — click the pin to reopen');
+    }
+
+    // Restore the full overlay from the launcher.
+    showOverlay() {
+      this._collapsed = false;
+      try { localStorage.removeItem('pointer_hidden'); } catch (e) {}
+      this.renderChrome();
+      if (this.token) {
+        this.fetchComments().then(() => { this.renderSidebar(); this.renderPins(); });
+      }
     }
 
     toggleSidebar(force) {
@@ -1085,6 +1178,40 @@
       }
     }
 
+    // Generic status change (used by completed-item actions: Re-open → open, Archive → archived).
+    async setStatus(comment, nextStr, toastMsg) {
+      const nextInt = STATUS_INT[nextStr];
+      try {
+        const r = await this.api(`/api/comments/${comment.id}`, {
+          method: 'PATCH',
+          body: JSON.stringify({ status: nextInt })
+        });
+        if (!r.ok) throw new Error();
+        comment.status = nextStr;
+        this.renderSidebar(); this.renderPins();
+        this.toast(toastMsg || 'Updated');
+      } catch (e) {
+        if (e.message !== 'HTTP 401 Unauthorized') this.toast('Update failed', 'error');
+      }
+    }
+
+    // Toggle a comment's privacy — author-only (enforced server-side too). A
+    // private comment is visible only to its author (and their AI tool).
+    async setVisibility(comment, isPrivate) {
+      try {
+        const r = await this.api(`/api/comments/${comment.id}/visibility`, {
+          method: 'PATCH',
+          body: JSON.stringify({ isPrivate })
+        });
+        if (!r.ok) throw new Error('HTTP ' + r.status);
+        comment.isPrivate = isPrivate;
+        this.renderSidebar(); this.renderPins();
+        this.toast(isPrivate ? 'Marked private' : 'Made public');
+      } catch (e) {
+        if (e.message !== 'HTTP 401 Unauthorized') this.toast('Update failed', 'error');
+      }
+    }
+
     async markCompleted(comment) {
       // Mark done directly — for changes already applied outside Pointer.
       // PATCH status → Applied (3), stamping who marked it.
@@ -1181,6 +1308,24 @@
       return String(c.authorId || '').toLowerCase() === String(uid).toLowerCase();
     }
 
+    // Distinct comment authors in the current project list: [{ id, name }].
+    distinctAuthors(comments) {
+      const seen = new Set();
+      const out = [];
+      for (const c of comments) {
+        const id = String(c.authorId || '');
+        if (id && !seen.has(id)) { seen.add(id); out.push({ id, name: c.authorName || id }); }
+      }
+      return out;
+    }
+
+    // Apply the "who" filters in priority order: Mine wins; else a chosen author.
+    scopeByWho(comments) {
+      if (this.mineOnly) return comments.filter((c) => this.isMine(c));
+      if (this.authorFilter) return comments.filter((c) => String(c.authorId || '') === this.authorFilter);
+      return comments;
+    }
+
     // --- Sidebar render ------------------------------------------------------
     renderSidebar() {
       const all = this.pageComments();
@@ -1188,22 +1333,28 @@
       // view (counts, list, empty-state) is restricted to the user's own comments.
       const canMine = !!(this.user && this.user.id);
       if (!canMine) this.mineOnly = false;
-      const scoped = this.mineOnly ? all.filter((c) => this.isMine(c)) : all;
+      const authors = this.distinctAuthors(all);
+      // Drop a stale author selection (e.g. after refetch) so the filter can't get stuck.
+      if (this.authorFilter && !authors.some((a) => a.id === this.authorFilter)) this.authorFilter = null;
+      const scoped = this.scopeByWho(all);
       const counts = {
-        all: scoped.length,
+        // "All" means active (non-archived); archived are moved out to their own chip.
+        all: scoped.filter((c) => c.status !== 'archived').length,
         open: scoped.filter((c) => c.status === 'open').length,
         'pending-apply': scoped.filter((c) => c.status === 'pending-apply').length,
         applied: scoped.filter((c) => c.status === 'applied').length,
+        archived: scoped.filter((c) => c.status === 'archived').length,
       };
 
       const countEl = this.root.querySelector('#pf-count');
-      if (countEl) countEl.textContent = all.length;
+      if (countEl) countEl.textContent = all.filter((c) => c.status !== 'archived').length;
 
       // Status filter chips + (optional) "Mine only" toggle.
       const filtersEl = this.root.querySelector('#pf-filters');
       if (filtersEl) {
         filtersEl.innerHTML = FILTERS.map((f) =>
           TPL.filterChip(f, this.statusFilter === f.key, counts[f.key])).join('')
+          + ((authors.length > 1 && !this.mineOnly) ? TPL.authorFilter(authors, this.authorFilter || '') : '')
           + (canMine ? TPL.mineToggle(this.mineOnly) : '');
         filtersEl.querySelectorAll('[data-filter]').forEach((b) =>
           b.addEventListener('click', () => { this.statusFilter = b.dataset.filter; this.renderSidebar(); }));
@@ -1211,27 +1362,32 @@
         if (mineBtn) mineBtn.addEventListener('click', () => {
           this.mineOnly = !this.mineOnly; this.renderSidebar(); this.renderPins();
         });
+        const authorSel = filtersEl.querySelector('#pf-author-filter');
+        if (authorSel) authorSel.addEventListener('change', () => {
+          this.authorFilter = authorSel.value || null;
+          this.renderSidebar(); this.renderPins();
+        });
       }
 
       const list = this.root.querySelector('#pf-list');
       if (!list) return;
 
-      const shown = this.statusFilter === 'all' ? scoped : scoped.filter((c) => c.status === this.statusFilter);
-      const hiddenNote = this.hiddenPrivateCount > 0
-        ? `<div class="pf-hidden-note">&#x1f512; ${this.hiddenPrivateCount} private comment${this.hiddenPrivateCount === 1 ? '' : 's'} hidden</div>`
-        : '';
+      // "All" shows active comments only (archived live under their own chip).
+      const shown = this.statusFilter === 'all'
+        ? scoped.filter((c) => c.status !== 'archived')
+        : scoped.filter((c) => c.status === this.statusFilter);
       if (!scoped.length) {
-        list.innerHTML = hiddenNote + TPL.empty(this.mineOnly
+        list.innerHTML = TPL.empty(this.mineOnly
           ? 'You haven\'t left any comments yet.'
           : 'No comments on this project yet.<br/>Click "+ Comment", then click an element.');
         return;
       }
       if (!shown.length) {
-        list.innerHTML = hiddenNote + TPL.empty(`No ${FILTERS.find((f) => f.key === this.statusFilter).label.toLowerCase()} comments${this.mineOnly ? ' of yours' : ''}.`);
+        list.innerHTML = TPL.empty(`No ${FILTERS.find((f) => f.key === this.statusFilter).label.toLowerCase()} comments${this.mineOnly ? ' of yours' : ''}.`);
         return;
       }
 
-      list.innerHTML = hiddenNote + shown.map((c, i) => { c._mine = this.isMine(c); return TPL.card(c, i); }).join('');
+      list.innerHTML = shown.map((c, i) => { c._mine = this.isMine(c); return TPL.card(c, i); }).join('');
 
       list.querySelectorAll('[data-act="apply"]').forEach(b => b.addEventListener('click', () => {
         const c = this.comments.find(x => String(x.id) === String(b.dataset.id));
@@ -1243,6 +1399,18 @@
       }));
       list.querySelectorAll('[data-act="delete"]').forEach(b => b.addEventListener('click', () => this.deleteComment(b.dataset.id)));
       list.querySelectorAll('[data-act="edit"]').forEach(b => b.addEventListener('click', () => this.startEdit(b.dataset.id)));
+      list.querySelectorAll('[data-act="visibility"]').forEach(b => b.addEventListener('click', () => {
+        const c = this.comments.find(x => String(x.id) === String(b.dataset.id));
+        if (c) this.setVisibility(c, b.dataset.private === 'true');
+      }));
+      list.querySelectorAll('[data-act="reopen"]').forEach(b => b.addEventListener('click', () => {
+        const c = this.comments.find(x => String(x.id) === String(b.dataset.id));
+        if (c) this.setStatus(c, 'open', 'Re-opened');
+      }));
+      list.querySelectorAll('[data-act="archive"]').forEach(b => b.addEventListener('click', () => {
+        const c = this.comments.find(x => String(x.id) === String(b.dataset.id));
+        if (c) this.setStatus(c, 'archived', 'Archived');
+      }));
       list.querySelectorAll('.pf-reply-input').forEach(inp => inp.addEventListener('keydown', (e) => {
         if (e.key === 'Enter' && inp.value.trim()) { this.addReply(inp.dataset.id, inp.value.trim()); inp.value = ''; }
       }));
@@ -1252,8 +1420,8 @@
     renderPins() {
       const wrap = this.root && this.root.querySelector('#pf-pins');
       if (!wrap) return;
-      const all = this.pageComments();
-      const here = this.mineOnly ? all.filter((c) => this.isMine(c)) : all;
+      const all = this.pageComments().filter((c) => c.status !== 'archived');
+      const here = this.scopeByWho(all);
       wrap.innerHTML = here.map((c, i) => {
         const el = matchElement(c);
         if (!el) return '';

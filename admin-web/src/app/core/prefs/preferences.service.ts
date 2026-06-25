@@ -1,7 +1,7 @@
 import { inject, Injectable, signal } from '@angular/core';
 import { TranslocoService } from '@jsverse/transloco';
-import { Api } from '../api/api';
-import { MeResponse, UpdatePreferencesRequest } from '../api/models';
+import { MeService } from '@api/me/me.service';
+import { UpdatePreferencesRequest } from '@api/model';
 
 type Lang = 'ar' | 'en';
 type Theme = 'light' | 'dark';
@@ -12,7 +12,7 @@ const USER_KEY = 'pointer_admin_user';
 @Injectable({ providedIn: 'root' })
 export class PreferencesService {
   private transloco = inject(TranslocoService);
-  private api = inject(Api);
+  private meService = inject(MeService);
   language = signal<Lang>('en');
   theme = signal<Theme>('dark');
 
@@ -51,8 +51,6 @@ export class PreferencesService {
     const store = this.storage();
     store?.setItem(LANG_KEY, l);
     store?.setItem(THEME_KEY, t);
-    // Keep the cached user object in sync so a page reload (which seeds init from
-    // the cached user) reflects the latest applied prefs instead of stale login values.
     const raw = store?.getItem(USER_KEY);
     if (raw) {
       try {
@@ -78,6 +76,6 @@ export class PreferencesService {
 
   private persist(p: UpdatePreferencesRequest): void {
     if (!this.storage()?.getItem('pointer_admin_token')) return;
-    this.api.patch<MeResponse>('/api/me/preferences', p).subscribe({ next: () => {}, error: () => {} });
+    this.meService.patchApiMePreferences(p).subscribe({ next: () => {}, error: () => {} });
   }
 }

@@ -52,6 +52,7 @@ public class StatsService : IStatsService
                 var open = rows.Where(r => r.Status == CommentStatus.Open).Sum(r => r.Count);
                 var pending = rows.Where(r => r.Status == CommentStatus.ReadyToApply).Sum(r => r.Count);
                 var completed = rows.Where(r => r.Status == CommentStatus.Applied).Sum(r => r.Count);
+                var archived = rows.Where(r => r.Status == CommentStatus.Archived).Sum(r => r.Count);
                 var privateComments = rows.Where(r => r.IsPrivate).Sum(r => r.Count);
                 return new ProjectStats
                 {
@@ -62,7 +63,8 @@ public class StatsService : IStatsService
                     Open = open,
                     Pending = pending,
                     Completed = completed,
-                    Comments = open + pending + completed,
+                    Archived = archived,
+                    Comments = open + pending + completed + archived,
                     PrivateComments = privateComments,
                 };
             })
@@ -77,9 +79,10 @@ public class StatsService : IStatsService
             Open = grouped.Where(g => g.Status == CommentStatus.Open).Sum(g => g.Count),
             Pending = grouped.Where(g => g.Status == CommentStatus.ReadyToApply).Sum(g => g.Count),
             Completed = grouped.Where(g => g.Status == CommentStatus.Applied).Sum(g => g.Count),
+            Archived = grouped.Where(g => g.Status == CommentStatus.Archived).Sum(g => g.Count),
             PrivateComments = grouped.Where(g => g.IsPrivate).Sum(g => g.Count),
         };
-        totals.Comments = totals.Open + totals.Pending + totals.Completed;
+        totals.Comments = totals.Open + totals.Pending + totals.Completed + totals.Archived;
 
         return Result<StatsResponse>.Success(new StatsResponse { Totals = totals, Projects = perProject });
     }

@@ -11,6 +11,7 @@ public class AuthController(IAuthService authService) : ControllerBase
 {
     [AllowAnonymous]
     [HttpPost("login")]
+    [ProducesResponseType(typeof(LoginResponse), StatusCodes.Status200OK)]
     public async Task<IActionResult> Login([FromBody] LoginRequest request)
     {
         var result = await authService.LoginAsync(request);
@@ -31,6 +32,7 @@ public class AuthController(IAuthService authService) : ControllerBase
 
     [Authorize]
     [HttpGet("me")]
+    [ProducesResponseType(typeof(MeResponse), StatusCodes.Status200OK)]
     public IActionResult Me()
     {
         var result = authService.Me();

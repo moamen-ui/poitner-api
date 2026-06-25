@@ -42,34 +42,61 @@ Infrastructure/ EF Core + Postgres (snake_case), Repository/UnitOfWork, BCrypt h
 Identity is read only through `ICurrentUser`; tokens are issued only through `ITokenService` — so a
 future swap to Keycloak is contained to those two seams.
 
-## Quick start (local)
+## Installation
 
-Requires Docker (for Postgres) and either the .NET 8 SDK or Docker for the API.
+### Prerequisites
+
+- **Docker** + Docker Compose — runs Postgres (and, optionally, the API).
+- **.NET 8 SDK** — only if you want to run the API outside Docker.
+- **Node ≥ 22.22 + npm** — only for the Angular admin dashboard (`admin-web/`).
+- **`just`** (optional) — convenience commands; each recipe has a raw equivalent shown below.
+
+### 1. Clone & configure
 
 ```bash
-cp .env.example .env          # adjust JWT__SigningKey / ADMIN__* if you like
+git clone <repo-url> pointer-api && cd pointer-api
+cp .env.example .env          # set JWT__SigningKey / ADMIN__* (change before any real deploy)
+```
 
-# Option A — full stack in Docker (Postgres + API, hot reload)
-just up                       # API on http://localhost:8090, Postgres on :5433
+### 2. Run the API + database
 
-# Option B — Postgres in Docker, API locally
+```bash
+# Option A — full stack in Docker (Postgres + API, hot reload)   ← recommended
+just up                       # or: docker compose up -d
+# API on http://localhost:8090, Postgres on :5433
+
+# Option B — Postgres in Docker, API run locally (needs the .NET 8 SDK)
 docker compose up -d db
 ConnectionStrings__Default="Host=localhost;Port=5433;Database=pointer;Username=pointer;Password=pointer" \
 ASPNETCORE_URLS="http://0.0.0.0:8090" dotnet run --project API
 ```
 
 On boot the API auto-migrates (`DBMigrationEnabled=true`) and **seeds one admin** from
-`ADMIN__EMAIL` / `ADMIN__PASSWORD`.
+`ADMIN__EMAIL` / `ADMIN__PASSWORD` (see [Default admin login](#default-admin-login)).
 
-Useful URLs:
+### 3. Admin dashboard (Angular — optional)
+
+```bash
+cd admin-web
+npm install
+npm start                     # → http://localhost:4200   (needs Node ≥ 22.22)
+```
+
+Sign in with the seeded admin; details in [Admin Web (Angular)](#admin-web-angular).
+
+### 4. Verify
+
+Open the URLs below and sign in at `/admin/` with the seeded admin. To add the feedback widget to
+an app, see [Integrate an app](#integrate-an-app-two-line-loader); to wire the AI apply-tool, see
+[Install the AI apply skill](#install-the-ai-apply-skill-in-a-consuming-repo).
 
 | What | URL |
 |---|---|
 | Swagger | http://localhost:8090/swagger |
 | Admin UI | http://localhost:8090/admin/ |
 | Web component | http://localhost:8090/pointer.js |
-| AI skill | http://localhost:8090/skill.md |
-| Test host page | http://localhost:8090/test.html |
+| Apply skill (`pointer-feedback`) | http://localhost:8090/skill.md |
+| Init skill (`pointer-init`) | http://localhost:8090/pointer-init.md |
 
 ## Default admin login
 
@@ -84,6 +111,10 @@ Use these to sign in at **http://localhost:8090/admin/**. ⚠️ **Change `ADMIN
 before deploying anywhere real** (it's only a local default).
 
 ## Provision accounts + a project
+
+Stakeholders can **self-sign-up** from the feedback widget (name, email, password, and a
+non-admin role); the request lands in a **pending** queue an admin approves (and may change the
+role for) or rejects from the dashboard. Admins can also create accounts directly:
 
 1. Open **http://localhost:8090/admin/** and sign in as the seeded admin (credentials above).
 2. **Roles →** (optional) add custom roles (e.g. Designer, QA) or rename/disable the defaults. Tick
@@ -104,12 +135,26 @@ VITE_POINTER_SERVER=http://localhost:8090
 VITE_POINTER_PROJECT=tuwaiq-clubs
 ```
 
-On first use the overlay shows an **email/password login** (the local account); the author and role
-come from the token. Element source paths still come from the app's `data-component-source` stamping.
+On first use the toolbar appears without a popup; signing in (or self-signing-up) happens when the
+user clicks the tool. The author and role come from the token. Element source paths still come from
+the app's `data-component-source` stamping. The widget also captures an optional element screenshot
+per comment, supports **private** comments (visible only to their author), and **archived** status.
 
-## Install the AI apply skill (in a consuming repo)
+> **Adding Pointer to another app?** Install the **`pointer-init`** skill and run it — it asks for the
+> variables (project key, server URL, environment), detects the stack (Vite/Angular/Next/static),
+> injects the loader, wires env, and verifies (see below).
+
+## Install the Pointer skills (in a consuming repo)
+
+Both skills are **served by the API** and install the same way — drop them into your repo's
+`.claude/skills/` and run them:
 
 ```bash
+# pointer-init — add the <pointer-feedback> widget to this app
+mkdir -p .claude/skills/pointer-init
+curl -s http://localhost:8090/pointer-init.md -o .claude/skills/pointer-init/SKILL.md
+
+# pointer-feedback — list / apply the feedback queue with an AI tool
 mkdir -p .claude/skills/pointer-feedback
 curl -s http://localhost:8090/skill.md -o .claude/skills/pointer-feedback/SKILL.md
 ```
@@ -152,6 +197,10 @@ npm start            # → http://localhost:4200  (needs Node ≥ 22.22)
 
 - Talks to the API at `apiBase` in `src/environments/environment.ts` (default `http://localhost:8090`);
   CORS is already open server-side.
+- The Angular API layer (services + models) is **auto-generated from Swagger via Orval** into
+  `src/app/core/api/generated/` — never edit it by hand. After backend endpoint/DTO changes, run
+  `npm run generate-services` (API must be up). See
+  [`docs/skills/orval-codegen/SKILL.md`](docs/skills/orval-codegen/SKILL.md).
 - Sign in with an admin account (e.g. the seeded `admin@pointer.local` / `ChangeMe123!`). Auth is the
   same local-account JWT; the SPA stores it and sends `Authorization: Bearer …`, and only roles whose
   `GrantsAdmin` is true can enter.
@@ -169,11 +218,18 @@ npm start            # → http://localhost:4200  (needs Node ≥ 22.22)
 - [`docs/PLAN.md`](docs/PLAN.md) — phased implementation plan.
 - [`docs/TASKS.md`](docs/TASKS.md) — living implementation tracker.
 
+### Skills for AI agents
+
+Repo conventions are also captured as agent-readable skills (see [`AGENTS.md`](AGENTS.md) /
+[`CLAUDE.md`](CLAUDE.md)):
+
+- [`docs/skills/orval-codegen/SKILL.md`](docs/skills/orval-codegen/SKILL.md) — *(internal)*
+  regenerating the Angular API layer from Swagger.
+- [`API/wwwroot/pointer-init.md`](API/wwwroot/pointer-init.md) — *(consumer, served at
+  `/pointer-init.md`)* the `pointer-init` skill for adding the `<pointer-feedback>` widget to a host app.
+
 ## Status
 
 ✅ **Implemented & verified locally** (Phases 0–9). Backend, auth, admin UI, web component, and AI
 skill are working; full API + browser e2e pass. Remaining before team use: choose the final product
 name, deploy the service, and (later) the optional Keycloak/SSO swap.
-```
-
-> Note: commits are intentionally **not** made by the tooling — all work stays in the working tree.

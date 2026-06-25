@@ -7,7 +7,10 @@ using Pointer.Infrastructure;
 
 var builder = WebApplication.CreateBuilder(args);
 
-builder.Services.AddControllers();
+builder.Services.AddControllers(options =>
+{
+    options.Filters.Add(new Microsoft.AspNetCore.Mvc.ProducesAttribute("application/json"));
+});
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddApplication();
 builder.Services.AddInfrastructure(builder.Configuration);

@@ -1,7 +1,7 @@
 FROM mcr.microsoft.com/dotnet/sdk:8.0 AS dev
 WORKDIR /src
 ENV ASPNETCORE_URLS=http://0.0.0.0:8080
-CMD ["dotnet", "watch", "--project", "API", "run"]
+CMD ["dotnet", "watch", "--project", "API", "run", "--no-launch-profile"]
 
 FROM mcr.microsoft.com/dotnet/sdk:8.0 AS build
 WORKDIR /src

@@ -1,4 +1,4 @@
-import { Component, inject, OnInit, signal, TemplateRef, ViewChild } from '@angular/core';
+import { Component, inject, signal, TemplateRef, ViewChild, computed } from '@angular/core';
 import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { MatTableModule } from '@angular/material/table';
 import { MatButtonModule } from '@angular/material/button';
@@ -9,8 +9,9 @@ import { MatSnackBar } from '@angular/material/snack-bar';
 import { MatProgressBarModule } from '@angular/material/progress-bar';
 import { MatDialog, MatDialogModule, MatDialogRef } from '@angular/material/dialog';
 import { TranslocoModule, TranslocoService } from '@jsverse/transloco';
-import { ProjectsService } from '../../core/api/projects.service';
-import { ProjectResponse } from '../../core/api/models';
+import { ProjectsService, getApiAdminProjectsResource } from '@api/projects/projects.service';
+import { extractMessage } from '../../core/api/extract-message';
+import type { ProjectResponse } from '@api/model';
 
 @Component({
   selector: 'app-projects',
@@ -104,10 +105,9 @@ import { ProjectResponse } from '../../core/api/models';
     .page-head h2 { margin: 0; }
     .projects-table { width: 100%; }
     .dialog-form { display: flex; flex-direction: column; gap: 12px; min-width: 320px; padding-top: 8px; }
-    /* status chip styles are global (theme-aware) — see styles.scss */
   `],
 })
-export class ProjectsComponent implements OnInit {
+export class ProjectsComponent {
   private projectsService = inject(ProjectsService);
   private snack = inject(MatSnackBar);
   private fb = inject(FormBuilder);
@@ -117,8 +117,10 @@ export class ProjectsComponent implements OnInit {
   @ViewChild('addDialog') addDialog!: TemplateRef<unknown>;
   private dialogRef?: MatDialogRef<unknown>;
 
-  projects = signal<ProjectResponse[]>([]);
-  loading = signal(false);
+  projectsResource = getApiAdminProjectsResource();
+  projects = computed(() => this.projectsResource.value() ?? []);
+  busy = signal(false);
+  loading = computed(() => this.projectsResource.isLoading() || this.busy());
 
   displayedColumns = ['key', 'name', 'status', 'actions'];
 
@@ -127,43 +129,32 @@ export class ProjectsComponent implements OnInit {
     name: ['', Validators.required],
   });
 
-  ngOnInit() {
-    this.load();
-  }
-
   openAdd() {
     this.addForm.reset({ key: '', name: '' });
     this.dialogRef = this.dialog.open(this.addDialog, { width: '440px' });
   }
 
-  private load() {
-    this.loading.set(true);
-    this.projectsService.list().subscribe({
-      next: (projects) => { this.projects.set(projects); this.loading.set(false); },
-      error: (e) => { this.loading.set(false); this.snack.open(e.message || 'Failed to load projects', 'OK', { duration: 4000 }); },
-    });
-  }
-
   addProject() {
     if (this.addForm.invalid) return;
-    this.loading.set(true);
+    this.busy.set(true);
     const val = this.addForm.getRawValue();
-    this.projectsService.create({ key: val.key, name: val.name }).subscribe({
+    this.projectsService.postApiAdminProjects(val).subscribe({
       next: () => {
+        this.busy.set(false);
         this.dialogRef?.close();
         this.addForm.reset();
-        this.load();
+        this.projectsResource.reload();
       },
-      error: (e) => { this.loading.set(false); this.snack.open(e.message || 'Failed to create project', 'OK', { duration: 4000 }); },
+      error: (e) => { this.busy.set(false); this.snack.open(extractMessage(e), 'OK', { duration: 4000 }); },
     });
   }
 
   toggleActive(project: ProjectResponse) {
     if (project.isActive && !confirm(this.transloco.translate('common.confirmDisable', { name: project.key }))) return;
-    this.loading.set(true);
-    this.projectsService.update(project.id, { isActive: !project.isActive }).subscribe({
-      next: () => this.load(),
-      error: (e) => { this.loading.set(false); this.snack.open(e.message || 'Failed to update project', 'OK', { duration: 4000 }); },
+    this.busy.set(true);
+    this.projectsService.patchApiAdminProjectsId(project.id!, { isActive: !project.isActive }).subscribe({
+      next: () => { this.busy.set(false); this.projectsResource.reload(); },
+      error: (e) => { this.busy.set(false); this.snack.open(extractMessage(e), 'OK', { duration: 4000 }); },
     });
   }
 }

@@ -15,6 +15,7 @@ public class StatsTotals
     public int Open { get; set; }
     public int Pending { get; set; }
     public int Completed { get; set; }
+    public int Archived { get; set; }
     public int PrivateComments { get; set; }
 }
 
@@ -28,5 +29,6 @@ public class ProjectStats
     public int Open { get; set; }
     public int Pending { get; set; }
     public int Completed { get; set; }
+    public int Archived { get; set; }
     public int PrivateComments { get; set; }
 }

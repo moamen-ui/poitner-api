@@ -12,6 +12,7 @@ namespace Pointer.API.Controllers.Admin;
 public class RolesController(IRoleService roleService) : ControllerBase
 {
     [HttpGet]
+    [ProducesResponseType(typeof(List<RoleResponse>), StatusCodes.Status200OK)]
     public async Task<IActionResult> List()
     {
         var result = await roleService.ListAsync();
@@ -19,6 +20,7 @@ public class RolesController(IRoleService roleService) : ControllerBase
     }
 
     [HttpPost]
+    [ProducesResponseType(typeof(RoleResponse), StatusCodes.Status200OK)]
     public async Task<IActionResult> Create([FromBody] CreateRoleRequest request)
     {
         var result = await roleService.CreateAsync(request);
@@ -27,6 +29,7 @@ public class RolesController(IRoleService roleService) : ControllerBase
     }
 
     [HttpPatch("{id:int}")]
+    [ProducesResponseType(typeof(RoleResponse), StatusCodes.Status200OK)]
     public async Task<IActionResult> Update(int id, [FromBody] UpdateRoleRequest request)
     {
         var result = await roleService.UpdateAsync(id, request);

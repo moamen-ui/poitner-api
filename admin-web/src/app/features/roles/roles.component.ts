@@ -1,4 +1,4 @@
-import { Component, inject, OnInit, signal, TemplateRef, ViewChild } from '@angular/core';
+import { Component, inject, signal, TemplateRef, ViewChild, computed } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { MatButtonModule } from '@angular/material/button';
 import { MatCheckboxModule } from '@angular/material/checkbox';
@@ -10,8 +10,9 @@ import { MatSnackBar } from '@angular/material/snack-bar';
 import { MatTableModule } from '@angular/material/table';
 import { MatDialog, MatDialogModule, MatDialogRef } from '@angular/material/dialog';
 import { TranslocoModule, TranslocoService } from '@jsverse/transloco';
-import { RoleResponse } from '../../core/api/models';
-import { RolesService } from '../../core/api/roles.service';
+import { RolesService, getApiAdminRolesResource } from '@api/roles/roles.service';
+import { extractMessage } from '../../core/api/extract-message';
+import type { RoleResponse } from '@api/model';
 
 @Component({
   selector: 'app-roles',
@@ -37,10 +38,8 @@ import { RolesService } from '../../core/api/roles.service';
         </button>
       </div>
 
-      <!-- Roles table -->
       @if (roles().length > 0) {
         <table mat-table [dataSource]="roles()" class="mat-elevation-z2 roles-table">
-          <!-- Name column -->
           <ng-container matColumnDef="name">
             <th mat-header-cell *matHeaderCellDef>{{ 'roles.name' | transloco }}</th>
             <td mat-cell *matCellDef="let role">
@@ -51,7 +50,6 @@ import { RolesService } from '../../core/api/roles.service';
             </td>
           </ng-container>
 
-          <!-- Grants admin column -->
           <ng-container matColumnDef="grantsAdmin">
             <th mat-header-cell *matHeaderCellDef>{{ 'roles.grantsAdmin' | transloco }}</th>
             <td mat-cell *matCellDef="let role">
@@ -63,7 +61,6 @@ import { RolesService } from '../../core/api/roles.service';
             </td>
           </ng-container>
 
-          <!-- Status column -->
           <ng-container matColumnDef="status">
             <th mat-header-cell *matHeaderCellDef>{{ 'roles.status' | transloco }}</th>
             <td mat-cell *matCellDef="let role">
@@ -73,7 +70,6 @@ import { RolesService } from '../../core/api/roles.service';
             </td>
           </ng-container>
 
-          <!-- Actions column -->
           <ng-container matColumnDef="actions">
             <th mat-header-cell *matHeaderCellDef>{{ 'roles.actions' | transloco }}</th>
             <td mat-cell *matCellDef="let role">
@@ -128,7 +124,7 @@ import { RolesService } from '../../core/api/roles.service';
     .dialog-form { display: flex; flex-direction: column; gap: 16px; min-width: 320px; padding-top: 8px; }
   `],
 })
-export class RolesComponent implements OnInit {
+export class RolesComponent {
   private rolesService = inject(RolesService);
   private snack = inject(MatSnackBar);
   private transloco = inject(TranslocoService);
@@ -137,15 +133,13 @@ export class RolesComponent implements OnInit {
   @ViewChild('addDialog') addDialog!: TemplateRef<unknown>;
   private dialogRef?: MatDialogRef<unknown>;
 
-  roles = signal<RoleResponse[]>([]);
+  rolesResource = getApiAdminRolesResource();
+  roles = computed(() => this.rolesResource.value() ?? []);
+
   displayedColumns = ['name', 'grantsAdmin', 'status', 'actions'];
 
   newName = '';
   newGrantsAdmin = false;
-
-  ngOnInit() {
-    this.load();
-  }
 
   openAdd() {
     this.newName = '';
@@ -153,48 +147,41 @@ export class RolesComponent implements OnInit {
     this.dialogRef = this.dialog.open(this.addDialog, { width: '440px' });
   }
 
-  load() {
-    this.rolesService.list().subscribe({
-      next: (data) => this.roles.set(data),
-      error: (e) => this.snack.open(e.message || 'Failed to load roles', 'OK', { duration: 4000 }),
-    });
-  }
-
   addRole() {
     const name = this.newName.trim();
     if (!name) return;
-    this.rolesService.create({ name, grantsAdmin: this.newGrantsAdmin }).subscribe({
+    this.rolesService.postApiAdminRoles({ name, grantsAdmin: this.newGrantsAdmin }).subscribe({
       next: () => {
         this.dialogRef?.close();
         this.newName = '';
         this.newGrantsAdmin = false;
-        this.load();
+        this.rolesResource.reload();
       },
-      error: (e) => this.snack.open(e.message || 'Failed to create role', 'OK', { duration: 4000 }),
+      error: (e) => this.snack.open(extractMessage(e), 'OK', { duration: 4000 }),
     });
   }
 
   toggleGrantsAdmin(role: RoleResponse, grantsAdmin: boolean) {
-    this.rolesService.update(role.id, { grantsAdmin }).subscribe({
-      next: () => this.load(),
-      error: (e) => this.snack.open(e.message || 'Failed to update role', 'OK', { duration: 4000 }),
+    this.rolesService.patchApiAdminRolesId(role.id!, { grantsAdmin }).subscribe({
+      next: () => this.rolesResource.reload(),
+      error: (e) => this.snack.open(extractMessage(e), 'OK', { duration: 4000 }),
     });
   }
 
   renameRole(role: RoleResponse) {
-    const name = window.prompt('New name for role:', role.name);
+    const name = window.prompt('New name for role:', role.name ?? '');
     if (!name || !name.trim() || name.trim() === role.name) return;
-    this.rolesService.update(role.id, { name: name.trim() }).subscribe({
-      next: () => this.load(),
-      error: (e) => this.snack.open(e.message || 'Failed to rename role', 'OK', { duration: 4000 }),
+    this.rolesService.patchApiAdminRolesId(role.id!, { name: name.trim() }).subscribe({
+      next: () => this.rolesResource.reload(),
+      error: (e) => this.snack.open(extractMessage(e), 'OK', { duration: 4000 }),
     });
   }
 
   toggleActive(role: RoleResponse) {
     if (role.isActive && !confirm(this.transloco.translate('common.confirmDisable', { name: role.name }))) return;
-    this.rolesService.update(role.id, { isActive: !role.isActive }).subscribe({
-      next: () => this.load(),
-      error: (e) => this.snack.open(e.message || 'Failed to update role', 'OK', { duration: 4000 }),
+    this.rolesService.patchApiAdminRolesId(role.id!, { isActive: !role.isActive }).subscribe({
+      next: () => this.rolesResource.reload(),
+      error: (e) => this.snack.open(extractMessage(e), 'OK', { duration: 4000 }),
     });
   }
 }

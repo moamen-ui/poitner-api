@@ -12,6 +12,7 @@ namespace Pointer.API.Controllers.Admin;
 public class ProjectsController(IProjectService projectService) : ControllerBase
 {
     [HttpGet]
+    [ProducesResponseType(typeof(List<ProjectResponse>), StatusCodes.Status200OK)]
     public async Task<IActionResult> List()
     {
         var result = await projectService.ListAsync();
@@ -21,6 +22,7 @@ public class ProjectsController(IProjectService projectService) : ControllerBase
     }
 
     [HttpPost]
+    [ProducesResponseType(typeof(ProjectResponse), StatusCodes.Status200OK)]
     public async Task<IActionResult> Create([FromBody] CreateProjectRequest request)
     {
         var result = await projectService.CreateAsync(request);
@@ -30,6 +32,7 @@ public class ProjectsController(IProjectService projectService) : ControllerBase
     }
 
     [HttpPatch("{id:int}")]
+    [ProducesResponseType(typeof(ProjectResponse), StatusCodes.Status200OK)]
     public async Task<IActionResult> Update(int id, [FromBody] UpdateProjectRequest request)
     {
         var result = await projectService.UpdateAsync(id, request);

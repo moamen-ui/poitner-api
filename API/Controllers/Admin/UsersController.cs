@@ -13,6 +13,7 @@ namespace Pointer.API.Controllers.Admin;
 public class UsersController(IUserService userService) : ControllerBase
 {
     [HttpGet]
+    [ProducesResponseType(typeof(List<UserResponse>), StatusCodes.Status200OK)]
     public async Task<IActionResult> List([FromQuery] string? status = null)
     {
         ApprovalStatus? filter = null;
@@ -30,6 +31,7 @@ public class UsersController(IUserService userService) : ControllerBase
     }
 
     [HttpPost("{id:int}/approve")]
+    [ProducesResponseType(typeof(UserResponse), StatusCodes.Status200OK)]
     public async Task<IActionResult> Approve(int id, [FromBody] ApproveUserRequest request)
     {
         var result = await userService.ApproveAsync(id, request);
@@ -39,6 +41,7 @@ public class UsersController(IUserService userService) : ControllerBase
     }
 
     [HttpPost("{id:int}/reject")]
+    [ProducesResponseType(typeof(UserResponse), StatusCodes.Status200OK)]
     public async Task<IActionResult> Reject(int id)
     {
         var result = await userService.RejectAsync(id);
@@ -48,6 +51,7 @@ public class UsersController(IUserService userService) : ControllerBase
     }
 
     [HttpPost]
+    [ProducesResponseType(typeof(UserResponse), StatusCodes.Status200OK)]
     public async Task<IActionResult> Create([FromBody] CreateUserRequest request)
     {
         var result = await userService.CreateAsync(request);
@@ -57,6 +61,7 @@ public class UsersController(IUserService userService) : ControllerBase
     }
 
     [HttpPatch("{id:int}")]
+    [ProducesResponseType(typeof(UserResponse), StatusCodes.Status200OK)]
     public async Task<IActionResult> Update(int id, [FromBody] UpdateUserRequest request)
     {
         var result = await userService.UpdateAsync(id, request);

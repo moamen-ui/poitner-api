@@ -1,4 +1,4 @@
-import { Component, inject, OnInit, signal, TemplateRef, ViewChild } from '@angular/core';
+import { Component, inject, signal, TemplateRef, ViewChild, computed } from '@angular/core';
 import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { DatePipe } from '@angular/common';
 import { MatTableModule } from '@angular/material/table';
@@ -13,9 +13,12 @@ import { MatSnackBar } from '@angular/material/snack-bar';
 import { MatProgressBarModule } from '@angular/material/progress-bar';
 import { MatDialog, MatDialogModule, MatDialogRef } from '@angular/material/dialog';
 import { TranslocoModule, TranslocoService } from '@jsverse/transloco';
-import { UsersService } from '../../core/api/users.service';
-import { RolesService } from '../../core/api/roles.service';
-import { ApprovalStatus, UserResponse, RoleResponse } from '../../core/api/models';
+import { UsersService, getApiAdminUsersResource } from '@api/users/users.service';
+import { getApiAdminRolesResource } from '@api/roles/roles.service';
+import { extractMessage } from '../../core/api/extract-message';
+import type { UserResponse, RoleResponse } from '@api/model';
+
+type FilterStatus = 'Approved' | 'Pending' | 'Rejected';
 
 @Component({
   selector: 'app-users',
@@ -95,7 +98,7 @@ import { ApprovalStatus, UserResponse, RoleResponse } from '../../core/api/model
 
           <ng-container matColumnDef="requested">
             <th mat-header-cell *matHeaderCellDef>{{ 'overview.requested' | transloco }}</th>
-            <td mat-cell *matCellDef="let user">{{ user.createdAt ? (user.createdAt | date:'mediumDate') : '—' }}</td>
+            <td mat-cell *matCellDef="let user">{{ $any(user).createdAt ? ($any(user).createdAt | date:'mediumDate') : '—' }}</td>
           </ng-container>
 
           <ng-container matColumnDef="status">
@@ -119,14 +122,14 @@ import { ApprovalStatus, UserResponse, RoleResponse } from '../../core/api/model
               } @else {
                 <div class="row-actions">
                   <button mat-flat-button color="primary" [matMenuTriggerFor]="approveMenu"
-                    (menuOpened)="approveSelection[user.id] = user.roleId" [disabled]="loading()">
+                    (menuOpened)="approveSelection[user.id!] = user.roleId" [disabled]="loading()">
                     <mat-icon>how_to_reg</mat-icon> {{ 'users.approve' | transloco }}
                   </button>
                   <mat-menu #approveMenu="matMenu">
                     <div class="approve-panel" (click)="$event.stopPropagation()">
                       <mat-form-field appearance="outline" subscriptSizing="dynamic" class="approve-field">
                         <mat-label>{{ 'users.approveAs' | transloco }}</mat-label>
-                        <mat-select [(value)]="approveSelection[user.id]">
+                        <mat-select [(value)]="approveSelection[user.id!]">
                           @for (r of activeRoles(); track r.id) {
                             <mat-option [value]="r.id">{{ r.name }}</mat-option>
                           }
@@ -203,12 +206,10 @@ import { ApprovalStatus, UserResponse, RoleResponse } from '../../core/api/model
     .approve-confirm { width: 100%; }
     .empty { color: var(--muted); padding: 24px 0; }
     .dialog-form { display: flex; flex-direction: column; gap: 12px; min-width: 320px; padding-top: 8px; }
-    /* status chip styles are global (theme-aware) — see styles.scss */
   `],
 })
-export class UsersComponent implements OnInit {
+export class UsersComponent {
   private usersService = inject(UsersService);
-  private rolesService = inject(RolesService);
   private snack = inject(MatSnackBar);
   private fb = inject(FormBuilder);
   private transloco = inject(TranslocoService);
@@ -217,13 +218,20 @@ export class UsersComponent implements OnInit {
   @ViewChild('addDialog') addDialog!: TemplateRef<unknown>;
   private dialogRef?: MatDialogRef<unknown>;
 
-  users = signal<UserResponse[]>([]);
-  roles = signal<RoleResponse[]>([]);
-  loading = signal(false);
-  filter = signal<ApprovalStatus>('Approved');
-  pendingCount = signal(0);
+  filter = signal<FilterStatus>('Approved');
 
-  // Per-user selected role for the approve role-confirm dropdown (keyed by user id).
+  usersResource = getApiAdminUsersResource(
+    computed(() => ({ status: this.filter().toLowerCase() || undefined })),
+  );
+  pendingResource = getApiAdminUsersResource(signal({ status: 'pending' }));
+  rolesResource = getApiAdminRolesResource();
+
+  users = computed(() => this.usersResource.value() ?? []);
+  roles = computed(() => this.rolesResource.value() ?? []);
+  pendingCount = computed(() => this.pendingResource.value()?.length ?? 0);
+  busy = signal(false);
+  loading = computed(() => this.usersResource.isLoading() || this.busy());
+
   approveSelection: Record<number, number> = {};
 
   displayedColumns() {
@@ -252,13 +260,8 @@ export class UsersComponent implements OnInit {
     return active;
   }
 
-  ngOnInit() {
-    this.loadAll();
-  }
-
-  setFilter(status: ApprovalStatus) {
+  setFilter(status: FilterStatus) {
     this.filter.set(status);
-    this.loadUsers();
   }
 
   openAdd() {
@@ -267,87 +270,62 @@ export class UsersComponent implements OnInit {
     this.dialogRef = this.dialog.open(this.addDialog, { width: '440px' });
   }
 
-  private loadAll() {
-    this.loading.set(true);
-    this.rolesService.list().subscribe({
-      next: (roles) => {
-        this.roles.set(roles);
-        this.loadUsers();
-        this.refreshPendingCount();
-      },
-      error: (e) => { this.loading.set(false); this.snack.open(e.message || 'Failed to load roles', 'OK', { duration: 4000 }); },
-    });
-  }
-
-  private loadUsers() {
-    this.loading.set(true);
-    this.usersService.list(this.filter()).subscribe({
-      next: (users) => { this.users.set(users); this.loading.set(false); },
-      error: (e) => { this.loading.set(false); this.snack.open(e.message || 'Failed to load users', 'OK', { duration: 4000 }); },
-    });
-  }
-
-  private refreshPendingCount() {
-    this.usersService.list('Pending').subscribe({
-      next: (users) => this.pendingCount.set(users.length),
-      error: () => { /* badge is best-effort */ },
-    });
-  }
-
   addUser() {
     if (this.addForm.invalid) return;
-    this.loading.set(true);
+    this.busy.set(true);
     const val = this.addForm.getRawValue();
-    this.usersService.create({ email: val.email, displayName: val.displayName, password: val.password, roleId: val.roleId }).subscribe({
+    this.usersService.postApiAdminUsers(val).subscribe({
       next: () => {
         this.dialogRef?.close();
         this.addForm.reset();
-        this.loadAll();
+        this.busy.set(false);
+        this.usersResource.reload();
+        this.pendingResource.reload();
       },
-      error: (e) => { this.loading.set(false); this.snack.open(e.message || 'Failed to create user', 'OK', { duration: 4000 }); },
+      error: (e) => { this.busy.set(false); this.snack.open(extractMessage(e), 'OK', { duration: 4000 }); },
     });
   }
 
   changeRole(user: UserResponse, roleId: number) {
-    this.loading.set(true);
-    this.usersService.update(user.id, { roleId }).subscribe({
-      next: () => this.loadUsers(),
-      error: (e) => { this.loading.set(false); this.snack.open(e.message || 'Failed to update role', 'OK', { duration: 4000 }); this.loadUsers(); },
+    this.busy.set(true);
+    this.usersService.patchApiAdminUsersId(user.id!, { roleId }).subscribe({
+      next: () => { this.busy.set(false); this.usersResource.reload(); },
+      error: (e) => { this.busy.set(false); this.snack.open(extractMessage(e), 'OK', { duration: 4000 }); this.usersResource.reload(); },
     });
   }
 
   toggleActive(user: UserResponse) {
     if (user.isActive && !confirm(this.transloco.translate('common.confirmDisable', { name: user.email }))) return;
-    this.loading.set(true);
-    this.usersService.update(user.id, { isActive: !user.isActive }).subscribe({
-      next: () => this.loadUsers(),
-      error: (e) => { this.loading.set(false); this.snack.open(e.message || 'Failed to update user', 'OK', { duration: 4000 }); },
+    this.busy.set(true);
+    this.usersService.patchApiAdminUsersId(user.id!, { isActive: !user.isActive }).subscribe({
+      next: () => { this.busy.set(false); this.usersResource.reload(); },
+      error: (e) => { this.busy.set(false); this.snack.open(extractMessage(e), 'OK', { duration: 4000 }); },
     });
   }
 
   approve(user: UserResponse) {
-    const roleId = this.approveSelection[user.id] ?? user.roleId;
-    this.loading.set(true);
-    this.usersService.approve(user.id, roleId).subscribe({
+    const roleId = this.approveSelection[user.id!] ?? user.roleId;
+    this.busy.set(true);
+    this.usersService.postApiAdminUsersIdApprove(user.id!, { roleId }).subscribe({
       next: () => {
-        this.users.update(list => list.filter(u => u.id !== user.id));
-        this.refreshPendingCount();
-        this.loading.set(false);
+        this.busy.set(false);
+        this.usersResource.reload();
+        this.pendingResource.reload();
       },
-      error: (e) => { this.loading.set(false); this.snack.open(e.message || 'Failed to approve user', 'OK', { duration: 4000 }); },
+      error: (e) => { this.busy.set(false); this.snack.open(extractMessage(e), 'OK', { duration: 4000 }); },
     });
   }
 
   reject(user: UserResponse) {
     if (!confirm(this.transloco.translate('users.confirmReject', { name: user.email }))) return;
-    this.loading.set(true);
-    this.usersService.reject(user.id).subscribe({
+    this.busy.set(true);
+    this.usersService.postApiAdminUsersIdReject(user.id!).subscribe({
       next: () => {
-        this.users.update(list => list.filter(u => u.id !== user.id));
-        this.refreshPendingCount();
-        this.loading.set(false);
+        this.busy.set(false);
+        this.usersResource.reload();
+        this.pendingResource.reload();
       },
-      error: (e) => { this.loading.set(false); this.snack.open(e.message || 'Failed to reject user', 'OK', { duration: 4000 }); },
+      error: (e) => { this.busy.set(false); this.snack.open(extractMessage(e), 'OK', { duration: 4000 }); },
     });
   }
 }
