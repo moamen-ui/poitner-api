@@ -6,7 +6,7 @@ CMD ["dotnet", "watch", "--project", "API", "run", "--no-launch-profile"]
 FROM mcr.microsoft.com/dotnet/sdk:8.0 AS build
 WORKDIR /src
 COPY . .
-RUN dotnet publish API -c Release -o /app
+RUN dotnet publish API/Pointer.API.csproj -c Release -o /app
 
 FROM mcr.microsoft.com/dotnet/aspnet:8.0 AS final
 WORKDIR /app

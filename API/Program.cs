@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.OpenApi.Models;
 using Pointer.API.Extensions;
@@ -62,6 +63,18 @@ if (builder.Configuration.GetValue<bool>("DBMigrationEnabled"))
     await db.Database.MigrateAsync();
     await AdminSeeder.SeedAsync(app.Services);
 }
+
+// Behind a TLS-terminating reverse proxy (Caddy): honor X-Forwarded-Proto/For so
+// Request.Scheme is "https" — the self-configuring /embed.js and served skills then
+// emit https URLs. KnownProxies/Networks cleared because the proxy runs on the
+// docker network (non-loopback) and the API isn't exposed directly.
+var fwd = new ForwardedHeadersOptions
+{
+    ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto
+};
+fwd.KnownNetworks.Clear();
+fwd.KnownProxies.Clear();
+app.UseForwardedHeaders(fwd);
 
 app.UseSwagger();
 app.UseSwaggerUI(c =>
