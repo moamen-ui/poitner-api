@@ -254,6 +254,24 @@ just db-update  # apply migrations
 just psql       # psql into the db
 ```
 
+## Deploy
+
+Production runs on a VM (Docker Compose: Postgres + API + Caddy with auto-TLS). Full first-time
+setup, DNS, and config files (`docker-compose.prod.yml`, `Caddyfile`, `.env.prod.example`) are in
+**[`DEPLOY.md`](DEPLOY.md)**. Live: API `https://api.pointer.moamen.work`, dashboard
+`https://app.pointer.moamen.work`.
+
+**Shipping a local change** (the VM is a git clone of this repo):
+
+```bash
+# API change — from this repo:
+git push origin main
+ssh <vm> 'cd ~/pointer-api && git pull --ff-only && \
+  docker compose --env-file .env.prod -f docker-compose.prod.yml up -d --build api'
+```
+
+For dashboard changes, see the dashboard section in [`DEPLOY.md`](DEPLOY.md#updating).
+
 ## Admin dashboard (separate repo)
 
 The admin dashboard (Overview/stats, Roles, Users, Projects, signup approvals) is a standalone

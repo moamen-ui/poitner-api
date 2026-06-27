@@ -64,9 +64,28 @@ curl -sI https://app.pointer.moamen.work/                        # 200 (dashboar
 
 ## Updating
 
-- **API code:** `git pull` → `docker compose --env-file .env.prod -f docker-compose.prod.yml up -d --build`
-- **Dashboard:** rebuild step 2 (refresh `./dashboard-dist`), then
-  `docker compose -f docker-compose.prod.yml restart caddy` (or `up -d`).
+The VM has both repos checked out as git clones (`~/pointer-api`, `~/pointer-dashboard`), so shipping
+a local change is push-then-pull.
+
+**API change** — from your machine `git push origin main`, then on the VM:
+
+```bash
+cd ~/pointer-api
+git pull --ff-only
+docker compose --env-file .env.prod -f docker-compose.prod.yml up -d --build api
+# EF migrations auto-apply on boot; db + caddy stay up.
+```
+
+**Dashboard change** — from your machine `git push origin main`, then on the VM:
+
+```bash
+cd ~/pointer-dashboard
+git pull --ff-only
+docker run --rm -v "$PWD":/app -v /app/node_modules -w /app node:22 \
+  bash -lc "npm ci && npx ng build --configuration production"
+rm -rf ~/pointer-api/dashboard-dist && cp -r dist/admin-web/browser ~/pointer-api/dashboard-dist
+docker compose -f ~/pointer-api/docker-compose.prod.yml restart caddy
+```
 
 ## Notes
 
