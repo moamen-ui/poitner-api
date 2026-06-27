@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Pointer.Application.DTOs.Auth;
+using Pointer.Application.Response;
 using Pointer.Application.Services.Interfaces;
 
 namespace Pointer.API.Controllers;
@@ -12,6 +13,7 @@ public class AuthController(IAuthService authService) : ControllerBase
     [AllowAnonymous]
     [HttpPost("login")]
     [ProducesResponseType(typeof(LoginResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(Result), StatusCodes.Status400BadRequest)]
     public async Task<IActionResult> Login([FromBody] LoginRequest request)
     {
         var result = await authService.LoginAsync(request);
