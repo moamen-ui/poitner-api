@@ -1,0 +1,19 @@
+# Caddy auto-provisions Let's Encrypt certs for each site (HTTP-01).
+# api.*  → reverse-proxy to the API container.
+# app.*  → serve the static dashboard build with SPA fallback.
+# bare pointer.* → permanent redirect to the dashboard.
+
+api.pointer.moamen.work {
+    reverse_proxy api:8080
+}
+
+app.pointer.moamen.work {
+    root * /srv/dashboard
+    encode gzip
+    try_files {path} /index.html
+    file_server
+}
+
+pointer.moamen.work {
+    redir https://app.pointer.moamen.work{uri} permanent
+}

@@ -4,21 +4,26 @@
 
 ## Project Overview
 
-**Pointer API** is a .NET 8 Clean Architecture solution with an Angular 22 SPA (`admin-web/`).
+**Pointer API** is a .NET 8 Clean Architecture solution — the backend for the Pointer feedback tool.
 
 - **Backend:** ASP.NET Core 8 + EF Core + PostgreSQL (solution root)
-- **Frontend:** Angular 22 + Material + Transloco (`admin-web/`)
-- **Infrastructure:** Docker Compose (Postgres + API), Justfile commands
+- **Serves:** the `<pointer-feedback>` web component (`/pointer.js`), the AI apply/init skills as
+  markdown (`/skill.md`, `/pointer-init.md`), and a zero-dependency `/admin/` fallback page
+- **Infrastructure:** Docker Compose (Postgres + API) + Justfile for dev; Compose + Caddy for prod
 
-## Critical Skills (READ THESE FIRST)
+> **The admin dashboard is a separate repo:**
+> [`pointer-dashboard`](https://github.com/moamen-ui/pointer-dashboard) (Angular 22 + Material +
+> Transloco). It generates its API layer from this API's Swagger via Orval — **if you change
+> endpoints or DTOs, regenerate it there** (`npm run generate-services`). The Orval conventions live
+> in that repo's `docs/skills/orval-codegen/SKILL.md`.
 
-- **[Orval Code Generation](docs/skills/orval-codegen/SKILL.md)** — How `admin-web/` generates type-safe
-  Angular services/models from the API's Swagger spec using Orval. **If you touch API endpoints or DTOs,
-  you must regenerate the frontend services.** See the skill for full instructions.
+## Critical Skill (READ FIRST)
+
 - **[Integrate Pointer](API/wwwroot/pointer-init.md)** — the consumer-facing init skill, **served at
-  `/pointer-init.md`** (same delivery as the apply skill `skill.md`): a developer installs it into their
-  app's `.claude/skills/pointer-init/SKILL.md` and runs it to add the `<pointer-feedback>` widget
-  (asks for project key/server/environment, detects the stack, injects the loader, wires env, verifies).
+  `/pointer-init.md`** (same delivery as the apply skill `skill.md`): a developer installs it into
+  their app's `.claude/skills/pointer-init/SKILL.md` and runs it to add the `<pointer-feedback>`
+  widget (asks for project key/server/environment, detects the stack, injects the loader, wires env,
+  verifies).
 
 ## Quick Reference
 
@@ -26,7 +31,6 @@
 
 ```bash
 just up                    # Start API + DB via Docker (API on :8090)
-cd admin-web && npm start  # Start Angular dev server on :4200
 ```
 
 ### Common commands
@@ -35,36 +39,29 @@ cd admin-web && npm start  # Start Angular dev server on :4200
 |---|---|---|
 | `just up` | repo root | Start API + Postgres via Docker |
 | `just test` | repo root | Run .NET tests |
+| `just fmt` | repo root | CSharpier format |
 | `just migrate name="MyMigration"` | repo root | Add EF Core migration |
-| `npm run generate-services` | admin-web/ | Regenerate Angular API services from Swagger spec |
-| `npm start` | admin-web/ | Angular dev server |
-| `npm run build` | admin-web/ | Production build |
 
 ### Key conventions
 
-1. **Backend controllers** must have `[ProducesResponseType(typeof(InnerType), 200)]` and the global
-   `[Produces("application/json")]` filter for Orval to generate typed code.
-2. **Frontend API code** is auto-generated — never edit files in `src/app/core/api/generated/`.
-3. **Frontend imports** use `@api/*` alias (e.g., `import { UsersService } from '@api/users/users.service'`).
-4. **All API responses** are wrapped in `Result<T>` — the `apiInterceptor` unwraps automatically.
+1. **Backend controllers** must annotate the **inner** type via
+   `[ProducesResponseType(typeof(InnerType), 200)]` (not `Result<T>`), plus the global
+   `[Produces("application/json")]` filter — so the dashboard's Orval codegen stays clean.
+2. **All API responses** are wrapped in `Result<T>` — the dashboard's `apiInterceptor` unwraps it.
+3. Behind the prod TLS proxy (Caddy), forwarded headers are honored so `/embed.js` + served skills
+   emit `https` URLs.
 
 ### Directory structure
 
 ```
 pointer-api/
-├── API/              ← .NET controllers, Program.cs, Swagger config
-├── Application/      ← Services, DTOs, Result<T> wrapper
-├── Domain/           ← Entities, enums
-├── Infrastructure/   ← EF Core, repositories
-├── admin-web/        ← Angular 22 SPA
-│   ├── src/app/core/api/generated/   ← AUTO-GENERATED (do not edit)
-│   ├── src/app/core/api/extract-message.ts
-│   ├── src/app/core/auth/auth.interceptor.ts   ← apiInterceptor (envelope unwrap)
-│   ├── orval.config.ts
-│   ├── scripts/generate-services.mjs
-│   └── openapi.json  ← downloaded Swagger spec
-├── docs/skills/orval-codegen/SKILL.md  ← READ THIS for API codegen workflow
-├── docker-compose.yaml
+├── API/              ← .NET controllers, Program.cs, Swagger + /embed.js, static assets (pointer.js, skills)
+├── Application/      ← Services (Result + Scrutor), DTOs, FluentValidation
+├── Domain/           ← Entities (BaseEntity audit), enums
+├── Infrastructure/   ← EF Core + Postgres (snake_case), repositories, JWT, BCrypt
+├── docker-compose.yaml        ← dev (Postgres + API)
+├── docker-compose.prod.yml    ← prod (Postgres + API + Caddy)  — see DEPLOY.md
+├── Caddyfile / .env.prod.example / DEPLOY.md   ← production deploy
 ├── Dockerfile
 └── justfile
 ```

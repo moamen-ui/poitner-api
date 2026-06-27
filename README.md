@@ -49,8 +49,9 @@ future swap to Keycloak is contained to those two seams.
 - **Docker** + Docker Compose — runs Postgres and (in Option A) the API.
 - **.NET 8 SDK** — only if you run the API outside Docker (Option B).
 
-**Dashboard frontend (`admin-web/`) — optional:**
-- **Node ≥ 22.22 + npm** — Angular CLI 22 requires it.
+**Admin dashboard — optional (separate repo):** the Angular SPA lives in
+[`pointer-dashboard`](https://github.com/moamen-ui/pointer-dashboard) (needs **Node ≥ 22.22**). The
+API also ships a zero-dependency `/admin/` fallback page, so the dashboard isn't required to run.
 
 **`just`** (optional) — convenience commands; each recipe has a raw equivalent shown below.
 
@@ -59,7 +60,7 @@ Verify your toolchain before installing:
 ```bash
 docker --version && docker compose version   # backend (required)
 dotnet --version                              # backend Option B only — expect 8.x
-node --version && npm --version               # dashboard only — Node must be ≥ 22.22
+node --version && npm --version               # only for the dashboard repo — Node must be ≥ 22.22
 ```
 
 ### 1. Clone & configure
@@ -85,15 +86,17 @@ ASPNETCORE_URLS="http://0.0.0.0:8090" dotnet run --project API
 On boot the API auto-migrates (`DBMigrationEnabled=true`) and **seeds one admin** from
 `ADMIN__EMAIL` / `ADMIN__PASSWORD` (see [Default admin login](#default-admin-login)).
 
-### 3. Admin dashboard (Angular — optional)
+### 3. Admin dashboard (optional — separate repo)
+
+The Angular dashboard lives in [`pointer-dashboard`](https://github.com/moamen-ui/pointer-dashboard):
 
 ```bash
-cd admin-web
-npm install
-npm start                     # → http://localhost:4200   (needs Node ≥ 22.22)
+git clone https://github.com/moamen-ui/pointer-dashboard && cd pointer-dashboard
+npm install && npm start      # → http://localhost:4200 (talks to this API on :8090)
 ```
 
-Sign in with the seeded admin; details in [Admin Web (Angular)](#admin-web-angular).
+Or just use the built-in `/admin/` fallback page. Sign in with the seeded admin; details in
+[Admin dashboard](#admin-dashboard-separate-repo).
 
 ### 4. Verify
 
@@ -251,33 +254,26 @@ just db-update  # apply migrations
 just psql       # psql into the db
 ```
 
-## Admin Web (Angular)
+## Admin dashboard (separate repo)
 
-A standalone **Angular 22** SPA in [`admin-web/`](admin-web/) is the primary admin dashboard
-(Overview/stats, Roles, Users, Projects), built with Angular Material and talking to this API. The
-build-free `/admin/` page served by the .NET app is kept as a zero-dependency fallback.
+The admin dashboard (Overview/stats, Roles, Users, Projects, signup approvals) is a standalone
+**Angular 22** SPA in [`pointer-dashboard`](https://github.com/moamen-ui/pointer-dashboard), built
+with Angular Material. The build-free `/admin/` page served by the .NET app is kept as a
+zero-dependency fallback.
 
-```bash
-cd admin-web
-npm install
-npm start            # → http://localhost:4200  (needs Node ≥ 22.22)
-```
-
-- Talks to the API at `apiBase` in `src/environments/environment.ts` (default `http://localhost:8090`);
-  CORS is already open server-side.
-- The Angular API layer (services + models) is **auto-generated from Swagger via Orval** into
-  `src/app/core/api/generated/` — never edit it by hand. After backend endpoint/DTO changes, run
-  `npm run generate-services` (API must be up). See
-  [`docs/skills/orval-codegen/SKILL.md`](docs/skills/orval-codegen/SKILL.md).
-- Sign in with an admin account (e.g. the seeded `admin@pointer.local` / `ChangeMe123!`). Auth is the
-  same local-account JWT; the SPA stores it and sends `Authorization: Bearer …`, and only roles whose
-  `GrantsAdmin` is true can enter.
-- `npm run build` → static bundle in `admin-web/dist/` (deployable to any static host).
-- **Language + theme:** header toggles for **AR/EN** (Arabic flips to RTL) and **light/dark**. Each
-  user's choice is saved in the DB (`PATCH /api/me/preferences`, columns on `users`) and restored on
-  next login/device; first visit falls back to browser language + system theme (then `en`/`dark`).
-- See [`docs/ADMIN_WEB_DESIGN.md`](docs/ADMIN_WEB_DESIGN.md) and
-  [`docs/ADMIN_PREFS_I18N_DESIGN.md`](docs/ADMIN_PREFS_I18N_DESIGN.md) for the designs.
+- Talks to this API at its `apiBase` (dev → `http://localhost:8090`); CORS is open server-side. Its
+  `production` build bakes in the deployed API host via `fileReplacements`.
+- Its API layer (services + models) is **auto-generated from this API's Swagger via Orval** — after
+  you change endpoints/DTOs, regenerate it **in that repo** (`npm run generate-services`, API up).
+  See `docs/skills/orval-codegen/SKILL.md` there.
+- Sign in with an admin account (e.g. the seeded `admin@pointer.local` / `ChangeMe123!`); only roles
+  whose `GrantsAdmin` is true can enter.
+- **Language + theme:** header toggles for **AR/EN** (Arabic flips to RTL) and **light/dark**, saved
+  per-user in the DB (`PATCH /api/me/preferences`) and restored on next login.
+- In production it's served as static files by Caddy at `app.pointer.moamen.work` — see
+  [`DEPLOY.md`](DEPLOY.md). Original designs:
+  [`docs/ADMIN_WEB_DESIGN.md`](docs/ADMIN_WEB_DESIGN.md),
+  [`docs/ADMIN_PREFS_I18N_DESIGN.md`](docs/ADMIN_PREFS_I18N_DESIGN.md).
 
 ## Docs
 
@@ -291,13 +287,16 @@ npm start            # → http://localhost:4200  (needs Node ≥ 22.22)
 Repo conventions are also captured as agent-readable skills (see [`AGENTS.md`](AGENTS.md) /
 [`CLAUDE.md`](CLAUDE.md)):
 
-- [`docs/skills/orval-codegen/SKILL.md`](docs/skills/orval-codegen/SKILL.md) — *(internal)*
-  regenerating the Angular API layer from Swagger.
+- Orval codegen — regenerating the dashboard's Angular API layer from this API's Swagger lives in
+  the [`pointer-dashboard`](https://github.com/moamen-ui/pointer-dashboard) repo
+  (`docs/skills/orval-codegen/SKILL.md`).
 - [`API/wwwroot/pointer-init.md`](API/wwwroot/pointer-init.md) — *(consumer, served at
   `/pointer-init.md`)* the `pointer-init` skill for adding the `<pointer-feedback>` widget to a host app.
 
 ## Status
 
-✅ **Implemented & verified locally** (Phases 0–9). Backend, auth, admin UI, web component, and AI
-skill are working; full API + browser e2e pass. Remaining before team use: choose the final product
-name, deploy the service, and (later) the optional Keycloak/SSO swap.
+✅ **Implemented, verified, and deployed** (Phases 0–9). Backend, auth, admin UI, web component, and
+AI skill are working; full API + browser e2e pass. Live: API at `https://api.pointer.moamen.work`,
+dashboard at `https://app.pointer.moamen.work` (Docker Compose + Caddy on a VM — see
+[`DEPLOY.md`](DEPLOY.md)). Remaining: choose the final product name and (later) the optional
+Keycloak/SSO swap.

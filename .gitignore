@@ -1,6 +1,8 @@
 bin/
 obj/
 .env
+.env.prod
+dashboard-dist/
 *.user
 .superpowers/
 API/wwwroot/uploads/

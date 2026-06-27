@@ -1,0 +1,54 @@
+# Production stack: Postgres + API + Caddy (TLS termination + reverse proxy + static dashboard).
+# Usage:  docker compose --env-file .env.prod -f docker-compose.prod.yml up -d --build
+# See DEPLOY.md for the full host setup, DNS, and dashboard build steps.
+services:
+  db:
+    image: postgres:15
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: pointer
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      POSTGRES_DB: pointer
+    volumes: ["pgdata:/var/lib/postgresql/data"]
+
+  api:
+    build:
+      context: .
+      target: final
+    restart: unless-stopped
+    depends_on: [db]
+    environment:
+      ConnectionStrings__Default: "Host=db;Port=5432;Database=pointer;Username=pointer;Password=${DB_PASSWORD}"
+      ASPNETCORE_URLS: "http://0.0.0.0:8080"
+      ASPNETCORE_ENVIRONMENT: "Production"
+      DBMigrationEnabled: "true"
+      JWT__SigningKey: "${JWT_SIGNING_KEY}"
+      JWT__Issuer: "pointer-api"
+      JWT__LifetimeHours: "12"
+      ADMIN__EMAIL: "${ADMIN_EMAIL}"
+      ADMIN__PASSWORD: "${ADMIN_PASSWORD}"
+      # Self-configuring embed/skills point at the public API origin.
+      Pointer__Enabled: "true"
+      Pointer__Server: "${POINTER_SERVER}"
+      Pointer__Project: "pointer-api"
+      Pointer__Environment: "production"
+    volumes: ["uploads:/app/wwwroot/uploads"]
+    # Not published to the host — Caddy is the only public entrypoint.
+
+  caddy:
+    image: caddy:2
+    restart: unless-stopped
+    depends_on: [api]
+    ports: ["80:80", "443:443"]
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      # Built static dashboard (pointer-dashboard repo → dist/admin-web/browser → here).
+      - ./dashboard-dist:/srv/dashboard:ro
+      - caddy_data:/data
+      - caddy_config:/config
+
+volumes:
+  pgdata: {}
+  uploads: {}
+  caddy_data: {}
+  caddy_config: {}
