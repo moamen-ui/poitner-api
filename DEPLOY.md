@@ -21,8 +21,21 @@ Files: [`docker-compose.prod.yml`](docker-compose.prod.yml), [`Caddyfile`](Caddy
 
 - A VM with a public IP and **Docker + Compose plugin** installed.
 - Ports **80** and **443** open to the world (host firewall **and** any cloud security list/group).
-- DNS **A records** for each hostname → the VM's public IP (e.g. `api.pointer`, `app.pointer`, and
-  bare `pointer`). Certs are issued by HTTP-01, so the names must resolve before first start.
+- DNS **A records** for each hostname → the VM's public IP (e.g. `api.pointer`, `app-angular.pointer`,
+  `app.pointer`, bare `pointer`). Certs are issued by HTTP-01, so the names must resolve before first start.
+
+## VM setup (one-time)
+
+The dashboard depends on the private `@moamen-ui/pointer-*` GitHub Packages, so the VM needs a
+**`read:packages`** token to build it. Set it once (used as `NODE_AUTH_TOKEN` by `npm ci`):
+
+```bash
+# Create a classic token at github.com/settings/tokens with scope: read:packages
+echo 'export GH_PKG_TOKEN=ghp_…' >> ~/.bashrc && source ~/.bashrc
+```
+
+`~/.bashrc` is read for **interactive** SSH (the deploy flow below). For one-liner `ssh vm '…'`
+deploys it's skipped — keep the token in a `chmod 600` file and `source` it instead.
 
 ## 1. Configure
 
