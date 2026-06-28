@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Pointer.API.Auth;
 using Pointer.Application.DTOs.User;
+using Pointer.Application.DTOs.Profile;
 using Pointer.Application.Services.Interfaces;
 using Pointer.Domain.Enums;
 
@@ -10,7 +11,7 @@ namespace Pointer.API.Controllers.Admin;
 [ApiController]
 [Route("api/admin/users")]
 [Authorize(Policy = Policies.Admin)]
-public class UsersController(IUserService userService) : ControllerBase
+public class UsersController(IUserService userService, IProfileService profileService) : ControllerBase
 {
     [HttpGet]
     [ProducesResponseType(typeof(List<UserResponse>), StatusCodes.Status200OK)]
@@ -67,6 +68,15 @@ public class UsersController(IUserService userService) : ControllerBase
         var result = await userService.UpdateAsync(id, request);
         if (result.IsNotFound) return NotFound(result);
         if (result.IsConflict) return Conflict(result);
+        return result.IsSuccess ? Ok(result) : BadRequest(result);
+    }
+
+    [HttpGet("{id:int}/profile")]
+    [ProducesResponseType(typeof(Pointer.Application.DTOs.Profile.UserProfileResponse), StatusCodes.Status200OK)]
+    public async Task<IActionResult> Profile(int id)
+    {
+        var result = await profileService.GetByIdAsync(id);
+        if (result.IsNotFound) return NotFound(result);
         return result.IsSuccess ? Ok(result) : BadRequest(result);
     }
 }
