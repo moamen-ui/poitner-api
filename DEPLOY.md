@@ -7,8 +7,12 @@ static files. The current deployment:
 | Host | Serves |
 |---|---|
 | `api.pointer.moamen.work` | this API (Swagger, `/pointer.js`, `/embed.js`, skills) |
-| `app.pointer.moamen.work` | the [`pointer-dashboard`](https://github.com/moamen-ui/pointer-dashboard) static build |
+| `app-angular.pointer.moamen.work` | the Angular [`pointer-dashboard`](https://github.com/moamen-ui/pointer-dashboard) build (`dashboard/angular`) |
+| `app.pointer.moamen.work` | default dashboard host → also the Angular build (back-compat) |
 | `pointer.moamen.work` | 301 → `app.pointer.moamen.work` |
+
+> Dashboards are served per-framework from `dashboard/<fw>/` (e.g. `dashboard/angular`), each at
+> `app-<fw>.pointer.moamen.work`. React/Vue dashboards can be added later under the same scheme.
 
 Files: [`docker-compose.prod.yml`](docker-compose.prod.yml), [`Caddyfile`](Caddyfile),
 [`.env.prod.example`](.env.prod.example).
@@ -29,17 +33,18 @@ cp .env.prod.example .env.prod      # fill in real secrets (openssl rand -hex 32
 
 Adjust hostnames in `Caddyfile` and `Pointer__*` / `POINTER_SERVER` if you use different domains.
 
-## 2. Build the dashboard → `./dashboard-dist`
+## 2. Build the dashboard → `./dashboard/angular`
 
-The dashboard is a separate repo; build it and drop its static output where Compose mounts it:
+The dashboard is a separate repo. It depends on the published `@moamen-ui/pointer-angular`
+(GitHub Packages), so the build needs a `read:packages` token as `NODE_AUTH_TOKEN`:
 
 ```bash
+export GH_PKG_TOKEN=ghp_…        # a GitHub token with read:packages
 git clone https://github.com/moamen-ui/pointer-dashboard
-# Build in a Node container so the host needs no Node (production config bakes in the API host):
-docker run --rm -v "$PWD/pointer-dashboard":/app -v /app/node_modules -w /app node:22 \
+docker run --rm -e NODE_AUTH_TOKEN="$GH_PKG_TOKEN" -v "$PWD/pointer-dashboard":/app -v /app/node_modules -w /app node:22 \
   bash -lc "npm ci && npx ng build --configuration production"
-# Place the build where docker-compose.prod.yml expects it:
-rm -rf dashboard-dist && cp -r pointer-dashboard/dist/admin-web/browser dashboard-dist
+# Place the build where Compose mounts it (one dir per framework):
+mkdir -p dashboard && rm -rf dashboard/angular && cp -r pointer-dashboard/dist/admin-web/browser dashboard/angular
 ```
 
 > The dashboard's `apiBase` for production lives in its `environment.prod.ts` (swapped in by
@@ -59,7 +64,8 @@ docker-compose.prod.yml logs caddy`). The API auto-migrates and seeds the admin 
 ```bash
 curl -sI https://api.pointer.moamen.work/swagger/index.html      # 200
 curl -s  "https://api.pointer.moamen.work/embed.js?project=pointer-api" | grep "var server"  # https origin
-curl -sI https://app.pointer.moamen.work/                        # 200 (dashboard)
+curl -sI https://app-angular.pointer.moamen.work/                # 200 (Angular dashboard)
+curl -sI https://app.pointer.moamen.work/                        # 200 (back-compat)
 ```
 
 ## Updating
@@ -88,14 +94,17 @@ cd ~/pointer-dashboard
 git pull --ff-only
 docker run --rm -e NODE_AUTH_TOKEN="$GH_PKG_TOKEN" -v "$PWD":/app -v /app/node_modules -w /app node:22 \
   bash -lc "npm ci && npx ng build --configuration production"
-rm -rf ~/pointer-api/dashboard-dist && cp -r dist/admin-web/browser ~/pointer-api/dashboard-dist
+mkdir -p ~/pointer-api/dashboard && rm -rf ~/pointer-api/dashboard/angular \
+  && cp -r dist/admin-web/browser ~/pointer-api/dashboard/angular
 docker compose -f ~/pointer-api/docker-compose.prod.yml restart caddy
 ```
 
-> Set `GH_PKG_TOKEN` once on the VM (a GitHub token with `read:packages`), e.g. add
-> `export GH_PKG_TOKEN=ghp_…` to `~/.bashrc`. The committed `.npmrc` reads `${NODE_AUTH_TOKEN}`.
-> If the API's endpoints/DTOs changed, first republish the client (the *Publish API clients*
-> workflow in this repo, bump the version) and bump `@moamen-ui/pointer-angular` in the dashboard.
+> **Token:** set `GH_PKG_TOKEN` on the VM (a GitHub token with `read:packages`) —
+> `echo 'export GH_PKG_TOKEN=ghp_…' >> ~/.bashrc && source ~/.bashrc`. This works for **interactive**
+> SSH sessions (the flow above). For one-liner `ssh vm '…'` deploys, `~/.bashrc` is skipped — keep the
+> token in a file and `source` it, or pass it inline.
+> If the API's endpoints/DTOs changed, first republish the client (the *Publish API clients* workflow
+> in this repo, bump the version) and bump `@moamen-ui/pointer-angular` in the dashboard.
 
 ## Notes
 

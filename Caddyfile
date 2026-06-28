@@ -1,14 +1,22 @@
 # Caddy auto-provisions Let's Encrypt certs for each site (HTTP-01).
-# api.*  → reverse-proxy to the API container.
-# app.*  → serve the static dashboard build with SPA fallback.
-# bare pointer.* → permanent redirect to the dashboard.
+# api.pointer        → reverse-proxy to the API.
+# app-<fw>.pointer   → serve that framework's dashboard build (SPA fallback).
+# app.pointer / bare → the Angular dashboard (default; back-compat).
 
 api.pointer.moamen.work {
     reverse_proxy api:8080
 }
 
+app-angular.pointer.moamen.work {
+    root * /srv/dashboard/angular
+    encode gzip
+    try_files {path} /index.html
+    file_server
+}
+
+# Default dashboard host → Angular (kept so existing links keep working).
 app.pointer.moamen.work {
-    root * /srv/dashboard
+    root * /srv/dashboard/angular
     encode gzip
     try_files {path} /index.html
     file_server

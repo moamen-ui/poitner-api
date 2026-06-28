@@ -42,8 +42,9 @@ services:
     ports: ["80:80", "443:443"]
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
-      # Built static dashboard (pointer-dashboard repo → dist/admin-web/browser → here).
-      - ./dashboard-dist:/srv/dashboard:ro
+      # Built dashboards, one dir per framework: dashboard/angular, dashboard/react, …
+      # (each built from its repo → dist → copied here). Served at app-<fw>.pointer.
+      - ./dashboard:/srv/dashboard:ro
       - caddy_data:/data
       - caddy_config:/config
 
