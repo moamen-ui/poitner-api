@@ -123,6 +123,10 @@ const createAxiosClientBarrel = (dir) => {
     }
     const hasModelDir = entries.some((e) => e.isDirectory() && e.name === 'model');
     if (hasModelDir) exports.push(`export * from './model';`);
+    // Expose the axios instance so consumers can set baseURL / auth headers.
+    if (entries.some((e) => e.isFile() && e.name === 'mutator.ts')) {
+      exports.push(`export { AXIOS_INSTANCE } from './mutator';`);
+    }
     if (exports.length > 0) {
       const content = `// AUTO-GENERATED BARREL — created by generate-clients.mjs\n${exports.join('\n')}\n`;
       writeFileSync(resolve(srcPath, 'index.ts'), content);
