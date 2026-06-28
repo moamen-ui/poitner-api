@@ -3,7 +3,7 @@ import { defineConfig } from 'orval';
 const input = {
   target: './openapi.json',
   filters: {
-    tags: ['Auth', 'Me', 'Users', 'Stats', 'Projects', 'Roles'],
+    tags: ['Auth', 'Me', 'Users', 'Stats', 'Projects', 'Roles', 'Statuses'],
   },
 };
 
