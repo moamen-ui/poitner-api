@@ -54,10 +54,11 @@ The dashboard is a separate repo. It depends on the published `@moamen-ui/pointe
 ```bash
 export GH_PKG_TOKEN=ghp_…        # a GitHub token with read:packages
 git clone https://github.com/moamen-ui/pointer-dashboard
-docker run --rm -e NODE_AUTH_TOKEN="$GH_PKG_TOKEN" -v "$PWD/pointer-dashboard":/app -v /app/node_modules -w /app node:22 \
+# The dashboard is a monorepo (angular/ react/ vue/) — build the app you want:
+docker run --rm -e NODE_AUTH_TOKEN="$GH_PKG_TOKEN" -v "$PWD/pointer-dashboard/angular":/app -v /app/node_modules -w /app node:22 \
   bash -lc "npm ci && npx ng build --configuration production"
 # Place the build where Compose mounts it (one dir per framework):
-mkdir -p dashboard && rm -rf dashboard/angular && cp -r pointer-dashboard/dist/admin-web/browser dashboard/angular
+mkdir -p dashboard && rm -rf dashboard/angular && cp -r pointer-dashboard/angular/dist/admin-web/browser dashboard/angular
 ```
 
 > The dashboard's `apiBase` for production lives in its `environment.prod.ts` (swapped in by
@@ -113,13 +114,14 @@ depends on the published `@moamen-ui/pointer-angular` (GitHub Packages), so `npm
 **`read:packages` token** passed as `NODE_AUTH_TOKEN`:
 
 ```bash
-cd ~/pointer-dashboard
-git pull --ff-only
+cd ~/pointer-dashboard && git pull --ff-only && cd angular
 docker run --rm -e NODE_AUTH_TOKEN="$GH_PKG_TOKEN" -v "$PWD":/app -v /app/node_modules -w /app node:22 \
   bash -lc "npm ci && npx ng build --configuration production"
 mkdir -p ~/pointer-api/dashboard && rm -rf ~/pointer-api/dashboard/angular \
   && cp -r dist/admin-web/browser ~/pointer-api/dashboard/angular
 docker compose -f ~/pointer-api/docker-compose.prod.yml restart caddy
+# React: cd ~/pointer-dashboard/react → build → copy to ~/pointer-api/dashboard/react (served at app-react.pointer)
+# Vue:   cd ~/pointer-dashboard/vue   → build → copy to ~/pointer-api/dashboard/vue   (served at app-vue.pointer)
 ```
 
 > **Token:** set `GH_PKG_TOKEN` on the VM (a GitHub token with `read:packages`) —
