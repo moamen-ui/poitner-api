@@ -189,16 +189,5 @@ for (const c of CLIENTS) {
 
 console.log('\n✅ Done! Generated packages:');
 for (const c of CLIENTS) console.log(`   ${c.name} → ${c.dir}/`);
-
-// ── 4. Sync Angular client to linked dashboard repo (if exists) ───
-const dashboardPath = resolve(root, '..', 'pointer-dashboard');
-const dashboardTarget = resolve(dashboardPath, 'src', 'app', 'core', 'api', 'generated');
-if (existsSync(resolve(dashboardPath, 'package.json'))) {
-  console.log('\n syncing to pointer-dashboard...');
-  cpSync(resolve(root, 'clients', 'angular', 'src'), dashboardTarget, { recursive: true, force: true });
-  console.log(`   ✓ Copied to ${dashboardTarget.replace(dashboardPath, 'pointer-dashboard')}/`);
-  console.log('   (Dashboard imports it as @moamen-ui/pointer-angular — tsconfig path → this directory)');
-} else {
-  console.log('\n   (pointer-dashboard not found at sibling path — skipping sync)');
-}
-console.log('');
+console.log('\nNext: `npm run build-clients` to compile, then publish (or run the publish workflow).');
+console.log('Consumers (incl. the dashboard) install the published @moamen-ui/pointer-* packages.\n');

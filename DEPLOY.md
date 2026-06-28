@@ -79,18 +79,23 @@ docker compose --env-file .env.prod -f docker-compose.prod.yml up -d --build api
 npm run generate-clients
 ```
 
-**Dashboard change** — from your machine `git push origin main`, then on the VM:
+**Dashboard change** — from your machine `git push origin main`, then on the VM. The dashboard
+depends on the published `@moamen-ui/pointer-angular` (GitHub Packages), so `npm ci` needs a
+**`read:packages` token** passed as `NODE_AUTH_TOKEN`:
 
 ```bash
 cd ~/pointer-dashboard
 git pull --ff-only
-# Regenerate the Angular client from the API (ensures types are fresh):
-cd ~/pointer-api && npm run generate-clients && cd ~/pointer-dashboard
-docker run --rm -v "$PWD":/app -v /app/node_modules -w /app node:22 \
+docker run --rm -e NODE_AUTH_TOKEN="$GH_PKG_TOKEN" -v "$PWD":/app -v /app/node_modules -w /app node:22 \
   bash -lc "npm ci && npx ng build --configuration production"
 rm -rf ~/pointer-api/dashboard-dist && cp -r dist/admin-web/browser ~/pointer-api/dashboard-dist
 docker compose -f ~/pointer-api/docker-compose.prod.yml restart caddy
 ```
+
+> Set `GH_PKG_TOKEN` once on the VM (a GitHub token with `read:packages`), e.g. add
+> `export GH_PKG_TOKEN=ghp_…` to `~/.bashrc`. The committed `.npmrc` reads `${NODE_AUTH_TOKEN}`.
+> If the API's endpoints/DTOs changed, first republish the client (the *Publish API clients*
+> workflow in this repo, bump the version) and bump `@moamen-ui/pointer-angular` in the dashboard.
 
 ## Notes
 
