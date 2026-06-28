@@ -127,10 +127,58 @@ createAngularBarrel('clients/angular');
 createAxiosClientBarrel('clients/react');
 createAxiosClientBarrel('clients/vue');
 
+// ── 3b. Write a publishable package.json + .npmrc for each client ──
+// clients/ is gitignored, so these are (re)generated every run. Scoped to the
+// GitHub owner (@moamen-ui) so they publish to GitHub Packages (npm.pkg.github.com).
+const VERSION = process.env.CLIENTS_VERSION ?? '1.0.0';
+const REPO_URL = 'git+https://github.com/moamen-ui/poitner-api.git';
+const CLIENTS = [
+  {
+    dir: 'clients/angular', name: '@moamen-ui/pointer-angular',
+    desc: 'Pointer API client for Angular (httpResource + HttpClient services).',
+    peerDependencies: { '@angular/core': '>=19.0.0', '@angular/common': '>=19.0.0', rxjs: '>=7.0.0' },
+  },
+  {
+    dir: 'clients/react', name: '@moamen-ui/pointer-react',
+    desc: 'Pointer API client for React (TanStack Query hooks).',
+    peerDependencies: { react: '>=18.0.0', '@tanstack/react-query': '>=5.0.0' },
+    dependencies: { axios: '>=1.6.0' },
+  },
+  {
+    dir: 'clients/vue', name: '@moamen-ui/pointer-vue',
+    desc: 'Pointer API client for Vue 3 (TanStack Vue Query composables).',
+    peerDependencies: { vue: '>=3.4.0', '@tanstack/vue-query': '>=5.0.0' },
+    dependencies: { axios: '>=1.6.0' },
+  },
+];
+console.log('\n🏷  Writing package.json + .npmrc ...');
+for (const c of CLIENTS) {
+  const dest = resolve(root, c.dir);
+  if (!existsSync(dest)) continue;
+  const pkg = {
+    name: c.name,
+    version: VERSION,
+    description: c.desc,
+    type: 'module',
+    // Ships TypeScript source; consumers compile it (the dashboard does so via its tsconfig).
+    main: 'src/index.ts',
+    module: 'src/index.ts',
+    types: 'src/index.ts',
+    exports: { '.': './src/index.ts', './*': './src/*' },
+    files: ['src'],
+    sideEffects: false,
+    publishConfig: { registry: 'https://npm.pkg.github.com' },
+    repository: { type: 'git', url: REPO_URL, directory: c.dir },
+    ...(c.peerDependencies ? { peerDependencies: c.peerDependencies } : {}),
+    ...(c.dependencies ? { dependencies: c.dependencies } : {}),
+  };
+  writeFileSync(resolve(dest, 'package.json'), JSON.stringify(pkg, null, 2) + '\n');
+  writeFileSync(resolve(dest, '.npmrc'), '@moamen-ui:registry=https://npm.pkg.github.com\n');
+  console.log(`   ✓ ${c.name}  (${c.dir}/package.json)`);
+}
+
 console.log('\n✅ Done! Generated packages:');
-console.log('   @pointer/api-angular → clients/angular/');
-console.log('   @pointer/api-react   → clients/react/');
-console.log('   @pointer/api-vue     → clients/vue/');
+for (const c of CLIENTS) console.log(`   ${c.name} → ${c.dir}/`);
 
 // ── 4. Sync Angular client to linked dashboard repo (if exists) ───
 const dashboardPath = resolve(root, '..', 'pointer-dashboard');
@@ -139,7 +187,7 @@ if (existsSync(resolve(dashboardPath, 'package.json'))) {
   console.log('\n syncing to pointer-dashboard...');
   cpSync(resolve(root, 'clients', 'angular', 'src'), dashboardTarget, { recursive: true, force: true });
   console.log(`   ✓ Copied to ${dashboardTarget.replace(dashboardPath, 'pointer-dashboard')}/`);
-  console.log('   (Dashboard uses @api/* alias to import from this directory)');
+  console.log('   (Dashboard imports it as @moamen-ui/pointer-angular — tsconfig path → this directory)');
 } else {
   console.log('\n   (pointer-dashboard not found at sibling path — skipping sync)');
 }

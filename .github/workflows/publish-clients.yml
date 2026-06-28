@@ -1,0 +1,47 @@
+name: Publish API clients
+
+# Generates the typed client packages from the live API's Swagger spec and
+# publishes them to GitHub Packages (npm.pkg.github.com) under @moamen-ui.
+# Run manually from the Actions tab; bump the version each release.
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Version to publish (e.g. 1.0.1)
+        required: true
+        default: '1.0.0'
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          registry-url: 'https://npm.pkg.github.com'
+          scope: '@moamen-ui'
+
+      - run: npm ci
+
+      - name: Generate clients from the live API spec
+        env:
+          POINTER_SWAGGER_URL: https://api.pointer.moamen.work/swagger/v1/swagger.json
+          CLIENTS_VERSION: ${{ inputs.version }}
+        run: npm run generate-clients
+
+      - name: Publish each client
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -e
+          for d in clients/angular clients/react clients/vue; do
+            echo "::group::publish $d"
+            (cd "$d" && npm publish)
+            echo "::endgroup::"
+          done
