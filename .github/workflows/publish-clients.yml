@@ -35,12 +35,18 @@ jobs:
           CLIENTS_VERSION: ${{ inputs.version }}
         run: npm run generate-clients
 
+      - name: Compile clients (tsc + ng-packagr)
+        env:
+          CLIENTS_VERSION: ${{ inputs.version }}
+        run: npm run build-clients
+
       - name: Publish each client
         env:
           NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -e
-          for d in clients/angular clients/react clients/vue; do
+          # react/vue: package.json at the client root (files: [dist]); angular: ng-packagr dist
+          for d in clients/react clients/vue clients/angular/dist; do
             echo "::group::publish $d"
             (cd "$d" && npm publish)
             echo "::endgroup::"

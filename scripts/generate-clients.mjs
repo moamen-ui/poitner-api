@@ -48,7 +48,7 @@ try {
 // its `clean: ['!**/mutator.ts']` rule). Required for fresh checkouts (CI).
 const MUTATOR_SRC = resolve(root, 'scripts', 'mutators', 'axios-mutator.ts');
 for (const fw of ['react', 'vue']) {
-  const dir = resolve(root, 'clients', fw);
+  const dir = resolve(root, 'clients', fw, 'src');
   mkdirSync(dir, { recursive: true });
   copyFileSync(MUTATOR_SRC, resolve(dir, 'mutator.ts'));
 }
@@ -166,18 +166,13 @@ console.log('\n🏷  Writing package.json + .npmrc ...');
 for (const c of CLIENTS) {
   const dest = resolve(root, c.dir);
   if (!existsSync(dest)) continue;
+  // Minimal source manifest. `scripts/build-clients.mjs` compiles each client and
+  // finalizes the publishable package.json (main/types/exports → dist). For Angular,
+  // ng-packagr reads this clean manifest and writes dist/package.json itself.
   const pkg = {
     name: c.name,
     version: VERSION,
     description: c.desc,
-    type: 'module',
-    // Ships TypeScript source; consumers compile it (the dashboard does so via its tsconfig).
-    main: 'src/index.ts',
-    module: 'src/index.ts',
-    types: 'src/index.ts',
-    exports: { '.': './src/index.ts', './*': './src/*' },
-    files: ['src'],
-    sideEffects: false,
     publishConfig: { registry: 'https://npm.pkg.github.com' },
     repository: { type: 'git', url: REPO_URL, directory: c.dir },
     ...(c.peerDependencies ? { peerDependencies: c.peerDependencies } : {}),

@@ -5,11 +5,26 @@
   "type": "module",
   "scripts": {
     "generate-clients": "node scripts/generate-clients.mjs",
+    "build-clients": "node scripts/build-clients.mjs",
     "format": "prettier --write \"clients/**/*.{ts,json}\""
   },
   "devDependencies": {
+    "@angular/common": "^22.0.0",
+    "@angular/compiler": "^22.0.0",
+    "@angular/compiler-cli": "^22.0.0",
+    "@angular/core": "^22.0.0",
+    "@tanstack/react-query": "^5.0.0",
+    "@tanstack/vue-query": "^5.0.0",
+    "@types/react": "^18.3.0",
     "axios": "^1.7.0",
+    "ng-packagr": "^22.0.0",
     "orval": "^8.19.0",
-    "prettier": "^3.8.1"
+    "prettier": "^3.8.1",
+    "react": "^18.3.0",
+    "rxjs": "^7.8.0",
+    "tslib": "^2.6.0",
+    "typescript": "~6.0.2",
+    "vue": "^3.4.0",
+    "zone.js": "^0.15.0"
   }
 }

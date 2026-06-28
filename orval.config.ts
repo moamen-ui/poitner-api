@@ -37,7 +37,7 @@ export default defineConfig({
       formatter: 'prettier',
       override: {
         mutator: {
-          path: './clients/react/mutator.ts',
+          path: './clients/react/src/mutator.ts',
           name: 'customInstance',
         },
         query: {
@@ -60,7 +60,7 @@ export default defineConfig({
       formatter: 'prettier',
       override: {
         mutator: {
-          path: './clients/vue/mutator.ts',
+          path: './clients/vue/src/mutator.ts',
           name: 'customInstance',
         },
         query: {
