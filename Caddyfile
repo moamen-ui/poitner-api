@@ -14,6 +14,20 @@ app-angular.pointer.moamen.work {
     file_server
 }
 
+app-react.pointer.moamen.work {
+    root * /srv/dashboard/react
+    encode gzip
+    try_files {path} /index.html
+    file_server
+}
+
+app-vue.pointer.moamen.work {
+    root * /srv/dashboard/vue
+    encode gzip
+    try_files {path} /index.html
+    file_server
+}
+
 # Default dashboard host → Angular (kept so existing links keep working).
 app.pointer.moamen.work {
     root * /srv/dashboard/angular
