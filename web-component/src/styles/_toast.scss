@@ -1,0 +1,23 @@
+@use 'variables' as v;
+
+// Toast
+.pf-toast {
+  position: fixed;
+  bottom: 20px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 2147483647;
+  background: v.token('text');
+  color: v.token('primary-contrast');
+  padding: 10px 16px;
+  border-radius: v.token('radius');
+  font-size: 13px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
+  pointer-events: none;
+}
+.pf-toast.error {
+  background: v.token('danger-strong');
+}
+.pf-toast.success {
+  background: v.token('success');
+}

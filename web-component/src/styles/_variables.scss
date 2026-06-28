@@ -1,0 +1,86 @@
+@use 'sass:map';
+
+// Design tokens for the <pointer-feedback> UI.
+//
+// Each token compiles to `var(--pf-<name>, <default>)`. The default lives here
+// (in SCSS), but because the value is read through a CSS custom property, any
+// consuming app can OVERRIDE it per project from its own stylesheet — CSS
+// custom properties pierce the Shadow DOM:
+//
+//   pointer-feedback {
+//     --pf-primary: #0aa36e;
+//     --pf-primary-hover: #088f60;
+//     --pf-radius-lg: 16px;
+//   }
+//
+// We deliberately do NOT set these on :host (that would out-specify an external
+// rule); the default is the var() fallback, so external overrides always win.
+$tokens: (
+  // Brand
+  'primary': #2563eb,
+  'primary-hover': #1d4ed8,
+  'primary-contrast': #fff,
+
+  // Surfaces
+  'surface': #fff,
+  'surface-alt': #f8fafc,
+  'surface-muted': #f1f5f9,
+  'surface-hover': #e2e8f0,
+
+  // Borders
+  'border': #e2e8f0,
+  'border-soft': #eef2f7,
+  'border-strong': #cbd5e1,
+
+  // Text
+  'text': #0f172a,
+  'text-muted': #64748b,
+  'text-subtle': #94a3b8,
+  'text-slate': #475569,
+  'text-slate-2': #334155,
+
+  // Semantic — success
+  'success': #16a34a,
+  'success-strong': #166534,
+  'success-bg': #dcfce7,
+  'success-surface': #f0fdf4,
+
+  // Semantic — warning / pending
+  'warn': #f59e0b,
+  'warn-strong': #92400e,
+  'warn-bg': #fef3c7,
+  'warn-surface': #fffbeb,
+
+  // Semantic — danger
+  'danger': #dc2626,
+  'danger-strong': #b91c1c,
+  'danger-bg': #fef2f2,
+  'danger-bg-2': #fee2e2,
+
+  // Accents
+  'info-bg': #dbeafe,
+  'info-text': #1e40af,
+  'accent': #7c3aed,
+  'accent-bg': #f3e8ff,
+  'indigo': #4338ca,
+  'badge': #ef4444,
+  'src': #0369a1,
+
+  // Misc
+  'overlay': rgba(15, 23, 42, 0.5),
+  'shadow': rgba(0, 0, 0, 0.12),
+
+  // Radii
+  'radius-sm': 6px,
+  'radius': 8px,
+  'radius-md': 10px,
+  'radius-lg': 12px,
+  'radius-xl': 14px,
+);
+
+@function token($key) {
+  @if not map.has-key($tokens, $key) {
+    @error "Unknown Pointer design token: #{$key}";
+  }
+  @return var(--pf-#{$key}, #{map.get($tokens, $key)});
+}

@@ -1,0 +1,56 @@
+@use 'variables' as v;
+
+// Collapsed launcher (floating button that re-opens the overlay). Corner is set
+// by a pf-pos-* class; logical insets follow the shadow UI's writing direction.
+.pf-launcher {
+  position: fixed;
+  z-index: 2147483647;
+  width: 52px;
+  height: 52px;
+  border-radius: 50%;
+  border: none;
+  background: v.token('primary');
+  color: v.token('primary-contrast');
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  box-shadow: 0 8px 24px rgba(37, 99, 235, 0.45);
+  pointer-events: auto;
+  // Pulse a few times on appear to draw the eye, then settle.
+  animation: pf-launcher-pop 0.25s ease-out, pf-launcher-pulse 2s ease-out 0.25s 3;
+}
+.pf-launcher:hover {
+  background: v.token('primary-hover');
+  transform: scale(1.06);
+}
+.pf-launcher.pf-rtl { direction: rtl; }
+.pf-launcher.pf-pos-bottom-end { inset-block-end: 20px; inset-inline-end: 20px; }
+.pf-launcher.pf-pos-bottom-start { inset-block-end: 20px; inset-inline-start: 20px; }
+.pf-launcher.pf-pos-top-end { inset-block-start: 20px; inset-inline-end: 20px; }
+.pf-launcher.pf-pos-top-start { inset-block-start: 20px; inset-inline-start: 20px; }
+@keyframes pf-launcher-pop {
+  from { transform: scale(0.5); opacity: 0; }
+  to { transform: scale(1); opacity: 1; }
+}
+@keyframes pf-launcher-pulse {
+  0% { box-shadow: 0 8px 24px rgba(37, 99, 235, 0.45), 0 0 0 0 rgba(37, 99, 235, 0.5); }
+  70% { box-shadow: 0 8px 24px rgba(37, 99, 235, 0.45), 0 0 0 14px rgba(37, 99, 235, 0); }
+  100% { box-shadow: 0 8px 24px rgba(37, 99, 235, 0.45), 0 0 0 0 rgba(37, 99, 235, 0); }
+}
+.pf-launcher-badge {
+  position: absolute;
+  top: -4px;
+  right: -4px;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 4px;
+  border-radius: 999px;
+  background: v.token('badge');
+  color: v.token('primary-contrast');
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 18px;
+  text-align: center;
+  border: 2px solid v.token('surface');
+}

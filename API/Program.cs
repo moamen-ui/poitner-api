@@ -98,15 +98,21 @@ app.UseSwaggerUI(c =>
     }
 });
 
-// Serve the skill markdown with the request origin injected into the
-// <POINTER_SERVER> placeholder, so any AI tool that fetches a skill from the
-// deployed URL gets it pre-filled with that URL (no localhost, nothing to ask).
+// Serve the skill markdown + the install script with the request origin injected
+// into the <POINTER_SERVER> placeholder, so anything fetched from the deployed URL
+// arrives pre-filled with that URL (no localhost, nothing to ask). The one-command
+// installer (install.sh) downloads the skills from the same origin.
 // Runs before UseStaticFiles so it takes precedence over the raw file.
-var skillFiles = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "/pointer-init.md", "/skill.md" };
+var injectedFiles = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+{
+    "/pointer-init.md",
+    "/skill.md",
+    "/install.sh",
+};
 app.Use(async (ctx, next) =>
 {
     var path = ctx.Request.Path.Value ?? string.Empty;
-    if (HttpMethods.IsGet(ctx.Request.Method) && skillFiles.Contains(path))
+    if (HttpMethods.IsGet(ctx.Request.Method) && injectedFiles.Contains(path))
     {
         var webRoot = app.Environment.WebRootPath
             ?? Path.Combine(app.Environment.ContentRootPath, "wwwroot");
@@ -115,7 +121,9 @@ app.Use(async (ctx, next) =>
         {
             var origin = $"{ctx.Request.Scheme}://{ctx.Request.Host}";
             var text = (await File.ReadAllTextAsync(file)).Replace("<POINTER_SERVER>", origin);
-            ctx.Response.ContentType = "text/markdown; charset=utf-8";
+            ctx.Response.ContentType = path.EndsWith(".sh", StringComparison.OrdinalIgnoreCase)
+                ? "text/x-shellscript; charset=utf-8"
+                : "text/markdown; charset=utf-8";
             await ctx.Response.WriteAsync(text);
             return;
         }

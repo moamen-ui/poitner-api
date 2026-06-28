@@ -1,0 +1,68 @@
+@use 'variables' as v;
+
+// Icon-only toolbar button (e.g. Hide)
+.pf-btn.pf-icon-btn {
+  padding: 8px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+// Toolbar
+.pf-toolbar {
+  position: fixed;
+  top: 16px;
+  right: 16px;
+  z-index: 2147483646;
+  display: flex;
+  gap: 8px;
+  background: v.token('surface');
+  border: 1px solid v.token('border');
+  border-radius: v.token('radius-lg');
+  padding: 8px;
+  box-shadow: 0 6px 24px v.token('shadow');
+  pointer-events: auto;
+}
+.pf-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: none;
+  border-radius: v.token('radius');
+  padding: 8px 12px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  background: v.token('surface-muted');
+  color: v.token('text');
+}
+.pf-btn:hover {
+  background: v.token('surface-hover');
+}
+.pf-btn.primary {
+  background: v.token('primary');
+  color: v.token('primary-contrast');
+}
+.pf-btn.primary:hover {
+  background: v.token('primary-hover');
+}
+.pf-btn.active {
+  background: v.token('primary-hover');
+  color: v.token('primary-contrast');
+}
+.pf-btn.pf-link {
+  background: transparent;
+  color: v.token('text-muted');
+  font-weight: 500;
+}
+.pf-btn.pf-link:hover {
+  background: v.token('surface-muted');
+  color: v.token('text');
+}
+.pf-badge {
+  background: v.token('primary');
+  color: v.token('primary-contrast');
+  border-radius: 999px;
+  padding: 1px 7px;
+  font-size: 11px;
+}

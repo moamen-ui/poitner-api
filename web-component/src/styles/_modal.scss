@@ -1,0 +1,78 @@
+@use 'variables' as v;
+
+// Login / signup modal
+.pf-modal-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 2147483647;
+  background: v.token('overlay');
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: auto;
+}
+.pf-modal {
+  background: v.token('surface');
+  border-radius: v.token('radius-xl');
+  padding: 24px;
+  width: 340px;
+  max-width: 92vw;
+  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.3);
+}
+.pf-modal h2 {
+  margin: 0 0 6px;
+  font-size: 18px;
+  color: v.token('text');
+}
+.pf-modal p {
+  margin: 0 0 14px;
+  font-size: 13px;
+  color: v.token('text-muted');
+}
+.pf-modal-error {
+  color: v.token('danger-strong');
+  font-size: 12px;
+  margin: 0 0 10px;
+  min-height: 16px;
+}
+.pf-modal-success {
+  color: v.token('success-strong');
+  font-size: 12px;
+  margin: 0 0 10px;
+}
+.pf-field-label {
+  display: block;
+  font-size: 12px;
+  font-weight: 600;
+  color: v.token('text-slate');
+  margin: 0 0 4px;
+}
+select.pf-input {
+  background: v.token('surface');
+  cursor: pointer;
+}
+select.pf-input:disabled {
+  background: v.token('surface-muted');
+  color: v.token('text-subtle');
+  cursor: default;
+}
+
+// Auth modal footer + inline link toggle (Create account / Back to sign in)
+.pf-auth-foot {
+  margin-top: 12px;
+  font-size: 12px;
+  color: v.token('text-muted');
+  text-align: center;
+}
+.pf-btn.pf-link-inline {
+  width: auto;
+  padding: 0 2px;
+  font-size: 12px;
+}
+
+// Rejected-login re-apply block
+.pf-reapply {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px dashed v.token('border');
+}

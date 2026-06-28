@@ -41,6 +41,7 @@ just up                    # Start API + DB via Docker (API on :8090)
 | `just test` | repo root | Run .NET tests |
 | `just fmt` | repo root | CSharpier format |
 | `just migrate name="MyMigration"` | repo root | Add EF Core migration |
+| `npm run build` | web-component/ | Build `<pointer-feedback>` → `API/wwwroot/pointer.{js,css}` |
 
 ### Key conventions
 
@@ -50,15 +51,22 @@ just up                    # Start API + DB via Docker (API on :8090)
 2. **All API responses** are wrapped in `Result<T>` — the dashboard's `apiInterceptor` unwraps it.
 3. Behind the prod TLS proxy (Caddy), forwarded headers are honored so `/embed.js` + served skills
    emit `https` URLs.
+4. **The web component is built, not hand-written.** `API/wwwroot/pointer.{js,css}` are build
+   artifacts — edit the source in `web-component/src/` and run `npm run build`. Never edit the
+   generated files directly.
 
 ### Directory structure
 
 ```
 pointer-api/
-├── API/              ← .NET controllers, Program.cs, Swagger + /embed.js, static assets (pointer.js, skills)
+├── API/              ← .NET controllers, Program.cs, Swagger + /embed.js, static assets
+│   └── wwwroot/      ← served files; pointer.{js,css} are BUILD OUTPUT (from web-component/)
 ├── Application/      ← Services (Result + Scrutor), DTOs, FluentValidation
 ├── Domain/           ← Entities (BaseEntity audit), enums
 ├── Infrastructure/   ← EF Core + Postgres (snake_case), repositories, JWT, BCrypt
+├── web-component/    ← <pointer-feedback> source: TS modules + SCSS → wwwroot/pointer.{js,css}
+│   ├── src/          ← element.ts, auth-ui.ts, capture.ts, templates.ts, styles/*.scss
+│   └── build.mjs     ← esbuild (JS) + sass (CSS); `npm run build`
 ├── docker-compose.yaml        ← dev (Postgres + API)
 ├── docker-compose.prod.yml    ← prod (Postgres + API + Caddy)  — see DEPLOY.md
 ├── Caddyfile / .env.prod.example / DEPLOY.md   ← production deploy

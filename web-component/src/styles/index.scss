@@ -1,0 +1,18 @@
+// Pointer — <pointer-feedback> styles.
+// Built by ../build.mjs into ../../API/wwwroot/pointer.css, loaded at runtime by
+// pointer.js into the component's Shadow DOM via a <link>.
+//
+// Theming: every color/spacing value is a `var(--pf-*, default)` token (see
+// _variables.scss). Override per project from the consuming app's CSS, e.g.:
+//   pointer-feedback { --pf-primary: #0aa36e; }
+//
+// Order mirrors the original single-file stylesheet so the cascade is preserved.
+@use 'base';
+@use 'launcher';
+@use 'toolbar';
+@use 'sidebar';
+@use 'card';
+@use 'pins';
+@use 'popover';
+@use 'modal';
+@use 'toast';

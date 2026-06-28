@@ -34,6 +34,27 @@ via Docker, API on `:8090`).
 3. Behind the production TLS proxy (Caddy) the API honors `X-Forwarded-Proto/For` so `/embed.js`
    and the served skills emit `https` URLs.
 
+## Web component (`<pointer-feedback>`)
+
+The served `API/wwwroot/pointer.js` and `API/wwwroot/pointer.css` are **build artifacts** — do
+**not** edit them by hand. Source lives in [`web-component/`](web-component/) (TypeScript modules +
+SCSS, esbuild + sass; no runtime deps in the output).
+
+```bash
+cd web-component
+npm install            # first time
+npm run build          # → ../API/wwwroot/pointer.{js,css}
+npm run watch          # rebuild on change
+npm run typecheck      # tsc --noEmit
+```
+
+- Source: `web-component/src/` (`element.ts`, `auth-ui.ts`, `capture.ts`, `templates.ts`, …) and
+  `web-component/src/styles/` (SCSS partials + `_variables.scss`).
+- **Theming:** styles use `var(--pf-*, default)` tokens (defaults in `_variables.scss`); consumers
+  override per project from their own CSS, e.g. `pointer-feedback { --pf-primary: #0aa36e; }`.
+- After editing the component, run `npm run build` and commit the regenerated `wwwroot/pointer.*`
+  (the Docker image bakes in `wwwroot`, so a deploy just needs the built files present).
+
 ## Deploy
 
 Production runs on a VM via Docker Compose (Postgres + API + Caddy). Config is committed:

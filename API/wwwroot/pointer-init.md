@@ -40,8 +40,10 @@ This skill wires the widget into the **current** app. Do not guess the variables
 ## Step 3 — Inject the loader
 
 The loader loads `<POINTER_SERVER>/pointer.js`, then appends a configured `<pointer-feedback>` element.
-Always set `source-attr="data-component-source"` so the widget can capture the source path of
-clicked elements (apps may stamp that attribute on elements).
+Always set `source-attr="data-component-source"` so the widget can capture the source path of clicked
+elements — **and make sure the app actually stamps that attribute** (usually a build plugin behind a
+dev flag such as `VITE_DEBUG`; see the Source mapping note in Step 4). Without it, applies still work
+but can't jump straight to the file.
 
 ### 3a. Vite (canonical pattern)
 
@@ -196,6 +198,12 @@ Add `.pointer/` to `.gitignore`. The apply workflow itself is the separate Point
   aren't CORS-restricted; API calls use the server's permissive CORS policy.
 - **Auth:** stakeholders need a Pointer account; self-signup (an admin-approved request) is built into
   the widget. The token is stored in `localStorage` (`pointer_token`).
-- **Source mapping:** add `data-component-source="path/to/Component:line"` to host elements to capture
-  where they live; the widget walks up to the nearest ancestor carrying that attribute.
+- **Source mapping (enables precise applies — check this):** Pointer records the `source-attr`
+  (default `data-component-source`) of the clicked element, e.g. `path/to/Component:line`, so the
+  apply step opens the **exact file**. Most apps don't emit this by default — it's produced by a
+  **build plugin gated behind a dev/preview flag** (e.g. `VITE_DEBUG=true` driving a Babel/SWC plugin
+  that stamps `data-component-source`). **Enable that flag in the environments where stakeholders give
+  feedback** (local/staging/preview). Without it the widget still works, but applies fall back to
+  searching by element snapshot/classes — slower and less exact. Confirm the attribute is present
+  (inspect an element) as part of verification.
 - Keep the `enabled` guard so production builds can ship without the widget when desired.

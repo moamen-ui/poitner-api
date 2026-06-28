@@ -1,0 +1,30 @@
+@use 'variables' as v;
+
+// Comment popover
+.pf-popover {
+  position: fixed;
+  z-index: 2147483647;
+  width: 280px;
+  background: v.token('surface');
+  border: 1px solid v.token('border');
+  border-radius: v.token('radius-lg');
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.18);
+  padding: 12px;
+  pointer-events: auto;
+}
+.pf-popover h3 {
+  margin: 0 0 8px;
+  font-size: 13px;
+  color: v.token('text');
+}
+.pf-snippet {
+  font-size: 11px;
+  font-family: ui-monospace, monospace;
+  color: v.token('text-slate');
+  background: v.token('surface-alt');
+  border-radius: v.token('radius-sm');
+  padding: 6px;
+  margin-bottom: 8px;
+  max-height: 60px;
+  overflow: auto;
+}

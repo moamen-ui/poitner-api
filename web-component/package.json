@@ -1,0 +1,17 @@
+{
+  "name": "pointer-web-component",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Source for the <pointer-feedback> web component. Builds to ../API/wwwroot/pointer.{js,css}.",
+  "type": "module",
+  "scripts": {
+    "build": "node build.mjs",
+    "watch": "node build.mjs --watch",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "esbuild": "^0.24.2",
+    "sass": "^1.83.4",
+    "typescript": "^5.7.3"
+  }
+}
