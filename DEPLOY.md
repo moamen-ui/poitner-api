@@ -93,10 +93,20 @@ cd ~/pointer-api
 git pull --ff-only
 docker compose --env-file .env.prod -f docker-compose.prod.yml up -d --build api
 # EF migrations auto-apply on boot; db + caddy stay up.
-
-# Regenerate API clients + sync to dashboard (if endpoints/DTOs changed):
-npm run generate-clients
 ```
+
+If endpoints/DTOs changed, **republish the typed clients** once the new API is live (the workflow
+reads the live spec and auto-bumps the patch version). From your machine (gh authed):
+
+```bash
+gh workflow run publish-clients.yml -R moamen-ui/poitner-api    # or: just publish-clients
+```
+
+Then bump `@moamen-ui/pointer-<framework>` in each consumer (e.g. the dashboard) to the new version.
+
+> **Fully automatic option:** the workflow also accepts a `repository_dispatch` of type `api-deployed`.
+> Fire it from the VM at the end of the deploy with a token that has `repo` scope:
+> `curl -s -X POST -H "Authorization: Bearer $GH_DISPATCH_TOKEN" -H "Accept: application/vnd.github+json" https://api.github.com/repos/moamen-ui/poitner-api/dispatches -d '{"event_type":"api-deployed"}'`
 
 **Dashboard change** — from your machine `git push origin main`, then on the VM. The dashboard
 depends on the published `@moamen-ui/pointer-angular` (GitHub Packages), so `npm ci` needs a

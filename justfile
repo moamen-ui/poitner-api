@@ -12,6 +12,8 @@ widget:        ; cd web-component && npm run watch    # rebuild on change during
 widget-build:  ; cd web-component && npm run build    # one-shot build (run + commit before pushing)
 # API client generation (Angular + React + Vue from Swagger spec)
 gen-clients: ; npm run generate-clients
+# Trigger the GitHub Actions publish (auto-bumps patch from the latest published version)
+publish-clients: ; gh workflow run publish-clients.yml -R moamen-ui/poitner-api
 # One-command dev: start API + DB, wait for ready, generate clients
 dev:
   docker compose up -d

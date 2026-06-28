@@ -2,14 +2,20 @@ name: Publish API clients
 
 # Generates the typed client packages from the live API's Swagger spec and
 # publishes them to GitHub Packages (npm.pkg.github.com) under @moamen-ui.
-# Run manually from the Actions tab; bump the version each release.
+#
+# Triggers:
+#   - workflow_dispatch  — run from the Actions tab (optionally pin a version)
+#   - repository_dispatch (type: api-deployed) — fired after an API deploy
+# When no version is given, the next PATCH after the latest published version is used.
 on:
   workflow_dispatch:
     inputs:
       version:
-        description: Version to publish (e.g. 1.0.1)
-        required: true
-        default: '1.0.0'
+        description: Version to publish (blank = auto-bump patch)
+        required: false
+        default: ''
+  repository_dispatch:
+    types: [api-deployed]
 
 permissions:
   contents: read
@@ -29,15 +35,29 @@ jobs:
 
       - run: npm ci
 
+      - name: Resolve version (explicit input, or auto-bump patch)
+        id: ver
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -e
+          V="${{ github.event.inputs.version }}"
+          if [ -z "$V" ]; then
+            CUR=$(npm view @moamen-ui/pointer-angular version 2>/dev/null || echo "0.0.0")
+            V=$(node -e "const [a,b,c]=(process.argv[1]||'0.0.0').split('.').map(Number); console.log(\`\${a}.\${b}.\${(c||0)+1}\`)" "$CUR")
+            echo "Auto-bump: $CUR → $V"
+          fi
+          echo "version=$V" >> "$GITHUB_OUTPUT"
+
       - name: Generate clients from the live API spec
         env:
           POINTER_SWAGGER_URL: https://api.pointer.moamen.work/swagger/v1/swagger.json
-          CLIENTS_VERSION: ${{ inputs.version }}
+          CLIENTS_VERSION: ${{ steps.ver.outputs.version }}
         run: npm run generate-clients
 
       - name: Compile clients (tsc + ng-packagr)
         env:
-          CLIENTS_VERSION: ${{ inputs.version }}
+          CLIENTS_VERSION: ${{ steps.ver.outputs.version }}
         run: npm run build-clients
 
       - name: Publish each client
@@ -51,3 +71,6 @@ jobs:
             (cd "$d" && npm publish)
             echo "::endgroup::"
           done
+
+      - name: Summary
+        run: echo "Published @moamen-ui/pointer-{angular,react,vue}@${{ steps.ver.outputs.version }}" >> "$GITHUB_STEP_SUMMARY"
