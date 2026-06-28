@@ -22,13 +22,34 @@
     applied: "completed",
     archived: "archived"
   };
-  var FILTERS = [
-    { key: "all", label: "All" },
-    { key: "open", label: "Open" },
-    { key: "pending-apply", label: "Pending" },
-    { key: "applied", label: "Completed" },
-    { key: "archived", label: "Archived" }
+  var STATUS_FALLBACK = [
+    { value: 1, name: "Open", label: "Open", color: "#2563eb", order: 1 },
+    { value: 2, name: "ReadyToApply", label: "Ready", color: "#d97706", order: 2 },
+    { value: 3, name: "Applied", label: "Completed", color: "#16a34a", order: 3 },
+    { value: 4, name: "Archived", label: "Archived", color: "#6b7280", order: 4 }
   ];
+  var _catalog = STATUS_FALLBACK;
+  async function loadStatusCatalog(server) {
+    var _a2;
+    try {
+      const res = await fetch(`${server.replace(/\/$/, "")}/api/statuses`);
+      if (!res.ok) return;
+      const body = await res.json();
+      const data = (_a2 = body == null ? void 0 : body.data) != null ? _a2 : body;
+      if (Array.isArray(data) && data.length) _catalog = data.slice().sort((a, b) => a.order - b.order);
+    } catch {
+    }
+  }
+  function catalogToFilters() {
+    const chips = [
+      { key: "all", label: "All", color: "" }
+    ];
+    for (const item of _catalog) {
+      const key = STATUS_STR[item.value];
+      if (key) chips.push({ key, label: item.label, color: item.color });
+    }
+    return chips;
+  }
   var POSITIONS = ["top-start", "top-end", "bottom-start", "bottom-end"];
   var SHOT_MAX_WIDTH = 1280;
   var SHOT_HIGHLIGHT = "#2563eb";
@@ -206,9 +227,12 @@
           ${count ? `<span class="pf-launcher-badge">${count > 99 ? "99+" : count}</span>` : ""}
         </button>`,
     empty: (msg) => `<div class="pf-empty">${msg}</div>`,
-    filterChip: (f, active, count) => `<button class="pf-chip ${active ? "active" : ""} chip-${STATUS_LABEL[f.key] || "all"}" data-filter="${f.key}">
+    filterChip: (f, active, count) => {
+      const colorStyle = f.color ? ` style="--chip-color:${f.color}"` : "";
+      return `<button class="pf-chip ${active ? "active" : ""} chip-${STATUS_LABEL[f.key] || "all"}"${colorStyle} data-filter="${f.key}">
              ${f.label} <span class="pf-chip-n">${count}</span>
-           </button>`,
+           </button>`;
+    },
     // "Mine only" toggle — a chip that composes with the status chips above.
     // Rendered only when a user is logged in.
     mineToggle: (active) => `<button class="pf-chip pf-mine ${active ? "active" : ""}" id="pf-mine-toggle" title="Show only my comments" aria-pressed="${active ? "true" : "false"}">
@@ -760,6 +784,7 @@
       showLoginModal(this);
     }
     async init() {
+      await loadStatusCatalog(this.server);
       this.renderChrome();
       await this.fetchComments();
       this.renderSidebar();
@@ -1315,6 +1340,7 @@
     }
     // --- Sidebar render ------------------------------------------------------
     renderSidebar() {
+      var _a2;
       const all = this.pageComments();
       const canMine = !!(this.user && this.user.id);
       if (!canMine) this.mineOnly = false;
@@ -1333,7 +1359,11 @@
       if (countEl) countEl.textContent = String(all.filter((c) => c.status !== "archived").length);
       const filtersEl = this.root.querySelector("#pf-filters");
       if (filtersEl) {
-        filtersEl.innerHTML = FILTERS.map((f) => TPL.filterChip(f, this.statusFilter === f.key, counts[f.key])).join("") + (authors.length > 1 && !this.mineOnly ? TPL.authorFilter(authors, this.authorFilter || "") : "") + (canMine ? TPL.mineToggle(this.mineOnly) : "");
+        const activeFilters = catalogToFilters();
+        filtersEl.innerHTML = activeFilters.map((f) => {
+          var _a3;
+          return TPL.filterChip(f, this.statusFilter === f.key, (_a3 = counts[f.key]) != null ? _a3 : 0);
+        }).join("") + (authors.length > 1 && !this.mineOnly ? TPL.authorFilter(authors, this.authorFilter || "") : "") + (canMine ? TPL.mineToggle(this.mineOnly) : "");
         filtersEl.querySelectorAll("[data-filter]").forEach((b) => b.addEventListener("click", () => {
           this.statusFilter = b.dataset.filter;
           this.renderSidebar();
@@ -1359,7 +1389,9 @@
         return;
       }
       if (!shown.length) {
-        list.innerHTML = TPL.empty(`No ${FILTERS.find((f) => f.key === this.statusFilter).label.toLowerCase()} comments${this.mineOnly ? " of yours" : ""}.`);
+        const activeFilters = catalogToFilters();
+        const filterLabel = ((_a2 = activeFilters.find((f) => f.key === this.statusFilter)) != null ? _a2 : { label: this.statusFilter }).label;
+        list.innerHTML = TPL.empty(`No ${filterLabel.toLowerCase()} comments${this.mineOnly ? " of yours" : ""}.`);
         return;
       }
       list.innerHTML = shown.map((c, i) => {

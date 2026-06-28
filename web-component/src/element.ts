@@ -1,5 +1,6 @@
 import {
-  HL_CLASS, ENV_MAP, STATUS_STR, STATUS_INT, FILTERS, POSITIONS, CSS_URL, SCRIPT_SRC,
+  HL_CLASS, ENV_MAP, STATUS_STR, STATUS_INT, POSITIONS, CSS_URL, SCRIPT_SRC,
+  loadStatusCatalog, catalogToFilters,
 } from './constants';
 import { escapeHtml, ensureHighlightStyle, matchElement, pageIsRtl } from './dom';
 import { TPL } from './templates';
@@ -167,6 +168,10 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
   }
 
   async init(): Promise<void> {
+    // Load the status catalog from the server before the first render so that
+    // filter chips and status labels reflect server-configured values.
+    // Falls back to STATUS_FALLBACK silently if the fetch fails.
+    await loadStatusCatalog(this.server);
     this.renderChrome();
     await this.fetchComments();
     this.renderSidebar();
@@ -742,8 +747,9 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
 
     const filtersEl = this.root.querySelector('#pf-filters');
     if (filtersEl) {
-      filtersEl.innerHTML = FILTERS.map((f) =>
-        TPL.filterChip(f, this.statusFilter === f.key, counts[f.key])).join('')
+      const activeFilters = catalogToFilters();
+      filtersEl.innerHTML = activeFilters.map((f) =>
+        TPL.filterChip(f, this.statusFilter === f.key, counts[f.key] ?? 0)).join('')
         + ((authors.length > 1 && !this.mineOnly) ? TPL.authorFilter(authors, this.authorFilter || '') : '')
         + (canMine ? TPL.mineToggle(this.mineOnly) : '');
       filtersEl.querySelectorAll<HTMLElement>('[data-filter]').forEach((b) =>
@@ -772,7 +778,9 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
       return;
     }
     if (!shown.length) {
-      list.innerHTML = TPL.empty(`No ${FILTERS.find((f) => f.key === this.statusFilter)!.label.toLowerCase()} comments${this.mineOnly ? ' of yours' : ''}.`);
+      const activeFilters = catalogToFilters();
+      const filterLabel = (activeFilters.find((f) => f.key === this.statusFilter) ?? { label: this.statusFilter }).label;
+      list.innerHTML = TPL.empty(`No ${filterLabel.toLowerCase()} comments${this.mineOnly ? ' of yours' : ''}.`);
       return;
     }
 

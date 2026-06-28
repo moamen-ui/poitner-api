@@ -93,10 +93,12 @@ export const TPL = {
 
   empty: (msg: string) => `<div class="pf-empty">${msg}</div>`,
 
-  filterChip: (f: { key: string; label: string }, active: boolean, count: number) =>
-    `<button class="pf-chip ${active ? 'active' : ''} chip-${STATUS_LABEL[f.key] || 'all'}" data-filter="${f.key}">
+  filterChip: (f: { key: string; label: string; color?: string }, active: boolean, count: number) => {
+    const colorStyle = f.color ? ` style="--chip-color:${f.color}"` : '';
+    return `<button class="pf-chip ${active ? 'active' : ''} chip-${STATUS_LABEL[f.key] || 'all'}"${colorStyle} data-filter="${f.key}">
              ${f.label} <span class="pf-chip-n">${count}</span>
-           </button>`,
+           </button>`;
+  },
 
   // "Mine only" toggle — a chip that composes with the status chips above.
   // Rendered only when a user is logged in.
