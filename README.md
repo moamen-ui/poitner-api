@@ -27,6 +27,9 @@ account (never anonymous).
 
 ## 1. Add the widget
 
+> Adding Pointer to an **API's Swagger / OpenAPI docs** instead of an app page? Jump to
+> [section 3](#3-embed-in-an-apis-swagger-page-optional).
+
 ### Easiest — let your AI do it (`pointer-init` skill) ⭐
 
 Install the skill, then tell your AI tool to run it — it asks for the project key / server /
