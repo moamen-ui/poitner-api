@@ -44,6 +44,7 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
   private _onPick!: (e: MouseEvent) => void;
   private _reposition!: () => void;
   private _pendingShotPromise: Promise<Blob | null> | null = null;
+  private _userMenuClose: ((e: MouseEvent) => void) | null = null;
 
   connectedCallback(): void {
     if (this._mounted) return;
@@ -263,9 +264,7 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
     if (hideBtn) hideBtn.addEventListener('click', () => this.hideOverlay());
 
     const userBtn = this.root.querySelector('#pf-user');
-    if (userBtn) userBtn.addEventListener('click', () => {
-      if (this.user) this.toast(`Signed in as ${this.user.displayName || this.user.email}${this.user.roleName ? ' · ' + this.user.roleName : ''}`);
-    });
+    if (userBtn) userBtn.addEventListener('click', (e) => { e.stopPropagation(); this.toggleUserMenu(); });
 
     this.root.querySelector('#pf-add')!.addEventListener('click', () => {
       if (!this.token) {
@@ -283,6 +282,61 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
       await this.fetchComments(); this.renderSidebar(); this.renderPins(); this.toast('Refreshed');
     });
     this.root.querySelector('#pf-close')!.addEventListener('click', () => this.toggleSidebar(false));
+  }
+
+  // --- User menu (identity + sign out) ------------------------------------
+  private toggleUserMenu(): void {
+    const host = this.root.querySelector('#pf-menu-host') as HTMLElement | null;
+    if (!host) return;
+    if (host.querySelector('#pf-user-menu')) { this.closeUserMenu(); return; }
+
+    const displayName = this.user ? escapeHtml(this.user.displayName || this.user.email) : '';
+    const roleLabel = this.user ? escapeHtml(this.user.roleName || '') : '';
+    host.innerHTML = TPL.userMenu(displayName, roleLabel);
+    const menu = host.querySelector('#pf-user-menu') as HTMLElement;
+
+    // Anchor the dropdown under the user icon.
+    const btn = this.root.querySelector('#pf-user') as HTMLElement | null;
+    if (btn) {
+      const r = btn.getBoundingClientRect();
+      menu.style.top = `${Math.round(r.bottom + 6)}px`;
+      menu.style.right = `${Math.max(8, Math.round(window.innerWidth - r.right))}px`;
+    }
+
+    (host.querySelector('#pf-signout') as HTMLElement).addEventListener('click', () => this.signOut());
+
+    // Close on click outside (composedPath crosses the shadow boundary).
+    this._userMenuClose = (e: MouseEvent) => {
+      const path = e.composedPath();
+      if (!path.includes(menu) && (!btn || !path.includes(btn))) this.closeUserMenu();
+    };
+    setTimeout(() => { if (this._userMenuClose) document.addEventListener('click', this._userMenuClose, true); }, 0);
+  }
+
+  private closeUserMenu(): void {
+    const host = this.root.querySelector('#pf-menu-host');
+    if (host) host.innerHTML = '';
+    if (this._userMenuClose) {
+      document.removeEventListener('click', this._userMenuClose, true);
+      this._userMenuClose = null;
+    }
+  }
+
+  // Clear the session and reset the widget to its logged-out (deferred-login) state.
+  signOut(): void {
+    this.closeUserMenu();
+    if (this.picking) this.stopPicking();
+    this.clearAuth();
+    this.comments = [];
+    this.hiddenPrivateCount = 0;
+    this.sidebarOpen = false;
+    this.mineOnly = false;
+    this.authorFilter = null;
+    this.statusFilter = 'all';
+    this.renderChrome();
+    this.renderSidebar();
+    this.renderPins();
+    this.toast('Signed out');
   }
 
   // Collapse the overlay to the floating launcher (remembered for this tab session).

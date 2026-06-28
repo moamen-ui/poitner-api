@@ -69,7 +69,18 @@ export const TPL = {
           <div class="pf-sidebar-body" id="pf-list"></div>
         </div>
         <div id="pf-pins"></div>
-        <div id="pf-popover-host"></div>`,
+        <div id="pf-popover-host"></div>
+        <div id="pf-menu-host"></div>`,
+
+  // Dropdown under the user icon: shows identity + a Sign out action.
+  userMenu: (displayName: string, roleLabel: string) => `
+        <div class="pf-menu" id="pf-user-menu" role="menu">
+          <div class="pf-menu-id">
+            <span>${displayName}</span>
+            ${roleLabel ? `<span class="pf-menu-role">${roleLabel}</span>` : ''}
+          </div>
+          <button class="pf-menu-item" id="pf-signout" role="menuitem">${ICON.logout}<span>Sign out</span></button>
+        </div>`,
 
   // Collapsed state: a small floating launcher that re-opens the overlay.
   // `rtl` makes start/end resolve against the host page direction (the shadow

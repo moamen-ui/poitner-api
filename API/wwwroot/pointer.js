@@ -121,7 +121,8 @@
     pin: '<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>',
     user: '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>',
     lock: '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>',
-    unlock: '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 9.9-1"/></svg>'
+    unlock: '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 9.9-1"/></svg>',
+    logout: '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>'
   };
 
   // src/templates.ts
@@ -185,7 +186,17 @@
           <div class="pf-sidebar-body" id="pf-list"></div>
         </div>
         <div id="pf-pins"></div>
-        <div id="pf-popover-host"></div>`,
+        <div id="pf-popover-host"></div>
+        <div id="pf-menu-host"></div>`,
+    // Dropdown under the user icon: shows identity + a Sign out action.
+    userMenu: (displayName, roleLabel) => `
+        <div class="pf-menu" id="pf-user-menu" role="menu">
+          <div class="pf-menu-id">
+            <span>${displayName}</span>
+            ${roleLabel ? `<span class="pf-menu-role">${roleLabel}</span>` : ""}
+          </div>
+          <button class="pf-menu-item" id="pf-signout" role="menuitem">${ICON.logout}<span>Sign out</span></button>
+        </div>`,
     // Collapsed state: a small floating launcher that re-opens the overlay.
     // `rtl` makes start/end resolve against the host page direction (the shadow
     // UI is otherwise forced LTR), so e.g. `top-end` lands top-left on an RTL page.
@@ -649,6 +660,7 @@
       this.user = null;
       this.afterLogin = null;
       this._pendingShotPromise = null;
+      this._userMenuClose = null;
     }
     connectedCallback() {
       if (this._mounted) return;
@@ -831,8 +843,9 @@
       const hideBtn = this.root.querySelector("#pf-hide");
       if (hideBtn) hideBtn.addEventListener("click", () => this.hideOverlay());
       const userBtn = this.root.querySelector("#pf-user");
-      if (userBtn) userBtn.addEventListener("click", () => {
-        if (this.user) this.toast(`Signed in as ${this.user.displayName || this.user.email}${this.user.roleName ? " · " + this.user.roleName : ""}`);
+      if (userBtn) userBtn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        this.toggleUserMenu();
       });
       this.root.querySelector("#pf-add").addEventListener("click", () => {
         if (!this.token) {
@@ -863,6 +876,57 @@
         this.toast("Refreshed");
       });
       this.root.querySelector("#pf-close").addEventListener("click", () => this.toggleSidebar(false));
+    }
+    // --- User menu (identity + sign out) ------------------------------------
+    toggleUserMenu() {
+      const host = this.root.querySelector("#pf-menu-host");
+      if (!host) return;
+      if (host.querySelector("#pf-user-menu")) {
+        this.closeUserMenu();
+        return;
+      }
+      const displayName = this.user ? escapeHtml(this.user.displayName || this.user.email) : "";
+      const roleLabel = this.user ? escapeHtml(this.user.roleName || "") : "";
+      host.innerHTML = TPL.userMenu(displayName, roleLabel);
+      const menu = host.querySelector("#pf-user-menu");
+      const btn = this.root.querySelector("#pf-user");
+      if (btn) {
+        const r = btn.getBoundingClientRect();
+        menu.style.top = `${Math.round(r.bottom + 6)}px`;
+        menu.style.right = `${Math.max(8, Math.round(window.innerWidth - r.right))}px`;
+      }
+      host.querySelector("#pf-signout").addEventListener("click", () => this.signOut());
+      this._userMenuClose = (e) => {
+        const path = e.composedPath();
+        if (!path.includes(menu) && (!btn || !path.includes(btn))) this.closeUserMenu();
+      };
+      setTimeout(() => {
+        if (this._userMenuClose) document.addEventListener("click", this._userMenuClose, true);
+      }, 0);
+    }
+    closeUserMenu() {
+      const host = this.root.querySelector("#pf-menu-host");
+      if (host) host.innerHTML = "";
+      if (this._userMenuClose) {
+        document.removeEventListener("click", this._userMenuClose, true);
+        this._userMenuClose = null;
+      }
+    }
+    // Clear the session and reset the widget to its logged-out (deferred-login) state.
+    signOut() {
+      this.closeUserMenu();
+      if (this.picking) this.stopPicking();
+      this.clearAuth();
+      this.comments = [];
+      this.hiddenPrivateCount = 0;
+      this.sidebarOpen = false;
+      this.mineOnly = false;
+      this.authorFilter = null;
+      this.statusFilter = "all";
+      this.renderChrome();
+      this.renderSidebar();
+      this.renderPins();
+      this.toast("Signed out");
     }
     // Collapse the overlay to the floating launcher (remembered for this tab session).
     hideOverlay() {
