@@ -13,7 +13,7 @@
  *   clients/react/src/    — @pointer/api-react   (TanStack Query hooks)
  */
 
-import { writeFileSync, readdirSync, readFileSync, cpSync, existsSync } from 'node:fs';
+import { writeFileSync, readdirSync, readFileSync, cpSync, existsSync, mkdirSync, copyFileSync } from 'node:fs';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { execSync } from 'node:child_process';
@@ -42,7 +42,18 @@ try {
   process.exit(1);
 }
 
-// ── 2. Run Orval (generates both Angular + React clients) ─────────
+// ── 1b. Materialize the axios mutator for the React/Vue clients ───
+// orval.config points each at clients/<fw>/mutator.ts; clients/ is gitignored,
+// so copy the tracked template into place before orval runs (orval keeps it via
+// its `clean: ['!**/mutator.ts']` rule). Required for fresh checkouts (CI).
+const MUTATOR_SRC = resolve(root, 'scripts', 'mutators', 'axios-mutator.ts');
+for (const fw of ['react', 'vue']) {
+  const dir = resolve(root, 'clients', fw);
+  mkdirSync(dir, { recursive: true });
+  copyFileSync(MUTATOR_SRC, resolve(dir, 'mutator.ts'));
+}
+
+// ── 2. Run Orval (generates Angular + React + Vue clients) ────────
 console.log('\n🔨 Generating client packages...\n');
 try {
   execSync('npx orval --config ./orval.config.ts', {
