@@ -1,0 +1,15 @@
+{
+  "name": "pointer-api-clients",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "generate-clients": "node scripts/generate-clients.mjs",
+    "format": "prettier --write \"clients/**/*.{ts,json}\""
+  },
+  "devDependencies": {
+    "axios": "^1.7.0",
+    "orval": "^8.19.0",
+    "prettier": "^3.8.1"
+  }
+}

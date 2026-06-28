@@ -7,3 +7,6 @@ dashboard-dist/
 .superpowers/
 API/wwwroot/uploads/
 .playwright-cli/
+node_modules/
+clients/
+openapi.json

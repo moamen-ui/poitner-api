@@ -74,6 +74,9 @@ cd ~/pointer-api
 git pull --ff-only
 docker compose --env-file .env.prod -f docker-compose.prod.yml up -d --build api
 # EF migrations auto-apply on boot; db + caddy stay up.
+
+# Regenerate API clients + sync to dashboard (if endpoints/DTOs changed):
+npm run generate-clients
 ```
 
 **Dashboard change** — from your machine `git push origin main`, then on the VM:
@@ -81,6 +84,8 @@ docker compose --env-file .env.prod -f docker-compose.prod.yml up -d --build api
 ```bash
 cd ~/pointer-dashboard
 git pull --ff-only
+# Regenerate the Angular client from the API (ensures types are fresh):
+cd ~/pointer-api && npm run generate-clients && cd ~/pointer-dashboard
 docker run --rm -v "$PWD":/app -v /app/node_modules -w /app node:22 \
   bash -lc "npm ci && npx ng build --configuration production"
 rm -rf ~/pointer-api/dashboard-dist && cp -r dist/admin-web/browser ~/pointer-api/dashboard-dist
