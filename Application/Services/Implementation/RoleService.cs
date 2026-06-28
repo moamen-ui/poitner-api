@@ -104,6 +104,58 @@ public class RoleService : IRoleService
         return Result<RoleResponse>.Success(MapToResponse(role));
     }
 
+    public async Task<Result<RoleDeleteResponse>> DeleteAsync(int id, int? reassignToRoleId)
+    {
+        var role = await _unitOfWork.Repository<Role>().GetByIdAsync(id);
+
+        if (role == null || role.DeletedAt != null)
+            return Result<RoleDeleteResponse>.NotFound(MessageKeys.Role.NotFound);
+
+        // System roles (e.g. Admin) can't be deleted — protects dashboard access.
+        if (role.IsSystem)
+            return Result<RoleDeleteResponse>.Conflict(MessageKeys.Role.SystemImmutable);
+
+        var users = await _unitOfWork.Repository<User>()
+            .Query()
+            .Where(u => u.DeletedAt == null && u.RoleId == id)
+            .ToListAsync();
+
+        var reassigned = 0;
+        if (users.Count > 0)
+        {
+            if (reassignToRoleId == null)
+                return Result<RoleDeleteResponse>.Conflict(MessageKeys.Role.HasUsers);
+            if (reassignToRoleId == id)
+                return Result<RoleDeleteResponse>.Conflict(MessageKeys.Role.ReassignSame);
+
+            var target = await _unitOfWork.Repository<Role>()
+                .Query()
+                .AsNoTracking()
+                .FirstOrDefaultAsync(r =>
+                    r.Id == reassignToRoleId && r.DeletedAt == null && r.IsActive);
+            if (target == null)
+                return Result<RoleDeleteResponse>.Conflict(MessageKeys.Role.Invalid);
+
+            foreach (var u in users)
+            {
+                u.RoleId = reassignToRoleId.Value;
+                _unitOfWork.Repository<User>().Update(u);
+            }
+            reassigned = users.Count;
+        }
+
+        role.DeletedAt = DateTime.UtcNow;
+        _unitOfWork.Repository<Role>().Update(role);
+        await _unitOfWork.SaveChangesAsync();
+
+        return Result<RoleDeleteResponse>.Success(new RoleDeleteResponse
+        {
+            Id = id,
+            ReassignedUsers = reassigned,
+            ReassignedToRoleId = reassigned > 0 ? reassignToRoleId : null
+        });
+    }
+
     private static RoleResponse MapToResponse(Role role) => new()
     {
         Id = role.Id,

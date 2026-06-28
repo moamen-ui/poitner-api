@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Pointer.API.Auth;
 using Pointer.Application.DTOs.Role;
+using Pointer.Application.Response;
 using Pointer.Application.Services.Interfaces;
 
 namespace Pointer.API.Controllers.Admin;
@@ -33,6 +34,20 @@ public class RolesController(IRoleService roleService) : ControllerBase
     public async Task<IActionResult> Update(int id, [FromBody] UpdateRoleRequest request)
     {
         var result = await roleService.UpdateAsync(id, request);
+        if (result.IsNotFound) return NotFound(result);
+        if (result.IsConflict) return Conflict(result);
+        return result.IsSuccess ? Ok(result) : BadRequest(result);
+    }
+
+    // Delete a role. If it has assigned users, pass reassignToRoleId to move them
+    // to another role first (required in that case); the response reports how many
+    // users were moved. The Admin/system role cannot be deleted.
+    [HttpDelete("{id:int}")]
+    [ProducesResponseType(typeof(RoleDeleteResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(Result), StatusCodes.Status409Conflict)]
+    public async Task<IActionResult> Delete(int id, [FromQuery] int? reassignToRoleId)
+    {
+        var result = await roleService.DeleteAsync(id, reassignToRoleId);
         if (result.IsNotFound) return NotFound(result);
         if (result.IsConflict) return Conflict(result);
         return result.IsSuccess ? Ok(result) : BadRequest(result);
