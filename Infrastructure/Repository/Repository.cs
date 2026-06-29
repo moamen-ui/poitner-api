@@ -14,7 +14,9 @@ public class Repository<T>(AppDbContext db) : IRepository<T> where T : BaseEntit
 
     public void Update(T e) => _set.Update(e);
 
-    public async Task<T?> GetByIdAsync(int id) => await _set.FindAsync(id);
+    // Uses a filtered query (NOT FindAsync) so EF global query filters apply — FindAsync
+    // bypasses them, which would let a scoped admin load another tenant's row by id.
+    public async Task<T?> GetByIdAsync(int id) => await _set.FirstOrDefaultAsync(e => e.Id == id);
 
     public void Remove(T e) => _set.Remove(e);
 
