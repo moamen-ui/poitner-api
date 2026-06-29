@@ -1,6 +1,7 @@
 using System.Text.RegularExpressions;
 using Microsoft.EntityFrameworkCore;
 using Pointer.Application.Abstractions;
+using Pointer.Application.Common;
 using Pointer.Application.DTOs.Status;
 using Pointer.Application.Response;
 using Pointer.Application.Services.Interfaces;
@@ -9,14 +10,21 @@ using Pointer.Domain.Enums;
 
 namespace Pointer.Application.Services.Implementation;
 
-public class StatusAdminService(IUnitOfWork unitOfWork) : IStatusAdminService
+public class StatusAdminService(IUnitOfWork unitOfWork, ICurrentUser currentUser) : IStatusAdminService
 {
     private readonly IUnitOfWork _unitOfWork = unitOfWork;
+    private readonly ICurrentUser _currentUser = currentUser;
 
     public async Task<Result<List<StatusAdminItem>>> ListAsync()
     {
+        // Each admin sees ONLY their own layer's overrides (super→global, scoped→their tenant).
+        var owner = TenantStamp.OwnerFor(_currentUser);
+
         var overrides = await _unitOfWork.Repository<StatusPresentation>().Query()
-            .AsNoTracking().Where(s => s.DeletedAt == null).ToListAsync();
+            .IgnoreQueryFilters()
+            .AsNoTracking()
+            .Where(s => s.DeletedAt == null && s.OwnerId == owner)
+            .ToListAsync();
 
         var items = StatusCatalogService.Defaults.Select(d => Merge(d, overrides.FirstOrDefault(o => o.StatusValue == d.Value))).ToList();
         return Result<List<StatusAdminItem>>.Success(items);
@@ -45,14 +53,17 @@ public class StatusAdminService(IUnitOfWork unitOfWork) : IStatusAdminService
         if (request.Order is not null && request.Order < 0)
             return Result<StatusAdminItem>.Failure("Order must be 0 or greater.");
 
+        var owner = TenantStamp.OwnerFor(_currentUser);
+
         // Intentionally ignore soft-delete so a previously reset row is revived
-        // rather than causing a unique-constraint violation on status_value.
+        // rather than causing a unique-constraint violation on status_value + owner.
         var row = await _unitOfWork.Repository<StatusPresentation>().Query()
-            .FirstOrDefaultAsync(s => s.StatusValue == value);
+            .IgnoreQueryFilters()
+            .FirstOrDefaultAsync(s => s.StatusValue == value && s.OwnerId == owner);
 
         if (row == null)
         {
-            row = new StatusPresentation { StatusValue = value };
+            row = new StatusPresentation { StatusValue = value, OwnerId = owner };
             if (request.Label is not null) row.Label = request.Label;
             if (request.Color is not null) row.Color = request.Color;
             if (request.Order is not null) row.DisplayOrder = request.Order;
@@ -83,8 +94,11 @@ public class StatusAdminService(IUnitOfWork unitOfWork) : IStatusAdminService
         if (!Enum.IsDefined(typeof(CommentStatus), value))
             return Result.NotFound("Unknown status");
 
+        var owner = TenantStamp.OwnerFor(_currentUser);
+
         var row = await _unitOfWork.Repository<StatusPresentation>().Query()
-            .FirstOrDefaultAsync(s => s.StatusValue == value && s.DeletedAt == null);
+            .IgnoreQueryFilters()
+            .FirstOrDefaultAsync(s => s.StatusValue == value && s.OwnerId == owner && s.DeletedAt == null);
 
         if (row == null)
             return Result.Success();

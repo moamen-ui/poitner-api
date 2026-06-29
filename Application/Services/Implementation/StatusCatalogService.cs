@@ -8,9 +8,10 @@ using Pointer.Domain.Enums;
 
 namespace Pointer.Application.Services.Implementation;
 
-public class StatusCatalogService(IUnitOfWork unitOfWork) : IStatusCatalogService
+public class StatusCatalogService(IUnitOfWork unitOfWork, ICurrentUser currentUser) : IStatusCatalogService
 {
     private readonly IUnitOfWork _unitOfWork = unitOfWork;
+    private readonly ICurrentUser _currentUser = currentUser;
 
     // THE single source of truth for comment-status presentation defaults.
     // Rename / recolor / reorder here → every client reflects it on next load.
@@ -24,11 +25,23 @@ public class StatusCatalogService(IUnitOfWork unitOfWork) : IStatusCatalogServic
 
     public async Task<Result<List<StatusItem>>> GetAllAsync()
     {
+        // anonymous + super both resolve scope=null → global+defaults.
+        var scope = _currentUser.TenantId;
+
+        // Bypass the global EF query filter and scope explicitly — super-admin would
+        // otherwise see every tenant's overrides, and anonymous lacks a filter context.
         var overrides = await _unitOfWork.Repository<StatusPresentation>().Query()
-            .AsNoTracking().Where(s => s.DeletedAt == null).ToListAsync();
+            .IgnoreQueryFilters()
+            .AsNoTracking()
+            .Where(s => s.DeletedAt == null && (s.OwnerId == null || s.OwnerId == scope))
+            .ToListAsync();
+
         var merged = Defaults.Select(d =>
         {
-            var o = overrides.FirstOrDefault(x => x.StatusValue == d.Value);
+            // Prefer tenant-specific override (OwnerId == scope, scope != null) over global (OwnerId == null).
+            var tenant = scope != null ? overrides.FirstOrDefault(x => x.StatusValue == d.Value && x.OwnerId == scope) : null;
+            var global = overrides.FirstOrDefault(x => x.StatusValue == d.Value && x.OwnerId == null);
+            var o = tenant ?? global;
             return new StatusItem
             {
                 Value = d.Value,
@@ -38,6 +51,7 @@ public class StatusCatalogService(IUnitOfWork unitOfWork) : IStatusCatalogServic
                 Order = o?.DisplayOrder ?? d.Order,
             };
         }).OrderBy(s => s.Order).ToList();
+
         return Result<List<StatusItem>>.Success(merged);
     }
 }
