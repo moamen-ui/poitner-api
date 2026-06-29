@@ -116,6 +116,16 @@ public class RoleService : IRoleService
         if (role.IsSystem)
             return Result<RoleResponse>.Conflict(MessageKeys.Role.SystemImmutable);
 
+        // Tenancy: a scoped admin may only modify roles it OWNS — never global
+        // (OwnerId == null) or another tenant's roles. The Role query filter lets a
+        // scoped admin SEE global roles, so an explicit ownership check is required here.
+        if (!_currentUser.IsSuperAdmin && role.OwnerId != _currentUser.TenantId)
+            return Result<RoleResponse>.NotFound(MessageKeys.Role.NotFound);
+
+        // A scoped admin can never grant admin via update (mirrors CreateAsync's guard).
+        if (request.GrantsAdmin == true && !_currentUser.IsSuperAdmin)
+            return Result<RoleResponse>.Failure(MessageKeys.Role.EscalationNotAllowed);
+
         if (request.Name != null)
         {
             var name = request.Name.Trim();
@@ -151,6 +161,10 @@ public class RoleService : IRoleService
         // System roles (e.g. Admin) can't be deleted — protects dashboard access.
         if (role.IsSystem)
             return Result<RoleDeleteResponse>.Conflict(MessageKeys.Role.SystemImmutable);
+
+        // Tenancy: a scoped admin may only delete roles it OWNS — never global/other-tenant.
+        if (!_currentUser.IsSuperAdmin && role.OwnerId != _currentUser.TenantId)
+            return Result<RoleDeleteResponse>.NotFound(MessageKeys.Role.NotFound);
 
         var users = await _unitOfWork.Repository<User>()
             .Query()
