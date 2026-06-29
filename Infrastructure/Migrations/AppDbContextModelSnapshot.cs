@@ -350,10 +350,10 @@ namespace Pointer.Infrastructure.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("Name")
-                        .IsUnique();
-
                     b.HasIndex("OwnerId");
+
+                    b.HasIndex("Name", "OwnerId")
+                        .IsUnique();
 
                     b.ToTable("roles", (string)null);
                 });

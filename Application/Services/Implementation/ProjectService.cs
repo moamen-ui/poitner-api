@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using Pointer.Application.Abstractions;
+using Pointer.Application.Common;
 using Pointer.Application.DTOs.Project;
 using Pointer.Application.Resources;
 using Pointer.Application.Response;
@@ -11,16 +12,20 @@ namespace Pointer.Application.Services.Implementation;
 public class ProjectService : IProjectService
 {
     private readonly IUnitOfWork _unitOfWork;
+    private readonly ICurrentUser _currentUser;
 
-    public ProjectService(IUnitOfWork unitOfWork)
+    public ProjectService(IUnitOfWork unitOfWork, ICurrentUser currentUser)
     {
         _unitOfWork = unitOfWork;
+        _currentUser = currentUser;
     }
 
     public async Task<Result<ProjectResponse>> CreateAsync(CreateProjectRequest request)
     {
         var keyNormalized = request.Key.Trim().ToLower();
 
+        // EF query filter already scopes this to the caller's tenant;
+        // the check is still correct — a scoped admin cannot key-conflict with another tenant.
         var exists = await _unitOfWork.Repository<Project>()
             .Query()
             .AsNoTracking()
@@ -34,7 +39,8 @@ public class ProjectService : IProjectService
         {
             Key = keyNormalized,
             Name = request.Name,
-            IsActive = true
+            IsActive = true,
+            OwnerId = TenantStamp.OwnerFor(_currentUser)
         };
 
         await _unitOfWork.Repository<Project>().AddAsync(project);
@@ -76,11 +82,14 @@ public class ProjectService : IProjectService
     public async Task<Result<int>> EnsureAsync(string key)
     {
         var keyNormalized = key.Trim().ToLower();
+        var ownerId = TenantStamp.OwnerFor(_currentUser);
 
+        // EF query filter is the primary tenant boundary; the explicit OwnerId match is
+        // belt-and-suspenders to prevent a scoped admin's key resolving to a global project.
         var project = await _unitOfWork.Repository<Project>()
             .Query()
             .AsNoTracking()
-            .Where(p => p.DeletedAt == null && p.Key == keyNormalized)
+            .Where(p => p.DeletedAt == null && p.Key == keyNormalized && p.OwnerId == ownerId)
             .Select(p => new { p.Id, p.IsActive })
             .FirstOrDefaultAsync();
 
@@ -92,7 +101,8 @@ public class ProjectService : IProjectService
             {
                 Key = keyNormalized,
                 Name = keyNormalized,
-                IsActive = true
+                IsActive = true,
+                OwnerId = ownerId
             };
             await _unitOfWork.Repository<Project>().AddAsync(created);
             await _unitOfWork.SaveChangesAsync();
