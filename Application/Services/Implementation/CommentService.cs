@@ -44,6 +44,27 @@ public class CommentService : ICommentService
             .Select(p => p.OwnerId)
             .FirstAsync();
 
+        // Enforce a 10-comment cap for demo tenants.
+        if (projectOwnerId is Guid owner)
+        {
+            var isDemo = await _unitOfWork.Repository<User>()
+                .Query()
+                .IgnoreQueryFilters()
+                .AsNoTracking()
+                .AnyAsync(u => u.PublicId == owner && u.IsDemo && u.DeletedAt == null);
+
+            if (isDemo)
+            {
+                var count = await _unitOfWork.Repository<Comment>()
+                    .Query()
+                    .IgnoreQueryFilters()
+                    .CountAsync(c => c.OwnerId == owner && c.DeletedAt == null);
+
+                if (count >= 10)
+                    return Result<CommentResponse>.Failure("Demo limit reached: a demo workspace allows at most 10 comments.");
+            }
+        }
+
         var comment = new Comment
         {
             ProjectId = projectResult.Data,
