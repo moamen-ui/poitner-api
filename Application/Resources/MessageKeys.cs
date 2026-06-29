@@ -40,6 +40,7 @@ public static class MessageKeys
         public const string Invalid = "The selected role does not exist or is inactive.";
         public const string HasUsers = "This role has assigned users — choose another role to move them to.";
         public const string ReassignSame = "The reassignment role must be different from the role being deleted.";
+        public const string EscalationNotAllowed = "Only a super admin may assign or approve users with an admin-tier role.";
     }
 
     public static class Preferences

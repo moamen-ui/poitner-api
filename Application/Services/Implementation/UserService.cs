@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using Pointer.Application.Abstractions;
+using Pointer.Application.Common;
 using Pointer.Application.DTOs.User;
 using Pointer.Application.Resources;
 using Pointer.Application.Response;
@@ -13,11 +14,13 @@ public class UserService : IUserService
 {
     private readonly IUnitOfWork _unitOfWork;
     private readonly IPasswordHasher _passwordHasher;
+    private readonly ICurrentUser _currentUser;
 
-    public UserService(IUnitOfWork unitOfWork, IPasswordHasher passwordHasher)
+    public UserService(IUnitOfWork unitOfWork, IPasswordHasher passwordHasher, ICurrentUser currentUser)
     {
         _unitOfWork = unitOfWork;
         _passwordHasher = passwordHasher;
+        _currentUser = currentUser;
     }
 
     public async Task<Result<UserResponse>> CreateAsync(CreateUserRequest request)
@@ -37,6 +40,10 @@ public class UserService : IUserService
         if (role == null)
             return Result<UserResponse>.Failure(MessageKeys.Role.Invalid);
 
+        // Privilege-escalation guard: only the super admin may assign an admin-tier role.
+        if (!_currentUser.IsSuperAdmin && (role.GrantsAdmin || role.IsSuperAdmin))
+            return Result<UserResponse>.Failure(MessageKeys.Role.EscalationNotAllowed);
+
         var user = new User
         {
             Email = emailNormalized,
@@ -44,7 +51,8 @@ public class UserService : IUserService
             DisplayName = request.DisplayName,
             RoleId = role.Id,
             PublicId = Guid.NewGuid(),
-            IsActive = true
+            IsActive = true,
+            OwnerId = TenantStamp.OwnerFor(_currentUser)
         };
 
         await _unitOfWork.Repository<User>().AddAsync(user);
@@ -79,10 +87,14 @@ public class UserService : IUserService
         if (user == null || user.DeletedAt != null)
             return Result<UserResponse>.NotFound(MessageKeys.User.NotFound);
 
-        // Admin MAY grant an admin-granting role at this step — only active/non-deleted is required.
+        // Only super admin may grant an admin-tier role at approval time.
         var role = await GetActiveRoleAsync(request.RoleId);
         if (role == null)
             return Result<UserResponse>.Failure(MessageKeys.Role.Invalid);
+
+        // Privilege-escalation guard: only the super admin may assign an admin-tier role.
+        if (!_currentUser.IsSuperAdmin && (role.GrantsAdmin || role.IsSuperAdmin))
+            return Result<UserResponse>.Failure(MessageKeys.Role.EscalationNotAllowed);
 
         user.ApprovalStatus = ApprovalStatus.Approved;
         user.IsActive = true;
@@ -123,6 +135,11 @@ public class UserService : IUserService
             var role = await GetActiveRoleAsync(request.RoleId.Value);
             if (role == null)
                 return Result<UserResponse>.Failure(MessageKeys.Role.Invalid);
+
+            // Privilege-escalation guard: only the super admin may assign an admin-tier role.
+            if (!_currentUser.IsSuperAdmin && (role.GrantsAdmin || role.IsSuperAdmin))
+                return Result<UserResponse>.Failure(MessageKeys.Role.EscalationNotAllowed);
+
             user.RoleId = role.Id;
         }
 

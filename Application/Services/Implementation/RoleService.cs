@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using Pointer.Application.Abstractions;
+using Pointer.Application.Common;
 using Pointer.Application.DTOs.Role;
 using Pointer.Application.Resources;
 using Pointer.Application.Response;
@@ -11,10 +12,12 @@ namespace Pointer.Application.Services.Implementation;
 public class RoleService : IRoleService
 {
     private readonly IUnitOfWork _unitOfWork;
+    private readonly ICurrentUser _currentUser;
 
-    public RoleService(IUnitOfWork unitOfWork)
+    public RoleService(IUnitOfWork unitOfWork, ICurrentUser currentUser)
     {
         _unitOfWork = unitOfWork;
+        _currentUser = currentUser;
     }
 
     public async Task<Result<RoleResponse>> CreateAsync(CreateRoleRequest request)
@@ -29,12 +32,18 @@ public class RoleService : IRoleService
         if (exists)
             return Result<RoleResponse>.Conflict(MessageKeys.Role.NameTaken);
 
+        // Scoped admins cannot create admin-granting or super-admin roles.
+        // Only the super admin may set GrantsAdmin; IsSuperAdmin is never set via this API.
+        var grantsAdmin = _currentUser.IsSuperAdmin && request.GrantsAdmin;
+
         var role = new Role
         {
             Name = name,
-            GrantsAdmin = request.GrantsAdmin,
+            GrantsAdmin = grantsAdmin,
+            IsSuperAdmin = false,
             IsSystem = false,
-            IsActive = true
+            IsActive = true,
+            OwnerId = TenantStamp.OwnerFor(_currentUser)
         };
 
         await _unitOfWork.Repository<Role>().AddAsync(role);
