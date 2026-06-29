@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using Pointer.Application.Abstractions;
+using Pointer.Application.Common;
 using Pointer.Application.DTOs.Comment;
 using Pointer.Application.Resources;
 using Pointer.Application.Response;
@@ -15,12 +16,14 @@ public class CommentService : ICommentService
     private readonly IUnitOfWork _unitOfWork;
     private readonly IProjectService _projectService;
     private readonly IFileStorage _fileStorage;
+    private readonly ICurrentUser _currentUser;
 
-    public CommentService(IUnitOfWork unitOfWork, IProjectService projectService, IFileStorage fileStorage)
+    public CommentService(IUnitOfWork unitOfWork, IProjectService projectService, IFileStorage fileStorage, ICurrentUser currentUser)
     {
         _unitOfWork = unitOfWork;
         _projectService = projectService;
         _fileStorage = fileStorage;
+        _currentUser = currentUser;
     }
 
     public async Task<Result<CommentResponse>> CreateAsync(string projectKey, CreateCommentRequest request, Guid authorId)
@@ -31,6 +34,9 @@ public class CommentService : ICommentService
                 ? Result<CommentResponse>.Conflict(projectResult.Message ?? MessageKeys.Project.Disabled)
                 : Result<CommentResponse>.NotFound(projectResult.Message ?? MessageKeys.Project.NotFound);
 
+        // Stamp OwnerId from the project's tenant (EnsureAsync resolves/creates the
+        // project under the current caller's tenant, so TenantStamp.OwnerFor is the
+        // correct value — same expression used when the project itself was stamped).
         var comment = new Comment
         {
             ProjectId = projectResult.Data,
@@ -39,6 +45,7 @@ public class CommentService : ICommentService
             AuthorId = authorId,
             Body = request.Body.Trim(),
             IsPrivate = request.IsPrivate,
+            OwnerId = TenantStamp.OwnerFor(_currentUser),
             Element = MapToEntity(request.Element)
         };
 
@@ -148,11 +155,13 @@ public class CommentService : ICommentService
 
         if (!string.IsNullOrWhiteSpace(request.Reply))
         {
+            // Replies inherit the parent comment's tenant owner.
             var reply = new Reply
             {
                 CommentId = comment.Id,
                 AuthorId = actorId,
-                Body = request.Reply.Trim()
+                Body = request.Reply.Trim(),
+                OwnerId = comment.OwnerId
             };
             // comment is tracked (loaded without AsNoTracking); adding to its
             // collection lets EF insert the new reply on save. Do NOT also call
@@ -239,11 +248,13 @@ public class CommentService : ICommentService
         if (comment == null)
             return Result<ReplyResponse>.NotFound(MessageKeys.Comment.NotFound);
 
+        // Replies inherit the parent comment's tenant owner.
         var reply = new Reply
         {
             CommentId = commentId,
             AuthorId = authorId,
-            Body = request.Body.Trim()
+            Body = request.Body.Trim(),
+            OwnerId = comment.OwnerId
         };
 
         await _unitOfWork.Repository<Reply>().AddAsync(reply);
