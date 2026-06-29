@@ -8,4 +8,6 @@ public interface IRepository<T> where T : BaseEntity
     Task AddAsync(T e);
     void Update(T e);
     Task<T?> GetByIdAsync(int id);
+    void Remove(T e);
+    void RemoveRange(IEnumerable<T> entities);
 }

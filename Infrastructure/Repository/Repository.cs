@@ -15,4 +15,8 @@ public class Repository<T>(AppDbContext db) : IRepository<T> where T : BaseEntit
     public void Update(T e) => _set.Update(e);
 
     public async Task<T?> GetByIdAsync(int id) => await _set.FindAsync(id);
+
+    public void Remove(T e) => _set.Remove(e);
+
+    public void RemoveRange(IEnumerable<T> entities) => _set.RemoveRange(entities);
 }

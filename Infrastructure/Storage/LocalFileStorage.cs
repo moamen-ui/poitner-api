@@ -55,4 +55,31 @@ public class LocalFileStorage(IWebHostEnvironment env) : IFileStorage
 
         return Task.CompletedTask;
     }
+
+    public Task DeleteOwnerFilesAsync(string ownerSegment)
+    {
+        if (string.IsNullOrWhiteSpace(ownerSegment))
+            return Task.CompletedTask;
+
+        var webRoot = env.WebRootPath;
+        if (string.IsNullOrEmpty(webRoot))
+            webRoot = Path.Combine(env.ContentRootPath, "wwwroot");
+
+        var uploadsRoot = Path.GetFullPath(Path.Combine(webRoot, "uploads"));
+        var ownerDir = Path.GetFullPath(Path.Combine(uploadsRoot, ownerSegment));
+
+        // Guard against path traversal: the resolved directory must stay directly under
+        // wwwroot/uploads (one level deep — ownerSegment must not contain separators).
+        if (!ownerDir.StartsWith(uploadsRoot + Path.DirectorySeparatorChar, StringComparison.Ordinal))
+            return Task.CompletedTask;
+
+        try
+        {
+            if (Directory.Exists(ownerDir))
+                Directory.Delete(ownerDir, recursive: true);
+        }
+        catch { /* best-effort: ignore IO errors */ }
+
+        return Task.CompletedTask;
+    }
 }

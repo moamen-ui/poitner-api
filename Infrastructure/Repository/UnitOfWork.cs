@@ -18,4 +18,19 @@ public sealed class UnitOfWork(AppDbContext db) : IUnitOfWork
     }
 
     public Task<int> SaveChangesAsync() => db.SaveChangesAsync();
+
+    public async Task ExecuteInTransactionAsync(Func<Task> action)
+    {
+        var strategy = db.Database.CreateExecutionStrategy();
+        await strategy.ExecuteAsync(
+            state: action,
+            operation: async (_, state, ct) =>
+            {
+                await using var tx = await db.Database.BeginTransactionAsync(ct);
+                await state();
+                await tx.CommitAsync(ct);
+                return true;
+            },
+            verifySucceeded: null);
+    }
 }

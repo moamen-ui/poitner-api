@@ -16,4 +16,11 @@ public interface IFileStorage
     /// Never throws on a missing file.
     /// </summary>
     Task DeleteAsync(string relativePathOrUrl);
+
+    /// <summary>
+    /// Best-effort recursive delete of the entire owner folder at
+    /// "wwwroot/uploads/{ownerSegment}/". Never throws on a missing directory.
+    /// ownerSegment must be a tenant's PublicId formatted as "N" (no hyphens).
+    /// </summary>
+    Task DeleteOwnerFilesAsync(string ownerSegment);
 }
