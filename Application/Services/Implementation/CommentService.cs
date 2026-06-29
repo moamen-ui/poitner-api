@@ -34,9 +34,14 @@ public class CommentService : ICommentService
                 ? Result<CommentResponse>.Conflict(projectResult.Message ?? MessageKeys.Project.Disabled)
                 : Result<CommentResponse>.NotFound(projectResult.Message ?? MessageKeys.Project.NotFound);
 
-        // Stamp OwnerId from the project's tenant (EnsureAsync resolves/creates the
-        // project under the current caller's tenant, so TenantStamp.OwnerFor is the
-        // correct value — same expression used when the project itself was stamped).
+        // Stamp OwnerId from the PROJECT's tenant: a comment belongs to whoever owns
+        // the project, regardless of who authored it. This is correct even when a super
+        // admin comments on a tenant-owned project (OwnerFor(caller) would wrongly be null).
+        var projectOwnerId = await _unitOfWork.Repository<Project>().Query()
+            .Where(p => p.Id == projectResult.Data)
+            .Select(p => p.OwnerId)
+            .FirstAsync();
+
         var comment = new Comment
         {
             ProjectId = projectResult.Data,
@@ -45,7 +50,7 @@ public class CommentService : ICommentService
             AuthorId = authorId,
             Body = request.Body.Trim(),
             IsPrivate = request.IsPrivate,
-            OwnerId = TenantStamp.OwnerFor(_currentUser),
+            OwnerId = projectOwnerId,
             Element = MapToEntity(request.Element)
         };
 
