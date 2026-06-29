@@ -1,222 +1,213 @@
-# Multi-Tenancy Phase 1 (Tenancy Core) Implementation Plan
+# Multi-Tenancy Phase 1 (Tenancy Core) Implementation Plan — rev 2 (post GLM review)
 
-> **For agentic workers:** REQUIRED SUB-SKILL: superpowers:subagent-driven-development. Steps use checkbox (`- [ ]`) syntax. Each task is tagged with a suggested implementer — **[GLM]** = delegate to opencode + GLM-5.2 in an isolated git worktree (mechanical/low-risk), **[Claude]** = implement/review closely (security-critical scoping). Every delegated diff is still reviewed before merge.
+> **For agentic workers:** REQUIRED SUB-SKILL: superpowers:subagent-driven-development. Steps use checkbox (`- [ ]`). Implementer tags: **[GLM]** = delegate to opencode + GLM-5.2 in an isolated git worktree (mechanical/low-risk); **[Claude]** = implement/review closely (security-critical). Every delegated diff is reviewed before merge.
 
-**Goal:** Make Pointer multi-tenant: a super admin (operator) sees/manages everything; scoped admins are tenants that see/manage only their own data, enforced server-side default-deny.
+**Goal:** Make Pointer multi-tenant: a super admin (operator) sees/manages everything; scoped admins are tenants that see/manage only their own data, enforced **by EF global query filters (default-deny at the ORM)**.
 
-**Architecture:** Add an `OwnerId` (tenant = scoped-admin `PublicId`) to Project/User/Role/StatusPresentation; comments scope via their project. JWT carries `is_super_admin` + `tenant`. A shared scoping helper filters every scoped-admin read and guards every write. Super-admin path is unfiltered (unchanged). New tenant-lifecycle + settings + cascade-hard-delete on top.
+**Architecture:** Denormalized `OwnerId` (tenant = scoped-admin `PublicId`) on every tenant-owned entity (Project, User, Role, StatusPresentation, Comment, Reply). `AppDbContext` applies **global query filters** keyed on the injected `ICurrentUser` so every read is scoped automatically; super admin short-circuits the filter. Writes stamp `OwnerId`; because a non-owned row is invisible, update/delete naturally 404. JWT carries `is_super_admin` + `tenant`. Uploads, stakeholder identity, and unique indexes are made tenant-aware. Tenant lifecycle + gated self-signup on top.
 
 **Tech Stack:** .NET 8 (EF Core 8.0.11 / Postgres, auto-migrate on boot), xUnit (`Tests/`), orval `@moamen-ui/pointer-*`, Angular/React/Vue dashboards.
 
 ## Global Constraints
 
-- **Security-critical:** a scoping miss = cross-tenant data leak. Default-deny. Writes never trust an `OwnerId` from the request body. Update/delete on a non-owned row returns **NotFound** (don't leak existence).
-- Branch `feat/multitenancy-phase1` (cut from `main`) in pointer-api; matching branch in pointer-dashboard.
-- `CommentStatus { Open=1, ReadyToApply=2, Applied=3, Archived=4 }` unchanged. Services auto-register via Scrutor (`*Service` → interface). Validators are NOT auto-invoked — validate inline in services. `Result`/`Result<T>` envelope at `Pointer.Application.Response`. EF mappings auto-applied via `ApplyConfigurationsFromAssembly`; migrations auto-apply on boot.
+- **Security-critical (a miss = cross-tenant leak):** default-deny via EF query filters. Writes NEVER trust an `OwnerId` from the request body. A row hidden by the filter must 404, not 403 (don't leak existence). Super-admin requests are unfiltered (today's behaviour — must not change).
+- **Enforcement model:** EF `HasQueryFilter` is the primary boundary. `.IgnoreQueryFilters()` is used ONLY in clearly-marked super-admin/system code paths (cascade delete, background jobs). Manual `.Where(OwnerId==...)` is a belt-and-suspenders supplement, never the only guard.
+- Branch `feat/multitenancy-phase1` (from `main`) in both repos. Scrutor auto-registers `*Service`. Validators are NOT auto-invoked — validate inline. `Result`/`Result<T>` at `Pointer.Application.Response`. EF mappings auto-applied; migrations auto-apply on boot.
 - Tenant root = scoped-admin user's `PublicId`. `OwnerId == null` = super-admin/global. Existing prod rows stay `OwnerId == null` (super-admin-only) — back-compat.
-- Super-admin requests are **unfiltered** (today's behaviour, must not change).
-- Verify backend via `dotnet build` + `Tests/` xUnit (`dotnet test`) for scoping-helper logic + a **live curl isolation matrix** against the running API (local docker `:8090`). Dashboard via `npm run build` + browser smoke. Build env for dashboards: `export PATH=/opt/homebrew/opt/node@26/bin:$PATH` + `NODE_AUTH_TOKEN=$(gh auth token)`.
-- Do NOT deploy until the user asks.
+- Verify backend via `dotnet build` + `dotnet test` (xUnit) + a **live cross-tenant isolation curl matrix** (local docker `:8090`). Dashboards via `npm run build` + browser. Dashboard build env: `export PATH=/opt/homebrew/opt/node@26/bin:$PATH` + `NODE_AUTH_TOKEN=$(gh auth token)`.
+- Do NOT deploy until the user asks. Demo tenants, the `demo.pointer.moamen.work` dashboard, the 24h cron, and the 10-comment cap are **Phase 2** (not here).
 
 ---
 
-## Task 1 [GLM]: Ownership columns + AppSetting entity + migration
+## Task 1 [Claude]: Ownership columns on all owned entities + AppSetting + index reshaping (migration)
 
-**Files:**
-- Modify: `Domain/Entity/Role.cs` (add `bool IsSuperAdmin`, `Guid? OwnerId`)
-- Modify: `Domain/Entity/User.cs` (add `Guid? OwnerId`)
-- Modify: `Domain/Entity/Project.cs` (add `Guid? OwnerId`)
-- Modify: `Domain/Entity/StatusPresentation.cs` (add `Guid? OwnerId`)
-- Create: `Domain/Entity/AppSetting.cs`
-- Create: `Infrastructure/Mappings/AppSettingMapping.cs`
-- Modify: `Infrastructure/Mappings/{Role,User,Project,StatusPresentation}Mapping.cs` (map the new columns, snake_case: `is_super_admin`, `owner_id`)
-- Modify: `Infrastructure/AppDbContext.cs` (`DbSet<AppSetting> AppSettings`)
-- Generated: migration `AddTenancyColumns`
+**Files:** `Domain/Entity/{Role,User,Project,StatusPresentation,Comment,Reply}.cs`; `Domain/Entity/AppSetting.cs`; `Infrastructure/Mappings/*` (incl. new `AppSettingMapping`); `Infrastructure/AppDbContext.cs`; migration `AddTenancy`.
 
-**Interfaces:**
-- Produces: `OwnerId` (Guid?) on Role/User/Project/StatusPresentation; `Role.IsSuperAdmin` (bool); `AppSetting { string Key; string Value }` (BaseEntity), table `app_settings`, unique index on `key`.
+**Interfaces produced:** `Guid? OwnerId` on Role/User/Project/StatusPresentation/Comment/Reply; `bool Role.IsSuperAdmin`; `AppSetting { string Key; string Value }` (table `app_settings`, unique `key`).
 
-- [ ] **Step 1:** Add `public bool IsSuperAdmin { get; set; }` and `public Guid? OwnerId { get; set; }` to `Role`; `public Guid? OwnerId { get; set; }` to `User`, `Project`, `StatusPresentation`.
-- [ ] **Step 2:** Create `AppSetting : BaseEntity { public string Key {get;set;}=""; public string Value {get;set;}=""; }`.
-- [ ] **Step 3:** Mapping for each new column mirroring the existing `ProjectMapping` style: `b.Property(x => x.OwnerId).HasColumnName("owner_id");` and `b.Property(x => x.IsSuperAdmin).HasColumnName("is_super_admin");`. Add `b.HasIndex(x => x.OwnerId);` on Project/User/Role/StatusPresentation (scoping filters by it). `AppSettingMapping`: table `app_settings`, BaseEntity cols, `key` required + unique, `value` text.
-- [ ] **Step 4:** Add `public DbSet<AppSetting> AppSettings => Set<AppSetting>();` to `AppDbContext`.
-- [ ] **Step 5:** `dotnet ef migrations add AddTenancyColumns -p Infrastructure -s API`. Confirm it adds the columns + `app_settings` table.
-- [ ] **Step 6:** `dotnet build` (0 errors). Commit `feat(api): tenancy ownership columns + app_settings (migration)`.
+- [ ] **Step 1:** Add `Guid? OwnerId` to all six entities; add `bool IsSuperAdmin` to `Role`. Create `AppSetting : BaseEntity`.
+- [ ] **Step 2:** Mappings: map `owner_id` + `is_super_admin` (snake_case). Add non-unique `HasIndex(OwnerId)` on the six. `AppSettingMapping` (table `app_settings`, BaseEntity cols, `key` text required, `value` text).
+- [ ] **Step 3 — index reshaping (CRITICAL, per review C4/C5):** in the mappings replace the existing global uniques:
+  - `Project`: drop `HasIndex(Key).IsUnique()` → `HasIndex(Key, OwnerId).IsUnique()`.
+  - `StatusPresentation`: drop `HasIndex(StatusValue).IsUnique()` → `HasIndex(StatusValue, OwnerId).IsUnique()`.
+  - `User`: drop `HasIndex(Email).IsUnique()` → `HasIndex(Email, OwnerId).IsUnique()`.
+- [ ] **Step 4:** `DbSet<AppSetting> AppSettings` in `AppDbContext`.
+- [ ] **Step 5:** `dotnet ef migrations add AddTenancy -p Infrastructure -s API`. **Inspect the generated migration**: confirm it DROPs the old unique indexes and CREATEs the composite ones. Because Postgres treats NULLs as distinct (so multiple `(key, NULL)` global rows could collide-free), append to the migration a **partial unique index for the global scope** via raw SQL, e.g. `CREATE UNIQUE INDEX ix_projects_key_global ON projects(key) WHERE owner_id IS NULL;` (same for `status_presentations(status_value)` and `users(email)`), so global uniqueness still holds.
+- [ ] **Step 6:** `dotnet build`. Commit `feat(api): tenancy ownership columns + composite/partial unique indexes`.
 
 ---
 
-## Task 2 [Claude]: JWT claims + ICurrentUser tenant context + SuperAdmin policy
+## Task 2 [Claude]: JWT claims + ICurrentUser tenant context + SuperAdmin policy (TDD)
 
-**Files:**
-- Modify: `Infrastructure/Auth/JwtTokenService.cs`
-- Modify: `Application/Abstractions/ICurrentUser.cs`
-- Modify: `Infrastructure/CurrentUser/HttpCurrentUser.cs`
-- Modify: `API/Auth/Policies.cs`
-- Modify: `API/Extensions/AuthenticationExtensions.cs`
-- Test: `Tests/TokenServiceTests.cs` (extend)
+**Files:** `Infrastructure/Auth/JwtTokenService.cs`; `Application/Abstractions/ICurrentUser.cs`; `Infrastructure/CurrentUser/HttpCurrentUser.cs`; `API/Auth/Policies.cs`; `API/Extensions/AuthenticationExtensions.cs`; `Tests/TokenServiceTests.cs`.
 
-**Interfaces:**
-- Consumes: `Role.IsSuperAdmin`, `User.OwnerId` (Task 1).
-- Produces: JWT claims `is_super_admin` ("true"/"false") and `tenant` (the user's `OwnerId` GUID, omitted when null). `ICurrentUser.IsSuperAdmin : bool`, `ICurrentUser.TenantId : Guid?`. `Policies.SuperAdmin = "SuperAdmin"`.
+**Interfaces produced:** JWT claims `is_super_admin` and `tenant` (the user's `OwnerId`, omitted when null). `ICurrentUser.IsSuperAdmin : bool`, `ICurrentUser.TenantId : Guid?`. `Policies.SuperAdmin = "SuperAdmin"`.
 
-- [ ] **Step 1 (test first):** In `Tests/TokenServiceTests.cs` add a test: issuing a token for a user whose role `IsSuperAdmin` emits `is_super_admin=true`; a user with `OwnerId = X` emits `tenant=X`. Run `dotnet test` → fails.
-- [ ] **Step 2:** In `JwtTokenService.Issue`, append claims:
-```csharp
-new Claim("is_super_admin", (u.Role?.IsSuperAdmin ?? false) ? "true" : "false"),
-```
-and, when `u.OwnerId is { } owner`, `new Claim("tenant", owner.ToString())`. (Build the claim list dynamically.)
-- [ ] **Step 3:** `ICurrentUser` gains `bool IsSuperAdmin { get; }` and `Guid? TenantId { get; }`. `HttpCurrentUser`: `IsSuperAdmin => ...FindFirst("is_super_admin")?.Value == "true";` and `TenantId => Guid.TryParse(...FindFirst("tenant")?.Value, out var g) ? g : null;`.
-- [ ] **Step 4:** `Policies.SuperAdmin = "SuperAdmin"`. In `AuthenticationExtensions` add `.AddPolicy(Policies.SuperAdmin, p => p.RequireClaim("is_super_admin", "true"))`.
-- [ ] **Step 5:** `dotnet test` (token tests pass) + `dotnet build`. Commit `feat(api): super-admin + tenant JWT claims, SuperAdmin policy`.
+- [ ] **Step 1 (test first):** extend `TokenServiceTests` — `IsSuperAdmin` role → `is_super_admin=true`; user with `OwnerId=X` → `tenant=X`. `dotnet test` fails.
+- [ ] **Step 2:** `JwtTokenService.Issue`: add `is_super_admin` claim from `u.Role?.IsSuperAdmin`; add `tenant` claim when `u.OwnerId` non-null. Build claim list dynamically.
+- [ ] **Step 3:** `ICurrentUser` += `bool IsSuperAdmin`, `Guid? TenantId`. `HttpCurrentUser`: read `is_super_admin` + parse `tenant`.
+- [ ] **Step 4:** `Policies.SuperAdmin`; register `.AddPolicy(SuperAdmin, p => p.RequireClaim("is_super_admin","true"))`.
+- [ ] **Step 5:** `dotnet test` + `dotnet build`. Commit `feat(api): super-admin + tenant JWT claims, SuperAdmin policy`.
 
 ---
 
-## Task 3 [Claude]: Scoping helper + ownership guard (the core) — TDD
+## Task 3 [Claude]: EF global query filters = the tenancy boundary (TDD + live)
 
-**Files:**
-- Create: `Application/Abstractions/IOwned.cs` (`Guid? OwnerId { get; set; }`)
-- Modify: `Domain/Entity/{Project,User,Role,StatusPresentation}.cs` to implement `IOwned`
-- Create: `Application/Common/TenantScoping.cs` (extension methods)
-- Test: `Tests/TenantScopingTests.cs`
+**Files:** `Infrastructure/AppDbContext.cs` (the DbContext already injects `ICurrentUser currentUser` for audit — reuse it); `Application/Common/TenantStamp.cs` (write-side helpers); `Tests/` (filter behaviour).
 
-**Interfaces:**
-- Produces:
-  - `IQueryable<T> ScopedTo<T>(this IQueryable<T> q, ICurrentUser u) where T : IOwned` — super admin → unchanged; else → `q.Where(e => e.OwnerId == u.TenantId)`.
-  - `bool OwnsOrSuper(this ICurrentUser u, IOwned e)` — super admin → true; else → `e.OwnerId == u.TenantId`.
-  - `Guid? OwnerStampFor(this ICurrentUser u)` — the `OwnerId` to stamp on new rows (super admin → null; scoped → `u.TenantId`).
+**Interfaces produced:**
+- Global query filters in `OnModelCreating`:
+  - Strict-own (super OR own): `Project`, `User`, `Comment`, `Reply` → `e => currentUser.IsSuperAdmin || e.OwnerId == currentUser.TenantId`.
+  - Own-plus-global (super OR own OR global): `Role`, `StatusPresentation` → `... || e.OwnerId == null` (tenants need global roles to assign + global status defaults to merge).
+  - `AppSetting`: **no filter** (not tenant data; guarded by endpoint auth; read anonymously by `signup-enabled`).
+- `Guid? TenantStamp.OwnerFor(ICurrentUser u)` = `u.IsSuperAdmin ? null : u.TenantId` — the value to stamp on new rows.
 
-- [ ] **Step 1 (tests first):** In `Tests/TenantScopingTests.cs`, build a `List<FakeOwned>().AsQueryable()` with rows owned by A, B, and null. Assert: a scoped user (TenantId=A, not super) `.ScopedTo` returns only A's rows; a super admin returns all; `OwnsOrSuper` is false for B's row when caller is A, true for super; `OwnerStampFor` = A for scoped, null for super. Use a tiny `FakeCurrentUser` test double. Run `dotnet test` → fails.
-- [ ] **Step 2:** Define `IOwned`; have the four entities implement it (the `OwnerId` property from Task 1 satisfies it). Implement `TenantScoping` exactly per the Interfaces signatures above.
-- [ ] **Step 3:** `dotnet test` (scoping tests pass) + `dotnet build`. Commit `feat(api): tenant scoping helper + ownership guard (tested)`.
+- [ ] **Step 1 (test first):** an xUnit test using the Npgsql/in-memory provider (or a SQLite in-memory `DbContext`) with a `FakeCurrentUser`: seed rows owned by A, B, null; assert a context with `currentUser=A(scoped)` reads only A's strict-own rows and (A + global) for Role/StatusPresentation; `currentUser=super` reads all; the `tenant` boundary cannot be bypassed by a normal LINQ query. `dotnet test` fails.
+- [ ] **Step 2:** add the `HasQueryFilter`s in `OnModelCreating` (after `ApplyConfigurationsFromAssembly`). Add `TenantStamp.OwnerFor`. Document that super-admin/system paths must use `.IgnoreQueryFilters()` explicitly.
+- [ ] **Step 3:** `dotnet test` + `dotnet build`. Live: with a scoped admin token, a raw `GET` of any list returns only their rows (proven more thoroughly in Task 4+). Commit `feat(api): tenant isolation via EF global query filters (tested)`.
 
----
-
-## Task 4 [Claude]: Scope the Projects service + Comments paths — TDD + live isolation curl
-
-**Files:**
-- Modify: `Application/Services/Implementation/ProjectService.cs` (list/get/create/update/disable + `EnsureAsync`)
-- Modify: `Application/Services/Implementation/CommentService.cs` (list/get/queue/status/reply scope via project owner)
-- Modify: the admin stats query (`StatsService.cs`) to `ScopedTo` projects + comments
-- Modify: controllers only if they must pass `ICurrentUser` (services already take it where needed)
-
-**Interfaces:**
-- Consumes: `ScopedTo`, `OwnsOrSuper`, `OwnerStampFor`, `ICurrentUser` (Task 3).
-- Produces: project + comment reads return only owned (or super = all); creates stamp owner; `EnsureAsync(key)` for a scoped admin creates the project owned by that admin; cross-tenant project key collisions are namespaced by owner (two tenants may each have `my-app` — `EnsureAsync` matches on `Key && OwnerId == scope`).
-
-- [ ] **Step 1:** Inject `ICurrentUser` where missing. In `ProjectService`: every list/get `.ScopedTo(currentUser)`; `EnsureAsync` looks up `Key == k && OwnerId == currentUser.OwnerStampFor()` and stamps `OwnerId` on create; update/disable load + `if (!currentUser.OwnsOrSuper(p)) return NotFound`. Apply the same to `StatsService` (scope projects + the comment group query).
-- [ ] **Step 2:** `CommentService`: list/get/queue filter comments to projects the caller owns (`.Where(c => projectIdsOwnedByCaller.Contains(c.ProjectId))` or join on `Project.OwnerId`); status-change/reply/delete load the comment + its project and require `OwnsOrSuper(project)` else NotFound. Super admin unfiltered.
-- [ ] **Step 3:** `dotnet build`. Live isolation matrix (local `:8090`): create two scoped admins A and B (via Task 6 endpoint, or seed), each creates a project + comment; assert A's `GET` lists only A's project/comments, A cannot PATCH/GET B's comment (404), super admin sees both. Record the curl results in the task report.
-- [ ] **Step 4:** Commit `feat(api): scope projects, comments, stats by tenant`.
+> After this task, READS are safe-by-default and UPDATE/DELETE of a non-owned row naturally returns NotFound (the row is filtered out and won't load). Remaining per-service work is mostly **stamping OwnerId on create** + the explicit super-admin/system bypasses.
 
 ---
 
-## Task 5 [Claude]: Scope Users, Roles, and per-tenant Statuses — TDD + live isolation curl
+## Task 4 [Claude]: Projects + EnsureAsync + Stats — owner-stamp on create, tenant-bound EnsureAsync (live isolation)
 
-**Files:**
-- Modify: `Application/Services/Implementation/UserService.cs`
-- Modify: `Application/Services/Implementation/RoleService.cs`
-- Modify: `Application/Services/Implementation/StatusCatalogService.cs` + `StatusAdminService.cs`
+**Files:** `Application/Services/Implementation/ProjectService.cs`, `StatsService.cs`.
 
-**Interfaces:**
-- Consumes: scoping helpers.
-- Produces: a scoped admin sees/creates only its own users & roles; status catalog resolves **defaults → global (`OwnerId==null`) → tenant (`OwnerId==scope`)**; `GET /api/statuses` (no params) resolves by the authenticated caller; anonymous → defaults+global only.
-
-- [ ] **Step 1:** `UserService` + `RoleService`: list/get `.ScopedTo`; create stamps `OwnerId = currentUser.OwnerStampFor()` (a scoped admin's new users/roles are owned by it; super-admin creates global, `OwnerId=null`); update/delete guard `OwnsOrSuper` else NotFound. A scoped admin may only assign its **own** roles (validate the roleId is owned-or-global).
-- [ ] **Step 2:** `StatusCatalogService.GetAllAsync()` takes the caller into account: load overrides where `OwnerId == null` (global) plus `OwnerId == caller.TenantId` (tenant); merge tenant-over-global-over-defaults. Anonymous caller (no `TenantId`) → global+defaults. `StatusAdminService`: list/upsert/reset operate on the caller's layer — super admin edits `OwnerId=null`, scoped admin edits `OwnerId=scope` (the unique index on `status_value` becomes `(status_value, owner_id)` — adjust the mapping + migration here).
-- [ ] **Step 3:** `dotnet build`. Live isolation curl: A and B each rename a status → each sees only its own label; the public widget `GET /api/statuses` as A's stakeholder shows A's labels; anonymous shows defaults. A cannot see B's users/roles. Record results.
-- [ ] **Step 4:** Commit `feat(api): scope users, roles, and per-tenant status catalog`.
+- [ ] **Step 1:** Project create/`EnsureAsync` stamp `OwnerId = TenantStamp.OwnerFor(currentUser)`. `EnsureAsync(key)` looks up by `Key == k && OwnerId == OwnerFor(currentUser)` (the query filter already restricts, but match the owner explicitly so a tenant key never resolves to a global project). Update/disable: load (filter hides non-owned → null → NotFound). Two tenants may both have `my-app` (composite index allows it).
+- [ ] **Step 2:** `StatsService`: its three queries (projects, users, comments-grouped) are now auto-scoped by the filters — remove any assumption of global visibility; for the super admin they still return all. Verify counts are per-tenant for a scoped admin.
+- [ ] **Step 3:** `dotnet build` + live isolation curl (two scoped admins A,B): A lists only A's projects; A cannot GET/PATCH B's project (404); super admin sees both; stats are per-tenant. Record results.
+- [ ] **Step 4:** Commit `feat(api): owner-stamp projects + tenant-bound EnsureAsync + scoped stats`.
 
 ---
 
-## Task 6 [Claude]: Tenant lifecycle service + cascade hard-delete — TDD for delete
+## Task 5 [Claude]: Uploads — ownership-checked upload, authenticated download, owner-partitioned storage (per review C2)
 
-**Files:**
-- Create: `Application/Services/Interfaces/ITenantService.cs` + `Implementation/TenantService.cs`
-- Create: `Application/DTOs/Tenant/*` (TenantResponse, CreateTenantRequest)
-- Modify: `Application/Abstractions/IFileStorage.cs` usage (delete files)
-- Create: `API/Controllers/Admin/TenantsController.cs` (`[Authorize(Policy = SuperAdmin)]`)
+**Files:** `API/Controllers/UploadsController.cs`; `Infrastructure/Storage/LocalFileStorage.cs`; `API/Program.cs` (stop serving `wwwroot/uploads` as public static files); `Application` upload service if present.
 
-**Interfaces:**
-- Produces: `ITenantService` with `ListAsync()`, `CreateAsync(CreateTenantRequest)`, `SetStatusAsync(id, approve|enable|disable)`, `HardDeleteAsync(Guid tenantId)`. Endpoints `GET/POST/PATCH/DELETE /api/admin/tenants[/{id:int}]`, all SuperAdmin-only.
-
-- [ ] **Step 1:** `TenantService`: `ListAsync` = users whose role `IsSuperAdmin==false && GrantsAdmin==true` (the scoped admins) + counts. `CreateAsync` creates an **approved, active** scoped-admin user (role = "Workspace Admin"), `OwnerId = its own PublicId`. `SetStatusAsync` flips `ApprovalStatus`/`IsActive`. 
-- [ ] **Step 2 (test first):** `HardDeleteAsync(tenantId)` — write a focused test/curl that seeds a tenant with a project+comment+reply+screenshot+user+role+status override, runs delete, and asserts every owned row is gone, the screenshot file is deleted, and **another tenant's data is untouched**. Implement: gather owned projects → comments → delete screenshot files via `IFileStorage`; hard-delete replies, comments, projects, status overrides, roles, users (the tenant) where `OwnerId == tenantId`; in a transaction, FK-safe order.
-- [ ] **Step 3:** `TenantsController` wiring (mirror `Admin/RolesController` shape; SuperAdmin policy). `[Tags("Tenants")]`.
-- [ ] **Step 4:** `dotnet build` + live verify (create tenant, delete tenant → gone, neighbour intact). Commit `feat(api): tenant lifecycle + cascade hard-delete`.
+- [ ] **Step 1:** `POST /api/uploads`: resolve the target project by `(Key == project, OwnerId == OwnerFor(currentUser))` via the (now-filtered) context; 404 if the caller doesn't own such a project. Store under `uploads/{ownerOrGlobal}/{project}/...` (partition by owner; use a `global` segment when `OwnerId==null`).
+- [ ] **Step 2:** Remove public static serving of `/uploads` (delete/scope the `UseStaticFiles` mapping for uploads in `Program.cs`). Add authenticated `GET /api/uploads/{ownerSeg}/{project}/{file}` (or `GET /api/uploads/{id}`) that loads the owning comment/project through the filtered context and streams the file only if the caller can see it; else 404.
+- [ ] **Step 3:** Update `ScreenshotUrl` generation to the new authenticated path. `dotnet build` + live: A uploads to A's project (ok); A cannot upload to B's project key (404); A cannot fetch B's screenshot URL (404); super admin can fetch any. Record.
+- [ ] **Step 4:** Commit `feat(api): tenant-scoped uploads + authenticated screenshot download`.
 
 ---
 
-## Task 7 [GLM]: AppSetting service + settings endpoints + self-signup gate
+## Task 6 [Claude]: Comments — stamp owner, preserve author-privacy + tenancy, scope all mutation paths (per review I3/I5)
 
-**Files:**
-- Create: `Application/Services/{Interfaces/ISettingsService.cs, Implementation/SettingsService.cs}`
-- Create: `API/Controllers/Admin/SettingsController.cs` (SuperAdmin) + a public `signup-enabled` action on `AuthController`
-- Modify: `Application/Services/Implementation/AuthService.cs` (add `RegisterAdminAsync`)
-- Modify: `API/Controllers/AuthController.cs` (add `register-admin` + `signup-enabled`)
+**Files:** `Application/Services/Implementation/CommentService.cs`.
 
-**Interfaces:**
-- Consumes: `AppSetting`, scoping (settings are global super-admin data).
-- Produces: `GET/PUT /api/admin/settings` (SuperAdmin) reading/writing `scoped_admin_signup_enabled`; `GET /api/auth/signup-enabled` (anonymous → `{enabled:bool}`); `POST /api/auth/register-admin` (anonymous) creates a **Pending** scoped-admin (role "Workspace Admin", `OwnerId=self`), 403 when the setting is off.
-
-- [ ] **Step 1:** `SettingsService` get/set by key (default `scoped_admin_signup_enabled=false`). `RegisterAdminAsync`: if setting off → `Result.Failure`/forbidden; else create Pending+inactive scoped-admin (mirror the existing `RegisterAsync` but role = Workspace Admin, `ApprovalStatus=Pending`, `IsActive=false`, `OwnerId=self`). Login gate already blocks pending.
-- [ ] **Step 2:** Controllers. Settings `[Authorize(Policy=SuperAdmin)]`; `signup-enabled` + `register-admin` `[AllowAnonymous]`. `[Tags("Settings")]` / reuse `Auth`.
-- [ ] **Step 3:** `dotnet build` + live curl (toggle off → register-admin 403; toggle on → creates Pending; super admin approves → login works). Commit `feat(api): settings toggle + gated scoped-admin self-signup`.
+- [ ] **Step 1:** On comment/reply **create**, stamp `OwnerId` = the comment's project's `OwnerId` (the tenant that owns the project), NOT `OwnerFor(currentUser)` directly — a stakeholder's comment belongs to the project's tenant. (Resolve the project, copy its `OwnerId`.) Replies inherit the parent comment's `OwnerId`.
+- [ ] **Step 2:** The six read/mutate methods (`ListAsync`, `GetByIdAsync`, queue, `UpdateStatusAsync`, `EditAsync`, `SetVisibilityAsync`, `DeleteAsync`, `AddReplyAsync`) are auto-tenant-scoped by the Comment query filter. **Preserve the existing author-privacy rule** on top: `!c.IsPrivate || c.AuthorId == callerId` still applies (tenancy filter AND privacy filter both apply — privacy is not replaced). Add `.Include(c => c.Project)` only where a method needs the project (e.g. ownership-derived logic); the filter itself no longer requires it.
+- [ ] **Step 3:** `dotnet build` + live: A sees only A's comments; A cannot read/patch/reply/delete B's comment (404); a private comment stays hidden from a same-tenant non-author; super admin sees all (still no private bypass — unchanged). Record.
+- [ ] **Step 4:** Commit `feat(api): owner-stamp comments + preserve privacy under tenancy`.
 
 ---
 
-## Task 8 [GLM]: Seed Workspace Admin role; super-admin flag; MeResponse.isSuperAdmin
+## Task 7 [Claude]: Stakeholder identity under tenancy — widget register binds to the project's tenant (per review C3/C6)
 
-**Files:**
-- Modify: `API/Seed/AdminSeeder.cs`
-- Modify: `Application/DTOs/Auth/MeResponse.cs` (+`bool IsSuperAdmin`) and `UserResponse` if it carries admin flags
-- Modify: `Application/Services/Implementation/AuthService.cs` (map `IsSuperAdmin` into MeResponse on login + `/me`)
+**Files:** `API/Controllers/AuthController.cs` (`register`), `Application/Services/Implementation/AuthService.cs` (`RegisterAsync`), `Application/DTOs/Auth/RegisterRequest.cs`, the role list endpoint the widget calls.
 
-**Interfaces:**
-- Produces: seeded role `Workspace Admin` (`GrantsAdmin=true, IsSuperAdmin=false, IsSystem=true`); `Admin` role seeded with `IsSuperAdmin=true`; the seeded admin user `OwnerId=null`; `MeResponse.IsSuperAdmin`.
-
-- [ ] **Step 1:** In `AdminSeeder.DefaultRoles`, set `Admin` → `IsSuperAdmin=true`; add `("Workspace Admin", GrantsAdmin:true, IsSystem:true, IsSuperAdmin:false)`. On existing DBs, also patch the `Admin` row to `IsSuperAdmin=true` if false (idempotent seed step).
-- [ ] **Step 2:** `MeResponse.IsSuperAdmin`; map it in `AuthService` from `user.Role.IsSuperAdmin`.
-- [ ] **Step 3:** `dotnet build` + live: super admin login → `me.isSuperAdmin=true`; a scoped admin → false. Commit `feat(api): seed Workspace Admin role + expose isSuperAdmin`.
+- [ ] **Step 1:** `RegisterRequest` gains a required `ProjectKey`. `RegisterAsync` resolves the project by key **ignoring the tenant filter** (anonymous caller) → gets its `OwnerId`; the new stakeholder is stamped `OwnerId = project.OwnerId`, and the requested `RoleId` must be a role owned by that project's tenant or a global non-admin role (reuse the Task 8 allow-list). Reject if the project key is unknown. (Super-admin/global projects → stakeholder `OwnerId=null`, unchanged for the operator's own widgets.)
+- [ ] **Step 2:** The widget's "available roles" fetch (`/api/roles`) must return the project-tenant's assignable roles — resolve by project key, return that owner's roles + global non-admin roles, via an `.IgnoreQueryFilters()` query keyed on the project's owner (anonymous caller has no tenant context).
+- [ ] **Step 3:** `dotnet build` + live: registering via the widget for project `demo-x` (owned by tenant T) creates a stakeholder owned by T; that stakeholder logs into the widget and sees only T's project/comments; registering with an unknown project key is rejected. Record.
+- [ ] **Step 4:** Commit `feat(api): bind widget-registered stakeholders to the project tenant`.
 
 ---
 
-## Task 9 [Claude]: Regenerate + publish clients
+## Task 8 [Claude]: Users + Roles — owner-stamp + role-assignment allow-list (per review I4)
 
-- [ ] **Step 1:** API running on `:8090` with all new endpoints. Add `Tenants` + `Settings` to `orval.config.ts` tag filter. `npm run generate-clients`.
-- [ ] **Step 2:** Verify all 3 clients emit tenants + settings + register-admin + signup-enabled hooks/services + the new models. Commit `chore(clients): add tenants/settings tags`.
-- [ ] **Step 3:** Publish (after deploy, like prior phases) → bump version; record it.
+**Files:** `Application/Services/Implementation/UserService.cs`, `RoleService.cs`.
 
----
-
-## Tasks 10-NG / 10-REACT / 10-VUE [GLM, Claude reviews]: Dashboard super-admin features (×3)
-
-> Built per-framework (GLM in a worktree, Claude reviews each diff). Bump `@moamen-ui/pointer-<fw>` to the published version + install first.
-
-**Shared contract:**
-- `MeResponse.isSuperAdmin` now exists → **hide super-admin-only nav** (Tenants, Settings) when `!isSuperAdmin`. Scoped admins keep the normal (now auto-scoped) dashboard.
-- New super-admin-only **Tenants** page: list scoped admins; create; approve/enable/disable; **delete** (confirm dialog — cascade hard-delete). Uses the generated tenants hooks.
-- New super-admin-only **Settings** page (or section): toggle `scoped_admin_signup_enabled`.
-- New **public self-signup page** for scoped admins, shown only when `GET /api/auth/signup-enabled` is true; posts to `register-admin`; success message = "pending approval".
-- Full i18n (en + ar), consistent with existing pages. Admin-only routes behind the existing admin guard; super-admin-only routes additionally gated on `isSuperAdmin`.
-
-- [ ] **10-NG:** Angular — `features/tenants`, `features/settings`, public `features/signup`; routes + nav gating on `isSuperAdmin`; `npm run build`. Commit `feat(ng): super-admin tenants + settings + scoped-admin signup`.
-- [ ] **10-REACT:** same in React. Commit `feat(react): …`.
-- [ ] **10-VUE:** same in Vue. Commit `feat(vue): …`.
+- [ ] **Step 1:** Reads auto-scoped (User strict-own; Role own+global). Create stamps `OwnerId = OwnerFor(currentUser)` (scoped admin's users/roles owned by it; super-admin → null/global). Update/delete auto-404 for non-owned.
+- [ ] **Step 2 (privilege-escalation guard):** when a scoped admin assigns a role to a user, the target role must be **either** owned by the caller, **or** global (`OwnerId==null`) **and** `!IsSuperAdmin && !GrantsAdmin`. Never allow a scoped admin to assign an admin-tier (`GrantsAdmin` or `IsSuperAdmin`) role. Only the super admin may assign admin-tier roles. Enforce in `UserService` create/update.
+- [ ] **Step 3:** `dotnet build` + live: A sees only its users/roles + global non-admin roles; A cannot assign the global `Admin`/`Workspace Admin` role to a stakeholder (rejected); A cannot read/edit B's user/role (404). Record.
+- [ ] **Step 4:** Commit `feat(api): scope users/roles + block admin-role escalation`.
 
 ---
 
-## Task 11 [Claude]: Final isolation review + deploy (on user approval)
+## Task 9 [Claude]: Per-tenant status catalog (per review I2)
 
-- [ ] **Step 1:** Cross-tenant isolation matrix (curl) across ALL scoped endpoints: tenant A vs B reads/writes → denied; scoped admin → super-admin endpoints 403; anonymous statuses → defaults+global only; cascade delete leaves neighbours intact. Document results.
-- [ ] **Step 2:** On user approval: merge both repos to `main`; deploy API (auto-migrate adds columns); publish clients; build+deploy 3 dashboards. Verify live.
+**Files:** `Application/Services/Implementation/StatusCatalogService.cs`, `StatusAdminService.cs`.
+
+- [ ] **Step 1:** `GetAllAsync()`: the Role/StatusPresentation filter already returns global (`null`) + the caller's tenant overrides. Merge **defaults → global(null) → tenant(scope)**. Anonymous/super (`TenantId==null` and not editing) → defaults+global. Add an explicit comment that anonymous and super both resolve to global here (per review M1).
+- [ ] **Step 2:** `StatusAdminService` Upsert/Reset must filter by **both** `StatusValue == value && OwnerId == OwnerFor(currentUser)` (super → null/global; scoped → tenant) so the composite index is matched deterministically (per review I2). The soft-delete-revive fix stays.
+- [ ] **Step 3:** `dotnet build` + live: A and B each rename a status → each sees only its own; A's widget stakeholder sees A's labels; anonymous sees defaults; super edits the global layer. Record.
+- [ ] **Step 4:** Commit `feat(api): per-tenant status catalog resolution`.
 
 ---
 
-## Self-Review
+## Task 10 [GLM]: Seed Workspace Admin role + Admin.IsSuperAdmin + MeResponse.isSuperAdmin (MOVED EARLY, per review C7)
 
-**Spec coverage:** data model (T1), auth/claims/policy (T2), scoping core (T3) + applied to projects/comments/stats (T4) + users/roles/statuses (T5), tenant lifecycle + cascade delete (T6), settings + gated self-signup (T7), seed + isSuperAdmin (T8), clients (T9), dashboards incl. super-admin nav gating + signup page (T10×3), isolation review + deploy (T11). ✅
-**Placeholders:** scoping/auth tasks carry concrete signatures + code; mechanical tasks ([GLM]) have exact files + column names + endpoint shapes. Dashboard tasks reference the shared contract + generated hooks (names confirmed in T9), per the established per-framework pattern.
-**Type consistency:** `OwnerId`/`IsSuperAdmin`/`TenantId`/`ScopedTo`/`OwnsOrSuper`/`OwnerStampFor`/`HardDeleteAsync`/`isSuperAdmin` used consistently across tasks.
+**Files:** `API/Seed/AdminSeeder.cs`; `Application/DTOs/Auth/MeResponse.cs`; `AuthService.cs`.
+
+- [ ] **Step 1:** `AdminSeeder.DefaultRoles`: set `Admin` → `IsSuperAdmin=true`; add `Workspace Admin` (`GrantsAdmin=true, IsSystem=true, IsSuperAdmin=false`). On existing DBs, idempotently patch the `Admin` row to `IsSuperAdmin=true`. Seeded roles are global (`OwnerId=null`); the seeded admin user `OwnerId=null`.
+- [ ] **Step 2:** `MeResponse.IsSuperAdmin`; map from `user.Role.IsSuperAdmin` in `AuthService` (login + `/me`).
+- [ ] **Step 3:** `dotnet build` + live: super admin `me.isSuperAdmin=true`. Commit `feat(api): seed Workspace Admin role + expose isSuperAdmin`.
+
+---
+
+## Task 11 [Claude]: Tenant lifecycle service + cascade hard-delete (TDD for delete)
+
+**Files:** `Application/Services/{Interfaces/ITenantService.cs, Implementation/TenantService.cs}`; `Application/DTOs/Tenant/*`; `API/Controllers/Admin/TenantsController.cs` (`[Authorize(Policy=SuperAdmin)]`, `[Tags("Tenants")]`).
+
+**Interfaces produced:** `ITenantService.ListAsync()/CreateAsync(req)/SetStatusAsync(id, action)/HardDeleteAsync(Guid tenantId)`. Endpoints `GET/POST/PATCH/DELETE /api/admin/tenants[/{id:int}]`.
+
+- [ ] **Step 1:** `ListAsync` = users with role `GrantsAdmin && !IsSuperAdmin` (scoped admins) + counts (super-admin context → unfiltered). `CreateAsync` = an approved+active scoped admin (role `Workspace Admin`, `OwnerId = its own PublicId`). `SetStatusAsync` flips `ApprovalStatus`/`IsActive`.
+- [ ] **Step 2 (test/curl first):** `HardDeleteAsync(tenantId)` runs under `.IgnoreQueryFilters()` (system path) inside a transaction: delete screenshot files (via `IFileStorage`) for the tenant's comments, then hard-delete (real removes) Replies → Comments → Projects → StatusPresentations → Roles → Users where `OwnerId == tenantId`. Seed a tenant with all entity types + a screenshot + a second tenant; assert all of tenant-1 is gone (rows + files) and tenant-2 is untouched. (Note: `Comment.AuthorId` is not a real FK to users — manual; deletion order is by `OwnerId`, not FK cascade.)
+- [ ] **Step 3:** `TenantsController`. `dotnet build` + live verify. Commit `feat(api): tenant lifecycle + cascade hard-delete`.
+
+---
+
+## Task 12 [GLM]: Settings toggle + gated, rate-limited scoped-admin self-signup (per review I7)
+
+**Files:** `Application/Services/{Interfaces/ISettingsService.cs, Implementation/SettingsService.cs}`; `API/Controllers/Admin/SettingsController.cs`; `AuthController.cs` (+`register-admin`, +`signup-enabled`); `AuthService.RegisterAdminAsync`; a simple IP rate-limit (ASP.NET `AddRateLimiter` fixed-window on the signup endpoint).
+
+- [ ] **Step 1:** `SettingsService` get/set (default `scoped_admin_signup_enabled=false`). `RegisterAdminAsync`: 403 if disabled; else create a **Pending, inactive** scoped admin (role `Workspace Admin`, `OwnerId=self`). Login gate blocks pending.
+- [ ] **Step 2:** `SettingsController` `[SuperAdmin]` GET/PUT; `signup-enabled` + `register-admin` `[AllowAnonymous]`. Add a fixed-window rate limiter (e.g. 5/hour/IP) on `register-admin`.
+- [ ] **Step 3:** `dotnet build` + live: toggle off → `register-admin` 403; on → creates Pending; super admin approves → login works; 6th rapid signup from one IP → 429. Commit `feat(api): settings toggle + gated rate-limited scoped-admin signup`.
+
+---
+
+## Task 13 [Claude]: Regenerate + publish clients
+- [ ] Add `Tenants` + `Settings` to `orval.config.ts` tags; `npm run generate-clients`; verify all 3 clients emit tenants/settings/register-admin/signup-enabled + models; commit `chore(clients): tenants/settings tags`. Publish after deploy.
+
+---
+
+## Tasks 14-NG / 14-REACT / 14-VUE [GLM, Claude reviews]: Dashboard super-admin features (×3)
+
+**Shared contract:** bump `@moamen-ui/pointer-<fw>` + install. Hide super-admin-only nav (Tenants, Settings) when `!me.isSuperAdmin`. New super-admin **Tenants** page (list/create/approve/enable/disable/delete-with-confirm). New super-admin **Settings** page (self-signup toggle). New public **self-signup** page (shown only when `signup-enabled`), posts `register-admin`, success="pending approval". Full en+ar i18n. Super-admin-only routes gated on `isSuperAdmin`.
+- [ ] **14-NG / 14-REACT / 14-VUE:** build per framework, `npm run build`, commit `feat(<fw>): super-admin tenants + settings + scoped-admin signup`.
+
+---
+
+## Task 15 [Claude]: Final isolation review + deploy (on user approval)
+- [ ] **Step 1:** full cross-tenant curl matrix across EVERY endpoint (projects, comments, uploads/screenshots, users, roles, statuses, stats): A↔B denied (404); scoped→super endpoints 403; anonymous statuses=defaults+global; widget stakeholder bound to project tenant; cascade delete leaves neighbours intact. Have **opencode+GLM do an adversarial isolation review** of the final diff. Document results.
+- [ ] **Step 2:** on approval — merge both repos to `main`; deploy API (auto-migrate); publish clients; build+deploy 3 dashboards; verify live.
+
+---
+
+## Self-Review (real gap checklist, per review M3)
+
+| Spec requirement | Task |
+|---|---|
+| OwnerId on owned entities (+Comment/Reply denormalized) | T1 |
+| Reshape unique indexes (project key, status_value, email) + global partial uniques | T1 |
+| JWT super_admin+tenant claims, SuperAdmin policy | T2 |
+| **Default-deny via EF global query filters** | T3 |
+| Owner-stamp + scoping: projects/stats | T4 |
+| **Uploads scoping + authenticated screenshot download** | T5 |
+| Comments: owner-stamp + tenancy AND author-privacy + all 6 mutate paths | T6 |
+| **Stakeholder identity bound to project tenant (widget register)** | T7 |
+| Users/roles scoping + **admin-role escalation block** | T8 |
+| Per-tenant statuses + (StatusValue,OwnerId) query | T9 |
+| Seed Workspace Admin + isSuperAdmin (ordered before lifecycle) | T10 |
+| Tenant lifecycle + cascade hard-delete (files + rows, IgnoreQueryFilters) | T11 |
+| Settings toggle + gated, **rate-limited** self-signup | T12 |
+| Clients | T13 |
+| Dashboards ×3 (nav gating, tenants, settings, signup) | T14 |
+| Isolation matrix + deploy | T15 |
+
+**Notes carried from review:** I1 (re-parenting an existing widget into a tenant is out-of-scope onboarding for now — a future "reassign project owner" action); I6 (JWT `tenant` claim is stale until expiry on reparent — acceptable at 12h); M2 (`Comment.AuthorId` is not a real FK — delete by OwnerId, not cascade); M5 (`EnsureAsync` runs on the list path too — tenant-scoped, acceptable).
 
 ## Out of scope (Phase 2/3)
-Demo tenants (seeded per-tenant sample data, IsDemo+ExpiresAt, Try-demo, 10-comment cap, 24h cron reusing `HardDeleteAsync`, abuse caps, demo subdomain); billing/plans/quotas; email verification.
+Phase 2 — demo tenants: one-click "Try demo" ephemeral scoped admin seeded with its OWN sample data, `IsDemo`+`ExpiresAt`, **10-comment cap**, 24h cleanup cron (reuses `HardDeleteAsync` via `IgnoreQueryFilters`/system context), abuse caps, `demo.pointer.moamen.work` dashboard (DNS already set). Phase 3 — billing/plans/quotas, email verification.
