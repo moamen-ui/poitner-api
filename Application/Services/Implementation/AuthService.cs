@@ -32,8 +32,11 @@ public class AuthService : IAuthService
     {
         var emailNormalized = request.Email.Trim().ToLower();
 
+        // Login is anonymous (no tenant claim yet), so the User global query filter would
+        // only see OwnerId==null users — bypass it to authenticate any tenant's user by email.
         var user = await _unitOfWork.Repository<User>()
             .Query()
+            .IgnoreQueryFilters()
             .AsNoTracking()
             .Include(u => u.Role)
             .Where(u => u.DeletedAt == null && u.Email.ToLower() == emailNormalized)
@@ -103,9 +106,11 @@ public class AuthService : IAuthService
         if (role == null)
             return Result.Failure(MessageKeys.Role.Invalid);
 
-        // 3. Look up the existing user (if any) by normalized email.
+        // 3. Look up the existing user (if any) by normalized email. Anonymous path → bypass
+        //    the User global query filter (it would only see OwnerId==null users otherwise).
         var user = await _unitOfWork.Repository<User>()
             .Query()
+            .IgnoreQueryFilters()
             .Where(u => u.DeletedAt == null && u.Email.ToLower() == emailNormalized)
             .FirstOrDefaultAsync();
 
