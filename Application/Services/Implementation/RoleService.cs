@@ -55,12 +55,40 @@ public class RoleService : IRoleService
         return Result<List<RoleResponse>>.Success(roles.Select(MapToResponse).ToList());
     }
 
-    public async Task<Result<List<PublicRoleResponse>>> ListPublicAsync()
+    public async Task<Result<List<PublicRoleResponse>>> ListPublicAsync(string? projectKey = null)
     {
-        var roles = await _unitOfWork.Repository<Role>()
+        Guid? projectOwnerId = null;
+
+        if (!string.IsNullOrWhiteSpace(projectKey))
+        {
+            // Anonymous path — no tenant claim → must bypass EF global query filter and scope manually.
+            var keyNormalized = projectKey.Trim().ToLower();
+            var project = await _unitOfWork.Repository<Project>()
+                .Query()
+                .IgnoreQueryFilters()
+                .AsNoTracking()
+                .FirstOrDefaultAsync(p => p.DeletedAt == null && p.Key == keyNormalized);
+
+            // If project key is unknown, fall through to global-only roles (graceful degradation).
+            if (project != null)
+                projectOwnerId = project.OwnerId;
+        }
+
+        // IgnoreQueryFilters() is required: anonymous caller has no tenant claim, so the global
+        // query filter would hide all tenant-owned rows. We scope manually below.
+        var query = _unitOfWork.Repository<Role>()
             .Query()
+            .IgnoreQueryFilters()
             .AsNoTracking()
-            .Where(r => r.DeletedAt == null && r.IsActive && !r.GrantsAdmin)
+            .Where(r => r.DeletedAt == null && r.IsActive && !r.GrantsAdmin && !r.IsSuperAdmin);
+
+        // When a project owner was resolved, include their roles AND global roles (OwnerId == null).
+        // Otherwise (no project key or unknown key) only return global roles.
+        query = projectOwnerId.HasValue
+            ? query.Where(r => r.OwnerId == projectOwnerId || r.OwnerId == null)
+            : query.Where(r => r.OwnerId == null);
+
+        var roles = await query
             .OrderBy(r => r.Id)
             .Select(r => new PublicRoleResponse { Id = r.Id, Name = r.Name })
             .ToListAsync();

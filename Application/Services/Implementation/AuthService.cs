@@ -72,19 +72,38 @@ public class AuthService : IAuthService
     {
         var emailNormalized = request.Email.Trim().ToLower();
 
-        // 1. Role must exist, be active, and be NON-admin. Self-signup can never request an admin role.
+        // 1. Resolve the project by key to determine the tenant owner.
+        //    Anonymous path → no tenant claim → global query filter hides tenant rows.
+        //    We must bypass with IgnoreQueryFilters() and scope manually.
+        var projectKeyNormalized = request.ProjectKey.Trim().ToLower();
+        var project = await _unitOfWork.Repository<Project>()
+            .Query()
+            .IgnoreQueryFilters()
+            .AsNoTracking()
+            .FirstOrDefaultAsync(p => p.DeletedAt == null && p.Key == projectKeyNormalized);
+
+        if (project == null)
+            return Result.Failure(MessageKeys.Project.NotFound);
+
+        var projectOwnerId = project.OwnerId;
+
+        // 2. Role must exist, be active, NON-admin, and belong to this tenant (or be a global role).
+        //    IgnoreQueryFilters() required for the same anonymous-path reason above.
         var role = await _unitOfWork.Repository<Role>()
             .Query()
+            .IgnoreQueryFilters()
             .AsNoTracking()
             .FirstOrDefaultAsync(r => r.Id == request.RoleId
                                       && r.DeletedAt == null
                                       && r.IsActive
-                                      && !r.GrantsAdmin);
+                                      && !r.GrantsAdmin
+                                      && !r.IsSuperAdmin
+                                      && (r.OwnerId == projectOwnerId || r.OwnerId == null));
 
         if (role == null)
             return Result.Failure(MessageKeys.Role.Invalid);
 
-        // 2. Look up the existing user (if any) by normalized email.
+        // 3. Look up the existing user (if any) by normalized email.
         var user = await _unitOfWork.Repository<User>()
             .Query()
             .Where(u => u.DeletedAt == null && u.Email.ToLower() == emailNormalized)
@@ -92,7 +111,7 @@ public class AuthService : IAuthService
 
         if (user == null)
         {
-            // No account → create a pending, inactive user.
+            // No account → create a pending, inactive user bound to the project's tenant.
             var newUser = new User
             {
                 Email = emailNormalized,
@@ -101,7 +120,8 @@ public class AuthService : IAuthService
                 RoleId = role.Id,
                 PublicId = Guid.NewGuid(),
                 ApprovalStatus = ApprovalStatus.Pending,
-                IsActive = false
+                IsActive = false,
+                OwnerId = projectOwnerId
             };
 
             await _unitOfWork.Repository<User>().AddAsync(newUser);
@@ -118,6 +138,7 @@ public class AuthService : IAuthService
 
             user.ApprovalStatus = ApprovalStatus.Pending;
             user.RoleId = role.Id;
+            user.OwnerId = projectOwnerId;
 
             _unitOfWork.Repository<User>().Update(user);
             await _unitOfWork.SaveChangesAsync();

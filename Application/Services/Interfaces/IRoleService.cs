@@ -15,6 +15,11 @@ public interface IRoleService
     /// </summary>
     Task<Result<RoleDeleteResponse>> DeleteAsync(int id, int? reassignToRoleId);
 
-    /// <summary>Active, NON-admin roles only — safe for anonymous signup dropdowns.</summary>
-    Task<Result<List<PublicRoleResponse>>> ListPublicAsync();
+    /// <summary>
+    /// Active, NON-admin roles only — safe for anonymous signup dropdowns.
+    /// When <paramref name="projectKey"/> is provided, also includes roles owned by
+    /// the project's tenant (in addition to global roles). Falls back to global-only
+    /// when the key is absent or the project cannot be resolved.
+    /// </summary>
+    Task<Result<List<PublicRoleResponse>>> ListPublicAsync(string? projectKey = null);
 }

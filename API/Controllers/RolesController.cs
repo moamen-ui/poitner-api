@@ -14,9 +14,9 @@ public class RolesController(IRoleService roleService) : ControllerBase
 {
     [AllowAnonymous]
     [HttpGet]
-    public async Task<IActionResult> List()
+    public async Task<IActionResult> List([FromQuery] string? project = null)
     {
-        var result = await roleService.ListPublicAsync();
+        var result = await roleService.ListPublicAsync(project);
         return result.IsSuccess ? Ok(result) : BadRequest(result);
     }
 }
