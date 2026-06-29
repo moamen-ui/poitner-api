@@ -15,4 +15,6 @@ public class User : BaseEntity
     public string? Language { get; set; }
     public string? Theme { get; set; }
     public Guid? OwnerId { get; set; }
+    public bool IsDemo { get; set; }
+    public DateTime? ExpiresAt { get; set; }
 }

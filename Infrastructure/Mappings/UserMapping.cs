@@ -33,6 +33,9 @@ public class UserMapping : IEntityTypeConfiguration<User>
         b.Property(x => x.Theme).HasColumnName("theme").HasMaxLength(8);
         b.Property(x => x.OwnerId).HasColumnName("owner_id");
         b.HasIndex(x => x.OwnerId);
+        b.Property(x => x.IsDemo).HasColumnName("is_demo");
+        b.Property(x => x.ExpiresAt).HasColumnName("expires_at");
+        b.HasIndex(x => x.ExpiresAt);
 
         b.HasOne(x => x.Role)
             .WithMany(r => r.Users)
