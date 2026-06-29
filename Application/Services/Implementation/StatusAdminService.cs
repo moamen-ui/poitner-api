@@ -45,8 +45,10 @@ public class StatusAdminService(IUnitOfWork unitOfWork) : IStatusAdminService
         if (request.Order is not null && request.Order < 0)
             return Result<StatusAdminItem>.Failure("Order must be 0 or greater.");
 
+        // Intentionally ignore soft-delete so a previously reset row is revived
+        // rather than causing a unique-constraint violation on status_value.
         var row = await _unitOfWork.Repository<StatusPresentation>().Query()
-            .FirstOrDefaultAsync(s => s.StatusValue == value && s.DeletedAt == null);
+            .FirstOrDefaultAsync(s => s.StatusValue == value);
 
         if (row == null)
         {
@@ -58,6 +60,12 @@ public class StatusAdminService(IUnitOfWork unitOfWork) : IStatusAdminService
         }
         else
         {
+            // Revive if previously soft-deleted
+            if (row.DeletedAt != null)
+            {
+                row.DeletedAt = null;
+                row.DeletedBy = null;
+            }
             if (request.Label is not null) row.Label = request.Label;
             if (request.Color is not null) row.Color = request.Color;
             if (request.Order is not null) row.DisplayOrder = request.Order;
