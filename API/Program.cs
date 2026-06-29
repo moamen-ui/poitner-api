@@ -27,6 +27,13 @@ builder.Services.AddRateLimiter(o =>
         opt.Window = TimeSpan.FromHours(1);
         opt.QueueLimit = 0;
     });
+
+    o.AddFixedWindowLimiter("demo", opt =>
+    {
+        opt.PermitLimit = 3;
+        opt.Window = TimeSpan.FromHours(1);
+        opt.QueueLimit = 0;
+    });
 });
 
 builder.Services.AddCors(o =>
