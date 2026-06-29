@@ -21,6 +21,7 @@ public static class DependencyInjection
         s.AddScoped<ITokenService, JwtTokenService>();
         s.AddScoped<ICurrentUser, HttpCurrentUser>();
         s.AddScoped<IFileStorage, LocalFileStorage>();
+        s.AddSingleton<IUploadSigner, UploadSigner>();
         return s;
     }
 }

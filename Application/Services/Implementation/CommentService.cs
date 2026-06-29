@@ -17,13 +17,15 @@ public class CommentService : ICommentService
     private readonly IProjectService _projectService;
     private readonly IFileStorage _fileStorage;
     private readonly ICurrentUser _currentUser;
+    private readonly IUploadSigner _uploadSigner;
 
-    public CommentService(IUnitOfWork unitOfWork, IProjectService projectService, IFileStorage fileStorage, ICurrentUser currentUser)
+    public CommentService(IUnitOfWork unitOfWork, IProjectService projectService, IFileStorage fileStorage, ICurrentUser currentUser, IUploadSigner uploadSigner)
     {
         _unitOfWork = unitOfWork;
         _projectService = projectService;
         _fileStorage = fileStorage;
         _currentUser = currentUser;
+        _uploadSigner = uploadSigner;
     }
 
     public async Task<Result<CommentResponse>> CreateAsync(string projectKey, CreateCommentRequest request, Guid authorId)
@@ -301,7 +303,7 @@ public class CommentService : ICommentService
         ScreenshotUrl = dto.ScreenshotUrl
     };
 
-    private static ElementCaptureDto MapElementToDto(ElementCapture entity) => new()
+    private ElementCaptureDto MapElementToDto(ElementCapture entity) => new()
     {
         Selector = entity.Selector,
         Snapshot = entity.Snapshot,
@@ -310,7 +312,10 @@ public class CommentService : ICommentService
         AppliedCssRules = entity.AppliedCssRules,
         SourcePath = entity.SourcePath,
         ParentInfo = entity.ParentInfo,
-        ScreenshotUrl = entity.ScreenshotUrl
+        // Re-sign at every read so the returned URL is always fresh (never a stale/leaked permanent path).
+        ScreenshotUrl = string.IsNullOrEmpty(entity.ScreenshotUrl)
+            ? entity.ScreenshotUrl
+            : _uploadSigner.SignedUrl(_uploadSigner.ExtractRelPath(entity.ScreenshotUrl))
     };
 
     // Resolve display names for a set of author ids (User.PublicId == Comment.AuthorId).
@@ -337,7 +342,7 @@ public class CommentService : ICommentService
         CreatedAt = reply.CreatedAt
     };
 
-    private static CommentListItemDto MapToListItem(Comment comment, IReadOnlyDictionary<Guid, string> names) => new()
+    private CommentListItemDto MapToListItem(Comment comment, IReadOnlyDictionary<Guid, string> names) => new()
     {
         Id = comment.Id,
         Status = comment.Status,
@@ -355,7 +360,7 @@ public class CommentService : ICommentService
         Replies = comment.Replies.Select(r => MapReplyToResponse(r, names)).ToList()
     };
 
-    private static CommentResponse MapToResponse(Comment comment, IReadOnlyDictionary<Guid, string> names) => new()
+    private CommentResponse MapToResponse(Comment comment, IReadOnlyDictionary<Guid, string> names) => new()
     {
         Id = comment.Id,
         Status = comment.Status,

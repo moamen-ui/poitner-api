@@ -1,6 +1,7 @@
 using System.Text.RegularExpressions;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.StaticFiles;
 using Microsoft.EntityFrameworkCore;
 using Pointer.Application.Abstractions;
 using Pointer.Application.DTOs.Upload;
@@ -9,15 +10,13 @@ using Pointer.Domain.Entity;
 
 namespace Pointer.API.Controllers;
 
-// NOTE: Authenticated/signed screenshot download is deferred hardening.
-// Cross-tenant disclosure is prevented because upload is ownership-checked and
-// URLs are only returned via the tenant-scoped comments API.
-
 [ApiController]
 [Authorize]
 public class UploadsController(
     IFileStorage fileStorage,
-    IUnitOfWork unitOfWork) : ControllerBase
+    IUnitOfWork unitOfWork,
+    IUploadSigner uploadSigner,
+    IWebHostEnvironment env) : ControllerBase
 {
     private const long MaxBytes = 5_242_880; // 5 MB
 
@@ -36,6 +35,15 @@ public class UploadsController(
         ".jpeg",
         ".webp",
         ".gif"
+    };
+
+    private static readonly Dictionary<string, string> ExtensionContentTypes = new(StringComparer.OrdinalIgnoreCase)
+    {
+        { ".png",  "image/png" },
+        { ".jpg",  "image/jpeg" },
+        { ".jpeg", "image/jpeg" },
+        { ".webp", "image/webp" },
+        { ".gif",  "image/gif" },
     };
 
     private static readonly Regex ProjectPattern = new("^[A-Za-z0-9._-]+$", RegexOptions.Compiled);
@@ -83,7 +91,8 @@ public class UploadsController(
         var relativePath = await fileStorage.SaveAsync(ownerSegment, keyNormalized, stream, extension.ToLowerInvariant());
 
         var fileName = Path.GetFileName(relativePath);
-        var url = $"{Request.Scheme}://{Request.Host}/uploads/{ownerSegment}/{keyNormalized}/{fileName}";
+        // Return a short-lived HMAC-signed URL instead of a permanent public path.
+        var url = uploadSigner.SignedUrl(relativePath);
 
         return Ok(Result<UploadResponse>.Success(new UploadResponse
         {
@@ -92,5 +101,46 @@ public class UploadsController(
             Size = file.Length,
             ContentType = file.ContentType
         }));
+    }
+
+    /// <summary>
+    /// Serves a previously uploaded file only when the HMAC signature is valid and not expired.
+    /// Anonymous access is allowed (no bearer token required) so that &lt;img src&gt; works in the browser.
+    /// </summary>
+    [AllowAnonymous]
+    [HttpGet("api/uploads/file")]
+    public IActionResult GetFile([FromQuery] string p, [FromQuery] long exp, [FromQuery] string sig)
+    {
+        if (string.IsNullOrEmpty(p) || string.IsNullOrEmpty(sig))
+            return NotFound();
+
+        if (!uploadSigner.Validate(p, exp, sig))
+            return NotFound();
+
+        // Resolve the physical path under wwwroot.
+        var webRoot = env.WebRootPath;
+        if (string.IsNullOrEmpty(webRoot))
+            webRoot = Path.Combine(env.ContentRootPath, "wwwroot");
+
+        // Normalise: strip any leading slash; forward-slashes only.
+        var rel = p.Replace('\\', '/').TrimStart('/');
+        var fullPath = Path.GetFullPath(Path.Combine(webRoot, rel.Replace('/', Path.DirectorySeparatorChar)));
+
+        // Path-traversal guard: the resolved path MUST stay under wwwroot/uploads.
+        var uploadsRoot = Path.GetFullPath(Path.Combine(webRoot, "uploads"));
+        if (!fullPath.StartsWith(uploadsRoot + Path.DirectorySeparatorChar, StringComparison.Ordinal))
+            return NotFound();
+
+        if (!System.IO.File.Exists(fullPath))
+            return NotFound();
+
+        var ext = Path.GetExtension(fullPath).ToLowerInvariant();
+        if (!ExtensionContentTypes.TryGetValue(ext, out var contentType))
+            contentType = "application/octet-stream";
+
+        // Cache-Control: private — the URL itself is the time-limited token.
+        Response.Headers["Cache-Control"] = "private, max-age=3600";
+
+        return PhysicalFile(fullPath, contentType);
     }
 }

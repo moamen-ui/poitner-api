@@ -143,6 +143,19 @@ app.Use(async (ctx, next) =>
 });
 
 app.UseDefaultFiles();
+
+// Block direct static access to /uploads/* — files are only served through the
+// HMAC-validated endpoint GET /api/uploads/file?p=...&exp=...&sig=...
+app.Use(async (ctx, next) =>
+{
+    if (ctx.Request.Path.StartsWithSegments("/uploads", StringComparison.OrdinalIgnoreCase))
+    {
+        ctx.Response.StatusCode = StatusCodes.Status404NotFound;
+        return;
+    }
+    await next();
+});
+
 app.UseStaticFiles();
 
 app.UseCors();
