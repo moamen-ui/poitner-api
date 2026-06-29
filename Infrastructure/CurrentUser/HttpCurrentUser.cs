@@ -16,4 +16,11 @@ public class HttpCurrentUser(IHttpContextAccessor accessor) : ICurrentUser
             : null;
 
     public bool IsAdmin => accessor.HttpContext?.User.FindFirst("is_admin")?.Value == "true";
+
+    public bool IsSuperAdmin => accessor.HttpContext?.User.FindFirst("is_super_admin")?.Value == "true";
+
+    public Guid? TenantId =>
+        Guid.TryParse(accessor.HttpContext?.User.FindFirst("tenant")?.Value, out var g)
+            ? g
+            : null;
 }

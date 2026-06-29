@@ -16,7 +16,7 @@ public class JwtTokenService(IOptions<JwtOptions> opts) : ITokenService
         var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(o.SigningKey));
         var creds = new SigningCredentials(key, SecurityAlgorithms.HmacSha256);
         // u.Role (the Role entity) must be loaded by the caller (AuthService Includes it).
-        var claims = new[]
+        var claims = new List<Claim>
         {
             new Claim(JwtRegisteredClaimNames.Sub, u.PublicId.ToString()),
             new Claim("email", u.Email),
@@ -24,7 +24,10 @@ public class JwtTokenService(IOptions<JwtOptions> opts) : ITokenService
             new Claim("role_id", u.RoleId.ToString()),
             new Claim("role", u.Role?.Name ?? string.Empty),
             new Claim("is_admin", (u.Role?.GrantsAdmin ?? false) ? "true" : "false"),
+            new Claim("is_super_admin", (u.Role?.IsSuperAdmin ?? false) ? "true" : "false"),
         };
+        if (u.OwnerId is not null)
+            claims.Add(new Claim("tenant", u.OwnerId.Value.ToString()));
         var token = new JwtSecurityToken(o.Issuer, o.Issuer, claims,
             expires: DateTime.UtcNow.AddHours(o.LifetimeHours), signingCredentials: creds);
         return new JwtSecurityTokenHandler().WriteToken(token);

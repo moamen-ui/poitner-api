@@ -37,7 +37,8 @@ public static class AuthenticationExtensions
         // NAME — so renaming/adding roles never weakens authorization.
         services
             .AddAuthorizationBuilder()
-            .AddPolicy(Policies.Admin, p => p.RequireClaim("is_admin", "true"));
+            .AddPolicy(Policies.Admin, p => p.RequireClaim("is_admin", "true"))
+            .AddPolicy(Policies.SuperAdmin, p => p.RequireClaim("is_super_admin", "true"));
 
         return services;
     }
