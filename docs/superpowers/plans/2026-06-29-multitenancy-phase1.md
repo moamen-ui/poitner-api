@@ -1,5 +1,7 @@
 # Multi-Tenancy Phase 1 (Tenancy Core) Implementation Plan — rev 2 (post GLM review)
 
+> **✅ STATUS: SHIPPED TO PRODUCTION (2026-06-29).** All tasks complete and deployed live (`app.pointer.moamen.work` + `api.pointer.moamen.work`). The `- [ ]` checkboxes below were NOT ticked during execution — progress was tracked in `.superpowers/sdd/progress.md` (the authoritative ledger). Treat this plan as DONE; do not re-run it. Isolation proven 13/13 + 5/5 by-id + 6/6 global-role; GLM final review clean. Next work = Phase 3 (billing/plans/quotas, email verification) — roadmap, not started.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: superpowers:subagent-driven-development. Steps use checkbox (`- [ ]`). Implementer tags: **[GLM]** = delegate to opencode + GLM-5.2 in an isolated git worktree (mechanical/low-risk); **[Claude]** = implement/review closely (security-critical). Every delegated diff is reviewed before merge.
 
 **Goal:** Make Pointer multi-tenant: a super admin (operator) sees/manages everything; scoped admins are tenants that see/manage only their own data, enforced **by EF global query filters (default-deny at the ORM)**.

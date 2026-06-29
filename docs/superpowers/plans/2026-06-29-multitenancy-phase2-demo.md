@@ -1,5 +1,7 @@
 # Multi-Tenancy Phase 2 (Demo Tenants) Implementation Plan
 
+> **✅ STATUS: SHIPPED TO PRODUCTION (2026-06-29).** All tasks (D1–D7) complete and deployed live; one-click demo runs at `demo.pointer.moamen.work`. The `- [ ]` checkboxes below were NOT ticked during execution — progress was tracked in `.superpowers/sdd/progress.md` (the authoritative ledger). Treat this plan as DONE; do not re-run it. Prod demo round-trip verified 6/6 + a live browser pass. Next work = Phase 3 (billing/plans/quotas, email verification) — roadmap, not started.
+
 > REQUIRED SUB-SKILL: superpowers:subagent-driven-development. [GLM] = opencode+GLM-5.2 (`--pure`, tracked); [Claude] = own subagent + close review. Builds on the completed Phase 1.
 
 **Goal:** One-click "Try the demo" → ephemeral, self-seeded, auto-expiring scoped-admin tenant (10-comment cap, 24h hard-delete), with abuse caps and the `demo.pointer.moamen.work` dashboard.
