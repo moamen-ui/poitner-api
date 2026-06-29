@@ -4,11 +4,11 @@ using Pointer.Domain.Entity;
 
 namespace Pointer.Infrastructure.Mappings;
 
-public class ProjectMapping : IEntityTypeConfiguration<Project>
+public class AppSettingMapping : IEntityTypeConfiguration<AppSetting>
 {
-    public void Configure(EntityTypeBuilder<Project> b)
+    public void Configure(EntityTypeBuilder<AppSetting> b)
     {
-        b.ToTable("projects");
+        b.ToTable("app_settings");
 
         // BaseEntity columns
         b.Property(x => x.Id).HasColumnName("id");
@@ -19,12 +19,9 @@ public class ProjectMapping : IEntityTypeConfiguration<Project>
         b.Property(x => x.DeletedAt).HasColumnName("deleted_at");
         b.Property(x => x.DeletedBy).HasColumnName("deleted_by");
 
-        // Project-specific columns
-        b.Property(x => x.Key).HasColumnName("key").IsRequired().HasMaxLength(64);
-        b.HasIndex(x => new { x.Key, x.OwnerId }).IsUnique();
-        b.Property(x => x.Name).HasColumnName("name").IsRequired().HasMaxLength(128);
-        b.Property(x => x.IsActive).HasColumnName("is_active");
-        b.Property(x => x.OwnerId).HasColumnName("owner_id");
-        b.HasIndex(x => x.OwnerId);
+        // AppSetting-specific columns
+        b.Property(x => x.Key).HasColumnName("key").IsRequired();
+        b.Property(x => x.Value).HasColumnName("value");
+        b.HasIndex(x => x.Key).IsUnique();
     }
 }

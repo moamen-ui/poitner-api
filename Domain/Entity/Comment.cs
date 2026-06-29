@@ -18,5 +18,6 @@ public class Comment : BaseEntity
     // Edit trace: stamped when the author edits the comment body / removes its image.
     public DateTime? EditedAt { get; set; }
     public Guid? EditedBy { get; set; }
+    public Guid? OwnerId { get; set; }
     public ICollection<Reply> Replies { get; set; } = new List<Reply>();
 }

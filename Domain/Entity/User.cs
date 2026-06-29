@@ -14,4 +14,5 @@ public class User : BaseEntity
     public ApprovalStatus ApprovalStatus { get; set; } = ApprovalStatus.Approved;
     public string? Language { get; set; }
     public string? Theme { get; set; }
+    public Guid? OwnerId { get; set; }
 }

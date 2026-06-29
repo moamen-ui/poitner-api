@@ -17,5 +17,10 @@ public class Role : BaseEntity
 
     public bool IsActive { get; set; } = true;
 
+    /// <summary>Marks a role as belonging to a super-admin scope (null OwnerId = global/super-admin).</summary>
+    public bool IsSuperAdmin { get; set; }
+
+    public Guid? OwnerId { get; set; }
+
     public ICollection<User> Users { get; set; } = new List<User>();
 }

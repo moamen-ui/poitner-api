@@ -6,4 +6,5 @@ public class StatusPresentation : BaseEntity
     public string? Label { get; set; }
     public string? Color { get; set; }
     public int? DisplayOrder { get; set; }
+    public Guid? OwnerId { get; set; }
 }

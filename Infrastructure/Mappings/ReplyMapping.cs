@@ -23,6 +23,8 @@ public class ReplyMapping : IEntityTypeConfiguration<Reply>
         b.Property(x => x.CommentId).HasColumnName("comment_id");
         b.Property(x => x.AuthorId).HasColumnName("author_id");
         b.Property(x => x.Body).HasColumnName("body").IsRequired();
+        b.Property(x => x.OwnerId).HasColumnName("owner_id");
+        b.HasIndex(x => x.OwnerId);
         b.HasOne(x => x.Comment).WithMany(c => c.Replies).HasForeignKey(x => x.CommentId).OnDelete(DeleteBehavior.Cascade);
     }
 }

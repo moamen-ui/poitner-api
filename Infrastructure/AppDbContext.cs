@@ -12,6 +12,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options, ICurrentUser c
     public DbSet<Comment> Comments => Set<Comment>();
     public DbSet<Reply> Replies => Set<Reply>();
     public DbSet<StatusPresentation> StatusPresentations => Set<StatusPresentation>();
+    public DbSet<AppSetting> AppSettings => Set<AppSetting>();
 
     protected override void OnModelCreating(ModelBuilder b) =>
         b.ApplyConfigurationsFromAssembly(typeof(AppDbContext).Assembly);

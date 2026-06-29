@@ -17,9 +17,11 @@ public class StatusPresentationMapping : IEntityTypeConfiguration<StatusPresenta
         b.Property(x => x.DeletedAt).HasColumnName("deleted_at");
         b.Property(x => x.DeletedBy).HasColumnName("deleted_by");
         b.Property(x => x.StatusValue).HasColumnName("status_value").IsRequired();
-        b.HasIndex(x => x.StatusValue).IsUnique();
+        b.HasIndex(x => new { x.StatusValue, x.OwnerId }).IsUnique();
         b.Property(x => x.Label).HasColumnName("label").HasMaxLength(64);
         b.Property(x => x.Color).HasColumnName("color").HasMaxLength(9);
         b.Property(x => x.DisplayOrder).HasColumnName("display_order");
+        b.Property(x => x.OwnerId).HasColumnName("owner_id");
+        b.HasIndex(x => x.OwnerId);
     }
 }
