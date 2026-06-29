@@ -191,7 +191,7 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
 
   // Anonymous: active non-admin roles for the signup / re-apply dropdowns.
   async apiRoles(): Promise<RoleOption[]> {
-    const r = await fetch(`${this.server}/api/roles`, {
+    const r = await fetch(`${this.server}/api/roles?project=${encodeURIComponent(this.project)}`, {
       headers: { 'Content-Type': 'application/json' },
     });
     const envelope = await r.json();
@@ -530,7 +530,7 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
     try {
       const r = await this.api(`/api/projects/${encodeURIComponent(this.project)}/comments`, {
         method: 'POST',
-        body: JSON.stringify(body),
+      body: JSON.stringify({ ...body, projectKey: this.project }),
       });
       if (!r.ok) throw new Error('HTTP ' + r.status);
       const envelope = await r.json();
