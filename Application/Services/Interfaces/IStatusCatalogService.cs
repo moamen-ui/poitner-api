@@ -5,5 +5,5 @@ namespace Pointer.Application.Services.Interfaces;
 
 public interface IStatusCatalogService
 {
-    Result<List<StatusItem>> GetAll();
+    Task<Result<List<StatusItem>>> GetAllAsync();
 }

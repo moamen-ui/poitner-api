@@ -11,6 +11,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options, ICurrentUser c
     public DbSet<Project> Projects => Set<Project>();
     public DbSet<Comment> Comments => Set<Comment>();
     public DbSet<Reply> Replies => Set<Reply>();
+    public DbSet<StatusPresentation> StatusPresentations => Set<StatusPresentation>();
 
     protected override void OnModelCreating(ModelBuilder b) =>
         b.ApplyConfigurationsFromAssembly(typeof(AppDbContext).Assembly);

@@ -13,5 +13,5 @@ public class StatusesController(IStatusCatalogService statusCatalog) : Controlle
 {
     [HttpGet]
     [ProducesResponseType(typeof(List<StatusItem>), StatusCodes.Status200OK)]
-    public IActionResult Get() => Ok(statusCatalog.GetAll());
+    public async Task<IActionResult> Get() => Ok(await statusCatalog.GetAllAsync());
 }
