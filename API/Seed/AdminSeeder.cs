@@ -9,13 +9,14 @@ public static class AdminSeeder
 {
     // Default roles seeded on first boot. "Admin" is a protected system role (grants dashboard
     // access, cannot be renamed/disabled). The rest are ordinary labels admins can manage.
-    private static readonly (string Name, bool GrantsAdmin, bool IsSystem)[] DefaultRoles =
+    private static readonly (string Name, bool GrantsAdmin, bool IsSystem, bool IsSuperAdmin)[] DefaultRoles =
     {
-        ("Admin", true, true),
-        ("Developer", false, false),
-        ("PM", false, false),
-        ("Tester", false, false),
-        ("Client", false, false),
+        ("Admin", true, true, true),
+        ("Workspace Admin", true, true, false),
+        ("Developer", false, false, false),
+        ("PM", false, false, false),
+        ("Tester", false, false, false),
+        ("Client", false, false, false),
     };
 
     public static async Task SeedAsync(IServiceProvider services)
@@ -27,12 +28,21 @@ public static class AdminSeeder
 
         // 1) Seed any missing default roles.
         var existingRoleNames = await db.Roles.Select(r => r.Name).ToListAsync();
-        foreach (var (name, grantsAdmin, isSystem) in DefaultRoles)
+        foreach (var (name, grantsAdmin, isSystem, isSuperAdmin) in DefaultRoles)
         {
             if (!existingRoleNames.Contains(name))
-                db.Roles.Add(new Role { Name = name, GrantsAdmin = grantsAdmin, IsSystem = isSystem });
+                db.Roles.Add(new Role { Name = name, GrantsAdmin = grantsAdmin, IsSystem = isSystem, IsSuperAdmin = isSuperAdmin });
         }
         await db.SaveChangesAsync();
+
+        // Idempotently upgrade the existing "Admin" role to IsSuperAdmin (for databases seeded
+        // before this flag existed). New databases already get it from the tuple above.
+        var adminRole = await db.Roles.FirstOrDefaultAsync(r => r.Name == "Admin");
+        if (adminRole is not null && !adminRole.IsSuperAdmin)
+        {
+            adminRole.IsSuperAdmin = true;
+            await db.SaveChangesAsync();
+        }
 
         // 2) Seed the admin user (linked to the Admin role) if none exists yet.
         var adminEmail = config["ADMIN:EMAIL"];

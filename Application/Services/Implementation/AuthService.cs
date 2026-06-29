@@ -178,6 +178,7 @@ public class AuthService : IAuthService
         RoleId = user.RoleId,
         RoleName = user.Role?.Name ?? string.Empty,
         IsAdmin = user.Role?.GrantsAdmin ?? false,
+        IsSuperAdmin = user.Role?.IsSuperAdmin ?? false,
         Language = user.Language,
         Theme = user.Theme,
     };
