@@ -5,13 +5,13 @@ namespace Pointer.Infrastructure.Storage;
 
 public class LocalFileStorage(IWebHostEnvironment env) : IFileStorage
 {
-    public async Task<string> SaveAsync(string project, Stream content, string extension)
+    public async Task<string> SaveAsync(string ownerSegment, string project, Stream content, string extension)
     {
         var webRoot = env.WebRootPath;
         if (string.IsNullOrEmpty(webRoot))
             webRoot = Path.Combine(env.ContentRootPath, "wwwroot");
 
-        var folder = Path.Combine(webRoot, "uploads", project);
+        var folder = Path.Combine(webRoot, "uploads", ownerSegment, project);
         Directory.CreateDirectory(folder);
 
         var fileName = $"{Guid.NewGuid():N}{extension}";
@@ -23,7 +23,7 @@ public class LocalFileStorage(IWebHostEnvironment env) : IFileStorage
         }
 
         // Relative web path; forward slashes for URL composition.
-        return $"uploads/{project}/{fileName}";
+        return $"uploads/{ownerSegment}/{project}/{fileName}";
     }
 
     public Task DeleteAsync(string relativePathOrUrl)
