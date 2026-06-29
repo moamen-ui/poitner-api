@@ -14,8 +14,26 @@ public class AppDbContext(DbContextOptions<AppDbContext> options, ICurrentUser c
     public DbSet<StatusPresentation> StatusPresentations => Set<StatusPresentation>();
     public DbSet<AppSetting> AppSettings => Set<AppSetting>();
 
-    protected override void OnModelCreating(ModelBuilder b) =>
+    protected override void OnModelCreating(ModelBuilder b)
+    {
         b.ApplyConfigurationsFromAssembly(typeof(AppDbContext).Assembly);
+
+        // Tenant isolation: every query is scoped to the current user's tenant by default.
+        // Super-admin/system code paths (cascade delete, background jobs) must call
+        // .IgnoreQueryFilters() explicitly on the query to bypass these filters.
+
+        // Strict-own: visible only to the owning tenant or super-admin.
+        b.Entity<Project>().HasQueryFilter(e => currentUser.IsSuperAdmin || e.OwnerId == currentUser.TenantId);
+        b.Entity<User>().HasQueryFilter(e => currentUser.IsSuperAdmin || e.OwnerId == currentUser.TenantId);
+        b.Entity<Comment>().HasQueryFilter(e => currentUser.IsSuperAdmin || e.OwnerId == currentUser.TenantId);
+        b.Entity<Reply>().HasQueryFilter(e => currentUser.IsSuperAdmin || e.OwnerId == currentUser.TenantId);
+
+        // Own-plus-global: tenants also see rows with OwnerId == null (super-admin/global defaults).
+        b.Entity<Role>().HasQueryFilter(e => currentUser.IsSuperAdmin || e.OwnerId == currentUser.TenantId || e.OwnerId == null);
+        b.Entity<StatusPresentation>().HasQueryFilter(e => currentUser.IsSuperAdmin || e.OwnerId == currentUser.TenantId || e.OwnerId == null);
+
+        // AppSetting: no filter — not tenant data; guarded by endpoint authorization.
+    }
 
     public override Task<int> SaveChangesAsync(CancellationToken ct = default)
     {
