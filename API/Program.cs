@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.OpenApi.Models;
 using Pointer.API.Extensions;
+using Pointer.API.Hosted;
 using Pointer.API.Seed;
 using Pointer.Application;
 using Pointer.Infrastructure;
@@ -18,6 +19,7 @@ builder.Services.AddApplication();
 builder.Services.AddInfrastructure(builder.Configuration);
 builder.Services.AddJwtAuth(builder.Configuration);
 builder.Services.AddAuthorization();
+builder.Services.AddHostedService<DemoCleanupService>();
 
 builder.Services.AddRateLimiter(o =>
 {
