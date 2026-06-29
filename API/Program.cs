@@ -23,19 +23,30 @@ builder.Services.AddHostedService<DemoCleanupService>();
 
 builder.Services.AddRateLimiter(o =>
 {
-    o.AddFixedWindowLimiter("signup", opt =>
-    {
-        opt.PermitLimit = 5;
-        opt.Window = TimeSpan.FromHours(1);
-        opt.QueueLimit = 0;
-    });
+    // Per-IP fixed-window limiters (partition by client IP, honoring X-Forwarded-For
+    // via ForwardedHeaders) so one abuser can't exhaust the limit for everyone.
+    static string ClientIp(HttpContext ctx) =>
+        ctx.Connection.RemoteIpAddress?.ToString() ?? "unknown";
 
-    o.AddFixedWindowLimiter("demo", opt =>
-    {
-        opt.PermitLimit = 3;
-        opt.Window = TimeSpan.FromHours(1);
-        opt.QueueLimit = 0;
-    });
+    o.AddPolicy("signup", ctx =>
+        System.Threading.RateLimiting.RateLimitPartition.GetFixedWindowLimiter(
+            ClientIp(ctx),
+            _ => new System.Threading.RateLimiting.FixedWindowRateLimiterOptions
+            {
+                PermitLimit = 5,
+                Window = TimeSpan.FromHours(1),
+                QueueLimit = 0
+            }));
+
+    o.AddPolicy("demo", ctx =>
+        System.Threading.RateLimiting.RateLimitPartition.GetFixedWindowLimiter(
+            ClientIp(ctx),
+            _ => new System.Threading.RateLimiting.FixedWindowRateLimiterOptions
+            {
+                PermitLimit = 3,
+                Window = TimeSpan.FromHours(1),
+                QueueLimit = 0
+            }));
 });
 
 builder.Services.AddCors(o =>
