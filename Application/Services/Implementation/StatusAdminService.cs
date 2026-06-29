@@ -106,6 +106,6 @@ public class StatusAdminService(IUnitOfWork unitOfWork) : IStatusAdminService
         Label = o?.Label ?? def.Label,
         Color = o?.Color ?? def.Color,
         Order = o?.DisplayOrder ?? def.Order,
-        IsOverridden = o != null,
+        IsOverridden = o != null && o.DeletedAt == null,
     };
 }
