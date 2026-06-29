@@ -1,6 +1,6 @@
 ---
 name: pointer-feedback
-description: Use when the user asks about Pointer feedback or comments on an app — e.g. "what are the pointer comments", "show pointer feedback", "any feedback on <app>", "apply pending pointer comments". Reads config from the app's .env (VITE_POINTER_*) + automation credentials, logs in to the Pointer API, fetches the feedback with curl, then lists or applies the comments. No Pointer install required.
+description: Use when the user asks about Pointer feedback or comments on an app — e.g. "what are the pointer comments", "show pointer feedback", "any feedback on <app>", "apply pending pointer comments". Reads config from the app's .env (the *POINTER_* keys under whatever prefix the stack uses — VITE_/NEXT_PUBLIC_/REACT_APP_/none) + automation credentials, logs in to the Pointer API, fetches the feedback with curl, then lists or applies the comments. No Pointer install required.
 ---
 
 # Pointer Feedback
@@ -27,18 +27,23 @@ Pointer is wired into an app via an **env-gated inline snippet** in `index.html`
 that app's `.env` (Vite vars). The automation **credentials** are NOT Vite vars (they must never reach
 the browser) — read them from the shell environment or a gitignored local file. **Do not hardcode.**
 
-1. **Find the app.** It's the one whose `.env` defines `VITE_POINTER_*`:
+1. **Find the app.** The env-var **prefix is stack-specific** (`VITE_`, `NEXT_PUBLIC_`, `REACT_APP_`,
+   or none) — so match the `*POINTER_SERVER` key by suffix, not a fixed prefix:
    ```bash
-   grep -rl "VITE_POINTER_SERVER" apps/*/.env 2>/dev/null || grep -rl "pointer-feedback" apps/*/index.html
+   grep -rlE "[A-Z_]*POINTER_SERVER=" apps/*/.env 2>/dev/null || grep -rl "pointer-feedback" apps/*/index.html
    ```
    Let `APP_DIR` be that app's directory (e.g. `apps/my-app`).
 
-2. **Read server + project** from `$APP_DIR/.env`:
+2. **Read server + project** from `$APP_DIR/.env`, matching whatever prefix the stack uses:
    ```bash
-   envval(){ grep -E "^$1=" "$APP_DIR/.env" | head -1 | cut -d= -f2- | tr -d "'\""; }
-   SERVER=$(envval VITE_POINTER_SERVER)       # e.g. http://localhost:8090
-   PROJECT=$(envval VITE_POINTER_PROJECT)      # e.g. my-app
+   # grab the value of the first var whose name ends with the given suffix (any prefix)
+   envval(){ grep -E "^[A-Z_]*$1=" "$APP_DIR/.env" | head -1 | cut -d= -f2- | tr -d "'\""; }
+   SERVER=$(envval POINTER_SERVER)        # e.g. http://localhost:8090
+   PROJECT=$(envval POINTER_PROJECT)      # e.g. my-app
    ```
+   - This works for `VITE_POINTER_SERVER`, `NEXT_PUBLIC_POINTER_SERVER`, `REACT_APP_POINTER_SERVER`,
+     or a bare `POINTER_SERVER` alike. For Angular (no `.env`), read the value from
+     `src/environments/environment*.ts` instead.
    - If `PROJECT` is empty, fall back to the `project` in the inline snippet
      (`grep -oE 'setAttribute\("project", *"[^"]+"' "$APP_DIR/index.html"`) or the app dir name.
    - If `SERVER` is empty, ask the user for the Pointer server URL.
@@ -163,8 +168,9 @@ For each item from the `status=2` queue:
 ## Notes
 
 - This skill needs no Pointer clone or CLI — only `curl`. The Pointer **API** is the only instance.
-- Config source of truth: the app's `.env` (`VITE_POINTER_*`) for server/project; shell env for the
-  automation account credentials (keep them out of any committed/Vite-exposed file).
+- Config source of truth: the app's `.env` (the `*POINTER_*` keys, under whatever prefix the stack
+  uses — `VITE_`, `NEXT_PUBLIC_`, `REACT_APP_`, or none) for server/project; shell env for the
+  automation account credentials (keep them out of any committed/client-exposed file).
 - The token expires (default 12h). On a `401`, just re-run Step 2.
 - This file was installed by fetching `<server>/skill.md` into `.claude/skills/pointer-feedback/SKILL.md`
   and is yours to edit — tweak formatting, defaults, or apply rules to fit this repo.

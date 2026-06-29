@@ -34,8 +34,12 @@ This skill wires the widget into the **current** app. Do not guess the variables
 - **Plain static HTML** — a hand-written `index.html`, no bundler → Step 3b.
 - **Angular** — `angular.json` + `src/index.html` → Step 3c.
 - **Next.js** — `next.config.*`, `app/` or `pages/` → Step 3d.
+- **Create React App / Webpack** — `react-scripts` in `package.json`, or a `webpack.config.*` with
+  `DefinePlugin`/`EnvironmentPlugin`; uses the `REACT_APP_` prefix (CRA) or a config-defined name → Step 3f.
 - **API Swagger / OpenAPI docs page** (Swashbuckle/.NET, Scalar, Redoc, swagger-ui) — embed it so
   consumers can comment directly on endpoints → Step 3e.
+
+Match the env-var prefix to whichever you detect (see the naming table in Step 3).
 
 ## Step 3 — Inject the loader
 
@@ -45,7 +49,23 @@ elements — **and make sure the app actually stamps that attribute** (usually a
 dev flag such as `VITE_DEBUG`; see the Source mapping note in Step 4). Without it, applies still work
 but can't jump straight to the file.
 
-### 3a. Vite (canonical pattern)
+> **Env-var naming is stack-specific — use the prefix the detected stack exposes to the browser, not a
+> fixed `VITE_` one.** Browsers can't read raw env vars, so each bundler only exposes vars carrying its
+> own prefix. Map the four logical keys (`*_POINTER_ENABLED`, `*_POINTER_SERVER`, `*_POINTER_PROJECT`,
+> `*_POINTER_ENV`) onto the host's convention:
+>
+> | Detected stack | Prefix to use | Read in code as |
+> |---|---|---|
+> | Vite | `VITE_` | `import.meta.env.VITE_*` / `%VITE_*%` in `index.html` |
+> | Next.js | `NEXT_PUBLIC_` | `process.env.NEXT_PUBLIC_*` |
+> | Create React App / Webpack (`react-scripts`) | `REACT_APP_` | `process.env.REACT_APP_*` |
+> | Webpack with custom `DefinePlugin` | whatever the config defines (often unprefixed `POINTER_*`) | `process.env.POINTER_*` |
+> | Angular | — (no runtime env) | a field in `src/environments/environment*.ts` |
+> | Plain HTML / static | — (no env) | hardcode attributes, or use `embed.js` (3e) |
+>
+> Whichever you pick, **mirror it in `.env.example`** so the names match what the code reads.
+
+### 3a. Vite
 
 Add to `index.html` before `</body>`:
 
@@ -165,6 +185,39 @@ in the same directives above:
 
 ```html
 <script src="<POINTER_SERVER>/embed.js?project=<your-api>"></script>
+```
+
+### 3f. Create React App / Webpack
+
+CRA and most Webpack setups have no HTML placeholder substitution, so mount from JS and read the
+env vars under **the prefix this stack exposes** — `REACT_APP_` for CRA/`react-scripts`, or whatever
+name a custom Webpack `DefinePlugin`/`EnvironmentPlugin` defines (often unprefixed `POINTER_*`). Add
+the mount near the app root (e.g. `src/index.tsx`):
+
+```js
+// uses CRA's REACT_APP_ prefix — swap to your Webpack-defined names if different
+if (process.env.REACT_APP_POINTER_ENABLED === 'true' &&
+    (process.env.REACT_APP_POINTER_SERVER || '').indexOf('http') === 0) {
+  const server = process.env.REACT_APP_POINTER_SERVER;
+  const s = document.createElement('script');
+  s.src = server + '/pointer.js';
+  s.defer = true;
+  document.head.appendChild(s);
+  const el = document.createElement('pointer-feedback');
+  el.setAttribute('project', process.env.REACT_APP_POINTER_PROJECT);
+  el.setAttribute('server', server);
+  el.setAttribute('environment', process.env.REACT_APP_POINTER_ENV || 'staging');
+  el.setAttribute('source-attr', 'data-component-source');
+  document.body.appendChild(el);
+}
+```
+
+```
+# .env  (CRA shown — for custom Webpack, use the names your DefinePlugin injects)
+REACT_APP_POINTER_ENABLED=true
+REACT_APP_POINTER_SERVER=<POINTER_SERVER>     # http://localhost:8090 only for local dev
+REACT_APP_POINTER_PROJECT=<project-key>
+REACT_APP_POINTER_ENV=staging
 ```
 
 ## Step 4 — (Optional) wire the AI apply-tool credentials

@@ -54,20 +54,33 @@ Prefer to wire it by hand? Drop these before `</body>`:
 That's the whole install — `server` defaults to the script's own origin, so loading `pointer.js`
 from the Pointer server is enough.
 
-### Manual — env-gated (Vite, ship it only where you want)
+### Manual — env-gated (any bundler, ship it only where you want)
 
-Gate the widget on env vars so it never appears in builds that shouldn't have it. Add to the app's
-`.env`:
+Gate the widget on env vars so it never appears in builds that shouldn't have it. Pointer has **no
+fixed env-var prefix** — only your bundler does. Browsers can't read raw env vars, so every bundler
+requires a prefix to expose one to client code, and that prefix is **stack-specific**. Use your
+stack's convention for the four keys `*_POINTER_ENABLED`, `*_POINTER_SERVER`, `*_POINTER_PROJECT`,
+`*_POINTER_ENV`:
+
+| Stack | Prefix | Example | Read in code as |
+|---|---|---|---|
+| Vite (React/Vue/Svelte) | `VITE_` | `VITE_POINTER_SERVER` | `import.meta.env.VITE_POINTER_SERVER` (or `%VITE_*%` in `index.html`) |
+| Next.js | `NEXT_PUBLIC_` | `NEXT_PUBLIC_POINTER_SERVER` | `process.env.NEXT_PUBLIC_POINTER_SERVER` |
+| Create React App / Webpack | `REACT_APP_` | `REACT_APP_POINTER_SERVER` | `process.env.REACT_APP_POINTER_SERVER` |
+| Webpack (custom `DefinePlugin`) | your choice | `POINTER_SERVER` | whatever key you define |
+| Angular | — (no runtime env) | n/a | a field in `src/environments/environment.ts` |
+| Plain HTML / static | — (no env) | n/a | hardcode the attributes, or use [`embed.js`](#3-embed-in-an-apis-swagger-page-optional) |
+
+Example for a **Vite** app — add to the app's `.env` and use a `%VITE_*%`-substituted loader in
+`index.html`. **For another stack, swap the `VITE_` prefix for the row above and read the values the
+way that stack exposes them** (`process.env.NEXT_PUBLIC_*`, `environment.ts`, etc.):
 
 ```bash
-# apps/<app>/.env
+# apps/<app>/.env   (Vite shown — use your stack's prefix)
 VITE_POINTER_ENABLED=true
 VITE_POINTER_SERVER=https://api.pointer.moamen.work   # http://localhost:8090 for local
 VITE_POINTER_PROJECT=my-app
 ```
-
-…and an inline loader in `index.html` that only mounts when enabled (Vite replaces `%VITE_*%` at
-build time):
 
 ```html
 <script>
@@ -83,6 +96,10 @@ build time):
   }
 </script>
 ```
+
+The `<pointer-feedback>` element only reads HTML attributes, so it's stack-agnostic — env vars
+matter only for *how your build feeds those attributes*. On a stack with no client env vars (static
+HTML, server-rendered docs), skip env wiring entirely and use the [`embed.js` loader](#3-embed-in-an-apis-swagger-page-optional).
 
 ### `<pointer-feedback>` attributes
 
@@ -170,8 +187,9 @@ export POINTER_EMAIL="automation@pointer.local"
 export POINTER_PASSWORD="…"
 ```
 
-Then tell your AI tool **"apply pending pointer comments"** — it reads `VITE_POINTER_SERVER` /
-`VITE_POINTER_PROJECT` from the app's `.env`, logs in, fetches the `ReadyToApply` queue, applies each
+Then tell your AI tool **"apply pending pointer comments"** — it reads the `*POINTER_SERVER` /
+`*POINTER_PROJECT` keys from the app's `.env` (matching whatever prefix the stack uses — `VITE_`,
+`NEXT_PUBLIC_`, `REACT_APP_`, or none), logs in, fetches the `ReadyToApply` queue, applies each
 item by `element.sourcePath`, and `PATCH`es it to `Applied` with an `appliedByLabel` for traceability.
 
 ---
