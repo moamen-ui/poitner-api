@@ -46,11 +46,11 @@ public class AuthController(IAuthService authService, ISettingsService settingsS
 
     [AllowAnonymous]
     [HttpGet("signup-enabled")]
-    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(SignupEnabledResponse), StatusCodes.Status200OK)]
     public async Task<IActionResult> SignupEnabled()
     {
         var enabled = await settingsService.GetBoolAsync(ISettingsService.ScopedAdminSignupEnabled, fallback: false);
-        return Ok(new { enabled });
+        return Ok(new SignupEnabledResponse { Enabled = enabled });
     }
 
     [AllowAnonymous]
