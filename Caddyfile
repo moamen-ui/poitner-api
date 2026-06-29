@@ -36,6 +36,15 @@ app.pointer.moamen.work {
     file_server
 }
 
+# Demo host → the dashboard with the "Try the demo" entry (guests provision an
+# ephemeral, self-expiring tenant). Same Angular build as app.pointer.
+demo.pointer.moamen.work {
+    root * /srv/dashboard/angular
+    encode gzip
+    try_files {path} /index.html
+    file_server
+}
+
 pointer.moamen.work {
     redir https://app.pointer.moamen.work{uri} permanent
 }
