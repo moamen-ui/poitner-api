@@ -15,17 +15,20 @@ public class AuthService : IAuthService
     private readonly IPasswordHasher _passwordHasher;
     private readonly ITokenService _tokenService;
     private readonly ICurrentUser _currentUser;
+    private readonly ISettingsService _settings;
 
     public AuthService(
         IUnitOfWork unitOfWork,
         IPasswordHasher passwordHasher,
         ITokenService tokenService,
-        ICurrentUser currentUser)
+        ICurrentUser currentUser,
+        ISettingsService settings)
     {
         _unitOfWork = unitOfWork;
         _passwordHasher = passwordHasher;
         _tokenService = tokenService;
         _currentUser = currentUser;
+        _settings = settings;
     }
 
     public async Task<Result<LoginResponse>> LoginAsync(LoginRequest request)
@@ -153,6 +156,58 @@ public class AuthService : IAuthService
 
         // Pending or Approved → already has an account.
         return Result.Conflict(MessageKeys.Auth.AccountExists);
+    }
+
+    public async Task<Result> RegisterAdminAsync(RegisterAdminRequest request)
+    {
+        // Check the global toggle — if disabled, self-signup is forbidden.
+        var enabled = await _settings.GetBoolAsync(ISettingsService.ScopedAdminSignupEnabled, fallback: false);
+        if (!enabled)
+            return Result.Forbidden("Self-signup is disabled.");
+
+        var emailNormalized = request.Email.Trim().ToLower();
+
+        // Duplicate email check — anonymous path requires IgnoreQueryFilters().
+        var existing = await _unitOfWork.Repository<User>()
+            .Query()
+            .IgnoreQueryFilters()
+            .AsNoTracking()
+            .Where(u => u.DeletedAt == null && u.Email.ToLower() == emailNormalized)
+            .FirstOrDefaultAsync();
+
+        if (existing != null)
+            return Result.Conflict("An account with that email already exists.");
+
+        // Resolve the global "Workspace Admin" role — anonymous path, must bypass query filter.
+        var role = await _unitOfWork.Repository<Role>()
+            .Query()
+            .IgnoreQueryFilters()
+            .AsNoTracking()
+            .FirstOrDefaultAsync(r => r.DeletedAt == null
+                                      && r.Name == "Workspace Admin"
+                                      && r.OwnerId == null);
+
+        if (role == null)
+            return Result.Failure("Workspace Admin role not found.");
+
+        var publicId = Guid.NewGuid();
+        var newUser = new User
+        {
+            Email = emailNormalized,
+            PasswordHash = _passwordHasher.Hash(request.Password),
+            DisplayName = request.DisplayName,
+            RoleId = role.Id,
+            PublicId = publicId,
+            ApprovalStatus = ApprovalStatus.Pending,
+            IsActive = false,
+            // Tenant owns itself while pending; super-admin activates later.
+            OwnerId = publicId
+        };
+
+        await _unitOfWork.Repository<User>().AddAsync(newUser);
+        await _unitOfWork.SaveChangesAsync();
+
+        return Result.Success("Registration submitted. Your workspace is pending approval.");
     }
 
     public Result<MeResponse> Me()

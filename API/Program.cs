@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.HttpOverrides;
+using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.OpenApi.Models;
 using Pointer.API.Extensions;
@@ -17,6 +18,16 @@ builder.Services.AddApplication();
 builder.Services.AddInfrastructure(builder.Configuration);
 builder.Services.AddJwtAuth(builder.Configuration);
 builder.Services.AddAuthorization();
+
+builder.Services.AddRateLimiter(o =>
+{
+    o.AddFixedWindowLimiter("signup", opt =>
+    {
+        opt.PermitLimit = 5;
+        opt.Window = TimeSpan.FromHours(1);
+        opt.QueueLimit = 0;
+    });
+});
 
 builder.Services.AddCors(o =>
     o.AddDefaultPolicy(p => p.AllowAnyOrigin().AllowAnyHeader().AllowAnyMethod())
@@ -138,6 +149,7 @@ app.UseCors();
 
 app.UseAuthentication();
 app.UseAuthorization();
+app.UseRateLimiter();
 
 // Self-configuring embed loader: any page (e.g. another API's Swagger UI) can add
 //   <script src="https://<pointer-server>/embed.js?project=<key>"></script>
