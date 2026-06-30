@@ -186,6 +186,18 @@
   background: v.token('danger-bg-2');
   color: v.token('danger-strong');
 }
+/* Inline "Delete?" confirmation that replaces the trash button on first click. */
+.pf-confirm {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.pf-confirm-q {
+  font-size: 12px;
+  font-weight: 600;
+  color: v.token('danger');
+  padding: 0 2px;
+}
 // Private comment — the lock toggle is tinted red while the comment is private.
 .pf-mini.private-on {
   background: v.token('danger-bg-2');

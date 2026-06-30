@@ -4,6 +4,7 @@ import {
 } from './constants';
 import { escapeHtml, ensureHighlightStyle, matchElement, pageIsRtl } from './dom';
 import { TPL } from './templates';
+import { ICON } from './icons';
 import { captureScreenshot, captureMetadata } from './capture';
 import { showLoginModal } from './auth-ui';
 import type { AuthorOption, Comment, Meta, PointerHost, RoleOption, StatusStr, User } from './types';
@@ -507,6 +508,13 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
       appliedCssRules: data.appliedCssRules,
       sourcePath: data.sourcePath,
       parentInfo: data.parentInfo,
+      // Page the comment was left on — gives the apply step the route/page,
+      // essential for multi-page apps (window.location reflects the current page).
+      pageUrl: window.location.href,
+      // Active route relative to the origin: path + query params (+ hash, so
+      // hash-routed SPAs are covered too).
+      route: window.location.pathname + window.location.search + window.location.hash,
+      pageTitle: document.title,
     };
 
     // Screenshot is opt-in (toggle, off by default). When on, await the capture
@@ -629,6 +637,44 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
     } catch (e) {
       if ((e as Error).message !== 'HTTP 401 Unauthorized') this.toast('Update failed', 'error');
     }
+  }
+
+  /**
+   * Two-step delete: swap the trash button for a small inline "Delete? ✓ ✕"
+   * confirmation so a single mis-click can't destroy a comment. Confirms on ✓,
+   * cancels on ✕, and auto-dismisses after a few seconds.
+   */
+  confirmDelete(btn: HTMLElement): void {
+    const id = btn.dataset.id;
+    const host = btn.parentElement;
+    if (!id || !host || host.querySelector('.pf-confirm')) return; // already confirming
+    btn.style.display = 'none';
+    const wrap = document.createElement('span');
+    wrap.className = 'pf-confirm';
+    wrap.innerHTML =
+      `<span class="pf-confirm-q">Delete?</span>` +
+      `<button type="button" class="pf-mini danger pf-icon" data-c="yes" title="Confirm delete" aria-label="Confirm delete">${ICON.check}</button>` +
+      `<button type="button" class="pf-mini pf-icon" data-c="no" title="Cancel" aria-label="Cancel">&#x2715;</button>`;
+    host.insertBefore(wrap, btn);
+
+    let closed = false;
+    const close = () => {
+      if (closed) return;
+      closed = true;
+      clearTimeout(timer);
+      wrap.remove();
+      btn.style.display = '';
+    };
+    const timer = setTimeout(close, 4000);
+    wrap.querySelector('[data-c="yes"]')!.addEventListener('click', (e) => {
+      e.stopPropagation();
+      close();
+      this.deleteComment(id);
+    });
+    wrap.querySelector('[data-c="no"]')!.addEventListener('click', (e) => {
+      e.stopPropagation();
+      close();
+    });
   }
 
   async deleteComment(id: string): Promise<void> {
@@ -794,7 +840,7 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
       const c = this.comments.find((x) => String(x.id) === String(b.dataset.id));
       if (c && c.status !== 'applied') this.markCompleted(c);
     }));
-    list.querySelectorAll<HTMLElement>('[data-act="delete"]').forEach((b) => b.addEventListener('click', () => this.deleteComment(b.dataset.id!)));
+    list.querySelectorAll<HTMLElement>('[data-act="delete"]').forEach((b) => b.addEventListener('click', () => this.confirmDelete(b)));
     list.querySelectorAll<HTMLElement>('[data-act="edit"]').forEach((b) => b.addEventListener('click', () => this.startEdit(b.dataset.id!)));
     list.querySelectorAll<HTMLElement>('[data-act="visibility"]').forEach((b) => b.addEventListener('click', () => {
       const c = this.comments.find((x) => String(x.id) === String(b.dataset.id));

@@ -569,6 +569,20 @@
   color: var(--pf-danger-strong, #b91c1c);
 }
 
+/* Inline "Delete?" confirmation that replaces the trash button on first click. */
+.pf-confirm {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.pf-confirm-q {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--pf-danger, #dc2626);
+  padding: 0 2px;
+}
+
 .pf-mini.private-on {
   background: var(--pf-danger-bg-2, #fee2e2);
   color: var(--pf-danger-strong, #b91c1c);

@@ -19,6 +19,9 @@ export interface ElementCapture {
   sourcePath?: string | null;
   parentInfo?: string;
   screenshotUrl?: string;
+  pageUrl?: string;
+  route?: string;
+  pageTitle?: string;
 }
 
 export interface Comment {
