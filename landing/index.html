@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Pointer — click-to-comment feedback your team turns into code with AI</title>
+  <meta name="description" content="Pointer lets anyone on your team click an element on a running app and leave a comment. Developers hand the queue to any AI tool, which applies the change to the real source." />
+  <link rel="icon" href="assets/favicon.ico" />
+  <style>
+    :root {
+      --pf-green: #16a34a;
+      --pf-blue: #2563eb;
+      --pf-text: #0f172a;
+      --pf-muted: #475569;
+      --pf-bg: #ffffff;
+      --pf-soft: #f1f5f9;
+      --pf-border: #e2e8f0;
+      --pf-grad: linear-gradient(135deg, var(--pf-green), var(--pf-blue));
+      --pf-radius: 14px;
+      --pf-max: 1080px;
+    }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; padding: 0; }
+    body {
+      font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+      color: var(--pf-text);
+      background: var(--pf-bg);
+      line-height: 1.6;
+      overflow-x: hidden;            /* never scroll the body sideways */
+    }
+    img { max-width: 100%; display: block; }
+    a { color: var(--pf-blue); text-decoration: none; }
+    .wrap { max-width: var(--pf-max); margin: 0 auto; padding: 0 20px; }
+    .btn {
+      display: inline-flex; align-items: center; gap: 8px;
+      padding: 11px 18px; border-radius: var(--pf-radius);
+      font-weight: 700; font-size: 15px; cursor: pointer; border: 1px solid var(--pf-border);
+      background: #fff; color: var(--pf-text); white-space: nowrap;
+    }
+    .btn.primary { background: var(--pf-grad); color: #fff; border: none; }
+    .btn:focus-visible { outline: 3px solid color-mix(in srgb, var(--pf-blue) 50%, transparent); }
+    /* Sticky nav */
+    .nav {
+      position: sticky; top: 0; z-index: 10;
+      background: color-mix(in srgb, #fff 88%, transparent);
+      backdrop-filter: saturate(1.4) blur(8px);
+      border-bottom: 1px solid var(--pf-border);
+    }
+    .nav .wrap { display: flex; align-items: center; gap: 16px; height: 64px; }
+    .brand { display: flex; align-items: center; gap: 10px; font-weight: 800; font-size: 18px; }
+    .brand img { width: 30px; height: 30px; }
+    .nav-links { display: flex; gap: 18px; margin-inline-start: auto; }
+    .nav-links a { color: var(--pf-muted); font-weight: 600; font-size: 14px; }
+    .nav-cta { display: flex; gap: 10px; align-items: center; }
+    #lang-toggle { background: var(--pf-soft); border: 1px solid var(--pf-border); border-radius: 999px; padding: 6px 12px; font-weight: 700; cursor: pointer; }
+    @media (max-width: 760px) {
+      .nav-links { display: none; }
+    }
+  </style>
+</head>
+<body>
+  <header class="nav">
+    <div class="wrap">
+      <div class="brand"><img src="assets/dog-mascot.png" alt="" /> <span>Pointer</span></div>
+      <nav class="nav-links">
+        <a href="#how" data-i18n="nav.how">How it works</a>
+        <a href="#features" data-i18n="nav.features">Features</a>
+        <a href="#demo" data-i18n="nav.demo">Demo</a>
+      </nav>
+      <div class="nav-cta">
+        <button id="lang-toggle" type="button" aria-label="Switch language">العربية</button>
+        <a class="btn" href="https://app.pointer.moamen.work" data-i18n="nav.signin">Sign in</a>
+        <a class="btn primary" href="https://demo.pointer.moamen.work" data-i18n="nav.demoCta">Try the demo</a>
+      </div>
+    </div>
+  </header>
+
+  <main></main>
+
+  <script>
+    // i18n + animation wiring added in later tasks.
+  </script>
+</body>
+</html>
