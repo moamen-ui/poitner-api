@@ -45,6 +45,7 @@ services:
       # Built dashboards, one dir per framework: dashboard/angular, dashboard/react, …
       # (each built from its repo → dist → copied here). Served at app-<fw>.pointer.
       - ./dashboard:/srv/dashboard:ro
+      - ./landing:/srv/landing:ro
       - caddy_data:/data
       - caddy_config:/config
 

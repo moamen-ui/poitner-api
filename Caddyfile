@@ -45,6 +45,10 @@ demo.pointer.moamen.work {
     file_server
 }
 
+# Bare domain → the marketing landing page (served from the bind-mounted landing/ dir).
 pointer.moamen.work {
-    redir https://app.pointer.moamen.work{uri} permanent
+    root * /srv/landing
+    encode gzip
+    try_files {path} /index.html
+    file_server
 }

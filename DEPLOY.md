@@ -109,6 +109,15 @@ Then bump `@moamen-ui/pointer-<framework>` in each consumer (e.g. the dashboard)
 > Fire it from the VM at the end of the deploy with a token that has `repo` scope:
 > `curl -s -X POST -H "Authorization: Bearer $GH_DISPATCH_TOKEN" -H "Accept: application/vnd.github+json" https://api.github.com/repos/moamen-ui/poitner-api/dispatches -d '{"event_type":"api-deployed"}'`
 
+**Landing page change** — from your machine `git push origin main`, then on the VM:
+
+```bash
+cd ~/pointer-api && git pull --ff-only        # updates ./landing (bind-mounted into Caddy)
+docker compose -f docker-compose.prod.yml up -d --force-recreate caddy
+# force-recreate so the new Caddyfile + the landing bind-mount are picked up (single-file
+# bind-mount inode gotcha).
+```
+
 **Dashboard change** — from your machine `git push origin main`, then on the VM. The dashboard
 depends on the published `@moamen-ui/pointer-angular` (GitHub Packages), so `npm ci` needs a
 **`read:packages` token** passed as `NODE_AUTH_TOKEN`:
