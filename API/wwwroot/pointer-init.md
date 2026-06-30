@@ -220,19 +220,30 @@ REACT_APP_POINTER_PROJECT=<project-key>
 REACT_APP_POINTER_ENV=staging
 ```
 
-## Step 4 — (Optional) wire the AI apply-tool credentials
+## Step 4 — Create the AI apply-tool credentials  ⚠️ do not skip
 
-If the team wants an AI agent to later **pull and apply** the feedback queue, create a gitignored
-`.pointer/credentials.env`:
+Pointer's whole point is that an AI agent later **pulls and applies** the feedback queue — and
+**every API endpoint requires auth**. The apply skill (`<POINTER_SERVER>/skill.md`) reads a
+gitignored **`.pointer/credentials.env`** and fails to log in if it's missing. So **always create it
+now**, even though the values are filled in later — don't leave it as a silent TODO.
 
+**Run this** (creates the file and gitignores it):
+
+```bash
+mkdir -p .pointer
+printf 'POINTER_EMAIL=\nPOINTER_PASSWORD=\n' > .pointer/credentials.env
+grep -qxF '.pointer/' .gitignore 2>/dev/null || echo '.pointer/' >> .gitignore
 ```
-# .pointer/credentials.env  (gitignored — never commit)
-POINTER_EMAIL=
-POINTER_PASSWORD=
-```
 
-Add `.pointer/` to `.gitignore`. The apply workflow itself is the separate Pointer skill served at
-`<POINTER_SERVER>/skill.md` — install it wherever your AI tool reads skills/rules (e.g. Claude Code
+**Then explicitly tell the user** (this is the critical step they must action):
+
+> Created `.pointer/credentials.env` and gitignored `.pointer/`. **Fill in `POINTER_EMAIL` +
+> `POINTER_PASSWORD`** — your Pointer account, or a dedicated automation user an admin created in the
+> dashboard (any role can fetch/apply; a `Developer`-role user is conventional). Until these are set,
+> pulling or applying the feedback queue will fail with a login error. Never commit this file.
+
+The apply workflow itself is the separate Pointer skill served at `<POINTER_SERVER>/skill.md` —
+install it wherever your AI tool reads skills/rules (e.g. Claude Code
 `.claude/skills/pointer-feedback/SKILL.md`, Cursor `.cursor/rules/`, or just hand the file to your agent).
 
 ## Step 5 — Verify
