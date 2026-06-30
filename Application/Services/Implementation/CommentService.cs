@@ -321,7 +321,10 @@ public class CommentService : ICommentService
         AppliedCssRules = dto.AppliedCssRules,
         SourcePath = dto.SourcePath,
         ParentInfo = dto.ParentInfo,
-        ScreenshotUrl = dto.ScreenshotUrl
+        ScreenshotUrl = dto.ScreenshotUrl,
+        PageUrl = dto.PageUrl,
+        Route = dto.Route,
+        PageTitle = dto.PageTitle
     };
 
     private ElementCaptureDto MapElementToDto(ElementCapture entity) => new()
@@ -336,7 +339,10 @@ public class CommentService : ICommentService
         // Re-sign at every read so the returned URL is always fresh (never a stale/leaked permanent path).
         ScreenshotUrl = string.IsNullOrEmpty(entity.ScreenshotUrl)
             ? entity.ScreenshotUrl
-            : _uploadSigner.SignedUrl(_uploadSigner.ExtractRelPath(entity.ScreenshotUrl))
+            : _uploadSigner.SignedUrl(_uploadSigner.ExtractRelPath(entity.ScreenshotUrl)),
+        PageUrl = entity.PageUrl,
+        Route = entity.Route,
+        PageTitle = entity.PageTitle
     };
 
     // Resolve display names for a set of author ids (User.PublicId == Comment.AuthorId).

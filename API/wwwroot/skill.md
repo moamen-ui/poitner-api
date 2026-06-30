@@ -121,7 +121,10 @@ Shape of one item (note the nested camelCase `element`; the heavier capture fiel
     "computedStyles": "{\"color\":\"…\"}",
     "appliedCssRules": "[{\"selector\":\"…\",\"styles\":\"…\"}]",
     "sourcePath": "my-app/src/components/Header.tsx:42",
-    "parentInfo": "{\"tag\":\"div\",\"classes\":[…]}"
+    "parentInfo": "{\"tag\":\"div\",\"classes\":[…]}",
+    "pageUrl": "https://app.example.com/checkout?step=2",
+    "route": "/checkout?step=2",
+    "pageTitle": "Checkout — Example"
   },
   "replies": [ … ] }
 ```
@@ -140,6 +143,8 @@ For each item from the `status=2` queue:
      relative to `/apps/`.
    - If absent, find the source by searching for the `element.snapshot` text or the parsed
      `element.classes`.
+   - Use `element.route` / `element.pageUrl` to find the **right page first** in a multi-page or
+     routed app (map the route to its page/route component), then locate the element within it.
 2. **Make the change** the comment asks for.
    - **Tailwind apps:** the visible styling is in the element's `className`. Use `element.classes` /
      `element.snapshot` to find the element and edit the classes (e.g. "make it primary" → swap the
