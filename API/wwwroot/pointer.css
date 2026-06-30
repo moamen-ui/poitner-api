@@ -108,12 +108,34 @@
   justify-content: center;
 }
 
+.pf-grip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--pf-text-subtle, #94a3b8);
+  cursor: grab;
+  padding: 2px;
+  border-radius: var(--pf-radius-sm, 6px);
+  touch-action: none;
+  user-select: none;
+}
+
+.pf-grip:hover {
+  color: var(--pf-text, #0f172a);
+  background: var(--pf-surface-muted, #f1f5f9);
+}
+
+.pf-grip.dragging {
+  cursor: grabbing;
+}
+
 .pf-toolbar {
   position: fixed;
   top: 16px;
   right: 16px;
   z-index: 2147483646;
   display: flex;
+  align-items: center;
   gap: 8px;
   background: var(--pf-surface, #fff);
   border: 1px solid var(--pf-border, #e2e8f0);

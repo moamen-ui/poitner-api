@@ -143,7 +143,14 @@
     user: '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>',
     lock: '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>',
     unlock: '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 9.9-1"/></svg>',
-    logout: '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>'
+    logout: '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>',
+    // Chrome-inspect-style: dashed square + mouse pointer (lucide square-dashed-mouse-pointer).
+    inspect: '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 3a2 2 0 0 0-2 2"/><path d="M19 3a2 2 0 0 1 2 2"/><path d="M5 21a2 2 0 0 1-2-2"/><path d="M9 3h1"/><path d="M9 21h2"/><path d="M14 3h1"/><path d="M3 9v1"/><path d="M21 9v2"/><path d="M3 14v1"/><path d="M12.034 12.681a.498.498 0 0 1 .647-.647l9 3.5a.5.5 0 0 1-.033.943l-3.444 1.068a1 1 0 0 0-.66.66l-1.067 3.443a.5.5 0 0 1-.943.033z"/></svg>',
+    // Six-dot drag grip.
+    grip: '<svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor" stroke="none"><circle cx="9" cy="5" r="1.6"/><circle cx="15" cy="5" r="1.6"/><circle cx="9" cy="12" r="1.6"/><circle cx="15" cy="12" r="1.6"/><circle cx="9" cy="19" r="1.6"/><circle cx="15" cy="19" r="1.6"/></svg>',
+    close: '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>',
+    // Undo/rotate — "reset toolbar to its default position".
+    restore: '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7v6h6"/><path d="M3.51 13a9 9 0 1 0 .85-4.36L3 13"/></svg>'
   };
 
   // src/templates.ts
@@ -192,7 +199,9 @@
         </div>`,
     chrome: (displayName, roleLabel) => `
         <div class="pf-toolbar">
-          <button class="pf-btn primary" id="pf-add" title="Add a comment on an element">+ Comment</button>
+          <span class="pf-grip" id="pf-grip" title="Drag to move" aria-label="Drag toolbar">${ICON.grip}</span>
+          <button class="pf-btn pf-icon-btn pf-reset-pos" id="pf-reset-pos" title="Reset toolbar position" aria-label="Reset toolbar position" style="display:none">${ICON.restore}</button>
+          <button class="pf-btn primary pf-icon-btn" id="pf-add" title="Comment on an element" aria-label="Comment on an element">${ICON.inspect}</button>
           <button class="pf-btn" id="pf-toggle" title="Show comments">Comments <span class="pf-badge" id="pf-count">0</span></button>
           <button class="pf-btn" id="pf-refresh" title="Refresh comments">&#8635;</button>
           ${displayName ? `<button class="pf-btn pf-icon-btn" id="pf-user" title="Signed in as ${displayName}${roleLabel ? " · " + roleLabel : ""}" aria-label="Signed in as ${displayName}">${ICON.user}</button>` : ""}
@@ -677,6 +686,7 @@
       this.authorFilter = null;
       this.hiddenPrivateCount = 0;
       this._collapsed = true;
+      this._disabled = false;
       this.picking = false;
       this.sidebarOpen = false;
       this.hovered = null;
@@ -735,6 +745,20 @@
       await this._stylesReady();
       if (this.token) this.init();
       else this.renderChrome();
+    }
+    // An admin disabled this project: tear the widget down silently — no toolbar,
+    // no launcher, no toast/console error. The only trace is the 409 already visible
+    // in the browser's network tab. Detected from the comments endpoint's
+    // 409 "project disabled" response.
+    disableSilently() {
+      if (this._disabled) return;
+      this._disabled = true;
+      try {
+        this.stopPicking();
+      } catch {
+      }
+      this.comments = [];
+      if (this.root) this.root.innerHTML = "";
     }
     _stylesReady() {
       return new Promise((resolve) => {
@@ -833,6 +857,10 @@
     async fetchComments() {
       try {
         const r = await this.api(`/api/projects/${encodeURIComponent(this.project)}/comments?environment=${this.environmentInt}`);
+        if (r.status === 409) {
+          this.disableSilently();
+          return;
+        }
         if (!r.ok) throw new Error("HTTP " + r.status);
         const envelope = await r.json();
         const items = envelope.data && envelope.data.items || [];
@@ -855,6 +883,7 @@
     }
     // --- Chrome (toolbar + sidebar shell) -----------------------------------
     renderChrome() {
+      if (this._disabled) return;
       if (this._collapsed) {
         const n = (this.comments || []).filter((c) => c.status !== "archived").length;
         this.root.innerHTML = TPL.launcher(n, this.launcherPosition, pageIsRtl());
@@ -901,6 +930,95 @@
         this.toast("Refreshed");
       });
       this.root.querySelector("#pf-close").addEventListener("click", () => this.toggleSidebar(false));
+      const resetBtn = this.root.querySelector("#pf-reset-pos");
+      if (resetBtn) resetBtn.addEventListener("click", () => this.resetToolbarPos());
+      this.restoreToolbarPos();
+      this.enableToolbarDrag();
+    }
+    // --- Draggable toolbar ---------------------------------------------------
+    // The toolbar is fixed at the top; let the user drag it by its grip so it
+    // never covers the element they want to comment on. Position persists per tab.
+    restoreToolbarPos() {
+      const tb = this.root.querySelector(".pf-toolbar");
+      if (!tb) return;
+      let saved = null;
+      try {
+        saved = JSON.parse(localStorage.getItem("pointer_toolbar_pos") || "null");
+      } catch {
+      }
+      if (!saved || typeof saved.left !== "number" || typeof saved.top !== "number") return;
+      const maxLeft = Math.max(0, window.innerWidth - tb.offsetWidth);
+      const maxTop = Math.max(0, window.innerHeight - tb.offsetHeight);
+      tb.style.left = Math.min(Math.max(0, saved.left), maxLeft) + "px";
+      tb.style.top = Math.min(Math.max(0, saved.top), maxTop) + "px";
+      tb.style.right = "auto";
+      this._setResetVisible(true);
+    }
+    // Show/hide the "reset position" button (it only makes sense once the toolbar has moved).
+    _setResetVisible(visible) {
+      const btn = this.root.querySelector("#pf-reset-pos");
+      if (btn) btn.style.display = visible ? "" : "none";
+    }
+    // Restore the toolbar to its default corner and forget the saved position.
+    resetToolbarPos() {
+      try {
+        localStorage.removeItem("pointer_toolbar_pos");
+      } catch {
+      }
+      const tb = this.root.querySelector(".pf-toolbar");
+      if (tb) {
+        tb.style.left = "";
+        tb.style.top = "";
+        tb.style.right = "";
+      }
+      this._setResetVisible(false);
+    }
+    enableToolbarDrag() {
+      const tb = this.root.querySelector(".pf-toolbar");
+      const grip = this.root.querySelector("#pf-grip");
+      if (!tb || !grip) return;
+      let sx = 0, sy = 0, startLeft = 0, startTop = 0, dragging = false;
+      const onMove = (e) => {
+        if (!dragging) return;
+        const maxLeft = Math.max(0, window.innerWidth - tb.offsetWidth);
+        const maxTop = Math.max(0, window.innerHeight - tb.offsetHeight);
+        tb.style.left = Math.min(Math.max(0, startLeft + (e.clientX - sx)), maxLeft) + "px";
+        tb.style.top = Math.min(Math.max(0, startTop + (e.clientY - sy)), maxTop) + "px";
+        tb.style.right = "auto";
+      };
+      const onUp = (e) => {
+        if (!dragging) return;
+        dragging = false;
+        grip.classList.remove("dragging");
+        try {
+          grip.releasePointerCapture(e.pointerId);
+        } catch {
+        }
+        try {
+          localStorage.setItem("pointer_toolbar_pos", JSON.stringify({
+            left: parseInt(tb.style.left, 10) || 0,
+            top: parseInt(tb.style.top, 10) || 0
+          }));
+        } catch {
+        }
+      };
+      grip.addEventListener("pointerdown", (e) => {
+        e.preventDefault();
+        const rect = tb.getBoundingClientRect();
+        startLeft = rect.left;
+        startTop = rect.top;
+        sx = e.clientX;
+        sy = e.clientY;
+        dragging = true;
+        grip.classList.add("dragging");
+        try {
+          grip.setPointerCapture(e.pointerId);
+        } catch {
+        }
+      });
+      grip.addEventListener("pointermove", onMove);
+      grip.addEventListener("pointerup", onUp);
+      grip.addEventListener("pointercancel", onUp);
     }
     // --- User menu (identity + sign out) ------------------------------------
     toggleUserMenu() {
@@ -998,7 +1116,8 @@
       this.picking = true;
       const addBtn = this.root.querySelector("#pf-add");
       addBtn.classList.add("active");
-      addBtn.textContent = "✕ Cancel";
+      addBtn.innerHTML = ICON.close;
+      addBtn.title = "Cancel";
       document.addEventListener("mousemove", this._onHover, true);
       document.addEventListener("click", this._onPick, true);
       this.toast("Click any element to comment on it");
@@ -1008,7 +1127,8 @@
       const addBtn = this.root && this.root.querySelector("#pf-add");
       if (addBtn) {
         addBtn.classList.remove("active");
-        addBtn.textContent = "+ Comment";
+        addBtn.innerHTML = ICON.inspect;
+        addBtn.title = "Comment on an element";
       }
       document.removeEventListener("mousemove", this._onHover, true);
       document.removeEventListener("click", this._onPick, true);
@@ -1152,6 +1272,10 @@
           method: "POST",
           body: JSON.stringify({ ...body, projectKey: this.project })
         });
+        if (r.status === 409) {
+          this.disableSilently();
+          return;
+        }
         if (!r.ok) throw new Error("HTTP " + r.status);
         const envelope = await r.json();
         const comment = envelope.data;
@@ -1425,7 +1549,7 @@
       if (!list) return;
       const shown = this.statusFilter === "all" ? scoped.filter((c) => c.status !== "archived") : scoped.filter((c) => c.status === this.statusFilter);
       if (!scoped.length) {
-        list.innerHTML = TPL.empty(this.mineOnly ? "You haven't left any comments yet." : 'No comments on this project yet.<br/>Click "+ Comment", then click an element.');
+        list.innerHTML = TPL.empty(this.mineOnly ? "You haven't left any comments yet." : "No comments on this project yet.<br/>Click the inspect icon, then click an element.");
         return;
       }
       if (!shown.length) {

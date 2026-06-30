@@ -32,6 +32,7 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
   authorFilter: string | null = null;
   hiddenPrivateCount = 0;
   private _collapsed = true;
+  private _disabled = false;
   picking = false;
   sidebarOpen = false;
   hovered: Element | null = null;
@@ -115,9 +116,21 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
   private async _boot(): Promise<void> {
     await this._stylesReady();
     // Login is deferred: on load just show the toolbar/launcher. The popup only
-    // appears when the user acts (+ Comment / Comments) and there's no token yet.
+    // appears when the user acts (inspect / Comments) and there's no token yet.
     if (this.token) this.init();
     else this.renderChrome();
+  }
+
+  // An admin disabled this project: tear the widget down silently — no toolbar,
+  // no launcher, no toast/console error. The only trace is the 409 already visible
+  // in the browser's network tab. Detected from the comments endpoint's
+  // 409 "project disabled" response.
+  private disableSilently(): void {
+    if (this._disabled) return;
+    this._disabled = true;
+    try { this.stopPicking(); } catch { /* ignore */ }
+    this.comments = [];
+    if (this.root) this.root.innerHTML = ''; // removes toolbar, launcher, and pins (#pf-pins lives here)
   }
 
   private _stylesReady(): Promise<void> {
@@ -227,6 +240,8 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
   async fetchComments(): Promise<void> {
     try {
       const r = await this.api(`/api/projects/${encodeURIComponent(this.project)}/comments?environment=${this.environmentInt}`);
+      // 409 = the project was disabled by an admin → tear the widget down silently.
+      if (r.status === 409) { this.disableSilently(); return; }
       if (!r.ok) throw new Error('HTTP ' + r.status);
       const envelope = await r.json();
       const items: Comment[] = (envelope.data && envelope.data.items) || [];
@@ -253,6 +268,7 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
 
   // --- Chrome (toolbar + sidebar shell) -----------------------------------
   renderChrome(): void {
+    if (this._disabled) return; // project disabled — stay torn down
     // Collapsed: show only a small launcher that re-opens the overlay.
     if (this._collapsed) {
       const n = (this.comments || []).filter((c) => c.status !== 'archived').length;
@@ -288,6 +304,81 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
       await this.fetchComments(); this.renderSidebar(); this.renderPins(); this.toast('Refreshed');
     });
     this.root.querySelector('#pf-close')!.addEventListener('click', () => this.toggleSidebar(false));
+
+    const resetBtn = this.root.querySelector('#pf-reset-pos');
+    if (resetBtn) resetBtn.addEventListener('click', () => this.resetToolbarPos());
+
+    this.restoreToolbarPos();
+    this.enableToolbarDrag();
+  }
+
+  // --- Draggable toolbar ---------------------------------------------------
+  // The toolbar is fixed at the top; let the user drag it by its grip so it
+  // never covers the element they want to comment on. Position persists per tab.
+  private restoreToolbarPos(): void {
+    const tb = this.root.querySelector('.pf-toolbar') as HTMLElement | null;
+    if (!tb) return;
+    let saved: { left: number; top: number } | null = null;
+    try { saved = JSON.parse(localStorage.getItem('pointer_toolbar_pos') || 'null'); } catch { /* ignore */ }
+    if (!saved || typeof saved.left !== 'number' || typeof saved.top !== 'number') return;
+    const maxLeft = Math.max(0, window.innerWidth - tb.offsetWidth);
+    const maxTop = Math.max(0, window.innerHeight - tb.offsetHeight);
+    tb.style.left = Math.min(Math.max(0, saved.left), maxLeft) + 'px';
+    tb.style.top = Math.min(Math.max(0, saved.top), maxTop) + 'px';
+    tb.style.right = 'auto';
+    this._setResetVisible(true);
+  }
+
+  // Show/hide the "reset position" button (it only makes sense once the toolbar has moved).
+  private _setResetVisible(visible: boolean): void {
+    const btn = this.root.querySelector('#pf-reset-pos') as HTMLElement | null;
+    if (btn) btn.style.display = visible ? '' : 'none';
+  }
+
+  // Restore the toolbar to its default corner and forget the saved position.
+  private resetToolbarPos(): void {
+    try { localStorage.removeItem('pointer_toolbar_pos'); } catch { /* ignore */ }
+    const tb = this.root.querySelector('.pf-toolbar') as HTMLElement | null;
+    if (tb) { tb.style.left = ''; tb.style.top = ''; tb.style.right = ''; }
+    this._setResetVisible(false);
+  }
+
+  private enableToolbarDrag(): void {
+    const tb = this.root.querySelector('.pf-toolbar') as HTMLElement | null;
+    const grip = this.root.querySelector('#pf-grip') as HTMLElement | null;
+    if (!tb || !grip) return;
+    let sx = 0, sy = 0, startLeft = 0, startTop = 0, dragging = false;
+    const onMove = (e: PointerEvent) => {
+      if (!dragging) return;
+      const maxLeft = Math.max(0, window.innerWidth - tb.offsetWidth);
+      const maxTop = Math.max(0, window.innerHeight - tb.offsetHeight);
+      tb.style.left = Math.min(Math.max(0, startLeft + (e.clientX - sx)), maxLeft) + 'px';
+      tb.style.top = Math.min(Math.max(0, startTop + (e.clientY - sy)), maxTop) + 'px';
+      tb.style.right = 'auto';
+    };
+    const onUp = (e: PointerEvent) => {
+      if (!dragging) return;
+      dragging = false;
+      grip.classList.remove('dragging');
+      try { grip.releasePointerCapture(e.pointerId); } catch { /* ignore */ }
+      try {
+        localStorage.setItem('pointer_toolbar_pos', JSON.stringify({
+          left: parseInt(tb.style.left, 10) || 0,
+          top: parseInt(tb.style.top, 10) || 0,
+        }));
+      } catch { /* ignore */ }
+    };
+    grip.addEventListener('pointerdown', (e: PointerEvent) => {
+      e.preventDefault();
+      const rect = tb.getBoundingClientRect();
+      startLeft = rect.left; startTop = rect.top; sx = e.clientX; sy = e.clientY;
+      dragging = true;
+      grip.classList.add('dragging');
+      try { grip.setPointerCapture(e.pointerId); } catch { /* ignore */ }
+    });
+    grip.addEventListener('pointermove', onMove);
+    grip.addEventListener('pointerup', onUp);
+    grip.addEventListener('pointercancel', onUp);
   }
 
   // --- User menu (identity + sign out) ------------------------------------
@@ -382,7 +473,8 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
     this.picking = true;
     const addBtn = this.root.querySelector('#pf-add') as HTMLButtonElement;
     addBtn.classList.add('active');
-    addBtn.textContent = '✕ Cancel';
+    addBtn.innerHTML = ICON.close;
+    addBtn.title = 'Cancel';
     document.addEventListener('mousemove', this._onHover, true);
     document.addEventListener('click', this._onPick, true);
     this.toast('Click any element to comment on it');
@@ -390,7 +482,7 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
   stopPicking(): void {
     this.picking = false;
     const addBtn = this.root && (this.root.querySelector('#pf-add') as HTMLButtonElement | null);
-    if (addBtn) { addBtn.classList.remove('active'); addBtn.textContent = '+ Comment'; }
+    if (addBtn) { addBtn.classList.remove('active'); addBtn.innerHTML = ICON.inspect; addBtn.title = 'Comment on an element'; }
     document.removeEventListener('mousemove', this._onHover, true);
     document.removeEventListener('click', this._onPick, true);
     this.clearHover();
@@ -540,6 +632,8 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
         method: 'POST',
       body: JSON.stringify({ ...body, projectKey: this.project }),
       });
+      // Project disabled by an admin mid-session → tear down silently, no consumer error.
+      if (r.status === 409) { this.disableSilently(); return; }
       if (!r.ok) throw new Error('HTTP ' + r.status);
       const envelope = await r.json();
       const comment = envelope.data;
@@ -820,7 +914,7 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
     if (!scoped.length) {
       list.innerHTML = TPL.empty(this.mineOnly
         ? "You haven't left any comments yet."
-        : 'No comments on this project yet.<br/>Click "+ Comment", then click an element.');
+        : 'No comments on this project yet.<br/>Click the inspect icon, then click an element.');
       return;
     }
     if (!shown.length) {

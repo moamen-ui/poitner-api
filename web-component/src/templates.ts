@@ -54,7 +54,9 @@ export const TPL = {
 
   chrome: (displayName: string, roleLabel: string) => `
         <div class="pf-toolbar">
-          <button class="pf-btn primary" id="pf-add" title="Add a comment on an element">+ Comment</button>
+          <span class="pf-grip" id="pf-grip" title="Drag to move" aria-label="Drag toolbar">${ICON.grip}</span>
+          <button class="pf-btn pf-icon-btn pf-reset-pos" id="pf-reset-pos" title="Reset toolbar position" aria-label="Reset toolbar position" style="display:none">${ICON.restore}</button>
+          <button class="pf-btn primary pf-icon-btn" id="pf-add" title="Comment on an element" aria-label="Comment on an element">${ICON.inspect}</button>
           <button class="pf-btn" id="pf-toggle" title="Show comments">Comments <span class="pf-badge" id="pf-count">0</span></button>
           <button class="pf-btn" id="pf-refresh" title="Refresh comments">&#8635;</button>
           ${displayName ? `<button class="pf-btn pf-icon-btn" id="pf-user" title="Signed in as ${displayName}${roleLabel ? ' · ' + roleLabel : ''}" aria-label="Signed in as ${displayName}">${ICON.user}</button>` : ''}
