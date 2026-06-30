@@ -56,6 +56,16 @@
     @media (max-width: 760px) {
       .nav-links { display: none; }
     }
+    .hero { padding: 64px 0 48px; background: radial-gradient(1200px 400px at 70% -10%, color-mix(in srgb, var(--pf-blue) 12%, transparent), transparent); }
+    .hero-grid { display: grid; grid-template-columns: 1.1fr 1fr; gap: 40px; align-items: center; }
+    .hero h1 { font-size: clamp(30px, 5vw, 52px); line-height: 1.1; margin: 0 0 16px; letter-spacing: -0.02em; }
+    .hero .lead { font-size: 18px; color: var(--pf-muted); margin: 0 0 28px; }
+    .hero-cta { display: flex; flex-wrap: wrap; gap: 12px; }
+    .hero-stage { min-height: 320px; }
+    @media (max-width: 860px) {
+      .hero-grid { grid-template-columns: 1fr; }
+      .hero-stage { order: -1; min-height: 240px; }
+    }
   </style>
 </head>
 <body>
@@ -75,7 +85,21 @@
     </div>
   </header>
 
-  <main></main>
+  <main>
+    <section class="hero">
+      <div class="wrap hero-grid">
+        <div class="hero-copy">
+          <h1 data-i18n="hero.title">Point at the UI. Ship it with AI.</h1>
+          <p class="lead" data-i18n="hero.sub">Anyone on your team clicks an element on a running app and leaves a short comment. Developers hand the queue to any AI tool, which applies the change to the real source — no more translating vague feedback into code.</p>
+          <div class="hero-cta">
+            <a class="btn primary" href="https://demo.pointer.moamen.work" data-i18n="hero.demo">Try the demo — no install</a>
+            <a class="btn" href="https://app.pointer.moamen.work" data-i18n="hero.signup">Create an account</a>
+          </div>
+        </div>
+        <div class="hero-stage" id="hero-anim" aria-hidden="true"></div>
+      </div>
+    </section>
+  </main>
 
   <script>
     // i18n + animation wiring added in later tasks.
