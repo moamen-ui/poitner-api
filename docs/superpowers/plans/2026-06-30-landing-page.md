@@ -1,5 +1,7 @@
 # Pointer Landing Page Implementation Plan
 
+> **✅ STATUS: SHIPPED TO PRODUCTION (2026-06-30).** All 8 tasks complete, individually reviewed, final whole-branch review clean. Live at `pointer.moamen.work` (bare domain now serves the bilingual landing page; redirect-to-app removed). Netlify backend decommissioned in the `Pointer` repo. The `- [ ]` checkboxes were not ticked during execution — progress tracked in `.superpowers/sdd/progress.md`. Treat this plan as DONE; do not re-run it.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Ship a single-page, bilingual (en/ar) marketing landing page for Pointer at the bare domain `pointer.moamen.work`, and decommission the legacy Netlify backend.
