@@ -72,7 +72,7 @@ queue, hand it to any AI, it edits the real source).
 6. **Built for the whole team** — split panel: *stakeholders* (point & comment, no install)
    vs *developers* (pull the queue, AI applies).
 7. **Final CTA band** — "Try it in one click, no install" → demo + signup.
-8. **Footer** — links (dashboard, docs, GitHub if public), brand, mascot.
+8. **Footer** — links (dashboard, docs, **GitHub** — `github.com/moamen-ui`, exact repo confirmed at build), brand, mascot.
 
 ## Visual design
 
