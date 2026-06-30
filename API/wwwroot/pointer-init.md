@@ -224,23 +224,37 @@ REACT_APP_POINTER_ENV=staging
 
 Pointer's whole point is that an AI agent later **pulls and applies** the feedback queue — and
 **every API endpoint requires auth**. The apply skill (`<POINTER_SERVER>/skill.md`) reads a
-gitignored **`.pointer/credentials.env`** and fails to log in if it's missing. So **always create it
-now**, even though the values are filled in later — don't leave it as a silent TODO.
+gitignored **`.pointer/credentials.env`** and fails to log in if it's missing. So **always make sure
+it exists now**, even though the values are filled in later — don't leave it as a silent TODO.
 
-**Run this** (creates the file and gitignores it):
+**The recommended installer creates these for you.** If the skills were installed via:
+
+```bash
+curl -fsSL <POINTER_SERVER>/install.sh | sh
+```
+
+then `.pointer/credentials.env` (gitignored) and `.pointer/credentials.env.example` (committable
+template) already exist, and `.pointer/` is gitignored with the `.example` kept committable. Skip to
+"tell the user" below.
+
+**If you did NOT use the installer**, create the same scaffold yourself:
 
 ```bash
 mkdir -p .pointer
-printf 'POINTER_EMAIL=\nPOINTER_PASSWORD=\n' > .pointer/credentials.env
-grep -qxF '.pointer/' .gitignore 2>/dev/null || echo '.pointer/' >> .gitignore
+printf 'POINTER_EMAIL=automation@example.com\nPOINTER_PASSWORD=\n' > .pointer/credentials.env.example
+[ -f .pointer/credentials.env ] || printf 'POINTER_EMAIL=\nPOINTER_PASSWORD=\n' > .pointer/credentials.env
+touch .gitignore
+grep -qxF '.pointer/' .gitignore || echo '.pointer/' >> .gitignore
+grep -qxF '!.pointer/credentials.env.example' .gitignore || echo '!.pointer/credentials.env.example' >> .gitignore
 ```
 
 **Then explicitly tell the user** (this is the critical step they must action):
 
-> Created `.pointer/credentials.env` and gitignored `.pointer/`. **Fill in `POINTER_EMAIL` +
-> `POINTER_PASSWORD`** — your Pointer account, or a dedicated automation user an admin created in the
-> dashboard (any role can fetch/apply; a `Developer`-role user is conventional). Until these are set,
-> pulling or applying the feedback queue will fail with a login error. Never commit this file.
+> `.pointer/credentials.env` exists and `.pointer/` is gitignored (with `credentials.env.example` kept
+> committable). **Fill in `POINTER_EMAIL` + `POINTER_PASSWORD`** — your Pointer account, or a dedicated
+> automation user an admin created in the dashboard (any role can fetch/apply; a `Developer`-role user
+> is conventional). Until these are set, pulling or applying the feedback queue will fail with a login
+> error. Never commit `credentials.env`.
 
 The apply workflow itself is the separate Pointer skill served at `<POINTER_SERVER>/skill.md` —
 install it wherever your AI tool reads skills/rules (e.g. Claude Code
