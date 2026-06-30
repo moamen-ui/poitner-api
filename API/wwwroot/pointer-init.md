@@ -256,9 +256,27 @@ grep -qxF '!.pointer/credentials.env.example' .gitignore || echo '!.pointer/cred
 > is conventional). Until these are set, pulling or applying the feedback queue will fail with a login
 > error. Never commit `credentials.env`.
 
-The apply workflow itself is the separate Pointer skill served at `<POINTER_SERVER>/skill.md` —
-install it wherever your AI tool reads skills/rules (e.g. Claude Code
-`.claude/skills/pointer-feedback/SKILL.md`, Cursor `.cursor/rules/`, or just hand the file to your agent).
+The apply workflow itself is the separate Pointer skill served at `<POINTER_SERVER>/skill.md`.
+
+> **⚠️ Install the skills into YOUR AI tool's own directory — not blindly into `.claude/`.**
+> The installer defaults to `.claude/skills/` (Claude Code). **If you are not Claude Code, clone the
+> skills into the directory your tool actually reads**, by passing it to the installer:
+>
+> ```bash
+> curl -fsSL <POINTER_SERVER>/install.sh | sh -s -- <your-tool-dir>
+> ```
+>
+> | AI tool | Skills/rules directory to use |
+> |---|---|
+> | Claude Code | `.claude/skills/` (default) |
+> | Cursor | `.cursor/rules/` |
+> | Windsurf | `.windsurf/rules/` |
+> | GitHub Copilot | `.github/` (e.g. a `copilot-instructions.md` / rules location) |
+> | Cline / other | that tool's rules/skills directory |
+> | none of these | just hand `skill.md` (and this file) to your agent directly |
+>
+> Identify which tool you are and pick the matching directory; if unsure, ask the user. The
+> `.pointer/credentials.env` scaffold (above) is tool-independent — it always lives at the repo root.
 
 ## Step 5 — Verify
 
