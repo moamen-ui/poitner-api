@@ -117,6 +117,10 @@
       .pf-ring, .pf-pop, .pf-pin { opacity: 1; }       /* show the representative end frame */
       .pf-cursor { top: 60px; left: 56px; }
     }
+    [dir="rtl"] .nav-links { margin-inline-start: 0; margin-inline-end: auto; }
+    [dir="rtl"] .step .num { }
+    [dir="rtl"] .pf-pop, [dir="rtl"] .pf-pin, [dir="rtl"] .pf-ring, [dir="rtl"] .pf-cursor { /* animation stage stays LTR (it mimics an app UI) */ }
+    [dir="rtl"] .hero-stage { direction: ltr; }
   </style>
 </head>
 <body>
@@ -237,7 +241,86 @@
   </main>
 
   <script>
-    // i18n + animation wiring added in later tasks.
-  </script>
+  var STRINGS = {
+    en: {
+      "nav.how": "How it works", "nav.features": "Features", "nav.demo": "Demo",
+      "nav.signin": "Sign in", "nav.demoCta": "Try the demo",
+      "hero.title": "Point at the UI. Ship it with AI.",
+      "hero.sub": "Anyone on your team clicks an element on a running app and leaves a short comment. Developers hand the queue to any AI tool, which applies the change to the real source — no more translating vague feedback into code.",
+      "hero.demo": "Try the demo — no install", "hero.signup": "Create an account",
+      "contrast.badTitle": "Without Pointer", "contrast.bad": "\"Go to the checkout page, find the header, make the title 24px and a bit darker…\"",
+      "contrast.goodTitle": "With Pointer", "contrast.good": "🐕 click the title → 💬 \"make this 24px\" → ✨ AI applies it.",
+      "how.title": "How it works",
+      "how.s1t": "Click & comment", "how.s1": "Anyone signed in clicks any element on the running app and leaves a short comment.",
+      "how.s2t": "Collected & tagged", "how.s2": "Comments are stored per project and tagged with environment, stakeholder, and author.",
+      "how.s3t": "Applied by AI", "how.s3": "A developer hands the queue to any AI tool, which edits the real source files.",
+      "feat.title": "Built for real teams",
+      "feat.f1t": "Two-line install", "feat.f1": "Drop a script tag and a tag. No package, no SDK.",
+      "feat.f2t": "Multi-project", "feat.f2": "One server serves many apps, partitioned by project.",
+      "feat.f3t": "Multi-stakeholder", "feat.f3": "Every comment is tagged by environment, stakeholder, and author.",
+      "feat.f4t": "Element + source aware", "feat.f4": "Captures the selector, snapshot, the CSS that wins, the page route, and an optional source path.",
+      "feat.f5t": "AI-agnostic", "feat.f5": "Any AI tool applies the changes with plain HTTP — Claude Code, Cursor, and more.",
+      "feat.f6t": "Style-isolated", "feat.f6": "The widget renders in a Shadow DOM, so it never clashes with your app's CSS.",
+      "feat.f7t": "A real dashboard", "feat.f7": "Triage, statuses, roles, and per-project views — for the whole team.",
+      "feat.f8t": "Multi-tenant", "feat.f8": "Each workspace sees only its own data, enforced server-side.",
+      "team.stkT": "For stakeholders", "team.stk": "Point and comment on the live app — no install, no setup. Clients, PMs, and testers just click.",
+      "team.devT": "For developers", "team.dev": "Pull the queue and let any AI apply the changes to the real source. Comments carry the page route and the CSS that actually wins.",
+      "final.title": "Try it in one click — no install", "final.demo": "Try the demo", "final.signup": "Create an account",
+      "foot.dashboard": "Dashboard", "foot.docs": "Docs",
+      "anim.label": "Make this bolder"
+    },
+    ar: {
+      "nav.how": "كيف يعمل", "nav.features": "المميزات", "nav.demo": "تجربة",
+      "nav.signin": "تسجيل الدخول", "nav.demoCta": "جرّب العرض",
+      "hero.title": "أشِر إلى الواجهة. ونفّذ بالذكاء الاصطناعي.",
+      "hero.sub": "أي عضو في فريقك ينقر على عنصر في التطبيق الفعلي ويترك تعليقًا قصيرًا. ثم يسلّم المطوّر قائمة الملاحظات لأي أداة ذكاء اصطناعي لتطبّق التغيير على الكود المصدري مباشرة — دون ترجمة ملاحظات غامضة إلى كود.",
+      "hero.demo": "جرّب العرض — بدون تثبيت", "hero.signup": "أنشئ حسابًا",
+      "contrast.badTitle": "بدون Pointer", "contrast.bad": "«اذهب إلى صفحة الدفع، وابحث عن العنوان، واجعل حجمه ٢٤ بكسل وأغمق قليلًا…»",
+      "contrast.goodTitle": "مع Pointer", "contrast.good": "🐕 انقر العنوان ← 💬 «اجعله ٢٤ بكسل» ← ✨ يطبّقه الذكاء الاصطناعي.",
+      "how.title": "كيف يعمل",
+      "how.s1t": "انقر وعلّق", "how.s1": "أي مستخدم مسجّل ينقر على أي عنصر في التطبيق ويترك تعليقًا قصيرًا.",
+      "how.s2t": "تُجمع وتُصنّف", "how.s2": "تُحفظ التعليقات لكل مشروع وتُوسم بالبيئة والجهة المعنية والكاتب.",
+      "how.s3t": "يطبّقها الذكاء الاصطناعي", "how.s3": "يسلّم المطوّر القائمة لأي أداة ذكاء اصطناعي فتعدّل ملفات الكود الفعلية.",
+      "feat.title": "مصمّم للفرق الحقيقية",
+      "feat.f1t": "تركيب بسطرين", "feat.f1": "أضِف وسم سكربت ووسم العنصر. بدون حزمة وبدون SDK.",
+      "feat.f2t": "متعدد المشاريع", "feat.f2": "خادم واحد يخدم عدة تطبيقات، مقسّمة حسب المشروع.",
+      "feat.f3t": "متعدد الجهات", "feat.f3": "كل تعليق موسوم بالبيئة والجهة المعنية والكاتب.",
+      "feat.f4t": "مدرك للعنصر والمصدر", "feat.f4": "يلتقط المحدِّد واللقطة وقواعد CSS الفاعلة ومسار الصفحة ومسار المصدر اختياريًا.",
+      "feat.f5t": "محايد تجاه الأدوات", "feat.f5": "أي أداة ذكاء اصطناعي تطبّق التغييرات عبر HTTP — Claude Code وCursor وغيرها.",
+      "feat.f6t": "معزول الأنماط", "feat.f6": "تُعرض الأداة داخل Shadow DOM فلا تتعارض مع تنسيقات تطبيقك.",
+      "feat.f7t": "لوحة تحكم حقيقية", "feat.f7": "فرز وحالات وأدوار وعروض لكل مشروع — لكل الفريق.",
+      "feat.f8t": "متعدد المستأجرين", "feat.f8": "كل مساحة عمل ترى بياناتها فقط، مع فرض ذلك من الخادم.",
+      "team.stkT": "للجهات المعنية", "team.stk": "أشِر وعلّق على التطبيق الحي — بدون تثبيت أو إعداد. العملاء ومديرو المنتج والمختبِرون ينقرون فقط.",
+      "team.devT": "للمطوّرين", "team.dev": "اسحب القائمة ودع أي ذكاء اصطناعي يطبّق التغييرات على الكود الفعلي. تحمل التعليقات مسار الصفحة وقواعد CSS الفاعلة.",
+      "final.title": "جرّبه بنقرة واحدة — بدون تثبيت", "final.demo": "جرّب العرض", "final.signup": "أنشئ حسابًا",
+      "foot.dashboard": "لوحة التحكم", "foot.docs": "الوثائق",
+      "anim.label": "اجعله أعرض"
+    }
+  };
+
+  function applyLang(lang) {
+    var dict = STRINGS[lang] || STRINGS.en;
+    document.querySelectorAll('[data-i18n]').forEach(function (el) {
+      var k = el.getAttribute('data-i18n');
+      if (dict[k] != null) el.textContent = dict[k];
+    });
+    document.documentElement.lang = lang;
+    document.documentElement.dir = (lang === 'ar') ? 'rtl' : 'ltr';
+    var toggle = document.getElementById('lang-toggle');
+    if (toggle) toggle.textContent = (lang === 'ar') ? 'English' : 'العربية';
+    try { localStorage.setItem('pointer_lang', lang); } catch (e) {}
+  }
+
+  (function initLang() {
+    var saved = null;
+    try { saved = localStorage.getItem('pointer_lang'); } catch (e) {}
+    var lang = saved || ((navigator.language || '').toLowerCase().indexOf('ar') === 0 ? 'ar' : 'en');
+    applyLang(lang);
+    var toggle = document.getElementById('lang-toggle');
+    if (toggle) toggle.addEventListener('click', function () {
+      applyLang(document.documentElement.lang === 'ar' ? 'en' : 'ar');
+    });
+  })();
+</script>
 </body>
 </html>
