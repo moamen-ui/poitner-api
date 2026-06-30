@@ -56,6 +56,13 @@
     @media (max-width: 760px) {
       .nav-links { display: none; }
     }
+    /* On narrow screens the nav row can't fit brand + toggle + both CTAs; drop the
+       secondary "Sign in" (still present in the hero + footer) so nothing overflows. */
+    @media (max-width: 520px) {
+      .nav-cta .btn:not(.primary) { display: none; }
+      .nav .wrap { gap: 10px; }
+    }
+    html { overflow-x: hidden; }   /* safety net so the document never scrolls sideways */
     .hero { padding: 64px 0 48px; background: radial-gradient(1200px 400px at 70% -10%, color-mix(in srgb, var(--pf-blue) 12%, transparent), transparent); }
     .hero-grid { display: grid; grid-template-columns: 1.1fr 1fr; gap: 40px; align-items: center; }
     .hero h1 { font-size: clamp(30px, 5vw, 52px); line-height: 1.1; margin: 0 0 16px; letter-spacing: -0.02em; }
