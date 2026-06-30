@@ -66,6 +66,36 @@
       .hero-grid { grid-template-columns: 1fr; }
       .hero-stage { order: -1; min-height: 240px; }
     }
+    .section { padding: 56px 0; }
+    .section-title { font-size: clamp(24px, 3vw, 34px); margin: 0 0 28px; text-align: center; }
+    .band { background: var(--pf-soft); }
+    .contrast { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; padding: 40px 0; }
+    .contrast-card { background: #fff; border: 1px solid var(--pf-border); border-radius: var(--pf-radius); padding: 20px; }
+    .contrast-card.bad { color: var(--pf-muted); }
+    .contrast-card.good { border-color: color-mix(in srgb, var(--pf-green) 50%, var(--pf-border)); }
+    .steps, .features { display: grid; gap: 18px; }
+    .steps { grid-template-columns: repeat(3, 1fr); }
+    .features { grid-template-columns: repeat(4, 1fr); }
+    .step, .feature { background: #fff; border: 1px solid var(--pf-border); border-radius: var(--pf-radius); padding: 20px; }
+    .step .num { display: inline-grid; place-items: center; width: 30px; height: 30px; border-radius: 50%; background: var(--pf-grad); color: #fff; font-weight: 800; margin-bottom: 10px; }
+    .step h3, .feature h3 { margin: 0 0 6px; font-size: 17px; }
+    .step p, .feature p { margin: 0; color: var(--pf-muted); font-size: 14px; }
+    .split { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+    .split-card { padding: 24px; border-radius: var(--pf-radius); border: 1px solid var(--pf-border); background: #fff; }
+    .cta-band { background: var(--pf-grad); color: #fff; text-align: center; padding: 56px 0; }
+    .cta-band h2 { font-size: clamp(24px, 3.4vw, 36px); margin: 0 0 22px; }
+    .footer { border-top: 1px solid var(--pf-border); padding: 28px 0; }
+    .footer-grid { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
+    .footer-links { display: flex; gap: 18px; }
+    .footer-links a { color: var(--pf-muted); font-weight: 600; }
+    @media (max-width: 860px) {
+      .steps { grid-template-columns: 1fr; }
+      .features { grid-template-columns: 1fr 1fr; }
+      .contrast, .split { grid-template-columns: 1fr; }
+    }
+    @media (max-width: 520px) {
+      .features { grid-template-columns: 1fr; }
+    }
   </style>
 </head>
 <body>
@@ -99,6 +129,79 @@
         <div class="hero-stage" id="hero-anim" aria-hidden="true"></div>
       </div>
     </section>
+
+    <!-- Problem → solution -->
+    <section class="band">
+      <div class="wrap">
+        <div class="contrast">
+          <div class="contrast-card bad">
+            <h3 data-i18n="contrast.badTitle">Without Pointer</h3>
+            <p data-i18n="contrast.bad">"Go to the checkout page, find the header, make the title 24px and a bit darker…"</p>
+          </div>
+          <div class="contrast-card good">
+            <h3 data-i18n="contrast.goodTitle">With Pointer</h3>
+            <p data-i18n="contrast.good">🐕 click the title → 💬 "make this 24px" → ✨ AI applies it.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- How it works -->
+    <section id="how" class="wrap section">
+      <h2 class="section-title" data-i18n="how.title">How it works</h2>
+      <div class="steps">
+        <div class="step"><span class="num">1</span><h3 data-i18n="how.s1t">Click & comment</h3><p data-i18n="how.s1">Anyone signed in clicks any element on the running app and leaves a short comment.</p></div>
+        <div class="step"><span class="num">2</span><h3 data-i18n="how.s2t">Collected & tagged</h3><p data-i18n="how.s2">Comments are stored per project and tagged with environment, stakeholder, and author.</p></div>
+        <div class="step"><span class="num">3</span><h3 data-i18n="how.s3t">Applied by AI</h3><p data-i18n="how.s3">A developer hands the queue to any AI tool, which edits the real source files.</p></div>
+      </div>
+    </section>
+
+    <!-- Features -->
+    <section id="features" class="band">
+      <div class="wrap section">
+        <h2 class="section-title" data-i18n="feat.title">Built for real teams</h2>
+        <div class="features">
+          <div class="feature"><h3 data-i18n="feat.f1t">Two-line install</h3><p data-i18n="feat.f1">Drop a script tag and a tag. No package, no SDK.</p></div>
+          <div class="feature"><h3 data-i18n="feat.f2t">Multi-project</h3><p data-i18n="feat.f2">One server serves many apps, partitioned by project.</p></div>
+          <div class="feature"><h3 data-i18n="feat.f3t">Multi-stakeholder</h3><p data-i18n="feat.f3">Every comment is tagged by environment, stakeholder, and author.</p></div>
+          <div class="feature"><h3 data-i18n="feat.f4t">Element + source aware</h3><p data-i18n="feat.f4">Captures the selector, snapshot, the CSS that wins, the page route, and an optional source path.</p></div>
+          <div class="feature"><h3 data-i18n="feat.f5t">AI-agnostic</h3><p data-i18n="feat.f5">Any AI tool applies the changes with plain HTTP — Claude Code, Cursor, and more.</p></div>
+          <div class="feature"><h3 data-i18n="feat.f6t">Style-isolated</h3><p data-i18n="feat.f6">The widget renders in a Shadow DOM, so it never clashes with your app's CSS.</p></div>
+          <div class="feature"><h3 data-i18n="feat.f7t">A real dashboard</h3><p data-i18n="feat.f7">Triage, statuses, roles, and per-project views — for the whole team.</p></div>
+          <div class="feature"><h3 data-i18n="feat.f8t">Multi-tenant</h3><p data-i18n="feat.f8">Each workspace sees only its own data, enforced server-side.</p></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Built for the whole team -->
+    <section class="wrap section">
+      <div class="split">
+        <div class="split-card"><h3 data-i18n="team.stkT">For stakeholders</h3><p data-i18n="team.stk">Point and comment on the live app — no install, no setup. Clients, PMs, and testers just click.</p></div>
+        <div class="split-card"><h3 data-i18n="team.devT">For developers</h3><p data-i18n="team.dev">Pull the queue and let any AI apply the changes to the real source. Comments carry the page route and the CSS that actually wins.</p></div>
+      </div>
+    </section>
+
+    <!-- Final CTA -->
+    <section id="demo" class="cta-band">
+      <div class="wrap">
+        <h2 data-i18n="final.title">Try it in one click — no install</h2>
+        <div class="hero-cta" style="justify-content:center">
+          <a class="btn primary" href="https://demo.pointer.moamen.work" data-i18n="final.demo">Try the demo</a>
+          <a class="btn" href="https://app.pointer.moamen.work" data-i18n="final.signup">Create an account</a>
+        </div>
+      </div>
+    </section>
+
+    <footer class="footer">
+      <div class="wrap footer-grid">
+        <div class="brand"><img src="assets/dog-mascot.png" alt="" /> <span>Pointer</span></div>
+        <div class="footer-links">
+          <a href="https://app.pointer.moamen.work" data-i18n="foot.dashboard">Dashboard</a>
+          <a href="https://api.pointer.moamen.work/pointer-init.md" data-i18n="foot.docs">Docs</a>
+          <a href="https://github.com/moamen-ui" rel="noopener" target="_blank">GitHub</a>
+        </div>
+      </div>
+    </footer>
   </main>
 
   <script>
