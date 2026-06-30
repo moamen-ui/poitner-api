@@ -96,6 +96,27 @@
     @media (max-width: 520px) {
       .features { grid-template-columns: 1fr; }
     }
+    .mock { position: relative; background: #fff; border: 1px solid var(--pf-border); border-radius: var(--pf-radius); box-shadow: 0 20px 50px rgba(2,6,23,.12); padding: 22px; height: 320px; overflow: hidden; }
+    .mock-bar { display: flex; gap: 6px; margin-bottom: 18px; }
+    .mock-bar span { width: 11px; height: 11px; border-radius: 50%; background: var(--pf-border); }
+    .mock-target { font: inherit; font-weight: 700; padding: 10px 16px; border-radius: 10px; border: none; color: #fff; background: var(--pf-grad); }
+    .mock-text { height: 12px; border-radius: 6px; background: var(--pf-soft); margin-top: 16px; }
+    .mock-text.short { width: 60%; }
+    .pf-cursor { position: absolute; width: 18px; height: 18px; border-radius: 50%; border: 2px solid var(--pf-blue); background: rgba(37,99,235,.2); top: 60%; left: 60%; animation: pf-cursor 6s ease-in-out infinite; }
+    .pf-ring { position: absolute; left: 22px; top: 56px; width: 96px; height: 42px; border: 2px solid var(--pf-blue); border-radius: 10px; opacity: 0; animation: pf-ring 6s ease-in-out infinite; }
+    .pf-pop { position: absolute; left: 130px; top: 52px; background: #0f172a; color: #fff; font-size: 13px; padding: 8px 12px; border-radius: 10px; opacity: 0; transform: translateY(4px); animation: pf-pop 6s ease-in-out infinite; white-space: nowrap; }
+    .pf-pin { position: absolute; left: 96px; top: 44px; width: 22px; height: 22px; border-radius: 50% 50% 50% 2px; background: var(--pf-grad); color: #fff; font-size: 12px; font-weight: 800; display: grid; place-items: center; opacity: 0; animation: pf-pin 6s ease-in-out infinite; }
+    @keyframes pf-cursor {
+      0% { top: 75%; left: 70%; } 25% { top: 60px; left: 56px; } 100% { top: 60px; left: 56px; }
+    }
+    @keyframes pf-ring { 0%,18% { opacity: 0; } 28%,100% { opacity: 1; } }
+    @keyframes pf-pop { 0%,30% { opacity: 0; transform: translateY(4px); } 42%,92% { opacity: 1; transform: translateY(0); } 100% { opacity: 0; } }
+    @keyframes pf-pin { 0%,40% { opacity: 0; transform: scale(.4); } 52%,100% { opacity: 1; transform: scale(1); } }
+    @media (prefers-reduced-motion: reduce) {
+      .pf-cursor, .pf-ring, .pf-pop, .pf-pin { animation: none; }
+      .pf-ring, .pf-pop, .pf-pin { opacity: 1; }       /* show the representative end frame */
+      .pf-cursor { top: 60px; left: 56px; }
+    }
   </style>
 </head>
 <body>
@@ -126,7 +147,18 @@
             <a class="btn" href="https://app.pointer.moamen.work" data-i18n="hero.signup">Create an account</a>
           </div>
         </div>
-        <div class="hero-stage" id="hero-anim" aria-hidden="true"></div>
+        <div class="hero-stage" id="hero-anim" aria-hidden="true">
+  <div class="mock">
+    <div class="mock-bar"><span></span><span></span><span></span></div>
+    <button class="mock-target">Buy now</button>
+    <div class="mock-text"></div>
+    <div class="mock-text short"></div>
+    <span class="pf-cursor"></span>
+    <span class="pf-ring"></span>
+    <div class="pf-pop"><b data-i18n="anim.label">Make this bolder</b></div>
+    <span class="pf-pin">1</span>
+  </div>
+</div>
       </div>
     </section>
 
