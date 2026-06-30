@@ -109,14 +109,24 @@ Then bump `@moamen-ui/pointer-<framework>` in each consumer (e.g. the dashboard)
 > Fire it from the VM at the end of the deploy with a token that has `repo` scope:
 > `curl -s -X POST -H "Authorization: Bearer $GH_DISPATCH_TOKEN" -H "Accept: application/vnd.github+json" https://api.github.com/repos/moamen-ui/poitner-api/dispatches -d '{"event_type":"api-deployed"}'`
 
-**Landing page change** — from your machine `git push origin main`, then on the VM:
+**Landing page change** — from your machine `git push origin main`, then on the VM.
+
+`landing/` is bind-mounted read-only into Caddy (`./landing:/srv/landing:ro`) and served by
+`file_server`, which reads from disk per request. So routine content edits are just a pull:
 
 ```bash
-cd ~/pointer-api && git pull --ff-only        # updates ./landing (bind-mounted into Caddy)
-docker compose -f docker-compose.prod.yml up -d --force-recreate caddy
-# force-recreate so the new Caddyfile + the landing bind-mount are picked up (single-file
-# bind-mount inode gotcha).
+cd ~/pointer-api && git pull --ff-only        # bind-mounted → served live, no restart needed
 ```
+
+Only restart Caddy when the **`Caddyfile` itself** changed (e.g. the first time this landing
+block + mount were added) — to pick up the new config / bind-mount inode:
+
+```bash
+docker compose -f docker-compose.prod.yml up -d --force-recreate caddy
+```
+
+This recreates **only the Caddy container** (a few seconds) — the API and DB keep running. Deploys
+are per-service; nothing here rebuilds the API or dashboards.
 
 **Dashboard change** — from your machine `git push origin main`, then on the VM. The dashboard
 depends on the published `@moamen-ui/pointer-angular` (GitHub Packages), so `npm ci` needs a
