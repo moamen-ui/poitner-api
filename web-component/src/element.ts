@@ -367,6 +367,7 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
           top: parseInt(tb.style.top, 10) || 0,
         }));
       } catch { /* ignore */ }
+      this._setResetVisible(true);
     };
     grip.addEventListener('pointerdown', (e: PointerEvent) => {
       e.preventDefault();

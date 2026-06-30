@@ -1001,6 +1001,7 @@
           }));
         } catch {
         }
+        this._setResetVisible(true);
       };
       grip.addEventListener("pointerdown", (e) => {
         e.preventDefault();
