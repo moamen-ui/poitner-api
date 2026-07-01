@@ -605,6 +605,12 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
   }
 
   async createComment(data: CreateCommentData): Promise<void> {
+    // Capture the viewport so triage knows which device the feedback came from.
+    // deviceType is the common mobile/tablet/desktop split by CSS-px width.
+    const vw = window.innerWidth;
+    const vh = window.innerHeight;
+    const deviceType = vw < 768 ? 'mobile' : vw < 1024 ? 'tablet' : 'desktop';
+
     const element: Comment['element'] = {
       selector: data.selector,
       snapshot: data.snapshot,
@@ -620,6 +626,10 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
       // hash-routed SPAs are covered too).
       route: window.location.pathname + window.location.search + window.location.hash,
       pageTitle: document.title,
+      viewportWidth: vw,
+      viewportHeight: vh,
+      deviceType,
+      devicePixelRatio: window.devicePixelRatio || 1,
     };
 
     // Screenshot is opt-in (toggle, off by default). When on, await the capture

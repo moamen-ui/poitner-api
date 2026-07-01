@@ -124,7 +124,9 @@ Shape of one item (note the nested camelCase `element`; the heavier capture fiel
     "parentInfo": "{\"tag\":\"div\",\"classes\":[…]}",
     "pageUrl": "https://app.example.com/checkout?step=2",
     "route": "/checkout?step=2",
-    "pageTitle": "Checkout — Example"
+    "pageTitle": "Checkout — Example",
+    "viewportWidth": 390, "viewportHeight": 844,
+    "deviceType": "mobile", "devicePixelRatio": 3
   },
   "replies": [ … ] }
 ```

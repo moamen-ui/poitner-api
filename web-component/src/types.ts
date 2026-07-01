@@ -22,6 +22,14 @@ export interface ElementCapture {
   pageUrl?: string;
   route?: string;
   pageTitle?: string;
+  /** Viewport width in CSS px at capture time (window.innerWidth). */
+  viewportWidth?: number;
+  /** Viewport height in CSS px at capture time (window.innerHeight). */
+  viewportHeight?: number;
+  /** Device class derived from the viewport width: mobile | tablet | desktop. */
+  deviceType?: string;
+  /** window.devicePixelRatio at capture time (distinguishes retina/HiDPI). */
+  devicePixelRatio?: number;
 }
 
 export interface Comment {

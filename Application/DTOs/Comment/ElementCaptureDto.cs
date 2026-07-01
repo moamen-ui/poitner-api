@@ -16,4 +16,16 @@ public class ElementCaptureDto
     public string? Route { get; set; }
     /// <summary>document.title of that page, for human context.</summary>
     public string? PageTitle { get; set; }
+
+    /// <summary>Viewport width in CSS px at capture time (window.innerWidth).</summary>
+    public int? ViewportWidth { get; set; }
+
+    /// <summary>Viewport height in CSS px at capture time (window.innerHeight).</summary>
+    public int? ViewportHeight { get; set; }
+
+    /// <summary>Device class derived from the viewport width: mobile | tablet | desktop.</summary>
+    public string? DeviceType { get; set; }
+
+    /// <summary>window.devicePixelRatio at capture time (distinguishes retina/HiDPI).</summary>
+    public double? DevicePixelRatio { get; set; }
 }

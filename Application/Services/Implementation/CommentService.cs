@@ -324,7 +324,11 @@ public class CommentService : ICommentService
         ScreenshotUrl = dto.ScreenshotUrl,
         PageUrl = dto.PageUrl,
         Route = dto.Route,
-        PageTitle = dto.PageTitle
+        PageTitle = dto.PageTitle,
+        ViewportWidth = dto.ViewportWidth,
+        ViewportHeight = dto.ViewportHeight,
+        DeviceType = dto.DeviceType,
+        DevicePixelRatio = dto.DevicePixelRatio
     };
 
     private ElementCaptureDto MapElementToDto(ElementCapture entity) => new()
@@ -342,7 +346,11 @@ public class CommentService : ICommentService
             : _uploadSigner.SignedUrl(_uploadSigner.ExtractRelPath(entity.ScreenshotUrl)),
         PageUrl = entity.PageUrl,
         Route = entity.Route,
-        PageTitle = entity.PageTitle
+        PageTitle = entity.PageTitle,
+        ViewportWidth = entity.ViewportWidth,
+        ViewportHeight = entity.ViewportHeight,
+        DeviceType = entity.DeviceType,
+        DevicePixelRatio = entity.DevicePixelRatio
     };
 
     // Resolve display names for a set of author ids (User.PublicId == Comment.AuthorId).
