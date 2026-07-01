@@ -66,6 +66,11 @@ export interface AuthorOption {
   name: string;
 }
 
+export interface PredefinedActionOption {
+  id: number;
+  text: string;
+}
+
 /** Metadata captured for the clicked element (the `_`-prefixed fields are display-only). */
 export interface Meta {
   _tag: string;

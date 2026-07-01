@@ -1,7 +1,7 @@
 import { escapeHtml } from './dom';
 import { ICON } from './icons';
 import { STATUS_LABEL } from './constants';
-import type { AuthorOption, Comment, Meta } from './types';
+import type { AuthorOption, Comment, Meta, PredefinedActionOption } from './types';
 
 // All component markup lives here (pure string builders). Event wiring stays in
 // the element / UI modules, which call these then attach listeners to the nodes.
@@ -164,12 +164,17 @@ export const TPL = {
           </div>`;
   },
 
-  popover: (meta: Meta, left: number, top: number, shotEnabled: boolean) => `
+  popover: (meta: Meta, left: number, top: number, shotEnabled: boolean, actions: PredefinedActionOption[] = []) => `
         <div class="pf-popover" style="left:${left}px; top:${top}px;">
           <h3>Comment on &lt;${escapeHtml(meta._tag)}&gt;</h3>
           <div class="pf-snippet">${escapeHtml(meta._snapshotPreview.slice(0, 200))}</div>
           ${meta._sourcePath ? `<div class="pf-src">&#x26ec; ${escapeHtml(meta._sourcePath)}</div>` : ''}
           <textarea class="pf-textarea" id="pf-comment-text" placeholder="What should change here?"></textarea>
+          ${actions.length ? `<label class="pf-field-label" for="pf-action-pick">Action</label>
+          <select class="pf-input" id="pf-action-pick" style="margin-bottom:6px;">
+            <option value="">— none —</option>
+            ${actions.map((a) => `<option value="${a.id}">${escapeHtml(a.text)}</option>`).join('')}
+          </select>` : ''}
           ${shotEnabled ? `<label class="pf-check"><input type="checkbox" id="pf-comment-shot" /> &#x1f4f7; Attach screenshot</label>` : ''}
           <label class="pf-check"><input type="checkbox" id="pf-comment-private" /> &#x1f512; Keep private — only me</label>
           <div class="pf-reply-row">

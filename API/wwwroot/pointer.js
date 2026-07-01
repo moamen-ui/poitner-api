@@ -293,12 +293,17 @@
             </div>
           </div>`;
     },
-    popover: (meta, left, top, shotEnabled) => `
+    popover: (meta, left, top, shotEnabled, actions = []) => `
         <div class="pf-popover" style="left:${left}px; top:${top}px;">
           <h3>Comment on &lt;${escapeHtml(meta._tag)}&gt;</h3>
           <div class="pf-snippet">${escapeHtml(meta._snapshotPreview.slice(0, 200))}</div>
           ${meta._sourcePath ? `<div class="pf-src">&#x26ec; ${escapeHtml(meta._sourcePath)}</div>` : ""}
           <textarea class="pf-textarea" id="pf-comment-text" placeholder="What should change here?"></textarea>
+          ${actions.length ? `<label class="pf-field-label" for="pf-action-pick">Action</label>
+          <select class="pf-input" id="pf-action-pick" style="margin-bottom:6px;">
+            <option value="">— none —</option>
+            ${actions.map((a) => `<option value="${a.id}">${escapeHtml(a.text)}</option>`).join("")}
+          </select>` : ""}
           ${shotEnabled ? `<label class="pf-check"><input type="checkbox" id="pf-comment-shot" /> &#x1f4f7; Attach screenshot</label>` : ""}
           <label class="pf-check"><input type="checkbox" id="pf-comment-private" /> &#x1f512; Keep private — only me</label>
           <div class="pf-reply-row">
@@ -693,6 +698,7 @@
       this.token = null;
       this.user = null;
       this.afterLogin = null;
+      this.predefinedActions = [];
       this._pendingShotPromise = null;
       this._userMenuClose = null;
     }
@@ -811,10 +817,22 @@
     async init() {
       await loadStatusCatalog(this.server);
       this.renderChrome();
-      await this.fetchComments();
+      await Promise.all([this.fetchComments(), this.fetchPredefinedActions()]);
       this.renderSidebar();
       this.renderPins();
       if (this._collapsed) this.renderChrome();
+    }
+    // Fetch the project's predefined-action options for the comment popover picker.
+    // Silently no-ops on failure — the picker simply won't appear.
+    async fetchPredefinedActions() {
+      try {
+        const r = await this.api(`/api/projects/${encodeURIComponent(this.project)}/predefined-actions`);
+        if (!r.ok) { this.predefinedActions = []; return; }
+        const envelope = await r.json();
+        this.predefinedActions = envelope && envelope.data || [];
+      } catch {
+        this.predefinedActions = [];
+      }
     }
     // --- API ----------------------------------------------------------------
     async apiLogin(email, password) {
@@ -858,7 +876,7 @@
     async fetchComments() {
       try {
         const r = await this.api(`/api/projects/${encodeURIComponent(this.project)}/comments?environment=${this.environmentInt}`);
-        if (r.status === 409) {
+        if (r.status === 409 || r.status === 404) {
           this.disableSilently();
           return;
         }
@@ -1221,7 +1239,7 @@
       const host = this.root.querySelector("#pf-popover-host");
       const left = Math.min(x, window.innerWidth - 300);
       const top = Math.min(y, window.innerHeight - 220);
-      host.innerHTML = TPL.popover(meta, left, top, this.screenshotEnabled);
+      host.innerHTML = TPL.popover(meta, left, top, this.screenshotEnabled, this.predefinedActions);
       const ta = host.querySelector("#pf-comment-text");
       ta.focus();
       const shotToggle = host.querySelector("#pf-comment-shot");
@@ -1241,11 +1259,14 @@
         const attachShot = !!(shotEl && shotEl.checked);
         const shotPromise = this._pendingShotPromise;
         this._pendingShotPromise = null;
+        const actionSel = host.querySelector("#pf-action-pick");
+        const predefinedActionId = actionSel && actionSel.value ? Number(actionSel.value) : null;
         const submitBtn = host.querySelector("#pf-submit");
         submitBtn.disabled = true;
         submitBtn.textContent = "Saving…";
-        await this.createComment({ ...meta, text, isPrivate, attachShot, shotPromise });
-        host.innerHTML = "";
+        const saved = await this.createComment({ ...meta, text, isPrivate, attachShot, shotPromise, predefinedActionId });
+        if (saved) host.innerHTML = "";
+        else { submitBtn.disabled = false; submitBtn.textContent = "Add"; }
       });
     }
     async createComment(data) {
@@ -1280,22 +1301,32 @@
           else this.toast("Screenshot upload failed — saving without it", "error");
         }
       }
-      const body = {
+      const bodyObj = {
         body: data.text,
         environment: this.environmentInt,
         isPrivate: !!data.isPrivate,
         element
       };
+      if (data.predefinedActionId != null) bodyObj.predefinedActionId = data.predefinedActionId;
       try {
         const r = await this.api(`/api/projects/${encodeURIComponent(this.project)}/comments`, {
           method: "POST",
-          body: JSON.stringify({ ...body, projectKey: this.project })
+          body: JSON.stringify({ ...bodyObj, projectKey: this.project })
         });
-        if (r.status === 409) {
+        if (r.status === 409 || r.status === 404) {
           this.disableSilently();
-          return;
+          return true;
         }
-        if (!r.ok) throw new Error("HTTP " + r.status);
+        if (!r.ok) {
+          const errEnv = await r.json().catch(() => null);
+          const msg = errEnv && errEnv.message || "";
+          if (data.predefinedActionId != null && msg.toLowerCase().includes("action")) {
+            await this.fetchPredefinedActions();
+            this.toast("That action is no longer available — please choose another and try again.", "error");
+            return false;
+          }
+          throw new Error("HTTP " + r.status);
+        }
         const envelope = await r.json();
         const comment = envelope.data;
         if (comment) {
@@ -1304,10 +1335,12 @@
         this.renderSidebar();
         this.renderPins();
         this.toast("Comment added", "success");
+        return true;
       } catch (e) {
         if (e.message !== "HTTP 401 Unauthorized") {
           this.toast("Failed to save comment", "error");
         }
+        return false;
       }
     }
     // --- Mutations -----------------------------------------------------------

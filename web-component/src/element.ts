@@ -7,13 +7,14 @@ import { TPL } from './templates';
 import { ICON } from './icons';
 import { captureScreenshot, captureMetadata } from './capture';
 import { showLoginModal } from './auth-ui';
-import type { AuthorOption, Comment, Meta, PointerHost, RoleOption, StatusStr, User } from './types';
+import type { AuthorOption, Comment, Meta, PointerHost, PredefinedActionOption, RoleOption, StatusStr, User } from './types';
 
 interface CreateCommentData extends Meta {
   text: string;
   isPrivate: boolean;
   attachShot: boolean;
   shotPromise: Promise<Blob | null> | null;
+  predefinedActionId?: number | null;
 }
 
 export class PointerFeedback extends HTMLElement implements PointerHost {
@@ -40,6 +41,7 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
   token: string | null = null;
   user: User | null = null;
   afterLogin: (() => void) | null = null;
+  predefinedActions: PredefinedActionOption[] = [];
 
   root!: HTMLElement;
   private _styleLink!: HTMLLinkElement;
@@ -189,11 +191,24 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
     // Falls back to STATUS_FALLBACK silently if the fetch fails.
     await loadStatusCatalog(this.server);
     this.renderChrome();
-    await this.fetchComments();
+    await Promise.all([this.fetchComments(), this.fetchPredefinedActions()]);
     this.renderSidebar();
     this.renderPins();
     // When collapsed, re-render so the launcher badge reflects the loaded count.
     if (this._collapsed) this.renderChrome();
+  }
+
+  // Fetch the project's predefined-action options for the comment popover picker.
+  // Silently no-ops on failure — the picker simply won't appear.
+  async fetchPredefinedActions(): Promise<void> {
+    try {
+      const r = await this.api(`/api/projects/${encodeURIComponent(this.project)}/predefined-actions`);
+      if (!r.ok) { this.predefinedActions = []; return; }
+      const envelope = await r.json();
+      this.predefinedActions = (envelope && envelope.data) || [];
+    } catch {
+      this.predefinedActions = [];
+    }
   }
 
   // --- API ----------------------------------------------------------------
@@ -243,7 +258,8 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
     try {
       const r = await this.api(`/api/projects/${encodeURIComponent(this.project)}/comments?environment=${this.environmentInt}`);
       // 409 = the project was disabled by an admin → tear the widget down silently.
-      if (r.status === 409) { this.disableSilently(); return; }
+      // 404 = unknown/undefined project (project must be dashboard-created) → also hide silently.
+      if (r.status === 409 || r.status === 404) { this.disableSilently(); return; }
       if (!r.ok) throw new Error('HTTP ' + r.status);
       const envelope = await r.json();
       const items: Comment[] = (envelope.data && envelope.data.items) || [];
@@ -578,7 +594,7 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
     const host = this.root.querySelector('#pf-popover-host') as HTMLElement;
     const left = Math.min(x, window.innerWidth - 300);
     const top = Math.min(y, window.innerHeight - 220);
-    host.innerHTML = TPL.popover(meta, left, top, this.screenshotEnabled);
+    host.innerHTML = TPL.popover(meta, left, top, this.screenshotEnabled, this.predefinedActions);
     const ta = host.querySelector('#pf-comment-text') as HTMLTextAreaElement;
     ta.focus();
     // Screenshot is opt-in (unchecked by default): only capture once the user ticks
@@ -597,14 +613,18 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
       const attachShot = !!(shotEl && shotEl.checked); // toggle: off by default
       const shotPromise = this._pendingShotPromise;
       this._pendingShotPromise = null;
+      const actionSel = host.querySelector('#pf-action-pick') as HTMLSelectElement | null;
+      const predefinedActionId = actionSel && actionSel.value ? Number(actionSel.value) : null;
       const submitBtn = host.querySelector('#pf-submit') as HTMLButtonElement;
       submitBtn.disabled = true; submitBtn.textContent = 'Saving…';
-      await this.createComment({ ...meta, text, isPrivate, attachShot, shotPromise });
-      host.innerHTML = '';
+      const saved = await this.createComment({ ...meta, text, isPrivate, attachShot, shotPromise, predefinedActionId });
+      if (saved) host.innerHTML = '';
+      else { submitBtn.disabled = false; submitBtn.textContent = 'Add'; }
     });
   }
 
-  async createComment(data: CreateCommentData): Promise<void> {
+  // Returns true on success (popover should close), false on failure (popover stays open).
+  async createComment(data: CreateCommentData): Promise<boolean> {
     // Capture the viewport so triage knows which device the feedback came from.
     // deviceType is the common mobile/tablet/desktop split by CSS-px width.
     const vw = window.innerWidth;
@@ -644,32 +664,47 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
       }
     }
 
-    const body = {
+    const bodyObj: Record<string, unknown> = {
       body: data.text,
       environment: this.environmentInt,
       isPrivate: !!data.isPrivate,
       element,
     };
+    if (data.predefinedActionId != null) bodyObj.predefinedActionId = data.predefinedActionId;
     try {
       const r = await this.api(`/api/projects/${encodeURIComponent(this.project)}/comments`, {
         method: 'POST',
-      body: JSON.stringify({ ...body, projectKey: this.project }),
+        body: JSON.stringify({ ...bodyObj, projectKey: this.project }),
       });
       // Project disabled by an admin mid-session → tear down silently, no consumer error.
-      if (r.status === 409) { this.disableSilently(); return; }
-      if (!r.ok) throw new Error('HTTP ' + r.status);
+      // 404 = unknown/undefined project → also hide silently.
+      if (r.status === 409 || r.status === 404) { this.disableSilently(); return true; }
+      if (!r.ok) {
+        const errEnv = await r.json().catch(() => null);
+        const msg: string = (errEnv && errEnv.message) || '';
+        // Stale predefined action: the server rejected the action as invalid/unavailable.
+        // Refetch the list once so the picker is fresh, then ask the user to retry.
+        if (data.predefinedActionId != null && msg.toLowerCase().includes('action')) {
+          await this.fetchPredefinedActions();
+          this.toast('That action is no longer available — please choose another and try again.', 'error');
+          return false;
+        }
+        throw new Error('HTTP ' + r.status);
+      }
       const envelope = await r.json();
       const comment = envelope.data;
       if (comment) {
-        this.comments.push({ ...comment, status: STATUS_STR[comment.status] || 'open' });
+        this.comments.push({ ...comment, status: STATUS_STR[comment.status as unknown as number] || 'open' });
       }
       this.renderSidebar();
       this.renderPins();
       this.toast('Comment added', 'success');
+      return true;
     } catch (e) {
       if ((e as Error).message !== 'HTTP 401 Unauthorized') {
         this.toast('Failed to save comment', 'error');
       }
+      return false;
     }
   }
 
