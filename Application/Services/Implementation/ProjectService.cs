@@ -199,7 +199,8 @@ public class ProjectService : IProjectService
     public async Task<Result<int>> EnsureAsync(string key)
     {
         var keyNormalized = key.Trim().ToLower();
-        var ownerId = TenantStamp.OwnerFor(_currentUser);
+        // Match the same owner used when stamping projects: scoped admin → tenant; super-admin → own id.
+        var ownerId = TenantStamp.OwnerFor(_currentUser) ?? _currentUser.Id;
 
         // EF query filter is the primary tenant boundary; the explicit OwnerId match is
         // belt-and-suspenders to prevent a scoped admin's key resolving to a global project.
