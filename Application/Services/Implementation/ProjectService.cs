@@ -116,11 +116,10 @@ public class ProjectService : IProjectService
         if (request.IsActive.HasValue)
             project.IsActive = request.IsActive.Value;
 
-        // Repair legacy null-owner projects (e.g. created by a super-admin before ownership was
-        // stamped) so the project + its actions share a non-null owner — required for the
-        // comment-create scope match (projectOwner == action.OwnerId).
-        project.OwnerId ??= TenantStamp.OwnerFor(_currentUser) ?? _currentUser.Id;
-
+        // NOTE: intentionally do NOT mutate project.OwnerId here. A null owner is legitimate for
+        // global projects (e.g. the marketing landing); rewriting it would break the widget for
+        // that project's null-owner stakeholders. Predefined actions on a null-owner project are a
+        // known limitation pending the nullable-owner follow-up.
         _unitOfWork.Repository<Project>().Update(project);
 
         // Reconcile project-scoped predefined actions when the caller sends the list.
