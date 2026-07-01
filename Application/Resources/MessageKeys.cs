@@ -56,4 +56,15 @@ public static class MessageKeys
         public const string Created = "Comment created.";
         public const string Applied = "Comment marked applied.";
     }
+
+    public static class ExportImport
+    {
+        public const string Exported = "Export ready.";
+        public const string Imported = "Import complete.";
+        public const string UnsupportedSchemaVersion = "Unsupported export schema version.";
+        public const string InvalidJson = "Invalid export file.";
+        public const string TooManyComments = "Too many comments in a single import.";
+        public const string FileTooLarge = "Export file too large.";
+        public const string MissingCommentsArray = "Missing or invalid comments array.";
+    }
 }

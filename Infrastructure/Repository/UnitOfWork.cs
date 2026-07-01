@@ -19,6 +19,8 @@ public sealed class UnitOfWork(AppDbContext db) : IUnitOfWork
 
     public Task<int> SaveChangesAsync() => db.SaveChangesAsync();
 
+    public void PreserveCreatedAtOnInsert(BaseEntity entity) => db.PreserveCreatedAtOnInsert(entity);
+
     public async Task ExecuteInTransactionAsync(Func<Task> action)
     {
         var strategy = db.Database.CreateExecutionStrategy();
