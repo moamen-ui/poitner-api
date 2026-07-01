@@ -65,4 +65,15 @@ public static class MessageKeys
         public const string EmailTaken = "That email is already registered.";
         public const string UpgradeSuccess = "Your workspace has been upgraded. Welcome to Pointer!";
     }
+
+    public static class ExportImport
+    {
+        public const string Exported = "Export ready.";
+        public const string Imported = "Import complete.";
+        public const string UnsupportedSchemaVersion = "Unsupported export schema version.";
+        public const string InvalidJson = "Invalid export file.";
+        public const string TooManyComments = "Too many comments in a single import.";
+        public const string FileTooLarge = "Export file too large.";
+        public const string MissingCommentsArray = "Missing or invalid comments array.";
+    }
 }

@@ -35,13 +35,33 @@ public class AppDbContext(DbContextOptions<AppDbContext> options, ICurrentUser c
         // AppSetting: no filter — not tenant data; guarded by endpoint authorization.
     }
 
+    // Entities whose CreatedAt must survive the SaveChangesAsync stamping loop (the comment-import
+    // path restores original timestamps from an export file). Membership is consumed once on save.
+    // Reference equality (BaseEntity has no custom Equals) is correct: the same tracked instance is
+    // registered here and encountered in ChangeTracker.Entries.
+    private readonly HashSet<BaseEntity> _preserveCreatedAt = new();
+
+    /// <summary>Opts <paramref name="entity"/> out of the UtcNow-Now CreatedAt stamp on its next insert.</summary>
+    public void PreserveCreatedAtOnInsert(BaseEntity entity) => _preserveCreatedAt.Add(entity);
+
     public override Task<int> SaveChangesAsync(CancellationToken ct = default)
     {
         var now = DateTime.UtcNow;
         var uid = currentUser.Id ?? Guid.Empty;
         foreach (var e in ChangeTracker.Entries<BaseEntity>())
         {
-            if (e.State == EntityState.Added) { e.Entity.CreatedAt = now; e.Entity.CreatedBy = uid; }
+            if (e.State == EntityState.Added)
+            {
+                // Only stamp CreatedAt when the caller hasn't explicitly opted out (import path
+                // restores the original timestamp from the export file).
+                if (_preserveCreatedAt.Remove(e.Entity))
+                    e.Entity.CreatedBy = uid;
+                else
+                {
+                    e.Entity.CreatedAt = now;
+                    e.Entity.CreatedBy = uid;
+                }
+            }
             else if (e.State == EntityState.Modified)
             {
                 e.Entity.UpdatedAt = now; e.Entity.UpdatedBy = uid;

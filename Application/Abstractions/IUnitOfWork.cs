@@ -11,4 +11,15 @@ public interface IUnitOfWork
     /// (compatible with Npgsql retry strategies). Commits on success; rolls back on exception.
     /// </summary>
     Task ExecuteInTransactionAsync(Func<Task> action);
+
+    /// <summary>
+    /// Marks <paramref name="entity"/> so the next <see cref="SaveChangesAsync"/> preserves its
+    /// current <see cref="BaseEntity.CreatedAt"/> value instead of stamping it with UtcNow.
+    /// <para>
+    /// Used by the comment-import path to restore original timestamps from an export file
+    /// (Open Decision #2 — Option A of docs/superpowers/plans/2026-07-01-comment-export-import.md).
+    /// <see cref="BaseEntity.CreatedBy"/> is still stamped to the importing user.
+    /// </para>
+    /// </summary>
+    void PreserveCreatedAtOnInsert(BaseEntity entity);
 }
