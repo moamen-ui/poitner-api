@@ -3,52 +3,52 @@
 # app-<fw>.pointer   → serve that framework's dashboard build (SPA fallback).
 # app.pointer / bare → the Angular dashboard (default; back-compat).
 
+# Shared static-SPA config. index.html and the runtime-fetched i18n JSON carry fixed
+# (non-fingerprinted) names, so force revalidation on them (etag → 304 when unchanged)
+# to avoid serving a stale bundle/translations after a deploy. Hashed JS/CSS keep the
+# browser default and stay cached.
+(dashboard) {
+    encode gzip
+    try_files {path} /index.html
+    @nocache path /index.html /assets/i18n/*.json
+    header @nocache Cache-Control "no-cache"
+    file_server
+}
+
 api.pointer.moamen.work {
     reverse_proxy api:8080
 }
 
 app-angular.pointer.moamen.work {
     root * /srv/dashboard/angular
-    encode gzip
-    try_files {path} /index.html
-    file_server
+    import dashboard
 }
 
 app-react.pointer.moamen.work {
     root * /srv/dashboard/react
-    encode gzip
-    try_files {path} /index.html
-    file_server
+    import dashboard
 }
 
 app-vue.pointer.moamen.work {
     root * /srv/dashboard/vue
-    encode gzip
-    try_files {path} /index.html
-    file_server
+    import dashboard
 }
 
 # Default dashboard host → Angular (kept so existing links keep working).
 app.pointer.moamen.work {
     root * /srv/dashboard/angular
-    encode gzip
-    try_files {path} /index.html
-    file_server
+    import dashboard
 }
 
 # Demo host → the dashboard with the "Try the demo" entry (guests provision an
 # ephemeral, self-expiring tenant). Same Angular build as app.pointer.
 demo.pointer.moamen.work {
     root * /srv/dashboard/angular
-    encode gzip
-    try_files {path} /index.html
-    file_server
+    import dashboard
 }
 
 # Bare domain → the marketing landing page (served from the bind-mounted landing/ dir).
 pointer.moamen.work {
     root * /srv/landing
-    encode gzip
-    try_files {path} /index.html
-    file_server
+    import dashboard
 }
