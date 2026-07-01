@@ -55,5 +55,13 @@ public static class MessageKeys
         public const string BodyRequired = "Comment body is required.";
         public const string Created = "Comment created.";
         public const string Applied = "Comment marked applied.";
+        public const string InvalidPredefinedAction = "The selected action is unavailable. Please refresh and try again.";
+    }
+
+    public static class PredefinedAction
+    {
+        public const string NotFound = "Action not found.";
+        public const string TextRequired = "Action text is required.";
+        public const string PromptRequired = "Action prompt is required.";
     }
 }

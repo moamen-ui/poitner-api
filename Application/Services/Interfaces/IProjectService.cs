@@ -10,9 +10,19 @@ public interface IProjectService
     Task<Result<ProjectResponse>> UpdateAsync(int id, UpdateProjectRequest request);
 
     /// <summary>
-    /// Resolve a project id by key, lazily creating the project (active) if it does not yet
-    /// exist — so a developer integrating an app via VITE_POINTER_PROJECT self-registers it.
-    /// Returns Conflict if the project exists but was disabled by an admin.
+    /// STRICT resolver: resolve a project id by (Key + current tenant OwnerId).
+    /// Projects must be pre-defined in the dashboard — this NO LONGER lazily self-creates.
+    ///   - missing  → NotFound  (widget hides silently on 404; do NOT create)
+    ///   - disabled → Conflict  (distinct from "not configured" — the widget hides silently on 409)
+    ///   - active   → Success(id)
+    ///
+    /// Other project-key resolution paths (intentionally left AS-IS for now — the
+    /// "projects must be pre-defined" guarantee currently holds for comment posting only):
+    ///   - UploadsController.Upload (API/Controllers/UploadsController.cs:53) — resolves via the
+    ///     EF query filter, already returns NotFound for an unknown key (never creates).
+    ///   - AuthService register (Application/.../AuthService.cs:149) — anonymous + IgnoreQueryFilters
+    ///     to bind a pending user to the project's tenant; still creates no project.
+    ///   - DemoService provisioning — creates a demo project explicitly; not a resolve path.
     /// </summary>
     Task<Result<int>> EnsureAsync(string key);
 }

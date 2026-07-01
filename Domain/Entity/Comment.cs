@@ -19,5 +19,14 @@ public class Comment : BaseEntity
     public DateTime? EditedAt { get; set; }
     public Guid? EditedBy { get; set; }
     public Guid? OwnerId { get; set; }
+
+    // Predefined-action snapshot (v1 single-select). We snapshot {text, prompt} at
+    // create time rather than FK to PredefinedAction so (1) the prompt never has to be
+    // re-resolved (and never reaches the browser via a join), and (2) editing/deleting an
+    // action definition later does not rewrite historical comments.
+    // FUTURE (multi-select): these migrate into a child CommentAction[] collection.
+    public string? PickedActionText { get; set; }
+    public string? PickedActionPrompt { get; set; }
+
     public ICollection<Reply> Replies { get; set; } = new List<Reply>();
 }

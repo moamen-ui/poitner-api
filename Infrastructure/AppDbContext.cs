@@ -12,6 +12,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options, ICurrentUser c
     public DbSet<Comment> Comments => Set<Comment>();
     public DbSet<Reply> Replies => Set<Reply>();
     public DbSet<StatusPresentation> StatusPresentations => Set<StatusPresentation>();
+    public DbSet<PredefinedAction> PredefinedActions => Set<PredefinedAction>();
     public DbSet<AppSetting> AppSettings => Set<AppSetting>();
 
     protected override void OnModelCreating(ModelBuilder b)
@@ -27,6 +28,10 @@ public class AppDbContext(DbContextOptions<AppDbContext> options, ICurrentUser c
         b.Entity<User>().HasQueryFilter(e => currentUser.IsSuperAdmin || e.OwnerId == currentUser.TenantId);
         b.Entity<Comment>().HasQueryFilter(e => currentUser.IsSuperAdmin || e.OwnerId == currentUser.TenantId);
         b.Entity<Reply>().HasQueryFilter(e => currentUser.IsSuperAdmin || e.OwnerId == currentUser.TenantId);
+        // PredefinedAction.OwnerId is non-nullable and ALWAYS set — no OwnerId == null branch,
+        // or strict-own would expose (never created) "global" actions. Without this filter,
+        // admin CRUD would cross-read every tenant.
+        b.Entity<PredefinedAction>().HasQueryFilter(e => currentUser.IsSuperAdmin || e.OwnerId == currentUser.TenantId);
 
         // Own-plus-global: tenants also see rows with OwnerId == null (super-admin/global defaults).
         b.Entity<Role>().HasQueryFilter(e => currentUser.IsSuperAdmin || e.OwnerId == currentUser.TenantId || e.OwnerId == null);

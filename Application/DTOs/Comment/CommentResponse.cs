@@ -16,6 +16,11 @@ public class CommentResponse
     public Guid? AppliedBy { get; set; }
     public string? AppliedByLabel { get; set; }
     public DateTime? EditedAt { get; set; }
+
+    // Picked predefined action's visible label. The matching PickedActionPrompt is
+    // DELIBERATELY absent from this class (LLM-only; see design blocker) — do not add it.
+    public string? PickedActionText { get; set; }
+
     public ElementCaptureDto Element { get; set; } = new();
     public List<ReplyResponse> Replies { get; set; } = new();
 }

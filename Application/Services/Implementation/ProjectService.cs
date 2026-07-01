@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Pointer.Application.Abstractions;
 using Pointer.Application.Common;
+using Pointer.Application.DTOs.PredefinedAction;
 using Pointer.Application.DTOs.Project;
 using Pointer.Application.Resources;
 using Pointer.Application.Response;
@@ -35,18 +36,43 @@ public class ProjectService : IProjectService
         if (exists)
             return Result<ProjectResponse>.Conflict(MessageKeys.Project.KeyTaken);
 
+        // OwnerId stamps the tenant; predefined actions inherit it (always non-null for a
+        // scoped admin). A super admin creating a project has null OwnerFor — but a project
+        // must belong to a tenant, so this path is a scoped-admin operation in practice.
+        var ownerId = TenantStamp.OwnerFor(_currentUser);
+
         var project = new Project
         {
             Key = keyNormalized,
             Name = request.Name,
             IsActive = true,
-            OwnerId = TenantStamp.OwnerFor(_currentUser)
+            OwnerId = ownerId
         };
 
         await _unitOfWork.Repository<Project>().AddAsync(project);
-        await _unitOfWork.SaveChangesAsync();
+        await _unitOfWork.SaveChangesAsync(); // need the project Id before attaching actions
 
-        return Result<ProjectResponse>.Success(MapToResponse(project));
+        if (request.PredefinedActions.Count > 0 && ownerId is Guid owner)
+        {
+            var sort = 0;
+            foreach (var input in request.PredefinedActions)
+            {
+                await _unitOfWork.Repository<PredefinedAction>().AddAsync(new PredefinedAction
+                {
+                    OwnerId = owner,
+                    ProjectId = project.Id,
+                    UserId = null,
+                    Text = input.Text.Trim(),
+                    Prompt = input.Prompt,
+                    IsActive = input.IsActive,
+                    SortOrder = input.SortOrder != 0 ? input.SortOrder : sort++
+                });
+            }
+            await _unitOfWork.SaveChangesAsync();
+        }
+
+        var actions = await LoadProjectActionsAsync(project.Id);
+        return Result<ProjectResponse>.Success(MapToResponse(project, actions));
     }
 
     public async Task<Result<List<ProjectResponse>>> ListAsync()
@@ -57,7 +83,24 @@ public class ProjectService : IProjectService
             .Where(p => p.DeletedAt == null)
             .ToListAsync();
 
-        return Result<List<ProjectResponse>>.Success(projects.Select(MapToResponse).ToList());
+        var projectIds = projects.Select(p => p.Id).ToList();
+
+        // One batched query for all project-scoped actions; group in memory.
+        var actions = await _unitOfWork.Repository<PredefinedAction>()
+            .Query()
+            .AsNoTracking()
+            .Where(a => a.DeletedAt == null && a.ProjectId != null && projectIds.Contains(a.ProjectId.Value))
+            .OrderBy(a => a.SortOrder)
+            .ToListAsync();
+
+        var byProject = actions.GroupBy(a => a.ProjectId!.Value)
+            .ToDictionary(g => g.Key, g => g.ToList());
+
+        var responses = projects
+            .Select(p => MapToResponse(p, byProject.GetValueOrDefault(p.Id) ?? new List<PredefinedAction>()))
+            .ToList();
+
+        return Result<List<ProjectResponse>>.Success(responses);
     }
 
     public async Task<Result<ProjectResponse>> UpdateAsync(int id, UpdateProjectRequest request)
@@ -74,10 +117,79 @@ public class ProjectService : IProjectService
             project.IsActive = request.IsActive.Value;
 
         _unitOfWork.Repository<Project>().Update(project);
+
+        // Reconcile project-scoped predefined actions when the caller sends the list.
+        // null (property omitted) → leave actions untouched.
+        if (request.PredefinedActions != null && project.OwnerId is Guid owner)
+            await ReconcileActionsAsync(project.Id, owner, request.PredefinedActions);
+
         await _unitOfWork.SaveChangesAsync();
 
-        return Result<ProjectResponse>.Success(MapToResponse(project));
+        var actions = await LoadProjectActionsAsync(project.Id);
+        return Result<ProjectResponse>.Success(MapToResponse(project, actions));
     }
+
+    /// <summary>
+    /// Reconcile the desired set of project-scoped actions against what exists (last-write-wins):
+    ///   id present    → update in place
+    ///   id absent      → add
+    ///   existing row absent from the payload → soft-delete
+    /// All queries add DeletedAt == null so soft-deleted rows never resurface or double-delete.
+    /// </summary>
+    private async Task ReconcileActionsAsync(int projectId, Guid owner, List<PredefinedActionInput> desired)
+    {
+        var existing = await _unitOfWork.Repository<PredefinedAction>()
+            .Query()
+            .Where(a => a.DeletedAt == null && a.ProjectId == projectId)
+            .ToListAsync();
+
+        var keptIds = new HashSet<int>();
+
+        foreach (var input in desired)
+        {
+            if (input.Id is int existingId)
+            {
+                var row = existing.FirstOrDefault(a => a.Id == existingId);
+                if (row == null)
+                    continue; // stale/foreign id — ignore (last-write-wins, no cross-tenant edit)
+
+                row.Text = input.Text.Trim();
+                row.Prompt = input.Prompt;
+                row.IsActive = input.IsActive;
+                row.SortOrder = input.SortOrder;
+                _unitOfWork.Repository<PredefinedAction>().Update(row);
+                keptIds.Add(row.Id);
+            }
+            else
+            {
+                await _unitOfWork.Repository<PredefinedAction>().AddAsync(new PredefinedAction
+                {
+                    OwnerId = owner,
+                    ProjectId = projectId,
+                    UserId = null,
+                    Text = input.Text.Trim(),
+                    Prompt = input.Prompt,
+                    IsActive = input.IsActive,
+                    SortOrder = input.SortOrder
+                });
+            }
+        }
+
+        // Soft-delete rows absent from the payload.
+        foreach (var row in existing.Where(a => !keptIds.Contains(a.Id)))
+        {
+            row.DeletedAt = DateTime.UtcNow;
+            _unitOfWork.Repository<PredefinedAction>().Update(row);
+        }
+    }
+
+    private async Task<List<PredefinedAction>> LoadProjectActionsAsync(int projectId) =>
+        await _unitOfWork.Repository<PredefinedAction>()
+            .Query()
+            .AsNoTracking()
+            .Where(a => a.DeletedAt == null && a.ProjectId == projectId)
+            .OrderBy(a => a.SortOrder)
+            .ToListAsync();
 
     public async Task<Result<int>> EnsureAsync(string key)
     {
@@ -93,21 +205,10 @@ public class ProjectService : IProjectService
             .Select(p => new { p.Id, p.IsActive })
             .FirstOrDefaultAsync();
 
+        // STRICT: projects must be pre-defined in the dashboard. No lazy self-create.
+        // Missing → NotFound (widget hides silently on 404). Disabled → Conflict (below).
         if (project == null)
-        {
-            // Lazy self-registration: a developer wired up VITE_POINTER_PROJECT=<key>.
-            // Name defaults to the key; an admin can rename it in the dashboard.
-            var created = new Project
-            {
-                Key = keyNormalized,
-                Name = keyNormalized,
-                IsActive = true,
-                OwnerId = ownerId
-            };
-            await _unitOfWork.Repository<Project>().AddAsync(created);
-            await _unitOfWork.SaveChangesAsync();
-            return Result<int>.Success(created.Id);
-        }
+            return Result<int>.NotFound(MessageKeys.Project.NotFound);
 
         if (!project.IsActive)
             return Result<int>.Conflict(MessageKeys.Project.Disabled);
@@ -115,11 +216,23 @@ public class ProjectService : IProjectService
         return Result<int>.Success(project.Id);
     }
 
-    private static ProjectResponse MapToResponse(Project project) => new()
+    private static ProjectResponse MapToResponse(Project project, List<PredefinedAction> actions) => new()
     {
         Id = project.Id,
         Key = project.Key,
         Name = project.Name,
-        IsActive = project.IsActive
+        IsActive = project.IsActive,
+        PredefinedActions = actions
+            .OrderBy(a => a.SortOrder)
+            .Select(a => new PredefinedActionResponse
+            {
+                Id = a.Id,
+                ProjectId = a.ProjectId,
+                Text = a.Text,
+                Prompt = a.Prompt,
+                IsActive = a.IsActive,
+                SortOrder = a.SortOrder
+            })
+            .ToList()
     };
 }

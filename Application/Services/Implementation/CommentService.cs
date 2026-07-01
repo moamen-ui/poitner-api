@@ -15,15 +15,17 @@ public class CommentService : ICommentService
 {
     private readonly IUnitOfWork _unitOfWork;
     private readonly IProjectService _projectService;
+    private readonly IPredefinedActionService _predefinedActions;
     private readonly IFileStorage _fileStorage;
     private readonly ICurrentUser _currentUser;
     private readonly IUploadSigner _uploadSigner;
     private readonly ISettingsService _settings;
 
-    public CommentService(IUnitOfWork unitOfWork, IProjectService projectService, IFileStorage fileStorage, ICurrentUser currentUser, IUploadSigner uploadSigner, ISettingsService settings)
+    public CommentService(IUnitOfWork unitOfWork, IProjectService projectService, IPredefinedActionService predefinedActions, IFileStorage fileStorage, ICurrentUser currentUser, IUploadSigner uploadSigner, ISettingsService settings)
     {
         _unitOfWork = unitOfWork;
         _projectService = projectService;
+        _predefinedActions = predefinedActions;
         _fileStorage = fileStorage;
         _currentUser = currentUser;
         _uploadSigner = uploadSigner;
@@ -83,6 +85,22 @@ public class CommentService : ICommentService
             OwnerId = projectOwnerId,
             Element = MapToEntity(request.Element)
         };
+
+        // Optional predefined action: validate it is active + in-scope for the resolved project's
+        // tenant + this author, then SNAPSHOT {text, prompt} onto the comment (never an FK).
+        // An invalid/out-of-scope id is rejected — not silently dropped.
+        if (request.PredefinedActionId is int actionId)
+        {
+            if (projectOwnerId is not Guid actionOwner)
+                return Result<CommentResponse>.Failure(MessageKeys.Comment.InvalidPredefinedAction);
+
+            var action = await _predefinedActions.ResolveInScopeAsync(actionId, projectResult.Data, actionOwner, authorId);
+            if (action == null)
+                return Result<CommentResponse>.Failure(MessageKeys.Comment.InvalidPredefinedAction);
+
+            comment.PickedActionText = action.Text;
+            comment.PickedActionPrompt = action.Prompt;
+        }
 
         await _unitOfWork.Repository<Comment>().AddAsync(comment);
         await _unitOfWork.SaveChangesAsync();
@@ -145,6 +163,53 @@ public class CommentService : ICommentService
         var names = await ResolveNamesAsync(items.SelectMany(AuthorIds));
         return Result<PagedData<CommentListItemDto>>.Success(
             new PagedData<CommentListItemDto>(items.Select(c => MapToListItem(c, names)).ToList(), pagination, hiddenPrivateCount));
+    }
+
+    public async Task<Result<PagedData<CommentApplyItemDto>>> ListApplyQueueAsync(string projectKey, CommentFilter filter)
+    {
+        var projectResult = await _projectService.EnsureAsync(projectKey);
+        if (!projectResult.IsSuccess)
+            return projectResult.IsConflict
+                ? Result<PagedData<CommentApplyItemDto>>.Conflict(projectResult.Message ?? MessageKeys.Project.Disabled)
+                : Result<PagedData<CommentApplyItemDto>>.NotFound(projectResult.Message ?? MessageKeys.Project.NotFound);
+
+        var projectId = projectResult.Data;
+
+        var query = _unitOfWork.Repository<Comment>()
+            .Query()
+            .AsNoTracking()
+            .Include(c => c.Replies)
+            .Where(c => c.ProjectId == projectId && c.DeletedAt == null);
+
+        if (filter.Status.HasValue)
+            query = query.Where(c => c.Status == filter.Status.Value);
+
+        if (filter.Environment.HasValue)
+            query = query.Where(c => c.Environment == filter.Environment.Value);
+
+        var totalItems = await query.CountAsync();
+
+        var pageSize = Math.Min(filter.PageSize, 100);
+        var pageNumber = filter.PageNumber < 1 ? 1 : filter.PageNumber;
+        var totalPages = totalItems == 0 ? 0 : (int)Math.Ceiling((double)totalItems / pageSize);
+
+        var items = await query
+            .OrderByDescending(c => c.CreatedAt)
+            .Skip((pageNumber - 1) * pageSize)
+            .Take(pageSize)
+            .ToListAsync();
+
+        var pagination = new Pagination
+        {
+            PageNumber = pageNumber,
+            PageSize = pageSize,
+            TotalItems = totalItems,
+            TotalPages = totalPages
+        };
+
+        var names = await ResolveNamesAsync(items.SelectMany(AuthorIds));
+        return Result<PagedData<CommentApplyItemDto>>.Success(
+            new PagedData<CommentApplyItemDto>(items.Select(c => MapToApplyItem(c, names)).ToList(), pagination));
     }
 
     public async Task<Result<CommentResponse>> GetByIdAsync(int id, Guid callerId)
@@ -398,6 +463,8 @@ public class CommentService : ICommentService
         AppliedBy = comment.AppliedBy,
         AppliedByLabel = comment.AppliedByLabel,
         EditedAt = comment.EditedAt,
+        // Text only — PickedActionPrompt is intentionally never exposed here.
+        PickedActionText = comment.PickedActionText,
         Element = MapElementToDto(comment.Element),
         Replies = comment.Replies.Select(r => MapReplyToResponse(r, names)).ToList()
     };
@@ -416,8 +483,26 @@ public class CommentService : ICommentService
         AppliedBy = comment.AppliedBy,
         AppliedByLabel = comment.AppliedByLabel,
         EditedAt = comment.EditedAt,
+        // Text only — PickedActionPrompt is intentionally never exposed here.
+        PickedActionText = comment.PickedActionText,
         Element = MapElementToDto(comment.Element),
         Replies = comment.Replies.Select(r => MapReplyToResponse(r, names)).ToList()
+    };
+
+    // Apply-queue export mapper — the ONLY mapper that carries PickedActionPrompt (admin/AI path).
+    private CommentApplyItemDto MapToApplyItem(Comment comment, IReadOnlyDictionary<Guid, string> names) => new()
+    {
+        Id = comment.Id,
+        Status = comment.Status,
+        Environment = comment.Environment,
+        Body = comment.Body,
+        AuthorId = comment.AuthorId,
+        AuthorName = names.GetValueOrDefault(comment.AuthorId),
+        CreatedAt = comment.CreatedAt,
+        Element = MapElementToDto(comment.Element),
+        Replies = comment.Replies.Select(r => MapReplyToResponse(r, names)).ToList(),
+        PickedActionText = comment.PickedActionText,
+        PickedActionPrompt = comment.PickedActionPrompt
     };
 
     private static IEnumerable<Guid> AuthorIds(Comment c) =>
