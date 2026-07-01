@@ -110,6 +110,59 @@ The snapshotted `PickedActionPrompt` is included in the self-contained `pending.
   untouched. `EnsureAsync` change is code-only.
 - Coupled deploy (like the last one): API → publish clients → dashboards → widget.
 
+## v2 — revisions folded in from GLM design review (2026-07-01)
+Resolved before implementation:
+
+**Blockers**
+- **EF query filter on `PredefinedAction` (was missing).** Register a strict-own global query filter in
+  `AppDbContext.OnModelCreating` (same form as `Project`/`Comment`): `superAdmin || OwnerId == tenant`.
+  Add the `DbSet` + a `PredefinedActionMapping`. Without this, admin CRUD cross-reads every tenant.
+  `OwnerId` is ALWAYS set (never null) — do not add a super-admin "global action" path, or strict-own hides it.
+- **Prompt must never serialize in comment DTOs.** `PickedActionPrompt` stays OFF `CommentResponse` and
+  `CommentListItemDto` entirely (don't just omit in the mapper — keep it off the class so a careless map
+  won't compile). Only `PickedActionText` may appear, and only if the widget needs it. Add a unit test
+  asserting the serialized comment JSON contains no `prompt`/`PickedActionPrompt` key.
+- **Widget must hide on 404 too.** The widget currently silent-hides ONLY on 409 (`pointer.js:861,1294`);
+  a 404 today throws a visible error toast. The strict resolver returns 404 for a missing project, so
+  extend both `fetchComments` and `saveComment` to `if (r.status === 409 || r.status === 404) disableSilently()`.
+  Do NOT make the resolver return 409 for missing (conflates "disabled" vs "not configured").
+
+**Isolation / endpoint shape**
+- **Widget-read endpoint becomes `[Authorize]`, not anonymous.** Keys are owner-scoped (`key+ownerId`), so a
+  key-only anonymous resolve collides across tenants (pre-existing flaw in `RoleService.ListPublicAsync` /
+  `AuthService` register). The picker only renders post-login (`pointer.js:747` inits only with a token), so
+  resolve the tenant from the JWT and scope the effective-set query through the strict resolver — no
+  `IgnoreQueryFilters`, no collision.
+- **Enumerate every key-resolution path** and state its contract: `EnsureAsync`/`ResolveAsync` (strict, owner-
+  scoped), `UploadsController.Upload` (`:53`), `AuthService` register (`:149`, anonymous+`IgnoreQueryFilters`),
+  demo provisioning. Decide per-path whether it goes strict+owner-scoped now or is explicitly left as-is; the
+  "projects must be pre-defined" guarantee otherwise holds only for comment posting.
+
+**Migration / data**
+- `Prompt` column type = Postgres `text` (no `HasMaxLength` — prompts are multi-paragraph). `Text` bounded ≤256.
+- Indexes: `HasIndex(OwnerId)` and `HasIndex(OwnerId, ProjectId)` (btree indexes NULLs → tenant-wide rows served).
+- **Soft-delete discipline:** the global filter does NOT filter `DeletedAt`; every `PredefinedAction` query must
+  add `DeletedAt == null` (mirrors `ProjectService`), or deleted actions reappear in the picker/reconcile.
+- **Nested reconcile rule** (project update): `id` present → update, absent → add, absent-from-payload → soft-delete.
+  Document as last-write-wins (or add a row-version optimistic token on `Project`). Snapshots insulate history.
+- New `Comment` columns are nullable — never later make `NOT NULL DEFAULT` without a backfill.
+- `SortOrder` defaulting: new action = `max(scope)+1`.
+
+**Rollout / quality**
+- Add `npm run generate-clients` to the rollout; new controllers follow the `[ProducesResponseType(typeof(Inner))]`
+  + `[Produces("application/json")]` convention (AGENTS.md) so Orval types the envelope correctly.
+- Tests: (1) query-filter isolation for `PredefinedAction`, (2) comment JSON has no prompt, (3) out-of-scope /
+  inactive `predefinedActionId` on comment-create is rejected.
+- User strings via `MessageKeys.*` (invalid action id, text required).
+- **Stale-cache on submit:** if a cached picker references a just-deleted action id → server 4xx; the widget
+  refetches the effective set once and retries (chosen over accepting a one-off error).
+- Effective-set read must honor project `IsActive` (routing through the strict resolver already yields 409 on a
+  disabled project — keep that dependency explicit).
+
+**Scope claim correction:** user-scope extensibility is "data-only" for the SELECT path ONLY. Adding user scope
+later still reshapes the authz/write surface (non-admin creates own actions; `UserId == caller` guard) and the
+merge semantics (override/precedence + scope-weighted sort, not a flat union). Not a flag-flip.
+
 ## Open questions (for GLM + owner)
 1. Confirm **silent-hide** on unknown project (vs a visible "project not configured" notice).
 2. `EnsureAsync` rename → `ResolveAsync`, or keep name with new strict contract?
