@@ -17,6 +17,10 @@ public class CommentListItemDto
     public string? AppliedByLabel { get; set; }
     public DateTime? EditedAt { get; set; }
 
+    // Picked predefined action's visible label. The matching PickedActionPrompt is
+    // DELIBERATELY absent from this class (LLM-only; see design blocker) — do not add it.
+    public string? PickedActionText { get; set; }
+
     // Included so the list is self-contained: the web component needs Element to
     // place pins, and the AI fetch queue (same endpoint, ?status=ReadyToApply)
     // needs it to resolve source/CSS without a second lookup (DESIGN §7).

@@ -32,6 +32,9 @@ public class CommentMapping : IEntityTypeConfiguration<Comment>
         b.Property(x => x.EditedAt).HasColumnName("edited_at");
         b.Property(x => x.EditedBy).HasColumnName("edited_by");
         b.Property(x => x.OwnerId).HasColumnName("owner_id");
+        // Predefined-action snapshot (nullable — never later make NOT NULL DEFAULT without a backfill).
+        b.Property(x => x.PickedActionText).HasColumnName("picked_action_text").HasMaxLength(256);
+        b.Property(x => x.PickedActionPrompt).HasColumnName("picked_action_prompt").HasColumnType("text");
         b.HasIndex(x => x.OwnerId);
         b.OwnsOne(x => x.Element, e => e.ToJson("element"));
         b.HasOne(x => x.Project).WithMany(p => p.Comments).HasForeignKey(x => x.ProjectId).OnDelete(DeleteBehavior.Restrict);

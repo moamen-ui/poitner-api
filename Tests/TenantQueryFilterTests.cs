@@ -202,6 +202,55 @@ public class TenantQueryFilterTests
     }
 
     // ---------------------------------------------------------------------------
+    // PredefinedAction — strict-own filter (super OR own); OwnerId is ALWAYS set
+    // ---------------------------------------------------------------------------
+
+    [Fact]
+    public void PredefinedAction_TenantA_CannotSeeTenantB()
+    {
+        var db = Guid.NewGuid().ToString();
+        var tenantA = Guid.NewGuid();
+        var tenantB = Guid.NewGuid();
+
+        using (var seed = SuperAdminContext(db))
+        {
+            seed.PredefinedActions.AddRange(
+                new PredefinedAction { OwnerId = tenantA, Text = "A-tenant", Prompt = "pa" },
+                new PredefinedAction { OwnerId = tenantA, Text = "A-project", Prompt = "pa", ProjectId = 1 },
+                new PredefinedAction { OwnerId = tenantB, Text = "B-tenant", Prompt = "pb" }
+            );
+            seed.SaveChanges();
+        }
+
+        using var ctx = BuildContext(new FakeCurrentUser { TenantId = tenantA, IsSuperAdmin = false }, db);
+        var results = ctx.Set<PredefinedAction>().ToList();
+
+        Assert.Equal(2, results.Count);
+        Assert.All(results, a => Assert.Equal(tenantA, a.OwnerId));
+        Assert.DoesNotContain(results, a => a.OwnerId == tenantB);
+    }
+
+    [Fact]
+    public void PredefinedAction_SuperAdmin_SeesAllRows()
+    {
+        var db = Guid.NewGuid().ToString();
+        var tenantA = Guid.NewGuid();
+        var tenantB = Guid.NewGuid();
+
+        using (var seed = SuperAdminContext(db))
+        {
+            seed.PredefinedActions.AddRange(
+                new PredefinedAction { OwnerId = tenantA, Text = "A", Prompt = "pa" },
+                new PredefinedAction { OwnerId = tenantB, Text = "B", Prompt = "pb" }
+            );
+            seed.SaveChanges();
+        }
+
+        using var ctx = SuperAdminContext(db);
+        Assert.Equal(2, ctx.Set<PredefinedAction>().Count());
+    }
+
+    // ---------------------------------------------------------------------------
     // IgnoreQueryFilters — super-admin/system paths can bypass filters explicitly
     // ---------------------------------------------------------------------------
 
