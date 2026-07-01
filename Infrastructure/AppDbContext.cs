@@ -13,6 +13,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options, ICurrentUser c
     public DbSet<Reply> Replies => Set<Reply>();
     public DbSet<StatusPresentation> StatusPresentations => Set<StatusPresentation>();
     public DbSet<PredefinedAction> PredefinedActions => Set<PredefinedAction>();
+    public DbSet<Invite> Invites => Set<Invite>();
     public DbSet<AppSetting> AppSettings => Set<AppSetting>();
 
     protected override void OnModelCreating(ModelBuilder b)
@@ -28,6 +29,8 @@ public class AppDbContext(DbContextOptions<AppDbContext> options, ICurrentUser c
         b.Entity<User>().HasQueryFilter(e => currentUser.IsSuperAdmin || e.OwnerId == currentUser.TenantId);
         b.Entity<Comment>().HasQueryFilter(e => currentUser.IsSuperAdmin || e.OwnerId == currentUser.TenantId);
         b.Entity<Reply>().HasQueryFilter(e => currentUser.IsSuperAdmin || e.OwnerId == currentUser.TenantId);
+        // Invites are ALWAYS tenant-scoped (OwnerId non-null) — strict-own, no null-owner branch.
+        b.Entity<Invite>().HasQueryFilter(e => currentUser.IsSuperAdmin || e.OwnerId == currentUser.TenantId);
         // Own-plus-global: a tenant sees its own actions plus null-owner (global) ones — needed so
         // actions on a global/null-owner project (e.g. the marketing landing) resolve for that
         // project's null-owner stakeholders. Cross-project leakage is prevented separately by the

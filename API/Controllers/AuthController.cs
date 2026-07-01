@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
 using Pointer.Application.DTOs.Auth;
+using Pointer.Application.DTOs.Invite;
 using Pointer.Application.Response;
 using Pointer.Application.Services.Interfaces;
 
@@ -9,7 +10,7 @@ namespace Pointer.API.Controllers;
 
 [ApiController]
 [Route("api/auth")]
-public class AuthController(IAuthService authService, ISettingsService settingsService) : ControllerBase
+public class AuthController(IAuthService authService, ISettingsService settingsService, IInviteService inviteService) : ControllerBase
 {
     [AllowAnonymous]
     [HttpPost("login")]
@@ -87,6 +88,26 @@ public class AuthController(IAuthService authService, ISettingsService settingsS
         if (result.IsForbidden) return StatusCode(StatusCodes.Status403Forbidden, result);
         if (result.IsConflict) return Conflict(result);
         if (result.IsNotFound) return NotFound(result);
+        return result.IsSuccess ? Ok(result) : BadRequest(result);
+    }
+
+    /// <summary>
+    /// Accept a tenant invite: creates an Approved + active tenant-scoped user (skips the approval
+    /// queue — the invite is the authorization) and returns a login token (auto-signin).
+    /// </summary>
+    [AllowAnonymous]
+    [HttpPost("register-invite")]
+    [EnableRateLimiting("signup")]
+    [Tags("Invites")]
+    [ProducesResponseType(typeof(LoginResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(Result), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(Result), StatusCodes.Status404NotFound)]
+    [ProducesResponseType(typeof(Result), StatusCodes.Status409Conflict)]
+    public async Task<IActionResult> RegisterInvite([FromBody] AcceptInviteRequest request)
+    {
+        var result = await inviteService.AcceptAsync(request);
+        if (result.IsNotFound) return NotFound(result);
+        if (result.IsConflict) return Conflict(result);
         return result.IsSuccess ? Ok(result) : BadRequest(result);
     }
 }

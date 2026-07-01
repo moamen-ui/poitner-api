@@ -65,6 +65,19 @@ public static class MessageKeys
         public const string PromptRequired = "Action prompt is required.";
     }
 
+    public static class Invite
+    {
+        public const string NotFound = "Invite not found.";
+        public const string Invalid = "This invite link is invalid or has expired.";
+        public const string Expired = "This invite link has expired.";
+        public const string Revoked = "This invite link has been revoked.";
+        public const string UsedUp = "This invite link has reached its usage limit.";
+        public const string EmailMismatch = "This invite is locked to a different email address.";
+        public const string Forbidden = "You are not allowed to create invites.";
+        public const string Created = "Invite created.";
+        public const string Revoked_Ok = "Invite revoked.";
+    }
+
     public static class Demo
     {
         public const string NotDemoUser = "This account is not a demo account.";

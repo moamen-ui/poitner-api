@@ -4,6 +4,9 @@ public interface ISettingsService
 {
     public const string ScopedAdminSignupEnabled = "scoped_admin_signup_enabled";
 
+    /// <summary>Public dashboard base URL used to build links (invite join, etc.). Falls back to the prod app URL.</summary>
+    public const string AppBaseUrl = "app_base_url";
+
     // Email settings (super-admin editable; the API key is NOT here — it stays in env as a secret).
     public const string EmailEnabled = "email_enabled";
     public const string EmailFromEmail = "email_from_email";
