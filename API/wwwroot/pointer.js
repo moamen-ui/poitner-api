@@ -827,7 +827,10 @@
     async fetchPredefinedActions() {
       try {
         const r = await this.api(`/api/projects/${encodeURIComponent(this.project)}/predefined-actions`);
-        if (!r.ok) { this.predefinedActions = []; return; }
+        if (!r.ok) {
+          this.predefinedActions = [];
+          return;
+        }
         const envelope = await r.json();
         this.predefinedActions = envelope && envelope.data || [];
       } catch {
@@ -1266,9 +1269,13 @@
         submitBtn.textContent = "Saving…";
         const saved = await this.createComment({ ...meta, text, isPrivate, attachShot, shotPromise, predefinedActionId });
         if (saved) host.innerHTML = "";
-        else { submitBtn.disabled = false; submitBtn.textContent = "Add"; }
+        else {
+          submitBtn.disabled = false;
+          submitBtn.textContent = "Add";
+        }
       });
     }
+    // Returns true on success (popover should close), false on failure (popover stays open).
     async createComment(data) {
       const vw = window.innerWidth;
       const vh = window.innerHeight;
