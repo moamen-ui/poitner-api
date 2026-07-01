@@ -45,6 +45,7 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
   private _styleLink!: HTMLLinkElement;
   private _onHover!: (e: MouseEvent) => void;
   private _onPick!: (e: MouseEvent) => void;
+  private _onPickKey!: (e: KeyboardEvent) => void;
   private _reposition!: () => void;
   private _pendingShotPromise: Promise<Blob | null> | null = null;
   private _userMenuClose: ((e: MouseEvent) => void) | null = null;
@@ -104,6 +105,7 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
 
     this._onHover = this.onHover.bind(this);
     this._onPick = this.onPick.bind(this);
+    this._onPickKey = this.onPickKey.bind(this);
     this._reposition = () => this.renderPins();
     window.addEventListener('scroll', this._reposition, true);
     window.addEventListener('resize', this._reposition);
@@ -478,7 +480,8 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
     addBtn.title = 'Cancel';
     document.addEventListener('mousemove', this._onHover, true);
     document.addEventListener('click', this._onPick, true);
-    this.toast('Click any element to comment on it');
+    document.addEventListener('keydown', this._onPickKey, true);
+    this.toast('Click any element to comment on it — or press Esc to cancel');
   }
   stopPicking(): void {
     this.picking = false;
@@ -486,7 +489,16 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
     if (addBtn) { addBtn.classList.remove('active'); addBtn.innerHTML = ICON.inspect; addBtn.title = 'Comment on an element'; }
     document.removeEventListener('mousemove', this._onHover, true);
     document.removeEventListener('click', this._onPick, true);
+    document.removeEventListener('keydown', this._onPickKey, true);
     this.clearHover();
+  }
+  // Esc cancels element-picking (deselects the pointer) without placing a comment.
+  onPickKey(e: KeyboardEvent): void {
+    if (e.key !== 'Escape' && e.key !== 'Esc') return;
+    e.preventDefault();
+    e.stopPropagation();
+    this.stopPicking();
+    this.toast('Cancelled');
   }
   clearHover(): void {
     if (this.hovered) { this.hovered.classList.remove(HL_CLASS); this.hovered = null; }

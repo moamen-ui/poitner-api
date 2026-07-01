@@ -734,6 +734,7 @@
       }
       this._onHover = this.onHover.bind(this);
       this._onPick = this.onPick.bind(this);
+      this._onPickKey = this.onPickKey.bind(this);
       this._reposition = () => this.renderPins();
       window.addEventListener("scroll", this._reposition, true);
       window.addEventListener("resize", this._reposition);
@@ -1121,7 +1122,8 @@
       addBtn.title = "Cancel";
       document.addEventListener("mousemove", this._onHover, true);
       document.addEventListener("click", this._onPick, true);
-      this.toast("Click any element to comment on it");
+      document.addEventListener("keydown", this._onPickKey, true);
+      this.toast("Click any element to comment on it — or press Esc to cancel");
     }
     stopPicking() {
       this.picking = false;
@@ -1133,7 +1135,16 @@
       }
       document.removeEventListener("mousemove", this._onHover, true);
       document.removeEventListener("click", this._onPick, true);
+      document.removeEventListener("keydown", this._onPickKey, true);
       this.clearHover();
+    }
+    // Esc cancels element-picking (deselects the pointer) without placing a comment.
+    onPickKey(e) {
+      if (e.key !== "Escape" && e.key !== "Esc") return;
+      e.preventDefault();
+      e.stopPropagation();
+      this.stopPicking();
+      this.toast("Cancelled");
     }
     clearHover() {
       if (this.hovered) {
