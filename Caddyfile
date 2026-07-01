@@ -10,7 +10,11 @@
 (dashboard) {
     encode gzip
     try_files {path} /index.html
-    @nocache path /index.html /assets/i18n/*.json
+    # Revalidate everything EXCEPT fingerprinted static assets — i.e. index.html (every SPA
+    # route) and the runtime-fetched i18n JSON, which have fixed names. Matched on the original
+    # request path (header runs before try_files), so this covers all SPA navigations. Hashed
+    # JS/CSS/fonts/images keep the browser default and stay cached.
+    @nocache not path *.js *.mjs *.css *.map *.woff *.woff2 *.ttf *.eot *.otf *.png *.jpg *.jpeg *.gif *.svg *.ico *.webp *.avif
     header @nocache Cache-Control "no-cache"
     file_server
 }
