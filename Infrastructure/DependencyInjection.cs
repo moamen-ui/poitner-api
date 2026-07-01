@@ -4,6 +4,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Pointer.Application.Abstractions;
 using Pointer.Infrastructure.Auth;
 using Pointer.Infrastructure.CurrentUser;
+using Pointer.Infrastructure.Email;
 using Pointer.Infrastructure.Repository;
 using Pointer.Infrastructure.Storage;
 namespace Pointer.Infrastructure;
@@ -22,6 +23,7 @@ public static class DependencyInjection
         s.AddScoped<ICurrentUser, HttpCurrentUser>();
         s.AddScoped<IFileStorage, LocalFileStorage>();
         s.AddSingleton<IUploadSigner, UploadSigner>();
+        s.AddHttpClient<IEmailSender, BrevoEmailSender>();
         return s;
     }
 }
