@@ -13,23 +13,41 @@ public class DemoService : IDemoService
 {
     private const int DemoMaxActive = 100;
     private const int DemoTtlHours = 24;
+    private const int DemoPerEmailPerDay = 3;
 
     private readonly IUnitOfWork _unitOfWork;
     private readonly IPasswordHasher _passwordHasher;
     private readonly ITokenService _tokenService;
+    private readonly IEmailService _emailService;
 
     public DemoService(
         IUnitOfWork unitOfWork,
         IPasswordHasher passwordHasher,
-        ITokenService tokenService)
+        ITokenService tokenService,
+        IEmailService emailService)
     {
         _unitOfWork = unitOfWork;
         _passwordHasher = passwordHasher;
         _tokenService = tokenService;
+        _emailService = emailService;
     }
 
-    public async Task<Result<DemoSessionResponse>> ProvisionAsync(string serverUrl)
+    public async Task<Result<DemoSessionResponse>> ProvisionAsync(string serverUrl, string recipientEmail)
     {
+        // Validate the recipient email (email-gated demo — a real inbox is required).
+        recipientEmail = (recipientEmail ?? string.Empty).Trim();
+        if (recipientEmail.Length == 0 || !IsValidEmail(recipientEmail))
+            return Result<DemoSessionResponse>.Failure("A valid email is required to start a demo.");
+
+        // Per-email daily limit (in addition to the per-IP rate limit + global active cap).
+        var throttleKey = $"demo_email_{recipientEmail.ToLowerInvariant()}_{DateTime.UtcNow:yyyyMMdd}";
+        var throttle = await _unitOfWork.Repository<AppSetting>()
+            .Query()
+            .FirstOrDefaultAsync(x => x.DeletedAt == null && x.Key == throttleKey);
+        var usedToday = int.TryParse(throttle?.Value, out var used) ? used : 0;
+        if (usedToday >= DemoPerEmailPerDay)
+            return Result<DemoSessionResponse>.Failure("You've reached today's demo limit for this email. Please try again tomorrow.");
+
         // a. Active cap check
         var active = await _unitOfWork.Repository<User>()
             .Query()
@@ -141,15 +159,59 @@ public class DemoService : IDemoService
         demoUser.Role = role;
         var token = _tokenService.Issue(demoUser);
 
-        // f. Return response
+        // f. Email the credentials to the requester. On success we blank the password in the
+        //    response (they read it from their inbox); on failure/cap we fall back to inline creds
+        //    so the demo is never blocked.
+        var expiresAt = demoUser.ExpiresAt!.Value;
+        var emailSent = await _emailService.SendAsync(
+            recipientEmail,
+            "Your Pointer demo is ready",
+            BuildDemoEmailHtml(email, password, project.Key, serverUrl, expiresAt));
+
+        // g. Record one demo against this email for today's per-email limit.
+        if (throttle == null)
+            await _unitOfWork.Repository<AppSetting>().AddAsync(new AppSetting { Key = throttleKey, Value = "1" });
+        else
+        {
+            throttle.Value = (usedToday + 1).ToString();
+            _unitOfWork.Repository<AppSetting>().Update(throttle);
+        }
+        await _unitOfWork.SaveChangesAsync();
+
+        // h. Return response
         return Result<DemoSessionResponse>.Success(new DemoSessionResponse
         {
             Token = token,
             Email = email,
-            Password = password,
+            Password = emailSent ? string.Empty : password,
             ProjectKey = project.Key,
-            ExpiresAt = demoUser.ExpiresAt!.Value,
+            ExpiresAt = expiresAt,
             ServerUrl = serverUrl,
+            EmailSent = emailSent,
         });
+    }
+
+    private static bool IsValidEmail(string email)
+    {
+        try { return new System.Net.Mail.MailAddress(email).Address == email; }
+        catch { return false; }
+    }
+
+    private static string BuildDemoEmailHtml(string login, string password, string projectKey, string serverUrl, DateTime expiresUtc)
+    {
+        var snippet = $"&lt;script src=\"{serverUrl}/pointer.js\" defer&gt;&lt;/script&gt;<br/>" +
+                      $"&lt;pointer-feedback project=\"{projectKey}\" server=\"{serverUrl}\"&gt;&lt;/pointer-feedback&gt;";
+        return $@"<div style=""font-family:system-ui,Segoe UI,Roboto,sans-serif;color:#0f172a;line-height:1.6"">
+  <h2 style=""margin:0 0 8px"">Your Pointer demo is ready 🐕</h2>
+  <p style=""color:#475569;margin:0 0 16px"">This demo workspace expires on {expiresUtc:yyyy-MM-dd HH:mm} UTC.</p>
+  <table style=""border-collapse:collapse;font-size:14px"">
+    <tr><td style=""padding:4px 12px 4px 0;color:#475569"">Project key</td><td><code>{projectKey}</code></td></tr>
+    <tr><td style=""padding:4px 12px 4px 0;color:#475569"">Widget login</td><td><code>{login}</code></td></tr>
+    <tr><td style=""padding:4px 12px 4px 0;color:#475569"">Password</td><td><code>{password}</code></td></tr>
+  </table>
+  <p style=""color:#475569;margin:16px 0 6px"">Embed snippet (paste into your app's index.html):</p>
+  <pre style=""background:#f1f5f9;padding:12px;border-radius:8px;font-size:13px;white-space:pre-wrap"">{snippet}</pre>
+  <p style=""color:#94a3b8;font-size:12px;margin-top:16px"">If you didn't request this, you can ignore this email.</p>
+</div>";
     }
 }
