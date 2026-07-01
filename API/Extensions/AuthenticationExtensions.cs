@@ -12,6 +12,15 @@ public static class AuthenticationExtensions
         IConfiguration config
     )
     {
+        // Fail fast at startup: a missing/short signing key silently produces forgeable tokens
+        // (HS256 requires ≥ 256-bit / 32-byte keys). Refuse to boot rather than run insecurely.
+        var signingKey = config["JWT:SigningKey"];
+        if (string.IsNullOrEmpty(signingKey))
+            throw new InvalidOperationException("JWT:SigningKey is not configured. Set a random secret of at least 32 bytes.");
+        var keyBytes = System.Text.Encoding.UTF8.GetBytes(signingKey);
+        if (keyBytes.Length < 32)
+            throw new InvalidOperationException($"JWT:SigningKey is too short ({keyBytes.Length} bytes). HS256 requires at least 32 bytes.");
+
         services
             .AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
             .AddJwtBearer(options =>
@@ -24,9 +33,7 @@ public static class AuthenticationExtensions
                     ValidateAudience = true,
                     ValidAudience = config["JWT:Issuer"],
                     ValidateLifetime = true,
-                    IssuerSigningKey = new SymmetricSecurityKey(
-                        System.Text.Encoding.UTF8.GetBytes(config["JWT:SigningKey"]!)
-                    ),
+                    IssuerSigningKey = new SymmetricSecurityKey(keyBytes),
                     ValidateIssuerSigningKey = true,
                     NameClaimType = JwtRegisteredClaimNames.Sub,
                     RoleClaimType = "role",

@@ -100,12 +100,17 @@ public class TenantService : ITenantService
 
         var emailNormalized = request.Email.Trim().ToLower();
 
-        // Duplicate email check — global scope (no OwnerId filter needed here, emails are global-unique).
+        // Duplicate email check — emails are NOT global-unique; they are unique per tenant
+        // ((email, owner_id) index). A new tenant is a self-owned workspace (OwnerId == PublicId), so
+        // only conflict with an existing self-owned WORKSPACE account of the same email — the same
+        // address may already exist as a stakeholder under a different tenant, which is not a conflict.
         var exists = await _unitOfWork.Repository<User>()
             .Query()
             .IgnoreQueryFilters()
             .AsNoTracking()
-            .AnyAsync(u => u.DeletedAt == null && u.Email.ToLower() == emailNormalized);
+            .AnyAsync(u => u.DeletedAt == null
+                           && u.Email.ToLower() == emailNormalized
+                           && u.OwnerId == u.PublicId);
 
         if (exists)
             return Result<TenantResponse>.Conflict("Email already in use.");

@@ -11,6 +11,7 @@ namespace Pointer.API.Controllers;
 public class CommentsController(ICommentService commentService) : ControllerBase
 {
     [HttpPost("api/projects/{key}/comments")]
+    [RequestSizeLimit(262144)] // 256KB — an element capture (snapshot/styles/rules) is small; cap abuse.
     public async Task<IActionResult> Create(string key, [FromBody] CreateCommentRequest request)
     {
         var result = await commentService.CreateAsync(key, request, User.GetId());

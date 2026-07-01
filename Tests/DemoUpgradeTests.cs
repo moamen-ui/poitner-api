@@ -202,25 +202,26 @@ public class DemoUpgradeTests
     }
 
     // -----------------------------------------------------------------
-    // 4. Email taken by another user → Conflict
+    // 4a. Email taken within the SAME tenant → Conflict
     // -----------------------------------------------------------------
 
     [Fact]
-    public async Task Upgrade_with_email_taken_by_another_user_returns_conflict()
+    public async Task Upgrade_with_email_taken_within_same_tenant_returns_conflict()
     {
-        var (svc, db, _) = Build(nameof(Upgrade_with_email_taken_by_another_user_returns_conflict));
+        // Another user under the SAME tenant (OwnerId == demo's PublicId) already holds the email.
+        // Per-tenant uniqueness must reject the upgrade.
+        var (svc, db, _) = Build(nameof(Upgrade_with_email_taken_within_same_tenant_returns_conflict));
         var demo = SeedDemoUser(db);
-        var otherOwner = Guid.NewGuid();
         var role = db.Roles.First();
         db.Users.Add(new User
         {
-            PublicId = otherOwner,
+            PublicId = Guid.NewGuid(),
             Email = "shared@user.com",
             PasswordHash = "x",
-            DisplayName = "Other",
+            DisplayName = "Other-SameTenant",
             RoleId = role.Id,
             Role = role,
-            OwnerId = otherOwner,
+            OwnerId = demo.PublicId, // same tenant as the demo user
             IsDemo = false,
             IsActive = true,
             ApprovalStatus = ApprovalStatus.Approved,
@@ -232,6 +233,40 @@ public class DemoUpgradeTests
         Assert.False(result.IsSuccess);
         Assert.True(result.IsConflict);
         Assert.Equal(MessageKeys.Demo.EmailTaken, result.Message);
+    }
+
+    // -----------------------------------------------------------------
+    // 4b. #4 fix: same email under a DIFFERENT tenant is allowed (not a conflict)
+    // -----------------------------------------------------------------
+
+    [Fact]
+    public async Task Upgrade_with_email_used_by_a_different_tenant_is_allowed()
+    {
+        // Emails are unique PER TENANT, not globally. A user in a completely separate tenant holding
+        // the same email must NOT block the upgrade (and must not leak that user's existence via 409).
+        var (svc, db, _) = Build(nameof(Upgrade_with_email_used_by_a_different_tenant_is_allowed));
+        var demo = SeedDemoUser(db);
+        var otherOwner = Guid.NewGuid();
+        var role = db.Roles.First();
+        db.Users.Add(new User
+        {
+            PublicId = otherOwner,
+            Email = "shared@user.com",
+            PasswordHash = "x",
+            DisplayName = "Other-DifferentTenant",
+            RoleId = role.Id,
+            Role = role,
+            OwnerId = otherOwner, // a DIFFERENT tenant
+            IsDemo = false,
+            IsActive = true,
+            ApprovalStatus = ApprovalStatus.Approved,
+        });
+        db.SaveChanges();
+
+        var result = await svc.UpgradeAsync(demo.PublicId, ValidRequest("shared@user.com"));
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal("shared@user.com", db.Users.Single(u => u.PublicId == demo.PublicId).Email);
     }
 
     // -----------------------------------------------------------------

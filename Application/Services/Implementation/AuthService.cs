@@ -175,12 +175,16 @@ public class AuthService : IAuthService
         if (role == null)
             return Result.Failure(MessageKeys.Role.Invalid);
 
-        // 3. Look up the existing user (if any) by normalized email. Anonymous path → bypass
-        //    the User global query filter (it would only see OwnerId==null users otherwise).
+        // 3. Look up the existing user (if any) by normalized email, SCOPED to THIS project's tenant.
+        //    A same-email user under a different tenant is not a conflict — the (email, owner_id)
+        //    unique index allows it, and cross-tenant existence must not be revealed. Anonymous path
+        //    → bypass the User global query filter (it would only see OwnerId==null users otherwise).
         var user = await _unitOfWork.Repository<User>()
             .Query()
             .IgnoreQueryFilters()
-            .Where(u => u.DeletedAt == null && u.Email.ToLower() == emailNormalized)
+            .Where(u => u.DeletedAt == null
+                        && u.Email.ToLower() == emailNormalized
+                        && u.OwnerId == projectOwnerId)
             .FirstOrDefaultAsync();
 
         if (user == null)
@@ -233,12 +237,17 @@ public class AuthService : IAuthService
 
         var emailNormalized = request.Email.Trim().ToLower();
 
-        // Duplicate email check — anonymous path requires IgnoreQueryFilters().
+        // Duplicate email check — scoped to self-owned WORKSPACE accounts (OwnerId == PublicId), the
+        // tenant boundary for a new workspace. A same email existing only as a stakeholder under some
+        // OTHER tenant is not a conflict here (each workspace is its own tenant; the (email, owner_id)
+        // unique index permits the same address across tenants). Anonymous path → IgnoreQueryFilters().
         var existing = await _unitOfWork.Repository<User>()
             .Query()
             .IgnoreQueryFilters()
             .AsNoTracking()
-            .Where(u => u.DeletedAt == null && u.Email.ToLower() == emailNormalized)
+            .Where(u => u.DeletedAt == null
+                        && u.Email.ToLower() == emailNormalized
+                        && u.OwnerId == u.PublicId)
             .FirstOrDefaultAsync();
 
         if (existing != null)

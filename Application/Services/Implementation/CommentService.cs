@@ -339,6 +339,14 @@ public class CommentService : ICommentService
 
     public async Task<Result<ReplyResponse>> AddReplyAsync(int commentId, AddReplyRequest request, Guid authorId)
     {
+        // Belt-and-suspenders: auto-validation (AddReplyValidator) rejects empty/oversized bodies on
+        // model binding, but guard here too so a direct call / null body returns 400 not a 500.
+        var body = (request.Body ?? string.Empty).Trim();
+        if (body.Length == 0)
+            return Result<ReplyResponse>.Failure(MessageKeys.Comment.BodyRequired);
+        if (body.Length > 4000)
+            return Result<ReplyResponse>.Failure(MessageKeys.Comment.BodyRequired);
+
         var comment = await _unitOfWork.Repository<Comment>()
             .Query()
             .AsNoTracking()
@@ -353,7 +361,7 @@ public class CommentService : ICommentService
         {
             CommentId = commentId,
             AuthorId = authorId,
-            Body = request.Body.Trim(),
+            Body = body,
             OwnerId = comment.OwnerId
         };
 

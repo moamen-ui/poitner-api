@@ -231,14 +231,18 @@ public class DemoService : IDemoService
         if (user.ExpiresAt != null && user.ExpiresAt < DateTime.UtcNow)
             return Result<UpgradeDemoResponse>.Failure(MessageKeys.Demo.DemoExpired);
 
-        // 5. Email uniqueness across ALL non-deleted rows except the caller's own.
-        //    IgnoreQueryFilters() so the check is cross-tenant (scoped-admin upgrades included).
+        // 5. Email uniqueness SCOPED to the caller's own tenant (a demo workspace owns itself:
+        //    OwnerId == PublicId). Emails are unique per tenant ((email, owner_id) index), not
+        //    globally — a same email under a DIFFERENT tenant is not a conflict and must not leak.
+        //    Exclude the caller's own row. IgnoreQueryFilters() bypasses the tenant filter so we can
+        //    scope explicitly by OwnerId.
         var emailTaken = await _unitOfWork.Repository<User>()
             .Query()
             .IgnoreQueryFilters()
             .AsNoTracking()
             .AnyAsync(u => u.DeletedAt == null
                            && u.PublicId != callerPublicId
+                           && u.OwnerId == user.OwnerId
                            && u.Email.ToLower() == emailNormalized);
 
         if (emailTaken)

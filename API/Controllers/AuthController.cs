@@ -14,6 +14,7 @@ public class AuthController(IAuthService authService, ISettingsService settingsS
 {
     [AllowAnonymous]
     [HttpPost("login")]
+    [EnableRateLimiting("signup")]
     [ProducesResponseType(typeof(LoginResponse), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(Result), StatusCodes.Status400BadRequest)]
     public async Task<IActionResult> Login([FromBody] LoginRequest request)
@@ -26,6 +27,7 @@ public class AuthController(IAuthService authService, ISettingsService settingsS
 
     [AllowAnonymous]
     [HttpPost("register")]
+    [EnableRateLimiting("signup")]
     public async Task<IActionResult> Register([FromBody] RegisterRequest request)
     {
         var result = await authService.RegisterAsync(request);

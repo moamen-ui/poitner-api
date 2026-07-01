@@ -179,13 +179,31 @@ public class RoleService : IRoleService
             if (reassignToRoleId == id)
                 return Result<RoleDeleteResponse>.Conflict(MessageKeys.Role.ReassignSame);
 
+            // Load the reassignment target with EXPLICIT owner scope (IgnoreQueryFilters + manual
+            // scoping) — never the leaky own-plus-global filter, which would let a scoped admin
+            // reassign users onto a global (null-owner) or another tenant's role. Super-admins keep
+            // full reach; scoped admins may only target their own tenant's roles.
             var target = await _unitOfWork.Repository<Role>()
                 .Query()
+                .IgnoreQueryFilters()
                 .AsNoTracking()
                 .FirstOrDefaultAsync(r =>
                     r.Id == reassignToRoleId && r.DeletedAt == null && r.IsActive);
             if (target == null)
                 return Result<RoleDeleteResponse>.Conflict(MessageKeys.Role.Invalid);
+
+            // Escalation guard (mirrors UpdateAsync ~lines 118-127): a non-super-admin caller may
+            // only reassign onto a role their tenant OWNS (reject null-owner/global and other-tenant
+            // roles), and never onto an admin-tier role — otherwise deleting a role becomes a vector
+            // for moving users onto a GrantsAdmin/IsSuperAdmin role.
+            if (!_currentUser.IsSuperAdmin)
+            {
+                if (target.OwnerId == null || target.OwnerId != _currentUser.TenantId)
+                    return Result<RoleDeleteResponse>.NotFound(MessageKeys.Role.NotFound);
+
+                if (target.GrantsAdmin || target.IsSuperAdmin)
+                    return Result<RoleDeleteResponse>.Failure(MessageKeys.Role.EscalationNotAllowed);
+            }
 
             foreach (var u in users)
             {

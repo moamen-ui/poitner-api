@@ -1,3 +1,4 @@
+using FluentValidation.AspNetCore;
 using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
@@ -15,6 +16,10 @@ builder.Services.AddControllers(options =>
     options.Filters.Add(new Microsoft.AspNetCore.Mvc.ProducesAttribute("application/json"));
 });
 builder.Services.AddEndpointsApiExplorer();
+// Run registered FluentValidation validators automatically on model binding, so write DTOs
+// (CreateCommentRequest, CreateProjectRequest, AddReplyRequest, etc.) return 400 on invalid input
+// before reaching the controller/service. Validators themselves are registered in AddApplication().
+builder.Services.AddFluentValidationAutoValidation();
 builder.Services.AddApplication();
 builder.Services.AddInfrastructure(builder.Configuration);
 builder.Services.AddJwtAuth(builder.Configuration);
@@ -49,9 +54,31 @@ builder.Services.AddRateLimiter(o =>
             }));
 });
 
+// CORS is split by audience. The WIDGET is embedded on arbitrary customer sites and calls the
+// public/widget endpoints (comments, replies, uploads, statuses, roles, register, me,
+// predefined-actions) cross-origin from those unknown origins — so the DEFAULT policy stays
+// open-origin (bearer API, no cookies → no AllowCredentials, so this is not CSRF-exploitable).
+// The DASHBOARD-only surface (/api/admin/* and the sensitive auth endpoints: login / me /
+// forgot-password / reset-password) is locked to an allow-list of known dashboard origins via the
+// "dashboard" policy, applied by route below. This shrinks the origins that can drive privileged
+// operations without breaking the widget.
+const string DashboardCorsPolicy = "dashboard";
+string[] dashboardOrigins =
+[
+    "https://app.pointer.moamen.work",
+    "https://app-react.pointer.moamen.work",
+    "https://app-vue.pointer.moamen.work",
+    "https://demo.pointer.moamen.work",
+    "https://pointer.moamen.work",
+];
 builder.Services.AddCors(o =>
-    o.AddDefaultPolicy(p => p.AllowAnyOrigin().AllowAnyHeader().AllowAnyMethod())
-);
+{
+    o.AddDefaultPolicy(p => p.AllowAnyOrigin().AllowAnyHeader().AllowAnyMethod());
+    o.AddPolicy(DashboardCorsPolicy, p => p
+        .WithOrigins(dashboardOrigins)
+        .AllowAnyHeader()
+        .AllowAnyMethod());
+});
 
 builder.Services.AddSwaggerGen(c =>
 {
@@ -106,6 +133,21 @@ var fwd = new ForwardedHeadersOptions
 fwd.KnownNetworks.Clear();
 fwd.KnownProxies.Clear();
 app.UseForwardedHeaders(fwd);
+
+// Map an UnauthorizedAccessException (e.g. an authenticated request whose token carries no valid
+// subject claim — see ClaimsPrincipalExtensions.GetId) to a 401 instead of a leaked 500.
+app.Use(async (ctx, next) =>
+{
+    try
+    {
+        await next();
+    }
+    catch (UnauthorizedAccessException)
+    {
+        if (!ctx.Response.HasStarted)
+            ctx.Response.StatusCode = StatusCodes.Status401Unauthorized;
+    }
+});
 
 app.UseSwagger();
 app.UseSwaggerUI(c =>
@@ -178,7 +220,24 @@ app.Use(async (ctx, next) =>
 
 app.UseStaticFiles();
 
-app.UseCors();
+// Route-based CORS: lock the dashboard-only surface (/api/admin/* + sensitive auth endpoints) to
+// the allow-list, and leave the open default policy for the widget/public endpoints. Selecting a
+// per-request policy requires calling UseCors with an explicit policy inside a branch; the branch
+// predicate matches the privileged routes only, so the widget's cross-origin calls are unaffected.
+static bool IsDashboardOnly(HttpContext ctx)
+{
+    var path = ctx.Request.Path;
+    if (path.StartsWithSegments("/api/admin", StringComparison.OrdinalIgnoreCase))
+        return true;
+    // Sensitive auth endpoints only — NOT register/register-admin/register-invite/signup-enabled,
+    // which are part of the public/widget signup flow and must stay open-origin.
+    return path.Equals("/api/auth/login", StringComparison.OrdinalIgnoreCase)
+        || path.Equals("/api/auth/me", StringComparison.OrdinalIgnoreCase)
+        || path.Equals("/api/auth/forgot-password", StringComparison.OrdinalIgnoreCase)
+        || path.Equals("/api/auth/reset-password", StringComparison.OrdinalIgnoreCase);
+}
+app.UseWhen(IsDashboardOnly, branch => branch.UseCors(DashboardCorsPolicy));
+app.UseWhen(ctx => !IsDashboardOnly(ctx), branch => branch.UseCors());
 
 app.UseAuthentication();
 app.UseAuthorization();
