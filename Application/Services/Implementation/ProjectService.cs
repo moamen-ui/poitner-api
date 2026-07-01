@@ -72,7 +72,9 @@ public class ProjectService : IProjectService
         }
 
         var actions = await LoadProjectActionsAsync(project.Id);
-        return Result<ProjectResponse>.Success(MapToResponse(project, actions));
+        // Freshly-created project: no comments; creator is the caller.
+        return Result<ProjectResponse>.Success(MapToResponse(project, actions, 0,
+            await ResolveCreatorNameAsync(project.CreatedBy)));
     }
 
     public async Task<Result<List<ProjectResponse>>> ListAsync()
@@ -96,8 +98,25 @@ public class ProjectService : IProjectService
         var byProject = actions.GroupBy(a => a.ProjectId!.Value)
             .ToDictionary(g => g.Key, g => g.ToList());
 
+        // BINDING #6: batch comment counts in ONE GroupBy query (no N+1).
+        var commentCounts = await _unitOfWork.Repository<Comment>()
+            .Query()
+            .AsNoTracking()
+            .Where(c => c.DeletedAt == null && projectIds.Contains(c.ProjectId))
+            .GroupBy(c => c.ProjectId)
+            .Select(g => new { ProjectId = g.Key, Count = g.Count() })
+            .ToListAsync();
+        var countByProject = commentCounts.ToDictionary(x => x.ProjectId, x => x.Count);
+
+        // Batch-resolve creator display names.
+        var creatorNames = await ResolveCreatorNamesAsync(projects.Select(p => p.CreatedBy));
+
         var responses = projects
-            .Select(p => MapToResponse(p, byProject.GetValueOrDefault(p.Id) ?? new List<PredefinedAction>()))
+            .Select(p => MapToResponse(
+                p,
+                byProject.GetValueOrDefault(p.Id) ?? new List<PredefinedAction>(),
+                countByProject.GetValueOrDefault(p.Id, 0),
+                creatorNames.GetValueOrDefault(p.CreatedBy)))
             .ToList();
 
         return Result<List<ProjectResponse>>.Success(responses);
@@ -105,10 +124,16 @@ public class ProjectService : IProjectService
 
     public async Task<Result<ProjectResponse>> UpdateAsync(int id, UpdateProjectRequest request)
     {
+        // Authz load uses the NORMAL query filter (in-tenant projects are already visible in List).
         var project = await _unitOfWork.Repository<Project>().GetByIdAsync(id);
 
         if (project == null || project.DeletedAt != null)
             return Result<ProjectResponse>.NotFound(MessageKeys.Project.NotFound);
+
+        // Only an admin or the project's creator may edit. Forbidden (not NotFound) because the
+        // project is already visible to the caller in List.
+        if (!(_currentUser.IsAdmin || project.CreatedBy == _currentUser.Id))
+            return Result<ProjectResponse>.Forbidden(MessageKeys.Project.NotFound);
 
         if (request.Name != null)
             project.Name = request.Name;
@@ -131,7 +156,127 @@ public class ProjectService : IProjectService
         await _unitOfWork.SaveChangesAsync();
 
         var actions = await LoadProjectActionsAsync(project.Id);
-        return Result<ProjectResponse>.Success(MapToResponse(project, actions));
+        var commentsCount = await _unitOfWork.Repository<Comment>()
+            .Query().AsNoTracking()
+            .CountAsync(c => c.ProjectId == project.Id && c.DeletedAt == null);
+        return Result<ProjectResponse>.Success(MapToResponse(project, actions, commentsCount,
+            await ResolveCreatorNameAsync(project.CreatedBy)));
+    }
+
+    public async Task<Result> DeleteAsync(int id)
+    {
+        // Authz load uses the NORMAL query filter (IgnoreQueryFilters only inside the cascade below).
+        var project = await _unitOfWork.Repository<Project>().GetByIdAsync(id);
+
+        if (project == null || project.DeletedAt != null)
+            return Result.NotFound(MessageKeys.Project.NotFound);
+
+        // BINDING #6: re-check comment count + ownership server-side regardless of any client hint.
+        var commentsCount = await _unitOfWork.Repository<Comment>()
+            .Query().AsNoTracking()
+            .CountAsync(c => c.ProjectId == id && c.DeletedAt == null);
+
+        if (_currentUser.IsAdmin)
+        {
+            // Admin cascade soft-delete — BINDING #2: keyed strictly off ProjectId, NEVER OwnerId
+            // (an OwnerId scope would wipe the whole tenant). All inside the retry-safe transaction.
+            await _unitOfWork.ExecuteInTransactionAsync(async () =>
+            {
+                var now = DateTime.UtcNow;
+                var actorId = _currentUser.Id;
+
+                var comments = await _unitOfWork.Repository<Comment>()
+                    .Query()
+                    .IgnoreQueryFilters()
+                    .Where(c => c.ProjectId == id && c.DeletedAt == null)
+                    .ToListAsync();
+                var commentIds = comments.Select(c => c.Id).ToList();
+
+                foreach (var c in comments)
+                {
+                    c.DeletedAt = now; c.DeletedBy = actorId;
+                    _unitOfWork.Repository<Comment>().Update(c);
+                }
+
+                if (commentIds.Count > 0)
+                {
+                    var replies = await _unitOfWork.Repository<Reply>()
+                        .Query()
+                        .IgnoreQueryFilters()
+                        .Where(r => commentIds.Contains(r.CommentId) && r.DeletedAt == null)
+                        .ToListAsync();
+                    foreach (var r in replies)
+                    {
+                        r.DeletedAt = now; r.DeletedBy = actorId;
+                        _unitOfWork.Repository<Reply>().Update(r);
+                    }
+                }
+
+                var actions = await _unitOfWork.Repository<PredefinedAction>()
+                    .Query()
+                    .IgnoreQueryFilters()
+                    .Where(a => a.ProjectId == id && a.DeletedAt == null)
+                    .ToListAsync();
+                foreach (var a in actions)
+                {
+                    a.DeletedAt = now; a.DeletedBy = actorId;
+                    _unitOfWork.Repository<PredefinedAction>().Update(a);
+                }
+
+                var suggestions = await _unitOfWork.Repository<PredefinedActionSuggestion>()
+                    .Query()
+                    .IgnoreQueryFilters()
+                    .Where(s => s.ProjectId == id && s.DeletedAt == null)
+                    .ToListAsync();
+                foreach (var s in suggestions)
+                {
+                    s.DeletedAt = now; s.DeletedBy = actorId;
+                    _unitOfWork.Repository<PredefinedActionSuggestion>().Update(s);
+                }
+
+                project.DeletedAt = now; project.DeletedBy = actorId;
+                _unitOfWork.Repository<Project>().Update(project);
+
+                await _unitOfWork.SaveChangesAsync();
+            });
+
+            return Result.Success();
+        }
+
+        // Non-admin: only the owner, and only when the project has no comments.
+        if (project.CreatedBy != _currentUser.Id)
+            return Result.Forbidden(MessageKeys.Project_Delete.NotOwner);
+
+        if (commentsCount != 0)
+            return Result.Conflict(MessageKeys.Project_Delete.HasComments);
+
+        // Owner + 0 comments: soft-delete the project + its predefined actions + suggestions
+        // (no comments/replies exist by definition).
+        var ownActions = await _unitOfWork.Repository<PredefinedAction>()
+            .Query()
+            .Where(a => a.ProjectId == id && a.DeletedAt == null)
+            .ToListAsync();
+        foreach (var a in ownActions)
+        {
+            a.DeletedAt = DateTime.UtcNow;
+            _unitOfWork.Repository<PredefinedAction>().Update(a);
+        }
+
+        var ownSuggestions = await _unitOfWork.Repository<PredefinedActionSuggestion>()
+            .Query()
+            .Where(s => s.ProjectId == id && s.DeletedAt == null)
+            .ToListAsync();
+        foreach (var s in ownSuggestions)
+        {
+            s.DeletedAt = DateTime.UtcNow;
+            _unitOfWork.Repository<PredefinedActionSuggestion>().Update(s);
+        }
+
+        project.DeletedAt = DateTime.UtcNow;
+        _unitOfWork.Repository<Project>().Update(project);
+        await _unitOfWork.SaveChangesAsync();
+
+        return Result.Success();
     }
 
     /// <summary>
@@ -226,23 +371,50 @@ public class ProjectService : IProjectService
         return Result<int>.Success(project.Id);
     }
 
-    private static ProjectResponse MapToResponse(Project project, List<PredefinedAction> actions) => new()
+    // Batch-resolve creator display names (Project.CreatedBy is a User.PublicId). One query.
+    private async Task<Dictionary<Guid, string>> ResolveCreatorNamesAsync(IEnumerable<Guid> ids)
     {
-        Id = project.Id,
-        Key = project.Key,
-        Name = project.Name,
-        IsActive = project.IsActive,
-        PredefinedActions = actions
-            .OrderBy(a => a.SortOrder)
-            .Select(a => new PredefinedActionResponse
-            {
-                Id = a.Id,
-                ProjectId = a.ProjectId,
-                Text = a.Text,
-                Prompt = a.Prompt,
-                IsActive = a.IsActive,
-                SortOrder = a.SortOrder
-            })
-            .ToList()
-    };
+        var distinct = ids.Where(g => g != Guid.Empty).Distinct().ToList();
+        if (distinct.Count == 0)
+            return new Dictionary<Guid, string>();
+
+        return await _unitOfWork.Repository<User>()
+            .Query()
+            .AsNoTracking()
+            .Where(u => distinct.Contains(u.PublicId))
+            .ToDictionaryAsync(u => u.PublicId, u => u.DisplayName);
+    }
+
+    private async Task<string?> ResolveCreatorNameAsync(Guid id) =>
+        (await ResolveCreatorNamesAsync(new[] { id })).GetValueOrDefault(id);
+
+    private ProjectResponse MapToResponse(Project project, List<PredefinedAction> actions, int commentsCount, string? createdByName)
+    {
+        var canEdit = _currentUser.IsAdmin || project.CreatedBy == _currentUser.Id;
+        var canDelete = _currentUser.IsAdmin || (project.CreatedBy == _currentUser.Id && commentsCount == 0);
+
+        return new ProjectResponse
+        {
+            Id = project.Id,
+            Key = project.Key,
+            Name = project.Name,
+            IsActive = project.IsActive,
+            PredefinedActions = actions
+                .OrderBy(a => a.SortOrder)
+                .Select(a => new PredefinedActionResponse
+                {
+                    Id = a.Id,
+                    ProjectId = a.ProjectId,
+                    Text = a.Text,
+                    Prompt = a.Prompt,
+                    IsActive = a.IsActive,
+                    SortOrder = a.SortOrder
+                })
+                .ToList(),
+            CreatedByName = createdByName,
+            CommentsCount = commentsCount,
+            CanEdit = canEdit,
+            CanDelete = canDelete
+        };
+    }
 }

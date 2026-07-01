@@ -65,6 +65,24 @@ public static class MessageKeys
         public const string PromptRequired = "Action prompt is required.";
     }
 
+    public static class Suggestion
+    {
+        public const string NotFound = "Suggestion not found.";
+        public const string TextRequired = "Suggestion text is required.";
+        public const string PromptRequired = "Suggestion prompt is required.";
+        public const string CanEditDirectly = "You can edit this project — add the predefined action directly instead of suggesting it.";
+        public const string ProjectUnavailable = "The target project is no longer available.";
+        public const string Created = "Suggestion sent for admin review.";
+        public const string Approved = "Suggestion approved.";
+        public const string Rejected = "Suggestion rejected.";
+    }
+
+    public static class Project_Delete
+    {
+        public const string HasComments = "This project has comments — only an admin can delete it.";
+        public const string NotOwner = "You can only delete your own projects.";
+    }
+
     public static class Invite
     {
         public const string NotFound = "Invite not found.";

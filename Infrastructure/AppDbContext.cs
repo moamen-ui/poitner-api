@@ -13,6 +13,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options, ICurrentUser c
     public DbSet<Reply> Replies => Set<Reply>();
     public DbSet<StatusPresentation> StatusPresentations => Set<StatusPresentation>();
     public DbSet<PredefinedAction> PredefinedActions => Set<PredefinedAction>();
+    public DbSet<PredefinedActionSuggestion> PredefinedActionSuggestions => Set<PredefinedActionSuggestion>();
     public DbSet<Invite> Invites => Set<Invite>();
     public DbSet<AppSetting> AppSettings => Set<AppSetting>();
 
@@ -36,6 +37,10 @@ public class AppDbContext(DbContextOptions<AppDbContext> options, ICurrentUser c
         // project's null-owner stakeholders. Cross-project leakage is prevented separately by the
         // ProjectId scope in the widget-read query.
         b.Entity<PredefinedAction>().HasQueryFilter(e => currentUser.IsSuperAdmin || e.OwnerId == currentUser.TenantId || e.OwnerId == null);
+        // STRICT-OWN (BINDING #5): suggestions are visible only to the owning tenant or super-admin —
+        // NEVER own-plus-global. A null-owner suggestion is never written, and the strict filter keeps
+        // one tenant from ever loading another tenant's (or a null-owner) pending suggestion by id.
+        b.Entity<PredefinedActionSuggestion>().HasQueryFilter(e => currentUser.IsSuperAdmin || e.OwnerId == currentUser.TenantId);
 
         // Own-plus-global: tenants also see rows with OwnerId == null (super-admin/global defaults).
         b.Entity<Role>().HasQueryFilter(e => currentUser.IsSuperAdmin || e.OwnerId == currentUser.TenantId || e.OwnerId == null);
