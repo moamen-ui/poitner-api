@@ -1249,6 +1249,9 @@
       });
     }
     async createComment(data) {
+      const vw = window.innerWidth;
+      const vh = window.innerHeight;
+      const deviceType = vw < 768 ? "mobile" : vw < 1024 ? "tablet" : "desktop";
       const element = {
         selector: data.selector,
         snapshot: data.snapshot,
@@ -1263,7 +1266,11 @@
         // Active route relative to the origin: path + query params (+ hash, so
         // hash-routed SPAs are covered too).
         route: window.location.pathname + window.location.search + window.location.hash,
-        pageTitle: document.title
+        pageTitle: document.title,
+        viewportWidth: vw,
+        viewportHeight: vh,
+        deviceType,
+        devicePixelRatio: window.devicePixelRatio || 1
       };
       if (data.attachShot && data.shotPromise) {
         const blob = await Promise.resolve(data.shotPromise).catch(() => null);
