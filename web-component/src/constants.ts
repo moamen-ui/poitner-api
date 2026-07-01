@@ -50,12 +50,20 @@ export const STATUS_FALLBACK: StatusItem[] = [
   { value: 4, name: 'Archived',     label: 'Archived',  color: '#6b7280', order: 4 },
 ];
 
+// API transport indirection. A host (e.g. the Pointer browser extension) can set
+// window.__POINTER_FETCH__ to route every request through its background worker —
+// which bypasses the page's connect-src CSP. Absent that, it's just global fetch.
+export function pfFetch(url: string, opts?: RequestInit): Promise<Response> {
+  const t = typeof window !== 'undefined' ? window.__POINTER_FETCH__ : undefined;
+  return t ? t(url, opts) : fetch(url, opts);
+}
+
 // Module-level singleton — the widget assumes one <pointer-feedback> per page (consistent with STATUS_STR/STATUS_LABEL above), so the catalog is shared module state by design.
 let _catalog: StatusItem[] = STATUS_FALLBACK;
 export function getStatusCatalog(): StatusItem[] { return _catalog; }
 export async function loadStatusCatalog(server: string): Promise<void> {
   try {
-    const res = await fetch(`${server.replace(/\/$/, '')}/api/statuses`);
+    const res = await pfFetch(`${server.replace(/\/$/, '')}/api/statuses`);
     if (!res.ok) return;
     const body = await res.json();
     const data: StatusItem[] = body?.data ?? body;

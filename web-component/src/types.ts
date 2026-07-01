@@ -56,6 +56,29 @@ export interface User {
   roleName?: string;
 }
 
+/**
+ * Optional config a host can inject before pointer.js runs (used by the browser
+ * extension). Values here take precedence over HTML attributes; a supplied
+ * `token` pre-authenticates the widget so it skips its own login.
+ */
+export interface PointerInjectedConfig {
+  server?: string;
+  project?: string;
+  environment?: string;
+  token?: string;
+  user?: User | null;
+  /** Hint that API traffic is proxied via `window.__POINTER_FETCH__`. */
+  proxy?: boolean;
+}
+
+declare global {
+  interface Window {
+    __POINTER_CONFIG__?: PointerInjectedConfig;
+    /** Injected transport (extension background proxy); falls back to fetch when absent. */
+    __POINTER_FETCH__?: (url: string, opts?: RequestInit) => Promise<Response>;
+  }
+}
+
 export interface RoleOption {
   id: string;
   name: string;
