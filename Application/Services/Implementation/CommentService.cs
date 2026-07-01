@@ -91,12 +91,10 @@ public class CommentService : ICommentService
         // (never an FK). Any invalid/out-of-scope id rejects the request — not silently dropped.
         if (request.PredefinedActionIds is { Count: > 0 } actionIds)
         {
-            if (projectOwnerId is not Guid actionOwner)
-                return Result<CommentResponse>.Failure(MessageKeys.Comment.InvalidPredefinedAction);
-
             foreach (var actionId in actionIds.Distinct())
             {
-                var action = await _predefinedActions.ResolveInScopeAsync(actionId, projectResult.Data, actionOwner, authorId);
+                // projectOwnerId may be null (global/null-owner project); the action's owner matches it.
+                var action = await _predefinedActions.ResolveInScopeAsync(actionId, projectResult.Data, projectOwnerId, authorId);
                 if (action == null)
                     return Result<CommentResponse>.Failure(MessageKeys.Comment.InvalidPredefinedAction);
 

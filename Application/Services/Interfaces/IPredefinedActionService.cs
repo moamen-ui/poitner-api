@@ -25,5 +25,5 @@ public interface IPredefinedActionService
     /// project (owner T, requesting user U), and return the snapshot entity if valid. Used by
     /// comment-create to snapshot {text, prompt}. Returns null when invalid/out-of-scope.
     /// </summary>
-    Task<PredefinedAction?> ResolveInScopeAsync(int predefinedActionId, int projectId, Guid ownerId, Guid userId);
+    Task<PredefinedAction?> ResolveInScopeAsync(int predefinedActionId, int projectId, Guid? ownerId, Guid userId);
 }

@@ -20,7 +20,7 @@ public class PredefinedActionMapping : IEntityTypeConfiguration<PredefinedAction
         b.Property(x => x.DeletedBy).HasColumnName("deleted_by");
 
         // PredefinedAction-specific columns
-        b.Property(x => x.OwnerId).HasColumnName("owner_id").IsRequired();
+        b.Property(x => x.OwnerId).HasColumnName("owner_id"); // nullable — null = global/null-owner project
         b.Property(x => x.ProjectId).HasColumnName("project_id");
         b.Property(x => x.UserId).HasColumnName("user_id");
         // Text bounded ≤256; Prompt is Postgres `text` (multi-paragraph — no length cap).

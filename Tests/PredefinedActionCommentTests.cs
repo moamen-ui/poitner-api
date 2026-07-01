@@ -197,4 +197,63 @@ public class PredefinedActionCommentTests
         var result = await h.CommentService.CreateAsync("proj", Req(id), h.AuthorId);
         Assert.True(result.IsSuccess);
     }
+
+    // Isolation regression (GLM MEDIUM): a tenant admin must NOT be able to update/delete a
+    // null-owner GLOBAL action by guessing its id via the tenant-wide CRUD endpoints.
+    [Fact]
+    public async Task TenantAdmin_CannotEdit_NullOwnerGlobalAction()
+    {
+        var dbName = Guid.NewGuid().ToString();
+        // Seed a null-owner tenant-wide-looking global action (ProjectId null, OwnerId null).
+        using (var seed = BuildContext(new FakeCurrentUser { IsSuperAdmin = true }, dbName))
+        {
+            seed.PredefinedActions.Add(new PredefinedAction { OwnerId = null, ProjectId = null, Text = "Global", Prompt = "SECRET", IsActive = true });
+            seed.SaveChanges();
+        }
+        var globalId = 0;
+        using (var s2 = BuildContext(new FakeCurrentUser { IsSuperAdmin = true }, dbName))
+            globalId = s2.PredefinedActions.IgnoreQueryFilters().Single().Id;
+
+        // A scoped-admin tenant tries to edit / delete it by id.
+        var user = new FakeCurrentUser { Id = Guid.NewGuid(), TenantId = Guid.NewGuid(), IsSuperAdmin = false };
+        var db = BuildContext(user, dbName);
+        var svc = new PredefinedActionService(new UnitOfWork(db), new ProjectService(new UnitOfWork(db), user), user);
+
+        var upd = await svc.UpdateAsync(globalId, new Application.DTOs.PredefinedAction.UpdatePredefinedActionRequest { Text = "hacked" });
+        Assert.True(upd.IsNotFound);
+        var del = await svc.DeleteAsync(globalId);
+        Assert.True(del.IsNotFound);
+    }
+
+    // Regression: a NULL-owner (global) project — e.g. the marketing landing or projects created
+    // before ownership existed — must still let a null-owner action be added and resolved.
+    [Fact]
+    public async Task NullOwnerProject_ActionResolvesOnCommentCreate()
+    {
+        var dbName = Guid.NewGuid().ToString();
+        var author = Guid.NewGuid();
+
+        using (var seed = BuildContext(new FakeCurrentUser { IsSuperAdmin = true }, dbName))
+        {
+            seed.Projects.Add(new Project { Key = "global", Name = "Global", IsActive = true, OwnerId = null });
+            seed.SaveChanges();
+            var pid = seed.Projects.Single(p => p.Key == "global").Id;
+            seed.PredefinedActions.Add(new PredefinedAction { OwnerId = null, ProjectId = pid, Text = "Global action", Prompt = "p", IsActive = true });
+            seed.SaveChanges();
+        }
+
+        // Null-tenant stakeholder (registered under the null-owner project).
+        var user = new FakeCurrentUser { Id = author, TenantId = null, IsSuperAdmin = false };
+        var db = BuildContext(user, dbName);
+        var uow = new UnitOfWork(db);
+        var projectService = new ProjectService(uow, user);
+        var actionService = new PredefinedActionService(uow, projectService, user);
+        var commentService = new CommentService(uow, projectService, actionService, new FakeFileStorage(), user, new FakeUploadSigner(), new FakeSettings());
+
+        var actionId = db.PredefinedActions.IgnoreQueryFilters().Single().Id;
+        var result = await commentService.CreateAsync("global", Req(actionId), author);
+
+        Assert.True(result.IsSuccess);
+        Assert.Contains("Global action", result.Data!.PickedActionTexts);
+    }
 }

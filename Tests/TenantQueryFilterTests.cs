@@ -202,7 +202,8 @@ public class TenantQueryFilterTests
     }
 
     // ---------------------------------------------------------------------------
-    // PredefinedAction — strict-own filter (super OR own); OwnerId is ALWAYS set
+    // PredefinedAction — own-plus-global filter (super OR own OR null-owner);
+    // OwnerId is nullable (null = global/null-owner project).
     // ---------------------------------------------------------------------------
 
     [Fact]

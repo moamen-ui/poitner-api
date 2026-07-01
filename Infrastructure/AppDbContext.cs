@@ -28,10 +28,11 @@ public class AppDbContext(DbContextOptions<AppDbContext> options, ICurrentUser c
         b.Entity<User>().HasQueryFilter(e => currentUser.IsSuperAdmin || e.OwnerId == currentUser.TenantId);
         b.Entity<Comment>().HasQueryFilter(e => currentUser.IsSuperAdmin || e.OwnerId == currentUser.TenantId);
         b.Entity<Reply>().HasQueryFilter(e => currentUser.IsSuperAdmin || e.OwnerId == currentUser.TenantId);
-        // PredefinedAction.OwnerId is non-nullable and ALWAYS set — no OwnerId == null branch,
-        // or strict-own would expose (never created) "global" actions. Without this filter,
-        // admin CRUD would cross-read every tenant.
-        b.Entity<PredefinedAction>().HasQueryFilter(e => currentUser.IsSuperAdmin || e.OwnerId == currentUser.TenantId);
+        // Own-plus-global: a tenant sees its own actions plus null-owner (global) ones — needed so
+        // actions on a global/null-owner project (e.g. the marketing landing) resolve for that
+        // project's null-owner stakeholders. Cross-project leakage is prevented separately by the
+        // ProjectId scope in the widget-read query.
+        b.Entity<PredefinedAction>().HasQueryFilter(e => currentUser.IsSuperAdmin || e.OwnerId == currentUser.TenantId || e.OwnerId == null);
 
         // Own-plus-global: tenants also see rows with OwnerId == null (super-admin/global defaults).
         b.Entity<Role>().HasQueryFilter(e => currentUser.IsSuperAdmin || e.OwnerId == currentUser.TenantId || e.OwnerId == null);

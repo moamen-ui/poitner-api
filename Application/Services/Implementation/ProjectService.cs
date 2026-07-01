@@ -52,14 +52,14 @@ public class ProjectService : IProjectService
         await _unitOfWork.Repository<Project>().AddAsync(project);
         await _unitOfWork.SaveChangesAsync(); // need the project Id before attaching actions
 
-        if (request.PredefinedActions.Count > 0 && ownerId is Guid owner)
+        if (request.PredefinedActions.Count > 0)
         {
             var sort = 0;
             foreach (var input in request.PredefinedActions)
             {
                 await _unitOfWork.Repository<PredefinedAction>().AddAsync(new PredefinedAction
                 {
-                    OwnerId = owner,
+                    OwnerId = project.OwnerId, // inherit the project's owner (may be null = global)
                     ProjectId = project.Id,
                     UserId = null,
                     Text = input.Text.Trim(),
@@ -123,9 +123,10 @@ public class ProjectService : IProjectService
         _unitOfWork.Repository<Project>().Update(project);
 
         // Reconcile project-scoped predefined actions when the caller sends the list.
-        // null (property omitted) → leave actions untouched.
-        if (request.PredefinedActions != null && project.OwnerId is Guid owner)
-            await ReconcileActionsAsync(project.Id, owner, request.PredefinedActions);
+        // null (property omitted) → leave actions untouched. Actions inherit the project's owner
+        // (which may be null for a global/null-owner project).
+        if (request.PredefinedActions != null)
+            await ReconcileActionsAsync(project.Id, project.OwnerId, request.PredefinedActions);
 
         await _unitOfWork.SaveChangesAsync();
 
@@ -140,7 +141,7 @@ public class ProjectService : IProjectService
     ///   existing row absent from the payload → soft-delete
     /// All queries add DeletedAt == null so soft-deleted rows never resurface or double-delete.
     /// </summary>
-    private async Task ReconcileActionsAsync(int projectId, Guid owner, List<PredefinedActionInput> desired)
+    private async Task ReconcileActionsAsync(int projectId, Guid? owner, List<PredefinedActionInput> desired)
     {
         var existing = await _unitOfWork.Repository<PredefinedAction>()
             .Query()
