@@ -26,10 +26,9 @@ public class ExportImportController(IExportImportService exportImportService) : 
             Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping
         };
 
-    // Import JSON: case-insensitive + JsonPropertyName snake_case keys => accepts the documented
-    // schema and tolerates extra fields from future minor schema bumps (ignored on deserialize).
-    private static readonly JsonSerializerOptions ImportJsonOptions =
-        new() { PropertyNameCaseInsensitive = true };
+    // Import binds via [FromBody] ExportFileDto — ASP.NET's default JSON is case-insensitive and
+    // honors the DTOs' [JsonPropertyName] snake_case keys, and ignores unknown fields (future minor
+    // schema bumps). The 10 MB cap is enforced by [RequestSizeLimit] on the import actions.
 
     // -------------------------------------------------------------------------
     // EXPORT — read-only, available to any authenticated user in the tenant.
@@ -78,14 +77,11 @@ public class ExportImportController(IExportImportService exportImportService) : 
     /// </summary>
     [HttpPost("api/projects/{key}/import")]
     [Authorize(Policy = Policies.Admin)]
-    [Consumes("application/json", "multipart/form-data")]
+    [Consumes("application/json")]
+    [RequestSizeLimit(MaxImportFileSizeBytes)]
     [ProducesResponseType(typeof(ImportResultDto), StatusCodes.Status200OK)]
-    public async Task<IActionResult> ImportProject(string key)
+    public async Task<IActionResult> ImportProject(string key, [FromBody] ExportFileDto file)
     {
-        if (Request.ContentLength is long len && len > MaxImportFileSizeBytes)
-            return BadRequest(Result.Failure(MessageKeys.ExportImport.FileTooLarge));
-
-        var file = await ReadExportFileAsync();
         if (file == null)
             return BadRequest(Result.Failure(MessageKeys.ExportImport.InvalidJson));
 
@@ -102,14 +98,11 @@ public class ExportImportController(IExportImportService exportImportService) : 
     /// </summary>
     [HttpPost("api/import")]
     [Authorize(Policy = Policies.Admin)]
-    [Consumes("application/json", "multipart/form-data")]
+    [Consumes("application/json")]
+    [RequestSizeLimit(MaxImportFileSizeBytes)]
     [ProducesResponseType(typeof(ImportResultDto), StatusCodes.Status200OK)]
-    public async Task<IActionResult> ImportWorkspace()
+    public async Task<IActionResult> ImportWorkspace([FromBody] ExportFileDto file)
     {
-        if (Request.ContentLength is long len && len > MaxImportFileSizeBytes)
-            return BadRequest(Result.Failure(MessageKeys.ExportImport.FileTooLarge));
-
-        var file = await ReadExportFileAsync();
         if (file == null)
             return BadRequest(Result.Failure(MessageKeys.ExportImport.InvalidJson));
 
@@ -124,44 +117,6 @@ public class ExportImportController(IExportImportService exportImportService) : 
     // -------------------------------------------------------------------------
     // Helpers
     // -------------------------------------------------------------------------
-
-    private async Task<ExportFileDto?> ReadExportFileAsync()
-    {
-        var ct = HttpContext.RequestAborted;
-
-        // multipart/form-data with a "file" field.
-        if (Request.HasFormContentType)
-        {
-            var form = await Request.ReadFormAsync(ct);
-            var formFile = form.Files["file"];
-            if (formFile == null)
-                return null;
-            using var ms = new MemoryStream();
-            await formFile.CopyToAsync(ms, ct);
-            return Deserialize(ms.ToArray());
-        }
-
-        // Raw JSON body (scripted/CLI use).
-        if (Request.ContentLength is null or 0)
-            return null;
-        using (var ms = new MemoryStream())
-        {
-            await Request.Body.CopyToAsync(ms, ct);
-            return Deserialize(ms.ToArray());
-        }
-    }
-
-    private static ExportFileDto? Deserialize(byte[] bytes)
-    {
-        try
-        {
-            return JsonSerializer.Deserialize<ExportFileDto>(bytes, ImportJsonOptions);
-        }
-        catch (JsonException)
-        {
-            return null;
-        }
-    }
 
     private FileResult ExportFile(ExportFileDto file, string fileName)
     {

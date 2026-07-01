@@ -44,28 +44,57 @@ public static class AdminSeeder
             await db.SaveChangesAsync();
         }
 
-        // 2) Seed the admin user (linked to the Admin role) if none exists yet.
+        // 2) Reconcile the super-admin (operator) account FROM CONFIG. ADMIN__EMAIL / ADMIN__PASSWORD
+        //    (env) are the source of truth: on every boot we create the super-admin if absent, or
+        //    update its email/password to match if they changed — so rotating the operator credentials
+        //    is just editing .env.prod and restarting the api. (The old behavior only created it once
+        //    and ignored later env changes.)
         var adminEmail = config["ADMIN:EMAIL"];
         var adminPassword = config["ADMIN:PASSWORD"];
         if (string.IsNullOrEmpty(adminEmail) || string.IsNullOrEmpty(adminPassword))
             return;
+        adminEmail = adminEmail.Trim().ToLower();
 
-        var adminRoleId = await db.Roles.Where(r => r.Name == "Admin").Select(r => r.Id).FirstAsync();
+        // Target the SUPER-admin role specifically (not any GrantsAdmin role — that includes tenants).
+        var adminRoleId = await db.Roles.Where(r => r.IsSuperAdmin).Select(r => r.Id).FirstAsync();
 
-        var hasAdmin = await db.Users.AnyAsync(u =>
-            u.DeletedAt == null && u.Role.GrantsAdmin);
-        if (hasAdmin)
-            return;
+        var superAdmin = await db.Users
+            .IgnoreQueryFilters()
+            .FirstOrDefaultAsync(u => u.DeletedAt == null && u.RoleId == adminRoleId);
 
-        db.Users.Add(new User
+        if (superAdmin == null)
         {
-            Email = adminEmail.Trim().ToLower(),
-            PasswordHash = hasher.Hash(adminPassword),
-            DisplayName = "Administrator",
-            RoleId = adminRoleId,
-            IsActive = true,
-            PublicId = Guid.NewGuid(),
-        });
+            db.Users.Add(new User
+            {
+                Email = adminEmail,
+                PasswordHash = hasher.Hash(adminPassword),
+                DisplayName = "Administrator",
+                RoleId = adminRoleId,
+                IsActive = true,
+                PublicId = Guid.NewGuid(),
+            });
+        }
+        else
+        {
+            var changed = false;
+            if (!string.Equals(superAdmin.Email, adminEmail, StringComparison.OrdinalIgnoreCase))
+            {
+                superAdmin.Email = adminEmail;
+                changed = true;
+            }
+            if (!hasher.Verify(adminPassword, superAdmin.PasswordHash))
+            {
+                superAdmin.PasswordHash = hasher.Hash(adminPassword);
+                changed = true;
+            }
+            if (!superAdmin.IsActive)
+            {
+                superAdmin.IsActive = true;
+                changed = true;
+            }
+            if (changed)
+                db.Users.Update(superAdmin);
+        }
 
         await db.SaveChangesAsync();
     }
