@@ -199,8 +199,12 @@ public class ProjectService : IProjectService
     public async Task<Result<int>> EnsureAsync(string key)
     {
         var keyNormalized = key.Trim().ToLower();
-        // Match the same owner used when stamping projects: scoped admin → tenant; super-admin → own id.
-        var ownerId = TenantStamp.OwnerFor(_currentUser) ?? _currentUser.Id;
+        // Resolve by the caller's own scope: widget stakeholders are registered UNDER the project's
+        // owner, so their OwnerFor equals the project's owner for any owner value — tenant, super-admin,
+        // or null (legacy/super-admin-global projects like the marketing landing). Do NOT fall back to
+        // the caller's user id here (that broke null-owner project resolution); the id fallback belongs
+        // only on the write side (create/update stamping).
+        var ownerId = TenantStamp.OwnerFor(_currentUser);
 
         // EF query filter is the primary tenant boundary; the explicit OwnerId match is
         // belt-and-suspenders to prevent a scoped admin's key resolving to a global project.
