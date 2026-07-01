@@ -299,11 +299,10 @@
           <div class="pf-snippet">${escapeHtml(meta._snapshotPreview.slice(0, 200))}</div>
           ${meta._sourcePath ? `<div class="pf-src">&#x26ec; ${escapeHtml(meta._sourcePath)}</div>` : ""}
           <textarea class="pf-textarea" id="pf-comment-text" placeholder="What should change here?"></textarea>
-          ${actions.length ? `<label class="pf-field-label" for="pf-action-pick">Action</label>
-          <select class="pf-input" id="pf-action-pick" style="margin-bottom:6px;">
-            <option value="">— none —</option>
-            ${actions.map((a) => `<option value="${a.id}">${escapeHtml(a.text)}</option>`).join("")}
-          </select>` : ""}
+          ${actions.length ? `<div class="pf-field-label">Predefined prompts</div>
+          <div class="pf-actions-pick" id="pf-action-pick" style="margin-bottom:6px; display:flex; flex-direction:column; gap:4px;">
+            ${actions.map((a) => `<label class="pf-check"><input type="checkbox" class="pf-action-opt" value="${a.id}" /> ${escapeHtml(a.text)}</label>`).join("")}
+          </div>` : ""}
           ${shotEnabled ? `<label class="pf-check"><input type="checkbox" id="pf-comment-shot" /> &#x1f4f7; Attach screenshot</label>` : ""}
           <label class="pf-check"><input type="checkbox" id="pf-comment-private" /> &#x1f512; Keep private — only me</label>
           <div class="pf-reply-row">
@@ -1262,12 +1261,13 @@
         const attachShot = !!(shotEl && shotEl.checked);
         const shotPromise = this._pendingShotPromise;
         this._pendingShotPromise = null;
-        const actionSel = host.querySelector("#pf-action-pick");
-        const predefinedActionId = actionSel && actionSel.value ? Number(actionSel.value) : null;
+        const predefinedActionIds = Array.from(
+          host.querySelectorAll(".pf-action-opt:checked")
+        ).map((el2) => Number(el2.value));
         const submitBtn = host.querySelector("#pf-submit");
         submitBtn.disabled = true;
         submitBtn.textContent = "Saving…";
-        const saved = await this.createComment({ ...meta, text, isPrivate, attachShot, shotPromise, predefinedActionId });
+        const saved = await this.createComment({ ...meta, text, isPrivate, attachShot, shotPromise, predefinedActionIds });
         if (saved) host.innerHTML = "";
         else {
           submitBtn.disabled = false;
@@ -1314,7 +1314,7 @@
         isPrivate: !!data.isPrivate,
         element
       };
-      if (data.predefinedActionId != null) bodyObj.predefinedActionId = data.predefinedActionId;
+      if (data.predefinedActionIds && data.predefinedActionIds.length) bodyObj.predefinedActionIds = data.predefinedActionIds;
       try {
         const r = await this.api(`/api/projects/${encodeURIComponent(this.project)}/comments`, {
           method: "POST",
@@ -1327,7 +1327,7 @@
         if (!r.ok) {
           const errEnv = await r.json().catch(() => null);
           const msg = errEnv && errEnv.message || "";
-          if (data.predefinedActionId != null && msg.toLowerCase().includes("action")) {
+          if (data.predefinedActionIds && data.predefinedActionIds.length && msg.toLowerCase().includes("action")) {
             await this.fetchPredefinedActions();
             this.toast("That action is no longer available — please choose another and try again.", "error");
             return false;

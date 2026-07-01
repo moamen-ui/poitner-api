@@ -86,20 +86,22 @@ public class CommentService : ICommentService
             Element = MapToEntity(request.Element)
         };
 
-        // Optional predefined action: validate it is active + in-scope for the resolved project's
-        // tenant + this author, then SNAPSHOT {text, prompt} onto the comment (never an FK).
-        // An invalid/out-of-scope id is rejected — not silently dropped.
-        if (request.PredefinedActionId is int actionId)
+        // Optional predefined actions (multi-select): validate each is active + in-scope for the
+        // resolved project's tenant + this author, then SNAPSHOT {text, prompt} onto the comment
+        // (never an FK). Any invalid/out-of-scope id rejects the request — not silently dropped.
+        if (request.PredefinedActionIds is { Count: > 0 } actionIds)
         {
             if (projectOwnerId is not Guid actionOwner)
                 return Result<CommentResponse>.Failure(MessageKeys.Comment.InvalidPredefinedAction);
 
-            var action = await _predefinedActions.ResolveInScopeAsync(actionId, projectResult.Data, actionOwner, authorId);
-            if (action == null)
-                return Result<CommentResponse>.Failure(MessageKeys.Comment.InvalidPredefinedAction);
+            foreach (var actionId in actionIds.Distinct())
+            {
+                var action = await _predefinedActions.ResolveInScopeAsync(actionId, projectResult.Data, actionOwner, authorId);
+                if (action == null)
+                    return Result<CommentResponse>.Failure(MessageKeys.Comment.InvalidPredefinedAction);
 
-            comment.PickedActionText = action.Text;
-            comment.PickedActionPrompt = action.Prompt;
+                comment.PickedActions.Add(new CommentPickedAction { Text = action.Text, Prompt = action.Prompt });
+            }
         }
 
         await _unitOfWork.Repository<Comment>().AddAsync(comment);
@@ -463,8 +465,8 @@ public class CommentService : ICommentService
         AppliedBy = comment.AppliedBy,
         AppliedByLabel = comment.AppliedByLabel,
         EditedAt = comment.EditedAt,
-        // Text only — PickedActionPrompt is intentionally never exposed here.
-        PickedActionText = comment.PickedActionText,
+        // Labels only — the prompts are intentionally never exposed here.
+        PickedActionTexts = comment.PickedActions.Select(a => a.Text).ToList(),
         Element = MapElementToDto(comment.Element),
         Replies = comment.Replies.Select(r => MapReplyToResponse(r, names)).ToList()
     };
@@ -483,8 +485,8 @@ public class CommentService : ICommentService
         AppliedBy = comment.AppliedBy,
         AppliedByLabel = comment.AppliedByLabel,
         EditedAt = comment.EditedAt,
-        // Text only — PickedActionPrompt is intentionally never exposed here.
-        PickedActionText = comment.PickedActionText,
+        // Labels only — the prompts are intentionally never exposed here.
+        PickedActionTexts = comment.PickedActions.Select(a => a.Text).ToList(),
         Element = MapElementToDto(comment.Element),
         Replies = comment.Replies.Select(r => MapReplyToResponse(r, names)).ToList()
     };
@@ -501,8 +503,9 @@ public class CommentService : ICommentService
         CreatedAt = comment.CreatedAt,
         Element = MapElementToDto(comment.Element),
         Replies = comment.Replies.Select(r => MapReplyToResponse(r, names)).ToList(),
-        PickedActionText = comment.PickedActionText,
-        PickedActionPrompt = comment.PickedActionPrompt
+        // Apply/AI path: carries both label + prompt for each picked action.
+        PickedActions = comment.PickedActions
+            .Select(a => new PickedActionDto { Text = a.Text, Prompt = a.Prompt }).ToList()
     };
 
     private static IEnumerable<Guid> AuthorIds(Comment c) =>

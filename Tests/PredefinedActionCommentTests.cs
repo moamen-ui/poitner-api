@@ -85,11 +85,11 @@ public class PredefinedActionCommentTests
         return new Harness { Db = db, CommentService = commentService, TenantId = tenant, AuthorId = author };
     }
 
-    private static CreateCommentRequest Req(int? actionId = null) => new()
+    private static CreateCommentRequest Req(params int[] actionIds) => new()
     {
         Body = "hello",
         Environment = EnvironmentTag.Local,
-        PredefinedActionId = actionId,
+        PredefinedActionIds = actionIds.Length > 0 ? actionIds.ToList() : null,
         Element = new ElementCaptureDto()
     };
 
@@ -110,7 +110,7 @@ public class PredefinedActionCommentTests
 
         var result = await h.CommentService.CreateAsync("proj", Req(actionId), h.AuthorId);
         Assert.True(result.IsSuccess);
-        Assert.Equal("Make it pop", result.Data!.PickedActionText);
+        Assert.Contains("Make it pop", result.Data!.PickedActionTexts);
 
         // Serialize the way the API would (envelope + inner DTO).
         var json = JsonSerializer.Serialize(result.Data);

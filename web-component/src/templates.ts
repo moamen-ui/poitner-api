@@ -170,11 +170,10 @@ export const TPL = {
           <div class="pf-snippet">${escapeHtml(meta._snapshotPreview.slice(0, 200))}</div>
           ${meta._sourcePath ? `<div class="pf-src">&#x26ec; ${escapeHtml(meta._sourcePath)}</div>` : ''}
           <textarea class="pf-textarea" id="pf-comment-text" placeholder="What should change here?"></textarea>
-          ${actions.length ? `<label class="pf-field-label" for="pf-action-pick">Action</label>
-          <select class="pf-input" id="pf-action-pick" style="margin-bottom:6px;">
-            <option value="">— none —</option>
-            ${actions.map((a) => `<option value="${a.id}">${escapeHtml(a.text)}</option>`).join('')}
-          </select>` : ''}
+          ${actions.length ? `<div class="pf-field-label">Predefined prompts</div>
+          <div class="pf-actions-pick" id="pf-action-pick" style="margin-bottom:6px; display:flex; flex-direction:column; gap:4px;">
+            ${actions.map((a) => `<label class="pf-check"><input type="checkbox" class="pf-action-opt" value="${a.id}" /> ${escapeHtml(a.text)}</label>`).join('')}
+          </div>` : ''}
           ${shotEnabled ? `<label class="pf-check"><input type="checkbox" id="pf-comment-shot" /> &#x1f4f7; Attach screenshot</label>` : ''}
           <label class="pf-check"><input type="checkbox" id="pf-comment-private" /> &#x1f512; Keep private — only me</label>
           <div class="pf-reply-row">

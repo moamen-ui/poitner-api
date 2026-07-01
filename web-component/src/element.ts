@@ -14,7 +14,7 @@ interface CreateCommentData extends Meta {
   isPrivate: boolean;
   attachShot: boolean;
   shotPromise: Promise<Blob | null> | null;
-  predefinedActionId?: number | null;
+  predefinedActionIds?: number[];
 }
 
 export class PointerFeedback extends HTMLElement implements PointerHost {
@@ -613,11 +613,12 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
       const attachShot = !!(shotEl && shotEl.checked); // toggle: off by default
       const shotPromise = this._pendingShotPromise;
       this._pendingShotPromise = null;
-      const actionSel = host.querySelector('#pf-action-pick') as HTMLSelectElement | null;
-      const predefinedActionId = actionSel && actionSel.value ? Number(actionSel.value) : null;
+      const predefinedActionIds = Array.from(
+        host.querySelectorAll('.pf-action-opt:checked') as NodeListOf<HTMLInputElement>,
+      ).map((el) => Number(el.value));
       const submitBtn = host.querySelector('#pf-submit') as HTMLButtonElement;
       submitBtn.disabled = true; submitBtn.textContent = 'Saving…';
-      const saved = await this.createComment({ ...meta, text, isPrivate, attachShot, shotPromise, predefinedActionId });
+      const saved = await this.createComment({ ...meta, text, isPrivate, attachShot, shotPromise, predefinedActionIds });
       if (saved) host.innerHTML = '';
       else { submitBtn.disabled = false; submitBtn.textContent = 'Add'; }
     });
@@ -670,7 +671,7 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
       isPrivate: !!data.isPrivate,
       element,
     };
-    if (data.predefinedActionId != null) bodyObj.predefinedActionId = data.predefinedActionId;
+    if (data.predefinedActionIds && data.predefinedActionIds.length) bodyObj.predefinedActionIds = data.predefinedActionIds;
     try {
       const r = await this.api(`/api/projects/${encodeURIComponent(this.project)}/comments`, {
         method: 'POST',
@@ -684,7 +685,7 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
         const msg: string = (errEnv && errEnv.message) || '';
         // Stale predefined action: the server rejected the action as invalid/unavailable.
         // Refetch the list once so the picker is fresh, then ask the user to retry.
-        if (data.predefinedActionId != null && msg.toLowerCase().includes('action')) {
+        if (data.predefinedActionIds && data.predefinedActionIds.length && msg.toLowerCase().includes('action')) {
           await this.fetchPredefinedActions();
           this.toast('That action is no longer available — please choose another and try again.', 'error');
           return false;

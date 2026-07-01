@@ -17,9 +17,9 @@ public class CommentResponse
     public string? AppliedByLabel { get; set; }
     public DateTime? EditedAt { get; set; }
 
-    // Picked predefined action's visible label. The matching PickedActionPrompt is
-    // DELIBERATELY absent from this class (LLM-only; see design blocker) — do not add it.
-    public string? PickedActionText { get; set; }
+    // Picked predefined actions' visible labels (multi-select). The matching prompts are
+    // DELIBERATELY absent from this class (LLM-only; see design blocker) — do not add them.
+    public List<string> PickedActionTexts { get; set; } = new();
 
     public ElementCaptureDto Element { get; set; } = new();
     public List<ReplyResponse> Replies { get; set; } = new();
