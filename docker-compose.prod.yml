@@ -32,6 +32,11 @@ services:
       Pointer__Server: "${POINTER_SERVER}"
       Pointer__Project: "pointer-api"
       Pointer__Environment: "production"
+      # Transactional email (Brevo). Enabled only when a key + verified from-address are set.
+      Email__Enabled: "${EMAIL_ENABLED:-false}"
+      Email__ApiKey: "${EMAIL_API_KEY:-}"
+      Email__FromEmail: "${EMAIL_FROM_EMAIL:-}"
+      Email__FromName: "${EMAIL_FROM_NAME:-Pointer}"
     volumes: ["uploads:/app/wwwroot/uploads"]
     # Not published to the host — Caddy is the only public entrypoint.
 
