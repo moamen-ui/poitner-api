@@ -10,4 +10,11 @@ public interface IDemoService
     /// (email-gated to curb fake requests). Enforces a per-email daily limit + the global active cap.
     /// </summary>
     Task<Result<DemoSessionResponse>> ProvisionAsync(string serverUrl, string recipientEmail);
+
+    /// <summary>
+    /// Converts an ephemeral demo user (IsDemo=true) into a permanent registered
+    /// account in place. All tenant data (projects, comments) is preserved.
+    /// Returns a fresh JWT + MeResponse on success.
+    /// </summary>
+    Task<Result<UpgradeDemoResponse>> UpgradeAsync(Guid callerPublicId, UpgradeDemoRequest request);
 }

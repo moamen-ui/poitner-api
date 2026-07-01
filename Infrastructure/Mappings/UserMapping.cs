@@ -36,6 +36,7 @@ public class UserMapping : IEntityTypeConfiguration<User>
         b.Property(x => x.IsDemo).HasColumnName("is_demo");
         b.Property(x => x.ExpiresAt).HasColumnName("expires_at");
         b.HasIndex(x => x.ExpiresAt);
+        b.Property(x => x.RecipientEmail).HasColumnName("recipient_email").HasMaxLength(256);
 
         b.HasOne(x => x.Role)
             .WithMany(r => r.Users)
