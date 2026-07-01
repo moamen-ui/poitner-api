@@ -11,29 +11,37 @@ namespace Pointer.Application.Services.Implementation;
 
 public class DemoService : IDemoService
 {
-    private const int DemoMaxActive = 100;
-    private const int DemoTtlHours = 24;
-    private const int DemoPerEmailPerDay = 3;
+    private const int DefaultMaxActive = 100;
+    private const int DefaultTtlHours = 24;
+    private const int DefaultPerEmailPerDay = 3;
 
     private readonly IUnitOfWork _unitOfWork;
     private readonly IPasswordHasher _passwordHasher;
     private readonly ITokenService _tokenService;
     private readonly IEmailService _emailService;
+    private readonly ISettingsService _settings;
 
     public DemoService(
         IUnitOfWork unitOfWork,
         IPasswordHasher passwordHasher,
         ITokenService tokenService,
-        IEmailService emailService)
+        IEmailService emailService,
+        ISettingsService settings)
     {
         _unitOfWork = unitOfWork;
         _passwordHasher = passwordHasher;
         _tokenService = tokenService;
         _emailService = emailService;
+        _settings = settings;
     }
 
     public async Task<Result<DemoSessionResponse>> ProvisionAsync(string serverUrl, string recipientEmail)
     {
+        // Super-admin-tunable limits (config page) with safe defaults.
+        var maxActive = await _settings.GetIntAsync(ISettingsService.DemoMaxActive, DefaultMaxActive);
+        var ttlHours = await _settings.GetIntAsync(ISettingsService.DemoTtlHours, DefaultTtlHours);
+        var perEmailPerDay = await _settings.GetIntAsync(ISettingsService.DemoPerEmailPerDay, DefaultPerEmailPerDay);
+
         // Validate the recipient email (email-gated demo — a real inbox is required).
         recipientEmail = (recipientEmail ?? string.Empty).Trim();
         if (recipientEmail.Length == 0 || !IsValidEmail(recipientEmail))
@@ -45,7 +53,7 @@ public class DemoService : IDemoService
             .Query()
             .FirstOrDefaultAsync(x => x.DeletedAt == null && x.Key == throttleKey);
         var usedToday = int.TryParse(throttle?.Value, out var used) ? used : 0;
-        if (usedToday >= DemoPerEmailPerDay)
+        if (usedToday >= perEmailPerDay)
             return Result<DemoSessionResponse>.Failure("You've reached today's demo limit for this email. Please try again tomorrow.");
 
         // a. Active cap check
@@ -54,7 +62,7 @@ public class DemoService : IDemoService
             .IgnoreQueryFilters()
             .CountAsync(u => u.IsDemo && u.DeletedAt == null && u.ExpiresAt > DateTime.UtcNow);
 
-        if (active >= DemoMaxActive)
+        if (active >= maxActive)
             return Result<DemoSessionResponse>.Failure("Demo is at capacity, please try again shortly.");
 
         // b. Resolve the "Workspace Admin" role
@@ -83,7 +91,7 @@ public class DemoService : IDemoService
             ApprovalStatus = ApprovalStatus.Approved,
             IsActive = true,
             IsDemo = true,
-            ExpiresAt = DateTime.UtcNow.AddHours(DemoTtlHours),
+            ExpiresAt = DateTime.UtcNow.AddHours(ttlHours),
         };
 
         await _unitOfWork.Repository<User>().AddAsync(demoUser);

@@ -7,8 +7,9 @@ namespace Pointer.Infrastructure.Email;
 
 /// <summary>
 /// Sends transactional email via Brevo's HTTP API (POST https://api.brevo.com/v3/smtp/email).
-/// No-ops (logs + returns false) when Email:Enabled != true or the API key / from-address is
-/// missing, so the app runs fine locally without email configured. Never throws to callers.
+/// No-ops (logs + returns false) when the API key / from-address is missing, so the app runs fine
+/// locally without email configured. Whether email is enabled at all is decided upstream by
+/// EmailService (the DB toggle is authoritative). Never throws to callers.
 /// </summary>
 public class BrevoEmailSender : IEmailSender
 {
@@ -23,17 +24,18 @@ public class BrevoEmailSender : IEmailSender
         _log = log;
     }
 
-    public async Task<bool> SendAsync(string to, string subject, string htmlBody, CancellationToken ct = default)
+    public async Task<bool> SendAsync(string to, string subject, string htmlBody,
+        string? fromEmail = null, string? fromName = null, CancellationToken ct = default)
     {
-        var enabled = string.Equals(_config["Email:Enabled"], "true", StringComparison.OrdinalIgnoreCase);
         var apiKey = _config["Email:ApiKey"];
-        var fromEmail = _config["Email:FromEmail"];
-        var fromName = _config["Email:FromName"];
+        // Caller-provided sender (from DB settings) wins; otherwise fall back to env config.
+        if (string.IsNullOrWhiteSpace(fromEmail)) fromEmail = _config["Email:FromEmail"];
+        if (string.IsNullOrWhiteSpace(fromName)) fromName = _config["Email:FromName"];
         if (string.IsNullOrWhiteSpace(fromName)) fromName = "Pointer";
 
-        if (!enabled || string.IsNullOrWhiteSpace(apiKey) || string.IsNullOrWhiteSpace(fromEmail))
+        if (string.IsNullOrWhiteSpace(apiKey) || string.IsNullOrWhiteSpace(fromEmail))
         {
-            _log.LogInformation("Email disabled or unconfigured; skipping send to {To} (subject: {Subject}).", to, subject);
+            _log.LogInformation("Email unconfigured (no API key / from-address); skipping send to {To} (subject: {Subject}).", to, subject);
             return false;
         }
 

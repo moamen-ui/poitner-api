@@ -39,6 +39,24 @@ public class TenantsController(ITenantService tenantService) : ControllerBase
         return result.IsSuccess ? Ok(result) : BadRequest(result);
     }
 
+    [HttpPost("{id:int}/extend")]
+    [ProducesResponseType(typeof(Result), StatusCodes.Status200OK)]
+    public async Task<IActionResult> ExtendDemo(int id)
+    {
+        var result = await tenantService.ExtendDemoAsync(id);
+        if (result.IsNotFound) return NotFound(result);
+        return result.IsSuccess ? Ok(result) : BadRequest(result);
+    }
+
+    [HttpPatch("{id:int}/demo-config")]
+    [ProducesResponseType(typeof(Result), StatusCodes.Status200OK)]
+    public async Task<IActionResult> SetDemoConfig(int id, [FromBody] SetDemoConfigRequest request)
+    {
+        var result = await tenantService.SetDemoConfigAsync(id, request.CommentCapOverride, request.TtlHoursOverride);
+        if (result.IsNotFound) return NotFound(result);
+        return result.IsSuccess ? Ok(result) : BadRequest(result);
+    }
+
     [HttpDelete("{id:int}")]
     [ProducesResponseType(typeof(Result), StatusCodes.Status200OK)]
     public async Task<IActionResult> Delete(int id)
@@ -69,4 +87,13 @@ public class TenantsController(ITenantService tenantService) : ControllerBase
 public class SetTenantStatusRequest
 {
     public string Action { get; set; } = string.Empty;
+}
+
+public class SetDemoConfigRequest
+{
+    /// <summary>Per-tenant demo comment cap. Null clears the override (use the global default).</summary>
+    public int? CommentCapOverride { get; set; }
+
+    /// <summary>Per-tenant demo TTL (hours) used on extend. Null clears the override (use the global default).</summary>
+    public int? TtlHoursOverride { get; set; }
 }

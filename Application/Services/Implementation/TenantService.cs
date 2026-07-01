@@ -10,15 +10,19 @@ namespace Pointer.Application.Services.Implementation;
 
 public class TenantService : ITenantService
 {
+    private const int DefaultDemoTtlHours = 24;
+
     private readonly IUnitOfWork _unitOfWork;
     private readonly IPasswordHasher _passwordHasher;
     private readonly IFileStorage _fileStorage;
+    private readonly ISettingsService _settings;
 
-    public TenantService(IUnitOfWork unitOfWork, IPasswordHasher passwordHasher, IFileStorage fileStorage)
+    public TenantService(IUnitOfWork unitOfWork, IPasswordHasher passwordHasher, IFileStorage fileStorage, ISettingsService settings)
     {
         _unitOfWork = unitOfWork;
         _passwordHasher = passwordHasher;
         _fileStorage = fileStorage;
+        _settings = settings;
     }
 
     public async Task<Result<List<TenantResponse>>> ListAsync()
@@ -74,7 +78,12 @@ public class TenantService : ITenantService
             ApprovalStatus = t.ApprovalStatus.ToString(),
             IsActive = t.IsActive,
             Projects = projectMap.GetValueOrDefault(t.PublicId, 0),
-            Comments = commentMap.GetValueOrDefault(t.PublicId, 0)
+            Comments = commentMap.GetValueOrDefault(t.PublicId, 0),
+            IsDemo = t.IsDemo,
+            ExpiresAt = t.ExpiresAt,
+            DemoExtended = t.DemoExtended,
+            DemoCommentCapOverride = t.DemoCommentCapOverride,
+            DemoTtlHoursOverride = t.DemoTtlHoursOverride
         }).ToList();
 
         return Result<List<TenantResponse>>.Success(responses);
@@ -180,6 +189,62 @@ public class TenantService : ITenantService
             default:
                 return Result.Failure("Invalid action. Valid values: approve, enable, disable.");
         }
+
+        _unitOfWork.Repository<User>().Update(user);
+        await _unitOfWork.SaveChangesAsync();
+
+        return Result.Success();
+    }
+
+    public async Task<Result> ExtendDemoAsync(int id)
+    {
+        // One-time super-admin extension of a demo workspace by one more configured demo period.
+        var user = await _unitOfWork.Repository<User>()
+            .Query()
+            .IgnoreQueryFilters()
+            .FirstOrDefaultAsync(u => u.Id == id && u.DeletedAt == null);
+
+        if (user == null || !user.IsDemo)
+            return Result.NotFound("Demo tenant not found.");
+
+        if (user.DemoExtended)
+            return Result.Failure("This demo has already been extended once.");
+
+        // Per-tenant TTL override wins; otherwise the global setting.
+        var ttlHours = user.DemoTtlHoursOverride
+            ?? await _settings.GetIntAsync(ISettingsService.DemoTtlHours, DefaultDemoTtlHours);
+
+        // Extend from whichever is later — now or the current (possibly future) expiry — so an
+        // already-expired demo gets a full fresh period rather than one anchored in the past.
+        var anchor = user.ExpiresAt is DateTime exp && exp > DateTime.UtcNow ? exp : DateTime.UtcNow;
+        user.ExpiresAt = anchor.AddHours(ttlHours);
+        user.DemoExtended = true;
+
+        _unitOfWork.Repository<User>().Update(user);
+        await _unitOfWork.SaveChangesAsync();
+
+        return Result.Success();
+    }
+
+    public async Task<Result> SetDemoConfigAsync(int id, int? commentCapOverride, int? ttlHoursOverride)
+    {
+        // Per-tenant demo overrides. Null clears an override (revert to the global default);
+        // any positive value sets it. Non-positive values are rejected as invalid.
+        if (commentCapOverride is <= 0)
+            return Result.Failure("Comment cap must be a positive number, or empty to use the global default.");
+        if (ttlHoursOverride is <= 0)
+            return Result.Failure("TTL (hours) must be a positive number, or empty to use the global default.");
+
+        var user = await _unitOfWork.Repository<User>()
+            .Query()
+            .IgnoreQueryFilters()
+            .FirstOrDefaultAsync(u => u.Id == id && u.DeletedAt == null);
+
+        if (user == null || !user.IsDemo)
+            return Result.NotFound("Demo tenant not found.");
+
+        user.DemoCommentCapOverride = commentCapOverride;
+        user.DemoTtlHoursOverride = ttlHoursOverride;
 
         _unitOfWork.Repository<User>().Update(user);
         await _unitOfWork.SaveChangesAsync();

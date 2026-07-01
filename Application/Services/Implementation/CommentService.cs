@@ -18,14 +18,16 @@ public class CommentService : ICommentService
     private readonly IFileStorage _fileStorage;
     private readonly ICurrentUser _currentUser;
     private readonly IUploadSigner _uploadSigner;
+    private readonly ISettingsService _settings;
 
-    public CommentService(IUnitOfWork unitOfWork, IProjectService projectService, IFileStorage fileStorage, ICurrentUser currentUser, IUploadSigner uploadSigner)
+    public CommentService(IUnitOfWork unitOfWork, IProjectService projectService, IFileStorage fileStorage, ICurrentUser currentUser, IUploadSigner uploadSigner, ISettingsService settings)
     {
         _unitOfWork = unitOfWork;
         _projectService = projectService;
         _fileStorage = fileStorage;
         _currentUser = currentUser;
         _uploadSigner = uploadSigner;
+        _settings = settings;
     }
 
     public async Task<Result<CommentResponse>> CreateAsync(string projectKey, CreateCommentRequest request, Guid authorId)
@@ -44,24 +46,29 @@ public class CommentService : ICommentService
             .Select(p => p.OwnerId)
             .FirstAsync();
 
-        // Enforce a 10-comment cap for demo tenants.
+        // Enforce the demo comment cap for demo tenants. A per-tenant override wins; otherwise
+        // the global super-admin-tunable setting (default 10) applies.
         if (projectOwnerId is Guid owner)
         {
-            var isDemo = await _unitOfWork.Repository<User>()
+            var demoOwner = await _unitOfWork.Repository<User>()
                 .Query()
                 .IgnoreQueryFilters()
                 .AsNoTracking()
-                .AnyAsync(u => u.PublicId == owner && u.IsDemo && u.DeletedAt == null);
+                .Where(u => u.PublicId == owner && u.IsDemo && u.DeletedAt == null)
+                .Select(u => new { u.DemoCommentCapOverride })
+                .FirstOrDefaultAsync();
 
-            if (isDemo)
+            if (demoOwner != null)
             {
+                var cap = demoOwner.DemoCommentCapOverride
+                    ?? await _settings.GetIntAsync(ISettingsService.DemoCommentCap, 10);
                 var count = await _unitOfWork.Repository<Comment>()
                     .Query()
                     .IgnoreQueryFilters()
                     .CountAsync(c => c.OwnerId == owner && c.DeletedAt == null);
 
-                if (count >= 10)
-                    return Result<CommentResponse>.Failure("Demo limit reached: a demo workspace allows at most 10 comments.");
+                if (count >= cap)
+                    return Result<CommentResponse>.Failure($"Demo limit reached: a demo workspace allows at most {cap} comments.");
             }
         }
 

@@ -6,23 +6,24 @@ using Pointer.Domain.Entity;
 namespace Pointer.Application.Services.Implementation;
 
 /// <summary>
-/// Guards every send with a per-UTC-day counter persisted in AppSetting (key
-/// "email_sent_{yyyyMMdd}") so we never exceed the provider's free daily limit. The cap is the
-/// AppSetting "email_daily_cap" (default 250 — safely under Brevo's 300/day); a super-admin can
-/// tune it via settings. Delegates to IEmailSender; whether email is actually enabled is decided
-/// by the transport (Email:Enabled config). Auto-registered as scoped (name ends with "Service").
+/// Application-facing email facade. The DB toggle "email_enabled" is authoritative — when off, every
+/// send is a no-op. Guards each send with a per-UTC-day counter (AppSetting "email_sent_{yyyyMMdd}")
+/// capped at "email_daily_cap" (default 250 — safely under Brevo's 300/day) so we never exceed the
+/// free limit. The sender name/address come from settings (falling back to env in the transport).
+/// Auto-registered as scoped (name ends with "Service").
 /// </summary>
-public class EmailService(IEmailSender sender, IUnitOfWork unitOfWork) : IEmailService
+public class EmailService(IEmailSender sender, IUnitOfWork unitOfWork, ISettingsService settings) : IEmailService
 {
     private const int DefaultDailyCap = 250;
 
     public async Task<bool> SendAsync(string to, string subject, string htmlBody, CancellationToken ct = default)
     {
+        // The super-admin DB toggle is the single source of truth for whether email is on.
+        if (!await settings.GetBoolAsync(ISettingsService.EmailEnabled)) return false;
+
         var repo = unitOfWork.Repository<AppSetting>();
 
-        var capSetting = await repo.Query().AsNoTracking()
-            .FirstOrDefaultAsync(s => s.DeletedAt == null && s.Key == "email_daily_cap", ct);
-        var cap = int.TryParse(capSetting?.Value, out var c) ? c : DefaultDailyCap;
+        var cap = await settings.GetIntAsync(ISettingsService.EmailDailyCap, DefaultDailyCap);
 
         var counterKey = $"email_sent_{DateTime.UtcNow:yyyyMMdd}";
         var counter = await repo.Query()
@@ -31,7 +32,13 @@ public class EmailService(IEmailSender sender, IUnitOfWork unitOfWork) : IEmailS
 
         if (sentToday >= cap) return false; // capped — never exceed the free daily limit
 
-        var ok = await sender.SendAsync(to, subject, htmlBody, ct);
+        var fromEmail = await settings.GetStringAsync(ISettingsService.EmailFromEmail);
+        var fromName = await settings.GetStringAsync(ISettingsService.EmailFromName);
+
+        var ok = await sender.SendAsync(to, subject, htmlBody,
+            fromEmail: string.IsNullOrWhiteSpace(fromEmail) ? null : fromEmail,
+            fromName: string.IsNullOrWhiteSpace(fromName) ? null : fromName,
+            ct: ct);
         if (!ok) return false;
 
         // Increment the day's counter. Single-process, low volume — a read-modify-write race is

@@ -8,5 +8,7 @@ public interface ITenantService
     Task<Result<List<TenantResponse>>> ListAsync();
     Task<Result<TenantResponse>> CreateAsync(CreateTenantRequest request);
     Task<Result> SetStatusAsync(int id, string action);
+    Task<Result> ExtendDemoAsync(int id);
+    Task<Result> SetDemoConfigAsync(int id, int? commentCapOverride, int? ttlHoursOverride);
     Task<Result> HardDeleteAsync(Guid tenantId);
 }

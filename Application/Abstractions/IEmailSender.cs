@@ -6,5 +6,10 @@ namespace Pointer.Application.Abstractions;
 /// </summary>
 public interface IEmailSender
 {
-    Task<bool> SendAsync(string to, string subject, string htmlBody, CancellationToken ct = default);
+    /// <summary>
+    /// Sends one transactional email. <paramref name="fromEmail"/>/<paramref name="fromName"/> override
+    /// the configured sender when provided (falls back to env config otherwise).
+    /// </summary>
+    Task<bool> SendAsync(string to, string subject, string htmlBody,
+        string? fromEmail = null, string? fromName = null, CancellationToken ct = default);
 }

@@ -17,4 +17,13 @@ public class User : BaseEntity
     public Guid? OwnerId { get; set; }
     public bool IsDemo { get; set; }
     public DateTime? ExpiresAt { get; set; }
+
+    /// <summary>Whether a super-admin has already used their one-time demo extension for this user.</summary>
+    public bool DemoExtended { get; set; }
+
+    /// <summary>Per-tenant override of the demo comment cap. Null = use the global setting.</summary>
+    public int? DemoCommentCapOverride { get; set; }
+
+    /// <summary>Per-tenant override of the demo TTL (hours), used when extending. Null = use the global setting.</summary>
+    public int? DemoTtlHoursOverride { get; set; }
 }
