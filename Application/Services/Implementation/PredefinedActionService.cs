@@ -39,7 +39,9 @@ public class PredefinedActionService : IPredefinedActionService
 
     public async Task<Result<PredefinedActionResponse>> CreateTenantAsync(CreatePredefinedActionRequest request)
     {
-        var ownerId = TenantStamp.OwnerFor(_currentUser);
+        // Scoped admin → their tenant; super-admin (no tenant) → their own user id, so the operator
+        // can manage workspace-wide actions too (consistent non-null owner).
+        var ownerId = TenantStamp.OwnerFor(_currentUser) ?? _currentUser.Id;
         if (ownerId is not Guid owner)
             return Result<PredefinedActionResponse>.Forbidden(MessageKeys.PredefinedAction.NotFound);
 

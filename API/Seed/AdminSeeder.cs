@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Pointer.Application.Abstractions;
 using Pointer.Domain.Entity;
+using Pointer.Domain.Enums;
 using Pointer.Infrastructure;
 
 namespace Pointer.API.Seed;
@@ -55,47 +56,45 @@ public static class AdminSeeder
             return;
         adminEmail = adminEmail.Trim().ToLower();
 
-        // Target the SUPER-admin role specifically (not any GrantsAdmin role — that includes tenants).
-        var adminRoleId = await db.Roles.Where(r => r.IsSuperAdmin).Select(r => r.Id).FirstAsync();
-
-        var superAdmin = await db.Users
-            .IgnoreQueryFilters()
-            .FirstOrDefaultAsync(u => u.DeletedAt == null && u.RoleId == adminRoleId);
-
-        if (superAdmin == null)
+        try
         {
-            db.Users.Add(new User
-            {
-                Email = adminEmail,
-                PasswordHash = hasher.Hash(adminPassword),
-                DisplayName = "Administrator",
-                RoleId = adminRoleId,
-                IsActive = true,
-                PublicId = Guid.NewGuid(),
-            });
-        }
-        else
-        {
-            var changed = false;
-            if (!string.Equals(superAdmin.Email, adminEmail, StringComparison.OrdinalIgnoreCase))
-            {
-                superAdmin.Email = adminEmail;
-                changed = true;
-            }
-            if (!hasher.Verify(adminPassword, superAdmin.PasswordHash))
-            {
-                superAdmin.PasswordHash = hasher.Hash(adminPassword);
-                changed = true;
-            }
-            if (!superAdmin.IsActive)
-            {
-                superAdmin.IsActive = true;
-                changed = true;
-            }
-            if (changed)
-                db.Users.Update(superAdmin);
-        }
+            var adminRoleId = await db.Roles.Where(r => r.IsSuperAdmin).Select(r => r.Id).FirstAsync();
 
-        await db.SaveChangesAsync();
+            // Match the operator BY EMAIL (never rename an existing row into a duplicate email — that
+            // would violate the unique-email index and crash startup). Create if absent, else ensure it
+            // is an active, approved super-admin with the configured password.
+            var user = await db.Users
+                .IgnoreQueryFilters()
+                .FirstOrDefaultAsync(u => u.DeletedAt == null && u.Email.ToLower() == adminEmail);
+
+            if (user == null)
+            {
+                db.Users.Add(new User
+                {
+                    Email = adminEmail,
+                    PasswordHash = hasher.Hash(adminPassword),
+                    DisplayName = "Administrator",
+                    RoleId = adminRoleId,
+                    IsActive = true,
+                    ApprovalStatus = ApprovalStatus.Approved,
+                    PublicId = Guid.NewGuid(),
+                });
+            }
+            else
+            {
+                if (user.RoleId != adminRoleId) user.RoleId = adminRoleId;
+                if (!user.IsActive) user.IsActive = true;
+                if (user.ApprovalStatus != ApprovalStatus.Approved) user.ApprovalStatus = ApprovalStatus.Approved;
+                if (!hasher.Verify(adminPassword, user.PasswordHash)) user.PasswordHash = hasher.Hash(adminPassword);
+                db.Users.Update(user);
+            }
+
+            await db.SaveChangesAsync();
+        }
+        catch (Exception ex)
+        {
+            // Never let operator-account reconciliation crash API startup.
+            Console.Error.WriteLine($"[AdminSeeder] super-admin reconcile skipped: {ex.Message}");
+        }
     }
 }

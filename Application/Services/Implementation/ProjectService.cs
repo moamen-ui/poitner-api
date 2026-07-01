@@ -36,10 +36,10 @@ public class ProjectService : IProjectService
         if (exists)
             return Result<ProjectResponse>.Conflict(MessageKeys.Project.KeyTaken);
 
-        // OwnerId stamps the tenant; predefined actions inherit it (always non-null for a
-        // scoped admin). A super admin creating a project has null OwnerFor — but a project
-        // must belong to a tenant, so this path is a scoped-admin operation in practice.
-        var ownerId = TenantStamp.OwnerFor(_currentUser);
+        // OwnerId stamps the tenant. A scoped admin stamps their TenantId; a super-admin (no tenant)
+        // owns what they create under their own user id, so the resource always has a non-null owner
+        // (predefined actions + comment-scope matching all rely on this).
+        var ownerId = TenantStamp.OwnerFor(_currentUser) ?? _currentUser.Id;
 
         var project = new Project
         {
@@ -115,6 +115,11 @@ public class ProjectService : IProjectService
 
         if (request.IsActive.HasValue)
             project.IsActive = request.IsActive.Value;
+
+        // Repair legacy null-owner projects (e.g. created by a super-admin before ownership was
+        // stamped) so the project + its actions share a non-null owner — required for the
+        // comment-create scope match (projectOwner == action.OwnerId).
+        project.OwnerId ??= TenantStamp.OwnerFor(_currentUser) ?? _currentUser.Id;
 
         _unitOfWork.Repository<Project>().Update(project);
 
