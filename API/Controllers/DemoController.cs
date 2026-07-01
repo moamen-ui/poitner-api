@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
 using Pointer.Application.DTOs.Demo;
+using Pointer.API.Extensions;
 using Pointer.Application.Response;
 using Pointer.Application.Services.Interfaces;
 
@@ -30,6 +31,22 @@ public class DemoController(IDemoService demoService, IConfiguration configurati
                 || result.Message.Contains("demo limit", StringComparison.OrdinalIgnoreCase)))
             return StatusCode(StatusCodes.Status429TooManyRequests, result);
 
+        return result.IsSuccess ? Ok(result) : BadRequest(result);
+    }
+
+    [Authorize]
+    [HttpPost("upgrade")]
+    [ProducesResponseType(typeof(UpgradeDemoResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(Result), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(Result), StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(typeof(Result), StatusCodes.Status409Conflict)]
+    public async Task<IActionResult> Upgrade([FromBody] UpgradeDemoRequest request)
+    {
+        var callerId = User.GetId();
+        var result = await demoService.UpgradeAsync(callerId, request);
+        if (result.IsForbidden) return StatusCode(StatusCodes.Status403Forbidden, result);
+        if (result.IsConflict) return Conflict(result);
+        if (result.IsNotFound) return NotFound(result);
         return result.IsSuccess ? Ok(result) : BadRequest(result);
     }
 }

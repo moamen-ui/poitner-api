@@ -26,4 +26,7 @@ public class User : BaseEntity
 
     /// <summary>Per-tenant override of the demo TTL (hours), used when extending. Null = use the global setting.</summary>
     public int? DemoTtlHoursOverride { get; set; }
+
+    /// <summary>The real human email entered at demo provisioning time. Null for non-demo users. Cleared on upgrade.</summary>
+    public string? RecipientEmail { get; set; }
 }

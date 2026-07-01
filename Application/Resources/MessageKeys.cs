@@ -56,4 +56,13 @@ public static class MessageKeys
         public const string Created = "Comment created.";
         public const string Applied = "Comment marked applied.";
     }
+
+    public static class Demo
+    {
+        public const string NotDemoUser = "This account is not a demo account.";
+        public const string AlreadyUpgraded = "This demo has already been upgraded to a permanent account.";
+        public const string DemoExpired = "This demo session has expired. Please start a new demo.";
+        public const string EmailTaken = "That email is already registered.";
+        public const string UpgradeSuccess = "Your workspace has been upgraded. Welcome to Pointer!";
+    }
 }

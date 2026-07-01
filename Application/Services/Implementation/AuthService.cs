@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using Pointer.Application.Abstractions;
+using Pointer.Application.Common;
 using Pointer.Application.DTOs.Auth;
 using Pointer.Application.Resources;
 using Pointer.Application.Response;
@@ -133,7 +134,7 @@ public class AuthService : IAuthService
         {
             Status = "ok",
             Token = token,
-            User = MapToMeResponse(user)
+            User = UserMapper.ToMeResponse(user)
         };
 
         return Result<LoginResponse>.Success(response);
@@ -292,19 +293,6 @@ public class AuthService : IAuthService
         if (user == null)
             return Result<MeResponse>.NotFound(MessageKeys.User.NotFound);
 
-        return Result<MeResponse>.Success(MapToMeResponse(user));
+        return Result<MeResponse>.Success(UserMapper.ToMeResponse(user));
     }
-
-    private static MeResponse MapToMeResponse(User user) => new()
-    {
-        Id = user.PublicId,
-        Email = user.Email,
-        DisplayName = user.DisplayName,
-        RoleId = user.RoleId,
-        RoleName = user.Role?.Name ?? string.Empty,
-        IsAdmin = user.Role?.GrantsAdmin ?? false,
-        IsSuperAdmin = user.Role?.IsSuperAdmin ?? false,
-        Language = user.Language,
-        Theme = user.Theme,
-    };
 }

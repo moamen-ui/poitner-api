@@ -1,8 +1,11 @@
 using Microsoft.EntityFrameworkCore;
 using Pointer.Application.Abstractions;
+using Pointer.Application.Common;
 using Pointer.Application.DTOs.Demo;
+using Pointer.Application.Resources;
 using Pointer.Application.Response;
 using Pointer.Application.Services.Interfaces;
+using Pointer.Application.Validators;
 using Pointer.Domain.Entity;
 using Pointer.Domain.Enums;
 using Pointer.Domain.ValueObjects;
@@ -92,6 +95,7 @@ public class DemoService : IDemoService
             IsActive = true,
             IsDemo = true,
             ExpiresAt = DateTime.UtcNow.AddHours(ttlHours),
+            RecipientEmail = recipientEmail,
         };
 
         await _unitOfWork.Repository<User>().AddAsync(demoUser);
@@ -197,6 +201,79 @@ public class DemoService : IDemoService
             ServerUrl = serverUrl,
             EmailSent = emailSent,
         });
+    }
+
+    public async Task<Result<UpgradeDemoResponse>> UpgradeAsync(Guid callerPublicId, UpgradeDemoRequest request)
+    {
+        // 1. Validate the request inline (this is the only consumer).
+        var validation = new UpgradeDemoValidator().Validate(request);
+        if (!validation.IsValid)
+            return Result<UpgradeDemoResponse>.Failure(validation.Errors[0].ErrorMessage);
+
+        var emailNormalized = request.Email.Trim().ToLower();
+
+        // 2. Load the caller, bypassing the tenant query filter (the JWT carries the tenant claim
+        //    but resolving by PublicId + DeletedAt is authoritative).
+        var user = await _unitOfWork.Repository<User>()
+            .Query()
+            .IgnoreQueryFilters()
+            .Include(u => u.Role)
+            .FirstOrDefaultAsync(u => u.DeletedAt == null && u.PublicId == callerPublicId);
+
+        if (user == null)
+            return Result<UpgradeDemoResponse>.NotFound(MessageKeys.User.NotFound);
+
+        // 3. Guard: only demo accounts may upgrade.
+        if (!user.IsDemo)
+            return Result<UpgradeDemoResponse>.Forbidden(MessageKeys.Demo.NotDemoUser);
+
+        // 4. Guard: an already-expired demo cannot be salvaged.
+        if (user.ExpiresAt != null && user.ExpiresAt < DateTime.UtcNow)
+            return Result<UpgradeDemoResponse>.Failure(MessageKeys.Demo.DemoExpired);
+
+        // 5. Email uniqueness across ALL non-deleted rows except the caller's own.
+        //    IgnoreQueryFilters() so the check is cross-tenant (scoped-admin upgrades included).
+        var emailTaken = await _unitOfWork.Repository<User>()
+            .Query()
+            .IgnoreQueryFilters()
+            .AsNoTracking()
+            .AnyAsync(u => u.DeletedAt == null
+                           && u.PublicId != callerPublicId
+                           && u.Email.ToLower() == emailNormalized);
+
+        if (emailTaken)
+            return Result<UpgradeDemoResponse>.Conflict(MessageKeys.Demo.EmailTaken);
+
+        // 6-8. Mutate the user entity in place, then persist. A concurrent upgrade racing past
+        //      the uniqueness check will trip the DB unique index here → treat as EmailTaken.
+        user.IsDemo = false;
+        user.ExpiresAt = null;
+        user.DemoExtended = false;
+        user.DemoCommentCapOverride = null;
+        user.DemoTtlHoursOverride = null;
+        user.Email = emailNormalized;
+        user.PasswordHash = _passwordHasher.Hash(request.Password);
+        user.DisplayName = string.IsNullOrWhiteSpace(request.DisplayName) ? user.DisplayName : request.DisplayName!.Trim();
+        user.RecipientEmail = null;
+
+        _unitOfWork.Repository<User>().Update(user);
+
+        try
+        {
+            await _unitOfWork.SaveChangesAsync();
+        }
+        catch (DbUpdateException)
+        {
+            return Result<UpgradeDemoResponse>.Conflict(MessageKeys.Demo.EmailTaken);
+        }
+
+        // 9-10. Role navigation is already loaded above; issue a fresh token with the real email.
+        var token = _tokenService.Issue(user);
+
+        // 11. Return token + MeResponse in the same shape as a successful login.
+        return Result<UpgradeDemoResponse>.Success(
+            new UpgradeDemoResponse { Token = token, User = UserMapper.ToMeResponse(user) },
+            MessageKeys.Demo.UpgradeSuccess);
     }
 
     private static bool IsValidEmail(string email)
