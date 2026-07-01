@@ -12,3 +12,4 @@ API/wwwroot/uploads/
 node_modules/
 clients/
 openapi.json
+.claude/worktrees/
