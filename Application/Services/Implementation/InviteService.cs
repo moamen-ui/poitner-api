@@ -137,10 +137,21 @@ public class InviteService : IInviteService
     }
 
     // Loads an invite owned by the caller's tenant. Explicitly scoped (IgnoreQueryFilters + own
-    // owner) — mirrors PredefinedActionService.LoadOwnTenantWideAsync: never reachable cross-tenant,
-    // and a super-admin acting for a tenant still matches only invites it concretely owns.
+    // owner) — mirrors PredefinedActionService.LoadOwnTenantWideAsync: never reachable cross-tenant.
+    // M3: super-admins get full reach (they see all invites in ListAsync via the query filter; they
+    // must be able to revoke any of them — mirroring the IsSuperAdmin bypass on all other loaders).
     private async Task<Invite?> LoadOwnAsync(int id)
     {
+        if (_currentUser.IsSuperAdmin)
+        {
+            // Super-admin: bypass tenant scoping — can revoke any invite (consistent with ListAsync).
+            return await _unitOfWork.Repository<Invite>()
+                .Query()
+                .IgnoreQueryFilters()
+                .Where(i => i.Id == id && i.DeletedAt == null)
+                .FirstOrDefaultAsync();
+        }
+
         var ownerId = TenantStamp.OwnerFor(_currentUser) ?? _currentUser.Id;
         if (ownerId is not Guid owner) return null;
 
@@ -185,17 +196,29 @@ public class InviteService : IInviteService
                 .FirstOrDefaultAsync();
         }
 
+        // L1: do NOT return the raw locked email to anonymous callers — return only the bool flag.
+        // The server still enforces the lock on accept; the client renders a masked hint from
+        // EmailLocked=true without knowing the actual address.
         return Result<InvitePreviewResponse>.Success(new InvitePreviewResponse
         {
             WorkspaceName = workspaceName ?? "Workspace",
             RoleName = roleName,
-            EmailLocked = invite.Email != null,
-            Email = invite.Email
+            EmailLocked = invite.Email != null
         });
     }
 
     public async Task<Result<LoginResponse>> AcceptAsync(AcceptInviteRequest request)
     {
+        // M2: guard nulls before any .Trim()/.Hash() so null fields return 400 not 500.
+        if (string.IsNullOrWhiteSpace(request.Code))
+            return Result<LoginResponse>.Failure(MessageKeys.Invite.NotFound);
+        if (string.IsNullOrWhiteSpace(request.Email))
+            return Result<LoginResponse>.Failure(MessageKeys.User.EmailRequired);
+        if (string.IsNullOrWhiteSpace(request.Password) || request.Password.Length < 8)
+            return Result<LoginResponse>.Failure(MessageKeys.User.PasswordWeak);
+        if (string.IsNullOrWhiteSpace(request.DisplayName))
+            return Result<LoginResponse>.Failure(MessageKeys.User.DisplayNameRequired);
+
         var emailNormalized = request.Email.Trim().ToLower();
 
         // 1. Resolve the invite (anonymous path → IgnoreQueryFilters, like RegisterAsync). Reject
@@ -225,19 +248,33 @@ public class InviteService : IInviteService
         if (role == null)
             return Result<LoginResponse>.Failure(MessageKeys.Role.Invalid);
 
-        // 3. Look up any existing user by email (anonymous path → bypass User filter).
+        // 3. M1: scope the duplicate-email check to THIS invite's tenant only — a same-email user
+        //    under a different tenant is not a conflict (the (email, owner_id) unique index allows it,
+        //    and cross-tenant existence must not be revealed via 409 vs 400 distinction).
         var existing = await _unitOfWork.Repository<User>()
             .Query()
             .IgnoreQueryFilters()
             .AsNoTracking()
-            .Where(u => u.DeletedAt == null && u.Email.ToLower() == emailNormalized)
+            .Where(u => u.DeletedAt == null
+                        && u.Email.ToLower() == emailNormalized
+                        && u.OwnerId == invite.OwnerId)
             .FirstOrDefaultAsync();
 
         if (existing != null)
-            // Same "account exists" handling as RegisterAsync — one account per email.
             return Result<LoginResponse>.Conflict(MessageKeys.Auth.AccountExists);
 
-        // 4. Create the user pre-authorized + pre-scoped to the invite's tenant. The invite is the
+        // 4. H1: atomically claim a usage slot BEFORE creating the user. The UnitOfWork issues a
+        //    single UPDATE … WHERE (not deleted/revoked/expired AND uses < maxUses) … SET uses+=1
+        //    returning rows-affected. Two concurrent requests both seeing Uses=0/MaxUses=1 cannot
+        //    both succeed — only one gets claimed=1; the other gets claimed=0 and is rejected
+        //    without ever creating a user. This replaces the old read-check-then-increment pattern.
+        var claimed = await _unitOfWork.AtomicClaimInviteSlotAsync(invite.Id, DateTime.UtcNow);
+
+        if (claimed == 0)
+            // Exhausted or revoked concurrently — do NOT create the user.
+            return Result<LoginResponse>.NotFound(MessageKeys.Invite.NotFound);
+
+        // 5. Create the user pre-authorized + pre-scoped to the invite's tenant. The invite is the
         //    authorization, so we SKIP the pending approval queue: Approved + active immediately.
         var newUser = new User
         {
@@ -251,17 +288,17 @@ public class InviteService : IInviteService
             OwnerId = invite.OwnerId
         };
 
-        await _unitOfWork.Repository<User>().AddAsync(newUser);
-
-        // 5. Increment Uses on the invite (re-load tracked, bypassing filters — anonymous path).
-        var trackedInvite = await _unitOfWork.Repository<Invite>()
-            .Query()
-            .IgnoreQueryFilters()
-            .FirstAsync(i => i.Id == invite.Id);
-        trackedInvite.Uses += 1;
-        _unitOfWork.Repository<Invite>().Update(trackedInvite);
-
-        await _unitOfWork.SaveChangesAsync();
+        try
+        {
+            await _unitOfWork.Repository<User>().AddAsync(newUser);
+            await _unitOfWork.SaveChangesAsync();
+        }
+        catch (Microsoft.EntityFrameworkCore.DbUpdateException)
+        {
+            // L2: duplicate-email insert race (two concurrent accepts with the same email both
+            // pass the check above; the second violates the unique index (email, owner_id)).
+            return Result<LoginResponse>.Conflict(MessageKeys.Auth.AccountExists);
+        }
 
         // 6. Auto-signin: return a login token + user (reuse the login response builder).
         newUser.Role = role;

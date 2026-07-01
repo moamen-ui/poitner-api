@@ -13,9 +13,10 @@ public class InvitePreviewResponse
     /// <summary>The pinned role's name, if the invite pins one. Null = invitee picks a role.</summary>
     public string? RoleName { get; set; }
 
-    /// <summary>True if the invite is email-locked (the accept form should prefill + lock the email).</summary>
+    /// <summary>True if the invite is email-locked (the accept form should disable the email field).</summary>
+    /// <remarks>
+    /// L1 fix: the raw locked email is NOT returned to anonymous callers. The server enforces the
+    /// email lock on accept; the client renders a "email is locked" hint from this bool only.
+    /// </remarks>
     public bool EmailLocked { get; set; }
-
-    /// <summary>The locked email, if email-locked (so the accept form can prefill it).</summary>
-    public string? Email { get; set; }
 }

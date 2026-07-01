@@ -403,4 +403,228 @@ public class InviteServiceTests
         // Revoked invites are excluded from the active list.
         Assert.Empty((await svc.ListAsync()).Data!);
     }
+
+    // ── H1: atomic MaxUses ────────────────────────────────────────────────────────
+
+    [Fact]
+    public async Task Accept_SingleUseInvite_AcceptedOnce_SecondReject()
+    {
+        // A MaxUses=1 invite: first accept succeeds and exhausts it; second accept is rejected
+        // (the atomic increment sees Uses=1 >= MaxUses=1 and returns claimed=0).
+        var dbName = Guid.NewGuid().ToString();
+        var (tenant, roleId) = SeedTenant(dbName);
+        var inviteId = SeedInvite(dbName, tenant, i => { i.RoleId = roleId; i.MaxUses = 1; });
+        var code = CodeOf(dbName, inviteId);
+
+        var anon = new FakeCurrentUser { };
+        using var db = BuildContext(anon, dbName);
+        var svc = BuildService(anon, db);
+
+        // First accept succeeds.
+        var first = await svc.AcceptAsync(new AcceptInviteRequest
+        { Code = code, Email = "first@user.com", Password = "password123", DisplayName = "First" });
+        Assert.True(first.IsSuccess);
+
+        var invite = db.Invites.IgnoreQueryFilters().Single(i => i.Id == inviteId);
+        Assert.Equal(1, invite.Uses); // slot consumed
+
+        // Second accept (different email, same code) must be rejected — slot exhausted.
+        var second = await svc.AcceptAsync(new AcceptInviteRequest
+        { Code = code, Email = "second@user.com", Password = "password123", DisplayName = "Second" });
+        Assert.False(second.IsSuccess);
+        Assert.True(second.IsNotFound); // exhausted → same NotFound as invalid code
+        Assert.Empty(db.Users.IgnoreQueryFilters().Where(u => u.Email == "second@user.com"));
+    }
+
+    // ── M2: validation / null guards ─────────────────────────────────────────────
+
+    [Fact]
+    public async Task Accept_NullPassword_ReturnsFailure_Not500()
+    {
+        var dbName = Guid.NewGuid().ToString();
+        var (tenant, roleId) = SeedTenant(dbName);
+        var inviteId = SeedInvite(dbName, tenant, i => i.RoleId = roleId);
+        var code = CodeOf(dbName, inviteId);
+
+        var anon = new FakeCurrentUser { };
+        using var db = BuildContext(anon, dbName);
+        var svc = BuildService(anon, db);
+
+        // Simulates a JSON body with "password": null overriding the default string.Empty.
+        var req = new AcceptInviteRequest { Code = code, Email = "x@x.com", DisplayName = "X" };
+        req.GetType().GetProperty(nameof(AcceptInviteRequest.Password))!.SetValue(req, null!);
+
+        var result = await svc.AcceptAsync(req);
+        Assert.False(result.IsSuccess);
+        Assert.False(result.IsNotFound); // must be a validation failure (400), not 404/500
+    }
+
+    [Fact]
+    public async Task Accept_ShortPassword_ReturnsFailure()
+    {
+        var dbName = Guid.NewGuid().ToString();
+        var (tenant, roleId) = SeedTenant(dbName);
+        var inviteId = SeedInvite(dbName, tenant, i => i.RoleId = roleId);
+        var code = CodeOf(dbName, inviteId);
+
+        var anon = new FakeCurrentUser { };
+        using var db = BuildContext(anon, dbName);
+        var svc = BuildService(anon, db);
+
+        var result = await svc.AcceptAsync(new AcceptInviteRequest
+        { Code = code, Email = "x@x.com", Password = "short", DisplayName = "X" });
+
+        Assert.False(result.IsSuccess);
+        Assert.False(result.IsNotFound);
+        Assert.Empty(db.Users.IgnoreQueryFilters().Where(u => u.Email == "x@x.com"));
+    }
+
+    [Fact]
+    public async Task Accept_NullEmail_ReturnsFailure_Not500()
+    {
+        var dbName = Guid.NewGuid().ToString();
+        var (tenant, roleId) = SeedTenant(dbName);
+        var inviteId = SeedInvite(dbName, tenant, i => i.RoleId = roleId);
+        var code = CodeOf(dbName, inviteId);
+
+        var anon = new FakeCurrentUser { };
+        using var db = BuildContext(anon, dbName);
+        var svc = BuildService(anon, db);
+
+        var req = new AcceptInviteRequest { Code = code, Password = "password123", DisplayName = "X" };
+        req.GetType().GetProperty(nameof(AcceptInviteRequest.Email))!.SetValue(req, null!);
+
+        var result = await svc.AcceptAsync(req);
+        Assert.False(result.IsSuccess);
+        Assert.False(result.IsNotFound);
+    }
+
+    [Fact]
+    public async Task Accept_NullDisplayName_ReturnsFailure_Not500()
+    {
+        var dbName = Guid.NewGuid().ToString();
+        var (tenant, roleId) = SeedTenant(dbName);
+        var inviteId = SeedInvite(dbName, tenant, i => i.RoleId = roleId);
+        var code = CodeOf(dbName, inviteId);
+
+        var anon = new FakeCurrentUser { };
+        using var db = BuildContext(anon, dbName);
+        var svc = BuildService(anon, db);
+
+        var req = new AcceptInviteRequest { Code = code, Email = "x@x.com", Password = "password123" };
+        req.GetType().GetProperty(nameof(AcceptInviteRequest.DisplayName))!.SetValue(req, null!);
+
+        var result = await svc.AcceptAsync(req);
+        Assert.False(result.IsSuccess);
+        Assert.False(result.IsNotFound);
+    }
+
+    // ── M1: same-email under a different tenant is allowed ───────────────────────
+
+    [Fact]
+    public async Task Accept_SameEmail_DifferentTenant_IsAllowed_NotAccountExists()
+    {
+        // A user already exists in tenantA with email "shared@email.com". A completely separate
+        // tenantB invite should allow the same email to register as a tenantB user (separate row
+        // with the same email but different OwnerId). Cross-tenant existence must NOT leak as 409.
+        var dbName = Guid.NewGuid().ToString();
+        var (tenantA, roleIdA) = SeedTenant(dbName);
+
+        // Register a user in tenantA with the shared email.
+        using (var seed = BuildContext(new FakeCurrentUser { IsSuperAdmin = true }, dbName))
+        {
+            seed.Users.Add(new User
+            {
+                Email = "shared@email.com",
+                PasswordHash = "x",
+                DisplayName = "TenantA User",
+                RoleId = roleIdA,
+                PublicId = Guid.NewGuid(),
+                ApprovalStatus = ApprovalStatus.Approved,
+                IsActive = true,
+                OwnerId = tenantA
+            });
+            seed.SaveChanges();
+        }
+
+        // Set up tenantB with its own role and invite.
+        var tenantB = Guid.NewGuid();
+        int roleIdB;
+        using (var seed = BuildContext(new FakeCurrentUser { IsSuperAdmin = true }, dbName))
+        {
+            var roleB = new Role { Name = "Member-B", GrantsAdmin = false, IsActive = true, OwnerId = tenantB };
+            seed.Roles.Add(roleB);
+            // Also add a tenantB admin user so workspace name lookup works.
+            var adminRoleB = new Role { Name = "Admin-B", GrantsAdmin = true, IsActive = true, OwnerId = tenantB };
+            seed.Roles.Add(adminRoleB);
+            seed.SaveChanges();
+            roleIdB = roleB.Id;
+            seed.Users.Add(new User
+            {
+                Email = "adminb@b.com", PasswordHash = "x", DisplayName = "TenantB Workspace",
+                RoleId = adminRoleB.Id, PublicId = Guid.NewGuid(),
+                ApprovalStatus = ApprovalStatus.Approved, IsActive = true, OwnerId = tenantB
+            });
+            seed.SaveChanges();
+        }
+
+        var inviteId = SeedInvite(dbName, tenantB, i => i.RoleId = roleIdB);
+        var code = CodeOf(dbName, inviteId);
+
+        var anon = new FakeCurrentUser { };
+        using var db = BuildContext(anon, dbName);
+        var svc = BuildService(anon, db);
+
+        // Must succeed — same email, different tenant → not a conflict.
+        var result = await svc.AcceptAsync(new AcceptInviteRequest
+        { Code = code, Email = "shared@email.com", Password = "password123", DisplayName = "TenantB User" });
+
+        Assert.True(result.IsSuccess);
+        // Two rows exist: one per tenant, same email.
+        var rows = db.Users.IgnoreQueryFilters().Where(u => u.Email == "shared@email.com").ToList();
+        Assert.Equal(2, rows.Count);
+        Assert.Contains(rows, u => u.OwnerId == tenantA);
+        Assert.Contains(rows, u => u.OwnerId == tenantB);
+    }
+
+    // ── M3: super-admin can revoke any invite ─────────────────────────────────────
+
+    [Fact]
+    public async Task SuperAdmin_CanRevoke_AnyTenantInvite()
+    {
+        var dbName = Guid.NewGuid().ToString();
+        var (tenantA, roleId) = SeedTenant(dbName);
+        var inviteId = SeedInvite(dbName, tenantA, i => i.RoleId = roleId);
+
+        // Super-admin has no TenantId — they must still be able to revoke the invite.
+        var superAdmin = new FakeCurrentUser { Id = Guid.NewGuid(), IsSuperAdmin = true };
+        using var db = BuildContext(superAdmin, dbName);
+        var svc = BuildService(superAdmin, db);
+
+        var revoke = await svc.RevokeAsync(inviteId);
+        Assert.True(revoke.IsSuccess);
+        Assert.NotNull(db.Invites.IgnoreQueryFilters().Single(i => i.Id == inviteId).RevokedAt);
+    }
+
+    // ── L1: preview does not leak the locked email ────────────────────────────────
+
+    [Fact]
+    public async Task Preview_DoesNotLeak_LockedEmail()
+    {
+        var dbName = Guid.NewGuid().ToString();
+        var (tenant, roleId) = SeedTenant(dbName);
+        var inviteId = SeedInvite(dbName, tenant, i => { i.RoleId = roleId; i.Email = "secret@locked.com"; });
+        var code = CodeOf(dbName, inviteId);
+
+        var anon = new FakeCurrentUser { };
+        using var db = BuildContext(anon, dbName);
+        var svc = BuildService(anon, db);
+
+        var result = await svc.GetPreviewAsync(code);
+
+        Assert.True(result.IsSuccess);
+        Assert.True(result.Data!.EmailLocked);
+        // The raw email must NOT be present in the response DTO.
+        Assert.Null(result.Data.GetType().GetProperty("Email")?.GetValue(result.Data));
+    }
 }
