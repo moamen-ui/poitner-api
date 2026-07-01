@@ -15,12 +15,21 @@ public class UserService : IUserService
     private readonly IUnitOfWork _unitOfWork;
     private readonly IPasswordHasher _passwordHasher;
     private readonly ICurrentUser _currentUser;
+    private readonly IEmailService _emailService;
 
-    public UserService(IUnitOfWork unitOfWork, IPasswordHasher passwordHasher, ICurrentUser currentUser)
+    public UserService(IUnitOfWork unitOfWork, IPasswordHasher passwordHasher, ICurrentUser currentUser, IEmailService emailService)
     {
         _unitOfWork = unitOfWork;
         _passwordHasher = passwordHasher;
         _currentUser = currentUser;
+        _emailService = emailService;
+    }
+
+    // Best-effort notification: a send failure must never fail the admin action.
+    private async Task SafeSendAsync(string to, string subject, string html)
+    {
+        try { await _emailService.SendAsync(to, subject, html); }
+        catch { /* logged inside the sender; ignore here */ }
     }
 
     public async Task<Result<UserResponse>> CreateAsync(CreateUserRequest request)
@@ -103,6 +112,13 @@ public class UserService : IUserService
         _unitOfWork.Repository<User>().Update(user);
         await _unitOfWork.SaveChangesAsync();
 
+        await SafeSendAsync(user.Email, "Your Pointer account is approved",
+            $@"<div style=""font-family:system-ui,sans-serif;color:#0f172a;line-height:1.6"">
+  <h2 style=""margin:0 0 8px"">You're in ✅</h2>
+  <p>Your Pointer account (<b>{user.Email}</b>) has been approved and is now active.</p>
+  <p><a href=""https://app.pointer.moamen.work"" style=""color:#2563eb"">Sign in to Pointer →</a></p>
+</div>");
+
         return Result<UserResponse>.Success(MapToResponse(user, role));
     }
 
@@ -118,6 +134,12 @@ public class UserService : IUserService
 
         _unitOfWork.Repository<User>().Update(user);
         await _unitOfWork.SaveChangesAsync();
+
+        await SafeSendAsync(user.Email, "Your Pointer account request",
+            $@"<div style=""font-family:system-ui,sans-serif;color:#0f172a;line-height:1.6"">
+  <p>Thanks for your interest in Pointer. Unfortunately your account request for
+  <b>{user.Email}</b> was not approved at this time.</p>
+</div>");
 
         var role = await GetActiveRoleAsync(user.RoleId);
         return Result<UserResponse>.Success(MapToResponse(user, role));
