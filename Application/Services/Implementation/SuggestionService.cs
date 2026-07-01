@@ -44,7 +44,7 @@ public class SuggestionService : ISuggestionService
 
         // Guard: only members who CANNOT edit the project may suggest. Admins/owners add directly.
         if (_currentUser.IsAdmin || project.CreatedBy == _currentUser.Id)
-            return Result<SuggestionResponse>.Failure(MessageKeys.Suggestion.CanEditDirectly);
+            return Result<SuggestionResponse>.Forbidden(MessageKeys.Suggestion.CanEditDirectly);
 
         var suggestion = new PredefinedActionSuggestion
         {
