@@ -2,6 +2,8 @@ bin/
 obj/
 .env
 .env.prod
+.pointer/*
+!.pointer/credentials.env.example
 dashboard/
 *.user
 .superpowers/

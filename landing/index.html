@@ -52,7 +52,9 @@
     .nav-links { display: flex; gap: 18px; margin-inline-start: auto; }
     .nav-links a { color: var(--pf-muted); font-weight: 600; font-size: 14px; }
     .nav-cta { display: flex; gap: 10px; align-items: center; }
-    #lang-toggle { background: var(--pf-soft); border: 1px solid var(--pf-border); border-radius: 999px; padding: 6px 12px; font-weight: 700; cursor: pointer; }
+    #lang-toggle { display: inline-grid; place-items: center; background: var(--pf-soft); border: 1px solid var(--pf-border); border-radius: 999px; width: 38px; height: 38px; padding: 0; color: var(--pf-muted); cursor: pointer; }
+    #lang-toggle:hover { color: var(--pf-text); border-color: color-mix(in srgb, var(--pf-blue) 40%, var(--pf-border)); }
+    #lang-toggle svg { display: block; }
     @media (max-width: 760px) {
       .nav-links { display: none; }
     }
@@ -114,14 +116,29 @@
     .pf-pop { position: absolute; left: 130px; top: 52px; background: #0f172a; color: #fff; font-size: 13px; padding: 8px 12px; border-radius: 10px; opacity: 0; transform: translateY(4px); animation: pf-pop 6s ease-in-out infinite; white-space: nowrap; }
     .pf-pin { position: absolute; left: 96px; top: 44px; width: 22px; height: 22px; border-radius: 50% 50% 50% 2px; background: var(--pf-grad); color: #fff; font-size: 12px; font-weight: 800; display: grid; place-items: center; opacity: 0; animation: pf-pin 6s ease-in-out infinite; }
     @keyframes pf-cursor {
-      0% { top: 75%; left: 70%; } 25% { top: 60px; left: 56px; } 100% { top: 60px; left: 56px; }
+      0% { top: 75%; left: 70%; } 18% { top: 60px; left: 56px; } 100% { top: 60px; left: 56px; }
     }
-    @keyframes pf-ring { 0%,18% { opacity: 0; } 28%,100% { opacity: 1; } }
-    @keyframes pf-pop { 0%,30% { opacity: 0; transform: translateY(4px); } 42%,92% { opacity: 1; transform: translateY(0); } 100% { opacity: 0; } }
-    @keyframes pf-pin { 0%,40% { opacity: 0; transform: scale(.4); } 52%,100% { opacity: 1; transform: scale(1); } }
+    @keyframes pf-ring { 0%,12% { opacity: 0; } 20%,100% { opacity: 1; } }
+    @keyframes pf-pop { 0%,22% { opacity: 0; transform: translateY(4px); } 30%,52% { opacity: 1; transform: translateY(0); } 60%,100% { opacity: 0; } }
+    @keyframes pf-pin { 0%,28% { opacity: 0; transform: scale(.4); } 38%,100% { opacity: 1; transform: scale(1); } }
+    /* Final step: the Claude Code terminal slides up, then the command types itself out. */
+    .pf-term { position: absolute; left: 22px; right: 22px; bottom: 18px; background: #0f172a; border: 1px solid #1e293b; border-radius: 10px; padding: 10px 12px; box-shadow: 0 10px 30px rgba(2,6,23,.28); opacity: 0; transform: translateY(10px); animation: pf-term 6s ease-in-out infinite; }
+    .pf-term-bar { display: flex; align-items: center; gap: 5px; margin-bottom: 8px; }
+    .pf-term-bar span { width: 9px; height: 9px; border-radius: 50%; background: #334155; }
+    .pf-term-bar em { margin-inline-start: 6px; font-style: normal; font-size: 11px; color: #64748b; letter-spacing: .02em; }
+    .pf-term-body { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 13px; line-height: 1.4; color: #e2e8f0; white-space: nowrap; }
+    .pf-term-prompt { color: #22c55e; font-weight: 700; }
+    .pf-term-cmd { display: inline-block; overflow: hidden; white-space: nowrap; vertical-align: bottom; width: 0; animation: pf-type 6s steps(22) infinite; }
+    .pf-term-caret { display: inline-block; width: 7px; height: 14px; background: #e2e8f0; margin-inline-start: 2px; vertical-align: middle; animation: pf-blink 1s step-end infinite; }
+    @keyframes pf-term { 0%,60% { opacity: 0; transform: translateY(10px); } 68%,98% { opacity: 1; transform: translateY(0); } 100% { opacity: 0; } }
+    @keyframes pf-type { 0%,66% { width: 0; } 86%,100% { width: 22ch; } }
+    @keyframes pf-blink { 0%,50% { opacity: 1; } 51%,100% { opacity: 0; } }
     @media (prefers-reduced-motion: reduce) {
-      .pf-cursor, .pf-ring, .pf-pop, .pf-pin { animation: none; }
-      .pf-ring, .pf-pop, .pf-pin { opacity: 1; }       /* show the representative end frame */
+      .pf-cursor, .pf-ring, .pf-pop, .pf-pin, .pf-term, .pf-term-cmd, .pf-term-caret { animation: none; }
+      .pf-ring, .pf-pin, .pf-term { opacity: 1; }       /* show the representative end frame */
+      .pf-pop { opacity: 0; }                           /* collapsed once the terminal step is shown */
+      .pf-term { transform: none; }
+      .pf-term-cmd { width: 22ch; }
       .pf-cursor { top: 60px; left: 56px; }
     }
     [dir="rtl"] .nav-links { margin-inline-start: 0; margin-inline-end: auto; }
@@ -140,7 +157,9 @@
         <a href="#demo" data-i18n="nav.demo">Demo</a>
       </nav>
       <div class="nav-cta">
-        <button id="lang-toggle" type="button" aria-label="Switch language">العربية</button>
+        <button id="lang-toggle" type="button" aria-label="Switch language" title="Switch language">
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"></circle><line x1="2" y1="12" x2="22" y2="12"></line><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10A15.3 15.3 0 0 1 12 2z"></path></svg>
+        </button>
         <a class="btn" href="https://app.pointer.moamen.work" data-i18n="nav.signin">Sign in</a>
         <a class="btn primary" href="https://demo.pointer.moamen.work" data-i18n="nav.demoCta">Try the demo</a>
       </div>
@@ -168,6 +187,11 @@
     <span class="pf-ring"></span>
     <div class="pf-pop"><b data-i18n="anim.label">Make this bolder</b></div>
     <span class="pf-pin">1</span>
+    <!-- Final step: a Claude Code terminal opens and the developer applies the queue. -->
+    <div class="pf-term">
+      <div class="pf-term-bar"><span></span><span></span><span></span><em>claude code</em></div>
+      <div class="pf-term-body"><span class="pf-term-prompt">&gt;</span> <span class="pf-term-cmd">apply pointer comments</span><span class="pf-term-caret"></span></div>
+    </div>
   </div>
 </div>
       </div>
@@ -240,7 +264,7 @@
         <div class="brand"><img src="assets/dog-mascot.png" alt="" /> <span>Pointer</span></div>
         <div class="footer-links">
           <a href="https://app.pointer.moamen.work" data-i18n="foot.dashboard">Dashboard</a>
-          <a href="https://api.pointer.moamen.work/pointer-init.md" data-i18n="foot.docs">Docs</a>
+          <a href="https://github.com/moamen-ui/poitner-api#readme" rel="noopener" target="_blank" data-i18n="foot.docs">Docs</a>
           <a href="https://github.com/moamen-ui" rel="noopener" target="_blank">GitHub</a>
         </div>
       </div>
@@ -314,7 +338,12 @@
     document.documentElement.lang = lang;
     document.documentElement.dir = (lang === 'ar') ? 'rtl' : 'ltr';
     var toggle = document.getElementById('lang-toggle');
-    if (toggle) toggle.textContent = (lang === 'ar') ? 'English' : 'العربية';
+    // Icon-only button: keep the glyph, just update the accessible label/title to the action.
+    if (toggle) {
+      var label = (lang === 'ar') ? 'التبديل إلى الإنجليزية' : 'Switch to Arabic';
+      toggle.setAttribute('aria-label', label);
+      toggle.setAttribute('title', label);
+    }
     try { localStorage.setItem('pointer_lang', lang); } catch (e) {}
   }
 
