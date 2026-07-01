@@ -23,6 +23,7 @@ public static class DependencyInjection
         s.AddScoped<ICurrentUser, HttpCurrentUser>();
         s.AddScoped<IFileStorage, LocalFileStorage>();
         s.AddSingleton<IUploadSigner, UploadSigner>();
+        s.AddSingleton<IResetTokenService, ResetTokenService>();
         s.AddHttpClient<IEmailSender, BrevoEmailSender>();
         return s;
     }

@@ -16,19 +16,84 @@ public class AuthService : IAuthService
     private readonly ITokenService _tokenService;
     private readonly ICurrentUser _currentUser;
     private readonly ISettingsService _settings;
+    private readonly IResetTokenService _resetTokens;
+    private readonly IEmailService _emailService;
 
     public AuthService(
         IUnitOfWork unitOfWork,
         IPasswordHasher passwordHasher,
         ITokenService tokenService,
         ICurrentUser currentUser,
-        ISettingsService settings)
+        ISettingsService settings,
+        IResetTokenService resetTokens,
+        IEmailService emailService)
     {
         _unitOfWork = unitOfWork;
         _passwordHasher = passwordHasher;
         _tokenService = tokenService;
         _currentUser = currentUser;
         _settings = settings;
+        _resetTokens = resetTokens;
+        _emailService = emailService;
+    }
+
+    public async Task<Result> RequestPasswordResetAsync(ForgotPasswordRequest request)
+    {
+        var emailNormalized = (request.Email ?? string.Empty).Trim().ToLower();
+        if (emailNormalized.Length > 0)
+        {
+            // Anonymous path → bypass the tenant query filter; only real (non-demo) active accounts.
+            var user = await _unitOfWork.Repository<User>()
+                .Query()
+                .IgnoreQueryFilters()
+                .AsNoTracking()
+                .Where(u => u.DeletedAt == null && u.IsActive && !u.IsDemo && u.Email.ToLower() == emailNormalized)
+                .FirstOrDefaultAsync();
+
+            if (user != null)
+            {
+                var token = _resetTokens.Create(user.PublicId);
+                var link = $"https://app.pointer.moamen.work/reset?token={Uri.EscapeDataString(token)}";
+                try
+                {
+                    await _emailService.SendAsync(user.Email, "Reset your Pointer password",
+                        $@"<div style=""font-family:system-ui,sans-serif;color:#0f172a;line-height:1.6"">
+  <h2 style=""margin:0 0 8px"">Reset your password</h2>
+  <p>Click the link below to choose a new password. It expires in 30 minutes.</p>
+  <p><a href=""{link}"" style=""color:#2563eb"">Reset my password &rarr;</a></p>
+  <p style=""color:#94a3b8;font-size:12px"">If you didn't request this, you can safely ignore this email.</p>
+</div>");
+                }
+                catch { /* best-effort; sender logs failures */ }
+            }
+        }
+
+        // Always succeed — never reveal whether an email is registered.
+        return Result.Success();
+    }
+
+    public async Task<Result> ResetPasswordAsync(ResetPasswordRequest request)
+    {
+        if (string.IsNullOrWhiteSpace(request.NewPassword) || request.NewPassword.Length < 8)
+            return Result.Failure("Password must be at least 8 characters.");
+
+        if (!_resetTokens.TryValidate(request.Token ?? string.Empty, out var publicId))
+            return Result.Failure("This reset link is invalid or has expired.");
+
+        var user = await _unitOfWork.Repository<User>()
+            .Query()
+            .IgnoreQueryFilters()
+            .Where(u => u.DeletedAt == null && u.PublicId == publicId)
+            .FirstOrDefaultAsync();
+
+        if (user == null)
+            return Result.Failure("This reset link is invalid or has expired.");
+
+        user.PasswordHash = _passwordHasher.Hash(request.NewPassword);
+        _unitOfWork.Repository<User>().Update(user);
+        await _unitOfWork.SaveChangesAsync();
+
+        return Result.Success();
     }
 
     public async Task<Result<LoginResponse>> LoginAsync(LoginRequest request)

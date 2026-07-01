@@ -45,6 +45,28 @@ public class AuthController(IAuthService authService, ISettingsService settingsS
     }
 
     [AllowAnonymous]
+    [HttpPost("forgot-password")]
+    [EnableRateLimiting("signup")]
+    [ProducesResponseType(typeof(Result), StatusCodes.Status200OK)]
+    public async Task<IActionResult> ForgotPassword([FromBody] ForgotPasswordRequest request)
+    {
+        // Always 200 — never reveal whether the email is registered.
+        var result = await authService.RequestPasswordResetAsync(request);
+        return Ok(result);
+    }
+
+    [AllowAnonymous]
+    [HttpPost("reset-password")]
+    [EnableRateLimiting("signup")]
+    [ProducesResponseType(typeof(Result), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(Result), StatusCodes.Status400BadRequest)]
+    public async Task<IActionResult> ResetPassword([FromBody] ResetPasswordRequest request)
+    {
+        var result = await authService.ResetPasswordAsync(request);
+        return result.IsSuccess ? Ok(result) : BadRequest(result);
+    }
+
+    [AllowAnonymous]
     [HttpGet("signup-enabled")]
     [ProducesResponseType(typeof(SignupEnabledResponse), StatusCodes.Status200OK)]
     public async Task<IActionResult> SignupEnabled()
