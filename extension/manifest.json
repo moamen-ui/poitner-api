@@ -14,8 +14,8 @@
   "permissions": [
     "storage",
     "scripting",
-    "tabs",
-    "declarativeNetRequest"
+    "activeTab",
+    "declarativeNetRequestWithHostAccess"
   ],
   "host_permissions": ["<all_urls>"]
 }

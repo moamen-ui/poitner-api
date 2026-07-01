@@ -39,9 +39,10 @@ async function addCspBypass(tabId: number): Promise<void> {
       },
       condition: {
         tabIds: [tabId],
+        // Restrict to MAIN_FRAME only — sub-frames (including cross-origin iframes)
+        // do not need their CSP removed, and stripping them is unnecessary over-reach (3.2).
         resourceTypes: [
           chrome.declarativeNetRequest.ResourceType.MAIN_FRAME,
-          chrome.declarativeNetRequest.ResourceType.SUB_FRAME,
         ],
       },
     }],
@@ -57,20 +58,37 @@ async function isActive(tabId: number): Promise<boolean> {
 
 // ---- activation ----------------------------------------------------------
 // Tabs waiting for their post-reload 'complete' so we inject exactly once.
-const pendingInject = new Set<number>();
+// Persisted in chrome.storage.session (not in-memory) so a terminated and
+// re-awakened MV3 service worker can still complete the injection (fix 3.1).
+const SESSION_PENDING = 'pendingInject';
+
+async function getPendingInject(): Promise<Set<number>> {
+  const s = await chrome.storage.session.get(SESSION_PENDING);
+  return new Set<number>((s[SESSION_PENDING] as number[]) || []);
+}
+async function addPendingInject(tabId: number): Promise<void> {
+  const set = await getPendingInject();
+  set.add(tabId);
+  await chrome.storage.session.set({ [SESSION_PENDING]: Array.from(set) });
+}
+async function removePendingInject(tabId: number): Promise<void> {
+  const set = await getPendingInject();
+  set.delete(tabId);
+  await chrome.storage.session.set({ [SESSION_PENDING]: Array.from(set) });
+}
 
 async function activate(tabId: number, hostname: string, project: string, environment: string): Promise<void> {
   const map = await getProjectMap();
   map[hostname] = { project, environment };
   await chrome.storage.local.set({ [LOCAL_KEYS.projectByDomain]: map });
   await addCspBypass(tabId);
-  pendingInject.add(tabId);
+  await addPendingInject(tabId);
   await chrome.tabs.reload(tabId);
 }
 
 async function deactivate(tabId: number): Promise<void> {
   await removeCspBypass(tabId);
-  pendingInject.delete(tabId);
+  await removePendingInject(tabId);
   try { await chrome.tabs.reload(tabId); } catch { /* tab may be gone */ }
 }
 
@@ -81,6 +99,8 @@ async function injectInto(tabId: number, url: string): Promise<void> {
   const map = await getProjectMap();
   const entry = map[hostnameOf(url)];
   if (!entry) return;
+  // Only pass the display name into the page — email and role are PII (fix 1.3).
+  const displayName: string | undefined = user?.displayName || undefined;
   // Isolated bridge first (relays the page's proxied requests), then the
   // MAIN-world config + widget loader.
   await chrome.scripting.executeScript({ target: { tabId }, files: ['content-bridge.js'] });
@@ -88,17 +108,24 @@ async function injectInto(tabId: number, url: string): Promise<void> {
     target: { tabId },
     world: 'MAIN',
     func: injectMain,
-    args: [{ server, project: entry.project, environment: entry.environment, user }],
+    args: [{ server, project: entry.project, environment: entry.environment, displayName }],
   });
 }
 
 chrome.tabs.onUpdated.addListener((tabId, info, tab) => {
-  if (info.status !== 'complete' || !pendingInject.has(tabId)) return;
-  pendingInject.delete(tabId);
-  if (tab.url) injectInto(tabId, tab.url).catch((e) => console.error('[pointer-ext] inject failed', e));
+  if (info.status !== 'complete') return;
+  // Check the persisted set — works even after SW termination and re-wake (fix 3.1).
+  getPendingInject().then(async (set) => {
+    if (!set.has(tabId)) return;
+    await removePendingInject(tabId);
+    if (tab.url) injectInto(tabId, tab.url).catch((e) => console.error('[pointer-ext] inject failed', e));
+  }).catch((e) => console.error('[pointer-ext] pendingInject check failed', e));
 });
 
-chrome.tabs.onRemoved.addListener((tabId) => { removeCspBypass(tabId).catch(() => {}); });
+chrome.tabs.onRemoved.addListener((tabId) => {
+  removeCspBypass(tabId).catch(() => {});
+  removePendingInject(tabId).catch(() => {});
+});
 
 // ---- login ---------------------------------------------------------------
 async function login(email: string, password: string, server: string) {
@@ -119,21 +146,61 @@ async function login(email: string, password: string, server: string) {
 }
 
 // ---- proxied API traffic (from the page via the content bridge) ----------
+
+// Allowed HTTP methods for regular fetch proxying.
+const ALLOWED_METHODS = new Set(['GET', 'POST', 'PATCH']);
+
+/**
+ * Validate that a URL is safe to proxy:
+ * - origin must match the configured Pointer server
+ * - path must start with /api/
+ * - method (for fetch requests) must be GET, POST, or PATCH
+ * Returns the trusted server origin if valid, null if it should be blocked.
+ */
+async function validateProxyUrl(url: string, method?: string): Promise<string | null> {
+  const server = await getServer(); // already strips trailing slash
+  let parsed: URL;
+  try { parsed = new URL(url); } catch { return null; }
+  if (parsed.origin !== new URL(server).origin) return null;
+  if (!parsed.pathname.startsWith('/api/')) return null;
+  if (method !== undefined && !ALLOWED_METHODS.has(method.toUpperCase())) return null;
+  return server;
+}
+
 async function handleProxy(msg: ProxyRequest): Promise<ProxyResponse> {
-  const token = await getToken();
+  const blocked: ProxyResponse = { ok: false, status: 0, body: 'blocked', contentType: null };
+
   if (msg.kind === 'upload') {
+    // Validate: must be POST to the trusted server's /api/ path
+    const trusted = await validateProxyUrl(msg.url, 'POST');
+    if (!trusted) return blocked;
+
+    const token = await getToken();
     const bytes = Uint8Array.from(atob(msg.base64), (c) => c.charCodeAt(0));
     const fd = new FormData();
     fd.append('file', new Blob([bytes], { type: msg.contentType }), msg.filename);
     fd.append('project', msg.project);
+    // Only attach the token when the URL is the trusted server — the allowlist
+    // check above guarantees this, but we make it explicit here.
     const r = await fetch(msg.url, { method: 'POST', headers: token ? { Authorization: `Bearer ${token}` } : {}, body: fd });
     return { ok: r.ok, status: r.status, body: await r.text(), contentType: r.headers.get('content-type') };
   }
+
+  // kind === 'fetch'
+  // Validate origin + path + method. IGNORE the page-supplied `auth` flag (#2 fix):
+  // the background decides whether to attach the token based solely on the allowlist match.
+  const trusted = await validateProxyUrl(msg.url, msg.method);
+  if (!trusted) return blocked;
+
+  const token = await getToken();
+  // Strip any Authorization header the page may have supplied; the background is
+  // the sole authority on whether and which token rides the request.
   const headers: Record<string, string> = { ...(msg.headers || {}) };
-  if (msg.auth) {
-    delete headers.authorization;
-    if (token) headers.Authorization = `Bearer ${token}`; else delete headers.Authorization;
-  }
+  delete headers.authorization;
+  delete headers.Authorization;
+  // Attach the real token — we only reach here when the URL is our trusted server.
+  if (token) headers.Authorization = `Bearer ${token}`;
+
   const r = await fetch(msg.url, { method: msg.method, headers, body: msg.body ?? undefined });
   return { ok: r.ok, status: r.status, body: await r.text(), contentType: r.headers.get('content-type') };
 }

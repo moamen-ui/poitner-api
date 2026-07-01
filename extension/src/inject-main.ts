@@ -7,7 +7,8 @@ export function injectMain(cfg: {
   server: string;
   project: string;
   environment: string;
-  user: unknown;
+  /** Only the display name is forwarded to the page — email and role are omitted (PII, fix 1.3). */
+  displayName?: string;
 }): void {
   const w = window as unknown as Record<string, unknown>;
   if (w.__pointerExtMounted) return;
@@ -17,7 +18,10 @@ export function injectMain(cfg: {
   const pending: Record<number, (r: Response) => void> = {};
   let counter = 0;
 
+  // Only accept response messages from our own origin (defense-in-depth: cross-origin
+  // frames cannot spoof responses or read the reply bodies we receive).
   window.addEventListener('message', (e: MessageEvent) => {
+    if (e.origin !== window.location.origin) return;
     const d = e.data;
     if (!d || d.source !== 'pointer-ext-res') return;
     const resolve = pending[d.id];
@@ -46,7 +50,7 @@ export function injectMain(cfg: {
             filename: (file && file.name) || 'screenshot',
             contentType: (file && file.type) || 'application/octet-stream',
             project,
-          }, '*');
+          }, window.location.origin);
         };
         reader.onerror = () => { delete pending[id]; reject(new Error('read failed')); };
         reader.readAsDataURL(file as Blob);
@@ -57,7 +61,7 @@ export function injectMain(cfg: {
           source: 'pointer-ext', kind: 'fetch', id, url,
           method: opts!.method || 'GET', headers,
           body: typeof body === 'string' ? body : null, auth,
-        }, '*');
+        }, window.location.origin);
       }
     });
   };
@@ -67,7 +71,8 @@ export function injectMain(cfg: {
     project: cfg.project,
     environment: cfg.environment,
     token: PROXY_TOKEN,
-    user: cfg.user,
+    // Only expose the display name — email and roleName are PII and not needed by the widget (1.3).
+    user: cfg.displayName ? { displayName: cfg.displayName } : undefined,
     proxy: true,
   };
 
