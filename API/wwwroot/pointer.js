@@ -28,11 +28,15 @@
     { value: 3, name: "Applied", label: "Completed", color: "#16a34a", order: 3 },
     { value: 4, name: "Archived", label: "Archived", color: "#6b7280", order: 4 }
   ];
+  function pfFetch(url, opts) {
+    const t = typeof window !== "undefined" ? window.__POINTER_FETCH__ : void 0;
+    return t ? t(url, opts) : fetch(url, opts);
+  }
   var _catalog = STATUS_FALLBACK;
   async function loadStatusCatalog(server) {
     var _a2;
     try {
-      const res = await fetch(`${server.replace(/\/$/, "")}/api/statuses`);
+      const res = await pfFetch(`${server.replace(/\/$/, "")}/api/statuses`);
       if (!res.ok) return;
       const body = await res.json();
       const data = (_a2 = body == null ? void 0 : body.data) != null ? _a2 : body;
@@ -748,6 +752,15 @@
       this.launcherPosition = POSITIONS.includes(pos) ? pos : "bottom-end";
       this.server = (this.getAttribute("server") || (SCRIPT_SRC ? new URL(SCRIPT_SRC).origin : window.location.origin)).replace(/\/$/, "");
       this.environmentInt = ENV_MAP[this.environmentAttr.toLowerCase()] || 2;
+      const injected = typeof window !== "undefined" ? window.__POINTER_CONFIG__ : void 0;
+      if (injected) {
+        if (injected.server) this.server = injected.server.replace(/\/$/, "");
+        if (injected.project) this.project = injected.project;
+        if (injected.environment) {
+          this.environmentAttr = injected.environment;
+          this.environmentInt = ENV_MAP[injected.environment.toLowerCase()] || this.environmentInt;
+        }
+      }
       this._collapsed = (() => {
         try {
           return sessionStorage.getItem("pointer_visible") !== "1";
@@ -756,6 +769,10 @@
         }
       })();
       this.loadAuth();
+      if (injected == null ? void 0 : injected.token) {
+        this.token = injected.token;
+        if (injected.user !== void 0) this.user = injected.user;
+      }
       this.style.position = "fixed";
       this.style.zIndex = "2147483647";
       this.style.top = "0";
@@ -874,7 +891,7 @@
     }
     // --- API ----------------------------------------------------------------
     async apiLogin(email, password) {
-      return fetch(`${this.server}/api/auth/login`, {
+      return pfFetch(`${this.server}/api/auth/login`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email, password })
@@ -882,7 +899,7 @@
     }
     // Anonymous: active non-admin roles for the signup / re-apply dropdowns.
     async apiRoles() {
-      const r = await fetch(`${this.server}/api/roles?project=${encodeURIComponent(this.project)}`, {
+      const r = await pfFetch(`${this.server}/api/roles?project=${encodeURIComponent(this.project)}`, {
         headers: { "Content-Type": "application/json" }
       });
       const envelope = await r.json();
@@ -891,7 +908,7 @@
     }
     // Anonymous: self-signup AND re-apply (one endpoint). No token returned.
     async apiRegister(body) {
-      return fetch(`${this.server}/api/auth/register`, {
+      return pfFetch(`${this.server}/api/auth/register`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body)
@@ -903,7 +920,7 @@
         ...this.token ? { Authorization: `Bearer ${this.token}` } : {},
         ...opts.headers || {}
       };
-      return fetch(`${this.server}${path}`, { ...opts, headers }).then((r) => {
+      return pfFetch(`${this.server}${path}`, { ...opts, headers }).then((r) => {
         if (r.status === 401) {
           this.handle401();
           throw new Error("HTTP 401 Unauthorized");
@@ -1249,7 +1266,7 @@
         const fd = new FormData();
         fd.append("file", blob, `screenshot.${ext}`);
         fd.append("project", this.project);
-        const r = await fetch(`${this.server}/api/uploads`, {
+        const r = await pfFetch(`${this.server}/api/uploads`, {
           method: "POST",
           headers: { ...this.token ? { Authorization: `Bearer ${this.token}` } : {} },
           body: fd

@@ -1,0 +1,21 @@
+{
+  "manifest_version": 3,
+  "name": "Pointer Feedback",
+  "version": "0.1.0",
+  "description": "Leave element-level feedback on any page and turn it into code with AI — powered by your Pointer server.",
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "Pointer Feedback"
+  },
+  "background": {
+    "service_worker": "background.js"
+  },
+  "options_page": "options.html",
+  "permissions": [
+    "storage",
+    "scripting",
+    "activeTab",
+    "declarativeNetRequestWithHostAccess"
+  ],
+  "host_permissions": ["<all_urls>"]
+}

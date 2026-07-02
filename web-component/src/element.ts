@@ -1,6 +1,6 @@
 import {
   HL_CLASS, ENV_MAP, STATUS_STR, STATUS_INT, POSITIONS, CSS_URL, SCRIPT_SRC,
-  loadStatusCatalog, catalogToFilters,
+  loadStatusCatalog, catalogToFilters, pfFetch,
 } from './constants';
 import { escapeHtml, ensureHighlightStyle, matchElement, pageIsRtl } from './dom';
 import { TPL } from './templates';
@@ -70,6 +70,20 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
     // Resolve environment int from attribute string (default Staging = 2)
     this.environmentInt = ENV_MAP[this.environmentAttr.toLowerCase()] || 2;
 
+    // Host-injected config (e.g. the browser extension) overrides attributes. Lets
+    // a host set server/project/environment programmatically and, via `token`,
+    // pre-authenticate so the widget skips its own login. Applied to the token
+    // itself after loadAuth() below.
+    const injected = typeof window !== 'undefined' ? window.__POINTER_CONFIG__ : undefined;
+    if (injected) {
+      if (injected.server) this.server = injected.server.replace(/\/$/, '');
+      if (injected.project) this.project = injected.project;
+      if (injected.environment) {
+        this.environmentAttr = injected.environment;
+        this.environmentInt = ENV_MAP[injected.environment.toLowerCase()] || this.environmentInt;
+      }
+    }
+
     // Hidden by default on first load: collapsed to a small launcher until the user
     // opens it once, after which it stays shown for the rest of this browser-tab
     // session. State lives in sessionStorage (NOT localStorage / server) — the key is
@@ -78,8 +92,14 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
       try { return sessionStorage.getItem('pointer_visible') !== '1'; } catch (e) { return true; }
     })();
 
-    // Load persisted auth
+    // Load persisted auth, then let an injected token take precedence (the
+    // extension logs in once and hands the widget a token, so it never shows
+    // its own login on third-party pages).
     this.loadAuth();
+    if (injected?.token) {
+      this.token = injected.token;
+      if (injected.user !== undefined) this.user = injected.user;
+    }
 
     // Host element must not block page clicks; only inner panels are interactive.
     this.style.position = 'fixed';
@@ -213,7 +233,7 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
 
   // --- API ----------------------------------------------------------------
   async apiLogin(email: string, password: string): Promise<Response> {
-    return fetch(`${this.server}/api/auth/login`, {
+    return pfFetch(`${this.server}/api/auth/login`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ email, password }),
@@ -222,7 +242,7 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
 
   // Anonymous: active non-admin roles for the signup / re-apply dropdowns.
   async apiRoles(): Promise<RoleOption[]> {
-    const r = await fetch(`${this.server}/api/roles?project=${encodeURIComponent(this.project)}`, {
+    const r = await pfFetch(`${this.server}/api/roles?project=${encodeURIComponent(this.project)}`, {
       headers: { 'Content-Type': 'application/json' },
     });
     const envelope = await r.json();
@@ -232,7 +252,7 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
 
   // Anonymous: self-signup AND re-apply (one endpoint). No token returned.
   async apiRegister(body: Record<string, unknown>): Promise<Response> {
-    return fetch(`${this.server}/api/auth/register`, {
+    return pfFetch(`${this.server}/api/auth/register`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
@@ -245,7 +265,7 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
       ...(this.token ? { Authorization: `Bearer ${this.token}` } : {}),
       ...(opts.headers || {}),
     };
-    return fetch(`${this.server}${path}`, { ...opts, headers }).then((r) => {
+    return pfFetch(`${this.server}${path}`, { ...opts, headers }).then((r) => {
       if (r.status === 401) {
         this.handle401();
         throw new Error('HTTP 401 Unauthorized');
@@ -568,7 +588,10 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
       const fd = new FormData();
       fd.append('file', blob, `screenshot.${ext}`);
       fd.append('project', this.project);
-      const r = await fetch(`${this.server}/api/uploads`, {
+      // Note: in extension/proxy mode the transport may handle multipart specially
+      // (a Blob can't cross chrome.runtime messaging as-is); a failed upload is
+      // non-fatal — the comment still saves.
+      const r = await pfFetch(`${this.server}/api/uploads`, {
         method: 'POST',
         headers: { ...(this.token ? { Authorization: `Bearer ${this.token}` } : {}) },
         body: fd,
