@@ -19,6 +19,16 @@ public interface ISettingsService
     public const string DemoPerEmailPerDay = "demo_per_email_per_day"; // default 3
     public const string DemoCommentCap = "demo_comment_cap";          // default 10
 
+    // Branding settings (super-admin editable).
+    public const string BrandProductName = "brand_product_name";
+    public const string BrandTagline = "brand_tagline";
+    public const string BrandPrimaryColor = "brand_primary_color";
+    public const string BrandUrlApp = "brand_url_app";
+    public const string BrandUrlDemo = "brand_url_demo";
+    public const string BrandUrlDocs = "brand_url_docs";
+    public const string BrandUrlLanding = "brand_url_landing";
+    public const string BrandAssetsVersion = "brand_assets_version";
+
     // Monetization settings (super-admin editable). NO provider secrets here — those stay env-only.
     /// <summary>Kill-switch for plan-entitlement enforcement. Default false: deploy off, flip on after soak.</summary>
     public const string EnforcementEnabled = "enforcement_enabled";
