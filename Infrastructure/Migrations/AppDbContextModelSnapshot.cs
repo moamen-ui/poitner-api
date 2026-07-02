@@ -168,6 +168,61 @@ namespace Pointer.Infrastructure.Migrations
                     b.ToTable("comments", (string)null);
                 });
 
+            modelBuilder.Entity("Pointer.Domain.Entity.ExtensionSite", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer")
+                        .HasColumnName("id");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<Guid>("CreatedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("created_by");
+
+                    b.Property<DateTime?>("DeletedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("deleted_at");
+
+                    b.Property<Guid?>("DeletedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("deleted_by");
+
+                    b.Property<DateTime>("FirstSeenAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("first_seen_at");
+
+                    b.Property<string>("Origin")
+                        .IsRequired()
+                        .HasMaxLength(256)
+                        .HasColumnType("character varying(256)")
+                        .HasColumnName("origin");
+
+                    b.Property<Guid>("OwnerId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("owner_id");
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.Property<Guid?>("UpdatedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("updated_by");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("OwnerId", "Origin")
+                        .IsUnique();
+
+                    b.ToTable("extension_sites", (string)null);
+                });
+
             modelBuilder.Entity("Pointer.Domain.Entity.Invite", b =>
                 {
                     b.Property<int>("Id")
@@ -244,6 +299,95 @@ namespace Pointer.Infrastructure.Migrations
                     b.HasIndex("OwnerId");
 
                     b.ToTable("invites", (string)null);
+                });
+
+            modelBuilder.Entity("Pointer.Domain.Entity.Plan", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer")
+                        .HasColumnName("id");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<Guid>("CreatedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("created_by");
+
+                    b.Property<string>("Currency")
+                        .IsRequired()
+                        .HasMaxLength(8)
+                        .HasColumnType("character varying(8)")
+                        .HasColumnName("currency");
+
+                    b.Property<DateTime?>("DeletedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("deleted_at");
+
+                    b.Property<Guid?>("DeletedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("deleted_by");
+
+                    b.Property<int>("DisplayState")
+                        .HasColumnType("integer")
+                        .HasColumnName("display_state");
+
+                    b.Property<string>("FeatureBullets")
+                        .IsRequired()
+                        .HasColumnType("jsonb")
+                        .HasColumnName("feature_bullets");
+
+                    b.Property<int>("Interval")
+                        .HasColumnType("integer")
+                        .HasColumnName("interval");
+
+                    b.Property<bool>("IsActive")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("boolean")
+                        .HasDefaultValue(true)
+                        .HasColumnName("is_active");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("name");
+
+                    b.Property<decimal>("PriceMonthly")
+                        .HasColumnType("numeric(12,2)")
+                        .HasColumnName("price_monthly");
+
+                    b.Property<string>("Slug")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("slug");
+
+                    b.Property<int>("SortOrder")
+                        .HasColumnType("integer")
+                        .HasColumnName("sort_order");
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.Property<Guid?>("UpdatedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("updated_by");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Name")
+                        .IsUnique();
+
+                    b.HasIndex("Slug")
+                        .IsUnique();
+
+                    b.ToTable("plans", (string)null);
                 });
 
             modelBuilder.Entity("Pointer.Domain.Entity.PredefinedAction", b =>
@@ -650,6 +794,84 @@ namespace Pointer.Infrastructure.Migrations
                     b.ToTable("status_presentations", (string)null);
                 });
 
+            modelBuilder.Entity("Pointer.Domain.Entity.Subscription", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer")
+                        .HasColumnName("id");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<string>("BillingProvider")
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)")
+                        .HasColumnName("billing_provider");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<Guid>("CreatedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("created_by");
+
+                    b.Property<DateTime?>("CurrentPeriodEnd")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("current_period_end");
+
+                    b.Property<DateTime?>("DeletedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("deleted_at");
+
+                    b.Property<Guid?>("DeletedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("deleted_by");
+
+                    b.Property<string>("ExternalCustomerId")
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)")
+                        .HasColumnName("external_customer_id");
+
+                    b.Property<string>("ExternalSubscriptionId")
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)")
+                        .HasColumnName("external_subscription_id");
+
+                    b.Property<Guid>("OwnerId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("owner_id");
+
+                    b.Property<int>("PlanId")
+                        .HasColumnType("integer")
+                        .HasColumnName("plan_id");
+
+                    b.Property<int>("Status")
+                        .HasColumnType("integer")
+                        .HasColumnName("status");
+
+                    b.Property<DateTime?>("TrialEndsAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("trial_ends_at");
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.Property<Guid?>("UpdatedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("updated_by");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("OwnerId")
+                        .IsUnique();
+
+                    b.HasIndex("PlanId");
+
+                    b.ToTable("subscriptions", (string)null);
+                });
+
             modelBuilder.Entity("Pointer.Domain.Entity.User", b =>
                 {
                     b.Property<int>("Id")
@@ -886,6 +1108,78 @@ namespace Pointer.Infrastructure.Migrations
                     b.Navigation("Project");
                 });
 
+            modelBuilder.Entity("Pointer.Domain.Entity.Plan", b =>
+                {
+                    b.OwnsOne("Pointer.Domain.ValueObjects.PlanEntitlements", "Entitlements", b1 =>
+                        {
+                            b1.Property<int>("PlanId")
+                                .HasColumnType("integer");
+
+                            b1.Property<bool?>("CustomStatusesEnabled")
+                                .HasColumnType("boolean");
+
+                            b1.Property<int?>("EmailsPerMonth")
+                                .HasColumnType("integer");
+
+                            b1.Property<bool?>("ExportImportEnabled")
+                                .HasColumnType("boolean");
+
+                            b1.Property<int?>("ExtensionCommentsPerMonth")
+                                .HasColumnType("integer");
+
+                            b1.Property<bool?>("ExtensionEnabled")
+                                .HasColumnType("boolean");
+
+                            b1.Property<int?>("MaxActiveInvites")
+                                .HasColumnType("integer");
+
+                            b1.Property<int?>("MaxCommentsPerMonth")
+                                .HasColumnType("integer");
+
+                            b1.Property<int?>("MaxEnvironments")
+                                .HasColumnType("integer");
+
+                            b1.Property<int?>("MaxExtensionSites")
+                                .HasColumnType("integer");
+
+                            b1.Property<int?>("MaxPendingSuggestions")
+                                .HasColumnType("integer");
+
+                            b1.Property<int?>("MaxPredefinedActionsPerProject")
+                                .HasColumnType("integer");
+
+                            b1.Property<int?>("MaxProjects")
+                                .HasColumnType("integer");
+
+                            b1.Property<int?>("MaxSeats")
+                                .HasColumnType("integer");
+
+                            b1.Property<int?>("MaxTenantWidePredefinedActions")
+                                .HasColumnType("integer");
+
+                            b1.Property<bool?>("PrioritySupport")
+                                .HasColumnType("boolean");
+
+                            b1.Property<bool?>("PromptSuggestionsEnabled")
+                                .HasColumnType("boolean");
+
+                            b1.Property<int?>("RetentionDays")
+                                .HasColumnType("integer");
+
+                            b1.HasKey("PlanId");
+
+                            b1.ToTable("plans");
+
+                            b1.ToJson("entitlements");
+
+                            b1.WithOwner()
+                                .HasForeignKey("PlanId");
+                        });
+
+                    b.Navigation("Entitlements")
+                        .IsRequired();
+                });
+
             modelBuilder.Entity("Pointer.Domain.Entity.Reply", b =>
                 {
                     b.HasOne("Pointer.Domain.Entity.Comment", "Comment")
@@ -895,6 +1189,17 @@ namespace Pointer.Infrastructure.Migrations
                         .IsRequired();
 
                     b.Navigation("Comment");
+                });
+
+            modelBuilder.Entity("Pointer.Domain.Entity.Subscription", b =>
+                {
+                    b.HasOne("Pointer.Domain.Entity.Plan", "Plan")
+                        .WithMany()
+                        .HasForeignKey("PlanId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Plan");
                 });
 
             modelBuilder.Entity("Pointer.Domain.Entity.User", b =>

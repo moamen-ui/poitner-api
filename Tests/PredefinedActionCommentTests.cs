@@ -78,9 +78,9 @@ public class PredefinedActionCommentTests
         var user = new FakeCurrentUser { Id = author, TenantId = tenant, IsSuperAdmin = false };
         var db = BuildContext(user, dbName);
         var uow = new UnitOfWork(db);
-        var projectService = new ProjectService(uow, user);
-        var actionService = new PredefinedActionService(uow, projectService, user);
-        var commentService = new CommentService(uow, projectService, actionService, new FakeFileStorage(), user, new FakeUploadSigner(), new FakeSettings());
+        var projectService = new ProjectService(uow, user, new PassThroughEntitlements());
+        var actionService = new PredefinedActionService(uow, projectService, user, new PassThroughEntitlements());
+        var commentService = new CommentService(uow, projectService, actionService, new FakeFileStorage(), user, new FakeUploadSigner(), new FakeSettings(), new PassThroughEntitlements());
 
         return new Harness { Db = db, CommentService = commentService, TenantId = tenant, AuthorId = author };
     }
@@ -217,7 +217,7 @@ public class PredefinedActionCommentTests
         // A scoped-admin tenant tries to edit / delete it by id.
         var user = new FakeCurrentUser { Id = Guid.NewGuid(), TenantId = Guid.NewGuid(), IsSuperAdmin = false };
         var db = BuildContext(user, dbName);
-        var svc = new PredefinedActionService(new UnitOfWork(db), new ProjectService(new UnitOfWork(db), user), user);
+        var svc = new PredefinedActionService(new UnitOfWork(db), new ProjectService(new UnitOfWork(db), user, new PassThroughEntitlements()), user, new PassThroughEntitlements());
 
         var upd = await svc.UpdateAsync(globalId, new Application.DTOs.PredefinedAction.UpdatePredefinedActionRequest { Text = "hacked" });
         Assert.True(upd.IsNotFound);
@@ -246,9 +246,9 @@ public class PredefinedActionCommentTests
         var user = new FakeCurrentUser { Id = author, TenantId = null, IsSuperAdmin = false };
         var db = BuildContext(user, dbName);
         var uow = new UnitOfWork(db);
-        var projectService = new ProjectService(uow, user);
-        var actionService = new PredefinedActionService(uow, projectService, user);
-        var commentService = new CommentService(uow, projectService, actionService, new FakeFileStorage(), user, new FakeUploadSigner(), new FakeSettings());
+        var projectService = new ProjectService(uow, user, new PassThroughEntitlements());
+        var actionService = new PredefinedActionService(uow, projectService, user, new PassThroughEntitlements());
+        var commentService = new CommentService(uow, projectService, actionService, new FakeFileStorage(), user, new FakeUploadSigner(), new FakeSettings(), new PassThroughEntitlements());
 
         var actionId = db.PredefinedActions.IgnoreQueryFilters().Single().Id;
         var result = await commentService.CreateAsync("global", Req(actionId), author);

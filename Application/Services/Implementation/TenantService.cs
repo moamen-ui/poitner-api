@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Pointer.Application.Abstractions;
 using Pointer.Application.DTOs.Tenant;
+using Pointer.Application.Resources;
 using Pointer.Application.Response;
 using Pointer.Application.Services.Interfaces;
 using Pointer.Domain.Entity;
@@ -16,13 +17,15 @@ public class TenantService : ITenantService
     private readonly IPasswordHasher _passwordHasher;
     private readonly IFileStorage _fileStorage;
     private readonly ISettingsService _settings;
+    private readonly IBillingProvider _billing;
 
-    public TenantService(IUnitOfWork unitOfWork, IPasswordHasher passwordHasher, IFileStorage fileStorage, ISettingsService settings)
+    public TenantService(IUnitOfWork unitOfWork, IPasswordHasher passwordHasher, IFileStorage fileStorage, ISettingsService settings, IBillingProvider billing)
     {
         _unitOfWork = unitOfWork;
         _passwordHasher = passwordHasher;
         _fileStorage = fileStorage;
         _settings = settings;
+        _billing = billing;
     }
 
     public async Task<Result<List<TenantResponse>>> ListAsync()
@@ -69,21 +72,40 @@ public class TenantService : ITenantService
             .Where(x => x.OwnerId.HasValue)
             .ToDictionary(x => x.OwnerId!.Value, x => x.Count);
 
-        var responses = tenants.Select(t => new TenantResponse
+        // Batch-load each tenant's subscription (+ plan name). A missing subscription ⇒ Free.
+        var nonNullTenantIds = tenants.Select(t => t.PublicId).ToList();
+        var subs = await _unitOfWork.Repository<Subscription>()
+            .Query()
+            .IgnoreQueryFilters()
+            .AsNoTracking()
+            .Where(s => s.DeletedAt == null && nonNullTenantIds.Contains(s.OwnerId))
+            .Select(s => new { s.OwnerId, s.Status, PlanName = s.Plan.Name })
+            .ToListAsync();
+        var subMap = subs.ToDictionary(x => x.OwnerId, x => (x.PlanName, x.Status));
+
+        var responses = tenants.Select(t =>
         {
-            Id = t.Id,
-            PublicId = t.PublicId,
-            Email = t.Email,
-            DisplayName = t.DisplayName,
-            ApprovalStatus = t.ApprovalStatus.ToString(),
-            IsActive = t.IsActive,
-            Projects = projectMap.GetValueOrDefault(t.PublicId, 0),
-            Comments = commentMap.GetValueOrDefault(t.PublicId, 0),
-            IsDemo = t.IsDemo,
-            ExpiresAt = t.ExpiresAt,
-            DemoExtended = t.DemoExtended,
-            DemoCommentCapOverride = t.DemoCommentCapOverride,
-            DemoTtlHoursOverride = t.DemoTtlHoursOverride
+            var (planName, status) = subMap.TryGetValue(t.PublicId, out var s)
+                ? (s.PlanName, s.Status.ToString())
+                : ("Free", (string?)null); // missing subscription ⇒ Free
+            return new TenantResponse
+            {
+                Id = t.Id,
+                PublicId = t.PublicId,
+                Email = t.Email,
+                DisplayName = t.DisplayName,
+                ApprovalStatus = t.ApprovalStatus.ToString(),
+                IsActive = t.IsActive,
+                Projects = projectMap.GetValueOrDefault(t.PublicId, 0),
+                Comments = commentMap.GetValueOrDefault(t.PublicId, 0),
+                PlanName = planName,
+                SubscriptionStatus = status,
+                IsDemo = t.IsDemo,
+                ExpiresAt = t.ExpiresAt,
+                DemoExtended = t.DemoExtended,
+                DemoCommentCapOverride = t.DemoCommentCapOverride,
+                DemoTtlHoursOverride = t.DemoTtlHoursOverride
+            };
         }).ToList();
 
         return Result<List<TenantResponse>>.Success(responses);
@@ -255,6 +277,60 @@ public class TenantService : ITenantService
         await _unitOfWork.SaveChangesAsync();
 
         return Result.Success();
+    }
+
+    public async Task<Result> ChangePlanAsync(int tenantId, int planId)
+    {
+        // Resolve the int id → tenant PublicId (super-admin operator path). Must be a scoped-admin
+        // (GrantsAdmin && !IsSuperAdmin) that owns itself.
+        var tenant = await _unitOfWork.Repository<User>()
+            .Query()
+            .IgnoreQueryFilters()
+            .Include(u => u.Role)
+            .AsNoTracking()
+            .FirstOrDefaultAsync(u => u.Id == tenantId && u.DeletedAt == null);
+
+        if (tenant == null || !tenant.Role.GrantsAdmin || tenant.Role.IsSuperAdmin || tenant.OwnerId != tenant.PublicId)
+            return Result.NotFound("Tenant not found.");
+
+        // Plan is global (no filter) — plain query. Must exist, be active, not deleted.
+        var plan = await _unitOfWork.Repository<Plan>()
+            .Query()
+            .AsNoTracking()
+            .FirstOrDefaultAsync(p => p.Id == planId && p.DeletedAt == null && p.IsActive);
+
+        if (plan == null)
+            return Result.NotFound(MessageKeys.Plan.NotFound);
+
+        // Upsert the tenant's subscription (one per tenant). Bypass the filter + match OwnerId.
+        var sub = await _unitOfWork.Repository<Subscription>()
+            .Query()
+            .IgnoreQueryFilters()
+            .FirstOrDefaultAsync(s => s.OwnerId == tenant.PublicId && s.DeletedAt == null);
+
+        if (sub == null)
+        {
+            sub = new Subscription
+            {
+                OwnerId = tenant.PublicId,
+                PlanId = plan.Id,
+                Status = SubscriptionStatus.Active
+            };
+            await _unitOfWork.Repository<Subscription>().AddAsync(sub);
+        }
+        else
+        {
+            sub.PlanId = plan.Id;
+            if (sub.Status is SubscriptionStatus.None or SubscriptionStatus.Canceled)
+                sub.Status = SubscriptionStatus.Active;
+            _unitOfWork.Repository<Subscription>().Update(sub);
+        }
+
+        // Route through the billing seam (Noop today — no HTTP; a real gateway plugs in here later).
+        await _billing.ChangePlanAsync(sub, plan.Id);
+
+        await _unitOfWork.SaveChangesAsync();
+        return Result.Success(MessageKeys.Plan.SubscriptionUpdated);
     }
 
     public async Task<Result> HardDeleteAsync(Guid tenantId)

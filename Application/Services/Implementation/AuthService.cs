@@ -282,6 +282,33 @@ public class AuthService : IAuthService
         await _unitOfWork.Repository<User>().AddAsync(newUser);
         await _unitOfWork.SaveChangesAsync();
 
+        // Signup plan selector (workspace signup only). Free / none ⇒ today's flow (no subscription row;
+        // effective plan resolves to Free). A paid, active, non-hidden plan ⇒ create a subscription in
+        // PendingActivation; a super-admin activates it later (approval flip + IBillingProvider.Activate).
+        if (request.PlanId is int planId)
+        {
+            var plan = await _unitOfWork.Repository<Plan>()
+                .Query()
+                .AsNoTracking()
+                .FirstOrDefaultAsync(p => p.Id == planId
+                                          && p.DeletedAt == null
+                                          && p.IsActive
+                                          && p.DisplayState != PlanDisplayState.Hidden);
+
+            // Only create a subscription for a real paid plan; Free (or an unknown/invalid id) keeps
+            // the zero-write path (missing subscription ⇒ Free).
+            if (plan != null && plan.Slug != "free")
+            {
+                await _unitOfWork.Repository<Subscription>().AddAsync(new Subscription
+                {
+                    OwnerId = publicId,
+                    PlanId = plan.Id,
+                    Status = SubscriptionStatus.PendingActivation
+                });
+                await _unitOfWork.SaveChangesAsync();
+            }
+        }
+
         return Result.Success("Registration submitted. Your workspace is pending approval.");
     }
 

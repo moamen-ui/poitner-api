@@ -19,6 +19,14 @@ public interface ISettingsService
     public const string DemoPerEmailPerDay = "demo_per_email_per_day"; // default 3
     public const string DemoCommentCap = "demo_comment_cap";          // default 10
 
+    // Monetization settings (super-admin editable). NO provider secrets here — those stay env-only.
+    /// <summary>Kill-switch for plan-entitlement enforcement. Default false: deploy off, flip on after soak.</summary>
+    public const string EnforcementEnabled = "enforcement_enabled";
+    /// <summary>Slug of the plan new workspace signups default to when none is chosen.</summary>
+    public const string DefaultSignupPlan = "default_signup_plan";    // default "free"
+    public const string TrialDays = "trial_days";                     // default 0
+    public const string Currency = "currency";                        // default "USD"
+
     Task<bool> GetBoolAsync(string key, bool fallback = false);
     Task SetBoolAsync(string key, bool value);
 

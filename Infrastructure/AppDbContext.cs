@@ -16,6 +16,9 @@ public class AppDbContext(DbContextOptions<AppDbContext> options, ICurrentUser c
     public DbSet<PredefinedActionSuggestion> PredefinedActionSuggestions => Set<PredefinedActionSuggestion>();
     public DbSet<Invite> Invites => Set<Invite>();
     public DbSet<AppSetting> AppSettings => Set<AppSetting>();
+    public DbSet<Plan> Plans => Set<Plan>();
+    public DbSet<Subscription> Subscriptions => Set<Subscription>();
+    public DbSet<ExtensionSite> ExtensionSites => Set<ExtensionSite>();
 
     protected override void OnModelCreating(ModelBuilder b)
     {
@@ -47,6 +50,13 @@ public class AppDbContext(DbContextOptions<AppDbContext> options, ICurrentUser c
         b.Entity<StatusPresentation>().HasQueryFilter(e => currentUser.IsSuperAdmin || e.OwnerId == currentUser.TenantId || e.OwnerId == null);
 
         // AppSetting: no filter — not tenant data; guarded by endpoint authorization.
+
+        // Plan: no filter — GLOBAL catalog, not tenant data; guarded by endpoint authorization
+        // (super-admin CRUD; anonymous marketing read). Exactly like AppSetting.
+
+        // Subscription + ExtensionSite: strict-own (OwnerId non-null) — like Invite.
+        b.Entity<Subscription>().HasQueryFilter(e => currentUser.IsSuperAdmin || e.OwnerId == currentUser.TenantId);
+        b.Entity<ExtensionSite>().HasQueryFilter(e => currentUser.IsSuperAdmin || e.OwnerId == currentUser.TenantId);
     }
 
     // Entities whose CreatedAt must survive the SaveChangesAsync stamping loop (the comment-import

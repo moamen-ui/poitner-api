@@ -11,4 +11,7 @@ public interface ITenantService
     Task<Result> ExtendDemoAsync(int id);
     Task<Result> SetDemoConfigAsync(int id, int? commentCapOverride, int? ttlHoursOverride);
     Task<Result> HardDeleteAsync(Guid tenantId);
+
+    /// <summary>Upsert the tenant's subscription to the given plan (super-admin), via the billing seam.</summary>
+    Task<Result> ChangePlanAsync(int tenantId, int planId);
 }

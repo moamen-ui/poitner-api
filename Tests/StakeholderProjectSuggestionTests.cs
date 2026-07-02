@@ -78,7 +78,7 @@ public class StakeholderProjectSuggestionTests
     {
         var db = BuildContext(user, dbName);
         var uow = new UnitOfWork(db);
-        return (new ProjectService(uow, user), uow, db);
+        return (new ProjectService(uow, user, new PassThroughEntitlements()), uow, db);
     }
 
     // Seed a tenant with one active project. Returns (tenantId, projectId, creatorId).
@@ -302,8 +302,8 @@ public class StakeholderProjectSuggestionTests
         var user = new FakeCurrentUser { Id = creator, TenantId = tenant };
         var db = BuildContext(user, dbName);
         var uow = new UnitOfWork(db);
-        var projectSvc = new ProjectService(uow, user);
-        var actionSvc = new PredefinedActionService(uow, projectSvc, user);
+        var projectSvc = new ProjectService(uow, user, new PassThroughEntitlements());
+        var actionSvc = new PredefinedActionService(uow, projectSvc, user, new PassThroughEntitlements());
 
         var res = await actionSvc.GetEffectiveForProjectAsync("wproj", creator);
         Assert.True(res.IsSuccess);

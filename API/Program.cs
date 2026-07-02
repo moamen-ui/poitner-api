@@ -52,6 +52,17 @@ builder.Services.AddRateLimiter(o =>
                 Window = TimeSpan.FromHours(1),
                 QueueLimit = 0
             }));
+
+    // Light limit for the anonymous public plans endpoint (landing hits it on every page load).
+    o.AddPolicy("plans", ctx =>
+        System.Threading.RateLimiting.RateLimitPartition.GetFixedWindowLimiter(
+            ClientIp(ctx),
+            _ => new System.Threading.RateLimiting.FixedWindowRateLimiterOptions
+            {
+                PermitLimit = 60,
+                Window = TimeSpan.FromMinutes(1),
+                QueueLimit = 0
+            }));
 });
 
 // CORS is split by audience. The WIDGET is embedded on arbitrary customer sites and calls the

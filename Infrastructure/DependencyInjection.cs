@@ -3,6 +3,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Pointer.Application.Abstractions;
 using Pointer.Infrastructure.Auth;
+using Pointer.Infrastructure.Billing;
 using Pointer.Infrastructure.CurrentUser;
 using Pointer.Infrastructure.Email;
 using Pointer.Infrastructure.Repository;
@@ -25,6 +26,9 @@ public static class DependencyInjection
         s.AddSingleton<IUploadSigner, UploadSigner>();
         s.AddSingleton<IResetTokenService, ResetTokenService>();
         s.AddHttpClient<IEmailSender, BrevoEmailSender>();
+        // Payment-ready seam — MANUAL DI (single-instance seam, not Scrutor). Swap for a real gateway
+        // adapter here later via config; no schema churn.
+        s.AddScoped<IBillingProvider, NoopBillingProvider>();
         return s;
     }
 }

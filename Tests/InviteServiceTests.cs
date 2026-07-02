@@ -54,7 +54,7 @@ public class InviteServiceTests
     private static InviteService BuildService(ICurrentUser user, AppDbContext db)
     {
         var uow = new UnitOfWork(db);
-        return new InviteService(uow, user, new FakePasswordHasher(), new FakeTokenService(), new FakeSettings());
+        return new InviteService(uow, user, new FakePasswordHasher(), new FakeTokenService(), new FakeSettings(), new PassThroughEntitlements());
     }
 
     // Seeds a tenant with an admin user (for the workspace-name preview) and a non-admin role,

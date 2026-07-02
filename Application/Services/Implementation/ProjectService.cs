@@ -14,11 +14,13 @@ public class ProjectService : IProjectService
 {
     private readonly IUnitOfWork _unitOfWork;
     private readonly ICurrentUser _currentUser;
+    private readonly IEntitlementService _entitlements;
 
-    public ProjectService(IUnitOfWork unitOfWork, ICurrentUser currentUser)
+    public ProjectService(IUnitOfWork unitOfWork, ICurrentUser currentUser, IEntitlementService entitlements)
     {
         _unitOfWork = unitOfWork;
         _currentUser = currentUser;
+        _entitlements = entitlements;
     }
 
     public async Task<Result<ProjectResponse>> CreateAsync(CreateProjectRequest request)
@@ -41,6 +43,20 @@ public class ProjectService : IProjectService
         // (predefined actions + comment-scope matching all rely on this).
         var ownerId = TenantStamp.OwnerFor(_currentUser) ?? _currentUser.Id;
 
+        // MaxProjects: count active projects owned by this tenant (grandfather-safe — checked only on
+        // create, counts only DeletedAt == null rows). Explicit OwnerId + IgnoreQueryFilters so the
+        // count is the tenant's real total regardless of the caller.
+        if (ownerId is Guid projectOwner)
+        {
+            var activeProjects = await _unitOfWork.Repository<Project>()
+                .Query()
+                .IgnoreQueryFilters()
+                .CountAsync(p => p.OwnerId == projectOwner && p.DeletedAt == null);
+            var check = await _entitlements.CheckCountAsync(projectOwner, EntitlementCatalog.MaxProjects, activeProjects);
+            if (!check.IsSuccess)
+                return Result<ProjectResponse>.LimitReached(check.Message ?? MessageKeys.Plan.LimitReached, check.Limit!);
+        }
+
         var project = new Project
         {
             Key = keyNormalized,
@@ -54,9 +70,20 @@ public class ProjectService : IProjectService
 
         if (request.PredefinedActions.Count > 0)
         {
+            // MaxPredefinedActionsPerProject: a freshly-created project starts at 0 actions, so the
+            // running count is just how many we've added so far this loop. Owner tenant = the project's
+            // owner (fall back to the caller for a null-owner project so the check still resolves).
+            var actionTenant = project.OwnerId ?? _currentUser.Id ?? Guid.Empty;
             var sort = 0;
+            var addedSoFar = 0;
             foreach (var input in request.PredefinedActions)
             {
+                var actionCheck = await _entitlements.CheckCountAsync(
+                    actionTenant, EntitlementCatalog.MaxPredefinedActionsPerProject, addedSoFar);
+                if (!actionCheck.IsSuccess)
+                    return Result<ProjectResponse>.LimitReached(
+                        actionCheck.Message ?? MessageKeys.Plan.LimitReached, actionCheck.Limit!);
+
                 await _unitOfWork.Repository<PredefinedAction>().AddAsync(new PredefinedAction
                 {
                     OwnerId = project.OwnerId, // inherit the project's owner (may be null = global)
@@ -67,6 +94,7 @@ public class ProjectService : IProjectService
                     IsActive = input.IsActive,
                     SortOrder = input.SortOrder != 0 ? input.SortOrder : sort++
                 });
+                addedSoFar++;
             }
             await _unitOfWork.SaveChangesAsync();
         }
@@ -151,7 +179,12 @@ public class ProjectService : IProjectService
         // null (property omitted) → leave actions untouched. Actions inherit the project's owner
         // (which may be null for a global/null-owner project).
         if (request.PredefinedActions != null)
-            await ReconcileActionsAsync(project.Id, project.OwnerId, request.PredefinedActions);
+        {
+            var reconcile = await ReconcileActionsAsync(project.Id, project.OwnerId, request.PredefinedActions);
+            if (!reconcile.IsSuccess)
+                return Result<ProjectResponse>.LimitReached(
+                    reconcile.Message ?? MessageKeys.Plan.LimitReached, reconcile.Limit!);
+        }
 
         await _unitOfWork.SaveChangesAsync();
 
@@ -286,12 +319,27 @@ public class ProjectService : IProjectService
     ///   existing row absent from the payload → soft-delete
     /// All queries add DeletedAt == null so soft-deleted rows never resurface or double-delete.
     /// </summary>
-    private async Task ReconcileActionsAsync(int projectId, Guid? owner, List<PredefinedActionInput> desired)
+    private async Task<Result> ReconcileActionsAsync(int projectId, Guid? owner, List<PredefinedActionInput> desired)
     {
         var existing = await _unitOfWork.Repository<PredefinedAction>()
             .Query()
             .Where(a => a.DeletedAt == null && a.ProjectId == projectId)
             .ToListAsync();
+
+        // MaxPredefinedActionsPerProject: the resulting active count = desired entries that resolve to a
+        // real row (a new id-less entry, or an existing id still present). Block if that would exceed the
+        // limit. Grandfather-safe: existing rows are never touched by the check itself.
+        var existingIds = existing.Select(a => a.Id).ToHashSet();
+        var resultingCount = desired.Count(d => d.Id is not int did || existingIds.Contains(did));
+        if (resultingCount > 0)
+        {
+            var actionTenant = owner ?? _currentUser.Id ?? Guid.Empty;
+            // resultingCount-1 >= limit  ⇔  resultingCount > limit (block when the final count exceeds it).
+            var check = await _entitlements.CheckCountAsync(
+                actionTenant, EntitlementCatalog.MaxPredefinedActionsPerProject, resultingCount - 1);
+            if (!check.IsSuccess)
+                return check;
+        }
 
         var keptIds = new HashSet<int>();
 
@@ -331,6 +379,8 @@ public class ProjectService : IProjectService
             row.DeletedAt = DateTime.UtcNow;
             _unitOfWork.Repository<PredefinedAction>().Update(row);
         }
+
+        return Result.Success();
     }
 
     private async Task<List<PredefinedAction>> LoadProjectActionsAsync(int projectId) =>

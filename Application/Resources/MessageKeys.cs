@@ -96,6 +96,25 @@ public static class MessageKeys
         public const string Revoked_Ok = "Invite revoked.";
     }
 
+    public static class Plan
+    {
+        public const string NotFound = "Plan not found.";
+        public const string SlugTaken = "A plan with this slug already exists.";
+        public const string NameTaken = "A plan with this name already exists.";
+        public const string NameRequired = "Plan name is required.";
+        public const string SlugRequired = "Plan slug is required.";
+        public const string UnknownEntitlement = "Unknown entitlement key.";
+        public const string InvalidEntitlementValue = "Invalid value for an entitlement key.";
+        public const string CannotDeleteFree = "The Free plan is the fallback and cannot be deleted.";
+        public const string InUse = "This plan has active subscriptions — move those tenants to another plan first.";
+        public const string LimitReached = "You've reached your plan's limit. Upgrade to add more.";
+        public const string ExtensionDisabled = "The browser extension is not enabled on your plan.";
+        public const string Created = "Plan created.";
+        public const string Updated = "Plan updated.";
+        public const string Deleted = "Plan deleted.";
+        public const string SubscriptionUpdated = "Subscription updated.";
+    }
+
     public static class Demo
     {
         public const string NotDemoUser = "This account is not a demo account.";

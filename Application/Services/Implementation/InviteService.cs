@@ -25,6 +25,7 @@ public class InviteService : IInviteService
     private readonly IPasswordHasher _passwordHasher;
     private readonly ITokenService _tokenService;
     private readonly ISettingsService _settings;
+    private readonly IEntitlementService _entitlements;
 
     private const int DefaultTtlDays = 7;
     private const string DefaultAppBaseUrl = "https://app.pointer.moamen.work";
@@ -34,13 +35,15 @@ public class InviteService : IInviteService
         ICurrentUser currentUser,
         IPasswordHasher passwordHasher,
         ITokenService tokenService,
-        ISettingsService settings)
+        ISettingsService settings,
+        IEntitlementService entitlements)
     {
         _unitOfWork = unitOfWork;
         _currentUser = currentUser;
         _passwordHasher = passwordHasher;
         _tokenService = tokenService;
         _settings = settings;
+        _entitlements = entitlements;
     }
 
     // ── Admin (auth, tenant-scoped) ────────────────────────────────────────────
@@ -262,6 +265,16 @@ public class InviteService : IInviteService
 
         if (existing != null)
             return Result<LoginResponse>.Conflict(MessageKeys.Auth.AccountExists);
+
+        // MaxSeats: count active users owned by the invite's tenant. Checked BEFORE claiming a slot so
+        // an over-limit accept never consumes a use. Grandfather-safe (counts DeletedAt == null, on add).
+        var seatCount = await _unitOfWork.Repository<User>()
+            .Query()
+            .IgnoreQueryFilters()
+            .CountAsync(u => u.OwnerId == invite.OwnerId && u.DeletedAt == null);
+        var seatCheck = await _entitlements.CheckCountAsync(invite.OwnerId, EntitlementCatalog.MaxSeats, seatCount);
+        if (!seatCheck.IsSuccess)
+            return Result<LoginResponse>.LimitReached(seatCheck.Message ?? MessageKeys.Plan.LimitReached, seatCheck.Limit!);
 
         // 4. H1: atomically claim a usage slot BEFORE creating the user. The UnitOfWork issues a
         //    single UPDATE … WHERE (not deleted/revoked/expired AND uses < maxUses) … SET uses+=1

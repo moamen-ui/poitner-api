@@ -57,6 +57,15 @@ public class TenantsController(ITenantService tenantService) : ControllerBase
         return result.IsSuccess ? Ok(result) : BadRequest(result);
     }
 
+    [HttpPatch("{id:int}/plan")]
+    [ProducesResponseType(typeof(Result), StatusCodes.Status200OK)]
+    public async Task<IActionResult> ChangePlan(int id, [FromBody] ChangeTenantPlanRequest request)
+    {
+        var result = await tenantService.ChangePlanAsync(id, request.PlanId);
+        if (result.IsNotFound) return NotFound(result);
+        return result.IsSuccess ? Ok(result) : BadRequest(result);
+    }
+
     [HttpDelete("{id:int}")]
     [ProducesResponseType(typeof(Result), StatusCodes.Status200OK)]
     public async Task<IActionResult> Delete(int id)
@@ -87,6 +96,11 @@ public class TenantsController(ITenantService tenantService) : ControllerBase
 public class SetTenantStatusRequest
 {
     public string Action { get; set; } = string.Empty;
+}
+
+public class ChangeTenantPlanRequest
+{
+    public int PlanId { get; set; }
 }
 
 public class SetDemoConfigRequest

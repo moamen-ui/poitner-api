@@ -14,12 +14,14 @@ public class PredefinedActionService : IPredefinedActionService
     private readonly IUnitOfWork _unitOfWork;
     private readonly IProjectService _projectService;
     private readonly ICurrentUser _currentUser;
+    private readonly IEntitlementService _entitlements;
 
-    public PredefinedActionService(IUnitOfWork unitOfWork, IProjectService projectService, ICurrentUser currentUser)
+    public PredefinedActionService(IUnitOfWork unitOfWork, IProjectService projectService, ICurrentUser currentUser, IEntitlementService entitlements)
     {
         _unitOfWork = unitOfWork;
         _projectService = projectService;
         _currentUser = currentUser;
+        _entitlements = entitlements;
     }
 
     // ── Tenant-wide admin CRUD (ProjectId == null) ────────────────────────────
@@ -47,6 +49,16 @@ public class PredefinedActionService : IPredefinedActionService
         var ownerId = TenantStamp.OwnerFor(_currentUser) ?? _currentUser.Id;
         if (ownerId is not Guid owner)
             return Result<PredefinedActionResponse>.Forbidden(MessageKeys.PredefinedAction.NotFound);
+
+        // MaxTenantWidePredefinedActions: count active tenant-wide (ProjectId == null) actions for this
+        // tenant. Grandfather-safe (counts DeletedAt == null, checked only on create).
+        var tenantWideCount = await _unitOfWork.Repository<PredefinedAction>()
+            .Query()
+            .IgnoreQueryFilters()
+            .CountAsync(a => a.OwnerId == owner && a.ProjectId == null && a.DeletedAt == null);
+        var check = await _entitlements.CheckCountAsync(owner, EntitlementCatalog.MaxTenantWidePredefinedActions, tenantWideCount);
+        if (!check.IsSuccess)
+            return Result<PredefinedActionResponse>.LimitReached(check.Message ?? MessageKeys.Plan.LimitReached, check.Limit!);
 
         // SortOrder default = max(scope) + 1.
         var sortOrder = request.SortOrder ?? await NextSortOrderAsync(a => a.ProjectId == null);

@@ -20,8 +20,9 @@ public class CommentService : ICommentService
     private readonly ICurrentUser _currentUser;
     private readonly IUploadSigner _uploadSigner;
     private readonly ISettingsService _settings;
+    private readonly IEntitlementService _entitlements;
 
-    public CommentService(IUnitOfWork unitOfWork, IProjectService projectService, IPredefinedActionService predefinedActions, IFileStorage fileStorage, ICurrentUser currentUser, IUploadSigner uploadSigner, ISettingsService settings)
+    public CommentService(IUnitOfWork unitOfWork, IProjectService projectService, IPredefinedActionService predefinedActions, IFileStorage fileStorage, ICurrentUser currentUser, IUploadSigner uploadSigner, ISettingsService settings, IEntitlementService entitlements)
     {
         _unitOfWork = unitOfWork;
         _projectService = projectService;
@@ -30,6 +31,7 @@ public class CommentService : ICommentService
         _currentUser = currentUser;
         _uploadSigner = uploadSigner;
         _settings = settings;
+        _entitlements = entitlements;
     }
 
     public async Task<Result<CommentResponse>> CreateAsync(string projectKey, CreateCommentRequest request, Guid authorId)
@@ -72,6 +74,22 @@ public class CommentService : ICommentService
                 if (count >= cap)
                     return Result<CommentResponse>.Failure($"Demo limit reached: a demo workspace allows at most {cap} comments.");
             }
+        }
+
+        // MaxCommentsPerMonth (plan cap): count this month's active comments owned by the PROJECT owner
+        // (a comment counts against whoever owns the project, not the author). COEXISTS with the demo cap
+        // above — both run; the tighter one wins. Grandfather-safe: checked only on create.
+        if (projectOwnerId is Guid planOwner)
+        {
+            var now = DateTime.UtcNow;
+            var monthStart = new DateTime(now.Year, now.Month, 1, 0, 0, 0, DateTimeKind.Utc);
+            var monthCount = await _unitOfWork.Repository<Comment>()
+                .Query()
+                .IgnoreQueryFilters()
+                .CountAsync(c => c.OwnerId == planOwner && c.DeletedAt == null && c.CreatedAt >= monthStart);
+            var check = await _entitlements.CheckCountAsync(planOwner, EntitlementCatalog.MaxCommentsPerMonth, monthCount);
+            if (!check.IsSuccess)
+                return Result<CommentResponse>.LimitReached(check.Message ?? MessageKeys.Plan.LimitReached, check.Limit!);
         }
 
         var comment = new Comment

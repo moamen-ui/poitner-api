@@ -11,6 +11,10 @@ public class TenantResponse
     public int Projects { get; set; }
     public int Comments { get; set; }
 
+    // Effective plan (missing subscription ⇒ Free). Batch-loaded in ListAsync.
+    public string? PlanName { get; set; }
+    public string? SubscriptionStatus { get; set; }
+
     // Demo tenants: surfaced so the super-admin UI can offer a one-time "Extend demo" action
     // and per-tenant overrides of the demo comment cap / TTL (null = use the global default).
     public bool IsDemo { get; set; }

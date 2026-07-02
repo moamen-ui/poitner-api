@@ -16,13 +16,15 @@ public class UserService : IUserService
     private readonly IPasswordHasher _passwordHasher;
     private readonly ICurrentUser _currentUser;
     private readonly IEmailService _emailService;
+    private readonly IEntitlementService _entitlements;
 
-    public UserService(IUnitOfWork unitOfWork, IPasswordHasher passwordHasher, ICurrentUser currentUser, IEmailService emailService)
+    public UserService(IUnitOfWork unitOfWork, IPasswordHasher passwordHasher, ICurrentUser currentUser, IEmailService emailService, IEntitlementService entitlements)
     {
         _unitOfWork = unitOfWork;
         _passwordHasher = passwordHasher;
         _currentUser = currentUser;
         _emailService = emailService;
+        _entitlements = entitlements;
     }
 
     // Best-effort notification: a send failure must never fail the admin action.
@@ -53,6 +55,20 @@ public class UserService : IUserService
         if (!_currentUser.IsSuperAdmin && (role.GrantsAdmin || role.IsSuperAdmin))
             return Result<UserResponse>.Failure(MessageKeys.Role.EscalationNotAllowed);
 
+        var ownerId = TenantStamp.OwnerFor(_currentUser);
+
+        // MaxSeats: count active users owned by this tenant (direct-add path). Grandfather-safe.
+        if (ownerId is Guid seatOwner)
+        {
+            var seatCount = await _unitOfWork.Repository<User>()
+                .Query()
+                .IgnoreQueryFilters()
+                .CountAsync(u => u.OwnerId == seatOwner && u.DeletedAt == null);
+            var seatCheck = await _entitlements.CheckCountAsync(seatOwner, EntitlementCatalog.MaxSeats, seatCount);
+            if (!seatCheck.IsSuccess)
+                return Result<UserResponse>.LimitReached(seatCheck.Message ?? MessageKeys.Plan.LimitReached, seatCheck.Limit!);
+        }
+
         var user = new User
         {
             Email = emailNormalized,
@@ -61,7 +77,7 @@ public class UserService : IUserService
             RoleId = role.Id,
             PublicId = Guid.NewGuid(),
             IsActive = true,
-            OwnerId = TenantStamp.OwnerFor(_currentUser)
+            OwnerId = ownerId
         };
 
         await _unitOfWork.Repository<User>().AddAsync(user);

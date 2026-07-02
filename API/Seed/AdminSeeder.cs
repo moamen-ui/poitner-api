@@ -1,7 +1,10 @@
 using Microsoft.EntityFrameworkCore;
 using Pointer.Application.Abstractions;
+using Pointer.Application.Common;
+using Pointer.Application.Services.Interfaces;
 using Pointer.Domain.Entity;
 using Pointer.Domain.Enums;
+using Pointer.Domain.ValueObjects;
 using Pointer.Infrastructure;
 
 namespace Pointer.API.Seed;
@@ -96,5 +99,152 @@ public static class AdminSeeder
             // Never let operator-account reconciliation crash API startup.
             Console.Error.WriteLine($"[AdminSeeder] super-admin reconcile skipped: {ex.Message}");
         }
+
+        // 3) Seed monetization plans (Free + hidden Legacy) and backfill existing tenants. Idempotent;
+        //    wrapped in try/catch so a plan-seed hiccup never blocks API startup.
+        try
+        {
+            var settings = scope.ServiceProvider.GetRequiredService<ISettingsService>();
+            await SeedPlansAsync(db, settings);
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine($"[AdminSeeder] plan seed skipped: {ex.Message}");
+        }
+    }
+
+    /// <summary>
+    /// Seeds the Free plan (from catalog defaults, with the ONE real AppSetting map
+    /// emailsPerMonth←EmailDailyCap) and a hidden internal Legacy plan (all entitlements -1), then
+    /// backfills a Subscription(Legacy, Active) for every EXISTING tenant so they are never
+    /// retroactively limited. Idempotent: never duplicates or overwrites an edited Free plan.
+    /// </summary>
+    private static async Task SeedPlansAsync(AppDbContext db, ISettingsService settings)
+    {
+        // ── Free plan (Slug=free, price 0, Visible) ──
+        var free = await db.Plans.FirstOrDefaultAsync(p => p.Slug == "free");
+        if (free == null)
+        {
+            // Build entitlements from the catalog defaults; the only real AppSetting map today is
+            // emailsPerMonth ← EmailDailyCap. Everything else comes from FreePlanDefaults (catalog).
+            var entitlements = BuildFreeEntitlements();
+            var emailDailyCap = await settings.GetIntAsync(ISettingsService.EmailDailyCap, 250);
+            entitlements.EmailsPerMonth = emailDailyCap;
+
+            db.Plans.Add(new Plan
+            {
+                Name = "Free",
+                Slug = "free",
+                PriceMonthly = 0m,
+                Currency = "USD",
+                Interval = BillingInterval.Monthly,
+                SortOrder = 0,
+                IsActive = true,
+                DisplayState = PlanDisplayState.Visible,
+                FeatureBullets = new List<string>
+                {
+                    "3 projects",
+                    "5 seats",
+                    "100 comments / month",
+                    "Community support"
+                },
+                Entitlements = entitlements
+            });
+            await db.SaveChangesAsync();
+        }
+        // If Free already exists, leave its entitlements untouched (admin may have edited them).
+
+        // ── Hidden internal Legacy plan (Slug=legacy, inactive, all entitlements unlimited) ──
+        var legacy = await db.Plans.FirstOrDefaultAsync(p => p.Slug == "legacy");
+        if (legacy == null)
+        {
+            legacy = new Plan
+            {
+                Name = "Legacy",
+                Slug = "legacy",
+                PriceMonthly = 0m,
+                Currency = "USD",
+                Interval = BillingInterval.Monthly,
+                SortOrder = 1000,
+                IsActive = false,
+                DisplayState = PlanDisplayState.Hidden,
+                FeatureBullets = new List<string>(),
+                Entitlements = BuildUnlimitedEntitlements()
+            };
+            db.Plans.Add(legacy);
+            await db.SaveChangesAsync();
+        }
+
+        // ── Backfill Subscription(Legacy, Active) for every EXISTING tenant ──
+        // A tenant = a workspace-admin User (Role.GrantsAdmin && !IsSuperAdmin) that owns itself
+        // (OwnerId == PublicId). Only tenants WITHOUT a subscription get the Legacy backfill so
+        // they are never retroactively limited; new signups default to Free (missing sub ⇒ Free).
+        var tenantPublicIds = await db.Users
+            .IgnoreQueryFilters()
+            .Include(u => u.Role)
+            .Where(u => u.DeletedAt == null
+                        && u.Role.GrantsAdmin
+                        && !u.Role.IsSuperAdmin
+                        && u.OwnerId == u.PublicId)
+            .Select(u => u.PublicId)
+            .ToListAsync();
+
+        if (tenantPublicIds.Count == 0)
+            return;
+
+        var alreadySubscribed = await db.Subscriptions
+            .IgnoreQueryFilters()
+            .Where(s => tenantPublicIds.Contains(s.OwnerId))
+            .Select(s => s.OwnerId)
+            .ToListAsync();
+        var subscribedSet = alreadySubscribed.ToHashSet();
+
+        var now = DateTime.UtcNow;
+        var added = false;
+        foreach (var tenantId in tenantPublicIds)
+        {
+            if (subscribedSet.Contains(tenantId))
+                continue;
+            db.Subscriptions.Add(new Subscription
+            {
+                OwnerId = tenantId,
+                PlanId = legacy.Id,
+                Status = SubscriptionStatus.Active
+            });
+            added = true;
+        }
+
+        if (added)
+            await db.SaveChangesAsync();
+    }
+
+    /// <summary>Free-plan entitlements = catalog defaults (int + bool). Callers override emailsPerMonth.</summary>
+    private static PlanEntitlements BuildFreeEntitlements()
+    {
+        var e = new PlanEntitlements();
+        foreach (var spec in EntitlementCatalog.All.Values)
+        {
+            var prop = typeof(PlanEntitlements).GetProperty(spec.Key)!;
+            if (spec.Kind == EntitlementKind.Int)
+                prop.SetValue(e, spec.DefaultInt);
+            else
+                prop.SetValue(e, spec.DefaultBool);
+        }
+        return e;
+    }
+
+    /// <summary>Legacy-plan entitlements = unlimited: -1 for every int, true for every bool.</summary>
+    private static PlanEntitlements BuildUnlimitedEntitlements()
+    {
+        var e = new PlanEntitlements();
+        foreach (var spec in EntitlementCatalog.All.Values)
+        {
+            var prop = typeof(PlanEntitlements).GetProperty(spec.Key)!;
+            if (spec.Kind == EntitlementKind.Int)
+                prop.SetValue(e, -1);
+            else
+                prop.SetValue(e, true);
+        }
+        return e;
     }
 }
