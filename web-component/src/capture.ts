@@ -25,7 +25,8 @@ function loadSnapdom(): Promise<Snapdom> {
   if (snapdomPromise) return snapdomPromise;
   snapdomPromise = new Promise<Snapdom>((resolve, reject) => {
     const s = document.createElement('script');
-    s.src = SNAPDOM_URL;
+    // A host (extension) may bundle snapdom and pass its URL; else use the script's own origin.
+    s.src = window.__POINTER_CONFIG__?.snapdomUrl || SNAPDOM_URL;
     s.async = true;
     s.onload = () =>
       window.snapdom

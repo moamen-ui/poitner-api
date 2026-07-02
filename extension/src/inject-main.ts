@@ -9,6 +9,10 @@ export function injectMain(cfg: {
   environment: string;
   /** Only the display name is forwarded to the page — email and role are omitted (PII, fix 1.3). */
   displayName?: string;
+  /** Extension-origin URLs for the BUNDLED widget CSS + snapdom (chrome-extension://…). The widget
+   *  loads its shadow-DOM stylesheet + snapdom from these so nothing is fetched from the server. */
+  cssUrl?: string;
+  snapdomUrl?: string;
 }): void {
   const w = window as unknown as Record<string, unknown>;
   if (w.__pointerExtMounted) return;
@@ -74,12 +78,14 @@ export function injectMain(cfg: {
     // Only expose the display name — email and roleName are PII and not needed by the widget (1.3).
     user: cfg.displayName ? { displayName: cfg.displayName } : undefined,
     proxy: true,
+    // Bundled-asset URLs (extension origin) so the widget never loads code/CSS from the server.
+    cssUrl: cfg.cssUrl,
+    snapdomUrl: cfg.snapdomUrl,
   };
 
-  const s = document.createElement('script');
-  s.src = cfg.server.replace(/\/$/, '') + '/pointer.js';
-  s.defer = true;
-  (document.head || document.documentElement).appendChild(s);
+  // NOTE: pointer.js is NOT loaded from the server here (Chrome Web Store forbids remotely-hosted
+  // code). The background injects the BUNDLED pointer.js via scripting.executeScript({files}) right
+  // after this config is set. This function only installs the config/transport + mounts the host.
 
   // Mount the widget host — and KEEP it mounted. SPA frameworks (React/Vue/Angular) re-render
   // and routinely evict a node appended to <body> (or replace <body> entirely) once they hydrate,

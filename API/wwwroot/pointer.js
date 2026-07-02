@@ -349,8 +349,9 @@
     if (window.snapdom) return Promise.resolve(window.snapdom);
     if (snapdomPromise) return snapdomPromise;
     snapdomPromise = new Promise((resolve, reject) => {
+      var _a2;
       const s = document.createElement("script");
-      s.src = SNAPDOM_URL;
+      s.src = ((_a2 = window.__POINTER_CONFIG__) == null ? void 0 : _a2.snapdomUrl) || SNAPDOM_URL;
       s.async = true;
       s.onload = () => window.snapdom ? resolve(window.snapdom) : reject(new Error("snapdom loaded but window.snapdom missing"));
       s.onerror = () => reject(new Error("failed to load " + SNAPDOM_URL));
@@ -813,7 +814,7 @@
       this.attachShadow({ mode: "open" });
       this._styleLink = document.createElement("link");
       this._styleLink.rel = "stylesheet";
-      this._styleLink.href = CSS_URL || `${this.server}/pointer.css`;
+      this._styleLink.href = (injected == null ? void 0 : injected.cssUrl) || CSS_URL || `${this.server}/pointer.css`;
       this.shadowRoot.appendChild(this._styleLink);
       this.root = document.createElement("div");
       this.shadowRoot.appendChild(this.root);

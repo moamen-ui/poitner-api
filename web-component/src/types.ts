@@ -69,6 +69,11 @@ export interface PointerInjectedConfig {
   user?: User | null;
   /** Hint that API traffic is proxied via `window.__POINTER_FETCH__`. */
   proxy?: boolean;
+  /** Absolute URL for the widget stylesheet — set by a host (e.g. the extension) that bundles
+   *  pointer.css instead of serving it, so the shadow-DOM <link> loads from the extension origin. */
+  cssUrl?: string;
+  /** Absolute URL for the vendored snapdom script (screenshot capture), same rationale as cssUrl. */
+  snapdomUrl?: string;
 }
 
 declare global {

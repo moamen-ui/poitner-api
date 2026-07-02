@@ -128,15 +128,19 @@ async function injectInto(tabId: number, url: string): Promise<void> {
   if (!entry) return;
   // Only pass the display name into the page — email and role are PII (fix 1.3).
   const displayName: string | undefined = user?.displayName || undefined;
-  // Isolated bridge first (relays the page's proxied requests), then the
-  // MAIN-world config + widget loader.
+  // Bundled widget asset URLs (extension origin) so nothing is fetched from the server.
+  const cssUrl = chrome.runtime.getURL('pointer.css');
+  const snapdomUrl = chrome.runtime.getURL('vendor/snapdom.js');
+  // 1) Isolated bridge (relays proxied requests). 2) MAIN-world config + host mount.
+  // 3) The BUNDLED widget as a local file — NOT remote code (Chrome Web Store compliant).
   await chrome.scripting.executeScript({ target: { tabId }, files: ['content-bridge.js'] });
   await chrome.scripting.executeScript({
     target: { tabId },
     world: 'MAIN',
     func: injectMain,
-    args: [{ server, project: entry.project, environment: entry.environment, displayName }],
+    args: [{ server, project: entry.project, environment: entry.environment, displayName, cssUrl, snapdomUrl }],
   });
+  await chrome.scripting.executeScript({ target: { tabId }, world: 'MAIN', files: ['pointer.js'] });
 }
 
 chrome.tabs.onUpdated.addListener((tabId, info, tab) => {
