@@ -91,6 +91,19 @@
     .step p, .feature p { margin: 0; color: var(--pf-muted); font-size: 14px; }
     .split { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
     .split-card { padding: 24px; border-radius: var(--pf-radius); border: 1px solid var(--pf-border); background: #fff; }
+    /* Pricing */
+    .pricing-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 18px; align-items: stretch; }
+    .price-card { display: flex; flex-direction: column; background: #fff; border: 1px solid var(--pf-border); border-radius: var(--pf-radius); padding: 26px 22px; }
+    .price-card.featured { border-color: color-mix(in srgb, var(--pf-blue) 55%, var(--pf-border)); box-shadow: 0 16px 40px rgba(37,99,235,.12); }
+    .price-card.soon { opacity: .68; }
+    .price-name { font-size: 18px; font-weight: 800; margin: 0 0 6px; }
+    .price-amount { font-size: 34px; font-weight: 800; letter-spacing: -0.02em; line-height: 1.1; }
+    .price-amount .per { font-size: 14px; font-weight: 600; color: var(--pf-muted); }
+    .price-soon-tag { display: inline-block; font-size: 12px; font-weight: 700; color: var(--pf-blue); background: color-mix(in srgb, var(--pf-blue) 12%, transparent); padding: 3px 10px; border-radius: 999px; margin-bottom: 10px; }
+    .price-bullets { list-style: none; padding: 0; margin: 16px 0 22px; display: grid; gap: 9px; }
+    .price-bullets li { position: relative; padding-inline-start: 24px; color: var(--pf-muted); font-size: 14px; }
+    .price-bullets li::before { content: "✓"; position: absolute; inset-inline-start: 0; color: var(--pf-green); font-weight: 800; }
+    .price-card .btn { margin-top: auto; justify-content: center; }
     .cta-band { background: var(--pf-grad); color: #fff; text-align: center; padding: 56px 0; }
     .cta-band h2 { font-size: clamp(24px, 3.4vw, 36px); margin: 0 0 22px; }
     .footer { border-top: 1px solid var(--pf-border); padding: 28px 0; }
@@ -154,6 +167,7 @@
       <nav class="nav-links">
         <a href="#how" data-i18n="nav.how">How it works</a>
         <a href="#features" data-i18n="nav.features">Features</a>
+        <a href="#pricing" data-i18n="nav.pricing">Pricing</a>
         <a href="#demo" data-i18n="nav.demo">Demo</a>
       </nav>
       <div class="nav-cta">
@@ -249,6 +263,15 @@
     </section>
 
     <!-- Final CTA -->
+    <!-- Pricing — rendered client-side from GET /api/plans. Hidden until at least one plan loads;
+         stays hidden if the fetch fails, so the page degrades gracefully. -->
+    <section id="pricing" class="section band" hidden>
+      <div class="wrap">
+        <h2 class="section-title" data-i18n="pricing.title">Simple, transparent pricing</h2>
+        <div id="pricing-grid" class="pricing-grid"></div>
+      </div>
+    </section>
+
     <section id="demo" class="cta-band">
       <div class="wrap">
         <h2 data-i18n="final.title">Try it in one click — no install</h2>
@@ -274,8 +297,11 @@
   <script>
   var STRINGS = {
     en: {
-      "nav.how": "How it works", "nav.features": "Features", "nav.demo": "Demo",
+      "nav.how": "How it works", "nav.features": "Features", "nav.pricing": "Pricing", "nav.demo": "Demo",
       "nav.signin": "Sign in", "nav.demoCta": "Try the demo",
+      "pricing.title": "Simple, transparent pricing",
+      "pricing.free": "Free", "pricing.perMo": "/mo", "pricing.perYr": "/yr",
+      "pricing.cta": "Get started", "pricing.soon": "Coming soon",
       "hero.title": "Point at the UI. Ship it with AI.",
       "hero.sub": "Anyone on your team clicks an element on a running app and leaves a short comment. Developers hand the queue to any AI tool, which applies the change to the real source — no more translating vague feedback into code.",
       "hero.demo": "Try the demo — no install", "hero.signup": "Create an account",
@@ -301,8 +327,11 @@
       "anim.label": "Make this bolder"
     },
     ar: {
-      "nav.how": "كيف يعمل", "nav.features": "المميزات", "nav.demo": "تجربة",
+      "nav.how": "كيف يعمل", "nav.features": "المميزات", "nav.pricing": "الأسعار", "nav.demo": "تجربة",
       "nav.signin": "تسجيل الدخول", "nav.demoCta": "جرّب العرض",
+      "pricing.title": "أسعار بسيطة وواضحة",
+      "pricing.free": "مجاني", "pricing.perMo": "/شهريًا", "pricing.perYr": "/سنويًا",
+      "pricing.cta": "ابدأ الآن", "pricing.soon": "قريبًا",
       "hero.title": "أشِر إلى الواجهة. ونفّذ بالذكاء الاصطناعي.",
       "hero.sub": "أي عضو في فريقك ينقر على عنصر في التطبيق الفعلي ويترك تعليقًا قصيرًا. ثم يسلّم المطوّر قائمة الملاحظات لأي أداة ذكاء اصطناعي لتطبّق التغيير على الكود المصدري مباشرة — دون ترجمة ملاحظات غامضة إلى كود.",
       "hero.demo": "جرّب العرض — بدون تثبيت", "hero.signup": "أنشئ حسابًا",
@@ -337,6 +366,7 @@
     });
     document.documentElement.lang = lang;
     document.documentElement.dir = (lang === 'ar') ? 'rtl' : 'ltr';
+    renderPricing(lang);   // plan cards are API-driven; re-render so their static labels follow the language
     var toggle = document.getElementById('lang-toggle');
     // Icon-only button: keep the glyph, just update the accessible label/title to the action.
     if (toggle) {
@@ -346,6 +376,69 @@
     }
     try { localStorage.setItem('pointer_lang', lang); } catch (e) {}
   }
+
+  // ── Pricing: fetch marketing plans once, render client-side (graceful: section stays hidden on failure) ──
+  var API_BASE = "https://api.pointer.moamen.work";
+  var PRICING_PLANS = null;   // null = not loaded yet; [] = loaded but empty
+
+  function renderPricing(lang) {
+    var grid = document.getElementById('pricing-grid');
+    var section = document.getElementById('pricing');
+    if (!grid || !section || !PRICING_PLANS || !PRICING_PLANS.length) return;
+    var dict = STRINGS[lang] || STRINGS.en;
+
+    var cards = PRICING_PLANS.slice().sort(function (a, b) {
+      return (a.sortOrder || 0) - (b.sortOrder || 0);
+    }).map(function (p) {
+      var soon = p.displayState === 1;                 // 1 = ComingSoon (public endpoint already drops Hidden)
+      var price;
+      if (!p.priceMonthly || p.priceMonthly <= 0) {
+        price = '<div class="price-amount">' + dict['pricing.free'] + '</div>';
+      } else {
+        var per = (p.interval === 1) ? dict['pricing.perYr'] : dict['pricing.perMo'];
+        var amount;
+        try {
+          amount = new Intl.NumberFormat(lang === 'ar' ? 'ar' : 'en', {
+            style: 'currency', currency: p.currency || 'USD', maximumFractionDigits: 0
+          }).format(p.priceMonthly);
+        } catch (e) { amount = (p.currency || 'USD') + ' ' + p.priceMonthly; }
+        price = '<div class="price-amount">' + esc(amount) + ' <span class="per">' + per + '</span></div>';
+      }
+      var bullets = (p.featureBullets || []).map(function (b) {
+        return '<li>' + esc(b) + '</li>';
+      }).join('');
+      // Visible plans link to signup carrying the chosen plan slug; ComingSoon shows a tag, no CTA.
+      var cta = '<a class="btn primary" href="https://app.pointer.moamen.work/signup?plan=' + encodeURIComponent(p.slug || '') + '">' + dict['pricing.cta'] + '</a>';
+      return '<div class="price-card' + (soon ? ' soon' : '') + '">' +
+        (soon ? '<span class="price-soon-tag">' + dict['pricing.soon'] + '</span>' : '') +
+        '<h3 class="price-name">' + esc(p.name || '') + '</h3>' +
+        price +
+        '<ul class="price-bullets">' + bullets + '</ul>' +
+        (soon ? '' : cta) +
+        '</div>';
+    }).join('');
+
+    grid.innerHTML = cards;
+    section.hidden = false;
+  }
+
+  function esc(s) {
+    return String(s).replace(/[&<>"']/g, function (c) {
+      return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+    });
+  }
+
+  (function loadPricing() {
+    fetch(API_BASE + '/api/plans', { headers: { 'accept': 'application/json' } })
+      .then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (res) {
+        var list = res && (res.data || res);
+        if (!Array.isArray(list) || !list.length) return;    // nothing to show → section stays hidden
+        PRICING_PLANS = list;
+        renderPricing(document.documentElement.lang || 'en');
+      })
+      .catch(function () { /* graceful: pricing section stays hidden */ });
+  })();
 
   (function initLang() {
     var saved = null;
