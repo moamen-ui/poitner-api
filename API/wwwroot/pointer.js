@@ -4,6 +4,7 @@
   // src/constants.ts
   var HL_CLASS = "pointer-feedback-hl";
   var ENV_MAP = { local: 1, staging: 2, production: 3 };
+  var ENV_NAME = { 1: "local", 2: "staging", 3: "production" };
   var STATUS_STR = {
     1: "open",
     2: "pending-apply",
@@ -214,6 +215,11 @@
         <div class="pf-sidebar" id="pf-sidebar">
           <div class="pf-sidebar-head">
             <h2>Comments</h2>
+            <select class="pf-input pf-env-select" id="pf-env" title="Environment — comments are scoped per environment" style="width:auto; margin-inline-start:auto; margin-inline-end:8px; padding:4px 8px;">
+              <option value="local">local</option>
+              <option value="staging">staging</option>
+              <option value="production">production</option>
+            </select>
             <button class="pf-mini" id="pf-close">&#x2715;</button>
           </div>
           <div class="pf-filters" id="pf-filters"></div>
@@ -761,6 +767,15 @@
           this.environmentInt = ENV_MAP[injected.environment.toLowerCase()] || this.environmentInt;
         }
       }
+      try {
+        const savedEnv = localStorage.getItem("pointer_env_" + this.project);
+        if (savedEnv && ENV_MAP[savedEnv.toLowerCase()]) {
+          this.environmentAttr = savedEnv.toLowerCase();
+          this.environmentInt = ENV_MAP[savedEnv.toLowerCase()];
+        }
+      } catch (e) {
+      }
+      if (!this.environmentAttr) this.environmentAttr = ENV_NAME[this.environmentInt] || "staging";
       this._collapsed = (() => {
         try {
           return sessionStorage.getItem("pointer_visible") !== "1";
@@ -1004,10 +1019,32 @@
         this.toast("Refreshed");
       });
       this.root.querySelector("#pf-close").addEventListener("click", () => this.toggleSidebar(false));
+      const envSel = this.root.querySelector("#pf-env");
+      if (envSel) {
+        envSel.value = (this.environmentAttr || ENV_NAME[this.environmentInt] || "staging").toLowerCase();
+        envSel.addEventListener("change", () => this.setEnvironment(envSel.value));
+      }
       const resetBtn = this.root.querySelector("#pf-reset-pos");
       if (resetBtn) resetBtn.addEventListener("click", () => this.resetToolbarPos());
       this.restoreToolbarPos();
       this.enableToolbarDrag();
+    }
+    // Switch the active environment from the toolbar. Comments are environment-scoped, so this
+    // re-queries the server and re-renders; the choice is remembered per project on this origin.
+    setEnvironment(env) {
+      const key = (env || "").toLowerCase();
+      if (!ENV_MAP[key] || key === this.environmentAttr.toLowerCase()) return;
+      this.environmentAttr = key;
+      this.environmentInt = ENV_MAP[key];
+      try {
+        localStorage.setItem("pointer_env_" + this.project, key);
+      } catch (e) {
+      }
+      if (!this.token) return;
+      this.fetchComments().then(() => {
+        this.renderSidebar();
+        this.renderPins();
+      });
     }
     // --- Draggable toolbar ---------------------------------------------------
     // The toolbar is fixed at the top; let the user drag it by its grip so it

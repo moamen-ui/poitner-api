@@ -91,16 +91,9 @@ async function renderMain(user: StoredUser | null) {
           <input id="new-name" placeholder="Display name (optional)" />
           <button class="primary" id="create">Create project</button>
         </div>` : ''}
-      <label>Environment</label>
-      <select id="env">
-        <option value="local">local</option>
-        <option value="staging">staging</option>
-        <option value="production">production</option>
-      </select>
       <button class="${tabState.active ? 'danger' : 'primary'}" id="toggle"${(!hasProjects && !tabState.active) ? ' disabled' : ''}>${tabState.active ? 'Deactivate on this tab' : 'Activate on this tab'}</button>
-      <div class="note">Activating reloads this tab once, then injects the Pointer widget (works even on sites with a strict CSP).</div>`;
+      <div class="note">Activating reloads this tab once, then injects the Pointer widget. Switch environment inside the widget (Comments panel).</div>`;
 
-    (document.getElementById('env') as HTMLSelectElement).value = env;
     (document.getElementById('signout') as HTMLElement).onclick = signOut;
 
     if (isAdmin) {
@@ -129,7 +122,7 @@ async function renderMain(user: StoredUser | null) {
         return window.close();
       }
       const project = (document.getElementById('project') as HTMLInputElement | null)?.value.trim() || '';
-      const environment = (document.getElementById('env') as HTMLSelectElement).value;
+      const environment = env; // initial default; the viewer switches environment inside the widget
       if (!project) return err('Pick a project first.');
       if (!projects.some((p) => p.key === project)) return err('Pick a project from your list.');
       const res = await send<{ ok: boolean; error?: string }>({ type: 'activate', tabId: tab!.id!, hostname, origin, project, environment });

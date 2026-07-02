@@ -65,6 +65,11 @@ export const TPL = {
         <div class="pf-sidebar" id="pf-sidebar">
           <div class="pf-sidebar-head">
             <h2>Comments</h2>
+            <select class="pf-input pf-env-select" id="pf-env" title="Environment — comments are scoped per environment" style="width:auto; margin-inline-start:auto; margin-inline-end:8px; padding:4px 8px;">
+              <option value="local">local</option>
+              <option value="staging">staging</option>
+              <option value="production">production</option>
+            </select>
             <button class="pf-mini" id="pf-close">&#x2715;</button>
           </div>
           <div class="pf-filters" id="pf-filters"></div>

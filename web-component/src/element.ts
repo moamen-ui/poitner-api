@@ -1,5 +1,5 @@
 import {
-  HL_CLASS, ENV_MAP, STATUS_STR, STATUS_INT, POSITIONS, CSS_URL, SCRIPT_SRC,
+  HL_CLASS, ENV_MAP, ENV_NAME, STATUS_STR, STATUS_INT, POSITIONS, CSS_URL, SCRIPT_SRC,
   loadStatusCatalog, catalogToFilters, pfFetch,
 } from './constants';
 import { escapeHtml, ensureHighlightStyle, matchElement, pageIsRtl } from './dom';
@@ -83,6 +83,19 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
         this.environmentInt = ENV_MAP[injected.environment.toLowerCase()] || this.environmentInt;
       }
     }
+
+    // The environment is switchable IN the widget (toolbar select) and remembered per project on
+    // this origin — it takes precedence over the attribute/injected default so the viewer's choice
+    // sticks across reloads. Comments are environment-scoped, so switching re-queries per env.
+    try {
+      const savedEnv = localStorage.getItem('pointer_env_' + this.project);
+      if (savedEnv && ENV_MAP[savedEnv.toLowerCase()]) {
+        this.environmentAttr = savedEnv.toLowerCase();
+        this.environmentInt = ENV_MAP[savedEnv.toLowerCase()];
+      }
+    } catch (e) { /* ignore */ }
+    // Normalize the display string so the toolbar select always has a matching option.
+    if (!this.environmentAttr) this.environmentAttr = ENV_NAME[this.environmentInt] || 'staging';
 
     // Hidden by default on first load: collapsed to a small launcher until the user
     // opens it once, after which it stays shown for the rest of this browser-tab
@@ -343,11 +356,30 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
     });
     this.root.querySelector('#pf-close')!.addEventListener('click', () => this.toggleSidebar(false));
 
+    // Environment switcher — comments are scoped per environment; switching re-queries + persists.
+    const envSel = this.root.querySelector('#pf-env') as HTMLSelectElement | null;
+    if (envSel) {
+      envSel.value = (this.environmentAttr || ENV_NAME[this.environmentInt] || 'staging').toLowerCase();
+      envSel.addEventListener('change', () => this.setEnvironment(envSel.value));
+    }
+
     const resetBtn = this.root.querySelector('#pf-reset-pos');
     if (resetBtn) resetBtn.addEventListener('click', () => this.resetToolbarPos());
 
     this.restoreToolbarPos();
     this.enableToolbarDrag();
+  }
+
+  // Switch the active environment from the toolbar. Comments are environment-scoped, so this
+  // re-queries the server and re-renders; the choice is remembered per project on this origin.
+  setEnvironment(env: string): void {
+    const key = (env || '').toLowerCase();
+    if (!ENV_MAP[key] || key === this.environmentAttr.toLowerCase()) return;
+    this.environmentAttr = key;
+    this.environmentInt = ENV_MAP[key];
+    try { localStorage.setItem('pointer_env_' + this.project, key); } catch (e) { /* ignore */ }
+    if (!this.token) return; // not signed in yet — the new env applies on next fetch
+    this.fetchComments().then(() => { this.renderSidebar(); this.renderPins(); });
   }
 
   // --- Draggable toolbar ---------------------------------------------------
