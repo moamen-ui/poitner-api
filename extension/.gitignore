@@ -1,2 +1,5 @@
 node_modules/
 dist/
+
+# Web Store upload packages (build artifacts)
+pointer-ext-*.zip
