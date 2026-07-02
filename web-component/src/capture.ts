@@ -120,11 +120,84 @@ export async function captureScreenshot(el: Element): Promise<Blob | null> {
   }
 }
 
+// HTML void elements — no closing tag, no text content.
+const VOID_ELEMENTS = /^(area|base|br|col|embed|hr|img|input|link|meta|param|source|track|wbr)$/;
+
+// A shallow, token-cheap snapshot: the element's OWN opening tag (its attributes —
+// id / data-* / type / href / aria-*, which are the strongest source anchors for
+// routed & generated UIs) plus its trimmed text, WITHOUT the child subtree. The full
+// outerHTML (capped at 2000) drowned leaf comments in child markup / inline SVG and
+// duplicated the class list; here `class` and `style` are omitted because they travel
+// in the dedicated `classes` / `computedStyles` fields.
+function shallowSnapshot(el: Element): string {
+  const tag = el.tagName.toLowerCase();
+  const attrs = Array.from(el.attributes)
+    .filter((a) => a.name !== 'class' && a.name !== 'style')
+    .map((a) => {
+      const v = (a.value || '').slice(0, 120);
+      return v ? `${a.name}="${v}"` : a.name;
+    })
+    .join(' ');
+  const open = attrs ? `<${tag} ${attrs}>` : `<${tag}>`;
+  if (VOID_ELEMENTS.test(tag)) return attrs ? `<${tag} ${attrs}/>` : `<${tag}/>`;
+  const text = (el.textContent || '').replace(/\s+/g, ' ').trim().slice(0, 160);
+  return `${open}${text}</${tag}>`;
+}
+
+// Decide whether a matching rule's selector is worth keeping. We drop:
+//  - universal / reset / normalize rules (`*`, `*,::before`, `html`, `:root`, pseudo-element resets),
+//  - pure tag / tag-group rules (`button, input, select…`) — normalize noise, never the author's rule,
+//  - single-class rules whose class is already in `element.classes` — on utility CSS (Tailwind) these
+//    just echo `.mt-1 { margin-top: … }` for a class the reader already has, all cost and no signal.
+// What survives is the genuinely informative stuff: compound/descendant author rules (`.hero h1`,
+// `.step, .feature`, `.btn.primary`, `.mat-…-button-disabled`), id and attribute rules.
+function skipSelector(sel: string, classSet: Set<string>): boolean {
+  const s = sel.trim();
+  if (s.includes('*')) return true;
+  if (/::(before|after|backdrop|selection|placeholder|marker)/i.test(s)) return true;
+  if (!/[.#[]/.test(s)) return true; // no class/id/attribute → tag-only reset
+  // single class token (no combinator) that the element already lists → utility echo
+  if (!/[ >+~,]/.test(s) && s.startsWith('.')) {
+    const cls = s.slice(1).replace(/\\/g, '');
+    if (classSet.has(cls)) return true;
+  }
+  return false;
+}
+
+// Collect the CSS rules that actually match `el`, RECURSING into grouped rules
+// (@media / @layer / @supports / @container) — modern CSS (Tailwind's @layer, any
+// responsive block) nests one level down, so a top-level-only scan returns nothing on
+// exactly the frameworks people ship. Capped + filtered so the field stays cheap and signal-rich.
+function collectAppliedRules(
+  rules: CSSRuleList,
+  el: Element,
+  out: { selector: string; styles: string }[],
+  cap: number,
+  classSet: Set<string>,
+): void {
+  for (const rule of Array.from(rules)) {
+    if (out.length >= cap) return;
+    const styleRule = rule as CSSStyleRule;
+    if (styleRule.selectorText) {
+      const sel = styleRule.selectorText;
+      if (skipSelector(sel, classSet)) continue;
+      try {
+        if (el.matches(sel)) {
+          out.push({ selector: sel.slice(0, 160), styles: (styleRule.style.cssText || '').slice(0, 200) });
+        }
+      } catch (e) {}
+    } else {
+      const grouped = (rule as CSSGroupingRule).cssRules;
+      if (grouped) collectAppliedRules(grouped, el, out, cap, classSet);
+    }
+  }
+}
+
 // --- Metadata capture (ported from inject.js) ---------------------------
 // `sourceAttr` is the configured DOM attribute carrying an element's source path.
 export function captureMetadata(el: Element, sourceAttr: string): Meta {
   const selector = generateSelector(el);
-  const snapshot = el.outerHTML.length > 2000 ? el.outerHTML.slice(0, 2000) : el.outerHTML;
+  const snapshot = shallowSnapshot(el);
   const classes = (el.className && typeof el.className === 'string')
     ? el.className.split(/\s+/).filter(Boolean)
     : [];
@@ -140,7 +213,10 @@ export function captureMetadata(el: Element, sourceAttr: string): Meta {
   const inlineStyle = (el as HTMLElement).style;
   if (inlineStyle && inlineStyle.cssText) computed['inline-style'] = inlineStyle.cssText;
 
+  const APPLIED_RULES_CAP = 6;
+  const classSet = new Set(classes);
   for (const sheet of Array.from(document.styleSheets)) {
+    if (applied.length >= APPLIED_RULES_CAP) break;
     let rules: CSSRuleList | undefined;
     try {
       rules = sheet.cssRules || (sheet as CSSStyleSheet).rules;
@@ -148,15 +224,7 @@ export function captureMetadata(el: Element, sourceAttr: string): Meta {
       continue; // cross-origin
     }
     if (!rules) continue;
-    for (const rule of Array.from(rules)) {
-      const styleRule = rule as CSSStyleRule;
-      if (!styleRule.selectorText) continue;
-      try {
-        if (el.matches(styleRule.selectorText)) {
-          applied.push({ selector: styleRule.selectorText, styles: styleRule.style.cssText });
-        }
-      } catch (e) {}
-    }
+    collectAppliedRules(rules, el, applied, APPLIED_RULES_CAP, classSet);
   }
 
   let parent: Record<string, unknown> = {};

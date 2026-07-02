@@ -394,9 +394,51 @@
       return null;
     }
   }
+  var VOID_ELEMENTS = /^(area|base|br|col|embed|hr|img|input|link|meta|param|source|track|wbr)$/;
+  function shallowSnapshot(el) {
+    const tag = el.tagName.toLowerCase();
+    const attrs = Array.from(el.attributes).filter((a) => a.name !== "class" && a.name !== "style").map((a) => {
+      const v = (a.value || "").slice(0, 120);
+      return v ? `${a.name}="${v}"` : a.name;
+    }).join(" ");
+    const open = attrs ? `<${tag} ${attrs}>` : `<${tag}>`;
+    if (VOID_ELEMENTS.test(tag)) return attrs ? `<${tag} ${attrs}/>` : `<${tag}/>`;
+    const text = (el.textContent || "").replace(/\s+/g, " ").trim().slice(0, 160);
+    return `${open}${text}</${tag}>`;
+  }
+  function skipSelector(sel, classSet) {
+    const s = sel.trim();
+    if (s.includes("*")) return true;
+    if (/::(before|after|backdrop|selection|placeholder|marker)/i.test(s)) return true;
+    if (!/[.#[]/.test(s)) return true;
+    if (!/[ >+~,]/.test(s) && s.startsWith(".")) {
+      const cls = s.slice(1).replace(/\\/g, "");
+      if (classSet.has(cls)) return true;
+    }
+    return false;
+  }
+  function collectAppliedRules(rules, el, out, cap, classSet) {
+    for (const rule of Array.from(rules)) {
+      if (out.length >= cap) return;
+      const styleRule = rule;
+      if (styleRule.selectorText) {
+        const sel = styleRule.selectorText;
+        if (skipSelector(sel, classSet)) continue;
+        try {
+          if (el.matches(sel)) {
+            out.push({ selector: sel.slice(0, 160), styles: (styleRule.style.cssText || "").slice(0, 200) });
+          }
+        } catch (e) {
+        }
+      } else {
+        const grouped = rule.cssRules;
+        if (grouped) collectAppliedRules(grouped, el, out, cap, classSet);
+      }
+    }
+  }
   function captureMetadata(el, sourceAttr) {
     const selector = generateSelector(el);
-    const snapshot = el.outerHTML.length > 2e3 ? el.outerHTML.slice(0, 2e3) : el.outerHTML;
+    const snapshot = shallowSnapshot(el);
     const classes = el.className && typeof el.className === "string" ? el.className.split(/\s+/).filter(Boolean) : [];
     const computed = {};
     const applied = [];
@@ -407,7 +449,10 @@
     });
     const inlineStyle = el.style;
     if (inlineStyle && inlineStyle.cssText) computed["inline-style"] = inlineStyle.cssText;
+    const APPLIED_RULES_CAP = 6;
+    const classSet = new Set(classes);
     for (const sheet of Array.from(document.styleSheets)) {
+      if (applied.length >= APPLIED_RULES_CAP) break;
       let rules;
       try {
         rules = sheet.cssRules || sheet.rules;
@@ -415,16 +460,7 @@
         continue;
       }
       if (!rules) continue;
-      for (const rule of Array.from(rules)) {
-        const styleRule = rule;
-        if (!styleRule.selectorText) continue;
-        try {
-          if (el.matches(styleRule.selectorText)) {
-            applied.push({ selector: styleRule.selectorText, styles: styleRule.style.cssText });
-          }
-        } catch (e) {
-        }
-      }
+      collectAppliedRules(rules, el, applied, APPLIED_RULES_CAP, classSet);
     }
     let parent = {};
     if (el.parentElement) {

@@ -153,7 +153,7 @@ Shape of one item (note the nested camelCase `element`; the heavier capture fiel
   "authorId": "0b3f…", "createdAt": "2026-06-23T…", "appliedByLabel": null,
   "element": {
     "selector": "section > div:nth-of-type(2) > button",
-    "snapshot": "<button class=\"border border-primary-500 …\">Join</button>",
+    "snapshot": "<button type=\"submit\" data-testid=\"join\">Join</button>",
     "classes": "[\"border\",\"border-primary-500\",\"text-primary-500\"]",
     "computedStyles": "{\"color\":\"…\"}",
     "appliedCssRules": "[{\"selector\":\"…\",\"styles\":\"…\"}]",
@@ -170,25 +170,41 @@ Shape of one item (note the nested camelCase `element`; the heavier capture fiel
 `element.classes` / `computedStyles` / `appliedCssRules` / `parentInfo` are **stringified JSON** —
 `JSON.parse` them (or read as text) before using.
 
+`element.snapshot` is **shallow by design** (kept small to save tokens): the element's own opening
+tag with its attributes — `id`, `data-*`, `type`, `href`, `aria-*` (the strongest anchors for routed
+& generated UIs, e.g. Swagger's `data-path`) — plus its **trimmed text**, with the child subtree
+omitted. `class` and inline `style` are NOT in the snapshot; read them from `element.classes` /
+`element.computedStyles`. `element.appliedCssRules` is the matching CSS (now including rules nested in
+`@layer`/`@media`, capped at 8, noise selectors dropped); it can still be **empty on utility-CSS apps
+(Tailwind)** — that's expected, the classes carry the styling there.
+
 ---
 
 ## Step 5 — Apply (only when the user asks to apply)
 
 For each item from the `status=2` queue:
 
-1. **Locate the source.**
-   - If `element.sourcePath` is present, open it. Try it relative to the repo root first; if not found
-     and the repo has an `apps/` dir (Nx/monorepo), try `apps/<sourcePath>` — many setups emit paths
-     relative to `/apps/`.
-   - If absent, find the source by searching for the `element.snapshot` text or the parsed
-     `element.classes`.
-   - Use `element.route` / `element.pageUrl` to find the **right page first** in a multi-page or
-     routed app (map the route to its page/route component), then locate the element within it.
+1. **Locate the source** (in this priority order — stop at the first that lands it):
+   - **`element.sourcePath`** if present: open that `file:line` directly. Try it relative to the repo
+     root first; if not found and the repo has an `apps/` dir (Nx/monorepo), try `apps/<sourcePath>`.
+   - **`element.route` / `element.pageUrl`** to find the **right page first** in a routed app (map the
+     route to its page/route component), then locate the element within it.
+   - **The snapshot's text** (the text inside `element.snapshot`) — grep for it. **But rendered text is
+     often i18n**, so it may not appear literally in source (you'll see `{{ 'login.title' | translate }}`
+     / `t('login.title')` / `data-i18n="…"`). If a literal search misses, **search the i18n resource
+     files** (e.g. `*/i18n/*.json`, `en.json`) for the string → get its **key** → grep the key's usage.
+   - **A distinctive class** from `element.classes` — grep the *rarest-looking* one (e.g. `mt-1`,
+     `hero-copy`), not a generic utility (`flex`, `text-sm`) that appears everywhere.
+   - **The snapshot's attributes** — `id`, `data-*` (e.g. an API `data-path` → a controller action),
+     `type`, `href` — greppable anchors, especially for generated UIs.
+   - If the element turns out to be **third-party/library chrome** (e.g. Swagger UI's own buttons) with
+     no counterpart in the repo, say so and point at its config instead of inventing an edit.
 2. **Make the change** the comment asks for.
    - **Tailwind apps:** the visible styling is in the element's `className`. Use `element.classes` /
      `element.snapshot` to find the element and edit the classes (e.g. "make it primary" → swap the
      outline classes `border border-primary-500 text-primary-500` for the filled variant
-     `bg-primary-500 text-white`). `appliedCssRules` is usually just `*` and not useful for Tailwind.
+     `bg-primary-500 text-white`). On Tailwind the `className` is the source of truth; `appliedCssRules`
+     may be empty or only echo the utility definitions — don't rely on it there.
    - **Plain CSS/SCSS apps — sacred CSS rule:** edit the rule that *actually wins* on the element
      (read parsed `element.appliedCssRules`) — never invent a new, more-specific selector that could be
      overridden. That winning rule often lives in an external `.css`/`.scss`/CSS-module the AI must find
