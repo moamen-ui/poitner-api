@@ -17,14 +17,16 @@ public class UserService : IUserService
     private readonly ICurrentUser _currentUser;
     private readonly IEmailService _emailService;
     private readonly IEntitlementService _entitlements;
+    private readonly IBrandingService _branding;
 
-    public UserService(IUnitOfWork unitOfWork, IPasswordHasher passwordHasher, ICurrentUser currentUser, IEmailService emailService, IEntitlementService entitlements)
+    public UserService(IUnitOfWork unitOfWork, IPasswordHasher passwordHasher, ICurrentUser currentUser, IEmailService emailService, IEntitlementService entitlements, IBrandingService branding)
     {
         _unitOfWork = unitOfWork;
         _passwordHasher = passwordHasher;
         _currentUser = currentUser;
         _emailService = emailService;
         _entitlements = entitlements;
+        _branding = branding;
     }
 
     // Best-effort notification: a send failure must never fail the admin action.
@@ -128,11 +130,14 @@ public class UserService : IUserService
         _unitOfWork.Repository<User>().Update(user);
         await _unitOfWork.SaveChangesAsync();
 
-        await SafeSendAsync(user.Email, "Your Pointer account is approved",
+        var approveBrand = await _branding.BuildResponseAsync("", new HashSet<string>());
+        var approveProductName = approveBrand.ProductName;
+        var approveAppUrl = approveBrand.Urls.App.TrimEnd('/');
+        await SafeSendAsync(user.Email, $"Your {approveProductName} account is approved",
             $@"<div style=""font-family:system-ui,sans-serif;color:#0f172a;line-height:1.6"">
   <h2 style=""margin:0 0 8px"">You're in ✅</h2>
-  <p>Your Pointer account (<b>{user.Email}</b>) has been approved and is now active.</p>
-  <p><a href=""https://app.pointer.moamen.work"" style=""color:#2563eb"">Sign in to Pointer →</a></p>
+  <p>Your {approveProductName} account (<b>{user.Email}</b>) has been approved and is now active.</p>
+  <p><a href=""{approveAppUrl}"" style=""color:#2563eb"">Sign in to {approveProductName} →</a></p>
 </div>");
 
         return Result<UserResponse>.Success(MapToResponse(user, role));
@@ -151,9 +156,11 @@ public class UserService : IUserService
         _unitOfWork.Repository<User>().Update(user);
         await _unitOfWork.SaveChangesAsync();
 
-        await SafeSendAsync(user.Email, "Your Pointer account request",
+        var rejectBrand = await _branding.BuildResponseAsync("", new HashSet<string>());
+        var rejectProductName = rejectBrand.ProductName;
+        await SafeSendAsync(user.Email, $"Your {rejectProductName} account request",
             $@"<div style=""font-family:system-ui,sans-serif;color:#0f172a;line-height:1.6"">
-  <p>Thanks for your interest in Pointer. Unfortunately your account request for
+  <p>Thanks for your interest in {rejectProductName}. Unfortunately your account request for
   <b>{user.Email}</b> was not approved at this time.</p>
 </div>");
 

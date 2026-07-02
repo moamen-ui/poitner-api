@@ -23,19 +23,22 @@ public class DemoService : IDemoService
     private readonly ITokenService _tokenService;
     private readonly IEmailService _emailService;
     private readonly ISettingsService _settings;
+    private readonly IBrandingService _branding;
 
     public DemoService(
         IUnitOfWork unitOfWork,
         IPasswordHasher passwordHasher,
         ITokenService tokenService,
         IEmailService emailService,
-        ISettingsService settings)
+        ISettingsService settings,
+        IBrandingService branding)
     {
         _unitOfWork = unitOfWork;
         _passwordHasher = passwordHasher;
         _tokenService = tokenService;
         _emailService = emailService;
         _settings = settings;
+        _branding = branding;
     }
 
     public async Task<Result<DemoSessionResponse>> ProvisionAsync(string serverUrl, string recipientEmail)
@@ -175,10 +178,12 @@ public class DemoService : IDemoService
         //    response (they read it from their inbox); on failure/cap we fall back to inline creds
         //    so the demo is never blocked.
         var expiresAt = demoUser.ExpiresAt!.Value;
+        var demoBrand = await _branding.BuildResponseAsync("", new HashSet<string>());
+        var demoProductName = demoBrand.ProductName;
         var emailSent = await _emailService.SendAsync(
             recipientEmail,
-            "Your Pointer demo is ready",
-            BuildDemoEmailHtml(email, password, project.Key, serverUrl, expiresAt));
+            $"Your {demoProductName} demo is ready",
+            BuildDemoEmailHtml(email, password, project.Key, serverUrl, expiresAt, demoProductName));
 
         // g. Record one demo against this email for today's per-email limit.
         if (throttle == null)
@@ -286,12 +291,12 @@ public class DemoService : IDemoService
         catch { return false; }
     }
 
-    private static string BuildDemoEmailHtml(string login, string password, string projectKey, string serverUrl, DateTime expiresUtc)
+    private static string BuildDemoEmailHtml(string login, string password, string projectKey, string serverUrl, DateTime expiresUtc, string productName)
     {
         var snippet = $"&lt;script src=\"{serverUrl}/pointer.js\" defer&gt;&lt;/script&gt;<br/>" +
                       $"&lt;pointer-feedback project=\"{projectKey}\" server=\"{serverUrl}\"&gt;&lt;/pointer-feedback&gt;";
         return $@"<div style=""font-family:system-ui,Segoe UI,Roboto,sans-serif;color:#0f172a;line-height:1.6"">
-  <h2 style=""margin:0 0 8px"">Your Pointer demo is ready 🐕</h2>
+  <h2 style=""margin:0 0 8px"">Your {productName} demo is ready 🐕</h2>
   <p style=""color:#475569;margin:0 0 16px"">This demo workspace expires on {expiresUtc:yyyy-MM-dd HH:mm} UTC.</p>
   <table style=""border-collapse:collapse;font-size:14px"">
     <tr><td style=""padding:4px 12px 4px 0;color:#475569"">Project key</td><td><code>{projectKey}</code></td></tr>

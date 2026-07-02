@@ -15,16 +15,29 @@ function esc(s: string): string {
 }
 function err(msg: string) { errEl.textContent = msg; }
 
+// Product name from the server's central branding (GET /api/branding is public). Defaults to
+// "Pointer"; the popup's static <h1> and rendered copy are updated to match at render time.
+let PRODUCT = 'Pointer';
+async function loadProduct(server: string): Promise<void> {
+  try {
+    const r = await fetch((server || DEFAULT_SERVER).replace(/\/$/, '') + '/api/branding', { headers: { accept: 'application/json' } });
+    if (r.ok) { const b = await r.json(); const d = (b && (b.data || b)) || {}; if (d.productName) PRODUCT = d.productName; }
+  } catch { /* keep the default */ }
+  const h1 = document.querySelector('h1');
+  if (h1) h1.textContent = '🐕 ' + PRODUCT + ' Feedback';
+}
+
 async function render() {
   err('');
   const state = await send<{ server: string; user: StoredUser | null; hasToken: boolean }>({ type: 'getState' });
+  await loadProduct(state.server);
   if (!state.hasToken) return renderAuth(state.server);
   return renderMain(state.user);
 }
 
 function renderAuth(server: string) {
   root.innerHTML = `
-    <label>Pointer server</label>
+    <label>${PRODUCT} server</label>
     <input id="server" value="${esc(server || DEFAULT_SERVER)}" />
     <label>Email</label>
     <input id="email" type="email" autocomplete="username" />
@@ -56,7 +69,7 @@ async function renderMain(user: StoredUser | null) {
   if (!injectable) {
     root.innerHTML = `
       <div class="bar"><span class="who">${who}</span><a id="signout">Sign out</a></div>
-      <div class="note" style="margin-top:12px;">Open a normal web page (http/https) to activate Pointer here.</div>`;
+      <div class="note" style="margin-top:12px;">Open a normal web page (http/https) to activate ${PRODUCT} here.</div>`;
     (document.getElementById('signout') as HTMLElement).onclick = signOut;
     return;
   }
@@ -92,7 +105,7 @@ async function renderMain(user: StoredUser | null) {
           <button class="primary" id="create">Create project</button>
         </div>` : ''}
       <button class="${tabState.active ? 'danger' : 'primary'}" id="toggle"${(!hasProjects && !tabState.active) ? ' disabled' : ''}>${tabState.active ? 'Deactivate on this tab' : 'Activate on this tab'}</button>
-      <div class="note">Activating reloads this tab once, then injects the Pointer widget. Switch environment inside the widget (Comments panel).</div>`;
+      <div class="note">Activating reloads this tab once, then injects the ${PRODUCT} widget. Switch environment inside the widget (Comments panel).</div>`;
 
     (document.getElementById('signout') as HTMLElement).onclick = signOut;
 

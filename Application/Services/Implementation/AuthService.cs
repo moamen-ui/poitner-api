@@ -19,6 +19,7 @@ public class AuthService : IAuthService
     private readonly ISettingsService _settings;
     private readonly IResetTokenService _resetTokens;
     private readonly IEmailService _emailService;
+    private readonly IBrandingService _branding;
 
     public AuthService(
         IUnitOfWork unitOfWork,
@@ -27,7 +28,8 @@ public class AuthService : IAuthService
         ICurrentUser currentUser,
         ISettingsService settings,
         IResetTokenService resetTokens,
-        IEmailService emailService)
+        IEmailService emailService,
+        IBrandingService branding)
     {
         _unitOfWork = unitOfWork;
         _passwordHasher = passwordHasher;
@@ -36,6 +38,7 @@ public class AuthService : IAuthService
         _settings = settings;
         _resetTokens = resetTokens;
         _emailService = emailService;
+        _branding = branding;
     }
 
     public async Task<Result> RequestPasswordResetAsync(ForgotPasswordRequest request)
@@ -53,11 +56,14 @@ public class AuthService : IAuthService
 
             if (user != null)
             {
+                var resetBrand = await _branding.BuildResponseAsync("", new HashSet<string>());
+                var resetProductName = resetBrand.ProductName;
+                var resetAppUrl = resetBrand.Urls.App.TrimEnd('/');
                 var token = _resetTokens.Create(user.PublicId);
-                var link = $"https://app.pointer.moamen.work/reset?token={Uri.EscapeDataString(token)}";
+                var link = $"{resetAppUrl}/reset?token={Uri.EscapeDataString(token)}";
                 try
                 {
-                    await _emailService.SendAsync(user.Email, "Reset your Pointer password",
+                    await _emailService.SendAsync(user.Email, $"Reset your {resetProductName} password",
                         $@"<div style=""font-family:system-ui,sans-serif;color:#0f172a;line-height:1.6"">
   <h2 style=""margin:0 0 8px"">Reset your password</h2>
   <p>Click the link below to choose a new password. It expires in 30 minutes.</p>

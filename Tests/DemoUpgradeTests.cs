@@ -63,7 +63,8 @@ public class DemoUpgradeTests
         // EmailService + SettingsService are unused by UpgradeAsync — pass no-op stubs.
         var email = new NoopEmailService();
         var settings = new NoopSettingsService();
-        var svc = new DemoService(uow, new FakePasswordHasher(), tokens, email, settings);
+        var branding = new NoopBrandingService();
+        var svc = new DemoService(uow, new FakePasswordHasher(), tokens, email, settings, branding);
         return (svc, db, tokens);
     }
 
@@ -81,6 +82,25 @@ public class DemoUpgradeTests
         public Task SetStringAsync(string key, string value) => Task.CompletedTask;
         public Task<int> GetIntAsync(string key, int fallback = 0) => Task.FromResult(fallback);
         public Task SetIntAsync(string key, int value) => Task.CompletedTask;
+    }
+
+    private sealed class NoopBrandingService : IBrandingService
+    {
+        private static Pointer.Application.DTOs.Branding.BrandingResponse DefaultBranding() => new()
+        {
+            ProductName = "Pointer",
+            Tagline = string.Empty,
+            PrimaryColor = "#2563eb",
+            Urls = new Pointer.Application.DTOs.Branding.BrandingUrlsResponse { App = "https://app.pointer.moamen.work" },
+            Assets = new Pointer.Application.DTOs.Branding.BrandingAssetsResponse(),
+        };
+        public Task<Pointer.Application.Response.Result<Pointer.Application.DTOs.Branding.BrandingResponse>> GetAsync(string publicBase, IReadOnlySet<string> existingKinds) =>
+            Task.FromResult(Pointer.Application.Response.Result<Pointer.Application.DTOs.Branding.BrandingResponse>.Success(DefaultBranding()));
+        public Task<Pointer.Application.Response.Result<Pointer.Application.DTOs.Branding.BrandingResponse>> UpdateAsync(Pointer.Application.DTOs.Branding.BrandingWriteDto dto, string publicBase, IReadOnlySet<string> existingKinds) =>
+            Task.FromResult(Pointer.Application.Response.Result<Pointer.Application.DTOs.Branding.BrandingResponse>.Success(DefaultBranding()));
+        public Task<int> BumpVersionAsync() => Task.FromResult(0);
+        public Task<Pointer.Application.DTOs.Branding.BrandingResponse> BuildResponseAsync(string publicBase, IReadOnlySet<string> existingKinds) =>
+            Task.FromResult(DefaultBranding());
     }
 
     private static User SeedDemoUser(AppDbContext db, Guid? publicId = null, DateTime? expiresAt = null)

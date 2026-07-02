@@ -156,7 +156,7 @@ public class PlanEnforcementTests
         var user = new FakeCurrentUser { Id = tenant, TenantId = tenant, IsAdmin = true };
         var ctx = Ctx(user, db);
         var uow = new UnitOfWork(ctx);
-        var svc = new UserService(uow, new IdentityHasher(), user, new NoopEmail(), new EntitlementService(uow, user, new FakeSettings()));
+        var svc = new UserService(uow, new IdentityHasher(), user, new NoopEmail(), new EntitlementService(uow, user, new FakeSettings()), new NoopBrandingService());
 
         // Seat 1 already used by the WA user → limit 1 reached → next add blocked.
         var res = await svc.CreateAsync(new Application.DTOs.User.CreateUserRequest
@@ -241,5 +241,24 @@ public class PlanEnforcementTests
     {
         public Task<bool> SendAsync(string to, string subject, string htmlBody, CancellationToken ct = default) =>
             Task.FromResult(true);
+    }
+
+    private sealed class NoopBrandingService : IBrandingService
+    {
+        private static Pointer.Application.DTOs.Branding.BrandingResponse DefaultBranding() => new()
+        {
+            ProductName = "Pointer",
+            Tagline = string.Empty,
+            PrimaryColor = "#2563eb",
+            Urls = new Pointer.Application.DTOs.Branding.BrandingUrlsResponse { App = "https://app.pointer.moamen.work" },
+            Assets = new Pointer.Application.DTOs.Branding.BrandingAssetsResponse(),
+        };
+        public Task<Pointer.Application.Response.Result<Pointer.Application.DTOs.Branding.BrandingResponse>> GetAsync(string publicBase, IReadOnlySet<string> existingKinds) =>
+            Task.FromResult(Pointer.Application.Response.Result<Pointer.Application.DTOs.Branding.BrandingResponse>.Success(DefaultBranding()));
+        public Task<Pointer.Application.Response.Result<Pointer.Application.DTOs.Branding.BrandingResponse>> UpdateAsync(Pointer.Application.DTOs.Branding.BrandingWriteDto dto, string publicBase, IReadOnlySet<string> existingKinds) =>
+            Task.FromResult(Pointer.Application.Response.Result<Pointer.Application.DTOs.Branding.BrandingResponse>.Success(DefaultBranding()));
+        public Task<int> BumpVersionAsync() => Task.FromResult(0);
+        public Task<Pointer.Application.DTOs.Branding.BrandingResponse> BuildResponseAsync(string publicBase, IReadOnlySet<string> existingKinds) =>
+            Task.FromResult(DefaultBranding());
     }
 }
