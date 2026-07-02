@@ -79,6 +79,18 @@ export function injectMain(cfg: {
   const s = document.createElement('script');
   s.src = cfg.server.replace(/\/$/, '') + '/pointer.js';
   s.defer = true;
-  document.head.appendChild(s);
-  document.body.appendChild(document.createElement('pointer-feedback'));
+  (document.head || document.documentElement).appendChild(s);
+
+  // Mount the widget host — and KEEP it mounted. SPA frameworks (React/Vue/Angular) re-render
+  // and routinely evict a node appended to <body> (or replace <body> entirely) once they hydrate,
+  // so a one-shot append vanishes. Re-append whenever it goes missing; the custom-element
+  // definition (from pointer.js) persists on the window, so re-adding the host is cheap.
+  const mount = (): void => {
+    if (!document.querySelector('pointer-feedback')) {
+      (document.body || document.documentElement).appendChild(document.createElement('pointer-feedback'));
+    }
+  };
+  mount();
+  const observer = new MutationObserver(() => mount());
+  observer.observe(document.documentElement, { childList: true, subtree: true });
 }

@@ -113,13 +113,19 @@ async function injectInto(tabId: number, url: string): Promise<void> {
 }
 
 chrome.tabs.onUpdated.addListener((tabId, info, tab) => {
-  if (info.status !== 'complete') return;
-  // Check the persisted set — works even after SW termination and re-wake (fix 3.1).
-  getPendingInject().then(async (set) => {
-    if (!set.has(tabId)) return;
-    await removePendingInject(tabId);
-    if (tab.url) injectInto(tabId, tab.url).catch((e) => console.error('[pointer-ext] inject failed', e));
-  }).catch((e) => console.error('[pointer-ext] pendingInject check failed', e));
+  if (info.status !== 'complete' || !tab.url) return;
+  const url = tab.url;
+  (async () => {
+    // Re-inject on EVERY load of an active tab, not just the first. A hard reload resets the
+    // page's MAIN world and drops the widget; `pendingInject` only covers the initial
+    // activate-reload, so without the `isActive` check a reload leaves an activated tab bare.
+    // (SPA soft-navigations that don't fire 'complete' are handled by the MutationObserver the
+    // injected code installs — it re-appends the widget host if the app evicts it.)
+    const pending = await getPendingInject();
+    const wasPending = pending.has(tabId);
+    if (wasPending) await removePendingInject(tabId);
+    if (wasPending || await isActive(tabId)) await injectInto(tabId, url);
+  })().catch((e) => console.error('[pointer-ext] inject failed', e));
 });
 
 chrome.tabs.onRemoved.addListener((tabId) => {
