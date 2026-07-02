@@ -72,6 +72,16 @@ async function isActive(tabId: number): Promise<boolean> {
   const rules = await chrome.declarativeNetRequest.getSessionRules();
   return rules.some((r) => r.id === ruleId(tabId));
 }
+// Reload every currently-activated tab. Called after a fresh sign-in so an already-injected
+// widget (which may be sitting on its own login prompt after a 401) re-injects with the new
+// token — the widget picks up auth without the user manually refreshing.
+async function reloadActiveTabs(): Promise<void> {
+  const rules = await chrome.declarativeNetRequest.getSessionRules();
+  const tabIds = rules.filter((r) => r.id >= CSP_RULE_BASE).map((r) => r.id - CSP_RULE_BASE);
+  for (const id of tabIds) {
+    try { await chrome.tabs.reload(id); } catch { /* tab may be gone */ }
+  }
+}
 
 // ---- activation ----------------------------------------------------------
 // Tabs waiting for their post-reload 'complete' so we inject exactly once.
@@ -249,7 +259,12 @@ chrome.runtime.onMessage.addListener((msg: BgRequest | ProxyRequest, _sender, se
         return { active: await isActive(m.tabId), remembered: map[m.hostname] || null };
       }
       case 'deactivate': { await deactivate(m.tabId); return { ok: true }; }
-      case 'login': return login(m.email, m.password, m.server);
+      case 'login': {
+        const res = await login(m.email, m.password, m.server);
+        // On success, refresh any activated tabs so their widget re-injects authenticated.
+        if ((res as { ok?: boolean }).ok) await reloadActiveTabs();
+        return res;
+      }
       case 'logout': {
         await chrome.storage.session.remove(SESSION_KEYS.token);
         await chrome.storage.local.remove(LOCAL_KEYS.user);

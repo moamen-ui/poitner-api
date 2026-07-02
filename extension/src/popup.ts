@@ -73,15 +73,16 @@ async function renderMain(user: StoredUser | null) {
   const draw = () => {
     const remembered = tabState.remembered?.project;
     const hasProjects = projects.length > 0;
-    const opts = projects
-      .map((p) => `<option value="${esc(p.key)}"${p.key === remembered ? ' selected' : ''}>${esc(p.name)} (${esc(p.key)})</option>`)
-      .join('');
+    const selectedKey = (remembered && projects.some((p) => p.key === remembered)) ? remembered : (projects[0]?.key || '');
+    const opts = projects.map((p) => `<option value="${esc(p.key)}">${esc(p.name)}</option>`).join('');
 
     root.innerHTML = `
       <div class="bar"><span class="who">${who}</span><a id="signout">Sign out</a></div>
       <div class="dom">${esc(hostname)}</div>
       ${hasProjects
-        ? `<label>Project</label><select id="project">${opts}</select>`
+        ? `<label>Project</label>
+           <input id="project" list="pf-projects" value="${esc(selectedKey)}" placeholder="Search projects…" autocomplete="off" />
+           <datalist id="pf-projects">${opts}</datalist>`
         : `<div class="note" style="margin-top:8px;">${isAdmin ? 'No projects yet — add one below.' : 'No projects available. Ask your workspace admin to create one.'}</div>`}
       ${isAdmin ? `
         <a id="add-toggle" style="display:inline-block;margin:8px 0;cursor:pointer;">+ Add project</a>
@@ -127,9 +128,10 @@ async function renderMain(user: StoredUser | null) {
         await send({ type: 'deactivate', tabId: tab!.id! });
         return window.close();
       }
-      const project = (document.getElementById('project') as HTMLSelectElement | null)?.value.trim() || '';
+      const project = (document.getElementById('project') as HTMLInputElement | null)?.value.trim() || '';
       const environment = (document.getElementById('env') as HTMLSelectElement).value;
       if (!project) return err('Pick a project first.');
+      if (!projects.some((p) => p.key === project)) return err('Pick a project from your list.');
       const res = await send<{ ok: boolean; error?: string }>({ type: 'activate', tabId: tab!.id!, hostname, origin, project, environment });
       if (!res.ok) return err(res.error || 'Could not activate.'); // e.g. extension disabled on this plan
       window.close();
