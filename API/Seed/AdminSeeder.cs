@@ -175,10 +175,14 @@ public static class AdminSeeder
             await db.SaveChangesAsync();
         }
 
-        // ── Backfill Subscription(Legacy, Active) for every EXISTING tenant ──
-        // A tenant = a workspace-admin User (Role.GrantsAdmin && !IsSuperAdmin) that owns itself
-        // (OwnerId == PublicId). Only tenants WITHOUT a subscription get the Legacy backfill so
-        // they are never retroactively limited; new signups default to Free (missing sub ⇒ Free).
+        // ── ONE-TIME backfill of Subscription(Legacy, Active) for PRE-MONETIZATION tenants ──
+        // Runs exactly once (guarded by LegacyBackfillCompleted). Without this guard the seeder would
+        // re-run every boot and retroactively grant Legacy-unlimited to any NEW subless (Free) signup —
+        // an enforcement bypass. After the one-time run, new signups correctly default to Free
+        // (missing sub ⇒ Free). A tenant = a self-owning workspace-admin (GrantsAdmin && !IsSuperAdmin).
+        if (await settings.GetBoolAsync(ISettingsService.LegacyBackfillCompleted, fallback: false))
+            return;
+
         var tenantPublicIds = await db.Users
             .IgnoreQueryFilters()
             .Include(u => u.Role)
@@ -190,7 +194,11 @@ public static class AdminSeeder
             .ToListAsync();
 
         if (tenantPublicIds.Count == 0)
+        {
+            // Fresh DB (no pre-existing tenants): mark done so future signups never get Legacy.
+            await settings.SetBoolAsync(ISettingsService.LegacyBackfillCompleted, true);
             return;
+        }
 
         var alreadySubscribed = await db.Subscriptions
             .IgnoreQueryFilters()
@@ -216,6 +224,9 @@ public static class AdminSeeder
 
         if (added)
             await db.SaveChangesAsync();
+
+        // Mark the one-time backfill complete — later boots skip it, so new signups stay on Free.
+        await settings.SetBoolAsync(ISettingsService.LegacyBackfillCompleted, true);
     }
 
     /// <summary>Free-plan entitlements = catalog defaults (int + bool). Callers override emailsPerMonth.</summary>

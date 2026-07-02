@@ -22,6 +22,9 @@ public interface ISettingsService
     // Monetization settings (super-admin editable). NO provider secrets here — those stay env-only.
     /// <summary>Kill-switch for plan-entitlement enforcement. Default false: deploy off, flip on after soak.</summary>
     public const string EnforcementEnabled = "enforcement_enabled";
+    /// <summary>Set once after the one-time Legacy backfill of pre-monetization tenants, so later boots
+    /// (and later signups) are NOT retroactively granted the unlimited Legacy plan.</summary>
+    public const string LegacyBackfillCompleted = "legacy_backfill_completed";
     /// <summary>Slug of the plan new workspace signups default to when none is chosen.</summary>
     public const string DefaultSignupPlan = "default_signup_plan";    // default "free"
     public const string TrialDays = "trial_days";                     // default 0
