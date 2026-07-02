@@ -55,6 +55,23 @@
     }
     return chips;
   }
+  var _brandName = "Pointer";
+  function getBrandName() {
+    return _brandName;
+  }
+  async function loadBranding(server) {
+    var _a2;
+    try {
+      const res = await pfFetch(`${server.replace(/\/$/, "")}/api/branding`);
+      if (!res.ok) return;
+      const body = await res.json();
+      const data = (_a2 = body == null ? void 0 : body.data) != null ? _a2 : body;
+      if (data && typeof data.productName === "string" && data.productName.trim()) {
+        _brandName = data.productName.trim();
+      }
+    } catch {
+    }
+  }
   var POSITIONS = ["top-start", "top-end", "bottom-start", "bottom-end"];
   var SHOT_MAX_WIDTH = 1280;
   var SHOT_HIGHLIGHT = "#2563eb";
@@ -167,7 +184,7 @@
     loginModal: (project) => `
         <div class="pf-modal-overlay">
           <div class="pf-modal">
-            <h2>Pointer</h2>
+            <h2>${escapeHtml(getBrandName())}</h2>
             <p>Leave feedback on <b>${escapeHtml(project)}</b>.</p>
             <div id="pf-auth-body"></div>
             <button class="pf-btn pf-link" id="pf-login-skip" style="width:100%; justify-content:center; margin-top:8px;">Skip for now</button>
@@ -210,7 +227,7 @@
           <button class="pf-btn" id="pf-toggle" title="Show comments">Comments <span class="pf-badge" id="pf-count">0</span></button>
           <button class="pf-btn" id="pf-refresh" title="Refresh comments">&#8635;</button>
           ${displayName ? `<button class="pf-btn pf-icon-btn" id="pf-user" title="Signed in as ${displayName}${roleLabel ? " · " + roleLabel : ""}" aria-label="Signed in as ${displayName}">${ICON.user}</button>` : ""}
-          <button class="pf-btn pf-icon-btn" id="pf-hide" title="Hide Pointer" aria-label="Hide Pointer">${ICON.eyeOff}</button>
+          <button class="pf-btn pf-icon-btn" id="pf-hide" title="Hide ${escapeHtml(getBrandName())}" aria-label="Hide ${escapeHtml(getBrandName())}">${ICON.eyeOff}</button>
         </div>
         <div class="pf-sidebar" id="pf-sidebar">
           <div class="pf-sidebar-head">
@@ -816,7 +833,7 @@
     // Wait for the stylesheet to load, then render the first view (avoids a flash
     // of unstyled UI). A short timeout guarantees we never hang on slow CSS.
     async _boot() {
-      await this._stylesReady();
+      await Promise.all([this._stylesReady(), loadBranding(this.server)]);
       if (this.token) this.init();
       else this.renderChrome();
     }
@@ -960,7 +977,7 @@
         }));
       } catch (e) {
         if (e.message !== "HTTP 401 Unauthorized") {
-          this.toast("Could not reach Pointer server", "error");
+          this.toast(`Could not reach ${getBrandName()} server`, "error");
         }
         this.comments = [];
         this.hiddenPrivateCount = 0;
@@ -1193,7 +1210,7 @@
       } catch (e) {
       }
       this.renderChrome();
-      this.toast("Pointer hidden — click the button to reopen");
+      this.toast(`${getBrandName()} hidden — click the button to reopen`);
     }
     // Restore the full overlay from the launcher; remembered for this tab session.
     showOverlay() {

@@ -1,6 +1,6 @@
 import {
   HL_CLASS, ENV_MAP, ENV_NAME, STATUS_STR, STATUS_INT, POSITIONS, CSS_URL, SCRIPT_SRC,
-  loadStatusCatalog, catalogToFilters, pfFetch,
+  loadStatusCatalog, catalogToFilters, pfFetch, loadBranding, getBrandName,
 } from './constants';
 import { escapeHtml, ensureHighlightStyle, matchElement, pageIsRtl } from './dom';
 import { TPL } from './templates';
@@ -151,7 +151,9 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
   // Wait for the stylesheet to load, then render the first view (avoids a flash
   // of unstyled UI). A short timeout guarantees we never hang on slow CSS.
   private async _boot(): Promise<void> {
-    await this._stylesReady();
+    // Resolve styles + product branding before the first render so the toolbar/login modal
+    // show the configured product name (not the "Pointer" default) from the very first paint.
+    await Promise.all([this._stylesReady(), loadBranding(this.server)]);
     // Login is deferred: on load just show the toolbar/launcher. The popup only
     // appears when the user acts (inspect / Comments) and there's no token yet.
     if (this.token) this.init();
@@ -305,7 +307,7 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
       }));
     } catch (e) {
       if ((e as Error).message !== 'HTTP 401 Unauthorized') {
-        this.toast('Could not reach Pointer server', 'error');
+        this.toast(`Could not reach ${getBrandName()} server`, 'error');
       }
       this.comments = [];
       this.hiddenPrivateCount = 0;
@@ -514,7 +516,7 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
     this._collapsed = true;
     try { sessionStorage.removeItem('pointer_visible'); } catch (e) {}
     this.renderChrome();
-    this.toast('Pointer hidden — click the button to reopen');
+    this.toast(`${getBrandName()} hidden — click the button to reopen`);
   }
 
   // Restore the full overlay from the launcher; remembered for this tab session.

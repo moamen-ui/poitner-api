@@ -163,7 +163,7 @@
 <body>
   <header class="nav">
     <div class="wrap">
-      <div class="brand"><img src="assets/dog-mascot.png" alt="" /> <span>Pointer</span></div>
+      <div class="brand"><img src="assets/dog-mascot.png" alt="" data-brand-logo /> <span data-brand-name>Pointer</span></div>
       <nav class="nav-links">
         <a href="#how" data-i18n="nav.how">How it works</a>
         <a href="#features" data-i18n="nav.features">Features</a>
@@ -284,7 +284,7 @@
 
     <footer class="footer">
       <div class="wrap footer-grid">
-        <div class="brand"><img src="assets/dog-mascot.png" alt="" /> <span>Pointer</span></div>
+        <div class="brand"><img src="assets/dog-mascot.png" alt="" data-brand-logo /> <span data-brand-name>Pointer</span></div>
         <div class="footer-links">
           <a href="https://app.pointer.moamen.work" data-i18n="foot.dashboard">Dashboard</a>
           <a href="https://github.com/moamen-ui/poitner-api#readme" rel="noopener" target="_blank" data-i18n="foot.docs">Docs</a>
@@ -364,6 +364,13 @@
       var k = el.getAttribute('data-i18n');
       if (dict[k] != null) el.textContent = dict[k];
     });
+    // Rebrand rendered copy: swap the default product name for the configured one.
+    if (window.__BRAND && window.__BRAND.productName && window.__BRAND.productName !== 'Pointer') {
+      var pn = window.__BRAND.productName;
+      document.querySelectorAll('[data-i18n]').forEach(function (el) {
+        if (el.textContent && el.textContent.indexOf('Pointer') !== -1) el.textContent = el.textContent.split('Pointer').join(pn);
+      });
+    }
     document.documentElement.lang = lang;
     document.documentElement.dir = (lang === 'ar') ? 'rtl' : 'ltr';
     renderPricing(lang);   // plan cards are API-driven; re-render so their static labels follow the language
@@ -438,6 +445,29 @@
         renderPricing(document.documentElement.lang || 'en');
       })
       .catch(function () { /* graceful: pricing section stays hidden */ });
+  })();
+
+  // ── Branding: fetch the central product config and apply name/logo/favicon/title/URLs ──
+  window.__BRAND = null;
+  function applyBrand(b) {
+    if (!b) return;
+    window.__BRAND = b;
+    var pn = b.productName || 'Pointer';
+    document.querySelectorAll('[data-brand-name]').forEach(function (el) { el.textContent = pn; });
+    if (b.assets && b.assets.logo) document.querySelectorAll('[data-brand-logo]').forEach(function (img) { img.src = b.assets.logo; });
+    if (b.assets && b.assets.favicon) { var fav = document.querySelector('link[rel="icon"]'); if (fav) fav.href = b.assets.favicon; }
+    document.title = pn + ' — ' + (b.tagline || 'click-to-comment feedback your team turns into code with AI');
+    if (b.urls) {
+      if (b.urls.app) document.querySelectorAll('a[href^="https://app.pointer.moamen.work"]').forEach(function (a) { a.href = a.href.replace('https://app.pointer.moamen.work', b.urls.app); });
+      if (b.urls.demo) document.querySelectorAll('a[href^="https://demo.pointer.moamen.work"]').forEach(function (a) { a.href = a.href.replace('https://demo.pointer.moamen.work', b.urls.demo); });
+    }
+    applyLang(document.documentElement.lang || 'en'); // re-render copy with the new product name
+  }
+  (function loadBranding() {
+    fetch(API_BASE + '/api/branding', { headers: { 'accept': 'application/json' } })
+      .then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (res) { var b = res && (res.data || res); if (b && b.productName) applyBrand(b); })
+      .catch(function () { /* graceful: keep the bundled brand */ });
   })();
 
   (function initLang() {

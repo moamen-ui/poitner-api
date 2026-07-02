@@ -1,6 +1,6 @@
 import { escapeHtml } from './dom';
 import { ICON } from './icons';
-import { STATUS_LABEL } from './constants';
+import { STATUS_LABEL, getBrandName } from './constants';
 import type { AuthorOption, Comment, Meta, PredefinedActionOption } from './types';
 
 // All component markup lives here (pure string builders). Event wiring stays in
@@ -14,7 +14,7 @@ export const TPL = {
   loginModal: (project: string) => `
         <div class="pf-modal-overlay">
           <div class="pf-modal">
-            <h2>Pointer</h2>
+            <h2>${escapeHtml(getBrandName())}</h2>
             <p>Leave feedback on <b>${escapeHtml(project)}</b>.</p>
             <div id="pf-auth-body"></div>
             <button class="pf-btn pf-link" id="pf-login-skip" style="width:100%; justify-content:center; margin-top:8px;">Skip for now</button>
@@ -60,7 +60,7 @@ export const TPL = {
           <button class="pf-btn" id="pf-toggle" title="Show comments">Comments <span class="pf-badge" id="pf-count">0</span></button>
           <button class="pf-btn" id="pf-refresh" title="Refresh comments">&#8635;</button>
           ${displayName ? `<button class="pf-btn pf-icon-btn" id="pf-user" title="Signed in as ${displayName}${roleLabel ? ' · ' + roleLabel : ''}" aria-label="Signed in as ${displayName}">${ICON.user}</button>` : ''}
-          <button class="pf-btn pf-icon-btn" id="pf-hide" title="Hide Pointer" aria-label="Hide Pointer">${ICON.eyeOff}</button>
+          <button class="pf-btn pf-icon-btn" id="pf-hide" title="Hide ${escapeHtml(getBrandName())}" aria-label="Hide ${escapeHtml(getBrandName())}">${ICON.eyeOff}</button>
         </div>
         <div class="pf-sidebar" id="pf-sidebar">
           <div class="pf-sidebar-head">

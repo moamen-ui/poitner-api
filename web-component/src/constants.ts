@@ -90,6 +90,24 @@ export function catalogToFilters(): { key: string; label: string; color: string 
   return chips;
 }
 
+// ---------------------------------------------------------------------------
+// Branding — the product name is fetched from GET /api/branding at boot so the
+// widget reflects a rebrand without a re-release. Defaults to "Pointer".
+// ---------------------------------------------------------------------------
+let _brandName = 'Pointer';
+export function getBrandName(): string { return _brandName; }
+export async function loadBranding(server: string): Promise<void> {
+  try {
+    const res = await pfFetch(`${server.replace(/\/$/, '')}/api/branding`);
+    if (!res.ok) return;
+    const body = await res.json();
+    const data = body?.data ?? body;
+    if (data && typeof data.productName === 'string' && data.productName.trim()) {
+      _brandName = data.productName.trim();
+    }
+  } catch { /* keep the default brand name */ }
+}
+
 // Collapsed-launcher corners.
 export const POSITIONS = ['top-start', 'top-end', 'bottom-start', 'bottom-end'] as const;
 export type LauncherPosition = (typeof POSITIONS)[number];
