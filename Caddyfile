@@ -20,6 +20,11 @@
 }
 
 api.pointer.moamen.work {
+    # The widget loader/styles/skill are UNHASHED and updated in place on every deploy. Without this,
+    # browsers (and the extension's injected <script src=".../pointer.js">) heuristically cache the old
+    # copy — stale widget, and the "widget auto-updates from the server" premise silently breaks.
+    @widget path /pointer.js /pointer.css /embed.js /skill.md
+    header @widget Cache-Control "no-cache, must-revalidate"
     reverse_proxy api:8080
 }
 
