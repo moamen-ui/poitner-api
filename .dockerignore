@@ -1,0 +1,31 @@
+# The API image is `dotnet publish API` — it needs only the .NET projects + API/wwwroot
+# (the widget is already pre-built into API/wwwroot/pointer.js). Everything below is either a
+# separate deliverable (extension, widget source, generated clients), bind-mounted at runtime
+# (landing), or build cruft — excluding it keeps the Docker build context small and deploys fast.
+
+# Node / frontend deliverables (not part of the API image)
+node_modules
+**/node_modules
+extension
+web-component
+clients
+landing
+dist
+**/dist
+
+# .NET build output (restored fresh inside the build stage)
+**/bin
+**/obj
+
+# Repo cruft
+.git
+.github
+.vs
+.vscode
+docs
+scripts
+Tests
+.env*
+*.log
+
+# NOTE: do NOT add `**/*.md` — API/wwwroot/skill.md is served by the API and must stay in the image.
