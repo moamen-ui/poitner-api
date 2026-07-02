@@ -18,6 +18,23 @@ async function getProjectMap(): Promise<Record<string, { project: string; enviro
   return (s[LOCAL_KEYS.projectByDomain] as Record<string, { project: string; environment: string }>) || {};
 }
 
+// Authenticated call to the Pointer server from the background (the ONLY place that holds the JWT).
+// Used for popup control actions (list/create projects, extension-activate entitlement gate).
+async function apiFetch(path: string, init: RequestInit = {}): Promise<{ ok: boolean; status: number; data: any; message: string | null }> {
+  const server = await getServer();
+  const token = await getToken();
+  const headers: Record<string, string> = { 'Content-Type': 'application/json', ...(init.headers as Record<string, string> || {}) };
+  if (token) headers.Authorization = `Bearer ${token}`;
+  let status = 0; let body: any = null;
+  try {
+    const r = await fetch(server + path, { ...init, headers });
+    status = r.status;
+    body = await r.json().catch(() => null);
+  } catch { /* network error → status stays 0 */ }
+  // Envelope-aware: Result<T> wraps payload in `data` and carries `message` on failure.
+  return { ok: status >= 200 && status < 300, status, data: body?.data ?? body, message: body?.message ?? null };
+}
+
 // ---- CSP bypass (per-tab session DNR rule) -------------------------------
 // Removing the CSP header lets the page load the remote pointer.js/pointer.css.
 // Scoped to the activated tab and removed on deactivate / tab close.
@@ -246,7 +263,36 @@ chrome.runtime.onMessage.addListener((msg: BgRequest | ProxyRequest, _sender, se
         await chrome.storage.local.set({ [LOCAL_KEYS.projectByDomain]: map });
         return { ok: true };
       }
-      case 'activate': { await activate(m.tabId, m.hostname, m.project, m.environment); return { ok: true }; }
+      case 'listProjects': {
+        // Any signed-in user; the API scopes to the caller's tenant. Return active projects only.
+        const r = await apiFetch('/api/admin/projects', { method: 'GET' });
+        if (!r.ok) return { ok: false, projects: [], error: r.message || 'Could not load projects.' };
+        const projects = (Array.isArray(r.data) ? r.data : [])
+          .filter((p: any) => p && p.key && p.isActive !== false)
+          .map((p: any) => ({ key: p.key, name: p.name || p.key, isActive: p.isActive !== false }));
+        return { ok: true, projects };
+      }
+      case 'createProject': {
+        const r = await apiFetch('/api/admin/projects', { method: 'POST', body: JSON.stringify({ key: m.key, name: m.name }) });
+        if (!r.ok) return { ok: false, error: r.message || (r.status === 409 ? 'A project with that key already exists.' : 'Could not create project.') };
+        return { ok: true, project: { key: m.key, name: m.name, isActive: true } };
+      }
+      case 'activate': {
+        // Entitlement gate + site recording: /api/extension/activate enforces ExtensionEnabled and
+        // MaxExtensionSites (inert while the enforcement kill-switch is off) and validates the project
+        // exists. Block injection — and surface why — when the plan denies it.
+        const gate = await apiFetch('/api/extension/activate', {
+          method: 'POST',
+          body: JSON.stringify({ projectKey: m.project, origin: m.origin }),
+        });
+        if (!gate.ok) {
+          const reason = gate.status === 404 ? 'Project not found in your workspace.'
+            : (gate.message || 'The browser extension is not available on your current plan.');
+          return { ok: false, error: reason };
+        }
+        await activate(m.tabId, m.hostname, m.project, m.environment);
+        return { ok: true };
+      }
       default: return { ok: false, error: 'unknown message' };
     }
   })().then(sendResponse).catch((e) => sendResponse({ ok: false, error: String(e) }));

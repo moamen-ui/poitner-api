@@ -20,6 +20,15 @@ export interface StoredUser {
   displayName?: string;
   email?: string;
   roleName?: string;
+  /** True for workspace admins (Role.GrantsAdmin) — gates the popup's "+ Add project" affordance. */
+  isAdmin?: boolean;
+}
+
+/** A project the signed-in user can target, from GET /api/admin/projects. */
+export interface ExtProject {
+  key: string;
+  name: string;
+  isActive: boolean;
 }
 
 // popup/options -> background
@@ -30,7 +39,9 @@ export type BgRequest =
   | { type: 'logout' }
   | { type: 'setServer'; server: string }
   | { type: 'setProjectForDomain'; hostname: string; project: string }
-  | { type: 'activate'; tabId: number; hostname: string; project: string; environment: string }
+  | { type: 'listProjects' }
+  | { type: 'createProject'; key: string; name: string }
+  | { type: 'activate'; tabId: number; hostname: string; origin: string; project: string; environment: string }
   | { type: 'deactivate'; tabId: number };
 
 // page (MAIN world, via content bridge) -> background: proxied API traffic
