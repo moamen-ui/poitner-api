@@ -115,8 +115,10 @@ plus T8/T15 and the migration (T12/T28). Remaining items are tracked for follow-
 - **H1/H2 (T6)** — ✅ IMPLEMENTED (session 2), flag-gated `Auth:ValidateSecurityStamp` (default OFF),
   Opus-reviewed (no lockout; TenantService-disable gap + OnTokenValidated fail-open fixed). `User.SecurityStamp`
   rotates on password-reset/disable/reject/demo-upgrade; embedded in the JWT `stamp` claim + reset-token
-  payload (single-use). Migration `20260705173225_AddUserSecurityStamp`. **Not yet committed/deployed** —
-  enabling the flag forces a one-time re-login of all users and needs a supervised login smoke test.
+  payload (single-use). Migration `20260705173225_AddUserSecurityStamp`. **Deployed flag-OFF** (commit
+  `93809c6`): migration applied, all 6 users back-filled with distinct stamps, `Auth:ValidateSecurityStamp`
+  unset (dormant, zero behavior change), API healthy. **To finish:** set `Auth__ValidateSecurityStamp=true`
+  in prod compose + redeploy — this forces a one-time re-login of everyone and needs a login smoke test.
 - **H6 (T10)** — slim list DTOs: breaking change for the Orval-generated dashboard client; coordinate a regen.
 - **M9** — `AsSplitQuery()` isn't available in the Application layer (relational-only extension); keyset
   batching already bounds export memory. Would need a package reference.

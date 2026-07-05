@@ -26,6 +26,9 @@ services:
       # Safe to enable now that legacy null-owner data has been back-filled to real owners
       # (see docs/reviews/fable-c1-backfill-runbook.md).
       Tenancy__StrictNullTenantIsolation: "true"
+      # H1/H2: enforce the SecurityStamp check per request (revokes tokens on disable/reject/password
+      # change). Enabling this logs out all currently-issued tokens once (they predate the stamp claim).
+      Auth__ValidateSecurityStamp: "true"
       JWT__SigningKey: "${JWT_SIGNING_KEY}"
       JWT__Issuer: "pointer-api"
       JWT__LifetimeHours: "12"
