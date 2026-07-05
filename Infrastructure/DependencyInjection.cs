@@ -27,6 +27,9 @@ public static class DependencyInjection
 
         s.AddDbContext<AppDbContext>(o => o.UseNpgsql(csb.ConnectionString,
             n => n.EnableRetryOnFailure(5, TimeSpan.FromSeconds(30), null)));
+        // In-process cache for hot near-static reads (settings; also used by the auth security-stamp
+        // check). Idempotent with any other AddMemoryCache registration.
+        s.AddMemoryCache();
         s.Configure<JwtOptions>(c.GetSection("JWT"));
         s.AddHttpContextAccessor();
         s.AddScoped(typeof(IRepository<>), typeof(Repository<>));
