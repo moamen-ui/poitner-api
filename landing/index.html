@@ -104,6 +104,24 @@
     .price-bullets li { position: relative; padding-inline-start: 24px; color: var(--pf-muted); font-size: 14px; }
     .price-bullets li::before { content: "✓"; position: absolute; inset-inline-start: 0; color: var(--pf-green); font-weight: 800; }
     .price-card .btn { margin-top: auto; justify-content: center; }
+    /* Extension install stepper modal (ext- prefix; avoids clashing with the dogfooded widget's pf- classes) */
+    .ext-overlay { position: fixed; inset: 0; background: rgba(2,6,23,.55); backdrop-filter: blur(3px); display: flex; align-items: center; justify-content: center; z-index: 50; padding: 20px; }
+    .ext-overlay[hidden] { display: none; }
+    .ext-card { background: #fff; border-radius: var(--pf-radius); max-width: 460px; width: 100%; padding: 28px 26px 22px; position: relative; box-shadow: 0 30px 70px rgba(2,6,23,.3); }
+    .ext-x { position: absolute; top: 14px; inset-inline-end: 14px; background: var(--pf-soft); border: none; border-radius: 999px; width: 32px; height: 32px; font-size: 14px; cursor: pointer; color: var(--pf-muted); }
+    .ext-title { font-size: 21px; font-weight: 800; color: var(--pf-text); margin: 0 0 4px; }
+    .ext-count { font-size: 13px; color: var(--pf-muted); font-weight: 700; margin-bottom: 18px; }
+    .ext-steps { min-height: 168px; }
+    .ext-step { display: flex; flex-direction: column; align-items: flex-start; gap: 10px; }
+    .ext-step[hidden] { display: none; }
+    .ext-badge { width: 42px; height: 42px; border-radius: 50%; background: var(--pf-grad); color: #fff; font-weight: 800; font-size: 18px; display: grid; place-items: center; margin-bottom: 2px; }
+    .ext-step h4 { margin: 0; font-size: 18px; color: var(--pf-text); }
+    .ext-step p { margin: 0; color: var(--pf-muted); font-size: 15px; line-height: 1.55; }
+    .ext-step code { background: var(--pf-soft); padding: 2px 8px; border-radius: 6px; font-size: 14px; }
+    .ext-step .btn { margin-top: 6px; }
+    .ext-nav { display: flex; justify-content: space-between; gap: 10px; margin-top: 22px; }
+    .ext-nav .btn { flex: 1; justify-content: center; }
+    .ext-nav .btn:disabled { opacity: .45; cursor: default; }
     .cta-band { background: var(--pf-grad); color: #fff; text-align: center; padding: 56px 0; }
     .cta-band h2 { font-size: clamp(24px, 3.4vw, 36px); margin: 0 0 22px; }
     .footer { border-top: 1px solid var(--pf-border); padding: 28px 0; }
@@ -273,6 +291,16 @@
       </div>
     </section>
 
+    <section id="extension" class="section">
+      <div class="wrap" style="text-align:center">
+        <h2 class="section-title" data-i18n="ext.title">Point on any site — get the browser extension</h2>
+        <p class="lead" style="max-width:640px;margin:0 auto 24px;color:var(--pf-muted);font-size:18px" data-i18n="ext.sub">Add Pointer to any web app — even ones you don't control — and stay signed in across every site.</p>
+        <div class="hero-cta" style="justify-content:center">
+          <button class="btn primary" id="ext-open" data-i18n="ext.cta">Get the extension</button>
+        </div>
+      </div>
+    </section>
+
     <section id="demo" class="cta-band">
       <div class="wrap">
         <h2 data-i18n="final.title">Try it in one click — no install</h2>
@@ -282,6 +310,52 @@
         </div>
       </div>
     </section>
+
+    <!-- Extension install stepper (one step at a time). ext- prefix avoids the dogfooded widget's pf- classes. -->
+    <div class="ext-overlay" id="ext-modal" hidden>
+      <div class="ext-card" role="dialog" aria-modal="true" aria-labelledby="ext-title">
+        <button class="ext-x" id="ext-close" aria-label="Close">&#x2715;</button>
+        <h3 class="ext-title" id="ext-title" data-i18n="ext.modalTitle">Install in Chrome</h3>
+        <div class="ext-count"><span id="ext-cur">1</span> / 6</div>
+        <div class="ext-steps">
+          <div class="ext-step" data-step="1">
+            <div class="ext-badge">1</div>
+            <h4 data-i18n="ext.s1t">Download the extension</h4>
+            <p data-i18n="ext.s1">Grab the extension package (a .zip file).</p>
+            <a class="btn primary" href="pointer-extension.zip" download data-i18n="ext.download">Download .zip</a>
+          </div>
+          <div class="ext-step" data-step="2" hidden>
+            <div class="ext-badge">2</div>
+            <h4 data-i18n="ext.s2t">Unzip it</h4>
+            <p data-i18n="ext.s2">Unzip the downloaded file — you'll get a folder with the extension inside.</p>
+          </div>
+          <div class="ext-step" data-step="3" hidden>
+            <div class="ext-badge">3</div>
+            <h4 data-i18n="ext.s3t">Open Chrome extensions</h4>
+            <p><span data-i18n="ext.s3">In Chrome, go to</span> <code>chrome://extensions</code></p>
+          </div>
+          <div class="ext-step" data-step="4" hidden>
+            <div class="ext-badge">4</div>
+            <h4 data-i18n="ext.s4t">Enable Developer mode</h4>
+            <p data-i18n="ext.s4">Turn on the “Developer mode” toggle in the top-right corner.</p>
+          </div>
+          <div class="ext-step" data-step="5" hidden>
+            <div class="ext-badge">5</div>
+            <h4 data-i18n="ext.s5t">Load unpacked</h4>
+            <p data-i18n="ext.s5">Click “Load unpacked” and select the folder you unzipped.</p>
+          </div>
+          <div class="ext-step" data-step="6" hidden>
+            <div class="ext-badge">6</div>
+            <h4 data-i18n="ext.s6t">Sign in &amp; use it</h4>
+            <p data-i18n="ext.s6">Pin Pointer, click it, sign in with your account, then “Activate on this tab” on any site.</p>
+          </div>
+        </div>
+        <div class="ext-nav">
+          <button class="btn" id="ext-back">Back</button>
+          <button class="btn primary" id="ext-next">Next</button>
+        </div>
+      </div>
+    </div>
 
     <footer class="footer">
       <div class="wrap footer-grid">
@@ -303,6 +377,17 @@
       "pricing.title": "Simple, transparent pricing",
       "pricing.free": "Free", "pricing.perMo": "/mo", "pricing.perYr": "/yr",
       "pricing.cta": "Get started", "pricing.soon": "Coming soon",
+      "nav.ext": "Extension",
+      "ext.title": "Point on any site — get the browser extension",
+      "ext.sub": "Add Pointer to any web app — even ones you don't control — and stay signed in across every site.",
+      "ext.cta": "Get the extension", "ext.modalTitle": "Install in Chrome",
+      "ext.back": "Back", "ext.next": "Next", "ext.done": "Done", "ext.download": "Download .zip",
+      "ext.s1t": "Download the extension", "ext.s1": "Grab the extension package (a .zip file).",
+      "ext.s2t": "Unzip it", "ext.s2": "Unzip the downloaded file — you'll get a folder with the extension inside.",
+      "ext.s3t": "Open Chrome extensions", "ext.s3": "In Chrome, go to",
+      "ext.s4t": "Enable Developer mode", "ext.s4": "Turn on the “Developer mode” toggle in the top-right corner.",
+      "ext.s5t": "Load unpacked", "ext.s5": "Click “Load unpacked” and select the folder you unzipped.",
+      "ext.s6t": "Sign in & use it", "ext.s6": "Pin Pointer, click it, sign in with your account, then “Activate on this tab” on any site.",
       "hero.title": "Point at the UI. Ship it with AI.",
       "hero.sub": "Anyone on your team clicks an element on a running app and leaves a short comment. Developers hand the queue to any AI tool, which applies the change to the real source — no more translating vague feedback into code.",
       "hero.demo": "Try the demo — no install", "hero.signup": "Create an account",
@@ -333,6 +418,17 @@
       "pricing.title": "أسعار بسيطة وواضحة",
       "pricing.free": "مجاني", "pricing.perMo": "/شهريًا", "pricing.perYr": "/سنويًا",
       "pricing.cta": "ابدأ الآن", "pricing.soon": "قريبًا",
+      "nav.ext": "الإضافة",
+      "ext.title": "علّق على أي موقع — احصل على إضافة المتصفح",
+      "ext.sub": "أضف Pointer إلى أي تطبيق ويب — حتى ما لا تملكه — وابقَ مسجّلاً في كل المواقع.",
+      "ext.cta": "احصل على الإضافة", "ext.modalTitle": "التثبيت في Chrome",
+      "ext.back": "رجوع", "ext.next": "التالي", "ext.done": "تم", "ext.download": "تنزيل ملف .zip",
+      "ext.s1t": "نزّل الإضافة", "ext.s1": "نزّل حزمة الإضافة (ملف .zip).",
+      "ext.s2t": "فُكّ الضغط", "ext.s2": "فُكّ ضغط الملف — ستحصل على مجلد يحتوي الإضافة.",
+      "ext.s3t": "افتح إضافات Chrome", "ext.s3": "في Chrome، افتح",
+      "ext.s4t": "فعّل وضع المطوّر", "ext.s4": "فعّل مفتاح «وضع المطوّر» في أعلى اليمين.",
+      "ext.s5t": "تحميل غير مضغوط", "ext.s5": "اضغط «تحميل غير مضغوط» واختر المجلد الذي فككت ضغطه.",
+      "ext.s6t": "سجّل الدخول واستخدمها", "ext.s6": "ثبّت Pointer، اضغط عليه، سجّل الدخول بحسابك، ثم «تفعيل في هذه التبويبة» على أي موقع.",
       "hero.title": "أشِر إلى الواجهة. ونفّذ بالذكاء الاصطناعي.",
       "hero.sub": "أي عضو في فريقك ينقر على عنصر في التطبيق الفعلي ويترك تعليقًا قصيرًا. ثم يسلّم المطوّر قائمة الملاحظات لأي أداة ذكاء اصطناعي لتطبّق التغيير على الكود المصدري مباشرة — دون ترجمة ملاحظات غامضة إلى كود.",
       "hero.demo": "جرّب العرض — بدون تثبيت", "hero.signup": "أنشئ حسابًا",
@@ -375,6 +471,7 @@
     document.documentElement.lang = lang;
     document.documentElement.dir = (lang === 'ar') ? 'rtl' : 'ltr';
     renderPricing(lang);   // plan cards are API-driven; re-render so their static labels follow the language
+    if (typeof extShow === 'function') extShow(extIdx);   // keep the install-stepper nav labels in the current language
     var toggle = document.getElementById('lang-toggle');
     // Icon-only button: keep the glyph, just update the accessible label/title to the action.
     if (toggle) {
@@ -469,6 +566,33 @@
       .then(function (r) { return r.ok ? r.json() : null; })
       .then(function (res) { var b = res && (res.data || res); if (b && b.productName) applyBrand(b); })
       .catch(function () { /* graceful: keep the bundled brand */ });
+  })();
+
+  // ── Extension install stepper (modal; one step at a time) ──
+  var extIdx = 1;
+  var EXT_MAX = 6;
+  function extShow(n) {
+    extIdx = Math.min(Math.max(n, 1), EXT_MAX);
+    document.querySelectorAll('.ext-step').forEach(function (el) {
+      el.hidden = (parseInt(el.getAttribute('data-step'), 10) !== extIdx);
+    });
+    var cur = document.getElementById('ext-cur'); if (cur) cur.textContent = extIdx;
+    var back = document.getElementById('ext-back'); if (back) back.disabled = extIdx === 1;
+    var next = document.getElementById('ext-next');
+    if (next) { var d = STRINGS[document.documentElement.lang] || STRINGS.en; next.textContent = extIdx === EXT_MAX ? d['ext.done'] : d['ext.next']; }
+    if (back) { var d2 = STRINGS[document.documentElement.lang] || STRINGS.en; back.textContent = d2['ext.back']; }
+  }
+  (function initExtModal() {
+    var modal = document.getElementById('ext-modal');
+    var openBtn = document.getElementById('ext-open');
+    if (!modal || !openBtn) return;
+    var close = function () { modal.hidden = true; };
+    openBtn.addEventListener('click', function () { modal.hidden = false; extShow(1); });
+    document.getElementById('ext-close').addEventListener('click', close);
+    document.getElementById('ext-back').addEventListener('click', function () { extShow(extIdx - 1); });
+    document.getElementById('ext-next').addEventListener('click', function () { if (extIdx === EXT_MAX) close(); else extShow(extIdx + 1); });
+    modal.addEventListener('click', function (e) { if (e.target === modal) close(); });
+    document.addEventListener('keydown', function (e) { if (e.key === 'Escape' && !modal.hidden) close(); });
   })();
 
   (function initLang() {
