@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using Pointer.Application.Abstractions;
+using Pointer.Application.Common;
 using Pointer.Application.DTOs.Auth;
 using Pointer.Application.DTOs.Preferences;
 using Pointer.Application.Resources;
@@ -33,6 +34,7 @@ public class PreferencesService : IPreferencesService
             return Result<MeResponse>.Failure(MessageKeys.Preferences.Invalid);
 
         var user = await _unitOfWork.Repository<User>().Query()
+            .Include(u => u.Role)
             .Where(u => u.DeletedAt == null && u.PublicId == publicId.Value)
             .FirstOrDefaultAsync();
 
@@ -43,16 +45,6 @@ public class PreferencesService : IPreferencesService
         _unitOfWork.Repository<User>().Update(user);
         await _unitOfWork.SaveChangesAsync();
 
-        return Result<MeResponse>.Success(new MeResponse
-        {
-            Id = user.PublicId,
-            Email = user.Email,
-            DisplayName = user.DisplayName,
-            RoleId = user.RoleId,
-            RoleName = string.Empty,
-            IsAdmin = false,
-            Language = user.Language,
-            Theme = user.Theme,
-        });
+        return Result<MeResponse>.Success(UserMapper.ToMeResponse(user));
     }
 }

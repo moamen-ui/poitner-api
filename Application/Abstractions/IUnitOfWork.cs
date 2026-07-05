@@ -24,6 +24,13 @@ public interface IUnitOfWork
     void PreserveCreatedAtOnInsert(BaseEntity entity);
 
     /// <summary>
+    /// Detaches all tracked entities (EF <c>ChangeTracker.Clear()</c>). Used by batched bulk inserts
+    /// (comment import) to bound change-tracker memory: flush a batch with <see cref="SaveChangesAsync"/>,
+    /// then clear so the tracker doesn't accumulate the whole import graph.
+    /// </summary>
+    void ClearChangeTracker();
+
+    /// <summary>
     /// H1 (TOCTOU fix): atomically increments <see cref="Domain.Entity.Invite.Uses"/> by 1 only
     /// when the invite is still valid (not deleted/revoked/expired and Uses &lt; MaxUses or unlimited).
     /// Returns the number of rows updated (1 = slot claimed; 0 = exhausted or revoked concurrently).

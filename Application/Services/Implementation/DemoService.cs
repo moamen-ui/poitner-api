@@ -248,7 +248,7 @@ public class DemoService : IDemoService
             .AnyAsync(u => u.DeletedAt == null
                            && u.PublicId != callerPublicId
                            && u.OwnerId == user.OwnerId
-                           && u.Email.ToLower() == emailNormalized);
+                           && u.Email == emailNormalized);
 
         if (emailTaken)
             return Result<UpgradeDemoResponse>.Conflict(MessageKeys.Demo.EmailTaken);

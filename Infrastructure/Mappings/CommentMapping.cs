@@ -56,5 +56,11 @@ public class CommentMapping : IEntityTypeConfiguration<Comment>
         b.OwnsMany(x => x.PickedActions, a => a.ToJson("picked_actions"));
         b.HasOne(x => x.Project).WithMany(p => p.Comments).HasForeignKey(x => x.ProjectId).OnDelete(DeleteBehavior.Restrict);
         b.HasIndex(x => new { x.ProjectId, x.Status });
+        // M6: serves the hot list query `WHERE project_id = @p AND deleted_at IS NULL ORDER BY created_at DESC`
+        // (Postgres back-scans the index for DESC). Partial on the live-rows predicate to stay small.
+        b.HasIndex(x => new { x.ProjectId, x.CreatedAt }).HasFilter("deleted_at IS NULL");
+        // M7: serves the plan/demo cap counts `WHERE owner_id = @o AND deleted_at IS NULL AND created_at >= @m`
+        // and owner-scoped scans, without a full seq scan as comment volume grows.
+        b.HasIndex(x => new { x.OwnerId, x.CreatedAt }).HasFilter("deleted_at IS NULL");
     }
 }

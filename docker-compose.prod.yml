@@ -22,6 +22,10 @@ services:
       ASPNETCORE_URLS: "http://0.0.0.0:8080"
       ASPNETCORE_ENVIRONMENT: "Production"
       DBMigrationEnabled: "true"
+      # C1: strict tenant isolation — a null-tenant non-super principal sees NO strict-own rows.
+      # Safe to enable now that legacy null-owner data has been back-filled to real owners
+      # (see docs/reviews/fable-c1-backfill-runbook.md).
+      Tenancy__StrictNullTenantIsolation: "true"
       JWT__SigningKey: "${JWT_SIGNING_KEY}"
       JWT__Issuer: "pointer-api"
       JWT__LifetimeHours: "12"

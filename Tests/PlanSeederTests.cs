@@ -47,7 +47,8 @@ public class PlanSeederTests
         services.AddSingleton<ICurrentUser>(new FakeCurrentUser());
         services.AddScoped(sp => new AppDbContext(
             new DbContextOptionsBuilder<AppDbContext>().UseInMemoryDatabase(dbName).Options,
-            sp.GetRequiredService<ICurrentUser>()));
+            sp.GetRequiredService<ICurrentUser>(),
+            new ConfigurationBuilder().Build()));
         services.AddScoped<IPasswordHasher>(_ => new IdentityHasher());
         services.AddScoped<ISettingsService>(_ => new FakeSettings());
         // Provide operator creds so the seeder proceeds past the super-admin reconcile to the plan step.
@@ -63,7 +64,7 @@ public class PlanSeederTests
     }
 
     private static AppDbContext Raw(string dbName) =>
-        new(new DbContextOptionsBuilder<AppDbContext>().UseInMemoryDatabase(dbName).Options, new FakeCurrentUser());
+        new(new DbContextOptionsBuilder<AppDbContext>().UseInMemoryDatabase(dbName).Options, new FakeCurrentUser(), new Microsoft.Extensions.Configuration.ConfigurationBuilder().Build());
 
     private static Guid SeedExistingTenant(string dbName)
     {

@@ -72,15 +72,21 @@ public class RoleService : IRoleService
         {
             // Anonymous path — no tenant claim → must bypass EF global query filter and scope manually.
             var keyNormalized = projectKey.Trim().ToLower();
-            var project = await _unitOfWork.Repository<Project>()
+            // M15: keys are unique only per (key, owner_id). Fetch up to two and only scope to a tenant
+            // when the key is UNAMBIGUOUS; on collision fall through to global-only roles rather than
+            // leak an arbitrary tenant's role names.
+            var projectOwners = await _unitOfWork.Repository<Project>()
                 .Query()
                 .IgnoreQueryFilters()
                 .AsNoTracking()
-                .FirstOrDefaultAsync(p => p.DeletedAt == null && p.Key == keyNormalized);
+                .Where(p => p.DeletedAt == null && p.Key == keyNormalized)
+                .Select(p => p.OwnerId)
+                .Take(2)
+                .ToListAsync();
 
-            // If project key is unknown, fall through to global-only roles (graceful degradation).
-            if (project != null)
-                projectOwnerId = project.OwnerId;
+            // Unknown OR ambiguous key → fall through to global-only roles (graceful degradation).
+            if (projectOwners.Count == 1)
+                projectOwnerId = projectOwners[0];
         }
 
         // IgnoreQueryFilters() is required: anonymous caller has no tenant claim, so the global

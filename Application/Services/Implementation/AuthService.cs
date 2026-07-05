@@ -51,7 +51,7 @@ public class AuthService : IAuthService
                 .Query()
                 .IgnoreQueryFilters()
                 .AsNoTracking()
-                .Where(u => u.DeletedAt == null && u.IsActive && !u.IsDemo && u.Email.ToLower() == emailNormalized)
+                .Where(u => u.DeletedAt == null && u.IsActive && !u.IsDemo && u.Email == emailNormalized)
                 .FirstOrDefaultAsync();
 
             if (user != null)
@@ -114,7 +114,7 @@ public class AuthService : IAuthService
             .IgnoreQueryFilters()
             .AsNoTracking()
             .Include(u => u.Role)
-            .Where(u => u.DeletedAt == null && u.Email.ToLower() == emailNormalized)
+            .Where(u => u.DeletedAt == null && u.Email == emailNormalized)
             .FirstOrDefaultAsync();
 
         // Verify the password FIRST so account status is only revealed to correct credentials
@@ -154,16 +154,25 @@ public class AuthService : IAuthService
         //    Anonymous path → no tenant claim → global query filter hides tenant rows.
         //    We must bypass with IgnoreQueryFilters() and scope manually.
         var projectKeyNormalized = request.ProjectKey.Trim().ToLower();
-        var project = await _unitOfWork.Repository<Project>()
+        // M15: project keys are unique only per (key, owner_id), so the same key can exist under more
+        // than one tenant. A bare FirstOrDefault would bind the new account to an ARBITRARY tenant
+        // (cross-tenant mis-routing). Fetch up to two matches and REFUSE when the key is ambiguous
+        // rather than silently guessing — a deterministic, non-leaky failure.
+        var projectMatches = await _unitOfWork.Repository<Project>()
             .Query()
             .IgnoreQueryFilters()
             .AsNoTracking()
-            .FirstOrDefaultAsync(p => p.DeletedAt == null && p.Key == projectKeyNormalized);
+            .Where(p => p.DeletedAt == null && p.Key == projectKeyNormalized)
+            .Select(p => new { p.OwnerId })
+            .Take(2)
+            .ToListAsync();
 
-        if (project == null)
+        if (projectMatches.Count == 0)
             return Result.Failure(MessageKeys.Project.NotFound);
+        if (projectMatches.Count > 1)
+            return Result.Conflict(MessageKeys.Project.KeyAmbiguous);
 
-        var projectOwnerId = project.OwnerId;
+        var projectOwnerId = projectMatches[0].OwnerId;
 
         // 2. Role must exist, be active, NON-admin, and belong to this tenant (or be a global role).
         //    IgnoreQueryFilters() required for the same anonymous-path reason above.
@@ -189,7 +198,7 @@ public class AuthService : IAuthService
             .Query()
             .IgnoreQueryFilters()
             .Where(u => u.DeletedAt == null
-                        && u.Email.ToLower() == emailNormalized
+                        && u.Email == emailNormalized
                         && u.OwnerId == projectOwnerId)
             .FirstOrDefaultAsync();
 
@@ -252,7 +261,7 @@ public class AuthService : IAuthService
             .IgnoreQueryFilters()
             .AsNoTracking()
             .Where(u => u.DeletedAt == null
-                        && u.Email.ToLower() == emailNormalized
+                        && u.Email == emailNormalized
                         && u.OwnerId == u.PublicId)
             .FirstOrDefaultAsync();
 
@@ -318,19 +327,19 @@ public class AuthService : IAuthService
         return Result.Success("Registration submitted. Your workspace is pending approval.");
     }
 
-    public Result<MeResponse> Me()
+    public async Task<Result<MeResponse>> MeAsync()
     {
         var publicId = _currentUser.Id;
 
         if (publicId == null)
             return Result<MeResponse>.Failure(MessageKeys.Auth.InvalidCredentials);
 
-        var user = _unitOfWork.Repository<User>()
+        var user = await _unitOfWork.Repository<User>()
             .Query()
             .AsNoTracking()
             .Include(u => u.Role)
             .Where(u => u.DeletedAt == null && u.PublicId == publicId.Value)
-            .FirstOrDefault();
+            .FirstOrDefaultAsync();
 
         if (user == null)
             return Result<MeResponse>.NotFound(MessageKeys.User.NotFound);

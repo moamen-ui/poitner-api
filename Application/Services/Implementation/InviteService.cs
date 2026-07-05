@@ -259,7 +259,7 @@ public class InviteService : IInviteService
             .IgnoreQueryFilters()
             .AsNoTracking()
             .Where(u => u.DeletedAt == null
-                        && u.Email.ToLower() == emailNormalized
+                        && u.Email == emailNormalized
                         && u.OwnerId == invite.OwnerId)
             .FirstOrDefaultAsync();
 

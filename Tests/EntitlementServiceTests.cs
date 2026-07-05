@@ -39,7 +39,7 @@ public class EntitlementServiceTests
     }
 
     private static AppDbContext Ctx(ICurrentUser u, string db) =>
-        new(new DbContextOptionsBuilder<AppDbContext>().UseInMemoryDatabase(db).Options, u);
+        new(new DbContextOptionsBuilder<AppDbContext>().UseInMemoryDatabase(db).Options, u, new Microsoft.Extensions.Configuration.ConfigurationBuilder().Build());
 
     // Seeds a Free plan + a Pro plan and returns their ids.
     private static (int freeId, int proId) SeedPlans(string db, PlanEntitlements? proEntitlements = null)

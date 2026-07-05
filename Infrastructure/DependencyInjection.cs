@@ -1,6 +1,8 @@
+using System.Linq;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Npgsql;
 using Pointer.Application.Abstractions;
 using Pointer.Infrastructure.Auth;
 using Pointer.Infrastructure.Billing;
@@ -13,7 +15,17 @@ public static class DependencyInjection
 {
     public static IServiceCollection AddInfrastructure(this IServiceCollection s, IConfiguration c)
     {
-        s.AddDbContext<AppDbContext>(o => o.UseNpgsql(c.GetConnectionString("Default"),
+        // Build the connection string via NpgsqlConnectionStringBuilder so we can guarantee a sane
+        // MaxPoolSize cap (default otherwise is Npgsql's 100). Honor any value already supplied in the
+        // configured connection string — check all accepted spellings by stripping whitespace, so
+        // "MaxPoolSize", "Max Pool Size" and Npgsql's canonical "Maximum Pool Size" are all respected.
+        var raw = c.GetConnectionString("Default") ?? string.Empty;
+        var csb = new NpgsqlConnectionStringBuilder(raw);
+        var norm = new string(raw.Where(ch => !char.IsWhiteSpace(ch)).ToArray()).ToUpperInvariant();
+        if (!norm.Contains("MAXPOOLSIZE") && !norm.Contains("MAXIMUMPOOLSIZE"))
+            csb.MaxPoolSize = 40;
+
+        s.AddDbContext<AppDbContext>(o => o.UseNpgsql(csb.ConnectionString,
             n => n.EnableRetryOnFailure(5, TimeSpan.FromSeconds(30), null)));
         s.Configure<JwtOptions>(c.GetSection("JWT"));
         s.AddHttpContextAccessor();

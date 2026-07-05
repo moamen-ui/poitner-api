@@ -56,6 +56,8 @@ public sealed class UnitOfWork(AppDbContext db) : IUnitOfWork
 
     public void PreserveCreatedAtOnInsert(BaseEntity entity) => db.PreserveCreatedAtOnInsert(entity);
 
+    public void ClearChangeTracker() => db.ChangeTracker.Clear();
+
     public async Task ExecuteInTransactionAsync(Func<Task> action)
     {
         var strategy = db.Database.CreateExecutionStrategy();

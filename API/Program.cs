@@ -7,6 +7,7 @@ using Pointer.API.Extensions;
 using Pointer.API.Hosted;
 using Pointer.API.Seed;
 using Pointer.Application;
+using Pointer.Application.Response;
 using Pointer.Infrastructure;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -145,8 +146,11 @@ fwd.KnownNetworks.Clear();
 fwd.KnownProxies.Clear();
 app.UseForwardedHeaders(fwd);
 
-// Map an UnauthorizedAccessException (e.g. an authenticated request whose token carries no valid
-// subject claim — see ClaimsPrincipalExtensions.GetId) to a 401 instead of a leaked 500.
+// Global exception handler (early in the pipeline): map unhandled exceptions to the Result
+// envelope so no error escapes as a raw 500 with a leaky text body. An UnauthorizedAccessException
+// (e.g. an authenticated request whose token carries no valid subject — see
+// ClaimsPrincipalExtensions.GetId) maps to 401; every other unhandled exception becomes a 500 with
+// a generic Result.Failure body (no exception details are leaked).
 app.Use(async (ctx, next) =>
 {
     try
@@ -157,6 +161,13 @@ app.Use(async (ctx, next) =>
     {
         if (!ctx.Response.HasStarted)
             ctx.Response.StatusCode = StatusCodes.Status401Unauthorized;
+    }
+    catch (Exception)
+    {
+        if (ctx.Response.HasStarted)
+            throw;
+        ctx.Response.StatusCode = StatusCodes.Status500InternalServerError;
+        await ctx.Response.WriteAsJsonAsync(Result.Failure("An unexpected error occurred."));
     }
 });
 
@@ -203,7 +214,7 @@ app.Use(async (ctx, next) =>
         var file = Path.Combine(webRoot, path.TrimStart('/'));
         if (File.Exists(file))
         {
-            var origin = $"{ctx.Request.Scheme}://{ctx.Request.Host}";
+            var origin = PointerUrlResolver.ResolvePublicUrl(app.Configuration, ctx.Request);
             var text = (await File.ReadAllTextAsync(file)).Replace("<POINTER_SERVER>", origin);
             ctx.Response.ContentType = path.EndsWith(".sh", StringComparison.OrdinalIgnoreCase)
                 ? "text/x-shellscript; charset=utf-8"
@@ -260,7 +271,7 @@ app.UseRateLimiter();
 // origin. Reusable across projects; the project key comes from the query string.
 app.MapGet("/embed.js", (HttpContext ctx) =>
 {
-    var origin = $"{ctx.Request.Scheme}://{ctx.Request.Host}";
+    var origin = PointerUrlResolver.ResolvePublicUrl(app.Configuration, ctx.Request);
     static bool Safe(string s) => s.Length > 0 && s.All(ch => char.IsLetterOrDigit(ch) || ch is '.' or '_' or '-');
     var project = ctx.Request.Query["project"].ToString();
     var environment = ctx.Request.Query["environment"].ToString();

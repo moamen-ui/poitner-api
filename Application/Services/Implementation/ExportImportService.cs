@@ -20,6 +20,13 @@ public class ExportImportService : IExportImportService
     private const int MaxImportCommentCount = 5000;
     private const int MaxRepliesPerComment = 500;
 
+    // --- export limits (H5: bound export memory; symmetric with the import cap) ---
+    private const int MaxExportCommentCount = 5000;
+    private const int ExportBatchSize = 500;
+
+    // --- import flush cadence (M10: bound the change-tracker / transaction size) ---
+    private const int ImportSaveBatchSize = 200;
+
     private readonly IUnitOfWork _unitOfWork;
     private readonly IProjectService _projectService;
     private readonly ICurrentUser _currentUser;
@@ -50,33 +57,30 @@ public class ExportImportService : IExportImportService
                 ? Result<ExportFileDto>.Conflict(projectResult.Message ?? MessageKeys.Project.Disabled)
                 : Result<ExportFileDto>.NotFound(projectResult.Message ?? MessageKeys.Project.NotFound);
 
-        var comments = await QueryCommentsAsync(options, projectId: projectResult.Data);
-        var dto = await BuildExportFileAsync(comments, sourceProject: projectKey);
-        return Result<ExportFileDto>.Success(dto, MessageKeys.ExportImport.Exported);
+        return await BuildExportFileAsync(options, projectId: projectResult.Data, sourceProject: projectKey);
     }
 
     public async Task<Result<ExportFileDto>> ExportWorkspaceAsync(ExportOptions options)
     {
-        var comments = await QueryCommentsAsync(options, projectId: null);
-        var dto = await BuildExportFileAsync(comments, sourceProject: null);
-        return Result<ExportFileDto>.Success(dto, MessageKeys.ExportImport.Exported);
+        return await BuildExportFileAsync(options, projectId: null, sourceProject: null);
     }
 
-    private async Task<List<Comment>> QueryCommentsAsync(ExportOptions options, int? projectId)
+    /// <summary>
+    /// Builds the filtered comment query (tenant isolation via the EF global query filter on Comment,
+    /// plus the explicit ProjectId / private / deleted clamps). Does NOT materialize or Include replies —
+    /// callers add <c>.Include(c =&gt; c.Replies)</c> per keyset batch (H5).
+    /// </summary>
+    private IQueryable<Comment> FilteredCommentQuery(ExportOptions options, int? projectId)
     {
         // IncludePrivate / IncludeDeleted require admin — clamped server-side regardless of input.
         var includePrivate = options.IncludePrivate && _currentUser.IsAdmin;
         var includeDeleted = options.IncludeDeleted && _currentUser.IsAdmin;
         var callerId = _currentUser.Id ?? Guid.Empty;
 
-        // Type the variable as IQueryable<Comment> so subsequent .Where() reassignments compile;
-        // the .Include(...) still applies (IIncludableQueryable is an IQueryable<Comment>).
         IQueryable<Comment> query = _unitOfWork
             .Repository<Comment>()
             .Query()
-            .AsNoTracking()
-            // Replies load under the same tenant filter (global query filter applies).
-            .Include(c => c.Replies);
+            .AsNoTracking();
 
         if (projectId.HasValue)
             query = query.Where(c => c.ProjectId == projectId.Value);
@@ -97,74 +101,115 @@ public class ExportImportService : IExportImportService
         if (!includePrivate)
             query = query.Where(c => !c.IsPrivate || c.AuthorId == callerId);
 
-        return await query.OrderBy(c => c.CreatedAt).ToListAsync();
+        return query;
     }
 
-    private async Task<ExportFileDto> BuildExportFileAsync(List<Comment> comments, string? sourceProject)
+    private async Task<Result<ExportFileDto>> BuildExportFileAsync(
+        ExportOptions options,
+        int? projectId,
+        string? sourceProject
+    )
     {
-        var names = await ResolveNamesAsync(comments.SelectMany(AuthorIds));
+        var baseQuery = FilteredCommentQuery(options, projectId);
 
-        // Workspace exports carry each comment's own project_key (resolved from ProjectId).
-        Dictionary<int, string>? projectKeys = null;
-        if (sourceProject == null && comments.Count > 0)
-        {
-            var ids = comments.Select(c => c.ProjectId).Distinct().ToList();
-            projectKeys = await _unitOfWork
-                .Repository<Project>()
-                .Query()
-                .AsNoTracking()
-                .Where(p => ids.Contains(p.Id))
-                .ToDictionaryAsync(p => p.Id, p => p.Key);
-        }
-
-        var commentDtos = new List<CommentExportDto>(comments.Count);
-        var replySeq = 0;
-        for (var i = 0; i < comments.Count; i++)
-        {
-            var c = comments[i];
-            var liveReplies = c.Replies.Where(r => r.DeletedAt == null).ToList();
-            commentDtos.Add(
-                new CommentExportDto
-                {
-                    ExportId = $"c-{i + 1}",
-                    ProjectKey = sourceProject ?? projectKeys?.GetValueOrDefault(c.ProjectId),
-                    Body = c.Body,
-                    Environment = c.Environment.ToString(),
-                    Status = c.Status.ToString(),
-                    IsPrivate = c.IsPrivate,
-                    CreatedAt = c.CreatedAt,
-                    AppliedAt = c.AppliedAt,
-                    AppliedByLabel = c.AppliedByLabel,
-                    EditedAt = c.EditedAt,
-                    AuthorDisplayName = names.GetValueOrDefault(c.AuthorId),
-                    AppliedByDisplayName = c.AppliedBy.HasValue
-                        ? names.GetValueOrDefault(c.AppliedBy.Value)
-                        : null,
-                    EditedByDisplayName = c.EditedBy.HasValue
-                        ? names.GetValueOrDefault(c.EditedBy.Value)
-                        : null,
-                    Element = MapElementForExport(c.Element),
-                    Replies = liveReplies
-                        .Select(r => new ReplyExportDto
-                        {
-                            ExportId = $"r-{++replySeq}",
-                            Body = r.Body,
-                            AuthorDisplayName = names.GetValueOrDefault(r.AuthorId),
-                            CreatedAt = r.CreatedAt
-                        })
-                        .ToList()
-                }
+        // H5: refuse before materializing anything if the match set exceeds the cap.
+        var totalCount = await baseQuery.CountAsync();
+        if (totalCount > MaxExportCommentCount)
+            return Result<ExportFileDto>.Failure(
+                $"Too many comments to export ({totalCount}). The maximum is {MaxExportCommentCount}; narrow the export with filters (status, environment, or a single project)."
             );
+
+        // Keyset-paginate by Id so at most one batch of entities (with their large `element` blobs)
+        // is materialized at a time — the entire tenant comment graph is never held in memory at once.
+        var commentDtos = new List<CommentExportDto>(totalCount);
+        var names = new Dictionary<Guid, string>();
+        var projectKeys = new Dictionary<int, string>();
+        var lastId = 0;
+
+        while (true)
+        {
+            var batch = await baseQuery
+                // Replies load under the same tenant filter (global query filter applies).
+                // NOTE: AsSplitQuery() would avoid fan-duplicating the parent `element` blob across
+                // reply rows, but it is a relational-only extension not referenced by the Application
+                // project; keyset batching already bounds memory, so we omit it here.
+                .Include(c => c.Replies)
+                .Where(c => c.Id > lastId)
+                .OrderBy(c => c.Id)
+                .Take(ExportBatchSize)
+                .ToListAsync();
+
+            if (batch.Count == 0)
+                break;
+
+            lastId = batch[^1].Id;
+
+            // Resolve only the author names / project keys this batch introduces (deduped into
+            // running maps so repeat authors/projects across batches aren't re-queried).
+            await MergeNamesAsync(names, batch.SelectMany(AuthorIds));
+            if (sourceProject == null)
+                await MergeProjectKeysAsync(projectKeys, batch.Select(c => c.ProjectId));
+
+            foreach (var c in batch)
+            {
+                var liveReplies = c.Replies.Where(r => r.DeletedAt == null).ToList();
+                commentDtos.Add(
+                    new CommentExportDto
+                    {
+                        // ExportId (c-N / r-N) is assigned after the final CreatedAt sort below, so the
+                        // numbering matches output order exactly — byte-for-byte with the pre-batch impl.
+                        ProjectKey = sourceProject ?? projectKeys.GetValueOrDefault(c.ProjectId),
+                        Body = c.Body,
+                        Environment = c.Environment.ToString(),
+                        Status = c.Status.ToString(),
+                        IsPrivate = c.IsPrivate,
+                        CreatedAt = c.CreatedAt,
+                        AppliedAt = c.AppliedAt,
+                        AppliedByLabel = c.AppliedByLabel,
+                        EditedAt = c.EditedAt,
+                        AuthorDisplayName = names.GetValueOrDefault(c.AuthorId),
+                        AppliedByDisplayName = c.AppliedBy.HasValue
+                            ? names.GetValueOrDefault(c.AppliedBy.Value)
+                            : null,
+                        EditedByDisplayName = c.EditedBy.HasValue
+                            ? names.GetValueOrDefault(c.EditedBy.Value)
+                            : null,
+                        Element = MapElementForExport(c.Element),
+                        Replies = liveReplies
+                            .Select(r => new ReplyExportDto
+                            {
+                                Body = r.Body,
+                                AuthorDisplayName = names.GetValueOrDefault(r.AuthorId),
+                                CreatedAt = r.CreatedAt
+                            })
+                            .ToList()
+                    }
+                );
+            }
         }
 
-        return new ExportFileDto
+        // Restore the CreatedAt-ascending ordering guarantee (stable LINQ OrderBy; capped at 5000),
+        // then assign the sequential export ids in output order.
+        var ordered = commentDtos.OrderBy(c => c.CreatedAt).ToList();
+        var replySeq = 0;
+        for (var i = 0; i < ordered.Count; i++)
         {
-            SchemaVersion = CurrentSchemaVersion,
-            ExportedAt = DateTime.UtcNow,
-            SourceProject = sourceProject,
-            SourceServer = null, // informational; left null (controller sets Content-Disposition)
-            Comments = commentDtos
-        };
+            ordered[i].ExportId = $"c-{i + 1}";
+            foreach (var r in ordered[i].Replies)
+                r.ExportId = $"r-{++replySeq}";
+        }
+
+        return Result<ExportFileDto>.Success(
+            new ExportFileDto
+            {
+                SchemaVersion = CurrentSchemaVersion,
+                ExportedAt = DateTime.UtcNow,
+                SourceProject = sourceProject,
+                SourceServer = null, // informational; left null (controller sets Content-Disposition)
+                Comments = ordered
+            },
+            MessageKeys.ExportImport.Exported
+        );
     }
 
     private static ElementCaptureExportDto MapElementForExport(ElementCapture e) =>
@@ -211,14 +256,16 @@ public class ExportImportService : IExportImportService
             return Result<ImportResultDto>.Failure(capError);
 
         var warnings = new List<string>();
-        var (comments, replies) = await InsertCommentsAsync(
-            file.Comments,
-            projectId,
-            projectOwnerId,
-            warnings
-        );
-
-        await _unitOfWork.SaveChangesAsync();
+        var comments = 0;
+        var replies = 0;
+        // Atomic import: the batched SaveChanges (M10) run INSIDE one transaction, so a mid-import
+        // failure rolls the whole thing back (restores the pre-batching all-or-nothing guarantee)
+        // while ClearChangeTracker between batches still bounds change-tracker memory.
+        await _unitOfWork.ExecuteInTransactionAsync(async () =>
+        {
+            (comments, replies) = await InsertCommentsAsync(file.Comments, projectId, projectOwnerId, warnings);
+            await _unitOfWork.SaveChangesAsync();
+        });
         return Result<ImportResultDto>.Success(
             BuildResult(comments, replies, warnings),
             MessageKeys.ExportImport.Imported
@@ -235,7 +282,9 @@ public class ExportImportService : IExportImportService
         var totalComments = 0;
         var totalReplies = 0;
 
-        // Route each comment to the project named by its project_key (lazy-created via EnsureAsync).
+        // Phase 1 (READ-ONLY): validate + resolve every group up front, so a bad group returns early
+        // WITHOUT any writes. Cap checks read the pre-import DB count (same as before batching).
+        var plan = new List<(List<CommentExportDto> Group, int ProjectId, Guid OwnerId)>();
         foreach (var grouping in file.Comments.GroupBy(c => c.ProjectKey))
         {
             var projectKey = grouping.Key;
@@ -260,12 +309,21 @@ public class ExportImportService : IExportImportService
             if (capError != null)
                 return Result<ImportResultDto>.Failure(capError);
 
-            var (c, r) = await InsertCommentsAsync(groupList, projectId, projectOwnerId, warnings);
-            totalComments += c;
-            totalReplies += r;
+            plan.Add((groupList, projectId, projectOwnerId));
         }
 
-        await _unitOfWork.SaveChangesAsync();
+        // Phase 2 (ATOMIC): insert every group inside one transaction — all-or-nothing on failure,
+        // with batched SaveChanges/ClearChangeTracker (M10) bounding memory within the transaction.
+        await _unitOfWork.ExecuteInTransactionAsync(async () =>
+        {
+            foreach (var (group, projectId, projectOwnerId) in plan)
+            {
+                var (c, r) = await InsertCommentsAsync(group, projectId, projectOwnerId, warnings);
+                totalComments += c;
+                totalReplies += r;
+            }
+            await _unitOfWork.SaveChangesAsync();
+        });
         return Result<ImportResultDto>.Success(
             BuildResult(totalComments, totalReplies, warnings),
             MessageKeys.ExportImport.Imported
@@ -353,6 +411,20 @@ public class ExportImportService : IExportImportService
 
             await _unitOfWork.Repository<Comment>().AddAsync(comment);
             commentCount++;
+
+            // M10: flush roughly every ImportSaveBatchSize comments so a single import (up to
+            // 5000 comments × 500 replies) is not accumulated into one giant change-tracker /
+            // transaction — this bounds the lock window and the per-save memory spike. After each
+            // flush, detach the saved graph via ClearChangeTracker() so the tracker doesn't grow.
+            // PreserveCreatedAtOnInsert semantics are preserved: it is applied per entity before
+            // AddAsync, and AppDbContext.SaveChangesAsync consumes the flag on the Added entity at
+            // each save (already-saved rows are Unchanged and never re-stamped); clearing afterward
+            // is safe because we never reference saved entities again.
+            if (commentCount % ImportSaveBatchSize == 0)
+            {
+                await _unitOfWork.SaveChangesAsync();
+                _unitOfWork.ClearChangeTracker();
+            }
         }
 
         if (screenshotOmitted > 0)
@@ -481,18 +553,46 @@ public class ExportImportService : IExportImportService
     // Shared helpers (mirror CommentService)
     // ---------------------------------------------------------------------------
 
-    private async Task<Dictionary<Guid, string>> ResolveNamesAsync(IEnumerable<Guid> ids)
+    /// <summary>
+    /// Resolves display names for any author ids not already in <paramref name="names"/> and merges
+    /// them in. Called per export batch so only the newly-seen authors are queried.
+    /// </summary>
+    private async Task MergeNamesAsync(Dictionary<Guid, string> names, IEnumerable<Guid> ids)
     {
-        var distinct = ids.Where(g => g != Guid.Empty).Distinct().ToList();
-        if (distinct.Count == 0)
-            return new Dictionary<Guid, string>();
+        var missing = ids.Where(g => g != Guid.Empty && !names.ContainsKey(g)).Distinct().ToList();
+        if (missing.Count == 0)
+            return;
 
-        return await _unitOfWork
+        var resolved = await _unitOfWork
             .Repository<User>()
             .Query()
             .AsNoTracking()
-            .Where(u => distinct.Contains(u.PublicId))
+            .Where(u => missing.Contains(u.PublicId))
             .ToDictionaryAsync(u => u.PublicId, u => u.DisplayName);
+
+        foreach (var kv in resolved)
+            names[kv.Key] = kv.Value;
+    }
+
+    /// <summary>
+    /// Resolves project keys for any project ids not already in <paramref name="keys"/> and merges
+    /// them in (workspace export only). Called per export batch so only newly-seen projects are queried.
+    /// </summary>
+    private async Task MergeProjectKeysAsync(Dictionary<int, string> keys, IEnumerable<int> projectIds)
+    {
+        var missing = projectIds.Where(id => !keys.ContainsKey(id)).Distinct().ToList();
+        if (missing.Count == 0)
+            return;
+
+        var resolved = await _unitOfWork
+            .Repository<Project>()
+            .Query()
+            .AsNoTracking()
+            .Where(p => missing.Contains(p.Id))
+            .ToDictionaryAsync(p => p.Id, p => p.Key);
+
+        foreach (var kv in resolved)
+            keys[kv.Key] = kv.Value;
     }
 
     private static IEnumerable<Guid> AuthorIds(Comment c)

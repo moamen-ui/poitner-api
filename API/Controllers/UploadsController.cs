@@ -87,20 +87,45 @@ public class UploadsController(
             ? projectEntity.OwnerId.Value.ToString("N")
             : "global";
 
-        await using var stream = file.OpenReadStream();
-        var relativePath = await fileStorage.SaveAsync(ownerSegment, keyNormalized, stream, extension.ToLowerInvariant());
-
-        var fileName = Path.GetFileName(relativePath);
-        // Return a short-lived HMAC-signed URL instead of a permanent public path.
-        var url = uploadSigner.SignedUrl(relativePath);
-
-        return Ok(Result<UploadResponse>.Success(new UploadResponse
+        Stream stream = file.OpenReadStream();
+        try
         {
-            Url = url,
-            FileName = fileName,
-            Size = file.Length,
-            ContentType = file.ContentType
-        }));
+            // Magic-bytes check: confirm the declared image type from the stream's first bytes,
+            // so a renamed malicious payload is rejected before it is persisted. The buffered form
+            // file stream is seekable; if not, copy into a MemoryStream so we can rewind after reading.
+            if (!stream.CanSeek)
+            {
+                var mem = new MemoryStream();
+                await stream.CopyToAsync(mem);
+                await stream.DisposeAsync();
+                mem.Position = 0;
+                stream = mem;
+            }
+
+            if (!ValidateImageMagicBytes(stream, file.ContentType))
+                return BadRequest(Result.Failure("File content does not match an allowed image type."));
+
+            // Rewind so the full file (including the signature bytes) is persisted.
+            stream.Position = 0;
+
+            var relativePath = await fileStorage.SaveAsync(ownerSegment, keyNormalized, stream, extension.ToLowerInvariant());
+
+            var fileName = Path.GetFileName(relativePath);
+            // Return a short-lived HMAC-signed URL instead of a permanent public path.
+            var url = uploadSigner.SignedUrl(relativePath);
+
+            return Ok(Result<UploadResponse>.Success(new UploadResponse
+            {
+                Url = url,
+                FileName = fileName,
+                Size = file.Length,
+                ContentType = file.ContentType
+            }));
+        }
+        finally
+        {
+            await stream.DisposeAsync();
+        }
     }
 
     /// <summary>
@@ -140,7 +165,40 @@ public class UploadsController(
 
         // Cache-Control: private — the URL itself is the time-limited token.
         Response.Headers["Cache-Control"] = "private, max-age=3600";
+        // Prevent browsers from MIME-sniffing a user-uploaded file away from the declared image type.
+        Response.Headers["X-Content-Type-Options"] = "nosniff";
 
         return PhysicalFile(fullPath, contentType);
+    }
+
+    /// <summary>
+    /// Validates that the stream's leading bytes match the signature of the declared image type,
+    /// so a renamed non-image payload cannot be persisted. Reads from the current position; the
+    /// caller resets the position to 0 before persisting. Needs at most the first 12 bytes.
+    /// </summary>
+    private static bool ValidateImageMagicBytes(Stream stream, string contentType)
+    {
+        var buf = new byte[12];
+        var read = 0;
+        while (read < buf.Length)
+        {
+            var n = stream.Read(buf, read, buf.Length - read);
+            if (n <= 0) break;
+            read += n;
+        }
+
+        return contentType.ToLowerInvariant() switch
+        {
+            "image/png" => read >= 4
+                && buf[0] == 0x89 && buf[1] == 0x50 && buf[2] == 0x4E && buf[3] == 0x47,
+            "image/jpeg" => read >= 3
+                && buf[0] == 0xFF && buf[1] == 0xD8 && buf[2] == 0xFF,
+            "image/gif" => read >= 4
+                && buf[0] == 0x47 && buf[1] == 0x49 && buf[2] == 0x46 && buf[3] == 0x38, // "GIF8"
+            "image/webp" => read >= 12
+                && buf[0] == 0x52 && buf[1] == 0x49 && buf[2] == 0x46 && buf[3] == 0x46 // "RIFF"
+                && buf[8] == 0x57 && buf[9] == 0x45 && buf[10] == 0x42 && buf[11] == 0x50, // "WEBP"
+            _ => false,
+        };
     }
 }

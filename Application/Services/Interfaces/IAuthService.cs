@@ -8,7 +8,7 @@ public interface IAuthService
     Task<Result<LoginResponse>> LoginAsync(LoginRequest request);
     Task<Result> RegisterAsync(RegisterRequest request);
     Task<Result> RegisterAdminAsync(RegisterAdminRequest request);
-    Result<MeResponse> Me();
+    Task<Result<MeResponse>> MeAsync();
 
     /// <summary>Emails a reset link if the address matches an active account. Always succeeds (no enumeration).</summary>
     Task<Result> RequestPasswordResetAsync(ForgotPasswordRequest request);

@@ -78,7 +78,7 @@ public class MonetizationSignupTests
     }
 
     private static AppDbContext Ctx(ICurrentUser u, string db) =>
-        new(new DbContextOptionsBuilder<AppDbContext>().UseInMemoryDatabase(db).Options, u);
+        new(new DbContextOptionsBuilder<AppDbContext>().UseInMemoryDatabase(db).Options, u, new Microsoft.Extensions.Configuration.ConfigurationBuilder().Build());
 
     private static void SeedRolesAndPlans(string db, out int proId)
     {

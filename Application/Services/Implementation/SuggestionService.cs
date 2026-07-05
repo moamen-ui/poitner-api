@@ -42,6 +42,12 @@ public class SuggestionService : ISuggestionService
         if (project == null)
             return Result<SuggestionResponse>.NotFound(MessageKeys.Project.NotFound);
 
+        // C1e invariant (load-bearing): PredefinedActionSuggestion is STRICT-OWN, so it must never be
+        // written with a null owner — a null-owner suggestion would be readable by any null-tenant
+        // principal (the C1 collapse). Global/null-owner projects therefore cannot accept suggestions.
+        if (project.OwnerId is null)
+            return Result<SuggestionResponse>.Failure(MessageKeys.Suggestion.NotAvailableForProject);
+
         // Guard: only members who CANNOT edit the project may suggest. Admins/owners add directly.
         if (_currentUser.IsAdmin || project.CreatedBy == _currentUser.Id)
             return Result<SuggestionResponse>.Forbidden(MessageKeys.Suggestion.CanEditDirectly);

@@ -23,7 +23,7 @@ public class PlanServiceTests
     }
 
     private static AppDbContext Ctx(string db) =>
-        new(new DbContextOptionsBuilder<AppDbContext>().UseInMemoryDatabase(db).Options, new FakeCurrentUser());
+        new(new DbContextOptionsBuilder<AppDbContext>().UseInMemoryDatabase(db).Options, new FakeCurrentUser(), new Microsoft.Extensions.Configuration.ConfigurationBuilder().Build());
 
     private static PlanService Svc(AppDbContext db) => new(new UnitOfWork(db));
 

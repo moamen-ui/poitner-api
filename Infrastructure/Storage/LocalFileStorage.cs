@@ -48,7 +48,7 @@ public class LocalFileStorage(IWebHostEnvironment env) : IFileStorage
         var resolved = Path.GetFullPath(fullPath);
         try
         {
-            if (resolved.StartsWith(uploadsRoot, StringComparison.Ordinal) && File.Exists(resolved))
+            if (resolved.StartsWith(uploadsRoot + Path.DirectorySeparatorChar, StringComparison.Ordinal) && File.Exists(resolved))
                 File.Delete(resolved);
         }
         catch { /* best-effort: ignore IO errors */ }

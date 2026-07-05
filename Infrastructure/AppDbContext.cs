@@ -1,11 +1,41 @@
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.Extensions.Configuration;
 using Pointer.Application.Abstractions;
 using Pointer.Domain.Entity;
 
 namespace Pointer.Infrastructure;
 
-public class AppDbContext(DbContextOptions<AppDbContext> options, ICurrentUser currentUser) : DbContext(options)
+public class AppDbContext(DbContextOptions<AppDbContext> options, ICurrentUser currentUser, IConfiguration configuration) : DbContext(options)
 {
+    // C1 hardening lever (default OFF → behavior identical to before). When a non-super-admin
+    // principal has a null TenantId (no `tenant` claim → owner_id is null), the strict-own filter
+    // `e.OwnerId == currentUser.TenantId` collapses to `owner_id IS NULL`, exposing the whole
+    // legacy/global bucket. With this flag ON, a null-tenant non-super principal matches NOTHING on
+    // strict-own entities. Enable it ONLY after back-filling owner_id and giving global projects a
+    // real owner (see docs/reviews/fable-fix-plan.md, T4) — otherwise legitimate null-owner-project
+    // stakeholders lose access. Config: "Tenancy:StrictNullTenantIsolation": true.
+    // Process-static (read once from config); safe to bake into the cached EF model.
+    private readonly bool _strictNullTenant =
+        configuration.GetValue("Tenancy:StrictNullTenantIsolation", false);
+
+    protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
+    {
+        // The strict-null-tenant flag is baked into the compiled query filters, so the model cache
+        // key must vary by it — otherwise a context with the flag ON would reuse a model built with
+        // it OFF (or vice-versa). Harmless in production (flag is process-static) but required so a
+        // process that constructs contexts with different flag values (tests) gets distinct models.
+        optionsBuilder.ReplaceService<IModelCacheKeyFactory, TenancyModelCacheKeyFactory>();
+    }
+
+    private sealed class TenancyModelCacheKeyFactory : IModelCacheKeyFactory
+    {
+        public object Create(DbContext context, bool designTime) =>
+            (context.GetType(), (context as AppDbContext)?._strictNullTenant ?? false, designTime);
+
+        public object Create(DbContext context) => Create(context, false);
+    }
+
     public DbSet<Role> Roles => Set<Role>();
     public DbSet<User> Users => Set<User>();
     public DbSet<Project> Projects => Set<Project>();
@@ -24,17 +54,20 @@ public class AppDbContext(DbContextOptions<AppDbContext> options, ICurrentUser c
     {
         b.ApplyConfigurationsFromAssembly(typeof(AppDbContext).Assembly);
 
+        // Captured for the strict-own filters below. Process-static config value.
+        var strict = _strictNullTenant;
+
         // Tenant isolation: every query is scoped to the current user's tenant by default.
         // Super-admin/system code paths (cascade delete, background jobs) must call
         // .IgnoreQueryFilters() explicitly on the query to bypass these filters.
 
         // Strict-own: visible only to the owning tenant or super-admin.
-        b.Entity<Project>().HasQueryFilter(e => currentUser.IsSuperAdmin || e.OwnerId == currentUser.TenantId);
-        b.Entity<User>().HasQueryFilter(e => currentUser.IsSuperAdmin || e.OwnerId == currentUser.TenantId);
-        b.Entity<Comment>().HasQueryFilter(e => currentUser.IsSuperAdmin || e.OwnerId == currentUser.TenantId);
-        b.Entity<Reply>().HasQueryFilter(e => currentUser.IsSuperAdmin || e.OwnerId == currentUser.TenantId);
+        b.Entity<Project>().HasQueryFilter(e => currentUser.IsSuperAdmin || (currentUser.TenantId != null && e.OwnerId == currentUser.TenantId) || (currentUser.TenantId == null && !strict && e.OwnerId == null));
+        b.Entity<User>().HasQueryFilter(e => currentUser.IsSuperAdmin || (currentUser.TenantId != null && e.OwnerId == currentUser.TenantId) || (currentUser.TenantId == null && !strict && e.OwnerId == null));
+        b.Entity<Comment>().HasQueryFilter(e => currentUser.IsSuperAdmin || (currentUser.TenantId != null && e.OwnerId == currentUser.TenantId) || (currentUser.TenantId == null && !strict && e.OwnerId == null));
+        b.Entity<Reply>().HasQueryFilter(e => currentUser.IsSuperAdmin || (currentUser.TenantId != null && e.OwnerId == currentUser.TenantId) || (currentUser.TenantId == null && !strict && e.OwnerId == null));
         // Invites are ALWAYS tenant-scoped (OwnerId non-null) — strict-own, no null-owner branch.
-        b.Entity<Invite>().HasQueryFilter(e => currentUser.IsSuperAdmin || e.OwnerId == currentUser.TenantId);
+        b.Entity<Invite>().HasQueryFilter(e => currentUser.IsSuperAdmin || (currentUser.TenantId != null && e.OwnerId == currentUser.TenantId) || (currentUser.TenantId == null && !strict && e.OwnerId == null));
         // Own-plus-global: a tenant sees its own actions plus null-owner (global) ones — needed so
         // actions on a global/null-owner project (e.g. the marketing landing) resolve for that
         // project's null-owner stakeholders. Cross-project leakage is prevented separately by the
@@ -43,7 +76,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options, ICurrentUser c
         // STRICT-OWN (BINDING #5): suggestions are visible only to the owning tenant or super-admin —
         // NEVER own-plus-global. A null-owner suggestion is never written, and the strict filter keeps
         // one tenant from ever loading another tenant's (or a null-owner) pending suggestion by id.
-        b.Entity<PredefinedActionSuggestion>().HasQueryFilter(e => currentUser.IsSuperAdmin || e.OwnerId == currentUser.TenantId);
+        b.Entity<PredefinedActionSuggestion>().HasQueryFilter(e => currentUser.IsSuperAdmin || (currentUser.TenantId != null && e.OwnerId == currentUser.TenantId) || (currentUser.TenantId == null && !strict && e.OwnerId == null));
 
         // Own-plus-global: tenants also see rows with OwnerId == null (super-admin/global defaults).
         b.Entity<Role>().HasQueryFilter(e => currentUser.IsSuperAdmin || e.OwnerId == currentUser.TenantId || e.OwnerId == null);
@@ -55,8 +88,8 @@ public class AppDbContext(DbContextOptions<AppDbContext> options, ICurrentUser c
         // (super-admin CRUD; anonymous marketing read). Exactly like AppSetting.
 
         // Subscription + ExtensionSite: strict-own (OwnerId non-null) — like Invite.
-        b.Entity<Subscription>().HasQueryFilter(e => currentUser.IsSuperAdmin || e.OwnerId == currentUser.TenantId);
-        b.Entity<ExtensionSite>().HasQueryFilter(e => currentUser.IsSuperAdmin || e.OwnerId == currentUser.TenantId);
+        b.Entity<Subscription>().HasQueryFilter(e => currentUser.IsSuperAdmin || (currentUser.TenantId != null && e.OwnerId == currentUser.TenantId) || (currentUser.TenantId == null && !strict && e.OwnerId == null));
+        b.Entity<ExtensionSite>().HasQueryFilter(e => currentUser.IsSuperAdmin || (currentUser.TenantId != null && e.OwnerId == currentUser.TenantId) || (currentUser.TenantId == null && !strict && e.OwnerId == null));
     }
 
     // Entities whose CreatedAt must survive the SaveChangesAsync stamping loop (the comment-import

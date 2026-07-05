@@ -32,7 +32,7 @@ public class InvitesController(IInviteService service) : ControllerBase
     public async Task<IActionResult> Create([FromBody] CreateInviteRequest request)
     {
         var result = await service.CreateAsync(request);
-        if (result.IsForbidden) return Forbid();
+        if (result.IsForbidden) return StatusCode(StatusCodes.Status403Forbidden, result);
         return result.IsSuccess ? Ok(result) : BadRequest(result);
     }
 

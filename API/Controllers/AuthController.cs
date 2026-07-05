@@ -39,9 +39,9 @@ public class AuthController(IAuthService authService, ISettingsService settingsS
     [Authorize]
     [HttpGet("me")]
     [ProducesResponseType(typeof(MeResponse), StatusCodes.Status200OK)]
-    public IActionResult Me()
+    public async Task<IActionResult> Me()
     {
-        var result = authService.Me();
+        var result = await authService.MeAsync();
         if (result.IsNotFound) return NotFound(result);
         if (result.IsConflict) return Conflict(result);
         return result.IsSuccess ? Ok(result) : BadRequest(result);

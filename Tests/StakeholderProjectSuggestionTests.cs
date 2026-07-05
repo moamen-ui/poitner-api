@@ -72,7 +72,7 @@ public class StakeholderProjectSuggestionTests
         new(new DbContextOptionsBuilder<AppDbContext>()
             .UseInMemoryDatabase(dbName)
             .ConfigureWarnings(w => w.Ignore(InMemoryEventId.TransactionIgnoredWarning))
-            .Options, user);
+            .Options, user, new Microsoft.Extensions.Configuration.ConfigurationBuilder().Build());
 
     private static (ProjectService project, UnitOfWork uow, AppDbContext db) Wire(ICurrentUser user, string dbName)
     {

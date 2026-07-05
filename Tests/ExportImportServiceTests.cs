@@ -58,7 +58,8 @@ public class ExportImportServiceTests
         public AppDbContext MakeContext(ICurrentUser user) =>
             new(
                 new DbContextOptionsBuilder<AppDbContext>().UseSqlite(_connection).Options,
-                user
+                user,
+                new Microsoft.Extensions.Configuration.ConfigurationBuilder().Build()
             );
 
         public void Dispose() => _connection.Dispose();

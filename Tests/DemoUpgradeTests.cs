@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
 using Pointer.Application.Abstractions;
 using Pointer.Application.DTOs.Demo;
 using Pointer.Application.Resources;
@@ -57,7 +58,7 @@ public class DemoUpgradeTests
         var opts = new DbContextOptionsBuilder<AppDbContext>()
             .UseInMemoryDatabase(dbName)
             .Options;
-        var db = new AppDbContext(opts, new FakeCurrentUser());
+        var db = new AppDbContext(opts, new FakeCurrentUser(), new ConfigurationBuilder().Build());
         var uow = new UnitOfWork(db);
         var tokens = new RecordingTokenService();
         // EmailService + SettingsService are unused by UpgradeAsync — pass no-op stubs.

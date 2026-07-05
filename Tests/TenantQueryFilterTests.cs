@@ -1,4 +1,6 @@
+using System.Collections.Generic;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
 using Pointer.Application.Abstractions;
 using Pointer.Domain.Entity;
 using Pointer.Infrastructure;
@@ -27,12 +29,18 @@ public class TenantQueryFilterTests
     // Helpers
     // ---------------------------------------------------------------------------
 
-    private static AppDbContext BuildContext(FakeCurrentUser user, string dbName)
+    private static AppDbContext BuildContext(FakeCurrentUser user, string dbName, bool strictNullTenant = false)
     {
         var opts = new DbContextOptionsBuilder<AppDbContext>()
             .UseInMemoryDatabase(dbName)
             .Options;
-        return new AppDbContext(opts, user);
+        var config = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["Tenancy:StrictNullTenantIsolation"] = strictNullTenant ? "true" : "false"
+            })
+            .Build();
+        return new AppDbContext(opts, user, config);
     }
 
     private static AppDbContext SuperAdminContext(string dbName) =>
@@ -115,6 +123,67 @@ public class TenantQueryFilterTests
 
         Assert.Single(results);
         Assert.Equal(tenantA, results[0].OwnerId);
+    }
+
+    // ---------------------------------------------------------------------------
+    // C1 — null-tenant collapse on strict-own entities.
+    // A non-super principal with TenantId == null (no `tenant` claim → null owner_id) has its
+    // strict-own filter collapse to `owner_id IS NULL`, exposing the whole null-owner bucket.
+    // These tests pin BOTH modes of the Tenancy:StrictNullTenantIsolation lever.
+    // ---------------------------------------------------------------------------
+
+    [Fact]
+    public void NullTenant_NonSuper_DefaultFlag_SeesNullOwnerBucket()
+    {
+        // DEFAULT (flag off) — documents the current, pre-back-fill behavior: a null-tenant
+        // non-super principal sees every null-owner row (and NOT another tenant's rows).
+        var db = Guid.NewGuid().ToString();
+        var tenantA = Guid.NewGuid();
+
+        using (var seed = SuperAdminContext(db))
+        {
+            seed.Projects.AddRange(
+                new Project { Key = "A1", Name = "A1", OwnerId = tenantA },
+                new Project { Key = "NULL1", Name = "NULL1", OwnerId = null },
+                new Project { Key = "NULL2", Name = "NULL2", OwnerId = null }
+            );
+            seed.SaveChanges();
+        }
+
+        using var ctx = BuildContext(
+            new FakeCurrentUser { TenantId = null, IsSuperAdmin = false }, db, strictNullTenant: false);
+        var results = ctx.Set<Project>().ToList();
+
+        Assert.Equal(2, results.Count);                              // both null-owner rows
+        Assert.All(results, p => Assert.Null(p.OwnerId));
+        Assert.DoesNotContain(results, p => p.OwnerId == tenantA);   // never another tenant's row
+    }
+
+    [Fact]
+    public void NullTenant_NonSuper_StrictFlag_SeesNothing()
+    {
+        // STRICT (flag on) — the C1 fix: a null-tenant non-super principal sees NO strict-own rows,
+        // even null-owner ones. Enable only after back-filling owner_id (fix-plan T4).
+        var db = Guid.NewGuid().ToString();
+        var tenantA = Guid.NewGuid();
+
+        using (var seed = SuperAdminContext(db))
+        {
+            seed.Projects.AddRange(
+                new Project { Key = "A1", Name = "A1", OwnerId = tenantA },
+                new Project { Key = "NULL1", Name = "NULL1", OwnerId = null }
+            );
+            seed.Comments.Add(new Comment { ProjectId = 0, Body = "x", OwnerId = null, AuthorId = Guid.NewGuid() });
+            seed.Users.Add(new User { Email = "n@x", PasswordHash = "h", DisplayName = "n", PublicId = Guid.NewGuid(), OwnerId = null, RoleId = 1 });
+            seed.SaveChanges();
+        }
+
+        using var ctx = BuildContext(
+            new FakeCurrentUser { TenantId = null, IsSuperAdmin = false }, db, strictNullTenant: true);
+
+        Assert.Empty(ctx.Set<Project>().ToList());
+        Assert.Empty(ctx.Set<Comment>().ToList());
+        Assert.Empty(ctx.Set<User>().ToList());
     }
 
     // ---------------------------------------------------------------------------

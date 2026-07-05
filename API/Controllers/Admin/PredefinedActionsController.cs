@@ -32,7 +32,7 @@ public class PredefinedActionsController(IPredefinedActionService service) : Con
     public async Task<IActionResult> Create([FromBody] CreatePredefinedActionRequest request)
     {
         var result = await service.CreateTenantAsync(request);
-        if (result.IsForbidden) return Forbid();
+        if (result.IsForbidden) return StatusCode(StatusCodes.Status403Forbidden, result);
         return result.IsSuccess ? Ok(result) : BadRequest(result);
     }
 

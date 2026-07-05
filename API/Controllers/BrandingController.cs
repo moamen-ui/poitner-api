@@ -1,6 +1,8 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.StaticFiles;
+using Microsoft.Extensions.Configuration;
+using Pointer.API.Extensions;
 using Pointer.Application.DTOs.Branding;
 using Pointer.Application.Response;
 using Pointer.Application.Services.Interfaces;
@@ -15,7 +17,7 @@ namespace Pointer.API.Controllers;
 [ApiController]
 [AllowAnonymous]
 [Tags("Branding")]
-public class BrandingController(IBrandingService brandingService, IWebHostEnvironment env) : ControllerBase
+public class BrandingController(IBrandingService brandingService, IWebHostEnvironment env, IConfiguration configuration) : ControllerBase
 {
     private static readonly FileExtensionContentTypeProvider ContentTypeProvider = new();
 
@@ -33,7 +35,7 @@ public class BrandingController(IBrandingService brandingService, IWebHostEnviro
     [ProducesResponseType(typeof(Result<BrandingResponse>), StatusCodes.Status200OK)]
     public async Task<IActionResult> Get()
     {
-        var publicBase    = $"{Request.Scheme}://{Request.Host}";
+        var publicBase    = PointerUrlResolver.ResolvePublicUrl(configuration, Request);
         var existingKinds = GetExistingKinds();
         var result        = await brandingService.GetAsync(publicBase, existingKinds);
         return Ok(result);

@@ -43,7 +43,7 @@ public class UserService : IUserService
         var exists = await _unitOfWork.Repository<User>()
             .Query()
             .AsNoTracking()
-            .Where(u => u.DeletedAt == null && u.Email.ToLower() == emailNormalized)
+            .Where(u => u.DeletedAt == null && u.Email == emailNormalized)
             .AnyAsync();
 
         if (exists)

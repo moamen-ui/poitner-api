@@ -41,7 +41,7 @@ public class PlanEnforcementTests
     }
 
     private static AppDbContext Ctx(ICurrentUser u, string db) =>
-        new(new DbContextOptionsBuilder<AppDbContext>().UseInMemoryDatabase(db).Options, u);
+        new(new DbContextOptionsBuilder<AppDbContext>().UseInMemoryDatabase(db).Options, u, new Microsoft.Extensions.Configuration.ConfigurationBuilder().Build());
 
     // Seeds a Free plan carrying the given entitlements and a Subscription linking the tenant to it.
     private static void SeedPlanFor(string db, Guid tenant, PlanEntitlements ent)

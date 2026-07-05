@@ -29,6 +29,7 @@ public static class MessageKeys
         public const string KeyTaken = "Project key already exists.";
         public const string KeyRequired = "Project key is required.";
         public const string Disabled = "This project has been disabled.";
+        public const string KeyAmbiguous = "This project key matches more than one workspace. Please contact your workspace administrator.";
     }
 
     public static class Role
@@ -72,6 +73,7 @@ public static class MessageKeys
         public const string PromptRequired = "Suggestion prompt is required.";
         public const string CanEditDirectly = "You can edit this project — add the predefined action directly instead of suggesting it.";
         public const string ProjectUnavailable = "The target project is no longer available.";
+        public const string NotAvailableForProject = "Suggestions are not available for this project.";
         public const string Created = "Suggestion sent for admin review.";
         public const string Approved = "Suggestion approved.";
         public const string Rejected = "Suggestion rejected.";

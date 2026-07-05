@@ -131,7 +131,7 @@ public class TenantService : ITenantService
             .IgnoreQueryFilters()
             .AsNoTracking()
             .AnyAsync(u => u.DeletedAt == null
-                           && u.Email.ToLower() == emailNormalized
+                           && u.Email == emailNormalized
                            && u.OwnerId == u.PublicId);
 
         if (exists)
