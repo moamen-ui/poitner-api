@@ -112,8 +112,11 @@ plus T8/T15 and the migration (T12/T28). Remaining items are tracked for follow-
 **⏸ Deferred (tracked, follow-up)**
 - **C1 data step (T4)** — the actual `owner_id` back-fill + flag flip is operator-run per the runbook
   (needs live data; cannot be blind-migrated).
-- **H1/H2 (T6)** — token revocation / single-use reset: needs a `User.SecurityStamp` column + a per-request
-  validation design decision; security-sensitive, do standalone.
+- **H1/H2 (T6)** — ✅ IMPLEMENTED (session 2), flag-gated `Auth:ValidateSecurityStamp` (default OFF),
+  Opus-reviewed (no lockout; TenantService-disable gap + OnTokenValidated fail-open fixed). `User.SecurityStamp`
+  rotates on password-reset/disable/reject/demo-upgrade; embedded in the JWT `stamp` claim + reset-token
+  payload (single-use). Migration `20260705173225_AddUserSecurityStamp`. **Not yet committed/deployed** —
+  enabling the flag forces a one-time re-login of all users and needs a supervised login smoke test.
 - **H6 (T10)** — slim list DTOs: breaking change for the Orval-generated dashboard client; coordinate a regen.
 - **M9** — `AsSplitQuery()` isn't available in the Application layer (relational-only extension); keyset
   batching already bounds export memory. Would need a package reference.

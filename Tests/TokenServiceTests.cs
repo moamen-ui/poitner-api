@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Options;
 using Pointer.Domain.Entity;
 using Pointer.Infrastructure.Auth;
@@ -47,5 +48,37 @@ public class TokenServiceTests
         var tokenNoTenant = svc.Issue(new User { Id = 6, Email = "global@test.com", DisplayName = "Global", RoleId = role.Id, Role = role, OwnerId = null });
         var jwtNoTenant = new JwtSecurityTokenHandler().ReadJwtToken(tokenNoTenant);
         Assert.DoesNotContain(jwtNoTenant.Claims, c => c.Type == "tenant");
+    }
+
+    [Fact]
+    public void Issue_includes_security_stamp_claim()
+    {
+        var opts = Options.Create(new JwtOptions { SigningKey = new string('k', 40), Issuer = "pointer-api", LifetimeHours = 12 });
+        var svc = new JwtTokenService(opts);
+        var role = new Role { Id = 2, Name = "Developer" };
+        var stamp = Guid.NewGuid();
+        var token = svc.Issue(new User { Id = 7, Email = "a@b.c", DisplayName = "A", RoleId = role.Id, Role = role, SecurityStamp = stamp });
+        var jwt = new JwtSecurityTokenHandler().ReadJwtToken(token);
+        Assert.Equal(stamp.ToString(), jwt.Claims.First(c => c.Type == "stamp").Value);
+    }
+
+    [Fact]
+    public void ResetToken_roundtrips_publicId_and_stamp_and_rejects_tampering()
+    {
+        var config = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?> { ["JWT:SigningKey"] = new string('k', 40) })
+            .Build();
+        var svc = new ResetTokenService(config);
+        var id = Guid.NewGuid();
+        var stamp = Guid.NewGuid();
+
+        var token = svc.Create(id, stamp);
+        Assert.True(svc.TryValidate(token, out var gotId, out var gotStamp));
+        Assert.Equal(id, gotId);
+        Assert.Equal(stamp, gotStamp);
+
+        // Tampered signature / malformed token is rejected.
+        Assert.False(svc.TryValidate(token + "x", out _, out _));
+        Assert.False(svc.TryValidate("garbage", out _, out _));
     }
 }

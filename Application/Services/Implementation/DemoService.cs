@@ -264,6 +264,9 @@ public class DemoService : IDemoService
         user.PasswordHash = _passwordHasher.Hash(request.Password);
         user.DisplayName = string.IsNullOrWhiteSpace(request.DisplayName) ? user.DisplayName : request.DisplayName!.Trim();
         user.RecipientEmail = null;
+        // H1: the email+password just changed — bump the stamp so the old demo token is revoked.
+        // The fresh token issued below carries the new stamp, so the upgraded user stays signed in.
+        user.SecurityStamp = Guid.NewGuid();
 
         _unitOfWork.Repository<User>().Update(user);
 

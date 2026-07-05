@@ -212,6 +212,8 @@ public class TenantService : ITenantService
                 break;
             case "disable":
                 user.IsActive = false;
+                // H1: revoke the disabled tenant-admin's live access token (mirror UserService).
+                user.SecurityStamp = Guid.NewGuid();
                 break;
             default:
                 return Result.Failure("Invalid action. Valid values: approve, enable, disable.");

@@ -152,6 +152,8 @@ public class UserService : IUserService
 
         user.ApprovalStatus = ApprovalStatus.Rejected;
         user.IsActive = false;
+        // H1: revoke any live access token for this now-rejected user.
+        user.SecurityStamp = Guid.NewGuid();
 
         _unitOfWork.Repository<User>().Update(user);
         await _unitOfWork.SaveChangesAsync();
@@ -193,6 +195,10 @@ public class UserService : IUserService
 
         if (!string.IsNullOrEmpty(request.Password))
             user.PasswordHash = _passwordHasher.Hash(request.Password);
+
+        // H1: disabling the user or changing their password must revoke existing access tokens.
+        if (request.IsActive == false || !string.IsNullOrEmpty(request.Password))
+            user.SecurityStamp = Guid.NewGuid();
 
         _unitOfWork.Repository<User>().Update(user);
         await _unitOfWork.SaveChangesAsync();

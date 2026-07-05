@@ -45,8 +45,8 @@ public class MonetizationSignupTests
     private sealed class FakeToken : ITokenService { public string Issue(User u) => "t"; }
     private sealed class FakeReset : IResetTokenService
     {
-        public string Create(Guid id) => "r";
-        public bool TryValidate(string token, out Guid id) { id = Guid.Empty; return false; }
+        public string Create(Guid id, Guid stamp) => "r";
+        public bool TryValidate(string token, out Guid id, out Guid stamp) { id = Guid.Empty; stamp = Guid.Empty; return false; }
     }
     private sealed class NoopEmail : IEmailService
     {

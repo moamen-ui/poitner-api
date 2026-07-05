@@ -14,6 +14,15 @@ public class User : BaseEntity
     public ApprovalStatus ApprovalStatus { get; set; } = ApprovalStatus.Approved;
     public string? Language { get; set; }
     public string? Theme { get; set; }
+
+    /// <summary>
+    /// Rotating session/token invalidation stamp (H1/H2). Embedded as the JWT <c>stamp</c> claim and
+    /// in reset-token payloads; bumped (new Guid) on password change, disable, and reject so existing
+    /// access tokens and outstanding reset links stop validating. Enforcement is gated by
+    /// <c>Auth:ValidateSecurityStamp</c> — see AuthenticationExtensions.
+    /// </summary>
+    public Guid SecurityStamp { get; set; } = Guid.NewGuid();
+
     public Guid? OwnerId { get; set; }
     public bool IsDemo { get; set; }
     public DateTime? ExpiresAt { get; set; }

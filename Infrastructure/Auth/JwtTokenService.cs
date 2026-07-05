@@ -25,6 +25,9 @@ public class JwtTokenService(IOptions<JwtOptions> opts) : ITokenService
             new Claim("role", u.Role?.Name ?? string.Empty),
             new Claim("is_admin", (u.Role?.GrantsAdmin ?? false) ? "true" : "false"),
             new Claim("is_super_admin", (u.Role?.IsSuperAdmin ?? false) ? "true" : "false"),
+            // H1: session-invalidation stamp. Validated per-request (when Auth:ValidateSecurityStamp
+            // is on) so disable/reject/password-change can revoke this token before it expires.
+            new Claim("stamp", u.SecurityStamp.ToString()),
         };
         if (u.OwnerId is not null)
             claims.Add(new Claim("tenant", u.OwnerId.Value.ToString()));

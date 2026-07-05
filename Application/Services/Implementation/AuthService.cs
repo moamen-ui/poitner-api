@@ -59,7 +59,7 @@ public class AuthService : IAuthService
                 var resetBrand = await _branding.BuildResponseAsync("", new HashSet<string>());
                 var resetProductName = resetBrand.ProductName;
                 var resetAppUrl = resetBrand.Urls.App.TrimEnd('/');
-                var token = _resetTokens.Create(user.PublicId);
+                var token = _resetTokens.Create(user.PublicId, user.SecurityStamp);
                 var link = $"{resetAppUrl}/reset?token={Uri.EscapeDataString(token)}";
                 try
                 {
@@ -84,7 +84,7 @@ public class AuthService : IAuthService
         if (string.IsNullOrWhiteSpace(request.NewPassword) || request.NewPassword.Length < 8)
             return Result.Failure("Password must be at least 8 characters.");
 
-        if (!_resetTokens.TryValidate(request.Token ?? string.Empty, out var publicId))
+        if (!_resetTokens.TryValidate(request.Token ?? string.Empty, out var publicId, out var tokenStamp))
             return Result.Failure("This reset link is invalid or has expired.");
 
         var user = await _unitOfWork.Repository<User>()
@@ -96,7 +96,16 @@ public class AuthService : IAuthService
         if (user == null)
             return Result.Failure("This reset link is invalid or has expired.");
 
+        // H2 (single-use): the token must carry the user's CURRENT security stamp. A link that was
+        // already used (or superseded by any later password change) was signed with an older stamp
+        // and no longer matches — reject it without revealing why.
+        if (user.SecurityStamp != tokenStamp)
+            return Result.Failure("This reset link is invalid or has expired.");
+
         user.PasswordHash = _passwordHasher.Hash(request.NewPassword);
+        // Bump the stamp: invalidates this reset link (single-use) AND every existing access token
+        // for this user (H1), so a password reset forcibly logs out all sessions.
+        user.SecurityStamp = Guid.NewGuid();
         _unitOfWork.Repository<User>().Update(user);
         await _unitOfWork.SaveChangesAsync();
 
