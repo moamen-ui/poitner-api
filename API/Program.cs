@@ -67,10 +67,12 @@ builder.Services.AddRateLimiter(o =>
 });
 
 // CORS is split by audience. The WIDGET is embedded on arbitrary customer sites and calls the
-// public/widget endpoints (comments, replies, uploads, statuses, roles, register, me,
+// public/widget endpoints (comments, replies, uploads, statuses, roles, login, register,
 // predefined-actions) cross-origin from those unknown origins — so the DEFAULT policy stays
 // open-origin (bearer API, no cookies → no AllowCredentials, so this is not CSRF-exploitable).
-// The DASHBOARD-only surface (/api/admin/* and the sensitive auth endpoints: login / me /
+// login is a widget endpoint: the widget performs in-page login from whatever origin hosts it,
+// so it cannot sit behind an origin allow-list; the per-IP "signup" rate limit guards it instead.
+// The DASHBOARD-only surface (/api/admin/* and the dashboard-only auth endpoints: me /
 // forgot-password / reset-password) is locked to an allow-list of known dashboard origins via the
 // "dashboard" policy, applied by route below. This shrinks the origins that can drive privileged
 // operations without breaking the widget.
@@ -242,19 +244,20 @@ app.Use(async (ctx, next) =>
 
 app.UseStaticFiles();
 
-// Route-based CORS: lock the dashboard-only surface (/api/admin/* + sensitive auth endpoints) to
-// the allow-list, and leave the open default policy for the widget/public endpoints. Selecting a
-// per-request policy requires calling UseCors with an explicit policy inside a branch; the branch
-// predicate matches the privileged routes only, so the widget's cross-origin calls are unaffected.
+// Route-based CORS: lock the dashboard-only surface (/api/admin/* + dashboard-only auth
+// endpoints) to the allow-list, and leave the open default policy for the widget/public
+// endpoints. Selecting a per-request policy requires calling UseCors with an explicit policy
+// inside a branch; the branch predicate matches the privileged routes only, so the widget's
+// cross-origin calls are unaffected.
 static bool IsDashboardOnly(HttpContext ctx)
 {
     var path = ctx.Request.Path;
     if (path.StartsWithSegments("/api/admin", StringComparison.OrdinalIgnoreCase))
         return true;
-    // Sensitive auth endpoints only — NOT register/register-admin/register-invite/signup-enabled,
-    // which are part of the public/widget signup flow and must stay open-origin.
-    return path.Equals("/api/auth/login", StringComparison.OrdinalIgnoreCase)
-        || path.Equals("/api/auth/me", StringComparison.OrdinalIgnoreCase)
+    // Dashboard-only auth endpoints — NOT login/register/register-admin/register-invite/
+    // signup-enabled, which the widget calls in-page from arbitrary host origins and must stay
+    // open-origin (login is guarded by the per-IP "signup" rate limit instead).
+    return path.Equals("/api/auth/me", StringComparison.OrdinalIgnoreCase)
         || path.Equals("/api/auth/forgot-password", StringComparison.OrdinalIgnoreCase)
         || path.Equals("/api/auth/reset-password", StringComparison.OrdinalIgnoreCase);
 }
