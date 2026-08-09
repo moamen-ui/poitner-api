@@ -394,19 +394,30 @@ public class ProjectService : IProjectService
     public async Task<Result<int>> EnsureAsync(string key)
     {
         var keyNormalized = key.Trim().ToLower();
-        // Resolve by the caller's own scope: widget stakeholders are registered UNDER the project's
-        // owner, so their OwnerFor equals the project's owner for any owner value — tenant, super-admin,
-        // or null (legacy/super-admin-global projects like the marketing landing). Do NOT fall back to
-        // the caller's user id here (that broke null-owner project resolution); the id fallback belongs
-        // only on the write side (create/update stamping).
-        var ownerId = TenantStamp.OwnerFor(_currentUser);
+        // Resolve by the caller's own scope. Widget stakeholders are registered UNDER the project's
+        // owner, so their OwnerFor (= tenant) equals the project's owner. The SUPER-ADMIN case has
+        // see-sawed twice (3125857 ↔ d41f023): the write side stamps their projects with
+        // OwnerId = their own id, but legacy/global projects (e.g. the marketing landing) have
+        // OwnerId = null — so a super-admin must match EITHER, preferring their own on a key
+        // collision. Never key-only: that would resolve other tenants' projects.
+        var query = _unitOfWork.Repository<Project>()
+            .Query()
+            .AsNoTracking()
+            .Where(p => p.DeletedAt == null && p.Key == keyNormalized);
 
         // EF query filter is the primary tenant boundary; the explicit OwnerId match is
         // belt-and-suspenders to prevent a scoped admin's key resolving to a global project.
-        var project = await _unitOfWork.Repository<Project>()
-            .Query()
-            .AsNoTracking()
-            .Where(p => p.DeletedAt == null && p.Key == keyNormalized && p.OwnerId == ownerId)
+        if (_currentUser.IsSuperAdmin)
+            query = query
+                .Where(p => p.OwnerId == _currentUser.Id || p.OwnerId == null)
+                .OrderBy(p => p.OwnerId == null ? 1 : 0);
+        else
+        {
+            var ownerId = TenantStamp.OwnerFor(_currentUser);
+            query = query.Where(p => p.OwnerId == ownerId);
+        }
+
+        var project = await query
             .Select(p => new { p.Id, p.IsActive })
             .FirstOrDefaultAsync();
 
