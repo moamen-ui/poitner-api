@@ -27,51 +27,16 @@ builder.Services.AddJwtAuth(builder.Configuration);
 builder.Services.AddAuthorization();
 builder.Services.AddHostedService<DemoCleanupService>();
 
-builder.Services.AddRateLimiter(o =>
-{
-    // Per-IP fixed-window limiters (partition by client IP, honoring X-Forwarded-For
-    // via ForwardedHeaders) so one abuser can't exhaust the limit for everyone.
-    static string ClientIp(HttpContext ctx) =>
-        ctx.Connection.RemoteIpAddress?.ToString() ?? "unknown";
-
-    o.AddPolicy("signup", ctx =>
-        System.Threading.RateLimiting.RateLimitPartition.GetFixedWindowLimiter(
-            ClientIp(ctx),
-            _ => new System.Threading.RateLimiting.FixedWindowRateLimiterOptions
-            {
-                PermitLimit = 5,
-                Window = TimeSpan.FromHours(1),
-                QueueLimit = 0
-            }));
-
-    o.AddPolicy("demo", ctx =>
-        System.Threading.RateLimiting.RateLimitPartition.GetFixedWindowLimiter(
-            ClientIp(ctx),
-            _ => new System.Threading.RateLimiting.FixedWindowRateLimiterOptions
-            {
-                PermitLimit = 3,
-                Window = TimeSpan.FromHours(1),
-                QueueLimit = 0
-            }));
-
-    // Light limit for the anonymous public plans endpoint (landing hits it on every page load).
-    o.AddPolicy("plans", ctx =>
-        System.Threading.RateLimiting.RateLimitPartition.GetFixedWindowLimiter(
-            ClientIp(ctx),
-            _ => new System.Threading.RateLimiting.FixedWindowRateLimiterOptions
-            {
-                PermitLimit = 60,
-                Window = TimeSpan.FromMinutes(1),
-                QueueLimit = 0
-            }));
-});
+builder.Services.AddApiRateLimiting();
 
 // CORS is split by audience. The WIDGET is embedded on arbitrary customer sites and calls the
 // public/widget endpoints (comments, replies, uploads, statuses, roles, login, register,
 // predefined-actions) cross-origin from those unknown origins — so the DEFAULT policy stays
 // open-origin (bearer API, no cookies → no AllowCredentials, so this is not CSRF-exploitable).
 // login is a widget endpoint: the widget performs in-page login from whatever origin hosts it,
-// so it cannot sit behind an origin allow-list; the per-IP "signup" rate limit guards it instead.
+// so it cannot sit behind an origin allow-list. Login is deliberately NOT rate-limited (a shared
+// NAT would exhaust any per-IP budget and lock everyone out); the "signup" limiter covers the
+// account-creation/password-email surface only (see RateLimitingExtensions + AuthRateLimitingTests).
 // The DASHBOARD-only surface (/api/admin/* and the dashboard-only auth endpoints: me /
 // forgot-password / reset-password) is locked to an allow-list of known dashboard origins via the
 // "dashboard" policy, applied by route below. This shrinks the origins that can drive privileged
