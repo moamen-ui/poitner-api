@@ -50,6 +50,13 @@ string[] dashboardOrigins =
     "https://demo.pointer.moamen.work",
     "https://pointer.moamen.work",
 ];
+// Cors__ExtraDashboardOrigins (comma-separated) extends the allow-list per environment —
+// local dev sets it to the localhost dev-server origins in .env; prod leaves it unset.
+var extraDashboardOrigins = builder
+    .Configuration["Cors:ExtraDashboardOrigins"]
+    ?.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+if (extraDashboardOrigins is { Length: > 0 })
+    dashboardOrigins = [.. dashboardOrigins, .. extraDashboardOrigins];
 builder.Services.AddCors(o =>
 {
     o.AddDefaultPolicy(p => p.AllowAnyOrigin().AllowAnyHeader().AllowAnyMethod());
