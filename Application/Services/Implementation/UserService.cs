@@ -223,6 +223,7 @@ public class UserService : IUserService
         RoleName = role?.Name ?? string.Empty,
         IsAdmin = role?.GrantsAdmin ?? false,
         IsActive = user.IsActive,
+        CreatedAt = user.CreatedAt,
         ApprovalStatus = user.ApprovalStatus
     };
 }

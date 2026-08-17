@@ -326,7 +326,7 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
     if (this._disabled) return; // project disabled — stay torn down
     // Collapsed: show only a small launcher that re-opens the overlay.
     if (this._collapsed) {
-      const n = (this.comments || []).filter((c) => c.status !== 'archived').length;
+      const n = (this.comments || []).filter((c) => c.status !== 'archived' && c.status !== 'applied').length;
       this.root.innerHTML = TPL.launcher(n, this.launcherPosition, pageIsRtl());
       const launcher = this.root.querySelector('#pf-launcher');
       if (launcher) launcher.addEventListener('click', () => this.showOverlay());
@@ -992,8 +992,8 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
     if (this.authorFilter && !authors.some((a) => a.id === this.authorFilter)) this.authorFilter = null;
     const scoped = this.scopeByWho(all);
     const counts: Record<string, number> = {
-      // "All" means active (non-archived); archived move out to their own chip.
-      all: scoped.filter((c) => c.status !== 'archived').length,
+      // "All" means active (non-archived, non-completed); those move out to their own chips.
+      all: scoped.filter((c) => c.status !== 'archived' && c.status !== 'applied').length,
       open: scoped.filter((c) => c.status === 'open').length,
       'pending-apply': scoped.filter((c) => c.status === 'pending-apply').length,
       applied: scoped.filter((c) => c.status === 'applied').length,
@@ -1001,7 +1001,7 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
     };
 
     const countEl = this.root.querySelector('#pf-count');
-    if (countEl) countEl.textContent = String(all.filter((c) => c.status !== 'archived').length);
+    if (countEl) countEl.textContent = String(all.filter((c) => c.status !== 'archived' && c.status !== 'applied').length);
 
     const filtersEl = this.root.querySelector('#pf-filters');
     if (filtersEl) {
@@ -1027,7 +1027,7 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
     if (!list) return;
 
     const shown = this.statusFilter === 'all'
-      ? scoped.filter((c) => c.status !== 'archived')
+      ? scoped.filter((c) => c.status !== 'archived' && c.status !== 'applied')
       : scoped.filter((c) => c.status === this.statusFilter);
     if (!scoped.length) {
       list.innerHTML = TPL.empty(this.mineOnly
@@ -1075,7 +1075,7 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
   renderPins(): void {
     const wrap = this.root && this.root.querySelector('#pf-pins');
     if (!wrap) return;
-    const all = this.pageComments().filter((c) => c.status !== 'archived');
+    const all = this.pageComments().filter((c) => c.status !== 'archived' && c.status !== 'applied');
     const here = this.scopeByWho(all);
     wrap.innerHTML = here.map((c, i) => {
       const el = matchElement(c);

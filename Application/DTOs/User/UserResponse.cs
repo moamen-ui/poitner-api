@@ -14,6 +14,12 @@ public class UserResponse
     public bool IsAdmin { get; set; }
     public bool IsActive { get; set; }
 
+    /// <summary>
+    /// When the account was created — i.e. when the user requested access. UTC. Surfaced so the
+    /// dashboards can show the request datetime for pending/rejected users.
+    /// </summary>
+    public DateTime CreatedAt { get; set; }
+
     /// <summary>Serialized as the enum NAME ("Approved" | "Pending" | "Rejected").</summary>
     [JsonConverter(typeof(JsonStringEnumConverter))]
     public ApprovalStatus ApprovalStatus { get; set; }

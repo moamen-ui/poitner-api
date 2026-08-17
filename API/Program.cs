@@ -214,7 +214,24 @@ app.Use(async (ctx, next) =>
     await next();
 });
 
-app.UseStaticFiles();
+app.UseStaticFiles(new StaticFileOptions
+{
+    OnPrepareResponse = ctx =>
+    {
+        // pointer.js/pointer.css are the widget every consumer site embeds via a long-lived
+        // <script>/<link> tag. With no Cache-Control here, browsers fall back to heuristic
+        // freshness off the (often old) Last-Modified date and can keep serving a stale
+        // cached copy for a very long time — a shipped fix silently never reaches them.
+        // "no-cache" still lets the browser cache the bytes, it just forces a cheap
+        // conditional revalidation (304 via ETag) on every load, so updates land immediately.
+        var name = ctx.File.Name;
+        if (name.Equals("pointer.js", StringComparison.OrdinalIgnoreCase)
+            || name.Equals("pointer.css", StringComparison.OrdinalIgnoreCase))
+        {
+            ctx.Context.Response.Headers.CacheControl = "no-cache";
+        }
+    },
+});
 
 // Route-based CORS: lock the dashboard-only surface (/api/admin/* + dashboard-only auth
 // endpoints) to the allow-list, and leave the open default policy for the widget/public
