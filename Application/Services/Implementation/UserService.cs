@@ -57,7 +57,18 @@ public class UserService : IUserService
         if (!_currentUser.IsSuperAdmin && (role.GrantsAdmin || role.IsSuperAdmin))
             return Result<UserResponse>.Failure(MessageKeys.Role.EscalationNotAllowed);
 
-        var ownerId = TenantStamp.OwnerFor(_currentUser);
+        var publicId = Guid.NewGuid();
+
+        // "Workspace Admin" is the global, self-owning tenant-owner role (see
+        // AuthService.RegisterAdminAsync, which stamps OwnerId = its own new PublicId). A user
+        // assigned this role here owns a BRAND NEW workspace, not the caller's — falling back to
+        // TenantStamp.OwnerFor(_currentUser) instead left them with OwnerId == null (null for a
+        // super-admin caller, since a super-admin has no tenant to hand down). That broke them in
+        // two ways: no `tenant` JWT claim (JwtTokenService only adds it when OwnerId is set), and
+        // everything they create afterwards (e.g. projects) falls back to a throwaway per-request
+        // id that never matches their own null-tenant query-filter scope — so it "creates" but is
+        // immediately invisible to them.
+        var ownerId = role.Name == "Workspace Admin" ? publicId : TenantStamp.OwnerFor(_currentUser);
 
         // MaxSeats: count active users owned by this tenant (direct-add path). Grandfather-safe.
         if (ownerId is Guid seatOwner)
@@ -77,7 +88,7 @@ public class UserService : IUserService
             PasswordHash = _passwordHasher.Hash(request.Password),
             DisplayName = request.DisplayName,
             RoleId = role.Id,
-            PublicId = Guid.NewGuid(),
+            PublicId = publicId,
             IsActive = true,
             OwnerId = ownerId
         };
