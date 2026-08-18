@@ -1,4 +1,3 @@
-using System.Text.RegularExpressions;
 using Microsoft.EntityFrameworkCore;
 using Pointer.Application.Abstractions;
 using Pointer.Application.Common;
@@ -35,23 +34,8 @@ public class StatusAdminService(IUnitOfWork unitOfWork, ICurrentUser currentUser
         if (!Enum.IsDefined(typeof(CommentStatus), value))
             return Result<StatusAdminItem>.NotFound("Unknown status");
 
-        // Inline validation
-        if (request.Label is not null)
-        {
-            if (string.IsNullOrWhiteSpace(request.Label))
-                return Result<StatusAdminItem>.Failure("Label must not be empty.");
-            if (request.Label.Length > 64)
-                return Result<StatusAdminItem>.Failure("Label must be 64 characters or fewer.");
-        }
-
-        if (request.Color is not null)
-        {
-            if (!Regex.IsMatch(request.Color, "^#[0-9a-fA-F]{6}$"))
-                return Result<StatusAdminItem>.Failure("Color must be a valid hex color (e.g. #0ea5e9).");
-        }
-
-        if (request.Order is not null && request.Order < 0)
-            return Result<StatusAdminItem>.Failure("Order must be 0 or greater.");
+        // Label/Color/Order format is enforced upfront by UpdateStatusPresentationValidator
+        // (FluentValidation auto-validation) — not re-checked here.
 
         var owner = TenantStamp.OwnerFor(_currentUser);
 

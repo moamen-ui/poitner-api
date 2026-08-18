@@ -1,12 +1,12 @@
 using FluentValidation;
-using Pointer.Application.DTOs.User;
+using Pointer.Application.DTOs.Tenant;
 using Pointer.Application.Resources;
 
 namespace Pointer.Application.Validators;
 
-public class CreateUserValidator : AbstractValidator<CreateUserRequest>
+public class CreateTenantValidator : AbstractValidator<CreateTenantRequest>
 {
-    public CreateUserValidator()
+    public CreateTenantValidator()
     {
         RuleFor(x => x.Email)
             .NotEmpty().WithMessage(MessageKeys.User.EmailRequired)
@@ -18,8 +18,5 @@ public class CreateUserValidator : AbstractValidator<CreateUserRequest>
 
         RuleFor(x => x.DisplayName)
             .NotEmpty().WithMessage(MessageKeys.User.DisplayNameRequired);
-
-        RuleFor(x => x.RoleId)
-            .GreaterThan(0).WithMessage(MessageKeys.Role.Invalid);
     }
 }

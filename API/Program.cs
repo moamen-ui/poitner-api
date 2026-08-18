@@ -1,5 +1,6 @@
 using FluentValidation.AspNetCore;
 using Microsoft.AspNetCore.HttpOverrides;
+using MicroElements.Swashbuckle.FluentValidation.AspNetCore;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.OpenApi.Models;
@@ -112,6 +113,10 @@ builder.Services.AddSwaggerGen(c =>
         }
     );
 });
+// Reflects every registered FluentValidation rule (NotEmpty → required, MaximumLength → maxLength,
+// Matches → pattern, IsInEnum → enum, etc.) into the generated OpenAPI schema, so a consumer reading
+// /swagger can see a DTO's real constraints instead of guessing from the 400 body at runtime.
+builder.Services.AddFluentValidationRulesToSwagger();
 
 var app = builder.Build();
 

@@ -11,6 +11,7 @@ public static class MessageKeys
         public const string Disabled = "Your account is disabled.";
         public const string RegistrationSubmitted = "Request submitted for approval.";
         public const string AccountExists = "An account with this email already exists.";
+        public const string TokenRequired = "Reset token is required.";
     }
 
     public static class User
@@ -51,6 +52,22 @@ public static class MessageKeys
         public const string NotFound = "User not found.";
     }
 
+    public static class Status
+    {
+        public const string LabelRequired = "Label must not be empty.";
+        public const string ColorInvalidFormat = "Color must be a valid hex color (e.g. #0ea5e9).";
+        public const string OrderInvalid = "Order must be 0 or greater.";
+    }
+
+    public static class Branding
+    {
+        public const string PrimaryColorInvalidFormat = "Primary color must be a valid hex color (e.g. #2563eb or #fff).";
+        public const string UrlAppInvalidFormat = "App URL must be an http(s) URL.";
+        public const string UrlDemoInvalidFormat = "Demo URL must be an http(s) URL.";
+        public const string UrlDocsInvalidFormat = "Docs URL must be an http(s) URL.";
+        public const string UrlLandingInvalidFormat = "Landing URL must be an http(s) URL.";
+    }
+
     public static class Comment
     {
         public const string NotFound = "Comment not found.";
@@ -58,6 +75,7 @@ public static class MessageKeys
         public const string Created = "Comment created.";
         public const string Applied = "Comment marked applied.";
         public const string InvalidPredefinedAction = "The selected action is unavailable. Please refresh and try again.";
+        public const string StatusInvalid = "Invalid comment status.";
     }
 
     public static class PredefinedAction

@@ -310,10 +310,8 @@ public class CommentService : ICommentService
         if (comment.AuthorId != editorId)
             return Result<CommentResponse>.Failure("You can only edit your own comments.");
 
-        var body = (request.Body ?? string.Empty).Trim();
-        if (body.Length == 0)
-            return Result<CommentResponse>.Failure(MessageKeys.Comment.BodyRequired);
-        comment.Body = body;
+        // Non-empty/length enforced upfront by EditCommentValidator (FluentValidation auto-validation).
+        comment.Body = request.Body.Trim();
 
         // Optionally remove the uploaded screenshot (clear the reference + delete the file).
         if (request.RemoveScreenshot && !string.IsNullOrEmpty(comment.Element.ScreenshotUrl))

@@ -8,6 +8,13 @@
 
   <ItemGroup>
     <PackageReference Include="FluentValidation.AspNetCore" Version="11.3.0" />
+    <!-- Pinned to 6.0.0: the last version whose FluentValidation dependency range ([10.0.0,12.0.0))
+         is compatible with FluentValidation.AspNetCore 11.3.0 (abandoned at 11.3.1, never released
+         a FluentValidation-12-compatible build). Versions >= 6.1.0 hard-require FluentValidation
+         12.0.0, which silently breaks FluentValidation.AspNetCore's auto-validation AT RUNTIME
+         (compiles fine, but every validated request 500s) — do not bump without also dropping
+         FluentValidation.AspNetCore for a manual validation pipeline. -->
+    <PackageReference Include="MicroElements.Swashbuckle.FluentValidation" Version="6.0.0" />
     <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="8.*" />
     <PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="8.0.21" />
     <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="8.0.11">

@@ -1,4 +1,3 @@
-using System.Text.RegularExpressions;
 using Pointer.Application.DTOs.Branding;
 using Pointer.Application.Response;
 using Pointer.Application.Services.Interfaces;
@@ -16,9 +15,6 @@ public class BrandingService(ISettingsService settings) : IBrandingService
     private const string DefaultUrlDocs      = "https://github.com/moamen-ui/poitner-api#readme";
     private const string DefaultUrlLanding   = "https://pointer.moamen.work";
 
-    private static readonly Regex HexColorRegex =
-        new(@"^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$", RegexOptions.Compiled);
-
     public async Task<Result<BrandingResponse>> GetAsync(string publicBase, IReadOnlySet<string> existingKinds)
     {
         var response = await BuildResponseAsync(publicBase, existingKinds);
@@ -30,22 +26,8 @@ public class BrandingService(ISettingsService settings) : IBrandingService
         string publicBase,
         IReadOnlySet<string> existingKinds)
     {
-        // Validate
-        if (!string.IsNullOrWhiteSpace(dto.PrimaryColor) && !HexColorRegex.IsMatch(dto.PrimaryColor))
-            return Result<BrandingResponse>.Failure(
-                "primaryColor must be a valid hex color (e.g. #2563eb or #fff).");
-
-        if (dto.Urls != null)
-        {
-            if (!string.IsNullOrWhiteSpace(dto.Urls.App)     && !IsHttpUrl(dto.Urls.App))
-                return Result<BrandingResponse>.Failure("urls.app must be an http(s) URL.");
-            if (!string.IsNullOrWhiteSpace(dto.Urls.Demo)    && !IsHttpUrl(dto.Urls.Demo))
-                return Result<BrandingResponse>.Failure("urls.demo must be an http(s) URL.");
-            if (!string.IsNullOrWhiteSpace(dto.Urls.Docs)    && !IsHttpUrl(dto.Urls.Docs))
-                return Result<BrandingResponse>.Failure("urls.docs must be an http(s) URL.");
-            if (!string.IsNullOrWhiteSpace(dto.Urls.Landing) && !IsHttpUrl(dto.Urls.Landing))
-                return Result<BrandingResponse>.Failure("urls.landing must be an http(s) URL.");
-        }
+        // PrimaryColor/Urls format is enforced upfront by BrandingWriteDtoValidator
+        // (FluentValidation auto-validation) — not re-checked here.
 
         // Persist only non-null fields (patch semantics)
         if (dto.ProductName != null)
@@ -127,8 +109,4 @@ public class BrandingService(ISettingsService settings) : IBrandingService
             return null;
         return $"{publicBase}/api/branding/asset/{kind}?v={version}";
     }
-
-    private static bool IsHttpUrl(string url)
-        => Uri.TryCreate(url, UriKind.Absolute, out var uri)
-           && (uri.Scheme == Uri.UriSchemeHttp || uri.Scheme == Uri.UriSchemeHttps);
 }
