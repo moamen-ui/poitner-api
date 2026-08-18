@@ -28,6 +28,7 @@ public static class MessageKeys
         public const string NotFound = "Project not found.";
         public const string KeyTaken = "Project key already exists.";
         public const string KeyRequired = "Project key is required.";
+        public const string KeyInvalidFormat = "Project key must contain only lowercase letters, numbers, dots (.), underscores (_), or hyphens (-).";
         public const string Disabled = "This project has been disabled.";
         public const string KeyAmbiguous = "This project key matches more than one workspace. Please contact your workspace administrator.";
     }

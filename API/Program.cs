@@ -21,6 +21,21 @@ builder.Services.AddEndpointsApiExplorer();
 // (CreateCommentRequest, CreateProjectRequest, AddReplyRequest, etc.) return 400 on invalid input
 // before reaching the controller/service. Validators themselves are registered in AddApplication().
 builder.Services.AddFluentValidationAutoValidation();
+// Auto-validation's default 400 is ASP.NET's own ValidationProblemDetails shape — nothing like the
+// Result envelope every other endpoint returns (isSuccess/message/data), which breaks the
+// dashboards' envelope-unwrapping interceptor and error-message extraction. Reshape it to match.
+builder.Services.Configure<Microsoft.AspNetCore.Mvc.ApiBehaviorOptions>(options =>
+{
+    options.InvalidModelStateResponseFactory = context =>
+    {
+        var message = context.ModelState.Values
+            .SelectMany(v => v.Errors)
+            .Select(e => e.ErrorMessage)
+            .FirstOrDefault(m => !string.IsNullOrWhiteSpace(m))
+            ?? "Invalid request.";
+        return new Microsoft.AspNetCore.Mvc.BadRequestObjectResult(Result.Failure(message));
+    };
+});
 builder.Services.AddApplication();
 builder.Services.AddInfrastructure(builder.Configuration);
 builder.Services.AddJwtAuth(builder.Configuration);
