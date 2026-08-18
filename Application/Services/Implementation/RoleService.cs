@@ -231,12 +231,22 @@ public class RoleService : IRoleService
         });
     }
 
-    private static RoleResponse MapToResponse(Role role) => new()
+    private RoleResponse MapToResponse(Role role) => new()
     {
         Id = role.Id,
         Name = role.Name,
         GrantsAdmin = role.GrantsAdmin,
         IsSystem = role.IsSystem,
-        IsActive = role.IsActive
+        IsActive = role.IsActive,
+        CanManage = CanManage(role)
     };
+
+    /// <summary>
+    /// The same two guards Update/Delete apply, evaluated for the current caller. Kept here (not in
+    /// the clients) so the rule lives in one place: system roles are immutable for everyone, and a
+    /// scoped admin may only manage roles its own tenant owns — the Role query filter deliberately
+    /// lets it SEE global roles it cannot touch.
+    /// </summary>
+    private bool CanManage(Role role) =>
+        !role.IsSystem && (_currentUser.IsSuperAdmin || role.OwnerId == _currentUser.TenantId);
 }
