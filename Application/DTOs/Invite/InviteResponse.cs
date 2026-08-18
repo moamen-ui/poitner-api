@@ -18,4 +18,12 @@ public class InviteResponse
     public DateTime ExpiresAt { get; set; }
     public int? MaxUses { get; set; }
     public int Uses { get; set; }
+
+    /// <summary>
+    /// True only on the response to POST (create): the invite email was just sent to
+    /// <see cref="Email"/>. Always false on list rows — sending is a one-time side effect of
+    /// creation, not a persisted/recomputed invite property. False also means "share the link
+    /// yourself" — either no email was set, email is globally disabled, or the send failed.
+    /// </summary>
+    public bool EmailSent { get; set; }
 }

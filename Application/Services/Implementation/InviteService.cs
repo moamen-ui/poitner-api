@@ -26,6 +26,8 @@ public class InviteService : IInviteService
     private readonly ITokenService _tokenService;
     private readonly ISettingsService _settings;
     private readonly IEntitlementService _entitlements;
+    private readonly IEmailService _emailService;
+    private readonly IBrandingService _branding;
 
     private const int DefaultTtlDays = 7;
     private const string DefaultAppBaseUrl = "https://app.pointer.moamen.work";
@@ -36,7 +38,9 @@ public class InviteService : IInviteService
         IPasswordHasher passwordHasher,
         ITokenService tokenService,
         ISettingsService settings,
-        IEntitlementService entitlements)
+        IEntitlementService entitlements,
+        IEmailService emailService,
+        IBrandingService branding)
     {
         _unitOfWork = unitOfWork;
         _currentUser = currentUser;
@@ -44,6 +48,8 @@ public class InviteService : IInviteService
         _tokenService = tokenService;
         _settings = settings;
         _entitlements = entitlements;
+        _emailService = emailService;
+        _branding = branding;
     }
 
     // ── Admin (auth, tenant-scoped) ────────────────────────────────────────────
@@ -89,7 +95,26 @@ public class InviteService : IInviteService
         await _unitOfWork.SaveChangesAsync();
 
         var url = await BuildJoinUrlAsync(invite.Code);
-        return Result<InviteResponse>.Success(MapToResponse(invite, role?.Name, url), MessageKeys.Invite.Created);
+
+        // Best-effort: an invite is still fully usable via its Url if the email never lands (email
+        // disabled, capped, or send failure) — the admin can copy/share it manually. Never fail the
+        // invite itself over a notification (mirrors UserService.SafeSendAsync).
+        var emailSent = false;
+        if (emailNormalized != null)
+        {
+            var brand = await _branding.BuildResponseAsync("", new HashSet<string>());
+            try
+            {
+                emailSent = await _emailService.SendAsync(emailNormalized,
+                    $"You're invited to {brand.ProductName}",
+                    BuildInviteEmailHtml(url, role?.Name, brand.ProductName, invite.ExpiresAt));
+            }
+            catch { /* logged inside the sender; ignore here */ }
+        }
+
+        var response = MapToResponse(invite, role?.Name, url);
+        response.EmailSent = emailSent;
+        return Result<InviteResponse>.Success(response, MessageKeys.Invite.Created);
     }
 
     public async Task<Result<List<InviteResponse>>> ListAsync()
@@ -390,6 +415,19 @@ public class InviteService : IInviteService
 
     private static string BuildJoinUrl(string appBaseUrl, string code) =>
         $"{appBaseUrl}/join?code={Uri.EscapeDataString(code)}";
+
+    private static string BuildInviteEmailHtml(string joinUrl, string? roleName, string productName, DateTime expiresAtUtc)
+    {
+        var roleLine = roleName != null
+            ? $"<p style=\"margin:0 0 16px\">You've been invited to join as <b>{roleName}</b>.</p>"
+            : string.Empty;
+        return $@"<div style=""font-family:system-ui,sans-serif;color:#0f172a;line-height:1.6"">
+  <h2 style=""margin:0 0 8px"">You're invited to {productName} 🐕</h2>
+  {roleLine}
+  <p style=""margin:0 0 16px""><a href=""{joinUrl}"" style=""display:inline-block;background:#2563eb;color:#fff;padding:10px 20px;border-radius:8px;text-decoration:none"">Accept invite →</a></p>
+  <p style=""margin:0;color:#475569;font-size:13px"">This link expires on {expiresAtUtc:yyyy-MM-dd HH:mm} UTC. If you weren't expecting this, you can ignore this email.</p>
+</div>";
+    }
 
     private static InviteResponse MapToResponse(Invite i, string? roleName, string url) => new()
     {

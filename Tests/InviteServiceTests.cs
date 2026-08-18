@@ -1,6 +1,8 @@
 using Microsoft.EntityFrameworkCore;
 using Pointer.Application.Abstractions;
+using Pointer.Application.DTOs.Branding;
 using Pointer.Application.DTOs.Invite;
+using Pointer.Application.Response;
 using Pointer.Application.Services.Implementation;
 using Pointer.Application.Services.Interfaces;
 using Pointer.Domain.Entity;
@@ -48,13 +50,37 @@ public class InviteServiceTests
         public Task SetIntAsync(string key, int value) => Task.CompletedTask;
     }
 
+    private sealed class SpyEmailService : IEmailService
+    {
+        public List<(string To, string Subject, string Html)> Sent { get; } = new();
+        public bool ShouldSucceed { get; set; } = true;
+        public Task<bool> SendAsync(string to, string subject, string htmlBody, CancellationToken ct = default)
+        {
+            Sent.Add((to, subject, htmlBody));
+            return Task.FromResult(ShouldSucceed);
+        }
+    }
+
+    private sealed class FakeBrandingService : IBrandingService
+    {
+        private static BrandingResponse Response() => new() { ProductName = "Pointer" };
+        public Task<Result<BrandingResponse>> GetAsync(string publicBase, IReadOnlySet<string> existingKinds) =>
+            Task.FromResult(Result<BrandingResponse>.Success(Response()));
+        public Task<Result<BrandingResponse>> UpdateAsync(BrandingWriteDto dto, string publicBase, IReadOnlySet<string> existingKinds) =>
+            Task.FromResult(Result<BrandingResponse>.Success(Response()));
+        public Task<int> BumpVersionAsync() => Task.FromResult(0);
+        public Task<BrandingResponse> BuildResponseAsync(string publicBase, IReadOnlySet<string> existingKinds) =>
+            Task.FromResult(Response());
+    }
+
     private static AppDbContext BuildContext(ICurrentUser user, string dbName) =>
         new(new DbContextOptionsBuilder<AppDbContext>().UseInMemoryDatabase(dbName).Options, user, new Microsoft.Extensions.Configuration.ConfigurationBuilder().Build());
 
-    private static InviteService BuildService(ICurrentUser user, AppDbContext db)
+    private static InviteService BuildService(ICurrentUser user, AppDbContext db, IEmailService? email = null, IBrandingService? branding = null)
     {
         var uow = new UnitOfWork(db);
-        return new InviteService(uow, user, new FakePasswordHasher(), new FakeTokenService(), new FakeSettings(), new PassThroughEntitlements());
+        return new InviteService(uow, user, new FakePasswordHasher(), new FakeTokenService(), new FakeSettings(),
+            new PassThroughEntitlements(), email ?? new SpyEmailService(), branding ?? new FakeBrandingService());
     }
 
     // Seeds a tenant with an admin user (for the workspace-name preview) and a non-admin role,
@@ -129,6 +155,61 @@ public class InviteServiceTests
 
         var stored = db.Invites.IgnoreQueryFilters().Single();
         Assert.Equal(tenant, stored.OwnerId); // non-null tenant boundary
+    }
+
+    [Fact]
+    public async Task Create_WithEmail_SendsInviteEmail_AndReportsEmailSent()
+    {
+        var dbName = Guid.NewGuid().ToString();
+        var (tenant, roleId) = SeedTenant(dbName);
+        var admin = new FakeCurrentUser { Id = Guid.NewGuid(), TenantId = tenant, IsAdmin = true };
+        using var db = BuildContext(admin, dbName);
+        var spy = new SpyEmailService();
+        var svc = BuildService(admin, db, spy);
+
+        var result = await svc.CreateAsync(new CreateInviteRequest { RoleId = roleId, Email = "New@Invitee.com" });
+
+        Assert.True(result.IsSuccess);
+        Assert.True(result.Data!.EmailSent);
+        Assert.Single(spy.Sent);
+        Assert.Equal("new@invitee.com", spy.Sent[0].To); // normalized, matches the stored Invite.Email
+        Assert.Contains(result.Data.Url, spy.Sent[0].Html);
+    }
+
+    [Fact]
+    public async Task Create_WithoutEmail_DoesNotSendEmail()
+    {
+        var dbName = Guid.NewGuid().ToString();
+        var (tenant, roleId) = SeedTenant(dbName);
+        var admin = new FakeCurrentUser { Id = Guid.NewGuid(), TenantId = tenant, IsAdmin = true };
+        using var db = BuildContext(admin, dbName);
+        var spy = new SpyEmailService();
+        var svc = BuildService(admin, db, spy);
+
+        var result = await svc.CreateAsync(new CreateInviteRequest { RoleId = roleId });
+
+        Assert.True(result.IsSuccess);
+        Assert.False(result.Data!.EmailSent);
+        Assert.Empty(spy.Sent);
+    }
+
+    [Fact]
+    public async Task Create_EmailSendFails_InviteStillSucceeds_EmailSentFalse()
+    {
+        // The invite link itself is always usable — a failed notification must never block creation
+        // (mirrors UserService.SafeSendAsync's "best-effort" contract).
+        var dbName = Guid.NewGuid().ToString();
+        var (tenant, roleId) = SeedTenant(dbName);
+        var admin = new FakeCurrentUser { Id = Guid.NewGuid(), TenantId = tenant, IsAdmin = true };
+        using var db = BuildContext(admin, dbName);
+        var spy = new SpyEmailService { ShouldSucceed = false };
+        var svc = BuildService(admin, db, spy);
+
+        var result = await svc.CreateAsync(new CreateInviteRequest { RoleId = roleId, Email = "fails@x.com" });
+
+        Assert.True(result.IsSuccess);
+        Assert.False(result.Data!.EmailSent);
+        Assert.Single(spy.Sent); // it DID try
     }
 
     [Fact]
