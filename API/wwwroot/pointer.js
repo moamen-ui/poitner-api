@@ -691,16 +691,16 @@
   }
 
   // src/shortcut.ts
-  var DEFAULT_SHORTCUT = { key: "c", alt: true, shift: true, ctrl: true, meta: false };
+  var DEFAULT_SHORTCUT = { code: "KeyC", alt: true, shift: true, ctrl: true, meta: false };
   var MODIFIER_TOKENS = /* @__PURE__ */ new Set(["ctrl", "alt", "shift", "meta"]);
   function parseShortcut(raw) {
     if (!raw) return { ...DEFAULT_SHORTCUT };
-    const parts = raw.toLowerCase().split("+").map((p) => p.trim()).filter(Boolean);
-    const key = parts[parts.length - 1];
-    if (!key || MODIFIER_TOKENS.has(key)) return { ...DEFAULT_SHORTCUT };
-    const mods = new Set(parts.slice(0, -1));
+    const parts = raw.split("+").map((p) => p.trim()).filter(Boolean);
+    const code = parts[parts.length - 1];
+    if (!code || MODIFIER_TOKENS.has(code.toLowerCase())) return { ...DEFAULT_SHORTCUT };
+    const mods = new Set(parts.slice(0, -1).map((p) => p.toLowerCase()));
     return {
-      key,
+      code,
       ctrl: mods.has("ctrl"),
       alt: mods.has("alt"),
       shift: mods.has("shift"),
@@ -713,31 +713,40 @@
     if (binding.alt) parts.push("alt");
     if (binding.shift) parts.push("shift");
     if (binding.meta) parts.push("meta");
-    parts.push(binding.key.toLowerCase());
+    parts.push(binding.code);
     return parts.join("+");
   }
   function matchesShortcut(e, binding) {
-    return e.key.toLowerCase() === binding.key.toLowerCase() && e.altKey === binding.alt && e.shiftKey === binding.shift && e.ctrlKey === binding.ctrl && e.metaKey === binding.meta;
+    return e.code === binding.code && e.altKey === binding.alt && e.shiftKey === binding.shift && e.ctrlKey === binding.ctrl && e.metaKey === binding.meta;
   }
   function isMacPlatform() {
     if (typeof navigator === "undefined") return false;
     return /Mac|iPhone|iPad|iPod/.test(navigator.platform || navigator.userAgent || "");
   }
+  function codeToLabel(code) {
+    if (code.startsWith("Key")) return code.slice(3);
+    if (code.startsWith("Digit")) return code.slice(5);
+    if (code === "Space") return "Space";
+    if (code === "Escape") return "Esc";
+    if (code === "Enter") return "Enter";
+    return code;
+  }
   function formatShortcut(binding, mac = isMacPlatform()) {
+    const label = codeToLabel(binding.code);
     const parts = [];
     if (mac) {
       if (binding.ctrl) parts.push("⌃");
       if (binding.alt) parts.push("⌥");
       if (binding.shift) parts.push("⇧");
       if (binding.meta) parts.push("⌘");
-      parts.push(binding.key.length === 1 ? binding.key.toUpperCase() : binding.key);
+      parts.push(label);
       return parts.join("");
     }
     if (binding.ctrl) parts.push("Ctrl");
     if (binding.meta) parts.push("Win");
     if (binding.alt) parts.push("Alt");
     if (binding.shift) parts.push("Shift");
-    parts.push(binding.key.length === 1 ? binding.key.toUpperCase() : binding.key);
+    parts.push(label);
     return parts.join("+");
   }
 
@@ -1163,7 +1172,7 @@
           return;
         }
         const binding = {
-          key: e.key.length === 1 ? e.key.toLowerCase() : e.key,
+          code: e.code,
           alt: e.altKey,
           shift: e.shiftKey,
           ctrl: e.ctrlKey,

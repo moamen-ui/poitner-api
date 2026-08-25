@@ -279,7 +279,7 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
         return;
       }
       const binding: ShortcutBinding = {
-        key: e.key.length === 1 ? e.key.toLowerCase() : e.key,
+        code: e.code,
         alt: e.altKey,
         shift: e.shiftKey,
         ctrl: e.ctrlKey,

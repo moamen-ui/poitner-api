@@ -12,6 +12,6 @@ public class MeResponse
     public string? Language { get; set; }
     public string? Theme { get; set; }
 
-    /// <summary>Per-user "add comment" widget shortcut, e.g. "alt+shift+c". Null = widget default.</summary>
+    /// <summary>Per-user "add comment" widget shortcut, e.g. "ctrl+alt+shift+KeyC". Null = widget default.</summary>
     public string? AddCommentShortcut { get; set; }
 }

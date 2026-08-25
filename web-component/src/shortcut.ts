@@ -13,31 +13,39 @@
 // pre-bound by a browser, OS, or host page.
 
 export interface ShortcutBinding {
-  /** KeyboardEvent.key for the non-modifier key, lowercased for single characters. */
-  key: string;
+  /**
+   * KeyboardEvent.code — the PHYSICAL key position (e.g. "KeyC", "Digit1", "F5"), not
+   * KeyboardEvent.key. This matters specifically because of Option/Alt on macOS: holding it
+   * remaps what `key` reports for letter keys (Option+Shift+C can report "Ç", not "c"), which
+   * silently broke matching for any combo involving Alt/Option. `code` is layout- and
+   * modifier-independent, so it doesn't have this problem.
+   */
+  code: string;
   alt: boolean;
   shift: boolean;
   ctrl: boolean;
   meta: boolean;
 }
 
-export const DEFAULT_SHORTCUT: ShortcutBinding = { key: 'c', alt: true, shift: true, ctrl: true, meta: false };
+export const DEFAULT_SHORTCUT: ShortcutBinding = { code: 'KeyC', alt: true, shift: true, ctrl: true, meta: false };
 
 const MODIFIER_TOKENS = new Set(['ctrl', 'alt', 'shift', 'meta']);
 
 /**
- * Parses the server's compact storage format — modifier tokens (any subset, any order) joined
- * by "+", always ending in the key, e.g. "alt+shift+c". Falls back to the built-in default on
- * missing/empty/unparseable input (including a user profile that predates this feature).
+ * Parses the server's compact storage format — modifier tokens (any subset, any order, case
+ * insensitive) joined by "+", always ending in the KeyboardEvent.code value, e.g.
+ * "ctrl+alt+shift+KeyC". Falls back to the built-in default on missing/empty/unparseable input
+ * (including a user profile that predates this feature, or the feature's earlier `key`-based
+ * format from before this fix).
  */
 export function parseShortcut(raw: string | null | undefined): ShortcutBinding {
   if (!raw) return { ...DEFAULT_SHORTCUT };
-  const parts = raw.toLowerCase().split('+').map((p) => p.trim()).filter(Boolean);
-  const key = parts[parts.length - 1];
-  if (!key || MODIFIER_TOKENS.has(key)) return { ...DEFAULT_SHORTCUT };
-  const mods = new Set(parts.slice(0, -1));
+  const parts = raw.split('+').map((p) => p.trim()).filter(Boolean);
+  const code = parts[parts.length - 1];
+  if (!code || MODIFIER_TOKENS.has(code.toLowerCase())) return { ...DEFAULT_SHORTCUT };
+  const mods = new Set(parts.slice(0, -1).map((p) => p.toLowerCase()));
   return {
-    key,
+    code,
     ctrl: mods.has('ctrl'),
     alt: mods.has('alt'),
     shift: mods.has('shift'),
@@ -52,13 +60,13 @@ export function serializeShortcut(binding: ShortcutBinding): string {
   if (binding.alt) parts.push('alt');
   if (binding.shift) parts.push('shift');
   if (binding.meta) parts.push('meta');
-  parts.push(binding.key.toLowerCase());
+  parts.push(binding.code);
   return parts.join('+');
 }
 
 export function matchesShortcut(e: KeyboardEvent, binding: ShortcutBinding): boolean {
   return (
-    e.key.toLowerCase() === binding.key.toLowerCase() &&
+    e.code === binding.code &&
     e.altKey === binding.alt &&
     e.shiftKey === binding.shift &&
     e.ctrlKey === binding.ctrl &&
@@ -71,21 +79,33 @@ export function isMacPlatform(): boolean {
   return /Mac|iPhone|iPad|iPod/.test(navigator.platform || navigator.userAgent || '');
 }
 
+// Turns a physical-key code into a short display label — "KeyC" -> "C", "Digit1" -> "1",
+// "F5" stays "F5", etc. Falls back to the raw code for anything unrecognized.
+function codeToLabel(code: string): string {
+  if (code.startsWith('Key')) return code.slice(3);
+  if (code.startsWith('Digit')) return code.slice(5);
+  if (code === 'Space') return 'Space';
+  if (code === 'Escape') return 'Esc';
+  if (code === 'Enter') return 'Enter';
+  return code;
+}
+
 /** Human-readable label, e.g. "Ctrl+Alt+Shift+C" or "⌃⌥⇧C" on Mac. */
 export function formatShortcut(binding: ShortcutBinding, mac = isMacPlatform()): string {
+  const label = codeToLabel(binding.code);
   const parts: string[] = [];
   if (mac) {
     if (binding.ctrl) parts.push('⌃');
     if (binding.alt) parts.push('⌥');
     if (binding.shift) parts.push('⇧');
     if (binding.meta) parts.push('⌘');
-    parts.push(binding.key.length === 1 ? binding.key.toUpperCase() : binding.key);
+    parts.push(label);
     return parts.join('');
   }
   if (binding.ctrl) parts.push('Ctrl');
   if (binding.meta) parts.push('Win');
   if (binding.alt) parts.push('Alt');
   if (binding.shift) parts.push('Shift');
-  parts.push(binding.key.length === 1 ? binding.key.toUpperCase() : binding.key);
+  parts.push(label);
   return parts.join('+');
 }
