@@ -317,6 +317,7 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
         this.user = { ...this.user, addCommentShortcut: binding ? serializeShortcut(binding) : undefined };
         localStorage.setItem('pointer_user', JSON.stringify(this.user));
       }
+      this.updateAddButtonTooltip();
       return true;
     } catch {
       return false;
@@ -405,6 +406,16 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
       el.textContent = this.projectName;
       el.setAttribute('title', this.projectName);
     }
+  }
+
+  // Keeps the "Comment on an element" button's tooltip showing the current shortcut after it's
+  // changed from the user menu — same in-place-patch reasoning as updateProjectNameLabel().
+  private updateAddButtonTooltip(): void {
+    const btn = this.root && this.root.querySelector('#pf-add');
+    if (!btn) return;
+    const label = formatShortcut(this.shortcut);
+    btn.setAttribute('title', `Comment on an element (${label})`);
+    btn.setAttribute('aria-label', `Comment on an element, shortcut ${label}`);
   }
 
   // --- API ----------------------------------------------------------------
@@ -497,7 +508,7 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
     const fixedEnvLabel = this.hasFixedEnvironment
       ? (this.environmentAttr || ENV_NAME[this.environmentInt] || 'staging')
       : null;
-    this.root.innerHTML = TPL.chrome(displayName, roleLabel, fixedEnvLabel, this.projectName || this.project);
+    this.root.innerHTML = TPL.chrome(displayName, roleLabel, fixedEnvLabel, this.projectName || this.project, formatShortcut(this.shortcut));
 
     const hideBtn = this.root.querySelector('#pf-hide');
     if (hideBtn) hideBtn.addEventListener('click', () => this.hideOverlay());

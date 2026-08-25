@@ -226,13 +226,12 @@
     // `projectName`: shown next to the environment indicator so a visitor can immediately tell which
     // project this install is bound to — project keys aren't unique across a workspace, so two
     // different installs can easily look identical without this.
-    chrome: (displayName, roleLabel, fixedEnvLabel, projectName = "") => `
+    chrome: (displayName, roleLabel, fixedEnvLabel, projectName = "", shortcutLabel = "") => `
         <div class="pf-toolbar">
           <span class="pf-grip" id="pf-grip" title="Drag to move" aria-label="Drag toolbar">${ICON.grip}</span>
           <button class="pf-btn pf-icon-btn pf-reset-pos" id="pf-reset-pos" title="Reset toolbar position" aria-label="Reset toolbar position" style="display:none">${ICON.restore}</button>
-          <button class="pf-btn primary pf-icon-btn" id="pf-add" title="Comment on an element" aria-label="Comment on an element">${ICON.inspect}</button>
+          <button class="pf-btn primary pf-icon-btn" id="pf-add" title="Comment on an element${shortcutLabel ? ` (${escapeHtml(shortcutLabel)})` : ""}" aria-label="Comment on an element${shortcutLabel ? `, shortcut ${escapeHtml(shortcutLabel)}` : ""}">${ICON.inspect}</button>
           <button class="pf-btn" id="pf-toggle" title="Show comments">Comments <span class="pf-badge" id="pf-count">0</span></button>
-          <button class="pf-btn" id="pf-refresh" title="Refresh comments">&#8635;</button>
           ${displayName ? `<button class="pf-btn pf-icon-btn" id="pf-user" title="Signed in as ${displayName}${roleLabel ? " · " + roleLabel : ""}" aria-label="Signed in as ${displayName}">${ICON.user}</button>` : ""}
           <button class="pf-btn pf-icon-btn" id="pf-hide" title="Hide ${escapeHtml(getBrandName())}" aria-label="Hide ${escapeHtml(getBrandName())}">${ICON.eyeOff}</button>
         </div>
@@ -247,6 +246,7 @@
               <option value="production">production</option>
             </select>`}
             </div>
+            <button class="pf-mini pf-icon" id="pf-refresh" title="Refresh comments" aria-label="Refresh comments">&#8635;</button>
             <button class="pf-mini" id="pf-close">&#x2715;</button>
           </div>
           <div class="pf-filters" id="pf-filters"></div>
@@ -1209,6 +1209,7 @@
           this.user = { ...this.user, addCommentShortcut: binding ? serializeShortcut(binding) : void 0 };
           localStorage.setItem("pointer_user", JSON.stringify(this.user));
         }
+        this.updateAddButtonTooltip();
         return true;
       } catch {
         return false;
@@ -1293,6 +1294,15 @@
         el.setAttribute("title", this.projectName);
       }
     }
+    // Keeps the "Comment on an element" button's tooltip showing the current shortcut after it's
+    // changed from the user menu — same in-place-patch reasoning as updateProjectNameLabel().
+    updateAddButtonTooltip() {
+      const btn = this.root && this.root.querySelector("#pf-add");
+      if (!btn) return;
+      const label = formatShortcut(this.shortcut);
+      btn.setAttribute("title", `Comment on an element (${label})`);
+      btn.setAttribute("aria-label", `Comment on an element, shortcut ${label}`);
+    }
     // --- API ----------------------------------------------------------------
     async apiLogin(email, password) {
       return pfFetch(`${this.server}/api/auth/login`, {
@@ -1372,7 +1382,7 @@
       const displayName = this.user ? escapeHtml(this.user.displayName || this.user.email) : "";
       const roleLabel = this.user ? escapeHtml(this.user.roleName || "") : "";
       const fixedEnvLabel = this.hasFixedEnvironment ? this.environmentAttr || ENV_NAME[this.environmentInt] || "staging" : null;
-      this.root.innerHTML = TPL.chrome(displayName, roleLabel, fixedEnvLabel, this.projectName || this.project);
+      this.root.innerHTML = TPL.chrome(displayName, roleLabel, fixedEnvLabel, this.projectName || this.project, formatShortcut(this.shortcut));
       const hideBtn = this.root.querySelector("#pf-hide");
       if (hideBtn) hideBtn.addEventListener("click", () => this.hideOverlay());
       const userBtn = this.root.querySelector("#pf-user");

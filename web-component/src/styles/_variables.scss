@@ -70,6 +70,11 @@ $tokens: (
   'overlay': rgba(15, 23, 42, 0.5),
   'shadow': rgba(0, 0, 0, 0.12),
 
+  // Toolbar glass effect — translucent + blurred (see .pf-toolbar) so it reads well floating
+  // over an arbitrary host page background, not just a plain white/light one.
+  'toolbar-bg': rgba(255, 255, 255, 0.68),
+  'toolbar-border': rgba(255, 255, 255, 0.4),
+
   // Radii
   'radius-sm': 6px,
   'radius': 8px,

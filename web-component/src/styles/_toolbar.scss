@@ -23,7 +23,8 @@
 .pf-grip:hover { color: v.token('text'); background: v.token('surface-muted'); }
 .pf-grip.dragging { cursor: grabbing; }
 
-// Toolbar
+// Toolbar — frosted-glass: translucent + blurred so it reads well floating over an
+// arbitrary host page background, not just a plain light one.
 .pf-toolbar {
   position: fixed;
   top: 16px;
@@ -32,12 +33,21 @@
   display: flex;
   align-items: center;
   gap: 8px;
-  background: v.token('surface');
-  border: 1px solid v.token('border');
+  background: v.token('toolbar-bg');
+  backdrop-filter: blur(16px) saturate(180%);
+  -webkit-backdrop-filter: blur(16px) saturate(180%);
+  border: 1px solid v.token('toolbar-border');
   border-radius: v.token('radius-lg');
   padding: 8px;
   box-shadow: 0 6px 24px v.token('shadow');
   pointer-events: auto;
+}
+// Graceful fallback for browsers without backdrop-filter support: fall back to a fully
+// opaque surface so the toolbar stays readable instead of looking washed-out.
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .pf-toolbar {
+    background: v.token('surface');
+  }
 }
 .pf-btn {
   display: inline-flex;

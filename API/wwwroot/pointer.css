@@ -138,14 +138,21 @@
   display: flex;
   align-items: center;
   gap: 8px;
-  background: var(--pf-surface, #fff);
-  border: 1px solid var(--pf-border, #e2e8f0);
+  background: var(--pf-toolbar-bg, rgba(255, 255, 255, 0.68));
+  backdrop-filter: blur(16px) saturate(180%);
+  -webkit-backdrop-filter: blur(16px) saturate(180%);
+  border: 1px solid var(--pf-toolbar-border, rgba(255, 255, 255, 0.4));
   border-radius: var(--pf-radius-lg, 12px);
   padding: 8px;
   box-shadow: 0 6px 24px var(--pf-shadow, rgba(0, 0, 0, 0.12));
   pointer-events: auto;
 }
 
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .pf-toolbar {
+    background: var(--pf-surface, #fff);
+  }
+}
 .pf-btn {
   display: inline-flex;
   align-items: center;
