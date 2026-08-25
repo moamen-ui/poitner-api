@@ -1933,26 +1933,33 @@
       }
     }
     /**
-     * Two-step delete: swap the trash button for a small inline "Delete? ✓ ✕"
-     * confirmation so a single mis-click can't destroy a comment. Confirms on ✓,
-     * cancels on ✕, and auto-dismisses after a few seconds.
+     * Two-step delete: replaces the ENTIRE actions row (Ready/Complete/visibility/edit/delete —
+     * not just the trash button) with a "Delete this comment? ✓ ✕" confirmation, so nothing else
+     * in the row can be mis-clicked while confirming. Confirms on ✓, cancels on ✕, and
+     * auto-dismisses after a few seconds. Other buttons are hidden (not removed), so their
+     * existing click listeners survive once restored.
      */
     confirmDelete(btn) {
       const id = btn.dataset.id;
-      const host = btn.parentElement;
-      if (!id || !host || host.querySelector(".pf-confirm")) return;
-      btn.style.display = "none";
-      const wrap = document.createElement("span");
-      wrap.className = "pf-confirm";
-      wrap.innerHTML = `<span class="pf-confirm-q">Delete?</span><button type="button" class="pf-mini danger pf-icon" data-c="yes" title="Confirm delete" aria-label="Confirm delete">${ICON.check}</button><button type="button" class="pf-mini pf-icon" data-c="no" title="Cancel" aria-label="Cancel">&#x2715;</button>`;
-      host.insertBefore(wrap, btn);
+      const row = btn.closest(".pf-actions");
+      if (!id || !row || row.querySelector(".pf-confirm")) return;
+      const others = Array.from(row.children);
+      others.forEach((el) => {
+        el.style.display = "none";
+      });
+      const wrap = document.createElement("div");
+      wrap.className = "pf-confirm pf-confirm-row";
+      wrap.innerHTML = `<span class="pf-confirm-q">Delete this comment?</span><span class="pf-confirm-btns"><button type="button" class="pf-mini danger pf-icon" data-c="yes" title="Confirm delete" aria-label="Confirm delete">${ICON.check}</button><button type="button" class="pf-mini pf-icon" data-c="no" title="Cancel" aria-label="Cancel">&#x2715;</button></span>`;
+      row.appendChild(wrap);
       let closed = false;
       const close = () => {
         if (closed) return;
         closed = true;
         clearTimeout(timer);
         wrap.remove();
-        btn.style.display = "";
+        others.forEach((el) => {
+          el.style.display = "";
+        });
       };
       const timer = setTimeout(close, 4e3);
       wrap.querySelector('[data-c="yes"]').addEventListener("click", (e) => {

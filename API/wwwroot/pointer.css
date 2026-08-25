@@ -1,4 +1,5 @@
 /* GENERATED from web-component/src — DO NOT EDIT. Run `npm run build` in web-component/. */
+@charset "UTF-8";
 :host {
   all: initial;
   direction: ltr;
@@ -591,11 +592,27 @@
   color: var(--pf-danger-strong, #b91c1c);
 }
 
-/* Inline "Delete?" confirmation that replaces the trash button on first click. */
+/* "Delete this comment?" confirmation that replaces the WHOLE actions row on first click —
+   every other button in the row is hidden (not removed) while this is shown. */
 .pf-confirm {
   display: inline-flex;
   align-items: center;
   gap: 4px;
+}
+
+.pf-confirm-row {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.pf-confirm-btns {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: none;
 }
 
 .pf-confirm-q {
