@@ -1,6 +1,6 @@
 import { escapeHtml } from './dom';
 import { ICON } from './icons';
-import { STATUS_LABEL, getBrandName } from './constants';
+import { getBrandName } from './constants';
 import type { AuthorOption, Comment, Meta, PredefinedActionOption } from './types';
 
 // All component markup lives here (pure string builders). Event wiring stays in
@@ -70,19 +70,23 @@ export const TPL = {
         </div>
         <div class="pf-sidebar" id="pf-sidebar">
           <div class="pf-sidebar-head">
-            <h2>Comments</h2>
-            <div style="display:flex; align-items:center; gap:6px; min-width:0; margin-inline-start:auto; margin-inline-end:8px;">
-              <span id="pf-project-name" title="${escapeHtml(projectName)}" style="font-size:12px; color:#64748b; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:110px;">${escapeHtml(projectName)}</span>
-              ${fixedEnvLabel
-                ? `<span class="pf-env-label" title="Environment — fixed for this install" style="font-size:12px; color:#64748b; text-transform:capitalize;">&middot; ${escapeHtml(fixedEnvLabel)}</span>`
-                : `<select class="pf-input pf-env-select" id="pf-env" title="Environment — comments are scoped per environment" style="width:auto; padding:4px 8px;">
-              <option value="local">local</option>
-              <option value="staging">staging</option>
-              <option value="production">production</option>
-            </select>`}
+            <div class="pf-sidebar-head-row">
+              <h2>Comments</h2>
+              <button class="pf-mini pf-icon" id="pf-close" title="Close" aria-label="Close">&#x2715;</button>
             </div>
-            <button class="pf-mini pf-icon" id="pf-refresh" title="Refresh comments" aria-label="Refresh comments">&#8635;</button>
-            <button class="pf-mini" id="pf-close">&#x2715;</button>
+            <div class="pf-sidebar-head-row">
+              <div style="display:flex; align-items:center; gap:6px; min-width:0;">
+                <span id="pf-project-name" title="${escapeHtml(projectName)}" style="font-size:12px; color:#64748b; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:150px;">${escapeHtml(projectName)}</span>
+                ${fixedEnvLabel
+                  ? `<span class="pf-env-label" title="Environment — fixed for this install" style="font-size:12px; color:#64748b; text-transform:capitalize;">&middot; ${escapeHtml(fixedEnvLabel)}</span>`
+                  : `<select class="pf-input pf-env-select" id="pf-env" title="Environment — comments are scoped per environment" style="width:auto; padding:4px 8px;">
+                <option value="local">local</option>
+                <option value="staging">staging</option>
+                <option value="production">production</option>
+              </select>`}
+              </div>
+              <button class="pf-mini pf-icon" id="pf-refresh" title="Refresh comments" aria-label="Refresh comments">&#8635;</button>
+            </div>
           </div>
           <div class="pf-filters" id="pf-filters"></div>
           <div class="pf-sidebar-body" id="pf-list"></div>
@@ -118,12 +122,11 @@ export const TPL = {
 
   empty: (msg: string) => `<div class="pf-empty">${msg}</div>`,
 
-  filterChip: (f: { key: string; label: string; color?: string }, active: boolean, count: number) => {
-    const colorStyle = f.color ? ` style="--chip-color:${f.color}"` : '';
-    return `<button class="pf-chip ${active ? 'active' : ''} chip-${STATUS_LABEL[f.key] || 'all'}"${colorStyle} data-filter="${f.key}">
-             ${f.label} <span class="pf-chip-n">${count}</span>
-           </button>`;
-  },
+  // Status filter as a dropdown (rather than a row of chip buttons) — keeps the filter bar compact.
+  statusFilterSelect: (filters: { key: string; label: string; color?: string }[], active: string, counts: Record<string, number>) =>
+    `<select class="pf-status-select" id="pf-status-filter" title="Filter by status">
+             ${filters.map((f) => `<option value="${f.key}" ${f.key === active ? 'selected' : ''}>${escapeHtml(f.label)} (${counts[f.key] ?? 0})</option>`).join('')}
+           </select>`,
 
   // "Mine only" toggle — a chip that composes with the status chips above.
   // Rendered only when a user is logged in.
@@ -162,6 +165,10 @@ export const TPL = {
               <span class="pf-badge">${i + 1}</span>
               ${envLabel ? `<span class="pf-pill env">${escapeHtml(envLabel)}</span>` : ''}
               ${statusPill}
+              <div class="pf-actions-end">
+                ${c._mine ? `<button class="pf-mini pf-icon${c.isPrivate ? ' private-on' : ''}" data-act="visibility" data-id="${c.id}" data-private="${c.isPrivate ? 'false' : 'true'}" title="${c.isPrivate ? 'Private — click to make public' : 'Make private (only you)'}" aria-label="${c.isPrivate ? 'Make public' : 'Make private'}">${c.isPrivate ? ICON.lock : ICON.unlock}</button>` : ''}
+                ${c.status === 'open' ? `<button class="pf-mini danger pf-icon" data-act="delete" data-id="${c.id}" title="Delete" aria-label="Delete">${ICON.trash}</button>` : ''}
+              </div>
             </div>
             <div class="pf-text">${escapeHtml(c.body || c.text || '')}</div>
             ${shot}
@@ -178,11 +185,7 @@ export const TPL = {
               ${c.status === 'applied' ? `<button class="pf-mini ready" data-act="reopen" data-id="${c.id}" title="Re-open">${ICON.reopen}<span>Re-open</span></button>
               <button class="pf-mini pf-icon" data-act="archive" data-id="${c.id}" title="Archive" aria-label="Archive">${ICON.archive}</button>` : ''}
               ${c.status === 'archived' ? `<button class="pf-mini ready" data-act="reopen" data-id="${c.id}" title="Re-open">${ICON.reopen}<span>Re-open</span></button>` : ''}
-              <div class="pf-actions-end">
-                ${c._mine ? `<button class="pf-mini pf-icon${c.isPrivate ? ' private-on' : ''}" data-act="visibility" data-id="${c.id}" data-private="${c.isPrivate ? 'false' : 'true'}" title="${c.isPrivate ? 'Private — click to make public' : 'Make private (only you)'}" aria-label="${c.isPrivate ? 'Make public' : 'Make private'}">${c.isPrivate ? ICON.lock : ICON.unlock}</button>` : ''}
-                ${c._mine ? `<button class="pf-mini pf-icon" data-act="edit" data-id="${c.id}" title="Edit" aria-label="Edit">${ICON.pencil}</button>` : ''}
-                ${c.status === 'open' ? `<button class="pf-mini danger pf-icon" data-act="delete" data-id="${c.id}" title="Delete" aria-label="Delete">${ICON.trash}</button>` : ''}
-              </div>
+              ${c._mine ? `<div class="pf-actions-end"><button class="pf-mini pf-icon" data-act="edit" data-id="${c.id}" title="Edit" aria-label="Edit">${ICON.pencil}</button></div>` : ''}
             </div>
           </div>`;
   },

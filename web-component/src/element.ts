@@ -1054,15 +1054,15 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
   }
 
   /**
-   * Two-step delete: replaces the ENTIRE actions row (Ready/Complete/visibility/edit/delete —
-   * not just the trash button) with a "Delete this comment? ✓ ✕" confirmation, so nothing else
-   * in the row can be mis-clicked while confirming. Confirms on ✓, cancels on ✕, and
+   * Two-step delete: replaces the whole end-cluster it lives in (the visibility toggle sits
+   * alongside it) with a "Delete this comment? ✓ ✕" confirmation, so nothing else in that
+   * cluster can be mis-clicked while confirming. Confirms on ✓, cancels on ✕, and
    * auto-dismisses after a few seconds. Other buttons are hidden (not removed), so their
    * existing click listeners survive once restored.
    */
   confirmDelete(btn: HTMLElement): void {
     const id = btn.dataset.id;
-    const row = btn.closest('.pf-actions') as HTMLElement | null;
+    const row = btn.closest('.pf-actions-end') as HTMLElement | null;
     if (!id || !row || row.querySelector('.pf-confirm')) return; // already confirming
 
     const others = Array.from(row.children) as HTMLElement[];
@@ -1073,7 +1073,7 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
     wrap.innerHTML =
       `<span class="pf-confirm-q">Delete this comment?</span>` +
       `<span class="pf-confirm-btns">` +
-      `<button type="button" class="pf-mini danger pf-icon" data-c="yes" title="Confirm delete" aria-label="Confirm delete">${ICON.check}</button>` +
+      `<button type="button" class="pf-mini danger pf-icon" data-c="yes" title="Confirm delete" aria-label="Confirm delete">${ICON.checkPlain}</button>` +
       `<button type="button" class="pf-mini pf-icon" data-c="no" title="Cancel" aria-label="Cancel">&#x2715;</button>` +
       `</span>`;
     row.appendChild(wrap);
@@ -1215,12 +1215,13 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
     const filtersEl = this.root.querySelector('#pf-filters');
     if (filtersEl) {
       const activeFilters = catalogToFilters();
-      filtersEl.innerHTML = activeFilters.map((f) =>
-        TPL.filterChip(f, this.statusFilter === f.key, counts[f.key] ?? 0)).join('')
+      filtersEl.innerHTML = TPL.statusFilterSelect(activeFilters, this.statusFilter, counts)
         + ((authors.length > 1 && !this.mineOnly) ? TPL.authorFilter(authors, this.authorFilter || '') : '')
         + (canMine ? TPL.mineToggle(this.mineOnly) : '');
-      filtersEl.querySelectorAll<HTMLElement>('[data-filter]').forEach((b) =>
-        b.addEventListener('click', () => { this.statusFilter = b.dataset.filter!; this.renderSidebar(); }));
+      const statusSel = filtersEl.querySelector('#pf-status-filter') as HTMLSelectElement | null;
+      if (statusSel) statusSel.addEventListener('change', () => {
+        this.statusFilter = statusSel.value; this.renderSidebar();
+      });
       const mineBtn = filtersEl.querySelector('#pf-mine-toggle');
       if (mineBtn) mineBtn.addEventListener('click', () => {
         this.mineOnly = !this.mineOnly; this.renderSidebar(); this.renderPins();

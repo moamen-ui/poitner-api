@@ -280,8 +280,15 @@
   padding: 16px;
   border-bottom: 1px solid var(--pf-border-soft, #eef2f7);
   display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.pf-sidebar-head-row {
+  display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 8px;
 }
 
 .pf-sidebar-head h2 {
@@ -316,38 +323,10 @@
   background: var(--pf-surface-alt, #f8fafc);
 }
 
-.pf-chip-n {
-  background: var(--pf-border-soft, #eef2f7);
-  color: var(--pf-text-slate, #475569);
-  border-radius: 999px;
-  padding: 0 6px;
-  font-size: 11px;
-}
-
 .pf-chip.active {
   background: var(--pf-text, #0f172a);
   color: var(--pf-primary-contrast, #fff);
   border-color: var(--pf-text, #0f172a);
-}
-
-.pf-chip.active .pf-chip-n {
-  background: rgba(255, 255, 255, 0.25);
-  color: var(--pf-primary-contrast, #fff);
-}
-
-.pf-chip.chip-pending.active {
-  background: var(--pf-warn-strong, #92400e);
-  border-color: var(--pf-warn-strong, #92400e);
-}
-
-.pf-chip.chip-completed.active {
-  background: var(--pf-success-strong, #166534);
-  border-color: var(--pf-success-strong, #166534);
-}
-
-.pf-chip.chip-archived.active {
-  background: var(--pf-text-slate, #475569);
-  border-color: var(--pf-text-slate, #475569);
 }
 
 .pf-chip.pf-mine {
@@ -360,6 +339,7 @@
   border-color: var(--pf-indigo, #4338ca);
 }
 
+.pf-status-select,
 .pf-userfilter {
   border: 1px solid var(--pf-border, #e2e8f0);
   background: var(--pf-surface, #fff);
@@ -369,6 +349,9 @@
   font-size: 12px;
   font-weight: 600;
   cursor: pointer;
+}
+
+.pf-userfilter {
   max-width: 150px;
 }
 

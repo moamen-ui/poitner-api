@@ -17,12 +17,6 @@
     applied: 3,
     archived: 4
   };
-  var STATUS_LABEL = {
-    open: "open",
-    "pending-apply": "pending",
-    applied: "completed",
-    archived: "archived"
-  };
   var STATUS_FALLBACK = [
     { value: 1, name: "Open", label: "Open", color: "#2563eb", order: 1 },
     { value: 2, name: "ReadyToApply", label: "Ready", color: "#d97706", order: 2 },
@@ -156,6 +150,8 @@
   var ICON = {
     flag: '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><line x1="4" y1="22" x2="4" y2="15"/></svg>',
     check: '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>',
+    // Plain checkmark (no circle) — for compact confirm actions like "confirm delete".
+    checkPlain: '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>',
     trash: '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>',
     pencil: '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4z"/></svg>',
     reopen: '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/></svg>',
@@ -237,17 +233,21 @@
         </div>
         <div class="pf-sidebar" id="pf-sidebar">
           <div class="pf-sidebar-head">
-            <h2>Comments</h2>
-            <div style="display:flex; align-items:center; gap:6px; min-width:0; margin-inline-start:auto; margin-inline-end:8px;">
-              <span id="pf-project-name" title="${escapeHtml(projectName)}" style="font-size:12px; color:#64748b; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:110px;">${escapeHtml(projectName)}</span>
-              ${fixedEnvLabel ? `<span class="pf-env-label" title="Environment — fixed for this install" style="font-size:12px; color:#64748b; text-transform:capitalize;">&middot; ${escapeHtml(fixedEnvLabel)}</span>` : `<select class="pf-input pf-env-select" id="pf-env" title="Environment — comments are scoped per environment" style="width:auto; padding:4px 8px;">
-              <option value="local">local</option>
-              <option value="staging">staging</option>
-              <option value="production">production</option>
-            </select>`}
+            <div class="pf-sidebar-head-row">
+              <h2>Comments</h2>
+              <button class="pf-mini pf-icon" id="pf-close" title="Close" aria-label="Close">&#x2715;</button>
             </div>
-            <button class="pf-mini pf-icon" id="pf-refresh" title="Refresh comments" aria-label="Refresh comments">&#8635;</button>
-            <button class="pf-mini" id="pf-close">&#x2715;</button>
+            <div class="pf-sidebar-head-row">
+              <div style="display:flex; align-items:center; gap:6px; min-width:0;">
+                <span id="pf-project-name" title="${escapeHtml(projectName)}" style="font-size:12px; color:#64748b; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:150px;">${escapeHtml(projectName)}</span>
+                ${fixedEnvLabel ? `<span class="pf-env-label" title="Environment — fixed for this install" style="font-size:12px; color:#64748b; text-transform:capitalize;">&middot; ${escapeHtml(fixedEnvLabel)}</span>` : `<select class="pf-input pf-env-select" id="pf-env" title="Environment — comments are scoped per environment" style="width:auto; padding:4px 8px;">
+                <option value="local">local</option>
+                <option value="staging">staging</option>
+                <option value="production">production</option>
+              </select>`}
+              </div>
+              <button class="pf-mini pf-icon" id="pf-refresh" title="Refresh comments" aria-label="Refresh comments">&#8635;</button>
+            </div>
           </div>
           <div class="pf-filters" id="pf-filters"></div>
           <div class="pf-sidebar-body" id="pf-list"></div>
@@ -279,12 +279,13 @@
           ${count ? `<span class="pf-launcher-badge">${count > 99 ? "99+" : count}</span>` : ""}
         </button>`,
     empty: (msg) => `<div class="pf-empty">${msg}</div>`,
-    filterChip: (f, active, count) => {
-      const colorStyle = f.color ? ` style="--chip-color:${f.color}"` : "";
-      return `<button class="pf-chip ${active ? "active" : ""} chip-${STATUS_LABEL[f.key] || "all"}"${colorStyle} data-filter="${f.key}">
-             ${f.label} <span class="pf-chip-n">${count}</span>
-           </button>`;
-    },
+    // Status filter as a dropdown (rather than a row of chip buttons) — keeps the filter bar compact.
+    statusFilterSelect: (filters, active, counts) => `<select class="pf-status-select" id="pf-status-filter" title="Filter by status">
+             ${filters.map((f) => {
+      var _a2;
+      return `<option value="${f.key}" ${f.key === active ? "selected" : ""}>${escapeHtml(f.label)} (${(_a2 = counts[f.key]) != null ? _a2 : 0})</option>`;
+    }).join("")}
+           </select>`,
     // "Mine only" toggle — a chip that composes with the status chips above.
     // Rendered only when a user is logged in.
     mineToggle: (active) => `<button class="pf-chip pf-mine ${active ? "active" : ""}" id="pf-mine-toggle" title="Show only my comments" aria-pressed="${active ? "true" : "false"}">
@@ -312,6 +313,10 @@
               <span class="pf-badge">${i + 1}</span>
               ${envLabel ? `<span class="pf-pill env">${escapeHtml(envLabel)}</span>` : ""}
               ${statusPill}
+              <div class="pf-actions-end">
+                ${c._mine ? `<button class="pf-mini pf-icon${c.isPrivate ? " private-on" : ""}" data-act="visibility" data-id="${c.id}" data-private="${c.isPrivate ? "false" : "true"}" title="${c.isPrivate ? "Private — click to make public" : "Make private (only you)"}" aria-label="${c.isPrivate ? "Make public" : "Make private"}">${c.isPrivate ? ICON.lock : ICON.unlock}</button>` : ""}
+                ${c.status === "open" ? `<button class="pf-mini danger pf-icon" data-act="delete" data-id="${c.id}" title="Delete" aria-label="Delete">${ICON.trash}</button>` : ""}
+              </div>
             </div>
             <div class="pf-text">${escapeHtml(c.body || c.text || "")}</div>
             ${shot}
@@ -328,11 +333,7 @@
               ${c.status === "applied" ? `<button class="pf-mini ready" data-act="reopen" data-id="${c.id}" title="Re-open">${ICON.reopen}<span>Re-open</span></button>
               <button class="pf-mini pf-icon" data-act="archive" data-id="${c.id}" title="Archive" aria-label="Archive">${ICON.archive}</button>` : ""}
               ${c.status === "archived" ? `<button class="pf-mini ready" data-act="reopen" data-id="${c.id}" title="Re-open">${ICON.reopen}<span>Re-open</span></button>` : ""}
-              <div class="pf-actions-end">
-                ${c._mine ? `<button class="pf-mini pf-icon${c.isPrivate ? " private-on" : ""}" data-act="visibility" data-id="${c.id}" data-private="${c.isPrivate ? "false" : "true"}" title="${c.isPrivate ? "Private — click to make public" : "Make private (only you)"}" aria-label="${c.isPrivate ? "Make public" : "Make private"}">${c.isPrivate ? ICON.lock : ICON.unlock}</button>` : ""}
-                ${c._mine ? `<button class="pf-mini pf-icon" data-act="edit" data-id="${c.id}" title="Edit" aria-label="Edit">${ICON.pencil}</button>` : ""}
-                ${c.status === "open" ? `<button class="pf-mini danger pf-icon" data-act="delete" data-id="${c.id}" title="Delete" aria-label="Delete">${ICON.trash}</button>` : ""}
-              </div>
+              ${c._mine ? `<div class="pf-actions-end"><button class="pf-mini pf-icon" data-act="edit" data-id="${c.id}" title="Edit" aria-label="Edit">${ICON.pencil}</button></div>` : ""}
             </div>
           </div>`;
     },
@@ -1943,15 +1944,15 @@
       }
     }
     /**
-     * Two-step delete: replaces the ENTIRE actions row (Ready/Complete/visibility/edit/delete —
-     * not just the trash button) with a "Delete this comment? ✓ ✕" confirmation, so nothing else
-     * in the row can be mis-clicked while confirming. Confirms on ✓, cancels on ✕, and
+     * Two-step delete: replaces the whole end-cluster it lives in (the visibility toggle sits
+     * alongside it) with a "Delete this comment? ✓ ✕" confirmation, so nothing else in that
+     * cluster can be mis-clicked while confirming. Confirms on ✓, cancels on ✕, and
      * auto-dismisses after a few seconds. Other buttons are hidden (not removed), so their
      * existing click listeners survive once restored.
      */
     confirmDelete(btn) {
       const id = btn.dataset.id;
-      const row = btn.closest(".pf-actions");
+      const row = btn.closest(".pf-actions-end");
       if (!id || !row || row.querySelector(".pf-confirm")) return;
       const others = Array.from(row.children);
       others.forEach((el) => {
@@ -1959,7 +1960,7 @@
       });
       const wrap = document.createElement("div");
       wrap.className = "pf-confirm pf-confirm-row";
-      wrap.innerHTML = `<span class="pf-confirm-q">Delete this comment?</span><span class="pf-confirm-btns"><button type="button" class="pf-mini danger pf-icon" data-c="yes" title="Confirm delete" aria-label="Confirm delete">${ICON.check}</button><button type="button" class="pf-mini pf-icon" data-c="no" title="Cancel" aria-label="Cancel">&#x2715;</button></span>`;
+      wrap.innerHTML = `<span class="pf-confirm-q">Delete this comment?</span><span class="pf-confirm-btns"><button type="button" class="pf-mini danger pf-icon" data-c="yes" title="Confirm delete" aria-label="Confirm delete">${ICON.checkPlain}</button><button type="button" class="pf-mini pf-icon" data-c="no" title="Cancel" aria-label="Cancel">&#x2715;</button></span>`;
       row.appendChild(wrap);
       let closed = false;
       const close = () => {
@@ -2100,14 +2101,12 @@
       const filtersEl = this.root.querySelector("#pf-filters");
       if (filtersEl) {
         const activeFilters = catalogToFilters();
-        filtersEl.innerHTML = activeFilters.map((f) => {
-          var _a3;
-          return TPL.filterChip(f, this.statusFilter === f.key, (_a3 = counts[f.key]) != null ? _a3 : 0);
-        }).join("") + (authors.length > 1 && !this.mineOnly ? TPL.authorFilter(authors, this.authorFilter || "") : "") + (canMine ? TPL.mineToggle(this.mineOnly) : "");
-        filtersEl.querySelectorAll("[data-filter]").forEach((b) => b.addEventListener("click", () => {
-          this.statusFilter = b.dataset.filter;
+        filtersEl.innerHTML = TPL.statusFilterSelect(activeFilters, this.statusFilter, counts) + (authors.length > 1 && !this.mineOnly ? TPL.authorFilter(authors, this.authorFilter || "") : "") + (canMine ? TPL.mineToggle(this.mineOnly) : "");
+        const statusSel = filtersEl.querySelector("#pf-status-filter");
+        if (statusSel) statusSel.addEventListener("change", () => {
+          this.statusFilter = statusSel.value;
           this.renderSidebar();
-        }));
+        });
         const mineBtn = filtersEl.querySelector("#pf-mine-toggle");
         if (mineBtn) mineBtn.addEventListener("click", () => {
           this.mineOnly = !this.mineOnly;
