@@ -61,12 +61,12 @@ export const TPL = {
   // different installs can easily look identical without this.
   chrome: (displayName: string, roleLabel: string, fixedEnvLabel?: string | null, projectName = '', shortcutLabel = '') => `
         <div class="pf-toolbar">
-          <span class="pf-grip" id="pf-grip" title="Drag to move" aria-label="Drag toolbar">${ICON.grip}</span>
-          <button class="pf-btn pf-icon-btn pf-reset-pos" id="pf-reset-pos" title="Reset toolbar position" aria-label="Reset toolbar position" style="display:none">${ICON.restore}</button>
-          <button class="pf-btn primary pf-icon-btn" id="pf-add" title="Comment on an element${shortcutLabel ? ` (${escapeHtml(shortcutLabel)})` : ''}" aria-label="Comment on an element${shortcutLabel ? `, shortcut ${escapeHtml(shortcutLabel)}` : ''}">${ICON.inspect}</button>
+          <span class="pf-grip" id="pf-grip" data-toggle="tooltip" data-placement="bottom" title="Drag to move" aria-label="Drag toolbar">${ICON.grip}</span>
+          <button class="pf-btn pf-icon-btn pf-reset-pos" id="pf-reset-pos" data-toggle="tooltip" data-placement="bottom" title="Reset toolbar position" aria-label="Reset toolbar position" style="display:none">${ICON.restore}</button>
+          <button class="pf-btn primary pf-icon-btn" id="pf-add" data-toggle="tooltip" data-placement="bottom" title="Comment on an element${shortcutLabel ? ` (${escapeHtml(shortcutLabel)})` : ''}" aria-label="Comment on an element${shortcutLabel ? `, shortcut ${escapeHtml(shortcutLabel)}` : ''}">${ICON.inspect}</button>
           <button class="pf-btn" id="pf-toggle" title="Show comments">Comments <span class="pf-badge" id="pf-count">0</span></button>
-          ${displayName ? `<button class="pf-btn pf-icon-btn" id="pf-user" title="Signed in as ${displayName}${roleLabel ? ' · ' + roleLabel : ''}" aria-label="Signed in as ${displayName}">${ICON.user}</button>` : ''}
-          <button class="pf-btn pf-icon-btn" id="pf-hide" title="Hide ${escapeHtml(getBrandName())}" aria-label="Hide ${escapeHtml(getBrandName())}">${ICON.eyeOff}</button>
+          ${displayName ? `<button class="pf-btn pf-icon-btn" id="pf-user" data-toggle="tooltip" data-placement="bottom" title="Signed in as ${displayName}${roleLabel ? ' · ' + roleLabel : ''}" aria-label="Signed in as ${displayName}">${ICON.user}</button>` : ''}
+          <button class="pf-btn pf-icon-btn" id="pf-hide" data-toggle="tooltip" data-placement="bottom" title="Hide ${escapeHtml(getBrandName())}" aria-label="Hide ${escapeHtml(getBrandName())}">${ICON.eyeOff}</button>
         </div>
         <div class="pf-sidebar" id="pf-sidebar">
           <div class="pf-sidebar-head">
