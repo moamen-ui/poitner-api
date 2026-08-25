@@ -443,14 +443,18 @@ public class ProjectService : IProjectService
                 ? Result<CaptureConfigResponse>.Conflict(projectResult.Message ?? MessageKeys.Project.Disabled)
                 : Result<CaptureConfigResponse>.NotFound(projectResult.Message ?? MessageKeys.Project.NotFound);
 
-        var enabled = await _unitOfWork.Repository<Project>()
+        var info = await _unitOfWork.Repository<Project>()
             .Query()
             .AsNoTracking()
             .Where(p => p.Id == projectResult.Data)
-            .Select(p => p.PageContextCaptureEnabled)
+            .Select(p => new { p.PageContextCaptureEnabled, p.Name })
             .FirstAsync();
 
-        return Result<CaptureConfigResponse>.Success(new CaptureConfigResponse { PageContextCaptureEnabled = enabled });
+        return Result<CaptureConfigResponse>.Success(new CaptureConfigResponse
+        {
+            PageContextCaptureEnabled = info.PageContextCaptureEnabled,
+            Name = info.Name
+        });
     }
 
     // Batch-resolve creator display names (Project.CreatedBy is a User.PublicId). One query.

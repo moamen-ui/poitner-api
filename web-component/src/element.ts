@@ -7,6 +7,9 @@ import { TPL } from './templates';
 import { ICON } from './icons';
 import { captureScreenshot, captureMetadata } from './capture';
 import { startPageContextCapture, stopPageContextCapture, getPageContextPayload } from './pagecontext';
+import {
+  type ShortcutBinding, parseShortcut, serializeShortcut, matchesShortcut, formatShortcut,
+} from './shortcut';
 import { showLoginModal } from './auth-ui';
 import type { AuthorOption, Comment, Meta, PointerHost, PredefinedActionOption, RoleOption, StatusStr, User } from './types';
 
@@ -50,15 +53,26 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
   // Project-level opt-in (default off), read once at init via /capture-config. Gates both whether
   // the widget buffers console/network events at all and whether "Report as a bug" is shown.
   pageContextCaptureEnabled = false;
+  // Display name resolved from /capture-config (falls back to the raw `project` key attribute
+  // until it loads). Shown next to the environment indicator so a visitor can immediately tell
+  // which project an install is actually bound to — project keys aren't unique across a workspace.
+  projectName = '';
+  // Per-user "add comment" keyboard shortcut, synced to the account (User.AddCommentShortcut,
+  // not localStorage) — set from `this.user.addCommentShortcut` in loadAuth()/saveAuth() below.
+  // Default is Alt+Shift+C / Option+Shift+C — see shortcut.ts for why not Ctrl+Shift+C / Cmd+Option+C.
+  shortcut: ShortcutBinding = parseShortcut(undefined);
 
   root!: HTMLElement;
   private _styleLink!: HTMLLinkElement;
   private _onHover!: (e: MouseEvent) => void;
   private _onPick!: (e: MouseEvent) => void;
   private _onPickKey!: (e: KeyboardEvent) => void;
+  private _onShortcutKeydown!: (e: KeyboardEvent) => void;
   private _reposition!: () => void;
   private _pendingShotPromise: Promise<Blob | null> | null = null;
   private _userMenuClose: ((e: MouseEvent) => void) | null = null;
+  private _recordingShortcut = false;
+  private _shortcutRecordingCleanup: (() => void) | null = null;
 
   connectedCallback(): void {
     if (this._mounted) return;
@@ -128,6 +142,7 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
     if (injected?.token) {
       this.token = injected.token;
       if (injected.user !== undefined) this.user = injected.user;
+      this.shortcut = parseShortcut(this.user?.addCommentShortcut);
     }
 
     // Host element must not block page clicks; only inner panels are interactive.
@@ -159,9 +174,13 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
     this._onHover = this.onHover.bind(this);
     this._onPick = this.onPick.bind(this);
     this._onPickKey = this.onPickKey.bind(this);
+    this._onShortcutKeydown = this.onShortcutKeydown.bind(this);
     this._reposition = () => this.renderPins();
     window.addEventListener('scroll', this._reposition, true);
     window.addEventListener('resize', this._reposition);
+    // Global "add comment" shortcut — listens on the whole document (not just our shadow root)
+    // since it must fire no matter where on the host page the visitor's focus currently is.
+    document.addEventListener('keydown', this._onShortcutKeydown);
 
     this._boot();
   }
@@ -205,8 +224,103 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
   disconnectedCallback(): void {
     window.removeEventListener('scroll', this._reposition, true);
     window.removeEventListener('resize', this._reposition);
+    document.removeEventListener('keydown', this._onShortcutKeydown);
+    if (this._shortcutRecordingCleanup) this._shortcutRecordingCleanup();
     this.stopPicking();
     stopPageContextCapture();
+  }
+
+  // --- "Add comment" keyboard shortcut --------------------------------------
+  private isEditableTarget(e: KeyboardEvent): boolean {
+    const target = e.composedPath()[0] as HTMLElement | undefined;
+    if (!target || !target.tagName) return false;
+    const tag = target.tagName.toLowerCase();
+    return tag === 'input' || tag === 'textarea' || tag === 'select' || !!target.isContentEditable;
+  }
+
+  private onShortcutKeydown(e: KeyboardEvent): void {
+    if (this._recordingShortcut || this._disabled) return;
+    if (this.isEditableTarget(e)) return; // never hijack typing, on the host page or in our own UI
+    if (!matchesShortcut(e, this.shortcut)) return;
+    e.preventDefault();
+    this.activateAddComment();
+  }
+
+  // Shared by both the toolbar's "add" button and the keyboard shortcut — expands the widget
+  // first if it's collapsed (the toolbar buttons don't exist in the DOM until then), then either
+  // prompts login or toggles element-picking, exactly like clicking #pf-add.
+  activateAddComment(): void {
+    if (this._collapsed) this.showOverlay();
+    if (!this.token) {
+      showLoginModal(this, () => { Promise.resolve(this.init()).then(() => this.togglePicking()); });
+      return;
+    }
+    this.togglePicking();
+  }
+
+  // Enters "recording" mode on the user-menu shortcut button: the next non-modifier keydown
+  // (with at least one modifier held) becomes the new binding. Escape cancels.
+  private beginRecordingShortcut(btnEl: HTMLElement): void {
+    this._recordingShortcut = true;
+    const original = btnEl.textContent || '';
+    btnEl.textContent = 'Press keys… (Esc to cancel)';
+
+    const onKey = (e: KeyboardEvent) => {
+      e.preventDefault();
+      e.stopPropagation();
+      if (e.key === 'Escape') {
+        btnEl.textContent = original;
+        cleanup();
+        return;
+      }
+      if (e.key === 'Shift' || e.key === 'Alt' || e.key === 'Control' || e.key === 'Meta') return;
+      if (!(e.altKey || e.ctrlKey || e.metaKey || e.shiftKey)) {
+        btnEl.textContent = 'Add a modifier key (Alt/Shift/Ctrl/⌘)…';
+        return;
+      }
+      const binding: ShortcutBinding = {
+        key: e.key.length === 1 ? e.key.toLowerCase() : e.key,
+        alt: e.altKey,
+        shift: e.shiftKey,
+        ctrl: e.ctrlKey,
+        meta: e.metaKey,
+      };
+      btnEl.textContent = 'Saving…';
+      cleanup();
+      this.saveShortcutPreference(binding).then((ok) => {
+        btnEl.textContent = formatShortcut(this.shortcut);
+        this.toast(ok ? 'Shortcut updated' : 'Failed to save — try again', ok ? '' : 'error');
+      });
+    };
+    const cleanup = () => {
+      this._recordingShortcut = false;
+      this._shortcutRecordingCleanup = null;
+      document.removeEventListener('keydown', onKey, true);
+    };
+    this._shortcutRecordingCleanup = cleanup;
+    document.addEventListener('keydown', onKey, true);
+  }
+
+  // Persists a new binding to the account (PATCH /api/me/preferences) so it follows the user
+  // across browsers/machines — an empty string resets to the widget's built-in default. Updates
+  // the cached `pointer_user` mirror on success so a page reload reflects it instantly, without
+  // waiting for the next fresh login.
+  private async saveShortcutPreference(binding: ShortcutBinding | null): Promise<boolean> {
+    try {
+      const r = await this.api('/api/me/preferences', {
+        method: 'PATCH',
+        body: JSON.stringify({ addCommentShortcut: binding ? serializeShortcut(binding) : '' }),
+      });
+      if (!r.ok) return false;
+      this.shortcut = binding ? binding : parseShortcut(undefined);
+      if (this.user) {
+        this.user = { ...this.user, addCommentShortcut: binding ? serializeShortcut(binding) : undefined };
+        localStorage.setItem('pointer_user', JSON.stringify(this.user));
+      }
+      return true;
+    } catch {
+      return false;
+    }
   }
 
   // --- Auth helpers --------------------------------------------------------
@@ -218,11 +332,13 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
     } catch (e) {
       this.user = null;
     }
+    this.shortcut = parseShortcut(this.user?.addCommentShortcut);
   }
 
   saveAuth(token: string, user: User | null): void {
     this.token = token;
     this.user = user;
+    this.shortcut = parseShortcut(user?.addCommentShortcut);
     localStorage.setItem('pointer_token', token);
     localStorage.setItem('pointer_user', JSON.stringify(user));
   }
@@ -273,9 +389,21 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
       if (!r.ok) { this.pageContextCaptureEnabled = false; return; }
       const envelope = await r.json();
       this.pageContextCaptureEnabled = !!(envelope && envelope.data && envelope.data.pageContextCaptureEnabled);
+      this.projectName = (envelope && envelope.data && envelope.data.name) || this.project;
+      this.updateProjectNameLabel();
       if (this.pageContextCaptureEnabled) startPageContextCapture(this.server, SCRIPT_SRC);
     } catch {
       this.pageContextCaptureEnabled = false;
+    }
+  }
+
+  // Patches the already-rendered header label in place rather than a full renderChrome() —
+  // re-rendering chrome here would drop the sidebar's open/closed state mid-session.
+  private updateProjectNameLabel(): void {
+    const el = this.root && this.root.querySelector('#pf-project-name');
+    if (el) {
+      el.textContent = this.projectName;
+      el.setAttribute('title', this.projectName);
     }
   }
 
@@ -369,7 +497,7 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
     const fixedEnvLabel = this.hasFixedEnvironment
       ? (this.environmentAttr || ENV_NAME[this.environmentInt] || 'staging')
       : null;
-    this.root.innerHTML = TPL.chrome(displayName, roleLabel, fixedEnvLabel);
+    this.root.innerHTML = TPL.chrome(displayName, roleLabel, fixedEnvLabel, this.projectName || this.project);
 
     const hideBtn = this.root.querySelector('#pf-hide');
     if (hideBtn) hideBtn.addEventListener('click', () => this.hideOverlay());
@@ -377,13 +505,7 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
     const userBtn = this.root.querySelector('#pf-user');
     if (userBtn) userBtn.addEventListener('click', (e) => { e.stopPropagation(); this.toggleUserMenu(); });
 
-    this.root.querySelector('#pf-add')!.addEventListener('click', () => {
-      if (!this.token) {
-        showLoginModal(this, () => { Promise.resolve(this.init()).then(() => this.togglePicking()); });
-        return;
-      }
-      this.togglePicking();
-    });
+    this.root.querySelector('#pf-add')!.addEventListener('click', () => this.activateAddComment());
     this.root.querySelector('#pf-toggle')!.addEventListener('click', () => {
       if (!this.token) { showLoginModal(this, () => { Promise.resolve(this.init()).then(() => this.toggleSidebar(true)); }); return; }
       this.toggleSidebar();
@@ -498,7 +620,7 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
 
     const displayName = this.user ? escapeHtml(this.user.displayName || this.user.email) : '';
     const roleLabel = this.user ? escapeHtml(this.user.roleName || '') : '';
-    host.innerHTML = TPL.userMenu(displayName, roleLabel);
+    host.innerHTML = TPL.userMenu(displayName, roleLabel, formatShortcut(this.shortcut));
     const menu = host.querySelector('#pf-user-menu') as HTMLElement;
 
     // Anchor the dropdown under the user icon.
@@ -510,6 +632,18 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
     }
 
     (host.querySelector('#pf-signout') as HTMLElement).addEventListener('click', () => this.signOut());
+    (host.querySelector('#pf-shortcut-edit') as HTMLElement).addEventListener('click', (e) => {
+      e.stopPropagation();
+      this.beginRecordingShortcut(host.querySelector('#pf-shortcut-edit') as HTMLElement);
+    });
+    (host.querySelector('#pf-shortcut-reset') as HTMLElement).addEventListener('click', async (e) => {
+      e.stopPropagation();
+      const editBtn = host.querySelector('#pf-shortcut-edit') as HTMLElement | null;
+      if (editBtn) editBtn.textContent = 'Resetting…';
+      const ok = await this.saveShortcutPreference(null);
+      if (editBtn) editBtn.textContent = formatShortcut(this.shortcut);
+      this.toast(ok ? 'Shortcut reset to default' : 'Failed to reset — try again', ok ? '' : 'error');
+    });
 
     // Close on click outside (composedPath crosses the shadow boundary).
     this._userMenuClose = (e: MouseEvent) => {
@@ -526,6 +660,9 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
       document.removeEventListener('click', this._userMenuClose, true);
       this._userMenuClose = null;
     }
+    // The menu (and its shortcut-edit button) is about to be gone — tear down any in-flight
+    // "press keys…" recording so it can't silently capture some unrelated future keystroke.
+    if (this._shortcutRecordingCleanup) this._shortcutRecordingCleanup();
   }
 
   // Clear the session and reset the widget to its logged-out (deferred-login) state.

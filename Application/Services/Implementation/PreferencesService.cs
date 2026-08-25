@@ -42,6 +42,14 @@ public class PreferencesService : IPreferencesService
 
         if (request.Language != null) user.Language = request.Language;
         if (request.Theme != null) user.Theme = request.Theme;
+        // Empty string clears the override (widget falls back to its built-in default);
+        // null (property omitted) leaves the current value untouched.
+        if (request.AddCommentShortcut != null)
+        {
+            if (request.AddCommentShortcut.Length > 40)
+                return Result<MeResponse>.Failure(MessageKeys.Preferences.Invalid);
+            user.AddCommentShortcut = request.AddCommentShortcut.Length == 0 ? null : request.AddCommentShortcut;
+        }
         _unitOfWork.Repository<User>().Update(user);
         await _unitOfWork.SaveChangesAsync();
 

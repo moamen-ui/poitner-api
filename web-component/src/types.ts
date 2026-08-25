@@ -58,6 +58,9 @@ export interface User {
   displayName?: string;
   email?: string;
   roleName?: string;
+  /** "Add comment" widget shortcut, e.g. "alt+shift+c" — synced to the account. Absent/undefined
+   *  means the widget's built-in default. */
+  addCommentShortcut?: string;
 }
 
 /**

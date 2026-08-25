@@ -16,6 +16,13 @@ public class User : BaseEntity
     public string? Theme { get; set; }
 
     /// <summary>
+    /// Per-user "add comment" widget keyboard shortcut, e.g. "alt+shift+c" — synced to the
+    /// account (not per-browser) so it follows the user across machines/browsers. Null = the
+    /// widget's built-in default (Alt+Shift+C / Option+Shift+C).
+    /// </summary>
+    public string? AddCommentShortcut { get; set; }
+
+    /// <summary>
     /// Rotating session/token invalidation stamp (H1/H2). Embedded as the JWT <c>stamp</c> claim and
     /// in reset-token payloads; bumped (new Guid) on password change, disable, and reject so existing
     /// access tokens and outstanding reset links stop validating. Enforcement is gated by

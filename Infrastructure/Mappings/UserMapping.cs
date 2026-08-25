@@ -31,6 +31,7 @@ public class UserMapping : IEntityTypeConfiguration<User>
         b.Property(x => x.ApprovalStatus).HasColumnName("approval_status").HasDefaultValue(Pointer.Domain.Enums.ApprovalStatus.Approved);
         b.Property(x => x.Language).HasColumnName("language").HasMaxLength(8);
         b.Property(x => x.Theme).HasColumnName("theme").HasMaxLength(8);
+        b.Property(x => x.AddCommentShortcut).HasColumnName("add_comment_shortcut").HasMaxLength(40);
         b.Property(x => x.SecurityStamp).HasColumnName("security_stamp");
         b.Property(x => x.OwnerId).HasColumnName("owner_id");
         b.HasIndex(x => x.OwnerId);

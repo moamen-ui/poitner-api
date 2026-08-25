@@ -223,7 +223,10 @@
     // config), pass its display name to render a read-only label instead of the switcher — letting a
     // visitor switch an environment that was already explicitly configured is redundant and risks
     // misfiling a comment into the wrong bucket. Pass null/undefined to render the normal switcher.
-    chrome: (displayName, roleLabel, fixedEnvLabel) => `
+    // `projectName`: shown next to the environment indicator so a visitor can immediately tell which
+    // project this install is bound to — project keys aren't unique across a workspace, so two
+    // different installs can easily look identical without this.
+    chrome: (displayName, roleLabel, fixedEnvLabel, projectName = "") => `
         <div class="pf-toolbar">
           <span class="pf-grip" id="pf-grip" title="Drag to move" aria-label="Drag toolbar">${ICON.grip}</span>
           <button class="pf-btn pf-icon-btn pf-reset-pos" id="pf-reset-pos" title="Reset toolbar position" aria-label="Reset toolbar position" style="display:none">${ICON.restore}</button>
@@ -236,11 +239,14 @@
         <div class="pf-sidebar" id="pf-sidebar">
           <div class="pf-sidebar-head">
             <h2>Comments</h2>
-            ${fixedEnvLabel ? `<span class="pf-env-label" title="Environment — fixed for this install" style="margin-inline-start:auto; margin-inline-end:8px; font-size:12px; color:#64748b; text-transform:capitalize;">${escapeHtml(fixedEnvLabel)}</span>` : `<select class="pf-input pf-env-select" id="pf-env" title="Environment — comments are scoped per environment" style="width:auto; margin-inline-start:auto; margin-inline-end:8px; padding:4px 8px;">
+            <div style="display:flex; align-items:center; gap:6px; min-width:0; margin-inline-start:auto; margin-inline-end:8px;">
+              <span id="pf-project-name" title="${escapeHtml(projectName)}" style="font-size:12px; color:#64748b; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:110px;">${escapeHtml(projectName)}</span>
+              ${fixedEnvLabel ? `<span class="pf-env-label" title="Environment — fixed for this install" style="font-size:12px; color:#64748b; text-transform:capitalize;">&middot; ${escapeHtml(fixedEnvLabel)}</span>` : `<select class="pf-input pf-env-select" id="pf-env" title="Environment — comments are scoped per environment" style="width:auto; padding:4px 8px;">
               <option value="local">local</option>
               <option value="staging">staging</option>
               <option value="production">production</option>
             </select>`}
+            </div>
             <button class="pf-mini" id="pf-close">&#x2715;</button>
           </div>
           <div class="pf-filters" id="pf-filters"></div>
@@ -249,12 +255,18 @@
         <div id="pf-pins"></div>
         <div id="pf-popover-host"></div>
         <div id="pf-menu-host"></div>`,
-    // Dropdown under the user icon: shows identity + a Sign out action.
-    userMenu: (displayName, roleLabel) => `
+    // Dropdown under the user icon: shows identity, the per-user "add comment" shortcut
+    // (click to rebind, ↺ to reset), and a Sign out action.
+    userMenu: (displayName, roleLabel, shortcutLabel) => `
         <div class="pf-menu" id="pf-user-menu" role="menu">
           <div class="pf-menu-id">
             <span>${displayName}</span>
             ${roleLabel ? `<span class="pf-menu-role">${roleLabel}</span>` : ""}
+          </div>
+          <div style="display:flex; align-items:center; gap:6px; padding:6px 12px; font-size:12px;">
+            <span style="flex:1; color:inherit;">Add comment</span>
+            <button type="button" id="pf-shortcut-edit" class="pf-mini" title="Click, then press a new key combo">${escapeHtml(shortcutLabel)}</button>
+            <button type="button" id="pf-shortcut-reset" class="pf-mini pf-icon-btn" title="Reset to default">&#8635;</button>
           </div>
           <button class="pf-menu-item" id="pf-signout" role="menuitem">${ICON.logout}<span>Sign out</span></button>
         </div>`,
@@ -678,6 +690,57 @@
     };
   }
 
+  // src/shortcut.ts
+  var DEFAULT_SHORTCUT = { key: "c", alt: true, shift: true, ctrl: false, meta: false };
+  var MODIFIER_TOKENS = /* @__PURE__ */ new Set(["ctrl", "alt", "shift", "meta"]);
+  function parseShortcut(raw) {
+    if (!raw) return { ...DEFAULT_SHORTCUT };
+    const parts = raw.toLowerCase().split("+").map((p) => p.trim()).filter(Boolean);
+    const key = parts[parts.length - 1];
+    if (!key || MODIFIER_TOKENS.has(key)) return { ...DEFAULT_SHORTCUT };
+    const mods = new Set(parts.slice(0, -1));
+    return {
+      key,
+      ctrl: mods.has("ctrl"),
+      alt: mods.has("alt"),
+      shift: mods.has("shift"),
+      meta: mods.has("meta")
+    };
+  }
+  function serializeShortcut(binding) {
+    const parts = [];
+    if (binding.ctrl) parts.push("ctrl");
+    if (binding.alt) parts.push("alt");
+    if (binding.shift) parts.push("shift");
+    if (binding.meta) parts.push("meta");
+    parts.push(binding.key.toLowerCase());
+    return parts.join("+");
+  }
+  function matchesShortcut(e, binding) {
+    return e.key.toLowerCase() === binding.key.toLowerCase() && e.altKey === binding.alt && e.shiftKey === binding.shift && e.ctrlKey === binding.ctrl && e.metaKey === binding.meta;
+  }
+  function isMacPlatform() {
+    if (typeof navigator === "undefined") return false;
+    return /Mac|iPhone|iPad|iPod/.test(navigator.platform || navigator.userAgent || "");
+  }
+  function formatShortcut(binding, mac = isMacPlatform()) {
+    const parts = [];
+    if (mac) {
+      if (binding.ctrl) parts.push("⌃");
+      if (binding.alt) parts.push("⌥");
+      if (binding.shift) parts.push("⇧");
+      if (binding.meta) parts.push("⌘");
+      parts.push(binding.key.length === 1 ? binding.key.toUpperCase() : binding.key);
+      return parts.join("");
+    }
+    if (binding.ctrl) parts.push("Ctrl");
+    if (binding.meta) parts.push("Win");
+    if (binding.alt) parts.push("Alt");
+    if (binding.shift) parts.push("Shift");
+    parts.push(binding.key.length === 1 ? binding.key.toUpperCase() : binding.key);
+    return parts.join("+");
+  }
+
   // src/auth-ui.ts
   function showLoginModal(host, afterLogin) {
     host.afterLogin = afterLogin || null;
@@ -921,10 +984,21 @@
       // Project-level opt-in (default off), read once at init via /capture-config. Gates both whether
       // the widget buffers console/network events at all and whether "Report as a bug" is shown.
       this.pageContextCaptureEnabled = false;
+      // Display name resolved from /capture-config (falls back to the raw `project` key attribute
+      // until it loads). Shown next to the environment indicator so a visitor can immediately tell
+      // which project an install is actually bound to — project keys aren't unique across a workspace.
+      this.projectName = "";
+      // Per-user "add comment" keyboard shortcut, synced to the account (User.AddCommentShortcut,
+      // not localStorage) — set from `this.user.addCommentShortcut` in loadAuth()/saveAuth() below.
+      // Default is Alt+Shift+C / Option+Shift+C — see shortcut.ts for why not Ctrl+Shift+C / Cmd+Option+C.
+      this.shortcut = parseShortcut(void 0);
       this._pendingShotPromise = null;
       this._userMenuClose = null;
+      this._recordingShortcut = false;
+      this._shortcutRecordingCleanup = null;
     }
     connectedCallback() {
+      var _a2;
       if (this._mounted) return;
       this._mounted = true;
       this.project = this.getAttribute("project") || "";
@@ -968,6 +1042,7 @@
       if (injected == null ? void 0 : injected.token) {
         this.token = injected.token;
         if (injected.user !== void 0) this.user = injected.user;
+        this.shortcut = parseShortcut((_a2 = this.user) == null ? void 0 : _a2.addCommentShortcut);
       }
       this.style.position = "fixed";
       this.style.zIndex = "2147483647";
@@ -989,9 +1064,11 @@
       this._onHover = this.onHover.bind(this);
       this._onPick = this.onPick.bind(this);
       this._onPickKey = this.onPickKey.bind(this);
+      this._onShortcutKeydown = this.onShortcutKeydown.bind(this);
       this._reposition = () => this.renderPins();
       window.addEventListener("scroll", this._reposition, true);
       window.addEventListener("resize", this._reposition);
+      document.addEventListener("keydown", this._onShortcutKeydown);
       this._boot();
     }
     // Wait for the stylesheet to load, then render the first view (avoids a flash
@@ -1034,11 +1111,103 @@
     disconnectedCallback() {
       window.removeEventListener("scroll", this._reposition, true);
       window.removeEventListener("resize", this._reposition);
+      document.removeEventListener("keydown", this._onShortcutKeydown);
+      if (this._shortcutRecordingCleanup) this._shortcutRecordingCleanup();
       this.stopPicking();
       stopPageContextCapture();
     }
+    // --- "Add comment" keyboard shortcut --------------------------------------
+    isEditableTarget(e) {
+      const target = e.composedPath()[0];
+      if (!target || !target.tagName) return false;
+      const tag = target.tagName.toLowerCase();
+      return tag === "input" || tag === "textarea" || tag === "select" || !!target.isContentEditable;
+    }
+    onShortcutKeydown(e) {
+      if (this._recordingShortcut || this._disabled) return;
+      if (this.isEditableTarget(e)) return;
+      if (!matchesShortcut(e, this.shortcut)) return;
+      e.preventDefault();
+      this.activateAddComment();
+    }
+    // Shared by both the toolbar's "add" button and the keyboard shortcut — expands the widget
+    // first if it's collapsed (the toolbar buttons don't exist in the DOM until then), then either
+    // prompts login or toggles element-picking, exactly like clicking #pf-add.
+    activateAddComment() {
+      if (this._collapsed) this.showOverlay();
+      if (!this.token) {
+        showLoginModal(this, () => {
+          Promise.resolve(this.init()).then(() => this.togglePicking());
+        });
+        return;
+      }
+      this.togglePicking();
+    }
+    // Enters "recording" mode on the user-menu shortcut button: the next non-modifier keydown
+    // (with at least one modifier held) becomes the new binding. Escape cancels.
+    beginRecordingShortcut(btnEl) {
+      this._recordingShortcut = true;
+      const original = btnEl.textContent || "";
+      btnEl.textContent = "Press keys… (Esc to cancel)";
+      const onKey = (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        if (e.key === "Escape") {
+          btnEl.textContent = original;
+          cleanup();
+          return;
+        }
+        if (e.key === "Shift" || e.key === "Alt" || e.key === "Control" || e.key === "Meta") return;
+        if (!(e.altKey || e.ctrlKey || e.metaKey || e.shiftKey)) {
+          btnEl.textContent = "Add a modifier key (Alt/Shift/Ctrl/⌘)…";
+          return;
+        }
+        const binding = {
+          key: e.key.length === 1 ? e.key.toLowerCase() : e.key,
+          alt: e.altKey,
+          shift: e.shiftKey,
+          ctrl: e.ctrlKey,
+          meta: e.metaKey
+        };
+        btnEl.textContent = "Saving…";
+        cleanup();
+        this.saveShortcutPreference(binding).then((ok) => {
+          btnEl.textContent = formatShortcut(this.shortcut);
+          this.toast(ok ? "Shortcut updated" : "Failed to save — try again", ok ? "" : "error");
+        });
+      };
+      const cleanup = () => {
+        this._recordingShortcut = false;
+        this._shortcutRecordingCleanup = null;
+        document.removeEventListener("keydown", onKey, true);
+      };
+      this._shortcutRecordingCleanup = cleanup;
+      document.addEventListener("keydown", onKey, true);
+    }
+    // Persists a new binding to the account (PATCH /api/me/preferences) so it follows the user
+    // across browsers/machines — an empty string resets to the widget's built-in default. Updates
+    // the cached `pointer_user` mirror on success so a page reload reflects it instantly, without
+    // waiting for the next fresh login.
+    async saveShortcutPreference(binding) {
+      try {
+        const r = await this.api("/api/me/preferences", {
+          method: "PATCH",
+          body: JSON.stringify({ addCommentShortcut: binding ? serializeShortcut(binding) : "" })
+        });
+        if (!r.ok) return false;
+        this.shortcut = binding ? binding : parseShortcut(void 0);
+        if (this.user) {
+          this.user = { ...this.user, addCommentShortcut: binding ? serializeShortcut(binding) : void 0 };
+          localStorage.setItem("pointer_user", JSON.stringify(this.user));
+        }
+        return true;
+      } catch {
+        return false;
+      }
+    }
     // --- Auth helpers --------------------------------------------------------
     loadAuth() {
+      var _a2;
       this.token = localStorage.getItem("pointer_token") || null;
       try {
         const raw = localStorage.getItem("pointer_user");
@@ -1046,10 +1215,12 @@
       } catch (e) {
         this.user = null;
       }
+      this.shortcut = parseShortcut((_a2 = this.user) == null ? void 0 : _a2.addCommentShortcut);
     }
     saveAuth(token, user) {
       this.token = token;
       this.user = user;
+      this.shortcut = parseShortcut(user == null ? void 0 : user.addCommentShortcut);
       localStorage.setItem("pointer_token", token);
       localStorage.setItem("pointer_user", JSON.stringify(user));
     }
@@ -1097,9 +1268,20 @@
         }
         const envelope = await r.json();
         this.pageContextCaptureEnabled = !!(envelope && envelope.data && envelope.data.pageContextCaptureEnabled);
+        this.projectName = envelope && envelope.data && envelope.data.name || this.project;
+        this.updateProjectNameLabel();
         if (this.pageContextCaptureEnabled) startPageContextCapture(this.server, SCRIPT_SRC);
       } catch {
         this.pageContextCaptureEnabled = false;
+      }
+    }
+    // Patches the already-rendered header label in place rather than a full renderChrome() —
+    // re-rendering chrome here would drop the sidebar's open/closed state mid-session.
+    updateProjectNameLabel() {
+      const el = this.root && this.root.querySelector("#pf-project-name");
+      if (el) {
+        el.textContent = this.projectName;
+        el.setAttribute("title", this.projectName);
       }
     }
     // --- API ----------------------------------------------------------------
@@ -1181,7 +1363,7 @@
       const displayName = this.user ? escapeHtml(this.user.displayName || this.user.email) : "";
       const roleLabel = this.user ? escapeHtml(this.user.roleName || "") : "";
       const fixedEnvLabel = this.hasFixedEnvironment ? this.environmentAttr || ENV_NAME[this.environmentInt] || "staging" : null;
-      this.root.innerHTML = TPL.chrome(displayName, roleLabel, fixedEnvLabel);
+      this.root.innerHTML = TPL.chrome(displayName, roleLabel, fixedEnvLabel, this.projectName || this.project);
       const hideBtn = this.root.querySelector("#pf-hide");
       if (hideBtn) hideBtn.addEventListener("click", () => this.hideOverlay());
       const userBtn = this.root.querySelector("#pf-user");
@@ -1189,15 +1371,7 @@
         e.stopPropagation();
         this.toggleUserMenu();
       });
-      this.root.querySelector("#pf-add").addEventListener("click", () => {
-        if (!this.token) {
-          showLoginModal(this, () => {
-            Promise.resolve(this.init()).then(() => this.togglePicking());
-          });
-          return;
-        }
-        this.togglePicking();
-      });
+      this.root.querySelector("#pf-add").addEventListener("click", () => this.activateAddComment());
       this.root.querySelector("#pf-toggle").addEventListener("click", () => {
         if (!this.token) {
           showLoginModal(this, () => {
@@ -1341,7 +1515,7 @@
       }
       const displayName = this.user ? escapeHtml(this.user.displayName || this.user.email) : "";
       const roleLabel = this.user ? escapeHtml(this.user.roleName || "") : "";
-      host.innerHTML = TPL.userMenu(displayName, roleLabel);
+      host.innerHTML = TPL.userMenu(displayName, roleLabel, formatShortcut(this.shortcut));
       const menu = host.querySelector("#pf-user-menu");
       const btn = this.root.querySelector("#pf-user");
       if (btn) {
@@ -1350,6 +1524,18 @@
         menu.style.right = `${Math.max(8, Math.round(window.innerWidth - r.right))}px`;
       }
       host.querySelector("#pf-signout").addEventListener("click", () => this.signOut());
+      host.querySelector("#pf-shortcut-edit").addEventListener("click", (e) => {
+        e.stopPropagation();
+        this.beginRecordingShortcut(host.querySelector("#pf-shortcut-edit"));
+      });
+      host.querySelector("#pf-shortcut-reset").addEventListener("click", async (e) => {
+        e.stopPropagation();
+        const editBtn = host.querySelector("#pf-shortcut-edit");
+        if (editBtn) editBtn.textContent = "Resetting…";
+        const ok = await this.saveShortcutPreference(null);
+        if (editBtn) editBtn.textContent = formatShortcut(this.shortcut);
+        this.toast(ok ? "Shortcut reset to default" : "Failed to reset — try again", ok ? "" : "error");
+      });
       this._userMenuClose = (e) => {
         const path = e.composedPath();
         if (!path.includes(menu) && (!btn || !path.includes(btn))) this.closeUserMenu();
@@ -1365,6 +1551,7 @@
         document.removeEventListener("click", this._userMenuClose, true);
         this._userMenuClose = null;
       }
+      if (this._shortcutRecordingCleanup) this._shortcutRecordingCleanup();
     }
     // Clear the session and reset the widget to its logged-out (deferred-login) state.
     signOut() {

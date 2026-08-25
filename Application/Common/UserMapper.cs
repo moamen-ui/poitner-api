@@ -20,5 +20,6 @@ public static class UserMapper
         IsSuperAdmin = user.Role?.IsSuperAdmin ?? false,
         Language = user.Language,
         Theme = user.Theme,
+        AddCommentShortcut = user.AddCommentShortcut,
     };
 }

@@ -11,4 +11,7 @@ public class MeResponse
     public bool IsSuperAdmin { get; set; }
     public string? Language { get; set; }
     public string? Theme { get; set; }
+
+    /// <summary>Per-user "add comment" widget shortcut, e.g. "alt+shift+c". Null = widget default.</summary>
+    public string? AddCommentShortcut { get; set; }
 }

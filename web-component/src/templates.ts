@@ -56,7 +56,10 @@ export const TPL = {
   // config), pass its display name to render a read-only label instead of the switcher — letting a
   // visitor switch an environment that was already explicitly configured is redundant and risks
   // misfiling a comment into the wrong bucket. Pass null/undefined to render the normal switcher.
-  chrome: (displayName: string, roleLabel: string, fixedEnvLabel?: string | null) => `
+  // `projectName`: shown next to the environment indicator so a visitor can immediately tell which
+  // project this install is bound to — project keys aren't unique across a workspace, so two
+  // different installs can easily look identical without this.
+  chrome: (displayName: string, roleLabel: string, fixedEnvLabel?: string | null, projectName = '') => `
         <div class="pf-toolbar">
           <span class="pf-grip" id="pf-grip" title="Drag to move" aria-label="Drag toolbar">${ICON.grip}</span>
           <button class="pf-btn pf-icon-btn pf-reset-pos" id="pf-reset-pos" title="Reset toolbar position" aria-label="Reset toolbar position" style="display:none">${ICON.restore}</button>
@@ -69,13 +72,16 @@ export const TPL = {
         <div class="pf-sidebar" id="pf-sidebar">
           <div class="pf-sidebar-head">
             <h2>Comments</h2>
-            ${fixedEnvLabel
-              ? `<span class="pf-env-label" title="Environment — fixed for this install" style="margin-inline-start:auto; margin-inline-end:8px; font-size:12px; color:#64748b; text-transform:capitalize;">${escapeHtml(fixedEnvLabel)}</span>`
-              : `<select class="pf-input pf-env-select" id="pf-env" title="Environment — comments are scoped per environment" style="width:auto; margin-inline-start:auto; margin-inline-end:8px; padding:4px 8px;">
+            <div style="display:flex; align-items:center; gap:6px; min-width:0; margin-inline-start:auto; margin-inline-end:8px;">
+              <span id="pf-project-name" title="${escapeHtml(projectName)}" style="font-size:12px; color:#64748b; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:110px;">${escapeHtml(projectName)}</span>
+              ${fixedEnvLabel
+                ? `<span class="pf-env-label" title="Environment — fixed for this install" style="font-size:12px; color:#64748b; text-transform:capitalize;">&middot; ${escapeHtml(fixedEnvLabel)}</span>`
+                : `<select class="pf-input pf-env-select" id="pf-env" title="Environment — comments are scoped per environment" style="width:auto; padding:4px 8px;">
               <option value="local">local</option>
               <option value="staging">staging</option>
               <option value="production">production</option>
             </select>`}
+            </div>
             <button class="pf-mini" id="pf-close">&#x2715;</button>
           </div>
           <div class="pf-filters" id="pf-filters"></div>
@@ -85,12 +91,18 @@ export const TPL = {
         <div id="pf-popover-host"></div>
         <div id="pf-menu-host"></div>`,
 
-  // Dropdown under the user icon: shows identity + a Sign out action.
-  userMenu: (displayName: string, roleLabel: string) => `
+  // Dropdown under the user icon: shows identity, the per-user "add comment" shortcut
+  // (click to rebind, ↺ to reset), and a Sign out action.
+  userMenu: (displayName: string, roleLabel: string, shortcutLabel: string) => `
         <div class="pf-menu" id="pf-user-menu" role="menu">
           <div class="pf-menu-id">
             <span>${displayName}</span>
             ${roleLabel ? `<span class="pf-menu-role">${roleLabel}</span>` : ''}
+          </div>
+          <div style="display:flex; align-items:center; gap:6px; padding:6px 12px; font-size:12px;">
+            <span style="flex:1; color:inherit;">Add comment</span>
+            <button type="button" id="pf-shortcut-edit" class="pf-mini" title="Click, then press a new key combo">${escapeHtml(shortcutLabel)}</button>
+            <button type="button" id="pf-shortcut-reset" class="pf-mini pf-icon-btn" title="Reset to default">&#8635;</button>
           </div>
           <button class="pf-menu-item" id="pf-signout" role="menuitem">${ICON.logout}<span>Sign out</span></button>
         </div>`,
