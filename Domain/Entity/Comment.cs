@@ -20,6 +20,12 @@ public class Comment : BaseEntity
     public Guid? EditedBy { get; set; }
     public Guid? OwnerId { get; set; }
 
+    // "Report as a bug" checkbox state, stamped regardless of whether PageContextSnapshot ended up
+    // non-empty — a cheap triage signal on its own. See docs/superpowers/specs/2026-08-25-page-context-capture-design.md.
+    public bool IsBugReport { get; set; }
+    public int? PageContextSnapshotId { get; set; }
+    public PageContextSnapshot? PageContextSnapshot { get; set; }
+
     // Predefined-action snapshots (multi-select). We snapshot {text, prompt} at create time
     // rather than FK to PredefinedAction so (1) the prompt never has to be re-resolved (and never
     // reaches the browser via a join), and (2) editing/deleting an action definition later does not

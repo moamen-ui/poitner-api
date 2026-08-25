@@ -24,6 +24,7 @@ public class ProjectMapping : IEntityTypeConfiguration<Project>
         b.HasIndex(x => new { x.Key, x.OwnerId }).IsUnique();
         b.Property(x => x.Name).HasColumnName("name").IsRequired().HasMaxLength(128);
         b.Property(x => x.IsActive).HasColumnName("is_active");
+        b.Property(x => x.PageContextCaptureEnabled).HasColumnName("page_context_capture_enabled").HasDefaultValue(false);
         b.Property(x => x.OwnerId).HasColumnName("owner_id");
         b.HasIndex(x => x.OwnerId);
     }

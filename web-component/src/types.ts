@@ -30,6 +30,8 @@ export interface ElementCapture {
   deviceType?: string;
   /** window.devicePixelRatio at capture time (distinguishes retina/HiDPI). */
   devicePixelRatio?: number;
+  /** navigator.userAgent at capture time — which browser/OS a comment reproduces in. */
+  userAgent?: string;
 }
 
 export interface Comment {
@@ -47,6 +49,8 @@ export interface Comment {
   element?: ElementCapture;
   replies?: Reply[];
   _mine?: boolean;
+  /** "Report as a bug" checkbox state — set on create, independent of pageContext. */
+  isBugReport?: boolean;
 }
 
 export interface User {

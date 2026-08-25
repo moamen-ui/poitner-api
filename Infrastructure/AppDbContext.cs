@@ -49,6 +49,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options, ICurrentUser c
     public DbSet<Plan> Plans => Set<Plan>();
     public DbSet<Subscription> Subscriptions => Set<Subscription>();
     public DbSet<ExtensionSite> ExtensionSites => Set<ExtensionSite>();
+    public DbSet<PageContextSnapshot> PageContextSnapshots => Set<PageContextSnapshot>();
 
     protected override void OnModelCreating(ModelBuilder b)
     {
@@ -66,6 +67,9 @@ public class AppDbContext(DbContextOptions<AppDbContext> options, ICurrentUser c
         b.Entity<User>().HasQueryFilter(e => currentUser.IsSuperAdmin || (currentUser.TenantId != null && e.OwnerId == currentUser.TenantId) || (currentUser.TenantId == null && !strict && e.OwnerId == null));
         b.Entity<Comment>().HasQueryFilter(e => currentUser.IsSuperAdmin || (currentUser.TenantId != null && e.OwnerId == currentUser.TenantId) || (currentUser.TenantId == null && !strict && e.OwnerId == null));
         b.Entity<Reply>().HasQueryFilter(e => currentUser.IsSuperAdmin || (currentUser.TenantId != null && e.OwnerId == currentUser.TenantId) || (currentUser.TenantId == null && !strict && e.OwnerId == null));
+        // PageContextSnapshot carries browser-captured console/network data for a tenant's project —
+        // strict-own like Comment, so it can never leak across tenants through a future admin listing.
+        b.Entity<PageContextSnapshot>().HasQueryFilter(e => currentUser.IsSuperAdmin || (currentUser.TenantId != null && e.OwnerId == currentUser.TenantId) || (currentUser.TenantId == null && !strict && e.OwnerId == null));
         // Invites are ALWAYS tenant-scoped (OwnerId non-null) — strict-own, no null-owner branch.
         b.Entity<Invite>().HasQueryFilter(e => currentUser.IsSuperAdmin || (currentUser.TenantId != null && e.OwnerId == currentUser.TenantId) || (currentUser.TenantId == null && !strict && e.OwnerId == null));
         // Own-plus-global: a tenant sees its own actions plus null-owner (global) ones — needed so

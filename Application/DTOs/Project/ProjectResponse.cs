@@ -9,6 +9,10 @@ public class ProjectResponse
     public string Name { get; set; } = string.Empty;
     public bool IsActive { get; set; }
 
+    /// <summary>Opt-in, default off: whether the widget may capture console/network context for this
+    /// project's bug-flagged comments.</summary>
+    public bool PageContextCaptureEnabled { get; set; }
+
     /// <summary>Active project-scoped predefined actions (admin view — includes prompt).</summary>
     public List<PredefinedActionResponse> PredefinedActions { get; set; } = new();
 

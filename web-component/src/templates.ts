@@ -52,7 +52,11 @@ export const TPL = {
           Already have an account? <button class="pf-btn pf-link pf-link-inline" id="pf-show-login">Back to sign in</button>
         </div>`,
 
-  chrome: (displayName: string, roleLabel: string) => `
+  // `fixedEnvLabel`: when the host fixed the environment at install time (attribute or injected
+  // config), pass its display name to render a read-only label instead of the switcher — letting a
+  // visitor switch an environment that was already explicitly configured is redundant and risks
+  // misfiling a comment into the wrong bucket. Pass null/undefined to render the normal switcher.
+  chrome: (displayName: string, roleLabel: string, fixedEnvLabel?: string | null) => `
         <div class="pf-toolbar">
           <span class="pf-grip" id="pf-grip" title="Drag to move" aria-label="Drag toolbar">${ICON.grip}</span>
           <button class="pf-btn pf-icon-btn pf-reset-pos" id="pf-reset-pos" title="Reset toolbar position" aria-label="Reset toolbar position" style="display:none">${ICON.restore}</button>
@@ -65,11 +69,13 @@ export const TPL = {
         <div class="pf-sidebar" id="pf-sidebar">
           <div class="pf-sidebar-head">
             <h2>Comments</h2>
-            <select class="pf-input pf-env-select" id="pf-env" title="Environment — comments are scoped per environment" style="width:auto; margin-inline-start:auto; margin-inline-end:8px; padding:4px 8px;">
+            ${fixedEnvLabel
+              ? `<span class="pf-env-label" title="Environment — fixed for this install" style="margin-inline-start:auto; margin-inline-end:8px; font-size:12px; color:#64748b; text-transform:capitalize;">${escapeHtml(fixedEnvLabel)}</span>`
+              : `<select class="pf-input pf-env-select" id="pf-env" title="Environment — comments are scoped per environment" style="width:auto; margin-inline-start:auto; margin-inline-end:8px; padding:4px 8px;">
               <option value="local">local</option>
               <option value="staging">staging</option>
               <option value="production">production</option>
-            </select>
+            </select>`}
             <button class="pf-mini" id="pf-close">&#x2715;</button>
           </div>
           <div class="pf-filters" id="pf-filters"></div>
@@ -169,7 +175,10 @@ export const TPL = {
           </div>`;
   },
 
-  popover: (meta: Meta, left: number, top: number, shotEnabled: boolean, actions: PredefinedActionOption[] = []) => `
+  // `bugReportEnabled`: only true when the project has page-context capture turned on — the
+  // checkbox controls whether the console/network buffer already sitting in memory gets attached
+  // to THIS comment; it never controls whether that buffer exists (see pagecontext.ts).
+  popover: (meta: Meta, left: number, top: number, shotEnabled: boolean, actions: PredefinedActionOption[] = [], bugReportEnabled = false) => `
         <div class="pf-popover" style="left:${left}px; top:${top}px;">
           <h3>Comment on &lt;${escapeHtml(meta._tag)}&gt;</h3>
           <div class="pf-snippet">${escapeHtml(meta._snapshotPreview.slice(0, 200))}</div>
@@ -180,6 +189,7 @@ export const TPL = {
             ${actions.map((a) => `<label class="pf-check"><input type="checkbox" class="pf-action-opt" value="${a.id}" /> ${escapeHtml(a.text)}</label>`).join('')}
           </div>` : ''}
           ${shotEnabled ? `<label class="pf-check"><input type="checkbox" id="pf-comment-shot" /> &#x1f4f7; Attach screenshot</label>` : ''}
+          ${bugReportEnabled ? `<label class="pf-check" title="Attaches any console errors/warnings and failed or slow network requests seen on this page"><input type="checkbox" id="pf-comment-bug" /> &#x1f41e; Report as a bug</label>` : ''}
           <label class="pf-check"><input type="checkbox" id="pf-comment-private" /> &#x1f512; Keep private — only me</label>
           <div class="pf-reply-row">
             <button class="pf-btn primary" id="pf-submit" style="flex:1; justify-content:center;">Add</button>

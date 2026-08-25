@@ -26,4 +26,12 @@ public class CommentListItemDto
     // needs it to resolve source/CSS without a second lookup (DESIGN §7).
     public ElementCaptureDto Element { get; set; } = new();
     public List<ReplyResponse> Replies { get; set; } = new();
+
+    /// <summary>"Report as a bug" checkbox state — cheap triage signal, independent of PageContextId.</summary>
+    public bool IsBugReport { get; set; }
+
+    /// <summary>Reference into the sibling PagedData.PageContexts dict — NOT the embedded object, so
+    /// multiple comments sharing a page context cost one dictionary entry, not N copies. Null when no
+    /// page context was captured for this comment.</summary>
+    public int? PageContextId { get; set; }
 }

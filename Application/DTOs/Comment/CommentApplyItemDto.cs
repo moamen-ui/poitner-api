@@ -25,6 +25,12 @@ public class CommentApplyItemDto
 
     // Predefined-action snapshots (multi-select) — prompts included ONLY here (admin/AI apply path).
     public List<PickedActionDto> PickedActions { get; set; } = new();
+
+    /// <summary>"Report as a bug" checkbox state — cheap triage signal, independent of PageContextId.</summary>
+    public bool IsBugReport { get; set; }
+
+    /// <summary>Reference into the sibling PagedData.PageContexts dict — see CommentListItemDto.PageContextId.</summary>
+    public int? PageContextId { get; set; }
 }
 
 public class PickedActionDto

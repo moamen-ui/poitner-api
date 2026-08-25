@@ -16,4 +16,12 @@ public class CreateCommentRequest
     public List<int>? PredefinedActionIds { get; set; }
 
     public ElementCaptureDto Element { get; set; } = new();
+
+    /// <summary>"Report as a bug" checkbox state. Gates whether PageContext is persisted at all —
+    /// see CommentService.CreateAsync.</summary>
+    public bool IsBugReport { get; set; }
+
+    /// <summary>Only meaningful when IsBugReport is true; ignored server-side otherwise regardless
+    /// of what the client sends.</summary>
+    public PageContextCaptureDto? PageContext { get; set; }
 }

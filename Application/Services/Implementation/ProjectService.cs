@@ -169,6 +169,9 @@ public class ProjectService : IProjectService
         if (request.IsActive.HasValue)
             project.IsActive = request.IsActive.Value;
 
+        if (request.PageContextCaptureEnabled.HasValue)
+            project.PageContextCaptureEnabled = request.PageContextCaptureEnabled.Value;
+
         // NOTE: intentionally do NOT mutate project.OwnerId here. A null owner is legitimate for
         // global projects (e.g. the marketing landing); rewriting it would break the widget for
         // that project's null-owner stakeholders. Predefined actions on a null-owner project are a
@@ -432,6 +435,24 @@ public class ProjectService : IProjectService
         return Result<int>.Success(project.Id);
     }
 
+    public async Task<Result<CaptureConfigResponse>> GetCaptureConfigAsync(string key)
+    {
+        var projectResult = await EnsureAsync(key);
+        if (!projectResult.IsSuccess)
+            return projectResult.IsConflict
+                ? Result<CaptureConfigResponse>.Conflict(projectResult.Message ?? MessageKeys.Project.Disabled)
+                : Result<CaptureConfigResponse>.NotFound(projectResult.Message ?? MessageKeys.Project.NotFound);
+
+        var enabled = await _unitOfWork.Repository<Project>()
+            .Query()
+            .AsNoTracking()
+            .Where(p => p.Id == projectResult.Data)
+            .Select(p => p.PageContextCaptureEnabled)
+            .FirstAsync();
+
+        return Result<CaptureConfigResponse>.Success(new CaptureConfigResponse { PageContextCaptureEnabled = enabled });
+    }
+
     // Batch-resolve creator display names (Project.CreatedBy is a User.PublicId). One query.
     private async Task<Dictionary<Guid, string>> ResolveCreatorNamesAsync(IEnumerable<Guid> ids)
     {
@@ -460,6 +481,7 @@ public class ProjectService : IProjectService
             Key = project.Key,
             Name = project.Name,
             IsActive = project.IsActive,
+            PageContextCaptureEnabled = project.PageContextCaptureEnabled,
             PredefinedActions = actions
                 .OrderBy(a => a.SortOrder)
                 .Select(a => new PredefinedActionResponse

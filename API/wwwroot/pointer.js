@@ -219,7 +219,11 @@
         <div class="pf-auth-foot">
           Already have an account? <button class="pf-btn pf-link pf-link-inline" id="pf-show-login">Back to sign in</button>
         </div>`,
-    chrome: (displayName, roleLabel) => `
+    // `fixedEnvLabel`: when the host fixed the environment at install time (attribute or injected
+    // config), pass its display name to render a read-only label instead of the switcher — letting a
+    // visitor switch an environment that was already explicitly configured is redundant and risks
+    // misfiling a comment into the wrong bucket. Pass null/undefined to render the normal switcher.
+    chrome: (displayName, roleLabel, fixedEnvLabel) => `
         <div class="pf-toolbar">
           <span class="pf-grip" id="pf-grip" title="Drag to move" aria-label="Drag toolbar">${ICON.grip}</span>
           <button class="pf-btn pf-icon-btn pf-reset-pos" id="pf-reset-pos" title="Reset toolbar position" aria-label="Reset toolbar position" style="display:none">${ICON.restore}</button>
@@ -232,11 +236,11 @@
         <div class="pf-sidebar" id="pf-sidebar">
           <div class="pf-sidebar-head">
             <h2>Comments</h2>
-            <select class="pf-input pf-env-select" id="pf-env" title="Environment — comments are scoped per environment" style="width:auto; margin-inline-start:auto; margin-inline-end:8px; padding:4px 8px;">
+            ${fixedEnvLabel ? `<span class="pf-env-label" title="Environment — fixed for this install" style="margin-inline-start:auto; margin-inline-end:8px; font-size:12px; color:#64748b; text-transform:capitalize;">${escapeHtml(fixedEnvLabel)}</span>` : `<select class="pf-input pf-env-select" id="pf-env" title="Environment — comments are scoped per environment" style="width:auto; margin-inline-start:auto; margin-inline-end:8px; padding:4px 8px;">
               <option value="local">local</option>
               <option value="staging">staging</option>
               <option value="production">production</option>
-            </select>
+            </select>`}
             <button class="pf-mini" id="pf-close">&#x2715;</button>
           </div>
           <div class="pf-filters" id="pf-filters"></div>
@@ -320,7 +324,10 @@
             </div>
           </div>`;
     },
-    popover: (meta, left, top, shotEnabled, actions = []) => `
+    // `bugReportEnabled`: only true when the project has page-context capture turned on — the
+    // checkbox controls whether the console/network buffer already sitting in memory gets attached
+    // to THIS comment; it never controls whether that buffer exists (see pagecontext.ts).
+    popover: (meta, left, top, shotEnabled, actions = [], bugReportEnabled = false) => `
         <div class="pf-popover" style="left:${left}px; top:${top}px;">
           <h3>Comment on &lt;${escapeHtml(meta._tag)}&gt;</h3>
           <div class="pf-snippet">${escapeHtml(meta._snapshotPreview.slice(0, 200))}</div>
@@ -331,6 +338,7 @@
             ${actions.map((a) => `<label class="pf-check"><input type="checkbox" class="pf-action-opt" value="${a.id}" /> ${escapeHtml(a.text)}</label>`).join("")}
           </div>` : ""}
           ${shotEnabled ? `<label class="pf-check"><input type="checkbox" id="pf-comment-shot" /> &#x1f4f7; Attach screenshot</label>` : ""}
+          ${bugReportEnabled ? `<label class="pf-check" title="Attaches any console errors/warnings and failed or slow network requests seen on this page"><input type="checkbox" id="pf-comment-bug" /> &#x1f41e; Report as a bug</label>` : ""}
           <label class="pf-check"><input type="checkbox" id="pf-comment-private" /> &#x1f512; Keep private — only me</label>
           <div class="pf-reply-row">
             <button class="pf-btn primary" id="pf-submit" style="flex:1; justify-content:center;">Add</button>
@@ -522,6 +530,151 @@
       appliedCssRules: JSON.stringify(applied),
       sourcePath,
       parentInfo: JSON.stringify(parent)
+    };
+  }
+
+  // src/pagecontext.ts
+  var MAX_ENTRIES = 20;
+  var MAX_AGE_MS = 30 * 60 * 1e3;
+  var SLOW_REQUEST_MS = 3e3;
+  var consoleEntries = [];
+  var networkEntries = [];
+  var started = false;
+  var recording = false;
+  var originalConsoleError = null;
+  var originalConsoleWarn = null;
+  var originalFetch = null;
+  var ownOrigins = [];
+  function now() {
+    return (/* @__PURE__ */ new Date()).toISOString();
+  }
+  function trim(list, maxAgeGetter) {
+    const cutoff = Date.now() - MAX_AGE_MS;
+    while (list.length && new Date(maxAgeGetter(list[0])).getTime() < cutoff) list.shift();
+    while (list.length > MAX_ENTRIES) list.shift();
+  }
+  function stringifyArg(arg) {
+    if (typeof arg === "string") return arg;
+    if (arg instanceof Error) return arg.message;
+    try {
+      return JSON.stringify(arg);
+    } catch {
+      return String(arg);
+    }
+  }
+  function extractStack(args) {
+    var _a2;
+    const err = args.find((a) => a instanceof Error);
+    return (_a2 = err == null ? void 0 : err.stack) == null ? void 0 : _a2.slice(0, 4e3);
+  }
+  function recordConsole(level, args) {
+    if (recording) return;
+    recording = true;
+    try {
+      const message = args.map(stringifyArg).join(" ").slice(0, 2e3);
+      if (message.startsWith("[pointer-feedback]")) return;
+      const stack = extractStack(args);
+      const last = consoleEntries[consoleEntries.length - 1];
+      if (last && last.level === level && last.message === message) {
+        last.count += 1;
+        last.occurredAt = now();
+      } else {
+        consoleEntries.push({ level, message, stack, count: 1, occurredAt: now() });
+      }
+      trim(consoleEntries, (e) => e.occurredAt);
+    } catch {
+    } finally {
+      recording = false;
+    }
+  }
+  function stripQuery(url) {
+    const cut = url.search(/[?#]/);
+    return cut >= 0 ? url.slice(0, cut) : url;
+  }
+  function isOwnRequest(url) {
+    try {
+      const origin = new URL(url, window.location.href).origin;
+      return ownOrigins.includes(origin);
+    } catch {
+      return false;
+    }
+  }
+  function recordNetwork(method, url, statusCode, durationMs) {
+    try {
+      networkEntries.push({ method, url: stripQuery(url), statusCode, durationMs, occurredAt: now() });
+      trim(networkEntries, (e) => e.occurredAt);
+    } catch {
+    }
+  }
+  function startPageContextCapture(server, scriptOrigin) {
+    if (started) return;
+    started = true;
+    ownOrigins = [server, scriptOrigin, window.location.origin].filter((o) => !!o).map((o) => {
+      try {
+        return new URL(o).origin;
+      } catch {
+        return o;
+      }
+    });
+    originalConsoleError = console.error.bind(console);
+    originalConsoleWarn = console.warn.bind(console);
+    console.error = (...args) => {
+      recordConsole("error", args);
+      originalConsoleError(...args);
+    };
+    console.warn = (...args) => {
+      recordConsole("warn", args);
+      originalConsoleWarn(...args);
+    };
+    originalFetch = window.fetch.bind(window);
+    window.fetch = (...args) => {
+      var _a2, _b;
+      const url = typeof args[0] === "string" ? args[0] : args[0].url;
+      if (isOwnRequest(url)) return originalFetch(...args);
+      const method = (((_a2 = args[1]) == null ? void 0 : _a2.method) || ((_b = args[0]) == null ? void 0 : _b.method) || "GET").toUpperCase();
+      const start = Date.now();
+      return originalFetch(...args).then(
+        (response) => {
+          const durationMs = Date.now() - start;
+          if (!response.ok || durationMs >= SLOW_REQUEST_MS) {
+            recordNetwork(method, url, response.status, durationMs);
+          }
+          return response;
+        },
+        (err) => {
+          recordNetwork(method, url, null, Date.now() - start);
+          throw err;
+        }
+      );
+    };
+  }
+  function stopPageContextCapture() {
+    if (!started) return;
+    if (originalConsoleError) console.error = originalConsoleError;
+    if (originalConsoleWarn) console.warn = originalConsoleWarn;
+    if (originalFetch) window.fetch = originalFetch;
+    started = false;
+  }
+  function getOrCreateSessionId() {
+    const KEY = "pointer_page_session_id";
+    try {
+      let id = sessionStorage.getItem(KEY);
+      if (!id) {
+        id = typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+        sessionStorage.setItem(KEY, id);
+      }
+      return id;
+    } catch {
+      return `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    }
+  }
+  function getPageContextPayload() {
+    if (!started) return null;
+    if (consoleEntries.length === 0 && networkEntries.length === 0) return null;
+    return {
+      sessionId: getOrCreateSessionId(),
+      consoleEntries: consoleEntries.slice(),
+      networkEntries: networkEntries.slice()
     };
   }
 
@@ -762,6 +915,12 @@
       this.user = null;
       this.afterLogin = null;
       this.predefinedActions = [];
+      // Whether the environment was explicitly fixed at install time (HTML attribute or injected
+      // config) — when true, the toolbar shows a read-only label instead of a switcher.
+      this.hasFixedEnvironment = false;
+      // Project-level opt-in (default off), read once at init via /capture-config. Gates both whether
+      // the widget buffers console/network events at all and whether "Report as a bug" is shown.
+      this.pageContextCaptureEnabled = false;
       this._pendingShotPromise = null;
       this._userMenuClose = null;
     }
@@ -770,6 +929,7 @@
       this._mounted = true;
       this.project = this.getAttribute("project") || "";
       this.environmentAttr = this.getAttribute("environment") || "";
+      this.hasFixedEnvironment = !!this.environmentAttr;
       this.sourceAttr = this.getAttribute("source-attr") || "data-component-source";
       this.screenshotEnabled = (this.getAttribute("screenshot") || "").toLowerCase() !== "false";
       const pos = (this.getAttribute("launcher-position") || "").toLowerCase();
@@ -783,15 +943,18 @@
         if (injected.environment) {
           this.environmentAttr = injected.environment;
           this.environmentInt = ENV_MAP[injected.environment.toLowerCase()] || this.environmentInt;
+          this.hasFixedEnvironment = true;
         }
       }
-      try {
-        const savedEnv = localStorage.getItem("pointer_env_" + this.project);
-        if (savedEnv && ENV_MAP[savedEnv.toLowerCase()]) {
-          this.environmentAttr = savedEnv.toLowerCase();
-          this.environmentInt = ENV_MAP[savedEnv.toLowerCase()];
+      if (!this.hasFixedEnvironment) {
+        try {
+          const savedEnv = localStorage.getItem("pointer_env_" + this.project);
+          if (savedEnv && ENV_MAP[savedEnv.toLowerCase()]) {
+            this.environmentAttr = savedEnv.toLowerCase();
+            this.environmentInt = ENV_MAP[savedEnv.toLowerCase()];
+          }
+        } catch (e) {
         }
-      } catch (e) {
       }
       if (!this.environmentAttr) this.environmentAttr = ENV_NAME[this.environmentInt] || "staging";
       this._collapsed = (() => {
@@ -872,6 +1035,7 @@
       window.removeEventListener("scroll", this._reposition, true);
       window.removeEventListener("resize", this._reposition);
       this.stopPicking();
+      stopPageContextCapture();
     }
     // --- Auth helpers --------------------------------------------------------
     loadAuth() {
@@ -902,7 +1066,7 @@
     async init() {
       await loadStatusCatalog(this.server);
       this.renderChrome();
-      await Promise.all([this.fetchComments(), this.fetchPredefinedActions()]);
+      await Promise.all([this.fetchComments(), this.fetchPredefinedActions(), this.fetchCaptureConfig()]);
       this.renderSidebar();
       this.renderPins();
       if (this._collapsed) this.renderChrome();
@@ -920,6 +1084,22 @@
         this.predefinedActions = envelope && envelope.data || [];
       } catch {
         this.predefinedActions = [];
+      }
+    }
+    // Read the project's page-context capture toggle and, if on, start buffering
+    // console/network events. Silently no-ops on failure (feature stays off).
+    async fetchCaptureConfig() {
+      try {
+        const r = await this.api(`/api/projects/${encodeURIComponent(this.project)}/capture-config`);
+        if (!r.ok) {
+          this.pageContextCaptureEnabled = false;
+          return;
+        }
+        const envelope = await r.json();
+        this.pageContextCaptureEnabled = !!(envelope && envelope.data && envelope.data.pageContextCaptureEnabled);
+        if (this.pageContextCaptureEnabled) startPageContextCapture(this.server, SCRIPT_SRC);
+      } catch {
+        this.pageContextCaptureEnabled = false;
       }
     }
     // --- API ----------------------------------------------------------------
@@ -1000,7 +1180,8 @@
       }
       const displayName = this.user ? escapeHtml(this.user.displayName || this.user.email) : "";
       const roleLabel = this.user ? escapeHtml(this.user.roleName || "") : "";
-      this.root.innerHTML = TPL.chrome(displayName, roleLabel);
+      const fixedEnvLabel = this.hasFixedEnvironment ? this.environmentAttr || ENV_NAME[this.environmentInt] || "staging" : null;
+      this.root.innerHTML = TPL.chrome(displayName, roleLabel, fixedEnvLabel);
       const hideBtn = this.root.querySelector("#pf-hide");
       if (hideBtn) hideBtn.addEventListener("click", () => this.hideOverlay());
       const userBtn = this.root.querySelector("#pf-user");
@@ -1349,7 +1530,7 @@
       const host = this.root.querySelector("#pf-popover-host");
       const left = Math.min(x, window.innerWidth - 300);
       const top = Math.min(y, window.innerHeight - 220);
-      host.innerHTML = TPL.popover(meta, left, top, this.screenshotEnabled, this.predefinedActions);
+      host.innerHTML = TPL.popover(meta, left, top, this.screenshotEnabled, this.predefinedActions, this.pageContextCaptureEnabled);
       const ta = host.querySelector("#pf-comment-text");
       ta.focus();
       const shotToggle = host.querySelector("#pf-comment-shot");
@@ -1367,6 +1548,8 @@
         const isPrivate = !!(privateEl && privateEl.checked);
         const shotEl = host.querySelector("#pf-comment-shot");
         const attachShot = !!(shotEl && shotEl.checked);
+        const bugEl = host.querySelector("#pf-comment-bug");
+        const isBugReport = !!(bugEl && bugEl.checked);
         const shotPromise = this._pendingShotPromise;
         this._pendingShotPromise = null;
         const predefinedActionIds = Array.from(
@@ -1375,7 +1558,7 @@
         const submitBtn = host.querySelector("#pf-submit");
         submitBtn.disabled = true;
         submitBtn.textContent = "Saving…";
-        const saved = await this.createComment({ ...meta, text, isPrivate, attachShot, shotPromise, predefinedActionIds });
+        const saved = await this.createComment({ ...meta, text, isPrivate, attachShot, shotPromise, predefinedActionIds, isBugReport });
         if (saved) host.innerHTML = "";
         else {
           submitBtn.disabled = false;
@@ -1406,7 +1589,8 @@
         viewportWidth: vw,
         viewportHeight: vh,
         deviceType,
-        devicePixelRatio: window.devicePixelRatio || 1
+        devicePixelRatio: window.devicePixelRatio || 1,
+        userAgent: navigator.userAgent
       };
       if (data.attachShot && data.shotPromise) {
         const blob = await Promise.resolve(data.shotPromise).catch(() => null);
@@ -1420,9 +1604,14 @@
         body: data.text,
         environment: this.environmentInt,
         isPrivate: !!data.isPrivate,
-        element
+        element,
+        isBugReport: !!data.isBugReport
       };
       if (data.predefinedActionIds && data.predefinedActionIds.length) bodyObj.predefinedActionIds = data.predefinedActionIds;
+      if (data.isBugReport) {
+        const pageContext = getPageContextPayload();
+        if (pageContext) bodyObj.pageContext = pageContext;
+      }
       try {
         const r = await this.api(`/api/projects/${encodeURIComponent(this.project)}/comments`, {
           method: "POST",

@@ -6,6 +6,7 @@ import { escapeHtml, ensureHighlightStyle, matchElement, pageIsRtl } from './dom
 import { TPL } from './templates';
 import { ICON } from './icons';
 import { captureScreenshot, captureMetadata } from './capture';
+import { startPageContextCapture, stopPageContextCapture, getPageContextPayload } from './pagecontext';
 import { showLoginModal } from './auth-ui';
 import type { AuthorOption, Comment, Meta, PointerHost, PredefinedActionOption, RoleOption, StatusStr, User } from './types';
 
@@ -15,6 +16,7 @@ interface CreateCommentData extends Meta {
   attachShot: boolean;
   shotPromise: Promise<Blob | null> | null;
   predefinedActionIds?: number[];
+  isBugReport: boolean;
 }
 
 export class PointerFeedback extends HTMLElement implements PointerHost {
@@ -42,6 +44,12 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
   user: User | null = null;
   afterLogin: (() => void) | null = null;
   predefinedActions: PredefinedActionOption[] = [];
+  // Whether the environment was explicitly fixed at install time (HTML attribute or injected
+  // config) — when true, the toolbar shows a read-only label instead of a switcher.
+  hasFixedEnvironment = false;
+  // Project-level opt-in (default off), read once at init via /capture-config. Gates both whether
+  // the widget buffers console/network events at all and whether "Report as a bug" is shown.
+  pageContextCaptureEnabled = false;
 
   root!: HTMLElement;
   private _styleLink!: HTMLLinkElement;
@@ -58,6 +66,9 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
 
     this.project = this.getAttribute('project') || '';
     this.environmentAttr = this.getAttribute('environment') || '';
+    // Captured BEFORE the default-to-staging fallback below overwrites the "was it explicitly
+    // set" signal — an injected environment (browser extension) also counts as fixed.
+    this.hasFixedEnvironment = !!this.environmentAttr;
     this.sourceAttr = this.getAttribute('source-attr') || 'data-component-source';
     // Screenshot capture is available by default; opt out with screenshot="false".
     this.screenshotEnabled = (this.getAttribute('screenshot') || '').toLowerCase() !== 'false';
@@ -81,19 +92,24 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
       if (injected.environment) {
         this.environmentAttr = injected.environment;
         this.environmentInt = ENV_MAP[injected.environment.toLowerCase()] || this.environmentInt;
+        this.hasFixedEnvironment = true;
       }
     }
 
     // The environment is switchable IN the widget (toolbar select) and remembered per project on
     // this origin — it takes precedence over the attribute/injected default so the viewer's choice
     // sticks across reloads. Comments are environment-scoped, so switching re-queries per env.
-    try {
-      const savedEnv = localStorage.getItem('pointer_env_' + this.project);
-      if (savedEnv && ENV_MAP[savedEnv.toLowerCase()]) {
-        this.environmentAttr = savedEnv.toLowerCase();
-        this.environmentInt = ENV_MAP[savedEnv.toLowerCase()];
-      }
-    } catch (e) { /* ignore */ }
+    // Skipped entirely when the environment is fixed at install time — a saved choice from before
+    // the host added the attribute must never override it.
+    if (!this.hasFixedEnvironment) {
+      try {
+        const savedEnv = localStorage.getItem('pointer_env_' + this.project);
+        if (savedEnv && ENV_MAP[savedEnv.toLowerCase()]) {
+          this.environmentAttr = savedEnv.toLowerCase();
+          this.environmentInt = ENV_MAP[savedEnv.toLowerCase()];
+        }
+      } catch (e) { /* ignore */ }
+    }
     // Normalize the display string so the toolbar select always has a matching option.
     if (!this.environmentAttr) this.environmentAttr = ENV_NAME[this.environmentInt] || 'staging';
 
@@ -190,6 +206,7 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
     window.removeEventListener('scroll', this._reposition, true);
     window.removeEventListener('resize', this._reposition);
     this.stopPicking();
+    stopPageContextCapture();
   }
 
   // --- Auth helpers --------------------------------------------------------
@@ -228,7 +245,7 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
     // Falls back to STATUS_FALLBACK silently if the fetch fails.
     await loadStatusCatalog(this.server);
     this.renderChrome();
-    await Promise.all([this.fetchComments(), this.fetchPredefinedActions()]);
+    await Promise.all([this.fetchComments(), this.fetchPredefinedActions(), this.fetchCaptureConfig()]);
     this.renderSidebar();
     this.renderPins();
     // When collapsed, re-render so the launcher badge reflects the loaded count.
@@ -245,6 +262,20 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
       this.predefinedActions = (envelope && envelope.data) || [];
     } catch {
       this.predefinedActions = [];
+    }
+  }
+
+  // Read the project's page-context capture toggle and, if on, start buffering
+  // console/network events. Silently no-ops on failure (feature stays off).
+  async fetchCaptureConfig(): Promise<void> {
+    try {
+      const r = await this.api(`/api/projects/${encodeURIComponent(this.project)}/capture-config`);
+      if (!r.ok) { this.pageContextCaptureEnabled = false; return; }
+      const envelope = await r.json();
+      this.pageContextCaptureEnabled = !!(envelope && envelope.data && envelope.data.pageContextCaptureEnabled);
+      if (this.pageContextCaptureEnabled) startPageContextCapture(this.server, SCRIPT_SRC);
+    } catch {
+      this.pageContextCaptureEnabled = false;
     }
   }
 
@@ -335,7 +366,10 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
 
     const displayName = this.user ? escapeHtml(this.user.displayName || this.user.email) : '';
     const roleLabel = this.user ? escapeHtml(this.user.roleName || '') : '';
-    this.root.innerHTML = TPL.chrome(displayName, roleLabel);
+    const fixedEnvLabel = this.hasFixedEnvironment
+      ? (this.environmentAttr || ENV_NAME[this.environmentInt] || 'staging')
+      : null;
+    this.root.innerHTML = TPL.chrome(displayName, roleLabel, fixedEnvLabel);
 
     const hideBtn = this.root.querySelector('#pf-hide');
     if (hideBtn) hideBtn.addEventListener('click', () => this.hideOverlay());
@@ -653,7 +687,7 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
     const host = this.root.querySelector('#pf-popover-host') as HTMLElement;
     const left = Math.min(x, window.innerWidth - 300);
     const top = Math.min(y, window.innerHeight - 220);
-    host.innerHTML = TPL.popover(meta, left, top, this.screenshotEnabled, this.predefinedActions);
+    host.innerHTML = TPL.popover(meta, left, top, this.screenshotEnabled, this.predefinedActions, this.pageContextCaptureEnabled);
     const ta = host.querySelector('#pf-comment-text') as HTMLTextAreaElement;
     ta.focus();
     // Screenshot is opt-in (unchecked by default): only capture once the user ticks
@@ -670,6 +704,8 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
       const isPrivate = !!(privateEl && privateEl.checked);
       const shotEl = host.querySelector('#pf-comment-shot') as HTMLInputElement | null;
       const attachShot = !!(shotEl && shotEl.checked); // toggle: off by default
+      const bugEl = host.querySelector('#pf-comment-bug') as HTMLInputElement | null;
+      const isBugReport = !!(bugEl && bugEl.checked); // toggle: off by default
       const shotPromise = this._pendingShotPromise;
       this._pendingShotPromise = null;
       const predefinedActionIds = Array.from(
@@ -677,7 +713,7 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
       ).map((el) => Number(el.value));
       const submitBtn = host.querySelector('#pf-submit') as HTMLButtonElement;
       submitBtn.disabled = true; submitBtn.textContent = 'Saving…';
-      const saved = await this.createComment({ ...meta, text, isPrivate, attachShot, shotPromise, predefinedActionIds });
+      const saved = await this.createComment({ ...meta, text, isPrivate, attachShot, shotPromise, predefinedActionIds, isBugReport });
       if (saved) host.innerHTML = '';
       else { submitBtn.disabled = false; submitBtn.textContent = 'Add'; }
     });
@@ -710,6 +746,7 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
       viewportHeight: vh,
       deviceType,
       devicePixelRatio: window.devicePixelRatio || 1,
+      userAgent: navigator.userAgent,
     };
 
     // Screenshot is opt-in (toggle, off by default). When on, await the capture
@@ -729,8 +766,15 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
       environment: this.environmentInt,
       isPrivate: !!data.isPrivate,
       element,
+      isBugReport: !!data.isBugReport,
     };
     if (data.predefinedActionIds && data.predefinedActionIds.length) bodyObj.predefinedActionIds = data.predefinedActionIds;
+    // Only attach the buffered console/network snapshot when the box is checked — unchecked means
+    // zero extra payload, regardless of what's been silently buffered in the browser.
+    if (data.isBugReport) {
+      const pageContext = getPageContextPayload();
+      if (pageContext) bodyObj.pageContext = pageContext;
+    }
     try {
       const r = await this.api(`/api/projects/${encodeURIComponent(this.project)}/comments`, {
         method: 'POST',

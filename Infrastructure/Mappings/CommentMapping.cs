@@ -33,6 +33,11 @@ public class CommentMapping : IEntityTypeConfiguration<Comment>
         b.Property(x => x.EditedBy).HasColumnName("edited_by");
         b.Property(x => x.OwnerId).HasColumnName("owner_id");
         b.HasIndex(x => x.OwnerId);
+        b.Property(x => x.IsBugReport).HasColumnName("is_bug_report").HasDefaultValue(false);
+        b.Property(x => x.PageContextSnapshotId).HasColumnName("page_context_snapshot_id");
+        // SetNull (not Restrict/Cascade): pruning a snapshot later must never cascade-delete comments.
+        b.HasOne(x => x.PageContextSnapshot).WithMany(s => s.Comments)
+            .HasForeignKey(x => x.PageContextSnapshotId).OnDelete(DeleteBehavior.SetNull);
         b.OwnsOne(x => x.Element, e =>
         {
             e.ToJson("element");
@@ -51,6 +56,7 @@ public class CommentMapping : IEntityTypeConfiguration<Comment>
             e.Property(x => x.Route).HasMaxLength(2000);
             e.Property(x => x.PageTitle).HasMaxLength(2000);
             e.Property(x => x.DeviceType).HasMaxLength(32);
+            e.Property(x => x.UserAgent).HasMaxLength(512);
         });
         // Predefined-action snapshots (multi-select) stored as a JSON collection column.
         b.OwnsMany(x => x.PickedActions, a => a.ToJson("picked_actions"));

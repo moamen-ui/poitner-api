@@ -45,10 +45,11 @@ public class CommentService : ICommentService
         // Stamp OwnerId from the PROJECT's tenant: a comment belongs to whoever owns
         // the project, regardless of who authored it. This is correct even when a super
         // admin comments on a tenant-owned project (OwnerFor(caller) would wrongly be null).
-        var projectOwnerId = await _unitOfWork.Repository<Project>().Query()
+        var projectInfo = await _unitOfWork.Repository<Project>().Query()
             .Where(p => p.Id == projectResult.Data)
-            .Select(p => p.OwnerId)
+            .Select(p => new { p.OwnerId, p.PageContextCaptureEnabled })
             .FirstAsync();
+        var projectOwnerId = projectInfo.OwnerId;
 
         // Enforce the demo comment cap for demo tenants. A per-tenant override wins; otherwise
         // the global super-admin-tunable setting (default 10) applies.
@@ -101,8 +102,51 @@ public class CommentService : ICommentService
             Body = request.Body.Trim(),
             IsPrivate = request.IsPrivate,
             OwnerId = projectOwnerId,
-            Element = MapToEntity(request.Element)
+            Element = MapToEntity(request.Element),
+            IsBugReport = request.IsBugReport
         };
+
+        // Page context (console/network) is only ever persisted when BOTH the comment is flagged
+        // AND the owning project has the feature enabled — the widget hiding the checkbox is a UX
+        // optimization, not the security boundary. Console/network data is per-PAGE, not per-comment:
+        // dedup against an existing snapshot for the same (project, route, environment, session)
+        // before creating a new one, so multiple bug reports on the same page/visit share one row.
+        if (request.IsBugReport && projectInfo.PageContextCaptureEnabled
+            && request.PageContext is { } capture && !string.IsNullOrWhiteSpace(capture.SessionId))
+        {
+            var route = NormalizeRoute(request.Element.Route);
+            var pageContext = await _unitOfWork.Repository<PageContextSnapshot>()
+                .Query()
+                .Where(s => s.ProjectId == projectResult.Data
+                         && s.Route == route
+                         && s.Environment == request.Environment
+                         && s.SessionId == capture.SessionId
+                         && s.DeletedAt == null)
+                .FirstOrDefaultAsync();
+
+            if (pageContext == null)
+            {
+                pageContext = new PageContextSnapshot
+                {
+                    ProjectId = projectResult.Data,
+                    Environment = request.Environment,
+                    Route = route,
+                    SessionId = capture.SessionId,
+                    OwnerId = projectOwnerId
+                };
+                MergePageContext(pageContext, capture);
+                pageContext.LastEventAt = DateTime.UtcNow;
+                await _unitOfWork.Repository<PageContextSnapshot>().AddAsync(pageContext);
+            }
+            else
+            {
+                MergePageContext(pageContext, capture);
+                pageContext.LastEventAt = DateTime.UtcNow;
+                _unitOfWork.Repository<PageContextSnapshot>().Update(pageContext);
+            }
+
+            comment.PageContextSnapshot = pageContext;
+        }
 
         // Optional predefined actions (multi-select): validate each is active + in-scope for the
         // resolved project's tenant + this author, then SNAPSHOT {text, prompt} onto the comment
@@ -179,8 +223,9 @@ public class CommentService : ICommentService
         };
 
         var names = await ResolveNamesAsync(items.SelectMany(AuthorIds));
+        var pageContexts = await LoadPageContextsAsync(items.Select(c => c.PageContextSnapshotId));
         return Result<PagedData<CommentListItemDto>>.Success(
-            new PagedData<CommentListItemDto>(items.Select(c => MapToListItem(c, names)).ToList(), pagination, hiddenPrivateCount));
+            new PagedData<CommentListItemDto>(items.Select(c => MapToListItem(c, names)).ToList(), pagination, hiddenPrivateCount, pageContexts));
     }
 
     public async Task<Result<PagedData<CommentApplyItemDto>>> ListApplyQueueAsync(string projectKey, CommentFilter filter)
@@ -226,8 +271,9 @@ public class CommentService : ICommentService
         };
 
         var names = await ResolveNamesAsync(items.SelectMany(AuthorIds));
+        var pageContexts = await LoadPageContextsAsync(items.Select(c => c.PageContextSnapshotId));
         return Result<PagedData<CommentApplyItemDto>>.Success(
-            new PagedData<CommentApplyItemDto>(items.Select(c => MapToApplyItem(c, names)).ToList(), pagination));
+            new PagedData<CommentApplyItemDto>(items.Select(c => MapToApplyItem(c, names)).ToList(), pagination, pageContexts: pageContexts));
     }
 
     public async Task<Result<CommentResponse>> GetByIdAsync(int id, Guid callerId)
@@ -236,6 +282,7 @@ public class CommentService : ICommentService
             .Query()
             .AsNoTracking()
             .Include(c => c.Replies)
+            .Include(c => c.PageContextSnapshot)
             .Where(c => c.Id == id && c.DeletedAt == null)
             .FirstOrDefaultAsync();
 
@@ -256,6 +303,7 @@ public class CommentService : ICommentService
         var comment = await _unitOfWork.Repository<Comment>()
             .Query()
             .Include(c => c.Replies)
+            .Include(c => c.PageContextSnapshot)
             .Where(c => c.Id == id && c.DeletedAt == null)
             .FirstOrDefaultAsync();
 
@@ -300,6 +348,7 @@ public class CommentService : ICommentService
         var comment = await _unitOfWork.Repository<Comment>()
             .Query()
             .Include(c => c.Replies)
+            .Include(c => c.PageContextSnapshot)
             .Where(c => c.Id == id && c.DeletedAt == null)
             .FirstOrDefaultAsync();
 
@@ -335,6 +384,7 @@ public class CommentService : ICommentService
         var comment = await _unitOfWork.Repository<Comment>()
             .Query()
             .Include(c => c.Replies)
+            .Include(c => c.PageContextSnapshot)
             .Where(c => c.Id == id && c.DeletedAt == null)
             .FirstOrDefaultAsync();
 
@@ -424,7 +474,8 @@ public class CommentService : ICommentService
         ViewportWidth = dto.ViewportWidth,
         ViewportHeight = dto.ViewportHeight,
         DeviceType = dto.DeviceType,
-        DevicePixelRatio = dto.DevicePixelRatio
+        DevicePixelRatio = dto.DevicePixelRatio,
+        UserAgent = dto.UserAgent
     };
 
     private ElementCaptureDto MapElementToDto(ElementCapture entity) => new()
@@ -446,7 +497,8 @@ public class CommentService : ICommentService
         ViewportWidth = entity.ViewportWidth,
         ViewportHeight = entity.ViewportHeight,
         DeviceType = entity.DeviceType,
-        DevicePixelRatio = entity.DevicePixelRatio
+        DevicePixelRatio = entity.DevicePixelRatio,
+        UserAgent = entity.UserAgent
     };
 
     // Resolve display names for a set of author ids (User.PublicId == Comment.AuthorId).
@@ -490,7 +542,9 @@ public class CommentService : ICommentService
         // Labels only — the prompts are intentionally never exposed here.
         PickedActionTexts = comment.PickedActions.Select(a => a.Text).ToList(),
         Element = MapElementToDto(comment.Element),
-        Replies = comment.Replies.Select(r => MapReplyToResponse(r, names)).ToList()
+        Replies = comment.Replies.Select(r => MapReplyToResponse(r, names)).ToList(),
+        IsBugReport = comment.IsBugReport,
+        PageContextId = comment.PageContextSnapshotId
     };
 
     private CommentResponse MapToResponse(Comment comment, IReadOnlyDictionary<Guid, string> names) => new()
@@ -510,7 +564,9 @@ public class CommentService : ICommentService
         // Labels only — the prompts are intentionally never exposed here.
         PickedActionTexts = comment.PickedActions.Select(a => a.Text).ToList(),
         Element = MapElementToDto(comment.Element),
-        Replies = comment.Replies.Select(r => MapReplyToResponse(r, names)).ToList()
+        Replies = comment.Replies.Select(r => MapReplyToResponse(r, names)).ToList(),
+        IsBugReport = comment.IsBugReport,
+        PageContext = MapPageContextToDto(comment.PageContextSnapshot)
     };
 
     // Apply-queue export mapper — the ONLY mapper that carries PickedActionPrompt (admin/AI path).
@@ -527,8 +583,97 @@ public class CommentService : ICommentService
         Replies = comment.Replies.Select(r => MapReplyToResponse(r, names)).ToList(),
         // Apply/AI path: carries both label + prompt for each picked action.
         PickedActions = comment.PickedActions
-            .Select(a => new PickedActionDto { Text = a.Text, Prompt = a.Prompt }).ToList()
+            .Select(a => new PickedActionDto { Text = a.Text, Prompt = a.Prompt }).ToList(),
+        IsBugReport = comment.IsBugReport,
+        PageContextId = comment.PageContextSnapshotId
     };
+
+    // Path only — no query/hash — so /checkout?step=1 and ?step=2 share one PageContextSnapshot.
+    private static string NormalizeRoute(string? route)
+    {
+        if (string.IsNullOrEmpty(route)) return string.Empty;
+        var cut = route.IndexOfAny(['?', '#']);
+        return cut >= 0 ? route[..cut] : route;
+    }
+
+    // Appends this request's buffered entries onto the shared page snapshot, capped so a long-lived
+    // SPA session with many bug reports on the same page can't grow the row unbounded.
+    private const int MaxPageContextEntries = 40;
+
+    private static void MergePageContext(PageContextSnapshot snapshot, PageContextCaptureDto capture)
+    {
+        foreach (var c in capture.ConsoleEntries)
+        {
+            snapshot.ConsoleEntries.Add(new ConsoleLogEntry
+            {
+                Level = c.Level,
+                Message = c.Message,
+                Stack = c.Stack,
+                Count = c.Count < 1 ? 1 : c.Count,
+                OccurredAt = c.OccurredAt ?? DateTime.UtcNow
+            });
+        }
+        if (snapshot.ConsoleEntries.Count > MaxPageContextEntries)
+            snapshot.ConsoleEntries.RemoveRange(0, snapshot.ConsoleEntries.Count - MaxPageContextEntries);
+
+        foreach (var n in capture.NetworkEntries)
+        {
+            snapshot.NetworkEntries.Add(new NetworkFailureEntry
+            {
+                Method = n.Method,
+                Url = n.Url,
+                StatusCode = n.StatusCode,
+                DurationMs = n.DurationMs,
+                OccurredAt = n.OccurredAt ?? DateTime.UtcNow
+            });
+        }
+        if (snapshot.NetworkEntries.Count > MaxPageContextEntries)
+            snapshot.NetworkEntries.RemoveRange(0, snapshot.NetworkEntries.Count - MaxPageContextEntries);
+    }
+
+    // Batch-loads distinct PageContextSnapshots referenced by a page of comments, so N comments
+    // sharing a page context cost one dictionary entry (and one query), not N copies.
+    private async Task<IReadOnlyDictionary<int, PageContextDto>?> LoadPageContextsAsync(IEnumerable<int?> ids)
+    {
+        var distinct = ids.Where(id => id.HasValue).Select(id => id!.Value).Distinct().ToList();
+        if (distinct.Count == 0) return null;
+
+        var snapshots = await _unitOfWork.Repository<PageContextSnapshot>()
+            .Query()
+            .AsNoTracking()
+            .Where(s => distinct.Contains(s.Id))
+            .ToListAsync();
+
+        return snapshots.ToDictionary(s => s.Id, s => MapPageContextToDto(s)!);
+    }
+
+    private static PageContextDto? MapPageContextToDto(PageContextSnapshot? snapshot)
+    {
+        if (snapshot == null) return null;
+        return new PageContextDto
+        {
+            Id = snapshot.Id,
+            Route = snapshot.Route,
+            Environment = snapshot.Environment,
+            LastEventAt = snapshot.LastEventAt,
+            ConsoleEntries = snapshot.ConsoleEntries.Select(e => new ConsoleEntryDto
+            {
+                Level = e.Level,
+                Message = e.Message,
+                Stack = e.Stack,
+                Count = e.Count,
+                OccurredAt = e.OccurredAt
+            }).ToList(),
+            NetworkEntries = snapshot.NetworkEntries.Select(e => new NetworkEntryDto
+            {
+                Method = e.Method,
+                Url = e.Url,
+                StatusCode = e.StatusCode,
+                DurationMs = e.DurationMs,
+                OccurredAt = e.OccurredAt
+            }).ToList()
+        };
+    }
 
     private static IEnumerable<Guid> AuthorIds(Comment c) =>
         new[] { c.AuthorId }.Concat(c.Replies.Select(r => r.AuthorId));

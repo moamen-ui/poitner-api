@@ -1,6 +1,12 @@
+using Pointer.Application.DTOs.Comment;
+
 namespace Pointer.Application.Response;
 
-public class PagedData<T>(IReadOnlyList<T> items, Pagination pagination, int? hiddenPrivateCount = null)
+public class PagedData<T>(
+    IReadOnlyList<T> items,
+    Pagination pagination,
+    int? hiddenPrivateCount = null,
+    IReadOnlyDictionary<int, PageContextDto>? pageContexts = null)
 {
     public IReadOnlyList<T> Items { get; } = items;
     public Pagination Pagination { get; } = pagination;
@@ -8,4 +14,8 @@ public class PagedData<T>(IReadOnlyList<T> items, Pagination pagination, int? hi
     // Number of private comments hidden from the caller (private + not authored
     // by them) under the current filters. Null (omitted) when not applicable.
     public int? HiddenPrivateCount { get; } = hiddenPrivateCount;
+
+    // Keyed by PageContextId — populated only on the comment-list/apply-queue endpoints, null
+    // elsewhere. Dedupes console/network payloads across bug-flagged comments sharing a page.
+    public IReadOnlyDictionary<int, PageContextDto>? PageContexts { get; } = pageContexts;
 }

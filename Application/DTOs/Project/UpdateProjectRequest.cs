@@ -7,6 +7,9 @@ public class UpdateProjectRequest
     public string? Name { get; set; }
     public bool? IsActive { get; set; }
 
+    /// <summary>null (property omitted) → leave untouched, matching IsActive's treatment.</summary>
+    public bool? PageContextCaptureEnabled { get; set; }
+
     /// <summary>
     /// Full desired set of project-scoped predefined actions. Reconcile (last-write-wins):
     /// id present → update; id absent → add; existing row absent from this list → soft-delete.

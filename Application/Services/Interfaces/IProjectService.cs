@@ -35,4 +35,12 @@ public interface IProjectService
     ///   - DemoService provisioning — creates a demo project explicitly; not a resolve path.
     /// </summary>
     Task<Result<int>> EnsureAsync(string key);
+
+    /// <summary>
+    /// Widget-facing read of PageContextCaptureEnabled for a project, resolved via the same
+    /// tenant-scoped EnsureAsync path (a key-only anonymous resolve would collide across tenants —
+    /// same reasoning as PredefinedActionsController). Used at widget init to decide whether to
+    /// buffer console/network events at all and whether to show "Report as a bug".
+    /// </summary>
+    Task<Result<CaptureConfigResponse>> GetCaptureConfigAsync(string key);
 }

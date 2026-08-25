@@ -28,4 +28,7 @@ public class ElementCaptureDto
 
     /// <summary>window.devicePixelRatio at capture time (distinguishes retina/HiDPI).</summary>
     public double? DevicePixelRatio { get; set; }
+
+    /// <summary>navigator.userAgent at capture time — which browser/OS a comment reproduces in.</summary>
+    public string? UserAgent { get; set; }
 }

@@ -23,4 +23,11 @@ public class CommentResponse
 
     public ElementCaptureDto Element { get; set; } = new();
     public List<ReplyResponse> Replies { get; set; } = new();
+
+    /// <summary>"Report as a bug" checkbox state.</summary>
+    public bool IsBugReport { get; set; }
+
+    /// <summary>Embedded inline (this is a single-item response, so there's no dedup concern) — keeps
+    /// this response self-contained. Null when no page context was captured for this comment.</summary>
+    public PageContextDto? PageContext { get; set; }
 }
