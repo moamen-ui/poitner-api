@@ -18,7 +18,7 @@ public class User : BaseEntity
     /// <summary>
     /// Per-user "add comment" widget keyboard shortcut, e.g. "alt+shift+c" — synced to the
     /// account (not per-browser) so it follows the user across machines/browsers. Null = the
-    /// widget's built-in default (Alt+Shift+C / Option+Shift+C).
+    /// widget's built-in default (Ctrl+Alt+Shift+C / Control+Option+Shift+C).
     /// </summary>
     public string? AddCommentShortcut { get; set; }
 

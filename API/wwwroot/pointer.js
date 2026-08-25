@@ -691,7 +691,7 @@
   }
 
   // src/shortcut.ts
-  var DEFAULT_SHORTCUT = { key: "c", alt: true, shift: true, ctrl: false, meta: false };
+  var DEFAULT_SHORTCUT = { key: "c", alt: true, shift: true, ctrl: true, meta: false };
   var MODIFIER_TOKENS = /* @__PURE__ */ new Set(["ctrl", "alt", "shift", "meta"]);
   function parseShortcut(raw) {
     if (!raw) return { ...DEFAULT_SHORTCUT };
@@ -990,7 +990,7 @@
       this.projectName = "";
       // Per-user "add comment" keyboard shortcut, synced to the account (User.AddCommentShortcut,
       // not localStorage) — set from `this.user.addCommentShortcut` in loadAuth()/saveAuth() below.
-      // Default is Alt+Shift+C / Option+Shift+C — see shortcut.ts for why not Ctrl+Shift+C / Cmd+Option+C.
+      // Default is Ctrl+Alt+Shift+C / Control+Option+Shift+C — see shortcut.ts for why.
       this.shortcut = parseShortcut(void 0);
       this._pendingShotPromise = null;
       this._userMenuClose = null;
@@ -1724,9 +1724,16 @@
       if (shotToggle) shotToggle.addEventListener("change", () => {
         if (shotToggle.checked) this.beginScreenshotCapture(el);
       });
-      host.querySelector("#pf-cancel").addEventListener("click", () => {
+      const cancelPopover = () => {
         host.innerHTML = "";
         this._pendingShotPromise = null;
+      };
+      host.querySelector("#pf-cancel").addEventListener("click", cancelPopover);
+      host.addEventListener("keydown", (e) => {
+        if (e.key !== "Escape") return;
+        e.preventDefault();
+        e.stopPropagation();
+        cancelPopover();
       });
       host.querySelector("#pf-submit").addEventListener("click", async () => {
         const text = ta.value.trim();

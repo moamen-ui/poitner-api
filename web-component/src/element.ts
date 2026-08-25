@@ -59,7 +59,7 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
   projectName = '';
   // Per-user "add comment" keyboard shortcut, synced to the account (User.AddCommentShortcut,
   // not localStorage) — set from `this.user.addCommentShortcut` in loadAuth()/saveAuth() below.
-  // Default is Alt+Shift+C / Option+Shift+C — see shortcut.ts for why not Ctrl+Shift+C / Cmd+Option+C.
+  // Default is Ctrl+Alt+Shift+C / Control+Option+Shift+C — see shortcut.ts for why.
   shortcut: ShortcutBinding = parseShortcut(undefined);
 
   root!: HTMLElement;
@@ -833,7 +833,17 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
     if (shotToggle) shotToggle.addEventListener('change', () => {
       if (shotToggle.checked) this.beginScreenshotCapture(el);
     });
-    (host.querySelector('#pf-cancel') as HTMLElement).addEventListener('click', () => { host.innerHTML = ''; this._pendingShotPromise = null; });
+    const cancelPopover = () => { host.innerHTML = ''; this._pendingShotPromise = null; };
+    (host.querySelector('#pf-cancel') as HTMLElement).addEventListener('click', cancelPopover);
+    // Esc cancels the comment box, same as clicking Cancel — stopPropagation so it doesn't also
+    // reach the document-level Esc handler for element-picking mode (picking already stopped by
+    // the time this popover is open, but this keeps the two handlers unambiguous either way).
+    host.addEventListener('keydown', (e) => {
+      if (e.key !== 'Escape') return;
+      e.preventDefault();
+      e.stopPropagation();
+      cancelPopover();
+    });
     (host.querySelector('#pf-submit') as HTMLButtonElement).addEventListener('click', async () => {
       const text = ta.value.trim();
       if (!text) return this.toast('Comment cannot be empty', 'error');

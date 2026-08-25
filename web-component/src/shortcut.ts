@@ -5,10 +5,12 @@
 // `this.user`/`pointer_user` purely for fast bootstrap, exactly like displayName/roleName
 // already are; the server is the source of truth.
 //
-// Default is Alt+Shift+C (Windows/Linux) / Option+Shift+C (Mac) — deliberately NOT
-// Ctrl+Shift+C or Cmd+Option+C, since those are the browser's own "Inspect Element" DevTools
-// shortcut on Windows/Linux and Mac respectively, and this widget's audience (people testing a
-// page with DevTools open) is exactly who'd collide with that.
+// Default is Ctrl+Alt+Shift+C (Windows/Linux) / Control+Option+Shift+C (Mac) — stacking all
+// three standard modifiers deliberately, since two-modifier combos on "C" are already spoken
+// for: Ctrl+Shift+C / Cmd+Option+C is the browser's own "Inspect Element" DevTools shortcut
+// (confirmed colliding in practice), and this widget's audience — people testing a page with
+// DevTools open — is exactly who'd hit that. A triple-modifier chord is virtually never
+// pre-bound by a browser, OS, or host page.
 
 export interface ShortcutBinding {
   /** KeyboardEvent.key for the non-modifier key, lowercased for single characters. */
@@ -19,7 +21,7 @@ export interface ShortcutBinding {
   meta: boolean;
 }
 
-export const DEFAULT_SHORTCUT: ShortcutBinding = { key: 'c', alt: true, shift: true, ctrl: false, meta: false };
+export const DEFAULT_SHORTCUT: ShortcutBinding = { key: 'c', alt: true, shift: true, ctrl: true, meta: false };
 
 const MODIFIER_TOKENS = new Set(['ctrl', 'alt', 'shift', 'meta']);
 
@@ -69,7 +71,7 @@ export function isMacPlatform(): boolean {
   return /Mac|iPhone|iPad|iPod/.test(navigator.platform || navigator.userAgent || '');
 }
 
-/** Human-readable label, e.g. "Alt+Shift+C" or "⌥⇧C" on Mac. */
+/** Human-readable label, e.g. "Ctrl+Alt+Shift+C" or "⌃⌥⇧C" on Mac. */
 export function formatShortcut(binding: ShortcutBinding, mac = isMacPlatform()): string {
   const parts: string[] = [];
   if (mac) {
