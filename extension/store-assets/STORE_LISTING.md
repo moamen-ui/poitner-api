@@ -9,7 +9,7 @@ Developer Tools
 ## Single purpose description (Privacy practices tab)
 Injects the Pointer feedback widget onto any webpage, letting the user click an element and leave
 feedback that syncs to their Pointer account. Every requested permission exists solely to support
-this: `<all_urls>`/`activeTab`/`scripting` inject the widget on the tab the user activates;
+this: `<all_urls>`/`scripting` inject the widget on the tab the user activates;
 `declarativeNetRequestWithHostAccess` strips CSP only on that activated tab so the widget can load on
 CSP-strict sites; `storage` holds the session token and remembers the per-domain project choice.
 
@@ -47,15 +47,20 @@ Requires a Pointer account. Set your server URL in the extension Options (defaul
 ── Links ──
 Website: https://pointer.moamen.work
 Docs: https://github.com/moamen-ui/poitner-api#readme
+Privacy policy: https://pointer.moamen.work/privacy.html
 
 ## Permission justifications (paste into the review form)
-- **Host permissions / `<all_urls>`** — to inject the feedback widget into the page on tabs the user explicitly activates.
+- **Host permissions / `<all_urls>`** — to inject the feedback widget into the page on tabs the user explicitly activates. (No narrower match pattern is possible — the user picks which site to activate on at runtime.)
 - **`declarativeNetRequestWithHostAccess`** — to remove the page's CSP **only on the user-activated tab** so the widget can load; the rule is scoped to that tab and removed on deactivate/close.
 - **`scripting`** — to inject the widget + bridge into the activated tab.
 - **`storage`** — to keep the user signed in (session token) and remember per-domain project preferences.
-- **`activeTab`** — to act on the tab the user activates from the popup.
+
+Not requested: `activeTab` and `tabs` — `<all_urls>` already grants unconditional host access to every
+tab (a superset of what either would add), so declaring them alongside it would be a redundant/unused
+permission, which the review form explicitly flags for rejection. `chrome.tabs.query/reload` and the
+`onUpdated`/`onRemoved` listeners work without any `tabs`-family permission.
 
 ## Data disclosures (Privacy practices tab)
-- Collects: authentication info (login token) and user-submitted content (feedback comments + captured element metadata), sent to the user-configured Pointer server.
+- Collects: authentication info (login token) and user-submitted content (feedback comments + captured element metadata, including optional console/network context when "Report as a bug" is checked), sent to the user-configured Pointer server.
 - Not sold to third parties; not used for advertising or unrelated purposes.
-- A privacy-policy URL is required — publish one before submitting.
+- Privacy policy: https://pointer.moamen.work/privacy.html — **review before publishing** (see note in the file: placeholders for the operator's contact/legal details still need filling in).

@@ -1,0 +1,148 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Privacy Policy — Pointer</title>
+  <meta name="description" content="How Pointer's widget, browser extension, and dashboard handle your data." />
+  <link rel="icon" href="assets/favicon.ico" />
+  <!--
+    DRAFT — review before publishing. Two things still need filling in by the operator:
+    1. The "Contact" section below has a placeholder email.
+    2. The "Effective date" at the top has a placeholder — set it to the date you actually publish this.
+    This is not legal advice; have someone review it against your actual data-handling practices,
+    applicable law (GDPR/CCPA/etc. depending on where your users are), and your Chrome Web Store
+    "Data usage" disclosures (they must match this document).
+  -->
+  <style>
+    :root {
+      --pf-green: #16a34a;
+      --pf-blue: #2563eb;
+      --pf-text: #0f172a;
+      --pf-muted: #475569;
+      --pf-bg: #ffffff;
+      --pf-soft: #f1f5f9;
+      --pf-border: #e2e8f0;
+      --pf-max: 760px;
+    }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; padding: 0; }
+    body {
+      font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+      color: var(--pf-text);
+      background: var(--pf-bg);
+      line-height: 1.65;
+    }
+    a { color: var(--pf-blue); }
+    .wrap { max-width: var(--pf-max); margin: 0 auto; padding: 0 20px; }
+    header.top {
+      border-bottom: 1px solid var(--pf-border);
+      padding: 18px 0;
+    }
+    header.top .wrap { display: flex; align-items: center; justify-content: space-between; }
+    .brand { font-weight: 800; font-size: 17px; text-decoration: none; color: var(--pf-text); }
+    main { padding: 40px 0 64px; }
+    h1 { font-size: clamp(26px, 4vw, 36px); margin: 0 0 4px; }
+    .updated { color: var(--pf-muted); font-size: 14px; margin: 0 0 32px; }
+    h2 { font-size: 20px; margin: 36px 0 10px; }
+    p, li { color: var(--pf-text); }
+    ul { padding-inline-start: 22px; }
+    .note {
+      background: var(--pf-soft);
+      border: 1px solid var(--pf-border);
+      border-radius: 10px;
+      padding: 14px 16px;
+      font-size: 14px;
+      color: var(--pf-muted);
+      margin: 0 0 28px;
+    }
+    footer.bottom {
+      border-top: 1px solid var(--pf-border);
+      padding: 20px 0;
+      font-size: 13px;
+      color: var(--pf-muted);
+    }
+  </style>
+</head>
+<body>
+  <header class="top">
+    <div class="wrap">
+      <a class="brand" href="/">🐕 Pointer</a>
+      <a href="/">Back to home</a>
+    </div>
+  </header>
+
+  <main class="wrap">
+    <h1>Privacy Policy</h1>
+    <p class="updated">Effective date: [YYYY-MM-DD — set this before publishing]</p>
+
+    <p class="note">
+      This policy covers the Pointer feedback widget (<code>&lt;pointer-feedback&gt;</code>), the
+      Pointer browser extension, and the Pointer dashboard. Pointer can be run as a hosted service
+      or self-hosted by an organization on its own server. When you use a self-hosted instance, that
+      organization — not the operator of the hosted service — controls your data; this policy
+      describes how the software handles data in either case.
+    </p>
+
+    <h2>What we collect</h2>
+    <ul>
+      <li><strong>Account information</strong> — email address, a hashed password, display name, and role, used to sign in and identify who left a comment.</li>
+      <li><strong>Feedback content</strong> — the comment text you write, the page route, the environment (local/staging/production), and metadata about the element you clicked: its selector, the CSS rules that apply to it, a text snapshot of nearby content, and (optionally) a screenshot.</li>
+      <li><strong>Diagnostic context (opt-in, per comment)</strong> — if a project enables it and you check "Report as a bug," recent console errors/warnings, failed or slow network requests (method, URL, status code, duration — never request/response headers or bodies), and your browser's user-agent string.</li>
+      <li><strong>Preferences</strong> — your interface language, theme, and (if set) a custom keyboard shortcut, stored against your account so they follow you across devices.</li>
+      <li><strong>Browser extension data</strong> — your session sign-in token, stored only in the extension's isolated session storage and never exposed to the pages you visit; and, per browser, which project/environment you last picked for each domain you activated the extension on.</li>
+    </ul>
+
+    <h2>How we use it</h2>
+    <p>
+      Collected data is used solely to operate the feedback/annotation workflow: authenticating you,
+      displaying and organizing comments for your team, and giving an AI coding tool (which you choose
+      and run yourself — Pointer does not include or operate one) enough context to apply the requested
+      change to your real source code.
+    </p>
+
+    <h2>Where it's sent</h2>
+    <p>
+      All of the above is sent only to the Pointer server URL configured for your installation — either
+      the hosted service, or a self-hosted server your organization runs and controls. Pointer does not
+      sell your data, does not use it for advertising, and does not share it with third parties beyond
+      what's needed to operate the server you've chosen to use.
+    </p>
+
+    <h2>Browser extension permissions</h2>
+    <p>The Pointer browser extension requests the following, each solely to inject the feedback widget on a tab you explicitly activate:</p>
+    <ul>
+      <li><strong>Host access (all sites)</strong> — to inject the widget into the page on tabs you activate. You choose which sites to activate on; the extension does not act on tabs you haven't activated.</li>
+      <li><strong>Content-Security-Policy adjustment</strong> — on an activated tab only, so the widget can load on sites with a strict CSP. Removed automatically when you deactivate or close the tab.</li>
+      <li><strong>Scripting</strong> — to inject the widget into the activated tab.</li>
+      <li><strong>Storage</strong> — to keep you signed in and remember your per-site project choice.</li>
+    </ul>
+
+    <h2>Data retention</h2>
+    <p>
+      Comments and account data are retained until deleted by you or an administrator of your workspace.
+      Deleting a project removes its associated comments.
+    </p>
+
+    <h2>Security</h2>
+    <p>
+      Passwords are stored hashed, never in plain text. The browser extension keeps your sign-in token in
+      isolated session storage — it is never written into any page you visit. Each workspace's data is
+      isolated from other workspaces on the server side.
+    </p>
+
+    <h2>Children's privacy</h2>
+    <p>Pointer is a developer tool and is not directed at children.</p>
+
+    <h2>Changes to this policy</h2>
+    <p>If this policy changes, the updated version will be published at this same URL with a new effective date.</p>
+
+    <h2>Contact</h2>
+    <p>Questions about this policy: [contact email — set this before publishing]</p>
+  </main>
+
+  <footer class="bottom">
+    <div class="wrap">Pointer</div>
+  </footer>
+</body>
+</html>
