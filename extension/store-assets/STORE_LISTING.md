@@ -6,6 +6,13 @@ Click any element on a running web app, leave a comment, and let AI apply the ch
 ## Category
 Developer Tools
 
+## Single purpose description (Privacy practices tab)
+Injects the Pointer feedback widget onto any webpage, letting the user click an element and leave
+feedback that syncs to their Pointer account. Every requested permission exists solely to support
+this: `<all_urls>`/`activeTab`/`scripting` inject the widget on the tab the user activates;
+`declarativeNetRequestWithHostAccess` strips CSP only on that activated tab so the widget can load on
+CSP-strict sites; `storage` holds the session token and remembers the per-domain project choice.
+
 ## Detailed description
 
 Pointer turns "make this button bigger" into an actual code change.
