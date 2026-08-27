@@ -79,4 +79,24 @@ public class UsersController(IUserService userService, IProfileService profileSe
         if (result.IsNotFound) return NotFound(result);
         return result.IsSuccess ? Ok(result) : BadRequest(result);
     }
+
+    [HttpDelete("{id:int}")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    public async Task<IActionResult> Delete(int id)
+    {
+        var result = await userService.DeleteAsync(id);
+        if (result.IsNotFound) return NotFound(result);
+        if (result.IsConflict) return Conflict(result);
+        return result.IsSuccess ? Ok(result) : BadRequest(result);
+    }
+
+    [HttpPost("{deputyPublicId:guid}/promote")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    public async Task<IActionResult> Promote(Guid deputyPublicId)
+    {
+        var result = await userService.TransferOwnershipAsync(deputyPublicId);
+        if (result.IsNotFound) return NotFound(result);
+        if (result.IsConflict) return Conflict(result);
+        return result.IsSuccess ? Ok(result) : BadRequest(result);
+    }
 }
