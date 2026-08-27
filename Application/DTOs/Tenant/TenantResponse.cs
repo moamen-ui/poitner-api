@@ -4,6 +4,13 @@ public class TenantResponse
 {
     public int Id { get; set; }
     public Guid PublicId { get; set; }
+
+    // The tenant's STABLE identifier — unlike PublicId (the current Workspace Admin's own row id,
+    // which changes on succession via UserService.TransferOwnershipAsync), OwnerId never moves.
+    // Callers that need to reliably re-target this workspace later (e.g. the super-admin add-user/
+    // invite workspace picker's TargetOwnerId) must use this, not PublicId.
+    public Guid OwnerId { get; set; }
+
     public string Email { get; set; } = string.Empty;
     public string DisplayName { get; set; } = string.Empty;
     public string ApprovalStatus { get; set; } = string.Empty;

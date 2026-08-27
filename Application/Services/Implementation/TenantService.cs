@@ -103,6 +103,10 @@ public class TenantService : ITenantService
             {
                 Id = t.Id,
                 PublicId = t.PublicId,
+                // Every row returned here matched Role.Name == WorkspaceAdminRoleName above, and a
+                // Workspace Admin always carries a non-null OwnerId (their own tenant) — safe to
+                // assert. See TenantResponse.OwnerId's doc comment for why PublicId is NOT enough.
+                OwnerId = t.OwnerId!.Value,
                 Email = t.Email,
                 DisplayName = t.DisplayName,
                 ApprovalStatus = t.ApprovalStatus.ToString(),
@@ -184,6 +188,7 @@ public class TenantService : ITenantService
         {
             Id = user.Id,
             PublicId = user.PublicId,
+            OwnerId = publicId, // a freshly created tenant always owns itself
             Email = user.Email,
             DisplayName = user.DisplayName,
             ApprovalStatus = user.ApprovalStatus.ToString(),

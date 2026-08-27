@@ -4,6 +4,7 @@ using Pointer.Application.Services.Implementation;
 using Pointer.Application.Services.Interfaces;
 using Pointer.Domain.Entity;
 using Pointer.Infrastructure;
+using Pointer.Infrastructure.Billing;
 using Pointer.Infrastructure.Repository;
 using Xunit;
 
@@ -328,5 +329,41 @@ public class UserGovernanceTests
         var admin = new FakeCurrentUser { Id = ws.AdminPublicId, TenantId = ws.OwnerId, IsAdmin = true };
         var result = await Svc(admin, Ctx(admin, db)).TransferOwnershipAsync(otherDeputyPublicId);
         Assert.False(result.IsSuccess);
+    }
+
+    // ── TenantService.ListAsync stays correct across succession ────────────
+
+    private sealed class NoopFileStorage : IFileStorage
+    {
+        public Task<string> SaveAsync(string o, string p, Stream c, string e) => Task.FromResult("");
+        public Task DeleteAsync(string x) => Task.CompletedTask;
+        public Task DeleteOwnerFilesAsync(string o) => Task.CompletedTask;
+    }
+
+    [Fact]
+    public async Task TenantList_AfterPromotion_OwnerIdStaysStable_PublicIdTracksNewAdmin()
+    {
+        // Regression guard for the gap TenantResponse.OwnerId was added to close: before that fix,
+        // the super-admin workspace picker had only PublicId to send back as TargetOwnerId — which
+        // is the CURRENT admin's own row id, not the tenant's stable identifier. After a promotion
+        // those two diverge, so a picker built on PublicId would silently target the wrong tenant.
+        var db = Guid.NewGuid().ToString();
+        var ws = SeedWorkspace(db);
+        var admin = new FakeCurrentUser { Id = ws.AdminPublicId, TenantId = ws.OwnerId, IsAdmin = true };
+        var transfer = await Svc(admin, Ctx(admin, db)).TransferOwnershipAsync(ws.DeputyPublicId);
+        Assert.True(transfer.IsSuccess);
+
+        var superAdmin = new FakeCurrentUser { Id = Guid.NewGuid(), IsSuperAdmin = true };
+        var tenantSvc = new TenantService(new UnitOfWork(Ctx(superAdmin, db)), new IdentityHasher(),
+            new NoopFileStorage(), new FakeSettings(), new NoopBillingProvider());
+
+        var list = await tenantSvc.ListAsync();
+        Assert.True(list.IsSuccess);
+        var row = list.Data!.Single(t => t.OwnerId == ws.OwnerId);
+
+        // OwnerId never moves; PublicId now identifies the newly promoted admin (the former deputy).
+        Assert.Equal(ws.OwnerId, row.OwnerId);
+        Assert.Equal(ws.DeputyPublicId, row.PublicId);
+        Assert.NotEqual(ws.AdminPublicId, row.PublicId);
     }
 }
