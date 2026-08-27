@@ -9,10 +9,11 @@ namespace Pointer.Tests;
 
 /// <summary>
 /// EnsureAsync is the widget-side strict project resolver (comments / predefined-actions by key).
-/// These tests pin down the owner-matching rules that have see-sawed twice:
-/// super-admin must resolve BOTH projects stamped with their own id (the write side stamps
-/// OwnerFor ?? Id) AND legacy/global null-owner projects — while never resolving another
-/// tenant's project by key.
+/// Super admins can no longer own or create projects (ProjectService.CreateAsync forbids it, and
+/// production data confirms no null-owner project can exist anymore either) — so EnsureAsync no
+/// longer special-cases them at all: TenantStamp.OwnerFor(_currentUser) is null for a super admin,
+/// which correctly never matches any real project's OwnerId. These tests pin that down, including
+/// against a hypothetical legacy row that WOULD have resolved under the old (removed) logic.
 /// </summary>
 public class ProjectEnsureResolutionTests
 {
@@ -40,8 +41,11 @@ public class ProjectEnsureResolutionTests
     }
 
     [Fact]
-    public async Task SuperAdmin_Resolves_ProjectStampedWithOwnId()
+    public async Task SuperAdmin_DoesNotResolve_ProjectStampedWithOwnId()
     {
+        // Under the old (removed) logic this WOULD have resolved. Now that super admins can never
+        // own or create a project, this scenario can't occur going forward — pinned as a hypothetical
+        // legacy row to prove the removed self-id branch is really gone, not just untriggered.
         var db = Guid.NewGuid().ToString();
         var superId = Guid.NewGuid();
         Seed(db, new Project { Key = "clubs", Name = "clubs", OwnerId = superId });
@@ -49,19 +53,7 @@ public class ProjectEnsureResolutionTests
         var svc = Wire(new FakeCurrentUser { Id = superId, IsAdmin = true, IsSuperAdmin = true }, db);
         var result = await svc.EnsureAsync("clubs");
 
-        Assert.True(result.IsSuccess);
-    }
-
-    [Fact]
-    public async Task SuperAdmin_Resolves_NullOwnerGlobalProject()
-    {
-        var db = Guid.NewGuid().ToString();
-        Seed(db, new Project { Key = "landing", Name = "landing", OwnerId = null });
-
-        var svc = Wire(new FakeCurrentUser { Id = Guid.NewGuid(), IsAdmin = true, IsSuperAdmin = true }, db);
-        var result = await svc.EnsureAsync("landing");
-
-        Assert.True(result.IsSuccess);
+        Assert.True(result.IsNotFound);
     }
 
     [Fact]
@@ -74,21 +66,6 @@ public class ProjectEnsureResolutionTests
         var result = await svc.EnsureAsync("clubs");
 
         Assert.True(result.IsNotFound);
-    }
-
-    [Fact]
-    public async Task SuperAdmin_PrefersOwnProject_OnKeyCollisionWithGlobal()
-    {
-        var db = Guid.NewGuid().ToString();
-        var superId = Guid.NewGuid();
-        var own = new Project { Key = "clubs", Name = "own", OwnerId = superId };
-        Seed(db, new Project { Key = "clubs", Name = "global", OwnerId = null }, own);
-
-        var svc = Wire(new FakeCurrentUser { Id = superId, IsAdmin = true, IsSuperAdmin = true }, db);
-        var result = await svc.EnsureAsync("clubs");
-
-        Assert.True(result.IsSuccess);
-        Assert.Equal(own.Id, result.Data);
     }
 
     [Fact]

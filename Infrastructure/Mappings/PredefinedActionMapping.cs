@@ -20,7 +20,10 @@ public class PredefinedActionMapping : IEntityTypeConfiguration<PredefinedAction
         b.Property(x => x.DeletedBy).HasColumnName("deleted_by");
 
         // PredefinedAction-specific columns
-        b.Property(x => x.OwnerId).HasColumnName("owner_id"); // nullable — null = global/null-owner project
+        // NOT NULL at the DB level: tenant-wide actions were always required non-null
+        // (CreateTenantAsync's ISOLATION-LOAD-BEARING check), and project-scoped ones inherit the
+        // project's owner, which can no longer be null either — enforced here too.
+        b.Property(x => x.OwnerId).HasColumnName("owner_id").IsRequired();
         b.Property(x => x.ProjectId).HasColumnName("project_id");
         b.Property(x => x.UserId).HasColumnName("user_id");
         // Text bounded ≤256; Prompt is Postgres `text` (multi-paragraph — no length cap).

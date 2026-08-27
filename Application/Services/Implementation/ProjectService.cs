@@ -402,30 +402,26 @@ public class ProjectService : IProjectService
     public async Task<Result<int>> EnsureAsync(string key)
     {
         var keyNormalized = key.Trim().ToLower();
+
+        // Super admins never own or create projects (ProjectService.CreateAsync forbids it) — they
+        // resolve NO project by key, full stop. Explicit, rather than relying on
+        // TenantStamp.OwnerFor(_currentUser) incidentally being null for them too: that null also
+        // means "a real stakeholder with no tenant of their own," a distinct, still-legitimate case
+        // (see NullOwnerProject_ActionResolvesOnCommentCreate) that must keep resolving null-owner
+        // rows below — conflating the two by relying on the same null sentinel would be exactly the
+        // kind of fragile special-casing this method used to get wrong.
+        if (_currentUser.IsSuperAdmin)
+            return Result<int>.NotFound(MessageKeys.Project.NotFound);
+
         // Resolve by the caller's own scope. Widget stakeholders are registered UNDER the project's
-        // owner, so their OwnerFor (= tenant) equals the project's owner. The SUPER-ADMIN case has
-        // see-sawed twice (3125857 ↔ d41f023): the write side stamps their projects with
-        // OwnerId = their own id, but legacy/global projects (e.g. the marketing landing) have
-        // OwnerId = null — so a super-admin must match EITHER, preferring their own on a key
-        // collision. Never key-only: that would resolve other tenants' projects.
-        var query = _unitOfWork.Repository<Project>()
+        // owner, so their OwnerFor (= tenant) equals the project's owner. Never key-only: that would
+        // resolve other tenants' projects (the explicit OwnerId match is belt-and-suspenders alongside
+        // the EF query filter, which is the primary tenant boundary).
+        var ownerId = TenantStamp.OwnerFor(_currentUser);
+        var project = await _unitOfWork.Repository<Project>()
             .Query()
             .AsNoTracking()
-            .Where(p => p.DeletedAt == null && p.Key == keyNormalized);
-
-        // EF query filter is the primary tenant boundary; the explicit OwnerId match is
-        // belt-and-suspenders to prevent a scoped admin's key resolving to a global project.
-        if (_currentUser.IsSuperAdmin)
-            query = query
-                .Where(p => p.OwnerId == _currentUser.Id || p.OwnerId == null)
-                .OrderBy(p => p.OwnerId == null ? 1 : 0);
-        else
-        {
-            var ownerId = TenantStamp.OwnerFor(_currentUser);
-            query = query.Where(p => p.OwnerId == ownerId);
-        }
-
-        var project = await query
+            .Where(p => p.DeletedAt == null && p.Key == keyNormalized && p.OwnerId == ownerId)
             .Select(p => new { p.Id, p.IsActive })
             .FirstOrDefaultAsync();
 

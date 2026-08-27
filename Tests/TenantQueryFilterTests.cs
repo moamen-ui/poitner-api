@@ -53,6 +53,10 @@ public class TenantQueryFilterTests
     [Fact]
     public void Project_TenantA_SeesOnlyOwnRows()
     {
+        // Project.OwnerId is DB-enforced NOT NULL (super admins can no longer own/create one), so
+        // this only needs to pin tenant-vs-tenant isolation — the null-owner-bucket case is covered
+        // separately below via User, which can still legitimately be null-owner (a super admin's own
+        // account row).
         var db = Guid.NewGuid().ToString();
         var tenantA = Guid.NewGuid();
         var tenantB = Guid.NewGuid();
@@ -63,8 +67,7 @@ public class TenantQueryFilterTests
             seed.Projects.AddRange(
                 new Project { Key = "A1", Name = "A1", OwnerId = tenantA },
                 new Project { Key = "A2", Name = "A2", OwnerId = tenantA },
-                new Project { Key = "B1", Name = "B1", OwnerId = tenantB },
-                new Project { Key = "NULL", Name = "NULL", OwnerId = null }
+                new Project { Key = "B1", Name = "B1", OwnerId = tenantB }
             );
             seed.SaveChanges();
         }
@@ -76,7 +79,6 @@ public class TenantQueryFilterTests
         Assert.Equal(2, results.Count);
         Assert.All(results, p => Assert.Equal(tenantA, p.OwnerId));
         Assert.DoesNotContain(results, p => p.OwnerId == tenantB);
-        Assert.DoesNotContain(results, p => p.OwnerId == null);
     }
 
     [Fact]
@@ -90,8 +92,7 @@ public class TenantQueryFilterTests
         {
             seed.Projects.AddRange(
                 new Project { Key = "A1", Name = "A1", OwnerId = tenantA },
-                new Project { Key = "B1", Name = "B1", OwnerId = tenantB },
-                new Project { Key = "NULL", Name = "NULL", OwnerId = null }
+                new Project { Key = "B1", Name = "B1", OwnerId = tenantB }
             );
             seed.SaveChanges();
         }
@@ -99,27 +100,27 @@ public class TenantQueryFilterTests
         using var ctx = SuperAdminContext(db);
         var results = ctx.Set<Project>().ToList();
 
-        Assert.Equal(3, results.Count);
+        Assert.Equal(2, results.Count);
     }
 
     [Fact]
-    public void Project_TenantA_DoesNotSeeNull_OwnerRows()
+    public void User_TenantA_DoesNotSeeNull_OwnerRows()
     {
-        // Strict-own: null OwnerId rows (global/super-admin) are NOT visible to tenants.
+        // Strict-own: null OwnerId rows (a super admin's own account — the one entity in this group
+        // that can still legitimately be null-owner) are NOT visible to tenants. Project can no
+        // longer hold OwnerId == null at all (DB-enforced), so User is the vehicle here instead.
         var db = Guid.NewGuid().ToString();
         var tenantA = Guid.NewGuid();
 
         using (var seed = SuperAdminContext(db))
         {
-            seed.Projects.AddRange(
-                new Project { Key = "A1", Name = "A1", OwnerId = tenantA },
-                new Project { Key = "GLOBAL", Name = "GLOBAL", OwnerId = null }
-            );
+            seed.Users.Add(new User { Email = "a@x", PasswordHash = "h", DisplayName = "a", PublicId = Guid.NewGuid(), OwnerId = tenantA, RoleId = 1 });
+            seed.Users.Add(new User { Email = "super@x", PasswordHash = "h", DisplayName = "super", PublicId = Guid.NewGuid(), OwnerId = null, RoleId = 1 });
             seed.SaveChanges();
         }
 
         using var ctx = BuildContext(new FakeCurrentUser { TenantId = tenantA, IsSuperAdmin = false }, db);
-        var results = ctx.Set<Project>().ToList();
+        var results = ctx.Set<User>().ToList();
 
         Assert.Single(results);
         Assert.Equal(tenantA, results[0].OwnerId);
@@ -136,44 +137,40 @@ public class TenantQueryFilterTests
     public void NullTenant_NonSuper_DefaultFlag_SeesNullOwnerBucket()
     {
         // DEFAULT (flag off) — documents the current, pre-back-fill behavior: a null-tenant
-        // non-super principal sees every null-owner row (and NOT another tenant's rows).
+        // non-super principal sees every null-owner row (and NOT another tenant's rows). Project can
+        // no longer hold OwnerId == null (DB-enforced), so User is the vehicle — still a real,
+        // reachable shape (a super admin's own account row has OwnerId == null).
         var db = Guid.NewGuid().ToString();
         var tenantA = Guid.NewGuid();
 
         using (var seed = SuperAdminContext(db))
         {
-            seed.Projects.AddRange(
-                new Project { Key = "A1", Name = "A1", OwnerId = tenantA },
-                new Project { Key = "NULL1", Name = "NULL1", OwnerId = null },
-                new Project { Key = "NULL2", Name = "NULL2", OwnerId = null }
-            );
+            seed.Users.Add(new User { Email = "a@x", PasswordHash = "h", DisplayName = "a", PublicId = Guid.NewGuid(), OwnerId = tenantA, RoleId = 1 });
+            seed.Users.Add(new User { Email = "n1@x", PasswordHash = "h", DisplayName = "n1", PublicId = Guid.NewGuid(), OwnerId = null, RoleId = 1 });
+            seed.Users.Add(new User { Email = "n2@x", PasswordHash = "h", DisplayName = "n2", PublicId = Guid.NewGuid(), OwnerId = null, RoleId = 1 });
             seed.SaveChanges();
         }
 
         using var ctx = BuildContext(
             new FakeCurrentUser { TenantId = null, IsSuperAdmin = false }, db, strictNullTenant: false);
-        var results = ctx.Set<Project>().ToList();
+        var results = ctx.Set<User>().ToList();
 
         Assert.Equal(2, results.Count);                              // both null-owner rows
-        Assert.All(results, p => Assert.Null(p.OwnerId));
-        Assert.DoesNotContain(results, p => p.OwnerId == tenantA);   // never another tenant's row
+        Assert.All(results, u => Assert.Null(u.OwnerId));
+        Assert.DoesNotContain(results, u => u.OwnerId == tenantA);   // never another tenant's row
     }
 
     [Fact]
     public void NullTenant_NonSuper_StrictFlag_SeesNothing()
     {
         // STRICT (flag on) — the C1 fix: a null-tenant non-super principal sees NO strict-own rows,
-        // even null-owner ones. Enable only after back-filling owner_id (fix-plan T4).
+        // even null-owner ones. Enable only after back-filling owner_id (fix-plan T4). Project/Comment
+        // can no longer hold OwnerId == null at all (DB-enforced) — User remains the one entity in
+        // this group where it's still a real, reachable shape.
         var db = Guid.NewGuid().ToString();
-        var tenantA = Guid.NewGuid();
 
         using (var seed = SuperAdminContext(db))
         {
-            seed.Projects.AddRange(
-                new Project { Key = "A1", Name = "A1", OwnerId = tenantA },
-                new Project { Key = "NULL1", Name = "NULL1", OwnerId = null }
-            );
-            seed.Comments.Add(new Comment { ProjectId = 0, Body = "x", OwnerId = null, AuthorId = Guid.NewGuid() });
             seed.Users.Add(new User { Email = "n@x", PasswordHash = "h", DisplayName = "n", PublicId = Guid.NewGuid(), OwnerId = null, RoleId = 1 });
             seed.SaveChanges();
         }
@@ -181,8 +178,6 @@ public class TenantQueryFilterTests
         using var ctx = BuildContext(
             new FakeCurrentUser { TenantId = null, IsSuperAdmin = false }, db, strictNullTenant: true);
 
-        Assert.Empty(ctx.Set<Project>().ToList());
-        Assert.Empty(ctx.Set<Comment>().ToList());
         Assert.Empty(ctx.Set<User>().ToList());
     }
 

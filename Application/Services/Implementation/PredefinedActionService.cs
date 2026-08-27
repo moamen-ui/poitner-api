@@ -171,22 +171,21 @@ public class PredefinedActionService : IPredefinedActionService
     public async Task<PredefinedAction?> ResolveInScopeAsync(int predefinedActionId, int projectId, Guid? ownerId, Guid userId)
     {
         // Ignore the tenant query filter and match OwnerId explicitly against the resolved PROJECT's
-        // owner (the real isolation boundary): comment-create may run under a super-admin caller whose
-        // TenantId differs from the project's owner. ownerId may be null for a global/null-owner
-        // project — branch so EF emits `owner_id IS NULL` rather than a null-parameter comparison.
-        var q = _unitOfWork.Repository<PredefinedAction>()
+        // owner (the real isolation boundary): the caller's TenantId can legitimately differ from the
+        // project's owner (e.g. a stakeholder registered under the project's tenant). Super admins can
+        // no longer own or comment on projects (CommentService.CreateAsync blocks them before this is
+        // ever reached), so `ownerId` is always a real project's owner here, never null.
+        return await _unitOfWork.Repository<PredefinedAction>()
             .Query()
             .IgnoreQueryFilters()
             .AsNoTracking()
             .Where(a => a.Id == predefinedActionId
                         && a.DeletedAt == null
                         && a.IsActive
+                        && a.OwnerId == ownerId
                         && (a.ProjectId == null || a.ProjectId == projectId)
-                        && (a.UserId == null || a.UserId == userId));
-
-        q = ownerId is Guid oid ? q.Where(a => a.OwnerId == oid) : q.Where(a => a.OwnerId == null);
-
-        return await q.FirstOrDefaultAsync();
+                        && (a.UserId == null || a.UserId == userId))
+            .FirstOrDefaultAsync();
     }
 
     private async Task<int> NextSortOrderAsync(System.Linq.Expressions.Expression<Func<PredefinedAction, bool>> scope)

@@ -31,7 +31,10 @@ public class CommentMapping : IEntityTypeConfiguration<Comment>
         b.Property(x => x.AppliedByLabel).HasColumnName("applied_by_label").HasMaxLength(256);
         b.Property(x => x.EditedAt).HasColumnName("edited_at");
         b.Property(x => x.EditedBy).HasColumnName("edited_by");
-        b.Property(x => x.OwnerId).HasColumnName("owner_id");
+        // NOT NULL at the DB level: a comment always inherits its PROJECT's owner
+        // (CommentService.CreateAsync), and a project can no longer have a null owner — enforced
+        // here too so a future bug can't silently reintroduce the recurring "owner_id" bug class.
+        b.Property(x => x.OwnerId).HasColumnName("owner_id").IsRequired();
         b.HasIndex(x => x.OwnerId);
         b.Property(x => x.IsBugReport).HasColumnName("is_bug_report").HasDefaultValue(false);
         b.Property(x => x.PageContextSnapshotId).HasColumnName("page_context_snapshot_id");

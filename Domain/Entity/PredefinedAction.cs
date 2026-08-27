@@ -11,13 +11,13 @@ namespace Pointer.Domain.Entity;
 ///   - User (FUTURE): UserId set
 ///
 /// <see cref="OwnerId"/> is the tenant isolation boundary. It equals the owning PROJECT's OwnerId
-/// (project-scoped) or the creating tenant (tenant-wide), and is NULLABLE — a null owner means a
-/// global project/action (e.g. the marketing landing, or projects created before ownership existed),
-/// mirroring how <c>Project.OwnerId</c> and the own-plus-global query filter already work.
+/// (project-scoped) or the creating tenant (tenant-wide). DB-enforced NOT NULL — a super admin can
+/// no longer create/own a project or a tenant-wide action (see ProjectService.CreateAsync /
+/// PredefinedActionService.CreateTenantAsync), so a null owner can never occur here anymore. Kept
+/// as a nullable CLR type only to match the (also DB-enforced-non-null) <c>Project.OwnerId</c>.
 /// </summary>
 public class PredefinedAction : BaseEntity
 {
-    /// <summary>Tenant / owning-project owner. Null = global (matches a null-owner project).</summary>
     public Guid? OwnerId { get; set; }
 
     /// <summary>null = not project-specific (tenant-wide).</summary>
