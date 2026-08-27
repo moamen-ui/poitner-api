@@ -38,9 +38,14 @@ public class ProjectService : IProjectService
         if (exists)
             return Result<ProjectResponse>.Conflict(MessageKeys.Project.KeyTaken);
 
-        // OwnerId stamps the tenant. A scoped admin stamps their TenantId; a super-admin (no tenant)
-        // owns what they create under their own user id, so the resource always has a non-null owner
-        // (predefined actions + comment-scope matching all rely on this).
+        // Super admins are platform-management only — they never self-own tenant-scoped resources.
+        // Someone who wants to use the product signs in with a real tenant account instead.
+        if (_currentUser.IsSuperAdmin)
+            return Result<ProjectResponse>.Forbidden(MessageKeys.Project.SuperAdminNotAllowed);
+
+        // OwnerId stamps the tenant. `?? _currentUser.Id` is defensive: TenantId is null only for a
+        // super admin (blocked above) or a malformed/missing `tenant` claim, which should never
+        // happen for a real tenant user but must not silently produce a null-owner row if it did.
         var ownerId = TenantStamp.OwnerFor(_currentUser) ?? _currentUser.Id;
 
         // MaxProjects: count active projects owned by this tenant (grandfather-safe — checked only on

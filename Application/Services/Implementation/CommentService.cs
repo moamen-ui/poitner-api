@@ -36,6 +36,11 @@ public class CommentService : ICommentService
 
     public async Task<Result<CommentResponse>> CreateAsync(string projectKey, CreateCommentRequest request, Guid authorId)
     {
+        // Super admins are platform-management only — they never leave comments under their own
+        // identity. Someone who wants to use the product signs in with a real tenant account instead.
+        if (_currentUser.IsSuperAdmin)
+            return Result<CommentResponse>.Forbidden(MessageKeys.Comment.SuperAdminNotAllowed);
+
         var projectResult = await _projectService.EnsureAsync(projectKey);
         if (!projectResult.IsSuccess)
             return projectResult.IsConflict

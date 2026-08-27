@@ -32,6 +32,7 @@ public static class MessageKeys
         public const string KeyInvalidFormat = "Project key must contain only lowercase letters, numbers, dots (.), underscores (_), or hyphens (-).";
         public const string Disabled = "This project has been disabled.";
         public const string KeyAmbiguous = "This project key matches more than one workspace. Please contact your workspace administrator.";
+        public const string SuperAdminNotAllowed = "Super admins cannot create projects. Sign in with a tenant account to use Pointer.";
     }
 
     public static class Role
@@ -76,6 +77,7 @@ public static class MessageKeys
         public const string Applied = "Comment marked applied.";
         public const string InvalidPredefinedAction = "The selected action is unavailable. Please refresh and try again.";
         public const string StatusInvalid = "Invalid comment status.";
+        public const string SuperAdminNotAllowed = "Super admins cannot leave comments. Sign in with a tenant account to use Pointer.";
     }
 
     public static class PredefinedAction
@@ -83,6 +85,7 @@ public static class MessageKeys
         public const string NotFound = "Action not found.";
         public const string TextRequired = "Action text is required.";
         public const string PromptRequired = "Action prompt is required.";
+        public const string SuperAdminNotAllowed = "Super admins cannot create predefined actions. Sign in with a tenant account to use Pointer.";
     }
 
     public static class Suggestion

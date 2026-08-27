@@ -68,7 +68,11 @@ public class UserService : IUserService
         // everything they create afterwards (e.g. projects) falls back to a throwaway per-request
         // id that never matches their own null-tenant query-filter scope — so it "creates" but is
         // immediately invisible to them.
-        var ownerId = role.Name == "Workspace Admin" ? publicId : TenantStamp.OwnerFor(_currentUser);
+        // For every OTHER role, the new user joins the CALLER's tenant — `?? _currentUser.Id`
+        // mirrors ProjectService.CreateAsync/InviteService.CreateAsync so a super admin adding an
+        // ordinary teammate doesn't leave them with OwnerId == null (same invisible-to-their-own-
+        // workspace-admin bug as above, just via a different caller).
+        var ownerId = role.Name == "Workspace Admin" ? publicId : TenantStamp.OwnerFor(_currentUser) ?? _currentUser.Id;
 
         // MaxSeats: count active users owned by this tenant (direct-add path). Grandfather-safe.
         if (ownerId is Guid seatOwner)

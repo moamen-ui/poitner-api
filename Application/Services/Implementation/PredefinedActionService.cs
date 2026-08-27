@@ -41,8 +41,12 @@ public class PredefinedActionService : IPredefinedActionService
 
     public async Task<Result<PredefinedActionResponse>> CreateTenantAsync(CreatePredefinedActionRequest request)
     {
-        // Scoped admin → their tenant; super-admin (no tenant) → their own user id, so the operator
-        // can manage workspace-wide actions too (consistent non-null owner).
+        // Super admins are platform-management only — they never self-own tenant-scoped resources.
+        // Someone who wants to use the product signs in with a real tenant account instead.
+        if (_currentUser.IsSuperAdmin)
+            return Result<PredefinedActionResponse>.Forbidden(MessageKeys.PredefinedAction.SuperAdminNotAllowed);
+
+        // Scoped admin → their tenant.
         // ISOLATION-LOAD-BEARING: this MUST stamp a non-null owner. A null-owner tenant-wide row
         // (OwnerId == null, ProjectId == null) would become visible/editable by EVERY tenant under
         // the own-plus-global query filter. Never relax this to allow a null owner here.

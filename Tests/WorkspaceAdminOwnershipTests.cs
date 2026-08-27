@@ -76,6 +76,40 @@ public class WorkspaceAdminOwnershipTests
     }
 
     [Fact]
+    public async Task SuperAdmin_DirectAdd_OrdinaryRole_SelfOwns_NotNull()
+    {
+        // Regression for the narrower sibling bug: adding an ordinary (non-"Workspace Admin") user
+        // used to fall back to TenantStamp.OwnerFor(_currentUser) with NO `?? _currentUser.Id`,
+        // which is null for a super-admin caller — the new teammate was created tenant-less and
+        // invisible to their own workspace admin (non-super tenant users can never match a
+        // null-owner row in the query filter).
+        var db = Guid.NewGuid().ToString();
+
+        int roleId;
+        using (var seed = Ctx(new FakeCurrentUser { IsSuperAdmin = true }, db))
+        {
+            var role = new Role { Name = "Engineer", GrantsAdmin = false, IsSystem = false, IsActive = true };
+            seed.Roles.Add(role);
+            seed.SaveChanges();
+            roleId = role.Id;
+        }
+
+        var superAdmin = new FakeCurrentUser { Id = Guid.NewGuid(), IsSuperAdmin = true };
+        var ctx = Ctx(superAdmin, db);
+        var uow = new UnitOfWork(ctx);
+        var svc = new UserService(uow, new IdentityHasher(), superAdmin, new NoopEmail(),
+            new EntitlementService(uow, superAdmin, new FakeSettings()), new NoopBrandingService());
+
+        var result = await svc.CreateAsync(new CreateUserRequest
+        { Email = "member@tuwaiq.edu.sa", Password = "password123", DisplayName = "New Member", RoleId = roleId });
+        Assert.True(result.IsSuccess);
+
+        var created = ctx.Users.IgnoreQueryFilters().Single(u => u.Email == "member@tuwaiq.edu.sa");
+        Assert.NotNull(created.OwnerId);
+        Assert.Equal(superAdmin.Id, created.OwnerId);
+    }
+
+    [Fact]
     public async Task NewWorkspaceAdmin_CanCreateAndThenSeeTheirOwnProject()
     {
         var db = Guid.NewGuid().ToString();
