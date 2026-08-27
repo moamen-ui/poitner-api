@@ -70,7 +70,10 @@ public class AppDbContext(DbContextOptions<AppDbContext> options, ICurrentUser c
         // PageContextSnapshot carries browser-captured console/network data for a tenant's project —
         // strict-own like Comment, so it can never leak across tenants through a future admin listing.
         b.Entity<PageContextSnapshot>().HasQueryFilter(e => currentUser.IsSuperAdmin || (currentUser.TenantId != null && e.OwnerId == currentUser.TenantId) || (currentUser.TenantId == null && !strict && e.OwnerId == null));
-        // Invites are ALWAYS tenant-scoped (OwnerId non-null) — strict-own, no null-owner branch.
+        // Invites are strict-own (no "sees the global bucket" branch). OwnerId is non-null for
+        // every invite that joins an existing tenant; the one exception (a super-admin "new
+        // workspace" invite) is only ever read by a super admin (bypasses via IsSuperAdmin above)
+        // or the anonymous accept/preview path, which always uses IgnoreQueryFilters() explicitly.
         b.Entity<Invite>().HasQueryFilter(e => currentUser.IsSuperAdmin || (currentUser.TenantId != null && e.OwnerId == currentUser.TenantId) || (currentUser.TenantId == null && !strict && e.OwnerId == null));
         // Own-plus-global: a tenant sees its own actions plus null-owner (global) ones — needed so
         // actions on a global/null-owner project (e.g. the marketing landing) resolve for that

@@ -60,38 +60,55 @@ public class InviteService : IInviteService
 
     public async Task<Result<InviteResponse>> CreateAsync(CreateInviteRequest request)
     {
-        Guid owner;
+        Guid? owner;
         Role? role = null;
 
         if (_currentUser.IsSuperAdmin)
         {
-            // Same restriction as UserService.CreateAsync's super-admin branch: a super admin can
-            // only invite a Deputy into an EXISTING workspace they explicitly pick — never mint a
-            // new self-owned workspace, never pin any other role. request.RoleId is ignored.
-            if (request.TargetOwnerId is not Guid targetOwnerId)
-                return Result<InviteResponse>.Failure(MessageKeys.User.TargetWorkspaceRequired);
+            if (request.CreateNewWorkspace)
+            {
+                // New-workspace invite: OwnerId stays null — accept mints a brand-new self-owned
+                // tenant (its accepter becomes "Workspace Admin"), immediately active, same as
+                // TenantService.CreateAsync's direct-create path but deferred to the invitee via a
+                // shareable link. TargetOwnerId/RoleId are irrelevant here and ignored.
+                owner = null;
+            }
+            else
+            {
+                // Same restriction as UserService.CreateAsync's super-admin branch: a super admin can
+                // only invite a Deputy into an EXISTING workspace they explicitly pick — never mint a
+                // new self-owned workspace this way, never pin any other role. request.RoleId is
+                // ignored.
+                if (request.TargetOwnerId is not Guid targetOwnerId)
+                    return Result<InviteResponse>.Failure(MessageKeys.User.TargetWorkspaceRequired);
 
-            var targetAdminExists = await _unitOfWork.Repository<User>()
-                .Query()
-                .IgnoreQueryFilters()
-                .AsNoTracking()
-                .AnyAsync(u => u.OwnerId == targetOwnerId && u.DeletedAt == null && u.Role.Name == WorkspaceAdminRoleName);
-            if (!targetAdminExists)
-                return Result<InviteResponse>.Failure(MessageKeys.User.WorkspaceNotFound);
+                var targetAdminExists = await _unitOfWork.Repository<User>()
+                    .Query()
+                    .IgnoreQueryFilters()
+                    .AsNoTracking()
+                    .AnyAsync(u => u.OwnerId == targetOwnerId && u.DeletedAt == null && u.Role.Name == WorkspaceAdminRoleName);
+                if (!targetAdminExists)
+                    return Result<InviteResponse>.Failure(MessageKeys.User.WorkspaceNotFound);
 
-            role = await _unitOfWork.Repository<Role>()
-                .Query()
-                .AsNoTracking()
-                .FirstOrDefaultAsync(r => r.Name == DeputyRoleName && r.DeletedAt == null && r.IsActive);
-            if (role == null)
-                return Result<InviteResponse>.Failure(MessageKeys.Role.Invalid);
+                role = await _unitOfWork.Repository<Role>()
+                    .Query()
+                    .AsNoTracking()
+                    .FirstOrDefaultAsync(r => r.Name == DeputyRoleName && r.DeletedAt == null && r.IsActive);
+                if (role == null)
+                    return Result<InviteResponse>.Failure(MessageKeys.Role.Invalid);
 
-            owner = targetOwnerId;
+                owner = targetOwnerId;
+            }
         }
         else
         {
-            // ISOLATION-LOAD-BEARING: an invite MUST carry a non-null owner — it is the tenant
-            // boundary. Scoped admin → their tenant.
+            // Only a super admin may mint a whole new workspace via invite (mirrors
+            // TenantService.CreateAsync's Policies.SuperAdmin gate).
+            if (request.CreateNewWorkspace)
+                return Result<InviteResponse>.Forbidden(MessageKeys.Invite.Forbidden);
+
+            // ISOLATION-LOAD-BEARING: a join-existing-tenant invite MUST carry a non-null owner —
+            // it is the tenant boundary. Scoped admin → their tenant.
             var ownerId = TenantStamp.OwnerFor(_currentUser) ?? _currentUser.Id;
             if (ownerId is not Guid scopedOwner)
                 return Result<InviteResponse>.Forbidden(MessageKeys.Invite.Forbidden);
@@ -102,7 +119,7 @@ public class InviteService : IInviteService
             // may delegate, same as via direct-add.
             if (request.RoleId is int pinnedRoleId)
             {
-                role = await ResolvePinnableRoleAsync(pinnedRoleId, owner);
+                role = await ResolvePinnableRoleAsync(pinnedRoleId, scopedOwner);
                 if (role == null)
                     return Result<InviteResponse>.Failure(MessageKeys.Role.Invalid);
             }
@@ -233,6 +250,16 @@ public class InviteService : IInviteService
         if (invite == null)
             return Result<InvitePreviewResponse>.NotFound(MessageKeys.Invite.NotFound);
 
+        if (invite.OwnerId == null)
+        {
+            // New-workspace invite — no existing tenant to preview.
+            return Result<InvitePreviewResponse>.Success(new InvitePreviewResponse
+            {
+                IsNewWorkspace = true,
+                EmailLocked = invite.Email != null
+            });
+        }
+
         // SAFE preview only: the owning admin's DisplayName + the pinned role's name. NEVER the
         // tenant GUID, the invite id, or any secret. Anonymous path → bypass filters and scope
         // explicitly to the invite's own OwnerId.
@@ -294,6 +321,15 @@ public class InviteService : IInviteService
         if (invite.Email != null && invite.Email != emailNormalized)
             return Result<LoginResponse>.Failure(MessageKeys.Invite.EmailMismatch);
 
+        return invite.OwnerId is Guid existingOwnerId
+            ? await AcceptJoinExistingWorkspaceAsync(invite, existingOwnerId, emailNormalized, request)
+            : await AcceptCreateNewWorkspaceAsync(invite, emailNormalized, request);
+    }
+
+    // Joins an EXISTING tenant — the original accept flow (invite.OwnerId non-null).
+    private async Task<Result<LoginResponse>> AcceptJoinExistingWorkspaceAsync(
+        Invite invite, Guid ownerId, string emailNormalized, AcceptInviteRequest request)
+    {
         // 2. Resolve the role: the invite's pinned RoleId if present (the admin already chose it at
         //    creation time — may be Deputy), else validate the anonymous acceptor's OWN submitted
         //    roleId as a non-admin role of the invite's tenant or global (never Deputy — an
@@ -301,13 +337,13 @@ public class InviteService : IInviteService
         Role? role;
         if (invite.RoleId is int pinnedRoleId)
         {
-            role = await ResolvePinnableRoleAsync(pinnedRoleId, invite.OwnerId);
+            role = await ResolvePinnableRoleAsync(pinnedRoleId, ownerId);
         }
         else
         {
             if (request.RoleId is not int chosenRoleId)
                 return Result<LoginResponse>.Failure(MessageKeys.Role.Invalid);
-            role = await ResolveAssignableRoleAsync(chosenRoleId, invite.OwnerId);
+            role = await ResolveAssignableRoleAsync(chosenRoleId, ownerId);
         }
 
         if (role == null)
@@ -322,7 +358,7 @@ public class InviteService : IInviteService
             .AsNoTracking()
             .Where(u => u.DeletedAt == null
                         && u.Email == emailNormalized
-                        && u.OwnerId == invite.OwnerId)
+                        && u.OwnerId == ownerId)
             .FirstOrDefaultAsync();
 
         if (existing != null)
@@ -333,8 +369,8 @@ public class InviteService : IInviteService
         var seatCount = await _unitOfWork.Repository<User>()
             .Query()
             .IgnoreQueryFilters()
-            .CountAsync(u => u.OwnerId == invite.OwnerId && u.DeletedAt == null);
-        var seatCheck = await _entitlements.CheckCountAsync(invite.OwnerId, EntitlementCatalog.MaxSeats, seatCount);
+            .CountAsync(u => u.OwnerId == ownerId && u.DeletedAt == null);
+        var seatCheck = await _entitlements.CheckCountAsync(ownerId, EntitlementCatalog.MaxSeats, seatCount);
         if (!seatCheck.IsSuccess)
             return Result<LoginResponse>.LimitReached(seatCheck.Message ?? MessageKeys.Plan.LimitReached, seatCheck.Limit!);
 
@@ -360,7 +396,7 @@ public class InviteService : IInviteService
             PublicId = Guid.NewGuid(),
             ApprovalStatus = ApprovalStatus.Approved,
             IsActive = true,
-            OwnerId = invite.OwnerId
+            OwnerId = ownerId
         };
 
         try
@@ -378,14 +414,74 @@ public class InviteService : IInviteService
         // 6. Auto-signin: return a login token + user (reuse the login response builder).
         newUser.Role = role;
         var token = _tokenService.Issue(newUser);
-        var response = new LoginResponse
+        return Result<LoginResponse>.Success(new LoginResponse
         {
             Status = "ok",
             Token = token,
             User = UserMapper.ToMeResponse(newUser)
+        });
+    }
+
+    // Mints a brand-new self-owned tenant (invite.OwnerId is null) — the invitee becomes its
+    // "Workspace Admin", approved and active immediately. Mirrors TenantService.CreateAsync's
+    // direct-create path (including the OwnerId==u.PublicId duplicate-email scoping and the
+    // absence of a seat-limit check — there is no existing tenant to check limits against yet).
+    private async Task<Result<LoginResponse>> AcceptCreateNewWorkspaceAsync(
+        Invite invite, string emailNormalized, AcceptInviteRequest request)
+    {
+        var exists = await _unitOfWork.Repository<User>()
+            .Query()
+            .IgnoreQueryFilters()
+            .AsNoTracking()
+            .AnyAsync(u => u.DeletedAt == null && u.Email == emailNormalized && u.OwnerId == u.PublicId);
+
+        if (exists)
+            return Result<LoginResponse>.Conflict(MessageKeys.Auth.AccountExists);
+
+        var workspaceAdminRole = await _unitOfWork.Repository<Role>()
+            .Query()
+            .IgnoreQueryFilters()
+            .AsNoTracking()
+            .FirstOrDefaultAsync(r => r.DeletedAt == null && r.IsActive
+                                      && r.Name == WorkspaceAdminRoleName && r.OwnerId == null);
+        if (workspaceAdminRole == null)
+            return Result<LoginResponse>.Failure(MessageKeys.Role.Invalid);
+
+        var claimed = await _unitOfWork.AtomicClaimInviteSlotAsync(invite.Id, DateTime.UtcNow);
+        if (claimed == 0)
+            return Result<LoginResponse>.NotFound(MessageKeys.Invite.NotFound);
+
+        var publicId = Guid.NewGuid();
+        var newUser = new User
+        {
+            Email = emailNormalized,
+            PasswordHash = _passwordHasher.Hash(request.Password),
+            DisplayName = request.DisplayName,
+            RoleId = workspaceAdminRole.Id,
+            PublicId = publicId,
+            ApprovalStatus = ApprovalStatus.Approved,
+            IsActive = true,
+            OwnerId = publicId // a brand-new tenant owns itself
         };
 
-        return Result<LoginResponse>.Success(response);
+        try
+        {
+            await _unitOfWork.Repository<User>().AddAsync(newUser);
+            await _unitOfWork.SaveChangesAsync();
+        }
+        catch (Microsoft.EntityFrameworkCore.DbUpdateException)
+        {
+            return Result<LoginResponse>.Conflict(MessageKeys.Auth.AccountExists);
+        }
+
+        newUser.Role = workspaceAdminRole;
+        var token = _tokenService.Issue(newUser);
+        return Result<LoginResponse>.Success(new LoginResponse
+        {
+            Status = "ok",
+            Token = token,
+            User = UserMapper.ToMeResponse(newUser)
+        });
     }
 
     // ── Helpers ─────────────────────────────────────────────────────────────────

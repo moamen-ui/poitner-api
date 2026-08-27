@@ -366,6 +366,121 @@ public class InviteServiceTests
         Assert.Equal(tenant, created.OwnerId);
     }
 
+    // ── New-workspace invites (invite.OwnerId == null) ────────────────────────────
+
+    [Fact]
+    public async Task SuperAdmin_Create_NewWorkspaceInvite_IgnoresTargetOwnerIdAndRole()
+    {
+        var dbName = Guid.NewGuid().ToString();
+        var (tenant, roleId) = SeedTenant(dbName); // a decoy existing workspace + role
+
+        var superAdmin = new FakeCurrentUser { Id = Guid.NewGuid(), IsSuperAdmin = true };
+        using var db = BuildContext(superAdmin, dbName);
+        var svc = BuildService(superAdmin, db);
+
+        var result = await svc.CreateAsync(new CreateInviteRequest
+        { CreateNewWorkspace = true, TargetOwnerId = tenant, RoleId = roleId });
+
+        Assert.True(result.IsSuccess);
+        Assert.Null(result.Data!.RoleId);
+        var stored = db.Invites.IgnoreQueryFilters().Single();
+        Assert.Null(stored.OwnerId);
+        Assert.Null(stored.RoleId);
+    }
+
+    [Fact]
+    public async Task NonSuperAdmin_Create_NewWorkspaceInvite_Forbidden()
+    {
+        var dbName = Guid.NewGuid().ToString();
+        var (tenant, _) = SeedTenant(dbName);
+
+        var admin = new FakeCurrentUser { Id = Guid.NewGuid(), TenantId = tenant, IsAdmin = true };
+        using var db = BuildContext(admin, dbName);
+        var svc = BuildService(admin, db);
+
+        var result = await svc.CreateAsync(new CreateInviteRequest { CreateNewWorkspace = true });
+        Assert.False(result.IsSuccess);
+        Assert.True(result.IsForbidden);
+    }
+
+    [Fact]
+    public async Task Preview_NewWorkspaceInvite_ReturnsIsNewWorkspaceFlag()
+    {
+        var dbName = Guid.NewGuid().ToString();
+        var inviteId = SeedInvite(dbName, Guid.Empty, i => i.OwnerId = null);
+        var code = CodeOf(dbName, inviteId);
+
+        var anon = new FakeCurrentUser { };
+        using var db = BuildContext(anon, dbName);
+        var svc = BuildService(anon, db);
+
+        var result = await svc.GetPreviewAsync(code);
+        Assert.True(result.IsSuccess);
+        Assert.True(result.Data!.IsNewWorkspace);
+    }
+
+    [Fact]
+    public async Task Accept_NewWorkspaceInvite_MintsNewSelfOwnedTenant_ApprovedActive()
+    {
+        var dbName = Guid.NewGuid().ToString();
+        using (var seed = BuildContext(new FakeCurrentUser { IsSuperAdmin = true }, dbName))
+        {
+            seed.Roles.Add(new Role { Name = "Workspace Admin", GrantsAdmin = true, IsActive = true, IsSystem = true });
+            seed.SaveChanges();
+        }
+        var inviteId = SeedInvite(dbName, Guid.Empty, i => i.OwnerId = null);
+        var code = CodeOf(dbName, inviteId);
+
+        var anon = new FakeCurrentUser { };
+        using var db = BuildContext(anon, dbName);
+        var svc = BuildService(anon, db);
+
+        var result = await svc.AcceptAsync(new AcceptInviteRequest
+        { Code = code, Email = "founder@newco.com", Password = "password123", DisplayName = "Founder" });
+
+        Assert.True(result.IsSuccess);
+        var created = db.Users.IgnoreQueryFilters().Single(u => u.Email == "founder@newco.com");
+        Assert.Equal("Workspace Admin", created.Role.Name);
+        Assert.Equal(created.PublicId, created.OwnerId); // self-owned: a brand-new tenant
+        Assert.Equal(ApprovalStatus.Approved, created.ApprovalStatus);
+        Assert.True(created.IsActive);
+    }
+
+    [Fact]
+    public async Task Accept_NewWorkspaceInvite_RejectsDuplicateSelfOwnedEmail()
+    {
+        var dbName = Guid.NewGuid().ToString();
+        int adminRoleId;
+        using (var seed = BuildContext(new FakeCurrentUser { IsSuperAdmin = true }, dbName))
+        {
+            var role = new Role { Name = "Workspace Admin", GrantsAdmin = true, IsActive = true, IsSystem = true };
+            seed.Roles.Add(role);
+            seed.SaveChanges();
+            adminRoleId = role.Id;
+
+            var existingPublicId = Guid.NewGuid();
+            seed.Users.Add(new User
+            {
+                Email = "founder@newco.com", PasswordHash = "x", DisplayName = "Existing Founder",
+                RoleId = adminRoleId, PublicId = existingPublicId, OwnerId = existingPublicId,
+                ApprovalStatus = ApprovalStatus.Approved, IsActive = true
+            });
+            seed.SaveChanges();
+        }
+        var inviteId = SeedInvite(dbName, Guid.Empty, i => i.OwnerId = null);
+        var code = CodeOf(dbName, inviteId);
+
+        var anon = new FakeCurrentUser { };
+        using var db = BuildContext(anon, dbName);
+        var svc = BuildService(anon, db);
+
+        var result = await svc.AcceptAsync(new AcceptInviteRequest
+        { Code = code, Email = "founder@newco.com", Password = "password123", DisplayName = "Impersonator" });
+
+        Assert.False(result.IsSuccess);
+        Assert.True(result.IsConflict);
+    }
+
     // ── Accept (happy path) ───────────────────────────────────────────────────────
 
     [Fact]

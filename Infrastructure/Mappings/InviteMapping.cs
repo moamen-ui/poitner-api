@@ -20,7 +20,8 @@ public class InviteMapping : IEntityTypeConfiguration<Invite>
         b.Property(x => x.DeletedBy).HasColumnName("deleted_by");
 
         // Invite-specific columns
-        b.Property(x => x.OwnerId).HasColumnName("owner_id").IsRequired(); // tenant boundary — never null
+        // Null only for a super-admin "new workspace" invite (accept mints a brand-new tenant).
+        b.Property(x => x.OwnerId).HasColumnName("owner_id");
         b.Property(x => x.Code).HasColumnName("code").IsRequired().HasMaxLength(64);
         b.HasIndex(x => x.Code).IsUnique();
         b.Property(x => x.RoleId).HasColumnName("role_id");

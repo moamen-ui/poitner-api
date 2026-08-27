@@ -7,6 +7,12 @@ namespace Pointer.Application.DTOs.Invite;
 /// </summary>
 public class InvitePreviewResponse
 {
+    /// <summary>
+    /// True for a super-admin "new workspace" invite — accepting mints a brand-new tenant rather
+    /// than joining one. <see cref="WorkspaceName"/> and <see cref="RoleName"/> are meaningless here.
+    /// </summary>
+    public bool IsNewWorkspace { get; set; }
+
     /// <summary>The owning admin's display name (used as the workspace/tenant label).</summary>
     public string WorkspaceName { get; set; } = string.Empty;
 
