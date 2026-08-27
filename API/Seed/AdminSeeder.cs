@@ -32,7 +32,11 @@ public static class AdminSeeder
         var config = scope.ServiceProvider.GetRequiredService<IConfiguration>();
 
         // 1) Seed any missing default roles.
-        var existingRoleNames = await db.Roles.Select(r => r.Name).ToListAsync();
+        // IgnoreQueryFilters: this runs at startup with no HttpContext, so ICurrentUser.TenantId is
+        // null and IsSuperAdmin is false — the standard tenant filter would otherwise hide existing
+        // global roles whenever Tenancy:StrictNullTenantIsolation is true, making every boot try to
+        // re-insert them and crash on the unique (name, owner_id IS NULL) index.
+        var existingRoleNames = await db.Roles.IgnoreQueryFilters().Select(r => r.Name).ToListAsync();
         foreach (var (name, grantsAdmin, isSystem, isSuperAdmin) in DefaultRoles)
         {
             if (!existingRoleNames.Contains(name))
@@ -42,7 +46,7 @@ public static class AdminSeeder
 
         // Idempotently upgrade the existing "Admin" role to IsSuperAdmin (for databases seeded
         // before this flag existed). New databases already get it from the tuple above.
-        var adminRole = await db.Roles.FirstOrDefaultAsync(r => r.Name == "Admin");
+        var adminRole = await db.Roles.IgnoreQueryFilters().FirstOrDefaultAsync(r => r.Name == "Admin");
         if (adminRole is not null && !adminRole.IsSuperAdmin)
         {
             adminRole.IsSuperAdmin = true;
@@ -62,7 +66,7 @@ public static class AdminSeeder
 
         try
         {
-            var adminRoleId = await db.Roles.Where(r => r.IsSuperAdmin).Select(r => r.Id).FirstAsync();
+            var adminRoleId = await db.Roles.IgnoreQueryFilters().Where(r => r.IsSuperAdmin).Select(r => r.Id).FirstAsync();
 
             // Match the operator BY EMAIL (never rename an existing row into a duplicate email — that
             // would violate the unique-email index and crash startup). Create if absent, else ensure it
