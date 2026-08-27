@@ -14,7 +14,7 @@ namespace Pointer.API.Controllers.Admin;
 public class TenantsController(ITenantService tenantService) : ControllerBase
 {
     [HttpGet]
-    [ProducesResponseType(typeof(Result<List<TenantResponse>>), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(List<TenantResponse>), StatusCodes.Status200OK)]
     public async Task<IActionResult> List()
     {
         var result = await tenantService.ListAsync();
@@ -22,7 +22,7 @@ public class TenantsController(ITenantService tenantService) : ControllerBase
     }
 
     [HttpPost]
-    [ProducesResponseType(typeof(Result<TenantResponse>), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(TenantResponse), StatusCodes.Status200OK)]
     public async Task<IActionResult> Create([FromBody] CreateTenantRequest request)
     {
         var result = await tenantService.CreateAsync(request);
