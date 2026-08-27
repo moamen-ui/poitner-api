@@ -75,16 +75,23 @@ public class AppDbContext(DbContextOptions<AppDbContext> options, ICurrentUser c
         // Own-plus-global: a tenant sees its own actions plus null-owner (global) ones — needed so
         // actions on a global/null-owner project (e.g. the marketing landing) resolve for that
         // project's null-owner stakeholders. Cross-project leakage is prevented separately by the
-        // ProjectId scope in the widget-read query.
-        b.Entity<PredefinedAction>().HasQueryFilter(e => currentUser.IsSuperAdmin || e.OwnerId == currentUser.TenantId || e.OwnerId == null);
+        // ProjectId scope in the widget-read query. A REAL tenant always sees the global bucket
+        // (unaffected by `strict` — that was never the leak); only a null-tenant caller's access to
+        // the global bucket is gated by `strict`, matching the strict-own group's C1 fix. (Naively
+        // reusing `e.OwnerId == currentUser.TenantId` for the "own" branch would silently collapse to
+        // `e.OwnerId == null` for a null-tenant caller too, defeating the strict gate below — hence
+        // the explicit `TenantId != null` guard on the own branch.)
+        b.Entity<PredefinedAction>().HasQueryFilter(e => currentUser.IsSuperAdmin || (currentUser.TenantId != null && (e.OwnerId == currentUser.TenantId || e.OwnerId == null)) || (currentUser.TenantId == null && !strict && e.OwnerId == null));
         // STRICT-OWN (BINDING #5): suggestions are visible only to the owning tenant or super-admin —
         // NEVER own-plus-global. A null-owner suggestion is never written, and the strict filter keeps
         // one tenant from ever loading another tenant's (or a null-owner) pending suggestion by id.
         b.Entity<PredefinedActionSuggestion>().HasQueryFilter(e => currentUser.IsSuperAdmin || (currentUser.TenantId != null && e.OwnerId == currentUser.TenantId) || (currentUser.TenantId == null && !strict && e.OwnerId == null));
 
         // Own-plus-global: tenants also see rows with OwnerId == null (super-admin/global defaults).
-        b.Entity<Role>().HasQueryFilter(e => currentUser.IsSuperAdmin || e.OwnerId == currentUser.TenantId || e.OwnerId == null);
-        b.Entity<StatusPresentation>().HasQueryFilter(e => currentUser.IsSuperAdmin || e.OwnerId == currentUser.TenantId || e.OwnerId == null);
+        // Same split as PredefinedAction above: a real tenant always sees the global bucket
+        // regardless of `strict`; only a null-tenant caller's access to it is `strict`-gated.
+        b.Entity<Role>().HasQueryFilter(e => currentUser.IsSuperAdmin || (currentUser.TenantId != null && (e.OwnerId == currentUser.TenantId || e.OwnerId == null)) || (currentUser.TenantId == null && !strict && e.OwnerId == null));
+        b.Entity<StatusPresentation>().HasQueryFilter(e => currentUser.IsSuperAdmin || (currentUser.TenantId != null && (e.OwnerId == currentUser.TenantId || e.OwnerId == null)) || (currentUser.TenantId == null && !strict && e.OwnerId == null));
 
         // AppSetting: no filter — not tenant data; guarded by endpoint authorization.
 

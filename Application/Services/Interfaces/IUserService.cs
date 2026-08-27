@@ -11,4 +11,6 @@ public interface IUserService
     Task<Result<UserResponse>> UpdateAsync(int id, UpdateUserRequest request);
     Task<Result<UserResponse>> ApproveAsync(int id, ApproveUserRequest request);
     Task<Result<UserResponse>> RejectAsync(int id);
+    Task<Result> DeleteAsync(int id);
+    Task<Result> TransferOwnershipAsync(Guid deputyPublicId);
 }

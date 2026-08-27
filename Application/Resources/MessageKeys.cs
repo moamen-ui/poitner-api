@@ -22,6 +22,15 @@ public static class MessageKeys
         public const string PasswordRequired = "Password is required.";
         public const string PasswordWeak = "Password must be at least 8 characters.";
         public const string DisplayNameRequired = "Display name is required.";
+        public const string TargetWorkspaceRequired = "Select which workspace to add this deputy to.";
+        public const string WorkspaceNotFound = "The selected workspace does not exist.";
+        public const string CannotDeleteSelf = "You cannot delete your own account.";
+        public const string CannotDeleteAdmin = "The workspace admin cannot be deleted directly — promote a deputy to replace them first, or remove the whole workspace instead.";
+        public const string CannotDeleteDeputy = "Deputies cannot remove other deputies — only the workspace admin or a super admin can.";
+        public const string DeleteNotAuthorized = "You are not authorized to delete this user.";
+        public const string NotADeputy = "Only an existing deputy can be promoted to workspace admin.";
+        public const string TransferNotAuthorized = "Only the current workspace admin or a super admin can transfer ownership.";
+        public const string CurrentPasswordIncorrect = "Current password is incorrect.";
     }
 
     public static class Project

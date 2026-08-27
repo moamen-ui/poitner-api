@@ -12,6 +12,13 @@ namespace Pointer.Application.Services.Implementation;
 
 public class UserService : IUserService
 {
+    // "Workspace Admin" / "Workspace Admin Deputy" are global system roles (Role.OwnerId == null),
+    // identified by name like the existing "Workspace Admin" precedent (see CreateAsync's original
+    // ownership comment) — Role has no dedicated flag distinguishing "the one canonical admin" from
+    // "a deputy" beyond the literal name.
+    private const string WorkspaceAdminRoleName = "Workspace Admin";
+    private const string DeputyRoleName = "Workspace Admin Deputy";
+
     private readonly IUnitOfWork _unitOfWork;
     private readonly IPasswordHasher _passwordHasher;
     private readonly ICurrentUser _currentUser;
@@ -28,6 +35,20 @@ public class UserService : IUserService
         _entitlements = entitlements;
         _branding = branding;
     }
+
+    /// <summary>
+    /// Resolves the CURRENT canonical Workspace Admin for a tenant (by role, not by
+    /// OwnerId == PublicId — that only ever holds for the founding admin and breaks once ownership
+    /// can change hands via TransferOwnershipAsync). Bypasses query filters since this is called by
+    /// super-admin-eligible flows and by a caller checking their OWN tenant.
+    /// </summary>
+    private async Task<User?> GetCurrentAdminAsync(Guid ownerId) =>
+        await _unitOfWork.Repository<User>()
+            .Query()
+            .IgnoreQueryFilters()
+            .AsNoTracking()
+            .Include(u => u.Role)
+            .FirstOrDefaultAsync(u => u.OwnerId == ownerId && u.DeletedAt == null && u.Role.Name == WorkspaceAdminRoleName);
 
     // Best-effort notification: a send failure must never fail the admin action.
     private async Task SafeSendAsync(string to, string subject, string html)
@@ -49,30 +70,51 @@ public class UserService : IUserService
         if (exists)
             return Result<UserResponse>.Conflict(MessageKeys.User.EmailTaken);
 
-        var role = await GetActiveRoleAsync(request.RoleId);
-        if (role == null)
-            return Result<UserResponse>.Failure(MessageKeys.Role.Invalid);
+        Role role;
+        Guid? ownerId;
 
-        // Privilege-escalation guard: only the super admin may assign an admin-tier role.
-        if (!_currentUser.IsSuperAdmin && (role.GrantsAdmin || role.IsSuperAdmin))
-            return Result<UserResponse>.Failure(MessageKeys.Role.EscalationNotAllowed);
+        if (_currentUser.IsSuperAdmin)
+        {
+            // Super admins are platform-management only (ProjectService.CreateAsync/
+            // CommentService.CreateAsync already forbid them owning tenant-scoped resources) — the
+            // only thing this endpoint lets them do is delegate a Deputy to an EXISTING workspace
+            // they explicitly pick. `request.RoleId` is ignored entirely: creating a brand-new
+            // workspace (with its own primary "Workspace Admin") stays exclusively on
+            // TenantService.CreateAsync / the Tenants page, never duplicated here.
+            if (request.TargetOwnerId is not Guid targetOwnerId)
+                return Result<UserResponse>.Failure(MessageKeys.User.TargetWorkspaceRequired);
+            if (await GetCurrentAdminAsync(targetOwnerId) == null)
+                return Result<UserResponse>.Failure(MessageKeys.User.WorkspaceNotFound);
+
+            var deputyRole = await _unitOfWork.Repository<Role>()
+                .Query()
+                .AsNoTracking()
+                .FirstOrDefaultAsync(r => r.Name == DeputyRoleName && r.DeletedAt == null && r.IsActive);
+            if (deputyRole == null)
+                return Result<UserResponse>.Failure(MessageKeys.Role.Invalid);
+
+            role = deputyRole;
+            ownerId = targetOwnerId;
+        }
+        else
+        {
+            var resolvedRole = await GetActiveRoleAsync(request.RoleId);
+            if (resolvedRole == null)
+                return Result<UserResponse>.Failure(MessageKeys.Role.Invalid);
+
+            // Privilege-escalation guard: only a super admin may assign an admin-tier role — except
+            // Deputy, which the current Workspace Admin may delegate to their own team.
+            if ((resolvedRole.GrantsAdmin || resolvedRole.IsSuperAdmin) && resolvedRole.Name != DeputyRoleName)
+                return Result<UserResponse>.Failure(MessageKeys.Role.EscalationNotAllowed);
+
+            role = resolvedRole;
+            // The new user joins the CALLER's tenant — `?? _currentUser.Id` is defensive (a real,
+            // non-super-admin caller should always have a TenantId; this guards a malformed-claim
+            // edge case rather than silently producing a null-owner row).
+            ownerId = TenantStamp.OwnerFor(_currentUser) ?? _currentUser.Id;
+        }
 
         var publicId = Guid.NewGuid();
-
-        // "Workspace Admin" is the global, self-owning tenant-owner role (see
-        // AuthService.RegisterAdminAsync, which stamps OwnerId = its own new PublicId). A user
-        // assigned this role here owns a BRAND NEW workspace, not the caller's — falling back to
-        // TenantStamp.OwnerFor(_currentUser) instead left them with OwnerId == null (null for a
-        // super-admin caller, since a super-admin has no tenant to hand down). That broke them in
-        // two ways: no `tenant` JWT claim (JwtTokenService only adds it when OwnerId is set), and
-        // everything they create afterwards (e.g. projects) falls back to a throwaway per-request
-        // id that never matches their own null-tenant query-filter scope — so it "creates" but is
-        // immediately invisible to them.
-        // For every OTHER role, the new user joins the CALLER's tenant — `?? _currentUser.Id`
-        // mirrors ProjectService.CreateAsync/InviteService.CreateAsync so a super admin adding an
-        // ordinary teammate doesn't leave them with OwnerId == null (same invisible-to-their-own-
-        // workspace-admin bug as above, just via a different caller).
-        var ownerId = role.Name == "Workspace Admin" ? publicId : TenantStamp.OwnerFor(_currentUser) ?? _currentUser.Id;
 
         // MaxSeats: count active users owned by this tenant (direct-add path). Grandfather-safe.
         if (ownerId is Guid seatOwner)
@@ -134,8 +176,9 @@ public class UserService : IUserService
         if (role == null)
             return Result<UserResponse>.Failure(MessageKeys.Role.Invalid);
 
-        // Privilege-escalation guard: only the super admin may assign an admin-tier role.
-        if (!_currentUser.IsSuperAdmin && (role.GrantsAdmin || role.IsSuperAdmin))
+        // Privilege-escalation guard: only a super admin may assign an admin-tier role — except
+        // Deputy, which the current Workspace Admin may delegate to their own team.
+        if (!_currentUser.IsSuperAdmin && (role.GrantsAdmin || role.IsSuperAdmin) && role.Name != DeputyRoleName)
             return Result<UserResponse>.Failure(MessageKeys.Role.EscalationNotAllowed);
 
         user.ApprovalStatus = ApprovalStatus.Approved;
@@ -198,8 +241,9 @@ public class UserService : IUserService
             if (role == null)
                 return Result<UserResponse>.Failure(MessageKeys.Role.Invalid);
 
-            // Privilege-escalation guard: only the super admin may assign an admin-tier role.
-            if (!_currentUser.IsSuperAdmin && (role.GrantsAdmin || role.IsSuperAdmin))
+            // Privilege-escalation guard: only a super admin may assign an admin-tier role — except
+            // Deputy, which the current Workspace Admin may delegate to their own team.
+            if (!_currentUser.IsSuperAdmin && (role.GrantsAdmin || role.IsSuperAdmin) && role.Name != DeputyRoleName)
                 return Result<UserResponse>.Failure(MessageKeys.Role.EscalationNotAllowed);
 
             user.RoleId = role.Id;
@@ -220,6 +264,113 @@ public class UserService : IUserService
 
         var current = await GetActiveRoleAsync(user.RoleId);
         return Result<UserResponse>.Success(MapToResponse(user, current));
+    }
+
+    /// <summary>
+    /// Soft-deletes a user. Authorization matrix: super admin → anyone EXCEPT whoever currently
+    /// holds "Workspace Admin" (promote a deputy first, or use TenantService.HardDeleteAsync for a
+    /// full teardown — this is an intentional limitation, not a gap). Workspace Admin → anyone in
+    /// their own tenant except themselves. Deputy → anyone in their own tenant except themselves,
+    /// the admin, or another deputy. Tenant scoping for non-super-admin callers comes for free from
+    /// the standard EF query filter — `target` below can never resolve outside their own tenant.
+    /// </summary>
+    public async Task<Result> DeleteAsync(int id)
+    {
+        var target = await _unitOfWork.Repository<User>()
+            .Query()
+            .Include(u => u.Role)
+            .FirstOrDefaultAsync(u => u.Id == id && u.DeletedAt == null);
+
+        if (target == null)
+            return Result.NotFound(MessageKeys.User.NotFound);
+
+        if (target.PublicId == _currentUser.Id)
+            return Result.Failure(MessageKeys.User.CannotDeleteSelf);
+
+        if (target.Role.Name == WorkspaceAdminRoleName)
+            return Result.Failure(MessageKeys.User.CannotDeleteAdmin);
+
+        if (!_currentUser.IsSuperAdmin && target.Role.Name == DeputyRoleName)
+        {
+            var caller = await _unitOfWork.Repository<User>()
+                .Query()
+                .AsNoTracking()
+                .Include(u => u.Role)
+                .FirstOrDefaultAsync(u => u.PublicId == _currentUser.Id && u.DeletedAt == null);
+
+            if (caller?.Role.Name == DeputyRoleName)
+                return Result.Failure(MessageKeys.User.CannotDeleteDeputy);
+        }
+
+        target.DeletedAt = DateTime.UtcNow;
+        target.IsActive = false;
+        target.SecurityStamp = Guid.NewGuid();
+
+        _unitOfWork.Repository<User>().Update(target);
+        await _unitOfWork.SaveChangesAsync();
+
+        return Result.Success();
+    }
+
+    /// <summary>
+    /// Promotes an existing Deputy to become the tenant's new Workspace Admin, demoting the current
+    /// admin to Deputy. Callable by the current admin themselves (self-service handoff) or a super
+    /// admin (administrative override). No OwnerId writes anywhere — OwnerId is a stable, opaque
+    /// tenant identifier; "who's the current admin" is Role.Name == "Workspace Admin" for that
+    /// OwnerId, not OwnerId == PublicId (which only ever holds for the founding admin).
+    /// </summary>
+    public async Task<Result> TransferOwnershipAsync(Guid deputyPublicId)
+    {
+        var target = await _unitOfWork.Repository<User>()
+            .Query()
+            .IgnoreQueryFilters()
+            .AsNoTracking()
+            .Include(u => u.Role)
+            .FirstOrDefaultAsync(u => u.PublicId == deputyPublicId && u.DeletedAt == null);
+
+        if (target == null || target.Role.Name != DeputyRoleName || target.OwnerId is not Guid tenantOwnerId)
+            return Result.Failure(MessageKeys.User.NotADeputy);
+
+        var currentAdmin = await GetCurrentAdminAsync(tenantOwnerId);
+        if (currentAdmin == null)
+            return Result.Failure(MessageKeys.User.WorkspaceNotFound);
+
+        if (!_currentUser.IsSuperAdmin && _currentUser.Id != currentAdmin.PublicId)
+            return Result.Failure(MessageKeys.User.TransferNotAuthorized);
+
+        var adminRole = await _unitOfWork.Repository<Role>()
+            .Query()
+            .AsNoTracking()
+            .FirstOrDefaultAsync(r => r.Name == WorkspaceAdminRoleName && r.DeletedAt == null && r.IsActive);
+        var deputyRole = await _unitOfWork.Repository<Role>()
+            .Query()
+            .AsNoTracking()
+            .FirstOrDefaultAsync(r => r.Name == DeputyRoleName && r.DeletedAt == null && r.IsActive);
+        if (adminRole == null || deputyRole == null)
+            return Result.Failure(MessageKeys.Role.Invalid);
+
+        await _unitOfWork.ExecuteInTransactionAsync(async () =>
+        {
+            var trackedAdmin = await _unitOfWork.Repository<User>()
+                .Query()
+                .IgnoreQueryFilters()
+                .FirstAsync(u => u.Id == currentAdmin.Id);
+            var trackedTarget = await _unitOfWork.Repository<User>()
+                .Query()
+                .IgnoreQueryFilters()
+                .FirstAsync(u => u.Id == target.Id);
+
+            trackedAdmin.RoleId = deputyRole.Id;
+            trackedAdmin.SecurityStamp = Guid.NewGuid();
+            trackedTarget.RoleId = adminRole.Id;
+            trackedTarget.SecurityStamp = Guid.NewGuid();
+
+            _unitOfWork.Repository<User>().Update(trackedAdmin);
+            _unitOfWork.Repository<User>().Update(trackedTarget);
+            await _unitOfWork.SaveChangesAsync();
+        });
+
+        return Result.Success();
     }
 
     private async Task<Role?> GetActiveRoleAsync(int roleId) =>

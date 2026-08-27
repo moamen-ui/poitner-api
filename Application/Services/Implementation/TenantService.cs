@@ -12,6 +12,11 @@ namespace Pointer.Application.Services.Implementation;
 public class TenantService : ITenantService
 {
     private const int DefaultDemoTtlHours = 24;
+    // "Workspace Admin" identifies the CURRENT canonical tenant owner by role name — see
+    // UserService's identical constant/comment for the full rationale (OwnerId==PublicId only ever
+    // held for the founding admin; TransferOwnershipAsync can change who holds this role without
+    // ever rewriting OwnerId).
+    private const string WorkspaceAdminRoleName = "Workspace Admin";
 
     private readonly IUnitOfWork _unitOfWork;
     private readonly IPasswordHasher _passwordHasher;
@@ -30,20 +35,26 @@ public class TenantService : ITenantService
 
     public async Task<Result<List<TenantResponse>>> ListAsync()
     {
-        // Super-admin operator view: bypass all query filters.
+        // Super-admin operator view: bypass all query filters. Match the CURRENT canonical admin
+        // per tenant by role name, not the broad GrantsAdmin flag — a Deputy also has GrantsAdmin
+        // but must never be listed as its own separate "tenant" (it would double/triple-count a
+        // workspace with N deputies as N+1 rows).
         var tenants = await _unitOfWork.Repository<User>()
             .Query()
             .IgnoreQueryFilters()
             .AsNoTracking()
             .Include(u => u.Role)
-            .Where(u => u.DeletedAt == null && u.Role.GrantsAdmin && !u.Role.IsSuperAdmin)
+            .Where(u => u.DeletedAt == null && u.Role.Name == WorkspaceAdminRoleName)
             .OrderBy(u => u.Id)
             .ToListAsync();
 
         if (tenants.Count == 0)
             return Result<List<TenantResponse>>.Success(new List<TenantResponse>());
 
-        var tenantIds = tenants.Select(t => (Guid?)t.PublicId).ToList();
+        // Key everything by the tenant's OwnerId (a stable, opaque tenant identifier), NOT the
+        // current admin's PublicId — those only coincide for a tenant that has never changed hands
+        // via TransferOwnershipAsync (which never rewrites OwnerId, only which user holds the role).
+        var tenantIds = tenants.Select(t => t.OwnerId).ToList();
 
         // Count projects per tenant (IgnoreQueryFilters — super-admin operator path).
         var projectCounts = await _unitOfWork.Repository<Project>()
@@ -73,7 +84,7 @@ public class TenantService : ITenantService
             .ToDictionary(x => x.OwnerId!.Value, x => x.Count);
 
         // Batch-load each tenant's subscription (+ plan name). A missing subscription ⇒ Free.
-        var nonNullTenantIds = tenants.Select(t => t.PublicId).ToList();
+        var nonNullTenantIds = tenants.Where(t => t.OwnerId.HasValue).Select(t => t.OwnerId!.Value).ToList();
         var subs = await _unitOfWork.Repository<Subscription>()
             .Query()
             .IgnoreQueryFilters()
@@ -85,7 +96,7 @@ public class TenantService : ITenantService
 
         var responses = tenants.Select(t =>
         {
-            var (planName, status) = subMap.TryGetValue(t.PublicId, out var s)
+            var (planName, status) = t.OwnerId is Guid tOwner && subMap.TryGetValue(tOwner, out var s)
                 ? (s.PlanName, s.Status.ToString())
                 : ("Free", (string?)null); // missing subscription ⇒ Free
             return new TenantResponse
@@ -96,8 +107,8 @@ public class TenantService : ITenantService
                 DisplayName = t.DisplayName,
                 ApprovalStatus = t.ApprovalStatus.ToString(),
                 IsActive = t.IsActive,
-                Projects = projectMap.GetValueOrDefault(t.PublicId, 0),
-                Comments = commentMap.GetValueOrDefault(t.PublicId, 0),
+                Projects = projectMap.GetValueOrDefault(t.OwnerId ?? Guid.Empty, 0),
+                Comments = commentMap.GetValueOrDefault(t.OwnerId ?? Guid.Empty, 0),
                 PlanName = planName,
                 SubscriptionStatus = status,
                 IsDemo = t.IsDemo,
@@ -197,8 +208,8 @@ public class TenantService : ITenantService
         if (user == null)
             return Result.NotFound("Tenant not found.");
 
-        // Must be a scoped-admin (GrantsAdmin=true, IsSuperAdmin=false).
-        if (!user.Role.GrantsAdmin || user.Role.IsSuperAdmin)
+        // Must be the CURRENT canonical Workspace Admin (not a Deputy, who also has GrantsAdmin).
+        if (user.Role.Name != WorkspaceAdminRoleName)
             return Result.NotFound("Tenant not found.");
 
         switch (action.Trim().ToLower())
@@ -283,8 +294,10 @@ public class TenantService : ITenantService
 
     public async Task<Result> ChangePlanAsync(int tenantId, int planId)
     {
-        // Resolve the int id → tenant PublicId (super-admin operator path). Must be a scoped-admin
-        // (GrantsAdmin && !IsSuperAdmin) that owns itself.
+        // Resolve the int id → the CURRENT canonical Workspace Admin (super-admin operator path).
+        // Must hold the role by NAME, not the broad GrantsAdmin flag (a Deputy also has it) — and
+        // must have a real OwnerId (the tenant's stable identifier, used below for the subscription,
+        // NOT tenant.PublicId — those only coincide pre-succession).
         var tenant = await _unitOfWork.Repository<User>()
             .Query()
             .IgnoreQueryFilters()
@@ -292,7 +305,7 @@ public class TenantService : ITenantService
             .AsNoTracking()
             .FirstOrDefaultAsync(u => u.Id == tenantId && u.DeletedAt == null);
 
-        if (tenant == null || !tenant.Role.GrantsAdmin || tenant.Role.IsSuperAdmin || tenant.OwnerId != tenant.PublicId)
+        if (tenant == null || tenant.Role.Name != WorkspaceAdminRoleName || tenant.OwnerId is not Guid tenantOwnerId)
             return Result.NotFound("Tenant not found.");
 
         // Plan is global (no filter) — plain query. Must exist, be active, not deleted.
@@ -308,13 +321,13 @@ public class TenantService : ITenantService
         var sub = await _unitOfWork.Repository<Subscription>()
             .Query()
             .IgnoreQueryFilters()
-            .FirstOrDefaultAsync(s => s.OwnerId == tenant.PublicId && s.DeletedAt == null);
+            .FirstOrDefaultAsync(s => s.OwnerId == tenantOwnerId && s.DeletedAt == null);
 
         if (sub == null)
         {
             sub = new Subscription
             {
-                OwnerId = tenant.PublicId,
+                OwnerId = tenantOwnerId,
                 PlanId = plan.Id,
                 Status = SubscriptionStatus.Active
             };
@@ -348,11 +361,16 @@ public class TenantService : ITenantService
         if (tenantUser == null)
             return Result.NotFound("Tenant not found.");
 
-        if (!tenantUser.Role.GrantsAdmin || tenantUser.Role.IsSuperAdmin)
+        // Must be the CURRENT canonical Workspace Admin (not a Deputy). `tenantId` (the param, the
+        // ADMIN's PublicId) identifies WHICH admin row to act on, but everything below must cascade
+        // against `realOwnerId` (the tenant's actual, stable OwnerId) instead — those only coincide
+        // for a tenant that has never changed hands via TransferOwnershipAsync. Using the raw param
+        // here would silently no-op (or worse) for any promoted admin.
+        if (tenantUser.Role.Name != WorkspaceAdminRoleName || tenantUser.OwnerId is not Guid realOwnerId)
             return Result.NotFound("Tenant not found.");
 
         // Delete owner files first (outside transaction — filesystem side effect).
-        await _fileStorage.DeleteOwnerFilesAsync(tenantId.ToString("N"));
+        await _fileStorage.DeleteOwnerFilesAsync(realOwnerId.ToString("N"));
 
         // Hard-delete inside a transaction using the execution strategy wrapper
         // (required by Npgsql's NpgsqlRetryingExecutionStrategy).
@@ -363,7 +381,7 @@ public class TenantService : ITenantService
             var replies = await _unitOfWork.Repository<Reply>()
                 .Query()
                 .IgnoreQueryFilters()
-                .Where(r => r.OwnerId == tenantId)
+                .Where(r => r.OwnerId == realOwnerId)
                 .ToListAsync();
             if (replies.Count > 0)
                 _unitOfWork.Repository<Reply>().RemoveRange(replies);
@@ -372,7 +390,7 @@ public class TenantService : ITenantService
             var comments = await _unitOfWork.Repository<Comment>()
                 .Query()
                 .IgnoreQueryFilters()
-                .Where(c => c.OwnerId == tenantId)
+                .Where(c => c.OwnerId == realOwnerId)
                 .ToListAsync();
             if (comments.Count > 0)
                 _unitOfWork.Repository<Comment>().RemoveRange(comments);
@@ -381,7 +399,7 @@ public class TenantService : ITenantService
             var projects = await _unitOfWork.Repository<Project>()
                 .Query()
                 .IgnoreQueryFilters()
-                .Where(p => p.OwnerId == tenantId)
+                .Where(p => p.OwnerId == realOwnerId)
                 .ToListAsync();
             if (projects.Count > 0)
                 _unitOfWork.Repository<Project>().RemoveRange(projects);
@@ -390,16 +408,16 @@ public class TenantService : ITenantService
             var statuses = await _unitOfWork.Repository<StatusPresentation>()
                 .Query()
                 .IgnoreQueryFilters()
-                .Where(s => s.OwnerId == tenantId)
+                .Where(s => s.OwnerId == realOwnerId)
                 .ToListAsync();
             if (statuses.Count > 0)
                 _unitOfWork.Repository<StatusPresentation>().RemoveRange(statuses);
 
-            // 5. Users (stakeholders + the scoped-admin user itself)
+            // 5. Users (stakeholders + every admin/deputy the tenant ever had)
             var users = await _unitOfWork.Repository<User>()
                 .Query()
                 .IgnoreQueryFilters()
-                .Where(u => u.OwnerId == tenantId)
+                .Where(u => u.OwnerId == realOwnerId)
                 .ToListAsync();
             if (users.Count > 0)
                 _unitOfWork.Repository<User>().RemoveRange(users);
@@ -408,7 +426,7 @@ public class TenantService : ITenantService
             var roles = await _unitOfWork.Repository<Role>()
                 .Query()
                 .IgnoreQueryFilters()
-                .Where(r => r.OwnerId == tenantId)
+                .Where(r => r.OwnerId == realOwnerId)
                 .ToListAsync();
             if (roles.Count > 0)
                 _unitOfWork.Repository<Role>().RemoveRange(roles);

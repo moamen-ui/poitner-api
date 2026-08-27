@@ -1,12 +1,10 @@
 using Microsoft.EntityFrameworkCore;
 using Pointer.Application.Abstractions;
 using Pointer.Application.Common;
-using Pointer.Application.DTOs.Project;
 using Pointer.Application.DTOs.User;
 using Pointer.Application.Services.Implementation;
 using Pointer.Application.Services.Interfaces;
 using Pointer.Domain.Entity;
-using Pointer.Domain.Enums;
 using Pointer.Infrastructure;
 using Pointer.Infrastructure.Repository;
 using Xunit;
@@ -14,13 +12,12 @@ using Xunit;
 namespace Pointer.Tests;
 
 /// <summary>
-/// A super-admin directly creating a user with the global "Workspace Admin" role (the
-/// self-owning tenant-owner role — see AuthService.RegisterAdminAsync) must stamp that new
-/// user as owning a BRAND NEW workspace (OwnerId == its own PublicId), not inherit the caller's
-/// tenant (null, for a super-admin). Getting this wrong leaves the new admin tenant-less: no
-/// `tenant` JWT claim, and everything they create afterwards (e.g. projects) is stamped with a
-/// throwaway id that never matches their own null-tenant query-filter scope — it "creates" but
-/// is immediately invisible to them.
+/// UserService.CreateAsync's ownership rules, post-redesign: a super admin can no longer self-own
+/// a workspace via this endpoint (or assign any role other than "Workspace Admin Deputy") — they
+/// must pick an EXISTING workspace (TargetOwnerId) and the new user is always forced to Deputy,
+/// regardless of the requested RoleId. A Workspace Admin adding someone to their own tenant is
+/// unchanged, except they can now also delegate the Deputy role (previously blocked by the
+/// escalation guard like any other GrantsAdmin role).
 /// </summary>
 public class WorkspaceAdminOwnershipTests
 {
@@ -46,108 +43,146 @@ public class WorkspaceAdminOwnershipTests
         new(new DbContextOptionsBuilder<AppDbContext>().UseInMemoryDatabase(db).Options, u,
             new Microsoft.Extensions.Configuration.ConfigurationBuilder().Build());
 
-    [Fact]
-    public async Task SuperAdmin_DirectAdd_WorkspaceAdminRole_SelfOwns_NotNull()
+    private static UserService Svc(ICurrentUser user, AppDbContext ctx)
     {
-        var db = Guid.NewGuid().ToString();
-
-        int roleId;
-        using (var seed = Ctx(new FakeCurrentUser { IsSuperAdmin = true }, db))
-        {
-            var role = new Role { Name = "Workspace Admin", GrantsAdmin = true, IsSystem = true, IsActive = true };
-            seed.Roles.Add(role);
-            seed.SaveChanges();
-            roleId = role.Id;
-        }
-
-        var superAdmin = new FakeCurrentUser { Id = Guid.NewGuid(), IsSuperAdmin = true };
-        var ctx = Ctx(superAdmin, db);
         var uow = new UnitOfWork(ctx);
-        var svc = new UserService(uow, new IdentityHasher(), superAdmin, new NoopEmail(),
-            new EntitlementService(uow, superAdmin, new FakeSettings()), new NoopBrandingService());
+        return new UserService(uow, new IdentityHasher(), user, new NoopEmail(),
+            new EntitlementService(uow, user, new FakeSettings()), new NoopBrandingService());
+    }
 
-        var result = await svc.CreateAsync(new CreateUserRequest
-        { Email = "wa@tuwaiq.edu.sa", Password = "password123", DisplayName = "New WA", RoleId = roleId });
-        Assert.True(result.IsSuccess);
+    // Seeds the two global admin-tier roles plus an existing self-owned workspace (its "Workspace
+    // Admin" row) — the workspace a super admin will target in the tests below.
+    private static (int workspaceAdminRoleId, int deputyRoleId, Guid existingWorkspaceOwnerId) SeedWorkspace(string db)
+    {
+        using var seed = Ctx(new FakeCurrentUser { IsSuperAdmin = true }, db);
+        var adminRole = new Role { Name = "Workspace Admin", GrantsAdmin = true, IsSystem = true, IsActive = true };
+        var deputyRole = new Role { Name = "Workspace Admin Deputy", GrantsAdmin = true, IsSystem = true, IsActive = true };
+        seed.Roles.AddRange(adminRole, deputyRole);
+        seed.SaveChanges();
 
-        var created = ctx.Users.IgnoreQueryFilters().Single(u => u.Email == "wa@tuwaiq.edu.sa");
-        Assert.NotNull(created.OwnerId);
-        Assert.Equal(created.PublicId, created.OwnerId);
+        var ownerId = Guid.NewGuid();
+        seed.Users.Add(new User
+        {
+            Email = "founder@tuwaiq.edu.sa", PasswordHash = "h", DisplayName = "Founder",
+            PublicId = ownerId, OwnerId = ownerId, RoleId = adminRole.Id, IsActive = true
+        });
+        seed.SaveChanges();
+
+        return (adminRole.Id, deputyRole.Id, ownerId);
     }
 
     [Fact]
-    public async Task SuperAdmin_DirectAdd_OrdinaryRole_SelfOwns_NotNull()
+    public async Task SuperAdmin_DirectAdd_RequiresTargetWorkspace()
     {
-        // Regression for the narrower sibling bug: adding an ordinary (non-"Workspace Admin") user
-        // used to fall back to TenantStamp.OwnerFor(_currentUser) with NO `?? _currentUser.Id`,
-        // which is null for a super-admin caller — the new teammate was created tenant-less and
-        // invisible to their own workspace admin (non-super tenant users can never match a
-        // null-owner row in the query filter).
+        var db = Guid.NewGuid().ToString();
+        var (adminRoleId, _, _) = SeedWorkspace(db);
+
+        var superAdmin = new FakeCurrentUser { Id = Guid.NewGuid(), IsSuperAdmin = true };
+        var svc = Svc(superAdmin, Ctx(superAdmin, db));
+
+        var result = await svc.CreateAsync(new CreateUserRequest
+        { Email = "x@tuwaiq.edu.sa", Password = "password123", DisplayName = "X", RoleId = adminRoleId });
+
+        Assert.False(result.IsSuccess);
+    }
+
+    [Fact]
+    public async Task SuperAdmin_DirectAdd_RejectsUnknownWorkspace()
+    {
+        var db = Guid.NewGuid().ToString();
+        var (adminRoleId, _, _) = SeedWorkspace(db);
+
+        var superAdmin = new FakeCurrentUser { Id = Guid.NewGuid(), IsSuperAdmin = true };
+        var svc = Svc(superAdmin, Ctx(superAdmin, db));
+
+        var result = await svc.CreateAsync(new CreateUserRequest
+        {
+            Email = "x@tuwaiq.edu.sa", Password = "password123", DisplayName = "X", RoleId = adminRoleId,
+            TargetOwnerId = Guid.NewGuid() // no such workspace
+        });
+
+        Assert.False(result.IsSuccess);
+    }
+
+    [Fact]
+    public async Task SuperAdmin_DirectAdd_AssignsDeputyToExistingWorkspace_IgnoringRequestedRole()
+    {
+        var db = Guid.NewGuid().ToString();
+        var (adminRoleId, deputyRoleId, existingWorkspaceOwnerId) = SeedWorkspace(db);
+
+        var superAdmin = new FakeCurrentUser { Id = Guid.NewGuid(), IsSuperAdmin = true };
+        var ctx = Ctx(superAdmin, db);
+        var svc = Svc(superAdmin, ctx);
+
+        // Requests the primary "Workspace Admin" role explicitly — must be ignored and forced to
+        // Deputy regardless, proving super admins can never mint/co-own a primary admin via this path.
+        var result = await svc.CreateAsync(new CreateUserRequest
+        {
+            Email = "deputy@tuwaiq.edu.sa", Password = "password123", DisplayName = "New Deputy",
+            RoleId = adminRoleId, TargetOwnerId = existingWorkspaceOwnerId
+        });
+
+        Assert.True(result.IsSuccess);
+        var created = ctx.Users.IgnoreQueryFilters().Single(u => u.Email == "deputy@tuwaiq.edu.sa");
+        Assert.Equal(deputyRoleId, created.RoleId);
+        Assert.Equal(existingWorkspaceOwnerId, created.OwnerId);
+    }
+
+    [Fact]
+    public async Task WorkspaceAdmin_DirectAdd_AssignsToOwnTenant_Unchanged()
+    {
         var db = Guid.NewGuid().ToString();
 
-        int roleId;
+        int engineerRoleId;
         using (var seed = Ctx(new FakeCurrentUser { IsSuperAdmin = true }, db))
         {
             var role = new Role { Name = "Engineer", GrantsAdmin = false, IsSystem = false, IsActive = true };
             seed.Roles.Add(role);
             seed.SaveChanges();
-            roleId = role.Id;
+            engineerRoleId = role.Id;
         }
 
-        var superAdmin = new FakeCurrentUser { Id = Guid.NewGuid(), IsSuperAdmin = true };
-        var ctx = Ctx(superAdmin, db);
-        var uow = new UnitOfWork(ctx);
-        var svc = new UserService(uow, new IdentityHasher(), superAdmin, new NoopEmail(),
-            new EntitlementService(uow, superAdmin, new FakeSettings()), new NoopBrandingService());
+        var tenantId = Guid.NewGuid();
+        var admin = new FakeCurrentUser { Id = Guid.NewGuid(), TenantId = tenantId, IsAdmin = true };
+        var ctx = Ctx(admin, db);
+        var svc = Svc(admin, ctx);
 
         var result = await svc.CreateAsync(new CreateUserRequest
-        { Email = "member@tuwaiq.edu.sa", Password = "password123", DisplayName = "New Member", RoleId = roleId });
-        Assert.True(result.IsSuccess);
+        { Email = "member@tuwaiq.edu.sa", Password = "password123", DisplayName = "New Member", RoleId = engineerRoleId });
 
+        Assert.True(result.IsSuccess);
         var created = ctx.Users.IgnoreQueryFilters().Single(u => u.Email == "member@tuwaiq.edu.sa");
-        Assert.NotNull(created.OwnerId);
-        Assert.Equal(superAdmin.Id, created.OwnerId);
+        Assert.Equal(tenantId, created.OwnerId);
     }
 
     [Fact]
-    public async Task NewWorkspaceAdmin_CanCreateAndThenSeeTheirOwnProject()
+    public async Task WorkspaceAdmin_DirectAdd_CanDelegateDeputy()
     {
         var db = Guid.NewGuid().ToString();
 
-        int roleId;
+        int deputyRoleId;
         using (var seed = Ctx(new FakeCurrentUser { IsSuperAdmin = true }, db))
         {
-            var role = new Role { Name = "Workspace Admin", GrantsAdmin = true, IsSystem = true, IsActive = true };
+            var role = new Role { Name = "Workspace Admin Deputy", GrantsAdmin = true, IsSystem = true, IsActive = true };
             seed.Roles.Add(role);
             seed.SaveChanges();
-            roleId = role.Id;
+            deputyRoleId = role.Id;
         }
 
-        var superAdmin = new FakeCurrentUser { Id = Guid.NewGuid(), IsSuperAdmin = true };
-        Guid createdPublicId;
-        using (var ctx = Ctx(superAdmin, db))
-        {
-            var uow = new UnitOfWork(ctx);
-            var svc = new UserService(uow, new IdentityHasher(), superAdmin, new NoopEmail(),
-                new EntitlementService(uow, superAdmin, new FakeSettings()), new NoopBrandingService());
-            var result = await svc.CreateAsync(new CreateUserRequest
-            { Email = "wa2@tuwaiq.edu.sa", Password = "password123", DisplayName = "New WA", RoleId = roleId });
-            Assert.True(result.IsSuccess);
-            createdPublicId = ctx.Users.IgnoreQueryFilters().Single(u => u.Email == "wa2@tuwaiq.edu.sa").PublicId;
-        }
+        var tenantId = Guid.NewGuid();
+        var admin = new FakeCurrentUser { Id = Guid.NewGuid(), TenantId = tenantId, IsAdmin = true };
+        var ctx = Ctx(admin, db);
+        var svc = Svc(admin, ctx);
 
-        // Now act AS that new workspace admin (tenant == their own PublicId, per JwtTokenService).
-        var newAdmin = new FakeCurrentUser { Id = createdPublicId, TenantId = createdPublicId, IsAdmin = true };
-        using var actingCtx = Ctx(newAdmin, db);
-        var actingUow = new UnitOfWork(actingCtx);
-        var projects = new ProjectService(actingUow, newAdmin, new EntitlementService(actingUow, newAdmin, new FakeSettings()));
+        // Previously blocked by the blanket escalation guard (any GrantsAdmin role was off-limits
+        // to a non-super-admin caller) — now explicitly carved out for Deputy.
+        var result = await svc.CreateAsync(new CreateUserRequest
+        { Email = "deputy2@tuwaiq.edu.sa", Password = "password123", DisplayName = "New Deputy", RoleId = deputyRoleId });
 
-        var create = await projects.CreateAsync(new CreateProjectRequest { Key = "lms", Name = "tuwaiq lms" });
-        Assert.True(create.IsSuccess);
-
-        var list = await projects.ListAsync();
-        Assert.True(list.IsSuccess);
-        Assert.Contains(list.Data!, p => p.Key == "lms");
+        Assert.True(result.IsSuccess);
+        var created = ctx.Users.IgnoreQueryFilters().Single(u => u.Email == "deputy2@tuwaiq.edu.sa");
+        Assert.Equal(deputyRoleId, created.RoleId);
+        Assert.Equal(tenantId, created.OwnerId);
     }
 
     // ── Test doubles ─────────────────────────────────────────────────────────

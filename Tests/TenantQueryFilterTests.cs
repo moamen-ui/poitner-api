@@ -181,6 +181,28 @@ public class TenantQueryFilterTests
         Assert.Empty(ctx.Set<User>().ToList());
     }
 
+    [Fact]
+    public void NullTenant_NonSuper_StrictFlag_SeesNoGlobalRoles()
+    {
+        // Regression for the own-plus-global asymmetry fix: before, Role/StatusPresentation/
+        // PredefinedAction ignored `strict` entirely, so a null-tenant caller always swept up the
+        // whole global bucket regardless of the flag. Confirms the flag now closes this gap too,
+        // matching the strict-own group's C1 behavior above — while a REAL tenant (tested elsewhere:
+        // Role_TenantA_SeesOwnAndGlobalRoles_NotTenantBRoles) still sees globals unconditionally.
+        var db = Guid.NewGuid().ToString();
+
+        using (var seed = SuperAdminContext(db))
+        {
+            seed.Roles.Add(new Role { Name = "Global-Viewer", OwnerId = null });
+            seed.SaveChanges();
+        }
+
+        using var ctx = BuildContext(
+            new FakeCurrentUser { TenantId = null, IsSuperAdmin = false }, db, strictNullTenant: true);
+
+        Assert.Empty(ctx.Set<Role>().ToList());
+    }
+
     // ---------------------------------------------------------------------------
     // Role — own-plus-global filter (super OR own OR OwnerId == null)
     // ---------------------------------------------------------------------------

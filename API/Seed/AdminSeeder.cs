@@ -17,6 +17,7 @@ public static class AdminSeeder
     {
         ("Admin", true, true, true),
         ("Workspace Admin", true, true, false),
+        ("Workspace Admin Deputy", true, true, false),
         ("Developer", false, false, false),
         ("PM", false, false, false),
         ("Tester", false, false, false),
