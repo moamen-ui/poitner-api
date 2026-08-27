@@ -206,4 +206,26 @@ public class NewValidatorsTests
         var omitted = new BrandingWriteDtoValidator().TestValidate(new BrandingWriteDto());
         Assert.True(omitted.IsValid);
     }
+
+    // Regression guard: a super admin's direct-add request omits RoleId entirely (the server
+    // forces Deputy server-side once TargetOwnerId is validated) — the auto-validation pipeline
+    // must not reject it before UserService.CreateAsync's own TargetOwnerId branch ever runs.
+    [Fact]
+    public void CreateUser_WithTargetOwnerId_DoesNotRequireRoleId()
+    {
+        var r = new CreateUserValidator().TestValidate(new CreateUserRequest
+        {
+            Email = "deputy@acme.test", Password = "password123", DisplayName = "Deputy",
+            TargetOwnerId = Guid.NewGuid()
+        });
+        r.ShouldNotHaveValidationErrorFor(x => x.RoleId);
+    }
+
+    [Fact]
+    public void CreateUser_WithoutTargetOwnerId_RequiresRoleId()
+    {
+        var r = new CreateUserValidator().TestValidate(new CreateUserRequest
+        { Email = "member@acme.test", Password = "password123", DisplayName = "Member", RoleId = 0 });
+        r.ShouldHaveValidationErrorFor(x => x.RoleId);
+    }
 }
