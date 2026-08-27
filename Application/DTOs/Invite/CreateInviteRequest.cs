@@ -14,4 +14,12 @@ public class CreateInviteRequest
 
     /// <summary>Accept cap. Null = unlimited within the TTL.</summary>
     public int? MaxUses { get; set; }
+
+    /// <summary>
+    /// Required when the caller is a super admin: the existing workspace (tenant OwnerId) this
+    /// invite is for — super admins can no longer mint a self-owned workspace or pin any role other
+    /// than "Workspace Admin Deputy" via this endpoint. Ignored for a non-super-admin caller, who
+    /// always invites into their own tenant.
+    /// </summary>
+    public Guid? TargetOwnerId { get; set; }
 }

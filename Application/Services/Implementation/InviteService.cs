@@ -20,6 +20,10 @@ namespace Pointer.Application.Services.Implementation;
 /// </summary>
 public class InviteService : IInviteService
 {
+    // Mirrors UserService's naming/lookup convention for the two global admin-tier roles.
+    private const string WorkspaceAdminRoleName = "Workspace Admin";
+    private const string DeputyRoleName = "Workspace Admin Deputy";
+
     private readonly IUnitOfWork _unitOfWork;
     private readonly ICurrentUser _currentUser;
     private readonly IPasswordHasher _passwordHasher;
@@ -56,21 +60,52 @@ public class InviteService : IInviteService
 
     public async Task<Result<InviteResponse>> CreateAsync(CreateInviteRequest request)
     {
-        // ISOLATION-LOAD-BEARING: an invite MUST carry a non-null owner — it is the tenant boundary.
-        // Scoped admin → their tenant; super-admin (no tenant) → their own id, so a super-admin
-        // acting for a workspace still produces a concretely-owned invite (never a null-owner row
-        // that the strict-own filter can't scope).
-        var ownerId = TenantStamp.OwnerFor(_currentUser) ?? _currentUser.Id;
-        if (ownerId is not Guid owner)
-            return Result<InviteResponse>.Forbidden(MessageKeys.Invite.Forbidden);
-
-        // If a role is pinned, it must be a valid, active, NON-admin role of THIS tenant or global.
+        Guid owner;
         Role? role = null;
-        if (request.RoleId is int pinnedRoleId)
+
+        if (_currentUser.IsSuperAdmin)
         {
-            role = await ResolveAssignableRoleAsync(pinnedRoleId, owner);
+            // Same restriction as UserService.CreateAsync's super-admin branch: a super admin can
+            // only invite a Deputy into an EXISTING workspace they explicitly pick — never mint a
+            // new self-owned workspace, never pin any other role. request.RoleId is ignored.
+            if (request.TargetOwnerId is not Guid targetOwnerId)
+                return Result<InviteResponse>.Failure(MessageKeys.User.TargetWorkspaceRequired);
+
+            var targetAdminExists = await _unitOfWork.Repository<User>()
+                .Query()
+                .IgnoreQueryFilters()
+                .AsNoTracking()
+                .AnyAsync(u => u.OwnerId == targetOwnerId && u.DeletedAt == null && u.Role.Name == WorkspaceAdminRoleName);
+            if (!targetAdminExists)
+                return Result<InviteResponse>.Failure(MessageKeys.User.WorkspaceNotFound);
+
+            role = await _unitOfWork.Repository<Role>()
+                .Query()
+                .AsNoTracking()
+                .FirstOrDefaultAsync(r => r.Name == DeputyRoleName && r.DeletedAt == null && r.IsActive);
             if (role == null)
                 return Result<InviteResponse>.Failure(MessageKeys.Role.Invalid);
+
+            owner = targetOwnerId;
+        }
+        else
+        {
+            // ISOLATION-LOAD-BEARING: an invite MUST carry a non-null owner — it is the tenant
+            // boundary. Scoped admin → their tenant.
+            var ownerId = TenantStamp.OwnerFor(_currentUser) ?? _currentUser.Id;
+            if (ownerId is not Guid scopedOwner)
+                return Result<InviteResponse>.Forbidden(MessageKeys.Invite.Forbidden);
+            owner = scopedOwner;
+
+            // If a role is pinned, it must be a valid, active, NON-admin role of THIS tenant or
+            // global — except Deputy, which the current Workspace Admin (or one of their deputies)
+            // may delegate, same as via direct-add.
+            if (request.RoleId is int pinnedRoleId)
+            {
+                role = await ResolvePinnableRoleAsync(pinnedRoleId, owner);
+                if (role == null)
+                    return Result<InviteResponse>.Failure(MessageKeys.Role.Invalid);
+            }
         }
 
         var ttlDays = request.ExpiresInDays is int d && d > 0 ? d : DefaultTtlDays;
@@ -259,12 +294,14 @@ public class InviteService : IInviteService
         if (invite.Email != null && invite.Email != emailNormalized)
             return Result<LoginResponse>.Failure(MessageKeys.Invite.EmailMismatch);
 
-        // 2. Resolve the role: the invite's pinned RoleId if present, else validate the submitted
-        //    roleId is a non-admin role of the invite's tenant or global (mirrors RegisterAsync).
+        // 2. Resolve the role: the invite's pinned RoleId if present (the admin already chose it at
+        //    creation time — may be Deputy), else validate the anonymous acceptor's OWN submitted
+        //    roleId as a non-admin role of the invite's tenant or global (never Deputy — an
+        //    anonymous acceptor must never be able to self-select an admin-tier role).
         Role? role;
         if (invite.RoleId is int pinnedRoleId)
         {
-            role = await ResolveAssignableRoleAsync(pinnedRoleId, invite.OwnerId);
+            role = await ResolvePinnableRoleAsync(pinnedRoleId, invite.OwnerId);
         }
         else
         {
@@ -382,6 +419,8 @@ public class InviteService : IInviteService
     // Validates that roleId is a valid, active, NON-admin role of the given tenant owner or a
     // global (null-owner) role. Mirrors RegisterAsync.cs role resolution. Anonymous/cross-tenant
     // safe: scoped explicitly to the invite's owner (or null-owner globals), never the caller's.
+    // Used for: an anonymous acceptor's FREE choice of role on an unpinned invite — must never
+    // include Deputy, or anyone could self-escalate to admin-tier by guessing/enumerating its id.
     private async Task<Role?> ResolveAssignableRoleAsync(int roleId, Guid ownerId)
     {
         return await _unitOfWork.Repository<Role>()
@@ -393,6 +432,23 @@ public class InviteService : IInviteService
                                       && r.IsActive
                                       && !r.GrantsAdmin
                                       && !r.IsSuperAdmin
+                                      && (r.OwnerId == ownerId || r.OwnerId == null));
+    }
+
+    // Same as ResolveAssignableRoleAsync but also allows "Workspace Admin Deputy". Used only where
+    // the role was chosen by an authenticated admin-tier caller, never by an anonymous acceptor:
+    // (a) an admin PINNING a role on CreateAsync, (b) accept-time resolution of an already-pinned
+    // invite.RoleId (the admin made that choice at creation time, not the anonymous acceptor now).
+    private async Task<Role?> ResolvePinnableRoleAsync(int roleId, Guid ownerId)
+    {
+        return await _unitOfWork.Repository<Role>()
+            .Query()
+            .IgnoreQueryFilters()
+            .AsNoTracking()
+            .FirstOrDefaultAsync(r => r.Id == roleId
+                                      && r.DeletedAt == null
+                                      && r.IsActive
+                                      && (!r.GrantsAdmin && !r.IsSuperAdmin || r.Name == DeputyRoleName)
                                       && (r.OwnerId == ownerId || r.OwnerId == null));
     }
 

@@ -229,6 +229,143 @@ public class InviteServiceTests
         Assert.False(result.IsSuccess);
     }
 
+    // ── Super-admin create redesign (Deputy-only, existing workspace required) ────
+
+    // Seeds a global "Workspace Admin Deputy" role (OwnerId == null, like AdminSeeder's real seed).
+    private static void SeedDeputyRole(string dbName)
+    {
+        using var seed = BuildContext(new FakeCurrentUser { IsSuperAdmin = true }, dbName);
+        seed.Roles.Add(new Role { Name = "Workspace Admin Deputy", GrantsAdmin = true, IsActive = true, IsSystem = true });
+        seed.SaveChanges();
+    }
+
+    [Fact]
+    public async Task SuperAdmin_Create_RequiresTargetWorkspace()
+    {
+        var dbName = Guid.NewGuid().ToString();
+        SeedTenant(dbName);
+        SeedDeputyRole(dbName);
+
+        var superAdmin = new FakeCurrentUser { Id = Guid.NewGuid(), IsSuperAdmin = true };
+        using var db = BuildContext(superAdmin, dbName);
+        var svc = BuildService(superAdmin, db);
+
+        var result = await svc.CreateAsync(new CreateInviteRequest());
+        Assert.False(result.IsSuccess);
+    }
+
+    [Fact]
+    public async Task SuperAdmin_Create_RejectsUnknownWorkspace()
+    {
+        var dbName = Guid.NewGuid().ToString();
+        SeedTenant(dbName);
+        SeedDeputyRole(dbName);
+
+        var superAdmin = new FakeCurrentUser { Id = Guid.NewGuid(), IsSuperAdmin = true };
+        using var db = BuildContext(superAdmin, dbName);
+        var svc = BuildService(superAdmin, db);
+
+        var result = await svc.CreateAsync(new CreateInviteRequest { TargetOwnerId = Guid.NewGuid() });
+        Assert.False(result.IsSuccess);
+    }
+
+    [Fact]
+    public async Task SuperAdmin_Create_AssignsDeputyToExistingWorkspace_IgnoringRequestedRole()
+    {
+        var dbName = Guid.NewGuid().ToString();
+        var (tenant, memberRoleId) = SeedTenant(dbName);
+        SeedDeputyRole(dbName);
+
+        var superAdmin = new FakeCurrentUser { Id = Guid.NewGuid(), IsSuperAdmin = true };
+        using var db = BuildContext(superAdmin, dbName);
+        var svc = BuildService(superAdmin, db);
+
+        // Requests the tenant's non-admin role explicitly — must be ignored, forced to Deputy.
+        var result = await svc.CreateAsync(new CreateInviteRequest { RoleId = memberRoleId, TargetOwnerId = tenant });
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal("Workspace Admin Deputy", result.Data!.RoleName);
+        var stored = db.Invites.IgnoreQueryFilters().Single();
+        Assert.Equal(tenant, stored.OwnerId);
+    }
+
+    [Fact]
+    public async Task WorkspaceAdmin_Create_CanPinDeputyRole()
+    {
+        var dbName = Guid.NewGuid().ToString();
+        var (tenant, _) = SeedTenant(dbName);
+        SeedDeputyRole(dbName);
+
+        var admin = new FakeCurrentUser { Id = Guid.NewGuid(), TenantId = tenant, IsAdmin = true };
+        using var db = BuildContext(admin, dbName);
+        int deputyRoleId;
+        using (var s = BuildContext(new FakeCurrentUser { IsSuperAdmin = true }, dbName))
+            deputyRoleId = s.Roles.IgnoreQueryFilters().Single(r => r.Name == "Workspace Admin Deputy").Id;
+        var svc = BuildService(admin, db);
+
+        // Previously blocked by the blanket admin-role rejection — now explicitly carved out.
+        var result = await svc.CreateAsync(new CreateInviteRequest { RoleId = deputyRoleId });
+        Assert.True(result.IsSuccess);
+        Assert.Equal("Workspace Admin Deputy", result.Data!.RoleName);
+    }
+
+    [Fact]
+    public async Task Accept_CannotSelfSelect_DeputyRole_OnOpenInvite()
+    {
+        // Security bar: an OPEN invite (no pinned role) must never let an anonymous acceptor pick an
+        // admin-tier role for themselves, even by guessing/enumerating the Deputy role's id.
+        var dbName = Guid.NewGuid().ToString();
+        var (tenant, _) = SeedTenant(dbName);
+        SeedDeputyRole(dbName);
+        int deputyRoleId;
+        using (var s = BuildContext(new FakeCurrentUser { IsSuperAdmin = true }, dbName))
+            deputyRoleId = s.Roles.IgnoreQueryFilters().Single(r => r.Name == "Workspace Admin Deputy").Id;
+
+        var inviteId = SeedInvite(dbName, tenant); // no pinned role — open invite
+        var code = CodeOf(dbName, inviteId);
+
+        var anon = new FakeCurrentUser { };
+        using var db = BuildContext(anon, dbName);
+        var svc = BuildService(anon, db);
+
+        var result = await svc.AcceptAsync(new AcceptInviteRequest
+        {
+            Code = code, Email = "escalate@attacker.com", Password = "password123",
+            DisplayName = "Attacker", RoleId = deputyRoleId
+        });
+
+        Assert.False(result.IsSuccess);
+        Assert.Empty(db.Users.IgnoreQueryFilters().Where(u => u.Email == "escalate@attacker.com"));
+    }
+
+    [Fact]
+    public async Task Accept_PinnedDeputyInvite_GrantsDeputyRole()
+    {
+        // The mirror image: when the ADMIN pinned Deputy at creation time (a deliberate delegation),
+        // the anonymous acceptor legitimately receives it.
+        var dbName = Guid.NewGuid().ToString();
+        var (tenant, _) = SeedTenant(dbName);
+        SeedDeputyRole(dbName);
+        int deputyRoleId;
+        using (var s = BuildContext(new FakeCurrentUser { IsSuperAdmin = true }, dbName))
+            deputyRoleId = s.Roles.IgnoreQueryFilters().Single(r => r.Name == "Workspace Admin Deputy").Id;
+
+        var inviteId = SeedInvite(dbName, tenant, i => i.RoleId = deputyRoleId);
+        var code = CodeOf(dbName, inviteId);
+
+        var anon = new FakeCurrentUser { };
+        using var db = BuildContext(anon, dbName);
+        var svc = BuildService(anon, db);
+
+        var result = await svc.AcceptAsync(new AcceptInviteRequest
+        { Code = code, Email = "deputy@invited.com", Password = "password123", DisplayName = "Deputy" });
+
+        Assert.True(result.IsSuccess);
+        var created = db.Users.IgnoreQueryFilters().Single(u => u.Email == "deputy@invited.com");
+        Assert.Equal(deputyRoleId, created.RoleId);
+        Assert.Equal(tenant, created.OwnerId);
+    }
+
     // ── Accept (happy path) ───────────────────────────────────────────────────────
 
     [Fact]
