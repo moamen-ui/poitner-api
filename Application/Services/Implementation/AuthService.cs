@@ -112,6 +112,49 @@ public class AuthService : IAuthService
         return Result.Success();
     }
 
+    public async Task<Result> ChangePasswordAsync(ChangePasswordRequest request)
+    {
+        if (_currentUser.Id is not Guid publicId)
+            return Result.Failure(MessageKeys.Auth.InvalidCredentials);
+
+        // Own row, any tenant — the standard query filter already scopes this correctly (a caller's
+        // own row is always visible to themselves), so no IgnoreQueryFilters needed here.
+        var user = await _unitOfWork.Repository<User>()
+            .Query()
+            .Where(u => u.DeletedAt == null && u.PublicId == publicId)
+            .FirstOrDefaultAsync();
+
+        if (user == null)
+            return Result.NotFound(MessageKeys.User.NotFound);
+
+        if (!_passwordHasher.Verify(request.CurrentPassword, user.PasswordHash))
+            return Result.Failure(MessageKeys.User.CurrentPasswordIncorrect);
+
+        user.PasswordHash = _passwordHasher.Hash(request.NewPassword);
+        // Bump the stamp: invalidates every existing access token for this user (H1), same as
+        // ResetPasswordAsync — a password change forcibly logs out all sessions, including this one.
+        user.SecurityStamp = Guid.NewGuid();
+        _unitOfWork.Repository<User>().Update(user);
+        await _unitOfWork.SaveChangesAsync();
+
+        var brand = await _branding.BuildResponseAsync("", new HashSet<string>());
+        try
+        {
+            await _emailService.SendAsync(user.Email, $"Your {brand.ProductName} password was changed",
+                BuildPasswordChangedEmailHtml(user.DisplayName, brand.ProductName));
+        }
+        catch { /* best-effort; sender logs failures */ }
+
+        return Result.Success(MessageKeys.User.PasswordChanged);
+    }
+
+    private static string BuildPasswordChangedEmailHtml(string displayName, string productName) =>
+        $@"<div style=""font-family:system-ui,sans-serif;color:#0f172a;line-height:1.6"">
+  <h2 style=""margin:0 0 8px"">Your password was changed</h2>
+  <p style=""margin:0 0 16px"">Hi {displayName}, this confirms your {productName} account password was just changed. You've been signed out of all devices.</p>
+  <p style=""color:#94a3b8;font-size:12px"">If you didn't make this change, reset your password immediately and contact your workspace admin.</p>
+</div>";
+
     public async Task<Result<LoginResponse>> LoginAsync(LoginRequest request)
     {
         var emailNormalized = request.Email.Trim().ToLower();

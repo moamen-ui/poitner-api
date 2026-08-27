@@ -31,6 +31,7 @@ public static class MessageKeys
         public const string NotADeputy = "Only an existing deputy can be promoted to workspace admin.";
         public const string TransferNotAuthorized = "Only the current workspace admin or a super admin can transfer ownership.";
         public const string CurrentPasswordIncorrect = "Current password is incorrect.";
+        public const string PasswordChanged = "Password changed.";
     }
 
     public static class Project

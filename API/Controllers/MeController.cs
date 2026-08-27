@@ -9,8 +9,17 @@ namespace Pointer.API.Controllers;
 [ApiController]
 [Route("api/me")]
 [Authorize]
-public class MeController(IPreferencesService preferencesService, IProfileService profileService, Pointer.Application.Abstractions.ICurrentUser currentUser) : ControllerBase
+public class MeController(IPreferencesService preferencesService, IProfileService profileService, IAuthService authService, Pointer.Application.Abstractions.ICurrentUser currentUser) : ControllerBase
 {
+    [HttpPost("change-password")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    public async Task<IActionResult> ChangePassword([FromBody] ChangePasswordRequest request)
+    {
+        var result = await authService.ChangePasswordAsync(request);
+        if (result.IsNotFound) return NotFound(result);
+        return result.IsSuccess ? Ok(result) : BadRequest(result);
+    }
+
     [HttpPatch("preferences")]
     [ProducesResponseType(typeof(MeResponse), StatusCodes.Status200OK)]
     public async Task<IActionResult> UpdatePreferences([FromBody] UpdatePreferencesRequest request)

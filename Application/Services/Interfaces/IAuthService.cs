@@ -15,4 +15,7 @@ public interface IAuthService
 
     /// <summary>Validates the reset token and sets the new password.</summary>
     Task<Result> ResetPasswordAsync(ResetPasswordRequest request);
+
+    /// <summary>Self-service password change for the current user. Emails a notification on success.</summary>
+    Task<Result> ChangePasswordAsync(ChangePasswordRequest request);
 }
