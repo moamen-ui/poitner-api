@@ -2,6 +2,22 @@ import type { StatusStr } from './types';
 
 export const HL_CLASS = 'pointer-feedback-hl';
 
+// Full-viewport modal-backdrop overlays from popular UI libraries. While picking an element to
+// comment on, a hover/click over one of these must resolve to whatever the host app actually
+// rendered underneath it, not the backdrop itself — the widget's own chrome already floats above
+// everything (max z-index), but a backdrop still wins the browser's normal hit-test against real
+// page content, since it deliberately covers the full viewport to catch clicks that dismiss the
+// dialog. See Element.resolveHitTarget.
+export const BACKDROP_SELECTOR = [
+  '.cdk-overlay-backdrop', // Angular CDK / Angular Material
+  '.modal-backdrop', // Bootstrap
+  '.MuiBackdrop-root', // MUI
+  '.ant-modal-mask', // Ant Design (modal)
+  '.ant-drawer-mask', // Ant Design (drawer)
+  '.v-overlay__scrim', // Vuetify
+  '.el-overlay', // Element Plus
+].join(', ');
+
 // Environment string → int mapping (API contract: 1=Local, 2=Staging, 3=Production)
 export const ENV_MAP: Record<string, number> = { local: 1, staging: 2, production: 3 };
 // Reverse: int → canonical name, for the in-widget environment switcher.

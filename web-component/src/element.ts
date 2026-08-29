@@ -1,5 +1,5 @@
 import {
-  HL_CLASS, ENV_MAP, ENV_NAME, STATUS_STR, STATUS_INT, POSITIONS, CSS_URL, SCRIPT_SRC,
+  HL_CLASS, BACKDROP_SELECTOR, ENV_MAP, ENV_NAME, STATUS_STR, STATUS_INT, POSITIONS, CSS_URL, SCRIPT_SRC,
   loadStatusCatalog, catalogToFilters, pfFetch, loadBranding, getBrandName,
 } from './constants';
 import { escapeHtml, ensureHighlightStyle, matchElement, pageIsRtl } from './dom';
@@ -761,19 +761,42 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
     return el === this || (!!el && (el as Element).tagName === 'POINTER-FEEDBACK');
   }
 
+  // Resolves the real element a pointer event is over, seeing through any full-viewport modal
+  // backdrop the host app has open (BACKDROP_SELECTOR) — a dialog opened WHILE picking is active
+  // would otherwise swallow the hover/click itself, since it deliberately covers the whole
+  // viewport to catch clicks that dismiss it.
+  //
+  // e.target is the primary source of truth (NOT document.elementsFromPoint): our own UI lives in
+  // a Shadow DOM behind a host element with zero intrinsic size, so point-based hit-testing can
+  // never land on the host itself — only the browser's own composed-event retargeting (which sets
+  // e.target to the host for any event landing on our shadow content) reliably identifies "this
+  // was our own UI". elementsFromPoint is used only as a fallback, and only once e.target has
+  // already proven to be a recognized backdrop — never to re-derive "is this our own UI".
+  resolveHitTarget(e: MouseEvent): Element | null {
+    const target = e.target as Element | null;
+    if (!target || this.isOwnElement(target)) return null;
+    if (!target.matches(BACKDROP_SELECTOR)) return target;
+    for (const el of document.elementsFromPoint(e.clientX, e.clientY)) {
+      if (this.isOwnElement(el)) continue;
+      if (el.matches(BACKDROP_SELECTOR)) continue;
+      return el;
+    }
+    return null;
+  }
+
   onHover(e: MouseEvent): void {
-    const el = e.target as Element;
-    if (this.isOwnElement(el)) return;
+    const el = this.resolveHitTarget(e);
+    if (!el) return;
     if (el === this.hovered) return;
     this.clearHover();
     this.hovered = el;
     el.classList.add(HL_CLASS);
   }
   onPick(e: MouseEvent): void {
-    if (this.isOwnElement(e.target)) return; // clicks on our own UI pass through
+    const el = this.resolveHitTarget(e);
+    if (!el) return; // clicks on our own UI pass through
     e.preventDefault();
     e.stopPropagation();
-    const el = e.target as Element;
     const x = e.clientX, y = e.clientY;
     this.clearHover();
     this.stopPicking();

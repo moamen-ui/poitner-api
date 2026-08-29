@@ -3,6 +3,22 @@
 (() => {
   // src/constants.ts
   var HL_CLASS = "pointer-feedback-hl";
+  var BACKDROP_SELECTOR = [
+    ".cdk-overlay-backdrop",
+    // Angular CDK / Angular Material
+    ".modal-backdrop",
+    // Bootstrap
+    ".MuiBackdrop-root",
+    // MUI
+    ".ant-modal-mask",
+    // Ant Design (modal)
+    ".ant-drawer-mask",
+    // Ant Design (drawer)
+    ".v-overlay__scrim",
+    // Vuetify
+    ".el-overlay"
+    // Element Plus
+  ].join(", ");
   var ENV_MAP = { local: 1, staging: 2, production: 3 };
   var ENV_NAME = { 1: "local", 2: "staging", 3: "production" };
   var STATUS_STR = {
@@ -1671,19 +1687,41 @@
     isOwnElement(el) {
       return el === this || !!el && el.tagName === "POINTER-FEEDBACK";
     }
+    // Resolves the real element a pointer event is over, seeing through any full-viewport modal
+    // backdrop the host app has open (BACKDROP_SELECTOR) — a dialog opened WHILE picking is active
+    // would otherwise swallow the hover/click itself, since it deliberately covers the whole
+    // viewport to catch clicks that dismiss it.
+    //
+    // e.target is the primary source of truth (NOT document.elementsFromPoint): our own UI lives in
+    // a Shadow DOM behind a host element with zero intrinsic size, so point-based hit-testing can
+    // never land on the host itself — only the browser's own composed-event retargeting (which sets
+    // e.target to the host for any event landing on our shadow content) reliably identifies "this
+    // was our own UI". elementsFromPoint is used only as a fallback, and only once e.target has
+    // already proven to be a recognized backdrop — never to re-derive "is this our own UI".
+    resolveHitTarget(e) {
+      const target = e.target;
+      if (!target || this.isOwnElement(target)) return null;
+      if (!target.matches(BACKDROP_SELECTOR)) return target;
+      for (const el of document.elementsFromPoint(e.clientX, e.clientY)) {
+        if (this.isOwnElement(el)) continue;
+        if (el.matches(BACKDROP_SELECTOR)) continue;
+        return el;
+      }
+      return null;
+    }
     onHover(e) {
-      const el = e.target;
-      if (this.isOwnElement(el)) return;
+      const el = this.resolveHitTarget(e);
+      if (!el) return;
       if (el === this.hovered) return;
       this.clearHover();
       this.hovered = el;
       el.classList.add(HL_CLASS);
     }
     onPick(e) {
-      if (this.isOwnElement(e.target)) return;
+      const el = this.resolveHitTarget(e);
+      if (!el) return;
       e.preventDefault();
       e.stopPropagation();
-      const el = e.target;
       const x = e.clientX, y = e.clientY;
       this.clearHover();
       this.stopPicking();
