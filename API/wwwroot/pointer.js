@@ -92,6 +92,17 @@
 
   // src/dom.ts
   var escapeHtml = (s) => String(s == null ? "" : s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+  var buildClipPathWithHoles = (rects) => {
+    const w = window.innerWidth, h = window.innerHeight;
+    let d = `M0 0H${w}V${h}H0Z`;
+    for (const r of rects) {
+      const x1 = Math.max(0, r.left - 2), y1 = Math.max(0, r.top - 2);
+      const x2 = Math.min(w, r.right + 2), y2 = Math.min(h, r.bottom + 2);
+      if (x2 <= x1 || y2 <= y1) continue;
+      d += ` M${x1} ${y1}H${x2}V${y2}H${x1}Z`;
+    }
+    return `path(evenodd, "${d}")`;
+  };
   var ensureHighlightStyle = () => {
     if (document.getElementById("pointer-feedback-hl-style")) return;
     const s = document.createElement("style");
@@ -1022,6 +1033,8 @@
       this._userMenuClose = null;
       this._recordingShortcut = false;
       this._shortcutRecordingCleanup = null;
+      this._backdropObserver = null;
+      this._backdropRaf = 0;
     }
     connectedCallback() {
       var _a2;
@@ -1094,6 +1107,22 @@
       this._reposition = () => this.renderPins();
       window.addEventListener("scroll", this._reposition, true);
       window.addEventListener("resize", this._reposition);
+      this._scheduleBackdropUpdate = () => {
+        if (this._backdropRaf) return;
+        this._backdropRaf = requestAnimationFrame(() => {
+          this._backdropRaf = 0;
+          this.punchBackdropHoles();
+        });
+      };
+      window.addEventListener("resize", this._scheduleBackdropUpdate);
+      window.addEventListener("scroll", this._scheduleBackdropUpdate, true);
+      this._backdropObserver = new MutationObserver((mutations) => {
+        const isOwnMutation = (m) => m.target instanceof Element && m.target.matches(BACKDROP_SELECTOR);
+        if (mutations.some((m) => !isOwnMutation(m))) this._scheduleBackdropUpdate();
+      });
+      this._backdropObserver.observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ["style", "class"] });
+      this._backdropObserver.observe(this.root, { childList: true, subtree: true, attributes: true, attributeFilter: ["style", "class"] });
+      this._scheduleBackdropUpdate();
       document.addEventListener("keydown", this._onShortcutKeydown);
       this._boot();
     }
@@ -1135,8 +1164,13 @@
       });
     }
     disconnectedCallback() {
+      var _a2;
       window.removeEventListener("scroll", this._reposition, true);
       window.removeEventListener("resize", this._reposition);
+      window.removeEventListener("resize", this._scheduleBackdropUpdate);
+      window.removeEventListener("scroll", this._scheduleBackdropUpdate, true);
+      (_a2 = this._backdropObserver) == null ? void 0 : _a2.disconnect();
+      if (this._backdropRaf) cancelAnimationFrame(this._backdropRaf);
       document.removeEventListener("keydown", this._onShortcutKeydown);
       if (this._shortcutRecordingCleanup) this._shortcutRecordingCleanup();
       this.stopPicking();
@@ -1641,6 +1675,38 @@
           this.renderPins();
         });
       }
+    }
+    // --- Staying clickable under host-app modals ------------------------------
+    // The rects our own UI currently occupies on screen — every top-level container that can be
+    // visible at once. Used to punch matching holes in any modal backdrop so those areas stay
+    // clickable. Elements not currently rendered/visible in this.root simply aren't found and are
+    // skipped; no need to check display/visibility explicitly.
+    ownUiRects() {
+      var _a2;
+      const selectors = [".pf-launcher", ".pf-toolbar", ".pf-sidebar", ".pf-modal-overlay", ".pf-popover", ".pf-menu"];
+      const rects = [];
+      for (const sel of selectors) {
+        const el = (_a2 = this.root) == null ? void 0 : _a2.querySelector(sel);
+        if (!el) continue;
+        const r = el.getBoundingClientRect();
+        if (r.width > 0 && r.height > 0) rects.push(r);
+      }
+      return rects;
+    }
+    // Clips a hole out of every full-viewport modal backdrop currently open (BACKDROP_SELECTOR),
+    // exactly where our own UI sits — see the connectedCallback comment for why this is necessary:
+    // no z-index, however high, makes an element clickable through such a backdrop, because
+    // Chromium's native hit-testing can award the click to the backdrop regardless of paint order.
+    // Clip-path IS respected by hit-testing, so this is the actual fix; everywhere else on the page,
+    // the backdrop keeps blocking/dismissing normally — only our own footprint becomes click-through.
+    punchBackdropHoles() {
+      const backdrops = document.querySelectorAll(BACKDROP_SELECTOR);
+      if (backdrops.length === 0) return;
+      const rects = this.ownUiRects();
+      const clipPath = rects.length === 0 ? "" : buildClipPathWithHoles(rects);
+      backdrops.forEach((b) => {
+        if (b.style.clipPath !== clipPath) b.style.clipPath = clipPath;
+      });
     }
     // --- Element picking -----------------------------------------------------
     togglePicking() {

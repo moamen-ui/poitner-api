@@ -9,6 +9,22 @@ export const escapeHtml = (s: unknown): string =>
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#39;');
 
+// Builds a CSS clip-path (SVG path, evenodd fill rule) covering the full viewport with a
+// rectangular hole cut out for each rect — used to keep our own UI clickable through a host app's
+// modal backdrop (see Element.punchBackdropHoles) without disabling the backdrop everywhere else.
+// A 2px outward pad on each hole avoids a 1px sliver the backdrop could still catch at the edge.
+export const buildClipPathWithHoles = (rects: DOMRect[]): string => {
+  const w = window.innerWidth, h = window.innerHeight;
+  let d = `M0 0H${w}V${h}H0Z`;
+  for (const r of rects) {
+    const x1 = Math.max(0, r.left - 2), y1 = Math.max(0, r.top - 2);
+    const x2 = Math.min(w, r.right + 2), y2 = Math.min(h, r.bottom + 2);
+    if (x2 <= x1 || y2 <= y1) continue;
+    d += ` M${x1} ${y1}H${x2}V${y2}H${x1}Z`;
+  }
+  return `path(evenodd, "${d}")`;
+};
+
 // One global style for the host-page hover highlight (lives in light DOM by
 // necessity — it decorates the host app's own elements, not our shadow UI).
 export const ensureHighlightStyle = (): void => {

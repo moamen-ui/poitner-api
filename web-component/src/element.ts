@@ -2,7 +2,7 @@ import {
   HL_CLASS, BACKDROP_SELECTOR, ENV_MAP, ENV_NAME, STATUS_STR, STATUS_INT, POSITIONS, CSS_URL, SCRIPT_SRC,
   loadStatusCatalog, catalogToFilters, pfFetch, loadBranding, getBrandName,
 } from './constants';
-import { escapeHtml, ensureHighlightStyle, matchElement, pageIsRtl } from './dom';
+import { escapeHtml, ensureHighlightStyle, matchElement, pageIsRtl, buildClipPathWithHoles } from './dom';
 import { TPL } from './templates';
 import { ICON } from './icons';
 import { captureScreenshot, captureMetadata } from './capture';
@@ -73,6 +73,9 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
   private _userMenuClose: ((e: MouseEvent) => void) | null = null;
   private _recordingShortcut = false;
   private _shortcutRecordingCleanup: (() => void) | null = null;
+  private _backdropObserver: MutationObserver | null = null;
+  private _backdropRaf = 0;
+  private _scheduleBackdropUpdate!: () => void;
 
   connectedCallback(): void {
     if (this._mounted) return;
@@ -178,6 +181,34 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
     this._reposition = () => this.renderPins();
     window.addEventListener('scroll', this._reposition, true);
     window.addEventListener('resize', this._reposition);
+
+    // A max z-index only wins the browser's PAINT order — verified independently that Chromium's
+    // native hit-testing (elementFromPoint / real click dispatch) can still award a full-viewport
+    // modal backdrop (Angular CDK, Bootstrap, etc.) the click even when our UI paints visibly above
+    // it, no matter how high z-index goes. The only reliable fix is punching a hole in the
+    // backdrop's own hit-testable area (see punchBackdropHoles) exactly where our UI sits, so the
+    // rest of the backdrop keeps working normally (dismiss-on-click for everything else on the page).
+    this._scheduleBackdropUpdate = () => {
+      if (this._backdropRaf) return;
+      this._backdropRaf = requestAnimationFrame(() => {
+        this._backdropRaf = 0;
+        this.punchBackdropHoles();
+      });
+    };
+    window.addEventListener('resize', this._scheduleBackdropUpdate);
+    window.addEventListener('scroll', this._scheduleBackdropUpdate, true);
+    // Ignore mutations WE caused (setting clip-path on a backdrop) — otherwise punching a hole
+    // would itself re-trigger this observer forever, once per animation frame indefinitely.
+    this._backdropObserver = new MutationObserver((mutations) => {
+      const isOwnMutation = (m: MutationRecord) => m.target instanceof Element && m.target.matches(BACKDROP_SELECTOR);
+      if (mutations.some((m) => !isOwnMutation(m))) this._scheduleBackdropUpdate();
+    });
+    this._backdropObserver.observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ['style', 'class'] });
+    // Our own shadow tree toggles (launcher ↔ toolbar, sidebar/popover/modal open-close) change
+    // which of our elements need a hole, but never touch document.body — observe separately.
+    this._backdropObserver.observe(this.root, { childList: true, subtree: true, attributes: true, attributeFilter: ['style', 'class'] });
+    // The observer only reports FUTURE mutations — catch a backdrop already open when we load.
+    this._scheduleBackdropUpdate();
     // Global "add comment" shortcut — listens on the whole document (not just our shadow root)
     // since it must fire no matter where on the host page the visitor's focus currently is.
     document.addEventListener('keydown', this._onShortcutKeydown);
@@ -224,6 +255,10 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
   disconnectedCallback(): void {
     window.removeEventListener('scroll', this._reposition, true);
     window.removeEventListener('resize', this._reposition);
+    window.removeEventListener('resize', this._scheduleBackdropUpdate);
+    window.removeEventListener('scroll', this._scheduleBackdropUpdate, true);
+    this._backdropObserver?.disconnect();
+    if (this._backdropRaf) cancelAnimationFrame(this._backdropRaf);
     document.removeEventListener('keydown', this._onShortcutKeydown);
     if (this._shortcutRecordingCleanup) this._shortcutRecordingCleanup();
     this.stopPicking();
@@ -720,6 +755,39 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
     if (this.sidebarOpen) {
       this.fetchComments().then(() => { this.renderSidebar(); this.renderPins(); });
     }
+  }
+
+  // --- Staying clickable under host-app modals ------------------------------
+  // The rects our own UI currently occupies on screen — every top-level container that can be
+  // visible at once. Used to punch matching holes in any modal backdrop so those areas stay
+  // clickable. Elements not currently rendered/visible in this.root simply aren't found and are
+  // skipped; no need to check display/visibility explicitly.
+  private ownUiRects(): DOMRect[] {
+    const selectors = ['.pf-launcher', '.pf-toolbar', '.pf-sidebar', '.pf-modal-overlay', '.pf-popover', '.pf-menu'];
+    const rects: DOMRect[] = [];
+    for (const sel of selectors) {
+      const el = this.root?.querySelector(sel) as HTMLElement | null;
+      if (!el) continue;
+      const r = el.getBoundingClientRect();
+      if (r.width > 0 && r.height > 0) rects.push(r);
+    }
+    return rects;
+  }
+
+  // Clips a hole out of every full-viewport modal backdrop currently open (BACKDROP_SELECTOR),
+  // exactly where our own UI sits — see the connectedCallback comment for why this is necessary:
+  // no z-index, however high, makes an element clickable through such a backdrop, because
+  // Chromium's native hit-testing can award the click to the backdrop regardless of paint order.
+  // Clip-path IS respected by hit-testing, so this is the actual fix; everywhere else on the page,
+  // the backdrop keeps blocking/dismissing normally — only our own footprint becomes click-through.
+  private punchBackdropHoles(): void {
+    const backdrops = document.querySelectorAll<HTMLElement>(BACKDROP_SELECTOR);
+    if (backdrops.length === 0) return;
+    const rects = this.ownUiRects();
+    const clipPath = rects.length === 0 ? '' : buildClipPathWithHoles(rects);
+    backdrops.forEach((b) => {
+      if (b.style.clipPath !== clipPath) b.style.clipPath = clipPath;
+    });
   }
 
   // --- Element picking -----------------------------------------------------
