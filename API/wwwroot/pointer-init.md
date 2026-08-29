@@ -22,7 +22,7 @@ This skill wires the widget into the **current** app. Do not guess the variables
 
 | Variable | Required | Meaning / guidance |
 |---|---|---|
-| **Project key** | ✅ | URL-safe slug, `^[A-Za-z0-9._-]+$` (e.g. `my-app`). Identifies this app's feedback; self-registers in the dashboard. |
+| **Project key** | ✅ | URL-safe slug — lowercase letters, digits and dashes only, `^[a-z0-9-]+$` (e.g. `my-app`). Identifies this app's feedback. The project must already exist in the dashboard; the widget does not self-register it. |
 | **Pointer server URL** | ✅ | The **deployed** Pointer origin your team gave you (e.g. `https://pointer.example.com`). No trailing slash. `http://localhost:8090` only for local dev. |
 | **Environment** | optional | `local` \| `staging` \| `production` — tags each comment. Default `staging`. |
 | **Enabled?** | optional | Whether to mount the widget now. Default `true` for dev; usually `false` in production builds unless feedback is wanted in prod. |

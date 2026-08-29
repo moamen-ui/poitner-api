@@ -25,7 +25,7 @@ public class CreateProjectValidatorTests
 
     [Theory]
     [InlineData("my-project")]
-    [InlineData("my_project.v2")]
+    [InlineData("my-project-v2")]
     [InlineData("lms")]
     public void Accepts_wellformed_key(string key)
     {

@@ -10,7 +10,9 @@ public class CreateProjectValidator : AbstractValidator<CreateProjectRequest>
     {
         RuleFor(x => x.Key)
             .NotEmpty().WithMessage(MessageKeys.Project.KeyRequired)
-            .Matches("^[a-z0-9._-]+$").WithMessage(MessageKeys.Project.KeyInvalidFormat);
+            // Letters, digits and dashes only. EnsureAsync never self-creates, so this is the
+            // single gate every project key passes through.
+            .Matches("^[a-z0-9-]+$").WithMessage(MessageKeys.Project.KeyInvalidFormat);
 
         RuleFor(x => x.Name)
             .NotEmpty();
