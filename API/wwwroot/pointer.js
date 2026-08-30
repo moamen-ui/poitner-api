@@ -19,6 +19,24 @@
     ".el-overlay"
     // Element Plus
   ].join(", ");
+  var DIALOG_CONTENT_SELECTOR = [
+    ".cdk-overlay-pane",
+    // Angular CDK / Angular Material (dialogs, menus, autocomplete, …)
+    ".modal-content",
+    // Bootstrap
+    ".MuiDialog-paper",
+    // MUI
+    ".MuiPopover-paper",
+    // MUI (menus/popovers)
+    ".ant-modal-content",
+    // Ant Design (modal)
+    ".ant-drawer-content",
+    // Ant Design (drawer)
+    ".v-overlay__content",
+    // Vuetify
+    ".el-overlay-dialog"
+    // Element Plus
+  ].join(", ");
   var ENV_MAP = { local: 1, staging: 2, production: 3 };
   var ENV_NAME = { 1: "local", 2: "staging", 3: "production" };
   var STATUS_STR = {
@@ -92,12 +110,12 @@
 
   // src/dom.ts
   var escapeHtml = (s) => String(s == null ? "" : s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
-  var buildClipPathWithHoles = (rects) => {
-    const w = window.innerWidth, h = window.innerHeight;
+  var buildClipPathWithHoles = (rects, refBox) => {
+    const w = refBox.width, h = refBox.height;
     let d = `M0 0H${w}V${h}H0Z`;
     for (const r of rects) {
-      const x1 = Math.max(0, r.left - 2), y1 = Math.max(0, r.top - 2);
-      const x2 = Math.min(w, r.right + 2), y2 = Math.min(h, r.bottom + 2);
+      const x1 = Math.max(0, r.left - refBox.left - 2), y1 = Math.max(0, r.top - refBox.top - 2);
+      const x2 = Math.min(w, r.right - refBox.left + 2), y2 = Math.min(h, r.bottom - refBox.top + 2);
       if (x2 <= x1 || y2 <= y1) continue;
       d += ` M${x1} ${y1}H${x2}V${y2}H${x1}Z`;
     }
@@ -284,7 +302,7 @@
         <div id="pf-menu-host"></div>`,
     // Dropdown under the user icon: shows identity, the per-user "add comment" shortcut
     // (click to rebind, ↺ to reset), and a Sign out action.
-    userMenu: (displayName, roleLabel, shortcutLabel) => `
+    userMenu: (displayName, roleLabel, shortcutLabel, authOwnedByHost) => `
         <div class="pf-menu" id="pf-user-menu" role="menu">
           <div class="pf-menu-id">
             <span>${displayName}</span>
@@ -295,7 +313,7 @@
             <button type="button" id="pf-shortcut-edit" class="pf-mini" title="Click, then press a new key combo">${escapeHtml(shortcutLabel)}</button>
             <button type="button" id="pf-shortcut-reset" class="pf-mini pf-icon-btn" title="Reset to default">&#8635;</button>
           </div>
-          <button class="pf-menu-item" id="pf-signout" role="menuitem">${ICON.logout}<span>Sign out</span></button>
+          ${authOwnedByHost ? `<div class="pf-menu-note" style="padding:8px 12px; font-size:12px; color:#64748b;">Signed in via the browser extension — sign out from its popup.</div>` : `<button class="pf-menu-item" id="pf-signout" role="menuitem">${ICON.logout}<span>Sign out</span></button>`}
         </div>`,
     // Collapsed state: a small floating launcher that re-opens the overlay.
     // `rtl` makes start/end resolve against the host page direction (the shadow
@@ -323,7 +341,7 @@
              <option value="">&#x1f465; All users</option>
              ${authors.map((a) => `<option value="${escapeHtml(a.id)}" ${a.id === selectedId ? "selected" : ""}>${escapeHtml(a.name)}</option>`).join("")}
            </select>`,
-    card: (c, i) => {
+    card: (c, i, isQuickAccess) => {
       const cls = c.status === "pending-apply" ? "pending" : c.status === "applied" ? "applied" : c.status === "archived" ? "archived" : "";
       const statusPill = c.status === "applied" ? '<span class="pf-pill status-applied">&#x2713; completed</span>' : c.status === "pending-apply" ? '<span class="pf-pill status-pending">pending</span>' : c.status === "archived" ? '<span class="pf-pill status-archived">&#x1f4e6; archived</span>' : "";
       const replies = (c.replies || []).map((r) => `<div class="pf-reply ${r.isAi ? "ai" : ""}"><b>${escapeHtml(r.authorName || r.authorLabel || "User")}:</b> ${escapeHtml(r.body || r.text || "")}</div>`).join("");
@@ -353,13 +371,13 @@
               <input class="pf-input pf-reply-input" placeholder="Reply…" data-id="${c.id}" />
             </div>
             <div class="pf-actions">
-              ${c.status === "applied" || c.status === "archived" ? "" : `<button class="pf-mini ${c.status === "pending-apply" ? "apply" : "ready"}" data-act="apply" data-id="${c.id}" title="${c.status === "pending-apply" ? "Marked ready — click to unmark" : "Mark ready to apply"}">
+              ${isQuickAccess ? "" : c.status === "applied" || c.status === "archived" ? "" : `<button class="pf-mini ${c.status === "pending-apply" ? "apply" : "ready"}" data-act="apply" data-id="${c.id}" title="${c.status === "pending-apply" ? "Marked ready — click to unmark" : "Mark ready to apply"}">
                 ${ICON.flag}<span>Ready</span>
               </button>`}
-              ${c.status === "open" || c.status === "pending-apply" ? `<button class="pf-mini done pf-icon" data-act="complete" data-id="${c.id}" title="Mark completed" aria-label="Mark completed">${ICON.check}</button>` : ""}
-              ${c.status === "applied" ? `<button class="pf-mini ready" data-act="reopen" data-id="${c.id}" title="Re-open">${ICON.reopen}<span>Re-open</span></button>
+              ${!isQuickAccess && (c.status === "open" || c.status === "pending-apply") ? `<button class="pf-mini done pf-icon" data-act="complete" data-id="${c.id}" title="Mark completed" aria-label="Mark completed">${ICON.check}</button>` : ""}
+              ${!isQuickAccess && c.status === "applied" ? `<button class="pf-mini ready" data-act="reopen" data-id="${c.id}" title="Re-open">${ICON.reopen}<span>Re-open</span></button>
               <button class="pf-mini pf-icon" data-act="archive" data-id="${c.id}" title="Archive" aria-label="Archive">${ICON.archive}</button>` : ""}
-              ${c.status === "archived" ? `<button class="pf-mini ready" data-act="reopen" data-id="${c.id}" title="Re-open">${ICON.reopen}<span>Re-open</span></button>` : ""}
+              ${!isQuickAccess && c.status === "archived" ? `<button class="pf-mini ready" data-act="reopen" data-id="${c.id}" title="Re-open">${ICON.reopen}<span>Re-open</span></button>` : ""}
               ${c._mine ? `<div class="pf-actions-end"><button class="pf-mini pf-icon" data-act="edit" data-id="${c.id}" title="Edit" aria-label="Edit">${ICON.pencil}</button></div>` : ""}
             </div>
           </div>`;
@@ -1029,6 +1047,11 @@
       // not localStorage) — set from `this.user.addCommentShortcut` in loadAuth()/saveAuth() below.
       // Default is Ctrl+Alt+Shift+C / Control+Option+Shift+C — see shortcut.ts for why.
       this.shortcut = parseShortcut(void 0);
+      // True when a host (the browser extension) injected a token: auth is entirely owned by that
+      // host, re-applied on every reload (see connectedCallback), so the widget's own sign-out would
+      // be immediately overwritten and must not be offered — switching accounts happens in the
+      // extension popup instead.
+      this.authOwnedByHost = false;
       this._pendingShotPromise = null;
       this._userMenuClose = null;
       this._recordingShortcut = false;
@@ -1082,6 +1105,7 @@
         this.token = injected.token;
         if (injected.user !== void 0) this.user = injected.user;
         this.shortcut = parseShortcut((_a2 = this.user) == null ? void 0 : _a2.addCommentShortcut);
+        this.authOwnedByHost = true;
       }
       this.style.position = "fixed";
       this.style.zIndex = "2147483647";
@@ -1116,8 +1140,9 @@
       };
       window.addEventListener("resize", this._scheduleBackdropUpdate);
       window.addEventListener("scroll", this._scheduleBackdropUpdate, true);
+      this.root.addEventListener("transitionend", this._scheduleBackdropUpdate);
       this._backdropObserver = new MutationObserver((mutations) => {
-        const isOwnMutation = (m) => m.target instanceof Element && m.target.matches(BACKDROP_SELECTOR);
+        const isOwnMutation = (m) => m.target instanceof Element && m.target.matches(`${BACKDROP_SELECTOR}, ${DIALOG_CONTENT_SELECTOR}`);
         if (mutations.some((m) => !isOwnMutation(m))) this._scheduleBackdropUpdate();
       });
       this._backdropObserver.observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ["style", "class"] });
@@ -1169,6 +1194,7 @@
       window.removeEventListener("resize", this._reposition);
       window.removeEventListener("resize", this._scheduleBackdropUpdate);
       window.removeEventListener("scroll", this._scheduleBackdropUpdate, true);
+      this.root.removeEventListener("transitionend", this._scheduleBackdropUpdate);
       (_a2 = this._backdropObserver) == null ? void 0 : _a2.disconnect();
       if (this._backdropRaf) cancelAnimationFrame(this._backdropRaf);
       document.removeEventListener("keydown", this._onShortcutKeydown);
@@ -1585,7 +1611,7 @@
       }
       const displayName = this.user ? escapeHtml(this.user.displayName || this.user.email) : "";
       const roleLabel = this.user ? escapeHtml(this.user.roleName || "") : "";
-      host.innerHTML = TPL.userMenu(displayName, roleLabel, formatShortcut(this.shortcut));
+      host.innerHTML = TPL.userMenu(displayName, roleLabel, formatShortcut(this.shortcut), this.authOwnedByHost);
       const menu = host.querySelector("#pf-user-menu");
       const btn = this.root.querySelector("#pf-user");
       if (btn) {
@@ -1593,7 +1619,8 @@
         menu.style.top = `${Math.round(r.bottom + 6)}px`;
         menu.style.right = `${Math.max(8, Math.round(window.innerWidth - r.right))}px`;
       }
-      host.querySelector("#pf-signout").addEventListener("click", () => this.signOut());
+      const signoutBtn = host.querySelector("#pf-signout");
+      if (signoutBtn) signoutBtn.addEventListener("click", () => this.signOut());
       host.querySelector("#pf-shortcut-edit").addEventListener("click", (e) => {
         e.stopPropagation();
         this.beginRecordingShortcut(host.querySelector("#pf-shortcut-edit"));
@@ -1693,19 +1720,24 @@
       }
       return rects;
     }
-    // Clips a hole out of every full-viewport modal backdrop currently open (BACKDROP_SELECTOR),
-    // exactly where our own UI sits — see the connectedCallback comment for why this is necessary:
-    // no z-index, however high, makes an element clickable through such a backdrop, because
-    // Chromium's native hit-testing can award the click to the backdrop regardless of paint order.
-    // Clip-path IS respected by hit-testing, so this is the actual fix; everywhere else on the page,
-    // the backdrop keeps blocking/dismissing normally — only our own footprint becomes click-through.
+    // Clips a hole out of every full-viewport modal backdrop AND dialog/panel content pane currently
+    // open (BACKDROP_SELECTOR, DIALOG_CONTENT_SELECTOR), exactly where our own UI sits — see the
+    // connectedCallback comment for why the backdrop needs this: no z-index, however high, makes an
+    // element clickable through it, because Chromium's native hit-testing can award the click to the
+    // backdrop regardless of paint order. The content pane needs the SAME treatment for a separate
+    // reason, confirmed empirically against a real Angular Material dialog: its content pane
+    // out-ranks our max-z-index shadow content in actual paint order despite every ancestor on both
+    // sides having no stacking-context-creating property that would explain it per spec — whatever
+    // the underlying browser mechanism, clip-path fixes it identically. Everywhere else on the page,
+    // the backdrop/dialog keeps blocking/rendering normally — only our own footprint becomes
+    // click-through.
     punchBackdropHoles() {
-      const backdrops = document.querySelectorAll(BACKDROP_SELECTOR);
-      if (backdrops.length === 0) return;
+      const targets = document.querySelectorAll(`${BACKDROP_SELECTOR}, ${DIALOG_CONTENT_SELECTOR}`);
+      if (targets.length === 0) return;
       const rects = this.ownUiRects();
-      const clipPath = rects.length === 0 ? "" : buildClipPathWithHoles(rects);
-      backdrops.forEach((b) => {
-        if (b.style.clipPath !== clipPath) b.style.clipPath = clipPath;
+      targets.forEach((t) => {
+        const clipPath = rects.length === 0 ? "" : buildClipPathWithHoles(rects, t.getBoundingClientRect());
+        if (t.style.clipPath !== clipPath) t.style.clipPath = clipPath;
       });
     }
     // --- Element picking -----------------------------------------------------
@@ -2185,7 +2217,7 @@
     }
     // --- Sidebar render ------------------------------------------------------
     renderSidebar() {
-      var _a2;
+      var _a2, _b;
       const all = this.pageComments();
       const canMine = !!(this.user && this.user.id);
       if (!canMine) this.mineOnly = false;
@@ -2237,9 +2269,10 @@
         list.innerHTML = TPL.empty(`No ${filterLabel.toLowerCase()} comments${this.mineOnly ? " of yours" : ""}.`);
         return;
       }
+      const isQuickAccess = !!((_b = this.user) == null ? void 0 : _b.isQuickAccess);
       list.innerHTML = shown.map((c, i) => {
         c._mine = this.isMine(c);
-        return TPL.card(c, i);
+        return TPL.card(c, i, isQuickAccess);
       }).join("");
       list.querySelectorAll('[data-act="apply"]').forEach((b) => b.addEventListener("click", () => {
         const c = this.comments.find((x) => String(x.id) === String(b.dataset.id));

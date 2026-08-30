@@ -198,6 +198,11 @@ public class CommentService : ICommentService
         if (filter.Environment.HasValue)
             query = query.Where(c => c.Environment == filter.Environment.Value);
 
+        // A quick-access (Client) account only ever sees its own feedback — never the rest of the
+        // project's backlog — regardless of status. Every other role keeps seeing everything.
+        if (_currentUser.IsQuickAccess)
+            query = query.Where(c => c.AuthorId == callerId);
+
         // Count private comments owned by someone else: hidden from this caller
         // (computed over the same status/environment filters, before visibility).
         var hiddenPrivateCount = await query
@@ -299,12 +304,23 @@ public class CommentService : ICommentService
         if (comment.IsPrivate && comment.AuthorId != callerId)
             return Result<CommentResponse>.NotFound(MessageKeys.Comment.NotFound);
 
+        // A quick-access (Client) account can't see anyone else's comment either, private or not —
+        // same NotFound-not-Forbidden reasoning as above.
+        if (_currentUser.IsQuickAccess && comment.AuthorId != callerId)
+            return Result<CommentResponse>.NotFound(MessageKeys.Comment.NotFound);
+
         var names = await ResolveNamesAsync(AuthorIds(comment));
         return Result<CommentResponse>.Success(MapToResponse(comment, names));
     }
 
     public async Task<Result<CommentResponse>> UpdateStatusAsync(int id, UpdateCommentStatusRequest request, Guid actorId)
     {
+        // Triaging the backlog (marking things applied/archived/etc.) is a project-team action — a
+        // quick-access (Client) account only ever leaves feedback, never manages its lifecycle, even
+        // on its own comments.
+        if (_currentUser.IsQuickAccess)
+            return Result<CommentResponse>.Forbidden(MessageKeys.Comment.QuickAccessCannotChangeStatus);
+
         var comment = await _unitOfWork.Repository<Comment>()
             .Query()
             .Include(c => c.Replies)
@@ -425,6 +441,11 @@ public class CommentService : ICommentService
             .FirstOrDefaultAsync();
 
         if (comment == null)
+            return Result<ReplyResponse>.NotFound(MessageKeys.Comment.NotFound);
+
+        // A quick-access (Client) account can't see anyone else's comment (ListAsync/GetByIdAsync
+        // already scope to it), so it can't reply on one either.
+        if (_currentUser.IsQuickAccess && comment.AuthorId != authorId)
             return Result<ReplyResponse>.NotFound(MessageKeys.Comment.NotFound);
 
         // Replies inherit the parent comment's tenant owner.

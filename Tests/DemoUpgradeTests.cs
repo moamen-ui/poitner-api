@@ -29,6 +29,7 @@ public class DemoUpgradeTests
         public Guid? Id { get; set; }
         public bool IsAdmin { get; set; }
         public bool IsSuperAdmin { get; set; } = true; // super-admin so query filters never hide seeded rows
+        public bool IsQuickAccess { get; set; }
         public Guid? TenantId { get; set; }
     }
 

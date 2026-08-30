@@ -21,6 +21,7 @@ public class ChangePasswordTests
         public Guid? Id { get; set; }
         public bool IsAdmin { get; set; }
         public bool IsSuperAdmin { get; set; }
+        public bool IsQuickAccess { get; set; }
         public Guid? TenantId { get; set; }
     }
 

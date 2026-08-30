@@ -19,6 +19,8 @@ public class HttpCurrentUser(IHttpContextAccessor accessor) : ICurrentUser
 
     public bool IsSuperAdmin => accessor.HttpContext?.User.FindFirst("is_super_admin")?.Value == "true";
 
+    public bool IsQuickAccess => accessor.HttpContext?.User.FindFirst("is_quick_access")?.Value == "true";
+
     public Guid? TenantId =>
         Guid.TryParse(accessor.HttpContext?.User.FindFirst("tenant")?.Value, out var g)
             ? g

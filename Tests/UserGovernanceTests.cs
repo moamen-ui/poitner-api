@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using Pointer.Application.Abstractions;
+using Pointer.Application.DTOs.User;
 using Pointer.Application.Services.Implementation;
 using Pointer.Application.Services.Interfaces;
 using Pointer.Domain.Entity;
@@ -21,6 +22,7 @@ public class UserGovernanceTests
         public Guid? Id { get; set; }
         public bool IsAdmin { get; set; }
         public bool IsSuperAdmin { get; set; }
+        public bool IsQuickAccess { get; set; }
         public Guid? TenantId { get; set; }
     }
 
@@ -365,5 +367,85 @@ public class UserGovernanceTests
         Assert.Equal(ws.OwnerId, row.OwnerId);
         Assert.Equal(ws.DeputyPublicId, row.PublicId);
         Assert.NotEqual(ws.AdminPublicId, row.PublicId);
+    }
+
+    // ── UpdateAsync: self-demotion guard + role-change stamp rotation ──────────
+
+    [Fact]
+    public async Task Admin_CannotChangeOwnRole_AwayFromWorkspaceAdmin()
+    {
+        var db = Guid.NewGuid().ToString();
+        var ws = SeedWorkspace(db);
+        var admin = new FakeCurrentUser { Id = ws.AdminPublicId, TenantId = ws.OwnerId, IsAdmin = true };
+        var ctx = Ctx(admin, db);
+        var adminRowId = ctx.Users.Single(u => u.PublicId == ws.AdminPublicId).Id;
+
+        var result = await Svc(admin, ctx).UpdateAsync(adminRowId, new UpdateUserRequest { RoleId = ws.MemberRoleId });
+
+        Assert.False(result.IsSuccess);
+        var stillAdmin = ctx.Users.IgnoreQueryFilters().Single(u => u.PublicId == ws.AdminPublicId);
+        Assert.Equal(ws.AdminRoleId, stillAdmin.RoleId);
+    }
+
+    [Fact]
+    public async Task Admin_CannotChangeOwnRole_ToDeputy_MustUseTransferOwnershipInstead()
+    {
+        var db = Guid.NewGuid().ToString();
+        var ws = SeedWorkspace(db);
+        var admin = new FakeCurrentUser { Id = ws.AdminPublicId, TenantId = ws.OwnerId, IsAdmin = true };
+        var ctx = Ctx(admin, db);
+        var adminRowId = ctx.Users.Single(u => u.PublicId == ws.AdminPublicId).Id;
+
+        var result = await Svc(admin, ctx).UpdateAsync(adminRowId, new UpdateUserRequest { RoleId = ws.DeputyRoleId });
+
+        Assert.False(result.IsSuccess);
+    }
+
+    [Fact]
+    public async Task Admin_CanChangeAnotherUsersRole_UnaffectedBySelfDemotionGuard()
+    {
+        var db = Guid.NewGuid().ToString();
+        var ws = SeedWorkspace(db);
+        var admin = new FakeCurrentUser { Id = ws.AdminPublicId, TenantId = ws.OwnerId, IsAdmin = true };
+        var ctx = Ctx(admin, db);
+
+        var result = await Svc(admin, ctx).UpdateAsync(ws.MemberRowId, new UpdateUserRequest { RoleId = ws.DeputyRoleId });
+
+        Assert.True(result.IsSuccess);
+    }
+
+    [Fact]
+    public async Task UpdateAsync_RoleChange_RotatesSecurityStamp()
+    {
+        // A role change alters is_admin/is_super_admin/is_quick_access baked into the JWT — the
+        // stamp must rotate so a live session can't keep acting under the old role.
+        var db = Guid.NewGuid().ToString();
+        var ws = SeedWorkspace(db);
+        var admin = new FakeCurrentUser { Id = ws.AdminPublicId, TenantId = ws.OwnerId, IsAdmin = true };
+        var ctx = Ctx(admin, db);
+        var before = ctx.Users.IgnoreQueryFilters().Single(u => u.Id == ws.MemberRowId).SecurityStamp;
+
+        var result = await Svc(admin, ctx).UpdateAsync(ws.MemberRowId, new UpdateUserRequest { RoleId = ws.DeputyRoleId });
+
+        Assert.True(result.IsSuccess);
+        var after = ctx.Users.IgnoreQueryFilters().Single(u => u.Id == ws.MemberRowId).SecurityStamp;
+        Assert.NotEqual(before, after);
+    }
+
+    [Fact]
+    public async Task UpdateAsync_NoRoleChange_DoesNotRotateSecurityStamp()
+    {
+        var db = Guid.NewGuid().ToString();
+        var ws = SeedWorkspace(db);
+        var admin = new FakeCurrentUser { Id = ws.AdminPublicId, TenantId = ws.OwnerId, IsAdmin = true };
+        var ctx = Ctx(admin, db);
+        var before = ctx.Users.IgnoreQueryFilters().Single(u => u.Id == ws.MemberRowId).SecurityStamp;
+
+        // Same role the member already has — no-op role assignment, nothing else in the request.
+        var result = await Svc(admin, ctx).UpdateAsync(ws.MemberRowId, new UpdateUserRequest { RoleId = ws.MemberRoleId });
+
+        Assert.True(result.IsSuccess);
+        var after = ctx.Users.IgnoreQueryFilters().Single(u => u.Id == ws.MemberRowId).SecurityStamp;
+        Assert.Equal(before, after);
     }
 }

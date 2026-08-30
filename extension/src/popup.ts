@@ -77,11 +77,19 @@ async function renderMain(user: StoredUser | null) {
   const tabState = await send<{ active: boolean; remembered: { project: string; environment: string } | null }>({ type: 'getTabState', tabId: tab!.id!, hostname });
   const env = tabState.remembered?.environment || 'staging';
   const origin = (() => { try { return new URL(url).origin; } catch { return ''; } })();
-  const isAdmin = !!user?.isAdmin;
-
   // Projects come from the signed-in user's workspace (dashboard-managed) — no free-typing keys.
-  const listed = await send<{ ok: boolean; projects: ExtProject[]; error?: string }>({ type: 'listProjects' });
-  const projects: ExtProject[] = listed.ok ? listed.projects : [];
+  // Quick-access (Client) accounts are barred from browsing the tenant's full project list, so they
+  // get a single scoped lookup by this tab's own origin instead (see 'projectForOrigin').
+  const isQuickAccess = !!user?.isQuickAccess;
+  const listed = isQuickAccess
+    ? await send<{ ok: boolean; project: ExtProject | null; error?: string }>({ type: 'projectForOrigin', origin })
+    : await send<{ ok: boolean; projects: ExtProject[]; error?: string }>({ type: 'listProjects' });
+  const projects: ExtProject[] = isQuickAccess
+    ? (('project' in listed && listed.ok && listed.project) ? [listed.project] : [])
+    : ('projects' in listed && listed.ok ? listed.projects : []);
+  // A super admin owns no workspace to add a project to (backend rejects it), and a client's one
+  // project comes from their invite, not from creating one — never show the affordance for either.
+  const isAdmin = !!user?.isAdmin && !user?.isSuperAdmin && !isQuickAccess;
 
   const draw = () => {
     const remembered = tabState.remembered?.project;
@@ -96,7 +104,7 @@ async function renderMain(user: StoredUser | null) {
         ? `<label>Project</label>
            <input id="project" list="pf-projects" value="${esc(selectedKey)}" placeholder="Search projects…" autocomplete="off" />
            <datalist id="pf-projects">${opts}</datalist>`
-        : `<div class="note" style="margin-top:8px;">${isAdmin ? 'No projects yet — add one below.' : 'No projects available. Ask your workspace admin to create one.'}</div>`}
+        : (listed.error ? '' : `<div class="note" style="margin-top:8px;">${isAdmin ? 'No projects yet — add one below.' : 'No projects available. Ask your workspace admin to create one.'}</div>`)}
       ${isAdmin ? `
         <a id="add-toggle" style="display:inline-block;margin:8px 0;cursor:pointer;">+ Add project</a>
         <div id="add-form" style="display:none;">

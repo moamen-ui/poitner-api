@@ -9,16 +9,25 @@ export const escapeHtml = (s: unknown): string =>
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#39;');
 
-// Builds a CSS clip-path (SVG path, evenodd fill rule) covering the full viewport with a
-// rectangular hole cut out for each rect — used to keep our own UI clickable through a host app's
-// modal backdrop (see Element.punchBackdropHoles) without disabling the backdrop everywhere else.
+// Builds a CSS clip-path (SVG path, evenodd fill rule) covering `refBox` with a rectangular hole
+// cut out for each rect — used to keep our own UI clickable/visible through a host app's modal
+// backdrop or dialog content pane (see Element.punchBackdropHoles) without disabling it elsewhere.
+// clip-path coordinates are relative to the CLIPPED ELEMENT's OWN border box, not the viewport —
+// `refBox` must be that element's own getBoundingClientRect() so hole rects (which are viewport-
+// relative, from getBoundingClientRect() elsewhere on the page) get translated correctly. For a
+// full-viewport backdrop this reduces to the same thing (refBox.left/top ≈ 0); for a small,
+// positioned dialog pane it doesn't — using viewport coordinates directly there punches the hole at
+// a meaningless offset inside the pane's own box, which was confirmed to silently no-op.
 // A 2px outward pad on each hole avoids a 1px sliver the backdrop could still catch at the edge.
-export const buildClipPathWithHoles = (rects: DOMRect[]): string => {
-  const w = window.innerWidth, h = window.innerHeight;
+export const buildClipPathWithHoles = (
+  rects: DOMRect[],
+  refBox: { left: number; top: number; width: number; height: number },
+): string => {
+  const w = refBox.width, h = refBox.height;
   let d = `M0 0H${w}V${h}H0Z`;
   for (const r of rects) {
-    const x1 = Math.max(0, r.left - 2), y1 = Math.max(0, r.top - 2);
-    const x2 = Math.min(w, r.right + 2), y2 = Math.min(h, r.bottom + 2);
+    const x1 = Math.max(0, r.left - refBox.left - 2), y1 = Math.max(0, r.top - refBox.top - 2);
+    const x2 = Math.min(w, r.right - refBox.left + 2), y2 = Math.min(h, r.bottom - refBox.top + 2);
     if (x2 <= x1 || y2 <= y1) continue;
     d += ` M${x1} ${y1}H${x2}V${y2}H${x1}Z`;
   }

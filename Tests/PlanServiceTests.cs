@@ -19,6 +19,7 @@ public class PlanServiceTests
         public Guid? Id { get; set; }
         public bool IsAdmin { get; set; }
         public bool IsSuperAdmin { get; set; } = true;
+        public bool IsQuickAccess { get; set; }
         public Guid? TenantId { get; set; }
     }
 

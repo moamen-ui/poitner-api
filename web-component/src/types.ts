@@ -58,6 +58,10 @@ export interface User {
   displayName?: string;
   email?: string;
   roleName?: string;
+  /** True for quick-access (Client) accounts — gates out backlog-management actions (mark
+   *  completed, ready-to-apply, archive/re-open) in the comment card template. Comes straight off
+   *  the login/me response's IsQuickAccess claim. */
+  isQuickAccess?: boolean;
   /** "Add comment" widget shortcut, e.g. "alt+shift+c" — synced to the account. Absent/undefined
    *  means the widget's built-in default. */
   addCommentShortcut?: string;

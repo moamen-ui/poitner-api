@@ -246,6 +246,23 @@ public class UserService : IUserService
             if (!_currentUser.IsSuperAdmin && (role.GrantsAdmin || role.IsSuperAdmin) && role.Name != DeputyRoleName)
                 return Result<UserResponse>.Failure(MessageKeys.Role.EscalationNotAllowed);
 
+            // Self-demotion guard: the current Workspace Admin can't change their OWN role away from
+            // Workspace Admin via this endpoint — that would leave the tenant with no admin and no
+            // recovery path (mirrors DeleteAsync's CannotDeleteAdmin: promote a deputy first, then
+            // that new admin can change the old one's role).
+            if (role.Id != user.RoleId && user.PublicId == _currentUser.Id)
+            {
+                var currentRole = await GetActiveRoleAsync(user.RoleId);
+                if (currentRole?.Name == WorkspaceAdminRoleName)
+                    return Result<UserResponse>.Failure(MessageKeys.User.CannotChangeSelfFromAdmin);
+            }
+
+            // A role change alters is_admin/is_super_admin/is_quick_access baked into the JWT at
+            // issue time — rotate the stamp so a live session can't keep acting under the old role
+            // for the rest of the token's lifetime.
+            if (role.Id != user.RoleId)
+                user.SecurityStamp = Guid.NewGuid();
+
             user.RoleId = role.Id;
         }
 

@@ -1,6 +1,6 @@
 import {
   DEFAULT_SERVER, SESSION_KEYS, LOCAL_KEYS, hostnameOf,
-  type BgRequest, type ProxyRequest, type ProxyResponse, type StoredUser,
+  type BgRequest, type ProxyRequest, type ProxyResponse, type StoredUser, type ExtProject,
 } from './shared';
 import { injectMain } from './inject-main';
 
@@ -80,6 +80,17 @@ async function reloadActiveTabs(): Promise<void> {
   const tabIds = rules.filter((r) => r.id >= CSP_RULE_BASE).map((r) => r.id - CSP_RULE_BASE);
   for (const id of tabIds) {
     try { await chrome.tabs.reload(id); } catch { /* tab may be gone */ }
+  }
+}
+// The inverse of reloadActiveTabs — called on sign-out so every activated tab actually leaves the
+// page instead of sitting there re-injected-but-unauthenticated (401 → the widget's own login modal,
+// with no way to dismiss it since the popup's "Deactivate on this tab" button only exists once
+// signed back in).
+async function deactivateAllTabs(): Promise<void> {
+  const rules = await chrome.declarativeNetRequest.getSessionRules();
+  const tabIds = rules.filter((r) => r.id >= CSP_RULE_BASE).map((r) => r.id - CSP_RULE_BASE);
+  for (const id of tabIds) {
+    try { await deactivate(id); } catch { /* tab may be gone */ }
   }
 }
 
@@ -272,6 +283,7 @@ chrome.runtime.onMessage.addListener((msg: BgRequest | ProxyRequest, _sender, se
       case 'logout': {
         await chrome.storage.session.remove(SESSION_KEYS.token);
         await chrome.storage.local.remove(LOCAL_KEYS.user);
+        await deactivateAllTabs();
         return { ok: true };
       }
       case 'setServer': { await chrome.storage.local.set({ [LOCAL_KEYS.server]: m.server.replace(/\/$/, '') }); return { ok: true }; }
@@ -283,7 +295,11 @@ chrome.runtime.onMessage.addListener((msg: BgRequest | ProxyRequest, _sender, se
         return { ok: true };
       }
       case 'listProjects': {
-        // Any signed-in user; the API scopes to the caller's tenant. Return active projects only.
+        // A super admin owns no tenant, so GET /api/admin/projects returns every tenant's projects
+        // at once (by design, for platform management) rather than "the caller's workspace" — showing
+        // that list here would look like duplicate project keys and can never activate (see 'activate').
+        const su = (await chrome.storage.local.get(LOCAL_KEYS.user))[LOCAL_KEYS.user] as StoredUser | null;
+        if (su?.isSuperAdmin) return { ok: false, projects: [], error: 'Super admin accounts can’t use Pointer here — sign in with a workspace account instead.' };
         const r = await apiFetch('/api/admin/projects', { method: 'GET' });
         if (!r.ok) return { ok: false, projects: [], error: r.message || 'Could not load projects.' };
         const projects = (Array.isArray(r.data) ? r.data : [])
@@ -291,12 +307,24 @@ chrome.runtime.onMessage.addListener((msg: BgRequest | ProxyRequest, _sender, se
           .map((p: any) => ({ key: p.key, name: p.name || p.key, isActive: p.isActive !== false }));
         return { ok: true, projects };
       }
+      case 'projectForOrigin': {
+        // For quick-access (Client) accounts: a single scoped lookup by the tab's own origin,
+        // instead of listProjects's tenant-wide browse (which they're barred from).
+        const r = await apiFetch(`/api/extension/project-for-origin?origin=${encodeURIComponent(m.origin)}`, { method: 'GET' });
+        if (!r.ok) return { ok: false, project: null, error: r.message || 'No project is set up for this site.' };
+        return { ok: true, project: { key: r.data.key, name: r.data.name, isActive: true } as ExtProject };
+      }
       case 'createProject': {
         const r = await apiFetch('/api/admin/projects', { method: 'POST', body: JSON.stringify({ key: m.key, name: m.name }) });
         if (!r.ok) return { ok: false, error: r.message || (r.status === 409 ? 'A project with that key already exists.' : 'Could not create project.') };
         return { ok: true, project: { key: m.key, name: m.name, isActive: true } };
       }
       case 'activate': {
+        // Defense in depth: listProjects already blocks a super admin from getting this far, but
+        // guard here too — ProjectService.EnsureAsync always 404s for them, which would otherwise
+        // surface as the misleading "Project not found in your workspace."
+        const su = (await chrome.storage.local.get(LOCAL_KEYS.user))[LOCAL_KEYS.user] as StoredUser | null;
+        if (su?.isSuperAdmin) return { ok: false, error: 'Super admin accounts can’t use Pointer here — sign in with a workspace account instead.' };
         // Entitlement gate + site recording: /api/extension/activate enforces ExtensionEnabled and
         // MaxExtensionSites (inert while the enforcement kill-switch is off) and validates the project
         // exists. Block injection — and surface why — when the plan denies it.

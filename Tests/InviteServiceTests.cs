@@ -25,6 +25,7 @@ public class InviteServiceTests
         public Guid? Id { get; set; }
         public bool IsAdmin { get; set; }
         public bool IsSuperAdmin { get; set; }
+        public bool IsQuickAccess { get; set; }
         public Guid? TenantId { get; set; }
     }
 
@@ -1051,6 +1052,31 @@ public class InviteServiceTests
         Assert.Single(spy.Sent);
         Assert.Contains("client@acme.com", spy.Sent[0].To);
         Assert.Contains("Password:", spy.Sent[0].Html);
+    }
+
+    [Fact]
+    public async Task QuickAccess_Create_DoesNotAppear_InActiveInvitesList()
+    {
+        // The invite row is kept only for its own historical record — once fully consumed (which a
+        // quick-access invite always is, immediately, since there's no accept step), it must not show
+        // up in ListAsync too, or the same person appears twice on the Users page: once as the real,
+        // already-approved user, and once as a stale "pending invite" that was actually never pending.
+        var dbName = Guid.NewGuid().ToString();
+        var (tenant, _) = SeedTenant(dbName);
+        var clientRoleId = SeedQuickAccessRole(dbName, tenant);
+        var projectId = SeedProject(dbName, tenant, "https://client.example.com");
+
+        var admin = new FakeCurrentUser { Id = Guid.NewGuid(), TenantId = tenant, IsAdmin = true };
+        using var db = BuildContext(admin, dbName);
+        var svc = BuildService(admin, db);
+
+        var create = await svc.CreateAsync(new CreateInviteRequest
+        { RoleId = clientRoleId, Email = "listed@acme.com", ProjectId = projectId });
+        Assert.True(create.IsSuccess);
+
+        var list = await svc.ListAsync();
+        Assert.True(list.IsSuccess);
+        Assert.DoesNotContain(list.Data!, i => i.Email == "listed@acme.com");
     }
 
     [Fact]

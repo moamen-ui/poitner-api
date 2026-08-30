@@ -184,11 +184,16 @@ public class InviteService : IInviteService
     {
         var now = DateTime.UtcNow;
 
-        // Query filter scopes OwnerId to the tenant (JWT). Active = not deleted / revoked / expired.
+        // Query filter scopes OwnerId to the tenant (JWT). Active = not deleted / revoked / expired /
+        // used up. Without the usage check, a quick-access invite (immediately marked Uses==MaxUses
+        // at creation — see CreateQuickAccessInviteAsync) would show up here forever even though the
+        // real, already-approved user it created is already visible in the Users list — the exact
+        // same row appearing twice, once as a real user and once as a stale "pending" invite.
         var rows = await _unitOfWork.Repository<Invite>()
             .Query()
             .AsNoTracking()
-            .Where(i => i.DeletedAt == null && i.RevokedAt == null && i.ExpiresAt > now)
+            .Where(i => i.DeletedAt == null && i.RevokedAt == null && i.ExpiresAt > now
+                        && (i.MaxUses == null || i.Uses < i.MaxUses))
             .OrderByDescending(i => i.CreatedAt)
             .ToListAsync();
 

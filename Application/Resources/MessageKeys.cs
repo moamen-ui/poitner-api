@@ -27,6 +27,7 @@ public static class MessageKeys
         public const string CannotDeleteSelf = "You cannot delete your own account.";
         public const string CannotDeleteAdmin = "The workspace admin cannot be deleted directly — promote a deputy to replace them first, or remove the whole workspace instead.";
         public const string CannotDeleteDeputy = "Deputies cannot remove other deputies — only the workspace admin or a super admin can.";
+        public const string CannotChangeSelfFromAdmin = "You cannot change your own role away from Workspace Admin — promote a deputy to replace you first.";
         public const string DeleteNotAuthorized = "You are not authorized to delete this user.";
         public const string NotADeputy = "Only an existing deputy can be promoted to workspace admin.";
         public const string TransferNotAuthorized = "Only the current workspace admin or a super admin can transfer ownership.";
@@ -43,6 +44,8 @@ public static class MessageKeys
         public const string Disabled = "This project has been disabled.";
         public const string KeyAmbiguous = "This project key matches more than one workspace. Please contact your workspace administrator.";
         public const string SuperAdminNotAllowed = "Super admins cannot create projects. Sign in with a tenant account to use Pointer.";
+        public const string QuickAccessNotAllowed = "Client accounts cannot manage projects.";
+        public const string NoneForOrigin = "No project is set up for this site yet. Ask your workspace admin to set the project's App URL.";
     }
 
     public static class Role
@@ -55,6 +58,7 @@ public static class MessageKeys
         public const string HasUsers = "This role has assigned users — choose another role to move them to.";
         public const string ReassignSame = "The reassignment role must be different from the role being deleted.";
         public const string EscalationNotAllowed = "Only a super admin may assign or approve users with an admin-tier role.";
+        public const string GlobalRoleToggleOnly = "You can only enable or disable a shared role for your workspace — renaming or reconfiguring it is managed by the platform.";
     }
 
     public static class Preferences
@@ -88,6 +92,7 @@ public static class MessageKeys
         public const string InvalidPredefinedAction = "The selected action is unavailable. Please refresh and try again.";
         public const string StatusInvalid = "Invalid comment status.";
         public const string SuperAdminNotAllowed = "Super admins cannot leave comments. Sign in with a tenant account to use Pointer.";
+        public const string QuickAccessCannotChangeStatus = "Client accounts can leave feedback but can't change its status.";
     }
 
     public static class PredefinedAction
