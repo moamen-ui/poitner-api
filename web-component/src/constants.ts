@@ -18,6 +18,24 @@ export const BACKDROP_SELECTOR = [
   '.el-overlay', // Element Plus
 ].join(', ');
 
+// Dialog/panel CONTENT panes (the actual visible box, not the dimming backdrop) from the same
+// libraries. Confirmed empirically that a modal's content pane can out-rank our max-z-index shadow
+// content in Chromium's paint order despite computed z-index clearly favoring us (Angular Material
+// CDK reproduced directly: .cdk-overlay-pane sits above <pointer-feedback> in elementsFromPoint even
+// though every ancestor on both sides was verified to have no unexpected stacking-context creator).
+// Root cause aside, the same clip-path hole-punching technique that already handles backdrops fixes
+// this identically — see Element.punchBackdropHoles.
+export const DIALOG_CONTENT_SELECTOR = [
+  '.cdk-overlay-pane', // Angular CDK / Angular Material (dialogs, menus, autocomplete, …)
+  '.modal-content', // Bootstrap
+  '.MuiDialog-paper', // MUI
+  '.MuiPopover-paper', // MUI (menus/popovers)
+  '.ant-modal-content', // Ant Design (modal)
+  '.ant-drawer-content', // Ant Design (drawer)
+  '.v-overlay__content', // Vuetify
+  '.el-overlay-dialog', // Element Plus
+].join(', ');
+
 // Environment string → int mapping (API contract: 1=Local, 2=Staging, 3=Production)
 export const ENV_MAP: Record<string, number> = { local: 1, staging: 2, production: 3 };
 // Reverse: int → canonical name, for the in-widget environment switcher.

@@ -1,5 +1,5 @@
 import {
-  HL_CLASS, BACKDROP_SELECTOR, ENV_MAP, ENV_NAME, STATUS_STR, STATUS_INT, POSITIONS, CSS_URL, SCRIPT_SRC,
+  HL_CLASS, BACKDROP_SELECTOR, DIALOG_CONTENT_SELECTOR, ENV_MAP, ENV_NAME, STATUS_STR, STATUS_INT, POSITIONS, CSS_URL, SCRIPT_SRC,
   loadStatusCatalog, catalogToFilters, pfFetch, loadBranding, getBrandName,
 } from './constants';
 import { escapeHtml, ensureHighlightStyle, matchElement, pageIsRtl, buildClipPathWithHoles } from './dom';
@@ -197,10 +197,18 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
     };
     window.addEventListener('resize', this._scheduleBackdropUpdate);
     window.addEventListener('scroll', this._scheduleBackdropUpdate, true);
-    // Ignore mutations WE caused (setting clip-path on a backdrop) — otherwise punching a hole
-    // would itself re-trigger this observer forever, once per animation frame indefinitely.
+    // The mutation that opens .pf-sidebar/.pf-popover (a class toggle) fires at the START of their
+    // CSS transition (translateX/opacity), not at the end — so the rAF this schedules measures a
+    // MID-TRANSITION rect and never gets recomputed again once the panel settles, leaving a
+    // permanently-misaligned hole (confirmed: sidebar slides from x:1100→740 over 200ms, but the
+    // punched hole freezes wherever it happened to be on the very next frame, e.g. x:951). Catch the
+    // transition's end too so the hole gets one final, correct recompute.
+    this.root.addEventListener('transitionend', this._scheduleBackdropUpdate);
+    // Ignore mutations WE caused (setting clip-path on a backdrop/dialog pane) — otherwise punching
+    // a hole would itself re-trigger this observer forever, once per animation frame indefinitely.
     this._backdropObserver = new MutationObserver((mutations) => {
-      const isOwnMutation = (m: MutationRecord) => m.target instanceof Element && m.target.matches(BACKDROP_SELECTOR);
+      const isOwnMutation = (m: MutationRecord) =>
+        m.target instanceof Element && m.target.matches(`${BACKDROP_SELECTOR}, ${DIALOG_CONTENT_SELECTOR}`);
       if (mutations.some((m) => !isOwnMutation(m))) this._scheduleBackdropUpdate();
     });
     this._backdropObserver.observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ['style', 'class'] });
@@ -257,6 +265,7 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
     window.removeEventListener('resize', this._reposition);
     window.removeEventListener('resize', this._scheduleBackdropUpdate);
     window.removeEventListener('scroll', this._scheduleBackdropUpdate, true);
+    this.root.removeEventListener('transitionend', this._scheduleBackdropUpdate);
     this._backdropObserver?.disconnect();
     if (this._backdropRaf) cancelAnimationFrame(this._backdropRaf);
     document.removeEventListener('keydown', this._onShortcutKeydown);
@@ -774,19 +783,26 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
     return rects;
   }
 
-  // Clips a hole out of every full-viewport modal backdrop currently open (BACKDROP_SELECTOR),
-  // exactly where our own UI sits — see the connectedCallback comment for why this is necessary:
-  // no z-index, however high, makes an element clickable through such a backdrop, because
-  // Chromium's native hit-testing can award the click to the backdrop regardless of paint order.
-  // Clip-path IS respected by hit-testing, so this is the actual fix; everywhere else on the page,
-  // the backdrop keeps blocking/dismissing normally — only our own footprint becomes click-through.
+  // Clips a hole out of every full-viewport modal backdrop AND dialog/panel content pane currently
+  // open (BACKDROP_SELECTOR, DIALOG_CONTENT_SELECTOR), exactly where our own UI sits — see the
+  // connectedCallback comment for why the backdrop needs this: no z-index, however high, makes an
+  // element clickable through it, because Chromium's native hit-testing can award the click to the
+  // backdrop regardless of paint order. The content pane needs the SAME treatment for a separate
+  // reason, confirmed empirically against a real Angular Material dialog: its content pane
+  // out-ranks our max-z-index shadow content in actual paint order despite every ancestor on both
+  // sides having no stacking-context-creating property that would explain it per spec — whatever
+  // the underlying browser mechanism, clip-path fixes it identically. Everywhere else on the page,
+  // the backdrop/dialog keeps blocking/rendering normally — only our own footprint becomes
+  // click-through.
   private punchBackdropHoles(): void {
-    const backdrops = document.querySelectorAll<HTMLElement>(BACKDROP_SELECTOR);
-    if (backdrops.length === 0) return;
+    const targets = document.querySelectorAll<HTMLElement>(`${BACKDROP_SELECTOR}, ${DIALOG_CONTENT_SELECTOR}`);
+    if (targets.length === 0) return;
     const rects = this.ownUiRects();
-    const clipPath = rects.length === 0 ? '' : buildClipPathWithHoles(rects);
-    backdrops.forEach((b) => {
-      if (b.style.clipPath !== clipPath) b.style.clipPath = clipPath;
+    // clip-path is relative to EACH element's own box (see buildClipPathWithHoles) — a full-viewport
+    // backdrop and a small, positioned dialog pane need their holes computed separately, not shared.
+    targets.forEach((t) => {
+      const clipPath = rects.length === 0 ? '' : buildClipPathWithHoles(rects, t.getBoundingClientRect());
+      if (t.style.clipPath !== clipPath) t.style.clipPath = clipPath;
     });
   }
 
