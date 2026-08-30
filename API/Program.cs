@@ -156,8 +156,10 @@ app.Use(async (ctx, next) =>
         if (!ctx.Response.HasStarted)
             ctx.Response.StatusCode = StatusCodes.Status401Unauthorized;
     }
-    catch (Exception)
+    catch (Exception ex)
     {
+        ctx.RequestServices.GetRequiredService<ILogger<Program>>()
+            .LogError(ex, "Unhandled exception on {Method} {Path}", ctx.Request.Method, ctx.Request.Path);
         if (ctx.Response.HasStarted)
             throw;
         ctx.Response.StatusCode = StatusCodes.Status500InternalServerError;
