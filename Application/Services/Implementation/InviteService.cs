@@ -125,6 +125,17 @@ public class InviteService : IInviteService
             }
         }
 
+        // Quick-access role (e.g. "Client"): skip the normal defer-to-accept flow entirely — eagerly
+        // provision the User now with a generated password, emailed together with a direct link to
+        // the target project. `owner` is always a concrete tenant here: the only branch above that
+        // leaves `role` null (CreateNewWorkspace) can never resolve a QuickAccess role.
+        if (role != null && role.QuickAccess)
+        {
+            if (owner is not Guid quickOwner)
+                return Result<InviteResponse>.Forbidden(MessageKeys.Invite.Forbidden);
+            return await CreateQuickAccessInviteAsync(quickOwner, role, request);
+        }
+
         var ttlDays = request.ExpiresInDays is int d && d > 0 ? d : DefaultTtlDays;
         var emailNormalized = string.IsNullOrWhiteSpace(request.Email)
             ? null
@@ -484,6 +495,106 @@ public class InviteService : IInviteService
         });
     }
 
+    // Eagerly provisions a User for a Role.QuickAccess invite (e.g. "Client") instead of deferring
+    // creation to a click-through accept step: the invitee gets emailed a direct link to the
+    // project's AppUrl plus a generated password, and logs into the widget's existing login UI
+    // as-is — no accept page, no signup form.
+    private async Task<Result<InviteResponse>> CreateQuickAccessInviteAsync(Guid ownerId, Role role, CreateInviteRequest request)
+    {
+        var emailNormalized = string.IsNullOrWhiteSpace(request.Email)
+            ? null
+            : request.Email.Trim().ToLower();
+        if (emailNormalized == null)
+            return Result<InviteResponse>.Failure(MessageKeys.Invite.QuickAccessEmailRequired);
+
+        if (request.ProjectId is not int projectId)
+            return Result<InviteResponse>.Failure(MessageKeys.Invite.QuickAccessProjectRequired);
+
+        var project = await _unitOfWork.Repository<Project>()
+            .Query()
+            .IgnoreQueryFilters()
+            .AsNoTracking()
+            .FirstOrDefaultAsync(p => p.Id == projectId && p.DeletedAt == null && p.OwnerId == ownerId);
+        if (project == null)
+            return Result<InviteResponse>.Failure(MessageKeys.Project.NotFound);
+        if (string.IsNullOrWhiteSpace(project.AppUrl))
+            return Result<InviteResponse>.Failure(MessageKeys.Invite.QuickAccessAppUrlRequired);
+
+        // Tenant-scoped duplicate-email guard (mirrors AcceptJoinExistingWorkspaceAsync).
+        var existing = await _unitOfWork.Repository<User>()
+            .Query()
+            .IgnoreQueryFilters()
+            .AsNoTracking()
+            .AnyAsync(u => u.DeletedAt == null && u.Email == emailNormalized && u.OwnerId == ownerId);
+        if (existing)
+            return Result<InviteResponse>.Conflict(MessageKeys.Auth.AccountExists);
+
+        var seatCount = await _unitOfWork.Repository<User>()
+            .Query()
+            .IgnoreQueryFilters()
+            .CountAsync(u => u.OwnerId == ownerId && u.DeletedAt == null);
+        var seatCheck = await _entitlements.CheckCountAsync(ownerId, EntitlementCatalog.MaxSeats, seatCount);
+        if (!seatCheck.IsSuccess)
+            return Result<InviteResponse>.LimitReached(seatCheck.Message ?? MessageKeys.Plan.LimitReached, seatCheck.Limit!);
+
+        // Same generator DemoService.ProvisionAsync uses for its auto-provisioned accounts.
+        var password = Guid.NewGuid().ToString("N")[..12] + "Aa1!";
+        var ttlDays = request.ExpiresInDays is int d && d > 0 ? d : DefaultTtlDays;
+
+        var newUser = new User
+        {
+            Email = emailNormalized,
+            PasswordHash = _passwordHasher.Hash(password),
+            DisplayName = emailNormalized.Split('@')[0],
+            RoleId = role.Id,
+            PublicId = Guid.NewGuid(),
+            ApprovalStatus = ApprovalStatus.Approved,
+            IsActive = true,
+            OwnerId = ownerId
+        };
+
+        // Already "used": there is no accept step left to consume — the Invite row exists purely for
+        // the admin's own audit/history view (who was invited, when, to which project).
+        var invite = new Invite
+        {
+            OwnerId = ownerId,
+            Code = GenerateCode(),
+            RoleId = role.Id,
+            Email = emailNormalized,
+            ProjectId = projectId,
+            ExpiresAt = DateTime.UtcNow.AddDays(ttlDays),
+            MaxUses = 1,
+            Uses = 1,
+            RevokedAt = null
+        };
+
+        try
+        {
+            await _unitOfWork.Repository<User>().AddAsync(newUser);
+            await _unitOfWork.Repository<Invite>().AddAsync(invite);
+            await _unitOfWork.SaveChangesAsync();
+        }
+        catch (Microsoft.EntityFrameworkCore.DbUpdateException)
+        {
+            // Duplicate-email insert race (mirrors AcceptJoinExistingWorkspaceAsync).
+            return Result<InviteResponse>.Conflict(MessageKeys.Auth.AccountExists);
+        }
+
+        var brand = await _branding.BuildResponseAsync("", new HashSet<string>());
+        var emailSent = false;
+        try
+        {
+            emailSent = await _emailService.SendAsync(emailNormalized,
+                $"You're invited to review {project.Name}",
+                BuildQuickAccessInviteEmailHtml(project.AppUrl!, emailNormalized, password, brand.ProductName));
+        }
+        catch { /* logged inside the sender; ignore here */ }
+
+        var response = MapToResponse(invite, role.Name, project.AppUrl!);
+        response.EmailSent = emailSent;
+        return Result<InviteResponse>.Success(response, MessageKeys.Invite.Created);
+    }
+
     // ── Helpers ─────────────────────────────────────────────────────────────────
 
     // Resolves an invite by code that is currently acceptable: exists, not deleted, not revoked,
@@ -581,6 +692,18 @@ public class InviteService : IInviteService
 </div>";
     }
 
+    private static string BuildQuickAccessInviteEmailHtml(string appUrl, string email, string password, string productName)
+    {
+        return $@"<div style=""font-family:system-ui,sans-serif;color:#0f172a;line-height:1.6"">
+  <h2 style=""margin:0 0 8px"">You're invited to review {productName} 🐕</h2>
+  <p style=""margin:0 0 16px"">Open the link below, click the feedback bubble, and log in with the credentials below to leave comments.</p>
+  <p style=""margin:0 0 16px""><a href=""{appUrl}"" style=""display:inline-block;background:#2563eb;color:#fff;padding:10px 20px;border-radius:8px;text-decoration:none"">Open project →</a></p>
+  <p style=""margin:0 0 4px""><b>Email:</b> {email}</p>
+  <p style=""margin:0 0 16px""><b>Password:</b> {password}</p>
+  <p style=""margin:0;color:#475569;font-size:13px"">These credentials are ready to use now. If you weren't expecting this, you can ignore this email.</p>
+</div>";
+    }
+
     private static InviteResponse MapToResponse(Invite i, string? roleName, string url) => new()
     {
         Id = i.Id,
@@ -591,6 +714,7 @@ public class InviteService : IInviteService
         Email = i.Email,
         ExpiresAt = i.ExpiresAt,
         MaxUses = i.MaxUses,
-        Uses = i.Uses
+        Uses = i.Uses,
+        ProjectId = i.ProjectId
     };
 }

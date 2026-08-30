@@ -30,4 +30,11 @@ public class CreateInviteRequest
     /// Mirrors TenantService.CreateAsync's direct-create path, deferred to the invitee via a link.
     /// </summary>
     public bool CreateNewWorkspace { get; set; }
+
+    /// <summary>
+    /// Required when the pinned <see cref="RoleId"/> resolves to a Role.QuickAccess role (e.g.
+    /// "Client"): the project the invitee is being invited to comment on. Its AppUrl is where the
+    /// invite email sends them; ignored for an ordinary (non-quick-access) invite.
+    /// </summary>
+    public int? ProjectId { get; set; }
 }

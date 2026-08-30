@@ -7,6 +7,9 @@ public class UpdateProjectRequest
     public string? Name { get; set; }
     public bool? IsActive { get; set; }
 
+    /// <summary>null (property omitted) → leave untouched, matching Name's treatment.</summary>
+    public string? AppUrl { get; set; }
+
     /// <summary>null (property omitted) → leave untouched, matching IsActive's treatment.</summary>
     public bool? PageContextCaptureEnabled { get; set; }
 

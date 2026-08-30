@@ -11,6 +11,10 @@ public class Project : BaseEntity
     // docs/superpowers/specs/2026-08-25-page-context-capture-design.md.
     public bool PageContextCaptureEnabled { get; set; } = false;
 
+    // Where this project's widget is embedded — set by the admin so a quick-access client invite
+    // (see Role.QuickAccess) knows where to send the invitee. Optional for ordinary projects.
+    public string? AppUrl { get; set; }
+
     public Guid? OwnerId { get; set; }
     public ICollection<Comment> Comments { get; set; } = new List<Comment>();
 }

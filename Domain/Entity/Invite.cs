@@ -27,6 +27,13 @@ public class Invite : BaseEntity
     /// <summary>Optional pinned non-admin role; null = invitee picks a tenant/global role on accept.</summary>
     public int? RoleId { get; set; }
 
+    /// <summary>
+    /// Target project for a quick-access invite (see Role.QuickAccess) — used only to know which
+    /// project's AppUrl to send the invitee to. Not an access grant: tenant membership already
+    /// grants access to every project in the tenant.
+    /// </summary>
+    public int? ProjectId { get; set; }
+
     /// <summary>Optional email lock: only this (normalized) email may accept. Null = anyone with the link.</summary>
     public string? Email { get; set; }
 

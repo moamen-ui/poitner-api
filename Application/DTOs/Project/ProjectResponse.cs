@@ -9,6 +9,9 @@ public class ProjectResponse
     public string Name { get; set; } = string.Empty;
     public bool IsActive { get; set; }
 
+    /// <summary>Where this project's widget is embedded — required to send a quick-access client invite.</summary>
+    public string? AppUrl { get; set; }
+
     /// <summary>Opt-in, default off: whether the widget may capture console/network context for this
     /// project's bug-flagged comments.</summary>
     public bool PageContextCaptureEnabled { get; set; }

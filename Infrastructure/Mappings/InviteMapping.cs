@@ -25,6 +25,7 @@ public class InviteMapping : IEntityTypeConfiguration<Invite>
         b.Property(x => x.Code).HasColumnName("code").IsRequired().HasMaxLength(64);
         b.HasIndex(x => x.Code).IsUnique();
         b.Property(x => x.RoleId).HasColumnName("role_id");
+        b.Property(x => x.ProjectId).HasColumnName("project_id");
         b.Property(x => x.Email).HasColumnName("email").HasMaxLength(256);
         b.Property(x => x.ExpiresAt).HasColumnName("expires_at");
         b.Property(x => x.MaxUses).HasColumnName("max_uses");

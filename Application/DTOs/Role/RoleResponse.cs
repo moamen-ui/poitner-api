@@ -8,6 +8,9 @@ public class RoleResponse
     public bool IsSystem { get; set; }
     public bool IsActive { get; set; }
 
+    /// <summary>See Role.QuickAccess.</summary>
+    public bool QuickAccess { get; set; }
+
     /// <summary>
     /// Whether the CALLER may rename / enable / disable / delete this role. Mirrors the guards in
     /// RoleService.UpdateAsync and DeleteAsync: system roles are immutable, and a scoped admin may

@@ -9,7 +9,10 @@ public class InviteResponse
     public int Id { get; set; }
     public string Code { get; set; } = string.Empty;
 
-    /// <summary>The shareable join link: <c>{app}/join?code=…</c>.</summary>
+    /// <summary>
+    /// The shareable join link: <c>{app}/join?code=…</c>. For a quick-access invite (see
+    /// Role.QuickAccess) there is no accept step — this is the target project's AppUrl instead.
+    /// </summary>
     public string Url { get; set; } = string.Empty;
 
     public int? RoleId { get; set; }
@@ -18,6 +21,9 @@ public class InviteResponse
     public DateTime ExpiresAt { get; set; }
     public int? MaxUses { get; set; }
     public int Uses { get; set; }
+
+    /// <summary>Set only for a quick-access invite — the project the invitee was sent to.</summary>
+    public int? ProjectId { get; set; }
 
     /// <summary>
     /// True only on the response to POST (create): the invite email was just sent to

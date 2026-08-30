@@ -25,6 +25,7 @@ public class ProjectMapping : IEntityTypeConfiguration<Project>
         b.Property(x => x.Name).HasColumnName("name").IsRequired().HasMaxLength(128);
         b.Property(x => x.IsActive).HasColumnName("is_active");
         b.Property(x => x.PageContextCaptureEnabled).HasColumnName("page_context_capture_enabled").HasDefaultValue(false);
+        b.Property(x => x.AppUrl).HasColumnName("app_url").HasMaxLength(2048);
         // NOT NULL at the DB level: ProjectService.CreateAsync forbids a null-owner project (super
         // admins can no longer create/own one at all) — enforced here too so a future bug can't
         // silently reintroduce the recurring "owner_id" bug class by producing one anyway.

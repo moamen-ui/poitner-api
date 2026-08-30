@@ -13,15 +13,15 @@ public static class AdminSeeder
 {
     // Default roles seeded on first boot. "Admin" is a protected system role (grants dashboard
     // access, cannot be renamed/disabled). The rest are ordinary labels admins can manage.
-    private static readonly (string Name, bool GrantsAdmin, bool IsSystem, bool IsSuperAdmin)[] DefaultRoles =
+    private static readonly (string Name, bool GrantsAdmin, bool IsSystem, bool IsSuperAdmin, bool QuickAccess)[] DefaultRoles =
     {
-        ("Admin", true, true, true),
-        ("Workspace Admin", true, true, false),
-        ("Workspace Admin Deputy", true, true, false),
-        ("Developer", false, false, false),
-        ("PM", false, false, false),
-        ("Tester", false, false, false),
-        ("Client", false, false, false),
+        ("Admin", true, true, true, false),
+        ("Workspace Admin", true, true, false, false),
+        ("Workspace Admin Deputy", true, true, false, false),
+        ("Developer", false, false, false, false),
+        ("PM", false, false, false, false),
+        ("Tester", false, false, false, false),
+        ("Client", false, false, false, true),
     };
 
     public static async Task SeedAsync(IServiceProvider services)
@@ -37,10 +37,10 @@ public static class AdminSeeder
         // global roles whenever Tenancy:StrictNullTenantIsolation is true, making every boot try to
         // re-insert them and crash on the unique (name, owner_id IS NULL) index.
         var existingRoleNames = await db.Roles.IgnoreQueryFilters().Select(r => r.Name).ToListAsync();
-        foreach (var (name, grantsAdmin, isSystem, isSuperAdmin) in DefaultRoles)
+        foreach (var (name, grantsAdmin, isSystem, isSuperAdmin, quickAccess) in DefaultRoles)
         {
             if (!existingRoleNames.Contains(name))
-                db.Roles.Add(new Role { Name = name, GrantsAdmin = grantsAdmin, IsSystem = isSystem, IsSuperAdmin = isSuperAdmin });
+                db.Roles.Add(new Role { Name = name, GrantsAdmin = grantsAdmin, IsSystem = isSystem, IsSuperAdmin = isSuperAdmin, QuickAccess = quickAccess });
         }
         await db.SaveChangesAsync();
 
@@ -50,6 +50,15 @@ public static class AdminSeeder
         if (adminRole is not null && !adminRole.IsSuperAdmin)
         {
             adminRole.IsSuperAdmin = true;
+            await db.SaveChangesAsync();
+        }
+
+        // Idempotently upgrade the existing global "Client" role to QuickAccess (for databases
+        // seeded before this flag existed). New databases already get it from the tuple above.
+        var clientRole = await db.Roles.IgnoreQueryFilters().FirstOrDefaultAsync(r => r.Name == "Client" && r.OwnerId == null);
+        if (clientRole is not null && !clientRole.QuickAccess)
+        {
+            clientRole.QuickAccess = true;
             await db.SaveChangesAsync();
         }
 
