@@ -91,6 +91,7 @@ public static class MessageKeys
         public const string InvalidPredefinedAction = "The selected action is unavailable. Please refresh and try again.";
         public const string StatusInvalid = "Invalid comment status.";
         public const string SuperAdminNotAllowed = "Super admins cannot leave comments. Sign in with a tenant account to use Pointer.";
+        public const string QuickAccessCannotChangeStatus = "Client accounts can leave feedback but can't change its status.";
     }
 
     public static class PredefinedAction

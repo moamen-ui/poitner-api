@@ -42,6 +42,7 @@ public class CommentsController(ICommentService commentService) : ControllerBase
     public async Task<IActionResult> UpdateStatus(int id, [FromBody] UpdateCommentStatusRequest request)
     {
         var result = await commentService.UpdateStatusAsync(id, request, User.GetId());
+        if (result.IsForbidden) return StatusCode(StatusCodes.Status403Forbidden, result);
         if (result.IsNotFound) return NotFound(result);
         if (result.IsConflict) return Conflict(result);
         return result.IsSuccess ? Ok(result) : BadRequest(result);
