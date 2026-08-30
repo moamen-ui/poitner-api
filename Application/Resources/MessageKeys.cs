@@ -27,6 +27,7 @@ public static class MessageKeys
         public const string CannotDeleteSelf = "You cannot delete your own account.";
         public const string CannotDeleteAdmin = "The workspace admin cannot be deleted directly — promote a deputy to replace them first, or remove the whole workspace instead.";
         public const string CannotDeleteDeputy = "Deputies cannot remove other deputies — only the workspace admin or a super admin can.";
+        public const string CannotChangeSelfFromAdmin = "You cannot change your own role away from Workspace Admin — promote a deputy to replace you first.";
         public const string DeleteNotAuthorized = "You are not authorized to delete this user.";
         public const string NotADeputy = "Only an existing deputy can be promoted to workspace admin.";
         public const string TransferNotAuthorized = "Only the current workspace admin or a super admin can transfer ownership.";
@@ -43,6 +44,7 @@ public static class MessageKeys
         public const string Disabled = "This project has been disabled.";
         public const string KeyAmbiguous = "This project key matches more than one workspace. Please contact your workspace administrator.";
         public const string SuperAdminNotAllowed = "Super admins cannot create projects. Sign in with a tenant account to use Pointer.";
+        public const string QuickAccessNotAllowed = "Client accounts cannot manage projects.";
     }
 
     public static class Role

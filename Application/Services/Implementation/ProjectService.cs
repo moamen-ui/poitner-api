@@ -43,6 +43,12 @@ public class ProjectService : IProjectService
         if (_currentUser.IsSuperAdmin)
             return Result<ProjectResponse>.Forbidden(MessageKeys.Project.SuperAdminNotAllowed);
 
+        // Quick-access (e.g. "Client") accounts exist only to comment on the ONE project they were
+        // invited to — they must never reach project management, even though ProjectsController is
+        // broadly [Authorize] (not admin-gated) for ordinary stakeholders.
+        if (_currentUser.IsQuickAccess)
+            return Result<ProjectResponse>.Forbidden(MessageKeys.Project.QuickAccessNotAllowed);
+
         // OwnerId stamps the tenant. `?? _currentUser.Id` is defensive: TenantId is null only for a
         // super admin (blocked above) or a malformed/missing `tenant` claim, which should never
         // happen for a real tenant user but must not silently produce a null-owner row if it did.
@@ -113,6 +119,13 @@ public class ProjectService : IProjectService
 
     public async Task<Result<List<ProjectResponse>>> ListAsync()
     {
+        // See CreateAsync's QuickAccessNotAllowed comment — quick-access accounts never reach
+        // project management. (They never need to: PointerDogfoodService's own use of this endpoint
+        // is gated behind an admin-tier login on the dashboard, and the widget's own runtime uses
+        // EnsureAsync/the comments endpoints instead, not this one.)
+        if (_currentUser.IsQuickAccess)
+            return Result<List<ProjectResponse>>.Forbidden(MessageKeys.Project.QuickAccessNotAllowed);
+
         var projects = await _unitOfWork.Repository<Project>()
             .Query()
             .AsNoTracking()

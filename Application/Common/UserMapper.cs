@@ -18,6 +18,7 @@ public static class UserMapper
         RoleName = user.Role?.Name ?? string.Empty,
         IsAdmin = user.Role?.GrantsAdmin ?? false,
         IsSuperAdmin = user.Role?.IsSuperAdmin ?? false,
+        IsQuickAccess = user.Role?.QuickAccess ?? false,
         Language = user.Language,
         Theme = user.Theme,
         AddCommentShortcut = user.AddCommentShortcut,

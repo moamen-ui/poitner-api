@@ -9,6 +9,7 @@ public class MeResponse
     public string RoleName { get; set; } = string.Empty;
     public bool IsAdmin { get; set; }
     public bool IsSuperAdmin { get; set; }
+    public bool IsQuickAccess { get; set; }
     public string? Language { get; set; }
     public string? Theme { get; set; }
 
