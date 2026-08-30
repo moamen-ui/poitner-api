@@ -37,6 +37,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options, ICurrentUser c
     }
 
     public DbSet<Role> Roles => Set<Role>();
+    public DbSet<RoleTenantOverride> RoleTenantOverrides => Set<RoleTenantOverride>();
     public DbSet<User> Users => Set<User>();
     public DbSet<Project> Projects => Set<Project>();
     public DbSet<Comment> Comments => Set<Comment>();
@@ -95,6 +96,11 @@ public class AppDbContext(DbContextOptions<AppDbContext> options, ICurrentUser c
         // regardless of `strict`; only a null-tenant caller's access to it is `strict`-gated.
         b.Entity<Role>().HasQueryFilter(e => currentUser.IsSuperAdmin || (currentUser.TenantId != null && (e.OwnerId == currentUser.TenantId || e.OwnerId == null)) || (currentUser.TenantId == null && !strict && e.OwnerId == null));
         b.Entity<StatusPresentation>().HasQueryFilter(e => currentUser.IsSuperAdmin || (currentUser.TenantId != null && (e.OwnerId == currentUser.TenantId || e.OwnerId == null)) || (currentUser.TenantId == null && !strict && e.OwnerId == null));
+
+        // Strict-own (no global bucket — OwnerId is never null here, unlike Role/StatusPresentation
+        // above): a tenant's override of a GLOBAL role's active status only ever exists for exactly
+        // one tenant, so there is nothing to share.
+        b.Entity<RoleTenantOverride>().HasQueryFilter(e => currentUser.IsSuperAdmin || (currentUser.TenantId != null && e.OwnerId == currentUser.TenantId));
 
         // AppSetting: no filter — not tenant data; guarded by endpoint authorization.
 

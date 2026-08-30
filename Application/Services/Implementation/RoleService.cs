@@ -62,7 +62,26 @@ public class RoleService : IRoleService
             .OrderBy(r => r.Id)
             .ToListAsync();
 
-        return Result<List<RoleResponse>>.Success(roles.Select(MapToResponse).ToList());
+        // A scoped tenant may have overridden some GLOBAL, non-system roles' active status for
+        // themselves only (see UpdateAsync) — merge those in without touching the shared rows.
+        var overridesByRoleId = new Dictionary<int, bool>();
+        if (!_currentUser.IsSuperAdmin && _currentUser.TenantId is Guid tenantId)
+        {
+            var globalRoleIds = roles.Where(r => r.OwnerId == null).Select(r => r.Id).ToList();
+            if (globalRoleIds.Count > 0)
+            {
+                overridesByRoleId = await _unitOfWork.Repository<RoleTenantOverride>()
+                    .Query()
+                    .AsNoTracking()
+                    .Where(o => o.OwnerId == tenantId && globalRoleIds.Contains(o.RoleId))
+                    .ToDictionaryAsync(o => o.RoleId, o => o.IsActive);
+            }
+        }
+
+        var list = roles
+            .Select(r => MapToResponse(r, overridesByRoleId.TryGetValue(r.Id, out var ov) ? ov : (bool?)null))
+            .ToList();
+        return Result<List<RoleResponse>>.Success(list);
     }
 
     public async Task<Result<List<PublicRoleResponse>>> ListPublicAsync(string? projectKey = null)
@@ -123,9 +142,43 @@ public class RoleService : IRoleService
         if (role.IsSystem)
             return Result<RoleResponse>.Conflict(MessageKeys.Role.SystemImmutable);
 
-        // Tenancy: a scoped admin may only modify roles it OWNS — never global
-        // (OwnerId == null) or another tenant's roles. The Role query filter lets a
-        // scoped admin SEE global roles, so an explicit ownership check is required here.
+        // A scoped (non-super-admin) tenant touching a GLOBAL, non-system role (e.g. the seeded
+        // "Tester") can only ever flip its active status FOR THEIR OWN WORKSPACE — never rename or
+        // reconfigure the shared row every other tenant reads. Recorded as a per-tenant override
+        // instead of mutating `role`. A super admin falls through to the normal path below and edits
+        // the real row directly, same as always.
+        if (!_currentUser.IsSuperAdmin && role.OwnerId == null)
+        {
+            if (request.Name != null || request.GrantsAdmin.HasValue || !request.IsActive.HasValue)
+                return Result<RoleResponse>.Failure(MessageKeys.Role.GlobalRoleToggleOnly);
+
+            var tenantId = _currentUser.TenantId!.Value; // a scoped caller always has one
+            var overrideRow = await _unitOfWork.Repository<RoleTenantOverride>()
+                .Query()
+                .FirstOrDefaultAsync(o => o.RoleId == role.Id && o.OwnerId == tenantId);
+
+            if (overrideRow == null)
+            {
+                await _unitOfWork.Repository<RoleTenantOverride>().AddAsync(new RoleTenantOverride
+                {
+                    RoleId = role.Id,
+                    OwnerId = tenantId,
+                    IsActive = request.IsActive.Value
+                });
+            }
+            else
+            {
+                overrideRow.IsActive = request.IsActive.Value;
+                _unitOfWork.Repository<RoleTenantOverride>().Update(overrideRow);
+            }
+            await _unitOfWork.SaveChangesAsync();
+
+            return Result<RoleResponse>.Success(MapToResponse(role, request.IsActive.Value));
+        }
+
+        // Tenancy: a scoped admin may only modify roles it OWNS — never global (handled above) or
+        // another tenant's roles. The Role query filter lets a scoped admin SEE global roles, so an
+        // explicit ownership check is required here.
         if (!_currentUser.IsSuperAdmin && role.OwnerId != _currentUser.TenantId)
             return Result<RoleResponse>.NotFound(MessageKeys.Role.NotFound);
 
@@ -235,23 +288,36 @@ public class RoleService : IRoleService
         });
     }
 
-    private RoleResponse MapToResponse(Role role) => new()
+    /// <param name="overrideIsActive">
+    /// This tenant's own override of a GLOBAL role's active status, if one exists (see ListAsync) —
+    /// null means "use the role's own IsActive as-is" (its normal case, or a super-admin's view).
+    /// </param>
+    private RoleResponse MapToResponse(Role role, bool? overrideIsActive = null) => new()
     {
         Id = role.Id,
         Name = role.Name,
         GrantsAdmin = role.GrantsAdmin,
         IsSystem = role.IsSystem,
-        IsActive = role.IsActive,
+        IsActive = overrideIsActive ?? role.IsActive,
         QuickAccess = role.QuickAccess,
-        CanManage = CanManage(role)
+        CanManage = CanManage(role),
+        CanToggleActive = CanToggleActive(role)
     };
 
     /// <summary>
     /// The same two guards Update/Delete apply, evaluated for the current caller. Kept here (not in
     /// the clients) so the rule lives in one place: system roles are immutable for everyone, and a
-    /// scoped admin may only manage roles its own tenant owns — the Role query filter deliberately
-    /// lets it SEE global roles it cannot touch.
+    /// scoped admin may only manage (rename/delete/reconfigure) roles its own tenant owns — the Role
+    /// query filter deliberately lets it SEE global roles it cannot fully manage.
     /// </summary>
     private bool CanManage(Role role) =>
         !role.IsSystem && (_currentUser.IsSuperAdmin || role.OwnerId == _currentUser.TenantId);
+
+    /// <summary>
+    /// Whether the caller may at least flip this role's active status — a strict superset of
+    /// CanManage: a scoped tenant can toggle a GLOBAL, non-system role (e.g. "Tester") on/off for
+    /// their own workspace via a per-tenant override, even though they can't rename or delete it.
+    /// </summary>
+    private bool CanToggleActive(Role role) =>
+        CanManage(role) || (!role.IsSystem && role.OwnerId == null);
 }
