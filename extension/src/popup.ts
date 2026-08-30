@@ -94,7 +94,10 @@ async function renderMain(user: StoredUser | null) {
   const draw = () => {
     const remembered = tabState.remembered?.project;
     const hasProjects = projects.length > 0;
-    const selectedKey = (remembered && projects.some((p) => p.key === remembered)) ? remembered : (projects[0]?.key || '');
+    // Empty by default rather than silently preselecting the first project — picking one should
+    // always be a deliberate act, since a wrong silent default is exactly how a tab ends up bound
+    // to the wrong project.
+    const selectedKey = (remembered && projects.some((p) => p.key === remembered)) ? remembered : '';
     const opts = projects.map((p) => `<option value="${esc(p.key)}">${esc(p.name)}</option>`).join('');
 
     root.innerHTML = `
@@ -112,7 +115,10 @@ async function renderMain(user: StoredUser | null) {
           <input id="new-name" placeholder="Display name (optional)" />
           <button class="primary" id="create">Create project</button>
         </div>` : ''}
-      <button class="${tabState.active ? 'danger' : 'primary'}" id="toggle"${(!hasProjects && !tabState.active) ? ' disabled' : ''}>${tabState.active ? 'Deactivate on this tab' : 'Activate on this tab'}</button>
+      ${tabState.active
+        ? `<button class="primary" id="toggle"${!hasProjects ? ' disabled' : ''}>Switch to selected project</button>
+           <button class="danger" id="deactivate" style="margin-top:6px;">Deactivate on this tab</button>`
+        : `<button class="primary" id="toggle"${!hasProjects ? ' disabled' : ''}>Activate on this tab</button>`}
       <div class="note">Activating reloads this tab once, then injects the ${PRODUCT} widget. Switch environment inside the widget (Comments panel).</div>`;
 
     (document.getElementById('signout') as HTMLElement).onclick = signOut;
@@ -128,7 +134,7 @@ async function renderMain(user: StoredUser | null) {
         const name = (document.getElementById('new-name') as HTMLInputElement).value.trim() || key;
         if (!/^[A-Za-z0-9._-]+$/.test(key)) return err('Project key: letters, digits, . _ - only.');
         createBtn.disabled = true;
-        const res = await send<{ ok: boolean; project?: ExtProject; error?: string }>({ type: 'createProject', key, name });
+        const res = await send<{ ok: boolean; project?: ExtProject; error?: string }>({ type: 'createProject', key, name, appUrl: origin });
         if (!res.ok) { createBtn.disabled = false; return err(res.error || 'Could not create project.'); }
         if (!projects.some((p) => p.key === key)) projects.push({ key, name, isActive: true });
         tabState.remembered = { project: key, environment: env }; // preselect the newly-created project
@@ -136,18 +142,24 @@ async function renderMain(user: StoredUser | null) {
       };
     }
 
+    // Activates (or, on an already-active tab, re-activates onto whatever's now selected — this is
+    // the ONLY way to move a tab from one project to another; the deactivate button below always
+    // just turns the widget off, never switches).
     (document.getElementById('toggle') as HTMLButtonElement).onclick = async () => {
       err('');
-      if (tabState.active) {
-        await send({ type: 'deactivate', tabId: tab!.id! });
-        return window.close();
-      }
       const project = (document.getElementById('project') as HTMLInputElement | null)?.value.trim() || '';
       const environment = env; // initial default; the viewer switches environment inside the widget
       if (!project) return err('Pick a project first.');
       if (!projects.some((p) => p.key === project)) return err('Pick a project from your list.');
       const res = await send<{ ok: boolean; error?: string }>({ type: 'activate', tabId: tab!.id!, hostname, origin, project, environment });
       if (!res.ok) return err(res.error || 'Could not activate.'); // e.g. extension disabled on this plan
+      window.close();
+    };
+
+    const deactivateBtn = document.getElementById('deactivate') as HTMLButtonElement | null;
+    if (deactivateBtn) deactivateBtn.onclick = async () => {
+      err('');
+      await send({ type: 'deactivate', tabId: tab!.id! });
       window.close();
     };
   };

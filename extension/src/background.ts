@@ -315,7 +315,10 @@ chrome.runtime.onMessage.addListener((msg: BgRequest | ProxyRequest, _sender, se
         return { ok: true, project: { key: r.data.key, name: r.data.name, isActive: true } as ExtProject };
       }
       case 'createProject': {
-        const r = await apiFetch('/api/admin/projects', { method: 'POST', body: JSON.stringify({ key: m.key, name: m.name }) });
+        // Stamp the AppUrl from wherever the project was created — otherwise a project created
+        // through the extension has no recorded site at all, and the next visit here can't be
+        // auto-matched (see 'projectForOrigin' / activate defaults).
+        const r = await apiFetch('/api/admin/projects', { method: 'POST', body: JSON.stringify({ key: m.key, name: m.name, appUrl: m.appUrl || null }) });
         if (!r.ok) return { ok: false, error: r.message || (r.status === 409 ? 'A project with that key already exists.' : 'Could not create project.') };
         return { ok: true, project: { key: m.key, name: m.name, isActive: true } };
       }

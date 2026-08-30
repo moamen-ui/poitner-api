@@ -55,7 +55,7 @@ export type BgRequest =
   | { type: 'setProjectForDomain'; hostname: string; project: string }
   | { type: 'listProjects' }
   | { type: 'projectForOrigin'; origin: string }
-  | { type: 'createProject'; key: string; name: string }
+  | { type: 'createProject'; key: string; name: string; appUrl: string }
   | { type: 'activate'; tabId: number; hostname: string; origin: string; project: string; environment: string }
   | { type: 'deactivate'; tabId: number };
 
