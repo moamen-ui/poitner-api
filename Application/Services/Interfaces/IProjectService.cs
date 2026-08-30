@@ -43,4 +43,12 @@ public interface IProjectService
     /// buffer console/network events at all and whether to show "Report as a bug".
     /// </summary>
     Task<Result<CaptureConfigResponse>> GetCaptureConfigAsync(string key);
+
+    /// <summary>All of this project's per-environment URLs (global + the tenant's own environments).</summary>
+    Task<Result<List<ProjectAppUrlResponse>>> ListAppUrlsAsync(int projectId);
+
+    /// <summary>Upserts this project's URL for one environment.</summary>
+    Task<Result<ProjectAppUrlResponse>> SetAppUrlAsync(int projectId, int environmentId, SetProjectAppUrlRequest request);
+
+    Task<Result> DeleteAppUrlAsync(int projectId, int environmentId);
 }

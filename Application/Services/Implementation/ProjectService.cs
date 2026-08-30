@@ -80,6 +80,12 @@ public class ProjectService : IProjectService
         await _unitOfWork.Repository<Project>().AddAsync(project);
         await _unitOfWork.SaveChangesAsync(); // need the project Id before attaching actions
 
+        // A project created with just "AppUrl" (e.g. via the browser extension, which has no concept
+        // of multiple environments) lands on "default" — the one environment every tenant has out of
+        // the box. See ExtensionService.FindProjectForOriginAsync, which reads from ProjectAppUrl now.
+        if (project.AppUrl != null)
+            await SyncDefaultAppUrlAsync(project, project.AppUrl);
+
         if (request.PredefinedActions.Count > 0)
         {
             // MaxPredefinedActionsPerProject: a freshly-created project starts at 0 actions, so the
@@ -192,7 +198,10 @@ public class ProjectService : IProjectService
             project.PageContextCaptureEnabled = request.PageContextCaptureEnabled.Value;
 
         if (request.AppUrl != null)
+        {
             project.AppUrl = request.AppUrl.Trim();
+            await SyncDefaultAppUrlAsync(project, project.AppUrl);
+        }
 
         // NOTE: intentionally do NOT mutate project.OwnerId here. A null owner is legitimate for
         // global projects (e.g. the marketing landing); rewriting it would break the widget for
@@ -219,6 +228,110 @@ public class ProjectService : IProjectService
             .CountAsync(c => c.ProjectId == project.Id && c.DeletedAt == null);
         return Result<ProjectResponse>.Success(MapToResponse(project, actions, commentsCount,
             await ResolveCreatorNameAsync(project.CreatedBy)));
+    }
+
+    public async Task<Result<List<ProjectAppUrlResponse>>> ListAppUrlsAsync(int projectId)
+    {
+        var project = await _unitOfWork.Repository<Project>().GetByIdAsync(projectId);
+        if (project == null || project.DeletedAt != null)
+            return Result<List<ProjectAppUrlResponse>>.NotFound(MessageKeys.Project.NotFound);
+
+        var urls = await _unitOfWork.Repository<ProjectAppUrl>()
+            .Query()
+            .AsNoTracking()
+            .Include(u => u.AppEnvironment)
+            .Where(u => u.ProjectId == projectId && u.DeletedAt == null)
+            .OrderBy(u => u.AppEnvironment.Name)
+            .ToListAsync();
+
+        return Result<List<ProjectAppUrlResponse>>.Success(urls.Select(u => new ProjectAppUrlResponse
+        {
+            AppEnvironmentId = u.AppEnvironmentId,
+            EnvironmentName = u.AppEnvironment.Name,
+            Url = u.Url
+        }).ToList());
+    }
+
+    public async Task<Result<ProjectAppUrlResponse>> SetAppUrlAsync(int projectId, int environmentId, SetProjectAppUrlRequest request)
+    {
+        var project = await _unitOfWork.Repository<Project>().GetByIdAsync(projectId);
+        if (project == null || project.DeletedAt != null)
+            return Result<ProjectAppUrlResponse>.NotFound(MessageKeys.Project.NotFound);
+
+        if (!(_currentUser.IsAdmin || project.CreatedBy == _currentUser.Id))
+            return Result<ProjectAppUrlResponse>.Forbidden(MessageKeys.Project.NotFound);
+
+        var url = request.Url.Trim();
+        if (string.IsNullOrEmpty(url))
+            return Result<ProjectAppUrlResponse>.Failure("URL is required.");
+
+        // The environment must be visible to this tenant (own or global) — the query filter already
+        // enforces that; a foreign/other-tenant environment id simply won't be found.
+        var environment = await _unitOfWork.Repository<Domain.Entity.AppEnvironment>().GetByIdAsync(environmentId);
+        if (environment == null || environment.DeletedAt != null)
+            return Result<ProjectAppUrlResponse>.NotFound(MessageKeys.AppEnvironment.NotFound);
+
+        var existing = await _unitOfWork.Repository<ProjectAppUrl>()
+            .Query()
+            .Where(u => u.ProjectId == projectId && u.AppEnvironmentId == environmentId && u.DeletedAt == null)
+            .FirstOrDefaultAsync();
+
+        if (existing != null)
+        {
+            existing.Url = url;
+            _unitOfWork.Repository<ProjectAppUrl>().Update(existing);
+        }
+        else
+        {
+            existing = new ProjectAppUrl
+            {
+                ProjectId = projectId,
+                AppEnvironmentId = environmentId,
+                Url = url,
+                OwnerId = project.OwnerId
+            };
+            await _unitOfWork.Repository<ProjectAppUrl>().AddAsync(existing);
+        }
+        await _unitOfWork.SaveChangesAsync();
+
+        // Keep the legacy single field in sync for "default" so old readers (widget install
+        // instructions, anything not yet updated) still see a sensible value.
+        if (environment.Name == "default")
+        {
+            project.AppUrl = url;
+            _unitOfWork.Repository<Project>().Update(project);
+            await _unitOfWork.SaveChangesAsync();
+        }
+
+        return Result<ProjectAppUrlResponse>.Success(new ProjectAppUrlResponse
+        {
+            AppEnvironmentId = environmentId,
+            EnvironmentName = environment.Name,
+            Url = url
+        });
+    }
+
+    public async Task<Result> DeleteAppUrlAsync(int projectId, int environmentId)
+    {
+        var project = await _unitOfWork.Repository<Project>().GetByIdAsync(projectId);
+        if (project == null || project.DeletedAt != null)
+            return Result.NotFound(MessageKeys.Project.NotFound);
+
+        if (!(_currentUser.IsAdmin || project.CreatedBy == _currentUser.Id))
+            return Result.Forbidden(MessageKeys.Project.NotFound);
+
+        var existing = await _unitOfWork.Repository<ProjectAppUrl>()
+            .Query()
+            .Where(u => u.ProjectId == projectId && u.AppEnvironmentId == environmentId && u.DeletedAt == null)
+            .FirstOrDefaultAsync();
+        if (existing == null)
+            return Result.NotFound(MessageKeys.Project.NotFound);
+
+        existing.DeletedAt = DateTime.UtcNow;
+        _unitOfWork.Repository<ProjectAppUrl>().Update(existing);
+        await _unitOfWork.SaveChangesAsync();
+
+        return Result.Success();
     }
 
     public async Task<Result> DeleteAsync(int id)
@@ -405,6 +518,47 @@ public class ProjectService : IProjectService
             _unitOfWork.Repository<PredefinedAction>().Update(row);
         }
 
+        return Result.Success();
+    }
+
+    // Upserts a ProjectAppUrl row for the tenant's "default" AppEnvironment — prefers the tenant's
+    // own "default" if it ever creates one, else falls back to the super-admin-seeded global one.
+    // Keeps the legacy single Project.AppUrl field and the new per-environment table in sync so
+    // ExtensionService.FindProjectForOriginAsync (which reads the new table) never regresses for
+    // callers that still only set Project.AppUrl (the extension, the old dashboard dialog).
+    private async Task<Result> SyncDefaultAppUrlAsync(Project project, string appUrl)
+    {
+        var owner = project.OwnerId;
+        var defaultEnv = await _unitOfWork.Repository<Domain.Entity.AppEnvironment>()
+            .Query()
+            .Where(e => e.DeletedAt == null && e.Name == "default" && (e.OwnerId == owner || e.OwnerId == null))
+            .OrderByDescending(e => e.OwnerId != null) // tenant's own "default" wins over the global one
+            .FirstOrDefaultAsync();
+        if (defaultEnv == null)
+            return Result.Success(); // no "default" environment exists (e.g. it was deleted) — nothing to sync
+
+        var existing = await _unitOfWork.Repository<ProjectAppUrl>()
+            .Query()
+            .Where(u => u.ProjectId == project.Id && u.AppEnvironmentId == defaultEnv.Id && u.DeletedAt == null)
+            .FirstOrDefaultAsync();
+
+        if (existing != null)
+        {
+            existing.Url = appUrl;
+            _unitOfWork.Repository<ProjectAppUrl>().Update(existing);
+        }
+        else
+        {
+            await _unitOfWork.Repository<ProjectAppUrl>().AddAsync(new ProjectAppUrl
+            {
+                ProjectId = project.Id,
+                AppEnvironmentId = defaultEnv.Id,
+                Url = appUrl,
+                OwnerId = owner
+            });
+        }
+
+        await _unitOfWork.SaveChangesAsync();
         return Result.Success();
     }
 

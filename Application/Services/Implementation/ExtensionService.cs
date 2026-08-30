@@ -91,19 +91,35 @@ public class ExtensionService : IExtensionService
         if (string.IsNullOrEmpty(origin))
             return Result<ExtensionProjectLookupResponse>.Failure("A valid origin is required.");
 
-        // The standard Project query filter already scopes this to the caller's own tenant (same
-        // repository, same filter every other Project query goes through) — a quick-access client
-        // can never see another tenant's projects this way, only match their own by AppUrl.
-        var projects = await _unitOfWork.Repository<Project>()
+        // ProjectAppUrl's own query filter already scopes this to the caller's own tenant (strict-own,
+        // same as Comment/Invite) — a quick-access client can never see another tenant's projects
+        // this way, only match their own, across ANY of that project's environments.
+        var urls = await _unitOfWork.Repository<ProjectAppUrl>()
             .Query()
             .AsNoTracking()
-            .Where(p => p.DeletedAt == null && p.IsActive && p.AppUrl != null)
-            .Select(p => new { p.Key, p.Name, p.AppUrl })
+            .Include(u => u.Project)
+            .Where(u => u.DeletedAt == null && u.Project.DeletedAt == null && u.Project.IsActive)
+            .Select(u => new { u.Project.Key, u.Project.Name, u.Url })
             .ToListAsync();
 
-        var match = projects.FirstOrDefault(p => NormalizeOrigin(p.AppUrl!) == origin);
+        var match = urls.FirstOrDefault(u => NormalizeOrigin(u.Url) == origin);
         if (match == null)
-            return Result<ExtensionProjectLookupResponse>.NotFound(MessageKeys.Project.NoneForOrigin);
+        {
+            // Legacy fallback: a project whose Project.AppUrl was set before the per-environment
+            // table existed, and hasn't been re-saved since (SyncDefaultAppUrlAsync backfills it on
+            // every create/update, but a project untouched since the migration might still be here).
+            var legacy = await _unitOfWork.Repository<Project>()
+                .Query()
+                .AsNoTracking()
+                .Where(p => p.DeletedAt == null && p.IsActive && p.AppUrl != null)
+                .Select(p => new { p.Key, p.Name, p.AppUrl })
+                .ToListAsync();
+            var legacyMatch = legacy.FirstOrDefault(p => NormalizeOrigin(p.AppUrl!) == origin);
+            if (legacyMatch == null)
+                return Result<ExtensionProjectLookupResponse>.NotFound(MessageKeys.Project.NoneForOrigin);
+            return Result<ExtensionProjectLookupResponse>.Success(
+                new ExtensionProjectLookupResponse { Key = legacyMatch.Key, Name = legacyMatch.Name });
+        }
 
         return Result<ExtensionProjectLookupResponse>.Success(
             new ExtensionProjectLookupResponse { Key = match.Key, Name = match.Name });

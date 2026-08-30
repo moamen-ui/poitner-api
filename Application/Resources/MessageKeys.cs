@@ -61,6 +61,15 @@ public static class MessageKeys
         public const string GlobalRoleToggleOnly = "You can only enable or disable a shared role for your workspace — renaming or reconfiguring it is managed by the platform.";
     }
 
+    public static class AppEnvironment
+    {
+        public const string NotFound = "Environment not found.";
+        public const string NameTaken = "An environment with this name already exists.";
+        public const string NameRequired = "Environment name is required.";
+        public const string NotManageable = "You can only rename or delete your own environments — the global catalog is managed by the platform.";
+        public const string InUse = "This environment has project URLs assigned to it — remove those first.";
+    }
+
     public static class Preferences
     {
         public const string Invalid = "Invalid preference value.";

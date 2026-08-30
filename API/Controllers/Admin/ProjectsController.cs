@@ -59,6 +59,34 @@ public class ProjectsController(IProjectService projectService, ICommentService 
         return result.IsSuccess ? Ok(result) : BadRequest(result);
     }
 
+    [HttpGet("{id:int}/app-urls")]
+    [ProducesResponseType(typeof(List<ProjectAppUrlResponse>), StatusCodes.Status200OK)]
+    public async Task<IActionResult> ListAppUrls(int id)
+    {
+        var result = await projectService.ListAppUrlsAsync(id);
+        if (result.IsNotFound) return NotFound(result);
+        return result.IsSuccess ? Ok(result) : BadRequest(result);
+    }
+
+    [HttpPut("{id:int}/app-urls/{environmentId:int}")]
+    [ProducesResponseType(typeof(ProjectAppUrlResponse), StatusCodes.Status200OK)]
+    public async Task<IActionResult> SetAppUrl(int id, int environmentId, [FromBody] SetProjectAppUrlRequest request)
+    {
+        var result = await projectService.SetAppUrlAsync(id, environmentId, request);
+        if (result.IsForbidden) return StatusCode(StatusCodes.Status403Forbidden, result);
+        if (result.IsNotFound) return NotFound(result);
+        return result.IsSuccess ? Ok(result) : BadRequest(result);
+    }
+
+    [HttpDelete("{id:int}/app-urls/{environmentId:int}")]
+    public async Task<IActionResult> DeleteAppUrl(int id, int environmentId)
+    {
+        var result = await projectService.DeleteAppUrlAsync(id, environmentId);
+        if (result.IsForbidden) return StatusCode(StatusCodes.Status403Forbidden, result);
+        if (result.IsNotFound) return NotFound(result);
+        return result.IsSuccess ? Ok(result) : BadRequest(result);
+    }
+
     /// <summary>
     /// Admin-gated apply-queue export (the .NET analogue of pending.json). Returns self-contained
     /// comment items INCLUDING the snapshotted predefined-action prompt so the apply-time LLM

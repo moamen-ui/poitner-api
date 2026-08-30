@@ -51,6 +51,8 @@ public class AppDbContext(DbContextOptions<AppDbContext> options, ICurrentUser c
     public DbSet<Subscription> Subscriptions => Set<Subscription>();
     public DbSet<ExtensionSite> ExtensionSites => Set<ExtensionSite>();
     public DbSet<PageContextSnapshot> PageContextSnapshots => Set<PageContextSnapshot>();
+    public DbSet<AppEnvironment> AppEnvironments => Set<AppEnvironment>();
+    public DbSet<ProjectAppUrl> ProjectAppUrls => Set<ProjectAppUrl>();
 
     protected override void OnModelCreating(ModelBuilder b)
     {
@@ -101,6 +103,14 @@ public class AppDbContext(DbContextOptions<AppDbContext> options, ICurrentUser c
         // above): a tenant's override of a GLOBAL role's active status only ever exists for exactly
         // one tenant, so there is nothing to share.
         b.Entity<RoleTenantOverride>().HasQueryFilter(e => currentUser.IsSuperAdmin || (currentUser.TenantId != null && e.OwnerId == currentUser.TenantId));
+
+        // AppEnvironment: own-plus-global, exactly like Role — a super-admin-seeded catalog
+        // ("default", "prod", "staging", "testing") every tenant sees, plus each tenant's own custom
+        // environments layered on top.
+        b.Entity<AppEnvironment>().HasQueryFilter(e => currentUser.IsSuperAdmin || (currentUser.TenantId != null && (e.OwnerId == currentUser.TenantId || e.OwnerId == null)) || (currentUser.TenantId == null && !strict && e.OwnerId == null));
+        // ProjectAppUrl: strict-own like Comment/Invite — a URL always belongs to exactly the
+        // project's own tenant, never a shared/global bucket.
+        b.Entity<ProjectAppUrl>().HasQueryFilter(e => currentUser.IsSuperAdmin || (currentUser.TenantId != null && e.OwnerId == currentUser.TenantId) || (currentUser.TenantId == null && !strict && e.OwnerId == null));
 
         // AppSetting: no filter — not tenant data; guarded by endpoint authorization.
 
