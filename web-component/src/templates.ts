@@ -97,7 +97,7 @@ export const TPL = {
 
   // Dropdown under the user icon: shows identity, the per-user "add comment" shortcut
   // (click to rebind, ↺ to reset), and a Sign out action.
-  userMenu: (displayName: string, roleLabel: string, shortcutLabel: string) => `
+  userMenu: (displayName: string, roleLabel: string, shortcutLabel: string, authOwnedByHost?: boolean) => `
         <div class="pf-menu" id="pf-user-menu" role="menu">
           <div class="pf-menu-id">
             <span>${displayName}</span>
@@ -108,7 +108,9 @@ export const TPL = {
             <button type="button" id="pf-shortcut-edit" class="pf-mini" title="Click, then press a new key combo">${escapeHtml(shortcutLabel)}</button>
             <button type="button" id="pf-shortcut-reset" class="pf-mini pf-icon-btn" title="Reset to default">&#8635;</button>
           </div>
-          <button class="pf-menu-item" id="pf-signout" role="menuitem">${ICON.logout}<span>Sign out</span></button>
+          ${authOwnedByHost
+            ? `<div class="pf-menu-note" style="padding:8px 12px; font-size:12px; color:#64748b;">Signed in via the browser extension — sign out from its popup.</div>`
+            : `<button class="pf-menu-item" id="pf-signout" role="menuitem">${ICON.logout}<span>Sign out</span></button>`}
         </div>`,
 
   // Collapsed state: a small floating launcher that re-opens the overlay.
@@ -142,7 +144,7 @@ export const TPL = {
              ${authors.map((a) => `<option value="${escapeHtml(a.id)}" ${a.id === selectedId ? 'selected' : ''}>${escapeHtml(a.name)}</option>`).join('')}
            </select>`,
 
-  card: (c: Comment, i: number) => {
+  card: (c: Comment, i: number, isQuickAccess?: boolean) => {
     const cls = c.status === 'pending-apply' ? 'pending' : c.status === 'applied' ? 'applied' : c.status === 'archived' ? 'archived' : '';
     const statusPill = c.status === 'applied'
       ? '<span class="pf-pill status-applied">&#x2713; completed</span>'
@@ -178,13 +180,13 @@ export const TPL = {
               <input class="pf-input pf-reply-input" placeholder="Reply…" data-id="${c.id}" />
             </div>
             <div class="pf-actions">
-              ${(c.status === 'applied' || c.status === 'archived') ? '' : `<button class="pf-mini ${c.status === 'pending-apply' ? 'apply' : 'ready'}" data-act="apply" data-id="${c.id}" title="${c.status === 'pending-apply' ? 'Marked ready — click to unmark' : 'Mark ready to apply'}">
+              ${isQuickAccess ? '' : (c.status === 'applied' || c.status === 'archived') ? '' : `<button class="pf-mini ${c.status === 'pending-apply' ? 'apply' : 'ready'}" data-act="apply" data-id="${c.id}" title="${c.status === 'pending-apply' ? 'Marked ready — click to unmark' : 'Mark ready to apply'}">
                 ${ICON.flag}<span>Ready</span>
               </button>`}
-              ${(c.status === 'open' || c.status === 'pending-apply') ? `<button class="pf-mini done pf-icon" data-act="complete" data-id="${c.id}" title="Mark completed" aria-label="Mark completed">${ICON.check}</button>` : ''}
-              ${c.status === 'applied' ? `<button class="pf-mini ready" data-act="reopen" data-id="${c.id}" title="Re-open">${ICON.reopen}<span>Re-open</span></button>
+              ${(!isQuickAccess && (c.status === 'open' || c.status === 'pending-apply')) ? `<button class="pf-mini done pf-icon" data-act="complete" data-id="${c.id}" title="Mark completed" aria-label="Mark completed">${ICON.check}</button>` : ''}
+              ${(!isQuickAccess && c.status === 'applied') ? `<button class="pf-mini ready" data-act="reopen" data-id="${c.id}" title="Re-open">${ICON.reopen}<span>Re-open</span></button>
               <button class="pf-mini pf-icon" data-act="archive" data-id="${c.id}" title="Archive" aria-label="Archive">${ICON.archive}</button>` : ''}
-              ${c.status === 'archived' ? `<button class="pf-mini ready" data-act="reopen" data-id="${c.id}" title="Re-open">${ICON.reopen}<span>Re-open</span></button>` : ''}
+              ${(!isQuickAccess && c.status === 'archived') ? `<button class="pf-mini ready" data-act="reopen" data-id="${c.id}" title="Re-open">${ICON.reopen}<span>Re-open</span></button>` : ''}
               ${c._mine ? `<div class="pf-actions-end"><button class="pf-mini pf-icon" data-act="edit" data-id="${c.id}" title="Edit" aria-label="Edit">${ICON.pencil}</button></div>` : ''}
             </div>
           </div>`;

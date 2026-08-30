@@ -61,6 +61,11 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
   // not localStorage) — set from `this.user.addCommentShortcut` in loadAuth()/saveAuth() below.
   // Default is Ctrl+Alt+Shift+C / Control+Option+Shift+C — see shortcut.ts for why.
   shortcut: ShortcutBinding = parseShortcut(undefined);
+  // True when a host (the browser extension) injected a token: auth is entirely owned by that
+  // host, re-applied on every reload (see connectedCallback), so the widget's own sign-out would
+  // be immediately overwritten and must not be offered — switching accounts happens in the
+  // extension popup instead.
+  authOwnedByHost = false;
 
   root!: HTMLElement;
   private _styleLink!: HTMLLinkElement;
@@ -146,6 +151,7 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
       this.token = injected.token;
       if (injected.user !== undefined) this.user = injected.user;
       this.shortcut = parseShortcut(this.user?.addCommentShortcut);
+      this.authOwnedByHost = true;
     }
 
     // Host element must not block page clicks; only inner panels are interactive.
@@ -675,7 +681,7 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
 
     const displayName = this.user ? escapeHtml(this.user.displayName || this.user.email) : '';
     const roleLabel = this.user ? escapeHtml(this.user.roleName || '') : '';
-    host.innerHTML = TPL.userMenu(displayName, roleLabel, formatShortcut(this.shortcut));
+    host.innerHTML = TPL.userMenu(displayName, roleLabel, formatShortcut(this.shortcut), this.authOwnedByHost);
     const menu = host.querySelector('#pf-user-menu') as HTMLElement;
 
     // Anchor the dropdown under the user icon.
@@ -686,7 +692,9 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
       menu.style.right = `${Math.max(8, Math.round(window.innerWidth - r.right))}px`;
     }
 
-    (host.querySelector('#pf-signout') as HTMLElement).addEventListener('click', () => this.signOut());
+    // No sign-out control to wire up when the extension owns auth (see authOwnedByHost).
+    const signoutBtn = host.querySelector('#pf-signout') as HTMLElement | null;
+    if (signoutBtn) signoutBtn.addEventListener('click', () => this.signOut());
     (host.querySelector('#pf-shortcut-edit') as HTMLElement).addEventListener('click', (e) => {
       e.stopPropagation();
       this.beginRecordingShortcut(host.querySelector('#pf-shortcut-edit') as HTMLElement);
@@ -1359,7 +1367,8 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
       return;
     }
 
-    list.innerHTML = shown.map((c, i) => { c._mine = this.isMine(c); return TPL.card(c, i); }).join('');
+    const isQuickAccess = !!this.user?.isQuickAccess;
+    list.innerHTML = shown.map((c, i) => { c._mine = this.isMine(c); return TPL.card(c, i, isQuickAccess); }).join('');
 
     list.querySelectorAll<HTMLElement>('[data-act="apply"]').forEach((b) => b.addEventListener('click', () => {
       const c = this.comments.find((x) => String(x.id) === String(b.dataset.id));
