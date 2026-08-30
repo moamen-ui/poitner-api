@@ -26,6 +26,7 @@ public class RoleMapping : IEntityTypeConfiguration<Role>
         b.Property(x => x.IsSystem).HasColumnName("is_system");
         b.Property(x => x.IsActive).HasColumnName("is_active");
         b.Property(x => x.IsSuperAdmin).HasColumnName("is_super_admin");
+        b.Property(x => x.QuickAccess).HasColumnName("quick_access").HasDefaultValue(false);
         b.Property(x => x.OwnerId).HasColumnName("owner_id");
         b.HasIndex(x => x.OwnerId);
     }

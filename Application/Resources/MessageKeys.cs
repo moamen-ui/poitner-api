@@ -128,6 +128,9 @@ public static class MessageKeys
         public const string Forbidden = "You are not allowed to create invites.";
         public const string Created = "Invite created.";
         public const string Revoked_Ok = "Invite revoked.";
+        public const string QuickAccessEmailRequired = "An email is required for a client invite so the account can be provisioned.";
+        public const string QuickAccessProjectRequired = "Select a project for this client invite.";
+        public const string QuickAccessAppUrlRequired = "Set this project's App URL before sending a client invite.";
     }
 
     public static class Plan

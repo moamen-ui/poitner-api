@@ -43,6 +43,7 @@ public class RoleService : IRoleService
             IsSuperAdmin = false,
             IsSystem = false,
             IsActive = true,
+            QuickAccess = request.QuickAccess,
             OwnerId = TenantStamp.OwnerFor(_currentUser)
         };
 
@@ -151,6 +152,9 @@ public class RoleService : IRoleService
         if (request.IsActive.HasValue)
             role.IsActive = request.IsActive.Value;
 
+        if (request.QuickAccess.HasValue)
+            role.QuickAccess = request.QuickAccess.Value;
+
         _unitOfWork.Repository<Role>().Update(role);
         await _unitOfWork.SaveChangesAsync();
 
@@ -238,6 +242,7 @@ public class RoleService : IRoleService
         GrantsAdmin = role.GrantsAdmin,
         IsSystem = role.IsSystem,
         IsActive = role.IsActive,
+        QuickAccess = role.QuickAccess,
         CanManage = CanManage(role)
     };
 

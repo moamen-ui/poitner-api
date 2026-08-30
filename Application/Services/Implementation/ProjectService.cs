@@ -67,6 +67,7 @@ public class ProjectService : IProjectService
             Key = keyNormalized,
             Name = request.Name,
             IsActive = true,
+            AppUrl = string.IsNullOrWhiteSpace(request.AppUrl) ? null : request.AppUrl.Trim(),
             OwnerId = ownerId
         };
 
@@ -176,6 +177,9 @@ public class ProjectService : IProjectService
 
         if (request.PageContextCaptureEnabled.HasValue)
             project.PageContextCaptureEnabled = request.PageContextCaptureEnabled.Value;
+
+        if (request.AppUrl != null)
+            project.AppUrl = request.AppUrl.Trim();
 
         // NOTE: intentionally do NOT mutate project.OwnerId here. A null owner is legitimate for
         // global projects (e.g. the marketing landing); rewriting it would break the widget for
@@ -486,6 +490,7 @@ public class ProjectService : IProjectService
             Key = project.Key,
             Name = project.Name,
             IsActive = project.IsActive,
+            AppUrl = project.AppUrl,
             PageContextCaptureEnabled = project.PageContextCaptureEnabled,
             PredefinedActions = actions
                 .OrderBy(a => a.SortOrder)

@@ -939,6 +939,140 @@ public class InviteServiceTests
         Assert.NotNull(db.Invites.IgnoreQueryFilters().Single(i => i.Id == inviteId).RevokedAt);
     }
 
+    // ── Quick-access (Role.QuickAccess) invites ───────────────────────────────────
+
+    private static int SeedQuickAccessRole(string dbName, Guid tenant)
+    {
+        using var seed = BuildContext(new FakeCurrentUser { IsSuperAdmin = true }, dbName);
+        var role = new Role { Name = "Client", GrantsAdmin = false, IsActive = true, QuickAccess = true, OwnerId = tenant };
+        seed.Roles.Add(role);
+        seed.SaveChanges();
+        return role.Id;
+    }
+
+    private static int SeedProject(string dbName, Guid tenant, string? appUrl)
+    {
+        using var seed = BuildContext(new FakeCurrentUser { IsSuperAdmin = true }, dbName);
+        var project = new Project { Key = "acme-app", Name = "Acme App", IsActive = true, AppUrl = appUrl, OwnerId = tenant };
+        seed.Projects.Add(project);
+        seed.SaveChanges();
+        return project.Id;
+    }
+
+    [Fact]
+    public async Task QuickAccess_Create_RequiresEmail()
+    {
+        var dbName = Guid.NewGuid().ToString();
+        var (tenant, _) = SeedTenant(dbName);
+        var clientRoleId = SeedQuickAccessRole(dbName, tenant);
+        var projectId = SeedProject(dbName, tenant, "https://client.example.com");
+
+        var admin = new FakeCurrentUser { Id = Guid.NewGuid(), TenantId = tenant, IsAdmin = true };
+        using var db = BuildContext(admin, dbName);
+        var svc = BuildService(admin, db);
+
+        var result = await svc.CreateAsync(new CreateInviteRequest { RoleId = clientRoleId, ProjectId = projectId });
+
+        Assert.False(result.IsSuccess);
+        Assert.Empty(db.Users.IgnoreQueryFilters().Where(u => u.RoleId == clientRoleId));
+    }
+
+    [Fact]
+    public async Task QuickAccess_Create_RequiresProjectId()
+    {
+        var dbName = Guid.NewGuid().ToString();
+        var (tenant, _) = SeedTenant(dbName);
+        var clientRoleId = SeedQuickAccessRole(dbName, tenant);
+        SeedProject(dbName, tenant, "https://client.example.com");
+
+        var admin = new FakeCurrentUser { Id = Guid.NewGuid(), TenantId = tenant, IsAdmin = true };
+        using var db = BuildContext(admin, dbName);
+        var svc = BuildService(admin, db);
+
+        var result = await svc.CreateAsync(new CreateInviteRequest { RoleId = clientRoleId, Email = "client@acme.com" });
+
+        Assert.False(result.IsSuccess);
+    }
+
+    [Fact]
+    public async Task QuickAccess_Create_RequiresProjectAppUrl()
+    {
+        var dbName = Guid.NewGuid().ToString();
+        var (tenant, _) = SeedTenant(dbName);
+        var clientRoleId = SeedQuickAccessRole(dbName, tenant);
+        var projectId = SeedProject(dbName, tenant, appUrl: null); // no App URL set yet
+
+        var admin = new FakeCurrentUser { Id = Guid.NewGuid(), TenantId = tenant, IsAdmin = true };
+        using var db = BuildContext(admin, dbName);
+        var svc = BuildService(admin, db);
+
+        var result = await svc.CreateAsync(new CreateInviteRequest
+        { RoleId = clientRoleId, Email = "client@acme.com", ProjectId = projectId });
+
+        Assert.False(result.IsSuccess);
+        Assert.Empty(db.Users.IgnoreQueryFilters().Where(u => u.RoleId == clientRoleId));
+    }
+
+    [Fact]
+    public async Task QuickAccess_Create_ProvisionsUserImmediately_AndEmailsCredentials()
+    {
+        var dbName = Guid.NewGuid().ToString();
+        var (tenant, _) = SeedTenant(dbName);
+        var clientRoleId = SeedQuickAccessRole(dbName, tenant);
+        var projectId = SeedProject(dbName, tenant, "https://client.example.com");
+
+        var admin = new FakeCurrentUser { Id = Guid.NewGuid(), TenantId = tenant, IsAdmin = true };
+        using var db = BuildContext(admin, dbName);
+        var spy = new SpyEmailService();
+        var svc = BuildService(admin, db, spy);
+
+        var result = await svc.CreateAsync(new CreateInviteRequest
+        { RoleId = clientRoleId, Email = "Client@Acme.com", ProjectId = projectId });
+
+        Assert.True(result.IsSuccess);
+        Assert.True(result.Data!.EmailSent);
+        Assert.Equal("https://client.example.com", result.Data.Url);
+        Assert.Equal(projectId, result.Data.ProjectId);
+
+        // The user exists NOW — no accept step needed.
+        var created = db.Users.IgnoreQueryFilters().Single(u => u.Email == "client@acme.com");
+        Assert.Equal(clientRoleId, created.RoleId);
+        Assert.Equal(tenant, created.OwnerId);
+        Assert.Equal(ApprovalStatus.Approved, created.ApprovalStatus);
+        Assert.True(created.IsActive);
+
+        // The invite row is already fully consumed (audit trail only, no accept step left).
+        var invite = db.Invites.IgnoreQueryFilters().Single(i => i.Email == "client@acme.com");
+        Assert.Equal(1, invite.MaxUses);
+        Assert.Equal(1, invite.Uses);
+        Assert.Equal(projectId, invite.ProjectId);
+
+        // The email carries a generated password that actually unlocks the account.
+        Assert.Single(spy.Sent);
+        Assert.Contains("client@acme.com", spy.Sent[0].To);
+        Assert.Contains("Password:", spy.Sent[0].Html);
+    }
+
+    [Fact]
+    public async Task QuickAccess_Create_RejectsDuplicateEmail_InSameTenant()
+    {
+        var dbName = Guid.NewGuid().ToString();
+        var (tenant, _) = SeedTenant(dbName);
+        var clientRoleId = SeedQuickAccessRole(dbName, tenant);
+        var projectId = SeedProject(dbName, tenant, "https://client.example.com");
+
+        var admin = new FakeCurrentUser { Id = Guid.NewGuid(), TenantId = tenant, IsAdmin = true };
+        using var db = BuildContext(admin, dbName);
+        var svc = BuildService(admin, db);
+
+        // admin@a.com already exists from SeedTenant.
+        var result = await svc.CreateAsync(new CreateInviteRequest
+        { RoleId = clientRoleId, Email = "admin@a.com", ProjectId = projectId });
+
+        Assert.False(result.IsSuccess);
+        Assert.True(result.IsConflict);
+    }
+
     // ── L1: preview does not leak the locked email ────────────────────────────────
 
     [Fact]

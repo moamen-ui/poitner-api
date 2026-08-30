@@ -20,6 +20,13 @@ public class Role : BaseEntity
     /// <summary>Marks a role as belonging to a super-admin scope (null OwnerId = global/super-admin).</summary>
     public bool IsSuperAdmin { get; set; }
 
+    /// <summary>
+    /// Marks this role for low-friction invite provisioning: InviteService.CreateAsync eagerly
+    /// creates the User (with a generated password emailed to them) instead of deferring to a
+    /// click-through accept step. Seeded true on the built-in "Client" role.
+    /// </summary>
+    public bool QuickAccess { get; set; }
+
     public Guid? OwnerId { get; set; }
 
     public ICollection<User> Users { get; set; } = new List<User>();

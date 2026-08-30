@@ -4,4 +4,7 @@ public class CreateRoleRequest
 {
     public string Name { get; set; } = string.Empty;
     public bool GrantsAdmin { get; set; }
+
+    /// <summary>See Role.QuickAccess.</summary>
+    public bool QuickAccess { get; set; }
 }
