@@ -22,6 +22,20 @@ export interface StoredUser {
   roleName?: string;
   /** True for workspace admins (Role.GrantsAdmin) — gates the popup's "+ Add project" affordance. */
   isAdmin?: boolean;
+  /**
+   * True for platform super admins, who own no tenant/workspace of their own. GET /api/admin/projects
+   * returns a cross-tenant, platform-wide list for them (by design, for platform management) — so the
+   * project picker must never be shown to them: it would list every tenant's projects side by side
+   * (looking like duplicates) and activation always 404s regardless of which one is picked, since
+   * ProjectService.EnsureAsync explicitly refuses to resolve any project by key for a super admin.
+   */
+  isSuperAdmin?: boolean;
+  /**
+   * True for quick-access (Client) accounts. They're barred from GET /api/admin/projects (a
+   * browse/manage operation) so the popup must resolve their project by matching the current tab's
+   * origin against their tenant's Project.AppUrl instead of listing — see 'projectForOrigin'.
+   */
+  isQuickAccess?: boolean;
 }
 
 /** A project the signed-in user can target, from GET /api/admin/projects. */
@@ -40,6 +54,7 @@ export type BgRequest =
   | { type: 'setServer'; server: string }
   | { type: 'setProjectForDomain'; hostname: string; project: string }
   | { type: 'listProjects' }
+  | { type: 'projectForOrigin'; origin: string }
   | { type: 'createProject'; key: string; name: string }
   | { type: 'activate'; tabId: number; hostname: string; origin: string; project: string; environment: string }
   | { type: 'deactivate'; tabId: number };

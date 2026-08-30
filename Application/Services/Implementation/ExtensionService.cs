@@ -85,6 +85,30 @@ public class ExtensionService : IExtensionService
             new ExtensionActivateResponse { Origin = origin, SiteCount = siteCount + 1 });
     }
 
+    public async Task<Result<ExtensionProjectLookupResponse>> FindProjectForOriginAsync(string rawOrigin)
+    {
+        var origin = NormalizeOrigin(rawOrigin);
+        if (string.IsNullOrEmpty(origin))
+            return Result<ExtensionProjectLookupResponse>.Failure("A valid origin is required.");
+
+        // The standard Project query filter already scopes this to the caller's own tenant (same
+        // repository, same filter every other Project query goes through) — a quick-access client
+        // can never see another tenant's projects this way, only match their own by AppUrl.
+        var projects = await _unitOfWork.Repository<Project>()
+            .Query()
+            .AsNoTracking()
+            .Where(p => p.DeletedAt == null && p.IsActive && p.AppUrl != null)
+            .Select(p => new { p.Key, p.Name, p.AppUrl })
+            .ToListAsync();
+
+        var match = projects.FirstOrDefault(p => NormalizeOrigin(p.AppUrl!) == origin);
+        if (match == null)
+            return Result<ExtensionProjectLookupResponse>.NotFound(MessageKeys.Project.NoneForOrigin);
+
+        return Result<ExtensionProjectLookupResponse>.Success(
+            new ExtensionProjectLookupResponse { Key = match.Key, Name = match.Name });
+    }
+
     private async Task<int> ActiveSiteCountAsync(Guid owner) =>
         await _unitOfWork.Repository<ExtensionSite>()
             .Query()

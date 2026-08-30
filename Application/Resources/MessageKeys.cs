@@ -45,6 +45,7 @@ public static class MessageKeys
         public const string KeyAmbiguous = "This project key matches more than one workspace. Please contact your workspace administrator.";
         public const string SuperAdminNotAllowed = "Super admins cannot create projects. Sign in with a tenant account to use Pointer.";
         public const string QuickAccessNotAllowed = "Client accounts cannot manage projects.";
+        public const string NoneForOrigin = "No project is set up for this site yet. Ask your workspace admin to set the project's App URL.";
     }
 
     public static class Role

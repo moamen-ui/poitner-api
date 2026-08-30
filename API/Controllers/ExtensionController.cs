@@ -24,4 +24,16 @@ public class ExtensionController(IExtensionService extensionService) : Controlle
         if (result.IsConflict) return Conflict(result);
         return result.IsSuccess ? Ok(result) : BadRequest(result);
     }
+
+    // A single scoped lookup ("what's my project on this site"), open to every authenticated
+    // caller including quick-access (Client) accounts — unlike GET /api/admin/projects, which is a
+    // browse/manage operation they're explicitly barred from.
+    [HttpGet("api/extension/project-for-origin")]
+    [ProducesResponseType(typeof(Result<ExtensionProjectLookupResponse>), StatusCodes.Status200OK)]
+    public async Task<IActionResult> ProjectForOrigin([FromQuery] string origin)
+    {
+        var result = await extensionService.FindProjectForOriginAsync(origin);
+        if (result.IsNotFound) return NotFound(result);
+        return result.IsSuccess ? Ok(result) : BadRequest(result);
+    }
 }
