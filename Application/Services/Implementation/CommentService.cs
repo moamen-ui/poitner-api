@@ -260,6 +260,11 @@ public class CommentService : ICommentService
         if (filter.Environment.HasValue)
             query = query.Where(c => c.Environment == filter.Environment.Value);
 
+        // Private comments are personal notes, never automation input — unlike ListAsync/GetByIdAsync
+        // (which return a private comment to its own author), the apply-queue has no per-caller
+        // identity to grant that exception to, so private comments are excluded outright.
+        query = query.Where(c => !c.IsPrivate);
+
         var totalItems = await query.CountAsync();
 
         var pageSize = Math.Min(filter.PageSize, 100);

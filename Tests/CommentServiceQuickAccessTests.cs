@@ -206,4 +206,43 @@ public class CommentServiceQuickAccessTests
 
         Assert.True(result.IsSuccess);
     }
+
+    [Fact]
+    public async Task ApplyQueue_ExcludesPrivateComments_EvenForAdmin()
+    {
+        var db = Guid.NewGuid().ToString();
+        var tenant = Guid.NewGuid();
+        var authorId = Guid.NewGuid();
+
+        using (var seed = BuildContext(new FakeCurrentUser { IsSuperAdmin = true }, db))
+        {
+            var project = new Project { Key = "proj", Name = "Proj", IsActive = true, OwnerId = tenant };
+            seed.Projects.Add(project);
+            seed.SaveChanges();
+
+            seed.Comments.AddRange(
+                new Comment
+                {
+                    ProjectId = project.Id, OwnerId = tenant, AuthorId = authorId, Body = "private note",
+                    Status = CommentStatus.ReadyToApply, Environment = EnvironmentTag.Local,
+                    Element = new ElementCapture(), IsPrivate = true
+                },
+                new Comment
+                {
+                    ProjectId = project.Id, OwnerId = tenant, AuthorId = authorId, Body = "public fix",
+                    Status = CommentStatus.ReadyToApply, Environment = EnvironmentTag.Local,
+                    Element = new ElementCapture(), IsPrivate = false
+                });
+            seed.SaveChanges();
+        }
+
+        var admin = new FakeCurrentUser { Id = Guid.NewGuid(), IsAdmin = true, TenantId = tenant };
+        var svc = BuildService(admin, db);
+
+        var result = await svc.ListApplyQueueAsync("proj", new CommentFilter());
+
+        Assert.True(result.IsSuccess);
+        Assert.Single(result.Data!.Items);
+        Assert.Equal("public fix", result.Data!.Items[0].Body);
+    }
 }
