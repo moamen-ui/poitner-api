@@ -223,11 +223,12 @@ REACT_APP_POINTER_ENV=staging
 ## Step 4 — Create the AI apply-tool credentials  ⚠️ do not skip
 
 Pointer's whole point is that an AI agent later **pulls and applies** the feedback queue — and
-**every API endpoint requires auth**. The apply skill (`<POINTER_SERVER>/skill.md`) reads a
-gitignored **`.pointer/credentials.env`** and fails to log in if it's missing. So **always make sure
-it exists now**, even though the values are filled in later — don't leave it as a silent TODO.
+**every API endpoint requires auth**. The apply skill (`<POINTER_SERVER>/skill.md`) authenticates
+with a **long-lived personal API key** (not email/password) and reads it from a gitignored
+**`.pointer/credentials.env`**, failing to log in if it's missing. So **always make sure it exists
+now**, even though the key is filled in later — don't leave it as a silent TODO.
 
-**The recommended installer creates these for you.** If the skills were installed via:
+**The recommended installer creates the scaffold for you.** If the skills were installed via:
 
 ```bash
 curl -fsSL <POINTER_SERVER>/install.sh | sh
@@ -241,8 +242,8 @@ template) already exist, and `.pointer/` is gitignored with the `.example` kept 
 
 ```bash
 mkdir -p .pointer
-printf 'POINTER_EMAIL=automation@example.com\nPOINTER_PASSWORD=\n' > .pointer/credentials.env.example
-[ -f .pointer/credentials.env ] || printf 'POINTER_EMAIL=\nPOINTER_PASSWORD=\n' > .pointer/credentials.env
+printf 'POINTER_API_KEY=ptr_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\n' > .pointer/credentials.env.example
+[ -f .pointer/credentials.env ] || printf 'POINTER_API_KEY=\n' > .pointer/credentials.env
 touch .gitignore
 grep -qxF '.pointer/' .gitignore || echo '.pointer/' >> .gitignore
 grep -qxF '!.pointer/credentials.env.example' .gitignore || echo '!.pointer/credentials.env.example' >> .gitignore
@@ -251,10 +252,12 @@ grep -qxF '!.pointer/credentials.env.example' .gitignore || echo '!.pointer/cred
 **Then explicitly tell the user** (this is the critical step they must action):
 
 > `.pointer/credentials.env` exists and `.pointer/` is gitignored (with `credentials.env.example` kept
-> committable). **Fill in `POINTER_EMAIL` + `POINTER_PASSWORD`** — your Pointer account, or a dedicated
-> automation user an admin created in the dashboard (any role can fetch/apply; a `Developer`-role user
-> is conventional). Until these are set, pulling or applying the feedback queue will fail with a login
-> error. Never commit `credentials.env`.
+> committable). **Fill in `POINTER_API_KEY`** — copy it from your Pointer **profile page** (a
+> "Generate" click if you don't have one yet — it's always re-viewable there afterward, not a
+> one-time reveal), or from the dashboard's **quick-start guide**, which shows it pre-filled for
+> copy-paste. Until it's set, pulling or applying the feedback queue will fail with a login error.
+> Never commit `credentials.env`. Any Pointer account's key works (any role can fetch/apply); using
+> a dedicated `Developer`-role account is conventional but not required.
 
 The apply workflow itself is the separate Pointer skill served at `<POINTER_SERVER>/skill.md`.
 
@@ -278,12 +281,59 @@ The apply workflow itself is the separate Pointer skill served at `<POINTER_SERV
 > Identify which tool you are and pick the matching directory; if unsure, ask the user. The
 > `.pointer/credentials.env` scaffold (above) is tool-independent — it always lives at the repo root.
 
-## Step 5 — Verify
+## Step 5 — Detect and register the tech stack  (once — never repeated)
+
+The apply skill (`skill.md`) needs to know this app's stack to decide *how* to apply a styling fix
+(edit `className` on a Tailwind app vs. the winning CSS rule elsewhere) and whether a failing API
+call in a bug report is something to chase into this repo's own backend or an external service.
+Detect it now so `skill.md` never has to guess later — this is a one-time registration per project,
+not something either skill repeats on every run.
+
+1. **Detect `frontend`** — you likely already know this from Step 2's stack detection; reuse it
+   rather than re-deriving it. Add framework + styling tokens from a fixed, lowercase vocabulary:
+   `react`, `angular`, `vue`, `next`, `nuxt`, `svelte`, `tailwind`, `scss`, `css-modules` (add more
+   as genuinely needed, but keep tokens lowercase and from this style).
+2. **Detect `backend`**, if this repo contains one (skip — leave `null` — if the backend is clearly
+   a separate repo or an external API this app just calls):
+   - Runtime tokens: `.csproj`/`.sln` → `dotnet`; `go.mod` → `go`;
+     `pyproject.toml`/`requirements.txt` → `python`; `Gemfile` → `ruby`; `package.json` with
+     `express`/`@nestjs/core`/`fastify` → `node`.
+   - **MVC framework tokens too, not just the runtime** — `skill.md`'s route-to-view convention
+     mapping needs to know *which* MVC framework, not just the language: Rails (`config/routes.rb`)
+     → also add `rails`; ASP.NET MVC (`Controllers/*Controller.cs` + `Views/`, not just any
+     `.csproj`) → also add `aspnetmvc`; Laravel (`routes/web.php`) → also add `laravel`; Django
+     (`urls.py`) → also add `django`; Spring MVC (`@RequestMapping`/`@GetMapping` annotations) →
+     also add `spring`. So `backend` for a Rails app is `["ruby", "rails"]`, not just `["ruby"]`.
+   - Datastore hints from `docker-compose.*`/connection strings/ORM config, if present: `postgres`,
+     `mysql`, `mongodb`, `redis`.
+3. **Self-identify which AI tool you are** (`aiTool`) from the same vocabulary `skill.md` uses:
+   `claude-code`, `opencode-glm`, `cursor`, `antigravity`, `windsurf`, `other`.
+4. **Register once:**
+   ```bash
+   curl -s "${AUTH[@]}" -X POST "$SERVER/api/projects/$PROJECT/stack" \
+     -H 'Content-Type: application/json' \
+     -d '{"frontend":["react","tailwind"],"backend":["dotnet","postgres"],"aiTool":"claude-code"}'
+   ```
+   (`$SERVER`/`$PROJECT`/`${AUTH[@]}` — same login flow as `skill.md` Steps 1-2; use the same
+   automation credentials from Step 4 above.) The response's `data` is the authoritative merged
+   state — write it verbatim to a **committed** (not gitignored — this isn't a secret) repo-local
+   file:
+   ```bash
+   mkdir -p .pointer
+   echo '<response data object>' > .pointer/stack.json
+   ```
+5. **Tell the user**: `.pointer/stack.json` was created and committed — `skill.md`'s apply step
+   reads it directly, with no further server round trip for `frontend`/`backend`. If a teammate's
+   AI tool later applies comments on this same project, its own first run will add itself to
+   `aiTools` the same way — that's expected, not a bug.
+
+## Step 6 — Verify
 
 1. Start the app and ensure `<POINTER_SERVER>` is reachable.
 2. Load a page — a Pointer toolbar appears (no login popup on load; it's deferred).
 3. Click **+ Comment** → sign in or **Create account** → click an element → leave a comment.
 4. Confirm the project appears in the Pointer dashboard (`<POINTER_SERVER>/admin/`) with the comment.
+5. Confirm `.pointer/stack.json` exists and is staged for commit (not gitignored).
 
 ## Notes & gotchas
 
