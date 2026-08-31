@@ -1,0 +1,23 @@
+/* e2e-alpha fixture styles. The .logo rule below is C4's edit target (needs +4px padding-top) —
+   keep this file's structure stable so a git diff against it stays a meaningful, narrow check. */
+
+body {
+  font-family: sans-serif;
+  margin: 0;
+  padding: 1rem;
+}
+
+.logo {
+  display: block;
+  padding-top: 0px;
+}
+
+.cart {
+  margin: 1rem 0;
+}
+
+footer {
+  margin-top: 2rem;
+  font-size: 0.85rem;
+  color: #666;
+}

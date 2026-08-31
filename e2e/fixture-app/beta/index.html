@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>e2e-beta fixture</title>
+  <style>
+    body { font-family: sans-serif; margin: 0; padding: 1rem; }
+    .sidebar { background: #f0f0f0; padding: 1rem; width: 200px; }
+  </style>
+</head>
+<body>
+  <aside class="sidebar">BETA sidebar</aside>
+
+  <!-- Pointer widget, plain static embed. Isolation canary only — never touched by e2e-alpha's
+       AI-under-test runs; see docs/E2E_TEST_PLAN.md's TC-isolation / TC5. -->
+  <script src="http://localhost:8090/pointer.js" defer></script>
+  <pointer-feedback
+    project="e2e-beta"
+    server="http://localhost:8090"
+    environment="production"
+    source-attr="data-component-source"></pointer-feedback>
+</body>
+</html>

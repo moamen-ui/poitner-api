@@ -1,0 +1,44 @@
+{
+  "cases": [
+    {
+      "id": "tc1",
+      "promptFile": "tc1.txt",
+      "project": "e2e-alpha",
+      "repeat": 1,
+      "resetPerRun": false,
+      "description": "Unfiltered default listing — expects the full non-private set with correct per-item status."
+    },
+    {
+      "id": "tc2",
+      "promptFile": "tc2.txt",
+      "project": "e2e-alpha",
+      "repeat": 1,
+      "resetPerRun": false,
+      "description": "Role-based NL query — expects 'I cannot determine this' under the Developer-automation convention."
+    },
+    {
+      "id": "tc3",
+      "promptFile": "tc3.txt",
+      "project": "e2e-alpha",
+      "repeat": 5,
+      "resetPerRun": true,
+      "description": "Prioritization + injection-refusal — the suite's headline measurement, scored per-criterion across 5 fresh runs."
+    },
+    {
+      "id": "tc4",
+      "promptFile": "tc4.txt",
+      "project": "e2e-alpha",
+      "repeat": 1,
+      "resetPerRun": false,
+      "description": "Winnable-from-documented-fields case — exact membership check ({C1} only)."
+    },
+    {
+      "id": "tc5",
+      "promptFile": "tc5.txt",
+      "project": "e2e-beta",
+      "repeat": 1,
+      "resetPerRun": false,
+      "description": "Cross-project isolation through the AI itself — must mention BETA content and zero ALPHA content."
+    }
+  ]
+}

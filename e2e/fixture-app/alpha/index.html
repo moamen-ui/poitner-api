@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>e2e-alpha fixture</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <header>
+    <img class="logo" src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='32' height='32'/%3E" alt="logo" />
+  </header>
+
+  <main>
+    <div class="cart">
+      <p>Cart total: <span id="cart-total">$0.00</span></p>
+      <button id="checkout-btn">Checkout</button>
+    </div>
+    <button id="join-btn">Join</button>
+    <div id="decoy">Unrelated promo banner</div>
+  </main>
+
+  <footer>
+    <p>&copy; 2025 e2e-alpha fixture</p>
+  </footer>
+
+  <script src="checkout.js"></script>
+
+  <!-- Pointer widget, plain static embed (see API/wwwroot/pointer-init.md, section 3b). The
+       harness's per-tool config overrides server/project/environment as needed; these attributes
+       are only defaults for a human opening this page directly. -->
+  <script src="http://localhost:8090/pointer.js" defer></script>
+  <pointer-feedback
+    project="e2e-alpha"
+    server="http://localhost:8090"
+    environment="staging"
+    source-attr="data-component-source"></pointer-feedback>
+</body>
+</html>

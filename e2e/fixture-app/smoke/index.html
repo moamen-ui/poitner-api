@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>e2e-widget-smoke fixture</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <header>
+    <img class="logo" src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='32' height='32'/%3E" alt="logo" />
+  </header>
+
+  <main>
+    <div class="cart">
+      <p>Cart total: <span id="cart-total">$0.00</span></p>
+      <button id="checkout-btn">Checkout</button>
+    </div>
+    <button id="join-btn">Join</button>
+  </main>
+
+  <footer>
+    <p>&copy; 2025 e2e-widget-smoke fixture</p>
+  </footer>
+
+  <script src="checkout.js"></script>
+
+  <!-- Pointer widget, built in JS (see API/wwwroot/pointer-init.md, section 3a's pattern) rather
+       than as a literal tag, so the project attribute can be resolved BEFORE the element connects
+       (connectedCallback reads attributes synchronously at connect time — setting one afterward
+       via a follow-up script is too late and the widget silently fails to initialize).
+       widget.spec.ts drives this page directly with Playwright — environment is switched per user
+       via the toolbar's own env dropdown, not by editing this file. Project key defaults to
+       e2e-widget-smoke but can be overridden via ?project=... (a one-off manual validation run
+       against a live, non-reset dev DB — the real suite always uses the default, against a freshly
+       reset.sh-wiped DB, where this never matters). No `environment` attribute is set: that would
+       make the widget treat it as fixed and hide the interactive #pf-env dropdown that
+       widget.spec.ts needs. -->
+  <script>
+    var s = document.createElement('script');
+    s.src = 'http://localhost:8090/pointer.js';
+    s.defer = true;
+    document.head.appendChild(s);
+    var el = document.createElement('pointer-feedback');
+    el.setAttribute('project', new URLSearchParams(location.search).get('project') || 'e2e-widget-smoke');
+    el.setAttribute('server', 'http://localhost:8090');
+    el.setAttribute('source-attr', 'data-component-source');
+    document.body.appendChild(el);
+  </script>
+</body>
+</html>
