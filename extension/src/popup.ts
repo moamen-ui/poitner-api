@@ -77,6 +77,9 @@ async function renderMain(user: StoredUser | null) {
   const tabState = await send<{ active: boolean; remembered: { project: string; environment: string } | null }>({ type: 'getTabState', tabId: tab!.id!, hostname });
   const env = tabState.remembered?.environment || 'staging';
   const origin = (() => { try { return new URL(url).origin; } catch { return ''; } })();
+  // Only true the first time — chrome.permissions.request persists a grant once given, so this
+  // anticipatory copy shouldn't keep showing on every subsequent visit to an already-approved site.
+  const needsPermissionPrompt = origin ? !(await chrome.permissions.contains({ origins: [`${origin}/*`] })) : false;
   // Projects come from the signed-in user's workspace (dashboard-managed) — no free-typing keys.
   // Quick-access (Client) accounts are barred from browsing the tenant's full project list, so they
   // get a single scoped lookup by this tab's own origin instead (see 'projectForOrigin').
@@ -119,6 +122,7 @@ async function renderMain(user: StoredUser | null) {
         ? `<button class="primary" id="toggle"${!hasProjects ? ' disabled' : ''}>Switch to selected project</button>
            <button class="danger" id="deactivate" style="margin-top:6px;">Deactivate on this tab</button>`
         : `<button class="primary" id="toggle"${!hasProjects ? ' disabled' : ''}>Activate on this tab</button>`}
+      ${needsPermissionPrompt ? `<div class="note">Chrome will ask you to confirm access to this site — click "Allow" to continue.</div>` : ''}
       <div class="note">Activating reloads this tab once, then injects the ${PRODUCT} widget. Switch environment inside the widget (Comments panel).</div>`;
 
     (document.getElementById('signout') as HTMLElement).onclick = signOut;
@@ -151,6 +155,12 @@ async function renderMain(user: StoredUser | null) {
       const environment = env; // initial default; the viewer switches environment inside the widget
       if (!project) return err('Pick a project first.');
       if (!projects.some((p) => p.key === project)) return err('Pick a project from your list.');
+      if (!origin) return err('Could not determine this site\'s origin.');
+      // Must run right here, synchronously in this click handler — chrome.permissions.request only
+      // honors a direct user gesture; proxying it through a message to the background loses that.
+      // Persists once granted, so this only prompts the first time Pointer activates on this site.
+      const granted = await chrome.permissions.request({ origins: [`${origin}/*`] });
+      if (!granted) return err('Pointer needs access to this site to activate here — click Activate again to allow it.');
       const res = await send<{ ok: boolean; error?: string }>({ type: 'activate', tabId: tab!.id!, hostname, origin, project, environment });
       if (!res.ok) return err(res.error || 'Could not activate.'); // e.g. extension disabled on this plan
       window.close();

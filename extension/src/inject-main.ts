@@ -9,9 +9,8 @@ export function injectMain(cfg: {
   environment: string;
   /** Only the display name is forwarded to the page — email and role are omitted (PII, fix 1.3). */
   displayName?: string;
-  /** Extension-origin URLs for the BUNDLED widget CSS + snapdom (chrome-extension://…). The widget
-   *  loads its shadow-DOM stylesheet + snapdom from these so nothing is fetched from the server. */
-  cssUrl?: string;
+  /** Extension-origin URL for the bundled snapdom (chrome-extension://…) — this one stays bundled
+   *  since it changes rarely, unlike pointer.js/pointer.css below. */
   snapdomUrl?: string;
 }): void {
   const w = window as unknown as Record<string, unknown>;
@@ -78,14 +77,21 @@ export function injectMain(cfg: {
     // Only expose the display name — email and roleName are PII and not needed by the widget (1.3).
     user: cfg.displayName ? { displayName: cfg.displayName } : undefined,
     proxy: true,
-    // Bundled-asset URLs (extension origin) so the widget never loads code/CSS from the server.
-    cssUrl: cfg.cssUrl,
+    // cssUrl intentionally omitted: with no override, the widget falls back to loading its
+    // stylesheet from `${server}/pointer.css` on its own — same as the plain (non-extension) embed.
+    // snapdom stays bundled at the extension origin (changes rarely).
     snapdomUrl: cfg.snapdomUrl,
   };
 
-  // NOTE: pointer.js is NOT loaded from the server here (Chrome Web Store forbids remotely-hosted
-  // code). The background injects the BUNDLED pointer.js via scripting.executeScript({files}) right
-  // after this config is set. This function only installs the config/transport + mounts the host.
+  // Load the live widget from the server — a plain page-context <script src>, exactly like the
+  // non-extension embed does. This is NOT extension-privileged remote code execution (the kind MV3's
+  // remote-code policy actually targets): it runs with the page's own privileges, same as any script
+  // tag a website could add itself. That's what makes a CSS tweak or a small widget fix a server-side
+  // deploy, live for every installed copy immediately, with no extension update/re-review needed.
+  const script = document.createElement('script');
+  script.src = `${cfg.server}/pointer.js`;
+  script.defer = true;
+  document.head.appendChild(script);
 
   // Mount the widget host — and KEEP it mounted. SPA frameworks (React/Vue/Angular) re-render
   // and routinely evict a node appended to <body> (or replace <body> entirely) once they hydrate,

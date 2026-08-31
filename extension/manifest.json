@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Pointer Feedback",
-  "version": "0.1.2",
+  "version": "0.2.0",
   "description": "Leave element-level feedback on any page and turn it into code with AI — powered by your Pointer server.",
   "action": {
     "default_popup": "popup.html",
@@ -16,12 +16,14 @@
   "permissions": [
     "storage",
     "scripting",
+    "activeTab",
     "declarativeNetRequestWithHostAccess"
   ],
-  "host_permissions": ["<all_urls>"],
+  "host_permissions": ["https://api.pointer.moamen.work/*"],
+  "optional_host_permissions": ["<all_urls>"],
   "web_accessible_resources": [
     {
-      "resources": ["pointer.js", "pointer.css", "vendor/snapdom.js"],
+      "resources": ["vendor/snapdom.js"],
       "matches": ["<all_urls>"]
     }
   ]

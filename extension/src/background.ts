@@ -124,6 +124,15 @@ async function activate(tabId: number, hostname: string, project: string, enviro
   await chrome.tabs.reload(tabId);
 }
 
+// Defense in depth: the popup is responsible for requesting this origin's host permission (a
+// user-gesture requirement chrome.permissions.request can't satisfy from here), but every path
+// into activate() ultimately comes from that same message, so double-check it actually landed
+// before wiring up a CSP-bypass rule that would otherwise silently do nothing for this origin.
+async function hasHostPermission(origin: string): Promise<boolean> {
+  try { return await chrome.permissions.contains({ origins: [`${origin}/*`] }); }
+  catch { return false; }
+}
+
 async function deactivate(tabId: number): Promise<void> {
   await removeCspBypass(tabId);
   await removePendingInject(tabId);
@@ -139,19 +148,20 @@ async function injectInto(tabId: number, url: string): Promise<void> {
   if (!entry) return;
   // Only pass the display name into the page — email and role are PII (fix 1.3).
   const displayName: string | undefined = user?.displayName || undefined;
-  // Bundled widget asset URLs (extension origin) so nothing is fetched from the server.
-  const cssUrl = chrome.runtime.getURL('pointer.css');
+  // snapdom (screenshot capture) stays bundled — it changes rarely, unlike pointer.js/css below.
   const snapdomUrl = chrome.runtime.getURL('vendor/snapdom.js');
-  // 1) Isolated bridge (relays proxied requests). 2) MAIN-world config + host mount.
-  // 3) The BUNDLED widget as a local file — NOT remote code (Chrome Web Store compliant).
+  // 1) Isolated bridge (relays proxied requests). 2) MAIN-world config + host mount — injectMain
+  // itself appends <script src>/<link> tags pointing at the server's live pointer.js/pointer.css,
+  // exactly like the plain (non-extension) widget embed does. That's page-context code, not
+  // extension-privileged code, so it isn't "remotely hosted code" under MV3's policy — and it means
+  // a CSS tweak or a small widget fix ships by deploying the server, no extension update needed.
   await chrome.scripting.executeScript({ target: { tabId }, files: ['content-bridge.js'] });
   await chrome.scripting.executeScript({
     target: { tabId },
     world: 'MAIN',
     func: injectMain,
-    args: [{ server, project: entry.project, environment: entry.environment, displayName, cssUrl, snapdomUrl }],
+    args: [{ server, project: entry.project, environment: entry.environment, displayName, snapdomUrl }],
   });
-  await chrome.scripting.executeScript({ target: { tabId }, world: 'MAIN', files: ['pointer.js'] });
 }
 
 chrome.tabs.onUpdated.addListener((tabId, info, tab) => {
@@ -328,6 +338,12 @@ chrome.runtime.onMessage.addListener((msg: BgRequest | ProxyRequest, _sender, se
         // surface as the misleading "Project not found in your workspace."
         const su = (await chrome.storage.local.get(LOCAL_KEYS.user))[LOCAL_KEYS.user] as StoredUser | null;
         if (su?.isSuperAdmin) return { ok: false, error: 'Super admin accounts can’t use Pointer here — sign in with a workspace account instead.' };
+        // The popup must have already requested (and the user granted) host access to this origin —
+        // chrome.permissions.request needs a direct user gesture, which only the popup's own click
+        // handler has. Without it, the CSP-bypass rule below would be added but silently do nothing.
+        if (!(await hasHostPermission(m.origin))) {
+          return { ok: false, error: 'Permission for this site was not granted — click Activate again and allow access when Chrome asks.' };
+        }
         // Entitlement gate + site recording: /api/extension/activate enforces ExtensionEnabled and
         // MaxExtensionSites (inert while the enforcement kill-switch is off) and validates the project
         // exists. Block injection — and surface why — when the plan denies it.

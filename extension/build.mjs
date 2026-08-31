@@ -9,15 +9,13 @@ const here = dirname(fileURLToPath(import.meta.url));
 const OUT = resolve(here, 'dist');
 const STATIC = ['manifest.json', 'popup.html', 'options.html'];
 const ICONS = ['16.png', '32.png', '48.png', '128.png'];
-// The widget is BUNDLED into the extension (Chrome Web Store forbids remotely-hosted code). Copy
-// the built widget assets from the API's wwwroot so the injected widget + its CSS/snapdom load from
-// the extension origin, not the server. Rebuild the widget (web-component) BEFORE building here.
+// pointer.js/pointer.css load LIVE from the server (see src/inject-main.ts) — a plain page-context
+// <script src>/<link>, same as the non-extension embed, not extension-privileged code. Only snapdom
+// (screenshot capture, changes rarely) stays bundled from the API's wwwroot.
 const WWWROOT = resolve(here, '..', 'API', 'wwwroot');
 
 function copyStatic() {
   for (const f of STATIC) copyFileSync(resolve(here, f), resolve(OUT, f));
-  copyFileSync(resolve(WWWROOT, 'pointer.js'), resolve(OUT, 'pointer.js'));
-  copyFileSync(resolve(WWWROOT, 'pointer.css'), resolve(OUT, 'pointer.css'));
   mkdirSync(resolve(OUT, 'vendor'), { recursive: true });
   copyFileSync(resolve(WWWROOT, 'vendor', 'snapdom.js'), resolve(OUT, 'vendor', 'snapdom.js'));
   mkdirSync(resolve(OUT, 'icons'), { recursive: true });
