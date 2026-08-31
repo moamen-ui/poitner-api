@@ -5,6 +5,7 @@ public static class MessageKeys
     public static class Auth
     {
         public const string InvalidCredentials = "Invalid email or password.";
+        public const string InvalidApiKey = "Invalid or revoked API key.";
         public const string Inactive = "Account is disabled.";
         public const string PendingApproval = "Your request is awaiting admin approval.";
         public const string Rejected = "Your request was rejected.";

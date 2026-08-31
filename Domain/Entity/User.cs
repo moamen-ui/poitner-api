@@ -30,6 +30,15 @@ public class User : BaseEntity
     /// </summary>
     public Guid SecurityStamp { get; set; } = Guid.NewGuid();
 
+    /// <summary>
+    /// Long-lived personal access key for AI/automation tooling (e.g. skill.md's apply flow),
+    /// exchanged for a normal JWT via POST /api/auth/login-with-key — an alternative to typing
+    /// email+password into .pointer/credentials.env. Shown on the profile page and the dashboard's
+    /// quick-start guide, re-viewable at any time (not a one-time reveal). Independent of
+    /// SecurityStamp — a password change does not invalidate it; regenerating it does.
+    /// </summary>
+    public string? ApiKey { get; set; }
+
     public Guid? OwnerId { get; set; }
     public bool IsDemo { get; set; }
     public DateTime? ExpiresAt { get; set; }

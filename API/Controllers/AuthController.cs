@@ -24,6 +24,18 @@ public class AuthController(IAuthService authService, ISettingsService settingsS
         return result.IsSuccess ? Ok(result) : BadRequest(result);
     }
 
+    /// <summary>Exchanges a long-lived personal API key for a normal JWT — an alternative to
+    /// POST /login for AI/automation tooling (e.g. skill.md), same response shape.</summary>
+    [AllowAnonymous]
+    [HttpPost("login-with-key")]
+    [ProducesResponseType(typeof(LoginResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(Result), StatusCodes.Status400BadRequest)]
+    public async Task<IActionResult> LoginWithKey([FromBody] LoginWithApiKeyRequest request)
+    {
+        var result = await authService.LoginWithApiKeyAsync(request);
+        return result.IsSuccess ? Ok(result) : BadRequest(result);
+    }
+
     [AllowAnonymous]
     [HttpPost("register")]
     [EnableRateLimiting("signup")]

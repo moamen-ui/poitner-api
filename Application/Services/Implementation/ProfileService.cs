@@ -1,3 +1,4 @@
+using System.Security.Cryptography;
 using Microsoft.EntityFrameworkCore;
 using Pointer.Application.Abstractions;
 using Pointer.Application.DTOs.Profile;
@@ -31,6 +32,51 @@ public class ProfileService : IProfileService
         return user is null
             ? Result<UserProfileResponse>.NotFound("User not found")
             : await BuildAsync(user);
+    }
+
+    public async Task<Result<ApiKeyResponse>> GetOrCreateApiKeyAsync(Guid publicId)
+    {
+        var user = await _unitOfWork.Repository<User>().Query()
+            .FirstOrDefaultAsync(u => u.PublicId == publicId && u.DeletedAt == null);
+        if (user is null) return Result<ApiKeyResponse>.NotFound("User not found");
+
+        if (string.IsNullOrEmpty(user.ApiKey))
+        {
+            user.ApiKey = await GenerateUniqueApiKeyAsync();
+            _unitOfWork.Repository<User>().Update(user);
+            await _unitOfWork.SaveChangesAsync();
+        }
+
+        return Result<ApiKeyResponse>.Success(new ApiKeyResponse { ApiKey = user.ApiKey });
+    }
+
+    public async Task<Result<ApiKeyResponse>> RegenerateApiKeyAsync(Guid publicId)
+    {
+        var user = await _unitOfWork.Repository<User>().Query()
+            .FirstOrDefaultAsync(u => u.PublicId == publicId && u.DeletedAt == null);
+        if (user is null) return Result<ApiKeyResponse>.NotFound("User not found");
+
+        user.ApiKey = await GenerateUniqueApiKeyAsync();
+        _unitOfWork.Repository<User>().Update(user);
+        await _unitOfWork.SaveChangesAsync();
+
+        return Result<ApiKeyResponse>.Success(new ApiKeyResponse { ApiKey = user.ApiKey });
+    }
+
+    // ptr_ prefix (scannable, matches common API-key conventions) + 40 url-safe random chars —
+    // collision-checked against the unique index, though at this entropy a collision is not
+    // realistically expected; the loop is just defensive.
+    private async Task<string> GenerateUniqueApiKeyAsync()
+    {
+        for (var attempt = 0; attempt < 5; attempt++)
+        {
+            var candidate = "ptr_" + Convert.ToHexString(RandomNumberGenerator.GetBytes(20)).ToLowerInvariant();
+            var exists = await _unitOfWork.Repository<User>().Query().AsNoTracking()
+                .IgnoreQueryFilters()
+                .AnyAsync(u => u.ApiKey == candidate);
+            if (!exists) return candidate;
+        }
+        throw new InvalidOperationException("Could not generate a unique API key after 5 attempts.");
     }
 
     private async Task<Result<UserProfileResponse>> BuildAsync(User user)

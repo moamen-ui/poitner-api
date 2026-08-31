@@ -38,4 +38,24 @@ public class MeController(IPreferencesService preferencesService, IProfileServic
         if (result.IsNotFound) return NotFound(result);
         return result.IsSuccess ? Ok(result) : BadRequest(result);
     }
+
+    [HttpGet("api-key")]
+    [ProducesResponseType(typeof(Pointer.Application.DTOs.Profile.ApiKeyResponse), StatusCodes.Status200OK)]
+    public async Task<IActionResult> GetApiKey()
+    {
+        if (currentUser.Id is null) return Unauthorized();
+        var result = await profileService.GetOrCreateApiKeyAsync(currentUser.Id.Value);
+        if (result.IsNotFound) return NotFound(result);
+        return result.IsSuccess ? Ok(result) : BadRequest(result);
+    }
+
+    [HttpPost("api-key/regenerate")]
+    [ProducesResponseType(typeof(Pointer.Application.DTOs.Profile.ApiKeyResponse), StatusCodes.Status200OK)]
+    public async Task<IActionResult> RegenerateApiKey()
+    {
+        if (currentUser.Id is null) return Unauthorized();
+        var result = await profileService.RegenerateApiKeyAsync(currentUser.Id.Value);
+        if (result.IsNotFound) return NotFound(result);
+        return result.IsSuccess ? Ok(result) : BadRequest(result);
+    }
 }

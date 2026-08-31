@@ -198,6 +198,46 @@ public class AuthService : IAuthService
         return Result<LoginResponse>.Success(response);
     }
 
+    public async Task<Result<LoginResponse>> LoginWithApiKeyAsync(LoginWithApiKeyRequest request)
+    {
+        var key = request.ApiKey.Trim();
+        if (string.IsNullOrEmpty(key))
+            return Result<LoginResponse>.Failure(MessageKeys.Auth.InvalidApiKey);
+
+        // Anonymous (no tenant claim yet) — same IgnoreQueryFilters reasoning as LoginAsync.
+        var user = await _unitOfWork.Repository<User>()
+            .Query()
+            .IgnoreQueryFilters()
+            .AsNoTracking()
+            .Include(u => u.Role)
+            .Where(u => u.DeletedAt == null && u.ApiKey == key)
+            .FirstOrDefaultAsync();
+
+        if (user == null)
+            return Result<LoginResponse>.Failure(MessageKeys.Auth.InvalidApiKey);
+
+        if (user.ApprovalStatus == ApprovalStatus.Pending)
+            return Result<LoginResponse>.Failure(MessageKeys.Auth.PendingApproval,
+                new LoginResponse { Status = "pending" });
+
+        if (user.ApprovalStatus == ApprovalStatus.Rejected)
+            return Result<LoginResponse>.Failure(MessageKeys.Auth.Rejected,
+                new LoginResponse { Status = "rejected" });
+
+        if (!user.IsActive)
+            return Result<LoginResponse>.Failure(MessageKeys.Auth.Disabled,
+                new LoginResponse { Status = "disabled" });
+
+        var token = _tokenService.Issue(user);
+
+        return Result<LoginResponse>.Success(new LoginResponse
+        {
+            Status = "ok",
+            Token = token,
+            User = UserMapper.ToMeResponse(user)
+        });
+    }
+
     public async Task<Result> RegisterAsync(RegisterRequest request)
     {
         var emailNormalized = request.Email.Trim().ToLower();

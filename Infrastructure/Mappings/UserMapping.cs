@@ -33,6 +33,8 @@ public class UserMapping : IEntityTypeConfiguration<User>
         b.Property(x => x.Theme).HasColumnName("theme").HasMaxLength(8);
         b.Property(x => x.AddCommentShortcut).HasColumnName("add_comment_shortcut").HasMaxLength(40);
         b.Property(x => x.SecurityStamp).HasColumnName("security_stamp");
+        b.Property(x => x.ApiKey).HasColumnName("api_key").HasMaxLength(64);
+        b.HasIndex(x => x.ApiKey).IsUnique();
         b.Property(x => x.OwnerId).HasColumnName("owner_id");
         b.HasIndex(x => x.OwnerId);
         b.Property(x => x.IsDemo).HasColumnName("is_demo");
