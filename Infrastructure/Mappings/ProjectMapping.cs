@@ -21,7 +21,10 @@ public class ProjectMapping : IEntityTypeConfiguration<Project>
 
         // Project-specific columns
         b.Property(x => x.Key).HasColumnName("key").IsRequired().HasMaxLength(64);
-        b.HasIndex(x => new { x.Key, x.OwnerId }).IsUnique();
+        // Filtered so a deleted project's key becomes reusable — without this, recreating a
+        // project with a previously-deleted key throws an unhandled unique-constraint violation
+        // (a raw 500) instead of succeeding, since the soft-deleted row still occupies the slot.
+        b.HasIndex(x => new { x.Key, x.OwnerId }).IsUnique().HasFilter("deleted_at IS NULL");
         b.Property(x => x.Name).HasColumnName("name").IsRequired().HasMaxLength(128);
         b.Property(x => x.IsActive).HasColumnName("is_active");
         b.Property(x => x.PageContextCaptureEnabled).HasColumnName("page_context_capture_enabled").HasDefaultValue(false);
