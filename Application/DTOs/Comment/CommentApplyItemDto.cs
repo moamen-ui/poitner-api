@@ -17,10 +17,12 @@ public class CommentApplyItemDto
     public CommentStatus Status { get; set; }
     public EnvironmentTag Environment { get; set; }
     public string Body { get; set; } = string.Empty;
-    public Guid AuthorId { get; set; }
+
+    // AuthorId (raw GUID) intentionally dropped here — unused by the apply-time AI and never
+    // resolvable to a role from this payload anyway; AuthorName (already resolved) is kept.
     public string? AuthorName { get; set; }
     public DateTime CreatedAt { get; set; }
-    public ElementCaptureDto Element { get; set; } = new();
+    public ApplyElementDto Element { get; set; } = new();
     public List<ReplyResponse> Replies { get; set; } = new();
 
     // Predefined-action snapshots (multi-select) — prompts included ONLY here (admin/AI apply path).

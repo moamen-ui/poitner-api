@@ -1,3 +1,4 @@
+using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using Pointer.Application.Abstractions;
 using Pointer.Application.Common;
@@ -287,8 +288,14 @@ public class CommentService : ICommentService
 
         var names = await ResolveNamesAsync(items.SelectMany(AuthorIds));
         var pageContexts = await LoadPageContextsAsync(items.Select(c => c.PageContextSnapshotId));
+        var (pages, userAgents, pageRefByCommentId) = BuildApplyPageMaps(items);
         return Result<PagedData<CommentApplyItemDto>>.Success(
-            new PagedData<CommentApplyItemDto>(items.Select(c => MapToApplyItem(c, names)).ToList(), pagination, pageContexts: pageContexts));
+            new PagedData<CommentApplyItemDto>(
+                items.Select(c => MapToApplyItem(c, names, pageRefByCommentId.GetValueOrDefault(c.Id))).ToList(),
+                pagination,
+                pageContexts: pageContexts,
+                pages: pages,
+                userAgents: userAgents));
     }
 
     public async Task<Result<CommentResponse>> GetByIdAsync(int id, Guid callerId)
@@ -601,16 +608,104 @@ public class CommentService : ICommentService
     };
 
     // Apply-queue export mapper — the ONLY mapper that carries PickedActionPrompt (admin/AI path).
-    private CommentApplyItemDto MapToApplyItem(Comment comment, IReadOnlyDictionary<Guid, string> names) => new()
+    private ApplyElementDto MapToApplyElement(Comment comment, string? pageRef) => new()
+    {
+        PageRef = pageRef,
+        Selector = comment.Element.Selector,
+        Snapshot = comment.Element.Snapshot,
+        SourcePath = comment.Element.SourcePath,
+        // Re-sign at every read so the returned URL is always fresh (never a stale/leaked permanent path).
+        ScreenshotUrl = string.IsNullOrEmpty(comment.Element.ScreenshotUrl)
+            ? comment.Element.ScreenshotUrl
+            : _uploadSigner.SignedUrl(_uploadSigner.ExtractRelPath(comment.Element.ScreenshotUrl)),
+        Classes = ParseJsonOrRaw(comment.Element.Classes),
+        ComputedStyles = ParseJsonOrRaw(comment.Element.ComputedStyles),
+        AppliedCssRules = ParseJsonOrRaw(comment.Element.AppliedCssRules),
+        Parent = ParseJsonOrRaw(comment.Element.ParentInfo)
+    };
+
+    // Old/malformed rows never break the endpoint: a JSON parse failure falls back to the raw
+    // string re-wrapped as a JSON string element, rather than a 500 or a silently dropped field.
+    private static JsonElement? ParseJsonOrRaw(string? raw)
+    {
+        if (string.IsNullOrEmpty(raw)) return null;
+        try
+        {
+            using var doc = JsonDocument.Parse(raw);
+            return doc.RootElement.Clone();
+        }
+        catch (JsonException)
+        {
+            return JsonSerializer.SerializeToElement(raw);
+        }
+    }
+
+    // Builds the apply-queue's page/UA compaction dictionaries in one pass over the page's items.
+    // Keyed by `route + deviceType` (not route alone) so two comments on the same route captured
+    // from different devices/viewports each keep their own real metadata instead of colliding.
+    private static (
+        Dictionary<string, ApplyPageDto> pages,
+        Dictionary<string, string> userAgents,
+        Dictionary<int, string?> pageRefByCommentId)
+        BuildApplyPageMaps(IReadOnlyList<Comment> items)
+    {
+        var pages = new Dictionary<string, ApplyPageDto>();
+        var pageRefByKey = new Dictionary<string, string>();
+        var userAgents = new Dictionary<string, string>();
+        var uaRefByValue = new Dictionary<string, string>();
+        var pageRefByCommentId = new Dictionary<int, string?>();
+
+        foreach (var comment in items)
+        {
+            var element = comment.Element;
+            var route = NormalizeRoute(element.Route);
+            var device = element.DeviceType ?? "unknown";
+            var pageKey = $"{route}␟{device}"; // unit-separator — not expected in a route/device string
+
+            if (!pageRefByKey.TryGetValue(pageKey, out var pageRef))
+            {
+                string? uaRef = null;
+                if (!string.IsNullOrEmpty(element.UserAgent))
+                {
+                    if (!uaRefByValue.TryGetValue(element.UserAgent, out uaRef))
+                    {
+                        uaRef = $"u{userAgents.Count + 1}";
+                        userAgents[uaRef] = element.UserAgent;
+                        uaRefByValue[element.UserAgent] = uaRef;
+                    }
+                }
+
+                pageRef = $"p{pages.Count + 1}";
+                pageRefByKey[pageKey] = pageRef;
+                pages[pageRef] = new ApplyPageDto
+                {
+                    Url = element.PageUrl,
+                    Route = route,
+                    Title = element.PageTitle,
+                    Viewport = element.ViewportWidth.HasValue && element.ViewportHeight.HasValue
+                        ? $"{element.ViewportWidth}x{element.ViewportHeight}"
+                        : null,
+                    Device = element.DeviceType,
+                    Dpr = element.DevicePixelRatio,
+                    UaRef = uaRef
+                };
+            }
+
+            pageRefByCommentId[comment.Id] = pageRef;
+        }
+
+        return (pages, userAgents, pageRefByCommentId);
+    }
+
+    private CommentApplyItemDto MapToApplyItem(Comment comment, IReadOnlyDictionary<Guid, string> names, string? pageRef) => new()
     {
         Id = comment.Id,
         Status = comment.Status,
         Environment = comment.Environment,
         Body = comment.Body,
-        AuthorId = comment.AuthorId,
         AuthorName = names.GetValueOrDefault(comment.AuthorId),
         CreatedAt = comment.CreatedAt,
-        Element = MapElementToDto(comment.Element),
+        Element = MapToApplyElement(comment, pageRef),
         Replies = comment.Replies.Select(r => MapReplyToResponse(r, names)).ToList(),
         // Apply/AI path: carries both label + prompt for each picked action.
         PickedActions = comment.PickedActions
