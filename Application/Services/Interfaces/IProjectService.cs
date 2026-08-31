@@ -51,4 +51,22 @@ public interface IProjectService
     Task<Result<ProjectAppUrlResponse>> SetAppUrlAsync(int projectId, int environmentId, SetProjectAppUrlRequest request);
 
     Task<Result> DeleteAppUrlAsync(int projectId, int environmentId);
+
+    /// <summary>
+    /// Write-once-if-empty for frontend/backend, append-if-new for aiTool — see docs/E2E test plan
+    /// notes and the implementation for exact semantics. Called at most twice in a project's
+    /// lifetime by a well-behaved caller (pointer-init.md, or skill.md's self-healing branch), but
+    /// safe to call repeatedly (idempotent for frontend/backend, deduplicated for aiTool).
+    /// </summary>
+    Task<Result<ProjectStackResponse>> SetStackAsync(string key, SetProjectStackRequest request);
+
+    /// <summary>Per-project read, symmetric with SetStackAsync — dashboard display.</summary>
+    Task<Result<ProjectStackResponse>> GetStackAsync(string key);
+
+    /// <summary>
+    /// Anonymous, cross-tenant aggregate for the public landing page. Deliberately bypasses the
+    /// tenant query filter (IgnoreQueryFilters) — the only method on this service that does, and
+    /// only ever returns anonymized counts, never project/tenant-identifying data.
+    /// </summary>
+    Task<Result<StacksSummaryResponse>> GetStacksSummaryAsync();
 }

@@ -15,6 +15,16 @@ public class Project : BaseEntity
     // (see Role.QuickAccess) knows where to send the invitee. Optional for ordinary projects.
     public string? AppUrl { get; set; }
 
+    // Serialized JSON of {"frontend":["react","tailwind"],"backend":["dotnet","postgres"]},
+    // detected once by pointer-init.md (or self-healed by skill.md's first apply run) and never
+    // re-detected afterward. Write-once-if-empty — see ProjectService.SetStackAsync.
+    public string? TechStack { get; set; }
+
+    // Serialized JSON array of AI coding tools that have registered against this project, e.g.
+    // ["claude-code","opencode-glm"] — unlike TechStack, this GROWS over the project's lifetime
+    // (more than one tool can legitimately touch the same project) rather than being write-once.
+    public string? AiToolsUsed { get; set; }
+
     public Guid? OwnerId { get; set; }
     public ICollection<Comment> Comments { get; set; } = new List<Comment>();
 }

@@ -1,3 +1,4 @@
+using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using Pointer.Application.Abstractions;
 using Pointer.Application.Common;
@@ -627,6 +628,134 @@ public class ProjectService : IProjectService
             PageContextCaptureEnabled = info.PageContextCaptureEnabled,
             Name = info.Name
         });
+    }
+
+    public async Task<Result<ProjectStackResponse>> SetStackAsync(string key, SetProjectStackRequest request)
+    {
+        var projectResult = await EnsureAsync(key);
+        if (!projectResult.IsSuccess)
+            return projectResult.IsConflict
+                ? Result<ProjectStackResponse>.Conflict(projectResult.Message ?? MessageKeys.Project.Disabled)
+                : Result<ProjectStackResponse>.NotFound(projectResult.Message ?? MessageKeys.Project.NotFound);
+
+        var project = await _unitOfWork.Repository<Project>().GetByIdAsync(projectResult.Data);
+        if (project == null) return Result<ProjectStackResponse>.NotFound(MessageKeys.Project.NotFound);
+
+        var changed = false;
+
+        // frontend/backend: write-once-if-empty — ignored (not merged, not overwritten) once set,
+        // so this call is always safe regardless of which developer/machine triggers it first.
+        if (string.IsNullOrEmpty(project.TechStack) && (request.Frontend != null || request.Backend != null))
+        {
+            project.TechStack = JsonSerializer.Serialize(new { frontend = request.Frontend, backend = request.Backend });
+            changed = true;
+        }
+
+        // aiTool: append-if-new to the growing set — a project can legitimately be touched by more
+        // than one AI tool over its lifetime, so this is never write-once.
+        var aiTools = ParseStringList(project.AiToolsUsed);
+        if (!string.IsNullOrWhiteSpace(request.AiTool))
+        {
+            var normalized = request.AiTool.Trim().ToLowerInvariant();
+            if (!aiTools.Contains(normalized))
+            {
+                aiTools.Add(normalized);
+                project.AiToolsUsed = JsonSerializer.Serialize(aiTools);
+                changed = true;
+            }
+        }
+
+        if (changed)
+        {
+            _unitOfWork.Repository<Project>().Update(project);
+            await _unitOfWork.SaveChangesAsync();
+        }
+
+        return Result<ProjectStackResponse>.Success(BuildStackResponse(project.TechStack, project.AiToolsUsed));
+    }
+
+    public async Task<Result<ProjectStackResponse>> GetStackAsync(string key)
+    {
+        var projectResult = await EnsureAsync(key);
+        if (!projectResult.IsSuccess)
+            return projectResult.IsConflict
+                ? Result<ProjectStackResponse>.Conflict(projectResult.Message ?? MessageKeys.Project.Disabled)
+                : Result<ProjectStackResponse>.NotFound(projectResult.Message ?? MessageKeys.Project.NotFound);
+
+        var info = await _unitOfWork.Repository<Project>()
+            .Query()
+            .AsNoTracking()
+            .Where(p => p.Id == projectResult.Data)
+            .Select(p => new { p.TechStack, p.AiToolsUsed })
+            .FirstAsync();
+
+        return Result<ProjectStackResponse>.Success(BuildStackResponse(info.TechStack, info.AiToolsUsed));
+    }
+
+    // Anonymous, cross-tenant aggregate — the only method on this service that bypasses the tenant
+    // query filter. Returns anonymized counts only; never project names, tenant IDs, or emails.
+    public async Task<Result<StacksSummaryResponse>> GetStacksSummaryAsync()
+    {
+        var projects = await _unitOfWork.Repository<Project>()
+            .Query()
+            .IgnoreQueryFilters()
+            .AsNoTracking()
+            .Where(p => p.DeletedAt == null && p.IsActive && (p.TechStack != null || p.AiToolsUsed != null))
+            .Select(p => new { p.TechStack, p.AiToolsUsed })
+            .ToListAsync();
+
+        var summary = new StacksSummaryResponse { TotalProjects = projects.Count };
+
+        foreach (var p in projects)
+        {
+            var stack = BuildStackResponse(p.TechStack, p.AiToolsUsed);
+            foreach (var token in stack.Frontend ?? new List<string>())
+                summary.Frontend[token] = summary.Frontend.GetValueOrDefault(token) + 1;
+            foreach (var token in stack.Backend ?? new List<string>())
+                summary.Backend[token] = summary.Backend.GetValueOrDefault(token) + 1;
+            foreach (var tool in stack.AiTools)
+                summary.AiTools[tool] = summary.AiTools.GetValueOrDefault(tool) + 1;
+        }
+
+        return Result<StacksSummaryResponse>.Success(summary);
+    }
+
+    private static ProjectStackResponse BuildStackResponse(string? techStack, string? aiToolsUsed)
+    {
+        List<string>? frontend = null;
+        List<string>? backend = null;
+
+        if (!string.IsNullOrEmpty(techStack))
+        {
+            try
+            {
+                using var doc = JsonDocument.Parse(techStack);
+                if (doc.RootElement.TryGetProperty("frontend", out var f) && f.ValueKind == JsonValueKind.Array)
+                    frontend = f.EnumerateArray().Select(e => e.GetString() ?? string.Empty).ToList();
+                if (doc.RootElement.TryGetProperty("backend", out var b) && b.ValueKind == JsonValueKind.Array)
+                    backend = b.EnumerateArray().Select(e => e.GetString() ?? string.Empty).ToList();
+            }
+            catch (JsonException)
+            {
+                // Corrupt row (should never happen via SetStackAsync's own writes) — surface as
+                // unset rather than 500.
+            }
+        }
+
+        return new ProjectStackResponse { Frontend = frontend, Backend = backend, AiTools = ParseStringList(aiToolsUsed) };
+    }
+
+    private static List<string> ParseStringList(string? raw)
+    {
+        if (string.IsNullOrEmpty(raw)) return new List<string>();
+        try
+        {
+            return JsonSerializer.Deserialize<List<string>>(raw) ?? new List<string>();
+        }
+        catch (JsonException)
+        {
+            return new List<string>();
+        }
     }
 
     // Batch-resolve creator display names (Project.CreatedBy is a User.PublicId). One query.
