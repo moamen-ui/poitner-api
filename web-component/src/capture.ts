@@ -1,5 +1,6 @@
 import { SNAPDOM_URL, SHOT_MAX_WIDTH, SHOT_HIGHLIGHT } from './constants';
 import { generateSelector } from './dom';
+import { detectFrameworkSourcePath } from './framework-source';
 import type { Meta } from './types';
 
 // We vendor snapdom (https://github.com/zumerlab/snapdom, MIT) under
@@ -238,7 +239,9 @@ export function captureMetadata(el: Element, sourceAttr: string): Meta {
     };
   }
 
-  // Source path: nearest ancestor carrying the configured attribute.
+  // Source path, tiered: (1) the configured attribute — respects apps that already invest in a
+  // custom build plugin for this; (2) zero-config framework dev-mode internals (React/Vue) — see
+  // framework-source.ts; (3) null, falling through to skill.md's own text/class/attribute search.
   let sourcePath: string | null = null;
   let node: Element | null = el;
   while (node && node.getAttribute) {
@@ -248,6 +251,9 @@ export function captureMetadata(el: Element, sourceAttr: string): Meta {
       break;
     }
     node = node.parentElement;
+  }
+  if (!sourcePath) {
+    sourcePath = detectFrameworkSourcePath(el);
   }
 
   return {

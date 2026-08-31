@@ -409,6 +409,70 @@
     }
   };
 
+  // src/framework-source.ts
+  function toPortablePath(raw) {
+    if (/^https?:\/\//.test(raw)) {
+      try {
+        return new URL(raw).pathname.replace(/^\//, "");
+      } catch {
+        return raw;
+      }
+    }
+    const srcIdx = raw.lastIndexOf("/src/");
+    if (srcIdx >= 0) return raw.slice(srcIdx + 1);
+    return raw;
+  }
+  function reactStackToSourcePath(stack) {
+    const lines = stack.split("\n").slice(1);
+    for (const line of lines) {
+      if (/node_modules|react-dom|react_jsx|react-jsx/.test(line)) continue;
+      const m = line.match(/\((https?:\/\/[^\s)]+):(\d+):(\d+)\)/) || line.match(/at (https?:\/\/[^\s)]+):(\d+):(\d+)/);
+      if (m) return `${toPortablePath(m[1])}:${m[2]}`;
+    }
+    return null;
+  }
+  function detectReactSource(el) {
+    const key = Object.getOwnPropertyNames(el).find((k) => k.startsWith("__reactFiber"));
+    if (!key) return null;
+    const fiber = el[key];
+    if (!fiber) return null;
+    const legacy = fiber._debugSource;
+    if (legacy && legacy.fileName) {
+      return `${toPortablePath(legacy.fileName)}:${legacy.lineNumber || 0}`;
+    }
+    const debugStack = fiber._debugStack;
+    if (debugStack && typeof debugStack.stack === "string") {
+      const found = reactStackToSourcePath(debugStack.stack);
+      if (found) return found;
+    }
+    return null;
+  }
+  function detectVueSource(el) {
+    let instance = el.__vueParentComponent;
+    let depth = 0;
+    while (instance && depth < 6) {
+      const type = instance.type;
+      const file = type && type.__file || instance.__file;
+      if (file) return toPortablePath(file);
+      instance = instance.parent;
+      depth++;
+    }
+    return null;
+  }
+  function detectFrameworkSourcePath(el) {
+    try {
+      const react = detectReactSource(el);
+      if (react) return react;
+    } catch {
+    }
+    try {
+      const vue = detectVueSource(el);
+      if (vue) return vue;
+    } catch {
+    }
+    return null;
+  }
+
   // src/capture.ts
   var snapdomPromise = null;
   function loadSnapdom() {
@@ -574,6 +638,9 @@
         break;
       }
       node = node.parentElement;
+    }
+    if (!sourcePath) {
+      sourcePath = detectFrameworkSourcePath(el);
     }
     return {
       // Internal display fields (not sent to API)
