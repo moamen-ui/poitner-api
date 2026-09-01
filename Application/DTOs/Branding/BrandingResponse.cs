@@ -18,6 +18,12 @@ public class BrandingAssetsResponse
     public string? Pwa512 { get; set; }
 }
 
+public class BrandingExtensionResponse
+{
+    public string StoreUrl { get; set; } = string.Empty;
+    public string ZipUrl { get; set; } = string.Empty;
+}
+
 public class BrandingResponse
 {
     public string ProductName { get; set; } = string.Empty;
@@ -25,5 +31,6 @@ public class BrandingResponse
     public string PrimaryColor { get; set; } = string.Empty;
     public BrandingUrlsResponse Urls { get; set; } = new();
     public BrandingAssetsResponse Assets { get; set; } = new();
+    public BrandingExtensionResponse Extension { get; set; } = new();
     public int Version { get; set; }
 }

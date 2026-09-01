@@ -14,6 +14,7 @@ public class BrandingService(ISettingsService settings) : IBrandingService
     private const string DefaultUrlDemo      = "https://demo.pointer.moamen.work";
     private const string DefaultUrlDocs      = "https://github.com/moamen-ui/poitner-api#readme";
     private const string DefaultUrlLanding   = "https://pointer.moamen.work";
+    private const string DefaultExtensionZipUrl = "https://pointer.moamen.work/pointer-extension.zip";
 
     public async Task<Result<BrandingResponse>> GetAsync(string publicBase, IReadOnlySet<string> existingKinds)
     {
@@ -72,6 +73,8 @@ public class BrandingService(ISettingsService settings) : IBrandingService
         var urlDemo      = await settings.GetStringAsync(ISettingsService.BrandUrlDemo,      DefaultUrlDemo);
         var urlDocs      = await settings.GetStringAsync(ISettingsService.BrandUrlDocs,      DefaultUrlDocs);
         var urlLanding   = await settings.GetStringAsync(ISettingsService.BrandUrlLanding,   DefaultUrlLanding);
+        var extStoreUrl  = await settings.GetStringAsync(ISettingsService.ExtensionStoreUrl, string.Empty);
+        var extZipUrl    = await settings.GetStringAsync(ISettingsService.ExtensionZipUrl,   DefaultExtensionZipUrl);
         var version      = await settings.GetIntAsync(ISettingsService.BrandAssetsVersion, 0);
 
         var base_ = publicBase.TrimEnd('/');
@@ -96,6 +99,11 @@ public class BrandingService(ISettingsService settings) : IBrandingService
                 AppleTouch = BuildAssetUrl(base_, "appleTouch", existingKinds, version),
                 Pwa192     = BuildAssetUrl(base_, "pwa192",     existingKinds, version),
                 Pwa512     = BuildAssetUrl(base_, "pwa512",     existingKinds, version),
+            },
+            Extension = new BrandingExtensionResponse
+            {
+                StoreUrl = extStoreUrl,
+                ZipUrl   = extZipUrl,
             },
             Version = version,
         };
