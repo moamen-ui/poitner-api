@@ -74,9 +74,8 @@
     .nav-links { display: flex; gap: 18px; margin-inline-start: auto; }
     .nav-links a { color: var(--pf-muted); font-weight: 600; font-size: 14px; }
     .nav-cta { display: flex; gap: 10px; align-items: center; }
-    #lang-toggle { display: inline-grid; place-items: center; background: var(--pf-soft); border: 1px solid var(--pf-border); border-radius: 999px; width: 38px; height: 38px; padding: 0; color: var(--pf-muted); cursor: pointer; }
+    #lang-toggle { display: inline-flex; align-items: center; background: var(--pf-soft); border: 1px solid var(--pf-border); border-radius: 999px; padding: 8px 14px; font-size: 13px; font-weight: 700; color: var(--pf-muted); cursor: pointer; white-space: nowrap; }
     #lang-toggle:hover { color: var(--pf-text); border-color: color-mix(in srgb, var(--pf-blue) 40%, var(--pf-border)); }
-    #lang-toggle svg { display: block; }
     @media (max-width: 760px) {
       .nav-links { display: none; }
     }
@@ -88,7 +87,9 @@
     }
     /* Belt-and-suspenders: some browsers only honor overflow-x on html, others need it on body
        too, so both declare it — never scroll the document sideways. */
-    html { overflow-x: hidden; }
+    html { overflow-x: hidden; scroll-behavior: smooth; }
+    /* Clear the sticky nav (64px) when a nav link scrolls a section into view. */
+    section[id] { scroll-margin-top: 76px; }
     .hero { padding: 64px 0 48px; background: radial-gradient(1200px 400px at 70% -10%, color-mix(in srgb, var(--pf-blue) 12%, transparent), transparent); }
     .hero-grid { display: grid; grid-template-columns: 1.1fr 1fr; gap: 40px; align-items: center; }
     .hero h1 { font-size: clamp(30px, 5vw, 52px); line-height: 1.1; margin: 0 0 16px; letter-spacing: -0.02em; }
@@ -120,15 +121,16 @@
     .step-icon--tag .row { display: block; height: 8px; border-radius: 4px; background: var(--pf-soft); margin-bottom: 6px; }
     .step-icon--tag .row.active { position: relative; }
     .step-icon--tag .chip { position: absolute; inset-inline-end: 0; top: -3px; width: 14px; height: 14px; border-radius: 4px; background: var(--pf-grad); opacity: 0; transform: scale(.5); animation: mini-chip 3s ease-in-out infinite; }
-    .step-icon--apply .mini-term { position: absolute; inset: 0; background: #0f172a; border-radius: 8px; display: flex; align-items: center; padding: 0 8px; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 11px; overflow: hidden; }
-    .mini-term-prompt { color: #22c55e; font-weight: 700; margin-inline-end: 4px; }
-    .mini-term-cmd { display: inline-block; width: 0; overflow: hidden; white-space: nowrap; color: #e2e8f0; animation: mini-type 3s steps(9) infinite; }
-    .mini-term-cmd::before { content: "apply fix"; }
+    .step-icon--apply .mini-term { position: absolute; inset: 0; background: #0f172a; border-radius: 8px; display: flex; align-items: center; padding: 0 6px; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 10px; overflow: hidden; }
+    .mini-term-prompt { color: #22c55e; font-weight: 700; margin-inline-end: 3px; }
+    /* Kept to 3 chars deliberately — the icon box is only 48px wide, so anything longer clips. */
+    .mini-term-cmd { display: inline-block; width: 0; overflow: hidden; white-space: nowrap; color: #e2e8f0; animation: mini-type 3s steps(3) infinite; }
+    .mini-term-cmd::before { content: "fix"; }
     .mini-term-caret { display: inline-block; width: 5px; height: 11px; background: #e2e8f0; margin-inline-start: 2px; vertical-align: middle; animation: pf-blink 1s step-end infinite; }
     @keyframes mini-ring { 0%, 15% { opacity: 0; transform: scale(.6); } 25%, 55% { opacity: 1; transform: scale(1); } 70%, 100% { opacity: 0; } }
     @keyframes mini-bubble { 0%, 20% { opacity: 0; transform: translateY(4px); } 30%, 60% { opacity: 1; transform: translateY(0); } 75%, 100% { opacity: 0; } }
     @keyframes mini-chip { 0%, 30% { opacity: 0; transform: scale(.5); } 45%, 75% { opacity: 1; transform: scale(1); } 90%, 100% { opacity: 0; } }
-    @keyframes mini-type { 0%, 55% { width: 0; } 85%, 100% { width: 9ch; } }
+    @keyframes mini-type { 0%, 55% { width: 0; } 85%, 100% { width: 3ch; } }
     /* "Works with your stack" — real, anonymized counts from GET /api/public/stacks-summary. */
     .stack-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 24px; }
     .stack-col h3 { margin: 0 0 10px; font-size: 13px; font-weight: 700; color: var(--pf-muted); text-transform: uppercase; letter-spacing: .04em; }
@@ -188,32 +190,40 @@
     .mock-target { font: inherit; font-weight: 700; padding: 10px 16px; border-radius: 10px; border: none; color: #fff; background: var(--pf-grad); }
     .mock-text { height: 12px; border-radius: 6px; background: var(--pf-soft); margin-top: 16px; }
     .mock-text.short { width: 60%; }
-    .pf-cursor { position: absolute; width: 18px; height: 18px; border-radius: 50%; border: 2px solid var(--pf-blue); background: rgba(37,99,235,.2); top: 60%; left: 60%; animation: pf-cursor 6s ease-in-out infinite; }
-    .pf-ring { position: absolute; left: 22px; top: 56px; width: 96px; height: 42px; border: 2px solid var(--pf-blue); border-radius: 10px; opacity: 0; animation: pf-ring 6s ease-in-out infinite; }
-    .pf-pop { position: absolute; left: 130px; top: 52px; background: #0f172a; color: #fff; font-size: 13px; padding: 8px 12px; border-radius: 10px; opacity: 0; transform: translateY(4px); animation: pf-pop 6s ease-in-out infinite; white-space: nowrap; }
-    .pf-pin { position: absolute; left: 96px; top: 44px; width: 22px; height: 22px; border-radius: 50% 50% 50% 2px; background: var(--pf-grad); color: #fff; font-size: 12px; font-weight: 800; display: grid; place-items: center; opacity: 0; animation: pf-pin 6s ease-in-out infinite; }
+    .pf-cursor { position: absolute; width: 18px; height: 18px; border-radius: 50%; border: 2px solid var(--pf-blue); background: rgba(37,99,235,.2); top: 60%; left: 60%; animation: pf-cursor 9s ease-in-out infinite; }
+    .pf-ring { position: absolute; left: 22px; top: 56px; width: 96px; height: 42px; border: 2px solid var(--pf-blue); border-radius: 10px; opacity: 0; animation: pf-ring 9s ease-in-out infinite; }
+    .pf-pop { position: absolute; left: 130px; top: 52px; background: #0f172a; color: #fff; font-size: 13px; padding: 8px 12px; border-radius: 10px; opacity: 0; transform: translateY(4px); animation: pf-pop 9s ease-in-out infinite; white-space: nowrap; }
+    /* Second, sequential comment on the SAME target — a functional/API ask, not styling, so the
+       hero doesn't read as "UI-only". Shares .pf-pop's chrome, overrides only the animation. */
+    .pf-pop2 { animation-name: pf-pop2; }
+    .pf-pin { position: absolute; left: 96px; top: 44px; width: 22px; height: 22px; border-radius: 50% 50% 50% 2px; background: var(--pf-grad); color: #fff; font-size: 12px; font-weight: 800; display: grid; place-items: center; opacity: 0; animation: pf-pin 9s ease-in-out infinite; }
+    .pf-pin2 { left: 116px; top: 64px; animation-name: pf-pin2; }
     @keyframes pf-cursor {
-      0% { top: 75%; left: 70%; } 18% { top: 60px; left: 56px; } 100% { top: 60px; left: 56px; }
+      0% { top: 75%; left: 70%; } 12% { top: 60px; left: 56px; } 100% { top: 60px; left: 56px; }
     }
-    @keyframes pf-ring { 0%,12% { opacity: 0; } 20%,100% { opacity: 1; } }
-    @keyframes pf-pop { 0%,22% { opacity: 0; transform: translateY(4px); } 30%,52% { opacity: 1; transform: translateY(0); } 60%,100% { opacity: 0; } }
-    @keyframes pf-pin { 0%,28% { opacity: 0; transform: scale(.4); } 38%,100% { opacity: 1; transform: scale(1); } }
-    /* Final step: the Claude Code terminal slides up, then the command types itself out. */
-    .pf-term { position: absolute; left: 22px; right: 22px; bottom: 18px; background: #0f172a; border: 1px solid #1e293b; border-radius: 10px; padding: 10px 12px; box-shadow: 0 10px 30px rgba(2,6,23,.28); opacity: 0; transform: translateY(10px); animation: pf-term 6s ease-in-out infinite; }
+    @keyframes pf-ring { 0%,8% { opacity: 0; } 13%,100% { opacity: 1; } }
+    @keyframes pf-pop { 0%,15% { opacity: 0; transform: translateY(4px); } 20%,35% { opacity: 1; transform: translateY(0); } 40%,100% { opacity: 0; } }
+    @keyframes pf-pop2 { 0%,42% { opacity: 0; transform: translateY(4px); } 47%,62% { opacity: 1; transform: translateY(0); } 67%,100% { opacity: 0; } }
+    @keyframes pf-pin { 0%,19% { opacity: 0; transform: scale(.4); } 25%,100% { opacity: 1; transform: scale(1); } }
+    @keyframes pf-pin2 { 0%,46% { opacity: 0; transform: scale(.4); } 52%,100% { opacity: 1; transform: scale(1); } }
+    /* Final step: the Claude Code terminal slides up, then the command types itself out —
+       applying BOTH queued comments (the styling one and the API one). */
+    .pf-term { position: absolute; left: 22px; right: 22px; bottom: 18px; background: #0f172a; border: 1px solid #1e293b; border-radius: 10px; padding: 10px 12px; box-shadow: 0 10px 30px rgba(2,6,23,.28); opacity: 0; transform: translateY(10px); animation: pf-term 9s ease-in-out infinite; }
     .pf-term-bar { display: flex; align-items: center; gap: 5px; margin-bottom: 8px; }
     .pf-term-bar span { width: 9px; height: 9px; border-radius: 50%; background: #334155; }
     .pf-term-bar em { margin-inline-start: 6px; font-style: normal; font-size: 11px; color: #64748b; letter-spacing: .02em; }
     .pf-term-body { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 13px; line-height: 1.4; color: #e2e8f0; white-space: nowrap; }
     .pf-term-prompt { color: #22c55e; font-weight: 700; }
-    .pf-term-cmd { display: inline-block; overflow: hidden; white-space: nowrap; vertical-align: bottom; width: 0; animation: pf-type 6s steps(22) infinite; }
+    .pf-term-cmd { display: inline-block; overflow: hidden; white-space: nowrap; vertical-align: bottom; width: 0; animation: pf-type 9s steps(22) infinite; }
     .pf-term-caret { display: inline-block; width: 7px; height: 14px; background: #e2e8f0; margin-inline-start: 2px; vertical-align: middle; animation: pf-blink 1s step-end infinite; }
-    @keyframes pf-term { 0%,60% { opacity: 0; transform: translateY(10px); } 68%,98% { opacity: 1; transform: translateY(0); } 100% { opacity: 0; } }
-    @keyframes pf-type { 0%,66% { width: 0; } 86%,100% { width: 22ch; } }
+    @keyframes pf-term { 0%,74% { opacity: 0; transform: translateY(10px); } 80%,98% { opacity: 1; transform: translateY(0); } 100% { opacity: 0; } }
+    @keyframes pf-type { 0%,80% { width: 0; } 96%,100% { width: 22ch; } }
     @keyframes pf-blink { 0%,50% { opacity: 1; } 51%,100% { opacity: 0; } }
     @media (prefers-reduced-motion: reduce) {
-      .pf-cursor, .pf-ring, .pf-pop, .pf-pin, .pf-term, .pf-term-cmd, .pf-term-caret { animation: none; }
-      .pf-ring, .pf-pin, .pf-term { opacity: 1; }       /* show the representative end frame */
-      .pf-pop { opacity: 0; }                           /* collapsed once the terminal step is shown */
+      html { scroll-behavior: auto; }
+      .pf-cursor, .pf-ring, .pf-pop, .pf-pop2, .pf-pin, .pf-pin2, .pf-term, .pf-term-cmd, .pf-term-caret { animation: none; }
+      .pf-ring, .pf-pin, .pf-pin2, .pf-term { opacity: 1; }       /* show the representative end frame */
+      .pf-pop, .pf-pop2 { opacity: 0; }                 /* collapsed once the terminal step is shown */
       .pf-term { transform: none; }
       .pf-term-cmd { width: 22ch; }
       .pf-cursor { top: 60px; left: 56px; }
@@ -221,7 +231,7 @@
       .step-icon--click .ring { opacity: 1; transform: scale(1); }
       .step-icon--click .bubble { opacity: 1; transform: none; }
       .step-icon--tag .chip { opacity: 1; transform: scale(1); }
-      .mini-term-cmd { width: 9ch; }
+      .mini-term-cmd { width: 3ch; }
     }
     [dir="rtl"] .nav-links { margin-inline-start: 0; margin-inline-end: auto; }
     /* The animation stage (.hero-stage) stays LTR below — it mimics an app UI, not document flow. */
@@ -241,9 +251,7 @@
         <a href="#demo" data-i18n="nav.demo">Demo</a>
       </nav>
       <div class="nav-cta">
-        <button id="lang-toggle" type="button" aria-label="Switch language" title="Switch language">
-          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"></circle><line x1="2" y1="12" x2="22" y2="12"></line><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10A15.3 15.3 0 0 1 12 2z"></path></svg>
-        </button>
+        <button id="lang-toggle" type="button" aria-label="Switch to Arabic" title="Switch to Arabic">العربية</button>
         <a class="btn" href="https://app.pointer.moamen.work" data-i18n="nav.signin">Sign in</a>
         <a class="btn primary" href="https://demo.pointer.moamen.work" data-i18n="nav.demoCta">Try the demo</a>
       </div>
@@ -271,6 +279,8 @@
     <span class="pf-ring"></span>
     <div class="pf-pop"><b data-i18n="anim.label">Make this bolder</b></div>
     <span class="pf-pin">1</span>
+    <div class="pf-pop pf-pop2"><b data-i18n="anim.label2">Wire up /api/auth/login</b></div>
+    <span class="pf-pin pf-pin2">2</span>
     <!-- Final step: a Claude Code terminal opens and the developer applies the queue. -->
     <div class="pf-term">
       <div class="pf-term-bar"><span></span><span></span><span></span><em>claude code</em></div>
@@ -291,7 +301,7 @@
           </div>
           <div class="contrast-card good">
             <h3 data-i18n="contrast.goodTitle">With Pointer</h3>
-            <p data-i18n="contrast.good">🐕 click the title → 💬 "make this 24px" → ✨ AI applies it.</p>
+            <p data-i18n="contrast.good">🐕 click anything → 💬 "make this 24px" or "wire this to /api/auth/login" → ✨ AI applies it.</p>
           </div>
         </div>
       </div>
@@ -497,7 +507,7 @@
       "hero.sub": "Anyone on your team clicks an element on a running app and leaves a short comment. Developers hand the queue to any AI tool, which applies the change to the real source — no more translating vague feedback into code.",
       "hero.demo": "Try the demo — no install", "hero.signup": "Create an account",
       "contrast.badTitle": "Without Pointer", "contrast.bad": "\"Go to the checkout page, find the header, make the title 24px and a bit darker…\"",
-      "contrast.goodTitle": "With Pointer", "contrast.good": "🐕 click the title → 💬 \"make this 24px\" → ✨ AI applies it.",
+      "contrast.goodTitle": "With Pointer", "contrast.good": "🐕 click anything → 💬 \"make this 24px\" or \"wire this to /api/auth/login\" → ✨ AI applies it.",
       "how.title": "How it works",
       "how.s1t": "Click & comment", "how.s1": "Anyone signed in clicks any element on the running app and leaves a short comment.",
       "how.s2t": "Triage in the dashboard", "how.s2": "Comments land in the dashboard tagged by project, environment, stakeholder, and status — triaged like real work, not buried in a doc.",
@@ -524,7 +534,8 @@
       "final.title": "Try it in one click — no install", "final.demo": "Try the demo", "final.signup": "Create an account",
       "final.signupFree": "Start free — no credit card",
       "foot.dashboard": "Dashboard", "foot.docs": "Docs", "foot.privacy": "Privacy",
-      "anim.label": "Make this bolder"
+      "anim.label": "Make this bolder",
+      "anim.label2": "Wire up /api/auth/login"
     },
     ar: {
       "nav.how": "كيف يعمل", "nav.why": "لماذا Pointer", "nav.features": "المميزات", "nav.pricing": "الأسعار", "nav.demo": "تجربة",
@@ -549,7 +560,7 @@
       "hero.sub": "أي عضو في فريقك ينقر على عنصر في التطبيق الفعلي ويترك تعليقًا قصيرًا. ثم يسلّم المطوّر قائمة الملاحظات لأي أداة ذكاء اصطناعي لتطبّق التغيير على الكود المصدري مباشرة — دون ترجمة ملاحظات غامضة إلى كود.",
       "hero.demo": "جرّب العرض — بدون تثبيت", "hero.signup": "أنشئ حسابًا",
       "contrast.badTitle": "بدون Pointer", "contrast.bad": "«اذهب إلى صفحة الدفع، وابحث عن العنوان، واجعل حجمه ٢٤ بكسل وأغمق قليلًا…»",
-      "contrast.goodTitle": "مع Pointer", "contrast.good": "🐕 انقر العنوان ← 💬 «اجعله ٢٤ بكسل» ← ✨ يطبّقه الذكاء الاصطناعي.",
+      "contrast.goodTitle": "مع Pointer", "contrast.good": "🐕 انقر أي عنصر ← 💬 «اجعله ٢٤ بكسل» أو «اربط هذا بـ /api/auth/login» ← ✨ يطبّقه الذكاء الاصطناعي.",
       "how.title": "كيف يعمل",
       "how.s1t": "انقر وعلّق", "how.s1": "أي مستخدم مسجّل ينقر على أي عنصر في التطبيق ويترك تعليقًا قصيرًا.",
       "how.s2t": "فرز في لوحة التحكم", "how.s2": "تصل التعليقات إلى لوحة التحكم موسومة بالمشروع والبيئة والجهة المعنية والحالة — تُفرز كعمل حقيقي، لا أن تُدفن في مستند.",
@@ -576,7 +587,8 @@
       "final.title": "جرّبه بنقرة واحدة — بدون تثبيت", "final.demo": "جرّب العرض", "final.signup": "أنشئ حسابًا",
       "final.signupFree": "ابدأ مجانًا — بدون بطاقة ائتمان",
       "foot.dashboard": "لوحة التحكم", "foot.docs": "الوثائق", "foot.privacy": "الخصوصية",
-      "anim.label": "اجعله أعرض"
+      "anim.label": "اجعله أعرض",
+      "anim.label2": "اربط هذا بـ /api/auth/login"
     }
   };
 
@@ -599,9 +611,10 @@
     if (typeof extShow === 'function') extShow(extIdx);   // keep the install-stepper nav labels in the current language
     if (typeof applyExtensionLabels === 'function') applyExtensionLabels(lang);
     var toggle = document.getElementById('lang-toggle');
-    // Icon-only button: keep the glyph, just update the accessible label/title to the action.
+    // Text button: show the name of the language you'd switch TO (not the current one).
     if (toggle) {
       var label = (lang === 'ar') ? 'التبديل إلى الإنجليزية' : 'Switch to Arabic';
+      toggle.textContent = (lang === 'ar') ? 'English' : 'العربية';
       toggle.setAttribute('aria-label', label);
       toggle.setAttribute('title', label);
     }
