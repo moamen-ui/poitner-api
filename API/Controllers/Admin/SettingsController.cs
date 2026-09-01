@@ -18,6 +18,9 @@ public class SettingsController(ISettingsService settingsService, IConfiguration
     private const int DefaultDemoTtlHours = 24;
     private const int DefaultDemoPerEmailPerDay = 3;
     private const int DefaultDemoCommentCap = 10;
+    // The extension zip is a landing-domain artifact served by Caddy (see DEPLOY.md/Caddyfile) —
+    // matches the dashboards' EXTENSION_ZIP_URL fallback until this is ever overridden here.
+    private const string DefaultExtensionZipUrl = "https://pointer.moamen.work/pointer-extension.zip";
 
     [HttpGet]
     [ProducesResponseType(typeof(Result<SettingsResponse>), StatusCodes.Status200OK)]
@@ -44,6 +47,10 @@ public class SettingsController(ISettingsService settingsService, IConfiguration
         await settingsService.SetIntAsync(ISettingsService.DemoPerEmailPerDay, request.DemoPerEmailPerDay > 0 ? request.DemoPerEmailPerDay : DefaultDemoPerEmailPerDay);
         await settingsService.SetIntAsync(ISettingsService.DemoCommentCap, request.DemoCommentCap > 0 ? request.DemoCommentCap : DefaultDemoCommentCap);
 
+        // Extension
+        await settingsService.SetStringAsync(ISettingsService.ExtensionStoreUrl, request.ExtensionStoreUrl?.Trim() ?? string.Empty);
+        await settingsService.SetStringAsync(ISettingsService.ExtensionZipUrl, request.ExtensionZipUrl?.Trim() ?? string.Empty);
+
         return Ok(Result<SettingsResponse>.Success(await BuildResponseAsync()));
     }
 
@@ -63,6 +70,8 @@ public class SettingsController(ISettingsService settingsService, IConfiguration
             DemoTtlHours = await settingsService.GetIntAsync(ISettingsService.DemoTtlHours, DefaultDemoTtlHours),
             DemoPerEmailPerDay = await settingsService.GetIntAsync(ISettingsService.DemoPerEmailPerDay, DefaultDemoPerEmailPerDay),
             DemoCommentCap = await settingsService.GetIntAsync(ISettingsService.DemoCommentCap, DefaultDemoCommentCap),
+            ExtensionStoreUrl = await settingsService.GetStringAsync(ISettingsService.ExtensionStoreUrl, string.Empty),
+            ExtensionZipUrl = await settingsService.GetStringAsync(ISettingsService.ExtensionZipUrl, DefaultExtensionZipUrl),
         };
     }
 }

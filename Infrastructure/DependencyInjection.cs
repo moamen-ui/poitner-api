@@ -40,7 +40,12 @@ public static class DependencyInjection
         s.AddScoped<IFileStorage, LocalFileStorage>();
         s.AddSingleton<IUploadSigner, UploadSigner>();
         s.AddSingleton<IResetTokenService, ResetTokenService>();
-        s.AddHttpClient<IEmailSender, BrevoEmailSender>();
+        // Email:Provider=smtp (local dev only — see local-mail-server/) swaps in a plain-SMTP
+        // sender pointed at a local catch-all mailbox; unset/anything else keeps Brevo (prod).
+        if (string.Equals(c["Email:Provider"], "smtp", StringComparison.OrdinalIgnoreCase))
+            s.AddScoped<IEmailSender, SmtpEmailSender>();
+        else
+            s.AddHttpClient<IEmailSender, BrevoEmailSender>();
         // Payment-ready seam — MANUAL DI (single-instance seam, not Scrutor). Swap for a real gateway
         // adapter here later via config; no schema churn.
         s.AddScoped<IBillingProvider, NoopBillingProvider>();

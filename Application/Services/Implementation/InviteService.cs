@@ -586,12 +586,13 @@ public class InviteService : IInviteService
         }
 
         var brand = await _branding.BuildResponseAsync("", new HashSet<string>());
+        var extensionStoreUrl = await _settings.GetStringAsync(ISettingsService.ExtensionStoreUrl, string.Empty);
         var emailSent = false;
         try
         {
             emailSent = await _emailService.SendAsync(emailNormalized,
                 $"You're invited to review {project.Name}",
-                BuildQuickAccessInviteEmailHtml(project.AppUrl!, emailNormalized, password, brand.ProductName));
+                BuildQuickAccessInviteEmailHtml(project.AppUrl!, emailNormalized, password, brand.ProductName, project.Name!, extensionStoreUrl));
         }
         catch { /* logged inside the sender; ignore here */ }
 
@@ -697,14 +698,21 @@ public class InviteService : IInviteService
 </div>";
     }
 
-    private static string BuildQuickAccessInviteEmailHtml(string appUrl, string email, string password, string productName)
+    private static string BuildQuickAccessInviteEmailHtml(
+        string appUrl, string email, string password, string productName, string projectName, string? extensionStoreUrl)
     {
+        // Omitted (not just disabled) until a super admin sets ExtensionStoreUrl in Settings —
+        // no point linking a reader to a store page that doesn't exist yet.
+        var extensionLine = !string.IsNullOrWhiteSpace(extensionStoreUrl)
+            ? $@"<p style=""margin:0 0 16px""><a href=""{extensionStoreUrl}"" style=""display:inline-block;background:#0f172a;color:#fff;padding:10px 20px;border-radius:8px;text-decoration:none"">Get the Chrome extension →</a></p>"
+            : string.Empty;
         return $@"<div style=""font-family:system-ui,sans-serif;color:#0f172a;line-height:1.6"">
   <h2 style=""margin:0 0 8px"">You're invited to review {productName} 🐕</h2>
-  <p style=""margin:0 0 16px"">Open the link below, click the feedback bubble, and log in with the credentials below to leave comments.</p>
+  <p style=""margin:0 0 16px"">You've been invited to leave feedback on <b>{projectName}</b>. Open the link below, click the feedback bubble, and log in with the credentials below to leave comments.</p>
   <p style=""margin:0 0 16px""><a href=""{appUrl}"" style=""display:inline-block;background:#2563eb;color:#fff;padding:10px 20px;border-radius:8px;text-decoration:none"">Open project →</a></p>
   <p style=""margin:0 0 4px""><b>Email:</b> {email}</p>
   <p style=""margin:0 0 16px""><b>Password:</b> {password}</p>
+  {extensionLine}
   <p style=""margin:0;color:#475569;font-size:13px"">These credentials are ready to use now. If you weren't expecting this, you can ignore this email.</p>
 </div>";
     }

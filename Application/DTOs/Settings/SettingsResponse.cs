@@ -16,4 +16,8 @@ public class SettingsResponse
     public int DemoTtlHours { get; set; }
     public int DemoPerEmailPerDay { get; set; }
     public int DemoCommentCap { get; set; }
+
+    // Browser extension (super-admin editable).
+    public string ExtensionStoreUrl { get; set; } = string.Empty;
+    public string ExtensionZipUrl { get; set; } = string.Empty;
 }

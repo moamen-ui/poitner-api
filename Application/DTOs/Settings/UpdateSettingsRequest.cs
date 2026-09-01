@@ -15,4 +15,9 @@ public class UpdateSettingsRequest
     public int DemoTtlHours { get; set; }
     public int DemoPerEmailPerDay { get; set; }
     public int DemoCommentCap { get; set; }
+
+    // Browser extension (editable). StoreUrl is what's sent in quick-access invite emails;
+    // ZipUrl stays available for the sideload/manual-install path.
+    public string ExtensionStoreUrl { get; set; } = string.Empty;
+    public string ExtensionZipUrl { get; set; } = string.Empty;
 }

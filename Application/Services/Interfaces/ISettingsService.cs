@@ -29,6 +29,11 @@ public interface ISettingsService
     public const string BrandUrlLanding = "brand_url_landing";
     public const string BrandAssetsVersion = "brand_assets_version";
 
+    // Browser extension settings (super-admin editable). ExtensionStoreUrl is the one sent in
+    // quick-access invite emails; ExtensionZipUrl stays available for the sideload/manual path.
+    public const string ExtensionStoreUrl = "extension_store_url";
+    public const string ExtensionZipUrl = "extension_zip_url";
+
     // Monetization settings (super-admin editable). NO provider secrets here — those stay env-only.
     /// <summary>Kill-switch for plan-entitlement enforcement. Default false: deploy off, flip on after soak.</summary>
     public const string EnforcementEnabled = "enforcement_enabled";
