@@ -710,6 +710,7 @@ public class InviteService : IInviteService
   <h2 style=""margin:0 0 8px"">You're invited to review {productName} 🐕</h2>
   <p style=""margin:0 0 16px"">You've been invited to leave feedback on <b>{projectName}</b>. Open the link below, click the feedback bubble, and log in with the credentials below to leave comments.</p>
   <p style=""margin:0 0 16px""><a href=""{appUrl}"" style=""display:inline-block;background:#2563eb;color:#fff;padding:10px 20px;border-radius:8px;text-decoration:none"">Open project →</a></p>
+  <p style=""margin:0 0 4px""><b>Project:</b> {projectName}</p>
   <p style=""margin:0 0 4px""><b>Email:</b> {email}</p>
   <p style=""margin:0 0 16px""><b>Password:</b> {password}</p>
   {extensionLine}
