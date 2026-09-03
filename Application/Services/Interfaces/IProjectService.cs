@@ -1,5 +1,6 @@
 using Pointer.Application.DTOs.Project;
 using Pointer.Application.Response;
+using Pointer.Domain.Enums;
 
 namespace Pointer.Application.Services.Interfaces;
 
@@ -35,6 +36,16 @@ public interface IProjectService
     ///   - DemoService provisioning — creates a demo project explicitly; not a resolve path.
     /// </summary>
     Task<Result<int>> EnsureAsync(string key);
+
+    /// <summary>
+    /// Same as <see cref="EnsureAsync(string)"/>, plus a check of the project's activation flag for
+    /// this SPECIFIC EnvironmentTag (Local/Staging/Production) — Conflict if that one environment is
+    /// deactivated even when the project isn't fully inactive overall. Used only by comment
+    /// creation (the widget's actual "is this environment allowed to submit feedback" gate);
+    /// reading/managing existing comments deliberately keeps using the plain overload above, since a
+    /// later environment deactivation must not hide comments already created under it.
+    /// </summary>
+    Task<Result<int>> EnsureAsync(string key, EnvironmentTag environment);
 
     /// <summary>
     /// Widget-facing read of PageContextCaptureEnabled for a project, resolved via the same

@@ -1,4 +1,5 @@
 using Pointer.Application.DTOs.PredefinedAction;
+using Pointer.Domain.Enums;
 
 namespace Pointer.Application.DTOs.Project;
 
@@ -7,7 +8,16 @@ public class ProjectResponse
     public int Id { get; set; }
     public string Key { get; set; } = string.Empty;
     public string Name { get; set; } = string.Empty;
-    public bool IsActive { get; set; }
+
+    /// <summary>Per-environment activation — keyed by the fixed EnvironmentTag enum
+    /// (Local/Staging/Production), not the tenant-defined AppEnvironment catalog.</summary>
+    public bool IsActiveLocal { get; set; }
+    public bool IsActiveStaging { get; set; }
+    public bool IsActiveProduction { get; set; }
+
+    /// <summary>Computed server-side from the 3 flags above — Active (all on), Inactive (all off),
+    /// or Partial (mixed) — so every dashboard framework renders the same derived state.</summary>
+    public ProjectActivationState ActivationState { get; set; }
 
     /// <summary>Where this project's widget is embedded — required to send a quick-access client invite.</summary>
     public string? AppUrl { get; set; }

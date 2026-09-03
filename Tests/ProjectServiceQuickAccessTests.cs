@@ -41,7 +41,7 @@ public class ProjectServiceQuickAccessTests
         var tenant = Guid.NewGuid();
         using (var seed = BuildContext(new FakeCurrentUser { IsSuperAdmin = true }, db))
         {
-            seed.Projects.Add(new Project { Key = "acme-app", Name = "Acme App", IsActive = true, OwnerId = tenant });
+            seed.Projects.Add(new Project { Key = "acme-app", Name = "Acme App", IsActiveLocal = true, IsActiveStaging = true, IsActiveProduction = true, OwnerId = tenant });
             seed.SaveChanges();
         }
 

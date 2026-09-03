@@ -954,7 +954,7 @@ public class InviteServiceTests
     private static int SeedProject(string dbName, Guid tenant, string? appUrl)
     {
         using var seed = BuildContext(new FakeCurrentUser { IsSuperAdmin = true }, dbName);
-        var project = new Project { Key = "acme-app", Name = "Acme App", IsActive = true, AppUrl = appUrl, OwnerId = tenant };
+        var project = new Project { Key = "acme-app", Name = "Acme App", IsActiveLocal = true, IsActiveStaging = true, IsActiveProduction = true, AppUrl = appUrl, OwnerId = tenant };
         seed.Projects.Add(project);
         seed.SaveChanges();
         return project.Id;

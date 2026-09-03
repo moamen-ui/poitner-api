@@ -96,7 +96,7 @@ public class SuperAdminUsageBlockedTests
         // Seed a real tenant-owned project the super admin could otherwise try to comment on.
         using (var seed = BuildContext(new FakeCurrentUser { IsSuperAdmin = true }, db))
         {
-            seed.Projects.Add(new Project { Key = "proj", Name = "Proj", IsActive = true, OwnerId = Guid.NewGuid() });
+            seed.Projects.Add(new Project { Key = "proj", Name = "Proj", IsActiveLocal = true, IsActiveStaging = true, IsActiveProduction = true, OwnerId = Guid.NewGuid() });
             seed.SaveChanges();
         }
 

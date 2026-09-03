@@ -72,7 +72,7 @@ public class CommentServiceQuickAccessTests
         string dbName, Guid tenant, Guid clientId, Guid otherId)
     {
         using var seed = BuildContext(new FakeCurrentUser { IsSuperAdmin = true }, dbName);
-        var project = new Project { Key = "proj", Name = "Proj", IsActive = true, OwnerId = tenant };
+        var project = new Project { Key = "proj", Name = "Proj", IsActiveLocal = true, IsActiveStaging = true, IsActiveProduction = true, OwnerId = tenant };
         seed.Projects.Add(project);
         seed.SaveChanges();
 
@@ -216,7 +216,7 @@ public class CommentServiceQuickAccessTests
 
         using (var seed = BuildContext(new FakeCurrentUser { IsSuperAdmin = true }, db))
         {
-            var project = new Project { Key = "proj", Name = "Proj", IsActive = true, OwnerId = tenant };
+            var project = new Project { Key = "proj", Name = "Proj", IsActiveLocal = true, IsActiveStaging = true, IsActiveProduction = true, OwnerId = tenant };
             seed.Projects.Add(project);
             seed.SaveChanges();
 

@@ -98,7 +98,8 @@ public class ExtensionService : IExtensionService
             .Query()
             .AsNoTracking()
             .Include(u => u.Project)
-            .Where(u => u.DeletedAt == null && u.Project.DeletedAt == null && u.Project.IsActive)
+            .Where(u => u.DeletedAt == null && u.IsActive && u.Project.DeletedAt == null
+                && (u.Project.IsActiveLocal || u.Project.IsActiveStaging || u.Project.IsActiveProduction))
             .Select(u => new { u.Project.Key, u.Project.Name, u.Url })
             .ToListAsync();
 
@@ -111,7 +112,7 @@ public class ExtensionService : IExtensionService
             var legacy = await _unitOfWork.Repository<Project>()
                 .Query()
                 .AsNoTracking()
-                .Where(p => p.DeletedAt == null && p.IsActive && p.AppUrl != null)
+                .Where(p => p.DeletedAt == null && (p.IsActiveLocal || p.IsActiveStaging || p.IsActiveProduction) && p.AppUrl != null)
                 .Select(p => new { p.Key, p.Name, p.AppUrl })
                 .ToListAsync();
             var legacyMatch = legacy.FirstOrDefault(p => NormalizeOrigin(p.AppUrl!) == origin);

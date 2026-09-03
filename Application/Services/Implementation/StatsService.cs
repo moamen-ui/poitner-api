@@ -23,7 +23,7 @@ public class StatsService : IStatsService
             .Query()
             .AsNoTracking()
             .Where(p => p.DeletedAt == null)
-            .Select(p => new { p.Id, p.Key, p.Name, p.IsActive })
+            .Select(p => new { p.Id, p.Key, p.Name, p.IsActiveLocal, p.IsActiveStaging, p.IsActiveProduction })
             .ToListAsync();
 
         var usersCount = await _unitOfWork.Repository<User>()
@@ -59,7 +59,7 @@ public class StatsService : IStatsService
                     ProjectId = p.Id,
                     Key = p.Key,
                     Name = p.Name,
-                    IsActive = p.IsActive,
+                    IsActive = p.IsActiveLocal || p.IsActiveStaging || p.IsActiveProduction,
                     Open = open,
                     Pending = pending,
                     Completed = completed,

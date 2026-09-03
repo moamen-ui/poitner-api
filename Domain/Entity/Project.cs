@@ -4,7 +4,13 @@ public class Project : BaseEntity
 {
     public string Key { get; set; } = string.Empty;
     public string Name { get; set; } = string.Empty;
-    public bool IsActive { get; set; } = true;
+
+    // Per-environment activation (keyed by the fixed EnvironmentTag enum — NOT the tenant-defined
+    // AppEnvironment catalog used by ProjectAppUrl, a different concept). All 3 off = fully
+    // inactive (parity with the old single IsActive=false); see ProjectService.EnsureAsync.
+    public bool IsActiveLocal { get; set; } = true;
+    public bool IsActiveStaging { get; set; } = true;
+    public bool IsActiveProduction { get; set; } = true;
 
     // Opt-in, default off: whether the widget may buffer console errors/warnings and failed/slow
     // network requests for this project's bug-flagged comments. See

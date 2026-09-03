@@ -102,7 +102,7 @@ public class ProfileService : IProfileService
 
         var projects = await _unitOfWork.Repository<Project>().Query().AsNoTracking()
             .Where(p => projectIds.Contains(p.Id))
-            .Select(p => new { p.Id, p.Key, p.Name, p.IsActive })
+            .Select(p => new { p.Id, p.Key, p.Name, p.IsActiveLocal, p.IsActiveStaging, p.IsActiveProduction })
             .ToListAsync();
 
         void Apply(ProfileCounts t, CommentStatus s, int n)
@@ -120,7 +120,14 @@ public class ProfileService : IProfileService
         var perProject = new List<ProfileProject>();
         foreach (var p in projects)
         {
-            var proj = new ProfileProject { ProjectId = p.Id, Key = p.Key, Name = p.Name, IsActive = p.IsActive };
+            var proj = new ProfileProject
+            {
+                ProjectId = p.Id,
+                Key = p.Key,
+                Name = p.Name,
+                // Coarse summary for a profile page — active in at least one environment.
+                IsActive = p.IsActiveLocal || p.IsActiveStaging || p.IsActiveProduction,
+            };
             var envIds = comments.Where(c => c.ProjectId == p.Id).Select(c => c.Environment)
                 .Concat(replies.Where(r => r.ProjectId == p.Id).Select(r => r.Environment))
                 .Distinct();

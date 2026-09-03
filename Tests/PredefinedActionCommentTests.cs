@@ -72,7 +72,7 @@ public class PredefinedActionCommentTests
         // Seed the project via a super-admin context (bypasses filters cleanly on insert).
         using (var seed = BuildContext(new FakeCurrentUser { IsSuperAdmin = true }, dbName))
         {
-            seed.Projects.Add(new Project { Key = "proj", Name = "Proj", IsActive = true, OwnerId = tenant });
+            seed.Projects.Add(new Project { Key = "proj", Name = "Proj", IsActiveLocal = true, IsActiveStaging = true, IsActiveProduction = true, OwnerId = tenant });
             seed.SaveChanges();
         }
 

@@ -75,7 +75,7 @@ public class PageContextCaptureTests
         {
             seed.Projects.Add(new Project
             {
-                Key = "proj", Name = "Proj", IsActive = true, OwnerId = tenant,
+                Key = "proj", Name = "Proj", IsActiveLocal = true, IsActiveStaging = true, IsActiveProduction = true, OwnerId = tenant,
                 PageContextCaptureEnabled = captureEnabled
             });
             seed.SaveChanges();

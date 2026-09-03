@@ -8,6 +8,7 @@ using Pointer.Application.Resources;
 using Pointer.Application.Response;
 using Pointer.Application.Services.Interfaces;
 using Pointer.Domain.Entity;
+using Pointer.Domain.Enums;
 
 namespace Pointer.Application.Services.Implementation;
 
@@ -73,7 +74,8 @@ public class ProjectService : IProjectService
         {
             Key = keyNormalized,
             Name = request.Name,
-            IsActive = true,
+            // IsActiveLocal/Staging/Production default true on the entity — a new project starts
+            // fully active in every environment.
             AppUrl = string.IsNullOrWhiteSpace(request.AppUrl) ? null : request.AppUrl.Trim(),
             OwnerId = ownerId
         };
@@ -192,8 +194,14 @@ public class ProjectService : IProjectService
         if (request.Name != null)
             project.Name = request.Name;
 
-        if (request.IsActive.HasValue)
-            project.IsActive = request.IsActive.Value;
+        if (request.IsActiveLocal.HasValue)
+            project.IsActiveLocal = request.IsActiveLocal.Value;
+
+        if (request.IsActiveStaging.HasValue)
+            project.IsActiveStaging = request.IsActiveStaging.Value;
+
+        if (request.IsActiveProduction.HasValue)
+            project.IsActiveProduction = request.IsActiveProduction.Value;
 
         if (request.PageContextCaptureEnabled.HasValue)
             project.PageContextCaptureEnabled = request.PageContextCaptureEnabled.Value;
@@ -249,7 +257,8 @@ public class ProjectService : IProjectService
         {
             AppEnvironmentId = u.AppEnvironmentId,
             EnvironmentName = u.AppEnvironment.Name,
-            Url = u.Url
+            Url = u.Url,
+            IsActive = u.IsActive
         }).ToList());
     }
 
@@ -280,6 +289,7 @@ public class ProjectService : IProjectService
         if (existing != null)
         {
             existing.Url = url;
+            existing.IsActive = request.IsActive;
             _unitOfWork.Repository<ProjectAppUrl>().Update(existing);
         }
         else
@@ -289,6 +299,7 @@ public class ProjectService : IProjectService
                 ProjectId = projectId,
                 AppEnvironmentId = environmentId,
                 Url = url,
+                IsActive = request.IsActive,
                 OwnerId = project.OwnerId
             };
             await _unitOfWork.Repository<ProjectAppUrl>().AddAsync(existing);
@@ -308,7 +319,8 @@ public class ProjectService : IProjectService
         {
             AppEnvironmentId = environmentId,
             EnvironmentName = environment.Name,
-            Url = url
+            Url = url,
+            IsActive = existing.IsActive
         });
     }
 
@@ -594,7 +606,7 @@ public class ProjectService : IProjectService
             .Query()
             .AsNoTracking()
             .Where(p => p.DeletedAt == null && p.Key == keyNormalized && p.OwnerId == ownerId)
-            .Select(p => new { p.Id, p.IsActive })
+            .Select(p => new { p.Id, p.IsActiveLocal, p.IsActiveStaging, p.IsActiveProduction })
             .FirstOrDefaultAsync();
 
         // STRICT: projects must be pre-defined in the dashboard. No lazy self-create.
@@ -602,10 +614,46 @@ public class ProjectService : IProjectService
         if (project == null)
             return Result<int>.NotFound(MessageKeys.Project.NotFound);
 
-        if (!project.IsActive)
+        // "Fully inactive" = disabled in every environment — parity with the old single IsActive
+        // flag, for every caller that has no particular environment in scope (predefined actions,
+        // extension listing, export/import, capture-config, stack registration). A project that's
+        // merely PARTIALLY active (disabled in only some environments) still resolves here; only
+        // the environment-aware overload below can catch that finer-grained case.
+        if (!(project.IsActiveLocal || project.IsActiveStaging || project.IsActiveProduction))
             return Result<int>.Conflict(MessageKeys.Project.Disabled);
 
         return Result<int>.Success(project.Id);
+    }
+
+    public async Task<Result<int>> EnsureAsync(string key, EnvironmentTag environment)
+    {
+        var baseResult = await EnsureAsync(key);
+        if (!baseResult.IsSuccess)
+            return baseResult;
+
+        // Re-select just the 3 flags for the specific-environment check — the project is already
+        // known to exist and be resolvable to this tenant from the base call above.
+        var keyNormalized = key.Trim().ToLower();
+        var ownerId = TenantStamp.OwnerFor(_currentUser);
+        var flags = await _unitOfWork.Repository<Project>()
+            .Query()
+            .AsNoTracking()
+            .Where(p => p.DeletedAt == null && p.Key == keyNormalized && p.OwnerId == ownerId)
+            .Select(p => new { p.IsActiveLocal, p.IsActiveStaging, p.IsActiveProduction })
+            .FirstOrDefaultAsync();
+
+        var activeForEnvironment = environment switch
+        {
+            EnvironmentTag.Local => flags!.IsActiveLocal,
+            EnvironmentTag.Staging => flags!.IsActiveStaging,
+            EnvironmentTag.Production => flags!.IsActiveProduction,
+            _ => true,
+        };
+
+        if (!activeForEnvironment)
+            return Result<int>.Conflict(MessageKeys.Project.Disabled);
+
+        return baseResult;
     }
 
     public async Task<Result<CaptureConfigResponse>> GetCaptureConfigAsync(string key)
@@ -700,7 +748,8 @@ public class ProjectService : IProjectService
             .Query()
             .IgnoreQueryFilters()
             .AsNoTracking()
-            .Where(p => p.DeletedAt == null && p.IsActive && (p.TechStack != null || p.AiToolsUsed != null))
+            .Where(p => p.DeletedAt == null && (p.IsActiveLocal || p.IsActiveStaging || p.IsActiveProduction)
+                && (p.TechStack != null || p.AiToolsUsed != null))
             .Select(p => new { p.TechStack, p.AiToolsUsed })
             .ToListAsync();
 
@@ -775,6 +824,13 @@ public class ProjectService : IProjectService
     private async Task<string?> ResolveCreatorNameAsync(Guid id) =>
         (await ResolveCreatorNamesAsync(new[] { id })).GetValueOrDefault(id);
 
+    private static ProjectActivationState ComputeActivationState(bool local, bool staging, bool production)
+    {
+        if (local && staging && production) return ProjectActivationState.Active;
+        if (!local && !staging && !production) return ProjectActivationState.Inactive;
+        return ProjectActivationState.Partial;
+    }
+
     private ProjectResponse MapToResponse(Project project, List<PredefinedAction> actions, int commentsCount, string? createdByName)
     {
         var canEdit = _currentUser.IsAdmin || project.CreatedBy == _currentUser.Id;
@@ -785,7 +841,10 @@ public class ProjectService : IProjectService
             Id = project.Id,
             Key = project.Key,
             Name = project.Name,
-            IsActive = project.IsActive,
+            IsActiveLocal = project.IsActiveLocal,
+            IsActiveStaging = project.IsActiveStaging,
+            IsActiveProduction = project.IsActiveProduction,
+            ActivationState = ComputeActivationState(project.IsActiveLocal, project.IsActiveStaging, project.IsActiveProduction),
             AppUrl = project.AppUrl,
             PageContextCaptureEnabled = project.PageContextCaptureEnabled,
             PredefinedActions = actions

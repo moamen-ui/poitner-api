@@ -137,7 +137,7 @@ public class AppEnvironmentServiceTests
 
         using (var seed = BuildContext(admin, dbName))
         {
-            var project = new Project { Key = "p", Name = "P", IsActive = true, OwnerId = tenant };
+            var project = new Project { Key = "p", Name = "P", IsActiveLocal = true, IsActiveStaging = true, IsActiveProduction = true, OwnerId = tenant };
             seed.Projects.Add(project);
             seed.SaveChanges();
             seed.ProjectAppUrls.Add(new ProjectAppUrl

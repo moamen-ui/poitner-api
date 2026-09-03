@@ -26,7 +26,9 @@ public class ProjectMapping : IEntityTypeConfiguration<Project>
         // (a raw 500) instead of succeeding, since the soft-deleted row still occupies the slot.
         b.HasIndex(x => new { x.Key, x.OwnerId }).IsUnique().HasFilter("deleted_at IS NULL");
         b.Property(x => x.Name).HasColumnName("name").IsRequired().HasMaxLength(128);
-        b.Property(x => x.IsActive).HasColumnName("is_active");
+        b.Property(x => x.IsActiveLocal).HasColumnName("is_active_local").HasDefaultValue(true);
+        b.Property(x => x.IsActiveStaging).HasColumnName("is_active_staging").HasDefaultValue(true);
+        b.Property(x => x.IsActiveProduction).HasColumnName("is_active_production").HasDefaultValue(true);
         b.Property(x => x.PageContextCaptureEnabled).HasColumnName("page_context_capture_enabled").HasDefaultValue(false);
         b.Property(x => x.AppUrl).HasColumnName("app_url").HasMaxLength(2048);
         b.Property(x => x.TechStack).HasColumnName("tech_stack").HasMaxLength(2048);

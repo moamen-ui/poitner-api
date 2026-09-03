@@ -119,7 +119,7 @@ public class SuggestionService : ISuggestionService
             .Where(p => p.Id == suggestion.ProjectId && p.DeletedAt == null)
             .FirstOrDefaultAsync();
 
-        if (project == null || !project.IsActive)
+        if (project == null || !(project.IsActiveLocal || project.IsActiveStaging || project.IsActiveProduction))
             return Result<SuggestionResponse>.Conflict(MessageKeys.Suggestion.ProjectUnavailable);
 
         // SortOrder = max(project-scoped) + 1.

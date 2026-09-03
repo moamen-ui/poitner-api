@@ -37,7 +37,7 @@ public class ProjectStackTests
         var db = Guid.NewGuid().ToString();
         var tenant = Guid.NewGuid();
         using var seed = BuildContext(new FakeCurrentUser { IsSuperAdmin = true }, db);
-        seed.Projects.Add(new Project { Key = key, Name = "Proj", IsActive = true, OwnerId = tenant });
+        seed.Projects.Add(new Project { Key = key, Name = "Proj", IsActiveLocal = true, IsActiveStaging = true, IsActiveProduction = true, OwnerId = tenant });
         seed.SaveChanges();
         return (db, tenant);
     }
@@ -170,9 +170,9 @@ public class ProjectStackTests
         using (var seed = BuildContext(new FakeCurrentUser { IsSuperAdmin = true }, db))
         {
             seed.Projects.AddRange(
-                new Project { Key = "a", Name = "A", IsActive = true, OwnerId = tenantA, TechStack = "{\"frontend\":[\"react\"],\"backend\":[\"dotnet\"]}", AiToolsUsed = "[\"claude-code\"]" },
-                new Project { Key = "b", Name = "B", IsActive = true, OwnerId = tenantB, TechStack = "{\"frontend\":[\"react\",\"tailwind\"],\"backend\":null}", AiToolsUsed = "[\"claude-code\",\"opencode-glm\"]" },
-                new Project { Key = "c", Name = "C (no stack)", IsActive = true, OwnerId = tenantB });
+                new Project { Key = "a", Name = "A", IsActiveLocal = true, IsActiveStaging = true, IsActiveProduction = true, OwnerId = tenantA, TechStack = "{\"frontend\":[\"react\"],\"backend\":[\"dotnet\"]}", AiToolsUsed = "[\"claude-code\"]" },
+                new Project { Key = "b", Name = "B", IsActiveLocal = true, IsActiveStaging = true, IsActiveProduction = true, OwnerId = tenantB, TechStack = "{\"frontend\":[\"react\",\"tailwind\"],\"backend\":null}", AiToolsUsed = "[\"claude-code\",\"opencode-glm\"]" },
+                new Project { Key = "c", Name = "C (no stack)", IsActiveLocal = true, IsActiveStaging = true, IsActiveProduction = true, OwnerId = tenantB });
             await seed.SaveChangesAsync();
         }
 
@@ -197,9 +197,9 @@ public class ProjectStackTests
         using (var seed = BuildContext(new FakeCurrentUser { IsSuperAdmin = true }, db))
         {
             seed.Projects.AddRange(
-                new Project { Key = "active", Name = "Active", IsActive = true, OwnerId = tenant, TechStack = "{\"frontend\":[\"vue\"]}" },
-                new Project { Key = "inactive", Name = "Inactive", IsActive = false, OwnerId = tenant, TechStack = "{\"frontend\":[\"vue\"]}" },
-                new Project { Key = "deleted", Name = "Deleted", IsActive = true, OwnerId = tenant, DeletedAt = DateTime.UtcNow, TechStack = "{\"frontend\":[\"vue\"]}" });
+                new Project { Key = "active", Name = "Active", IsActiveLocal = true, IsActiveStaging = true, IsActiveProduction = true, OwnerId = tenant, TechStack = "{\"frontend\":[\"vue\"]}" },
+                new Project { Key = "inactive", Name = "Inactive", IsActiveLocal = false, IsActiveStaging = false, IsActiveProduction = false, OwnerId = tenant, TechStack = "{\"frontend\":[\"vue\"]}" },
+                new Project { Key = "deleted", Name = "Deleted", IsActiveLocal = true, IsActiveStaging = true, IsActiveProduction = true, OwnerId = tenant, DeletedAt = DateTime.UtcNow, TechStack = "{\"frontend\":[\"vue\"]}" });
             await seed.SaveChangesAsync();
         }
 

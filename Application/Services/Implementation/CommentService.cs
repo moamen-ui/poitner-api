@@ -42,7 +42,10 @@ public class CommentService : ICommentService
         if (_currentUser.IsSuperAdmin)
             return Result<CommentResponse>.Forbidden(MessageKeys.Comment.SuperAdminNotAllowed);
 
-        var projectResult = await _projectService.EnsureAsync(projectKey);
+        // Environment-aware: this is the widget's actual "is this environment allowed to submit
+        // feedback" gate — a project deactivated for THIS environment specifically (even while
+        // still active for others) must not accept a new comment tagged with it.
+        var projectResult = await _projectService.EnsureAsync(projectKey, request.Environment);
         if (!projectResult.IsSuccess)
             return projectResult.IsConflict
                 ? Result<CommentResponse>.Conflict(projectResult.Message ?? MessageKeys.Project.Disabled)

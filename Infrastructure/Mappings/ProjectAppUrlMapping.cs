@@ -25,6 +25,7 @@ public class ProjectAppUrlMapping : IEntityTypeConfiguration<ProjectAppUrl>
         b.HasOne(x => x.AppEnvironment).WithMany(e => e.ProjectAppUrls).HasForeignKey(x => x.AppEnvironmentId).OnDelete(DeleteBehavior.Cascade);
 
         b.Property(x => x.Url).HasColumnName("url").IsRequired().HasMaxLength(2048);
+        b.Property(x => x.IsActive).HasColumnName("is_active").HasDefaultValue(true);
         b.Property(x => x.OwnerId).HasColumnName("owner_id").IsRequired();
         b.HasIndex(x => new { x.ProjectId, x.AppEnvironmentId }).IsUnique();
         b.HasIndex(x => x.OwnerId);

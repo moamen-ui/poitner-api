@@ -12,5 +12,11 @@ public class ProjectAppUrl : BaseEntity
     public int AppEnvironmentId { get; set; }
     public AppEnvironment AppEnvironment { get; set; } = null!;
     public string Url { get; set; } = string.Empty;
+
+    // Independent of Project's Local/Staging/Production activation (a different, fixed-enum
+    // concept) — this toggles whether THIS SPECIFIC environment+URL mapping is enabled at all
+    // (e.g. for browser-extension origin matching), not tied to comment tagging.
+    public bool IsActive { get; set; } = true;
+
     public Guid? OwnerId { get; set; }
 }

@@ -108,7 +108,6 @@ public class DemoService : IDemoService
         {
             Key = $"demo-{slug}",
             Name = "Demo Project",
-            IsActive = true,
             OwnerId = publicId,
         };
 

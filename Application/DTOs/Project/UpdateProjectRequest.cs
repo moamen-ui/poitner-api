@@ -5,7 +5,11 @@ namespace Pointer.Application.DTOs.Project;
 public class UpdateProjectRequest
 {
     public string? Name { get; set; }
-    public bool? IsActive { get; set; }
+
+    /// <summary>null (property omitted) → leave untouched, per-environment activation flags.</summary>
+    public bool? IsActiveLocal { get; set; }
+    public bool? IsActiveStaging { get; set; }
+    public bool? IsActiveProduction { get; set; }
 
     /// <summary>null (property omitted) → leave untouched, matching Name's treatment.</summary>
     public string? AppUrl { get; set; }
