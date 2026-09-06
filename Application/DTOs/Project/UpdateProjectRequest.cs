@@ -18,6 +18,13 @@ public class UpdateProjectRequest
     public bool? PageContextCaptureEnabled { get; set; }
 
     /// <summary>
+    /// Which Role.Id values see the widget's environment switcher. null (property omitted) →
+    /// leave untouched. An empty list is NOT the same as omitted — it explicitly clears back to
+    /// the default (everyone except Client/QuickAccess roles).
+    /// </summary>
+    public List<int>? EnvironmentSelectorRoleIds { get; set; }
+
+    /// <summary>
     /// Full desired set of project-scoped predefined actions. Reconcile (last-write-wins):
     /// id present → update; id absent → add; existing row absent from this list → soft-delete.
     /// null (property omitted) → leave actions untouched.

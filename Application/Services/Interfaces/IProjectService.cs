@@ -80,4 +80,19 @@ public interface IProjectService
     /// only ever returns anonymized counts, never project/tenant-identifying data.
     /// </summary>
     Task<Result<StacksSummaryResponse>> GetStacksSummaryAsync();
+
+    /// <summary>
+    /// Anonymous, called by the widget itself before it renders anything (not just before
+    /// submitting a comment). Two independent gates, either one blocks:
+    ///   1. The project must not be fully disabled (all three of IsActiveLocal/Staging/Production
+    ///      false) — the same coarse check every other caller uses.
+    ///   2. If <paramref name="origin"/> matches one of this project's configured ProjectAppUrl
+    ///      rows (by normalized origin), that row's IsActive must be true. An origin that matches
+    ///      NO configured row is NOT blocked by this check — most projects never configure "other
+    ///      environments" at all, and this must not break every widget install that doesn't use
+    ///      that feature.
+    /// A missing project key returns Active = false without distinguishing "not found" from
+    /// "disabled" (this is an anonymous, pre-auth check — it must not leak which is which).
+    /// </summary>
+    Task<Result<WidgetActivationResponse>> CheckWidgetActiveAsync(string key, string? origin);
 }

@@ -22,6 +22,7 @@ public class RoleServiceCanManageTests
         public bool IsSuperAdmin { get; set; }
         public bool IsQuickAccess { get; set; }
         public Guid? TenantId { get; set; }
+        public int? RoleId { get; set; }
     }
 
     private static AppDbContext BuildContext(ICurrentUser user, string dbName) =>

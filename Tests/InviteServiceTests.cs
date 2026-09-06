@@ -27,6 +27,7 @@ public class InviteServiceTests
         public bool IsSuperAdmin { get; set; }
         public bool IsQuickAccess { get; set; }
         public Guid? TenantId { get; set; }
+        public int? RoleId { get; set; }
     }
 
     // Identity hasher/verifier — good enough for service-level assertions.

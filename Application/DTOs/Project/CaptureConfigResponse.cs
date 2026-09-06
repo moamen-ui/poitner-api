@@ -10,4 +10,10 @@ public class CaptureConfigResponse
 {
     public bool PageContextCaptureEnabled { get; set; }
     public string Name { get; set; } = string.Empty;
+
+    /// <summary>Whether the CURRENT authenticated caller should see the widget's environment
+    /// switcher for this project — see ProjectService.ShowEnvironmentSelectorFor. The widget
+    /// itself defaults to showing the switcher until this resolves post-login (this endpoint is
+    /// [Authorize]-only, so there's no anonymous case here), then hides it if this is false.</summary>
+    public bool ShowEnvironmentSelector { get; set; }
 }

@@ -28,7 +28,7 @@ public class ExtensionService : IExtensionService
 
     public async Task<Result<ExtensionActivateResponse>> ActivateAsync(ExtensionActivateRequest request)
     {
-        var origin = NormalizeOrigin(request.Origin);
+        var origin = OriginNormalizer.Normalize(request.Origin);
         if (string.IsNullOrEmpty(origin))
             return Result<ExtensionActivateResponse>.Failure("A valid origin is required.");
 
@@ -87,7 +87,7 @@ public class ExtensionService : IExtensionService
 
     public async Task<Result<ExtensionProjectLookupResponse>> FindProjectForOriginAsync(string rawOrigin)
     {
-        var origin = NormalizeOrigin(rawOrigin);
+        var origin = OriginNormalizer.Normalize(rawOrigin);
         if (string.IsNullOrEmpty(origin))
             return Result<ExtensionProjectLookupResponse>.Failure("A valid origin is required.");
 
@@ -103,7 +103,7 @@ public class ExtensionService : IExtensionService
             .Select(u => new { u.Project.Key, u.Project.Name, u.Url })
             .ToListAsync();
 
-        var match = urls.FirstOrDefault(u => NormalizeOrigin(u.Url) == origin);
+        var match = urls.FirstOrDefault(u => OriginNormalizer.Normalize(u.Url) == origin);
         if (match == null)
         {
             // Legacy fallback: a project whose Project.AppUrl was set before the per-environment
@@ -115,7 +115,7 @@ public class ExtensionService : IExtensionService
                 .Where(p => p.DeletedAt == null && (p.IsActiveLocal || p.IsActiveStaging || p.IsActiveProduction) && p.AppUrl != null)
                 .Select(p => new { p.Key, p.Name, p.AppUrl })
                 .ToListAsync();
-            var legacyMatch = legacy.FirstOrDefault(p => NormalizeOrigin(p.AppUrl!) == origin);
+            var legacyMatch = legacy.FirstOrDefault(p => OriginNormalizer.Normalize(p.AppUrl!) == origin);
             if (legacyMatch == null)
                 return Result<ExtensionProjectLookupResponse>.NotFound(MessageKeys.Project.NoneForOrigin);
             return Result<ExtensionProjectLookupResponse>.Success(
@@ -131,17 +131,4 @@ public class ExtensionService : IExtensionService
             .Query()
             .IgnoreQueryFilters()
             .CountAsync(s => s.OwnerId == owner && s.DeletedAt == null);
-
-    // Normalize to scheme://host[:port], lower-case, no trailing slash/path.
-    private static string NormalizeOrigin(string raw)
-    {
-        if (string.IsNullOrWhiteSpace(raw)) return string.Empty;
-        var trimmed = raw.Trim();
-        if (Uri.TryCreate(trimmed, UriKind.Absolute, out var uri))
-        {
-            var port = uri.IsDefaultPort ? string.Empty : $":{uri.Port}";
-            return $"{uri.Scheme.ToLowerInvariant()}://{uri.Host.ToLowerInvariant()}{port}";
-        }
-        return trimmed.ToLowerInvariant().TrimEnd('/');
-    }
 }

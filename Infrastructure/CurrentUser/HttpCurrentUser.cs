@@ -25,4 +25,9 @@ public class HttpCurrentUser(IHttpContextAccessor accessor) : ICurrentUser
         Guid.TryParse(accessor.HttpContext?.User.FindFirst("tenant")?.Value, out var g)
             ? g
             : null;
+
+    public int? RoleId =>
+        int.TryParse(accessor.HttpContext?.User.FindFirst("role_id")?.Value, out var id)
+            ? id
+            : null;
 }

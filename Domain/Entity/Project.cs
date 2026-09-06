@@ -31,6 +31,11 @@ public class Project : BaseEntity
     // (more than one tool can legitimately touch the same project) rather than being write-once.
     public string? AiToolsUsed { get; set; }
 
+    // Serialized JSON array of Role.Id — which roles see the widget's environment switcher
+    // (the toolbar's Local/Staging/Production select). Null (the default, unconfigured) means
+    // "everyone except Client (Role.QuickAccess)" — see ProjectService.ShowEnvironmentSelectorFor.
+    public string? EnvironmentSelectorRoleIds { get; set; }
+
     public Guid? OwnerId { get; set; }
     public ICollection<Comment> Comments { get; set; } = new List<Comment>();
 }

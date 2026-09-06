@@ -24,6 +24,7 @@ public class TenantQueryFilterTests
         public bool IsSuperAdmin { get; set; }
         public bool IsQuickAccess { get; set; }
         public Guid? TenantId { get; set; }
+        public int? RoleId { get; set; }
     }
 
     // ---------------------------------------------------------------------------

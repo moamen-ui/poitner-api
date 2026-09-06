@@ -206,6 +206,16 @@ public class ProjectService : IProjectService
         if (request.PageContextCaptureEnabled.HasValue)
             project.PageContextCaptureEnabled = request.PageContextCaptureEnabled.Value;
 
+        // null (property omitted) → leave untouched. An empty list is NOT the same as omitted —
+        // it explicitly clears back to the default (stored as null), rather than storing "[]"
+        // forever (which would otherwise mean "no role at all may see it").
+        if (request.EnvironmentSelectorRoleIds != null)
+        {
+            project.EnvironmentSelectorRoleIds = request.EnvironmentSelectorRoleIds.Count == 0
+                ? null
+                : JsonSerializer.Serialize(request.EnvironmentSelectorRoleIds);
+        }
+
         if (request.AppUrl != null)
         {
             project.AppUrl = request.AppUrl.Trim();
@@ -668,13 +678,14 @@ public class ProjectService : IProjectService
             .Query()
             .AsNoTracking()
             .Where(p => p.Id == projectResult.Data)
-            .Select(p => new { p.PageContextCaptureEnabled, p.Name })
+            .Select(p => new { p.PageContextCaptureEnabled, p.Name, p.EnvironmentSelectorRoleIds })
             .FirstAsync();
 
         return Result<CaptureConfigResponse>.Success(new CaptureConfigResponse
         {
             PageContextCaptureEnabled = info.PageContextCaptureEnabled,
-            Name = info.Name
+            Name = info.Name,
+            ShowEnvironmentSelector = ShowEnvironmentSelectorFor(info.EnvironmentSelectorRoleIds),
         });
     }
 
@@ -769,6 +780,50 @@ public class ProjectService : IProjectService
         return Result<StacksSummaryResponse>.Success(summary);
     }
 
+    public async Task<Result<WidgetActivationResponse>> CheckWidgetActiveAsync(string key, string? origin)
+    {
+        var keyNormalized = key.Trim().ToLower();
+
+        // Anonymous, pre-auth path — no tenant claim, so the global query filter would hide every
+        // tenant's rows. Bypass with IgnoreQueryFilters() and scope manually, same as AuthService's
+        // anonymous registration lookup. Project keys are unique only per (key, owner_id): fetch up
+        // to two matches and treat an ambiguous key the same as "not active" — a bare FirstOrDefault
+        // would arbitrarily bind this check to the WRONG tenant's project on a key collision.
+        var projectMatches = await _unitOfWork.Repository<Project>()
+            .Query()
+            .IgnoreQueryFilters()
+            .AsNoTracking()
+            .Where(p => p.DeletedAt == null && p.Key == keyNormalized)
+            .Select(p => new { p.Id, p.IsActiveLocal, p.IsActiveStaging, p.IsActiveProduction })
+            .Take(2)
+            .ToListAsync();
+
+        if (projectMatches.Count != 1)
+            return Result<WidgetActivationResponse>.Success(new WidgetActivationResponse { Active = false });
+
+        var project = projectMatches[0];
+        if (!(project.IsActiveLocal || project.IsActiveStaging || project.IsActiveProduction))
+            return Result<WidgetActivationResponse>.Success(new WidgetActivationResponse { Active = false });
+
+        if (string.IsNullOrWhiteSpace(origin))
+            return Result<WidgetActivationResponse>.Success(new WidgetActivationResponse { Active = true });
+
+        var normalized = OriginNormalizer.Normalize(origin);
+        var urls = await _unitOfWork.Repository<ProjectAppUrl>()
+            .Query()
+            .IgnoreQueryFilters()
+            .AsNoTracking()
+            .Where(u => u.ProjectId == project.Id && u.DeletedAt == null)
+            .Select(u => new { u.Url, u.IsActive })
+            .ToListAsync();
+
+        // No configured mapping for this origin → not blocked (most projects never configure
+        // "other environments" at all; a matched-but-deactivated row is the only thing that blocks).
+        var match = urls.FirstOrDefault(u => OriginNormalizer.Normalize(u.Url) == normalized);
+        var active = match == null || match.IsActive;
+        return Result<WidgetActivationResponse>.Success(new WidgetActivationResponse { Active = active });
+    }
+
     private static ProjectStackResponse BuildStackResponse(string? techStack, string? aiToolsUsed)
     {
         List<string>? frontend = null;
@@ -831,6 +886,34 @@ public class ProjectService : IProjectService
         return ProjectActivationState.Partial;
     }
 
+    private static List<int>? ParseRoleIds(string? raw)
+    {
+        if (string.IsNullOrEmpty(raw)) return null;
+        try
+        {
+            var list = JsonSerializer.Deserialize<List<int>>(raw);
+            return list is { Count: > 0 } ? list : null;
+        }
+        catch (JsonException)
+        {
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// Whether the CURRENT caller should see the widget's environment switcher for this project.
+    /// Unconfigured (null/empty EnvironmentSelectorRoleIds) → everyone except Client (QuickAccess)
+    /// roles. Configured → only the listed Role.Id values (a caller with no resolvable RoleId,
+    /// which shouldn't happen for a real authenticated user, is excluded rather than guessed at).
+    /// </summary>
+    private bool ShowEnvironmentSelectorFor(string? environmentSelectorRoleIds)
+    {
+        var roleIds = ParseRoleIds(environmentSelectorRoleIds);
+        if (roleIds == null)
+            return !_currentUser.IsQuickAccess;
+        return _currentUser.RoleId.HasValue && roleIds.Contains(_currentUser.RoleId.Value);
+    }
+
     private ProjectResponse MapToResponse(Project project, List<PredefinedAction> actions, int commentsCount, string? createdByName)
     {
         var canEdit = _currentUser.IsAdmin || project.CreatedBy == _currentUser.Id;
@@ -847,6 +930,7 @@ public class ProjectService : IProjectService
             ActivationState = ComputeActivationState(project.IsActiveLocal, project.IsActiveStaging, project.IsActiveProduction),
             AppUrl = project.AppUrl,
             PageContextCaptureEnabled = project.PageContextCaptureEnabled,
+            EnvironmentSelectorRoleIds = ParseRoleIds(project.EnvironmentSelectorRoleIds),
             PredefinedActions = actions
                 .OrderBy(a => a.SortOrder)
                 .Select(a => new PredefinedActionResponse

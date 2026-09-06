@@ -50,6 +50,11 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
   // Whether the environment was explicitly fixed at install time (HTML attribute or injected
   // config) — when true, the toolbar shows a read-only label instead of a switcher.
   hasFixedEnvironment = false;
+  // Per-project, per-role: whether THIS logged-in caller may switch environments at all (vs a
+  // read-only label). Defaults true (matches pre-existing behavior) until /capture-config
+  // resolves post-login and possibly turns it off (e.g. for a Client/QuickAccess role by default,
+  // or any role the project owner excluded). See ProjectService.ShowEnvironmentSelectorFor.
+  showEnvironmentSelector = true;
   // Project-level opt-in (default off), read once at init via /capture-config. Gates both whether
   // the widget buffers console/network events at all and whether "Report as a bug" is shown.
   pageContextCaptureEnabled = false;
@@ -233,6 +238,12 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
   // Wait for the stylesheet to load, then render the first view (avoids a flash
   // of unstyled UI). A short timeout guarantees we never hang on slow CSS.
   private async _boot(): Promise<void> {
+    // Hidden by default until the server confirms this project+origin is active — nothing
+    // renders (not even the launcher) before this resolves, and nothing renders at all if it
+    // resolves false or the request fails. This is the ONLY check that gates rendering itself
+    // (as opposed to comment submission); it runs for every visitor, logged in or not.
+    if (!(await this._checkWidgetActive())) return;
+
     // Resolve styles + product branding before the first render so the toolbar/login modal
     // show the configured product name (not the "Pointer" default) from the very first paint.
     await Promise.all([this._stylesReady(), loadBranding(this.server)]);
@@ -240,6 +251,26 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
     // appears when the user acts (inspect / Comments) and there's no token yet.
     if (this.token) this.init();
     else this.renderChrome();
+  }
+
+  // Anonymous, pre-auth: asks the server whether this project should render on this page's
+  // origin at all (gates on the project's overall activation AND, if this origin matches a
+  // configured "other environment" URL, that specific mapping's own active flag). A network
+  // failure or non-OK response is treated as "keep hidden," not "fail open" — an outage in
+  // this check must not accidentally show the widget where it was explicitly deactivated.
+  private async _checkWidgetActive(): Promise<boolean> {
+    try {
+      const origin = typeof window !== 'undefined' ? window.location.origin : '';
+      const url = `${this.server}/api/public/projects/${encodeURIComponent(this.project)}/widget-status`
+        + `?origin=${encodeURIComponent(origin)}`;
+      const res = await pfFetch(url);
+      if (!res.ok) return false;
+      const body = await res.json();
+      const data = body?.data ?? body;
+      return data?.active === true;
+    } catch {
+      return false;
+    }
   }
 
   // An admin disabled this project: tear the widget down silently — no toolbar,
@@ -441,7 +472,11 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
       const envelope = await r.json();
       this.pageContextCaptureEnabled = !!(envelope && envelope.data && envelope.data.pageContextCaptureEnabled);
       this.projectName = (envelope && envelope.data && envelope.data.name) || this.project;
+      // Missing/malformed → true (matches the pre-existing, always-switchable behavior).
+      const showSelector = envelope?.data?.showEnvironmentSelector;
+      this.showEnvironmentSelector = showSelector !== false;
       this.updateProjectNameLabel();
+      this.updateEnvironmentSelectorVisibility();
       if (this.pageContextCaptureEnabled) startPageContextCapture(this.server, SCRIPT_SRC);
     } catch {
       this.pageContextCaptureEnabled = false;
@@ -456,6 +491,24 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
       el.textContent = this.projectName;
       el.setAttribute('title', this.projectName);
     }
+  }
+
+  // /capture-config resolves AFTER the first renderChrome() (which assumed the switcher was
+  // visible), so if it turns out this caller should NOT see it, swap the already-rendered
+  // <select id="pf-env"> for the same read-only label used for a host-fixed environment — same
+  // reasoning as updateProjectNameLabel() above (no full re-render, mid-session state stays put).
+  // A no-op when the toolbar isn't open yet or the switcher was already hidden — the NEXT
+  // renderChrome() (e.g. when the visitor opens the toolbar) already reads the updated flag.
+  private updateEnvironmentSelectorVisibility(): void {
+    if (this.showEnvironmentSelector || this.hasFixedEnvironment) return;
+    const sel = this.root && this.root.querySelector('#pf-env');
+    if (!sel) return;
+    const label = document.createElement('span');
+    label.className = 'pf-env-label';
+    label.title = 'Environment';
+    label.style.cssText = 'font-size:12px; color:#64748b; text-transform:capitalize;';
+    label.textContent = '· ' + (this.environmentAttr || ENV_NAME[this.environmentInt] || 'staging');
+    sel.replaceWith(label);
   }
 
   // Keeps the "Comment on an element" button's tooltip showing the current shortcut after it's
@@ -555,7 +608,7 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
 
     const displayName = this.user ? escapeHtml(this.user.displayName || this.user.email) : '';
     const roleLabel = this.user ? escapeHtml(this.user.roleName || '') : '';
-    const fixedEnvLabel = this.hasFixedEnvironment
+    const fixedEnvLabel = (this.hasFixedEnvironment || !this.showEnvironmentSelector)
       ? (this.environmentAttr || ENV_NAME[this.environmentInt] || 'staging')
       : null;
     this.root.innerHTML = TPL.chrome(displayName, roleLabel, fixedEnvLabel, this.projectName || this.project, formatShortcut(this.shortcut));

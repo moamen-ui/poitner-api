@@ -21,6 +21,7 @@ public class PlanServiceTests
         public bool IsSuperAdmin { get; set; } = true;
         public bool IsQuickAccess { get; set; }
         public Guid? TenantId { get; set; }
+        public int? RoleId { get; set; }
     }
 
     private static AppDbContext Ctx(string db) =>

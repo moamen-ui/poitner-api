@@ -1103,6 +1103,11 @@
       // Whether the environment was explicitly fixed at install time (HTML attribute or injected
       // config) — when true, the toolbar shows a read-only label instead of a switcher.
       this.hasFixedEnvironment = false;
+      // Per-project, per-role: whether THIS logged-in caller may switch environments at all (vs a
+      // read-only label). Defaults true (matches pre-existing behavior) until /capture-config
+      // resolves post-login and possibly turns it off (e.g. for a Client/QuickAccess role by default,
+      // or any role the project owner excluded). See ProjectService.ShowEnvironmentSelectorFor.
+      this.showEnvironmentSelector = true;
       // Project-level opt-in (default off), read once at init via /capture-config. Gates both whether
       // the widget buffers console/network events at all and whether "Report as a bug" is shown.
       this.pageContextCaptureEnabled = false;
@@ -1221,9 +1226,29 @@
     // Wait for the stylesheet to load, then render the first view (avoids a flash
     // of unstyled UI). A short timeout guarantees we never hang on slow CSS.
     async _boot() {
+      if (!await this._checkWidgetActive()) return;
       await Promise.all([this._stylesReady(), loadBranding(this.server)]);
       if (this.token) this.init();
       else this.renderChrome();
+    }
+    // Anonymous, pre-auth: asks the server whether this project should render on this page's
+    // origin at all (gates on the project's overall activation AND, if this origin matches a
+    // configured "other environment" URL, that specific mapping's own active flag). A network
+    // failure or non-OK response is treated as "keep hidden," not "fail open" — an outage in
+    // this check must not accidentally show the widget where it was explicitly deactivated.
+    async _checkWidgetActive() {
+      var _a2;
+      try {
+        const origin = typeof window !== "undefined" ? window.location.origin : "";
+        const url = `${this.server}/api/public/projects/${encodeURIComponent(this.project)}/widget-status?origin=${encodeURIComponent(origin)}`;
+        const res = await pfFetch(url);
+        if (!res.ok) return false;
+        const body = await res.json();
+        const data = (_a2 = body == null ? void 0 : body.data) != null ? _a2 : body;
+        return (data == null ? void 0 : data.active) === true;
+      } catch {
+        return false;
+      }
     }
     // An admin disabled this project: tear the widget down silently — no toolbar,
     // no launcher, no toast/console error. The only trace is the 409 already visible
@@ -1414,6 +1439,7 @@
     // Read the project's page-context capture toggle and, if on, start buffering
     // console/network events. Silently no-ops on failure (feature stays off).
     async fetchCaptureConfig() {
+      var _a2;
       try {
         const r = await this.api(`/api/projects/${encodeURIComponent(this.project)}/capture-config`);
         if (!r.ok) {
@@ -1423,7 +1449,10 @@
         const envelope = await r.json();
         this.pageContextCaptureEnabled = !!(envelope && envelope.data && envelope.data.pageContextCaptureEnabled);
         this.projectName = envelope && envelope.data && envelope.data.name || this.project;
+        const showSelector = (_a2 = envelope == null ? void 0 : envelope.data) == null ? void 0 : _a2.showEnvironmentSelector;
+        this.showEnvironmentSelector = showSelector !== false;
         this.updateProjectNameLabel();
+        this.updateEnvironmentSelectorVisibility();
         if (this.pageContextCaptureEnabled) startPageContextCapture(this.server, SCRIPT_SRC);
       } catch {
         this.pageContextCaptureEnabled = false;
@@ -1437,6 +1466,23 @@
         el.textContent = this.projectName;
         el.setAttribute("title", this.projectName);
       }
+    }
+    // /capture-config resolves AFTER the first renderChrome() (which assumed the switcher was
+    // visible), so if it turns out this caller should NOT see it, swap the already-rendered
+    // <select id="pf-env"> for the same read-only label used for a host-fixed environment — same
+    // reasoning as updateProjectNameLabel() above (no full re-render, mid-session state stays put).
+    // A no-op when the toolbar isn't open yet or the switcher was already hidden — the NEXT
+    // renderChrome() (e.g. when the visitor opens the toolbar) already reads the updated flag.
+    updateEnvironmentSelectorVisibility() {
+      if (this.showEnvironmentSelector || this.hasFixedEnvironment) return;
+      const sel = this.root && this.root.querySelector("#pf-env");
+      if (!sel) return;
+      const label = document.createElement("span");
+      label.className = "pf-env-label";
+      label.title = "Environment";
+      label.style.cssText = "font-size:12px; color:#64748b; text-transform:capitalize;";
+      label.textContent = "· " + (this.environmentAttr || ENV_NAME[this.environmentInt] || "staging");
+      sel.replaceWith(label);
     }
     // Keeps the "Comment on an element" button's tooltip showing the current shortcut after it's
     // changed from the user menu — same in-place-patch reasoning as updateProjectNameLabel().
@@ -1525,7 +1571,7 @@
       }
       const displayName = this.user ? escapeHtml(this.user.displayName || this.user.email) : "";
       const roleLabel = this.user ? escapeHtml(this.user.roleName || "") : "";
-      const fixedEnvLabel = this.hasFixedEnvironment ? this.environmentAttr || ENV_NAME[this.environmentInt] || "staging" : null;
+      const fixedEnvLabel = this.hasFixedEnvironment || !this.showEnvironmentSelector ? this.environmentAttr || ENV_NAME[this.environmentInt] || "staging" : null;
       this.root.innerHTML = TPL.chrome(displayName, roleLabel, fixedEnvLabel, this.projectName || this.project, formatShortcut(this.shortcut));
       const hideBtn = this.root.querySelector("#pf-hide");
       if (hideBtn) hideBtn.addEventListener("click", () => this.hideOverlay());
