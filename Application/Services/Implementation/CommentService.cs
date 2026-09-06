@@ -180,20 +180,16 @@ public class CommentService : ICommentService
         return Result<CommentResponse>.Success(MapToResponse(comment, names), MessageKeys.Comment.Created);
     }
 
-    public async Task<Result<PagedData<CommentListItemDto>>> ListAsync(string projectKey, CommentFilter filter, Guid callerId)
+    // Shared, security-sensitive query base for both ListAsync and ListSummaryAsync — status/
+    // environment filters and the quick-access (Client) restriction. Deliberately factored out so
+    // the lean summary projection can never drift from the full list's access rules. Callers still
+    // apply the private-comment visibility filter themselves (they need the hidden-count computed
+    // from the query BEFORE that filter is applied).
+    private IQueryable<Comment> BuildCommentQuery(int projectId, CommentFilter filter, Guid callerId)
     {
-        var projectResult = await _projectService.EnsureAsync(projectKey);
-        if (!projectResult.IsSuccess)
-            return projectResult.IsConflict
-                ? Result<PagedData<CommentListItemDto>>.Conflict(projectResult.Message ?? MessageKeys.Project.Disabled)
-                : Result<PagedData<CommentListItemDto>>.NotFound(projectResult.Message ?? MessageKeys.Project.NotFound);
-
-        var projectId = projectResult.Data;
-
         var query = _unitOfWork.Repository<Comment>()
             .Query()
             .AsNoTracking()
-            .Include(c => c.Replies)
             .Where(c => c.ProjectId == projectId && c.DeletedAt == null);
 
         if (filter.Status.HasValue)
@@ -206,6 +202,21 @@ public class CommentService : ICommentService
         // project's backlog — regardless of status. Every other role keeps seeing everything.
         if (_currentUser.IsQuickAccess)
             query = query.Where(c => c.AuthorId == callerId);
+
+        return query;
+    }
+
+    public async Task<Result<PagedData<CommentListItemDto>>> ListAsync(string projectKey, CommentFilter filter, Guid callerId)
+    {
+        var projectResult = await _projectService.EnsureAsync(projectKey);
+        if (!projectResult.IsSuccess)
+            return projectResult.IsConflict
+                ? Result<PagedData<CommentListItemDto>>.Conflict(projectResult.Message ?? MessageKeys.Project.Disabled)
+                : Result<PagedData<CommentListItemDto>>.NotFound(projectResult.Message ?? MessageKeys.Project.NotFound);
+
+        var projectId = projectResult.Data;
+
+        IQueryable<Comment> query = BuildCommentQuery(projectId, filter, callerId).Include(c => c.Replies);
 
         // Count private comments owned by someone else: hidden from this caller
         // (computed over the same status/environment filters, before visibility).
@@ -240,6 +251,73 @@ public class CommentService : ICommentService
         var pageContexts = await LoadPageContextsAsync(items.Select(c => c.PageContextSnapshotId));
         return Result<PagedData<CommentListItemDto>>.Success(
             new PagedData<CommentListItemDto>(items.Select(c => MapToListItem(c, names)).ToList(), pagination, hiddenPrivateCount, pageContexts));
+    }
+
+    public async Task<Result<PagedData<CommentSummaryDto>>> ListSummaryAsync(string projectKey, CommentFilter filter, Guid callerId)
+    {
+        var projectResult = await _projectService.EnsureAsync(projectKey);
+        if (!projectResult.IsSuccess)
+            return projectResult.IsConflict
+                ? Result<PagedData<CommentSummaryDto>>.Conflict(projectResult.Message ?? MessageKeys.Project.Disabled)
+                : Result<PagedData<CommentSummaryDto>>.NotFound(projectResult.Message ?? MessageKeys.Project.NotFound);
+
+        var projectId = projectResult.Data;
+
+        // No .Include(Replies) here — the summary shape never carries them.
+        var query = BuildCommentQuery(projectId, filter, callerId);
+
+        var hiddenPrivateCount = await query
+            .CountAsync(c => c.IsPrivate && c.AuthorId != callerId);
+
+        query = query.Where(c => !c.IsPrivate || c.AuthorId == callerId);
+
+        var totalItems = await query.CountAsync();
+
+        var pageSize = Math.Min(filter.PageSize, 100);
+        var pageNumber = filter.PageNumber < 1 ? 1 : filter.PageNumber;
+        var totalPages = totalItems == 0 ? 0 : (int)Math.Ceiling((double)totalItems / pageSize);
+
+        // Project straight to the lean shape — Route/SourcePath are the only Element sub-fields
+        // touched, skipping Snapshot/ComputedStyles/AppliedCssRules/ParentInfo entirely.
+        var rows = await query
+            .OrderByDescending(c => c.CreatedAt)
+            .Skip((pageNumber - 1) * pageSize)
+            .Take(pageSize)
+            .Select(c => new
+            {
+                c.Id,
+                c.Status,
+                c.Environment,
+                c.Body,
+                c.CreatedAt,
+                c.AuthorId,
+                Route = c.Element.Route,
+                SourcePath = c.Element.SourcePath
+            })
+            .ToListAsync();
+
+        var pagination = new Pagination
+        {
+            PageNumber = pageNumber,
+            PageSize = pageSize,
+            TotalItems = totalItems,
+            TotalPages = totalPages
+        };
+
+        var names = await ResolveNamesAsync(rows.Select(r => r.AuthorId));
+        var items = rows.Select(r => new CommentSummaryDto
+        {
+            Id = r.Id,
+            Status = r.Status,
+            Environment = r.Environment,
+            Body = r.Body,
+            CreatedAt = r.CreatedAt,
+            Route = r.Route,
+            SourcePath = r.SourcePath,
+            AuthorName = names.GetValueOrDefault(r.AuthorId)
+        }).ToList();
+
+        return Result<PagedData<CommentSummaryDto>>.Success(new PagedData<CommentSummaryDto>(items, pagination, hiddenPrivateCount));
     }
 
     public async Task<Result<PagedData<CommentApplyItemDto>>> ListApplyQueueAsync(string projectKey, CommentFilter filter)

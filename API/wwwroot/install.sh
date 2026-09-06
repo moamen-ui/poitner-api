@@ -20,6 +20,28 @@ echo "  ok  pointer-init      ($DIR/pointer-init/SKILL.md)   — add the widget 
 curl -fsSL --create-dirs "$SERVER/skill.md" -o "$DIR/pointer-feedback/SKILL.md"
 echo "  ok  pointer-feedback  ($DIR/pointer-feedback/SKILL.md)   — list / apply comments"
 
+# Also link .agents/ to the same files — a tool-agnostic convention some AI coding agents read
+# from directly, so a non-Claude agent finds the skill without the .claude-specific path. A
+# SYMLINK, not a copy: $DIR stays the one real location to edit/update — .agents/ just points at
+# it, so the two can never drift out of sync. ".agents/<skill>/" is always exactly 2 segments
+# deep, so "../../$DIR/..." reaches repo root then back down $DIR regardless of $DIR's own depth.
+# Skipped when $DIR already IS .agents (custom-dir invocation) to avoid linking it to itself.
+if [ "$DIR" != ".agents" ]; then
+  mkdir -p .agents/pointer-init .agents/pointer-feedback
+  ln -sf "../../$DIR/pointer-init/SKILL.md" .agents/pointer-init/SKILL.md
+  ln -sf "../../$DIR/pointer-feedback/SKILL.md" .agents/pointer-feedback/SKILL.md
+  echo "  ok  linked .agents/pointer-init/SKILL.md and .agents/pointer-feedback/SKILL.md -> $DIR/"
+fi
+
+# --- pointer.sh CLI helper -----------------------------------------------------
+# One command instead of the manual resolve-config/login/fetch/filter choreography —
+# see docs/AI_AGENT_TOKEN_OPTIMIZATION.md. Committable (not a secret), same as stack.json below,
+# so re-running install.sh just refreshes it in place for every developer/agent via normal git.
+mkdir -p .pointer
+curl -fsSL "$SERVER/pointer.sh" -o .pointer/pointer.sh
+chmod +x .pointer/pointer.sh
+echo "  ok  pointer.sh        (.pointer/pointer.sh)   — run './.pointer/pointer.sh list'"
+
 # --- AI apply-tool credentials -------------------------------------------------
 # The pointer-feedback skill authenticates with a long-lived personal API key (not
 # email/password) and reads it from a gitignored .pointer/credentials.env. Scaffold
@@ -47,13 +69,15 @@ EOF
   echo "  ok  credentials          (.pointer/credentials.env)   — ⚠️  FILL IN POINTER_API_KEY"
 fi
 
-# Gitignore .pointer/ (secrets + the CLI's pending.json) but keep the .example AND stack.json
-# committable — stack.json isn't a secret (detected frontend/backend/aiTools), and every developer
-# needs it via normal git, not a per-machine setup step.
+# Gitignore .pointer/ (secrets: credentials.env + pointer.sh's cached JWT in .token_cache) but keep
+# the .example, stack.json, AND pointer.sh committable — none of those three are secrets (stack.json
+# is detected frontend/backend/aiTools; pointer.sh is the CLI helper itself), and every developer/
+# agent needs them via normal git, not a per-machine setup step.
 touch .gitignore
 grep -qxF '.pointer/' .gitignore || echo '.pointer/' >> .gitignore
 grep -qxF '!.pointer/credentials.env.example' .gitignore || echo '!.pointer/credentials.env.example' >> .gitignore
 grep -qxF '!.pointer/stack.json' .gitignore || echo '!.pointer/stack.json' >> .gitignore
+grep -qxF '!.pointer/pointer.sh' .gitignore || echo '!.pointer/pointer.sh' >> .gitignore
 
 echo ""
 echo "Done. Next:"
@@ -61,3 +85,4 @@ echo "  1. Fill POINTER_API_KEY in .pointer/credentials.env — copy it from you
 echo "     page, or the dashboard's quick-start guide."
 echo "  2. Run the 'pointer-init' skill in your AI tool to add the widget to your app — its last step"
 echo "     detects the tech stack and writes the committable .pointer/stack.json."
+echo "  3. Then just run: ./.pointer/pointer.sh list"

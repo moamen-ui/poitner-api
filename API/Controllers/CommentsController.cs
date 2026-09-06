@@ -23,6 +23,17 @@ public class CommentsController(ICommentService commentService) : ControllerBase
     [HttpGet("api/projects/{key}/comments")]
     public async Task<IActionResult> List(string key, [FromQuery] CommentFilter filter)
     {
+        // ?view=summary: an AI-agent-only escape hatch (see pointer.sh/skill.md) for the lean
+        // CommentSummaryDto shape — deliberately not modeled in the typed dashboard clients, which
+        // never pass it.
+        if (string.Equals(filter.View, "summary", StringComparison.OrdinalIgnoreCase))
+        {
+            var summary = await commentService.ListSummaryAsync(key, filter, User.GetId());
+            if (summary.IsNotFound) return NotFound(summary);
+            if (summary.IsConflict) return Conflict(summary);
+            return summary.IsSuccess ? Ok(summary) : BadRequest(summary);
+        }
+
         var result = await commentService.ListAsync(key, filter, User.GetId());
         if (result.IsNotFound) return NotFound(result);
         if (result.IsConflict) return Conflict(result);

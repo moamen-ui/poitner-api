@@ -6,6 +6,7 @@ fmt:       ; dotnet csharpier .
 migrate name: ; dotnet ef migrations add {{name}} -p Infrastructure -s API
 db-update: ; dotnet ef database update -p Infrastructure -s API
 test:      ; dotnet test
+test-cli:  ; bash -n API/wwwroot/pointer.sh
 psql:      ; docker compose exec db psql -U pointer -d pointer
 # Web component (<pointer-feedback>) — builds into API/wwwroot/pointer.{js,css}
 widget:        ; cd web-component && npm run watch    # rebuild on change during local dev

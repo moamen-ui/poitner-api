@@ -8,6 +8,10 @@ public interface ICommentService
     Task<Result<CommentResponse>> CreateAsync(string projectKey, CreateCommentRequest request, Guid authorId);
     Task<Result<PagedData<CommentListItemDto>>> ListAsync(string projectKey, CommentFilter filter, Guid callerId);
 
+    /// <summary>Lean ?view=summary projection of the same query ListAsync runs (same status/
+    /// environment/quick-access/private-comment rules) — see CommentSummaryDto.</summary>
+    Task<Result<PagedData<CommentSummaryDto>>> ListSummaryAsync(string projectKey, CommentFilter filter, Guid callerId);
+
     /// <summary>
     /// Admin-gated apply-queue export (the .NET analogue of pending.json). Returns self-contained
     /// items INCLUDING the snapshotted <c>PickedActionPrompt</c> so the apply-time LLM receives it.
