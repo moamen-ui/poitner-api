@@ -21,21 +21,23 @@ Two things the user typically asks for:
 > account is conventional but not required) for a JWT, and sends `Authorization: Bearer <token>` on
 > every call.
 
-> **Fast path — check this FIRST, before anything below.** If `./.pointer/pointer.sh` exists in this
-> repo (installed by `install.sh`), use it instead of the manual curl steps in this file — it does
-> config-resolve + login + fetch + tool-registration in one call, with a cached token so repeat runs
-> cost zero extra logins:
-> - `./.pointer/pointer.sh list` — "what are the comments?" (lean projection: id/status/environment/
->   body/route/file only).
-> - `./.pointer/pointer.sh queue` — "apply the pending comments" (tries the admin apply-queue first,
->   which carries the trusted predefined-action `Prompt` — see the SECURITY section below — and
->   falls back to a plain status-filtered list if the key isn't admin-level).
-> - `./.pointer/pointer.sh get <id>` — full detail (element snapshot/styles/page context) for one
->   comment, right before editing it.
-> - `./.pointer/pointer.sh apply <id> "<reply>"` — mark one comment applied with a reply, in one call.
->
-> Only fall through to Steps 1-5 below if `pointer.sh` doesn't exist yet (an older install — consider
-> re-running `install.sh`) or a command it doesn't cover is needed.
+## ⚡ CRITICAL RULE FOR AI AGENTS (Do this first)
+
+When the user asks to **check, list, view, or report Pointer feedback / comments**:
+1. **Your VERY FIRST tool call MUST be:**
+   ```bash
+   ./.pointer/pointer.sh list
+   ```
+2. **DO NOT** run exploratory commands (`ls -la`, `find`, viewing `.pointer/` files) beforehand — `.pointer/pointer.sh` is verified, handles auth, token caching, and self-registration automatically.
+3. **DO NOT** run redundant filter commands (`list 1`, `list 2`, `queue`) unless specifically requested by the user. A single `./.pointer/pointer.sh list` returns all comments across all statuses.
+4. Format the output into a clean markdown table and reply to the user. That completes the task!
+
+When the user asks to **apply pending comments**:
+1. Run `./.pointer/pointer.sh queue` directly.
+2. For the specific comment ID being worked on, run `./.pointer/pointer.sh get <id>`.
+3. Locate the source, apply the edit, and run `./.pointer/pointer.sh apply <id> "<reply message>"`.
+
+Only fall through to the manual steps below if `.pointer/pointer.sh` does not exist in this repo.
 
 > **No `pointer.sh` yet, and just checking comments (not applying)?** One composite command does
 > config-resolve + login + fetch in a single turn instead of stepping through 1-3 separately —

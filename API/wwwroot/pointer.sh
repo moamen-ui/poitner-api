@@ -39,7 +39,9 @@ detect_ai_tool() {
   # (e.g. "~/.gemini exists") since another tool merely being INSTALLED on the machine, not the
   # one actually running right now, produces false positives there.
   if [[ -n "$CLAUDECODE" || -n "$CLAUDE_CODE_ENTRYPOINT" ]]; then echo "claude-code"; return; fi
-  if [[ -n "$GEMINI_CLI" ]]; then echo "antigravity"; return; fi
+  # NOT $AI_AGENT — verified generic, set even by this Claude Code session itself
+  # ($AI_AGENT=claude-code_2-1-251_agent), so it would misclassify other tools as antigravity.
+  if [[ -n "$ANTIGRAVITY_AGENT" || -n "$GEMINI_CLI" ]]; then echo "antigravity"; return; fi
   if [[ "$TERM_PROGRAM" == *"Cursor"* ]]; then echo "cursor"; return; fi
   if [[ -n "$WINDSURF" ]]; then echo "windsurf"; return; fi
   echo "other"
@@ -80,9 +82,13 @@ case "${1:-list}" in
     # the lean summary projection of status=2 comments (no prompts, but still shows what's pending).
     ADMIN_QUEUE=$(curl -fsSL -H "Authorization: Bearer $TOKEN" "$SERVER/api/admin/projects/$PROJECT/apply-queue" 2>/dev/null || true)
     if echo "$ADMIN_QUEUE" | jq -e '.isSuccess' >/dev/null 2>&1; then
-      echo "$ADMIN_QUEUE" | jq '.data'
+      # .element.pageRef is a dedup key into data.pages, not a route — resolve it. pickedActions
+      # can hold 2+ entries (multi-select), so collect them into an array rather than a single
+      # field (a generator inside an object literal would duplicate the whole row per prompt).
+      echo "$ADMIN_QUEUE" | jq '(.data.pages // {}) as $pages | [.data.items[] | {id, status: (if .status==1 then "Open" elif .status==2 then "ReadyToApply" elif .status==3 then "Applied" elif .status==4 then "Archived" else "Other" end), environment: (if .environment==1 then "Local" elif .environment==2 then "Staging" else "Prod" end), body, prompts: [.pickedActions[]?.prompt], route: ($pages[.element.pageRef].route // .element.pageRef), file: .element.sourcePath}]'
     else
-      curl -fsSL -H "Authorization: Bearer $TOKEN" "$SERVER/api/projects/$PROJECT/comments?status=2&view=summary" | jq '.data'
+      curl -fsSL -H "Authorization: Bearer $TOKEN" "$SERVER/api/projects/$PROJECT/comments?status=2&view=summary" \
+        | jq '[.data.items[] | {id, status: (if .status==1 then "Open" elif .status==2 then "ReadyToApply" elif .status==3 then "Applied" elif .status==4 then "Archived" else "Other" end), environment: (if .environment==1 then "Local" elif .environment==2 then "Staging" else "Prod" end), body, route, file: .sourcePath}]'
     fi
     ;;
   get)
