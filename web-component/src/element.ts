@@ -47,8 +47,12 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
   user: User | null = null;
   afterLogin: (() => void) | null = null;
   predefinedActions: PredefinedActionOption[] = [];
-  // Whether the environment was explicitly fixed at install time (HTML attribute or injected
-  // config) — when true, the toolbar shows a read-only label instead of a switcher.
+  // Whether switching is hard-locked off regardless of role (an explicit `fixed-environment="true"`
+  // attribute, or host-injected config like the browser extension) — when true, the toolbar shows a
+  // read-only label instead of a switcher, no matter what /capture-config's role check says. Plain
+  // `environment="..."` alone no longer implies this — it only seeds the starting value now, so a
+  // normal install (which always sets `environment` from *_POINTER_ENV) doesn't silently defeat the
+  // role-gated switcher below.
   hasFixedEnvironment = false;
   // Per-project, per-role: whether THIS logged-in caller may switch environments at all (vs a
   // read-only label). Defaults true (matches pre-existing behavior) until /capture-config
@@ -93,9 +97,10 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
 
     this.project = this.getAttribute('project') || '';
     this.environmentAttr = this.getAttribute('environment') || '';
-    // Captured BEFORE the default-to-staging fallback below overwrites the "was it explicitly
-    // set" signal — an injected environment (browser extension) also counts as fixed.
-    this.hasFixedEnvironment = !!this.environmentAttr;
+    // `environment` alone only seeds the starting value — see `hasFixedEnvironment`'s field doc.
+    // Hard-lock is a separate, explicit opt-in for deployments that must never offer switching
+    // (e.g. a server-rendered embed pinned to one environment on purpose).
+    this.hasFixedEnvironment = (this.getAttribute('fixed-environment') || '').toLowerCase() === 'true';
     this.sourceAttr = this.getAttribute('source-attr') || 'data-component-source';
     // Screenshot capture is available by default; opt out with screenshot="false".
     this.screenshotEnabled = (this.getAttribute('screenshot') || '').toLowerCase() !== 'false';

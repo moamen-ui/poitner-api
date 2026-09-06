@@ -1100,8 +1100,12 @@
       this.user = null;
       this.afterLogin = null;
       this.predefinedActions = [];
-      // Whether the environment was explicitly fixed at install time (HTML attribute or injected
-      // config) — when true, the toolbar shows a read-only label instead of a switcher.
+      // Whether switching is hard-locked off regardless of role (an explicit `fixed-environment="true"`
+      // attribute, or host-injected config like the browser extension) — when true, the toolbar shows a
+      // read-only label instead of a switcher, no matter what /capture-config's role check says. Plain
+      // `environment="..."` alone no longer implies this — it only seeds the starting value now, so a
+      // normal install (which always sets `environment` from *_POINTER_ENV) doesn't silently defeat the
+      // role-gated switcher below.
       this.hasFixedEnvironment = false;
       // Per-project, per-role: whether THIS logged-in caller may switch environments at all (vs a
       // read-only label). Defaults true (matches pre-existing behavior) until /capture-config
@@ -1137,7 +1141,7 @@
       this._mounted = true;
       this.project = this.getAttribute("project") || "";
       this.environmentAttr = this.getAttribute("environment") || "";
-      this.hasFixedEnvironment = !!this.environmentAttr;
+      this.hasFixedEnvironment = (this.getAttribute("fixed-environment") || "").toLowerCase() === "true";
       this.sourceAttr = this.getAttribute("source-attr") || "data-component-source";
       this.screenshotEnabled = (this.getAttribute("screenshot") || "").toLowerCase() !== "false";
       const pos = (this.getAttribute("launcher-position") || "").toLowerCase();

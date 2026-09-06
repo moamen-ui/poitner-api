@@ -24,7 +24,8 @@ This skill wires the widget into the **current** app. Do not guess the variables
 |---|---|---|
 | **Project key** | ✅ | URL-safe slug — lowercase letters, digits and dashes only, `^[a-z0-9-]+$` (e.g. `my-app`). Identifies this app's feedback. The project must already exist in the dashboard; the widget does not self-register it. |
 | **Pointer server URL** | ✅ | The **deployed** Pointer origin your team gave you (e.g. `https://pointer.example.com`). No trailing slash. `http://localhost:8090` only for local dev. |
-| **Environment** | optional | `local` \| `staging` \| `production` — tags each comment. Default `staging`. |
+| **Environment** | optional | `local` \| `staging` \| `production` — tags each comment and seeds the toolbar's starting value. Default `staging`. Whether a signed-in stakeholder can then *switch* it is a separate, role-based server setting (project owner configurable in the dashboard) — setting this alone does **not** lock it. |
+| **Fixed environment?** | optional | Pass `fixed-environment="true"` only if this specific deployment must never allow switching regardless of role (e.g. a server-rendered embed pinned to one environment on purpose). Rare — leave unset by default so the role-based switcher (above) actually has a chance to apply. |
 | **Enabled?** | optional | Whether to mount the widget now. Default `true` for dev; usually `false` in production builds unless feedback is wanted in prod. |
 | **Screenshots?** | optional | The widget captures an element screenshot per comment by default. Pass `screenshot="false"` to disable. |
 
