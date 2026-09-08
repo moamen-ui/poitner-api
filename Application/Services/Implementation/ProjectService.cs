@@ -139,6 +139,8 @@ public class ProjectService : IProjectService
             .Query()
             .AsNoTracking()
             .Where(p => p.DeletedAt == null)
+            .OrderByDescending(p => p.CreatedAt)
+            .ThenByDescending(p => p.Id)
             .ToListAsync();
 
         var projectIds = projects.Select(p => p.Id).ToList();
