@@ -186,4 +186,18 @@ public static class MessageKeys
         public const string FileTooLarge = "Export file too large.";
         public const string MissingCommentsArray = "Missing or invalid comments array.";
     }
+
+    public static class Common
+    {
+        public const string Forbidden = "You are not authorized to perform this action.";
+        public const string NotFound = "Resource not found.";
+    }
+
+    public static class AiRule
+    {
+        public const string NotFound = "AI rule not found.";
+        public const string TitleRequired = "Title is required.";
+        public const string PromptRequired = "Prompt instruction is required.";
+        public const string Forbidden = "You are not authorized to manage this AI rule.";
+    }
 }

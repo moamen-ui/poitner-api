@@ -120,6 +120,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options, ICurrentUser c
         // Subscription + ExtensionSite: strict-own (OwnerId non-null) — like Invite.
         b.Entity<Subscription>().HasQueryFilter(e => currentUser.IsSuperAdmin || (currentUser.TenantId != null && e.OwnerId == currentUser.TenantId) || (currentUser.TenantId == null && !strict && e.OwnerId == null));
         b.Entity<ExtensionSite>().HasQueryFilter(e => currentUser.IsSuperAdmin || (currentUser.TenantId != null && e.OwnerId == currentUser.TenantId) || (currentUser.TenantId == null && !strict && e.OwnerId == null));
+        b.Entity<AiRule>().HasQueryFilter(e => currentUser.IsSuperAdmin || (currentUser.TenantId != null && e.OwnerId == currentUser.TenantId) || (currentUser.TenantId == null && !strict && e.OwnerId == null));
     }
 
     // Entities whose CreatedAt must survive the SaveChangesAsync stamping loop (the comment-import

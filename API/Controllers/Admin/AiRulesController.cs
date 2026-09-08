@@ -1,0 +1,72 @@
+using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Mvc;
+using Pointer.API.Auth;
+using Pointer.Application.DTOs.AiRule;
+using Pointer.Application.Response;
+using Pointer.Application.Services.Interfaces;
+
+namespace Pointer.API.Controllers.Admin;
+
+[ApiController]
+[Route("api/admin/ai-rules")]
+[Produces("application/json")]
+[Tags("AiRules")]
+[Authorize(Policy = Policies.Admin)]
+public class AiRulesController(IAiRuleService service) : ControllerBase
+{
+    [HttpGet("tenant")]
+    [ProducesResponseType(typeof(List<AiRuleResponse>), StatusCodes.Status200OK)]
+    public async Task<IActionResult> ListTenantRules()
+    {
+        var result = await service.ListTenantAdminRulesAsync();
+        return result.IsSuccess ? Ok(result) : BadRequest(result);
+    }
+
+    [HttpGet("project/{projectId:int}")]
+    [ProducesResponseType(typeof(List<AiRuleResponse>), StatusCodes.Status200OK)]
+    public async Task<IActionResult> ListProjectRules(int projectId)
+    {
+        var result = await service.ListProjectAdminRulesAsync(projectId);
+        if (result.IsNotFound) return NotFound(result);
+        return result.IsSuccess ? Ok(result) : BadRequest(result);
+    }
+
+    [HttpPost]
+    [ProducesResponseType(typeof(AiRuleResponse), StatusCodes.Status200OK)]
+    public async Task<IActionResult> Create([FromBody] CreateAiRuleRequest request)
+    {
+        var result = await service.CreateAsync(request);
+        if (result.IsForbidden) return StatusCode(StatusCodes.Status403Forbidden, result);
+        if (result.IsNotFound) return NotFound(result);
+        return result.IsSuccess ? Ok(result) : BadRequest(result);
+    }
+
+    [HttpPut("{id:int}")]
+    [ProducesResponseType(typeof(AiRuleResponse), StatusCodes.Status200OK)]
+    public async Task<IActionResult> Update(int id, [FromBody] UpdateAiRuleRequest request)
+    {
+        var result = await service.UpdateAsync(id, request);
+        if (result.IsForbidden) return StatusCode(StatusCodes.Status403Forbidden, result);
+        if (result.IsNotFound) return NotFound(result);
+        return result.IsSuccess ? Ok(result) : BadRequest(result);
+    }
+
+    [HttpDelete("{id:int}")]
+    [ProducesResponseType(typeof(Result), StatusCodes.Status200OK)]
+    public async Task<IActionResult> Delete(int id)
+    {
+        var result = await service.DeleteAsync(id);
+        if (result.IsForbidden) return StatusCode(StatusCodes.Status403Forbidden, result);
+        if (result.IsNotFound) return NotFound(result);
+        return result.IsSuccess ? Ok(result) : BadRequest(result);
+    }
+
+    [HttpGet("insights")]
+    [ProducesResponseType(typeof(AiInsightsResponse), StatusCodes.Status200OK)]
+    public async Task<IActionResult> GetInsights()
+    {
+        var result = await service.GetInsightsAsync();
+        if (result.IsForbidden) return StatusCode(StatusCodes.Status403Forbidden, result);
+        return result.IsSuccess ? Ok(result) : BadRequest(result);
+    }
+}

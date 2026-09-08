@@ -370,9 +370,37 @@ public class CommentService : ICommentService
         var names = await ResolveNamesAsync(items.SelectMany(AuthorIds));
         var pageContexts = await LoadPageContextsAsync(items.Select(c => c.PageContextSnapshotId));
         var (pages, userAgents, pageRefByCommentId) = BuildApplyPageMaps(items);
+
+        var authorIds = items.Select(c => c.AuthorId).Distinct().ToList();
+        var aiRules = await _unitOfWork.Repository<AiRule>()
+            .Query()
+            .AsNoTracking()
+            .Where(r => r.DeletedAt == null && r.IsActive &&
+                ((r.UserId == null && (r.ProjectId == null || r.ProjectId == projectId)) ||
+                 (r.UserId != null && authorIds.Contains(r.UserId.Value) && (r.ProjectId == null || r.ProjectId == projectId))))
+            .OrderBy(r => r.UserId == null ? 0 : 1)
+            .ThenBy(r => r.SortOrder)
+            .ThenBy(r => r.CreatedAt)
+            .ToListAsync();
+
+        var adminRules = aiRules.Where(r => r.UserId == null)
+            .Select(r => new AiRuleApplyDto { Title = r.Title, Prompt = r.Prompt, IsPersonal = false })
+            .ToList();
+
+        var personalRulesByAuthor = aiRules.Where(r => r.UserId != null)
+            .GroupBy(r => r.UserId!.Value)
+            .ToDictionary(
+                g => g.Key,
+                g => g.Select(r => new AiRuleApplyDto { Title = r.Title, Prompt = r.Prompt, IsPersonal = true }).ToList()
+            );
+
         return Result<PagedData<CommentApplyItemDto>>.Success(
             new PagedData<CommentApplyItemDto>(
-                items.Select(c => MapToApplyItem(c, names, pageRefByCommentId.GetValueOrDefault(c.Id))).ToList(),
+                items.Select(c =>
+                {
+                    var commentRules = adminRules.Concat(personalRulesByAuthor.GetValueOrDefault(c.AuthorId) ?? Enumerable.Empty<AiRuleApplyDto>()).ToList();
+                    return MapToApplyItem(c, names, pageRefByCommentId.GetValueOrDefault(c.Id), commentRules);
+                }).ToList(),
                 pagination,
                 pageContexts: pageContexts,
                 pages: pages,
@@ -778,7 +806,7 @@ public class CommentService : ICommentService
         return (pages, userAgents, pageRefByCommentId);
     }
 
-    private CommentApplyItemDto MapToApplyItem(Comment comment, IReadOnlyDictionary<Guid, string> names, string? pageRef) => new()
+    private CommentApplyItemDto MapToApplyItem(Comment comment, IReadOnlyDictionary<Guid, string> names, string? pageRef, List<AiRuleApplyDto>? rules = null) => new()
     {
         Id = comment.Id,
         Status = comment.Status,
@@ -791,6 +819,7 @@ public class CommentService : ICommentService
         // Apply/AI path: carries both label + prompt for each picked action.
         PickedActions = comment.PickedActions
             .Select(a => new PickedActionDto { Text = a.Text, Prompt = a.Prompt }).ToList(),
+        AiRules = rules ?? new List<AiRuleApplyDto>(),
         IsBugReport = comment.IsBugReport,
         PageContextId = comment.PageContextSnapshotId
     };

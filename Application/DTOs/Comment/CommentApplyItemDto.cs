@@ -28,6 +28,9 @@ public class CommentApplyItemDto
     // Predefined-action snapshots (multi-select) — prompts included ONLY here (admin/AI apply path).
     public List<PickedActionDto> PickedActions { get; set; } = new();
 
+    /// <summary>Active AI rules for this comment (tenant admin rules, project admin rules, and the comment author's personal rules).</summary>
+    public List<AiRuleApplyDto> AiRules { get; set; } = new();
+
     /// <summary>"Report as a bug" checkbox state — cheap triage signal, independent of PageContextId.</summary>
     public bool IsBugReport { get; set; }
 
@@ -39,4 +42,11 @@ public class PickedActionDto
 {
     public string Text { get; set; } = string.Empty;
     public string Prompt { get; set; } = string.Empty;
+}
+
+public class AiRuleApplyDto
+{
+    public string Title { get; set; } = string.Empty;
+    public string Prompt { get; set; } = string.Empty;
+    public bool IsPersonal { get; set; }
 }
