@@ -106,7 +106,7 @@ export const TPL = {
           ${tools.map((t) => `<option value="${escapeHtml(t)}" ${t === selected ? 'selected' : ''}>${escapeHtml(t)}</option>`).join('')}
         </select>
         <button class="pf-btn primary" id="pf-bridge-apply" type="button" ${busy ? 'disabled' : ''}>
-          ${busy ? 'Applying…' : 'Apply with AI'}
+          ${busy ? '<span class="pf-spinner"></span> Applying…' : 'Apply with AI'}
         </button>
         ${status ? `<span style="font-size:12px; color:#64748b;">${escapeHtml(status)}</span>` : ''}`,
 

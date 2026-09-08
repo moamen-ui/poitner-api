@@ -73,6 +73,9 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
   // always default back to its first <option>, silently discarding whatever the user had picked.
   bridgeSelectedTool: string | null = null;
   bridgeBusy = false;
+  // Last "[STAGE] ..." marker shown, so polling only re-renders when the stage actually changes
+  // (see APPLY_PROMPT in bridge.mjs — it asks the agent to echo one before each major step).
+  private bridgeLastStage: string | null = null;
   private bridgePollTimer: ReturnType<typeof setTimeout> | null = null;
   // Project-level opt-in (default off), read once at init via /capture-config. Gates both whether
   // the widget buffers console/network events at all and whether "Report as a bug" is shown.
@@ -504,12 +507,18 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
   }
 
   // Best-effort probe for a locally-running `.pointer/pointer.sh serve` (bridge.mjs). Local-env
-  // only, short timeout, silent on any failure — absent is the normal case, not an error state.
+  // only, silent on any failure — absent is the normal case, not an error state. Runs alongside
+  // several other init-time fetches (branding/comments/predefined-actions/capture-config, plus
+  // whatever else the host page itself fires on load) all competing for the browser's connection
+  // pool — confirmed live that an aggressive ~800ms timeout here gets starved by that contention
+  // and aborts before a genuinely-healthy local bridge can respond, even though it answers
+  // instantly once nothing else is racing it. 2.5s gives it real headroom without hanging init
+  // noticeably when the bridge is truly absent (the overwhelmingly common case).
   async checkBridge(): Promise<void> {
     if (this.environmentAttr !== 'local') return;
     try {
       const ctrl = new AbortController();
-      const timer = setTimeout(() => ctrl.abort(), 800);
+      const timer = setTimeout(() => ctrl.abort(), 2500);
       const r = await pfFetch(`http://127.0.0.1:${this.bridgePort}/health`, { signal: ctrl.signal });
       clearTimeout(timer);
       if (!r.ok) return;
@@ -520,6 +529,18 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
       this.bridgeAvailable = this.bridgeTools.length > 0;
       if (!this.bridgeSelectedTool || !this.bridgeTools.includes(this.bridgeSelectedTool)) {
         this.bridgeSelectedTool = this.bridgeTools[0] ?? null;
+      }
+      // The bridge (not this tab's own JS state, which a page refresh wipes) is the source of
+      // truth for "is a run already in progress" — recover it so a refresh mid-run can't let the
+      // developer start a second, overlapping apply, and so the UI correctly stays disabled.
+      const currentRes = await pfFetch(`http://127.0.0.1:${this.bridgePort}/apply/current`);
+      const current = currentRes.ok ? await currentRes.json() : null;
+      if (current?.jobId && current.status === 'running') {
+        this.bridgeSelectedTool = current.tool;
+        this.bridgeBusy = true;
+        this.renderBridgeControl(current.stage || 'Running…');
+        this.pollBridgeJob(current.jobId);
+        return;
       }
       this.renderBridgeControl();
     } catch {
@@ -555,11 +576,19 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
       });
       if (!r.ok) {
         const body = await r.json().catch(() => ({}));
+        // 409: another tab/click already started a run (the bridge is the source of truth, so
+        // this can legitimately race) — join it instead of just reporting a dead-end error.
+        if (r.status === 409 && body?.jobId) {
+          this.renderBridgeControl('Running…');
+          this.pollBridgeJob(body.jobId);
+          return;
+        }
         this.bridgeBusy = false;
         this.renderBridgeControl(body?.error || 'Failed to start');
         return;
       }
       const { jobId } = await r.json();
+      this.renderBridgeControl('Running…');
       this.pollBridgeJob(jobId);
     } catch {
       this.bridgeBusy = false;
@@ -567,13 +596,39 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
     }
   }
 
+  // Prefers the last "[STAGE] ..." marker (see APPLY_PROMPT in bridge.mjs), but not every tool
+  // reliably echoes it verbatim — some narrate their own progress in natural language instead of
+  // passing through literal shell output. Falls back to that tool's own latest non-empty line so
+  // something live and useful shows either way, tool-agnostic.
+  private static extractLatestStage(output: string): string | null {
+    const stageMatches = output.match(/\[STAGE\]\s*(.+)/g);
+    if (stageMatches && stageMatches.length > 0) {
+      return stageMatches[stageMatches.length - 1].replace(/^\[STAGE\]\s*/, '').trim() || null;
+    }
+    // eslint-disable-next-line no-control-regex
+    const plain = output.replace(/\x1b\[[0-9;]*m/g, '').split('\n').map((l) => l.trim()).filter(Boolean);
+    if (plain.length === 0) return null;
+    const last = plain[plain.length - 1];
+    return last.length > 80 ? last.slice(0, 77) + '…' : last;
+  }
+
   private pollBridgeJob(jobId: string): void {
     if (this.bridgePollTimer) clearTimeout(this.bridgePollTimer);
+    this.bridgeLastStage = null;
     const poll = async () => {
       try {
         const r = await pfFetch(`http://127.0.0.1:${this.bridgePort}/apply/${encodeURIComponent(jobId)}/status`);
         const body = await r.json();
         if (body.status === 'running') {
+          // body.stage: server-computed, precise (claude-code's structured stream-json parsing —
+          // see bridge.mjs's parseClaudeStreamLine). Falls back to the client-side text-extraction
+          // heuristic for tools without that (antigravity/opencode), which only narrate/print raw
+          // text rather than emitting anything structured.
+          const stage = body.stage || PointerFeedback.extractLatestStage(body.output || '');
+          if (stage && stage !== this.bridgeLastStage) {
+            this.bridgeLastStage = stage;
+            this.renderBridgeControl(stage);
+          }
           this.bridgePollTimer = setTimeout(poll, 1500);
           return;
         }

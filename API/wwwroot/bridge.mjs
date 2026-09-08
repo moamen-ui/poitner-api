@@ -32,7 +32,12 @@ const PORT = Number(process.argv[2]) || 4772;
 const TOOLS = {
   'claude-code': {
     bin: 'claude',
-    buildArgs: (prompt) => ['-p', prompt, '--dangerously-skip-permissions'],
+    // --output-format stream-json emits one JSON object per line (assistant messages, tool_use/
+    // tool_result blocks, a final {"type":"result",...}) instead of plain text — confirmed live
+    // against a real run. parseStreamLine below turns that into a precise, live "current stage"
+    // (which tool is running, on which file) instead of guessing from a fixed prompt instruction.
+    buildArgs: (prompt) => ['-p', prompt, '--dangerously-skip-permissions', '--output-format', 'stream-json', '--verbose'],
+    parseStreamLine: parseClaudeStreamLine,
   },
   antigravity: {
     bin: 'agy',
@@ -51,9 +56,53 @@ const TOOLS = {
   },
 };
 
+// Turns one line of claude-code's --output-format stream-json into a short, human-readable
+// "what's happening right now" label, stored on job.stage. Real schema confirmed live: each line
+// is a JSON object with a `type` — "assistant" messages carry a `content` array of `text` and/or
+// `tool_use` blocks; the terminal line is {"type":"result", "result": "<final text>", ...}.
+function parseClaudeStreamLine(line, job) {
+  let evt;
+  try { evt = JSON.parse(line); } catch { return; }
+  if (evt.type === 'assistant' && Array.isArray(evt.message?.content)) {
+    for (const item of evt.message.content) {
+      if (item.type === 'tool_use') job.stage = describeToolUse(item.name, item.input);
+      else if (item.type === 'text' && item.text?.trim()) job.stage = item.text.trim().slice(0, 100);
+    }
+  } else if (evt.type === 'result' && typeof evt.result === 'string') {
+    job.output = evt.result;
+  }
+}
+
+function describeToolUse(name, input) {
+  if (name === 'Bash') {
+    const cmd = String(input?.command || '');
+    if (/login-with-key/.test(cmd)) return 'Logging in / registering the tool';
+    if (/apply-queue/.test(cmd)) return 'Fetching the apply queue and AI rules';
+    if (/\/comments(\?|$)/.test(cmd) && !/PATCH|-X\s*PATCH/i.test(cmd)) return 'Fetching pending comments';
+    if (/-X\s*PATCH/i.test(cmd) || /"status":\s*3/.test(cmd)) return 'Marking a comment applied';
+    return 'Running: ' + cmd.replace(/\s+/g, ' ').slice(0, 70);
+  }
+  if (name === 'Edit' || name === 'Write') return `Editing ${input?.file_path ? input.file_path.split('/').pop() : 'a file'}`;
+  if (name === 'Read') return `Locating ${input?.file_path ? input.file_path.split('/').pop() : 'the element'}`;
+  if (name === 'Grep' || name === 'Glob') return 'Searching the codebase';
+  return `Running ${name}`;
+}
+
+// Asks the agent to echo a plain-text progress marker before each major step — a fallback for
+// tools OTHER than claude-code (antigravity, opencode/GLM), which don't support the structured
+// stream-json parsing above. Tool-agnostic (every CLI can already run a shell command as part of
+// normal operation) — the bridge captures their raw stdout/stderr into job.output verbatim, so
+// these markers show up there for free; the widget picks out the last "[STAGE] ..." line.
 const APPLY_PROMPT =
   "Follow this repo's pointer-feedback skill (skill.md, installed under .claude/skills/pointer-feedback " +
-  'or .agents/pointer-feedback) and apply all pending Pointer comments now.';
+  'or .agents/pointer-feedback) and apply all pending Pointer comments now. ' +
+  'As you go, before each major step run a plain shell command that echoes a short progress marker ' +
+  'on its own line, in exactly this format: [STAGE] <present-tense description, under 8 words>. Do ' +
+  'this before: registering/logging in the tool, fetching the pending comments, fetching the apply-' +
+  'queue/AI rules, and for EACH comment you apply — before locating its element, before making the ' +
+  'edit, and before marking it applied (name the comment id in that last one, e.g. ' +
+  '"[STAGE] Marking comment #42 applied"). These are shown live to a developer watching a progress ' +
+  'indicator in a browser widget, so keep them short and skip markers for trivial/skipped comments.';
 
 function isInstalled(bin) {
   // `command -v` via a real shell so PATH/aliases resolve the same way a developer's own shell
@@ -91,26 +140,45 @@ function json(res, status, body) {
 // which is fine (nothing here needs to survive a restart).
 const jobs = new Map();
 let nextJobId = 1;
+// The one job currently in flight, if any — the bridge (not the browser tab) is the source of
+// truth for "is something running right now", since a page refresh wipes the widget's own JS
+// state but must NOT let the developer accidentally start a second, overlapping apply run.
+let currentJobId = null;
 
 function startApplyJob(tool) {
   const def = TOOLS[tool];
   const id = String(nextJobId++);
-  const job = { id, tool, status: 'running', output: '', exitCode: null };
+  const job = { id, tool, status: 'running', output: '', stage: null, exitCode: null };
   jobs.set(id, job);
+  currentJobId = id;
 
   const child = spawn(def.bin, def.buildArgs(APPLY_PROMPT, PROJECT_ROOT), {
     cwd: PROJECT_ROOT,
     env: process.env,
   });
-  child.stdout.on('data', (d) => { job.output += d.toString(); });
+  if (def.parseStreamLine) {
+    // NDJSON can arrive split across 'data' events at any byte offset — buffer and only parse
+    // complete lines, carrying a trailing partial line over to the next chunk.
+    let buffer = '';
+    child.stdout.on('data', (d) => {
+      buffer += d.toString();
+      const lines = buffer.split('\n');
+      buffer = lines.pop();
+      for (const line of lines) if (line.trim()) def.parseStreamLine(line, job);
+    });
+  } else {
+    child.stdout.on('data', (d) => { job.output += d.toString(); });
+  }
   child.stderr.on('data', (d) => { job.output += d.toString(); });
   child.on('close', (code) => {
     job.exitCode = code;
     job.status = code === 0 ? 'done' : 'error';
+    if (currentJobId === id) currentJobId = null;
   });
   child.on('error', (err) => {
     job.status = 'error';
     job.output += `\n[bridge] failed to start ${def.bin}: ${err.message}`;
+    if (currentJobId === id) currentJobId = null;
   });
 
   return job;
@@ -150,6 +218,7 @@ const server = http.createServer(async (req, res) => {
   }
 
   if (req.method === 'POST' && url.pathname === '/apply') {
+    if (currentJobId) { json(res, 409, { error: 'a run is already in progress', jobId: currentJobId }); return; }
     let body;
     try { body = JSON.parse((await readBody(req)) || '{}'); } catch { body = {}; }
     const tool = body.tool;
@@ -160,11 +229,20 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+  // Lets the widget recover "something is already running" after a page refresh, since the
+  // bridge — not the browser tab's own JS state — is the source of truth for that.
+  if (req.method === 'GET' && url.pathname === '/apply/current') {
+    if (!currentJobId) { json(res, 200, { jobId: null }); return; }
+    const job = jobs.get(currentJobId);
+    json(res, 200, { jobId: job.id, tool: job.tool, status: job.status, stage: job.stage, output: job.output, exitCode: job.exitCode });
+    return;
+  }
+
   const statusMatch = req.method === 'GET' && url.pathname.match(/^\/apply\/([^/]+)\/status$/);
   if (statusMatch) {
     const job = jobs.get(statusMatch[1]);
     if (!job) { json(res, 404, { error: 'unknown job' }); return; }
-    json(res, 200, { status: job.status, output: job.output, exitCode: job.exitCode });
+    json(res, 200, { status: job.status, stage: job.stage, output: job.output, exitCode: job.exitCode });
     return;
   }
 
