@@ -309,6 +309,54 @@ These live in **other people's repos and pages** and you cannot edit them:
 
 §9 defines the dual-support layer for these. If `LIVE_INSTALLS=no`, skip §9 entirely and rename hard.
 
+### 4.6 ⚠️ `JWT__Issuer` — renaming this 401s every live token, instantly
+
+`docker-compose.prod.yml:33` sets `JWT__Issuer: "pointer-api"`, and
+`API/Extensions/AuthenticationExtensions.cs:44-47` validates it **strictly**:
+
+```csharp
+ValidateIssuer = true,
+ValidIssuer    = config["JWT:Issuer"],
+ValidAudience  = config["JWT:Issuer"],     // issuer doubles as audience
+```
+
+`Infrastructure/Auth/JwtTokenService.cs:10` also hardcodes the default
+(`Issuer = "pointer-api"`) and issues tokens with it as **both** `iss` and `aud` (line 35).
+
+**Change that value and every token already in the wild is rejected on the next request** — every
+signed-in dashboard user in all three apps, every widget session on every customer page, and every
+AI-agent CLI session holding a token. They do not get a grace period; they get 401.
+
+> This is precisely the failure mode that caused the dashboard's 401 request-storm crash. A mass
+> 401 event is the worst possible way to start a rebrand.
+
+**Two acceptable options:**
+
+| Option | How | Cost |
+|---|---|---|
+| **A. Freeze it (recommended)** | Leave `JWT__Issuer` as `pointer-api` forever. It is an opaque string in a signed token; no user, customer, or API consumer ever sees it. Add it to the §12 allowlist with this reason | One allowlisted string |
+| **B. Dual-accept, then flip** | 1. Deploy `ValidIssuers = [ "pointer-api", "<new>" ]` **and** `ValidAudiences = [ … ]` (note the plural properties) while still *issuing* the old one. 2. After that deploy is live, change the issuing value to the new one. 3. Wait out `JWT__LifetimeHours: 12` (+ margin). 4. Remove the old issuer | Three deploys, 12+ hours, and it must not be compressed into one window |
+
+**Never** change the issuing value and the validation value in a single deploy.
+
+### 4.7 The `Pointer` configuration section — three places, or it silently disables itself
+
+The API self-configures its own dogfooding widget from a config section named `Pointer`:
+
+| Place | Value |
+|---|---|
+| `API/appsettings.json:9-14` | `"Pointer": { "Enabled": true, "Server": "http://localhost:8090", "Project": "", "Environment": "staging" }` |
+| `API/Program.cs:180` | `var pointer = app.Configuration.GetSection("Pointer");` — a **string literal** |
+| `docker-compose.prod.yml:38-41` | `Pointer__Enabled`, `Pointer__Server`, `Pointer__Project: "pointer-api"`, `Pointer__Environment` |
+| `API/Program.cs:188` | uses it to inject `{server}/embed.js?project=…` into Swagger |
+
+Rename any **one** of the three without the others and `GetSection("<new>")` returns an empty
+section, so `GetValue("Enabled", false)` falls back to **`false`** — the Swagger widget embed just
+stops working, with no error, no log line, and no failing test. Rename all three in one commit, and
+verify by loading `/swagger` and confirming the injected `embed.js` script tag is present.
+
+Note `Pointer__Project: "pointer-api"` is a **project key** (data, §11), not just a name.
+
 ---
 
 ## 5. Inventory — every brand surface, by area
