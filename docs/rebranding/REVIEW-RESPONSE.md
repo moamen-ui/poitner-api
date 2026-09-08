@@ -34,7 +34,16 @@ rows + artwork). Those came from my own audit and the round-3 mining below.
 
 ## Round 2 — GLM-5.3 (`opencode`) → `REVIEW-GLM.md`
 
-*(filled in below when the run completed — see that section)*
+**This round did not complete.** Three attempts, all logged in `REVIEW-GLM.md`: the first read all
+three subject files and died mid-verification with exit 1; the second and third produced zero bytes
+over ~25 and ~20 minutes and were killed. Cause, with high confidence: a concurrent `opencode`
+process (the parallel session that produced `docs/reviews/GLM_REBRANDING_REVIEW.md`) contending on
+opencode's SQLite state — the documented "database is locked" failure mode.
+
+GLM's perspective is still represented, because a GLM-5.3 review of the *sibling* plan against this
+same codebase existed and was mined and re-verified — that is round 3 below, and the transferred
+findings are itemised in `REVIEW-GLM.md`. The command and prompt to finish the direct round later are
+preserved there. **No part of the plan depends on it.**
 
 ---
 
