@@ -1,0 +1,61 @@
+# Rebranding answers — fill this in with the human, then paste it into the executing agent's
+# context alongside REBRANDING-PLAN.md. Every phase of the plan reads these values.
+#
+# Nothing in the plan may be executed while any REQUIRED field is empty.
+# Convert to shell with:  ./answers-to-env.sh answers.yml > rebrand.env
+
+# ---------------------------------------------------------------- brand ------
+NAME_DISPLAY:   ""      # REQUIRED  Q1   marketing spelling, e.g. "Pointkit"
+NAME_PASCAL:    ""      # REQUIRED  Q1   C# namespaces/assemblies. [A-Za-z][A-Za-z0-9]* — no dots, no dashes
+NAME_LOWER:     ""      # REQUIRED  Q2   npm package, css prefix, folders, db, asset filenames
+NAME_KEBAB:     ""      # REQUIRED  Q2   repos, custom-element prefix, skill names (MUST allow a hyphen after it)
+NAME_UPPER:     ""      # REQUIRED  Q2   env vars + JS globals. [A-Z_][A-Z0-9_]*
+NAME_SNAKE:     ""      # REQUIRED  Q2   browser storage keys
+NAME_ARABIC:    ""      # Q4b  transliteration for ar.json, or "" to keep the Latin-script name inline
+LEGAL_NAME:     ""      # Q3   LICENSE, store listing, email footer
+TAGLINE:        ""      # Q4   <=132 chars (Chrome Web Store hard limit)
+
+# --------------------------------------------------------------- domain ------
+DOMAIN:          ""     # REQUIRED  Q5   apex, e.g. pointkit.dev
+HOST_API:        ""     # api.$DOMAIN
+HOST_APP:        ""     # app.$DOMAIN
+HOST_APP_NG:     ""     # app-angular.$DOMAIN
+HOST_APP_REACT:  ""     # app-react.$DOMAIN
+HOST_APP_VUE:    ""     # app-vue.$DOMAIN
+HOST_DEMO:       ""     # demo.$DOMAIN
+HOST_LANDING:    ""     # $DOMAIN
+EMAIL_FROM:      ""     # Q8   noreply@$DOMAIN — must be a VERIFIED Brevo sender before cutover
+EMAIL_FROM_NAME: ""     # Q8
+EMAIL_SUPPORT:   ""     # Q9
+BREVO_VERIFIED:  ""     # Q10  yes | no  — "no" blocks phase 10
+
+# ---------------------------------------------------------------- repos ------
+REPO_API:        ""     # REQUIRED  Q11  git@github.com:<org>/<repo>.git
+REPO_DASHBOARD:  ""     # REQUIRED  Q11
+REPO_EXTENSION:  ""     # REQUIRED  Q11
+REPO_WIDGET:     ""     # REQUIRED  Q11
+HISTORY_MODE:    ""     # Q12  mirror | filter-repo | fresh
+SPLIT_STRATEGY:  ""     # Q13  A(npm) | B(commit built asset) | C(submodule) | D(don't split)  — see §8.5
+OLD_REPOS:       ""     # Q14  archive | delete
+LANDING_HOME:    ""     # api-repo | own-repo
+
+# ------------------------------------------------------------- packages ------
+NPM_SCOPE:       ""     # REQUIRED  Q15  e.g. @moamen-ui
+PKG_ANGULAR:     ""     # REQUIRED  Q16  e.g. @moamen-ui/pointkit-angular
+PKG_REACT:       ""     # REQUIRED  Q16
+PKG_VUE:         ""     # REQUIRED  Q16
+PKG_WIDGET:      ""     # only if SPLIT_STRATEGY=A
+PKG_START_VER:   ""     # Q17  e.g. 1.0.0 — MUST be passed explicitly on the first publish (§8.6)
+DEPRECATE_OLD:   ""     # Q18  deprecate  (never "unpublish")
+REGISTRY:        ""     # Q19  https://npm.pkg.github.com
+
+# --------------------------------------------------------------- policy ------
+LIVE_INSTALLS:       ""  # REQUIRED  Q20  yes | no  — "yes" makes §9 mandatory
+COMPAT_UNTIL:        ""  # Q21  ISO date | n/a
+RENAME_DB:           ""  # Q22  yes | no
+VOLUME_STRATEGY:     ""  # §10.3  A(pin project name) | B(migrate volumes) | C(dump/restore)
+RENAME_PROJECT_KEYS: ""  # Q23  yes | no
+REWRITE_SCREENSHOT_URLS: ""  # §11.4  yes | no (no = keep the old api host proxying)
+EXT_PUBLISHED:       ""  # Q24  yes | no
+FIX_POITNER_TYPO:    ""  # Q25  yes | no
+HISTORICAL_DOCS:     ""  # §5.10  rewrite | allowlist
