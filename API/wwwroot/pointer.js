@@ -294,12 +294,26 @@
               <button class="pf-mini pf-icon" id="pf-refresh" title="Refresh comments" aria-label="Refresh comments">&#8635;</button>
             </div>
           </div>
+          <div id="pf-bridge" style="display:none;"></div>
           <div class="pf-filters" id="pf-filters"></div>
           <div class="pf-sidebar-body" id="pf-list"></div>
         </div>
         <div id="pf-pins"></div>
         <div id="pf-popover-host"></div>
         <div id="pf-menu-host"></div>`,
+    // Local apply-bridge control (see element.ts's _checkBridge/renderBridgeControl) — only ever
+    // rendered when a `./.pointer/pointer.sh serve` instance answered on this machine. Lets the
+    // developer pick one of THEIR OWN installed AI CLI tools and trigger an apply run without
+    // leaving the browser. `busy` disables the picker/button while a run is in flight; `status` is
+    // an optional short trailing message ("Applying…", "Done", an error).
+    bridgeControl: (tools, busy, status) => `
+        <select class="pf-input" id="pf-bridge-tool" style="width:auto; padding:4px 8px;" ${busy ? "disabled" : ""}>
+          ${tools.map((t) => `<option value="${escapeHtml(t)}">${escapeHtml(t)}</option>`).join("")}
+        </select>
+        <button class="pf-btn primary" id="pf-bridge-apply" type="button" ${busy ? "disabled" : ""}>
+          ${busy ? "Applying…" : "Apply with AI"}
+        </button>
+        ${status ? `<span style="font-size:12px; color:#64748b;">${escapeHtml(status)}</span>` : ""}`,
     // Dropdown under the user icon: shows identity, the per-user "add comment" shortcut
     // (click to rebind, ↺ to reset), and a Sign out action.
     userMenu: (displayName, roleLabel, shortcutLabel, authOwnedByHost) => `
@@ -1112,6 +1126,16 @@
       // resolves post-login and possibly turns it off (e.g. for a Client/QuickAccess role by default,
       // or any role the project owner excluded). See ProjectService.ShowEnvironmentSelectorFor.
       this.showEnvironmentSelector = true;
+      // Local apply-bridge (`.pointer/pointer.sh serve`, see bridge.mjs) — a prototype letting the
+      // developer trigger their own installed AI CLI tool from the widget instead of a terminal.
+      // Local-environment only by design: this is a dev-loop convenience, not something to expose
+      // against staging/production installs. Detected via a best-effort health-check; silently absent
+      // (no error shown) if nothing is listening — that's the normal case for most installs/visits.
+      this.bridgePort = 4772;
+      this.bridgeAvailable = false;
+      this.bridgeTools = [];
+      this.bridgeBusy = false;
+      this.bridgePollTimer = null;
       // Project-level opt-in (default off), read once at init via /capture-config. Gates both whether
       // the widget buffers console/network events at all and whether "Report as a bug" is shown.
       this.pageContextCaptureEnabled = false;
@@ -1420,7 +1444,7 @@
     async init() {
       await loadStatusCatalog(this.server);
       this.renderChrome();
-      await Promise.all([this.fetchComments(), this.fetchPredefinedActions(), this.fetchCaptureConfig()]);
+      await Promise.all([this.fetchComments(), this.fetchPredefinedActions(), this.fetchCaptureConfig(), this.checkBridge()]);
       this.renderSidebar();
       this.renderPins();
       if (this._collapsed) this.renderChrome();
@@ -1461,6 +1485,88 @@
       } catch {
         this.pageContextCaptureEnabled = false;
       }
+    }
+    // Best-effort probe for a locally-running `.pointer/pointer.sh serve` (bridge.mjs). Local-env
+    // only, short timeout, silent on any failure — absent is the normal case, not an error state.
+    async checkBridge() {
+      if (this.environmentAttr !== "local") return;
+      try {
+        const ctrl = new AbortController();
+        const timer = setTimeout(() => ctrl.abort(), 800);
+        const r = await pfFetch(`http://127.0.0.1:${this.bridgePort}/health`, { signal: ctrl.signal });
+        clearTimeout(timer);
+        if (!r.ok) return;
+        const toolsRes = await pfFetch(`http://127.0.0.1:${this.bridgePort}/tools`);
+        if (!toolsRes.ok) return;
+        const body = await toolsRes.json();
+        this.bridgeTools = Array.isArray(body == null ? void 0 : body.tools) ? body.tools : [];
+        this.bridgeAvailable = this.bridgeTools.length > 0;
+        this.renderBridgeControl();
+      } catch {
+      }
+    }
+    // Patches #pf-bridge in place (same reasoning as updateProjectNameLabel/
+    // updateEnvironmentSelectorVisibility — avoids a full renderChrome() mid-session).
+    renderBridgeControl(status) {
+      const host = this.root && this.root.querySelector("#pf-bridge");
+      if (!host) return;
+      if (!this.bridgeAvailable) {
+        host.style.display = "none";
+        return;
+      }
+      host.style.display = "flex";
+      host.style.cssText = "display:flex; align-items:center; gap:6px; padding:6px 12px;";
+      host.innerHTML = TPL.bridgeControl(this.bridgeTools, this.bridgeBusy, status);
+      const btn = this.root.querySelector("#pf-bridge-apply");
+      if (btn) btn.addEventListener("click", () => this.startBridgeApply());
+    }
+    async startBridgeApply() {
+      const sel = this.root && this.root.querySelector("#pf-bridge-tool");
+      const tool = sel == null ? void 0 : sel.value;
+      if (!tool || this.bridgeBusy) return;
+      this.bridgeBusy = true;
+      this.renderBridgeControl("Starting…");
+      try {
+        const r = await pfFetch(`http://127.0.0.1:${this.bridgePort}/apply`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ tool })
+        });
+        if (!r.ok) {
+          const body = await r.json().catch(() => ({}));
+          this.bridgeBusy = false;
+          this.renderBridgeControl((body == null ? void 0 : body.error) || "Failed to start");
+          return;
+        }
+        const { jobId } = await r.json();
+        this.pollBridgeJob(jobId);
+      } catch {
+        this.bridgeBusy = false;
+        this.renderBridgeControl("Could not reach the local bridge");
+      }
+    }
+    pollBridgeJob(jobId) {
+      if (this.bridgePollTimer) clearTimeout(this.bridgePollTimer);
+      const poll = async () => {
+        try {
+          const r = await pfFetch(`http://127.0.0.1:${this.bridgePort}/apply/${encodeURIComponent(jobId)}/status`);
+          const body = await r.json();
+          if (body.status === "running") {
+            this.bridgePollTimer = setTimeout(poll, 1500);
+            return;
+          }
+          this.bridgeBusy = false;
+          this.renderBridgeControl(body.status === "done" ? "Done — refresh comments" : "Apply failed — check the terminal");
+          if (body.status === "done") {
+            await this.fetchComments();
+            this.renderSidebar();
+          }
+        } catch {
+          this.bridgeBusy = false;
+          this.renderBridgeControl("Lost contact with the local bridge");
+        }
+      };
+      poll();
     }
     // Patches the already-rendered header label in place rather than a full renderChrome() —
     // re-rendering chrome here would drop the sidebar's open/closed state mid-session.

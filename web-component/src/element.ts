@@ -59,6 +59,16 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
   // resolves post-login and possibly turns it off (e.g. for a Client/QuickAccess role by default,
   // or any role the project owner excluded). See ProjectService.ShowEnvironmentSelectorFor.
   showEnvironmentSelector = true;
+  // Local apply-bridge (`.pointer/pointer.sh serve`, see bridge.mjs) — a prototype letting the
+  // developer trigger their own installed AI CLI tool from the widget instead of a terminal.
+  // Local-environment only by design: this is a dev-loop convenience, not something to expose
+  // against staging/production installs. Detected via a best-effort health-check; silently absent
+  // (no error shown) if nothing is listening — that's the normal case for most installs/visits.
+  bridgePort = 4772;
+  bridgeAvailable = false;
+  bridgeTools: string[] = [];
+  bridgeBusy = false;
+  private bridgePollTimer: ReturnType<typeof setTimeout> | null = null;
   // Project-level opt-in (default off), read once at init via /capture-config. Gates both whether
   // the widget buffers console/network events at all and whether "Report as a bug" is shown.
   pageContextCaptureEnabled = false;
@@ -448,7 +458,7 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
     // Falls back to STATUS_FALLBACK silently if the fetch fails.
     await loadStatusCatalog(this.server);
     this.renderChrome();
-    await Promise.all([this.fetchComments(), this.fetchPredefinedActions(), this.fetchCaptureConfig()]);
+    await Promise.all([this.fetchComments(), this.fetchPredefinedActions(), this.fetchCaptureConfig(), this.checkBridge()]);
     this.renderSidebar();
     this.renderPins();
     // When collapsed, re-render so the launcher badge reflects the loaded count.
@@ -486,6 +496,87 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
     } catch {
       this.pageContextCaptureEnabled = false;
     }
+  }
+
+  // Best-effort probe for a locally-running `.pointer/pointer.sh serve` (bridge.mjs). Local-env
+  // only, short timeout, silent on any failure — absent is the normal case, not an error state.
+  async checkBridge(): Promise<void> {
+    if (this.environmentAttr !== 'local') return;
+    try {
+      const ctrl = new AbortController();
+      const timer = setTimeout(() => ctrl.abort(), 800);
+      const r = await pfFetch(`http://127.0.0.1:${this.bridgePort}/health`, { signal: ctrl.signal });
+      clearTimeout(timer);
+      if (!r.ok) return;
+      const toolsRes = await pfFetch(`http://127.0.0.1:${this.bridgePort}/tools`);
+      if (!toolsRes.ok) return;
+      const body = await toolsRes.json();
+      this.bridgeTools = Array.isArray(body?.tools) ? body.tools : [];
+      this.bridgeAvailable = this.bridgeTools.length > 0;
+      this.renderBridgeControl();
+    } catch {
+      // No bridge running (or blocked) — leave #pf-bridge hidden, exactly the default install.
+    }
+  }
+
+  // Patches #pf-bridge in place (same reasoning as updateProjectNameLabel/
+  // updateEnvironmentSelectorVisibility — avoids a full renderChrome() mid-session).
+  private renderBridgeControl(status?: string): void {
+    const host = this.root && this.root.querySelector('#pf-bridge');
+    if (!host) return;
+    if (!this.bridgeAvailable) { (host as HTMLElement).style.display = 'none'; return; }
+    (host as HTMLElement).style.display = 'flex';
+    (host as HTMLElement).style.cssText = 'display:flex; align-items:center; gap:6px; padding:6px 12px;';
+    host.innerHTML = TPL.bridgeControl(this.bridgeTools, this.bridgeBusy, status);
+    const btn = this.root!.querySelector('#pf-bridge-apply');
+    if (btn) btn.addEventListener('click', () => this.startBridgeApply());
+  }
+
+  private async startBridgeApply(): Promise<void> {
+    const sel = this.root && (this.root.querySelector('#pf-bridge-tool') as HTMLSelectElement | null);
+    const tool = sel?.value;
+    if (!tool || this.bridgeBusy) return;
+    this.bridgeBusy = true;
+    this.renderBridgeControl('Starting…');
+    try {
+      const r = await pfFetch(`http://127.0.0.1:${this.bridgePort}/apply`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ tool }),
+      });
+      if (!r.ok) {
+        const body = await r.json().catch(() => ({}));
+        this.bridgeBusy = false;
+        this.renderBridgeControl(body?.error || 'Failed to start');
+        return;
+      }
+      const { jobId } = await r.json();
+      this.pollBridgeJob(jobId);
+    } catch {
+      this.bridgeBusy = false;
+      this.renderBridgeControl('Could not reach the local bridge');
+    }
+  }
+
+  private pollBridgeJob(jobId: string): void {
+    if (this.bridgePollTimer) clearTimeout(this.bridgePollTimer);
+    const poll = async () => {
+      try {
+        const r = await pfFetch(`http://127.0.0.1:${this.bridgePort}/apply/${encodeURIComponent(jobId)}/status`);
+        const body = await r.json();
+        if (body.status === 'running') {
+          this.bridgePollTimer = setTimeout(poll, 1500);
+          return;
+        }
+        this.bridgeBusy = false;
+        this.renderBridgeControl(body.status === 'done' ? 'Done — refresh comments' : 'Apply failed — check the terminal');
+        if (body.status === 'done') { await this.fetchComments(); this.renderSidebar(); }
+      } catch {
+        this.bridgeBusy = false;
+        this.renderBridgeControl('Lost contact with the local bridge');
+      }
+    };
+    poll();
   }
 
   // Patches the already-rendered header label in place rather than a full renderChrome() —

@@ -103,8 +103,15 @@ case "${1:-list}" in
       "$SERVER/api/comments/$ID" \
       -d "{\"status\":3,\"reply\":\"$MSG\",\"appliedByLabel\":\"$AUTHOR\"}" | jq '.data'
     ;;
+  serve)
+    # Starts the local apply-bridge (bridge.mjs) so the widget can trigger an already-installed AI
+    # CLI tool directly from the browser, instead of the developer opening a terminal for it. Local
+    # dev only — binds 127.0.0.1, see bridge.mjs's own header for the security model.
+    command -v node >/dev/null 2>&1 || { echo "Error: node is required to run 'serve' (bridge.mjs)" >&2; exit 1; }
+    exec node "$SCRIPT_DIR/bridge.mjs" "${2:-4772}"
+    ;;
   *)
-    echo "Usage: $0 {list [status] [env]|queue|get <id>|apply <id> [msg]}"
+    echo "Usage: $0 {list [status] [env]|queue|get <id>|apply <id> [msg]|serve [port]}"
     exit 1
     ;;
 esac

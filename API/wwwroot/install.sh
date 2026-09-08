@@ -42,6 +42,13 @@ curl -fsSL "$SERVER/pointer.sh" -o .pointer/pointer.sh
 chmod +x .pointer/pointer.sh
 echo "  ok  pointer.sh        (.pointer/pointer.sh)   — run './.pointer/pointer.sh list'"
 
+# --- local apply-bridge (optional, local dev only) -----------------------------
+# Lets the widget trigger an already-installed AI CLI tool (Claude Code, agy, opencode/GLM) directly
+# from the browser instead of opening a terminal — see bridge.mjs's own header for the security
+# model. Requires Node locally; harmless to fetch even if unused (`pointer.sh serve` is opt-in).
+curl -fsSL "$SERVER/bridge.mjs" -o .pointer/bridge.mjs
+echo "  ok  bridge.mjs        (.pointer/bridge.mjs)   — run './.pointer/pointer.sh serve' for the widget's local Apply button"
+
 # --- AI apply-tool credentials -------------------------------------------------
 # The pointer-feedback skill authenticates with a long-lived personal API key (not
 # email/password) and reads it from a gitignored .pointer/credentials.env. Scaffold
@@ -78,6 +85,7 @@ grep -qxF '.pointer/' .gitignore || echo '.pointer/' >> .gitignore
 grep -qxF '!.pointer/credentials.env.example' .gitignore || echo '!.pointer/credentials.env.example' >> .gitignore
 grep -qxF '!.pointer/stack.json' .gitignore || echo '!.pointer/stack.json' >> .gitignore
 grep -qxF '!.pointer/pointer.sh' .gitignore || echo '!.pointer/pointer.sh' >> .gitignore
+grep -qxF '!.pointer/bridge.mjs' .gitignore || echo '!.pointer/bridge.mjs' >> .gitignore
 
 echo ""
 echo "Done. Next:"

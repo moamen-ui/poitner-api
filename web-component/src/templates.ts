@@ -88,12 +88,27 @@ export const TPL = {
               <button class="pf-mini pf-icon" id="pf-refresh" title="Refresh comments" aria-label="Refresh comments">&#8635;</button>
             </div>
           </div>
+          <div id="pf-bridge" style="display:none;"></div>
           <div class="pf-filters" id="pf-filters"></div>
           <div class="pf-sidebar-body" id="pf-list"></div>
         </div>
         <div id="pf-pins"></div>
         <div id="pf-popover-host"></div>
         <div id="pf-menu-host"></div>`,
+
+  // Local apply-bridge control (see element.ts's _checkBridge/renderBridgeControl) — only ever
+  // rendered when a `./.pointer/pointer.sh serve` instance answered on this machine. Lets the
+  // developer pick one of THEIR OWN installed AI CLI tools and trigger an apply run without
+  // leaving the browser. `busy` disables the picker/button while a run is in flight; `status` is
+  // an optional short trailing message ("Applying…", "Done", an error).
+  bridgeControl: (tools: string[], busy: boolean, status?: string) => `
+        <select class="pf-input" id="pf-bridge-tool" style="width:auto; padding:4px 8px;" ${busy ? 'disabled' : ''}>
+          ${tools.map((t) => `<option value="${escapeHtml(t)}">${escapeHtml(t)}</option>`).join('')}
+        </select>
+        <button class="pf-btn primary" id="pf-bridge-apply" type="button" ${busy ? 'disabled' : ''}>
+          ${busy ? 'Applying…' : 'Apply with AI'}
+        </button>
+        ${status ? `<span style="font-size:12px; color:#64748b;">${escapeHtml(status)}</span>` : ''}`,
 
   // Dropdown under the user icon: shows identity, the per-user "add comment" shortcut
   // (click to rebind, ↺ to reset), and a Sign out action.
