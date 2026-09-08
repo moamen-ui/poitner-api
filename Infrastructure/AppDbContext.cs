@@ -53,6 +53,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options, ICurrentUser c
     public DbSet<PageContextSnapshot> PageContextSnapshots => Set<PageContextSnapshot>();
     public DbSet<AppEnvironment> AppEnvironments => Set<AppEnvironment>();
     public DbSet<ProjectAppUrl> ProjectAppUrls => Set<ProjectAppUrl>();
+    public DbSet<AiRule> AiRules => Set<AiRule>();
 
     protected override void OnModelCreating(ModelBuilder b)
     {

@@ -3,10 +3,13 @@ namespace Pointer.Application.DTOs.AiRule;
 public class AiRuleResponse
 {
     public int Id { get; set; }
+    public Guid? TenantId { get; set; }
+    public string? TenantName { get; set; }
     public int? ProjectId { get; set; }
     public string? ProjectName { get; set; }
     public Guid? UserId { get; set; }
     public string? UserName { get; set; }
+    public string? UserEmail { get; set; }
     public string Title { get; set; } = string.Empty;
     public string Prompt { get; set; } = string.Empty;
     public bool IsActive { get; set; }

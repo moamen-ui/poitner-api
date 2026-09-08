@@ -13,6 +13,7 @@ public interface IAiRuleService
     Task<Result<AiRuleResponse>> CreateAsync(CreateAiRuleRequest request);
     Task<Result<AiRuleResponse>> UpdateAsync(int id, UpdateAiRuleRequest request);
     Task<Result> DeleteAsync(int id);
-    Task<Result<AiInsightsResponse>> GetInsightsAsync();
+    Task<Result<AiInsightsResponse>> GetInsightsAsync(Guid? tenantId = null, bool includeDetails = false);
+    Task<Result<List<AiRuleResponse>>> ListAllRulesAsync(Guid? tenantId = null, int? projectId = null);
     Task<List<AiRuleApplyDto>> GetEffectiveRulesForCommentAsync(int projectId, Guid commentAuthorId);
 }

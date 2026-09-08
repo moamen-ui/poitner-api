@@ -272,15 +272,26 @@ public class AiRuleService : IAiRuleService
         return Result.Success();
     }
 
-    public async Task<Result<AiInsightsResponse>> GetInsightsAsync()
+    public async Task<Result<AiInsightsResponse>> GetInsightsAsync(Guid? tenantId = null, bool includeDetails = false)
     {
         if (!_currentUser.IsAdmin && !_currentUser.IsSuperAdmin)
             return Result<AiInsightsResponse>.Forbidden(MessageKeys.Common.Forbidden);
 
+        if (!_currentUser.IsSuperAdmin && tenantId.HasValue && tenantId.Value != _currentUser.TenantId)
+            return Result<AiInsightsResponse>.Forbidden(MessageKeys.Common.Forbidden);
+
+        var effectiveTenantId = _currentUser.IsSuperAdmin ? tenantId : _currentUser.TenantId;
+
         var rulesQuery = _unitOfWork.Repository<AiRule>()
             .Query()
+            .IgnoreQueryFilters()
             .AsNoTracking()
             .Where(r => r.DeletedAt == null);
+
+        if (effectiveTenantId.HasValue)
+        {
+            rulesQuery = rulesQuery.Where(r => r.OwnerId == effectiveTenantId.Value);
+        }
 
         var allRules = await rulesQuery
             .OrderByDescending(r => r.CreatedAt)
@@ -292,20 +303,30 @@ public class AiRuleService : IAiRuleService
         var userPersonalCount = allRules.Count(r => r.UserId != null);
 
         // Tool usage from projects
-        var projects = await _unitOfWork.Repository<Project>()
+        var projectsQuery = _unitOfWork.Repository<Project>()
             .Query()
+            .IgnoreQueryFilters()
             .AsNoTracking()
-            .Where(p => p.DeletedAt == null && p.AiToolsUsed != null)
-            .Select(p => p.AiToolsUsed)
+            .Where(p => p.DeletedAt == null && p.AiToolsUsed != null);
+
+        if (effectiveTenantId.HasValue)
+        {
+            projectsQuery = projectsQuery.Where(p => p.OwnerId == effectiveTenantId.Value);
+        }
+
+        var projects = await projectsQuery
+            .Select(p => new { p.Id, p.Name, p.OwnerId, p.AiToolsUsed })
             .ToListAsync();
 
+        var projectMap = projects.ToDictionary(p => p.Id, p => p.Name);
+
         var toolCounts = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
-        foreach (var raw in projects)
+        foreach (var p in projects)
         {
-            if (string.IsNullOrWhiteSpace(raw)) continue;
+            if (string.IsNullOrWhiteSpace(p.AiToolsUsed)) continue;
             try
             {
-                var tools = JsonSerializer.Deserialize<List<string>>(raw);
+                var tools = JsonSerializer.Deserialize<List<string>>(p.AiToolsUsed);
                 if (tools != null)
                 {
                     foreach (var t in tools)
@@ -318,16 +339,24 @@ public class AiRuleService : IAiRuleService
             catch { }
         }
 
-        // Summaries of user personal rules
+        // Users lookup
         var userIds = allRules.Where(r => r.UserId != null).Select(r => r.UserId!.Value).Distinct().ToList();
-        var users = userIds.Count > 0
-            ? await _unitOfWork.Repository<User>()
+        var users = new Dictionary<Guid, (string DisplayName, string? Email)>();
+        if (userIds.Count > 0)
+        {
+            var dbUsers = await _unitOfWork.Repository<User>()
                 .Query()
                 .AsNoTracking()
                 .IgnoreQueryFilters()
                 .Where(u => userIds.Contains(u.PublicId))
-                .ToDictionaryAsync(u => u.PublicId, u => u.DisplayName)
-            : new Dictionary<Guid, string>();
+                .Select(u => new { u.PublicId, u.DisplayName, u.Email })
+                .ToListAsync();
+
+            foreach (var u in dbUsers)
+            {
+                users[u.PublicId] = (u.DisplayName, u.Email);
+            }
+        }
 
         var userSummaries = allRules
             .Where(r => r.UserId != null)
@@ -335,13 +364,65 @@ public class AiRuleService : IAiRuleService
             .Select(g => new UserRuleSummaryStat
             {
                 UserId = g.Key,
-                UserName = users.GetValueOrDefault(g.Key) ?? "Unknown",
+                UserName = users.TryGetValue(g.Key, out var u) ? u.DisplayName : "Unknown",
+                UserEmail = users.TryGetValue(g.Key, out var u2) ? u2.Email : null,
                 RulesCount = g.Count()
             })
             .OrderByDescending(s => s.RulesCount)
             .ToList();
 
-        var recent = allRules.Take(10).Select(r => MapToResponse(r, null, r.UserId.HasValue ? users.GetValueOrDefault(r.UserId.Value) : null)).ToList();
+        // Tenants lookup (for super admin platform overview)
+        var tenantMap = new Dictionary<Guid, string>();
+        List<TenantRuleSummaryStat>? tenantSummaries = null;
+
+        if (_currentUser.IsSuperAdmin)
+        {
+            var ownerIds = allRules.Select(r => (Guid?)r.OwnerId).Distinct().ToList();
+            if (ownerIds.Count > 0)
+            {
+                var tenantAdmins = await _unitOfWork.Repository<User>()
+                    .Query()
+                    .IgnoreQueryFilters()
+                    .AsNoTracking()
+                    .Include(u => u.Role)
+                    .Where(u => u.DeletedAt == null && u.OwnerId != null && ownerIds.Contains(u.OwnerId) && u.Role.Name == "Workspace Admin")
+                    .ToListAsync();
+
+                foreach (var admin in tenantAdmins)
+                {
+                    if (admin.OwnerId.HasValue)
+                    {
+                        tenantMap[admin.OwnerId.Value] = !string.IsNullOrWhiteSpace(admin.DisplayName) ? admin.DisplayName : admin.Email;
+                    }
+                }
+            }
+
+            tenantSummaries = allRules
+                .Where(r => r.OwnerId.HasValue)
+                .GroupBy(r => r.OwnerId!.Value)
+                .Select(g => new TenantRuleSummaryStat
+                {
+                    TenantId = g.Key,
+                    TenantName = tenantMap.TryGetValue(g.Key, out var name) ? name : "Workspace " + g.Key.ToString()[..8],
+                    RulesCount = g.Count(),
+                    ProjectsCount = g.Where(r => r.ProjectId != null).Select(r => r.ProjectId!.Value).Distinct().Count()
+                })
+                .OrderByDescending(t => t.RulesCount)
+                .ToList();
+        }
+
+        AiRuleResponse MapRule(AiRule r) => MapToResponse(
+            r,
+            r.ProjectId.HasValue ? projectMap.GetValueOrDefault(r.ProjectId.Value) : null,
+            r.UserId.HasValue && users.TryGetValue(r.UserId.Value, out var u) ? u.DisplayName : null,
+            r.UserId.HasValue && users.TryGetValue(r.UserId.Value, out var u2) ? u2.Email : null,
+            r.OwnerId.HasValue ? tenantMap.GetValueOrDefault(r.OwnerId.Value) : null
+        );
+
+        var recent = allRules.Take(10).Select(MapRule).ToList();
+        var detailed = (includeDetails || _currentUser.IsSuperAdmin)
+            ? allRules.Select(MapRule).ToList()
+            : null;
 
         return Result<AiInsightsResponse>.Success(new AiInsightsResponse
         {
@@ -351,8 +432,99 @@ public class AiRuleService : IAiRuleService
             UserPersonalRulesCount = userPersonalCount,
             ToolUsage = toolCounts.Select(kv => new AiToolUsageStat { ToolName = kv.Key, ProjectCount = kv.Value }).ToList(),
             UserRuleSummaries = userSummaries,
-            RecentRules = recent
+            TenantSummaries = tenantSummaries,
+            RecentRules = recent,
+            DetailedRules = detailed
         });
+    }
+
+    public async Task<Result<List<AiRuleResponse>>> ListAllRulesAsync(Guid? tenantId = null, int? projectId = null)
+    {
+        if (!_currentUser.IsAdmin && !_currentUser.IsSuperAdmin)
+            return Result<List<AiRuleResponse>>.Forbidden(MessageKeys.Common.Forbidden);
+
+        if (!_currentUser.IsSuperAdmin && tenantId.HasValue && tenantId.Value != _currentUser.TenantId)
+            return Result<List<AiRuleResponse>>.Forbidden(MessageKeys.Common.Forbidden);
+
+        var effectiveTenantId = _currentUser.IsSuperAdmin ? tenantId : _currentUser.TenantId;
+
+        var query = _unitOfWork.Repository<AiRule>()
+            .Query()
+            .IgnoreQueryFilters()
+            .AsNoTracking()
+            .Where(r => r.DeletedAt == null);
+
+        if (effectiveTenantId.HasValue)
+            query = query.Where(r => r.OwnerId == effectiveTenantId.Value);
+
+        if (projectId.HasValue)
+            query = query.Where(r => r.ProjectId == projectId.Value);
+
+        var rules = await query
+            .OrderByDescending(r => r.CreatedAt)
+            .ToListAsync();
+
+        var projectIds = rules.Where(r => r.ProjectId != null).Select(r => r.ProjectId!.Value).Distinct().ToList();
+        var projectMap = projectIds.Count > 0
+            ? await _unitOfWork.Repository<Project>()
+                .Query()
+                .IgnoreQueryFilters()
+                .AsNoTracking()
+                .Where(p => projectIds.Contains(p.Id))
+                .ToDictionaryAsync(p => p.Id, p => p.Name)
+            : new Dictionary<int, string>();
+
+        var userIds = rules.Where(r => r.UserId != null).Select(r => r.UserId!.Value).Distinct().ToList();
+        var users = new Dictionary<Guid, (string DisplayName, string? Email)>();
+        if (userIds.Count > 0)
+        {
+            var dbUsers = await _unitOfWork.Repository<User>()
+                .Query()
+                .IgnoreQueryFilters()
+                .AsNoTracking()
+                .Where(u => userIds.Contains(u.PublicId))
+                .Select(u => new { u.PublicId, u.DisplayName, u.Email })
+                .ToListAsync();
+
+            foreach (var u in dbUsers)
+            {
+                users[u.PublicId] = (u.DisplayName, u.Email);
+            }
+        }
+
+        var tenantMap = new Dictionary<Guid, string>();
+        if (_currentUser.IsSuperAdmin)
+        {
+            var ownerIds = rules.Select(r => (Guid?)r.OwnerId).Distinct().ToList();
+            if (ownerIds.Count > 0)
+            {
+                var tenantAdmins = await _unitOfWork.Repository<User>()
+                    .Query()
+                    .IgnoreQueryFilters()
+                    .AsNoTracking()
+                    .Include(u => u.Role)
+                    .Where(u => u.DeletedAt == null && u.OwnerId != null && ownerIds.Contains(u.OwnerId) && u.Role.Name == "Workspace Admin")
+                    .ToListAsync();
+
+                foreach (var admin in tenantAdmins)
+                {
+                    if (admin.OwnerId.HasValue)
+                    {
+                        tenantMap[admin.OwnerId.Value] = !string.IsNullOrWhiteSpace(admin.DisplayName) ? admin.DisplayName : admin.Email;
+                    }
+                }
+            }
+        }
+
+        var result = rules.Select(r => MapToResponse(
+            r,
+            r.ProjectId.HasValue ? projectMap.GetValueOrDefault(r.ProjectId.Value) : null,
+            r.UserId.HasValue && users.TryGetValue(r.UserId.Value, out var u) ? u.DisplayName : null,
+            r.UserId.HasValue && users.TryGetValue(r.UserId.Value, out var u2) ? u2.Email : null,
+            r.OwnerId.HasValue ? tenantMap.GetValueOrDefault(r.OwnerId.Value) : null
+        )).ToList();
+
+        return Result<List<AiRuleResponse>>.Success(result);
     }
 
     public async Task<List<AiRuleApplyDto>> GetEffectiveRulesForCommentAsync(int projectId, Guid commentAuthorId)
@@ -389,18 +561,21 @@ public class AiRuleService : IAiRuleService
         return last + 1;
     }
 
-    private AiRuleResponse MapToResponse(AiRule r, string? projectName, string? userName)
+    private AiRuleResponse MapToResponse(AiRule r, string? projectName, string? userName, string? userEmail = null, string? tenantName = null)
     {
-        var canEdit = _currentUser.IsAdmin || (_currentUser.Id.HasValue && r.UserId == _currentUser.Id.Value);
+        var canEdit = _currentUser.IsAdmin || _currentUser.IsSuperAdmin || (_currentUser.Id.HasValue && r.UserId == _currentUser.Id.Value);
         var canDelete = canEdit;
 
         return new AiRuleResponse
         {
             Id = r.Id,
+            TenantId = r.OwnerId,
+            TenantName = tenantName,
             ProjectId = r.ProjectId,
             ProjectName = projectName,
             UserId = r.UserId,
             UserName = userName,
+            UserEmail = userEmail,
             Title = r.Title,
             Prompt = r.Prompt,
             IsActive = r.IsActive,

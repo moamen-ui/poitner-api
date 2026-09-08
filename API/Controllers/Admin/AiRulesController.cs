@@ -63,9 +63,18 @@ public class AiRulesController(IAiRuleService service) : ControllerBase
 
     [HttpGet("insights")]
     [ProducesResponseType(typeof(AiInsightsResponse), StatusCodes.Status200OK)]
-    public async Task<IActionResult> GetInsights()
+    public async Task<IActionResult> GetInsights([FromQuery] Guid? tenantId = null, [FromQuery] bool includeDetails = false)
     {
-        var result = await service.GetInsightsAsync();
+        var result = await service.GetInsightsAsync(tenantId, includeDetails);
+        if (result.IsForbidden) return StatusCode(StatusCodes.Status403Forbidden, result);
+        return result.IsSuccess ? Ok(result) : BadRequest(result);
+    }
+
+    [HttpGet("all")]
+    [ProducesResponseType(typeof(List<AiRuleResponse>), StatusCodes.Status200OK)]
+    public async Task<IActionResult> ListAll([FromQuery] Guid? tenantId = null, [FromQuery] int? projectId = null)
+    {
+        var result = await service.ListAllRulesAsync(tenantId, projectId);
         if (result.IsForbidden) return StatusCode(StatusCodes.Status403Forbidden, result);
         return result.IsSuccess ? Ok(result) : BadRequest(result);
     }

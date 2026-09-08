@@ -199,4 +199,67 @@ public class AiRuleServiceTests
         Assert.NotNull(cursorStat);
         Assert.Equal(1, cursorStat.ProjectCount);
     }
+
+    [Fact]
+    public async Task SuperAdmin_CanInspectAllTenantsAndGetDetailedRules()
+    {
+        var dbName = Guid.NewGuid().ToString();
+        var tenant1 = Guid.NewGuid();
+        var tenant2 = Guid.NewGuid();
+        var superAdmin = new FakeCurrentUser { Id = Guid.NewGuid(), IsAdmin = true, IsSuperAdmin = true, TenantId = null };
+
+        using (var db = BuildContext(superAdmin, dbName))
+        {
+            db.Projects.Add(new Project { Id = 101, Key = "t1-proj", Name = "T1 Project", OwnerId = tenant1 });
+            db.Projects.Add(new Project { Id = 102, Key = "t2-proj", Name = "T2 Project", OwnerId = tenant2 });
+            db.AiRules.Add(new AiRule { OwnerId = tenant1, ProjectId = 101, Title = "T1 Rule", Prompt = "Prompt 1", IsActive = true });
+            db.AiRules.Add(new AiRule { OwnerId = tenant2, ProjectId = 102, Title = "T2 Rule", Prompt = "Prompt 2", IsActive = true });
+            db.SaveChanges();
+        }
+
+        var svc = new AiRuleService(new UnitOfWork(BuildContext(superAdmin, dbName)), superAdmin);
+        var insights = (await svc.GetInsightsAsync(tenantId: null, includeDetails: true)).Data!;
+
+        Assert.Equal(2, insights.TotalRulesCount);
+        Assert.NotNull(insights.TenantSummaries);
+        Assert.Equal(2, insights.TenantSummaries.Count);
+        Assert.NotNull(insights.DetailedRules);
+        Assert.Equal(2, insights.DetailedRules.Count);
+        Assert.Contains(insights.DetailedRules, r => r.Title == "T1 Rule");
+        Assert.Contains(insights.DetailedRules, r => r.Title == "T2 Rule");
+
+        // Filter by tenant 1
+        var t1Insights = (await svc.GetInsightsAsync(tenantId: tenant1, includeDetails: true)).Data!;
+        Assert.Equal(1, t1Insights.TotalRulesCount);
+        Assert.NotNull(t1Insights.DetailedRules);
+        Assert.Single(t1Insights.DetailedRules);
+        Assert.Equal("T1 Rule", t1Insights.DetailedRules[0].Title);
+    }
+
+    [Fact]
+    public async Task SuperAdmin_CanListAllRulesWithFilters()
+    {
+        var dbName = Guid.NewGuid().ToString();
+        var tenant1 = Guid.NewGuid();
+        var tenant2 = Guid.NewGuid();
+        var superAdmin = new FakeCurrentUser { Id = Guid.NewGuid(), IsAdmin = true, IsSuperAdmin = true, TenantId = null };
+
+        using (var db = BuildContext(superAdmin, dbName))
+        {
+            db.Projects.Add(new Project { Id = 201, Key = "t1-p", Name = "T1 P", OwnerId = tenant1 });
+            db.Projects.Add(new Project { Id = 202, Key = "t2-p", Name = "T2 P", OwnerId = tenant2 });
+            db.AiRules.Add(new AiRule { OwnerId = tenant1, ProjectId = 201, Title = "T1 P Rule", Prompt = "P1", IsActive = true });
+            db.AiRules.Add(new AiRule { OwnerId = tenant2, ProjectId = 202, Title = "T2 P Rule", Prompt = "P2", IsActive = true });
+            db.SaveChanges();
+        }
+
+        var svc = new AiRuleService(new UnitOfWork(BuildContext(superAdmin, dbName)), superAdmin);
+        var allRules = (await svc.ListAllRulesAsync()).Data!;
+        Assert.Equal(2, allRules.Count);
+
+        var t2Rules = (await svc.ListAllRulesAsync(tenantId: tenant2)).Data!;
+        Assert.Single(t2Rules);
+        Assert.Equal("T2 P Rule", t2Rules[0].Title);
+    }
 }
+
