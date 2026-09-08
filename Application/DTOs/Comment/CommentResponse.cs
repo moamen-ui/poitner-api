@@ -30,4 +30,7 @@ public class CommentResponse
     /// <summary>Embedded inline (this is a single-item response, so there's no dedup concern) — keeps
     /// this response self-contained. Null when no page context was captured for this comment.</summary>
     public PageContextDto? PageContext { get; set; }
+
+    /// <summary>Effective AI rules for this comment, ordered by strict priority: Workspace > Project > Personal.</summary>
+    public List<AiRuleApplyDto> AiRules { get; set; } = new();
 }

@@ -535,7 +535,7 @@ public class AiRuleService : IAiRuleService
             .Where(r => r.DeletedAt == null && r.IsActive &&
                 ((r.UserId == null && (r.ProjectId == null || r.ProjectId == projectId)) ||
                  (r.UserId == commentAuthorId && (r.ProjectId == null || r.ProjectId == projectId))))
-            .OrderBy(r => r.UserId == null ? 0 : 1) // Admin rules first, then personal rules
+            .OrderBy(r => r.UserId == null ? (r.ProjectId == null ? 0 : 1) : 2) // Strict priority: Workspace (0) > Project (1) > Personal (2)
             .ThenBy(r => r.SortOrder)
             .ThenBy(r => r.CreatedAt)
             .ToListAsync();
@@ -544,6 +544,8 @@ public class AiRuleService : IAiRuleService
         {
             Title = r.Title,
             Prompt = r.Prompt,
+            Scope = r.UserId != null ? "Personal" : (r.ProjectId == null ? "Workspace" : "Project"),
+            Priority = r.UserId != null ? 3 : (r.ProjectId == null ? 1 : 2),
             IsPersonal = r.UserId != null
         }).ToList();
     }

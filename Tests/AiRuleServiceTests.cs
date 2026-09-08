@@ -261,5 +261,77 @@ public class AiRuleServiceTests
         Assert.Single(t2Rules);
         Assert.Equal("T2 P Rule", t2Rules[0].Title);
     }
+
+    [Fact]
+    public async Task EffectiveRules_FollowsStrictPriority_Workspace_Project_Personal()
+    {
+        var dbName = Guid.NewGuid().ToString();
+        var tenant = Guid.NewGuid();
+        var adminId = Guid.NewGuid();
+        var devId = Guid.NewGuid();
+
+        var admin = new FakeCurrentUser { Id = adminId, IsAdmin = true, TenantId = tenant };
+        var dev = new FakeCurrentUser { Id = devId, IsAdmin = false, TenantId = tenant };
+
+        using (var db = BuildContext(admin, dbName))
+        {
+            db.Projects.Add(new Project { Id = 50, Key = "proj-50", Name = "Project 50", OwnerId = tenant });
+            db.SaveChanges();
+        }
+
+        // Intentionally create out of order:
+        // 1. Personal developer rule created first
+        var devSvc = new AiRuleService(new UnitOfWork(BuildContext(dev, dbName)), dev);
+        await devSvc.CreateAsync(new CreateAiRuleRequest
+        {
+            ProjectId = 50,
+            Title = "Personal Dev Rule",
+            Prompt = "Personal preference",
+            IsPersonal = true,
+            SortOrder = 0 // Even with lower sort order
+        });
+
+        // 2. Project admin rule created second
+        var adminSvc = new AiRuleService(new UnitOfWork(BuildContext(admin, dbName)), admin);
+        await adminSvc.CreateAsync(new CreateAiRuleRequest
+        {
+            ProjectId = 50,
+            Title = "Project Admin Rule",
+            Prompt = "Project guidelines",
+            IsPersonal = false,
+            SortOrder = 5
+        });
+
+        // 3. Workspace tenant admin rule created last
+        await adminSvc.CreateAsync(new CreateAiRuleRequest
+        {
+            Title = "Workspace Global Rule",
+            Prompt = "Workspace standards",
+            IsPersonal = false,
+            SortOrder = 10
+        });
+
+        var rules = await adminSvc.GetEffectiveRulesForCommentAsync(50, devId);
+
+        Assert.Equal(3, rules.Count);
+
+        // Tier 1: Workspace Rule MUST be first
+        Assert.Equal("Workspace Global Rule", rules[0].Title);
+        Assert.Equal("Workspace", rules[0].Scope);
+        Assert.Equal(1, rules[0].Priority);
+        Assert.False(rules[0].IsPersonal);
+
+        // Tier 2: Project Rule MUST be second
+        Assert.Equal("Project Admin Rule", rules[1].Title);
+        Assert.Equal("Project", rules[1].Scope);
+        Assert.Equal(2, rules[1].Priority);
+        Assert.False(rules[1].IsPersonal);
+
+        // Tier 3: Personal Rule MUST be third
+        Assert.Equal("Personal Dev Rule", rules[2].Title);
+        Assert.Equal("Personal", rules[2].Scope);
+        Assert.Equal(3, rules[2].Priority);
+        Assert.True(rules[2].IsPersonal);
+    }
 }
 

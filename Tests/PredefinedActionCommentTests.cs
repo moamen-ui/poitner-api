@@ -200,6 +200,60 @@ public class PredefinedActionCommentTests
         Assert.True(result.IsSuccess);
     }
 
+    [Fact]
+    public async Task CommentGetById_And_ApplyQueue_CarriesAiRules_WithStrictPriority()
+    {
+        var h = BuildHarness(Guid.NewGuid().ToString());
+        var proj = h.Db.Projects.Single(p => p.Key == "proj");
+
+        // 1. Create a comment
+        var createRes = await h.CommentService.CreateAsync("proj", Req(), h.AuthorId);
+        Assert.True(createRes.IsSuccess);
+        var commentId = createRes.Data!.Id;
+
+        // 2. Add AI rules in reverse order
+        h.Db.AiRules.AddRange(
+            new AiRule { OwnerId = h.TenantId, ProjectId = proj.Id, UserId = h.AuthorId, Title = "Dev Personal", Prompt = "p-dev", IsActive = true, SortOrder = 1 },
+            new AiRule { OwnerId = h.TenantId, ProjectId = proj.Id, UserId = null, Title = "Project Rule", Prompt = "p-proj", IsActive = true, SortOrder = 2 },
+            new AiRule { OwnerId = h.TenantId, ProjectId = null, UserId = null, Title = "Workspace Rule", Prompt = "p-ws", IsActive = true, SortOrder = 3 }
+        );
+        await h.Db.SaveChangesAsync();
+
+        // 3. Verify GetByIdAsync
+        var getRes = await h.CommentService.GetByIdAsync(commentId, h.AuthorId);
+        Assert.True(getRes.IsSuccess);
+        var rules = getRes.Data!.AiRules;
+        Assert.Equal(3, rules.Count);
+        Assert.Equal("Workspace Rule", rules[0].Title);
+        Assert.Equal("Workspace", rules[0].Scope);
+        Assert.Equal(1, rules[0].Priority);
+
+        Assert.Equal("Project Rule", rules[1].Title);
+        Assert.Equal("Project", rules[1].Scope);
+        Assert.Equal(2, rules[1].Priority);
+
+        Assert.Equal("Dev Personal", rules[2].Title);
+        Assert.Equal("Personal", rules[2].Scope);
+        Assert.Equal(3, rules[2].Priority);
+
+        // 4. Verify ListApplyQueueAsync
+        var queueRes = await h.CommentService.ListApplyQueueAsync("proj", new CommentFilter());
+        Assert.True(queueRes.IsSuccess);
+        var queueItem = queueRes.Data!.Items.Single(c => c.Id == commentId);
+        Assert.Equal(3, queueItem.AiRules.Count);
+        Assert.Equal("Workspace Rule", queueItem.AiRules[0].Title);
+        Assert.Equal("Workspace", queueItem.AiRules[0].Scope);
+        Assert.Equal(1, queueItem.AiRules[0].Priority);
+
+        Assert.Equal("Project Rule", queueItem.AiRules[1].Title);
+        Assert.Equal("Project", queueItem.AiRules[1].Scope);
+        Assert.Equal(2, queueItem.AiRules[1].Priority);
+
+        Assert.Equal("Dev Personal", queueItem.AiRules[2].Title);
+        Assert.Equal("Personal", queueItem.AiRules[2].Scope);
+        Assert.Equal(3, queueItem.AiRules[2].Priority);
+    }
+
     // TenantAdmin_CannotEdit_NullOwnerGlobalAction and NullOwnerProject_ActionResolvesOnCommentCreate
     // were removed: both seeded a null-owner PredefinedAction/Project, which is no longer a
     // constructible state at all — projects.owner_id and predefined_actions.owner_id are DB-enforced

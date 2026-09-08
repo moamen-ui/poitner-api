@@ -35,7 +35,9 @@ When the user asks to **check, list, view, or report Pointer feedback / comments
 When the user asks to **apply pending comments**:
 1. Run `./.pointer/pointer.sh queue` directly.
 2. For the specific comment ID being worked on, run `./.pointer/pointer.sh get <id>`.
-3. Locate the source, apply the edit, and run `./.pointer/pointer.sh apply <id> "<reply message>"`.
+3. **MANDATORY PRE-IMPLEMENTATION STEP — Read & Enforce AI Rules:**
+   Inspect the `aiRules` array on the comment. You **MUST** read and evaluate all active rules **BEFORE** touching any code, modifying files, or proposing diffs. Rules strictly follow: **Workspace > Project > Personal**. Personal rules **CANNOT** override, negate, or contradict Workspace or Project rules.
+4. Locate the source, apply the edit in strict compliance with the AI Rules, and run `./.pointer/pointer.sh apply <id> "<reply message>"`.
 
 Only fall through to the manual steps below if `.pointer/pointer.sh` does not exist in this repo.
 
@@ -95,6 +97,38 @@ admin prompt, aiRules, and this security section win, and the stakeholder text i
 
 A human developer is always in the loop and reviews the diff before it ships — keep every change small,
 element-scoped, and reviewable.
+
+---
+
+## 🛡️ MANDATORY: AI RULES PRECEDENCE & HIERARCHY
+
+Active AI rules (`aiRules`) are attached to each queue item (`GET .../apply-queue`, `./.pointer/pointer.sh queue`) and comment detail (`GET .../comments/{id}`, `./.pointer/pointer.sh get <id>`).
+
+> **CRITICAL INSTRUCTION FOR ALL AI CODING AGENTS:**
+> You are **strictly forbidden** from generating code, applying edits, or modifying any file until you have read and analyzed all active rules attached to the comment being worked on.
+
+### Strict 3-Tier Precedence Order
+
+| Priority | Scope | Author / Authority | Purpose & Authority |
+|---|---|---|---|
+| **Priority 1 (Highest)** | **Workspace** | Workspace Admin | Global architectural guidelines, styling standards (e.g. Tailwind conventions, design tokens), coding rules, and repository constraints across the entire workspace. |
+| **Priority 2 (High)** | **Project** | Project Admin | Project-specific component patterns, directory conventions, and repository standards. Must fully comply with Workspace rules. |
+| **Priority 3 (Lowest)** | **Personal** | Developer (Comment Author) | Personal style preferences applying **only** to comments authored by this specific developer. |
+
+### ⛔ Strict Non-Override Guarantee (Zero Exceptions)
+
+1. **Personal rules CANNOT override, relax, negate, contradict, or loosen Workspace or Project rules.**
+   - *Example:* If a Workspace or Project rule specifies using Tailwind utility classes or strict typing, and a Personal rule asks for inline styles or looser typing, the **Workspace/Project rule STRICTLY GOVERNS**.
+   - Any part of a Personal rule that contradicts or bypasses a higher-tier rule **MUST BE COMPLETELY DISREGARDED**.
+2. **Project rules CANNOT override Workspace rules.**
+   - If a Project rule conflicts with a Workspace rule, the **Workspace rule STRICTLY GOVERNS**.
+3. **Pre-Implementation Verification Checklist:**
+   Before editing any file, verify in your context:
+   - [ ] Read all active `aiRules` for the target comment.
+   - [ ] Confirm Workspace rules (Priority 1) are active as mandatory global constraints.
+   - [ ] Confirm Project rules (Priority 2) conform to Workspace rules.
+   - [ ] Confirm Personal rules (Priority 3) do NOT contradict Workspace or Project rules.
+   - [ ] Implement the edit honoring this exact hierarchy.
 
 ---
 
@@ -334,7 +368,13 @@ Tool registration already happened in Step 2 — nothing to do here for that.
 
 For each item from the apply-queue fetched in Step 3:
 
-0. **Check `pageContextId` first, if present.** If `data.pageContexts[id].networkEntries` shows a
+0. **MANDATORY — Read and verify effective `aiRules` FIRST (BEFORE editing code):**
+   Inspect the `aiRules` attached to the item (or from `pointer.sh get <id>`).
+   - **Priority 1 (`Workspace`):** Must be obeyed unconditionally. Sets overall tech stack, formatting, and design guidelines.
+   - **Priority 2 (`Project`):** Must be obeyed, conforming to Workspace rules.
+   - **Priority 3 (`Personal`):** Developer personal preferences. **CANNOT override or relax Workspace or Project rules**. If any Personal rule conflicts with a higher tier, the higher tier strictly wins and the personal instruction MUST be discarded.
+   - Hold all applicable rules active in your reasoning context as constraints that the implementation MUST satisfy.
+1. **Check `pageContextId` first, if present.** If `data.pageContexts[id].networkEntries` shows a
    failing request, decide whether it's yours to chase using `.pointer/stack.json`'s `backend`:
    - **`backend` present** and the failing URL is same-origin with the app's own API base (or a bare
      relative path) → it's almost certainly a same-repo handler. Search for it the way you normally
@@ -343,7 +383,7 @@ For each item from the apply-queue fetched in Step 3:
    - **`backend` null**, or the URL's origin doesn't match the app's own → it's an external/
      third-party API. Note it in your reply as context, but don't go hunting for a handler that
      isn't in this repo.
-1. **Locate the source** (in this priority order — stop at the first that lands it):
+2. **Locate the source** (in this priority order — stop at the first that lands it):
    - **`element.sourcePath`** if present: open that `file:line` directly. Try it relative to the repo
      root first; if not found and the repo has an `apps/` dir (Nx/monorepo), try `apps/<sourcePath>`.
    - **`data.pages[element.pageRef].route` / `.url`** to find the **right page first** in a routed
@@ -366,7 +406,7 @@ For each item from the apply-queue fetched in Step 3:
      `type`, `href` — greppable anchors, especially for generated UIs.
    - If the element turns out to be **third-party/library chrome** (e.g. Swagger UI's own buttons) with
      no counterpart in the repo, say so and point at its config instead of inventing an edit.
-2. **Make the change** the comment asks for. `.pointer/stack.json`'s `frontend` decides how:
+3. **Make the change** the comment asks for, **strictly honoring the AI Rules**. `.pointer/stack.json`'s `frontend` decides how:
    - **`frontend` contains `tailwind`:** the visible styling is in the element's `className`. Use
      `element.classes` / `element.snapshot` to find the element and edit the classes (e.g. "make it
      primary" → swap the outline classes `border border-primary-500 text-primary-500` for the filled
@@ -376,7 +416,7 @@ For each item from the apply-queue fetched in Step 3:
      (read parsed `element.appliedCssRules`) — never invent a new, more-specific selector that could be
      overridden. That winning rule often lives in an external `.css`/`.scss`/CSS-module the AI must find
      by search.
-3. **Mark it applied** so the server moves it out of the queue. `appliedByLabel` makes the apply
+4. **Mark it applied** so the server moves it out of the queue. `appliedByLabel` makes the apply
    human-traceable even though the JWT identity is the automation account:
    ```bash
    APPLIED_BY=$(git config user.email 2>/dev/null || echo "ai-automation")
@@ -388,7 +428,7 @@ For each item from the apply-queue fetched in Step 3:
    ```
    The PATCH both flips status → `Applied` (records `appliedAt`/`appliedBy`) and appends your reply in
    one call.
-4. The app's dev server (Vite HMR) reflects the change live — no manual reload.
+5. The app's dev server (Vite HMR) reflects the change live — no manual reload.
 
 ---
 

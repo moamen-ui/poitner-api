@@ -378,20 +378,40 @@ public class CommentService : ICommentService
             .Where(r => r.DeletedAt == null && r.IsActive &&
                 ((r.UserId == null && (r.ProjectId == null || r.ProjectId == projectId)) ||
                  (r.UserId != null && authorIds.Contains(r.UserId.Value) && (r.ProjectId == null || r.ProjectId == projectId))))
-            .OrderBy(r => r.UserId == null ? 0 : 1)
+            .OrderBy(r => r.UserId == null ? (r.ProjectId == null ? 0 : 1) : 2) // Strict priority: Workspace (0) > Project (1) > Personal (2)
             .ThenBy(r => r.SortOrder)
             .ThenBy(r => r.CreatedAt)
             .ToListAsync();
 
         var adminRules = aiRules.Where(r => r.UserId == null)
-            .Select(r => new AiRuleApplyDto { Title = r.Title, Prompt = r.Prompt, IsPersonal = false })
+            .OrderBy(r => r.ProjectId == null ? 0 : 1) // Workspace (Priority 1) before Project (Priority 2)
+            .ThenBy(r => r.SortOrder)
+            .ThenBy(r => r.CreatedAt)
+            .Select(r => new AiRuleApplyDto
+            {
+                Title = r.Title,
+                Prompt = r.Prompt,
+                Scope = r.ProjectId == null ? "Workspace" : "Project",
+                Priority = r.ProjectId == null ? 1 : 2,
+                IsPersonal = false
+            })
             .ToList();
 
         var personalRulesByAuthor = aiRules.Where(r => r.UserId != null)
             .GroupBy(r => r.UserId!.Value)
             .ToDictionary(
                 g => g.Key,
-                g => g.Select(r => new AiRuleApplyDto { Title = r.Title, Prompt = r.Prompt, IsPersonal = true }).ToList()
+                g => g
+                    .OrderBy(r => r.SortOrder)
+                    .ThenBy(r => r.CreatedAt)
+                    .Select(r => new AiRuleApplyDto
+                    {
+                        Title = r.Title,
+                        Prompt = r.Prompt,
+                        Scope = "Personal",
+                        Priority = 3,
+                        IsPersonal = true
+                    }).ToList()
             );
 
         return Result<PagedData<CommentApplyItemDto>>.Success(
@@ -431,7 +451,27 @@ public class CommentService : ICommentService
             return Result<CommentResponse>.NotFound(MessageKeys.Comment.NotFound);
 
         var names = await ResolveNamesAsync(AuthorIds(comment));
-        return Result<CommentResponse>.Success(MapToResponse(comment, names));
+
+        var effectiveRules = await _unitOfWork.Repository<AiRule>()
+            .Query()
+            .AsNoTracking()
+            .Where(r => r.DeletedAt == null && r.IsActive &&
+                ((r.UserId == null && (r.ProjectId == null || r.ProjectId == comment.ProjectId)) ||
+                 (r.UserId == comment.AuthorId && (r.ProjectId == null || r.ProjectId == comment.ProjectId))))
+            .OrderBy(r => r.UserId == null ? (r.ProjectId == null ? 0 : 1) : 2) // Strict priority: Workspace (0) > Project (1) > Personal (2)
+            .ThenBy(r => r.SortOrder)
+            .ThenBy(r => r.CreatedAt)
+            .Select(r => new AiRuleApplyDto
+            {
+                Title = r.Title,
+                Prompt = r.Prompt,
+                Scope = r.UserId != null ? "Personal" : (r.ProjectId == null ? "Workspace" : "Project"),
+                Priority = r.UserId != null ? 3 : (r.ProjectId == null ? 1 : 2),
+                IsPersonal = r.UserId != null
+            })
+            .ToListAsync();
+
+        return Result<CommentResponse>.Success(MapToResponse(comment, names, effectiveRules));
     }
 
     public async Task<Result<CommentResponse>> UpdateStatusAsync(int id, UpdateCommentStatusRequest request, Guid actorId)
@@ -694,7 +734,7 @@ public class CommentService : ICommentService
         PageContextId = comment.PageContextSnapshotId
     };
 
-    private CommentResponse MapToResponse(Comment comment, IReadOnlyDictionary<Guid, string> names) => new()
+    private CommentResponse MapToResponse(Comment comment, IReadOnlyDictionary<Guid, string> names, List<AiRuleApplyDto>? rules = null) => new()
     {
         Id = comment.Id,
         Status = comment.Status,
@@ -713,7 +753,8 @@ public class CommentService : ICommentService
         Element = MapElementToDto(comment.Element),
         Replies = comment.Replies.Select(r => MapReplyToResponse(r, names)).ToList(),
         IsBugReport = comment.IsBugReport,
-        PageContext = MapPageContextToDto(comment.PageContextSnapshot)
+        PageContext = MapPageContextToDto(comment.PageContextSnapshot),
+        AiRules = rules ?? new List<AiRuleApplyDto>()
     };
 
     // Apply-queue export mapper — the ONLY mapper that carries PickedActionPrompt (admin/AI path).

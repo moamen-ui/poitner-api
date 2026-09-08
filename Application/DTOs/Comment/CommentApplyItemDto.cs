@@ -48,5 +48,7 @@ public class AiRuleApplyDto
 {
     public string Title { get; set; } = string.Empty;
     public string Prompt { get; set; } = string.Empty;
+    public string Scope { get; set; } = "Workspace"; // "Workspace" | "Project" | "Personal"
+    public int Priority { get; set; } = 1; // 1 = Workspace, 2 = Project, 3 = Personal
     public bool IsPersonal { get; set; }
 }
