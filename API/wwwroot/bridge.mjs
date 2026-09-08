@@ -36,7 +36,14 @@ const TOOLS = {
   },
   antigravity: {
     bin: 'agy',
-    buildArgs: (prompt) => ['-p', prompt, '--mode', 'accept-edits', '--print-timeout', '20m'],
+    // NOT --mode accept-edits: that only auto-approves file edits, not shell commands — but
+    // applying needs to run pointer.sh/curl to fetch the queue and mark comments applied. With
+    // no human present to approve a command prompt, agy auto-denies it, does nothing, and still
+    // exits 0 (confirmed live: a real run produced "no output produced — a tool required the
+    // 'command' permission that headless mode cannot prompt for... re-run with
+    // --dangerously-skip-permissions"). This bridge is headless by design, so skip permissions
+    // outright, same as claude-code's own flag above.
+    buildArgs: (prompt) => ['-p', prompt, '--dangerously-skip-permissions', '--print-timeout', '20m'],
   },
   'opencode-glm': {
     bin: 'opencode',

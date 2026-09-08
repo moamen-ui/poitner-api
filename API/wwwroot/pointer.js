@@ -306,9 +306,9 @@
     // developer pick one of THEIR OWN installed AI CLI tools and trigger an apply run without
     // leaving the browser. `busy` disables the picker/button while a run is in flight; `status` is
     // an optional short trailing message ("Applying…", "Done", an error).
-    bridgeControl: (tools, busy, status) => `
+    bridgeControl: (tools, busy, selected, status) => `
         <select class="pf-input" id="pf-bridge-tool" style="width:auto; padding:4px 8px;" ${busy ? "disabled" : ""}>
-          ${tools.map((t) => `<option value="${escapeHtml(t)}">${escapeHtml(t)}</option>`).join("")}
+          ${tools.map((t) => `<option value="${escapeHtml(t)}" ${t === selected ? "selected" : ""}>${escapeHtml(t)}</option>`).join("")}
         </select>
         <button class="pf-btn primary" id="pf-bridge-apply" type="button" ${busy ? "disabled" : ""}>
           ${busy ? "Applying…" : "Apply with AI"}
@@ -1134,6 +1134,11 @@
       this.bridgePort = 4772;
       this.bridgeAvailable = false;
       this.bridgeTools = [];
+      // The tool the picker currently shows as selected — tracked explicitly rather than read fresh
+      // from the DOM each render, since renderBridgeControl() rebuilds the <select> via innerHTML on
+      // every call (health-check, click, poll-done) and a freshly-built <select> would otherwise
+      // always default back to its first <option>, silently discarding whatever the user had picked.
+      this.bridgeSelectedTool = null;
       this.bridgeBusy = false;
       this.bridgePollTimer = null;
       // Project-level opt-in (default off), read once at init via /capture-config. Gates both whether
@@ -1489,6 +1494,7 @@
     // Best-effort probe for a locally-running `.pointer/pointer.sh serve` (bridge.mjs). Local-env
     // only, short timeout, silent on any failure — absent is the normal case, not an error state.
     async checkBridge() {
+      var _a2;
       if (this.environmentAttr !== "local") return;
       try {
         const ctrl = new AbortController();
@@ -1501,6 +1507,9 @@
         const body = await toolsRes.json();
         this.bridgeTools = Array.isArray(body == null ? void 0 : body.tools) ? body.tools : [];
         this.bridgeAvailable = this.bridgeTools.length > 0;
+        if (!this.bridgeSelectedTool || !this.bridgeTools.includes(this.bridgeSelectedTool)) {
+          this.bridgeSelectedTool = (_a2 = this.bridgeTools[0]) != null ? _a2 : null;
+        }
         this.renderBridgeControl();
       } catch {
       }
@@ -1516,13 +1525,16 @@
       }
       host.style.display = "flex";
       host.style.cssText = "display:flex; align-items:center; gap:6px; padding:6px 12px;";
-      host.innerHTML = TPL.bridgeControl(this.bridgeTools, this.bridgeBusy, status);
+      host.innerHTML = TPL.bridgeControl(this.bridgeTools, this.bridgeBusy, this.bridgeSelectedTool, status);
+      const sel = this.root.querySelector("#pf-bridge-tool");
+      if (sel) sel.addEventListener("change", () => {
+        this.bridgeSelectedTool = sel.value;
+      });
       const btn = this.root.querySelector("#pf-bridge-apply");
       if (btn) btn.addEventListener("click", () => this.startBridgeApply());
     }
     async startBridgeApply() {
-      const sel = this.root && this.root.querySelector("#pf-bridge-tool");
-      const tool = sel == null ? void 0 : sel.value;
+      const tool = this.bridgeSelectedTool;
       if (!tool || this.bridgeBusy) return;
       this.bridgeBusy = true;
       this.renderBridgeControl("Starting…");

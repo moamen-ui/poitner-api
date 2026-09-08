@@ -101,9 +101,9 @@ export const TPL = {
   // developer pick one of THEIR OWN installed AI CLI tools and trigger an apply run without
   // leaving the browser. `busy` disables the picker/button while a run is in flight; `status` is
   // an optional short trailing message ("Applying…", "Done", an error).
-  bridgeControl: (tools: string[], busy: boolean, status?: string) => `
+  bridgeControl: (tools: string[], busy: boolean, selected: string | null, status?: string) => `
         <select class="pf-input" id="pf-bridge-tool" style="width:auto; padding:4px 8px;" ${busy ? 'disabled' : ''}>
-          ${tools.map((t) => `<option value="${escapeHtml(t)}">${escapeHtml(t)}</option>`).join('')}
+          ${tools.map((t) => `<option value="${escapeHtml(t)}" ${t === selected ? 'selected' : ''}>${escapeHtml(t)}</option>`).join('')}
         </select>
         <button class="pf-btn primary" id="pf-bridge-apply" type="button" ${busy ? 'disabled' : ''}>
           ${busy ? 'Applying…' : 'Apply with AI'}

@@ -9,8 +9,27 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 
 # 1. Resolve Server & Project
-SERVER="${POINTER_SERVER:-$(grep -rhE '^[A-Z_]*POINTER_SERVER=' "$ROOT_DIR"/.env* 2>/dev/null | head -1 | cut -d= -f2- | tr -d "'\"")}"
-PROJECT="${POINTER_PROJECT:-$(grep -rhE '^[A-Z_]*POINTER_PROJECT=' "$ROOT_DIR"/.env* 2>/dev/null | head -1 | cut -d= -f2- | tr -d "'\"")}"
+# Tries, in order: (a) root-level .env* (single-app repo), (b) one level of subdirectories
+# (a monorepo with per-app .env, e.g. angular/.env, react/.env.production — excluding
+# node_modules/dist/build), (c) .pointer/credentials.env's own POINTER_SERVER/POINTER_PROJECT
+# lines, for a repo with no matching .env anywhere (e.g. an Angular app whose config lives in
+# TypeScript environment.ts, not .env) — the same file POINTER_API_KEY below already lives in.
+resolve_config() {
+  local suffix="$1" val
+  val=$(grep -rhE "^[A-Z_]*${suffix}=" "$ROOT_DIR"/.env* 2>/dev/null | head -1 | cut -d= -f2- | tr -d "'\"")
+  if [[ -z "$val" ]]; then
+    val=$(find "$ROOT_DIR" -maxdepth 2 -type f -iname ".env*" \
+      -not -path '*/node_modules/*' -not -path '*/dist/*' -not -path '*/build/*' 2>/dev/null \
+      -print0 | xargs -0 grep -hE "^[A-Z_]*${suffix}=" 2>/dev/null | head -1 | cut -d= -f2- | tr -d "'\"")
+  fi
+  if [[ -z "$val" ]]; then
+    val=$(grep -hE "^${suffix}=" "$SCRIPT_DIR/credentials.env" 2>/dev/null | head -1 | cut -d= -f2- | tr -d "'\"")
+  fi
+  echo "$val"
+}
+
+SERVER="${POINTER_SERVER:-$(resolve_config POINTER_SERVER)}"
+PROJECT="${POINTER_PROJECT:-$(resolve_config POINTER_PROJECT)}"
 API_KEY="${POINTER_API_KEY:-$(grep -hE '^POINTER_API_KEY=' "$SCRIPT_DIR/credentials.env" 2>/dev/null | head -1 | cut -d= -f2- | tr -d "'\"")}"
 
 if [[ -z "$SERVER" || -z "$PROJECT" || -z "$API_KEY" ]]; then

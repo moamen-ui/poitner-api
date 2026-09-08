@@ -67,6 +67,11 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
   bridgePort = 4772;
   bridgeAvailable = false;
   bridgeTools: string[] = [];
+  // The tool the picker currently shows as selected — tracked explicitly rather than read fresh
+  // from the DOM each render, since renderBridgeControl() rebuilds the <select> via innerHTML on
+  // every call (health-check, click, poll-done) and a freshly-built <select> would otherwise
+  // always default back to its first <option>, silently discarding whatever the user had picked.
+  bridgeSelectedTool: string | null = null;
   bridgeBusy = false;
   private bridgePollTimer: ReturnType<typeof setTimeout> | null = null;
   // Project-level opt-in (default off), read once at init via /capture-config. Gates both whether
@@ -513,6 +518,9 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
       const body = await toolsRes.json();
       this.bridgeTools = Array.isArray(body?.tools) ? body.tools : [];
       this.bridgeAvailable = this.bridgeTools.length > 0;
+      if (!this.bridgeSelectedTool || !this.bridgeTools.includes(this.bridgeSelectedTool)) {
+        this.bridgeSelectedTool = this.bridgeTools[0] ?? null;
+      }
       this.renderBridgeControl();
     } catch {
       // No bridge running (or blocked) — leave #pf-bridge hidden, exactly the default install.
@@ -527,14 +535,15 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
     if (!this.bridgeAvailable) { (host as HTMLElement).style.display = 'none'; return; }
     (host as HTMLElement).style.display = 'flex';
     (host as HTMLElement).style.cssText = 'display:flex; align-items:center; gap:6px; padding:6px 12px;';
-    host.innerHTML = TPL.bridgeControl(this.bridgeTools, this.bridgeBusy, status);
+    host.innerHTML = TPL.bridgeControl(this.bridgeTools, this.bridgeBusy, this.bridgeSelectedTool, status);
+    const sel = this.root!.querySelector('#pf-bridge-tool') as HTMLSelectElement | null;
+    if (sel) sel.addEventListener('change', () => { this.bridgeSelectedTool = sel.value; });
     const btn = this.root!.querySelector('#pf-bridge-apply');
     if (btn) btn.addEventListener('click', () => this.startBridgeApply());
   }
 
   private async startBridgeApply(): Promise<void> {
-    const sel = this.root && (this.root.querySelector('#pf-bridge-tool') as HTMLSelectElement | null);
-    const tool = sel?.value;
+    const tool = this.bridgeSelectedTool;
     if (!tool || this.bridgeBusy) return;
     this.bridgeBusy = true;
     this.renderBridgeControl('Starting…');
