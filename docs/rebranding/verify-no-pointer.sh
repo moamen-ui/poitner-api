@@ -33,22 +33,45 @@ COMPAT_TAG='COMPAT: *remove'
 EXTRA_ALLOW="${EXTRA_ALLOW:-}"
 
 # ------------------------------------------------------------------ scan -----
-BRAND='pointer|Pointer|POINTER|poitner|Poitner'
+# Case-INSENSITIVE on purpose: an explicit list of casings misses pOinter, POinter, etc.
+BRAND='pointer|poitner'
 
-raw=$(grep -rnE "$BRAND" . "${EXCLUDES[@]}" 2>/dev/null)
+# Brand-derived residue that does NOT spell the brand. The gate is blind to these unless listed.
+# Populate from the §5.11 decisions: set to '' for anything you deliberately keep.
+#   pf-        widget CSS class + --pf-* theming prefix ("pointer feedback"), 175 classes
+#   ptr_       API-key prefix
+#   moamen\.work   the old domain
+EXTRA_BRAND="${EXTRA_BRAND_PATTERN:-}"     # e.g. export EXTRA_BRAND_PATTERN='\bpf-|\bptr_|moamen\.work'
 
-filtered=$(printf '%s\n' "$raw" \
-  | grep -vE "$ALLOW_PATHS" \
+raw=$(grep -rniE "$BRAND" . "${EXCLUDES[@]}" 2>/dev/null)
+
+drop_allowed() {
+  grep -vE "$ALLOW_PATHS" \
   | grep -vE "$COMPAT_TAG" \
-  | { [ -n "$EXTRA_ALLOW" ] && grep -vE "$EXTRA_ALLOW" || cat; } \
+  | { [ -n "$EXTRA_ALLOW" ] && grep -vE "$EXTRA_ALLOW" || cat; }
+}
+
+# Pass A — occurrences that spell the brand, minus lines whose only hits are protected tokens.
+# NOTE: the protected-token stripping runs in awk, which has NO \b support — the PROTECTED
+# pattern above is therefore written without word boundaries on purpose.
+filtered=$(printf '%s\n' "$raw" | drop_allowed \
   | awk -v prot="$PROTECTED" '
       # Drop a line only if EVERY brand hit on it is a protected token.
       {
         line = $0
         stripped = line
         gsub(prot, "", stripped)          # remove protected tokens
-        if (stripped ~ /pointer|Pointer|POINTER|poitner|Poitner/) print line
+        if (tolower(stripped) ~ /pointer|poitner/) print line
       }')
+
+# Pass B — brand-derived residue that does not spell the brand (pf-, ptr_, the old domain).
+# grep -E handles these directly; no protected-token stripping applies.
+if [ -n "$EXTRA_BRAND" ]; then
+  extra_hits=$(grep -rnE "$EXTRA_BRAND" . "${EXCLUDES[@]}" 2>/dev/null | drop_allowed)
+  if [ -n "$extra_hits" ]; then
+    filtered="$(printf '%s\n%s' "$filtered" "$extra_hits" | grep -c . >/dev/null; printf '%s\n%s' "$filtered" "$extra_hits")"
+  fi
+fi
 
 count=$(printf '%s' "$filtered" | grep -c . )
 
@@ -67,6 +90,19 @@ if [ "${1:-}" = "--protected" ]; then
   echo "protected tokens: $prot_now (baseline ${prot_base:-unknown})"
 fi
 
+# ------------------------------------------------------------- filenames -----
+# A content grep can never flag a brand-named FILE (and never reads binaries at all):
+# e.g. pointer-ext-v0.1.0.zip, store-assets/pointer-*.jpg, Pointer.sln, pointer.js.
+names=$(find . -iname '*pointer*' -o -iname '*poitner*' 2>/dev/null \
+        | grep -vE 'node_modules|/\.git/|/obj/|/bin/|/dist/|\.angular|docs/rebranding|verify-no-pointer\.sh')
+name_count=$(printf '%s' "$names" | grep -c . )
+if [ "$name_count" -gt 0 ]; then
+  echo "FAIL: $name_count path(s) still NAMED for the old brand:"
+  printf '%s\n' "$names" | head -40
+  echo
+  count=$((count + name_count))
+fi
+
 # --------------------------------------------------------------- report ------
 if [ "$count" -eq 0 ]; then
   echo "PASS: no brand occurrences outside the allowlist."
@@ -75,7 +111,7 @@ fi
 
 echo "FAIL: $count brand occurrence(s) remain:"
 echo
-printf '%s\n' "$filtered" | head -100
+printf '%s\n' "$filtered" | grep -c . >/dev/null && printf '%s\n' "$filtered" | grep . | head -100
 [ "$count" -gt 100 ] && echo "... and $((count - 100)) more"
 echo
 echo "Each line is either (a) still to be renamed, or (b) a deliberate survivor —"

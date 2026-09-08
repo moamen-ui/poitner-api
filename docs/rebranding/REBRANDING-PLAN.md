@@ -88,6 +88,10 @@ for explicit approval** before any edit.
 | Q23 | Rename existing **project keys** that contain "pointer" (`pointer-api`, `pointer-landing`)? | Data migration + upload-folder move + rewriting stored screenshot URLs. See §11 |
 | Q24 | Is the Chrome extension **published** to the Web Store? | A published listing keeps its ID; a name change is a listing update + review. An unpublished one is free to rename |
 | Q25 | Rename the misspelled **`poitner-api`** → correct spelling as part of this? | Yes — 52 `poitner` occurrences exist and are easy to miss |
+| Q26 | The widget's CSS classes and theming tokens are prefixed **`pf-`** ("pointer feedback") — 175 distinct classes, 1,020 occurrences, plus a documented `--pf-*` custom-property theming API. Rename the prefix, or keep it? | Renaming is invisible internally (shadow DOM) but **breaks every customer's theme override** unless §9's fallback is used. `pf-` does not spell "pointer", so the gate will never flag it either way |
+| Q27 | API keys are generated with the prefix **`ptr_`** (`ProfileService.cs:73`). New prefix, or keep? | Existing keys keep their `ptr_` prefix forever and must keep validating. Changing it only affects *newly issued* keys |
+| Q28 | Today every service is a **subdomain of a shared personal domain** (`api.pointer.moamen.work`). The new brand moves to its **own apex**. Confirm? | This changes the hardcoded CORS allow-list (`API/Program.cs:61-68`), SPF/DKIM/DMARC scope, and cookie/origin assumptions — it is not just a string swap |
+| Q29 | Replace the **artwork**: product logo, favicon, extension icons (16/32/48/128), and the three Chrome store images? Who produces them? | Branding stores `Logo` and `Favicon` per tenant in the DB (`BrandingResponse.cs:13,15`) — new artwork is a data + asset task, not a code one |
 
 **Do not proceed past this section without answers to Q1, Q2, Q5, Q11, Q15, Q16, Q20.** The rest
 have safe defaults noted above; if the human declines to answer, state the default you assumed.
@@ -137,6 +141,12 @@ RENAME_DB:      ""      # Q22 yes | no
 RENAME_PROJECT_KEYS: "" # Q23 yes | no
 EXT_PUBLISHED:  ""      # Q24 yes | no
 FIX_POITNER_TYPO: ""    # Q25 yes | no
+RENAME_PF_PREFIX: ""    # Q26 yes | no  (widget css classes + --pf-* theming tokens)
+CSS_PREFIX:       ""    # Q26 the new short prefix, if renaming (e.g. "xy-")
+API_KEY_PREFIX:   ""    # Q27 e.g. "xy_" | keep "ptr_"
+DOMAIN_MODEL:     ""    # Q28 own-apex | subdomain-of-shared
+ARTWORK_OWNER:    ""    # Q29 who produces logo/favicon/extension icons/store images
+JWT_ISSUER_MODE:  ""    # §4.6 freeze | dual-accept   <- freeze unless you have a 3-deploy window
 ```
 
 ### 2.1 Derived identifiers — compute and validate all of these
@@ -211,6 +221,38 @@ This is why §7 replaces **specific tokens**, never the bare substring.
 - [ ] New packages published and consumed; no app resolves an old `pointer-*` package.
 - [ ] The five verification scenarios in §12.3 pass against the deployed stack.
 - [ ] If `LIVE_INSTALLS=yes`: the old contract still works (§9), and no user was logged out (§4.3).
+
+### 3.1 Half of this brand is data, not code — the runtime Branding system
+
+Before editing anything, understand where user-visible copy actually comes from. The product has a
+live, database-backed white-labeling subsystem:
+
+- `Application/Services/Implementation/BrandingService.cs` — `DefaultProductName = "Pointer"` (line 10)
+  is only a **fallback**; the real value is `settings.GetStringAsync(ISettingsService.BrandProductName, …)`
+  (line 69), i.e. an `app_settings` row.
+- `Application/DTOs/Branding/BrandingResponse.cs` — product name, URLs, and **`Logo`** (line 13) and
+  **`Favicon`** (line 15) assets; plus `BrandingWriteDto.cs`.
+- `GET /api/branding` — consumed by the landing page, all three dashboards, **and the widget**.
+- A super-admin **Branding page** in each dashboard writes those rows.
+
+**Consequences for this plan:**
+
+1. Editing `DefaultProductName` renames almost nothing on a deployed instance — the DB row wins.
+   The user-visible rename happens in §11.3 (SQL) or through the Branding admin page.
+2. Conversely, most product-name strings you find in the dashboards are *fallbacks* (`productName:
+   'Pointer'` in `useBranding.ts:37`, `BrandingPage.vue:100,309`) — rename them, but know that they
+   are only visible when `/api/branding` is unreachable.
+3. The **artwork** (logo, favicon) is uploaded data, not files in the repo. New artwork must be
+   produced and uploaded (Q29); no find/replace will do it.
+4. Because branding is **per-tenant**, every tenant's rows need review, not just the default one.
+   `API/wwwroot/uploads/` currently holds `pointer-api` *and* `tuwaiq-clubs` — there is more than one
+   tenant with stored assets.
+5. The Caddyfile deliberately keeps `/api/branding` on `no-cache` (`Caddyfile:29`) so "rebrands
+   propagate" — that mechanism only works if you keep that matcher correct (§10.2).
+
+So: the rename is a **code** task (identifiers), a **data** task (branding rows + artwork), and an
+**infra** task (hosts, mail, volumes). Doing only the first leaves the product still saying "Pointer"
+to every user.
 
 ---
 
@@ -402,7 +444,15 @@ Counts are files containing a case-insensitive `pointer`, measured 2026-09-08.
 | Env keys (host app) | `VITE_POINTER_{SERVER,PROJECT,ENV,ENABLED}`, `REACT_APP_POINTER_{…}`, `NEXT_PUBLIC_POINTER_SERVER`, bare `POINTER_{SERVER,PROJECT,ENV,ENABLED,API_KEY,AI_TOOL}` | widget, `pointer.sh`, skill docs, `.pointer/credentials.env.example` |
 | Env key (server) | `POINTER_SERVER` | `API/Program.cs:193` |
 | Storage keys | see §4.3 | — |
-| Served assets | `/pointer.js`, `/pointer.css`, `/pointer.sh`, `/pointer-init.md`, `/skill.md`, `/install.sh`, `/embed.js`, `/bridge.mjs` | `API/wwwroot/` |
+| Served assets | `/pointer.js`, `/pointer.css`, `/pointer.sh`, `/pointer-init.md`, `/skill.md`, `/install.sh`, `/bridge.mjs` | `API/wwwroot/` |
+| **`/embed.js`** — *not* a static file | Generated inline in `API/Program.cs:283-319`: it hardcodes the `/pointer.js` path, the `<pointer-feedback>` tag, and a `window.__pointerEmbedded` guard flag inside a JS template string | `API/Program.cs` |
+| Static-file cache special-case | `API/Program.cs:250-252` matches the widget **by filename**: `name.Equals("pointer.js")`/`("pointer.css")` → `Cache-Control: no-cache`. Rename the files without this and shipped widget fixes stop reaching customers (heuristic freshness serves stale copies for a long time) | `API/Program.cs` |
+| CORS dashboard allow-list | `API/Program.cs:61-68` — a hardcoded `string[] dashboardOrigins` of five `*.pointer.moamen.work` origins gating `/api/admin/*`. Miss it and the renamed dashboards are CORS-blocked on every privileged call. Add the new origins **before** cutover and keep the old ones during transition (`Cors__ExtraDashboardOrigins` extends it per environment) | `API/Program.cs` |
+| Caddy widget no-cache matcher | `Caddyfile:29` — `@widget path /pointer.js /pointer.css /embed.js /skill.md /api/branding`. The asset paths are listed **literally**; rename the assets without updating it and the new paths lose revalidation | `Caddyfile` |
+| **Server-side placeholder injection** | `API/Program.cs:197-201` holds a hardcoded `injectedFiles` HashSet — `"/pointer-init.md"`, `"/skill.md"`, `"/install.sh"` — and rewrites `<POINTER_SERVER>` in their bodies to the request origin (`Program.cs:212`, via `PointerUrlResolver.ResolvePublicUrl`). Rename the wwwroot files without updating this set and the middleware stops matching: users receive the raw file with a **literal `<POINTER_SERVER>`** in it, and the "arrives pre-filled with your URL" behaviour silently dies | `API/Program.cs` |
+| Placeholder token | `<POINTER_SERVER>` — in the `.Replace()` call **and** in the markdown bodies (`pointer-init.md:18,47,80`, `skill.md`) | `Program.cs` + `wwwroot/*.md` |
+| JWT issuer/audience | `pointer-api` — see §4.6 | compose + `AuthenticationExtensions.cs` |
+| Config section | `Pointer` — see §4.7 | `appsettings.json`, `Program.cs:180`, compose |
 | Upload dir | `API/wwwroot/uploads/pointer-api` | per-project, keyed by project key — **data**, see §11 |
 
 ### 5.4 Skills (served + installed)
@@ -483,6 +533,37 @@ them too (consistency, and the acceptance gate stays simple) or allowlist the wh
 one-line note at the top of each: *"written pre-rebrand; 'Pointer' = <new name>"*. Pick one and
 record it in §2 — do not leave it to the executing agent's judgment.
 
+### 5.11 ⚠️ Brand residue that does NOT spell "pointer"
+
+**The grep gate cannot see any of these.** They are brand-derived and must be handled by explicit
+decision, not by search-and-replace. This is the category most likely to survive the whole project.
+
+| Residue | Scale | Where | Public contract? |
+|---|---|---|---|
+| **`pf-` CSS class prefix** ("**p**ointer **f**eedback") | **175 distinct classes, 1,020 occurrences** — `pf-launcher`, `pf-toolbar`, `pf-sidebar`, `pf-pin`, `pf-modal`, `pf-toast`, `pf-btn`, `pf-card`, … | `web-component/src/**` (12 SCSS partials + the TS templates), the built `pointer.js`/`pointer.css`, `extension/src` | **Internally safe** — the widget renders in a shadow root (`element.ts:192 attachShadow({mode:'open'})`), so no page CSS can depend on them by cascade |
+| **`--pf-*` custom properties** | the whole `$tokens` map in `styles/_variables.scss` (`--pf-primary`, `--pf-primary-hover`, `--pf-radius-lg`, …) | same | **YES — a documented public theming API.** `_variables.scss:3-17` tells consumers to write `pointer-feedback { --pf-primary: #0aa36e; }`, and custom properties **pierce the shadow DOM**. Renaming the prefix silently reverts every customer's theme to defaults (a `var()` fallback, no error) |
+| **`ptr_` API-key prefix** | `ProfileService.cs:73` (`"ptr_" + …`), asserted in `Tests/ApiKeyAuthTests.cs:121,180`, and shown as a sample value in `install.sh`, `pointer-init.md:246`, `skill.md:167` | API + skills | **YES** — every key already issued starts with `ptr_` and must keep validating forever |
+| **`moamen.work`** | 119 occurrences across both repos | Caddyfile, env files, 7 test files, extension manifest, docs, dashboards | The old domain; contains no "pointer" at all |
+| **`admin@pointer.local`** | `.env.example:5` (`ADMIN__EMAIL`), `.env.prod.example:12` (`ADMIN_EMAIL`) | seeder input | Changing the value makes the seeder create a **second** admin rather than renaming the first — coordinate with §11.3 |
+| **Artwork** | product logo, favicon, extension icons (16/32/48/128), 3 Chrome store images, landing imagery | DB (`Logo`/`Favicon` rows), `extension/icons/`, `extension/store-assets/` | Nothing greppable — see Q29 |
+| **Binary filenames** | `extension/pointer-ext-v0.1.0.zip`, `landing/pointer-extension.zip`, `store-assets/pointer-*.jpg` | tracked binaries | A **content** grep never flags a filename; a filename scan is a separate check (§12.1) |
+
+**Decisions required (Q26, Q27, Q29) — and the compat pattern if you rename them:**
+
+```scss
+// keeping customers' old overrides working while emitting the new token name
+padding: var(--xy-radius-lg, var(--pf-radius-lg, 16px));   // COMPAT: remove <COMPAT_UNTIL>
+```
+
+```csharp
+// new keys get the new prefix; every existing ptr_ key keeps validating
+var prefix = "<new>_";                       // issuing
+// validation must accept BOTH prefixes — never filter on the prefix
+```
+
+Add `ptr_`, `pf-`, and `moamen\.work` to the gate's `EXTRA_BRAND` pattern **once you have decided to
+rename them**, so the gate proves the job is finished. If you decide to keep them, record that
+decision here — an undocumented survivor is indistinguishable from an oversight six months later.
 ---
 
 ## 6. Execution order and prerequisites
@@ -578,7 +659,7 @@ Apply with word/context-anchored patterns. `SED='sed -i ""'` on macOS, `sed -i` 
 
 | # | Match (regex) | Replace with | Scope |
 |---|---|---|---|
-| 1 | `poitner` | `${NAME_LOWER}` | everywhere (fix the typo first, or set 4 will not see it) |
+| 1 | `poitner` | `${NAME_LOWER}` | everywhere (fix the typo **first**, or sets 4/6 will not see it). Known homes: `Application/Services/Implementation/BrandingService.cs:15` (`DefaultUrlDocs` — a **customer-facing** docs URL), all three `clients/*/package.json` `repository.url`, `justfile:17`, `.github/workflows/publish-clients.yml`, `DEPLOY.md`. Note `clients/react/package.json:28` reads `poitner-api`, so a replace keyed on the string `pointer-api` skips it entirely — that is the whole reason this set runs first |
 | 2 | `Poitner` | `${NAME_PASCAL}` | everywhere |
 | 3 | `pointer\.moamen\.work` | `${DOMAIN}` | everywhere — do **before** set 6, or `pointer` inside the host gets mangled |
 | 4 | `@moamen-ui/pointer-(angular\|react\|vue)` | `${NPM_SCOPE}/${NAME_LOWER}-\1` | everywhere |
@@ -699,12 +780,24 @@ Then, in the **old** repos: update the README to point at the new URL and archiv
    | From-name default `?? "Pointer"` | `API/Controllers/Admin/SettingsController.cs:66` | `${NAME_DISPLAY}` |
    | `Email__FromName: ${EMAIL_FROM_NAME:-Pointer}` | `docker-compose.prod.yml:46` | `${NAME_DISPLAY}` |
    | `POINTER_SERVER` env read | `API/Program.cs:193` | `${NAME_UPPER}_SERVER` |
-5. **Tests with hardcoded hosts** (§5.8) — replacement set 3 covers them, but assert explicitly:
+5. **The surfaces that fail silently** — do these explicitly, they are easy to miss:
+   | Surface | File | Failure if missed |
+   |---|---|---|
+   | CORS dashboard allow-list (`string[] dashboardOrigins`) | `API/Program.cs:61-68` | Renamed dashboards are CORS-blocked on every `/api/admin/*` call. Add new origins **and keep the old ones** until cutover completes |
+   | Static-file cache special-case by **filename** | `API/Program.cs:250-252` | Renamed widget assets lose `Cache-Control: no-cache`; shipped fixes stop reaching customer pages |
+   | `injectedFiles` HashSet + `<POINTER_SERVER>` placeholder | `API/Program.cs:197-201, 212` | Served skills arrive with a literal `<POINTER_SERVER>` (§8.4) |
+   | `/embed.js` generated inline | `API/Program.cs:283-319` | Emits the old tag / old `pointer.js` path / `window.__pointerEmbedded` |
+   | `Pointer` config section (3 places) | §4.7 | Swagger widget embed silently disables itself |
+   | `JWT__Issuer` | §4.6 | **Mass 401** |
+   | `ptr_` API-key prefix | `Application/Services/Implementation/ProfileService.cs:66-73` + `Tests/ApiKeyAuthTests.cs:121,180` | Per Q27. If changed, validation must accept both prefixes |
+   | `DefaultUrlDocs` with the `poitner` typo | `Application/Services/Implementation/BrandingService.cs:15` | A customer-facing docs link pointing at a dead repo |
+   | `.env.example` **and** `.env.prod.example` | root | `Database=pointer`, `JWT__Issuer=pointer-api`, `ADMIN__EMAIL=admin@pointer.local`, `POINTER_SERVER`, `EMAIL_FROM_NAME` — new contributors get a half-renamed dev setup |
+6. **Tests with hardcoded hosts** (§5.8) — replacement set 3 covers them, but assert explicitly:
    `grep -rn "moamen.work" Tests/` must return nothing (unless the human keeps the old domain).
-6. **`Pointer.API.http`** — rename and rewrite its `@host` variable.
-7. **`justfile`** — `psql` DB/user, `test-cli` path, widget build comment and output paths,
+7. **`Pointer.API.http`** — rename and rewrite its `@host` variable.
+8. **`justfile`** — `psql` DB/user, `test-cli` path, widget build comment and output paths,
    `publish-clients` repo flag, the `dev` recipe's `cd ../pointer-dashboard`.
-8. **`API/wwwroot/admin/app.js`** — static admin app storage keys (§4.3 pattern applies here too).
+9. **`API/wwwroot/admin/app.js`** — static admin app storage keys (§4.3 pattern applies here too).
 
 ```bash
 dotnet build && dotnet test          # expect 237 passing
@@ -725,6 +818,34 @@ dotnet csharpier .                   # keep formatting canonical
 | Storage keys `pointer_token`, `pointer_user`, `pointer_visible`, `pointer_toolbar_pos`, `pointer_page_session_id`, `pointer_env_*` | src — **with §4.3 fallback** |
 | `VITE_POINTER_*`, `REACT_APP_POINTER_*`, `NEXT_PUBLIC_POINTER_SERVER`, `POINTER_*` env sniffing | src — **keep reading the old keys too** (§9), host apps carry them |
 | Build output paths `API/wwwroot/pointer.{js,css}` → `${NAME_LOWER}.{js,css}` | `web-component/*` build config + `justfile` |
+
+**Scope check — 22 of the 23 files under `web-component/src/` carry the brand,** not the 4 named
+above. The full set:
+
+```
+auth-ui.ts  capture.ts  constants.ts  dom.ts  element.ts  framework-source.ts  icons.ts
+index.ts    pagecontext.ts  shortcut.ts  templates.ts  types.ts
+styles/index.scss  styles/_variables.scss  styles/_launcher.scss  styles/_toolbar.scss
+styles/_sidebar.scss  styles/_card.scss  styles/_modal.scss  styles/_popover.scss
+styles/_pins.scss  styles/_toast.scss  styles/_tooltip.scss
+```
+
+**The 12 SCSS partials are mostly *protected* tokens, not brand** — their `pointer` hits are
+`pointer-events` (9×) and `cursor: pointer`. The brand in them is the **`pf-` prefix** (§5.11) and
+the host-tag selector `pointer-feedback` in `_variables.scss:3,10` and `index.scss:1,7`.
+
+**`pf-` decision (Q26).** 175 classes / 1,020 occurrences. The classes themselves are inside a
+shadow root (`element.ts:192`), so renaming them is internally safe. The **`--pf-*` custom properties
+are a public API** — `_variables.scss:3-17` documents `pointer-feedback { --pf-primary: … }` and
+custom properties pierce the shadow boundary. If you rename the prefix, emit both:
+
+```scss
+// $tokens compiles each token to var(--pf-<name>, <default>); keep the old name as the fallback
+color: var(--<new>-primary, var(--pf-primary, #2563eb));   // COMPAT: remove <COMPAT_UNTIL>
+```
+
+Also note `element.ts:199` builds the stylesheet URL as `${this.server}/pointer.css` with an
+`injected?.cssUrl || CSS_URL` override chain — all three paths need the new filename.
 
 **Do not hand-edit `API/wwwroot/pointer.js`** — it is the built bundle. Edit `web-component/src/*`
 and rebuild (`just widget-build`, or `npm run build` in the widget repo), then commit the artifact.
@@ -748,6 +869,13 @@ with the new tag can pick an element and post a comment; `pointer-events` count 
 | `.pointer/credentials.env.example` (both repos) | `.${NAME_LOWER}/…` | Keys `${NAME_UPPER}_{SERVER,PROJECT,EMAIL,PASSWORD,API_KEY}` |
 | `.gitignore` (both repos) | `.${NAME_LOWER}/` | Keep the old `.pointer/` ignore line too, so a contributor's stale dir is never committed |
 | `e2e/` fixtures | regenerate | They contain `.pointer/` + `.claude/skills/pointer-*` scratch dirs |
+
+> **Rename these four things in one commit or the installer breaks silently:**
+> the wwwroot **filenames**, the `injectedFiles` HashSet in `API/Program.cs:197-201`, the
+> `<POINTER_SERVER>` placeholder inside the markdown bodies, and the `.Replace("<POINTER_SERVER>", …)`
+> call at `Program.cs:212`. Verify with
+> `curl -s $HOST_API/<new>-init.md | grep -c '<.*_SERVER>'` → must be **0**, and the real host URL
+> must appear in its place. A stale HashSet produces a 200 with a broken body — no error anywhere.
 
 The **installed** skill's own instructions must also be rebranded — they tell the agent which files
 to read (`.${NAME_LOWER}/credentials.env`), which endpoints to call, and which phrases to answer to.
@@ -851,6 +979,7 @@ session created *before* the change, reload → still signed in, language and th
 | `"default_title"` | `manifest.json` | — |
 | `host_permissions` / DNR rules | `manifest.json` | Update `*.pointer.moamen.work` → `*.${DOMAIN}` — **stale host permissions silently break the proxy** |
 | `pointer_via_proxy__` storage flag | `src/shared.ts:17` | §4.3 pattern |
+| **5 of 6 `src/` files carry the brand** | `background.ts`, `content-bridge.ts`, `inject-main.ts`, `popup.ts`, `shared.ts` (only `options.ts` is clean) | `inject-main.ts` is where the injected `pointer.js` loader and the `<pointer-feedback>` tag literal live — the extension injects the same widget contract as a customer page, so §9's aliases apply to it too |
 | Popup/options copy | `src/popup.ts`, `popup.html`, `options.html` | — |
 | Icons | `icons/{16,32,48,128}.png` | New logo |
 | Store assets | `store-assets/pointer-{marquee,small-tile,screenshot}.*` + `STORE_LISTING.md` | Rename files + regenerate imagery |
@@ -867,8 +996,11 @@ and proxy paths work on a test page.
 
 - `AGENTS.md` + `CLAUDE.md` in **both** repos: product name, repo URLs, package names, the
   "never call the API with raw axios" rule (package names appear inside it), the parity table.
-- `README.md` (both), `DEPLOY.md`, `docs/AI_AGENT_TOKEN_OPTIMIZATION.md`,
-  `docs/planning/branding/SPEC.md`, `extension/store-assets/STORE_LISTING.md`.
+- `README.md` (both), `DEPLOY.md`, and the root-level docs corpus — measured: `docs/SELF_HOSTING.md`,
+  `docs/DESIGN.md`, `docs/PLAN.md`, `docs/TASKS.md`, `docs/E2E_TEST_PLAN.md`,
+  `docs/ADMIN_WEB_DESIGN.md`, `docs/ADMIN_PREFS_I18N_DESIGN.md`,
+  `docs/AI_AGENT_TOKEN_OPTIMIZATION.md`, `docs/planning/branding/SPEC.md`,
+  `extension/store-assets/STORE_LISTING.md` (38 files under `docs/` in total).
 - `landing/index.html`: all copy, the extension download link, hostnames, install snippet.
 - Historical `docs/` — apply the §5.10 policy chosen in the interview.
 - Add a `docs/rebranding/CHANGELOG-rebrand.md` recording old → new for every identifier, so a future
@@ -893,6 +1025,12 @@ delete this section's work from the plan and rename hard — it is roughly 40% o
 | `__POINTER_CONFIG__` / `__POINTER_FETCH__` window hooks | Read the new global, fall back to the old | `COMPAT_UNTIL` |
 | Browser storage keys | §4.3 migrate-on-read — **mandatory regardless of `LIVE_INSTALLS`**, because your own dashboard users have live sessions | one release after cutover |
 | Old hostnames | Keep `*.pointer.moamen.work` in the Caddyfile, `redir` to the new host (301 for pages, but **proxy — not redirect — `api.`**: a 301 breaks non-following clients and CORS preflights) | `COMPAT_UNTIL` |
+| **`--pf-*` theming tokens** in customer stylesheets | Emit `var(--<new>-x, var(--pf-x, <default>))` so old overrides still win (§8.3). Custom properties pierce the shadow DOM, so this **is** a public API | `COMPAT_UNTIL` |
+| **`ptr_` API keys** already issued | Keep validating them forever — never filter on the prefix. Only newly issued keys carry the new prefix | never |
+| **Old served paths** `/pointer-init.md`, `/skill.md`, `/install.sh` | Keep them in `Program.cs`'s `injectedFiles` set **alongside** the new names, so already-installed skills that re-fetch keep getting a configured file | `COMPAT_UNTIL` |
+| **`<POINTER_SERVER>` placeholder** | Have `Program.cs` replace **both** the old and new placeholder tokens; customer-side skill copies may contain either | `COMPAT_UNTIL` |
+| **Old CORS origins** | Keep the five `*.pointer.moamen.work` entries in `dashboardOrigins` until the old hosts are retired | `COMPAT_UNTIL` |
+| **`JWT__Issuer`** | Freeze, or dual-accept — §4.6. **Not** a same-deploy swap | see §4.6 |
 | Old npm packages | `npm deprecate`, never unpublish | never |
 
 Record every alias in `docs/rebranding/CHANGELOG-rebrand.md` with its removal date, and create one
@@ -1142,9 +1280,34 @@ before and after, so the data migration is auditable.
 
 ### 12.1 The acceptance gate
 
-`verify-no-pointer.sh` ships next to this file. It greps all four repos for
-`pointer|Pointer|POINTER|poitner`, subtracts the allowlist, and exits non-zero with a file:line list
-if anything remains. Run it from each repo root.
+`verify-no-pointer.sh` ships next to this file. Run it from each repo root. It does three things:
+
+1. **Pass A — occurrences that spell the brand.** `grep -rniE 'pointer|poitner'` (case-**insensitive**
+   on purpose: an explicit casing list misses `pOinter`), then drops any line whose *only* brand hits
+   are protected DOM/CSS tokens (§7.2).
+2. **Pass B — residue that does not spell the brand** (§5.11). Opt in per repo:
+   ```bash
+   EXTRA_BRAND_PATTERN='pf-|ptr_|moamen\.work' ./verify-no-pointer.sh
+   ```
+   Set it to only what you decided to rename. Pass B is plain `grep -E` — it does **not** go through
+   the protected-token filter.
+3. **Filename scan.** `find -iname '*pointer*' -o -iname '*poitner*'` — a content grep can never flag
+   a brand-named *file*, and never reads binaries at all (`pointer-ext-v0.1.0.zip`,
+   `store-assets/pointer-*.jpg`, `Pointer.sln`).
+
+`--protected` additionally asserts the DOM/CSS token count has not dropped below `BASELINE.txt`
+(exit 2), which is how you catch a rename that ate `pointer-events`.
+
+**Verified behaviour** (tested on synthetic fixtures, 2026-09-09): a finished rename containing
+`cursor: pointer`, `pointer-events: none`, `addEventListener('pointerdown')`, a `// COMPAT: remove
+<date>`-tagged legacy storage read, and this `docs/rebranding/` directory → **PASS**. Adding one
+`.pf-launcher` rule and one `pointer-icon.svg` file → **FAIL**, with both listed. Two bugs were found
+and fixed by that test: POSIX `awk` has no `\b` support (so the protected pattern is written without
+word boundaries, and Pass B runs in grep instead), and the script was flagging its own filename.
+
+Known limitation: the protected-token stripping is line-based. A line containing *both* a protected
+token and real brand residue is kept (correct), but a line whose residue is *inside* a protected-looking
+token would be dropped — no such case exists today, and Pass B covers the shapes that matter.
 
 **Allowlist (the only permitted survivors):**
 
@@ -1157,6 +1320,9 @@ if anything remains. Run it from each repo root.
 5. `COMPOSE_PROJECT_NAME=pointer-api` / `name: pointer-api`, **if** option 10.3A was chosen.
 6. Historical `docs/` files, **if** the §5.10 policy said allowlist rather than rewrite.
 7. Lockfiles' integrity entries for the deprecated packages, until the next `npm i` regenerates them.
+8. `verify-no-pointer.sh` itself — its own patterns necessarily spell the old brand (it self-excludes).
+9. Anything you decided in §5.11 to **keep** (`pf-`, `ptr_`) — recorded there with the reason, and
+   left out of `EXTRA_BRAND_PATTERN`.
 
 Anything else is a bug. `git log` and CHANGELOG entries are exempt (history is not code).
 
@@ -1257,6 +1423,13 @@ and possibly 4/5/6.
 | R12 | Historical `docs/` churn buries the real diff | Low | Review fatigue; the meaningful changes get rubber-stamped | Decide §5.10 up front; do docs in their own commit |
 | R13 | Trademark conflict discovered after announcement | Low | Forced second rename | Screen before cutover (§6.1) |
 | R14 | Screenshot URLs stale after project-key rename | Medium | Comment evidence 404s | §11 — rename key + dir + URLs together, verify a sample |
+| R16 | `JWT__Issuer` renamed in one deploy | **High** — it looks like a harmless string | **Every** session 401s at once; the dashboard's request-storm path is exactly this trigger | §4.6 — freeze it, or dual-accept across three deploys |
+| R17 | `Pointer` config section renamed in only 1–2 of its 3 places | High | Swagger widget embed silently disables (`GetValue("Enabled", false)`) | §4.7 — one commit, verify `/swagger` |
+| R18 | CORS `dashboardOrigins` not updated | High | Renamed dashboards blocked on all privileged calls | §8.2 — add new, keep old until cutover |
+| R19 | `injectedFiles` HashSet not updated with the new filenames | Medium | Served skills ship a literal `<POINTER_SERVER>`; installs land unconfigured | §8.4 — curl-grep gate |
+| R20 | `pf-`/`--pf-*` renamed without a fallback | Medium (if `LIVE_INSTALLS=yes`) | Every customer's widget theme reverts to defaults, silently | §5.11 / §8.3 — nested `var()` fallback |
+| R21 | `ptr_` prefix changed without dual acceptance | Medium | Every deployed AI agent's API key stops authenticating | Q27 — accept both prefixes; never filter on prefix |
+| R22 | Brand residue that doesn't spell "pointer" is never audited | **High** — the gate cannot see it | Ships "rebranded" with `pf-`, `ptr_`, old artwork, and `moamen.work` intact | §5.11 — explicit decisions + `EXTRA_BRAND` |
 | R15 | `demo.` flow still seeds the old brand | Medium | New users' first experience shows the old name | `DemoService.cs:181` + seeded demo data in §11 |
 
 ---
@@ -1293,4 +1466,14 @@ and possibly 4/5/6.
 | `~/pointer-api`, `~/pointer-dashboard` | `~/${NAME_LOWER}-…` | VM path | Caddyfile roots, DEPLOY.md |
 | `uploads/pointer-api` | per new project key | upload dir + stored URLs | §11 |
 | `Pointer Feedback` | `${NAME_DISPLAY}` | extension name | `manifest.json`, store listing |
+| `pf-` (175 classes, 1,020 uses) + `--pf-*` tokens | Q26 | widget CSS class + public theming prefix | `web-component/src/**`, built assets, extension |
+| `ptr_` | Q27 | API-key prefix | `ProfileService.cs:73`, tests, skills |
+| `pointer-api` (JWT `iss`/`aud`) | §4.6 | token issuer | compose, `JwtTokenService.cs:10` |
+| `Pointer` (config section) | §4.7 | config key + `GetSection` string + `Pointer__*` env | `appsettings.json`, `Program.cs:180`, compose |
+| `<POINTER_SERVER>` | `<${NAME_UPPER}_SERVER>` | served-file placeholder | `Program.cs:212` + `wwwroot/*.md` |
+| `/pointer-init.md`, `/skill.md`, `/install.sh` in `injectedFiles` | new filenames | hardcoded served-path set | `Program.cs:197-201` |
+| `window.__pointerEmbedded` | `window.__${NAME_LOWER}Embedded` | embed guard flag | `Program.cs:283-319` |
+| 5 × `*.pointer.moamen.work` CORS origins | new hosts | hardcoded allow-list | `Program.cs:61-68` |
+| `admin@pointer.local` | new seed admin email | seeder input | `.env.example:5`, `.env.prod.example:12` |
+| `poitner-api` (docs URL) | new repo URL | customer-facing link | `BrandingService.cs:15` |
 | `20260827124245_ReassignPointerLandingOwnership` | §4.1 | EF migration ID | **frozen unless the SQL runs** |
