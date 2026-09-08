@@ -7,9 +7,9 @@ Everything needed to rename the product with no brand residue.
 | `REBRANDING-PLAN.md` | The plan. Parameterised — it opens with a blocking interview (§1) and cannot be executed with the answers block (§2) empty |
 | `answers.template.yml` | The interview answers, machine-readable. Fill in, keep next to the plan |
 | `verify-no-pointer.sh` | The acceptance gate. Greps for brand occurrences minus the documented allowlist; exits non-zero with a file:line list. `--protected` also asserts that the 147 DOM/CSS `pointer` tokens were not damaged |
-| `REVIEW-AGY.md` | Independent review by Gemini via the Antigravity CLI |
-| `REVIEW-GLM.md` | Independent review by GLM via opencode |
-| `REVIEW-RESPONSE.md` | Which review findings were accepted, which were rejected, and why |
+| `REVIEW-AGY.md` | Independent review by Gemini 3.1 Pro via the Antigravity CLI (`agy`), with provenance notes on what it could and could not verify |
+| `REVIEW-GLM.md` | Independent review by GLM-5.3 via opencode |
+| `REVIEW-RESPONSE.md` | Every review finding, whether it was accepted or rejected, and why — including findings that were checked against the code and turned out to be wrong |
 | `BASELINE.txt` | Generated in phase 1: the pre-rename occurrence counts, so drift is provable |
 | `CHANGELOG-rebrand.md` | Generated during execution: old → new for every identifier, plus the data-migration counts. Keep it forever — it is how anyone decodes old commits, old log lines, and old support threads |
 

@@ -1,6 +1,7 @@
 # Rebranding Plan — replace "Pointer" everywhere
 
-**Status:** ready to execute · **Written:** 2026-09-08 · **Owner:** Moamen
+**Status:** ready to execute · **Written:** 2026-09-08 · **Reviewed:** 2026-09-09 (see
+`REVIEW-AGY.md`, `REVIEW-GLM.md`, `REVIEW-RESPONSE.md`) · **Owner:** Moamen
 **Audience:** an AI coding agent (Claude Code / Antigravity / GLM) executing the rename, plus the
 human approving each gate.
 
@@ -25,6 +26,13 @@ You are the executing agent. Read this whole file before touching anything.
    improvise a workaround. The inventory in §5 was measured on 2026-09-08; drift is expected but
    must be surfaced.
 6. Commit per phase, on a branch, with the phase number in the message. Never force-push.
+7. **Two conceptual traps, both of which make a "finished" rename look finished while it isn't:**
+   §3.1 — much of the user-visible brand is **database rows and uploaded artwork**, not code, so
+   editing constants renames nothing on a deployed instance; and §5.11 — a large amount of residue
+   **does not spell "pointer"** (`pf-`, `ptr_`, `moamen.work`, the artwork), so no grep will find it.
+   Read both before you start.
+8. Every "silent failure" marked ⚠️ in this plan produces a **200 OK with wrong behaviour**, not an
+   error. There is no test that catches them for you; the named verification step is the only proof.
 
 **The honest definition of done** — read §3 first. "Zero occurrences of pointer" is achievable for
 *brand* occurrences and **not** achievable literally, because the product is a DOM-interaction tool
@@ -216,8 +224,8 @@ This is why §7 replaces **specific tokens**, never the bare substring.
 - [ ] `verify-no-pointer.sh` (§12, shipped next to this file) exits 0 — zero brand occurrences of
       `pointer|Pointer|POINTER|poitner` outside the documented allowlist, across all four repos.
 - [ ] No file, directory, or branch **name** contains the old brand (§5.9).
-- [ ] `dotnet build` + `dotnet test` green (237 tests as of today).
-- [ ] All three dashboards `npm run build` green; Angular unit suite green (42 tests).
+- [ ] `dotnet build` + `dotnet test` green (**re-baseline the count before you start** — see §8.0).
+- [ ] All three dashboards `npm run build` green; Angular unit suite green at its baseline count.
 - [ ] New packages published and consumed; no app resolves an old `pointer-*` package.
 - [ ] The five verification scenarios in §12.3 pass against the deployed stack.
 - [ ] If `LIVE_INSTALLS=yes`: the old contract still works (§9), and no user was logged out (§4.3).
@@ -416,7 +424,7 @@ Counts are files containing a case-insensitive `pointer`, measured 2026-09-08.
 | `Domain/` | 32 | Namespaces `Pointer.Domain.*` |
 | `web-component/` | 25 | **Widget source** — `define('pointer-feedback')`, `pointer-feedback-hl` class, `pointer-feedback-hl-style` id, storage keys, `__POINTER_*` globals |
 | `extension/` | 19 | `manifest.json` (name "Pointer Feedback", description), `src/shared.ts`, `src/popup.ts`, README, E2E checklist, store assets, `pointer-ext-v0.1.0.zip` |
-| `e2e/` | 35 | Harness scaffolds with `.pointer/` and `.claude/skills/pointer-*` fixtures |
+| `e2e/` | 35 | **A working replica of the customer contract** — and therefore a real gate. `fixture-app/beta/index.html:16-21` and `fixture-app/smoke/index.html:40` embed `<pointer-feedback>` + `http://localhost:8090/pointer.js`; `fixture-app/*/.env` carry `*_POINTER_*` keys; `widget/widget.spec.ts` asserts on the tag; `ai/cases/tc*.txt` are natural-language prompts naming the skills; `ai/harness.mjs` + `scripts/lib/api.mjs` drive the API; `state/scratch/*/` holds generated `.pointer/` and `.claude/skills/pointer-*` fixtures (regenerable — delete rather than edit) |
 | `docs/` | 38 | Specs and plans — historical, see §5.10 |
 | `clients/` | **479** | **orval-generated** — never hand-edit; regenerated in phase 6 |
 | `landing/` | 2 | `index.html` copy + `pointer-extension.zip` |
@@ -628,8 +636,12 @@ an earlier one produced. Every command excludes generated and vendored trees.
 ```bash
 EXCL='--exclude-dir=node_modules --exclude-dir=.git --exclude-dir=obj --exclude-dir=bin
       --exclude-dir=dist --exclude-dir=.angular --exclude-dir=.next --exclude-dir=coverage
-      --exclude-dir=clients --exclude-dir=TestResults'
+      --exclude-dir=clients --exclude-dir=TestResults --exclude-dir=.playwright-mcp
+      --exclude-dir=.playwright-cli --exclude-dir=playwright-report --exclude-dir=test-results
+      --exclude-dir=.zcode'
 # clients/ is excluded because it is REGENERATED (§8.6), not edited.
+# The browser-automation dirs hold DOM snapshots: 316 + 68 brand-matching files in pointer-api and
+# 189 in pointer-dashboard. Left in, they bury every real hit — and editing them achieves nothing.
 ```
 
 ### 7.2 The protected list — these tokens must never be rewritten
@@ -723,6 +735,13 @@ git switch -c rebrand/<new-name>
     printf "%-8s %s files %s occurrences\n" "$t" \
       "$(grep -rl $t . $EXCL | wc -l)" "$(grep -ro $t . $EXCL | wc -l)"; done
   echo "protected tokens: $(protected_count)"; } > docs/rebranding/BASELINE.txt
+# 4. Baseline the TEST SUITES too — never hardcode a remembered count.
+#    (For reference: 309 [Fact]/[Theory] methods + 28 [InlineData] rows exist in Tests/ and 43
+#    it() blocks in the Angular specs as of 2026-09-08, but the only number that matters is what
+#    `dotnet test` / `npm test` actually report on YOUR checkout, right now, before any edit.)
+dotnet test 2>&1 | tail -5 >> docs/rebranding/BASELINE.txt
+(cd ../pointer-dashboard/angular && npm test -- --watch=false 2>&1 | tail -5) >> docs/rebranding/BASELINE.txt
+
 git add docs/rebranding/BASELINE.txt && git commit -m "rebrand(1): baseline inventory"
 ```
 
@@ -800,11 +819,11 @@ Then, in the **old** repos: update the README to point at the new URL and archiv
 9. **`API/wwwroot/admin/app.js`** — static admin app storage keys (§4.3 pattern applies here too).
 
 ```bash
-dotnet build && dotnet test          # expect 237 passing
+dotnet build && dotnet test          # compare against docs/rebranding/BASELINE.txt
 dotnet csharpier .                   # keep formatting canonical
 ```
 
-**Gate 3:** build + 237 tests green; EF probe (§4.2) produces an empty migration; `grep -rin "pointer" API Application Domain Infrastructure Tests $EXCL` returns only §12 allowlist entries.
+**Gate 3:** build green and the test count/pass-list matches the phase-1 baseline; EF probe (§4.2) produces an empty migration; `grep -rin "pointer" API Application Domain Infrastructure Tests $EXCL` returns only §12 allowlist entries.
 
 ### 8.3 Phase 4 — widget (`web-component/` → the highest-risk contract)
 
@@ -906,8 +925,12 @@ so splitting it is cheap) and to `landing/` (decide whether it goes with the API
 2. Root `package.json`: `"name": "pointer-api-clients"` → `${NAME_LOWER}-api-clients`.
 3. `orval.config.ts`: no brand in the targets today, but re-read it — the mutator paths and
    `filters.tags` must still resolve after any file moves.
-4. `scripts/generate-clients.mjs`: `SPEC_URL` default (`http://localhost:8090/swagger/v1/swagger.json`)
-   and the workflow's spec URL → the **new** API host. The workflow generates from the **live API**,
+4. `scripts/generate-clients.mjs:24`: reads **`process.env.POINTER_SWAGGER_URL`** first, then falls
+   back to `http://localhost:8090/swagger/v1/swagger.json`. The workflow sets that env var to a
+   **hardcoded old host** (`.github/workflows/publish-clients.yml:54`:
+   `POINTER_SWAGGER_URL: https://api.pointer.moamen.work/swagger/v1/swagger.json`). Rename the
+   variable **and** repoint the URL — in both places, or generation silently keeps reading the old
+   deployment's spec. The workflow generates from the **live API**,
    so **the API must be deployed at the new host before the first client publish** (or run generation
    locally against `localhost`).
 5. `scripts/build-clients.mjs`: check for package-name assumptions.
@@ -949,9 +972,15 @@ with the same brief, then diff the three results for parity.
 | Favicon / logo / manifest assets | `public/` | `public/` | `public/` |
 | Docs | `AGENTS.md`, `CLAUDE.md`, `README.md`, `.gitignore`, `.pointer/` | — | — |
 
+> **If you need to verify a dashboard before the packages are published**, do not reorder the
+> phases — point the dependency at the local build instead:
+> `npm i file:../../<api-repo>/clients/angular` (or `npm link`), build, then restore the registry
+> version before committing. Committing a `file:` dependency is how a lockfile ends up unbuildable
+> in CI.
+
 ```bash
 for a in angular react vue; do (cd $a && npm i "$PKG" && npm run build) || echo "FAIL $a"; done
-(cd angular && npm test -- --watch=false)     # expect 42 passing
+(cd angular && npm test -- --watch=false)     # compare against the baseline
 ```
 
 **On the i18n files:** the copy is *not* all runtime-branded. 132 hardcoded literals live in the six
@@ -967,7 +996,7 @@ Note also: several literals name the **skills** and the **`.pointer/` path** in 
 Those must match what `install.sh` actually writes (§8.4), or the dashboard tells users to run
 commands that produce different paths than the guide shows.
 
-**Gate 7:** three green builds, Angular tests green, and the **no-forced-logout check**: with a
+**Gate 7:** three green builds, Angular tests green at baseline, and the **no-forced-logout check**: with a
 session created *before* the change, reload → still signed in, language and theme preserved.
 
 ### 8.8 Phase 8 — browser extension
@@ -979,6 +1008,8 @@ session created *before* the change, reload → still signed in, language and th
 | `"default_title"` | `manifest.json` | — |
 | `host_permissions` / DNR rules | `manifest.json` | Update `*.pointer.moamen.work` → `*.${DOMAIN}` — **stale host permissions silently break the proxy** |
 | `pointer_via_proxy__` storage flag | `src/shared.ts:17` | §4.3 pattern |
+| **postMessage protocol discriminators** — atomic, and *not* atomic with the server | `inject-main.ts:20` `PROXY_TOKEN = '__pointer_via_proxy__'`; `inject-main.ts:52,64` send `source: 'pointer-ext'`; `inject-main.ts:29` expects `source: 'pointer-ext-res'`; `content-bridge.ts:22` filters on `'pointer-ext'`; `background.ts:269` on `'pointer-ext'`, `background.ts:180` logs `[pointer-ext]` | Rename all five together or the proxy path dies silently (messages are simply ignored — no error). **And note Chrome Web Store updates roll out over days**, so an old extension will be talking to a new server for a while: if you rename these, the *server-side* and *page-side* halves must accept both discriminators until the store rollout completes |
+| `DEFAULT_SERVER = 'https://api.pointer.moamen.work'` | `src/shared.ts` (used by `options.ts:12,24`, `background.ts`) | The extension's default server; stale value points users at the old host |
 | **5 of 6 `src/` files carry the brand** | `background.ts`, `content-bridge.ts`, `inject-main.ts`, `popup.ts`, `shared.ts` (only `options.ts` is clean) | `inject-main.ts` is where the injected `pointer.js` loader and the `<pointer-feedback>` tag literal live — the extension injects the same widget contract as a customer page, so §9's aliases apply to it too |
 | Popup/options copy | `src/popup.ts`, `popup.html`, `options.html` | — |
 | Icons | `icons/{16,32,48,128}.png` | New logo |
@@ -1339,14 +1370,14 @@ dotnet clean && find . -type d \( -name obj -o -name bin \) -not -path "*/node_m
 
 ```bash
 # API repo
-dotnet build && dotnet test                      # 237 expected
+dotnet build && dotnet test                      # must match the phase-1 baseline exactly
 dotnet ef migrations list                        # no pending migration against prod
 bash -n API/wwwroot/${NAME_LOWER}.sh             # CLI still parses
 # widget
 (cd web-component && npm ci && npm run build)
 # dashboards
 for a in angular react vue; do (cd $a && npm ci && npm run build) || echo "FAIL $a"; done
-(cd angular && npm test -- --watch=false)        # 42 expected
+(cd angular && npm test -- --watch=false)        # must match the phase-1 baseline
 # grep gates
 ./docs/rebranding/verify-no-pointer.sh
 ```
@@ -1367,6 +1398,12 @@ for a in angular react vue; do (cd $a && npm ci && npm run build) || echo "FAIL 
 5. **Old contract (only if `LIVE_INSTALLS=yes`).** An untouched page with `<pointer-feedback>` +
    `/pointer.js` still posts a comment; a repo with `.pointer/credentials.env` and the old skill still
    lists comments. Both log the deprecation notice.
+
+**Use the e2e harness as the cheapest proof of (1) and (5).** `e2e/` already automates the whole
+customer contract end to end (fixture apps embedding the widget, a Playwright widget spec, and
+AI-agent cases that install the skills and apply a comment). Update the fixtures to the new contract
+and run `e2e/run-e2e.sh`; if `LIVE_INSTALLS=yes`, keep **one** fixture app on the old tag + old
+loader path so the compat layer is regression-tested on every run, not just once by hand.
 
 Plus: all seven hostnames 200 over TLS; `/api/branding` returns the new product name and the
 dashboards' chrome reflects it; screenshots from before the rename still render.

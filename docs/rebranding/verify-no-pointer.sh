@@ -14,6 +14,11 @@ EXCLUDES=(
   --exclude-dir=node_modules --exclude-dir=.git --exclude-dir=obj --exclude-dir=bin
   --exclude-dir=dist --exclude-dir=.angular --exclude-dir=.next --exclude-dir=coverage
   --exclude-dir=TestResults --exclude-dir=.vite --exclude-dir=.nuget
+  # Browser-automation artifacts: DOM snapshots full of the old brand AND of protected
+  # DOM tokens. 316 + 68 files in pointer-api, 189 in pointer-dashboard (2026-09-09) —
+  # they would drown the report. They are regenerable output, not source.
+  --exclude-dir=.playwright-mcp --exclude-dir=.playwright-cli --exclude-dir=playwright-report
+  --exclude-dir=test-results --exclude-dir=.zcode
 )
 
 # ---------------------------------------------------------------- allowlist --

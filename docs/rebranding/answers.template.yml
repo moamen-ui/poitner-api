@@ -2,7 +2,14 @@
 # context alongside REBRANDING-PLAN.md. Every phase of the plan reads these values.
 #
 # Nothing in the plan may be executed while any REQUIRED field is empty.
-# Convert to shell with:  ./answers-to-env.sh answers.yml > rebrand.env
+# Convert to shell (rebrand.env, sourced by every phase) with:
+#   sed -e 's/[[:space:]]*#.*$//' -e '/^[[:space:]]*$/d' -e 's/: *"/="/' answers.yml > rebrand.env
+#   set -a; . ./rebrand.env; set +a
+# Then sanity-check the required ones are non-empty:
+#   for v in NAME_DISPLAY NAME_PASCAL NAME_LOWER NAME_KEBAB NAME_UPPER NAME_SNAKE DOMAIN \
+#            REPO_API REPO_DASHBOARD REPO_EXTENSION REPO_WIDGET NPM_SCOPE PKG_ANGULAR \
+#            PKG_REACT PKG_VUE LIVE_INSTALLS; do
+#     [ -n "${!v}" ] || echo "MISSING: $v"; done
 
 # ---------------------------------------------------------------- brand ------
 NAME_DISPLAY:   ""      # REQUIRED  Q1   marketing spelling, e.g. "Pointkit"
