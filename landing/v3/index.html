@@ -1,0 +1,613 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="robots" content="noindex,nofollow" />
+  <title>Pointer Journey — watch the workflow in action</title>
+  <meta name="description" content="Watch the entire Pointer workflow unfold as you scroll: point at UI, comment, and watch AI apply the whole batch." />
+  <style>
+    :root {
+      --pf-green: #16a34a;
+      --pf-blue: #2563eb;
+      --pf-text: #0f172a;
+      --pf-muted: #475569;
+      --pf-bg: #ffffff;
+      --pf-card: #ffffff;
+      --pf-soft: #f1f5f9;
+      --pf-border: #e2e8f0;
+      --pf-grad: linear-gradient(135deg, var(--pf-green), var(--pf-blue));
+      --pf-radius: 14px;
+      --pf-max: 1080px;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root:not([data-theme="light"]) {
+        --pf-text: #e5e7eb;
+        --pf-muted: #94a3b8;
+        --pf-bg: #0b1220;
+        --pf-card: #111827;
+        --pf-soft: #0f172a;
+        --pf-border: #1f2937;
+      }
+    }
+    :root[data-theme="dark"] {
+      --pf-text: #e5e7eb;
+      --pf-muted: #94a3b8;
+      --pf-bg: #0b1220;
+      --pf-card: #111827;
+      --pf-soft: #0f172a;
+      --pf-border: #1f2937;
+    }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; padding: 0; }
+    body {
+      font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+      color: var(--pf-text);
+      background: var(--pf-bg);
+      line-height: 1.6;
+      overflow-x: hidden;
+    }
+    img { max-width: 100%; display: block; }
+    a { color: var(--pf-blue); text-decoration: none; }
+    .wrap { max-width: var(--pf-max); margin: 0 auto; padding: 0 20px; }
+    .btn {
+      display: inline-flex; align-items: center; gap: 8px;
+      padding: 11px 18px; border-radius: var(--pf-radius);
+      font-weight: 700; font-size: 15px; cursor: pointer; border: 1px solid var(--pf-border);
+      background: var(--pf-card); color: var(--pf-text); white-space: nowrap;
+    }
+    .btn.primary { background: var(--pf-grad); color: #fff; border: none; }
+    .btn:focus-visible { outline: 3px solid color-mix(in srgb, var(--pf-blue) 50%, transparent); }
+    .nav {
+      position: sticky; top: 0; z-index: 10;
+      background: color-mix(in srgb, var(--pf-card) 88%, transparent);
+      backdrop-filter: saturate(1.4) blur(8px);
+      border-bottom: 1px solid var(--pf-border);
+    }
+    .nav .wrap { display: flex; align-items: center; gap: 16px; height: 64px; }
+    .brand { display: flex; align-items: center; gap: 10px; font-weight: 800; font-size: 18px; }
+    .brand img { width: 30px; height: 30px; }
+    .nav-cta { display: flex; gap: 10px; align-items: center; margin-inline-start: auto; }
+    .pill-toggle { display: inline-flex; align-items: center; background: var(--pf-soft); border: 1px solid var(--pf-border); border-radius: 999px; padding: 8px 14px; font-size: 13px; font-weight: 700; color: var(--pf-muted); cursor: pointer; white-space: nowrap; }
+    .pill-toggle:hover { color: var(--pf-text); border-color: color-mix(in srgb, var(--pf-blue) 40%, var(--pf-border)); }
+    html { overflow-x: hidden; scroll-behavior: smooth; }
+    section[id] { scroll-margin-top: 76px; }
+    .hero { padding: 64px 0 48px; background: radial-gradient(1200px 400px at 70% -10%, color-mix(in srgb, var(--pf-blue) 12%, transparent), transparent); }
+    .hero-grid { display: grid; grid-template-columns: 1.1fr 1fr; gap: 40px; align-items: center; }
+    .hero h1 { font-size: clamp(30px, 5vw, 52px); line-height: 1.1; margin: 0 0 16px; letter-spacing: -0.02em; }
+    .hero .lead { font-size: 18px; color: var(--pf-muted); margin: 0 0 28px; }
+    .hero-cta { display: flex; flex-wrap: wrap; gap: 12px; }
+    @media (max-width: 860px) {
+      .hero-grid { grid-template-columns: 1fr; }
+    }
+    .scrollytelling {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 40px;
+      padding: 120px 0;
+      position: relative;
+    }
+    .scroll-stage {
+      position: sticky;
+      top: 80px;
+      height: calc(100vh - 160px);
+      min-height: 400px;
+    }
+    .scroll-narrative {
+      display: flex;
+      flex-direction: column;
+      gap: 200px;
+      padding-bottom: 100px;
+    }
+    .scroll-step {
+      min-height: 200px;
+      padding: 40px 0;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+    }
+    .scroll-step h2 {
+      font-size: 28px;
+      font-weight: 800;
+      margin: 0 0 12px;
+      color: var(--pf-text);
+    }
+    .scroll-step p {
+      font-size: 16px;
+      color: var(--pf-muted);
+      margin: 0;
+      line-height: 1.6;
+    }
+    .mock {
+      position: relative;
+      background: var(--pf-card);
+      border: 1px solid var(--pf-border);
+      border-radius: var(--pf-radius);
+      box-shadow: 0 20px 50px rgba(2,6,23,.12);
+      padding: 22px;
+      height: 100%;
+      overflow: hidden;
+    }
+    .mock-bar { display: flex; gap: 6px; margin-bottom: 18px; }
+    .mock-bar span { width: 11px; height: 11px; border-radius: 50%; background: var(--pf-border); }
+    .mock-form { display: flex; flex-direction: column; gap: 14px; max-width: 220px; }
+    .mock-field { position: relative; }
+    .mock-form-title { font-weight: 800; font-size: 15px; color: var(--pf-text); }
+    .mock-input, .mock-select { height: 32px; border-radius: 8px; border: 1px solid var(--pf-border); background: var(--pf-bg); display: flex; align-items: center; padding: 0 10px; font-size: 12px; color: var(--pf-muted); }
+    .mock-select { justify-content: space-between; }
+    .mock-caret { font-size: 10px; }
+    .mock-target { font: inherit; font-weight: 700; padding: 8px 16px; border-radius: 10px; border: none; color: #fff; background: var(--pf-grad); cursor: pointer; }
+    .form-pin {
+      position: absolute;
+      top: -10px;
+      right: -10px;
+      width: 22px;
+      height: 22px;
+      border-radius: 50% 50% 2px 50%;
+      background: var(--pf-grad);
+      color: #fff;
+      font-size: 12px;
+      font-weight: 800;
+      display: grid;
+      place-items: center;
+      opacity: 0;
+      z-index: 1;
+      transform: scale(.4);
+    }
+    .form-pin.show {
+      opacity: 1;
+      transform: scale(1);
+      animation: pin-bounce 0.6s cubic-bezier(0.68, -0.55, 0.265, 1.55);
+    }
+    .form-pop {
+      position: absolute;
+      top: -8px;
+      left: calc(100% + 6px);
+      width: max-content;
+      max-width: 140px;
+      background: #0f172a;
+      color: #fff;
+      font-size: 12px;
+      line-height: 1.35;
+      padding: 7px 10px;
+      border-radius: 10px;
+      opacity: 0;
+      transform: translateX(-10px);
+    }
+    .form-pop.show {
+      opacity: 1;
+      transform: translateX(0);
+      animation: pop-in 0.4s ease-out 0.2s forwards;
+    }
+    .pf-term {
+      position: absolute;
+      left: 22px;
+      right: 22px;
+      bottom: 18px;
+      background: #0f172a;
+      border: 1px solid #1e293b;
+      border-radius: 10px;
+      padding: 10px 12px;
+      box-shadow: 0 10px 30px rgba(2,6,23,.28);
+      opacity: 0;
+      transform: translateY(20px);
+    }
+    .pf-term.show {
+      opacity: 1;
+      transform: translateY(0);
+      animation: terminal-slide 0.5s cubic-bezier(0.34, 1.56, 0.64, 1);
+    }
+    .pf-term-bar { display: flex; align-items: center; gap: 5px; margin-bottom: 8px; }
+    .pf-term-bar span { width: 9px; height: 9px; border-radius: 50%; background: #334155; }
+    .pf-term-bar em { margin-inline-start: 6px; font-style: normal; font-size: 11px; color: #64748b; letter-spacing: .02em; }
+    .pf-term-body { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 13px; line-height: 1.4; color: #e2e8f0; white-space: nowrap; }
+    .pf-term-prompt { color: #22c55e; font-weight: 700; }
+    .pf-term-cmd {
+      display: inline-block;
+      overflow: hidden;
+      white-space: nowrap;
+      vertical-align: bottom;
+      width: 0;
+    }
+    .pf-term-cmd.type {
+      animation: pf-type 1.2s steps(22) forwards;
+    }
+    .pf-term-caret {
+      display: inline-block;
+      width: 7px;
+      height: 14px;
+      background: #e2e8f0;
+      margin-inline-start: 2px;
+      vertical-align: middle;
+    }
+    .pf-term-caret.blink {
+      animation: pf-blink 1s step-end infinite;
+    }
+    @keyframes pin-bounce {
+      0% { opacity: 0; transform: scale(.4); }
+      100% { opacity: 1; transform: scale(1); }
+    }
+    @keyframes pop-in {
+      0% { opacity: 0; transform: translateX(-10px); }
+      100% { opacity: 1; transform: translateX(0); }
+    }
+    @keyframes terminal-slide {
+      0% { opacity: 0; transform: translateY(20px); }
+      100% { opacity: 1; transform: translateY(0); }
+    }
+    @keyframes pf-type {
+      0% { width: 0; }
+      100% { width: 22ch; }
+    }
+    @keyframes pf-blink {
+      0%, 50% { opacity: 1; }
+      51%, 100% { opacity: 0; }
+    }
+    .cta-section {
+      background: var(--pf-soft);
+      padding: 80px 0;
+      text-align: center;
+    }
+    .cta-section h2 {
+      font-size: clamp(24px, 3vw, 36px);
+      margin: 0 0 12px;
+      letter-spacing: -0.02em;
+    }
+    .cta-section p {
+      font-size: 16px;
+      color: var(--pf-muted);
+      max-width: 640px;
+      margin: 0 auto 28px;
+    }
+    .footer { border-top: 1px solid var(--pf-border); padding: 28px 0; }
+    .footer-grid { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
+    .footer-links { display: flex; gap: 18px; }
+    .footer-links a { color: var(--pf-muted); font-weight: 600; }
+    .stack-info {
+      display: flex;
+      gap: 12px;
+      flex-wrap: wrap;
+      justify-content: center;
+      margin: 20px 0 0;
+      font-size: 13px;
+      color: var(--pf-muted);
+    }
+    .stack-tag {
+      background: var(--pf-card);
+      border: 1px solid var(--pf-border);
+      border-radius: 999px;
+      padding: 6px 14px;
+      font-weight: 600;
+      color: var(--pf-text);
+    }
+    @media (prefers-reduced-motion: reduce) {
+      html { scroll-behavior: auto; }
+      .form-pin, .pf-term { animation: none; }
+      .form-pin { opacity: 1; transform: scale(1); }
+      .pf-term { opacity: 1; transform: translateY(0); }
+      .pf-term-cmd { width: 22ch; animation: none; }
+      .pf-term-caret { animation: none; opacity: 1; }
+    }
+    @media (max-width: 860px) {
+      .scrollytelling { grid-template-columns: 1fr; gap: 20px; padding: 60px 0; }
+      .scroll-stage { position: relative; top: auto; height: auto; min-height: 300px; }
+      .scroll-narrative { gap: 120px; }
+      .scroll-step { min-height: 140px; padding: 30px 0; }
+    }
+    @media (max-width: 640px) {
+      .scroll-step h2 { font-size: 22px; }
+      .scroll-step p { font-size: 14px; }
+      .form-pop { max-width: 100px; font-size: 11px; left: calc(100% + 4px); }
+      .mock-form { max-width: 150px; }
+    }
+  </style>
+</head>
+<body>
+  <header class="nav">
+    <div class="wrap">
+      <div class="brand"><img src="../assets/dog-mascot.png" alt="" data-brand-logo /> <span data-brand-name>Pointer</span></div>
+      <div class="nav-cta">
+        <button id="theme-toggle" class="pill-toggle" type="button" aria-label="Switch to dark mode" title="Switch to dark mode">Dark</button>
+        <a class="btn primary" href="https://demo.pointer.moamen.work" data-i18n="hero.demo">Try the demo</a>
+      </div>
+    </div>
+  </header>
+
+  <main>
+    <section class="hero">
+      <div class="wrap hero-grid">
+        <div class="hero-copy">
+          <h1 data-i18n="hero.title">Watch the workflow unfold.</h1>
+          <p class="lead" data-i18n="hero.sub">Point at elements, comment on what you see, and watch an AI tool apply your entire feedback queue to the real source code — all in one step.</p>
+          <div class="hero-cta">
+            <a class="btn primary" href="https://demo.pointer.moamen.work" data-i18n="hero.demo">Try the demo — no install</a>
+            <a class="btn" href="https://app.pointer.moamen.work" data-i18n="hero.signup">Create an account</a>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="wrap scrollytelling" aria-label="Interactive workflow demonstration">
+      <div class="scroll-stage" id="stage">
+        <div class="mock" id="mock">
+          <div class="mock-bar"><span></span><span></span><span></span></div>
+          <div class="mock-form">
+            <div class="mock-field">
+              <div class="mock-form-title">Get in touch</div>
+              <span class="form-pin" id="pin1">1</span>
+              <div class="form-pop" id="pop1">Make this bigger and blue</div>
+            </div>
+            <div class="mock-input">Full name</div>
+            <div class="mock-field">
+              <div class="mock-select">Choose a plan <span class="mock-caret">▾</span></div>
+              <span class="form-pin" id="pin2">2</span>
+              <div class="form-pop" id="pop2">Load these from /api</div>
+            </div>
+            <div class="mock-field">
+              <button class="mock-target">Submit</button>
+              <span class="form-pin" id="pin3">3</span>
+              <div class="form-pop" id="pop3">Send this to POST /api</div>
+            </div>
+          </div>
+          <div class="pf-term" id="term">
+            <div class="pf-term-bar"><span></span><span></span><span></span><em>claude code</em></div>
+            <div class="pf-term-body"><span class="pf-term-prompt">&gt;</span> <span class="pf-term-cmd" id="cmd">apply pointer comments</span><span class="pf-term-caret" id="caret"></span></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="scroll-narrative">
+        <div class="scroll-step" data-step="1">
+          <h2>Click any UI element</h2>
+          <p>Anyone on your team — designer, PM, tester — clicks any element on the running app they want to improve.</p>
+        </div>
+        <div class="scroll-step" data-step="2">
+          <h2>Leave a comment</h2>
+          <p>They type their feedback right there: make it bigger, change the color, fix the validation. One comment per element.</p>
+        </div>
+        <div class="scroll-step" data-step="3">
+          <h2>And another, and another</h2>
+          <p>Multiple team members comment on different parts of the same form, screen, or flow. Each comment lands in the queue tagged by page, element, and author.</p>
+        </div>
+        <div class="scroll-step" data-step="4">
+          <h2>Hand it to an AI tool</h2>
+          <p>A developer pulls the queue and gives it to any AI tool — Claude Code, Cursor, Windsurf, or others. The tool reads the comments with their exact selectors and CSS context.</p>
+        </div>
+        <div class="scroll-step" data-step="5">
+          <h2>Watch it apply</h2>
+          <p>The AI tool applies every comment to the real source files — no back-and-forth, no clarification questions, no lost context. Your entire feedback batch, executed at once.</p>
+        </div>
+        <div class="scroll-step" data-step="6">
+          <h2>That's the whole workflow.</h2>
+          <p>No more translating vague feedback into code. No more screenshots in Slack. Just point, comment, and ship.</p>
+        </div>
+      </div>
+    </section>
+
+    <section class="cta-section">
+      <div class="wrap">
+        <h2>Works on every stack</h2>
+        <p>Detected across real projects using Pointer today.</p>
+        <div class="stack-info" id="stack-info"></div>
+      </div>
+    </section>
+
+    <section class="cta-section">
+      <div class="wrap">
+        <h2>Start in one click — no install needed</h2>
+        <p>Try the fully-functional demo, then create a free account to add Pointer to your own app.</p>
+        <div class="hero-cta" style="justify-content: center;">
+          <a class="btn primary" href="https://demo.pointer.moamen.work">Try the demo</a>
+          <a class="btn" href="https://app.pointer.moamen.work">Create an account</a>
+        </div>
+      </div>
+    </section>
+
+    <footer class="footer">
+      <div class="wrap footer-grid">
+        <div class="brand"><img src="../assets/dog-mascot.png" alt="" data-brand-logo /> <span data-brand-name>Pointer</span></div>
+        <div class="footer-links">
+          <a href="https://app.pointer.moamen.work">Dashboard</a>
+          <a href="https://github.com/moamen-ui/pointer-api#readme" rel="noopener" target="_blank">Docs</a>
+          <a href="/">Home</a>
+        </div>
+      </div>
+    </footer>
+  </main>
+
+  <script>
+    var API_BASE = "https://api.pointer.moamen.work";
+    var STRINGS = {
+      en: {
+        "hero.title": "Watch the workflow unfold.",
+        "hero.sub": "Point at elements, comment on what you see, and watch an AI tool apply your entire feedback queue to the real source code — all in one step.",
+        "hero.demo": "Try the demo — no install",
+        "hero.signup": "Create an account"
+      }
+    };
+
+    function isDarkThemeNow() {
+      var override = document.documentElement.getAttribute('data-theme');
+      if (override) return override === 'dark';
+      return window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+    }
+
+    function renderThemeToggle() {
+      var btn = document.getElementById('theme-toggle');
+      if (!btn) return;
+      var dark = isDarkThemeNow();
+      btn.textContent = dark ? 'Light' : 'Dark';
+      btn.setAttribute('aria-label', dark ? 'Switch to light mode' : 'Switch to dark mode');
+      btn.setAttribute('title', dark ? 'Switch to light mode' : 'Switch to dark mode');
+    }
+
+    (function initTheme() {
+      var btn = document.getElementById('theme-toggle');
+      if (!btn) return;
+      var saved = null;
+      try { saved = localStorage.getItem('pointer_theme'); } catch (e) {}
+      if (saved === 'light' || saved === 'dark') document.documentElement.setAttribute('data-theme', saved);
+      renderThemeToggle();
+      btn.addEventListener('click', function () {
+        var next = isDarkThemeNow() ? 'light' : 'dark';
+        document.documentElement.setAttribute('data-theme', next);
+        try { localStorage.setItem('pointer_theme', next); } catch (e) {}
+        renderThemeToggle();
+      });
+    })();
+
+    // Branding: fetch and apply dynamic brand config
+    function applyBrand(b) {
+      if (!b) return;
+      window.__BRAND = b;
+      var pn = b.productName || 'Pointer';
+      document.querySelectorAll('[data-brand-name]').forEach(function (el) { el.textContent = pn; });
+      if (b.assets && b.assets.logo) document.querySelectorAll('[data-brand-logo]').forEach(function (img) { img.src = b.assets.logo; });
+      if (b.assets && b.assets.favicon) {
+        var fav = document.querySelector('link[rel="icon"]');
+        if (fav) fav.href = b.assets.favicon;
+      }
+      document.title = pn + ' — watch the workflow in action';
+      if (b.urls) {
+        if (b.urls.app) document.querySelectorAll('a[href^="https://app.pointer.moamen.work"]').forEach(function (a) {
+          a.href = a.href.replace('https://app.pointer.moamen.work', b.urls.app);
+        });
+        if (b.urls.demo) document.querySelectorAll('a[href^="https://demo.pointer.moamen.work"]').forEach(function (a) {
+          a.href = a.href.replace('https://demo.pointer.moamen.work', b.urls.demo);
+        });
+      }
+    }
+
+    (function loadBranding() {
+      fetch(API_BASE + '/api/branding', { headers: { 'accept': 'application/json' } })
+        .then(function (r) { return r.ok ? r.json() : null; })
+        .then(function (res) {
+          var b = res && (res.data || res);
+          if (b && b.productName) applyBrand(b);
+        })
+        .catch(function () {});
+    })();
+
+    // Stack summary: render real tech stack tags
+    var STACK_DISPLAY = {
+      react: 'React', angular: 'Angular', vue: 'Vue', next: 'Next.js', nuxt: 'Nuxt', svelte: 'Svelte',
+      tailwind: 'Tailwind CSS', scss: 'Sass/SCSS', 'css-modules': 'CSS Modules',
+      dotnet: '.NET', go: 'Go', python: 'Python', ruby: 'Ruby', node: 'Node.js',
+      rails: 'Rails', aspnetmvc: 'ASP.NET MVC', laravel: 'Laravel', django: 'Django', spring: 'Spring',
+      postgres: 'PostgreSQL', mysql: 'MySQL', mongodb: 'MongoDB', redis: 'Redis',
+      'claude-code': 'Claude Code', 'opencode-glm': 'opencode + GLM', cursor: 'Cursor',
+      antigravity: 'Antigravity', windsurf: 'Windsurf', other: 'Other AI tools'
+    };
+
+    function stackLabel(token) {
+      if (STACK_DISPLAY[token]) return STACK_DISPLAY[token];
+      return token.split('-').map(function (w) { return w.charAt(0).toUpperCase() + w.slice(1); }).join(' ');
+    }
+
+    (function loadStacks() {
+      fetch(API_BASE + '/api/public/stacks-summary', { headers: { 'accept': 'application/json' } })
+        .then(function (r) { return r.ok ? r.json() : null; })
+        .then(function (res) {
+          var d = res && (res.data || res);
+          if (!d || !d.totalProjects) return;
+          var container = document.getElementById('stack-info');
+          if (!container) return;
+          var allTokens = Object.assign({}, d.frontend, d.backend);
+          var tokens = Object.keys(allTokens).sort(function (a, b) { return allTokens[b] - allTokens[a]; }).slice(0, 12);
+          container.innerHTML = tokens.map(function (t) {
+            return '<span class="stack-tag">' + stackLabel(t) + '</span>';
+          }).join('');
+        })
+        .catch(function () {});
+    })();
+
+    // Scroll-driven animation: use IntersectionObserver to trigger steps
+    if (typeof IntersectionObserver !== 'undefined') {
+      var activeStep = 0;
+
+      function clearAnimations() {
+        document.querySelectorAll('.form-pin, .form-pop, .pf-term').forEach(function (el) {
+          el.classList.remove('show');
+        });
+        var cmd = document.getElementById('cmd');
+        var caret = document.getElementById('caret');
+        if (cmd) cmd.classList.remove('type');
+        if (caret) caret.classList.remove('blink');
+      }
+
+      function animateStep(step) {
+        if (step === activeStep) return;
+        activeStep = step;
+        clearAnimations();
+
+        if (step >= 1) {
+          var pin1 = document.getElementById('pin1');
+          if (pin1) {
+            setTimeout(function () { pin1.classList.add('show'); }, 0);
+            var pop1 = document.getElementById('pop1');
+            if (pop1) setTimeout(function () { pop1.classList.add('show'); }, 200);
+          }
+        }
+
+        if (step >= 2) {
+          var pop1 = document.getElementById('pop1');
+          if (pop1) setTimeout(function () { pop1.classList.remove('show'); }, 1000);
+        }
+
+        if (step >= 3) {
+          var pin2 = document.getElementById('pin2');
+          if (pin2) {
+            setTimeout(function () { pin2.classList.add('show'); }, 300);
+            var pop2 = document.getElementById('pop2');
+            if (pop2) setTimeout(function () { pop2.classList.add('show'); }, 500);
+          }
+        }
+
+        if (step >= 4) {
+          var pop2 = document.getElementById('pop2');
+          if (pop2) setTimeout(function () { pop2.classList.remove('show'); }, 1300);
+        }
+
+        if (step >= 5) {
+          var pin3 = document.getElementById('pin3');
+          if (pin3) {
+            setTimeout(function () { pin3.classList.add('show'); }, 600);
+            var pop3 = document.getElementById('pop3');
+            if (pop3) setTimeout(function () { pop3.classList.add('show'); }, 800);
+          }
+        }
+
+        if (step >= 6) {
+          var pop3 = document.getElementById('pop3');
+          if (pop3) setTimeout(function () { pop3.classList.remove('show'); }, 1600);
+          var term = document.getElementById('term');
+          var cmd = document.getElementById('cmd');
+          var caret = document.getElementById('caret');
+          if (term) {
+            setTimeout(function () { term.classList.add('show'); }, 800);
+          }
+          if (cmd) {
+            setTimeout(function () {
+              cmd.classList.add('type');
+              if (caret) caret.classList.add('blink');
+            }, 1300);
+          }
+        }
+      }
+
+      var observer = new IntersectionObserver(function (entries) {
+        entries.forEach(function (entry) {
+          if (entry.isIntersecting) {
+            var step = parseInt(entry.target.getAttribute('data-step'), 10);
+            animateStep(step);
+          }
+        });
+      }, { threshold: 0.5 });
+
+      document.querySelectorAll('.scroll-step').forEach(function (el) {
+        observer.observe(el);
+      });
+    }
+  </script>
+</body>
+</html>
