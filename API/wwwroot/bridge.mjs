@@ -52,7 +52,12 @@ const TOOLS = {
   },
   'opencode-glm': {
     bin: 'opencode',
-    buildArgs: (prompt, cwd) => ['run', '-m', 'zai-coding-plan/glm-5.2', '--dir', cwd, prompt],
+    // --auto ("auto-approve permissions that are not explicitly denied") — confirmed via
+    // `opencode run --help` on the installed version; there is no --dangerously-skip-permissions
+    // flag for opencode (that's claude/agy's naming). Without it, a real run hung indefinitely
+    // (48+ minutes wall-clock, ~1 minute of actual CPU time, zero output) waiting on a permission
+    // prompt a headless process can never answer — a worse failure mode than agy's auto-deny.
+    buildArgs: (prompt, cwd) => ['run', '-m', 'zai-coding-plan/glm-5.2', '--auto', '--dir', cwd, prompt],
   },
 };
 
