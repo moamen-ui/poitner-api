@@ -46,6 +46,9 @@ export interface Comment {
   createdAt?: string;
   editedAt?: string;
   appliedByLabel?: string | null;
+  /** Link to the commit that applied this comment — null for comments applied before this field
+   *  existed, or by a flow that doesn't track it; the card renders "#" in that case. */
+  commitUrl?: string | null;
   element?: ElementCapture;
   replies?: Reply[];
   _mine?: boolean;

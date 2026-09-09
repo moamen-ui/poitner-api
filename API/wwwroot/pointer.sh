@@ -9,9 +9,45 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 
 # 1. Resolve Server & Project
-SERVER="${POINTER_SERVER:-$(grep -rhE '^[A-Z_]*POINTER_SERVER=' "$ROOT_DIR"/.env* 2>/dev/null | head -1 | cut -d= -f2- | tr -d "'\"")}"
-PROJECT="${POINTER_PROJECT:-$(grep -rhE '^[A-Z_]*POINTER_PROJECT=' "$ROOT_DIR"/.env* 2>/dev/null | head -1 | cut -d= -f2- | tr -d "'\"")}"
-API_KEY="${POINTER_API_KEY:-$(grep -hE '^POINTER_API_KEY=' "$SCRIPT_DIR/credentials.env" 2>/dev/null | head -1 | cut -d= -f2- | tr -d "'\"")}"
+# Tries, in order: (a) root-level .env* (single-app repo), (b) one level of subdirectories (a
+# monorepo with per-app .env, e.g. angular/.env, react/.env.production — excluding node_modules/
+# dist/build), (c) .pointer/credentials.env's own POINTER_SERVER/POINTER_PROJECT lines, for a repo
+# with no matching .env anywhere (e.g. an Angular app whose config lives in TypeScript
+# environment.ts, not .env) — the same file POINTER_API_KEY below already lives in.
+#
+# Every lookup below ends in `|| true`: under `set -eo pipefail`, a pipeline that legitimately
+# finds nothing (missing key, missing file, or — the concrete bug this fixes — an UNMATCHED GLOB,
+# which bash passes through as its own literal string when nothing expands it, making grep fail
+# with a real "No such file" error) would otherwise silently kill the WHOLE SCRIPT the instant any
+# one optional lookup comes up empty, before ever falling through to the next source or reaching
+# the "missing configuration" check below. Confirmed live: a repo with no root .env at all (e.g.
+# this monorepo layout) died here with no error message until this fix.
+resolve_config() {
+  local suffix="$1" val=""
+  local root_env_files=("$ROOT_DIR"/.env*)
+  # Guard on the glob having actually matched a real file — an unmatched glob's sole "element" is
+  # the literal, unexpanded pattern string, which -e correctly reports as not existing.
+  if [[ -e "${root_env_files[0]}" ]]; then
+    val=$(grep -rhE "^[A-Z_]*${suffix}=" "${root_env_files[@]}" 2>/dev/null | head -1 | cut -d= -f2- | tr -d "'\"" || true)
+  fi
+  if [[ -z "$val" ]]; then
+    # maxdepth 3 (not 2): covers both a one-level monorepo (angular/.env, react/.env — this
+    # repo's own shape) AND skill.md's own documented two-level Nx/monorepo convention
+    # (apps/myapp/.env), whose .env file sits 3 path components below ROOT_DIR, not 2 — confirmed
+    # live that maxdepth 2 silently missed the latter.
+    val=$(find "$ROOT_DIR" -maxdepth 3 -type f -iname ".env*" \
+      -not -path '*/node_modules/*' -not -path '*/dist/*' -not -path '*/build/*' 2>/dev/null \
+      -print0 | xargs -0 grep -hE "^[A-Z_]*${suffix}=" 2>/dev/null | head -1 | cut -d= -f2- | tr -d "'\"" || true)
+  fi
+  if [[ -z "$val" ]]; then
+    val=$(grep -hE "^${suffix}=" "$SCRIPT_DIR/credentials.env" 2>/dev/null | head -1 | cut -d= -f2- | tr -d "'\"" || true)
+  fi
+  echo "$val"
+}
+
+SERVER="${POINTER_SERVER:-$(resolve_config POINTER_SERVER)}"
+PROJECT="${POINTER_PROJECT:-$(resolve_config POINTER_PROJECT)}"
+API_KEY="${POINTER_API_KEY:-$(grep -hE '^POINTER_API_KEY=' "$SCRIPT_DIR/credentials.env" 2>/dev/null | head -1 | cut -d= -f2- | tr -d "'\"" || true)}"
 
 if [[ -z "$SERVER" || -z "$PROJECT" || -z "$API_KEY" ]]; then
   echo "Error: Missing configuration in .env or .pointer/credentials.env" >&2
@@ -98,13 +134,14 @@ case "${1:-list}" in
   apply)
     ID="${2:?Missing comment ID}"
     MSG="${3:-Applied}"
+    COMMIT_URL="${4:-}"
     AUTHOR=$(git config user.email 2>/dev/null || echo "ai-agent")
     curl -fsSL -X PATCH -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
       "$SERVER/api/comments/$ID" \
-      -d "{\"status\":3,\"reply\":\"$MSG\",\"appliedByLabel\":\"$AUTHOR\"}" | jq '.data'
+      -d "{\"status\":3,\"reply\":\"$MSG\",\"appliedByLabel\":\"$AUTHOR\",\"commitUrl\":\"$COMMIT_URL\"}" | jq '.data'
     ;;
   *)
-    echo "Usage: $0 {list [status] [env]|queue|get <id>|apply <id> [msg]}"
+    echo "Usage: $0 {list [status] [env]|queue|get <id>|apply <id> [msg] [commitUrl]|serve [port]}"
     exit 1
     ;;
 esac

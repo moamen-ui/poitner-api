@@ -293,6 +293,7 @@
               </div>
               <button class="pf-mini pf-icon" id="pf-refresh" title="Refresh comments" aria-label="Refresh comments">&#8635;</button>
             </div>
+            <div id="pf-commit-style" style="display:none;"></div>
           </div>
           <div class="pf-filters" id="pf-filters"></div>
           <div class="pf-sidebar-body" id="pf-list"></div>
@@ -300,6 +301,17 @@
         <div id="pf-pins"></div>
         <div id="pf-popover-host"></div>
         <div id="pf-menu-host"></div>`,
+    // Commit-style control (see element.ts's fetchCaptureConfig/renderCommitStyleControl) — only
+    // ever rendered when the CURRENT caller is authorized to change project settings
+    // (CaptureConfigResponse.CanEditSettings, same gate as the PATCH itself). Lets whoever's looking
+    // choose whether the AI apply flow bundles applied comments into one commit or commits each one
+    // separately — read by skill.md's Step 1 the next time an agent applies.
+    commitStyleControl: (commitStyle) => `
+        <span style="font-size:12px; color:#64748b;">Commit style</span>
+        <select class="pf-input" id="pf-commit-style-select" style="width:auto; padding:2px 6px; font-size:12px;" title="How the AI apply flow commits applied comments">
+          <option value="1" ${commitStyle === 1 ? "selected" : ""}>One commit</option>
+          <option value="2" ${commitStyle === 2 ? "selected" : ""}>Separate commits</option>
+        </select>`,
     // Dropdown under the user icon: shows identity, the per-user "add comment" shortcut
     // (click to rebind, ↺ to reset), and a Sign out action.
     userMenu: (displayName, roleLabel, shortcutLabel, authOwnedByHost) => `
@@ -344,6 +356,7 @@
     card: (c, i, isQuickAccess) => {
       const cls = c.status === "pending-apply" ? "pending" : c.status === "applied" ? "applied" : c.status === "archived" ? "archived" : "";
       const statusPill = c.status === "applied" ? '<span class="pf-pill status-applied">&#x2713; completed</span>' : c.status === "pending-apply" ? '<span class="pf-pill status-pending">pending</span>' : c.status === "archived" ? '<span class="pf-pill status-archived">&#x1f4e6; archived</span>' : "";
+      const commitLink = c.status === "applied" ? `<a class="pf-pill" href="${c.commitUrl ? escapeHtml(c.commitUrl) : "#"}" ${c.commitUrl ? 'target="_blank" rel="noopener noreferrer"' : ""} title="${c.commitUrl ? "View commit" : "No commit recorded for this comment"}">&#x1f517; commit</a>` : "";
       const replies = (c.replies || []).map((r) => `<div class="pf-reply ${r.isAi ? "ai" : ""}"><b>${escapeHtml(r.authorName || r.authorLabel || "User")}:</b> ${escapeHtml(r.body || r.text || "")}</div>`).join("");
       const envInt = c.environment;
       const envLabel = envInt === 1 ? "Local" : envInt === 2 ? "Staging" : envInt === 3 ? "Production" : envInt ? String(envInt) : "";
@@ -358,6 +371,7 @@
               <span class="pf-badge">${i + 1}</span>
               ${envLabel ? `<span class="pf-pill env">${escapeHtml(envLabel)}</span>` : ""}
               ${statusPill}
+              ${commitLink}
               <div class="pf-actions-end">
                 ${c._mine ? `<button class="pf-mini pf-icon${c.isPrivate ? " private-on" : ""}" data-act="visibility" data-id="${c.id}" data-private="${c.isPrivate ? "false" : "true"}" title="${c.isPrivate ? "Private — click to make public" : "Make private (only you)"}" aria-label="${c.isPrivate ? "Make public" : "Make private"}">${c.isPrivate ? ICON.lock : ICON.unlock}</button>` : ""}
                 ${c.status === "open" ? `<button class="pf-mini danger pf-icon" data-act="delete" data-id="${c.id}" title="Delete" aria-label="Delete">${ICON.trash}</button>` : ""}
@@ -1115,6 +1129,15 @@
       // Project-level opt-in (default off), read once at init via /capture-config. Gates both whether
       // the widget buffers console/network events at all and whether "Report as a bug" is shown.
       this.pageContextCaptureEnabled = false;
+      // Whether the AI apply flow (skill.md) bundles applied comments into one commit or commits each
+      // one separately — 1=Single, 2=Separate (backend CommitStyle enum, read as-is like
+      // environmentInt already is). Changeable via a small widget control, but only rendered when
+      // canEditSettings is true (admin or the project's creator — same gate as the PATCH itself).
+      this.commitStyle = 1;
+      this.canEditSettings = false;
+      // The numeric project id (distinct from the `project` key attribute) — needed to PATCH
+      // /api/admin/projects/{id} for the commit-style control; resolved once via /capture-config.
+      this.projectId = null;
       // Display name resolved from /capture-config (falls back to the raw `project` key attribute
       // until it loads). Shown next to the environment indicator so a visitor can immediately tell
       // which project an install is actually bound to — project keys aren't unique across a workspace.
@@ -1443,7 +1466,7 @@
     // Read the project's page-context capture toggle and, if on, start buffering
     // console/network events. Silently no-ops on failure (feature stays off).
     async fetchCaptureConfig() {
-      var _a2;
+      var _a2, _b, _c, _d;
       try {
         const r = await this.api(`/api/projects/${encodeURIComponent(this.project)}/capture-config`);
         if (!r.ok) {
@@ -1455,8 +1478,12 @@
         this.projectName = envelope && envelope.data && envelope.data.name || this.project;
         const showSelector = (_a2 = envelope == null ? void 0 : envelope.data) == null ? void 0 : _a2.showEnvironmentSelector;
         this.showEnvironmentSelector = showSelector !== false;
+        this.projectId = typeof ((_b = envelope == null ? void 0 : envelope.data) == null ? void 0 : _b.id) === "number" ? envelope.data.id : null;
+        this.commitStyle = typeof ((_c = envelope == null ? void 0 : envelope.data) == null ? void 0 : _c.commitStyle) === "number" ? envelope.data.commitStyle : 1;
+        this.canEditSettings = !!((_d = envelope == null ? void 0 : envelope.data) == null ? void 0 : _d.canEditSettings);
         this.updateProjectNameLabel();
         this.updateEnvironmentSelectorVisibility();
+        this.renderCommitStyleControl();
         if (this.pageContextCaptureEnabled) startPageContextCapture(this.server, SCRIPT_SRC);
       } catch {
         this.pageContextCaptureEnabled = false;
@@ -1487,6 +1514,38 @@
       label.style.cssText = "font-size:12px; color:#64748b; text-transform:capitalize;";
       label.textContent = "· " + (this.environmentAttr || ENV_NAME[this.environmentInt] || "staging");
       sel.replaceWith(label);
+    }
+    // Patches #pf-commit-style in place (same reasoning as updateEnvironmentSelectorVisibility) —
+    // hidden entirely unless the current caller is authorized to change it (canEditSettings), so a
+    // stakeholder who couldn't save the PATCH never sees a control that would just 403.
+    renderCommitStyleControl() {
+      const host = this.root && this.root.querySelector("#pf-commit-style");
+      if (!host) return;
+      if (!this.canEditSettings) {
+        host.style.display = "none";
+        return;
+      }
+      host.style.cssText = "display:flex; align-items:center; gap:6px; margin-top:6px;";
+      host.innerHTML = TPL.commitStyleControl(this.commitStyle);
+      const sel = this.root.querySelector("#pf-commit-style-select");
+      if (sel) sel.addEventListener("change", () => this.setCommitStyle(Number(sel.value)));
+    }
+    async setCommitStyle(value) {
+      if (this.projectId == null || value !== 1 && value !== 2) return;
+      const previous = this.commitStyle;
+      this.commitStyle = value;
+      try {
+        const r = await this.api(`/api/admin/projects/${this.projectId}`, {
+          method: "PATCH",
+          body: JSON.stringify({ commitStyle: value })
+        });
+        if (!r.ok) throw new Error("HTTP " + r.status);
+        this.toast("Commit style updated");
+      } catch (e) {
+        this.commitStyle = previous;
+        this.renderCommitStyleControl();
+        if (e.message !== "HTTP 401 Unauthorized") this.toast("Update failed", "error");
+      }
     }
     // Keeps the "Comment on an element" button's tooltip showing the current shortcut after it's
     // changed from the user menu — same in-place-patch reasoning as updateProjectNameLabel().

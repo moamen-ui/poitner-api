@@ -1,3 +1,5 @@
+using Pointer.Domain.Enums;
+
 namespace Pointer.Domain.Entity;
 
 public class Project : BaseEntity
@@ -35,6 +37,12 @@ public class Project : BaseEntity
     // (the toolbar's Local/Staging/Production select). Null (the default, unconfigured) means
     // "everyone except Client (Role.QuickAccess)" — see ProjectService.ShowEnvironmentSelectorFor.
     public string? EnvironmentSelectorRoleIds { get; set; }
+
+    // Whether the AI apply flow (skill.md's Step 5) bundles every applied comment into one commit,
+    // or commits each one separately with its own Comment.CommitUrl. Only an admin or the
+    // project's creator may change this (ProjectService.UpdateAsync, same gate as every other
+    // project-level setting).
+    public CommitStyle CommitStyle { get; set; } = CommitStyle.Single;
 
     public Guid? OwnerId { get; set; }
     public ICollection<Comment> Comments { get; set; } = new List<Comment>();

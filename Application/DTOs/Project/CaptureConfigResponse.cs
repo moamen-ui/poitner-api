@@ -1,3 +1,5 @@
+using Pointer.Domain.Enums;
+
 namespace Pointer.Application.DTOs.Project;
 
 /// <summary>
@@ -8,6 +10,11 @@ namespace Pointer.Application.DTOs.Project;
 /// </summary>
 public class CaptureConfigResponse
 {
+    /// <summary>Needed so the widget's commit-style control (only shown when CanEditSettings) can
+    /// PATCH /api/admin/projects/{id} — the widget otherwise only ever knows the project's `key`,
+    /// not its numeric id.</summary>
+    public int Id { get; set; }
+
     public bool PageContextCaptureEnabled { get; set; }
     public string Name { get; set; } = string.Empty;
 
@@ -16,4 +23,15 @@ public class CaptureConfigResponse
     /// itself defaults to showing the switcher until this resolves post-login (this endpoint is
     /// [Authorize]-only, so there's no anonymous case here), then hides it if this is false.</summary>
     public bool ShowEnvironmentSelector { get; set; }
+
+    /// <summary>Whether the AI apply flow bundles applied comments into one commit or commits each
+    /// one separately — read by skill.md's Step 1, changeable via the widget's commit-style
+    /// control (only rendered when CanEditSettings is true).</summary>
+    public CommitStyle CommitStyle { get; set; }
+
+    /// <summary>Whether the CURRENT authenticated caller is authorized to change project settings
+    /// at all (admin or the project's creator — same gate as ProjectService.UpdateAsync). The
+    /// widget must check this before rendering the commit-style control, rather than rendering it
+    /// and letting the PATCH 403.</summary>
+    public bool CanEditSettings { get; set; }
 }

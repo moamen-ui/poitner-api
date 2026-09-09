@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
 using Pointer.Domain.Entity;
+using Pointer.Domain.Enums;
 
 namespace Pointer.Infrastructure.Mappings;
 
@@ -34,6 +35,7 @@ public class ProjectMapping : IEntityTypeConfiguration<Project>
         b.Property(x => x.TechStack).HasColumnName("tech_stack").HasMaxLength(2048);
         b.Property(x => x.AiToolsUsed).HasColumnName("ai_tools_used").HasMaxLength(1024);
         b.Property(x => x.EnvironmentSelectorRoleIds).HasColumnName("environment_selector_role_ids").HasMaxLength(1024);
+        b.Property(x => x.CommitStyle).HasColumnName("commit_style").HasDefaultValue(CommitStyle.Single);
         // NOT NULL at the DB level: ProjectService.CreateAsync forbids a null-owner project (super
         // admins can no longer create/own one at all) — enforced here too so a future bug can't
         // silently reintroduce the recurring "owner_id" bug class by producing one anyway.

@@ -15,6 +15,7 @@ public class CommentResponse
     public DateTime? AppliedAt { get; set; }
     public Guid? AppliedBy { get; set; }
     public string? AppliedByLabel { get; set; }
+    public string? CommitUrl { get; set; }
     public DateTime? EditedAt { get; set; }
 
     // Picked predefined actions' visible labels (multi-select). The matching prompts are

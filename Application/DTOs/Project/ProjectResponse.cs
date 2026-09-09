@@ -30,6 +30,10 @@ public class ProjectResponse
     /// default (everyone except Client/QuickAccess roles) — not yet customized for this project.</summary>
     public List<int>? EnvironmentSelectorRoleIds { get; set; }
 
+    /// <summary>Whether the AI apply flow bundles applied comments into one commit or commits each
+    /// one separately with its own Comment.CommitUrl. Default Single.</summary>
+    public CommitStyle CommitStyle { get; set; }
+
     /// <summary>Active project-scoped predefined actions (admin view — includes prompt).</summary>
     public List<PredefinedActionResponse> PredefinedActions { get; set; } = new();
 

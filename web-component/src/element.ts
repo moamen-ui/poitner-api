@@ -62,6 +62,15 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
   // Project-level opt-in (default off), read once at init via /capture-config. Gates both whether
   // the widget buffers console/network events at all and whether "Report as a bug" is shown.
   pageContextCaptureEnabled = false;
+  // Whether the AI apply flow (skill.md) bundles applied comments into one commit or commits each
+  // one separately — 1=Single, 2=Separate (backend CommitStyle enum, read as-is like
+  // environmentInt already is). Changeable via a small widget control, but only rendered when
+  // canEditSettings is true (admin or the project's creator — same gate as the PATCH itself).
+  commitStyle = 1;
+  canEditSettings = false;
+  // The numeric project id (distinct from the `project` key attribute) — needed to PATCH
+  // /api/admin/projects/{id} for the commit-style control; resolved once via /capture-config.
+  projectId: number | null = null;
   // Display name resolved from /capture-config (falls back to the raw `project` key attribute
   // until it loads). Shown next to the environment indicator so a visitor can immediately tell
   // which project an install is actually bound to — project keys aren't unique across a workspace.
@@ -480,8 +489,12 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
       // Missing/malformed → true (matches the pre-existing, always-switchable behavior).
       const showSelector = envelope?.data?.showEnvironmentSelector;
       this.showEnvironmentSelector = showSelector !== false;
+      this.projectId = typeof envelope?.data?.id === 'number' ? envelope.data.id : null;
+      this.commitStyle = typeof envelope?.data?.commitStyle === 'number' ? envelope.data.commitStyle : 1;
+      this.canEditSettings = !!envelope?.data?.canEditSettings;
       this.updateProjectNameLabel();
       this.updateEnvironmentSelectorVisibility();
+      this.renderCommitStyleControl();
       if (this.pageContextCaptureEnabled) startPageContextCapture(this.server, SCRIPT_SRC);
     } catch {
       this.pageContextCaptureEnabled = false;
@@ -514,6 +527,37 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
     label.style.cssText = 'font-size:12px; color:#64748b; text-transform:capitalize;';
     label.textContent = '· ' + (this.environmentAttr || ENV_NAME[this.environmentInt] || 'staging');
     sel.replaceWith(label);
+  }
+
+  // Patches #pf-commit-style in place (same reasoning as updateEnvironmentSelectorVisibility) —
+  // hidden entirely unless the current caller is authorized to change it (canEditSettings), so a
+  // stakeholder who couldn't save the PATCH never sees a control that would just 403.
+  private renderCommitStyleControl(): void {
+    const host = this.root && this.root.querySelector('#pf-commit-style');
+    if (!host) return;
+    if (!this.canEditSettings) { (host as HTMLElement).style.display = 'none'; return; }
+    (host as HTMLElement).style.cssText = 'display:flex; align-items:center; gap:6px; margin-top:6px;';
+    host.innerHTML = TPL.commitStyleControl(this.commitStyle);
+    const sel = this.root!.querySelector('#pf-commit-style-select') as HTMLSelectElement | null;
+    if (sel) sel.addEventListener('change', () => this.setCommitStyle(Number(sel.value)));
+  }
+
+  private async setCommitStyle(value: number): Promise<void> {
+    if (this.projectId == null || (value !== 1 && value !== 2)) return;
+    const previous = this.commitStyle;
+    this.commitStyle = value;
+    try {
+      const r = await this.api(`/api/admin/projects/${this.projectId}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ commitStyle: value }),
+      });
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      this.toast('Commit style updated');
+    } catch (e) {
+      this.commitStyle = previous;
+      this.renderCommitStyleControl();
+      if ((e as Error).message !== 'HTTP 401 Unauthorized') this.toast('Update failed', 'error');
+    }
   }
 
   // Keeps the "Comment on an element" button's tooltip showing the current shortcut after it's

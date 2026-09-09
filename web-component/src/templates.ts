@@ -87,6 +87,7 @@ export const TPL = {
               </div>
               <button class="pf-mini pf-icon" id="pf-refresh" title="Refresh comments" aria-label="Refresh comments">&#8635;</button>
             </div>
+            <div id="pf-commit-style" style="display:none;"></div>
           </div>
           <div class="pf-filters" id="pf-filters"></div>
           <div class="pf-sidebar-body" id="pf-list"></div>
@@ -94,6 +95,18 @@ export const TPL = {
         <div id="pf-pins"></div>
         <div id="pf-popover-host"></div>
         <div id="pf-menu-host"></div>`,
+
+  // Commit-style control (see element.ts's fetchCaptureConfig/renderCommitStyleControl) — only
+  // ever rendered when the CURRENT caller is authorized to change project settings
+  // (CaptureConfigResponse.CanEditSettings, same gate as the PATCH itself). Lets whoever's looking
+  // choose whether the AI apply flow bundles applied comments into one commit or commits each one
+  // separately — read by skill.md's Step 1 the next time an agent applies.
+  commitStyleControl: (commitStyle: number) => `
+        <span style="font-size:12px; color:#64748b;">Commit style</span>
+        <select class="pf-input" id="pf-commit-style-select" style="width:auto; padding:2px 6px; font-size:12px;" title="How the AI apply flow commits applied comments">
+          <option value="1" ${commitStyle === 1 ? 'selected' : ''}>One commit</option>
+          <option value="2" ${commitStyle === 2 ? 'selected' : ''}>Separate commits</option>
+        </select>`,
 
   // Dropdown under the user icon: shows identity, the per-user "add comment" shortcut
   // (click to rebind, ↺ to reset), and a Sign out action.
@@ -150,6 +163,11 @@ export const TPL = {
       ? '<span class="pf-pill status-applied">&#x2713; completed</span>'
       : c.status === 'pending-apply' ? '<span class="pf-pill status-pending">pending</span>'
       : c.status === 'archived' ? '<span class="pf-pill status-archived">&#x1f4e6; archived</span>' : '';
+    // A "#" href for comments with no tracked commit (applied before this field existed, or by a
+    // flow that doesn't record one) — inert rather than a broken/missing link.
+    const commitLink = c.status === 'applied'
+      ? `<a class="pf-pill" href="${c.commitUrl ? escapeHtml(c.commitUrl) : '#'}" ${c.commitUrl ? 'target="_blank" rel="noopener noreferrer"' : ''} title="${c.commitUrl ? 'View commit' : 'No commit recorded for this comment'}">&#x1f517; commit</a>`
+      : '';
     const replies = (c.replies || []).map((r) =>
       `<div class="pf-reply ${r.isAi ? 'ai' : ''}"><b>${escapeHtml(r.authorName || r.authorLabel || 'User')}:</b> ${escapeHtml(r.body || r.text || '')}</div>`).join('');
     const envInt = c.environment;
@@ -167,6 +185,7 @@ export const TPL = {
               <span class="pf-badge">${i + 1}</span>
               ${envLabel ? `<span class="pf-pill env">${escapeHtml(envLabel)}</span>` : ''}
               ${statusPill}
+              ${commitLink}
               <div class="pf-actions-end">
                 ${c._mine ? `<button class="pf-mini pf-icon${c.isPrivate ? ' private-on' : ''}" data-act="visibility" data-id="${c.id}" data-private="${c.isPrivate ? 'false' : 'true'}" title="${c.isPrivate ? 'Private — click to make public' : 'Make private (only you)'}" aria-label="${c.isPrivate ? 'Make public' : 'Make private'}">${c.isPrivate ? ICON.lock : ICON.unlock}</button>` : ''}
                 ${c.status === 'open' ? `<button class="pf-mini danger pf-icon" data-act="delete" data-id="${c.id}" title="Delete" aria-label="Delete">${ICON.trash}</button>` : ''}

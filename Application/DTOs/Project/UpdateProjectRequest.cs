@@ -1,4 +1,5 @@
 using Pointer.Application.DTOs.PredefinedAction;
+using Pointer.Domain.Enums;
 
 namespace Pointer.Application.DTOs.Project;
 
@@ -16,6 +17,10 @@ public class UpdateProjectRequest
 
     /// <summary>null (property omitted) → leave untouched, matching IsActive's treatment.</summary>
     public bool? PageContextCaptureEnabled { get; set; }
+
+    /// <summary>Whether the AI apply flow bundles applied comments into one commit or commits
+    /// each separately (see Comment.CommitUrl). null (property omitted) → leave untouched.</summary>
+    public CommitStyle? CommitStyle { get; set; }
 
     /// <summary>
     /// Which Role.Id values see the widget's environment switcher. null (property omitted) →

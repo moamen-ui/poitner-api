@@ -499,6 +499,7 @@ public class CommentService : ICommentService
             comment.AppliedAt = DateTime.UtcNow;
             comment.AppliedBy = actorId;
             comment.AppliedByLabel = request.AppliedByLabel;
+            comment.CommitUrl = request.CommitUrl;
         }
 
         if (!string.IsNullOrWhiteSpace(request.Reply))
@@ -725,6 +726,7 @@ public class CommentService : ICommentService
         AppliedAt = comment.AppliedAt,
         AppliedBy = comment.AppliedBy,
         AppliedByLabel = comment.AppliedByLabel,
+        CommitUrl = comment.CommitUrl,
         EditedAt = comment.EditedAt,
         // Labels only — the prompts are intentionally never exposed here.
         PickedActionTexts = comment.PickedActions.Select(a => a.Text).ToList(),
@@ -747,6 +749,7 @@ public class CommentService : ICommentService
         AppliedAt = comment.AppliedAt,
         AppliedBy = comment.AppliedBy,
         AppliedByLabel = comment.AppliedByLabel,
+        CommitUrl = comment.CommitUrl,
         EditedAt = comment.EditedAt,
         // Labels only — the prompts are intentionally never exposed here.
         PickedActionTexts = comment.PickedActions.Select(a => a.Text).ToList(),

@@ -208,6 +208,9 @@ public class ProjectService : IProjectService
         if (request.PageContextCaptureEnabled.HasValue)
             project.PageContextCaptureEnabled = request.PageContextCaptureEnabled.Value;
 
+        if (request.CommitStyle.HasValue)
+            project.CommitStyle = request.CommitStyle.Value;
+
         // null (property omitted) → leave untouched. An empty list is NOT the same as omitted —
         // it explicitly clears back to the default (stored as null), rather than storing "[]"
         // forever (which would otherwise mean "no role at all may see it").
@@ -680,14 +683,19 @@ public class ProjectService : IProjectService
             .Query()
             .AsNoTracking()
             .Where(p => p.Id == projectResult.Data)
-            .Select(p => new { p.PageContextCaptureEnabled, p.Name, p.EnvironmentSelectorRoleIds })
+            .Select(p => new { p.PageContextCaptureEnabled, p.Name, p.EnvironmentSelectorRoleIds, p.CommitStyle, p.CreatedBy })
             .FirstAsync();
 
         return Result<CaptureConfigResponse>.Success(new CaptureConfigResponse
         {
+            Id = projectResult.Data,
             PageContextCaptureEnabled = info.PageContextCaptureEnabled,
             Name = info.Name,
             ShowEnvironmentSelector = ShowEnvironmentSelectorFor(info.EnvironmentSelectorRoleIds),
+            CommitStyle = info.CommitStyle,
+            // Same gate as UpdateAsync (line ~192) — the widget hides/disables the commit-style
+            // control entirely for a caller who couldn't actually save a change to it.
+            CanEditSettings = _currentUser.IsAdmin || info.CreatedBy == _currentUser.Id,
         });
     }
 
@@ -933,6 +941,7 @@ public class ProjectService : IProjectService
             AppUrl = project.AppUrl,
             PageContextCaptureEnabled = project.PageContextCaptureEnabled,
             EnvironmentSelectorRoleIds = ParseRoleIds(project.EnvironmentSelectorRoleIds),
+            CommitStyle = project.CommitStyle,
             PredefinedActions = actions
                 .OrderBy(a => a.SortOrder)
                 .Select(a => new PredefinedActionResponse

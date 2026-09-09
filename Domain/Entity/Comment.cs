@@ -15,6 +15,10 @@ public class Comment : BaseEntity
     public DateTime? AppliedAt { get; set; }
     public Guid? AppliedBy { get; set; }
     public string? AppliedByLabel { get; set; }
+    // Link to the commit that applied this comment (constructed client-side from the local commit
+    // SHA + the repo's remote URL — see skill.md's apply flow). Null for comments applied before
+    // this field existed, or by a flow that doesn't track it; the widget shows "#" in that case.
+    public string? CommitUrl { get; set; }
     // Edit trace: stamped when the author edits the comment body / removes its image.
     public DateTime? EditedAt { get; set; }
     public Guid? EditedBy { get; set; }
