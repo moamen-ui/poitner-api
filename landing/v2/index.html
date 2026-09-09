@@ -1,0 +1,3752 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Pointer — Point at the UI. Ship it with AI.</title>
+  <meta name="description" content="Pointer lets anyone on your team click an element on a running app and leave a comment. Developers hand the queue to any AI tool, which applies the change directly to source code." />
+  <link rel="canonical" href="https://pointer.moamen.work/" />
+  <meta property="og:type" content="website" />
+  <meta property="og:url" content="https://pointer.moamen.work/" />
+  <meta property="og:title" content="Pointer — Point at the UI. Ship it with AI." />
+  <meta property="og:description" content="Click any element on a live web app, leave a pinned comment with CSS & DOM context, and watch AI apply code changes to your repository." />
+  <meta property="og:image" content="/assets/dog-mascot.png" />
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:title" content="Pointer — Point at the UI. Ship it with AI." />
+  <meta name="twitter:description" content="Click any element on a live web app, leave a pinned comment with CSS & DOM context, and watch AI apply code changes to your repository." />
+  <meta name="twitter:image" content="/assets/dog-mascot.png" />
+  <link rel="icon" href="/assets/favicon.ico" />
+
+  <!-- Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;500;600;700;800;900&family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet" />
+
+  <style>
+    /* ==========================================================================
+       DESIGN SYSTEM & CSS VARIABLES
+       Inspired by Linear, Supabase, Vercel & Raycast
+       ========================================================================== */
+    :root {
+      --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      --font-arabic: 'Cairo', -apple-system, BlinkMacSystemFont, 'Segoe UI', Tahoma, sans-serif;
+
+      /* Primary Brand Accent Colors */
+      --color-brand: #3b82f6;
+      --color-brand-glow: rgba(59, 130, 246, 0.4);
+      --color-emerald: #10b981;
+      --color-emerald-glow: rgba(16, 185, 129, 0.4);
+      --color-purple: #8b5cf6;
+      --color-amber: #f59e0b;
+
+      /* Default Dark Theme (#070b14 / #0d1424) */
+      --bg-base: #070b14;
+      --bg-surface-1: #0d1424;
+      --bg-surface-2: #111b33;
+      --bg-surface-3: #182444;
+      --bg-glass: rgba(13, 20, 36, 0.75);
+      --bg-glass-card: rgba(17, 27, 51, 0.65);
+      --bg-input: #0a0f1d;
+
+      --text-main: #f8fafc;
+      --text-muted: #94a3b8;
+      --text-subtle: #64748b;
+      --text-invert: #070b14;
+
+      --border-subtle: rgba(255, 255, 255, 0.08);
+      --border-medium: rgba(255, 255, 255, 0.14);
+      --border-bright: rgba(255, 255, 255, 0.28);
+      --border-glow: rgba(59, 130, 246, 0.5);
+
+      --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.3);
+      --shadow-md: 0 10px 30px rgba(0, 0, 0, 0.4);
+      --shadow-lg: 0 20px 50px rgba(0, 0, 0, 0.6);
+      --shadow-glow: 0 0 35px rgba(59, 130, 246, 0.25);
+
+      --radius-sm: 8px;
+      --radius-md: 12px;
+      --radius-lg: 18px;
+      --radius-xl: 24px;
+      --radius-full: 9999px;
+
+      --container-max: 1240px;
+      --header-h: 70px;
+    }
+
+    /* Light Theme Toggle */
+    html[data-theme="light"] {
+      --bg-base: #f8fafc;
+      --bg-surface-1: #ffffff;
+      --bg-surface-2: #f1f5f9;
+      --bg-surface-3: #e2e8f0;
+      --bg-glass: rgba(255, 255, 255, 0.85);
+      --bg-glass-card: rgba(255, 255, 255, 0.75);
+      --bg-input: #ffffff;
+
+      --text-main: #0f172a;
+      --text-muted: #475569;
+      --text-subtle: #64748b;
+      --text-invert: #ffffff;
+
+      --border-subtle: rgba(15, 23, 42, 0.08);
+      --border-medium: rgba(15, 23, 42, 0.16);
+      --border-bright: rgba(15, 23, 42, 0.28);
+      --border-glow: rgba(59, 130, 246, 0.4);
+
+      --shadow-sm: 0 2px 8px rgba(15, 23, 42, 0.04);
+      --shadow-md: 0 12px 32px rgba(15, 23, 42, 0.08);
+      --shadow-lg: 0 24px 60px rgba(15, 23, 42, 0.12);
+      --shadow-glow: 0 0 35px rgba(59, 130, 246, 0.15);
+    }
+
+    /* ==========================================================================
+       BASE & RESET
+       ========================================================================== */
+    *, *::before, *::after {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    html {
+      scroll-behavior: smooth;
+      font-size: 16px;
+      overflow-x: hidden;
+      background-color: var(--bg-base);
+    }
+
+    body {
+      font-family: var(--font-sans);
+      color: var(--text-main);
+      background-color: var(--bg-base);
+      line-height: 1.6;
+      overflow-x: hidden;
+      min-height: 100vh;
+      transition: background-color 0.3s ease, color 0.3s ease;
+      position: relative;
+    }
+
+    /* Arabic typography & RTL handling */
+    html[dir="rtl"] body {
+      font-family: var(--font-arabic);
+      letter-spacing: normal;
+    }
+
+    img, svg {
+      display: block;
+      max-width: 100%;
+    }
+
+    a {
+      color: inherit;
+      text-decoration: none;
+      transition: all 0.2s ease;
+    }
+
+    button, input, textarea, select {
+      font-family: inherit;
+      color: inherit;
+      border: none;
+      background: none;
+      outline: none;
+    }
+
+    button {
+      cursor: pointer;
+    }
+
+    code, pre, .font-mono {
+      font-family: var(--font-mono);
+      direction: ltr !important;
+      text-align: left !important;
+    }
+
+    /* Container */
+    .container {
+      width: 100%;
+      max-width: var(--container-max);
+      margin: 0 auto;
+      padding: 0 24px;
+    }
+
+    /* Radial Ambient Background Glows */
+    .ambient-glow {
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      z-index: 0;
+      overflow: hidden;
+    }
+    .glow-blob {
+      position: absolute;
+      border-radius: 50%;
+      filter: blur(100px);
+      opacity: 0.25;
+      animation: floatGlow 18s ease-in-out infinite alternate;
+    }
+    .glow-1 {
+      top: -15%;
+      left: 20%;
+      width: 600px;
+      height: 600px;
+      background: radial-gradient(circle, #3b82f6 0%, rgba(59, 130, 246, 0) 70%);
+    }
+    .glow-2 {
+      top: 35%;
+      right: -10%;
+      width: 700px;
+      height: 700px;
+      background: radial-gradient(circle, #10b981 0%, rgba(16, 185, 129, 0) 70%);
+      animation-duration: 22s;
+    }
+    .glow-3 {
+      bottom: 5%;
+      left: -10%;
+      width: 650px;
+      height: 650px;
+      background: radial-gradient(circle, #8b5cf6 0%, rgba(139, 92, 246, 0) 70%);
+      animation-duration: 25s;
+    }
+
+    @keyframes floatGlow {
+      0% { transform: translate(0, 0) scale(1); }
+      50% { transform: translate(40px, 60px) scale(1.1); }
+      100% { transform: translate(-30px, -40px) scale(0.95); }
+    }
+
+    /* Mesh Grid Background Overlay */
+    .grid-overlay {
+      position: absolute;
+      inset: 0;
+      background-image: linear-gradient(to right, var(--border-subtle) 1px, transparent 1px),
+                        linear-gradient(to bottom, var(--border-subtle) 1px, transparent 1px);
+      background-size: 40px 40px;
+      mask-image: radial-gradient(ellipse 80% 50% at 50% 0%, #000 70%, transparent 100%);
+      -webkit-mask-image: radial-gradient(ellipse 80% 50% at 50% 0%, #000 70%, transparent 100%);
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    /* ==========================================================================
+       BUTTONS & CHIPS
+       ========================================================================== */
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+      padding: 10px 20px;
+      font-size: 0.9375rem;
+      font-weight: 600;
+      border-radius: var(--radius-md);
+      transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+      border: 1px solid var(--border-subtle);
+      background: var(--bg-surface-2);
+      color: var(--text-main);
+      white-space: nowrap;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .btn:hover {
+      border-color: var(--border-medium);
+      transform: translateY(-1px);
+      box-shadow: var(--shadow-sm);
+    }
+
+    .btn:active {
+      transform: translateY(0);
+    }
+
+    .btn-primary {
+      background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+      color: #ffffff;
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      box-shadow: 0 4px 20px rgba(16, 185, 129, 0.35);
+    }
+
+    .btn-primary:hover {
+      background: linear-gradient(135deg, #14b8a6 0%, #10b981 100%);
+      box-shadow: 0 6px 25px rgba(16, 185, 129, 0.5);
+      border-color: rgba(255, 255, 255, 0.35);
+    }
+
+    .btn-brand {
+      background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
+      color: #ffffff;
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      box-shadow: 0 4px 20px rgba(59, 130, 246, 0.35);
+    }
+
+    .btn-brand:hover {
+      background: linear-gradient(135deg, #60a5fa 0%, #3b82f6 100%);
+      box-shadow: 0 6px 25px rgba(59, 130, 246, 0.5);
+    }
+
+    .btn-glass {
+      background: var(--bg-glass);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+    }
+
+    .btn-sm {
+      padding: 6px 14px;
+      font-size: 0.8125rem;
+      border-radius: var(--radius-sm);
+    }
+
+    .btn-lg {
+      padding: 14px 28px;
+      font-size: 1.0625rem;
+      border-radius: var(--radius-lg);
+    }
+
+    /* Shimmer gradient effect on primary CTAs */
+    .btn-primary::after {
+      content: '';
+      position: absolute;
+      top: -50%;
+      left: -50%;
+      width: 200%;
+      height: 200%;
+      background: linear-gradient(
+        60deg,
+        transparent,
+        rgba(255, 255, 255, 0.15),
+        transparent
+      );
+      transform: rotate(30deg) translate(-100%, -100%);
+      animation: btnShimmer 6s infinite;
+      pointer-events: none;
+    }
+
+    @keyframes btnShimmer {
+      0%, 80% { transform: rotate(30deg) translate(-100%, -100%); }
+      100% { transform: rotate(30deg) translate(100%, 100%); }
+    }
+
+    .badge-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 6px 16px;
+      border-radius: var(--radius-full);
+      font-size: 0.8125rem;
+      font-weight: 600;
+      background: var(--bg-glass-card);
+      border: 1px solid var(--border-subtle);
+      color: var(--text-muted);
+      backdrop-filter: blur(10px);
+    }
+
+    .badge-pill-brand {
+      background: rgba(59, 130, 246, 0.12);
+      border-color: rgba(59, 130, 246, 0.3);
+      color: #60a5fa;
+    }
+
+    .badge-pill-emerald {
+      background: rgba(16, 185, 129, 0.12);
+      border-color: rgba(16, 185, 129, 0.3);
+      color: #34d399;
+    }
+
+    /* ==========================================================================
+       NAVBAR (STICKY GLASS)
+       ========================================================================== */
+    .navbar {
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      background: var(--bg-glass);
+      backdrop-filter: saturate(180%) blur(16px);
+      -webkit-backdrop-filter: saturate(180%) blur(16px);
+      border-bottom: 1px solid var(--border-subtle);
+      transition: all 0.3s ease;
+      height: var(--header-h);
+      display: flex;
+      align-items: center;
+    }
+
+    .navbar-inner {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      width: 100%;
+      gap: 20px;
+    }
+
+    .brand-logo-wrap {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      font-size: 1.25rem;
+      font-weight: 800;
+      letter-spacing: -0.02em;
+    }
+
+    .brand-logo-img {
+      width: 34px;
+      height: 34px;
+      object-fit: contain;
+      border-radius: 8px;
+      filter: drop-shadow(0 2px 8px rgba(16, 185, 129, 0.3));
+    }
+
+    .brand-version-chip {
+      font-size: 0.6875rem;
+      font-weight: 700;
+      padding: 2px 6px;
+      border-radius: 6px;
+      background: rgba(16, 185, 129, 0.15);
+      color: var(--color-emerald);
+      border: 1px solid rgba(16, 185, 129, 0.3);
+      margin-inline-start: 4px;
+    }
+
+    .nav-menu {
+      display: flex;
+      align-items: center;
+      gap: 24px;
+      list-style: none;
+    }
+
+    .nav-menu a {
+      font-size: 0.875rem;
+      font-weight: 500;
+      color: var(--text-muted);
+      padding: 6px 0;
+      position: relative;
+    }
+
+    .nav-menu a:hover {
+      color: var(--text-main);
+    }
+
+    .nav-actions {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .toggle-btn {
+      width: 38px;
+      height: 38px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: var(--radius-sm);
+      border: 1px solid var(--border-subtle);
+      background: var(--bg-surface-1);
+      color: var(--text-muted);
+      transition: all 0.2s ease;
+    }
+
+    .toggle-btn:hover {
+      color: var(--text-main);
+      border-color: var(--border-medium);
+      background: var(--bg-surface-2);
+    }
+
+    .lang-btn {
+      padding: 0 12px;
+      width: auto;
+      font-size: 0.8125rem;
+      font-weight: 600;
+      gap: 6px;
+    }
+
+    @media (max-width: 990px) {
+      .nav-menu { display: none; }
+      .navbar-inner { gap: 12px; }
+      .nav-actions .btn:not(.btn-primary) { display: none; }
+    }
+
+    /* ==========================================================================
+       HERO SECTION
+       ========================================================================== */
+    .hero-section {
+      position: relative;
+      padding: 90px 0 60px;
+      overflow: hidden;
+      z-index: 1;
+    }
+
+    .hero-content {
+      max-width: 860px;
+      margin: 0 auto;
+      text-align: center;
+    }
+
+    .hero-title {
+      font-size: clamp(2.5rem, 6vw, 4.5rem);
+      font-weight: 800;
+      line-height: 1.08;
+      letter-spacing: -0.03em;
+      margin: 24px 0 20px;
+    }
+
+    .text-gradient-brand {
+      background: linear-gradient(135deg, #60a5fa 0%, #3b82f6 40%, #10b981 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      display: inline-block;
+    }
+
+    .hero-subtitle {
+      font-size: clamp(1.125rem, 2.5vw, 1.35rem);
+      color: var(--text-muted);
+      line-height: 1.6;
+      max-width: 720px;
+      margin: 0 auto 36px;
+      font-weight: 400;
+    }
+
+    .hero-cta-group {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-wrap: wrap;
+      gap: 16px;
+      margin-bottom: 36px;
+    }
+
+    /* Command Copy Box */
+    .cli-copy-box {
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      padding: 10px 18px;
+      background: var(--bg-surface-1);
+      border: 1px solid var(--border-medium);
+      border-radius: var(--radius-md);
+      font-family: var(--font-mono);
+      font-size: 0.875rem;
+      color: var(--text-main);
+      cursor: pointer;
+      transition: all 0.2s ease;
+      box-shadow: var(--shadow-sm);
+    }
+
+    .cli-copy-box:hover {
+      border-color: var(--color-emerald);
+      background: var(--bg-surface-2);
+      transform: translateY(-1px);
+    }
+
+    .cli-prompt-symbol {
+      color: var(--color-emerald);
+      font-weight: 700;
+    }
+
+    .cli-copy-icon {
+      color: var(--text-subtle);
+      transition: color 0.2s;
+    }
+
+    .cli-copy-box:hover .cli-copy-icon {
+      color: var(--text-main);
+    }
+
+    .hero-proof-chips {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-wrap: wrap;
+      gap: 20px;
+      color: var(--text-subtle);
+      font-size: 0.875rem;
+      margin-top: 10px;
+    }
+
+    .proof-item {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    /* ==========================================================================
+       THE INTERACTIVE SCROLL JOURNEY SECTION (CRUCIAL FEATURE)
+       ========================================================================== */
+    .journey-section {
+      position: relative;
+      padding: 100px 0 120px;
+      background: radial-gradient(ellipse 90% 60% at 50% 30%, rgba(13, 20, 36, 0.85) 0%, var(--bg-base) 100%);
+      border-top: 1px solid var(--border-subtle);
+      border-bottom: 1px solid var(--border-subtle);
+      z-index: 10;
+    }
+
+    .section-header {
+      text-align: center;
+      max-width: 780px;
+      margin: 0 auto 50px;
+    }
+
+    .section-eyebrow {
+      font-size: 0.8125rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--color-brand);
+      margin-bottom: 12px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+    }
+
+    .section-title {
+      font-size: clamp(2rem, 4vw, 3rem);
+      font-weight: 800;
+      letter-spacing: -0.03em;
+      line-height: 1.15;
+      margin-bottom: 16px;
+    }
+
+    .section-description {
+      font-size: 1.125rem;
+      color: var(--text-muted);
+      line-height: 1.6;
+    }
+
+    /* Journey Stage Selector Tabs */
+    .journey-tabs-wrapper {
+      display: flex;
+      justify-content: center;
+      margin-bottom: 40px;
+    }
+
+    .journey-tabs {
+      display: inline-flex;
+      background: var(--bg-surface-1);
+      border: 1px solid var(--border-medium);
+      padding: 6px;
+      border-radius: var(--radius-full);
+      gap: 6px;
+      backdrop-filter: blur(12px);
+      box-shadow: var(--shadow-md);
+      overflow-x: auto;
+      max-width: 100%;
+    }
+
+    .journey-tab-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      padding: 10px 20px;
+      border-radius: var(--radius-full);
+      font-size: 0.875rem;
+      font-weight: 600;
+      color: var(--text-muted);
+      transition: all 0.25s ease;
+      white-space: nowrap;
+    }
+
+    .journey-tab-btn:hover {
+      color: var(--text-main);
+      background: rgba(255, 255, 255, 0.04);
+    }
+
+    .journey-tab-btn.active {
+      background: linear-gradient(135deg, rgba(59, 130, 246, 0.25) 0%, rgba(16, 185, 129, 0.25) 100%);
+      color: var(--text-main);
+      border: 1px solid rgba(59, 130, 246, 0.4);
+      box-shadow: 0 4px 15px rgba(59, 130, 246, 0.2);
+    }
+
+    .journey-tab-num {
+      width: 22px;
+      height: 22px;
+      border-radius: 50%;
+      background: var(--bg-surface-3);
+      font-size: 0.75rem;
+      font-weight: 700;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      color: var(--text-muted);
+      transition: all 0.2s ease;
+    }
+
+    .journey-tab-btn.active .journey-tab-num {
+      background: var(--color-brand);
+      color: #fff;
+    }
+
+    /* Auto-play status toggle */
+    .journey-autoplay-toggle {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      font-size: 0.8125rem;
+      color: var(--text-subtle);
+      margin-top: -20px;
+      margin-bottom: 36px;
+    }
+
+    .autoplay-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      background: var(--bg-surface-1);
+      border: 1px solid var(--border-subtle);
+      padding: 4px 12px;
+      border-radius: var(--radius-full);
+      cursor: pointer;
+    }
+
+    .autoplay-indicator {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--color-emerald);
+      box-shadow: 0 0 10px var(--color-emerald);
+      animation: pulseIndicator 2s infinite;
+    }
+
+    @keyframes pulseIndicator {
+      0%, 100% { transform: scale(1); opacity: 1; }
+      50% { transform: scale(1.4); opacity: 0.6; }
+    }
+
+    /* Stage Canvas Master Grid */
+    .journey-stage-grid {
+      display: grid;
+      grid-template-columns: 360px 1fr;
+      gap: 32px;
+      align-items: center;
+      min-height: 600px;
+    }
+
+    @media (max-width: 1080px) {
+      .journey-stage-grid {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    /* Left Stage Explanation Card */
+    .stage-explanation-panel {
+      background: var(--bg-glass-card);
+      border: 1px solid var(--border-medium);
+      border-radius: var(--radius-xl);
+      padding: 36px 30px;
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+      box-shadow: var(--shadow-lg);
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+      position: relative;
+    }
+
+    .stage-badge-tag {
+      align-self: flex-start;
+      font-size: 0.75rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      padding: 4px 12px;
+      border-radius: 6px;
+      background: rgba(59, 130, 246, 0.15);
+      color: #60a5fa;
+      border: 1px solid rgba(59, 130, 246, 0.3);
+    }
+
+    .stage-title {
+      font-size: 1.625rem;
+      font-weight: 800;
+      letter-spacing: -0.02em;
+      color: var(--text-main);
+      line-height: 1.25;
+    }
+
+    .stage-text {
+      color: var(--text-muted);
+      font-size: 0.9375rem;
+      line-height: 1.65;
+    }
+
+    .stage-features-list {
+      list-style: none;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      margin-top: 4px;
+    }
+
+    .stage-features-list li {
+      display: flex;
+      align-items: flex-start;
+      gap: 10px;
+      font-size: 0.875rem;
+      color: var(--text-main);
+    }
+
+    .stage-check-icon {
+      color: var(--color-emerald);
+      flex-shrink: 0;
+      margin-top: 2px;
+    }
+
+    .stage-nav-buttons {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-top: 16px;
+      padding-top: 20px;
+      border-top: 1px solid var(--border-subtle);
+    }
+
+    /* ==========================================================================
+       RIGHT: THE HIGH-FIDELITY SIMULATION CANVAS
+       ========================================================================== */
+    .simulation-canvas-wrapper {
+      position: relative;
+      background: var(--bg-surface-1);
+      border: 1px solid var(--border-medium);
+      border-radius: var(--radius-xl);
+      box-shadow: 0 30px 80px rgba(0, 0, 0, 0.5), 0 0 40px rgba(59, 130, 246, 0.1);
+      overflow: hidden;
+      min-height: 560px;
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* macOS Window Chrome */
+    .canvas-window-header {
+      height: 44px;
+      background: var(--bg-surface-2);
+      border-bottom: 1px solid var(--border-subtle);
+      display: flex;
+      align-items: center;
+      padding: 0 16px;
+      gap: 14px;
+      direction: ltr !important;
+    }
+
+    .window-dots {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .window-dot {
+      width: 11px;
+      height: 11px;
+      border-radius: 50%;
+    }
+    .window-dot.red { background: #ff5f56; }
+    .window-dot.yellow { background: #ffbd2e; }
+    .window-dot.green { background: #27c93f; }
+
+    .window-url-bar {
+      flex: 1;
+      max-width: 480px;
+      height: 28px;
+      background: var(--bg-surface-1);
+      border: 1px solid var(--border-subtle);
+      border-radius: 6px;
+      display: flex;
+      align-items: center;
+      padding: 0 10px;
+      font-size: 0.75rem;
+      font-family: var(--font-mono);
+      color: var(--text-muted);
+      gap: 6px;
+    }
+
+    .window-status-pill {
+      margin-inline-start: auto;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 0.75rem;
+      font-weight: 600;
+      color: var(--color-emerald);
+      background: rgba(16, 185, 129, 0.1);
+      padding: 3px 8px;
+      border-radius: 999px;
+      border: 1px solid rgba(16, 185, 129, 0.2);
+    }
+
+    /* App Viewport Inside Window */
+    .canvas-app-viewport {
+      position: relative;
+      flex: 1;
+      padding: 24px;
+      background: var(--bg-base);
+      overflow: hidden;
+      min-height: 480px;
+      direction: ltr !important;
+      text-align: left;
+    }
+
+    /* Mock SaaS App UI Inside Viewport */
+    .mock-saas-app {
+      display: flex;
+      flex-direction: column;
+      gap: 18px;
+      max-width: 100%;
+      height: 100%;
+      position: relative;
+    }
+
+    /* Mock App Header */
+    .mock-app-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding-bottom: 14px;
+      border-bottom: 1px solid var(--border-subtle);
+    }
+
+    .mock-app-brand {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-weight: 700;
+      font-size: 0.9375rem;
+      color: var(--text-main);
+    }
+
+    .mock-app-icon {
+      width: 24px;
+      height: 24px;
+      background: linear-gradient(135deg, #6366f1, #3b82f6);
+      border-radius: 6px;
+      display: grid;
+      place-items: center;
+      color: #fff;
+      font-size: 0.75rem;
+      font-weight: 800;
+    }
+
+    /* Mock App Banner (Targetable) */
+    .mock-banner-element {
+      background: linear-gradient(90deg, rgba(59, 130, 246, 0.15) 0%, rgba(139, 92, 246, 0.15) 100%);
+      border: 1px dashed rgba(59, 130, 246, 0.35);
+      border-radius: var(--radius-sm);
+      padding: 10px 14px;
+      font-size: 0.8125rem;
+      color: #93c5fd;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      transition: all 0.3s ease;
+      cursor: pointer;
+    }
+
+    .mock-banner-element:hover {
+      border-color: #60a5fa;
+      background: rgba(59, 130, 246, 0.22);
+    }
+
+    /* Mock App Metrics Row */
+    .mock-metrics-row {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 14px;
+    }
+
+    .mock-metric-card {
+      background: var(--bg-surface-1);
+      border: 1px solid var(--border-subtle);
+      border-radius: var(--radius-md);
+      padding: 14px;
+      cursor: pointer;
+      transition: all 0.2s ease;
+    }
+
+    .mock-metric-card:hover {
+      border-color: var(--border-medium);
+      transform: translateY(-2px);
+    }
+
+    .mock-metric-label {
+      font-size: 0.75rem;
+      color: var(--text-muted);
+      margin-bottom: 4px;
+    }
+
+    .mock-metric-val {
+      font-size: 1.25rem;
+      font-weight: 700;
+      color: var(--text-main);
+    }
+
+    /* Mock Billing Card (Main Focus Element) */
+    .mock-billing-card {
+      background: var(--bg-surface-1);
+      border: 1px solid var(--border-subtle);
+      border-radius: var(--radius-lg);
+      padding: 22px;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+      position: relative;
+    }
+
+    .mock-billing-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .mock-plan-badge {
+      font-size: 0.75rem;
+      font-weight: 700;
+      padding: 3px 8px;
+      border-radius: 6px;
+      background: rgba(59, 130, 246, 0.15);
+      color: #60a5fa;
+    }
+
+    .mock-billing-features {
+      list-style: none;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+      font-size: 0.8125rem;
+      color: var(--text-muted);
+    }
+
+    .mock-billing-features li::before {
+      content: '✓ ';
+      color: var(--color-emerald);
+      font-weight: 800;
+    }
+
+    /* The Upgrade CTA Button (The target of Stage 1 & Stage 3) */
+    .mock-target-cta-btn {
+      align-self: flex-start;
+      padding: 10px 22px;
+      border-radius: var(--radius-md);
+      font-size: 0.875rem;
+      font-weight: 600;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      transition: all 0.5s cubic-bezier(0.16, 1, 0.3, 1);
+      position: relative;
+      box-shadow: 0 4px 14px rgba(0, 0, 0, 0.25);
+    }
+
+    /* State A: Original Blue CTA */
+    .mock-target-cta-btn.state-blue {
+      background: #2563eb;
+      color: #ffffff;
+      border: 1px solid #3b82f6;
+    }
+
+    /* State B: Fixed Emerald Shimmer CTA */
+    .mock-target-cta-btn.state-emerald {
+      background: linear-gradient(135deg, #10b981 0%, #0d9488 100%);
+      color: #ffffff;
+      border: 1px solid rgba(255, 255, 255, 0.3);
+      box-shadow: 0 6px 25px rgba(16, 185, 129, 0.45);
+      animation: buttonPulse 3s infinite;
+    }
+
+    @keyframes buttonPulse {
+      0%, 100% { box-shadow: 0 6px 25px rgba(16, 185, 129, 0.45); }
+      50% { box-shadow: 0 8px 35px rgba(16, 185, 129, 0.7); }
+    }
+
+    /* ==========================================================================
+       SIMULATION OVERLAYS: CURSOR, PIN, COMMENT CARD, TERMINAL
+       ========================================================================== */
+
+    /* The Animated Virtual Cursor */
+    .sim-cursor {
+      position: absolute;
+      width: 28px;
+      height: 28px;
+      z-index: 50;
+      pointer-events: none;
+      filter: drop-shadow(0 4px 8px rgba(0, 0, 0, 0.5));
+      transition: transform 0.8s cubic-bezier(0.25, 1, 0.5, 1), opacity 0.3s ease;
+      transform: translate(60px, 80px);
+    }
+
+    .sim-cursor-pulse {
+      position: absolute;
+      width: 44px;
+      height: 44px;
+      top: -10px;
+      left: -10px;
+      border: 2px solid var(--color-emerald);
+      border-radius: 50%;
+      opacity: 0;
+      pointer-events: none;
+      transform: scale(0.4);
+    }
+
+    .sim-cursor-pulse.animate {
+      animation: cursorRipple 0.8s ease-out forwards;
+    }
+
+    @keyframes cursorRipple {
+      0% { transform: scale(0.4); opacity: 1; }
+      100% { transform: scale(1.6); opacity: 0; }
+    }
+
+    /* The Pointer Pin */
+    .sim-pin {
+      position: absolute;
+      z-index: 45;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+      color: #ffffff;
+      padding: 4px 10px;
+      border-radius: 20px 20px 20px 4px;
+      font-size: 0.75rem;
+      font-weight: 700;
+      box-shadow: 0 6px 20px rgba(16, 185, 129, 0.45);
+      border: 1px solid rgba(255, 255, 255, 0.35);
+      transition: all 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
+      cursor: pointer;
+      opacity: 0;
+      transform: scale(0.2) translateY(-20px);
+    }
+
+    .sim-pin.visible {
+      opacity: 1;
+      transform: scale(1) translateY(0);
+    }
+
+    .sim-pin.resolved {
+      background: linear-gradient(135deg, #10b981 0%, #14b8a6 100%);
+      box-shadow: 0 6px 20px rgba(16, 185, 129, 0.6);
+    }
+
+    .sim-pin-pulse {
+      position: absolute;
+      inset: -4px;
+      border-radius: inherit;
+      background: inherit;
+      filter: blur(6px);
+      opacity: 0.5;
+      z-index: -1;
+      animation: pinPulseGlow 2s infinite alternate;
+    }
+
+    @keyframes pinPulseGlow {
+      from { opacity: 0.3; transform: scale(0.95); }
+      to { opacity: 0.8; transform: scale(1.1); }
+    }
+
+    /* Floating Glass Comment Card (Stage 2) */
+    .sim-comment-card {
+      position: absolute;
+      z-index: 46;
+      width: 380px;
+      max-width: 90%;
+      background: var(--bg-surface-1);
+      border: 1px solid var(--border-medium);
+      border-radius: var(--radius-lg);
+      padding: 18px;
+      box-shadow: 0 20px 45px rgba(0, 0, 0, 0.6), 0 0 25px rgba(59, 130, 246, 0.2);
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+      opacity: 0;
+      transform: translateY(12px) scale(0.96);
+      pointer-events: none;
+      transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+
+    .sim-comment-card.visible {
+      opacity: 1;
+      transform: translateY(0) scale(1);
+      pointer-events: auto;
+    }
+
+    .comment-card-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 12px;
+      padding-bottom: 10px;
+      border-bottom: 1px solid var(--border-subtle);
+    }
+
+    .comment-author-info {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .comment-avatar {
+      width: 28px;
+      height: 28px;
+      border-radius: 50%;
+      background: linear-gradient(135deg, #f59e0b, #ef4444);
+      display: grid;
+      place-items: center;
+      font-size: 0.75rem;
+      font-weight: 700;
+      color: #fff;
+    }
+
+    .comment-author-name {
+      font-size: 0.8125rem;
+      font-weight: 700;
+      color: var(--text-main);
+    }
+
+    .comment-author-role {
+      font-size: 0.6875rem;
+      color: var(--text-muted);
+    }
+
+    .comment-time {
+      font-size: 0.6875rem;
+      color: var(--text-subtle);
+    }
+
+    /* Technical Context Badges Inside Comment */
+    .comment-metadata-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 6px;
+      margin-bottom: 12px;
+      font-family: var(--font-mono);
+      font-size: 0.6875rem;
+    }
+
+    .meta-chip {
+      background: var(--bg-surface-2);
+      border: 1px solid var(--border-subtle);
+      padding: 4px 8px;
+      border-radius: 6px;
+      color: #93c5fd;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .comment-body-text {
+      font-size: 0.875rem;
+      color: var(--text-main);
+      line-height: 1.5;
+      background: rgba(255, 255, 255, 0.03);
+      padding: 10px;
+      border-radius: var(--radius-sm);
+      border-inline-start: 3px solid var(--color-emerald);
+      margin-bottom: 12px;
+    }
+
+    .comment-footer-actions {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      font-size: 0.75rem;
+    }
+
+    .status-tag-open {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      color: #fbbf24;
+      font-weight: 600;
+    }
+
+    /* Sleek AI Terminal Window (Stage 3) */
+    .sim-terminal-window {
+      position: absolute;
+      inset: 20px;
+      top: 60px;
+      background: #090d16;
+      border: 1px solid var(--border-bright);
+      border-radius: var(--radius-lg);
+      box-shadow: 0 25px 60px rgba(0, 0, 0, 0.8), 0 0 35px rgba(16, 185, 129, 0.2);
+      z-index: 48;
+      display: flex;
+      flex-direction: column;
+      opacity: 0;
+      transform: translateY(24px) scale(0.97);
+      pointer-events: none;
+      transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+      overflow: hidden;
+    }
+
+    .sim-terminal-window.visible {
+      opacity: 1;
+      transform: translateY(0) scale(1);
+      pointer-events: auto;
+    }
+
+    .term-header {
+      height: 38px;
+      background: #0f1523;
+      border-bottom: 1px solid var(--border-subtle);
+      display: flex;
+      align-items: center;
+      padding: 0 14px;
+      gap: 12px;
+      direction: ltr !important;
+    }
+
+    .term-title {
+      font-family: var(--font-mono);
+      font-size: 0.75rem;
+      color: var(--text-muted);
+      margin: 0 auto 0 0;
+    }
+
+    .term-body {
+      flex: 1;
+      padding: 18px;
+      font-family: var(--font-mono);
+      font-size: 0.8125rem;
+      line-height: 1.6;
+      color: #e2e8f0;
+      overflow-y: auto;
+      direction: ltr !important;
+      text-align: left;
+    }
+
+    .term-line {
+      display: flex;
+      align-items: flex-start;
+      gap: 8px;
+      margin-bottom: 6px;
+      opacity: 0;
+      transform: translateX(-6px);
+      transition: opacity 0.3s ease, transform 0.3s ease;
+    }
+
+    .term-line.visible {
+      opacity: 1;
+      transform: translateX(0);
+    }
+
+    .term-prompt {
+      color: var(--color-emerald);
+      font-weight: 700;
+      flex-shrink: 0;
+    }
+
+    .term-badge-tag {
+      font-size: 0.6875rem;
+      padding: 1px 6px;
+      border-radius: 4px;
+      font-weight: 700;
+      flex-shrink: 0;
+    }
+
+    .tag-info { background: rgba(59, 130, 246, 0.2); color: #60a5fa; }
+    .tag-diff { background: rgba(139, 92, 246, 0.2); color: #c084fc; }
+    .tag-test { background: rgba(245, 158, 11, 0.2); color: #fbbf24; }
+    .tag-git  { background: rgba(16, 185, 129, 0.2); color: #34d399; }
+    .tag-done { background: rgba(16, 185, 129, 0.3); color: #10b981; }
+
+    .term-diff-block {
+      background: #04070d;
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: 6px;
+      padding: 8px 12px;
+      font-size: 0.75rem;
+      margin: 8px 0;
+    }
+
+    .diff-del { color: #f87171; }
+    .diff-add { color: #34d399; }
+
+    /* Interactive Live Sandbox (Stage 4) */
+    .sandbox-banner-hint {
+      position: absolute;
+      top: 14px;
+      right: 14px;
+      background: rgba(16, 185, 129, 0.15);
+      border: 1px solid rgba(16, 185, 129, 0.3);
+      border-radius: var(--radius-full);
+      padding: 6px 14px;
+      font-size: 0.75rem;
+      font-weight: 700;
+      color: #34d399;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      z-index: 30;
+      pointer-events: none;
+      animation: pulseHint 3s infinite;
+    }
+
+    @keyframes pulseHint {
+      0%, 100% { opacity: 0.8; }
+      50% { opacity: 1; box-shadow: 0 0 15px rgba(16, 185, 129, 0.3); }
+    }
+
+    /* Sandbox Interactive Clickable Elements Hover Ring */
+    .sandbox-active .interactive-target {
+      outline: 2px dashed rgba(59, 130, 246, 0.4);
+      outline-offset: 3px;
+      cursor: crosshair !important;
+      transition: outline-color 0.2s;
+    }
+
+    .sandbox-active .interactive-target:hover {
+      outline: 2px solid var(--color-emerald) !important;
+      outline-offset: 4px;
+      box-shadow: 0 0 16px rgba(16, 185, 129, 0.3);
+    }
+
+    /* Sandbox Popover Dialog */
+    .sandbox-popover {
+      position: absolute;
+      z-index: 55;
+      width: 320px;
+      background: var(--bg-surface-1);
+      border: 1px solid var(--border-bright);
+      border-radius: var(--radius-md);
+      padding: 16px;
+      box-shadow: var(--shadow-lg);
+      backdrop-filter: blur(16px);
+      display: none;
+    }
+
+    .sandbox-popover.visible {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .sandbox-preset-list {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+
+    .sandbox-preset-btn {
+      text-align: left;
+      font-size: 0.75rem;
+      padding: 6px 10px;
+      border-radius: 6px;
+      background: var(--bg-surface-2);
+      border: 1px solid var(--border-subtle);
+      color: var(--text-muted);
+      transition: all 0.2s;
+    }
+
+    .sandbox-preset-btn:hover {
+      border-color: var(--color-brand);
+      color: var(--text-main);
+      background: var(--bg-surface-3);
+    }
+
+    /* ==========================================================================
+       BEFORE / AFTER CONTRAST SECTION
+       ========================================================================== */
+    .contrast-section {
+      padding: 80px 0;
+      position: relative;
+    }
+
+    .contrast-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 28px;
+    }
+
+    @media (max-width: 768px) {
+      .contrast-grid { grid-template-columns: 1fr; }
+    }
+
+    .contrast-card {
+      background: var(--bg-surface-1);
+      border: 1px solid var(--border-subtle);
+      border-radius: var(--radius-xl);
+      padding: 36px 30px;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .contrast-card.bad {
+      border-color: rgba(239, 68, 68, 0.2);
+    }
+
+    .contrast-card.good {
+      border-color: rgba(16, 185, 129, 0.3);
+      background: linear-gradient(180deg, var(--bg-surface-1) 0%, rgba(16, 185, 129, 0.04) 100%);
+      box-shadow: 0 15px 40px rgba(16, 185, 129, 0.08);
+    }
+
+    .contrast-tag {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 0.75rem;
+      font-weight: 700;
+      padding: 4px 10px;
+      border-radius: 6px;
+      margin-bottom: 16px;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+
+    .contrast-card.bad .contrast-tag {
+      background: rgba(239, 68, 68, 0.15);
+      color: #f87171;
+    }
+
+    .contrast-card.good .contrast-tag {
+      background: rgba(16, 185, 129, 0.15);
+      color: #34d399;
+    }
+
+    .contrast-title {
+      font-size: 1.35rem;
+      font-weight: 700;
+      margin-bottom: 12px;
+    }
+
+    .contrast-text {
+      color: var(--text-muted);
+      font-size: 0.9375rem;
+      line-height: 1.6;
+    }
+
+    /* ==========================================================================
+       CORE FEATURES SECTION (GRID)
+       ========================================================================== */
+    .features-section {
+      padding: 100px 0;
+      position: relative;
+    }
+
+    .features-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 24px;
+    }
+
+    @media (max-width: 990px) {
+      .features-grid { grid-template-columns: repeat(2, 1fr); }
+    }
+    @media (max-width: 640px) {
+      .features-grid { grid-template-columns: 1fr; }
+    }
+
+    .feature-card {
+      background: var(--bg-surface-1);
+      border: 1px solid var(--border-subtle);
+      border-radius: var(--radius-lg);
+      padding: 30px;
+      transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+      position: relative;
+    }
+
+    .feature-card:hover {
+      border-color: var(--border-bright);
+      transform: translateY(-4px);
+      box-shadow: var(--shadow-md);
+    }
+
+    .feature-icon-box {
+      width: 48px;
+      height: 48px;
+      border-radius: var(--radius-md);
+      background: var(--bg-surface-2);
+      border: 1px solid var(--border-medium);
+      display: grid;
+      place-items: center;
+      color: var(--color-brand);
+      font-size: 1.25rem;
+    }
+
+    .feature-card:nth-child(2) .feature-icon-box { color: var(--color-emerald); }
+    .feature-card:nth-child(3) .feature-icon-box { color: var(--color-purple); }
+    .feature-card:nth-child(4) .feature-icon-box { color: var(--color-amber); }
+
+    .feature-title {
+      font-size: 1.15rem;
+      font-weight: 700;
+      color: var(--text-main);
+    }
+
+    .feature-desc {
+      color: var(--text-muted);
+      font-size: 0.875rem;
+      line-height: 1.6;
+    }
+
+    /* ==========================================================================
+       WORKS WITH YOUR STACK (DYNAMIC FROM API)
+       ========================================================================== */
+    .stack-section {
+      padding: 80px 0;
+      position: relative;
+      border-top: 1px solid var(--border-subtle);
+    }
+
+    .stack-category-wrap {
+      margin-top: 36px;
+      display: flex;
+      flex-direction: column;
+      gap: 28px;
+    }
+
+    .stack-category-header {
+      font-size: 0.8125rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--text-subtle);
+      text-align: center;
+      margin-bottom: 12px;
+    }
+
+    .stack-badges-flex {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: center;
+      gap: 12px;
+      max-width: 900px;
+      margin: 0 auto;
+    }
+
+    .stack-chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 18px;
+      border-radius: var(--radius-full);
+      background: var(--bg-surface-1);
+      border: 1px solid var(--border-subtle);
+      font-size: 0.875rem;
+      font-weight: 600;
+      color: var(--text-main);
+      transition: all 0.2s ease;
+      box-shadow: var(--shadow-sm);
+    }
+
+    .stack-chip:hover {
+      border-color: var(--color-brand);
+      transform: translateY(-2px);
+      box-shadow: var(--shadow-md);
+    }
+
+    /* ==========================================================================
+       DYNAMIC PRICING SECTION
+       ========================================================================== */
+    .pricing-section {
+      padding: 100px 0;
+      position: relative;
+      background: radial-gradient(ellipse 80% 50% at 50% 50%, rgba(59, 130, 246, 0.05) 0%, transparent 80%);
+    }
+
+    .pricing-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 28px;
+      align-items: stretch;
+      margin-top: 48px;
+    }
+
+    .pricing-card {
+      background: var(--bg-surface-1);
+      border: 1px solid var(--border-medium);
+      border-radius: var(--radius-xl);
+      padding: 36px 28px;
+      display: flex;
+      flex-direction: column;
+      position: relative;
+      transition: all 0.3s ease;
+    }
+
+    .pricing-card:hover {
+      transform: translateY(-4px);
+      box-shadow: var(--shadow-lg);
+    }
+
+    .pricing-card.featured {
+      border-color: rgba(16, 185, 129, 0.5);
+      background: linear-gradient(180deg, var(--bg-surface-1) 0%, rgba(16, 185, 129, 0.05) 100%);
+      box-shadow: 0 20px 50px rgba(16, 185, 129, 0.15);
+    }
+
+    .pricing-featured-badge {
+      position: absolute;
+      top: -14px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: linear-gradient(135deg, #10b981, #059669);
+      color: #fff;
+      font-size: 0.75rem;
+      font-weight: 700;
+      padding: 4px 14px;
+      border-radius: var(--radius-full);
+      box-shadow: 0 4px 12px rgba(16, 185, 129, 0.4);
+      white-space: nowrap;
+    }
+
+    .pricing-plan-name {
+      font-size: 1.35rem;
+      font-weight: 800;
+      margin-bottom: 8px;
+    }
+
+    .pricing-price-wrap {
+      display: flex;
+      align-items: baseline;
+      gap: 6px;
+      margin: 16px 0 20px;
+    }
+
+    .pricing-amount {
+      font-size: 2.75rem;
+      font-weight: 800;
+      letter-spacing: -0.03em;
+      line-height: 1;
+    }
+
+    .pricing-interval {
+      font-size: 0.875rem;
+      color: var(--text-muted);
+      font-weight: 600;
+    }
+
+    .pricing-bullets {
+      list-style: none;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      margin-bottom: 30px;
+      flex: 1;
+    }
+
+    .pricing-bullets li {
+      display: flex;
+      align-items: flex-start;
+      gap: 10px;
+      font-size: 0.875rem;
+      color: var(--text-muted);
+    }
+
+    .pricing-check {
+      color: var(--color-emerald);
+      flex-shrink: 0;
+      font-weight: 800;
+    }
+
+    .pricing-card .btn {
+      width: 100%;
+      margin-top: auto;
+    }
+
+    /* ==========================================================================
+       EXTENSION MODAL (6-STEP GUIDED INSTALL)
+       ========================================================================== */
+    .ext-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(3, 7, 18, 0.75);
+      backdrop-filter: blur(8px);
+      -webkit-backdrop-filter: blur(8px);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 200;
+      padding: 20px;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.3s ease;
+    }
+
+    .ext-overlay.active {
+      opacity: 1;
+      pointer-events: auto;
+    }
+
+    .ext-modal-card {
+      background: var(--bg-surface-1);
+      border: 1px solid var(--border-bright);
+      border-radius: var(--radius-xl);
+      max-width: 520px;
+      width: 100%;
+      padding: 34px 30px 28px;
+      position: relative;
+      box-shadow: 0 30px 80px rgba(0, 0, 0, 0.7);
+      transform: scale(0.95) translateY(10px);
+      transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+
+    .ext-overlay.active .ext-modal-card {
+      transform: scale(1) translateY(0);
+    }
+
+    .ext-close-x {
+      position: absolute;
+      top: 18px;
+      inset-inline-end: 18px;
+      width: 34px;
+      height: 34px;
+      border-radius: 50%;
+      background: var(--bg-surface-2);
+      border: 1px solid var(--border-subtle);
+      color: var(--text-muted);
+      display: grid;
+      place-items: center;
+      font-size: 1rem;
+      cursor: pointer;
+      transition: all 0.2s ease;
+    }
+
+    .ext-close-x:hover {
+      color: var(--text-main);
+      background: var(--bg-surface-3);
+    }
+
+    .ext-modal-header {
+      margin-bottom: 24px;
+    }
+
+    .ext-modal-title {
+      font-size: 1.5rem;
+      font-weight: 800;
+      letter-spacing: -0.02em;
+    }
+
+    .ext-step-progress {
+      display: flex;
+      gap: 6px;
+      margin-top: 12px;
+    }
+
+    .step-bar-dot {
+      flex: 1;
+      height: 4px;
+      border-radius: 2px;
+      background: var(--bg-surface-3);
+      transition: background 0.3s ease;
+    }
+
+    .step-bar-dot.active {
+      background: var(--color-emerald);
+    }
+
+    .ext-step-content-area {
+      min-height: 180px;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      gap: 12px;
+      margin-bottom: 24px;
+    }
+
+    .ext-step-item {
+      display: none;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .ext-step-item.active {
+      display: flex;
+    }
+
+    .ext-step-number-chip {
+      width: 36px;
+      height: 36px;
+      border-radius: 50%;
+      background: linear-gradient(135deg, var(--color-brand), var(--color-emerald));
+      color: #fff;
+      font-weight: 800;
+      display: grid;
+      place-items: center;
+      font-size: 1rem;
+    }
+
+    .ext-modal-footer {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 14px;
+      padding-top: 20px;
+      border-top: 1px solid var(--border-subtle);
+    }
+
+    /* ==========================================================================
+       FINAL CTA & FOOTER
+       ========================================================================== */
+    .cta-banner-section {
+      padding: 100px 0;
+      position: relative;
+    }
+
+    .cta-banner-card {
+      background: linear-gradient(135deg, #0d1e38 0%, #0c2b29 100%);
+      border: 1px solid rgba(16, 185, 129, 0.3);
+      border-radius: var(--radius-xl);
+      padding: 70px 40px;
+      text-align: center;
+      box-shadow: 0 30px 80px rgba(0, 0, 0, 0.5), 0 0 50px rgba(16, 185, 129, 0.15);
+      position: relative;
+      overflow: hidden;
+    }
+
+    .cta-banner-title {
+      font-size: clamp(2rem, 4vw, 3.25rem);
+      font-weight: 800;
+      line-height: 1.15;
+      margin-bottom: 20px;
+    }
+
+    .cta-banner-sub {
+      font-size: 1.25rem;
+      color: #94a3b8;
+      max-width: 640px;
+      margin: 0 auto 36px;
+    }
+
+    .footer {
+      border-top: 1px solid var(--border-subtle);
+      padding: 50px 0 40px;
+      background: var(--bg-surface-1);
+    }
+
+    .footer-content {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 24px;
+    }
+
+    .footer-links {
+      display: flex;
+      align-items: center;
+      gap: 24px;
+      font-size: 0.875rem;
+      color: var(--text-muted);
+    }
+
+    .footer-links a:hover {
+      color: var(--text-main);
+    }
+
+    .footer-copy {
+      font-size: 0.8125rem;
+      color: var(--text-subtle);
+    }
+
+    /* Accessibility / Reduced Motion */
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
+        scroll-behavior: auto !important;
+      }
+    }
+  </style>
+</head>
+<body>
+  <!-- Ambient background glow mesh -->
+  <div class="ambient-glow" aria-hidden="true">
+    <div class="glow-blob glow-1"></div>
+    <div class="glow-blob glow-2"></div>
+    <div class="glow-blob glow-3"></div>
+  </div>
+
+  <!-- Background grid texture overlay -->
+  <div class="grid-overlay" aria-hidden="true"></div>
+
+  <!-- ==========================================================================
+       STICKY NAVBAR
+       ========================================================================== -->
+  <header class="navbar">
+    <div class="container navbar-inner">
+      <a href="#" class="brand-logo-wrap" aria-label="Pointer Home">
+        <img src="/assets/dog-mascot.png" alt="Pointer Logo" class="brand-logo-img" data-brand-logo />
+        <span data-brand-name>Pointer</span>
+        <span class="brand-version-chip">v2.0</span>
+      </a>
+
+      <nav class="nav-menu" aria-label="Main Navigation">
+        <a href="#journey" data-i18n="nav.journey">Interactive Journey</a>
+        <a href="#how" data-i18n="nav.how">How it works</a>
+        <a href="#features" data-i18n="nav.features">Features</a>
+        <a href="#stacks" data-i18n="nav.stacks">Stacks</a>
+        <a href="#pricing" data-i18n="nav.pricing">Pricing</a>
+        <a href="#extension" data-i18n="nav.ext">Extension</a>
+      </nav>
+
+      <div class="nav-actions">
+        <!-- Theme Switcher -->
+        <button id="theme-toggle" class="toggle-btn" type="button" aria-label="Toggle Theme" title="Toggle Light/Dark Theme">
+          <svg id="theme-icon-moon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path>
+          </svg>
+          <svg id="theme-icon-sun" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:none">
+            <circle cx="12" cy="12" r="5"></circle>
+            <line x1="12" y1="1" x2="12" y2="3"></line>
+            <line x1="12" y1="21" x2="12" y2="23"></line>
+            <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line>
+            <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line>
+            <line x1="1" y1="12" x2="3" y2="12"></line>
+            <line x1="21" y1="12" x2="23" y2="12"></line>
+            <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line>
+            <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line>
+          </svg>
+        </button>
+
+        <!-- Language Switcher -->
+        <button id="lang-toggle" class="toggle-btn lang-btn" type="button" aria-label="Switch Language" title="Switch Language">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="10"></circle>
+            <line x1="2" y1="12" x2="22" y2="12"></line>
+            <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path>
+          </svg>
+          <span id="lang-btn-text">العربية</span>
+        </button>
+
+        <!-- CTAs -->
+        <a class="btn btn-sm" href="https://app.pointer.moamen.work" data-i18n="nav.signin">Sign in</a>
+        <a class="btn btn-primary btn-sm" href="https://demo.pointer.moamen.work" data-i18n="nav.demoCta">Try Demo</a>
+      </div>
+    </div>
+  </header>
+
+  <main>
+    <!-- ==========================================================================
+         HERO SECTION
+         ========================================================================== -->
+    <section class="hero-section">
+      <div class="container hero-content">
+        <div class="badge-pill badge-pill-emerald">
+          <span>✨</span>
+          <span data-i18n="hero.badge">Pointer v2 · Click element to production code</span>
+        </div>
+
+        <h1 class="hero-title">
+          <span data-i18n="hero.titlePrefix">Point at the UI.</span><br />
+          <span class="text-gradient-brand" data-i18n="hero.titleHighlight">Ship it with AI.</span>
+        </h1>
+
+        <p class="hero-subtitle" data-i18n="hero.sub">
+          Anyone on your team clicks an element on a running app and leaves a short comment. Developers hand the queue to any AI tool, which applies the change to the real source — no more translating vague feedback into code.
+        </p>
+
+        <div class="hero-cta-group">
+          <a class="btn btn-primary btn-lg" href="https://demo.pointer.moamen.work" data-i18n="hero.demo">
+            <span>Try the demo — no install</span>
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+              <line x1="5" y1="12" x2="19" y2="12"></line>
+              <polyline points="12 5 19 12 12 19"></polyline>
+            </svg>
+          </a>
+
+          <a class="btn btn-lg btn-glass" href="https://app.pointer.moamen.work" data-i18n="hero.signup">
+            Create an account
+          </a>
+
+          <!-- Interactive CLI Copy Box -->
+          <div class="cli-copy-box" id="hero-cli-copy" title="Click to copy command">
+            <span class="cli-prompt-symbol">$</span>
+            <span>npx pointer apply</span>
+            <svg class="cli-copy-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+              <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+            </svg>
+          </div>
+        </div>
+
+        <div class="hero-proof-chips">
+          <div class="proof-item">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#10b981" stroke-width="2.5"><polyline points="20 6 9 17 4 12"></polyline></svg>
+            <span data-i18n="proof.install">2-line embed</span>
+          </div>
+          <div class="proof-item">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#10b981" stroke-width="2.5"><polyline points="20 6 9 17 4 12"></polyline></svg>
+            <span data-i18n="proof.ai">AI-agnostic</span>
+          </div>
+          <div class="proof-item">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#10b981" stroke-width="2.5"><polyline points="20 6 9 17 4 12"></polyline></svg>
+            <span data-i18n="proof.isolation">Shadow DOM isolated</span>
+          </div>
+          <div class="proof-item">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#10b981" stroke-width="2.5"><polyline points="20 6 9 17 4 12"></polyline></svg>
+            <span data-i18n="proof.tenant">Multi-tenant</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ==========================================================================
+         THE INTERACTIVE SCROLL JOURNEY SECTION (CRUCIAL FEATURE)
+         ========================================================================== -->
+    <section id="journey" class="journey-section">
+      <div class="container">
+        <div class="section-header">
+          <div class="section-eyebrow">
+            <span>✨</span>
+            <span data-i18n="journey.eyebrow">The Interactive Experience</span>
+          </div>
+          <h2 class="section-title" data-i18n="journey.title">From Point &amp; Pin to AI Applied Code</h2>
+          <p class="section-description" data-i18n="journey.desc">
+            Explore the 4-stage lifecycle of visual feedback: capture DOM context, inspect metadata, execute the CLI apply command, and test it yourself in the live sandbox.
+          </p>
+        </div>
+
+        <!-- Stage Navigation Tabs -->
+        <div class="journey-tabs-wrapper">
+          <div class="journey-tabs" role="tablist" aria-label="Journey Stages">
+            <button class="journey-tab-btn active" data-stage="1" role="tab" aria-selected="true">
+              <span class="journey-tab-num">1</span>
+              <span data-i18n="journey.tab1">Point &amp; Pin</span>
+            </button>
+            <button class="journey-tab-btn" data-stage="2" role="tab" aria-selected="false">
+              <span class="journey-tab-num">2</span>
+              <span data-i18n="journey.tab2">Context &amp; Comment</span>
+            </button>
+            <button class="journey-tab-btn" data-stage="3" role="tab" aria-selected="false">
+              <span class="journey-tab-num">3</span>
+              <span data-i18n="journey.tab3">AI Terminal Apply</span>
+            </button>
+            <button class="journey-tab-btn" data-stage="4" role="tab" aria-selected="false">
+              <span class="journey-tab-num">4</span>
+              <span data-i18n="journey.tab4">Try It Live</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Auto-play status control -->
+        <div class="journey-autoplay-toggle">
+          <div class="autoplay-badge" id="autoplay-btn" role="button" tabindex="0">
+            <span class="autoplay-indicator" id="autoplay-dot"></span>
+            <span id="autoplay-text" data-i18n="journey.autoPlaying">Auto-cycling stages (click to pause)</span>
+          </div>
+        </div>
+
+        <!-- Master Stage Grid -->
+        <div class="journey-stage-grid">
+          <!-- Left: Stage Explanation Card -->
+          <div class="stage-explanation-panel" id="stage-info-panel">
+            <div class="stage-badge-tag" id="stage-badge">Stage 01 / 04</div>
+            <h3 class="stage-title" id="stage-title" data-i18n="journey.s1Title">Click Any Element to Drop a Pin</h3>
+            <p class="stage-text" id="stage-text" data-i18n="journey.s1Text">
+              Stakeholders, testers, or designers navigate their live web application. With Pointer activated, clicking any UI element anchors a pin with sub-pixel precision and springs into place.
+            </p>
+            <ul class="stage-features-list" id="stage-features">
+              <li>
+                <svg class="stage-check-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"></polyline></svg>
+                <span data-i18n="journey.s1f1">Sub-pixel DOM element detection</span>
+              </li>
+              <li>
+                <svg class="stage-check-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"></polyline></svg>
+                <span data-i18n="journey.s1f2">Non-destructive overlays in isolated Shadow DOM</span>
+              </li>
+              <li>
+                <svg class="stage-check-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"></polyline></svg>
+                <span data-i18n="journey.s1f3">Preserves scroll offsets &amp; viewport responsive state</span>
+              </li>
+            </ul>
+
+            <div class="stage-nav-buttons">
+              <button class="btn btn-sm" id="stage-prev-btn">
+                <span data-i18n="journey.prev">← Previous</span>
+              </button>
+              <button class="btn btn-primary btn-sm" id="stage-next-btn">
+                <span data-i18n="journey.next">Next Step →</span>
+              </button>
+            </div>
+          </div>
+
+          <!-- Right: High-Fidelity Simulation Canvas -->
+          <div class="simulation-canvas-wrapper" id="sim-canvas">
+            <!-- macOS Window Header Chrome -->
+            <div class="canvas-window-header">
+              <div class="window-dots">
+                <div class="window-dot red"></div>
+                <div class="window-dot yellow"></div>
+                <div class="window-dot green"></div>
+              </div>
+              <div class="window-url-bar">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>
+                <span>https://app.acme-analytics.dev/billing</span>
+              </div>
+              <div class="window-status-pill">
+                <span>●</span>
+                <span data-i18n="sim.widgetActive">Pointer Active</span>
+              </div>
+            </div>
+
+            <!-- Inside Viewport (Mock SaaS App) -->
+            <div class="canvas-app-viewport" id="mock-app-viewport">
+              <!-- Live Sandbox Hint -->
+              <div class="sandbox-banner-hint" id="sandbox-hint" style="display:none">
+                <span data-i18n="sim.sandboxPrompt">👉 Click any element to pin &amp; apply changes!</span>
+              </div>
+
+              <div class="mock-saas-app">
+                <!-- App Header -->
+                <div class="mock-app-header">
+                  <div class="mock-app-brand">
+                    <div class="mock-app-icon">A</div>
+                    <span>Acme Analytics</span>
+                  </div>
+                  <div class="badge-pill" style="padding: 3px 10px; font-size: 0.75rem;">Billing &amp; Usage</div>
+                </div>
+
+                <!-- Banner Element (Interactive Target) -->
+                <div class="mock-banner-element interactive-target" id="mock-banner" data-selector="div#mock-banner">
+                  <span>🎉 <strong>Special Offer:</strong> 20% discount on team seats applied at checkout</span>
+                  <span style="font-size: 0.7rem; text-decoration: underline;">Details</span>
+                </div>
+
+                <!-- Metrics Row -->
+                <div class="mock-metrics-row">
+                  <div class="mock-metric-card interactive-target" id="mock-metric-1" data-selector="div#mock-metric-1">
+                    <div class="mock-metric-label">Active Seats</div>
+                    <div class="mock-metric-val">18 / 25</div>
+                  </div>
+                  <div class="mock-metric-card interactive-target" id="mock-metric-2" data-selector="div#mock-metric-2">
+                    <div class="mock-metric-label">Monthly Usage</div>
+                    <div class="mock-metric-val">84.2%</div>
+                  </div>
+                  <div class="mock-metric-card interactive-target" id="mock-metric-3" data-selector="div#mock-metric-3">
+                    <div class="mock-metric-label">Next Invoice</div>
+                    <div class="mock-metric-val">$420.00</div>
+                  </div>
+                </div>
+
+                <!-- Billing Card (The Main Focal Target) -->
+                <div class="mock-billing-card interactive-target" id="mock-billing-card" data-selector="div#mock-billing-card">
+                  <div class="mock-billing-head">
+                    <div>
+                      <h4 style="font-size: 1rem; font-weight: 700;">Current Plan: Growth Tier</h4>
+                      <p style="font-size: 0.75rem; color: var(--text-muted);">Renews automatically on Oct 1st, 2026</p>
+                    </div>
+                    <span class="mock-plan-badge">Active</span>
+                  </div>
+
+                  <ul class="mock-billing-features">
+                    <li>Unlimited dashboards</li>
+                    <li>25 member seats</li>
+                    <li>Custom webhook exports</li>
+                    <li>Priority support</li>
+                  </ul>
+
+                  <!-- The Primary Target CTA Button -->
+                  <button class="mock-target-cta-btn state-blue interactive-target" id="mock-cta-btn" data-selector="button#cta-upgrade">
+                    <span id="mock-cta-label">Upgrade to Enterprise</span>
+                  </button>
+                </div>
+              </div>
+
+              <!-- Animated Virtual Cursor -->
+              <div class="sim-cursor" id="sim-cursor">
+                <svg width="28" height="28" viewBox="0 0 24 24" fill="none">
+                  <path d="M5.5 3.5L11.5 20.5L14.5 13.5L21.5 10.5L5.5 3.5Z" fill="#10b981" stroke="#ffffff" stroke-width="1.8" stroke-linejoin="round" />
+                </svg>
+                <div class="sim-cursor-pulse" id="cursor-pulse"></div>
+              </div>
+
+              <!-- Dropped Pointer Pin -->
+              <div class="sim-pin" id="sim-pin">
+                <span class="sim-pin-pulse"></span>
+                <span>🐕 #142</span>
+              </div>
+
+              <!-- Floating Glass Comment Card (Stage 2) -->
+              <div class="sim-comment-card" id="sim-comment">
+                <div class="comment-card-header">
+                  <div class="comment-author-info">
+                    <div class="comment-avatar">SC</div>
+                    <div>
+                      <div class="comment-author-name">Sarah Connor</div>
+                      <div class="comment-author-role">Product Lead · Acme</div>
+                    </div>
+                  </div>
+                  <span class="comment-time">2m ago</span>
+                </div>
+
+                <!-- Technical Metadata Captured Automatically -->
+                <div class="comment-metadata-grid">
+                  <div class="meta-chip">🎯 button#cta-upgrade</div>
+                  <div class="meta-chip">🎨 bg: #2563eb; color: #fff</div>
+                  <div class="meta-chip">📍 /billing</div>
+                  <div class="meta-chip">📱 1440 × 900 (Desktop)</div>
+                </div>
+
+                <div class="comment-body-text" data-i18n="sim.commentBody">
+                  "Make this button an emerald gradient with shimmer effect, add sparkle icon, and update copy to 'Upgrade to Pro ✨'"
+                </div>
+
+                <div class="comment-footer-actions">
+                  <span class="status-tag-open">● Status: Open</span>
+                  <span style="color: var(--text-subtle); font-family: var(--font-mono);">src/components/BillingCard.tsx:48</span>
+                </div>
+              </div>
+
+              <!-- Sleek AI Terminal Window (Stage 3) -->
+              <div class="sim-terminal-window" id="sim-terminal">
+                <div class="term-header">
+                  <div class="window-dots">
+                    <div class="window-dot red"></div>
+                    <div class="window-dot yellow"></div>
+                    <div class="window-dot green"></div>
+                  </div>
+                  <div class="term-title">pointer-cli — bash — 80×24</div>
+                </div>
+                <div class="term-body" id="term-body">
+                  <div class="term-line visible">
+                    <span class="term-prompt">$</span>
+                    <span style="font-weight:700; color:#fff;">npx pointer apply</span>
+                  </div>
+                  <div class="term-line" id="term-l1">
+                    <span class="term-badge-tag tag-info">INFO</span>
+                    <span>Connecting to Pointer API (https://api.pointer.moamen.work)... Connected.</span>
+                  </div>
+                  <div class="term-line" id="term-l2">
+                    <span class="term-badge-tag tag-info">QUEUE</span>
+                    <span>Retrieved 1 pending comment: #142 on <code>button#cta-upgrade</code></span>
+                  </div>
+                  <div class="term-line" id="term-l3">
+                    <span class="term-badge-tag tag-diff">RESOLVE</span>
+                    <span>Target file mapped: <code>src/components/BillingCard.tsx:48</code></span>
+                  </div>
+                  <div class="term-line" id="term-l4">
+                    <div class="term-diff-block" style="width:100%">
+                      <div class="diff-del">- className="bg-blue-600 hover:bg-blue-700 text-white"</div>
+                      <div class="diff-add">+ className="bg-gradient-to-r from-emerald-500 to-teal-500 shadow-emerald-500/30 text-white font-bold animate-shimmer"</div>
+                      <div class="diff-del">- Upgrade to Enterprise</div>
+                      <div class="diff-add">+ Upgrade to Pro ✨</div>
+                    </div>
+                  </div>
+                  <div class="term-line" id="term-l5">
+                    <span class="term-badge-tag tag-test">TESTS</span>
+                    <span>Running vitest: 18 passed in 0.42s (0 failed)</span>
+                  </div>
+                  <div class="term-line" id="term-l6">
+                    <span class="term-badge-tag tag-git">GIT</span>
+                    <span>Created commit: <code>fix(billing): upgrade CTA gradient &amp; sparkle #142</code></span>
+                  </div>
+                  <div class="term-line" id="term-l7">
+                    <span class="term-badge-tag tag-done">RESOLVED</span>
+                    <span style="color:#34d399; font-weight:700;">Comment #142 marked RESOLVED in dashboard ✅</span>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Sandbox Dynamic Popover (Stage 4) -->
+              <div class="sandbox-popover" id="sandbox-popover">
+                <div style="font-size:0.8125rem; font-weight:700; color:var(--text-main);" id="sb-pop-target">Element: button#cta-upgrade</div>
+                <div style="font-size:0.75rem; color:var(--text-muted);" data-i18n="sim.pickPreset">Choose a preset instruction or type feedback:</div>
+                <div class="sandbox-preset-list">
+                  <button class="sandbox-preset-btn" data-action="sunset">🌅 "Change to Sunset Gradient &amp; add fire icon 🔥"</button>
+                  <button class="sandbox-preset-btn" data-action="badge">🏷️ "Add '50% OFF' discount chip &amp; neon border"</button>
+                  <button class="sandbox-preset-btn" data-action="reset">🔄 "Reset element back to default blue"</button>
+                </div>
+                <button class="btn btn-primary btn-sm" id="sb-run-apply" style="margin-top:6px; width:100%;">
+                  <span data-i18n="sim.runApply">Run Apply with AI</span>
+                </button>
+              </div>
+
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ==========================================================================
+         BEFORE VS AFTER CONTRAST SECTION
+         ========================================================================== -->
+    <section class="contrast-section">
+      <div class="container">
+        <div class="contrast-grid">
+          <div class="contrast-card bad">
+            <div class="contrast-tag" data-i18n="contrast.badTag">Without Pointer</div>
+            <h3 class="contrast-title" data-i18n="contrast.badTitle">The Endless Feedback Loop</h3>
+            <p class="contrast-text" data-i18n="contrast.badText">
+              "Go to the signup form, make the title bigger and blue, hook the plan dropdown up to /api/plans, and make the submit button actually POST to /api/leads..."
+              <br /><br />
+              Result: Screenshots get lost in Slack, developers guess CSS selectors, meetings are scheduled, and hundreds of AI context tokens are wasted just finding the right file.
+            </p>
+          </div>
+
+          <div class="contrast-card good">
+            <div class="contrast-tag" data-i18n="contrast.goodTag">With Pointer</div>
+            <h3 class="contrast-title" data-i18n="contrast.goodTitle">Click, Comment, Ship</h3>
+            <p class="contrast-text" data-i18n="contrast.goodText">
+              🐕 Click the element on the live site → 💬 Leave a 1-sentence comment → 🤖 AI terminal reads the exact DOM context and applies the commit directly.
+              <br /><br />
+              Result: Zero back-and-forth. The AI starts directly at the exact JSX/TSX component with all CSS rules and parameters attached.
+            </p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ==========================================================================
+         CORE FEATURES HIGHLIGHTS
+         ========================================================================== -->
+    <section id="features" class="features-section">
+      <div class="container">
+        <div class="section-header">
+          <div class="section-eyebrow">
+            <span>🛡️</span>
+            <span data-i18n="feat.eyebrow">Engineering Excellence</span>
+          </div>
+          <h2 class="section-title" data-i18n="feat.title">Built for Real Engineering Teams</h2>
+          <p class="section-description" data-i18n="feat.sub">
+            Engineered with deep DOM isolation, multi-tenant partitioning, and zero framework lock-in.
+          </p>
+        </div>
+
+        <div class="features-grid">
+          <div class="feature-card">
+            <div class="feature-icon-box">⚡</div>
+            <h3 class="feature-title" data-i18n="feat.f1t">Two-Line Install</h3>
+            <p class="feature-desc" data-i18n="feat.f1">
+              Add a script tag and the custom web component. No heavy SDKs, no bundler plugins, no build-time overhead.
+            </p>
+          </div>
+
+          <div class="feature-card">
+            <div class="feature-icon-box">🛡️</div>
+            <h3 class="feature-title" data-i18n="feat.f2t">Style-Isolated Shadow DOM</h3>
+            <p class="feature-desc" data-i18n="feat.f2">
+              The feedback widget and pins render in a closed Shadow DOM, guaranteeing zero CSS clash with your application styles.
+            </p>
+          </div>
+
+          <div class="feature-card">
+            <div class="feature-icon-box">🤖</div>
+            <h3 class="feature-title" data-i18n="feat.f3t">AI-Agnostic REST API</h3>
+            <p class="feature-desc" data-i18n="feat.f3">
+              Works with Claude Code, Cursor, Antigravity, OpenCode + GLM, Windsurf, or custom scripts over plain HTTP.
+            </p>
+          </div>
+
+          <div class="feature-card">
+            <div class="feature-icon-box">🏢</div>
+            <h3 class="feature-title" data-i18n="feat.f4t">Multi-Tenant &amp; Multi-Project</h3>
+            <p class="feature-desc" data-i18n="feat.f4">
+              One backend serves all apps and workspaces. Strictly partitioned per project and enforced server-side.
+            </p>
+          </div>
+
+          <div class="feature-card">
+            <div class="feature-icon-box">🎯</div>
+            <h3 class="feature-title" data-i18n="feat.f5t">Rich DOM &amp; CSS Context</h3>
+            <p class="feature-desc" data-i18n="feat.f5">
+              Captures CSS computed rules, viewport resolutions, route paths, HTML snapshots, and optional source-code mapping.
+            </p>
+          </div>
+
+          <div class="feature-card">
+            <div class="feature-icon-box">🧩</div>
+            <h3 class="feature-title" data-i18n="feat.f6t">Browser Extension</h3>
+            <p class="feature-desc" data-i18n="feat.f6">
+              Point and comment on staging environments or third-party web apps without modifying the underlying source.
+            </p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ==========================================================================
+         STACKS & INTEGRATIONS SECTION (DYNAMIC FROM API)
+         ========================================================================== -->
+    <section id="stacks" class="stack-section">
+      <div class="container">
+        <div class="section-header">
+          <div class="section-eyebrow">
+            <span>🔗</span>
+            <span data-i18n="stack.eyebrow">Universal Compatibility</span>
+          </div>
+          <h2 class="section-title" data-i18n="stack.title">Works With Your Stack &amp; AI Tools</h2>
+          <p class="section-description" data-i18n="stack.sub">
+            Detected across real production projects using Pointer today.
+          </p>
+        </div>
+
+        <div class="stack-category-wrap">
+          <div>
+            <div class="stack-category-header" data-i18n="stack.frontendHeader">Frontend &amp; Frameworks</div>
+            <div class="stack-badges-flex" id="stack-tags-frontend">
+              <span class="stack-chip">React</span>
+              <span class="stack-chip">Next.js</span>
+              <span class="stack-chip">Vue.js</span>
+              <span class="stack-chip">Angular</span>
+              <span class="stack-chip">Tailwind CSS</span>
+              <span class="stack-chip">Svelte</span>
+              <span class="stack-chip">TypeScript</span>
+            </div>
+          </div>
+
+          <div>
+            <div class="stack-category-header" data-i18n="stack.backendHeader">Backend &amp; Cloud</div>
+            <div class="stack-badges-flex" id="stack-tags-backend">
+              <span class="stack-chip">.NET / C#</span>
+              <span class="stack-chip">Node.js</span>
+              <span class="stack-chip">Go</span>
+              <span class="stack-chip">Python</span>
+              <span class="stack-chip">PostgreSQL</span>
+              <span class="stack-chip">Docker</span>
+            </div>
+          </div>
+
+          <div>
+            <div class="stack-category-header" data-i18n="stack.aiHeader">AI Coding Engines</div>
+            <div class="stack-badges-flex" id="stack-tags-ai">
+              <span class="stack-chip" style="border-color: rgba(16, 185, 129, 0.4); background: rgba(16, 185, 129, 0.08);">Claude Code</span>
+              <span class="stack-chip" style="border-color: rgba(59, 130, 246, 0.4); background: rgba(59, 130, 246, 0.08);">Cursor</span>
+              <span class="stack-chip" style="border-color: rgba(139, 92, 246, 0.4); background: rgba(139, 92, 246, 0.08);">Antigravity</span>
+              <span class="stack-chip" style="border-color: rgba(245, 158, 11, 0.4); background: rgba(245, 158, 11, 0.08);">OpenCode + GLM</span>
+              <span class="stack-chip">Windsurf</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ==========================================================================
+         DYNAMIC PRICING SECTION
+         ========================================================================== -->
+    <section id="pricing" class="pricing-section">
+      <div class="container">
+        <div class="section-header">
+          <div class="section-eyebrow">
+            <span>💎</span>
+            <span data-i18n="pricing.eyebrow">Transparent Pricing</span>
+          </div>
+          <h2 class="section-title" data-i18n="pricing.title">Simple, Predictable Plans</h2>
+          <p class="section-description" data-i18n="pricing.sub">
+            Start free, invite your team, and scale as your shipping velocity increases.
+          </p>
+        </div>
+
+        <div class="pricing-grid" id="pricing-grid">
+          <!-- Dynamic cards fetched from /api/plans or populated by fallback below -->
+          <div class="pricing-card">
+            <h3 class="pricing-plan-name">Free Developer</h3>
+            <div class="pricing-price-wrap">
+              <span class="pricing-amount">$0</span>
+              <span class="pricing-interval">/ forever</span>
+            </div>
+            <ul class="pricing-bullets">
+              <li><span class="pricing-check">✓</span> 1 active project</li>
+              <li><span class="pricing-check">✓</span> 50 pinned comments / month</li>
+              <li><span class="pricing-check">✓</span> Full CLI apply support</li>
+              <li><span class="pricing-check">✓</span> Community Discord support</li>
+            </ul>
+            <a class="btn" href="https://app.pointer.moamen.work/signup?plan=free">Get Started</a>
+          </div>
+
+          <div class="pricing-card featured">
+            <div class="pricing-featured-badge">MOST POPULAR</div>
+            <h3 class="pricing-plan-name">Pro Team</h3>
+            <div class="pricing-price-wrap">
+              <span class="pricing-amount">$29</span>
+              <span class="pricing-interval">/ month</span>
+            </div>
+            <ul class="pricing-bullets">
+              <li><span class="pricing-check">✓</span> Unlimited projects</li>
+              <li><span class="pricing-check">✓</span> Unlimited comments &amp; pins</li>
+              <li><span class="pricing-check">✓</span> Role-based access control</li>
+              <li><span class="pricing-check">✓</span> Chrome extension access</li>
+              <li><span class="pricing-check">✓</span> Priority support</li>
+            </ul>
+            <a class="btn btn-primary" href="https://app.pointer.moamen.work/signup?plan=pro">Start Free Trial</a>
+          </div>
+
+          <div class="pricing-card">
+            <h3 class="pricing-plan-name">Enterprise</h3>
+            <div class="pricing-price-wrap">
+              <span class="pricing-amount">$99</span>
+              <span class="pricing-interval">/ month</span>
+            </div>
+            <ul class="pricing-bullets">
+              <li><span class="pricing-check">✓</span> Custom self-hosted deployment</li>
+              <li><span class="pricing-check">✓</span> SSO &amp; SAML integration</li>
+              <li><span class="pricing-check">✓</span> Dedicated support Slack channel</li>
+              <li><span class="pricing-check">✓</span> Custom SLA &amp; security reviews</li>
+            </ul>
+            <a class="btn" href="https://app.pointer.moamen.work/signup?plan=enterprise">Contact Sales</a>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ==========================================================================
+         EXTENSION MODAL TRIGGER BANNER
+         ========================================================================== -->
+    <section id="extension" class="container" style="padding: 60px 24px; text-align: center;">
+      <div style="background: var(--bg-surface-1); border: 1px solid var(--border-medium); border-radius: var(--radius-xl); padding: 50px 30px; max-width: 900px; margin: 0 auto; box-shadow: var(--shadow-md);">
+        <h2 style="font-size: 2rem; font-weight: 800; margin-bottom: 12px;" data-i18n="ext.title">Point on Any Web Page — Get the Browser Extension</h2>
+        <p style="font-size: 1.0625rem; color: var(--text-muted); max-width: 600px; margin: 0 auto 28px;" data-i18n="ext.sub">
+          Inject Pointer into any web application, staging environment, or client site without altering the code.
+        </p>
+        <div style="display: flex; justify-content: center; gap: 14px; flex-wrap: wrap;">
+          <a class="btn btn-primary" id="ext-store-link" href="#" target="_blank" rel="noopener" style="display:none">
+            <span data-i18n="ext.addToChrome">Add to Chrome</span>
+          </a>
+          <button class="btn btn-primary" id="ext-open-btn">
+            <span data-i18n="ext.cta">Install Extension (Guided Steps)</span>
+          </button>
+        </div>
+      </div>
+    </section>
+
+    <!-- ==========================================================================
+         FINAL CTA BANNER
+         ========================================================================== -->
+    <section class="cta-banner-section">
+      <div class="container">
+        <div class="cta-banner-card">
+          <h2 class="cta-banner-title" data-i18n="final.title">Ready to Turn Clicks into Commits?</h2>
+          <p class="cta-banner-sub" data-i18n="final.sub">
+            Try the live interactive demo in one click without any installation, or create your free account today.
+          </p>
+          <div style="display:flex; justify-content:center; gap:16px; flex-wrap:wrap;">
+            <a class="btn btn-primary btn-lg" href="https://demo.pointer.moamen.work" data-i18n="final.demo">
+              Try the Interactive Demo
+            </a>
+            <a class="btn btn-lg btn-glass" href="https://app.pointer.moamen.work" data-i18n="final.signup">
+              Create an Account
+            </a>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ==========================================================================
+         EXTENSION 6-STEP MODAL
+         ========================================================================== -->
+    <div class="ext-overlay" id="ext-modal" role="dialog" aria-modal="true" aria-labelledby="ext-modal-title">
+      <div class="ext-modal-card">
+        <button class="ext-close-x" id="ext-close-btn" aria-label="Close modal">&#x2715;</button>
+        
+        <div class="ext-modal-header">
+          <h3 class="ext-modal-title" id="ext-modal-title" data-i18n="ext.modalTitle">Install in Chrome</h3>
+          <div class="ext-step-progress">
+            <div class="step-bar-dot active" data-dot="1"></div>
+            <div class="step-bar-dot" data-dot="2"></div>
+            <div class="step-bar-dot" data-dot="3"></div>
+            <div class="step-bar-dot" data-dot="4"></div>
+            <div class="step-bar-dot" data-dot="5"></div>
+            <div class="step-bar-dot" data-dot="6"></div>
+          </div>
+        </div>
+
+        <div class="ext-step-content-area">
+          <div class="ext-step-item active" data-step="1">
+            <div class="ext-step-number-chip">1</div>
+            <h4 style="font-size:1.15rem; font-weight:700;" data-i18n="ext.s1t">Download the Extension</h4>
+            <p style="color:var(--text-muted); font-size:0.9375rem;" data-i18n="ext.s1">Grab the pre-packaged extension zip file directly from Pointer.</p>
+            <a class="btn btn-primary btn-sm" id="ext-download-zip" href="/pointer-extension.zip" download data-i18n="ext.download">Download pointer-extension.zip</a>
+          </div>
+
+          <div class="ext-step-item" data-step="2">
+            <div class="ext-step-number-chip">2</div>
+            <h4 style="font-size:1.15rem; font-weight:700;" data-i18n="ext.s2t">Unpack the ZIP</h4>
+            <p style="color:var(--text-muted); font-size:0.9375rem;" data-i18n="ext.s2">Extract the downloaded .zip file on your computer to an easy-to-find folder.</p>
+          </div>
+
+          <div class="ext-step-item" data-step="3">
+            <div class="ext-step-number-chip">3</div>
+            <h4 style="font-size:1.15rem; font-weight:700;" data-i18n="ext.s3t">Open Chrome Extensions</h4>
+            <p style="color:var(--text-muted); font-size:0.9375rem;">
+              <span data-i18n="ext.s3">In Google Chrome, navigate to</span> <code style="background:var(--bg-surface-2); padding:3px 8px; border-radius:6px;">chrome://extensions</code>
+            </p>
+          </div>
+
+          <div class="ext-step-item" data-step="4">
+            <div class="ext-step-number-chip">4</div>
+            <h4 style="font-size:1.15rem; font-weight:700;" data-i18n="ext.s4t">Enable Developer Mode</h4>
+            <p style="color:var(--text-muted); font-size:0.9375rem;" data-i18n="ext.s4">Toggle the "Developer mode" switch in the top-right corner of the Extensions page.</p>
+          </div>
+
+          <div class="ext-step-item" data-step="5">
+            <div class="ext-step-number-chip">5</div>
+            <h4 style="font-size:1.15rem; font-weight:700;" data-i18n="ext.s5t">Load Unpacked Extension</h4>
+            <p style="color:var(--text-muted); font-size:0.9375rem;" data-i18n="ext.s5">Click the "Load unpacked" button in Chrome and select the extracted folder.</p>
+          </div>
+
+          <div class="ext-step-item" data-step="6">
+            <div class="ext-step-number-chip">6</div>
+            <h4 style="font-size:1.15rem; font-weight:700;" data-i18n="ext.s6t">Sign in &amp; Activate</h4>
+            <p style="color:var(--text-muted); font-size:0.9375rem;" data-i18n="ext.s6">Pin Pointer to your Chrome toolbar, sign in with your account, and click "Activate on this tab"!</p>
+          </div>
+        </div>
+
+        <div class="ext-modal-footer">
+          <button class="btn btn-sm" id="ext-modal-back" disabled>
+            <span data-i18n="ext.back">Back</span>
+          </button>
+          <span style="font-size:0.8125rem; color:var(--text-subtle);"><span id="ext-current-step">1</span> / 6</span>
+          <button class="btn btn-primary btn-sm" id="ext-modal-next">
+            <span data-i18n="ext.next">Next</span>
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ==========================================================================
+         FOOTER
+         ========================================================================== -->
+    <footer class="footer">
+      <div class="container footer-content">
+        <div class="brand-logo-wrap">
+          <img src="/assets/dog-mascot.png" alt="Pointer Mascot" style="width:28px; height:28px;" data-brand-logo />
+          <span data-brand-name>Pointer</span>
+        </div>
+
+        <div class="footer-links">
+          <a href="https://app.pointer.moamen.work" data-i18n="foot.dashboard">Dashboard</a>
+          <a href="https://github.com/moamen-ui/poitner-api#readme" rel="noopener" target="_blank" data-i18n="foot.docs">Documentation</a>
+          <a href="/privacy.html" data-i18n="foot.privacy">Privacy Policy</a>
+          <a href="https://github.com/moamen-ui" rel="noopener" target="_blank">GitHub</a>
+        </div>
+
+        <div class="footer-copy">
+          &copy; <span id="year-copy">2026</span> <span data-brand-name>Pointer</span>. All rights reserved.
+        </div>
+      </div>
+    </footer>
+  </main>
+
+  <!-- ==========================================================================
+       BILINGUAL STRINGS DICTIONARY & CLIENT LOGIC
+       ========================================================================== -->
+  <script>
+    var STRINGS = {
+      en: {
+        "nav.journey": "Interactive Journey",
+        "nav.how": "How it works",
+        "nav.features": "Features",
+        "nav.stacks": "Stacks",
+        "nav.pricing": "Pricing",
+        "nav.ext": "Extension",
+        "nav.signin": "Sign in",
+        "nav.demoCta": "Try Demo",
+        "hero.badge": "Pointer v2 · Click element to production code",
+        "hero.titlePrefix": "Point at the UI.",
+        "hero.titleHighlight": "Ship it with AI.",
+        "hero.sub": "Anyone on your team clicks an element on a running app and leaves a short comment. Developers hand the queue to any AI tool, which applies the change to the real source — no more translating vague feedback into code.",
+        "hero.demo": "Try the demo — no install",
+        "hero.signup": "Create an account",
+        "proof.install": "2-line embed",
+        "proof.ai": "AI-agnostic",
+        "proof.isolation": "Shadow DOM isolated",
+        "proof.tenant": "Multi-tenant",
+        "journey.eyebrow": "The Interactive Experience",
+        "journey.title": "From Point & Pin to AI Applied Code",
+        "journey.desc": "Explore the 4-stage lifecycle of visual feedback: capture DOM context, inspect metadata, execute the CLI apply command, and test it yourself in the live sandbox.",
+        "journey.tab1": "01. Point & Pin",
+        "journey.tab2": "02. Context & Comment",
+        "journey.tab3": "03. AI Terminal Apply",
+        "journey.tab4": "04. Try It Live",
+        "journey.autoPlaying": "Auto-cycling stages (click to pause)",
+        "journey.paused": "Paused (click to resume auto-play)",
+        "journey.s1Title": "Click Any Element to Drop a Pin",
+        "journey.s1Text": "Stakeholders, testers, or designers navigate their live web application. With Pointer activated, clicking any UI element anchors a pin with sub-pixel precision and springs into place.",
+        "journey.s1f1": "Sub-pixel DOM element detection",
+        "journey.s1f2": "Non-destructive overlays in isolated Shadow DOM",
+        "journey.s1f3": "Preserves scroll offsets & viewport responsive state",
+        "journey.s2Title": "Pixel-Perfect DOM & CSS Context",
+        "journey.s2Text": "The pin immediately expands into a rich metadata card capturing winning computed CSS, responsive breakpoints, route URL, component file paths, and author identity.",
+        "journey.s2f1": "Computed CSS styles automatically recorded",
+        "journey.s2f2": "Target element selector mapped to source files",
+        "journey.s2f3": "Tagged by project, environment, and stakeholder",
+        "journey.s3Title": "AI Terminal Applies the Change",
+        "journey.s3Text": "A developer runs '$ npx pointer apply'. The AI agent consumes the exact element context, edits the corresponding source code file, runs tests, and creates a clean git commit.",
+        "journey.s3f1": "Direct code diff applied into repository",
+        "journey.s3f2": "Zero token waste searching for target component",
+        "journey.s3f3": "Automated git commit & comment marked RESOLVED",
+        "journey.s4Title": "Try It Live in the Interactive Sandbox",
+        "journey.s4Text": "Now it's your turn! Click any UI element in the preview below (the CTA button, the banner, or the metric cards), drop a pin, choose an instruction, and watch AI apply it live!",
+        "journey.s4f1": "Clickable live preview sandbox",
+        "journey.s4f2": "Choose presets or custom feedback",
+        "journey.s4f3": "Real-time mock DOM mutation",
+        "journey.prev": "← Previous",
+        "journey.next": "Next Step →",
+        "sim.widgetActive": "Pointer Active",
+        "sim.sandboxPrompt": "👉 Click any element to pin & apply changes!",
+        "sim.commentBody": "\"Make this button an emerald gradient with shimmer effect, add sparkle icon, and update copy to 'Upgrade to Pro ✨'\"",
+        "sim.pickPreset": "Choose a preset instruction or type feedback:",
+        "sim.runApply": "Run Apply with AI",
+        "contrast.badTag": "Without Pointer",
+        "contrast.badTitle": "The Endless Feedback Loop",
+        "contrast.badText": "\"Go to the signup form, make the title bigger and blue, hook the plan dropdown up to /api/plans, and make the submit button actually POST to /api/leads...\"\n\nResult: Screenshots get lost in Slack, developers guess CSS selectors, meetings are scheduled, and hundreds of AI context tokens are wasted just finding the right file.",
+        "contrast.goodTag": "With Pointer",
+        "contrast.goodTitle": "Click, Comment, Ship",
+        "contrast.goodText": "🐕 Click the element on the live site → 💬 Leave a 1-sentence comment → 🤖 AI terminal reads the exact DOM context and applies the commit directly.\n\nResult: Zero back-and-forth. The AI starts directly at the exact JSX/TSX component with all CSS rules and parameters attached.",
+        "feat.eyebrow": "Engineering Excellence",
+        "feat.title": "Built for Real Engineering Teams",
+        "feat.sub": "Engineered with deep DOM isolation, multi-tenant partitioning, and zero framework lock-in.",
+        "feat.f1t": "Two-Line Install",
+        "feat.f1": "Add a script tag and the custom web component. No heavy SDKs, no bundler plugins, no build-time overhead.",
+        "feat.f2t": "Style-Isolated Shadow DOM",
+        "feat.f2": "The feedback widget and pins render in a closed Shadow DOM, guaranteeing zero CSS clash with your application styles.",
+        "feat.f3t": "AI-Agnostic REST API",
+        "feat.f3": "Works with Claude Code, Cursor, Antigravity, OpenCode + GLM, Windsurf, or custom scripts over plain HTTP.",
+        "feat.f4t": "Multi-Tenant & Multi-Project",
+        "feat.f4": "One backend serves all apps and workspaces. Strictly partitioned per project and enforced server-side.",
+        "feat.f5t": "Rich DOM & CSS Context",
+        "feat.f5": "Captures CSS computed rules, viewport resolutions, route paths, HTML snapshots, and optional source-code mapping.",
+        "feat.f6t": "Browser Extension",
+        "feat.f6": "Point and comment on staging environments or third-party web apps without modifying the underlying source.",
+        "stack.eyebrow": "Universal Compatibility",
+        "stack.title": "Works With Your Stack & AI Tools",
+        "stack.sub": "Detected across real production projects using Pointer today.",
+        "stack.frontendHeader": "Frontend & Frameworks",
+        "stack.backendHeader": "Backend & Cloud",
+        "stack.aiHeader": "AI Coding Engines",
+        "pricing.eyebrow": "Transparent Pricing",
+        "pricing.title": "Simple, Predictable Plans",
+        "pricing.sub": "Start free, invite your team, and scale as your shipping velocity increases.",
+        "pricing.free": "Free",
+        "pricing.perMo": "/mo",
+        "pricing.perYr": "/yr",
+        "pricing.cta": "Get Started",
+        "pricing.soon": "Coming Soon",
+        "pricing.loading": "Loading plans...",
+        "ext.title": "Point on Any Web Page — Get the Browser Extension",
+        "ext.sub": "Inject Pointer into any web application, staging environment, or client site without altering the code.",
+        "ext.cta": "Install Extension (Guided Steps)",
+        "ext.addToChrome": "Add to Chrome",
+        "ext.modalTitle": "Install in Chrome",
+        "ext.download": "Download pointer-extension.zip",
+        "ext.back": "Back",
+        "ext.next": "Next",
+        "ext.done": "Done",
+        "ext.s1t": "Download the Extension",
+        "ext.s1": "Grab the pre-packaged extension zip file directly from Pointer.",
+        "ext.s2t": "Unpack the ZIP",
+        "ext.s2": "Extract the downloaded .zip file on your computer to an easy-to-find folder.",
+        "ext.s3t": "Open Chrome Extensions",
+        "ext.s3": "In Google Chrome, navigate to",
+        "ext.s4t": "Enable Developer Mode",
+        "ext.s4": "Toggle the \"Developer mode\" switch in the top-right corner of the Extensions page.",
+        "ext.s5t": "Load Unpacked Extension",
+        "ext.s5": "Click the \"Load unpacked\" button in Chrome and select the extracted folder.",
+        "ext.s6t": "Sign in & Activate",
+        "ext.s6": "Pin Pointer to your Chrome toolbar, sign in with your account, and click \"Activate on this tab\"!",
+        "final.title": "Ready to Turn Clicks into Commits?",
+        "final.sub": "Try the live interactive demo in one click without any installation, or create your free account today.",
+        "final.demo": "Try the Interactive Demo",
+        "final.signup": "Create an Account",
+        "foot.dashboard": "Dashboard",
+        "foot.docs": "Documentation",
+        "foot.privacy": "Privacy Policy"
+      },
+      ar: {
+        "nav.journey": "رحلة الاستكشاف التفاعلية",
+        "nav.how": "كيف يعمل",
+        "nav.features": "المميزات",
+        "nav.stacks": "التقنيات المدعومة",
+        "nav.pricing": "الأسعار",
+        "nav.ext": "إضافة المتصفح",
+        "nav.signin": "تسجيل الدخول",
+        "nav.demoCta": "جرّب العرض",
+        "hero.badge": "Pointer v2 · من النقر على العنصر إلى الكود المصدري",
+        "hero.titlePrefix": "أشِر إلى الواجهة.",
+        "hero.titleHighlight": "ونفّذ بالذكاء الاصطناعي.",
+        "hero.sub": "أي عضو في فريقك ينقر على أي عنصر في التطبيق الفعلي ويترك تعليقًا قصيرًا. ثم يسلّم المطوّر القائمة لأي أداة ذكاء اصطناعي لتطبّق التغيير على الكود المصدري مباشرة — دون عناء ترجمة الملاحظات الغامضة.",
+        "hero.demo": "جرّب العرض — بدون تثبيت",
+        "hero.signup": "أنشئ حسابًا",
+        "proof.install": "تثبيت بسطرين فقط",
+        "proof.ai": "يدعم كل أدوات الذكاء الاصطناعي",
+        "proof.isolation": "عزل تام عبر Shadow DOM",
+        "proof.tenant": "متعدد المستأجرين والمشاريع",
+        "journey.eyebrow": "التجربة التفاعلية الحية",
+        "journey.title": "من النقر والإشارة إلى تطبيق الكود بالذكاء الاصطناعي",
+        "journey.desc": "استكشف المراحل الأربع لدورة حياة الملاحظات المرئية: التقاط سياق DOM، فحص البيانات التقنية، تنفيذ أمر apply في الطرفية، واختبار ذلك بنفسك في بيئة التجربة الحية.",
+        "journey.tab1": "٠١. الإشارة والتثبيت",
+        "journey.tab2": "٠٢. التقاط السياق والتعليق",
+        "journey.tab3": "٠٣. تطبيق الكود عبر الطرفية",
+        "journey.tab4": "٠٤. جرّب بنفسك الآن",
+        "journey.autoPlaying": "تبديل تلقائي للمراحل (انقر للإيقاف)",
+        "journey.paused": "متوقف مؤقتًا (انقر للاستئناف)",
+        "journey.s1Title": "انقر على أي عنصر لتثبيت دبوس الملاحظة",
+        "journey.s1Text": "يتصفح أصحاب المصلحة والمختبرون والمصممون التطبيق الحي. مع تفعيل Pointer، يؤدي النقر على أي عنصر واجهة إلى تثبيت دبوس ملاحظة بدقة بكسل فائقة مع حركة ارتدادية سلسة.",
+        "journey.s1f1": "تحديد فائق الدقة لعناصر الـ DOM",
+        "journey.s1f2": "طبقات غير مدمرة داخل Shadow DOM معزول",
+        "journey.s1f3": "حفظ إحداثيات التمرير وحالة التجاوب لكل الشاشات",
+        "journey.s2Title": "التقاط سياق DOM و CSS بدقة مذهلة",
+        "journey.s2Text": "يتوسع الدبوس فورًا إلى بطاقة بيانات تقنية غنية تسجل أنماط CSS المطبقة، ونقاط التجاوب، ومسار الصفحة، ومسارات ملفات المكونات وهوية الكاتب.",
+        "journey.s2f1": "تسجيل تلقائي لأنماط CSS الفاعلة",
+        "journey.s2f2": "ربط محدد العنصر بملفات الكود المصدري",
+        "journey.s2f3": "تصنيف دقيق حسب المشروع والبيئة والشخص المعني",
+        "journey.s3Title": "الذكاء الاصطناعي يطبّق التغيير في الكود",
+        "journey.s3Text": "يكتب المطور أمر 'npx pointer apply'. يقرأ مساعد الذكاء الاصطناعي سياق العنصر بدقة، ويعدل ملف الكود المصدري المناسب، ويشغل الاختبارات وينشئ commit منظم في Git.",
+        "journey.s3f1": "تطبيق الفروقات (diff) مباشرة في المستودع",
+        "journey.s3f2": "صفر هدر في توكنز الذكاء الاصطناعي للبحث عن الملف",
+        "journey.s3f3": "إنشاء git commit تلقائي ووسم الملاحظة بأنها حُلّت",
+        "journey.s4Title": "جرّب بنفسك الآن في بيئة المحاكاة التفاعلية",
+        "journey.s4Text": "الآن دورك! انقر على أي عنصر في المعاينة بالأسفل (زر الترقية، الشريط الإعلاني، أو بطاقات الإحصائيات)، ثبّت دبوسًا، اختر تعليمات، وشاهد الذكاء الاصطناعي يطبقها فورًا!",
+        "journey.s4f1": "معاينة حية تفاعلية قابلة للنقر بالكامل",
+        "journey.s4f2": "خيارات جاهزة أو كتابة تعليماتك المخصصة",
+        "journey.s4f3": "تعديل فوري ومباشر لعناصر الـ DOM",
+        "journey.prev": "← السابق",
+        "journey.next": "الخطوة التالية ←",
+        "sim.widgetActive": "Pointer نشط",
+        "sim.sandboxPrompt": "👉 انقر على أي عنصر للإشارة وتطبيق التعديل!",
+        "sim.commentBody": "\"اجعل هذا الزر بتدرج زمردي مشع مع تأثير بريق وأيقونة لامعة، وغيّر النص إلى 'الترقية إلى الاحترافي ✨'\"",
+        "sim.pickPreset": "اختر تعديلًا جاهزًا أو اكتب ملاحظتك:",
+        "sim.runApply": "تطبيق التعديل بالذكاء الاصطناعي",
+        "contrast.badTag": "بدون Pointer",
+        "contrast.badTitle": "دوامة الملاحظات المرهقة",
+        "contrast.badText": "«اذهب إلى نموذج التسجيل، اجعل العنوان أكبر ولونه أزرق، واربط قائمة الخطط بـ /api/plans، واجعل زر الإرسال يرسل طلب POST لـ /api/leads...»\n\nالنتيجة: تضيع لقطات الشاشة في سلاك، ويخمّن المطورون محددات CSS، وتُعقد اجتماعات توضيحية، ويُهدر مئات التوكنز في البحث عن الملف الصحيح.",
+        "contrast.goodTag": "مع Pointer",
+        "contrast.goodTitle": "انقر، علّق، واشحن التغيير",
+        "contrast.goodText": "🐕 انقر على العنصر في الموقع الحي ← 💬 اترك تعليقًا في جملة واحدة ← 🤖 تقرأ الطرفية سياق الـ DOM الدقيق وتطبّق التغيير فورًا.\n\nالنتيجة: اختفاء النقاشات العقيمة. يبدأ الذكاء الاصطناعي عمله مباشرة داخل مكون JSX/TSX الصحيح مع كامل قواعد CSS المرفقة.",
+        "feat.eyebrow": "هندسة برمجية متقنة",
+        "feat.title": "مصمم خصيصًا لفرق البرمجة المحترفة",
+        "feat.sub": "مبني مع عزل كامل للـ DOM وتقسيم متعدد المستأجرين وبدون التقيد بأي إطار عمل.",
+        "feat.f1t": "تثبيت بسطرين فقط",
+        "feat.f1": "أضف وسم سكربت والعنصر المخصص. بدون حزم ثقيلة، وبدون إضافات معقدة لـ bundler وبدون استهلاك لموارد البناء.",
+        "feat.f2t": "عزل كامل الأنماط عبر Shadow DOM",
+        "feat.f2": "تُعرض الأداة والدبابيس داخل Shadow DOM مغلق، مما يضمن استحالة تعارض الأنماط مع تصميم تطبيقك الأساسي.",
+        "feat.f3t": "واجهة برمجة تطبيقات REST متوافقة مع كل AI",
+        "feat.f3": "يعمل بتناغم تام مع Claude Code و Cursor و Antigravity و OpenCode + GLM و Windsurf عبر HTTP القياسي.",
+        "feat.f4t": "متعدد المستأجرين والمشاريع",
+        "feat.f4": "خادم مركزي يخدم كل التطبيقات ومساحات العمل مع عزل أمني صارم لكل مشروع مفروض من جهة الخادم.",
+        "feat.f5t": "سياق DOM و CSS كامل ومفصل",
+        "feat.f5": "يلتقط قواعد CSS الفاعلة، ومقاسات الشاشات، ومسار الصفحة، ولقطة HTML، ومسار الكود المصدري اختياريًا.",
+        "feat.f6t": "إضافة المتصفح الذكية",
+        "feat.f6": "أشِر وعلّق على بيئات الاختبار التجريبية أو مواقع العملاء الخارجية دون الحاجة لتعديل شفرة الموقع المصدري.",
+        "stack.eyebrow": "توافقية شاملة",
+        "stack.title": "يعمل بسلاسة مع تقنياتك وأدوات الذكاء الاصطناعي",
+        "stack.sub": "مكتشف من مشاريع الإنتاج الحقيقية التي تستخدم Pointer اليوم.",
+        "stack.frontendHeader": "واجهات المستخدم وأطر العمل",
+        "stack.backendHeader": "الخوادم والبنية التحتية",
+        "stack.aiHeader": "محركات الذكاء الاصطناعي للبرمجة",
+        "pricing.eyebrow": "أسعار واضحة وشفافة",
+        "pricing.title": "خطط بسيطة ومناسبة للجميع",
+        "pricing.sub": "ابدأ مجانًا، وادعُ فريقك، ورقّ خطتك مع تسارع وتيرة إنجازكم.",
+        "pricing.free": "مجاني",
+        "pricing.perMo": "/شهريًا",
+        "pricing.perYr": "/سنويًا",
+        "pricing.cta": "ابدأ الآن",
+        "pricing.soon": "قريبًا",
+        "pricing.loading": "جارٍ تحميل الخطط...",
+        "ext.title": "علّق على أي صفحة ويب — احصل على إضافة المتصفح",
+        "ext.sub": "أضف Pointer إلى أي تطبيق ويب أو موقع عميل دون تعديل الكود المصدري إطلاقًا.",
+        "ext.cta": "تثبيت الإضافة (خطوات إرشادية)",
+        "ext.addToChrome": "أضِف إلى Chrome",
+        "ext.modalTitle": "التثبيت في متصفح Chrome",
+        "ext.download": "تنزيل pointer-extension.zip",
+        "ext.back": "السابق",
+        "ext.next": "التالي",
+        "ext.done": "تم التثبيت",
+        "ext.s1t": "نزّل ملف الإضافة",
+        "ext.s1": "حمّل حزمة الإضافة المضغوطة (.zip) مباشرة من Pointer.",
+        "ext.s2t": "فُكّ ضغط الملف",
+        "ext.s2": "استخرج محتويات الملف المضغوط على جهازك داخل مجلد يسهل الوصول إليه.",
+        "ext.s3t": "افتح صفحة إضافات Chrome",
+        "ext.s3": "في متصفح Chrome، انتقل إلى الرابط التالي:",
+        "ext.s4t": "فعّل وضع المطور",
+        "ext.s4": "قم بتفعيل مفتاح «وضع المطور» (Developer mode) الموجود في الزاوية العلوية.",
+        "ext.s5t": "تحميل إضافة غير مضغوطة",
+        "ext.s5": "اضغط على زر «Load unpacked» واختر المجلد الذي قمت بفك ضغطه.",
+        "ext.s6t": "سجّل الدخول وفعّلها",
+        "ext.s6": "ثبّت أيقونة Pointer في شريط المتصفح، وسجّل دخولك بحسابك، ثم انقر «Activate on this tab»!",
+        "final.title": "هل أنت مستعد لتحويل النقرات إلى تعديلات كود فورية؟",
+        "final.sub": "جرّب العرض التفاعلي الحي بنقرة واحدة بدون أي تثبيت، أو أنشئ حسابك المجاني اليوم.",
+        "final.demo": "جرّب العرض التفاعلي",
+        "final.signup": "أنشئ حسابًا مجانيًا",
+        "foot.dashboard": "لوحة التحكم",
+        "foot.docs": "التوثيق البرمجي",
+        "foot.privacy": "سياسة الخصوصية"
+      }
+    };
+
+    // ==========================================================================
+    // THEME CONTROLLER (DARK / LIGHT)
+    // ==========================================================================
+    var currentTheme = 'dark';
+
+    function initTheme() {
+      var saved = localStorage.getItem('pointer_theme');
+      if (saved === 'light' || saved === 'dark') {
+        currentTheme = saved;
+      } else {
+        currentTheme = 'dark'; // Dark mode default as requested
+      }
+      applyTheme(currentTheme);
+
+      var toggleBtn = document.getElementById('theme-toggle');
+      if (toggleBtn) {
+        toggleBtn.addEventListener('click', function() {
+          currentTheme = currentTheme === 'dark' ? 'light' : 'dark';
+          applyTheme(currentTheme);
+          try { localStorage.setItem('pointer_theme', currentTheme); } catch(e) {}
+        });
+      }
+    }
+
+    function applyTheme(theme) {
+      document.documentElement.setAttribute('data-theme', theme);
+      var moon = document.getElementById('theme-icon-moon');
+      var sun = document.getElementById('theme-icon-sun');
+      if (moon && sun) {
+        if (theme === 'dark') {
+          moon.style.display = 'block';
+          sun.style.display = 'none';
+        } else {
+          moon.style.display = 'none';
+          sun.style.display = 'block';
+        }
+      }
+    }
+
+    // ==========================================================================
+    // LANGUAGE CONTROLLER (EN / AR)
+    // ==========================================================================
+    var currentLang = 'en';
+
+    function initLang() {
+      var saved = null;
+      try { saved = localStorage.getItem('pointer_lang'); } catch (e) {}
+      if (saved === 'ar' || saved === 'en') {
+        currentLang = saved;
+      } else {
+        var browserLang = (navigator.language || '').toLowerCase();
+        currentLang = browserLang.indexOf('ar') === 0 ? 'ar' : 'en';
+      }
+      applyLanguage(currentLang);
+
+      var toggleBtn = document.getElementById('lang-toggle');
+      if (toggleBtn) {
+        toggleBtn.addEventListener('click', function() {
+          currentLang = currentLang === 'en' ? 'ar' : 'en';
+          applyLanguage(currentLang);
+          try { localStorage.setItem('pointer_lang', currentLang); } catch (e) {}
+        });
+      }
+    }
+
+    function applyLanguage(lang) {
+      document.documentElement.lang = lang;
+      document.documentElement.dir = (lang === 'ar') ? 'rtl' : 'ltr';
+
+      var dict = STRINGS[lang] || STRINGS.en;
+      document.querySelectorAll('[data-i18n]').forEach(function(el) {
+        var key = el.getAttribute('data-i18n');
+        if (dict[key] != null) {
+          el.textContent = dict[key];
+        }
+      });
+
+      var langText = document.getElementById('lang-btn-text');
+      if (langText) {
+        langText.textContent = (lang === 'ar') ? 'English' : 'العربية';
+      }
+
+      // Update stage card details in current language
+      updateStageDetails(activeStage);
+
+      // Re-render dynamic pricing if loaded
+      renderPricingCards(lang);
+    }
+
+    // ==========================================================================
+    // INTERACTIVE SCROLL JOURNEY CONTROLLER (4 STAGES)
+    // ==========================================================================
+    var activeStage = 1;
+    var autoPlayTimer = null;
+    var isAutoPlay = true;
+
+    var STAGE_CONFIG = {
+      1: {
+        badge: "Stage 01 / 04",
+        titleKey: "journey.s1Title",
+        textKey: "journey.s1Text",
+        f1Key: "journey.s1f1",
+        f2Key: "journey.s1f2",
+        f3Key: "journey.s1f3"
+      },
+      2: {
+        badge: "Stage 02 / 04",
+        titleKey: "journey.s2Title",
+        textKey: "journey.s2Text",
+        f1Key: "journey.s2f1",
+        f2Key: "journey.s2f2",
+        f3Key: "journey.s2f3"
+      },
+      3: {
+        badge: "Stage 03 / 04",
+        titleKey: "journey.s3Title",
+        textKey: "journey.s3Text",
+        f1Key: "journey.s3f1",
+        f2Key: "journey.s3f2",
+        f3Key: "journey.s3f3"
+      },
+      4: {
+        badge: "Stage 04 / 04",
+        titleKey: "journey.s4Title",
+        textKey: "journey.s4Text",
+        f1Key: "journey.s4f1",
+        f2Key: "journey.s4f2",
+        f3Key: "journey.s4f3"
+      }
+    };
+
+    function updateStageDetails(stage) {
+      var cfg = STAGE_CONFIG[stage];
+      if (!cfg) return;
+      var dict = STRINGS[currentLang] || STRINGS.en;
+
+      var badgeEl = document.getElementById('stage-badge');
+      var titleEl = document.getElementById('stage-title');
+      var textEl = document.getElementById('stage-text');
+      var featsEl = document.getElementById('stage-features');
+
+      if (badgeEl) badgeEl.textContent = cfg.badge;
+      if (titleEl) titleEl.textContent = dict[cfg.titleKey] || '';
+      if (textEl) textEl.textContent = dict[cfg.textKey] || '';
+
+      if (featsEl) {
+        featsEl.innerHTML = [
+          '<li><svg class="stage-check-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"></polyline></svg><span>' + (dict[cfg.f1Key] || '') + '</span></li>',
+          '<li><svg class="stage-check-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"></polyline></svg><span>' + (dict[cfg.f2Key] || '') + '</span></li>',
+          '<li><svg class="stage-check-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"></polyline></svg><span>' + (dict[cfg.f3Key] || '') + '</span></li>'
+        ].join('');
+      }
+
+      // Update Nav Buttons State
+      var prevBtn = document.getElementById('stage-prev-btn');
+      var nextBtn = document.getElementById('stage-next-btn');
+      if (prevBtn) prevBtn.disabled = (stage === 1);
+      if (nextBtn) {
+        var nextLabel = stage === 4 ? ((currentLang === 'ar') ? 'إعادة البداية ↻' : 'Restart ↻') : (dict['journey.next'] || 'Next Step →');
+        nextBtn.innerHTML = '<span>' + nextLabel + '</span>';
+      }
+    }
+
+    function setStage(stage, manualUserAction) {
+      if (stage < 1) stage = 1;
+      if (stage > 4) stage = 1;
+      activeStage = stage;
+
+      if (manualUserAction) {
+        pauseAutoPlay();
+      }
+
+      // Update Tabs UI
+      document.querySelectorAll('.journey-tab-btn').forEach(function(tab) {
+        var s = parseInt(tab.getAttribute('data-stage'), 10);
+        if (s === stage) {
+          tab.classList.add('active');
+          tab.setAttribute('aria-selected', 'true');
+        } else {
+          tab.classList.remove('active');
+          tab.setAttribute('aria-selected', 'false');
+        }
+      });
+
+      updateStageDetails(stage);
+      executeSimulationStage(stage);
+    }
+
+    function executeSimulationStage(stage) {
+      var cursor = document.getElementById('sim-cursor');
+      var pulse = document.getElementById('cursor-pulse');
+      var pin = document.getElementById('sim-pin');
+      var comment = document.getElementById('sim-comment');
+      var term = document.getElementById('sim-terminal');
+      var cta = document.getElementById('mock-cta-btn');
+      var ctaLabel = document.getElementById('mock-cta-label');
+      var viewport = document.getElementById('mock-app-viewport');
+      var sandboxHint = document.getElementById('sandbox-hint');
+      var sandboxPopover = document.getElementById('sandbox-popover');
+
+      if (!cursor || !pin || !comment || !term || !cta) return;
+
+      // Close sandbox popover whenever switching stages
+      if (sandboxPopover) sandboxPopover.classList.remove('visible');
+
+      if (stage === 1) {
+        // STAGE 1: POINT & PIN
+        viewport.classList.remove('sandbox-active');
+        if (sandboxHint) sandboxHint.style.display = 'none';
+
+        // Reset elements to clean baseline
+        cta.className = 'mock-target-cta-btn state-blue interactive-target';
+        if (ctaLabel) ctaLabel.textContent = 'Upgrade to Enterprise';
+        pin.classList.remove('resolved');
+        pin.classList.remove('visible');
+        comment.classList.remove('visible');
+        term.classList.remove('visible');
+
+        // Position target coords
+        var ctaRect = cta.getBoundingClientRect();
+        var vpRect = viewport.getBoundingClientRect();
+        var targetX = (ctaRect.left - vpRect.left) + 40;
+        var targetY = (ctaRect.top - vpRect.top) + 20;
+
+        // Step A: Cursor starts high-left, glides to target
+        cursor.style.opacity = '1';
+        cursor.style.transform = 'translate(40px, 40px)';
+
+        setTimeout(function() {
+          cursor.style.transform = 'translate(' + targetX + 'px, ' + targetY + 'px)';
+        }, 150);
+
+        // Step B: Cursor clicks -> ripple pulse
+        setTimeout(function() {
+          if (pulse) {
+            pulse.classList.remove('animate');
+            void pulse.offsetWidth; // trigger reflow
+            pulse.classList.add('animate');
+          }
+        }, 1000);
+
+        // Step C: Glowing Pin drops into place with spring bounce
+        setTimeout(function() {
+          pin.style.left = (targetX + 60) + 'px';
+          pin.style.top = (targetY - 14) + 'px';
+          pin.classList.add('visible');
+        }, 1150);
+
+      } else if (stage === 2) {
+        // STAGE 2: CONTEXT CAPTURE & COMMENT CARD
+        viewport.classList.remove('sandbox-active');
+        if (sandboxHint) sandboxHint.style.display = 'none';
+        term.classList.remove('visible');
+
+        // Keep pin visible
+        pin.classList.add('visible');
+        pin.classList.remove('resolved');
+
+        // Move comment card beside pin
+        var ctaRect = cta.getBoundingClientRect();
+        var vpRect = viewport.getBoundingClientRect();
+        var pinX = (ctaRect.left - vpRect.left) + 100;
+        var pinY = (ctaRect.top - vpRect.top) - 80;
+
+        comment.style.left = Math.min(pinX, vpRect.width - 400) + 'px';
+        comment.style.top = Math.max(pinY, 30) + 'px';
+
+        setTimeout(function() {
+          comment.classList.add('visible');
+        }, 200);
+
+      } else if (stage === 3) {
+        // STAGE 3: AI TERMINAL APPLY
+        viewport.classList.remove('sandbox-active');
+        if (sandboxHint) sandboxHint.style.display = 'none';
+        comment.classList.remove('visible');
+
+        // Slide in the sleek terminal
+        term.classList.add('visible');
+
+        // Animate terminal output lines progressively
+        var lines = ['term-l1', 'term-l2', 'term-l3', 'term-l4', 'term-l5', 'term-l6', 'term-l7'];
+        lines.forEach(function(lId) {
+          var el = document.getElementById(lId);
+          if (el) el.classList.remove('visible');
+        });
+
+        lines.forEach(function(lId, idx) {
+          setTimeout(function() {
+            var el = document.getElementById(lId);
+            if (el) el.classList.add('visible');
+          }, (idx + 1) * 350);
+        });
+
+        // After commit lines, morph the mock CTA live!
+        setTimeout(function() {
+          cta.className = 'mock-target-cta-btn state-emerald interactive-target';
+          if (ctaLabel) ctaLabel.textContent = 'Upgrade to Pro ✨';
+          pin.classList.add('resolved');
+          pin.innerHTML = '<span class="sim-pin-pulse"></span><span>✅ #142 RESOLVED</span>';
+        }, 2600);
+
+      } else if (stage === 4) {
+        // STAGE 4: INTERACTIVE SANDBOX ("TRY IT LIVE")
+        term.classList.remove('visible');
+        comment.classList.remove('visible');
+        cursor.style.opacity = '0';
+        viewport.classList.add('sandbox-active');
+        if (sandboxHint) sandboxHint.style.display = 'flex';
+      }
+    }
+
+    // Auto-Play Timer (cycles stages if not interacted with)
+    function startAutoPlay() {
+      if (autoPlayTimer) clearInterval(autoPlayTimer);
+      autoPlayTimer = setInterval(function() {
+        if (!isAutoPlay) return;
+        var next = activeStage + 1;
+        if (next > 4) next = 1;
+        setStage(next, false);
+      }, 7000);
+    }
+
+    function pauseAutoPlay() {
+      isAutoPlay = false;
+      var dot = document.getElementById('autoplay-dot');
+      var text = document.getElementById('autoplay-text');
+      var dict = STRINGS[currentLang] || STRINGS.en;
+      if (dot) dot.style.background = '#f59e0b';
+      if (text) text.textContent = dict['journey.paused'] || 'Paused (click to resume)';
+    }
+
+    function resumeAutoPlay() {
+      isAutoPlay = true;
+      var dot = document.getElementById('autoplay-dot');
+      var text = document.getElementById('autoplay-text');
+      var dict = STRINGS[currentLang] || STRINGS.en;
+      if (dot) dot.style.background = '#10b981';
+      if (text) text.textContent = dict['journey.autoPlaying'] || 'Auto-cycling stages (click to pause)';
+      startAutoPlay();
+    }
+
+    function initJourney() {
+      // Stage tabs clicks
+      document.querySelectorAll('.journey-tab-btn').forEach(function(btn) {
+        btn.addEventListener('click', function() {
+          var s = parseInt(this.getAttribute('data-stage'), 10);
+          setStage(s, true);
+        });
+      });
+
+      // Prev / Next button clicks
+      var prevBtn = document.getElementById('stage-prev-btn');
+      var nextBtn = document.getElementById('stage-next-btn');
+      if (prevBtn) {
+        prevBtn.addEventListener('click', function() {
+          setStage(activeStage - 1, true);
+        });
+      }
+      if (nextBtn) {
+        nextBtn.addEventListener('click', function() {
+          setStage(activeStage === 4 ? 1 : activeStage + 1, true);
+        });
+      }
+
+      // Autoplay toggle button
+      var autoBtn = document.getElementById('autoplay-btn');
+      if (autoBtn) {
+        autoBtn.addEventListener('click', function() {
+          if (isAutoPlay) {
+            pauseAutoPlay();
+          } else {
+            resumeAutoPlay();
+          }
+        });
+      }
+
+      // Scroll Observer: sync stage when scrolled into view
+      var journeySection = document.getElementById('journey');
+      if ('IntersectionObserver' in window && journeySection) {
+        var observer = new IntersectionObserver(function(entries) {
+          entries.forEach(function(entry) {
+            if (entry.isIntersecting && isAutoPlay && !autoPlayTimer) {
+              startAutoPlay();
+            }
+          });
+        }, { threshold: 0.25 });
+        observer.observe(journeySection);
+      }
+
+      initSandboxClicks();
+      setStage(1, false);
+      startAutoPlay();
+    }
+
+    // ==========================================================================
+    // STAGE 4: LIVE TRY-IT SANDBOX LOGIC
+    // ==========================================================================
+    var selectedSandboxTarget = null;
+
+    function initSandboxClicks() {
+      var viewport = document.getElementById('mock-app-viewport');
+      var popover = document.getElementById('sandbox-popover');
+      var popTargetLabel = document.getElementById('sb-pop-target');
+      var runApplyBtn = document.getElementById('sb-run-apply');
+      var term = document.getElementById('sim-terminal');
+      var pin = document.getElementById('sim-pin');
+
+      if (!viewport || !popover) return;
+
+      viewport.addEventListener('click', function(e) {
+        if (activeStage !== 4) return;
+
+        // If clicking inside the popover or terminal, ignore
+        if (e.target.closest('#sandbox-popover') || e.target.closest('#sim-terminal')) return;
+
+        var targetEl = e.target.closest('.interactive-target');
+        if (!targetEl) {
+          popover.classList.remove('visible');
+          return;
+        }
+
+        selectedSandboxTarget = targetEl;
+        var selector = targetEl.getAttribute('data-selector') || targetEl.tagName.toLowerCase();
+        if (popTargetLabel) popTargetLabel.textContent = 'Target: ' + selector;
+
+        // Drop pin at click coords
+        var vpRect = viewport.getBoundingClientRect();
+        var clickX = e.clientX - vpRect.left;
+        var clickY = e.clientY - vpRect.top;
+
+        pin.style.left = clickX + 'px';
+        pin.style.top = clickY + 'px';
+        pin.classList.add('visible');
+        pin.classList.remove('resolved');
+        pin.innerHTML = '<span class="sim-pin-pulse"></span><span>🐕 Live Pin</span>';
+
+        // Anchor Popover nearby
+        popover.style.left = Math.min(clickX + 15, vpRect.width - 340) + 'px';
+        popover.style.top = Math.min(clickY + 15, vpRect.height - 240) + 'px';
+        popover.classList.add('visible');
+      });
+
+      // Preset Action Buttons
+      var chosenAction = 'sunset';
+      document.querySelectorAll('.sandbox-preset-btn').forEach(function(btn) {
+        btn.addEventListener('click', function() {
+          chosenAction = this.getAttribute('data-action');
+          document.querySelectorAll('.sandbox-preset-btn').forEach(function(b) {
+            b.style.borderColor = 'var(--border-subtle)';
+          });
+          this.style.borderColor = 'var(--color-emerald)';
+        });
+      });
+
+      // Run Apply button clicked
+      if (runApplyBtn) {
+        runApplyBtn.addEventListener('click', function() {
+          popover.classList.remove('visible');
+          term.classList.add('visible');
+
+          // Trigger fast terminal stream
+          var lines = ['term-l1', 'term-l2', 'term-l3', 'term-l4', 'term-l5', 'term-l6', 'term-l7'];
+          lines.forEach(function(lId, idx) {
+            setTimeout(function() {
+              var el = document.getElementById(lId);
+              if (el) el.classList.add('visible');
+            }, (idx + 1) * 200);
+          });
+
+          // Apply DOM modification to selected element
+          setTimeout(function() {
+            if (selectedSandboxTarget) {
+              if (chosenAction === 'sunset') {
+                selectedSandboxTarget.style.background = 'linear-gradient(135deg, #f97316 0%, #ec4899 100%)';
+                selectedSandboxTarget.style.color = '#fff';
+                selectedSandboxTarget.style.borderColor = '#f97316';
+                selectedSandboxTarget.style.boxShadow = '0 0 25px rgba(249, 115, 22, 0.5)';
+                var label = selectedSandboxTarget.querySelector('#mock-cta-label');
+                if (label) label.textContent = 'Upgrade Plan 🔥';
+              } else if (chosenAction === 'badge') {
+                selectedSandboxTarget.style.outline = '3px solid #10b981';
+                selectedSandboxTarget.style.boxShadow = '0 0 30px rgba(16, 185, 129, 0.6)';
+                var label = selectedSandboxTarget.querySelector('#mock-cta-label');
+                if (label) label.textContent = 'Claim 50% Off 🏷️';
+              } else if (chosenAction === 'reset') {
+                selectedSandboxTarget.removeAttribute('style');
+                selectedSandboxTarget.className = 'mock-target-cta-btn state-blue interactive-target';
+                var label = selectedSandboxTarget.querySelector('#mock-cta-label');
+                if (label) label.textContent = 'Upgrade to Enterprise';
+              }
+            }
+            pin.classList.add('resolved');
+            pin.innerHTML = '<span class="sim-pin-pulse"></span><span>✅ Applied!</span>';
+
+            // Close terminal after 2.5s so user can admire their work
+            setTimeout(function() {
+              term.classList.remove('visible');
+            }, 2500);
+          }, 1600);
+        });
+      }
+    }
+
+    // ==========================================================================
+    // EXTENSION 6-STEP MODAL LOGIC
+    // ==========================================================================
+    var extStepIdx = 1;
+    var EXT_TOTAL = 6;
+
+    function initExtModal() {
+      var modal = document.getElementById('ext-modal');
+      var openBtn = document.getElementById('ext-open-btn');
+      var closeBtn = document.getElementById('ext-close-btn');
+      var backBtn = document.getElementById('ext-modal-back');
+      var nextBtn = document.getElementById('ext-modal-next');
+
+      if (!modal) return;
+
+      function showStep(n) {
+        extStepIdx = Math.max(1, Math.min(n, EXT_TOTAL));
+
+        document.querySelectorAll('.ext-step-item').forEach(function(el) {
+          var s = parseInt(el.getAttribute('data-step'), 10);
+          if (s === extStepIdx) {
+            el.classList.add('active');
+          } else {
+            el.classList.remove('active');
+          }
+        });
+
+        document.querySelectorAll('.step-bar-dot').forEach(function(dot) {
+          var d = parseInt(dot.getAttribute('data-dot'), 10);
+          if (d <= extStepIdx) {
+            dot.classList.add('active');
+          } else {
+            dot.classList.remove('active');
+          }
+        });
+
+        var curText = document.getElementById('ext-current-step');
+        if (curText) curText.textContent = extStepIdx;
+
+        if (backBtn) backBtn.disabled = (extStepIdx === 1);
+        if (nextBtn) {
+          var dict = STRINGS[currentLang] || STRINGS.en;
+          nextBtn.textContent = (extStepIdx === EXT_TOTAL) ? (dict['ext.done'] || 'Done') : (dict['ext.next'] || 'Next');
+        }
+      }
+
+      function openModal() {
+        modal.classList.add('active');
+        showStep(1);
+      }
+
+      function closeModal() {
+        modal.classList.remove('active');
+      }
+
+      if (openBtn) openBtn.addEventListener('click', openModal);
+      if (closeBtn) closeBtn.addEventListener('click', closeModal);
+      if (backBtn) backBtn.addEventListener('click', function() { showStep(extStepIdx - 1); });
+      if (nextBtn) {
+        nextBtn.addEventListener('click', function() {
+          if (extStepIdx === EXT_TOTAL) {
+            closeModal();
+          } else {
+            showStep(extStepIdx + 1);
+          }
+        });
+      }
+
+      modal.addEventListener('click', function(e) {
+        if (e.target === modal) closeModal();
+      });
+
+      document.addEventListener('keydown', function(e) {
+        if (e.key === 'Escape' && modal.classList.contains('active')) {
+          closeModal();
+        }
+      });
+    }
+
+    // ==========================================================================
+    // BACKEND INTEGRATION: PRICING, BRANDING, STACKS
+    // ==========================================================================
+    var API_BASE = "https://api.pointer.moamen.work";
+    var PLANS_DATA = null;
+
+    function fetchPlans() {
+      fetch(API_BASE + '/api/plans', { headers: { 'accept': 'application/json' } })
+        .then(function(r) { return r.ok ? r.json() : null; })
+        .then(function(res) {
+          var list = res && (res.data || res);
+          if (Array.isArray(list) && list.length > 0) {
+            PLANS_DATA = list;
+            renderPricingCards(currentLang);
+          }
+        })
+        .catch(function(e) {
+          // Graceful fallback: pre-rendered fallback cards stay visible
+          console.warn('Pointer: could not load dynamic plans, using fallback catalog.', e);
+        });
+    }
+
+    function renderPricingCards(lang) {
+      if (!PLANS_DATA || !PLANS_DATA.length) return;
+      var grid = document.getElementById('pricing-grid');
+      if (!grid) return;
+
+      var dict = STRINGS[lang] || STRINGS.en;
+
+      var html = PLANS_DATA.slice().sort(function(a, b) {
+        return (a.sortOrder || 0) - (b.sortOrder || 0);
+      }).map(function(p) {
+        var isSoon = (p.displayState === 1);
+        var priceDisplay;
+        if (!p.priceMonthly || p.priceMonthly <= 0) {
+          priceDisplay = '<span class="pricing-amount">' + dict['pricing.free'] + '</span><span class="pricing-interval">/ forever</span>';
+        } else {
+          var per = (p.interval === 1) ? dict['pricing.perYr'] : dict['pricing.perMo'];
+          var formatted;
+          try {
+            formatted = new Intl.NumberFormat(lang === 'ar' ? 'ar' : 'en', {
+              style: 'currency', currency: p.currency || 'USD', maximumFractionDigits: 0
+            }).format(p.priceMonthly);
+          } catch(e) { formatted = (p.currency || '$') + p.priceMonthly; }
+          priceDisplay = '<span class="pricing-amount">' + formatted + '</span><span class="pricing-interval">' + per + '</span>';
+        }
+
+        var bullets = (p.featureBullets || []).map(function(b) {
+          return '<li><span class="pricing-check">✓</span> <span>' + escapeHtml(b) + '</span></li>';
+        }).join('');
+
+        var cta = isSoon ?
+          '<button class="btn" disabled>' + dict['pricing.soon'] + '</button>' :
+          '<a class="btn btn-primary" href="https://app.pointer.moamen.work/signup?plan=' + encodeURIComponent(p.slug || '') + '">' + dict['pricing.cta'] + '</a>';
+
+        return [
+          '<div class="pricing-card ' + (p.sortOrder === 1 ? 'featured' : '') + '">',
+          (p.sortOrder === 1 ? '<div class="pricing-featured-badge">MOST POPULAR</div>' : ''),
+          '<h3 class="pricing-plan-name">' + escapeHtml(p.name || '') + '</h3>',
+          '<div class="pricing-price-wrap">' + priceDisplay + '</div>',
+          '<ul class="pricing-bullets">' + bullets + '</ul>',
+          cta,
+          '</div>'
+        ].join('');
+      }).join('');
+
+      grid.innerHTML = html;
+    }
+
+    function fetchBranding() {
+      fetch(API_BASE + '/api/branding', { headers: { 'accept': 'application/json' } })
+        .then(function(r) { return r.ok ? r.json() : null; })
+        .then(function(res) {
+          var b = res && (res.data || res);
+          if (!b || !b.productName) return;
+
+          // Update Brand Name & Logos
+          document.querySelectorAll('[data-brand-name]').forEach(function(el) {
+            el.textContent = b.productName;
+          });
+
+          if (b.assets && b.assets.logo) {
+            document.querySelectorAll('[data-brand-logo]').forEach(function(img) {
+              img.src = b.assets.logo;
+            });
+          }
+
+          if (b.assets && b.assets.favicon) {
+            var fav = document.querySelector('link[rel="icon"]');
+            if (fav) fav.href = b.assets.favicon;
+          }
+
+          if (b.tagline) {
+            document.title = b.productName + ' — ' + b.tagline;
+          }
+
+          // Extension CTA URL if available
+          if (b.extension && b.extension.storeUrl) {
+            var storeLink = document.getElementById('ext-store-link');
+            if (storeLink) {
+              storeLink.href = b.extension.storeUrl;
+              storeLink.style.display = 'inline-flex';
+            }
+          }
+          if (b.extension && b.extension.zipUrl) {
+            var zipLink = document.getElementById('ext-download-zip');
+            if (zipLink) zipLink.href = b.extension.zipUrl;
+          }
+        })
+        .catch(function(e) {
+          console.warn('Pointer: could not load dynamic branding, keeping default bundled brand.', e);
+        });
+    }
+
+    function fetchStacks() {
+      fetch(API_BASE + '/api/public/stacks-summary', { headers: { 'accept': 'application/json' } })
+        .then(function(r) { return r.ok ? r.json() : null; })
+        .then(function(res) {
+          var d = res && (res.data || res);
+          if (!d || !d.totalProjects) return;
+
+          function renderTokens(elId, tokenMap) {
+            var el = document.getElementById(elId);
+            if (!el || !tokenMap) return;
+            var keys = Object.keys(tokenMap);
+            if (!keys.length) return;
+            el.innerHTML = keys.map(function(k) {
+              return '<span class="stack-chip">' + escapeHtml(formatTokenName(k)) + '</span>';
+            }).join('');
+          }
+
+          renderTokens('stack-tags-frontend', d.frontend);
+          renderTokens('stack-tags-backend', d.backend);
+          renderTokens('stack-tags-ai', d.aiTools);
+        })
+        .catch(function() {});
+    }
+
+    function formatTokenName(token) {
+      var map = {
+        'react': 'React', 'tailwind': 'Tailwind CSS', 'next': 'Next.js', 'dotnet': '.NET / C#',
+        'postgres': 'PostgreSQL', 'claude-code': 'Claude Code', 'cursor': 'Cursor',
+        'antigravity': 'Antigravity', 'opencode-glm': 'OpenCode + GLM', 'windsurf': 'Windsurf'
+      };
+      if (map[token]) return map[token];
+      return token.split('-').map(function(w) { return w.charAt(0).toUpperCase() + w.slice(1); }).join(' ');
+    }
+
+    function escapeHtml(s) {
+      return String(s).replace(/[&<>"']/g, function(c) {
+        return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+      });
+    }
+
+    // Command copy to clipboard
+    function initCliCopy() {
+      var box = document.getElementById('hero-cli-copy');
+      if (box) {
+        box.addEventListener('click', function() {
+          if (navigator.clipboard) {
+            navigator.clipboard.writeText('npx pointer apply').then(function() {
+              var orig = box.innerHTML;
+              box.innerHTML = '<span style="color:#10b981; font-weight:700;">✓ Copied to clipboard!</span>';
+              setTimeout(function() { box.innerHTML = orig; }, 2000);
+            });
+          }
+        });
+      }
+    }
+
+    // ==========================================================================
+    // DOM READY BOOTSTRAP
+    // ==========================================================================
+    document.addEventListener('DOMContentLoaded', function() {
+      initTheme();
+      initLang();
+      initJourney();
+      initExtModal();
+      initCliCopy();
+
+      // Fetch dynamic backend APIs
+      fetchPlans();
+      fetchBranding();
+      fetchStacks();
+
+      // Update copyright year
+      var y = document.getElementById('year-copy');
+      if (y) y.textContent = new Date().getFullYear();
+    });
+  </script>
+
+  <!-- ==========================================================================
+       POINTER LIVE FEEDBACK WIDGET (DOGFOODING EMBED)
+       ========================================================================== -->
+  <script src="https://api.pointer.moamen.work/pointer.js" defer></script>
+  <pointer-feedback
+    project="pointer-landing"
+    server="https://api.pointer.moamen.work"
+    environment="production"
+    source-attr="data-component-source">
+  </pointer-feedback>
+</body>
+</html>

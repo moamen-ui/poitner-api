@@ -9,7 +9,7 @@
 # browser default and stay cached.
 (dashboard) {
     encode gzip
-    try_files {path} /index.html
+    try_files {path} {path}/index.html /index.html
     # Revalidate everything EXCEPT fingerprinted static assets — i.e. index.html (every SPA
     # route) and the runtime-fetched i18n JSON, which have fixed names. Matched on the original
     # request path (header runs before try_files), so this covers all SPA navigations. Hashed
