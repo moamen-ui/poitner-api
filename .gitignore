@@ -9,6 +9,7 @@ dashboard/
 .superpowers/
 API/wwwroot/uploads/
 .playwright-cli/
+.playwright-mcp/
 node_modules/
 clients/
 openapi.json
