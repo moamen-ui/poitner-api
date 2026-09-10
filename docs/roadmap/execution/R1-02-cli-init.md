@@ -36,7 +36,7 @@ cli/
   src/cli.ts            arg parsing (hand-rolled: `pointer <cmd> [--flag value] [--bool]`), dispatch, exit codes
   src/config.ts         DEFAULT_SERVER, read/write .pointer/config.json + credentials.env, gitignore helper
   src/api.ts            api<T>(server, path, {method, body, token}) → unwraps Result<T>, throws ApiError
-  src/branding.ts       getBranding(server) → {productName, urls.app} with fallback {productName:"Pointer"}
+  src/branding.ts       getBranding(server) → {productName, urls.app}; NO literal fallback name — an unreachable /api/branding is a hard exit 1 (white-label rule, 01-OVERVIEW)
   src/prompt.ts         ask(question, {default, validate, secret}) and select(question, items) via node:readline/promises
   src/detect.ts         detectStack(cwd) → {kind: 'vite'|'static'|'next'|'angular'|'cra'|'monorepo'|'unknown', evidence: string[], htmlPath?: string}
   src/inject/vite.ts    injectVite(cwd, cfg) ; src/inject/static.ts injectStatic(cwd, htmlPath, cfg)
@@ -56,8 +56,20 @@ pointer init [--server <url>] [--key <ptr_…>] [--project <key>] [--create <nam
              [--html <path>] [--no-inject] [--no-skills] [--yes] [--json]
 ```
 - `--yes`: non-interactive; requires `--key` and (`--project` or `--create`); missing → exit 2 with the
-  exact missing flag names. Defaults: `--environment local`, `--tool` from env detection (same table as
-  `pointer.sh:72-84`), `--server` from `.pointer/config.json` → `POINTER_SERVER` env → `DEFAULT_SERVER`.
+  exact missing flag names. Defaults: `--environment local`, `--tool` from env detection (table below),
+  `--server` from `.pointer/config.json` → `POINTER_SERVER` env → `DEFAULT_SERVER`.
+- **AI-tool vocabulary** (CLI `--tool` value = the `aiTool` id registered via `POST /stack` = the
+  `config.json.aiTool` value): `claude-code | cursor | windsurf | opencode | antigravity | other`.
+  Env detection (port of `pointer.sh:72-84`, which has no opencode rule): `CLAUDECODE`/`CLAUDE_CODE_ENTRYPOINT`
+  → `claude-code`; `ANTIGRAVITY_AGENT`/`GEMINI_CLI` → `antigravity`; `TERM_PROGRAM` contains `Cursor` →
+  `cursor`; `WINDSURF` → `windsurf`; `OPENCODE` (if such a variable is set by the tool; otherwise no rule) →
+  `opencode`; nothing matched → prompt (interactive) or `other` (`--yes`). Today's documented vocabulary is
+  `opencode-glm` (`pointer-init.md:311`, `skill.md:216`, `SetProjectStackRequest.cs:13-15` — free text, no
+  validator): **Decision:** the CLI registers `opencode`; `skill.md`/`pointer-init.md` vocabulary lists gain
+  `opencode`, keep `opencode-glm` as an accepted legacy value, and the dashboard's display-name map shows
+  both as "opencode". No server validation is added (field stays honor-system).
+- **All printed/documented commands use `npx -y pointer-feedback …`** (the `-y` skips npx's first-run
+  "Ok to proceed?" prompt, which would otherwise break copy-paste and CI). Applies to R1-03/R1-04 too.
 - Idempotent: re-running updates `config.json`, replaces the injected block, never duplicates.
 
 ### C. Interactive flow (exact texts; `{product}` = `branding.productName`)
@@ -74,7 +86,10 @@ pointer init [--server <url>] [--key <ptr_…>] [--project <key>] [--create <nam
      + last entry "＋ Create a new project…". Empty list → go straight to create.
    Create: "Project name:" → key auto-derived: lowercase, spaces/underscores → '-', strip [^a-z0-9-],
      collapse dashes, trim; shown as "Project key [my-app]:" (editable, validated ^[a-z0-9-]+$).
-     → POST /api/admin/projects {key, name}. 409/conflict → "Key already exists, choose another."
+     → POST /api/admin/projects {key, name}. Error handling (`ProjectService.CreateAsync`, `ProjectService.cs:45-71`):
+       409/`isConflict` → "Key already exists, choose another." (re-prompt); 403/`isForbidden` (super-admin
+       `:45-46`, quick-access `:51-52`) → "This account cannot create projects." exit 3; 400 with
+       `isLimitReached` (`:62-71`, plan cap) → print the server `message` + limit, exit 1.
 4  Environment [local]:   select local | staging | production
 5  AI tool [detected: claude-code]:  select claude-code | cursor | windsurf | opencode | antigravity | other
 6  Detecting your stack… → prints kind + evidence (e.g. "Vite (vite.config.ts, index.html)")
@@ -82,6 +97,9 @@ pointer init [--server <url>] [--key <ptr_…>] [--project <key>] [--create <nam
    next | angular | cra | monorepo | unknown → hand-off (F); no file changes.
 7  Installing AI skills → files written (G).
 8  Registering stack → POST /api/projects/{key}/stack {frontend, backend, aiTool} (from detection; see H).
+   Non-2xx → print "⚠ Stack not registered ({status})" and continue (never fatal). On 2xx write the response
+   `data` object verbatim to `.pointer/stack.json` (committable; same file `pointer.sh:99` writes) — R1-04's
+   `stack` check reads it.
 9  Verifying… (checks from cli/src/checks.ts, see R1-04 list) → each "✔"/"✘" line.
 10 POST /api/events {type:"installed", projectKey, meta:{stack, aiTool, injected:boolean, cliVersion}}.
 11 Summary:
@@ -92,15 +110,25 @@ pointer init [--server <url>] [--key <ptr_…>] [--project <key>] [--create <nam
    Next: start your dev server, open the app, click the {product} button and sign in.
          Dashboard: {branding.urls.app}
 ```
-`--json` prints one JSON object with the same facts instead.
+`--json` prints exactly one JSON object and nothing else on stdout (prompts are disabled — implies `--yes`):
+```json
+{ "ok": true, "product": "<productName>", "server": "...", "project": { "key": "...", "name": "...", "created": false },
+  "environment": "local", "aiTool": "claude-code", "stack": { "kind": "vite", "evidence": ["vite.config.ts"] },
+  "injected": true, "routedToSkill": false, "files": [".env", "index.html", ".pointer/config.json", "..."],
+  "checks": [ { "id": "server", "status": "ok", "message": "..." } ], "cliVersion": "0.1.0" }
+```
+On failure: `{ "ok": false, "error": { "code": <exit code>, "message": "..." } }` and the matching exit code.
 
 ### D. Vite injection (`src/inject/vite.ts`)
 1. Find `index.html` at `cwd` (or `--html`). Abort with hint if absent.
 2. Upsert env lines in `.env` at `cwd` (create if missing; replace existing `VITE_POINTER_*` lines):
    `VITE_POINTER_ENABLED=true`, `VITE_POINTER_SERVER={server}`, `VITE_POINTER_PROJECT={key}`,
    `VITE_POINTER_ENV={environment}`. **Decision:** `.env`, not `.env.local` — values are not secrets and
-   teammates need them.
-3. Insert before `</body>` (case-insensitive; if missing, append) the block from `pointer-init.md:71-91`
+   teammates need them (Vite loads both; `.env` is the shared layer, `.env.local` the per-developer,
+   conventionally gitignored override). If the host repo gitignores `.env`, values must be copied per
+   developer — the `.env.example` upsert (step 4) documents the keys either way; print a one-line ⚠ when
+   `.env` is gitignored.
+3. Insert before `</body>` (case-insensitive; if missing, append) the block from `pointer-init.md:73-91` (line 71-72 is prose)
    verbatim, wrapped in `<!-- pointer-feedback:start -->` … `<!-- pointer-feedback:end -->`. If the
    markers already exist, replace the block.
 4. If `.env.example`/`.env.sample` exists, upsert the same keys there with `VITE_POINTER_ENABLED=false`
@@ -135,7 +163,7 @@ asking for `--html`). Insert before `</body>`, marker-wrapped:
 | opencode / antigravity / other | `.agents/pointer-init/SKILL.md`, `.agents/pointer-feedback/SKILL.md` (real files, no symlink) |
 Sources: `GET {server}/pointer-init.md`, `GET {server}/skill.md` (already server-filled). Also download
 `GET {server}/pointer.sh` → `.pointer/pointer.sh` (chmod 755) — `skill.md` still depends on it until R2.
-`--skills-dir` overrides the primary directory.
+`--skills-dir` overrides the primary directory and is recorded as `config.json.skillsDir` so `doctor`/`update` (R2-03) find the files.
 
 ### H. Stack detection (`src/detect.ts`) — port of `pointer-init.md:32-41`
 | kind | evidence (any) |
@@ -156,11 +184,31 @@ Frontend tokens for `/stack`: from `package.json` deps: `react`, `vue`, `svelte`
   `UserId` (Guid?), `Type` (string, max 40), `Source` (string: `cli`|`widget`|`api`), `Meta` (jsonb string,
   max 2000), `CreatedAt`. Index `(OwnerId, ProjectId, Type, CreatedAt)`.
 - `POST /api/events` `[Authorize]` — `RecordEventRequest { Type: string, ProjectKey?: string, Meta?: object }`
-  → 204. Validator: `Type` ∈ {`installed`, `doctor_run`, `first_apply`, `apply_failed`} for client-sent
-  events (others rejected 400; `first_comment` is server-emitted only). Rate-limit policy `events`
-  60/min per user (see R1-05 for the per-user partition helper).
-- Server emission: in `CommentService.CreateAsync` after save, if the project's non-deleted comment count
-  == 1 → `UsageEvent{Type:"first_comment", Source:"api"}`.
+  → 204. The controller resolves `ProjectKey` → `ProjectId` through `IProjectService.EnsureAsync(key)`
+  (tenant-scoped; unknown key → 404 `Result.NotFound`). Validator: `Type` ∈ {`installed`, `doctor_run`,
+  `apply_started`, `apply_failed`} for client-sent events (others rejected 400; `first_comment` and
+  `first_apply` are server-emitted only). `Meta` serialised with `System.Text.Json.JsonSerializer.Serialize`
+  (default options) and rejected with 400 when the serialised length > 2000 chars. Rate-limit policy
+  `events` 60/min per user — **owned and added by this doc** in `RateLimitingExtensions.cs` (R1-05 owns
+  `comments`/`login`, R1-04 owns `meta`; partition helper `UserOrIp` — whichever doc lands first adds it,
+  the other reuses it; expect a trivial merge conflict in that file).
+- Server emission — **race-safe by constraint, not by count**: partial unique index
+  `UX_usage_events_first_per_project ON usage_events (ProjectId, Type) WHERE Type IN ('first_comment','first_apply')`.
+  In `CommentService.CreateAsync`, **after the comment's own `SaveChangesAsync`** (`CommentService.cs:177`)
+  has completed, attempt to insert `UsageEvent{Type:"first_comment", Source:"api", ProjectId,
+  OwnerId = project.OwnerId}` with **its own separate `SaveChangesAsync`**, so a swallowed failure can never
+  take the comment down with it. Swallow rule (mandatory, exact): catch `DbUpdateException` **only when**
+  `ex.InnerException is PostgresException { SqlState: "23505" }` (unique violation on that index → someone
+  else was first) → then `context.Entry(ev).State = EntityState.Detached` (the UnitOfWork shares one
+  DbContext; a failed `Added` entry would replay on the next `SaveChangesAsync`, e.g. `CommentService.cs:522`);
+  **rethrow everything else** — a genuine DB failure must not be eaten. Same pattern for `first_apply`
+  when a comment transitions to `Applied` (`CommentService.UpdateStatusAsync`). No `COUNT(*)` anywhere.
+  Null-owner projects (`ProjectService.cs:605-613`) legitimately yield null-owner events, invisible to a
+  tenant admin's summary under the strict-own filter — same as their comments today; **do not** "fix" this
+  with `IgnoreQueryFilters`.
+- `OwnerId` on a `UsageEvent` is stamped from the **project's** `OwnerId` (as `CommentService.CreateAsync`
+  does for comments, `CommentService.cs:54-61`), not from the caller — super-admins acting cross-tenant
+  must not produce null-owner rows.
 - `GET /api/admin/events/summary?projectId=` `[Authorize(Policy="Admin")]` →
   `EventsSummaryResponse { Counts: Dictionary<string,int>, FirstAt: Dictionary<string,DateTime> }`.
 - Controller `API/Controllers/EventsController.cs`, service `IUsageEventService` / `UsageEventService`,
@@ -175,11 +223,11 @@ itself is API-level (checks module).
 
 ### K. Doc fixes (§6)
 - `pointer-init.md:11-12`: replace "Projects **self-register**…" with "Projects are created in the
-  dashboard or by `npx pointer-feedback init`; the widget does not create them."
-- `pointer-init.md` top: add "**Prefer `npx pointer-feedback init`** — this skill is the fallback for
+  dashboard or by `npx -y pointer-feedback init`; the widget does not create them."
+- `pointer-init.md` top: add "**Prefer `npx -y pointer-feedback init`** — this skill is the fallback for
   stacks the CLI can't inject into (Next.js, Angular, CRA, monorepos)." and a "Step 0 — if
   `.pointer/config.json` exists, read server/project/environment from it and don't ask."
-- `install.sh:16`: first echo line "Tip: `npx pointer-feedback init` does all of this interactively."
+- `install.sh:16`: first echo line "Tip: `npx -y pointer-feedback init` does all of this interactively."
 - `AGENTS.md` / `CLAUDE.md`: add `cli/` to the directory structure and the build commands.
 
 ## Tasks
@@ -203,11 +251,11 @@ itself is API-level (checks module).
 
 ## Tests
 - CLI unit (`cli/test/`): `api.test.ts`, `config.test.ts`, `detect.test.ts`, `inject-vite.test.ts`, `inject-static.test.ts`, `skills.test.ts`, `checks.test.ts`, `init-yes.test.ts` (end-to-end against a stub HTTP server implementing branding/login-with-key/me/projects/stack/events).
-- API unit: `Tests/UsageEventServiceTests.cs` (record, tenant isolation, type whitelist, first_comment emitted once), `Tests/CheckPageTests.cs` (sanitising, 200, contains embed.js URL).
+- API unit: `Tests/UsageEventServiceTests.cs` (record, tenant isolation, type whitelist, `ProjectKey` → `ProjectId` resolution, unknown key → 404) and `Tests/UsageEventFirstCommentTests.cs` — **must use the SQLite provider** (`Microsoft.EntityFrameworkCore.Sqlite`, `Pointer.Tests.csproj:15`), not InMemory: InMemory enforces neither unique nor partial indexes and never throws `DbUpdateException`, so "first_comment emitted exactly once under two concurrent creates" is only provable on SQLite (create the partial index in the test schema). `Tests/CheckPageTests.cs` (sanitising, 200, contains embed.js URL).
 - E2E scenario names (implemented in R2-00): `init-vite-no-ai`, `init-static-no-ai`, `init-next-handoff`, `init-yes-ci`.
 
 ## Acceptance criteria
-- [ ] On a fresh `npm create vite@latest` app, `npx pointer-feedback init` (interactive) completes with no AI tool, the widget renders in the dev server, and a comment can be posted — under 5 minutes wall clock.
+- [ ] On a fresh `npm create vite@latest` app, `npx -y pointer-feedback init` (interactive) completes with no AI tool, the widget renders in the dev server, and a comment can be posted — under 5 minutes wall clock.
 - [ ] Same on a folder with a single `index.html`.
 - [ ] On a Next.js app: no files changed except `.pointer/`, skills, `.gitignore`; hand-off message printed.
 - [ ] `init --yes --key … --create "My App"` in CI creates the project and exits 0; missing `--key` exits 2 naming the flag.

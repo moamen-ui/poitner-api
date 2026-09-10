@@ -1,0 +1,67 @@
+## 1. FACTUAL ERRORS
+
+1. **R1-06:46 — `Jwt:Key` does not exist.** Config is section `JWT` → `JwtOptions.SigningKey` (`Infrastructure/DependencyInjection.cs:33` `Configure<JwtOptions>(c.GetSection("JWT"))`; env `JWT__SigningKey`, `.env.example:2`, `docker-compose.prod.yml:32`). An implementer searching for `Jwt:Key` finds nothing and guesses. Fix: "derive with HKDF-SHA256 from `JWT:SigningKey`".
+2. **R1-06:75 + Task 4 — "`Tests/ApiKeyAuthTests.cs` … must pass unchanged" is false.** The tests construct services directly: `new AuthService(new UnitOfWork(db), … 7 args)` (`Tests/ApiKeyAuthTests.cs:84`) and `new ProfileService(new UnitOfWork(db))` (`:86`), plus `FakeToken : ITokenService { string Issue(User u) }` (`:37`). Rewiring adds ctor deps and (per Design C) a scopes claim → the file must be edited. The *assertions* can survive; "unchanged" cannot.
+3. **R1-05:63-65 — `web-component/src/templates.ts` has no "strings"**; it is the `TPL` markup object (`templates.ts:9`). All toast text is inline in `element.ts` (generic `'Failed to save comment'` at `element.ts:~1183`); there is no i18n catalog to add to.
+4. **R1-05:29/63 — the API returns no "message key".** `Result` carries only flags + human `message` (`Application/Response/Result.cs:10-32`); `MessageKeys.Project.*` values are English literals (`MessageKeys.cs:39-50`), and nothing in the repo localises them — the "+ en/ar resources" clause in Task 4 has no referent. The widget cannot detect `OriginNotAllowed` as a key; only HTTP 403 is machine-readable.
+5. **R1-07:19 — `e2e/state/report.md` will not exist in CI.** Only `e2e/scripts/audit.mjs:13` writes it, and audit runs only with `--with-ai` (`run-e2e.sh:31-35`); `e2e/state/*` is gitignored (`e2e/.gitignore`). `actions/upload-artifact` fails on a missing path by default, so green runs fail at the "always upload" step.
+6. **R1-07:14 — `scripts/reset.sh` is actually `e2e/scripts/reset.sh`** (there is no repo-root `scripts/reset.sh`; `run-e2e.sh` cds into `e2e/` first). Verified: `docker compose down -v`, waits on `/swagger/v1/swagger.json` (`e2e/scripts/reset.sh:9,34`).
+7. **R1-06:5 — cite drift:** "always re-viewable" is at `pointer-init.md:257`, not `:252-255`. Substance correct.
+
+Verified-correct (no error): `CommentsController.cs:13-21` JWT-gated; `CommentService.cs:89-102` plan cap; `CommentService.cs:589` `AddReplyAsync` loads parent; `AddReplyRequest` = `{Body}` only; `ProjectService.cs:793-835` gate semantics as stated; `ProfileService.cs:37-64/69-80`; `AuthService.cs:201-240` (`u.ApiKey == key` :213); `AppDbContext.cs:58-125` filter buckets; `RateLimitingExtensions.cs:16-23` 429+Retry-After; `BridgingService` default `https://app.pointer.moamen.work` (`BrandingService.cs:13`); seed users/roles/projects (`e2e/scripts/lib/constants.mjs:18,29-36`); only `publish-clients.yml` exists; `ExportImport` bypasses `CommentService.CreateAsync` (`ExportImportService.cs:367,412`).
+
+## 2. AMBIGUITIES (proposed text)
+
+1. **403 plumbing (R1-05):** `CommentsController.Create` has no `IsForbidden` branch (`CommentsController.cs:17-20`); `RepliesController.Add` likewise — a service `Forbidden` surfaces as 400, failing the doc's own AC. Add: *"Use `Result<T>.Forbidden(...)` in the service; add `if (result.IsForbidden) return StatusCode(403, result);` to `CommentsController.Create` and `RepliesController.Add`."*
+2. **Widget detection (R1-05):** *"The widget keys off HTTP status 403 (never message text): in `saveComment`, a 403 shows toast 'Comments are not allowed from this address'; other non-401 errors keep the existing generic toast."*
+3. **Dashboard origin source (R1-05):** `IBrandingService` exposes only `GetAsync/BuildResponseAsync(publicBase, existingKinds)` — no direct `Urls.App`. Add: *"Read `ISettingsService.GetStringAsync(ISettingsService.BrandUrlApp)`, fallback `https://app.pointer.moamen.work`."*
+4. **Suffix-list semantics (R1-05:50-55):** exact vs suffix match of the remaining host. Add: *"Reject if the remaining host equals or ends with `.` + a list entry (so `*.foo.github.io` is also caught)."*
+5. **Host extraction/IPv6 (R1-05:33-35):** normalized origins are strings; `Uri.Host` yields `[::1]` bracketed. Add: *"Extract the host via `Uri` before normalising; accept both `[::1]` and `::1`."*
+6. **New validator (R1-05 Task 5):** no `SetProjectAppUrlRequest` validator exists today (`Application/Validators/` has only Create/UpdateProjectValidator). Add: *"Create `SetProjectAppUrlValidator` calling `OriginNormalizer.ValidatePattern`; 400 on invalid pattern in `SetAppUrlAsync`."*
+7. **`key_scopes` mechanism (R1-06:54):** `ITokenService.Issue(User)` has no scopes channel. Add: *"Add `Issue(User u, int? keyScopes = null)` overload; emit the claim only when non-null; password login passes null."*
+8. **Decrypt-failure hazard (R1-06):** `GET /api/me/api-key` is get-**or-create**; a naive "reveal failed → treat as missing → mint" silently rotates every viewed key. Add: *"Decrypt failure returns `Result.Failure` ("key display unavailable") and MUST NOT create, revoke, or rotate anything."*
+9. **Backfill scope (R1-06:60-63):** a hosted service has no `ICurrentUser`; strict filters return zero rows. Add: *"Backfill and `TouchLastUsedAsync` use `IgnoreQueryFilters()`."*
+10. **Id types (R1-06:52):** `userId` is the Guid `PublicId` (callers pass `currentUser.Id`, `MeController.cs:47`); entity `UserId` is int. Say so.
+11. **R1-07:21-22:** `PLAYWRIGHT_HTML_REPORT=off` contradicts the explicitly configured `['html', {open:'never'}]` reporter. Pick one: *"Configure reporter `[['github'],['html',{open:'never'}]]` in CI; no env var."*
+12. **Overview DoD vs R1-05 widget task:** `npm test` does not exist in `web-component/` until R3-03. Add to R1-05: *"Widget DoD for this doc = `npm run typecheck && npm run build` only."*
+
+## 3. CONTRADICTIONS
+
+1. **R1-05:71-72 `login` policy vs a binding test.** `Tests/AuthRateLimitingTests.cs:21-27` (`Login_IsNotRateLimited`) asserts `AuthController.Login` carries **no** `EnableRateLimiting`, with a header comment (lines 13-19) explicitly forbidding login throttling (widget logins from arbitrary origins; NAT budget sharing). R1-05:88 even names this file as the pattern to mirror. As written, `just test` goes red with a test whose comment says the doc is wrong. Either drop the `login` policy for `/api/auth/login` (NAT argument is strongest there; `login-with-key` is CLI-only and could keep it) or explicitly supersede: delete `Login_IsNotRateLimited` with a dated rationale in both files.
+2. **R1-07:39 AC "both jobs green on `main`"** vs triggers `pull_request`/`schedule`/`workflow_dispatch` only — PR runs never execute on `main`; only the nightly does. Reword: "the PR check run is green; after merge the nightly run on the default branch is green."
+3. **R1-05:14 "Prerequisites: None (independent)"** vs its self-declared ownership of the `events` (R1-02) and `meta` (R1-04) policies — "single owner of all policies" implies R1-05 lands first or those docs add their own. One sentence of ordering needed.
+
+## 4. SECURITY / DATA
+
+1. **Dashboard exemption is one origin short in production.** DEPLOY.md serves the dashboard from **both** `app.pointer.moamen.work` (default/`Urls.App`) **and** `app-angular.pointer.moamen.work` (per-framework hosts; more planned). Exempting only `Urls.App` 403s every dashboard reply posted from the angular host once enforcement is on. Fix: exempt the branding `Urls.App` **plus** the deployed dashboard host list (or a configurable `Security:TrustedDashboardOrigins`).
+2. **Origin check is advisory, not a control.** Any non-quick-access JWT can omit `Origin`/`Referer` and bypass (R1-05:39-41, by design). The Goal (R1-05:5-7) overclaims "a leaked key" is mitigated — only the rate limit is. Reword the goal to "wrong-site/accidental-posting prevention; flooding is handled by the limiter".
+3. **HKDF fallback couples secrets (R1-06:45-48):** one env leak yields JWT signing (impersonate anyone, worse than key disclosure) *and* all API keys. Acceptable — env-only or DB-only compromise reveals nothing — but state it: "the derived path is for zero-config boots; production must set `Auth:ApiKeyEncryptionKey`".
+4. **Rollback hazard (R1-06:60-63):** backfill nulls `User.ApiKey` in the release that keeps the column; a self-hoster who boots once then rolls back the binary loses every key (users must regenerate). Add a rollback note to Rollout.
+5. **UsageEvent `Meta.origin` (R1-05:80):** `Origin` is attacker-controlled free text persisted to events — cap length (e.g. 200 chars) and treat as untrusted data, consistent with the skill.md security rule.
+
+## 5. TESTABILITY
+
+1. **R1-05:109 "Widget shows the not-allowed toast on 403"** is uncheckable until the detection mechanism is fixed (Ambiguity 2). With status-based detection it becomes an R2-00 spec scenario (mock 403).
+2. **R1-05:88 `CommentRateLimitingTests` "31st request → 429"** cannot exist in the mirroring pattern: `AuthRateLimitingTests` asserts *attributes and options* via reflection (`AuthRateLimitingTests.cs:21-40`), not live 429s — no `WebApplicationFactory` exists in `Tests/`. Either specify a WebApplicationFactory integration test or reword: "assert `comments` policy options (30/60s, partition by `sub`) + attribute presence on `Create`/`Add`".
+3. **R1-06:72 unique indexes vs EF InMemory:** tests use `UseInMemoryDatabase` (`ApiKeyAuthTests.cs:80`), which enforces neither the unique `Hash` index nor the partial active-per-user index. State: "uniqueness is DB-level (Postgres); service tests assert the one-active-row invariant only" — else an implementer writes vacuously-green tests.
+4. **R1-06:89 AC-1** (`SELECT` evidence, no plaintext) — objectively checkable, good. AC on decrypt failure (:93) becomes checkable only after Ambiguity 8 pins the behaviour.
+
+## 6. OPEN QUESTIONS
+
+**(a) Verdict: keep R1-06's hash-for-lookup + AES-GCM-for-display; reject one-time-reveal.**
+- The promise is load-bearing and published: `pointer-init.md:254-258` ("always re-viewable there afterward, not a one-time reveal") is a *served* doc, and R1-03's quick-start pre-fills the key by re-fetching it.
+- Marginal risk of the reversible copy is small: exploitation requires **both** DB and env; env-only already contains `JWT__SigningKey`, with which the attacker mints valid 12-h tokens for *any* user (`JwtTokenService.cs:11-39`) — strictly worse than reading comment/apply keys. DB-only reveals hash + AES-GCM blob.
+- Conditions: dedicated `Auth:ApiKeyEncryptionKey` with the loud fallback warning (as drafted), decrypt failure never rotates (Ambiguity 8), and the R2 `DropUserApiKeyColumn` must not ship before §25 needs the legacy column gone.
+- **If forced to one-time-reveal:** R1-03's quick-start loses `GET /api/me/api-key` re-fetch — it becomes a one-time copy block at generate/regenerate time (or an inline "generate now" action that injects the key into the shown `npx pointer-feedback init --key …` command exactly once, never persisting it server-side post-display); the profile page shows `Prefix` + `LastUsedAt` only; `pointer-init.md:254-258` must be rewritten ("shown once at generation — regenerate to get a new one"); R1-06 Design E (reveal endpoint) and `Encrypted` column are dropped entirely.
+
+**(b) R1-05 policy: sound, with edits.**
+- *Staff JWT without Origin allowed*: correct as an automation carve-out (CLI/`pointer.sh`/agents send no Origin), but it makes enforcement an anti-footgun, not a security control — the Goal must say so (Security 2).
+- *Quick-access without Origin rejected*: sound — clients only ever use the widget, and browsers always send `Origin` on cross-origin POSTs, so legitimate client traffic is never hit.
+- *Dashboard origin always exempt*: right idea, wrong list — must cover all deployed dashboard hosts, not just `Urls.App` (Security 1).
+- *Leftmost-label wildcard + ≥3-label rule + shared-hosting suffix denylist*: sound and matches standard preview-domain practice; needs the exact-vs-suffix fix (Ambiguity 4) and IPv6 host handling (Ambiguity 5).
+
+## 7. VERDICTS
+
+- **R1-05 — READY-WITH-EDITS.** (1) Resolve the `login`-policy vs `AuthRateLimitingTests` contradiction (drop for `/api/auth/login` or supersede the test explicitly); (2) add the 403 controller branches; (3) widget detection by status, not "message key"; drop the false `templates.ts` i18n claim and the en/ar clause; (4) enumerate all dashboard origins; (5) create (not "call") `SetProjectAppUrlValidator`; (6) suffix-match + IPv6 semantics; (7) reword the rate-limit test to the attribute/options pattern or spec a WebApplicationFactory; (8) reword the Goal; (9) cap `Meta.origin` length; (10) widget DoD = typecheck+build.
+- **R1-06 — READY-WITH-EDITS.** (1) `Jwt:Key` → `JWT:SigningKey`; (2) "tests pass unchanged" → "fixtures updated, assertions preserved"; (3) `key_scopes` via `Issue` overload; (4) decrypt-failure-never-rotates; (5) backfill/`TouchLastUsed` `IgnoreQueryFilters`; (6) rollback note (`User.ApiKey` nulled); (7) Guid-vs-int id note; (8) note InMemory won't exercise the unique indexes.
+- **R1-07 — READY-WITH-EDITS.** (1) Fix the `report.md` upload (write it in zero-AI phases or `if-no-files-found: ignore`); (2) `e2e/scripts/reset.sh` path; (3) reword the "green on main" AC (PR run vs nightly); (4) drop `PLAYWRIGHT_HTML_REPORT=off` in favour of the explicit reporter array. Everything else (facts, phase list, seed contents, `set -euo pipefail`, artifact paths, `docker compose logs api`) verified correct.

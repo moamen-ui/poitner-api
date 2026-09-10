@@ -14,7 +14,12 @@ parse. Built on the apply core from R2-01.
   are honoured if present, but no UI ships here.
 
 ## Prerequisites
-- R2-01 merged (`cli/src/apply/*`), R1-06 preferred (key hashing) but not blocking.
+- R2-01 merged (`cli/src/apply/*`, incl. `projection.ts` `AiCommentView`).
+- **R1-06 (API-key hardening) is a hard prerequisite** — `meetings/11-final-decisions.md` §"Adopted from
+  the last call": key hardening "lands no later than R2 week 1, **before MCP**". Do not start this doc
+  until R1-06 is merged.
+- **Shared file: `API/wwwroot/skill.md`** — also edited by R2-01 (rewrite) and R2-03 (stamp). Land in
+  order R2-01 → **R2-02** → R2-03, or rebase onto R2-01's branch before touching it.
 - Facts: the only prompt-emitting endpoint is admin-only (`Admin/ProjectsController.cs:99-108`);
   `PATCH /api/comments/{id}` body (`UpdateCommentStatusRequest.cs`); replies
   `POST /api/comments/{id}/replies { body }` (`RepliesController.cs:13-20`); summary view fields
@@ -34,12 +39,12 @@ parse. Built on the apply core from R2-01.
 |---|---|---|
 | `pointer_list_comments` | `{ status?: "open"\|"ready"\|"applied"\|"archived", environment?: "local"\|"staging"\|"production", page?: integer≥1, pageSize?: integer 1–100 }` | `{ items: [{ id, status, environment, body, route, sourcePath, authorName, createdAt }], page, totalPages }` (summary view) |
 | `pointer_get_queue` | `{ environment? }` | `{ commitStyle: "single"\|"separate", aiRules: [{ scope, priority, title, prompt }], items: QueueItem[] }` — QueueItem = apply-queue item with `untrusted: { body, replies[], snapshot }` grouped under one key and `trusted: { pickedActions[] }`; admin-only fallback identical to R2-01 (adds `note`) |
-| `pointer_get_comment` | `{ id: integer }` **required** | full `CommentResponse` camel-cased; stakeholder text again under `untrusted` |
+| `pointer_get_comment` | `{ id: integer }` **required** | **`AiCommentView`** — the whitelisted projection from R2-01 `projection.ts` (never raw `CommentResponse`; R2-06's `hasPayloadFlag`/`payloadFlags`, `authorId`, `ownerId` etc. are absent by construction), re-shaped so `body` and `replies[]` sit under `untrusted` and `pickedActions[]` under `trusted` |
 | `pointer_mark_applied` | `{ id: integer, reply: string, commitUrl?: string }` **required id, reply** | `{ id, status: "applied", commitUrl }` — **does not run git**; the AI (or the human) must have committed; if `commitUrl` omitted the server stores null |
-| `pointer_commit_and_mark` | `{ ids: integer[], reply: string, files?: string[] }` **required ids, reply** | runs R2-01 `--mark` semantics: Separate → one commit per id (requires `files` when >1 id), Single → one commit; returns `[{ id, commitUrl }]`. **Never pushes.** |
-| `pointer_reply` | `{ id: integer, body: string }` | `{ replyId }` |
-| `pointer_set_status` | `{ id: integer, status: "open"\|"ready"\|"archived" }` | `{ id, status }` (applied is only via mark tools) |
-| `pointer_resolve_source` | `{ hash: string }` | `{ path, componentName } \| { path: null, reason: "no-manifest"\|"unknown-hash" }` (reads `.pointer/manifest.json`; R3-01 fills it) |
+| `pointer_commit_and_mark` | `{ ids: integer[], reply: string, files?: string[] }` **required ids, reply** | **Staging semantics:** if `files` is present the tool itself runs `git add -- <files>` (paths relative to the repo root; a path outside the repo or non-existent → `isError` code `git`) and then applies R2-01 `--mark` semantics; if `files` is absent it commits the **already-staged index** and returns `isError` code `git` with message `Nothing staged` when the index is empty. `files` is **required** when `commitStyle` is Separate and `ids.length > 1` (each id needs its own commit — the tool commits `ids` in order, staging the files whose entry in `files` is prefixed `<id>:` e.g. `["12:src/a.tsx","12:src/a.css","13:src/b.tsx"]`; unprefixed entries are staged for the first id). Single → one commit for all ids. Returns `[{ id, commitUrl }]`. **Never pushes.** |
+| `pointer_reply` | `{ id: integer, body: string }` **required id, body** | `{ replyId }` |
+| `pointer_set_status` | `{ id: integer, status: "open"\|"ready"\|"archived" }` **required id, status** | `{ id, status }` (applied is only via mark tools) |
+| `pointer_resolve_source` | `{ hash: string }` **required hash** | `{ path, componentName } \| { path: null, reason: "no-manifest"\|"unknown-hash" }` (reads `.pointer/manifest.json`; R3-01 fills it) |
 | `pointer_doctor` | `{}` | R1-04 doctor result object |
 
 Decision: **no tool returns predefined-action prompts or AI rules as plain "instructions" fields** —
@@ -82,13 +87,14 @@ none
 ## Tests
 - Unit (`cli/test/mcp/`): `schemas.test.ts` (every schema validates its sample), `tools.test.ts` (each handler against a mocked `api()`; `untrusted`/`trusted` partition; `pointer_mark_applied` never spawns git — spy on `child_process`), `no-push.test.ts` extended to the MCP bundle.
 - Integration: `cli/test/mcp/stdio.test.ts` — spawn `node dist/cli.js mcp`, perform `initialize`, `tools/list` (assert the 9 names), one `tools/call` against a local stub HTTP server.
-- E2E (`e2e/mcp/`): with the seeded API, use the MCP SDK client to `pointer_get_queue` → items; `pointer_commit_and_mark` on one id in a temp git repo with a bare remote → commit exists, remote unchanged, comment `status=3`. Scenario names: `mcp: tools/list matches catalogue`, `mcp: get_queue partitions untrusted`, `mcp: commit_and_mark never pushes`.
+- Unit addition: `tools.test.ts` — `pointer_get_comment` result has exactly the `AiCommentView` keys (re-shaped) and no `hasPayloadFlag`/`payloadFlags` even when the mocked `api()` returns them; `pointer_commit_and_mark` with `files` runs `git add -- <files>` (spy) before committing; without `files` and empty index → `isError` code `git`.
+- E2E (`e2e/mcp/`): with the seeded API (log in with `TENANT_OWNER` — the apply-queue is admin-only), use the MCP SDK client to `pointer_get_queue` → items; in a temp git repo with a **bare** remote, write an edit to `src/a.txt` and call `pointer_commit_and_mark { ids:[id], reply:"ok", files:["src/a.txt"] }` → the tool stages the file itself, one commit exists, comment `status=3`; a second call with no `files` and nothing staged → `isError` `git`. Never-pushes assertion: `git --git-dir=<bare> for-each-ref` byte-identical before and after. Scenario names: `mcp: tools/list matches catalogue`, `mcp: get_queue partitions untrusted`, `mcp: get_comment is the whitelisted view`, `mcp: commit_and_mark stages files and never pushes`.
 - Manual (documented in report): Claude Code and one non-Anthropic tool (opencode) list the tools and complete one apply.
 
 ## Acceptance criteria
 - [ ] `tools/list` returns exactly the 9 tool names above with the documented schemas.
-- [ ] Every stakeholder-authored string in any tool result sits under an `untrusted` key; no result contains `prompt` outside `trusted`.
-- [ ] `pointer_commit_and_mark` produces commits and `commitUrl`s identical to `pointer apply --mark` for the same inputs (shared code path — assert by test).
+- [ ] Every stakeholder-authored string in any tool result sits under an `untrusted` key; no result contains `prompt` outside `trusted`; no tool result ever contains `hasPayloadFlag`/`payloadFlags` (R2-06).
+- [ ] `pointer_commit_and_mark` stages `files` itself when given, errors `git` on an empty index otherwise, and produces commits and `commitUrl`s identical to `pointer apply --mark` for the same inputs (shared code path — assert by test).
 - [ ] The bundle contains no `git push` invocation (no-push test).
 - [ ] `init` output shows the MCP snippet labelled "user-level config (do not commit)".
 - [ ] Claude Code + opencode both complete a one-comment apply via MCP in a manual run (transcript excerpt in the report).

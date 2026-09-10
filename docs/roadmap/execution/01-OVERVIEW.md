@@ -37,15 +37,15 @@ implemented in parallel unless a prerequisite says otherwise.
 ### The CLI package
 - Lives in this repo at **`cli/`** (sibling of `web-component/` and `extension/`). TypeScript, **Node ≥ 18**, built with esbuild to a single `dist/cli.js`.
 - **npm package name: `pointer-feedback`** (checked 2026-09-11: `pointer` 1.0.2 and `pointer-cli` 0.4.5 are taken; `pointer-feedback` is free and matches the `<pointer-feedback>` element). `"bin": { "pointer": "dist/cli.js" }` — so the documented one-shot command is **`npx pointer-feedback init`** and a local install gives the `pointer` command. Docs and the dashboard quick-start always print the `npx pointer-feedback …` form.
-- **Zero runtime dependencies** for everything except `mcp` (may use `@modelcontextprotocol/sdk`). Use `node:readline/promises` for prompts, built-in `fetch`.
+- **Zero runtime dependencies** for everything except `mcp` (may use `@modelcontextprotocol/sdk`) and the optional **build-time** peers of the `pointer-feedback/vite` subpath (`@babel/parser|traverse|generator`, `@vue/compiler-sfc` — R3-01; `dist/cli.js` itself stays dependency-free). Use `node:readline/promises` for prompts, built-in `fetch`.
 - Build-time constant `DEFAULT_SERVER` (esbuild `define`), default `https://api.pointer.moamen.work`; **never** referenced anywhere but `src/config.ts`.
 - Every network call goes through one `api()` helper that unwraps the `Result<T>` envelope and throws a typed `ApiError { status, message }`.
 - Output rules: `--json` flag on every read command prints raw JSON and nothing else; human output uses `productName` from `/api/branding` for the product's name and never a literal "Pointer".
 - Exit codes: 0 ok · 1 generic failure · 2 invalid usage · 3 auth failure · 4 not found · 5 server too old (`minCliVersion`).
-- Commands by release: R1 `init`, `doctor`; R2 `list`, `get`, `status`, `reply`, `apply`, `mcp`, `update`; R3 `map` (held), plugin subpath export `pointer-feedback/vite`.
+- Commands by release: R1 `init`, `doctor`; R2 `list`, `get`, `status`, `reply`, `apply`, `mcp`, `update`; R3 `map --from-source` (offline manifest regeneration only — the selector/text-index variant of `map` for non-Vite stacks is held), plugin subpath export `pointer-feedback/vite`.
 
 ### On-disk contract (frozen — see R1-01)
-- `.pointer/config.json` (**committable**): `{ "server": string, "project": string, "environment": "local"|"staging"|"production", "aiTool": string, "cliVersion": string }`.
+- `.pointer/config.json` (**committable**): `{ "server": string, "project": string, "environment": "local"|"staging"|"production", "aiTool": string, "skillsDir"?: string, "cliVersion": string }` (`skillsDir` only when `--skills-dir` overrode the default).
 - `.pointer/credentials.env` (**gitignored**): `POINTER_API_KEY=ptr_…`.
 - `.pointer/credentials.env.example`, `.pointer/stack.json`, `.pointer/pointer.sh` committable (existing).
 - `.pointer/manifest.json`, `.pointer/.token_cache` gitignored.
@@ -73,7 +73,7 @@ Source in `web-component/src/`; build with `npm run build`; commit the regenerat
 - Do not touch files outside the doc's **Files** list without saying so in the report.
 
 ### Definition of done (every doc)
-1. All tasks checked; `just fmt`, `dotnet build`, `just test` green; for CLI `npm run typecheck && npm test && npm run build` green in `cli/`.
+1. All tasks checked; `just fmt`, `dotnet build`, `just test` green; for CLI `npm run typecheck && npm test && npm run build` green in `cli/`; for widget changes `npm run typecheck && npm test && npm run build` green in `web-component/` (`npm test` exists once R3-03 adds the vitest + jsdom harness).
 2. Acceptance criteria in the doc verified and the evidence (command + output) pasted in the report.
 3. Dashboard tasks either done in the dashboard repo or listed as a follow-up with the exact DTO names.
 4. Docs updated where the doc says so (`AGENTS.md`, `pointer-init.md`, `skill.md`, `install.sh`).

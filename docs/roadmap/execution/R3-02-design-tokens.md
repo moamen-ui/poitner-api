@@ -30,7 +30,7 @@ prompt tell the AI to prefer those tokens. Nothing is uploaded to the server.
 | Source | Detect | Extract |
 |---|---|---|
 | Tailwind | `tailwind.config.{js,ts,cjs,mjs}` or `@import "tailwindcss"` / `@theme` in any `*.css` under `src/` | `theme.extend.colors` keys (flatten one level: `primary`, `primary.500`), `fontFamily` keys, `borderRadius` keys, `spacing` keys count; for v4 `@theme { --color-primary: … }` → var names |
-| CSS custom properties | `:root {` or `html {` blocks in `src/**/*.{css,scss}` (first 20 files by size, ≤ 200 KB each) | property names `--*` (max 60), grouped by prefix (`--color-*`, `--pf-*`, `--radius-*`) |
+| CSS custom properties | `:root {` or `html {` blocks in `src/**/*.{css,scss}` (the **20 smallest** files, ≤ 200 KB each; sorted by size ascending, then path) | property names `--*` (max 60), grouped by prefix (`--color-*`, `--pf-*`, `--radius-*`) |
 | SCSS variables | `src/**/_variables.scss`, `src/**/variables.scss`, `src/styles/**/*.scss` | `$name:` declarations (max 60) |
 | CSS-in-JS theme | `theme.{ts,js}` exporting an object with `colors`/`palette` (MUI/Chakra/styled-components) | top-level keys of `colors`/`palette` |
 | Angular Material | `@use '@angular/material' as mat;` + `mat.define-theme`/`define-palette` | palette names passed |
@@ -47,7 +47,6 @@ Limits: total scan ≤ 2 s / ≤ 500 files; never read `node_modules`, `dist`, `
   "aiTools": ["claude-code"],
   "design": {
     "version": 1,
-    "detectedAt": "2026-09-11T10:30:00Z",
     "libraries": [{ "name": "shadcn", "version": null }, { "name": "@radix-ui/react-dialog", "version": "1.1.2" }],
     "tokens": {
       "tailwind": { "config": "tailwind.config.ts", "colors": ["primary", "secondary", "muted"], "radius": ["sm", "md", "lg"], "fontFamily": ["sans", "mono"] },
@@ -59,7 +58,9 @@ Limits: total scan ≤ 2 s / ≤ 500 files; never read `node_modules`, `dist`, `
 }
 ```
 
-`guidance` is generated from what was found (one sentence per source present). When nothing is detected: `"design": { "version": 1, "detectedAt": …, "libraries": [], "tokens": {}, "guidance": "No design tokens detected; match the nearest sibling element's existing classes/styles." }`.
+`guidance` is generated from what was found (one sentence per source present). When nothing is detected: `"design": { "version": 1, "libraries": [], "tokens": {}, "guidance": "No design tokens detected; match the nearest sibling element's existing classes/styles." }`.
+
+**No timestamps anywhere in `design`** (a `detectedAt` field would make the byte-identical guarantee below impossible). **Canonical form:** the whole `stack.json` is written with fixed key order — top level `frontend, backend, aiTools, design`; inside `design`: `version, libraries, tokens, guidance`; inside `tokens`: `tailwind, cssVars, scss, theme, angularMaterial` (present keys only, in that order); arrays sorted alphabetically unless order is semantic (`libraries` sorted by `name`) — 2-space indent, `\n` line endings, single trailing newline.
 
 The server response from `POST /stack` is merged with the local `design` block on write (`design` is never sent: strip it from the request body). `stack.json` remains committable; `design` is deterministic for a given tree, so teammates see the same content after `init`/`doctor --refresh-stack`.
 
@@ -91,15 +92,15 @@ none.
 
 ## Tests
 
-- **Unit (cli):** `design.test.ts` — one test per fixture (expected `tokens`/`libraries`/`guidance`), size/time limits respected (fixture with 600 files → only 500 scanned), `node_modules` ignored; `stackfile.test.ts` — merge keeps `frontend/backend/aiTools`, strips `design` from the POST body, deterministic output (two runs → identical bytes).
-- **E2E scenario:** `init-writes-design-tokens` (fixture Vite+Tailwind app → `stack.json.design.tokens.tailwind.colors` contains `primary`; `git status` shows `stack.json` tracked, `design` present).
+- **Unit (cli):** `design.test.ts` — one test per fixture (expected `tokens`/`libraries`/`guidance`), size/time limits respected (fixture with 600 files → only 500 scanned), `node_modules` ignored; `stackfile.test.ts` — merge keeps `frontend/backend/aiTools`, strips `design` from the POST body (`buildRequestBody`), canonical key order, deterministic output (two runs → identical bytes).
+- **E2E scenario:** `init-writes-design-tokens` (`e2e/fixture-app/vite-react`, R3-01 task 13b → `stack.json.design.tokens.tailwind.colors` contains `primary`; `git status` shows `stack.json` tracked, `design` present).
 
 ## Acceptance criteria
 
-- [ ] `pointer init` on the Tailwind fixture writes the `design` block with `colors` from `theme.extend.colors` and the generated `guidance`.
-- [ ] `POST /api/projects/{key}/stack` request body never contains `design` (assert in a network-recorded test).
+- [ ] `pointer init` on `e2e/fixture-app/vite-react` writes the `design` block with `colors` from `theme.extend.colors`, `cssVars.names` containing `--brand`, and the generated `guidance`.
+- [ ] Unit test: `stackfile.buildRequestBody(stack)` output has no `design` key for every fixture (no network recording exists in the CLI test setup; this is the enforceable boundary).
 - [ ] Running `init` twice (or `doctor --refresh-stack`) produces byte-identical `stack.json`.
-- [ ] Detection completes in < 2 s on the fixtures and on `e2e/fixture-app`.
+- [ ] Detection completes in < 2 s on the unit fixtures and on `e2e/fixture-app/vite-react` (the Tailwind + CSS-vars fixture created by R3-01 task 13b; the older `smoke|alpha|beta` fixtures are plain HTML with no tokens and are **not** a valid check).
 - [ ] `apply` prompt (R2-01 `--plan` output) contains the "Design system" section when `design.tokens` is non-empty and the fallback sentence when empty.
 
 ## Rollout / compatibility

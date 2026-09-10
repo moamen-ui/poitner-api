@@ -31,9 +31,9 @@ keys/tokens, and the self-hosting boundary. Then refresh `privacy.html` so the t
 3. **What is never captured** — form values (`input/textarea/select`), cookies, localStorage, request/response bodies or headers, keystrokes, other pages, anything before the click.
 4. **Opt-in extras** — screenshot (checkbox per comment; the image shows exactly what the stakeholder sees), bug-report context (console errors/warnings + failed/slow request method/URL/status/duration; project-enabled + per-comment checkbox).
 5. **Masking & controls** — `data-snapshot-mask` (one attribute on any subtree), project setting "Capture element text" off, `screenshot="false"` on the element, `enabled` env guard for production builds.
-6. **Where it lives** — hosted: our API + Postgres in <region/provider — founder fills in>; self-hosted: **your** API + Postgres; the widget, CLI and extension are thin clients that only talk to the server URL you configure. Diagram (inline SVG or a simple table) of the boundary.
-7. **Retention & deletion** — comments kept until deleted; deleting a project deletes its comments and screenshots; deleting a screenshot removes the file; `RetentionDays` plan entitlement noted as "available on request" until the retention job ships (§33 full).
-8. **Security** — passwords hashed; **API keys stored hashed (SHA-256, prefix-indexed)**; JWT 12 h; per-workspace data isolation enforced in the database layer; widget assets pinnable with SRI (R3-03); `git push` never performed by AI tooling.
+6. **Where it lives** — hosted: our API + Postgres in `<!-- TODO(founder): region/provider -->` (the literal HTML comment marker stays in the page source until the founder replaces it, so the honesty review in the acceptance criteria flags it); self-hosted: **your** API + Postgres; the widget, CLI and extension are thin clients that only talk to the server URL you configure. Diagram (inline SVG or a simple table) of the boundary.
+7. **Retention & deletion** — state exactly what the code does today (verified 2026-09-11): comments are kept until deleted; **deleting a comment or a project is a soft delete** — the rows are stamped `DeletedAt` and disappear from every view, API and export (`ProjectService.DeleteAsync` `ProjectService.cs:365-443` stamps project, comments, replies, actions; `CommentService.DeleteAsync` `CommentService.cs:629-647`), but the rows and any **screenshot files remain in storage**; a **screenshot file is physically deleted only when its author removes the image** via edit (`CommentService.EditAsync`, `RemoveScreenshot`, `CommentService.cs:549-552`). Wording for the page: *"Deleting a comment or project hides it everywhere immediately. Physical purge of deleted records and their screenshot files (and automatic expiry after your plan's retention period) is on our roadmap; until then, contact us for a manual purge."* Never write "deletes everything". `RetentionDays` plan entitlement noted as "available on request" until the retention/purge job ships (§33 full — add **"project purge job (RetentionDays-driven): physically delete soft-deleted rows + blobs"** to the hold list in `DX-UX-CX-PLAN.md`, trigger = first privacy-question customer).
+8. **Security** — passwords hashed; **API keys stored hashed (SHA-256, prefix-indexed)**; JWT 12 h; per-workspace data isolation enforced in the database layer; widget assets pinnable with SRI on a content-addressed URL that keeps serving the pinned build for the last 10 releases (R3-03 §A — say "pinnable" only once R3-03 is live); `git push` never performed by AI tooling.
 9. **Questions** — contact + link to `privacy.html`.
 
 All product names via the same i18n mechanism as `index.html`? **Decision:** no i18n on this page for v1 (English only, like `privacy.html`); add `lang="en"`.
@@ -42,7 +42,7 @@ All product names via the same i18n mechanism as `index.html`? **Decision:** no 
 
 - "What we collect → Feedback content": add "Form field values are never captured; hosts can mask any region with `data-snapshot-mask`; projects can disable text capture."
 - "Security": add API-key hashing; keep the extension sentence.
-- "Data retention": add screenshot deletion and the per-project text toggle; bump *Effective date*.
+- "Data retention": state the soft-delete semantics and the screenshot-file caveat exactly as in §A.7 (no "deletes everything"), add the per-project text toggle; bump *Effective date*.
 - Add a link: "For the engineering view of what is captured, see **Data & self-hosting**."
 
 ### C. Links
@@ -71,7 +71,8 @@ none (optional: link text in project settings, covered by R3-04).
 ## Acceptance criteria
 
 - [ ] `/data.html` renders with the shared landing styles in light and dark mode, ≤ 1 screen of scrolling on desktop per section, no horizontal scroll at 390 px.
-- [ ] Every factual claim on the page maps to shipped code (reviewer spot-checks: form values, mask attribute, API-key hashing, 12 h JWT, project deletion cascade).
+- [ ] Every factual claim on the page maps to shipped code (reviewer spot-checks: form values, mask attribute, API-key hashing, 12 h JWT, **soft-delete semantics and the screenshot-file caveat**, SRI retention); the page contains no unresolved `<!-- TODO(founder): … -->` marker except the region/provider one, which is listed in the report.
+- [ ] `DX-UX-CX-PLAN.md` hold list gains the "project purge job" item.
 - [ ] `privacy.html` and `data.html` agree; effective date bumped.
 - [ ] Footer links present in `index.html` and `v2/index.html`, in both languages.
 - [ ] Deployed via `git pull` on the VM (landing is bind-mounted); `curl -I https://<landing>/data.html` → 200.

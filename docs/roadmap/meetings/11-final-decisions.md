@@ -11,6 +11,7 @@ Rounds: 01–03 GLM review + debate · 04 Claude position · 05 agy review · 06
   1. NEW-4 splits — *scheduling the existing `e2e/` suite* (½ d) stays in R1; the fresh-app init scenario + white-label CI job move to **day 1 of Release 2**.
   2. NEW-5 key hardening is the designated second slip — order-independent of §1, lands no later than **R2 week 1, before MCP**.
 - **Added**: **NEW-6 public privacy / self-host page** (½ day of honest writing: what is captured, retention, self-host = your Postgres). Buyer-facing artifact for §33. Release 3.
+- **npm package name** resolved to `pointer-feedback` (bin `pointer`) — `pointer` and `pointer-cli` are taken on npm (checked 2026-09-11); every `npx pointer …` mention in this record reads `npx -y pointer-feedback …`. (Execution-doc review, 2026-09-11.)
 - **Rejected**: agy's "project deletion" add — already exists (`Admin/ProjectsController.cs:51`, soft-delete with filtered unique index per commit `7bede71`).
 
 ## Corrections to the original plan (facts)

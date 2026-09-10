@@ -19,13 +19,13 @@ the whole team lives in — not just the developer.
 
 | Topic | Decision |
 |---|---|
-| Distribution of install | **npm CLI** (`npx pointer …`) is the primary path. `curl \| sh` stays as fallback for non-Node stacks. |
-| Package name | Keep `pointer` for now (experimental; rebrand templated on the `docs/rebranding-plan` branch). **What is frozen is the on-disk contract, not the npm name** — see NEW-1. Post-rebrand: permanent deprecate-stub package, dual-read old names forever. |
+| Distribution of install | **npm CLI** (`npx -y pointer-feedback …`) is the primary path. `curl \| sh` stays as fallback for non-Node stacks. |
+| Package name | npm package **`pointer-feedback`** (bin `pointer`; `pointer`/`pointer-cli` were taken — checked 2026-09-11); brand stays `Pointer` for now (experimental; rebrand templated on the `docs/rebranding-plan` branch). **What is frozen is the on-disk contract, not the npm name** — see NEW-1. Post-rebrand: permanent deprecate-stub package, dual-read old names forever. |
 | OSS vs SaaS | Undecided → **white-label first.** Server URL is the *only* input; name/logo/urls from `GET /api/branding`; skills and widget served by the server; one build-time `DEFAULT_SERVER`. |
 | Self-hosting boundary | Self-hosted = **API + Postgres** (+ **dashboard, deployed separately**). Thin clients — **npm CLI, extension, landing** — are published centrally and take `--server`. Self-hosting bootstrap is out of scope. |
 | Notifications | In-app (widget badge + dashboard bell) is the free default. **Email is held** until a real trigger (first non-dev stakeholder outside the founder workspace, or comment→revisit p50 > 24 h); when un-held it is admin-configured per workspace and capped by the existing `EmailsPerMonth` entitlement. **Webhooks (§32) before email.** |
 | Source-path manifest | **Never committed** — deterministic, regenerated locally (Phase 4). |
-| API keys | Hash at rest **now** (NEW-5); full scoped-key UI (§25) later. |
+| API keys | Hash for lookup + encrypt for display at rest **now** (NEW-5; keeps the served "always re-viewable" promise); full scoped-key UI (§25) later. |
 | AI and git | AI commits per project `CommitStyle`; **AI never pushes** — the human's CLI does. |
 
 ## What the code already has (corrections found in review)
@@ -63,11 +63,11 @@ Read before estimating anything — several items are *wiring*, not features.
 | # | Item | Est. |
 |---|---|---|
 | R1.1 | **NEW-1 on-disk contract freeze** — decision doc listing every name written into customer repos (`.pointer/`, `POINTER_*` env vars, gitignore lines, `<pointer-feedback>` tag, `data-component-source`, skill dirs, `.mcp.json` entry, served URLs, `pointer_token`); all "keep as-is, dual-read after rebrand". | ½ d |
-| R1.2 | **§1 `npx pointer init`** (below) incl. §6 doc fix and §21 events | 1–2 w |
-| R1.3 | **§2** dashboard quick-start prints `npx pointer init --key ptr_…` | 1 d |
+| R1.2 | **§1 `npx -y pointer-feedback init`** (below) incl. §6 doc fix and §21 events | 1–2 w |
+| R1.3 | **§2** dashboard quick-start prints `npx -y pointer-feedback init --key ptr_…` | 1 d |
 | R1.4 | **§3 `doctor` + §4 `GET /api/meta`** `{ version, minCliVersion }` | ≤ 1 d |
 | R1.5 | **§41** allowed origins (enforce `ProjectAppUrl` on widget comment endpoints) + comment-POST rate limit | 1 d |
-| R1.6 | **NEW-5 API-key hardening** — `ApiKey` table (`UserId`, `Prefix` 12 chars indexed, `Hash` SHA-256, `Scopes` default Full, `LastUsedAt`, `RevokedAt`, `OwnerId`); migration hashes existing keys, drops `User.ApiKey`; key string format unchanged. *Slip candidate → R2 week 1, before MCP.* | 2–3 d |
+| R1.6 | **NEW-5 API-key hardening** — `ApiKey` table (`UserId`, `Prefix` 12 chars indexed, `Hash` SHA-256, `Scopes` default Full, `LastUsedAt`, `RevokedAt`, `OwnerId`); migration hashes + encrypts existing keys into it; `User.ApiKey` column **kept this release (additive rule), dropped in R2**; key string format unchanged; key stays re-viewable (AES-GCM for display, SHA-256 for lookup — see `execution/R1-06`). *Slip candidate → R2 week 1, before MCP.* | 2–3 d |
 | R1.7 | **NEW-4a** schedule the existing `e2e/` suite in CI | ½ d |
 
 ### Release 2 — apply from anywhere
@@ -75,8 +75,8 @@ Read before estimating anything — several items are *wiring*, not features.
 | # | Item | Est. |
 |---|---|---|
 | R2.0 | **NEW-4b** fresh-app init E2E (Vite + Angular + static) + white-label CI job (second server URL, custom branding, zero hard-coded name) | 2 d |
-| R2.1 | **§7 apply core** as shared lib + `npx pointer apply` (`--plan` dry run from §8 rides along; `--tool claude\|cursor\|opencode` hand-off or print/clipboard) | 1–2 w |
-| R2.2 | **§24 MCP server** (`npx pointer mcp`, same package): `list_comments`, `get_comment`, `mark_applied`, `reply`, `resolve_source`; `.mcp.json` documented as user-level config | 1–2 w |
+| R2.1 | **§7 apply core** as shared lib + `npx -y pointer-feedback apply` (`--plan` dry run from §8 rides along; `--tool claude\|cursor\|opencode` hand-off or print/clipboard) | 1–2 w |
+| R2.2 | **§24 MCP server** (`npx -y pointer-feedback mcp`, same package): `list_comments`, `get_comment`, `mark_applied`, `reply`, `resolve_source`; `.mcp.json` documented as user-level config | 1–2 w |
 | R2.3 | **NEW-2** served-file version stamp via existing `<POINTER_SERVER>` middleware; `doctor` compares; `pointer update` refreshes; `curl\|sh` warns | ½ d |
 | R2.4 | **§10** in-app author notification on `applied` with commit link + 👍/👎 (👎 reopens) | 2–3 d |
 | R2.5 | **§13** quick-access invites, passwordless magic link, **link-copy delivery** (email delivery held) | 2–3 d |
@@ -94,7 +94,7 @@ Read before estimating anything — several items are *wiring*, not features.
 
 ### Hold list (item → un-hold trigger)
 
-§2b device-code login → `--key` flow shows friction · §9 `apply --pr` → §42 done + a PR-based team · §11 batch-by-file → manifest live in prod · §14 @mentions → multiple repliers per thread · §15 template chips → widget polish sprint · §16 audit log → before first non-founder apply · §18 scoping rules → first Client-role commenter on prod · §19/§44 workspace fields + clients → first external workspace · §20 → **dissolved** into feature-attached wiring (email→`EmailsPerMonth`, retention job→`RetentionDays`, §35→`MaxEnvironments`) · §25 full scoped keys UI → first key in CI / committed config · §26 editor ext → Phase 4 stable + demand · §27 dedupe → queue noise reported · §28 before/after → **redesigned as manual attach**; stakeholders demand proof · §29 multi-element → hashes stable in prod · §30 changelog → §31 live · §32 webhooks → first "notify my tool" (**before email**) · §33 full (retention job, blur toggle, image delete UI) → first privacy-question customer · §35 preview environments (**days**, `ProjectAppUrl` rows) → §42 + §9 live · §36 board → ownership requested · §37 AI triage → comment volume · §38 QR / §39 bookmarklet → §13 adopted; CSP kills bookmarklets · §40 kill switch (flag → `disableSilently`) → first leaked key · §42 repo mapping → day before §9/§35/§43 · §43 cloud apply → CLI apply proven on 3+ repos (**a quarter**) · §46 nudge → vague-comment rate measured · §47 seeded demo (absorbs §23) → first signup without hand-holding · §48 docs site → first human can't find docs · §49 badge → paid plans · email channel → trigger above.
+§2b device-code login → `--key` flow shows friction · §9 `apply --pr` → §42 done + a PR-based team · §11 batch-by-file → manifest live in prod · §14 @mentions → multiple repliers per thread · §15 template chips → widget polish sprint · §16 audit log → before first non-founder apply · §18 scoping rules → first Client-role commenter on prod · §19/§44 workspace fields + clients → first external workspace · §20 → **dissolved** into feature-attached wiring (email→`EmailsPerMonth`, retention job→`RetentionDays`, §35→`MaxEnvironments`) · §25 full scoped keys UI → first key in CI / committed config · §26 editor ext → Phase 4 stable + demand · §27 dedupe → queue noise reported · §28 before/after → **redesigned as manual attach**; stakeholders demand proof · §29 multi-element → hashes stable in prod · §30 changelog → §31 live · §32 webhooks → first "notify my tool" (**before email**) · §33 full (retention job, blur toggle, image delete UI) → first privacy-question customer · **project purge job** (physical delete of soft-deleted projects' rows + screenshot files, `RetentionDays`-driven; today delete is soft-only, `ProjectService.DeleteAsync`) → before NEW-6 can promise deletion · §35 preview environments (**days**, `ProjectAppUrl` rows) → §42 + §9 live · §36 board → ownership requested · §37 AI triage → comment volume · §38 QR / §39 bookmarklet → §13 adopted; CSP kills bookmarklets · §40 kill switch (flag → `disableSilently`) → first leaked key · §42 repo mapping → day before §9/§35/§43 · §43 cloud apply → CLI apply proven on 3+ repos (**a quarter**) · §46 nudge → vague-comment rate measured · §47 seeded demo (absorbs §23) → first signup without hand-holding · §48 docs site → first human can't find docs · §49 badge → paid plans · email channel → trigger above.
 
 **Cut:** §17 injection regex (→ S6) · §23 fake-output terminal demo (→ §47).
 
@@ -107,7 +107,7 @@ Full §1 init (even with Next/monorepo on the skill path) · §24 MCP · Phase 4
 
 ### Phase 1 — Install & first comment (CLI)
 
-1. **`npx pointer init`** — replaces `install.sh` + manual steps. Interactive, in order:
+1. **`npx -y pointer-feedback init`** — replaces `install.sh` + manual steps. Interactive, in order:
    1. Server URL: `--server` / `POINTER_SERVER` / existing `.pointer/config.json` / prompt; default = build-time `DEFAULT_SERVER`.
    2. `GET /api/branding` → `productName`, `urls.app` used in all output.
    3. API key → validate live (`login-with-api-key` + `me`), write `.pointer/credentials.env`, ensure `.gitignore`. Fail fast.
@@ -117,15 +117,15 @@ Full §1 init (even with Next/monorepo on the skill path) · §24 MCP · Phase 4
    7. Install skills (server-served, pre-filled), detect stack, **inject the widget tag deterministically for Vite + static**; **Next/App-Router and monorepos are routed to the AI skill** with an explicit message.
    8. End with verification: served `<server>/check?project=…` page → widget loads + key works.
    - Non-interactive: `--key … --project … --server … --yes`.
-2. **API key hand-off** — (a) dashboard quick-start shows `npx pointer init --key ptr_…` pre-filled; (b) *held:* `npx pointer login` device-code flow.
-3. **`npx pointer list | status | reply | doctor`** — replaces `.pointer/pointer.sh`. `doctor`: server reachable, key valid, project exists, widget tag present, skills installed and current, `.gitignore` correct.
+2. **API key hand-off** — (a) dashboard quick-start shows `npx -y pointer-feedback init --key ptr_…` pre-filled; (b) *held:* `npx -y pointer-feedback login` device-code flow.
+3. **`npx -y pointer-feedback list | status | reply | doctor`** — replaces `.pointer/pointer.sh`. `doctor`: server reachable, key valid, project exists, widget tag present, skills installed and current, `.gitignore` correct.
 4. **`GET /api/meta`** → `{ version, minCliVersion }`; CLI warns on mismatch.
 5. **Widget empty-state onboarding** — first open with zero comments → 3-step tooltip. *(unscheduled, small)*
 6. **One doc path** — dashboard quick-start is the source; fix `pointer-init.md:12` self-register claim; `install.sh`, landing link to it.
 
 ### Phase 2 — The apply loop (DX)
 
-7. **`npx pointer apply`** — fetch queue, build prompt, hand off (`--tool`) or print/copy; `skill.md` becomes an implementation detail.
+7. **`npx -y pointer-feedback apply`** — fetch queue, build prompt, hand off (`--tool`) or print/copy; `skill.md` becomes an implementation detail.
 8. **`apply --plan`** — dry run, no edits.
 9. **`apply --pr`** — branch → commits per `CommitStyle` → **push by the human's CLI** → PR body lists comments + screenshots. *(held)*
 10. **Close the loop to the author** — on `applied`: in-app notification with commit/PR link + 👍/👎; 👎 reopens. Email only when the channel is un-held.
@@ -148,7 +148,7 @@ Today: tier 1 `data-component-source` attr → tier 2 dev-mode fiber/Vue interna
 - Stale hash → fall back to grep seeded by the component name; CLI reports "source renamed since capture".
 - `data-build-sha` on `<html>` (build-time) → §31 deploy awareness.
 - Default-on only after hash stability proven on 2–3 real apps. Angular builder / Next RSC: separate, effort-flagged.
-- No-plugin fallbacks: `npx pointer map` (selector/text → file index); source maps second.
+- No-plugin fallbacks: `npx -y pointer-feedback map` (selector/text → file index); source maps second.
 
 ### Phase 5 — Trust, safety, business
 
@@ -187,7 +187,7 @@ NEW-1 on-disk contract freeze · NEW-2 served-file version stamp + `pointer upda
 
 ## Verification (per release, high level)
 
-- **R1**: fresh Vite + static app → `npx pointer init` with **no AI tool** → first comment ≤ 5 min; Next app → CLI routes to skill with the message; `doctor` green; `--yes` in CI; comment POST from a non-listed origin → 403, burst → 429; login with a pre-hardening key still works after migration; CLI output against a second server with different branding contains no "Pointer".
+- **R1**: fresh Vite + static app → `npx -y pointer-feedback init` with **no AI tool** → first comment ≤ 5 min; Next app → CLI routes to skill with the message; `doctor` green; `--yes` in CI; comment POST from a non-listed origin → 403, burst → 429; login with a pre-hardening key still works after migration; CLI output against a second server with different branding contains no "Pointer".
 - **R2**: 2+ comments with `CommitStyle=Separate` and `Single` via `apply`; `--plan` makes no edits; Claude Code + one non-Anthropic tool list/apply/reply through MCP with `skill.md` reduced; `doctor` flags a stale skill copy; author sees in-app notification with commit link; invitee opens magic link and comments without a password; secret-shaped comment shows the advisory flag and the flag is absent from the apply payload.
 - **R3**: same repo on two machines → identical `manifest.json`; rename a component → stale-hash warning + fallback; `?v=` immutable, `stable` short-TTL, SRI matches, bundle ≤ 60 KB gz; filled form → snapshot has no input values; `data-snapshot-mask` → `•••`; new build sha → `applied` → `deployed` once.
 
