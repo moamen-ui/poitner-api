@@ -39,7 +39,7 @@ code edits; the CLI does everything around them. Nothing here ever runs `git pus
 apply/
   queue.ts        fetchQueue(ctx): Promise<QueueItem[]>          // admin queue, falls back to summary
   context.ts      loadProjectContext(ctx): { productName, projectName, commitStyle, stack, aiRules? }
-                  // productName from GET /api/branding (fallback "Pointer" only if unreachable — see 01-OVERVIEW output rules)
+                  // productName from GET /api/branding — unreachable branding is a hard exit 1 (no literal fallback name; same rule as R1-02 init)
   prompt.ts       buildApplyPrompt(items, ctx, opts): string     // pure
   git.ts          commitOne(files, msg) / commitAll(msg) / headSha() / commitUrlFor(sha)  // spawns git
   mark.ts         markApplied(id, { reply, commitUrl }) / markFailed(id, reason)
