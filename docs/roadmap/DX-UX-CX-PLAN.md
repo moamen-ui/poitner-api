@@ -114,11 +114,27 @@ Today (`web-component/src/capture.ts:242-257`): tier 1 custom `data-source` attr
 38. **Mobile capture via QR**: dashboard QR → phone opens the app with the widget authed → comment from a real device (viewport/UA already captured). Responsive bugs are half of all feedback.
 39. **Reviewer share link (no install anywhere)**: invited guest opens a site with the extension-less widget — via the browser extension today, a bookmarklet later. Removes "ask the dev to add the widget first" for agencies.
 
+## Phase 10 — Abuse, multi-repo, cloud apply, agencies
+
+41. **Per-project allowed origins.** The project key is public in the host HTML → anyone can post (or flood) comments into the queue. Project setting: allowed domains (`app.acme.com`, `*.vercel.app`), enforced on the widget's comment endpoints via `Origin`/`Referer`. Rate limiting exists (`API/Program.cs:46`) but only for auth surfaces — extend to comment creation. **Closable in a day.**
+42. **Project ↔ repo mapping + monorepos.** A comment knows its project, not its repo. Add `repoUrl` + `rootPath` per project (set by `init`) so `apply`/MCP know which checkout and sub-package; one repo can host several projects; manifest lives per package. Prerequisite silently assumed by §9 (PR), §30 (changelog), §43.
+43. **Cloud apply via GitHub App** (the parked local-apply-bridge, done right): PM clicks "Apply" in the dashboard → server-side runner checks out the repo, runs the AI (customer's key or workspace budget), opens a PR. No local CLI. **The SaaS differentiator** — the one thing the OSS build won't have. Build *after* the CLI, on the same `apply` core, so both paths share one code base.
+44. **Agency model**: workspace → **clients** → projects. Client-scoped guests, per-client branding, per-client report/changelog. Agencies are the natural buyer (many sites, non-technical commenters); small schema addition now if §19 is designed with it.
+
+## Phase 11 — AI quality, growth, docs
+
+45. **Design-system awareness**: `init` detects tokens (Tailwind config, CSS vars, `_variables.scss`) → summary in `.pointer/stack.json`; the AI is told "use existing tokens" so "make it blue" becomes `var(--primary)`, not `#0000ff`. Almost free, directly improves apply quality.
+46. **Comment quality nudge** in the widget: client-side heuristics while typing ("bigger" → "bigger how? e.g. 18px"). No AI cost; halves downstream ambiguity.
+47. **Seeded demo project on signup**: sample app with 5 comments, one already applied — dashboard never empty, the apply story visible in 30 seconds.
+48. **Docs as a real site** (`docs.<domain>`, generated from the same markdown the API serves): quick-start, CLI reference, MCP setup per tool, privacy, self-hosting. Today docs live inside skills/README — fine for AIs, invisible to humans searching.
+49. **"Powered by" badge** on the free plan (widget footer, off on paid) — zero-cost distribution.
+
 ## Suggested order
 
-1. Workspaces (§19) — schema first.
-2. CLI `init` + pre-filled command (§1–2) + `doctor` + `/api/meta`.
-3. `apply` / `--plan` / `--pr` (§7–9) + audit log (§16) + injection guard (§17).
+0. Allowed origins + comment rate limiting (§41) — security hole, do first.
+1. Workspaces with client grouping (§19, §44) — schema first.
+2. CLI `init` + pre-filled command (§1–2) + `doctor` + `/api/meta` + repo mapping (§42) + design tokens (§45).
+3. `apply` / `--plan` / `--pr` (§7–9) + audit log (§16) + injection guard (§17) → cloud apply (§43) on the same core.
 4. In-app notifications + author loop (§10), passwordless invites (§13).
 5. Vite plugin + manifest (Phase 4) → MCP server (§24) → scoped keys (§25).
 6. Capture privacy (§33) + kill switch (§40) — before the first real customer.
@@ -134,6 +150,8 @@ Today (`web-component/src/capture.ts:242-257`): tier 1 custom `data-source` attr
 - MCP: Claude Code + one non-Anthropic tool list/apply/reply through the MCP tools with `skill.md` reduced to a pointer; token count per apply lower than the prose flow.
 - Privacy: comment on a filled form → snapshot contains no input values; `data-pf-mask` subtree shows `•••`; author deletes the screenshot → blob gone, comment intact, "removed by" shown; kill-switch flag → widget renders nothing, no console errors.
 - Deploy awareness: new build sha → `applied` comments become `deployed`, notification fires once, re-screenshot attached.
+- Allowed origins: comment POST from a non-listed origin → 403; burst of comments from one IP → 429; listed origin unaffected.
+- Cloud apply: dashboard "Apply" on a test repo → PR opened with the same commits/commit URLs the CLI path produces.
 
 ## Related
 
