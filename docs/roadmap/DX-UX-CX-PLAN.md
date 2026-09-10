@@ -82,14 +82,48 @@ Today (`web-component/src/capture.ts:242-257`): tier 1 custom `data-source` attr
 22. **`pointer.js` versioning**: `/pointer.js?v=` + `stable` alias, or at minimum a deploy smoke test — one bad deploy must not break every customer site.
 23. **Extension as the demo**: default sandbox project with no signup; shows the apply-terminal with fake output. Delivers the landing's "no install" promise.
 
+## Phase 6 — AI-tool interface & editor
+
+24. **Pointer MCP server** (`npx pointer mcp`): typed tools `list_comments`, `get_comment`, `mark_applied`, `reply`, `resolve_source(hash)` for Claude Code / Cursor / Windsurf / opencode at once. Fewer tokens than prose, no drift between skill copies, the key never leaves the CLI process. `skill.md` shrinks to "use the Pointer tools." **Biggest DX multiplier in this plan.**
+25. **Scoped API keys**: per project / per tool, revocable, optional expiry, "last used" in the dashboard (needed once keys live in CI and MCP configs).
+26. **VS Code / JetBrains extension** (thin): pending comments as gutter markers on the manifest-resolved file, pin screenshot on hover, "apply with AI" calls the CLI. Depends on Phase 4.
+
+## Phase 7 — Comment quality & the after-apply story
+
+27. **Duplicate detection**: same selector + similar text within N days → "3 people reported this" (one comment, a counter). Saves apply tokens; PM signal.
+28. **Before/after screenshots**: after apply **and deploy**, the widget re-screenshots the same selector and attaches it — the proof stakeholders want.
+29. **Multi-element comments** (shift-click): "all these cards" is one comment, not four.
+30. **Auto-changelog per project**: applied comments grouped by deploy (`data-pf-build`) → shared "What changed" page; doubles as the verification prompt for §10.
+31. **Deploy awareness**: new build sha detected → `applied` → `deployed`; §10 notifications and §28 re-screenshots fire **then**, not at commit time (commit ≠ live).
+32. **Outbound webhooks first** (`comment.created|applied|deployed`), workspace-configured like email; Slack, Jira/Linear, GitHub Issues are thin consumers of the webhook. One mechanism, cost stays with the customer.
+
+## Phase 8 — Privacy & security
+
+33. **Capture privacy** — two separate concerns:
+    - **Screenshot (image, opt-in per comment as today).** On the *first* check per user per project, one-time notice: *"Screenshots capture exactly what you see, including filled form data. Only take it when the comment needs it."* → remembered at account level (same sync as `addCommentShortcut`). **No masking by default** — filled data is often the point. Optional per-comment **"blur inputs"** toggle, off by default. **Delete**: author, admin, project owner can delete the image without deleting the comment → card shows "screenshot removed by X"; blob physically deleted. Workspace **retention** (e.g. images auto-deleted after 90 days, comments stay).
+    - **DOM snapshot (text, captured on every comment, no checkbox)** — `capture.ts:139-145` sends 160 chars of `textContent` + attribute values ≤120 chars, which can carry customer names / `value="…"`. Auto-drop `value` of `input/textarea/select`; `data-pf-mask` on any subtree → `•••` in the snapshot; per-project toggle "don't capture text content" (selector + classes still work for the AI).
+    - **Server**: deleting a screenshot/comment deletes the blob; `DELETE project` cascades everything; workspace-level retention job; short privacy note on the landing.
+34. **Widget hardening**: SRI hashes for the versioned `pointer.js` (§22), documented CSP for hosts, never auto-upgrade a pinned version.
+40. **Status page + widget kill switch**: widget fails silently when the API is down (verify with a test); server-side per-project flag disables the widget instantly (leaked key, runaway bot).
+
+## Phase 9 — Review workflow & reach
+
+35. **Preview deployments = automatic environments.** Vercel / Netlify / Cloudflare PR URLs registered as ephemeral environments (by `init` or a CI flag), auto-archived on merge; comments on previews → same PR (§9). The most common modern review flow — own it.
+36. **Assignment + triage board**: assign a comment to a dev, kanban by status, saved filters per user. Status exists today; ownership doesn't.
+37. **AI triage (server-side, opt-in, cheap model)**: classify *style / data / logic / bug / question*, effort S/M/L, flag "ambiguous → ask author". Feeds §27, §11, §36. Cost lands on the workspace budget like email.
+38. **Mobile capture via QR**: dashboard QR → phone opens the app with the widget authed → comment from a real device (viewport/UA already captured). Responsive bugs are half of all feedback.
+39. **Reviewer share link (no install anywhere)**: invited guest opens a site with the extension-less widget — via the browser extension today, a bookmarklet later. Removes "ask the dev to add the widget first" for agencies.
+
 ## Suggested order
 
 1. Workspaces (§19) — schema first.
 2. CLI `init` + pre-filled command (§1–2) + `doctor` + `/api/meta`.
 3. `apply` / `--plan` / `--pr` (§7–9) + audit log (§16) + injection guard (§17).
 4. In-app notifications + author loop (§10), passwordless invites (§13).
-5. Vite plugin + manifest (Phase 4).
-6. Usage events, plan limits, widget versioning, extension demo.
+5. Vite plugin + manifest (Phase 4) → MCP server (§24) → scoped keys (§25).
+6. Capture privacy (§33) + kill switch (§40) — before the first real customer.
+7. Deploy awareness (§31) + webhooks (§32) + preview environments (§35).
+8. Usage events, plan limits, widget versioning, extension demo, then the rest of Phases 7 and 9.
 
 ## Verification (per phase, high level)
 
@@ -97,6 +131,9 @@ Today (`web-component/src/capture.ts:242-257`): tier 1 custom `data-source` attr
 - Apply: 2+ comments with `CommitStyle=Separate` and `Single`; `--plan` makes no edits; `--pr` pushes only via the human CLI.
 - Manifest: same repo on two machines → identical `manifest.json`; rename a component → stale hash falls back with a warning.
 - White-label: run the whole flow against a second server URL with different `/api/branding`; no "Pointer" string in CLI output except what the server returned.
+- MCP: Claude Code + one non-Anthropic tool list/apply/reply through the MCP tools with `skill.md` reduced to a pointer; token count per apply lower than the prose flow.
+- Privacy: comment on a filled form → snapshot contains no input values; `data-pf-mask` subtree shows `•••`; author deletes the screenshot → blob gone, comment intact, "removed by" shown; kill-switch flag → widget renders nothing, no console errors.
+- Deploy awareness: new build sha → `applied` comments become `deployed`, notification fires once, re-screenshot attached.
 
 ## Related
 
