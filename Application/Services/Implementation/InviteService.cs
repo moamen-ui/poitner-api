@@ -825,4 +825,64 @@ public class InviteService : IInviteService
         Uses = i.Uses,
         ProjectId = i.ProjectId
     };
+
+    public async Task<Result<InviteResponse>> ResendAsync(int id, bool rotate = false)
+    {
+        var invite = await LoadOwnAsync(id);
+        if (invite is null)
+            return Result<InviteResponse>.NotFound(MessageKeys.Invite.NotFound);
+
+        if (invite.RevokedAt is not null)
+            return Result<InviteResponse>.Failure(MessageKeys.Invite.Revoked);
+
+        if (rotate)
+        {
+            // A new code makes the old link dead immediately — that is the point of rotating.
+            invite.Code = GenerateCode();
+            invite.Uses = 0;
+        }
+
+        // Extend from now, using the invite's original lifetime where it can be recovered, so a
+        // resend does not quietly shorten a 30-day link to the 7-day default.
+        var originalTtl = invite.ExpiresAt - invite.CreatedAt;
+        var ttlDays = originalTtl.TotalDays >= 1 ? (int)Math.Round(originalTtl.TotalDays) : DefaultTtlDays;
+        if (invite.OwnerId is null)
+            ttlDays = Math.Clamp(ttlDays, 1, 30);
+
+        invite.ExpiresAt = DateTime.UtcNow.AddDays(ttlDays);
+
+        _unitOfWork.Repository<Invite>().Update(invite);
+        await _unitOfWork.SaveChangesAsync();
+
+        var url = await BuildJoinUrlAsync(invite.Code);
+        var emailSent = false;
+
+        if (!string.IsNullOrWhiteSpace(invite.Email))
+        {
+            var brand = await _branding.BuildResponseAsync("", new HashSet<string>());
+            string? roleName = null;
+            if (invite.RoleId is int roleId)
+            {
+                roleName = await _unitOfWork.Repository<Role>()
+                    .Query()
+                    .IgnoreQueryFilters()
+                    .AsNoTracking()
+                    .Where(r => r.Id == roleId)
+                    .Select(r => r.Name)
+                    .FirstOrDefaultAsync();
+            }
+
+            try
+            {
+                emailSent = await _emailService.SendAsync(invite.Email!,
+                    $"You're invited to {brand.ProductName}",
+                    BuildInviteEmailHtml(url, roleName, brand.ProductName, invite.ExpiresAt, invite.OwnerId is null));
+            }
+            catch { /* logged inside the sender; a failed send still returns the copyable link */ }
+        }
+
+        var response = MapToResponse(invite, null, url);
+        response.EmailSent = emailSent;
+        return Result<InviteResponse>.Success(response);
+    }
 }
