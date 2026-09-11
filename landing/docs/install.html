@@ -1,0 +1,465 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Install & Getting Started — Pointer Docs</title>
+  <meta name="description" content="Learn how to install Pointer into your application using npx -y pointer-feedback init, configure your stack, and install AI agent skills." />
+  <link rel="icon" href="../assets/favicon.ico" />
+  <style>
+    :root {
+      --pf-green: #16a34a;
+      --pf-blue: #2563eb;
+      --pf-text: #0f172a;
+      --pf-muted: #475569;
+      --pf-bg: #ffffff;
+      --pf-card: #ffffff;
+      --pf-soft: #f1f5f9;
+      --pf-border: #e2e8f0;
+      --pf-grad: linear-gradient(135deg, var(--pf-green), var(--pf-blue));
+      --pf-radius: 12px;
+      --pf-max: 840px;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --pf-text: #e5e7eb;
+        --pf-muted: #94a3b8;
+        --pf-bg: #0b1220;
+        --pf-card: #111827;
+        --pf-soft: #0f172a;
+        --pf-border: #1f2937;
+      }
+    }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; padding: 0; }
+    body {
+      font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+      color: var(--pf-text);
+      background: var(--pf-bg);
+      line-height: 1.65;
+      -webkit-font-smoothing: antialiased;
+    }
+    a { color: var(--pf-blue); text-decoration: none; }
+    a:hover { text-decoration: underline; }
+    .wrap { max-width: var(--pf-max); margin: 0 auto; padding: 0 24px; }
+    
+    .nav {
+      position: sticky; top: 0; z-index: 10;
+      background: color-mix(in srgb, var(--pf-bg) 88%, transparent);
+      backdrop-filter: saturate(1.4) blur(8px);
+      border-bottom: 1px solid var(--pf-border);
+    }
+    .nav .wrap { display: flex; align-items: center; justify-content: space-between; height: 64px; gap: 16px; }
+    .brand { display: flex; align-items: center; gap: 10px; font-weight: 800; font-size: 17px; color: var(--pf-text); text-decoration: none; }
+    .brand img { width: 28px; height: 28px; border-radius: 6px; }
+    .nav-links { display: flex; gap: 18px; align-items: center; flex-wrap: wrap; }
+    .nav-links a { color: var(--pf-muted); font-weight: 500; font-size: 14px; }
+    .nav-links a.active { color: var(--pf-text); font-weight: 700; }
+    .nav-links a:hover { color: var(--pf-text); text-decoration: none; }
+    
+    .content { padding: 48px 0 80px; }
+    .badge {
+      display: inline-block;
+      font-size: 12px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: var(--pf-blue);
+      background: color-mix(in srgb, var(--pf-blue) 12%, transparent);
+      padding: 3px 8px;
+      border-radius: 6px;
+      margin-bottom: 12px;
+    }
+    h1 { font-size: clamp(28px, 4vw, 38px); line-height: 1.2; margin: 0 0 16px; letter-spacing: -0.02em; }
+    .lead { font-size: 18px; color: var(--pf-muted); margin: 0 0 32px; line-height: 1.6; }
+    h2 { font-size: 24px; margin: 44px 0 16px; padding-top: 24px; border-top: 1px solid var(--pf-border); }
+    h3 { font-size: 18px; margin: 28px 0 12px; }
+    p, ul, ol { margin: 0 0 16px; }
+    ul, ol { padding-inline-start: 24px; }
+    li { margin-bottom: 8px; }
+    
+    code {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: 0.88em;
+      background: var(--pf-soft);
+      padding: 2px 6px;
+      border-radius: 4px;
+      border: 1px solid var(--pf-border);
+    }
+    pre {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: 13.5px;
+      background: var(--pf-soft);
+      border: 1px solid var(--pf-border);
+      border-radius: 8px;
+      padding: 16px 20px;
+      overflow-x: auto;
+      line-height: 1.5;
+      margin: 16px 0 24px;
+    }
+    pre code {
+      background: none;
+      padding: 0;
+      border: none;
+      font-size: inherit;
+    }
+    
+    .callout {
+      background: var(--pf-soft);
+      border: 1px solid var(--pf-border);
+      border-inline-start: 4px solid var(--pf-blue);
+      border-radius: 8px;
+      padding: 16px 20px;
+      margin: 24px 0;
+    }
+    .callout.warning {
+      border-inline-start-color: #f59e0b;
+      background: color-mix(in srgb, #f59e0b 8%, var(--pf-soft));
+    }
+    .callout.not-available {
+      border-inline-start-color: var(--pf-muted);
+      opacity: 0.95;
+    }
+    .callout-title { font-weight: 700; margin-bottom: 6px; font-size: 13px; text-transform: uppercase; letter-spacing: 0.04em; }
+    
+    .table-wrap { overflow-x: auto; margin: 20px 0 28px; }
+    table { width: 100%; border-collapse: collapse; font-size: 14px; text-align: start; }
+    th, td { padding: 10px 14px; border: 1px solid var(--pf-border); vertical-align: top; }
+    th { background: var(--pf-soft); font-weight: 700; }
+    tr:nth-child(even) td { background: color-mix(in srgb, var(--pf-soft) 40%, transparent); }
+    
+    .footer {
+      border-top: 1px solid var(--pf-border);
+      padding: 40px 0;
+      color: var(--pf-muted);
+      font-size: 14px;
+    }
+    .footer-grid {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 16px;
+    }
+    .footer a { color: var(--pf-muted); }
+    .footer a:hover { color: var(--pf-text); }
+  </style>
+</head>
+<body>
+  <nav class="nav">
+    <div class="wrap">
+      <a href="../index.html" class="brand">
+        <img src="../assets/dog-mascot.png" alt="Pointer logo" />
+        <span>Pointer Docs</span>
+      </a>
+      <div class="nav-links">
+        <a href="install.html" class="active">Install</a>
+        <a href="api-keys.html">API Keys</a>
+        <a href="project-settings.html">Project Settings</a>
+        <a href="workspaces.html">Workspaces</a>
+        <a href="../index.html">Home</a>
+      </div>
+    </div>
+  </nav>
+
+  <main class="content">
+    <div class="wrap">
+      <div class="badge">Getting Started</div>
+      <h1>How do I add Pointer to my app?</h1>
+      <p class="lead">
+        Pointer mounts an in-browser feedback widget on your running application and connects your team's comment queue directly to your AI coding agents. This guide walks through prerequisites, the initialization command, interactive prompts, files written to disk, and non-interactive usage.
+      </p>
+
+      <h2>Prerequisites</h2>
+      <ul>
+        <li><strong>Node.js &ge; 18</strong>: Required to execute the initialization CLI.</li>
+        <li><strong>A Pointer account</strong>: An active account in your organization's workspace (see <a href="workspaces.html">Workspaces</a>).</li>
+        <li>
+          <strong>An API key</strong>: Found in the Pointer web dashboard. Click your user avatar in the top navigation, navigate to <strong>Profile</strong>, scroll to the <strong>API Key</strong> section, and copy the key (prefixed with <code>ptr_</code>). For details on storage and security, see <a href="api-keys.html">API Keys</a>.
+        </li>
+      </ul>
+
+      <h2>The initialization command</h2>
+      <p>Run the initialization command from the root directory of your project repository:</p>
+      <pre><code>npx -y pointer-feedback init</code></pre>
+      <p>
+        Running without flags starts an interactive setup assistant that authenticates your session, links or creates a project, detects your dev server and frontend stack, configures widget embedding, and installs AI agent skills.
+      </p>
+
+      <h2>Walkthrough of interactive prompts</h2>
+      <ol>
+        <li>
+          <strong>Pointer server URL</strong>: Defaults to <code>https://api.pointer.moamen.work</code> (or the value of <code>POINTER_SERVER</code> / existing <code>.pointer/config.json</code>). The CLI reaches out to the server's <code>/api/branding</code> endpoint to discover the server name and product identity.
+        </li>
+        <li>
+          <strong>API key prompt</strong>: You are asked to paste your API key (terminal input is hidden for security). The CLI exchanges this key with the server via <code>POST /api/auth/login-with-key</code> to verify permissions and prints your confirmed identity (e.g. <code>✔ Signed in as Jane Developer (Developer)</code>). You have up to 3 attempts before the command aborts.
+        </li>
+        <li>
+          <strong>Project selection</strong>: The CLI retrieves your workspace's projects. You can select an existing project from the list or choose <code>＋ Create a new project…</code>. When creating a project, you provide a project name; the CLI suggests a slugified key matching <code>^[a-z0-9-]+$</code> and creates it immediately.
+        </li>
+        <li>
+          <strong>Environment</strong>: Select the environment where this codebase runs (<code>local</code>, <code>staging</code>, or <code>production</code>; defaults to <code>local</code>).
+        </li>
+        <li>
+          <strong>Dev-server URL auto-detection (Step 4b)</strong>: When configuring the <code>local</code> environment, the CLI inspects your repository to detect the dev-server address:
+          <ul>
+            <li><strong>Vite</strong>: Scans <code>vite.config.{js,ts,mjs,mts}</code> for <code>server.port</code> and <code>server.https</code>, or checks <code>package.json</code> dev scripts for <code>--port</code>. Defaults to <code>http://localhost:5173</code>.</li>
+            <li><strong>Angular</strong>: Scans <code>angular.json</code> under <code>architect.serve.options.port</code> and <code>ssl</code>, or <code>package.json</code> start scripts. Defaults to <code>http://localhost:4200</code>.</li>
+            <li><strong>Next.js</strong>: Inspects <code>package.json</code> dev scripts for <code>-p</code> or <code>--port</code>, and checks <code>.env</code> / <code>.env.local</code> for <code>PORT</code>. Defaults to <code>http://localhost:3000</code>.</li>
+            <li><strong>Create React App (CRA)</strong>: Inspects <code>package.json</code> start scripts and <code>.env</code> for <code>PORT</code>. Defaults to <code>http://localhost:3000</code>.</li>
+          </ul>
+          The CLI asks <code>Where does this app run in local?</code> with the detected URL prefilled as the default. Press <kbd>Enter</kbd> to accept it or enter your custom URL.
+        </li>
+        <li>
+          <strong>AI tool selection</strong>: The CLI checks environment variables (such as <code>CLAUDECODE</code>, <code>ANTIGRAVITY_AGENT</code>, <code>TERM_PROGRAM</code> for Cursor, <code>WINDSURF</code>, or <code>OPENCODE</code>) and asks you to confirm your AI coding environment (<code>claude-code</code>, <code>cursor</code>, <code>windsurf</code>, <code>opencode</code>, <code>antigravity</code>, or <code>other</code>).
+        </li>
+      </ol>
+
+      <h2>What the command writes to your repository</h2>
+      <p>Running <code>init</code> creates or updates the following files in your repository:</p>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>File path</th>
+              <th>Purpose &amp; contents</th>
+              <th>Git status</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><code>.pointer/config.json</code></td>
+              <td>Stores project key, server URL, environment, AI tool choice, and CLI version.</td>
+              <td>Committed (safe)</td>
+            </tr>
+            <tr>
+              <td><code>.pointer/credentials.env</code></td>
+              <td>Contains your personal <code>POINTER_API_KEY=ptr_...</code> written with restrictive permissions (<code>0600</code>).</td>
+              <td><strong>Gitignored</strong> (never committed)</td>
+            </tr>
+            <tr>
+              <td><code>.pointer/credentials.env.example</code></td>
+              <td>Empty key template (<code>POINTER_API_KEY=</code>) so teammates know which variable is required.</td>
+              <td>Committed</td>
+            </tr>
+            <tr>
+              <td><code>.pointer/stack.json</code></td>
+              <td>Recorded frontend, backend, and AI tool tokens discovered from <code>package.json</code>.</td>
+              <td>Committed</td>
+            </tr>
+            <tr>
+              <td><code>.gitignore</code></td>
+              <td>
+                Updated to ignore <code>.pointer/</code> entirely while explicitly re-including safe files:
+                <code>!.pointer/credentials.env.example</code>,
+                <code>!.pointer/stack.json</code>,
+                <code>!.pointer/pointer.sh</code>, and
+                <code>!.pointer/config.json</code>.
+              </td>
+              <td>Committed</td>
+            </tr>
+            <tr>
+              <td>Skills directory</td>
+              <td>Installs AI agent skills (such as <code>pointer-init</code> and feedback processing skills) into your editor's skills folder (e.g. <code>.claude/skills/</code> or tool equivalent).</td>
+              <td>Committed</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h2>Deterministic widget injection &amp; stack hand-off</h2>
+      <p>
+        How the feedback widget gets mounted into your application depends strictly on your frontend stack:
+      </p>
+
+      <h3>Deterministic injection (Vite &amp; static HTML)</h3>
+      <p>
+        The CLI performs deterministic, automated widget injection for two stacks:
+      </p>
+      <ul>
+        <li>
+          <strong>Vite</strong>: Injects an environment-guarded script snippet into <code>index.html</code> reading from <code>%VITE_POINTER_*%</code> placeholders, and sets <code>VITE_POINTER_ENABLED=true</code>, <code>VITE_POINTER_SERVER</code>, <code>VITE_POINTER_PROJECT</code>, and <code>VITE_POINTER_ENV</code> in your <code>.env</code> file (plus stub entries in <code>.env.example</code>). This prevents hard-coding production URLs into local builds.
+        </li>
+        <li>
+          <strong>Static HTML</strong>: Injects the <code>&lt;script src=".../pointer.js" defer&gt;&lt;/script&gt;</code> tag and <code>&lt;pointer-feedback ...&gt;</code> element directly before the closing <code>&lt;/body&gt;</code> tag of your <code>index.html</code> (or the file passed to <code>--html</code>).
+        </li>
+      </ul>
+
+      <h3>Hand-off for Next.js, Angular, CRA, and monorepos</h3>
+      <p>
+        Deterministic direct file injection is <strong>not supported</strong> for Next.js (App Router / Pages Router), Angular, Create React App, or monorepos because root layouts, server components, and multi-package trees vary too widely for rigid string substitution.
+      </p>
+      <p>
+        Instead of modifying your application code unpredictably, the CLI outputs a clear hand-off message:
+      </p>
+      <pre><code>ℹ &lt;stack&gt; detected — automatic injection isn't supported for this stack yet.
+  The pointer-init skill was installed for &lt;tool&gt;. Run it and it will mount the widget for you:
+    claude -> /pointer-init (or @pointer-init for cursor)
+  Config is already saved in .pointer/config.json, so the skill won't ask for the key or project again.</code></pre>
+      <p>
+        Your configuration is already stored in <code>.pointer/config.json</code>. You simply invoke the <code>pointer-init</code> skill inside your AI editor, and the agent mounts the widget safely following your framework's idioms.
+      </p>
+
+      <h2>Non-interactive mode (CI and automated setup)</h2>
+      <p>
+        To run <code>init</code> without interactive prompts (for CI pipelines, dev container provisioning, or automated setup scripts), supply <code>--yes</code> (or <code>-y</code>). When <code>--yes</code> is used, <code>--key</code> is mandatory, and you must supply either <code>--project &lt;key&gt;</code> or <code>--create &lt;name&gt;</code>.
+      </p>
+      <pre><code>npx -y pointer-feedback init \
+  --yes \
+  --server https://api.pointer.moamen.work \
+  --key "$POINTER_API_KEY" \
+  --project my-web-app \
+  --environment local \
+  --tool claude-code</code></pre>
+      <p>
+        Adding <code>--json</code> outputs structured JSON containing setup details and automatically implies <code>--yes</code>.
+      </p>
+
+      <h2>CLI flags reference</h2>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Flag</th>
+              <th>Description</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><code>--server &lt;url&gt;</code></td>
+              <td>Pointer server URL (defaults to <code>https://api.pointer.moamen.work</code>).</td>
+            </tr>
+            <tr>
+              <td><code>--key &lt;key&gt;</code></td>
+              <td>Your Pointer API key (<code>ptr_...</code>). Required when running with <code>--yes</code>.</td>
+            </tr>
+            <tr>
+              <td><code>--project &lt;key&gt;</code></td>
+              <td>The project key to connect this codebase to.</td>
+            </tr>
+            <tr>
+              <td><code>--create &lt;name&gt;</code></td>
+              <td>Creates a new project with the given name instead of linking an existing one.</td>
+            </tr>
+            <tr>
+              <td><code>--environment &lt;env&gt;</code></td>
+              <td>Target environment (<code>local</code>, <code>staging</code>, or <code>production</code>; default: <code>local</code>).</td>
+            </tr>
+            <tr>
+              <td><code>--tool &lt;tool&gt;</code></td>
+              <td>AI tool to install skills for (<code>claude-code</code>, <code>cursor</code>, <code>windsurf</code>, <code>opencode</code>, <code>antigravity</code>, <code>other</code>).</td>
+            </tr>
+            <tr>
+              <td><code>--skills-dir &lt;path&gt;</code></td>
+              <td>Custom target directory for AI agent skills.</td>
+            </tr>
+            <tr>
+              <td><code>--app-url &lt;url&gt;</code></td>
+              <td>Explicit dev-server URL (e.g. <code>http://localhost:3000</code>), bypassing detection prompts.</td>
+            </tr>
+            <tr>
+              <td><code>--no-app-url</code></td>
+              <td>Skips assigning an application URL for the environment.</td>
+            </tr>
+            <tr>
+              <td><code>--html &lt;path&gt;</code></td>
+              <td>Path to the target HTML file for static injection (defaults to <code>index.html</code>).</td>
+            </tr>
+            <tr>
+              <td><code>--no-inject</code></td>
+              <td>Skips widget script injection into HTML/env files entirely.</td>
+            </tr>
+            <tr>
+              <td><code>--no-skills</code></td>
+              <td>Skips installing AI agent skills.</td>
+            </tr>
+            <tr>
+              <td><code>-y, --yes</code></td>
+              <td>Non-interactive mode. Fails immediately if required inputs are missing.</td>
+            </tr>
+            <tr>
+              <td><code>--json</code></td>
+              <td>Outputs results in JSON format and suppresses interactive prompts (implies <code>--yes</code>).</td>
+            </tr>
+            <tr>
+              <td><code>-h, --help</code></td>
+              <td>Displays usage documentation and flag summaries.</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h2>Exit codes</h2>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Code</th>
+              <th>Status</th>
+              <th>Meaning &amp; typical trigger</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><code>0</code></td>
+              <td>Success</td>
+              <td>Setup completed successfully; config and skills written to disk.</td>
+            </tr>
+            <tr>
+              <td><code>1</code></td>
+              <td>General Error</td>
+              <td>Server unreachable, project key conflict, or unhandled runtime failure.</td>
+            </tr>
+            <tr>
+              <td><code>2</code></td>
+              <td>Invalid Usage</td>
+              <td>Unknown command, invalid flag, or missing required flag (e.g. <code>--key</code> omitted with <code>--yes</code>).</td>
+            </tr>
+            <tr>
+              <td><code>3</code></td>
+              <td>Auth Failure</td>
+              <td>Invalid or revoked API key, or the authenticated account lacks project creation permissions.</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h2>Troubleshooting &amp; common pitfalls</h2>
+      <ul>
+        <li>
+          <strong>Invalid API key (Exit 3)</strong>: Verify that the API key was copied completely from your profile page and has not been regenerated. If you regenerated your key in the web dashboard, the previous key was revoked immediately.
+        </li>
+        <li>
+          <strong>This account cannot create projects (Exit 3)</strong>: Stakeholder or client accounts are scoped to viewing comments and cannot mint new projects. An organization owner or administrator must create the project or invite you with developer privileges.
+        </li>
+        <li>
+          <strong>Key already exists, choose another</strong>: Project keys must be unique within your organization. Provide a distinct slug or attach to the existing project with <code>--project &lt;key&gt;</code>.
+        </li>
+        <li>
+          <strong>Comments blocked after deploy</strong>: If you enable origin enforcement on your project, ensure the deployed origin matches your configured environment URL. See <a href="project-settings.html">Project Settings</a>.
+        </li>
+      </ul>
+
+      <div class="callout not-available">
+        <div class="callout-title">Not yet available</div>
+        <p>
+          The <code>pointer doctor</code> diagnostic command is currently stubbed and will be expanded in an upcoming release. Direct deterministic widget injection for SSR and monorepo frameworks is intentionally delegated to the AI editor skill (<code>pointer-init</code>) rather than hardcoded in the CLI.
+        </p>
+      </div>
+    </div>
+  </main>
+
+  <footer class="footer">
+    <div class="wrap footer-grid">
+      <span>Pointer Documentation &bull; Release 1</span>
+      <div class="nav-links">
+        <a href="install.html">Install</a>
+        <a href="api-keys.html">API Keys</a>
+        <a href="project-settings.html">Project Settings</a>
+        <a href="workspaces.html">Workspaces</a>
+        <a href="../index.html">Main Site</a>
+      </div>
+    </div>
+  </footer>
+</body>
+</html>

@@ -1,0 +1,273 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Workspaces & Onboarding Invitations — Pointer Docs</title>
+  <meta name="description" content="Learn how Pointer workspaces are created via administrator invitations, self-set passwords, link expiration, and email fallbacks." />
+  <link rel="icon" href="../assets/favicon.ico" />
+  <style>
+    :root {
+      --pf-green: #16a34a;
+      --pf-blue: #2563eb;
+      --pf-text: #0f172a;
+      --pf-muted: #475569;
+      --pf-bg: #ffffff;
+      --pf-card: #ffffff;
+      --pf-soft: #f1f5f9;
+      --pf-border: #e2e8f0;
+      --pf-grad: linear-gradient(135deg, var(--pf-green), var(--pf-blue));
+      --pf-radius: 12px;
+      --pf-max: 840px;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --pf-text: #e5e7eb;
+        --pf-muted: #94a3b8;
+        --pf-bg: #0b1220;
+        --pf-card: #111827;
+        --pf-soft: #0f172a;
+        --pf-border: #1f2937;
+      }
+    }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; padding: 0; }
+    body {
+      font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+      color: var(--pf-text);
+      background: var(--pf-bg);
+      line-height: 1.65;
+      -webkit-font-smoothing: antialiased;
+    }
+    a { color: var(--pf-blue); text-decoration: none; }
+    a:hover { text-decoration: underline; }
+    .wrap { max-width: var(--pf-max); margin: 0 auto; padding: 0 24px; }
+    
+    .nav {
+      position: sticky; top: 0; z-index: 10;
+      background: color-mix(in srgb, var(--pf-bg) 88%, transparent);
+      backdrop-filter: saturate(1.4) blur(8px);
+      border-bottom: 1px solid var(--pf-border);
+    }
+    .nav .wrap { display: flex; align-items: center; justify-content: space-between; height: 64px; gap: 16px; }
+    .brand { display: flex; align-items: center; gap: 10px; font-weight: 800; font-size: 17px; color: var(--pf-text); text-decoration: none; }
+    .brand img { width: 28px; height: 28px; border-radius: 6px; }
+    .nav-links { display: flex; gap: 18px; align-items: center; flex-wrap: wrap; }
+    .nav-links a { color: var(--pf-muted); font-weight: 500; font-size: 14px; }
+    .nav-links a.active { color: var(--pf-text); font-weight: 700; }
+    .nav-links a:hover { color: var(--pf-text); text-decoration: none; }
+    
+    .content { padding: 48px 0 80px; }
+    .badge {
+      display: inline-block;
+      font-size: 12px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: var(--pf-blue);
+      background: color-mix(in srgb, var(--pf-blue) 12%, transparent);
+      padding: 3px 8px;
+      border-radius: 6px;
+      margin-bottom: 12px;
+    }
+    h1 { font-size: clamp(28px, 4vw, 38px); line-height: 1.2; margin: 0 0 16px; letter-spacing: -0.02em; }
+    .lead { font-size: 18px; color: var(--pf-muted); margin: 0 0 32px; line-height: 1.6; }
+    h2 { font-size: 24px; margin: 44px 0 16px; padding-top: 24px; border-top: 1px solid var(--pf-border); }
+    h3 { font-size: 18px; margin: 28px 0 12px; }
+    p, ul, ol { margin: 0 0 16px; }
+    ul, ol { padding-inline-start: 24px; }
+    li { margin-bottom: 8px; }
+    
+    code {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: 0.88em;
+      background: var(--pf-soft);
+      padding: 2px 6px;
+      border-radius: 4px;
+      border: 1px solid var(--pf-border);
+    }
+    pre {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: 13.5px;
+      background: var(--pf-soft);
+      border: 1px solid var(--pf-border);
+      border-radius: 8px;
+      padding: 16px 20px;
+      overflow-x: auto;
+      line-height: 1.5;
+      margin: 16px 0 24px;
+    }
+    pre code {
+      background: none;
+      padding: 0;
+      border: none;
+      font-size: inherit;
+    }
+    
+    .callout {
+      background: var(--pf-soft);
+      border: 1px solid var(--pf-border);
+      border-inline-start: 4px solid var(--pf-blue);
+      border-radius: 8px;
+      padding: 16px 20px;
+      margin: 24px 0;
+    }
+    .callout.warning {
+      border-inline-start-color: #f59e0b;
+      background: color-mix(in srgb, #f59e0b 8%, var(--pf-soft));
+    }
+    .callout.not-available {
+      border-inline-start-color: var(--pf-muted);
+      opacity: 0.95;
+    }
+    .callout-title { font-weight: 700; margin-bottom: 6px; font-size: 13px; text-transform: uppercase; letter-spacing: 0.04em; }
+    
+    .table-wrap { overflow-x: auto; margin: 20px 0 28px; }
+    table { width: 100%; border-collapse: collapse; font-size: 14px; text-align: start; }
+    th, td { padding: 10px 14px; border: 1px solid var(--pf-border); vertical-align: top; }
+    th { background: var(--pf-soft); font-weight: 700; }
+    tr:nth-child(even) td { background: color-mix(in srgb, var(--pf-soft) 40%, transparent); }
+    
+    .footer {
+      border-top: 1px solid var(--pf-border);
+      padding: 40px 0;
+      color: var(--pf-muted);
+      font-size: 14px;
+    }
+    .footer-grid {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 16px;
+    }
+    .footer a { color: var(--pf-muted); }
+    .footer a:hover { color: var(--pf-text); }
+  </style>
+</head>
+<body>
+  <nav class="nav">
+    <div class="wrap">
+      <a href="../index.html" class="brand">
+        <img src="../assets/dog-mascot.png" alt="Pointer logo" />
+        <span>Pointer Docs</span>
+      </a>
+      <div class="nav-links">
+        <a href="install.html">Install</a>
+        <a href="api-keys.html">API Keys</a>
+        <a href="project-settings.html">Project Settings</a>
+        <a href="workspaces.html" class="active">Workspaces</a>
+        <a href="../index.html">Home</a>
+      </div>
+    </div>
+  </nav>
+
+  <main class="content">
+    <div class="wrap">
+      <div class="badge">Administration &bull; Tenancy</div>
+      <h1>How do I get a workspace, and how do invitations work?</h1>
+      <p class="lead">
+        A workspace represents an isolated tenant organization in Pointer. This guide explains how workspaces come into existence, how owner invitations operate, link security rules, and what to do if email delivery is turned off.
+      </p>
+
+      <h2>How a workspace comes into existence</h2>
+      <p>
+        In Pointer, workspaces are not provisioned through uncontrolled public sign-up forms. Instead, a <strong>platform Super Administrator</strong> creates and provisions a new workspace by inviting the prospective workspace owner.
+      </p>
+
+      <h3>The primary invitation flow</h3>
+      <ol>
+        <li>
+          <strong>Admin sends the invitation</strong>: In the Super Admin dashboard (under <strong>Admin &rarr; Tenants</strong>), the administrator enters:
+          <ul>
+            <li>The owner's email address.</li>
+            <li>An optional display name.</li>
+            <li>The selected subscription plan (e.g. Free, Starter, or Pro).</li>
+            <li>Link expiration in days (default is 7 days; maximum is 30 days).</li>
+          </ul>
+        </li>
+        <li>
+          <strong>No passwords in the invitation flow</strong>: There is no password field anywhere in the primary invitation screen. Neither the administrator nor the server generates or sees a temporary password.
+        </li>
+        <li>
+          <strong>The invitation email</strong>: Pointer sends an email containing a unique, cryptographically signed invitation URL.
+        </li>
+        <li>
+          <strong>The owner sets their own password</strong>: The invitee opens the link in their browser. The page prompts the owner to verify their name and <strong>choose their own secure password</strong>.
+        </li>
+        <li>
+          <strong>Immediate activation</strong>: Upon submitting the form, the workspace and the owner account are created and <strong>activated immediately</strong>. There is no second approval step, manual confirmation ticket, or administrative unlock required. The invited subscription plan takes effect immediately.
+        </li>
+      </ol>
+
+      <h2>Single-use links and expiration</h2>
+      <p>
+        Workspace invitation tokens are strictly protected:
+      </p>
+      <ul>
+        <li>
+          <strong>Single-use (<code>MaxUses = 1</code>)</strong>: An invitation link can be accepted exactly once. Once the owner sets their password, the token is marked as consumed. Any subsequent visit to the same link will fail cleanly.
+        </li>
+        <li>
+          <strong>Expiration cap</strong>: Invitations expire automatically after their configured duration (7 days by default, capped at a maximum of 30 days). Expired tokens cannot be redeemed.
+        </li>
+      </ul>
+
+      <h2>Managing invitations: Resend, Rotate, and Revoke</h2>
+      <p>
+        Super Administrators can manage active invitations from the <strong>Pending Invitations</strong> table in the Tenants screen:
+      </p>
+      <ul>
+        <li>
+          <strong>Resend</strong>: Re-sends the invitation email to the recipient's address and resets the expiration window, keeping the existing link valid.
+        </li>
+        <li>
+          <strong>Rotate link (<code>rotate=true</code>)</strong>: Invalidates the old token immediately and mints a brand-new invitation code. Use this if an invitation email was accidentally sent to an incorrect address or if the link may have been exposed.
+        </li>
+        <li>
+          <strong>Revoke</strong>: Cancels the pending invitation entirely. Any person attempting to open or accept a revoked link receives an immediate 404 error.
+        </li>
+      </ul>
+
+      <h2>Copy-link fallback when email delivery is off</h2>
+      <p>
+        When running a self-hosted Pointer instance where SMTP email delivery is not configured (or in local/staging test environments), Pointer detects that outbound email delivery could not be performed (<code>emailSent === false</code>).
+      </p>
+      <div class="callout warning">
+        <div class="callout-title">Email delivery off: Manual link copying</div>
+        <p>
+          When email delivery is inactive, the admin dashboard displays an alert alongside a <strong>Copy Link</strong> button. The administrator can copy the one-time invitation URL directly from the interface and share it with the owner over an encrypted communication channel (such as 1Password, Slack, or secure corporate chat).
+        </p>
+      </div>
+
+      <h2>Secondary path: Direct creation with password</h2>
+      <p>
+        Underneath the primary invitation form, an expandable disclosure labelled <em>“Create directly (sets the password yourself)”</em> allows an administrator to provision a workspace and manually set an initial password.
+      </p>
+      <p>
+        This path is provided strictly as a secondary fallback for air-gapped environments or automated provisioning scripts. In all standard customer onboarding workflows, the invitation flow is the strongly recommended standard so owners always control their own credentials.
+      </p>
+
+      <div class="callout not-available">
+        <div class="callout-title">Not yet available</div>
+        <p>
+          Public self-service workspace registration without an invitation is not available. Workspace ownership can be transferred to an existing Deputy from the workspace's own Users screen (&ldquo;Promote to owner&rdquo;). Transferring ownership directly to an account that is not already a Deputy is not supported &mdash; promote them to Deputy first.
+        </p>
+      </div>
+    </div>
+  </main>
+
+  <footer class="footer">
+    <div class="wrap footer-grid">
+      <span>Pointer Documentation &bull; Release 1</span>
+      <div class="nav-links">
+        <a href="install.html">Install</a>
+        <a href="api-keys.html">API Keys</a>
+        <a href="project-settings.html">Project Settings</a>
+        <a href="workspaces.html">Workspaces</a>
+        <a href="../index.html">Main Site</a>
+      </div>
+    </div>
+  </footer>
+</body>
+</html>

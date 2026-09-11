@@ -1,0 +1,32 @@
+{
+  "pages": [
+    {
+      "file": "install.html",
+      "title": "Install",
+      "nav": "Getting started",
+      "ownedBy": "R1-02",
+      "summary": "Prerequisites, CLI installation, automatic injection, AI skills, and flags."
+    },
+    {
+      "file": "api-keys.html",
+      "title": "API Keys",
+      "nav": "Configuration",
+      "ownedBy": "R1-06",
+      "summary": "Where to find your key, encryption security, key rotation, and self-hosting configuration."
+    },
+    {
+      "file": "project-settings.html",
+      "title": "Project Settings",
+      "nav": "Configuration",
+      "ownedBy": "R1-05",
+      "summary": "Restricting comment origins, wildcard patterns, rate limiting, and environment URLs."
+    },
+    {
+      "file": "workspaces.html",
+      "title": "Workspaces",
+      "nav": "Configuration",
+      "ownedBy": "R1-08",
+      "summary": "Provisioning workspaces, email invitations, link expiration, and self-set passwords."
+    }
+  ]
+}
