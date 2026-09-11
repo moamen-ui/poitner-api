@@ -1175,6 +1175,26 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
           this.toast('That action is no longer available — please choose another and try again.', 'error');
           return false;
         }
+        // A blocked origin is the one failure the user can actually act on — their site is not on
+        // the project's allowed list. "Failed to save comment" sends them hunting through the
+        // console for a 403 they will read as a bug in Pointer.
+        if (r.status === 403) {
+          this.toast('Comments are not allowed from this address', 'error');
+          return false;
+        }
+        // Rate limited: also actionable, and self-resolving. Retry-After is seconds.
+        if (r.status === 429) {
+          // A host-supplied transport (window.__POINTER_FETCH__, used by the extension) may
+          // hand back a synthesized Response without a real Headers object.
+          const retryAfter = Number(r.headers?.get?.('retry-after'));
+          this.toast(
+            retryAfter > 0
+              ? `Too many comments — try again in ${retryAfter} second${retryAfter === 1 ? '' : 's'}.`
+              : 'Too many comments — please wait a moment and try again.',
+            'error',
+          );
+          return false;
+        }
         throw new Error('HTTP ' + r.status);
       }
       const envelope = await r.json();

@@ -2098,6 +2098,7 @@
     }
     // Returns true on success (popover should close), false on failure (popover stays open).
     async createComment(data) {
+      var _a2, _b;
       const vw = window.innerWidth;
       const vh = window.innerHeight;
       const deviceType = vw < 768 ? "mobile" : vw < 1024 ? "tablet" : "desktop";
@@ -2157,6 +2158,18 @@
           if (data.predefinedActionIds && data.predefinedActionIds.length && msg.toLowerCase().includes("action")) {
             await this.fetchPredefinedActions();
             this.toast("That action is no longer available — please choose another and try again.", "error");
+            return false;
+          }
+          if (r.status === 403) {
+            this.toast("Comments are not allowed from this address", "error");
+            return false;
+          }
+          if (r.status === 429) {
+            const retryAfter = Number((_b = (_a2 = r.headers) == null ? void 0 : _a2.get) == null ? void 0 : _b.call(_a2, "retry-after"));
+            this.toast(
+              retryAfter > 0 ? `Too many comments — try again in ${retryAfter} second${retryAfter === 1 ? "" : "s"}.` : "Too many comments — please wait a moment and try again.",
+              "error"
+            );
             return false;
           }
           throw new Error("HTTP " + r.status);
