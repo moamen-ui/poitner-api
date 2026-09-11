@@ -1,0 +1,308 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>API Keys & Security — Pointer Docs</title>
+  <meta name="description" content="Learn where to find your Pointer API key, how keys are stored hashed for lookup and encrypted for display, key regeneration, and self-hosting configuration." />
+  <link rel="icon" href="../assets/favicon.ico" />
+  <style>
+    :root {
+      --pf-green: #16a34a;
+      --pf-blue: #2563eb;
+      --pf-text: #0f172a;
+      --pf-muted: #475569;
+      --pf-bg: #ffffff;
+      --pf-card: #ffffff;
+      --pf-soft: #f1f5f9;
+      --pf-border: #e2e8f0;
+      --pf-grad: linear-gradient(135deg, var(--pf-green), var(--pf-blue));
+      --pf-radius: 12px;
+      --pf-max: 840px;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --pf-text: #e5e7eb;
+        --pf-muted: #94a3b8;
+        --pf-bg: #0b1220;
+        --pf-card: #111827;
+        --pf-soft: #0f172a;
+        --pf-border: #1f2937;
+      }
+    }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; padding: 0; }
+    body {
+      font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+      color: var(--pf-text);
+      background: var(--pf-bg);
+      line-height: 1.65;
+      -webkit-font-smoothing: antialiased;
+    }
+    a { color: var(--pf-blue); text-decoration: none; }
+    a:hover { text-decoration: underline; }
+    .wrap { max-width: var(--pf-max); margin: 0 auto; padding: 0 24px; }
+    
+    .nav {
+      position: sticky; top: 0; z-index: 10;
+      background: color-mix(in srgb, var(--pf-bg) 88%, transparent);
+      backdrop-filter: saturate(1.4) blur(8px);
+      border-bottom: 1px solid var(--pf-border);
+    }
+    .nav .wrap { display: flex; align-items: center; justify-content: space-between; height: 64px; gap: 16px; }
+    .brand { display: flex; align-items: center; gap: 10px; font-weight: 800; font-size: 17px; color: var(--pf-text); text-decoration: none; }
+    .brand img { width: 28px; height: 28px; border-radius: 6px; }
+    .nav-links { display: flex; gap: 18px; align-items: center; flex-wrap: wrap; }
+    .nav-links a { color: var(--pf-muted); font-weight: 500; font-size: 14px; }
+    .nav-links a.active { color: var(--pf-text); font-weight: 700; }
+    .nav-links a:hover { color: var(--pf-text); text-decoration: none; }
+    
+    .content { padding: 48px 0 80px; }
+    .badge {
+      display: inline-block;
+      font-size: 12px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: var(--pf-blue);
+      background: color-mix(in srgb, var(--pf-blue) 12%, transparent);
+      padding: 3px 8px;
+      border-radius: 6px;
+      margin-bottom: 12px;
+    }
+    h1 { font-size: clamp(28px, 4vw, 38px); line-height: 1.2; margin: 0 0 16px; letter-spacing: -0.02em; }
+    .lead { font-size: 18px; color: var(--pf-muted); margin: 0 0 32px; line-height: 1.6; }
+    h2 { font-size: 24px; margin: 44px 0 16px; padding-top: 24px; border-top: 1px solid var(--pf-border); }
+    h3 { font-size: 18px; margin: 28px 0 12px; }
+    p, ul, ol { margin: 0 0 16px; }
+    ul, ol { padding-inline-start: 24px; }
+    li { margin-bottom: 8px; }
+    
+    code {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: 0.88em;
+      background: var(--pf-soft);
+      padding: 2px 6px;
+      border-radius: 4px;
+      border: 1px solid var(--pf-border);
+    }
+    pre {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: 13.5px;
+      background: var(--pf-soft);
+      border: 1px solid var(--pf-border);
+      border-radius: 8px;
+      padding: 16px 20px;
+      overflow-x: auto;
+      line-height: 1.5;
+      margin: 16px 0 24px;
+    }
+    pre code {
+      background: none;
+      padding: 0;
+      border: none;
+      font-size: inherit;
+    }
+    
+    .callout {
+      background: var(--pf-soft);
+      border: 1px solid var(--pf-border);
+      border-inline-start: 4px solid var(--pf-blue);
+      border-radius: 8px;
+      padding: 16px 20px;
+      margin: 24px 0;
+    }
+    .callout.warning {
+      border-inline-start-color: #f59e0b;
+      background: color-mix(in srgb, #f59e0b 8%, var(--pf-soft));
+    }
+    .callout.danger {
+      border-inline-start-color: #ef4444;
+      background: color-mix(in srgb, #ef4444 8%, var(--pf-soft));
+    }
+    .callout.not-available {
+      border-inline-start-color: var(--pf-muted);
+      opacity: 0.95;
+    }
+    .callout-title { font-weight: 700; margin-bottom: 6px; font-size: 13px; text-transform: uppercase; letter-spacing: 0.04em; }
+    
+    .table-wrap { overflow-x: auto; margin: 20px 0 28px; }
+    table { width: 100%; border-collapse: collapse; font-size: 14px; text-align: start; }
+    th, td { padding: 10px 14px; border: 1px solid var(--pf-border); vertical-align: top; }
+    th { background: var(--pf-soft); font-weight: 700; }
+    tr:nth-child(even) td { background: color-mix(in srgb, var(--pf-soft) 40%, transparent); }
+    
+    .footer {
+      border-top: 1px solid var(--pf-border);
+      padding: 40px 0;
+      color: var(--pf-muted);
+      font-size: 14px;
+    }
+    .footer-grid {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 16px;
+    }
+    .footer a { color: var(--pf-muted); }
+    .footer a:hover { color: var(--pf-text); }
+  </style>
+</head>
+<body>
+  <nav class="nav">
+    <div class="wrap">
+      <a href="../index.html" class="brand">
+        <img src="../assets/dog-mascot.png" alt="Pointer logo" />
+        <span>Pointer Docs</span>
+      </a>
+      <div class="nav-links">
+        <a href="install.html">Install</a>
+        <a href="api-keys.html" class="active">API Keys</a>
+        <a href="project-settings.html">Project Settings</a>
+        <a href="workspaces.html">Workspaces</a>
+        <a href="../index.html">Home</a>
+      </div>
+    </div>
+  </nav>
+
+  <main class="content">
+    <div class="wrap">
+      <div class="badge">Configuration &bull; Security</div>
+      <h1>Where is my API key, and is it safe?</h1>
+      <p class="lead">
+        Pointer uses personal API keys to authenticate local CLI commands, AI editor extensions, and automated pipelines. This page explains key formats, where to manage your key, how it is secured at rest, and operational rules for self-hosters.
+      </p>
+
+      <h2>Finding and viewing your key</h2>
+      <p>
+        Every active user account in Pointer is assigned a personal API key. To find it:
+      </p>
+      <ol>
+        <li>Sign in to the Pointer web dashboard.</li>
+        <li>Click your user avatar in the top-right navigation bar and select <strong>Profile</strong>.</li>
+        <li>Scroll down to the <strong>API Key</strong> section.</li>
+        <li>Click <strong>Copy</strong> to copy the key to your clipboard.</li>
+      </ol>
+      <div class="callout">
+        <div class="callout-title">Re-viewable at any time</div>
+        <p>
+          Unlike systems that show keys only once upon creation, Pointer keys <strong>remain re-viewable on your profile page at any time</strong>. You can return whenever you need to copy it for a new dev machine or tool.
+        </p>
+      </div>
+
+      <h2>Key format &amp; regeneration</h2>
+      <p>
+        A Pointer API key consists of the prefix <code>ptr_</code> followed by 40 hexadecimal characters (representing 20 cryptographically secure random bytes), for example:
+      </p>
+      <pre><code>ptr_9f83a2d4e7b1056c82d41fa90e38bc7412f864e2</code></pre>
+
+      <h3>Regenerating your key</h3>
+      <p>
+        If your key is compromised or needs to be refreshed, click <strong>Regenerate</strong> in the Profile view.
+      </p>
+      <div class="callout danger">
+        <div class="callout-title">Immediate revocation</div>
+        <p>
+          Regenerating a key <strong>immediately revokes the old one</strong>. The old key is stamped with <code>RevokedAt</code> in the database and rejected on every subsequent call. Any local CLI instances, active IDE sessions, or CI workflows using the old key will fail immediately with an authentication error until updated.
+        </p>
+      </div>
+
+      <h2>Security architecture: Hashed for lookup, encrypted for display</h2>
+      <p>
+        Pointer enforces a dual-layer security model for API keys to separate authentication verification from key display:
+      </p>
+      <ol>
+        <li>
+          <strong>Hashed for lookup (SHA-256)</strong>: When you authenticate via the CLI or automated tools (<code>POST /api/auth/login-with-key</code>), the server computes the SHA-256 hash of your supplied key and queries the database for an active match. The server never compares plaintext keys in SQL queries.
+        </li>
+        <li>
+          <strong>Encrypted for display (AES-256-GCM)</strong>: To allow you to re-view your key on the profile page, the server encrypts the key using authenticated AES-256-GCM with a dedicated server-side encryption key (<code>Auth:ApiKeyEncryptionKey</code>) and stores the ciphertext alongside an initialization vector (nonce).
+        </li>
+      </ol>
+
+      <div class="callout">
+        <div class="callout-title">The database dump guarantee</div>
+        <p>
+          <strong>The database alone does not yield a usable key.</strong> An attacker who gains full unauthorized read access to the database sees only SHA-256 hashes and AES-256-GCM encrypted blobs. Because the decryption key is kept in server application configuration rather than in the database, the attacker cannot reverse the hashes or decrypt the keys without also compromising the server's runtime environment.
+        </p>
+      </div>
+
+      <h2>Local key hygiene</h2>
+      <ul>
+        <li>
+          <strong>Saved in <code>.pointer/credentials.env</code></strong>: When running <a href="install.html"><code>npx -y pointer-feedback init</code></a>, the CLI writes your key to <code>.pointer/credentials.env</code>.
+        </li>
+        <li>
+          <strong>Restricted file permissions</strong>: The CLI creates this file with <code>0600</code> permissions (readable and writable only by your local operating system user).
+        </li>
+        <li>
+          <strong>Gitignored by default</strong>: The CLI automatically writes entries into your root <code>.gitignore</code> to ensure <code>.pointer/credentials.env</code> is never tracked by git.
+        </li>
+      </ul>
+      <div class="callout warning">
+        <div class="callout-title">Never commit your API key</div>
+        <p>
+          Never commit <code>.pointer/credentials.env</code> or hard-code <code>ptr_</code> tokens in source files or docker images. If you suspect an API key was committed to version control, regenerate it immediately from your profile page.
+        </p>
+      </div>
+
+      <h2>Self-hosting &amp; operator configuration</h2>
+      <p>
+        If you self-host the Pointer API backend, follow these configuration guidelines for API key security:
+      </p>
+
+      <h3>Configuring the encryption key</h3>
+      <p>
+        Before booting your Pointer instance for the first time, generate a dedicated 32-byte base64 encryption key:
+      </p>
+      <pre><code>openssl rand -base64 32</code></pre>
+      <p>
+        Set this key in your server environment variables or <code>appsettings.json</code>:
+      </p>
+      <pre><code>Auth__ApiKeyEncryptionKey="&lt;generated-base64-key&gt;"</code></pre>
+
+      <h3>The derived fallback</h3>
+      <p>
+        If <code>Auth:ApiKeyEncryptionKey</code> is omitted on startup, Pointer derives an encryption key from <code>JWT:SigningKey</code> using HKDF-SHA256 and logs a warning. While this enables zero-configuration local development, it is strongly discouraged in production because it couples two distinct security mechanisms (a leak of the JWT signing key compromises key display encryption as well).
+      </p>
+
+      <h3>What happens when rotating the encryption key?</h3>
+      <p>
+        If you rotate or alter <code>Auth:ApiKeyEncryptionKey</code> on an existing backend:
+      </p>
+      <ul>
+        <li>
+          <strong>Key display is disabled for existing keys</strong>: When users visit their Profile page, <code>GET /api/me/api-key</code> can no longer decrypt the existing ciphertext and returns <code>key display unavailable</code>.
+        </li>
+        <li>
+          <strong>Logins continue working</strong>: Because authentication verifies the SHA-256 hash in the database, existing keys stored in local <code>credentials.env</code> files and CI pipelines remain fully functional.
+        </li>
+        <li>
+          <strong>Restoring display</strong>: Users simply click <strong>Regenerate</strong> in their profile to mint a new key encrypted with the updated configuration.
+        </li>
+      </ul>
+
+      <div class="callout not-available">
+        <div class="callout-title">Not yet available</div>
+        <p>
+          Scoped API keys (such as read-only keys, project-restricted tokens, or time-limited tokens) and multiple simultaneous keys per user are not yet supported. Each user account has exactly one active personal API key with permissions reflecting their account role.
+        </p>
+      </div>
+    </div>
+  </main>
+
+  <footer class="footer">
+    <div class="wrap footer-grid">
+      <span>Pointer Documentation &bull; Release 1</span>
+      <div class="nav-links">
+        <a href="install.html">Install</a>
+        <a href="api-keys.html">API Keys</a>
+        <a href="project-settings.html">Project Settings</a>
+        <a href="workspaces.html">Workspaces</a>
+        <a href="../index.html">Main Site</a>
+      </div>
+    </div>
+  </footer>
+</body>
+</html>

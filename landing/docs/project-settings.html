@@ -1,24 +1,337 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <title>Project Settings</title>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Project Settings & Environments — Pointer Docs</title>
+  <meta name="description" content="Configure allowed origins, wildcard preview patterns, rate limiting, and workspace environments for your Pointer projects." />
+  <link rel="icon" href="../assets/favicon.ico" />
+  <style>
+    :root {
+      --pf-green: #16a34a;
+      --pf-blue: #2563eb;
+      --pf-text: #0f172a;
+      --pf-muted: #475569;
+      --pf-bg: #ffffff;
+      --pf-card: #ffffff;
+      --pf-soft: #f1f5f9;
+      --pf-border: #e2e8f0;
+      --pf-grad: linear-gradient(135deg, var(--pf-green), var(--pf-blue));
+      --pf-radius: 12px;
+      --pf-max: 840px;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --pf-text: #e5e7eb;
+        --pf-muted: #94a3b8;
+        --pf-bg: #0b1220;
+        --pf-card: #111827;
+        --pf-soft: #0f172a;
+        --pf-border: #1f2937;
+      }
+    }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; padding: 0; }
+    body {
+      font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+      color: var(--pf-text);
+      background: var(--pf-bg);
+      line-height: 1.65;
+      -webkit-font-smoothing: antialiased;
+    }
+    a { color: var(--pf-blue); text-decoration: none; }
+    a:hover { text-decoration: underline; }
+    .wrap { max-width: var(--pf-max); margin: 0 auto; padding: 0 24px; }
+    
+    .nav {
+      position: sticky; top: 0; z-index: 10;
+      background: color-mix(in srgb, var(--pf-bg) 88%, transparent);
+      backdrop-filter: saturate(1.4) blur(8px);
+      border-bottom: 1px solid var(--pf-border);
+    }
+    .nav .wrap { display: flex; align-items: center; justify-content: space-between; height: 64px; gap: 16px; }
+    .brand { display: flex; align-items: center; gap: 10px; font-weight: 800; font-size: 17px; color: var(--pf-text); text-decoration: none; }
+    .brand img { width: 28px; height: 28px; border-radius: 6px; }
+    .nav-links { display: flex; gap: 18px; align-items: center; flex-wrap: wrap; }
+    .nav-links a { color: var(--pf-muted); font-weight: 500; font-size: 14px; }
+    .nav-links a.active { color: var(--pf-text); font-weight: 700; }
+    .nav-links a:hover { color: var(--pf-text); text-decoration: none; }
+    
+    .content { padding: 48px 0 80px; }
+    .badge {
+      display: inline-block;
+      font-size: 12px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: var(--pf-blue);
+      background: color-mix(in srgb, var(--pf-blue) 12%, transparent);
+      padding: 3px 8px;
+      border-radius: 6px;
+      margin-bottom: 12px;
+    }
+    h1 { font-size: clamp(28px, 4vw, 38px); line-height: 1.2; margin: 0 0 16px; letter-spacing: -0.02em; }
+    .lead { font-size: 18px; color: var(--pf-muted); margin: 0 0 32px; line-height: 1.6; }
+    h2 { font-size: 24px; margin: 44px 0 16px; padding-top: 24px; border-top: 1px solid var(--pf-border); }
+    h3 { font-size: 18px; margin: 28px 0 12px; }
+    p, ul, ol { margin: 0 0 16px; }
+    ul, ol { padding-inline-start: 24px; }
+    li { margin-bottom: 8px; }
+    
+    code {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: 0.88em;
+      background: var(--pf-soft);
+      padding: 2px 6px;
+      border-radius: 4px;
+      border: 1px solid var(--pf-border);
+    }
+    pre {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: 13.5px;
+      background: var(--pf-soft);
+      border: 1px solid var(--pf-border);
+      border-radius: 8px;
+      padding: 16px 20px;
+      overflow-x: auto;
+      line-height: 1.5;
+      margin: 16px 0 24px;
+    }
+    pre code {
+      background: none;
+      padding: 0;
+      border: none;
+      font-size: inherit;
+    }
+    
+    .callout {
+      background: var(--pf-soft);
+      border: 1px solid var(--pf-border);
+      border-inline-start: 4px solid var(--pf-blue);
+      border-radius: 8px;
+      padding: 16px 20px;
+      margin: 24px 0;
+    }
+    .callout.warning {
+      border-inline-start-color: #f59e0b;
+      background: color-mix(in srgb, #f59e0b 8%, var(--pf-soft));
+    }
+    .callout.danger {
+      border-inline-start-color: #ef4444;
+      background: color-mix(in srgb, #ef4444 8%, var(--pf-soft));
+    }
+    .callout.not-available {
+      border-inline-start-color: var(--pf-muted);
+      opacity: 0.95;
+    }
+    .callout-title { font-weight: 700; margin-bottom: 6px; font-size: 13px; text-transform: uppercase; letter-spacing: 0.04em; }
+    
+    .table-wrap { overflow-x: auto; margin: 20px 0 28px; }
+    table { width: 100%; border-collapse: collapse; font-size: 14px; text-align: start; }
+    th, td { padding: 10px 14px; border: 1px solid var(--pf-border); vertical-align: top; }
+    th { background: var(--pf-soft); font-weight: 700; }
+    tr:nth-child(even) td { background: color-mix(in srgb, var(--pf-soft) 40%, transparent); }
+    
+    .footer {
+      border-top: 1px solid var(--pf-border);
+      padding: 40px 0;
+      color: var(--pf-muted);
+      font-size: 14px;
+    }
+    .footer-grid {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 16px;
+    }
+    .footer a { color: var(--pf-muted); }
+    .footer a:hover { color: var(--pf-text); }
+  </style>
 </head>
 <body>
-    <h1>Project Settings</h1>
-    <section id="environments">
-        <h2>Environments</h2>
-        <p><strong>What is a workspace environment?</strong></p>
-        <p>A workspace environment (like <code>local</code>, <code>prod</code>, or <code>staging</code>) determines where a project's URLs live. This is <em>not</em> the same as the Local/Staging/Production tag you select on a specific comment (which is just a label for that comment).</p>
+  <nav class="nav">
+    <div class="wrap">
+      <a href="../index.html" class="brand">
+        <img src="../assets/dog-mascot.png" alt="Pointer logo" />
+        <span>Pointer Docs</span>
+      </a>
+      <div class="nav-links">
+        <a href="install.html">Install</a>
+        <a href="api-keys.html">API Keys</a>
+        <a href="project-settings.html" class="active">Project Settings</a>
+        <a href="workspaces.html">Workspaces</a>
+        <a href="../index.html">Home</a>
+      </div>
+    </div>
+  </nav>
 
-        <p><strong>How to enable an environment?</strong></p>
-        <p>Administrators can enable or disable environments from the global environment catalog or create custom ones for their workspace. When an environment is disabled, you cannot add new URLs to it, and existing URLs will be treated as if they don't exist (the widget won't be blocked, but it won't be explicitly mapped).</p>
+  <main class="content">
+    <div class="wrap">
+      <div class="badge">Configuration &bull; Project Controls</div>
+      <h1>Project Settings: Origins &amp; Environments</h1>
+      <p class="lead">
+        This document answers two critical administrative questions: <em>“How do I stop comments arriving from somewhere I don’t control?”</em> and <em>“Where do I tell Pointer my app lives?”</em>
+      </p>
 
-        <p><strong>How to assign a URL per environment?</strong></p>
-        <p>In your project settings, you can define exactly one URL for each enabled environment. This tells Pointer where your app lives for that specific environment.</p>
+      <!-- SECTION 1 -->
+      <section id="restrict-origins">
+        <h2>Part 1: Restrict where comments can come from</h2>
+        <p>
+          By default, a Pointer project accepts comments from any web page where its widget snippet is embedded. If you deploy a staging or production build, anyone with access to that web page can leave comments.
+        </p>
+        <p>
+          In your project settings, the toggle <strong>“Only accept comments from the configured app URLs”</strong> enables strict origin enforcement.
+        </p>
 
-        <p><strong>Default Environments</strong></p>
-        <p>By default, new projects will have their URL placed in the <code>local</code> environment. If you had an existing project whose URL was previously assigned to the legacy <code>default</code> environment, it has now been automatically migrated to the <code>local</code> environment.</p>
-    </section>
+        <h3>How origin enforcement works</h3>
+        <p>
+          Origin enforcement is <strong>opt-in per project</strong> (disabled by default). When you enable it, Pointer verifies the HTTP <code>Origin</code> header (or <code>Referer</code> header) of every incoming comment or reply against your configured environment URLs.
+        </p>
+
+        <div class="callout danger">
+          <div class="callout-title">The footgun: Enabling enforcement with no URLs</div>
+          <p>
+            <strong>Enabling origin enforcement when no app URLs are configured will block all browser traffic.</strong> Because web browsers always send an <code>Origin</code> header on cross-origin POST requests, if your project has no matching URLs, every submission will be rejected. Always add at least one application URL before toggling enforcement on.
+          </p>
+        </div>
+
+        <h3>Allowed exceptions &amp; special cases</h3>
+        <p>When origin enforcement is enabled, the following exceptions are evaluated:</p>
+        <ul>
+          <li>
+            <strong>Localhost exemption for Local comments</strong>: When a comment is tagged with the <code>Local</code> environment, origins running on localhost (e.g. <code>http://localhost:5173</code>, <code>http://127.0.0.1:3000</code>, <code>http://[::1]:4200</code>) are <strong>always allowed</strong>. Developers running local servers do not need to register transient development ports in project settings.
+          </li>
+          <li>
+            <strong>Pointer dashboard exemption</strong>: The Pointer web dashboard's own origin is <strong>always allowed</strong>, ensuring your team can reply to comments directly from the web dashboard regardless of where the app is hosted.
+          </li>
+          <li>
+            <strong>Requests without an Origin header (CLI &amp; AI tools)</strong>: Automation tools, local CLI scripts, and AI coding agents make direct API calls with an API key and do not send browser <code>Origin</code> headers. These requests are <strong>permitted for staff accounts</strong> (owners, developers, and administrators) but <strong>strictly rejected for client / quick-access accounts</strong>, which are only authorized to interact through approved web browsers.
+          </li>
+        </ul>
+
+        <h3>Wildcard URL patterns for preview deployments</h3>
+        <p>
+          Teams using ephemeral preview environments (such as pull request deployments on Vercel, Netlify, or Cloudflare Pages) can configure wildcard URL patterns instead of manually adding every branch URL.
+        </p>
+        <p>Pointer enforces strict safety constraints on wildcard patterns:</p>
+        <ul>
+          <li><strong>At most one asterisk</strong>: A pattern may contain at most one <code>*</code> character.</li>
+          <li><strong>Leftmost host label only</strong>: The wildcard must reside in the leftmost label of the hostname (e.g. <code>https://myapp-*.vercel.app</code> or <code>https://*.staging.example.com</code>). Wildcards in paths, ports, or higher-level domain labels are rejected.</li>
+          <li>
+            <strong>Mandatory literal prefixes on shared hosts</strong>: On public multi-tenant platforms where any third party can register a subdomain (e.g. <code>vercel.app</code>, <code>netlify.app</code>, <code>pages.dev</code>, <code>github.io</code>, <code>web.app</code>, <code>firebaseapp.com</code>, <code>herokuapp.com</code>, <code>railway.app</code>, <code>fly.dev</code>, <code>onrender.com</code>, <code>azurewebsites.net</code>, etc.), bare wildcards like <code>https://*.vercel.app</code> are <strong>strictly forbidden</strong>. You must include a literal prefix scoped to your organization, such as <code>https://myapp-*.vercel.app</code>. This prevents unrelated projects on that platform from injecting feedback into your queue.
+          </li>
+          <li>
+            <strong>Minimum label requirements</strong>: On private domains, a bare wildcard requires at least three labels (e.g. <code>https://*.staging.example.com</code> is allowed, but <code>https://*.example.com</code> requires a literal prefix).
+          </li>
+        </ul>
+
+        <h3>What commenters see when blocked</h3>
+        <p>
+          If a browser request arrives from an unauthorized origin while enforcement is enabled, the API immediately responds with HTTP <code>403 Forbidden</code> and the message:
+        </p>
+        <pre><code>"Comments are not allowed from this address."</code></pre>
+        <p>
+          The embedded widget displays an error toast informing the user that the comment could not be saved.
+        </p>
+
+        <h3>Comment rate limiting</h3>
+        <p>
+          To safeguard against abuse and automated spam, Pointer enforces a sliding-window rate limit on comment creation and replies:
+        </p>
+        <ul>
+          <li><strong>Limit</strong>: 30 comments/replies per 60-second sliding window per authenticated user.</li>
+          <li><strong>Response when exceeded</strong>: HTTP <code>429 Too Many Requests</code> with a standard <code>Retry-After</code> header specifying the back-off duration in seconds.</li>
+        </ul>
+      </section>
+
+      <!-- SECTION 2 -->
+      <section id="environments">
+        <h2>Part 2: Workspace environments &amp; project URLs</h2>
+        <p>
+          Pointer organizes application endpoints through workspace environments.
+        </p>
+
+        <div class="callout warning">
+          <div class="callout-title">Important distinction: Workspace environments vs comment tags</div>
+          <p>
+            A <strong>workspace environment</strong> (such as <code>local</code>, <code>staging</code>, or <code>production</code>) defines where your application runs and maps allowed URLs. This is <strong>not</strong> the same as the "Local / Staging / Production" tag selected on an individual comment pin. The comment tag is a categorization label indicating where an observer found an issue; workspace environments define the operational targets in your workspace.
+          </p>
+        </div>
+
+        <h3>Enabling and managing environments</h3>
+        <p>
+          Workspace administrators manage environments from the <strong>Environments</strong> screen in the dashboard:
+        </p>
+        <ul>
+          <li><strong>Enabled toggle</strong>: Administrators can enable or disable specific environments. When an environment is disabled, it cannot be selected when adding new application URLs.</li>
+          <li>
+            <strong>Disabling an environment does not break live widgets</strong>: Disabling an environment in the dashboard removes the URL mapping from active lists, but <strong>does not take a live widget offline</strong>. The widget treats an origin with a disabled environment as unmapped (allowed) rather than explicitly deactivated. Only setting an individual URL mapping's toggle to <code>Inactive</code> (<code>IsActive = false</code>) takes a widget offline.
+          </li>
+        </ul>
+
+        <h3>Assigning a URL per environment</h3>
+        <p>
+          In your <strong>Project Settings</strong>, you can assign exactly one URL per enabled environment:
+        </p>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Environment</th>
+                <th>Example URL</th>
+                <th>Usage</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><code>local</code></td>
+                <td><code>http://localhost:5173</code></td>
+                <td>Local developer workstation and test servers.</td>
+              </tr>
+              <tr>
+                <td><code>staging</code></td>
+                <td><code>https://staging.example.com</code></td>
+                <td>Shared internal test environment or QA review deployment.</td>
+              </tr>
+              <tr>
+                <td><code>production</code></td>
+                <td><code>https://example.com</code></td>
+                <td>Live customer-facing application.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <h3>Retirement of the legacy "default" environment</h3>
+        <p>
+          Earlier releases of Pointer used a generic environment named <code>default</code>. This has been officially retired across all services in favor of <code>local</code>.
+        </p>
+        <p>
+          Existing projects that previously had URLs assigned to <code>default</code> have been automatically migrated to the <code>local</code> environment. No manual intervention is needed.
+        </p>
+
+        <div class="callout not-available">
+          <div class="callout-title">Not yet available</div>
+          <p>
+            Multiple URLs for the same environment within a single project, or path-based URL routing (e.g. <code>https://example.com/app1</code> and <code>https://example.com/app2</code> as separate environments), are not currently supported. Each project defines at most one URL per environment.
+          </p>
+        </div>
+      </section>
+    </div>
+  </main>
+
+  <footer class="footer">
+    <div class="wrap footer-grid">
+      <span>Pointer Documentation &bull; Release 1</span>
+      <div class="nav-links">
+        <a href="install.html">Install</a>
+        <a href="api-keys.html">API Keys</a>
+        <a href="project-settings.html">Project Settings</a>
+        <a href="workspaces.html">Workspaces</a>
+        <a href="../index.html">Main Site</a>
+      </div>
+    </div>
+  </footer>
 </body>
 </html>
