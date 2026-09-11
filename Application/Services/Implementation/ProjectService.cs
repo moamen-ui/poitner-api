@@ -420,6 +420,14 @@ public class ProjectService : IProjectService
         if (string.IsNullOrEmpty(url))
             return Result<ProjectAppUrlResponse>.Failure("URL is required.");
 
+        // The wildcard rules are only a guard if they run on the WRITE path. OriginNormalizer
+        // refuses a bare `*` on shared hosting precisely because `https://*.vercel.app` would
+        // authorise every other tenant on that platform to post into this project — but nothing
+        // called it here, so such a pattern saved happily and then matched at request time.
+        var patternError = OriginNormalizer.ValidatePattern(url);
+        if (patternError != null)
+            return Result<ProjectAppUrlResponse>.Failure(patternError);
+
         // The environment must be visible to this tenant (own or global) — the query filter already
         // enforces that; a foreign/other-tenant environment id simply won't be found.
         var environment = await _unitOfWork.Repository<Domain.Entity.AppEnvironment>().GetByIdAsync(environmentId);
