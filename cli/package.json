@@ -1,0 +1,28 @@
+{
+  "name": "pointer-feedback",
+  "version": "0.1.0",
+  "description": "CLI for Pointer widget",
+  "type": "module",
+  "bin": {
+    "pointer": "dist/cli.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "build": "node build.mjs",
+    "typecheck": "tsc --noEmit",
+    "test": "node --import tsx --test test/**/*.test.ts",
+    "prepublishOnly": "npm run typecheck && npm test && npm run build"
+  },
+  "devDependencies": {
+    "@types/node": "^18.19.130",
+    "esbuild": "^0.20.2",
+    "tsx": "^4.23.13",
+    "typescript": "^5.9.3"
+  },
+  "dependencies": {
+    "@clack/prompts": "^1.8.0",
+    "picocolors": "^1.1.1"
+  }
+}
