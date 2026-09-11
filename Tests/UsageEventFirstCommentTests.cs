@@ -68,6 +68,11 @@ public class UsageEventFirstCommentTests
         var projectService = Substitute.For<IProjectService>();
         projectService.EnsureAsync("my-project").Returns(Task.FromResult(Result<int>.Success(project.Id)));
         projectService.EnsureAsync("my-project", Arg.Any<EnvironmentTag>()).Returns(Task.FromResult(Result<int>.Success(project.Id)));
+        // Origin enforcement (R1-05) is off for this project; an unconfigured substitute returns
+        // false, which would silently deny every create and make this test look like an event bug.
+        projectService
+            .IsOriginAllowedAsync(Arg.Any<int>(), Arg.Any<string?>(), Arg.Any<EnvironmentTag>(), Arg.Any<bool>())
+            .Returns(Task.FromResult(true));
 
         var entitlements = Substitute.For<IEntitlementService>();
         entitlements.CheckCountAsync(Arg.Any<Guid>(), Arg.Any<string>(), Arg.Any<int>())

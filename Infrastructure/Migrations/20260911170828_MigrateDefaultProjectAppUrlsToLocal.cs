@@ -12,8 +12,11 @@ namespace Pointer.Infrastructure.Migrations
         {
             migrationBuilder.Sql(@"
                 -- 1. Ensure the global 'local' row exists
-                INSERT INTO app_environments (name, owner_id, created_at)
-                SELECT 'local', NULL, CURRENT_TIMESTAMP
+                -- created_by is NOT NULL (BaseEntity); a fresh database has no row to copy it from,
+                -- so the all-zero Guid stands for created-by-the-system rather than a user. Omitting it
+                -- aborted first boot on an empty database while passing on an existing one.
+                INSERT INTO app_environments (name, owner_id, created_at, created_by)
+                SELECT 'local', NULL, CURRENT_TIMESTAMP, '00000000-0000-0000-0000-000000000000'::uuid
                 WHERE NOT EXISTS (SELECT 1 FROM app_environments WHERE name = 'local' AND owner_id IS NULL);
 
                 -- 2. Soft-delete 'default' rows for projects that already have a 'local' row
