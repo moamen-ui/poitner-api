@@ -201,4 +201,10 @@ else
   node scripts/lib/report.mjs phase "ai" "SKIP" "0s" "Skipped by tier/flags"
 fi
 
+# How much of the documented suite actually exists. Appended to every report so the distance
+# between "specced" and "implemented" is visible on each run rather than inferred from phases that
+# quietly had nothing to run.
+node scripts/coverage.mjs --markdown >> state/report.md 2>/dev/null || true
+node scripts/coverage.mjs | head -1
+
 echo "=== done — see e2e/state/report.md ==="
