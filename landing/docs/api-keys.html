@@ -273,7 +273,7 @@
       </p>
       <ul>
         <li>
-          <strong>Key display is disabled for existing keys</strong>: When users visit their Profile page, <code>GET /api/me/api-key</code> can no longer decrypt the existing ciphertext and returns <code>key display unavailable</code>.
+          <strong>Key display is disabled for existing keys</strong>: When users visit their Profile page, <code>GET /api/me/api-key</code> can no longer decrypt the existing ciphertext and returns <code>Key display unavailable &mdash; the encryption key changed. Regenerate to get a new key.</code>.
         </li>
         <li>
           <strong>Logins continue working</strong>: Because authentication verifies the SHA-256 hash in the database, existing keys stored in local <code>credentials.env</code> files and CI pipelines remain fully functional.
