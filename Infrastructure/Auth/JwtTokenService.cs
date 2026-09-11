@@ -10,7 +10,7 @@ namespace Pointer.Infrastructure.Auth;
 public class JwtOptions { public string SigningKey { get; set; } = ""; public string Issuer { get; set; } = "pointer-api"; public int LifetimeHours { get; set; } = 12; }
 public class JwtTokenService(IOptions<JwtOptions> opts) : ITokenService
 {
-    public string Issue(User u)
+    public string Issue(User u, int? keyScopes = null)
     {
         var o = opts.Value;
         var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(o.SigningKey));
@@ -32,6 +32,9 @@ public class JwtTokenService(IOptions<JwtOptions> opts) : ITokenService
         };
         if (u.OwnerId is not null)
             claims.Add(new Claim("tenant", u.OwnerId.Value.ToString()));
+        // Only present when this session was opened with an API key; §25 enforces against it.
+        if (keyScopes is not null)
+            claims.Add(new Claim("key_scopes", keyScopes.Value.ToString()));
         var token = new JwtSecurityToken(o.Issuer, o.Issuer, claims,
             expires: DateTime.UtcNow.AddHours(o.LifetimeHours), signingCredentials: creds);
         return new JwtSecurityTokenHandler().WriteToken(token);

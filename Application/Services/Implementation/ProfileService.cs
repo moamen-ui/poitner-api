@@ -12,7 +12,13 @@ namespace Pointer.Application.Services.Implementation;
 public class ProfileService : IProfileService
 {
     private readonly IUnitOfWork _unitOfWork;
-    public ProfileService(IUnitOfWork unitOfWork) => _unitOfWork = unitOfWork;
+    private readonly IApiKeyService _apiKeys;
+
+    public ProfileService(IUnitOfWork unitOfWork, IApiKeyService apiKeys)
+    {
+        _unitOfWork = unitOfWork;
+        _apiKeys = apiKeys;
+    }
 
     public async Task<Result<UserProfileResponse>> GetByIdAsync(int userId)
     {
@@ -34,49 +40,34 @@ public class ProfileService : IProfileService
             : await BuildAsync(user);
     }
 
-    public async Task<Result<ApiKeyResponse>> GetOrCreateApiKeyAsync(Guid publicId)
-    {
-        var user = await _unitOfWork.Repository<User>().Query()
-            .FirstOrDefaultAsync(u => u.PublicId == publicId && u.DeletedAt == null);
-        if (user is null) return Result<ApiKeyResponse>.NotFound("User not found");
+    public async Task<Result<ApiKeyResponse>> GetOrCreateApiKeyAsync(Guid publicId) =>
+        ToResponse(await _apiKeys.GetOrCreateAsync(publicId));
 
-        if (string.IsNullOrEmpty(user.ApiKey))
+    public async Task<Result<ApiKeyResponse>> RegenerateApiKeyAsync(Guid publicId) =>
+        ToResponse(await _apiKeys.RegenerateAsync(publicId));
+
+    /// <summary>
+    /// A key that exists but cannot be decrypted (the encryption key was rotated, or the blob was
+    /// tampered with) is reported as undisplayable. It is deliberately NOT treated as missing:
+    /// regenerating here would silently invalidate every developer's stored key the first time
+    /// someone opened their profile page after a key change. Logins keep working throughout —
+    /// they match on the hash, which never needed the encryption key.
+    /// </summary>
+    private static Result<ApiKeyResponse> ToResponse(ApiKeyResult result)
+    {
+        if (!result.Found)
+            return Result<ApiKeyResponse>.NotFound("User not found");
+
+        if (result.RawKey is null)
+            return Result<ApiKeyResponse>.Failure(
+                "Key display unavailable — the encryption key changed. Regenerate to get a new key.");
+
+        return Result<ApiKeyResponse>.Success(new ApiKeyResponse
         {
-            user.ApiKey = await GenerateUniqueApiKeyAsync();
-            _unitOfWork.Repository<User>().Update(user);
-            await _unitOfWork.SaveChangesAsync();
-        }
-
-        return Result<ApiKeyResponse>.Success(new ApiKeyResponse { ApiKey = user.ApiKey });
-    }
-
-    public async Task<Result<ApiKeyResponse>> RegenerateApiKeyAsync(Guid publicId)
-    {
-        var user = await _unitOfWork.Repository<User>().Query()
-            .FirstOrDefaultAsync(u => u.PublicId == publicId && u.DeletedAt == null);
-        if (user is null) return Result<ApiKeyResponse>.NotFound("User not found");
-
-        user.ApiKey = await GenerateUniqueApiKeyAsync();
-        _unitOfWork.Repository<User>().Update(user);
-        await _unitOfWork.SaveChangesAsync();
-
-        return Result<ApiKeyResponse>.Success(new ApiKeyResponse { ApiKey = user.ApiKey });
-    }
-
-    // ptr_ prefix (scannable, matches common API-key conventions) + 40 url-safe random chars —
-    // collision-checked against the unique index, though at this entropy a collision is not
-    // realistically expected; the loop is just defensive.
-    private async Task<string> GenerateUniqueApiKeyAsync()
-    {
-        for (var attempt = 0; attempt < 5; attempt++)
-        {
-            var candidate = "ptr_" + Convert.ToHexString(RandomNumberGenerator.GetBytes(20)).ToLowerInvariant();
-            var exists = await _unitOfWork.Repository<User>().Query().AsNoTracking()
-                .IgnoreQueryFilters()
-                .AnyAsync(u => u.ApiKey == candidate);
-            if (!exists) return candidate;
-        }
-        throw new InvalidOperationException("Could not generate a unique API key after 5 attempts.");
+            ApiKey = result.RawKey,
+            Prefix = result.Prefix,
+            LastUsedAt = result.LastUsedAt,
+        });
     }
 
     private async Task<Result<UserProfileResponse>> BuildAsync(User user)

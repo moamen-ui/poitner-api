@@ -39,7 +39,7 @@ public class InviteServiceTests
 
     private sealed class FakeTokenService : ITokenService
     {
-        public string Issue(User user) => "token-for-" + user.PublicId.ToString("N");
+        public string Issue(User user, int? keyScopes = null) => "token-for-" + user.PublicId.ToString("N");
     }
 
     private sealed class FakeSettings : ISettingsService

@@ -44,7 +44,7 @@ public class MonetizationSignupTests
         public bool Verify(string p, string h) => h == "h:" + p;
     }
 
-    private sealed class FakeToken : ITokenService { public string Issue(User u) => "t"; }
+    private sealed class FakeToken : ITokenService { public string Issue(User u, int? keyScopes = null) => "t"; }
     private sealed class FakeReset : IResetTokenService
     {
         public string Create(Guid id, Guid stamp) => "r";
@@ -96,7 +96,7 @@ public class MonetizationSignupTests
     private static AuthService Auth(AppDbContext db, ICurrentUser user)
     {
         var uow = new UnitOfWork(db);
-        return new AuthService(uow, new IdentityHasher(), new FakeToken(), user, new SignupEnabledSettings(), new FakeReset(), new NoopEmail(), new NoopBrandingService());
+        return new AuthService(uow, new IdentityHasher(), new FakeToken(), user, new SignupEnabledSettings(), new FakeReset(), new NoopEmail(), new NoopBrandingService(), new ApiKeyService(new UnitOfWork(db), new TestApiKeyProtector()));
     }
 
     [Fact]

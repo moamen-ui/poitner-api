@@ -11,6 +11,8 @@ using Pointer.Application;
 using Pointer.Application.Response;
 using Pointer.Infrastructure;
 
+using Pointer.API.Startup;
+
 var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddControllers(options =>
@@ -126,6 +128,9 @@ if (builder.Configuration.GetValue<bool>("DBMigrationEnabled"))
     var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
     await db.Database.MigrateAsync();
     await AdminSeeder.SeedAsync(app.Services);
+    // Moves any pre-hardening plaintext User.ApiKey into the hashed+encrypted api_keys table.
+    // Idempotent and inline (not a hosted service) so it is guaranteed to follow the migration.
+    await ApiKeyBackfill.RunAsync(app.Services);
 }
 
 // Behind a TLS-terminating reverse proxy (Caddy): honor X-Forwarded-Proto/For so
