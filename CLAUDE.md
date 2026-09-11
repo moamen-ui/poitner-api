@@ -12,10 +12,17 @@ markdown, and a zero-dependency `/admin/` fallback page. Run locally with `just 
 via Docker, API on `:8090`).
 
 > The **admin dashboard is a separate repo**:
-> [`pointer-dashboard`](https://github.com/moamen-ui/pointer-dashboard) (Angular 22 SPA). It
-> consumes this API's Swagger spec via Orval — so **if you change endpoints or DTOs, regenerate the
-> dashboard's API layer there** (`npm run generate-services`, API up on `:8090`). The Orval
-> conventions live in that repo's `docs/skills/orval-codegen/SKILL.md`.
+> [`pointer-dashboard`](https://github.com/moamen-ui/pointer-dashboard) — **three apps at parity**
+> (Angular 22, React, Vue 3). It does **not** generate anything: the typed clients are generated
+> **here** from this API's Swagger spec (`orval.config.ts` → `npm run generate-clients` →
+> `npm run build-clients` → `clients/{angular,react,vue}/`, gitignored) and published to GitHub
+> Packages as `@moamen-ui/pointer-{angular,react,vue}` by
+> [`.github/workflows/publish-clients.yml`](.github/workflows/publish-clients.yml); each dashboard app
+> installs its package. So **if you change endpoints or DTOs**: annotate the action with the inner type,
+> make sure its `[Tags("X")]` is listed in `orval.config.ts` `filters.tags` (a missing tag silently
+> generates nothing), then regenerate. The sync is performed **once per phase** by the
+> [`dashboard-agent`](.claude/agents/dashboard-agent.md) — see
+> [`docs/roadmap/execution/01-OVERVIEW.md` § Cross-repo sync agents](docs/roadmap/execution/01-OVERVIEW.md).
 
 ## Critical Skill (READ FIRST)
 

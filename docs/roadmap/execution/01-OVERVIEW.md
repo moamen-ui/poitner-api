@@ -61,7 +61,67 @@ implemented in parallel unless a prerequisite says otherwise.
 - Format with `just fmt` before committing; `just test` must be green.
 
 ### Dashboard column
-Every doc has a **Dashboard tasks** section. It names the DTOs/endpoints the separate `pointer-dashboard` repo must regenerate (`npm run generate-services` with the API on `:8090`) and the UI change, or states "none". API-only PRs for items with dashboard tasks are incomplete.
+Every doc has a **Dashboard tasks** section naming the DTOs/endpoints and the UI change, or "none".
+It is **an input to the phase-end `dashboard-agent` run, not a same-PR obligation** — see *Cross-repo
+sync agents* below. An API-only PR is complete; a *phase* that ends without the dashboard sync is not.
+
+The pipeline those tasks feed is **not** "regenerate in the dashboard repo" — there is no
+`generate-services` script anywhere. Clients are generated **here**:
+
+```
+orval.config.ts ──▶ npm run generate-clients ──▶ clients/{angular,react,vue}/src   (gitignored)
+                ──▶ npm run build-clients    ──▶ dist per client
+                ──▶ published to GitHub Packages as @moamen-ui/pointer-{angular,react,vue}
+pointer-dashboard/{angular,react,vue} ──▶ install those packages; use only their generated hooks/services
+```
+
+`npm run generate-clients` honours `POINTER_SWAGGER_URL` (default `http://localhost:8090/…`), so it
+works against a local API; the *Publish API clients* workflow deliberately generates from production,
+which means a not-yet-deployed endpoint cannot be published — the agent handles that case explicitly.
+A controller tag missing from `orval.config.ts` `filters.tags` silently generates nothing.
+
+### Cross-repo sync agents
+Two repos move with this one: `pointer-dashboard` (three apps at parity) and the rebranding plan on the
+`docs/rebranding-plan` branch. Each has a dedicated agent, and they are invoked on **different
+cadences** — getting that wrong is the failure mode this section exists to prevent.
+
+| | [`rebranding-agent`](../../../.claude/agents/rebranding-agent.md) | [`dashboard-agent`](../../../.claude/agents/dashboard-agent.md) |
+|---|---|---|
+| Cadence | **Eagerly** — as soon as a tracked surface changes; may fire several times in one phase | **Once per phase** — never per doc, never per PR |
+| Trigger | new/renamed table, column, entity, migration, endpoint, DTO, config key, served file, storage key, package/bin, domain, or any new customer-visible name | all backend work for the phase merged and green |
+| Input | what changed + where it landed | the phase's accumulated **Dashboard tasks** sections |
+| Writes | `docs/rebranding/REBRANDING-PLAN.md` (its own worktree) | `orval.config.ts`/tags here + all three dashboard apps |
+| Never | renames anything; pushes | publishes a fake version; hand-edits generated code; pushes |
+
+**Phase lifecycle, in order:**
+
+1. **BE implementation** — the phase's execution docs, each on its own branch.
+2. **`rebranding-agent`** — invoked *during* the phase, every time a tracked surface lands. Do not batch
+   it to the end: the plan's inventory is what a future rename executes against, and a surface added
+   after the last sync is a surface the rename misses silently.
+3. **Phase BE complete** — everything merged, `dotnet build` + `just test` green.
+4. **`dashboard-agent`** — invoked **once**, with the phase's whole Dashboard-tasks backlog. It fixes
+   tags/annotations, regenerates and builds the clients, and brings angular + react + vue to parity
+   including `en` **and** `ar` i18n.
+5. **[`e2e-tester-agent`](../../../.claude/agents/e2e-tester-agent.md)** — invoked with the phase id and
+   its scenario ids, and deliberately **after** the dashboard sync, because the phase's UI changes are
+   part of what the suite exercises. It runs the harness suite (`docs/roadmap/testing/`) and returns a
+   **triaged** report: every failure classified `product bug` / `test bug` / `environment` / `flake`,
+   each with its citation, evidence path and a fix addressed to an owner.
+6. **Orchestrator fixes**, then **re-invokes the tester** — previously-failing ids plus the rows the
+   docs bind to them by state or ordering, then one full clean run of the tier. **Capped at three
+   rounds**; a fourth escalates to the human with a diff of what changed between rounds.
+7. **Phase done.**
+
+If the dashboard agent reports it is working from a **local** client build (the API for this phase is
+not deployed yet), that is expected at step 4 — but it must be re-pointed at the published package once
+the API ships, and the phase is not closed until it is.
+
+The tester is the one agent here with **no write tools at all**. It never edits product code, specs or
+scenario docs — not even an assertion it can prove is wrong; that is a `test bug` finding addressed to
+the doc's owner. An agent that can fix its own failures makes them disappear instead of explaining them,
+and a fix that turns one scenario green and another red is the signal to stop iterating and decide what
+the product should actually do.
 
 ### Widget
 Source in `web-component/src/`; build with `npm run build`; commit the regenerated `API/wwwroot/pointer.{js,css}`. Never hand-edit the artifacts.

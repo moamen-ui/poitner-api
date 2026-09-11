@@ -47,7 +47,7 @@ Read before estimating anything — several items are *wiring*, not features.
 
 ## Cross-cutting rules (every item)
 
-1. **Dashboard column** — any DTO/endpoint change lists its Orval regen + Angular UI task in the separate `pointer-dashboard` repo.
+1. **Dashboard column** — any DTO/endpoint change lists its client + UI task for the separate `pointer-dashboard` repo (**three** apps at parity: angular, react, vue). Clients are generated *here* (`npm run generate-clients` → `@moamen-ui/pointer-*`), not there. Those sections are the input to a **once-per-phase** `dashboard-agent` run that happens after the phase's backend is done and before its e2e; the `rebranding-agent` is invoked **eagerly** instead, whenever a tracked surface changes. Protocol: [`execution/01-OVERVIEW.md` § Cross-repo sync agents](execution/01-OVERVIEW.md).
 2. **Additive-only EF migrations** while self-hosters exist (migrations run on boot).
 3. **`OwnerId` + tenant filter on every new table**; agency "client" isolation is filter discipline, never `IgnoreQueryFilters`.
 4. **White-label** — no brand string in CLI/widget output except what `/api/branding` returned.

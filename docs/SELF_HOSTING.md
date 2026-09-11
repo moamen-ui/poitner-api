@@ -147,9 +147,13 @@ The dashboard (Overview/stats, Roles, Users, Projects, signup approvals) is a st
 
 - Talks to this API at its `apiBase` (dev → `http://localhost:8090`); CORS is open server-side. Its
   `production` build bakes in the deployed API host via `fileReplacements`.
-- Its API layer is **auto-generated from this API's Swagger via Orval** — after you change
-  endpoints/DTOs, regenerate it **in that repo** (`npm run generate-services`, API up). See that
-  repo's `docs/skills/orval-codegen/SKILL.md`.
+- Its API layer is **auto-generated from this API's Swagger via Orval — in *this* repo**, not the
+  dashboard's: `npm run generate-clients` (API up on `:8090`, tags filtered by `orval.config.ts`)
+  writes `clients/{angular,react,vue}/src`, `npm run build-clients` builds them, and
+  `.github/workflows/publish-clients.yml` publishes `@moamen-ui/pointer-{angular,react,vue}` to
+  GitHub Packages. The dashboard apps just install those packages — they generate nothing. A
+  self-hoster who changes endpoints must therefore publish clients to a registry their dashboard
+  build can reach (or point the apps at a local build).
 - **Language + theme:** AR/EN (Arabic flips to RTL) and light/dark, saved per-user in the DB
   (`PATCH /api/me/preferences`).
 - In production it's served as static files by Caddy at `app.pointer.moamen.work` — see

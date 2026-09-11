@@ -89,7 +89,7 @@ guarantee that *the documented AI paths* never see the flag, plus the projection
 7. `skill.md` — one sentence under SECURITY-adjacent notes: "The server may flag secret-shaped text for human reviewers; that flag is intentionally not exposed to you." (Does not alter the SECURITY section text itself — place it after the section.)
 
 ## Dashboard tasks
-Regenerate for `CommentResponse`, `CommentListItemDto`, `ReplyResponse` (+ `ApplyReplyDto` if the admin apply-queue view is rendered there). Add `X-Pointer-Client: dashboard` to the existing envelope-unwrapping HTTP interceptor (the one described in `docs/skills/orval-codegen/SKILL.md`). UI: badge + "flagged" filter.
+Regenerate for `CommentResponse`, `CommentListItemDto`, `ReplyResponse` (+ `ApplyReplyDto` if the admin apply-queue view is rendered there). Add `X-Pointer-Client: dashboard` to the existing envelope-unwrapping HTTP interceptor (documented in the dashboard repo's `CLAUDE.md`). UI: badge + "flagged" filter.
 
 ## Tests
 - `Tests/PayloadFlagDetectorTests.cs`: one positive and one negative per pattern; a 5 KB normal comment matches nothing; a regex timeout does not throw — the detector returns empty and **the caller** (`CommentService`) logs a warning (the detector is a pure static class with no logger).
