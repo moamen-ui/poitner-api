@@ -22,20 +22,30 @@ considerably.
 Both branches are real, green work. They are **not merged**: they are partial items belonging to phases
 that have not started. Merge them when R1.4 and R2.6 begin.
 
-## 2. GLM could not participate — and that is the finding
+## 2. GLM — UNRESOLVED, not demoted (corrected)
+
+An earlier version of this document concluded GLM was "throughput-collapsed" and removed it as an
+assignee. **That conclusion was not earned and has been withdrawn.** What actually happened:
 
 - Earlier today, under light load: wrote 18 execution/test documents and produced the sharpest reviews
   of the session (the frontmatter stamp, the unsound `?v=`/SRI contract, the false deletion claim).
-- Then: hit its 5-hour cap twice. After the cap reset, a 9-document self-assessment ran **70 minutes and
-  produced nothing**. A compact, no-file-reading, four-question version ran **>10 minutes and produced
-  nothing**. A one-line probe answers in seconds.
+- It hit its 5-hour cap twice during that work.
+- Two later attempts produced nothing — but **neither attempt proves GLM failed**: the first job was
+  *killed externally* while still running, and the second hit the chair's own 10-minute command timeout.
+  A one-line probe answered in seconds both times. No error, no quota message.
 
-**Diagnosis: alive but throughput-collapsed.** Not a quota wall — a crawl. It cannot be scheduled.
+So the evidence is: proven high quality, one known hard limit (the 5-hour cap), and **two inconclusive
+runs terminated by the caller, not by the model.** A third attempt is running detached with no
+caller-imposed deadline and a verdict sentinel (`OK|QUOTA|ERROR|EMPTY`).
 
-**Consequence — GLM is removed as an assignee.** It is not "15% of the work"; it is an *opportunistic
-reviewer*. Give it a review batch when it happens to be responsive, never an item with a deadline, never
-anything another model is waiting on. Its earlier output proves the quality is real; today proves the
-availability is not.
+**Until that returns, GLM's share is open.** The assignment table below lists its slots as
+*provisional*: small exact items and review batches, as in the draft. If the detached run succeeds, GLM
+keeps them and gets the reviewer role its output quality has earned. If it genuinely cannot finish a
+bounded job, the slots move to Gemini Flash — which the trial proved capable of exactly that tier.
+
+**Method note for the record:** a model must not be judged on runs the caller killed. Every future
+delegated run goes through `scripts/run-delegate.sh`, which distinguishes a model failing from a caller
+giving up.
 
 ## 3. Final assignment
 
@@ -65,9 +75,9 @@ availability is not.
 | R3.5 privacy page | Gemini Pro | **Claude** (claims must be true against code) |
 | Dashboard UI (per phase) | Gemini Pro via `dashboard-agent` + `impeccable` | Gemini Flash (3-app parity) |
 | E2E authoring | Gemini Pro | Gemini Flash |
-| **Any of the above** | — | **GLM, opportunistically**, when responsive |
+| **Any of the above** | — | **GLM (provisional — see §2)**: small exact items + review batches |
 
-**Split: Gemini Pro ~55%, Gemini Flash ~25%, Claude ~20%, GLM ad-hoc.**
+**Split: Gemini Pro ~55%, Gemini Flash ~25%, Claude ~20%, GLM provisional (§2) — its ~15% of small exact items and review is held open, not reassigned.**
 
 ## 4. Roles
 
@@ -94,8 +104,9 @@ availability is not.
 
 ## 6. Honest gaps
 
-- GLM never delivered a self-assessment; its share was decided *for* it on observed behaviour. Re-ask when
-  it recovers — it may legitimately argue for the reviewer role it has earned on quality.
+- GLM's self-assessment is still outstanding (third attempt running). Its share is **held open**, not
+  decided for it. The chair's earlier removal was a premature conclusion from runs the chair itself
+  terminated — corrected in §2.
 - Gemini Flash was proven on **one** task. Expand its share incrementally, and keep Claude reviewing its
   first few items until the pattern holds.
 - Neither Gemini trial exercised the multi-file, cross-repo work (the dashboard's three apps). That
