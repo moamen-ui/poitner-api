@@ -32,7 +32,7 @@ public class BrandingController(IBrandingService brandingService, IWebHostEnviro
         };
 
     [HttpGet("api/branding")]
-    [ProducesResponseType(typeof(Result<BrandingResponse>), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(BrandingResponse), StatusCodes.Status200OK)]
     public async Task<IActionResult> Get()
     {
         var publicBase    = PointerUrlResolver.ResolvePublicUrl(configuration, Request);
