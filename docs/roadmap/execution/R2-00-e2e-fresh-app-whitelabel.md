@@ -1,11 +1,14 @@
-# R2-00 — Fresh-app init E2E + white-label CI job  (NEW-4b · Release 2 · 2 d)
+# R2-00 — Fresh-app init E2E + white-label CI job  (NEW-4b + §52 · Release 2 · 2 d + 1 d)
 
 ## Goal
 Two automated proofs, run in CI on a schedule and on demand: (1) the 5-minute promise — a brand-new
 Vite app, a brand-new static site and a brand-new Angular app each go from zero to a posted comment
 using only `npx pointer-feedback init` and a browser, **no AI tool**; (2) the white-label hedge — the
 whole CLI + widget flow runs against a server whose `/api/branding` returns a different product name,
-and no literal "Pointer" leaks into any CLI output or widget UI text.
+and no literal "Pointer" leaks into any CLI output or widget UI text; and (3) **§52 — the rebrand
+rehearsal**: the same stack served under a *different domain* (`pick-it.test`) as well as a different
+name (`PickIt`), proving the widget, the served skills, `/embed.js`, the CLI, the landing page and the
+**e-mails** all follow the new identity, then restoring both.
 
 ## Out of scope
 - AI-under-test cases (`e2e/ai/`, `--with-ai`) — unchanged, never scheduled (real tokens).
@@ -91,6 +94,51 @@ Driver script `e2e/fresh-app/run.mjs` (Node, no Playwright) per stack:
 4. Restore branding: `PUT /api/admin/branding` with the defaults from `BrandingService.cs:10-18`
    (`productName: "Pointer"`, tagline, `urls.app` default) — there is no reset endpoint.
 
+### Mock-domain rebrand rehearsal (`e2e/rebrand/`) — §52
+
+The white-label scenario above swaps only the **name**. This adds the **domain**: run the whole stack
+as "PickIt at pick-it.test", prove every emitted URL and every e-mail follows, then restore. Full
+design in `docs/roadmap/testing/00-HARNESS.md` §13 (binding); the essentials an implementer needs:
+
+1. **`pick-it.test`, plain HTTP by default.** `.test` is RFC 6761-reserved (never resolves publicly).
+   **`.dev` cannot be used locally** — Chrome HSTS-preloads it, so `http://pick-it.dev` is upgraded to
+   HTTPS before any request leaves the browser. The production brand domain may still be `.dev`; the
+   rehearsal only needs the same *shape*, because every assertion is on an emitted string or on host
+   routing.
+2. **Resolution without `sudo`**: Chromium `--host-resolver-rules=MAP pick-it.test 127.0.0.1` via
+   `playwright.config.ts` `launchOptions.args` (the file has no `launchOptions` today, `:10-13`), gated
+   on `E2E_MOCK_DOMAIN` so normal runs are unchanged. Node-side specs cannot use it — they send
+   `Host: pick-it.test` to `127.0.0.1:8090` instead and assert on the response body.
+3. **`Pointer__PublicUrl` is the emission knob.** `PointerUrlResolver.ResolvePublicUrl`
+   (`API/Extensions/PointerUrlResolver.cs:15-20`) prefers `Pointer:PublicUrl` over `{scheme}://{host}`,
+   and is the single source for `/embed.js` (`Program.cs:288`), the `<POINTER_SERVER>` placeholder
+   rewrite (`Program.cs:213-214`) and branding asset URLs (`BrandingController.cs:38`). Set and cleared
+   with the existing `restart-api.mjs`.
+4. **Assert the runtime-brandable surfaces, never the frozen ones.** Brandable: `/api/branding` payload,
+   widget text (`constants.ts:131-143` → `templates.ts:17,69,133`), landing `[data-brand-name]`
+   (`landing/index.html:795-797`), CLI human output, e-mail subject/body, invitation join links, asset
+   URLs. Frozen and therefore *expected* to still say "pointer": the `<pointer-feedback>` tag,
+   `window.__pointerEmbedded`, `/pointer.js`, `.pointer/`, `POINTER_*`, `pointer_token`, the npm package
+   (`R1-01-contract-freeze.md`). The existing leak regex `/(?<![-\w])Pointer(?![-\w])/g` already exempts
+   them via its lookarounds — do not widen it.
+5. **E-mail is the point.** With only `urls.app` set (never `app_base_url`), the invitation join link
+   must come out as `http://pick-it.test:8090/join?code=` — that exercises the
+   `app_base_url → brand_url_app → compiled default` chain shipped in `42e534e`, i.e. a rebrand that
+   touches only branding still produces correct links. Reset subject carries the product name
+   (`AuthService.cs:66` interpolates into the **subject**, not the body).
+6. **TLS variant, manual only** (`--mock-domain-tls`): the R3-03 Caddy container gains a `pick-it.test`
+   block with `tls internal` on 8443; Playwright sets `ignoreHTTPSErrors`. It is the only way to prove
+   the `X-Forwarded-Proto` path (`Program.cs:130-140`) makes `/embed.js` emit `https://`.
+7. **Teardown is a `finally` phase step, not a spec** (same reasoning as branding restore): reset
+   branding → `restart-api.mjs` with no override → assert both. A killed run is cleaned by the next
+   `reset.sh` (`down -v`), so the rehearsal must only ever run after a reset, never against a
+   long-lived local stack.
+
+**Relationship to the rebrand**: this is how `docs/rebranding/verify-no-pointer.sh` and the plan's
+`NAME_LOWER`/`DOMAIN` answers get exercised *before* the rename. The grep proves no brand string remains
+in source; the rehearsal proves the running product works under the new identity. Run both green as a
+gate before executing `REBRANDING-PLAN.md`.
+
 ### CI wiring (`.github/workflows/e2e.yml`, extends R1-07)
 - New job `fresh-app` (matrix `stack: [vite, static, angular, next]` — `next` asserts the hand-off message and that no app file changed (nightly only, no injection)) and job `whitelabel`, both
   `needs: e2e` (R1-07 defines exactly two jobs, `unit` and `e2e`; there is no `seed` job — the `e2e`
@@ -118,6 +166,30 @@ Driver script `e2e/fresh-app/run.mjs` (Node, no Playwright) per stack:
 7. `.github/workflows/e2e.yml` — add the two jobs as designed (`needs: e2e`, own reset+seed).
 8. `e2e/README.md` — document the new phases, the 5-minute budget + retry rule, and how to run one stack locally.
 9. `.gitignore` (repo root) — ensure `e2e/state/` is ignored (verify; add if missing).
+10. **`e2e/playwright.config.ts`** — add `launchOptions.args` with
+    `--host-resolver-rules=MAP ${E2E_MOCK_DOMAIN} 127.0.0.1, MAP *.${E2E_MOCK_DOMAIN} 127.0.0.1` **only when
+    `process.env.E2E_MOCK_DOMAIN` is set**, plus `ignoreHTTPSErrors: !!process.env.E2E_MOCK_TLS`. The file
+    currently has a bare `use` block and no `launchOptions` (`:10-13`) — a default run must stay
+    byte-identical.
+11. **`e2e/rebrand/mock-domain.spec.mjs`** — R2-00-09 + R2-00-11: `Host`-header requests through
+    `lib/api.mjs`, Mailpit assertions through `lib/mail.mjs`. Declares its 2-token `signup` spend.
+12. **`e2e/rebrand/mock-domain.spec.ts`** — R2-00-10: resolver-rule browser run against
+    `http://pick-it.test:8090/check?project=…` (the `/check` page from R1-02 §J, so one origin serves both
+    page and widget), shadow-root text + launcher attribute sweep, `server` attribute assertion.
+13. **`e2e/scripts/assert-origin-default.mjs`** — teardown check: `/embed.js` advertises the request host
+    again and `Pointer__PublicUrl` is absent from the container env.
+14. **`e2e/run-e2e.sh`** — `--mock-domain` flag (and `--mock-domain-tls` for the manual variant) wrapping
+    the phase as `try { 09,10,11 } finally { reset-branding.mjs; restart-api.mjs (no override);
+    assert-branding-default.mjs; assert-origin-default.mjs }`. The phase runs **after** the whitelabel
+    phase's teardown, never overlapping its brand window.
+15. **`e2e/compose.caddy.yaml`** (shared with R3-03) — add a `pick-it.test` site block, `tls internal`,
+    `reverse_proxy api:8080`, published 8443. Manual variant only.
+16. **`.github/workflows/e2e.yml`** — extend the `whitelabel` job (or add `rebrand-rehearsal`,
+    `needs: e2e`) with `E2E_MOCK_DOMAIN=pick-it.test` / `E2E_MOCK_BRAND=PickIt`; schedule +
+    `workflow_dispatch` only. The TLS variant is not scheduled.
+17. **`docs/rebranding/REBRANDING-PLAN.md`** (on the `docs/rebranding-plan` branch — a **cross-branch
+    follow-up**, not editable from here): add the rehearsal to §12's acceptance gate next to
+    `verify-no-pointer.sh`. List it in the report rather than silently skipping it.
 
 ## Dashboard tasks
 none
@@ -135,9 +207,31 @@ none
 - [ ] Task 0 landed: `grep -n '"Open Pointer feedback"' web-component/src/templates.ts` returns nothing; rebuilt artifacts committed.
 - [ ] CI `fresh-app` matrix and `whitelabel` jobs are green on `workflow_dispatch`.
 - [ ] Branding is restored after the white-label run (a following `GET /api/branding` returns `productName: "Pointer"`).
+- [ ] **`bash e2e/run-e2e.sh --mock-domain` passes**: with `Pointer__PublicUrl` set and branding swapped to
+      `PickIt` / `pick-it.test`, `GET /api/branding`, `/embed.js`, `/skill.md` and `/pointer-init.md` all
+      emit `http://pick-it.test:8090` and none contains `localhost:8090` or `<POINTER_SERVER>`.
+- [ ] A browser reaching `http://pick-it.test:8090/check?project=…` through the resolver rule boots the
+      widget; its shadow-root text contains `PickIt` and zero leak-regex matches; the launcher's
+      `title`/`aria-label` are `Open PickIt feedback`; the `<pointer-feedback server=…>` attribute is the
+      mock origin — while the element name, `/pointer.js` and `.pointer/` are unchanged (frozen contract).
+- [ ] A password-reset subject contains `PickIt`, and a staff-invite (and, once R1-08 ships, a workspace
+      invitation) join link starts `http://pick-it.test:8090/join?code=` **with `app_base_url` never set** —
+      proving the `brand_url_app` fallback shipped in `42e534e`.
+- [ ] Teardown: after the phase's `finally`, `GET /api/branding` returns the `BrandingService.cs:9-17`
+      defaults, `/embed.js` advertises the request host again, and `Pointer__PublicUrl` is absent from the
+      API container env — asserted even when the phase's specs failed.
+- [ ] Manual `--mock-domain-tls` run recorded once: `/embed.js` emits `https://pick-it.test:8443` and the
+      widget boots with no mixed-content error.
 
 ## Rollout / compatibility
 No product change except the one-line widget `title`/`aria-label` fix (rebuilt `pointer.js`). CI minutes increase (~10 min/run); scheduled nightly only.
+The mock-domain rehearsal adds **no product code at all** — it is config (`Pointer__PublicUrl`, already
+read by `PointerUrlResolver`), DB branding (already writable) and test wiring. Its only risk is state
+leakage, which the mandatory `finally` teardown plus the "only after a reset" rule contain. `.test` never
+resolves publicly, so a mis-configured run fails closed rather than reaching a real host.
 
 ## Report template
 - Files added/changed; per-stack wall-clock seconds (every attempt); the whitelabel leak-regex result and the list of widget strings converted in Task 0; CI run URL; anything skipped.
+- For the rehearsal: the emitted origin from each of `/api/branding`, `/embed.js`, `/skill.md`; the join
+  link from each asserted e-mail; confirmation that teardown restored both branding and origin; and the
+  status of the cross-branch follow-up (task 17) on `REBRANDING-PLAN.md` §12.

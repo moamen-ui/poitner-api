@@ -31,7 +31,11 @@
 | `api` | existing build | 8090 | env adds `Email__Provider=smtp`, `Email__Smtp__Host=mailpit`, `Email__Smtp__Port=1025` (all three ARE read: `Infrastructure/DependencyInjection.cs:43-48`, `SmtpEmailSender.cs:29-30`). **Do not set `Email__Enabled` — nothing reads it**; e-mail is gated by the DB setting `email_enabled` (§3). Selected by `Infrastructure/DependencyInjection.cs:43-48`; sender `Infrastructure/Email/SmtpEmailSender.cs` |
 | `mailpit` | `axllent/mailpit:latest` | 8025 (HTTP UI+API); SMTP 1025 **container-internal only** | **Added by R1-07 task** (the service is not in `docker-compose.yaml` yet — adding it is the first harness task). **Decision: Mailpit** — the code already assumes it (`SmtpEmailSender.cs:12`, `.env.example:9-12`); MailHog is archived; smtp4dev is heavier. JSON API + parsed HTML/Text bodies |
 | fixture apps | host node, `e2e/fixture-app/serve.mjs` + `scripts/serve-dir.mjs` (R2-00) | 4173 smoke (**reserved** — the only page honouring `?project=`, `smoke/index.html` + `widget.spec.ts:19-20`) · **4181 `alpha`** (R2-04/R2-06) · 4174 fresh-app preview · 4175 `vite-react` (R3-01) · 4176 `csp-nonce` (R3-03) · 4177 `pinned-tamper` (R3-03) · 4178 `privacy` (R3-04) · 4179 recording proxy (R3-02) · 4180 pinned pages, route-fulfilled — no listener (R3-03) · **4182 `beta` origin fixture** (R1-05-06) · 8099 `landing` (R3-05) | `--strictPort`; started/killed by `run-e2e.sh` with the existing `trap` pattern |
-| caddy (nightly only) | `caddy:2-alpine` with the repo `Caddyfile`, upstream `api` | 8443 | R3-03 header matrix only |
+| caddy (nightly only) | `caddy:2-alpine` with the repo `Caddyfile`, upstream `api` | 8443 | R3-03 header matrix; **also the §13 TLS variant** (a `pick-it.test` site block with `tls internal`) |
+
+The `api` service additionally accepts **`Pointer__PublicUrl`** (read by `PointerUrlResolver.ResolvePublicUrl`,
+`API/Extensions/PointerUrlResolver.cs:15-20`; unset in normal runs). §13 sets it through `restart-api.mjs`
+to pin the origin that `/embed.js`, the served skills and branding asset URLs advertise.
 
 Port registry lives in `e2e/scripts/lib/constants.mjs` as a **new `PORTS` export — it does not exist there today**; introducing it is a harness task, and this table is its single source (`PORTS = { smoke: 4173, fresh: 4174, viteReact: 4175, cspNonce: 4176, pinnedTamper: 4177, privacy: 4178, alpha: 4181, beta: 4182, recorder: 4179, pinned: 4180, caddy: 8443, landing: 8099 }`). Nothing hard-codes a port elsewhere.
 Optional isolated compose project for the 429 phase: `docker compose -p e2e-429 …` with shifted ports.
@@ -142,8 +146,8 @@ assert the API-side `emailSent` flag where a response carries it.
 | Tier | Runs | Budget | Contents |
 |---|---|---|---|
 | **PR** | every PR touching `API/**`, `Application/**`, `Domain/**`, `Infrastructure/**`, `web-component/**`, `cli/**`, `e2e/**` | ≤ 15 min | api + widget + cli **+ mail** specs marked PR; existing phases 1–4. **Decision:** mailpit runs on every PR run (a ~20 MB container started by `reset.sh`), so PR-tier mail rows such as `R2-05-08` (a 3 s absence check) are legal; slower mail rows stay nightly. **Budget headroom:** R3-04 adds three browser scenarios + a fourth fixture server and R3-05 two more, roughly tripling today's two-spec widget phase — still inside 15 min, but the next doc to add PR-tier browser work should re-measure before doing so. |
-| **Nightly** | `schedule` 03:00 UTC + `workflow_dispatch` | ≤ 45 min | PR set + fresh-app inits, white-label, mail, packaging, restart-dependent scenarios, header matrix, **429 phase last**, `upgrade` job |
-| **Manual** | on demand | — | anything needing a real AI tool, a real deploy, or human judgement |
+| **Nightly** | `schedule` 03:00 UTC + `workflow_dispatch` | ≤ 45 min | PR set + fresh-app inits, white-label **incl. the mock-domain rebrand rehearsal (§13)**, mail, packaging, restart-dependent scenarios, header matrix, **429 phase last**, `upgrade` job |
+| **Manual** | on demand | — | anything needing a real AI tool, a real deploy, or human judgement — plus the **§13 TLS variant** (`--mock-domain-tls`) and the pre-rename rebrand gate (§13.5) |
 
 **Per-scenario path filters** ("PR (paths `cli/**`)") are implemented with `dorny/paths-filter` in
 the R1-07 workflow: it sets `run_cli`, which gates a `--cli` phase in `run-e2e.sh`. No other
@@ -219,3 +223,99 @@ Also `state/junit.xml` for CI annotations.
 ```
 Scenario ids: `<doc>-<nn>` (e.g. `R1-05-03`); the human-readable names used in the execution docs are
 kept as the `intent` column so both cross-reference.
+
+## 13. Mock domains (rebrand rehearsal)
+
+The product is a SaaS with a rebrand planned (`docs/rebranding-plan` → `docs/rebranding/REBRANDING-PLAN.md`),
+and the white-label rule (`../execution/01-OVERVIEW.md`, rule 4) is today only proven at the **string**
+level: R2-00-05/06/08 swap `productName` and grep for leaks. Nothing proves the product works under a
+different **domain**. §13 adds that dimension: rehearse "we are now **PickIt** at **pick-it.test**"
+against the local stack, then tear it down. It is the dress rehearsal for §52 and the gate the
+rebranding plan's `verify-no-pointer.sh` is run beside.
+
+### 13.1 The mock domain
+
+**Decision: `pick-it.test`, over plain HTTP.** `.test` is reserved by RFC 6761 §6.2 and never resolves
+publicly, so a stray request can't leak to a real host. **`.dev` is deliberately not used locally** — it
+is on Chrome's HSTS preload list, so `http://pick-it.dev` is force-upgraded to HTTPS before a request is
+made and cannot be served plainly. The *real* brand domain may still be `pick-it.dev`; the rehearsal only
+needs a stand-in with the same shape (hyphenated multi-label name, non-localhost host), because every
+assertion is about the **emitted string** and the **host routing**, not the TLD.
+
+**Decision: `https` is an opt-in variant, not the default** (`--mock-domain-tls`). HTTP keeps the
+rehearsal to one container and no cert trust; the TLS variant exists because `X-Forwarded-Proto` is the
+only way to prove `/embed.js` and the served skills emit `https://pick-it.test/...` rather than
+`http://`. Wiring: the R3-03 Caddy container (§2, `caddy:2-alpine`, port 8443) gains a `pick-it.test`
+site block with `tls internal` (Caddy's local CA) reverse-proxying `api:8080`; Playwright opts out of
+cert validation with `ignoreHTTPSErrors: true` in `use`. Node-side specs point at the Caddy port and
+send `Host: pick-it.test`. This variant is **nightly + manual only**.
+
+### 13.2 Resolution without `sudo`
+
+Never `/etc/hosts` — it needs root and is hostile to CI runners.
+
+| Layer | Mechanism |
+|---|---|
+| **Browser (Playwright)** | Chromium's `--host-resolver-rules`. `e2e/playwright.config.ts:10-13` has a single `use` block and no `launchOptions` today; add `launchOptions: { args: [`--host-resolver-rules=MAP ${MOCK_DOMAIN} 127.0.0.1, MAP *.${MOCK_DOMAIN} 127.0.0.1`] }` gated on `process.env.E2E_MOCK_DOMAIN`, so a normal run is byte-identical to today. `MAP` sends DNS to loopback; the **port** still comes from the URL, so the spec navigates to `http://pick-it.test:8090` (or `:8443` in the TLS variant). |
+| **Node (API/CLI specs)** | No browser, no resolver flag. Requests go to `http://127.0.0.1:8090` with an explicit **`Host: pick-it.test`** header (`lib/api.mjs`'s existing header option); the assertion is then on the **emitted** links in the response body, which is what actually matters. |
+| **Emitted-origin pinning** | For surfaces that must advertise the domain regardless of how they were reached, set **`Pointer__PublicUrl=http://pick-it.test:8090`** on the `api` service. `PointerUrlResolver.ResolvePublicUrl` (`API/Extensions/PointerUrlResolver.cs:15-20`) prefers `Pointer:PublicUrl` over `{scheme}://{host}`, and it is the single source for `/embed.js` (`Program.cs:288`), the `<POINTER_SERVER>` placeholder rewrite (`Program.cs:213-214`) and branding asset URLs (`BrandingController.cs:38`). Applied via `restart-api.mjs` (§4), which already exists for env overrides. |
+
+**Decision:** a mock-domain scenario asserts **either** through the browser with the resolver rule
+**or** through node with the `Host` header — never both for the same claim, because the resolver rule
+proves routing and the header proves emission, and conflating them hides which one broke.
+
+### 13.3 What a rebrand can and cannot change
+
+Driven by `PUT /api/admin/branding` (super-admin, `Admin/BrandingController.cs`; patch semantics —
+only non-null fields are written, `BrandingService.cs:33-53`).
+
+**Runtime-brandable — the rehearsal asserts these change:**
+
+| Surface | Mechanism |
+|---|---|
+| `GET /api/branding` | `BrandingService.BuildResponseAsync:67-109` — `productName`, `tagline`, `primaryColor`, `urls.{app,demo,docs,landing}`, `assets.*`, `extension.*` |
+| Widget UI text | `loadBranding()` → `getBrandName()` (`web-component/src/constants.ts:131-143`), used at `templates.ts:17,69,133` and `element.ts:634,857` |
+| Landing page | `[data-brand-name]` / `[data-brand-logo]` rewritten from `/api/branding` (`landing/index.html:795-797,838`) |
+| CLI human output | `productName` from `/api/branding`; branding unreachable is a **hard exit 1**, never a literal fallback (R1-02 §C) |
+| E-mail subjects/bodies | product name resolved per send (`AuthService.cs:66` reset subject; `InviteService` invite body) |
+| Invitation join links | `app_base_url` → **`brand_url_app`** → compiled default (`InviteService.GetAppBaseUrlAsync`, shipped `42e534e`) — so setting only `urls.app` rebrands the links |
+| Branding asset URLs | `{publicBase}/api/branding/asset/{kind}?v=` (`BrandingService.cs:114-119`) — picks up `Pointer__PublicUrl` |
+
+**Compiled-in or frozen — the rehearsal must NOT assert these change:**
+
+| Surface | Why |
+|---|---|
+| `<pointer-feedback>` tag, `window.__pointerEmbedded`, `data-component-source` | frozen DOM/global contract (`../execution/R1-01-contract-freeze.md`) — renaming breaks every installed host page |
+| `/pointer.js`, `/pointer.css`, `/embed.js`, `/skill.md`, `/pointer-init.md` | frozen served URLs — permanent aliases post-rebrand |
+| `.pointer/` dir, `POINTER_*` env vars, `pointer_token`/`pointer_user` storage keys | frozen on-disk contract |
+| npm package `pointer-feedback`, bin `pointer` | frozen; post-rebrand a deprecate-stub forwards |
+| CLI `DEFAULT_SERVER` (`01-OVERVIEW.md:41`), `InviteService.DefaultAppBaseUrl`, `BrandingService.cs:10-17` defaults | build-time constants — only ever the **fallback**, replaced by config/DB at runtime |
+| Landing static prose, `docker-compose.prod.yml`, `Caddyfile` host blocks | genuinely renamed by the rebranding plan itself, not by a runtime toggle |
+
+The leak regex therefore stays `/(?<![-\w])Pointer(?![-\w])/g` (R2-00): the lookarounds already exempt
+`pointer-feedback`, `.pointer/` and `pointer_token` by construction. **A rehearsal scenario that fails
+on a frozen name is the scenario being wrong, not the product.**
+
+### 13.4 Teardown
+
+Branding is **global DB state** and the domain mapping is **process state**; both must be restored:
+
+1. Branding → `e2e/scripts/reset-branding.mjs` in the phase's `finally`, followed by
+   `assert-branding-default.mjs` (the existing R2-00-07 pattern, harness §8).
+2. `Pointer__PublicUrl` → `restart-api.mjs` **without** the override, re-waiting `/swagger/v1/swagger.json`.
+3. Resolver rule / `Host` header → per-process, dies with the run; nothing to clean.
+4. TLS variant → `docker compose … stop caddy`.
+
+**Killed mid-run:** the next `reset.sh` (`docker compose down -v`) wipes the DB, so branding returns to
+`BrandingService.cs:10-17` defaults and the override dies with the container — the rehearsal cannot
+poison a later run **as long as it never runs against a stack someone intends to keep**. Stated as a
+rule: the mock-domain phase always runs after a reset, never against a long-lived local stack.
+
+### 13.5 Relationship to the rebranding plan
+
+This rehearsal is how the rebranding plan's answers get *exercised* before the rename: `NAME_LOWER` /
+`DOMAIN` (`REBRANDING-PLAN.md` §1.1-1.2) are fed in as `E2E_MOCK_BRAND` / `E2E_MOCK_DOMAIN`, and
+`docs/rebranding/verify-no-pointer.sh` is run in the same job — the grep proves no brand string remains
+in the **source**, the rehearsal proves the **running product** works under the new identity. Neither
+alone is sufficient: the grep cannot catch a runtime string served from the DB, and the rehearsal cannot
+catch a hard-coded name on a path no scenario visits. **Run both green before executing the rename.**

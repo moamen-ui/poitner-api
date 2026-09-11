@@ -77,6 +77,7 @@ Read before estimating anything — several items are *wiring*, not features.
 | # | Item | Est. |
 |---|---|---|
 | R2.0 | **NEW-4b** fresh-app init E2E (Vite + Angular + static) + white-label CI job (second server URL, custom branding, zero hard-coded name) | 2 d |
+| R2.0b | **§52 mock-domain rebrand rehearsal** — the same stack served as **PickIt at pick-it.test**: widget, served skills, `/embed.js`, CLI output, landing page and **e-mails** all follow the new name *and* domain, then teardown restores both. No product code — `Pointer__PublicUrl` + DB branding + a Chromium resolver rule. **Run this and `verify-no-pointer.sh` green as the gate before executing the rebrand.** Folded into R2.0 (shares its branding helpers, teardown and CI job). | 1 d |
 | R2.1 | **§7 apply core** as shared lib + `npx -y pointer-feedback apply` (`--plan` dry run from §8 rides along; `--tool claude\|cursor\|opencode` hand-off or print/clipboard) | 1–2 w |
 | R2.2 | **§24 MCP server** (`npx -y pointer-feedback mcp`, same package): `list_comments`, `get_comment`, `mark_applied`, `reply`, `resolve_source`; `.mcp.json` documented as user-level config | 1–2 w |
 | R2.3 | **NEW-2** served-file version stamp via existing `<POINTER_SERVER>` middleware; `doctor` compares; `pointer update` refreshes; `curl\|sh` warns | ½ d |
@@ -236,6 +237,44 @@ Today: tier 1 `data-component-source` attr → tier 2 dev-mode fiber/Vue interna
     follow-up. `MaxEnvironments` stays display-only; enabling an environment does not consume it.
     Spec: [`execution/R1-09-project-environment-urls.md`](execution/R1-09-project-environment-urls.md) ·
     Tests: [`testing/R1-09-tests.md`](testing/R1-09-tests.md).
+
+### Phase 13 — Rebrand readiness
+
+52. **Mock-domain rebrand rehearsal (R2.0b).** The plan rests on a white-label rule ("no brand string
+    in output except what `/api/branding` returned") and a rebrand is planned
+    (`docs/rebranding-plan` → `docs/rebranding/REBRANDING-PLAN.md`), but today that rule is proven only
+    at the **string** level: R2-00's white-label job swaps `productName` and greps for leaks. Nothing
+    proves the product *works* under a different **domain** — which is exactly what a rebrand changes.
+    **This item adds the domain dimension:** rehearse "we are now **PickIt** at **pick-it.test**" against
+    the local stack — browse to the mock domain and get the local server, with the widget, the served
+    skills and `/embed.js`, the CLI output, the landing page and the **e-mails** (local Mailpit, already
+    in the harness) all showing the new name and linking to the new domain — then tear it down.
+    **Why it costs almost nothing:** no product code changes. `Pointer__PublicUrl` is already read by
+    `PointerUrlResolver.ResolvePublicUrl` (`API/Extensions/PointerUrlResolver.cs:15-20`) and is already
+    the single source for `/embed.js`, the `<POINTER_SERVER>` rewrite and branding asset URLs; branding
+    is already DB-writable; the widget, landing page and CLI already read `/api/branding`. The work is
+    test wiring: a Chromium `--host-resolver-rules` flag (no `sudo`, no `/etc/hosts`), a `Host` header
+    for node-side specs, and a mandatory teardown.
+    **Decision: `pick-it.test`, not `.dev`** — `.dev` is HSTS-preloaded in Chrome, so plain HTTP is
+    force-upgraded and cannot be served locally; `.test` is RFC 6761-reserved and never resolves
+    publicly, so a stray request fails closed. The real brand domain may still be `.dev`; the rehearsal
+    only needs the same shape. A `--mock-domain-tls` variant (Caddy `tls internal`) is **manual only** and
+    exists to prove the `X-Forwarded-Proto` path emits `https://`.
+    **The e-mail assertion is the sharpest one:** with only `urls.app` set and `app_base_url` never
+    written, an invitation join link must still come out as `http://pick-it.test:8090/join?code=` —
+    exercising the `app_base_url → brand_url_app → default` chain shipped in `42e534e`.
+    **Release 2, folded into R2.0** (+1 d) rather than its own slot: it shares the branding helpers, the
+    teardown pattern and the CI job with the white-label work that already lives there, and it depends on
+    the mail harness (R1-07) and `init`/`doctor` (R1-02/R1-04) — all of which land before R2.0. Pulling it
+    into Release 1 would mean building the white-label scaffolding twice.
+    **Gate:** run this rehearsal **and** `docs/rebranding/verify-no-pointer.sh` green *before* executing
+    the rebranding plan. Neither alone suffices — the grep cannot catch a runtime string served from the
+    DB, and the rehearsal cannot catch a hard-coded name on a path no scenario visits. Feed the plan's
+    `NAME_LOWER`/`DOMAIN` answers in as `E2E_MOCK_BRAND`/`E2E_MOCK_DOMAIN` so the rehearsal tests the
+    *actual* chosen identity.
+    Spec: [`execution/R2-00-e2e-fresh-app-whitelabel.md`](execution/R2-00-e2e-fresh-app-whitelabel.md) ·
+    Tests: [`testing/R2-00-tests.md`](testing/R2-00-tests.md) (R2-00-09…13) · Harness:
+    [`testing/00-HARNESS.md`](testing/00-HARNESS.md) §13.
 
 ### NEW items from review
 
