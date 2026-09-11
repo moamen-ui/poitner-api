@@ -137,7 +137,12 @@ Source in `web-component/src/`; build with `npm run build`; commit the regenerat
 2. Acceptance criteria in the doc verified and the evidence (command + output) pasted in the report.
 3. Dashboard tasks either done in the dashboard repo or listed as a follow-up with the exact DTO names.
 4. Docs updated where the doc says so (`AGENTS.md`, `pointer-init.md`, `skill.md`, `install.sh`).
-5. Report: files changed, commands run, anything skipped and why.
+5. **The public page named in the doc's `## Docs` section is written or updated in the same change** —
+   by the implementer, while the feature is still in context. `## Docs` saying "none — internal only" is
+   a valid discharge; a missing page is not. Written after the fact by someone re-reading the code, a
+   docs page costs several times as much and comes out wrong. The site shell is
+   [`R2-07-docs-site.md`](R2-07-docs-site.md); pages written before it lands are adopted by its task 8.
+6. Report: files changed, commands run, anything skipped and why.
 
 ## Template (each doc follows this order)
 
@@ -149,6 +154,7 @@ Source in `web-component/src/`; build with `npm run build`; commit the regenerat
 ## Design                  contracts: endpoints, DTOs, tables, files, CLI UX (exact prompts/output)
 ## Tasks                   numbered, file-level, in execution order, each independently verifiable
 ## Dashboard tasks         or "none"
+## Docs                    the public page(s) this item creates/updates, or "none — internal only" + why
 ## Tests                   unit (class names) · integration · e2e (scenario names)
 ## Acceptance criteria     checkbox list, each objectively checkable
 ## Rollout / compatibility what breaks for existing installs; migration notes

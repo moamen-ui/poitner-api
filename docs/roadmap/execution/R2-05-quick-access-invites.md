@@ -107,6 +107,9 @@ link is re-signed-in silently (step 2). After link expiry they need a new link �
 ## Dashboard tasks
 Regenerate for `InviteResponse` (new fields), `LoginWithInviteRequest`, rotate endpoint. UI: invite dialog shows/copies the magic link + expiry, "Rotate link", removes any password text.
 
+## Docs
+**Creates `landing/docs/inviting-stakeholders.html`** — how to invite a non-technical reviewer, that they get a link and never a password, what the link does on first open, what a Client-role user can and cannot do (comment on their project; not manage the backlog), and how to rotate or revoke a link that leaked. Answers: *“how do I get my client commenting without giving them an account to manage?”*
+
 ## Tests
 - `Tests/QuickAccessLinkTests.cs`: create → link row with hash, raw token not persisted; `login-with-invite` valid → JWT with `is_quick_access=true`, `Uses` +1; expired/revoked/unknown → same failure message; rotate → old fails, new works; `DELETE` invite → link revoked; password login for `PasswordlessOnly` user → invalid credentials; seat entitlement still enforced; tenant isolation (link from tenant A cannot be listed by B).
 - `Tests/InviteServiceTests.cs` — existing tests updated for `EmailSent=false` by default; email path covered with the setting on (mock `IEmailService` receives a body containing the link and **no** password).

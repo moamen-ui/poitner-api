@@ -63,6 +63,9 @@ selected project already filled in** — `npx -y pointer-feedback init --server 
 ## Dashboard tasks
 This doc **is** dashboard work. No API changes; no Orval regen.
 
+## Docs
+**Updates `landing/docs/install.html`** — a short *“Get your command from the dashboard”* section: where the pre-filled command lives in the UI, that the key is masked on screen but copied in full, and what to do when no key has been generated yet. No new page.
+
 ## Tests
 - Unit: `install-guide.spec.ts` (new `initCommand` cases, steps order, mask/reveal), existing suites green.
 - E2E: `quickstart-copies-prefilled-command` lives in the **pointer-dashboard repo's own Playwright suite** with a `DASH-` id (harness §10) — reported **SKIP** when `DASHBOARD_DIR` is unset, never silently green; this repo carries only the swagger contract guard.

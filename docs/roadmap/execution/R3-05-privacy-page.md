@@ -63,6 +63,9 @@ All product names via the same i18n mechanism as `index.html`? **Decision:** no 
 
 none (optional: link text in project settings, covered by R3-04).
 
+## Docs
+**Owns `landing/data.html`** (already this doc’s deliverable) and **registers it in the docs nav** under *Privacy & self-hosting* via `landing/docs/pages.json` — an external entry, not a copy; the docs site links out rather than duplicating, so there is one canonical page. Also add the reciprocal link from `data.html` back to `/docs/`.
+
 ## Tests
 
 - No unit tests. **Checks:** `npx html-validate landing/data.html landing/privacy.html` (or `tidy -q -e`) → no errors; link check with `lychee --offline landing/*.html` (or a `grep -o 'href="[^"]*"'` list manually resolved); Lighthouse accessibility ≥ 95 on `data.html` (chrome-devtools `lighthouse_audit`) — **nightly/manual tier only, never PR CI** (harness §7 token rule).

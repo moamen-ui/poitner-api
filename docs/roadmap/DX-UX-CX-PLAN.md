@@ -52,7 +52,12 @@ Read before estimating anything — several items are *wiring*, not features.
 3. **`OwnerId` + tenant filter on every new table**; agency "client" isolation is filter discipline, never `IgnoreQueryFilters`.
 4. **White-label** — no brand string in CLI/widget output except what `/api/branding` returned.
 5. **On-disk contract frozen** (NEW-1) — brand-neutral attribute names: `data-component-source`, `data-build-sha`, `data-snapshot-mask`.
-6. **AI never pushes.**
+6. **Docs are written with the feature, never after.** Every execution doc has a `## Docs` section
+   naming the public page it creates or updates (or "none — internal only" and why), and that page is
+   part of the item's definition of done. Written later, by someone re-reading code they have forgotten,
+   a docs page costs several times as much and comes out wrong. Site shell:
+   [`execution/R2-07-docs-site.md`](execution/R2-07-docs-site.md).
+7. **AI never pushes.**
 
 ---
 
@@ -86,6 +91,7 @@ Read before estimating anything — several items are *wiring*, not features.
 | R2.4 | **§10** in-app author notification on `applied` with commit link + 👍/👎 (👎 reopens) | 2–3 d |
 | R2.5 | **§13** quick-access invites, passwordless magic link, **link-copy delivery** (email delivery held) | 2–3 d |
 | R2.6 | **S6** secrets/payload advisory flag on comment card (`sk-`, `AKIA`, `ghp_`, long base64, `<script>`, `curl … \| sh`); never included in the apply payload | 2 h |
+| R2.7 | **§48** public docs site — `landing/docs/` served at `<domain>/docs/` (no Caddy or build change: the bare domain's `try_files` already resolves subdirectories, as `landing/v2/` proves). Ships **first in Release 2** so every item's page has a home; the landing footer's Docs link starts following `/api/branding`'s `urls.docs`. Page *content* is not this item — each execution doc's `## Docs` section owns its own page, written by whoever builds the feature. | 1–2 d |
 
 ### Release 3 — apply quality in production
 
@@ -99,7 +105,7 @@ Read before estimating anything — several items are *wiring*, not features.
 
 ### Hold list (item → un-hold trigger)
 
-§2b device-code login → `--key` flow shows friction · §9 `apply --pr` → §42 done + a PR-based team · §11 batch-by-file → manifest live in prod · §14 @mentions → multiple repliers per thread · §15 template chips → widget polish sprint · §16 audit log → before first non-founder apply · §18 scoping rules → first Client-role commenter on prod · §19/§44 workspace fields + clients → first external workspace · §20 → **dissolved** into feature-attached wiring (email→`EmailsPerMonth`, retention job→`RetentionDays`, §35→`MaxEnvironments`) · §25 full scoped keys UI → first key in CI / committed config · §26 editor ext → Phase 4 stable + demand · §27 dedupe → queue noise reported · §28 before/after → **redesigned as manual attach**; stakeholders demand proof · §29 multi-element → hashes stable in prod · §30 changelog → §31 live · §32 webhooks → first "notify my tool" (**before email**) · §33 full (retention job, blur toggle, image delete UI) → first privacy-question customer · **project purge job** (physical delete of soft-deleted projects' rows + screenshot files, `RetentionDays`-driven; today delete is soft-only, `ProjectService.DeleteAsync`) → before NEW-6 can promise deletion · §35 preview environments (**days**, `ProjectAppUrl` rows) → §42 + §9 live · §36 board → ownership requested · §37 AI triage → comment volume · §38 QR / §39 bookmarklet → §13 adopted; CSP kills bookmarklets · §40 kill switch (flag → `disableSilently`) → first leaked key · §42 repo mapping → day before §9/§35/§43 · §43 cloud apply → CLI apply proven on 3+ repos (**a quarter**) · §46 nudge → vague-comment rate measured · §47 seeded demo (absorbs §23) → first signup without hand-holding · **full-app dashboard UX audit** (all three apps, every screen, `impeccable`-driven, incl. dark mode and RTL parity) → first external workspace, or the first user-reported usability complaint — until then each phase's dashboard-agent run does a UX pass scoped to the screens it touched · §48 docs site → first human can't find docs · §49 badge → paid plans · email channel → trigger above.
+§2b device-code login → `--key` flow shows friction · §9 `apply --pr` → §42 done + a PR-based team · §11 batch-by-file → manifest live in prod · §14 @mentions → multiple repliers per thread · §15 template chips → widget polish sprint · §16 audit log → before first non-founder apply · §18 scoping rules → first Client-role commenter on prod · §19/§44 workspace fields + clients → first external workspace · §20 → **dissolved** into feature-attached wiring (email→`EmailsPerMonth`, retention job→`RetentionDays`, §35→`MaxEnvironments`) · §25 full scoped keys UI → first key in CI / committed config · §26 editor ext → Phase 4 stable + demand · §27 dedupe → queue noise reported · §28 before/after → **redesigned as manual attach**; stakeholders demand proof · §29 multi-element → hashes stable in prod · §30 changelog → §31 live · §32 webhooks → first "notify my tool" (**before email**) · §33 full (retention job, blur toggle, image delete UI) → first privacy-question customer · **project purge job** (physical delete of soft-deleted projects' rows + screenshot files, `RetentionDays`-driven; today delete is soft-only, `ProjectService.DeleteAsync`) → before NEW-6 can promise deletion · §35 preview environments (**days**, `ProjectAppUrl` rows) → §42 + §9 live · §36 board → ownership requested · §37 AI triage → comment volume · §38 QR / §39 bookmarklet → §13 adopted; CSP kills bookmarklets · §40 kill switch (flag → `disableSilently`) → first leaked key · §42 repo mapping → day before §9/§35/§43 · §43 cloud apply → CLI apply proven on 3+ repos (**a quarter**) · §46 nudge → vague-comment rate measured · §47 seeded demo (absorbs §23) → first signup without hand-holding · **full-app dashboard UX audit** (all three apps, every screen, `impeccable`-driven, incl. dark mode and RTL parity) → first external workspace, or the first user-reported usability complaint — until then each phase's dashboard-agent run does a UX pass scoped to the screens it touched · §49 badge → paid plans · email channel → trigger above.
 
 **Cut:** §17 injection regex (→ S6) · §23 fake-output terminal demo (→ §47).
 
@@ -182,7 +188,7 @@ Today: tier 1 `data-component-source` attr → tier 2 dev-mode fiber/Vue interna
 
 ### Phase 11 — AI quality, growth, docs
 
-45. **Design tokens → `stack.json`** — R3.2 · 46. Comment-quality nudge · 47. Seeded demo project (absorbs §23) · 48. Docs site · 49. "Powered by" badge. *(46–49 held)*
+45. **Design tokens → `stack.json`** — R3.2 · 46. Comment-quality nudge · 47. Seeded demo project (absorbs §23) · **48. Public docs site — R2.7, [`execution/R2-07-docs-site.md`](execution/R2-07-docs-site.md); no longer held, because per-item pages are written with their feature (cross-cutting rule 6)** · 49. "Powered by" badge. *(46, 47, 49 held)*
 
 ### Phase 12 — Tenant onboarding
 

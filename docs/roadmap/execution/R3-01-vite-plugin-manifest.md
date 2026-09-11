@@ -182,6 +182,9 @@ Why the CLI path is primary: `pointer-init.md:29,356` recommends shipping produc
 - Regenerate services (`CommentResponse`, `CommentListItemDto` gain `commitSha`, `deployedAt`, `deployedSha`; new `ReportBuildRequest/Response` may be ignored).
 - Comment detail/list: show a "Live" badge when `deployedAt` is set, tooltip `Deployed in <sha7>`; filter "Applied but not live" (client-side on `status==3 && !deployedAt`).
 
+## Docs
+**Creates `landing/docs/source-mapping.html`** — why applying is cheaper and more accurate with the plugin (the AI opens the right file instead of searching), how to turn it on, that the manifest is generated locally and **gitignored** (teammates regenerate it, it is never committed), that a production page exposes only opaque hashes and never your file paths, and what the “source renamed since capture” warning means. Answers: *“how does it know which file my comment is about?”*
+
 ## Tests
 
 - **Unit (cli, vitest):** `hash.test.ts` (determinism; path normalisation Windows→POSIX; `default` export; **two mocked git roots** — `/home/a/repo` and `C:\Users\b\repo` — with the same repo-relative file yield the identical hash), `stamp.test.ts` (single root, Fragment multi-root, component-only root → no stamp, conditional/ternary/map roots, existing attribute preserved, `memo()` HOC, TSX generics, Vue multi-root), `manifest.test.ts` (atomic write, prev rotation, stale detection), `resolve.test.ts` (hash/path/legacy/stale).

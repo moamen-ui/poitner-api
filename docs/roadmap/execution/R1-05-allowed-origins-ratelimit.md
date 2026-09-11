@@ -126,6 +126,9 @@ On each 403 (origin) and 429 (comments) write a `UsageEvent` (`Type: "comment_re
 - Regenerate services (`ProjectResponse.enforceAllowedOrigins`, `UpdateProjectRequest.enforceAllowedOrigins`).
 - Project settings: a toggle "Only accept comments from the configured app URLs" next to the existing app-urls editor, with helper text listing the active URLs; disabled state hint when no URLs are configured.
 
+## Docs
+**Creates `landing/docs/project-settings.html`** with a *“Restrict where comments can come from”* section: what the toggle does, that it is off by default, how it uses the project’s environment URLs, the localhost exemption for Local, the wildcard rules (leftmost label only, and why bare `*.vercel.app` is rejected), and the exact message a commenter sees when blocked. Answers: *“how do I stop comments arriving from somewhere I don’t control?”*
+
 ## Tests
 - `Tests/OriginNormalizerTests.cs` (wildcards incl. suffix-list equals/ends-with, ports, schemes, `Uri.Host` extraction, IPv6 `[::1]`/`::1` localhost).
 - `Tests/ProjectOriginEnforcementTests.cs` (service branches incl. both dashboard origins and `Result.IsForbidden`).

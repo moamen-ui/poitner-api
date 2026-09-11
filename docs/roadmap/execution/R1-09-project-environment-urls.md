@@ -314,6 +314,9 @@ names, matching every other property in that file.
   hint and a link to the environments screen. Rows on retired environments are still editable/deletable.
 - Remove any remaining UI that writes `project.appUrl` directly.
 
+## Docs
+**Updates `landing/docs/project-settings.html`** with an *Environments* section: what a workspace environment is (and that it is **not** the Local/Staging/Production tag on a comment), how to enable one, how to give a project a URL per environment, that `local` is the default for a new project, and — for existing projects — that a URL previously on `default` now appears under `local`. Answers: *“where do I tell it my app lives?”*
+
 ## Tests
 - Unit: `Tests/AppEnvironmentEnabledFlagTests.cs` (default true; `PATCH` toggles under `CanManage`; a
   tenant cannot toggle a global environment → 403; `ProjectUrlCount`) ·

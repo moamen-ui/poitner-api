@@ -40,16 +40,22 @@ Works with any tool (Claude Code, `agy`, `opencode`) because it is just a file y
   or listed in `R1-01-contract-freeze.md` is customer-visible and must not be renamed, however tempting.
 - **The AI never runs `git push`.** You may commit. You may not push, merge, or rebase onto `main`.
 
-## 3. Definition of done — all four, no exceptions
+## 3. Definition of done — all five, no exceptions
 
 1. `dotnet build` succeeds with **0 errors**.
 2. `dotnet test` is **green**, including the tests the doc told you to add. For CLI work:
    `npm run typecheck && npm test && npm run build` in `cli/`.
 3. Every acceptance criterion in the doc is either met, or listed as not-met **with the reason**.
-4. Your work is committed on your branch with a conventional-commit message.
+4. The page named in the doc's **`## Docs`** section is written or updated — in the same change, by you,
+   now, while you still have the feature in your head. Write it for a user who has never seen the code.
+   If the section says "none — internal only", nothing is owed.
+5. Your work is committed on your branch with a conventional-commit message.
 
 **"Done" is a green test log, not your opinion.** An item reported done over scaffolding is the single
 most expensive failure in this programme — if you ran out of room, say what is missing.
+
+**Docs are part of the build, not a follow-up.** Written later, by someone re-reading code they have
+forgotten, they cost several times as much and come out wrong. An item whose page is missing is not done.
 
 ## 4. When the spec is silent
 
@@ -65,6 +71,10 @@ Touch only what the task requires. Never modify `docs/roadmap/**` (the plan is n
 outside your task's file list, or another branch's work. If you believe something outside scope is
 broken, report it; do not fix it.
 
+**In scope, always:** the public page your doc's `## Docs` section names — normally under `landing/docs/`
+— and its entry in `landing/docs/pages.json`. That is the one place you are expected to write
+documentation, and it is not covered by the `docs/roadmap/**` prohibition.
+
 ## 6. Report format (your final message)
 
 ```
@@ -73,9 +83,10 @@ broken, report it; do not fix it.
 3. Build + test output — the summary lines, pasted verbatim
 4. Decisions — every "Decision:" you made
 5. SPEC-CONFLICT — anything where the doc and the code disagree
-6. NEEDS_REVIEW — anything you were unsure about, so the reviewer looks there first
-7. Not done — what you could not complete, and why
+6. Docs — the page you wrote or updated, and the user question it answers (or "none — internal only")
+7. NEEDS_REVIEW — anything you were unsure about, so the reviewer looks there first
+8. Not done — what you could not complete, and why
 ```
 
-Sections 3 and 7 are what the next model and the orchestrator actually act on. A report without pasted
+Sections 3 and 8 are what the next model and the orchestrator actually act on. A report without pasted
 build/test output is treated as **not done**.

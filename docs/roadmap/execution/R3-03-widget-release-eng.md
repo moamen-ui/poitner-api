@@ -123,6 +123,9 @@ Add to `web-component/`: `vitest` + `jsdom` dev-dependencies, `vitest.config.ts`
 
 none (optional later: show `widgetVersion` from `/api/meta` in an About panel).
 
+## Docs
+**Creates `landing/docs/widget-versions.html`** — the three ways to load the widget (unpinned, `?v=stable`, `?v=<hash>` pinned with SRI), the copy-pasteable pinned snippet, how long a pinned build is retained, what a retired pin does (a 404 with the current version in a response header, which `doctor` explains), and the CSP a strict host needs. Answers: *“how do I pin the widget so a deploy can’t change my site?”*
+
 ## Tests
 
 - **Unit (API, xUnit):** `WidgetCacheHeadersTests` — `/pointer.js` → `no-cache`; `?v=<current>` → immutable + bytes equal to `widget/<current>/pointer.js`; `?v=<older retained>` → immutable + **older** bytes; `?v=wrong` → 404 + mismatch header; `?v=stable` → `max-age=3600`; malformed `v` (`../`, 200 chars) → 404, no exception; `/pointer.version.json` served; corrupt version file → bare files still served, all `?v=` 404. `MetaWidgetVersionTests` — `widgetVersion` equals the file's `hash`.

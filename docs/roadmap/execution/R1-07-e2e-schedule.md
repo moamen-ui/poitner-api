@@ -74,6 +74,9 @@ the same workflow.
 ## Dashboard tasks
 None.
 
+## Docs
+**None — internal only.** CI scheduling and the harness runner are contributor concerns; they belong in `e2e/README.md`, which this doc already updates. Nothing here changes what a user does.
+
 ## Tests
 This doc *is* test infrastructure. Verification = two green scheduled/dispatched runs.
 

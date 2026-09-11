@@ -103,6 +103,9 @@ the comment detail for admins.
 ## Dashboard tasks
 Regenerate for `NotificationDto`, `UnreadCountResponse`, `VerifyCommentRequest`, `CommentResponse.verifiedAt`. UI: top-bar bell + dropdown; verify buttons on comment detail; `resource.reload()` after mutations.
 
+## Docs
+**Creates `landing/docs/notifications.html`** — where the unread badge appears, what a notification is raised for, the verify loop (👍 closes it, 👎 reopens the comment with your note and tells whoever applied it), and that notifications are in-app only today with email off by default. Answers: *“my comment was applied — how do I know, and how do I say it’s wrong?”*
+
 ## Tests
 - `Tests/NotificationServiceTests.cs`: applied by another user → one row for the author; applied by the author → none; tenant isolation (user in tenant B sees none); **`OtherUsersNotificationsNotVisible`** — two users in the *same* tenant: user A's `List`/`UnreadCount` never include B's rows, `MarkRead` on B's id returns 404, `MarkAllRead` leaves B's rows unread; unread count; read-all.
 - `Tests/CommentVerifyTests.cs`: author 👍 → `VerifiedAt` set + reply; author 👎 without note → validation error; 👎 with note → `Status=Open`, reply text, `CommentReopened` for `AppliedBy`; non-author non-admin → Forbidden; quick-access author → allowed; verify on non-applied → `VerifyRequiresApplied`.

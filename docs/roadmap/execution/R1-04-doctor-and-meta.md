@@ -78,6 +78,9 @@ first and stop with its hints if `ok` is false." (Keeps working for installs wit
 ## Dashboard tasks
 - Regenerate services (`MetaResponse`, `GET /api/meta`). Optional: show server version in Settings → About (follow-up).
 
+## Docs
+**Creates `landing/docs/cli-reference.html`** with a `doctor` section: every check id, what a ✓/⚠/✘ means for it, what `--fix` repairs, the `--json` shape, and the exit codes (notably 5 = CLI older than the server requires, and what to do about it). Answers: *“my install isn’t working — what’s wrong?”* **Also updates `landing/docs/self-hosting.html`** (create if absent) with a two-line `GET /api/meta` note: what it reports and the `Cli:MinVersion` knob self-hosters can set.
+
 ## Tests
 - API: `Tests/MetaEndpointTests.cs`.
 - CLI: `cli/test/doctor.test.ts`, `checks.test.ts` (from R1-02).

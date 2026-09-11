@@ -62,6 +62,9 @@ forever" gap for the `curl|sh` path too.
 ## Dashboard tasks
 Regenerate for `MetaResponse.skillVersion` (additive; no UI).
 
+## Docs
+**Updates `landing/docs/cli-reference.html`** with an `update` section: what `pointer update` refreshes (the served skills), how `doctor` reports a stale copy, and why a skill file installed months ago can drift from the server. No new page.
+
 ## Tests
 - `Tests/ServedSkillVersionTests.cs`: GET `/skill.md`, `/pointer-init.md`, `/install.sh`, `/pointer.sh` contain the stamp and no leftover `<POINTER_SKILL_VERSION>`; **for the two `.md` files line 1 is still `---` and the stamp is the first line after the frontmatter**; appsettings override wins; `/api/meta.skillVersion` equals the stamp.
 - `cli/test/skill-stamp.test.ts`: parses md (after frontmatter) and sh forms; a stamp wrongly placed on line 1 of an `.md` is **not** recognised (guards the frontmatter rule); missing → null.

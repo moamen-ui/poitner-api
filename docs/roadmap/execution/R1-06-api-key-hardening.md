@@ -133,6 +133,9 @@ Not chosen; recorded so the decision is flippable in one PR:
 ## Dashboard tasks
 - Regenerate services (`ApiKeyResponse` gains `prefix`, `lastUsedAt`). Optional: show "Last used" under the key on the Profile page.
 
+## Docs
+**Creates `landing/docs/api-keys.html`** — where to find your key, that it stays re-viewable (not one-time), that regenerating immediately revokes the old one, and that keys belong in gitignored `.pointer/credentials.env`, never in a commit. **Self-hosting section:** set `Auth:ApiKeyEncryptionKey` before first boot, what the derived fallback means, and that rotating it breaks key *display* but not login. Answers: *“where is my key and is it safe?”*
+
 ## Tests
 - `Tests/ApiKeyProtectorTests.cs`, `Tests/ApiKeyServiceTests.cs`, `Tests/ApiKeyBackfillTests.cs`; existing `Tests/ApiKeyAuthTests.cs` with fixtures updated and all assertions preserved.
 - InMemory caveat: unique/partial indexes are not enforced by the InMemory provider — do not write tests that "prove" uniqueness there; the DB-level guarantee is covered by the acceptance SQL below.

@@ -194,6 +194,9 @@ gate before executing `REBRANDING-PLAN.md`.
 ## Dashboard tasks
 none
 
+## Docs
+**None — internal only.** CI jobs and the white-label rehearsal are test infrastructure. (The *product’s* white-label capability is documented by R2-07’s shell using `/api/branding`; nothing user-facing changes here.)
+
 ## Tests
 - These docs **are** tests. Names: `fresh-app: vite`, `fresh-app: static`, `fresh-app: angular (skill-routed)`, `whitelabel: cli-output has no brand leak`, `whitelabel: widget text has no brand leak`, `whitelabel: widget title/aria-label have no brand leak`.
 - Also hosts the scenarios other R1 docs name: `init-vite-no-ai`, `init-static-no-ai`, `init-next-handoff` (add a fourth matrix entry `next` using `npx create-next-app@15.0 --ts --app --no-eslint --use-npm --yes`, assertion = hand-off message + no `app/` edits), `init-yes-ci`, `doctor-green-after-init`, `doctor-detects-tracked-credentials`, `quickstart-copies-prefilled-command` (dashboard — out of scope here, note as follow-up), `legacy-key-still-logs-in-after-upgrade` / `regenerated-key-old-one-rejected` (API-level, in `e2e/scripts/probe-visibility.mjs` style), `origin-enforced-blocks-foreign-origin`, `origin-enforced-allows-localhost-local`, `comment-burst-429` (API-level probes).

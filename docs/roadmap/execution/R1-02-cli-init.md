@@ -286,6 +286,9 @@ itself is API-level (checks module).
 - Regenerate services (new `EventsController` endpoints: `RecordEventRequest`, `EventsSummaryResponse`).
 - Follow-up tile (not R1): per-project "installed → first comment" durations from `/api/admin/events/summary`.
 
+## Docs
+**Creates `landing/docs/install.html`** — the site's primary page. Must contain: prerequisites (Node ≥ 18, an account, where the API key comes from); the single command; a walkthrough of each prompt including the detected app URL (step 4b); what the command writes into the repo (`.pointer/config.json`, gitignored `credentials.env`, the skills directory, the widget snippet in `index.html`); the Next.js / Angular / monorepo hand-off and what to do instead; the non-interactive flags for CI; and the exit codes with one line each. Answers: *“how do I add this to my app?”* Register it in `pages.json` under *Getting started* (or leave the file for R2-07 task 8 to adopt if R2-07 has not landed).
+
 ## Tests
 - CLI unit (`cli/test/`): `api.test.ts`, `config.test.ts`, `detect.test.ts`, `inject-vite.test.ts`, `inject-static.test.ts`, `skills.test.ts`, `checks.test.ts`, `init-yes.test.ts` (end-to-end against a stub HTTP server implementing branding/login-with-key/me/projects/stack/events).
 - API unit: `Tests/UsageEventServiceTests.cs` (record, tenant isolation, type whitelist, `ProjectKey` → `ProjectId` resolution, unknown key → 404) and `Tests/UsageEventFirstCommentTests.cs` — **must use the SQLite provider** (`Microsoft.EntityFrameworkCore.Sqlite`, `Pointer.Tests.csproj:15`), not InMemory: InMemory enforces neither unique nor partial indexes and never throws `DbUpdateException`, so "first_comment emitted exactly once under two concurrent creates" is only provable on SQLite (create the partial index in the test schema). `Tests/CheckPageTests.cs` (sanitising, 200, contains embed.js URL).

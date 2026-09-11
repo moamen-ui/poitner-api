@@ -84,6 +84,9 @@ MCP `isError: true` with `{ code: "auth"|"not_found"|"forbidden"|"server_too_old
 ## Dashboard tasks
 none
 
+## Docs
+**Creates `landing/docs/mcp.html`** — the `.mcp.json` entry to paste (noting it is user-level config, not committed), the tool list with a one-line purpose each, what an AI tool can and cannot do through it, and that the API key stays inside the CLI process and is never handed to the model. Answers: *“how do I wire this into my AI tool?”*
+
 ## Tests
 - Unit (`cli/test/mcp/`): `schemas.test.ts` (every schema validates its sample), `tools.test.ts` (each handler against a mocked `api()`; `untrusted`/`trusted` partition; `pointer_mark_applied` never spawns git — spy on `child_process`), `no-push.test.ts` extended to the MCP bundle.
 - Integration: `cli/test/mcp/stdio.test.ts` — spawn `node dist/cli.js mcp`, perform `initialize`, `tools/list` (assert the 9 names), one `tools/call` against a local stub HTTP server.

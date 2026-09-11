@@ -72,6 +72,9 @@ Applied to `POST /api/projects/{key}/comments` only; idempotent. Old widget vers
 - Regenerate services (`ProjectResponse`, `UpdateProjectRequest`, `CaptureConfigResponse` gain `captureTextContent`).
 - Project settings form: checkbox "Capture element text in comments" bound to `captureTextContent`, only enabled when `canEdit`; help text linking to the privacy page.
 
+## Docs
+**Updates `landing/data.html`** (owned by R3-05) with the precise capture rules: that typed form values are **never** captured, exactly which attributes are kept and which are dropped, how `data-snapshot-mask` lets a host exclude a subtree, the per-project toggle to drop text content entirely, and that the server enforces this so an out-of-date widget cannot leak more than the rules allow. Answers: *“what exactly does a comment capture from my page?”*
+
 ## Tests
 
 - **Unit (widget, vitest + jsdom — harness from R3-03 §G):** `snapshot-privacy.test.ts` — `<input>` with a **typed** value (set via the `.value` property, no attribute) → `value="•••"`; `<input value="x">` with the property cleared → attribute dropped; attribute value containing `"` is emitted as `&quot;`; `data-customer-name` inside a masked subtree → `data-customer-name="•••"`; `data-username` dropped everywhere; `<textarea>` text masked; `<select>` options not leaked; element inside `<div data-snapshot-mask>` → text `•••`, structural attrs kept, `data-email` dropped; `captureText=false` → no text for any element, attrs intact; selector still generated for a masked element; unmasked `<button>Save</button>` unchanged (regression).

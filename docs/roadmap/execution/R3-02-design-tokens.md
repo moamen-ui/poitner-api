@@ -90,6 +90,9 @@ The server response from `POST /stack` is merged with the local `design` block o
 
 none.
 
+## Docs
+**Updates `landing/docs/apply.html`** with a *Using your design system* section: that detected tokens (Tailwind config, CSS variables, SCSS) are written into `.pointer/stack.json` and passed to the AI so “make it blue” becomes your brand token rather than a hex code, and that the tokens stay on your machine and are never uploaded. No new page.
+
 ## Tests
 
 - **Unit (cli):** `design.test.ts` — one test per fixture (expected `tokens`/`libraries`/`guidance`), size/time limits respected (fixture with 600 files → only 500 scanned), `node_modules` ignored; `stackfile.test.ts` — merge keeps `frontend/backend/aiTools`, strips `design` from the POST body (`buildRequestBody`), canonical key order, deterministic output (two runs → identical bytes).

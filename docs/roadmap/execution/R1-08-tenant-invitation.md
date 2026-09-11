@@ -375,6 +375,9 @@ tests. Send is best-effort and never fails the invite (existing behaviour).
   password yourself)" with a one-line hint that the invitation is preferred.
 - Nothing in the UI may display a password for another account.
 
+## Docs
+**Creates `landing/docs/workspaces.html`** — how a workspace comes into existence: an administrator invites an owner by email, the invitee opens the link and sets **their own** password, and the workspace is active immediately with no second approval. Must also cover: the link is single-use and expires; resend vs rotate; revoke; and the copy-link fallback when email delivery is off. Answers: *“how do I get a workspace, and what do I do with the invitation I received?”*
+
 ## Tests
 - **Unit** (`Tests/`): `TenantInviteServiceTests.cs` — create forces `MaxUses = 1` and requires an email;
   `PlanId`/`DisplayName` persist; list returns only null-owner pending rows and excludes

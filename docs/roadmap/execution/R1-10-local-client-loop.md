@@ -151,6 +151,9 @@ across three apps for no gain over a line you paste.
   (`npm ci` per app, then re-run the builds) before the dashboard work can merge.
 - No change to any dashboard `package.json`, lockfile or `.npmrc` — by construction (§C).
 
+## Docs
+**None — internal only.** The local generate→build→publish loop is contributor tooling for people working on this repo and its dashboard; it belongs in `AGENTS.md`. A user of the product never runs it.
+
 ## Tests
 - Unit (this repo): none — the scripts are exercised end-to-end by the e2e scenarios; a unit test of
   "does npm publish work" would mock away the thing under test.

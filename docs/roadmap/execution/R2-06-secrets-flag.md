@@ -91,6 +91,9 @@ guarantee that *the documented AI paths* never see the flag, plus the projection
 ## Dashboard tasks
 Regenerate for `CommentResponse`, `CommentListItemDto`, `ReplyResponse` (+ `ApplyReplyDto` if the admin apply-queue view is rendered there). Add `X-Pointer-Client: dashboard` to the existing envelope-unwrapping HTTP interceptor (documented in the dashboard repo's `CLAUDE.md`). UI: badge + "flagged" filter.
 
+## Docs
+**Updates `landing/data.html`** (the page R3-05 owns) with a *Flagged content* section: what patterns raise the advisory flag, that it is a hint for human reviewers rather than a block, that the flag is **never** included in anything sent to an AI tool, and that flagging happens server-side so an old widget cannot bypass it. Answers: *“why is my comment marked, and who sees that?”*
+
 ## Tests
 - `Tests/PayloadFlagDetectorTests.cs`: one positive and one negative per pattern; a 5 KB normal comment matches nothing; a regex timeout does not throw — the detector returns empty and **the caller** (`CommentService`) logs a warning (the detector is a pure static class with no logger).
 - `Tests/PayloadFlagExposureTests.cs`: create a comment with `sk-…` → with header `X-Pointer-Client: widget`, `GET /api/comments/{id}` has `hasPayloadFlag=true`; **without the header the serialized JSON contains no `payloadFlag` substring**; `GET …/comments?view=summary` JSON contains none; `GET …/apply-queue` (needs an **admin** key — the endpoint is `[Authorize(Policy="Admin")]`, `Admin/ProjectsController.cs:99-108`) JSON contains none; reply flagged via `UpdateStatusAsync` path; edit that removes the secret clears the flag.

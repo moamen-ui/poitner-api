@@ -69,6 +69,9 @@ Purpose: an implementer who adds a new customer-visible name gets a failing test
 ## Dashboard tasks
 None.
 
+## Docs
+**None — internal only.** The frozen names are already visible to users in what `init` writes; the contract document exists so *implementers* cannot rename them. No public page changes.
+
 ## Tests
 - Unit: `Tests/OnDiskContractTests.cs` (2 tests above).
 

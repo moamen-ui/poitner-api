@@ -177,6 +177,9 @@ AI RULES PRECEDENCE verbatim. Replace Steps 1–5 with:
 ## Dashboard tasks
 none (no API change). Optional: the dashboard's "How to apply" help text should show `npx pointer-feedback apply` — list as follow-up.
 
+## Docs
+**Creates `landing/docs/apply.html`** — the other page users actually need. Must contain: what `pointer apply` does end to end; `--plan` as the safe first run; `--tool` hand-off for each supported AI tool; single vs separate commit style and where it is configured; the `--mark` step that records the comment as applied with its commit link; and an explicit statement that **the AI commits but never pushes** — the human does. Answers: *“how do comments become code?”*
+
 ## Tests
 - Unit (`cli/test/`): `queue.test.ts` (admin queue vs fallback; 403 → fallback), `prompt.test.ts` (golden; untrusted fencing; rules ordering Workspace→Project→Personal), `projection.test.ts` (exact key set; flags dropped), `git.test.ts` (commitUrlFor matrix), `no-push.test.ts` (masking rule above), `mark.test.ts` (Single vs Separate; staged-index precondition; empty index error; PATCH bodies), `security-text.test.ts` (heading-scoped drift).
 - Integration (`Tests/`): none new — `Tests/CommitStyleAndCommitUrlTests.cs:71-107` already covers the PATCH.
