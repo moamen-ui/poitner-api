@@ -794,6 +794,10 @@
   background: var(--pf-success, #16a34a);
 }
 
+#pf-pins.picking .pf-pin {
+  pointer-events: none;
+}
+
 .pf-popover {
   position: fixed;
   z-index: 2147483647;

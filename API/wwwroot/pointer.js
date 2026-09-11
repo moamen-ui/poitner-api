@@ -1921,7 +1921,9 @@
       this.picking ? this.stopPicking() : this.startPicking();
     }
     startPicking() {
+      var _a2;
       this.picking = true;
+      (_a2 = this.root.querySelector("#pf-pins")) == null ? void 0 : _a2.classList.add("picking");
       const addBtn = this.root.querySelector("#pf-add");
       addBtn.classList.add("active");
       addBtn.innerHTML = ICON.close;
@@ -1932,7 +1934,9 @@
       this.toast("Click any element to comment on it — or press Esc to cancel");
     }
     stopPicking() {
+      var _a2, _b;
       this.picking = false;
+      (_b = (_a2 = this.root) == null ? void 0 : _a2.querySelector("#pf-pins")) == null ? void 0 : _b.classList.remove("picking");
       const addBtn = this.root && this.root.querySelector("#pf-add");
       if (addBtn) {
         addBtn.classList.remove("active");

@@ -922,6 +922,12 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
   }
   startPicking(): void {
     this.picking = true;
+    // Pins are `pointer-events: auto` so they can be clicked to open their comment — which means a
+    // pin sitting over an element makes that element impossible to comment on: the click retargets
+    // to our own host, resolveHitTarget() discards it as own-UI, and the pick silently does nothing.
+    // The more pins a page accumulates, the more of it becomes un-commentable. Mark the pin layer
+    // for the duration of picking so clicks fall through to the page underneath.
+    this.root.querySelector('#pf-pins')?.classList.add('picking');
     const addBtn = this.root.querySelector('#pf-add') as HTMLButtonElement;
     addBtn.classList.add('active');
     addBtn.innerHTML = ICON.close;
@@ -933,6 +939,7 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
   }
   stopPicking(): void {
     this.picking = false;
+    this.root?.querySelector('#pf-pins')?.classList.remove('picking');
     const addBtn = this.root && (this.root.querySelector('#pf-add') as HTMLButtonElement | null);
     if (addBtn) { addBtn.classList.remove('active'); addBtn.innerHTML = ICON.inspect; addBtn.title = 'Comment on an element'; }
     document.removeEventListener('mousemove', this._onHover, true);

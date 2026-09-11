@@ -28,3 +28,9 @@
 .pf-pin.applied {
   background: v.token('success');
 }
+
+// While element-picking is active the pin layer must not swallow clicks, or any element sitting
+// under an existing pin can never be commented on (see element.ts startPicking).
+#pf-pins.picking .pf-pin {
+  pointer-events: none;
+}
