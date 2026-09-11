@@ -17,6 +17,13 @@ public interface IInviteService
     /// <summary>Revoke an invite by id — explicit own-owner scope; unreachable cross-tenant.</summary>
     Task<Result> RevokeAsync(int id);
 
+    /// <summary>
+    /// Re-sends an invitation. By default the same code is kept and only the expiry is extended, so
+    /// a link already sitting in someone's inbox keeps working. <paramref name="rotate"/> mints a
+    /// new code instead — the answer to a leaked link, which also invalidates the old one.
+    /// </summary>
+    Task<Result<InviteResponse>> ResendAsync(int id, bool rotate = false);
+
     // ── Anonymous accept flow ──────────────────────────────────────────────────
 
     /// <summary>Safe preview for a code (anonymous). NotFound for invalid/expired/revoked/used-up.</summary>

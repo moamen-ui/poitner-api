@@ -142,6 +142,35 @@ public class InviteService : IInviteService
             : request.Email.Trim().ToLower();
         var maxUses = request.MaxUses is int m && m > 0 ? m : (int?)null;
 
+        // A workspace invite mints a whole tenant, so it is held to stricter rules than a member
+        // invite. These are enforced here, not only in the new validator, because the legacy
+        // /api/admin/invites route reaches this same branch through CreateInviteRequestValidator,
+        // which allows an unlimited-use invite and a TTL of up to a year.
+        if (request.CreateNewWorkspace)
+        {
+            // Email-locked: an unlocked link is a workspace anyone who sees it can claim.
+            if (emailNormalized is null)
+                return Result<InviteResponse>.Failure(MessageKeys.User.EmailRequired);
+
+            // Single-use. Left unlimited, one leaked link could mint N workspaces.
+            maxUses = 1;
+
+            // Bounded lifetime; a year-long workspace-minting link is not a reasonable artefact.
+            ttlDays = Math.Clamp(ttlDays, 1, 30);
+
+            // An address that already owns a workspace cannot accept, and the failure would happen
+            // only after the invite was created and emailed — leaving a pending row that can never
+            // clear. Refuse up front instead.
+            var alreadyOwns = await _unitOfWork.Repository<User>()
+                .Query()
+                .IgnoreQueryFilters()
+                .AsNoTracking()
+                .AnyAsync(u => u.DeletedAt == null && u.Email == emailNormalized && u.OwnerId == u.PublicId);
+
+            if (alreadyOwns)
+                return Result<InviteResponse>.Conflict(MessageKeys.Auth.AccountExists);
+        }
+
         var invite = new Invite
         {
             OwnerId = owner,
@@ -151,7 +180,9 @@ public class InviteService : IInviteService
             ExpiresAt = DateTime.UtcNow.AddDays(ttlDays),
             MaxUses = maxUses,
             Uses = 0,
-            RevokedAt = null
+            RevokedAt = null,
+            PlanId = request.CreateNewWorkspace ? request.PlanId : null,
+            DisplayName = request.CreateNewWorkspace ? request.DisplayName?.Trim() : null
         };
 
         await _unitOfWork.Repository<Invite>().AddAsync(invite);
@@ -170,7 +201,7 @@ public class InviteService : IInviteService
             {
                 emailSent = await _emailService.SendAsync(emailNormalized,
                     $"You're invited to {brand.ProductName}",
-                    BuildInviteEmailHtml(url, role?.Name, brand.ProductName, invite.ExpiresAt));
+                    BuildInviteEmailHtml(url, role?.Name, brand.ProductName, invite.ExpiresAt, invite.OwnerId is null));
             }
             catch { /* logged inside the sender; ignore here */ }
         }
@@ -407,7 +438,10 @@ public class InviteService : IInviteService
         {
             Email = emailNormalized,
             PasswordHash = _passwordHasher.Hash(request.Password),
-            DisplayName = request.DisplayName,
+            // The super admin may have named the workspace when inviting; the invitee can override it.
+            DisplayName = string.IsNullOrWhiteSpace(request.DisplayName)
+                ? (invite.DisplayName ?? request.DisplayName)
+                : request.DisplayName,
             RoleId = role.Id,
             PublicId = Guid.NewGuid(),
             ApprovalStatus = ApprovalStatus.Approved,
@@ -488,6 +522,44 @@ public class InviteService : IInviteService
         catch (Microsoft.EntityFrameworkCore.DbUpdateException)
         {
             return Result<LoginResponse>.Conflict(MessageKeys.Auth.AccountExists);
+        }
+
+        // Apply the invited plan. Written inline rather than through TenantService.ChangePlanAsync:
+        // TenantService already composes IInviteService, so calling back would be a DI cycle.
+        //
+        // Status = Active, unlike self-serve signup (AuthService.RegisterAdminAsync:414-419) which
+        // parks a paid plan in PendingActivation. That asymmetry is deliberate: anyone can sign up,
+        // so signup needs a second pair of eyes; a super admin issuing this invitation IS that
+        // approval, and waiting on the person who just invited the workspace would be circular.
+        // Consequence, accepted knowingly: an invited paid plan goes Active with no payment taken.
+        // That is right for comped/sales-led/migrated workspaces, and inert while the billing
+        // provider is Noop. When real billing lands, invited paid workspaces need a comped marker.
+        // No IBillingProvider call here — this service has no billing dependency and acceptance is
+        // an anonymous request.
+        if (invite.PlanId is int invitedPlanId)
+        {
+            var plan = await _unitOfWork.Repository<Plan>()
+                .Query()
+                .IgnoreQueryFilters()
+                .AsNoTracking()
+                .FirstOrDefaultAsync(p => p.Id == invitedPlanId
+                                          && p.DeletedAt == null
+                                          && p.IsActive
+                                          && p.DisplayState != PlanDisplayState.Hidden);
+
+            // Free is the zero-write default (a missing subscription already means Free).
+            if (plan != null && plan.Slug != "free")
+            {
+                await _unitOfWork.Repository<Subscription>().AddAsync(new Subscription
+                {
+                    // Set explicitly: accept runs with no tenant context, so TenantStamp would
+                    // produce null and violate this entity's non-null OwnerId.
+                    OwnerId = publicId,
+                    PlanId = plan.Id,
+                    Status = SubscriptionStatus.Active
+                });
+                await _unitOfWork.SaveChangesAsync();
+            }
         }
 
         newUser.Role = workspaceAdminRole;
@@ -697,11 +769,21 @@ public class InviteService : IInviteService
     private static string BuildJoinUrl(string appBaseUrl, string code) =>
         $"{appBaseUrl}/join?code={Uri.EscapeDataString(code)}";
 
-    private static string BuildInviteEmailHtml(string joinUrl, string? roleName, string productName, DateTime expiresAtUtc)
+    private static string BuildInviteEmailHtml(
+        string joinUrl,
+        string? roleName,
+        string productName,
+        DateTime expiresAtUtc,
+        bool isNewWorkspace = false)
     {
-        var roleLine = roleName != null
-            ? $"<p style=\"margin:0 0 16px\">You've been invited to join as <b>{roleName}</b>.</p>"
-            : string.Empty;
+        // A workspace invite has no role — without this branch the body was a bare heading and a
+        // button, which reads like a mis-sent email for the one invitation that matters most.
+        var roleLine = isNewWorkspace
+            ? "<p style=\"margin:0 0 16px\">You've been invited to create a workspace. Open the link "
+                + "below and choose your own password — nobody else ever sees it.</p>"
+            : roleName != null
+                ? $"<p style=\"margin:0 0 16px\">You've been invited to join as <b>{roleName}</b>.</p>"
+                : string.Empty;
         return $@"<div style=""font-family:system-ui,sans-serif;color:#0f172a;line-height:1.6"">
   <h2 style=""margin:0 0 8px"">You're invited to {productName} 🐕</h2>
   {roleLine}
@@ -743,4 +825,64 @@ public class InviteService : IInviteService
         Uses = i.Uses,
         ProjectId = i.ProjectId
     };
+
+    public async Task<Result<InviteResponse>> ResendAsync(int id, bool rotate = false)
+    {
+        var invite = await LoadOwnAsync(id);
+        if (invite is null)
+            return Result<InviteResponse>.NotFound(MessageKeys.Invite.NotFound);
+
+        if (invite.RevokedAt is not null)
+            return Result<InviteResponse>.Failure(MessageKeys.Invite.Revoked);
+
+        if (rotate)
+        {
+            // A new code makes the old link dead immediately — that is the point of rotating.
+            invite.Code = GenerateCode();
+            invite.Uses = 0;
+        }
+
+        // Extend from now, using the invite's original lifetime where it can be recovered, so a
+        // resend does not quietly shorten a 30-day link to the 7-day default.
+        var originalTtl = invite.ExpiresAt - invite.CreatedAt;
+        var ttlDays = originalTtl.TotalDays >= 1 ? (int)Math.Round(originalTtl.TotalDays) : DefaultTtlDays;
+        if (invite.OwnerId is null)
+            ttlDays = Math.Clamp(ttlDays, 1, 30);
+
+        invite.ExpiresAt = DateTime.UtcNow.AddDays(ttlDays);
+
+        _unitOfWork.Repository<Invite>().Update(invite);
+        await _unitOfWork.SaveChangesAsync();
+
+        var url = await BuildJoinUrlAsync(invite.Code);
+        var emailSent = false;
+
+        if (!string.IsNullOrWhiteSpace(invite.Email))
+        {
+            var brand = await _branding.BuildResponseAsync("", new HashSet<string>());
+            string? roleName = null;
+            if (invite.RoleId is int roleId)
+            {
+                roleName = await _unitOfWork.Repository<Role>()
+                    .Query()
+                    .IgnoreQueryFilters()
+                    .AsNoTracking()
+                    .Where(r => r.Id == roleId)
+                    .Select(r => r.Name)
+                    .FirstOrDefaultAsync();
+            }
+
+            try
+            {
+                emailSent = await _emailService.SendAsync(invite.Email!,
+                    $"You're invited to {brand.ProductName}",
+                    BuildInviteEmailHtml(url, roleName, brand.ProductName, invite.ExpiresAt, invite.OwnerId is null));
+            }
+            catch { /* logged inside the sender; a failed send still returns the copyable link */ }
+        }
+
+        var response = MapToResponse(invite, null, url);
+        response.EmailSent = emailSent;
+        return Result<InviteResponse>.Success(response);
+    }
 }

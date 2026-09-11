@@ -380,14 +380,90 @@ public class InviteServiceTests
         using var db = BuildContext(superAdmin, dbName);
         var svc = BuildService(superAdmin, db);
 
+        // Email is now required for a workspace invite (R1-08) — an unlocked link is a workspace
+        // anyone who sees it can claim.
         var result = await svc.CreateAsync(new CreateInviteRequest
-        { CreateNewWorkspace = true, TargetOwnerId = tenant, RoleId = roleId });
+        { CreateNewWorkspace = true, TargetOwnerId = tenant, RoleId = roleId, Email = "owner@new.test" });
 
         Assert.True(result.IsSuccess);
         Assert.Null(result.Data!.RoleId);
         var stored = db.Invites.IgnoreQueryFilters().Single();
         Assert.Null(stored.OwnerId);
         Assert.Null(stored.RoleId);
+    }
+
+    [Fact]
+    public async Task SuperAdmin_Create_NewWorkspaceInvite_RequiresEmail()
+    {
+        var dbName = Guid.NewGuid().ToString();
+        SeedTenant(dbName);
+
+        var superAdmin = new FakeCurrentUser { Id = Guid.NewGuid(), IsSuperAdmin = true };
+        using var db = BuildContext(superAdmin, dbName);
+
+        var result = await BuildService(superAdmin, db)
+            .CreateAsync(new CreateInviteRequest { CreateNewWorkspace = true });
+
+        Assert.False(result.IsSuccess);
+        Assert.Empty(db.Invites.IgnoreQueryFilters().ToList());
+    }
+
+    [Fact]
+    public async Task SuperAdmin_Create_NewWorkspaceInvite_IsSingleUseAndBounded()
+    {
+        // The legacy route allows an unlimited-use invite and a year-long TTL into this same branch;
+        // a workspace-minting link must be neither.
+        var dbName = Guid.NewGuid().ToString();
+        SeedTenant(dbName);
+
+        var superAdmin = new FakeCurrentUser { Id = Guid.NewGuid(), IsSuperAdmin = true };
+        using var db = BuildContext(superAdmin, dbName);
+
+        var result = await BuildService(superAdmin, db)
+            .CreateAsync(new CreateInviteRequest
+            {
+                CreateNewWorkspace = true,
+                Email = "owner@bounded.test",
+                MaxUses = 99,
+                ExpiresInDays = 365,
+            });
+
+        Assert.True(result.IsSuccess);
+        var stored = db.Invites.IgnoreQueryFilters().Single();
+        Assert.Equal(1, stored.MaxUses);
+        Assert.True(stored.ExpiresAt <= DateTime.UtcNow.AddDays(30).AddMinutes(1));
+    }
+
+    [Fact]
+    public async Task SuperAdmin_Create_NewWorkspaceInvite_RefusesAnAddressThatAlreadyOwnsOne()
+    {
+        // Otherwise the invite is created and emailed, then fails at acceptance, leaving a pending
+        // row that can never clear.
+        var dbName = Guid.NewGuid().ToString();
+        SeedTenant(dbName);
+
+        var superAdmin = new FakeCurrentUser { Id = Guid.NewGuid(), IsSuperAdmin = true };
+        using var seed = BuildContext(superAdmin, dbName);
+        var ownerId = Guid.NewGuid();
+        seed.Users.Add(new Pointer.Domain.Entity.User
+        {
+            Email = "taken@owner.test",
+            PasswordHash = "x",
+            DisplayName = "Existing Owner",
+            RoleId = seed.Roles.First().Id,
+            PublicId = ownerId,
+            ApprovalStatus = Pointer.Domain.Enums.ApprovalStatus.Approved,
+            IsActive = true,
+            OwnerId = ownerId,
+        });
+        seed.SaveChanges();
+
+        using var db = BuildContext(superAdmin, dbName);
+        var result = await BuildService(superAdmin, db)
+            .CreateAsync(new CreateInviteRequest { CreateNewWorkspace = true, Email = "taken@owner.test" });
+
+        Assert.True(result.IsConflict);
+        Assert.Empty(db.Invites.IgnoreQueryFilters().ToList());
     }
 
     [Fact]
