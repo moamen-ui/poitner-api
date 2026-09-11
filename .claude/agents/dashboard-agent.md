@@ -62,6 +62,15 @@ Confirm the new operations and DTOs actually appear (grep the generated barrel i
 
 Before creating or changing any UI in any of the three apps, **invoke the `impeccable` skill and follow it.** It is this project's frontend-design process and it covers exactly what this dashboard needs: visual hierarchy, information architecture, accessibility, responsive behaviour, theming, i18n/RTL, empty and error states, and micro-interaction polish. The repo already carries its supporting agents (`.claude/agents/impeccable-{asset-producer,documenter,finish-reviewer,manual-edit-applier}.md`), and the dashboard repo carries the design system it must respect: `DESIGN.md` (the named palette and the "reads like a pull-request review" direction — white ground, cool gutters, hairlines, diff vocabulary for state) and `design/foundation.css` + `design/i18n/` + `design/sync-foundation.sh`. Read `DESIGN.md` before designing anything; a screen that ignores the stated direction is a rework, not a deliverable.
 
+**Reference — the upstream Impeccable documentation: <https://impeccable.style/docs>.** Impeccable is a
+CLI for AI-assisted design that integrates with coding tools (Claude Code, Cursor, Gemini CLI); its docs
+cover the workflows this project relies on — creating new designs, improving existing ones, working
+within a design system, auditing and critiquing a screen, focused refinement (layout, typography, colour,
+motion), simplification and hardening (responsive, accessible, resilient), and recording patterns /
+extracting reusable components. Consult it when you need the *process* behind a step, not just the step.
+Note its own guidance: describe the outcome you want conversationally rather than hunting for a command.
+
+
 **The boundary — do not over-apply it.** Pure regeneration is not design work:
 
 | Mechanical (no skill) | Design work (skill required) |

@@ -31,6 +31,20 @@ write the content — each execution doc's `## Docs` section owns its own page.
     `[data-brand-logo]` and prefix-matched `app`/`demo` URLs — but **not** the docs link, which is
     hard-coded to the GitHub README at `landing/index.html:511`.
 
+## Design references
+
+- **Impeccable docs — <https://impeccable.style/docs>.** The docs site is a frontend surface, so it is
+  built through the `impeccable` skill like every other UI in this project, and its upstream
+  documentation is the reference for the *process*: creating a design, working within a design system,
+  auditing and critiquing a screen, focused refinement (layout, typography, colour, motion), and
+  simplification/hardening (responsive, accessible, resilient). Consult it when you need the reasoning
+  behind a step. Its own advice applies here: describe the outcome you want rather than hunting for a
+  command.
+- **The landing page is the design system of record for this site.** `landing/index.html` already
+  carries the tokens (`--pf-*`), the light/dark handling and the RTL shell; the docs site inherits them
+  rather than inventing a second look. A docs page that does not look like it belongs to the landing
+  page is a rework.
+
 ## Design
 
 ### A. Location and URL
