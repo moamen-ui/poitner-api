@@ -1,6 +1,11 @@
-# R1-07 — Schedule the existing E2E suite in CI (NEW-4a · Release 1 · ½ day)
+# R1-07 — Harness runner + schedule the E2E suite in CI (NEW-4a · Release 1 · 2 days)
 
 ## Goal
+**Scope note (grew during review):** this doc also builds the two harness components every later
+doc and the `e2e-tester-agent` assume exist but nothing owns — the `run-e2e.sh` phase/tier flags and
+`lib/report.mjs`. Without them there are no tiers to schedule and no evidence artifact to upload, so
+they cannot be deferred past the doc that introduces CI tiers. Estimate raised ½ d → 2 d accordingly.
+
 The zero-AI part of the existing `e2e/` suite (reset → seed → probe-visibility → widget spec) runs
 automatically on every PR to `main` and nightly, so regressions in the widget/API contract are caught
 without spending AI tokens. R2-00 later adds the fresh-app `init` scenarios and the white-label job to
@@ -32,6 +37,25 @@ the same workflow.
 - Also add the `dotnet test` job to the same workflow (`Tests/`) if no other workflow runs it — `just test` equivalent: `dotnet test --configuration Release --logger "trx"`. **Decision:** include it; a PR gate without unit tests is incomplete.
 
 ## Tasks
+0a. **Rewrite `e2e/run-e2e.sh` into a phase runner.** Today it parses exactly one flag (`--with-ai`,
+   `:8-11`) and hardcodes five phases (`:13-36`), so a tier cannot be selected and a single phase
+   cannot be re-run — which makes harness §8's tiers and the `e2e-tester-agent`'s targeted re-test
+   (round 2 of its loop) unimplementable. Implement the flag set harness §4 already specifies:
+   `--ci --pr --nightly --fresh --whitelabel --apply --mcp --mail --429 --upgrade --registry --all`,
+   plus `--only <scenario-id>[,<id>…]` for the tester's re-runs and `--list` to print the phases a
+   tier would run without running them. Rules: unknown flag → exit 2 naming it; no flag → today's
+   behaviour (reset → seed → probe → widget) so nothing existing breaks; every phase is skippable and
+   independently runnable; the phase order and the "429 phase last" rule from harness §8 are enforced
+   by the script, not by the caller's memory; `E2E_REUSE=1` skips reset and reuses `state/`.
+0b. **`e2e/scripts/lib/report.mjs`** — the evidence writer harness §11 specifies. `record({id, tier,
+   layer, role, result, ms, detail})` appends to `e2e/state/report.md`; `phase({name, result,
+   duration, notes})` for the phase table; a header with the UTC timestamp, git sha, flags, and the
+   stack line (`/api/meta` fields + the mailpit message count). **Every phase writes through it, not
+   just the AI phase** — today `scripts/audit.mjs:13` is the only writer and it runs solely under
+   `--with-ai` (`run-e2e.sh:31-35`), so a zero-AI run produces no artifact at all, `H-05` fails, and
+   the tester agent's hygiene preflight has nothing to read. Also emit `state/junit.xml`. Enforce
+   harness §11's rule that `detail` carries no timings, counters or boundary indices (they go to the
+   CI log) so `H-02`'s determinism diff is possible.
 1. Confirm no existing unit-test workflow (`ls .github/workflows`). Create `.github/workflows/e2e.yml` with two jobs: `unit` (dotnet test) and `e2e` (needs: unit).
 2. `run-e2e.sh --ci`; Playwright config CI tweaks.
 3. Run the workflow via `workflow_dispatch` on the feature branch; fix flakiness (waits on `/swagger`, fixture server readiness) until two consecutive green runs.
@@ -46,6 +70,15 @@ None.
 This doc *is* test infrastructure. Verification = two green scheduled/dispatched runs.
 
 ## Acceptance criteria
+- [ ] `bash run-e2e.sh --list --nightly` prints the phase list without running anything; an unknown
+      flag exits 2 naming it; a bare `bash run-e2e.sh` behaves exactly as before this change.
+- [ ] `bash run-e2e.sh --only R1-05-03` runs that scenario and nothing else (the `e2e-tester-agent`'s
+      round-2 contract).
+- [ ] A zero-AI run leaves a non-empty `e2e/state/report.md` containing the header, a `## Phases`
+      table with a row per phase (`SKIP` + reason for phases the tier skipped) and a `## Scenarios`
+      row per executed id, plus `state/junit.xml`.
+- [ ] Two consecutive `--pr` runs from a wiped DB produce reports identical after stripping the `ms`
+      and `detail` columns (`H-02`).
 - [ ] A PR touching `web-component/src/**` triggers the workflow and both jobs (`unit`, `e2e`) are green on the PR check run.
 - [ ] After merge, the nightly `schedule` run on the default branch is green and visible in Actions with artifacts (`playwright-report`, traces on failure, `report.md`).
 - [ ] Introducing a deliberate widget selector break in a test branch makes the `e2e` job fail with a Playwright trace artifact.

@@ -72,7 +72,7 @@ Seed also: mints an API key per persona → `e2e/state/keys.json` (`GET /api/me/
 
 ```
 e2e/
-  run-e2e.sh                 flags: --ci --pr --nightly --fresh --whitelabel --apply --mcp --mail --429 --upgrade --all
+  run-e2e.sh                 **built by R1-07 task 0a** (today it parses only --with-ai); flags: --ci --pr --nightly --fresh --whitelabel --apply --mcp --mail --429 --upgrade --all
   scripts/
     reset.sh                 + `cp -n .env.example .env` FIRST (compose has `env_file: .env`, gitignored), waits for mailpit :8025, clears mailbox (DELETE /api/v1/messages), bounded wait on /swagger with `docker compose logs api` on timeout
     seed.mjs                 + TENANT_B, FLOOD, keys.json, e2e-beta origin fixture, post-R2-05 client redemption
@@ -87,7 +87,7 @@ e2e/
       mail.mjs               Mailpit client (§5)
       cli.mjs                spawnCli({cwd, args, env}) → {stdout, stderr, code, json?}; uses CLI_ENTRY (§6)
       git.mjs                tempRepo(), bareRemote(), refsSnapshot(), assertRefsUnchanged()
-      report.mjs             record(id, tier, layer, role, result, ms, detail) → state/report.md (every phase)
+      report.mjs             **built by R1-07 task 0b** (today only the AI phase writes a report); record(id, tier, layer, role, result, ms, detail) → state/report.md (every phase)
       mcp.mjs                @modelcontextprotocol/sdk stdio client for R2-02 (zero LLM)
   fixture-app/               alpha, beta, smoke (existing) + vite-react (R3-01), static-template, csp-nonce, pinned-tamper
   widget/lib/pre-auth.ts     preAuthWidget(page, token, user) — extracted from widget.spec.ts:41-51 (R2-00 task);
