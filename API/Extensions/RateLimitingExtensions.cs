@@ -57,5 +57,15 @@ public static class RateLimitingExtensions
                     Window = TimeSpan.FromMinutes(1),
                     QueueLimit = 0
                 }));
+
+        o.AddPolicy("meta", ctx =>
+            RateLimitPartition.GetFixedWindowLimiter(
+                ClientIp(ctx),
+                _ => new FixedWindowRateLimiterOptions
+                {
+                    PermitLimit = 120,
+                    Window = TimeSpan.FromMinutes(1),
+                    QueueLimit = 0
+                }));
     }
 }
