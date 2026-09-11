@@ -44,6 +44,14 @@ public class Project : BaseEntity
     // project-level setting).
     public CommitStyle CommitStyle { get; set; } = CommitStyle.Single;
 
+    // When true, a comment or reply is only accepted from an origin matching one of this project's
+    // active ProjectAppUrl rows (exact or wildcard — see OriginNormalizer). Default false, so every
+    // existing project behaves exactly as before. Note what this is and is not: comment creation
+    // already requires a JWT, so this is not an anonymous-abuse control — it stops a signed-in
+    // stakeholder posting from the wrong site, and is deliberately bypassable by a staff token with
+    // no Origin header (that is how the CLI and AI agents post). Flooding is the rate limiter's job.
+    public bool EnforceAllowedOrigins { get; set; } = false;
+
     public Guid? OwnerId { get; set; }
     public ICollection<Comment> Comments { get; set; } = new List<Comment>();
 }

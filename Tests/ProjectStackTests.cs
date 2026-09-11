@@ -31,7 +31,7 @@ public class ProjectStackTests
             new Microsoft.Extensions.Configuration.ConfigurationBuilder().Build());
 
     private static ProjectService BuildService(ICurrentUser user, string dbName) =>
-        new(new UnitOfWork(BuildContext(user, dbName)), user, new PassThroughEntitlements());
+        new(new UnitOfWork(BuildContext(user, dbName)), user, new PassThroughEntitlements(), TestProjectServiceDeps.Settings(), TestProjectServiceDeps.Configuration());
 
     private static (string dbName, Guid tenant) SeedProject(string key)
     {

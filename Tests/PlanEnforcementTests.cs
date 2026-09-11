@@ -59,7 +59,7 @@ public class PlanEnforcementTests
     private static ProjectService Projects(AppDbContext db, ICurrentUser user, FakeSettings settings)
     {
         var uow = new UnitOfWork(db);
-        return new ProjectService(uow, user, new EntitlementService(uow, user, settings));
+        return new ProjectService(uow, user, new EntitlementService(uow, user, settings), TestProjectServiceDeps.Settings(), TestProjectServiceDeps.Configuration());
     }
 
     // ── MaxProjects ──────────────────────────────────────────────────────────
@@ -179,7 +179,7 @@ public class PlanEnforcementTests
         var ctx = Ctx(user, db);
         var uow = new UnitOfWork(ctx);
         var ent = new EntitlementService(uow, user, new FakeSettings());
-        var svc = new PredefinedActionService(uow, new ProjectService(uow, user, ent), user, ent);
+        var svc = new PredefinedActionService(uow, new ProjectService(uow, user, ent, TestProjectServiceDeps.Settings(), TestProjectServiceDeps.Configuration()), user, ent);
 
         Assert.True((await svc.CreateTenantAsync(new CreatePredefinedActionRequest { Text = "A", Prompt = "p", IsActive = true })).IsSuccess);
         var blocked = await svc.CreateTenantAsync(new CreatePredefinedActionRequest { Text = "B", Prompt = "p", IsActive = true });

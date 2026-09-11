@@ -33,7 +33,7 @@ public class ProjectServiceQuickAccessTests
             .Options, user, new Microsoft.Extensions.Configuration.ConfigurationBuilder().Build());
 
     private static ProjectService Wire(ICurrentUser user, AppDbContext ctx) =>
-        new(new UnitOfWork(ctx), user, new PassThroughEntitlements());
+        new(new UnitOfWork(ctx), user, new PassThroughEntitlements(), TestProjectServiceDeps.Settings(), TestProjectServiceDeps.Configuration());
 
     [Fact]
     public async Task QuickAccessUser_Cannot_ListProjects()

@@ -71,7 +71,7 @@ public class ExportImportServiceTests
         BuildServices(AppDbContext db, FakeCurrentUser user)
     {
         var uow = new UnitOfWork(db);
-        var projects = new ProjectService(uow, user, new PassThroughEntitlements());
+        var projects = new ProjectService(uow, user, new PassThroughEntitlements(), TestProjectServiceDeps.Settings(), TestProjectServiceDeps.Configuration());
         var service = new ExportImportService(uow, projects, user, new FakeSettingsService());
         return (uow, projects, service);
     }

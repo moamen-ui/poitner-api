@@ -47,6 +47,7 @@ public static class MessageKeys
         public const string SuperAdminNotAllowed = "Super admins cannot create projects. Sign in with a tenant account to use Pointer.";
         public const string QuickAccessNotAllowed = "Client accounts cannot manage projects.";
         public const string NoneForOrigin = "No project is set up for this site yet. Ask your workspace admin to set the project's App URL.";
+        public const string OriginNotAllowed = "Comments are not allowed from this address.";
     }
 
     public static class Role
