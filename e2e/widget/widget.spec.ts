@@ -86,21 +86,32 @@ test('Tester creates a staging bug report by clicking the real broken checkout b
   await expect(popover).toBeEmpty({ timeout: 10_000 });
 });
 
-test('Client creates a production comment, and it syncs correctly to the API', async ({ page }) => {
+test('Client creates a comment without an environment switcher, and it syncs correctly to the API', async ({ page }) => {
   const client = await login(credentials.client.email, credentials.client.password);
   await preAuthWidget(page, client.token, client.user);
   await page.goto(SMOKE_PATH);
 
   const widget = page.locator('pointer-feedback');
   await expect(widget.locator('#pf-add')).toBeVisible({ timeout: 10_000 });
-  await widget.locator('#pf-env').selectOption('production');
+
+  // A Client (QuickAccess) account deliberately does NOT get the environment switcher: with no
+  // explicit EnvironmentSelectorRoleIds the rule is "everyone except Client"
+  // (ProjectService.ShowEnvironmentSelectorFor). This test used to call selectOption('production')
+  // here, which asked the Client to do something the product forbids — it hung for 30s waiting for
+  // a control that is correctly absent. Assert the absence instead, and let the comment take the
+  // page's own environment.
+  await expect(widget.locator('#pf-env')).toHaveCount(0);
 
   await widget.locator('#pf-add').click();
+  // Picking is active once #pf-add flips to `active` — the same toggle that installs the
+  // document-level click listener. The previously-removed selectOption call was providing this
+  // wait by accident.
+  await expect(widget.locator('#pf-add')).toHaveClass(/active/);
   await page.locator('#join-btn').click({ force: true });
 
   const popover = page.locator('#pf-popover-host');
   await expect(popover.locator('#pf-comment-text')).toBeVisible();
-  await popover.locator('#pf-comment-text').fill('Widget-created production comment for sync verification.');
+  await popover.locator('#pf-comment-text').fill('Widget-created client comment for sync verification.');
   await popover.locator('#pf-submit').click();
   await expect(popover).toBeEmpty({ timeout: 10_000 });
 
@@ -121,9 +132,12 @@ test('Client creates a production comment, and it syncs correctly to the API', a
   const snapshot = res.pageContexts?.[bugReport.pageContextId];
   expect(snapshot, 'PageContextSnapshot must be populated from the real browser error').toBeTruthy();
 
-  const productionComment = items.find((c) => c.environment === 3);
-  expect(productionComment, "the Client's production comment must exist").toBeTruthy();
-  expect(productionComment.element?.selector).toContain('join-btn');
+  // Identify the Client's comment by its anchor, not by environment: with no switcher offered to a
+  // Client the comment takes whatever environment the page resolves to, so asserting `=== 3`
+  // (Production) only ever passed when the test was wrongly driving a control Clients never see.
+  const clientComment = items.find((c) => c.element?.selector?.includes('join-btn'));
+  expect(clientComment, "the Client's comment must exist and be visible to staff").toBeTruthy();
+  expect(clientComment.authorId, "it must be attributed to the Client").toBe(client.user.id);
 
   // And confirm the Client's own fetch is correctly scoped to just their own comment.
   const clientView = await get(`/api/projects/${SMOKE_KEY}/comments?pageSize=100`, { token: client.token });

@@ -107,12 +107,12 @@ if [ ${#ONLY[@]} -gt 0 ]; then
     set -e
     
     res="FAIL"
-    [ $code -eq 0 ] && res="PASS"
+    if [ $code -eq 0 ]; then res="PASS"; fi
     echo "$res" > "$RETRY_FILE"
     ms=$(node -e "process.stdout.write(($end - $start).toString())")
     node scripts/lib/report.mjs record "$id" "$TIER" "e2e" "tester" "$res" "$ms" 1 "Playwright exit $code"
     
-    [ $code -ne 0 ] && exit $code
+    if [ $code -ne 0 ]; then exit $code; fi
   done
   exit 0
 fi
@@ -144,46 +144,56 @@ run_phase() {
   local dur=$(node -e "process.stdout.write(Math.round(($end - $start) / 1000).toString())")
   
   local res="PASS"
-  [ $code -ne 0 ] && res="FAIL"
-  node scripts/lib/report.mjs phase "$name" "$res" "${dur}s" ""
-  [ $code -ne 0 ] && exit $code
+  local note=""
+  if [ $code -eq 97 ]; then
+    # Exit 97 from scripts/pw.sh: the phase's spec directory holds no test files. Surfaced as its
+    # own state so an unwritten phase is visible in the report rather than counted as a pass.
+    res="EMPTY"; note="no specs authored yet"; code=0
+  elif [ $code -ne 0 ]; then
+    res="FAIL"
+  fi
+  node scripts/lib/report.mjs phase "$name" "$res" "${dur}s" "$note"
+  # Must be an `if`, not `[ ... ] && exit`: that form returns 1 when the phase PASSED, and with
+  # `set -e` on it terminated the whole run after the first successful phase.
+  if [ $code -ne 0 ]; then exit $code; fi
+  return 0
 }
 
 run_phase "reset" "bash scripts/reset.sh"
 run_phase "seed" "node scripts/seed.mjs"
 run_phase "probe" "node scripts/probe-visibility.mjs"
-run_phase "api" "npx playwright test api/ 2>/dev/null || true"
-run_phase "cli" "npx playwright test cli/ 2>/dev/null || true"
+run_phase "api" "bash scripts/pw.sh api"
+run_phase "cli" "bash scripts/pw.sh cli"
 
-run_phase "widget" "node fixture-app/serve.mjs smoke 4173 & FIX=\$!; trap 'kill \$FIX 2>/dev/null || true' EXIT; until curl -sf http://localhost:4173/ >/dev/null 2>&1; do sleep 0.5; done; npx playwright test widget/widget.spec.ts; kill \$FIX 2>/dev/null || true; trap - EXIT"
+run_phase "widget" "bash scripts/run-widget-phase.sh"
 
-run_phase "mail" "npx playwright test mail/ 2>/dev/null || true"
-run_phase "fresh" "node fresh-app/run.mjs 2>/dev/null || true"
-run_phase "whitelabel" "npx playwright test widget/whitelabel.spec.ts 2>/dev/null || true; node scripts/reset-branding.mjs 2>/dev/null || true"
-run_phase "mcp" "npx playwright test mcp/ 2>/dev/null || true"
-run_phase "apply" "npx playwright test apply/ 2>/dev/null || true"
+run_phase "mail" "bash scripts/pw.sh mail"
+run_phase "fresh" "if [ -f fresh-app/run.mjs ]; then node fresh-app/run.mjs; else echo 'fresh-app/run.mjs not written yet' >&2; exit 97; fi"
+run_phase "whitelabel" "( bash scripts/pw.sh widget 'whitelabel\\.spec\\.ts'; wl=\$?; node scripts/reset-branding.mjs 2>/dev/null; exit \$wl )"
+run_phase "mcp" "bash scripts/pw.sh mcp"
+run_phase "apply" "bash scripts/pw.sh apply"
 
 if [[ " ${FLAGS[*]:-} " =~ " registry " ]] || [[ " ${FLAGS[*]:-} " =~ " all " ]]; then
   echo "=== phase: registry ==="
   start=$(node -e "process.stdout.write(Date.now().toString())")
   set +e
   docker compose up -d verdaccio
-  npx playwright test cli/registry.spec.mjs 2>/dev/null || true
+  bash scripts/pw.sh cli 'registry\.spec\.mjs'
   code=$?
   docker compose stop verdaccio
   set -e
   end=$(node -e "process.stdout.write(Date.now().toString())")
   dur=$(node -e "process.stdout.write(Math.round(($end - $start) / 1000).toString())")
   res="PASS"
-  [ $code -ne 0 ] && res="FAIL"
+  if [ $code -ne 0 ]; then res="FAIL"; fi
   node scripts/lib/report.mjs phase "registry" "$res" "${dur}s" ""
-  [ $code -ne 0 ] && exit $code
+  if [ $code -ne 0 ]; then exit $code; fi
 else
   node scripts/lib/report.mjs phase "registry" "SKIP" "0s" "Skipped by tier/flags"
 fi
 
-run_phase "upgrade" "npx playwright test upgrade/ 2>/dev/null || true"
-run_phase "429" "npx playwright test 429/ 2>/dev/null || true"
+run_phase "upgrade" "bash scripts/pw.sh upgrade"
+run_phase "429" "bash scripts/pw.sh 429"
 
 if [[ " ${FLAGS[*]:-} " =~ " ai " ]]; then
   run_phase "ai" "node ai/run-cases.mjs && node scripts/audit.mjs"
