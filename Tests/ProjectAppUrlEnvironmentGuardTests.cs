@@ -41,7 +41,7 @@ public class ProjectAppUrlEnvironmentGuardTests
             envId = env.Id;
         }
 
-        var svc = new ProjectService(new UnitOfWork(BuildContext(admin, dbName)), admin, new PassThroughEntitlements());
+        var svc = new ProjectService(new UnitOfWork(BuildContext(admin, dbName)), admin, new PassThroughEntitlements(), TestProjectServiceDeps.Settings(), TestProjectServiceDeps.Configuration());
         var created = await svc.CreateAsync(new CreateProjectRequest
         {
             Key = "p",
@@ -67,7 +67,7 @@ public class ProjectAppUrlEnvironmentGuardTests
         var tenant = Guid.NewGuid();
         var admin = new FakeCurrentUser { Id = Guid.NewGuid(), IsAdmin = true, TenantId = tenant };
 
-        var svc = new ProjectService(new UnitOfWork(BuildContext(admin, dbName)), admin, new PassThroughEntitlements());
+        var svc = new ProjectService(new UnitOfWork(BuildContext(admin, dbName)), admin, new PassThroughEntitlements(), TestProjectServiceDeps.Settings(), TestProjectServiceDeps.Configuration());
         var created = await svc.CreateAsync(new CreateProjectRequest
         {
             Key = "p",
@@ -95,7 +95,7 @@ public class ProjectAppUrlEnvironmentGuardTests
             envId = env.Id;
         }
 
-        var svc = new ProjectService(new UnitOfWork(BuildContext(admin, dbName)), admin, new PassThroughEntitlements());
+        var svc = new ProjectService(new UnitOfWork(BuildContext(admin, dbName)), admin, new PassThroughEntitlements(), TestProjectServiceDeps.Settings(), TestProjectServiceDeps.Configuration());
         var created = await svc.CreateAsync(new CreateProjectRequest
         {
             Key = "p",
@@ -124,7 +124,7 @@ public class ProjectAppUrlEnvironmentGuardTests
             envId = env.Id;
         }
 
-        var svc = new ProjectService(new UnitOfWork(BuildContext(admin, dbName)), admin, new PassThroughEntitlements());
+        var svc = new ProjectService(new UnitOfWork(BuildContext(admin, dbName)), admin, new PassThroughEntitlements(), TestProjectServiceDeps.Settings(), TestProjectServiceDeps.Configuration());
         var created = await svc.CreateAsync(new CreateProjectRequest
         {
             Key = "p",
@@ -155,7 +155,7 @@ public class ProjectAppUrlEnvironmentGuardTests
             envId = env.Id;
         }
 
-        var svc = new ProjectService(new UnitOfWork(BuildContext(admin, dbName)), admin, new PassThroughEntitlements());
+        var svc = new ProjectService(new UnitOfWork(BuildContext(admin, dbName)), admin, new PassThroughEntitlements(), TestProjectServiceDeps.Settings(), TestProjectServiceDeps.Configuration());
         var created = await svc.CreateAsync(new CreateProjectRequest
         {
             Key = "p",
@@ -186,7 +186,7 @@ public class ProjectAppUrlEnvironmentGuardTests
             envId = env.Id;
         }
 
-        var svc = new ProjectService(new UnitOfWork(BuildContext(admin, dbName)), admin, new PassThroughEntitlements());
+        var svc = new ProjectService(new UnitOfWork(BuildContext(admin, dbName)), admin, new PassThroughEntitlements(), TestProjectServiceDeps.Settings(), TestProjectServiceDeps.Configuration());
         var result = await svc.SetAppUrlAsync(projectId, envId, new SetProjectAppUrlRequest { Url = "u" });
 
         Assert.False(result.IsSuccess);
