@@ -12,12 +12,23 @@ npm install
 npx playwright install chromium
 ```
 
-## Running
+## Running & CI
 
 ```bash
-bash run-e2e.sh              # zero-AI: reset → seed → probe-visibility → widget spec
+bash run-e2e.sh              # default (zero-AI): reset → seed → probe-visibility → widget spec
 bash run-e2e.sh --with-ai    # also runs TC1-TC5 against installed AI CLIs (spends real tokens)
 ```
+
+The E2E suite runs in CI on two tiers:
+- **PR**: (`--pr`) Runs on PRs touching backend/frontend/cli code. Enforces `< 15 min` runtime, testing API, widget, CLI, and mail integration.
+- **Nightly**: (`--nightly`) Scheduled run covering everything: white-label domains, MCP, rate limiting, and upgrade testing.
+
+**Targeted execution:**
+You can run a specific phase or scenario using `--only`:
+```bash
+bash run-e2e.sh --only R1-05-03
+```
+Note that the runner enforces state coupling: you cannot run a scenario in isolation if it depends on state established by another (unless you set up the state first).
 
 Individual phases (useful while iterating):
 
