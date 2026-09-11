@@ -46,6 +46,19 @@ selected project already filled in** — `npx -y pointer-feedback init --server 
 4. Add i18n keys to `en.json` and `ar.json`; run the i18n key-parity test if one exists (grep `i18n` in `angular/src/**/*.spec.ts`).
 5. `npm run build` and `npm test` in `angular/`.
 6. Manual: login → Projects → open install guide → command shows masked key → copy → paste into a terminal → the pasted text contains the real key.
+7. **(this repo, `pointer-api`) Make the Orval surface contract-checkable.** The swagger contract
+   guard (`docs/roadmap/testing/R1-03-tests.md` → `R1-03-01`) cannot pass today:
+   - `API/Controllers/CommentsController.cs` — `Create` (`:13`) and `List` (`:23`) carry **no**
+     `[ProducesResponseType]`, so the emitted 200 has no `content` at all. Add
+     `[ProducesResponseType(typeof(CommentResponse), StatusCodes.Status200OK)]` to `Create` and
+     `[ProducesResponseType(typeof(PagedData<CommentListItemDto>), StatusCodes.Status200OK)]` to
+     `List` (inner types, per the `AGENTS.md`/`CLAUDE.md` convention — never the `Result<T>` wrapper).
+     `?view=summary` stays deliberately unmodelled (see the existing comment at `:36-38`).
+   - `API/Controllers/BrandingController.cs:35` — annotated with the **wrapper**
+     `typeof(Result<BrandingResponse>)`. Change to `typeof(BrandingResponse)`; the envelope is
+     unwrapped by the dashboard interceptor, and the wrapper shape leaks `isSuccess`/`data`
+     components into the generated client.
+   Both are annotation-only changes — no behaviour, no response shape, no migration.
 
 ## Dashboard tasks
 This doc **is** dashboard work. No API changes; no Orval regen.

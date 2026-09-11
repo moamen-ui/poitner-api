@@ -69,6 +69,7 @@ Read before estimating anything — several items are *wiring*, not features.
 | R1.5 | **§41** allowed origins (enforce `ProjectAppUrl` on widget comment endpoints) + comment-POST rate limit | 1 d |
 | R1.6 | **NEW-5 API-key hardening** — `ApiKey` table (`UserId`, `Prefix` 12 chars indexed, `Hash` SHA-256, `Scopes` default Full, `LastUsedAt`, `RevokedAt`, `OwnerId`); migration hashes + encrypts existing keys into it; `User.ApiKey` column **kept this release (additive rule), dropped in R2**; key string format unchanged; key stays re-viewable (AES-GCM for display, SHA-256 for lookup — see `execution/R1-06`). *Slip candidate → R2 week 1, before MCP.* | 2–3 d |
 | R1.7 | **NEW-4a** schedule the existing `e2e/` suite in CI | ½ d |
+| R1.8 | **§50 tenant invitation (CRITICAL)** — a super admin invites a workspace owner **by email**; the invitee sets their own password from the link. Direct create-with-password stays as a secondary, explicitly-labelled path. | 2–3 d |
 
 ### Release 2 — apply from anywhere
 
@@ -178,6 +179,29 @@ Today: tier 1 `data-component-source` attr → tier 2 dev-mode fiber/Vue interna
 ### Phase 11 — AI quality, growth, docs
 
 45. **Design tokens → `stack.json`** — R3.2 · 46. Comment-quality nudge · 47. Seeded demo project (absorbs §23) · 48. Docs site · 49. "Powered by" badge. *(46–49 held)*
+
+### Phase 12 — Tenant onboarding
+
+50. **Tenant invitation by email (CRITICAL, R1.8).** Today a super admin creates a workspace by
+    POSTing an email **and a password** (`POST /api/admin/tenants`, `CreateTenantRequest { Email,
+    Password, DisplayName }`, `TenantService.CreateAsync:129-174` hashes it) — the super admin
+    therefore chooses, knows and must transmit someone else's credential out of band. That is the
+    same anti-pattern R2-05 removes for quick-access clients (`InviteService` emails a generated
+    plaintext password today) and it must not be the primary path for workspace owners either.
+    **Change:** the primary flow becomes *invite by email*, modelled on the existing user-invite
+    machinery (`Domain/Entity/Invite.cs` — `Code`, `Email`, `ExpiresAt`, `MaxUses`, `Uses`,
+    `RevokedAt`; `API/Controllers/InvitesController.cs`): the super admin enters an email (+ display
+    name, plan, demo flags), the server creates the tenant in a *pending* state plus a single-use,
+    expiring invite, and emails a link; the invitee opens it and sets their own password, which
+    activates the workspace. Resend / revoke / expiry visible in the dashboard; nothing is emailed
+    in plaintext except the one-time link.
+    **Direct creation is kept**, but demoted to a secondary, explicitly-labelled option (seeding,
+    migrations, air-gapped self-hosts, and the E2E seed which must keep working) — same endpoint
+    family, clearly marked "sets the password directly; prefer the invitation".
+    **Depends on:** email being un-held for this one transactional message — note that
+    `EmailService.SendAsync` gates on the DB setting `email_enabled` (`EmailService.cs:19-22`), so a
+    self-host with email off must fall back to "copy the invitation link", exactly like R2-05's
+    link-copy delivery.
 
 ### NEW items from review
 

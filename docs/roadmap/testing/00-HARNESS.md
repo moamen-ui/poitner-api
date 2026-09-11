@@ -28,12 +28,12 @@
 | Service | Image / source | Host ports | Notes |
 |---|---|---|---|
 | `db` | postgres (existing) | 5433 | unchanged |
-| `api` | existing build | 8090 | env adds `Email__Provider=smtp`, `Email__Smtp__Host=mailpit`, `Email__Smtp__Port=1025`, `Email__Enabled=true`. Selected by `Infrastructure/DependencyInjection.cs:43-48`; sender `Infrastructure/Email/SmtpEmailSender.cs` |
+| `api` | existing build | 8090 | env adds `Email__Provider=smtp`, `Email__Smtp__Host=mailpit`, `Email__Smtp__Port=1025` (all three ARE read: `Infrastructure/DependencyInjection.cs:43-48`, `SmtpEmailSender.cs:29-30`). **Do not set `Email__Enabled` — nothing reads it**; e-mail is gated by the DB setting `email_enabled` (§3). Selected by `Infrastructure/DependencyInjection.cs:43-48`; sender `Infrastructure/Email/SmtpEmailSender.cs` |
 | `mailpit` | `axllent/mailpit:latest` | 8025 (HTTP UI+API); SMTP 1025 **container-internal only** | **Added by R1-07 task** (the service is not in `docker-compose.yaml` yet — adding it is the first harness task). **Decision: Mailpit** — the code already assumes it (`SmtpEmailSender.cs:12`, `.env.example:9-12`); MailHog is archived; smtp4dev is heavier. JSON API + parsed HTML/Text bodies |
-| fixture apps | host node, `e2e/fixture-app/serve.mjs` + `scripts/serve-dir.mjs` (R2-00) | 4173 smoke · 4174 fresh-app preview · 4175 `vite-react` (R3-01) · 4176 `csp-nonce` · 4177 `pinned-tamper` | `--strictPort`; started/killed by `run-e2e.sh` with the existing `trap` pattern |
+| fixture apps | host node, `e2e/fixture-app/serve.mjs` + `scripts/serve-dir.mjs` (R2-00) | 4173 smoke (**reserved** — the only page honouring `?project=`, `smoke/index.html` + `widget.spec.ts:19-20`) · **4181 `alpha`** (R2-04/R2-06) · 4174 fresh-app preview · 4175 `vite-react` (R3-01) · 4176 `csp-nonce` (R3-03) · 4177 `pinned-tamper` (R3-03) · 4178 `privacy` (R3-04) · 4179 recording proxy (R3-02) · 4180 pinned pages, route-fulfilled — no listener (R3-03) · **4182 `beta` origin fixture** (R1-05-06) · 8099 `landing` (R3-05) | `--strictPort`; started/killed by `run-e2e.sh` with the existing `trap` pattern |
 | caddy (nightly only) | `caddy:2-alpine` with the repo `Caddyfile`, upstream `api` | 8443 | R3-03 header matrix only |
 
-Port registry lives in `e2e/scripts/lib/constants.mjs` (`PORTS`); nothing hard-codes a port elsewhere.
+Port registry lives in `e2e/scripts/lib/constants.mjs` as a **new `PORTS` export — it does not exist there today**; introducing it is a harness task, and this table is its single source (`PORTS = { smoke: 4173, fresh: 4174, viteReact: 4175, cspNonce: 4176, pinnedTamper: 4177, privacy: 4178, alpha: 4181, beta: 4182, recorder: 4179, pinned: 4180, caddy: 8443, landing: 8099 }`). Nothing hard-codes a port elsewhere.
 Optional isolated compose project for the 429 phase: `docker compose -p e2e-429 …` with shifted ports.
 
 ## 3. Personas (seed) — `e2e/scripts/seed.mjs` + `lib/constants.mjs`
@@ -50,6 +50,14 @@ Optional isolated compose project for the 429 phase: `docker compose -p e2e-429 
 | **Tenant B owner** | `TENANT_B_OWNER` `e2e-b-owner@example.com`, project `e2e-gamma` | **add** | every cross-tenant negative (notifications, events, api keys, builds, origins, MCP) |
 | **Flood user** | `FLOOD` `flood@example.com`, Tester role | **add** | sole author for `comment-burst-429`; never used elsewhere |
 
+**Enable e-mail (required for every mail scenario):** as `superAdmin`, `GET /api/admin/settings` →
+drop `emailApiKeyConfigured` (response-only) → set `emailEnabled: true` → `PUT /api/admin/settings`
+with that full body. The endpoint is a **replace-all** writer (`API/Controllers/Admin/SettingsController.cs:36-53`),
+so a partial body blanks the demo/extension settings — always read-modify-write. `email_from_email` /
+`email_from_name` may stay empty (`SmtpEmailSender.cs:32-35` falls back to `dev@pointer.local` /
+`Pointer (local)`); `email_daily_cap` defaults to 250 (`EmailService.cs:17,26`). `EmailService.SendAsync`
+returns false — silently, no exception — whenever `email_enabled` is false (`EmailService.cs:22`).
+
 Seed also: mints an API key per persona → `e2e/state/keys.json` (`GET /api/me/api-key`); configures
 `e2e-beta` as the origin-enforcement fixture (`enforceAllowedOrigins=true`, app-urls
 `https://app.example.com`, `https://myapp-*.vercel.app`) once R1-05 lands; writes
@@ -61,7 +69,7 @@ Seed also: mints an API key per persona → `e2e/state/keys.json` (`GET /api/me/
 e2e/
   run-e2e.sh                 flags: --ci --pr --nightly --fresh --whitelabel --apply --mcp --mail --429 --upgrade --all
   scripts/
-    reset.sh                 + waits for mailpit :8025, clears mailbox (DELETE /api/v1/messages)
+    reset.sh                 + `cp -n .env.example .env` FIRST (compose has `env_file: .env`, gitignored), waits for mailpit :8025, clears mailbox (DELETE /api/v1/messages), bounded wait on /swagger with `docker compose logs api` on timeout
     seed.mjs                 + TENANT_B, FLOOD, keys.json, e2e-beta origin fixture, post-R2-05 client redemption
     probe-visibility.mjs     + cross-tenant block
     restart-api.mjs          `docker compose up -d --force-recreate api` with env overrides (e.g. Cli__MinVersion), re-waits /swagger
@@ -69,7 +77,7 @@ e2e/
     smoke-widget.sh          R3-03 §E
     reset-branding.mjs       restores /api/branding defaults after white-label runs (always in `finally`)
     lib/
-      api.mjs                existing get/post/patch/login/ApiError (+ del, put, header option for X-Pointer-Client)
+      api.mjs                existing get/post/patch/login/ApiError (+ del, put, header option for X-Pointer-Client, and `getRaw`/`postRaw`/`patchRaw` → `{ status, body }` without throwing, so 204-vs-200 and `isForbidden`-inside-a-400 are assertable — `call()` drops the status today, `e2e/scripts/lib/api.mjs:13-38`)
       constants.mjs          personas, projects, PORTS, enums
       mail.mjs               Mailpit client (§5)
       cli.mjs                spawnCli({cwd, args, env}) → {stdout, stderr, code, json?}; uses CLI_ENTRY (§6)
@@ -77,6 +85,11 @@ e2e/
       report.mjs             record(id, tier, layer, role, result, ms, detail) → state/report.md (every phase)
       mcp.mjs                @modelcontextprotocol/sdk stdio client for R2-02 (zero LLM)
   fixture-app/               alpha, beta, smoke (existing) + vite-react (R3-01), static-template, csp-nonce, pinned-tamper
+  widget/lib/pre-auth.ts     preAuthWidget(page, token, user) — extracted from widget.spec.ts:41-51 (R2-00 task);
+                             sets localStorage pointer_token/pointer_user AND sessionStorage pointer_visible.
+                             Without pointer_visible the widget renders only #pf-launcher (element.ts:161-163,649-655),
+                             so #pf-toggle/#pf-add/#pf-user/#pf-env do not exist — click #pf-launcher first in
+                             any flow that does not pre-auth.
   widget/                    widget.spec.ts (existing) + notifications, quick-access, privacy-snapshot, whitelabel, release-eng specs
   fresh-app/                 run.mjs + fresh.spec.ts + templates/
   cli/                       init.spec.mjs, doctor.spec.mjs, update.spec.mjs
@@ -128,9 +141,16 @@ assert the API-side `emailSent` flag where a response carries it.
 
 | Tier | Runs | Budget | Contents |
 |---|---|---|---|
-| **PR** | every PR touching `API/**`, `Application/**`, `Domain/**`, `Infrastructure/**`, `web-component/**`, `cli/**`, `e2e/**` | ≤ 15 min | api + widget + cli specs marked PR; existing phases 1–4 |
+| **PR** | every PR touching `API/**`, `Application/**`, `Domain/**`, `Infrastructure/**`, `web-component/**`, `cli/**`, `e2e/**` | ≤ 15 min | api + widget + cli **+ mail** specs marked PR; existing phases 1–4. **Decision:** mailpit runs on every PR run (a ~20 MB container started by `reset.sh`), so PR-tier mail rows such as `R2-05-08` (a 3 s absence check) are legal; slower mail rows stay nightly. **Budget headroom:** R3-04 adds three browser scenarios + a fourth fixture server and R3-05 two more, roughly tripling today's two-spec widget phase — still inside 15 min, but the next doc to add PR-tier browser work should re-measure before doing so. |
 | **Nightly** | `schedule` 03:00 UTC + `workflow_dispatch` | ≤ 45 min | PR set + fresh-app inits, white-label, mail, packaging, restart-dependent scenarios, header matrix, **429 phase last**, `upgrade` job |
 | **Manual** | on demand | — | anything needing a real AI tool, a real deploy, or human judgement |
+
+**Per-scenario path filters** ("PR (paths `cli/**`)") are implemented with `dorny/paths-filter` in
+the R1-07 workflow: it sets `run_cli`, which gates a `--cli` phase in `run-e2e.sh`. No other
+path-scoped tiering exists; everything else is gated at job level.
+
+**Every phase in the tier's list emits a report row**, including one that did not run — recorded
+`SKIP` with the reason (a path filter, a missing `DASHBOARD_DIR`, an unmerged prerequisite doc).
 
 Phase order inside a run: reset → seed → probe → api specs → cli specs → widget specs → mail → fresh-app →
 white-label (with `reset-branding` in `finally`) → **429 phase last** (flood user; optional isolated
@@ -141,8 +161,16 @@ the API restarts at most 3 times per run.
 
 - No fixed sleeps: `expect.poll`/`toPass` with explicit timeouts; mail 10 s; widget notification badge
   ≤ 70 s (widget poll made configurable via `window.__POINTER_CONFIG__.notifyPollMs`, suite sets 1000).
-- Rate-limit buckets: all 429 scenarios in the last phase with dedicated users; regular suite login
-  calls stay far below 60/min/IP.
+- Rate-limit buckets: all 429 scenarios run in the last phase with dedicated users. The poisoned
+  bucket for R2-05-06 is **`login-with-key`** (R1-05 applies its new `login` policy there only), so
+  every CLI/MCP/apply phase must run **before** the `--429` phase. There is **no** rate limit on
+  `POST /api/auth/login` and there must not be — `Tests/AuthRateLimitingTests.cs:22-29`
+  (`Login_IsNotRateLimited`) exists to keep it that way.
+- **`signup` budget: 5 requests / hour / IP** (`API/Extensions/RateLimitingExtensions.cs:30-38`)
+  shared by `register`, `forgot-password`, `reset-password`, `register-admin`, `register-invite`
+  (`AuthController.cs:41,63,74,94,113`). H-04 spends 2. Never restore a password with a second
+  reset — use `PATCH /api/admin/users/{id}`. Any new scenario touching those five endpoints declares
+  its spend here; a local re-run inside the hour needs a container recreate.
 - Widget boot: always `waitForResponse('**/capture-config')` before interacting (`widget.spec.ts:61-66`).
 - Ports: registry + `--strictPort`; fixture servers killed by trap.
 - Determinism: pinned minor versions for generators (fresh-app), 1.1 s comment spacing in seed, one
@@ -170,6 +198,9 @@ When `DASHBOARD_DIR` is unset, dashboard-layer scenarios are reported **SKIP**, 
 ## Mail evidence | to | subject | scenario id |
 ## Failures  trace paths · `docker compose logs api --tail 100`
 ```
+`detail` must not contain timings, counters or boundary indices — those go to the CI log; the
+determinism diff (H-02) strips the `ms` **and** `detail` columns before comparing.
+
 Also `state/junit.xml` for CI annotations.
 
 ## 12. Scenario document template (each `R*-tests.md`)

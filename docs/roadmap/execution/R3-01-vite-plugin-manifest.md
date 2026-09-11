@@ -162,7 +162,7 @@ Why the CLI path is primary: `pointer-init.md:29,356` recommends shipping produc
 6. `cli/src/source/resolve.ts` — §E; wire into `apply`, `get`, `list --json` output (`resolvedSource`) and MCP `resolve_source`.
 7. `cli/src/commands/map.ts` — `pointer map --from-source` (offline manifest regeneration via `stamp.ts` with `include` globs from `vite.config` when parseable, else defaults). `doctor` gains a check: "manifest present & not stale (when plugin configured)".
 8. `cli/src/commands/init.ts` — new flag `--source-map`: appends the plugin import + `plugins: [pointerSource({ enabled: process.env.VITE_POINTER_SOURCE === 'true' })]` to `vite.config.{ts,js,mjs}` (idempotent; if the file cannot be parsed, print the snippet instead) and adds `VITE_POINTER_SOURCE=true` to `.env.development` and `.env.staging` if those exist. Prints: `Source stamping enabled for dev/staging. Turn it on for production when you are ready: VITE_POINTER_SOURCE=true`.
-9. `cli/src/commands/status.ts` — `--deployed [sha]` (§F CLI path). `cli/src/commands/apply.ts` — send `commitSha`.
+9. `cli/src/commands/status.ts` — `--deployed [sha]` (§F CLI path). **Exit codes (pinned):** 0 on success (including "0 comments marked"); **2** for an unresolvable/invalid sha argument (`not a commit` on stderr), per `01-OVERVIEW.md`'s invalid-usage code. `cli/src/commands/apply.ts` — send `commitSha`.
 
 ### API
 10. `Domain/Entity/Comment.cs` — add `CommitSha`, `DeployedAt`, `DeployedSha`. `Domain/Entity/ProjectBuild.cs` — new entity. `Infrastructure/Mappings/ProjectBuildMapping.cs` — unique index `(ProjectId, Sha)`, `Sha` max 40. `Infrastructure/AppDbContext.cs` — `DbSet<ProjectBuild>`, strict-own query filter. `just migrate name="AddCommitShaDeployedAtAndProjectBuilds"`.
@@ -193,7 +193,7 @@ Why the CLI path is primary: `pointer-init.md:29,356` recommends shipping produc
 ## Acceptance criteria
 
 - [ ] Two clean clones in the CI matrix produce byte-identical `entries` in `.pointer/manifest.json` (evidence: both files' sha256 in the report); `hash.test.ts` two-git-roots case passes.
-- [ ] `POST /builds` with an uppercase or malformed sha → 400; from a quick-access token → 403; for another tenant's project key → 404; repeat report → `firstSeen:false`, `deployedCommentIds: []`.
+- [ ] `POST /builds` with an **uppercase** sha → **200 with the sha normalised to lowercase** (§F trims + lowercases *before* validating); with a **malformed** sha (non-hex, < 7 or > 40 chars) → 400; from a quick-access token → 403; for another tenant's project key → 404; repeat report → `firstSeen:false`, `deployedCommentIds: []`.
 - [ ] Production build of a Vite React app with the plugin: every component's top-level host elements carry `data-component-source` (8 hex); Fragment components stamp all roots; components returning only components add no attribute; no console errors; bundle behaviour unchanged (snapshot test of one route's HTML apart from the attributes).
 - [ ] `.pointer/manifest.json` is gitignored and never appears in `git status` after a build.
 - [ ] Widget comment created on the prod build has `sourcePath` = the hash; `pointer get <id> --json` shows `resolvedSource: { kind: "manifest", path, component }`.

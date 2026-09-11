@@ -41,6 +41,7 @@ Rounds: 01–03 GLM review + debate · 04 Claude position · 05 agy review · 06
 | R1.5 | §41 allowed origins (`ProjectAppUrl`) + comment-POST rate limit | 1 d |
 | R1.6 | NEW-5 API-key hardening (table, prefix, SHA-256, migration) — *slip candidate → R2 wk 1* | 2–3 d |
 | R1.7 | NEW-4a schedule existing `e2e/` suite in CI | ½ d |
+| R1.8 | **§50 tenant invitation by email (CRITICAL)** — added by the founder 2026-09-11, after the meeting; direct create-with-password demoted to a secondary path | 2–3 d |
 
 **Release 2 — apply from anywhere**
 | # | Item | Est. |

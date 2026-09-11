@@ -52,6 +52,9 @@ were validated during development.
   `GET /api/projects/{key}/capture-config` resolves — which happens *after* the toolbar is already
   visible (`element.ts`'s `init()` renders chrome before awaiting it). A test that clicks
   immediately after `#pf-add` becomes visible can race ahead of capture starting.
-- The widget's env `<select>` (`#pf-env`) only renders when the `environment` attribute/config
-  isn't fixed at install time — set neither on `<pointer-feedback>` nor via
-  `window.__POINTER_CONFIG__` if a test needs to switch environments interactively.
+- The widget's env `<select>` (`#pf-env`) is hidden only by the separate **`fixed-environment="true"`**
+  opt-in (`web-component/src/element.ts:112` → `hasFixedEnvironment`, used at `:660`). Setting
+  `environment="staging"` alone just seeds the starting value and leaves the select rendered — so a
+  test that needs to switch environments interactively must avoid `fixed-environment`, not
+  `environment`. (Whether a *signed-in* user may switch is additionally role-gated server-side; see
+  `Project.EnvironmentSelectorRoleIds`.)

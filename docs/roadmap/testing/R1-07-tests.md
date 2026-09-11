@@ -26,9 +26,18 @@ permanently-SKIP rows would dilute it.
 - `.github/workflows/e2e.yml` merged (two jobs: `unit` → `dotnet test`, `e2e` →
   `cd e2e && npm ci && npx playwright install --with-deps chromium && bash run-e2e.sh --ci`), with
   `pull_request` path filters `API/**, Application/**, Domain/**, Infrastructure/**,
-  web-component/**, e2e/**, docker-compose.yaml` (**Decision:** the compose file is
+  web-component/**, **`cli/**`**, e2e/**, docker-compose.yaml` (**Decision:** the compose file is
   `docker-compose.yaml` — 00-HARNESS §2 — not R1-07 Design's `docker-compose.yml`, which would
-  never trigger).
+  never trigger. **`cli/**` is mandatory**: R1-02-02 is tiered "PR (paths `cli/**`)", so without it
+  that scenario never runs on a CLI-only PR — the exact change it exists to guard.)
+- **Artifact names pinned in the workflow** (`actions/upload-artifact` `name:`), because the scenarios
+  download them by name: `name: report` (`e2e/state/report.md`), `name: playwright-report`
+  (`e2e/playwright-report/**`), `name: test-results` (`e2e/test-results/**`). R1-07's Design names only
+  paths; add the three `name:` keys in the same PR.
+- **The workflow creates `.env` before `docker compose`** — `docker-compose.yaml:12` declares
+  `env_file: .env` and `.env` is gitignored (`.gitignore:3`), so a fresh CI checkout cannot start the
+  stack. `reset.sh` does `cp -n .env.example .env` (harness pending-edit (b)); the workflow needs no
+  extra step once that lands, but the job fails at `reset` if it is missing.
 - `gh` CLI authenticated against the repo.
 - Zero-AI enforcement: the workflow never passes `--with-ai` (00-HARNESS §1; grep the yml as
   step 0 below).
@@ -37,7 +46,7 @@ permanently-SKIP rows would dilute it.
 
 | id | intent | tier | layer | role | steps | expected | evidence |
 |---|---|---|---|---|---|---|---|
-| R1-07-01 | two green dispatched runs + deliberate-break trace + zero-AI report | manual | api (meta) | — | 0. `grep -c 'with-ai' .github/workflows/e2e.yml` → 0 (zero-AI rule). 1. On the feature branch: `gh workflow run e2e.yml --ref <branch>`; `gh run watch <id1> --exit-status`. 2. **Sequentially** (never in parallel — the per-ref concurrency group with cancel-in-progress would kill the first run): `gh workflow run e2e.yml --ref <branch>` again; `gh run watch <id2> --exit-status`. 3. `gh run view <id1> --json jobs,jobsRuntime` and `<id2>`: both jobs (`unit`, `e2e`) `conclusion === 'success'`; the `e2e` job runtime < 15 min (AC-4). 4. Zero-AI evidence: `gh run download <id2> -n report` → the downloaded `report.md` is non-empty, contains `## Scenarios` and one row per executed scenario id (H-05's contract, now satisfied by `lib/report.mjs` writing in every phase — 00-HARNESS §11). 5. Deliberate break: branch `ci/break-probe` off `<branch>`; edit `e2e/widget/widget.spec.ts` changing the locator `#pf-add` to `#pf-add-broken` (**Decision:** break the spec's locator, not product code — zero product change, same failure surface as a real selector regression); push. 6. `gh workflow run e2e.yml --ref ci/break-probe`; wait. 7. `gh run download <id3> -n playwright-report` (and/or the `test-results` artifact) → a `trace.zip` exists for the failed test. 8. Cleanup: delete `ci/break-probe`; confirm the next run on `<branch>`/`main` is green. | 0 → 0 matches. 1–2 → both runs green. 3 → jobs green, runtime < 15 min. 4 → report.md present with scenario rows (uploaded unconditionally — `if-no-files-found: ignore` stays as harmless belt-and-braces). 5–6 → `e2e` job `conclusion === 'failure'`, `unit` still green. 7 → trace artifact present. 8 → green. | run URLs `<id1>–<id3>` + artifact names in the R1-07 rollout report (its Report template asks for exactly this); break-probe diff pasted |
+| R1-07-01 | two green dispatched runs + deliberate-break trace + zero-AI report | manual | api (meta) | — | 0. `grep -c 'with-ai' .github/workflows/e2e.yml` → 0 (zero-AI rule). 1. On the feature branch: `gh workflow run e2e.yml --ref <branch>`; `gh run watch <id1> --exit-status`. 2. **Sequentially** (never in parallel — the per-ref concurrency group with cancel-in-progress would kill the first run): `gh workflow run e2e.yml --ref <branch>` again; `gh run watch <id2> --exit-status`. 3. `gh run view <id1> --json jobs` and `<id2>` (**`jobsRuntime` is not a `gh run view` field** — compute the duration per job from `startedAt`/`completedAt`: `jq '.jobs[] | {name, conclusion, mins: (((.completedAt|fromdate) - (.startedAt|fromdate))/60)}'`): both jobs (`unit`, `e2e`) `conclusion === 'success'`; the `e2e` job's computed runtime < 15 min (AC-4). 4. Zero-AI evidence: `gh run download <id2> -n report` → the downloaded `report.md` is non-empty, contains `## Scenarios` and one row per executed scenario id (H-05's contract, now satisfied by `lib/report.mjs` writing in every phase — 00-HARNESS §11). 5. Deliberate break: branch `ci/break-probe` off `<branch>`; edit `e2e/widget/widget.spec.ts` changing the locator `#pf-add` to `#pf-add-broken` (**Decision:** break the spec's locator, not product code — zero product change, same failure surface as a real selector regression); push. 6. `gh workflow run e2e.yml --ref ci/break-probe`; wait. 7. `gh run download <id3> -n playwright-report` (and/or the `test-results` artifact) → a `trace.zip` exists for the failed test. 8. Cleanup: delete `ci/break-probe`; confirm the next run on `<branch>`/`main` is green. | 0 → 0 matches. 1–2 → both runs green. 3 → jobs green, runtime < 15 min. 4 → report.md present with scenario rows (uploaded unconditionally — `if-no-files-found: ignore` stays as harmless belt-and-braces). 5–6 → `e2e` job `conclusion === 'failure'`, `unit` still green. 7 → trace artifact present. 8 → green. | run URLs `<id1>–<id3>` + artifact names in the R1-07 rollout report (its Report template asks for exactly this); break-probe diff pasted |
 | R1-07-02 | PR-path triggers (positive, negative, schedule) | manual | api (meta) | — | 1. Branch touching only `web-component/src/element.ts` (e.g. a comment line) → open a PR. 2. Branch touching only `README.md` → open a PR. 3. Branch touching only `e2e/widget/widget.spec.ts` → open a PR. 4. After merging PR 1 to `main`: **Decision:** don't wait for the 03:00 UTC cron during verification — dispatch once on `main` as the equivalent green gate, then check the next morning that the real `schedule` run on `main` is green with artifacts (`playwright-report`; traces only on failure; `report.md` per 00-HARNESS §11). | 1 → check runs `e2e / unit` and `e2e / e2e` appear on the PR and are green (AC-1). 2 → **no** e2e check run appears (paths filter negative). 3 → triggers (`e2e/**` is in the filter). 4 → dispatched run green; the following scheduled run green with artifacts visible in Actions (AC-2). | run/PR URLs in the rollout report; screenshot of the Actions list showing the scheduled run |
 
 ## Spec files
@@ -67,6 +76,13 @@ permanently-SKIP rows would dilute it.
   step is the canary).
 - The break-probe must change a **spec** locator; breaking product code would conflate a CI test
   with a product regression and leave `main`-touching branches around longer than needed.
+- **Cold-runner budget reality (AC-4).** The < 15 min target must absorb, on every `down -v`: pulling
+  `mcr.microsoft.com/dotnet/sdk:8.0`, `postgres:15` and `axllent/mailpit`, then a full `dotnet restore`
+  + build inside `dotnet watch` before `/swagger` answers (`Dockerfile:1-4`) — minutes before a single
+  assertion runs — plus `cd cli && npm run build`, `npm ci`, `playwright install`, and `retries: 1`
+  doubling any red spec. Mitigations, in order: cache/reuse a `--target final` API image instead of
+  building `dev` in CI; keep the npm-scaffolding scenarios (R1-02-01, R1-02-03) nightly — already done.
+  If a green run still exceeds 15 min, raise the AC with measurements rather than silently widening it.
 - 25-min job timeout vs the < 15 min AC: the assert is on observed runtime, not the timeout; if a
   green run exceeds 15 min the scenario FAILS with the runtime printed (budget drift is a flake
   signal, per 00-HARNESS §8).
