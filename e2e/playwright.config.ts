@@ -2,7 +2,7 @@ import { defineConfig } from '@playwright/test';
 
 export default defineConfig({
   testDir: '.',
-  testMatch: '**/*.spec.ts',
+  testMatch: ['**/*.spec.{ts,mjs}', '**/upgrade-assert.mjs'],
   timeout: 30_000,
   fullyParallel: false,
   workers: 1,
