@@ -1,8 +1,11 @@
+using Microsoft.AspNetCore.Mvc;
+using Pointer.Application.Services.Interfaces;
 using FluentValidation.AspNetCore;
-using Microsoft.AspNetCore.HttpOverrides;
 using MicroElements.Swashbuckle.FluentValidation.AspNetCore;
+using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.FileProviders;
 using Microsoft.OpenApi.Models;
 using Pointer.API.Extensions;
 using Pointer.API.Hosted;
@@ -321,6 +324,34 @@ $$"""
 """;
     ctx.Response.ContentType = "application/javascript; charset=utf-8";
     return ctx.Response.WriteAsync(js);
+});
+
+app.MapGet("/check", async (HttpContext ctx, [FromServices] ISettingsService settings) =>
+{
+    var origin = PointerUrlResolver.ResolvePublicUrl(app.Configuration, ctx.Request);
+    static bool Safe(string s) => s.Length > 0 && s.All(ch => char.IsLetterOrDigit(ch) || ch is '.' or '_' or '-');
+    var project = ctx.Request.Query["project"].ToString();
+    var environment = ctx.Request.Query["environment"].ToString();
+    var safeProject = Safe(project) ? project : "";
+    var safeEnv = Safe(environment) ? environment : "staging";
+    var productName = await settings.GetStringAsync(ISettingsService.BrandProductName, "Pointer");
+
+    var html =
+$"""
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>{productName} check</title>
+</head>
+<body>
+  <p>If you can see the {productName} button in the corner, the widget is served correctly. Sign in to test a comment.</p>
+  <script src="{origin}/embed.js?project={Uri.EscapeDataString(safeProject)}&environment={Uri.EscapeDataString(safeEnv)}"></script>
+</body>
+</html>
+""";
+    ctx.Response.ContentType = "text/html; charset=utf-8";
+    return ctx.Response.WriteAsync(html);
 });
 
 app.MapControllers();

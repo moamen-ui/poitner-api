@@ -67,5 +67,21 @@ public static class RateLimitingExtensions
                     Window = TimeSpan.FromMinutes(1),
                     QueueLimit = 0
                 }));
+
+        static string UserOrIp(HttpContext ctx)
+        {
+            var userId = ctx.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+            return !string.IsNullOrEmpty(userId) ? $"user:{userId}" : $"ip:{ClientIp(ctx)}";
+        }
+
+        o.AddPolicy("events", ctx =>
+            RateLimitPartition.GetFixedWindowLimiter(
+                UserOrIp(ctx),
+                _ => new FixedWindowRateLimiterOptions
+                {
+                    PermitLimit = 60,
+                    Window = TimeSpan.FromMinutes(1),
+                    QueueLimit = 0
+                }));
     }
 }
