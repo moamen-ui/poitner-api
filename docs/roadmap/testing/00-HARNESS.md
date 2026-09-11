@@ -77,7 +77,7 @@ e2e/
     smoke-widget.sh          R3-03 §E
     reset-branding.mjs       restores /api/branding defaults after white-label runs (always in `finally`)
     lib/
-      api.mjs                existing get/post/patch/login/ApiError (+ del, put, header option for X-Pointer-Client, and `getRaw`/`postRaw`/`patchRaw` → `{ status, body }` without throwing, so 204-vs-200 and `isForbidden`-inside-a-400 are assertable — `call()` drops the status today, `e2e/scripts/lib/api.mjs:13-38`)
+      api.mjs                existing get/post/patch/del/login/ApiError (`lib/api.mjs:40-43`) + **`put`** (does not exist today; the replace-all `PUT /api/admin/settings` needs it), the header option for X-Pointer-Client, and `getRaw`/`postRaw`/`patchRaw`/**`delRaw`** → `{ status, body }` without throwing, so 204-vs-200, a 403 on a DELETE, and `isForbidden`-inside-a-400 are assertable — `call()` drops the status today (`api.mjs:13-38`) and every verb throws on non-2xx
       constants.mjs          personas, projects, PORTS, enums
       mail.mjs               Mailpit client (§5)
       cli.mjs                spawnCli({cwd, args, env}) → {stdout, stderr, code, json?}; uses CLI_ENTRY (§6)
@@ -167,10 +167,13 @@ the API restarts at most 3 times per run.
   `POST /api/auth/login` and there must not be — `Tests/AuthRateLimitingTests.cs:22-29`
   (`Login_IsNotRateLimited`) exists to keep it that way.
 - **`signup` budget: 5 requests / hour / IP** (`API/Extensions/RateLimitingExtensions.cs:30-38`)
-  shared by `register`, `forgot-password`, `reset-password`, `register-admin`, `register-invite`
-  (`AuthController.cs:41,63,74,94,113`). H-04 spends 2. Never restore a password with a second
-  reset — use `PATCH /api/admin/users/{id}`. Any new scenario touching those five endpoints declares
-  its spend here; a local re-run inside the hour needs a container recreate.
+  shared by **six** endpoints: `register`, `forgot-password`, `reset-password`, `register-admin`,
+  `register-invite` (`AuthController.cs:41,63,74,94,113`) **and the anonymous invite preview
+  `GET /api/invites/{code}`** (`API/Controllers/InvitesController.cs:23`) — an easy one to miss, since
+  every preview *and* every accept spends a token. H-04 spends 2; R1-08 spends 7 (PR) / 10 (nightly) and
+  therefore runs in its own `-p e2e-429` compose project (`docs/roadmap/testing/R1-08-tests.md`). Never
+  restore a password with a second reset — use `PATCH /api/admin/users/{id}`. Any new scenario touching
+  those six endpoints declares its spend here; a local re-run inside the hour needs a container recreate.
 - Widget boot: always `waitForResponse('**/capture-config')` before interacting (`widget.spec.ts:61-66`).
 - Ports: registry + `--strictPort`; fixture servers killed by trap.
 - Determinism: pinned minor versions for generators (fresh-app), 1.1 s comment spacing in seed, one
