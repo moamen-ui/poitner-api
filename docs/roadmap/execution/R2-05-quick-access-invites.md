@@ -92,6 +92,7 @@ JWT lifetime is 12 h (`JwtOptions.LifetimeHours`). A client returning after 12 h
 link is re-signed-in silently (step 2). After link expiry they need a new link — the admin rotates.
 
 ## Tasks
+0. `e2e/scripts/seed.mjs` — the provisioned client becomes `PasswordlessOnly`, so replace the password login at `seed.mjs:104-106` with a magic-link redemption (`POST /api/auth/login-with-invite { token }`) and store the invite token in `state/credentials.json.client.inviteToken`.
 1. `Domain/Entity/QuickAccessLink.cs`; `User.PasswordlessOnly` (bool, default false); mapping `Infrastructure/Mappings/QuickAccessLinkMapping.cs`; `AppDbContext` strict-own filter; `just migrate name="AddQuickAccessLinksAndPasswordlessOnly"`.
 2. `Application/Common/TokenGenerator.cs` — `NewUrlSafeToken(32)` + `Sha256Hex(string)` (or reuse an existing helper if one exists — grep `RandomNumberGenerator` first and cite it).
 3. `Application/DTOs/Auth/LoginWithInviteRequest.cs { Token }`; `InviteResponse` + `MagicLink`, `LinkExpiresAt`, `MagicLinkActive`, `LinkUses`.

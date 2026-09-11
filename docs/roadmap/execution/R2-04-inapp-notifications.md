@@ -72,7 +72,7 @@ allowed** here (this is the one lifecycle action a Client legitimately owns) —
 next to the existing guard with a comment.
 
 ### Widget
-- Poll `GET /api/me/notifications/unread-count` on init and every 60 s while visible (`document.visibilityState`).
+- Poll `GET /api/me/notifications/unread-count` on init and every `window.__POINTER_CONFIG__.notifyPollMs ?? 60000` ms while visible (`document.visibilityState`). The knob exists so the E2E suite can set 1000 ms; production hosts never set it.
 - Launcher badge (`templates.ts:135`) shows unread count in a second colour (`--pf-notify`); header
   button "Updates" opens a small list (type icon, excerpt, commit link, time) built from
   `GET /api/me/notifications?unread=true`.
@@ -106,7 +106,7 @@ Regenerate for `NotificationDto`, `UnreadCountResponse`, `VerifyCommentRequest`,
 ## Tests
 - `Tests/NotificationServiceTests.cs`: applied by another user → one row for the author; applied by the author → none; tenant isolation (user in tenant B sees none); **`OtherUsersNotificationsNotVisible`** — two users in the *same* tenant: user A's `List`/`UnreadCount` never include B's rows, `MarkRead` on B's id returns 404, `MarkAllRead` leaves B's rows unread; unread count; read-all.
 - `Tests/CommentVerifyTests.cs`: author 👍 → `VerifiedAt` set + reply; author 👎 without note → validation error; 👎 with note → `Status=Open`, reply text, `CommentReopened` for `AppliedBy`; non-author non-admin → Forbidden; quick-access author → allowed; verify on non-applied → `VerifyRequiresApplied`.
-- E2E (`e2e/widget/notifications.spec.ts`): Client comments → staff marks applied via API → Client's widget (already open) shows badge `1` — **Playwright polls for the badge text with a 70 s timeout** (poll interval is 60 s; never a fixed sleep) → list shows commit link → click 👎, note "still red" → comment `status=1` and last reply contains "still red"; staff sees `CommentReopened`. Scenario names: `notify: applied shows badge to author`, `notify: thumbs-down reopens with note`, `notify: read-all clears badge`.
+- E2E (`e2e/widget/notifications.spec.ts`): Client comments → staff marks applied via API → Client's widget (already open) shows badge `1` — **the suite sets `notifyPollMs: 1000` and Playwright polls for the badge text with a 70 s ceiling** (never a fixed sleep); the PR tier asserts the API surface only, badge scenarios are nightly → list shows commit link → click 👎, note "still red" → comment `status=1` and last reply contains "still red"; staff sees `CommentReopened`. Scenario names: `notify: applied shows badge to author`, `notify: thumbs-down reopens with note`, `notify: read-all clears badge`.
 
 ## Acceptance criteria
 - [ ] Marking a comment applied (by someone else) creates exactly one `CommentApplied` notification for its author, visible via `GET /api/me/notifications?unread=true` and counted by `unread-count`.

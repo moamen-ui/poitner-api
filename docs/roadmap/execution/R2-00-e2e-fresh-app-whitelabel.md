@@ -11,7 +11,7 @@ and no literal "Pointer" leaks into any CLI output or widget UI text.
 - AI-under-test cases (`e2e/ai/`, `--with-ai`) — unchanged, never scheduled (real tokens).
 - Next.js / monorepo init (routed to the skill by design, R1-02).
 - Dashboard E2E (separate repo).
-- Mail server (no email is sent in R2; see R2-05).
+- (Mail is **not** out of scope: Mailpit is in the base stack from R1 — password-reset and staff-invite emails already exist today; see `docs/roadmap/testing/00-HARNESS.md` §5.)
 
 ## Prerequisites
 - R1-02 (`init`), R1-04 (`doctor`) merged; R1-07 (`e2e/` scheduled in CI) merged — this doc **extends**
@@ -92,7 +92,7 @@ Driver script `e2e/fresh-app/run.mjs` (Node, no Playwright) per stack:
    (`productName: "Pointer"`, tagline, `urls.app` default) — there is no reset endpoint.
 
 ### CI wiring (`.github/workflows/e2e.yml`, extends R1-07)
-- New job `fresh-app` (matrix `stack: [vite, static, angular]`) and job `whitelabel`, both
+- New job `fresh-app` (matrix `stack: [vite, static, angular, next]` — `next` asserts the hand-off message and that no app file changed (nightly only, no injection)) and job `whitelabel`, both
   `needs: e2e` (R1-07 defines exactly two jobs, `unit` and `e2e`; there is no `seed` job — the `e2e`
   job's `run-e2e.sh` performs reset + seed). Each new job boots its own compose stack + seed
   (`bash e2e/scripts/reset.sh && node e2e/scripts/seed.mjs`) — jobs run on separate runners and cannot
@@ -112,7 +112,7 @@ Driver script `e2e/fresh-app/run.mjs` (Node, no Playwright) per stack:
 2. `e2e/fresh-app/fresh.spec.ts` — Playwright spec (login → click → comment → API assert), reuse helpers from `e2e/widget/widget.spec.ts`.
 3. `e2e/fresh-app/templates/static/index.html` — the 20-line static page with an `<h1>` and a form.
 3b. `e2e/scripts/serve-dir.mjs <dir> <port>` — ~10-line `node:http` static file server (content-type by extension for `.html/.js/.css/.json/.png/.svg`, `index.html` fallback for `/`); used for the `static` stack and reusable by later docs.
-4. `e2e/whitelabel/set-branding.mjs` + `reset-branding.mjs` — super-admin PUT helpers using the `BrandingWriteDto` field names above (cite the DTO file in a code comment).
+4. `e2e/scripts/set-branding.mjs` + `e2e/scripts/reset-branding.mjs` — super-admin PUT helpers using the `BrandingWriteDto` field names above (cite the DTO file in a code comment).
 5. `e2e/whitelabel/whitelabel.spec.ts` — the leak-regex assertions over captured CLI output (`e2e/state/whitelabel/cli-output.txt`), widget `innerText`, login-modal title, and all shadow-root `title`/`aria-label` attributes.
 6. `e2e/run-e2e.sh` — add `--fresh` and `--whitelabel` flags calling the above (default off; `--all` turns both on).
 7. `.github/workflows/e2e.yml` — add the two jobs as designed (`needs: e2e`, own reset+seed).

@@ -15,8 +15,8 @@ the same workflow.
 
 ## Design
 - New workflow `.github/workflows/e2e.yml`:
-  - Triggers: `pull_request` (paths: `API/**`, `Application/**`, `Domain/**`, `Infrastructure/**`, `web-component/**`, `e2e/**`, `docker-compose.yml`), `schedule: cron "0 3 * * *"`, `workflow_dispatch`.
-  - Runner `ubuntu-latest`; steps: checkout → `docker compose version` → Node 20 setup → `cd e2e && npm ci && npx playwright install --with-deps chromium` → `bash run-e2e.sh --ci` (no `--with-ai`) → always upload artifacts with **`if-no-files-found: ignore`**: `e2e/state/report.md` (only written by `e2e/scripts/audit.mjs`, which runs solely under `--with-ai`, and `e2e/state/` is gitignored — so in zero-AI runs the file does not exist and a default `upload-artifact` step would fail a green run), `e2e/test-results/**`, `e2e/playwright-report/**` → on failure, `docker compose logs api --tail 300` to the job log.
+  - Triggers: `pull_request` (paths: `API/**`, `Application/**`, `Domain/**`, `Infrastructure/**`, `web-component/**`, `e2e/**`, `docker-compose.yaml`), `schedule: cron "0 3 * * *"`, `workflow_dispatch`.
+  - Runner `ubuntu-latest`; steps: checkout → `docker compose version` → Node 20 setup → `cd e2e && npm ci && npx playwright install --with-deps chromium` → `bash run-e2e.sh --ci` (no `--with-ai`) → always upload artifacts: `e2e/state/report.md` (every phase writes it via `e2e/scripts/lib/report.mjs`, harness §11, so the zero-AI phases do produce it once the harness lands — keep `if-no-files-found: ignore` on it only as a safety net, since `e2e/state/` is gitignored and pre-harness runs have no file), `e2e/test-results/**`, `e2e/playwright-report/**` → on failure, `docker compose logs api --tail 300` to the job log.
   - Timeout 25 min. Concurrency group per ref (cancel in progress).
 - `e2e/run-e2e.sh`: add `--ci` flag → exports `CI=1` and skips any interactive prompt (verify none exists). Exit code must propagate (script already uses `set -euo pipefail`). No reporter env vars — the reporter is configured in code (next line).
 - `e2e/playwright.config.ts`: `retries: process.env.CI ? 1 : 0`, `trace: 'retain-on-failure'`, `reporter: process.env.CI ? [['github'], ['html', { open: 'never', outputFolder: 'playwright-report' }]] : 'list'`.
@@ -28,6 +28,7 @@ the same workflow.
 2. `run-e2e.sh --ci`; Playwright config CI tweaks.
 3. Run the workflow via `workflow_dispatch` on the feature branch; fix flakiness (waits on `/swagger`, fixture server readiness) until two consecutive green runs.
 4. README badge + `e2e/README.md` CI section.
+5. Add `mailpit` to `docker-compose.yaml` (the compose file this workflow boots) per harness §2 — `axllent/mailpit:latest`, HTTP 8025 / SMTP 1025 container-internal, `Email__*` SMTP env on `api` — so the CI stack matches the harness.
 
 ## Dashboard tasks
 None.
@@ -37,7 +38,7 @@ This doc *is* test infrastructure. Verification = two green scheduled/dispatched
 
 ## Acceptance criteria
 - [ ] A PR touching `web-component/src/**` triggers the workflow and both jobs (`unit`, `e2e`) are green on the PR check run.
-- [ ] After merge, the nightly `schedule` run on the default branch is green and visible in Actions with artifacts (`playwright-report`, traces on failure; `report.md` only when present).
+- [ ] After merge, the nightly `schedule` run on the default branch is green and visible in Actions with artifacts (`playwright-report`, traces on failure, `report.md`).
 - [ ] Introducing a deliberate widget selector break in a test branch makes the `e2e` job fail with a Playwright trace artifact.
 - [ ] Total runtime < 15 min.
 

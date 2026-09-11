@@ -98,7 +98,7 @@ none.
 ## Acceptance criteria
 
 - [ ] `pointer init` on `e2e/fixture-app/vite-react` writes the `design` block with `colors` from `theme.extend.colors`, `cssVars.names` containing `--brand`, and the generated `guidance`.
-- [ ] Unit test: `stackfile.buildRequestBody(stack)` output has no `design` key for every fixture (no network recording exists in the CLI test setup; this is the enforceable boundary).
+- [ ] Unit test: `stackfile.buildRequestBody(stack)` output has no `design` key for every fixture, **and** E2E scenario `R3-02-03` (recording proxy in front of the API, `docs/roadmap/testing/R3-02-tests.md`) shows no `design` key in the real `POST /api/projects/{key}/stack` body.
 - [ ] Running `init` twice (or `doctor --refresh-stack`) produces byte-identical `stack.json`.
 - [ ] Detection completes in < 2 s on the unit fixtures and on `e2e/fixture-app/vite-react` (the Tailwind + CSS-vars fixture created by R3-01 task 13b; the older `smoke|alpha|beta` fixtures are plain HTML with no tokens and are **not** a valid check).
 - [ ] `apply` prompt (R2-01 `--plan` output) contains the "Design system" section when `design.tokens` is non-empty and the fallback sentence when empty.

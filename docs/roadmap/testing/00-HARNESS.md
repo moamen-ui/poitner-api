@@ -5,6 +5,10 @@
 > `widget/widget.spec.ts`). Every scenario document in this folder assumes this harness; implementers
 > read this file first, then `../execution/01-OVERVIEW.md` for repo conventions.
 
+> **These documents specify tests for features that are being built.** A scenario is implementable only
+> after its execution doc ships; each document's *Preconditions* names that dependency. "Endpoint/DTO does
+> not exist yet" is expected, never a defect of the scenario.
+
 ## 1. Principles
 
 1. **Zero AI tokens at run time.** Everything CI or a developer re-runs is a committed Playwright spec
@@ -25,7 +29,7 @@
 |---|---|---|---|
 | `db` | postgres (existing) | 5433 | unchanged |
 | `api` | existing build | 8090 | env adds `Email__Provider=smtp`, `Email__Smtp__Host=mailpit`, `Email__Smtp__Port=1025`, `Email__Enabled=true`. Selected by `Infrastructure/DependencyInjection.cs:43-48`; sender `Infrastructure/Email/SmtpEmailSender.cs` |
-| `mailpit` | `axllent/mailpit:latest` | 8025 (HTTP UI+API); SMTP 1025 **container-internal only** | **Decision: Mailpit** — the code already assumes it (`SmtpEmailSender.cs:12`, `.env.example:9-12`); MailHog is archived; smtp4dev is heavier. JSON API + parsed HTML/Text bodies |
+| `mailpit` | `axllent/mailpit:latest` | 8025 (HTTP UI+API); SMTP 1025 **container-internal only** | **Added by R1-07 task** (the service is not in `docker-compose.yaml` yet — adding it is the first harness task). **Decision: Mailpit** — the code already assumes it (`SmtpEmailSender.cs:12`, `.env.example:9-12`); MailHog is archived; smtp4dev is heavier. JSON API + parsed HTML/Text bodies |
 | fixture apps | host node, `e2e/fixture-app/serve.mjs` + `scripts/serve-dir.mjs` (R2-00) | 4173 smoke · 4174 fresh-app preview · 4175 `vite-react` (R3-01) · 4176 `csp-nonce` · 4177 `pinned-tamper` | `--strictPort`; started/killed by `run-e2e.sh` with the existing `trap` pattern |
 | caddy (nightly only) | `caddy:2-alpine` with the repo `Caddyfile`, upstream `api` | 8443 | R3-03 header matrix only |
 

@@ -131,7 +131,7 @@ On each 403 (origin) and 429 (comments) write a `UsageEvent` (`Type: "comment_re
 - `Tests/ProjectOriginEnforcementTests.cs` (service branches incl. both dashboard origins and `Result.IsForbidden`).
 - `Tests/CommentRateLimitingTests.cs` (attribute/options reflection — see Task 6).
 - `Tests/SetProjectAppUrlValidatorTests.cs` (patterns accepted/rejected per Design A).
-- E2E (R2-00): `origin-enforced-blocks-foreign-origin`, `origin-enforced-allows-localhost-local`, `comment-burst-429`.
+- E2E scenarios `origin-enforced-blocks-foreign-origin`, `origin-enforced-allows-localhost-local`, `comment-burst-429` — defined in `docs/roadmap/testing/R1-05-tests.md` (R2-00 remains the driver/CI-matrix host only).
 
 ## Acceptance criteria
 - [ ] Default projects behave exactly as before (all existing tests green, no new 403s).

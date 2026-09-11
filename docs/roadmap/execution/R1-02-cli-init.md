@@ -252,7 +252,7 @@ itself is API-level (checks module).
 ## Tests
 - CLI unit (`cli/test/`): `api.test.ts`, `config.test.ts`, `detect.test.ts`, `inject-vite.test.ts`, `inject-static.test.ts`, `skills.test.ts`, `checks.test.ts`, `init-yes.test.ts` (end-to-end against a stub HTTP server implementing branding/login-with-key/me/projects/stack/events).
 - API unit: `Tests/UsageEventServiceTests.cs` (record, tenant isolation, type whitelist, `ProjectKey` → `ProjectId` resolution, unknown key → 404) and `Tests/UsageEventFirstCommentTests.cs` — **must use the SQLite provider** (`Microsoft.EntityFrameworkCore.Sqlite`, `Pointer.Tests.csproj:15`), not InMemory: InMemory enforces neither unique nor partial indexes and never throws `DbUpdateException`, so "first_comment emitted exactly once under two concurrent creates" is only provable on SQLite (create the partial index in the test schema). `Tests/CheckPageTests.cs` (sanitising, 200, contains embed.js URL).
-- E2E scenario names (implemented in R2-00): `init-vite-no-ai`, `init-static-no-ai`, `init-next-handoff`, `init-yes-ci`.
+- E2E scenarios `init-vite-no-ai`, `init-static-no-ai`, `init-next-handoff`, `init-yes-ci` — defined in `docs/roadmap/testing/R1-02-tests.md` (R2-00 remains the driver/CI-matrix host only).
 
 ## Acceptance criteria
 - [ ] On a fresh `npm create vite@latest` app, `npx -y pointer-feedback init` (interactive) completes with no AI tool, the widget renders in the dev server, and a comment can be posted — under 5 minutes wall clock.

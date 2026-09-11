@@ -57,7 +57,7 @@ All product names via the same i18n mechanism as `index.html`? **Decision:** no 
 2. Edit `landing/privacy.html` (§B); update effective date.
 3. Edit `landing/index.html:512` and i18n maps at `:572`/`:628`; mirror in `landing/v2/index.html:2709,2843,2963`.
 4. Cross-links in `API/wwwroot/pointer-init.md` (R3-04 subsection) and dashboard help text (if R3-04's dashboard task is done; else note as follow-up).
-5. Verify locally: `python3 -m http.server 8099 -d landing` → open `/data.html`, `/privacy.html`; check dark mode (`prefers-color-scheme`) and mobile width; no horizontal scroll; all links resolve.
+5. Verify locally: `node e2e/scripts/serve-dir.mjs landing <PORTS.landing>` (port from the `PORTS` registry in `e2e/scripts/lib/constants.mjs`; never a hard-coded `python3 -m http.server`) → open `/data.html`, `/privacy.html`; check dark mode (`prefers-color-scheme`) and mobile width; no horizontal scroll; all links resolve.
 
 ## Dashboard tasks
 
@@ -65,7 +65,7 @@ none (optional: link text in project settings, covered by R3-04).
 
 ## Tests
 
-- No unit tests. **Checks:** `npx html-validate landing/data.html landing/privacy.html` (or `tidy -q -e`) → no errors; link check with `lychee --offline landing/*.html` (or a `grep -o 'href="[^"]*"'` list manually resolved); Lighthouse accessibility ≥ 95 on `data.html` (chrome-devtools `lighthouse_audit`).
+- No unit tests. **Checks:** `npx html-validate landing/data.html landing/privacy.html` (or `tidy -q -e`) → no errors; link check with `lychee --offline landing/*.html` (or a `grep -o 'href="[^"]*"'` list manually resolved); Lighthouse accessibility ≥ 95 on `data.html` (chrome-devtools `lighthouse_audit`) — **nightly/manual tier only, never PR CI** (harness §7 token rule).
 - **E2E scenario:** `landing-data-page-links` (Playwright: footer link "Data & self-hosting" on `/` navigates to `/data.html`; page contains the strings "never captured", "data-snapshot-mask", "self-hosted").
 
 ## Acceptance criteria

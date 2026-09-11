@@ -52,7 +52,7 @@ This doc **is** dashboard work. No API changes; no Orval regen.
 
 ## Tests
 - Unit: `install-guide.spec.ts` (new `initCommand` cases, steps order, mask/reveal), existing suites green.
-- E2E scenario name (R2-00): `quickstart-copies-prefilled-command`.
+- E2E: `quickstart-copies-prefilled-command` lives in the **pointer-dashboard repo's own Playwright suite** with a `DASH-` id (harness §10) — reported **SKIP** when `DASHBOARD_DIR` is unset, never silently green; this repo carries only the swagger contract guard.
 
 ## Acceptance criteria
 - [ ] First primary step shows `npx -y pointer-feedback init --server <server> --key ptr_•••••••• --project <key>`; copy yields the full unmasked command.

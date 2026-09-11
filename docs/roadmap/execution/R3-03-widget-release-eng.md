@@ -92,9 +92,9 @@ New workflow `.github/workflows/widget-check.yml` (on PR/push touching `web-comp
 
 `build.mjs` computes gzip sizes (`node:zlib.gzipSync`) and integrity (`sha384` base64), writes §B, prunes `widget/`, and **fails the build locally** on budget breach (same rule as CI).
 
-### E. Deploy smoke (`scripts/smoke-widget.sh <server>`)
+### E. Deploy smoke (`e2e/scripts/smoke-widget.sh <server>`)
 
-Checks, each must pass: `GET /pointer.version.json` 200 → `hash`; `GET /pointer.js` 200, first line contains the `BANNER`, SHA-256[0..12] == `hash`; `GET /pointer.js?v=<hash>` returns the same bytes with `Cache-Control: … immutable`; `GET /pointer.js?v=000000000000` → 404 with `X-Pointer-Widget-Version-Mismatch`; `GET /pointer.css` 200; `GET /embed.js?project=smoke` 200 and contains `pointer-feedback`; `GET /api/branding` 200; `GET /api/meta` `widgetVersion == hash` — **skipped with a printed warning if `/api/meta` returns 404** (R1-04 unmerged). Wired into `DEPLOY.md` as the last step (`bash scripts/smoke-widget.sh https://api.<domain>`), and into `e2e/run-e2e.sh` against the local stack.
+Checks, each must pass: `GET /pointer.version.json` 200 → `hash`; `GET /pointer.js` 200, first line contains the `BANNER`, SHA-256[0..12] == `hash`; `GET /pointer.js?v=<hash>` returns the same bytes with `Cache-Control: … immutable`; `GET /pointer.js?v=000000000000` → 404 with `X-Pointer-Widget-Version-Mismatch`; `GET /pointer.css` 200; `GET /embed.js?project=smoke` 200 and contains `pointer-feedback`; `GET /api/branding` 200; `GET /api/meta` `widgetVersion == hash` — **skipped with a printed warning if `/api/meta` returns 404** (R1-04 unmerged). Wired into `DEPLOY.md` as the last step (`bash e2e/scripts/smoke-widget.sh https://api.<domain>`), and into `e2e/run-e2e.sh` against the local stack.
 
 ### F. CSP for nonce-strict hosts
 
@@ -114,7 +114,7 @@ Add to `web-component/`: `vitest` + `jsdom` dev-dependencies, `vitest.config.ts`
 5. `API/Program.cs:239-256` — `WidgetVersionInfo` singleton loaded once at startup from `pointer.version.json` (+ existence check of each retained dir; missing → drop from the in-memory set and log); in the static-file pipeline: if `v` query present → `stable` → current bytes + 1 h; retained hash → rewrite the physical path to `wwwroot/widget/<hash>/<file>` and set immutable headers; otherwise 404 + `X-Pointer-Widget-Version-Mismatch`. Serve `/pointer.version.json` with `no-cache`. Never throw on a malformed `v` (treat as unknown).
 6. `API/Controllers/MetaController.cs` (R1-04) — add `widgetVersion` from the singleton (if R1-04 not yet merged, add the field in that doc's DTO instead and note it).
 7. `Caddyfile` — `@widget` matcher with `not query v=*` (§A).
-8. `scripts/smoke-widget.sh` (§E, incl. the 404 check and the `/api/meta` skip); `DEPLOY.md` — final step; `e2e/run-e2e.sh` — call it against `http://localhost:8090` after reset.
+8. `e2e/scripts/smoke-widget.sh` (§E, incl. the 404 check and the `/api/meta` skip); `DEPLOY.md` — final step; `e2e/run-e2e.sh` — call it against `http://localhost:8090` after reset.
 9. `.github/workflows/widget-check.yml` (§D) with the `PERF_HARD_FAIL` input defaulting to `false`.
 10. `cli/src/commands/init.ts` — `--pin` (static + Vite `index.html`: emit §C using `pointer.version.json` from the server); `cli/src/commands/doctor.ts` — `--pin-snippet`; `doctor` warns when a pinned `v` in the host HTML ≠ server `hash` ("pinned widget 9f1c… is behind server a2b3…; update the snippet or drop `?v=`") and **errors** when the pinned `v` is not in `retained` ("pinned widget 9f1c… is no longer served (404) — update the snippet now").
 11. Docs: `API/wwwroot/pointer-init.md` — "Pinning & SRI" (incl. the 10-build retention promise) and "CSP" subsections; `AGENTS.md` — widget checklist (bump version, run build, commit `pointer.version.json` + `widget/<hash>/`, `npm test`); `web-component/README` (if present) — budget rule.

@@ -81,7 +81,7 @@ first and stop with its hints if `ok` is false." (Keeps working for installs wit
 ## Tests
 - API: `Tests/MetaEndpointTests.cs`.
 - CLI: `cli/test/doctor.test.ts`, `checks.test.ts` (from R1-02).
-- E2E scenario (R2-00): `doctor-green-after-init`, `doctor-detects-tracked-credentials`.
+- E2E scenarios `doctor-green-after-init`, `doctor-detects-tracked-credentials` — defined in `docs/roadmap/testing/R1-04-tests.md` (R2-00 remains the driver/CI-matrix host only).
 
 ## Acceptance criteria
 - [ ] `curl -s $SERVER/api/meta | jq .data` shows `version`, `apiVersion`, `minCliVersion`, `productName`, `serverTime`.

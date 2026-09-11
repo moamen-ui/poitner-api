@@ -136,7 +136,7 @@ Not chosen; recorded so the decision is flippable in one PR:
 ## Tests
 - `Tests/ApiKeyProtectorTests.cs`, `Tests/ApiKeyServiceTests.cs`, `Tests/ApiKeyBackfillTests.cs`; existing `Tests/ApiKeyAuthTests.cs` with fixtures updated and all assertions preserved.
 - InMemory caveat: unique/partial indexes are not enforced by the InMemory provider — do not write tests that "prove" uniqueness there; the DB-level guarantee is covered by the acceptance SQL below.
-- E2E (R2-00): `legacy-key-still-logs-in-after-upgrade`, `regenerated-key-old-one-rejected`.
+- E2E scenarios `legacy-key-still-logs-in-after-upgrade`, `regenerated-key-old-one-rejected` — defined in `docs/roadmap/testing/R1-06-tests.md` (R2-00 remains the driver/CI-matrix host only).
 
 ## Acceptance criteria
 - [ ] `SELECT "ApiKey" FROM users` is all NULL after first boot; `api_keys."Hash"` populated; no plaintext key anywhere in the DB (`SELECT * FROM api_keys` shows only prefix/hash/base64 blob).
