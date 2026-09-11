@@ -182,26 +182,26 @@ Today: tier 1 `data-component-source` attr → tier 2 dev-mode fiber/Vue interna
 
 ### Phase 12 — Tenant onboarding
 
-50. **Tenant invitation by email (CRITICAL, R1.8).** Today a super admin creates a workspace by
-    POSTing an email **and a password** (`POST /api/admin/tenants`, `CreateTenantRequest { Email,
-    Password, DisplayName }`, `TenantService.CreateAsync:129-174` hashes it) — the super admin
-    therefore chooses, knows and must transmit someone else's credential out of band. That is the
-    same anti-pattern R2-05 removes for quick-access clients (`InviteService` emails a generated
-    plaintext password today) and it must not be the primary path for workspace owners either.
-    **Change:** the primary flow becomes *invite by email*, modelled on the existing user-invite
-    machinery (`Domain/Entity/Invite.cs` — `Code`, `Email`, `ExpiresAt`, `MaxUses`, `Uses`,
-    `RevokedAt`; `API/Controllers/InvitesController.cs`): the super admin enters an email (+ display
-    name, plan, demo flags), the server creates the tenant in a *pending* state plus a single-use,
-    expiring invite, and emails a link; the invitee opens it and sets their own password, which
-    activates the workspace. Resend / revoke / expiry visible in the dashboard; nothing is emailed
-    in plaintext except the one-time link.
-    **Direct creation is kept**, but demoted to a secondary, explicitly-labelled option (seeding,
-    migrations, air-gapped self-hosts, and the E2E seed which must keep working) — same endpoint
-    family, clearly marked "sets the password directly; prefer the invitation".
-    **Depends on:** email being un-held for this one transactional message — note that
-    `EmailService.SendAsync` gates on the DB setting `email_enabled` (`EmailService.cs:19-22`), so a
-    self-host with email off must fall back to "copy the invitation link", exactly like R2-05's
-    link-copy delivery.
+50. **Tenant invitation by email (CRITICAL, R1.8).** Today the super admin's *primary* path is
+    `POST /api/admin/tenants` with `{ Email, Password, DisplayName }` — `TenantService.CreateAsync`
+    hashes a password the super admin chose, so someone else's credential is picked and transmitted
+    out of band. **The invitation flow already exists and must become the primary path:**
+    `CreateInviteRequest.CreateNewWorkspace` (super-admin only) mints a null-owner `Invite`, and
+    `InviteService.AcceptCreateNewWorkspaceAsync:445-500` creates a self-owned tenant from the
+    invitee's **own** password and emails a link with no plaintext credential. So R1-08 is
+    *surface + harden + prefill*, not a new subsystem (2–3 d), and the work is: super-admin
+    Tenants UI (invite form, pending list, resend, revoke, copy-link), force `MaxUses = 1` (today
+    `null` = unlimited — one leaked link could mint N workspaces), require and lock `Email`, carry
+    `PlanId`/`DisplayName` through to acceptance, and a pending-invites read model on
+    `api/admin/tenants/invites*` under the super-admin policy (`GET /api/admin/invites` is
+    `Policies.Admin`, and `InviteService.ListAsync:183-200` hides revoked/expired rows).
+    **Direct creation is kept and stays byte-compatible** — the E2E seed depends on it — demoted by
+    labelling and a usage event, never by a guard.
+    **Delivery:** invite mail already ships; what gates it is the DB setting `email_enabled`
+    (`EmailService.cs:22` — the `Email__Enabled` env var is read by nothing), so an instance with
+    mail off falls back to "copy the invitation link", exactly like R2-05.
+    Spec: [`execution/R1-08-tenant-invitation.md`](execution/R1-08-tenant-invitation.md) ·
+    Tests: [`testing/R1-08-tests.md`](testing/R1-08-tests.md).
 
 ### NEW items from review
 
