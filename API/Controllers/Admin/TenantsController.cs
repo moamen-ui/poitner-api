@@ -50,6 +50,7 @@ public class TenantsController(ITenantService tenantService, ITenantInviteServic
     }
 
     [HttpDelete("invites/{id:int}")]
+    [ProducesResponseType(typeof(TenantInviteResponse), StatusCodes.Status200OK)]
     public async Task<IActionResult> RevokeInvite(int id)
     {
         var result = await tenantInvites.RevokeAsync(id);

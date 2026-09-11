@@ -12,6 +12,7 @@ public class CommentsController(ICommentService commentService) : ControllerBase
 {
     [HttpPost("api/projects/{key}/comments")]
     [RequestSizeLimit(262144)] // 256KB — an element capture (snapshot/styles/rules) is small; cap abuse.
+    [ProducesResponseType(typeof(CommentResponse), StatusCodes.Status200OK)]
     public async Task<IActionResult> Create(string key, [FromBody] CreateCommentRequest request)
     {
         var result = await commentService.CreateAsync(key, request, User.GetId(), RequestOrigin());
@@ -22,6 +23,7 @@ public class CommentsController(ICommentService commentService) : ControllerBase
     }
 
     [HttpGet("api/projects/{key}/comments")]
+    [ProducesResponseType(typeof(Pointer.Application.Response.PagedData<CommentListItemDto>), StatusCodes.Status200OK)]
     public async Task<IActionResult> List(string key, [FromQuery] CommentFilter filter)
     {
         // ?view=summary: an AI-agent-only escape hatch (see pointer.sh/skill.md) for the lean

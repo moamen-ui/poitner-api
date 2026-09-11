@@ -9,6 +9,7 @@ using Pointer.Application.Services.Interfaces;
 namespace Pointer.API.Controllers;
 
 [ApiController]
+[Tags("Events")]
 public class EventsController(IUsageEventService usageEventService) : ControllerBase
 {
     [HttpPost("api/events")]
