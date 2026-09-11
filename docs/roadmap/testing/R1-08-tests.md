@@ -39,11 +39,24 @@ by nothing). The non-mail scenarios run without either.
   with the **full** body. `PUT` is a replace-all writer (`SettingsController.cs:32-55`), so a partial
   body silently clears the signup/email/demo/extension settings. (Branding is **not** written here — it
   has its own writer, `PUT /api/admin/branding`.) Restore the captured original in the phase's `finally`.
-- `app_base_url` must point at something the test can parse. Scenarios never open the app — they extract
-  the `code` query parameter from `Url` and call the API directly — so any absolute URL works. Note that
-  until R1-08 Task 7 lands there is **no writer** for this setting (`GetAppBaseUrlAsync:676-679` is
-  read-only), so the value is whatever the compiled default is; after Task 7 the suite may set it via
-  `PUT /api/admin/settings` like any other setting.
+- The join-link base must point at something the test can parse. Scenarios never open the app — they
+  extract the `code` query parameter from `Url` and call the API directly — so any absolute URL works.
+  Resolution is `app_base_url` → `brand_url_app` → the compiled default (`GetAppBaseUrlAsync`), and
+  `app_base_url` **is writable** via `PUT /api/admin/settings` (shipped on `main` in `42e534e`; the
+  response also reports `effectiveAppBaseUrl`). A suite that sets it must restore the captured original
+  in the phase's `finally`, like every other setting.
+
+  **New scenario R1-08-17 — join links follow the configured app URL** (PR, api, superAdmin):
+  1. capture settings; `PUT /api/admin/settings` with `appBaseUrl: ''` and branding untouched →
+     `GET /api/admin/settings` → note `effectiveAppBaseUrl`.
+  2. `PUT /api/admin/branding { urls: { app: 'https://app.selfhost.test' } }`; create a workspace invite
+     → `Url` starts `https://app.selfhost.test/join?code=`; `effectiveAppBaseUrl === 'https://app.selfhost.test'`.
+  3. `PUT /api/admin/settings` with `appBaseUrl: 'https://join.selfhost.test/'` (trailing slash);
+     create another invite → `Url` starts `https://join.selfhost.test/join?code=` (slash trimmed, override
+     beats branding).
+  4. `finally`: restore both the settings body and the branding URL.
+  Evidence: report row with both `Url` values. Guards the regression `42e534e` fixed — a self-hosted
+  install mailing links to the SaaS host.
 - Unique addresses per run: `inv-<runId>-<n>@example.com`. Never reuse an address across scenarios —
   `AcceptCreateNewWorkspaceAsync:448-455` conflicts (409) on an existing self-owned account.
 - **Every accepted invite mints a real tenant that outlives the scenario.** Record each minted

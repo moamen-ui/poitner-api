@@ -200,6 +200,11 @@ Today: tier 1 `data-component-source` attr → tier 2 dev-mode fiber/Vue interna
     **Delivery:** invite mail already ships; what gates it is the DB setting `email_enabled`
     (`EmailService.cs:22` — the `Email__Enabled` env var is read by nothing), so an instance with
     mail off falls back to "copy the invitation link", exactly like R2-05.
+    **Already shipped out of this item** (`main`, `42e534e`): invitation join links now resolve
+    `app_base_url` → `brand_url_app` → compiled default, with `app_base_url` writable at
+    `PUT /api/admin/settings` and `effectiveAppBaseUrl` reported back. It was a live bug — the setting
+    had no writer anywhere, so every self-hosted instance mailed staff and client invitations pointing
+    at the SaaS host, where the code does not exist.
     Spec: [`execution/R1-08-tenant-invitation.md`](execution/R1-08-tenant-invitation.md) ·
     Tests: [`testing/R1-08-tests.md`](testing/R1-08-tests.md).
 

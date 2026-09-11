@@ -18,7 +18,7 @@ TTL and revoke (`:151`, `RevokeAsync:222-233`).
 **atomic claim** ships, the **cap** does not); a required email lock; resend; plan/display-name on the
 invite; a pending-invitations read model; workspace-specific email copy (`roleLine` is empty when
 `roleName == null`, `:690-692`, so a workspace invite today is heading + button + expiry only); a
-writable `app_base_url` (Decision 10); and the Tenants-area UI. So this doc is **surface + harden +
+the Tenants-area UI. (The writable `app_base_url`, once part of this item, shipped separately — Decision 10.) So this doc is **surface + harden +
 prefill**, not a new subsystem.
 
 ## Out of scope
@@ -46,9 +46,10 @@ prefill**, not a new subsystem.
   - `Invite` (`Domain/Entity/Invite.cs`) already documents the null-owner "new workspace" case; fields
     `OwnerId?`, `Code`, `RoleId?`, `ProjectId?`, `Email?`, `ExpiresAt`, `MaxUses?`, `Uses`, `RevokedAt?`.
   - `Invite.Code` = 128-bit base64url, unique index, looked up as a DB row (`GenerateCode:670-674`).
-  - Join URL = `{app_base_url}/join?code=…` (`BuildJoinUrl:685-686`); `app_base_url` is a DB setting
-    (`ISettingsService.AppBaseUrl:8`, default `https://app.pointer.moamen.work`) that **no endpoint
-    writes today** — read-only at `GetAppBaseUrlAsync:676-679`. See Decision 10.
+  - Join URL = `{base}/join?code=…` (`BuildJoinUrl`), where `{base}` resolves
+    `app_base_url` → `brand_url_app` → the compiled default (`GetAppBaseUrlAsync`). Writable at
+    `PUT /api/admin/settings`; `SettingsResponse.EffectiveAppBaseUrl` reports the resolved value.
+    **Shipped on `main` in `42e534e`** — see Decision 10.
   - Accept = anonymous `POST /api/auth/register-invite` with `AcceptInviteRequest { Code, Email,
     Password, DisplayName, RoleId? }`, rate-limited `signup` (`AuthController.cs:113-125`); returns
     `LoginResponse` (auto sign-in).
@@ -190,18 +191,25 @@ on **list** rows it is `null` — `TenantInviteResponse.EmailSent` is `bool?` an
 fires only when it is exactly `false`. A non-nullable field reused on list rows would show the warning on
 every pending invitation.
 
-**Decision 10 — make the join-link base URL writable; without it the primary flow is broken on
-self-hosted installs.** `app_base_url` is read at `GetAppBaseUrlAsync:676-679` and **nothing anywhere
-writes it** — not `UpdateSettingsRequest`, not `SettingsController`, not `AdminSeeder`. Every invitation
-link is therefore hard-coded to `https://app.pointer.moamen.work` unless someone INSERTs a row by hand,
-which breaks exactly the self-hosted/air-gapped installs this doc protects.
-**Decision: add `AppBaseUrl` to `UpdateSettingsRequest`/`SettingsController`/`SettingsResponse`** (one
-string, trimmed, empty ⇒ the existing default) rather than falling back to the writable `brand_url_app`
-(`BrandingService.cs:46`): the branding URL is the *product's* app URL for white-label display, while
-`app_base_url` is where *this* server's join links resolve — a self-hoster may legitimately set one and
-not the other, and silently reusing branding would make the two impossible to separate later.
-**Fallback chain:** `app_base_url` → `brand_url_app` → the compiled default, so an install that has only
-configured branding still produces a correct link.
+**Decision 10 — the join-link base URL. ✅ SHIPPED on `main` in commit `42e534e`, before this doc is
+implemented.** `app_base_url` was read at `GetAppBaseUrlAsync` and **nothing anywhere wrote it** — not
+`UpdateSettingsRequest`, not `SettingsController`, not `AdminSeeder` — so every invitation link resolved
+to the compiled `https://app.pointer.moamen.work`, which broke exactly the self-hosted installs this doc
+protects. That was a live bug affecting the staff and quick-access invitations that already ship, so it
+was fixed separately rather than waiting for R1-08. What landed:
+- `GetAppBaseUrlAsync` resolves **`app_base_url` → `brand_url_app` → compiled default** — a
+  white-labelled install that has only set `urls.app` (`PUT /api/admin/branding`, `BrandingService.cs:46`)
+  now produces correct links with no extra configuration.
+- `AppBaseUrl` is writable at `PUT /api/admin/settings` as an explicit override (trimmed, trailing slash
+  removed, empty ⇒ fall through to branding), for the rare install whose `/join` page is not on the
+  dashboard origin.
+- `SettingsResponse` gained `AppBaseUrl` (raw override) **and** `EffectiveAppBaseUrl` (where links will
+  actually point after the fallback), so a super admin can see the resolved value.
+- Covered by `Tests/InviteJoinUrlBaseTests.cs` (5 tests: branding fallback, override precedence, compiled
+  default, trailing-slash trim, whitespace-only override).
+**Consequence for this doc:** Task 7 is done; the remaining obligation is only that the Tenants UI
+surfaces `effectiveAppBaseUrl` (Dashboard tasks) and that the acceptance criterion below is re-verified
+against the shipped behaviour rather than implemented.
 
 **Decision 11 — usage events.** `tenant_invited` (on create) and `tenant_invite_accepted` (on accept),
 alongside Decision 7's `tenant_created_direct`. All three are `// TODO(R1-02)` comments in this release —
@@ -326,9 +334,10 @@ tests. Send is best-effort and never fails the invite (existing behaviour).
    been invited to create a workspace"); assert in tests that the body never contains `Password:`.
 6. `InvitePreviewResponse` — add `DisplayName` and `PlanName`; populate them in `GetPreviewAsync`'s
    null-owner branch (resolve the plan name when `PlanId` is set).
-7. **`app_base_url` writer** (Decision 10): add `AppBaseUrl` to `UpdateSettingsRequest`,
-   `SettingsController.Update` (`SetStringAsync`, trimmed) and `SettingsResponse`/`BuildResponseAsync`;
-   implement the `app_base_url → brand_url_app → default` fallback in `GetAppBaseUrlAsync:676-679`.
+7. ~~**`app_base_url` writer** (Decision 10)~~ — **already done on `main`, commit `42e534e`.** Verify
+   only: `GetAppBaseUrlAsync` chains `app_base_url → brand_url_app → default`, `AppBaseUrl` round-trips
+   through `PUT /api/admin/settings`, and `SettingsResponse.EffectiveAppBaseUrl` reports the resolved
+   value. Do **not** re-implement; if the Tenants UI needs the value it reads `effectiveAppBaseUrl`.
 8. `ITenantService`/`TenantService` — the four invite methods (compose `IInviteService`);
    `ListInvitesAsync` filters `OwnerId == null && DeletedAt == null && RevokedAt == null &&
    ExpiresAt > now && (MaxUses == null || Uses < MaxUses)` and resolves `PlanName`; `ResendInviteAsync`
@@ -352,11 +361,11 @@ tests. Send is best-effort and never fails the invite (existing behaviour).
 
 ## Dashboard tasks
 - Regenerate services: `CreateTenantInviteRequest`, `TenantInviteResponse`, the `InvitePreviewResponse`
-  additions, the `SettingsResponse`/`UpdateSettingsRequest` `appBaseUrl` field, and the four
+  additions, the `SettingsResponse` (`appBaseUrl`, `effectiveAppBaseUrl`) / `UpdateSettingsRequest` (`appBaseUrl`) fields already shipped in `42e534e`, and the four
   `api/admin/tenants/invites*` operations. The new routes inherit **`[Tags("Tenants")]`**
   (`TenantsController.cs:13`), so the Orval tag filter must include `Tenants` (cf. commit `992b63f`,
   which added `AppEnvironments` to that filter).
-- Settings screen: an **App base URL** field (Decision 10) with a hint that invitation links use it.
+- Settings screen: an **App base URL** override field plus a read-only "Invitation links will use: `{effectiveAppBaseUrl}`" line. The API side already ships (`42e534e`) — this is regeneration + UI only.
 - Tenants screen: **"Invite workspace"** becomes the primary button — form = email (required), display
   name, plan, expiry days. On success show the link with a **Copy link** button and, when
   `emailSent === false`, the warning from Decision 9.
@@ -408,8 +417,9 @@ tests. Send is best-effort and never fails the invite (existing behaviour).
 - [ ] A pending invitation created **before** this change (null `MaxUses`) still appears in the pending
       list and still accepts.
 - [ ] Inviting an address that already owns a workspace returns 409 at create time.
-- [ ] With `app_base_url` set to a self-hosted origin, the returned `Url` and the emailed link both use
-      it; with it empty, the link falls back to `brand_url_app`, then the compiled default.
+- [ ] *(Re-verify, already shipped in `42e534e`)* With `app_base_url` set to a self-hosted origin, the
+      returned `Url` and the emailed link both use it; with it empty, the link falls back to
+      `brand_url_app`, then the compiled default.
 - [ ] `just fmt`, `dotnet build`, `just test` green.
 
 ## Rollout / compatibility
