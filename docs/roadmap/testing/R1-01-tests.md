@@ -55,3 +55,7 @@ the origin injected — nothing in the guard covers the middleware.
 
 - None beyond running after `reset.sh` (server readiness is H-01's job). The middleware runs before
   `UseStaticFiles`, so caching is not a factor; both GETs are cheap and order-independent.
+
+## State coupling
+
+None — its single scenario is anonymous and stateless, so every scenario here is independently runnable and eligible for a solo retry (harness §9).

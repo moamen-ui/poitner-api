@@ -225,8 +225,20 @@ the API restarts at most 3 times per run.
   those six endpoints declares its spend here; a local re-run inside the hour needs a container recreate.
 - Widget boot: always `waitForResponse('**/capture-config')` before interacting (`widget.spec.ts:61-66`).
 - Ports: registry + `--strictPort`; fixture servers killed by trap.
-- Determinism: pinned minor versions for generators (fresh-app), 1.1 s comment spacing in seed, one
-  whole-run retry only for the 300 s fresh-app budget.
+- Determinism: pinned minor versions for generators (fresh-app), 1.1 s comment spacing in seed.
+- **Flake confirmation — per-scenario retry, one per scenario per run.** A scenario that fails is
+  re-run **alone** via `run-e2e.sh --only <id>` (R1-07 task 0a) with no intervening code change. Same
+  code, different result ⇒ it is a **flake**, never a pass. Rules:
+  - **Cap: one retry per scenario per run**, enforced by the runner, not the caller — a human
+    re-running by hand cannot loop past it (R1-07 task 0a).
+  - **State-coupled scenarios are never retried alone.** A scenario listed in its doc's
+    `## State coupling` section (§12) depends on a sibling having run first, so running it in
+    isolation proves nothing: it is recorded **`FLAKE-SUSPECTED`** with no retry and settled
+    statistically by the next nightly. The report names which ones were refused and why.
+  - **Budget:** a per-scenario retry costs seconds, not a suite — this is the whole reason for
+    choosing it. The single **whole-run** retry stays reserved for the 300 s fresh-app budget
+    (R2-00) and is not available for anything else.
+  - A retry that fails again is a plain `FAIL`, not a flake.
 - Restart safety: `restart-api.mjs` preserves the volume and re-waits `/swagger/v1/swagger.json`.
 - Two-image `upgrade` job (R1-06): old API image → seed → mint key → stop `api` only → new image on the
   **same volume** → assert legacy key logs in. Never `down -v` between the two halves.
@@ -246,12 +258,18 @@ When `DASHBOARD_DIR` is unset, dashboard-layer scenarios are reported **SKIP**, 
 # E2E report — <UTC ts> · git <sha> · flags <…>
 ## Stack   api /api/meta {version, apiVersion, minCliVersion, skillVersion} · mailpit messages=<n>
 ## Phases  | phase | result | duration | notes |
-## Scenarios | id | tier | layer | role | PASS/FAIL/SKIP | ms | detail |
+## Scenarios | id | tier | layer | role | result | attempts | ms | detail |
 ## Mail evidence | to | subject | scenario id |
 ## Failures  trace paths · `docker compose logs api --tail 100`
 ```
-`detail` must not contain timings, counters or boundary indices — those go to the CI log; the
-determinism diff (H-02) strips the `ms` **and** `detail` columns before comparing.
+**`result`** is one of `PASS` · `FAIL` · `SKIP` · **`FLAKE`** (failed, then passed on the
+per-scenario retry with no code change) · **`FLAKE-SUSPECTED`** (failed once, state-coupled, not
+retried — §9). A `FLAKE` is **never** reported as a `PASS`; a tier containing one is not green.
+
+**`attempts`** is `1` or `2` and lives in its own column, deliberately **not** in `detail`:
+`detail` must not contain timings, counters or boundary indices — those go to the CI log — and the
+determinism diff (H-02) strips the `ms`, `attempts` **and** `detail` columns before comparing, so a
+flaky night still diffs clean against a clean one.
 
 Also `state/junit.xml` for CI annotations.
 
@@ -265,9 +283,53 @@ Also `state/junit.xml` for CI annotations.
 ## Spec files            paths under e2e/ and the helper functions they need (new helpers listed)
 ## Not covered here      what is unit-level (Tests/, cli/test/) or manual, and why
 ## Flake notes           scenario-specific timing/ordering constraints
+## State coupling        machine-readable; omit the section entirely when nothing is coupled
 ```
 Scenario ids: `<doc>-<nn>` (e.g. `R1-05-03`); the human-readable names used in the execution docs are
 kept as the `intent` column so both cross-reference.
+
+### 12.1 Declaring state coupling — the `⛓` marker
+
+Some scenarios cannot be run on their own: they need a sibling to have run first in the same run.
+Running one in isolation does not test it — it fails for the missing setup, which reads as a product
+bug. So each one says so, in two places:
+
+**1. In the row, so you can see it at a glance.** A coupled scenario carries **`⛓`** immediately after
+its id in the `id` column:
+
+| id | intent | … |
+|---|---|---|
+| R2-04-01 | `notify: applied shows badge to author` | … |
+| R2-04-02 ⛓ | `notify: thumbs-down reopens with note` | … |
+
+Read `⛓` as: **this one cannot be retried alone.** No marker means the scenario is independently
+runnable — which is what `--only` and the flake retry (§9) rely on.
+
+**2. In a `## State coupling` section at the end of the doc, so a machine can parse it and a human can
+see *what* it is tied to.** One line per coupled scenario, `<id> <- <ids it needs>`, with the reason as
+a trailing comment:
+
+```
+## State coupling
+R2-04-02 <- R2-04-01        # reopens the comment R2-04-01 applied
+R2-04-03 <- R2-04-01, R2-04-02
+```
+
+**Decision:** marker *and* section, rather than either alone — the marker is what makes a table
+scannable, the section is what the runner (`run-e2e.sh --only`, R1-07 task 0a) and the
+`e2e-tester-agent` actually read, and the trailing comment is why a reviewer can tell whether the
+coupling is real or an artefact worth removing. A doc with no coupled scenarios omits the section
+entirely; absence is a positive claim that every scenario there stands alone.
+
+The right-hand side is sibling ids, the literal token **`reset`**, or both. **`reset`** means *this
+scenario needs a freshly reset stack* — it is not re-runnable inside a run that already executed it,
+because it consumed a one-shot resource: a rate-limit bucket (`signup`, `login-with-key`, the 429
+phases), one of the three permitted `api` restarts, a global row it created, or a "first ever" event it
+asserted. Those are exactly as unretryable as a missing sibling, and for the same practical reason.
+
+Coupling is transitive in effect but written **directly**: list only what a scenario immediately needs,
+not the whole chain — the runner walks it. Cross-doc coupling is allowed and written the same way
+(`R1-09-07 <- R1-05-06`).
 
 ## 13. Mock domains (rebrand rehearsal)
 

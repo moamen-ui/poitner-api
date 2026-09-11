@@ -57,3 +57,7 @@ AC-1 (`tools/list` = exactly the 9 frozen names, documented schemas incl. proper
 - R2-02-04 depends on R2-01's `--mark` commit-message format; if R2-01's golden changes, update step 4's expected subject in the same PR.
 - The manual runs (R2-02-05) are excluded from CI timing and never block a red/green verdict — they are reported, not gated (token rule §7).
 - Keep MCP scenarios off `e2e-alpha`'s seeded comments (shared ground truth); use the dedicated project like R2-01.
+
+## State coupling
+
+None — every MCP scenario builds its own temp repo and project, so every scenario here is independently runnable and eligible for a solo retry (harness §9).

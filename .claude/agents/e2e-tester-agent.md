@@ -109,11 +109,31 @@ then the rest.
 A `SKIP` is a finding too when the phase expected it to run. `SKIP` for a documented reason (no
 `DASHBOARD_DIR`, an unmerged prerequisite doc, a path filter) is reported as expected and not triaged.
 
-## Flake protocol
+## Flake protocol — per-scenario retry, one per scenario per run
 
 A scenario that fails and then passes **with no intervening code change is a flake**, reported as a
 flake with both runs attached. It is never reported as a pass. "It passed on the retry" is the single
 most expensive sentence in a test suite.
+
+**How you confirm one** (harness §9):
+
+1. Re-run that scenario **alone**: `bash e2e/run-e2e.sh --only <id>`. Change nothing in between — not
+   the code, not the spec, not the seed. If you changed anything, it is not a flake confirmation, it
+   is a fix, and it belongs in the next round.
+2. **One retry per scenario per run.** The runner enforces the cap; do not work around it. A retry
+   that fails again is a plain `FAIL`, not a flake.
+3. **Never retry a state-coupled scenario alone.** Before retrying, read the scenario's doc
+   `## State coupling` section (harness §12): a scenario listed on the left of `<id> <- <ids>` needs a
+   sibling to have run first, so a solo run proves nothing — it would fail for the coupling, not the
+   flake, and you would report a false product bug. Record it **`FLAKE-SUSPECTED`**, do not retry, and
+   let the next nightly settle it.
+4. **Name every refusal.** The report lists each scenario you declined to retry, the ids it is coupled
+   to, and the doc line you read that from. A silent non-retry is indistinguishable from forgetting.
+5. **Budget.** A solo retry costs seconds — that is why it is the chosen mechanism. The single
+   whole-run retry is reserved for R2-00's 300 s fresh-app budget and is **not** yours to spend.
+
+In the report, a confirmed flake is `FLAKE` with `attempts: 2`; an unretried one is `FLAKE-SUSPECTED`
+with `attempts: 1`. A tier containing either is **not green**.
 
 For each flake, state which of the harness's known sources (§9) you ruled out: fixed sleeps, rate-limit
 buckets (`signup` 5/hour/IP across six endpoints; the `login` bucket shared with `login-with-key`), poll
@@ -155,7 +175,7 @@ the product should do, and that is a decision, not a defect.
 Return exactly this shape. No praise, no narrative preamble.
 
 ```
-VERDICT: GREEN | RED — <n> product bug, <n> test bug, <n> environment, <n> flake
+VERDICT: GREEN | RED — <n> product bug, <n> test bug, <n> environment, <n> flake, <n> flake-suspected
 TIER: pr | nightly (reason) · ROUND: n/3 · RUN: <duration> · <git sha>
 
 ## Hygiene

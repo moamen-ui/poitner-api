@@ -66,3 +66,7 @@ Harness: [`00-HARNESS.md`](00-HARNESS.md). Execution doc: [`../execution/R1-03-d
   without it the read throws and the scenario would flake — grant it at context creation.
 - The dashboard suite must target `http://localhost:8090` (this stack), never a deployed instance —
   the masked/unmasked comparison depends on `keys.json` minted by this seed.
+
+## State coupling
+
+None — the contract guard is read-only and the dashboard row is SKIP-gated, so every scenario here is independently runnable and eligible for a solo retry (harness §9).

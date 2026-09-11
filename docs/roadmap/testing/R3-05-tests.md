@@ -45,3 +45,7 @@ Acceptance criteria of R3-05: AC-1 (shared styles light+dark, ≤ 1 screen per s
 - serve-dir on 8099 uses `--strictPort`; `PORTS.landing = 8099` is folded into the harness §2 port table (`PORTS` does not exist in `e2e/scripts/lib/constants.mjs` yet — the harness introduces it). The execution doc's ad-hoc `python3 -m http.server 8099` is replaced by this path; never run both.
 - R3-05-03 step 2 compares computed colors — assert inequality only (exact hex values would churn with styling PRs); screenshots (`toHaveScreenshot`) are the visual-regression layer, add them only if landing churn demands it (§7: never MCP).
 - The v2 Arabic assertion compares the exact i18n map value `البيانات والاستضافة الذاتية` — copy changes must update the spec constant in the same PR (single-constant list, like the step-4 string list).
+
+## State coupling
+
+None — the landing phase never touches the API or the database, so every scenario here is independently runnable and eligible for a solo retry (harness §9).
