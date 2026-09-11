@@ -17,6 +17,7 @@ monorepos get a clear hand-off to the `pointer-init` AI skill. The server record
 
 ## Prerequisites
 - R1-01 (names frozen; `install.sh` keeps `config.json` committable).
+- **R1-09** (project URLs belong to an enabled workspace environment) — it changes `CreateProjectRequest`'s shape, which this doc's step 3 and step 4b both use. Land R1-09 first, or land them together; if R1-09 slips, step 4b still works by calling the per-environment URL endpoint right after create.
 - Facts: `00-API-INVENTORY.md` §1 (auth), §2 (projects, stack), §4 (branding), §8 (`pointer-init.md`
   detection + snippets + env names). Project list/create are plain `[Authorize]`
   (`API/Controllers/Admin/ProjectsController.cs:11-38`). `CreateProjectRequest.Key` must match
@@ -53,7 +54,7 @@ cli/
 ```
 pointer init [--server <url>] [--key <ptr_…>] [--project <key>] [--create <name>] [--environment local|staging|production]
              [--tool claude-code|cursor|windsurf|opencode|antigravity|other] [--skills-dir <path>]
-             [--html <path>] [--no-inject] [--no-skills] [--yes] [--json]
+             [--app-url <url>] [--no-app-url] [--html <path>] [--no-inject] [--no-skills] [--yes] [--json]
 ```
 - `--yes`: non-interactive; requires `--key` and (`--project` or `--create`); missing → exit 2 with the
   exact missing flag names. Defaults: `--environment local`, `--tool` from env detection (table below),
@@ -91,6 +92,12 @@ pointer init [--server <url>] [--key <ptr_…>] [--project <key>] [--create <nam
        `:45-46`, quick-access `:51-52`) → "This account cannot create projects." exit 3; 400 with
        `isLimitReached` (`:62-71`, plan cap) → print the server `message` + limit, exit 1.
 4  Environment [local]:   select local | staging | production
+4b App URL for this environment — detected, always confirmable (see §H2):
+   "Where does this app run in {environment}? [http://localhost:5173]:"
+   → Enter accepts the detected value; anything typed replaces it; an empty line skips
+     (the project is created with no URL for that environment and `doctor` reports ⚠).
+   → Sent with the project create/update per R1-09's shape (URL + the environment it belongs to).
+   → Non-interactive: `--app-url <url>` overrides detection; `--no-app-url` skips.
 5  AI tool [detected: claude-code]:  select claude-code | cursor | windsurf | opencode | antigravity | other
 6  Detecting your stack… → prints kind + evidence (e.g. "Vite (vite.config.ts, index.html)")
    vite | static  → inject (D/E); prints the file changed.
@@ -113,7 +120,7 @@ pointer init [--server <url>] [--key <ptr_…>] [--project <key>] [--create <nam
 `--json` prints exactly one JSON object and nothing else on stdout (prompts are disabled — implies `--yes`):
 ```json
 { "ok": true, "product": "<productName>", "server": "...", "project": { "key": "...", "name": "...", "created": false },
-  "environment": "local", "aiTool": "claude-code", "stack": { "kind": "vite", "evidence": ["vite.config.ts"] },
+  "environment": "local", "appUrl": "http://localhost:5173", "appUrlSource": "vite.config.ts:server.port", "aiTool": "claude-code", "stack": { "kind": "vite", "evidence": ["vite.config.ts"] },
   "injected": true, "routedToSkill": false, "files": [".env", "index.html", ".pointer/config.json", "..."],
   "checks": [ { "id": "server", "status": "ok", "message": "..." } ], "cliVersion": "0.1.0" }
 ```
@@ -179,6 +186,32 @@ Frontend tokens for `/stack`: from `package.json` deps: `react`, `vue`, `svelte`
 `@angular/core`→`angular`, `next`, `tailwindcss`→`tailwind`, `vite`; backend tokens: `*.csproj`→`dotnet`,
 `requirements.txt|pyproject.toml`→`python`, `go.mod`→`go`, `package.json` dep `express|fastify|nest`→`node`.
 
+### H2. Dev-server URL detection (`src/detect.ts` → `detectAppUrl(cwd, kind)`)
+
+Returns `{ url: string | null, source: string }`. **Never guessed silently** — the value is always
+shown for confirmation (step 4b), so a wrong guess costs one keystroke, and `source` is printed in
+`--json` so a mis-detection is diagnosable.
+
+| kind | port read from (first hit wins) | default |
+|---|---|---|
+| vite | `server.port` in `vite.config.{js,ts,mjs,mts}` (regex on the source — do **not** execute the config); `--port <n>` in the `dev` script | 5173 |
+| next | `-p <n>` / `--port <n>` in the `dev` script; `PORT=` in `.env*` | 3000 |
+| angular | `projects.*.architect.serve.options.port` in `angular.json`; `--port <n>` in the `start` script | 4200 |
+| cra | `PORT=` in the `start` script or `.env*` | 3000 |
+| static | — | `null` (no dev server; prompt starts empty) |
+| monorepo / unknown | — | `null` |
+
+Rules: **https only when the config says so** (Vite `server.https`, Angular `serve.options.ssl`),
+else `http`. Host is always `localhost` (never `0.0.0.0`/`127.0.0.1` — `0.0.0.0` is not a valid
+browser origin and would not match the widget's `Origin` header for R1-05's allow-list). If the
+environment chosen in step 4 is **not** `local`, the prompt is still shown but pre-filled empty —
+a staging/production URL cannot be detected from the repo, and inventing one would be worse than
+asking. Detection is pure file reading: no network, no child processes, no config evaluation.
+
+**Decision:** detection failure is never fatal — `{ url: null }` simply means the prompt starts
+empty. A project with no URL for its environment is valid (R1-09); it only costs the extension's
+origin lookup and the quick-access invite's landing URL, both of which `doctor` warns about.
+
 ### I. Usage events (server) — §21
 - Entity `Domain/Entity/UsageEvent.cs`: `Id`, `OwnerId` (Guid?, strict-own), `ProjectId` (int?),
   `UserId` (Guid?), `Type` (string, max 40), `Source` (string: `cli`|`widget`|`api`), `Meta` (jsonb string,
@@ -234,7 +267,7 @@ itself is API-level (checks module).
 1. Scaffold `cli/` (A); `npm run build` produces a runnable `dist/cli.js` printing help.
 2. `src/api.ts` + `src/branding.ts` + `src/config.ts` with unit tests (envelope unwrap, error mapping, config round-trip, gitignore upsert idempotency).
 3. `src/prompt.ts` (`ask`, `select`, `secret` input via `readline` with `output` muted).
-4. `src/detect.ts` + fixtures (vite, static, next, angular, monorepo) + tests.
+4. `src/detect.ts` + fixtures (vite, static, next, angular, monorepo) + tests — including `detectAppUrl` (§H2): custom `server.port`, `--port` in the dev script, Angular `angular.json` port, https flag, and the null cases.
 5. `src/inject/vite.ts`, `src/inject/static.ts` + tests (fresh insert, re-run replaces block, `.env` upsert, missing `</body>` appends).
 6. `src/skills.ts` (+ symlink creation, Windows fallback = copy) + tests with a mocked server.
 7. `src/checks.ts` — implement the R1-04 check list (server reachable, meta/version, key valid, project exists & active for env, widget tag present, skills present, gitignore correct); tests.
@@ -260,6 +293,7 @@ itself is API-level (checks module).
 - [ ] On a Next.js app: no files changed except `.pointer/`, skills, `.gitignore`; hand-off message printed.
 - [ ] `init --yes --key … --create "My App"` in CI creates the project and exits 0; missing `--key` exits 2 naming the flag.
 - [ ] Wrong key → exit 3 after 3 attempts (interactive) / immediately (`--yes`).
+- [ ] On a Vite app with `server.port: 4000` in `vite.config.ts`, step 4b offers `http://localhost:4000`; pressing Enter stores it as the project's URL for the chosen environment, and `--app-url https://x.test` overrides it; `--no-app-url` creates the project with none and `doctor` reports ⚠.
 - [ ] Re-running `init` changes nothing except `cliVersion` in `config.json` (idempotent; `git diff` empty otherwise).
 - [ ] Running against a second server whose `/api/branding` returns `productName: "Acme Feedback"` — CLI output contains "Acme Feedback" and no "Pointer" (except in file paths/names from the frozen contract).
 - [ ] `first_comment` event exists once for the project after two comments.
