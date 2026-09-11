@@ -7,6 +7,7 @@ import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { get, post, patch, login, ApiError } from '../scripts/lib/api.mjs';
+import { preAuthWidget } from './lib/pre-auth';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const STATE_DIR = join(here, '..', 'state');
@@ -34,20 +35,6 @@ test.beforeAll(async () => {
   }
   await patch(`/api/admin/projects/${project.id}`, { pageContextCaptureEnabled: true }, { token: wsAdmin.token });
 });
-
-// Logs the given user into the widget via localStorage pre-seeding (element.ts reads
-// `pointer_token`/`pointer_user`), and reveals the collapsed launcher (sessionStorage
-// `pointer_visible`) — both confirmed mechanisms, avoiding the login-modal UI for setup speed.
-async function preAuthWidget(page, token: string, user: unknown) {
-  await page.addInitScript(
-    ([t, u]) => {
-      window.localStorage.setItem('pointer_token', t as string);
-      window.localStorage.setItem('pointer_user', JSON.stringify(u));
-      window.sessionStorage.setItem('pointer_visible', '1');
-    },
-    [token, user],
-  );
-}
 
 test('Tester creates a staging bug report by clicking the real broken checkout button', async ({ page }) => {
   const tester = await login(credentials.tester.email, credentials.tester.password);
