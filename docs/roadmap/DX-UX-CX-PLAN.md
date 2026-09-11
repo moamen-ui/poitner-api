@@ -102,6 +102,7 @@ Read before estimating anything — several items are *wiring*, not features.
 | R3.3 | **NEW-3** widget release engineering — immutable `pointer.js?v=<sha>`, short-TTL `stable`, SRI snippet, deploy smoke, **≤ 60 KB gz** budget in CI, CSP note (constructed `CSSStyleSheet` for nonce-strict hosts) | 3–4 d |
 | R3.4 | **§33-lite** DOM-snapshot privacy — drop `value` of `input/textarea/select` in `shallowSnapshot`; `data-snapshot-mask` → `•••`; per-project "no text content" toggle | 2–3 d |
 | R3.5 | **NEW-6** public privacy / self-host page (what is captured, retention, deletion, self-host = your Postgres) | ½ d |
+| R3.6 | **§53 landing-page refresh** — rebuild the page's *argument* around the real thesis (an AI tool is only as good as the feedback it receives): the structured brief a comment carries as the second-screen proof, the loop ending at a commit URL, objection handling, and a token claim with **no invented figure**. PRD: [`prd/LANDING-PRD.md`](prd/LANDING-PRD.md). Also retires `landing/v2/`. | 3–4 d |
 
 ### Hold list (item → un-hold trigger)
 
@@ -283,6 +284,28 @@ Today: tier 1 `data-component-source` attr → tier 2 dev-mode fiber/Vue interna
     Spec: [`execution/R2-00-e2e-fresh-app-whitelabel.md`](execution/R2-00-e2e-fresh-app-whitelabel.md) ·
     Tests: [`testing/R2-00-tests.md`](testing/R2-00-tests.md) (R2-00-09…13) · Harness:
     [`testing/00-HARNESS.md`](testing/00-HARNESS.md) §13.
+
+### Phase 14 — Market what is actually true
+
+53. **Landing-page refresh (R3.6).** The current page (`landing/index.html`) works — live data from
+    three endpoints, en/ar + RTL, dark mode, `/api/branding` white-label, and it dogfoods the widget —
+    but it *lists features* rather than making an argument. The argument is the product's thesis and the
+    thing a comment-widget competitor cannot copy: **an AI coding tool is only as good as the feedback
+    it receives.** A screenshot tool hands the agent a picture and a sentence; a Pointer comment hands it
+    the selector, the CSS rules that actually win, the route, the viewport and the stakeholder's words —
+    so the search is narrow and grounded instead of a repo-wide grep.
+    **Deliberately last in Release 3**, because most of what would make the page strongest is not built
+    yet: "starts at the exact file" needs §35/R3.1's manifest (today `sourcePath` is dev-mode only —
+    `capture.ts:242-257`), "one command" needs the CLI (R1.2), MCP framing needs R2.2, and the
+    docs-nav entry needs R2.7. Shipping the page earlier means shipping claims that are not true yet.
+    **Honesty is the hard constraint.** The PRD splits every claim into *claimable now* vs *blocked on
+    item X*, and forbids invented metrics: the `docs/AI_AGENT_TOKEN_OPTIMIZATION.md` baseline
+    (551,817 tokens / 24 turns / ~90 s) is **measured**, but the optimised figures are **projections
+    written before the fix shipped** — so no percentage goes on the page until the telemetry is re-run
+    against the shipped path. Each item's `## Docs` section names the landing sentence it unblocks, so
+    the page changes with the feature rather than drifting into fiction.
+    Spec: [`execution/R3-06-landing-refresh.md`](execution/R3-06-landing-refresh.md) ·
+    Tests: [`testing/R3-06-tests.md`](testing/R3-06-tests.md) · PRD: [`prd/LANDING-PRD.md`](prd/LANDING-PRD.md).
 
 ### NEW items from review
 
