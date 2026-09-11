@@ -16,5 +16,8 @@ public class CreateProjectValidator : AbstractValidator<CreateProjectRequest>
 
         RuleFor(x => x.Name)
             .NotEmpty();
+
+        RuleFor(x => x.AppEnvironmentId)
+            .GreaterThan(0).When(x => x.AppEnvironmentId.HasValue);
     }
 }

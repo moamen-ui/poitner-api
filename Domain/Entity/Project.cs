@@ -53,5 +53,6 @@ public class Project : BaseEntity
     public bool EnforceAllowedOrigins { get; set; } = false;
 
     public Guid? OwnerId { get; set; }
+    public ICollection<ProjectAppUrl> ProjectAppUrls { get; set; } = new List<ProjectAppUrl>();
     public ICollection<Comment> Comments { get; set; } = new List<Comment>();
 }

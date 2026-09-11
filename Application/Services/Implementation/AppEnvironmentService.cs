@@ -22,15 +22,28 @@ public class AppEnvironmentService : IAppEnvironmentService
 
     public async Task<Result<List<AppEnvironmentResponse>>> ListAsync()
     {
-        var environments = await _unitOfWork.Repository<AppEnvironment>()
+        var query = _unitOfWork.Repository<AppEnvironment>()
             .Query()
             .AsNoTracking()
-            .Where(e => e.DeletedAt == null)
-            .OrderBy(e => e.OwnerId == null ? 0 : 1) // global first, then the tenant's own
+            .Where(e => e.DeletedAt == null);
+
+        var environments = await query
+            .Select(e => new AppEnvironmentResponse
+            {
+                Id = e.Id,
+                Name = e.Name,
+                IsGlobal = e.OwnerId == null,
+                CanManage = _currentUser.IsSuperAdmin || e.OwnerId == _currentUser.TenantId,
+                IsEnabled = e.IsEnabled,
+                IsRetired = e.IsRetired,
+                ProjectUrlCount = e.ProjectAppUrls.Count(u => u.DeletedAt == null)
+            })
+            .OrderBy(e => e.IsRetired ? 1 : 0) // retired last
+            .ThenBy(e => e.IsGlobal ? 0 : 1) // global first, then the tenant's own
             .ThenBy(e => e.Name)
             .ToListAsync();
 
-        return Result<List<AppEnvironmentResponse>>.Success(environments.Select(MapToResponse).ToList());
+        return Result<List<AppEnvironmentResponse>>.Success(environments);
     }
 
     public async Task<Result<AppEnvironmentResponse>> CreateAsync(CreateAppEnvironmentRequest request)
@@ -47,7 +60,7 @@ public class AppEnvironmentService : IAppEnvironmentService
         if (exists)
             return Result<AppEnvironmentResponse>.Conflict(MessageKeys.AppEnvironment.NameTaken);
 
-        var environment = new AppEnvironment { Name = name, OwnerId = owner };
+        var environment = new AppEnvironment { Name = name, OwnerId = owner, IsEnabled = true };
         await _unitOfWork.Repository<AppEnvironment>().AddAsync(environment);
         await _unitOfWork.SaveChangesAsync();
 
@@ -66,18 +79,27 @@ public class AppEnvironmentService : IAppEnvironmentService
         if (!CanManage(environment))
             return Result<AppEnvironmentResponse>.Forbidden(MessageKeys.AppEnvironment.NotManageable);
 
-        var name = request.Name.Trim();
-        if (string.IsNullOrEmpty(name))
-            return Result<AppEnvironmentResponse>.Failure(MessageKeys.AppEnvironment.NameRequired);
+        if (request.Name != null)
+        {
+            var name = request.Name.Trim();
+            if (string.IsNullOrEmpty(name))
+                return Result<AppEnvironmentResponse>.Failure(MessageKeys.AppEnvironment.NameRequired);
 
-        var exists = await _unitOfWork.Repository<AppEnvironment>()
-            .Query()
-            .AsNoTracking()
-            .AnyAsync(e => e.DeletedAt == null && e.Id != id && e.OwnerId == environment.OwnerId && e.Name.ToLower() == name.ToLower());
-        if (exists)
-            return Result<AppEnvironmentResponse>.Conflict(MessageKeys.AppEnvironment.NameTaken);
+            var exists = await _unitOfWork.Repository<AppEnvironment>()
+                .Query()
+                .AsNoTracking()
+                .AnyAsync(e => e.DeletedAt == null && e.Id != id && e.OwnerId == environment.OwnerId && e.Name.ToLower() == name.ToLower());
+            if (exists)
+                return Result<AppEnvironmentResponse>.Conflict(MessageKeys.AppEnvironment.NameTaken);
 
-        environment.Name = name;
+            environment.Name = name;
+        }
+
+        if (request.IsEnabled.HasValue)
+        {
+            environment.IsEnabled = request.IsEnabled.Value;
+        }
+
         _unitOfWork.Repository<AppEnvironment>().Update(environment);
         await _unitOfWork.SaveChangesAsync();
 
@@ -119,6 +141,9 @@ public class AppEnvironmentService : IAppEnvironmentService
         Id = environment.Id,
         Name = environment.Name,
         IsGlobal = environment.OwnerId == null,
-        CanManage = CanManage(environment)
+        CanManage = CanManage(environment),
+        IsEnabled = environment.IsEnabled,
+        IsRetired = environment.IsRetired,
+        ProjectUrlCount = environment.ProjectAppUrls?.Count(u => u.DeletedAt == null) ?? 0
     };
 }

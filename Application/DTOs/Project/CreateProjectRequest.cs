@@ -7,8 +7,13 @@ public class CreateProjectRequest
     public string Key { get; set; } = string.Empty;
     public string Name { get; set; } = string.Empty;
 
-    /// <summary>Where this project's widget is embedded. Optional except for a quick-access client invite.</summary>
+    /// <summary>Where this project's widget is embedded. Optional except for a quick-access client
+    /// invite. Written to <see cref="AppEnvironmentId"/> (default: the "local" environment).</summary>
     public string? AppUrl { get; set; }
+
+    /// <summary>Which enabled workspace environment <see cref="AppUrl"/> belongs to. Omitted ⇒ the
+    /// tenant's own "local" environment if it has one, else the global "local".</summary>
+    public int? AppEnvironmentId { get; set; }
 
     /// <summary>Project-scoped predefined actions to create alongside the project.</summary>
     public List<PredefinedActionInput> PredefinedActions { get; set; } = new();

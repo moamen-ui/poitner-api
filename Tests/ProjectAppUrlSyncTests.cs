@@ -12,7 +12,7 @@ namespace Pointer.Tests;
 
 /// <summary>
 /// Creating/updating a project with just "AppUrl" (the only concept the browser extension and the
-/// old dashboard dialog know about) transparently lands on the "default" AppEnvironment — so
+/// old dashboard dialog know about) transparently lands on the "local" AppEnvironment — so
 /// ExtensionService.FindProjectForOriginAsync, which now reads ProjectAppUrl, keeps working for
 /// every existing caller without them ever knowing environments exist.
 /// </summary>
@@ -32,18 +32,18 @@ public class ProjectAppUrlSyncTests
         new(new DbContextOptionsBuilder<AppDbContext>().UseInMemoryDatabase(dbName).Options, user,
             new Microsoft.Extensions.Configuration.ConfigurationBuilder().Build());
 
-    private static void SeedGlobalDefaultEnvironment(string dbName)
+    private static void SeedGlobalLocalEnvironment(string dbName)
     {
         using var db = BuildContext(new FakeCurrentUser { IsSuperAdmin = true }, dbName);
-        db.AppEnvironments.Add(new AppEnvironment { Name = "default", OwnerId = null });
+        db.AppEnvironments.Add(new AppEnvironment { Name = "local", OwnerId = null, IsEnabled = true });
         db.SaveChanges();
     }
 
     [Fact]
-    public async Task CreateAsync_WithAppUrl_SyncsProjectAppUrlOnDefaultEnvironment()
+    public async Task CreateAsync_WithAppUrl_SyncsProjectAppUrlOnLocalEnvironment()
     {
         var dbName = Guid.NewGuid().ToString();
-        SeedGlobalDefaultEnvironment(dbName);
+        SeedGlobalLocalEnvironment(dbName);
         var tenant = Guid.NewGuid();
         var admin = new FakeCurrentUser { Id = Guid.NewGuid(), IsAdmin = true, TenantId = tenant };
         var svc = new ProjectService(new UnitOfWork(BuildContext(admin, dbName)), admin, new PassThroughEntitlements(), TestProjectServiceDeps.Settings(), TestProjectServiceDeps.Configuration());
@@ -53,7 +53,7 @@ public class ProjectAppUrlSyncTests
 
         using var check = BuildContext(admin, dbName);
         var url = check.ProjectAppUrls.Include(u => u.AppEnvironment).Single();
-        Assert.Equal("default", url.AppEnvironment.Name);
+        Assert.Equal("local", url.AppEnvironment.Name);
         Assert.Equal("https://site.example.com", url.Url);
     }
 
@@ -61,7 +61,7 @@ public class ProjectAppUrlSyncTests
     public async Task ExtensionService_FindProjectForOrigin_MatchesViaProjectAppUrl()
     {
         var dbName = Guid.NewGuid().ToString();
-        SeedGlobalDefaultEnvironment(dbName);
+        SeedGlobalLocalEnvironment(dbName);
         var tenant = Guid.NewGuid();
         var admin = new FakeCurrentUser { Id = Guid.NewGuid(), IsAdmin = true, TenantId = tenant };
         var projectSvc = new ProjectService(new UnitOfWork(BuildContext(admin, dbName)), admin, new PassThroughEntitlements(), TestProjectServiceDeps.Settings(), TestProjectServiceDeps.Configuration());
@@ -78,7 +78,7 @@ public class ProjectAppUrlSyncTests
     public async Task ExtensionService_FindProjectForOrigin_NoMatch_ReturnsNotFound()
     {
         var dbName = Guid.NewGuid().ToString();
-        SeedGlobalDefaultEnvironment(dbName);
+        SeedGlobalLocalEnvironment(dbName);
         var tenant = Guid.NewGuid();
         var admin = new FakeCurrentUser { Id = Guid.NewGuid(), IsAdmin = true, TenantId = tenant };
         var projectSvc = new ProjectService(new UnitOfWork(BuildContext(admin, dbName)), admin, new PassThroughEntitlements(), TestProjectServiceDeps.Settings(), TestProjectServiceDeps.Configuration());
@@ -90,10 +90,10 @@ public class ProjectAppUrlSyncTests
     }
 
     [Fact]
-    public async Task SetAppUrlAsync_OnNonDefaultEnvironment_DoesNotMatchLegacyAppUrl()
+    public async Task SetAppUrlAsync_OnNonLocalEnvironment_DoesNotMatchLegacyAppUrl()
     {
         var dbName = Guid.NewGuid().ToString();
-        SeedGlobalDefaultEnvironment(dbName);
+        SeedGlobalLocalEnvironment(dbName);
         var tenant = Guid.NewGuid();
         var admin = new FakeCurrentUser { Id = Guid.NewGuid(), IsAdmin = true, TenantId = tenant };
         var svc = new ProjectService(new UnitOfWork(BuildContext(admin, dbName)), admin, new PassThroughEntitlements(), TestProjectServiceDeps.Settings(), TestProjectServiceDeps.Configuration());
@@ -102,17 +102,17 @@ public class ProjectAppUrlSyncTests
         int stagingEnvId;
         using (var db = BuildContext(new FakeCurrentUser { IsSuperAdmin = true }, dbName))
         {
-            var staging = new AppEnvironment { Name = "staging", OwnerId = null };
+            var staging = new AppEnvironment { Name = "staging", OwnerId = null, IsEnabled = true };
             db.AppEnvironments.Add(staging);
             db.SaveChanges();
             stagingEnvId = staging.Id;
         }
 
-        var setResult = await svc.SetAppUrlAsync(created.Id, stagingEnvId, new SetProjectAppUrlRequest { Url = "https://staging.example.com" });
+        var setResult = await svc.SetAppUrlAsync(created.Id, stagingEnvId, new SetProjectAppUrlRequest { Url = "https://staging.example.com", IsActive = true });
         Assert.True(setResult.IsSuccess);
 
         using var check = BuildContext(admin, dbName);
         var project = check.Projects.Single(p => p.Id == created.Id);
-        Assert.Null(project.AppUrl); // legacy field only syncs from the "default" environment
+        Assert.Null(project.AppUrl); // legacy field only syncs from the "local" environment
     }
 }

@@ -53,6 +53,7 @@ just up    # Start API + DB via Docker (API on :8090)
    (`.pointer/` files, env vars, element attributes, storage keys, served URLs, …). A PR that adds a
    new one must update that doc **and** `Tests/OnDiskContractTests.cs` in the same commit — the guard
    test fails otherwise.
+6. **Environments vs Tags:** The `AppEnvironment` catalog (`local`/`prod`/`staging`/custom) determines where a project's URLs live, which is **distinct** from the `EnvironmentTag` (Local/Staging/Production) a developer tags a comment with. See [`docs/roadmap/execution/R1-09-project-environment-urls.md`](docs/roadmap/execution/R1-09-project-environment-urls.md) for details.
 
 ### Directory structure
 
