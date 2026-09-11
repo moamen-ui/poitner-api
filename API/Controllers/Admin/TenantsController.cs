@@ -50,7 +50,9 @@ public class TenantsController(ITenantService tenantService, ITenantInviteServic
     }
 
     [HttpDelete("invites/{id:int}")]
-    [ProducesResponseType(typeof(TenantInviteResponse), StatusCodes.Status200OK)]
+    // Revoke returns a payload-less Result — annotating a body type here would generate a client
+    // method typed to a TenantInviteResponse the server never sends.
+    [ProducesResponseType(StatusCodes.Status200OK)]
     public async Task<IActionResult> RevokeInvite(int id)
     {
         var result = await tenantInvites.RevokeAsync(id);
