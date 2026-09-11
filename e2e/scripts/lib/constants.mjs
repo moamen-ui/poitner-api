@@ -35,11 +35,32 @@ export const USERS = {
 // The Client (QuickAccess) user, created via the invite flow and scoped to e2e-alpha.
 export const CLIENT = { email: 'client@example.com', password: 'ClientPass1!', displayName: 'E2E Client' };
 
+// The Flood user, dedicated sole author for 429 rate-limiting scenarios (00-HARNESS §3).
+export const FLOOD = { email: 'flood@example.com', password: 'FloodPass1!', displayName: 'E2E Flood', roleName: 'Tester' };
+
 export const PROJECTS = {
   alpha: { key: 'e2e-alpha', name: 'E2E Alpha', appUrl: 'https://e2e-alpha.example.test' },
   beta: { key: 'e2e-beta', name: 'E2E Beta', appUrl: 'https://e2e-beta.example.test' },
 };
 
+// Port registry per 00-HARNESS §2. Single source of truth.
+export const PORTS = {
+  smoke: 4173,
+  fresh: 4174,
+  viteReact: 4175,
+  cspNonce: 4176,
+  pinnedTamper: 4177,
+  privacy: 4178,
+  recorder: 4179,
+  pinned: 4180,
+  alpha: 4181,
+  beta: 4182,
+  registry: 4873,
+  caddy: 8443,
+  landing: 8099,
+};
+
 // The Developer account doubles as the documented automation account every AI-under-test
 // invocation uses (skill.md's recommended convention — "world (a)" in docs/E2E_TEST_PLAN.md).
 export const AUTOMATION_ACCOUNT = USERS.developer;
+
