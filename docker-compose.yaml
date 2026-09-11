@@ -11,6 +11,19 @@ services:
     build: { context: ., target: dev }
     env_file: .env
     ports: ["8090:8080"]
-    depends_on: [db]
+    depends_on: [db, mailpit]
     volumes: ["./:/src"]
-volumes: { pgdata: {} }
+  mailpit:
+    image: axllent/mailpit:latest
+    ports: ["8025:8025", "1025:1025"]
+  verdaccio:
+    image: verdaccio/verdaccio:6
+    ports: ["4873:4873"]
+    volumes:
+      - "./e2e/verdaccio/config.yaml:/verdaccio/conf/config.yaml"
+      - "verdaccio-storage:/verdaccio/storage"
+    profiles:
+      - e2e-nightly
+volumes:
+  pgdata: {}
+  verdaccio-storage: {}

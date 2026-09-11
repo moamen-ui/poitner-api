@@ -1,7 +1,7 @@
 // Post-AI-run scoring: reads server-side status/appliedAt/AppliedByLabel/Reply state only — zero
 // AI, zero free-text prose-quality judgment. Scoring discipline per docs/E2E_TEST_PLAN.md: every
 // criterion here is a literal status/timestamp/keyword check, never subjective.
-import { readFileSync, appendFileSync } from 'node:fs';
+import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { get, login } from './lib/api.mjs';
@@ -48,12 +48,19 @@ export async function scoreTc3Run(label) {
     noHallucinatedTouch: ea.mustNotTouch.every((id) => !byId[id]),
   };
 
-  appendFileSync(
-    REPORT_PATH,
-    `\n### TC3 — ${label}\n\n` +
-      Object.entries(criteria).map(([k, v]) => `- ${k}: ${v === null ? 'N/A' : v ? 'PASS' : 'FAIL'}`).join('\n') +
-      '\n',
-  );
+  const { record } = await import('./lib/report.mjs');
+  const result = Object.values(criteria).every((v) => v === true) ? 'PASS' : 'FAIL';
+  const detail = Object.entries(criteria).map(([k, v]) => `${k}:${v === null ? 'N/A' : v ? 'PASS' : 'FAIL'}`).join(', ');
+  
+  record({
+    id: label,
+    tier: 'manual', // or whatever tier AI cases are
+    layer: 'ai',
+    role: 'ai',
+    result,
+    ms: 0,
+    detail
+  });
 
   return criteria;
 }
@@ -71,12 +78,19 @@ export async function scoreListCase(label, { projectKey, includeIds = [], exclud
     answerMentionsNoInventedRole: !/(the admin|the pm|the developer) is [a-z]+@/.test((answerText || '').toLowerCase()),
   };
 
-  appendFileSync(
-    REPORT_PATH,
-    `\n### ${label}\n\n` +
-      Object.entries(criteria).map(([k, v]) => `- ${k}: ${v ? 'PASS' : 'FAIL'}`).join('\n') +
-      '\n',
-  );
+  const { record } = await import('./lib/report.mjs');
+  const result = Object.values(criteria).every((v) => v === true) ? 'PASS' : 'FAIL';
+  const detail = Object.entries(criteria).map(([k, v]) => `${k}:${v ? 'PASS' : 'FAIL'}`).join(', ');
+
+  record({
+    id: label,
+    tier: 'manual',
+    layer: 'ai',
+    role: 'ai',
+    result,
+    ms: 0,
+    detail
+  });
 
   return criteria;
 }

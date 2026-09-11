@@ -1,0 +1,71 @@
+name: E2E
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    paths:
+      - 'API/**'
+      - 'Application/**'
+      - 'Domain/**'
+      - 'Infrastructure/**'
+      - 'web-component/**'
+      - 'cli/**'
+      - 'e2e/**'
+  schedule:
+    - cron: '0 3 * * *'
+  workflow_dispatch:
+
+jobs:
+  unit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+      - run: dotnet build
+      - run: dotnet test --configuration Release --logger "trx"
+
+  e2e:
+    needs: unit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20.x'
+          cache: 'npm'
+      - name: Path filters
+        id: filter
+        uses: dorny/paths-filter@v3
+        with:
+          filters: |
+            cli:
+              - 'cli/**'
+      - name: Run E2E PR
+        if: github.event_name == 'pull_request'
+        env:
+          run_cli: ${{ steps.filter.outputs.cli }}
+        run: |
+          cd e2e
+          bash run-e2e.sh --pr --ci
+      - name: Run E2E Nightly
+        if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || github.event_name == 'push'
+        run: |
+          cd e2e
+          bash run-e2e.sh --nightly --ci
+      - name: Upload Report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: report
+          path: e2e/state/report.md
+      - name: Upload Traces
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: e2e/playwright-report/
