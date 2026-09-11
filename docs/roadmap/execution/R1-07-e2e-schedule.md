@@ -20,6 +20,14 @@ the same workflow.
   - Timeout 25 min. Concurrency group per ref (cancel in progress).
 - `e2e/run-e2e.sh`: add `--ci` flag → exports `CI=1` and skips any interactive prompt (verify none exists). Exit code must propagate (script already uses `set -euo pipefail`). No reporter env vars — the reporter is configured in code (next line).
 - `e2e/playwright.config.ts`: `retries: process.env.CI ? 1 : 0`, `trace: 'retain-on-failure'`, `reporter: process.env.CI ? [['github'], ['html', { open: 'never', outputFolder: 'playwright-report' }]] : 'list'`.
+- **`verdaccio` service (nightly only)** — harness §2/§6 level 3. Added to `docker-compose.yaml` as
+  `verdaccio/verdaccio:6` on port 4873 with the committed `e2e/verdaccio/config.yaml` (anonymous
+  publish for the `pointer-feedback*` pattern, default npmjs uplink for transitive deps) and a named
+  volume for its storage so `down -v` wipes it. **Decision: the workflow does not start it on PR
+  runs** — the image pull plus two publishes cost ~60–90 s and prove nothing a PR can break, so the
+  `e2e` job boots it only under `--nightly` (`docker compose up -d verdaccio` inside the
+  `--registry` phase, not in `reset.sh`). It adds **no** `api` recreates: the registry phase runs
+  inside the `Cli__MinVersion` window R1-04-04 already opens (harness §8).
 - Badge line in `README.md` and a "CI" paragraph in `e2e/README.md`.
 - Also add the `dotnet test` job to the same workflow (`Tests/`) if no other workflow runs it — `just test` equivalent: `dotnet test --configuration Release --logger "trx"`. **Decision:** include it; a PR gate without unit tests is incomplete.
 
@@ -29,6 +37,7 @@ the same workflow.
 3. Run the workflow via `workflow_dispatch` on the feature branch; fix flakiness (waits on `/swagger`, fixture server readiness) until two consecutive green runs.
 4. README badge + `e2e/README.md` CI section.
 5. Add `mailpit` to `docker-compose.yaml` (the compose file this workflow boots) per harness §2 — `axllent/mailpit:latest`, HTTP 8025 / SMTP 1025 container-internal, `Email__*` SMTP env on `api` — so the CI stack matches the harness.
+6. Add `verdaccio` to `docker-compose.yaml` (`verdaccio/verdaccio:6`, port 4873, named storage volume) plus the committed `e2e/verdaccio/config.yaml`; wire `run-e2e.sh --registry` to start it, run `e2e/cli/registry.spec.mjs` (R1-04-06) and stop it. Not started on PR runs. Cache the npm/npx download in the nightly job (`actions/setup-node` cache) so the phase stays under ~90 s.
 
 ## Dashboard tasks
 None.
@@ -40,7 +49,9 @@ This doc *is* test infrastructure. Verification = two green scheduled/dispatched
 - [ ] A PR touching `web-component/src/**` triggers the workflow and both jobs (`unit`, `e2e`) are green on the PR check run.
 - [ ] After merge, the nightly `schedule` run on the default branch is green and visible in Actions with artifacts (`playwright-report`, traces on failure, `report.md`).
 - [ ] Introducing a deliberate widget selector break in a test branch makes the `e2e` job fail with a Playwright trace artifact.
-- [ ] Total runtime < 15 min.
+- [ ] Total runtime < 15 min for the PR run (the nightly run, which adds the `--registry` phase and the
+      other nightly-only work, is budgeted separately at ≤ 45 min — harness §8).
+- [ ] The nightly run starts `verdaccio`, R1-04-06 is green, and the PR run never starts it.
 
 ## Rollout / compatibility
 CI only. Requires Docker on the runner (present on `ubuntu-latest`). If the repo becomes private/limited on Actions minutes, keep `schedule` and drop `pull_request` for `web-component` paths only.

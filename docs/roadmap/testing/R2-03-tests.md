@@ -35,6 +35,12 @@ AC-1 (line 1 `---`, stamp first line after frontmatter for both `.md`; `sed -n 2
 - `cli/test/skill-stamp.test.ts` (stamp on `.md` line 1 is **not** recognised; missing → null), `skill-paths.test.ts` (mapping matrix for every `aiTool` + `skillsDir` override — E2E covers only `cursor` and `other`), `update.test.ts` (stub-server replace/symlink/`--check` semantics).
 - Dashboard regeneration for `MetaResponse.skillVersion` — additive, verified by the contract guard (harness §10).
 - Caddy/TLS-served stamping — R3-03's header matrix.
+- **A registry-backed variant of `pointer update`** (harness §6 level 3) — deliberately **not added**.
+  `update` re-downloads the skills from **the API** (`../execution/R2-03-served-version-stamp.md`
+  §`pointer update`), not from npm, so running it out of a published tarball instead of `dist/cli.js`
+  exercises packaging, which the nightly level-2 `packaging` job already covers. The registry buys
+  nothing here; it earns its keep only where behaviour depends on *which version is published*
+  (R1-04-06) or on a package forwarding to another name (the post-rebrand deprecate-stub, §52).
 
 ## Flake notes
 

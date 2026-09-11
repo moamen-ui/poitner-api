@@ -32,12 +32,13 @@
 | `mailpit` | `axllent/mailpit:latest` | 8025 (HTTP UI+API); SMTP 1025 **container-internal only** | **Added by R1-07 task** (the service is not in `docker-compose.yaml` yet — adding it is the first harness task). **Decision: Mailpit** — the code already assumes it (`SmtpEmailSender.cs:12`, `.env.example:9-12`); MailHog is archived; smtp4dev is heavier. JSON API + parsed HTML/Text bodies |
 | fixture apps | host node, `e2e/fixture-app/serve.mjs` + `scripts/serve-dir.mjs` (R2-00) | 4173 smoke (**reserved** — the only page honouring `?project=`, `smoke/index.html` + `widget.spec.ts:19-20`) · **4181 `alpha`** (R2-04/R2-06) · 4174 fresh-app preview · 4175 `vite-react` (R3-01) · 4176 `csp-nonce` (R3-03) · 4177 `pinned-tamper` (R3-03) · 4178 `privacy` (R3-04) · 4179 recording proxy (R3-02) · 4180 pinned pages, route-fulfilled — no listener (R3-03) · **4182 `beta` origin fixture** (R1-05-06) · 8099 `landing` (R3-05) | `--strictPort`; started/killed by `run-e2e.sh` with the existing `trap` pattern |
 | caddy (nightly only) | `caddy:2-alpine` with the repo `Caddyfile`, upstream `api` | 8443 | R3-03 header matrix; **also the §13 TLS variant** (a `pick-it.test` site block with `tls internal`) |
+| `verdaccio` (nightly only) | `verdaccio/verdaccio:6` + committed `e2e/verdaccio/config.yaml` | 4873 | **Decision: Verdaccio.** A local npm registry so the CLI's *published* behaviour — version resolution, `@latest`, the `minCliVersion` upgrade hint, the post-rebrand deprecate-stub — is testable without publishing for real. Fits the harness constraints: no sudo, disposable (`down -v` wipes its storage volume), CI-friendly, and it proxies npmjs through its default uplink so a temp app's transitive deps still resolve. Started only by the phases that need it (§6 level 3) |
 
 The `api` service additionally accepts **`Pointer__PublicUrl`** (read by `PointerUrlResolver.ResolvePublicUrl`,
 `API/Extensions/PointerUrlResolver.cs:15-20`; unset in normal runs). §13 sets it through `restart-api.mjs`
 to pin the origin that `/embed.js`, the served skills and branding asset URLs advertise.
 
-Port registry lives in `e2e/scripts/lib/constants.mjs` as a **new `PORTS` export — it does not exist there today**; introducing it is a harness task, and this table is its single source (`PORTS = { smoke: 4173, fresh: 4174, viteReact: 4175, cspNonce: 4176, pinnedTamper: 4177, privacy: 4178, alpha: 4181, beta: 4182, recorder: 4179, pinned: 4180, caddy: 8443, landing: 8099 }`). Nothing hard-codes a port elsewhere.
+Port registry lives in `e2e/scripts/lib/constants.mjs` as a **new `PORTS` export — it does not exist there today**; introducing it is a harness task, and this table is its single source (`PORTS = { smoke: 4173, fresh: 4174, viteReact: 4175, cspNonce: 4176, pinnedTamper: 4177, privacy: 4178, alpha: 4181, beta: 4182, recorder: 4179, pinned: 4180, caddy: 8443, registry: 4873, landing: 8099 }`). Nothing hard-codes a port elsewhere.
 Optional isolated compose project for the 429 phase: `docker compose -p e2e-429 …` with shifted ports.
 
 ## 3. Personas (seed) — `e2e/scripts/seed.mjs` + `lib/constants.mjs`
@@ -119,14 +120,58 @@ assert the API-side `emailSent` flag where a response carries it.
 
 ## 6. CLI under test (`lib/cli.mjs`)
 
-- **PR tier**: `CLI_ENTRY=node <repo>/cli/dist/cli.js` after `npm run build` in `cli/` — zero global
-  state, tests the built artifact.
-- **Nightly `packaging` job**: `cd cli && npm pack` → `npm i -g ./pointer-feedback-*.tgz` in the job
-  sandbox → run `pointer init|doctor` and `node -e "import('pointer-feedback/vite')"` — proves `bin`,
-  `exports`, shebang. **Never `npm link`.**
-- Every CLI scenario runs in a fresh temp dir with `git init`, `git config user.email e2e@example.com`,
-  and (for apply) a bare remote from `lib/git.mjs`; never-push is asserted by comparing
-  `git for-each-ref` output of the bare remote before/after.
+Three fidelity levels. Each exists because the one below it cannot prove something; use the cheapest
+that proves the claim (§1 rule 4). The package is `cli/` per `../execution/R1-02-cli-init.md` §A —
+**it does not exist yet**, so every level is blocked on R1-02.
+
+| Level | How | Used by | Proves what the level below cannot |
+|---|---|---|---|
+| **1 — direct** | `CLI_ENTRY=node <repo>/cli/dist/cli.js` after `npm run build` in `cli/` | **PR tier**, every CLI scenario | — (the baseline: zero global state, seconds per run) |
+| **2 — tarball** | `cd cli && npm pack` → `npm i -g ./pointer-feedback-*.tgz` in the job sandbox → run `pointer init\|doctor` and `node -e "import('pointer-feedback/vite')"` | **nightly `packaging` job** | packaging itself: a missing `bin`, a broken shebang, files excluded by `files`/`.npmignore`, a bad `exports` map (which would break the `pointer-feedback/vite` subpath, R3-01) |
+| **3 — local registry** | publish the *same* tarball to Verdaccio (§2), then `npx --registry http://localhost:4873 pointer-feedback@<v>` | **nightly `--registry` phase** (R1-04-06) | anything that only exists *between versions*: `@latest` resolution, the `minCliVersion` upgrade hint end-to-end with a genuinely old CLI, and the post-rebrand deprecate-stub forwarding to the new name |
+
+**Never `npm link`** — it adds a global symlink that hides exactly the packaging bugs level 2 exists to
+catch, and it leaks between runs.
+
+### 6.1 Registry isolation (level 3)
+
+A local registry must never become the default for anything else on the machine. Four rules, all
+asserted in teardown:
+
+1. **`npm_config_userconfig=<tmp>/.npmrc`** on every `npm`/`npx` invocation — npm then never reads or
+   writes the developer's `~/.npmrc`. This is the guarantee; `--registry` alone is not, because
+   `npm publish` writes auth tokens to the user config by default.
+2. **`npm_config_cache=<tmp>/npm-cache`** — a `99.1.0` test build must not land in the real npm cache.
+3. **`--registry http://localhost:4873` explicitly on every call**, plus a project-level `.npmrc` in the
+   temp app dir. Belt and braces: the env var scopes config, the flag scopes the request.
+4. **Teardown asserts the developer's config is untouched**: `npm config get registry` (user location)
+   is captured before the phase and compared after, and `~/.npmrc` is hashed before/after. A mismatch
+   fails the phase — it means rule 1 was not applied somewhere.
+
+**Auth, non-interactively.** `npm publish` always sends a bearer token, even to a registry that allows
+anonymous publish, so a token must exist. The committed `e2e/verdaccio/config.yaml` grants
+`access`/`publish`/`unpublish` to `$all` for the `pointer-feedback*` package pattern, and the temp
+`.npmrc` carries a dummy token Verdaccio ignores:
+
+```
+registry=http://localhost:4873/
+//localhost:4873/:_authToken=e2e-local-only
+```
+
+No `npm adduser`, no interactive login, no real credential anywhere in the repo.
+
+**Version bumping without dirtying the repo.** `cli/package.json` stays at its real version. To publish a
+second version the spec **extracts the packed tarball into a scratch dir**, runs
+`npm version <v> --no-git-tag-version` *there*, and re-packs — so the published artifact keeps the same
+file list and layout as level 2's, and `git status` in `cli/` is clean afterwards. (Rejected: editing
+`cli/package.json` in place — a killed run leaves the repo on a fake version; and building from a copied
+source tree — that is a different artifact, defeating the point.)
+
+### 6.2 Common to every level
+
+Every CLI scenario runs in a fresh temp dir with `git init`, `git config user.email e2e@example.com`,
+and (for apply) a bare remote from `lib/git.mjs`; never-push is asserted by comparing
+`git for-each-ref` output of the bare remote before/after.
 
 ## 7. Token rule (AI tools)
 
@@ -146,7 +191,7 @@ assert the API-side `emailSent` flag where a response carries it.
 | Tier | Runs | Budget | Contents |
 |---|---|---|---|
 | **PR** | every PR touching `API/**`, `Application/**`, `Domain/**`, `Infrastructure/**`, `web-component/**`, `cli/**`, `e2e/**` | ≤ 15 min | api + widget + cli **+ mail** specs marked PR; existing phases 1–4. **Decision:** mailpit runs on every PR run (a ~20 MB container started by `reset.sh`), so PR-tier mail rows such as `R2-05-08` (a 3 s absence check) are legal; slower mail rows stay nightly. **Budget headroom:** R3-04 adds three browser scenarios + a fourth fixture server and R3-05 two more, roughly tripling today's two-spec widget phase — still inside 15 min, but the next doc to add PR-tier browser work should re-measure before doing so. |
-| **Nightly** | `schedule` 03:00 UTC + `workflow_dispatch` | ≤ 45 min | PR set + fresh-app inits, white-label **incl. the mock-domain rebrand rehearsal (§13)**, mail, packaging, restart-dependent scenarios, header matrix, **429 phase last**, `upgrade` job |
+| **Nightly** | `schedule` 03:00 UTC + `workflow_dispatch` | ≤ 45 min | PR set + fresh-app inits, white-label **incl. the mock-domain rebrand rehearsal (§13)**, mail, packaging, restart-dependent scenarios, header matrix, the **`--registry` phase** (§6 level 3, folded into the `Cli__MinVersion` restart window — zero extra recreates), **429 phase last**, `upgrade` job |
 | **Manual** | on demand | — | anything needing a real AI tool, a real deploy, or human judgement — plus the **§13 TLS variant** (`--mock-domain-tls`) and the pre-rename rebrand gate (§13.5) |
 
 **Per-scenario path filters** ("PR (paths `cli/**`)") are implemented with `dorny/paths-filter` in

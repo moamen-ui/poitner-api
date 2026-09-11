@@ -78,6 +78,7 @@ Read before estimating anything — several items are *wiring*, not features.
 |---|---|---|
 | R2.0 | **NEW-4b** fresh-app init E2E (Vite + Angular + static) + white-label CI job (second server URL, custom branding, zero hard-coded name) | 2 d |
 | R2.0b | **§52 mock-domain rebrand rehearsal** — the same stack served as **PickIt at pick-it.test**: widget, served skills, `/embed.js`, CLI output, landing page and **e-mails** all follow the new name *and* domain, then teardown restores both. No product code — `Pointer__PublicUrl` + DB branding + a Chromium resolver rule. **Run this and `verify-no-pointer.sh` green as the gate before executing the rebrand.** Folded into R2.0 (shares its branding helpers, teardown and CI job). | 1 d |
+| R2.0c | **NEW-4c local npm registry** — a Verdaccio container in the nightly stack so the CLI's *published* behaviour is testable without publishing for real: `@latest` resolution, the `minCliVersion` upgrade hint against a genuinely older CLI (R1-04-06), and the post-rebrand deprecate-stub. Closes the last surface that still needed a public deploy to verify. Zero extra API restarts — it reuses the `Cli__MinVersion` window. | ½ d |
 | R2.1 | **§7 apply core** as shared lib + `npx -y pointer-feedback apply` (`--plan` dry run from §8 rides along; `--tool claude\|cursor\|opencode` hand-off or print/clipboard) | 1–2 w |
 | R2.2 | **§24 MCP server** (`npx -y pointer-feedback mcp`, same package): `list_comments`, `get_comment`, `mark_applied`, `reply`, `resolve_source`; `.mcp.json` documented as user-level config | 1–2 w |
 | R2.3 | **NEW-2** served-file version stamp via existing `<POINTER_SERVER>` middleware; `doctor` compares; `pointer update` refreshes; `curl\|sh` warns | ½ d |
@@ -278,7 +279,7 @@ Today: tier 1 `data-component-source` attr → tier 2 dev-mode fiber/Vue interna
 
 ### NEW items from review
 
-NEW-1 on-disk contract freeze · NEW-2 served-file version stamp + `pointer update` · NEW-3 widget release engineering · NEW-4a/b continuous verification · NEW-5 API-key hardening · NEW-6 public privacy/self-host page · S6 secrets/payload advisory flag.
+NEW-1 on-disk contract freeze · NEW-2 served-file version stamp + `pointer update` · NEW-3 widget release engineering · NEW-4a/b/c continuous verification (c = local npm registry, harness §6 level 3) · NEW-5 API-key hardening · NEW-6 public privacy/self-host page · S6 secrets/payload advisory flag.
 
 ---
 
