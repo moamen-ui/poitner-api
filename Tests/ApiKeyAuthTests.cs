@@ -34,7 +34,7 @@ public class ApiKeyAuthTests
         public bool Verify(string p, string h) => h == "h:" + p;
     }
 
-    private sealed class FakeToken : ITokenService { public string Issue(User u) => "jwt-for-" + u.Email; }
+    private sealed class FakeToken : ITokenService { public string Issue(User u, int? keyScopes = null) => "jwt-for-" + u.Email; }
 
     private sealed class FakeReset : IResetTokenService
     {
@@ -81,9 +81,9 @@ public class ApiKeyAuthTests
             new Microsoft.Extensions.Configuration.ConfigurationBuilder().Build());
 
     private static AuthService BuildAuthService(AppDbContext db, ICurrentUser user) =>
-        new(new UnitOfWork(db), new IdentityHasher(), new FakeToken(), user, new NoopSettings(), new FakeReset(), new NoopEmail(), new NoopBrandingService());
+        new(new UnitOfWork(db), new IdentityHasher(), new FakeToken(), user, new NoopSettings(), new FakeReset(), new NoopEmail(), new NoopBrandingService(), new ApiKeyService(new UnitOfWork(db), new TestApiKeyProtector()));
 
-    private static ProfileService BuildProfileService(AppDbContext db) => new(new UnitOfWork(db));
+    private static ProfileService BuildProfileService(AppDbContext db) => new(new UnitOfWork(db), new ApiKeyService(new UnitOfWork(db), new TestApiKeyProtector()));
 
     private static Guid SeedUser(string dbName, out Guid tenant)
     {

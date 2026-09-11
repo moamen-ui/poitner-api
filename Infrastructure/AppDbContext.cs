@@ -46,6 +46,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options, ICurrentUser c
     public DbSet<PredefinedAction> PredefinedActions => Set<PredefinedAction>();
     public DbSet<PredefinedActionSuggestion> PredefinedActionSuggestions => Set<PredefinedActionSuggestion>();
     public DbSet<Invite> Invites => Set<Invite>();
+    public DbSet<ApiKey> ApiKeys => Set<ApiKey>();
     public DbSet<AppSetting> AppSettings => Set<AppSetting>();
     public DbSet<Plan> Plans => Set<Plan>();
     public DbSet<Subscription> Subscriptions => Set<Subscription>();
@@ -69,6 +70,9 @@ public class AppDbContext(DbContextOptions<AppDbContext> options, ICurrentUser c
         // Strict-own: visible only to the owning tenant or super-admin.
         b.Entity<Project>().HasQueryFilter(e => currentUser.IsSuperAdmin || (currentUser.TenantId != null && e.OwnerId == currentUser.TenantId) || (currentUser.TenantId == null && !strict && e.OwnerId == null));
         b.Entity<User>().HasQueryFilter(e => currentUser.IsSuperAdmin || (currentUser.TenantId != null && e.OwnerId == currentUser.TenantId) || (currentUser.TenantId == null && !strict && e.OwnerId == null));
+        // Strict-own like its owning User. Login and the backfill deliberately IgnoreQueryFilters —
+        // they run before any tenant context exists — and stamp OwnerId from the user instead.
+        b.Entity<ApiKey>().HasQueryFilter(e => currentUser.IsSuperAdmin || (currentUser.TenantId != null && e.OwnerId == currentUser.TenantId) || (currentUser.TenantId == null && !strict && e.OwnerId == null));
         b.Entity<Comment>().HasQueryFilter(e => currentUser.IsSuperAdmin || (currentUser.TenantId != null && e.OwnerId == currentUser.TenantId) || (currentUser.TenantId == null && !strict && e.OwnerId == null));
         b.Entity<Reply>().HasQueryFilter(e => currentUser.IsSuperAdmin || (currentUser.TenantId != null && e.OwnerId == currentUser.TenantId) || (currentUser.TenantId == null && !strict && e.OwnerId == null));
         // PageContextSnapshot carries browser-captured console/network data for a tenant's project —

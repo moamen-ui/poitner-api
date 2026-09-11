@@ -32,7 +32,7 @@ public class ChangePasswordTests
         public bool Verify(string p, string h) => h == "h:" + p;
     }
 
-    private sealed class FakeToken : ITokenService { public string Issue(User u) => "t"; }
+    private sealed class FakeToken : ITokenService { public string Issue(User u, int? keyScopes = null) => "t"; }
     private sealed class FakeReset : IResetTokenService
     {
         public string Create(Guid id, Guid stamp) => "r";
@@ -83,7 +83,7 @@ public class ChangePasswordTests
 
     private static AuthService Auth(AppDbContext db, ICurrentUser user, SpyEmailService? email = null) =>
         new(new UnitOfWork(db), new IdentityHasher(), new FakeToken(), user, new FakeSettings(),
-            new FakeReset(), email ?? new SpyEmailService(), new NoopBrandingService());
+            new FakeReset(), email ?? new SpyEmailService(), new NoopBrandingService(), new ApiKeyService(new UnitOfWork(db), new TestApiKeyProtector()));
 
     // Seeds one active user with password "OldPass123" and returns (publicId, ownerId, originalStamp).
     private static (Guid publicId, Guid ownerId, Guid stamp) SeedUser(string db)

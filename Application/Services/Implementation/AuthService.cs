@@ -20,6 +20,7 @@ public class AuthService : IAuthService
     private readonly IResetTokenService _resetTokens;
     private readonly IEmailService _emailService;
     private readonly IBrandingService _branding;
+    private readonly IApiKeyService _apiKeys;
 
     public AuthService(
         IUnitOfWork unitOfWork,
@@ -29,9 +30,11 @@ public class AuthService : IAuthService
         ISettingsService settings,
         IResetTokenService resetTokens,
         IEmailService emailService,
-        IBrandingService branding)
+        IBrandingService branding,
+        IApiKeyService apiKeys)
     {
         _unitOfWork = unitOfWork;
+        _apiKeys = apiKeys;
         _passwordHasher = passwordHasher;
         _tokenService = tokenService;
         _currentUser = currentUser;
@@ -204,16 +207,15 @@ public class AuthService : IAuthService
         if (string.IsNullOrEmpty(key))
             return Result<LoginResponse>.Failure(MessageKeys.Auth.InvalidApiKey);
 
-        // Anonymous (no tenant claim yet) — same IgnoreQueryFilters reasoning as LoginAsync.
-        var user = await _unitOfWork.Repository<User>()
-            .Query()
-            .IgnoreQueryFilters()
-            .AsNoTracking()
-            .Include(u => u.Role)
-            .Where(u => u.DeletedAt == null && u.ApiKey == key)
-            .FirstOrDefaultAsync();
+        // Matched on the SHA-256 hash, never on stored plaintext. ResolveAsync ignores query filters
+        // because this runs pre-authentication, with no tenant claim to filter by.
+        var apiKey = await _apiKeys.ResolveAsync(key);
+        if (apiKey?.User == null)
+            return Result<LoginResponse>.Failure(MessageKeys.Auth.InvalidApiKey);
 
-        if (user == null)
+        var user = apiKey.User;
+
+        if (user.DeletedAt != null)
             return Result<LoginResponse>.Failure(MessageKeys.Auth.InvalidApiKey);
 
         if (user.ApprovalStatus == ApprovalStatus.Pending)
@@ -228,7 +230,10 @@ public class AuthService : IAuthService
             return Result<LoginResponse>.Failure(MessageKeys.Auth.Disabled,
                 new LoginResponse { Status = "disabled" });
 
-        var token = _tokenService.Issue(user);
+        var token = _tokenService.Issue(user, apiKey.Scopes);
+
+        // Best-effort usage stamp; throttled to once a minute inside the service.
+        await _apiKeys.TouchLastUsedAsync(apiKey.Id);
 
         return Result<LoginResponse>.Success(new LoginResponse
         {
