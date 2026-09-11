@@ -4,6 +4,11 @@ public class UpdateSettingsRequest
 {
     public bool ScopedAdminSignupEnabled { get; set; }
 
+    // Optional override for invitation join links. Empty = use the branding app URL
+    // (PUT /api/admin/branding -> urls.app); only set this when the /join page lives on a
+    // different origin than the dashboard. See InviteService.GetAppBaseUrlAsync.
+    public string AppBaseUrl { get; set; } = string.Empty;
+
     // Email (editable; the API key is set via env, not here).
     public bool EmailEnabled { get; set; }
     public string EmailFromEmail { get; set; } = string.Empty;

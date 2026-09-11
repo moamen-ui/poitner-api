@@ -4,6 +4,13 @@ public class SettingsResponse
 {
     public bool ScopedAdminSignupEnabled { get; set; }
 
+    // Raw override (empty when unset — the effective value then comes from branding's urls.app).
+    public string AppBaseUrl { get; set; } = string.Empty;
+
+    // The URL invitation links will actually use, after the app_base_url -> brand_url_app ->
+    // default fallback. Read-only: shown so a super admin can see where invites will point.
+    public string EffectiveAppBaseUrl { get; set; } = string.Empty;
+
     // Email (super-admin editable). The API key itself is never returned — only whether one is set.
     public bool EmailEnabled { get; set; }
     public string EmailFromEmail { get; set; } = string.Empty;

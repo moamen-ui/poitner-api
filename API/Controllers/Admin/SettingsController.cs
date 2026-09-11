@@ -21,6 +21,9 @@ public class SettingsController(ISettingsService settingsService, IConfiguration
     // The extension zip is a landing-domain artifact served by Caddy (see DEPLOY.md/Caddyfile) —
     // matches the dashboards' EXTENSION_ZIP_URL fallback until this is ever overridden here.
     private const string DefaultExtensionZipUrl = "https://pointer.moamen.work/pointer-extension.zip";
+    // Must match InviteService.DefaultAppBaseUrl — the last resort when neither app_base_url nor
+    // brand_url_app is set. Only used to show the effective value on this page.
+    private const string DefaultAppBaseUrl = "https://app.pointer.moamen.work";
 
     [HttpGet]
     [ProducesResponseType(typeof(Result<SettingsResponse>), StatusCodes.Status200OK)]
@@ -34,6 +37,9 @@ public class SettingsController(ISettingsService settingsService, IConfiguration
     public async Task<IActionResult> Update([FromBody] UpdateSettingsRequest request)
     {
         await settingsService.SetBoolAsync(ISettingsService.ScopedAdminSignupEnabled, request.ScopedAdminSignupEnabled);
+
+        // Invitation join-link base. Optional override; empty means "use branding's urls.app".
+        await settingsService.SetStringAsync(ISettingsService.AppBaseUrl, request.AppBaseUrl?.Trim().TrimEnd('/') ?? string.Empty);
 
         // Email
         await settingsService.SetBoolAsync(ISettingsService.EmailEnabled, request.EmailEnabled);
@@ -58,9 +64,16 @@ public class SettingsController(ISettingsService settingsService, IConfiguration
     {
         // From-email/name fall back to the env config when not yet overridden in the DB, so the
         // page shows the effective value. The API key is a secret — only its presence is reported.
+        var appBaseUrl = (await settingsService.GetStringAsync(ISettingsService.AppBaseUrl)).Trim();
+        var brandUrlApp = (await settingsService.GetStringAsync(ISettingsService.BrandUrlApp)).Trim();
+
         return new SettingsResponse
         {
             ScopedAdminSignupEnabled = await settingsService.GetBoolAsync(ISettingsService.ScopedAdminSignupEnabled),
+            AppBaseUrl = appBaseUrl,
+            EffectiveAppBaseUrl = !string.IsNullOrWhiteSpace(appBaseUrl)
+                ? appBaseUrl
+                : (!string.IsNullOrWhiteSpace(brandUrlApp) ? brandUrlApp : DefaultAppBaseUrl),
             EmailEnabled = await settingsService.GetBoolAsync(ISettingsService.EmailEnabled),
             EmailFromEmail = await settingsService.GetStringAsync(ISettingsService.EmailFromEmail, configuration["Email:FromEmail"] ?? string.Empty),
             EmailFromName = await settingsService.GetStringAsync(ISettingsService.EmailFromName, configuration["Email:FromName"] ?? "Pointer"),

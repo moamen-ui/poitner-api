@@ -673,9 +673,21 @@ public class InviteService : IInviteService
         return Convert.ToBase64String(bytes).TrimEnd('=').Replace('+', '-').Replace('/', '_');
     }
 
+    // Where the invitee's join link points. Resolution order, first non-empty wins:
+    //   1. app_base_url  — an explicit override, for the rare install whose /join page is not on
+    //      the same origin as the dashboard. Editable at PUT /api/admin/settings.
+    //   2. brand_url_app — the dashboard URL every white-labelled install already configures
+    //      (PUT /api/admin/branding -> urls.app). Without this step a self-hosted instance mailed
+    //      join links pointing at the SaaS host, where the code does not exist: the invite was
+    //      simply dead. app_base_url had no writer at all before this, so the fallback below was
+    //      the only reachable value.
+    //   3. the compiled default (this project's own SaaS dashboard).
     private async Task<string> GetAppBaseUrlAsync()
     {
-        var configured = await _settings.GetStringAsync(ISettingsService.AppBaseUrl, DefaultAppBaseUrl);
+        var configured = await _settings.GetStringAsync(ISettingsService.AppBaseUrl);
+        if (string.IsNullOrWhiteSpace(configured))
+            configured = await _settings.GetStringAsync(ISettingsService.BrandUrlApp);
+
         return string.IsNullOrWhiteSpace(configured) ? DefaultAppBaseUrl : configured.TrimEnd('/');
     }
 
