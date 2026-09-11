@@ -39,7 +39,7 @@ public class ProjectPerEnvironmentActivationTests
         var dbName = Guid.NewGuid().ToString();
         var tenant = Guid.NewGuid();
         var admin = new FakeCurrentUser { Id = Guid.NewGuid(), IsAdmin = true, TenantId = tenant };
-        var svc = new ProjectService(new UnitOfWork(BuildContext(admin, dbName)), admin, new PassThroughEntitlements());
+        var svc = new ProjectService(new UnitOfWork(BuildContext(admin, dbName)), admin, new PassThroughEntitlements(), TestProjectServiceDeps.Settings(), TestProjectServiceDeps.Configuration());
 
         var created = await svc.CreateAsync(new CreateProjectRequest { Key = "site", Name = "Site" });
         Assert.True(created.IsSuccess);
@@ -61,7 +61,7 @@ public class ProjectPerEnvironmentActivationTests
         var dbName = Guid.NewGuid().ToString();
         var tenant = Guid.NewGuid();
         var admin = new FakeCurrentUser { Id = Guid.NewGuid(), IsAdmin = true, TenantId = tenant };
-        var svc = new ProjectService(new UnitOfWork(BuildContext(admin, dbName)), admin, new PassThroughEntitlements());
+        var svc = new ProjectService(new UnitOfWork(BuildContext(admin, dbName)), admin, new PassThroughEntitlements(), TestProjectServiceDeps.Settings(), TestProjectServiceDeps.Configuration());
         var created = (await svc.CreateAsync(new CreateProjectRequest { Key = "site", Name = "Site" })).Data!;
 
         var updated = await svc.UpdateAsync(created.Id, new UpdateProjectRequest { IsActiveStaging = false });
@@ -88,7 +88,7 @@ public class ProjectPerEnvironmentActivationTests
         var dbName = Guid.NewGuid().ToString();
         var tenant = Guid.NewGuid();
         var admin = new FakeCurrentUser { Id = Guid.NewGuid(), IsAdmin = true, TenantId = tenant };
-        var svc = new ProjectService(new UnitOfWork(BuildContext(admin, dbName)), admin, new PassThroughEntitlements());
+        var svc = new ProjectService(new UnitOfWork(BuildContext(admin, dbName)), admin, new PassThroughEntitlements(), TestProjectServiceDeps.Settings(), TestProjectServiceDeps.Configuration());
         var created = (await svc.CreateAsync(new CreateProjectRequest { Key = "site", Name = "Site" })).Data!;
 
         var updated = await svc.UpdateAsync(created.Id, new UpdateProjectRequest
@@ -110,7 +110,7 @@ public class ProjectPerEnvironmentActivationTests
         var dbName = Guid.NewGuid().ToString();
         var tenant = Guid.NewGuid();
         var admin = new FakeCurrentUser { Id = Guid.NewGuid(), IsAdmin = true, TenantId = tenant };
-        var svc = new ProjectService(new UnitOfWork(BuildContext(admin, dbName)), admin, new PassThroughEntitlements());
+        var svc = new ProjectService(new UnitOfWork(BuildContext(admin, dbName)), admin, new PassThroughEntitlements(), TestProjectServiceDeps.Settings(), TestProjectServiceDeps.Configuration());
         var created = (await svc.CreateAsync(new CreateProjectRequest { Key = "site", Name = "Site" })).Data!;
 
         var updated = await svc.UpdateAsync(created.Id, new UpdateProjectRequest
@@ -129,7 +129,7 @@ public class ProjectPerEnvironmentActivationTests
         var dbName = Guid.NewGuid().ToString();
         var tenant = Guid.NewGuid();
         var admin = new FakeCurrentUser { Id = Guid.NewGuid(), IsAdmin = true, TenantId = tenant };
-        var svc = new ProjectService(new UnitOfWork(BuildContext(admin, dbName)), admin, new PassThroughEntitlements());
+        var svc = new ProjectService(new UnitOfWork(BuildContext(admin, dbName)), admin, new PassThroughEntitlements(), TestProjectServiceDeps.Settings(), TestProjectServiceDeps.Configuration());
         var created = (await svc.CreateAsync(new CreateProjectRequest { Key = "site", Name = "Site" })).Data!;
 
         var updated = await svc.UpdateAsync(created.Id, new UpdateProjectRequest
@@ -148,7 +148,7 @@ public class ProjectPerEnvironmentActivationTests
         var dbName = Guid.NewGuid().ToString();
         var tenant = Guid.NewGuid();
         var admin = new FakeCurrentUser { Id = Guid.NewGuid(), IsAdmin = true, TenantId = tenant };
-        var svc = new ProjectService(new UnitOfWork(BuildContext(admin, dbName)), admin, new PassThroughEntitlements());
+        var svc = new ProjectService(new UnitOfWork(BuildContext(admin, dbName)), admin, new PassThroughEntitlements(), TestProjectServiceDeps.Settings(), TestProjectServiceDeps.Configuration());
         var created = (await svc.CreateAsync(new CreateProjectRequest { Key = "site", Name = "Site" })).Data!;
 
         var updated = await svc.UpdateAsync(created.Id, new UpdateProjectRequest

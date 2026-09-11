@@ -36,6 +36,7 @@ public class ProjectMapping : IEntityTypeConfiguration<Project>
         b.Property(x => x.AiToolsUsed).HasColumnName("ai_tools_used").HasMaxLength(1024);
         b.Property(x => x.EnvironmentSelectorRoleIds).HasColumnName("environment_selector_role_ids").HasMaxLength(1024);
         b.Property(x => x.CommitStyle).HasColumnName("commit_style").HasDefaultValue(CommitStyle.Single);
+        b.Property(x => x.EnforceAllowedOrigins).HasColumnName("enforce_allowed_origins").HasDefaultValue(false);
         // NOT NULL at the DB level: ProjectService.CreateAsync forbids a null-owner project (super
         // admins can no longer create/own one at all) — enforced here too so a future bug can't
         // silently reintroduce the recurring "owner_id" bug class by producing one anyway.

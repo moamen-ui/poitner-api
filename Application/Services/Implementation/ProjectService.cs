@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Configuration;
 using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using Pointer.Application.Abstractions;
@@ -18,12 +19,99 @@ public class ProjectService : IProjectService
     private readonly ICurrentUser _currentUser;
     private readonly IEntitlementService _entitlements;
 
-    public ProjectService(IUnitOfWork unitOfWork, ICurrentUser currentUser, IEntitlementService entitlements)
+    public ProjectService(
+        IUnitOfWork unitOfWork,
+        ICurrentUser currentUser,
+        IEntitlementService entitlements,
+        ISettingsService settings,
+        IConfiguration configuration)
     {
         _unitOfWork = unitOfWork;
         _currentUser = currentUser;
         _entitlements = entitlements;
+        _settings = settings;
+        _configuration = configuration;
     }
+
+    private readonly ISettingsService _settings;
+    private readonly IConfiguration _configuration;
+
+    /// <summary>
+    /// Hosts that are always allowed to post, whatever a project's app-URL rows say: the dashboard
+    /// itself (staff reply and change status from there) and any extra front-end hosts an operator
+    /// lists. Without this, turning enforcement on would 403 every reply sent from the dashboard.
+    /// </summary>
+    private async Task<HashSet<string>> TrustedOriginsAsync()
+    {
+        var trusted = new HashSet<string>(StringComparer.Ordinal);
+
+        var brandApp = await _settings.GetStringAsync(ISettingsService.BrandUrlApp);
+        if (!string.IsNullOrWhiteSpace(brandApp))
+            trusted.Add(OriginNormalizer.Normalize(brandApp));
+
+        // GetChildren rather than Get<string[]>(): the Application project references only
+        // Configuration.Abstractions, and the binder extension lives in Configuration.Binder.
+        foreach (var extra in _configuration.GetSection("Security:TrustedDashboardOrigins").GetChildren())
+        {
+            if (!string.IsNullOrWhiteSpace(extra.Value))
+                trusted.Add(OriginNormalizer.Normalize(extra.Value));
+        }
+
+        return trusted;
+    }
+
+    /// <summary>Loopback names a browser can actually send as an Origin. 0.0.0.0 is not one of them.</summary>
+    private static bool IsLocalhostOrigin(string normalisedOrigin)
+    {
+        if (!Uri.TryCreate(normalisedOrigin, UriKind.Absolute, out var uri))
+            return false;
+
+        var host = uri.Host.ToLowerInvariant().Trim('[', ']');
+        return host is "localhost" or "127.0.0.1" or "::1" || host.EndsWith(".localhost", StringComparison.Ordinal);
+    }
+
+    public async Task<bool> IsOriginAllowedAsync(
+        int projectId,
+        string? origin,
+        EnvironmentTag environment,
+        bool isQuickAccess)
+    {
+        var project = await _unitOfWork.Repository<Project>()
+            .Query()
+            .AsNoTracking()
+            .FirstOrDefaultAsync(p => p.Id == projectId && p.DeletedAt == null);
+
+        // Unknown project, or the owner never opted in: unchanged behaviour.
+        if (project is null || !project.EnforceAllowedOrigins)
+            return true;
+
+        if (string.IsNullOrWhiteSpace(origin))
+        {
+            // No Origin/Referer at all. Browsers always send one on a cross-origin POST, so this is
+            // automation — allowed for staff keys (the CLI and AI agents), refused for a client
+            // token, which has no legitimate non-browser path.
+            return !isQuickAccess;
+        }
+
+        var normalised = OriginNormalizer.Normalize(origin);
+
+        // A developer's dev server is never in the allow-list, and should not have to be.
+        if (environment == EnvironmentTag.Local && IsLocalhostOrigin(normalised))
+            return true;
+
+        if ((await TrustedOriginsAsync()).Contains(normalised))
+            return true;
+
+        var urls = await _unitOfWork.Repository<ProjectAppUrl>()
+            .Query()
+            .AsNoTracking()
+            .Where(u => u.ProjectId == projectId && u.IsActive && u.DeletedAt == null)
+            .Select(u => u.Url)
+            .ToListAsync();
+
+        return urls.Any(u => OriginNormalizer.Matches(u, normalised));
+    }
+
 
     public async Task<Result<ProjectResponse>> CreateAsync(CreateProjectRequest request)
     {

@@ -95,4 +95,16 @@ public interface IProjectService
     /// "disabled" (this is an anonymous, pre-auth check — it must not leak which is which).
     /// </summary>
     Task<Result<WidgetActivationResponse>> CheckWidgetActiveAsync(string key, string? origin);
+
+    /// <summary>
+    /// Whether a comment/reply may be accepted from <paramref name="origin"/> for this project.
+    /// Always true unless the project opted into <c>EnforceAllowedOrigins</c>.
+    ///
+    /// Deliberate carve-outs: a Local-tagged comment from a localhost origin is always allowed (no
+    /// team configures their dev port), the dashboard's own origins are always allowed (it posts
+    /// replies and status changes), and a request with no Origin/Referer at all is allowed for staff
+    /// tokens — that is how the CLI and AI agents post — but refused for quick-access clients, who
+    /// only ever arrive through a browser.
+    /// </summary>
+    Task<bool> IsOriginAllowedAsync(int projectId, string? origin, EnvironmentTag environment, bool isQuickAccess);
 }

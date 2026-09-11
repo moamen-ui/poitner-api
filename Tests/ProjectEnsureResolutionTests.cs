@@ -33,7 +33,7 @@ public class ProjectEnsureResolutionTests
             .Options, user, new Microsoft.Extensions.Configuration.ConfigurationBuilder().Build());
 
     private static ProjectService Wire(ICurrentUser user, string dbName) =>
-        new(new UnitOfWork(BuildContext(user, dbName)), user, new PassThroughEntitlements());
+        new(new UnitOfWork(BuildContext(user, dbName)), user, new PassThroughEntitlements(), TestProjectServiceDeps.Settings(), TestProjectServiceDeps.Configuration());
 
     private static void Seed(string dbName, params Project[] projects)
     {

@@ -35,7 +35,7 @@ public class CommentService : ICommentService
         _entitlements = entitlements;
     }
 
-    public async Task<Result<CommentResponse>> CreateAsync(string projectKey, CreateCommentRequest request, Guid authorId)
+    public async Task<Result<CommentResponse>> CreateAsync(string projectKey, CreateCommentRequest request, Guid authorId, string? origin = null)
     {
         // Super admins are platform-management only — they never leave comments under their own
         // identity. Someone who wants to use the product signs in with a real tenant account instead.
@@ -50,6 +50,12 @@ public class CommentService : ICommentService
             return projectResult.IsConflict
                 ? Result<CommentResponse>.Conflict(projectResult.Message ?? MessageKeys.Project.Disabled)
                 : Result<CommentResponse>.NotFound(projectResult.Message ?? MessageKeys.Project.NotFound);
+
+        // Origin allow-list (R1-05). Opt-in per project; a project that never enabled it is
+        // unaffected. Runs after the project resolves so we know which rows to match against.
+        if (!await _projectService.IsOriginAllowedAsync(
+                projectResult.Data, origin, request.Environment, _currentUser.IsQuickAccess))
+            return Result<CommentResponse>.Forbidden(MessageKeys.Project.OriginNotAllowed);
 
         // Stamp OwnerId from the PROJECT's tenant: a comment belongs to whoever owns
         // the project, regardless of who authored it. This is correct even when a super
@@ -586,7 +592,7 @@ public class CommentService : ICommentService
         return Result<CommentResponse>.Success(MapToResponse(comment, names));
     }
 
-    public async Task<Result<ReplyResponse>> AddReplyAsync(int commentId, AddReplyRequest request, Guid authorId)
+    public async Task<Result<ReplyResponse>> AddReplyAsync(int commentId, AddReplyRequest request, Guid authorId, string? origin = null)
     {
         // Belt-and-suspenders: auto-validation (AddReplyValidator) rejects empty/oversized bodies on
         // model binding, but guard here too so a direct call / null body returns 400 not a 500.
@@ -609,6 +615,12 @@ public class CommentService : ICommentService
         // already scope to it), so it can't reply on one either.
         if (_currentUser.IsQuickAccess && comment.AuthorId != authorId)
             return Result<ReplyResponse>.NotFound(MessageKeys.Comment.NotFound);
+
+        // Origin allow-list (R1-05). AddReplyRequest carries no environment of its own, so the
+        // parent comment's tag decides whether the localhost carve-out applies.
+        if (!await _projectService.IsOriginAllowedAsync(
+                comment.ProjectId, origin, comment.Environment, _currentUser.IsQuickAccess))
+            return Result<ReplyResponse>.Forbidden(MessageKeys.Project.OriginNotAllowed);
 
         // Replies inherit the parent comment's tenant owner.
         var reply = new Reply
