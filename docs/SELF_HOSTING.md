@@ -151,9 +151,11 @@ The dashboard (Overview/stats, Roles, Users, Projects, signup approvals) is a st
   dashboard's: `npm run generate-clients` (API up on `:8090`, tags filtered by `orval.config.ts`)
   writes `clients/{angular,react,vue}/src`, `npm run build-clients` builds them, and
   `.github/workflows/publish-clients.yml` publishes `@moamen-ui/pointer-{angular,react,vue}` to
-  GitHub Packages. The dashboard apps just install those packages — they generate nothing. A
-  self-hoster who changes endpoints must therefore publish clients to a registry their dashboard
-  build can reach (or point the apps at a local build).
+  GitHub Packages. The dashboard apps just install those packages — they generate nothing. For **local
+  development without deploying**, run `npm run clients:local` to generate against the local API,
+  build, and publish prerelease packages (`0.0.0-local.<unix>`) to local Verdaccio on `:4873`, then install
+  into each dashboard app using `--no-save`. A self-hoster who changes endpoints in production must publish
+  clients to a registry their dashboard build can reach (or point the apps at a local build).
 - **Language + theme:** AR/EN (Arabic flips to RTL) and light/dark, saved per-user in the DB
   (`PATCH /api/me/preferences`).
 - In production it's served as static files by Caddy at `app.pointer.moamen.work` — see
