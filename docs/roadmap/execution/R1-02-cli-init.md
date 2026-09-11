@@ -96,7 +96,11 @@ pointer init [--server <url>] [--key <ptr_…>] [--project <key>] [--create <nam
    "Where does this app run in {environment}? [http://localhost:5173]:"
    → Enter accepts the detected value; anything typed replaces it; an empty line skips
      (the project is created with no URL for that environment and `doctor` reports ⚠).
-   → Sent with the project create/update per R1-09's shape (URL + the environment it belongs to).
+   → Sent on create as `CreateProjectRequest { appUrl, appEnvironmentId? }` (R1-09 §Data): omit
+     `appEnvironmentId` to accept the `local` default; send it when step 4's environment is not local
+     and a matching enabled environment exists (resolve via `GET /api/admin/environments`).
+     A disabled/retired environment returns **400** and a foreign one **404** — surface the server's
+     message and re-prompt (interactive) or exit 1 (`--yes`).
    → Non-interactive: `--app-url <url>` overrides detection; `--no-app-url` skips.
 5  AI tool [detected: claude-code]:  select claude-code | cursor | windsurf | opencode | antigravity | other
 6  Detecting your stack… → prints kind + evidence (e.g. "Vite (vite.config.ts, index.html)")

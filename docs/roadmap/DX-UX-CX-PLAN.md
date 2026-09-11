@@ -70,6 +70,7 @@ Read before estimating anything — several items are *wiring*, not features.
 | R1.6 | **NEW-5 API-key hardening** — `ApiKey` table (`UserId`, `Prefix` 12 chars indexed, `Hash` SHA-256, `Scopes` default Full, `LastUsedAt`, `RevokedAt`, `OwnerId`); migration hashes + encrypts existing keys into it; `User.ApiKey` column **kept this release (additive rule), dropped in R2**; key string format unchanged; key stays re-viewable (AES-GCM for display, SHA-256 for lookup — see `execution/R1-06`). *Slip candidate → R2 week 1, before MCP.* | 2–3 d |
 | R1.7 | **NEW-4a** schedule the existing `e2e/` suite in CI | ½ d |
 | R1.8 | **§50 tenant invitation (CRITICAL)** — a super admin invites a workspace owner **by email**; the invitee sets their own password from the link. Direct create-with-password stays as a secondary, explicitly-labelled path. | 2–3 d |
+| R1.9 | **§51 project URLs per enabled environment** — every project URL attaches to a named environment from the workspace catalog, and only to one the workspace has **enabled**; the seeded `default` environment is retired in favour of `local` (old rows migrate). Create still takes one URL in one step, with the environment-URL table shown from the start. **Must land before or together with R1.2** — it changes `CreateProjectRequest`, which `npx pointer-feedback init` calls. | 3–4 d |
 
 ### Release 2 — apply from anywhere
 
@@ -207,6 +208,34 @@ Today: tier 1 `data-component-source` attr → tier 2 dev-mode fiber/Vue interna
     at the SaaS host, where the code does not exist.
     Spec: [`execution/R1-08-tenant-invitation.md`](execution/R1-08-tenant-invitation.md) ·
     Tests: [`testing/R1-08-tests.md`](testing/R1-08-tests.md).
+
+51. **Project URLs belong to enabled workspace environments (R1.9).** `Project.AppUrl` is a single
+    nameless URL that silently lands on a seeded global environment called `default`
+    (`ProjectService.SyncDefaultAppUrlAsync:557-590`) — an environment that exists only because the
+    old one-field model needed somewhere to put its one URL. **Change:** every project URL attaches to
+    a named environment from the tenant's own `AppEnvironment` catalog, and only to one the workspace
+    has **enabled** (new `AppEnvironment.IsEnabled`, default true — deliberately not named `IsActive`,
+    which already means something different one table away on `ProjectAppUrl`). `default` is retired
+    (disabled + hidden, never deleted — it is a global row other tenants may hold URLs on) in favour of
+    a seeded **`local`**, and every existing global-`default` URL row migrates to `local`. Creating a
+    project still takes one URL in one step: the dialog renders the environment-URL table **from the
+    start**, pre-populated with a single `local` row, exactly as if "add environment URL" had been
+    clicked once. Disabling an environment **blocks** writes and origin resolution but never hides or
+    deletes existing URLs.
+    **Not** the fixed `EnvironmentTag` enum: comment tagging and the three
+    `Project.IsActiveLocal/Staging/Production` bools are a separate concept and are untouched
+    (`Project.cs:9-15` already warns about the confusion). This item is about *where the app is
+    deployed*; that one is about *which environment a comment was left in*.
+    **Sequencing:** `CreateProjectRequest` gains an optional `appEnvironmentId`, and
+    `npx pointer-feedback init` creates projects (§1 / R1.2), so **R1.9 must land before or together
+    with R1.2** — if R1.2 ships first, its create call, its `--json` project summary and its acceptance
+    criteria must be revisited.
+    **Deferred, deliberately:** `Project.AppUrl` survives this release (mirroring the `local` row)
+    because `InviteService:525-526` refuses a quick-access invite without it and
+    `ExtensionService:109-120` uses it as a legacy origin fallback — the column drop is an R2
+    follow-up. `MaxEnvironments` stays display-only; enabling an environment does not consume it.
+    Spec: [`execution/R1-09-project-environment-urls.md`](execution/R1-09-project-environment-urls.md) ·
+    Tests: [`testing/R1-09-tests.md`](testing/R1-09-tests.md).
 
 ### NEW items from review
 

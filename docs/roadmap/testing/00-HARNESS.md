@@ -77,7 +77,7 @@ e2e/
     smoke-widget.sh          R3-03 §E
     reset-branding.mjs       restores /api/branding defaults after white-label runs (always in `finally`)
     lib/
-      api.mjs                existing get/post/patch/del/login/ApiError (`lib/api.mjs:40-43`) + **`put`** (does not exist today; the replace-all `PUT /api/admin/settings` needs it), the header option for X-Pointer-Client, and `getRaw`/`postRaw`/`patchRaw`/**`delRaw`** → `{ status, body }` without throwing, so 204-vs-200, a 403 on a DELETE, and `isForbidden`-inside-a-400 are assertable — `call()` drops the status today (`api.mjs:13-38`) and every verb throws on non-2xx
+      api.mjs                existing get/post/patch/del/login/ApiError (`lib/api.mjs:40-43`) + **`put`** (does not exist today; the replace-all `PUT /api/admin/settings` needs it), the header option for X-Pointer-Client, and `getRaw`/`postRaw`/`patchRaw`/`putRaw`/**`delRaw`** → `{ status, body }` without throwing, so 204-vs-200, a 403 on a DELETE, and `isForbidden`-inside-a-400 are assertable — `call()` drops the status today (`api.mjs:13-38`) and every verb throws on non-2xx
       constants.mjs          personas, projects, PORTS, enums
       mail.mjs               Mailpit client (§5)
       cli.mjs                spawnCli({cwd, args, env}) → {stdout, stderr, code, json?}; uses CLI_ENTRY (§6)
