@@ -1,17 +1,10 @@
-import { fetchApi, ApiOptions } from './api.js';
+import { api } from './api.js';
 
-export async function recordEvent(options: ApiOptions, type: string, source: string, projectKey?: string, meta?: any): Promise<void> {
-  try {
-    await fetchApi('/api/events', options, {
-      method: 'POST',
-      body: JSON.stringify({
-        type,
-        source,
-        projectKey,
-        meta
-      })
-    });
-  } catch (err) {
-    // Fire-and-forget, swallow errors
-  }
+export async function postEvent(server: string, token: string | undefined, payload: { type: string, projectKey?: string, meta?: any }): Promise<void> {
+    if (!token) return; // If we don't have a token, we just skip it to not crash
+    try {
+        await api(server, '/api/events', { method: 'POST', body: payload, token });
+    } catch (e) {
+        // Events are best-effort in CLI
+    }
 }
