@@ -15,6 +15,8 @@ services:
     build:
       context: .
       target: final
+      args:
+        APP_VERSION: ${APP_VERSION:-0.0.0-dev}
     restart: unless-stopped
     depends_on: [db]
     environment:
@@ -39,6 +41,7 @@ services:
       Pointer__Server: "${POINTER_SERVER}"
       Pointer__Project: "pointer-api"
       Pointer__Environment: "production"
+      Cli__MinVersion: "${CLI_MIN_VERSION:-0.1.0}"
       # Transactional email (Brevo). Enabled only when a key + verified from-address are set.
       Email__Enabled: "${EMAIL_ENABLED:-false}"
       Email__ApiKey: "${EMAIL_API_KEY:-}"
