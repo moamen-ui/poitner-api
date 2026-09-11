@@ -38,10 +38,20 @@ export async function initCommand(cwd: string, options: Record<string, string | 
 
     let key = options['key'] as string;
     let me: any = null;
+    let token: string | undefined;
     
     if (isYes) {
         try {
-            me = await api(server as string, '/api/auth/me', { token: key });
+            // An API key is not a JWT: it must be exchanged for one. Sending it as a Bearer token
+            // to /api/auth/me fails for every valid key — which unit tests against a permissive
+            // stub did not catch, but a real server does immediately.
+            const login = await api<any>(server as string, '/api/auth/login-with-key', {
+                method: 'POST',
+                body: { apiKey: key },
+            });
+            if (login?.status !== 'ok' || !login?.token) throw new Error(login?.status || 'invalid');
+            token = login.token;
+            me = login.user ?? (await api(server as string, '/api/auth/me', { token }));
         } catch (err: any) {
             if (isJson) {
                 console.log(JSON.stringify({ ok: false, error: { code: 3, message: "Invalid API key" } }));
@@ -57,14 +67,14 @@ export async function initCommand(cwd: string, options: Record<string, string | 
                 key = await ask(`API key (from ${product} -> profile -> API key; input hidden)`, { secret: true });
             }
             try {
-                // If it's a login-with-key we'd POST, but let's assume token is passed as Bearer to /api/auth/me
-                // The spec says POST /api/auth/login-with-key {apiKey}, wait, if it's a PAT it might be different.
-                // Spec: "POST /api/auth/login-with-key {apiKey}"
-                const res = await api<any>(server as string, '/api/auth/login-with-key', { method: 'POST', body: { apiKey: key } }).catch(() => api(server as string, '/api/auth/me', { token: key }));
-                me = res;
-                if (!me.displayName && res.token) { // If it returns token and we need to fetch /me
-                    me = await api(server as string, '/api/auth/me', { token: res.token || key });
-                }
+                // Same exchange as the --yes branch: key -> token -> profile.
+                const login = await api<any>(server as string, '/api/auth/login-with-key', {
+                    method: 'POST',
+                    body: { apiKey: key },
+                });
+                if (login?.status !== 'ok' || !login?.token) throw new Error(login?.status || 'invalid');
+                token = login.token;
+                me = login.user ?? (await api(server as string, '/api/auth/me', { token }));
             } catch (err: any) {
                 attempts++;
                 if (attempts >= 3) {

@@ -42,8 +42,23 @@ export async function writeCredentials(cwd: string, token: string): Promise<void
 export async function upsertGitignore(cwd: string): Promise<void> {
   const file = join(cwd, '.gitignore');
   let content = await fs.readFile(file, 'utf8').catch(() => '');
-  const entry = '\n# Pointer\n.pointer/credentials.env\n';
-  if (!content.includes('.pointer/credentials.env')) {
+  // The frozen on-disk contract (R1-01): ignore the whole directory, then re-include the files a
+  // team is meant to commit. Ignoring only credentials.env left .pointer/.token_cache — a cached
+  // JWT — and manifest.json committable, which is how a token ends up in someone's git history.
+  const entry = [
+    '',
+    '# Pointer',
+    '.pointer/',
+    '!.pointer/credentials.env.example',
+    '!.pointer/stack.json',
+    '!.pointer/pointer.sh',
+    '!.pointer/config.json',
+    '',
+  ].join('\n');
+
+  if (!content.includes('\n.pointer/\n') && !content.startsWith('.pointer/\n')) {
+    // Replace the narrower rule if an earlier version of this CLI wrote it.
+    content = content.replace(/\n?# Pointer\n\.pointer\/credentials\.env\n/, '');
     content += entry;
     await fs.writeFile(file, content, 'utf8');
   }

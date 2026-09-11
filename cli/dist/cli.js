@@ -99,8 +99,18 @@ async function writeCredentials(cwd2, token) {
 async function upsertGitignore(cwd2) {
   const file = join(cwd2, ".gitignore");
   let content = await fs.readFile(file, "utf8").catch(() => "");
-  const entry = "\n# Pointer\n.pointer/credentials.env\n";
-  if (!content.includes(".pointer/credentials.env")) {
+  const entry = [
+    "",
+    "# Pointer",
+    ".pointer/",
+    "!.pointer/credentials.env.example",
+    "!.pointer/stack.json",
+    "!.pointer/pointer.sh",
+    "!.pointer/config.json",
+    ""
+  ].join("\n");
+  if (!content.includes("\n.pointer/\n") && !content.startsWith(".pointer/\n")) {
+    content = content.replace(/\n?# Pointer\n\.pointer\/credentials\.env\n/, "");
     content += entry;
     await fs.writeFile(file, content, "utf8");
   }
@@ -317,7 +327,25 @@ async function injectStatic(cwd2, htmlPath, cfg) {
   let content = await fs3.readFile(p, "utf8").catch(() => "");
   if (!content)
     throw new Error(`HTML file not found at ${p}`);
-  const block = `<!-- pointer-feedback:start -->
+  const block = cfg.envGuarded ? `<!-- pointer-feedback:start -->
+<script>
+  if (
+    '%VITE_POINTER_ENABLED%' === 'true' &&
+    '%VITE_POINTER_SERVER%'.indexOf('http') === 0
+  ) {
+    var s = document.createElement('script');
+    s.src = '%VITE_POINTER_SERVER%/pointer.js';
+    s.defer = true;
+    document.head.appendChild(s);
+    var el = document.createElement('pointer-feedback');
+    el.setAttribute('project', '%VITE_POINTER_PROJECT%');
+    el.setAttribute('server', '%VITE_POINTER_SERVER%');
+    el.setAttribute('environment', '%VITE_POINTER_ENV%');
+    el.setAttribute('source-attr', 'data-component-source');
+    document.body.appendChild(el);
+  }
+</script>
+<!-- pointer-feedback:end -->` : `<!-- pointer-feedback:start -->
 <script src="${cfg.server}/pointer.js" defer></script>
 <pointer-feedback project="${cfg.key}" server="${cfg.server}" environment="${cfg.environment}" source-attr="data-component-source"></pointer-feedback>
 <!-- pointer-feedback:end -->`;
@@ -340,7 +368,7 @@ import { promises as fs4 } from "node:fs";
 import { join as join4 } from "node:path";
 async function injectVite(cwd2, cfg, htmlPath) {
   const modified = [];
-  const p = await injectStatic(cwd2, htmlPath, cfg);
+  const p = await injectStatic(cwd2, htmlPath, { ...cfg, envGuarded: true });
   modified.push("index.html");
   const envPath = join4(cwd2, ".env");
   let envContent = await fs4.readFile(envPath, "utf8").catch(() => "");
@@ -532,9 +560,17 @@ async function initCommand(cwd2, options = {}) {
   const product = branding.productName || "Pointer";
   let key = options["key"];
   let me = null;
+  let token;
   if (isYes) {
     try {
-      me = await api(server, "/api/auth/me", { token: key });
+      const login = await api(server, "/api/auth/login-with-key", {
+        method: "POST",
+        body: { apiKey: key }
+      });
+      if (login?.status !== "ok" || !login?.token)
+        throw new Error(login?.status || "invalid");
+      token = login.token;
+      me = login.user ?? await api(server, "/api/auth/me", { token });
     } catch (err) {
       if (isJson) {
         console.log(JSON.stringify({ ok: false, error: { code: 3, message: "Invalid API key" } }));
@@ -550,11 +586,14 @@ async function initCommand(cwd2, options = {}) {
         key = await ask(`API key (from ${product} -> profile -> API key; input hidden)`, { secret: true });
       }
       try {
-        const res = await api(server, "/api/auth/login-with-key", { method: "POST", body: { apiKey: key } }).catch(() => api(server, "/api/auth/me", { token: key }));
-        me = res;
-        if (!me.displayName && res.token) {
-          me = await api(server, "/api/auth/me", { token: res.token || key });
-        }
+        const login = await api(server, "/api/auth/login-with-key", {
+          method: "POST",
+          body: { apiKey: key }
+        });
+        if (login?.status !== "ok" || !login?.token)
+          throw new Error(login?.status || "invalid");
+        token = login.token;
+        me = login.user ?? await api(server, "/api/auth/me", { token });
       } catch (err) {
         attempts++;
         if (attempts >= 3) {

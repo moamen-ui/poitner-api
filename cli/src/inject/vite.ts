@@ -6,7 +6,7 @@ export async function injectVite(cwd: string, cfg: { server: string, key: string
     const modified = [];
     
     // Inject HTML
-    const p = await injectStatic(cwd, htmlPath, cfg);
+    const p = await injectStatic(cwd, htmlPath, { ...cfg, envGuarded: true });
     modified.push('index.html');
     
     // Upsert .env

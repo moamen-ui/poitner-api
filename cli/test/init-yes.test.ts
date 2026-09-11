@@ -23,9 +23,37 @@ before(async () => {
         
         if (req.url === '/api/branding') {
             res.end(JSON.stringify({ productName: 'Pointer Test', urls: { app: 'http://test' } }));
-        } else if (req.url === '/api/auth/me' || req.url === '/api/auth/login-with-key') {
-            if (req.headers.authorization === 'Bearer ptr_good') {
-                res.end(JSON.stringify({ displayName: 'Test User' }));
+        } else if (req.url === '/api/auth/login-with-key') {
+            // Models the real endpoint: an API key is exchanged for a JWT, it is NOT a bearer token.
+            // The earlier stub accepted the key as `Authorization: Bearer`, which let a CLI bug
+            // (calling /api/auth/me with the raw key) pass here and fail against every real server.
+            let body = '';
+            req.on('data', (c) => (body += c));
+            req.on('end', () => {
+                const apiKey = (() => {
+                    try {
+                        return JSON.parse(body || '{}').apiKey;
+                    } catch {
+                        return undefined;
+                    }
+                })();
+
+                if (apiKey === 'ptr_good') {
+                    res.end(
+                        JSON.stringify({
+                            data: { status: 'ok', token: 'jwt-for-test', user: { displayName: 'Test User', roleName: 'Developer' } },
+                            isSuccess: true,
+                        }),
+                    );
+                } else {
+                    res.writeHead(401);
+                    res.end(JSON.stringify({ message: 'Invalid API key' }));
+                }
+            });
+            return;
+        } else if (req.url === '/api/auth/me') {
+            if (req.headers.authorization === 'Bearer jwt-for-test') {
+                res.end(JSON.stringify({ data: { displayName: 'Test User', roleName: 'Developer' }, isSuccess: true }));
             } else {
                 res.writeHead(401);
                 res.end(JSON.stringify({ message: 'Unauthorized' }));
