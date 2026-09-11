@@ -35,6 +35,7 @@ just up    # Start API + DB via Docker (API on :8090)
 | `just fmt` | repo root | CSharpier format |
 | `just migrate name="MyMigration"` | repo root | Add EF Core migration |
 | `npm run generate-clients` | repo root | Regenerate all API client packages (Angular + React + Vue) |
+| `npm run clients:local` | repo root | Local loop: generate, build, and publish clients to local Verdaccio |
 | `npm run build` | web-component/ | Build `<pointer-feedback>` → `API/wwwroot/pointer.{js,css}` |
 
 ### Key conventions
@@ -94,6 +95,16 @@ Three typed client packages are generated from the same Swagger spec:
 ```bash
 # API must be running on :8090
 npm run generate-clients
+```
+
+### Local development loop (Verdaccio)
+
+To test client changes locally in the dashboard without publishing to GitHub Packages or deploying:
+
+```bash
+# Verdaccio on :4873 + API on :8090
+npm run clients:local
+# Then run the printed install command with --no-save in each dashboard app
 ```
 
 ### How each client consumes the API

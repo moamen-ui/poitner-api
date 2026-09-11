@@ -13,4 +13,15 @@ services:
     ports: ["8090:8080"]
     depends_on: [db]
     volumes: ["./:/src"]
-volumes: { pgdata: {} }
+  verdaccio:
+    image: verdaccio/verdaccio:6
+    ports: ["4873:4873"]
+    volumes:
+      - "./e2e/verdaccio/config.yaml:/verdaccio/conf/config.yaml"
+      - "verdaccio-storage:/verdaccio/storage"
+    profiles:
+      - e2e-nightly
+volumes:
+  pgdata: {}
+  verdaccio-storage: {}
+

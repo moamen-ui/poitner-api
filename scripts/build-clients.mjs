@@ -13,18 +13,23 @@ import { fileURLToPath } from 'node:url';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const VERSION = process.env.CLIENTS_VERSION ?? '1.0.0';
-const REGISTRY = 'https://npm.pkg.github.com';
+const REGISTRY = process.env.CLIENTS_REGISTRY ?? 'https://npm.pkg.github.com';
 const REPO_URL = 'git+https://github.com/moamen-ui/poitner-api.git';
 
-// ── Per-package README (usage docs, shown on the GitHub Packages page) ──
+console.log(`\n📦 Building clients (version: ${VERSION}, registry: ${REGISTRY}) ...`);
+
+// ── Per-package README (usage docs, shown on the package registry page) ──
+const isGithub = REGISTRY.includes('npm.pkg.github.com');
+const authLine = isGithub
+  ? '\n//npm.pkg.github.com/:_authToken=${GITHUB_TOKEN}   # a token with read:packages'
+  : '';
 const INSTALL = `## Install
 
-Published to **GitHub Packages**. Add an \`.npmrc\` (repo root) so the \`@moamen-ui\` scope
+Published to the registry this build targets (\`${REGISTRY}\`). Add an \`.npmrc\` (repo root) so the \`@moamen-ui\` scope
 resolves there, then install:
 
 \`\`\`
-@moamen-ui:registry=https://npm.pkg.github.com
-//npm.pkg.github.com/:_authToken=\${GITHUB_TOKEN}   # a token with read:packages
+@moamen-ui:registry=${REGISTRY}${authLine}
 \`\`\`
 `;
 

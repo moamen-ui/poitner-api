@@ -1,0 +1,19 @@
+storage: /verdaccio/storage
+auth:
+  htpasswd:
+    file: /verdaccio/storage/htpasswd
+uplinks:
+  npmjs:
+    url: https://registry.npmjs.org/
+packages:
+  '@moamen-ui/*':
+    access: $all
+    publish: $anonymous
+    unpublish: $anonymous
+  'pointer-feedback*':
+    access: $all
+    publish: $anonymous
+    unpublish: $anonymous
+  '**':
+    access: $all
+    proxy: npmjs

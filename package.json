@@ -6,6 +6,7 @@
   "scripts": {
     "generate-clients": "node scripts/generate-clients.mjs",
     "build-clients": "node scripts/build-clients.mjs",
+    "clients:local": "node scripts/publish-clients-local.mjs",
     "format": "prettier --write \"clients/**/*.{ts,json}\""
   },
   "devDependencies": {

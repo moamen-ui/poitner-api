@@ -144,8 +144,10 @@ createAxiosClientBarrel('clients/vue');
 
 // ── 3b. Write a publishable package.json + .npmrc for each client ──
 // clients/ is gitignored, so these are (re)generated every run. Scoped to the
-// GitHub owner (@moamen-ui) so they publish to GitHub Packages (npm.pkg.github.com).
+// GitHub owner (@moamen-ui) so they publish to GitHub Packages (npm.pkg.github.com)
+// or a local registry (e.g. Verdaccio) if CLIENTS_REGISTRY is set.
 const VERSION = process.env.CLIENTS_VERSION ?? '1.0.0';
+const REGISTRY = process.env.CLIENTS_REGISTRY ?? 'https://npm.pkg.github.com';
 const REPO_URL = 'git+https://github.com/moamen-ui/poitner-api.git';
 const CLIENTS = [
   {
@@ -166,7 +168,7 @@ const CLIENTS = [
     dependencies: { axios: '>=1.6.0' },
   },
 ];
-console.log('\n🏷  Writing package.json + .npmrc ...');
+console.log(`\n🏷  Writing package.json + .npmrc (version: ${VERSION}, registry: ${REGISTRY}) ...`);
 for (const c of CLIENTS) {
   const dest = resolve(root, c.dir);
   if (!existsSync(dest)) continue;
@@ -177,13 +179,13 @@ for (const c of CLIENTS) {
     name: c.name,
     version: VERSION,
     description: c.desc,
-    publishConfig: { registry: 'https://npm.pkg.github.com' },
+    publishConfig: { registry: REGISTRY },
     repository: { type: 'git', url: REPO_URL, directory: c.dir },
     ...(c.peerDependencies ? { peerDependencies: c.peerDependencies } : {}),
     ...(c.dependencies ? { dependencies: c.dependencies } : {}),
   };
   writeFileSync(resolve(dest, 'package.json'), JSON.stringify(pkg, null, 2) + '\n');
-  writeFileSync(resolve(dest, '.npmrc'), '@moamen-ui:registry=https://npm.pkg.github.com\n');
+  writeFileSync(resolve(dest, '.npmrc'), `@moamen-ui:registry=${REGISTRY}\n`);
   console.log(`   ✓ ${c.name}  (${c.dir}/package.json)`);
 }
 
