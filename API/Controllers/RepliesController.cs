@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 using Pointer.API.Extensions;
 using Pointer.Application.DTOs.Comment;
 using Pointer.Application.Services.Interfaces;
@@ -11,6 +12,9 @@ namespace Pointer.API.Controllers;
 public class RepliesController(ICommentService commentService) : ControllerBase
 {
     [HttpPost("api/comments/{id:int}/replies")]
+    // Shares the comments budget deliberately: a reply is the same write, and leaving it
+    // unthrottled would just move a burst one endpoint to the left.
+    [EnableRateLimiting("comments")]
     public async Task<IActionResult> AddReply(int id, [FromBody] AddReplyRequest request)
     {
         var result = await commentService.AddReplyAsync(id, request, User.GetId());

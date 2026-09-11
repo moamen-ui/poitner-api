@@ -83,5 +83,36 @@ public static class RateLimitingExtensions
                     Window = TimeSpan.FromMinutes(1),
                     QueueLimit = 0
                 }));
+
+        o.AddPolicy("comments", CommentsPartition);
+    }
+
+    /// <summary>The "comments" policy's partitioning, public so tests can assert on it directly
+    /// (RateLimiterOptions.PolicyMap is internal to ASP.NET Core).</summary>
+    /// <remarks>
+    /// Partitioned per authenticated user rather than per IP: a whole office behind one NAT
+    /// address is a normal deployment, and an IP partition would let one enthusiastic tester
+    /// throttle their colleagues.
+    ///
+    /// Sliding rather than fixed window. A fixed window lets a caller spend the full budget in the
+    /// last second of one window and again in the first second of the next — a 60-burst across a
+    /// window boundary, which is exactly the abuse shape this limits.
+    /// </remarks>
+    public static RateLimitPartition<string> CommentsPartition(HttpContext ctx)
+    {
+        var userId = ctx.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+        var key = !string.IsNullOrEmpty(userId)
+            ? $"user:{userId}"
+            : $"ip:{ctx.Connection.RemoteIpAddress?.ToString() ?? "unknown"}";
+
+        return RateLimitPartition.GetSlidingWindowLimiter(
+            key,
+            _ => new SlidingWindowRateLimiterOptions
+            {
+                PermitLimit = 30,
+                Window = TimeSpan.FromMinutes(1),
+                SegmentsPerWindow = 6,
+                QueueLimit = 0
+            });
     }
 }

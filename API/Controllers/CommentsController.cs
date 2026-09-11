@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 using Pointer.API.Extensions;
 using Pointer.Application.DTOs.Comment;
 using Pointer.Application.Services.Interfaces;
@@ -12,6 +13,7 @@ public class CommentsController(ICommentService commentService) : ControllerBase
 {
     [HttpPost("api/projects/{key}/comments")]
     [RequestSizeLimit(262144)] // 256KB — an element capture (snapshot/styles/rules) is small; cap abuse.
+    [EnableRateLimiting("comments")] // 30/min per user, sliding — see RateLimitingExtensions.
     [ProducesResponseType(typeof(CommentResponse), StatusCodes.Status200OK)]
     public async Task<IActionResult> Create(string key, [FromBody] CreateCommentRequest request)
     {
