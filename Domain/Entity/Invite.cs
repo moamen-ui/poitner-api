@@ -48,4 +48,17 @@ public class Invite : BaseEntity
 
     /// <summary>Soft-revoke timestamp. Non-null = revoked; the invite can no longer be accepted.</summary>
     public DateTime? RevokedAt { get; set; }
+
+    /// <summary>
+    /// Plan to put the new workspace on when a <c>CreateNewWorkspace</c> invite is accepted. Null =
+    /// the default (Free). Applied at acceptance rather than at invite time because the tenant does
+    /// not exist until then.
+    /// </summary>
+    public int? PlanId { get; set; }
+
+    /// <summary>
+    /// Workspace name the super admin typed when inviting, pre-filled on the accept form. The
+    /// invitee may override it; it is a convenience, not a constraint.
+    /// </summary>
+    public string? DisplayName { get; set; }
 }

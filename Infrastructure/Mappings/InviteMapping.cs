@@ -31,6 +31,8 @@ public class InviteMapping : IEntityTypeConfiguration<Invite>
         b.Property(x => x.MaxUses).HasColumnName("max_uses");
         b.Property(x => x.Uses).HasColumnName("uses");
         b.Property(x => x.RevokedAt).HasColumnName("revoked_at");
+        b.Property(x => x.PlanId).HasColumnName("plan_id");
+        b.Property(x => x.DisplayName).HasColumnName("display_name").HasMaxLength(120);
         b.HasIndex(x => x.OwnerId);
     }
 }
