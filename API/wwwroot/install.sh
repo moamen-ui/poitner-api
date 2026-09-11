@@ -70,14 +70,16 @@ EOF
 fi
 
 # Gitignore .pointer/ (secrets: credentials.env + pointer.sh's cached JWT in .token_cache) but keep
-# the .example, stack.json, AND pointer.sh committable — none of those three are secrets (stack.json
-# is detected frontend/backend/aiTools; pointer.sh is the CLI helper itself), and every developer/
-# agent needs them via normal git, not a per-machine setup step.
+# the .example, stack.json, pointer.sh, AND config.json committable — none of those four are secrets
+# (stack.json is detected frontend/backend/aiTools; pointer.sh is the CLI helper itself; config.json
+# is the CLI's committable project config), and every developer/agent needs them via normal git,
+# not a per-machine setup step.
 touch .gitignore
 grep -qxF '.pointer/' .gitignore || echo '.pointer/' >> .gitignore
 grep -qxF '!.pointer/credentials.env.example' .gitignore || echo '!.pointer/credentials.env.example' >> .gitignore
 grep -qxF '!.pointer/stack.json' .gitignore || echo '!.pointer/stack.json' >> .gitignore
 grep -qxF '!.pointer/pointer.sh' .gitignore || echo '!.pointer/pointer.sh' >> .gitignore
+grep -qxF '!.pointer/config.json' .gitignore || echo '!.pointer/config.json' >> .gitignore
 
 echo ""
 echo "Done. Next:"
