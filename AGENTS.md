@@ -48,6 +48,10 @@ just up    # Start API + DB via Docker (API on :8090)
 4. **The web component is built, not hand-written.** `API/wwwroot/pointer.{js,css}` are build
    artifacts — edit the source in `web-component/src/` and run `npm run build`. Never edit the
    generated files directly.
+5. **Customer-visible names are frozen** in [`docs/ON-DISK-CONTRACT.md`](docs/ON-DISK-CONTRACT.md)
+   (`.pointer/` files, env vars, element attributes, storage keys, served URLs, …). A PR that adds a
+   new one must update that doc **and** `Tests/OnDiskContractTests.cs` in the same commit — the guard
+   test fails otherwise.
 
 ### Directory structure
 
