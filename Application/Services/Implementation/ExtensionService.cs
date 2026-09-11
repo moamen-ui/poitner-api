@@ -98,7 +98,9 @@ public class ExtensionService : IExtensionService
             .Query()
             .AsNoTracking()
             .Include(u => u.Project)
+            .Include(u => u.AppEnvironment)
             .Where(u => u.DeletedAt == null && u.IsActive && u.Project.DeletedAt == null
+                && u.AppEnvironment.IsEnabled
                 && (u.Project.IsActiveLocal || u.Project.IsActiveStaging || u.Project.IsActiveProduction))
             .Select(u => new { u.Project.Key, u.Project.Name, u.Url })
             .ToListAsync();

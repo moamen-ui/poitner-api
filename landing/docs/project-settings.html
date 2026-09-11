@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Project Settings</title>
+</head>
+<body>
+    <h1>Project Settings</h1>
+    <section id="environments">
+        <h2>Environments</h2>
+        <p><strong>What is a workspace environment?</strong></p>
+        <p>A workspace environment (like <code>local</code>, <code>prod</code>, or <code>staging</code>) determines where a project's URLs live. This is <em>not</em> the same as the Local/Staging/Production tag you select on a specific comment (which is just a label for that comment).</p>
+
+        <p><strong>How to enable an environment?</strong></p>
+        <p>Administrators can enable or disable environments from the global environment catalog or create custom ones for their workspace. When an environment is disabled, you cannot add new URLs to it, and existing URLs will be treated as if they don't exist (the widget won't be blocked, but it won't be explicitly mapped).</p>
+
+        <p><strong>How to assign a URL per environment?</strong></p>
+        <p>In your project settings, you can define exactly one URL for each enabled environment. This tells Pointer where your app lives for that specific environment.</p>
+
+        <p><strong>Default Environments</strong></p>
+        <p>By default, new projects will have their URL placed in the <code>local</code> environment. If you had an existing project whose URL was previously assigned to the legacy <code>default</code> environment, it has now been automatically migrated to the <code>local</code> environment.</p>
+    </section>
+</body>
+</html>

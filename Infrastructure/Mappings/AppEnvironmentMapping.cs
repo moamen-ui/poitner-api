@@ -22,5 +22,8 @@ public class AppEnvironmentMapping : IEntityTypeConfiguration<AppEnvironment>
         b.HasIndex(x => new { x.Name, x.OwnerId }).IsUnique();
         b.Property(x => x.OwnerId).HasColumnName("owner_id");
         b.HasIndex(x => x.OwnerId);
+
+        b.Property(x => x.IsEnabled).HasColumnName("is_enabled").HasDefaultValue(true);
+        b.Property(x => x.IsRetired).HasColumnName("is_retired").HasDefaultValue(false);
     }
 }

@@ -11,4 +11,8 @@ public class AppEnvironmentResponse
     /// <summary>Whether the caller may rename/delete this environment: super admin manages the
     /// global catalog, a tenant manages only its own.</summary>
     public bool CanManage { get; set; }
+
+    public bool IsEnabled { get; set; }
+    public bool IsRetired { get; set; }
+    public int ProjectUrlCount { get; set; }
 }

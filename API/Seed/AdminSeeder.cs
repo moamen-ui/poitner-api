@@ -27,7 +27,7 @@ public static class AdminSeeder
     // Default global AppEnvironments seeded on first boot. "default" is what a project created via
     // the browser extension (or any caller that just sets AppUrl without picking an environment)
     // gets its URL written to.
-    private static readonly string[] DefaultAppEnvironments = { "default", "prod", "staging", "testing" };
+    private static readonly string[] DefaultAppEnvironments = { "local", "prod", "staging", "testing" };
 
     public static async Task SeedAsync(IServiceProvider services)
     {
@@ -67,6 +67,17 @@ public static class AdminSeeder
             await db.SaveChangesAsync();
         }
 
+        // Idempotently retire the old global "default" environment (R1-09).
+        // It is hidden from pickers but its existing URLs still render.
+        var legacyDefaultEnv = await db.AppEnvironments.IgnoreQueryFilters()
+            .FirstOrDefaultAsync(e => e.Name == "default" && e.OwnerId == null);
+        if (legacyDefaultEnv is not null && legacyDefaultEnv.IsEnabled)
+        {
+            legacyDefaultEnv.IsEnabled = false;
+            legacyDefaultEnv.IsRetired = true;
+            await db.SaveChangesAsync();
+        }
+
         // 1b) Seed any missing default global AppEnvironments — same IgnoreQueryFilters reasoning
         // as the roles above (no HttpContext/tenant at boot time).
         var existingEnvNames = await db.AppEnvironments.IgnoreQueryFilters()
@@ -79,25 +90,25 @@ public static class AdminSeeder
         await db.SaveChangesAsync();
 
         // 1c) Backfill: every existing Project.AppUrl (set before this multi-environment table
-        // existed) gets a matching ProjectAppUrl row against the "default" environment, so
+        // existed) gets a matching ProjectAppUrl row against the "local" environment, so
         // ExtensionService.FindProjectForOriginAsync (which now reads ProjectAppUrl first) doesn't
         // regress for a project nobody has re-saved since this shipped. Idempotent: only inserts for
-        // a project that doesn't already have a "default" row.
-        var globalDefaultEnv = await db.AppEnvironments.IgnoreQueryFilters()
-            .FirstOrDefaultAsync(e => e.Name == "default" && e.OwnerId == null);
-        if (globalDefaultEnv != null)
+        // a project that doesn't already have a "local" row.
+        var globalLocalEnv = await db.AppEnvironments.IgnoreQueryFilters()
+            .FirstOrDefaultAsync(e => e.Name == "local" && e.OwnerId == null);
+        if (globalLocalEnv != null)
         {
             var projectsNeedingBackfill = await db.Projects.IgnoreQueryFilters()
                 .Where(p => p.DeletedAt == null && p.AppUrl != null)
                 .Where(p => !db.ProjectAppUrls.IgnoreQueryFilters()
-                    .Any(u => u.DeletedAt == null && u.ProjectId == p.Id && u.AppEnvironmentId == globalDefaultEnv.Id))
+                    .Any(u => u.DeletedAt == null && u.ProjectId == p.Id && u.AppEnvironmentId == globalLocalEnv.Id))
                 .ToListAsync();
             foreach (var p in projectsNeedingBackfill)
             {
                 db.ProjectAppUrls.Add(new ProjectAppUrl
                 {
                     ProjectId = p.Id,
-                    AppEnvironmentId = globalDefaultEnv.Id,
+                    AppEnvironmentId = globalLocalEnv.Id,
                     Url = p.AppUrl!,
                     OwnerId = p.OwnerId ?? Guid.Empty
                 });

@@ -70,6 +70,17 @@ public class ProjectService : IProjectService
                 return Result<ProjectResponse>.LimitReached(check.Message ?? MessageKeys.Plan.LimitReached, check.Limit!);
         }
 
+        Domain.Entity.AppEnvironment? environment = null;
+        if (!string.IsNullOrWhiteSpace(request.AppUrl) && request.AppEnvironmentId.HasValue)
+        {
+            environment = await _unitOfWork.Repository<Domain.Entity.AppEnvironment>().GetByIdAsync(request.AppEnvironmentId.Value);
+            if (environment == null || environment.DeletedAt != null)
+                return Result<ProjectResponse>.NotFound(MessageKeys.AppEnvironment.NotFound);
+
+            if (!environment.IsEnabled || environment.IsRetired)
+                return Result<ProjectResponse>.Failure(MessageKeys.AppEnvironment.NotEnabled);
+        }
+
         var project = new Project
         {
             Key = keyNormalized,
@@ -84,10 +95,27 @@ public class ProjectService : IProjectService
         await _unitOfWork.SaveChangesAsync(); // need the project Id before attaching actions
 
         // A project created with just "AppUrl" (e.g. via the browser extension, which has no concept
-        // of multiple environments) lands on "default" — the one environment every tenant has out of
+        // of multiple environments) lands on "local" — the one environment every tenant has out of
         // the box. See ExtensionService.FindProjectForOriginAsync, which reads from ProjectAppUrl now.
         if (project.AppUrl != null)
-            await SyncDefaultAppUrlAsync(project, project.AppUrl);
+        {
+            if (environment != null)
+            {
+                await _unitOfWork.Repository<ProjectAppUrl>().AddAsync(new ProjectAppUrl
+                {
+                    ProjectId = project.Id,
+                    AppEnvironmentId = environment.Id,
+                    Url = project.AppUrl,
+                    OwnerId = project.OwnerId ?? Guid.Empty,
+                    IsActive = true
+                });
+                await _unitOfWork.SaveChangesAsync();
+            }
+            else
+            {
+                await SyncPrimaryAppUrlAsync(project, project.AppUrl);
+            }
+        }
 
         if (request.PredefinedActions.Count > 0)
         {
@@ -121,8 +149,9 @@ public class ProjectService : IProjectService
         }
 
         var actions = await LoadProjectActionsAsync(project.Id);
+        var appUrls = await LoadProjectAppUrlsAsync(project.Id);
         // Freshly-created project: no comments; creator is the caller.
-        return Result<ProjectResponse>.Success(MapToResponse(project, actions, 0,
+        return Result<ProjectResponse>.Success(MapToResponse(project, actions, appUrls, 0,
             await ResolveCreatorNameAsync(project.CreatedBy)));
     }
 
@@ -166,6 +195,16 @@ public class ProjectService : IProjectService
             .ToListAsync();
         var countByProject = commentCounts.ToDictionary(x => x.ProjectId, x => x.Count);
 
+        // Fetch app urls in batch
+        var appUrls = await _unitOfWork.Repository<ProjectAppUrl>()
+            .Query()
+            .AsNoTracking()
+            .Include(u => u.AppEnvironment)
+            .Where(u => u.DeletedAt == null && projectIds.Contains(u.ProjectId))
+            .ToListAsync();
+        var appUrlsByProject = appUrls.GroupBy(u => u.ProjectId)
+            .ToDictionary(g => g.Key, g => g.ToList());
+
         // Batch-resolve creator display names.
         var creatorNames = await ResolveCreatorNamesAsync(projects.Select(p => p.CreatedBy));
 
@@ -173,6 +212,7 @@ public class ProjectService : IProjectService
             .Select(p => MapToResponse(
                 p,
                 byProject.GetValueOrDefault(p.Id) ?? new List<PredefinedAction>(),
+                appUrlsByProject.GetValueOrDefault(p.Id) ?? new List<ProjectAppUrl>(),
                 countByProject.GetValueOrDefault(p.Id, 0),
                 creatorNames.GetValueOrDefault(p.CreatedBy)))
             .ToList();
@@ -224,7 +264,7 @@ public class ProjectService : IProjectService
         if (request.AppUrl != null)
         {
             project.AppUrl = request.AppUrl.Trim();
-            await SyncDefaultAppUrlAsync(project, project.AppUrl);
+            await SyncPrimaryAppUrlAsync(project, project.AppUrl);
         }
 
         // NOTE: intentionally do NOT mutate project.OwnerId here. A null owner is legitimate for
@@ -247,10 +287,11 @@ public class ProjectService : IProjectService
         await _unitOfWork.SaveChangesAsync();
 
         var actions = await LoadProjectActionsAsync(project.Id);
+        var appUrls = await LoadProjectAppUrlsAsync(project.Id);
         var commentsCount = await _unitOfWork.Repository<Comment>()
             .Query().AsNoTracking()
             .CountAsync(c => c.ProjectId == project.Id && c.DeletedAt == null);
-        return Result<ProjectResponse>.Success(MapToResponse(project, actions, commentsCount,
+        return Result<ProjectResponse>.Success(MapToResponse(project, actions, appUrls, commentsCount,
             await ResolveCreatorNameAsync(project.CreatedBy)));
     }
 
@@ -273,7 +314,8 @@ public class ProjectService : IProjectService
             AppEnvironmentId = u.AppEnvironmentId,
             EnvironmentName = u.AppEnvironment.Name,
             Url = u.Url,
-            IsActive = u.IsActive
+            IsActive = u.IsActive,
+            EnvironmentIsEnabled = u.AppEnvironment.IsEnabled
         }).ToList());
     }
 
@@ -295,6 +337,9 @@ public class ProjectService : IProjectService
         var environment = await _unitOfWork.Repository<Domain.Entity.AppEnvironment>().GetByIdAsync(environmentId);
         if (environment == null || environment.DeletedAt != null)
             return Result<ProjectAppUrlResponse>.NotFound(MessageKeys.AppEnvironment.NotFound);
+
+        if (!environment.IsEnabled || environment.IsRetired)
+            return Result<ProjectAppUrlResponse>.Failure(MessageKeys.AppEnvironment.NotEnabled);
 
         var existing = await _unitOfWork.Repository<ProjectAppUrl>()
             .Query()
@@ -321,9 +366,9 @@ public class ProjectService : IProjectService
         }
         await _unitOfWork.SaveChangesAsync();
 
-        // Keep the legacy single field in sync for "default" so old readers (widget install
+        // Keep the legacy single field in sync for "local" so old readers (widget install
         // instructions, anything not yet updated) still see a sensible value.
-        if (environment.Name == "default")
+        if (environment.Name == "local")
         {
             project.AppUrl = url;
             _unitOfWork.Repository<Project>().Update(project);
@@ -549,21 +594,21 @@ public class ProjectService : IProjectService
         return Result.Success();
     }
 
-    // Upserts a ProjectAppUrl row for the tenant's "default" AppEnvironment — prefers the tenant's
-    // own "default" if it ever creates one, else falls back to the super-admin-seeded global one.
+    // Upserts a ProjectAppUrl row for the tenant's "local" AppEnvironment — prefers the tenant's
+    // own "local" if it ever creates one, else falls back to the super-admin-seeded global one.
     // Keeps the legacy single Project.AppUrl field and the new per-environment table in sync so
     // ExtensionService.FindProjectForOriginAsync (which reads the new table) never regresses for
     // callers that still only set Project.AppUrl (the extension, the old dashboard dialog).
-    private async Task<Result> SyncDefaultAppUrlAsync(Project project, string appUrl)
+    private async Task<Result> SyncPrimaryAppUrlAsync(Project project, string appUrl)
     {
         var owner = project.OwnerId;
         var defaultEnv = await _unitOfWork.Repository<Domain.Entity.AppEnvironment>()
             .Query()
-            .Where(e => e.DeletedAt == null && e.Name == "default" && (e.OwnerId == owner || e.OwnerId == null))
-            .OrderByDescending(e => e.OwnerId != null) // tenant's own "default" wins over the global one
+            .Where(e => e.DeletedAt == null && e.Name == "local" && (e.OwnerId == owner || e.OwnerId == null))
+            .OrderByDescending(e => e.OwnerId != null) // tenant's own "local" wins over the global one
             .FirstOrDefaultAsync();
         if (defaultEnv == null)
-            return Result.Success(); // no "default" environment exists (e.g. it was deleted) — nothing to sync
+            return Result.Success(); // no "local" environment exists (e.g. it was deleted) — nothing to sync
 
         var existing = await _unitOfWork.Repository<ProjectAppUrl>()
             .Query()
@@ -596,6 +641,14 @@ public class ProjectService : IProjectService
             .AsNoTracking()
             .Where(a => a.DeletedAt == null && a.ProjectId == projectId)
             .OrderBy(a => a.SortOrder)
+            .ToListAsync();
+
+    private async Task<List<ProjectAppUrl>> LoadProjectAppUrlsAsync(int projectId) =>
+        await _unitOfWork.Repository<ProjectAppUrl>()
+            .Query()
+            .AsNoTracking()
+            .Include(u => u.AppEnvironment)
+            .Where(u => u.DeletedAt == null && u.ProjectId == projectId)
             .ToListAsync();
 
     public async Task<Result<int>> EnsureAsync(string key)
@@ -819,11 +872,17 @@ public class ProjectService : IProjectService
             return Result<WidgetActivationResponse>.Success(new WidgetActivationResponse { Active = true });
 
         var normalized = OriginNormalizer.Normalize(origin);
+        
+        // A row whose environment is disabled is treated as if the row did not exist
+        // (i.e. "no configured mapping" → allowed), not as a block. Disabling an environment must
+        // never take a customer's widget offline on a site the row was merely describing;
+        // only an explicit per-mapping IsActive == false blocks.
         var urls = await _unitOfWork.Repository<ProjectAppUrl>()
             .Query()
             .IgnoreQueryFilters()
             .AsNoTracking()
-            .Where(u => u.ProjectId == project.Id && u.DeletedAt == null)
+            .Include(u => u.AppEnvironment)
+            .Where(u => u.ProjectId == project.Id && u.DeletedAt == null && u.AppEnvironment.IsEnabled)
             .Select(u => new { u.Url, u.IsActive })
             .ToListAsync();
 
@@ -924,7 +983,7 @@ public class ProjectService : IProjectService
         return _currentUser.RoleId.HasValue && roleIds.Contains(_currentUser.RoleId.Value);
     }
 
-    private ProjectResponse MapToResponse(Project project, List<PredefinedAction> actions, int commentsCount, string? createdByName)
+    private ProjectResponse MapToResponse(Project project, List<PredefinedAction> actions, List<ProjectAppUrl> appUrls, int commentsCount, string? createdByName)
     {
         var canEdit = _currentUser.IsAdmin || project.CreatedBy == _currentUser.Id;
         var canDelete = _currentUser.IsAdmin || (project.CreatedBy == _currentUser.Id && commentsCount == 0);
@@ -939,6 +998,14 @@ public class ProjectService : IProjectService
             IsActiveProduction = project.IsActiveProduction,
             ActivationState = ComputeActivationState(project.IsActiveLocal, project.IsActiveStaging, project.IsActiveProduction),
             AppUrl = project.AppUrl,
+            AppUrls = appUrls.OrderBy(u => u.AppEnvironment?.Name).Select(u => new ProjectAppUrlResponse
+            {
+                AppEnvironmentId = u.AppEnvironmentId,
+                EnvironmentName = u.AppEnvironment?.Name ?? "",
+                Url = u.Url,
+                IsActive = u.IsActive,
+                EnvironmentIsEnabled = u.AppEnvironment?.IsEnabled ?? true
+            }).ToList(),
             PageContextCaptureEnabled = project.PageContextCaptureEnabled,
             EnvironmentSelectorRoleIds = ParseRoleIds(project.EnvironmentSelectorRoleIds),
             CommitStyle = project.CommitStyle,

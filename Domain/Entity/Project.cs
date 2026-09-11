@@ -45,5 +45,6 @@ public class Project : BaseEntity
     public CommitStyle CommitStyle { get; set; } = CommitStyle.Single;
 
     public Guid? OwnerId { get; set; }
+    public ICollection<ProjectAppUrl> ProjectAppUrls { get; set; } = new List<ProjectAppUrl>();
     public ICollection<Comment> Comments { get; set; } = new List<Comment>();
 }

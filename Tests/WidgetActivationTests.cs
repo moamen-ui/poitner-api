@@ -32,10 +32,10 @@ public class WidgetActivationTests
         new(new DbContextOptionsBuilder<AppDbContext>().UseInMemoryDatabase(dbName).Options, user,
             new Microsoft.Extensions.Configuration.ConfigurationBuilder().Build());
 
-    private static void SeedGlobalDefaultEnvironment(string dbName)
+    private static void SeedGlobalLocalEnvironment(string dbName)
     {
         using var db = BuildContext(new FakeCurrentUser { IsSuperAdmin = true }, dbName);
-        db.AppEnvironments.Add(new AppEnvironment { Name = "default", OwnerId = null });
+        db.AppEnvironments.Add(new AppEnvironment { Name = "local", OwnerId = null, IsEnabled = true });
         db.SaveChanges();
     }
 
@@ -43,7 +43,7 @@ public class WidgetActivationTests
     public async Task CheckWidgetActiveAsync_ProjectFullyInactive_ReturnsNotActive()
     {
         var dbName = Guid.NewGuid().ToString();
-        SeedGlobalDefaultEnvironment(dbName);
+        SeedGlobalLocalEnvironment(dbName);
         var tenant = Guid.NewGuid();
         var admin = new FakeCurrentUser { Id = Guid.NewGuid(), IsAdmin = true, TenantId = tenant };
         var svc = new ProjectService(new UnitOfWork(BuildContext(admin, dbName)), admin, new PassThroughEntitlements());
@@ -64,7 +64,7 @@ public class WidgetActivationTests
     public async Task CheckWidgetActiveAsync_NoOrigin_ActiveProject_ReturnsActive()
     {
         var dbName = Guid.NewGuid().ToString();
-        SeedGlobalDefaultEnvironment(dbName);
+        SeedGlobalLocalEnvironment(dbName);
         var tenant = Guid.NewGuid();
         var admin = new FakeCurrentUser { Id = Guid.NewGuid(), IsAdmin = true, TenantId = tenant };
         var svc = new ProjectService(new UnitOfWork(BuildContext(admin, dbName)), admin, new PassThroughEntitlements());
@@ -79,7 +79,7 @@ public class WidgetActivationTests
     public async Task CheckWidgetActiveAsync_OriginNotConfigured_ReturnsActive()
     {
         var dbName = Guid.NewGuid().ToString();
-        SeedGlobalDefaultEnvironment(dbName);
+        SeedGlobalLocalEnvironment(dbName);
         var tenant = Guid.NewGuid();
         var admin = new FakeCurrentUser { Id = Guid.NewGuid(), IsAdmin = true, TenantId = tenant };
         var svc = new ProjectService(new UnitOfWork(BuildContext(admin, dbName)), admin, new PassThroughEntitlements());
@@ -95,7 +95,7 @@ public class WidgetActivationTests
     public async Task CheckWidgetActiveAsync_OriginMatchesDeactivatedRow_ReturnsNotActive()
     {
         var dbName = Guid.NewGuid().ToString();
-        SeedGlobalDefaultEnvironment(dbName);
+        SeedGlobalLocalEnvironment(dbName);
         var tenant = Guid.NewGuid();
         var admin = new FakeCurrentUser { Id = Guid.NewGuid(), IsAdmin = true, TenantId = tenant };
         var svc = new ProjectService(new UnitOfWork(BuildContext(admin, dbName)), admin, new PassThroughEntitlements());
@@ -104,7 +104,7 @@ public class WidgetActivationTests
         int localEnvId;
         using (var db = BuildContext(new FakeCurrentUser { IsSuperAdmin = true }, dbName))
         {
-            var local = new AppEnvironment { Name = "local", OwnerId = null };
+            var local = new AppEnvironment { Name = "local", OwnerId = null, IsEnabled = true };
             db.AppEnvironments.Add(local);
             db.SaveChanges();
             localEnvId = local.Id;
@@ -122,7 +122,7 @@ public class WidgetActivationTests
     public async Task CheckWidgetActiveAsync_OriginMatchesActiveRow_ReturnsActive()
     {
         var dbName = Guid.NewGuid().ToString();
-        SeedGlobalDefaultEnvironment(dbName);
+        SeedGlobalLocalEnvironment(dbName);
         var tenant = Guid.NewGuid();
         var admin = new FakeCurrentUser { Id = Guid.NewGuid(), IsAdmin = true, TenantId = tenant };
         var svc = new ProjectService(new UnitOfWork(BuildContext(admin, dbName)), admin, new PassThroughEntitlements());
@@ -131,7 +131,7 @@ public class WidgetActivationTests
         int localEnvId;
         using (var db = BuildContext(new FakeCurrentUser { IsSuperAdmin = true }, dbName))
         {
-            var local = new AppEnvironment { Name = "local", OwnerId = null };
+            var local = new AppEnvironment { Name = "local", OwnerId = null, IsEnabled = true };
             db.AppEnvironments.Add(local);
             db.SaveChanges();
             localEnvId = local.Id;
@@ -146,10 +146,41 @@ public class WidgetActivationTests
     }
 
     [Fact]
+    public async Task CheckWidgetActiveAsync_EnvironmentDisabled_TreatsRowAsAbsent_ReturnsActive()
+    {
+        var dbName = Guid.NewGuid().ToString();
+        SeedGlobalLocalEnvironment(dbName);
+        var tenant = Guid.NewGuid();
+        var admin = new FakeCurrentUser { Id = Guid.NewGuid(), IsAdmin = true, TenantId = tenant };
+        var svc = new ProjectService(new UnitOfWork(BuildContext(admin, dbName)), admin, new PassThroughEntitlements());
+        var created = (await svc.CreateAsync(new CreateProjectRequest { Key = "site", Name = "Site" })).Data!;
+
+        int localEnvId;
+        using (var db = BuildContext(new FakeCurrentUser { IsSuperAdmin = true }, dbName))
+        {
+            var local = new AppEnvironment { Name = "local", OwnerId = null, IsEnabled = false }; // disabled environment
+            db.AppEnvironments.Add(local);
+            db.SaveChanges();
+            localEnvId = local.Id;
+        }
+
+        // Even if IsActive = false, the disabled environment hides this row completely.
+        using (var db = BuildContext(admin, dbName))
+        {
+            db.ProjectAppUrls.Add(new ProjectAppUrl { ProjectId = created.Id, AppEnvironmentId = localEnvId, Url = "http://localhost:3000", IsActive = false, OwnerId = tenant });
+            db.SaveChanges();
+        }
+
+        var result = await svc.CheckWidgetActiveAsync("site", "http://localhost:3000");
+        Assert.True(result.IsSuccess);
+        Assert.True(result.Data!.Active); // active because row was treated as absent, thus not blocked
+    }
+
+    [Fact]
     public async Task CheckWidgetActiveAsync_UnknownKey_ReturnsNotActive()
     {
         var dbName = Guid.NewGuid().ToString();
-        SeedGlobalDefaultEnvironment(dbName);
+        SeedGlobalLocalEnvironment(dbName);
         var admin = new FakeCurrentUser { Id = Guid.NewGuid(), IsAdmin = true, TenantId = Guid.NewGuid() };
         var svc = new ProjectService(new UnitOfWork(BuildContext(admin, dbName)), admin, new PassThroughEntitlements());
 
@@ -162,7 +193,7 @@ public class WidgetActivationTests
     public async Task CheckWidgetActiveAsync_AmbiguousKeyAcrossTenants_ReturnsNotActive()
     {
         var dbName = Guid.NewGuid().ToString();
-        SeedGlobalDefaultEnvironment(dbName);
+        SeedGlobalLocalEnvironment(dbName);
         var tenantA = new FakeCurrentUser { Id = Guid.NewGuid(), IsAdmin = true, TenantId = Guid.NewGuid() };
         var tenantB = new FakeCurrentUser { Id = Guid.NewGuid(), IsAdmin = true, TenantId = Guid.NewGuid() };
         var svcA = new ProjectService(new UnitOfWork(BuildContext(tenantA, dbName)), tenantA, new PassThroughEntitlements());

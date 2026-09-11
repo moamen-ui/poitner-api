@@ -19,8 +19,10 @@ public class ProjectResponse
     /// or Partial (mixed) — so every dashboard framework renders the same derived state.</summary>
     public ProjectActivationState ActivationState { get; set; }
 
-    /// <summary>Where this project's widget is embedded — required to send a quick-access client invite.</summary>
+    /// <summary>Mirrors the `local` environment URL; use `AppUrls`.</summary>
     public string? AppUrl { get; set; }
+
+    public List<ProjectAppUrlResponse> AppUrls { get; set; } = new();
 
     /// <summary>Opt-in, default off: whether the widget may capture console/network context for this
     /// project's bug-flagged comments.</summary>

@@ -69,6 +69,7 @@ public static class MessageKeys
         public const string NameRequired = "Environment name is required.";
         public const string NotManageable = "You can only rename or delete your own environments — the global catalog is managed by the platform.";
         public const string InUse = "This environment has project URLs assigned to it — remove those first.";
+        public const string NotEnabled = "This environment is currently disabled.";
     }
 
     public static class Preferences

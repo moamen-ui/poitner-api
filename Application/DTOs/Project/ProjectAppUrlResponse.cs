@@ -9,4 +9,6 @@ public class ProjectAppUrlResponse
     /// <summary>Independent of Project's Local/Staging/Production activation — whether THIS
     /// specific environment+URL mapping is enabled.</summary>
     public bool IsActive { get; set; }
+
+    public bool EnvironmentIsEnabled { get; set; }
 }
