@@ -54,6 +54,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options, ICurrentUser c
     public DbSet<AppEnvironment> AppEnvironments => Set<AppEnvironment>();
     public DbSet<ProjectAppUrl> ProjectAppUrls => Set<ProjectAppUrl>();
     public DbSet<AiRule> AiRules => Set<AiRule>();
+    public DbSet<UsageEvent> UsageEvents => Set<UsageEvent>();
 
     protected override void OnModelCreating(ModelBuilder b)
     {
@@ -122,6 +123,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options, ICurrentUser c
         b.Entity<Subscription>().HasQueryFilter(e => currentUser.IsSuperAdmin || (currentUser.TenantId != null && e.OwnerId == currentUser.TenantId) || (currentUser.TenantId == null && !strict && e.OwnerId == null));
         b.Entity<ExtensionSite>().HasQueryFilter(e => currentUser.IsSuperAdmin || (currentUser.TenantId != null && e.OwnerId == currentUser.TenantId) || (currentUser.TenantId == null && !strict && e.OwnerId == null));
         b.Entity<AiRule>().HasQueryFilter(e => currentUser.IsSuperAdmin || (currentUser.TenantId != null && e.OwnerId == currentUser.TenantId) || (currentUser.TenantId == null && !strict && e.OwnerId == null));
+        b.Entity<UsageEvent>().HasQueryFilter(e => currentUser.IsSuperAdmin || (currentUser.TenantId != null && e.OwnerId == currentUser.TenantId) || (currentUser.TenantId == null && !strict && e.OwnerId == null));
     }
 
     // Entities whose CreatedAt must survive the SaveChangesAsync stamping loop (the comment-import

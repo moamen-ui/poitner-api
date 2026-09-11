@@ -18,6 +18,8 @@ public sealed class UnitOfWork(AppDbContext db) : IUnitOfWork
         return (IRepository<T>)r;
     }
 
+    public DbSet<UsageEvent> UsageEvents => db.UsageEvents;
+
     public Task<int> SaveChangesAsync() => db.SaveChangesAsync();
 
     /// <inheritdoc />

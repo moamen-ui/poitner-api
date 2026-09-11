@@ -1,10 +1,12 @@
 using Pointer.Domain.Entity;
+using Microsoft.EntityFrameworkCore;
 
 namespace Pointer.Application.Abstractions;
 
 public interface IUnitOfWork
 {
     IRepository<T> Repository<T>() where T : BaseEntity;
+    DbSet<UsageEvent> UsageEvents { get; }
     Task<int> SaveChangesAsync();
     /// <summary>
     /// Executes the supplied action inside a DB transaction using the configured execution strategy

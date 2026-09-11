@@ -1,5 +1,7 @@
+using System.Linq;
 using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
+using Npgsql;
 using Pointer.Application.Abstractions;
 using Pointer.Application.Common;
 using Pointer.Application.DTOs.Comment;
@@ -175,6 +177,28 @@ public class CommentService : ICommentService
 
         await _unitOfWork.Repository<Comment>().AddAsync(comment);
         await _unitOfWork.SaveChangesAsync();
+
+        // Server emission: first_comment. Race-safe by constraint.
+        try
+        {
+            var firstCommentEvent = new UsageEvent
+            {
+                Type = "first_comment",
+                Source = "api",
+                ProjectId = projectResult.Data,
+                OwnerId = projectOwnerId,
+                CreatedAt = DateTime.UtcNow
+            };
+            _unitOfWork.UsageEvents.Add(firstCommentEvent);
+            await _unitOfWork.SaveChangesAsync();
+        }
+        catch (DbUpdateException ex) when (ex.InnerException is Npgsql.PostgresException { SqlState: "23505" } ||
+            (ex.InnerException != null && ex.InnerException.GetType().Name == "SqliteException" && (int)ex.InnerException.GetType().GetProperty("SqliteErrorCode")!.GetValue(ex.InnerException)! == 19))
+        {
+            // Unique violation on the partial index -> someone else was first. Swallow.
+            // Clear the change tracker so the failed Added entry doesn't replay on the next SaveChangesAsync.
+            _unitOfWork.ClearChangeTracker();
+        }
 
         var names = await ResolveNamesAsync(AuthorIds(comment));
         return Result<CommentResponse>.Success(MapToResponse(comment, names), MessageKeys.Comment.Created);
@@ -520,6 +544,30 @@ public class CommentService : ICommentService
 
         _unitOfWork.Repository<Comment>().Update(comment);
         await _unitOfWork.SaveChangesAsync();
+
+        // Server emission: first_apply. Race-safe by constraint.
+        if (request.Status == CommentStatus.Applied)
+        {
+            try
+            {
+                var firstApplyEvent = new UsageEvent
+                {
+                    Type = "first_apply",
+                    Source = "api",
+                    ProjectId = comment.ProjectId,
+                    OwnerId = comment.OwnerId,
+                    CreatedAt = DateTime.UtcNow
+                };
+                _unitOfWork.UsageEvents.Add(firstApplyEvent);
+                await _unitOfWork.SaveChangesAsync();
+            }
+            catch (DbUpdateException ex) when (ex.InnerException is Npgsql.PostgresException { SqlState: "23505" } ||
+                (ex.InnerException != null && ex.InnerException.GetType().Name == "SqliteException" && (int)ex.InnerException.GetType().GetProperty("SqliteErrorCode")!.GetValue(ex.InnerException)! == 19))
+            {
+                // Unique violation on the partial index -> someone else was first. Swallow.
+                _unitOfWork.ClearChangeTracker();
+            }
+        }
 
         var names = await ResolveNamesAsync(AuthorIds(comment));
         var message = request.Status == CommentStatus.Applied ? MessageKeys.Comment.Applied : null;
