@@ -90,7 +90,7 @@ e2e/
       report.mjs             **built by R1-07 task 0b** (today only the AI phase writes a report); record(id, tier, layer, role, result, ms, detail) → state/report.md (every phase)
       mcp.mjs                @modelcontextprotocol/sdk stdio client for R2-02 (zero LLM)
   fixture-app/               alpha, beta, smoke (existing) + vite-react (R3-01), static-template, csp-nonce, pinned-tamper
-  widget/lib/pre-auth.ts     preAuthWidget(page, token, user) — extracted from widget.spec.ts:41-51 (R2-00 task);
+  widget/lib/auth.ts     preAuthWidget(page, token, user) — extracted from widget.spec.ts:41-51 (R2-00 task);
                              sets localStorage pointer_token/pointer_user AND sessionStorage pointer_visible.
                              Without pointer_visible the widget renders only #pf-launcher (element.ts:161-163,649-655),
                              so #pf-toggle/#pf-add/#pf-user/#pf-env do not exist — click #pf-launcher first in
