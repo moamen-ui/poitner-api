@@ -44,6 +44,11 @@ while [[ $# -gt 0 ]]; do
   shift
 done
 
+# Four specs gate their nightly-only scenarios on process.env.TIER. TIER was a plain shell
+# variable, so those guards saw nothing and the scenarios skipped themselves even in a nightly
+# run — the tier existed in the runner's own bookkeeping and nowhere a test could read it.
+export TIER
+
 # Resolve tier to phases
 RUN_CLI=0
 if [ "${run_cli:-}" = "true" ]; then RUN_CLI=1; fi
@@ -168,7 +173,10 @@ run_phase "cli" "bash scripts/pw.sh cli"
 run_phase "widget" "bash scripts/run-widget-phase.sh"
 
 run_phase "mail" "bash scripts/pw.sh mail"
-run_phase "fresh" "if [ -f fresh-app/run.mjs ]; then node fresh-app/run.mjs; else echo 'fresh-app/run.mjs not written yet' >&2; exit 97; fi"
+# run.mjs only SCAFFOLDS the throwaway app; the scenarios that assert against it live in
+# fresh-app/fresh.spec.ts. Running the driver alone made this phase report PASS for doing nothing
+# but create a directory.
+run_phase "fresh" "if [ -f fresh-app/run.mjs ]; then node fresh-app/run.mjs && bash scripts/pw.sh fresh-app 'fresh\\.spec\\.ts'; else echo 'fresh-app/run.mjs not written yet' >&2; exit 97; fi"
 run_phase "whitelabel" "( bash scripts/pw.sh widget 'whitelabel\\.spec\\.ts'; wl=\$?; node scripts/reset-branding.mjs 2>/dev/null; exit \$wl )"
 run_phase "mcp" "bash scripts/pw.sh mcp"
 run_phase "apply" "bash scripts/pw.sh apply"
@@ -178,7 +186,7 @@ if [[ " ${FLAGS[*]:-} " =~ " registry " ]] || [[ " ${FLAGS[*]:-} " =~ " all " ]]
   start=$(node -e "process.stdout.write(Date.now().toString())")
   set +e
   docker compose up -d verdaccio
-  bash scripts/pw.sh cli 'registry\.spec\.mjs'
+  E2E_REGISTRY=1 bash scripts/pw.sh cli 'registry\.spec\.mjs'
   code=$?
   docker compose stop verdaccio
   set -e
@@ -194,7 +202,10 @@ fi
 
 # The upgrade phase owns the specs that restart the api container. E2E_DESTRUCTIVE is what
 # their guards read; without it they skip, which is what keeps them out of the api phase.
-run_phase "upgrade" "E2E_DESTRUCTIVE=1 bash scripts/pw.sh api 'key-rotation\\.spec\\.mjs'"
+# The destructive phase: every scenario that restarts the api container lives here and nowhere
+# else. Both files also contain non-destructive scenarios, which simply pass again — a cheap
+# duplicate beats a scenario that can restart the stack from inside a shared phase.
+run_phase "upgrade" "( E2E_DESTRUCTIVE=1 bash scripts/pw.sh api 'key-rotation\\.spec\\.mjs' && E2E_DESTRUCTIVE=1 bash scripts/pw.sh cli 'doctor\\.spec\\.mjs' )"
 # E2E_429 is what the spec's own guard reads. Its fallback heuristic (an argv containing
 # "429") does NOT match the file path we pass, so setting it explicitly is what actually
 # lets the burst scenario run instead of skipping itself in its own dedicated phase.

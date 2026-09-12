@@ -97,9 +97,15 @@ async function performDeferredLoginCommentFlow(
   // Submit login modal
   await widget.locator('#pf-login-submit').click();
 
-  // Picking is now active: afterLogin runs init() then togglePicking().
-  // Do NOT click #pf-add again!
-  // Click <h1> to pick target
+  // Picking becomes active on its own: afterLogin runs init() then togglePicking().
+  // Do NOT click #pf-add again.
+  //
+  // But init() is async (it fetches capture-config and comments), so picking is NOT active the
+  // instant the login submit returns. Clicking the target before startPicking() installs the
+  // document-level listener lands an ordinary page click and no pick happens — the popover never
+  // opens and the failure surfaces 10s later as "#pf-comment-text not found". Wait for the
+  // `active` class, which startPicking() sets alongside that listener.
+  await expect(widget.locator('#pf-add')).toHaveClass(/active/, { timeout: 15_000 });
   await page.locator('h1').first().click({ force: true });
 
   // Fill comment text and submit

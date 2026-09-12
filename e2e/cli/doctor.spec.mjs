@@ -24,8 +24,13 @@ const KEYS_PATH = join(STATE_DIR, 'keys.json');
 const CREDENTIALS_PATH = join(STATE_DIR, 'credentials.json');
 const VITE_FIXTURE = join(repoRoot, 'cli', 'test', 'fixtures', 'vite');
 
+// Gated on the PHASE flag only, never on TIER.
+//
+// Tier decides which phases run; the phase decides what is safe to run inside it. Conflating them
+// put this scenario back inside the ordinary `api` phase for every nightly run, where it restarted
+// the api container and ECONNRESET'd ten unrelated specs. The runner sets the flag below in the
+// one phase that has this scenario to itself.
 const isDestructiveRun =
-  process.env.TIER === 'nightly' ||
   process.env.E2E_DESTRUCTIVE === '1' ||
   process.argv.some((arg) => arg.includes('R1-04-04'));
 
@@ -57,7 +62,7 @@ async function getDeveloperApiKey() {
 
 test('R1-04-02 — doctor-green-after-init', async () => {
   const start = Date.now();
-  const cwd = tempRepo(VITE_FIXTURE);
+  const cwd = tempRepo(VITE_FIXTURE).dir;
   let stdoutDetail = '';
 
   try {
@@ -168,7 +173,7 @@ test('R1-04-02 — doctor-green-after-init', async () => {
 
 test('R1-04-03 ⛓ — doctor-detects-tracked-credentials', async () => {
   const start = Date.now();
-  const cwd = tempRepo(VITE_FIXTURE);
+  const cwd = tempRepo(VITE_FIXTURE).dir;
 
   try {
     const key = await getDeveloperApiKey();
@@ -195,7 +200,7 @@ test('R1-04-03 ⛓ — doctor-detects-tracked-credentials', async () => {
     expect(initRes.code, `init must exit 0: ${initRes.stderr}`).toBe(0);
 
     // 2. git add .pointer/credentials.env && git commit -m leak
-    execFileSync('git', ['add', '.pointer/credentials.env'], { cwd });
+    execFileSync('git', ['add', '-f', '.pointer/credentials.env'], { cwd });
     execFileSync('git', ['commit', '-m', 'leak'], { cwd });
 
     // 3. pointer doctor --json
@@ -252,7 +257,7 @@ test('R1-04-04 ⛓ — min-version gate (Cli__MinVersion=99.0.0)', async () => {
   );
 
   const start = Date.now();
-  const cwd = tempRepo(VITE_FIXTURE);
+  const cwd = tempRepo(VITE_FIXTURE).dir;
   let restarted = false;
 
   try {

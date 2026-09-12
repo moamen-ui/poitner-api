@@ -20,10 +20,12 @@ async function ask(question, options = {}) {
   const displayQuestion = options.default ? `${question} [${options.default}]: ` : `${question}: `;
   while (true) {
     process.stdout.write(displayQuestion);
-    if (options.secret) muted = true;
+    if (options.secret)
+      muted = true;
     const answer = await rl.question("");
     muted = false;
-    if (options.secret) process.stdout.write("\n");
+    if (options.secret)
+      process.stdout.write("\n");
     const finalAnswer = answer.trim() || options.default || "";
     if (options.validate) {
       const error = options.validate(finalAnswer);
@@ -77,7 +79,8 @@ async function readConfig(cwd2) {
     const content = await fs.readFile(join(cwd2, CONFIG_FILE), "utf8");
     return JSON.parse(content);
   } catch (err) {
-    if (err.code !== "ENOENT") throw err;
+    if (err.code !== "ENOENT")
+      throw err;
     return {};
   }
 }
@@ -128,7 +131,8 @@ async function readFileSafe(path) {
   }
 }
 async function detectAppUrl(cwd2, kind, envName) {
-  if (envName !== "local") return { url: null, source: "environment not local" };
+  if (envName !== "local")
+    return { url: null, source: "environment not local" };
   if (kind === "vite") {
     const exts = ["js", "ts", "mjs", "mts"];
     for (const ext of exts) {
@@ -137,8 +141,10 @@ async function detectAppUrl(cwd2, kind, envName) {
         let port = 5173;
         let isHttps = false;
         const portMatch = cfg.match(/port\s*:\s*(\d+)/);
-        if (portMatch) port = parseInt(portMatch[1], 10);
-        if (cfg.match(/https\s*:\s*(true|{)/)) isHttps = true;
+        if (portMatch)
+          port = parseInt(portMatch[1], 10);
+        if (cfg.match(/https\s*:\s*(true|{)/))
+          isHttps = true;
         if (portMatch || isHttps) {
           return { url: `http${isHttps ? "s" : ""}://localhost:${port}`, source: `vite.config.${ext}:server` };
         }
@@ -150,7 +156,8 @@ async function detectAppUrl(cwd2, kind, envName) {
         const pkg = JSON.parse(pkgStr);
         if (pkg.scripts && pkg.scripts.dev) {
           const pm = pkg.scripts.dev.match(/--port\s+(\d+)/);
-          if (pm) return { url: `http://localhost:${pm[1]}`, source: "package.json:scripts.dev" };
+          if (pm)
+            return { url: `http://localhost:${pm[1]}`, source: "package.json:scripts.dev" };
         }
       } catch {
       }
@@ -164,7 +171,8 @@ async function detectAppUrl(cwd2, kind, envName) {
         const pkg = JSON.parse(pkgStr);
         if (pkg.scripts && pkg.scripts.dev) {
           const pm = pkg.scripts.dev.match(/(?:-p|--port)\s+(\d+)/);
-          if (pm) return { url: `http://localhost:${pm[1]}`, source: "package.json:scripts.dev" };
+          if (pm)
+            return { url: `http://localhost:${pm[1]}`, source: "package.json:scripts.dev" };
         }
       } catch {
       }
@@ -173,7 +181,8 @@ async function detectAppUrl(cwd2, kind, envName) {
     for (const e of envs) {
       const env = await readFileSafe(join2(cwd2, e));
       const m = env.match(/^PORT=(\d+)/m);
-      if (m) return { url: `http://localhost:${m[1]}`, source: `${e}:PORT` };
+      if (m)
+        return { url: `http://localhost:${m[1]}`, source: `${e}:PORT` };
     }
     return { url: "http://localhost:3000", source: "next default" };
   }
@@ -200,7 +209,8 @@ async function detectAppUrl(cwd2, kind, envName) {
         const pkg = JSON.parse(pkgStr);
         if (pkg.scripts && pkg.scripts.start) {
           const pm = pkg.scripts.start.match(/--port\s+(\d+)/);
-          if (pm) return { url: `http://localhost:${pm[1]}`, source: "package.json:scripts.start" };
+          if (pm)
+            return { url: `http://localhost:${pm[1]}`, source: "package.json:scripts.start" };
         }
       } catch {
       }
@@ -214,7 +224,8 @@ async function detectAppUrl(cwd2, kind, envName) {
         const pkg = JSON.parse(pkgStr);
         if (pkg.scripts && pkg.scripts.start) {
           const pm = pkg.scripts.start.match(/PORT=(\d+)/);
-          if (pm) return { url: `http://localhost:${pm[1]}`, source: "package.json:scripts.start" };
+          if (pm)
+            return { url: `http://localhost:${pm[1]}`, source: "package.json:scripts.start" };
         }
       } catch {
       }
@@ -223,7 +234,8 @@ async function detectAppUrl(cwd2, kind, envName) {
     for (const e of envs) {
       const env = await readFileSafe(join2(cwd2, e));
       const m = env.match(/^PORT=(\d+)/m);
-      if (m) return { url: `http://localhost:${m[1]}`, source: `${e}:PORT` };
+      if (m)
+        return { url: `http://localhost:${m[1]}`, source: `${e}:PORT` };
     }
     return { url: "http://localhost:3000", source: "cra default" };
   }
@@ -244,17 +256,21 @@ async function detectStack(cwd2) {
   if (deps.vite) {
     evidence.push("package.json (vite)");
     for (const ext of ["js", "ts", "mjs", "mts"]) {
-      if (existsSync(join2(cwd2, `vite.config.${ext}`))) evidence.push(`vite.config.${ext}`);
+      if (existsSync(join2(cwd2, `vite.config.${ext}`)))
+        evidence.push(`vite.config.${ext}`);
     }
-    if (hasIndexHtml) evidence.push("index.html");
+    if (hasIndexHtml)
+      evidence.push("index.html");
     return { kind: "vite", evidence, htmlPath: hasIndexHtml ? join2(cwd2, "index.html") : void 0 };
   }
   if (deps.next) {
     evidence.push("package.json (next)");
     for (const ext of ["js", "mjs", "ts"]) {
-      if (existsSync(join2(cwd2, `next.config.${ext}`))) evidence.push(`next.config.${ext}`);
+      if (existsSync(join2(cwd2, `next.config.${ext}`)))
+        evidence.push(`next.config.${ext}`);
     }
-    if (existsSync(join2(cwd2, "app"))) evidence.push("app/");
+    if (existsSync(join2(cwd2, "app")))
+      evidence.push("app/");
     return { kind: "next", evidence };
   }
   if (existsSync(join2(cwd2, "angular.json"))) {
@@ -268,7 +284,8 @@ async function detectStack(cwd2) {
   for (const wcfg of ["pnpm-workspace.yaml", "lerna.json", "nx.json", "turbo.json"]) {
     if (existsSync(join2(cwd2, wcfg))) {
       evidence.push(wcfg);
-      if (!hasIndexHtml) return { kind: "monorepo", evidence };
+      if (!hasIndexHtml)
+        return { kind: "monorepo", evidence };
     }
   }
   if (pkg.workspaces && !hasIndexHtml) {
@@ -285,15 +302,24 @@ function extractTokens(pkg) {
   const deps = { ...pkg.dependencies, ...pkg.devDependencies };
   const frontend = [];
   const backend = [];
-  if (deps.react) frontend.push("react");
-  if (deps.vue) frontend.push("vue");
-  if (deps.svelte) frontend.push("svelte");
-  if (deps["solid-js"]) frontend.push("solid");
-  if (deps["@angular/core"]) frontend.push("angular");
-  if (deps.next) frontend.push("next");
-  if (deps.tailwindcss) frontend.push("tailwind");
-  if (deps.vite) frontend.push("vite");
-  if (deps.express || deps.fastify || deps.nest) backend.push("node");
+  if (deps.react)
+    frontend.push("react");
+  if (deps.vue)
+    frontend.push("vue");
+  if (deps.svelte)
+    frontend.push("svelte");
+  if (deps["solid-js"])
+    frontend.push("solid");
+  if (deps["@angular/core"])
+    frontend.push("angular");
+  if (deps.next)
+    frontend.push("next");
+  if (deps.tailwindcss)
+    frontend.push("tailwind");
+  if (deps.vite)
+    frontend.push("vite");
+  if (deps.express || deps.fastify || deps.nest)
+    backend.push("node");
   return { frontend, backend };
 }
 
@@ -303,7 +329,8 @@ import { join as join3 } from "node:path";
 async function injectStatic(cwd2, htmlPath, cfg) {
   const p = htmlPath || join3(cwd2, "index.html");
   let content = await fs3.readFile(p, "utf8").catch(() => "");
-  if (!content) throw new Error(`HTML file not found at ${p}`);
+  if (!content)
+    throw new Error(`HTML file not found at ${p}`);
   const block = cfg.envGuarded ? `<!-- pointer-feedback:start -->
 <script>
   if (
@@ -395,7 +422,8 @@ import { promises as fs5 } from "node:fs";
 import { join as join5, dirname as dirname2 } from "node:path";
 async function download(url, dest, chmod = false) {
   const res = await fetch(url);
-  if (!res.ok) throw new Error(`Failed to fetch ${url}: ${res.status}`);
+  if (!res.ok)
+    throw new Error(`Failed to fetch ${url}: ${res.status}`);
   const txt = await res.text();
   await fs5.mkdir(dirname2(dest), { recursive: true });
   await fs5.writeFile(dest, txt, "utf8");
@@ -453,13 +481,14 @@ var ApiError = class extends Error {
     super(message);
     this.code = code;
   }
-  code;
 };
 async function api(server, path, options = {}) {
   const url = `${server.replace(/\/$/, "")}${path}`;
   const headers = { "Accept": "application/json" };
-  if (options.token) headers["Authorization"] = `Bearer ${options.token}`;
-  if (options.body) headers["Content-Type"] = "application/json";
+  if (options.token)
+    headers["Authorization"] = `Bearer ${options.token}`;
+  if (options.body)
+    headers["Content-Type"] = "application/json";
   const res = await fetch(url, {
     method: options.method || "GET",
     headers,
@@ -469,12 +498,14 @@ async function api(server, path, options = {}) {
     let msg = res.statusText;
     try {
       const body2 = await res.json();
-      if (body2.message) msg = body2.message;
+      if (body2.message)
+        msg = body2.message;
     } catch {
     }
     throw new ApiError(res.status, msg);
   }
-  if (res.status === 204) return {};
+  if (res.status === 204)
+    return {};
   const body = await res.json();
   return body.data !== void 0 ? body.data : body;
 }
@@ -492,7 +523,8 @@ async function getBranding(server) {
 
 // src/events.ts
 async function postEvent(server, token, payload) {
-  if (!token) return;
+  if (!token)
+    return;
   try {
     await api(server, "/api/events", { method: "POST", body: payload, token });
   } catch (e) {
@@ -514,11 +546,15 @@ function compareSemver(a, b) {
   const x = parse(a);
   const y = parse(b);
   for (let i = 0; i < 3; i++) {
-    if (x.nums[i] !== y.nums[i]) return x.nums[i] - y.nums[i];
+    if (x.nums[i] !== y.nums[i])
+      return x.nums[i] - y.nums[i];
   }
-  if (x.pre === y.pre) return 0;
-  if (x.pre === null) return 1;
-  if (y.pre === null) return -1;
+  if (x.pre === y.pre)
+    return 0;
+  if (x.pre === null)
+    return 1;
+  if (y.pre === null)
+    return -1;
   return x.pre < y.pre ? -1 : 1;
 }
 async function fetchWithTimeout(url, ms, init) {
@@ -689,7 +725,8 @@ async function widgetCheck(cwd2) {
 }
 async function skillsCheck(cwd2, config) {
   const tool = config.aiTool;
-  if (!tool) return { id: "skills", status: "warn", message: "No AI tool configured" };
+  if (!tool)
+    return { id: "skills", status: "warn", message: "No AI tool configured" };
   const expected = SKILL_FILES[tool] ?? SKILL_FILES.other;
   const missing = [];
   for (const rel of expected) {
@@ -762,7 +799,8 @@ async function initCommand(cwd2, options = {}) {
         method: "POST",
         body: { apiKey: key }
       });
-      if (login?.status !== "ok" || !login?.token) throw new Error(login?.status || "invalid");
+      if (login?.status !== "ok" || !login?.token)
+        throw new Error(login?.status || "invalid");
       token = login.token;
       me = login.user ?? await api(server, "/api/auth/me", { token });
     } catch (err) {
@@ -784,7 +822,8 @@ async function initCommand(cwd2, options = {}) {
           method: "POST",
           body: { apiKey: key }
         });
-        if (login?.status !== "ok" || !login?.token) throw new Error(login?.status || "invalid");
+        if (login?.status !== "ok" || !login?.token)
+          throw new Error(login?.status || "invalid");
         token = login.token;
         me = login.user ?? await api(server, "/api/auth/me", { token });
       } catch (err) {
@@ -807,7 +846,7 @@ async function initCommand(cwd2, options = {}) {
   let projectName = create || finalProjectKey;
   let created = false;
   if (!isYes && !project && !create) {
-    const projects = await api(server, "/api/admin/projects", { token: key }).catch(() => []);
+    const projects = await api(server, "/api/admin/projects", { token }).catch(() => []);
     const createOpt = "\uFF0B Create a new project\u2026";
     const choices = projects.map((p) => `${p.name}  (${p.key})`).concat(createOpt);
     let choice = createOpt;
@@ -822,7 +861,14 @@ async function initCommand(cwd2, options = {}) {
       created = true;
     } else {
       const match = choice.match(/\((.*?)\)$/);
-      if (match) finalProjectKey = match[1];
+      if (match)
+        finalProjectKey = match[1];
+    }
+  } else if (isYes && project && !create) {
+    const existing = await api(server, "/api/admin/projects", { token }).catch(() => []);
+    if (!existing.some((p) => p.key === project)) {
+      created = true;
+      projectName = project;
     }
   } else if (create) {
     created = true;
@@ -832,16 +878,19 @@ async function initCommand(cwd2, options = {}) {
   }
   if (created) {
     try {
-      await api(server, "/api/admin/projects", { method: "POST", body: { key: finalProjectKey, name: projectName }, token: key });
+      await api(server, "/api/admin/projects", { method: "POST", body: { key: finalProjectKey, name: projectName }, token });
     } catch (err) {
       if (err instanceof ApiError && err.code === 409) {
         console.error("Key already exists, choose another.");
-        process.exit(1);
+        process.exit(3);
       } else if (err instanceof ApiError && err.code === 403) {
         console.error("This account cannot create projects.");
         process.exit(3);
       } else if (err instanceof ApiError && err.code === 400) {
         console.error(err.message);
+        process.exit(1);
+      } else {
+        console.error(`Could not create project: ${err?.message ?? err}`);
         process.exit(1);
       }
     }
@@ -869,17 +918,24 @@ async function initCommand(cwd2, options = {}) {
   }
   let tool = options["tool"];
   if (!tool) {
-    if (process.env.CLAUDECODE || process.env.CLAUDE_CODE_ENTRYPOINT) tool = "claude-code";
-    else if (process.env.ANTIGRAVITY_AGENT || process.env.GEMINI_CLI) tool = "antigravity";
-    else if (process.env.TERM_PROGRAM && process.env.TERM_PROGRAM.includes("Cursor")) tool = "cursor";
-    else if (process.env.WINDSURF) tool = "windsurf";
-    else if (process.env.OPENCODE) tool = "opencode";
-    else tool = isYes ? "other" : "claude-code";
+    if (process.env.CLAUDECODE || process.env.CLAUDE_CODE_ENTRYPOINT)
+      tool = "claude-code";
+    else if (process.env.ANTIGRAVITY_AGENT || process.env.GEMINI_CLI)
+      tool = "antigravity";
+    else if (process.env.TERM_PROGRAM && process.env.TERM_PROGRAM.includes("Cursor"))
+      tool = "cursor";
+    else if (process.env.WINDSURF)
+      tool = "windsurf";
+    else if (process.env.OPENCODE)
+      tool = "opencode";
+    else
+      tool = isYes ? "other" : "claude-code";
     if (!isYes && !options["tool"]) {
       tool = await select("AI tool", ["claude-code", "cursor", "windsurf", "opencode", "antigravity", "other"], tool);
     }
   }
-  if (!isJson) console.log(`Detecting your stack... -> ${appInfo.kind} (${appInfo.evidence.join(", ")})`);
+  if (!isJson)
+    console.log(`Detecting your stack... -> ${appInfo.kind} (${appInfo.evidence.join(", ")})`);
   let injected = false;
   let routedToSkill = false;
   let filesMod = [];
@@ -887,12 +943,14 @@ async function initCommand(cwd2, options = {}) {
     if (appInfo.kind === "vite") {
       filesMod = await injectVite(cwd2, { server, key: finalProjectKey, environment: env }, options["html"]);
       injected = true;
-      if (!isJson) console.log(`Injected widget into ${filesMod.join(", ")}`);
+      if (!isJson)
+        console.log(`Injected widget into ${filesMod.join(", ")}`);
     } else if (appInfo.kind === "static") {
       const htmlPath = await injectStatic(cwd2, options["html"], { server, key: finalProjectKey, environment: env });
       filesMod = [htmlPath];
       injected = true;
-      if (!isJson) console.log(`Injected widget into ${htmlPath}`);
+      if (!isJson)
+        console.log(`Injected widget into ${htmlPath}`);
     } else if (appInfo.kind !== "unknown") {
       routedToSkill = true;
       if (!isJson) {
@@ -904,7 +962,8 @@ async function initCommand(cwd2, options = {}) {
     }
   }
   if (!options["no-skills"]) {
-    if (!isJson) console.log("Installing AI skills");
+    if (!isJson)
+      console.log("Installing AI skills");
     const skillsDir = options["skills-dir"];
     const installed = await installSkills(server, tool, cwd2, skillsDir);
     filesMod.push(...installed);
@@ -913,22 +972,27 @@ async function initCommand(cwd2, options = {}) {
   const tokens = extractTokens(JSON.parse(pkgStr));
   const stackMeta = { frontend: tokens.frontend, backend: tokens.backend, aiTool: tool };
   try {
-    await api(server, `/api/projects/${finalProjectKey}/stack`, { method: "POST", body: stackMeta, token: key });
+    await api(server, `/api/projects/${finalProjectKey}/stack`, { method: "POST", body: stackMeta, token });
     await fs7.mkdir(join7(cwd2, ".pointer"), { recursive: true });
     await fs7.writeFile(join7(cwd2, ".pointer/stack.json"), JSON.stringify(stackMeta, null, 2), "utf8");
   } catch (e) {
-    if (!isJson) console.log(`\u26A0 Stack not registered (${e.code || 500})`);
+    if (!isJson)
+      console.log(`\u26A0 Stack not registered (${e.code || 500})`);
   }
-  await writeConfig(cwd2, { server, project: finalProjectKey, environment: env, aiTool: tool, skillsDir: options["skills-dir"], cliVersion: "0.1.0" });
+  await writeConfig(cwd2, { server, project: finalProjectKey, environment: env, aiTool: tool, skillsDir: options["skills-dir"], cliVersion: BUILD_CLI_VERSION });
   filesMod.push(".pointer/config.json");
-  if (!isJson) console.log("Verifying...");
-  const checks = await runInitChecks(server, finalProjectKey, env, key);
+  filesMod.push(".pointer/credentials.env");
+  filesMod.push(".gitignore");
+  if (!isJson)
+    console.log("Verifying...");
+  const checks = await runInitChecks(cwd2, { server, project: finalProjectKey }, BUILD_CLI_VERSION);
   if (!isJson) {
+    const icon = { ok: "\u2714", warn: "\u26A0", error: "\u2718" };
     for (const c of checks) {
-      console.log(`${c.status === "ok" ? "\u2714" : "\u2718"} ${c.id}: ${c.message}`);
+      console.log(`${icon[c.status]} ${c.id}: ${c.message}`);
     }
   }
-  await postEvent(server, key, { type: "installed", projectKey: finalProjectKey, meta: { stack: stackMeta, aiTool: tool, injected, cliVersion: "0.1.0" } });
+  await postEvent(server, token, { type: "installed", projectKey: finalProjectKey, meta: { stack: stackMeta, aiTool: tool, injected, cliVersion: BUILD_CLI_VERSION } });
   if (isJson) {
     console.log(JSON.stringify({
       ok: true,
@@ -944,7 +1008,7 @@ async function initCommand(cwd2, options = {}) {
       routedToSkill,
       files: filesMod,
       checks,
-      cliVersion: "0.1.0"
+      cliVersion: BUILD_CLI_VERSION
     }));
     process.exit(0);
   }
@@ -965,8 +1029,10 @@ import { join as join8 } from "node:path";
 var ICON = { ok: "\u2714", warn: "\u26A0", error: "\u2718" };
 function exitCodeFor(checks) {
   const failed = checks.filter((c) => c.status === "error");
-  if (failed.some((c) => c.id === "meta")) return 5;
-  if (failed.some((c) => c.id === "key")) return 3;
+  if (failed.some((c) => c.id === "meta"))
+    return 5;
+  if (failed.some((c) => c.id === "key"))
+    return 3;
   return failed.length > 0 ? 1 : 0;
 }
 async function doctorCommand(cwd2, options, cliVersion) {
@@ -984,7 +1050,8 @@ async function doctorCommand(cwd2, options, cliVersion) {
   } else {
     for (const check of checks) {
       console.log(`${ICON[check.status]} ${check.id.padEnd(14)} ${check.message}`);
-      if (check.hint && check.status !== "ok") console.log(`  ${" ".repeat(14)} \u2192 ${check.hint}`);
+      if (check.hint && check.status !== "ok")
+        console.log(`  ${" ".repeat(14)} \u2192 ${check.hint}`);
     }
     const failed = checks.filter((c) => c.status === "error").length;
     const warned = checks.filter((c) => c.status === "warn").length;
@@ -999,15 +1066,19 @@ ${failed} problem${failed === 1 ? "" : "s"} found.`
 }
 async function reportRun(cwd2, options, checks, ok) {
   const keyCheck = checks.find((c) => c.id === "key");
-  if (keyCheck?.status !== "ok") return;
+  if (keyCheck?.status !== "ok")
+    return;
   try {
     const config = await readConfig(cwd2);
     const server = (options.server || config.server || "").replace(/\/$/, "");
-    if (!server) return;
+    if (!server)
+      return;
     const apiKey = (await fs8.readFile(join8(cwd2, ".pointer/credentials.env"), "utf8")).match(/^POINTER_API_KEY=(.*)$/m)?.[1]?.trim();
-    if (!apiKey) return;
+    if (!apiKey)
+      return;
     const login = await api(server, "/api/auth/login-with-key", { method: "POST", body: { apiKey } });
-    if (!login?.token) return;
+    if (!login?.token)
+      return;
     await postEvent(server, login.token, {
       type: "doctor_run",
       projectKey: options.project || config.project,
@@ -1022,10 +1093,12 @@ async function applyFixes(cwd2, checks) {
   const server = (config.server || "").replace(/\/$/, "");
   let token;
   const tokenFor = async () => {
-    if (token) return token;
+    if (token)
+      return token;
     try {
       const apiKey = (await fs8.readFile(join8(cwd2, ".pointer/credentials.env"), "utf8")).match(/^POINTER_API_KEY=(.*)$/m)?.[1]?.trim();
-      if (!apiKey || !server) return void 0;
+      if (!apiKey || !server)
+        return void 0;
       const login = await api(server, "/api/auth/login-with-key", { method: "POST", body: { apiKey } });
       token = login?.token;
     } catch {
@@ -1091,8 +1164,10 @@ function parseArgs(args) {
       }
     } else if (arg.startsWith("-")) {
       const key = arg.slice(1);
-      if (key === "y") parsed["yes"] = true;
-      if (key === "h") parsed["help"] = true;
+      if (key === "y")
+        parsed["yes"] = true;
+      if (key === "h")
+        parsed["help"] = true;
     } else {
       positionals.push(arg);
     }

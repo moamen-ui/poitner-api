@@ -32,8 +32,13 @@ const KEYS_PATH = join(STATE_DIR, 'keys.json');
 const CREDENTIALS_PATH = join(STATE_DIR, 'credentials.json');
 const VITE_FIXTURE = join(repoRoot, 'cli', 'test', 'fixtures', 'vite');
 
+// Gated on the PHASE flag only, never on TIER.
+//
+// Tier decides which phases run; the phase decides what is safe to run inside it. Conflating them
+// put this scenario back inside the ordinary `api` phase for every nightly run, where it restarted
+// the api container and ECONNRESET'd ten unrelated specs. The runner sets the flag below in the
+// one phase that has this scenario to itself.
 const isRegistryRun =
-  process.env.TIER === 'nightly' ||
   process.env.E2E_REGISTRY === '1' ||
   process.argv.some((arg) => arg.includes('registry') || arg.includes('R1-04-06'));
 
@@ -144,7 +149,7 @@ test('R1-04-06 ⛓ — upgrade hint against a genuinely old published CLI', asyn
     }
 
     const key = await getDeveloperApiKey();
-    cwd = tempRepo(VITE_FIXTURE);
+    cwd = tempRepo(VITE_FIXTURE).dir;
 
     // In a fresh tempRepo() seeded from vite fixture:
     // npx --registry http://localhost:4873 -y pointer-feedback@0.1.0 init --server http://localhost:8090 --key K --project e2e-alpha --yes --json

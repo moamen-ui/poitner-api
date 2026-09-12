@@ -1,4 +1,4 @@
-import { mkdtempSync, cpSync, mkdirSync, existsSync } from 'node:fs';
+import { mkdtempSync, cpSync, mkdirSync, existsSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -12,6 +12,10 @@ const DEFAULT_VITE_FIXTURE = join(e2eRoot, 'fixtures', 'vite');
 /**
  * Creates a fresh temporary git repository with user.email e2e@example.com
  * and optional initial files copied from sourceDir.
+ *
+ * Returns `{ dir, cleanup }`. `dir` is the path; `cleanup()` removes it. Callers must use `.dir`
+ * — an earlier version returned the bare path, which left every caller that expected a cleanup
+ * function failing at teardown and leaking temp directories.
  */
 export function tempRepo(sourceDir) {
   const dir = mkdtempSync(join(tmpdir(), 'pointer-e2e-repo-'));
@@ -33,7 +37,7 @@ export function tempRepo(sourceDir) {
     cpSync(srcToCopy, dir, { recursive: true });
   }
 
-  return dir;
+  return { dir, cleanup: () => rmSync(dir, { recursive: true, force: true }) };
 }
 
 /**

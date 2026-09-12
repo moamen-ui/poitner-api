@@ -3,3 +3,10 @@ state/*
 !state/.gitkeep
 test-results/
 playwright-report/
+
+# Pointer
+.pointer/
+!.pointer/credentials.env.example
+!.pointer/stack.json
+!.pointer/pointer.sh
+!.pointer/config.json

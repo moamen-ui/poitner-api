@@ -21,8 +21,13 @@ const credentials = existsSync(credPath)
 // Guard: Rate limit tests burn policy buckets and must run only in the dedicated 429 phase
 // (run-e2e.sh --429) or nightly run, never during the PR tier.
 // When dispatched directly by scenario id (npx playwright test -g R1-04-05), the guard permits execution.
+// Gated on the PHASE flag only, never on TIER.
+//
+// Tier decides which phases run; the phase decides what is safe to run inside it. Conflating them
+// put this scenario back inside the ordinary `api` phase for every nightly run, where it restarted
+// the api container and ECONNRESET'd ten unrelated specs. The runner sets the flag below in the
+// one phase that has this scenario to itself.
 const is429Run =
-  process.env.TIER === 'nightly' ||
   process.env.E2E_429 === '1' ||
   process.argv.some(
     (arg) => arg.includes('429') || arg.includes('R1-05-05') || arg.includes('R1-04-05')

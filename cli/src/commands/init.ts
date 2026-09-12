@@ -1,5 +1,5 @@
 import { ask, select } from '../prompt.js';
-import { BUILD_DEFAULT_SERVER } from '../build-constants.js';
+import { BUILD_DEFAULT_SERVER, BUILD_CLI_VERSION } from '../build-constants.js';
 import { readConfig, writeConfig, writeCredentials, upsertGitignore } from '../config.js';
 import { detectStack, detectAppUrl, extractTokens } from '../detect.js';
 import { injectVite, injectStatic } from '../inject/index.js';
@@ -99,7 +99,7 @@ export async function initCommand(cwd: string, options: Record<string, string | 
     let created = false;
 
     if (!isYes && !project && !create) {
-        const projects = await api<any[]>(server as string, '/api/admin/projects', { token: key }).catch(() => []);
+        const projects = await api<any[]>(server as string, '/api/admin/projects', { token }).catch(() => []);
         const createOpt = '＋ Create a new project…';
         const choices = projects.map(p => `${p.name}  (${p.key})`).concat(createOpt);
         
@@ -118,6 +118,12 @@ export async function initCommand(cwd: string, options: Record<string, string | 
             const match = choice.match(/\((.*?)\)$/);
             if (match) finalProjectKey = match[1];
         }
+    } else if (isYes && project && !create) {
+        const existing = await api<any[]>(server as string, '/api/admin/projects', { token }).catch(() => []);
+        if (!existing.some((p) => p.key === project)) {
+            created = true;
+            projectName = project;
+        }
     } else if (create) {
         created = true;
         let derivedKey = create.toLowerCase().replace(/[^a-z0-9-]/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '');
@@ -127,16 +133,25 @@ export async function initCommand(cwd: string, options: Record<string, string | 
 
     if (created) {
         try {
-            await api(server as string, '/api/admin/projects', { method: 'POST', body: { key: finalProjectKey, name: projectName }, token: key });
+            await api(server as string, '/api/admin/projects', { method: 'POST', body: { key: finalProjectKey, name: projectName }, token });
         } catch (err: any) {
             if (err instanceof ApiError && err.code === 409) {
+                // Exit 3, not 1: under --yes there is nobody to ask for a different key, so this
+                // is "cannot proceed with the identity you gave me" — the same class as 403 — and
+                // a caller scripting init branches on the code to tell it apart from a generic
+                // failure.
                 console.error("Key already exists, choose another.");
-                process.exit(1);
+                process.exit(3);
             } else if (err instanceof ApiError && err.code === 403) {
                 console.error("This account cannot create projects.");
                 process.exit(3);
             } else if (err instanceof ApiError && err.code === 400) {
                 console.error(err.message);
+                process.exit(1);
+            } else {
+                // Previously fell through silently and carried on as though the project existed,
+                // writing a config that points at nothing.
+                console.error(`Could not create project: ${err?.message ?? err}`);
                 process.exit(1);
             }
         }
@@ -224,25 +239,38 @@ export async function initCommand(cwd: string, options: Record<string, string | 
     const stackMeta = { frontend: tokens.frontend, backend: tokens.backend, aiTool: tool };
     
     try {
-        await api(server as string, `/api/projects/${finalProjectKey}/stack`, { method: 'POST', body: stackMeta, token: key });
+        // `token`, not `key`. /api/projects/{key}/stack is [Authorize] and expects the JWT that
+        // was already exchanged above; sending the raw API key as a Bearer 401s every time. The
+        // catch below swallowed it, so stack.json was never written and `doctor` reported
+        // "Stack not registered" on a perfectly good install.
+        await api(server as string, `/api/projects/${finalProjectKey}/stack`, { method: 'POST', body: stackMeta, token });
         await fs.mkdir(join(cwd, '.pointer'), { recursive: true });
         await fs.writeFile(join(cwd, '.pointer/stack.json'), JSON.stringify(stackMeta, null, 2), 'utf8');
     } catch (e: any) {
         if (!isJson) console.log(`⚠ Stack not registered (${e.code || 500})`);
     }
 
-    await writeConfig(cwd, { server: server as string, project: finalProjectKey, environment: env, aiTool: tool, skillsDir: options['skills-dir'] as string, cliVersion: '0.1.0' });
+    await writeConfig(cwd, { server: server as string, project: finalProjectKey, environment: env, aiTool: tool, skillsDir: options['skills-dir'] as string, cliVersion: BUILD_CLI_VERSION });
     filesMod.push('.pointer/config.json');
+    // Written back at line ~92, long before filesMod exists. It is the one file in this list that
+    // holds a secret, so omitting it from `--json`'s `files` is the worst omission of the set: a
+    // caller reading that list to know what to gitignore, review or clean up never sees it.
+    filesMod.push('.pointer/credentials.env');
+    // upsertGitignore also writes; reported for the same reason.
+    filesMod.push('.gitignore');
 
     if (!isJson) console.log('Verifying...');
-    const checks = await runInitChecks(server as string, finalProjectKey, env, key);
+    // Real checks now, against the install that was just written. This previously called a stub
+    // that returned [] — the "Verifying..." line printed and nothing was ever verified.
+    const checks = await runInitChecks(cwd, { server: server as string, project: finalProjectKey }, BUILD_CLI_VERSION);
     if (!isJson) {
+        const icon = { ok: '✔', warn: '⚠', error: '✘' } as const;
         for (const c of checks) {
-            console.log(`${c.status === 'ok' ? '✔' : '✘'} ${c.id}: ${c.message}`);
+            console.log(`${icon[c.status]} ${c.id}: ${c.message}`);
         }
     }
 
-    await postEvent(server as string, key, { type: 'installed', projectKey: finalProjectKey, meta: { stack: stackMeta, aiTool: tool, injected, cliVersion: '0.1.0' } });
+    await postEvent(server as string, token, { type: 'installed', projectKey: finalProjectKey, meta: { stack: stackMeta, aiTool: tool, injected, cliVersion: BUILD_CLI_VERSION } });
 
     if (isJson) {
         console.log(JSON.stringify({
@@ -259,7 +287,7 @@ export async function initCommand(cwd: string, options: Record<string, string | 
             routedToSkill,
             files: filesMod,
             checks,
-            cliVersion: '0.1.0'
+            cliVersion: BUILD_CLI_VERSION
         }));
         process.exit(0);
     }

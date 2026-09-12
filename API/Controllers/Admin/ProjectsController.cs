@@ -23,6 +23,7 @@ public class ProjectsController(IProjectService projectService, ICommentService 
     {
         var result = await projectService.ListAsync();
         if (result.IsNotFound) return NotFound(result);
+        if (result.IsForbidden) return StatusCode(StatusCodes.Status403Forbidden, result);
         if (result.IsConflict) return Conflict(result);
         return result.IsSuccess ? Ok(result) : BadRequest(result);
     }
@@ -33,6 +34,7 @@ public class ProjectsController(IProjectService projectService, ICommentService 
     {
         var result = await projectService.CreateAsync(request);
         if (result.IsNotFound) return NotFound(result);
+        if (result.IsForbidden) return StatusCode(StatusCodes.Status403Forbidden, result);
         if (result.IsConflict) return Conflict(result);
         return result.IsSuccess ? Ok(result) : BadRequest(result);
     }
@@ -65,6 +67,7 @@ public class ProjectsController(IProjectService projectService, ICommentService 
     {
         var result = await projectService.ListAppUrlsAsync(id);
         if (result.IsNotFound) return NotFound(result);
+        if (result.IsForbidden) return StatusCode(StatusCodes.Status403Forbidden, result);
         return result.IsSuccess ? Ok(result) : BadRequest(result);
     }
 
@@ -103,6 +106,7 @@ public class ProjectsController(IProjectService projectService, ICommentService 
     {
         var result = await commentService.ListApplyQueueAsync(key, filter);
         if (result.IsNotFound) return NotFound(result);
+        if (result.IsForbidden) return StatusCode(StatusCodes.Status403Forbidden, result);
         if (result.IsConflict) return Conflict(result);
         return result.IsSuccess ? Ok(result) : BadRequest(result);
     }

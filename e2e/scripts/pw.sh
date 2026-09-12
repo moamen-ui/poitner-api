@@ -22,10 +22,23 @@ dir="${1:?usage: pw.sh <dir> [file-regex]}"
 file="${2:-}"
 
 # Count real spec files rather than trusting the filter to find them.
-count=$(find "$dir" -maxdepth 1 -name '*.spec.*' 2>/dev/null | wc -l | tr -d ' ')
-if [ "$count" = "0" ]; then
-  echo "no specs authored yet in ${dir}/ — phase is unimplemented, not passing" >&2
-  exit 97
+#
+# When a specific file is named, check for THAT file: the directory-level count reported "specs
+# exist" for a phase whose one named spec did not, so Playwright exited 1 on "No tests found" and
+# the phase read as FAIL — an unwritten scenario indistinguishable from a broken one.
+if [ -n "$file" ]; then
+  # The argument is a regex (e.g. 'whitelabel\.spec\.ts'); strip the escapes to test the path.
+  plain=$(printf '%s' "$file" | sed 's/\\//g')
+  if [ ! -f "${dir}/${plain}" ]; then
+    echo "${dir}/${plain} not written yet — phase is unimplemented, not passing" >&2
+    exit 97
+  fi
+else
+  count=$(find "$dir" -maxdepth 1 -name '*.spec.*' 2>/dev/null | wc -l | tr -d ' ')
+  if [ "$count" = "0" ]; then
+    echo "no specs authored yet in ${dir}/ — phase is unimplemented, not passing" >&2
+    exit 97
+  fi
 fi
 
 # Anchor the filter so it can only match this directory: `(^|/)api/` cannot match `pointer-api/`,

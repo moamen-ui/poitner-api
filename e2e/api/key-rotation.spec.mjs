@@ -38,7 +38,13 @@ function getCredentials() {
 // the stack while it runs dies with ECONNRESET — which is exactly what happened when it ran inside
 // the ordinary `api` phase and took six unrelated specs down with it. It runs only where the
 // runner has isolated it.
-const isDestructiveRun = process.env.E2E_DESTRUCTIVE === '1' || process.env.TIER === 'nightly';
+// Gated on the PHASE flag only, never on TIER.
+//
+// Tier decides which phases run; the phase decides what is safe to run inside it. Conflating them
+// put this scenario back inside the ordinary `api` phase for every nightly run, where it restarted
+// the api container and ECONNRESET'd ten unrelated specs. The runner sets the flag below in the
+// one phase that has this scenario to itself.
+const isDestructiveRun = process.env.E2E_DESTRUCTIVE === '1';
 
 test('R1-06-04 — reveal round-trip + encryption-key rotation', async () => {
   test.skip(!isDestructiveRun, 'restarts the api container — runs only in the isolated upgrade/nightly phase');

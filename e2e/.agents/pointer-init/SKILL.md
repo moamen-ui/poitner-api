@@ -1,0 +1,356 @@
+---
+name: pointer-init
+description: Use when the user wants to add, install, init, or integrate the Pointer feedback widget (<pointer-feedback>) into an app — e.g. "add Pointer to this app", "set up Pointer feedback", "integrate the feedback widget". Asks the user for the variables (project key, Pointer server URL, environment), detects the host stack (Vite/Angular/Next/static), injects the loader, wires the env, and verifies. No build step required.
+---
+
+# Add Pointer to this app
+
+Pointer is an element-level feedback widget delivered as a single Web Component,
+`<pointer-feedback>`, loaded from a Pointer server's `/pointer.js`. It renders entirely inside a
+Shadow DOM (no CSS collisions), shows a small toolbar, and lets authenticated stakeholders click any
+element and leave a comment. Projects **self-register**: the first time an app loads/comments with a
+given project key, it appears in the Pointer dashboard.
+
+This skill wires the widget into the **current** app. Do not guess the variables — **ask the user**.
+
+> **Server URL** = the deployed Pointer origin (the one you fetched this skill from). When this skill
+> is served by a running Pointer server, the examples below are **auto-filled** with that URL; if you
+> see a literal `http://localhost:8090` placeholder, replace it with your deployed Pointer URL.
+> `http://localhost:8090` is only the local-dev default — **never ship `localhost` to production.**
+
+## Step 1 — Ask the user for the variables
+
+| Variable | Required | Meaning / guidance |
+|---|---|---|
+| **Project key** | ✅ | URL-safe slug — lowercase letters, digits and dashes only, `^[a-z0-9-]+$` (e.g. `my-app`). Identifies this app's feedback. The project must already exist in the dashboard; the widget does not self-register it. |
+| **Pointer server URL** | ✅ | The **deployed** Pointer origin your team gave you (e.g. `https://pointer.example.com`). No trailing slash. `http://localhost:8090` only for local dev. |
+| **Environment** | optional | `local` \| `staging` \| `production` — tags each comment and seeds the toolbar's starting value. Default `staging`. Whether a signed-in stakeholder can then *switch* it is a separate, role-based server setting (project owner configurable in the dashboard) — setting this alone does **not** lock it. |
+| **Fixed environment?** | optional | Pass `fixed-environment="true"` only if this specific deployment must never allow switching regardless of role (e.g. a server-rendered embed pinned to one environment on purpose). Rare — leave unset by default so the role-based switcher (above) actually has a chance to apply. |
+| **Enabled?** | optional | Whether to mount the widget now. Default `true` for dev; usually `false` in production builds unless feedback is wanted in prod. |
+| **Screenshots?** | optional | The widget captures an element screenshot per comment by default. Pass `screenshot="false"` to disable. |
+
+## Step 2 — Detect the host stack
+
+- **Vite (React/Vue/Svelte)** — `vite.config.*` + an `index.html` using `%VITE_*%` placeholders → Step 3a.
+- **Plain static HTML** — a hand-written `index.html`, no bundler → Step 3b.
+- **Angular** — `angular.json` + `src/index.html` → Step 3c.
+- **Next.js** — `next.config.*`, `app/` or `pages/` → Step 3d.
+- **Create React App / Webpack** — `react-scripts` in `package.json`, or a `webpack.config.*` with
+  `DefinePlugin`/`EnvironmentPlugin`; uses the `REACT_APP_` prefix (CRA) or a config-defined name → Step 3f.
+- **API Swagger / OpenAPI docs page** (Swashbuckle/.NET, Scalar, Redoc, swagger-ui) — embed it so
+  consumers can comment directly on endpoints → Step 3e.
+
+Match the env-var prefix to whichever you detect (see the naming table in Step 3).
+
+## Step 3 — Inject the loader
+
+The loader loads `http://localhost:8090/pointer.js`, then appends a configured `<pointer-feedback>` element.
+Always set `source-attr="data-component-source"` so the widget can capture the source path of clicked
+elements — **and make sure the app actually stamps that attribute** (usually a build plugin behind a
+dev flag such as `VITE_DEBUG`; see the Source mapping note in Step 4). Without it, applies still work
+but can't jump straight to the file.
+
+> **Env-var naming is stack-specific — use the prefix the detected stack exposes to the browser, not a
+> fixed `VITE_` one.** Browsers can't read raw env vars, so each bundler only exposes vars carrying its
+> own prefix. Map the four logical keys (`*_POINTER_ENABLED`, `*_POINTER_SERVER`, `*_POINTER_PROJECT`,
+> `*_POINTER_ENV`) onto the host's convention:
+>
+> | Detected stack | Prefix to use | Read in code as |
+> |---|---|---|
+> | Vite | `VITE_` | `import.meta.env.VITE_*` / `%VITE_*%` in `index.html` |
+> | Next.js | `NEXT_PUBLIC_` | `process.env.NEXT_PUBLIC_*` |
+> | Create React App / Webpack (`react-scripts`) | `REACT_APP_` | `process.env.REACT_APP_*` |
+> | Webpack with custom `DefinePlugin` | whatever the config defines (often unprefixed `POINTER_*`) | `process.env.POINTER_*` |
+> | Angular | — (no runtime env) | a field in `src/environments/environment*.ts` |
+> | Plain HTML / static | — (no env) | hardcode attributes, or use `embed.js` (3e) |
+>
+> Whichever you pick, **mirror it in `.env.example`** so the names match what the code reads.
+
+### 3a. Vite
+
+Add to `index.html` before `</body>`:
+
+```html
+<script>
+  if (
+    '%VITE_POINTER_ENABLED%' === 'true' &&
+    '%VITE_POINTER_SERVER%'.indexOf('http') === 0
+  ) {
+    var s = document.createElement('script');
+    s.src = '%VITE_POINTER_SERVER%/pointer.js';
+    s.defer = true;
+    document.head.appendChild(s);
+    var el = document.createElement('pointer-feedback');
+    el.setAttribute('project', '%VITE_POINTER_PROJECT%');
+    el.setAttribute('server', '%VITE_POINTER_SERVER%');
+    el.setAttribute('environment', '%VITE_POINTER_ENV%');
+    el.setAttribute('source-attr', 'data-component-source');
+    document.body.appendChild(el);
+  }
+</script>
+```
+
+Add the env keys to `.env` (and document them in `.env.example`):
+
+```
+VITE_POINTER_ENABLED=true
+VITE_POINTER_SERVER=http://localhost:8090          # deployed Pointer URL; http://localhost:8090 only for local dev
+VITE_POINTER_PROJECT=<project-key>
+VITE_POINTER_ENV=staging
+```
+
+Vite substitutes `%VITE_*%` in `index.html`; the `enabled` guard means a production build with
+`VITE_POINTER_ENABLED=false` ships zero Pointer code paths.
+
+### 3b. Plain static HTML
+
+Inline literal values before `</body>`:
+
+```html
+<script src="http://localhost:8090/pointer.js" defer></script>
+<pointer-feedback
+  project="<project-key>"
+  server="http://localhost:8090"
+  environment="staging"
+  source-attr="data-component-source"></pointer-feedback>
+```
+
+### 3c. Angular
+
+Angular does not substitute `%ENV%` in `index.html`. Easiest: add a literal loader to
+`src/index.html` before `</body>` (markup as in 3b). For env-switching, read from
+`src/environments/environment*.ts` and append the element in `main.ts` after bootstrap.
+
+### 3d. Next.js
+
+Use a client component (e.g. in the root `app/layout.tsx` via a `'use client'` effect, or a
+`<Script>` for pointer.js + an effect that creates `<pointer-feedback>`), reading values from
+`NEXT_PUBLIC_POINTER_*` env vars. Guard on an `enabled` flag so prod can opt out.
+
+### 3e. API Swagger / OpenAPI docs page
+
+A Swagger UI is just an HTML page — embed Pointer so consumers can leave element-level comments on
+endpoints. The Pointer server hosts a one-line loader at **`http://localhost:8090/embed.js?project=<key>`**
+that injects `pointer.js` and mounts a configured `<pointer-feedback>` (server pre-filled). The page
+owner just (1) references that loader and (2) — if the page sends a CSP — allowlists the Pointer origin.
+
+**ASP.NET / Swashbuckle (recommended: config-driven).** Put every Pointer setting in a `Pointer`
+section of `appsettings.json` so it's toggled/tuned per environment (override in
+`appsettings.{Environment}.json` or `Pointer__*` env vars):
+
+```json
+"Pointer": {
+  "Enabled": true,
+  "Server": "http://localhost:8090",
+  "Project": "",
+  "Environment": "staging"
+}
+```
+
+Read it once after `builder.Build()` and drive **both** the embed and the CSP from it:
+
+```csharp
+var p = app.Configuration.GetSection("Pointer");
+var pEnabled = p.GetValue("Enabled", false);
+var pServer  = (p["Server"] ?? "http://localhost:8090").TrimEnd('/');
+var pProject = string.IsNullOrWhiteSpace(p["Project"]) ? app.Environment.ApplicationName : p["Project"]!;
+var pEnv     = string.IsNullOrWhiteSpace(p["Environment"]) ? "staging" : p["Environment"]!;
+var pAllow   = pEnabled ? $" {pServer}" : "";   // origins to add to the Swagger CSP
+
+app.UseSwaggerUI(c =>
+{
+    if (pEnabled)
+        c.InjectJavascript($"{pServer}/embed.js?project={Uri.EscapeDataString(pProject)}&environment={Uri.EscapeDataString(pEnv)}");
+});
+```
+
+`Enabled` turns the whole thing on/off (per environment); `Project` blank → this app's own name;
+`Server` is the Pointer URL; `Environment` tags the comments.
+
+**⚠️ CSP — the common gotcha.** If the docs page sends a `Content-Security-Policy` (many API
+templates do, scoped to `/swagger`), the cross-origin widget is blocked until you allowlist the
+Pointer origin. Build the `/swagger` CSP with `pAllow` so it follows the same config (and the hole
+disappears when disabled):
+
+```csharp
+$"default-src 'self'; script-src 'self' 'unsafe-inline'{pAllow}; connect-src 'self'{pAllow}; " +
+$"style-src 'self' 'unsafe-inline'{pAllow}; img-src 'self' data:{pAllow}; frame-ancestors 'none'"
+```
+
+(`script-src` loads embed.js/pointer.js; `connect-src` the comments/login/upload API; `style-src`
+the shadow-DOM `pointer.css` `<link>`; `img-src` screenshot thumbnails.)
+
+**Other renderers** (Scalar, Redoc, standalone swagger-ui, static docs): just add one script tag
+wherever that renderer allows custom JS — and, if the page has a CSP, allowlist `http://localhost:8090`
+in the same directives above:
+
+```html
+<script src="http://localhost:8090/embed.js?project=<your-api>"></script>
+```
+
+### 3f. Create React App / Webpack
+
+CRA and most Webpack setups have no HTML placeholder substitution, so mount from JS and read the
+env vars under **the prefix this stack exposes** — `REACT_APP_` for CRA/`react-scripts`, or whatever
+name a custom Webpack `DefinePlugin`/`EnvironmentPlugin` defines (often unprefixed `POINTER_*`). Add
+the mount near the app root (e.g. `src/index.tsx`):
+
+```js
+// uses CRA's REACT_APP_ prefix — swap to your Webpack-defined names if different
+if (process.env.REACT_APP_POINTER_ENABLED === 'true' &&
+    (process.env.REACT_APP_POINTER_SERVER || '').indexOf('http') === 0) {
+  const server = process.env.REACT_APP_POINTER_SERVER;
+  const s = document.createElement('script');
+  s.src = server + '/pointer.js';
+  s.defer = true;
+  document.head.appendChild(s);
+  const el = document.createElement('pointer-feedback');
+  el.setAttribute('project', process.env.REACT_APP_POINTER_PROJECT);
+  el.setAttribute('server', server);
+  el.setAttribute('environment', process.env.REACT_APP_POINTER_ENV || 'staging');
+  el.setAttribute('source-attr', 'data-component-source');
+  document.body.appendChild(el);
+}
+```
+
+```
+# .env  (CRA shown — for custom Webpack, use the names your DefinePlugin injects)
+REACT_APP_POINTER_ENABLED=true
+REACT_APP_POINTER_SERVER=http://localhost:8090     # http://localhost:8090 only for local dev
+REACT_APP_POINTER_PROJECT=<project-key>
+REACT_APP_POINTER_ENV=staging
+```
+
+## Step 4 — Create the AI apply-tool credentials  ⚠️ do not skip
+
+Pointer's whole point is that an AI agent later **pulls and applies** the feedback queue — and
+**every API endpoint requires auth**. The apply skill (`http://localhost:8090/skill.md`) authenticates
+with a **long-lived personal API key** (not email/password) and reads it from a gitignored
+**`.pointer/credentials.env`**, failing to log in if it's missing. So **always make sure it exists
+now**, even though the key is filled in later — don't leave it as a silent TODO.
+
+**The recommended installer creates the scaffold for you.** If the skills were installed via:
+
+```bash
+curl -fsSL http://localhost:8090/install.sh | sh
+```
+
+then `.pointer/credentials.env` (gitignored) and `.pointer/credentials.env.example` (committable
+template) already exist, and `.pointer/` is gitignored with the `.example` kept committable. Skip to
+"tell the user" below.
+
+**If you did NOT use the installer**, create the same scaffold yourself:
+
+```bash
+mkdir -p .pointer
+printf 'POINTER_API_KEY=ptr_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\n' > .pointer/credentials.env.example
+[ -f .pointer/credentials.env ] || printf 'POINTER_API_KEY=\n' > .pointer/credentials.env
+touch .gitignore
+grep -qxF '.pointer/' .gitignore || echo '.pointer/' >> .gitignore
+grep -qxF '!.pointer/credentials.env.example' .gitignore || echo '!.pointer/credentials.env.example' >> .gitignore
+```
+
+**Then explicitly tell the user** (this is the critical step they must action):
+
+> `.pointer/credentials.env` exists and `.pointer/` is gitignored (with `credentials.env.example` kept
+> committable). **Fill in `POINTER_API_KEY`** — copy it from your Pointer **profile page** (a
+> "Generate" click if you don't have one yet — it's always re-viewable there afterward, not a
+> one-time reveal), or from the dashboard's **quick-start guide**, which shows it pre-filled for
+> copy-paste. Until it's set, pulling or applying the feedback queue will fail with a login error.
+> Never commit `credentials.env`. Any Pointer account's key works (any role can fetch/apply); using
+> a dedicated `Developer`-role account is conventional but not required.
+
+The apply workflow itself is the separate Pointer skill served at `http://localhost:8090/skill.md`.
+
+> **⚠️ Install the skills into YOUR AI tool's own directory — not blindly into `.claude/`.**
+> The installer defaults to `.claude/skills/` (Claude Code). **If you are not Claude Code, clone the
+> skills into the directory your tool actually reads**, by passing it to the installer:
+>
+> ```bash
+> curl -fsSL http://localhost:8090/install.sh | sh -s -- <your-tool-dir>
+> ```
+>
+> | AI tool | Skills/rules directory to use |
+> |---|---|
+> | Claude Code | `.claude/skills/` (default) |
+> | Cursor | `.cursor/rules/` |
+> | Windsurf | `.windsurf/rules/` |
+> | GitHub Copilot | `.github/` (e.g. a `copilot-instructions.md` / rules location) |
+> | Cline / other | that tool's rules/skills directory |
+> | none of these | just hand `skill.md` (and this file) to your agent directly |
+>
+> Identify which tool you are and pick the matching directory; if unsure, ask the user. The
+> `.pointer/credentials.env` scaffold (above) is tool-independent — it always lives at the repo root.
+
+## Step 5 — Detect and register the tech stack  (once — never repeated)
+
+The apply skill (`skill.md`) needs to know this app's stack to decide *how* to apply a styling fix
+(edit `className` on a Tailwind app vs. the winning CSS rule elsewhere) and whether a failing API
+call in a bug report is something to chase into this repo's own backend or an external service.
+Detect it now so `skill.md` never has to guess later — this is a one-time registration per project,
+not something either skill repeats on every run.
+
+1. **Detect `frontend`** — you likely already know this from Step 2's stack detection; reuse it
+   rather than re-deriving it. Add framework + styling tokens from a fixed, lowercase vocabulary:
+   `react`, `angular`, `vue`, `next`, `nuxt`, `svelte`, `tailwind`, `scss`, `css-modules` (add more
+   as genuinely needed, but keep tokens lowercase and from this style).
+2. **Detect `backend`**, if this repo contains one (skip — leave `null` — if the backend is clearly
+   a separate repo or an external API this app just calls):
+   - Runtime tokens: `.csproj`/`.sln` → `dotnet`; `go.mod` → `go`;
+     `pyproject.toml`/`requirements.txt` → `python`; `Gemfile` → `ruby`; `package.json` with
+     `express`/`@nestjs/core`/`fastify` → `node`.
+   - **MVC framework tokens too, not just the runtime** — `skill.md`'s route-to-view convention
+     mapping needs to know *which* MVC framework, not just the language: Rails (`config/routes.rb`)
+     → also add `rails`; ASP.NET MVC (`Controllers/*Controller.cs` + `Views/`, not just any
+     `.csproj`) → also add `aspnetmvc`; Laravel (`routes/web.php`) → also add `laravel`; Django
+     (`urls.py`) → also add `django`; Spring MVC (`@RequestMapping`/`@GetMapping` annotations) →
+     also add `spring`. So `backend` for a Rails app is `["ruby", "rails"]`, not just `["ruby"]`.
+   - Datastore hints from `docker-compose.*`/connection strings/ORM config, if present: `postgres`,
+     `mysql`, `mongodb`, `redis`.
+3. **Self-identify which AI tool you are** (`aiTool`) from the same vocabulary `skill.md` uses:
+   `claude-code`, `opencode-glm`, `cursor`, `antigravity`, `windsurf`, `other`.
+4. **Register once:**
+   ```bash
+   curl -s "${AUTH[@]}" -X POST "$SERVER/api/projects/$PROJECT/stack" \
+     -H 'Content-Type: application/json' \
+     -d '{"frontend":["react","tailwind"],"backend":["dotnet","postgres"],"aiTool":"claude-code"}'
+   ```
+   (`$SERVER`/`$PROJECT`/`${AUTH[@]}` — same login flow as `skill.md` Steps 1-2; use the same
+   automation credentials from Step 4 above.) The response's `data` is the authoritative merged
+   state — write it verbatim to a **committed** (not gitignored — this isn't a secret) repo-local
+   file:
+   ```bash
+   mkdir -p .pointer
+   echo '<response data object>' > .pointer/stack.json
+   ```
+5. **Tell the user**: `.pointer/stack.json` was created and committed — `skill.md`'s apply step
+   reads it directly, with no further server round trip for `frontend`/`backend`. If a teammate's
+   AI tool later applies comments on this same project, its own first run will add itself to
+   `aiTools` the same way — that's expected, not a bug.
+
+## Step 6 — Verify
+
+1. Start the app and ensure `http://localhost:8090` is reachable.
+2. Load a page — a Pointer toolbar appears (no login popup on load; it's deferred).
+3. Click **+ Comment** → sign in or **Create account** → click an element → leave a comment.
+4. Confirm the project appears in the Pointer dashboard (`http://localhost:8090/admin/`) with the comment.
+5. Confirm `.pointer/stack.json` exists and is staged for commit (not gitignored).
+
+## Notes & gotchas
+
+- **`project` is required**; the component disables itself without it.
+- **`server`** defaults to the script's origin if omitted — set it explicitly when the app and the
+  Pointer server are different origins (the usual case).
+- **Cross-origin is fine:** `pointer.js` (script), `pointer.css` (link), and uploaded images (`<img>`)
+  aren't CORS-restricted; API calls use the server's permissive CORS policy.
+- **Auth:** stakeholders need a Pointer account; self-signup (an admin-approved request) is built into
+  the widget. The token is stored in `localStorage` (`pointer_token`).
+- **Source mapping (enables precise applies — check this):** Pointer records the `source-attr`
+  (default `data-component-source`) of the clicked element, e.g. `path/to/Component:line`, so the
+  apply step opens the **exact file**. Most apps don't emit this by default — it's produced by a
+  **build plugin gated behind a dev/preview flag** (e.g. `VITE_DEBUG=true` driving a Babel/SWC plugin
+  that stamps `data-component-source`). **Enable that flag in the environments where stakeholders give
+  feedback** (local/staging/preview). Without it the widget still works, but applies fall back to
+  searching by element snapshot/classes — slower and less exact. Confirm the attribute is present
+  (inspect an element) as part of verification.
+- Keep the `enabled` guard so production builds can ship without the widget when desired.
