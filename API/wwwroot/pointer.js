@@ -331,7 +331,7 @@
     // `rtl` makes start/end resolve against the host page direction (the shadow
     // UI is otherwise forced LTR), so e.g. `top-end` lands top-left on an RTL page.
     launcher: (count, position, rtl) => `
-        <button class="pf-launcher pf-pos-${position || "bottom-end"}${rtl ? " pf-rtl" : ""}" id="pf-launcher" title="Open Pointer feedback" aria-label="Open Pointer feedback">
+        <button class="pf-launcher pf-pos-${position || "bottom-end"}${rtl ? " pf-rtl" : ""}" id="pf-launcher" title="Open ${escapeHtml(getBrandName())} feedback" aria-label="Open ${escapeHtml(getBrandName())} feedback">
           ${ICON.pin}
           ${count ? `<span class="pf-launcher-badge">${count > 99 ? "99+" : count}</span>` : ""}
         </button>`,

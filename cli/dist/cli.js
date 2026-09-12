@@ -100,12 +100,12 @@ async function writeCredentials(cwd2, token) {
   await fs.writeFile(exampleFile, `POINTER_API_KEY=
 `, { encoding: "utf8" });
 }
-async function upsertGitignore(cwd2) {
+async function upsertGitignore(cwd2, productName = "Feedback tool") {
   const file = join(cwd2, ".gitignore");
   let content = await fs.readFile(file, "utf8").catch(() => "");
   const entry = [
     "",
-    "# Pointer",
+    `# ${productName}`,
     ".pointer/",
     "!.pointer/credentials.env.example",
     "!.pointer/stack.json",
@@ -114,7 +114,7 @@ async function upsertGitignore(cwd2) {
     ""
   ].join("\n");
   if (!content.includes("\n.pointer/\n") && !content.startsWith(".pointer/\n")) {
-    content = content.replace(/\n?# Pointer\n\.pointer\/credentials\.env\n/, "");
+    content = content.replace(/\n?# [^\n]*\n\.pointer\/credentials\.env\n/, "");
     content += entry;
     await fs.writeFile(file, content, "utf8");
   }
@@ -512,13 +512,18 @@ async function api(server, path, options = {}) {
 
 // src/branding.ts
 async function getBranding(server) {
+  let branding;
   try {
-    const controllerPath = server.includes("localhost") ? "/api/meta/branding" : "/api/branding";
-    return await api(server, "/api/branding");
-  } catch (e) {
+    branding = await api(server, "/api/branding");
+  } catch {
     console.error(`Could not reach ${server} \u2014 check the URL.`);
     process.exit(1);
   }
+  if (!branding?.productName) {
+    console.error(`${server} returned no product name \u2014 cannot continue without branding.`);
+    process.exit(1);
+  }
+  return { productName: branding.productName, urls: { app: branding.urls?.app ?? "" } };
 }
 
 // src/events.ts
@@ -789,7 +794,7 @@ async function initCommand(cwd2, options = {}) {
     server = await ask("Server URL", { default: server });
   }
   const branding = await getBranding(server);
-  const product = branding.productName || "Pointer";
+  const product = branding.productName;
   let key = options["key"];
   let me = null;
   let token;
@@ -839,7 +844,7 @@ async function initCommand(cwd2, options = {}) {
     console.log(`\u2714 Signed in as ${me.displayName} (${me.roleName || "User"})`);
   }
   await writeCredentials(cwd2, key);
-  await upsertGitignore(cwd2);
+  await upsertGitignore(cwd2, product);
   let project = options["project"];
   let create = options["create"];
   let finalProjectKey = project || "";
@@ -1114,7 +1119,7 @@ async function applyFixes(cwd2, checks) {
         if (!existing.includes(".pointer/")) {
           const block = [
             "",
-            "# Pointer \u2014 local install state. credentials.env holds an API key.",
+            "# Local install state. credentials.env holds an API key.",
             ".pointer/",
             "!.pointer/config.json",
             "!.pointer/stack.json",
@@ -1178,7 +1183,7 @@ var HELP = `
 Usage: pointer <command> [options]
 
 Commands:
-  init      Initialize Pointer in your project
+  init      Set up the feedback widget in your project
   doctor    Diagnose an install and report what is wrong
 
 Options:
@@ -1201,7 +1206,7 @@ async function main() {
 Usage: pointer init [options]
 
 Options:
-  --server <url>           Pointer server URL
+  --server <url>           Feedback server URL
   --key <key>              API key
   --project <key>          Project key
   --create <name>          Create project with name

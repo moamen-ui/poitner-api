@@ -128,7 +128,7 @@ async function applyFixes(cwd: string, checks: CheckResult[]): Promise<string[]>
         if (!existing.includes('.pointer/')) {
           const block = [
             '',
-            '# Pointer — local install state. credentials.env holds an API key.',
+            '# Local install state. credentials.env holds an API key.',
             '.pointer/',
             '!.pointer/config.json',
             '!.pointer/stack.json',

@@ -39,7 +39,7 @@ export async function writeCredentials(cwd: string, token: string): Promise<void
   await fs.writeFile(exampleFile, `POINTER_API_KEY=\n`, { encoding: 'utf8' });
 }
 
-export async function upsertGitignore(cwd: string): Promise<void> {
+export async function upsertGitignore(cwd: string, productName = 'Feedback tool'): Promise<void> {
   const file = join(cwd, '.gitignore');
   let content = await fs.readFile(file, 'utf8').catch(() => '');
   // The frozen on-disk contract (R1-01): ignore the whole directory, then re-include the files a
@@ -47,7 +47,7 @@ export async function upsertGitignore(cwd: string): Promise<void> {
   // JWT — and manifest.json committable, which is how a token ends up in someone's git history.
   const entry = [
     '',
-    '# Pointer',
+    `# ${productName}`,
     '.pointer/',
     '!.pointer/credentials.env.example',
     '!.pointer/stack.json',
@@ -58,7 +58,8 @@ export async function upsertGitignore(cwd: string): Promise<void> {
 
   if (!content.includes('\n.pointer/\n') && !content.startsWith('.pointer/\n')) {
     // Replace the narrower rule if an earlier version of this CLI wrote it.
-    content = content.replace(/\n?# Pointer\n\.pointer\/credentials\.env\n/, '');
+    // Matches the comment older CLI versions wrote (always the literal name).
+    content = content.replace(/\n?# [^\n]*\n\.pointer\/credentials\.env\n/, '');
     content += entry;
     await fs.writeFile(file, content, 'utf8');
   }

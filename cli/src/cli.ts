@@ -33,7 +33,7 @@ const HELP = `
 Usage: pointer <command> [options]
 
 Commands:
-  init      Initialize Pointer in your project
+  init      Set up the feedback widget in your project
   doctor    Diagnose an install and report what is wrong
 
 Options:
@@ -59,7 +59,7 @@ async function main() {
 Usage: pointer init [options]
 
 Options:
-  --server <url>           Pointer server URL
+  --server <url>           Feedback server URL
   --key <key>              API key
   --project <key>          Project key
   --create <name>          Create project with name

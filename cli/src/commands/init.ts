@@ -35,7 +35,9 @@ export async function initCommand(cwd: string, options: Record<string, string | 
     }
 
     const branding = await getBranding(server as string);
-    const product = branding.productName || 'Pointer';
+    // No `|| 'Pointer'`: getBranding already guarantees a name or exits. A literal fallback here
+    // would print the wrong brand to anyone who rebranded, silently.
+    const product = branding.productName;
 
     let key = options['key'] as string;
     let me: any = null;
@@ -90,7 +92,7 @@ export async function initCommand(cwd: string, options: Record<string, string | 
     }
 
     await writeCredentials(cwd, key);
-    await upsertGitignore(cwd);
+    await upsertGitignore(cwd, product);
 
     let project = options['project'] as string;
     let create = options['create'] as string;

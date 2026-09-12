@@ -1,12 +1,27 @@
 import { api } from './api.js';
 
+/**
+ * Resolves the server's product name and app URL.
+ *
+ * White-label rule (01-OVERVIEW, R1-02 §C): the CLI NEVER falls back to a literal product name.
+ * Every human-readable string that names the product comes from here, so a server that cannot be
+ * reached — or that answers without a productName — is a hard exit 1. Printing "Pointer" to a
+ * customer who rebranded is the exact failure this rule exists to prevent, and a fallback makes it
+ * silent.
+ */
 export async function getBranding(server: string): Promise<{ productName: string, urls: { app: string } }> {
+    let branding: { productName?: string, urls?: { app?: string } };
     try {
-        const controllerPath = server.includes('localhost') ? '/api/meta/branding' : '/api/branding';
-        // wait, let's just use /api/branding as the spec says
-        return await api(server, '/api/branding');
-    } catch (e) {
+        branding = await api(server, '/api/branding');
+    } catch {
         console.error(`Could not reach ${server} — check the URL.`);
         process.exit(1);
     }
+
+    if (!branding?.productName) {
+        console.error(`${server} returned no product name — cannot continue without branding.`);
+        process.exit(1);
+    }
+
+    return { productName: branding.productName, urls: { app: branding.urls?.app ?? '' } };
 }
