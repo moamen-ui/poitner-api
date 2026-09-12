@@ -21,7 +21,8 @@ export async function raw(method, path, { token, body, headers: extraHeaders } =
   // Origin at all, which is node fetch's default and is itself a case the gate treats specially.
   Object.assign(headers, extraHeaders ?? {});
 
-  const res = await fetch(`${BASE_URL}${path}`, {
+  const url = path.startsWith('http://') || path.startsWith('https://') ? path : `${BASE_URL}${path}`;
+  const res = await fetch(url, {
     method,
     headers,
     body: body === undefined ? undefined : JSON.stringify(body),
@@ -40,6 +41,7 @@ export async function raw(method, path, { token, body, headers: extraHeaders } =
     ok: res.ok,
     headers: res.headers,
     body: json ?? text,
+    text,
     // The Result<T> envelope's own success flag, which can be false on a 200.
     isSuccess: json && typeof json === 'object' ? json.isSuccess : undefined,
     data: json && typeof json === 'object' ? (json.data ?? json) : json,
