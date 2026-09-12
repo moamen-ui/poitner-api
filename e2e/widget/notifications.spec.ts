@@ -1,8 +1,10 @@
 // Playwright widget automation for R2-04: In-app notifications + author verify loop.
-// Scenarios:
-// 1. notify: applied shows badge to author
-// 2. notify: thumbs-down reopens with note
-// 3. notify: read-all clears badge
+// Scenarios: R2-04-01, R2-04-02, R2-04-03 (contract: docs/roadmap/testing/R2-04-tests.md).
+//
+// Every test title starts with its scenario id. run-e2e.sh dispatches a single scenario with
+// `npx playwright test -g <id>` and the coverage gate counts ids found in test titles, so a title
+// carrying only the contract's NAME column — which is what these had — is both undispatchable and
+// invisible to coverage, while the scenarios themselves sit here passing.
 import { test, expect } from '@playwright/test';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -63,7 +65,7 @@ async function createClientComment(clientToken: string, body: string): Promise<n
 
 test.describe('R2-04: In-app notifications and author verify loop', () => {
 
-  test('notify: applied shows badge to author', async ({ page }) => {
+  test('R2-04-01 — notify: applied shows badge to author', async ({ page }) => {
     const client = await loginClient({ post, login });
     const dev = await login(credentials().developer.email, credentials().developer.password);
 
@@ -103,7 +105,7 @@ test.describe('R2-04: In-app notifications and author verify loop', () => {
       .toBeGreaterThan(0);
   });
 
-  test('notify: thumbs-down reopens with note', async ({ page }) => {
+  test('R2-04-02 ⛓ — notify: thumbs-down reopens with note', async ({ page }) => {
     const client = await loginClient({ post, login });
     const dev = await login(credentials().developer.email, credentials().developer.password);
 
@@ -154,7 +156,7 @@ test.describe('R2-04: In-app notifications and author verify loop', () => {
     await expect(card.locator('.pf-replies')).toContainText('Not fixed: Still broken on mobile viewport');
   });
 
-  test('notify: read-all clears badge', async ({ page }) => {
+  test('R2-04-03 ⛓ — notify: read-all clears badge', async ({ page }) => {
     const client = await loginClient({ post, login });
     const dev = await login(credentials().developer.email, credentials().developer.password);
 
