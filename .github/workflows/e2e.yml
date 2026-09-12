@@ -69,3 +69,93 @@ jobs:
         with:
           name: playwright-report
           path: e2e/playwright-report/
+
+  fresh-app:
+    needs: e2e
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        stack: [vite, static, angular, next]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Path filters
+        id: filter
+        if: github.event_name == 'pull_request'
+        uses: dorny/paths-filter@v3
+        with:
+          filters: |
+            cli:
+              - 'cli/**'
+      - name: Skip condition check
+        id: check
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            if [ "${{ steps.filter.outputs.cli }}" != "true" ] || [ "${{ matrix.stack }}" != "static" ]; then
+              echo "skip=true" >> $GITHUB_OUTPUT
+              exit 0
+            fi
+          fi
+          echo "skip=false" >> $GITHUB_OUTPUT
+      - name: Setup Node
+        if: steps.check.outputs.skip != 'true'
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20.x'
+          cache: 'npm'
+      - name: Build CLI
+        if: steps.check.outputs.skip != 'true'
+        run: cd cli && npm ci && npm run build
+      - name: Reset and Seed
+        if: steps.check.outputs.skip != 'true'
+        run: |
+          cd e2e
+          bash scripts/reset.sh
+          node scripts/seed.mjs
+      - name: Run fresh-app
+        if: steps.check.outputs.skip != 'true'
+        run: |
+          cd e2e
+          node fresh-app/run.mjs --stack ${{ matrix.stack }}
+          npx playwright test fresh-app/fresh.spec.ts -g "${{ matrix.stack }}"
+      - name: Upload Artifacts
+        if: failure() && steps.check.outputs.skip != 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: fresh-${{ matrix.stack }}-failure
+          path: |
+            e2e/state/fresh/${{ matrix.stack }}
+            e2e/playwright-report/
+
+  whitelabel:
+    needs: e2e
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20.x'
+          cache: 'npm'
+      - name: Build CLI
+        run: cd cli && npm ci && npm run build
+      - name: Reset and Seed
+        run: |
+          cd e2e
+          bash scripts/reset.sh
+          node scripts/seed.mjs
+      - name: Run Whitelabel & Rebrand Rehearsal
+        env:
+          E2E_MOCK_DOMAIN: pick-it.test
+          E2E_MOCK_BRAND: PickIt
+        run: |
+          cd e2e
+          bash run-e2e.sh --whitelabel --mock-domain --ci
+      - name: Upload Report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: whitelabel-report
+          path: e2e/state/report.md

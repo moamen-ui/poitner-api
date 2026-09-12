@@ -67,6 +67,7 @@ export const PROJECTS = {
 export const PORTS = {
   smoke: 4173,
   fresh: 4174,
+  freshPreview: 4174,
   viteReact: 4175,
   cspNonce: 4176,
   pinnedTamper: 4177,

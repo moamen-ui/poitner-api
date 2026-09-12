@@ -13,5 +13,15 @@ export default defineConfig({
   use: {
     baseURL: process.env.E2E_FIXTURE_URL || 'http://localhost:4173',
     trace: 'retain-on-failure',
+    ...(process.env.E2E_MOCK_TLS ? { ignoreHTTPSErrors: true } : {}),
+    ...(process.env.E2E_MOCK_DOMAIN
+      ? {
+          launchOptions: {
+            args: [
+              `--host-resolver-rules=MAP ${process.env.E2E_MOCK_DOMAIN} 127.0.0.1, MAP *.${process.env.E2E_MOCK_DOMAIN} 127.0.0.1`,
+            ],
+          },
+        }
+      : {}),
   },
 });

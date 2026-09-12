@@ -1,0 +1,4 @@
+pick-it.test:8443 {
+    tls internal
+    reverse_proxy api:8080
+}
