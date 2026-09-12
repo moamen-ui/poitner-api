@@ -9,7 +9,7 @@ import { fileURLToPath } from 'node:url';
 import { raw, login } from '../scripts/lib/api.mjs';
 import { SUPER_ADMIN, TENANT_OWNER, USERS } from '../scripts/lib/constants.mjs';
 import { record } from '../scripts/lib/report.mjs';
-import { preAuthWidget } from '../widget/lib/pre-auth';
+import { preAuthWidget } from '../widget/lib/auth';
 import { setBranding } from '../scripts/set-branding.mjs';
 import { resetBranding } from '../scripts/reset-branding.mjs';
 import { restartApi } from '../scripts/restart-api.mjs';

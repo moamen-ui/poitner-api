@@ -20,7 +20,7 @@ import { raw, login } from '../scripts/lib/api.mjs';
 import { spawnCli } from '../scripts/lib/cli.mjs';
 import { TENANT_OWNER, USERS, SUPER_ADMIN, PORTS } from '../scripts/lib/constants.mjs';
 import { record } from '../scripts/lib/report.mjs';
-import { preAuthWidget } from '../widget/lib/pre-auth';
+import { preAuthWidget } from '../widget/lib/auth';
 import { setBranding } from '../scripts/set-branding.mjs';
 import { resetBranding } from '../scripts/reset-branding.mjs';
 import { assertBrandingDefault } from '../scripts/assert-branding-default.mjs';
