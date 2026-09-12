@@ -1568,6 +1568,17 @@ async function initCommand(cwd2, options = {}) {
   if (!isYes && !options["server"] && !config.server) {
     server = await ask("Server URL", { default: server });
   }
+  try {
+    const meta = await api(server, "/api/meta");
+    const minCli = meta?.minCliVersion || "0.0.0";
+    if (compareSemver(BUILD_CLI_VERSION, minCli) < 0) {
+      console.error(`CLI ${BUILD_CLI_VERSION} is older than the server requires (${minCli})`);
+      process.exit(5);
+    }
+  } catch (err) {
+    if (!(err instanceof ApiError && err.code === 404)) {
+    }
+  }
   const branding = await getBranding(server);
   const product = branding.productName;
   let key = options["key"];

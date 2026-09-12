@@ -7,7 +7,7 @@ import { installSkills } from '../skills.js';
 import { getBranding } from '../branding.js';
 import { api, ApiError } from '../api.js';
 import { postEvent } from '../events.js';
-import { runInitChecks } from '../checks.js';
+import { runInitChecks, compareSemver } from '../checks.js';
 import { promises as fs } from 'node:fs';
 import { join } from 'node:path';
 import { detectDesignTokens, summarizeDesignTokens, type DesignBlock } from '../stack/design.js';
@@ -34,6 +34,29 @@ export async function initCommand(cwd: string, options: Record<string, string | 
     
     if (!isYes && !options['server'] && !config.server) {
         server = await ask('Server URL', { default: server as string });
+    }
+
+    // Refuse to run against a server that requires a newer CLI — same gate `apply`, `mcp` and
+    // `doctor` already apply, and exit 5 as cli.ts documents.
+    //
+    // init needs it MOST, not least: it is the first command anyone runs, and it is the one that
+    // writes files. An init that proceeds against a contract the server no longer accepts leaves
+    // a config, an injected snippet and a stack file on disk that all look fine, and the mismatch
+    // surfaces much later at apply time, a long way from its cause.
+    try {
+      const meta = await api<any>(server as string, '/api/meta');
+      const minCli = meta?.minCliVersion || '0.0.0';
+      if (compareSemver(BUILD_CLI_VERSION, minCli) < 0) {
+        console.error(`CLI ${BUILD_CLI_VERSION} is older than the server requires (${minCli})`);
+        process.exit(5);
+      }
+    } catch (err: any) {
+      // A server too old to have /api/meta cannot be declaring a minimum, so there is nothing to
+      // enforce. Any other transient failure is reported by the calls that follow — this check
+      // must not be the thing that stops an install over a blip.
+      if (!(err instanceof ApiError && err.code === 404)) {
+        // best-effort
+      }
     }
 
     const branding = await getBranding(server as string);
