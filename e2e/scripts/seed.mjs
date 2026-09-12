@@ -6,7 +6,7 @@ import { writeFileSync, mkdirSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { get, post, patch, put, login } from './lib/api.mjs';
-import { Environment, Status, SUPER_ADMIN, TENANT_OWNER, USERS, CLIENT, FLOOD, PROJECTS } from './lib/constants.mjs';
+import { Environment, Status, SUPER_ADMIN, TENANT_OWNER, TENANT_B_OWNER, USERS, CLIENT, FLOOD, PROJECTS } from './lib/constants.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const STATE_DIR = join(here, '..', 'state');
@@ -52,6 +52,19 @@ async function main() {
     password: TENANT_OWNER.password,
     displayName: TENANT_OWNER.displayName,
   }, { token: superAdmin.token });
+
+  // A SECOND tenant. Every cross-tenant negative needs a real foreign workspace to be denied
+  // against — asserting isolation with only one tenant in the database proves nothing, because
+  // there is nothing to leak from.
+  console.log('==> Creating tenant B (cross-tenant isolation counterpart)');
+  await post('/api/admin/tenants', {
+    email: TENANT_B_OWNER.email,
+    password: TENANT_B_OWNER.password,
+    displayName: TENANT_B_OWNER.displayName,
+  }, { token: superAdmin.token });
+
+  const tenantBOwner = await login(TENANT_B_OWNER.email, TENANT_B_OWNER.password);
+  await post('/api/admin/projects', { key: PROJECTS.gamma.key, name: PROJECTS.gamma.name }, { token: tenantBOwner.token });
 
   console.log('==> Logging in as the tenant Workspace Admin');
   const wsAdmin = await login(TENANT_OWNER.email, TENANT_OWNER.password);
@@ -272,6 +285,7 @@ async function main() {
     tester: USERS.tester,
     client: CLIENT,
     flood: FLOOD,
+    tenantBOwner: TENANT_B_OWNER,
   };
   writeFileSync(join(STATE_DIR, 'credentials.json'), JSON.stringify(credentials, null, 2));
 

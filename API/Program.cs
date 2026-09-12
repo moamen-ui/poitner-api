@@ -351,7 +351,12 @@ $"""
 </html>
 """;
     ctx.Response.ContentType = "text/html; charset=utf-8";
-    return ctx.Response.WriteAsync(html);
+    // await, not return. This lambda is `async`, so returning the Task makes its own return type
+    // Task<Task>: the framework completes the response when the OUTER task finishes, which is
+    // before WriteAsync has actually written. The body still usually arrives, but the terminating
+    // zero-length chunk races it — clients see "transfer closed with outstanding read data
+    // remaining" on a 200. On the one page a developer opens to confirm their install works.
+    await ctx.Response.WriteAsync(html);
 });
 
 app.MapControllers();

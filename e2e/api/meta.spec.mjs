@@ -27,7 +27,7 @@ test('R1-04-01 — /api/meta anonymous, all fields, ResponseCache', async () => 
   expect(
     data.version,
     'data.version must match SemVer informational version or 0.0.0-dev'
-  ).toMatch(/^(\d+\.\d+\.\d+([+\-][0-9A-Za-z.\-]+)?|0\.0\.0-dev)$/);
+  ).toMatch(/^\d+\.\d+\.\d+(-[0-9A-Za-z.\-]+)?(\+[0-9A-Za-z.\-]+)?$/);
 
   // data.apiVersion integer >= 1
   expect(Number.isInteger(data.apiVersion), 'data.apiVersion must be an integer').toBe(true);
