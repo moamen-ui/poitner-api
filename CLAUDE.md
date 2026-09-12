@@ -33,6 +33,9 @@ via Docker, API on `:8090`).
   into their app's `.claude/skills/pointer-init/SKILL.md` and runs it to add the `<pointer-feedback>`
   widget: it asks for the variables (project key, server URL, environment), detects the stack
   (Vite/Angular/Next/static), injects the loader, wires env, and verifies.
+- **[Apply Feedback](API/wwwroot/skill.md)** — the feedback apply skill, **served at `/skill.md`**.
+  Uses the CLI (`npx pointer-feedback apply`, `--plan`, `--mark`) to process pending comments and
+  commit changes safely without pushing; `.pointer/pointer.sh` is retained as the no-Node fallback.
 
 ## Key conventions
 

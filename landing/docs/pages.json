@@ -8,6 +8,13 @@
       "summary": "Prerequisites, CLI installation, automatic injection, AI skills, and flags."
     },
     {
+      "file": "apply.html",
+      "title": "Apply",
+      "nav": "Workflow",
+      "ownedBy": "R2-01",
+      "summary": "End-to-end feedback application, planning, tool hand-offs, commit styles, and git safety."
+    },
+    {
       "file": "api-keys.html",
       "title": "API Keys",
       "nav": "Configuration",

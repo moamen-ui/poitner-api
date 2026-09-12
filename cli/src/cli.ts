@@ -1,17 +1,33 @@
 import { initCommand } from './commands/init.js';
 import { doctorCommand } from './commands/doctor.js';
 import { updateCommand } from './commands/update.js';
+import { applyCommand } from './commands/apply.js';
+import { listCommand, getCommand, statusCommand, replyCommand } from './commands/comments.js';
 import { argv, cwd } from 'node:process';
 import { BUILD_CLI_VERSION } from './build-constants.js';
 
 function parseArgs(args: string[]) {
     const parsed: Record<string, string | boolean> = {};
     const positionals: string[] = [];
+    const booleanFlags = new Set([
+        'no-app-url',
+        'no-inject',
+        'no-skills',
+        'yes',
+        'json',
+        'help',
+        'fix',
+        'check',
+        'plan',
+        'dry-run',
+        'no-commit'
+    ]);
+
     for (let i = 0; i < args.length; i++) {
         const arg = args[i];
         if (arg.startsWith('--')) {
             const key = arg.slice(2);
-            if (key === 'no-app-url' || key === 'no-inject' || key === 'no-skills' || key === 'yes' || key === 'json' || key === 'help' || key === 'fix' || key === 'check') {
+            if (booleanFlags.has(key)) {
                 parsed[key] = true;
             } else if (i + 1 < args.length && !args[i+1].startsWith('-')) {
                 parsed[key] = args[i+1];
@@ -37,11 +53,16 @@ Commands:
   init      Set up the feedback widget in your project
   doctor    Diagnose an install and report what is wrong
   update    Refresh the served skills to the server's current version
+  apply     Turn pending feedback into an AI apply prompt and mark applied
+  list      List feedback comments (summary view)
+  get       View comment details (whitelisted projection)
+  status    Update comment status
+  reply     Add a reply to a comment
 
 Options:
   -h, --help    Show this help message
 
-Run 'pointer doctor --help' for its options.
+Run 'pointer <command> --help' for command-specific options.
 `;
 
 async function main() {
@@ -128,6 +149,80 @@ Options:
             check: parsed['check'] === true,
         });
         process.exit(code);
+    } else if (command === 'apply') {
+        if (parsed['help']) {
+            console.log(`
+Usage: pointer apply [options]
+
+Turn pending feedback comments into a self-contained AI apply prompt.
+
+Options:
+  --plan             Plan only: list files without making edits
+  --tool <name>      Hand off prompt to claude, opencode, cursor, or clipboard
+  --mark <id>|all    Commit staged changes and mark comment(s) applied
+  --reply <text>     Reply text for applied comment (required with --mark)
+  --no-commit        Skip git commit during --mark (PATCH only)
+  --dry-run          Print what --mark would do without making git/API changes
+  --fail <id>        Mark apply failed with a reply
+  --reason <text>    Failure reason (required with --fail)
+  --status <status>  Filter queue by status (open, ready, applied, archived)
+  --env <env>        Filter queue by environment (local, staging, production)
+  --json             Emit output as JSON
+  -h, --help         Show this help
+`);
+            process.exit(0);
+        }
+        await applyCommand(cwd(), parsed, positionals);
+    } else if (command === 'list' || command === 'comments') {
+        if (parsed['help']) {
+            console.log(`
+Usage: pointer list [status] [environment] [options]
+
+List feedback comments in a summary view.
+
+Options:
+  --status <status>  Filter by status (open, ready, applied, archived)
+  --env <env>        Filter by environment (local, staging, production)
+  --json             Emit comments as JSON
+  -h, --help         Show this help
+`);
+            process.exit(0);
+        }
+        await listCommand(cwd(), parsed, positionals);
+    } else if (command === 'get') {
+        if (parsed['help']) {
+            console.log(`
+Usage: pointer get <id> [options]
+
+View whitelisted comment projection for AI agents.
+
+Options:
+  --json             Emit whitelisted AiCommentView JSON
+  -h, --help         Show this help
+`);
+            process.exit(0);
+        }
+        await getCommand(cwd(), parsed, positionals);
+    } else if (command === 'status') {
+        if (parsed['help']) {
+            console.log(`
+Usage: pointer status <id> <open|ready|applied|archived>
+
+Update comment status.
+`);
+            process.exit(0);
+        }
+        await statusCommand(cwd(), parsed, positionals);
+    } else if (command === 'reply') {
+        if (parsed['help']) {
+            console.log(`
+Usage: pointer reply <id> "<text>"
+
+Add a reply to a comment.
+`);
+            process.exit(0);
+        }
+        await replyCommand(cwd(), parsed, positionals);
     } else {
         console.error(`Unknown command: ${command}`);
         process.exit(2);
