@@ -20,12 +20,10 @@ async function ask(question, options = {}) {
   const displayQuestion = options.default ? `${question} [${options.default}]: ` : `${question}: `;
   while (true) {
     process.stdout.write(displayQuestion);
-    if (options.secret)
-      muted = true;
+    if (options.secret) muted = true;
     const answer = await rl.question("");
     muted = false;
-    if (options.secret)
-      process.stdout.write("\n");
+    if (options.secret) process.stdout.write("\n");
     const finalAnswer = answer.trim() || options.default || "";
     if (options.validate) {
       const error = options.validate(finalAnswer);
@@ -65,6 +63,10 @@ async function select(question, items, defaultItem) {
   }
 }
 
+// src/build-constants.ts
+var BUILD_DEFAULT_SERVER = true ? "https://api.pointer.moamen.work" : "https://api.pointer.moamen.work";
+var BUILD_CLI_VERSION = true ? "0.1.0" : "0.0.0-dev";
+
 // src/config.ts
 import { promises as fs } from "node:fs";
 import { join, dirname } from "node:path";
@@ -75,8 +77,7 @@ async function readConfig(cwd2) {
     const content = await fs.readFile(join(cwd2, CONFIG_FILE), "utf8");
     return JSON.parse(content);
   } catch (err) {
-    if (err.code !== "ENOENT")
-      throw err;
+    if (err.code !== "ENOENT") throw err;
     return {};
   }
 }
@@ -127,8 +128,7 @@ async function readFileSafe(path) {
   }
 }
 async function detectAppUrl(cwd2, kind, envName) {
-  if (envName !== "local")
-    return { url: null, source: "environment not local" };
+  if (envName !== "local") return { url: null, source: "environment not local" };
   if (kind === "vite") {
     const exts = ["js", "ts", "mjs", "mts"];
     for (const ext of exts) {
@@ -137,10 +137,8 @@ async function detectAppUrl(cwd2, kind, envName) {
         let port = 5173;
         let isHttps = false;
         const portMatch = cfg.match(/port\s*:\s*(\d+)/);
-        if (portMatch)
-          port = parseInt(portMatch[1], 10);
-        if (cfg.match(/https\s*:\s*(true|{)/))
-          isHttps = true;
+        if (portMatch) port = parseInt(portMatch[1], 10);
+        if (cfg.match(/https\s*:\s*(true|{)/)) isHttps = true;
         if (portMatch || isHttps) {
           return { url: `http${isHttps ? "s" : ""}://localhost:${port}`, source: `vite.config.${ext}:server` };
         }
@@ -152,8 +150,7 @@ async function detectAppUrl(cwd2, kind, envName) {
         const pkg = JSON.parse(pkgStr);
         if (pkg.scripts && pkg.scripts.dev) {
           const pm = pkg.scripts.dev.match(/--port\s+(\d+)/);
-          if (pm)
-            return { url: `http://localhost:${pm[1]}`, source: "package.json:scripts.dev" };
+          if (pm) return { url: `http://localhost:${pm[1]}`, source: "package.json:scripts.dev" };
         }
       } catch {
       }
@@ -167,8 +164,7 @@ async function detectAppUrl(cwd2, kind, envName) {
         const pkg = JSON.parse(pkgStr);
         if (pkg.scripts && pkg.scripts.dev) {
           const pm = pkg.scripts.dev.match(/(?:-p|--port)\s+(\d+)/);
-          if (pm)
-            return { url: `http://localhost:${pm[1]}`, source: "package.json:scripts.dev" };
+          if (pm) return { url: `http://localhost:${pm[1]}`, source: "package.json:scripts.dev" };
         }
       } catch {
       }
@@ -177,8 +173,7 @@ async function detectAppUrl(cwd2, kind, envName) {
     for (const e of envs) {
       const env = await readFileSafe(join2(cwd2, e));
       const m = env.match(/^PORT=(\d+)/m);
-      if (m)
-        return { url: `http://localhost:${m[1]}`, source: `${e}:PORT` };
+      if (m) return { url: `http://localhost:${m[1]}`, source: `${e}:PORT` };
     }
     return { url: "http://localhost:3000", source: "next default" };
   }
@@ -205,8 +200,7 @@ async function detectAppUrl(cwd2, kind, envName) {
         const pkg = JSON.parse(pkgStr);
         if (pkg.scripts && pkg.scripts.start) {
           const pm = pkg.scripts.start.match(/--port\s+(\d+)/);
-          if (pm)
-            return { url: `http://localhost:${pm[1]}`, source: "package.json:scripts.start" };
+          if (pm) return { url: `http://localhost:${pm[1]}`, source: "package.json:scripts.start" };
         }
       } catch {
       }
@@ -220,8 +214,7 @@ async function detectAppUrl(cwd2, kind, envName) {
         const pkg = JSON.parse(pkgStr);
         if (pkg.scripts && pkg.scripts.start) {
           const pm = pkg.scripts.start.match(/PORT=(\d+)/);
-          if (pm)
-            return { url: `http://localhost:${pm[1]}`, source: "package.json:scripts.start" };
+          if (pm) return { url: `http://localhost:${pm[1]}`, source: "package.json:scripts.start" };
         }
       } catch {
       }
@@ -230,8 +223,7 @@ async function detectAppUrl(cwd2, kind, envName) {
     for (const e of envs) {
       const env = await readFileSafe(join2(cwd2, e));
       const m = env.match(/^PORT=(\d+)/m);
-      if (m)
-        return { url: `http://localhost:${m[1]}`, source: `${e}:PORT` };
+      if (m) return { url: `http://localhost:${m[1]}`, source: `${e}:PORT` };
     }
     return { url: "http://localhost:3000", source: "cra default" };
   }
@@ -252,21 +244,17 @@ async function detectStack(cwd2) {
   if (deps.vite) {
     evidence.push("package.json (vite)");
     for (const ext of ["js", "ts", "mjs", "mts"]) {
-      if (existsSync(join2(cwd2, `vite.config.${ext}`)))
-        evidence.push(`vite.config.${ext}`);
+      if (existsSync(join2(cwd2, `vite.config.${ext}`))) evidence.push(`vite.config.${ext}`);
     }
-    if (hasIndexHtml)
-      evidence.push("index.html");
+    if (hasIndexHtml) evidence.push("index.html");
     return { kind: "vite", evidence, htmlPath: hasIndexHtml ? join2(cwd2, "index.html") : void 0 };
   }
   if (deps.next) {
     evidence.push("package.json (next)");
     for (const ext of ["js", "mjs", "ts"]) {
-      if (existsSync(join2(cwd2, `next.config.${ext}`)))
-        evidence.push(`next.config.${ext}`);
+      if (existsSync(join2(cwd2, `next.config.${ext}`))) evidence.push(`next.config.${ext}`);
     }
-    if (existsSync(join2(cwd2, "app")))
-      evidence.push("app/");
+    if (existsSync(join2(cwd2, "app"))) evidence.push("app/");
     return { kind: "next", evidence };
   }
   if (existsSync(join2(cwd2, "angular.json"))) {
@@ -280,8 +268,7 @@ async function detectStack(cwd2) {
   for (const wcfg of ["pnpm-workspace.yaml", "lerna.json", "nx.json", "turbo.json"]) {
     if (existsSync(join2(cwd2, wcfg))) {
       evidence.push(wcfg);
-      if (!hasIndexHtml)
-        return { kind: "monorepo", evidence };
+      if (!hasIndexHtml) return { kind: "monorepo", evidence };
     }
   }
   if (pkg.workspaces && !hasIndexHtml) {
@@ -298,24 +285,15 @@ function extractTokens(pkg) {
   const deps = { ...pkg.dependencies, ...pkg.devDependencies };
   const frontend = [];
   const backend = [];
-  if (deps.react)
-    frontend.push("react");
-  if (deps.vue)
-    frontend.push("vue");
-  if (deps.svelte)
-    frontend.push("svelte");
-  if (deps["solid-js"])
-    frontend.push("solid");
-  if (deps["@angular/core"])
-    frontend.push("angular");
-  if (deps.next)
-    frontend.push("next");
-  if (deps.tailwindcss)
-    frontend.push("tailwind");
-  if (deps.vite)
-    frontend.push("vite");
-  if (deps.express || deps.fastify || deps.nest)
-    backend.push("node");
+  if (deps.react) frontend.push("react");
+  if (deps.vue) frontend.push("vue");
+  if (deps.svelte) frontend.push("svelte");
+  if (deps["solid-js"]) frontend.push("solid");
+  if (deps["@angular/core"]) frontend.push("angular");
+  if (deps.next) frontend.push("next");
+  if (deps.tailwindcss) frontend.push("tailwind");
+  if (deps.vite) frontend.push("vite");
+  if (deps.express || deps.fastify || deps.nest) backend.push("node");
   return { frontend, backend };
 }
 
@@ -325,8 +303,7 @@ import { join as join3 } from "node:path";
 async function injectStatic(cwd2, htmlPath, cfg) {
   const p = htmlPath || join3(cwd2, "index.html");
   let content = await fs3.readFile(p, "utf8").catch(() => "");
-  if (!content)
-    throw new Error(`HTML file not found at ${p}`);
+  if (!content) throw new Error(`HTML file not found at ${p}`);
   const block = cfg.envGuarded ? `<!-- pointer-feedback:start -->
 <script>
   if (
@@ -418,8 +395,7 @@ import { promises as fs5 } from "node:fs";
 import { join as join5, dirname as dirname2 } from "node:path";
 async function download(url, dest, chmod = false) {
   const res = await fetch(url);
-  if (!res.ok)
-    throw new Error(`Failed to fetch ${url}: ${res.status}`);
+  if (!res.ok) throw new Error(`Failed to fetch ${url}: ${res.status}`);
   const txt = await res.text();
   await fs5.mkdir(dirname2(dest), { recursive: true });
   await fs5.writeFile(dest, txt, "utf8");
@@ -440,6 +416,12 @@ async function makeSymlink(target, path) {
     }
   }
 }
+var SKILL_FILES = {
+  "claude-code": [".claude/skills/pointer-init/SKILL.md", ".claude/skills/pointer-feedback/SKILL.md"],
+  cursor: [".cursor/rules/pointer-init.md", ".cursor/rules/pointer-feedback.md"],
+  windsurf: [".windsurf/rules/pointer-init.md", ".windsurf/rules/pointer-feedback.md"],
+  other: [".agents/pointer-init/SKILL.md", ".agents/pointer-feedback/SKILL.md"]
+};
 async function installSkills(server, aiTool, cwd2, overrideDir) {
   const files = [];
   server = server.replace(/\/$/, "");
@@ -447,7 +429,7 @@ async function installSkills(server, aiTool, cwd2, overrideDir) {
   await download(`${server}/pointer.sh`, pointerSh, true);
   files.push(".pointer/pointer.sh");
   const agentsDir = join5(cwd2, ".agents");
-  async function writeOrLink(primaryPath, skillName, isMd) {
+  async function writeOrLink(primaryPath, skillName, isMd2) {
     const url = skillName === "pointer-init" ? `${server}/pointer-init.md` : `${server}/skill.md`;
     const finalPath = overrideDir ? join5(cwd2, overrideDir, skillName, "SKILL.md") : join5(cwd2, primaryPath);
     await download(url, finalPath);
@@ -458,19 +440,10 @@ async function installSkills(server, aiTool, cwd2, overrideDir) {
       files.push(`.agents/${skillName}/SKILL.md`);
     }
   }
-  if (aiTool === "claude-code") {
-    await writeOrLink(".claude/skills/pointer-init/SKILL.md", "pointer-init", false);
-    await writeOrLink(".claude/skills/pointer-feedback/SKILL.md", "pointer-feedback", false);
-  } else if (aiTool === "cursor") {
-    await writeOrLink(".cursor/rules/pointer-init.md", "pointer-init", true);
-    await writeOrLink(".cursor/rules/pointer-feedback.md", "pointer-feedback", true);
-  } else if (aiTool === "windsurf") {
-    await writeOrLink(".windsurf/rules/pointer-init.md", "pointer-init", true);
-    await writeOrLink(".windsurf/rules/pointer-feedback.md", "pointer-feedback", true);
-  } else {
-    await writeOrLink(".agents/pointer-init/SKILL.md", "pointer-init", false);
-    await writeOrLink(".agents/pointer-feedback/SKILL.md", "pointer-feedback", false);
-  }
+  const layout = SKILL_FILES[aiTool] ?? SKILL_FILES.other;
+  const isMd = aiTool === "cursor" || aiTool === "windsurf";
+  await writeOrLink(layout[0], "pointer-init", isMd);
+  await writeOrLink(layout[1], "pointer-feedback", isMd);
   return files;
 }
 
@@ -480,14 +453,13 @@ var ApiError = class extends Error {
     super(message);
     this.code = code;
   }
+  code;
 };
 async function api(server, path, options = {}) {
   const url = `${server.replace(/\/$/, "")}${path}`;
   const headers = { "Accept": "application/json" };
-  if (options.token)
-    headers["Authorization"] = `Bearer ${options.token}`;
-  if (options.body)
-    headers["Content-Type"] = "application/json";
+  if (options.token) headers["Authorization"] = `Bearer ${options.token}`;
+  if (options.body) headers["Content-Type"] = "application/json";
   const res = await fetch(url, {
     method: options.method || "GET",
     headers,
@@ -497,14 +469,12 @@ async function api(server, path, options = {}) {
     let msg = res.statusText;
     try {
       const body2 = await res.json();
-      if (body2.message)
-        msg = body2.message;
+      if (body2.message) msg = body2.message;
     } catch {
     }
     throw new ApiError(res.status, msg);
   }
-  if (res.status === 204)
-    return {};
+  if (res.status === 204) return {};
   const body = await res.json();
   return body.data !== void 0 ? body.data : body;
 }
@@ -522,8 +492,7 @@ async function getBranding(server) {
 
 // src/events.ts
 async function postEvent(server, token, payload) {
-  if (!token)
-    return;
+  if (!token) return;
   try {
     await api(server, "/api/events", { method: "POST", body: payload, token });
   } catch (e) {
@@ -531,13 +500,239 @@ async function postEvent(server, token, payload) {
 }
 
 // src/checks.ts
-async function runInitChecks(server, projectKey, env, token) {
-  return [];
+import { promises as fs6 } from "node:fs";
+import { join as join6 } from "node:path";
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
+var execFileAsync = promisify(execFile);
+function compareSemver(a, b) {
+  const parse = (v) => {
+    const [core, pre] = String(v ?? "0.0.0").trim().replace(/^v/, "").split("-");
+    const nums = core.split(".").map((n) => parseInt(n, 10) || 0);
+    return { nums: [nums[0] ?? 0, nums[1] ?? 0, nums[2] ?? 0], pre: pre ?? null };
+  };
+  const x = parse(a);
+  const y = parse(b);
+  for (let i = 0; i < 3; i++) {
+    if (x.nums[i] !== y.nums[i]) return x.nums[i] - y.nums[i];
+  }
+  if (x.pre === y.pre) return 0;
+  if (x.pre === null) return 1;
+  if (y.pre === null) return -1;
+  return x.pre < y.pre ? -1 : 1;
+}
+async function fetchWithTimeout(url, ms, init) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), ms);
+  try {
+    return await fetch(url, { ...init, signal: controller.signal });
+  } finally {
+    clearTimeout(timer);
+  }
+}
+async function readCredentialsKey(cwd2) {
+  try {
+    const raw = await fs6.readFile(join6(cwd2, ".pointer/credentials.env"), "utf8");
+    const match = raw.match(/^POINTER_API_KEY=(.*)$/m);
+    return match?.[1]?.trim() || void 0;
+  } catch {
+    return void 0;
+  }
+}
+async function runInitChecks(cwd2, overrides = {}, cliVersion = "0.0.0") {
+  const checks = [];
+  const config = await readConfig(cwd2);
+  const server = (overrides.server || config.server || "").replace(/\/$/, "");
+  const project = overrides.project || config.project || "";
+  const environment = config.environment || "local";
+  if (server && project) {
+    checks.push({ id: "config", status: "ok", message: `${project} @ ${server} (${environment})` });
+  } else {
+    checks.push({
+      id: "config",
+      status: "error",
+      message: "No .pointer/config.json",
+      hint: "Run `npx -y pointer-feedback init`"
+    });
+    return checks;
+  }
+  let serverReachable = false;
+  try {
+    const res = await fetchWithTimeout(`${server}/api/branding`, 3e3);
+    serverReachable = res.ok;
+    checks.push(
+      res.ok ? { id: "server", status: "ok", message: `Reached ${server}` } : { id: "server", status: "error", message: `Cannot reach ${server} (HTTP ${res.status})` }
+    );
+  } catch {
+    checks.push({ id: "server", status: "error", message: `Cannot reach ${server}` });
+  }
+  let meta = null;
+  if (serverReachable) {
+    try {
+      meta = await api(server, "/api/meta");
+      const min = meta?.minCliVersion || "0.0.0";
+      if (compareSemver(cliVersion, min) < 0) {
+        checks.push({
+          id: "meta",
+          status: "error",
+          message: `CLI ${cliVersion} is older than the server requires (${min})`,
+          hint: "Run `npx -y pointer-feedback@latest doctor`"
+        });
+        return checks;
+      }
+      checks.push({ id: "meta", status: "ok", message: `Server ${meta?.version ?? "unknown"} (api v${meta?.apiVersion ?? "?"})` });
+    } catch (err) {
+      checks.push(
+        err instanceof ApiError && err.code === 404 ? { id: "meta", status: "warn", message: "Server predates /api/meta" } : { id: "meta", status: "warn", message: `Could not read /api/meta: ${err?.message ?? err}` }
+      );
+    }
+  }
+  if (meta?.serverTime) {
+    const skewMs = Math.abs(Date.now() - new Date(meta.serverTime).getTime());
+    const skewSeconds = Math.round(skewMs / 1e3);
+    checks.push(
+      skewMs < 5 * 6e4 ? { id: "clock", status: "ok", message: `Clock within ${skewSeconds}s of the server` } : { id: "clock", status: "warn", message: `Clock skew ${skewSeconds}s \u2014 logins may fail` }
+    );
+  }
+  const apiKey = await readCredentialsKey(cwd2);
+  let token;
+  if (!apiKey) {
+    checks.push({
+      id: "key",
+      status: "error",
+      message: "No POINTER_API_KEY in .pointer/credentials.env",
+      hint: "Copy it from Profile \u2192 API key"
+    });
+  } else if (!serverReachable) {
+    checks.push({ id: "key", status: "warn", message: "Server unreachable \u2014 key not verified" });
+  } else {
+    try {
+      const login = await api(server, "/api/auth/login-with-key", {
+        method: "POST",
+        body: { apiKey }
+      });
+      if (login?.status === "ok" && login.token) {
+        token = login.token;
+        checks.push({ id: "key", status: "ok", message: "API key accepted" });
+      } else {
+        checks.push({ id: "key", status: "error", message: "API key rejected", hint: "Regenerate it in Profile \u2192 API key" });
+      }
+    } catch {
+      checks.push({ id: "key", status: "error", message: "API key invalid", hint: "Regenerate it in Profile \u2192 API key" });
+    }
+  }
+  if (token) {
+    try {
+      const projects = await api(server, "/api/admin/projects", { token });
+      const found = projects.find((p) => p.key === project);
+      if (!found) {
+        checks.push({ id: "project", status: "error", message: `Project ${project} not found in this workspace` });
+      } else {
+        const activeField = environment === "production" ? "isActiveProduction" : environment === "staging" ? "isActiveStaging" : "isActiveLocal";
+        checks.push(
+          found[activeField] === false ? { id: "project", status: "warn", message: `Project inactive for ${environment}` } : { id: "project", status: "ok", message: `Project ${project} active for ${environment}` }
+        );
+      }
+    } catch (err) {
+      checks.push({ id: "project", status: "warn", message: `Could not list projects: ${err?.message ?? err}` });
+    }
+  }
+  checks.push(await widgetCheck(cwd2));
+  if (serverReachable) {
+    try {
+      const res = await fetchWithTimeout(`${server}/pointer.js`, 3e3);
+      const type = res.headers.get("content-type") || "";
+      checks.push(
+        res.ok && type.includes("javascript") ? { id: "widget-served", status: "ok", message: "Widget script served" } : { id: "widget-served", status: "error", message: `Widget script not served (HTTP ${res.status})` }
+      );
+    } catch {
+      checks.push({ id: "widget-served", status: "error", message: "Widget script not served" });
+    }
+  }
+  checks.push(await skillsCheck(cwd2, config));
+  checks.push(...await gitignoreChecks(cwd2));
+  try {
+    await fs6.access(join6(cwd2, ".pointer/stack.json"));
+    checks.push({ id: "stack", status: "ok", message: "Stack registered" });
+  } catch {
+    checks.push({ id: "stack", status: "warn", message: "Stack not registered", fixable: true });
+  }
+  return checks;
+}
+async function widgetCheck(cwd2) {
+  const detection = await detectStack(cwd2).catch(() => null);
+  const candidates = [detection?.htmlPath, "index.html", "public/index.html", "src/index.html"].filter(Boolean);
+  for (const rel of candidates) {
+    try {
+      const html = await fs6.readFile(join6(cwd2, rel), "utf8");
+      if (html.includes("<!-- pointer-feedback:start -->") || html.includes("<pointer-feedback")) {
+        return { id: "widget", status: "ok", message: `Widget found in ${rel}` };
+      }
+    } catch {
+    }
+  }
+  for (const envFile of [".env", ".env.local", ".env.development"]) {
+    try {
+      const env = await fs6.readFile(join6(cwd2, envFile), "utf8");
+      if (/^VITE_POINTER_PROJECT=/m.test(env)) {
+        return { id: "widget", status: "ok", message: `Widget env configured in ${envFile}` };
+      }
+    } catch {
+    }
+  }
+  return {
+    id: "widget",
+    status: "warn",
+    message: "Widget not found in this app",
+    hint: "Run `init`, or the pointer-init skill for framework installs"
+  };
+}
+async function skillsCheck(cwd2, config) {
+  const tool = config.aiTool;
+  if (!tool) return { id: "skills", status: "warn", message: "No AI tool configured" };
+  const expected = SKILL_FILES[tool] ?? SKILL_FILES.other;
+  const missing = [];
+  for (const rel of expected) {
+    try {
+      await fs6.access(join6(cwd2, config.skillsDir ?? "", rel));
+    } catch {
+      missing.push(rel);
+    }
+  }
+  return missing.length === 0 ? { id: "skills", status: "ok", message: `Skills installed for ${tool}` } : { id: "skills", status: "warn", message: `Skills missing for ${tool}: ${missing.join(", ")}`, fixable: true };
+}
+async function gitignoreChecks(cwd2) {
+  const results = [];
+  let tracked = false;
+  try {
+    await execFileAsync("git", ["ls-files", "--error-unmatch", ".pointer/credentials.env"], { cwd: cwd2 });
+    tracked = true;
+  } catch {
+    tracked = false;
+  }
+  if (tracked) {
+    results.push({
+      id: "gitignore",
+      status: "error",
+      message: ".pointer/credentials.env is tracked by git!",
+      hint: "Run `git rm --cached .pointer/credentials.env`, then rotate the key \u2014 it is in your history"
+    });
+    return results;
+  }
+  try {
+    const ignore = await fs6.readFile(join6(cwd2, ".gitignore"), "utf8");
+    results.push(
+      ignore.includes(".pointer/") ? { id: "gitignore", status: "ok", message: "Credentials ignored by git" } : { id: "gitignore", status: "warn", message: ".gitignore is missing the .pointer/ entries", fixable: true }
+    );
+  } catch {
+    results.push({ id: "gitignore", status: "warn", message: "No .gitignore found", fixable: true });
+  }
+  return results;
 }
 
 // src/commands/init.ts
-import { promises as fs6 } from "node:fs";
-import { join as join6 } from "node:path";
+import { promises as fs7 } from "node:fs";
+import { join as join7 } from "node:path";
 async function initCommand(cwd2, options = {}) {
   const isYes = options["yes"] || options["json"];
   const isJson = options["json"];
@@ -552,7 +747,7 @@ async function initCommand(cwd2, options = {}) {
     }
   }
   const config = await readConfig(cwd2).catch(() => ({}));
-  let server = options["server"] || config.server || process.env.POINTER_SERVER || globalThis.DEFAULT_SERVER || "https://api.pointer.moamen.work";
+  let server = options["server"] || config.server || process.env.POINTER_SERVER || BUILD_DEFAULT_SERVER;
   if (!isYes && !options["server"] && !config.server) {
     server = await ask("Server URL", { default: server });
   }
@@ -567,8 +762,7 @@ async function initCommand(cwd2, options = {}) {
         method: "POST",
         body: { apiKey: key }
       });
-      if (login?.status !== "ok" || !login?.token)
-        throw new Error(login?.status || "invalid");
+      if (login?.status !== "ok" || !login?.token) throw new Error(login?.status || "invalid");
       token = login.token;
       me = login.user ?? await api(server, "/api/auth/me", { token });
     } catch (err) {
@@ -590,8 +784,7 @@ async function initCommand(cwd2, options = {}) {
           method: "POST",
           body: { apiKey: key }
         });
-        if (login?.status !== "ok" || !login?.token)
-          throw new Error(login?.status || "invalid");
+        if (login?.status !== "ok" || !login?.token) throw new Error(login?.status || "invalid");
         token = login.token;
         me = login.user ?? await api(server, "/api/auth/me", { token });
       } catch (err) {
@@ -629,8 +822,7 @@ async function initCommand(cwd2, options = {}) {
       created = true;
     } else {
       const match = choice.match(/\((.*?)\)$/);
-      if (match)
-        finalProjectKey = match[1];
+      if (match) finalProjectKey = match[1];
     }
   } else if (create) {
     created = true;
@@ -677,24 +869,17 @@ async function initCommand(cwd2, options = {}) {
   }
   let tool = options["tool"];
   if (!tool) {
-    if (process.env.CLAUDECODE || process.env.CLAUDE_CODE_ENTRYPOINT)
-      tool = "claude-code";
-    else if (process.env.ANTIGRAVITY_AGENT || process.env.GEMINI_CLI)
-      tool = "antigravity";
-    else if (process.env.TERM_PROGRAM && process.env.TERM_PROGRAM.includes("Cursor"))
-      tool = "cursor";
-    else if (process.env.WINDSURF)
-      tool = "windsurf";
-    else if (process.env.OPENCODE)
-      tool = "opencode";
-    else
-      tool = isYes ? "other" : "claude-code";
+    if (process.env.CLAUDECODE || process.env.CLAUDE_CODE_ENTRYPOINT) tool = "claude-code";
+    else if (process.env.ANTIGRAVITY_AGENT || process.env.GEMINI_CLI) tool = "antigravity";
+    else if (process.env.TERM_PROGRAM && process.env.TERM_PROGRAM.includes("Cursor")) tool = "cursor";
+    else if (process.env.WINDSURF) tool = "windsurf";
+    else if (process.env.OPENCODE) tool = "opencode";
+    else tool = isYes ? "other" : "claude-code";
     if (!isYes && !options["tool"]) {
       tool = await select("AI tool", ["claude-code", "cursor", "windsurf", "opencode", "antigravity", "other"], tool);
     }
   }
-  if (!isJson)
-    console.log(`Detecting your stack... -> ${appInfo.kind} (${appInfo.evidence.join(", ")})`);
+  if (!isJson) console.log(`Detecting your stack... -> ${appInfo.kind} (${appInfo.evidence.join(", ")})`);
   let injected = false;
   let routedToSkill = false;
   let filesMod = [];
@@ -702,14 +887,12 @@ async function initCommand(cwd2, options = {}) {
     if (appInfo.kind === "vite") {
       filesMod = await injectVite(cwd2, { server, key: finalProjectKey, environment: env }, options["html"]);
       injected = true;
-      if (!isJson)
-        console.log(`Injected widget into ${filesMod.join(", ")}`);
+      if (!isJson) console.log(`Injected widget into ${filesMod.join(", ")}`);
     } else if (appInfo.kind === "static") {
       const htmlPath = await injectStatic(cwd2, options["html"], { server, key: finalProjectKey, environment: env });
       filesMod = [htmlPath];
       injected = true;
-      if (!isJson)
-        console.log(`Injected widget into ${htmlPath}`);
+      if (!isJson) console.log(`Injected widget into ${htmlPath}`);
     } else if (appInfo.kind !== "unknown") {
       routedToSkill = true;
       if (!isJson) {
@@ -721,27 +904,24 @@ async function initCommand(cwd2, options = {}) {
     }
   }
   if (!options["no-skills"]) {
-    if (!isJson)
-      console.log("Installing AI skills");
+    if (!isJson) console.log("Installing AI skills");
     const skillsDir = options["skills-dir"];
     const installed = await installSkills(server, tool, cwd2, skillsDir);
     filesMod.push(...installed);
   }
-  const pkgStr = await fs6.readFile(join6(cwd2, "package.json"), "utf8").catch(() => "{}");
+  const pkgStr = await fs7.readFile(join7(cwd2, "package.json"), "utf8").catch(() => "{}");
   const tokens = extractTokens(JSON.parse(pkgStr));
   const stackMeta = { frontend: tokens.frontend, backend: tokens.backend, aiTool: tool };
   try {
     await api(server, `/api/projects/${finalProjectKey}/stack`, { method: "POST", body: stackMeta, token: key });
-    await fs6.mkdir(join6(cwd2, ".pointer"), { recursive: true });
-    await fs6.writeFile(join6(cwd2, ".pointer/stack.json"), JSON.stringify(stackMeta, null, 2), "utf8");
+    await fs7.mkdir(join7(cwd2, ".pointer"), { recursive: true });
+    await fs7.writeFile(join7(cwd2, ".pointer/stack.json"), JSON.stringify(stackMeta, null, 2), "utf8");
   } catch (e) {
-    if (!isJson)
-      console.log(`\u26A0 Stack not registered (${e.code || 500})`);
+    if (!isJson) console.log(`\u26A0 Stack not registered (${e.code || 500})`);
   }
   await writeConfig(cwd2, { server, project: finalProjectKey, environment: env, aiTool: tool, skillsDir: options["skills-dir"], cliVersion: "0.1.0" });
   filesMod.push(".pointer/config.json");
-  if (!isJson)
-    console.log("Verifying...");
+  if (!isJson) console.log("Verifying...");
   const checks = await runInitChecks(server, finalProjectKey, env, key);
   if (!isJson) {
     for (const c of checks) {
@@ -779,6 +959,119 @@ Next: start your dev server, open the app, click the ${product} button and sign 
   process.exit(0);
 }
 
+// src/commands/doctor.ts
+import { promises as fs8 } from "node:fs";
+import { join as join8 } from "node:path";
+var ICON = { ok: "\u2714", warn: "\u26A0", error: "\u2718" };
+function exitCodeFor(checks) {
+  const failed = checks.filter((c) => c.status === "error");
+  if (failed.some((c) => c.id === "meta")) return 5;
+  if (failed.some((c) => c.id === "key")) return 3;
+  return failed.length > 0 ? 1 : 0;
+}
+async function doctorCommand(cwd2, options, cliVersion) {
+  let checks = await runInitChecks(cwd2, { server: options.server, project: options.project }, cliVersion);
+  if (options.fix) {
+    const repaired = await applyFixes(cwd2, checks);
+    if (repaired.length > 0) {
+      checks = await runInitChecks(cwd2, { server: options.server, project: options.project }, cliVersion);
+    }
+  }
+  const code = exitCodeFor(checks);
+  const ok = code === 0;
+  if (options.json) {
+    console.log(JSON.stringify({ ok, checks }, null, 2));
+  } else {
+    for (const check of checks) {
+      console.log(`${ICON[check.status]} ${check.id.padEnd(14)} ${check.message}`);
+      if (check.hint && check.status !== "ok") console.log(`  ${" ".repeat(14)} \u2192 ${check.hint}`);
+    }
+    const failed = checks.filter((c) => c.status === "error").length;
+    const warned = checks.filter((c) => c.status === "warn").length;
+    console.log(
+      ok ? `
+All good${warned ? ` (${warned} warning${warned === 1 ? "" : "s"})` : ""}.` : `
+${failed} problem${failed === 1 ? "" : "s"} found.`
+    );
+  }
+  await reportRun(cwd2, options, checks, ok);
+  return code;
+}
+async function reportRun(cwd2, options, checks, ok) {
+  const keyCheck = checks.find((c) => c.id === "key");
+  if (keyCheck?.status !== "ok") return;
+  try {
+    const config = await readConfig(cwd2);
+    const server = (options.server || config.server || "").replace(/\/$/, "");
+    if (!server) return;
+    const apiKey = (await fs8.readFile(join8(cwd2, ".pointer/credentials.env"), "utf8")).match(/^POINTER_API_KEY=(.*)$/m)?.[1]?.trim();
+    if (!apiKey) return;
+    const login = await api(server, "/api/auth/login-with-key", { method: "POST", body: { apiKey } });
+    if (!login?.token) return;
+    await postEvent(server, login.token, {
+      type: "doctor_run",
+      projectKey: options.project || config.project,
+      meta: { ok, failed: checks.filter((c) => c.status === "error").map((c) => c.id) }
+    });
+  } catch {
+  }
+}
+async function applyFixes(cwd2, checks) {
+  const repaired = [];
+  const config = await readConfig(cwd2);
+  const server = (config.server || "").replace(/\/$/, "");
+  let token;
+  const tokenFor = async () => {
+    if (token) return token;
+    try {
+      const apiKey = (await fs8.readFile(join8(cwd2, ".pointer/credentials.env"), "utf8")).match(/^POINTER_API_KEY=(.*)$/m)?.[1]?.trim();
+      if (!apiKey || !server) return void 0;
+      const login = await api(server, "/api/auth/login-with-key", { method: "POST", body: { apiKey } });
+      token = login?.token;
+    } catch {
+      token = void 0;
+    }
+    return token;
+  };
+  for (const check of checks.filter((c) => c.fixable && c.status !== "ok")) {
+    try {
+      if (check.id === "gitignore") {
+        const path = join8(cwd2, ".gitignore");
+        const existing = await fs8.readFile(path, "utf8").catch(() => "");
+        if (!existing.includes(".pointer/")) {
+          const block = [
+            "",
+            "# Pointer \u2014 local install state. credentials.env holds an API key.",
+            ".pointer/",
+            "!.pointer/config.json",
+            "!.pointer/stack.json",
+            ""
+          ].join("\n");
+          await fs8.writeFile(path, existing + block, "utf8");
+          repaired.push(check.id);
+        }
+      } else if (check.id === "skills" && server && config.aiTool) {
+        await installSkills(server, config.aiTool, cwd2, config.skillsDir);
+        repaired.push(check.id);
+      } else if (check.id === "stack" && server && config.project) {
+        const detection = await detectStack(cwd2);
+        const stackToken = await tokenFor();
+        const stack = stackToken ? await api(server, `/api/projects/${config.project}/stack`, {
+          method: "POST",
+          token: stackToken,
+          body: { kind: detection.kind, evidence: detection.evidence }
+        }).catch(() => null) : null;
+        if (stack) {
+          await fs8.writeFile(join8(cwd2, ".pointer/stack.json"), JSON.stringify(stack, null, 2) + "\n", "utf8");
+          repaired.push(check.id);
+        }
+      }
+    } catch {
+    }
+  }
+  return repaired;
+}
+
 // src/cli.ts
 import { argv, cwd } from "node:process";
 function parseArgs(args) {
@@ -788,7 +1081,7 @@ function parseArgs(args) {
     const arg = args[i];
     if (arg.startsWith("--")) {
       const key = arg.slice(2);
-      if (key === "no-app-url" || key === "no-inject" || key === "no-skills" || key === "yes" || key === "json" || key === "help") {
+      if (key === "no-app-url" || key === "no-inject" || key === "no-skills" || key === "yes" || key === "json" || key === "help" || key === "fix") {
         parsed[key] = true;
       } else if (i + 1 < args.length && !args[i + 1].startsWith("-")) {
         parsed[key] = args[i + 1];
@@ -798,10 +1091,8 @@ function parseArgs(args) {
       }
     } else if (arg.startsWith("-")) {
       const key = arg.slice(1);
-      if (key === "y")
-        parsed["yes"] = true;
-      if (key === "h")
-        parsed["help"] = true;
+      if (key === "y") parsed["yes"] = true;
+      if (key === "h") parsed["help"] = true;
     } else {
       positionals.push(arg);
     }
@@ -813,10 +1104,12 @@ Usage: pointer <command> [options]
 
 Commands:
   init      Initialize Pointer in your project
-  doctor    Run health checks (stub)
+  doctor    Diagnose an install and report what is wrong
 
 Options:
   -h, --help    Show this help message
+
+Run 'pointer doctor --help' for its options.
 `;
 async function main() {
   const { parsed, positionals } = parseArgs(argv.slice(2));
@@ -853,7 +1146,34 @@ Options:
     }
     await initCommand(cwd(), parsed);
   } else if (command === "doctor") {
-    console.log("Doctor command is currently stubbed.");
+    if (parsed["help"]) {
+      console.log(`
+Usage: pointer doctor [options]
+
+Checks an existing install and prints one line per check.
+
+Options:
+  --server <url>     Override the server from .pointer/config.json
+  --project <key>    Override the project key
+  --json             Emit { ok, checks } as JSON
+  --fix              Apply the idempotent repairs (gitignore, skills, stack)
+  -h, --help         Show this help
+
+Exit codes:
+  0  everything passed (warnings allowed)
+  1  a check failed
+  3  the API key is missing or rejected
+  5  this CLI is older than the server requires
+`);
+      process.exit(0);
+    }
+    const code = await doctorCommand(cwd(), {
+      server: typeof parsed["server"] === "string" ? parsed["server"] : void 0,
+      project: typeof parsed["project"] === "string" ? parsed["project"] : void 0,
+      json: parsed["json"] === true,
+      fix: parsed["fix"] === true
+    }, BUILD_CLI_VERSION);
+    process.exit(code);
   } else {
     console.error(`Unknown command: ${command}`);
     process.exit(2);

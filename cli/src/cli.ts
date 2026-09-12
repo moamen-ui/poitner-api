@@ -1,5 +1,7 @@
 import { initCommand } from './commands/init.js';
+import { doctorCommand } from './commands/doctor.js';
 import { argv, cwd } from 'node:process';
+import { BUILD_CLI_VERSION } from './build-constants.js';
 
 function parseArgs(args: string[]) {
     const parsed: Record<string, string | boolean> = {};
@@ -8,7 +10,7 @@ function parseArgs(args: string[]) {
         const arg = args[i];
         if (arg.startsWith('--')) {
             const key = arg.slice(2);
-            if (key === 'no-app-url' || key === 'no-inject' || key === 'no-skills' || key === 'yes' || key === 'json' || key === 'help') {
+            if (key === 'no-app-url' || key === 'no-inject' || key === 'no-skills' || key === 'yes' || key === 'json' || key === 'help' || key === 'fix') {
                 parsed[key] = true;
             } else if (i + 1 < args.length && !args[i+1].startsWith('-')) {
                 parsed[key] = args[i+1];
@@ -32,10 +34,12 @@ Usage: pointer <command> [options]
 
 Commands:
   init      Initialize Pointer in your project
-  doctor    Run health checks (stub)
+  doctor    Diagnose an install and report what is wrong
 
 Options:
   -h, --help    Show this help message
+
+Run 'pointer doctor --help' for its options.
 `;
 
 async function main() {
@@ -75,7 +79,34 @@ Options:
         }
         await initCommand(cwd(), parsed);
     } else if (command === 'doctor') {
-        console.log('Doctor command is currently stubbed.');
+        if (parsed['help']) {
+            console.log(`
+Usage: pointer doctor [options]
+
+Checks an existing install and prints one line per check.
+
+Options:
+  --server <url>     Override the server from .pointer/config.json
+  --project <key>    Override the project key
+  --json             Emit { ok, checks } as JSON
+  --fix              Apply the idempotent repairs (gitignore, skills, stack)
+  -h, --help         Show this help
+
+Exit codes:
+  0  everything passed (warnings allowed)
+  1  a check failed
+  3  the API key is missing or rejected
+  5  this CLI is older than the server requires
+`);
+            process.exit(0);
+        }
+        const code = await doctorCommand(cwd(), {
+            server: typeof parsed['server'] === 'string' ? parsed['server'] : undefined,
+            project: typeof parsed['project'] === 'string' ? parsed['project'] : undefined,
+            json: parsed['json'] === true,
+            fix: parsed['fix'] === true,
+        }, BUILD_CLI_VERSION);
+        process.exit(code);
     } else {
         console.error(`Unknown command: ${command}`);
         process.exit(2);

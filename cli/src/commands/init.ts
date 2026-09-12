@@ -1,4 +1,5 @@
 import { ask, select } from '../prompt.js';
+import { BUILD_DEFAULT_SERVER } from '../build-constants.js';
 import { readConfig, writeConfig, writeCredentials, upsertGitignore } from '../config.js';
 import { detectStack, detectAppUrl, extractTokens } from '../detect.js';
 import { injectVite, injectStatic } from '../inject/index.js';
@@ -27,7 +28,7 @@ export async function initCommand(cwd: string, options: Record<string, string | 
 
     const config: any = await readConfig(cwd).catch(() => ({}));
 
-    let server = options['server'] || config.server || process.env.POINTER_SERVER || (globalThis as any).DEFAULT_SERVER || 'https://api.pointer.moamen.work';
+    let server = options['server'] || config.server || process.env.POINTER_SERVER || BUILD_DEFAULT_SERVER;
     
     if (!isYes && !options['server'] && !config.server) {
         server = await ask('Server URL', { default: server as string });

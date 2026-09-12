@@ -25,6 +25,20 @@ async function makeSymlink(target: string, path: string) {
     }
 }
 
+/**
+ * Where each AI tool's two skill files live, relative to the project root.
+ *
+ * Exported because `doctor` must check exactly the paths `installSkills` writes. When these lived
+ * inline in the install routine, the only way to verify an install was to re-derive the layout —
+ * and a second copy of a path table drifts.
+ */
+export const SKILL_FILES: Record<string, string[]> = {
+  'claude-code': ['.claude/skills/pointer-init/SKILL.md', '.claude/skills/pointer-feedback/SKILL.md'],
+  cursor: ['.cursor/rules/pointer-init.md', '.cursor/rules/pointer-feedback.md'],
+  windsurf: ['.windsurf/rules/pointer-init.md', '.windsurf/rules/pointer-feedback.md'],
+  other: ['.agents/pointer-init/SKILL.md', '.agents/pointer-feedback/SKILL.md'],
+};
+
 export async function installSkills(server: string, aiTool: string, cwd: string, overrideDir?: string): Promise<string[]> {
     const files: string[] = [];
     server = server.replace(/\/$/, '');
@@ -50,19 +64,10 @@ export async function installSkills(server: string, aiTool: string, cwd: string,
         }
     }
 
-    if (aiTool === 'claude-code') {
-        await writeOrLink('.claude/skills/pointer-init/SKILL.md', 'pointer-init', false);
-        await writeOrLink('.claude/skills/pointer-feedback/SKILL.md', 'pointer-feedback', false);
-    } else if (aiTool === 'cursor') {
-        await writeOrLink('.cursor/rules/pointer-init.md', 'pointer-init', true);
-        await writeOrLink('.cursor/rules/pointer-feedback.md', 'pointer-feedback', true);
-    } else if (aiTool === 'windsurf') {
-        await writeOrLink('.windsurf/rules/pointer-init.md', 'pointer-init', true);
-        await writeOrLink('.windsurf/rules/pointer-feedback.md', 'pointer-feedback', true);
-    } else {
-        await writeOrLink('.agents/pointer-init/SKILL.md', 'pointer-init', false);
-        await writeOrLink('.agents/pointer-feedback/SKILL.md', 'pointer-feedback', false);
-    }
+    const layout = SKILL_FILES[aiTool] ?? SKILL_FILES.other;
+    const isMd = aiTool === 'cursor' || aiTool === 'windsurf';
+    await writeOrLink(layout[0], 'pointer-init', isMd);
+    await writeOrLink(layout[1], 'pointer-feedback', isMd);
     
     return files;
 }
