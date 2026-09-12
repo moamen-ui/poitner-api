@@ -209,6 +209,7 @@ export async function initCommand(cwd: string, options: Record<string, string | 
     let injected = false;
     let routedToSkill = false;
     let filesMod: string[] = [];
+    let skillFiles: string[] = [];
     
     if (!options['no-inject']) {
         if (appInfo.kind === 'vite') {
@@ -236,6 +237,9 @@ export async function initCommand(cwd: string, options: Record<string, string | 
         const skillsDir = options['skills-dir'] as string;
         const installed = await installSkills(server as string, tool, cwd, skillsDir);
         filesMod.push(...installed);
+        // Kept for the human summary below: "installed" does not tell anyone WHAT was written into
+        // their repository, and these are files they will want to find, read and commit.
+        skillFiles = installed.filter((f) => f.includes('SKILL.md') || f.endsWith('.md'));
     }
 
     const pkgStr = await fs.readFile(join(cwd, 'package.json'), 'utf8').catch(() => '{}');
@@ -313,7 +317,7 @@ export async function initCommand(cwd: string, options: Record<string, string | 
 ✔ ${product} is set up for project "${projectName}" (${finalProjectKey})
   • Widget: ${injected ? `injected into index.html (${appInfo.kind})` : `run the pointer-init skill in ${tool} (${appInfo.kind})`}
   • Key: .pointer/credentials.env (gitignored)
-  • Skills: installed
+  • Skills: ${skillFiles.length ? skillFiles.join(', ') : 'installed'}
 
 Next: start your dev server, open the app, click the ${product} button and sign in.
       Dashboard: ${branding.urls?.app || server}`);

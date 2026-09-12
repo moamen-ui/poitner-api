@@ -146,7 +146,7 @@ public class WidgetActivationTests
     }
 
     [Fact]
-    public async Task CheckWidgetActiveAsync_EnvironmentDisabled_TreatsRowAsAbsent_ReturnsActive()
+    public async Task CheckWidgetActiveAsync_EnvironmentDisabled_BlocksThatOrigin()
     {
         var dbName = Guid.NewGuid().ToString();
         SeedGlobalLocalEnvironment(dbName);
@@ -164,7 +164,7 @@ public class WidgetActivationTests
             localEnvId = local.Id;
         }
 
-        // Even if IsActive = false, the disabled environment hides this row completely.
+        // A mapping that describes this origin, on an environment that has been disabled.
         using (var db = BuildContext(admin, dbName))
         {
             db.ProjectAppUrls.Add(new ProjectAppUrl { ProjectId = created.Id, AppEnvironmentId = localEnvId, Url = "http://localhost:3000", IsActive = false, OwnerId = tenant });
@@ -173,7 +173,16 @@ public class WidgetActivationTests
 
         var result = await svc.CheckWidgetActiveAsync("site", "http://localhost:3000");
         Assert.True(result.IsSuccess);
-        Assert.True(result.Data!.Active); // active because row was treated as absent, thus not blocked
+
+        // REVERSED 2026-09-12 by the product owner. This test previously asserted Active == true —
+        // a disabled environment's row was ignored, so the origin fell through to "no mapping →
+        // allowed" and disabling an environment changed nothing a user could see.
+        //
+        // The rule now: disabling an environment takes the widget off the sites that environment
+        // describes. An origin with NO mapping is still allowed, and each environment's origins
+        // match their own rows, so this cannot reach another environment's site —
+        // ProjectAppUrlEnvironmentGuardTests pins both of those bounds.
+        Assert.False(result.Data!.Active);
     }
 
     [Fact]

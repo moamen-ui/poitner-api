@@ -193,11 +193,21 @@ Two readers must now join to `AppEnvironment` and require `IsEnabled`:
   `IsEnabled` defaults `true`, so nothing changes until someone deliberately switches one off.
 - `ProjectService.CheckWidgetActiveAsync:821-834` — this is the **anonymous widget render gate**, so
   the risk is higher. Today: an origin matching a row with `IsActive == false` blocks the widget; an
-  origin matching nothing is allowed. New rule, stated exactly: **a row whose environment is disabled
-  is treated as if the row did not exist** (i.e. "no configured mapping" → allowed), **not** as a block.
-  Rationale: disabling an environment must never take a customer's widget offline on a site the row was
-  merely *describing*; only an explicit per-mapping `IsActive == false` blocks. Add this as a comment
-  in the method — it is the kind of rule someone will "simplify" later.
+  origin matching nothing is allowed.
+
+  **REVERSED 2026-09-12 by the product owner.** The rule is now: **a row whose environment is disabled
+  BLOCKS that origin**, exactly as an explicit per-mapping `IsActive == false` does. Disabling an
+  environment means the widget stops appearing on the sites that environment describes; a setting that
+  is silently ignored is worse than one with consequences.
+
+  The original rationale — that disabling an environment must never take a customer's widget offline —
+  is answered by the blast radius rather than by ignoring the setting: an origin with NO mapping is
+  still allowed (a site nobody described is not a site anybody turned off), and each environment's
+  origins match their own rows, so disabling staging cannot reach production. Both bounds are pinned
+  in `Tests/ProjectAppUrlEnvironmentGuardTests.cs`.
+
+  The superseded rule is left above deliberately: the reasoning behind it is still the reason the
+  blast radius has to stay narrow.
   The existing `IgnoreQueryFilters()` on that query must be preserved, and the join to
   `AppEnvironment` needs it too (anonymous caller, no tenant claim).
 

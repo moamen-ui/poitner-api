@@ -746,6 +746,20 @@ test('R2-00-05 — whitelabel: cli-output has no brand leak', async () => {
 
 test('R2-00-06 ⛓ — whitelabel: widget text has no brand leak', async ({ page, browser }) => {
   test.skip(process.env.TIER === 'pr', 'nightly tier only — skipped during PR tier');
+  // This one scaffolds an app, runs init against the live API, starts a server and opens a second
+  // browser context — the 30s default is a budget for a normal test, not for this.
+  test.setTimeout(120_000);
+
+  // KNOWN FAILING (nightly only) — times out in its second browser context.
+  //
+  // Ruled out: the app IS instrumented (init writes .pointer/config.json and injects the widget —
+  // verified on disk after a run), and the brand-leak guarantee this scenario exists to prove is
+  // covered by R2-00-08, which passes: the launcher's title and aria-label carry the configured
+  // product name and no "Pointer" literal. What remains is this scenario's own sequencing across
+  // two contexts and a mid-test re-brand.
+  //
+  // Left running and red rather than skipped: the white-label promise is load-bearing for this
+  // product, and a scenario nobody can see is how the suite got into the state it was found in.
 
   const start = Date.now();
   const creds = getCredentials();
@@ -766,6 +780,18 @@ test('R2-00-06 ⛓ — whitelabel: widget text has no brand leak', async ({ page
 
     // Serve static app on 4174
     const appDir = await scaffoldStatic();
+    // The static template is deliberately un-instrumented — scaffolding alone leaves a page with
+    // no widget on it. These scenarios assert what the widget RENDERS, so the app has to be
+    // instrumented the way a real user would: by running init, which is the thing under test.
+    const initRes = await spawnCli({
+      cwd: appDir,
+      args: [
+        'init', '--server', SERVER, '--key', getKeys().developer?.apiKey || '',
+        '--create', `Whitelabel ${Date.now()}`, '--environment', 'local', '--tool', 'other', '--yes', '--json',
+      ],
+    });
+    expect(initRes.code, `init failed: ${initRes.stderr}`).toBe(0);
+
     serverProcess = await startStaticServer(appDir, PREVIEW_PORT);
 
     // Browser context created AFTER branding PUT (element.ts:263)
@@ -797,17 +823,13 @@ test('R2-00-06 ⛓ — whitelabel: widget text has no brand leak', async ({ page
     const modalTitle = (await modalH2.innerText()).trim();
     expect(modalTitle).toBe('Acme Review');
 
-    // 4. Toasts: trigger hideOverlay and assert toast text within 2000 ms
+    // 4. Toasts carry the brand too. Trigger the REAL one — clicking hide emits
+    // `${brand} hidden — click the button to reopen` (element.ts) — rather than poking a method to
+    // produce a synthetic toast, which would assert only that the test can write the brand itself.
+    await widget2.locator('#pf-hide').click();
     const toastLocator = widget2.locator('.pf-toast');
-    // Call hideOverlay or trigger action that displays brand toast
-    await expect(toastLocator).toHaveText(/Acme Review/, { timeout: 2000 }).catch(async () => {
-      // If no toast active, evaluate showToast on widget element directly to verify brand template
-      await page2.evaluate(() => {
-        const el = document.querySelector('pointer-feedback') as any;
-        if (el?.showToast) el.showToast('Test Acme Review');
-      });
-      await expect(toastLocator).toHaveText(/Acme Review/, { timeout: 2000 });
-    });
+    await expect(toastLocator).toHaveText(/Acme Review/, { timeout: 5000 });
+    await expect(toastLocator).not.toHaveText(/Pointer/);
 
     const durationMs = Date.now() - start;
     record({
@@ -853,6 +875,18 @@ test('R2-00-08 ⛓ — whitelabel: widget title/aria-label have no brand leak', 
     }, { token: saAuth.token });
 
     const appDir = await scaffoldStatic();
+    // The static template is deliberately un-instrumented — scaffolding alone leaves a page with
+    // no widget on it. These scenarios assert what the widget RENDERS, so the app has to be
+    // instrumented the way a real user would: by running init, which is the thing under test.
+    const initRes = await spawnCli({
+      cwd: appDir,
+      args: [
+        'init', '--server', SERVER, '--key', getKeys().developer?.apiKey || '',
+        '--create', `Whitelabel ${Date.now()}`, '--environment', 'local', '--tool', 'other', '--yes', '--json',
+      ],
+    });
+    expect(initRes.code, `init failed: ${initRes.stderr}`).toBe(0);
+
     serverProcess = await startStaticServer(appDir, PREVIEW_PORT);
 
     // 1. Collapsed context (no sessionStorage pointer_visible)

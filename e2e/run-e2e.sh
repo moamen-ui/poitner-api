@@ -66,7 +66,7 @@ if [ "$TIER" = "pr" ]; then
   FLAGS+=("reset" "seed" "probe" "api" "docs" "widget" "mail")
   [ "$RUN_CLI" = "1" ] && FLAGS+=("cli")
 elif [ "$TIER" = "nightly" ]; then
-  FLAGS+=("reset" "seed" "probe" "api" "widget" "cli" "mail" "fresh" "whitelabel" "mock-domain" "dashboard" "mcp" "apply" "registry" "upgrade" "429")
+  FLAGS+=("reset" "seed" "probe" "api" "docs" "widget" "cli" "mail" "fresh" "whitelabel" "mock-domain" "dashboard" "mcp" "apply" "registry" "upgrade" "429")
 elif [ ${#FLAGS[@]} -eq 0 ] && [ ${#ONLY[@]} -eq 0 ]; then
   # Default behavior
   FLAGS+=("reset" "seed" "probe" "widget")

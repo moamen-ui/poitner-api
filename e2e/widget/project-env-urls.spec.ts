@@ -1,6 +1,6 @@
 // Playwright widget spec for R1-09 Nightly tier.
 // Scenario implemented:
-// - R1-09-07 ⛓ — disabled environment: extension lookup misses, widget gate stays active
+// - R1-09-07 ⛓ — disabled environment: extension lookup misses, widget does not render
 // Contract: docs/roadmap/testing/R1-09-tests.md
 import { test, expect } from '@playwright/test';
 import { spawn, type ChildProcess } from 'node:child_process';
@@ -68,16 +68,7 @@ test.afterAll(() => {
 //
 // Tier is the right signal HERE — unlike the destructive guards, which key off their phase flag.
 // The question is "should this scenario run at all", not "is it safe to run in this phase".
-// KNOWN FAILING (nightly only). The widget never renders #pf-add for the per-run project this
-// scenario builds, so the assertion that the gate "stays active" cannot be checked. Ruled out so
-// far: the beta fixture itself (loads fine standalone — tag present, custom element defined), the
-// route-interception headers (fixed below), and the fixture failing to start (now fails loudly).
-// What remains is a product question the contract answers one way and the code may answer another:
-// whether a project whose AppEnvironment is disabled should still initialise the widget.
-//
-// Left running and red rather than skipped: a scenario nobody can see is how this suite got into
-// the state it was in.
-test('R1-09-07 ⛓ — disabled environment: extension lookup misses, widget gate stays active', async ({ page }) => {
+test('R1-09-07 ⛓ — disabled environment: extension lookup misses, widget does not render', async ({ page }) => {
   test.skip(process.env.TIER !== 'nightly', 'chained nightly scenario — needs the nightly phase order');
   const start = Date.now();
   const wsAdminCreds = credentials.wsAdmin || TENANT_OWNER;
@@ -186,11 +177,13 @@ test('R1-09-07 ⛓ — disabled environment: extension lookup misses, widget gat
       'GET',
       `/api/public/projects/${projectWKey}/widget-status?origin=${encodeURIComponent(`http://localhost:${BETA_FIXTURE_PORT}`)}`,
     );
-    // 8 → active: true — row whose environment is disabled is treated as absent, not as a block
+    // 8 → active: FALSE. A row whose environment is disabled blocks that origin — the product
+    // owner reversed execution Decision 7 on 2026-09-12: disabling an environment means the widget
+    // stops appearing on the sites it describes, rather than the setting being silently ignored.
     expect(status8.status).toBe(200);
-    expect(status8.data?.active).toBe(true);
+    expect(status8.data?.active).toBe(false);
 
-    // Browser verification: prove the widget gate stays active and renders the widget toolbar
+    // Browser verification: prove the widget does NOT render on that origin
     await preAuthWidget(page, tester.token, tester.user);
 
     // Intercept fixture HTML to inline the test project key
@@ -209,12 +202,20 @@ test('R1-09-07 ⛓ — disabled environment: extension lookup misses, widget gat
       });
     });
 
-    const captureConfigLoaded = page.waitForResponse((r) => r.url().includes('/capture-config'));
+    // No capture-config wait here, unlike the scenarios that expect a working widget: this one
+    // asserts the widget never initialises, so that request is exactly what must NOT happen.
     await page.goto(BETA_FIXTURE_URL);
 
     const widget = page.locator('pointer-feedback');
-    await expect(widget.locator('#pf-add')).toBeVisible({ timeout: 10_000 });
-    await captureConfigLoaded;
+    // The element tag is in the fixture's markup, so it is always attached. What must NOT happen is
+    // the widget rendering its chrome: _checkWidgetActive() returns false and init() never runs, so
+    // no toolbar and no launcher ever appear.
+    await expect(widget.locator('#pf-add')).toHaveCount(0);
+    await expect(widget.locator('#pf-launcher')).toHaveCount(0);
+
+    // Give the gate a real chance to be wrong — a race would show the toolbar a moment later.
+    await page.waitForTimeout(2000);
+    await expect(widget.locator('#pf-add')).toHaveCount(0);
 
     record({
       id: 'R1-09-07',

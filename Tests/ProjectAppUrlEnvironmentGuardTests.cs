@@ -294,4 +294,95 @@ public class ProjectAppUrlEnvironmentGuardTests
 
         Assert.True(result.IsSuccess, $"expected {url} to save, got: {result.Message}");
     }
+    /// <summary>
+    /// BINDING (product decision, reverses execution Decision 7): disabling an environment takes the
+    /// widget off the sites that environment describes.
+    ///
+    /// The original decision ignored rows on disabled environments, so the origin fell through to
+    /// "no configured mapping → allowed" and the setting did nothing visible. The owner's call is
+    /// that disabling an environment should mean what it says.
+    ///
+    /// The blast radius is what makes that safe, and is pinned below: only origins the disabled
+    /// environment actually describes are affected. An unmapped origin still renders, and another
+    /// environment's origin is untouched — so turning off staging cannot take production offline,
+    /// which was the original decision's whole concern.
+    /// </summary>
+    [Fact]
+    public async Task WidgetIsInactive_OnAnOriginDescribedByADisabledEnvironment()
+    {
+        var dbName = Guid.NewGuid().ToString();
+        var tenant = Guid.NewGuid();
+        var admin = new FakeCurrentUser { Id = Guid.NewGuid(), IsAdmin = true, TenantId = tenant };
+
+        int projectId, envId;
+        using (var db = BuildContext(admin, dbName))
+        {
+            var project = new Project { Key = "wg", Name = "WG", OwnerId = tenant, IsActiveLocal = true, CreatedBy = admin.Id!.Value };
+            db.Projects.Add(project);
+            var env = new AppEnvironment { Name = "preview", OwnerId = tenant, IsEnabled = true };
+            db.AppEnvironments.Add(env);
+            db.SaveChanges();
+            projectId = project.Id;
+            envId = env.Id;
+        }
+
+        var svc = new ProjectService(new UnitOfWork(BuildContext(admin, dbName)), admin, new PassThroughEntitlements(), TestProjectServiceDeps.Settings(), TestProjectServiceDeps.Configuration());
+        await svc.SetAppUrlAsync(projectId, envId, new SetProjectAppUrlRequest { Url = "https://preview.example.com" });
+
+        // Enabled: the widget renders there.
+        Assert.True((await svc.CheckWidgetActiveAsync("wg", "https://preview.example.com")).Data!.Active);
+
+        using (var db = BuildContext(admin, dbName))
+        {
+            var env = db.AppEnvironments.IgnoreQueryFilters().First(e => e.Id == envId);
+            env.IsEnabled = false;
+            db.SaveChanges();
+        }
+
+        var after = new ProjectService(new UnitOfWork(BuildContext(admin, dbName)), admin, new PassThroughEntitlements(), TestProjectServiceDeps.Settings(), TestProjectServiceDeps.Configuration());
+
+        // Disabled: it does not.
+        Assert.False((await after.CheckWidgetActiveAsync("wg", "https://preview.example.com")).Data!.Active);
+
+        // BLAST RADIUS: an origin this environment never described is unaffected.
+        Assert.True((await after.CheckWidgetActiveAsync("wg", "https://unrelated.example.com")).Data!.Active);
+    }
+
+    [Fact]
+    public async Task DisablingOneEnvironment_DoesNotTakeAnotherEnvironmentsSiteOffline()
+    {
+        // The exact fear behind the original decision: an admin disables staging and production
+        // goes dark. Production's origin matches production's own row, so it cannot.
+        var dbName = Guid.NewGuid().ToString();
+        var tenant = Guid.NewGuid();
+        var admin = new FakeCurrentUser { Id = Guid.NewGuid(), IsAdmin = true, TenantId = tenant };
+
+        int projectId, stagingId, prodId;
+        using (var db = BuildContext(admin, dbName))
+        {
+            var project = new Project { Key = "wg2", Name = "WG2", OwnerId = tenant, IsActiveProduction = true, CreatedBy = admin.Id!.Value };
+            db.Projects.Add(project);
+            var staging = new AppEnvironment { Name = "staging-x", OwnerId = tenant, IsEnabled = true };
+            var prod = new AppEnvironment { Name = "prod-x", OwnerId = tenant, IsEnabled = true };
+            db.AppEnvironments.AddRange(staging, prod);
+            db.SaveChanges();
+            projectId = project.Id; stagingId = staging.Id; prodId = prod.Id;
+        }
+
+        var svc = new ProjectService(new UnitOfWork(BuildContext(admin, dbName)), admin, new PassThroughEntitlements(), TestProjectServiceDeps.Settings(), TestProjectServiceDeps.Configuration());
+        await svc.SetAppUrlAsync(projectId, stagingId, new SetProjectAppUrlRequest { Url = "https://staging.example.com" });
+        await svc.SetAppUrlAsync(projectId, prodId, new SetProjectAppUrlRequest { Url = "https://app.example.com" });
+
+        using (var db = BuildContext(admin, dbName))
+        {
+            var staging = db.AppEnvironments.IgnoreQueryFilters().First(e => e.Id == stagingId);
+            staging.IsEnabled = false;
+            db.SaveChanges();
+        }
+
+        var after = new ProjectService(new UnitOfWork(BuildContext(admin, dbName)), admin, new PassThroughEntitlements(), TestProjectServiceDeps.Settings(), TestProjectServiceDeps.Configuration());
+
+        Assert.False((await after.CheckWidgetActiveAsync("wg2", "https://staging.example.com")).Data!.Active);
+        Assert.True((await after.CheckWidgetActiveAsync("wg2", "https://app.example.com")).Data!.Active);
+    }
 }

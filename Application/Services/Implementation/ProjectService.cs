@@ -979,23 +979,29 @@ public class ProjectService : IProjectService
 
         var normalized = OriginNormalizer.Normalize(origin);
         
-        // A row whose environment is disabled is treated as if the row did not exist
-        // (i.e. "no configured mapping" → allowed), not as a block. Disabling an environment must
-        // never take a customer's widget offline on a site the row was merely describing;
-        // only an explicit per-mapping IsActive == false blocks.
+        // Rows on DISABLED environments are included deliberately — see the block below.
         var urls = await _unitOfWork.Repository<ProjectAppUrl>()
             .Query()
             .IgnoreQueryFilters()
             .AsNoTracking()
             .Include(u => u.AppEnvironment)
-            .Where(u => u.ProjectId == project.Id && u.DeletedAt == null && u.AppEnvironment.IsEnabled)
-            .Select(u => new { u.Url, u.IsActive })
+            .Where(u => u.ProjectId == project.Id && u.DeletedAt == null)
+            .Select(u => new { u.Url, u.IsActive, EnvironmentEnabled = u.AppEnvironment.IsEnabled })
             .ToListAsync();
 
-        // No configured mapping for this origin → not blocked (most projects never configure
-        // "other environments" at all; a matched-but-deactivated row is the only thing that blocks).
+        // No configured mapping for this origin → not blocked. Most projects never configure "other
+        // environments" at all, and a site nobody described is not a site anybody turned off.
+        //
+        // A mapping that DOES describe this origin blocks it when either the mapping itself is
+        // deactivated, or the environment it belongs to is disabled. Disabling an environment takes
+        // the widget off the sites that environment describes, and only those: production's origin
+        // matches production's own row, so turning off staging cannot reach it.
+        //
+        // This reverses the original Decision 7 ("a disabled environment is treated as if the row
+        // did not exist"), on the product owner's call: disabling an environment should mean the
+        // widget stops appearing there, not that the setting is quietly ignored.
         var match = urls.FirstOrDefault(u => OriginNormalizer.Normalize(u.Url) == normalized);
-        var active = match == null || match.IsActive;
+        var active = match == null || (match.IsActive && match.EnvironmentEnabled);
         return Result<WidgetActivationResponse>.Success(new WidgetActivationResponse { Active = active });
     }
 

@@ -1712,6 +1712,7 @@ async function initCommand(cwd2, options = {}) {
   let injected = false;
   let routedToSkill = false;
   let filesMod = [];
+  let skillFiles = [];
   if (!options["no-inject"]) {
     if (appInfo.kind === "vite") {
       filesMod = await injectVite(cwd2, { server, key: finalProjectKey, environment: env }, options["html"]);
@@ -1740,6 +1741,7 @@ async function initCommand(cwd2, options = {}) {
     const skillsDir = options["skills-dir"];
     const installed = await installSkills(server, tool, cwd2, skillsDir);
     filesMod.push(...installed);
+    skillFiles = installed.filter((f) => f.includes("SKILL.md") || f.endsWith(".md"));
   }
   const pkgStr = await fs10.readFile(join10(cwd2, "package.json"), "utf8").catch(() => "{}");
   const tokens = extractTokens(JSON.parse(pkgStr));
@@ -1800,7 +1802,7 @@ async function initCommand(cwd2, options = {}) {
 \u2714 ${product} is set up for project "${projectName}" (${finalProjectKey})
   \u2022 Widget: ${injected ? `injected into index.html (${appInfo.kind})` : `run the pointer-init skill in ${tool} (${appInfo.kind})`}
   \u2022 Key: .pointer/credentials.env (gitignored)
-  \u2022 Skills: installed
+  \u2022 Skills: ${skillFiles.length ? skillFiles.join(", ") : "installed"}
 
 Next: start your dev server, open the app, click the ${product} button and sign in.
       Dashboard: ${branding.urls?.app || server}`);
