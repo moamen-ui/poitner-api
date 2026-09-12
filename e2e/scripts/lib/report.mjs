@@ -100,6 +100,22 @@ export function phase({ name, result, duration, notes = '' }) {
   }
 }
 
+export function recordMailEvidence({ to, subject, scenarioId }) {
+  const row = `| ${to || ''} | ${subject || ''} | ${scenarioId || ''} |\n`;
+  if (existsSync(REPORT_PATH)) {
+    const content = readFileSync(REPORT_PATH, 'utf8');
+    const insertPos = content.indexOf('## Failures');
+    if (insertPos !== -1) {
+      const newContent = content.slice(0, insertPos) + row + content.slice(insertPos);
+      writeFileSync(REPORT_PATH, newContent, 'utf8');
+    } else {
+      appendFileSync(REPORT_PATH, row);
+    }
+  } else {
+    appendFileSync(REPORT_PATH, row);
+  }
+}
+
 export function closeJunit() {
   appendFileSync(JUNIT_PATH, '</testsuites>\n');
 }

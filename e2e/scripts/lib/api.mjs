@@ -64,6 +64,12 @@ export const patch = (path, body, opts = {}) => call('PATCH', path, { ...opts, b
 export const put = (path, body, opts = {}) => call('PUT', path, { ...opts, body });
 export const del = (path, opts) => call('DELETE', path, opts);
 
+export const getRaw = (path, opts) => raw('GET', path, opts);
+export const postRaw = (path, body, opts = {}) => raw('POST', path, { ...opts, body });
+export const patchRaw = (path, body, opts = {}) => raw('PATCH', path, { ...opts, body });
+export const putRaw = (path, body, opts = {}) => raw('PUT', path, { ...opts, body });
+export const delRaw = (path, opts) => raw('DELETE', path, opts);
+
 export async function login(email, password) {
   const data = await post('/api/auth/login', { email, password });
   if (data.status !== 'ok' || !data.token) {
