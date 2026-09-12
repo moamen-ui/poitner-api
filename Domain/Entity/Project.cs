@@ -52,6 +52,11 @@ public class Project : BaseEntity
     // no Origin header (that is how the CLI and AI agents post). Flooding is the rate limiter's job.
     public bool EnforceAllowedOrigins { get; set; } = false;
 
+    // When false, the widget emits no text content in the DOM snapshot for any element and sets
+    // pageTitle to •••; server-side sanitization enforces this defense-in-depth on comment creation.
+    // Default true (additive column).
+    public bool CaptureTextContent { get; set; } = true;
+
     public Guid? OwnerId { get; set; }
     public ICollection<ProjectAppUrl> ProjectAppUrls { get; set; } = new List<ProjectAppUrl>();
     public ICollection<Comment> Comments { get; set; } = new List<Comment>();

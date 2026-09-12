@@ -80,7 +80,7 @@ public class CommentService : ICommentService
         // admin comments on a tenant-owned project (OwnerFor(caller) would wrongly be null).
         var projectInfo = await _unitOfWork.Repository<Project>().Query()
             .Where(p => p.Id == projectResult.Data)
-            .Select(p => new { p.OwnerId, p.PageContextCaptureEnabled })
+            .Select(p => new { p.OwnerId, p.PageContextCaptureEnabled, p.CaptureTextContent })
             .FirstAsync();
         var projectOwnerId = projectInfo.OwnerId;
 
@@ -141,6 +141,11 @@ public class CommentService : ICommentService
             Element = MapToEntity(request.Element),
             IsBugReport = request.IsBugReport
         };
+        comment.Element.Snapshot = SnapshotSanitizer.Sanitize(request.Element.Snapshot, projectInfo.CaptureTextContent);
+        if (!projectInfo.CaptureTextContent && !string.IsNullOrEmpty(comment.Element.PageTitle))
+        {
+            comment.Element.PageTitle = "•••";
+        }
 
         // Page context (console/network) is only ever persisted when BOTH the comment is flagged
         // AND the owning project has the feature enabled — the widget hiding the checkbox is a UX
