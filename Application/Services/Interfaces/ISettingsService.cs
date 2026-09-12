@@ -24,6 +24,9 @@ public interface ISettingsService
     public const string BrandTagline = "brand_tagline";
     public const string BrandPrimaryColor = "brand_primary_color";
     public const string BrandUrlApp = "brand_url_app";
+
+    /// <summary>Opt-in: e-mail the quick-access magic link instead of link-copy only. Default false.</summary>
+    public const string QuickAccessInviteEmailEnabled = "quick_access_invite_email_enabled";
     public const string BrandUrlDemo = "brand_url_demo";
     public const string BrandUrlDocs = "brand_url_docs";
     public const string BrandUrlLanding = "brand_url_landing";

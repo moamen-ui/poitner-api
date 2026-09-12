@@ -34,6 +34,9 @@ public class InviteService : IInviteService
     private readonly IBrandingService _branding;
 
     private const int DefaultTtlDays = 7;
+
+    /// <summary>Magic links live longer than a staff invite: a client uses theirs repeatedly.</summary>
+    private const int QuickAccessLinkTtlDays = 14;
     private const string DefaultAppBaseUrl = "https://app.pointer.moamen.work";
 
     public InviteService(
@@ -614,14 +617,19 @@ public class InviteService : IInviteService
         if (!seatCheck.IsSuccess)
             return Result<InviteResponse>.LimitReached(seatCheck.Message ?? MessageKeys.Plan.LimitReached, seatCheck.Limit!);
 
-        // Same generator DemoService.ProvisionAsync uses for its auto-provisioned accounts.
-        var password = Guid.NewGuid().ToString("N")[..12] + "Aa1!";
-        var ttlDays = request.ExpiresInDays is int d && d > 0 ? d : DefaultTtlDays;
+        // Deliberately UNUSABLE. The account has no password anyone knows, types, or receives —
+        // a random hash input that is never revealed, plus PasswordlessOnly so LoginAsync refuses
+        // the account explicitly rather than relying on the hash never matching.
+        //
+        // This replaces emailing a generated password in plaintext (CWE-319).
+        var unusableSecret = Guid.NewGuid().ToString("N") + Guid.NewGuid().ToString("N");
+        var ttlDays = request.ExpiresInDays is int d && d > 0 ? d : QuickAccessLinkTtlDays;
 
         var newUser = new User
         {
             Email = emailNormalized,
-            PasswordHash = _passwordHasher.Hash(password),
+            PasswordHash = _passwordHasher.Hash(unusableSecret),
+            PasswordlessOnly = true,
             DisplayName = emailNormalized.Split('@')[0],
             RoleId = role.Id,
             PublicId = Guid.NewGuid(),
@@ -645,10 +653,26 @@ public class InviteService : IInviteService
             RevokedAt = null
         };
 
+        var rawToken = QuickAccessTokenGenerator.NewToken();
+
         try
         {
             await _unitOfWork.Repository<User>().AddAsync(newUser);
             await _unitOfWork.Repository<Invite>().AddAsync(invite);
+            await _unitOfWork.SaveChangesAsync();
+
+            await _unitOfWork.Repository<QuickAccessLink>().AddAsync(new QuickAccessLink
+            {
+                OwnerId = ownerId,
+                UserId = newUser.PublicId,
+                ProjectId = projectId,
+                InviteId = invite.Id,
+                TokenHash = QuickAccessTokenGenerator.Hash(rawToken),
+                ExpiresAt = DateTime.UtcNow.AddDays(ttlDays),
+                // 0 = unlimited within the TTL. Single-use would break the silent re-sign-in after
+                // the 12h JWT expires, which is the entire point of the link.
+                MaxUses = 0,
+            });
             await _unitOfWork.SaveChangesAsync();
         }
         catch (Microsoft.EntityFrameworkCore.DbUpdateException)
@@ -659,17 +683,26 @@ public class InviteService : IInviteService
 
         var brand = await _branding.BuildResponseAsync("", new HashSet<string>());
         var extensionStoreUrl = await _settings.GetStringAsync(ISettingsService.ExtensionStoreUrl, string.Empty);
-        var emailSent = false;
-        try
-        {
-            emailSent = await _emailService.SendAsync(emailNormalized,
-                $"You're invited to review {project.Name}",
-                BuildQuickAccessInviteEmailHtml(project.AppUrl!, emailNormalized, password, brand.ProductName, project.Name!, extensionStoreUrl));
-        }
-        catch { /* logged inside the sender; ignore here */ }
+        var magicLink = QuickAccessTokenGenerator.BuildMagicLink(project.AppUrl!, rawToken);
 
-        var response = MapToResponse(invite, role.Name, project.AppUrl!);
+        // Delivery is link-copy by default: the admin pastes the link wherever they already talk to
+        // the client. Email is opt-in, and when it is on it carries the LINK — never a password.
+        var emailSent = false;
+        if (await _settings.GetBoolAsync(ISettingsService.QuickAccessInviteEmailEnabled, false))
+        {
+            try
+            {
+                emailSent = await _emailService.SendAsync(emailNormalized,
+                    $"You're invited to review {project.Name}",
+                    BuildQuickAccessInviteEmailHtml(magicLink, emailNormalized, brand.ProductName, project.Name!, extensionStoreUrl));
+            }
+            catch { /* logged inside the sender; ignore here */ }
+        }
+
+        var response = MapToResponse(invite, role.Name, magicLink);
         response.EmailSent = emailSent;
+        response.MagicLink = magicLink;
+        response.LinkExpiresAt = DateTime.UtcNow.AddDays(ttlDays);
         return Result<InviteResponse>.Success(response, MessageKeys.Invite.Created);
     }
 
@@ -792,8 +825,13 @@ public class InviteService : IInviteService
 </div>";
     }
 
+    /// <summary>
+    /// The quick-access invitation e-mail. Carries the MAGIC LINK and no password — this template
+    /// used to include the generated password in plaintext (CWE-319), which is why the account is
+    /// now passwordless entirely.
+    /// </summary>
     private static string BuildQuickAccessInviteEmailHtml(
-        string appUrl, string email, string password, string productName, string projectName, string? extensionStoreUrl)
+        string magicLink, string email, string productName, string projectName, string? extensionStoreUrl)
     {
         // Omitted (not just disabled) until a super admin sets ExtensionStoreUrl in Settings —
         // no point linking a reader to a store page that doesn't exist yet.
@@ -802,13 +840,12 @@ public class InviteService : IInviteService
             : string.Empty;
         return $@"<div style=""font-family:system-ui,sans-serif;color:#0f172a;line-height:1.6"">
   <h2 style=""margin:0 0 8px"">You're invited to review {productName} 🐕</h2>
-  <p style=""margin:0 0 16px"">You've been invited to leave feedback on <b>{projectName}</b>. Open the link below, click the feedback bubble, and log in with the credentials below to leave comments.</p>
-  <p style=""margin:0 0 16px""><a href=""{appUrl}"" style=""display:inline-block;background:#2563eb;color:#fff;padding:10px 20px;border-radius:8px;text-decoration:none"">Open project →</a></p>
+  <p style=""margin:0 0 16px"">You've been invited to leave feedback on <b>{projectName}</b>. Open the link below — it signs you in automatically, so there is no password to set or remember.</p>
+  <p style=""margin:0 0 16px""><a href=""{magicLink}"" style=""display:inline-block;background:#2563eb;color:#fff;padding:10px 20px;border-radius:8px;text-decoration:none"">Open project →</a></p>
   <p style=""margin:0 0 4px""><b>Project:</b> {projectName}</p>
-  <p style=""margin:0 0 4px""><b>Email:</b> {email}</p>
-  <p style=""margin:0 0 16px""><b>Password:</b> {password}</p>
+  <p style=""margin:0 0 16px""><b>Invited:</b> {email}</p>
   {extensionLine}
-  <p style=""margin:0;color:#475569;font-size:13px"">These credentials are ready to use now. If you weren't expecting this, you can ignore this email.</p>
+  <p style=""margin:0;color:#475569;font-size:13px"">Treat this link like a password — anyone with it can comment as you. If you weren't expecting this, you can ignore this email.</p>
 </div>";
     }
 

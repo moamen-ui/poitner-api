@@ -8,7 +8,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { get, post, patch, login, ApiError } from '../scripts/lib/api.mjs';
 import { preAuthWidget } from './lib/auth';
-import { credentials as loadCredentials } from '../scripts/lib/state.mjs';
+import { credentials as loadCredentials, loginClient } from '../scripts/lib/state.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const STATE_DIR = join(here, '..', 'state');
@@ -77,7 +77,7 @@ test('Tester creates a staging bug report by clicking the real broken checkout b
 });
 
 test('Client creates a comment without an environment switcher, and it syncs correctly to the API', async ({ page }) => {
-  const client = await login(credentials().client.email, credentials().client.password);
+  const client = await loginClient({ post, login });
   await preAuthWidget(page, client.token, client.user);
   await page.goto(SMOKE_PATH);
 

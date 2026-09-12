@@ -25,6 +25,7 @@ public class UserMapping : IEntityTypeConfiguration<User>
         b.Property(x => x.Email).HasColumnName("email").IsRequired().HasMaxLength(256);
         b.HasIndex(x => new { x.Email, x.OwnerId }).IsUnique();
         b.Property(x => x.PasswordHash).HasColumnName("password_hash").IsRequired();
+        b.Property(x => x.PasswordlessOnly).HasColumnName("passwordless_only").HasDefaultValue(false);
         b.Property(x => x.DisplayName).HasColumnName("display_name").IsRequired().HasMaxLength(128);
         b.Property(x => x.RoleId).HasColumnName("role_id").IsRequired();
         b.Property(x => x.IsActive).HasColumnName("is_active");

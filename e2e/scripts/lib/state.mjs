@@ -51,3 +51,21 @@ export function keys() {
 export function expected() {
   return load('expected.json');
 }
+
+/**
+ * Signs in as the seeded quick-access client.
+ *
+ * A quick-access account is PASSWORDLESS (R2-05): there is no password to log in with, and
+ * password login refuses the account outright. Signing in means redeeming the magic link, which is
+ * exactly what a real invited client's browser does. Falls back to password login so a workspace
+ * seeded before R2-05 still works.
+ */
+export async function loginClient(api) {
+  const client = credentials().client;
+  if (client.inviteToken) {
+    const res = await api.post('/api/auth/login-with-invite', { token: client.inviteToken });
+    if (res?.status !== 'ok' || !res.token) throw new Error('magic-link redemption failed for the seeded client');
+    return { token: res.token, user: res.user };
+  }
+  return api.login(client.email, client.password);
+}

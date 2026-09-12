@@ -1110,6 +1110,8 @@
       this._collapsed = true;
       this._disabled = false;
       this.picking = false;
+      /** A magic-link token stripped from the URL, awaiting redemption in _boot(). */
+      this._pendingInviteToken = null;
       this.sidebarOpen = false;
       this.hovered = null;
       this.token = null;
@@ -1201,6 +1203,7 @@
           return true;
         }
       })();
+      this._pendingInviteToken = this.stripInviteTokenFromUrl();
       this.loadAuth();
       if (injected == null ? void 0 : injected.token) {
         this.token = injected.token;
@@ -1257,8 +1260,14 @@
     async _boot() {
       if (!await this._checkWidgetActive()) return;
       await Promise.all([this._stylesReady(), loadBranding(this.server)]);
+      let inviteFailed = false;
+      if (this._pendingInviteToken) {
+        inviteFailed = !await this.redeemInviteToken(this._pendingInviteToken);
+        this._pendingInviteToken = null;
+      }
       if (this.token) this.init();
       else this.renderChrome();
+      if (inviteFailed) this.toast("This invite link is invalid or expired — ask for a new one.", "error");
     }
     // Anonymous, pre-auth: asks the server whether this project should render on this page's
     // origin at all (gates on the project's overall activation AND, if this origin matches a
@@ -1601,6 +1610,54 @@
         }
         return r;
       });
+    }
+    /**
+     * Removes `?pointer_invite=` from the address bar and returns the token it held.
+     *
+     * SYNCHRONOUS AND FIRST, on every path including failure. Every comment captures
+     * `window.location.href` and the route into its element capture, so a token still in the URL when
+     * someone comments is persisted into the database and handed to anyone who can read that comment.
+     * Stripping before any await — and before the redemption can fail — is what makes that
+     * impossible. Other query params and the hash are preserved.
+     */
+    stripInviteTokenFromUrl() {
+      try {
+        const url = new URL(window.location.href);
+        const token = url.searchParams.get("pointer_invite");
+        if (!token) return null;
+        url.searchParams.delete("pointer_invite");
+        window.history.replaceState({}, "", url.toString());
+        return token;
+      } catch {
+        return null;
+      }
+    }
+    /**
+     * Exchanges a stripped magic-link token for a normal session.
+     *
+     * Awaited in _boot() before the `if (this.token)` branch, because a first-time client has nothing
+     * in storage — init() never runs for them, so the exchange has to complete before that decision.
+     */
+    async redeemInviteToken(token) {
+      var _a2, _b;
+      try {
+        const controller = new AbortController();
+        const timer = setTimeout(() => controller.abort(), 3e3);
+        const res = await pfFetch(`${this.server}/api/auth/login-with-invite`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ token }),
+          signal: controller.signal
+        }).finally(() => clearTimeout(timer));
+        const envelope = await res.json();
+        const data = (_a2 = envelope == null ? void 0 : envelope.data) != null ? _a2 : envelope;
+        if (res.ok && (data == null ? void 0 : data.status) === "ok" && data.token) {
+          this.saveAuth(data.token, (_b = data.user) != null ? _b : null);
+          return true;
+        }
+      } catch {
+      }
+      return false;
     }
     async fetchComments() {
       try {

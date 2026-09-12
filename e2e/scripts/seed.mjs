@@ -126,7 +126,7 @@ async function main() {
   const flood = await login(FLOOD.email, FLOOD.password);
 
   console.log('==> Inviting the Client (QuickAccess) user, scoped to e2e-alpha');
-  await post('/api/admin/invites', {
+  const clientInvite = await post('/api/admin/invites', {
     roleId: roleId('Client'),
     email: CLIENT.email,
     expiresInDays: 7,
@@ -135,10 +135,15 @@ async function main() {
   const allUsers = await get('/api/admin/users', { token: staffToken });
   const clientRecord = allUsers.find((u) => u.email === CLIENT.email);
   if (!clientRecord) throw new Error(`client user not found after invite: ${CLIENT.email}`);
-  // The invite's auto-generated password is only ever emailed (no mail-catcher in this compose
-  // stack) — overwrite it with a known one so the seed script can log in deterministically.
-  await patch(`/api/admin/users/${clientRecord.id}`, { password: CLIENT.password }, { token: staffToken });
-  const client = await login(CLIENT.email, CLIENT.password);
+
+  // R2-05: a quick-access client is PASSWORDLESS — the account has no usable password to set or
+  // log in with. Sign in the way a real client does, by redeeming the magic link the invite
+  // returned. The raw token is kept in credentials.json so widget scenarios can drive the same
+  // first-run path a real invited client takes.
+  const clientInviteToken = clientInvite.url.split('pointer_invite=')[1];
+  if (!clientInviteToken) throw new Error(`quick-access invite returned no magic link: ${clientInvite.url}`);
+  const client = await post('/api/auth/login-with-invite', { token: clientInviteToken });
+  if (client.status !== 'ok' || !client.token) throw new Error('magic-link redemption failed for the seeded client');
 
   const tokens = { ...staffUsers, client, wsAdmin };
 
@@ -283,7 +288,7 @@ async function main() {
     developer: USERS.developer,
     pm: USERS.pm,
     tester: USERS.tester,
-    client: CLIENT,
+    client: { ...CLIENT, inviteToken: clientInviteToken },
     flood: FLOOD,
     tenantBOwner: TENANT_B_OWNER,
   };
@@ -307,9 +312,14 @@ async function main() {
   console.log('==> Minting an API key per persona');
   const keys = {};
   for (const [name, who] of Object.entries(credentials)) {
+    // Sessions already obtained above are reused. That is not just an optimisation: the client is
+    // PASSWORDLESS (R2-05), so logging it in by password is impossible — its session came from
+    // redeeming the magic link.
+    //
     // The super admin is a platform singleton that cannot own project-scoped work; it still gets a
     // key, because the cross-tenant negatives need one to be refused with.
-    const session = await login(who.email, who.password);
+    const known = { superAdmin, wsAdmin, client, flood, ...staffUsers }[name];
+    const session = known ?? (await login(who.email, who.password));
     const res = await get('/api/me/api-key', { token: session.token });
     keys[name] = { email: who.email, apiKey: res.apiKey, prefix: res.prefix };
   }

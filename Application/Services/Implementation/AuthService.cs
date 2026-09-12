@@ -177,6 +177,14 @@ public class AuthService : IAuthService
         if (user == null || !_passwordHasher.Verify(request.Password, user.PasswordHash))
             return Result<LoginResponse>.Failure(MessageKeys.Auth.InvalidCredentials);
 
+        // A quick-access client signs in only through their magic link. Their PasswordHash is
+        // random and unusable, so the check above already fails — this is the EXPLICIT refusal, so
+        // the guarantee does not quietly depend on a hash never matching. It also returns the same
+        // message as a wrong password: which accounts are passwordless is not an anonymous
+        // caller's business.
+        if (user.PasswordlessOnly)
+            return Result<LoginResponse>.Failure(MessageKeys.Auth.InvalidCredentials);
+
         if (user.ApprovalStatus == ApprovalStatus.Pending)
             return Result<LoginResponse>.Failure(MessageKeys.Auth.PendingApproval,
                 new LoginResponse { Status = "pending" });
@@ -443,4 +451,54 @@ public class AuthService : IAuthService
 
         return Result<MeResponse>.Success(UserMapper.ToMeResponse(user));
     }
+    public async Task<Result<LoginResponse>> LoginWithInviteAsync(string token)
+    {
+        // Every failure below returns the SAME message. An anonymous caller holding a guessed token
+        // must not learn which part of the guess was right — "expired" tells them the token existed.
+        if (string.IsNullOrWhiteSpace(token))
+            return Result<LoginResponse>.Failure(MessageKeys.Invite.LinkInvalid);
+
+        var hash = QuickAccessTokenGenerator.Hash(token.Trim());
+        var now = DateTime.UtcNow;
+
+        // Anonymous: there is no tenant claim to scope by, so the filter is bypassed deliberately.
+        // The token hash IS the authorisation.
+        var link = await _unitOfWork.Repository<QuickAccessLink>()
+            .Query()
+            .IgnoreQueryFilters()
+            .Where(l => l.TokenHash == hash && l.DeletedAt == null)
+            .FirstOrDefaultAsync();
+
+        if (link is null || link.RevokedAt != null || link.ExpiresAt <= now)
+            return Result<LoginResponse>.Failure(MessageKeys.Invite.LinkInvalid);
+
+        // MaxUses 0 means unlimited within the TTL — the default. A client returning after the 12h
+        // JWT expires has to be able to re-redeem, which single-use would break.
+        if (link.MaxUses > 0 && link.Uses >= link.MaxUses)
+            return Result<LoginResponse>.Failure(MessageKeys.Invite.LinkInvalid);
+
+        var user = await _unitOfWork.Repository<User>()
+            .Query()
+            .IgnoreQueryFilters()
+            .Include(u => u.Role)
+            .Where(u => u.PublicId == link.UserId && u.DeletedAt == null)
+            .FirstOrDefaultAsync();
+
+        // The account must still be the low-privilege one this link was minted for. A link whose
+        // user was disabled, or somehow promoted out of QuickAccess, is not honoured.
+        if (user is null || !user.IsActive || user.ApprovalStatus != ApprovalStatus.Approved || user.Role is not { QuickAccess: true })
+            return Result<LoginResponse>.Failure(MessageKeys.Invite.LinkInvalid);
+
+        link.Uses += 1;
+        link.LastUsedAt = now;
+        await _unitOfWork.SaveChangesAsync();
+
+        return Result<LoginResponse>.Success(new LoginResponse
+        {
+            Status = "ok",
+            Token = _tokenService.Issue(user),
+            User = UserMapper.ToMeResponse(user),
+        });
+    }
+
 }

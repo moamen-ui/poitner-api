@@ -95,6 +95,19 @@ public static class RateLimitingExtensions
                     QueueLimit = 0
                 }));
 
+        // Magic-link redemption. Per IP, and deliberately NOT the signup budget (5/hour): a whole
+        // agency behind one NAT address would be locked out after five clients opened their links.
+        // 60/minute still makes brute-forcing a 256-bit token pointless.
+        o.AddPolicy("login", ctx =>
+            RateLimitPartition.GetFixedWindowLimiter(
+                ClientIp(ctx),
+                _ => new FixedWindowRateLimiterOptions
+                {
+                    PermitLimit = 60,
+                    Window = TimeSpan.FromMinutes(1),
+                    QueueLimit = 0
+                }));
+
         o.AddPolicy("comments", CommentsPartition);
     }
 

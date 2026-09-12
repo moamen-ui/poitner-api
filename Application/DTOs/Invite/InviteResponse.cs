@@ -32,4 +32,10 @@ public class InviteResponse
     /// yourself" — either no email was set, email is globally disabled, or the send failed.
     /// </summary>
     public bool EmailSent { get; set; }
+
+    /// <summary>The quick-access magic link, when this invite is a quick-access one.</summary>
+    public string? MagicLink { get; set; }
+
+    /// <summary>When that link stops working.</summary>
+    public DateTime? LinkExpiresAt { get; set; }
 }

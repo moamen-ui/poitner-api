@@ -1092,7 +1092,7 @@ public class InviteServiceTests
     }
 
     [Fact]
-    public async Task QuickAccess_Create_ProvisionsUserImmediately_AndEmailsCredentials()
+    public async Task QuickAccess_Create_ProvisionsUserImmediately_AndIssuesAMagicLink()
     {
         var dbName = Guid.NewGuid().ToString();
         var (tenant, _) = SeedTenant(dbName);
@@ -1108,9 +1108,15 @@ public class InviteServiceTests
         { RoleId = clientRoleId, Email = "Client@Acme.com", ProjectId = projectId });
 
         Assert.True(result.IsSuccess);
-        Assert.True(result.Data!.EmailSent);
-        Assert.Equal("https://client.example.com", result.Data.Url);
+        // Link-copy delivery: the admin pastes the link themselves. E-mail is opt-in and off by
+        // default, so nothing was sent.
+        Assert.False(result.Data!.EmailSent);
         Assert.Equal(projectId, result.Data.ProjectId);
+
+        // The returned URL IS the magic link — the app URL with the token appended.
+        Assert.StartsWith("https://client.example.com/?pointer_invite=", result.Data.Url);
+        Assert.Equal(result.Data.Url, result.Data.MagicLink);
+        Assert.NotNull(result.Data.LinkExpiresAt);
 
         // The user exists NOW — no accept step needed.
         var created = db.Users.IgnoreQueryFilters().Single(u => u.Email == "client@acme.com");
@@ -1125,10 +1131,25 @@ public class InviteServiceTests
         Assert.Equal(1, invite.Uses);
         Assert.Equal(projectId, invite.ProjectId);
 
-        // The email carries a generated password that actually unlocks the account.
-        Assert.Single(spy.Sent);
-        Assert.Contains("client@acme.com", spy.Sent[0].To);
-        Assert.Contains("Password:", spy.Sent[0].Html);
+        // No e-mail at all by default, so no password can be leaked by one (this used to send the
+        // generated password in plaintext — CWE-319).
+        Assert.Empty(spy.Sent);
+
+        // The account is passwordless: its hash is random and unusable, and LoginAsync refuses it
+        // explicitly rather than relying on the hash never matching.
+        Assert.True(created.PasswordlessOnly);
+
+        // Exactly one live link, stored only as a hash — the raw token exists solely in the URL we
+        // just handed back.
+        var link = db.QuickAccessLinks.IgnoreQueryFilters().Single(l => l.UserId == created.PublicId);
+        Assert.Equal(64, link.TokenHash.Length);
+        Assert.Null(link.RevokedAt);
+        Assert.Equal(0, link.Uses);
+        Assert.Equal(0, link.MaxUses); // unlimited within the TTL
+
+        var rawToken = result.Data.Url!.Split("pointer_invite=")[1];
+        Assert.DoesNotContain(rawToken, link.TokenHash);
+        Assert.Equal(Pointer.Application.Common.QuickAccessTokenGenerator.Hash(rawToken), link.TokenHash);
     }
 
     [Fact]

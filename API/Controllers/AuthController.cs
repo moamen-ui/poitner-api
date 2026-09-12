@@ -27,6 +27,20 @@ public class AuthController(IAuthService authService, ISettingsService settingsS
     /// <summary>Exchanges a long-lived personal API key for a normal JWT — an alternative to
     /// POST /login for AI/automation tooling (e.g. skill.md), same response shape.</summary>
     [AllowAnonymous]
+    /// <summary>
+    /// Redeems a quick-access magic link. Anonymous by necessity — the caller has no session yet,
+    /// the token IS the credential.
+    /// </summary>
+    [HttpPost("login-with-invite")]
+    [EnableRateLimiting("login")]
+    [ProducesResponseType(typeof(LoginResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(Result), StatusCodes.Status400BadRequest)]
+    public async Task<IActionResult> LoginWithInvite([FromBody] LoginWithInviteRequest request)
+    {
+        var result = await authService.LoginWithInviteAsync(request.Token);
+        return result.IsSuccess ? Ok(result) : BadRequest(result);
+    }
+
     [HttpPost("login-with-key")]
     [ProducesResponseType(typeof(LoginResponse), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(Result), StatusCodes.Status400BadRequest)]

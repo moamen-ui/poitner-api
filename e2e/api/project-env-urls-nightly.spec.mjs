@@ -82,7 +82,10 @@ test('R1-09-08 ⛓ — quick-access invite still works after the migration', asy
     inviteId = inviteRes.data?.id;
 
     // 3. Inspect response: the response's app-url field equals https://r109-a.test
-    expect(inviteRes.data?.url).toBe('https://r109-a.test');
+    // R2-05: a quick-access invite returns the MAGIC LINK, not the bare app URL — the app URL with
+    // ?pointer_invite=<token> appended. The point of this assertion is that the link is built from
+    // the project's migrated app URL, so check the base rather than equality.
+    expect(inviteRes.data?.url).toMatch(/^https:\/\/r109-a\.test\/?\?pointer_invite=[A-Za-z0-9_-]{43}$/);
 
     record({
       id: 'R1-09-08',

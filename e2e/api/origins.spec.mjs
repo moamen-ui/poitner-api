@@ -8,7 +8,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { raw, get, patch, post, del, login } from '../scripts/lib/api.mjs';
 import { Environment } from '../scripts/lib/constants.mjs';
-import { credentials as loadCredentials } from '../scripts/lib/state.mjs';
+import { credentials as loadCredentials, loginClient } from '../scripts/lib/state.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const STATE_DIR = join(here, '..', 'state');
@@ -259,7 +259,7 @@ test('R1-05-03 — wildcard app-url matrix', async () => {
 test('R1-05-04 — no-origin: staff vs quick-access', async () => {
   const wsAdmin = await login(credentials().wsAdmin.email, credentials().wsAdmin.password);
   const dev = await login(credentials().developer.email, credentials().developer.password);
-  const client = await login(credentials().client.email, credentials().client.password);
+  const client = await loginClient({ post, login });
   const alphaId = await getProjectId('e2e-alpha', wsAdmin.token);
 
   // 1. WA: Temporarily enable origin enforcement on e2e-alpha.

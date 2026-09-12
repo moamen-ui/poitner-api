@@ -46,6 +46,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options, ICurrentUser c
     public DbSet<PredefinedAction> PredefinedActions => Set<PredefinedAction>();
     public DbSet<PredefinedActionSuggestion> PredefinedActionSuggestions => Set<PredefinedActionSuggestion>();
     public DbSet<Invite> Invites => Set<Invite>();
+    public DbSet<QuickAccessLink> QuickAccessLinks => Set<QuickAccessLink>();
     public DbSet<ApiKey> ApiKeys => Set<ApiKey>();
     public DbSet<AppSetting> AppSettings => Set<AppSetting>();
     public DbSet<Plan> Plans => Set<Plan>();
@@ -84,6 +85,9 @@ public class AppDbContext(DbContextOptions<AppDbContext> options, ICurrentUser c
         // workspace" invite) is only ever read by a super admin (bypasses via IsSuperAdmin above)
         // or the anonymous accept/preview path, which always uses IgnoreQueryFilters() explicitly.
         b.Entity<Invite>().HasQueryFilter(e => currentUser.IsSuperAdmin || (currentUser.TenantId != null && e.OwnerId == currentUser.TenantId) || (currentUser.TenantId == null && !strict && e.OwnerId == null));
+        // Strict-own: a magic link belongs to exactly one tenant and is never global. Redemption is
+        // anonymous and uses IgnoreQueryFilters() explicitly — there is no caller to scope by.
+        b.Entity<QuickAccessLink>().HasQueryFilter(e => currentUser.IsSuperAdmin || (currentUser.TenantId != null && e.OwnerId == currentUser.TenantId));
         // Own-plus-global: a tenant sees its own actions plus null-owner (global) ones — needed so
         // actions on a global/null-owner project (e.g. the marketing landing) resolve for that
         // project's null-owner stakeholders. Cross-project leakage is prevented separately by the

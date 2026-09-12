@@ -54,4 +54,14 @@ public class User : BaseEntity
 
     /// <summary>The real human email entered at demo provisioning time. Null for non-demo users. Cleared on upgrade.</summary>
     public string? RecipientEmail { get; set; }
+
+    /// <summary>
+    /// This account has no usable password and signs in only via a quick-access magic link.
+    /// </summary>
+    /// <remarks>
+    /// Its PasswordHash is deliberately random and unusable. The flag exists so password login can
+    /// refuse the account explicitly rather than relying on the hash never matching — a future
+    /// "set your password" path must not silently turn a link-only client into a password account.
+    /// </remarks>
+    public bool PasswordlessOnly { get; set; }
 }

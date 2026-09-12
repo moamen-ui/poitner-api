@@ -5,7 +5,7 @@
 import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { get, login, ApiError } from './lib/api.mjs';
+import { get, login, ApiError, post } from './lib/api.mjs';
 import { PROJECTS } from './lib/constants.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -46,7 +46,11 @@ async function main() {
   const tokens = {};
   for (const [key, creds] of Object.entries(credentials)) {
     if (key === 'superAdmin') continue; // super-admin can't reach any of these endpoints meaningfully
-    tokens[key] = (await login(creds.email, creds.password)).token;
+    // A quick-access client is PASSWORDLESS (R2-05): it signs in by redeeming the magic link the
+    // seed recorded, which is exactly how a real invited client gets in.
+    tokens[key] = creds.inviteToken
+      ? (await post('/api/auth/login-with-invite', { token: creds.inviteToken })).token
+      : (await login(creds.email, creds.password)).token;
   }
 
   const nonPrivateAlphaIds = [c.c1.id, c.c2.id, c.c3.id, c.c4.id, c.c5.id, c.c7.id, c.c8.id];

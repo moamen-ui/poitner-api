@@ -137,6 +137,13 @@ public static class MessageKeys
     public static class Invite
     {
         public const string NotFound = "Invite not found.";
+
+        /// <summary>
+        /// ONE message for every magic-link failure — expired, revoked, used up, unknown token,
+        /// disabled user, wrong role. Distinguishing them would tell an anonymous caller holding a
+        /// guessed token which part of their guess was right.
+        /// </summary>
+        public const string LinkInvalid = "This invite link is invalid or expired — ask for a new one.";
         public const string Invalid = "This invite link is invalid or has expired.";
         public const string Expired = "This invite link has expired.";
         public const string Revoked = "This invite link has been revoked.";

@@ -22,4 +22,7 @@ public interface IAuthService
 
     /// <summary>Self-service password change for the current user. Emails a notification on success.</summary>
     Task<Result> ChangePasswordAsync(ChangePasswordRequest request);
+
+    /// <summary>Redeems a quick-access magic-link token for a normal session JWT.</summary>
+    Task<Result<LoginResponse>> LoginWithInviteAsync(string token);
 }

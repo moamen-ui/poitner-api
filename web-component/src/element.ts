@@ -40,6 +40,8 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
   private _collapsed = true;
   private _disabled = false;
   picking = false;
+  /** A magic-link token stripped from the URL, awaiting redemption in _boot(). */
+  private _pendingInviteToken: string | null = null;
   sidebarOpen = false;
   hovered: Element | null = null;
 
@@ -165,6 +167,10 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
     // Load persisted auth, then let an injected token take precedence (the
     // extension logs in once and hands the widget a token, so it never shows
     // its own login on third-party pages).
+    // Strip the magic-link token SYNCHRONOUSLY, before anything else can read the URL. Redemption
+    // itself is awaited later in _boot(), where the result can actually gate the render.
+    this._pendingInviteToken = this.stripInviteTokenFromUrl();
+
     this.loadAuth();
     if (injected?.token) {
       this.token = injected.token;
@@ -261,10 +267,20 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
     // Resolve styles + product branding before the first render so the toolbar/login modal
     // show the configured product name (not the "Pointer" default) from the very first paint.
     await Promise.all([this._stylesReady(), loadBranding(this.server)]);
+    // Redeem a magic link before deciding what to render: a first-time client has no stored token,
+    // so this is the difference between signing them in and showing them a login they cannot pass.
+    let inviteFailed = false;
+    if (this._pendingInviteToken) {
+      inviteFailed = !(await this.redeemInviteToken(this._pendingInviteToken));
+      this._pendingInviteToken = null;
+    }
+
     // Login is deferred: on load just show the toolbar/launcher. The popup only
     // appears when the user acts (inspect / Comments) and there's no token yet.
     if (this.token) this.init();
     else this.renderChrome();
+
+    if (inviteFailed) this.toast('This invite link is invalid or expired — ask for a new one.', 'error');
   }
 
   // Anonymous, pre-auth: asks the server whether this project should render on this page's
@@ -616,6 +632,59 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
       }
       return r;
     });
+  }
+
+  /**
+   * Removes `?pointer_invite=` from the address bar and returns the token it held.
+   *
+   * SYNCHRONOUS AND FIRST, on every path including failure. Every comment captures
+   * `window.location.href` and the route into its element capture, so a token still in the URL when
+   * someone comments is persisted into the database and handed to anyone who can read that comment.
+   * Stripping before any await — and before the redemption can fail — is what makes that
+   * impossible. Other query params and the hash are preserved.
+   */
+  stripInviteTokenFromUrl(): string | null {
+    try {
+      const url = new URL(window.location.href);
+      const token = url.searchParams.get('pointer_invite');
+      if (!token) return null;
+
+      url.searchParams.delete('pointer_invite');
+      window.history.replaceState({}, '', url.toString());
+      return token;
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * Exchanges a stripped magic-link token for a normal session.
+   *
+   * Awaited in _boot() before the `if (this.token)` branch, because a first-time client has nothing
+   * in storage — init() never runs for them, so the exchange has to complete before that decision.
+   */
+  async redeemInviteToken(token: string): Promise<boolean> {
+    try {
+      // A hanging server must not stop the widget booting into its normal login.
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 3000);
+      const res = await pfFetch(`${this.server}/api/auth/login-with-invite`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token }),
+        signal: controller.signal,
+      }).finally(() => clearTimeout(timer));
+
+      const envelope = await res.json();
+      const data = envelope?.data ?? envelope;
+      if (res.ok && data?.status === 'ok' && data.token) {
+        this.saveAuth(data.token, data.user ?? null);
+        return true;
+      }
+    } catch {
+      // Fall through to the normal login modal.
+    }
+    return false;
   }
 
   async fetchComments(): Promise<void> {
