@@ -45,7 +45,10 @@ public class ProjectService : IProjectService
     {
         var trusted = new HashSet<string>(StringComparer.Ordinal);
 
-        var brandApp = await _settings.GetStringAsync(ISettingsService.BrandUrlApp);
+        // Defaulted, not bare. Reading the raw setting returns null until an operator saves
+        // branding, and then the dashboard's own origin is not in this set — so turning
+        // enforcement on would 403 the admin out of the UI they turned it on from.
+        var brandApp = await _settings.GetStringAsync(ISettingsService.BrandUrlApp, BrandingDefaults.UrlApp);
         if (!string.IsNullOrWhiteSpace(brandApp))
             trusted.Add(OriginNormalizer.Normalize(brandApp));
 

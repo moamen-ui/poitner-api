@@ -2,19 +2,21 @@ using Pointer.Application.DTOs.Branding;
 using Pointer.Application.Response;
 using Pointer.Application.Services.Interfaces;
 
+using Pointer.Application.Common;
+
 namespace Pointer.Application.Services.Implementation;
 
 public class BrandingService(ISettingsService settings) : IBrandingService
 {
     // Default values from spec
-    private const string DefaultProductName  = "Pointer";
-    private const string DefaultTagline      = "Point at the UI. Ship it with AI.";
-    private const string DefaultPrimaryColor = "#2563eb";
-    private const string DefaultUrlApp       = "https://app.pointer.moamen.work";
-    private const string DefaultUrlDemo      = "https://demo.pointer.moamen.work";
-    private const string DefaultUrlDocs      = "https://github.com/moamen-ui/poitner-api#readme";
-    private const string DefaultUrlLanding   = "https://pointer.moamen.work";
-    private const string DefaultExtensionZipUrl = "https://pointer.moamen.work/pointer-extension.zip";
+    private const string DefaultProductName = BrandingDefaults.ProductName;
+    private const string DefaultTagline = BrandingDefaults.Tagline;
+    private const string DefaultPrimaryColor = BrandingDefaults.PrimaryColor;
+    private const string DefaultUrlApp = BrandingDefaults.UrlApp;
+    private const string DefaultUrlDemo = BrandingDefaults.UrlDemo;
+    private const string DefaultUrlDocs = BrandingDefaults.UrlDocs;
+    private const string DefaultUrlLanding = BrandingDefaults.UrlLanding;
+    private const string DefaultExtensionZipUrl = BrandingDefaults.ExtensionZipUrl;
 
     public async Task<Result<BrandingResponse>> GetAsync(string publicBase, IReadOnlySet<string> existingKinds)
     {

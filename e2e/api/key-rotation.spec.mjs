@@ -34,7 +34,14 @@ function getCredentials() {
   return {};
 }
 
+// This scenario FORCE-RECREATES the api container to change its encryption key. Anything sharing
+// the stack while it runs dies with ECONNRESET — which is exactly what happened when it ran inside
+// the ordinary `api` phase and took six unrelated specs down with it. It runs only where the
+// runner has isolated it.
+const isDestructiveRun = process.env.E2E_DESTRUCTIVE === '1' || process.env.TIER === 'nightly';
+
 test('R1-06-04 — reveal round-trip + encryption-key rotation', async () => {
+  test.skip(!isDestructiveRun, 'restarts the api container — runs only in the isolated upgrade/nightly phase');
   const start = Date.now();
   const credentials = getCredentials();
   const deputyEmail = credentials?.deputy?.email || USERS.deputy.email;

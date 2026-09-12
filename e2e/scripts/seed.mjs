@@ -67,6 +67,7 @@ async function main() {
     appUrl: PROJECTS.alpha.appUrl,
   }, { token: staffToken });
   // e2e-beta needs an AppUrl too only if it ever gets a QuickAccess invite; it doesn't, but a
+  // harmless placeholder keeps project admin views consistent.
   await patch(`/api/admin/projects/${beta.id}`, { appUrl: PROJECTS.beta.appUrl }, { token: staffToken });
 
   console.log('==> Configuring R1-05 fixture on e2e-beta (allowed origins)');
@@ -274,7 +275,23 @@ async function main() {
   };
   writeFileSync(join(STATE_DIR, 'credentials.json'), JSON.stringify(credentials, null, 2));
 
-  console.log(`==> Seed complete. Wrote ${join(STATE_DIR, 'expected.json')} and credentials.json`);
+  // One API key per persona (00-HARNESS §3). Scenarios that exercise key auth need a real key for
+  // an account whose role they control; minting them here keeps that out of every spec's setup,
+  // and gives the key-store scenario a known population to assert against.
+  //
+  // GET /api/me/api-key mints on first read, so a plain read is also the creation step.
+  console.log('==> Minting an API key per persona');
+  const keys = {};
+  for (const [name, who] of Object.entries(credentials)) {
+    // The super admin is a platform singleton that cannot own project-scoped work; it still gets a
+    // key, because the cross-tenant negatives need one to be refused with.
+    const session = await login(who.email, who.password);
+    const res = await get('/api/me/api-key', { token: session.token });
+    keys[name] = { email: who.email, apiKey: res.apiKey, prefix: res.prefix };
+  }
+  writeFileSync(join(STATE_DIR, 'keys.json'), JSON.stringify(keys, null, 2));
+
+  console.log(`==> Seed complete. Wrote ${join(STATE_DIR, 'expected.json')}, credentials.json and keys.json`);
 }
 
 main().catch((err) => {

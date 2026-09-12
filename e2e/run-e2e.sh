@@ -192,8 +192,13 @@ else
   node scripts/lib/report.mjs phase "registry" "SKIP" "0s" "Skipped by tier/flags"
 fi
 
-run_phase "upgrade" "bash scripts/pw.sh upgrade"
-run_phase "429" "bash scripts/pw.sh 429"
+# The upgrade phase owns the specs that restart the api container. E2E_DESTRUCTIVE is what
+# their guards read; without it they skip, which is what keeps them out of the api phase.
+run_phase "upgrade" "E2E_DESTRUCTIVE=1 bash scripts/pw.sh api 'key-rotation\\.spec\\.mjs'"
+# E2E_429 is what the spec's own guard reads. Its fallback heuristic (an argv containing
+# "429") does NOT match the file path we pass, so setting it explicitly is what actually
+# lets the burst scenario run instead of skipping itself in its own dedicated phase.
+run_phase "429" "E2E_429=1 bash scripts/pw.sh api 'rate-limits\\.spec\\.mjs'"
 
 if [[ " ${FLAGS[*]:-} " =~ " ai " ]]; then
   run_phase "ai" "node ai/run-cases.mjs && node scripts/audit.mjs"

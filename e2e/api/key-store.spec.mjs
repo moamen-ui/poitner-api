@@ -39,7 +39,12 @@ test('R1-06-01 — DB is hash-only + indexes + boot warning', async () => {
 
   // 1. Boot warning check: without Auth:ApiKeyEncryptionKey, derive-from-JWT emits a warning
   const logs = getApiLogs();
-  const warningPattern = /set Auth:ApiKeyEncryptionKey for production/g;
+  // The real message, from ApiKeyProtector.cs, is a structured log:
+  //   "{Path} is not set; deriving the API-key encryption key from {Fallback}. Set a dedicated
+  //    32-byte base64 key in production ..."
+  // The previously-asserted "set Auth:ApiKeyEncryptionKey for production" is not a string the
+  // product ever emits. Match a distinctive fragment of the actual text instead.
+  const warningPattern = /deriving the API-key encryption key from/g;
   const matchCount = (logs.match(warningPattern) || []).length;
   expect(matchCount, 'boot warning "set Auth:ApiKeyEncryptionKey for production" must appear in api logs').toBeGreaterThanOrEqual(1);
 
