@@ -31,6 +31,7 @@ public class CommentMapping : IEntityTypeConfiguration<Comment>
         b.Property(x => x.AppliedBy).HasColumnName("applied_by");
         b.Property(x => x.AppliedByLabel).HasColumnName("applied_by_label").HasMaxLength(256);
         b.Property(x => x.CommitUrl).HasColumnName("commit_url").HasMaxLength(2000);
+        b.Property(x => x.VerifiedAt).HasColumnName("verified_at");
         b.Property(x => x.EditedAt).HasColumnName("edited_at");
         b.Property(x => x.EditedBy).HasColumnName("edited_by");
         // NOT NULL at the DB level: a comment always inherits its PROJECT's owner

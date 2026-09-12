@@ -267,12 +267,13 @@
     // `projectName`: shown next to the environment indicator so a visitor can immediately tell which
     // project this install is bound to — project keys aren't unique across a workspace, so two
     // different installs can easily look identical without this.
-    chrome: (displayName, roleLabel, fixedEnvLabel, projectName = "", shortcutLabel = "") => `
+    chrome: (displayName, roleLabel, fixedEnvLabel, projectName = "", shortcutLabel = "", unreadNotifyCount = 0) => `
         <div class="pf-toolbar">
           <span class="pf-grip" id="pf-grip" data-toggle="tooltip" data-placement="bottom" title="Drag to move" aria-label="Drag toolbar">${ICON.grip}</span>
-          <button class="pf-btn pf-icon-btn pf-reset-pos" id="pf-reset-pos" data-toggle="tooltip" data-placement="bottom" title="Reset toolbar position" aria-label="Reset toolbar position" style="display:none">${ICON.restore}</button>
+          <button class="pf-btn pf-reset-pos pf-icon-btn" id="pf-reset-pos" data-toggle="tooltip" data-placement="bottom" title="Reset toolbar position" aria-label="Reset toolbar position" style="display:none">${ICON.restore}</button>
           <button class="pf-btn primary pf-icon-btn" id="pf-add" data-toggle="tooltip" data-placement="bottom" title="Comment on an element${shortcutLabel ? ` (${escapeHtml(shortcutLabel)})` : ""}" aria-label="Comment on an element${shortcutLabel ? `, shortcut ${escapeHtml(shortcutLabel)}` : ""}">${ICON.inspect}</button>
           <button class="pf-btn" id="pf-toggle" title="Show comments">Comments <span class="pf-badge" id="pf-count">0</span></button>
+          <button class="pf-btn" id="pf-updates" title="Show notifications">Updates <span class="pf-badge pf-notify-badge" id="pf-notify-count"${unreadNotifyCount > 0 ? "" : ' style="display:none;"'}>${unreadNotifyCount > 99 ? "99+" : unreadNotifyCount}</span></button>
           ${displayName ? `<button class="pf-btn pf-icon-btn" id="pf-user" data-toggle="tooltip" data-placement="bottom" title="Signed in as ${displayName}${roleLabel ? " · " + roleLabel : ""}" aria-label="Signed in as ${displayName}">${ICON.user}</button>` : ""}
           <button class="pf-btn pf-icon-btn" id="pf-hide" data-toggle="tooltip" data-placement="bottom" title="Hide ${escapeHtml(getBrandName())}" aria-label="Hide ${escapeHtml(getBrandName())}">${ICON.eyeOff}</button>
         </div>
@@ -330,11 +331,15 @@
     // Collapsed state: a small floating launcher that re-opens the overlay.
     // `rtl` makes start/end resolve against the host page direction (the shadow
     // UI is otherwise forced LTR), so e.g. `top-end` lands top-left on an RTL page.
-    launcher: (count, position, rtl) => `
+    launcher: (count, position, rtl, unreadNotifyCount = 0) => {
+      const hasUnread = unreadNotifyCount > 0;
+      const badgeCount = hasUnread ? unreadNotifyCount : count;
+      return `
         <button class="pf-launcher pf-pos-${position || "bottom-end"}${rtl ? " pf-rtl" : ""}" id="pf-launcher" title="Open ${escapeHtml(getBrandName())} feedback" aria-label="Open ${escapeHtml(getBrandName())} feedback">
           ${ICON.pin}
-          ${count ? `<span class="pf-launcher-badge">${count > 99 ? "99+" : count}</span>` : ""}
-        </button>`,
+          ${badgeCount ? `<span class="pf-launcher-badge${hasUnread ? " pf-notify-badge" : ""}">${badgeCount > 99 ? "99+" : badgeCount}</span>` : ""}
+        </button>`;
+    },
     empty: (msg) => `<div class="pf-empty">${msg}</div>`,
     // Status filter as a dropdown (rather than a row of chip buttons) — keeps the filter bar compact.
     statusFilterSelect: (filters, active, counts) => `<select class="pf-status-select" id="pf-status-filter" title="Filter by status">
@@ -356,6 +361,18 @@
     card: (c, i, isQuickAccess) => {
       const cls = c.status === "pending-apply" ? "pending" : c.status === "applied" ? "applied" : c.status === "archived" ? "archived" : "";
       const statusPill = c.status === "applied" ? '<span class="pf-pill status-applied">&#x2713; completed</span>' : c.status === "pending-apply" ? '<span class="pf-pill status-pending">pending</span>' : c.status === "archived" ? '<span class="pf-pill status-archived">&#x1f4e6; archived</span>' : "";
+      const verifiedPill = c.status === "applied" && c.verifiedAt ? '<span class="pf-pill verified">&#x2713; Verified</span>' : "";
+      const verifyGroup = c.status === "applied" && !c.verifiedAt && c._mine ? `<span class="pf-verify-group">
+          <button class="pf-mini pf-verify-ok" data-act="verify-ok" data-id="${c.id}" title="Looks right">&#x1f44d; Looks right</button>
+          <button class="pf-mini pf-verify-reject" data-act="verify-reject" data-id="${c.id}" title="Not fixed">&#x1f44e; Not fixed</button>
+        </span>` : "";
+      const verifyBox = c.status === "applied" && !c.verifiedAt && c._mine ? `<div class="pf-verify-box" id="pf-verify-box-${c.id}" style="display:none;">
+          <input class="pf-input pf-verify-note-input" id="pf-verify-note-${c.id}" placeholder="Explain what is still not fixed…" />
+          <div style="display:flex; justify-content:flex-end; gap:6px; margin-top:6px;">
+            <button class="pf-mini primary" data-act="verify-submit" data-id="${c.id}">Submit</button>
+            <button class="pf-mini" data-act="verify-cancel" data-id="${c.id}">Cancel</button>
+          </div>
+        </div>` : "";
       const commitLink = c.status === "applied" ? `<a class="pf-pill" href="${c.commitUrl ? escapeHtml(c.commitUrl) : "#"}" ${c.commitUrl ? 'target="_blank" rel="noopener noreferrer"' : ""} title="${c.commitUrl ? "View commit" : "No commit recorded for this comment"}">&#x1f517; commit</a>` : "";
       const payloadPill = c.hasPayloadFlag ? `<span class="pf-pill pf-payload-flag" title="${escapeHtml((c.payloadFlags || []).join(", "))}">&#x26a0; contains a secret/payload?</span>` : "";
       const replies = (c.replies || []).map((r) => `<div class="pf-reply ${r.isAi ? "ai" : ""}"><b>${escapeHtml(r.authorName || r.authorLabel || "User")}:</b> ${escapeHtml(r.body || r.text || "")}</div>`).join("");
@@ -373,6 +390,8 @@
               ${envLabel ? `<span class="pf-pill env">${escapeHtml(envLabel)}</span>` : ""}
               ${payloadPill}
               ${statusPill}
+              ${verifiedPill}
+              ${verifyGroup}
               ${commitLink}
               <div class="pf-actions-end">
                 ${c._mine ? `<button class="pf-mini pf-icon${c.isPrivate ? " private-on" : ""}" data-act="visibility" data-id="${c.id}" data-private="${c.isPrivate ? "false" : "true"}" title="${c.isPrivate ? "Private — click to make public" : "Make private (only you)"}" aria-label="${c.isPrivate ? "Make public" : "Make private"}">${c.isPrivate ? ICON.lock : ICON.unlock}</button>` : ""}
@@ -382,6 +401,7 @@
             <div class="pf-text">${escapeHtml(c.body || c.text || "")}</div>
             ${shot}
             <div class="pf-sub">${escapeHtml(authorLabel)} &middot; ${c.createdAt ? new Date(c.createdAt).toLocaleDateString() : ""}${c.editedAt ? ' &middot; <span style="font-style:italic;">edited</span>' : ""}</div>
+            ${verifyBox}
             ${replies ? `<div class="pf-replies">${replies}</div>` : ""}
             <div class="pf-reply-row">
               <input class="pf-input pf-reply-input" placeholder="Reply…" data-id="${c.id}" />
@@ -422,7 +442,49 @@
     pin: (c, i, rect) => {
       const cls = c.status === "pending-apply" ? "pending" : c.status === "applied" ? "applied" : "";
       return `<div class="pf-pin ${cls}" data-id="${c.id}" style="left:${rect.left}px; top:${rect.top}px;"><span>${i + 1}</span></div>`;
-    }
+    },
+    notificationsMenu: (items) => `
+        <div class="pf-notifications-menu" id="pf-notifications-menu" role="menu">
+          <div class="pf-notifications-head">
+            <h3>Updates</h3>
+          </div>
+          <div class="pf-notifications-body">
+            ${items.length === 0 ? '<div class="pf-empty" style="padding:16px;">No updates yet</div>' : items.map((item) => {
+      var _a2, _b;
+      const isUnread = !item.readAt;
+      let typeLabel = "Update";
+      let icon = ICON.pin;
+      let detail = "";
+      const typeNum = typeof item.type === "string" ? item.type === "CommentApplied" ? 1 : item.type === "CommentReopened" ? 2 : item.type === "ReplyAdded" ? 3 : 0 : item.type;
+      if (typeNum === 1) {
+        typeLabel = "Applied";
+        icon = ICON.check;
+        detail = ((_a2 = item.payload) == null ? void 0 : _a2.commitUrl) ? `<div class="pf-notification-item-commit"><a class="pf-pill" href="${escapeHtml(item.payload.commitUrl)}" target="_blank" rel="noopener noreferrer" onclick="event.stopPropagation()">&#x1f517; Commit</a></div>` : "";
+      } else if (typeNum === 2) {
+        typeLabel = "Reopened";
+        icon = ICON.reopen;
+      } else if (typeNum === 3) {
+        typeLabel = "New reply";
+        icon = ICON.inspect;
+        if ((_b = item.payload) == null ? void 0 : _b.replyExcerpt) {
+          detail = `<div style="font-size:12px; color:#64748b; font-style:italic;">"${escapeHtml(item.payload.replyExcerpt)}"</div>`;
+        }
+      }
+      const timeAgo = item.createdAt ? new Date(item.createdAt).toLocaleDateString() : "";
+      return `
+                    <div class="pf-notification-item${isUnread ? " unread" : ""}" data-id="${item.commentId}" role="menuitem" style="cursor:pointer;">
+                      <div class="pf-notification-item-head">
+                        <span class="pf-notification-item-type">${icon} ${escapeHtml(typeLabel)}</span>
+                        <span class="pf-notification-item-time">${escapeHtml(timeAgo)}</span>
+                      </div>
+                      <div class="pf-notification-item-body">
+                        ${escapeHtml(item.commentBodyExcerpt || "")}
+                      </div>
+                      ${detail}
+                    </div>`;
+    }).join("")}
+          </div>
+        </div>`
   };
 
   // src/framework-source.ts
@@ -1156,6 +1218,10 @@
       // extension popup instead.
       this.authOwnedByHost = false;
       this._pendingShotPromise = null;
+      this.unreadNotifyCount = 0;
+      this._notifyPollTimer = null;
+      this._updatesMenuClose = null;
+      this._onVisibilityChange = null;
       this._userMenuClose = null;
       this._recordingShortcut = false;
       this._shortcutRecordingCleanup = null;
@@ -1330,6 +1396,8 @@
       document.removeEventListener("keydown", this._onShortcutKeydown);
       if (this._shortcutRecordingCleanup) this._shortcutRecordingCleanup();
       this.stopPicking();
+      this.stopNotificationPolling();
+      this.closeUpdatesMenu();
       stopPageContextCapture();
     }
     // --- "Add comment" keyboard shortcut --------------------------------------
@@ -1440,10 +1508,14 @@
       this.shortcut = parseShortcut(user == null ? void 0 : user.addCommentShortcut);
       localStorage.setItem("pointer_token", token);
       localStorage.setItem("pointer_user", JSON.stringify(user));
+      this.startNotificationPolling();
     }
     clearAuth() {
       this.token = null;
       this.user = null;
+      this.unreadNotifyCount = 0;
+      this.stopNotificationPolling();
+      this.closeUpdatesMenu();
       localStorage.removeItem("pointer_token");
       localStorage.removeItem("pointer_user");
     }
@@ -1455,6 +1527,7 @@
       await loadStatusCatalog(this.server);
       this.renderChrome();
       await Promise.all([this.fetchComments(), this.fetchPredefinedActions(), this.fetchCaptureConfig()]);
+      if (this.token) this.startNotificationPolling();
       this.renderSidebar();
       this.renderPins();
       if (this._collapsed) this.renderChrome();
@@ -1691,7 +1764,7 @@
       if (this._disabled) return;
       if (this._collapsed) {
         const n = (this.comments || []).filter((c) => c.status !== "archived" && c.status !== "applied").length;
-        this.root.innerHTML = TPL.launcher(n, this.launcherPosition, pageIsRtl());
+        this.root.innerHTML = TPL.launcher(n, this.launcherPosition, pageIsRtl(), this.unreadNotifyCount);
         const launcher = this.root.querySelector("#pf-launcher");
         if (launcher) launcher.addEventListener("click", () => this.showOverlay());
         return;
@@ -1699,13 +1772,18 @@
       const displayName = this.user ? escapeHtml(this.user.displayName || this.user.email) : "";
       const roleLabel = this.user ? escapeHtml(this.user.roleName || "") : "";
       const fixedEnvLabel = this.hasFixedEnvironment || !this.showEnvironmentSelector ? this.environmentAttr || ENV_NAME[this.environmentInt] || "staging" : null;
-      this.root.innerHTML = TPL.chrome(displayName, roleLabel, fixedEnvLabel, this.projectName || this.project, formatShortcut(this.shortcut));
+      this.root.innerHTML = TPL.chrome(displayName, roleLabel, fixedEnvLabel, this.projectName || this.project, formatShortcut(this.shortcut), this.unreadNotifyCount);
       const hideBtn = this.root.querySelector("#pf-hide");
       if (hideBtn) hideBtn.addEventListener("click", () => this.hideOverlay());
       const userBtn = this.root.querySelector("#pf-user");
       if (userBtn) userBtn.addEventListener("click", (e) => {
         e.stopPropagation();
         this.toggleUserMenu();
+      });
+      const updatesBtn = this.root.querySelector("#pf-updates");
+      if (updatesBtn) updatesBtn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        this.toggleUpdatesMenu();
       });
       this.root.querySelector("#pf-add").addEventListener("click", () => this.activateAddComment());
       this.root.querySelector("#pf-toggle").addEventListener("click", () => {
@@ -1843,6 +1921,7 @@
     }
     // --- User menu (identity + sign out) ------------------------------------
     toggleUserMenu() {
+      this.closeUpdatesMenu();
       const host = this.root.querySelector("#pf-menu-host");
       if (!host) return;
       if (host.querySelector("#pf-user-menu")) {
@@ -1883,16 +1962,196 @@
     }
     closeUserMenu() {
       const host = this.root.querySelector("#pf-menu-host");
-      if (host) host.innerHTML = "";
+      if (host && host.querySelector("#pf-user-menu")) host.innerHTML = "";
       if (this._userMenuClose) {
         document.removeEventListener("click", this._userMenuClose, true);
         this._userMenuClose = null;
       }
       if (this._shortcutRecordingCleanup) this._shortcutRecordingCleanup();
     }
+    // --- Updates menu (in-app notifications) --------------------------------
+    async toggleUpdatesMenu() {
+      const host = this.root.querySelector("#pf-menu-host");
+      if (!host) return;
+      if (host.querySelector("#pf-notifications-menu")) {
+        this.closeUpdatesMenu();
+        return;
+      }
+      this.closeUserMenu();
+      const items = await this.apiNotifications();
+      if (this.unreadNotifyCount > 0) {
+        await this.apiMarkAllNotificationsRead();
+        this.unreadNotifyCount = 0;
+        this.updateNotifyBadges();
+      }
+      host.innerHTML = TPL.notificationsMenu(items);
+      const menu = host.querySelector("#pf-notifications-menu");
+      if (!menu) return;
+      const btn = this.root.querySelector("#pf-updates");
+      if (btn) {
+        const r = btn.getBoundingClientRect();
+        menu.style.top = `${Math.round(r.bottom + 6)}px`;
+        menu.style.left = `${Math.max(8, Math.min(window.innerWidth - 330, Math.round(r.left)))}px`;
+      }
+      menu.querySelectorAll(".pf-notification-item").forEach((el) => {
+        el.addEventListener("click", () => {
+          const commentId = el.getAttribute("data-id");
+          this.closeUpdatesMenu();
+          if (commentId) {
+            const c = this.comments.find((x) => String(x.id) === String(commentId));
+            if (c && this.statusFilter !== "all" && this.statusFilter !== c.status) {
+              this.statusFilter = "all";
+            }
+            this.toggleSidebar(true);
+            this.renderSidebar();
+            setTimeout(() => {
+              const card = this.root.querySelector(`.pf-card[data-id="${commentId}"]`);
+              if (card) {
+                card.scrollIntoView({ behavior: "smooth", block: "center" });
+                card.classList.add("highlight");
+                setTimeout(() => card.classList.remove("highlight"), 2e3);
+              }
+            }, 100);
+          }
+        });
+      });
+      this._updatesMenuClose = (e) => {
+        const path = e.composedPath();
+        if (!path.includes(menu) && (!btn || !path.includes(btn))) this.closeUpdatesMenu();
+      };
+      setTimeout(() => {
+        if (this._updatesMenuClose) document.addEventListener("click", this._updatesMenuClose, true);
+      }, 0);
+    }
+    closeUpdatesMenu() {
+      const host = this.root.querySelector("#pf-menu-host");
+      if (host && host.querySelector("#pf-notifications-menu")) host.innerHTML = "";
+      if (this._updatesMenuClose) {
+        document.removeEventListener("click", this._updatesMenuClose, true);
+        this._updatesMenuClose = null;
+      }
+    }
+    // --- Notification Polling & Verification ---------------------------------
+    startNotificationPolling() {
+      var _a2, _b;
+      this.stopNotificationPolling();
+      this.fetchUnreadNotifyCount();
+      const pollInterval = (_b = (_a2 = window.__POINTER_CONFIG__) == null ? void 0 : _a2.notifyPollMs) != null ? _b : 6e4;
+      this._notifyPollTimer = window.setInterval(() => {
+        if (document.visibilityState === "visible") {
+          this.fetchUnreadNotifyCount();
+        }
+      }, pollInterval);
+      this._onVisibilityChange = () => {
+        if (document.visibilityState === "visible") {
+          this.fetchUnreadNotifyCount();
+        }
+      };
+      document.addEventListener("visibilitychange", this._onVisibilityChange);
+    }
+    stopNotificationPolling() {
+      if (this._notifyPollTimer !== null) {
+        window.clearInterval(this._notifyPollTimer);
+        this._notifyPollTimer = null;
+      }
+      if (this._onVisibilityChange) {
+        document.removeEventListener("visibilitychange", this._onVisibilityChange);
+        this._onVisibilityChange = null;
+      }
+    }
+    async fetchUnreadNotifyCount() {
+      var _a2;
+      if (!this.token) return;
+      try {
+        const r = await this.api("/api/me/notifications/unread-count");
+        if (!r.ok) return;
+        const envelope = await r.json();
+        const count = typeof ((_a2 = envelope == null ? void 0 : envelope.data) == null ? void 0 : _a2.count) === "number" ? envelope.data.count : typeof (envelope == null ? void 0 : envelope.count) === "number" ? envelope.count : 0;
+        this.unreadNotifyCount = count;
+        this.updateNotifyBadges();
+      } catch {
+      }
+    }
+    updateNotifyBadges() {
+      if (this._collapsed) {
+        this.renderChrome();
+        return;
+      }
+      const badge = this.root.querySelector("#pf-notify-count");
+      if (badge) {
+        if (this.unreadNotifyCount > 0) {
+          badge.textContent = this.unreadNotifyCount > 99 ? "99+" : String(this.unreadNotifyCount);
+          badge.style.display = "";
+        } else {
+          badge.textContent = "0";
+          badge.style.display = "none";
+        }
+      }
+    }
+    async apiNotifications(unread = false) {
+      var _a2;
+      try {
+        const r = await this.api(`/api/me/notifications${unread ? "?unread=true" : ""}`);
+        if (!r.ok) return [];
+        const envelope = await r.json();
+        const items = (_a2 = envelope == null ? void 0 : envelope.data) != null ? _a2 : envelope;
+        return Array.isArray(items) ? items : [];
+      } catch {
+        return [];
+      }
+    }
+    async apiMarkAllNotificationsRead() {
+      try {
+        await this.api("/api/me/notifications/read-all", { method: "POST" });
+      } catch {
+      }
+    }
+    async apiVerify(id, ok, note) {
+      var _a2, _b;
+      try {
+        const r = await this.api(`/api/comments/${id}/verify`, {
+          method: "POST",
+          body: JSON.stringify({ ok, note: note || null })
+        });
+        if (!r.ok) {
+          let errMessage = "Failed to verify comment";
+          try {
+            const err = await r.json();
+            if (err == null ? void 0 : err.message) errMessage = err.message;
+          } catch {
+          }
+          this.toast(errMessage, "error");
+          return false;
+        }
+        const envelope = await r.json();
+        const updated = (_a2 = envelope == null ? void 0 : envelope.data) != null ? _a2 : envelope;
+        const idx = this.comments.findIndex((c) => String(c.id) === String(id));
+        if (idx !== -1 && updated) {
+          const normalizedComment = {
+            ...this.comments[idx],
+            ...updated,
+            status: typeof updated.status === "number" ? STATUS_STR[updated.status] || "open" : updated.status || "open",
+            verifiedAt: (_b = updated.verifiedAt) != null ? _b : null
+          };
+          this.comments[idx] = normalizedComment;
+        } else {
+          await this.fetchComments();
+        }
+        this.renderSidebar();
+        this.renderPins();
+        this.toast(ok ? "Comment verified" : "Comment re-opened");
+        return true;
+      } catch {
+        this.toast("Failed to verify comment", "error");
+        return false;
+      }
+    }
     // Clear the session and reset the widget to its logged-out (deferred-login) state.
     signOut() {
       this.closeUserMenu();
+      this.closeUpdatesMenu();
+      this.stopNotificationPolling();
+      this.unreadNotifyCount = 0;
       if (this.picking) this.stopPicking();
       this.clearAuth();
       this.comments = [];
@@ -2557,6 +2816,55 @@
         if (e.key === "Enter" && inp.value.trim()) {
           this.addReply(inp.dataset.id, inp.value.trim());
           inp.value = "";
+        }
+      }));
+      list.querySelectorAll('[data-act="verify-ok"]').forEach((b) => b.addEventListener("click", () => {
+        const id = b.dataset.id;
+        if (id) this.apiVerify(id, true);
+      }));
+      list.querySelectorAll('[data-act="verify-reject"]').forEach((b) => b.addEventListener("click", () => {
+        const id = b.dataset.id;
+        if (!id) return;
+        const box = list.querySelector(`#pf-verify-box-${id}`);
+        if (box) {
+          box.style.display = box.style.display === "none" ? "block" : "none";
+          const input = box.querySelector(`#pf-verify-note-${id}`);
+          if (input && box.style.display === "block") input.focus();
+        }
+      }));
+      list.querySelectorAll('[data-act="verify-cancel"]').forEach((b) => b.addEventListener("click", () => {
+        const id = b.dataset.id;
+        if (!id) return;
+        const box = list.querySelector(`#pf-verify-box-${id}`);
+        if (box) {
+          box.style.display = "none";
+          const input = box.querySelector(`#pf-verify-note-${id}`);
+          if (input) input.value = "";
+        }
+      }));
+      list.querySelectorAll('[data-act="verify-submit"]').forEach((b) => b.addEventListener("click", () => {
+        var _a3;
+        const id = b.dataset.id;
+        if (!id) return;
+        const input = list.querySelector(`#pf-verify-note-${id}`);
+        const note = (_a3 = input == null ? void 0 : input.value) == null ? void 0 : _a3.trim();
+        if (!note) {
+          input == null ? void 0 : input.focus();
+          this.toast("Please provide a note explaining what is not fixed", "error");
+          return;
+        }
+        this.apiVerify(id, false, note);
+      }));
+      list.querySelectorAll(".pf-verify-note-input").forEach((inp) => inp.addEventListener("keydown", (e) => {
+        if (e.key === "Enter") {
+          const id = inp.id.replace("pf-verify-note-", "");
+          const note = inp.value.trim();
+          if (!note) {
+            inp.focus();
+            this.toast("Please provide a note explaining what is not fixed", "error");
+            return;
+          }
+          this.apiVerify(id, false, note);
         }
       }));
     }

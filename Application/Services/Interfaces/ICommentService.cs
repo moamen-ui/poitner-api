@@ -21,6 +21,7 @@ public interface ICommentService
     Task<Result<PagedData<CommentApplyItemDto>>> ListApplyQueueAsync(string projectKey, CommentFilter filter);
     Task<Result<CommentResponse>> GetByIdAsync(int id, Guid callerId);
     Task<Result<CommentResponse>> UpdateStatusAsync(int id, UpdateCommentStatusRequest request, Guid actorId);
+    Task<Result<CommentResponse>> VerifyAsync(int id, VerifyCommentRequest request, Guid actorId);
     Task<Result<CommentResponse>> EditAsync(int id, EditCommentRequest request, Guid editorId);
     Task<Result<CommentResponse>> SetVisibilityAsync(int id, Guid callerId, bool isPrivate);
     Task<Result<ReplyResponse>> AddReplyAsync(int commentId, AddReplyRequest request, Guid authorId, string? origin = null);

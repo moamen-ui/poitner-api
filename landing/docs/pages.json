@@ -15,11 +15,19 @@
       "summary": "End-to-end feedback application, planning, tool hand-offs, commit styles, and git safety."
     },
     {
+<<<<<<< HEAD
       "file": "mcp.html",
       "title": "MCP Server",
       "nav": "Integration",
       "ownedBy": "R2-02",
       "summary": "Connect Pointer tools to Claude Code, Cursor, Windsurf, OpenCode via stdio MCP."
+=======
+      "file": "notifications.html",
+      "title": "Notifications & Verification",
+      "nav": "Workflow",
+      "ownedBy": "R2-04",
+      "summary": "In-app updates badge, notifications dropdown, and the author verification loop (thumbs up/down)."
+>>>>>>> feat/r2-04
     },
     {
       "file": "api-keys.html",

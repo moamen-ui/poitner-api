@@ -1,0 +1,174 @@
+@use 'variables' as v;
+
+.pf-notify-badge {
+  background: v.token('notify') !important;
+  color: #ffffff !important;
+}
+
+.pf-pill.verified {
+  background: v.token('success-bg');
+  color: v.token('success-strong');
+  font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+}
+
+.pf-card.highlight {
+  outline: 2px solid v.token('primary');
+  box-shadow: 0 0 12px rgba(37, 99, 235, 0.35);
+  transition: outline 0.3s ease, box-shadow 0.3s ease;
+}
+
+.pf-verify-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-inline-start: 6px;
+}
+
+.pf-verify-ok,
+.pf-verify-reject {
+  cursor: pointer;
+  border-radius: v.token('radius-sm');
+  padding: 2px 6px;
+  font-size: 11px;
+  font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  border: 1px solid v.token('border');
+  background: v.token('surface');
+  color: v.token('text');
+  transition: background 0.15s ease, border-color 0.15s ease;
+
+  &:hover {
+    background: v.token('surface-hover');
+    border-color: v.token('border-strong');
+  }
+}
+
+.pf-verify-ok:hover {
+  background: v.token('success-surface');
+  border-color: v.token('success');
+  color: v.token('success-strong');
+}
+
+.pf-verify-reject:hover {
+  background: v.token('danger-bg');
+  border-color: v.token('danger');
+  color: v.token('danger-strong');
+}
+
+.pf-verify-box {
+  background: v.token('surface-alt');
+  border: 1px solid v.token('border');
+  border-radius: v.token('radius');
+  padding: 8px 10px;
+  margin: 6px 0;
+
+  .pf-verify-note-input {
+    width: 100%;
+    box-sizing: border-box;
+    font-size: 12px;
+    padding: 6px 8px;
+    border: 1px solid v.token('border');
+    border-radius: v.token('radius-sm');
+    background: v.token('surface');
+    color: v.token('text');
+  }
+}
+
+.pf-notifications-menu {
+  position: fixed;
+  z-index: 2147483647;
+  width: 320px;
+  max-width: calc(100vw - 32px);
+  background: v.token('surface');
+  border: 1px solid v.token('border');
+  border-radius: v.token('radius-md');
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.18);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  color: v.token('text');
+  font-family: inherit;
+  font-size: 13px;
+}
+
+.pf-notifications-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 14px;
+  border-bottom: 1px solid v.token('border');
+  font-weight: 700;
+  font-size: 13px;
+  background: v.token('surface-alt');
+
+  h3 {
+    margin: 0;
+    font-size: 13px;
+    font-weight: 700;
+    color: v.token('text');
+  }
+}
+
+.pf-notifications-body {
+  max-height: 320px;
+  overflow-y: auto;
+}
+
+.pf-notification-item {
+  padding: 10px 14px;
+  border-bottom: 1px solid v.token('border-soft');
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  transition: background 0.15s ease;
+
+  &:hover {
+    background: v.token('surface-hover');
+  }
+
+  &:last-child {
+    border-bottom: none;
+  }
+
+  &.unread {
+    background: color-mix(in srgb, v.token('notify') 8%, v.token('surface'));
+  }
+}
+
+.pf-notification-item-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.pf-notification-item-type {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: v.token('text-muted');
+}
+
+.pf-notification-item-time {
+  font-size: 11px;
+  color: v.token('text-muted');
+}
+
+.pf-notification-item-body {
+  color: v.token('text');
+  line-height: 1.4;
+  word-break: break-word;
+}
+
+.pf-notification-item-commit {
+  margin-top: 2px;
+}

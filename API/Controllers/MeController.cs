@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Pointer.Application.DTOs.Auth;
+using Pointer.Application.DTOs.Notification;
 using Pointer.Application.DTOs.Preferences;
 using Pointer.Application.Services.Interfaces;
 
@@ -9,7 +10,13 @@ namespace Pointer.API.Controllers;
 [ApiController]
 [Route("api/me")]
 [Authorize]
-public class MeController(IPreferencesService preferencesService, IProfileService profileService, IAuthService authService, Pointer.Application.Abstractions.ICurrentUser currentUser) : ControllerBase
+[Produces("application/json")]
+public class MeController(
+    IPreferencesService preferencesService,
+    IProfileService profileService,
+    IAuthService authService,
+    INotificationService notificationService,
+    Pointer.Application.Abstractions.ICurrentUser currentUser) : ControllerBase
 {
     [HttpPost("change-password")]
     [ProducesResponseType(StatusCodes.Status200OK)]
@@ -56,6 +63,39 @@ public class MeController(IPreferencesService preferencesService, IProfileServic
         if (currentUser.Id is null) return Unauthorized();
         var result = await profileService.RegenerateApiKeyAsync(currentUser.Id.Value);
         if (result.IsNotFound) return NotFound(result);
+        return result.IsSuccess ? Ok(result) : BadRequest(result);
+    }
+
+    [HttpGet("notifications")]
+    [ProducesResponseType(typeof(Pointer.Application.Response.PagedData<NotificationDto>), StatusCodes.Status200OK)]
+    public async Task<IActionResult> GetNotifications([FromQuery] bool? unread = null, [FromQuery] int page = 1, [FromQuery] int pageSize = 20)
+    {
+        var result = await notificationService.ListAsync(unread, page, pageSize);
+        return result.IsSuccess ? Ok(result) : BadRequest(result);
+    }
+
+    [HttpGet("notifications/unread-count")]
+    [ProducesResponseType(typeof(UnreadCountResponse), StatusCodes.Status200OK)]
+    public async Task<IActionResult> GetUnreadCount()
+    {
+        var result = await notificationService.GetUnreadCountAsync();
+        return result.IsSuccess ? Ok(result) : BadRequest(result);
+    }
+
+    [HttpPatch("notifications/{id:int}/read")]
+    [ProducesResponseType(typeof(NotificationDto), StatusCodes.Status200OK)]
+    public async Task<IActionResult> MarkRead(int id)
+    {
+        var result = await notificationService.MarkReadAsync(id);
+        if (result.IsNotFound) return NotFound(result);
+        return result.IsSuccess ? Ok(result) : BadRequest(result);
+    }
+
+    [HttpPost("notifications/read-all")]
+    [ProducesResponseType(typeof(ReadAllNotificationsResponse), StatusCodes.Status200OK)]
+    public async Task<IActionResult> MarkAllRead()
+    {
+        var result = await notificationService.MarkAllReadAsync();
         return result.IsSuccess ? Ok(result) : BadRequest(result);
     }
 }

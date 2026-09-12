@@ -1,0 +1,296 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Notifications & Verification — Pointer Docs</title>
+  <meta name="description" content="Learn how Pointer's in-app notifications and author verify loop keep stakeholders informed when comments are applied and provide a 1-click thumbs-up/down review mechanism." />
+  <link rel="icon" href="../assets/favicon.ico" />
+  <style>
+    :root {
+      --pf-green: #16a34a;
+      --pf-blue: #2563eb;
+      --pf-amber: #f59e0b;
+      --pf-text: #0f172a;
+      --pf-muted: #475569;
+      --pf-bg: #ffffff;
+      --pf-card: #ffffff;
+      --pf-soft: #f1f5f9;
+      --pf-border: #e2e8f0;
+      --pf-grad: linear-gradient(135deg, var(--pf-green), var(--pf-blue));
+      --pf-radius: 12px;
+      --pf-max: 840px;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --pf-text: #e5e7eb;
+        --pf-muted: #94a3b8;
+        --pf-bg: #0b1220;
+        --pf-card: #111827;
+        --pf-soft: #0f172a;
+        --pf-border: #1f2937;
+      }
+    }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; padding: 0; }
+    body {
+      font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+      color: var(--pf-text);
+      background: var(--pf-bg);
+      line-height: 1.65;
+      -webkit-font-smoothing: antialiased;
+    }
+    a { color: var(--pf-blue); text-decoration: none; }
+    a:hover { text-decoration: underline; }
+    .wrap { max-width: var(--pf-max); margin: 0 auto; padding: 0 24px; }
+    
+    .nav {
+      position: sticky; top: 0; z-index: 10;
+      background: color-mix(in srgb, var(--pf-bg) 88%, transparent);
+      backdrop-filter: saturate(1.4) blur(8px);
+      border-bottom: 1px solid var(--pf-border);
+    }
+    .nav .wrap { display: flex; align-items: center; justify-content: space-between; height: 64px; gap: 16px; }
+    .brand { display: flex; align-items: center; gap: 10px; font-weight: 800; font-size: 17px; color: var(--pf-text); text-decoration: none; }
+    .brand img { width: 28px; height: 28px; border-radius: 6px; }
+    .nav-links { display: flex; gap: 18px; align-items: center; flex-wrap: wrap; }
+    .nav-links a { color: var(--pf-muted); font-weight: 500; font-size: 14px; }
+    .nav-links a.active { color: var(--pf-text); font-weight: 700; }
+    .nav-links a:hover { color: var(--pf-text); text-decoration: none; }
+    
+    .content { padding: 48px 0 80px; }
+    .badge {
+      display: inline-block;
+      font-size: 12px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: var(--pf-amber);
+      background: color-mix(in srgb, var(--pf-amber) 12%, transparent);
+      padding: 3px 8px;
+      border-radius: 6px;
+      margin-bottom: 12px;
+    }
+    h1 { font-size: clamp(28px, 4vw, 38px); line-height: 1.2; margin: 0 0 16px; letter-spacing: -0.02em; }
+    .lead { font-size: 18px; color: var(--pf-muted); margin: 0 0 32px; line-height: 1.6; }
+    h2 { font-size: 24px; margin: 44px 0 16px; padding-top: 24px; border-top: 1px solid var(--pf-border); }
+    h3 { font-size: 18px; margin: 28px 0 12px; }
+    p, ul, ol { margin: 0 0 16px; }
+    ul, ol { padding-inline-start: 24px; }
+    li { margin-bottom: 8px; }
+    
+    code {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: 0.88em;
+      background: var(--pf-soft);
+      padding: 2px 6px;
+      border-radius: 4px;
+      border: 1px solid var(--pf-border);
+    }
+    pre {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: 13.5px;
+      background: var(--pf-soft);
+      border: 1px solid var(--pf-border);
+      border-radius: 8px;
+      padding: 16px 20px;
+      overflow-x: auto;
+      line-height: 1.5;
+      margin: 16px 0 24px;
+    }
+    .callout {
+      border: 1px solid var(--pf-border);
+      border-radius: var(--pf-radius);
+      padding: 18px 20px;
+      margin: 24px 0;
+      background: var(--pf-card);
+    }
+    .callout-title { font-weight: 700; margin-bottom: 6px; display: flex; align-items: center; gap: 8px; }
+    .callout.info { border-inline-start: 4px solid var(--pf-blue); }
+    .callout.warning { border-inline-start: 4px solid var(--pf-amber); }
+    .callout.success { border-inline-start: 4px solid var(--pf-green); }
+
+    .card-preview {
+      background: var(--pf-soft);
+      border: 1px solid var(--pf-border);
+      border-radius: var(--pf-radius);
+      padding: 16px;
+      margin: 20px 0;
+    }
+    .pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      font-size: 12px;
+      font-weight: 600;
+      padding: 2px 8px;
+      border-radius: 999px;
+    }
+    .pill-applied { background: #dcfce7; color: #166534; }
+    .pill-verified { background: #dcfce7; color: #166534; }
+    .pill-notify { background: #f59e0b; color: #ffffff; }
+
+    .footer {
+      border-top: 1px solid var(--pf-border);
+      padding: 32px 0;
+      font-size: 14px;
+      color: var(--pf-muted);
+    }
+    .footer-grid { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 16px; }
+  </style>
+</head>
+<body>
+  <nav class="nav">
+    <div class="wrap">
+      <a href="../index.html" class="brand">
+        <span>Pointer Docs</span>
+      </a>
+      <div class="nav-links">
+        <a href="install.html">Install</a>
+        <a href="apply.html">Apply</a>
+        <a href="notifications.html" class="active">Notifications</a>
+        <a href="project-settings.html">Settings</a>
+        <a href="workspaces.html">Workspaces</a>
+        <a href="api-keys.html">API Keys</a>
+      </div>
+    </div>
+  </nav>
+
+  <main class="content">
+    <div class="wrap">
+      <span class="badge">Workflow</span>
+      <h1>Notifications & The Author Verify Loop</h1>
+      <p class="lead">
+        When an AI agent or developer applies a comment, how does the author find out? And how do they confirm it actually looks right — or tell the team it isn't fixed?
+      </p>
+
+      <p>
+        Pointer answers these questions with <strong>In-App Notifications</strong> and the <strong>Author Verify Loop</strong> (Roadmap §10, R2-04). The entire loop happens right inside the widget, without requiring email services, third-party messaging integrations, or context switching.
+      </p>
+
+      <h2>Why In-App Only?</h2>
+      <p>
+        Pointer is intentionally designed around in-app feedback:
+      </p>
+      <ul>
+        <li><strong>No email spam:</strong> Stakeholders and clients are not inundated with emails for routine feedback triage.</li>
+        <li><strong>Zero third-party dependencies:</strong> Operates entirely through Pointer’s own backend database and lightweight polling, without SMTP servers, Twilio, or webhooks required.</li>
+        <li><strong>Contextual resolution:</strong> Reviewers verify the fix in the actual web app where the feedback was left, seeing the live styling and behavior in real time.</li>
+      </ul>
+
+      <h2>The Updates Badge &amp; Menu</h2>
+      <p>
+        Whenever an event occurs on one of your comments, Pointer delivers an in-app notification to your account:
+      </p>
+      <ul>
+        <li><code>CommentApplied</code>: A developer or AI agent applied your comment and recorded a commit URL.</li>
+        <li><code>CommentReopened</code>: A comment was reopened (for instance, rejected during verification).</li>
+        <li><code>ReplyAdded</code>: Another teammate or an AI assistant replied to your comment.</li>
+      </ul>
+
+      <div class="card-preview">
+        <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 8px;">
+          <strong>Toolbar Indicator:</strong>
+          <button style="border: 1px solid var(--pf-border); background: var(--pf-bg); padding: 4px 10px; border-radius: 6px; cursor: default; font-weight: 600; display: inline-flex; align-items: center; gap: 6px;">
+            Updates <span class="pill pill-notify">1</span>
+          </button>
+        </div>
+        <p style="margin: 0; font-size: 13px; color: var(--pf-muted);">
+          When collapsed, the floating launcher button displays an amber notification badge in the same <code>--pf-notify</code> color (<code>#f59e0b</code>).
+        </p>
+      </div>
+
+      <p>
+        Clicking the <strong>Updates</strong> button in the widget toolbar opens the notifications dropdown menu:
+      </p>
+      <ul>
+        <li>Lists your recent notifications with timestamp, event type, and excerpt.</li>
+        <li>Applied notifications provide direct links to the git commit SHA.</li>
+        <li>Opening the dropdown automatically marks all unread notifications as read via <code>POST /api/me/notifications/read-all</code>, instantly clearing the badge.</li>
+        <li>Clicking any notification item immediately switches to the comments sidebar, scrolls to the referenced comment, and highlights it with an animation.</li>
+      </ul>
+
+      <div class="callout info">
+        <div class="callout-title">Lightweight Background Polling</div>
+        <p>
+          The widget polls <code>GET /api/me/notifications/unread-count</code> every 60 seconds while the browser tab is active. It immediately pauses when the page is hidden (via the Page Visibility API) and checks again as soon as you refocus the tab. For automated test suites, the interval can be configured down to 1 second via <code>window.__POINTER_CONFIG__.notifyPollMs</code>.
+        </p>
+      </div>
+
+      <h2>The Author Verify Loop (👍 / 👎)</h2>
+      <p>
+        When an applied comment is viewed, its author sees inline verification controls next to the completed status pill:
+      </p>
+
+      <div class="card-preview">
+        <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px;">
+          <span class="pill pill-applied">&#x2713; completed</span>
+          <button style="border: 1px solid var(--pf-border); background: #f0fdf4; color: #166534; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 600; cursor: default;">
+            &#x1f44d; Looks right
+          </button>
+          <button style="border: 1px solid var(--pf-border); background: #fef2f2; color: #dc2626; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 600; cursor: default;">
+            &#x1f44e; Not fixed
+          </button>
+        </div>
+        <p style="margin: 0; font-size: 13px; color: var(--pf-muted);">
+          Author verify controls appear strictly for the comment's creator (including quick-access Client accounts) on comments in the <code>Applied</code> state.
+        </p>
+      </div>
+
+      <h3>1. Thumbs-Up: "Looks right"</h3>
+      <p>
+        If the change successfully resolves the issue:
+      </p>
+      <ul>
+        <li>Clicking <strong>👍 Looks right</strong> calls <code>POST /api/comments/{id}/verify</code> with <code>{ "ok": true }</code>.</li>
+        <li>The backend records a <code>verified_at</code> timestamp on the comment.</li>
+        <li>An automated reply is logged: <em>"Verified ✓"</em>.</li>
+        <li>The card permanently displays a green <span class="pill pill-verified">&#x2713; Verified</span> pill for all teammates to see.</li>
+      </ul>
+
+      <h3>2. Thumbs-Down: "Not fixed"</h3>
+      <p>
+        If the fix was incomplete, introduced a regression, or missed the requirement:
+      </p>
+      <ul>
+        <li>Clicking <strong>👎 Not fixed</strong> displays an inline note box prompting: <em>"Explain what is still not fixed…"</em></li>
+        <li>A note explaining the failure is <strong>strictly required</strong> (up to 500 characters).</li>
+        <li>Submitting calls <code>POST /api/comments/{id}/verify</code> with <code>{ "ok": false, "note": "..." }</code>.</li>
+        <li>The backend resets the comment status back to <code>Open</code> and clears <code>VerifiedAt</code>.</li>
+        <li>A new reply is appended to the discussion: <em>"Not fixed: &lt;note&gt;"</em>.</li>
+        <li>A <code>CommentReopened</code> notification is automatically dispatched to whoever applied the comment (e.g. the developer or AI runner), alerting them to revisit the task.</li>
+      </ul>
+
+      <div class="callout success">
+        <div class="callout-title">Quick-Access (Client) Support</div>
+        <p>
+          Quick-access client accounts are normally restricted from managing the developer backlog (such as marking comments completed, archiving, or setting commit styles). However, the author verify loop is the one lifecycle action clients legitimately own for their own feedback. Quick-access accounts can verify or reject fixes for any comment they authored.
+        </p>
+      </div>
+
+      <h2>Tenancy &amp; Security Invariants</h2>
+      <p>
+        The notifications and verification architecture strictly maintains Pointer's multi-tenant isolation:
+      </p>
+      <ul>
+        <li><strong>Recipient-scoped isolation:</strong> Notifications are strictly filtered to the authenticated caller (<code>UserId == _currentUser.Id</code>). Users within the same tenant cannot see or mark each other's notifications. Attempting to access another user's notification returns an immediate <code>404 Not Found</code>.</li>
+        <li><strong>Cascade deletion:</strong> Deleting a comment automatically cascades to all associated notifications in PostgreSQL, preventing dangling references.</li>
+        <li><strong>Ownership validation:</strong> Only the comment's author or a workspace admin can invoke the verify endpoint. Unauthorized verify attempts return <code>403 Forbidden</code>.</li>
+      </ul>
+    </div>
+  </main>
+
+  <footer class="footer">
+    <div class="wrap footer-grid">
+      <span>&copy; 2026 Pointer Feedback. All rights reserved.</span>
+      <div style="display: flex; gap: 16px;">
+        <a href="install.html">Install</a>
+        <a href="apply.html">Apply</a>
+        <a href="notifications.html">Notifications</a>
+        <a href="api-keys.html">API Keys</a>
+        <a href="../privacy.html">Privacy</a>
+      </div>
+    </div>
+  </footer>
+</body>
+</html>
