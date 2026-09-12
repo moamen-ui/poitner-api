@@ -111,16 +111,23 @@ async function upsertGitignore(cwd2, productName = "Feedback tool") {
   const entry = [
     "",
     `# ${productName}`,
-    ".pointer/",
+    // `.pointer/*`, not `.pointer/`. Git does not descend into an excluded DIRECTORY, so the
+    // directory form makes every `!` line below inert and the four files this block exists to keep
+    // committable are silently ignored instead.
+    ".pointer/*",
     "!.pointer/credentials.env.example",
     "!.pointer/stack.json",
     "!.pointer/pointer.sh",
     "!.pointer/config.json",
     ""
   ].join("\n");
-  if (!content.includes("\n.pointer/\n") && !content.startsWith(".pointer/\n")) {
-    content = content.replace(/\n?# [^\n]*\n\.pointer\/credentials\.env\n/, "");
+  const before = content;
+  content = content.replace(/^\.pointer\/$/m, ".pointer/*");
+  content = content.replace(/\n?# [^\n]*\n\.pointer\/credentials\.env\n/, "");
+  if (!/^!\.pointer\/stack\.json$/m.test(content)) {
     content += entry;
+  }
+  if (content !== before) {
     await fs.writeFile(file, content, "utf8");
   }
 }
@@ -1935,7 +1942,9 @@ async function applyFixes(cwd2, checks) {
           const block = [
             "",
             "# Local install state. credentials.env holds an API key.",
-            ".pointer/",
+            // Contents, not the directory — git will not descend into an excluded directory, so
+            // `.pointer/` would make the two `!` lines below inert.
+            ".pointer/*",
             "!.pointer/config.json",
             "!.pointer/stack.json",
             ""

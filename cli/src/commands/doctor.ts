@@ -148,7 +148,9 @@ async function applyFixes(cwd: string, checks: CheckResult[]): Promise<string[]>
           const block = [
             '',
             '# Local install state. credentials.env holds an API key.',
-            '.pointer/',
+            // Contents, not the directory — git will not descend into an excluded directory, so
+            // `.pointer/` would make the two `!` lines below inert.
+            '.pointer/*',
             '!.pointer/config.json',
             '!.pointer/stack.json',
             '',

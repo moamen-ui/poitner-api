@@ -48,7 +48,10 @@ export async function upsertGitignore(cwd: string, productName = 'Feedback tool'
   const entry = [
     '',
     `# ${productName}`,
-    '.pointer/',
+    // `.pointer/*`, not `.pointer/`. Git does not descend into an excluded DIRECTORY, so the
+    // directory form makes every `!` line below inert and the four files this block exists to keep
+    // committable are silently ignored instead.
+    '.pointer/*',
     '!.pointer/credentials.env.example',
     '!.pointer/stack.json',
     '!.pointer/pointer.sh',
@@ -56,11 +59,24 @@ export async function upsertGitignore(cwd: string, productName = 'Feedback tool'
     '',
   ].join('\n');
 
-  if (!content.includes('\n.pointer/\n') && !content.startsWith('.pointer/\n')) {
-    // Replace the narrower rule if an earlier version of this CLI wrote it.
-    // Matches the comment older CLI versions wrote (always the literal name).
-    content = content.replace(/\n?# [^\n]*\n\.pointer\/credentials\.env\n/, '');
+  const before = content;
+
+  // Migrate the directory form an earlier version wrote. Left in place it still wins: any
+  // exclusion of the directory stops git looking inside it, so the negations never get a chance.
+  content = content.replace(/^\.pointer\/$/m, '.pointer/*');
+
+  // Replace the narrower rule if an early version of this CLI wrote it. Matches the comment those
+  // versions emitted (always the literal product name).
+  content = content.replace(/\n?# [^\n]*\n\.pointer\/credentials\.env\n/, '');
+
+  // The negations are what make the migration useful — a .gitignore that only ever said
+  // `.pointer/` has none of them, so rewriting that one line would leave stack.json still ignored.
+  // Keying on stack.json rather than on the exclusion line is what catches that case.
+  if (!/^!\.pointer\/stack\.json$/m.test(content)) {
     content += entry;
+  }
+
+  if (content !== before) {
     await fs.writeFile(file, content, 'utf8');
   }
 }

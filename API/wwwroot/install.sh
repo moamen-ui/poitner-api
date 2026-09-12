@@ -75,8 +75,17 @@ fi
 # (stack.json is detected frontend/backend/aiTools; pointer.sh is the CLI helper itself; config.json
 # is the CLI's committable project config), and every developer/agent needs them via normal git,
 # not a per-machine setup step.
+#
+# The pattern is `.pointer/*`, NOT `.pointer/`. Git does not descend into an excluded DIRECTORY, so
+# with the directory form it never considers the files inside it and all four `!` lines below are
+# inert — every one of these four was silently ignored, the opposite of what this block says it
+# does. Excluding the directory's CONTENTS instead leaves the negations able to re-include.
 touch .gitignore
-grep -qxF '.pointer/' .gitignore || echo '.pointer/' >> .gitignore
+# Migrate a .gitignore written by an earlier version, which would otherwise keep winning.
+if grep -qxF '.pointer/' .gitignore; then
+  sed -i.bak 's|^\.pointer/$|.pointer/*|' .gitignore && rm -f .gitignore.bak
+fi
+grep -qxF '.pointer/*' .gitignore || echo '.pointer/*' >> .gitignore
 grep -qxF '!.pointer/credentials.env.example' .gitignore || echo '!.pointer/credentials.env.example' >> .gitignore
 grep -qxF '!.pointer/stack.json' .gitignore || echo '!.pointer/stack.json' >> .gitignore
 grep -qxF '!.pointer/pointer.sh' .gitignore || echo '!.pointer/pointer.sh' >> .gitignore
