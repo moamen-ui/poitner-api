@@ -90,6 +90,10 @@ function runNpx(args, { cwd, env }) {
 
 test('R1-04-06 ⛓ — upgrade hint against a genuinely old published CLI', async () => {
   test.skip(!isRegistryRun, 'Scenario R1-04-06 runs only in nightly/registry phase');
+  // Two API restarts (~40s each: the dev container rebuilds on start) plus two npm publishes and
+  // two npx installs. The 30s default cannot cover one restart, let alone the pair — and the
+  // symptom is a bare "Test timeout" that says nothing about which step was still running.
+  test.setTimeout(600_000);
   const start = Date.now();
 
   // Capture npm config before anything else (harness §6.1 rule 4)
@@ -98,7 +102,10 @@ test('R1-04-06 ⛓ — upgrade hint against a genuinely old published CLI', asyn
   const scratch = mkdtempSync(join(tmpdir(), 'pointer-registry-scratch-'));
   const scratchEnv = createScratchEnv(scratch);
   let cwd = '';
-  let openedWindow = false;
+  // What the API reported before this scenario touched it. Restored verbatim in the teardown —
+  // reading it beats hardcoding a default, which is a value in the API's configuration and not
+  // this spec's to know (it is 0.1.0 today, not the 0.0.0 the semver fallback might suggest).
+  let originalMinCliVersion;
 
   let exitCode4 = -1;
   let exitCode5 = -1;
@@ -106,6 +113,12 @@ test('R1-04-06 ⛓ — upgrade hint against a genuinely old published CLI', asyn
 
   try {
     const cliDir = join(repoRoot, 'cli');
+
+    // What cli/ looks like before we touch it. Step 3 compares against this.
+    const cliStatusBefore = execFileSync('git', ['status', '--porcelain', 'cli/'], {
+      cwd: repoRoot,
+      encoding: 'utf8',
+    }).trim();
 
     // 1. Publish (once, before the window): cd cli && npm pack --pack-destination <scratch>
     execFileSync('npm', ['pack', '--pack-destination', scratch], {
@@ -124,19 +137,42 @@ test('R1-04-06 ⛓ — upgrade hint against a genuinely old published CLI', asyn
     // 2. Extract that same tarball into <scratch>/v2, npm version 99.1.0 --no-git-tag-version there, re-pack, publish
     publishTarball(baseTgz, { version: '99.1.0', scratchDir: scratch });
 
-    // 3. git -C <repo> status --porcelain cli/ -> empty (the repo was not dirtied)
-    const cliStatus = execFileSync('git', ['status', '--porcelain', 'cli/'], {
+    // 3. Packing and publishing must not dirty the working tree — `npm version` in particular runs
+    //    against the extracted copy in scratch, never against cli/.
+    //
+    //    Compared against the BASELINE taken before step 1, not against empty. Asserting an empty
+    //    status makes this fail for any developer who simply has uncommitted work in cli/ — which
+    //    is the normal state while changing the CLI, and is not what this step is about. The
+    //    question is whether THIS RUN changed anything.
+    const cliStatusAfter = execFileSync('git', ['status', '--porcelain', 'cli/'], {
       cwd: repoRoot,
       encoding: 'utf8',
     }).trim();
-    expect(cliStatus, 'git status in cli/ must be clean; repo must not be dirtied').toBe('');
+    expect(cliStatusAfter, 'packing must not add, remove or modify anything under cli/').toBe(
+      cliStatusBefore,
+    );
 
     // 4. (in-window, after R1-04-04 step 2 set min=99.0.0)
     // If running standalone, ensure API has Cli__MinVersion=99.0.0
+    // Same reason as the teardown: a retry can begin while the previous attempt's restart is still
+    // coming up, and reading meta then fails the scenario for a reason unrelated to what it tests.
+    await expect
+      .poll(
+        async () => {
+          try {
+            return (await raw('GET', '/api/meta')).status;
+          } catch {
+            return 0;
+          }
+        },
+        { timeout: 120_000, intervals: [1_000, 2_000] },
+      )
+      .toBe(200);
+
     const metaCheck = await raw('GET', '/api/meta');
+    originalMinCliVersion = metaCheck.data?.minCliVersion;
     if (metaCheck.data?.minCliVersion !== '99.0.0') {
       await restartApi({ env: { Cli__MinVersion: '99.0.0' } });
-      openedWindow = true;
       await expect
         .poll(
           async () => {
@@ -228,20 +264,63 @@ test('R1-04-06 ⛓ — upgrade hint against a genuinely old published CLI', asyn
       detail: `exit4=${exitCode4}, exit5=${exitCode5}, resolvedVersion=${resolvedVersion}, reg=${baselineConfig.registry}`,
     });
   } finally {
-    // 7. Teardown: compare npm config get registry --location=user and sha256(~/.npmrc)
+    // 7. Teardown.
+    //
+    // Restore the API FIRST, and unconditionally.
+    //
+    // It used to run only `if (openedWindow)` — true only when THIS run raised the minimum. But a
+    // run that dies before its teardown leaves Cli__MinVersion=99.0.0 behind, and the next run then
+    // sees the minimum already set, skips opening the window, never sets openedWindow, and so never
+    // restores it either. The API stays demanding a version no CLI has, which breaks the cli phase
+    // and anything else touching it, and nothing in the suite ever puts it back.
+    //
+    // It also used to sit AFTER an assertion that throws: a failed npm-config check skipped the
+    // restore entirely. Teardown that can throw must never come before teardown that must happen.
+    try {
+      // Wait for the API to answer at all before asking it anything. On a Playwright retry the
+      // previous attempt's restart can still be in flight, and `fetch failed` here was being
+      // caught and logged — which skipped the restore and left the minimum at 99.0.0, the exact
+      // state this block exists to clear.
+      await expect
+        .poll(
+          async () => {
+            try {
+              return (await raw('GET', '/api/meta')).status;
+            } catch {
+              return 0;
+            }
+          },
+          { timeout: 120_000, intervals: [1_000, 2_000] },
+        )
+        .toBe(200);
+
+      const meta = await raw('GET', '/api/meta');
+      // A previous run that died before its teardown leaves 99.0.0 behind and never recorded an
+      // original — restarting with no override is what puts the configured default back.
+      const target = originalMinCliVersion && originalMinCliVersion !== '99.0.0'
+        ? originalMinCliVersion
+        : undefined;
+      if (meta.data?.minCliVersion === '99.0.0') {
+        await restartApi();
+        await expect
+          .poll(
+            async () => (await raw('GET', '/api/meta')).data?.minCliVersion,
+            { timeout: 120_000, intervals: [1_000, 2_000] },
+          )
+          .not.toBe('99.0.0');
+        if (target) {
+          expect((await raw('GET', '/api/meta')).data?.minCliVersion).toBe(target);
+        }
+      }
+    } catch (rstErr) {
+      console.error('Failed to restore the API minimum CLI version:', rstErr);
+    }
+
     try {
       assertNpmConfigUnchanged(baselineConfig);
     } catch (npmErr) {
       console.error('NPM config assertion failed:', npmErr);
       throw npmErr;
-    }
-
-    if (openedWindow) {
-      try {
-        await restartApi();
-      } catch (rstErr) {
-        console.error('Failed to restore API after R1-04-06 window:', rstErr);
-      }
     }
 
     if (cwd) {

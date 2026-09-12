@@ -1,6 +1,6 @@
 import { readConfig } from '../config.js';
 import { api, ApiError } from '../api.js';
-import { compareSemver } from '../checks.js';
+import { compareSemver, tooOldMessage } from '../checks.js';
 import { resolveToken, readApiKey } from '../auth.js';
 import { BUILD_CLI_VERSION, BUILD_DEFAULT_SERVER } from '../build-constants.js';
 import { runApply } from '../apply/run.js';
@@ -38,7 +38,7 @@ export async function applyCommand(
     const meta = await api<any>(server, '/api/meta');
     const minCli = meta?.minCliVersion || '0.0.0';
     if (compareSemver(BUILD_CLI_VERSION, minCli) < 0) {
-      console.error(`CLI ${BUILD_CLI_VERSION} is older than the server requires (${minCli})`);
+      console.error(tooOldMessage(BUILD_CLI_VERSION, minCli));
       process.exit(5);
     }
   } catch (err: any) {

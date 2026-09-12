@@ -7,7 +7,7 @@ import { installSkills } from '../skills.js';
 import { getBranding } from '../branding.js';
 import { api, ApiError } from '../api.js';
 import { postEvent } from '../events.js';
-import { runInitChecks, compareSemver } from '../checks.js';
+import { runInitChecks, compareSemver, tooOldMessage } from '../checks.js';
 import { promises as fs } from 'node:fs';
 import { join } from 'node:path';
 import { detectDesignTokens, summarizeDesignTokens, type DesignBlock } from '../stack/design.js';
@@ -47,7 +47,7 @@ export async function initCommand(cwd: string, options: Record<string, string | 
       const meta = await api<any>(server as string, '/api/meta');
       const minCli = meta?.minCliVersion || '0.0.0';
       if (compareSemver(BUILD_CLI_VERSION, minCli) < 0) {
-        console.error(`CLI ${BUILD_CLI_VERSION} is older than the server requires (${minCli})`);
+        console.error(tooOldMessage(BUILD_CLI_VERSION, minCli));
         process.exit(5);
       }
     } catch (err: any) {

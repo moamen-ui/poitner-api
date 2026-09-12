@@ -1,9 +1,13 @@
 import { execSync, execFileSync } from 'node:child_process';
-import { existsSync, readFileSync, writeFileSync, mkdirSync, readdirSync } from 'node:fs';
+import { existsSync, readFileSync, writeFileSync, mkdirSync, readdirSync, mkdtempSync, rmSync, symlinkSync } from 'node:fs';
 import { join } from 'node:path';
 import { homedir } from 'node:os';
 import { createHash } from 'node:crypto';
+import { dirname } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { PORTS } from './constants.mjs';
+
+const here = dirname(fileURLToPath(import.meta.url));
 
 export const REGISTRY_URL = process.env.VERDACCIO_URL || `http://localhost:${PORTS.registry || 4873}`;
 
@@ -98,6 +102,28 @@ export function publishTarball(tgzPath, { version, scratchDir } = {}) {
       stdio: 'pipe',
     });
 
+    // REBUILD. The CLI's version is baked into dist/cli.js by esbuild's `define` at build time,
+    // read from package.json — so bumping package.json alone produces a package published as
+    // 99.1.0 whose binary still reports 0.1.0 and still fails the server's minimum. That artifact
+    // could never come out of a real publish (which builds, then packs), and the scenario it broke
+    // looked like a product bug rather than a packaging shortcut.
+    //
+    // node_modules is symlinked rather than copied: the build needs esbuild, and the tree is large.
+    const nodeModules = join(pkgDir, 'node_modules');
+    if (existsSync(join(pkgDir, 'build.mjs')) && !existsSync(nodeModules)) {
+      try {
+        symlinkSync(join(repoCliDir(), 'node_modules'), nodeModules, 'dir');
+        execFileSync('npm', ['run', 'build'], { cwd: pkgDir, env, stdio: 'pipe' });
+      } catch (err) {
+        throw new Error(
+          `could not rebuild the CLI at version ${version} — the published package would report ` +
+            `its old version and the scenario would fail for the wrong reason: ${err.message}`,
+        );
+      } finally {
+        rmSync(nodeModules, { force: true });
+      }
+    }
+
     // Re-pack into scratch
     execFileSync('npm', ['pack', '--pack-destination', scratch], {
       cwd: pkgDir,
@@ -114,7 +140,31 @@ export function publishTarball(tgzPath, { version, scratchDir } = {}) {
     targetTgz = join(scratch, repackedFiles[0]);
   }
 
-  // Publish to local verdaccio
+  // Publish to local verdaccio.
+  //
+  // Verdaccio keeps its storage in a named docker volume, so it OUTLIVES the run. Publishing the
+  // same version again is a 409 ("this package is already present"), which made the whole registry
+  // phase pass exactly once — on a fresh volume — and fail on every run after that, for a reason
+  // that looks nothing like the scenario it breaks.
+  //
+  // Unpublish-then-publish rather than tolerating the 409: treating "already there" as success
+  // would let a version published by an EARLIER build of the CLI stand in for the one this run
+  // just packed, and the scenario would then be asserting against stale bytes while looking green.
+  // Replacing guarantees the registry holds what this run built.
+  const pkgName = readPackageName(targetTgz, scratch);
+  const pkgVersion = version || readPackageVersion(targetTgz, scratch);
+  if (pkgName && pkgVersion) {
+    try {
+      execFileSync(
+        'npm',
+        ['unpublish', `${pkgName}@${pkgVersion}`, '--force', '--registry', REGISTRY_URL],
+        { env, stdio: 'pipe' },
+      );
+    } catch {
+      // Not present yet (the normal first-run case), or the registry refuses — publish will say so.
+    }
+  }
+
   execFileSync('npm', ['publish', targetTgz, '--registry', REGISTRY_URL], {
     env,
     stdio: 'pipe',
@@ -122,3 +172,24 @@ export function publishTarball(tgzPath, { version, scratchDir } = {}) {
 
   return { tgzPath: targetTgz };
 }
+
+/** The repo's cli/ directory — the only place a built node_modules exists. */
+function repoCliDir() {
+  return join(here, '..', '..', '..', 'cli');
+}
+
+/** Reads one field out of a packed tarball's package.json without leaving anything behind. */
+function readPackedField(tgzPath, scratch, field) {
+  try {
+    const peek = mkdtempSync(join(scratch, 'peek-'));
+    execFileSync('tar', ['-xzf', tgzPath, '-C', peek, 'package/package.json'], { stdio: 'pipe' });
+    const pkg = JSON.parse(readFileSync(join(peek, 'package', 'package.json'), 'utf8'));
+    rmSync(peek, { recursive: true, force: true });
+    return pkg[field];
+  } catch {
+    return undefined;
+  }
+}
+
+const readPackageName = (tgz, scratch) => readPackedField(tgz, scratch, 'name');
+const readPackageVersion = (tgz, scratch) => readPackedField(tgz, scratch, 'version');

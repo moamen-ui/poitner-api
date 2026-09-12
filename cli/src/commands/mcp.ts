@@ -1,7 +1,7 @@
 import { readConfig } from '../config.js';
 import { api, ApiError } from '../api.js';
 import { resolveToken, readApiKey } from '../auth.js';
-import { compareSemver } from '../checks.js';
+import { compareSemver, tooOldMessage } from '../checks.js';
 import { BUILD_CLI_VERSION, BUILD_DEFAULT_SERVER } from '../build-constants.js';
 import { runMcpServer } from '../mcp/server.js';
 import type { McpContext } from '../mcp/tools.js';
@@ -39,7 +39,7 @@ export async function mcpCommand(
     const meta = await api<any>(server, '/api/meta');
     const minCli = meta?.minCliVersion || '0.0.0';
     if (compareSemver(BUILD_CLI_VERSION, minCli) < 0) {
-      serverTooOld = `CLI ${BUILD_CLI_VERSION} is older than server requires (${minCli})`;
+      serverTooOld = tooOldMessage(BUILD_CLI_VERSION, minCli);
     }
   } catch {
     // Best-effort check; 404 or network failures don't block startup

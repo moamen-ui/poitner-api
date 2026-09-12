@@ -37,6 +37,19 @@ export interface MetaResponse {
  * (1.0.0-beta < 1.0.0), which is what semver requires and what makes "is my CLI new enough?"
  * answer correctly for a pre-release build.
  */
+/**
+ * The one place the "your CLI is too old" wording lives.
+ *
+ * Every caller must include the upgrade command. Saying only what is wrong leaves the user at a
+ * dead end — the CLI is the thing that is out of date, so it is the only party that knows what to
+ * run. doctor carried the hint; init, apply and mcp each said only that the version was wrong.
+ */
+export function tooOldMessage(cliVersion: string, min: string): string {
+  return `CLI ${cliVersion} is older than the server requires (${min}). Upgrade with: npx -y pointer-feedback@latest`;
+}
+
+export const UPGRADE_HINT = 'Run `npx -y pointer-feedback@latest doctor`';
+
 export function compareSemver(a: string, b: string): number {
   const parse = (v: string) => {
     const [core, pre] = String(v ?? '0.0.0').trim().replace(/^v/, '').split('-');
@@ -132,8 +145,8 @@ export async function runInitChecks(
         checks.push({
           id: 'meta',
           status: 'error',
-          message: `CLI ${cliVersion} is older than the server requires (${min})`,
-          hint: 'Run `npx -y pointer-feedback@latest doctor`',
+          message: tooOldMessage(cliVersion, min),
+          hint: UPGRADE_HINT,
         });
         // Precedence rule 1: stop here. Later checks may be meaningless against a newer server.
         return checks;

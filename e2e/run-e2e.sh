@@ -201,9 +201,24 @@ if [[ " ${FLAGS[*]:-} " =~ " registry " ]] || [[ " ${FLAGS[*]:-} " =~ " all " ]]
   echo "=== phase: registry ==="
   start=$(node -e "process.stdout.write(Date.now().toString())")
   set +e
-  docker compose up -d verdaccio
-  E2E_REGISTRY=1 bash scripts/pw.sh cli 'registry\.spec\.mjs'
-  code=$?
+  # `up -d` can fail — most usefully when another compose project already holds :4873 — and the
+  # error was being swallowed. The phase then ran against WHATEVER was serving that port: a
+  # verdaccio belonging to a different project, left over for a day, which published and resolved
+  # happily. The scenario passed while testing a registry this repo does not control.
+  if ! docker compose up -d verdaccio; then
+    echo "verdaccio failed to start — is another compose project holding :4873? (docker ps --filter publish=4873)" >&2
+    code=1
+  else
+    # Confirm it is OURS, not merely that something answers.
+    owner=$(docker inspect pointer-api-verdaccio-1 --format '{{index .Config.Labels "com.docker.compose.project"}}' 2>/dev/null)
+    if [ "$owner" != "pointer-api" ]; then
+      echo "the container on :4873 belongs to '$owner', not pointer-api — refusing to test against it" >&2
+      code=1
+    else
+      E2E_REGISTRY=1 bash scripts/pw.sh cli 'registry\.spec\.mjs'
+      code=$?
+    fi
+  fi
   docker compose stop verdaccio
   set -e
   end=$(node -e "process.stdout.write(Date.now().toString())")

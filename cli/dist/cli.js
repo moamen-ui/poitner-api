@@ -602,6 +602,10 @@ function skillFilesFor(config) {
 
 // src/checks.ts
 var execFileAsync = promisify(execFile);
+function tooOldMessage(cliVersion, min) {
+  return `CLI ${cliVersion} is older than the server requires (${min}). Upgrade with: npx -y pointer-feedback@latest`;
+}
+var UPGRADE_HINT = "Run `npx -y pointer-feedback@latest doctor`";
 function compareSemver(a, b) {
   const parse = (v) => {
     const [core, pre] = String(v ?? "0.0.0").trim().replace(/^v/, "").split("-");
@@ -676,8 +680,8 @@ async function runInitChecks(cwd2, overrides = {}, cliVersion = "0.0.0") {
         checks.push({
           id: "meta",
           status: "error",
-          message: `CLI ${cliVersion} is older than the server requires (${min})`,
-          hint: "Run `npx -y pointer-feedback@latest doctor`"
+          message: tooOldMessage(cliVersion, min),
+          hint: UPGRADE_HINT
         });
         return checks;
       }
@@ -1572,7 +1576,7 @@ async function initCommand(cwd2, options = {}) {
     const meta = await api(server, "/api/meta");
     const minCli = meta?.minCliVersion || "0.0.0";
     if (compareSemver(BUILD_CLI_VERSION, minCli) < 0) {
-      console.error(`CLI ${BUILD_CLI_VERSION} is older than the server requires (${minCli})`);
+      console.error(tooOldMessage(BUILD_CLI_VERSION, minCli));
       process.exit(5);
     }
   } catch (err) {
@@ -2962,7 +2966,7 @@ async function applyCommand(cwd2, parsed, positionals = []) {
     const meta = await api(server, "/api/meta");
     const minCli = meta?.minCliVersion || "0.0.0";
     if (compareSemver(BUILD_CLI_VERSION, minCli) < 0) {
-      console.error(`CLI ${BUILD_CLI_VERSION} is older than the server requires (${minCli})`);
+      console.error(tooOldMessage(BUILD_CLI_VERSION, minCli));
       process.exit(5);
     }
   } catch (err) {
@@ -9500,7 +9504,7 @@ async function mcpCommand(cwd2, parsed = {}) {
     const meta = await api(server, "/api/meta");
     const minCli = meta?.minCliVersion || "0.0.0";
     if (compareSemver(BUILD_CLI_VERSION, minCli) < 0) {
-      serverTooOld = `CLI ${BUILD_CLI_VERSION} is older than server requires (${minCli})`;
+      serverTooOld = tooOldMessage(BUILD_CLI_VERSION, minCli);
     }
   } catch {
   }
