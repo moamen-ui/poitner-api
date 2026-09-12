@@ -29,5 +29,9 @@ if ! curl -sf "http://localhost:${PORT}/" >/dev/null 2>&1; then
   exit 1
 fi
 
-npx playwright test widget/widget.spec.ts
+# The whole directory, not one file. widget/origins.spec.ts and widget/project-env-urls.spec.ts
+# were authored, merged, and counted as coverage while no phase ever ran them — they start their
+# own fixture servers, so the only thing missing was this filter. Anchored so it cannot match the
+# repo path (see scripts/pw.sh).
+npx playwright test '(^|/)widget/'
 exit $?

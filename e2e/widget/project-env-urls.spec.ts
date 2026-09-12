@@ -56,7 +56,14 @@ test.afterAll(() => {
   }
 });
 
+// R1-09-07 is a NIGHTLY scenario (marked ⛓ in R1-09-tests.md: it is chained, depending on state
+// earlier nightly scenarios establish). Running it in the PR tier exercises it without its chain,
+// which proves nothing and fails for the wrong reason.
+//
+// Tier is the right signal HERE — unlike the destructive guards, which key off their phase flag.
+// The question is "should this scenario run at all", not "is it safe to run in this phase".
 test('R1-09-07 ⛓ — disabled environment: extension lookup misses, widget gate stays active', async ({ page }) => {
+  test.skip(process.env.TIER !== 'nightly', 'chained nightly scenario — needs the nightly phase order');
   const start = Date.now();
   const wsAdminCreds = credentials.wsAdmin || TENANT_OWNER;
   const testerCreds = credentials.tester || USERS.tester;
