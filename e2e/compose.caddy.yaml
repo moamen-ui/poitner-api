@@ -1,0 +1,11 @@
+# Compose override for Caddy TLS / mock-domain variant (R2-00-13, R3-03).
+# Published on host port 8443, reverse-proxying api:8080 with internal CA certs.
+services:
+  caddy:
+    image: caddy:2-alpine
+    ports:
+      - "8443:8443"
+    depends_on:
+      - api
+    volumes:
+      - ./e2e/caddy/Caddyfile:/etc/caddy/Caddyfile:ro

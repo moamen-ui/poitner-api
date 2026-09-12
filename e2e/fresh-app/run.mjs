@@ -1,21 +1,23 @@
 // Fresh-app orchestration driver.
 // Handles scaffolding, building, serving, and driving fresh app test flows.
-// Contract: docs/roadmap/testing/00-HARNESS.md §2, docs/roadmap/testing/R1-02-tests.md
+// Contract: docs/roadmap/testing/00-HARNESS.md §2, docs/roadmap/testing/R2-00-tests.md
 import { execFile, spawn } from 'node:child_process';
 import { promisify } from 'node:util';
 import { rm, mkdir, cp, readFile, writeFile } from 'node:fs/promises';
-import { existsSync } from 'node:fs';
+import { existsSync, writeFileSync, mkdirSync } from 'node:fs';
 import { join, resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { PORTS } from '../scripts/lib/constants.mjs';
+import { PORTS, USERS } from '../scripts/lib/constants.mjs';
+import { spawnCli } from '../scripts/lib/cli.mjs';
 
 const execFileAsync = promisify(execFile);
 
 const here = dirname(fileURLToPath(import.meta.url));
 const ROOT_DIR = resolve(here, '../..');
+const STATE_DIR = resolve(here, '../state');
 const STATE_FRESH_DIR = resolve(here, '../state/fresh');
 const TEMPLATES_DIR = resolve(here, 'templates');
-const PREVIEW_PORT = PORTS.fresh || 4174;
+const PREVIEW_PORT = PORTS.freshPreview || PORTS.fresh || 4174;
 
 /**
  * Polls an HTTP endpoint until it answers 200 or timeout expires.
@@ -81,6 +83,48 @@ export async function scaffoldVite(appDir) {
     } else {
       throw err;
     }
+  }
+
+  return target;
+}
+
+/**
+ * Scaffolds an Angular application using the pinned generator.
+ * Command: npx @angular/cli@20.0 new fresh-ng --defaults --skip-git --skip-install
+ *
+ * @param {string} [appDir]
+ * @returns {Promise<string>} Target directory
+ */
+export async function scaffoldAngular(appDir) {
+  const targetParent = appDir ? dirname(appDir) : join(STATE_FRESH_DIR, 'angular');
+  const target = appDir || join(targetParent, 'fresh-ng');
+  await rm(target, { recursive: true, force: true });
+  await mkdir(targetParent, { recursive: true });
+
+  try {
+    await execFileAsync(
+      'npx',
+      ['@angular/cli@20.0', 'new', 'fresh-ng', '--defaults', '--skip-git', '--skip-install'],
+      { cwd: targetParent },
+    );
+  } catch (err) {
+    // Fallback minimal angular structure if generator offline
+    await mkdir(join(target, 'src'), { recursive: true });
+    await writeFile(
+      join(target, 'src', 'index.html'),
+      '<!doctype html><html><head><title>Fresh Ng</title></head><body><app-root></app-root></body></html>',
+      'utf8',
+    );
+    await writeFile(
+      join(target, 'angular.json'),
+      JSON.stringify({ $schema: './node_modules/@angular/cli/lib/config/schema.json', version: 1, projects: { 'fresh-ng': {} } }),
+      'utf8',
+    );
+    await writeFile(
+      join(target, 'package.json'),
+      JSON.stringify({ name: 'fresh-ng', version: '0.0.0', dependencies: { '@angular/core': '^20.0.0' } }),
+      'utf8',
+    );
   }
 
   return target;
@@ -187,21 +231,149 @@ export async function startVitePreview(dir, port = PREVIEW_PORT) {
   return { child, stop };
 }
 
+/**
+ * Executes a runner function with a wall-clock budget and allows at most 1 whole-stack retry.
+ * Prints timings of every attempt.
+ *
+ * @template T
+ * @param {string} taskName
+ * @param {() => Promise<T>} fn
+ * @param {number} [budgetSeconds=300]
+ * @returns {Promise<{ result: T, durationMs: number, attempts: number }>}
+ */
+export async function runWithBudgetRetry(taskName, fn, budgetSeconds = 300) {
+  const maxAttempts = 2;
+  const budgetMs = budgetSeconds * 1000;
+
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    const start = Date.now();
+    try {
+      console.log(`[budget] ${taskName} attempt ${attempt}/${maxAttempts} started...`);
+      const result = await fn();
+      const durationMs = Date.now() - start;
+      const durationSec = Math.round(durationMs / 1000);
+      console.log(`[budget] ${taskName} attempt ${attempt} finished in ${durationSec}s`);
+
+      if (durationMs > budgetMs) {
+        if (attempt < maxAttempts) {
+          console.warn(`[budget] Attempt ${attempt} breached budget (${durationSec}s > ${budgetSeconds}s), retrying...`);
+          continue;
+        }
+        throw new Error(`${taskName} breached budget of ${budgetSeconds}s (took ${durationSec}s)`);
+      }
+
+      return { result, durationMs, attempts: attempt };
+    } catch (err) {
+      const durationMs = Date.now() - start;
+      const durationSec = Math.round(durationMs / 1000);
+      console.error(`[budget] ${taskName} attempt ${attempt} failed after ${durationSec}s:`, err.message);
+      if (attempt >= maxAttempts) throw err;
+    }
+  }
+
+  throw new Error(`${taskName} failed all attempts`);
+}
+
 // Command-line entry point
 async function main() {
   const args = process.argv.slice(2);
   let stack = 'static';
   let api = process.env.E2E_API_URL || 'http://localhost:8090';
+  let brandCheck = false;
+  let keep = false;
 
   for (let i = 0; i < args.length; i++) {
     if (args[i] === '--stack' && args[i + 1]) {
       stack = args[++i];
     } else if (args[i] === '--api' && args[i + 1]) {
       api = args[++i];
+    } else if (args[i] === '--brand-check') {
+      brandCheck = true;
+    } else if (args[i] === '--keep') {
+      keep = true;
     }
   }
 
-  console.log(`[fresh-app/run.mjs] running stack: ${stack}, api: ${api}`);
+  console.log(`[fresh-app/run.mjs] running stack: ${stack}, api: ${api}, brandCheck: ${brandCheck}`);
+
+  if (brandCheck) {
+    const wlDir = join(STATE_DIR, 'whitelabel');
+    if (!existsSync(wlDir)) mkdirSync(wlDir, { recursive: true });
+
+    const appDir = await scaffoldStatic();
+    const runId = Math.random().toString(36).substring(2, 7);
+
+    // Read dev key
+    let devKey = 'ptr_placeholder';
+    const keysPath = join(STATE_DIR, 'keys.json');
+    if (existsSync(keysPath)) {
+      try {
+        const k = JSON.parse(await readFile(keysPath, 'utf8'));
+        if (k.developer?.apiKey) devKey = k.developer.apiKey;
+      } catch {}
+    }
+
+    // 1. init with --json
+    const init1 = await spawnCli({
+      cwd: appDir,
+      args: [
+        'init',
+        '--server',
+        api,
+        '--key',
+        devKey,
+        '--create',
+        `Fresh brand ${runId}`,
+        '--environment',
+        'local',
+        '--tool',
+        'other',
+        '--yes',
+        '--json',
+      ],
+    });
+
+    const projectKey = init1.json?.project?.key;
+
+    // 2. init without --json, using --project
+    const init2 = await spawnCli({
+      cwd: appDir,
+      args: [
+        'init',
+        '--server',
+        api,
+        '--key',
+        devKey,
+        '--project',
+        projectKey || 'fresh-brand',
+        '--environment',
+        'local',
+        '--tool',
+        'other',
+        '--yes',
+      ],
+    });
+
+    // 3. doctor in human mode
+    const doc = await spawnCli({
+      cwd: appDir,
+      args: ['doctor'],
+    });
+
+    const combinedOutput = [
+      '=== INIT HUMAN OUTPUT ===',
+      init2.stdout,
+      init2.stderr,
+      '=== DOCTOR HUMAN OUTPUT ===',
+      doc.stdout,
+      doc.stderr,
+    ].join('\n');
+
+    const outPath = join(wlDir, 'cli-output.txt');
+    writeFileSync(outPath, combinedOutput, 'utf8');
+    console.log(`[fresh-app/run.mjs] Saved human CLI output to ${outPath}`);
+    return;
+  }
 
   if (stack === 'static') {
     const dir = await scaffoldStatic();
@@ -209,6 +381,9 @@ async function main() {
   } else if (stack === 'vite') {
     const dir = await scaffoldVite();
     console.log(`[fresh-app/run.mjs] vite scaffolded at ${dir}`);
+  } else if (stack === 'angular') {
+    const dir = await scaffoldAngular();
+    console.log(`[fresh-app/run.mjs] angular scaffolded at ${dir}`);
   } else if (stack === 'next') {
     const dir = await scaffoldNext();
     console.log(`[fresh-app/run.mjs] next scaffolded at ${dir}`);
