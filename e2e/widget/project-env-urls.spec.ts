@@ -41,10 +41,16 @@ test.beforeAll(async () => {
     });
 
     const deadline = Date.now() + 10_000;
+    let ready = false;
     while (Date.now() < deadline) {
-      const ready = await fetch(BETA_FIXTURE_URL).then((r) => r.ok).catch(() => false);
+      ready = await fetch(BETA_FIXTURE_URL).then((r) => r.ok).catch(() => false);
       if (ready) break;
       await new Promise((r) => setTimeout(r, 200));
+    }
+    // Fail here, not later. Proceeding without a fixture turns "the server never started" into a
+    // 30s timeout on a missing <pointer-feedback>, which reads like a product bug.
+    if (!ready) {
+      throw new Error(`beta fixture never came up on ${BETA_FIXTURE_URL} — is port ${BETA_FIXTURE_PORT} already in use?`);
     }
   }
 });
@@ -62,6 +68,15 @@ test.afterAll(() => {
 //
 // Tier is the right signal HERE — unlike the destructive guards, which key off their phase flag.
 // The question is "should this scenario run at all", not "is it safe to run in this phase".
+// KNOWN FAILING (nightly only). The widget never renders #pf-add for the per-run project this
+// scenario builds, so the assertion that the gate "stays active" cannot be checked. Ruled out so
+// far: the beta fixture itself (loads fine standalone — tag present, custom element defined), the
+// route-interception headers (fixed below), and the fixture failing to start (now fails loudly).
+// What remains is a product question the contract answers one way and the code may answer another:
+// whether a project whose AppEnvironment is disabled should still initialise the widget.
+//
+// Left running and red rather than skipped: a scenario nobody can see is how this suite got into
+// the state it was in.
 test('R1-09-07 ⛓ — disabled environment: extension lookup misses, widget gate stays active', async ({ page }) => {
   test.skip(process.env.TIER !== 'nightly', 'chained nightly scenario — needs the nightly phase order');
   const start = Date.now();
@@ -183,13 +198,14 @@ test('R1-09-07 ⛓ — disabled environment: extension lookup misses, widget gat
       const response = await route.fetch();
       let text = await response.text();
       text = text.replace('project="e2e-beta"', `project="${projectWKey}"`);
+      // Do NOT spread the original headers. They carry the ORIGINAL content-length, and the
+      // rewritten body is a different size — the browser then truncates the document, nothing
+      // parses, and the failure surfaces 10s later as a missing <pointer-feedback> that looks
+      // like a widget bug.
       await route.fulfill({
-        response,
         body: text,
-        headers: {
-          ...response.headers(),
-          'content-type': 'text/html',
-        },
+        contentType: 'text/html; charset=utf-8',
+        status: response.status(),
       });
     });
 
