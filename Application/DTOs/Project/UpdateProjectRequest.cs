@@ -18,6 +18,9 @@ public class UpdateProjectRequest
     /// <summary>null (property omitted) → leave untouched, matching IsActive's treatment.</summary>
     public bool? PageContextCaptureEnabled { get; set; }
 
+    /// <summary>Restrict comment creation to this project's registered app URLs.</summary>
+    public bool? EnforceAllowedOrigins { get; set; }
+
     /// <summary>Whether the AI apply flow bundles applied comments into one commit or commits
     /// each separately (see Comment.CommitUrl). null (property omitted) → leave untouched.</summary>
     public CommitStyle? CommitStyle { get; set; }

@@ -5,8 +5,8 @@
 import { writeFileSync, mkdirSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { get, post, patch, login } from './lib/api.mjs';
-import { Environment, Status, SUPER_ADMIN, TENANT_OWNER, USERS, CLIENT, PROJECTS } from './lib/constants.mjs';
+import { get, post, patch, put, login } from './lib/api.mjs';
+import { Environment, Status, SUPER_ADMIN, TENANT_OWNER, USERS, CLIENT, FLOOD, PROJECTS } from './lib/constants.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const STATE_DIR = join(here, '..', 'state');
@@ -67,8 +67,20 @@ async function main() {
     appUrl: PROJECTS.alpha.appUrl,
   }, { token: staffToken });
   // e2e-beta needs an AppUrl too only if it ever gets a QuickAccess invite; it doesn't, but a
-  // harmless placeholder keeps project admin views consistent.
   await patch(`/api/admin/projects/${beta.id}`, { appUrl: PROJECTS.beta.appUrl }, { token: staffToken });
+
+  console.log('==> Configuring R1-05 fixture on e2e-beta (allowed origins)');
+  const envs = await get('/api/admin/environments', { token: staffToken });
+  const defaultEnv = envs.find((e) => e.name === 'default' && e.isEnabled && !e.isRetired)
+    || envs.find((e) => e.name === 'prod' && e.isEnabled)
+    || envs[0];
+  let previewEnv = envs.find((e) => e.name === 'e2e-preview');
+  if (!previewEnv) {
+    previewEnv = await post('/api/admin/environments', { name: 'e2e-preview' }, { token: staffToken });
+  }
+  await put(`/api/admin/projects/${beta.id}/app-urls/${defaultEnv.id}`, { url: 'https://app.example.com' }, { token: staffToken });
+  await put(`/api/admin/projects/${beta.id}/app-urls/${previewEnv.id}`, { url: 'https://myapp-*.vercel.app' }, { token: staffToken });
+  await patch(`/api/admin/projects/${beta.id}`, { enforceAllowedOrigins: true }, { token: staffToken });
 
   console.log('==> Resolving role ids');
   const roles = await get('/api/admin/roles', { token: staffToken });
@@ -89,6 +101,15 @@ async function main() {
     }, { token: staffToken });
     staffUsers[key] = await login(u.email, u.password);
   }
+
+  console.log('==> Creating Flood user (429 rate-limiting persona)');
+  await post('/api/admin/users', {
+    email: FLOOD.email,
+    password: FLOOD.password,
+    displayName: FLOOD.displayName,
+    roleId: roleId(FLOOD.roleName || 'Tester'),
+  }, { token: staffToken });
+  const flood = await login(FLOOD.email, FLOOD.password);
 
   console.log('==> Inviting the Client (QuickAccess) user, scoped to e2e-alpha');
   await post('/api/admin/invites', {
@@ -249,6 +270,7 @@ async function main() {
     pm: USERS.pm,
     tester: USERS.tester,
     client: CLIENT,
+    flood: FLOOD,
   };
   writeFileSync(join(STATE_DIR, 'credentials.json'), JSON.stringify(credentials, null, 2));
 

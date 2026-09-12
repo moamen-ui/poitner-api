@@ -336,6 +336,9 @@ public class ProjectService : IProjectService
         if (request.PageContextCaptureEnabled.HasValue)
             project.PageContextCaptureEnabled = request.PageContextCaptureEnabled.Value;
 
+        if (request.EnforceAllowedOrigins.HasValue)
+            project.EnforceAllowedOrigins = request.EnforceAllowedOrigins.Value;
+
         if (request.CommitStyle.HasValue)
             project.CommitStyle = request.CommitStyle.Value;
 
@@ -1103,6 +1106,7 @@ public class ProjectService : IProjectService
                 EnvironmentIsEnabled = u.AppEnvironment?.IsEnabled ?? true
             }).ToList(),
             PageContextCaptureEnabled = project.PageContextCaptureEnabled,
+            EnforceAllowedOrigins = project.EnforceAllowedOrigins,
             EnvironmentSelectorRoleIds = ParseRoleIds(project.EnvironmentSelectorRoleIds),
             CommitStyle = project.CommitStyle,
             PredefinedActions = actions

@@ -2,6 +2,8 @@ import { defineConfig } from '@playwright/test';
 
 export default defineConfig({
   testDir: '.',
+  // upgrade-assert.mjs is listed explicitly: it is dual-mode (a Playwright test AND a script the
+  // upgrade workflow runs directly with node), so it deliberately does not carry a .spec name.
   testMatch: ['**/*.spec.{ts,mjs}', '**/upgrade-assert.mjs'],
   timeout: 30_000,
   fullyParallel: false,

@@ -219,6 +219,50 @@ public class ProjectAppUrlEnvironmentGuardTests
     }
 
     /// <summary>
+    /// BINDING: the origin-enforcement switch must be reachable.
+    ///
+    /// Project.EnforceAllowedOrigins existed and IsOriginAllowedAsync read it, but no DTO exposed
+    /// it and no request could set it — so it was permanently false and the entire allowed-origins
+    /// feature (OriginNormalizer, the pattern rules, ProjectAppUrl matching) could never engage.
+    /// A setting nothing can turn on is not a setting.
+    /// </summary>
+    [Fact]
+    public async Task UpdateAsync_CanEnableAndDisableOriginEnforcement()
+    {
+        var dbName = Guid.NewGuid().ToString();
+        var tenant = Guid.NewGuid();
+        var admin = new FakeCurrentUser { Id = Guid.NewGuid(), IsAdmin = true, TenantId = tenant };
+
+        int projectId;
+        using (var db = BuildContext(admin, dbName))
+        {
+            var project = new Project { Key = "p", Name = "P", OwnerId = tenant, CreatedBy = admin.Id!.Value };
+            db.Projects.Add(project);
+            db.SaveChanges();
+            projectId = project.Id;
+        }
+
+        var svc = new ProjectService(new UnitOfWork(BuildContext(admin, dbName)), admin, new PassThroughEntitlements(), TestProjectServiceDeps.Settings(), TestProjectServiceDeps.Configuration());
+
+        // Off by default, and the response must actually carry the value — a write nobody can read
+        // back is just as unusable as one nobody can make.
+        var before = await svc.UpdateAsync(projectId, new UpdateProjectRequest { });
+        Assert.True(before.IsSuccess);
+        Assert.False(before.Data!.EnforceAllowedOrigins);
+
+        var enabled = await svc.UpdateAsync(projectId, new UpdateProjectRequest { EnforceAllowedOrigins = true });
+        Assert.True(enabled.IsSuccess);
+        Assert.True(enabled.Data!.EnforceAllowedOrigins);
+
+        // An omitted field must not silently reset it.
+        var untouched = await svc.UpdateAsync(projectId, new UpdateProjectRequest { Name = "Renamed" });
+        Assert.True(untouched.Data!.EnforceAllowedOrigins);
+
+        var disabled = await svc.UpdateAsync(projectId, new UpdateProjectRequest { EnforceAllowedOrigins = false });
+        Assert.False(disabled.Data!.EnforceAllowedOrigins);
+    }
+
+    /// <summary>
     /// BINDING: wildcard validation must run on the WRITE path.
     ///
     /// OriginNormalizer.ValidatePattern refuses a bare `*` on shared hosting because

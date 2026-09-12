@@ -80,6 +80,8 @@ export const PORTS = {
   landing: 8099,
 };
 
+
 // The Developer account doubles as the documented automation account every AI-under-test
 // invocation uses (skill.md's recommended convention — "world (a)" in docs/E2E_TEST_PLAN.md).
 export const AUTOMATION_ACCOUNT = USERS.developer;
+

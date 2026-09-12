@@ -28,6 +28,9 @@ public class ProjectResponse
     /// project's bug-flagged comments.</summary>
     public bool PageContextCaptureEnabled { get; set; }
 
+    /// <summary>Whether comments are restricted to this project's registered app URLs.</summary>
+    public bool EnforceAllowedOrigins { get; set; }
+
     /// <summary>Which Role.Id values see the widget's environment switcher. Null/empty = the
     /// default (everyone except Client/QuickAccess roles) — not yet customized for this project.</summary>
     public List<int>? EnvironmentSelectorRoleIds { get; set; }
