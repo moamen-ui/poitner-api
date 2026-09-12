@@ -39,6 +39,24 @@ test('security invariant: no command spawned by apply code contains push', () =>
   }
 });
 
+test('security invariant: no command spawned by mcp code contains push', () => {
+  const mcpSourceDir = join(__dirname, '../src/mcp');
+  const files = readdirSync(mcpSourceDir).filter((f) => f.endsWith('.ts'));
+  assert.ok(files.length >= 2, 'expected to discover the mcp modules');
+
+  for (const file of files) {
+    const content = readFileSync(join(mcpSourceDir, file), 'utf8');
+    const spawnRegex = /spawnSync\([^,]+,\s*(\[[^\]]+\])/g;
+    let match: RegExpExecArray | null;
+    while ((match = spawnRegex.exec(content)) !== null) {
+      assert.ok(
+        !match[1].toLowerCase().includes('push'),
+        `Spawned args in mcp/${file} must not contain 'push': ${match[1]}`,
+      );
+    }
+  }
+});
+
 test('no-push: after masking security text, /\\bpush\\b/ has zero matches in dist/cli.js', () => {
   let bundle = readFileSync(bundlePath, 'utf8');
 

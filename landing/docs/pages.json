@@ -15,6 +15,13 @@
       "summary": "End-to-end feedback application, planning, tool hand-offs, commit styles, and git safety."
     },
     {
+      "file": "mcp.html",
+      "title": "MCP Server",
+      "nav": "Integration",
+      "ownedBy": "R2-02",
+      "summary": "Connect Pointer tools to Claude Code, Cursor, Windsurf, OpenCode via stdio MCP."
+    },
+    {
       "file": "api-keys.html",
       "title": "API Keys",
       "nav": "Configuration",

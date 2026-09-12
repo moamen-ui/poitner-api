@@ -109,6 +109,77 @@ Add a reply to a comment.
 pointer reply 12 "Investigating this now."
 ```
 
+### `pointer mcp`
+Run the Model Context Protocol (MCP) server over standard I/O for AI coding agents.
+
+Exposes typed tools to Claude Code, Cursor, Windsurf, OpenCode, and any MCP-compatible environment without exposing API keys to the model context.
+
+#### Configuration (User-Level, Do Not Commit)
+
+Add the following block to your tool's user-level configuration file:
+
+- **Claude Code (`~/.claude.json`)**:
+```json
+{
+  "mcpServers": {
+    "pointer": {
+      "command": "npx",
+      "args": ["-y", "pointer-feedback", "mcp"]
+    }
+  }
+}
+```
+
+- **Cursor (`~/.cursor/mcp.json` or Cursor Settings > Features > MCP)**:
+```json
+{
+  "mcpServers": {
+    "pointer": {
+      "command": "npx",
+      "args": ["-y", "pointer-feedback", "mcp"]
+    }
+  }
+}
+```
+
+- **Windsurf (`~/.codeium/windsurf/mcp_config.json`)**:
+```json
+{
+  "mcpServers": {
+    "pointer": {
+      "command": "npx",
+      "args": ["-y", "pointer-feedback", "mcp"]
+    }
+  }
+}
+```
+
+- **OpenCode (`~/.config/opencode/opencode.json`)**:
+```json
+{
+  "mcpServers": {
+    "pointer": {
+      "command": "npx",
+      "args": ["-y", "pointer-feedback", "mcp"]
+    }
+  }
+}
+```
+
+#### Available MCP Tools
+
+| Tool | Purpose |
+|---|---|
+| `pointer_list_comments` | List feedback comments in a lean summary view |
+| `pointer_get_queue` | Fetch pending comments for application with partitioned untrusted/trusted data |
+| `pointer_get_comment` | Fetch whitelisted comment details by ID |
+| `pointer_mark_applied` | Mark comment applied with reply and commit URL without spawning git |
+| `pointer_commit_and_mark` | Stage files, create commit, and mark comments applied (never pushes) |
+| `pointer_reply` | Post a reply to a feedback comment |
+| `pointer_set_status` | Update comment status (`open`, `ready`, `archived`) |
+| `pointer_resolve_source` | Resolve source hash to file path via `.pointer/manifest.json` |
+| `pointer_doctor` | Run installation health checks |
+
 ## Security Invariants
 
 - **No `git push`**: Neither the CLI nor the generated AI prompt will ever execute `git push`. Only the human developer pushes code to remote repositories.

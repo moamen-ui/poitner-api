@@ -303,5 +303,27 @@ export async function initCommand(cwd: string, options: Record<string, string | 
 Next: start your dev server, open the app, click the ${product} button and sign in.
       Dashboard: ${branding.urls?.app || server}`);
 
+    const mcpConfigPaths: Record<string, string> = {
+      'claude-code': '~/.claude.json',
+      claude: '~/.claude.json',
+      cursor: '~/.cursor/mcp.json (or Cursor Settings > MCP)',
+      windsurf: '~/.codeium/windsurf/mcp_config.json',
+      opencode: '~/.config/opencode/opencode.json',
+    };
+    const toolKey = (tool || '').toLowerCase();
+    const configPath = mcpConfigPaths[toolKey] || 'your tool\'s user MCP settings';
+
+    console.log(`
+MCP setup — user-level config (do not commit):
+Add to ${configPath}:
+{
+  "mcpServers": {
+    "pointer": {
+      "command": "npx",
+      "args": ["-y", "pointer-feedback", "mcp"]
+    }
+  }
+}`);
+
     process.exit(0);
 }
