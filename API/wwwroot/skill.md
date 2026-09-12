@@ -1,29 +1,29 @@
 ---
 name: pointer-feedback
-description: Use when the user asks about Pointer feedback or comments on an app — e.g. "what are the pointer comments", "show pointer feedback", "any feedback on <app>", "apply pending pointer comments". Reads config from the app's .env (the *POINTER_* keys under whatever prefix the stack uses — VITE_/NEXT_PUBLIC_/REACT_APP_/none) + automation credentials, logs in to the Pointer API, fetches the feedback with curl, then lists or applies the comments. No Pointer install required.
+description: Use when the user asks about <POINTER_PRODUCT> feedback or comments on an app — e.g. "what are the pointer comments", "show pointer feedback", "any feedback on <app>", "apply pending pointer comments". Reads config from the app's .env (the *POINTER_* keys under whatever prefix the stack uses — VITE_/NEXT_PUBLIC_/REACT_APP_/none) + automation credentials, logs in to the <POINTER_PRODUCT> API, fetches the feedback with curl, then lists or applies the comments. No <POINTER_PRODUCT> install required.
 ---
 
-# Pointer Feedback
+# <POINTER_PRODUCT> Feedback
 
-**Pointer** collects element-level feedback on a running app. A signed-in stakeholder
+**<POINTER_PRODUCT>** collects element-level feedback on a running app. A signed-in stakeholder
 (developer / PM / tester / client) clicks an element and leaves a comment; comments are stored in
-the **Pointer API** (a .NET service backed by PostgreSQL), **partitioned by project** and tied to
+the **<POINTER_PRODUCT> API** (a .NET service backed by PostgreSQL), **partitioned by project** and tied to
 the author's real account — never anonymous. This skill fetches and works with that feedback using
 only `curl` — nothing needs to be installed locally.
 
 Two things the user typically asks for:
-- **"What are the Pointer comments?"** → list the feedback (this skill's default).
-- **"Apply the pending Pointer comments"** → edit the source for each queued item (section 5).
+- **"What are the <POINTER_PRODUCT> comments?"** → list the feedback (this skill's default).
+- **"Apply the pending <POINTER_PRODUCT> comments"** → edit the source for each queued item (section 5).
 
 > **Every endpoint requires auth.** Unlike the old flat-file server, the API is JWT-gated. This skill
 > exchanges a **long-lived personal API key** (from `.pointer/credentials.env` — copy yours from
-> your Pointer profile page or the dashboard's quick-start guide; a dedicated `Developer`-role
+> your <POINTER_PRODUCT> profile page or the dashboard's quick-start guide; a dedicated `Developer`-role
 > account is conventional but not required) for a JWT, and sends `Authorization: Bearer <token>` on
 > every call.
 
 ## ⚡ CRITICAL RULE FOR AI AGENTS (Do this first)
 
-When the user asks to **check, list, view, or report Pointer feedback / comments**:
+When the user asks to **check, list, view, or report <POINTER_PRODUCT> feedback / comments**:
 1. **Your VERY FIRST tool call MUST be:**
    ```bash
    ./.pointer/pointer.sh list
@@ -137,7 +137,7 @@ Active AI rules (`aiRules`) are attached to each queue item (`GET .../apply-queu
 
 ## Step 1 — Resolve config
 
-Pointer is wired into an app via an **env-gated inline snippet** in `index.html`; its config lives in
+<POINTER_PRODUCT> is wired into an app via an **env-gated inline snippet** in `index.html`; its config lives in
 that app's `.env` (Vite vars). The automation **credentials** are NOT Vite vars (they must never reach
 the browser) — read them from the shell environment or a gitignored local file. **Do not hardcode.**
 
@@ -160,7 +160,7 @@ the browser) — read them from the shell environment or a gitignored local file
      `src/environments/environment*.ts` instead.
    - If `PROJECT` is empty, fall back to the `project` in the inline snippet
      (`grep -oE 'setAttribute\("project", *"[^"]+"' "$APP_DIR/index.html"`) or the app dir name.
-   - If `SERVER` is empty, ask the user for the Pointer server URL.
+   - If `SERVER` is empty, ask the user for the <POINTER_PRODUCT> server URL.
 
 3. **Read the automation API key.** This must NOT live in the app `.env` (it's Vite-loaded and is
    often git-tracked). Read it from a **gitignored `.pointer/credentials.env`** at the repo root,
@@ -172,7 +172,7 @@ the browser) — read them from the shell environment or a gitignored local file
    [ -f "$CRED" ] && { set -a; . "$CRED"; set +a; }
    POINTER_API_KEY="${POINTER_API_KEY:?set POINTER_API_KEY in .pointer/credentials.env or the shell}"
    ```
-   This is a long-lived personal key, not a password — copy it from the Pointer **profile page**
+   This is a long-lived personal key, not a password — copy it from the <POINTER_PRODUCT> **profile page**
    (re-viewable there any time, not a one-time reveal) or the dashboard's quick-start guide. Any
    account's key works (any role can fetch/apply); a dedicated `Developer`-role account is
    conventional but not required. If `.pointer/` isn't gitignored yet, add it:
@@ -435,7 +435,7 @@ For each item from the apply-queue fetched in Step 3:
    next queued item, then PATCH this one comment with its own commit's URL:
    ```bash
    git add -- <only the file(s) this comment's edit touched>
-   git commit -m "Apply Pointer comment #<id> — <short description>"
+   git commit -m "Apply <POINTER_PRODUCT> comment #<id> — <short description>"
    ```
    Then construct `COMMIT_URL` (see below) and mark it applied:
    ```bash
@@ -453,7 +453,7 @@ For each item from the apply-queue fetched in Step 3:
    single commit covering all of them, construct one `COMMIT_URL`, then PATCH **every** comment
    applied in this run with that same shared URL (same PATCH shape as above, repeated per id):
    ```bash
-   git commit -m "Apply N pending Pointer comments"
+   git commit -m "Apply N pending <POINTER_PRODUCT> comments"
    ```
 
    **Constructing `COMMIT_URL` from the commit you just made (no push required):**
@@ -476,8 +476,8 @@ For each item from the apply-queue fetched in Step 3:
 
 ## Notes
 
-- This skill needs no Pointer clone — only `curl` (Steps 1-5), or `./.pointer/pointer.sh` if
-  `install.sh` generated one (see the fast path above). The Pointer **API** is the only instance
+- This skill needs no <POINTER_PRODUCT> clone — only `curl` (Steps 1-5), or `./.pointer/pointer.sh` if
+  `install.sh` generated one (see the fast path above). The <POINTER_PRODUCT> **API** is the only instance
   either way.
 - Config source of truth: the app's `.env` (the `*POINTER_*` keys, under whatever prefix the stack
   uses — `VITE_`, `NEXT_PUBLIC_`, `REACT_APP_`, or none) for server/project; shell env for the

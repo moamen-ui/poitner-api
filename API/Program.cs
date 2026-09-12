@@ -11,6 +11,7 @@ using Pointer.API.Extensions;
 using Pointer.API.Hosted;
 using Pointer.API.Seed;
 using Pointer.Application;
+using Pointer.Application.Common;
 using Pointer.Application.Response;
 using Pointer.Infrastructure;
 
@@ -219,7 +220,20 @@ app.Use(async (ctx, next) =>
         if (File.Exists(file))
         {
             var origin = PointerUrlResolver.ResolvePublicUrl(app.Configuration, ctx.Request);
-            var text = (await File.ReadAllTextAsync(file)).Replace("<POINTER_SERVER>", origin);
+            // These files are installed INTO the customer's repository (.claude/skills/…/SKILL.md,
+            // .pointer/pointer.sh). A rebranded install that serves skills saying "Pointer"
+            // throughout is the most visible white-label leak there is, so the product name is
+            // substituted the same way the server URL already is.
+            //
+            // Only the prose name is templated. Every on-disk identifier — .pointer/, POINTER_*,
+            // pointer.sh, pointer-feedback — is frozen by R1-01 and deliberately untouched.
+            var settingsService = ctx.RequestServices.GetRequiredService<ISettingsService>();
+            var product = await settingsService.GetStringAsync(
+                ISettingsService.BrandProductName, BrandingDefaults.ProductName);
+
+            var text = (await File.ReadAllTextAsync(file))
+                .Replace("<POINTER_SERVER>", origin)
+                .Replace("<POINTER_PRODUCT>", product);
             ctx.Response.ContentType = path.EndsWith(".sh", StringComparison.OrdinalIgnoreCase)
                 ? "text/x-shellscript; charset=utf-8"
                 : "text/markdown; charset=utf-8";

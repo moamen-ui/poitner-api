@@ -1,8 +1,8 @@
 #!/bin/sh
-# Pointer — install the AI skills (pointer-init + pointer-feedback) into your AI
+# <POINTER_PRODUCT> — install the AI skills (pointer-init + pointer-feedback) into your AI
 # tool's skills directory.
 #
-# Self-configuring: this script is served pre-filled with your Pointer server URL,
+# Self-configuring: this script is served pre-filled with your <POINTER_PRODUCT> server URL,
 # and the skills it downloads are pre-filled too — nothing to edit.
 #
 # Usage:
@@ -13,7 +13,7 @@ set -e
 SERVER="<POINTER_SERVER>"
 DIR="${1:-.claude/skills}"
 
-echo "Pointer: installing skills from $SERVER into $DIR/"
+echo "<POINTER_PRODUCT>: installing skills from $SERVER into $DIR/"
 
 curl -fsSL --create-dirs "$SERVER/pointer-init.md" -o "$DIR/pointer-init/SKILL.md"
 echo "  ok  pointer-init      ($DIR/pointer-init/SKILL.md)   — add the widget to an app"
@@ -51,8 +51,8 @@ echo "  ok  pointer.sh        (.pointer/pointer.sh)   — run './.pointer/pointe
 mkdir -p .pointer
 
 cat > .pointer/credentials.env.example <<'EOF'
-# Pointer personal API key — copy to credentials.env and fill in.
-# Find/copy yours from your Pointer profile page, or the dashboard's quick-start guide.
+# <POINTER_PRODUCT> personal API key — copy to credentials.env and fill in.
+# Find/copy yours from your <POINTER_PRODUCT> profile page, or the dashboard's quick-start guide.
 POINTER_API_KEY=ptr_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
 EOF
 echo "  ok  credentials.example  (.pointer/credentials.env.example)   — committable template"
@@ -61,8 +61,8 @@ if [ -f .pointer/credentials.env ]; then
   echo "  ok  credentials          (.pointer/credentials.env already exists — left untouched)"
 else
   cat > .pointer/credentials.env <<'EOF'
-# Pointer personal API key (gitignored — NEVER commit). Fill this in before
-# pulling/applying feedback, or login will fail. Copy it from your Pointer profile
+# <POINTER_PRODUCT> personal API key (gitignored — NEVER commit). Fill this in before
+# pulling/applying feedback, or login will fail. Copy it from your <POINTER_PRODUCT> profile
 # page, or the dashboard's quick-start guide.
 POINTER_API_KEY=
 EOF
@@ -83,7 +83,7 @@ grep -qxF '!.pointer/config.json' .gitignore || echo '!.pointer/config.json' >> 
 
 echo ""
 echo "Done. Next:"
-echo "  1. Fill POINTER_API_KEY in .pointer/credentials.env — copy it from your Pointer profile"
+echo "  1. Fill POINTER_API_KEY in .pointer/credentials.env — copy it from your <POINTER_PRODUCT> profile"
 echo "     page, or the dashboard's quick-start guide."
 echo "  2. Run the 'pointer-init' skill in your AI tool to add the widget to your app — its last step"
 echo "     detects the tech stack and writes the committable .pointer/stack.json."

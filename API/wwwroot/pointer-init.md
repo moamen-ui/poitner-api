@@ -1,21 +1,21 @@
 ---
 name: pointer-init
-description: Use when the user wants to add, install, init, or integrate the Pointer feedback widget (<pointer-feedback>) into an app — e.g. "add Pointer to this app", "set up Pointer feedback", "integrate the feedback widget". Asks the user for the variables (project key, Pointer server URL, environment), detects the host stack (Vite/Angular/Next/static), injects the loader, wires the env, and verifies. No build step required.
+description: Use when the user wants to add, install, init, or integrate the <POINTER_PRODUCT> feedback widget (<pointer-feedback>) into an app — e.g. "add <POINTER_PRODUCT> to this app", "set up <POINTER_PRODUCT> feedback", "integrate the feedback widget". Asks the user for the variables (project key, <POINTER_PRODUCT> server URL, environment), detects the host stack (Vite/Angular/Next/static), injects the loader, wires the env, and verifies. No build step required.
 ---
 
-# Add Pointer to this app
+# Add <POINTER_PRODUCT> to this app
 
-Pointer is an element-level feedback widget delivered as a single Web Component,
-`<pointer-feedback>`, loaded from a Pointer server's `/pointer.js`. It renders entirely inside a
+<POINTER_PRODUCT> is an element-level feedback widget delivered as a single Web Component,
+`<pointer-feedback>`, loaded from a <POINTER_PRODUCT> server's `/pointer.js`. It renders entirely inside a
 Shadow DOM (no CSS collisions), shows a small toolbar, and lets authenticated stakeholders click any
 element and leave a comment. Projects **self-register**: the first time an app loads/comments with a
-given project key, it appears in the Pointer dashboard.
+given project key, it appears in the <POINTER_PRODUCT> dashboard.
 
 This skill wires the widget into the **current** app. Do not guess the variables — **ask the user**.
 
-> **Server URL** = the deployed Pointer origin (the one you fetched this skill from). When this skill
-> is served by a running Pointer server, the examples below are **auto-filled** with that URL; if you
-> see a literal `<POINTER_SERVER>` placeholder, replace it with your deployed Pointer URL.
+> **Server URL** = the deployed <POINTER_PRODUCT> origin (the one you fetched this skill from). When this skill
+> is served by a running <POINTER_PRODUCT> server, the examples below are **auto-filled** with that URL; if you
+> see a literal `<POINTER_SERVER>` placeholder, replace it with your deployed <POINTER_PRODUCT> URL.
 > `http://localhost:8090` is only the local-dev default — **never ship `localhost` to production.**
 
 ## Step 1 — Ask the user for the variables
@@ -23,7 +23,7 @@ This skill wires the widget into the **current** app. Do not guess the variables
 | Variable | Required | Meaning / guidance |
 |---|---|---|
 | **Project key** | ✅ | URL-safe slug — lowercase letters, digits and dashes only, `^[a-z0-9-]+$` (e.g. `my-app`). Identifies this app's feedback. The project must already exist in the dashboard; the widget does not self-register it. |
-| **Pointer server URL** | ✅ | The **deployed** Pointer origin your team gave you (e.g. `https://pointer.example.com`). No trailing slash. `http://localhost:8090` only for local dev. |
+| **<POINTER_PRODUCT> server URL** | ✅ | The **deployed** <POINTER_PRODUCT> origin your team gave you (e.g. `https://pointer.example.com`). No trailing slash. `http://localhost:8090` only for local dev. |
 | **Environment** | optional | `local` \| `staging` \| `production` — tags each comment and seeds the toolbar's starting value. Default `staging`. Whether a signed-in stakeholder can then *switch* it is a separate, role-based server setting (project owner configurable in the dashboard) — setting this alone does **not** lock it. |
 | **Fixed environment?** | optional | Pass `fixed-environment="true"` only if this specific deployment must never allow switching regardless of role (e.g. a server-rendered embed pinned to one environment on purpose). Rare — leave unset by default so the role-based switcher (above) actually has a chance to apply. |
 | **Enabled?** | optional | Whether to mount the widget now. Default `true` for dev; usually `false` in production builds unless feedback is wanted in prod. |
@@ -94,13 +94,13 @@ Add the env keys to `.env` (and document them in `.env.example`):
 
 ```
 VITE_POINTER_ENABLED=true
-VITE_POINTER_SERVER=<POINTER_SERVER>          # deployed Pointer URL; http://localhost:8090 only for local dev
+VITE_POINTER_SERVER=<POINTER_SERVER>          # deployed <POINTER_PRODUCT> URL; http://localhost:8090 only for local dev
 VITE_POINTER_PROJECT=<project-key>
 VITE_POINTER_ENV=staging
 ```
 
 Vite substitutes `%VITE_*%` in `index.html`; the `enabled` guard means a production build with
-`VITE_POINTER_ENABLED=false` ships zero Pointer code paths.
+`VITE_POINTER_ENABLED=false` ships zero <POINTER_PRODUCT> code paths.
 
 ### 3b. Plain static HTML
 
@@ -129,17 +129,17 @@ Use a client component (e.g. in the root `app/layout.tsx` via a `'use client'` e
 
 ### 3e. API Swagger / OpenAPI docs page
 
-A Swagger UI is just an HTML page — embed Pointer so consumers can leave element-level comments on
-endpoints. The Pointer server hosts a one-line loader at **`<POINTER_SERVER>/embed.js?project=<key>`**
+A Swagger UI is just an HTML page — embed <POINTER_PRODUCT> so consumers can leave element-level comments on
+endpoints. The <POINTER_PRODUCT> server hosts a one-line loader at **`<POINTER_SERVER>/embed.js?project=<key>`**
 that injects `pointer.js` and mounts a configured `<pointer-feedback>` (server pre-filled). The page
-owner just (1) references that loader and (2) — if the page sends a CSP — allowlists the Pointer origin.
+owner just (1) references that loader and (2) — if the page sends a CSP — allowlists the <POINTER_PRODUCT> origin.
 
-**ASP.NET / Swashbuckle (recommended: config-driven).** Put every Pointer setting in a `Pointer`
+**ASP.NET / Swashbuckle (recommended: config-driven).** Put every <POINTER_PRODUCT> setting in a `<POINTER_PRODUCT>`
 section of `appsettings.json` so it's toggled/tuned per environment (override in
 `appsettings.{Environment}.json` or `Pointer__*` env vars):
 
 ```json
-"Pointer": {
+"<POINTER_PRODUCT>": {
   "Enabled": true,
   "Server": "<POINTER_SERVER>",
   "Project": "",
@@ -150,7 +150,7 @@ section of `appsettings.json` so it's toggled/tuned per environment (override in
 Read it once after `builder.Build()` and drive **both** the embed and the CSP from it:
 
 ```csharp
-var p = app.Configuration.GetSection("Pointer");
+var p = app.Configuration.GetSection("<POINTER_PRODUCT>");
 var pEnabled = p.GetValue("Enabled", false);
 var pServer  = (p["Server"] ?? "<POINTER_SERVER>").TrimEnd('/');
 var pProject = string.IsNullOrWhiteSpace(p["Project"]) ? app.Environment.ApplicationName : p["Project"]!;
@@ -165,11 +165,11 @@ app.UseSwaggerUI(c =>
 ```
 
 `Enabled` turns the whole thing on/off (per environment); `Project` blank → this app's own name;
-`Server` is the Pointer URL; `Environment` tags the comments.
+`Server` is the <POINTER_PRODUCT> URL; `Environment` tags the comments.
 
 **⚠️ CSP — the common gotcha.** If the docs page sends a `Content-Security-Policy` (many API
 templates do, scoped to `/swagger`), the cross-origin widget is blocked until you allowlist the
-Pointer origin. Build the `/swagger` CSP with `pAllow` so it follows the same config (and the hole
+<POINTER_PRODUCT> origin. Build the `/swagger` CSP with `pAllow` so it follows the same config (and the hole
 disappears when disabled):
 
 ```csharp
@@ -223,7 +223,7 @@ REACT_APP_POINTER_ENV=staging
 
 ## Step 4 — Create the AI apply-tool credentials  ⚠️ do not skip
 
-Pointer's whole point is that an AI agent later **pulls and applies** the feedback queue — and
+<POINTER_PRODUCT>'s whole point is that an AI agent later **pulls and applies** the feedback queue — and
 **every API endpoint requires auth**. The apply skill (`<POINTER_SERVER>/skill.md`) authenticates
 with a **long-lived personal API key** (not email/password) and reads it from a gitignored
 **`.pointer/credentials.env`**, failing to log in if it's missing. So **always make sure it exists
@@ -253,14 +253,14 @@ grep -qxF '!.pointer/credentials.env.example' .gitignore || echo '!.pointer/cred
 **Then explicitly tell the user** (this is the critical step they must action):
 
 > `.pointer/credentials.env` exists and `.pointer/` is gitignored (with `credentials.env.example` kept
-> committable). **Fill in `POINTER_API_KEY`** — copy it from your Pointer **profile page** (a
+> committable). **Fill in `POINTER_API_KEY`** — copy it from your <POINTER_PRODUCT> **profile page** (a
 > "Generate" click if you don't have one yet — it's always re-viewable there afterward, not a
 > one-time reveal), or from the dashboard's **quick-start guide**, which shows it pre-filled for
 > copy-paste. Until it's set, pulling or applying the feedback queue will fail with a login error.
-> Never commit `credentials.env`. Any Pointer account's key works (any role can fetch/apply); using
+> Never commit `credentials.env`. Any <POINTER_PRODUCT> account's key works (any role can fetch/apply); using
 > a dedicated `Developer`-role account is conventional but not required.
 
-The apply workflow itself is the separate Pointer skill served at `<POINTER_SERVER>/skill.md`.
+The apply workflow itself is the separate <POINTER_PRODUCT> skill served at `<POINTER_SERVER>/skill.md`.
 
 > **⚠️ Install the skills into YOUR AI tool's own directory — not blindly into `.claude/`.**
 > The installer defaults to `.claude/skills/` (Claude Code). **If you are not Claude Code, clone the
@@ -331,21 +331,21 @@ not something either skill repeats on every run.
 ## Step 6 — Verify
 
 1. Start the app and ensure `<POINTER_SERVER>` is reachable.
-2. Load a page — a Pointer toolbar appears (no login popup on load; it's deferred).
+2. Load a page — a <POINTER_PRODUCT> toolbar appears (no login popup on load; it's deferred).
 3. Click **+ Comment** → sign in or **Create account** → click an element → leave a comment.
-4. Confirm the project appears in the Pointer dashboard (`<POINTER_SERVER>/admin/`) with the comment.
+4. Confirm the project appears in the <POINTER_PRODUCT> dashboard (`<POINTER_SERVER>/admin/`) with the comment.
 5. Confirm `.pointer/stack.json` exists and is staged for commit (not gitignored).
 
 ## Notes & gotchas
 
 - **`project` is required**; the component disables itself without it.
 - **`server`** defaults to the script's origin if omitted — set it explicitly when the app and the
-  Pointer server are different origins (the usual case).
+  <POINTER_PRODUCT> server are different origins (the usual case).
 - **Cross-origin is fine:** `pointer.js` (script), `pointer.css` (link), and uploaded images (`<img>`)
   aren't CORS-restricted; API calls use the server's permissive CORS policy.
-- **Auth:** stakeholders need a Pointer account; self-signup (an admin-approved request) is built into
+- **Auth:** stakeholders need a <POINTER_PRODUCT> account; self-signup (an admin-approved request) is built into
   the widget. The token is stored in `localStorage` (`pointer_token`).
-- **Source mapping (enables precise applies — check this):** Pointer records the `source-attr`
+- **Source mapping (enables precise applies — check this):** <POINTER_PRODUCT> records the `source-attr`
   (default `data-component-source`) of the clicked element, e.g. `path/to/Component:line`, so the
   apply step opens the **exact file**. Most apps don't emit this by default — it's produced by a
   **build plugin gated behind a dev/preview flag** (e.g. `VITE_DEBUG=true` driving a Babel/SWC plugin
