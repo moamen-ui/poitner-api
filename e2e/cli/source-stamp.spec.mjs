@@ -211,11 +211,7 @@ test('R3-01-01 — source-stamp-prod-build (cli: steps 1–4)', async () => {
   }
 });
 
-// BLOCKED — not a test defect. R3-01 task 7 (cli/src/commands/map.ts — `pointer map --from-source`) is not implemented.
-// Marked fixme rather than left failing so the nightly tier stays a signal; the scenario
-// stays here, and this line is what has to be deleted when the feature lands.
 test('R3-01-02 ⛓ — stale-hash-warning', async () => {
-  test.fixme(true, 'R3-01 task 7 (cli/src/commands/map.ts — `pointer map --from-source`) is not implemented');
   test.skip(process.env.TIER === 'pr', 'nightly tier only');
   const start = Date.now();
 
@@ -281,11 +277,21 @@ test('R3-01-02 ⛓ — stale-hash-warning', async () => {
       token: wa.token,
       body: {
         body: 'Comment for stale hash test',
+        environment: 2,
         element: { selector: '.card', sourcePath: cardHash },
       },
     });
     expect(commentRes.status).toBe(200);
     const commentId = commentRes.data?.id;
+
+    // Step 6 runs `apply --plan`, and the apply queue only contains ReadyToApply items. Left at
+    // its created status the comment never reaches the prompt, and the missing warning would look
+    // like the resolver failing rather than an empty queue.
+    const readyRes = await raw('PATCH', `/api/comments/${commentId}`, {
+      token: wa.token,
+      body: { status: 2 },
+    });
+    expect(readyRes.status, 'the comment must be ReadyToApply to appear in the plan').toBe(200);
 
     // 4. pointer get <id> --json -> .resolvedSource deep-equals { kind: 'stale', hash: CardHash, hint: 'search for "Card"' }
     const getJsonRes = await spawnCli({

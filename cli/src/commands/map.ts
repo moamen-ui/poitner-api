@@ -1,0 +1,130 @@
+import { promises as fs } from 'node:fs';
+import { existsSync } from 'node:fs';
+import { join, relative, resolve } from 'node:path';
+import { execFileSync } from 'node:child_process';
+
+const DEFAULT_INCLUDE_EXTENSIONS = ['.jsx', '.tsx', '.vue'];
+
+/** Directories never worth walking — build output, dependencies, VCS internals. */
+const SKIP_DIRS = new Set(['node_modules', 'dist', 'build', '.git', '.next', '.nuxt', 'coverage', '.pointer']);
+
+function gitRoot(cwd: string): string {
+  try {
+    return execFileSync('git', ['rev-parse', '--show-toplevel'], { cwd, encoding: 'utf8' }).trim();
+  } catch {
+    return cwd;
+  }
+}
+
+const toPosix = (p: string): string => p.split('\\').join('/');
+
+async function walk(dir: string, out: string[] = []): Promise<string[]> {
+  let entries;
+  try {
+    entries = await fs.readdir(dir, { withFileTypes: true });
+  } catch {
+    return out;
+  }
+  for (const entry of entries) {
+    if (entry.name.startsWith('.') && entry.name !== '.') {
+      if (SKIP_DIRS.has(entry.name)) continue;
+    }
+    const full = join(dir, entry.name);
+    if (entry.isDirectory()) {
+      if (SKIP_DIRS.has(entry.name)) continue;
+      await walk(full, out);
+    } else if (DEFAULT_INCLUDE_EXTENSIONS.some((ext) => entry.name.endsWith(ext))) {
+      out.push(full);
+    }
+  }
+  return out;
+}
+
+/**
+ * `pointer map --from-source` — rebuild .pointer/manifest.json without running a build.
+ *
+ * The manifest is normally a by-product of the Vite plugin, which means it only exists where
+ * someone has run a build. Two situations leave a developer without one and needing it now: a
+ * fresh clone (it is gitignored — it is generated, and committing it would churn every diff), and
+ * a rename that made every stamped hash stale. `apply` and `doctor` deliberately do NOT run a
+ * build to fix that — a build is slow and has side effects nobody asked for — so this command runs
+ * the same visitor over the same files, offline, and writes the same file.
+ *
+ * It reads sources only. Nothing is stamped on disk; the output is the map, not the markup.
+ */
+export async function mapCommand(
+  cwd: string,
+  parsed: Record<string, string | boolean>,
+): Promise<void> {
+  const fromSource = parsed['from-source'] === true;
+  if (!fromSource) {
+    console.error('Usage: pointer map --from-source');
+    process.exit(2);
+  }
+
+  const root = gitRoot(cwd);
+  const files = await walk(cwd);
+
+  if (files.length === 0) {
+    console.error(`No .jsx/.tsx/.vue files found under ${cwd}`);
+    process.exit(2);
+  }
+
+  const { stampSource } = await import('../vite/transform.js');
+  const { addToManifest } = await import('../vite/hash.js');
+
+  const manifest: Record<string, { path: string; export: string }> = {};
+  let scanned = 0;
+  let failed = 0;
+
+  for (const file of files) {
+    const relPath = toPosix(relative(root, file));
+    let code: string;
+    try {
+      code = await fs.readFile(file, 'utf8');
+    } catch {
+      continue;
+    }
+    try {
+      // The attribute name is irrelevant here — nothing is written back. Only `components` is used.
+      const result = await stampSource(code, relPath, 'data-component-source');
+      for (const [hash, entry] of Object.entries(result.components)) {
+        addToManifest(manifest, hash, entry);
+      }
+      scanned++;
+    } catch (err: any) {
+      // One unparseable file must not cost the developer the whole map — the other entries are
+      // still correct and still useful. Say which file, so it can be looked at.
+      failed++;
+      console.error(`  skipped ${relPath}: ${err?.message ?? err}`);
+    }
+  }
+
+  const target = resolve(root, '.pointer/manifest.json');
+  await fs.mkdir(join(root, '.pointer'), { recursive: true });
+
+  // Rotate first: manifest.prev.json is what resolves a stale hash to the name it used to have,
+  // which is the whole value of this command after a rename. Never merge the two — a merged file
+  // would answer for a component that no longer exists as though it still did.
+  const prev = target.replace(/\.json$/, '.prev.json');
+  if (existsSync(target)) {
+    await fs.copyFile(target, prev);
+  }
+
+  const entries = Object.fromEntries(
+    Object.entries(manifest)
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([hash, entry]) => [hash, { path: entry.path, component: entry.export }]),
+  );
+
+  const tmp = `${target}.tmp`;
+  await fs.writeFile(tmp, JSON.stringify({ version: 1, entries }, null, 2) + '\n', 'utf8');
+  await fs.rename(tmp, target);
+
+  const count = Object.keys(entries).length;
+  console.log(
+    `Mapped ${count} component${count === 1 ? '' : 's'} from ${scanned} file${scanned === 1 ? '' : 's'} → .pointer/manifest.json` +
+      (failed ? ` (${failed} skipped)` : ''),
+  );
+  process.exit(0);
+}

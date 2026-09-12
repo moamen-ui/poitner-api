@@ -156,6 +156,20 @@ export type ApplyProjectContext = {
 
 export type ApplyPromptOptions = {
   plan?: boolean;
+  /**
+   * Resolves a stamped source hash to the file that produced it.
+   *
+   * Injected rather than imported so buildApplyPrompt stays a pure function of its inputs — it has
+   * a golden-file test, and reading .pointer/manifest.json from inside it would make that test
+   * depend on whatever happened to be on disk.
+   */
+  resolveSource?: (hash: string | null | undefined) => {
+    kind: 'manifest' | 'stale' | 'unknown';
+    path?: string | null;
+    component?: string | null;
+    hash?: string;
+    hint?: string;
+  };
 };
 
 export type ApplyClientContext = {

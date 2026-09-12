@@ -1,4 +1,5 @@
 import { promises as fs } from 'node:fs';
+import { resolveSource } from '../vite/resolve.js';
 import { join } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { api } from '../api.js';
@@ -104,7 +105,10 @@ export async function runApply(
   if (options.environment !== undefined) filter.environment = options.environment;
 
   const items = await fetchQueue(ctx, filter);
-  const prompt = buildApplyPrompt(items, context, { plan: options.plan });
+  const prompt = buildApplyPrompt(items, context, {
+    plan: options.plan,
+    resolveSource: (hash) => resolveSource(ctx.cwd, hash),
+  });
 
   if (options.tool) {
     const tool = options.tool.toLowerCase();

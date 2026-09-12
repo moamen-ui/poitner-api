@@ -674,11 +674,16 @@ export async function handleResolveSource(
   try {
     const raw = readFileSync(manifestPath, 'utf8');
     const json = JSON.parse(raw);
-    const entry = json.components?.[hash] || json[hash];
+    // `entries` is the documented shape; `components` and the bare map are older forms that may
+    // still be sitting in a checkout, and a resolver that only understood the newest one would
+    // report "unknown-hash" for a manifest that is merely from a previous CLI.
+    const entry = json.entries?.[hash] || json.components?.[hash] || json[hash];
     if (entry && entry.path) {
       return {
         path: entry.path,
-        componentName: entry.componentName || null,
+        // Same story for the name: the plugin wrote `export`, the spec says `component`, and this
+        // read `componentName` — so it answered null for every hash the plugin itself produced.
+        componentName: entry.component || entry.componentName || entry.export || null,
       };
     }
     return { path: null, reason: 'unknown-hash' };

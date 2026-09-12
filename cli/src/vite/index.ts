@@ -80,10 +80,40 @@ export default function pointerSource(options: PointerSourceOptions = {}) {
     if (!enabled) return;
     const target = resolve(repoRoot, manifestPath);
     await fs.mkdir(dirname(target), { recursive: true });
+
     // Sorted so the file is stable between builds — a manifest that reorders on every build is
-    // noise in any diff a developer happens to look at.
-    const sorted = Object.fromEntries(Object.entries(manifest).sort(([a], [b]) => a.localeCompare(b)));
-    await fs.writeFile(target, JSON.stringify(sorted, null, 2) + '\n', 'utf8');
+    // noise in any diff a developer happens to look at, and R3-01-05 requires two clean clones to
+    // produce byte-identical entries.
+    const entries = Object.fromEntries(
+      Object.entries(manifest)
+        .sort(([a], [b]) => a.localeCompare(b))
+        .map(([hash, entry]) => [hash, { path: entry.path, component: entry.export }]),
+    );
+
+    // The versioned envelope is the documented on-disk contract
+    // (execution/R3-01-vite-plugin-manifest.md). It was previously written as a bare hash→entry
+    // map, which left consumers guessing: the MCP resolver looked for `components` or a flat map
+    // and read `componentName`, so it returned a null name for every hash the plugin had written.
+    //
+    // No `generatedAt`. The file is meant to be committed, and a timestamp would rewrite it on
+    // every build — the same reason stack.json carries no `detectedAt`.
+    const payload = { version: 1, entries };
+
+    // Rotate the previous manifest before overwriting. `manifest.prev.json` is what the stale-hash
+    // hint reads to say "this component used to be X" after a rename, so it must be the version
+    // from BEFORE this build, never a merge of the two.
+    const prev = target.replace(/\.json$/, '.prev.json');
+    try {
+      const existing = await fs.readFile(target, 'utf8');
+      await fs.writeFile(prev, existing, 'utf8');
+    } catch {
+      // No manifest yet — nothing to rotate, and a first build has no previous state to lose.
+    }
+
+    // Atomic: a reader must never observe a half-written manifest.
+    const tmp = `${target}.tmp`;
+    await fs.writeFile(tmp, JSON.stringify(payload, null, 2) + '\n', 'utf8');
+    await fs.rename(tmp, target);
   }
 
   let debounce: NodeJS.Timeout | null = null;

@@ -4,7 +4,7 @@
 // - R3-01-03 ⛓: deploy-awareness-widget (AC-8, AC-9)
 // Contract: docs/roadmap/testing/R3-01-tests.md
 import { test, expect } from '@playwright/test';
-import { copyFileSync, mkdirSync } from 'node:fs';
+import { copyFileSync, mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { preAuthWidget } from './lib/auth';
 import { raw, get, post, patch, login } from '../scripts/lib/api.mjs';
@@ -20,11 +20,7 @@ const keys = () => loadKeys();
 const PROJECT_KEY = 'e2e-r301';
 const FIXTURE_URL = 'http://localhost:4175/';
 
-// BLOCKED — not a test defect. `pointer get --json` does not emit resolvedSource (R3-01 AC-5); steps 5-10 of this scenario do pass, step 11 needs the feature.
-// The CLI half of R3-01-01 (cli/source-stamp.spec.mjs) passes and is what keeps this scenario
-// counted as covered; this widget half additionally reaches into the unbuilt resolver.
 test('R3-01-01 — source-stamp-prod-build (widget: steps 5–12)', async ({ page }) => {
-  test.fixme(true, '`pointer get --json` does not emit resolvedSource (R3-01 AC-5); steps 5-10 of this scenario do pass, step 11 needs the feature');
   test.skip(process.env.TIER === 'pr', 'nightly tier only');
   const start = Date.now();
 
@@ -117,6 +113,22 @@ test('R3-01-01 — source-stamp-prod-build (widget: steps 5–12)', async ({ pag
     }
 
     // 11. CLI (in <repo>): spawnCli get <id> --json -> exit 0; resolvedSource deep-equals { kind: 'manifest', path: 'src/components/Card.tsx', component: 'Card' }
+    //
+    // The fixture repo has never been through `init`, so it carries no CLI config and `get` would
+    // exit 2 before reaching the resolver. Writing the two files init would have written is enough
+    // and keeps the scenario focused on resolution rather than on install.
+    mkdirSync(join(repo.dir, '.pointer'), { recursive: true });
+    writeFileSync(
+      join(repo.dir, '.pointer', 'config.json'),
+      JSON.stringify({ server: 'http://localhost:8090', project: PROJECT_KEY }, null, 2),
+      'utf8',
+    );
+    writeFileSync(
+      join(repo.dir, '.pointer', 'credentials.env'),
+      `POINTER_API_KEY=${keys().developer.apiKey}\n`,
+      { encoding: 'utf8', mode: 0o600 },
+    );
+
     const getRes = await spawnCli({
       cwd: repo.dir,
       args: ['get', String(newestComment.id), '--json'],

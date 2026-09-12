@@ -16,6 +16,7 @@ function parseArgs(args: string[]) {
         'no-skills',
         'no-design',
         'refresh-stack',
+        'from-source',
         'yes',
         'json',
         'help',
@@ -59,6 +60,7 @@ Commands:
   apply     Turn pending feedback into an AI apply prompt and mark applied
   list      List feedback comments (summary view)
   get       View comment details (whitelisted projection)
+  map       Rebuild .pointer/manifest.json from source, without a build
   status    Update comment status
   reply     Add a reply to a comment
   mcp       Start the Model Context Protocol (MCP) server
@@ -196,6 +198,24 @@ Options:
             process.exit(0);
         }
         await listCommand(cwd(), parsed, positionals);
+    } else if (command === 'map') {
+        if (parsed['help']) {
+            console.log(`
+Usage: pointer map --from-source
+
+Rebuild .pointer/manifest.json from source, without running a build.
+
+The manifest is normally produced by the Vite plugin during a build. Use this after a fresh clone
+(the manifest is generated, so it is not committed) or after renaming components, when the stamped
+hashes in existing comments no longer resolve.
+
+Options:
+  --from-source   Required. Walk .jsx/.tsx/.vue files and rebuild the map.
+`);
+            process.exit(0);
+        }
+        const { mapCommand } = await import('./commands/map.js');
+        await mapCommand(cwd(), parsed);
     } else if (command === 'get') {
         if (parsed['help']) {
             console.log(`

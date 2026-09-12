@@ -50,7 +50,13 @@ const NON_ADMIN_NOTE = 'Note: predefined-action prompts need an admin key';
 // sorted runtime keys reads as a set comparison and a diff names the offending key directly.
 const TOP_LEVEL_KEYS = [
   'appliedAt', 'appliedByLabel', 'authorName', 'body', 'commitUrl', 'createdAt', 'element',
-  'environment', 'id', 'isBugReport', 'pickedActions', 'replies', 'status',
+  'environment', 'id', 'isBugReport', 'pickedActions', 'replies',
+  // `get --json` resolves element.sourcePath against .pointer/manifest.json and returns the file
+  // and component it names (R3-01 AC-5). Present on every response, `kind: 'unknown'` when there
+  // is no manifest or the hash is not in it — an absent key would be indistinguishable from an
+  // older CLI, which is the ambiguity this key set exists to prevent.
+  'resolvedSource',
+  'status',
 ];
 const ELEMENT_KEYS = [
   'appliedCssRules', 'classes', 'deviceType', 'pageTitle', 'pageUrl', 'parentInfo', 'route',

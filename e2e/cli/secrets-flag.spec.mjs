@@ -37,6 +37,10 @@ const AI_COMMENT_VIEW_KEYS = [
   'isBugReport',
   'pickedActions',
   'replies',
+  // Added by R3-01 AC-5: `get --json` resolves element.sourcePath against .pointer/manifest.json.
+  // It is a resolution of data the projection already carries, not a new field FROM the server, so
+  // it cannot widen what this scenario guards — the payload-flag keys stay forbidden below.
+  'resolvedSource',
   'status',
 ].sort();
 
