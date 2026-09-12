@@ -72,7 +72,7 @@ let projectId;
 let id1; let id2; let id3;
 let snapBefore = '';    // refsSnapshot(bareDir) taken BEFORE any scenario runs
 let waSession;          // Workspace Admin (tenant owner) login — comment status PATCHes etc.
-let testerSession;      // QA persona — the comment author
+let testerSession;      // the comment author (PM — see the rate-limit note where it is assigned)
 
 const git = (cwd, args) => execFileAsync('git', args, { cwd, maxBuffer: 1024 * 1024 * 16 });
 
@@ -142,7 +142,10 @@ function saveEvidence(name, content) {
 
 test.beforeAll(async () => {
   const waCreds = credentials().wsAdmin || TENANT_OWNER;
-  const testerCreds = credentials().tester || USERS.tester;
+  // The PM persona, not the tester. Comment creation is rate-limited per USER (30/min), and the
+  // tester authors most of the suite's comments — by the time the apply phase runs, its budget can
+  // already be spent, which surfaces here as an unrelated-looking 429. PM is otherwise idle.
+  const testerCreds = credentials().pm || USERS.pm;
   waSession = await login(waCreds.email, waCreds.password);
   testerSession = await login(testerCreds.email, testerCreds.password);
 
@@ -151,7 +154,14 @@ test.beforeAll(async () => {
   repo = tempRepo();
   writeFileSync(join(repo.dir, 'README.md'), 'apply fixture\n', 'utf8');
   writeFileSync(join(repo.dir, 'src', '.keep'), '', 'utf8');
-  await git(repo.dir, ['add', 'README.md', 'src/.keep']);
+  // a.txt and b.txt are TRACKED from the start, with baseline content. The scenarios then dirty
+  // them, and a tracked-but-modified file is the case that actually matters: `git commit -a` — the
+  // realistic way an apply sweeps in work it was never asked to commit — picks up modifications to
+  // tracked files and IGNORES untracked ones. Leaving these untracked would make R2-01-02's
+  // "the commit must not sweep b.txt in" assertion pass against a commit style that has the bug.
+  writeFileSync(join(repo.dir, 'src', 'a.txt'), 'baseline a\n', 'utf8');
+  writeFileSync(join(repo.dir, 'src', 'b.txt'), 'baseline b\n', 'utf8');
+  await git(repo.dir, ['add', 'README.md', 'src/.keep', 'src/a.txt', 'src/b.txt']);
   await git(repo.dir, ['commit', '-m', 'fixture init']);
 
   // 2. A bare remote added as origin. It is a LOCAL PATH, so commitUrlFor() treats it as an

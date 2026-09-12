@@ -126,12 +126,16 @@ test('R2-06-04 — flag: edit removes secret → flag cleared on reload (api hal
   const clean = await raw('PUT', `/api/comments/${F}`, { token: qa.token, body: { body: CLEAN_BODY } });
   expect(clean.status).toBe(200);
 
-  // 2. Detail with the widget header → no hasPayloadFlag key AT ALL, and no github_token. This
-  // half runs in the api phase, before the widget phase's R2-06-01 adds its flagged reply — the
-  // declared coupling (R2-06-04 <- R2-06-01) is what makes "no key at all" true here.
+  // 2. Detail WITH the widget header → hasPayloadFlag is now FALSE, and no pattern is named.
+  //
+  // False, not absent. For a human surface the server is answering the question — "we looked, it is
+  // clean" — and that is a different statement from the key being missing, which is what a
+  // non-human caller gets and means "we are not telling you". Asserting absence here would demand
+  // the widget lose the ability to distinguish a checked-clean comment from an unchecked one.
   const afterClean = await raw('GET', `/api/comments/${F}`, { token: qa.token, headers: WIDGET_HEADERS });
   expect(afterClean.status).toBe(200);
-  expect(countPayloadFlag(afterClean.text), 'cleaned comment must serialize without any payloadFlag key').toBe(0);
+  expect(afterClean.data?.hasPayloadFlag, 'a cleaned comment reads as checked-and-clean').toBe(false);
+  expect(afterClean.data?.payloadFlags ?? [], 'no patterns remain').toHaveLength(0);
   expect(afterClean.text, 'cleaned comment must not name the pattern').not.toContain('github_token');
 
   // 4. Re-add via edit (a NEW canary) → the flag returns — detection is not create-only.

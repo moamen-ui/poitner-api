@@ -10,6 +10,15 @@ import { get, post, patch, login, ApiError } from '../scripts/lib/api.mjs';
 import { preAuthWidget } from './lib/auth';
 import { credentials as loadCredentials, loginClient } from '../scripts/lib/state.mjs';
 
+// The widget reads this injected config at connect time (web-component/src/types.ts declares it on
+// Window there). The e2e tsconfig does not include the widget's sources, so declare it here rather
+// than casting at five call sites.
+declare global {
+  interface Window {
+    __POINTER_CONFIG__?: Record<string, unknown>;
+  }
+}
+
 const credentials = () => loadCredentials();
 const SMOKE_KEY = process.env.E2E_SMOKE_PROJECT_KEY || 'e2e-widget-smoke';
 const SMOKE_PATH = SMOKE_KEY === 'e2e-widget-smoke' ? '/' : `/?project=${SMOKE_KEY}`;
