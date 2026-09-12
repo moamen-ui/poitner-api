@@ -2,6 +2,7 @@
 name: pointer-feedback
 description: Use when the user asks about <POINTER_PRODUCT> feedback or comments on an app — e.g. "what are the pointer comments", "show pointer feedback", "any feedback on <app>", "apply pending pointer comments". Reads config from the app's .env (the *POINTER_* keys under whatever prefix the stack uses — VITE_/NEXT_PUBLIC_/REACT_APP_/none) + automation credentials, logs in to the <POINTER_PRODUCT> API, fetches the feedback with curl, then lists or applies the comments. No <POINTER_PRODUCT> install required.
 ---
+<!-- pointer-skill-version: <POINTER_SKILL_VERSION> -->
 
 # <POINTER_PRODUCT> Feedback
 

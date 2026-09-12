@@ -1,4 +1,5 @@
 #!/bin/sh
+# pointer-skill-version: <POINTER_SKILL_VERSION>
 # <POINTER_PRODUCT> — install the AI skills (pointer-init + pointer-feedback) into your AI
 # tool's skills directory.
 #

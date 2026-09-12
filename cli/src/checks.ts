@@ -6,6 +6,8 @@ import { readConfig, type PointerConfig } from './config.js';
 import { api, ApiError } from './api.js';
 import { detectStack } from './detect.js';
 import { SKILL_FILES } from './skills.js';
+import { readStamp } from './lib/skill-stamp.js';
+import { skillFilesFor } from './lib/skill-paths.js';
 
 const execFileAsync = promisify(execFile);
 
@@ -229,6 +231,33 @@ export async function runInitChecks(
 
   // skills ------------------------------------------------------------------
   checks.push(await skillsCheck(cwd, config));
+
+  // stale ---------------------------------------------------------------------
+  // A skill file installed months ago is frozen prose describing an API that has moved on. The
+  // developer has no way to notice; the server stamps a version into every served copy so this
+  // check can say so. Warning, not error: a stale skill still works, it is just behind.
+  if (meta?.skillVersion) {
+    const stale: string[] = [];
+    for (const rel of skillFilesFor(config)) {
+      const abs = join(cwd, rel);
+      try {
+        await fs.access(abs);
+      } catch {
+        continue; // not installed for this tool
+      }
+      if ((await readStamp(abs)) !== meta.skillVersion) stale.push(rel);
+    }
+    checks.push(
+      stale.length === 0
+        ? { id: 'stale', status: 'ok', message: `Skills match the server (${meta.skillVersion})` }
+        : {
+            id: 'stale',
+            status: 'warn',
+            message: `${stale.length} file${stale.length === 1 ? '' : 's'} behind the server (${meta.skillVersion}): ${stale.join(', ')}`,
+            hint: 'Run `npx -y pointer-feedback update`',
+          },
+    );
+  }
 
   // gitignore ---------------------------------------------------------------
   checks.push(...(await gitignoreChecks(cwd)));

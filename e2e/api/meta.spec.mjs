@@ -5,7 +5,7 @@
 // Contract: docs/roadmap/testing/R1-04-tests.md
 // Tier: PR
 import { test, expect } from '@playwright/test';
-import { raw } from '../scripts/lib/api.mjs';
+import { raw, getRaw } from '../scripts/lib/api.mjs';
 import { record } from '../scripts/lib/report.mjs';
 
 test('R1-04-01 — /api/meta anonymous, all fields, ResponseCache', async () => {
@@ -40,8 +40,17 @@ test('R1-04-01 — /api/meta anonymous, all fields, ResponseCache', async () => 
     'data.minCliVersion must match semver pattern'
   ).toMatch(/^\d+\.\d+\.\d+$/);
 
-  // data.skillVersion === null (until R2-03)
-  expect(data.skillVersion, 'data.skillVersion must be null until R2-03').toBeNull();
+  // R2-03: skillVersion is the value stamped into every served skill and script. doctor compares
+  // an installed copy's stamp against it, so it must be a real string, and it must MATCH what the
+  // server actually stamps — the two resolving differently would make every install read as stale
+  // (or none of them).
+  expect(data.skillVersion, 'data.skillVersion must be set once R2-03 lands').toBeTruthy();
+
+  const servedSkill = await getRaw('/skill.md');
+  const stamped = String(servedSkill.text ?? servedSkill.body).match(/pointer-skill-version:\s*([^\s>]+)/)?.[1];
+  expect(stamped, '/skill.md must carry a resolved stamp, not the placeholder').toBeTruthy();
+  expect(stamped).not.toBe('<POINTER_SKILL_VERSION>');
+  expect(stamped, 'the served stamp and /api/meta.skillVersion must agree').toBe(data.skillVersion);
 
   // abs(Date.now() - Date.parse(data.serverTime)) < 5 min
   const parsedServerTime = Date.parse(data.serverTime);

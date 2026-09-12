@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# pointer-skill-version: <POINTER_SKILL_VERSION>
 # Pointer CLI helper for AI coding agents — installed by install.sh into a host repo's
 # .pointer/pointer.sh. Wraps the same endpoints skill.md documents manually, but as one
 # command instead of a 4-step curl choreography (config resolve -> login -> fetch -> filter).

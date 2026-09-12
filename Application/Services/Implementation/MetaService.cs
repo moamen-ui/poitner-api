@@ -1,5 +1,6 @@
 using System.Reflection;
 using Microsoft.Extensions.Configuration;
+using Pointer.Application.Common;
 using Pointer.Application.DTOs.Meta;
 using Pointer.Application.Services.Interfaces;
 
@@ -11,7 +12,9 @@ public sealed class MetaService(IConfiguration configuration, IBrandingService b
     {
         var minCliVersion = configuration["Cli:MinVersion"] ?? "0.0.0";
         var branding = await brandingService.GetAsync(publicBase, Array.Empty<string>().ToHashSet());
-        var productName = branding.IsSuccess && branding.Data != null ? branding.Data.ProductName : "Pointer";
+        // BrandingDefaults, not a literal: a hardcoded "Pointer" here is the same white-label leak
+        // the CLI had, and /api/meta is what the CLI reads the product name from.
+        var productName = branding.IsSuccess && branding.Data != null ? branding.Data.ProductName : BrandingDefaults.ProductName;
 
         var assembly = Assembly.GetEntryAssembly();
         var informationalVersion = assembly?.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion ?? "0.0.0-dev";
@@ -21,7 +24,9 @@ public sealed class MetaService(IConfiguration configuration, IBrandingService b
             Version = informationalVersion,
             ApiVersion = 1,
             MinCliVersion = minCliVersion,
-            SkillVersion = null,
+            // Resolved through the SAME helper the served-file middleware stamps with — if these
+            // diverged, doctor would compare an installed stamp against a different value.
+            SkillVersion = SkillVersionResolver.Resolve(configuration),
             ProductName = productName,
             ServerTime = DateTime.UtcNow
         };

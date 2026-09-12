@@ -15,6 +15,7 @@ services:
       # suite legitimately blows through — it registers and accepts dozens of invitations from one
       # address in minutes. Raised here rather than in the code so production keeps the real limit.
       Security__RateLimits__SignupPerHour: "1000"
+      Pointer__SkillVersion: "${POINTER_SKILL_VERSION:-}"
     ports: ["8090:8080"]
     depends_on: [db, mailpit]
     volumes: ["./:/src"]

@@ -424,6 +424,32 @@
         </table>
       </div>
 
+      <h2>Keeping the AI skills up to date</h2>
+      <p>
+        <code>init</code> copies the AI skills and <code>pointer.sh</code> into your repository, where they
+        stay exactly as they were on the day you installed them. The server keeps changing. A skill file
+        installed months ago is frozen prose describing an API that has moved on &mdash; and nothing about it
+        looks wrong, which is what makes it expensive.
+      </p>
+      <p>
+        Every served skill and script carries a version stamp, so your installed copy can be compared with the
+        server&rsquo;s:
+      </p>
+      <ul>
+        <li><code>npx -y pointer-feedback doctor</code> reports a <code>stale</code> warning naming each file that is behind.</li>
+        <li><code>npx -y pointer-feedback update --check</code> lists what would change and writes nothing.</li>
+        <li><code>npx -y pointer-feedback update</code> refreshes them in place, preserving the <code>.agents/</code> symlinks.</li>
+      </ul>
+      <p>
+        A stale skill is a warning, never an error &mdash; it still works, it is just behind. Nothing updates
+        silently: refreshing is always something you ask for.
+      </p>
+      <p class="note">
+        Self-hosting: the stamp defaults to the API&rsquo;s build version, so every deploy moves it. Set
+        <code>Pointer__SkillVersion</code> to invalidate installed copies after editing skill prose without
+        shipping new code.
+      </p>
+
       <h2>Troubleshooting &amp; common pitfalls</h2>
       <ul>
         <li>

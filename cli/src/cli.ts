@@ -1,5 +1,6 @@
 import { initCommand } from './commands/init.js';
 import { doctorCommand } from './commands/doctor.js';
+import { updateCommand } from './commands/update.js';
 import { argv, cwd } from 'node:process';
 import { BUILD_CLI_VERSION } from './build-constants.js';
 
@@ -10,7 +11,7 @@ function parseArgs(args: string[]) {
         const arg = args[i];
         if (arg.startsWith('--')) {
             const key = arg.slice(2);
-            if (key === 'no-app-url' || key === 'no-inject' || key === 'no-skills' || key === 'yes' || key === 'json' || key === 'help' || key === 'fix') {
+            if (key === 'no-app-url' || key === 'no-inject' || key === 'no-skills' || key === 'yes' || key === 'json' || key === 'help' || key === 'fix' || key === 'check') {
                 parsed[key] = true;
             } else if (i + 1 < args.length && !args[i+1].startsWith('-')) {
                 parsed[key] = args[i+1];
@@ -35,6 +36,7 @@ Usage: pointer <command> [options]
 Commands:
   init      Set up the feedback widget in your project
   doctor    Diagnose an install and report what is wrong
+  update    Refresh the served skills to the server's current version
 
 Options:
   -h, --help    Show this help message
@@ -106,6 +108,25 @@ Exit codes:
             json: parsed['json'] === true,
             fix: parsed['fix'] === true,
         }, BUILD_CLI_VERSION);
+        process.exit(code);
+    } else if (command === 'update') {
+        if (parsed['help']) {
+            console.log(`
+Usage: pointer update [options]
+
+Refreshes the AI skills and pointer.sh from the configured server.
+
+Options:
+  --server <url>     Override the server from .pointer/config.json
+  --check            Report what is out of date without writing anything
+  -h, --help         Show this help
+`);
+            process.exit(0);
+        }
+        const code = await updateCommand(cwd(), {
+            server: typeof parsed['server'] === 'string' ? parsed['server'] : undefined,
+            check: parsed['check'] === true,
+        });
         process.exit(code);
     } else {
         console.error(`Unknown command: ${command}`);

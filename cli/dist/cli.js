@@ -537,10 +537,58 @@ async function postEvent(server, token, payload) {
 }
 
 // src/checks.ts
-import { promises as fs6 } from "node:fs";
-import { join as join6 } from "node:path";
+import { promises as fs7 } from "node:fs";
+import { join as join7 } from "node:path";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
+
+// src/lib/skill-stamp.ts
+import { promises as fs6 } from "node:fs";
+async function readStamp(path) {
+  let content;
+  try {
+    content = await fs6.readFile(path, "utf8");
+  } catch {
+    return null;
+  }
+  const lines = content.split("\n");
+  if (path.endsWith(".md")) {
+    if (lines[0]?.trim() !== "---")
+      return null;
+    let close = -1;
+    for (let i = 1; i < lines.length; i++) {
+      if (lines[i].trim() === "---") {
+        close = i;
+        break;
+      }
+    }
+    if (close === -1)
+      return null;
+    for (let i = close + 1; i < lines.length; i++) {
+      const match = lines[i].match(/pointer-skill-version:\s*([^\s>-][^>]*?)\s*(?:-->)?\s*$/);
+      if (match)
+        return match[1].trim();
+      if (lines[i].trim() !== "" && !lines[i].trim().startsWith("<!--"))
+        break;
+    }
+    return null;
+  }
+  if (path.endsWith(".sh")) {
+    const match = lines[1]?.match(/^#\s*pointer-skill-version:\s*(.+?)\s*$/);
+    return match ? match[1].trim() : null;
+  }
+  return null;
+}
+
+// src/lib/skill-paths.ts
+import { join as join6 } from "node:path";
+function skillFilesFor(config) {
+  const layout = SKILL_FILES[config.aiTool ?? ""] ?? SKILL_FILES.other;
+  const skillPaths = config.skillsDir ? ["pointer-init", "pointer-feedback"].map((name) => join6(config.skillsDir, name, "SKILL.md")) : [...layout];
+  return [...skillPaths, ".pointer/pointer.sh"];
+}
+
+// src/checks.ts
 var execFileAsync = promisify(execFile);
 function compareSemver(a, b) {
   const parse = (v) => {
@@ -573,7 +621,7 @@ async function fetchWithTimeout(url, ms, init) {
 }
 async function readCredentialsKey(cwd2) {
   try {
-    const raw = await fs6.readFile(join6(cwd2, ".pointer/credentials.env"), "utf8");
+    const raw = await fs7.readFile(join7(cwd2, ".pointer/credentials.env"), "utf8");
     const match = raw.match(/^POINTER_API_KEY=(.*)$/m);
     return match?.[1]?.trim() || void 0;
   } catch {
@@ -691,9 +739,30 @@ async function runInitChecks(cwd2, overrides = {}, cliVersion = "0.0.0") {
     }
   }
   checks.push(await skillsCheck(cwd2, config));
+  if (meta?.skillVersion) {
+    const stale = [];
+    for (const rel of skillFilesFor(config)) {
+      const abs = join7(cwd2, rel);
+      try {
+        await fs7.access(abs);
+      } catch {
+        continue;
+      }
+      if (await readStamp(abs) !== meta.skillVersion)
+        stale.push(rel);
+    }
+    checks.push(
+      stale.length === 0 ? { id: "stale", status: "ok", message: `Skills match the server (${meta.skillVersion})` } : {
+        id: "stale",
+        status: "warn",
+        message: `${stale.length} file${stale.length === 1 ? "" : "s"} behind the server (${meta.skillVersion}): ${stale.join(", ")}`,
+        hint: "Run `npx -y pointer-feedback update`"
+      }
+    );
+  }
   checks.push(...await gitignoreChecks(cwd2));
   try {
-    await fs6.access(join6(cwd2, ".pointer/stack.json"));
+    await fs7.access(join7(cwd2, ".pointer/stack.json"));
     checks.push({ id: "stack", status: "ok", message: "Stack registered" });
   } catch {
     checks.push({ id: "stack", status: "warn", message: "Stack not registered", fixable: true });
@@ -705,7 +774,7 @@ async function widgetCheck(cwd2) {
   const candidates = [detection?.htmlPath, "index.html", "public/index.html", "src/index.html"].filter(Boolean);
   for (const rel of candidates) {
     try {
-      const html = await fs6.readFile(join6(cwd2, rel), "utf8");
+      const html = await fs7.readFile(join7(cwd2, rel), "utf8");
       if (html.includes("<!-- pointer-feedback:start -->") || html.includes("<pointer-feedback")) {
         return { id: "widget", status: "ok", message: `Widget found in ${rel}` };
       }
@@ -714,7 +783,7 @@ async function widgetCheck(cwd2) {
   }
   for (const envFile of [".env", ".env.local", ".env.development"]) {
     try {
-      const env = await fs6.readFile(join6(cwd2, envFile), "utf8");
+      const env = await fs7.readFile(join7(cwd2, envFile), "utf8");
       if (/^VITE_POINTER_PROJECT=/m.test(env)) {
         return { id: "widget", status: "ok", message: `Widget env configured in ${envFile}` };
       }
@@ -736,7 +805,7 @@ async function skillsCheck(cwd2, config) {
   const missing = [];
   for (const rel of expected) {
     try {
-      await fs6.access(join6(cwd2, config.skillsDir ?? "", rel));
+      await fs7.access(join7(cwd2, config.skillsDir ?? "", rel));
     } catch {
       missing.push(rel);
     }
@@ -762,7 +831,7 @@ async function gitignoreChecks(cwd2) {
     return results;
   }
   try {
-    const ignore = await fs6.readFile(join6(cwd2, ".gitignore"), "utf8");
+    const ignore = await fs7.readFile(join7(cwd2, ".gitignore"), "utf8");
     results.push(
       ignore.includes(".pointer/") ? { id: "gitignore", status: "ok", message: "Credentials ignored by git" } : { id: "gitignore", status: "warn", message: ".gitignore is missing the .pointer/ entries", fixable: true }
     );
@@ -773,8 +842,8 @@ async function gitignoreChecks(cwd2) {
 }
 
 // src/commands/init.ts
-import { promises as fs7 } from "node:fs";
-import { join as join7 } from "node:path";
+import { promises as fs8 } from "node:fs";
+import { join as join8 } from "node:path";
 async function initCommand(cwd2, options = {}) {
   const isYes = options["yes"] || options["json"];
   const isJson = options["json"];
@@ -973,13 +1042,13 @@ async function initCommand(cwd2, options = {}) {
     const installed = await installSkills(server, tool, cwd2, skillsDir);
     filesMod.push(...installed);
   }
-  const pkgStr = await fs7.readFile(join7(cwd2, "package.json"), "utf8").catch(() => "{}");
+  const pkgStr = await fs8.readFile(join8(cwd2, "package.json"), "utf8").catch(() => "{}");
   const tokens = extractTokens(JSON.parse(pkgStr));
   const stackMeta = { frontend: tokens.frontend, backend: tokens.backend, aiTool: tool };
   try {
     await api(server, `/api/projects/${finalProjectKey}/stack`, { method: "POST", body: stackMeta, token });
-    await fs7.mkdir(join7(cwd2, ".pointer"), { recursive: true });
-    await fs7.writeFile(join7(cwd2, ".pointer/stack.json"), JSON.stringify(stackMeta, null, 2), "utf8");
+    await fs8.mkdir(join8(cwd2, ".pointer"), { recursive: true });
+    await fs8.writeFile(join8(cwd2, ".pointer/stack.json"), JSON.stringify(stackMeta, null, 2), "utf8");
   } catch (e) {
     if (!isJson)
       console.log(`\u26A0 Stack not registered (${e.code || 500})`);
@@ -1029,8 +1098,8 @@ Next: start your dev server, open the app, click the ${product} button and sign 
 }
 
 // src/commands/doctor.ts
-import { promises as fs8 } from "node:fs";
-import { join as join8 } from "node:path";
+import { promises as fs9 } from "node:fs";
+import { join as join9 } from "node:path";
 var ICON = { ok: "\u2714", warn: "\u26A0", error: "\u2718" };
 function exitCodeFor(checks) {
   const failed = checks.filter((c) => c.status === "error");
@@ -1078,7 +1147,7 @@ async function reportRun(cwd2, options, checks, ok) {
     const server = (options.server || config.server || "").replace(/\/$/, "");
     if (!server)
       return;
-    const apiKey = (await fs8.readFile(join8(cwd2, ".pointer/credentials.env"), "utf8")).match(/^POINTER_API_KEY=(.*)$/m)?.[1]?.trim();
+    const apiKey = (await fs9.readFile(join9(cwd2, ".pointer/credentials.env"), "utf8")).match(/^POINTER_API_KEY=(.*)$/m)?.[1]?.trim();
     if (!apiKey)
       return;
     const login = await api(server, "/api/auth/login-with-key", { method: "POST", body: { apiKey } });
@@ -1101,7 +1170,7 @@ async function applyFixes(cwd2, checks) {
     if (token)
       return token;
     try {
-      const apiKey = (await fs8.readFile(join8(cwd2, ".pointer/credentials.env"), "utf8")).match(/^POINTER_API_KEY=(.*)$/m)?.[1]?.trim();
+      const apiKey = (await fs9.readFile(join9(cwd2, ".pointer/credentials.env"), "utf8")).match(/^POINTER_API_KEY=(.*)$/m)?.[1]?.trim();
       if (!apiKey || !server)
         return void 0;
       const login = await api(server, "/api/auth/login-with-key", { method: "POST", body: { apiKey } });
@@ -1114,8 +1183,8 @@ async function applyFixes(cwd2, checks) {
   for (const check of checks.filter((c) => c.fixable && c.status !== "ok")) {
     try {
       if (check.id === "gitignore") {
-        const path = join8(cwd2, ".gitignore");
-        const existing = await fs8.readFile(path, "utf8").catch(() => "");
+        const path = join9(cwd2, ".gitignore");
+        const existing = await fs9.readFile(path, "utf8").catch(() => "");
         if (!existing.includes(".pointer/")) {
           const block = [
             "",
@@ -1125,7 +1194,7 @@ async function applyFixes(cwd2, checks) {
             "!.pointer/stack.json",
             ""
           ].join("\n");
-          await fs8.writeFile(path, existing + block, "utf8");
+          await fs9.writeFile(path, existing + block, "utf8");
           repaired.push(check.id);
         }
       } else if (check.id === "skills" && server && config.aiTool) {
@@ -1140,7 +1209,7 @@ async function applyFixes(cwd2, checks) {
           body: { kind: detection.kind, evidence: detection.evidence }
         }).catch(() => null) : null;
         if (stack) {
-          await fs8.writeFile(join8(cwd2, ".pointer/stack.json"), JSON.stringify(stack, null, 2) + "\n", "utf8");
+          await fs9.writeFile(join9(cwd2, ".pointer/stack.json"), JSON.stringify(stack, null, 2) + "\n", "utf8");
           repaired.push(check.id);
         }
       }
@@ -1148,6 +1217,82 @@ async function applyFixes(cwd2, checks) {
     }
   }
   return repaired;
+}
+
+// src/commands/update.ts
+import { promises as fs10 } from "node:fs";
+import { dirname as dirname3, join as join10 } from "node:path";
+function sourceFor(path) {
+  if (path.endsWith("pointer.sh"))
+    return "/pointer.sh";
+  if (path.includes("pointer-init"))
+    return "/pointer-init.md";
+  if (path.includes("pointer-feedback"))
+    return "/skill.md";
+  return null;
+}
+async function updateCommand(cwd2, options) {
+  const config = await readConfig(cwd2);
+  const server = (options.server || config.server || "").replace(/\/$/, "");
+  if (!server) {
+    console.error("No server configured \u2014 run `npx -y pointer-feedback init` first.");
+    return 1;
+  }
+  let served = null;
+  try {
+    const meta = await api(server, "/api/meta");
+    served = meta?.skillVersion ?? null;
+  } catch {
+    console.error(`Could not reach ${server} \u2014 check the URL.`);
+    return 1;
+  }
+  const files = skillFilesFor(config);
+  const stale = [];
+  for (const rel of files) {
+    const abs = join10(cwd2, rel);
+    try {
+      await fs10.access(abs);
+    } catch {
+      continue;
+    }
+    const installed = await readStamp(abs);
+    if (installed !== served)
+      stale.push({ path: rel, installed });
+  }
+  if (stale.length === 0) {
+    console.log(`Up to date (skill version ${served ?? "unknown"}).`);
+    return 0;
+  }
+  if (options.check) {
+    console.log(`${stale.length} file${stale.length === 1 ? "" : "s"} out of date (server ${served ?? "unknown"}):`);
+    for (const f of stale)
+      console.log(`  ${f.path} (${f.installed ?? "unstamped"})`);
+    return 0;
+  }
+  let updated = 0;
+  const from = stale[0]?.installed ?? "unstamped";
+  for (const f of stale) {
+    const source = sourceFor(f.path);
+    if (!source)
+      continue;
+    try {
+      const res = await fetch(`${server}${source}`);
+      if (!res.ok)
+        throw new Error(`HTTP ${res.status}`);
+      const body = await res.text();
+      const abs = join10(cwd2, f.path);
+      await fs10.mkdir(dirname3(abs), { recursive: true });
+      await fs10.writeFile(abs, body, "utf8");
+      if (abs.endsWith(".sh"))
+        await fs10.chmod(abs, 493).catch(() => {
+        });
+      updated++;
+    } catch (err) {
+      console.error(`  failed to update ${f.path}: ${err?.message ?? err}`);
+    }
+  }
+  console.log(`updated ${updated} file${updated === 1 ? "" : "s"} (skill version ${from} \u2192 ${served ?? "unknown"})`);
+  return updated === stale.length ? 0 : 1;
 }
 
 // src/cli.ts
@@ -1159,7 +1304,7 @@ function parseArgs(args) {
     const arg = args[i];
     if (arg.startsWith("--")) {
       const key = arg.slice(2);
-      if (key === "no-app-url" || key === "no-inject" || key === "no-skills" || key === "yes" || key === "json" || key === "help" || key === "fix") {
+      if (key === "no-app-url" || key === "no-inject" || key === "no-skills" || key === "yes" || key === "json" || key === "help" || key === "fix" || key === "check") {
         parsed[key] = true;
       } else if (i + 1 < args.length && !args[i + 1].startsWith("-")) {
         parsed[key] = args[i + 1];
@@ -1185,6 +1330,7 @@ Usage: pointer <command> [options]
 Commands:
   init      Set up the feedback widget in your project
   doctor    Diagnose an install and report what is wrong
+  update    Refresh the served skills to the server's current version
 
 Options:
   -h, --help    Show this help message
@@ -1253,6 +1399,25 @@ Exit codes:
       json: parsed["json"] === true,
       fix: parsed["fix"] === true
     }, BUILD_CLI_VERSION);
+    process.exit(code);
+  } else if (command === "update") {
+    if (parsed["help"]) {
+      console.log(`
+Usage: pointer update [options]
+
+Refreshes the AI skills and pointer.sh from the configured server.
+
+Options:
+  --server <url>     Override the server from .pointer/config.json
+  --check            Report what is out of date without writing anything
+  -h, --help         Show this help
+`);
+      process.exit(0);
+    }
+    const code = await updateCommand(cwd(), {
+      server: typeof parsed["server"] === "string" ? parsed["server"] : void 0,
+      check: parsed["check"] === true
+    });
     process.exit(code);
   } else {
     console.error(`Unknown command: ${command}`);

@@ -2,6 +2,7 @@
 name: pointer-init
 description: Use when the user wants to add, install, init, or integrate the <POINTER_PRODUCT> feedback widget (<pointer-feedback>) into an app — e.g. "add <POINTER_PRODUCT> to this app", "set up <POINTER_PRODUCT> feedback", "integrate the feedback widget". Asks the user for the variables (project key, <POINTER_PRODUCT> server URL, environment), detects the host stack (Vite/Angular/Next/static), injects the loader, wires the env, and verifies. No build step required.
 ---
+<!-- pointer-skill-version: <POINTER_SKILL_VERSION> -->
 
 # Add <POINTER_PRODUCT> to this app
 

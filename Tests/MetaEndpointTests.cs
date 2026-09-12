@@ -43,7 +43,9 @@ public class MetaEndpointTests
         Assert.Equal(1, result.ApiVersion);
         Assert.Equal("1.2.3", result.MinCliVersion);
         Assert.Equal("Test Product", result.ProductName);
-        Assert.Null(result.SkillVersion);
+        // R2-03 fills this in. It is what `doctor` compares an installed skill copy against, so a
+        // null here would make every install look up to date regardless of how old it is.
+        Assert.False(string.IsNullOrWhiteSpace(result.SkillVersion));
         // Version string depends on assembly info, just check it's not null.
         Assert.NotNull(result.Version);
         // ServerTime should be roughly now UTC.

@@ -208,6 +208,7 @@ var injectedFiles = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
     "/pointer-init.md",
     "/skill.md",
     "/install.sh",
+    "/pointer.sh",
 };
 app.Use(async (ctx, next) =>
 {
@@ -231,9 +232,15 @@ app.Use(async (ctx, next) =>
             var product = await settingsService.GetStringAsync(
                 ISettingsService.BrandProductName, BrandingDefaults.ProductName);
 
+            // The stamp lets an installed copy be compared against the server's, so `doctor` can
+            // say "your skill.md is from a different version" instead of the developer wondering
+            // why an instruction they read months ago no longer matches the API.
+            var skillVersion = Pointer.Application.Common.SkillVersionResolver.Resolve(app.Configuration);
+
             var text = (await File.ReadAllTextAsync(file))
                 .Replace("<POINTER_SERVER>", origin)
-                .Replace("<POINTER_PRODUCT>", product);
+                .Replace("<POINTER_PRODUCT>", product)
+                .Replace("<POINTER_SKILL_VERSION>", skillVersion);
             ctx.Response.ContentType = path.EndsWith(".sh", StringComparison.OrdinalIgnoreCase)
                 ? "text/x-shellscript; charset=utf-8"
                 : "text/markdown; charset=utf-8";
