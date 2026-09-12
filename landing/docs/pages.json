@@ -48,6 +48,13 @@
       "nav": "Workflow",
       "ownedBy": "R2-04",
       "summary": "In-app updates badge, notifications dropdown, and the author verification loop (thumbs up/down)."
+    },
+    {
+      "file": "/data.html",
+      "title": "Data & self-hosting",
+      "nav": "Privacy & self-hosting",
+      "ownedBy": "R3-05",
+      "summary": "What is captured, what is never captured, retention, deletion semantics, and self-hosting boundaries."
     }
   ]
 }
