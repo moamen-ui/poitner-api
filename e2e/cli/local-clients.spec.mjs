@@ -26,6 +26,31 @@ const STATE_DIR = join(e2eRoot, 'state');
 
 test.skip(process.env.TIER === 'pr', 'nightly tier only — skipped during PR tier');
 
+/**
+ * Asserts that every framework's package barrel exposes the /api/meta client.
+ *
+ * The three re-export differently, and neither shape can be verified by grepping the barrel alone:
+ *   Angular:   export { getApiMetaResource } from './meta/meta.service';   // symbol IS in barrel
+ *   React/Vue: export * from './meta/meta';                                // symbol is NOT
+ * A barrel of `export *` lines can never contain a symbol name, so the original grep could only
+ * ever fail for React and Vue. Follow the re-export to the module it names instead.
+ */
+function expectMetaClientExported(repoRoot) {
+  for (const fw of ['angular', 'react', 'vue']) {
+    const barrel = readFileSync(join(repoRoot, 'clients', fw, 'src', 'index.ts'), 'utf8');
+    const metaLine = barrel.split('\n').find((l) => /from '\.\/meta\//.test(l));
+    expect(metaLine, `${fw} barrel must reach the meta module (AC-1)`).toBeTruthy();
+
+    const modulePath = metaLine.match(/from '\.\/(.+?)'/)[1];
+    const moduleSource = readFileSync(join(repoRoot, 'clients', fw, 'src', `${modulePath}.ts`), 'utf8');
+
+    expect(
+      /getApiMeta|ApiMeta/.test(metaLine) || /getApiMeta|ApiMeta/.test(moduleSource),
+      `${fw} must expose getApiMeta/ApiMeta through its barrel (AC-1)`,
+    ).toBe(true);
+  }
+}
+
 test('R1-10-01 — local generate → build → publish', async () => {
   const start = Date.now();
 
@@ -57,13 +82,11 @@ test('R1-10-01 — local generate → build → publish', async () => {
   expect(V, 'Printed version V must match 0.0.0-local.<unix> pattern').toMatch(/^0\.0\.0-local\.\d+$/);
 
   // 4. grep -R "getApiMeta|ApiMeta" clients/angular/src/index.ts clients/react/src/index.ts clients/vue/src/index.ts
-  const angularBarrel = readFileSync(join(repoRoot, 'clients', 'angular', 'src', 'index.ts'), 'utf8');
-  const reactBarrel = readFileSync(join(repoRoot, 'clients', 'react', 'src', 'index.ts'), 'utf8');
-  const vueBarrel = readFileSync(join(repoRoot, 'clients', 'vue', 'src', 'index.ts'), 'utf8');
-
-  expect(angularBarrel, 'Angular barrel index.ts must export getApiMeta or ApiMeta (AC-1)').toMatch(/getApiMeta|ApiMeta/);
-  expect(reactBarrel, 'React barrel index.ts must export getApiMeta or ApiMeta (AC-1)').toMatch(/getApiMeta|ApiMeta/);
-  expect(vueBarrel, 'Vue barrel index.ts must export getApiMeta or ApiMeta (AC-1)').toMatch(/getApiMeta|ApiMeta/);
+  // A barrel is a list of `export * from './x/x'` lines: a symbol name never appears in it, so
+  // grepping the barrel text for getApiMeta can only ever fail. Follow the re-export instead and
+  // assert the chain that actually matters — the barrel re-exports the meta module, and the meta
+  // module exports the symbol. That is what a consumer importing from the package barrel gets.
+  expectMetaClientExported(repoRoot);
 
   // 5. For each of angular|react|vue: npm view @moamen-ui/pointer-<fw> versions --registry http://localhost:4873 --json
   const angularVersions = await viewVersions('@moamen-ui/pointer-angular');
@@ -148,13 +171,7 @@ test('R1-10-04 ⛓ — the whole loop with no GitHub token', async () => {
   const V = pubResult.version;
   expect(V, 'Printed version V must match 0.0.0-local.<unix> pattern').toMatch(/^0\.0\.0-local\.\d+$/);
 
-  const angularBarrel = readFileSync(join(repoRoot, 'clients', 'angular', 'src', 'index.ts'), 'utf8');
-  const reactBarrel = readFileSync(join(repoRoot, 'clients', 'react', 'src', 'index.ts'), 'utf8');
-  const vueBarrel = readFileSync(join(repoRoot, 'clients', 'vue', 'src', 'index.ts'), 'utf8');
-
-  expect(angularBarrel, 'Angular barrel must export symbol').toMatch(/getApiMeta|ApiMeta/);
-  expect(reactBarrel, 'React barrel must export symbol').toMatch(/getApiMeta|ApiMeta/);
-  expect(vueBarrel, 'Vue barrel must export symbol').toMatch(/getApiMeta|ApiMeta/);
+  expectMetaClientExported(repoRoot);
 
   const angularVersions = await viewVersions('@moamen-ui/pointer-angular', { env: cleanEnv });
   const reactVersions = await viewVersions('@moamen-ui/pointer-react', { env: cleanEnv });

@@ -8,10 +8,13 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { get, post, patch, login, ApiError } from '../scripts/lib/api.mjs';
 import { preAuthWidget } from './lib/auth';
+import { credentials as loadCredentials } from '../scripts/lib/state.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const STATE_DIR = join(here, '..', 'state');
-const credentials = JSON.parse(readFileSync(join(STATE_DIR, 'credentials.json'), 'utf8'));
+// Read lazily: Playwright evaluates this file to DISCOVER tests, so an eager read on an
+// unseeded workspace made `playwright test --list` report 0 tests in 0 files.
+const credentials = () => loadCredentials();
 
 // Overridable so a one-off manual validation run (against a live, non-reset dev DB) can pick a
 // fresh key rather than colliding with a soft-deleted row of a prior debug run — the real suite
@@ -23,7 +26,7 @@ const SMOKE_PATH = SMOKE_KEY === 'e2e-widget-smoke' ? '/' : `/?project=${SMOKE_K
 test.beforeAll(async () => {
   // Reuses seed.mjs's tenant/users (must have already run) — only creates the one extra project.
   // Idempotent: a re-run (or a Playwright worker retry) reuses the project if it already exists.
-  const wsAdmin = await login(credentials.wsAdmin.email, credentials.wsAdmin.password);
+  const wsAdmin = await login(credentials().wsAdmin.email, credentials().wsAdmin.password);
   let project;
   try {
     project = await post('/api/admin/projects', { key: SMOKE_KEY, name: 'E2E Widget Smoke' }, { token: wsAdmin.token });
@@ -37,7 +40,7 @@ test.beforeAll(async () => {
 });
 
 test('Tester creates a staging bug report by clicking the real broken checkout button', async ({ page }) => {
-  const tester = await login(credentials.tester.email, credentials.tester.password);
+  const tester = await login(credentials().tester.email, credentials().tester.password);
   await preAuthWidget(page, tester.token, tester.user);
 
   // element.ts's init() renders the toolbar (#pf-add) BEFORE awaiting fetchCaptureConfig(), which
@@ -74,7 +77,7 @@ test('Tester creates a staging bug report by clicking the real broken checkout b
 });
 
 test('Client creates a comment without an environment switcher, and it syncs correctly to the API', async ({ page }) => {
-  const client = await login(credentials.client.email, credentials.client.password);
+  const client = await login(credentials().client.email, credentials().client.password);
   await preAuthWidget(page, client.token, client.user);
   await page.goto(SMOKE_PATH);
 
@@ -106,7 +109,7 @@ test('Client creates a comment without an environment switcher, and it syncs cor
   // comments (confirmed product behavior, not a bug — CommentService.ListAsync scopes
   // IsQuickAccess callers to AuthorId == callerId), so the Tester's bug report is checked here,
   // not through the Client's own fetch.
-  const wsAdmin = await login(credentials.wsAdmin.email, credentials.wsAdmin.password);
+  const wsAdmin = await login(credentials().wsAdmin.email, credentials().wsAdmin.password);
   const res = await get(`/api/projects/${SMOKE_KEY}/comments?pageSize=100`, { token: wsAdmin.token });
   const items = res.items as Array<Record<string, any>>;
 

@@ -8,10 +8,13 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { raw, get, patch, post, del, login } from '../scripts/lib/api.mjs';
 import { Environment } from '../scripts/lib/constants.mjs';
+import { credentials as loadCredentials } from '../scripts/lib/state.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const STATE_DIR = join(here, '..', 'state');
-const credentials = JSON.parse(readFileSync(join(STATE_DIR, 'credentials.json'), 'utf8'));
+// Read lazily: Playwright evaluates this file to DISCOVER tests, so an eager read on an
+// unseeded workspace made `playwright test --list` report 0 tests in 0 files.
+const credentials = () => loadCredentials();
 
 /**
  * Resolves a project's database ID from its key via the admin API.
@@ -25,8 +28,8 @@ async function getProjectId(key, token) {
 
 test('R1-05-01 — origin-enforced-blocks-foreign-origin', async () => {
   // 1. Authenticate as tester and wsAdmin.
-  const tester = await login(credentials.tester.email, credentials.tester.password);
-  const wsAdmin = await login(credentials.wsAdmin.email, credentials.wsAdmin.password);
+  const tester = await login(credentials().tester.email, credentials().tester.password);
+  const wsAdmin = await login(credentials().wsAdmin.email, credentials().wsAdmin.password);
 
   const commentPayload = {
     body: 'origin matrix 1',
@@ -94,7 +97,7 @@ test('R1-05-01 — origin-enforced-blocks-foreign-origin', async () => {
 });
 
 test('R1-05-02 — origin-enforced-allows-localhost-local', async () => {
-  const tester = await login(credentials.tester.email, credentials.tester.password);
+  const tester = await login(credentials().tester.email, credentials().tester.password);
 
   const localPayload = {
     body: 'origin localhost local probe',
@@ -153,8 +156,8 @@ test('R1-05-02 — origin-enforced-allows-localhost-local', async () => {
 });
 
 test('R1-05-03 — wildcard app-url matrix', async () => {
-  const wsAdmin = await login(credentials.wsAdmin.email, credentials.wsAdmin.password);
-  const tester = await login(credentials.tester.email, credentials.tester.password);
+  const wsAdmin = await login(credentials().wsAdmin.email, credentials().wsAdmin.password);
+  const tester = await login(credentials().tester.email, credentials().tester.password);
   const betaId = await getProjectId('e2e-beta', wsAdmin.token);
 
   // Create scratch environment on e2e-beta for wildcard pattern testing.
@@ -254,9 +257,9 @@ test('R1-05-03 — wildcard app-url matrix', async () => {
 });
 
 test('R1-05-04 — no-origin: staff vs quick-access', async () => {
-  const wsAdmin = await login(credentials.wsAdmin.email, credentials.wsAdmin.password);
-  const dev = await login(credentials.developer.email, credentials.developer.password);
-  const client = await login(credentials.client.email, credentials.client.password);
+  const wsAdmin = await login(credentials().wsAdmin.email, credentials().wsAdmin.password);
+  const dev = await login(credentials().developer.email, credentials().developer.password);
+  const client = await login(credentials().client.email, credentials().client.password);
   const alphaId = await getProjectId('e2e-alpha', wsAdmin.token);
 
   // 1. WA: Temporarily enable origin enforcement on e2e-alpha.
@@ -297,7 +300,7 @@ test('R1-05-04 — no-origin: staff vs quick-access', async () => {
 });
 
 test('R1-05-07 — dashboard-origin exemption', async () => {
-  const wsAdmin = await login(credentials.wsAdmin.email, credentials.wsAdmin.password);
+  const wsAdmin = await login(credentials().wsAdmin.email, credentials().wsAdmin.password);
 
   // Find or create a parent comment on e2e-beta with Environment.Production.
   // The test stands alone: if seed comment exists, use it; otherwise create one via an allowed origin.

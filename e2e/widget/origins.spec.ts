@@ -12,10 +12,13 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { get, login } from '../scripts/lib/api.mjs';
 import { preAuthWidget } from './lib/auth';
+import { credentials as loadCredentials } from '../scripts/lib/state.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const STATE_DIR = join(here, '..', 'state');
-const credentials = JSON.parse(readFileSync(join(STATE_DIR, 'credentials.json'), 'utf8'));
+// Read lazily: Playwright evaluates this file to DISCOVER tests, so an eager read on an
+// unseeded workspace made `playwright test --list` report 0 tests in 0 files.
+const credentials = () => loadCredentials();
 
 // The beta fixture page is served on port 4182 (port 4173 is held by smoke, 4181 by alpha).
 const BETA_FIXTURE_PORT = 4182;
@@ -51,7 +54,7 @@ test.afterAll(() => {
 });
 
 test('R1-05-06 — origin-403 widget toast', async ({ page }) => {
-  const tester = await login(credentials.tester.email, credentials.tester.password);
+  const tester = await login(credentials().tester.email, credentials().tester.password);
 
   // 1-2. Pre-authenticate tester and navigate to beta fixture on port 4182.
   // preAuthWidget sets localStorage pointer_token/pointer_user and sessionStorage pointer_visible.
@@ -119,7 +122,7 @@ test('R1-05-06 — origin-403 widget toast', async ({ page }) => {
   await expect(popover).toBeEmpty({ timeout: 10_000 });
 
   // 5. Staff API check: verify via API that the newest comment on e2e-beta was created with environment === 1 (Local).
-  const wsAdmin = await login(credentials.wsAdmin.email, credentials.wsAdmin.password);
+  const wsAdmin = await login(credentials().wsAdmin.email, credentials().wsAdmin.password);
   const commentsRes = await get('/api/projects/e2e-beta/comments?pageSize=5', { token: wsAdmin.token });
   const items = commentsRes.items as Array<Record<string, any>>;
   const newestComment = items?.[0];
