@@ -48,7 +48,7 @@ builder.Services.AddJwtAuth(builder.Configuration);
 builder.Services.AddAuthorization();
 builder.Services.AddHostedService<DemoCleanupService>();
 
-builder.Services.AddApiRateLimiting();
+builder.Services.AddApiRateLimiting(builder.Configuration);
 
 // CORS is split by audience. The WIDGET is embedded on arbitrary customer sites and calls the
 // public/widget endpoints (comments, replies, uploads, statuses, roles, login, register,

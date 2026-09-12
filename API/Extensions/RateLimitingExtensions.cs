@@ -5,12 +5,27 @@ namespace Pointer.API.Extensions;
 
 public static class RateLimitingExtensions
 {
-    public static IServiceCollection AddApiRateLimiting(this IServiceCollection services) =>
-        services.AddRateLimiter(Configure);
+    public static IServiceCollection AddApiRateLimiting(this IServiceCollection services, IConfiguration? configuration = null) =>
+        services.AddRateLimiter(o => Configure(o, configuration));
 
     // Public (not folded into AddApiRateLimiting) so tests can assert on the configured options.
-    public static void Configure(RateLimiterOptions o)
+    public static void Configure(RateLimiterOptions o) => Configure(o, null);
+
+    /// <param name="configuration">
+    /// Optional overrides under <c>Security:RateLimits</c>. Only the signup budget is overridable,
+    /// and only upward-in-practice: an end-to-end suite legitimately registers and accepts dozens
+    /// of invitations from one address in a few minutes, which the production budget of 5/hour is
+    /// meant to stop. Weakening the shipped default to make tests pass would remove the protection
+    /// for everyone; making it configurable lets the local compose stack raise it and leaves
+    /// production alone.
+    /// </param>
+    public static void Configure(RateLimiterOptions o, IConfiguration? configuration)
     {
+        var signupPermitLimit = 5;
+        var configured = configuration?["Security:RateLimits:SignupPerHour"];
+        if (int.TryParse(configured, out var parsed) && parsed > 0)
+            signupPermitLimit = parsed;
+
         // The framework default is 503, which reads as an outage to clients (and to anyone
         // debugging with curl). Throttled callers must see 429 + Retry-After instead.
         o.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
@@ -32,7 +47,7 @@ public static class RateLimitingExtensions
                 ClientIp(ctx),
                 _ => new FixedWindowRateLimiterOptions
                 {
-                    PermitLimit = 5,
+                    PermitLimit = signupPermitLimit,
                     Window = TimeSpan.FromHours(1),
                     QueueLimit = 0
                 }));

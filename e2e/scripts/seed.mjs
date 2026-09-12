@@ -280,6 +280,16 @@ async function main() {
   // and gives the key-store scenario a known population to assert against.
   //
   // GET /api/me/api-key mints on first read, so a plain read is also the creation step.
+  // Email must be on or EmailService.SendAsync returns false silently (EmailService.cs:22) and
+  // every mail scenario asserts against an inbox that was never written to. PUT /api/admin/settings
+  // is a REPLACE-ALL writer, so this is a read-modify-write: sending a partial body would blank the
+  // demo and extension settings.
+  console.log('==> Enabling email delivery');
+  const currentSettings = await get('/api/admin/settings', { token: superAdmin.token });
+  // emailApiKeyConfigured is response-only — echoing it back is rejected.
+  delete currentSettings.emailApiKeyConfigured;
+  await put('/api/admin/settings', { ...currentSettings, emailEnabled: true }, { token: superAdmin.token });
+
   console.log('==> Minting an API key per persona');
   const keys = {};
   for (const [name, who] of Object.entries(credentials)) {
