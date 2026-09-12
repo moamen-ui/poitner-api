@@ -155,8 +155,29 @@ export const SHOT_HIGHLIGHT = '#2563eb';
 export const SCRIPT_SRC: string =
   ((document.currentScript as HTMLScriptElement | null)?.src) || '';
 
+// Build-time embedded integrity for pointer.css (injected by esbuild define in build.mjs)
+declare const __CSS_INTEGRITY__: string | undefined;
+export const CSS_INTEGRITY: string =
+  typeof __CSS_INTEGRITY__ !== 'undefined' ? __CSS_INTEGRITY__ : '';
+
+export function resolveCssUrl(scriptSrc: string): string {
+  if (!scriptSrc) return 'pointer.css';
+  try {
+    const base = typeof window !== 'undefined' && window.location?.href ? window.location.href : 'http://localhost';
+    const parsedScript = new URL(scriptSrc, base);
+    const css = new URL('pointer.css', parsedScript);
+    const v = parsedScript.searchParams.get('v');
+    if (v) {
+      css.searchParams.set('v', v);
+    }
+    return css.href;
+  } catch {
+    return 'pointer.css';
+  }
+}
+
 // Sibling assets, resolved relative to this script so they work cross-origin.
-export const CSS_URL = SCRIPT_SRC ? new URL('pointer.css', SCRIPT_SRC).href : 'pointer.css';
+export const CSS_URL = resolveCssUrl(SCRIPT_SRC);
 export const SNAPDOM_URL = SCRIPT_SRC
   ? new URL('vendor/snapdom.js', SCRIPT_SRC).href
   : 'vendor/snapdom.js';

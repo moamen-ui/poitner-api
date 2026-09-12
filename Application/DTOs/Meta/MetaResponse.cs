@@ -6,6 +6,7 @@ public sealed class MetaResponse
     public int ApiVersion { get; set; }
     public string MinCliVersion { get; set; } = string.Empty;
     public string? SkillVersion { get; set; }
+    public string? WidgetVersion { get; set; }
     public string ProductName { get; set; } = string.Empty;
     public DateTime ServerTime { get; set; }
 }

@@ -1,6 +1,6 @@
 import {
   HL_CLASS, BACKDROP_SELECTOR, DIALOG_CONTENT_SELECTOR, ENV_MAP, ENV_NAME, STATUS_STR, STATUS_INT, POSITIONS, CSS_URL, SCRIPT_SRC,
-  loadStatusCatalog, catalogToFilters, pfFetch, loadBranding, getBrandName,
+  loadStatusCatalog, catalogToFilters, pfFetch, loadBranding, getBrandName, CSS_INTEGRITY,
 } from './constants';
 import { escapeHtml, ensureHighlightStyle, matchElement, pageIsRtl, buildClipPathWithHoles } from './dom';
 import { TPL } from './templates';
@@ -107,6 +107,7 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
   private _scheduleBackdropUpdate!: () => void;
 
   connectedCallback(): void {
+    try { performance.mark('pf:boot:start'); } catch { /* ignore */ }
     if (this._mounted) return;
     this._mounted = true;
 
@@ -195,12 +196,18 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
     // issues with cross-origin fetch.
     this._styleLink = document.createElement('link');
     this._styleLink.rel = 'stylesheet';
+    if (CSS_INTEGRITY) {
+      this._styleLink.integrity = CSS_INTEGRITY;
+      this._styleLink.crossOrigin = 'anonymous';
+    }
     // A host may bundle the CSS (extension) and pass its URL; otherwise resolve from the script's
     // own origin, falling back to the API server.
     this._styleLink.href = injected?.cssUrl || CSS_URL || `${this.server}/pointer.css`;
     this.shadowRoot!.appendChild(this._styleLink);
     this.root = document.createElement('div');
     this.shadowRoot!.appendChild(this.root);
+
+    this._stylesPromise = this._stylesReady();
 
     ensureHighlightStyle();
 
@@ -284,6 +291,8 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
     if (this.token) this.init();
     else this.renderChrome();
 
+    try { performance.mark('pf:boot:end'); } catch { /* ignore */ }
+
     if (inviteFailed) this.toast('This invite link is invalid or expired — ask for a new one.', 'error');
   }
 
@@ -319,16 +328,47 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
     if (this.root) this.root.innerHTML = ''; // removes toolbar, launcher, and pins (#pf-pins lives here)
   }
 
+  private _stylesPromise: Promise<void> | null = null;
+
   private _stylesReady(): Promise<void> {
-    return new Promise((resolve) => {
+    if (this._stylesPromise) return this._stylesPromise;
+    this._stylesPromise = new Promise((resolve) => {
       const link = this._styleLink;
       if (!link || link.sheet) return resolve();
       let done = false;
       const finish = () => { if (!done) { done = true; resolve(); } };
       link.addEventListener('load', finish, { once: true });
-      link.addEventListener('error', finish, { once: true });
+      link.addEventListener('error', async () => {
+        try {
+          const fetchOpts: RequestInit = { mode: 'cors' };
+          if (CSS_INTEGRITY) {
+            fetchOpts.integrity = CSS_INTEGRITY;
+          }
+          const cssUrl = link.href || CSS_URL;
+          const res = await fetch(cssUrl, fetchOpts);
+          if (res.ok) {
+            const text = await res.text();
+            if (typeof CSSStyleSheet !== 'undefined') {
+              const sheet = new CSSStyleSheet();
+              if (typeof sheet.replace === 'function') {
+                await sheet.replace(text);
+              } else if (typeof (sheet as any).replaceSync === 'function') {
+                (sheet as any).replaceSync(text);
+              }
+              if (this.shadowRoot) {
+                this.shadowRoot.adoptedStyleSheets = [sheet];
+              }
+            }
+          }
+        } catch {
+          // fallback failed, resolve anyway
+        } finally {
+          finish();
+        }
+      }, { once: true });
       setTimeout(finish, 1500);
     });
+    return this._stylesPromise;
   }
 
   disconnectedCallback(): void {
@@ -336,7 +376,7 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
     window.removeEventListener('resize', this._reposition);
     window.removeEventListener('resize', this._scheduleBackdropUpdate);
     window.removeEventListener('scroll', this._scheduleBackdropUpdate, true);
-    this.root.removeEventListener('transitionend', this._scheduleBackdropUpdate);
+    this.root?.removeEventListener('transitionend', this._scheduleBackdropUpdate);
     this._backdropObserver?.disconnect();
     if (this._backdropRaf) cancelAnimationFrame(this._backdropRaf);
     document.removeEventListener('keydown', this._onShortcutKeydown);
@@ -443,11 +483,12 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
 
   // --- Auth helpers --------------------------------------------------------
   private loadAuth(): void {
-    this.token = localStorage.getItem('pointer_token') || null;
     try {
-      const raw = localStorage.getItem('pointer_user');
+      this.token = typeof localStorage !== 'undefined' ? localStorage.getItem('pointer_token') || null : null;
+      const raw = typeof localStorage !== 'undefined' ? localStorage.getItem('pointer_user') : null;
       this.user = raw ? JSON.parse(raw) : null;
-    } catch (e) {
+    } catch {
+      this.token = null;
       this.user = null;
     }
     this.shortcut = parseShortcut(this.user?.addCommentShortcut);
