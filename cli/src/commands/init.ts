@@ -10,6 +10,8 @@ import { postEvent } from '../events.js';
 import { runInitChecks } from '../checks.js';
 import { promises as fs } from 'node:fs';
 import { join } from 'node:path';
+import { detectDesignTokens, summarizeDesignTokens, type DesignBlock } from '../stack/design.js';
+import { buildRequestBody, mergeStack, writeStackFile } from '../stack/stackfile.js';
 
 export async function initCommand(cwd: string, options: Record<string, string | boolean> = {}) {
     const isYes = options['yes'] || options['json'];
@@ -240,17 +242,30 @@ export async function initCommand(cwd: string, options: Record<string, string | 
     const tokens = extractTokens(JSON.parse(pkgStr));
     const stackMeta = { frontend: tokens.frontend, backend: tokens.backend, aiTool: tool };
     
+    let serverStackResponse: any = null;
     try {
         // `token`, not `key`. /api/projects/{key}/stack is [Authorize] and expects the JWT that
         // was already exchanged above; sending the raw API key as a Bearer 401s every time. The
         // catch below swallowed it, so stack.json was never written and `doctor` reported
         // "Stack not registered" on a perfectly good install.
-        await api(server as string, `/api/projects/${finalProjectKey}/stack`, { method: 'POST', body: stackMeta, token });
-        await fs.mkdir(join(cwd, '.pointer'), { recursive: true });
-        await fs.writeFile(join(cwd, '.pointer/stack.json'), JSON.stringify(stackMeta, null, 2), 'utf8');
+        const body = buildRequestBody(stackMeta);
+        serverStackResponse = await api(server as string, `/api/projects/${finalProjectKey}/stack`, { method: 'POST', body, token });
     } catch (e: any) {
         if (!isJson) console.log(`⚠ Stack not registered (${e.code || 500})`);
     }
+
+    const noDesign = Boolean(options['no-design']);
+    let designBlock: DesignBlock | null = null;
+    if (!noDesign) {
+        designBlock = await detectDesignTokens(cwd);
+        const designSummary = summarizeDesignTokens(designBlock.tokens, designBlock.libraries);
+        if (!isJson) {
+            console.log(`✔ Design tokens: ${designSummary} → .pointer/stack.json`);
+        }
+    }
+
+    const mergedStack = mergeStack(stackMeta, serverStackResponse?.data ?? serverStackResponse, noDesign ? null : designBlock);
+    await writeStackFile(cwd, mergedStack);
 
     await writeConfig(cwd, { server: server as string, project: finalProjectKey, environment: env, aiTool: tool, skillsDir: options['skills-dir'] as string, cliVersion: BUILD_CLI_VERSION });
     filesMod.push('.pointer/config.json');

@@ -155,6 +155,35 @@ export function buildApplyPrompt(
   lines.push(`frontend: ${fe}  backend: ${be}`);
   lines.push('');
 
+  if (context.stack.design) {
+    lines.push('## Design system');
+    const design = context.stack.design;
+    const tokens = design.tokens || {};
+    const allTokens: string[] = [];
+
+    if (tokens.tailwind?.colors) allTokens.push(...tokens.tailwind.colors);
+    if (tokens.tailwind?.radius) allTokens.push(...tokens.tailwind.radius);
+    if (tokens.tailwind?.fontFamily) allTokens.push(...tokens.tailwind.fontFamily);
+    if (tokens.cssVars?.names) allTokens.push(...tokens.cssVars.names);
+    if (tokens.scss?.names) allTokens.push(...tokens.scss.names);
+    if (tokens.theme?.colors) allTokens.push(...tokens.theme.colors);
+    if (tokens.angularMaterial?.palettes) allTokens.push(...tokens.angularMaterial.palettes);
+
+    if (allTokens.length > 0) {
+      if (design.guidance) {
+        lines.push(design.guidance);
+      }
+      const tokenList = allTokens.slice(0, 40).join(', ');
+      lines.push(`Tokens: ${tokenList}`);
+    } else {
+      lines.push(
+        design.guidance ||
+          "No design tokens detected; match the nearest sibling element's existing classes/styles.",
+      );
+    }
+    lines.push('');
+  }
+
   lines.push('## Items');
   if (items.length === 0) {
     lines.push('No pending items in queue.');
