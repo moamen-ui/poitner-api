@@ -9,6 +9,18 @@ const pkgVersion = JSON.parse(readFileSync('./package.json', 'utf8')).version;
 
 const defaultServer = env.POINTER_DEFAULT_SERVER || 'https://api.pointer.moamen.work';
 
+// The Vite plugin is a SEPARATE bundle: it runs inside the host app's build, not as our CLI, and
+// it may import the optional Babel peers — which must never be pulled into dist/cli.js, whose
+// dependency-free single-file shape is a contract.
+await esbuild.build({
+  entryPoints: ['src/vite/index.ts'],
+  bundle: true,
+  outfile: 'dist/vite.js',
+  platform: 'node',
+  format: 'esm',
+  external: ['@babel/parser', '@babel/traverse', '@babel/generator', '@vue/compiler-sfc'],
+});
+
 await esbuild.build({
   entryPoints: ['src/cli.ts'],
   bundle: true,

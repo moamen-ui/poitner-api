@@ -23,5 +23,25 @@
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "1.6.0"
+  },
+  "exports": {
+    ".": "./dist/cli.js",
+    "./vite": "./dist/vite.js"
+  },
+  "peerDependencies": {
+    "@babel/parser": ">=7",
+    "@babel/traverse": ">=7",
+    "@babel/generator": ">=7"
+  },
+  "peerDependenciesMeta": {
+    "@babel/parser": {
+      "optional": true
+    },
+    "@babel/traverse": {
+      "optional": true
+    },
+    "@babel/generator": {
+      "optional": true
+    }
   }
 }
