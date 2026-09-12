@@ -17,7 +17,7 @@ public class CommentsController(ICommentService commentService) : ControllerBase
     [ProducesResponseType(typeof(CommentResponse), StatusCodes.Status200OK)]
     public async Task<IActionResult> Create(string key, [FromBody] CreateCommentRequest request)
     {
-        var result = await commentService.CreateAsync(key, request, User.GetId(), RequestOrigin());
+        var result = await commentService.CreateAsync(key, request, User.GetId(), Request.RequestOrigin());
         if (result.IsForbidden) return StatusCode(StatusCodes.Status403Forbidden, result);
         if (result.IsNotFound) return NotFound(result);
         if (result.IsConflict) return Conflict(result);
@@ -93,20 +93,4 @@ public class CommentsController(ICommentService commentService) : ControllerBase
         return result.IsSuccess ? Ok(result) : BadRequest(result);
     }
 
-    /// <summary>
-    /// The request's origin for the allow-list check: the Origin header, else the origin part of
-    /// Referer. Null when neither is present — which is normal for the CLI and AI agents, and is
-    /// handled by IsOriginAllowedAsync rather than treated as a rejection here.
-    /// </summary>
-    private string? RequestOrigin()
-    {
-        var origin = Request.Headers.Origin.ToString();
-        if (!string.IsNullOrWhiteSpace(origin))
-            return origin;
-
-        var referer = Request.Headers.Referer.ToString();
-        return Uri.TryCreate(referer, UriKind.Absolute, out var uri)
-            ? $"{uri.Scheme}://{uri.Authority}"
-            : null;
-    }
 }

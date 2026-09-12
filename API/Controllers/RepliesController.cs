@@ -17,7 +17,8 @@ public class RepliesController(ICommentService commentService) : ControllerBase
     [EnableRateLimiting("comments")]
     public async Task<IActionResult> AddReply(int id, [FromBody] AddReplyRequest request)
     {
-        var result = await commentService.AddReplyAsync(id, request, User.GetId());
+        var result = await commentService.AddReplyAsync(id, request, User.GetId(), Request.RequestOrigin());
+        if (result.IsForbidden) return StatusCode(StatusCodes.Status403Forbidden, result);
         if (result.IsNotFound) return NotFound(result);
         if (result.IsConflict) return Conflict(result);
         return result.IsSuccess ? Ok(result) : BadRequest(result);
