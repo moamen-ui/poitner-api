@@ -1,7 +1,12 @@
 // Zero-dependency static file server for the e2e fixture pages. Usage:
-//   node e2e/fixture-app/serve.mjs <alpha|smoke|beta> [port]
+//   node e2e/fixture-app/serve.mjs <site> [port]
+//
+// The site name is the directory under fixture-app/. It is validated against what is actually on
+// disk rather than a hardcoded list: the list had gone stale against fixture-app/privacy/, and the
+// failure was a usage message naming three sites while a fourth sat right next to them.
 import { createServer } from 'node:http';
 import { readFile } from 'node:fs/promises';
+import { readdirSync } from 'node:fs';
 import { extname, join } from 'node:path';
 import { dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -9,8 +14,13 @@ import { fileURLToPath } from 'node:url';
 const here = dirname(fileURLToPath(import.meta.url));
 const [, , site, portArg] = process.argv;
 
-if (!['alpha', 'smoke', 'beta'].includes(site)) {
-  console.error('Usage: node serve.mjs <alpha|smoke|beta> [port]');
+const sites = readdirSync(here, { withFileTypes: true })
+  .filter((e) => e.isDirectory())
+  .map((e) => e.name)
+  .sort();
+
+if (!site || !sites.includes(site)) {
+  console.error(`Usage: node serve.mjs <${sites.join('|')}> [port]`);
   process.exit(1);
 }
 

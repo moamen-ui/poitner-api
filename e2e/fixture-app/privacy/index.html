@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>e2e-privacy fixture</title>
+  <style>
+    body { font-family: sans-serif; margin: 0; padding: 1rem; }
+    table { border-collapse: collapse; margin-top: 1rem; }
+    td { border: 1px solid #ccc; padding: 0.25rem 0.5rem; }
+  </style>
+</head>
+<body>
+  <!-- R3-04 fixture (docs/roadmap/testing/R3-04-tests.md §Preconditions). The privacy scenarios
+       assert BYTE-EXACT snapshot strings, and shallowSnapshot emits attributes in DOM order —
+       so the attribute order in this markup is load-bearing: do not reorder attributes, rename
+       ids, or "tidy" the quotes in data-note (the &quot; entities are the AC-3 escaping probe). -->
+  <form id="signup">
+    <input id="signup-email" type="email" name="email" placeholder="Work email" />
+    <input id="phone" type="tel" name="phone" />
+    <input id="password" type="password" name="password" />
+    <button id="cta" type="submit">Request invite</button>
+  </form>
+
+  <table id="customers" data-snapshot-mask>
+    <tbody>
+      <tr><td id="cust-name-cell" data-customer-name="Jane Doe" data-email="jane@example.test" role="cell">Jane Doe</td></tr>
+      <tr><td id="cust-plan-cell">Growth</td></tr>
+    </tbody>
+  </table>
+
+  <p id="tagline" data-note="Say &quot;hi&quot;">Fast feedback</p>
+
+  <!-- Smoke-style widget bootstrap (see fixture-app/smoke/index.html for the rationale): the
+       element is created via script so `project` resolves from ?project= BEFORE connect time,
+       defaulting to e2e-privacy. Never e2e-alpha (AI ground truth) or e2e-beta (R1-05 origin
+       fixture) — this page is the only commenting surface for the R3-04 scenario ids. -->
+  <script>
+    var s = document.createElement('script');
+    s.src = 'http://localhost:8090/pointer.js';
+    s.defer = true;
+    document.head.appendChild(s);
+    var el = document.createElement('pointer-feedback');
+    el.setAttribute('project', new URLSearchParams(location.search).get('project') || 'e2e-privacy');
+    el.setAttribute('server', 'http://localhost:8090');
+    el.setAttribute('source-attr', 'data-component-source');
+    document.body.appendChild(el);
+  </script>
+</body>
+</html>
