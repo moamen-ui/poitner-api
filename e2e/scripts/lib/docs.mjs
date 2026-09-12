@@ -15,6 +15,29 @@ export function readManifest() {
   return JSON.parse(readFileSync(join(DOCS_DIR, 'pages.json'), 'utf8')).pages;
 }
 
+/**
+ * The manifest entries that are real files under /docs/.
+ *
+ * An entry may be marked `external: true` — a link out of the docs site (the product overview at
+ * `/`, for instance). Those are navigation, not pages: nothing writes a file for them, so the
+ * on-disk checks must skip them rather than demand one.
+ */
+export function localPages() {
+  // A site-absolute path (leading "/") points outside /docs/ — the product overview at "/" and the
+  // data page at "/data.html" both live at the landing root. Like an explicit `external: true`,
+  // they are navigation rather than pages, so the on-disk checks skip them.
+  return readManifest().filter((p) => !p.external && !p.file.startsWith('/'));
+}
+
+/** Site-absolute manifest targets, resolved against the landing root rather than /docs/. */
+export function siteAbsolutePages() {
+  return readManifest().filter((p) => p.file.startsWith('/') && p.file !== '/');
+}
+
+export function existsAtSiteRoot(relative) {
+  return existsSync(resolve(DOCS_DIR, '..', relative.replace(/^\//, '')));
+}
+
 /** Every .html file actually on disk. */
 export function htmlFiles() {
   return readdirSync(DOCS_DIR).filter((f) => f.endsWith('.html')).sort();

@@ -3,12 +3,12 @@
 // These checks exist because the two ways a docs site rots are both invisible when you click
 // through it yourself: a page nobody links to, and a link to a page nobody wrote.
 import { test, expect } from '@playwright/test';
-import { readManifest, htmlFiles, navBlock, internalLinks, exists, readPage } from '../scripts/lib/docs.mjs';
+import { readManifest, localPages, siteAbsolutePages, existsAtSiteRoot, htmlFiles, navBlock, internalLinks, exists, readPage } from '../scripts/lib/docs.mjs';
 import { record } from '../scripts/lib/report.mjs';
 
 test('R2-07-01 — every page on disk is in the manifest, and every manifest entry exists', () => {
   const start = Date.now();
-  const manifest = readManifest();
+  const manifest = localPages();
   const listed = manifest.map((p) => p.file);
   const onDisk = htmlFiles().filter((f) => f !== 'index.html'); // the index lists the others
 
@@ -17,6 +17,11 @@ test('R2-07-01 — every page on disk is in the manifest, and every manifest ent
   }
   for (const entry of listed) {
     expect(exists(entry), `pages.json lists ${entry}, which is not on disk`).toBe(true);
+  }
+
+  // Site-absolute entries must still resolve — at the landing root rather than under /docs/.
+  for (const page of siteAbsolutePages()) {
+    expect(existsAtSiteRoot(page.file), `pages.json lists ${page.file}, which is not at the landing root`).toBe(true);
   }
 
   record({ id: 'R2-07-01', tier: 'PR', layer: 'docs', role: '—', result: 'PASS', ms: Date.now() - start,
@@ -33,7 +38,7 @@ test('R2-07-02 — every manifest entry carries the fields the index renders', (
 });
 
 test('R2-07-03 — every page shares the generated nav block, listing every page', () => {
-  const listed = readManifest().map((p) => p.file);
+  const listed = localPages().map((p) => p.file);
 
   for (const file of htmlFiles()) {
     const nav = navBlock(file);
