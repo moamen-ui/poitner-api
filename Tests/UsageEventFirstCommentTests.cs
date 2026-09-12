@@ -29,27 +29,44 @@ public class UsageEventFirstCommentTests
         public int? RoleId { get; set; }
     }
 
+    /// <summary>
+    /// An in-memory SQLite database that several DbContexts can use CONCURRENTLY.
+    ///
+    /// The obvious shape — one SqliteConnection handed to every context — does not work here.
+    /// SqliteConnection is not thread-safe, and this fixture's whole purpose is two simultaneous
+    /// writers; sharing one connection corrupts its internal command list and surfaces later as a
+    /// NullReferenceException from SqliteConnection.Dispose, failing the test in roughly a third of
+    /// runs with a stack that points at teardown rather than at anything being asserted.
+    ///
+    /// So each context opens its OWN connection to the same shared-cache in-memory database. A
+    /// keep-alive connection holds that database open, since it is destroyed when the last
+    /// connection to it closes.
+    /// </summary>
     private sealed class TestDb : IDisposable
     {
-        private readonly SqliteConnection _connection;
+        private readonly SqliteConnection _keepAlive;
+        private readonly string _connectionString;
 
         public TestDb()
         {
-            _connection = new SqliteConnection("DataSource=:memory:");
-            _connection.Open();
-            using (var bootstrap = MakeContext(new FakeCurrentUser { IsSuperAdmin = true }))
-            {
-                bootstrap.Database.EnsureCreated();
-            }
+            // Unique per instance so parallel test classes cannot collide on the same database.
+            _connectionString = $"DataSource=file:{Guid.NewGuid():N}?mode=memory&cache=shared";
+            _keepAlive = new SqliteConnection(_connectionString);
+            _keepAlive.Open();
+
+            using var bootstrap = MakeContext(new FakeCurrentUser { IsSuperAdmin = true });
+            bootstrap.Database.EnsureCreated();
         }
 
         public AppDbContext MakeContext(ICurrentUser user) =>
             new AppDbContext(
-                new DbContextOptionsBuilder<AppDbContext>().UseSqlite(_connection).Options,
+                // Passing the connection STRING (not a connection object) makes each context own
+                // and dispose its own connection — which is what keeps the writers independent.
+                new DbContextOptionsBuilder<AppDbContext>().UseSqlite(_connectionString).Options,
                 user,
                 new Microsoft.Extensions.Configuration.ConfigurationBuilder().Build());
 
-        public void Dispose() => _connection.Dispose();
+        public void Dispose() => _keepAlive.Dispose();
     }
 
     [Fact]
