@@ -66,7 +66,7 @@ if [ "$TIER" = "pr" ]; then
   FLAGS+=("reset" "seed" "probe" "api" "docs" "widget" "mail")
   [ "$RUN_CLI" = "1" ] && FLAGS+=("cli")
 elif [ "$TIER" = "nightly" ]; then
-  FLAGS+=("reset" "seed" "probe" "api" "docs" "widget" "cli" "mail" "fresh" "whitelabel" "mock-domain" "dashboard" "mcp" "apply" "registry" "upgrade" "429")
+  FLAGS+=("reset" "seed" "probe" "api" "docs" "widget" "cli" "mail" "fresh" "whitelabel" "mock-domain" "dashboard" "apply" "mcp" "registry" "upgrade" "429")
 elif [ ${#FLAGS[@]} -eq 0 ] && [ ${#ONLY[@]} -eq 0 ]; then
   # Default behavior
   FLAGS+=("reset" "seed" "probe" "widget")
@@ -193,8 +193,9 @@ run_phase "mock-domain" "( if [ -n \"\${E2E_MOCK_DOMAIN:-}\" ]; then npx playwri
 # The dashboard specs self-skip when DASHBOARD_DIR is unset (they need a pointer-dashboard
 # checkout), so this is safe to run unconditionally in the tiers that include it.
 run_phase "dashboard" "bash scripts/pw.sh dashboard"
-run_phase "mcp" "bash scripts/pw.sh mcp"
+# R2-02-tests Spec files: the MCP phase runs AFTER apply (same seeded stack).
 run_phase "apply" "bash scripts/pw.sh apply"
+run_phase "mcp" "bash scripts/pw.sh mcp"
 
 if [[ " ${FLAGS[*]:-} " =~ " registry " ]] || [[ " ${FLAGS[*]:-} " =~ " all " ]]; then
   echo "=== phase: registry ==="
