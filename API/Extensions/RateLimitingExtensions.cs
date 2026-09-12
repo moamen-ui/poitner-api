@@ -68,11 +68,7 @@ public static class RateLimitingExtensions
                     QueueLimit = 0
                 }));
 
-        static string UserOrIp(HttpContext ctx)
-        {
-            var userId = ctx.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
-            return !string.IsNullOrEmpty(userId) ? $"user:{userId}" : $"ip:{ClientIp(ctx)}";
-        }
+        static string UserOrIp(HttpContext ctx) => PartitionKeyFor(ctx);
 
         o.AddPolicy("events", ctx =>
             RateLimitPartition.GetFixedWindowLimiter(
@@ -100,13 +96,8 @@ public static class RateLimitingExtensions
     /// </remarks>
     public static RateLimitPartition<string> CommentsPartition(HttpContext ctx)
     {
-        var userId = ctx.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
-        var key = !string.IsNullOrEmpty(userId)
-            ? $"user:{userId}"
-            : $"ip:{ctx.Connection.RemoteIpAddress?.ToString() ?? "unknown"}";
-
         return RateLimitPartition.GetSlidingWindowLimiter(
-            key,
+            PartitionKeyFor(ctx),
             _ => new SlidingWindowRateLimiterOptions
             {
                 PermitLimit = 30,
@@ -114,5 +105,27 @@ public static class RateLimitingExtensions
                 SegmentsPerWindow = 6,
                 QueueLimit = 0
             });
+    }
+
+    /// <summary>
+    /// "user:{id}" for an authenticated caller, else "ip:{address}".
+    /// </summary>
+    /// <remarks>
+    /// The claim lookup MUST mirror ClaimsPrincipalExtensions.GetIdOrNull. Authentication is
+    /// configured with <c>MapInboundClaims = false</c> and JwtTokenService mints <c>sub</c>, so a
+    /// partition that looks only at ClaimTypes.NameIdentifier finds nothing and silently falls
+    /// back to the IP bucket — every user behind one address then shares one budget, which is
+    /// precisely the behaviour the per-user partition exists to avoid. It fails open-ish and
+    /// invisibly: nothing errors, the limit is just wrong.
+    /// </remarks>
+    public static string PartitionKeyFor(HttpContext ctx)
+    {
+        var userId = ctx.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value
+                     ?? ctx.User.FindFirst(Microsoft.IdentityModel.JsonWebTokens.JwtRegisteredClaimNames.Sub)?.Value
+                     ?? ctx.User.FindFirst("sub")?.Value;
+
+        return !string.IsNullOrEmpty(userId)
+            ? $"user:{userId}"
+            : $"ip:{ctx.Connection.RemoteIpAddress?.ToString() ?? "unknown"}";
     }
 }

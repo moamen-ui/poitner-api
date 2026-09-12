@@ -62,6 +62,45 @@ public class CommentRateLimitingTests
         Assert.Equal(30, stats!.CurrentAvailablePermits);
     }
 
+    /// <summary>
+    /// The test that should have existed first. A real Pointer token carries `sub` and NOT
+    /// ClaimTypes.NameIdentifier — authentication sets MapInboundClaims = false, so nothing
+    /// rewrites it. A partition key that looks only at NameIdentifier therefore finds no user and
+    /// falls back to the IP bucket, which silently turns a per-user limit into a per-address one.
+    /// The original unit test hand-built its principal with NameIdentifier and so proved nothing
+    /// about real traffic; the e2e suite caught it by throttling four different users at once.
+    /// </summary>
+    [Fact]
+    public void CommentsPolicy_RecognisesTheSubClaim_AsRealTokensCarryIt()
+    {
+        static Microsoft.AspNetCore.Http.HttpContext CtxFor(string userId)
+        {
+            var ctx = new Microsoft.AspNetCore.Http.DefaultHttpContext();
+            ctx.Connection.RemoteIpAddress = System.Net.IPAddress.Parse("203.0.113.7");
+            ctx.User = new System.Security.Claims.ClaimsPrincipal(
+                new System.Security.Claims.ClaimsIdentity(
+                    new[] { new System.Security.Claims.Claim("sub", userId) },
+                    "test"));
+            return ctx;
+        }
+
+        var a = RateLimitingExtensions.PartitionKeyFor(CtxFor("11111111-1111-1111-1111-111111111111"));
+        var b = RateLimitingExtensions.PartitionKeyFor(CtxFor("22222222-2222-2222-2222-222222222222"));
+
+        Assert.StartsWith("user:", a);
+        Assert.StartsWith("user:", b);
+        Assert.NotEqual(a, b);
+    }
+
+    [Fact]
+    public void CommentsPolicy_FallsBackToIp_ForAnAnonymousCaller()
+    {
+        var ctx = new Microsoft.AspNetCore.Http.DefaultHttpContext();
+        ctx.Connection.RemoteIpAddress = System.Net.IPAddress.Parse("198.51.100.4");
+
+        Assert.Equal("ip:198.51.100.4", RateLimitingExtensions.PartitionKeyFor(ctx));
+    }
+
     [Fact]
     public void CommentsPolicy_PartitionsByUser_NotByIp()
     {
