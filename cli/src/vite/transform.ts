@@ -23,10 +23,32 @@ async function loadBabel() {
       // @ts-ignore optional peer — same
       import('@babel/generator'),
     ]);
+    // CJS/ESM interop, and it bites twice.
+    //
+    // @babel/traverse and @babel/generator are CommonJS. Imported from an ESM bundle, the
+    // namespace's `.default` is the whole `module.exports` OBJECT, whose own `.default` is the
+    // callable. Taking `.default` alone yields that object — calling it throws "traverse is not a
+    // function", which the caller catches and turns into a per-file warning. The build then
+    // succeeds, every file fails to stamp, and the manifest is written EMPTY. Nothing looks
+    // broken; the feature simply does nothing.
+    //
+    // Under tsx (the unit tests) the interop resolves differently and `.default` IS the function,
+    // which is exactly why this survived a green test suite — see cli/test/vite-dist.test.ts,
+    // which loads the BUILT bundle for this reason.
+    const unwrap = (mod: any, name: string) => {
+      const fn = mod?.default?.default ?? mod?.default ?? mod;
+      if (typeof fn !== 'function') {
+        throw new Error(
+          `${name} did not resolve to a function (got ${typeof fn}) — CJS/ESM interop problem`,
+        );
+      }
+      return fn;
+    };
+
     return {
       parse: parser.parse,
-      traverse: (traverseMod as any).default ?? traverseMod,
-      generate: (generatorMod as any).default ?? generatorMod,
+      traverse: unwrap(traverseMod, '@babel/traverse'),
+      generate: unwrap(generatorMod, '@babel/generator'),
     };
   } catch {
     throw new Error(
