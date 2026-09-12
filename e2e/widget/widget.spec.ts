@@ -7,7 +7,7 @@ import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { get, post, patch, login, ApiError } from '../scripts/lib/api.mjs';
-import { preAuthWidget } from './lib/pre-auth';
+import { preAuthWidget } from './lib/auth';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const STATE_DIR = join(here, '..', 'state');

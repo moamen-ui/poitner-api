@@ -9,7 +9,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { raw, login, postRaw, patchRaw, putRaw, delRaw } from '../scripts/lib/api.mjs';
 import { SUPER_ADMIN, TENANT_OWNER, USERS, PORTS } from '../scripts/lib/constants.mjs';
-import { preAuthWidget } from './lib/pre-auth';
+import { preAuthWidget } from './lib/auth';
 import { record } from '../scripts/lib/report.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
