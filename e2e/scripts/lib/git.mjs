@@ -69,6 +69,21 @@ export function assertRefsUnchanged(bareDir, beforeSnapshot) {
 }
 
 /**
+ * The branch a fresh `git init` left us on.
+ *
+ * Not a constant: git's init.defaultBranch is configurable and changed default in 2.28, so both
+ * `main` and `master` are live possibilities on different machines. Asking is cheap; assuming
+ * fails with "pathspec did not match", which reads like a missing commit rather than a naming
+ * difference.
+ */
+export function defaultBranch(repoDir) {
+  return execFileSync('git', ['rev-parse', '--abbrev-ref', 'HEAD'], {
+    cwd: repoDir,
+    encoding: 'utf8',
+  }).trim();
+}
+
+/**
  * Creates a commit with an arbitrary change in repoDir and returns the resulting commit sha.
  */
 export function commit(repoDir, n = 1) {

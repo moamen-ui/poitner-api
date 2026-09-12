@@ -5,7 +5,7 @@
 // built here. Stack and design-token detection reads files; it does not need node_modules, and
 // an `npm ci` per scenario would put minutes on a suite that otherwise runs in seconds.
 import { cpSync, existsSync, readdirSync } from 'node:fs';
-import { readFileSync, mkdirSync } from 'node:fs';
+import { readFileSync, mkdirSync, rmSync, symlinkSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { execFileSync, spawn } from 'node:child_process';
@@ -56,6 +56,15 @@ export function buildFixture({ dir, buildSha, enabled = true } = {}) {
   if (dir) {
     targetDir = dir;
     repo = { dir: targetDir, cleanup: () => {} };
+    // Passing `dir` used to mean "build here" AND "the fixture is already here" — two things, one
+    // argument. A caller handing over a fresh tempRepo() got an empty directory built, and the
+    // failure was `npm run build` exiting 1 with no hint that the sources were simply absent.
+    // Populate it when it is empty, so `dir` only ever means where.
+    if (!existsSync(join(targetDir, 'package.json'))) {
+      copyFixture({ into: targetDir });
+      execFileSync('git', ['add', '-A'], { cwd: targetDir });
+      execFileSync('git', ['commit', '-m', 'fixture: initial commit'], { cwd: targetDir });
+    }
   } else {
     repo = tempRepo();
     targetDir = repo.dir;
@@ -76,6 +85,23 @@ export function buildFixture({ dir, buildSha, enabled = true } = {}) {
     }
   }
 
+  // Point `pointer-feedback` at the repo's CLI, absolutely.
+  //
+  // The fixture declares it as `file:../../../cli`, which is correct where the fixture lives but
+  // dangles the moment it is copied into a temp repo — vite.config.ts then fails to load with
+  // ERR_MODULE_NOT_FOUND and the build dies before the plugin under test ever runs. Linking here
+  // also guarantees every scenario exercises the CLI as just built, not a stale copy npm cached.
+  const linkTarget = resolve(here, '..', '..', '..', 'cli');
+  const linkPath = join(targetNodeModules, 'pointer-feedback');
+  if (!existsSync(join(linkTarget, 'dist', 'vite.js'))) {
+    throw new Error(
+      `cli/dist/vite.js is missing — run \`npm run build\` in cli/ before the R3-01 scenarios`,
+    );
+  }
+  rmSync(linkPath, { recursive: true, force: true });
+  mkdirSync(dirname(linkPath), { recursive: true });
+  symlinkSync(linkTarget, linkPath, 'dir');
+
   const env = {
     ...process.env,
     VITE_POINTER_SOURCE: String(enabled),
@@ -88,12 +114,16 @@ export function buildFixture({ dir, buildSha, enabled = true } = {}) {
 
   const distDir = join(targetDir, 'dist');
   const manifestPath = join(targetDir, '.pointer', 'manifest.json');
+  // A manifest that exists but will not parse is a bug in the plugin, and returning null for it
+  // hands every caller the same value as "the plugin was switched off" — the two cases then look
+  // identical at the assertion site.
   let manifest = null;
   if (existsSync(manifestPath)) {
+    const raw = readFileSync(manifestPath, 'utf8');
     try {
-      manifest = JSON.parse(readFileSync(manifestPath, 'utf8'));
-    } catch {
-      manifest = null;
+      manifest = JSON.parse(raw);
+    } catch (err) {
+      throw new Error(`${manifestPath} exists but is not valid JSON: ${err.message}`);
     }
   }
 
@@ -101,20 +131,39 @@ export function buildFixture({ dir, buildSha, enabled = true } = {}) {
 }
 
 /**
- * Serves distDir on port using serve-dir.mjs.
+ * Serves distDir on `port`, and does not return until the port actually answers.
+ *
+ * Spawning and returning immediately loses the race against `page.goto`, which then fails with
+ * ERR_CONNECTION_REFUSED — a message that points at the page under test rather than at a server
+ * that had not finished starting. Waiting here means every caller gets a server that is up.
  */
-export function serveFixture(distDir, port = 4175) {
+export async function serveFixture(distDir, port = 4175) {
   const serveScript = resolve(here, '..', 'serve-dir.mjs');
-  const child = spawn(process.execPath, [serveScript, distDir, String(port)], {
-    stdio: 'pipe',
-  });
-  return {
-    process: child,
-    stop: () => {
-      try {
-        child.kill('SIGTERM');
-      } catch {}
-    },
+  const child = spawn(process.execPath, [serveScript, distDir, String(port)], { stdio: 'pipe' });
+
+  const url = `http://localhost:${port}/`;
+  const stop = () => {
+    try {
+      child.kill('SIGTERM');
+    } catch {}
   };
+
+  const deadline = Date.now() + 15_000;
+  let lastError;
+  while (Date.now() < deadline) {
+    if (child.exitCode !== null) {
+      throw new Error(`serve-dir exited (${child.exitCode}) before serving ${distDir} on :${port}`);
+    }
+    try {
+      const res = await fetch(url);
+      if (res.ok) return { process: child, stop };
+    } catch (err) {
+      lastError = err;
+    }
+    await new Promise((r) => setTimeout(r, 200));
+  }
+
+  stop();
+  throw new Error(`fixture server never came up on :${port} (${lastError?.message ?? 'no response'})`);
 }
 

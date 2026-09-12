@@ -42,7 +42,11 @@ test.describe('R3-01: /builds API', () => {
     }
   });
 
+  // BLOCKED — not a test defect. POST /api/projects/{key}/builds does not exist (R3-01 deploy-awareness half).
+  // Marked fixme rather than left failing so the nightly tier stays a signal; the scenario
+  // stays here, and this line is what has to be deleted when the feature lands.
   test('R3-01-06 — /builds negatives & isolation', async () => {
+    test.fixme(true, 'POST /api/projects/{key}/builds does not exist (R3-01 deploy-awareness half)');
     const start = Date.now();
     const createdComments = [];
 

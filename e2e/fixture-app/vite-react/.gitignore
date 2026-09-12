@@ -1,0 +1,16 @@
+node_modules
+dist
+
+# Pointer
+#
+# The same block `pointer init` writes. `.pointer/*` excludes the directory's CONTENTS rather than
+# the directory itself — git will not descend into an excluded directory, so with `.pointer/` every
+# negation below is inert and the shareable files silently stay out of the repo.
+#
+# manifest.json is deliberately NOT re-included: it is a build artifact, regenerated on every build
+# from the source it describes, so committing it would be noise in every diff.
+.pointer/*
+!.pointer/credentials.env.example
+!.pointer/stack.json
+!.pointer/pointer.sh
+!.pointer/config.json

@@ -81,6 +81,8 @@ function specFiles(md) {
  * run-e2e.sh dispatches a single scenario with `npx playwright test -g <id>`, so a title carrying
  * the id is exactly what makes a scenario runnable — the same string this reads.
  */
+const blocked = new Set();
+
 function implementedIds() {
   const found = new Set();
   const skip = new Set(['node_modules', 'state', 'test-results', 'playwright-report', '.git']);
@@ -94,7 +96,13 @@ function implementedIds() {
         const src = readFileSync(full, 'utf8');
         // test('R2-06-04 — …'), test.skip("R1-05-01 …"), test(`R3-01-02 …`) all count.
         for (const m of src.matchAll(/\b(?:test|it)(?:\.(?:skip|fixme|only|fail))?\s*\(\s*[`'"]\s*([A-Z0-9]+-\d{2}-\d{2}[a-z]?)/g)) {
-          found.add(m[1]);
+          // A scenario whose body opens with `test.fixme(true, …)` is BLOCKED on a feature that
+          // does not exist. It has a test, but that test asserts nothing, so counting it as
+          // covered would inflate the number with work still to do — the precise failure this
+          // gate was rewritten to stop. Look just past the title for the marker.
+          const after = src.slice(m.index, m.index + 600);
+          if (/test\.fixme\(\s*true/.test(after)) blocked.add(m[1]);
+          else found.add(m[1]);
         }
       }
     }
@@ -161,7 +169,12 @@ if (process.argv[2] === '--markdown') {
   }
   console.log(out.join('\n'));
 } else {
-  console.log(`Scenario coverage: ${coveredScenarios}/${totalScenarios} automatable (${pct}%) + ${totalManual} manual by design`);
+  const blockedHere = [...blocked].sort();
+  console.log(
+    `Scenario coverage: ${coveredScenarios}/${totalScenarios} automatable (${pct}%)` +
+      ` + ${totalManual} manual by design` +
+      (blockedHere.length ? ` + ${blockedHere.length} blocked on unbuilt features` : ''),
+  );
   for (const r of rows) {
     const man = r.manual ? `  +${r.manual} manual` : '';
     console.log(`  ${r.state.padEnd(12)} ${r.doc}  ${r.done}/${r.scenarios} scenarios   files=${r.present}/${r.specs}${man}`);
@@ -169,6 +182,10 @@ if (process.argv[2] === '--markdown') {
   if (missingScenarios.length) {
     console.log(`\nScenarios with no test (${missingScenarios.length}):`);
     console.log('  ' + missingScenarios.join(' '));
+  }
+  if (blockedHere.length) {
+    console.log(`\nBlocked on features that do not exist (${blockedHere.length}):`);
+    console.log('  ' + blockedHere.join(' '));
   }
   if (missingSpecs.size) {
     console.log(`\nMissing spec files (${missingSpecs.size}):`);

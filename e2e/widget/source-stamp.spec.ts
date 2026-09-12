@@ -20,7 +20,11 @@ const keys = () => loadKeys();
 const PROJECT_KEY = 'e2e-r301';
 const FIXTURE_URL = 'http://localhost:4175/';
 
+// BLOCKED — not a test defect. `pointer get --json` does not emit resolvedSource (R3-01 AC-5); steps 5-10 of this scenario do pass, step 11 needs the feature.
+// The CLI half of R3-01-01 (cli/source-stamp.spec.mjs) passes and is what keeps this scenario
+// counted as covered; this widget half additionally reaches into the unbuilt resolver.
 test('R3-01-01 — source-stamp-prod-build (widget: steps 5–12)', async ({ page }) => {
+  test.fixme(true, '`pointer get --json` does not emit resolvedSource (R3-01 AC-5); steps 5-10 of this scenario do pass, step 11 needs the feature');
   test.skip(process.env.TIER === 'pr', 'nightly tier only');
   const start = Date.now();
 
@@ -29,7 +33,7 @@ test('R3-01-01 — source-stamp-prod-build (widget: steps 5–12)', async ({ pag
 
   // 1. Build fixture with enabled: true
   const { distDir, manifest, repo } = buildFixture({ enabled: true });
-  const server = serveFixture(distDir, 4175);
+  const server = await serveFixture(distDir, 4175);
 
   const consoleErrors: string[] = [];
   page.on('console', (msg) => {
@@ -149,7 +153,11 @@ test('R3-01-01 — source-stamp-prod-build (widget: steps 5–12)', async ({ pag
   }
 });
 
+// BLOCKED — not a test defect. deploy awareness is not implemented: no /builds endpoint, no deployedAt on comments, and the widget does not POST its build sha on boot.
+// Marked fixme rather than left failing so the nightly tier stays a signal; the scenario
+// stays here, and this line is what has to be deleted when the feature lands.
 test('R3-01-03 ⛓ — deploy-awareness-widget', async ({ page }) => {
+  test.fixme(true, 'deploy awareness is not implemented: no /builds endpoint, no deployedAt on comments, and the widget does not POST its build sha on boot');
   test.skip(process.env.TIER === 'pr', 'nightly tier only');
   const start = Date.now();
 
@@ -163,7 +171,7 @@ test('R3-01-03 ⛓ — deploy-awareness-widget', async ({ page }) => {
   // 1. Prepare an Applied comment on e2e-r301 with known commitSha: S
   const comment1Res = await raw('POST', `/api/projects/${PROJECT_KEY}/comments`, {
     token: wa.token,
-    body: { body: 'Applied comment with commitSha', element: { selector: '#applied-1' } },
+    body: { body: 'Applied comment with commitSha', environment: 2, element: { selector: '#applied-1' } },
   });
   expect(comment1Res.status).toBe(200);
   const comment1Id = comment1Res.data?.id;
@@ -184,7 +192,7 @@ test('R3-01-03 ⛓ — deploy-awareness-widget', async ({ page }) => {
   // 2. Create a second Applied comment without commitSha (old-style)
   const comment2Res = await raw('POST', `/api/projects/${PROJECT_KEY}/comments`, {
     token: wa.token,
-    body: { body: 'Old-style applied comment', element: { selector: '#applied-2' } },
+    body: { body: 'Old-style applied comment', environment: 2, element: { selector: '#applied-2' } },
   });
   expect(comment2Res.status).toBe(200);
   const comment2Id = comment2Res.data?.id;
@@ -198,7 +206,7 @@ test('R3-01-03 ⛓ — deploy-awareness-widget', async ({ page }) => {
 
   // 3. Build fixture with buildSha: S and serve on 4175
   const { distDir, repo } = buildFixture({ buildSha: S, enabled: true });
-  const server = serveFixture(distDir, 4175);
+  const server = await serveFixture(distDir, 4175);
 
   try {
     // 4. Register page.route to count /builds calls before goto
