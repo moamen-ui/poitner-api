@@ -23,7 +23,7 @@ while [[ $# -gt 0 ]]; do
     --nightly)
       TIER="nightly"
       ;;
-    --fresh|--whitelabel|--apply|--mcp|--mail|--429|--upgrade|--registry|--all)
+    --fresh|--whitelabel|--apply|--mcp|--mail|--429|--upgrade|--registry|--dashboard|--all)
       FLAGS+=("${1#--}")
       ;;
     --with-ai)
@@ -57,7 +57,7 @@ if [ "$TIER" = "pr" ]; then
   FLAGS+=("reset" "seed" "probe" "api" "widget" "mail")
   [ "$RUN_CLI" = "1" ] && FLAGS+=("cli")
 elif [ "$TIER" = "nightly" ]; then
-  FLAGS+=("reset" "seed" "probe" "api" "widget" "cli" "mail" "fresh" "whitelabel" "mcp" "apply" "registry" "upgrade" "429")
+  FLAGS+=("reset" "seed" "probe" "api" "widget" "cli" "mail" "fresh" "whitelabel" "dashboard" "mcp" "apply" "registry" "upgrade" "429")
 elif [ ${#FLAGS[@]} -eq 0 ] && [ ${#ONLY[@]} -eq 0 ]; then
   # Default behavior
   FLAGS+=("reset" "seed" "probe" "widget")
@@ -178,6 +178,9 @@ run_phase "mail" "bash scripts/pw.sh mail"
 # but create a directory.
 run_phase "fresh" "if [ -f fresh-app/run.mjs ]; then node fresh-app/run.mjs && bash scripts/pw.sh fresh-app 'fresh\\.spec\\.ts'; else echo 'fresh-app/run.mjs not written yet' >&2; exit 97; fi"
 run_phase "whitelabel" "( bash scripts/pw.sh widget 'whitelabel\\.spec\\.ts'; wl=\$?; node scripts/reset-branding.mjs 2>/dev/null; exit \$wl )"
+# The dashboard specs self-skip when DASHBOARD_DIR is unset (they need a pointer-dashboard
+# checkout), so this is safe to run unconditionally in the tiers that include it.
+run_phase "dashboard" "bash scripts/pw.sh dashboard"
 run_phase "mcp" "bash scripts/pw.sh mcp"
 run_phase "apply" "bash scripts/pw.sh apply"
 
