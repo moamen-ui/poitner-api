@@ -159,3 +159,70 @@ jobs:
         with:
           name: whitelabel-report
           path: e2e/state/report.md
+
+  manifest-determinism:
+    needs: e2e
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - clone: a
+            os: ubuntu-latest
+            path: clone-a
+          - clone: b
+            os: macos-latest
+            path: clone-b
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: ${{ matrix.path }}
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20.x'
+      - name: Build and Hash Manifest
+        run: |
+          cd ${{ matrix.path }}/e2e
+          npm ci
+          node -e "
+            import('./scripts/lib/vite-fixture.mjs').then(async ({ buildFixture }) => {
+              const { repo } = buildFixture({ enabled: true });
+              const { readFileSync, writeFileSync } = await import('node:fs');
+              const { createHash } = await import('node:crypto');
+              const { join } = await import('node:path');
+              const manifest = JSON.parse(readFileSync(join(repo.dir, '.pointer', 'manifest.json'), 'utf8'));
+              const entries = manifest.entries ?? manifest;
+              const sorted = JSON.stringify(entries, Object.keys(entries).sort());
+              const hash = createHash('sha256').update(sorted).digest('hex');
+              writeFileSync('entries-${{ matrix.clone }}.sha', hash + '\n');
+            });
+          "
+      - name: Upload Manifest Hash Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: entries-${{ matrix.clone }}-sha
+          path: ${{ matrix.path }}/e2e/entries-${{ matrix.clone }}.sha
+
+  manifest-determinism-assert:
+    needs: manifest-determinism
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: entries-a-sha
+          path: artifacts/a
+      - uses: actions/download-artifact@v4
+        with:
+          name: entries-b-sha
+          path: artifacts/b
+      - name: Assert Hashes Equal
+        run: |
+          SHA_A=$(cat artifacts/a/entries-a.sha)
+          SHA_B=$(cat artifacts/b/entries-b.sha)
+          echo "Clone A SHA: $SHA_A"
+          echo "Clone B SHA: $SHA_B"
+          [ \"$SHA_A\" = \"$SHA_B\" ]
+
