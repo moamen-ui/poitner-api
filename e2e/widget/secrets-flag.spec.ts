@@ -30,8 +30,9 @@ const ALPHA_FIXTURE_PORT = 4181; // PORTS.alpha (scripts/lib/constants.mjs)
 const ALPHA_FIXTURE_URL = `http://localhost:${ALPHA_FIXTURE_PORT}/`;
 
 // The advisory pill as SHIPPED: class pf-payload-flag (web-component/src/templates.ts:198).
-// R2-06-tests.md pins `.pf-pill.pf-flag` — reported as SPEC-CONFLICT; the selector here matches
-// the code so the scenario is green against the product as it exists.
+// R2-06-tests.md originally pinned `.pf-pill.pf-flag`; that was a contract-time decision taken
+// without checking the widget, and the doc has since been corrected to the shipped name. The
+// selector here matches the code.
 const FLAG_PILL = '.pf-pill.pf-payload-flag';
 
 const WIDGET_HEADERS = { 'X-Pointer-Client': 'widget' };
