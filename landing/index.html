@@ -880,7 +880,15 @@
   }
 
   // ── Pricing: fetch marketing plans once, render client-side ──
-  var API_BASE = "https://api.pointer.moamen.work";
+  // The API this page reads plans, branding and stack stats from.
+  //
+  // Overridable, because a hardcoded vendor URL means a SELF-HOSTER'S landing page calls our API
+  // instead of theirs — their branding, plans and stats would silently come from someone else's
+  // server. Resolution order: an explicit window.__POINTER_API__, then a <meta name="pointer-api">
+  // a self-hoster can drop in, then the hosted default.
+  var API_BASE = (typeof window !== 'undefined' && window.__POINTER_API__)
+    || (document.querySelector('meta[name="pointer-api"]') || {}).content
+    || "https://api.pointer.moamen.work";
   var PRICING_PLANS = null;
 
   function renderPricing(lang) {
