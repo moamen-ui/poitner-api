@@ -220,7 +220,7 @@ fi
 # The destructive phase: every scenario that restarts the api container lives here and nowhere
 # else. Both files also contain non-destructive scenarios, which simply pass again — a cheap
 # duplicate beats a scenario that can restart the stack from inside a shared phase.
-run_phase "upgrade" "( E2E_DESTRUCTIVE=1 bash scripts/pw.sh api 'key-rotation\\.spec\\.mjs' && E2E_DESTRUCTIVE=1 bash scripts/pw.sh cli 'doctor\\.spec\\.mjs' )"
+run_phase "upgrade" "( E2E_DESTRUCTIVE=1 bash scripts/pw.sh api 'key-rotation\\.spec\\.mjs' && E2E_DESTRUCTIVE=1 bash scripts/pw.sh cli 'doctor\\.spec\\.mjs' && E2E_DESTRUCTIVE=1 bash scripts/pw.sh cli 'skill-stamp\\.spec\\.mjs' )"
 # E2E_429 is what the spec's own guard reads. Its fallback heuristic (an argv containing
 # "429") does NOT match the file path we pass, so setting it explicitly is what actually
 # lets the burst scenario run instead of skipping itself in its own dedicated phase.
