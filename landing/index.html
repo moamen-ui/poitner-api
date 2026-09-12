@@ -1,21 +1,21 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Pointer — click-to-comment feedback your team turns into code with AI</title>
-  <meta name="description" content="Pointer lets anyone on your team click an element on a running app and leave a comment. Developers hand the queue to any AI tool, which applies the change to the real source." />
-  <link rel="canonical" href="https://pointer.moamen.work/" />
-  <meta property="og:type" content="website" />
-  <meta property="og:url" content="https://pointer.moamen.work/" />
-  <meta property="og:title" content="Pointer — click-to-comment feedback your team turns into code with AI" />
-  <meta property="og:description" content="Anyone on your team clicks an element on a running app and leaves a short comment. Developers hand the queue to any AI tool, which applies the change to the real source." />
-  <meta property="og:image" content="https://pointer.moamen.work/assets/dog-mascot.png" />
-  <meta name="twitter:card" content="summary" />
-  <meta name="twitter:title" content="Pointer — click-to-comment feedback your team turns into code with AI" />
-  <meta name="twitter:description" content="Anyone on your team clicks an element on a running app and leaves a short comment. Developers hand the queue to any AI tool, which applies the change to the real source." />
-  <meta name="twitter:image" content="https://pointer.moamen.work/assets/dog-mascot.png" />
-  <link rel="icon" href="assets/favicon.ico" />
+  <meta name="description" content="Pointer lets anyone on your team click an element on a running app and leave a comment. Developers hand the queue to any AI tool, which applies the change to the real source.">
+  <link rel="canonical" href="https://pointer.moamen.work/">
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="https://pointer.moamen.work/">
+  <meta property="og:title" content="Pointer — click-to-comment feedback your team turns into code with AI">
+  <meta property="og:description" content="Anyone on your team clicks an element on a running app and leaves a short comment. Developers hand the queue to any AI tool, which applies the change to the real source.">
+  <meta property="og:image" content="https://pointer.moamen.work/assets/dog-mascot.png">
+  <meta name="twitter:card" content="summary">
+  <meta name="twitter:title" content="Pointer — click-to-comment feedback your team turns into code with AI">
+  <meta name="twitter:description" content="Anyone on your team clicks an element on a running app and leaves a short comment. Developers hand the queue to any AI tool, which applies the change to the real source.">
+  <meta name="twitter:image" content="https://pointer.moamen.work/assets/dog-mascot.png">
+  <link rel="icon" href="assets/favicon.ico">
   <style>
     :root {
       --pf-green: #16a34a;
@@ -56,7 +56,6 @@
       color: var(--pf-text);
       background: var(--pf-bg);
       line-height: 1.6;
-      overflow-x: hidden;
     }
     img { max-width: 100%; display: block; }
     a { color: var(--pf-blue); text-decoration: none; }
@@ -82,29 +81,27 @@
     .brand img { width: 30px; height: 30px; }
     .nav-links { display: flex; gap: 18px; margin-inline-start: auto; }
     .nav-links a { color: var(--pf-muted); font-weight: 600; font-size: 14px; }
+    .nav-links a:hover { color: var(--pf-text); }
     .nav-cta { display: flex; gap: 10px; align-items: center; }
     .pill-toggle { display: inline-flex; align-items: center; background: var(--pf-soft); border: 1px solid var(--pf-border); border-radius: 999px; padding: 8px 14px; font-size: 13px; font-weight: 700; color: var(--pf-muted); cursor: pointer; white-space: nowrap; }
     .pill-toggle:hover { color: var(--pf-text); border-color: color-mix(in srgb, var(--pf-blue) 40%, var(--pf-border)); }
-    @media (max-width: 760px) {
+    @media (max-width: 960px) {
       .nav-links { display: none; }
     }
-    /* On narrow screens the nav row can't fit brand + both toggles + both CTAs even after
-       dropping "Sign in" (still present in the hero + footer) — let the row wrap to a second
-       line instead of clipping the primary CTA. */
     @media (max-width: 520px) {
       .nav-cta .btn:not(.primary) { display: none; }
       .nav .wrap { gap: 10px; flex-wrap: wrap; height: auto; padding-block: 10px; }
       .nav-cta { width: 100%; justify-content: flex-end; }
     }
-    /* Belt-and-suspenders: some browsers only honor overflow-x on html, others need it on body
-       too, so both declare it — never scroll the document sideways. */
     html { overflow-x: hidden; scroll-behavior: smooth; }
-    /* Clear the sticky nav (64px) when a nav link scrolls a section into view. */
     section[id] { scroll-margin-top: 76px; }
     .hero { padding: 64px 0 48px; background: radial-gradient(1200px 400px at 70% -10%, color-mix(in srgb, var(--pf-blue) 12%, transparent), transparent); }
     .hero-grid { display: grid; grid-template-columns: 1.1fr 1fr; gap: 40px; align-items: center; }
     .hero h1 { font-size: clamp(30px, 5vw, 52px); line-height: 1.1; margin: 0 0 16px; letter-spacing: -0.02em; }
     .hero .lead { font-size: 18px; color: var(--pf-muted); margin: 0 0 28px; }
+    .lead-center { max-width: 720px; margin: 0 auto 28px; text-align: center; color: var(--pf-muted); font-size: 18px; }
+    .text-center { text-align: center; }
+    .justify-center { justify-content: center; }
     .hero-cta { display: flex; flex-wrap: wrap; gap: 12px; }
     .hero-stage { min-height: 400px; }
     @media (max-width: 860px) {
@@ -118,13 +115,75 @@
     .contrast-card { background: var(--pf-card); border: 1px solid var(--pf-border); border-radius: var(--pf-radius); padding: 20px; }
     .contrast-card.bad { color: var(--pf-muted); }
     .contrast-card.good { border-color: color-mix(in srgb, var(--pf-green) 50%, var(--pf-border)); }
-    .steps, .features { display: grid; gap: 18px; }
-    .steps { grid-template-columns: repeat(3, 1fr); }
-    .features { grid-template-columns: repeat(4, 1fr); }
-    .step, .feature { background: var(--pf-card); border: 1px solid var(--pf-border); border-radius: var(--pf-radius); padding: 20px; }
-    .step h3, .feature h3 { margin: 0 0 6px; font-size: 17px; }
-    .step p, .feature p { margin: 0; color: var(--pf-muted); font-size: 14px; }
-    /* Step icons — small self-running loops in the same visual language as the hero storyboard. */
+
+    /* The Brief table */
+    .brief-card {
+      background: var(--pf-card);
+      border: 1px solid var(--pf-border);
+      border-radius: var(--pf-radius);
+      overflow: hidden;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.04);
+    }
+    .brief-table-scroll {
+      overflow-x: auto;
+      -webkit-overflow-scrolling: touch;
+    }
+    .brief-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 14px;
+      text-align: start;
+    }
+    .brief-table th {
+      background: var(--pf-soft);
+      padding: 14px 18px;
+      font-weight: 700;
+      color: var(--pf-text);
+      border-bottom: 1px solid var(--pf-border);
+      white-space: nowrap;
+    }
+    .brief-table td {
+      padding: 14px 18px;
+      border-bottom: 1px solid var(--pf-border);
+      vertical-align: top;
+    }
+    .brief-table tr:last-child td {
+      border-bottom: none;
+    }
+    .brief-field-tag {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: 13px;
+      color: var(--pf-blue);
+      background: color-mix(in srgb, var(--pf-blue) 10%, transparent);
+      padding: 3px 8px;
+      border-radius: 6px;
+      white-space: nowrap;
+      display: inline-block;
+    }
+    .brief-desc {
+      margin: 0;
+      color: var(--pf-muted);
+      line-height: 1.55;
+    }
+    .brief-badge {
+      text-align: center;
+      margin-top: 20px;
+      color: var(--pf-muted);
+      font-size: 14px;
+      font-weight: 600;
+    }
+
+    /* 4-step loop */
+    .steps { display: grid; grid-template-columns: repeat(4, 1fr); gap: 18px; }
+    @media (max-width: 960px) {
+      .steps { grid-template-columns: repeat(2, 1fr); }
+    }
+    @media (max-width: 540px) {
+      .steps { grid-template-columns: 1fr; }
+    }
+    .step { background: var(--pf-card); border: 1px solid var(--pf-border); border-radius: var(--pf-radius); padding: 20px; }
+    .step h3 { margin: 0 0 6px; font-size: 17px; }
+    .step p { margin: 0; color: var(--pf-muted); font-size: 14px; }
     .step-icon { position: relative; width: 48px; height: 48px; margin-bottom: 14px; }
     .step-icon--click .dot { position: absolute; left: 20px; top: 20px; width: 8px; height: 8px; border-radius: 50%; background: var(--pf-grad); }
     .step-icon--click .ring { position: absolute; left: 16px; top: 16px; width: 16px; height: 16px; border: 2px solid var(--pf-blue); border-radius: 50%; opacity: 0; animation: mini-ring 3s ease-in-out infinite; }
@@ -132,26 +191,52 @@
     .step-icon--tag .row { display: block; height: 8px; border-radius: 4px; background: var(--pf-soft); margin-bottom: 6px; }
     .step-icon--tag .row.active { position: relative; }
     .step-icon--tag .chip { position: absolute; inset-inline-end: 0; top: -3px; width: 14px; height: 14px; border-radius: 4px; background: var(--pf-grad); opacity: 0; transform: scale(.5); animation: mini-chip 3s ease-in-out infinite; }
-    /* Wider than the other two step icons — a real command needs more room than a click/tag glyph
-       does, so this one is a slim bar rather than a 48px square. */
-    .step-icon--apply { width: 190px; height: 36px; }
+    .step-icon--apply { width: 100%; max-width: 170px; height: 36px; }
     .step-icon--apply .mini-term { position: absolute; inset: 0; background: #0f172a; border-radius: 8px; display: flex; align-items: center; padding: 0 10px; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 10px; overflow: hidden; }
     .mini-term-prompt { color: #22c55e; font-weight: 700; margin-inline-end: 3px; }
     .mini-term-cmd { display: inline-block; width: 0; overflow: hidden; white-space: nowrap; color: #e2e8f0; animation: mini-type 3s steps(22) infinite; }
     .mini-term-cmd::before { content: "apply pointer comments"; }
     .mini-term-caret { display: inline-block; width: 5px; height: 11px; background: #e2e8f0; margin-inline-start: 2px; vertical-align: middle; animation: pf-blink 1s step-end infinite; }
+    .step-icon--commit { display: flex; align-items: center; }
+    .commit-glyph { display: inline-flex; align-items: center; gap: 6px; padding: 6px 10px; background: var(--pf-soft); border: 1px solid var(--pf-border); border-radius: 8px; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 11px; color: var(--pf-text); font-weight: 700; }
+    .commit-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--pf-green); }
+
     @keyframes mini-ring { 0%, 15% { opacity: 0; transform: scale(.6); } 25%, 55% { opacity: 1; transform: scale(1); } 70%, 100% { opacity: 0; } }
     @keyframes mini-bubble { 0%, 20% { opacity: 0; transform: translateY(4px); } 30%, 60% { opacity: 1; transform: translateY(0); } 75%, 100% { opacity: 0; } }
     @keyframes mini-chip { 0%, 30% { opacity: 0; transform: scale(.5); } 45%, 75% { opacity: 1; transform: scale(1); } 90%, 100% { opacity: 0; } }
     @keyframes mini-type { 0%, 55% { width: 0; } 85%, 100% { width: 22ch; } }
-    /* "Works with your stack" — a simple tag cloud of real, anonymized tokens from
-       GET /api/public/stacks-summary. No grouping, no counts — just tags. */
+
+    /* Features (trimmed to 4) */
+    .features { display: grid; grid-template-columns: repeat(4, 1fr); gap: 18px; }
+    @media (max-width: 860px) {
+      .features { grid-template-columns: 1fr 1fr; }
+      .contrast, .split { grid-template-columns: 1fr; }
+    }
+    @media (max-width: 520px) {
+      .features { grid-template-columns: 1fr; }
+    }
+    .feature { background: var(--pf-card); border: 1px solid var(--pf-border); border-radius: var(--pf-radius); padding: 20px; }
+    .feature h3 { margin: 0 0 6px; font-size: 17px; }
+    .feature p { margin: 0; color: var(--pf-muted); font-size: 14px; }
+
+    /* Trust & Privacy */
+    .trust-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
+    @media (max-width: 760px) {
+      .trust-grid { grid-template-columns: 1fr; }
+    }
+    .trust-card { background: var(--pf-card); border: 1px solid var(--pf-border); border-radius: var(--pf-radius); padding: 24px; }
+    .trust-card h3 { margin: 0 0 10px; font-size: 18px; color: var(--pf-text); }
+    .trust-card p { margin: 0; color: var(--pf-muted); font-size: 14px; line-height: 1.6; }
+    .trust-card a { font-weight: 600; text-decoration: underline; text-underline-offset: 3px; }
+
+    /* Stack summary */
     .stack-tags { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; }
     .stack-group + .stack-group { margin-top: 18px; }
     .stack-label { display: block; text-align: center; font-size: 12px; font-weight: 700; color: var(--pf-muted); text-transform: uppercase; letter-spacing: .04em; margin-bottom: 10px; }
     .stack-tag { background: var(--pf-card); border: 1px solid var(--pf-border); border-radius: 999px; padding: 6px 14px; font-size: 13px; font-weight: 600; color: var(--pf-text); }
     .split { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
     .split-card { padding: 24px; border-radius: var(--pf-radius); border: 1px solid var(--pf-border); background: var(--pf-card); }
+
     /* Pricing */
     .pricing-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 18px; align-items: stretch; }
     .price-card { display: flex; flex-direction: column; background: var(--pf-card); border: 1px solid var(--pf-border); border-radius: var(--pf-radius); padding: 26px 22px; }
@@ -165,7 +250,8 @@
     .price-bullets li { position: relative; padding-inline-start: 24px; color: var(--pf-muted); font-size: 14px; }
     .price-bullets li::before { content: "✓"; position: absolute; inset-inline-start: 0; color: var(--pf-green); font-weight: 800; }
     .price-card .btn { margin-top: auto; justify-content: center; }
-    /* Extension install stepper modal (ext- prefix; avoids clashing with the dogfooded widget's pf- classes) */
+
+    /* Extension install stepper */
     .ext-overlay { position: fixed; inset: 0; background: rgba(2,6,23,.55); backdrop-filter: blur(3px); display: flex; align-items: center; justify-content: center; z-index: 50; padding: 20px; }
     .ext-overlay[hidden] { display: none; }
     .ext-card { background: var(--pf-card); border-radius: var(--pf-radius); max-width: 460px; width: 100%; padding: 28px 26px 22px; position: relative; box-shadow: 0 30px 70px rgba(2,6,23,.3); }
@@ -183,25 +269,18 @@
     .ext-nav { display: flex; justify-content: space-between; gap: 10px; margin-top: 22px; }
     .ext-nav .btn { flex: 1; justify-content: center; }
     .ext-nav .btn:disabled { opacity: .45; cursor: default; }
+
     .cta-band { background: var(--pf-grad); color: #fff; text-align: center; padding: 56px 0; }
     .cta-band h2 { font-size: clamp(24px, 3.4vw, 36px); margin: 0 0 22px; }
     .footer { border-top: 1px solid var(--pf-border); padding: 28px 0; }
     .footer-grid { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
     .footer-links { display: flex; gap: 18px; }
     .footer-links a { color: var(--pf-muted); font-weight: 600; }
-    @media (max-width: 860px) {
-      .steps { grid-template-columns: 1fr; }
-      .features { grid-template-columns: 1fr 1fr; }
-      .contrast, .split { grid-template-columns: 1fr; }
-    }
-    @media (max-width: 520px) {
-      .features { grid-template-columns: 1fr; }
-    }
+
+    /* Mock visual */
     .mock { position: relative; background: var(--pf-card); border: 1px solid var(--pf-border); border-radius: var(--pf-radius); box-shadow: 0 20px 50px rgba(2,6,23,.12); padding: 22px; height: 400px; overflow: hidden; }
     .mock-bar { display: flex; gap: 6px; margin-bottom: 18px; }
     .mock-bar span { width: 11px; height: 11px; border-radius: 50%; background: var(--pf-border); }
-    /* Hero mock: a small realistic form — three DIFFERENT kinds of comment (styling, data
-       wiring, function wiring) land on three different fields, proving Pointer isn't UI-only. */
     .mock-form { display: flex; flex-direction: column; gap: 14px; max-width: 220px; }
     .mock-field { position: relative; }
     .mock-form-title { font-weight: 800; font-size: 15px; color: var(--pf-text); }
@@ -210,13 +289,7 @@
     .mock-caret { font-size: 10px; }
     .mock-target { font: inherit; font-weight: 700; padding: 8px 16px; border-radius: 10px; border: none; color: #fff; background: var(--pf-grad); }
     .form-pin { position: absolute; top: -10px; right: -10px; width: 22px; height: 22px; border-radius: 50% 50% 2px 50%; background: var(--pf-grad); color: #fff; font-size: 12px; font-weight: 800; display: grid; place-items: center; opacity: 0; z-index: 1; }
-    /* The popover sits beside its own pin (not above/below), so it never has to fight the 14px
-       gap to a neighboring field for vertical room — it grows sideways into the mock's empty
-       right-hand space instead, and wraps rather than overflowing if that space is narrow. */
     .form-pop { position: absolute; top: -8px; left: calc(100% + 6px); width: max-content; max-width: 140px; background: #0f172a; color: #fff; font-size: 12px; line-height: 1.35; padding: 7px 10px; border-radius: 10px; opacity: 0; }
-    /* The hero-grid is 2-column above 860px, so the mock only gets ~half the viewport width —
-       narrower than the viewport alone suggests. Shrink in two tiers so neither a mid-size
-       2-column layout (861-960px) nor a small phone runs out of room beside the form. */
     @media (max-width: 960px) {
       .mock-form { max-width: 170px; }
       .form-pop { max-width: 110px; font-size: 11px; left: calc(100% + 5px); }
@@ -237,8 +310,7 @@
     @keyframes form-pop2 { 0%,33% { opacity: 0; } 37%,54% { opacity: 1; } 59%,100% { opacity: 0; } }
     @keyframes form-pin3 { 0%,61% { opacity: 0; transform: scale(.4); } 65%,100% { opacity: 1; transform: scale(1); } }
     @keyframes form-pop3 { 0%,61% { opacity: 0; } 65%,82% { opacity: 1; } 87%,100% { opacity: 0; } }
-    /* Final step: the Claude Code terminal slides up, then the command types itself out —
-       applying all three queued comments (styling, data wiring, function wiring). */
+
     .pf-term { position: absolute; left: 22px; right: 22px; bottom: 18px; background: #0f172a; border: 1px solid #1e293b; border-radius: 10px; padding: 10px 12px; box-shadow: 0 10px 30px rgba(2,6,23,.28); opacity: 0; transform: translateY(10px); animation: pf-term 12s ease-in-out infinite; }
     .pf-term-bar { display: flex; align-items: center; gap: 5px; margin-bottom: 8px; }
     .pf-term-bar span { width: 9px; height: 9px; border-radius: 50%; background: #334155; }
@@ -253,8 +325,8 @@
     @media (prefers-reduced-motion: reduce) {
       html { scroll-behavior: auto; }
       .form-pin1, .form-pop1, .form-pin2, .form-pop2, .form-pin3, .form-pop3, .pf-term, .pf-term-cmd, .pf-term-caret { animation: none; }
-      .form-pin1, .form-pin2, .form-pin3, .pf-term { opacity: 1; }   /* show the representative end frame: all 3 pins queued */
-      .form-pop1, .form-pop2, .form-pop3 { opacity: 0; }              /* collapsed once the terminal step is shown */
+      .form-pin1, .form-pin2, .form-pin3, .pf-term { opacity: 1; }
+      .form-pop1, .form-pop2, .form-pop3 { opacity: 0; }
       .pf-term { transform: none; }
       .pf-term-cmd { width: 22ch; }
       .step-icon--click .ring, .step-icon--click .bubble, .step-icon--tag .chip, .mini-term-cmd, .mini-term-caret { animation: none; }
@@ -264,18 +336,19 @@
       .mini-term-cmd { width: 22ch; }
     }
     [dir="rtl"] .nav-links { margin-inline-start: 0; margin-inline-end: auto; }
-    /* The animation stage (.hero-stage) stays LTR below — it mimics an app UI, not document flow. */
     [dir="rtl"] .hero-stage { direction: ltr; }
   </style>
 </head>
 <body>
   <header class="nav">
     <div class="wrap">
-      <div class="brand"><img src="assets/dog-mascot.png" alt="" data-brand-logo /> <span data-brand-name>Pointer</span></div>
+      <div class="brand"><img src="assets/dog-mascot.png" alt="" data-brand-logo> <span data-brand-name>Pointer</span></div>
       <nav class="nav-links">
+        <a href="#brief" data-i18n="nav.brief">The brief</a>
         <a href="#how" data-i18n="nav.how">How it works</a>
         <a href="#why" data-i18n="nav.why">Why Pointer</a>
         <a href="#features" data-i18n="nav.features">Features</a>
+        <a href="#trust" data-i18n="nav.trust">Trust &amp; privacy</a>
         <a href="#pricing" data-i18n="nav.pricing">Pricing</a>
         <a href="#extension" data-i18n="nav.ext">Extension</a>
         <a href="#demo" data-i18n="nav.demo">Demo</a>
@@ -294,42 +367,95 @@
     <section class="hero">
       <div class="wrap hero-grid">
         <div class="hero-copy">
-          <h1 data-i18n="hero.title">Point at the UI. Ship it with AI.</h1>
-          <p class="lead" data-i18n="hero.sub">Anyone on your team clicks an element on a running app and leaves a short comment. Developers hand the queue to any AI tool, which applies the change to the real source — no more translating vague feedback into code.</p>
+          <h1 data-i18n="hero.title">Point at the UI. Your AI gets the brief.</h1>
+          <p class="lead" data-i18n="hero.sub">Anyone on your team clicks an element on a running app and leaves a sentence. Your AI tool gets the selector, the winning CSS, and the exact context to make the right change — no more translating vague screenshots into code.</p>
           <div class="hero-cta">
             <a class="btn primary" href="https://demo.pointer.moamen.work" data-i18n="hero.demo">Try the demo — no install</a>
             <a class="btn" href="https://app.pointer.moamen.work" data-i18n="hero.signup">Create an account</a>
           </div>
         </div>
         <div class="hero-stage" id="hero-anim" aria-hidden="true">
-  <div class="mock">
-    <div class="mock-bar"><span></span><span></span><span></span></div>
-    <div class="mock-form">
-      <div class="mock-field">
-        <div class="mock-form-title">Get in touch</div>
-        <span class="form-pin form-pin1">1</span>
-        <div class="form-pop form-pop1"><b data-i18n="anim.label">Make this bigger and blue</b></div>
+          <div class="mock">
+            <div class="mock-bar"><span></span><span></span><span></span></div>
+            <div class="mock-form">
+              <div class="mock-field">
+                <div class="mock-form-title">Get in touch</div>
+                <span class="form-pin form-pin1">1</span>
+                <div class="form-pop form-pop1"><b data-i18n="anim.label">Make this bigger and blue</b></div>
+              </div>
+              <div class="mock-input">Full name</div>
+              <div class="mock-field">
+                <div class="mock-select">Choose a plan <span class="mock-caret">▾</span></div>
+                <span class="form-pin form-pin2">2</span>
+                <div class="form-pop form-pop2"><b data-i18n="anim.label2">Load these from /api/plans</b></div>
+              </div>
+              <div class="mock-field">
+                <div class="mock-target" role="presentation">Submit</div>
+                <span class="form-pin form-pin3">3</span>
+                <div class="form-pop form-pop3"><b data-i18n="anim.label3">Send this to POST /api/leads</b></div>
+              </div>
+            </div>
+            <!-- Final step: terminal applies comments -->
+            <div class="pf-term">
+              <div class="pf-term-bar"><span></span><span></span><span></span><em>ai tool</em></div>
+              <div class="pf-term-body"><span class="pf-term-prompt">&gt;</span> <span class="pf-term-cmd">apply pointer comments</span><span class="pf-term-caret"></span></div>
+            </div>
+          </div>
+        </div>
       </div>
-      <div class="mock-input">Full name</div>
-      <div class="mock-field">
-        <div class="mock-select">Choose a plan <span class="mock-caret">▾</span></div>
-        <span class="form-pin form-pin2">2</span>
-        <div class="form-pop form-pop2"><b data-i18n="anim.label2">Load these from /api/plans</b></div>
+    </section>
+
+    <!-- The Brief: Second-screen proof (PRD §3.1) -->
+    <section id="brief" class="wrap section">
+      <h2 class="section-title" data-i18n="brief.title">The structured brief — what a comment actually carries</h2>
+      <p class="lead-center" data-i18n="brief.sub">A screenshot tool hands your AI a picture and a guess. Pointer captures the exact DOM state so an agent never has to explore blindly.</p>
+      <div class="brief-card">
+        <div class="brief-table-scroll">
+          <table class="brief-table">
+            <thead>
+              <tr>
+                <th data-i18n="brief.thField">Captured field</th>
+                <th data-i18n="brief.thWhy">Why an AI tool cares</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><span class="brief-field-tag">selector</span></td>
+                <td><p class="brief-desc" data-i18n="brief.f1">Identifies the exact DOM element without a screenshot or a description.</p></td>
+              </tr>
+              <tr>
+                <td><span class="brief-field-tag">snapshot</span></td>
+                <td><p class="brief-desc" data-i18n="brief.f2">The element's own opening tag, attributes (≤120 chars), and text (≤160 chars) — deliberately shallow so it does not drown the model in child markup.</p></td>
+              </tr>
+              <tr>
+                <td><span class="brief-field-tag">appliedCssRules</span></td>
+                <td><p class="brief-desc" data-i18n="brief.f3">The rules that win, not the full computed dump. Answers "why is it blue?" before the agent even asks.</p></td>
+              </tr>
+              <tr>
+                <td><span class="brief-field-tag">computedStyles, classes, parentInfo</span></td>
+                <td><p class="brief-desc" data-i18n="brief.f4">Disambiguates structure when the selector is generic.</p></td>
+              </tr>
+              <tr>
+                <td><span class="brief-field-tag">route, pageUrl, pageTitle</span></td>
+                <td><p class="brief-desc" data-i18n="brief.f5">Identifies which screen and view to open so the agent edits the right component.</p></td>
+              </tr>
+              <tr>
+                <td><span class="brief-field-tag">viewport, deviceType, devicePixelRatio</span></td>
+                <td><p class="brief-desc" data-i18n="brief.f6">Turns "broken on mobile" into an exact, reproducible condition.</p></td>
+              </tr>
+              <tr>
+                <td><span class="brief-field-tag">PageContextSnapshot</span></td>
+                <td><p class="brief-desc" data-i18n="brief.f7">Opt-in on bug reports: console errors and failed/slow network requests at the moment of the issue.</p></td>
+              </tr>
+              <tr>
+                <td><span class="brief-field-tag">sourcePath</span></td>
+                <td><p class="brief-desc" data-i18n="brief.f8">Configured attribute or framework dev-mode path when present.</p></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
       </div>
-      <div class="mock-field">
-        <button class="mock-target">Submit</button>
-        <span class="form-pin form-pin3">3</span>
-        <div class="form-pop form-pop3"><b data-i18n="anim.label3">Send this to POST /api/leads</b></div>
-      </div>
-    </div>
-    <!-- Final step: a Claude Code terminal opens and the developer applies the queue. -->
-    <div class="pf-term">
-      <div class="pf-term-bar"><span></span><span></span><span></span><em>claude code</em></div>
-      <div class="pf-term-body"><span class="pf-term-prompt">&gt;</span> <span class="pf-term-cmd">apply pointer comments</span><span class="pf-term-caret"></span></div>
-    </div>
-  </div>
-</div>
-      </div>
+      <div class="brief-badge" data-i18n="brief.badge">A structured brief, not a screenshot.</div>
     </section>
 
     <!-- Problem → solution -->
@@ -348,7 +474,7 @@
       </div>
     </section>
 
-    <!-- How it works -->
+    <!-- How it works (Loop - PRD §3.2) -->
     <section id="how" class="wrap section">
       <h2 class="section-title" data-i18n="how.title">How it works</h2>
       <div class="steps">
@@ -356,57 +482,61 @@
           <div class="step-icon step-icon--click" aria-hidden="true">
             <span class="dot"></span><span class="ring"></span><span class="bubble">💬</span>
           </div>
-          <h3 data-i18n="how.s1t">Click &amp; comment</h3><p data-i18n="how.s1">Anyone signed in clicks any element on the running app and leaves a short comment.</p>
+          <h3 data-i18n="how.s1t">Point &amp; comment</h3>
+          <p data-i18n="how.s1">Anyone signed in clicks any element on the running app and leaves a short comment.</p>
         </div>
         <div class="step">
           <div class="step-icon step-icon--tag" aria-hidden="true">
             <span class="row"></span><span class="row active"><span class="chip"></span></span><span class="row"></span>
           </div>
-          <h3 data-i18n="how.s2t">Triage in the dashboard</h3><p data-i18n="how.s2">Comments land in the dashboard tagged by project, environment, stakeholder, and status — triaged like real work, not buried in a doc.</p>
+          <h3 data-i18n="how.s2t">Triage in the dashboard</h3>
+          <p data-i18n="how.s2">Comments land in the dashboard tagged by project, environment, stakeholder, and status — triaged like real work.</p>
         </div>
         <div class="step">
           <div class="step-icon step-icon--apply" aria-hidden="true">
             <div class="mini-term"><span class="mini-term-prompt">&gt;</span><span class="mini-term-cmd"></span><span class="mini-term-caret"></span></div>
           </div>
-          <h3 data-i18n="how.s3t">Applied by AI</h3><p data-i18n="how.s3">A developer hands the queue to any AI tool — Claude Code, Cursor, and more — which edits the real source files over plain HTTP.</p>
+          <h3 data-i18n="how.s3t">Applied by AI</h3>
+          <p data-i18n="how.s3">A developer hands the queue to any AI tool over plain HTTP, which edits the real source files.</p>
+        </div>
+        <div class="step">
+          <div class="step-icon step-icon--commit" aria-hidden="true">
+            <div class="commit-glyph"><span class="commit-dot"></span><span>git commit</span></div>
+          </div>
+          <h3 data-i18n="how.s4t">Committed, never pushed</h3>
+          <p data-i18n="how.s4">The AI commits per your project style and links each applied comment back to the author. The AI never pushes — that stays human.</p>
         </div>
       </div>
     </section>
 
-    <!-- Why it saves time, money, and AI tokens -->
+    <!-- Why it saves time, money, and AI tokens (PRD §3.3) -->
     <section id="why" class="wrap section">
       <h2 class="section-title" data-i18n="why.title">Save time, cut costs, spend fewer AI tokens</h2>
       <div class="features">
-        <div class="feature"><h3 data-i18n="why.f1t">Save time</h3><p data-i18n="why.f1">Every comment already carries the exact element, page, and CSS that wins — no back-and-forth figuring out what someone meant.</p></div>
-        <div class="feature"><h3 data-i18n="why.f2t">Cut costs</h3><p data-i18n="why.f2">Fewer status meetings and clarification threads — the context a call would've needed is already attached to the comment.</p></div>
-        <div class="feature"><h3 data-i18n="why.f3t">Spend fewer AI tokens</h3><p data-i18n="why.f3">Captured selectors, routes, and source paths mean your AI tool starts at the right file instead of exploring the whole codebase to find it.</p></div>
+        <div class="feature"><h3 data-i18n="why.f1t">Save time</h3><p data-i18n="why.f1">Every comment already carries the exact element, page, and winning CSS — no back-and-forth figuring out what someone meant.</p></div>
+        <div class="feature"><h3 data-i18n="why.f2t">Cut costs</h3><p data-i18n="why.f2">Fewer status meetings and clarification threads — the context a call would have needed is attached to the comment.</p></div>
+        <div class="feature"><h3 data-i18n="why.f3t">Spend fewer AI tokens</h3><p data-i18n="why.f3">A lightweight summary view and a one-command helper replace twenty exploratory loops with a direct, targeted brief — keeping prompts lean and focused.</p></div>
         <div class="feature"><h3 data-i18n="why.f4t">One organized queue</h3><p data-i18n="why.f4">Comments are tagged by project, environment, stakeholder, and status — one triaged queue instead of scattered screenshots and chat threads.</p></div>
       </div>
     </section>
 
-    <!-- Features -->
+    <!-- Features (trimmed to 4 distinct cards) -->
     <section id="features" class="band">
       <div class="wrap section">
         <h2 class="section-title" data-i18n="feat.title">Built for real teams</h2>
         <div class="features">
-          <div class="feature"><h3 data-i18n="feat.f1t">Two-line install</h3><p data-i18n="feat.f1">Drop a script tag and a tag. No package, no SDK.</p></div>
+          <div class="feature"><h3 data-i18n="feat.f1t">Two-line install</h3><p data-i18n="feat.f1">Drop a script tag and a custom element. No package, no SDK.</p></div>
           <div class="feature"><h3 data-i18n="feat.f2t">Multi-project &amp; multi-tenant</h3><p data-i18n="feat.f2">One server serves every app and workspace — partitioned and isolated per project, enforced server-side.</p></div>
-          <div class="feature"><h3 data-i18n="feat.f3t">Multi-stakeholder</h3><p data-i18n="feat.f3">Every comment is tagged by environment, stakeholder, and author.</p></div>
-          <div class="feature"><h3 data-i18n="feat.f4t">Element + source aware</h3><p data-i18n="feat.f4">Captures the selector, snapshot, the CSS that wins, the page route, and an optional source path.</p></div>
-          <div class="feature"><h3 data-i18n="feat.f5t">AI-agnostic</h3><p data-i18n="feat.f5">Any AI tool applies the changes with plain HTTP — Claude Code, Cursor, and more.</p></div>
-          <div class="feature"><h3 data-i18n="feat.f6t">Style-isolated</h3><p data-i18n="feat.f6">The widget renders in a Shadow DOM, so it never clashes with your app's CSS.</p></div>
-          <div class="feature"><h3 data-i18n="feat.f7t">A real dashboard</h3><p data-i18n="feat.f7">Triage, statuses, roles, and per-project views — for the whole team.</p></div>
-          <div class="feature"><h3 data-i18n="feat.f8t">Works on any site</h3><p data-i18n="feat.f8">The browser extension lets you point and comment on sites you don't even control, staying signed in everywhere.</p></div>
+          <div class="feature"><h3 data-i18n="feat.f3t">Style-isolated</h3><p data-i18n="feat.f3">The widget renders in a Shadow DOM, so it never clashes with host application CSS.</p></div>
+          <div class="feature"><h3 data-i18n="feat.f4t">Works on any site</h3><p data-i18n="feat.f4">The browser extension lets you point and comment on sites you don't even control, staying signed in everywhere.</p></div>
         </div>
       </div>
     </section>
 
-    <!-- "Works with your stack" — real, anonymized counts from GET /api/public/stacks-summary.
-         No nav anchor: hidden entirely (not a fallback message) when there's nothing real to show
-         yet, since nothing links here promising content. -->
+    <!-- "Works with your stack" — real, anonymized counts from GET /api/public/stacks-summary -->
     <section id="stack" class="wrap section" hidden>
       <h2 class="section-title" data-i18n="stack.title">Works with your stack</h2>
-      <p class="lead" style="max-width:640px;margin:0 auto 28px;text-align:center;color:var(--pf-muted);font-size:18px" data-i18n="stack.sub">Detected across every real project using Pointer today.</p>
+      <p class="lead-center" data-i18n="stack.sub">Detected across every real project using Pointer today.</p>
       <div class="stack-group">
         <span class="stack-label" data-i18n="stack.techLabel">Stack</span>
         <div class="stack-tags" id="stack-tags"></div>
@@ -425,10 +555,42 @@
       </div>
     </section>
 
-    <!-- Pricing — rendered client-side from GET /api/plans. Always visible (so the nav anchor
-         never lands on empty space); shows a loading skeleton, then either real plan cards or a
-         graceful fallback CTA if the fetch fails or returns nothing. -->
-    <section id="pricing" class="section band">
+    <!-- Trust & Privacy: Answering the core objections (PRD §5) -->
+    <section id="trust" class="band section">
+      <div class="wrap">
+        <h2 class="section-title" data-i18n="trust.title">Trust &amp; privacy</h2>
+        <p class="lead-center" data-i18n="trust.sub">Built for teams who take source code security seriously.</p>
+        <div class="trust-grid">
+          <div class="trust-card">
+            <h3 data-i18n="trust.q1t">An AI edits my code?</h3>
+            <p data-i18n="trust.q1">It edits on a local branch and commits per your project style. It never pushes. You review the diff like any other change. Every applied comment carries its commit URL.</p>
+          </div>
+          <div class="trust-card">
+            <h3 data-i18n="trust.q2t">What do you capture?</h3>
+            <p>
+              <span data-i18n="trust.q2Body">Only element-level DOM metadata when you click to comment. Form values, cookies, localStorage, and request bodies are never captured. See our </span>
+              <a href="/data.html" data-i18n="trust.q2DataLink">Data &amp; self-hosting</a>
+              <span data-i18n="trust.q2And"> guide and </span>
+              <a href="/privacy.html" data-i18n="trust.q2PrivacyLink">Privacy Policy</a>.
+            </p>
+          </div>
+          <div class="trust-card">
+            <h3 data-i18n="trust.q3t">Which AI tool do I use?</h3>
+            <p data-i18n="trust.q3">Any tool you prefer. Pointer serves standard markdown instructions and plain HTTP — works with Claude Code, Cursor, and any LLM agent. Zero proprietary lock-in.</p>
+          </div>
+          <div class="trust-card">
+            <h3 data-i18n="trust.q4t">Is my data stuck with you?</h3>
+            <p>
+              <span data-i18n="trust.q4Body">Self-host the complete system: API and Postgres on your own infrastructure. You keep full control of your database and data. See the </span>
+              <a href="docs/" data-i18n="trust.q4DocsLink">Documentation</a>.
+            </p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Pricing — rendered client-side from GET /api/plans -->
+    <section id="pricing" class="section">
       <div class="wrap">
         <h2 class="section-title" data-i18n="pricing.title">Simple, transparent pricing</h2>
         <div id="pricing-grid" class="pricing-grid">
@@ -437,13 +599,13 @@
       </div>
     </section>
 
-    <section id="extension" class="section">
-      <div class="wrap" style="text-align:center">
+    <section id="extension" class="section band">
+      <div class="wrap text-center">
         <h2 class="section-title" data-i18n="ext.title">Point on any site — get the browser extension</h2>
-        <p class="lead" style="max-width:640px;margin:0 auto 24px;color:var(--pf-muted);font-size:18px" data-i18n="ext.sub">Add Pointer to any web app — even ones you don't control — and stay signed in across every site.</p>
-        <div class="hero-cta" style="justify-content:center">
+        <p class="lead-center" data-i18n="ext.sub">Add Pointer to any web app — even ones you don't control — and stay signed in across every site.</p>
+        <div class="hero-cta justify-center">
           <a class="btn primary" id="ext-store" href="#" target="_blank" rel="noopener" hidden>Add to Chrome</a>
-          <button class="btn primary" id="ext-open">Get the extension</button>
+          <button class="btn primary" id="ext-open" type="button">Get the extension</button>
         </div>
       </div>
     </section>
@@ -451,17 +613,17 @@
     <section id="demo" class="cta-band">
       <div class="wrap">
         <h2 data-i18n="final.title">Try it in one click — no install</h2>
-        <div class="hero-cta" style="justify-content:center">
+        <div class="hero-cta justify-center">
           <a class="btn primary" href="https://demo.pointer.moamen.work" data-i18n="final.demo">Try the demo</a>
           <a class="btn" id="final-signup" href="https://app.pointer.moamen.work" data-i18n="final.signup">Create an account</a>
         </div>
       </div>
     </section>
 
-    <!-- Extension install stepper (one step at a time). ext- prefix avoids the dogfooded widget's pf- classes. -->
+    <!-- Extension install stepper -->
     <div class="ext-overlay" id="ext-modal" hidden>
       <div class="ext-card" role="dialog" aria-modal="true" aria-labelledby="ext-title">
-        <button class="ext-x" id="ext-close" aria-label="Close">&#x2715;</button>
+        <button class="ext-x" id="ext-close" type="button" aria-label="Close">&#x2715;</button>
         <h3 class="ext-title" id="ext-title" data-i18n="ext.modalTitle">Install in Chrome</h3>
         <div class="ext-count"><span id="ext-cur">1</span> / 6</div>
         <div class="ext-steps">
@@ -498,20 +660,20 @@
           </div>
         </div>
         <div class="ext-nav">
-          <button class="btn" id="ext-back">Back</button>
-          <button class="btn primary" id="ext-next">Next</button>
+          <button class="btn" id="ext-back" type="button">Back</button>
+          <button class="btn primary" id="ext-next" type="button">Next</button>
         </div>
       </div>
     </div>
 
     <footer class="footer">
       <div class="wrap footer-grid">
-        <div class="brand"><img src="assets/dog-mascot.png" alt="" data-brand-logo /> <span data-brand-name>Pointer</span></div>
+        <div class="brand"><img src="assets/dog-mascot.png" alt="" data-brand-logo> <span data-brand-name>Pointer</span></div>
         <div class="footer-links">
           <a href="https://app.pointer.moamen.work" data-i18n="foot.dashboard">Dashboard</a>
-          <a href="https://github.com/moamen-ui/poitner-api#readme" rel="noopener" target="_blank" data-i18n="foot.docs">Docs</a>
+          <a href="https://github.com/moamen-ui/poitner-api#readme" rel="noopener" target="_blank" data-brand-docs data-i18n="foot.docs">Docs</a>
           <a href="/privacy.html" data-i18n="foot.privacy">Privacy</a>
-          <a href="https://github.com/moamen-ui" rel="noopener" target="_blank">GitHub</a>
+          <a href="https://github.com/moamen-ui" rel="noopener" target="_blank" data-i18n="foot.github">GitHub</a>
         </div>
       </div>
     </footer>
@@ -520,8 +682,55 @@
   <script>
   var STRINGS = {
     en: {
-      "nav.how": "How it works", "nav.why": "Why Pointer", "nav.features": "Features", "nav.pricing": "Pricing", "nav.demo": "Demo", "nav.docs": "Docs",
+      "nav.brief": "The brief", "nav.how": "How it works", "nav.why": "Why Pointer", "nav.features": "Features",
+      "nav.trust": "Trust & privacy", "nav.pricing": "Pricing", "nav.demo": "Demo", "nav.docs": "Docs",
       "nav.signin": "Sign in", "nav.demoCta": "Try the demo",
+      "hero.title": "Point at the UI. Your AI gets the brief.",
+      "hero.sub": "Anyone on your team clicks an element on a running app and leaves a sentence. Your AI tool gets the selector, the winning CSS, and the exact context to make the right change — no more translating vague screenshots into code.",
+      "hero.demo": "Try the demo — no install", "hero.signup": "Create an account",
+      "brief.title": "The structured brief — what a comment actually carries",
+      "brief.sub": "A screenshot tool hands your AI a picture and a guess. Pointer captures the exact DOM state so an agent never has to explore blindly.",
+      "brief.thField": "Captured field", "brief.thWhy": "Why an AI tool cares",
+      "brief.f1": "Identifies the exact DOM element without a screenshot or a description.",
+      "brief.f2": "The element's own opening tag, attributes (≤120 chars), and text (≤160 chars) — deliberately shallow so it does not drown the model in child markup.",
+      "brief.f3": "The rules that win, not the full computed dump. Answers \"why is it blue?\" before the agent even asks.",
+      "brief.f4": "Disambiguates structure when the selector is generic.",
+      "brief.f5": "Identifies which screen and view to open so the agent edits the right component.",
+      "brief.f6": "Turns \"broken on mobile\" into an exact, reproducible condition.",
+      "brief.f7": "Opt-in on bug reports: console errors and failed/slow network requests at the moment of the issue.",
+      "brief.f8": "Configured attribute or framework dev-mode path when present.",
+      "brief.badge": "A structured brief, not a screenshot.",
+      "contrast.badTitle": "Without Pointer", "contrast.bad": "\"Go to the signup form, make the title bigger and blue, hook the plan dropdown up to /api/plans, and make the submit button actually POST to /api/leads…\"",
+      "contrast.goodTitle": "With Pointer", "contrast.good": "🐕 click the title, dropdown, or button → 💬 leave a comment on each → ✨ AI applies them all.",
+      "how.title": "How it works",
+      "how.s1t": "Point & comment", "how.s1": "Anyone signed in clicks any element on the running app and leaves a short comment.",
+      "how.s2t": "Triage in the dashboard", "how.s2": "Comments land in the dashboard tagged by project, environment, stakeholder, and status — triaged like real work.",
+      "how.s3t": "Applied by AI", "how.s3": "A developer hands the queue to any AI tool over plain HTTP, which edits the real source files.",
+      "how.s4t": "Committed, never pushed", "how.s4": "The AI commits per your project style and links each applied comment back to the author. The AI never pushes — that stays human.",
+      "why.title": "Save time, cut costs, spend fewer AI tokens",
+      "why.f1t": "Save time", "why.f1": "Every comment already carries the exact element, page, and winning CSS — no back-and-forth figuring out what someone meant.",
+      "why.f2t": "Cut costs", "why.f2": "Fewer status meetings and clarification threads — the context a call would have needed is attached to the comment.",
+      "why.f3t": "Spend fewer AI tokens", "why.f3": "A lightweight summary view and a one-command helper replace twenty exploratory loops with a direct, targeted brief — keeping prompts lean and focused.",
+      "why.f4t": "One organized queue", "why.f4": "Comments are tagged by project, environment, stakeholder, and status — one triaged queue instead of scattered screenshots and chat threads.",
+      "feat.title": "Built for real teams",
+      "feat.f1t": "Two-line install", "feat.f1": "Drop a script tag and a custom element. No package, no SDK.",
+      "feat.f2t": "Multi-project & multi-tenant", "feat.f2": "One server serves every app and workspace — partitioned and isolated per project, enforced server-side.",
+      "feat.f3t": "Style-isolated", "feat.f3": "The widget renders in a Shadow DOM, so it never clashes with host application CSS.",
+      "feat.f4t": "Works on any site", "feat.f4": "The browser extension lets you point and comment on sites you don't even control, staying signed in everywhere.",
+      "trust.title": "Trust & privacy",
+      "trust.sub": "Built for teams who take source code security seriously.",
+      "trust.q1t": "An AI edits my code?",
+      "trust.q1": "It edits on a local branch and commits per your project style. It never pushes. You review the diff like any other change. Every applied comment carries its commit URL.",
+      "trust.q2t": "What do you capture?",
+      "trust.q2Body": "Only element-level DOM metadata when you click to comment. Form values, cookies, localStorage, and request bodies are never captured. See our ",
+      "trust.q2DataLink": "Data & self-hosting",
+      "trust.q2And": " guide and ",
+      "trust.q2PrivacyLink": "Privacy Policy",
+      "trust.q3t": "Which AI tool do I use?",
+      "trust.q3": "Any tool you prefer. Pointer serves standard markdown instructions and plain HTTP — works with Claude Code, Cursor, and any LLM agent. Zero proprietary lock-in.",
+      "trust.q4t": "Is my data stuck with you?",
+      "trust.q4Body": "Self-host the complete system: API and Postgres on your own infrastructure. You keep full control of your database and data. See the ",
+      "trust.q4DocsLink": "Documentation",
       "pricing.title": "Simple, transparent pricing",
       "pricing.free": "Free", "pricing.perMo": "/mo", "pricing.perYr": "/yr",
       "pricing.cta": "Get started", "pricing.soon": "Coming soon",
@@ -538,29 +747,6 @@
       "ext.s4t": "Enable Developer mode", "ext.s4": "Turn on the “Developer mode” toggle in the top-right corner.",
       "ext.s5t": "Load unpacked", "ext.s5": "Click “Load unpacked” and select the folder you unzipped.",
       "ext.s6t": "Sign in & use it", "ext.s6": "Pin Pointer, click it, sign in with your account, then “Activate on this tab” on any site.",
-      "hero.title": "Point at the UI. Ship it with AI.",
-      "hero.sub": "Anyone on your team clicks an element on a running app and leaves a short comment. Developers hand the queue to any AI tool, which applies the change to the real source — no more translating vague feedback into code.",
-      "hero.demo": "Try the demo — no install", "hero.signup": "Create an account",
-      "contrast.badTitle": "Without Pointer", "contrast.bad": "\"Go to the signup form, make the title bigger and blue, hook the plan dropdown up to /api/plans, and make the submit button actually POST to /api/leads…\"",
-      "contrast.goodTitle": "With Pointer", "contrast.good": "🐕 click the title, dropdown, or button → 💬 leave a comment on each → ✨ AI applies them all.",
-      "how.title": "How it works",
-      "how.s1t": "Click & comment", "how.s1": "Anyone signed in clicks any element on the running app and leaves a short comment.",
-      "how.s2t": "Triage in the dashboard", "how.s2": "Comments land in the dashboard tagged by project, environment, stakeholder, and status — triaged like real work, not buried in a doc.",
-      "how.s3t": "Applied by AI", "how.s3": "A developer hands the queue to any AI tool — Claude Code, Cursor, and more — which edits the real source files over plain HTTP.",
-      "why.title": "Save time, cut costs, spend fewer AI tokens",
-      "why.f1t": "Save time", "why.f1": "Every comment already carries the exact element, page, and CSS that wins — no back-and-forth figuring out what someone meant.",
-      "why.f2t": "Cut costs", "why.f2": "Fewer status meetings and clarification threads — the context a call would've needed is already attached to the comment.",
-      "why.f3t": "Spend fewer AI tokens", "why.f3": "Captured selectors, routes, and source paths mean your AI tool starts at the right file instead of exploring the whole codebase to find it.",
-      "why.f4t": "One organized queue", "why.f4": "Comments are tagged by project, environment, stakeholder, and status — one triaged queue instead of scattered screenshots and chat threads.",
-      "feat.title": "Built for real teams",
-      "feat.f1t": "Two-line install", "feat.f1": "Drop a script tag and a tag. No package, no SDK.",
-      "feat.f2t": "Multi-project & multi-tenant", "feat.f2": "One server serves every app and workspace — partitioned and isolated per project, enforced server-side.",
-      "feat.f3t": "Multi-stakeholder", "feat.f3": "Every comment is tagged by environment, stakeholder, and author.",
-      "feat.f4t": "Element + source aware", "feat.f4": "Captures the selector, snapshot, the CSS that wins, the page route, and an optional source path.",
-      "feat.f5t": "AI-agnostic", "feat.f5": "Any AI tool applies the changes with plain HTTP — Claude Code, Cursor, and more.",
-      "feat.f6t": "Style-isolated", "feat.f6": "The widget renders in a Shadow DOM, so it never clashes with your app's CSS.",
-      "feat.f7t": "A real dashboard", "feat.f7": "Triage, statuses, roles, and per-project views — for the whole team.",
-      "feat.f8t": "Works on any site", "feat.f8": "The browser extension lets you point and comment on sites you don't even control, staying signed in everywhere.",
       "stack.title": "Works with your stack",
       "stack.sub": "Detected across every real project using Pointer today.",
       "stack.techLabel": "Stack", "stack.aiLabel": "AI tools",
@@ -570,14 +756,61 @@
       "team.devT": "For developers", "team.dev": "Pull the queue and let any AI apply the changes to the real source. Comments carry the page route and the CSS that actually wins.",
       "final.title": "Try it in one click — no install", "final.demo": "Try the demo", "final.signup": "Create an account",
       "final.signupFree": "Start free — no credit card",
-      "foot.dashboard": "Dashboard", "foot.docs": "Docs", "foot.privacy": "Privacy",
+      "foot.dashboard": "Dashboard", "foot.docs": "Docs", "foot.privacy": "Privacy", "foot.github": "GitHub",
       "anim.label": "Make this bigger and blue",
       "anim.label2": "Load these from /api/plans",
       "anim.label3": "Send this to POST /api/leads"
     },
     ar: {
-      "nav.how": "كيف يعمل", "nav.why": "لماذا Pointer", "nav.features": "المميزات", "nav.pricing": "الأسعار", "nav.demo": "تجربة", "nav.docs": "التوثيق",
+      "nav.brief": "الملخص", "nav.how": "كيف يعمل", "nav.why": "لماذا Pointer", "nav.features": "المميزات",
+      "nav.trust": "الأمان والخصوصية", "nav.pricing": "الأسعار", "nav.demo": "تجربة", "nav.docs": "التوثيق",
       "nav.signin": "تسجيل الدخول", "nav.demoCta": "جرّب العرض",
+      "hero.title": "أشِر إلى الواجهة. ليحصل الذكاء الاصطناعي على الملخص الدقيق.",
+      "hero.sub": "أي عضو في فريقك ينقر على عنصر في التطبيق المباشر ويترك ملاحظته. فتتلقى أداة الذكاء الاصطناعي المحدِّد وقواعد CSS الفاعلة والسياق الدقيق لإجراء التعديل الصحيح — دون حاجة لترجمة لقطات شاشة غامضة إلى كود.",
+      "hero.demo": "جرّب العرض — بدون تثبيت", "hero.signup": "أنشئ حسابًا",
+      "brief.title": "الملخص المنظم — ما يحمله كل تعليق بالفعل",
+      "brief.sub": "أدوات لقطات الشاشة تمنح الذكاء الاصطناعي صورة وتخمينًا. يلتقط Pointer حالة شجرة العناصر بدقة حتى لا يضطر الوكيل إلى الاستكشاف الأعمى.",
+      "brief.thField": "الحقل الملتقط", "brief.thWhy": "أهميته لأداة الذكاء الاصطناعي",
+      "brief.f1": "يحدد عنصر الواجهة بدقة دون الحاجة إلى لقطة شاشة أو وصف تقريبي.",
+      "brief.f2": "وسم فتح العنصر وخصائصه (حتى 120 حرفًا) ونصه (حتى 160 حرفًا) — مقتضب ومباشر حتى لا يُغرق النموذج بتفريعات الشجرة.",
+      "brief.f3": "قواعد CSS الفاعلة التي تسري بالفعل، لا تفريغ الحسابات بالكامل. يجيب عن سبب ظهور التنسيق فورًا.",
+      "brief.f4": "يزيل الغموض عن الهيكل عندما يكون المحدِّد عامًا.",
+      "brief.f5": "يحدد الشاشة والواجهة ليفتح الوكيل مكوّن المسار الصحيح مباشرة.",
+      "brief.f6": "يحوّل شكوى «معطّل على الهاتف» إلى شرط تقني دقيق وقابل لإعادة الإنتاج.",
+      "brief.f7": "اختياري في بلاغات الأخطاء: أخطاء الكونسول والطلبات الفاشلة أو البطيئة لحظة حدوث المشكلة.",
+      "brief.f8": "مسار خاصية مخصصة أو مسار وضع التطوير لإطار العمل متى توفر.",
+      "brief.badge": "ملخص منظم وليس مجرد لقطة شاشة.",
+      "contrast.badTitle": "بدون Pointer", "contrast.bad": "«اذهب إلى نموذج التسجيل، اجعل العنوان أكبر وأزرق، اربط قائمة الخطط بـ /api/plans، واجعل زر الإرسال يرسل POST فعليًا إلى /api/leads…»",
+      "contrast.goodTitle": "مع Pointer", "contrast.good": "🐕 انقر العنوان أو القائمة أو الزر ← 💬 اترك تعليقًا على كل عنصر ← ✨ يطبّقها الذكاء الاصطناعي جميعًا.",
+      "how.title": "كيف يعمل",
+      "how.s1t": "انقر وعلّق", "how.s1": "أي مستخدم مسجّل ينقر على أي عنصر في التطبيق المباشر ويترك ملاحظته.",
+      "how.s2t": "فرز في لوحة التحكم", "how.s2": "تصل التعليقات إلى لوحة التحكم موسومة بالمشروع والبيئة والجهة المعنية والحالة — تُفرز كعمل حقيقي.",
+      "how.s3t": "يطبّقها الذكاء الاصطناعي", "how.s3": "يسلّم المطوّر القائمة لأي أداة ذكاء اصطناعي عبر HTTP فتعدّل ملفات الكود الفعلية.",
+      "how.s4t": "حفظ الالتزام دون رفع", "how.s4": "ينشئ الذكاء الاصطناعي التزامًا (commit) حسب نمط مشروعك ويربط رابط الالتزام بالتعليق للمراجع. الذكاء الاصطناعي لا يرفع الكود أبدًا — الرفع يظل يدويًا.",
+      "why.title": "وفّر الوقت، وقلّل التكلفة، واستهلك رموز ذكاء اصطناعي أقل",
+      "why.f1t": "وفّر الوقت", "why.f1": "كل تعليق يحمل بالفعل العنصر والصفحة وقاعدة CSS الفاعلة — دون استفسارات لمعرفة ما قصده المعلق.",
+      "why.f2t": "قلّل التكلفة", "why.f2": "اجتماعات متابعة ومحادثات توضيح أقل — السياق الذي كانت تحتاجه المكالمة أصبح مرفقًا بالتعليق مباشرة.",
+      "why.f3t": "استهلاك أقل للرموز", "why.f3": "عرض ملخص موجز وأداة مساعدة مدمجة يختصران جولات الاستكشاف الطويلة بملخص دقيق ومباشر — لتبقى السياقات مركّزة وموجزة.",
+      "why.f4t": "قائمة واحدة منظمة", "why.f4": "تُوسم التعليقات بالمشروع والبيئة والجهة المعنية والحالة — قائمة واحدة مُفرزة بدلًا من لقطات شاشة ومحادثات متفرقة.",
+      "feat.title": "مصمّم للفرق الحقيقية",
+      "feat.f1t": "تركيب بسطرين", "feat.f1": "أضِف وسم سكربت وعنصرًا مخصصًا. بدون حزم وبدون SDK.",
+      "feat.f2t": "متعدد المشاريع والمستأجرين", "feat.f2": "خادم واحد يخدم كل التطبيقات ومساحات العمل — مقسّمة ومعزولة حسب المشروع، مع فرض ذلك خادميًا.",
+      "feat.f3t": "عزل الأنماط", "feat.f3": "تُعرض الأداة داخل Shadow DOM فلا تتعارض أبدًا مع تنسيقات تطبيقك.",
+      "feat.f4t": "يعمل على أي موقع", "feat.f4": "إضافة المتصفح تتيح لك الإشارة والتعليق على مواقع لا تملكها، مع بقائك مسجّلاً في كل مكان.",
+      "trust.title": "الأمان والخصوصية",
+      "trust.sub": "مصمّم للفرق التي تضع أمان الكود المصدري في المقام الأول.",
+      "trust.q1t": "ذكاء اصطناعي يعدّل الكود؟",
+      "trust.q1": "يعدّل الكود على فرعك المحلي وينشئ التزامًا (commit). لا يقوم بالرفع أبدًا. تراجع فرق الكود كأي مراجعة عادية، وكل تعليق يحمل رابط التزامه.",
+      "trust.q2t": "ما الذي يتم التقاطه من تطبيقك؟",
+      "trust.q2Body": "فقط البيانات الوصفية للعنصر عند النقر للتعليق. لا نلتقط أبدًا مدخلات النماذج أو ملفات تعريف الارتباط أو محتوى الطلبات. اقرأ دليل ",
+      "trust.q2DataLink": "البيانات والاستضافة الذاتية",
+      "trust.q2And": " و",
+      "trust.q2PrivacyLink": "سياسة الخصوصية",
+      "trust.q3t": "ما هي أداة الذكاء الاصطناعي المدعومة؟",
+      "trust.q3": "أي أداة تفضلها. يوفّر Pointer مهارات ماركداون قياسية عبر HTTP — متوافق مع Claude Code وCursor وأي وكيل ذكاء اصطناعي دون أي قيود احتكارية.",
+      "trust.q4t": "هل بياناتي محبوسة لديكم؟",
+      "trust.q4Body": "يمكنك استضافة النظام بالكامل ذاتيًا: الواجهة البرمجية وقاعدة بيانات Postgres على بنيتك التحتية. التحكم الكامل لبياناتك بيدك. راجع ",
+      "trust.q4DocsLink": "التوثيق",
       "pricing.title": "أسعار بسيطة وواضحة",
       "pricing.free": "مجاني", "pricing.perMo": "/شهريًا", "pricing.perYr": "/سنويًا",
       "pricing.cta": "ابدأ الآن", "pricing.soon": "قريبًا",
@@ -594,29 +827,6 @@
       "ext.s4t": "فعّل وضع المطوّر", "ext.s4": "فعّل مفتاح «وضع المطوّر» في أعلى اليمين.",
       "ext.s5t": "تحميل غير مضغوط", "ext.s5": "اضغط «تحميل غير مضغوط» واختر المجلد الذي فككت ضغطه.",
       "ext.s6t": "سجّل الدخول واستخدمها", "ext.s6": "ثبّت Pointer، اضغط عليه، سجّل الدخول بحسابك، ثم «تفعيل في هذه التبويبة» على أي موقع.",
-      "hero.title": "أشِر إلى الواجهة. ونفّذ بالذكاء الاصطناعي.",
-      "hero.sub": "أي عضو في فريقك ينقر على عنصر في التطبيق الفعلي ويترك تعليقًا قصيرًا. ثم يسلّم المطوّر قائمة الملاحظات لأي أداة ذكاء اصطناعي لتطبّق التغيير على الكود المصدري مباشرة — دون ترجمة ملاحظات غامضة إلى كود.",
-      "hero.demo": "جرّب العرض — بدون تثبيت", "hero.signup": "أنشئ حسابًا",
-      "contrast.badTitle": "بدون Pointer", "contrast.bad": "«اذهب إلى نموذج التسجيل، اجعل العنوان أكبر وأزرق، اربط قائمة الخطط بـ /api/plans، واجعل زر الإرسال يرسل POST فعليًا إلى /api/leads…»",
-      "contrast.goodTitle": "مع Pointer", "contrast.good": "🐕 انقر العنوان أو القائمة أو الزر ← 💬 اترك تعليقًا على كل عنصر ← ✨ يطبّقها الذكاء الاصطناعي جميعًا.",
-      "how.title": "كيف يعمل",
-      "how.s1t": "انقر وعلّق", "how.s1": "أي مستخدم مسجّل ينقر على أي عنصر في التطبيق ويترك تعليقًا قصيرًا.",
-      "how.s2t": "فرز في لوحة التحكم", "how.s2": "تصل التعليقات إلى لوحة التحكم موسومة بالمشروع والبيئة والجهة المعنية والحالة — تُفرز كعمل حقيقي، لا أن تُدفن في مستند.",
-      "how.s3t": "يطبّقها الذكاء الاصطناعي", "how.s3": "يسلّم المطوّر القائمة لأي أداة ذكاء اصطناعي — Claude Code وCursor وغيرها — فتعدّل ملفات الكود الفعلية عبر HTTP مباشرةً.",
-      "why.title": "وفّر الوقت، وقلّل التكلفة، واستهلك عدد أقل من رموز الذكاء الاصطناعي",
-      "why.f1t": "وفّر الوقت", "why.f1": "كل تعليق يحمل بالفعل العنصر والصفحة وقاعدة CSS الفاعلة — بدون تخمين ما قصده الشخص.",
-      "why.f2t": "قلّل التكلفة", "why.f2": "اجتماعات متابعة ومحادثات توضيح أقل — السياق الذي كان يحتاج مكالمة أصبح مرفقًا بالتعليق مباشرةً.",
-      "why.f3t": "استهلك عدد أقل من رموز الذكاء الاصطناعي", "why.f3": "المحدِّد والمسار وملف المصدر الملتقطون مسبقًا يجعلان أداة الذكاء الاصطناعي تبدأ من الملف الصحيح بدلًا من استكشاف الكود بالكامل.",
-      "why.f4t": "قائمة واحدة منظّمة", "why.f4": "تُوسم التعليقات بالمشروع والبيئة والجهة المعنية والحالة — قائمة واحدة مُفرزة بدلًا من لقطات شاشة ومحادثات متفرقة.",
-      "feat.title": "مصمّم للفرق الحقيقية",
-      "feat.f1t": "تركيب بسطرين", "feat.f1": "أضِف وسم سكربت ووسم العنصر. بدون حزمة وبدون SDK.",
-      "feat.f2t": "متعدد المشاريع والمستأجرين", "feat.f2": "خادم واحد يخدم كل التطبيقات ومساحات العمل — مقسّمة ومعزولة حسب المشروع، مع فرض ذلك من الخادم.",
-      "feat.f3t": "متعدد الجهات", "feat.f3": "كل تعليق موسوم بالبيئة والجهة المعنية والكاتب.",
-      "feat.f4t": "مدرك للعنصر والمصدر", "feat.f4": "يلتقط المحدِّد واللقطة وقواعد CSS الفاعلة ومسار الصفحة ومسار المصدر اختياريًا.",
-      "feat.f5t": "محايد تجاه الأدوات", "feat.f5": "أي أداة ذكاء اصطناعي تطبّق التغييرات عبر HTTP — Claude Code وCursor وغيرها.",
-      "feat.f6t": "معزول الأنماط", "feat.f6": "تُعرض الأداة داخل Shadow DOM فلا تتعارض مع تنسيقات تطبيقك.",
-      "feat.f7t": "لوحة تحكم حقيقية", "feat.f7": "فرز وحالات وأدوار وعروض لكل مشروع — لكل الفريق.",
-      "feat.f8t": "يعمل على أي موقع", "feat.f8": "إضافة المتصفح تتيح لك الإشارة والتعليق على مواقع لا تملكها، مع بقائك مسجّلاً في كل مكان.",
       "stack.title": "يعمل مع تقنياتك",
       "stack.sub": "مكتشفة من كل مشروع حقيقي يستخدم Pointer اليوم.",
       "stack.techLabel": "التقنيات", "stack.aiLabel": "أدوات الذكاء الاصطناعي",
@@ -626,7 +836,7 @@
       "team.devT": "للمطوّرين", "team.dev": "اسحب القائمة ودع أي ذكاء اصطناعي يطبّق التغييرات على الكود الفعلي. تحمل التعليقات مسار الصفحة وقواعد CSS الفاعلة.",
       "final.title": "جرّبه بنقرة واحدة — بدون تثبيت", "final.demo": "جرّب العرض", "final.signup": "أنشئ حسابًا",
       "final.signupFree": "ابدأ مجانًا — بدون بطاقة ائتمان",
-      "foot.dashboard": "لوحة التحكم", "foot.docs": "الوثائق", "foot.privacy": "الخصوصية",
+      "foot.dashboard": "لوحة التحكم", "foot.docs": "الوثائق", "foot.privacy": "الخصوصية", "foot.github": "GitHub",
       "anim.label": "اجعله أكبر وأزرق",
       "anim.label2": "حمّلها من /api/plans",
       "anim.label3": "أرسلها إلى POST /api/leads"
@@ -645,15 +855,20 @@
       document.querySelectorAll('[data-i18n]').forEach(function (el) {
         if (el.textContent && el.textContent.indexOf('Pointer') !== -1) el.textContent = el.textContent.split('Pointer').join(pn);
       });
+      document.querySelectorAll('[title], [aria-label]').forEach(function (el) {
+        var t = el.getAttribute('title');
+        if (t && t.indexOf('Pointer') !== -1) el.setAttribute('title', t.split('Pointer').join(pn));
+        var a = el.getAttribute('aria-label');
+        if (a && a.indexOf('Pointer') !== -1) el.setAttribute('aria-label', a.split('Pointer').join(pn));
+      });
     }
     document.documentElement.lang = lang;
     document.documentElement.dir = (lang === 'ar') ? 'rtl' : 'ltr';
-    renderPricing(lang);   // plan cards are API-driven; re-render so their static labels follow the language
-    if (typeof extShow === 'function') extShow(extIdx);   // keep the install-stepper nav labels in the current language
+    renderPricing(lang);
+    if (typeof extShow === 'function') extShow(extIdx);
     if (typeof applyExtensionLabels === 'function') applyExtensionLabels(lang);
     if (typeof renderThemeToggle === 'function') renderThemeToggle(lang);
     var toggle = document.getElementById('lang-toggle');
-    // Text button: show the name of the language you'd switch TO (not the current one).
     if (toggle) {
       var label = (lang === 'ar') ? 'التبديل إلى الإنجليزية' : 'Switch to Arabic';
       toggle.textContent = (lang === 'ar') ? 'English' : 'العربية';
@@ -663,18 +878,16 @@
     try { localStorage.setItem('pointer_lang', lang); } catch (e) {}
   }
 
-  // ── Pricing: fetch marketing plans once, render client-side. The section is always visible
-  // (loading skeleton → real cards, or a graceful fallback CTA if the fetch fails/returns nothing)
-  // so the nav's #pricing anchor never lands on empty space. ──
+  // ── Pricing: fetch marketing plans once, render client-side ──
   var API_BASE = "https://api.pointer.moamen.work";
-  var PRICING_PLANS = null;   // null = still loading (keep the skeleton); [] = loaded but empty/failed
+  var PRICING_PLANS = null;
 
   function renderPricing(lang) {
     var grid = document.getElementById('pricing-grid');
     var section = document.getElementById('pricing');
     if (!grid || !section) return;
     var dict = STRINGS[lang] || STRINGS.en;
-    if (PRICING_PLANS === null) return;   // still loading — keep the skeleton in place
+    if (PRICING_PLANS === null) return;
     updateFinalCta(lang);
     if (!PRICING_PLANS.length) {
       grid.innerHTML = '<div class="price-card"><p>' + esc(dict['pricing.fallback']) + '</p>' +
@@ -685,7 +898,7 @@
     var cards = PRICING_PLANS.slice().sort(function (a, b) {
       return (a.sortOrder || 0) - (b.sortOrder || 0);
     }).map(function (p) {
-      var soon = p.displayState === 1;                 // 1 = ComingSoon (public endpoint already drops Hidden)
+      var soon = p.displayState === 1;
       var price;
       if (!p.priceMonthly || p.priceMonthly <= 0) {
         price = '<div class="price-amount">' + dict['pricing.free'] + '</div>';
@@ -702,7 +915,6 @@
       var bullets = (p.featureBullets || []).map(function (b) {
         return '<li>' + esc(b) + '</li>';
       }).join('');
-      // Visible plans link to signup carrying the chosen plan slug; ComingSoon shows a tag, no CTA.
       var cta = '<a class="btn primary" href="https://app.pointer.moamen.work/signup?plan=' + encodeURIComponent(p.slug || '') + '">' + dict['pricing.cta'] + '</a>';
       return '<div class="price-card' + (soon ? ' soon' : '') + '">' +
         (soon ? '<span class="price-soon-tag">' + dict['pricing.soon'] + '</span>' : '') +
@@ -716,8 +928,6 @@
     grid.innerHTML = cards;
   }
 
-  // The final CTA band repeats "Create an account" verbatim from the hero; once a real free
-  // plan has loaded, name it directly instead of the generic third repeat.
   function updateFinalCta(lang) {
     var dict = STRINGS[lang] || STRINGS.en;
     var link = document.getElementById('final-signup');
@@ -741,7 +951,7 @@
       .then(function (r) { return r.ok ? r.json() : null; })
       .then(function (res) {
         var list = res && (res.data || res);
-        PRICING_PLANS = Array.isArray(list) ? list : [];   // [] renders the fallback CTA, never leaves the skeleton up forever
+        PRICING_PLANS = Array.isArray(list) ? list : [];
         renderPricing(document.documentElement.lang || 'en');
       })
       .catch(function () {
@@ -750,9 +960,7 @@
       });
   })();
 
-  // ── "Works with your stack": real, anonymized counts from GET /api/public/stacks-summary.
-  // Known tokens (documented in pointer-init.md) get a friendly display name; anything else falls
-  // back to a humanized version so new vocabulary never needs a landing-page code change. ──
+  // ── "Works with your stack" ──
   var STACK_DISPLAY = {
     react: 'React', angular: 'Angular', vue: 'Vue', next: 'Next.js', nuxt: 'Nuxt', svelte: 'Svelte',
     tailwind: 'Tailwind CSS', scss: 'Sass/SCSS', 'css-modules': 'CSS Modules',
@@ -779,7 +987,7 @@
       .then(function (r) { return r.ok ? r.json() : null; })
       .then(function (res) {
         var d = res && (res.data || res);
-        if (!d || !d.totalProjects) return;   // nothing real yet — section stays hidden
+        if (!d || !d.totalProjects) return;
         renderStackTags('stack-tags', Object.assign({}, d.frontend, d.backend), 16);
         renderStackTags('stack-tags-ai', d.aiTools, 8);
         var section = document.getElementById('stack');
@@ -801,12 +1009,13 @@
     if (b.urls) {
       if (b.urls.app) document.querySelectorAll('a[href^="https://app.pointer.moamen.work"]').forEach(function (a) { a.href = a.href.replace('https://app.pointer.moamen.work', b.urls.app); });
       if (b.urls.demo) document.querySelectorAll('a[href^="https://demo.pointer.moamen.work"]').forEach(function (a) { a.href = a.href.replace('https://demo.pointer.moamen.work', b.urls.demo); });
+      if (b.urls.docs) document.querySelectorAll('[data-brand-docs]').forEach(function (a) { a.href = b.urls.docs; });
     }
     applyExtension(b.extension);
-    applyLang(document.documentElement.lang || 'en'); // re-render copy with the new product name
+    applyLang(document.documentElement.lang || 'en');
   }
 
-  // ── Extension CTA: promote a one-click "Add to Chrome" once a Store URL is configured ──
+  // ── Extension CTA ──
   function applyExtension(ext) {
     var storeBtn = document.getElementById('ext-store');
     var openBtn = document.getElementById('ext-open');
@@ -840,7 +1049,7 @@
       .catch(function () { /* graceful: keep the bundled brand */ });
   })();
 
-  // ── Extension install stepper (modal; one step at a time) ──
+  // ── Extension install stepper ──
   var extIdx = 1;
   var EXT_MAX = 6;
   function extShow(n) {
@@ -900,8 +1109,7 @@
     });
   })();
 
-  // ── Manual dark/light toggle — defaults to following the OS preference (no override) until the
-  // visitor picks explicitly, then persists that choice (same pattern as the language toggle). ──
+  // ── Manual dark/light toggle ──
   function isDarkThemeNow() {
     var override = document.documentElement.getAttribute('data-theme');
     if (override) return override === 'dark';

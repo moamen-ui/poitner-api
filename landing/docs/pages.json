@@ -1,6 +1,14 @@
 {
   "pages": [
     {
+      "file": "/",
+      "title": "Product overview",
+      "nav": "Overview",
+      "external": true,
+      "ownedBy": "R3-06",
+      "summary": "Product overview: click-to-comment feedback and AI apply loop."
+    },
+    {
       "file": "install.html",
       "title": "Install",
       "nav": "Getting started",
