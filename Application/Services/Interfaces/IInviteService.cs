@@ -14,8 +14,21 @@ public interface IInviteService
     /// <summary>List this tenant's active (not revoked/expired) invites. Never returns another tenant's.</summary>
     Task<Result<List<InviteResponse>>> ListAsync();
 
-    /// <summary>Revoke an invite by id — explicit own-owner scope; unreachable cross-tenant.</summary>
+    /// <summary>
+    /// Revoke an invite by id — explicit own-owner scope; unreachable cross-tenant.
+    /// For a quick-access invite this also revokes the magic link it issued: the link is the
+    /// credential, and revoking the audit row alone would leave it working.
+    /// </summary>
     Task<Result> RevokeAsync(int id);
+
+    /// <summary>
+    /// Issue a fresh magic link for a quick-access invite and invalidate the previous one.
+    ///
+    /// This is the answer to a leaked link. Revoking would cut the client off entirely; rotating
+    /// keeps the same provisioned user and project and only replaces the bearer token, so the
+    /// admin can hand over a new link without re-inviting anyone.
+    /// </summary>
+    Task<Result<InviteResponse>> RotateQuickLinkAsync(int id);
 
     /// <summary>
     /// Re-sends an invitation. By default the same code is kept and only the expiry is extended, so

@@ -259,11 +259,106 @@ public class InviteService : IInviteService
         if (invite == null)
             return Result.NotFound(MessageKeys.Invite.NotFound);
 
-        invite.RevokedAt = DateTime.UtcNow;
+        var now = DateTime.UtcNow;
+        invite.RevokedAt = now;
         _unitOfWork.Repository<Invite>().Update(invite);
+
+        // The magic link, not the audit row, is what a leaked quick-access invite hands an
+        // attacker: LoginWithInviteAsync resolves the QuickAccessLink by token hash and checks only
+        // that link's RevokedAt — it never reads the Invite. Stamping the invite alone therefore
+        // left a revoked invite's link signing people in indefinitely.
+        await RevokeLinksForInviteAsync(invite.Id, now);
+
         await _unitOfWork.SaveChangesAsync();
 
         return Result.Success(MessageKeys.Invite.Revoked_Ok);
+    }
+
+    public async Task<Result<InviteResponse>> RotateQuickLinkAsync(int id)
+    {
+        var invite = await LoadOwnAsync(id);
+        if (invite == null)
+            return Result<InviteResponse>.NotFound(MessageKeys.Invite.NotFound);
+
+        if (invite.RevokedAt is not null)
+            return Result<InviteResponse>.Failure(MessageKeys.Invite.Revoked);
+
+        // Rotation replaces a credential; it cannot resurrect an expired invite into a working one.
+        if (invite.ExpiresAt <= DateTime.UtcNow)
+            return Result<InviteResponse>.Failure(MessageKeys.Invite.Expired);
+
+        // The link carries the user and project, so an invite that never issued one has nothing to
+        // rotate — that is a normal invite, and saying so beats minting a link with no account.
+        var current = await _unitOfWork.Repository<QuickAccessLink>()
+            .Query()
+            .IgnoreQueryFilters()
+            .Where(l => l.InviteId == invite.Id && l.DeletedAt == null)
+            .OrderByDescending(l => l.Id)
+            .FirstOrDefaultAsync();
+
+        if (current == null)
+            return Result<InviteResponse>.Failure(MessageKeys.Invite.NotQuickAccess);
+
+        var project = await _unitOfWork.Repository<Project>()
+            .Query()
+            .IgnoreQueryFilters()
+            .AsNoTracking()
+            .FirstOrDefaultAsync(p => p.Id == current.ProjectId && p.DeletedAt == null);
+
+        if (project == null || string.IsNullOrWhiteSpace(project.AppUrl))
+            return Result<InviteResponse>.Failure(MessageKeys.Invite.QuickAccessAppUrlRequired);
+
+        var now = DateTime.UtcNow;
+        var ttlDays = QuickAccessLinkTtlDays;
+        var rawToken = QuickAccessTokenGenerator.NewToken();
+
+        // Revoke every live link for this invite BEFORE adding the replacement, so there is never a
+        // moment where two tokens both work — and so a second rotate cannot leave the first
+        // rotation's token behind.
+        await RevokeLinksForInviteAsync(invite.Id, now);
+
+        await _unitOfWork.Repository<QuickAccessLink>().AddAsync(new QuickAccessLink
+        {
+            OwnerId = current.OwnerId,
+            UserId = current.UserId,
+            ProjectId = current.ProjectId,
+            InviteId = invite.Id,
+            TokenHash = QuickAccessTokenGenerator.Hash(rawToken),
+            ExpiresAt = now.AddDays(ttlDays),
+            // Same as issue: 0 = unlimited within the TTL, or the client could not come back after
+            // their 12h JWT expires.
+            MaxUses = 0,
+        });
+        await _unitOfWork.SaveChangesAsync();
+
+        var role = invite.RoleId is int roleId
+            ? await _unitOfWork.Repository<Role>().Query().AsNoTracking().FirstOrDefaultAsync(r => r.Id == roleId)
+            : null;
+
+        var magicLink = QuickAccessTokenGenerator.BuildMagicLink(project.AppUrl!, rawToken);
+        var response = MapToResponse(invite, role?.Name, magicLink);
+        response.MagicLink = magicLink;
+        response.LinkExpiresAt = now.AddDays(ttlDays);
+        return Result<InviteResponse>.Success(response, MessageKeys.Invite.LinkRotated);
+    }
+
+    /// <summary>
+    /// Stamps RevokedAt on every not-yet-revoked link for an invite. Does NOT save — the caller
+    /// commits, so revoking the invite and killing its link land in one transaction.
+    /// </summary>
+    private async Task RevokeLinksForInviteAsync(int inviteId, DateTime now)
+    {
+        var links = await _unitOfWork.Repository<QuickAccessLink>()
+            .Query()
+            .IgnoreQueryFilters()
+            .Where(l => l.InviteId == inviteId && l.DeletedAt == null && l.RevokedAt == null)
+            .ToListAsync();
+
+        foreach (var link in links)
+        {
+            link.RevokedAt = now;
+            _unitOfWork.Repository<QuickAccessLink>().Update(link);
+        }
     }
 
     // Loads an invite owned by the caller's tenant. Explicitly scoped (IgnoreQueryFilters + own

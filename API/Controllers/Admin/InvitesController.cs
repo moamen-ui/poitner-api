@@ -44,4 +44,19 @@ public class InvitesController(IInviteService service) : ControllerBase
         if (result.IsNotFound) return NotFound(result);
         return result.IsSuccess ? Ok(result) : BadRequest(result);
     }
+
+    /// <summary>
+    /// Replace a quick-access invite's magic link. The previous link stops working immediately;
+    /// the client account and its project stay as they are, so the admin can hand over a new link
+    /// after a leak without re-inviting anyone.
+    /// </summary>
+    [HttpPost("{id:int}/quick-link/rotate")]
+    [ProducesResponseType(typeof(InviteResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(Result), StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> RotateQuickLink(int id)
+    {
+        var result = await service.RotateQuickLinkAsync(id);
+        if (result.IsNotFound) return NotFound(result);
+        return result.IsSuccess ? Ok(result) : BadRequest(result);
+    }
 }

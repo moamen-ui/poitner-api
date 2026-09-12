@@ -159,6 +159,8 @@ public static class MessageKeys
         public const string QuickAccessEmailRequired = "An email is required for a client invite so the account can be provisioned.";
         public const string QuickAccessProjectRequired = "Select a project for this client invite.";
         public const string QuickAccessAppUrlRequired = "Set this project's App URL before sending a client invite.";
+        public const string NotQuickAccess = "This invite has no magic link to rotate.";
+        public const string LinkRotated = "A new link was issued; the previous one no longer works.";
     }
 
     public static class Plan

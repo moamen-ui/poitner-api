@@ -54,6 +54,12 @@ public class TenantInviteServiceTests
             return Task.FromResult(Pointer.Application.Response.Result.Success());
         }
 
+        // Not part of what this spy exercises: these tests cover the tenant-scoping decorator, and
+        // rotation has no separate scoping path — it resolves the invite through the same
+        // LoadOwnAsync the decorator already guards.
+        public Task<Pointer.Application.Response.Result<Pointer.Application.DTOs.Invite.InviteResponse>> RotateQuickLinkAsync(int id) =>
+            throw new NotSupportedException();
+
         public Task<Pointer.Application.Response.Result<Pointer.Application.DTOs.Invite.InviteResponse>> ResendAsync(int id, bool rotate = false)
         {
             Resent.Add((id, rotate));
