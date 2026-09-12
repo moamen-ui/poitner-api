@@ -29,7 +29,10 @@ export function initArgs({ project = DEFAULT_PROJECT, server = SERVER, extra = [
     '--environment', 'local',
     '--tool', 'other',
     '--yes',
-    '--json',
+    // NOT --json. The JSON envelope replaces init's human output entirely, including the
+    // `✔ Design tokens: …` line R3-02-01 asserts on. A caller that wants the envelope adds
+    // `--json` through `extra`; making it the default would silently delete that line from
+    // every scenario's stdout.
     ...extra,
   ];
 }
