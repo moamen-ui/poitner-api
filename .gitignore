@@ -4,13 +4,14 @@ obj/
 .env.prod
 .pointer/*
 !.pointer/credentials.env.example
-dashboard/
+# Anchored: un-anchored, this also hides e2e/dashboard/ and any other nested dashboard dir.
+/dashboard/
 *.user
 .superpowers/
 API/wwwroot/uploads/
 .playwright-cli/
 .playwright-mcp/
 node_modules/
-clients/
+/clients/
 openapi.json
 .claude/worktrees/
