@@ -131,18 +131,148 @@ const VOID_ELEMENTS = /^(area|base|br|col|embed|hr|img|input|link|meta|param|sou
 // outerHTML (capped at 2000) drowned leaf comments in child markup / inline SVG and
 // duplicated the class list; here `class` and `style` are omitted because they travel
 // in the dedicated `classes` / `computedStyles` fields.
-function shallowSnapshot(el: Element): string {
+export function escapeAttr(val: string): string {
+  return val.replace(/"/g, '&quot;').replace(/</g, '&lt;');
+}
+
+export function isMasked(el: Element): boolean {
+  if (typeof el.closest === 'function') {
+    return !!el.closest('[data-snapshot-mask]');
+  }
+  let curr: Element | null = el;
+  while (curr) {
+    if (curr.hasAttribute && curr.hasAttribute('data-snapshot-mask')) return true;
+    curr = curr.parentElement;
+  }
+  return false;
+}
+
+export function isFormValueTag(tag: string): boolean {
+  return /^(input|textarea|select|option)$/i.test(tag);
+}
+
+export function isSensitiveAttr(name: string): boolean {
+  const lower = name.toLowerCase();
+  if (
+    lower === 'value' ||
+    lower === 'authorization' ||
+    lower === 'srcdoc'
+  ) {
+    return true;
+  }
+  if (lower.startsWith('data-')) {
+    const rest = lower.slice(5);
+    if (
+      rest === 'value' ||
+      rest === 'email' ||
+      rest === 'token' ||
+      rest === 'secret' ||
+      rest.startsWith('user')
+    ) {
+      return true;
+    }
+  }
+  return false;
+}
+
+export function maskAttrValue(name: string, val: string): string {
+  const lower = name.toLowerCase();
+  const isStructural =
+    lower === 'id' ||
+    lower === 'type' ||
+    lower === 'role' ||
+    lower.startsWith('aria-');
+  if (isStructural) {
+    return escapeAttr(val);
+  }
+  return '•••';
+}
+
+// A shallow, token-cheap snapshot: the element's OWN opening tag (its attributes —
+// id / data-* / type / href / aria-*, which are the strongest source anchors for
+// routed & generated UIs) plus its trimmed text, WITHOUT the child subtree. The full
+// outerHTML (capped at 2000) drowned leaf comments in child markup / inline SVG and
+// duplicated the class list; here `class` and `style` are omitted because they travel
+// in the dedicated `classes` / `computedStyles` fields.
+export function shallowSnapshot(el: Element, captureText: boolean = true): string {
   const tag = el.tagName.toLowerCase();
-  const attrs = Array.from(el.attributes)
-    .filter((a) => a.name !== 'class' && a.name !== 'style')
-    .map((a) => {
-      const v = (a.value || '').slice(0, 120);
-      return v ? `${a.name}="${v}"` : a.name;
-    })
-    .join(' ');
+  const masked = isMasked(el);
+  const isForm = isFormValueTag(tag);
+
+  const rawAttrs = Array.from(el.attributes).filter(
+    (a) => a.name !== 'class' && a.name !== 'style',
+  );
+
+  const keptAttrs: string[] = [];
+
+  for (const a of rawAttrs) {
+    const name = a.name;
+    const lower = name.toLowerCase();
+
+    // 3. Sensitive attribute names are always dropped regardless
+    if (isSensitiveAttr(lower)) continue;
+
+    // 1. For input: keep type, name, id, placeholder, aria-*, data-* (except data-snapshot-mask)
+    if (tag === 'input') {
+      if (lower === 'data-snapshot-mask') continue;
+      const isAllowed =
+        lower === 'type' ||
+        lower === 'name' ||
+        lower === 'id' ||
+        lower === 'placeholder' ||
+        lower.startsWith('aria-') ||
+        lower.startsWith('data-');
+      if (!isAllowed) continue;
+    }
+
+    // 1. For input, textarea, select, option: always drop the value attribute
+    if (isForm && lower === 'value') continue;
+
+    const rawVal = (a.value || '').slice(0, 120);
+
+    if (masked) {
+      const maskedVal = maskAttrValue(name, rawVal);
+      keptAttrs.push(rawVal ? `${name}="${maskedVal}"` : name);
+    } else {
+      const escaped = escapeAttr(rawVal);
+      keptAttrs.push(rawVal ? `${name}="${escaped}"` : name);
+    }
+  }
+
+  // 1. For input: emit value="•••" only when element had a non-empty DOM value property
+  if (tag === 'input') {
+    const inputEl = el as HTMLInputElement;
+    if (typeof inputEl.value === 'string' && inputEl.value !== '') {
+      keptAttrs.push('value="•••"');
+    }
+  }
+
+  const attrs = keptAttrs.join(' ');
   const open = attrs ? `<${tag} ${attrs}>` : `<${tag}>`;
   if (VOID_ELEMENTS.test(tag)) return attrs ? `<${tag} ${attrs}/>` : `<${tag}/>`;
-  const text = (el.textContent || '').replace(/\s+/g, ' ').trim().slice(0, 160);
+
+  let text = '';
+  if (!captureText) {
+    const raw = (el.textContent || '').replace(/\s+/g, ' ').trim();
+    text = raw ? '•••' : '';
+  } else if (masked) {
+    const raw = (el.textContent || '').replace(/\s+/g, ' ').trim();
+    text = raw ? '•••' : '';
+  } else if (tag === 'option') {
+    text = '';
+  } else if (tag === 'textarea') {
+    const ta = el as HTMLTextAreaElement;
+    const val = typeof ta.value === 'string' && ta.value !== '' ? ta.value : (el.textContent || '');
+    text = val.trim() ? '•••' : '';
+  } else if (tag === 'select') {
+    const sel = el as HTMLSelectElement;
+    const hasOpts = sel.options && sel.options.length > 0;
+    const raw = (el.textContent || '').trim();
+    text = (hasOpts || raw || sel.value) ? '•••' : '';
+  } else {
+    text = (el.textContent || '').replace(/\s+/g, ' ').trim().slice(0, 160);
+  }
+
   return `${open}${text}</${tag}>`;
 }
 
@@ -195,11 +325,20 @@ function collectAppliedRules(
   }
 }
 
+export type CaptureOptions = {
+  captureText?: boolean;
+};
+
 // --- Metadata capture (ported from inject.js) ---------------------------
 // `sourceAttr` is the configured DOM attribute carrying an element's source path.
-export function captureMetadata(el: Element, sourceAttr: string): Meta {
+export function captureMetadata(
+  el: Element,
+  sourceAttr: string,
+  options?: CaptureOptions,
+): Meta {
+  const captureText = options?.captureText !== false;
   const selector = generateSelector(el);
-  const snapshot = shallowSnapshot(el);
+  const snapshot = shallowSnapshot(el, captureText);
   const classes = (el.className && typeof el.className === 'string')
     ? el.className.split(/\s+/).filter(Boolean)
     : [];

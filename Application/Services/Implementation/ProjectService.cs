@@ -342,6 +342,9 @@ public class ProjectService : IProjectService
         if (request.EnforceAllowedOrigins.HasValue)
             project.EnforceAllowedOrigins = request.EnforceAllowedOrigins.Value;
 
+        if (request.CaptureTextContent.HasValue)
+            project.CaptureTextContent = request.CaptureTextContent.Value;
+
         if (request.CommitStyle.HasValue)
             project.CommitStyle = request.CommitStyle.Value;
 
@@ -838,13 +841,14 @@ public class ProjectService : IProjectService
             .Query()
             .AsNoTracking()
             .Where(p => p.Id == projectResult.Data)
-            .Select(p => new { p.PageContextCaptureEnabled, p.Name, p.EnvironmentSelectorRoleIds, p.CommitStyle, p.CreatedBy })
+            .Select(p => new { p.PageContextCaptureEnabled, p.CaptureTextContent, p.Name, p.EnvironmentSelectorRoleIds, p.CommitStyle, p.CreatedBy })
             .FirstAsync();
 
         return Result<CaptureConfigResponse>.Success(new CaptureConfigResponse
         {
             Id = projectResult.Data,
             PageContextCaptureEnabled = info.PageContextCaptureEnabled,
+            CaptureTextContent = info.CaptureTextContent,
             Name = info.Name,
             ShowEnvironmentSelector = ShowEnvironmentSelectorFor(info.EnvironmentSelectorRoleIds),
             CommitStyle = info.CommitStyle,
@@ -1110,6 +1114,7 @@ public class ProjectService : IProjectService
             }).ToList(),
             PageContextCaptureEnabled = project.PageContextCaptureEnabled,
             EnforceAllowedOrigins = project.EnforceAllowedOrigins,
+            CaptureTextContent = project.CaptureTextContent,
             EnvironmentSelectorRoleIds = ParseRoleIds(project.EnvironmentSelectorRoleIds),
             CommitStyle = project.CommitStyle,
             PredefinedActions = actions

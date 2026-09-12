@@ -16,6 +16,9 @@ public class CaptureConfigResponse
     public int Id { get; set; }
 
     public bool PageContextCaptureEnabled { get; set; }
+    /// <summary>When false, the widget emits no text content in the DOM snapshot for any element and
+    /// sets pageTitle to •••; default true.</summary>
+    public bool CaptureTextContent { get; set; } = true;
     public string Name { get; set; } = string.Empty;
 
     /// <summary>Whether the CURRENT authenticated caller should see the widget's environment

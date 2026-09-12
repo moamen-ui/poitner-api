@@ -31,6 +31,9 @@ public class ProjectResponse
     /// <summary>Whether comments are restricted to this project's registered app URLs.</summary>
     public bool EnforceAllowedOrigins { get; set; }
 
+    /// <summary>When false, the widget emits no text content in the DOM snapshot for any element.</summary>
+    public bool CaptureTextContent { get; set; } = true;
+
     /// <summary>Which Role.Id values see the widget's environment switcher. Null/empty = the
     /// default (everyone except Client/QuickAccess roles) — not yet customized for this project.</summary>
     public List<int>? EnvironmentSelectorRoleIds { get; set; }

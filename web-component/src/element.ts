@@ -64,6 +64,9 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
   // Project-level opt-in (default off), read once at init via /capture-config. Gates both whether
   // the widget buffers console/network events at all and whether "Report as a bug" is shown.
   pageContextCaptureEnabled = false;
+  // Per-project text capture toggle (default true until /capture-config resolves).
+  // When false, the widget emits no text content in the DOM snapshot and masks pageTitle.
+  captureTextContent = true;
   // Whether the AI apply flow (skill.md) bundles applied comments into one commit or commits each
   // one separately — 1=Single, 2=Separate (backend CommitStyle enum, read as-is like
   // environmentInt already is). Changeable via a small widget control, but only rendered when
@@ -512,6 +515,9 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
       if (!r.ok) { this.pageContextCaptureEnabled = false; return; }
       const envelope = await r.json();
       this.pageContextCaptureEnabled = !!(envelope && envelope.data && envelope.data.pageContextCaptureEnabled);
+      if (envelope?.data && typeof envelope.data.captureTextContent === 'boolean') {
+        this.captureTextContent = envelope.data.captureTextContent;
+      }
       this.projectName = (envelope && envelope.data && envelope.data.name) || this.project;
       // Missing/malformed → true (matches the pre-existing, always-switchable behavior).
       const showSelector = envelope?.data?.showEnvironmentSelector;
@@ -525,6 +531,7 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
       if (this.pageContextCaptureEnabled) startPageContextCapture(this.server, SCRIPT_SRC);
     } catch {
       this.pageContextCaptureEnabled = false;
+      this.captureTextContent = true;
     }
   }
 
@@ -1338,7 +1345,7 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
   // (named openCommentPopover, not showPopover, to avoid clashing with the
   //  built-in HTMLElement.showPopover() from the Popover API.)
   openCommentPopover(x: number, y: number, el: Element): void {
-    const meta = captureMetadata(el, this.sourceAttr);
+    const meta = captureMetadata(el, this.sourceAttr, { captureText: this.captureTextContent });
     const host = this.root.querySelector('#pf-popover-host') as HTMLElement;
     const left = Math.min(x, window.innerWidth - 300);
     const top = Math.min(y, window.innerHeight - 220);
@@ -1406,7 +1413,9 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
       // Active route relative to the origin: path + query params (+ hash, so
       // hash-routed SPAs are covered too).
       route: window.location.pathname + window.location.search + window.location.hash,
-      pageTitle: document.title,
+      pageTitle: (document.documentElement.hasAttribute('data-snapshot-mask') || !this.captureTextContent)
+        ? '•••'
+        : document.title,
       viewportWidth: vw,
       viewportHeight: vh,
       deviceType,

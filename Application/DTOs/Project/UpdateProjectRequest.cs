@@ -21,6 +21,9 @@ public class UpdateProjectRequest
     /// <summary>Restrict comment creation to this project's registered app URLs.</summary>
     public bool? EnforceAllowedOrigins { get; set; }
 
+    /// <summary>null (property omitted) → leave untouched, whether to capture element text content.</summary>
+    public bool? CaptureTextContent { get; set; }
+
     /// <summary>Whether the AI apply flow bundles applied comments into one commit or commits
     /// each separately (see Comment.CommitUrl). null (property omitted) → leave untouched.</summary>
     public CommitStyle? CommitStyle { get; set; }
