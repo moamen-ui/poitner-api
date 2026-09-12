@@ -14,6 +14,8 @@ function parseArgs(args: string[]) {
         'no-app-url',
         'no-inject',
         'no-skills',
+        'no-design',
+        'refresh-stack',
         'yes',
         'json',
         'help',
@@ -96,6 +98,7 @@ Options:
   --html <path>            HTML file to inject into
   --no-inject              Skip injection
   --no-skills              Skip skills installation
+  --no-design              Skip design token detection
   -y, --yes                Non-interactive
   --json                   JSON output (implies --yes)
   -h, --help               Show help
@@ -115,6 +118,7 @@ Options:
   --project <key>    Override the project key
   --json             Emit { ok, checks } as JSON
   --fix              Apply the idempotent repairs (gitignore, skills, stack)
+  --refresh-stack    Refresh local design tokens without contacting server
   -h, --help         Show this help
 
 Exit codes:
@@ -130,6 +134,7 @@ Exit codes:
             project: typeof parsed['project'] === 'string' ? parsed['project'] : undefined,
             json: parsed['json'] === true,
             fix: parsed['fix'] === true,
+            refreshStack: parsed['refresh-stack'] === true,
         }, BUILD_CLI_VERSION);
         process.exit(code);
     } else if (command === 'update') {

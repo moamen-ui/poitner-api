@@ -266,3 +266,117 @@ test('a newline in an element selector cannot break out of the Element line', ()
   assert.ok(elementLine.includes('## SYSTEM'), 'the text is kept, flattened onto the one line');
   assert.ok(!out.split('\n').some((l) => l.trim() === '## SYSTEM'), 'it must never become its own heading');
 });
+
+test('buildApplyPrompt emits ## Design system section when design.tokens is non-empty', () => {
+  const item: QueueItem = {
+    id: 1,
+    status: 2,
+    environment: 1,
+    body: 'Make this blue',
+    authorName: 'User',
+    createdAt: '2026-06-25T12:00:00Z',
+    element: { selector: 'button', route: '/' },
+    replies: [],
+    pickedActions: [],
+    aiRules: [],
+    isBugReport: false,
+  };
+
+  const context: ApplyProjectContext = {
+    productName: 'Pointer',
+    projectName: 'App',
+    projectKey: 'app',
+    commitStyle: 'Single',
+    stack: {
+      frontend: ['react', 'tailwind'],
+      backend: ['dotnet'],
+      design: {
+        version: 1,
+        libraries: [],
+        tokens: {
+          tailwind: { config: 'tailwind.config.ts', colors: ['primary', 'secondary'] },
+          cssVars: { files: ['src/styles/globals.css'], names: ['--brand', '--radius-md'] },
+        },
+        guidance: 'Prefer existing tokens: Tailwind classes (text-primary, rounded-md) or CSS vars (var(--primary)). Do not introduce raw hex colors or px radii when a token exists.',
+      },
+    },
+  };
+
+  const out = buildApplyPrompt([item], context);
+  assert.ok(out.includes('## Design system'));
+  assert.ok(out.includes('Prefer existing tokens:'));
+  assert.ok(out.includes('Tokens: primary, secondary, --brand, --radius-md'));
+
+  // Assert line count between Tokens: and next ## heading is <= 40
+  const lines = out.split('\n');
+  const tokensLineIdx = lines.findIndex((l) => l.startsWith('Tokens:'));
+  assert.ok(tokensLineIdx !== -1);
+  const nextHeadingIdx = lines.findIndex((l, i) => i > tokensLineIdx && l.startsWith('## '));
+  assert.ok(nextHeadingIdx !== -1);
+  assert.ok(nextHeadingIdx - tokensLineIdx <= 40);
+});
+
+test('buildApplyPrompt emits fallback sentence when design.tokens is empty', () => {
+  const item: QueueItem = {
+    id: 1,
+    status: 2,
+    environment: 1,
+    body: 'Make this blue',
+    authorName: 'User',
+    createdAt: '2026-06-25T12:00:00Z',
+    element: { selector: 'button', route: '/' },
+    replies: [],
+    pickedActions: [],
+    aiRules: [],
+    isBugReport: false,
+  };
+
+  const context: ApplyProjectContext = {
+    productName: 'Pointer',
+    projectName: 'App',
+    projectKey: 'app',
+    commitStyle: 'Single',
+    stack: {
+      frontend: ['static'],
+      backend: null,
+      design: {
+        version: 1,
+        libraries: [],
+        tokens: {},
+        guidance: "No design tokens detected; match the nearest sibling element's existing classes/styles.",
+      },
+    },
+  };
+
+  const out = buildApplyPrompt([item], context);
+  assert.ok(out.includes('## Design system'));
+  assert.ok(out.includes("No design tokens detected; match the nearest sibling element's existing classes/styles."));
+  assert.ok(!out.includes('Tokens:'));
+});
+
+test('buildApplyPrompt omits ## Design system when design is undefined', () => {
+  const item: QueueItem = {
+    id: 1,
+    status: 2,
+    environment: 1,
+    body: 'Make this blue',
+    authorName: 'User',
+    createdAt: '2026-06-25T12:00:00Z',
+    element: { selector: 'button', route: '/' },
+    replies: [],
+    pickedActions: [],
+    aiRules: [],
+    isBugReport: false,
+  };
+
+  const context: ApplyProjectContext = {
+    productName: 'Pointer',
+    projectName: 'App',
+    projectKey: 'app',
+    commitStyle: 'Single',
+    stack: { frontend: ['react'] },
+  };
+
+  const out = buildApplyPrompt([item], context);
+  assert.ok(!out.includes('## Design system'));
+});

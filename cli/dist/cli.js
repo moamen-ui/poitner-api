@@ -847,8 +847,702 @@ async function gitignoreChecks(cwd2) {
 }
 
 // src/commands/init.ts
-import { promises as fs8 } from "node:fs";
-import { join as join8 } from "node:path";
+import { promises as fs10 } from "node:fs";
+import { join as join10 } from "node:path";
+
+// src/stack/design.ts
+import { promises as fs8, statSync } from "node:fs";
+import { join as join8, relative } from "node:path";
+var IGNORED_DIRS = /* @__PURE__ */ new Set([
+  "node_modules",
+  "dist",
+  "build",
+  ".next",
+  ".git",
+  ".pointer",
+  "coverage",
+  ".cache",
+  ".turbo",
+  ".output"
+]);
+async function collectFiles(cwd2, options) {
+  if (options?.listFiles) {
+    return await options.listFiles();
+  }
+  const maxFiles = options?.maxFiles ?? 500;
+  const timeoutMs = options?.timeoutMs ?? 2e3;
+  const start = Date.now();
+  const collected = [];
+  async function walk(dir) {
+    if (collected.length >= maxFiles || Date.now() - start >= timeoutMs)
+      return;
+    let entries;
+    try {
+      entries = await fs8.readdir(dir);
+    } catch {
+      return;
+    }
+    for (const entry of entries) {
+      if (collected.length >= maxFiles || Date.now() - start >= timeoutMs)
+        return;
+      if (IGNORED_DIRS.has(entry))
+        continue;
+      const fullPath = join8(dir, entry);
+      let stat;
+      try {
+        stat = await fs8.stat(fullPath);
+      } catch {
+        continue;
+      }
+      if (stat.isDirectory()) {
+        await walk(fullPath);
+      } else if (stat.isFile()) {
+        collected.push(relative(cwd2, fullPath));
+      }
+    }
+  }
+  await walk(cwd2);
+  return collected;
+}
+function extractBalancedBlock(content, startIndex) {
+  const openChar = content[startIndex];
+  const closeChar = openChar === "{" ? "}" : openChar === "[" ? "]" : null;
+  if (!closeChar)
+    return null;
+  let depth = 0;
+  let inString = null;
+  let isEscaped = false;
+  for (let i = startIndex; i < content.length; i++) {
+    const char = content[i];
+    if (inString) {
+      if (isEscaped) {
+        isEscaped = false;
+      } else if (char === "\\") {
+        isEscaped = true;
+      } else if (char === inString) {
+        inString = null;
+      }
+      continue;
+    }
+    if (char === '"' || char === "'" || char === "`") {
+      inString = char;
+      continue;
+    }
+    if (char === openChar) {
+      depth++;
+    } else if (char === closeChar) {
+      depth--;
+      if (depth === 0) {
+        return {
+          block: content.slice(startIndex + 1, i),
+          endIndex: i
+        };
+      }
+    }
+  }
+  return null;
+}
+function parseObjectKeys(blockText) {
+  const keys = [];
+  let idx = 0;
+  while (idx < blockText.length) {
+    const match = blockText.slice(idx).match(/(?:^|[,{\s])([a-zA-Z0-9_-]+|'[^']+'|"[^"]+")\s*:/);
+    if (!match || match.index === void 0)
+      break;
+    const keyRaw = match[1];
+    const key = keyRaw.replace(/^['"]|['"]$/g, "");
+    const afterColon = idx + match.index + match[0].length;
+    let valStart = afterColon;
+    while (valStart < blockText.length && /\s/.test(blockText[valStart]))
+      valStart++;
+    if (valStart < blockText.length && blockText[valStart] === "{") {
+      const sub = extractBalancedBlock(blockText, valStart);
+      if (sub) {
+        const subKeys = parseObjectKeys(sub.block);
+        for (const sk of subKeys) {
+          keys.push(`${key}.${sk}`);
+        }
+        idx = sub.endIndex + 1;
+        continue;
+      }
+    }
+    keys.push(key);
+    idx = valStart + 1;
+  }
+  return keys;
+}
+function parseArrayOrObjectKeys(content, matchIndex) {
+  let idx = matchIndex;
+  while (idx < content.length && /\s/.test(content[idx]))
+    idx++;
+  if (idx < content.length && content[idx] === "[") {
+    const balanced = extractBalancedBlock(content, idx);
+    if (!balanced)
+      return [];
+    const items = [...balanced.block.matchAll(/['"]([^'"]+)['"]/g)].map((m) => m[1]);
+    return items;
+  }
+  if (idx < content.length && content[idx] === "{") {
+    const balanced = extractBalancedBlock(content, idx);
+    if (!balanced)
+      return [];
+    return parseObjectKeys(balanced.block);
+  }
+  return [];
+}
+async function detectTailwind(cwd2, files, readFile) {
+  const configNames = [
+    "tailwind.config.ts",
+    "tailwind.config.js",
+    "tailwind.config.cjs",
+    "tailwind.config.mjs"
+  ];
+  let foundConfigFile = null;
+  for (const name of configNames) {
+    if (files.includes(name)) {
+      foundConfigFile = name;
+      break;
+    }
+  }
+  if (foundConfigFile) {
+    let content = "";
+    try {
+      content = await readFile(join8(cwd2, foundConfigFile));
+    } catch {
+      return null;
+    }
+    const colorsSet = /* @__PURE__ */ new Set();
+    const radiusSet = /* @__PURE__ */ new Set();
+    const fontSet = /* @__PURE__ */ new Set();
+    const colorMatches = [...content.matchAll(/\bcolors\s*:\s*\{/g)];
+    for (const cm of colorMatches) {
+      if (cm.index !== void 0) {
+        const start = cm.index + cm[0].length - 1;
+        const balanced = extractBalancedBlock(content, start);
+        if (balanced) {
+          const keys = parseObjectKeys(balanced.block);
+          for (const k of keys)
+            colorsSet.add(k);
+        }
+      }
+    }
+    const radiusMatches = [...content.matchAll(/\bborderRadius\s*:\s*/g)];
+    for (const rm of radiusMatches) {
+      if (rm.index !== void 0) {
+        const keys = parseArrayOrObjectKeys(content, rm.index + rm[0].length);
+        for (const k of keys)
+          radiusSet.add(k);
+      }
+    }
+    const fontMatches = [...content.matchAll(/\bfontFamily\s*:\s*/g)];
+    for (const fm of fontMatches) {
+      if (fm.index !== void 0) {
+        const keys = parseArrayOrObjectKeys(content, fm.index + fm[0].length);
+        for (const k of keys)
+          fontSet.add(k);
+      }
+    }
+    let spacingCount;
+    const spacingMatch = content.match(/\bspacing\s*:\s*\{/);
+    if (spacingMatch && spacingMatch.index !== void 0) {
+      const balanced = extractBalancedBlock(content, spacingMatch.index + spacingMatch[0].length - 1);
+      if (balanced) {
+        const keys = parseObjectKeys(balanced.block);
+        spacingCount = keys.length;
+      }
+    }
+    const result = {
+      config: foundConfigFile
+    };
+    if (colorsSet.size > 0)
+      result.colors = Array.from(colorsSet).sort();
+    if (radiusSet.size > 0)
+      result.radius = Array.from(radiusSet).sort();
+    if (fontSet.size > 0)
+      result.fontFamily = Array.from(fontSet).sort();
+    if (spacingCount !== void 0)
+      result.spacingCount = spacingCount;
+    return result;
+  }
+  const cssFiles = files.filter((f) => f.startsWith("src/") && f.endsWith(".css"));
+  for (const file of cssFiles) {
+    let content = "";
+    try {
+      content = await readFile(join8(cwd2, file));
+    } catch {
+      continue;
+    }
+    const isTailwindV4 = content.includes('@import "tailwindcss"') || content.includes("@import 'tailwindcss'") || content.includes("@theme");
+    if (isTailwindV4) {
+      const colorsSet = /* @__PURE__ */ new Set();
+      const radiusSet = /* @__PURE__ */ new Set();
+      const fontSet = /* @__PURE__ */ new Set();
+      const themeBlocks = [...content.matchAll(/@theme\s*\{/g)];
+      for (const tm of themeBlocks) {
+        if (tm.index !== void 0) {
+          const balanced = extractBalancedBlock(content, tm.index + tm[0].length - 1);
+          if (balanced) {
+            const varMatches = [...balanced.block.matchAll(/(--[a-zA-Z0-9_-]+)\s*:/g)];
+            for (const vm of varMatches) {
+              const name = vm[1];
+              if (name.startsWith("--color-")) {
+                colorsSet.add(name);
+              } else if (name.startsWith("--radius-")) {
+                radiusSet.add(name);
+              } else if (name.startsWith("--font-")) {
+                fontSet.add(name);
+              }
+            }
+          }
+        }
+      }
+      const result = {
+        config: file
+      };
+      if (colorsSet.size > 0)
+        result.colors = Array.from(colorsSet).sort();
+      if (radiusSet.size > 0)
+        result.radius = Array.from(radiusSet).sort();
+      if (fontSet.size > 0)
+        result.fontFamily = Array.from(fontSet).sort();
+      return result;
+    }
+  }
+  return null;
+}
+async function detectCssVars(cwd2, files, readFile) {
+  const candidateFiles = [];
+  for (const f of files) {
+    if ((f.startsWith("src/") || f.includes("/src/")) && (f.endsWith(".css") || f.endsWith(".scss"))) {
+      try {
+        const fullPath = join8(cwd2, f);
+        const stat = statSync(fullPath);
+        if (stat.size <= 204800) {
+          candidateFiles.push({ path: f, size: stat.size });
+        }
+      } catch {
+        candidateFiles.push({ path: f, size: 1 });
+      }
+    }
+  }
+  candidateFiles.sort((a, b) => {
+    if (a.size !== b.size)
+      return a.size - b.size;
+    return a.path.localeCompare(b.path);
+  });
+  const selectedFiles = candidateFiles.slice(0, 20);
+  const matchedFiles = /* @__PURE__ */ new Set();
+  const propertyNames = /* @__PURE__ */ new Set();
+  for (const item of selectedFiles) {
+    let content = "";
+    try {
+      content = await readFile(join8(cwd2, item.path));
+    } catch {
+      continue;
+    }
+    const rootMatches = [...content.matchAll(/(?::root|html)\s*\{/g)];
+    let fileHadProperty = false;
+    for (const rm of rootMatches) {
+      if (rm.index !== void 0) {
+        const balanced = extractBalancedBlock(content, rm.index + rm[0].length - 1);
+        if (balanced) {
+          const varDecls = [...balanced.block.matchAll(/(--[a-zA-Z0-9_-]+)\s*:/g)];
+          for (const vd of varDecls) {
+            propertyNames.add(vd[1]);
+            fileHadProperty = true;
+          }
+        }
+      }
+    }
+    if (fileHadProperty) {
+      matchedFiles.add(item.path);
+    }
+  }
+  if (propertyNames.size === 0)
+    return null;
+  const names = Array.from(propertyNames).sort().slice(0, 60);
+  const filesList = Array.from(matchedFiles).sort();
+  return {
+    files: filesList,
+    names
+  };
+}
+async function detectScss(cwd2, files, readFile) {
+  const scssFiles = files.filter((f) => {
+    if (!f.endsWith(".scss"))
+      return false;
+    return f.includes("_variables.scss") || f.includes("variables.scss") || (f.startsWith("src/styles/") || f.includes("/src/styles/"));
+  });
+  if (scssFiles.length === 0)
+    return null;
+  const matchedFiles = /* @__PURE__ */ new Set();
+  const varNames = /* @__PURE__ */ new Set();
+  for (const f of scssFiles) {
+    let content = "";
+    try {
+      content = await readFile(join8(cwd2, f));
+    } catch {
+      continue;
+    }
+    const decls = [...content.matchAll(/(\$[a-zA-Z0-9_-]+)\s*:/g)];
+    if (decls.length > 0) {
+      matchedFiles.add(f);
+      for (const d of decls) {
+        varNames.add(d[1]);
+      }
+    }
+  }
+  if (varNames.size === 0)
+    return null;
+  return {
+    files: Array.from(matchedFiles).sort(),
+    names: Array.from(varNames).sort().slice(0, 60)
+  };
+}
+function parseTopLevelKeys(blockText) {
+  const keys = [];
+  let idx = 0;
+  while (idx < blockText.length) {
+    const match = blockText.slice(idx).match(/(?:^|[,{\s])([a-zA-Z0-9_-]+|'[^']+'|"[^"]+")\s*:/);
+    if (!match || match.index === void 0)
+      break;
+    const keyRaw = match[1];
+    const key = keyRaw.replace(/^['"]|['"]$/g, "");
+    keys.push(key);
+    const afterColon = idx + match.index + match[0].length;
+    let valStart = afterColon;
+    while (valStart < blockText.length && /\s/.test(blockText[valStart]))
+      valStart++;
+    if (valStart < blockText.length && (blockText[valStart] === "{" || blockText[valStart] === "[")) {
+      const sub = extractBalancedBlock(blockText, valStart);
+      if (sub) {
+        idx = sub.endIndex + 1;
+        continue;
+      }
+    }
+    idx = valStart + 1;
+  }
+  return keys;
+}
+async function detectTheme(cwd2, files, readFile) {
+  const themeFiles = files.filter((f) => {
+    const base = f.split("/").pop();
+    return base === "theme.ts" || base === "theme.js";
+  });
+  if (themeFiles.length === 0)
+    return null;
+  const matchedFiles = /* @__PURE__ */ new Set();
+  const colorsSet = /* @__PURE__ */ new Set();
+  for (const f of themeFiles) {
+    let content = "";
+    try {
+      content = await readFile(join8(cwd2, f));
+    } catch {
+      continue;
+    }
+    const matches = [...content.matchAll(/\b(?:colors|palette)\s*:\s*\{/g)];
+    for (const m of matches) {
+      if (m.index !== void 0) {
+        const balanced = extractBalancedBlock(content, m.index + m[0].length - 1);
+        if (balanced) {
+          const keys = parseTopLevelKeys(balanced.block);
+          for (const k of keys)
+            colorsSet.add(k);
+          matchedFiles.add(f);
+        }
+      }
+    }
+  }
+  if (colorsSet.size === 0)
+    return null;
+  return {
+    files: Array.from(matchedFiles).sort(),
+    colors: Array.from(colorsSet).sort()
+  };
+}
+async function detectAngularMaterial(cwd2, files, readFile) {
+  const scssFiles = files.filter((f) => f.endsWith(".scss") || f.endsWith(".sass"));
+  const palettes = /* @__PURE__ */ new Set();
+  for (const f of scssFiles) {
+    let content = "";
+    try {
+      content = await readFile(join8(cwd2, f));
+    } catch {
+      continue;
+    }
+    if (!content.includes("@angular/material"))
+      continue;
+    const definePalettes = [...content.matchAll(/define-palette\(\s*([^,)\s]+)/g)];
+    for (const dp of definePalettes) {
+      const pal = dp[1].replace(/^[$mat.]+/g, "").replace(/['"]/g, "");
+      if (pal)
+        palettes.add(pal);
+    }
+  }
+  if (palettes.size === 0)
+    return null;
+  return {
+    palettes: Array.from(palettes).sort()
+  };
+}
+async function detectLibraries(cwd2, files, readFile) {
+  const libs = [];
+  if (files.includes("package.json")) {
+    let pkgContent = "";
+    try {
+      pkgContent = await readFile(join8(cwd2, "package.json"));
+      const pkg = JSON.parse(pkgContent);
+      const deps = { ...pkg.dependencies, ...pkg.devDependencies };
+      const tracked = [
+        "@mui/material",
+        "@chakra-ui/react",
+        "antd",
+        "@angular/material",
+        "bootstrap",
+        "vuetify",
+        "element-plus",
+        "primeng",
+        "primevue"
+      ];
+      for (const [depName, depVer] of Object.entries(deps)) {
+        if (tracked.includes(depName) || depName.startsWith("@radix-ui/")) {
+          libs.push({
+            name: depName,
+            version: typeof depVer === "string" ? depVer : null
+          });
+        }
+      }
+    } catch {
+    }
+  }
+  if (files.includes("components.json")) {
+    libs.push({
+      name: "shadcn",
+      version: null
+    });
+  }
+  return libs.sort((a, b) => a.name.localeCompare(b.name));
+}
+function renderGuidance(tokens) {
+  const phrases = [];
+  if (tokens.tailwind) {
+    phrases.push("Tailwind classes (text-primary, rounded-md)");
+  }
+  if (tokens.cssVars) {
+    phrases.push("CSS vars (var(--primary))");
+  }
+  if (tokens.scss) {
+    phrases.push("SCSS variables ($primary)");
+  }
+  if (tokens.theme) {
+    phrases.push("theme tokens (theme.colors)");
+  }
+  if (tokens.angularMaterial) {
+    phrases.push("Angular Material palettes");
+  }
+  if (phrases.length === 0) {
+    return "No design tokens detected; match the nearest sibling element's existing classes/styles.";
+  }
+  let joined = "";
+  if (phrases.length === 1) {
+    joined = phrases[0];
+  } else if (phrases.length === 2) {
+    joined = `${phrases[0]} or ${phrases[1]}`;
+  } else {
+    joined = `${phrases.slice(0, -1).join(", ")}, or ${phrases[phrases.length - 1]}`;
+  }
+  return `Prefer existing tokens: ${joined}. Do not introduce raw hex colors or px radii when a token exists.`;
+}
+function buildDesignBlock(libraries, tokens) {
+  return {
+    version: 1,
+    libraries,
+    tokens,
+    guidance: renderGuidance(tokens)
+  };
+}
+async function detectDesignTokens(cwd2, options) {
+  const readFile = options?.readFile ?? ((p) => fs8.readFile(p, "utf8"));
+  const files = await collectFiles(cwd2, options);
+  const libraries = await detectLibraries(cwd2, files, readFile);
+  const tailwind = await detectTailwind(cwd2, files, readFile);
+  const cssVars = await detectCssVars(cwd2, files, readFile);
+  const scss = await detectScss(cwd2, files, readFile);
+  const theme = await detectTheme(cwd2, files, readFile);
+  const angularMaterial = await detectAngularMaterial(cwd2, files, readFile);
+  const tokens = {};
+  if (tailwind)
+    tokens.tailwind = tailwind;
+  if (cssVars)
+    tokens.cssVars = cssVars;
+  if (scss)
+    tokens.scss = scss;
+  if (theme)
+    tokens.theme = theme;
+  if (angularMaterial)
+    tokens.angularMaterial = angularMaterial;
+  return buildDesignBlock(libraries, tokens);
+}
+function summarizeDesignTokens(tokens, libraries) {
+  const parts = [];
+  if (tokens.tailwind) {
+    const count = tokens.tailwind.colors?.length ?? 0;
+    parts.push(`tailwind (${count} color${count === 1 ? "" : "s"})`);
+  }
+  if (tokens.cssVars) {
+    const count = tokens.cssVars.names?.length ?? 0;
+    parts.push(`css vars (${count})`);
+  }
+  if (tokens.scss) {
+    const count = tokens.scss.names?.length ?? 0;
+    parts.push(`scss (${count})`);
+  }
+  if (tokens.theme) {
+    const count = tokens.theme.colors?.length ?? 0;
+    parts.push(`theme (${count})`);
+  }
+  if (tokens.angularMaterial) {
+    const count = tokens.angularMaterial.palettes?.length ?? 0;
+    parts.push(`angular material (${count})`);
+  }
+  if (libraries.length > 0 && parts.length === 0) {
+    parts.push(`${libraries.length} librar${libraries.length === 1 ? "y" : "ies"}`);
+  }
+  if (parts.length === 0) {
+    return "none";
+  }
+  return parts.join(", ");
+}
+
+// src/stack/stackfile.ts
+import { promises as fs9 } from "node:fs";
+import { join as join9 } from "node:path";
+function buildRequestBody(stack) {
+  const body = {};
+  if (stack.frontend !== void 0)
+    body.frontend = stack.frontend;
+  if (stack.backend !== void 0)
+    body.backend = stack.backend;
+  if (stack.aiTools !== void 0)
+    body.aiTools = stack.aiTools;
+  if (stack.aiTool !== void 0)
+    body.aiTool = stack.aiTool;
+  return body;
+}
+async function readStackFile(cwd2) {
+  try {
+    const raw = await fs9.readFile(join9(cwd2, ".pointer/stack.json"), "utf8");
+    return JSON.parse(raw);
+  } catch {
+    return null;
+  }
+}
+function mergeStack(existing, serverResponse, designBlock) {
+  const base = serverResponse || existing || {};
+  const frontend = serverResponse?.frontend ?? existing?.frontend ?? [];
+  const backend = serverResponse?.backend !== void 0 ? serverResponse.backend : existing?.backend ?? null;
+  let aiTools = [];
+  if (Array.isArray(serverResponse?.aiTools)) {
+    aiTools = [...serverResponse.aiTools];
+  } else if (Array.isArray(existing?.aiTools)) {
+    aiTools = [...existing.aiTools];
+  } else if (base.aiTool) {
+    aiTools = [base.aiTool];
+  }
+  const result = {
+    frontend: Array.isArray(frontend) ? [...frontend] : frontend,
+    backend: Array.isArray(backend) ? [...backend] : backend,
+    aiTools: Array.from(new Set(aiTools))
+  };
+  if (designBlock !== void 0) {
+    if (designBlock !== null) {
+      result.design = designBlock;
+    }
+  } else if (existing?.design) {
+    result.design = existing.design;
+  }
+  return result;
+}
+function formatStackJson(stack) {
+  const canonical = {};
+  if (stack.frontend !== void 0) {
+    canonical.frontend = Array.isArray(stack.frontend) ? [...stack.frontend].sort() : stack.frontend;
+  }
+  if (stack.backend !== void 0) {
+    canonical.backend = Array.isArray(stack.backend) ? [...stack.backend].sort() : stack.backend;
+  }
+  if (stack.aiTools !== void 0) {
+    canonical.aiTools = Array.isArray(stack.aiTools) ? [...stack.aiTools].sort() : stack.aiTools;
+  }
+  if (stack.design !== void 0) {
+    const d = stack.design;
+    const sortedLibraries = [...d.libraries ?? []].sort(
+      (a, b) => a.name.localeCompare(b.name)
+    );
+    const tokens = d.tokens ?? {};
+    const canonicalTokens = {};
+    if (tokens.tailwind) {
+      const tw = tokens.tailwind;
+      const twObj = { config: tw.config };
+      if (tw.colors && tw.colors.length > 0)
+        twObj.colors = [...tw.colors].sort();
+      if (tw.radius && tw.radius.length > 0)
+        twObj.radius = [...tw.radius].sort();
+      if (tw.fontFamily && tw.fontFamily.length > 0)
+        twObj.fontFamily = [...tw.fontFamily].sort();
+      if (tw.spacingCount !== void 0)
+        twObj.spacingCount = tw.spacingCount;
+      canonicalTokens.tailwind = twObj;
+    }
+    if (tokens.cssVars) {
+      const cv = tokens.cssVars;
+      canonicalTokens.cssVars = {
+        files: [...cv.files ?? []].sort(),
+        names: [...cv.names ?? []].sort()
+      };
+    }
+    if (tokens.scss) {
+      const scss = tokens.scss;
+      canonicalTokens.scss = {
+        files: [...scss.files ?? []].sort(),
+        names: [...scss.names ?? []].sort()
+      };
+    }
+    if (tokens.theme) {
+      const th = tokens.theme;
+      const thObj = {};
+      if (th.files)
+        thObj.files = [...th.files].sort();
+      if (th.colors)
+        thObj.colors = [...th.colors].sort();
+      canonicalTokens.theme = thObj;
+    }
+    if (tokens.angularMaterial) {
+      const am = tokens.angularMaterial;
+      canonicalTokens.angularMaterial = {
+        palettes: [...am.palettes ?? []].sort()
+      };
+    }
+    canonical.design = {
+      version: d.version ?? 1,
+      libraries: sortedLibraries,
+      tokens: canonicalTokens,
+      guidance: d.guidance ?? ""
+    };
+  }
+  return JSON.stringify(canonical, null, 2) + "\n";
+}
+async function writeStackFile(cwd2, stack) {
+  const dir = join9(cwd2, ".pointer");
+  await fs9.mkdir(dir, { recursive: true });
+  const targetPath = join9(dir, "stack.json");
+  const tempPath = join9(dir, `stack.json.tmp.${Date.now()}.${Math.random().toString(36).slice(2)}`);
+  const content = formatStackJson(stack);
+  await fs9.writeFile(tempPath, content, "utf8");
+  await fs9.rename(tempPath, targetPath);
+}
+
+// src/commands/init.ts
 async function initCommand(cwd2, options = {}) {
   const isYes = options["yes"] || options["json"];
   const isJson = options["json"];
@@ -1047,17 +1741,28 @@ async function initCommand(cwd2, options = {}) {
     const installed = await installSkills(server, tool, cwd2, skillsDir);
     filesMod.push(...installed);
   }
-  const pkgStr = await fs8.readFile(join8(cwd2, "package.json"), "utf8").catch(() => "{}");
+  const pkgStr = await fs10.readFile(join10(cwd2, "package.json"), "utf8").catch(() => "{}");
   const tokens = extractTokens(JSON.parse(pkgStr));
   const stackMeta = { frontend: tokens.frontend, backend: tokens.backend, aiTool: tool };
+  let serverStackResponse = null;
   try {
-    await api(server, `/api/projects/${finalProjectKey}/stack`, { method: "POST", body: stackMeta, token });
-    await fs8.mkdir(join8(cwd2, ".pointer"), { recursive: true });
-    await fs8.writeFile(join8(cwd2, ".pointer/stack.json"), JSON.stringify(stackMeta, null, 2), "utf8");
+    const body = buildRequestBody(stackMeta);
+    serverStackResponse = await api(server, `/api/projects/${finalProjectKey}/stack`, { method: "POST", body, token });
   } catch (e) {
     if (!isJson)
       console.log(`\u26A0 Stack not registered (${e.code || 500})`);
   }
+  const noDesign = Boolean(options["no-design"]);
+  let designBlock = null;
+  if (!noDesign) {
+    designBlock = await detectDesignTokens(cwd2);
+    const designSummary = summarizeDesignTokens(designBlock.tokens, designBlock.libraries);
+    if (!isJson) {
+      console.log(`\u2714 Design tokens: ${designSummary} \u2192 .pointer/stack.json`);
+    }
+  }
+  const mergedStack = mergeStack(stackMeta, serverStackResponse?.data ?? serverStackResponse, noDesign ? null : designBlock);
+  await writeStackFile(cwd2, mergedStack);
   await writeConfig(cwd2, { server, project: finalProjectKey, environment: env, aiTool: tool, skillsDir: options["skills-dir"], cliVersion: BUILD_CLI_VERSION });
   filesMod.push(".pointer/config.json");
   filesMod.push(".pointer/credentials.env");
@@ -1123,8 +1828,8 @@ Add to ${configPath}:
 }
 
 // src/commands/doctor.ts
-import { promises as fs9 } from "node:fs";
-import { join as join9 } from "node:path";
+import { promises as fs11 } from "node:fs";
+import { join as join11 } from "node:path";
 var ICON = { ok: "\u2714", warn: "\u26A0", error: "\u2718" };
 function exitCodeFor(checks) {
   const failed = checks.filter((c) => c.status === "error");
@@ -1135,6 +1840,20 @@ function exitCodeFor(checks) {
   return failed.length > 0 ? 1 : 0;
 }
 async function doctorCommand(cwd2, options, cliVersion) {
+  if (options.refreshStack) {
+    const start = Date.now();
+    const designBlock = await detectDesignTokens(cwd2);
+    const detectMs = Date.now() - start;
+    const existing = await readStackFile(cwd2);
+    const merged = mergeStack(existing, null, designBlock);
+    await writeStackFile(cwd2, merged);
+    if (options.json) {
+      console.log(JSON.stringify({ ok: true, detectMs, design: merged.design }, null, 2));
+    } else {
+      console.log(`\u2714 Refreshed design tokens in .pointer/stack.json (detectMs=${detectMs})`);
+    }
+    return 0;
+  }
   let checks = await runInitChecks(cwd2, { server: options.server, project: options.project }, cliVersion);
   if (options.fix) {
     const repaired = await applyFixes(cwd2, checks);
@@ -1172,7 +1891,7 @@ async function reportRun(cwd2, options, checks, ok) {
     const server = (options.server || config.server || "").replace(/\/$/, "");
     if (!server)
       return;
-    const apiKey = (await fs9.readFile(join9(cwd2, ".pointer/credentials.env"), "utf8")).match(/^POINTER_API_KEY=(.*)$/m)?.[1]?.trim();
+    const apiKey = (await fs11.readFile(join11(cwd2, ".pointer/credentials.env"), "utf8")).match(/^POINTER_API_KEY=(.*)$/m)?.[1]?.trim();
     if (!apiKey)
       return;
     const login = await api(server, "/api/auth/login-with-key", { method: "POST", body: { apiKey } });
@@ -1195,7 +1914,7 @@ async function applyFixes(cwd2, checks) {
     if (token)
       return token;
     try {
-      const apiKey = (await fs9.readFile(join9(cwd2, ".pointer/credentials.env"), "utf8")).match(/^POINTER_API_KEY=(.*)$/m)?.[1]?.trim();
+      const apiKey = (await fs11.readFile(join11(cwd2, ".pointer/credentials.env"), "utf8")).match(/^POINTER_API_KEY=(.*)$/m)?.[1]?.trim();
       if (!apiKey || !server)
         return void 0;
       const login = await api(server, "/api/auth/login-with-key", { method: "POST", body: { apiKey } });
@@ -1208,8 +1927,8 @@ async function applyFixes(cwd2, checks) {
   for (const check of checks.filter((c) => c.fixable && c.status !== "ok")) {
     try {
       if (check.id === "gitignore") {
-        const path = join9(cwd2, ".gitignore");
-        const existing = await fs9.readFile(path, "utf8").catch(() => "");
+        const path = join11(cwd2, ".gitignore");
+        const existing = await fs11.readFile(path, "utf8").catch(() => "");
         if (!existing.includes(".pointer/")) {
           const block = [
             "",
@@ -1219,7 +1938,7 @@ async function applyFixes(cwd2, checks) {
             "!.pointer/stack.json",
             ""
           ].join("\n");
-          await fs9.writeFile(path, existing + block, "utf8");
+          await fs11.writeFile(path, existing + block, "utf8");
           repaired.push(check.id);
         }
       } else if (check.id === "skills" && server && config.aiTool) {
@@ -1234,7 +1953,7 @@ async function applyFixes(cwd2, checks) {
           body: { kind: detection.kind, evidence: detection.evidence }
         }).catch(() => null) : null;
         if (stack) {
-          await fs9.writeFile(join9(cwd2, ".pointer/stack.json"), JSON.stringify(stack, null, 2) + "\n", "utf8");
+          await fs11.writeFile(join11(cwd2, ".pointer/stack.json"), JSON.stringify(stack, null, 2) + "\n", "utf8");
           repaired.push(check.id);
         }
       }
@@ -1245,8 +1964,8 @@ async function applyFixes(cwd2, checks) {
 }
 
 // src/commands/update.ts
-import { promises as fs10 } from "node:fs";
-import { dirname as dirname3, join as join10 } from "node:path";
+import { promises as fs12 } from "node:fs";
+import { dirname as dirname3, join as join12 } from "node:path";
 function sourceFor(path) {
   if (path.endsWith("pointer.sh"))
     return "/pointer.sh";
@@ -1274,9 +1993,9 @@ async function updateCommand(cwd2, options) {
   const files = skillFilesFor(config);
   const stale = [];
   for (const rel of files) {
-    const abs = join10(cwd2, rel);
+    const abs = join12(cwd2, rel);
     try {
-      await fs10.access(abs);
+      await fs12.access(abs);
     } catch {
       continue;
     }
@@ -1305,11 +2024,11 @@ async function updateCommand(cwd2, options) {
       if (!res.ok)
         throw new Error(`HTTP ${res.status}`);
       const body = await res.text();
-      const abs = join10(cwd2, f.path);
-      await fs10.mkdir(dirname3(abs), { recursive: true });
-      await fs10.writeFile(abs, body, "utf8");
+      const abs = join12(cwd2, f.path);
+      await fs12.mkdir(dirname3(abs), { recursive: true });
+      await fs12.writeFile(abs, body, "utf8");
       if (abs.endsWith(".sh"))
-        await fs10.chmod(abs, 493).catch(() => {
+        await fs12.chmod(abs, 493).catch(() => {
         });
       updated++;
     } catch (err) {
@@ -1321,14 +2040,14 @@ async function updateCommand(cwd2, options) {
 }
 
 // src/auth.ts
-import { promises as fs11 } from "node:fs";
-import { join as join11 } from "node:path";
+import { promises as fs13 } from "node:fs";
+import { join as join13 } from "node:path";
 async function readApiKey(cwd2) {
   if (process.env.POINTER_API_KEY) {
     return process.env.POINTER_API_KEY.trim();
   }
   try {
-    const raw = await fs11.readFile(join11(cwd2, ".pointer/credentials.env"), "utf8");
+    const raw = await fs13.readFile(join13(cwd2, ".pointer/credentials.env"), "utf8");
     const match = raw.match(/^POINTER_API_KEY=(.*)$/m);
     return match?.[1]?.trim() || void 0;
   } catch {
@@ -1336,10 +2055,10 @@ async function readApiKey(cwd2) {
   }
 }
 async function resolveToken(server, cwd2, explicitApiKey) {
-  const tokenCacheFile = join11(cwd2, ".pointer/.token_cache");
+  const tokenCacheFile = join13(cwd2, ".pointer/.token_cache");
   if (!explicitApiKey) {
     try {
-      const cached = await fs11.readFile(tokenCacheFile, "utf8");
+      const cached = await fs13.readFile(tokenCacheFile, "utf8");
       const token = cached.trim();
       if (token)
         return token;
@@ -1360,8 +2079,8 @@ async function resolveToken(server, cwd2, explicitApiKey) {
     );
     if (login?.token) {
       try {
-        await fs11.mkdir(join11(cwd2, ".pointer"), { recursive: true });
-        await fs11.writeFile(tokenCacheFile, login.token, "utf8");
+        await fs13.mkdir(join13(cwd2, ".pointer"), { recursive: true });
+        await fs13.writeFile(tokenCacheFile, login.token, "utf8");
       } catch {
       }
       return login.token;
@@ -1375,8 +2094,8 @@ async function resolveToken(server, cwd2, explicitApiKey) {
 }
 
 // src/apply/run.ts
-import { promises as fs13 } from "node:fs";
-import { join as join13 } from "node:path";
+import { promises as fs15 } from "node:fs";
+import { join as join15 } from "node:path";
 import { spawnSync } from "node:child_process";
 
 // src/apply/queue.ts
@@ -1522,13 +2241,13 @@ async function fetchQueue(ctx, filter) {
 }
 
 // src/apply/context.ts
-import { promises as fs12 } from "node:fs";
-import { join as join12 } from "node:path";
+import { promises as fs14 } from "node:fs";
+import { join as join14 } from "node:path";
 async function loadProjectContext(ctx) {
   const branding = await getBranding(ctx.server);
   let stack = { frontend: [], backend: null, aiTools: [] };
   try {
-    const stackRaw = await fs12.readFile(join12(ctx.cwd, ".pointer/stack.json"), "utf8");
+    const stackRaw = await fs14.readFile(join14(ctx.cwd, ".pointer/stack.json"), "utf8");
     stack = JSON.parse(stackRaw);
   } catch {
   }
@@ -1727,6 +2446,38 @@ function buildApplyPrompt(items, context, opts) {
   const be = context.stack.backend && context.stack.backend.length > 0 ? context.stack.backend.join(", ") : "unknown";
   lines.push(`frontend: ${fe}  backend: ${be}`);
   lines.push("");
+  if (context.stack.design) {
+    lines.push("## Design system");
+    const design = context.stack.design;
+    const tokens = design.tokens || {};
+    const allTokens = [];
+    if (tokens.tailwind?.colors)
+      allTokens.push(...tokens.tailwind.colors);
+    if (tokens.tailwind?.radius)
+      allTokens.push(...tokens.tailwind.radius);
+    if (tokens.tailwind?.fontFamily)
+      allTokens.push(...tokens.tailwind.fontFamily);
+    if (tokens.cssVars?.names)
+      allTokens.push(...tokens.cssVars.names);
+    if (tokens.scss?.names)
+      allTokens.push(...tokens.scss.names);
+    if (tokens.theme?.colors)
+      allTokens.push(...tokens.theme.colors);
+    if (tokens.angularMaterial?.palettes)
+      allTokens.push(...tokens.angularMaterial.palettes);
+    if (allTokens.length > 0) {
+      if (design.guidance) {
+        lines.push(design.guidance);
+      }
+      const tokenList = allTokens.slice(0, 40).join(", ");
+      lines.push(`Tokens: ${tokenList}`);
+    } else {
+      lines.push(
+        design.guidance || "No design tokens detected; match the nearest sibling element's existing classes/styles."
+      );
+    }
+    lines.push("");
+  }
   lines.push("## Items");
   if (items.length === 0) {
     lines.push("No pending items in queue.");
@@ -1821,10 +2572,10 @@ function detectAiTool(override) {
   return "other";
 }
 async function ensureToolRegistered(ctx, tool) {
-  const stackPath = join13(ctx.cwd, ".pointer/stack.json");
+  const stackPath = join15(ctx.cwd, ".pointer/stack.json");
   let stackData = {};
   try {
-    const raw = await fs13.readFile(stackPath, "utf8");
+    const raw = await fs15.readFile(stackPath, "utf8");
     stackData = JSON.parse(raw);
   } catch {
   }
@@ -1843,8 +2594,8 @@ async function ensureToolRegistered(ctx, tool) {
         }
       );
       if (res) {
-        await fs13.mkdir(join13(ctx.cwd, ".pointer"), { recursive: true });
-        await fs13.writeFile(stackPath, JSON.stringify(res, null, 2) + "\n", "utf8");
+        await fs15.mkdir(join15(ctx.cwd, ".pointer"), { recursive: true });
+        await fs15.writeFile(stackPath, JSON.stringify(res, null, 2) + "\n", "utf8");
         return;
       }
     } catch {
@@ -1853,8 +2604,8 @@ async function ensureToolRegistered(ctx, tool) {
   aiTools.push(tool);
   stackData.aiTools = aiTools;
   try {
-    await fs13.mkdir(join13(ctx.cwd, ".pointer"), { recursive: true });
-    await fs13.writeFile(stackPath, JSON.stringify(stackData, null, 2) + "\n", "utf8");
+    await fs15.mkdir(join15(ctx.cwd, ".pointer"), { recursive: true });
+    await fs15.writeFile(stackPath, JSON.stringify(stackData, null, 2) + "\n", "utf8");
   } catch {
   }
 }
@@ -1912,9 +2663,9 @@ async function runApply(options, ctx) {
         console.error(`Failed to spawn opencode: ${res.error.message}`);
       }
     } else if (tool === "cursor") {
-      const promptFile = join13(ctx.cwd, ".pointer/apply-prompt.md");
-      await fs13.mkdir(join13(ctx.cwd, ".pointer"), { recursive: true });
-      await fs13.writeFile(promptFile, prompt, "utf8");
+      const promptFile = join15(ctx.cwd, ".pointer/apply-prompt.md");
+      await fs15.mkdir(join15(ctx.cwd, ".pointer"), { recursive: true });
+      await fs15.writeFile(promptFile, prompt, "utf8");
       console.log(`Saved apply prompt to ${promptFile}`);
     } else if (tool === "clipboard") {
       const copied = copyToClipboard(prompt);
@@ -2484,7 +3235,7 @@ async function replyCommand(cwd2, parsed, positionals = []) {
 
 // src/mcp/server.ts
 import { readFileSync as readFileSync2 } from "node:fs";
-import { join as join15 } from "node:path";
+import { join as join17 } from "node:path";
 
 // node_modules/zod/v3/external.js
 var external_exports = {};
@@ -7396,7 +8147,7 @@ var Protocol = class {
    * Do not use this method to emit notifications! Use notification() instead.
    */
   request(request, resultSchema, options) {
-    return new Promise((resolve2, reject) => {
+    return new Promise((resolve3, reject) => {
       var _a, _b, _c, _d;
       if (!this._transport) {
         reject(new Error("Not connected"));
@@ -7433,7 +8184,7 @@ var Protocol = class {
         }
         try {
           const result = resultSchema.parse(response.result);
-          resolve2(result);
+          resolve3(result);
         } catch (error) {
           reject(error);
         }
@@ -7786,12 +8537,12 @@ var StdioServerTransport = class {
     (_a = this.onclose) === null || _a === void 0 ? void 0 : _a.call(this);
   }
   send(message) {
-    return new Promise((resolve2) => {
+    return new Promise((resolve3) => {
       const json = serializeMessage(message);
       if (this._stdout.write(json)) {
-        resolve2();
+        resolve3();
       } else {
-        this._stdout.once("drain", resolve2);
+        this._stdout.once("drain", resolve3);
       }
     });
   }
@@ -7985,7 +8736,7 @@ var ALL_TOOLS = [
 
 // src/mcp/tools.ts
 import { existsSync as existsSync2, readFileSync } from "node:fs";
-import { isAbsolute, join as join14, relative, resolve } from "node:path";
+import { isAbsolute, join as join16, relative as relative2, resolve as resolve2 } from "node:path";
 import { spawnSync as spawnSync3 } from "node:child_process";
 function mcpError(code, message) {
   return { code, message };
@@ -8284,8 +9035,8 @@ async function handleCommitAndMark(args, ctx) {
       if (isAbsolute(cleanPath)) {
         throw mcpError("git", `Path must be relative to repo root: ${cleanPath}`);
       }
-      const resolved = resolve(ctx.cwd, cleanPath);
-      const rel = relative(ctx.cwd, resolved);
+      const resolved = resolve2(ctx.cwd, cleanPath);
+      const rel = relative2(ctx.cwd, resolved);
       if (rel.startsWith("..") || isAbsolute(rel)) {
         throw mcpError("git", `Path escapes repository root: ${cleanPath}`);
       }
@@ -8489,7 +9240,7 @@ async function handleResolveSource(args, ctx) {
   if (!hash || typeof hash !== "string") {
     throw mcpError("forbidden", "hash is required");
   }
-  const manifestPath = join14(ctx.cwd, ".pointer/manifest.json");
+  const manifestPath = join16(ctx.cwd, ".pointer/manifest.json");
   if (!existsSync2(manifestPath)) {
     return { path: null, reason: "no-manifest" };
   }
@@ -8625,12 +9376,12 @@ function createMcpServer(ctx) {
     let configObj = {};
     let stackObj = {};
     try {
-      const configPath = join15(ctx.cwd, ".pointer/config.json");
+      const configPath = join17(ctx.cwd, ".pointer/config.json");
       configObj = JSON.parse(readFileSync2(configPath, "utf8"));
     } catch {
     }
     try {
-      const stackPath = join15(ctx.cwd, ".pointer/stack.json");
+      const stackPath = join17(ctx.cwd, ".pointer/stack.json");
       stackObj = JSON.parse(readFileSync2(stackPath, "utf8"));
     } catch {
     }
@@ -8695,8 +9446,8 @@ function createMcpServer(ctx) {
 async function runMcpServer(ctx, logFile) {
   if (logFile) {
     try {
-      const fs14 = await import("node:fs");
-      const logStream = fs14.createWriteStream(logFile, { flags: "a" });
+      const fs16 = await import("node:fs");
+      const logStream = fs16.createWriteStream(logFile, { flags: "a" });
       const origWrite = process.stderr.write;
       process.stderr.write = function(chunk, encoding, cb) {
         logStream.write(chunk);
@@ -8752,6 +9503,8 @@ function parseArgs(args) {
     "no-app-url",
     "no-inject",
     "no-skills",
+    "no-design",
+    "refresh-stack",
     "yes",
     "json",
     "help",
@@ -8831,6 +9584,7 @@ Options:
   --html <path>            HTML file to inject into
   --no-inject              Skip injection
   --no-skills              Skip skills installation
+  --no-design              Skip design token detection
   -y, --yes                Non-interactive
   --json                   JSON output (implies --yes)
   -h, --help               Show help
@@ -8850,6 +9604,7 @@ Options:
   --project <key>    Override the project key
   --json             Emit { ok, checks } as JSON
   --fix              Apply the idempotent repairs (gitignore, skills, stack)
+  --refresh-stack    Refresh local design tokens without contacting server
   -h, --help         Show this help
 
 Exit codes:
@@ -8864,7 +9619,8 @@ Exit codes:
       server: typeof parsed["server"] === "string" ? parsed["server"] : void 0,
       project: typeof parsed["project"] === "string" ? parsed["project"] : void 0,
       json: parsed["json"] === true,
-      fix: parsed["fix"] === true
+      fix: parsed["fix"] === true,
+      refreshStack: parsed["refresh-stack"] === true
     }, BUILD_CLI_VERSION);
     process.exit(code);
   } else if (command === "update") {

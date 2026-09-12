@@ -257,6 +257,17 @@
         <li><strong>Status update:</strong> Sends a <code>PATCH /api/comments/&lt;id&gt;</code> marking status as <code>Applied</code> with your reply and commit URL.</li>
       </ul>
 
+      <h2>Using your design system</h2>
+      <p>
+        When an AI coding tool applies feedback like "make this button blue" or "round these corners", it should use your application's existing design tokens rather than inventing arbitrary hex codes or pixel values.
+      </p>
+      <p>
+        During <code>pointer init</code> (or when running <code>pointer doctor --refresh-stack</code>), Pointer automatically detects local design token sources — including Tailwind configuration, CSS custom properties, SCSS variables, and CSS-in-JS themes. These tokens and actionable guidance are saved locally in <code>.pointer/stack.json</code> and injected into the apply prompt.
+      </p>
+      <p>
+        This ensures the AI refers to your brand tokens (such as <code>text-primary</code> or <code>var(--primary)</code>). Because design tokens represent internal repository naming and conventions, they <strong>remain strictly on your machine</strong> in <code>.pointer/stack.json</code> and are never uploaded to the Pointer server.
+      </p>
+
       <div class="callout security">
         <div class="callout-title">Security Invariant: The AI Commits, Never Pushes</div>
         <p>

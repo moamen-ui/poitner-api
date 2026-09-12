@@ -325,8 +325,11 @@ not something either skill repeats on every run.
    echo '<response data object>' > .pointer/stack.json
    ```
 5. **Tell the user**: `.pointer/stack.json` was created and committed — `skill.md`'s apply step
-   reads it directly, with no further server round trip for `frontend`/`backend`. If a teammate's
-   AI tool later applies comments on this same project, its own first run will add itself to
+   reads it directly, with no further server round trip for `frontend`/`backend`. Note that when
+   using the CLI (`npx pointer-feedback init`), a `design` block is automatically detected and
+   written to `.pointer/stack.json` so the AI knows existing tokens (Tailwind, CSS variables, SCSS).
+   The `design` block is local-only and must never be sent to the server in `POST /api/projects/$PROJECT/stack`.
+   If a teammate's AI tool later applies comments on this same project, its own first run will add itself to
    `aiTools` the same way — that's expected, not a bug.
 
 ## Step 6 — Verify

@@ -142,6 +142,7 @@ export type ProjectStack = {
   frontend?: string[];
   backend?: string[] | null;
   aiTools?: string[];
+  design?: any;
 };
 
 export type ApplyProjectContext = {

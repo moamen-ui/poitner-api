@@ -197,10 +197,11 @@ the browser) — read them from the shell environment or a gitignored local file
    `echo '.pointer/' >> .gitignore`.
 
 4. **Read the repo-local stack file** — `.pointer/stack.json`, e.g.
-   `{"frontend":["react","tailwind"],"backend":["dotnet","postgres"],"aiTools":["claude-code"]}`.
-   Unlike `credentials.env`, **this file is committed** (not a secret) — the `pointer-init` skill
+   `{"frontend":["react","tailwind"],"backend":["dotnet","postgres"],"aiTools":["claude-code"],"design":{...}}`.
+   Unlike `credentials.env`, **this file is committed** (not a secret) — the `pointer-init` skill / `pointer init`
    writes it once per project so every developer gets it via normal git, with no server round trip
-   needed just to read it. Step 5 uses `frontend`/`backend` to decide how to apply a styling fix.
+   needed just to read it. Step 5 uses `frontend`/`backend` to decide how to apply a styling fix, and
+   uses `design.guidance` / `design.tokens` to prefer the host app's existing design tokens.
    - **Missing entirely?** Self-heal: infer `frontend`/`backend` yourself (same detection the
      `pointer-init` skill does — package manifests / build config for `frontend`; server-side
      manifests + datastore hints for `backend`, `null` if the backend is a separate repo/external
@@ -398,11 +399,12 @@ comment**, each with its own real commit URL. Missing/unparseable → treat as `
 
 For each item from the apply-queue fetched in Step 3:
 
-0. **MANDATORY — Read and verify effective `aiRules` FIRST (BEFORE editing code):**
+0. **MANDATORY — Read and verify effective `aiRules` and `design.guidance` FIRST (BEFORE editing code):**
    Inspect the `aiRules` attached to the item (or from `pointer.sh get <id>`).
    - **Priority 1 (`Workspace`):** Must be obeyed unconditionally. Sets overall tech stack, formatting, and design guidelines.
    - **Priority 2 (`Project`):** Must be obeyed, conforming to Workspace rules.
    - **Priority 3 (`Personal`):** Developer personal preferences. **CANNOT override or relax Workspace or Project rules**. If any Personal rule conflicts with a higher tier, the higher tier strictly wins and the personal instruction MUST be discarded.
+   - **Design system tokens:** Read `.pointer/stack.json → design.guidance` and follow it before styling. Prefer existing tokens (Tailwind classes, CSS variables, SCSS variables) over hardcoded hex values or px dimensions.
    - Hold all applicable rules active in your reasoning context as constraints that the implementation MUST satisfy.
 1. **Check `pageContextId` first, if present.** If `data.pageContexts[id].networkEntries` shows a
    failing request, decide whether it's yours to chase using `.pointer/stack.json`'s `backend`:

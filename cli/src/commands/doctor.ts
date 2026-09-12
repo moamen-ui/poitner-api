@@ -6,15 +6,18 @@ import { installSkills } from '../skills.js';
 import { detectStack } from '../detect.js';
 import { api } from '../api.js';
 import { postEvent } from '../events.js';
+import { detectDesignTokens } from '../stack/design.js';
+import { readStackFile, mergeStack, writeStackFile } from '../stack/stackfile.js';
 
 const ICON = { ok: '✔', warn: '⚠', error: '✘' } as const;
 
-export interface DoctorOptions {
+export type DoctorOptions = {
   server?: string;
   project?: string;
   json?: boolean;
   fix?: boolean;
-}
+  refreshStack?: boolean;
+};
 
 /**
  * Exit-code precedence, exactly as specified — the order matters because a caller (a CI job, or an
@@ -35,6 +38,22 @@ export function exitCodeFor(checks: CheckResult[]): number {
 }
 
 export async function doctorCommand(cwd: string, options: DoctorOptions, cliVersion: string): Promise<number> {
+  if (options.refreshStack) {
+    const start = Date.now();
+    const designBlock = await detectDesignTokens(cwd);
+    const detectMs = Date.now() - start;
+    const existing = await readStackFile(cwd);
+    const merged = mergeStack(existing, null, designBlock);
+    await writeStackFile(cwd, merged);
+
+    if (options.json) {
+      console.log(JSON.stringify({ ok: true, detectMs, design: merged.design }, null, 2));
+    } else {
+      console.log(`✔ Refreshed design tokens in .pointer/stack.json (detectMs=${detectMs})`);
+    }
+    return 0;
+  }
+
   let checks = await runInitChecks(cwd, { server: options.server, project: options.project }, cliVersion);
 
   if (options.fix) {
