@@ -39,6 +39,7 @@ public static class DependencyInjection
         s.AddSingleton<IApiKeyProtector, ApiKeyProtector>();
         s.AddScoped<ITokenService, JwtTokenService>();
         s.AddScoped<ICurrentUser, HttpCurrentUser>();
+        s.AddScoped<ICurrentClient, HttpCurrentClient>();
         s.AddScoped<IFileStorage, LocalFileStorage>();
         s.AddSingleton<IUploadSigner, UploadSigner>();
         s.AddSingleton<IResetTokenService, ResetTokenService>();

@@ -357,6 +357,7 @@
       const cls = c.status === "pending-apply" ? "pending" : c.status === "applied" ? "applied" : c.status === "archived" ? "archived" : "";
       const statusPill = c.status === "applied" ? '<span class="pf-pill status-applied">&#x2713; completed</span>' : c.status === "pending-apply" ? '<span class="pf-pill status-pending">pending</span>' : c.status === "archived" ? '<span class="pf-pill status-archived">&#x1f4e6; archived</span>' : "";
       const commitLink = c.status === "applied" ? `<a class="pf-pill" href="${c.commitUrl ? escapeHtml(c.commitUrl) : "#"}" ${c.commitUrl ? 'target="_blank" rel="noopener noreferrer"' : ""} title="${c.commitUrl ? "View commit" : "No commit recorded for this comment"}">&#x1f517; commit</a>` : "";
+      const payloadPill = c.hasPayloadFlag ? `<span class="pf-pill pf-payload-flag" title="${escapeHtml((c.payloadFlags || []).join(", "))}">&#x26a0; contains a secret/payload?</span>` : "";
       const replies = (c.replies || []).map((r) => `<div class="pf-reply ${r.isAi ? "ai" : ""}"><b>${escapeHtml(r.authorName || r.authorLabel || "User")}:</b> ${escapeHtml(r.body || r.text || "")}</div>`).join("");
       const envInt = c.environment;
       const envLabel = envInt === 1 ? "Local" : envInt === 2 ? "Staging" : envInt === 3 ? "Production" : envInt ? String(envInt) : "";
@@ -370,6 +371,7 @@
             <div class="pf-meta">
               <span class="pf-badge">${i + 1}</span>
               ${envLabel ? `<span class="pf-pill env">${escapeHtml(envLabel)}</span>` : ""}
+              ${payloadPill}
               ${statusPill}
               ${commitLink}
               <div class="pf-actions-end">
@@ -1584,6 +1586,11 @@
     api(path, opts = {}) {
       const headers = {
         "Content-Type": "application/json",
+        // Declares which kind of client this is, so the server knows it may include the advisory
+        // payload flags (R2-06). Not an auth signal — it is trivially forgeable and nothing
+        // security-critical depends on it. Its job is that the documented AI paths, which never send
+        // it, never receive the flag.
+        "X-Pointer-Client": "widget",
         ...this.token ? { Authorization: `Bearer ${this.token}` } : {},
         ...opts.headers || {}
       };

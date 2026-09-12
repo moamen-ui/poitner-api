@@ -601,6 +601,11 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
   api(path: string, opts: RequestInit = {}): Promise<Response> {
     const headers = {
       'Content-Type': 'application/json',
+      // Declares which kind of client this is, so the server knows it may include the advisory
+      // payload flags (R2-06). Not an auth signal — it is trivially forgeable and nothing
+      // security-critical depends on it. Its job is that the documented AI paths, which never send
+      // it, never receive the flag.
+      'X-Pointer-Client': 'widget',
       ...(this.token ? { Authorization: `Bearer ${this.token}` } : {}),
       ...(opts.headers || {}),
     };

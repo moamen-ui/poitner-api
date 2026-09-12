@@ -54,6 +54,9 @@ export interface Comment {
   _mine?: boolean;
   /** "Report as a bug" checkbox state — set on create, independent of pageContext. */
   isBugReport?: boolean;
+  /** Advisory server-side flag; absent for AI callers by design (R2-06). */
+  hasPayloadFlag?: boolean;
+  payloadFlags?: string[];
 }
 
 export interface User {

@@ -25,7 +25,9 @@ public class CommentService : ICommentService
     private readonly ISettingsService _settings;
     private readonly IEntitlementService _entitlements;
 
-    public CommentService(IUnitOfWork unitOfWork, IProjectService projectService, IPredefinedActionService predefinedActions, IFileStorage fileStorage, ICurrentUser currentUser, IUploadSigner uploadSigner, ISettingsService settings, IEntitlementService entitlements)
+    private readonly ICurrentClient? _currentClient;
+
+    public CommentService(IUnitOfWork unitOfWork, IProjectService projectService, IPredefinedActionService predefinedActions, IFileStorage fileStorage, ICurrentUser currentUser, IUploadSigner uploadSigner, ISettingsService settings, IEntitlementService entitlements, ICurrentClient? currentClient = null)
     {
         _unitOfWork = unitOfWork;
         _projectService = projectService;
@@ -35,6 +37,7 @@ public class CommentService : ICommentService
         _uploadSigner = uploadSigner;
         _settings = settings;
         _entitlements = entitlements;
+        _currentClient = currentClient;
     }
 
     public async Task<Result<CommentResponse>> CreateAsync(string projectKey, CreateCommentRequest request, Guid authorId, string? origin = null)
@@ -117,6 +120,9 @@ public class CommentService : ICommentService
             Status = CommentStatus.Open,
             AuthorId = authorId,
             Body = request.Body.Trim(),
+            // Advisory only, computed server-side on every write so a client cannot set or clear it.
+            PayloadFlags = PayloadFlagDetector.Detect(request.Body).ToList(),
+            HasPayloadFlag = PayloadFlagDetector.Detect(request.Body).Count > 0,
             IsPrivate = request.IsPrivate,
             OwnerId = projectOwnerId,
             Element = MapToEntity(request.Element),
@@ -540,6 +546,8 @@ public class CommentService : ICommentService
                 CommentId = comment.Id,
                 AuthorId = actorId,
                 Body = request.Reply.Trim(),
+                PayloadFlags = PayloadFlagDetector.Detect(request.Reply).ToList(),
+                HasPayloadFlag = PayloadFlagDetector.Detect(request.Reply).Count > 0,
                 OwnerId = comment.OwnerId
             };
             // comment is tracked (loaded without AsNoTracking); adding to its
@@ -598,6 +606,10 @@ public class CommentService : ICommentService
 
         // Non-empty/length enforced upfront by EditCommentValidator (FluentValidation auto-validation).
         comment.Body = request.Body.Trim();
+        // Recomputed, not left alone: editing a flagged comment to remove the secret must clear the
+        // badge, and editing a clean one to add a secret must raise it.
+        comment.PayloadFlags = PayloadFlagDetector.Detect(comment.Body).ToList();
+        comment.HasPayloadFlag = comment.PayloadFlags.Count > 0;
 
         // Optionally remove the uploaded screenshot (clear the reference + delete the file).
         if (request.RemoveScreenshot && !string.IsNullOrEmpty(comment.Element.ScreenshotUrl))
@@ -676,6 +688,8 @@ public class CommentService : ICommentService
             CommentId = commentId,
             AuthorId = authorId,
             Body = body,
+            PayloadFlags = PayloadFlagDetector.Detect(body).ToList(),
+            HasPayloadFlag = PayloadFlagDetector.Detect(body).Count > 0,
             OwnerId = comment.OwnerId
         };
 
@@ -764,13 +778,22 @@ public class CommentService : ICommentService
             .ToDictionaryAsync(u => u.PublicId, u => u.DisplayName);
     }
 
-    private static ReplyResponse MapReplyToResponse(Reply reply, IReadOnlyDictionary<Guid, string> names) => new()
+    /// <summary>
+    /// Whether this caller is a surface a human is looking at, and so may see the advisory payload
+    /// flags. Defaults to FALSE when no client accessor is wired: hiding an advisory badge is a
+    /// cosmetic loss, leaking it into an AI payload is an injection surface.
+    /// </summary>
+    private bool ShowsPayloadFlags => _currentClient?.IsHumanSurface ?? false;
+
+    private static ReplyResponse MapReplyToResponse(Reply reply, IReadOnlyDictionary<Guid, string> names, bool includeFlags = false) => new()
     {
         Id = reply.Id,
         AuthorId = reply.AuthorId,
         AuthorName = names.GetValueOrDefault(reply.AuthorId),
         Body = reply.Body,
-        CreatedAt = reply.CreatedAt
+        CreatedAt = reply.CreatedAt,
+        HasPayloadFlag = includeFlags ? reply.HasPayloadFlag : null,
+        PayloadFlags = includeFlags ? reply.PayloadFlags : null
     };
 
     private CommentListItemDto MapToListItem(Comment comment, IReadOnlyDictionary<Guid, string> names) => new()
@@ -791,9 +814,11 @@ public class CommentService : ICommentService
         // Labels only — the prompts are intentionally never exposed here.
         PickedActionTexts = comment.PickedActions.Select(a => a.Text).ToList(),
         Element = MapElementToDto(comment.Element),
-        Replies = comment.Replies.Select(r => MapReplyToResponse(r, names)).ToList(),
+        Replies = comment.Replies.Select(r => MapReplyToResponse(r, names, ShowsPayloadFlags)).ToList(),
         IsBugReport = comment.IsBugReport,
-        PageContextId = comment.PageContextSnapshotId
+        PageContextId = comment.PageContextSnapshotId,
+        HasPayloadFlag = ShowsPayloadFlags ? comment.HasPayloadFlag : null,
+        PayloadFlags = ShowsPayloadFlags ? comment.PayloadFlags : null
     };
 
     private CommentResponse MapToResponse(Comment comment, IReadOnlyDictionary<Guid, string> names, List<AiRuleApplyDto>? rules = null) => new()
@@ -814,10 +839,12 @@ public class CommentService : ICommentService
         // Labels only — the prompts are intentionally never exposed here.
         PickedActionTexts = comment.PickedActions.Select(a => a.Text).ToList(),
         Element = MapElementToDto(comment.Element),
-        Replies = comment.Replies.Select(r => MapReplyToResponse(r, names)).ToList(),
+        Replies = comment.Replies.Select(r => MapReplyToResponse(r, names, ShowsPayloadFlags)).ToList(),
         IsBugReport = comment.IsBugReport,
         PageContext = MapPageContextToDto(comment.PageContextSnapshot),
-        AiRules = rules ?? new List<AiRuleApplyDto>()
+        AiRules = rules ?? new List<AiRuleApplyDto>(),
+        HasPayloadFlag = ShowsPayloadFlags ? comment.HasPayloadFlag : null,
+        PayloadFlags = ShowsPayloadFlags ? comment.PayloadFlags : null
     };
 
     // Apply-queue export mapper — the ONLY mapper that carries PickedActionPrompt (admin/AI path).
@@ -919,7 +946,16 @@ public class CommentService : ICommentService
         AuthorName = names.GetValueOrDefault(comment.AuthorId),
         CreatedAt = comment.CreatedAt,
         Element = MapToApplyElement(comment, pageRef),
-        Replies = comment.Replies.Select(r => MapReplyToResponse(r, names)).ToList(),
+        // Built field-by-field into ApplyReplyDto rather than reusing MapReplyToResponse: the
+        // AI-facing queue must not inherit whatever the human DTO grows next.
+        Replies = comment.Replies
+            .Select(r => new ApplyReplyDto
+            {
+                AuthorName = names.GetValueOrDefault(r.AuthorId) ?? string.Empty,
+                Body = r.Body,
+                CreatedAt = r.CreatedAt,
+            })
+            .ToList(),
         // Apply/AI path: carries both label + prompt for each picked action.
         PickedActions = comment.PickedActions
             .Select(a => new PickedActionDto { Text = a.Text, Prompt = a.Prompt }).ToList(),

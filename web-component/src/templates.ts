@@ -168,6 +168,13 @@ export const TPL = {
     const commitLink = c.status === 'applied'
       ? `<a class="pf-pill" href="${c.commitUrl ? escapeHtml(c.commitUrl) : '#'}" ${c.commitUrl ? 'target="_blank" rel="noopener noreferrer"' : ''} title="${c.commitUrl ? 'View commit' : 'No commit recorded for this comment'}">&#x1f517; commit</a>`
       : '';
+    // Advisory only: the server flagged this text as looking like a credential or payload, so a
+    // reviewer notices before acting on it. Nothing is blocked and nothing is rewritten — and the
+    // flag is absent entirely for AI callers, so this pill is the only place it ever appears.
+    const payloadPill = c.hasPayloadFlag
+      ? `<span class="pf-pill pf-payload-flag" title="${escapeHtml((c.payloadFlags || []).join(', '))}">&#x26a0; contains a secret/payload?</span>`
+      : '';
+
     const replies = (c.replies || []).map((r) =>
       `<div class="pf-reply ${r.isAi ? 'ai' : ''}"><b>${escapeHtml(r.authorName || r.authorLabel || 'User')}:</b> ${escapeHtml(r.body || r.text || '')}</div>`).join('');
     const envInt = c.environment;
@@ -184,6 +191,7 @@ export const TPL = {
             <div class="pf-meta">
               <span class="pf-badge">${i + 1}</span>
               ${envLabel ? `<span class="pf-pill env">${escapeHtml(envLabel)}</span>` : ''}
+              ${payloadPill}
               ${statusPill}
               ${commitLink}
               <div class="pf-actions-end">

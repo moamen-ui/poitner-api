@@ -34,3 +34,11 @@
 #pf-pins.picking .pf-pin {
   pointer-events: none;
 }
+
+// Advisory payload/secret badge. Muted on purpose: it is a prompt to look, not an alarm, and an
+// alarming badge on a false positive trains people to ignore it.
+.pf-pill.pf-payload-flag {
+  background: v.token('warn');
+  color: v.token('primary-contrast');
+  opacity: 0.85;
+}

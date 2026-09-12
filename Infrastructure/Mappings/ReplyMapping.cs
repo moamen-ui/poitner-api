@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.ChangeTracking;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
 using Pointer.Domain.Entity;
 
@@ -26,5 +27,20 @@ public class ReplyMapping : IEntityTypeConfiguration<Reply>
         b.Property(x => x.OwnerId).HasColumnName("owner_id");
         b.HasIndex(x => x.OwnerId);
         b.HasOne(x => x.Comment).WithMany(c => c.Replies).HasForeignKey(x => x.CommentId).OnDelete(DeleteBehavior.Cascade);
+
+        // Advisory payload/secret flags, computed on write (R2-06). The jsonb list mirrors
+        // PlanMapping.FeatureBullets: a value-comparer so EF tracks element-level mutations.
+        b.Property(x => x.HasPayloadFlag).HasColumnName("has_payload_flag").HasDefaultValue(false);
+        b.Property(x => x.PayloadFlags)
+            .HasColumnName("payload_flags")
+            .HasColumnType("jsonb")
+            .HasConversion(
+                v => System.Text.Json.JsonSerializer.Serialize(v, (System.Text.Json.JsonSerializerOptions?)null),
+                v => System.Text.Json.JsonSerializer.Deserialize<List<string>>(v, (System.Text.Json.JsonSerializerOptions?)null) ?? new List<string>(),
+                new ValueComparer<List<string>>(
+                    (a, c) => (a ?? new()).SequenceEqual(c ?? new()),
+                    v => v.Aggregate(0, (h, s) => HashCode.Combine(h, s.GetHashCode())),
+                    v => v.ToList()));
+
     }
 }

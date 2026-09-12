@@ -798,6 +798,12 @@
   pointer-events: none;
 }
 
+.pf-pill.pf-payload-flag {
+  background: var(--pf-warn, #f59e0b);
+  color: var(--pf-primary-contrast, #fff);
+  opacity: 0.85;
+}
+
 .pf-popover {
   position: fixed;
   z-index: 2147483647;

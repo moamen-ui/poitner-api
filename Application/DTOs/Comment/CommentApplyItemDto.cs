@@ -23,7 +23,7 @@ public class CommentApplyItemDto
     public string? AuthorName { get; set; }
     public DateTime CreatedAt { get; set; }
     public ApplyElementDto Element { get; set; } = new();
-    public List<ReplyResponse> Replies { get; set; } = new();
+    public List<ApplyReplyDto> Replies { get; set; } = new();
 
     // Predefined-action snapshots (multi-select) — prompts included ONLY here (admin/AI apply path).
     public List<PickedActionDto> PickedActions { get; set; } = new();

@@ -35,4 +35,19 @@ public class CommentListItemDto
     /// multiple comments sharing a page context cost one dictionary entry, not N copies. Null when no
     /// page context was captured for this comment.</summary>
     public int? PageContextId { get; set; }
+
+    /// <summary>
+    /// Advisory: this text looked like it contained a credential or executable payload.
+    /// </summary>
+    /// <remarks>
+    /// Populated ONLY for the widget and dashboard (the X-Pointer-Client header). Null — and so
+    /// absent from the JSON — for every other caller, which is how the documented AI paths never
+    /// see it. See R2-06 exposure rules.
+    /// </remarks>
+    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    public bool? HasPayloadFlag { get; set; }
+
+    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    public List<string>? PayloadFlags { get; set; }
+
 }
