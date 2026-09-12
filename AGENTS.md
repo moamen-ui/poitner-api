@@ -82,6 +82,33 @@ pointer-api/
 └── justfile
 ```
 
+## Public documentation (`landing/docs/`)
+
+The public docs site is plain HTML served from `landing/docs/`, indexed by `pages.json`, and linked
+from the landing nav and footer.
+
+**A feature's documentation page is written with the feature, in the same change.** Not afterwards:
+written later, by someone re-reading code they have forgotten, a page costs several times as much
+and comes out wrong. Each execution doc names its page in a `## Docs` section; an item whose page is
+missing is not done.
+
+Three rules keep the site coherent:
+
+1. **`pages.json` is the manifest.** Add your page's entry (`file`, `title`, `nav`, `summary`) in the
+   same change. The index renders from it, and every page's nav block is generated from it — so a
+   page missing from the manifest is a page nothing links to. An entry may set `external: true`, or
+   use a site-absolute `/path`, for a link that is not a file under `docs/`.
+2. **Use the shared shell.** Link `assets/docs.css`; do not inline a `<style>` block. Eight private
+   copies of the same tokens is how a colour change gets made seven times and missed once.
+3. **Every claim must be true of the code as it exists.** These pages are read as promises. A
+   fact-check of the first four found a CLI exit code that did not exist, a migration that never
+   happened, and an ownership restriction that was not real; a later pass on the data page found two
+   false privacy claims. If a contract asks you to document something unbuilt, say so rather than
+   writing it.
+
+`e2e/docs/` enforces 1 and 2 mechanically, plus dark mode, RTL and that no page links to a file
+nobody wrote.
+
 ## API Client Generation (Orval)
 
 Three typed client packages are generated from the same Swagger spec:
