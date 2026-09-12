@@ -6,7 +6,10 @@ using Pointer.Application.Services.Interfaces;
 
 namespace Pointer.Application.Services.Implementation;
 
-public sealed class MetaService(IConfiguration configuration, IBrandingService brandingService) : IMetaService
+public sealed class MetaService(
+    IConfiguration configuration,
+    IBrandingService brandingService,
+    WidgetVersionInfo? widgetVersionInfo = null) : IMetaService
 {
     public async Task<MetaResponse> GetAsync(string publicBase)
     {
@@ -24,9 +27,8 @@ public sealed class MetaService(IConfiguration configuration, IBrandingService b
             Version = informationalVersion,
             ApiVersion = 1,
             MinCliVersion = minCliVersion,
-            // Resolved through the SAME helper the served-file middleware stamps with — if these
-            // diverged, doctor would compare an installed stamp against a different value.
             SkillVersion = SkillVersionResolver.Resolve(configuration),
+            WidgetVersion = widgetVersionInfo?.CurrentHash,
             ProductName = productName,
             ServerTime = DateTime.UtcNow
         };

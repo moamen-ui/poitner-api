@@ -1,0 +1,35 @@
+{
+  "version": "0.1.0",
+  "hash": "99183d8f9f37",
+  "commit": "8265dbc",
+  "committedAt": "2026-09-12T15:41:01+03:00",
+  "files": {
+    "pointer.js": {
+      "bytes": 139083,
+      "gzipBytes": 35134,
+      "integrity": "sha384-cAauLZIG9IymNgNEACLZgohV/ulMADx/l7GoZBj5AuG7jLtWuAQ+A+HiV/5RCyg3"
+    },
+    "pointer.css": {
+      "bytes": 23542,
+      "gzipBytes": 4356,
+      "integrity": "sha384-pl6qCXCJPvbHtNCrBdVfGM9KFg9VAQztGsJ7K9Vqx49ky97dTVUMIDCP6j2hKRCO"
+    }
+  },
+  "retained": [
+    {
+      "hash": "99183d8f9f37",
+      "version": "0.1.0",
+      "files": {
+        "pointer.js": {
+          "integrity": "sha384-cAauLZIG9IymNgNEACLZgohV/ulMADx/l7GoZBj5AuG7jLtWuAQ+A+HiV/5RCyg3"
+        },
+        "pointer.css": {
+          "integrity": "sha384-pl6qCXCJPvbHtNCrBdVfGM9KFg9VAQztGsJ7K9Vqx49ky97dTVUMIDCP6j2hKRCO"
+        }
+      }
+    }
+  ],
+  "budget": {
+    "pointerJsGzipMax": 61440
+  }
+}

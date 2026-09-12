@@ -648,98 +648,15 @@
     }
   }
   var VOID_ELEMENTS = /^(area|base|br|col|embed|hr|img|input|link|meta|param|source|track|wbr)$/;
-  function escapeAttr(val) {
-    return val.replace(/"/g, "&quot;").replace(/</g, "&lt;");
-  }
-  function isMasked(el) {
-    if (typeof el.closest === "function") {
-      return !!el.closest("[data-snapshot-mask]");
-    }
-    let curr = el;
-    while (curr) {
-      if (curr.hasAttribute && curr.hasAttribute("data-snapshot-mask")) return true;
-      curr = curr.parentElement;
-    }
-    return false;
-  }
-  function isFormValueTag(tag) {
-    return /^(input|textarea|select|option)$/i.test(tag);
-  }
-  function isSensitiveAttr(name) {
-    const lower = name.toLowerCase();
-    if (lower === "value" || lower === "data-value" || lower === "data-email" || lower === "data-token" || lower === "data-secret" || lower === "authorization" || lower === "srcdoc") {
-      return true;
-    }
-    if (/^data-user/i.test(lower)) {
-      return true;
-    }
-    return false;
-  }
-  function maskAttrValue(name, val) {
-    const lower = name.toLowerCase();
-    const isStructural = lower === "id" || lower === "type" || lower === "role" || lower.startsWith("aria-");
-    if (isStructural) {
-      return escapeAttr(val);
-    }
-    return "•••";
-  }
-  function shallowSnapshot(el, captureText = true) {
+  function shallowSnapshot(el) {
     const tag = el.tagName.toLowerCase();
-    const masked = isMasked(el);
-    const isForm = isFormValueTag(tag);
-    const rawAttrs = Array.from(el.attributes).filter(
-      (a) => a.name !== "class" && a.name !== "style"
-    );
-    const keptAttrs = [];
-    for (const a of rawAttrs) {
-      const name = a.name;
-      const lower = name.toLowerCase();
-      if (isSensitiveAttr(lower)) continue;
-      if (tag === "input") {
-        if (lower === "data-snapshot-mask") continue;
-        const isAllowed = lower === "type" || lower === "name" || lower === "id" || lower === "placeholder" || lower.startsWith("aria-") || lower.startsWith("data-");
-        if (!isAllowed) continue;
-      }
-      if (isForm && lower === "value") continue;
-      const rawVal = (a.value || "").slice(0, 120);
-      if (masked) {
-        const maskedVal = maskAttrValue(name, rawVal);
-        keptAttrs.push(rawVal ? `${name}="${maskedVal}"` : name);
-      } else {
-        const escaped = escapeAttr(rawVal);
-        keptAttrs.push(rawVal ? `${name}="${escaped}"` : name);
-      }
-    }
-    if (tag === "input") {
-      const inputEl = el;
-      if (typeof inputEl.value === "string" && inputEl.value !== "") {
-        keptAttrs.push('value="•••"');
-      }
-    }
-    const attrs = keptAttrs.join(" ");
+    const attrs = Array.from(el.attributes).filter((a) => a.name !== "class" && a.name !== "style").map((a) => {
+      const v = (a.value || "").slice(0, 120);
+      return v ? `${a.name}="${v}"` : a.name;
+    }).join(" ");
     const open = attrs ? `<${tag} ${attrs}>` : `<${tag}>`;
     if (VOID_ELEMENTS.test(tag)) return attrs ? `<${tag} ${attrs}/>` : `<${tag}/>`;
-    let text = "";
-    if (!captureText) {
-      const raw = (el.textContent || "").replace(/\s+/g, " ").trim();
-      text = raw ? "•••" : "";
-    } else if (masked) {
-      const raw = (el.textContent || "").replace(/\s+/g, " ").trim();
-      text = raw ? "•••" : "";
-    } else if (tag === "option") {
-      text = "";
-    } else if (tag === "textarea") {
-      const ta = el;
-      const val = typeof ta.value === "string" && ta.value !== "" ? ta.value : el.textContent || "";
-      text = val.trim() ? "•••" : "";
-    } else if (tag === "select") {
-      const sel = el;
-      const hasOpts = sel.options && sel.options.length > 0;
-      const raw = (el.textContent || "").trim();
-      text = hasOpts || raw || sel.value ? "•••" : "";
-    } else {
-      text = (el.textContent || "").replace(/\s+/g, " ").trim().slice(0, 160);
-    }
+    const text = (el.textContent || "").replace(/\s+/g, " ").trim().slice(0, 160);
     return `${open}${text}</${tag}>`;
   }
   function skipSelector(sel, classSet) {
@@ -772,10 +689,9 @@
       }
     }
   }
-  function captureMetadata(el, sourceAttr, options) {
-    const captureText = (options == null ? void 0 : options.captureText) !== false;
+  function captureMetadata(el, sourceAttr) {
     const selector = generateSelector(el);
-    const snapshot = shallowSnapshot(el, captureText);
+    const snapshot = shallowSnapshot(el);
     const classes = el.className && typeof el.className === "string" ? el.className.split(/\s+/).filter(Boolean) : [];
     const computed = {};
     const applied = [];
@@ -1296,9 +1212,6 @@
       // Project-level opt-in (default off), read once at init via /capture-config. Gates both whether
       // the widget buffers console/network events at all and whether "Report as a bug" is shown.
       this.pageContextCaptureEnabled = false;
-      // Per-project text capture toggle (default true until /capture-config resolves).
-      // When false, the widget emits no text content in the DOM snapshot and masks pageTitle.
-      this.captureTextContent = true;
       // Whether the AI apply flow (skill.md) bundles applied comments into one commit or commits each
       // one separately — 1=Single, 2=Separate (backend CommitStyle enum, read as-is like
       // environmentInt already is). Changeable via a small widget control, but only rendered when
@@ -1706,9 +1619,6 @@
         }
         const envelope = await r.json();
         this.pageContextCaptureEnabled = !!(envelope && envelope.data && envelope.data.pageContextCaptureEnabled);
-        if ((envelope == null ? void 0 : envelope.data) && typeof envelope.data.captureTextContent === "boolean") {
-          this.captureTextContent = envelope.data.captureTextContent;
-        }
         this.projectName = envelope && envelope.data && envelope.data.name || this.project;
         const showSelector = (_a2 = envelope == null ? void 0 : envelope.data) == null ? void 0 : _a2.showEnvironmentSelector;
         this.showEnvironmentSelector = showSelector !== false;
@@ -1721,7 +1631,6 @@
         if (this.pageContextCaptureEnabled) startPageContextCapture(this.server, SCRIPT_SRC);
       } catch {
         this.pageContextCaptureEnabled = false;
-        this.captureTextContent = true;
       }
     }
     // Patches the already-rendered header label in place rather than a full renderChrome() —
@@ -2523,7 +2432,7 @@
     // (named openCommentPopover, not showPopover, to avoid clashing with the
     //  built-in HTMLElement.showPopover() from the Popover API.)
     openCommentPopover(x, y, el) {
-      const meta = captureMetadata(el, this.sourceAttr, { captureText: this.captureTextContent });
+      const meta = captureMetadata(el, this.sourceAttr);
       const host = this.root.querySelector("#pf-popover-host");
       const left = Math.min(x, window.innerWidth - 300);
       const top = Math.min(y, window.innerHeight - 220);
@@ -2590,7 +2499,7 @@
         // Active route relative to the origin: path + query params (+ hash, so
         // hash-routed SPAs are covered too).
         route: window.location.pathname + window.location.search + window.location.hash,
-        pageTitle: document.documentElement.hasAttribute("data-snapshot-mask") || !this.captureTextContent ? "•••" : document.title,
+        pageTitle: document.title,
         viewportWidth: vw,
         viewportHeight: vh,
         deviceType,
