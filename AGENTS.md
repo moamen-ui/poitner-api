@@ -37,6 +37,7 @@ just up    # Start API + DB via Docker (API on :8090)
 | `npm run generate-clients` | repo root | Regenerate all API client packages (Angular + React + Vue) |
 | `npm run clients:local` | repo root | Local loop: generate, build, and publish clients to local Verdaccio |
 | `npm run build` | web-component/ | Build `<pointer-feedback>` → `API/wwwroot/pointer.{js,css}` |
+| `npx pointer-feedback apply` | app repos | Apply pending feedback via CLI (`.pointer/pointer.sh` is no-Node fallback) |
 
 ### Key conventions
 

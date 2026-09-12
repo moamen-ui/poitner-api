@@ -88,4 +88,5 @@ echo "  1. Fill POINTER_API_KEY in .pointer/credentials.env — copy it from you
 echo "     page, or the dashboard's quick-start guide."
 echo "  2. Run the 'pointer-init' skill in your AI tool to add the widget to your app — its last step"
 echo "     detects the tech stack and writes the committable .pointer/stack.json."
-echo "  3. Then just run: ./.pointer/pointer.sh list"
+echo "  3. To check comments: npx pointer-feedback list (or ./.pointer/pointer.sh list)"
+echo "  4. To apply comments: npx pointer-feedback apply"
