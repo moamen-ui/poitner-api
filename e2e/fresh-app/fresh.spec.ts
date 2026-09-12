@@ -952,3 +952,82 @@ test('R2-00-08 ⛓ — whitelabel: widget title/aria-label have no brand leak', 
     await resetBranding({ token: saAuth.token }).catch(() => {});
   }
 });
+
+/**
+ * R1-02-02 — the static injection contract, asserted exactly.
+ *
+ * R2-00-02 already drives the whole static path end to end (scaffold → init → serve → browser
+ * login → comment → API). This scenario owns something narrower that the end-to-end run only
+ * checks loosely: what the injected block CONTAINS, character for character, and what init must
+ * NOT leave behind.
+ *
+ * It deliberately re-scaffolds rather than chaining onto R2-00-02's directory. Scaffolding a
+ * static app is a file copy and init is a single CLI call, so a private fixture costs a few
+ * seconds — far less than the ordering constraint of sharing one, and it keeps this scenario
+ * runnable on its own with `-g R1-02-02`.
+ */
+test('R1-02-02 — init-static-no-ai', async () => {
+  test.setTimeout(120_000);
+
+  const start = Date.now();
+  const runId = Math.random().toString(36).substring(2, 7);
+  const creds = getCredentials();
+  const devKey = getKeys().developer?.apiKey;
+  const wsAdmin = await login(creds.wsAdmin.email, creds.wsAdmin.password);
+
+  let createdProjectKey = '';
+  try {
+    const appDir = await scaffoldStatic();
+
+    const initRes = await spawnCli({
+      cwd: appDir,
+      args: [
+        'init', '--server', SERVER, '--key', devKey || '',
+        '--create', `Fresh static ${runId}`,
+        '--environment', 'local', '--tool', 'other', '--yes', '--json',
+      ],
+    });
+
+    expect(initRes.code).toBe(0);
+    expect(initRes.json?.ok).toBe(true);
+    expect(initRes.json?.stack?.kind).toBe('static');
+    // "no-ai": a static page needs no skill hand-off, so init must do the work itself.
+    expect(initRes.json?.routedToSkill).toBe(false);
+    expect(initRes.json?.injected).toBe(true);
+    createdProjectKey = initRes.json?.project?.key;
+    expect(createdProjectKey).toMatch(/^fresh-static-/);
+
+    // The marker pair must wrap EXACTLY the two documented lines. Comparing the slice between the
+    // markers — rather than asserting the file merely contains each line — is what catches an
+    // injector that also writes something undocumented in there.
+    const indexHtml = await readFile(join(appDir, 'index.html'), 'utf8');
+    const block = indexHtml.match(
+      /<!-- pointer-feedback:start -->([\s\S]*?)<!-- pointer-feedback:end -->/,
+    );
+    expect(block, 'no marker pair found in index.html').not.toBeNull();
+
+    const injected = block![1].trim();
+    const expected = [
+      `<script src="${SERVER}/pointer.js" defer></script>`,
+      `<pointer-feedback project="${createdProjectKey}" server="${SERVER}" environment="local" source-attr="data-component-source"></pointer-feedback>`,
+    ].join('\n');
+    expect(injected.replace(/\n\s+/g, '\n')).toBe(expected);
+
+    // Static injection carries its config in the element's attributes, so there is nothing for a
+    // .env to hold. Writing one anyway would be a stray file in the user's project root.
+    expect(existsSync(join(appDir, '.env')), '.env must not be created for a static stack').toBe(false);
+    expect(existsSync(join(appDir, '.env.local')), '.env.local must not be created either').toBe(false);
+
+    const ms = Date.now() - start;
+    record({
+      id: 'R1-02-02', tier: 'PR', layer: 'cli', role: 'developer', result: 'PASS', ms,
+      detail: `project=${createdProjectKey}; marker block exact; no .env written`,
+    });
+  } finally {
+    if (createdProjectKey) {
+      const allProjects = await raw('GET', '/api/admin/projects', { token: wsAdmin.token });
+      const found = (allProjects.data || []).find((p: any) => p.key === createdProjectKey);
+      if (found) await raw('DELETE', `/api/admin/projects/${found.id}`, { token: wsAdmin.token });
+    }
+  }
+});
