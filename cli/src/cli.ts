@@ -3,6 +3,7 @@ import { doctorCommand } from './commands/doctor.js';
 import { updateCommand } from './commands/update.js';
 import { applyCommand } from './commands/apply.js';
 import { listCommand, getCommand, statusCommand, replyCommand } from './commands/comments.js';
+import { mcpCommand } from './commands/mcp.js';
 import { argv, cwd } from 'node:process';
 import { BUILD_CLI_VERSION } from './build-constants.js';
 
@@ -58,6 +59,7 @@ Commands:
   get       View comment details (whitelisted projection)
   status    Update comment status
   reply     Add a reply to a comment
+  mcp       Start the Model Context Protocol (MCP) server
 
 Options:
   -h, --help    Show this help message
@@ -223,6 +225,23 @@ Add a reply to a comment.
             process.exit(0);
         }
         await replyCommand(cwd(), parsed, positionals);
+    } else if (command === 'mcp') {
+        if (parsed['help']) {
+            console.log(`
+Usage: pointer mcp [options]
+
+Start the Pointer stdio MCP server for AI tools.
+
+Options:
+  --log <file>       Log MCP server traffic to file
+  --server <url>     Feedback server URL
+  --project <key>    Project key
+  --key <key>        API key
+  -h, --help         Show this help
+`);
+            process.exit(0);
+        }
+        await mcpCommand(cwd(), parsed);
     } else {
         console.error(`Unknown command: ${command}`);
         process.exit(2);
