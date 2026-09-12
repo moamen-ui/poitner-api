@@ -2774,7 +2774,8 @@
       }
       const list = this.root.querySelector("#pf-list");
       if (!list) return;
-      const shown = this.statusFilter === "all" ? scoped.filter((c) => c.status !== "archived" && c.status !== "applied") : scoped.filter((c) => c.status === this.statusFilter);
+      const awaitingMyVerification = (c) => c.status === "applied" && !c.verifiedAt && this.isMine(c);
+      const shown = this.statusFilter === "all" ? scoped.filter((c) => c.status !== "archived" && (c.status !== "applied" || awaitingMyVerification(c))) : scoped.filter((c) => c.status === this.statusFilter);
       if (!scoped.length) {
         list.innerHTML = TPL.empty(this.mineOnly ? "You haven't left any comments yet." : "No comments on this project yet.<br/>Click the inspect icon, then click an element.");
         return;

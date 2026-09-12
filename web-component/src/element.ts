@@ -1763,8 +1763,16 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
     const list = this.root.querySelector('#pf-list');
     if (!list) return;
 
+    // Applied comments are hidden from the default view — they are done, and leaving them there
+    // makes the list grow forever. The ONE exception is your own applied comment that you have not
+    // verified yet: R2-04 notifies you that it was applied and asks "does this look right?", and
+    // the buttons that answer that live on the card. Hiding the card makes the notification a dead
+    // end — you are told to check something you cannot reach.
+    const awaitingMyVerification = (c: Comment) =>
+      c.status === 'applied' && !c.verifiedAt && this.isMine(c);
+
     const shown = this.statusFilter === 'all'
-      ? scoped.filter((c) => c.status !== 'archived' && c.status !== 'applied')
+      ? scoped.filter((c) => c.status !== 'archived' && (c.status !== 'applied' || awaitingMyVerification(c)))
       : scoped.filter((c) => c.status === this.statusFilter);
     if (!scoped.length) {
       list.innerHTML = TPL.empty(this.mineOnly

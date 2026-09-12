@@ -8020,9 +8020,26 @@ function mapEnvironmentToNumber3(env) {
     return 3;
   return void 0;
 }
+function pickElement(raw) {
+  return {
+    selector: raw?.selector ?? null,
+    route: raw?.route ?? null,
+    sourcePath: raw?.sourcePath ?? null,
+    classes: raw?.classes ?? null,
+    appliedCssRules: raw?.appliedCssRules ?? null,
+    parentInfo: raw?.parentInfo ?? raw?.parent ?? null,
+    pageUrl: raw?.pageUrl ?? null,
+    pageTitle: raw?.pageTitle ?? null,
+    pageRef: raw?.pageRef ?? null,
+    viewportWidth: raw?.viewportWidth ?? null,
+    viewportHeight: raw?.viewportHeight ?? null,
+    deviceType: raw?.deviceType ?? null,
+    screenshotUrl: raw?.screenshotUrl ?? null
+  };
+}
 function partitionItem(item) {
   const elementRaw = item?.element || {};
-  const { snapshot, ...elementWithoutSnapshot } = elementRaw;
+  const snapshot = elementRaw?.snapshot;
   const replies = Array.isArray(item?.replies) ? item.replies.map((r) => {
     const bodyValue2 = typeof r?.body === "object" && r?.body !== null ? String(r.body.value ?? "") : String(r?.body ?? "");
     return {
@@ -8046,7 +8063,7 @@ function partitionItem(item) {
     createdAt: item.createdAt ?? "",
     authorName: item.authorName ?? null,
     isBugReport: Boolean(item.isBugReport),
-    element: elementWithoutSnapshot,
+    element: pickElement(elementRaw),
     pageContextId: item.pageContextId ?? null,
     page: item.page,
     pageContext: item.pageContext,
