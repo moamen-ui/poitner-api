@@ -9,6 +9,8 @@ namespace Pointer.API.Controllers;
 
 [ApiController]
 [Authorize]
+[Produces("application/json")]
+[Tags("Comments")]
 public class CommentsController(ICommentService commentService) : ControllerBase
 {
     [HttpPost("api/projects/{key}/comments")]
@@ -46,6 +48,7 @@ public class CommentsController(ICommentService commentService) : ControllerBase
     }
 
     [HttpGet("api/comments/{id:int}")]
+    [ProducesResponseType(typeof(CommentResponse), StatusCodes.Status200OK)]
     public async Task<IActionResult> GetById(int id)
     {
         var result = await commentService.GetByIdAsync(id, User.GetId());
@@ -55,6 +58,7 @@ public class CommentsController(ICommentService commentService) : ControllerBase
     }
 
     [HttpPatch("api/comments/{id:int}")]
+    [ProducesResponseType(typeof(CommentResponse), StatusCodes.Status200OK)]
     public async Task<IActionResult> UpdateStatus(int id, [FromBody] UpdateCommentStatusRequest request)
     {
         var result = await commentService.UpdateStatusAsync(id, request, User.GetId());
@@ -64,8 +68,20 @@ public class CommentsController(ICommentService commentService) : ControllerBase
         return result.IsSuccess ? Ok(result) : BadRequest(result);
     }
 
+    [HttpPost("api/comments/{id:int}/verify")]
+    [ProducesResponseType(typeof(CommentResponse), StatusCodes.Status200OK)]
+    public async Task<IActionResult> Verify(int id, [FromBody] VerifyCommentRequest request)
+    {
+        var result = await commentService.VerifyAsync(id, request, User.GetId());
+        if (result.IsForbidden) return StatusCode(StatusCodes.Status403Forbidden, result);
+        if (result.IsNotFound) return NotFound(result);
+        if (result.IsConflict) return Conflict(result);
+        return result.IsSuccess ? Ok(result) : BadRequest(result);
+    }
+
     // Edit a comment's body and/or remove its uploaded image. Author-only (enforced in the service).
     [HttpPut("api/comments/{id:int}")]
+    [ProducesResponseType(typeof(CommentResponse), StatusCodes.Status200OK)]
     public async Task<IActionResult> Edit(int id, [FromBody] EditCommentRequest request)
     {
         var result = await commentService.EditAsync(id, request, User.GetId());
@@ -76,6 +92,7 @@ public class CommentsController(ICommentService commentService) : ControllerBase
 
     // Toggle a comment's private flag. Author-only (enforced in the service).
     [HttpPatch("api/comments/{id:int}/visibility")]
+    [ProducesResponseType(typeof(CommentResponse), StatusCodes.Status200OK)]
     public async Task<IActionResult> SetVisibility(int id, [FromBody] SetVisibilityRequest request)
     {
         var result = await commentService.SetVisibilityAsync(id, User.GetId(), request.IsPrivate);

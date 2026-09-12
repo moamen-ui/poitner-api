@@ -105,6 +105,10 @@ public static class MessageKeys
         public const string StatusInvalid = "Invalid comment status.";
         public const string SuperAdminNotAllowed = "Super admins cannot leave comments. Sign in with a tenant account to use Pointer.";
         public const string QuickAccessCannotChangeStatus = "Client accounts can leave feedback but can't change its status.";
+        public const string VerifyRequiresApplied = "Only applied comments can be verified.";
+        public const string VerifyNoteRequired = "A note is required when reporting an issue.";
+        public const string Verified = "Comment marked as verified.";
+        public const string Reopened = "Comment reopened.";
     }
 
     public static class PredefinedAction

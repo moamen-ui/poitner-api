@@ -15,6 +15,13 @@
       "summary": "End-to-end feedback application, planning, tool hand-offs, commit styles, and git safety."
     },
     {
+      "file": "notifications.html",
+      "title": "Notifications & Verification",
+      "nav": "Workflow",
+      "ownedBy": "R2-04",
+      "summary": "In-app updates badge, notifications dropdown, and the author verification loop (thumbs up/down)."
+    },
+    {
       "file": "api-keys.html",
       "title": "API Keys",
       "nav": "Configuration",

@@ -49,6 +49,8 @@ export interface Comment {
   /** Link to the commit that applied this comment — null for comments applied before this field
    *  existed, or by a flow that doesn't track it; the card renders "#" in that case. */
   commitUrl?: string | null;
+  /** Stamped when the author verifies an applied comment (thumbs up). */
+  verifiedAt?: string | null;
   element?: ElementCapture;
   replies?: Reply[];
   _mine?: boolean;
@@ -58,6 +60,24 @@ export interface Comment {
   hasPayloadFlag?: boolean;
   payloadFlags?: string[];
 }
+
+export type NotificationPayload = {
+  commitUrl?: string | null;
+  appliedByLabel?: string | null;
+  replyExcerpt?: string | null;
+};
+
+export type NotificationItem = {
+  id: number;
+  type: number | string;
+  commentId: number;
+  projectKey: string;
+  projectName: string;
+  commentBodyExcerpt: string;
+  payload?: NotificationPayload | null;
+  createdAt: string;
+  readAt?: string | null;
+};
 
 export interface User {
   id?: string;
@@ -91,6 +111,8 @@ export interface PointerInjectedConfig {
   cssUrl?: string;
   /** Absolute URL for the vendored snapdom script (screenshot capture), same rationale as cssUrl. */
   snapdomUrl?: string;
+  /** Notification unread-count polling interval in milliseconds (defaults to 60000; e2e suite sets 1000). */
+  notifyPollMs?: number;
 }
 
 declare global {

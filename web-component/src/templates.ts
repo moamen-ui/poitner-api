@@ -1,7 +1,7 @@
 import { escapeHtml } from './dom';
 import { ICON } from './icons';
 import { getBrandName } from './constants';
-import type { AuthorOption, Comment, Meta, PredefinedActionOption } from './types';
+import type { AuthorOption, Comment, Meta, NotificationItem, PredefinedActionOption } from './types';
 
 // All component markup lives here (pure string builders). Event wiring stays in
 // the element / UI modules, which call these then attach listeners to the nodes.
@@ -59,12 +59,13 @@ export const TPL = {
   // `projectName`: shown next to the environment indicator so a visitor can immediately tell which
   // project this install is bound to — project keys aren't unique across a workspace, so two
   // different installs can easily look identical without this.
-  chrome: (displayName: string, roleLabel: string, fixedEnvLabel?: string | null, projectName = '', shortcutLabel = '') => `
+  chrome: (displayName: string, roleLabel: string, fixedEnvLabel?: string | null, projectName = '', shortcutLabel = '', unreadNotifyCount = 0) => `
         <div class="pf-toolbar">
           <span class="pf-grip" id="pf-grip" data-toggle="tooltip" data-placement="bottom" title="Drag to move" aria-label="Drag toolbar">${ICON.grip}</span>
-          <button class="pf-btn pf-icon-btn pf-reset-pos" id="pf-reset-pos" data-toggle="tooltip" data-placement="bottom" title="Reset toolbar position" aria-label="Reset toolbar position" style="display:none">${ICON.restore}</button>
+          <button class="pf-btn pf-reset-pos pf-icon-btn" id="pf-reset-pos" data-toggle="tooltip" data-placement="bottom" title="Reset toolbar position" aria-label="Reset toolbar position" style="display:none">${ICON.restore}</button>
           <button class="pf-btn primary pf-icon-btn" id="pf-add" data-toggle="tooltip" data-placement="bottom" title="Comment on an element${shortcutLabel ? ` (${escapeHtml(shortcutLabel)})` : ''}" aria-label="Comment on an element${shortcutLabel ? `, shortcut ${escapeHtml(shortcutLabel)}` : ''}">${ICON.inspect}</button>
           <button class="pf-btn" id="pf-toggle" title="Show comments">Comments <span class="pf-badge" id="pf-count">0</span></button>
+          <button class="pf-btn" id="pf-updates" title="Show notifications">Updates <span class="pf-badge pf-notify-badge" id="pf-notify-count"${unreadNotifyCount > 0 ? '' : ' style="display:none;"'}>${unreadNotifyCount > 99 ? '99+' : unreadNotifyCount}</span></button>
           ${displayName ? `<button class="pf-btn pf-icon-btn" id="pf-user" data-toggle="tooltip" data-placement="bottom" title="Signed in as ${displayName}${roleLabel ? ' · ' + roleLabel : ''}" aria-label="Signed in as ${displayName}">${ICON.user}</button>` : ''}
           <button class="pf-btn pf-icon-btn" id="pf-hide" data-toggle="tooltip" data-placement="bottom" title="Hide ${escapeHtml(getBrandName())}" aria-label="Hide ${escapeHtml(getBrandName())}">${ICON.eyeOff}</button>
         </div>
@@ -129,11 +130,15 @@ export const TPL = {
   // Collapsed state: a small floating launcher that re-opens the overlay.
   // `rtl` makes start/end resolve against the host page direction (the shadow
   // UI is otherwise forced LTR), so e.g. `top-end` lands top-left on an RTL page.
-  launcher: (count: number, position: string, rtl: boolean) => `
+  launcher: (count: number, position: string, rtl: boolean, unreadNotifyCount = 0) => {
+    const hasUnread = unreadNotifyCount > 0;
+    const badgeCount = hasUnread ? unreadNotifyCount : count;
+    return `
         <button class="pf-launcher pf-pos-${position || 'bottom-end'}${rtl ? ' pf-rtl' : ''}" id="pf-launcher" title="Open ${escapeHtml(getBrandName())} feedback" aria-label="Open ${escapeHtml(getBrandName())} feedback">
           ${ICON.pin}
-          ${count ? `<span class="pf-launcher-badge">${count > 99 ? '99+' : count}</span>` : ''}
-        </button>`,
+          ${badgeCount ? `<span class="pf-launcher-badge${hasUnread ? ' pf-notify-badge' : ''}">${badgeCount > 99 ? '99+' : badgeCount}</span>` : ''}
+        </button>`;
+  },
 
   empty: (msg: string) => `<div class="pf-empty">${msg}</div>`,
 
@@ -163,6 +168,24 @@ export const TPL = {
       ? '<span class="pf-pill status-applied">&#x2713; completed</span>'
       : c.status === 'pending-apply' ? '<span class="pf-pill status-pending">pending</span>'
       : c.status === 'archived' ? '<span class="pf-pill status-archived">&#x1f4e6; archived</span>' : '';
+    const verifiedPill = (c.status === 'applied' && c.verifiedAt)
+      ? '<span class="pf-pill verified">&#x2713; Verified</span>'
+      : '';
+    const verifyGroup = (c.status === 'applied' && !c.verifiedAt && c._mine)
+      ? `<span class="pf-verify-group">
+          <button class="pf-mini pf-verify-ok" data-act="verify-ok" data-id="${c.id}" title="Looks right">&#x1f44d; Looks right</button>
+          <button class="pf-mini pf-verify-reject" data-act="verify-reject" data-id="${c.id}" title="Not fixed">&#x1f44e; Not fixed</button>
+        </span>`
+      : '';
+    const verifyBox = (c.status === 'applied' && !c.verifiedAt && c._mine)
+      ? `<div class="pf-verify-box" id="pf-verify-box-${c.id}" style="display:none;">
+          <input class="pf-input pf-verify-note-input" id="pf-verify-note-${c.id}" placeholder="Explain what is still not fixed…" />
+          <div style="display:flex; justify-content:flex-end; gap:6px; margin-top:6px;">
+            <button class="pf-mini primary" data-act="verify-submit" data-id="${c.id}">Submit</button>
+            <button class="pf-mini" data-act="verify-cancel" data-id="${c.id}">Cancel</button>
+          </div>
+        </div>`
+      : '';
     // A "#" href for comments with no tracked commit (applied before this field existed, or by a
     // flow that doesn't record one) — inert rather than a broken/missing link.
     const commitLink = c.status === 'applied'
@@ -193,6 +216,8 @@ export const TPL = {
               ${envLabel ? `<span class="pf-pill env">${escapeHtml(envLabel)}</span>` : ''}
               ${payloadPill}
               ${statusPill}
+              ${verifiedPill}
+              ${verifyGroup}
               ${commitLink}
               <div class="pf-actions-end">
                 ${c._mine ? `<button class="pf-mini pf-icon${c.isPrivate ? ' private-on' : ''}" data-act="visibility" data-id="${c.id}" data-private="${c.isPrivate ? 'false' : 'true'}" title="${c.isPrivate ? 'Private — click to make public' : 'Make private (only you)'}" aria-label="${c.isPrivate ? 'Make public' : 'Make private'}">${c.isPrivate ? ICON.lock : ICON.unlock}</button>` : ''}
@@ -202,6 +227,7 @@ export const TPL = {
             <div class="pf-text">${escapeHtml(c.body || c.text || '')}</div>
             ${shot}
             <div class="pf-sub">${escapeHtml(authorLabel)} &middot; ${c.createdAt ? new Date(c.createdAt).toLocaleDateString() : ''}${c.editedAt ? ' &middot; <span style="font-style:italic;">edited</span>' : ''}</div>
+            ${verifyBox}
             ${replies ? `<div class="pf-replies">${replies}</div>` : ''}
             <div class="pf-reply-row">
               <input class="pf-input pf-reply-input" placeholder="Reply…" data-id="${c.id}" />
@@ -245,4 +271,50 @@ export const TPL = {
     const cls = c.status === 'pending-apply' ? 'pending' : c.status === 'applied' ? 'applied' : '';
     return `<div class="pf-pin ${cls}" data-id="${c.id}" style="left:${rect.left}px; top:${rect.top}px;"><span>${i + 1}</span></div>`;
   },
+
+  notificationsMenu: (items: NotificationItem[]) => `
+        <div class="pf-notifications-menu" id="pf-notifications-menu" role="menu">
+          <div class="pf-notifications-head">
+            <h3>Updates</h3>
+          </div>
+          <div class="pf-notifications-body">
+            ${items.length === 0
+              ? '<div class="pf-empty" style="padding:16px;">No updates yet</div>'
+              : items.map((item) => {
+                  const isUnread = !item.readAt;
+                  let typeLabel = 'Update';
+                  let icon: string = ICON.pin;
+                  let detail = '';
+                  const typeNum = typeof item.type === 'string' ? (item.type === 'CommentApplied' ? 1 : item.type === 'CommentReopened' ? 2 : item.type === 'ReplyAdded' ? 3 : 0) : item.type;
+                  if (typeNum === 1) {
+                    typeLabel = 'Applied';
+                    icon = ICON.check;
+                    detail = item.payload?.commitUrl
+                      ? `<div class="pf-notification-item-commit"><a class="pf-pill" href="${escapeHtml(item.payload.commitUrl)}" target="_blank" rel="noopener noreferrer" onclick="event.stopPropagation()">&#x1f517; Commit</a></div>`
+                      : '';
+                  } else if (typeNum === 2) {
+                    typeLabel = 'Reopened';
+                    icon = ICON.reopen;
+                  } else if (typeNum === 3) {
+                    typeLabel = 'New reply';
+                    icon = ICON.inspect;
+                    if (item.payload?.replyExcerpt) {
+                      detail = `<div style="font-size:12px; color:#64748b; font-style:italic;">"${escapeHtml(item.payload.replyExcerpt)}"</div>`;
+                    }
+                  }
+                  const timeAgo = item.createdAt ? new Date(item.createdAt).toLocaleDateString() : '';
+                  return `
+                    <div class="pf-notification-item${isUnread ? ' unread' : ''}" data-id="${item.commentId}" role="menuitem" style="cursor:pointer;">
+                      <div class="pf-notification-item-head">
+                        <span class="pf-notification-item-type">${icon} ${escapeHtml(typeLabel)}</span>
+                        <span class="pf-notification-item-time">${escapeHtml(timeAgo)}</span>
+                      </div>
+                      <div class="pf-notification-item-body">
+                        ${escapeHtml(item.commentBodyExcerpt || '')}
+                      </div>
+                      ${detail}
+                    </div>`;
+                }).join('')}
+          </div>
+        </div>`,
 };

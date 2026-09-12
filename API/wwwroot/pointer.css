@@ -939,3 +939,171 @@ select.pf-input:disabled {
 .pf-toast.success {
   background: var(--pf-success, #16a34a);
 }
+
+.pf-notify-badge {
+  background: var(--pf-notify, #f59e0b) !important;
+  color: #ffffff !important;
+}
+
+.pf-pill.verified {
+  background: var(--pf-success-bg, #dcfce7);
+  color: var(--pf-success-strong, #166534);
+  font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+}
+
+.pf-card.highlight {
+  outline: 2px solid var(--pf-primary, #2563eb);
+  box-shadow: 0 0 12px rgba(37, 99, 235, 0.35);
+  transition: outline 0.3s ease, box-shadow 0.3s ease;
+}
+
+.pf-verify-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-inline-start: 6px;
+}
+
+.pf-verify-ok,
+.pf-verify-reject {
+  cursor: pointer;
+  border-radius: var(--pf-radius-sm, 6px);
+  padding: 2px 6px;
+  font-size: 11px;
+  font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  border: 1px solid var(--pf-border, #e2e8f0);
+  background: var(--pf-surface, #fff);
+  color: var(--pf-text, #0f172a);
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+.pf-verify-ok:hover,
+.pf-verify-reject:hover {
+  background: var(--pf-surface-hover, #e2e8f0);
+  border-color: var(--pf-border-strong, #cbd5e1);
+}
+
+.pf-verify-ok:hover {
+  background: var(--pf-success-surface, #f0fdf4);
+  border-color: var(--pf-success, #16a34a);
+  color: var(--pf-success-strong, #166534);
+}
+
+.pf-verify-reject:hover {
+  background: var(--pf-danger-bg, #fef2f2);
+  border-color: var(--pf-danger, #dc2626);
+  color: var(--pf-danger-strong, #b91c1c);
+}
+
+.pf-verify-box {
+  background: var(--pf-surface-alt, #f8fafc);
+  border: 1px solid var(--pf-border, #e2e8f0);
+  border-radius: var(--pf-radius, 8px);
+  padding: 8px 10px;
+  margin: 6px 0;
+}
+.pf-verify-box .pf-verify-note-input {
+  width: 100%;
+  box-sizing: border-box;
+  font-size: 12px;
+  padding: 6px 8px;
+  border: 1px solid var(--pf-border, #e2e8f0);
+  border-radius: var(--pf-radius-sm, 6px);
+  background: var(--pf-surface, #fff);
+  color: var(--pf-text, #0f172a);
+}
+
+.pf-notifications-menu {
+  position: fixed;
+  z-index: 2147483647;
+  width: 320px;
+  max-width: calc(100vw - 32px);
+  background: var(--pf-surface, #fff);
+  border: 1px solid var(--pf-border, #e2e8f0);
+  border-radius: var(--pf-radius-md, 10px);
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.18);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  color: var(--pf-text, #0f172a);
+  font-family: inherit;
+  font-size: 13px;
+}
+
+.pf-notifications-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--pf-border, #e2e8f0);
+  font-weight: 700;
+  font-size: 13px;
+  background: var(--pf-surface-alt, #f8fafc);
+}
+.pf-notifications-head h3 {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--pf-text, #0f172a);
+}
+
+.pf-notifications-body {
+  max-height: 320px;
+  overflow-y: auto;
+}
+
+.pf-notification-item {
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--pf-border-soft, #eef2f7);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  transition: background 0.15s ease;
+}
+.pf-notification-item:hover {
+  background: var(--pf-surface-hover, #e2e8f0);
+}
+.pf-notification-item:last-child {
+  border-bottom: none;
+}
+.pf-notification-item.unread {
+  background: color-mix(in srgb, var(--pf-notify, #f59e0b) 8%, var(--pf-surface, #fff));
+}
+
+.pf-notification-item-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.pf-notification-item-type {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--pf-text-muted, #64748b);
+}
+
+.pf-notification-item-time {
+  font-size: 11px;
+  color: var(--pf-text-muted, #64748b);
+}
+
+.pf-notification-item-body {
+  color: var(--pf-text, #0f172a);
+  line-height: 1.4;
+  word-break: break-word;
+}
+
+.pf-notification-item-commit {
+  margin-top: 2px;
+}

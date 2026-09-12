@@ -5,6 +5,7 @@ using Npgsql;
 using Pointer.Application.Abstractions;
 using Pointer.Application.Common;
 using Pointer.Application.DTOs.Comment;
+using Pointer.Application.DTOs.Notification;
 using Pointer.Application.Resources;
 using Pointer.Application.Response;
 using Pointer.Application.Services.Interfaces;
@@ -24,10 +25,21 @@ public class CommentService : ICommentService
     private readonly IUploadSigner _uploadSigner;
     private readonly ISettingsService _settings;
     private readonly IEntitlementService _entitlements;
+    private readonly INotificationService _notificationService;
 
     private readonly ICurrentClient? _currentClient;
 
-    public CommentService(IUnitOfWork unitOfWork, IProjectService projectService, IPredefinedActionService predefinedActions, IFileStorage fileStorage, ICurrentUser currentUser, IUploadSigner uploadSigner, ISettingsService settings, IEntitlementService entitlements, ICurrentClient? currentClient = null)
+    public CommentService(
+        IUnitOfWork unitOfWork,
+        IProjectService projectService,
+        IPredefinedActionService predefinedActions,
+        IFileStorage fileStorage,
+        ICurrentUser currentUser,
+        IUploadSigner uploadSigner,
+        ISettingsService settings,
+        IEntitlementService entitlements,
+        ICurrentClient? currentClient = null,
+        INotificationService? notificationService = null)
     {
         _unitOfWork = unitOfWork;
         _projectService = projectService;
@@ -38,6 +50,7 @@ public class CommentService : ICommentService
         _settings = settings;
         _entitlements = entitlements;
         _currentClient = currentClient;
+        _notificationService = notificationService ?? new NotificationService(unitOfWork, currentUser);
     }
 
     public async Task<Result<CommentResponse>> CreateAsync(string projectKey, CreateCommentRequest request, Guid authorId, string? origin = null)
@@ -556,6 +569,27 @@ public class CommentService : ICommentService
             comment.Replies.Add(reply);
         }
 
+        if (request.Status == CommentStatus.Applied && comment.AuthorId != actorId)
+        {
+            var payload = new NotificationPayloadDto
+            {
+                CommitUrl = request.CommitUrl,
+                AppliedByLabel = request.AppliedByLabel
+            };
+            var notification = new Notification
+            {
+                OwnerId = comment.OwnerId,
+                UserId = comment.AuthorId,
+                Type = NotificationType.CommentApplied,
+                CommentId = comment.Id,
+                ProjectId = comment.ProjectId,
+                ActorId = actorId,
+                Payload = JsonSerializer.Serialize(payload),
+                CreatedAt = DateTime.UtcNow
+            };
+            await _notificationService.EnqueueAsync(notification);
+        }
+
         _unitOfWork.Repository<Comment>().Update(comment);
         await _unitOfWork.SaveChangesAsync();
 
@@ -585,6 +619,94 @@ public class CommentService : ICommentService
 
         var names = await ResolveNamesAsync(AuthorIds(comment));
         var message = request.Status == CommentStatus.Applied ? MessageKeys.Comment.Applied : null;
+        return Result<CommentResponse>.Success(MapToResponse(comment, names), message);
+    }
+
+    public async Task<Result<CommentResponse>> VerifyAsync(int id, VerifyCommentRequest request, Guid actorId)
+    {
+        var comment = await _unitOfWork.Repository<Comment>()
+            .Query()
+            .Include(c => c.Replies)
+            .Include(c => c.PageContextSnapshot)
+            .Where(c => c.Id == id && c.DeletedAt == null)
+            .FirstOrDefaultAsync();
+
+        if (comment == null)
+            return Result<CommentResponse>.NotFound(MessageKeys.Comment.NotFound);
+
+        // Actor must be the author or an admin. Quick-access users are allowed here when verifying their
+        // own comments (the author verify loop is the one lifecycle action a Client legitimately owns).
+        var isAuthor = comment.AuthorId == actorId;
+        var isAdmin = _currentUser.IsAdmin || _currentUser.IsSuperAdmin;
+        if (!isAuthor && !isAdmin)
+            return Result<CommentResponse>.Forbidden("You do not have permission to verify this comment.");
+
+        if (comment.Status != CommentStatus.Applied)
+            return Result<CommentResponse>.Failure(MessageKeys.Comment.VerifyRequiresApplied);
+
+        if (request.Ok)
+        {
+            comment.VerifiedAt = DateTime.UtcNow;
+            var replyText = !string.IsNullOrWhiteSpace(request.Note) ? request.Note.Trim() : "Verified ✓";
+            var reply = new Reply
+            {
+                CommentId = comment.Id,
+                AuthorId = actorId,
+                Body = replyText,
+                PayloadFlags = PayloadFlagDetector.Detect(replyText).ToList(),
+                HasPayloadFlag = PayloadFlagDetector.Detect(replyText).Count > 0,
+                OwnerId = comment.OwnerId
+            };
+            comment.Replies.Add(reply);
+        }
+        else
+        {
+            if (string.IsNullOrWhiteSpace(request.Note))
+                return Result<CommentResponse>.Failure(MessageKeys.Comment.VerifyNoteRequired);
+
+            comment.Status = CommentStatus.Open;
+            comment.VerifiedAt = null;
+
+            var replyText = $"Not fixed: {request.Note.Trim()}";
+            var reply = new Reply
+            {
+                CommentId = comment.Id,
+                AuthorId = actorId,
+                Body = replyText,
+                PayloadFlags = PayloadFlagDetector.Detect(replyText).ToList(),
+                HasPayloadFlag = PayloadFlagDetector.Detect(replyText).Count > 0,
+                OwnerId = comment.OwnerId
+            };
+            comment.Replies.Add(reply);
+
+            if (comment.AppliedBy.HasValue)
+            {
+                var excerpt = request.Note.Trim();
+                if (excerpt.Length > 80) excerpt = excerpt[..80];
+                var payload = new NotificationPayloadDto
+                {
+                    ReplyExcerpt = excerpt
+                };
+                var notification = new Notification
+                {
+                    OwnerId = comment.OwnerId,
+                    UserId = comment.AppliedBy.Value,
+                    Type = NotificationType.CommentReopened,
+                    CommentId = comment.Id,
+                    ProjectId = comment.ProjectId,
+                    ActorId = actorId,
+                    Payload = JsonSerializer.Serialize(payload),
+                    CreatedAt = DateTime.UtcNow
+                };
+                await _notificationService.EnqueueAsync(notification);
+            }
+        }
+
+        _unitOfWork.Repository<Comment>().Update(comment);
+        await _unitOfWork.SaveChangesAsync();
+
+        var names = await ResolveNamesAsync(AuthorIds(comment));
+        var message = request.Ok ? MessageKeys.Comment.Verified : MessageKeys.Comment.Reopened;
         return Result<CommentResponse>.Success(MapToResponse(comment, names), message);
     }
 
@@ -694,6 +816,28 @@ public class CommentService : ICommentService
         };
 
         await _unitOfWork.Repository<Reply>().AddAsync(reply);
+
+        if (comment.AuthorId != authorId)
+        {
+            var excerpt = body.Length > 80 ? body[..80] : body;
+            var payload = new NotificationPayloadDto
+            {
+                ReplyExcerpt = excerpt
+            };
+            var notification = new Notification
+            {
+                OwnerId = comment.OwnerId,
+                UserId = comment.AuthorId,
+                Type = NotificationType.ReplyAdded,
+                CommentId = comment.Id,
+                ProjectId = comment.ProjectId,
+                ActorId = authorId,
+                Payload = JsonSerializer.Serialize(payload),
+                CreatedAt = DateTime.UtcNow
+            };
+            await _notificationService.EnqueueAsync(notification);
+        }
+
         await _unitOfWork.SaveChangesAsync();
 
         var names = await ResolveNamesAsync(new[] { reply.AuthorId });
@@ -810,6 +954,7 @@ public class CommentService : ICommentService
         AppliedBy = comment.AppliedBy,
         AppliedByLabel = comment.AppliedByLabel,
         CommitUrl = comment.CommitUrl,
+        VerifiedAt = comment.VerifiedAt,
         EditedAt = comment.EditedAt,
         // Labels only — the prompts are intentionally never exposed here.
         PickedActionTexts = comment.PickedActions.Select(a => a.Text).ToList(),
@@ -835,6 +980,7 @@ public class CommentService : ICommentService
         AppliedBy = comment.AppliedBy,
         AppliedByLabel = comment.AppliedByLabel,
         CommitUrl = comment.CommitUrl,
+        VerifiedAt = comment.VerifiedAt,
         EditedAt = comment.EditedAt,
         // Labels only — the prompts are intentionally never exposed here.
         PickedActionTexts = comment.PickedActions.Select(a => a.Text).ToList(),

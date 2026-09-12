@@ -19,6 +19,8 @@ public class Comment : BaseEntity
     // SHA + the repo's remote URL — see skill.md's apply flow). Null for comments applied before
     // this field existed, or by a flow that doesn't track it; the widget shows "#" in that case.
     public string? CommitUrl { get; set; }
+    // Stamped when the author or admin verifies an applied comment (thumbs up).
+    public DateTime? VerifiedAt { get; set; }
     // Edit trace: stamped when the author edits the comment body / removes its image.
     public DateTime? EditedAt { get; set; }
     public Guid? EditedBy { get; set; }

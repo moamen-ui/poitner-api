@@ -11,7 +11,7 @@ import {
   type ShortcutBinding, parseShortcut, serializeShortcut, matchesShortcut, formatShortcut,
 } from './shortcut';
 import { showLoginModal } from './auth-ui';
-import type { AuthorOption, Comment, Meta, PointerHost, PredefinedActionOption, RoleOption, StatusStr, User } from './types';
+import type { AuthorOption, Comment, Meta, NotificationItem, PointerHost, PredefinedActionOption, RoleOption, StatusStr, User } from './types';
 
 interface CreateCommentData extends Meta {
   text: string;
@@ -93,6 +93,10 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
   private _onShortcutKeydown!: (e: KeyboardEvent) => void;
   private _reposition!: () => void;
   private _pendingShotPromise: Promise<Blob | null> | null = null;
+  unreadNotifyCount = 0;
+  private _notifyPollTimer: number | null = null;
+  private _updatesMenuClose: ((e: MouseEvent) => void) | null = null;
+  private _onVisibilityChange: (() => void) | null = null;
   private _userMenuClose: ((e: MouseEvent) => void) | null = null;
   private _recordingShortcut = false;
   private _shortcutRecordingCleanup: (() => void) | null = null;
@@ -322,6 +326,8 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
     document.removeEventListener('keydown', this._onShortcutKeydown);
     if (this._shortcutRecordingCleanup) this._shortcutRecordingCleanup();
     this.stopPicking();
+    this.stopNotificationPolling();
+    this.closeUpdatesMenu();
     stopPageContextCapture();
   }
 
@@ -437,11 +443,15 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
     this.shortcut = parseShortcut(user?.addCommentShortcut);
     localStorage.setItem('pointer_token', token);
     localStorage.setItem('pointer_user', JSON.stringify(user));
+    this.startNotificationPolling();
   }
 
   private clearAuth(): void {
     this.token = null;
     this.user = null;
+    this.unreadNotifyCount = 0;
+    this.stopNotificationPolling();
+    this.closeUpdatesMenu();
     localStorage.removeItem('pointer_token');
     localStorage.removeItem('pointer_user');
   }
@@ -458,6 +468,7 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
     await loadStatusCatalog(this.server);
     this.renderChrome();
     await Promise.all([this.fetchComments(), this.fetchPredefinedActions(), this.fetchCaptureConfig()]);
+    if (this.token) this.startNotificationPolling();
     this.renderSidebar();
     this.renderPins();
     // When collapsed, re-render so the launcher badge reflects the loaded count.
@@ -654,7 +665,7 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
     // Collapsed: show only a small launcher that re-opens the overlay.
     if (this._collapsed) {
       const n = (this.comments || []).filter((c) => c.status !== 'archived' && c.status !== 'applied').length;
-      this.root.innerHTML = TPL.launcher(n, this.launcherPosition, pageIsRtl());
+      this.root.innerHTML = TPL.launcher(n, this.launcherPosition, pageIsRtl(), this.unreadNotifyCount);
       const launcher = this.root.querySelector('#pf-launcher');
       if (launcher) launcher.addEventListener('click', () => this.showOverlay());
       return;
@@ -665,13 +676,16 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
     const fixedEnvLabel = (this.hasFixedEnvironment || !this.showEnvironmentSelector)
       ? (this.environmentAttr || ENV_NAME[this.environmentInt] || 'staging')
       : null;
-    this.root.innerHTML = TPL.chrome(displayName, roleLabel, fixedEnvLabel, this.projectName || this.project, formatShortcut(this.shortcut));
+    this.root.innerHTML = TPL.chrome(displayName, roleLabel, fixedEnvLabel, this.projectName || this.project, formatShortcut(this.shortcut), this.unreadNotifyCount);
 
     const hideBtn = this.root.querySelector('#pf-hide');
     if (hideBtn) hideBtn.addEventListener('click', () => this.hideOverlay());
 
     const userBtn = this.root.querySelector('#pf-user');
     if (userBtn) userBtn.addEventListener('click', (e) => { e.stopPropagation(); this.toggleUserMenu(); });
+
+    const updatesBtn = this.root.querySelector('#pf-updates');
+    if (updatesBtn) updatesBtn.addEventListener('click', (e) => { e.stopPropagation(); this.toggleUpdatesMenu(); });
 
     this.root.querySelector('#pf-add')!.addEventListener('click', () => this.activateAddComment());
     this.root.querySelector('#pf-toggle')!.addEventListener('click', () => {
@@ -782,6 +796,7 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
 
   // --- User menu (identity + sign out) ------------------------------------
   private toggleUserMenu(): void {
+    this.closeUpdatesMenu();
     const host = this.root.querySelector('#pf-menu-host') as HTMLElement | null;
     if (!host) return;
     if (host.querySelector('#pf-user-menu')) { this.closeUserMenu(); return; }
@@ -825,7 +840,7 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
 
   private closeUserMenu(): void {
     const host = this.root.querySelector('#pf-menu-host');
-    if (host) host.innerHTML = '';
+    if (host && host.querySelector('#pf-user-menu')) host.innerHTML = '';
     if (this._userMenuClose) {
       document.removeEventListener('click', this._userMenuClose, true);
       this._userMenuClose = null;
@@ -835,9 +850,203 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
     if (this._shortcutRecordingCleanup) this._shortcutRecordingCleanup();
   }
 
+  // --- Updates menu (in-app notifications) --------------------------------
+  private async toggleUpdatesMenu(): Promise<void> {
+    const host = this.root.querySelector('#pf-menu-host') as HTMLElement | null;
+    if (!host) return;
+    if (host.querySelector('#pf-notifications-menu')) {
+      this.closeUpdatesMenu();
+      return;
+    }
+    this.closeUserMenu();
+
+    const items = await this.apiNotifications();
+    if (this.unreadNotifyCount > 0) {
+      await this.apiMarkAllNotificationsRead();
+      this.unreadNotifyCount = 0;
+      this.updateNotifyBadges();
+    }
+
+    host.innerHTML = TPL.notificationsMenu(items);
+    const menu = host.querySelector('#pf-notifications-menu') as HTMLElement | null;
+    if (!menu) return;
+
+    // Anchor the dropdown under the Updates button.
+    const btn = this.root.querySelector('#pf-updates') as HTMLElement | null;
+    if (btn) {
+      const r = btn.getBoundingClientRect();
+      menu.style.top = `${Math.round(r.bottom + 6)}px`;
+      menu.style.left = `${Math.max(8, Math.min(window.innerWidth - 330, Math.round(r.left)))}px`;
+    }
+
+    // Clicking an item opens the sidebar, switches filter to 'all' if needed, and scrolls to/highlights card.
+    menu.querySelectorAll('.pf-notification-item').forEach((el) => {
+      el.addEventListener('click', () => {
+        const commentId = el.getAttribute('data-id');
+        this.closeUpdatesMenu();
+        if (commentId) {
+          const c = this.comments.find((x) => String(x.id) === String(commentId));
+          if (c && this.statusFilter !== 'all' && this.statusFilter !== c.status) {
+            this.statusFilter = 'all';
+          }
+          this.toggleSidebar(true);
+          this.renderSidebar();
+          setTimeout(() => {
+            const card = this.root.querySelector(`.pf-card[data-id="${commentId}"]`) as HTMLElement | null;
+            if (card) {
+              card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+              card.classList.add('highlight');
+              setTimeout(() => card.classList.remove('highlight'), 2000);
+            }
+          }, 100);
+        }
+      });
+    });
+
+    // Close on click outside (composedPath crosses the shadow boundary).
+    this._updatesMenuClose = (e: MouseEvent) => {
+      const path = e.composedPath();
+      if (!path.includes(menu) && (!btn || !path.includes(btn))) this.closeUpdatesMenu();
+    };
+    setTimeout(() => { if (this._updatesMenuClose) document.addEventListener('click', this._updatesMenuClose, true); }, 0);
+  }
+
+  private closeUpdatesMenu(): void {
+    const host = this.root.querySelector('#pf-menu-host');
+    if (host && host.querySelector('#pf-notifications-menu')) host.innerHTML = '';
+    if (this._updatesMenuClose) {
+      document.removeEventListener('click', this._updatesMenuClose, true);
+      this._updatesMenuClose = null;
+    }
+  }
+
+  // --- Notification Polling & Verification ---------------------------------
+  startNotificationPolling(): void {
+    this.stopNotificationPolling();
+    this.fetchUnreadNotifyCount();
+    const pollInterval = window.__POINTER_CONFIG__?.notifyPollMs ?? 60000;
+    this._notifyPollTimer = window.setInterval(() => {
+      if (document.visibilityState === 'visible') {
+        this.fetchUnreadNotifyCount();
+      }
+    }, pollInterval);
+    this._onVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        this.fetchUnreadNotifyCount();
+      }
+    };
+    document.addEventListener('visibilitychange', this._onVisibilityChange);
+  }
+
+  stopNotificationPolling(): void {
+    if (this._notifyPollTimer !== null) {
+      window.clearInterval(this._notifyPollTimer);
+      this._notifyPollTimer = null;
+    }
+    if (this._onVisibilityChange) {
+      document.removeEventListener('visibilitychange', this._onVisibilityChange);
+      this._onVisibilityChange = null;
+    }
+  }
+
+  async fetchUnreadNotifyCount(): Promise<void> {
+    if (!this.token) return;
+    try {
+      const r = await this.api('/api/me/notifications/unread-count');
+      if (!r.ok) return;
+      const envelope = await r.json();
+      const count = typeof envelope?.data?.count === 'number'
+        ? envelope.data.count
+        : (typeof envelope?.count === 'number' ? envelope.count : 0);
+      this.unreadNotifyCount = count;
+      this.updateNotifyBadges();
+    } catch {
+      // Silently ignore
+    }
+  }
+
+  updateNotifyBadges(): void {
+    if (this._collapsed) {
+      this.renderChrome();
+      return;
+    }
+    const badge = this.root.querySelector('#pf-notify-count') as HTMLElement | null;
+    if (badge) {
+      if (this.unreadNotifyCount > 0) {
+        badge.textContent = this.unreadNotifyCount > 99 ? '99+' : String(this.unreadNotifyCount);
+        badge.style.display = '';
+      } else {
+        badge.textContent = '0';
+        badge.style.display = 'none';
+      }
+    }
+  }
+
+  async apiNotifications(unread = false): Promise<NotificationItem[]> {
+    try {
+      const r = await this.api(`/api/me/notifications${unread ? '?unread=true' : ''}`);
+      if (!r.ok) return [];
+      const envelope = await r.json();
+      const items = envelope?.data ?? envelope;
+      return Array.isArray(items) ? items : [];
+    } catch {
+      return [];
+    }
+  }
+
+  async apiMarkAllNotificationsRead(): Promise<void> {
+    try {
+      await this.api('/api/me/notifications/read-all', { method: 'POST' });
+    } catch {
+      // Silently ignore
+    }
+  }
+
+  async apiVerify(id: number | string, ok: boolean, note?: string): Promise<boolean> {
+    try {
+      const r = await this.api(`/api/comments/${id}/verify`, {
+        method: 'POST',
+        body: JSON.stringify({ ok, note: note || null }),
+      });
+      if (!r.ok) {
+        let errMessage = 'Failed to verify comment';
+        try {
+          const err = await r.json();
+          if (err?.message) errMessage = err.message;
+        } catch {}
+        this.toast(errMessage, 'error');
+        return false;
+      }
+      const envelope = await r.json();
+      const updated = envelope?.data ?? envelope;
+      const idx = this.comments.findIndex((c) => String(c.id) === String(id));
+      if (idx !== -1 && updated) {
+        const normalizedComment: Comment = {
+          ...this.comments[idx],
+          ...updated,
+          status: typeof updated.status === 'number' ? (STATUS_STR[updated.status] || 'open') : (updated.status || 'open'),
+          verifiedAt: updated.verifiedAt ?? null,
+        };
+        this.comments[idx] = normalizedComment;
+      } else {
+        await this.fetchComments();
+      }
+      this.renderSidebar();
+      this.renderPins();
+      this.toast(ok ? 'Comment verified' : 'Comment re-opened');
+      return true;
+    } catch {
+      this.toast('Failed to verify comment', 'error');
+      return false;
+    }
+  }
+
   // Clear the session and reset the widget to its logged-out (deferred-login) state.
   signOut(): void {
     this.closeUserMenu();
+    this.closeUpdatesMenu();
+    this.stopNotificationPolling();
+    this.unreadNotifyCount = 0;
     if (this.picking) this.stopPicking();
     this.clearAuth();
     this.comments = [];
@@ -1528,6 +1737,56 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
     }));
     list.querySelectorAll<HTMLInputElement>('.pf-reply-input').forEach((inp) => inp.addEventListener('keydown', (e) => {
       if (e.key === 'Enter' && inp.value.trim()) { this.addReply(inp.dataset.id!, inp.value.trim()); inp.value = ''; }
+    }));
+
+    // Verify actions (R2-04)
+    list.querySelectorAll<HTMLElement>('[data-act="verify-ok"]').forEach((b) => b.addEventListener('click', () => {
+      const id = b.dataset.id;
+      if (id) this.apiVerify(id, true);
+    }));
+    list.querySelectorAll<HTMLElement>('[data-act="verify-reject"]').forEach((b) => b.addEventListener('click', () => {
+      const id = b.dataset.id;
+      if (!id) return;
+      const box = list.querySelector<HTMLElement>(`#pf-verify-box-${id}`);
+      if (box) {
+        box.style.display = box.style.display === 'none' ? 'block' : 'none';
+        const input = box.querySelector<HTMLInputElement>(`#pf-verify-note-${id}`);
+        if (input && box.style.display === 'block') input.focus();
+      }
+    }));
+    list.querySelectorAll<HTMLElement>('[data-act="verify-cancel"]').forEach((b) => b.addEventListener('click', () => {
+      const id = b.dataset.id;
+      if (!id) return;
+      const box = list.querySelector<HTMLElement>(`#pf-verify-box-${id}`);
+      if (box) {
+        box.style.display = 'none';
+        const input = box.querySelector<HTMLInputElement>(`#pf-verify-note-${id}`);
+        if (input) input.value = '';
+      }
+    }));
+    list.querySelectorAll<HTMLElement>('[data-act="verify-submit"]').forEach((b) => b.addEventListener('click', () => {
+      const id = b.dataset.id;
+      if (!id) return;
+      const input = list.querySelector<HTMLInputElement>(`#pf-verify-note-${id}`);
+      const note = input?.value?.trim();
+      if (!note) {
+        input?.focus();
+        this.toast('Please provide a note explaining what is not fixed', 'error');
+        return;
+      }
+      this.apiVerify(id, false, note);
+    }));
+    list.querySelectorAll<HTMLInputElement>('.pf-verify-note-input').forEach((inp) => inp.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        const id = inp.id.replace('pf-verify-note-', '');
+        const note = inp.value.trim();
+        if (!note) {
+          inp.focus();
+          this.toast('Please provide a note explaining what is not fixed', 'error');
+          return;
+        }
+        this.apiVerify(id, false, note);
+      }
     }));
   }
 
