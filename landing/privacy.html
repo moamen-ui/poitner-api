@@ -1,11 +1,11 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Privacy Policy — Pointer</title>
-  <meta name="description" content="How Pointer's widget, browser extension, and dashboard handle your data." />
-  <link rel="icon" href="assets/favicon.ico" />
+  <meta name="description" content="How Pointer's widget, browser extension, and dashboard handle your data.">
+  <link rel="icon" href="assets/favicon.ico">
   <!--
     DRAFT — review before publishing. Two things still need filling in by the operator:
     1. The "Contact" section below has a placeholder email.
@@ -24,6 +24,15 @@
       --pf-soft: #f1f5f9;
       --pf-border: #e2e8f0;
       --pf-max: 760px;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --pf-bg: #0b0f19;
+        --pf-text: #f1f5f9;
+        --pf-muted: #94a3b8;
+        --pf-soft: #1e293b;
+        --pf-border: #334155;
+      }
     }
     * { box-sizing: border-box; }
     html, body { margin: 0; padding: 0; }
@@ -74,20 +83,20 @@
 
   <main class="wrap">
     <h1>Privacy Policy</h1>
-    <p class="updated">Effective date: 2026-09-01</p>
+    <p class="updated">Effective date: 2026-09-12</p>
 
     <p class="note">
       This policy covers the Pointer feedback widget (<code>&lt;pointer-feedback&gt;</code>), the
       Pointer browser extension, and the Pointer dashboard. Pointer can be run as a hosted service
       or self-hosted by an organization on its own server. When you use a self-hosted instance, that
       organization — not the operator of the hosted service — controls your data; this policy
-      describes how the software handles data in either case.
+      describes how the software handles data in either case. For the engineering view of what is captured, see <a href="/data.html">Data &amp; self-hosting</a>.
     </p>
 
     <h2>What we collect</h2>
     <ul>
       <li><strong>Account information</strong> — email address, a hashed password, display name, and role, used to sign in and identify who left a comment.</li>
-      <li><strong>Feedback content</strong> — the comment text you write, the page route, the environment (local/staging/production), and metadata about the element you clicked: its selector, the CSS rules that apply to it, a text snapshot of nearby content, and (optionally) a screenshot.</li>
+      <li><strong>Feedback content</strong> — the comment text you write, the page route, the environment (local/staging/production), and metadata about the element you clicked: its selector, the CSS rules that apply to it, a text snapshot of nearby content, and (optionally) a screenshot. For the engineering view of what is captured, see <a href="/data.html">Data &amp; self-hosting</a>.</li>
       <li><strong>Diagnostic context (opt-in, per comment)</strong> — if a project enables it and you check "Report as a bug," recent console errors/warnings, failed or slow network requests (method, URL, status code, duration — never request/response headers or bodies), and your browser's user-agent string.</li>
       <li><strong>Preferences</strong> — your interface language, theme, and (if set) a custom keyboard shortcut, stored against your account so they follow you across devices.</li>
       <li><strong>Browser extension data</strong> — your session sign-in token, stored only in the extension's isolated session storage and never exposed to the pages you visit; and, per browser, which project/environment you last picked for each domain you activated the extension on.</li>
@@ -121,12 +130,13 @@
     <h2>Data retention</h2>
     <p>
       Comments and account data are retained until deleted by you or an administrator of your workspace.
-      Deleting a project removes its associated comments.
+      Deleting a comment or project hides it everywhere immediately.
+      Physical purge of deleted records and their screenshot files (and automatic expiry after your plan's retention period) is on our roadmap; until then, contact us for a manual purge.
     </p>
 
     <h2>Security</h2>
     <p>
-      Passwords are stored hashed, never in plain text. The browser extension keeps your sign-in token in
+      Passwords are stored hashed, never in plain text. API keys are stored hashed (SHA-256) and encrypted for display. The browser extension keeps your sign-in token in
       isolated session storage — it is never written into any page you visit. Each workspace's data is
       isolated from other workspaces on the server side.
     </p>
@@ -138,7 +148,7 @@
     <p>If this policy changes, the updated version will be published at this same URL with a new effective date.</p>
 
     <h2>Contact</h2>
-    <p>Questions about this policy: moamen.ui@gmail.com</p>
+    <p>Questions about this policy: <a href="mailto:moamen.ui@gmail.com">moamen.ui@gmail.com</a></p>
   </main>
 
   <footer class="bottom">

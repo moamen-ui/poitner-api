@@ -358,3 +358,4 @@ not something either skill repeats on every run.
   searching by element snapshot/classes — slower and less exact. Confirm the attribute is present
   (inspect an element) as part of verification.
 - Keep the `enabled` guard so production builds can ship without the widget when desired.
+- **Privacy & self-hosting:** For the full engineering breakdown of what the widget captures, what is never captured, retention and deletion semantics, and self-hosting boundaries, see `<POINTER_SERVER>/data.html`.

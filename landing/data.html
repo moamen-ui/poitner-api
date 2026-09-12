@@ -1,0 +1,255 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Data &amp; self-hosting — Pointer</title>
+  <meta name="description" content="What Pointer captures from your app, what is never captured, retention and deletion semantics, security, and the self-hosting boundary.">
+  <link rel="icon" href="assets/favicon.ico">
+  <style>
+    :root {
+      --pf-green: #16a34a;
+      --pf-blue: #2563eb;
+      --pf-text: #0f172a;
+      --pf-muted: #475569;
+      --pf-bg: #ffffff;
+      --pf-soft: #f1f5f9;
+      --pf-border: #e2e8f0;
+      --pf-max: 760px;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --pf-bg: #0b0f19;
+        --pf-text: #f1f5f9;
+        --pf-muted: #94a3b8;
+        --pf-soft: #1e293b;
+        --pf-border: #334155;
+      }
+    }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; padding: 0; }
+    body {
+      font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+      color: var(--pf-text);
+      background: var(--pf-bg);
+      line-height: 1.65;
+    }
+    a { color: var(--pf-blue); }
+    .wrap { max-width: var(--pf-max); margin: 0 auto; padding: 0 20px; }
+    header.top {
+      border-bottom: 1px solid var(--pf-border);
+      padding: 18px 0;
+    }
+    header.top .wrap { display: flex; align-items: center; justify-content: space-between; }
+    .brand { font-weight: 800; font-size: 17px; text-decoration: none; color: var(--pf-text); }
+    main { padding: 40px 0 64px; }
+    section { margin: 0 0 32px; }
+    h1 { font-size: clamp(26px, 4vw, 36px); margin: 0 0 4px; }
+    .updated { color: var(--pf-muted); font-size: 14px; margin: 0 0 24px; }
+    h2 { font-size: 20px; margin: 28px 0 10px; }
+    p, li { color: var(--pf-text); margin: 0 0 12px; }
+    ul { padding-inline-start: 22px; margin: 0 0 16px; }
+    li { margin-bottom: 6px; }
+    .note {
+      background: var(--pf-soft);
+      border: 1px solid var(--pf-border);
+      border-radius: 10px;
+      padding: 14px 16px;
+      font-size: 14px;
+      color: var(--pf-muted);
+      margin: 0 0 24px;
+    }
+    .table-wrap {
+      width: 100%;
+      overflow-x: auto;
+      margin: 8px 0 10px;
+      -webkit-overflow-scrolling: touch;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 12.5px;
+      line-height: 1.35;
+    }
+    th, td {
+      text-align: left;
+      padding: 4px 8px;
+      border: 1px solid var(--pf-border);
+      vertical-align: top;
+      word-break: break-word;
+    }
+    th {
+      background: var(--pf-soft);
+      font-weight: 600;
+    }
+    code {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      font-size: 0.88em;
+      background: var(--pf-soft);
+      padding: 1px 4px;
+      border-radius: 4px;
+      border: 1px solid var(--pf-border);
+    }
+    footer.bottom {
+      border-top: 1px solid var(--pf-border);
+      padding: 20px 0;
+      font-size: 13px;
+      color: var(--pf-muted);
+    }
+  </style>
+</head>
+<body>
+  <header class="top">
+    <div class="wrap">
+      <a class="brand" href="/">🐕 Pointer</a>
+      <a href="/">Back to home</a>
+    </div>
+  </header>
+
+  <main class="wrap">
+    <section id="overview">
+      <h1>Data &amp; self-hosting</h1>
+      <p class="updated">Effective date: 2026-09-12</p>
+      <div class="note">
+        Pointer stores <em>feedback about UI elements</em>, not your users' data. Nothing is captured until a signed-in stakeholder clicks an element and submits a comment.
+      </div>
+      <h2>Overview</h2>
+      <p>
+        When teams use Pointer to report visual defects or request UI changes, Pointer collects only the technical element and layout context required for developers and AI agents to locate and modify code. This document details the exact data schema captured, privacy controls, storage boundaries, and self-hosted deployments.
+      </p>
+    </section>
+
+    <section id="comment-contents">
+      <h2>What a comment contains</h2>
+      <p>
+        Each submitted comment generates an <code>ElementCapture</code> payload containing technical identifiers of the target element. Child subtrees and parent DOM trees are not included:
+      </p>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr><th>Field</th><th>Format / Limit</th><th>Description</th></tr>
+          </thead>
+          <tbody>
+            <tr><td><code>selector</code></td><td>String</td><td>Deterministic CSS selector path to locate the element in the DOM.</td></tr>
+            <tr><td><code>snapshot</code></td><td>Tag, attrs &le; 120 chars, text &le; 160 chars</td><td>Opening tag of clicked element with trimmed text; child subtrees excluded.</td></tr>
+            <tr><td><code>classes</code></td><td>Array of strings</td><td>List of CSS class names applied to the clicked element.</td></tr>
+            <tr><td><code>computedStyles</code></td><td>Key-value map</td><td>Resolved values for color, font size, margins, padding, and layout properties.</td></tr>
+            <tr><td><code>appliedCssRules</code></td><td>Array (&le; 6 rules)</td><td>Matched author stylesheet rules with compound or descendant selectors.</td></tr>
+            <tr><td><code>sourcePath</code></td><td>Path or 8-char hash</td><td>Component file path from source build attributes or framework internals.</td></tr>
+            <tr><td><code>parentInfo</code></td><td>Tag, classes, ID</td><td>Direct parent element tag name, class list, and ID attribute.</td></tr>
+            <tr><td><code>pageUrl</code> / <code>route</code> / <code>pageTitle</code></td><td>URLs / Strings</td><td>Full URL, normalized routing path, and the document page title.</td></tr>
+            <tr><td><code>viewportWidth</code> / <code>viewportHeight</code></td><td>Integers (CSS px)</td><td>Window viewport width and height at the moment of capture.</td></tr>
+            <tr><td><code>deviceType</code></td><td>mobile | tablet | desktop</td><td>Device classification derived from the viewport width.</td></tr>
+            <tr><td><code>devicePixelRatio</code></td><td>Float</td><td>Screen pixel ratio to distinguish standard and HiDPI/Retina displays.</td></tr>
+            <tr><td><code>userAgent</code></td><td>String</td><td>Browser user-agent string to reproduce browser-specific styling issues.</td></tr>
+            <tr><td><code>screenshotUrl</code></td><td>URL (optional)</td><td>Optional image uploaded only when the author enables screenshot capture.</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p>
+        Each comment record also contains the comment text authored by the stakeholder, the active environment tag (local, staging, or production), the authenticated author's account identifier, and any follow-up replies.
+      </p>
+    </section>
+
+    <section id="never-captured">
+      <h2>What is never captured</h2>
+      <p>
+        Pointer is engineered specifically for UI annotations and element inspection. The following data categories are never captured by the widget or extension:
+      </p>
+      <ul>
+        <li><strong>Application cookies &amp; session tokens</strong> — authentication cookies, session headers, and auth tokens remain untouched.</li>
+        <li><strong>Browser storage</strong> — your application's <code>localStorage</code>, <code>sessionStorage</code>, and IndexedDB data are never accessed.</li>
+        <li><strong>Request &amp; response payloads</strong> — HTTP request bodies, response contents, and custom authorization headers are never captured.</li>
+        <li><strong>Keystrokes &amp; background tracking</strong> — there is no passive event logging, session replay, form field scraping, or user activity tracking.</li>
+        <li><strong>Pre-click interactions &amp; unrelated pages</strong> — no data is recorded before an authenticated stakeholder explicitly enters comment mode and clicks an element.</li>
+      </ul>
+    </section>
+
+    <section id="opt-in">
+      <h2>Opt-in extras</h2>
+      <p>Two optional diagnostic capabilities exist on a strict opt-in basis:</p>
+      <ul>
+        <li><strong>Element screenshots</strong> — Controlled via a checkbox on each comment. The screenshot captures exactly what the stakeholder sees at comment time. Can be completely disabled across the application by passing <code>screenshot="false"</code> to the <code>&lt;pointer-feedback&gt;</code> element.</li>
+        <li><strong>Bug-report diagnostic context</strong> — Available only when "Page Context Capture" is enabled in project settings and the stakeholder checks "Report as a bug". Captures recent browser console warnings/errors and failed or slow HTTP network calls (method, URL with query parameters stripped, status code, and duration; never request or response bodies or headers).</li>
+      </ul>
+    </section>
+
+    <section id="controls">
+      <h2>Controls &amp; deployment guards</h2>
+      <p>Engineering teams have complete control over widget activation:</p>
+      <ul>
+        <li><strong>Environment guards</strong> — Restrict the widget loader behind build-time or environment variables (e.g. <code>VITE_POINTER_ENABLED</code> or <code>NEXT_PUBLIC_POINTER_ENABLED</code>) so Pointer is never mounted in public customer environments.</li>
+        <li><strong>Screenshot lockout</strong> — Host applications can disable screenshot capability entirely by adding <code>screenshot="false"</code> to the <code>&lt;pointer-feedback&gt;</code> element.</li>
+        <li><strong>Targeted backend URLs</strong> — The widget, CLI, and extension are thin clients that communicate only with the explicit server endpoint configured by the host application.</li>
+      </ul>
+    </section>
+
+    <section id="hosting">
+      <h2>Where it lives: Hosted vs. Self-hosted</h2>
+      <p>
+        Pointer is designed with a strict client-server boundary, allowing organizations to run Pointer either as a managed cloud service or self-hosted entirely within their own infrastructure:
+      </p>
+      <ul>
+        <li><strong>Hosted cloud</strong> — Managed API and PostgreSQL database hosted in <!-- TODO(founder): region/provider -->. Includes automated backups, TLS encryption in transit, and continuous updates.</li>
+        <li><strong>Self-hosted</strong> — Deploy Pointer's containerized API and PostgreSQL database inside your own cloud VPC (AWS, GCP, Azure) or on-premises servers. All comments, screenshots, and metadata remain strictly within your network perimeter.</li>
+      </ul>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr><th>Component</th><th>Hosted Service</th><th>Self-Hosted Instance</th></tr>
+          </thead>
+          <tbody>
+            <tr><td>Feedback Widget</td><td>Runs in client browser; connects to hosted API</td><td>Runs in client browser; connects to your internal API</td></tr>
+            <tr><td>API &amp; Database</td><td>Managed cloud instance</td><td>Your own servers and PostgreSQL database</td></tr>
+            <tr><td>Screenshots &amp; Blobs</td><td>Encrypted cloud storage</td><td>Local filesystem storage or your own S3 bucket</td></tr>
+            <tr><td>Developer CLI &amp; MCP</td><td>Runs locally on developer workstation</td><td>Runs locally on developer workstation</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section id="retention">
+      <h2>Retention &amp; deletion</h2>
+      <p>
+        Feedback comments and projects are retained until deleted by an author or workspace administrator.
+      </p>
+      <p>
+        Deleting a comment or project hides it everywhere immediately.
+        Under the hood, deleting a comment or a project is a soft delete: the records are stamped with <code>DeletedAt</code> and disappear from all active views, queries, APIs, and exports.
+      </p>
+      <p>
+        However, the underlying database rows and any uploaded screenshot files remain in storage; a screenshot file is physically deleted only when its author removes the image via edit.
+        Physical purge of deleted records and their screenshot files (and automatic expiry after your plan's retention period) is on our roadmap; until then, contact us for a manual purge.
+      </p>
+      <p>
+        Plan-specific retention durations (<code>RetentionDays</code>) are available on request for custom enterprise configurations.
+      </p>
+    </section>
+
+    <section id="security">
+      <h2>Security &amp; workspace isolation</h2>
+      <p>Pointer implements defense-in-depth security across all architectural layers:</p>
+      <ul>
+        <li><strong>Credential protection</strong> — User passwords are encrypted with strong cryptographic hashing algorithms. API keys are stored hashed (SHA-256) for lookup and encrypted for display.</li>
+        <li><strong>Session management</strong> — Authentication relies on signed JSON Web Tokens (JWT) with a 12-hour lifetime and per-request security stamp validation.</li>
+        <li><strong>Database multi-tenancy</strong> — Strict database-level query filters enforce multi-tenant isolation, preventing cross-workspace data access or leakage.</li>
+        <li><strong>Safe AI automation</strong> — AI coding tools and MCP bridges operated with Pointer are structurally forbidden from executing <code>git push</code>. All code edits occur locally on developer worktrees under human review.</li>
+      </ul>
+    </section>
+
+    <section id="questions">
+      <h2>Questions &amp; resources</h2>
+      <p>
+        For security questions, privacy inquiries, or manual data purge requests, please contact <a href="mailto:moamen.ui@gmail.com">moamen.ui@gmail.com</a>.
+      </p>
+      <p>
+        You can also review our legal <a href="/privacy.html">Privacy Policy</a> or explore our technical <a href="/docs/">Documentation</a>.
+      </p>
+    </section>
+  </main>
+
+  <footer class="bottom">
+    <div class="wrap">Pointer</div>
+  </footer>
+</body>
+</html>

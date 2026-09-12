@@ -31,13 +31,23 @@ const server = createServer(async (req, res) => {
   const pathname = new URL(req.url, `http://localhost:${PORT}`).pathname;
   const path = pathname === '/' ? '/index.html' : pathname;
   try {
-    const filePath = join(ROOT, path);
+    let filePath = join(ROOT, path);
     if (!filePath.startsWith(ROOT)) {
       res.writeHead(403);
       res.end('Forbidden');
       return;
     }
-    const body = await readFile(filePath);
+    let body;
+    try {
+      body = await readFile(filePath);
+    } catch (err) {
+      if (err.code === 'EISDIR') {
+        filePath = join(filePath, 'index.html');
+        body = await readFile(filePath);
+      } else {
+        throw err;
+      }
+    }
     res.writeHead(200, {
       'Content-Type': MIME[extname(filePath)] || 'application/octet-stream',
       'Access-Control-Allow-Origin': '*',
