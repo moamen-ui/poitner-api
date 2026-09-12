@@ -85,3 +85,19 @@ export const PORTS = {
 // invocation uses (skill.md's recommended convention — "world (a)" in docs/E2E_TEST_PLAN.md).
 export const AUTOMATION_ACCOUNT = USERS.developer;
 
+// Endpoints consumed by the dashboard and regenerated via Orval. Kept in sync per R1-03 / R1-01 freeze rule.
+// Verified by e2e/api/swagger-guard.spec.mjs (R1-03-01).
+export const DASHBOARD_CONTRACT_ENDPOINTS = [
+  ['get', '/api/me/api-key'],
+  ['post', '/api/me/api-key/regenerate'],
+  ['get', '/api/branding'],
+  ['get', '/api/admin/projects'],
+  ['post', '/api/admin/projects'],
+  ['post', '/api/auth/login'],
+  ['post', '/api/auth/login-with-key'],
+  ['get', '/api/projects/{key}/comments'],
+  ['post', '/api/projects/{key}/comments'],
+  ['get', '/api/meta'],
+];
+
+
