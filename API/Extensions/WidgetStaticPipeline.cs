@@ -60,6 +60,25 @@ public static class WidgetStaticPipeline
     public static void PrepareStaticResponse(StaticFileResponseContext ctx)
     {
         var name = ctx.File.Name;
+
+        // The widget's own assets are fetched cross-origin from every customer site that embeds it,
+        // and this static-file middleware runs BEFORE UseCors — so the response is written and sent
+        // without the CORS middleware ever seeing it. Without this header the browser blocks
+        // pointer.css on every install and the widget renders unstyled.
+        //
+        // `*` is correct rather than permissive: these are public, unauthenticated, read-only build
+        // artifacts served to arbitrary unknown origins by design. That is the same reasoning
+        // behind the open DEFAULT CORS policy for the widget surface.
+        var isWidgetAsset =
+            name.Equals("pointer.js", StringComparison.OrdinalIgnoreCase)
+            || name.Equals("pointer.css", StringComparison.OrdinalIgnoreCase)
+            || name.Equals("pointer.version.json", StringComparison.OrdinalIgnoreCase)
+            || ctx.Context.Request.Path.StartsWithSegments("/widget", StringComparison.OrdinalIgnoreCase);
+
+        if (isWidgetAsset)
+        {
+            ctx.Context.Response.Headers["Access-Control-Allow-Origin"] = "*";
+        }
         if (ctx.Context.Items.TryGetValue("WidgetCacheControl", out var cc) && cc != null)
         {
             ctx.Context.Response.Headers.CacheControl = cc.ToString();

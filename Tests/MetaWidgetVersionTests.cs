@@ -47,4 +47,19 @@ public class MetaWidgetVersionTests
         Assert.Equal(expectedHash, meta.WidgetVersion);
         Assert.Equal(expectedHash, widgetInfo.CurrentHash);
     }
+
+    /// <summary>Minimal branding stub — this file's own, since MetaEndpointTests' copy is private.</summary>
+    private class StubBrandingService(string productName) : IBrandingService
+    {
+        public Task<int> BumpVersionAsync() => Task.FromResult(1);
+
+        public Task<Pointer.Application.DTOs.Branding.BrandingResponse> BuildResponseAsync(string publicBase, IReadOnlySet<string> existingKinds) =>
+            Task.FromResult(new Pointer.Application.DTOs.Branding.BrandingResponse { ProductName = productName });
+
+        public Task<Pointer.Application.Response.Result<Pointer.Application.DTOs.Branding.BrandingResponse>> GetAsync(string publicBase, IReadOnlySet<string> existingKinds) =>
+            Task.FromResult(Pointer.Application.Response.Result<Pointer.Application.DTOs.Branding.BrandingResponse>.Success(new Pointer.Application.DTOs.Branding.BrandingResponse { ProductName = productName }));
+
+        public Task<Pointer.Application.Response.Result<Pointer.Application.DTOs.Branding.BrandingResponse>> UpdateAsync(Pointer.Application.DTOs.Branding.BrandingWriteDto dto, string publicBase, IReadOnlySet<string> existingKinds) =>
+            Task.FromResult(Pointer.Application.Response.Result<Pointer.Application.DTOs.Branding.BrandingResponse>.Success(new Pointer.Application.DTOs.Branding.BrandingResponse { ProductName = productName }));
+    }
 }
