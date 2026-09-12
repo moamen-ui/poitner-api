@@ -288,7 +288,18 @@ async function main() {
     developer: USERS.developer,
     pm: USERS.pm,
     tester: USERS.tester,
-    client: { ...CLIENT, inviteToken: clientInviteToken },
+    // R2-05-tests Preconditions: the stored client carries the redemption outcome (token/user),
+    // the invite token and the magic link itself, so widget scenarios can drive the same first-run
+    // path a real invited client takes. The spread keeps the CLIENT constants (email, displayName)
+    // for consumers that only read identity. token/user go stale after the 12h JWT lifetime —
+    // loginClient() re-redeems the invite token rather than trusting them.
+    client: {
+      ...CLIENT,
+      inviteToken: clientInviteToken,
+      magicLink: clientInvite.magicLink ?? clientInvite.url,
+      token: client.token,
+      user: client.user,
+    },
     flood: FLOOD,
     tenantBOwner: TENANT_B_OWNER,
   };
