@@ -111,7 +111,7 @@
       <h1>Data &amp; self-hosting</h1>
       <p class="updated">Effective date: 2026-09-12</p>
       <div class="note">
-        Pointer stores <em>feedback about UI elements</em>, not your users' data. Nothing is captured until a signed-in stakeholder clicks an element and submits a comment.
+        Pointer stores <em>feedback about UI elements</em>, not your users' data. Nothing is <strong>sent to the server</strong> until a signed-in stakeholder clicks an element and submits a comment.
       </div>
       <h2>Overview</h2>
       <p>
@@ -135,7 +135,7 @@
             <tr><td><code>classes</code></td><td>Array of strings</td><td>List of CSS class names applied to the clicked element.</td></tr>
             <tr><td><code>computedStyles</code></td><td>Key-value map</td><td>Resolved values for color, font size, margins, padding, and layout properties.</td></tr>
             <tr><td><code>appliedCssRules</code></td><td>Array (&le; 6 rules)</td><td>Matched author stylesheet rules with compound or descendant selectors.</td></tr>
-            <tr><td><code>sourcePath</code></td><td>Path or 8-char hash</td><td>Component file path from source build attributes or framework internals.</td></tr>
+            <tr><td><code>sourcePath</code></td><td>Path, or empty</td><td>Component file path from source build attributes or framework internals; empty when neither is available.</td></tr>
             <tr><td><code>parentInfo</code></td><td>Tag, classes, ID</td><td>Direct parent element tag name, class list, and ID attribute.</td></tr>
             <tr><td><code>pageUrl</code> / <code>route</code> / <code>pageTitle</code></td><td>URLs / Strings</td><td>Full URL, normalized routing path, and the document page title.</td></tr>
             <tr><td><code>viewportWidth</code> / <code>viewportHeight</code></td><td>Integers (CSS px)</td><td>Window viewport width and height at the moment of capture.</td></tr>
@@ -161,7 +161,7 @@
         <li><strong>Browser storage</strong> — your application's <code>localStorage</code>, <code>sessionStorage</code>, and IndexedDB data are never accessed.</li>
         <li><strong>Request &amp; response payloads</strong> — HTTP request bodies, response contents, and custom authorization headers are never captured.</li>
         <li><strong>Keystrokes &amp; background tracking</strong> — there is no passive event logging, session replay, form field scraping, or user activity tracking.</li>
-        <li><strong>Pre-click interactions &amp; unrelated pages</strong> — no data is recorded before an authenticated stakeholder explicitly enters comment mode and clicks an element.</li>
+        <li><strong>Pre-click interactions &amp; unrelated pages</strong> — nothing is transmitted before an authenticated stakeholder enters comment mode and clicks an element. One exception worth stating plainly: when a project enables <em>Page Context Capture</em>, the widget buffers recent console errors/warnings and failed or slow network calls <em>locally in the browser</em> from the moment it loads, so a bug report can include what happened just before it. That buffer never leaves the browser unless the stakeholder ticks &ldquo;Report as a bug&rdquo; on a comment they submit.</li>
       </ul>
     </section>
 
@@ -169,7 +169,7 @@
       <h2>Opt-in extras</h2>
       <p>Two optional diagnostic capabilities exist on a strict opt-in basis:</p>
       <ul>
-        <li><strong>Element screenshots</strong> — Controlled via a checkbox on each comment. The screenshot captures exactly what the stakeholder sees at comment time. Can be completely disabled across the application by passing <code>screenshot="false"</code> to the <code>&lt;pointer-feedback&gt;</code> element.</li>
+        <li><strong>Element screenshots</strong> — Controlled via a checkbox on each comment. The screenshot is a high-fidelity reconstruction of what the stakeholder sees at comment time (rebuilt from the DOM, so cross-origin images and canvas/video content may differ). Can be completely disabled across the application by passing <code>screenshot="false"</code> to the <code>&lt;pointer-feedback&gt;</code> element.</li>
         <li><strong>Bug-report diagnostic context</strong> — Available only when "Page Context Capture" is enabled in project settings and the stakeholder checks "Report as a bug". Captures recent browser console warnings/errors and failed or slow HTTP network calls (method, URL with query parameters stripped, status code, and duration; never request or response bodies or headers).</li>
       </ul>
     </section>
@@ -190,7 +190,7 @@
         Pointer is designed with a strict client-server boundary, allowing organizations to run Pointer either as a managed cloud service or self-hosted entirely within their own infrastructure:
       </p>
       <ul>
-        <li><strong>Hosted cloud</strong> — Managed API and PostgreSQL database hosted in <!-- TODO(founder): region/provider -->. Includes automated backups, TLS encryption in transit, and continuous updates.</li>
+        <li><strong>Hosted cloud</strong> — Managed API and PostgreSQL database hosted in <!-- TODO(founder): region/provider -->. TLS encryption in transit and continuous updates.</li>
         <li><strong>Self-hosted</strong> — Deploy Pointer's containerized API and PostgreSQL database inside your own cloud VPC (AWS, GCP, Azure) or on-premises servers. All comments, screenshots, and metadata remain strictly within your network perimeter.</li>
       </ul>
       <div class="table-wrap">
@@ -201,7 +201,7 @@
           <tbody>
             <tr><td>Feedback Widget</td><td>Runs in client browser; connects to hosted API</td><td>Runs in client browser; connects to your internal API</td></tr>
             <tr><td>API &amp; Database</td><td>Managed cloud instance</td><td>Your own servers and PostgreSQL database</td></tr>
-            <tr><td>Screenshots &amp; Blobs</td><td>Encrypted cloud storage</td><td>Local filesystem storage or your own S3 bucket</td></tr>
+            <tr><td>Screenshots &amp; Blobs</td><td>Local filesystem storage (Docker volume)</td><td>Local filesystem storage (Docker volume)</td></tr>
             <tr><td>Developer CLI &amp; MCP</td><td>Runs locally on developer workstation</td><td>Runs locally on developer workstation</td></tr>
           </tbody>
         </table>
@@ -233,7 +233,7 @@
         <li><strong>Credential protection</strong> — User passwords are encrypted with strong cryptographic hashing algorithms. API keys are stored hashed (SHA-256) for lookup and encrypted for display.</li>
         <li><strong>Session management</strong> — Authentication relies on signed JSON Web Tokens (JWT) with a 12-hour lifetime and per-request security stamp validation.</li>
         <li><strong>Database multi-tenancy</strong> — Strict database-level query filters enforce multi-tenant isolation, preventing cross-workspace data access or leakage.</li>
-        <li><strong>Safe AI automation</strong> — AI coding tools and MCP bridges operated with Pointer are structurally forbidden from executing <code>git push</code>. All code edits occur locally on developer worktrees under human review.</li>
+        <li><strong>Safe AI automation</strong> — Pointer's own CLI and MCP server expose no <code>git push</code> capability at all; a test asserts no command they run contains it. The instructions Pointer hands your AI tool also forbid pushing. That is a strong guard, not a sandbox: an AI agent with general shell access is restrained by those instructions rather than by Pointer. Code edits happen locally and a human pushes.</li>
       </ul>
     </section>
 

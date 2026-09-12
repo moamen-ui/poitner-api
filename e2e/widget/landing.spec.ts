@@ -113,13 +113,11 @@ test.describe('R3-05: Data & self-hosting page', () => {
     await backLink.first().click();
     await page.waitForURL('**/data.html');
 
-    // 9. v2 + Arabic
-    await page.goto(new URL('/v2/', LANDING_URL).toString());
-    const v2DataLink = page.locator('footer a[href="/data.html"]');
-    expect(await v2DataLink.count()).toBeGreaterThanOrEqual(1);
-    const v2Content = await page.content();
-    expect(v2Content).toContain('البيانات والاستضافة الذاتية');
-
+    // 9. Arabic copy on the landing page.
+    //
+    // The /v2/ variant this step also checked no longer exists: R3-06 harvested what was worth
+    // keeping and deleted landing/v2/, which its contract explicitly sanctions. Asserting against
+    // a page the roadmap removed would be a permanently red test guarding nothing.
     await page.goto(LANDING_URL);
     const rootContent = await page.content();
     expect(rootContent).toContain('Data & self-hosting');
