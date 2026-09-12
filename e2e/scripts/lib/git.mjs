@@ -1,4 +1,5 @@
 import { mkdtempSync, cpSync, mkdirSync, existsSync, rmSync } from 'node:fs';
+import { writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -66,3 +67,32 @@ export function assertRefsUnchanged(bareDir, beforeSnapshot) {
     throw new Error(`Git refs changed in bare remote!\nBefore:\n${beforeSnapshot}\nAfter:\n${after}`);
   }
 }
+
+/**
+ * Creates a commit with an arbitrary change in repoDir and returns the resulting commit sha.
+ */
+export function commit(repoDir, n = 1) {
+  const msg = typeof n === 'number' ? `commit-${n}` : String(n);
+  const filename = typeof n === 'number' ? `file-${n}.txt` : `file-${Date.now()}-${Math.random().toString(36).slice(2, 6)}.txt`;
+  writeFileSync(join(repoDir, filename), `${msg}\n`);
+  execFileSync('git', ['add', '-A'], { cwd: repoDir });
+  execFileSync('git', ['commit', '-m', msg], { cwd: repoDir });
+  return execFileSync('git', ['rev-parse', 'HEAD'], { cwd: repoDir, encoding: 'utf8' }).trim();
+}
+
+/**
+ * Creates a new branch in repoDir and switches to it.
+ */
+export function branch(repoDir, name, startPoint) {
+  const args = ['checkout', '-b', name];
+  if (startPoint) args.push(startPoint);
+  execFileSync('git', args, { cwd: repoDir });
+}
+
+/**
+ * Checks out a git ref in repoDir.
+ */
+export function checkout(repoDir, ref) {
+  execFileSync('git', ['checkout', ref], { cwd: repoDir });
+}
+
