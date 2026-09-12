@@ -494,6 +494,11 @@ test('R2-00-03 — fresh-app: angular (skill-routed)', async () => {
 
 test('R2-00-04 — fresh-app: next (handoff)', async () => {
   test.skip(process.env.TIER === 'pr', 'nightly tier only — skipped during PR tier');
+  // This test had no timeout at all, so it inherited playwright.config.ts's 30s and could not
+  // pass on any nightly run: scaffolding alone took longer than that. scaffoldNext now copies the
+  // committed fixture instead, but the budget stays generous — with E2E_REAL_NEXT_GENERATOR=1 it
+  // goes back to create-next-app and its full install.
+  test.setTimeout(600_000);
 
   const start = Date.now();
   const runId = Math.random().toString(36).substring(2, 7);
@@ -1183,8 +1188,17 @@ test('R1-02-03 — init-next-handoff', async () => {
 
     // The human-facing half of the handoff: run again without --json and read the message a
     // developer actually sees.
-    const plain = await spawnCli({ cwd: appDir, args });
-    expect(plain.code).toBe(0);
+    //
+    // --project, not --create. Re-running with --create asks the server to make the same project a
+    // second time and exits 3 ("Key already exists, choose another") — which is correct behaviour,
+    // just not what re-running init looks like for a developer who already has one.
+    const rerun = [
+      'init', '--server', SERVER, '--key', devKey || '',
+      '--project', createdProjectKey,
+      '--environment', 'local', '--tool', 'other', '--yes',
+    ];
+    const plain = await spawnCli({ cwd: appDir, args: rerun });
+    expect(plain.code, plain.stderr).toBe(0);
     const out = `${plain.stdout || ''}${plain.stderr || ''}`;
     expect(out).toContain("next detected — automatic injection isn't supported for this stack yet.");
     expect(out).toContain('pointer-init');

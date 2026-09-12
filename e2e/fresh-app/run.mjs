@@ -131,7 +131,21 @@ export async function scaffoldAngular(appDir) {
 }
 
 /**
- * Scaffolds a Next.js application using the pinned create-next-app generator.
+ * Scaffolds a Next.js application.
+ *
+ * Uses the COMMITTED fixture by default and reaches for create-next-app only when
+ * E2E_REAL_NEXT_GENERATOR is set.
+ *
+ * The generator was the default, and it takes over ten minutes here — it resolves and installs
+ * Next, React and their trees on every call. That is not a slow test, it is a test that cannot
+ * pass: R2-00-04 inherits Playwright's 30s default and so failed on every nightly run it was ever
+ * part of, for a reason that has nothing to do with what it asserts. It also puts the suite on the
+ * network, which harness §1.2 rules out.
+ *
+ * Nothing is lost by preferring the fixture. Both scenarios that scaffold Next assert on stack
+ * DETECTION and on which paths init touches — that reads package.json (the `next` dependency),
+ * next.config.js and app/, all of which the fixture has in the same shape the generator emits.
+ * Keep the opt-in so a real generated app can still be checked deliberately.
  *
  * @param {string} [appDir]
  * @returns {Promise<string>} Target directory
@@ -141,6 +155,19 @@ export async function scaffoldNext(appDir) {
   const target = appDir || join(targetParent, 'fresh-next');
   await rm(target, { recursive: true, force: true });
   await mkdir(targetParent, { recursive: true });
+
+  const fixtureDir = resolve(here, '../cli/fixtures/next');
+  const useGenerator = process.env.E2E_REAL_NEXT_GENERATOR === '1';
+
+  if (!useGenerator) {
+    if (!existsSync(fixtureDir)) {
+      throw new Error(
+        `next fixture missing at ${fixtureDir} — set E2E_REAL_NEXT_GENERATOR=1 to scaffold with create-next-app instead`,
+      );
+    }
+    await cp(fixtureDir, target, { recursive: true });
+    return finishNextScaffold(target);
+  }
 
   try {
     await execFileAsync(
@@ -157,8 +184,8 @@ export async function scaffoldNext(appDir) {
       { cwd: targetParent },
     );
   } catch (err) {
-    // Fallback to local next fixture if generator command fails
-    const fixtureDir = resolve(here, '../cli/fixtures/next');
+    // The generator was asked for explicitly but could not run. Fall back rather than fail the
+    // scenario over a network problem — the fixture asserts the same things.
     if (existsSync(fixtureDir)) {
       await cp(fixtureDir, target, { recursive: true });
     } else {
@@ -166,7 +193,18 @@ export async function scaffoldNext(appDir) {
     }
   }
 
-  // create-next-app has no --skip-git: rm -rf .git, then git init && git config user.email
+  return finishNextScaffold(target);
+}
+
+/**
+ * Puts a scaffolded Next app on a single clean commit.
+ *
+ * create-next-app has no --skip-git and leaves its own repository behind, so this drops it and
+ * starts one with a known identity. R1-02-03 reads `git status --porcelain` to prove init touched
+ * only the paths it owns, and that assertion is only exact against a baseline with nothing
+ * uncommitted.
+ */
+async function finishNextScaffold(target) {
   await rm(join(target, '.git'), { recursive: true, force: true });
   await execFileAsync('git', ['init'], { cwd: target });
   await execFileAsync('git', ['config', 'user.email', 'e2e@example.com'], { cwd: target });
