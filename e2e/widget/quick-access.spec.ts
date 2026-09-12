@@ -122,9 +122,15 @@ test('R2-05-01 — quick-access: magic link signs in', async ({ browser }, testI
     const storedToken = await page.evaluate(() => localStorage.getItem('pointer_token'));
     expect(storedToken).toBeTruthy();
 
-    // Evidence: a screenshot of the signed-in widget.
-    testInfo.attach('signed-in-widget', {
-      body: await widget.screenshot(),
+    // Evidence: a screenshot of the signed-in page.
+    //
+    // The PAGE, not the `pointer-feedback` locator. The host element is a zero-size box — every
+    // pixel it shows lives in its shadow root and is position:fixed — so an element screenshot
+    // waits forever for a stable non-zero bounding box and takes the whole test down with it, as
+    // a 30s timeout with every assertion already passed. Awaited, so a failure here is reported
+    // rather than surfacing later as an unhandled rejection.
+    await testInfo.attach('signed-in-widget', {
+      body: await page.screenshot(),
       contentType: 'image/png',
     });
 

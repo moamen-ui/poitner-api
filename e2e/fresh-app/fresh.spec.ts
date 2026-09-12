@@ -1031,3 +1031,174 @@ test('R1-02-02 — init-static-no-ai', async () => {
     }
   }
 });
+
+/**
+ * R1-02-01 — what `init` writes into a Vite app, down to the file modes.
+ *
+ * R2-00-01 proves the vite path works end to end (build + preview + a real comment). This owns
+ * the part an end-to-end run cannot see: that the env file has exactly one of each key, that the
+ * credentials file is 0600 and the helper script 0755, that the frozen .gitignore block is
+ * present with its negations, and that the skill files land for `--tool other`.
+ *
+ * Nightly, because scaffolding through the pinned generator hits the network.
+ */
+test('R1-02-01 — init-vite-no-ai', async () => {
+  test.skip(process.env.TIER === 'pr', 'nightly tier only — the pinned generator hits the network');
+  test.setTimeout(300_000);
+
+  const start = Date.now();
+  const runId = Math.random().toString(36).substring(2, 7);
+  const creds = getCredentials();
+  const devKey = getKeys().developer?.apiKey;
+  const wsAdmin = await login(creds.wsAdmin.email, creds.wsAdmin.password);
+
+  let createdProjectKey = '';
+  try {
+    const appDir = await scaffoldVite();
+
+    const initRes = await spawnCli({
+      cwd: appDir,
+      args: [
+        'init', '--server', SERVER, '--key', devKey || '',
+        '--create', `Fresh vite ${runId}`,
+        '--environment', 'local', '--tool', 'other', '--yes', '--json',
+      ],
+    });
+
+    expect(initRes.code).toBe(0);
+    expect(initRes.json?.ok).toBe(true);
+    expect(initRes.json?.project?.created).toBe(true);
+    expect(initRes.json?.injected).toBe(true);
+    expect(initRes.json?.routedToSkill).toBe(false);
+    expect(initRes.json?.product).toBe('Pointer');
+    expect(String(initRes.json?.cliVersion || '')).not.toBe('');
+    createdProjectKey = initRes.json?.project?.key;
+    expect(createdProjectKey).toMatch(/^fresh-vite-/);
+
+    // index.html: exactly one marker pair, wrapping the env-guarded snippet.
+    const indexHtml = await readFile(join(appDir, 'index.html'), 'utf8');
+    expect((indexHtml.match(/<!-- pointer-feedback:start -->/g) || []).length).toBe(1);
+    expect((indexHtml.match(/<!-- pointer-feedback:end -->/g) || []).length).toBe(1);
+    const block = indexHtml.match(
+      /<!-- pointer-feedback:start -->([\s\S]*?)<!-- pointer-feedback:end -->/,
+    )![1];
+    expect(block).toContain("'%VITE_POINTER_ENABLED%' === 'true'");
+    expect(block).toContain("document.createElement('pointer-feedback')");
+    expect(block).toContain('data-component-source');
+
+    // .env: exactly ONE of each key. A second occurrence is the failure mode that matters here —
+    // re-running init must not append a duplicate the bundler then resolves unpredictably.
+    const env = await readFile(join(appDir, '.env'), 'utf8');
+    for (const [key, value] of [
+      ['VITE_POINTER_ENABLED', 'true'],
+      ['VITE_POINTER_SERVER', SERVER],
+      ['VITE_POINTER_PROJECT', createdProjectKey],
+      ['VITE_POINTER_ENV', 'local'],
+    ]) {
+      const hits = env.split('\n').filter((l) => l.trim().startsWith(`${key}=`));
+      expect(hits, `${key} must appear exactly once in .env`).toHaveLength(1);
+      expect(hits[0].trim()).toBe(`${key}=${value}`);
+    }
+
+    // Modes. The credentials file holds an API key, so 0600 is the whole point of writing it to
+    // disk rather than leaving it in the shell history; the helper must stay executable.
+    const credPath = join(appDir, '.pointer', 'credentials.env');
+    const credStat = await stat(credPath);
+    expect(credStat.mode & 0o777, '.pointer/credentials.env must be 0600').toBe(0o600);
+    expect(await readFile(credPath, 'utf8')).toContain(`POINTER_API_KEY=${devKey}`);
+    const shStat = await stat(join(appDir, '.pointer', 'pointer.sh'));
+    expect(shStat.mode & 0o777, '.pointer/pointer.sh must be 0755').toBe(0o755);
+
+    // --tool other writes both skills for the agent to find.
+    expect(existsSync(join(appDir, '.agents', 'pointer-init', 'SKILL.md'))).toBe(true);
+    expect(existsSync(join(appDir, '.agents', 'pointer-feedback', 'SKILL.md'))).toBe(true);
+    expect(existsSync(join(appDir, '.pointer', 'stack.json'))).toBe(true);
+
+    // The frozen .gitignore block: the negations are what keep the shareable config in the repo
+    // while the credentials stay out.
+    const gitignore = await readFile(join(appDir, '.gitignore'), 'utf8');
+    expect(gitignore).toContain('!.pointer/config.json');
+    expect(gitignore).toContain('!.pointer/stack.json');
+
+    const ms = Date.now() - start;
+    record({
+      id: 'R1-02-01', tier: 'nightly', layer: 'cli', role: 'developer', result: 'PASS', ms,
+      detail: `project=${createdProjectKey}; env keys unique; credentials 0600; pointer.sh 0755`,
+    });
+  } finally {
+    if (createdProjectKey) {
+      const allProjects = await raw('GET', '/api/admin/projects', { token: wsAdmin.token });
+      const found = (allProjects.data || []).find((p: any) => p.key === createdProjectKey);
+      if (found) await raw('DELETE', `/api/admin/projects/${found.id}`, { token: wsAdmin.token });
+    }
+  }
+});
+
+/**
+ * R1-02-03 — Next.js hands off, and touches nothing it does not own.
+ *
+ * The handoff itself is R2-00-04's. What this adds is the proof that a stack init cannot inject
+ * still leaves the app exactly as it found it: git says the only new paths are .pointer/,
+ * .agents/ and .gitignore. Nothing under app/, no package.json, no next.config.
+ */
+test('R1-02-03 — init-next-handoff', async () => {
+  test.skip(process.env.TIER === 'pr', 'nightly tier only — create-next-app hits the network');
+  test.setTimeout(600_000);
+
+  const start = Date.now();
+  const runId = Math.random().toString(36).substring(2, 7);
+  const creds = getCredentials();
+  const devKey = getKeys().developer?.apiKey;
+  const wsAdmin = await login(creds.wsAdmin.email, creds.wsAdmin.password);
+
+  let createdProjectKey = '';
+  try {
+    // scaffoldNext already establishes the clean git baseline the contract asks for (rm -rf .git,
+    // git init, identity, add -A, commit) — which is what makes the porcelain check below exact.
+    const appDir = await scaffoldNext();
+
+    const args = [
+      'init', '--server', SERVER, '--key', devKey || '',
+      '--create', `Fresh next ${runId}`,
+      '--environment', 'local', '--tool', 'other', '--yes',
+    ];
+
+    const initRes = await spawnCli({ cwd: appDir, args: [...args, '--json'] });
+    expect(initRes.code).toBe(0);
+    expect(initRes.json?.ok).toBe(true);
+    expect(initRes.json?.injected).toBe(false);
+    expect(initRes.json?.routedToSkill).toBe(true);
+    expect(initRes.json?.stack?.kind).toBe('next');
+    createdProjectKey = initRes.json?.project?.key;
+
+    // Porcelain lines look like "?? .pointer/" — strip the 2-char status and the space before
+    // comparing, or every path fails the startsWith check for the wrong reason.
+    const { stdout } = await execFileAsync('git', ['status', '--porcelain'], { cwd: appDir });
+    const paths = stdout.split('\n').map((l) => l.slice(3)).filter(Boolean);
+    expect(paths.length, 'init must change something').toBeGreaterThan(0);
+    for (const p of paths) {
+      const owned = p.startsWith('.pointer/') || p.startsWith('.agents/') || p === '.gitignore';
+      expect(owned, `init touched a path it does not own: ${p}`).toBe(true);
+    }
+
+    // The human-facing half of the handoff: run again without --json and read the message a
+    // developer actually sees.
+    const plain = await spawnCli({ cwd: appDir, args });
+    expect(plain.code).toBe(0);
+    const out = `${plain.stdout || ''}${plain.stderr || ''}`;
+    expect(out).toContain("next detected — automatic injection isn't supported for this stack yet.");
+    expect(out).toContain('pointer-init');
+
+    const ms = Date.now() - start;
+    record({
+      id: 'R1-02-03', tier: 'nightly', layer: 'cli', role: 'developer', result: 'PASS', ms,
+      detail: `project=${createdProjectKey}; ${paths.length} path(s) changed, all owned by init`,
+    });
+  } finally {
+    if (createdProjectKey) {
+      const allProjects = await raw('GET', '/api/admin/projects', { token: wsAdmin.token });
+      const found = (allProjects.data || []).find((p: any) => p.key === createdProjectKey);
+      if (found) await raw('DELETE', `/api/admin/projects/${found.id}`, { token: wsAdmin.token });
+    }
+  }
+});
