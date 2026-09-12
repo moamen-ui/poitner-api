@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import * as gitModule from '../src/apply/git.js';
@@ -20,7 +20,10 @@ test('security invariant: git.ts exposes no push function', () => {
 
 test('security invariant: no command spawned by apply code contains push', () => {
   const applySourceDir = join(__dirname, '../src/apply');
-  const files = ['git.ts', 'mark.ts', 'run.ts', 'prompt.ts', 'queue.ts'];
+  // Every file in apply/, discovered at run time. A hardcoded list silently stops covering the
+  // module someone adds next — which is exactly when this check matters.
+  const files = readdirSync(applySourceDir).filter((f) => f.endsWith('.ts'));
+  assert.ok(files.length >= 5, 'expected to discover the apply modules');
 
   for (const file of files) {
     const content = readFileSync(join(applySourceDir, file), 'utf8');
