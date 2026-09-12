@@ -509,7 +509,7 @@
         <div class="brand"><img src="assets/dog-mascot.png" alt="" data-brand-logo /> <span data-brand-name>Pointer</span></div>
         <div class="footer-links">
           <a href="https://app.pointer.moamen.work" data-i18n="foot.dashboard">Dashboard</a>
-          <a href="https://github.com/moamen-ui/poitner-api#readme" rel="noopener" target="_blank" data-i18n="foot.docs">Docs</a>
+          <a href="docs/" data-brand-docs rel="noopener" data-i18n="foot.docs">Docs</a>
           <a href="/privacy.html" data-i18n="foot.privacy">Privacy</a>
           <a href="https://github.com/moamen-ui" rel="noopener" target="_blank">GitHub</a>
         </div>
@@ -801,6 +801,10 @@
     if (b.urls) {
       if (b.urls.app) document.querySelectorAll('a[href^="https://app.pointer.moamen.work"]').forEach(function (a) { a.href = a.href.replace('https://app.pointer.moamen.work', b.urls.app); });
       if (b.urls.demo) document.querySelectorAll('a[href^="https://demo.pointer.moamen.work"]').forEach(function (a) { a.href = a.href.replace('https://demo.pointer.moamen.work', b.urls.demo); });
+      // urls.docs lets a self-hoster point "Docs" at their own site. The bundled /docs/ stays the
+      // default, so an install that configures nothing still gets working documentation rather
+      // than a link into someone else's GitHub.
+      if (b.urls.docs) document.querySelectorAll('[data-brand-docs]').forEach(function (a) { a.href = b.urls.docs; });
     }
     applyExtension(b.extension);
     applyLang(document.documentElement.lang || 'en'); // re-render copy with the new product name

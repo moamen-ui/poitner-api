@@ -1,0 +1,91 @@
+/* Shared documentation shell.
+ *
+ * Every page under /docs/ links this instead of inlining its own <style>. Before it existed each
+ * page carried a private copy of the same tokens, so a colour or spacing change had to be made
+ * seven times and, in practice, drifted.
+ *
+ * Logical properties throughout (inline-start/end, not left/right) so the Arabic landing page's
+ * RTL direction flows without a second stylesheet.
+ */
+:root {
+  --pf-green: #16a34a;
+  --pf-blue: #2563eb;
+  --pf-text: #0f172a;
+  --pf-muted: #475569;
+  --pf-bg: #ffffff;
+  --pf-card: #ffffff;
+  --pf-soft: #f1f5f9;
+  --pf-border: #e2e8f0;
+  --pf-grad: linear-gradient(135deg, var(--pf-green), var(--pf-blue));
+  --pf-radius: 12px;
+  --pf-max: 840px;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --pf-text: #e5e7eb;
+    --pf-muted: #94a3b8;
+    --pf-bg: #0b1220;
+    --pf-card: #111827;
+    --pf-soft: #0f172a;
+    --pf-border: #1f2937;
+  }
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--pf-bg);
+  color: var(--pf-text);
+  font: 16px/1.65 -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+}
+
+.wrap { max-width: var(--pf-max); margin-inline: auto; padding-inline: 20px; }
+
+.nav { border-block-end: 1px solid var(--pf-border); background: var(--pf-card); }
+.nav .wrap { display: flex; align-items: center; justify-content: space-between; gap: 16px; min-height: 64px; flex-wrap: wrap; }
+.brand { display: flex; align-items: center; gap: 10px; font-weight: 700; color: inherit; text-decoration: none; }
+.brand img { inline-size: 28px; block-size: 28px; }
+.nav-links { display: flex; gap: 18px; flex-wrap: wrap; }
+.nav-links a { color: var(--pf-muted); text-decoration: none; font-size: 14px; }
+.nav-links a:hover, .nav-links a.active { color: var(--pf-text); }
+
+.content { padding-block: 48px 80px; }
+
+.badge {
+  display: inline-block; padding: 4px 10px; border-radius: 999px; font-size: 12px;
+  font-weight: 600; background: var(--pf-soft); color: var(--pf-muted); margin-block-end: 14px;
+}
+
+h1 { font-size: 34px; line-height: 1.2; margin: 0 0 12px; }
+h2 { font-size: 22px; margin-block: 34px 12px; }
+h3 { font-size: 17px; margin-block: 24px 8px; }
+.lead { color: var(--pf-muted); font-size: 18px; margin: 0 0 36px; }
+.note { color: var(--pf-muted); font-size: 14px; }
+
+code {
+  background: var(--pf-soft); padding: 2px 6px; border-radius: 6px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.9em;
+}
+pre {
+  background: var(--pf-soft); padding: 16px; border-radius: var(--pf-radius);
+  overflow-x: auto; /* wide samples scroll inside the block, never the page */
+}
+pre code { background: none; padding: 0; }
+
+table { inline-size: 100%; border-collapse: collapse; margin-block: 16px; display: block; overflow-x: auto; }
+th, td { text-align: start; padding: 10px 12px; border-block-end: 1px solid var(--pf-border); font-size: 14px; }
+th { color: var(--pf-muted); font-weight: 600; }
+
+.cards { display: grid; gap: 14px; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); }
+.card {
+  display: block; padding: 18px 20px; border: 1px solid var(--pf-border);
+  border-radius: var(--pf-radius); background: var(--pf-card); text-decoration: none; color: inherit;
+  transition: border-color .15s ease, transform .15s ease;
+}
+.card:hover { border-color: var(--pf-green); transform: translateY(-1px); }
+.card h3 { margin: 0 0 6px; font-size: 17px; }
+.card p { margin: 0; color: var(--pf-muted); font-size: 14px; }
+
+footer { border-block-start: 1px solid var(--pf-border); padding-block: 24px; color: var(--pf-muted); font-size: 14px; }

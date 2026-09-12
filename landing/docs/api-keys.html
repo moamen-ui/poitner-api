@@ -6,148 +6,7 @@
   <title>API Keys & Security — Pointer Docs</title>
   <meta name="description" content="Learn where to find your Pointer API key, how keys are stored hashed for lookup and encrypted for display, key regeneration, and self-hosting configuration." />
   <link rel="icon" href="../assets/favicon.ico" />
-  <style>
-    :root {
-      --pf-green: #16a34a;
-      --pf-blue: #2563eb;
-      --pf-text: #0f172a;
-      --pf-muted: #475569;
-      --pf-bg: #ffffff;
-      --pf-card: #ffffff;
-      --pf-soft: #f1f5f9;
-      --pf-border: #e2e8f0;
-      --pf-grad: linear-gradient(135deg, var(--pf-green), var(--pf-blue));
-      --pf-radius: 12px;
-      --pf-max: 840px;
-    }
-    @media (prefers-color-scheme: dark) {
-      :root {
-        --pf-text: #e5e7eb;
-        --pf-muted: #94a3b8;
-        --pf-bg: #0b1220;
-        --pf-card: #111827;
-        --pf-soft: #0f172a;
-        --pf-border: #1f2937;
-      }
-    }
-    * { box-sizing: border-box; }
-    html, body { margin: 0; padding: 0; }
-    body {
-      font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
-      color: var(--pf-text);
-      background: var(--pf-bg);
-      line-height: 1.65;
-      -webkit-font-smoothing: antialiased;
-    }
-    a { color: var(--pf-blue); text-decoration: none; }
-    a:hover { text-decoration: underline; }
-    .wrap { max-width: var(--pf-max); margin: 0 auto; padding: 0 24px; }
-    
-    .nav {
-      position: sticky; top: 0; z-index: 10;
-      background: color-mix(in srgb, var(--pf-bg) 88%, transparent);
-      backdrop-filter: saturate(1.4) blur(8px);
-      border-bottom: 1px solid var(--pf-border);
-    }
-    .nav .wrap { display: flex; align-items: center; justify-content: space-between; height: 64px; gap: 16px; }
-    .brand { display: flex; align-items: center; gap: 10px; font-weight: 800; font-size: 17px; color: var(--pf-text); text-decoration: none; }
-    .brand img { width: 28px; height: 28px; border-radius: 6px; }
-    .nav-links { display: flex; gap: 18px; align-items: center; flex-wrap: wrap; }
-    .nav-links a { color: var(--pf-muted); font-weight: 500; font-size: 14px; }
-    .nav-links a.active { color: var(--pf-text); font-weight: 700; }
-    .nav-links a:hover { color: var(--pf-text); text-decoration: none; }
-    
-    .content { padding: 48px 0 80px; }
-    .badge {
-      display: inline-block;
-      font-size: 12px;
-      font-weight: 700;
-      text-transform: uppercase;
-      letter-spacing: 0.05em;
-      color: var(--pf-blue);
-      background: color-mix(in srgb, var(--pf-blue) 12%, transparent);
-      padding: 3px 8px;
-      border-radius: 6px;
-      margin-bottom: 12px;
-    }
-    h1 { font-size: clamp(28px, 4vw, 38px); line-height: 1.2; margin: 0 0 16px; letter-spacing: -0.02em; }
-    .lead { font-size: 18px; color: var(--pf-muted); margin: 0 0 32px; line-height: 1.6; }
-    h2 { font-size: 24px; margin: 44px 0 16px; padding-top: 24px; border-top: 1px solid var(--pf-border); }
-    h3 { font-size: 18px; margin: 28px 0 12px; }
-    p, ul, ol { margin: 0 0 16px; }
-    ul, ol { padding-inline-start: 24px; }
-    li { margin-bottom: 8px; }
-    
-    code {
-      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-      font-size: 0.88em;
-      background: var(--pf-soft);
-      padding: 2px 6px;
-      border-radius: 4px;
-      border: 1px solid var(--pf-border);
-    }
-    pre {
-      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-      font-size: 13.5px;
-      background: var(--pf-soft);
-      border: 1px solid var(--pf-border);
-      border-radius: 8px;
-      padding: 16px 20px;
-      overflow-x: auto;
-      line-height: 1.5;
-      margin: 16px 0 24px;
-    }
-    pre code {
-      background: none;
-      padding: 0;
-      border: none;
-      font-size: inherit;
-    }
-    
-    .callout {
-      background: var(--pf-soft);
-      border: 1px solid var(--pf-border);
-      border-inline-start: 4px solid var(--pf-blue);
-      border-radius: 8px;
-      padding: 16px 20px;
-      margin: 24px 0;
-    }
-    .callout.warning {
-      border-inline-start-color: #f59e0b;
-      background: color-mix(in srgb, #f59e0b 8%, var(--pf-soft));
-    }
-    .callout.danger {
-      border-inline-start-color: #ef4444;
-      background: color-mix(in srgb, #ef4444 8%, var(--pf-soft));
-    }
-    .callout.not-available {
-      border-inline-start-color: var(--pf-muted);
-      opacity: 0.95;
-    }
-    .callout-title { font-weight: 700; margin-bottom: 6px; font-size: 13px; text-transform: uppercase; letter-spacing: 0.04em; }
-    
-    .table-wrap { overflow-x: auto; margin: 20px 0 28px; }
-    table { width: 100%; border-collapse: collapse; font-size: 14px; text-align: start; }
-    th, td { padding: 10px 14px; border: 1px solid var(--pf-border); vertical-align: top; }
-    th { background: var(--pf-soft); font-weight: 700; }
-    tr:nth-child(even) td { background: color-mix(in srgb, var(--pf-soft) 40%, transparent); }
-    
-    .footer {
-      border-top: 1px solid var(--pf-border);
-      padding: 40px 0;
-      color: var(--pf-muted);
-      font-size: 14px;
-    }
-    .footer-grid {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      flex-wrap: wrap;
-      gap: 16px;
-    }
-    .footer a { color: var(--pf-muted); }
-    .footer a:hover { color: var(--pf-text); }
-  </style>
+  <link rel="stylesheet" href="assets/docs.css" />
 </head>
 <body>
   <nav class="nav">
@@ -157,11 +16,17 @@
         <span>Pointer Docs</span>
       </a>
       <div class="nav-links">
+      <!-- nav:start -->
+        <a href="index.html">All docs</a>
         <a href="install.html">Install</a>
+        <a href="apply.html">Apply</a>
+        <a href="mcp.html">MCP Server</a>
         <a href="api-keys.html" class="active">API Keys</a>
         <a href="project-settings.html">Project Settings</a>
         <a href="workspaces.html">Workspaces</a>
+        <a href="notifications.html">Notifications & Verification</a>
         <a href="../index.html">Home</a>
+      <!-- nav:end -->
       </div>
     </div>
   </nav>

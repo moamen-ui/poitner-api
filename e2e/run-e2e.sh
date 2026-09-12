@@ -63,7 +63,7 @@ RUN_CLI=0
 if [ "${run_cli:-}" = "true" ]; then RUN_CLI=1; fi
 
 if [ "$TIER" = "pr" ]; then
-  FLAGS+=("reset" "seed" "probe" "api" "widget" "mail")
+  FLAGS+=("reset" "seed" "probe" "api" "docs" "widget" "mail")
   [ "$RUN_CLI" = "1" ] && FLAGS+=("cli")
 elif [ "$TIER" = "nightly" ]; then
   FLAGS+=("reset" "seed" "probe" "api" "widget" "cli" "mail" "fresh" "whitelabel" "mock-domain" "dashboard" "mcp" "apply" "registry" "upgrade" "429")
@@ -177,6 +177,8 @@ run_phase "reset" "bash scripts/reset.sh"
 run_phase "seed" "node scripts/seed.mjs"
 run_phase "probe" "node scripts/probe-visibility.mjs"
 run_phase "api" "bash scripts/pw.sh api"
+# Static checks over landing/docs — no server needed, so it runs with the api phase group.
+run_phase "docs" "bash scripts/pw.sh docs"
 run_phase "cli" "bash scripts/pw.sh cli"
 
 run_phase "widget" "bash scripts/run-widget-phase.sh"
