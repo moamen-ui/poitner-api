@@ -647,8 +647,8 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
   private renderCommitStyleControl(): void {
     const host = this.root && this.root.querySelector('#pf-commit-style');
     if (!host) return;
-    if (!this.canEditSettings) { host.classList.add('pf-hidden'); return; }
-    host.classList.remove('pf-hidden');
+    if (!this.canEditSettings) { (host as HTMLElement).style.display = 'none'; return; }
+    (host as HTMLElement).style.cssText = 'display:flex; align-items:center; gap:6px; margin-top:6px;';
     host.innerHTML = TPL.commitStyleControl(this.commitStyle);
     const sel = this.root!.querySelector('#pf-commit-style-select') as HTMLSelectElement | null;
     if (sel) sel.addEventListener('change', () => this.setCommitStyle(Number(sel.value)));
@@ -898,7 +898,7 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
   // Show/hide the "reset position" button (it only makes sense once the toolbar has moved).
   private _setResetVisible(visible: boolean): void {
     const btn = this.root.querySelector('#pf-reset-pos') as HTMLElement | null;
-    if (btn) btn.classList.toggle('pf-hidden', !visible);
+    if (btn) btn.style.display = visible ? '' : 'none';
   }
 
   // Restore the toolbar to its default corner and forget the saved position.
@@ -1128,10 +1128,10 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
     if (badge) {
       if (this.unreadNotifyCount > 0) {
         badge.textContent = this.unreadNotifyCount > 99 ? '99+' : String(this.unreadNotifyCount);
-        badge.classList.remove('pf-hidden');
+        badge.style.display = '';
       } else {
         badge.textContent = '0';
-        badge.classList.add('pf-hidden');
+        badge.style.display = 'none';
       }
     }
   }
@@ -1742,9 +1742,9 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
     editor.style.margin = '6px 0';
     editor.innerHTML = `
         <textarea class="pf-textarea pf-edit-body">${escapeHtml(comment.body || '')}</textarea>
-        ${hasShot ? `<label class="pf-edit-option"><input type="checkbox" class="pf-edit-rmshot" /> Remove image</label>` : ''}
+        ${hasShot ? `<label style="display:flex;gap:6px;align-items:center;font-size:12px;color:#475569;margin:6px 0;"><input type="checkbox" class="pf-edit-rmshot" /> Remove image</label>` : ''}
         <div class="pf-reply-row">
-          <button class="pf-btn primary pf-btn-fill pf-edit-save">Save</button>
+          <button class="pf-btn primary pf-edit-save" style="flex:1;justify-content:center;">Save</button>
           <button class="pf-mini pf-edit-cancel">Cancel</button>
         </div>`;
     textEl.style.display = 'none';
@@ -1913,10 +1913,9 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
       if (!id) return;
       const box = list.querySelector<HTMLElement>(`#pf-verify-box-${id}`);
       if (box) {
-        const show = box.classList.contains('pf-hidden');
-        box.classList.toggle('pf-hidden', !show);
+        box.style.display = box.style.display === 'none' ? 'block' : 'none';
         const input = box.querySelector<HTMLInputElement>(`#pf-verify-note-${id}`);
-        if (input && show) input.focus();
+        if (input && box.style.display === 'block') input.focus();
       }
     }));
     list.querySelectorAll<HTMLElement>('[data-act="verify-cancel"]').forEach((b) => b.addEventListener('click', () => {
@@ -1924,7 +1923,7 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
       if (!id) return;
       const box = list.querySelector<HTMLElement>(`#pf-verify-box-${id}`);
       if (box) {
-        box.classList.add('pf-hidden');
+        box.style.display = 'none';
         const input = box.querySelector<HTMLInputElement>(`#pf-verify-note-${id}`);
         if (input) input.value = '';
       }

@@ -76,17 +76,3 @@ select.pf-input:disabled {
   padding-top: 12px;
   border-top: 1px dashed v.token('border');
 }
-
-// Vertical rhythm between stacked auth-form fields (email/password/role selects).
-.pf-stack-gap {
-  margin-bottom: 8px;
-}
-// Full-width, center-labelled action (Sign in / Create account / Request again).
-.pf-btn.pf-btn-block {
-  width: 100%;
-  justify-content: center;
-}
-// Skip control sits a step below whichever auth body is mounted.
-.pf-auth-skip {
-  margin-top: 8px;
-}

@@ -17,22 +17,22 @@ export const TPL = {
             <h2>${escapeHtml(getBrandName())}</h2>
             <p>Leave feedback on <b>${escapeHtml(project)}</b>.</p>
             <div id="pf-auth-body"></div>
-            <button class="pf-btn pf-link pf-btn-block pf-auth-skip" id="pf-login-skip">Skip for now</button>
+            <button class="pf-btn pf-link" id="pf-login-skip" style="width:100%; justify-content:center; margin-top:8px;">Skip for now</button>
           </div>
         </div>`,
 
   // Sign-in body. After a "rejected" login it also renders an inline re-apply
   // block (role select + "Request again"); pass rejected=true to show it.
   loginBody: (rejected: boolean) => `
-        <input class="pf-input pf-stack-gap" id="pf-email" type="email" placeholder="Email" />
-        <input class="pf-input pf-stack-gap" id="pf-password" type="password" placeholder="Password" />
+        <input class="pf-input" id="pf-email" type="email" placeholder="Email" style="margin-bottom:8px;" />
+        <input class="pf-input" id="pf-password" type="password" placeholder="Password" style="margin-bottom:8px;" />
         <div class="pf-modal-error" id="pf-login-error"></div>
-        <button class="pf-btn primary pf-btn-block" id="pf-login-submit">Sign in</button>
+        <button class="pf-btn primary" id="pf-login-submit" style="width:100%; justify-content:center;">Sign in</button>
         ${rejected ? `
         <div class="pf-reapply" id="pf-reapply">
           <label class="pf-field-label" for="pf-reapply-role">Choose a role to request again</label>
-          <select class="pf-input pf-stack-gap" id="pf-reapply-role"></select>
-          <button class="pf-btn primary pf-btn-block" id="pf-reapply-submit">Request again</button>
+          <select class="pf-input" id="pf-reapply-role" style="margin-bottom:8px;"></select>
+          <button class="pf-btn primary" id="pf-reapply-submit" style="width:100%; justify-content:center;">Request again</button>
         </div>` : ''}
         <div class="pf-auth-foot">
           No account? <button class="pf-btn pf-link pf-link-inline" id="pf-show-signup">Create account</button>
@@ -40,14 +40,14 @@ export const TPL = {
 
   // Sign-up body. The role <select> is populated at runtime from GET /api/roles.
   signupBody: () => `
-        <input class="pf-input pf-stack-gap" id="pf-su-name" type="text" placeholder="Name" />
-        <input class="pf-input pf-stack-gap" id="pf-su-email" type="email" placeholder="Email" />
-        <input class="pf-input pf-stack-gap" id="pf-su-password" type="password" placeholder="Password" />
+        <input class="pf-input" id="pf-su-name" type="text" placeholder="Name" style="margin-bottom:8px;" />
+        <input class="pf-input" id="pf-su-email" type="email" placeholder="Email" style="margin-bottom:8px;" />
+        <input class="pf-input" id="pf-su-password" type="password" placeholder="Password" style="margin-bottom:8px;" />
         <label class="pf-field-label" for="pf-su-role">Role</label>
-        <select class="pf-input pf-stack-gap" id="pf-su-role"></select>
+        <select class="pf-input" id="pf-su-role" style="margin-bottom:8px;"></select>
         <div class="pf-modal-error" id="pf-signup-error"></div>
         <div class="pf-modal-success" id="pf-signup-success"></div>
-        <button class="pf-btn primary pf-btn-block" id="pf-signup-submit">Create account</button>
+        <button class="pf-btn primary" id="pf-signup-submit" style="width:100%; justify-content:center;">Create account</button>
         <div class="pf-auth-foot">
           Already have an account? <button class="pf-btn pf-link pf-link-inline" id="pf-show-login">Back to sign in</button>
         </div>`,
@@ -62,10 +62,10 @@ export const TPL = {
   chrome: (displayName: string, roleLabel: string, fixedEnvLabel?: string | null, projectName = '', shortcutLabel = '', unreadNotifyCount = 0) => `
         <div class="pf-toolbar">
           <span class="pf-grip" id="pf-grip" data-toggle="tooltip" data-placement="bottom" title="Drag to move" aria-label="Drag toolbar">${ICON.grip}</span>
-          <button class="pf-btn pf-reset-pos pf-icon-btn pf-hidden" id="pf-reset-pos" data-toggle="tooltip" data-placement="bottom" title="Reset toolbar position" aria-label="Reset toolbar position">${ICON.restore}</button>
+          <button class="pf-btn pf-reset-pos pf-icon-btn" id="pf-reset-pos" data-toggle="tooltip" data-placement="bottom" title="Reset toolbar position" aria-label="Reset toolbar position" style="display:none">${ICON.restore}</button>
           <button class="pf-btn primary pf-icon-btn" id="pf-add" data-toggle="tooltip" data-placement="bottom" title="Comment on an element${shortcutLabel ? ` (${escapeHtml(shortcutLabel)})` : ''}" aria-label="Comment on an element${shortcutLabel ? `, shortcut ${escapeHtml(shortcutLabel)}` : ''}">${ICON.inspect}</button>
           <button class="pf-btn" id="pf-toggle" title="Show comments">Comments <span class="pf-badge" id="pf-count">0</span></button>
-          <button class="pf-btn" id="pf-updates" title="Show notifications">Updates <span class="pf-badge pf-notify-badge${unreadNotifyCount > 0 ? '' : ' pf-hidden'}" id="pf-notify-count">${unreadNotifyCount > 99 ? '99+' : unreadNotifyCount}</span></button>
+          <button class="pf-btn" id="pf-updates" title="Show notifications">Updates <span class="pf-badge pf-notify-badge" id="pf-notify-count"${unreadNotifyCount > 0 ? '' : ' style="display:none;"'}>${unreadNotifyCount > 99 ? '99+' : unreadNotifyCount}</span></button>
           ${displayName ? `<button class="pf-btn pf-icon-btn" id="pf-user" data-toggle="tooltip" data-placement="bottom" title="Signed in as ${displayName}${roleLabel ? ' · ' + roleLabel : ''}" aria-label="Signed in as ${displayName}">${ICON.user}</button>` : ''}
           <button class="pf-btn pf-icon-btn" id="pf-hide" data-toggle="tooltip" data-placement="bottom" title="Hide ${escapeHtml(getBrandName())}" aria-label="Hide ${escapeHtml(getBrandName())}">${ICON.eyeOff}</button>
         </div>
@@ -76,11 +76,11 @@ export const TPL = {
               <button class="pf-mini pf-icon" id="pf-close" title="Close" aria-label="Close">&#x2715;</button>
             </div>
             <div class="pf-sidebar-head-row">
-              <div class="pf-sidebar-meta">
-                <span class="pf-project-name pf-caption" id="pf-project-name" title="${escapeHtml(projectName)}">${escapeHtml(projectName)}</span>
+              <div style="display:flex; align-items:center; gap:6px; min-width:0;">
+                <span id="pf-project-name" title="${escapeHtml(projectName)}" style="font-size:12px; color:#64748b; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:150px;">${escapeHtml(projectName)}</span>
                 ${fixedEnvLabel
-                  ? `<span class="pf-env-label pf-caption" title="Environment — fixed for this install">&middot; ${escapeHtml(fixedEnvLabel)}</span>`
-                  : `<select class="pf-input pf-env-select" id="pf-env" title="Environment — comments are scoped per environment">
+                  ? `<span class="pf-env-label" title="Environment — fixed for this install" style="font-size:12px; color:#64748b; text-transform:capitalize;">&middot; ${escapeHtml(fixedEnvLabel)}</span>`
+                  : `<select class="pf-input pf-env-select" id="pf-env" title="Environment — comments are scoped per environment" style="width:auto; padding:4px 8px;">
                 <option value="local">local</option>
                 <option value="staging">staging</option>
                 <option value="production">production</option>
@@ -88,7 +88,7 @@ export const TPL = {
               </div>
               <button class="pf-mini pf-icon" id="pf-refresh" title="Refresh comments" aria-label="Refresh comments">&#8635;</button>
             </div>
-            <div class="pf-commit-style pf-hidden" id="pf-commit-style"></div>
+            <div id="pf-commit-style" style="display:none;"></div>
           </div>
           <div class="pf-filters" id="pf-filters"></div>
           <div class="pf-sidebar-body" id="pf-list"></div>
@@ -103,8 +103,8 @@ export const TPL = {
   // choose whether the AI apply flow bundles applied comments into one commit or commits each one
   // separately — read by skill.md's Step 1 the next time an agent applies.
   commitStyleControl: (commitStyle: number) => `
-        <span class="pf-caption">Commit style</span>
-        <select class="pf-input pf-commit-style-select" id="pf-commit-style-select" title="How the AI apply flow commits applied comments">
+        <span style="font-size:12px; color:#64748b;">Commit style</span>
+        <select class="pf-input" id="pf-commit-style-select" style="width:auto; padding:2px 6px; font-size:12px;" title="How the AI apply flow commits applied comments">
           <option value="1" ${commitStyle === 1 ? 'selected' : ''}>One commit</option>
           <option value="2" ${commitStyle === 2 ? 'selected' : ''}>Separate commits</option>
         </select>`,
@@ -117,13 +117,13 @@ export const TPL = {
             <span>${displayName}</span>
             ${roleLabel ? `<span class="pf-menu-role">${roleLabel}</span>` : ''}
           </div>
-          <div class="pf-menu-shortcut">
-            <span class="pf-menu-shortcut-label">Add comment</span>
+          <div style="display:flex; align-items:center; gap:6px; padding:6px 12px; font-size:12px;">
+            <span style="flex:1; color:inherit;">Add comment</span>
             <button type="button" id="pf-shortcut-edit" class="pf-mini" title="Click, then press a new key combo">${escapeHtml(shortcutLabel)}</button>
             <button type="button" id="pf-shortcut-reset" class="pf-mini pf-icon-btn" title="Reset to default">&#8635;</button>
           </div>
           ${authOwnedByHost
-            ? `<div class="pf-menu-note pf-caption">Signed in via the browser extension — sign out from its popup.</div>`
+            ? `<div class="pf-menu-note" style="padding:8px 12px; font-size:12px; color:#64748b;">Signed in via the browser extension — sign out from its popup.</div>`
             : `<button class="pf-menu-item" id="pf-signout" role="menuitem">${ICON.logout}<span>Sign out</span></button>`}
         </div>`,
 
@@ -183,9 +183,9 @@ export const TPL = {
         </span>`
       : '';
     const verifyBox = (c.status === 'applied' && !c.verifiedAt && c._mine)
-      ? `<div class="pf-verify-box pf-hidden" id="pf-verify-box-${c.id}">
+      ? `<div class="pf-verify-box" id="pf-verify-box-${c.id}" style="display:none;">
           <input class="pf-input pf-verify-note-input" id="pf-verify-note-${c.id}" placeholder="Explain what is still not fixed…" />
-          <div class="pf-verify-actions">
+          <div style="display:flex; justify-content:flex-end; gap:6px; margin-top:6px;">
             <button class="pf-mini primary" data-act="verify-submit" data-id="${c.id}">Submit</button>
             <button class="pf-mini" data-act="verify-cancel" data-id="${c.id}">Cancel</button>
           </div>
@@ -231,7 +231,7 @@ export const TPL = {
             </div>
             <div class="pf-text">${escapeHtml(c.body || c.text || '')}</div>
             ${shot}
-            <div class="pf-sub">${escapeHtml(authorLabel)} &middot; ${c.createdAt ? new Date(c.createdAt).toLocaleDateString() : ''}${c.editedAt ? ' &middot; <span class="pf-edited">edited</span>' : ''}</div>
+            <div class="pf-sub">${escapeHtml(authorLabel)} &middot; ${c.createdAt ? new Date(c.createdAt).toLocaleDateString() : ''}${c.editedAt ? ' &middot; <span style="font-style:italic;">edited</span>' : ''}</div>
             ${verifyBox}
             ${replies ? `<div class="pf-replies">${replies}</div>` : ''}
             <div class="pf-reply-row">
@@ -260,14 +260,14 @@ export const TPL = {
           ${meta._sourcePath ? `<div class="pf-src">&#x26ec; ${escapeHtml(meta._sourcePath)}</div>` : ''}
           <textarea class="pf-textarea" id="pf-comment-text" placeholder="What should change here?"></textarea>
           ${actions.length ? `<div class="pf-field-label">Predefined prompts</div>
-          <div class="pf-actions-pick" id="pf-action-pick">
+          <div class="pf-actions-pick" id="pf-action-pick" style="margin-bottom:6px; display:flex; flex-direction:column; gap:4px;">
             ${actions.map((a) => `<label class="pf-check"><input type="checkbox" class="pf-action-opt" value="${a.id}" /> ${escapeHtml(a.text)}</label>`).join('')}
           </div>` : ''}
           ${shotEnabled ? `<label class="pf-check"><input type="checkbox" id="pf-comment-shot" /> &#x1f4f7; Attach screenshot</label>` : ''}
           ${bugReportEnabled ? `<label class="pf-check" title="Attaches any console errors/warnings and failed or slow network requests seen on this page"><input type="checkbox" id="pf-comment-bug" /> &#x1f41e; Report as a bug</label>` : ''}
           <label class="pf-check"><input type="checkbox" id="pf-comment-private" /> &#x1f512; Keep private — only me</label>
           <div class="pf-reply-row">
-            <button class="pf-btn primary pf-btn-fill" id="pf-submit">Add</button>
+            <button class="pf-btn primary" id="pf-submit" style="flex:1; justify-content:center;">Add</button>
             <button class="pf-mini" id="pf-cancel">Cancel</button>
           </div>
         </div>`,
@@ -284,7 +284,7 @@ export const TPL = {
           </div>
           <div class="pf-notifications-body">
             ${items.length === 0
-              ? '<div class="pf-empty pf-notifications-empty">No updates yet</div>'
+              ? '<div class="pf-empty" style="padding:16px;">No updates yet</div>'
               : items.map((item) => {
                   const isUnread = !item.readAt;
                   let typeLabel = 'Update';
@@ -304,12 +304,12 @@ export const TPL = {
                     typeLabel = 'New reply';
                     icon = ICON.inspect;
                     if (item.payload?.replyExcerpt) {
-                      detail = `<div class="pf-notification-reply pf-caption">"${escapeHtml(item.payload.replyExcerpt)}"</div>`;
+                      detail = `<div style="font-size:12px; color:#64748b; font-style:italic;">"${escapeHtml(item.payload.replyExcerpt)}"</div>`;
                     }
                   }
                   const timeAgo = item.createdAt ? new Date(item.createdAt).toLocaleDateString() : '';
                   return `
-                    <div class="pf-notification-item${isUnread ? ' unread' : ''}" data-id="${item.commentId}" role="menuitem">
+                    <div class="pf-notification-item${isUnread ? ' unread' : ''}" data-id="${item.commentId}" role="menuitem" style="cursor:pointer;">
                       <div class="pf-notification-item-head">
                         <span class="pf-notification-item-type">${icon} ${escapeHtml(typeLabel)}</span>
                         <span class="pf-notification-item-time">${escapeHtml(timeAgo)}</span>
