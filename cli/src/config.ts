@@ -8,6 +8,14 @@ export interface PointerConfig {
   aiTool?: string;
   skillsDir?: string;
   cliVersion?: string;
+  /**
+   * Where the widget was actually mounted, relative to the repo root.
+   *
+   * Recorded because `doctor` otherwise guesses from a fixed list of conventional paths
+   * (`index.html`, `src/index.html`, …) and reports "Widget not found" for a monorepo app it was
+   * explicitly told about — in the same run that just said it injected there.
+   */
+  htmlPath?: string;
 }
 
 const CONFIG_FILE = '.pointer/config.json';

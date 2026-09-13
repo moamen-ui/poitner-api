@@ -225,7 +225,7 @@ export async function runInitChecks(
   }
 
   // widget ------------------------------------------------------------------
-  checks.push(await widgetCheck(cwd));
+  checks.push(await widgetCheck(cwd, config));
 
   // widget-served -----------------------------------------------------------
   if (serverReachable) {
@@ -290,9 +290,11 @@ export async function runInitChecks(
  * Warn, never error: a Next or Angular install mounts the widget from a component file this
  * scan does not read, so "not found" is genuinely inconclusive.
  */
-async function widgetCheck(cwd: string): Promise<CheckResult> {
+async function widgetCheck(cwd: string, config: PointerConfig = {}): Promise<CheckResult> {
   const detection = await detectStack(cwd).catch(() => null);
-  const candidates = [detection?.htmlPath, 'index.html', 'public/index.html', 'src/index.html'].filter(Boolean) as string[];
+  // The recorded path first: init knows where it wrote, and in a monorepo no amount of convention
+  // guessing will find apps/<app>/src/index.html.
+  const candidates = [config.htmlPath, detection?.htmlPath, 'index.html', 'public/index.html', 'src/index.html'].filter(Boolean) as string[];
 
   for (const rel of candidates) {
     try {

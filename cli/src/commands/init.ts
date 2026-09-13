@@ -127,7 +127,8 @@ export async function initCommand(cwd: string, options: Record<string, string | 
     // answers still have a visible purpose — the project and key are what the skill needs in order
     // to finish the job, and they are written to .pointer/config.json either way.
     const appInfo = await detectStack(cwd);
-    const canInject = appInfo.kind === 'vite' || appInfo.kind === 'static';
+    // `--html` names the file outright, so it counts as injectable whatever detection concluded.
+    const canInject = appInfo.kind === 'vite' || appInfo.kind === 'static' || !!options['html'];
     if (!isJson && !isYes) {
         console.log(`\nStack: ${appInfo.kind}${appInfo.evidence.length ? ` (${appInfo.evidence.join(', ')})` : ''}`);
         if (!canInject && !options['no-inject']) {
@@ -213,21 +214,21 @@ export async function initCommand(cwd: string, options: Record<string, string | 
     let noAppUrl = options['no-app-url'] as boolean;
     let source = '';
     
+    // Detected, never asked.
+    //
+    // This used to prompt "Where does this app run in <env>?" and then drop the answer: the only
+    // code that consumed it was an empty `if (appUrl && env !== 'local') {}` block, and the value
+    // reaches nothing but `--json` output. Asking someone for a URL that goes nowhere is worse than
+    // not asking, so the question is gone while the flags and detection stay — `--app-url` still
+    // overrides, `--no-app-url` still skips the scan.
+    //
+    // Registering it against the project's environment (PUT /api/admin/projects/{id}/app-urls/
+    // {environmentId}, which the dashboard already uses) is the real feature this was a stub for.
+    // Deliberately still not done — see the note in R1-02.
     if (!noAppUrl && !appUrl) {
         const detected = await detectAppUrl(cwd, appInfo.kind, env);
         source = detected.source;
-        if (!isYes) {
-            const displayDefault = detected.url ? detected.url : '';
-            const ans = await ask(`Where does this app run in ${env}?`, { default: displayDefault });
-            appUrl = ans || undefined;
-        } else {
-            appUrl = detected.url || undefined;
-        }
-    }
-
-    // Set Environment URL if needed (only if env !== 'local')
-    if (appUrl && env !== 'local') {
-        // According to spec, would call environment URL endpoint but R1-09 handles that.
+        appUrl = detected.url || undefined;
     }
 
     let tool = options['tool'] as string;
@@ -298,7 +299,25 @@ export async function initCommand(cwd: string, options: Record<string, string | 
     }
 
     if (!options['no-inject']) {
-        if (appInfo.kind === 'vite') {
+        const explicitHtml = options['html'] as string | undefined;
+        // An explicitly named HTML file outranks stack detection.
+        //
+        // Detection answers "how would I find the right file myself", which is a different question
+        // from "which file did you just tell me to use". A monorepo reports `monorepo` and has no
+        // single entry point to guess at — but `--html apps/profile/src/index.html` is not a guess,
+        // and silently ignoring it (as this did) leaves the user staring at "Widget not found"
+        // having named the file on the command line.
+        if (explicitHtml && appInfo.kind !== 'vite') {
+            const htmlPath = await injectStatic(cwd, explicitHtml, {
+                server: server as string,
+                key: finalProjectKey,
+                environment: env,
+                pin,
+            });
+            filesMod = [htmlPath];
+            injected = true;
+            if (!isJson) console.log(`Injected widget into ${htmlPath}`);
+        } else if (appInfo.kind === 'vite') {
             filesMod = await injectVite(cwd, { server: server as string, key: finalProjectKey, environment: env, pin }, options['html'] as string);
             injected = true;
             if (!isJson) console.log(`Injected widget into ${filesMod.join(', ')}`);
@@ -310,10 +329,12 @@ export async function initCommand(cwd: string, options: Record<string, string | 
         } else if (appInfo.kind !== 'unknown') {
             routedToSkill = true;
             if (!isJson) {
-                console.log(`ℹ ${appInfo.kind} detected — automatic injection isn't supported for this stack yet.
-  The pointer-init skill was installed for ${tool}. Run it and it will mount the widget for you:
+                console.log(`ℹ ${appInfo.kind} detected — there's no single entry point to inject into automatically.
+  If you know the file, name it and re-run — that always wins over detection:
+    npx -y pointer-feedback init --html path/to/index.html
+  Otherwise the pointer-init skill was installed for ${tool}; run it and it will mount the widget:
     claude -> /pointer-init (or @pointer-init for cursor)
-  Config is already saved in .pointer/config.json, so the skill won't ask for the key or project again.`);
+  Config is already saved in .pointer/config.json, so neither will ask for the key or project again.`);
             }
         }
     }
@@ -363,7 +384,13 @@ export async function initCommand(cwd: string, options: Record<string, string | 
     const mergedStack = mergeStack(stackMeta, serverStackResponse?.data ?? serverStackResponse, noDesign ? null : designBlock);
     await writeStackFile(cwd, mergedStack);
 
-    await writeConfig(cwd, { server: server as string, project: finalProjectKey, environment: env, aiTool: tool, skillsDir: options['skills-dir'] as string, cliVersion: BUILD_CLI_VERSION });
+    // The HTML we actually wrote to, so `doctor` can find the widget in a repo whose layout it
+    // would never guess. Relative, because the config is committed and an absolute path would be
+    // wrong on every other machine.
+    const injectedHtml = injected
+        ? filesMod.find((f) => f.toLowerCase().endsWith('.html'))?.replace(`${cwd}/`, '')
+        : undefined;
+    await writeConfig(cwd, { server: server as string, project: finalProjectKey, environment: env, aiTool: tool, skillsDir: options['skills-dir'] as string, cliVersion: BUILD_CLI_VERSION, htmlPath: injectedHtml });
     filesMod.push('.pointer/config.json');
     // Written back at line ~92, long before filesMod exists. It is the one file in this list that
     // holds a secret, so omitting it from `--json`'s `files` is the worst omission of the set: a

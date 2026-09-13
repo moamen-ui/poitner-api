@@ -1618,7 +1618,7 @@ async function runInitChecks(cwd2, overrides = {}, cliVersion = "0.0.0") {
       checks.push({ id: "project", status: "warn", message: `Could not list projects: ${err?.message ?? err}` });
     }
   }
-  checks.push(await widgetCheck(cwd2));
+  checks.push(await widgetCheck(cwd2, config));
   if (serverReachable) {
     try {
       const res = await fetchWithTimeout(`${server}/pointer.js`, 3e3);
@@ -1661,9 +1661,9 @@ async function runInitChecks(cwd2, overrides = {}, cliVersion = "0.0.0") {
   }
   return checks;
 }
-async function widgetCheck(cwd2) {
+async function widgetCheck(cwd2, config = {}) {
   const detection = await detectStack(cwd2).catch(() => null);
-  const candidates = [detection?.htmlPath, "index.html", "public/index.html", "src/index.html"].filter(Boolean);
+  const candidates = [config.htmlPath, detection?.htmlPath, "index.html", "public/index.html", "src/index.html"].filter(Boolean);
   for (const rel of candidates) {
     try {
       const html = await fs7.readFile(join7(cwd2, rel), "utf8");
@@ -2512,7 +2512,7 @@ async function initCommand(cwd2, options = {}) {
   await writeCredentials(cwd2, key);
   await upsertGitignore(cwd2, product);
   const appInfo = await detectStack(cwd2);
-  const canInject = appInfo.kind === "vite" || appInfo.kind === "static";
+  const canInject = appInfo.kind === "vite" || appInfo.kind === "static" || !!options["html"];
   if (!isJson && !isYes) {
     console.log(`
 Stack: ${appInfo.kind}${appInfo.evidence.length ? ` (${appInfo.evidence.join(", ")})` : ""}`);
@@ -2590,15 +2590,7 @@ and the pointer-init skill uses them to mount the widget for you afterwards.
   if (!noAppUrl && !appUrl) {
     const detected = await detectAppUrl(cwd2, appInfo.kind, env);
     source = detected.source;
-    if (!isYes) {
-      const displayDefault = detected.url ? detected.url : "";
-      const ans = await ask(`Where does this app run in ${env}?`, { default: displayDefault });
-      appUrl = ans || void 0;
-    } else {
-      appUrl = detected.url || void 0;
-    }
-  }
-  if (appUrl && env !== "local") {
+    appUrl = detected.url || void 0;
   }
   let tool = options["tool"];
   let tools = tool ? [tool] : [];
@@ -2654,7 +2646,19 @@ and the pointer-init skill uses them to mount the widget for you afterwards.
     }
   }
   if (!options["no-inject"]) {
-    if (appInfo.kind === "vite") {
+    const explicitHtml = options["html"];
+    if (explicitHtml && appInfo.kind !== "vite") {
+      const htmlPath = await injectStatic(cwd2, explicitHtml, {
+        server,
+        key: finalProjectKey,
+        environment: env,
+        pin
+      });
+      filesMod = [htmlPath];
+      injected = true;
+      if (!isJson)
+        console.log(`Injected widget into ${htmlPath}`);
+    } else if (appInfo.kind === "vite") {
       filesMod = await injectVite(cwd2, { server, key: finalProjectKey, environment: env, pin }, options["html"]);
       injected = true;
       if (!isJson)
@@ -2668,10 +2672,12 @@ and the pointer-init skill uses them to mount the widget for you afterwards.
     } else if (appInfo.kind !== "unknown") {
       routedToSkill = true;
       if (!isJson) {
-        console.log(`\u2139 ${appInfo.kind} detected \u2014 automatic injection isn't supported for this stack yet.
-  The pointer-init skill was installed for ${tool}. Run it and it will mount the widget for you:
+        console.log(`\u2139 ${appInfo.kind} detected \u2014 there's no single entry point to inject into automatically.
+  If you know the file, name it and re-run \u2014 that always wins over detection:
+    npx -y pointer-feedback init --html path/to/index.html
+  Otherwise the pointer-init skill was installed for ${tool}; run it and it will mount the widget:
     claude -> /pointer-init (or @pointer-init for cursor)
-  Config is already saved in .pointer/config.json, so the skill won't ask for the key or project again.`);
+  Config is already saved in .pointer/config.json, so neither will ask for the key or project again.`);
       }
     }
   }
@@ -2708,7 +2714,8 @@ and the pointer-init skill uses them to mount the widget for you afterwards.
   }
   const mergedStack = mergeStack(stackMeta, serverStackResponse?.data ?? serverStackResponse, noDesign ? null : designBlock);
   await writeStackFile(cwd2, mergedStack);
-  await writeConfig(cwd2, { server, project: finalProjectKey, environment: env, aiTool: tool, skillsDir: options["skills-dir"], cliVersion: BUILD_CLI_VERSION });
+  const injectedHtml = injected ? filesMod.find((f) => f.toLowerCase().endsWith(".html"))?.replace(`${cwd2}/`, "") : void 0;
+  await writeConfig(cwd2, { server, project: finalProjectKey, environment: env, aiTool: tool, skillsDir: options["skills-dir"], cliVersion: BUILD_CLI_VERSION, htmlPath: injectedHtml });
   filesMod.push(".pointer/config.json");
   filesMod.push(".pointer/credentials.env");
   filesMod.push(".gitignore");
