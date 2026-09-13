@@ -2,7 +2,7 @@ import {
   HL_CLASS, BACKDROP_SELECTOR, DIALOG_CONTENT_SELECTOR, ENV_MAP, ENV_NAME, STATUS_STR, STATUS_INT, POSITIONS, CSS_URL, SCRIPT_SRC,
   loadStatusCatalog, catalogToFilters, pfFetch, loadBranding, getBrandName, CSS_INTEGRITY,
 } from './constants';
-import { escapeHtml, ensureHighlightStyle, matchElement, pageIsRtl, buildClipPathWithHoles } from './dom';
+import { escapeHtml, ensureHighlightStyle, matchElement, pageIsRtl, buildClipPathWithHoles, applyDataPosition } from './dom';
 import { TPL } from './templates';
 import { ICON } from './icons';
 import { captureScreenshot, captureMetadata } from './capture';
@@ -636,7 +636,6 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
     const label = document.createElement('span');
     label.className = 'pf-env-label';
     label.title = 'Environment';
-    label.style.cssText = 'font-size:12px; color:#64748b; text-transform:capitalize;';
     label.textContent = '· ' + (this.environmentAttr || ENV_NAME[this.environmentInt] || 'staging');
     sel.replaceWith(label);
   }
@@ -1428,6 +1427,8 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
     const left = Math.min(x, window.innerWidth - 300);
     const top = Math.min(y, window.innerHeight - 220);
     host.innerHTML = TPL.popover(meta, left, top, this.screenshotEnabled, this.predefinedActions, this.pageContextCaptureEnabled);
+    // Position applied through the CSSOM, not a style attribute — see applyDataPosition.
+    applyDataPosition(host, '.pf-popover');
     const ta = host.querySelector('#pf-comment-text') as HTMLTextAreaElement;
     ta.focus();
     // Screenshot is opt-in (unchecked by default): only capture once the user ticks
@@ -1968,6 +1969,7 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
       if (rect.width === 0 && rect.height === 0) return '';
       return TPL.pin(c, i, rect);
     }).join('');
+    applyDataPosition(wrap, '.pf-pin');
     wrap.querySelectorAll<HTMLElement>('.pf-pin').forEach((p) => p.addEventListener('click', () => {
       this.toggleSidebar(true);
       const card = this.root.querySelector(`.pf-card[data-id="${p.dataset.id}"]`);

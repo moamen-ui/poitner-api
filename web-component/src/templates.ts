@@ -254,7 +254,7 @@ export const TPL = {
   // checkbox controls whether the console/network buffer already sitting in memory gets attached
   // to THIS comment; it never controls whether that buffer exists (see pagecontext.ts).
   popover: (meta: Meta, left: number, top: number, shotEnabled: boolean, actions: PredefinedActionOption[] = [], bugReportEnabled = false) => `
-        <div class="pf-popover" style="left:${left}px; top:${top}px;">
+        <div class="pf-popover" data-pf-left="${left}" data-pf-top="${top}">
           <h3>Comment on &lt;${escapeHtml(meta._tag)}&gt;</h3>
           <div class="pf-snippet">${escapeHtml(meta._snapshotPreview.slice(0, 200))}</div>
           ${meta._sourcePath ? `<div class="pf-src">&#x26ec; ${escapeHtml(meta._sourcePath)}</div>` : ''}
@@ -274,7 +274,7 @@ export const TPL = {
 
   pin: (c: Comment, i: number, rect: DOMRect) => {
     const cls = c.status === 'pending-apply' ? 'pending' : c.status === 'applied' ? 'applied' : '';
-    return `<div class="pf-pin ${cls}" data-id="${c.id}" style="left:${rect.left}px; top:${rect.top}px;"><span>${i + 1}</span></div>`;
+    return `<div class="pf-pin ${cls}" data-id="${c.id}" data-pf-left="${rect.left}" data-pf-top="${rect.top}"><span>${i + 1}</span></div>`;
   },
 
   notificationsMenu: (items: NotificationItem[]) => `

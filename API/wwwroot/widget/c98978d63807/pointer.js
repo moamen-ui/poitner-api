@@ -105,7 +105,7 @@
   var SHOT_HIGHLIGHT = "#2563eb";
   var _a;
   var SCRIPT_SRC = ((_a = document.currentScript) == null ? void 0 : _a.src) || "";
-  var CSS_INTEGRITY = true ? "sha384-izlYpWj5bEQNmwjbqyItwqLzRH4F5FwGxrOv5VMDJV3KJNYeplDLGTSYrCGYRA4p" : "";
+  var CSS_INTEGRITY = true ? "sha384-LCkZPgls+CMHb/UzKbDrrrHpfEXnTuTz8+bkV8tRKooUm6SgudABklbs8LWkpoaF" : "";
   function resolveCssUrl(scriptSrc) {
     var _a2;
     if (!scriptSrc) return "pointer.css";
@@ -140,22 +140,9 @@
   };
   var ensureHighlightStyle = () => {
     if (document.getElementById("pointer-feedback-hl-style")) return;
-    const css = `.${HL_CLASS}{outline:2px dashed #2563eb!important;outline-offset:1px!important;cursor:crosshair!important;}`;
-    try {
-      if ("adoptedStyleSheets" in Document.prototype && typeof CSSStyleSheet !== "undefined") {
-        const sheet = new CSSStyleSheet();
-        sheet.replaceSync(css);
-        document.adoptedStyleSheets = [...document.adoptedStyleSheets, sheet];
-        const marker = document.createElement("meta");
-        marker.id = "pointer-feedback-hl-style";
-        document.head.appendChild(marker);
-        return;
-      }
-    } catch {
-    }
     const s = document.createElement("style");
     s.id = "pointer-feedback-hl-style";
-    s.textContent = css;
+    s.textContent = `.${HL_CLASS}{outline:2px dashed #2563eb!important;outline-offset:1px!important;cursor:crosshair!important;}`;
     document.head.appendChild(s);
   };
   var generateSelector = (el) => {
@@ -1796,6 +1783,7 @@
       const label = document.createElement("span");
       label.className = "pf-env-label";
       label.title = "Environment";
+      label.style.cssText = "font-size:12px; color:#64748b; text-transform:capitalize;";
       label.textContent = "· " + (this.environmentAttr || ENV_NAME[this.environmentInt] || "staging");
       sel.replaceWith(label);
     }

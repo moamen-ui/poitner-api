@@ -38,9 +38,31 @@ export const buildClipPathWithHoles = (
 // necessity — it decorates the host app's own elements, not our shadow UI).
 export const ensureHighlightStyle = (): void => {
   if (document.getElementById('pointer-feedback-hl-style')) return;
+
+  const css = `.${HL_CLASS}{outline:2px dashed #2563eb!important;outline-offset:1px!important;cursor:crosshair!important;}`;
+
+  // A constructed stylesheet first. A <style> element is markup, so `style-src` blocks it on a
+  // strict-CSP host and the pick highlight silently never appears — on exactly the sites most
+  // likely to run one. adoptedStyleSheets is CSSOM, which the directive does not govern, so it
+  // works with no nonce and nothing for the host page to configure.
+  try {
+    if ('adoptedStyleSheets' in Document.prototype && typeof CSSStyleSheet !== 'undefined') {
+      const sheet = new CSSStyleSheet();
+      sheet.replaceSync(css);
+      document.adoptedStyleSheets = [...document.adoptedStyleSheets, sheet];
+      // A marker so the guard above still short-circuits; it carries no styles itself.
+      const marker = document.createElement('meta');
+      marker.id = 'pointer-feedback-hl-style';
+      document.head.appendChild(marker);
+      return;
+    }
+  } catch {
+    // Fall through to the <style> element below.
+  }
+
   const s = document.createElement('style');
   s.id = 'pointer-feedback-hl-style';
-  s.textContent = `.${HL_CLASS}{outline:2px dashed #2563eb!important;outline-offset:1px!important;cursor:crosshair!important;}`;
+  s.textContent = css;
   document.head.appendChild(s);
 };
 
@@ -111,3 +133,24 @@ export const pageIsRtl = (): boolean => {
     return false;
   }
 };
+
+/**
+ * Applies the position an element carries in `data-pf-left` / `data-pf-top`.
+ *
+ * These two are computed per element — a popover anchored to a click, a pin anchored to the thing
+ * it marks — so they cannot become a CSS class. They also cannot stay in a `style` attribute:
+ * markup parsed by innerHTML under a strict Content-Security-Policy has its inline styles dropped,
+ * which on a nonce-CSP host leaves every pin stacked at the origin.
+ *
+ * Assigning through the CSSOM is the way out. `style-src` governs style attributes and <style>
+ * elements in markup; setting a property on an element's style object is not affected, so this
+ * works under the strictest policy and needs no nonce.
+ */
+export function applyDataPosition(root: ParentNode, selector: string): void {
+  root.querySelectorAll<HTMLElement>(selector).forEach((el) => {
+    const left = el.dataset.pfLeft;
+    const top = el.dataset.pfTop;
+    if (left !== undefined) el.style.left = `${left}px`;
+    if (top !== undefined) el.style.top = `${top}px`;
+  });
+}

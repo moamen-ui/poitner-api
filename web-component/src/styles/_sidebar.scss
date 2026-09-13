@@ -124,6 +124,11 @@
 }
 // Fixed-environment label — shown when the install pinned the env, replacing the switcher.
 .pf-env-label {
+  // font-size and colour used to be assigned via style.cssText at the call site. Setting cssText
+  // is equivalent to writing the style attribute, so a strict CSP blocks it and the label rendered
+  // unstyled — the class was already there, it just was not carrying these.
+  font-size: 12px;
+  color: var(--pf-muted, #64748b);
   text-transform: capitalize;
 }
 // Compact environment switcher — narrower than a full-width .pf-input. Doubled selector
