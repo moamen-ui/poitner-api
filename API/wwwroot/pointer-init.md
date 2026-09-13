@@ -35,20 +35,44 @@ This skill wires the widget into the **current** app. Do not guess the variables
 This task is small on purpose. Mounting a widget is a script tag and an element; treat anything
 beyond that as out of scope.
 
-1. **Touch the fewest files possible** — two or three, typically an env/config file and one entry
-   point. If you are about to create a *new* file, stop: unless the host stack genuinely has
+1. **The loader goes in an HTML file. Always. Only.**
+
+   | App type | The one file to edit |
+   |---|---|
+   | SPA (Angular, React, Vue, Svelte, Vite, CRA) | the app's `index.html` |
+   | Server-rendered (ASP.NET MVC/Razor, Rails, Laravel, Django, Express+templates) | the **master layout** — `_Layout.cshtml`, `application.html.erb`, `layouts/app.blade.php`, `base.html`, etc. |
+   | Next.js / Nuxt (no plain index.html) | the single root document — `app/layout.tsx`, `pages/_document.tsx`, `app.vue` |
+
+   Never bootstrap code (`main.ts`, `index.tsx`), never a component, never a service, never a
+   route, and never more than one file. A master layout or `index.html` is the one place that
+   renders on every page, which is exactly what a feedback widget needs — putting it anywhere else
+   means it mounts on some pages and not others, and the next person cannot find it.
+
+2. **Touch the fewest files possible** — the HTML above, plus at most one env/config file for the
+   values. If you are about to create a *new* file, stop: unless the host stack genuinely has
    nowhere to put a value, you are building an abstraction nobody asked for. No dedicated
    config/constants file, no service, no provider, no wrapper component, no barrel export.
-2. **Never modify a production config.** `environment.prod.ts`, `.env.production`,
+
+   **That env file must be development-scoped** — `.env.development`, `.env.local`, or whatever
+   your stack loads for its dev configuration *only*. **Never the shared `.env`.** A plain `.env`
+   is loaded for every configuration, production included, so putting the values there enables the
+   widget in production builds without ever touching a file with "prod" in its name. Verified in
+   an Nx + webpack monorepo: values in `apps/<app>/.env` were interpolated into the **production**
+   build's `index.html`; moved to `.env.development`, the production build left the placeholders
+   unsubstituted and the guard correctly evaluated false.
+
+   Check, don't assume: many repos track `.env` in git, so those values also ship to every
+   developer and every CI run.
+3. **Never modify a production config.** `environment.prod.ts`, `.env.production`,
    `appsettings.Production.json` and their equivalents stay exactly as they are. Enabling feedback
    in production is a decision for the user, made deliberately, later.
-3. **Gate on configuration presence, not on a build flag.** The widget mounts when its project key
+4. **Gate on configuration presence, not on a build flag.** The widget mounts when its project key
    and server are set and non-empty, and stays dormant otherwise. That way an environment that
    never mentions Pointer is already correct, with nothing to remove.
-4. **Do not reformat, reorganise, or "improve" the files you touch.** Add your lines and leave.
-5. **Do not read the whole repository.** Look at the files the detection step names, and stop.
+5. **Do not reformat, reorganise, or "improve" the files you touch.** Add your lines and leave.
+6. **Do not read the whole repository.** Look at the files the detection step names, and stop.
    Reading a large monorepo start-to-finish is why this takes minutes instead of seconds.
-6. **In a monorepo, change one app** — the one the user named. Never a shared library, never a
+7. **In a monorepo, change one app** — the one the user named. Never a shared library, never a
    second app.
 
 ## Step 2 — Detect the host stack
@@ -59,6 +83,10 @@ beyond that as out of scope.
 - **Next.js** — `next.config.*`, `app/` or `pages/` → Step 3d.
 - **Create React App / Webpack** — `react-scripts` in `package.json`, or a `webpack.config.*` with
   `DefinePlugin`/`EnvironmentPlugin`; uses the `REACT_APP_` prefix (CRA) or a config-defined name → Step 3f.
+- **Server-rendered / MVC** — a master layout rather than an `index.html`: ASP.NET MVC or Razor
+  Pages (`Views/Shared/_Layout.cshtml`, `Pages/Shared/_Layout.cshtml`), Rails
+  (`app/views/layouts/application.html.erb`), Laravel (`resources/views/layouts/app.blade.php`),
+  Django (`templates/base.html`), Express with a template engine → Step 3g.
 - **API Swagger / OpenAPI docs page** (Swashbuckle/.NET, Scalar, Redoc, swagger-ui) — embed it so
   consumers can comment directly on endpoints → Step 3e.
 
@@ -139,54 +167,50 @@ Inline literal values before `</body>`:
 
 ### 3c. Angular
 
-**Exactly two files change. Do not create any new file.** No `pointer.config.ts`, no service, no
-module, no provider, no wrapper component — a widget that mounts in six lines does not need an
-abstraction layer, and every extra file is one the user has to review, name and maintain.
+**One file changes: `src/index.html`.** Not `main.ts`, not `app.config.ts`, not a service, not a
+new config file — see the injection-target rule in Scope rules. Angular has no `%ENV%` substitution
+in `index.html`, so the values are written literally, inside the same marker block every other
+stack uses:
 
-**Never touch `environment.prod.ts` (or any `environment.*.ts` other than the default
-development one).** Production must stay off until the user turns it on deliberately. Editing a
-prod config to enable a feedback widget is a change to what ships to real customers, and it is not
-yours to make.
+```html
+<!-- pointer-feedback:start -->
+<script>
+  var POINTER_SERVER = '<POINTER_SERVER>';
+  var POINTER_PROJECT = '<project-key>';
+  // Same activation rule as every other stack: a project key and a server that looks like a URL.
+  // Blank either one and the widget does not mount — no build flag, no dead code path.
+  if (POINTER_PROJECT && POINTER_SERVER.indexOf('http') === 0) {
+    var s = document.createElement('script');
+    s.src = POINTER_SERVER + '/pointer.js';
+    s.defer = true;
+    document.head.appendChild(s);
+    var el = document.createElement('pointer-feedback');
+    el.setAttribute('project', POINTER_PROJECT);
+    el.setAttribute('server', POINTER_SERVER);
+    el.setAttribute('environment', '<environment>');
+    document.body.appendChild(el);
+  }
+</script>
+<!-- pointer-feedback:end -->
+```
 
-1. `src/environments/environment.ts` — the **development** file only. Add one field:
+Place it immediately before `</body>`. Keep the `pointer-feedback:start/end` comments — `doctor`
+looks for them to tell an install from a hand-rolled snippet.
 
-   ```ts
-   export const environment = {
-     // …whatever is already here, untouched
-     pointer: { server: '<POINTER_SERVER>', project: '<project-key>', environment: 'local' },
-   };
-   ```
+**Keeping it out of production builds.** Angular ships one `index.html` per build, so this block is
+in every configuration by default. If the user wants it dev-only, the Angular-native way is a
+per-configuration index in `angular.json` — and that is *their* decision to make, not something to
+do unprompted:
 
-2. `src/main.ts` — after `bootstrapApplication(...)` resolves, append:
+```jsonc
+"configurations": { "production": { "index": "src/index.prod.html" } }
+```
 
-   ```ts
-   import { environment } from './environments/environment';
+Mention it; do not do it unless asked. Never edit `environment.prod.ts` or any other production
+config to achieve the same thing.
 
-   // Mounts only when a project key is configured, so any environment that does not define
-   // `pointer` (production included) silently runs without it — no build flag, no dead code path.
-   const pf = (environment as any).pointer;
-   if (pf?.project && pf?.server) {
-     const s = document.createElement('script');
-     s.src = `${pf.server}/pointer.js`;
-     s.async = true;
-     s.onload = () => {
-       const el = document.createElement('pointer-feedback');
-       el.setAttribute('server', pf.server);
-       el.setAttribute('project', pf.project);
-       el.setAttribute('environment', pf.environment ?? 'local');
-       document.body.appendChild(el);
-     };
-     document.head.appendChild(s);
-   }
-   ```
-
-The `pf?.project && pf?.server` guard is the whole activation rule: **present and non-empty means
-on, absent or blank means off.** An environment file that never mentions `pointer` needs no further
-change to stay clean.
-
-**Nx / monorepo:** the paths above are per-application — use `apps/<app>/src/…`, and change only
-the one app the user named. Never wire the widget into a shared lib, and never touch a second app
-because it looked similar.
+**Nx / monorepo:** the path is per-application — `apps/<app>/src/index.html`, for the one app the
+user named. Never a shared lib, never a second app because it looked similar.
 
 ### 3d. Next.js
 
@@ -287,6 +311,44 @@ REACT_APP_POINTER_SERVER=<POINTER_SERVER>     # http://localhost:8090 only for l
 REACT_APP_POINTER_PROJECT=<project-key>
 REACT_APP_POINTER_ENV=staging
 ```
+
+### 3g. Server-rendered / MVC
+
+**The master layout, and nothing else.** One layout renders every page, which is exactly the reach
+a feedback widget needs. Never a per-view partial, never a controller, never a `_ViewImports`, and
+never a second layout "for consistency" — if the app genuinely has two layouts serving different
+areas, ask the user which one they want rather than editing both.
+
+| Framework | The file |
+|---|---|
+| ASP.NET MVC / Razor Pages | `Views/Shared/_Layout.cshtml` or `Pages/Shared/_Layout.cshtml` |
+| Rails | `app/views/layouts/application.html.erb` |
+| Laravel | `resources/views/layouts/app.blade.php` |
+| Django | `templates/base.html` |
+| Express + Handlebars/Pug/EJS | `views/layout.*` |
+
+Put the block immediately before `</body>`, and read the values from the framework's own
+configuration so the gate is server-side — a page that is never rendered with a project key never
+ships the script at all. Razor, as the most common case:
+
+```cshtml
+@* appsettings.json:  "Pointer": { "Enabled": true, "Server": "...", "Project": "...", "Environment": "staging" } *@
+@inject IConfiguration Config
+@if (Config.GetValue<bool>("Pointer:Enabled") && !string.IsNullOrWhiteSpace(Config["Pointer:Project"]))
+{
+    <!-- pointer-feedback:start -->
+    <script src="@Config["Pointer:Server"]/pointer.js" defer></script>
+    <pointer-feedback
+        project="@Config["Pointer:Project"]"
+        server="@Config["Pointer:Server"]"
+        environment="@(Config["Pointer:Environment"] ?? "staging")"></pointer-feedback>
+    <!-- pointer-feedback:end -->
+}
+```
+
+Add the `Pointer` section to `appsettings.Development.json` only. Production is enabled by the user
+later, deliberately, via `appsettings.Production.json` or `Pointer__*` environment variables — see
+Scope rule 3.
 
 ## Step 4 — Create the AI apply-tool credentials  ⚠️ do not skip
 
