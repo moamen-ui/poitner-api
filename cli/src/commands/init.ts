@@ -1,4 +1,4 @@
-import { ask, select } from '../prompt.js';
+import { ask, select, multiSelect, closePrompts } from '../prompt.js';
 import { BUILD_DEFAULT_SERVER, BUILD_CLI_VERSION } from '../build-constants.js';
 import { readConfig, writeConfig, writeCredentials, upsertGitignore } from '../config.js';
 import { detectStack, detectAppUrl, extractTokens } from '../detect.js';
@@ -119,6 +119,26 @@ export async function initCommand(cwd: string, options: Record<string, string | 
     await writeCredentials(cwd, key);
     await upsertGitignore(cwd, product);
 
+    // Detected BEFORE the questions, not after them.
+    //
+    // This used to run after project, environment and tool had all been chosen, so a repo whose
+    // stack cannot be auto-injected (an Nx monorepo, say) answered five questions and only then
+    // learned that the widget would not be mounted. Knowing up front lets us say so while the
+    // answers still have a visible purpose — the project and key are what the skill needs in order
+    // to finish the job, and they are written to .pointer/config.json either way.
+    const appInfo = await detectStack(cwd);
+    const canInject = appInfo.kind === 'vite' || appInfo.kind === 'static';
+    if (!isJson && !isYes) {
+        console.log(`\nStack: ${appInfo.kind}${appInfo.evidence.length ? ` (${appInfo.evidence.join(', ')})` : ''}`);
+        if (!canInject && !options['no-inject']) {
+            console.log(
+                `\x1b[33mHeads up:\x1b[0m automatic widget injection isn't supported for ${appInfo.kind} yet.\n` +
+                `Everything else still applies — the questions below set up your project, key and skills,\n` +
+                `and the pointer-init skill uses them to mount the widget for you afterwards.\n`,
+            );
+        }
+    }
+
     let project = options['project'] as string;
     let create = options['create'] as string;
     let finalProjectKey = project || '';
@@ -189,8 +209,6 @@ export async function initCommand(cwd: string, options: Record<string, string | 
         env = await select('Environment', ['local', 'staging', 'production'], env);
     }
 
-    const appInfo = await detectStack(cwd);
-    
     let appUrl = options['app-url'] as string | undefined;
     let noAppUrl = options['no-app-url'] as boolean;
     let source = '';
@@ -213,6 +231,8 @@ export async function initCommand(cwd: string, options: Record<string, string | 
     }
 
     let tool = options['tool'] as string;
+    /** Every tool to install skills for; `tool` remains the primary one recorded in config. */
+    let tools: string[] = tool ? [tool] : [];
     if (!tool) {
         // auto-detect
         if (process.env.CLAUDECODE || process.env.CLAUDE_CODE_ENTRYPOINT) tool = 'claude-code';
@@ -223,9 +243,28 @@ export async function initCommand(cwd: string, options: Record<string, string | 
         else tool = isYes ? 'other' : 'claude-code';
         
         if (!isYes && !options['tool']) {
-            tool = await select('AI tool', ['claude-code', 'cursor', 'windsurf', 'opencode', 'antigravity', 'other'], tool);
+            // Multi-select: a repo is rarely worked on through exactly one agent, and installing a
+            // second tool's skills later means re-running init. `all` is a row rather than a
+            // keystroke people have to discover.
+            const ALL = 'all of them';
+            const catalogue = ['claude-code', 'cursor', 'windsurf', 'opencode', 'antigravity', 'other'];
+            const picked = await multiSelect(
+                'Which AI tools work in this repo?',
+                [ALL, ...catalogue],
+                [tool],
+            );
+            tools = picked.includes(ALL) ? catalogue : picked;
+            // `aiTool` stays a single value in config and on the wire: every consumer of it —
+            // doctor, apply, the server's stack record — predates multi-tool and reads a string.
+            // The first pick is the primary; the rest still get their skills installed below.
+            tool = tools[0] ?? tool;
         }
     }
+    if (tools.length === 0) tools = [tool];
+
+    // Questioning is over; hand stdin back. The shared interface would otherwise keep the event
+    // loop alive, which only goes unnoticed because every exit path here calls process.exit.
+    closePrompts();
     
     if (!isJson) console.log(`Detecting your stack... -> ${appInfo.kind} (${appInfo.evidence.join(', ')})`);
 
@@ -280,9 +319,15 @@ export async function initCommand(cwd: string, options: Record<string, string | 
     }
 
     if (!options['no-skills']) {
-        if (!isJson) console.log('Installing AI skills');
+        if (!isJson) console.log(`Installing AI skills for ${tools.join(', ')}`);
         const skillsDir = options['skills-dir'] as string;
-        const installed = await installSkills(server as string, tool, cwd, skillsDir);
+        // One pass per selected tool. A --skills-dir override names a single directory, so it can
+        // only apply to the primary tool — installing every tool into it would have them overwrite
+        // each other's files.
+        const installed: string[] = [];
+        for (const t of tools) {
+            installed.push(...(await installSkills(server as string, t, cwd, t === tool ? skillsDir : undefined)));
+        }
         filesMod.push(...installed);
         // Kept for the human summary below: "installed" does not tell anyone WHAT was written into
         // their repository, and these are files they will want to find, read and commit.

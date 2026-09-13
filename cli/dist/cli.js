@@ -15,7 +15,7 @@ var init_build_constants = __esm({
   "src/build-constants.ts"() {
     "use strict";
     BUILD_DEFAULT_SERVER = true ? "https://api.pointer.moamen.work" : "https://api.pointer.moamen.work";
-    BUILD_CLI_VERSION = true ? "0.1.2" : "0.0.0-dev";
+    BUILD_CLI_VERSION = true ? "0.1.3" : "0.0.0-dev";
   }
 });
 
@@ -866,6 +866,7 @@ var init_deployed = __esm({
 
 // src/prompt.ts
 import * as readline from "node:readline/promises";
+import { emitKeypressEvents } from "node:readline";
 import { Writable } from "node:stream";
 function assertInteractive() {
   if (process.stdin.isTTY)
@@ -875,27 +876,52 @@ function assertInteractive() {
   );
   process.exit(2);
 }
+var muted = false;
+var gatedStdout = new Writable({
+  write(chunk, encoding, callback) {
+    if (!muted)
+      process.stdout.write(chunk, encoding);
+    callback();
+  }
+});
+var shared = null;
+function iface() {
+  if (!shared) {
+    shared = readline.createInterface({
+      input: process.stdin,
+      output: gatedStdout,
+      terminal: true
+    });
+    shared.on("SIGINT", () => {
+      process.stdout.write("\n");
+      process.exit(130);
+    });
+  }
+  return shared;
+}
+function closePrompts() {
+  shared?.close();
+  shared = null;
+}
 async function ask(question, options = {}) {
   assertInteractive();
-  let muted = false;
-  const mutableStdout = new Writable({
-    write: function(chunk, encoding, callback) {
-      if (!muted)
-        process.stdout.write(chunk, encoding);
-      callback();
-    }
-  });
-  const rl = readline.createInterface({
-    input: process.stdin,
-    output: mutableStdout,
-    terminal: true
-  });
+  const rl = iface();
   const displayQuestion = options.default ? `${question} [${options.default}]: ` : `${question}: `;
   while (true) {
-    process.stdout.write(displayQuestion);
+    const pending = rl.question(displayQuestion);
     if (options.secret)
       muted = true;
-    const answer = await rl.question("");
+    let answer;
+    try {
+      answer = await pending;
+    } catch (err) {
+      muted = false;
+      if (err?.code === "ABORT_ERR") {
+        process.stdout.write("\nCancelled \u2014 nothing was written.\n");
+        process.exit(130);
+      }
+      throw err;
+    }
     muted = false;
     if (options.secret)
       process.stdout.write("\n");
@@ -907,36 +933,96 @@ async function ask(question, options = {}) {
         continue;
       }
     }
-    rl.close();
     return finalAnswer;
   }
 }
-async function select(question, items, defaultItem) {
+async function menu(question, items, cursorStart, opts) {
   assertInteractive();
-  const rl = readline.createInterface({
-    input: process.stdin,
-    output: process.stdout,
-    terminal: true
-  });
-  const defaultLabel = defaultItem ? ` [${defaultItem}]` : "";
-  console.log(`${question}${defaultLabel}`);
-  items.forEach((item, i) => {
-    console.log(`  ${i + 1}) ${item}`);
-  });
-  while (true) {
-    const answer = await rl.question("> ");
-    const finalAnswer = answer.trim() || defaultItem || items[0];
-    const asNum = parseInt(finalAnswer, 10);
-    if (!isNaN(asNum) && asNum >= 1 && asNum <= items.length) {
-      rl.close();
-      return items[asNum - 1];
-    }
-    if (items.includes(finalAnswer)) {
-      rl.close();
-      return finalAnswer;
-    }
-    console.log("\x1B[31mInvalid selection\x1B[0m");
+  const rl = iface();
+  const selected = opts.selected ?? /* @__PURE__ */ new Set();
+  let cursor = Math.max(0, Math.min(cursorStart, items.length - 1));
+  const hint = opts.hint ?? (opts.multi ? "\x1B[2m  \u2191/\u2193 move \xB7 space toggle \xB7 a all \xB7 enter confirm\x1B[0m" : "\x1B[2m  \u2191/\u2193 move \xB7 enter select\x1B[0m");
+  const render = (first) => {
+    if (!first)
+      process.stdout.write(`\x1B[${items.length + 1}A`);
+    process.stdout.write("\x1B[0J");
+    process.stdout.write(`${hint}
+`);
+    items.forEach((item, i) => {
+      const pointer = i === cursor ? "\x1B[36m\u276F\x1B[0m" : " ";
+      const box = opts.multi ? selected.has(i) ? "\x1B[36m[x]\x1B[0m " : "[ ] " : "";
+      const label = i === cursor ? `\x1B[36m${item}\x1B[0m` : item;
+      process.stdout.write(`${pointer} ${box}${label}
+`);
+    });
+  };
+  console.log(question);
+  rl.pause();
+  emitKeypressEvents(process.stdin);
+  const wasRaw = process.stdin.isRaw ?? false;
+  if (process.stdin.setRawMode)
+    process.stdin.setRawMode(true);
+  process.stdin.resume();
+  render(true);
+  try {
+    return await new Promise((resolve4) => {
+      const onKey = (_str, key) => {
+        if (key.ctrl && key.name === "c") {
+          cleanup();
+          process.stdout.write("\n");
+          process.exit(130);
+        }
+        if (key.name === "up" || key.name === "k") {
+          cursor = (cursor - 1 + items.length) % items.length;
+          render(false);
+        } else if (key.name === "down" || key.name === "j") {
+          cursor = (cursor + 1) % items.length;
+          render(false);
+        } else if (opts.multi && (key.name === "space" || key.sequence === " ")) {
+          selected.has(cursor) ? selected.delete(cursor) : selected.add(cursor);
+          render(false);
+        } else if (opts.multi && key.name === "a") {
+          if (selected.size === items.length)
+            selected.clear();
+          else
+            items.forEach((_, i) => selected.add(i));
+          render(false);
+        } else if (key.name === "return" || key.name === "enter") {
+          if (opts.multi && selected.size === 0) {
+            selected.add(cursor);
+          }
+          cleanup();
+          resolve4(opts.multi ? [...selected].sort((a, b) => a - b) : [cursor]);
+        }
+      };
+      const cleanup = () => {
+        process.stdin.off("keypress", onKey);
+        if (process.stdin.setRawMode)
+          process.stdin.setRawMode(wasRaw);
+      };
+      process.stdin.on("keypress", onKey);
+    });
+  } finally {
+    if (process.stdin.setRawMode)
+      process.stdin.setRawMode(wasRaw);
+    rl.resume();
   }
+}
+async function select(question, items, defaultItem) {
+  const start = defaultItem ? Math.max(0, items.indexOf(defaultItem)) : 0;
+  const [chosen] = await menu(question, items, start, {});
+  return items[chosen];
+}
+async function multiSelect(question, items, defaults = []) {
+  const selected = /* @__PURE__ */ new Set();
+  defaults.forEach((d) => {
+    const i = items.indexOf(d);
+    if (i >= 0)
+      selected.add(i);
+  });
+  const start = selected.size ? Math.min(...selected) : 0;
+  const chosen = await menu(question, items, start, { selected, multi: true });
+  return chosen.map((i) => items[i]);
 }
 
 // src/commands/init.ts
@@ -2425,6 +2511,20 @@ async function initCommand(cwd2, options = {}) {
   }
   await writeCredentials(cwd2, key);
   await upsertGitignore(cwd2, product);
+  const appInfo = await detectStack(cwd2);
+  const canInject = appInfo.kind === "vite" || appInfo.kind === "static";
+  if (!isJson && !isYes) {
+    console.log(`
+Stack: ${appInfo.kind}${appInfo.evidence.length ? ` (${appInfo.evidence.join(", ")})` : ""}`);
+    if (!canInject && !options["no-inject"]) {
+      console.log(
+        `\x1B[33mHeads up:\x1B[0m automatic widget injection isn't supported for ${appInfo.kind} yet.
+Everything else still applies \u2014 the questions below set up your project, key and skills,
+and the pointer-init skill uses them to mount the widget for you afterwards.
+`
+      );
+    }
+  }
   let project = options["project"];
   let create = options["create"];
   let finalProjectKey = project || "";
@@ -2484,7 +2584,6 @@ async function initCommand(cwd2, options = {}) {
   if (!isYes && !options["environment"]) {
     env = await select("Environment", ["local", "staging", "production"], env);
   }
-  const appInfo = await detectStack(cwd2);
   let appUrl = options["app-url"];
   let noAppUrl = options["no-app-url"];
   let source = "";
@@ -2502,6 +2601,7 @@ async function initCommand(cwd2, options = {}) {
   if (appUrl && env !== "local") {
   }
   let tool = options["tool"];
+  let tools = tool ? [tool] : [];
   if (!tool) {
     if (process.env.CLAUDECODE || process.env.CLAUDE_CODE_ENTRYPOINT)
       tool = "claude-code";
@@ -2516,9 +2616,20 @@ async function initCommand(cwd2, options = {}) {
     else
       tool = isYes ? "other" : "claude-code";
     if (!isYes && !options["tool"]) {
-      tool = await select("AI tool", ["claude-code", "cursor", "windsurf", "opencode", "antigravity", "other"], tool);
+      const ALL = "all of them";
+      const catalogue = ["claude-code", "cursor", "windsurf", "opencode", "antigravity", "other"];
+      const picked = await multiSelect(
+        "Which AI tools work in this repo?",
+        [ALL, ...catalogue],
+        [tool]
+      );
+      tools = picked.includes(ALL) ? catalogue : picked;
+      tool = tools[0] ?? tool;
     }
   }
+  if (tools.length === 0)
+    tools = [tool];
+  closePrompts();
   if (!isJson)
     console.log(`Detecting your stack... -> ${appInfo.kind} (${appInfo.evidence.join(", ")})`);
   let injected = false;
@@ -2566,9 +2677,12 @@ async function initCommand(cwd2, options = {}) {
   }
   if (!options["no-skills"]) {
     if (!isJson)
-      console.log("Installing AI skills");
+      console.log(`Installing AI skills for ${tools.join(", ")}`);
     const skillsDir = options["skills-dir"];
-    const installed = await installSkills(server, tool, cwd2, skillsDir);
+    const installed = [];
+    for (const t of tools) {
+      installed.push(...await installSkills(server, t, cwd2, t === tool ? skillsDir : void 0));
+    }
     filesMod.push(...installed);
     skillFiles = installed.filter((f) => f.includes("SKILL.md") || f.endsWith(".md"));
   }
