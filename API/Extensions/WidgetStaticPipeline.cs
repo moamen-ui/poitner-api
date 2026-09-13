@@ -27,6 +27,7 @@ public static class WidgetStaticPipeline
                 {
                     ctx.Response.StatusCode = StatusCodes.Status404NotFound;
                     ctx.Response.Headers["X-Pointer-Widget-Version-Mismatch"] = "unknown";
+                    AllowCrossOriginRead(ctx);
                     return;
                 }
 
@@ -51,10 +52,31 @@ public static class WidgetStaticPipeline
                 // Unknown / pruned / malformed v
                 ctx.Response.StatusCode = StatusCodes.Status404NotFound;
                 ctx.Response.Headers["X-Pointer-Widget-Version-Mismatch"] = widgetInfo.CurrentHash;
+                AllowCrossOriginRead(ctx);
                 return;
             }
         }
         await next();
+    }
+
+
+    /// <summary>
+    /// CORS + header exposure for a widget 404.
+    /// </summary>
+    /// <remarks>
+    /// A pinned install loads the widget with `crossorigin="anonymous"` (SRI requires it). Without
+    /// Access-Control-Allow-Origin on the 404, the browser does not deliver a readable 404 to the
+    /// page at all — it reports an opaque network failure, and X-Pointer-Widget-Version-Mismatch,
+    /// which exists precisely so a pinned client can discover the build it should move to, is
+    /// unreadable by the only kind of client that needs it.
+    ///
+    /// Expose-Headers is the other half: a cross-origin response only surfaces the safelisted
+    /// headers to script unless it names the rest.
+    /// </remarks>
+    private static void AllowCrossOriginRead(HttpContext ctx)
+    {
+        ctx.Response.Headers["Access-Control-Allow-Origin"] = "*";
+        ctx.Response.Headers["Access-Control-Expose-Headers"] = "X-Pointer-Widget-Version-Mismatch";
     }
 
     public static void PrepareStaticResponse(StaticFileResponseContext ctx)

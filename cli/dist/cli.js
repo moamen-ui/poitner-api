@@ -1162,6 +1162,9 @@ async function injectStatic(cwd2, htmlPath, cfg) {
     document.body.appendChild(el);
   }
 </script>
+<!-- pointer-feedback:end -->` : cfg.pin ? `<!-- pointer-feedback:start -->
+<script src="${cfg.server}/pointer.js?v=${cfg.pin.version}" integrity="${cfg.pin.integrity}" crossorigin="anonymous" defer></script>
+<pointer-feedback project="${cfg.key}" server="${cfg.server}" environment="${cfg.environment}" source-attr="data-component-source"></pointer-feedback>
 <!-- pointer-feedback:end -->` : `<!-- pointer-feedback:start -->
 <script src="${cfg.server}/pointer.js" defer></script>
 <pointer-feedback project="${cfg.key}" server="${cfg.server}" environment="${cfg.environment}" source-attr="data-component-source"></pointer-feedback>
@@ -2515,7 +2518,24 @@ async function initCommand(cwd2, options = {}) {
       if (!isJson)
         console.log(`Injected widget into ${filesMod.join(", ")}`);
     } else if (appInfo.kind === "static") {
-      const htmlPath = await injectStatic(cwd2, options["html"], { server, key: finalProjectKey, environment: env });
+      let pin = null;
+      if (options["pin"] === true) {
+        try {
+          const manifest = await api(server, "/pointer.version.json");
+          const version = manifest?.hash;
+          const integrity = manifest?.files?.["pointer.js"]?.integrity;
+          if (!version || !integrity) {
+            throw new Error("the server published no hash/integrity for pointer.js");
+          }
+          pin = { version, integrity };
+        } catch (err) {
+          console.error(
+            `Could not pin the widget: ${err?.message ?? err}. Re-run without --pin to install the floating build.`
+          );
+          process.exit(1);
+        }
+      }
+      const htmlPath = await injectStatic(cwd2, options["html"], { server, key: finalProjectKey, environment: env, pin });
       filesMod = [htmlPath];
       injected = true;
       if (!isJson)
@@ -10060,6 +10080,7 @@ function parseArgs(args) {
     "no-design",
     "refresh-stack",
     "from-source",
+    "pin",
     "yes",
     "json",
     "help",

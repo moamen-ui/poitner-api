@@ -17,6 +17,7 @@ function parseArgs(args: string[]) {
         'no-design',
         'refresh-stack',
         'from-source',
+        'pin',
         'yes',
         'json',
         'help',

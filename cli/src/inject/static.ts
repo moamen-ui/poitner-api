@@ -12,7 +12,21 @@ import { join } from 'node:path';
 export async function injectStatic(
     cwd: string,
     htmlPath: string | undefined,
-    cfg: { server: string; key: string; environment: string; envGuarded?: boolean },
+    cfg: {
+        server: string;
+        key: string;
+        environment: string;
+        envGuarded?: boolean;
+        /**
+         * Pin the widget to one immutable build, with Subresource Integrity.
+         *
+         * Unpinned, `/pointer.js` is whatever the server is serving today — convenient, and the
+         * right default for most installs. Pinned, the page loads exactly the bytes it was tested
+         * against and the browser refuses anything else, which is what a site needs when a
+         * third-party script sits on a page handling real users.
+         */
+        pin?: { version: string; integrity: string } | null;
+    },
 ): Promise<string> {
     const p = htmlPath || join(cwd, 'index.html');
     let content = await fs.readFile(p, 'utf8').catch(() => '');
@@ -37,6 +51,11 @@ export async function injectStatic(
     document.body.appendChild(el);
   }
 </script>
+<!-- pointer-feedback:end -->`
+        : cfg.pin
+        ? `<!-- pointer-feedback:start -->
+<script src="${cfg.server}/pointer.js?v=${cfg.pin.version}" integrity="${cfg.pin.integrity}" crossorigin="anonymous" defer></script>
+<pointer-feedback project="${cfg.key}" server="${cfg.server}" environment="${cfg.environment}" source-attr="data-component-source"></pointer-feedback>
 <!-- pointer-feedback:end -->`
         : `<!-- pointer-feedback:start -->
 <script src="${cfg.server}/pointer.js" defer></script>
