@@ -254,6 +254,11 @@ test('R1-04-03 ⛓ — doctor-detects-tracked-credentials', async () => {
 });
 
 test('R1-04-04 ⛓ — min-version gate (Cli__MinVersion=99.0.0)', async () => {
+  // Two container restarts at ~40s each (the dev image rebuilds on start), plus the CLI runs
+  // between them. The 30s default cannot cover one, and the failure is worse than slow: the test
+  // dies with Cli__MinVersion=99.0.0 still applied, so every later CLI call in the phase is
+  // refused by a server demanding a version no CLI has — an error that points anywhere but here.
+  test.setTimeout(600_000);
   test.skip(
     !isDestructiveRun,
     'Scenario R1-04-04 restarts the api container — runs only in nightly/upgrade phase'

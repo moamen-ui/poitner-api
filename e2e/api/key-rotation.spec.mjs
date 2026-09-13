@@ -48,6 +48,12 @@ const isDestructiveRun = process.env.E2E_DESTRUCTIVE === '1';
 
 test('R1-06-04 — reveal round-trip + encryption-key rotation', async () => {
   test.skip(!isDestructiveRun, 'restarts the api container — runs only in the isolated upgrade/nightly phase');
+  // Three container restarts at ~40s each (the dev image rebuilds on start). The 30s default
+  // cannot cover one, and the failure is worse than slow: the test dies mid-rotation holding the
+  // rotated key in state/compose.restart-override.yml, so every LATER run starts against a key
+  // that cannot decrypt the seeded keys and fails with "the encryption key changed" — a message
+  // that points at the product rather than at a timeout three runs ago.
+  test.setTimeout(600_000);
   const start = Date.now();
   const credentials = getCredentials();
   const deputyEmail = credentials?.deputy?.email || USERS.deputy.email;
