@@ -139,3 +139,24 @@
 .pf-menu-item:hover {
   background: v.token('surface-muted');
 }
+// Per-user "Add comment" shortcut row (label + rebind + reset buttons).
+.pf-menu-shortcut {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  font-size: 12px;
+}
+.pf-menu-shortcut-label {
+  flex: 1;
+  color: inherit;
+}
+// Extension-auth note (pf-caption supplies the 12px muted text look).
+.pf-menu-note {
+  padding: 8px 12px;
+}
+// Action button that grows to fill its row (popover Add, inline-edit Save).
+.pf-btn.pf-btn-fill {
+  flex: 1;
+  justify-content: center;
+}

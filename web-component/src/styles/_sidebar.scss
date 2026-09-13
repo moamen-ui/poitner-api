@@ -105,3 +105,44 @@
   text-align: center;
   padding: 32px 12px;
 }
+
+// Sidebar head meta — project name + environment identity, left of the refresh button.
+// min-width:0 lets the project name truncate inside the flex row instead of pushing it out.
+.pf-sidebar-meta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+// Project name — truncate, never push the refresh button off. (pf-caption supplies the
+// 12px muted text look.)
+.pf-project-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 150px;
+}
+// Fixed-environment label — shown when the install pinned the env, replacing the switcher.
+.pf-env-label {
+  text-transform: capitalize;
+}
+// Compact environment switcher — narrower than a full-width .pf-input. Doubled selector
+// so it out-specifies .pf-input's width:100% (defined in a later partial).
+.pf-input.pf-env-select {
+  width: auto;
+  padding: 4px 8px;
+}
+// Commit-style host row — starts hidden, revealed by renderCommitStyleControl() when the
+// caller may edit project settings.
+.pf-commit-style {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 6px;
+}
+// Doubled selector, same reason as .pf-env-select above.
+.pf-input.pf-commit-style-select {
+  width: auto;
+  padding: 2px 6px;
+  font-size: 12px;
+}
