@@ -2,10 +2,38 @@
 
 > Brainstormed 2026-09-10; reviewed 2026-09-11 in a three-expert meeting (Claude · GLM-5.2 · Gemini
 > 3.1 Pro — transcripts in [`meetings/`](meetings/), outcome in
-> [`meetings/11-final-decisions.md`](meetings/11-final-decisions.md)). Status: **plan only, nothing
-> implemented.** Implementer-grade specs live in [`execution/`](execution/).
+> [`meetings/11-final-decisions.md`](meetings/11-final-decisions.md)).
+> Implementer-grade specs live in [`execution/`](execution/).
 >
 > Item numbers §1–§49 are stable identifiers used across all documents — never renumber.
+
+## Status — 2026-09-13
+
+**Releases 1, 2 and 3 are built and verified.** Current state, from the suite rather than from
+memory (`node e2e/scripts/coverage.mjs`):
+
+| Release | Items | Scenarios | State |
+|---|---|---|---|
+| R1 — foundations | R1-01 … R1-10 | 58/58 | shipped |
+| R2 — the apply loop | R2-00 … R2-07 | 52/52 | shipped |
+| R3 — production hardening | R3-01 … R3-06 | 35/35 | shipped |
+
+**145/145 automatable scenarios**, plus 7 that are manual by design (R1-07 drives GitHub Actions
+rather than the stack; R3-05-02 is a Lighthouse audit through an MCP tool). Verified alongside:
+569 .NET tests, 109 CLI tests, and a two-image upgrade rehearsal that seeds a database through an
+image built from a pre-migration commit and then upgrades onto it.
+
+Two things this table deliberately does not hide:
+
+- **R2-00-06** (white-label: widget text carries no brand leak) is red. It is a two-browser-context
+  sequencing problem in the scenario, not the product; the guarantee itself is covered by
+  R2-00-08, which passes.
+- **The CLI is not published to npm.** `npx pointer-feedback` resolves only against the local
+  Verdaccio registry the nightly stack runs — a deliberate decision, not an oversight. Installs go
+  through `install.sh` and `.pointer/pointer.sh` today.
+
+Per-item status lives with each spec in [`execution/`](execution/); per-scenario status is in
+[`testing/`](testing/) and is regenerated on every suite run.
 
 ## Context
 
