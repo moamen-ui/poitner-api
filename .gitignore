@@ -15,3 +15,7 @@ node_modules/
 /clients/
 openapi.json
 .claude/worktrees/
+
+# Delegation briefs. Written into a worktree when handing work to another agent; scratch by
+# definition, and one was committed by an `add -A` before this line existed.
+TASK.md
