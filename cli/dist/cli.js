@@ -867,7 +867,16 @@ var init_deployed = __esm({
 // src/prompt.ts
 import * as readline from "node:readline/promises";
 import { Writable } from "node:stream";
+function assertInteractive() {
+  if (process.stdin.isTTY)
+    return;
+  console.error(
+    "\x1B[31mThis command is interactive, but stdin is not a terminal.\x1B[0m\nPiped input, CI, and some editor-embedded shells have no TTY, so there is no way to ask you anything.\n\nEither run it in a real terminal, or pass every answer as a flag:\n  npx -y pointer-feedback init --server <url> --key ptr_... --project <key> --environment local --yes\n\nRun 'npx -y pointer-feedback init --help' for the full list of flags."
+  );
+  process.exit(2);
+}
 async function ask(question, options = {}) {
+  assertInteractive();
   let muted = false;
   const mutableStdout = new Writable({
     write: function(chunk, encoding, callback) {
@@ -903,6 +912,7 @@ async function ask(question, options = {}) {
   }
 }
 async function select(question, items, defaultItem) {
+  assertInteractive();
   const rl = readline.createInterface({
     input: process.stdin,
     output: process.stdout,

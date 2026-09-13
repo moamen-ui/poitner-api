@@ -106,6 +106,27 @@ test('init --yes without --key exits 2', () => withTempDir(async (dir) => {
   }
 }));
 
+// `exec` gives the child a pipe for stdin, never a TTY — which is exactly the condition under test,
+// and the same one a user hits from CI, a pipe, or an editor-embedded shell.
+//
+// Before the guard this exited 0 having written nothing: readline's question() never resolves on
+// EOF, so the event loop drained and node reported success. A silent no-op that claims to have
+// worked is worse than any crash, because there is nothing to search for when it happens.
+test('interactive init without a TTY refuses loudly instead of exiting 0', () => withTempDir(async (dir) => {
+  try {
+    await execAsync(`node ${cliPath} init --server ${serverUrl}`, { cwd: dir });
+    assert.fail('a non-interactive init must not report success');
+  } catch (err: any) {
+    assert.strictEqual(err.code, 2, 'must exit 2 (usage error), not 0');
+    const out = err.stdout + err.stderr;
+    assert.match(out, /stdin is not a terminal/i, 'must say why it cannot continue');
+    assert.match(out, /--yes/, 'must point at the non-interactive escape hatch');
+  }
+
+  // And it must not have half-written an install on its way out.
+  await assert.rejects(fs.stat(path.join(dir, '.pointer')), 'a refused init must leave no .pointer/');
+}));
+
 test('init --yes with bad key exits 3', () => withTempDir(async (dir) => {
   try {
     await execAsync(`node ${cliPath} init --yes --key ptr_bogus --create "My App" --server ${serverUrl}`, { cwd: dir });

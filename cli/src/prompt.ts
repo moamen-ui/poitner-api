@@ -1,7 +1,28 @@
 import * as readline from 'node:readline/promises';
 import { Writable } from 'node:stream';
 
+/**
+ * Refuses to prompt when there is no terminal to prompt on.
+ *
+ * Without this the failure is silent and looks like success: `rl.question()` never resolves on
+ * EOF, so the event loop simply drains and node exits 0 having written nothing. A user running
+ * `init` from CI, a pipe, or an editor-embedded shell sees the first prompt, gets their shell back,
+ * and has no way to tell that nothing happened — the exit code says it worked.
+ */
+function assertInteractive(): void {
+    if (process.stdin.isTTY) return;
+    console.error(
+        '\x1b[31mThis command is interactive, but stdin is not a terminal.\x1b[0m\n' +
+        'Piped input, CI, and some editor-embedded shells have no TTY, so there is no way to ask you anything.\n\n' +
+        'Either run it in a real terminal, or pass every answer as a flag:\n' +
+        '  npx -y pointer-feedback init --server <url> --key ptr_... --project <key> --environment local --yes\n\n' +
+        "Run 'npx -y pointer-feedback init --help' for the full list of flags."
+    );
+    process.exit(2);
+}
+
 export async function ask(question: string, options: { default?: string, validate?: (val: string) => string | undefined, secret?: boolean } = {}): Promise<string> {
+    assertInteractive();
     let muted = false;
     const mutableStdout = new Writable({
         write: function(chunk, encoding, callback) {
@@ -42,6 +63,7 @@ export async function ask(question: string, options: { default?: string, validat
 }
 
 export async function select(question: string, items: string[], defaultItem?: string): Promise<string> {
+    assertInteractive();
     const rl = readline.createInterface({
         input: process.stdin,
         output: process.stdout,
