@@ -103,6 +103,10 @@ public class OnDiskContractTests
         "data-step",
         "data-brand-logo",
         "data-brand-name",
+        // Toolbar position, moved off an inline style attribute so the widget runs under a host
+        // page's strict Content-Security-Policy. Shadow-DOM internal; no host reads them.
+        "data-pf-left",
+        "data-pf-top",
     };
 
     private static readonly string[] StorageKeys =

@@ -22,7 +22,11 @@ public static class BrandingDefaults
     public const string PrimaryColor = "#2563eb";
     public const string UrlApp       = "https://app.pointer.moamen.work";
     public const string UrlDemo      = "https://demo.pointer.moamen.work";
-    public const string UrlDocs      = "https://github.com/moamen-ui/poitner-api#readme";
+    // The hosted documentation site, not the repository README. This defaulted to GitHub from
+    // before /docs/ existed, and because the landing page rewrites every [data-brand-docs] link to
+    // whatever this resolves to, the default quietly sent visitors to a README instead of the
+    // documentation that ships with the product.
+    public const string UrlDocs      = "https://pointer.moamen.work/docs/";
     public const string UrlLanding   = "https://pointer.moamen.work";
     public const string ExtensionZipUrl = "https://pointer.moamen.work/pointer-extension.zip";
 }

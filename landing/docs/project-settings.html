@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" class="no-js">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
@@ -9,34 +9,58 @@
   <link rel="stylesheet" href="assets/docs.css" />
 </head>
 <body>
-  <nav class="nav">
-    <div class="wrap">
+  <a class="skip" href="#doc">Skip to content</a>
+  <div class="shell">
+    <aside class="sidebar">
       <a href="../index.html" class="brand">
-        <img src="../assets/dog-mascot.png" alt="Pointer logo" />
+        <img src="../assets/dog-mascot.png" alt="" />
         <span>Pointer Docs</span>
       </a>
-      <div class="nav-links">
+      <button class="nav-btn" type="button" aria-expanded="false" aria-controls="docs-nav">Menu</button>
+      <nav class="nav-links" id="docs-nav" aria-label="Documentation">
       <!-- nav:start -->
-        <a href="index.html">All docs</a>
-        <a href="install.html">Install</a>
-        <a href="apply.html">Apply</a>
-        <a href="source-mapping.html">Source Mapping</a>
-        <a href="deployments.html">Deployments</a>
-        <a href="mcp.html">MCP Server</a>
-        <a href="api-keys.html">API Keys</a>
-        <a href="project-settings.html" class="active">Project Settings</a>
-        <a href="workspaces.html">Workspaces</a>
-        <a href="pinning.html">Widget Pinning</a>
-        <a href="notifications.html">Notifications &amp; Verification</a>
-        <a href="../index.html">Home</a>
+        <div class="nav-group">
+          <h2>Documentation</h2>
+          <a href="index.html">All docs</a>
+          <a href="../index.html">Home</a>
+        </div>
+        <div class="nav-group">
+          <h2>Overview</h2>
+          <a href="../index.html">Product overview</a>
+        </div>
+        <div class="nav-group">
+          <h2>Getting started</h2>
+          <a href="install.html">Install</a>
+        </div>
+        <div class="nav-group">
+          <h2>Workflow</h2>
+          <a href="apply.html">Apply</a>
+          <a href="source-mapping.html">Source Mapping</a>
+          <a href="deployments.html">Deployments</a>
+          <a href="notifications.html">Notifications &amp; Verification</a>
+        </div>
+        <div class="nav-group">
+          <h2>Integration</h2>
+          <a href="mcp.html">MCP Server</a>
+        </div>
+        <div class="nav-group">
+          <h2>Configuration</h2>
+          <a href="api-keys.html">API Keys</a>
+          <a href="project-settings.html" class="active" aria-current="page">Project Settings</a>
+          <a href="workspaces.html">Workspaces</a>
+          <a href="pinning.html">Widget Pinning</a>
+        </div>
+        <div class="nav-group">
+          <h2>Privacy &amp; self-hosting</h2>
+          <a href="../data.html">Data &amp; self-hosting</a>
+        </div>
       <!-- nav:end -->
-      </div>
-    </div>
-  </nav>
+      </nav>
+    </aside>
 
-  <main class="content">
-    <div class="wrap">
-      <div class="badge">Configuration &bull; Project Controls</div>
+    <main class="content" id="doc">
+      <div class="wrap">
+
       <h1>Project Settings: Origins &amp; Environments</h1>
       <p class="lead">
         This document answers two critical administrative questions: <em>“How do I stop comments arriving from somewhere I don’t control?”</em> and <em>“Where do I tell Pointer my app lives?”</em>
@@ -186,20 +210,14 @@
           </p>
         </div>
       </section>
-    </div>
-  </main>
-
-  <footer class="footer">
-    <div class="wrap footer-grid">
-      <span>Pointer Documentation &bull; Release 1</span>
-      <div class="nav-links">
-        <a href="install.html">Install</a>
-        <a href="api-keys.html">API Keys</a>
-        <a href="project-settings.html">Project Settings</a>
-        <a href="workspaces.html">Workspaces</a>
-        <a href="../index.html">Main Site</a>
       </div>
-    </div>
-  </footer>
+      </div>
+
+      <footer>
+        <div class="wrap">Pointer &mdash; click-to-comment feedback for teams building with AI.</div>
+      </footer>
+    </main>
+  </div>
+  <script src="assets/docs.js" defer></script>
 </body>
 </html>

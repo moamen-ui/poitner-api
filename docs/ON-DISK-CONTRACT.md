@@ -29,7 +29,13 @@ to the widget's shadow DOM, the served skill docs, or the marketing pages — ne
 host-facing contract:
 
 `data-id`, `data-act`, `data-toggle`, `data-placement`, `data-private`, `data-c`, `data-i`,
-`data-path`, `data-testid`, `data-theme`, `data-step`, `data-brand-logo`, `data-brand-name`
+`data-path`, `data-testid`, `data-theme`, `data-step`, `data-brand-logo`, `data-brand-name`,
+`data-pf-left`, `data-pf-top`
+
+`data-pf-left` / `data-pf-top` carry the toolbar's position on the host element so the widget can
+place it from a stylesheet rule instead of an inline `style` attribute, which a host page's
+Content-Security-Policy blocks. They live inside the widget's own shadow DOM and no host ever reads
+them.
 
 Any other `data-*` name — in particular any `data-pointer*` or `data-pf*` — must be added to the
 frozen table above and to the test's allowlists in the same PR that introduces it.
