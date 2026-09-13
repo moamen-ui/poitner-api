@@ -1144,6 +1144,10 @@ async function injectStatic(cwd2, htmlPath, cfg) {
   let content = await fs3.readFile(p, "utf8").catch(() => "");
   if (!content)
     throw new Error(`HTML file not found at ${p}`);
+  const pinnedSrc = cfg.pin ? `?v=${cfg.pin.version}` : "";
+  const pinnedProps = cfg.pin ? `
+    s.integrity = '${cfg.pin.integrity}';
+    s.crossOrigin = 'anonymous';` : "";
   const block = cfg.envGuarded ? `<!-- pointer-feedback:start -->
 <script>
   if (
@@ -1151,7 +1155,7 @@ async function injectStatic(cwd2, htmlPath, cfg) {
     '%VITE_POINTER_SERVER%'.indexOf('http') === 0
   ) {
     var s = document.createElement('script');
-    s.src = '%VITE_POINTER_SERVER%/pointer.js';
+    s.src = '%VITE_POINTER_SERVER%/pointer.js${pinnedSrc}';${pinnedProps}
     s.defer = true;
     document.head.appendChild(s);
     var el = document.createElement('pointer-feedback');
@@ -2511,30 +2515,30 @@ async function initCommand(cwd2, options = {}) {
   let routedToSkill = false;
   let filesMod = [];
   let skillFiles = [];
+  let pin = null;
+  if (options["pin"] === true) {
+    try {
+      const manifest = await api(server, "/pointer.version.json");
+      const version = manifest?.hash;
+      const integrity = manifest?.files?.["pointer.js"]?.integrity;
+      if (!version || !integrity) {
+        throw new Error("the server published no hash/integrity for pointer.js");
+      }
+      pin = { version, integrity };
+    } catch (err) {
+      console.error(
+        `Could not pin the widget: ${err?.message ?? err}. Re-run without --pin to install the floating build.`
+      );
+      process.exit(1);
+    }
+  }
   if (!options["no-inject"]) {
     if (appInfo.kind === "vite") {
-      filesMod = await injectVite(cwd2, { server, key: finalProjectKey, environment: env }, options["html"]);
+      filesMod = await injectVite(cwd2, { server, key: finalProjectKey, environment: env, pin }, options["html"]);
       injected = true;
       if (!isJson)
         console.log(`Injected widget into ${filesMod.join(", ")}`);
     } else if (appInfo.kind === "static") {
-      let pin = null;
-      if (options["pin"] === true) {
-        try {
-          const manifest = await api(server, "/pointer.version.json");
-          const version = manifest?.hash;
-          const integrity = manifest?.files?.["pointer.js"]?.integrity;
-          if (!version || !integrity) {
-            throw new Error("the server published no hash/integrity for pointer.js");
-          }
-          pin = { version, integrity };
-        } catch (err) {
-          console.error(
-            `Could not pin the widget: ${err?.message ?? err}. Re-run without --pin to install the floating build.`
-          );
-          process.exit(1);
-        }
-      }
       const htmlPath = await injectStatic(cwd2, options["html"], { server, key: finalProjectKey, environment: env, pin });
       filesMod = [htmlPath];
       injected = true;

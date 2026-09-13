@@ -32,6 +32,16 @@ export async function injectStatic(
     let content = await fs.readFile(p, 'utf8').catch(() => '');
     if (!content) throw new Error(`HTML file not found at ${p}`);
     
+    // A pinned loader sets integrity/crossOrigin as PROPERTIES on the created element rather than
+    // writing an attribute string. Same effect, and it keeps the snippet working on a host page
+    // that runs a strict Content-Security-Policy.
+    const pinnedSrc = cfg.pin ? `?v=${cfg.pin.version}` : '';
+    const pinnedProps = cfg.pin
+        ? `
+    s.integrity = '${cfg.pin.integrity}';
+    s.crossOrigin = 'anonymous';`
+        : '';
+
     const block = cfg.envGuarded
         ? `<!-- pointer-feedback:start -->
 <script>
@@ -40,7 +50,7 @@ export async function injectStatic(
     '%VITE_POINTER_SERVER%'.indexOf('http') === 0
   ) {
     var s = document.createElement('script');
-    s.src = '%VITE_POINTER_SERVER%/pointer.js';
+    s.src = '%VITE_POINTER_SERVER%/pointer.js${pinnedSrc}';${pinnedProps}
     s.defer = true;
     document.head.appendChild(s);
     var el = document.createElement('pointer-feedback');

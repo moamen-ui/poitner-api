@@ -2,7 +2,17 @@ import { promises as fs } from 'node:fs';
 import { join } from 'node:path';
 import { injectStatic } from './static.js';
 
-export async function injectVite(cwd: string, cfg: { server: string, key: string, environment: string }, htmlPath?: string): Promise<string[]> {
+export async function injectVite(
+    cwd: string,
+    cfg: {
+        server: string;
+        key: string;
+        environment: string;
+        /** Forwarded to the injector — see injectStatic's `pin`. */
+        pin?: { version: string; integrity: string } | null;
+    },
+    htmlPath?: string,
+): Promise<string[]> {
     const modified = [];
     
     // Inject HTML

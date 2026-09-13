@@ -85,10 +85,18 @@
         without <code>--pin</code> — it never silently writes an unpinned tag you believe is pinned.
       </p>
       <p>
-        Note the boundary: <code>--pin</code> applies to the plain static injection. The
-        environment-guarded snippet a Vite install gets (driven by
-        <code>%VITE_POINTER_*%</code> placeholders) and the <code>/embed.js</code> one-liner loader
-        stay unpinned — they always load the current build.
+        A Vite install pins too, though it looks different. That stack builds its script tag in
+        JavaScript rather than writing markup, so the pin arrives as property assignments on the
+        created element:
+      </p>
+      <pre><code>var s = document.createElement('script');
+s.src = '%VITE_POINTER_SERVER%/pointer.js?v=&lt;hash&gt;';
+s.integrity = 'sha384-…';
+s.crossOrigin = 'anonymous';</code></pre>
+      <p>
+        Note the boundary: the <code>/embed.js</code> one-liner loader stays unpinned — it always
+        loads the current build. If you need a pinned install, use <code>pointer init --pin</code>
+        rather than the one-liner.
       </p>
 
       <h2>The trade-off, honestly</h2>

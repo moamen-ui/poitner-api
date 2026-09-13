@@ -234,35 +234,36 @@ export async function initCommand(cwd: string, options: Record<string, string | 
     let filesMod: string[] = [];
     let skillFiles: string[] = [];
     
+    // --pin asks the server which build it is serving and nails the page to it, with the integrity
+    // hash the server itself publishes. Resolved HERE, before the stack branch, because the static
+    // and Vite injectors both need it — and resolved once, so a failure to reach the manifest is
+    // reported with context instead of silently producing an unpinned tag the developer believes
+    // is pinned.
+    let pin: { version: string; integrity: string } | null = null;
+    if (options['pin'] === true) {
+        try {
+            const manifest = await api<any>(server as string, '/pointer.version.json');
+            const version = manifest?.hash;
+            const integrity = manifest?.files?.['pointer.js']?.integrity;
+            if (!version || !integrity) {
+                throw new Error('the server published no hash/integrity for pointer.js');
+            }
+            pin = { version, integrity };
+        } catch (err: any) {
+            console.error(
+                `Could not pin the widget: ${err?.message ?? err}. ` +
+                    `Re-run without --pin to install the floating build.`,
+            );
+            process.exit(1);
+        }
+    }
+
     if (!options['no-inject']) {
         if (appInfo.kind === 'vite') {
-            filesMod = await injectVite(cwd, { server: server as string, key: finalProjectKey, environment: env }, options['html'] as string);
+            filesMod = await injectVite(cwd, { server: server as string, key: finalProjectKey, environment: env, pin }, options['html'] as string);
             injected = true;
             if (!isJson) console.log(`Injected widget into ${filesMod.join(', ')}`);
         } else if (appInfo.kind === 'static') {
-            // --pin asks the server which build it is serving and nails the page to it, with the
-            // integrity hash the server itself publishes. Resolved here rather than in the
-            // injector so a failure to reach the manifest is reported once, with context, instead
-            // of silently producing an unpinned tag the developer believes is pinned.
-            let pin: { version: string; integrity: string } | null = null;
-            if (options['pin'] === true) {
-                try {
-                    const manifest = await api<any>(server as string, '/pointer.version.json');
-                    const version = manifest?.hash;
-                    const integrity = manifest?.files?.['pointer.js']?.integrity;
-                    if (!version || !integrity) {
-                        throw new Error('the server published no hash/integrity for pointer.js');
-                    }
-                    pin = { version, integrity };
-                } catch (err: any) {
-                    console.error(
-                        `Could not pin the widget: ${err?.message ?? err}. ` +
-                            `Re-run without --pin to install the floating build.`,
-                    );
-                    process.exit(1);
-                }
-            }
-
             const htmlPath = await injectStatic(cwd, options['html'] as string, { server: server as string, key: finalProjectKey, environment: env, pin });
             filesMod = [htmlPath];
             injected = true;

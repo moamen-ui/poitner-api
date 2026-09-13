@@ -231,3 +231,37 @@ test('R3-02-05 — no-design-flag', async () => {
     ms: Date.now() - start, detail: 'no design line, no design block, stack still detected',
   });
 });
+
+test('R3-01-07 — init --pin covers the Vite stack, not only static', async () => {
+  test.skip(process.env.TIER === 'pr', 'nightly tier only');
+  const start = Date.now();
+  const repo = fixtureRepo();
+
+  const res = await spawnCli({
+    cwd: repo.dir,
+    args: initArgs({ extra: ['--pin'] }),
+    env: INIT_ENV,
+  });
+  expect(res.code, res.stderr).toBe(0);
+
+  const html = readFileSync(join(repo.dir, 'index.html'), 'utf8');
+
+  // Vite's loader builds the tag in JS rather than writing it as markup, so the pin arrives as
+  // property assignments. Asserting on those — not on a `<script integrity=...>` string — is what
+  // matches how this stack actually injects, and `--pin` used to be silently ignored here: it was
+  // wired only into the static branch, so a Vite project got an unpinned tag and no warning.
+  const manifest = JSON.parse(
+    execFileSync('curl', ['-s', `${SERVER}/pointer.version.json`], { encoding: 'utf8' }),
+  );
+  expect(html, 'the loader must request the pinned build').toContain(`/pointer.js?v=${manifest.hash}`);
+  expect(html, 'and carry the integrity hash the server published').toContain(
+    `s.integrity = '${manifest.files['pointer.js'].integrity}'`,
+  );
+  expect(html, 'SRI on a cross-origin script requires crossOrigin').toContain("s.crossOrigin = 'anonymous'");
+
+  record({
+    id: 'R3-01-07', tier: 'nightly', layer: 'cli', role: 'DEV', result: 'PASS',
+    ms: Date.now() - start,
+    detail: `vite loader pinned to ${manifest.hash} with SRI`,
+  });
+});
