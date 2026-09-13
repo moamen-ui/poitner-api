@@ -1,0 +1,18 @@
+# The LEGACY server, for the upgrade rehearsal.
+#
+# A SEPARATE service rather than an override of `api`. Overriding would inherit two things that
+# defeat the exercise: `build:` (compose would rebuild from the CANDIDATE Dockerfile and tag it as
+# the legacy image) and `volumes: ["./:/src"]` (the candidate's source mounted over the old app).
+# Either way you end up testing today's code against today's schema, which is what every other
+# phase already does.
+#
+# Same port and the same database, so everything that talks to :8090 keeps working — only the code
+# behind it is older. Started and stopped by e2e/scripts/upgrade-job.mjs.
+services:
+  api-legacy:
+    image: pointer-api:legacy
+    env_file: .env
+    environment:
+      Security__RateLimits__SignupPerHour: "1000"
+    ports: ["8090:8080"]
+    depends_on: [db, mailpit]

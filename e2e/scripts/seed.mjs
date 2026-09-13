@@ -42,7 +42,62 @@ function pageContext(sessionId, { consoleMessage, networkUrl }) {
   };
 }
 
+/**
+ * The reduced seed: a tenant owner, one project, and that owner's API key.
+ *
+ * Used when this seed has to run against an OLD server — the upgrade job drives the candidate's
+ * seed against the legacy image, and the legacy API does not know the endpoints the full seed
+ * calls (R1-05's origin enforcement, the quick-access invite, predefined actions…). Asking it for
+ * those produces a 400 or 404 that reads like an upgrade failure when it is really just a server
+ * from before the feature existed.
+ *
+ * Deliberately the same code path the full seed uses for the parts it does run, so what it creates
+ * is the real thing rather than a lookalike.
+ */
+async function seedMinimal() {
+  console.log('==> Minimal seed (legacy-compatible subset)');
+  const superAdmin = await login(SUPER_ADMIN.email, SUPER_ADMIN.password);
+
+  await post('/api/admin/tenants', {
+    email: TENANT_OWNER.email,
+    password: TENANT_OWNER.password,
+    displayName: TENANT_OWNER.displayName,
+  }, { token: superAdmin.token });
+
+  const wsAdmin = await login(TENANT_OWNER.email, TENANT_OWNER.password);
+
+  await post('/api/admin/projects', { key: 'e2e-alpha', name: 'E2E Alpha' }, { token: wsAdmin.token })
+    .catch((err) => {
+      // Already there from a previous run against the same database — fine, the point is that it
+      // exists, not that this call created it.
+      if (!String(err?.message ?? err).includes('409')) throw err;
+    });
+
+  const keyRes = await get('/api/me/api-key', { token: wsAdmin.token });
+
+  mkdirSync(STATE_DIR, { recursive: true });
+  writeFileSync(
+    join(STATE_DIR, 'credentials.json'),
+    JSON.stringify({ superAdmin: SUPER_ADMIN, wsAdmin: TENANT_OWNER }, null, 2),
+  );
+  writeFileSync(
+    join(STATE_DIR, 'keys.json'),
+    JSON.stringify(
+      { wsAdmin: { email: TENANT_OWNER.email, apiKey: keyRes.apiKey, prefix: keyRes.prefix } },
+      null,
+      2,
+    ),
+  );
+
+  console.log(`==> Minimal seed complete. Wrote credentials.json and keys.json to ${STATE_DIR}`);
+}
+
 async function main() {
+  if (process.argv.includes('--minimal')) {
+    await seedMinimal();
+    return;
+  }
+
   console.log('==> Logging in as seeded super-admin');
   const superAdmin = await login(SUPER_ADMIN.email, SUPER_ADMIN.password);
 

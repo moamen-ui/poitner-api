@@ -236,7 +236,16 @@ fi
 # The destructive phase: every scenario that restarts the api container lives here and nowhere
 # else. Both files also contain non-destructive scenarios, which simply pass again — a cheap
 # duplicate beats a scenario that can restart the stack from inside a shared phase.
-run_phase "upgrade" "( E2E_DESTRUCTIVE=1 bash scripts/pw.sh api 'key-rotation\\.spec\\.mjs' && E2E_DESTRUCTIVE=1 bash scripts/pw.sh cli 'doctor\\.spec\\.mjs' && E2E_DESTRUCTIVE=1 bash scripts/pw.sh cli 'skill-stamp\\.spec\\.mjs' )"
+# The two-image rehearsal runs FIRST in this phase: it rebuilds the stack from a fresh volume, so
+# anything that ran before it would have its state wiped. LEGACY_REF selects the old image; without
+# it the rehearsal is skipped and the api/upgrade.spec.mjs scenarios self-skip with the reason.
+#
+# A full RESET AND SEED follows it. The rehearsal deliberately leaves a minimally-seeded database —
+# that is what a legacy API can be seeded with — and the destructive specs after it need the usual
+# personas. Seeding on top is not enough: the full seed creates the tenant owner the minimal one
+# already made, and stops on a 409. Without either, those specs fail on missing fixtures, which
+# reads as the upgrade having broken them rather than as the seed simply being smaller.
+run_phase "upgrade" "( if [ -n \"\${LEGACY_REF:-}\" ]; then node scripts/upgrade-job.mjs --legacy-ref \"\$LEGACY_REF\"; fi && E2E_DESTRUCTIVE=1 E2E_UPGRADE=1 bash scripts/pw.sh api 'upgrade\\.spec\\.mjs' && ( [ -z \"\${LEGACY_REF:-}\" ] || ( bash scripts/reset.sh && node scripts/seed.mjs ) ) && E2E_DESTRUCTIVE=1 bash scripts/pw.sh api 'key-rotation\\.spec\\.mjs' && E2E_DESTRUCTIVE=1 bash scripts/pw.sh cli 'doctor\\.spec\\.mjs' && E2E_DESTRUCTIVE=1 bash scripts/pw.sh cli 'skill-stamp\\.spec\\.mjs' )"
 # E2E_429 is what the spec's own guard reads. Its fallback heuristic (an argv containing
 # "429") does NOT match the file path we pass, so setting it explicitly is what actually
 # lets the burst scenario run instead of skipping itself in its own dedicated phase.
