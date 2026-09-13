@@ -221,12 +221,16 @@ test('R3-03-04 — widget-nonce-csp-styles', async ({ page }) => {
 
     const widget = page.locator('pointer-feedback');
 
-    // Unauthenticated, the widget renders collapsed to its launcher; the toolbar (and #pf-add)
-    // appears once that is clicked. Revealing it is also the stronger check here — the launcher
-    // existing only proves the script ran, whereas the toolbar rendering proves the shadow tree
-    // and its styles survived the policy.
+    // Wait for the widget to settle into EITHER state, then reveal if it is collapsed.
+    //
+    // `count()` alone is a point-in-time read that does not wait: called before the widget has
+    // rendered it returns 0, the click is skipped, and the assertion below then fails on a
+    // toolbar nobody ever opened. Waiting for whichever element appears first removes the race
+    // without assuming which state this page produces.
     const launcher = widget.locator('#pf-launcher');
-    if (await launcher.count()) await launcher.click();
+    const addBtn = widget.locator('#pf-add');
+    await expect(launcher.or(addBtn).first()).toBeVisible({ timeout: 15_000 });
+    if (await launcher.isVisible().catch(() => false)) await launcher.click();
 
     await expect(widget.locator('#pf-add')).toBeVisible({ timeout: 15_000 });
 

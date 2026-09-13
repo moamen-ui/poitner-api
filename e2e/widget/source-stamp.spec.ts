@@ -20,6 +20,29 @@ const keys = () => loadKeys();
 const PROJECT_KEY = 'e2e-r301';
 const FIXTURE_URL = 'http://localhost:4175/';
 
+/**
+ * Ensures the fixture project exists before any scenario here runs.
+ *
+ * It used to be created only by api/builds.spec.mjs's beforeAll, so these scenarios silently
+ * depended on that FILE having run first in the same database. Any reset between the two — or
+ * running this file alone — left the project missing, the widget correctly refused to render on an
+ * unknown project, and the failure read as "#pf-add not found": a widget bug, three steps from the
+ * actual cause.
+ */
+test.beforeAll(async () => {
+  const wsAdmin = await login(credentials().wsAdmin.email, credentials().wsAdmin.password);
+  const existing = await raw('GET', '/api/admin/projects', { token: wsAdmin.token });
+  if ((existing.data || []).some((p: { key: string }) => p.key === PROJECT_KEY)) return;
+
+  const created = await raw('POST', '/api/admin/projects', {
+    token: wsAdmin.token,
+    body: { key: PROJECT_KEY, name: 'E2E R3-01' },
+  });
+  // 409 means another worker created it between the read and the write — the point is that it
+  // exists, not that this call is what made it.
+  expect([200, 409]).toContain(created.status);
+});
+
 test('R3-01-01 — source-stamp-prod-build (widget: steps 5–12)', async ({ page }) => {
   test.skip(process.env.TIER === 'pr', 'nightly tier only');
   const start = Date.now();
@@ -50,6 +73,16 @@ test('R3-01-01 — source-stamp-prod-build (widget: steps 5–12)', async ({ pag
     await page.goto(FIXTURE_URL);
 
     const widget = page.locator('pointer-feedback');
+    // Wait for the widget to settle into EITHER state, then reveal if it is collapsed.
+    //
+    // `count()` alone is a point-in-time read that does not wait: called before the widget has
+    // rendered it returns 0, the click is skipped, and the assertion below then fails on a
+    // toolbar nobody ever opened. Waiting for whichever element appears first removes the race
+    // without assuming which state this page produces.
+    const launcher = widget.locator('#pf-launcher');
+    const addBtn = widget.locator('#pf-add');
+    await expect(launcher.or(addBtn).first()).toBeVisible({ timeout: 15_000 });
+    if (await launcher.isVisible().catch(() => false)) await launcher.click();
     await expect(widget.locator('#pf-add')).toBeVisible({ timeout: 10_000 });
     await captureConfigLoaded;
 
@@ -248,13 +281,15 @@ test('R3-01-03 ⛓ — deploy-awareness-widget', async ({ page }) => {
 
     // 7. Widget: open comments list; pill reads "✓ live" with title="Deployed in <S.slice(0,7)>"
     const widget = page.locator('pointer-feedback');
-    // Collapsed, the widget renders only the launcher; pre-authenticated it renders the toolbar
-    // directly. Handle both rather than assuming one — which state you get depends on stored auth,
-    // and guessing wrong fails on a missing element instead of on what the test is about.
+    // Wait for EITHER state before deciding. `count()` alone does not wait, so called before the
+    // widget rendered it reports 0, the reveal is skipped, and the failure lands on a toolbar
+    // nobody opened rather than on what this scenario checks.
     const launcher = widget.locator('#pf-launcher');
-    if (await launcher.count()) {
+    const toggle = widget.locator('#pf-toggle');
+    await expect(launcher.or(toggle).first()).toBeVisible({ timeout: 15_000 });
+    if (await launcher.isVisible().catch(() => false)) {
       await launcher.click();
-      await expect(widget.locator('#pf-toggle')).toBeVisible({ timeout: 10_000 });
+      await expect(toggle).toBeVisible({ timeout: 10_000 });
     }
 
     // The list is filtered by the selected environment, and these comments are staging (2). A
