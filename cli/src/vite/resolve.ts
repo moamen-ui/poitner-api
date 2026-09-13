@@ -51,9 +51,9 @@ function readJson(path: string): any | null {
  *
  * Three outcomes, deliberately distinct:
  *   manifest — resolved against the current build.
- *   renamed  — not in the current manifest but present in manifest.prev.json, i.e. the component
- *              was renamed or moved since. The old location is still the best lead a developer
- *              has, and saying "unknown" would throw it away.
+ *   stale    — not in the current manifest but present in manifest.prev.json, i.e. the component
+ *              was renamed or moved since. The old name is still the best lead a developer has,
+ *              and saying "unknown" would throw it away.
  *   unknown  — no manifest, or a hash neither file knows.
  */
 export function resolveSource(cwd: string, hash: string | null | undefined): ResolvedSource {
