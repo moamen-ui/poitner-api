@@ -1,5 +1,5 @@
 import { execSync, execFileSync } from 'node:child_process';
-import { existsSync, readFileSync, writeFileSync, mkdirSync, readdirSync, mkdtempSync, rmSync, symlinkSync } from 'node:fs';
+import { existsSync, readFileSync, writeFileSync, mkdirSync, readdirSync, mkdtempSync, rmSync, symlinkSync, cpSync } from 'node:fs';
 import { join } from 'node:path';
 import { homedir } from 'node:os';
 import { createHash } from 'node:crypto';
@@ -90,10 +90,28 @@ export function publishTarball(tgzPath, { version, scratchDir } = {}) {
   if (version) {
     const vDir = join(scratch, `v-${version}`);
     mkdirSync(vDir, { recursive: true });
-    // Extract tarball: npm pack creates tarballs with a top-level `package/` folder
-    execFileSync('tar', ['-xzf', tgzPath, '-C', vDir]);
 
-    const pkgDir = existsSync(join(vDir, 'package')) ? join(vDir, 'package') : vDir;
+    // Built from a COPY OF THE SOURCE TREE, not from the tarball.
+    //
+    // The published package ships `files: ["dist", "README.md"]` — four files, no src/, no
+    // build.mjs. Extracting the tarball and rebuilding inside it worked only while the package
+    // shipped its own sources, and would now fail with a missing build script.
+    const pkgDir = join(vDir, 'package');
+    mkdirSync(pkgDir, { recursive: true });
+    const cliDir = repoCliDir();
+    for (const entry of ['src', 'build.mjs', 'package.json', 'tsconfig.json']) {
+      const from = join(cliDir, entry);
+      if (existsSync(from)) cpSync(from, join(pkgDir, entry), { recursive: true });
+    }
+    // Symlinked rather than copied: the build needs esbuild and the tree is large.
+    const nm = join(pkgDir, 'node_modules');
+    if (!existsSync(nm)) {
+      try {
+        symlinkSync(join(cliDir, 'node_modules'), nm, 'dir');
+      } catch {
+        /* a copy already in place is fine */
+      }
+    }
 
     // Bump version without git tagging
     execFileSync('npm', ['version', version, '--no-git-tag-version'], {
@@ -105,23 +123,16 @@ export function publishTarball(tgzPath, { version, scratchDir } = {}) {
     // REBUILD. The CLI's version is baked into dist/cli.js by esbuild's `define` at build time,
     // read from package.json — so bumping package.json alone produces a package published as
     // 99.1.0 whose binary still reports 0.1.0 and still fails the server's minimum. That artifact
-    // could never come out of a real publish (which builds, then packs), and the scenario it broke
-    // looked like a product bug rather than a packaging shortcut.
-    //
-    // node_modules is symlinked rather than copied: the build needs esbuild, and the tree is large.
-    const nodeModules = join(pkgDir, 'node_modules');
-    if (existsSync(join(pkgDir, 'build.mjs')) && !existsSync(nodeModules)) {
-      try {
-        symlinkSync(join(repoCliDir(), 'node_modules'), nodeModules, 'dir');
-        execFileSync('npm', ['run', 'build'], { cwd: pkgDir, env, stdio: 'pipe' });
-      } catch (err) {
-        throw new Error(
-          `could not rebuild the CLI at version ${version} — the published package would report ` +
-            `its old version and the scenario would fail for the wrong reason: ${err.message}`,
-        );
-      } finally {
-        rmSync(nodeModules, { force: true });
-      }
+    // could never come out of a real publish (which builds, then packs).
+    try {
+      execFileSync('npm', ['run', 'build'], { cwd: pkgDir, env, stdio: 'pipe' });
+    } catch (err) {
+      throw new Error(
+        `could not rebuild the CLI at version ${version} — the published package would report ` +
+          `its old version and the scenario would fail for the wrong reason: ${err.message}`,
+      );
+    } finally {
+      rmSync(join(pkgDir, 'node_modules'), { force: true });
     }
 
     // Re-pack into scratch
