@@ -25,7 +25,8 @@ function parseArgs(args: string[]) {
         'check',
         'plan',
         'dry-run',
-        'no-commit'
+        'no-commit',
+        'version'
     ]);
 
     for (let i = 0; i < args.length; i++) {
@@ -44,6 +45,7 @@ function parseArgs(args: string[]) {
             const key = arg.slice(1);
             if (key === 'y') parsed['yes'] = true;
             if (key === 'h') parsed['help'] = true;
+            if (key === 'v') parsed['version'] = true;
         } else {
             positionals.push(arg);
         }
@@ -67,7 +69,8 @@ Commands:
   mcp       Start the Model Context Protocol (MCP) server
 
 Options:
-  -h, --help    Show this help message
+  -h, --help       Show this help message
+  -v, --version    Show the CLI version
 
 Run 'pointer <command> --help' for command-specific options.
 `;
@@ -75,7 +78,14 @@ Run 'pointer <command> --help' for command-specific options.
 async function main() {
     const { parsed, positionals } = parseArgs(argv.slice(2));
     const command = positionals[0];
-    
+
+    // Before any command dispatch: the server rejects a CLI older than its `minCliVersion`, and the
+    // upgrade hint that rejection prints is useless if there is no way to read the version you have.
+    if (parsed['version'] && !command) {
+        console.log(BUILD_CLI_VERSION);
+        process.exit(0);
+    }
+
     if (parsed['help'] || command === '--help' || !command) {
         if (!command || command === '--help') {
             console.log(HELP);

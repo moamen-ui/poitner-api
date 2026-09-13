@@ -15,7 +15,7 @@ var init_build_constants = __esm({
   "src/build-constants.ts"() {
     "use strict";
     BUILD_DEFAULT_SERVER = true ? "https://api.pointer.moamen.work" : "https://api.pointer.moamen.work";
-    BUILD_CLI_VERSION = true ? "0.1.0" : "0.0.0-dev";
+    BUILD_CLI_VERSION = true ? "0.1.2" : "0.0.0-dev";
   }
 });
 
@@ -10098,7 +10098,8 @@ function parseArgs(args) {
     "check",
     "plan",
     "dry-run",
-    "no-commit"
+    "no-commit",
+    "version"
   ]);
   for (let i = 0; i < args.length; i++) {
     const arg = args[i];
@@ -10118,6 +10119,8 @@ function parseArgs(args) {
         parsed["yes"] = true;
       if (key === "h")
         parsed["help"] = true;
+      if (key === "v")
+        parsed["version"] = true;
     } else {
       positionals.push(arg);
     }
@@ -10140,13 +10143,18 @@ Commands:
   mcp       Start the Model Context Protocol (MCP) server
 
 Options:
-  -h, --help    Show this help message
+  -h, --help       Show this help message
+  -v, --version    Show the CLI version
 
 Run 'pointer <command> --help' for command-specific options.
 `;
 async function main() {
   const { parsed, positionals } = parseArgs(argv.slice(2));
   const command = positionals[0];
+  if (parsed["version"] && !command) {
+    console.log(BUILD_CLI_VERSION);
+    process.exit(0);
+  }
   if (parsed["help"] || command === "--help" || !command) {
     if (!command || command === "--help") {
       console.log(HELP);
