@@ -173,9 +173,12 @@ function scanResult(payload) {
 function stripForEquivalence(comment, root = true) {
   if (Array.isArray(comment)) return comment.map((c) => stripForEquivalence(c, false));
   if (!comment || typeof comment !== 'object') return comment;
+  // commitSha joins commitUrl for the same reason: the twin is a SECOND commit, so its sha — and
+  // therefore the URL built from it — necessarily differs. Both are asserted by shape below
+  // instead, which is the part that can actually regress.
   const omit = root
-    ? ['id', 'appliedAt', 'createdAt', 'body', 'commitUrl']
-    : ['id', 'createdAt', 'commitUrl'];
+    ? ['id', 'appliedAt', 'createdAt', 'body', 'commitUrl', 'commitSha']
+    : ['id', 'createdAt', 'commitUrl', 'commitSha'];
   const out = {};
   for (const [key, value] of Object.entries(comment)) {
     if (omit.includes(key)) continue;
@@ -520,6 +523,13 @@ test('R2-02-04 — mcp: commit_and_mark stages files and never pushes', async ()
     // pickedActionTexts, … — must be deep-equal.
     expect(stripForEquivalence(twin.data)).toEqual(stripForEquivalence(canary.data));
     expect(canary.data.commitUrl).toMatch(COMMIT_URL_RE);
+
+    // Both paths must record the raw sha, not just the link — it is what deploy detection compares,
+    // so an MCP-applied comment without one could never be reported live. They must also be
+    // DIFFERENT shas, which is what proves these were two real commits rather than one.
+    expect(canary.data.commitSha, 'the MCP path must record its commit sha').toMatch(/^[0-9a-f]{7,40}$/);
+    expect(twin.data.commitSha, 'the CLI path must record its commit sha').toMatch(/^[0-9a-f]{7,40}$/);
+    expect(twin.data.commitSha).not.toBe(canary.data.commitSha);
     expect(twin.data.commitUrl).toMatch(COMMIT_URL_RE);
 
     // 5. files ABSENT + nothing staged → structured git error naming the empty index. The

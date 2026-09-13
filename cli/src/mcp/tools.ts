@@ -502,6 +502,10 @@ export async function handleCommitAndMark(
             reply,
             appliedByLabel,
             commitUrl,
+            // The raw sha as well as the link. Without it a comment applied through MCP can never
+            // be detected as deployed — only a sha can be tested for ancestry against a build —
+            // so the same fix that shipped for `pointer apply` has to hold here.
+            commitSha: sha,
           },
           token: ctx.token,
         });
@@ -550,6 +554,8 @@ export async function handleCommitAndMark(
           reply,
           appliedByLabel,
           commitUrl,
+          // Same reason as the single-comment path above.
+          commitSha: sha,
         },
         token: ctx.token,
       });
