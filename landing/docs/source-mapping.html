@@ -1,0 +1,226 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Source Mapping — Pointer Docs</title>
+  <meta name="description" content="The Vite plugin stamps a build-time hash into each component; a comment captures it and pointer resolves it back to the exact file and component.">
+  <link rel="icon" href="../assets/favicon.ico">
+  <link rel="stylesheet" href="assets/docs.css">
+</head>
+<body>
+  <nav class="nav" aria-label="Main">
+    <div class="wrap">
+      <a href="../index.html" class="brand">
+        <img src="../assets/dog-mascot.png" alt="Pointer logo">
+        <span>Pointer Docs</span>
+      </a>
+      <div class="nav-links">
+      <!-- nav:start -->
+        <a href="index.html">All docs</a>
+        <a href="install.html">Install</a>
+        <a href="apply.html">Apply</a>
+        <a href="source-mapping.html" class="active">Source Mapping</a>
+        <a href="deployments.html">Deployments</a>
+        <a href="mcp.html">MCP Server</a>
+        <a href="api-keys.html">API Keys</a>
+        <a href="project-settings.html">Project Settings</a>
+        <a href="workspaces.html">Workspaces</a>
+        <a href="pinning.html">Widget Pinning</a>
+        <a href="notifications.html">Notifications &amp; Verification</a>
+        <a href="../index.html">Home</a>
+      <!-- nav:end -->
+      </div>
+    </div>
+  </nav>
+
+  <main class="content">
+    <div class="wrap">
+      <div class="badge">Workflow</div>
+      <h1>From a comment to the file that rendered it</h1>
+      <p class="lead">
+        When someone clicks an element and leaves a comment, the most useful thing Pointer can hand
+        the developer is <em>which file rendered that element</em>. In a production build, that
+        answer has to be stamped in at build time.
+      </p>
+
+      <h2>Why a build plugin is needed</h2>
+      <p>
+        In development, React and Vue attach source metadata to the live component tree as a
+        side effect of dev-mode compilation, and the widget reads it with zero setup: a click on a
+        button comes back as <code>src/components/Button.tsx</code>. A production build strips that
+        metadata — minified, dev-mode-free markup carries no file names at all. Without help, a
+        production click resolves to no file, and the developer is left grepping the codebase by
+        element classes.
+      </p>
+      <p>
+        The Vite plugin puts a plain static attribute into the markup itself, which survives
+        minification because it is just markup. The trade it makes is deliberate: the page exposes
+        only an opaque 8-hex-character hash — <strong>never your file paths</strong> — and the
+        hash-to-file mapping lives on your machine, in a local manifest.
+      </p>
+
+      <h2>How the stamping works</h2>
+      <p>
+        Add the plugin to your Vite config (it is opt-in):
+      </p>
+      <pre><code>import pointerSource from 'pointer-feedback/vite';
+
+export default {
+  plugins: [pointerSource({ enabled: true })],
+};</code></pre>
+      <p>
+        It works with React (<code>.jsx</code>/<code>.tsx</code>) and Vue
+        (<code>.vue</code>) files. The Babel toolchain it needs
+        (<code>@babel/parser</code>, <code>@babel/traverse</code>,
+        <code>@babel/generator</code>) ships as transitive dependencies of
+        <code>@vitejs/plugin-react</code>, so a normal React+Vite project installs nothing extra.
+        A file that cannot be parsed is skipped with a warning — stamping never breaks the build.
+      </p>
+      <p>
+        At build time, the plugin stamps the <strong>root host elements</strong> of every component
+        — a fragment contributes all its top-level roots, and a component that only renders another
+        component contributes nothing, so the stamp lands on the component that actually owns the
+        markup:
+      </p>
+      <pre><code>&lt;div class="card" data-component-source="a3f9c2b1"&gt;…&lt;/div&gt;</code></pre>
+      <p>
+        The hash is <code>sha1(repo-relative path + "#" + export name)</code>, truncated to 8 hex
+        characters. Two properties matter:
+      </p>
+      <ul>
+        <li>
+          <strong>It is derived from path and name only</strong> — never file contents or line
+          numbers — so editing a file does not invalidate comments captured months ago. It changes
+          only when the file moves or the component is renamed, which is exactly when the old
+          identity stopped being true.
+        </li>
+        <li>
+          <strong>It is relative to the git root</strong> and POSIX-separated, so the same
+          repository produces the same hashes on every machine and CI runner.
+        </li>
+      </ul>
+      <p>
+        Alongside the stamps, the build writes a local manifest —
+        <code>.pointer/manifest.json</code> — mapping every hash to its file and component name,
+        and stamps <code>&lt;html data-build-sha="…"&gt;</code> from the current commit, which the
+        <a href="deployments.html">deployments</a> page puts to work.
+      </p>
+
+      <div class="callout security">
+        <div class="callout-title">The manifest stays on your machine</div>
+        <p>
+          <code>.pointer/manifest.json</code> is generated and gitignored — it is never committed
+          and never uploaded. A production page exposes only the opaque hashes; the file paths
+          exist in exactly one place: the manifest on the developer's machine that resolves them.
+        </p>
+      </div>
+
+      <h2>From a hash back to a file</h2>
+      <p>
+        When a comment is captured, it records the stamped hash of the clicked element. The CLI
+        resolves it against the local manifest:
+      </p>
+      <pre><code>pointer get 42 --json</code></pre>
+      <p>
+        The JSON view carries the comment plus a <code>resolvedSource</code> object, and
+        <code>pointer apply</code> injects the same resolution into the prompt as
+        <code>Source: src/components/Card.tsx (Card)</code> — the AI opens the right file instead
+        of searching.
+      </p>
+
+      <h2>The three resolution outcomes</h2>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Outcome</th>
+              <th>Meaning</th>
+              <th>What you get</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><code>manifest</code></td>
+              <td>The hash is in the current manifest</td>
+              <td>The file path and component name</td>
+            </tr>
+            <tr>
+              <td><code>stale</code></td>
+              <td>The hash is gone from the current manifest but present in the previous one — the component was renamed or moved since the comment was captured</td>
+              <td>The previous name, as a search hint: <code>search for "Card"</code></td>
+            </tr>
+            <tr>
+              <td><code>unknown</code></td>
+              <td>No manifest, or neither file knows the hash</td>
+              <td>No file — the apply falls back to the element snapshot and classes</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <p>
+        The previous manifest is the key to the middle row: on every build, the old
+        <code>manifest.json</code> is rotated to <code>manifest.prev.json</code> (never merged),
+        so the map that was current when the comment was captured survives one rename behind the
+        new one.
+      </p>
+
+      <h3>A stale hash does not block the apply</h3>
+      <p>
+        Renaming a component is a normal thing to do in a live codebase, and feedback captured
+        before the rename must not be stranded by it. When a hash resolves as stale, the apply
+        prompt says so explicitly and keeps going:
+      </p>
+      <pre><code>Source: UNRESOLVED — source hash a3f9c2b1 is not in the current manifest
+        (renamed or moved since this comment was captured).
+  Fallback: search for "Card" in the codebase, then edit the element the comment describes.</code></pre>
+      <p>
+        The previous name from <code>manifest.prev.json</code> is the one fact that turns a dead
+        end into a single grep.
+      </p>
+
+      <h2>Rebuilding the manifest: <code>pointer map --from-source</code></h2>
+      <p>
+        The manifest is a by-product of running a build, which means it only exists where someone
+        has run one. Two situations leave a developer without a manifest and needing it now:
+      </p>
+      <ul>
+        <li>
+          <strong>A fresh clone.</strong> The manifest is generated and gitignored, so a clone
+          starts without one — and <code>apply</code> and <code>doctor</code> deliberately do not
+          run a build to fix that (a build is slow and has side effects nobody asked for).
+        </li>
+        <li>
+          <strong>A rename that staled every hash.</strong> After renaming components, the hashes
+          stamped into existing comments no longer resolve against a manifest built from the new
+          names.
+        </li>
+      </ul>
+      <p>
+        Both are fixed the same way, offline and without a build:
+      </p>
+      <pre><code>pointer map --from-source</code></pre>
+      <p>
+        It walks your <code>.jsx</code>/<code>.tsx</code>/<code>.vue</code> files (skipping
+        <code>node_modules</code>, build output and the like), runs the same stamping analysis over
+        the source, and writes the same manifest the plugin would — rotating any existing one to
+        <code>manifest.prev.json</code> first, so the rename case keeps the old names reachable.
+        Nothing is stamped on disk: the output is the map, not the markup. A file that fails to
+        parse is skipped and named, never fatal to the run.
+      </p>
+    </div>
+  </main>
+
+  <footer class="footer">
+    <div class="wrap footer-grid">
+      <span>&copy; 2026 Pointer Feedback. All rights reserved.</span>
+      <nav class="footer-links" aria-label="Footer">
+        <a href="install.html">Install</a>
+        <a href="apply.html">Apply</a>
+        <a href="deployments.html">Deployments</a>
+        <a href="../privacy.html">Privacy</a>
+      </nav>
+    </div>
+  </footer>
+</body>
+</html>
