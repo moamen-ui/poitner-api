@@ -23,6 +23,20 @@
       "summary": "End-to-end feedback application, planning, tool hand-offs, commit styles, and git safety."
     },
     {
+      "file": "source-mapping.html",
+      "title": "Source Mapping",
+      "nav": "Workflow",
+      "ownedBy": "R3-01",
+      "summary": "The Vite plugin stamps a build-time hash into each component; pointer get resolves a comment back to the exact file and component."
+    },
+    {
+      "file": "deployments.html",
+      "title": "Deployments",
+      "nav": "Workflow",
+      "ownedBy": "R3-01",
+      "summary": "Applied means committed; live means on the site. Report deployed builds from CI with pointer status --deployed."
+    },
+    {
       "file": "mcp.html",
       "title": "MCP Server",
       "nav": "Integration",
@@ -49,6 +63,13 @@
       "nav": "Configuration",
       "ownedBy": "R1-08",
       "summary": "Provisioning workspaces, email invitations, link expiration, and self-set passwords."
+    },
+    {
+      "file": "pinning.html",
+      "title": "Widget Pinning",
+      "nav": "Configuration",
+      "ownedBy": "R3-03",
+      "summary": "Pin the widget to a tested build with ?v= and Subresource Integrity, retention of previous builds, and proxy cache rules."
     },
     {
       "file": "notifications.html",
