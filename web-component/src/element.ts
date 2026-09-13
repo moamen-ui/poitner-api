@@ -42,6 +42,12 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
   picking = false;
   /** A magic-link token stripped from the URL, awaiting redemption in _boot(). */
   private _pendingInviteToken: string | null = null;
+
+  /**
+   * Module-level, not per-instance: "once per page load" has to hold even if the host page mounts
+   * two widgets, which is exactly when a duplicate beacon would be least expected.
+   */
+  private static _buildShaReported = false;
   sidebarOpen = false;
   hovered: Element | null = null;
 
@@ -296,7 +302,38 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
 
     try { performance.mark('pf:boot:end'); } catch { /* ignore */ }
 
+    // Tell the server which build this page is, so comments fixed in it can show as live.
+    // After the token check, because it is an authenticated call and an anonymous visitor has
+    // nothing to report with.
+    if (this.token) void this._reportBuildSha();
+
     if (inviteFailed) this.toast('This invite link is invalid or expired — ask for a new one.', 'error');
+  }
+
+  /**
+   * Reports `<html data-build-sha>` once per page load.
+   *
+   * Fire-and-forget and failure-silent by design: this is a nicety on top of the feedback loop,
+   * and a visitor must never see an error — or a delayed widget — because a build beacon did not
+   * land. Once per load because every additional call is a no-op the server still has to scan for.
+   *
+   * The CLI's `pointer status --deployed` is the primary path. This one only helps where the
+   * widget actually ships to production, which the install guide advises against.
+   */
+  private async _reportBuildSha(): Promise<void> {
+    if (PointerFeedback._buildShaReported) return;
+    try {
+      const sha = document.documentElement?.dataset?.buildSha;
+      if (!sha || !/^[0-9a-f]{7,40}$/.test(sha)) return;
+      PointerFeedback._buildShaReported = true;
+      await pfFetch(`${this.server}/api/projects/${encodeURIComponent(this.project)}/builds`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${this.token}` },
+        body: JSON.stringify({ sha }),
+      });
+    } catch {
+      /* never surface a build-beacon failure to a visitor */
+    }
   }
 
   // Anonymous, pre-auth: asks the server whether this project should render on this page's

@@ -1,21 +1,33 @@
 {
   "version": "0.1.0",
-  "hash": "03c7db13479e",
+  "hash": "d809791fac9d",
   "commit": "3ca15a5",
   "committedAt": "2026-09-12T16:11:16+03:00",
   "files": {
     "pointer.js": {
-      "bytes": 142819,
-      "gzipBytes": 36062,
-      "integrity": "sha384-0LZoFA3FXgOp4o7s9fpoKWT02CAIy0Nkye6ZTULrvazKSasBUcnWYqdMMazu489H"
+      "bytes": 144570,
+      "gzipBytes": 36660,
+      "integrity": "sha384-Xb5/qrT62j4NVvFBRrAlLnLq4iL3t3HsO9Jjt8IvbrwuQlHqbkIyIHAgQmT0eiyi"
     },
     "pointer.css": {
       "bytes": 23542,
-      "gzipBytes": 4354,
+      "gzipBytes": 4356,
       "integrity": "sha384-pl6qCXCJPvbHtNCrBdVfGM9KFg9VAQztGsJ7K9Vqx49ky97dTVUMIDCP6j2hKRCO"
     }
   },
   "retained": [
+    {
+      "hash": "d809791fac9d",
+      "version": "0.1.0",
+      "files": {
+        "pointer.js": {
+          "integrity": "sha384-Xb5/qrT62j4NVvFBRrAlLnLq4iL3t3HsO9Jjt8IvbrwuQlHqbkIyIHAgQmT0eiyi"
+        },
+        "pointer.css": {
+          "integrity": "sha384-pl6qCXCJPvbHtNCrBdVfGM9KFg9VAQztGsJ7K9Vqx49ky97dTVUMIDCP6j2hKRCO"
+        }
+      }
+    },
     {
       "hash": "03c7db13479e",
       "version": "0.1.0",

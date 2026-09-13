@@ -16,6 +16,15 @@ public class CommentResponse
     public Guid? AppliedBy { get; set; }
     public string? AppliedByLabel { get; set; }
     public string? CommitUrl { get; set; }
+
+    /// <summary>The raw sha of the commit that applied this — what deploy detection compares.</summary>
+    public string? CommitSha { get; set; }
+
+    /// <summary>Set once a build containing <see cref="CommitSha"/> was reported deployed.</summary>
+    public DateTime? DeployedAt { get; set; }
+
+    /// <summary>The build sha that carried this comment's fix live.</summary>
+    public string? DeployedSha { get; set; }
     public DateTime? VerifiedAt { get; set; }
     public DateTime? EditedAt { get; set; }
 

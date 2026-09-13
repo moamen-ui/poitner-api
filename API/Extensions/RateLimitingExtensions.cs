@@ -109,6 +109,11 @@ public static class RateLimitingExtensions
                 }));
 
         o.AddPolicy("comments", CommentsPartition);
+
+        // Build reports: same per-user partition and budget as comments. A deploy reports once, so
+        // 30/min is far above any legitimate use — the limit exists because the endpoint scans and
+        // updates comments, and an unbounded caller could make that expensive.
+        o.AddPolicy("builds", BuildsPartition);
     }
 
     /// <summary>The "comments" policy's partitioning, public so tests can assert on it directly
@@ -122,6 +127,20 @@ public static class RateLimitingExtensions
     /// last second of one window and again in the first second of the next — a 60-burst across a
     /// window boundary, which is exactly the abuse shape this limits.
     /// </remarks>
+    /// <summary>The "builds" policy's partitioning — per authenticated user, same as comments.</summary>
+    public static RateLimitPartition<string> BuildsPartition(HttpContext ctx)
+    {
+        return RateLimitPartition.GetSlidingWindowLimiter(
+            PartitionKeyFor(ctx),
+            _ => new SlidingWindowRateLimiterOptions
+            {
+                PermitLimit = 30,
+                Window = TimeSpan.FromMinutes(1),
+                SegmentsPerWindow = 6,
+                QueueLimit = 0
+            });
+    }
+
     public static RateLimitPartition<string> CommentsPartition(HttpContext ctx)
     {
         return RateLimitPartition.GetSlidingWindowLimiter(

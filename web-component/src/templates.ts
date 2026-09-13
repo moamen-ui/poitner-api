@@ -164,7 +164,12 @@ export const TPL = {
 
   card: (c: Comment, i: number, isQuickAccess?: boolean) => {
     const cls = c.status === 'pending-apply' ? 'pending' : c.status === 'applied' ? 'applied' : c.status === 'archived' ? 'archived' : '';
-    const statusPill = c.status === 'applied'
+    // "completed" means a developer applied it; "live" means it is actually on the site. Those
+    // are different days for the person who left the comment, and telling them apart is the whole
+    // point of deploy awareness — the title names the build so they can ask about a specific one.
+    const statusPill = c.status === 'applied' && c.deployedAt
+      ? `<span class="pf-pill status-applied" title="Deployed in ${escapeHtml((c.deployedSha || '').slice(0, 7))}">&#x2713; live</span>`
+      : c.status === 'applied'
       ? '<span class="pf-pill status-applied">&#x2713; completed</span>'
       : c.status === 'pending-apply' ? '<span class="pf-pill status-pending">pending</span>'
       : c.status === 'archived' ? '<span class="pf-pill status-archived">&#x1f4e6; archived</span>' : '';

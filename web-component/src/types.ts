@@ -49,6 +49,10 @@ export interface Comment {
   /** Link to the commit that applied this comment — null for comments applied before this field
    *  existed, or by a flow that doesn't track it; the card renders "#" in that case. */
   commitUrl?: string | null;
+  /** Set once a build containing this comment's fix was reported live. */
+  deployedAt?: string | null;
+  /** The build sha that carried it live. */
+  deployedSha?: string | null;
   /** Stamped when the author verifies an applied comment (thumbs up). */
   verifiedAt?: string | null;
   element?: ElementCapture;
@@ -63,6 +67,10 @@ export interface Comment {
 
 export type NotificationPayload = {
   commitUrl?: string | null;
+  /** Set once a build containing this comment's fix was reported live. */
+  deployedAt?: string | null;
+  /** The build sha that carried it live. */
+  deployedSha?: string | null;
   appliedByLabel?: string | null;
   replyExcerpt?: string | null;
 };

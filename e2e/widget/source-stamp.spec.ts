@@ -165,11 +165,7 @@ test('R3-01-01 — source-stamp-prod-build (widget: steps 5–12)', async ({ pag
   }
 });
 
-// BLOCKED — not a test defect. deploy awareness is not implemented: no /builds endpoint, no deployedAt on comments, and the widget does not POST its build sha on boot.
-// Marked fixme rather than left failing so the nightly tier stays a signal; the scenario
-// stays here, and this line is what has to be deleted when the feature lands.
 test('R3-01-03 ⛓ — deploy-awareness-widget', async ({ page }) => {
-  test.fixme(true, 'deploy awareness is not implemented: no /builds endpoint, no deployedAt on comments, and the widget does not POST its build sha on boot');
   test.skip(process.env.TIER === 'pr', 'nightly tier only');
   const start = Date.now();
 
@@ -252,7 +248,33 @@ test('R3-01-03 ⛓ — deploy-awareness-widget', async ({ page }) => {
 
     // 7. Widget: open comments list; pill reads "✓ live" with title="Deployed in <S.slice(0,7)>"
     const widget = page.locator('pointer-feedback');
+    // Collapsed, the widget renders only the launcher; pre-authenticated it renders the toolbar
+    // directly. Handle both rather than assuming one — which state you get depends on stored auth,
+    // and guessing wrong fails on a missing element instead of on what the test is about.
+    const launcher = widget.locator('#pf-launcher');
+    if (await launcher.count()) {
+      await launcher.click();
+      await expect(widget.locator('#pf-toggle')).toBeVisible({ timeout: 10_000 });
+    }
+
+    // The list is filtered by the selected environment, and these comments are staging (2). A
+    // widget showing another environment renders no card at all, which looks identical to "the
+    // deployed pill is missing" at the assertion below.
+    const envSelect = widget.locator('#pf-env');
+    if (await envSelect.count()) {
+      await envSelect.selectOption('staging').catch(() => {});
+    }
+
     await widget.locator('#pf-toggle').click();
+
+    // Switch to the completed list. The default "all" filter deliberately means ACTIVE comments —
+    // completed and archived ones move out to their own chips — so an applied comment renders no
+    // card at all until this is selected, and the missing pill would look like a rendering bug
+    // rather than the default view doing exactly what it is meant to.
+    const statusFilter = widget.locator('#pf-status-filter');
+    await expect(statusFilter).toBeVisible({ timeout: 10_000 });
+    await statusFilter.selectOption('applied');
+
     const card1Pill = widget.locator(`.pf-card[data-id="${comment1Id}"] .pf-pill.status-applied`);
     await expect(card1Pill).toHaveText(/✓ live/);
     await expect(card1Pill).toHaveAttribute('title', `Deployed in ${S.slice(0, 7)}`);

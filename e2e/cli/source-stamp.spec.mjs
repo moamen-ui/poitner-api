@@ -338,11 +338,7 @@ test('R3-01-02 ⛓ — stale-hash-warning', async () => {
   }
 });
 
-// BLOCKED — not a test defect. deploy awareness is not implemented: no POST /api/projects/{key}/builds, and comments carry no commitSha/deployedAt.
-// Marked fixme rather than left failing so the nightly tier stays a signal; the scenario
-// stays here, and this line is what has to be deleted when the feature lands.
 test('R3-01-04 — deploy-awareness-cli', async () => {
-  test.fixme(true, 'deploy awareness is not implemented: no POST /api/projects/{key}/builds, and comments carry no commitSha/deployedAt');
   test.skip(process.env.TIER === 'pr', 'nightly tier only');
   const start = Date.now();
 
@@ -352,6 +348,12 @@ test('R3-01-04 — deploy-awareness-cli', async () => {
 
   try {
     // 1. Commits C1 -> C2 -> C3 on main, side branch commit X from C1
+    // Captured BEFORE the side branch exists. defaultBranch() reads the CURRENT branch, so asking
+    // it after `branch(...)` has switched us to `side` returns `side` — and the checkout below
+    // would be a no-op, leaving HEAD on a branch that contains X. Step 7 then marks a comment it
+    // expected to leave alone, which reads as the server over-marking rather than the test
+    // standing on the wrong branch.
+    const baseBranch = defaultBranch(repo.dir);
     const C1 = commit(repo.dir, 1);
     const C2 = commit(repo.dir, 2);
     const C3 = commit(repo.dir, 3);
@@ -361,7 +363,7 @@ test('R3-01-04 — deploy-awareness-cli', async () => {
     // Back to whatever the initial branch is actually called. `git init` here produces `main`
     // (and has since git 2.28 with init.defaultBranch), so a hardcoded 'master' fails outright —
     // reading it keeps this working whatever the developer's git default happens to be.
-    checkout(repo.dir, defaultBranch(repo.dir));
+    checkout(repo.dir, baseBranch);
 
     // 2. Two Applied comments on e2e-r301 via PATCH:
     // A with commitSha = C1, B with commitSha = X; assert both deployedAt === null
@@ -464,6 +466,14 @@ test('R3-01-04 — deploy-awareness-cli', async () => {
     // Stage a file in the repo
     writeFileSync(join(repo.dir, 'applied-file.txt'), 'fixed!\n');
     execFileSync('git', ['add', 'applied-file.txt'], { cwd: repo.dir });
+
+    // Point origin at a GitHub-shaped URL before applying. commitUrlFor deliberately returns null
+    // for a host it does not recognise — and the bare remote this fixture uses is a local path, so
+    // without this step the assertion below would be testing the fallback rather than the link.
+    // The remote is never contacted; only its URL is parsed.
+    execFileSync('git', ['remote', 'set-url', 'origin', 'https://github.com/e2e/repo.git'], {
+      cwd: repo.dir,
+    });
 
     const applyRes = await spawnCli({
       cwd: repo.dir,

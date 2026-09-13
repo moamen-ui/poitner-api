@@ -9,4 +9,10 @@ public class UpdateCommentStatusRequest
     public string? AppliedByLabel { get; set; }
     // The commit that applied this comment — see Comment.CommitUrl and skill.md's apply flow.
     public string? CommitUrl { get; set; }
+
+    /// <summary>
+    /// The raw commit sha, alongside CommitUrl. The URL is for a human to click; this is what
+    /// deploy detection tests for ancestry against a deployed build, which a URL cannot answer.
+    /// </summary>
+    public string? CommitSha { get; set; }
 }

@@ -234,12 +234,22 @@ Options:
         if (parsed['help']) {
             console.log(`
 Usage: pointer status <id> <open|ready|applied|archived>
+       pointer status --deployed [sha]
 
-Update comment status.
+Update comment status, or report a deployed build.
+
+--deployed [sha]   Mark every applied comment this build contains as live. Defaults to HEAD.
+                   Ancestry is computed here, in the repository, and sent to the server as a
+                   list of shas — the server has no clone and cannot work it out itself.
 `);
             process.exit(0);
         }
-        await statusCommand(cwd(), parsed, positionals);
+        if (parsed['deployed'] !== undefined) {
+            const { deployedCommand } = await import('./commands/deployed.js');
+            await deployedCommand(cwd(), parsed);
+        } else {
+            await statusCommand(cwd(), parsed, positionals);
+        }
     } else if (command === 'reply') {
         if (parsed['help']) {
             console.log(`

@@ -19,6 +19,23 @@ public class Comment : BaseEntity
     // SHA + the repo's remote URL — see skill.md's apply flow). Null for comments applied before
     // this field existed, or by a flow that doesn't track it; the widget shows "#" in that case.
     public string? CommitUrl { get; set; }
+
+    /// <summary>
+    /// The commit that applied this comment, as a raw sha. Distinct from <see cref="CommitUrl"/>,
+    /// which is a display link: this is the value deploy-detection compares against, since only a
+    /// sha can be tested for ancestry against a deployed build.
+    /// </summary>
+    public string? CommitSha { get; set; }
+
+    /// <summary>
+    /// Stamped the first time a build containing <see cref="CommitSha"/> is reported as deployed.
+    /// Write-once — a later report of another build must not move it, or "when did this go live"
+    /// would answer with the most recent deploy rather than the first one that carried the fix.
+    /// </summary>
+    public DateTime? DeployedAt { get; set; }
+
+    /// <summary>The build sha that carried this comment's fix live.</summary>
+    public string? DeployedSha { get; set; }
     // Stamped when the author or admin verifies an applied comment (thumbs up).
     public DateTime? VerifiedAt { get; set; }
     // Edit trace: stamped when the author edits the comment body / removes its image.

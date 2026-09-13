@@ -41,6 +41,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options, ICurrentUser c
     public DbSet<User> Users => Set<User>();
     public DbSet<Project> Projects => Set<Project>();
     public DbSet<Comment> Comments => Set<Comment>();
+    public DbSet<ProjectBuild> ProjectBuilds => Set<ProjectBuild>();
     public DbSet<Reply> Replies => Set<Reply>();
     public DbSet<StatusPresentation> StatusPresentations => Set<StatusPresentation>();
     public DbSet<PredefinedAction> PredefinedActions => Set<PredefinedAction>();
@@ -77,6 +78,9 @@ public class AppDbContext(DbContextOptions<AppDbContext> options, ICurrentUser c
         // they run before any tenant context exists — and stamp OwnerId from the user instead.
         b.Entity<ApiKey>().HasQueryFilter(e => currentUser.IsSuperAdmin || (currentUser.TenantId != null && e.OwnerId == currentUser.TenantId) || (currentUser.TenantId == null && !strict && e.OwnerId == null));
         b.Entity<Comment>().HasQueryFilter(e => currentUser.IsSuperAdmin || (currentUser.TenantId != null && e.OwnerId == currentUser.TenantId) || (currentUser.TenantId == null && !strict && e.OwnerId == null));
+        // Strict-own, like QuickAccessLink: a build row says which of a tenant's shas are live, and
+        // there is no global-fallback case where another tenant should see one.
+        b.Entity<ProjectBuild>().HasQueryFilter(e => currentUser.IsSuperAdmin || (currentUser.TenantId != null && e.OwnerId == currentUser.TenantId));
         b.Entity<Reply>().HasQueryFilter(e => currentUser.IsSuperAdmin || (currentUser.TenantId != null && e.OwnerId == currentUser.TenantId) || (currentUser.TenantId == null && !strict && e.OwnerId == null));
         // PageContextSnapshot carries browser-captured console/network data for a tenant's project —
         // strict-own like Comment, so it can never leak across tenants through a future admin listing.

@@ -77,6 +77,10 @@ export async function markApplied(
           reply: options.reply,
           appliedByLabel,
           commitUrl,
+          // The raw sha alongside the display URL. Deploy detection tests ancestry against a
+          // deployed build, which only a sha can answer — without it a comment stays "applied"
+          // forever, even once the fix is live.
+          commitSha: sha || null,
         },
         token: ctx.token,
       });
@@ -121,6 +125,9 @@ export async function markApplied(
         reply: options.reply,
         appliedByLabel,
         commitUrl,
+        // Same reason as the single-commit path above: only a sha can be tested for ancestry
+        // against a deployed build.
+        commitSha: sha || null,
       },
       token: ctx.token,
     });

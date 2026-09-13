@@ -39,7 +39,12 @@ function mapEnvironmentToString(env: number | string): string {
   return String(env);
 }
 
-async function getClient(cwd: string, parsed: Record<string, string | boolean>) {
+/**
+ * Resolves server, project and token from config + flags, exiting with the documented codes when
+ * something is missing. Exported so other commands share the exact same resolution and the same
+ * exit codes — a second copy would drift the moment one of them gained a flag.
+ */
+export async function getClient(cwd: string, parsed: Record<string, string | boolean>) {
   const config = await readConfig(cwd);
   const server = (
     (typeof parsed['server'] === 'string' ? parsed['server'] : config.server) ||

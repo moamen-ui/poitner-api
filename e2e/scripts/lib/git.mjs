@@ -77,7 +77,11 @@ export function assertRefsUnchanged(bareDir, beforeSnapshot) {
  * difference.
  */
 export function defaultBranch(repoDir) {
-  return execFileSync('git', ['rev-parse', '--abbrev-ref', 'HEAD'], {
+  // symbolic-ref, not `rev-parse --abbrev-ref HEAD`. Both name the current branch, but rev-parse
+  // needs HEAD to resolve to a COMMIT and so fails on a freshly-init'd repo with "ambiguous
+  // argument 'HEAD'" — exactly when a caller wants to record the starting branch before making
+  // any commits. symbolic-ref reads the ref itself and answers on an unborn branch.
+  return execFileSync('git', ['symbolic-ref', '--short', 'HEAD'], {
     cwd: repoDir,
     encoding: 'utf8',
   }).trim();

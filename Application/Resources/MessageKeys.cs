@@ -163,6 +163,13 @@ public static class MessageKeys
         public const string LinkRotated = "A new link was issued; the previous one no longer works.";
     }
 
+    public static class Build
+    {
+        public const string ShaInvalid = "A build sha must be 7-40 hexadecimal characters.";
+        public const string TooManyShas = "Too many commit shas in one report; send at most 200.";
+        public const string Reported = "Build recorded.";
+    }
+
     public static class Plan
     {
         public const string NotFound = "Plan not found.";

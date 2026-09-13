@@ -554,6 +554,12 @@ public class CommentService : ICommentService
             comment.AppliedBy = actorId;
             comment.AppliedByLabel = request.AppliedByLabel;
             comment.CommitUrl = request.CommitUrl;
+            // Normalised on the way in so deploy detection can compare shas directly. A sha that
+            // differs only by case or whitespace would never match a reported build, and the
+            // comment would sit "applied but never live" with nothing to show why.
+            comment.CommitSha = string.IsNullOrWhiteSpace(request.CommitSha)
+                ? null
+                : request.CommitSha.Trim().ToLowerInvariant();
         }
 
         if (!string.IsNullOrWhiteSpace(request.Reply))
@@ -959,6 +965,9 @@ public class CommentService : ICommentService
         AppliedBy = comment.AppliedBy,
         AppliedByLabel = comment.AppliedByLabel,
         CommitUrl = comment.CommitUrl,
+        CommitSha = comment.CommitSha,
+        DeployedAt = comment.DeployedAt,
+        DeployedSha = comment.DeployedSha,
         VerifiedAt = comment.VerifiedAt,
         EditedAt = comment.EditedAt,
         // Labels only — the prompts are intentionally never exposed here.
@@ -985,6 +994,9 @@ public class CommentService : ICommentService
         AppliedBy = comment.AppliedBy,
         AppliedByLabel = comment.AppliedByLabel,
         CommitUrl = comment.CommitUrl,
+        CommitSha = comment.CommitSha,
+        DeployedAt = comment.DeployedAt,
+        DeployedSha = comment.DeployedSha,
         VerifiedAt = comment.VerifiedAt,
         EditedAt = comment.EditedAt,
         // Labels only — the prompts are intentionally never exposed here.
