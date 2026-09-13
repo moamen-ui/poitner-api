@@ -67,6 +67,20 @@
   font-size: 11px;
   color: v.token('text-subtle');
 }
+// "edited" marker inside the sub line.
+.pf-edited {
+  font-style: italic;
+}
+// Auxiliary checkbox row in the inline editor ("Remove image"). Deliberately NOT .pf-check:
+// tighter margins and no pointer cursor, matching the old inline styling.
+.pf-edit-option {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  font-size: 12px;
+  color: v.token('text-slate');
+  margin: 6px 0;
+}
 .pf-src {
   font-size: 11px;
   color: v.token('src');
