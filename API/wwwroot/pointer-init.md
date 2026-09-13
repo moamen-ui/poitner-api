@@ -30,6 +30,27 @@ This skill wires the widget into the **current** app. Do not guess the variables
 | **Enabled?** | optional | Whether to mount the widget now. Default `true` for dev; usually `false` in production builds unless feedback is wanted in prod. |
 | **Screenshots?** | optional | The widget captures an element screenshot per comment by default. Pass `screenshot="false"` to disable. |
 
+## Scope rules — read before editing anything
+
+This task is small on purpose. Mounting a widget is a script tag and an element; treat anything
+beyond that as out of scope.
+
+1. **Touch the fewest files possible** — two or three, typically an env/config file and one entry
+   point. If you are about to create a *new* file, stop: unless the host stack genuinely has
+   nowhere to put a value, you are building an abstraction nobody asked for. No dedicated
+   config/constants file, no service, no provider, no wrapper component, no barrel export.
+2. **Never modify a production config.** `environment.prod.ts`, `.env.production`,
+   `appsettings.Production.json` and their equivalents stay exactly as they are. Enabling feedback
+   in production is a decision for the user, made deliberately, later.
+3. **Gate on configuration presence, not on a build flag.** The widget mounts when its project key
+   and server are set and non-empty, and stays dormant otherwise. That way an environment that
+   never mentions Pointer is already correct, with nothing to remove.
+4. **Do not reformat, reorganise, or "improve" the files you touch.** Add your lines and leave.
+5. **Do not read the whole repository.** Look at the files the detection step names, and stop.
+   Reading a large monorepo start-to-finish is why this takes minutes instead of seconds.
+6. **In a monorepo, change one app** — the one the user named. Never a shared library, never a
+   second app.
+
 ## Step 2 — Detect the host stack
 
 - **Vite (React/Vue/Svelte)** — `vite.config.*` + an `index.html` using `%VITE_*%` placeholders → Step 3a.
@@ -62,7 +83,7 @@ but can't jump straight to the file.
 > | Next.js | `NEXT_PUBLIC_` | `process.env.NEXT_PUBLIC_*` |
 > | Create React App / Webpack (`react-scripts`) | `REACT_APP_` | `process.env.REACT_APP_*` |
 > | Webpack with custom `DefinePlugin` | whatever the config defines (often unprefixed `POINTER_*`) | `process.env.POINTER_*` |
-> | Angular | — (no runtime env) | a field in `src/environments/environment*.ts` |
+> | Angular | — (no runtime env) | a field in `src/environments/environment.ts` — the **development** file only, never `environment.prod.ts` |
 > | Plain HTML / static | — (no env) | hardcode attributes, or use `embed.js` (3e) |
 >
 > Whichever you pick, **mirror it in `.env.example`** so the names match what the code reads.
@@ -118,9 +139,54 @@ Inline literal values before `</body>`:
 
 ### 3c. Angular
 
-Angular does not substitute `%ENV%` in `index.html`. Easiest: add a literal loader to
-`src/index.html` before `</body>` (markup as in 3b). For env-switching, read from
-`src/environments/environment*.ts` and append the element in `main.ts` after bootstrap.
+**Exactly two files change. Do not create any new file.** No `pointer.config.ts`, no service, no
+module, no provider, no wrapper component — a widget that mounts in six lines does not need an
+abstraction layer, and every extra file is one the user has to review, name and maintain.
+
+**Never touch `environment.prod.ts` (or any `environment.*.ts` other than the default
+development one).** Production must stay off until the user turns it on deliberately. Editing a
+prod config to enable a feedback widget is a change to what ships to real customers, and it is not
+yours to make.
+
+1. `src/environments/environment.ts` — the **development** file only. Add one field:
+
+   ```ts
+   export const environment = {
+     // …whatever is already here, untouched
+     pointer: { server: '<POINTER_SERVER>', project: '<project-key>', environment: 'local' },
+   };
+   ```
+
+2. `src/main.ts` — after `bootstrapApplication(...)` resolves, append:
+
+   ```ts
+   import { environment } from './environments/environment';
+
+   // Mounts only when a project key is configured, so any environment that does not define
+   // `pointer` (production included) silently runs without it — no build flag, no dead code path.
+   const pf = (environment as any).pointer;
+   if (pf?.project && pf?.server) {
+     const s = document.createElement('script');
+     s.src = `${pf.server}/pointer.js`;
+     s.async = true;
+     s.onload = () => {
+       const el = document.createElement('pointer-feedback');
+       el.setAttribute('server', pf.server);
+       el.setAttribute('project', pf.project);
+       el.setAttribute('environment', pf.environment ?? 'local');
+       document.body.appendChild(el);
+     };
+     document.head.appendChild(s);
+   }
+   ```
+
+The `pf?.project && pf?.server` guard is the whole activation rule: **present and non-empty means
+on, absent or blank means off.** An environment file that never mentions `pointer` needs no further
+change to stay clean.
+
+**Nx / monorepo:** the paths above are per-application — use `apps/<app>/src/…`, and change only
+the one app the user named. Never wire the widget into a shared lib, and never touch a second app
+because it looked similar.
 
 ### 3d. Next.js
 
