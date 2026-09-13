@@ -26,8 +26,25 @@ api.pointer.moamen.work {
     # /api/branding is the live branding config (name/urls) consumed by landing+dashboards+widget;
     # keep it revalidated so rebrands propagate. (Its /asset/* subpath is versioned by ?v and keeps
     # its own long cache — the exact-path matcher below does not include the asset subpath.)
-    @widget path /pointer.js /pointer.css /embed.js /skill.md /api/branding
-    header @widget Cache-Control "no-cache, must-revalidate"
+    #
+    # `not query v=*` is load-bearing. The matcher is otherwise query-blind, so it also matched
+    # /pointer.js?v=<hash> — a PINNED, content-addressed build the API serves as
+    # `public, max-age=31536000, immutable` — and overwrote that with no-cache. The pin still got
+    # the right bytes, but the year of caching it exists to buy was destroyed at the proxy, and
+    # nothing about the response looked wrong. Excluding any request that carries `v` lets both
+    # `?v=<hash>` (immutable) and `?v=stable` (one hour) keep the headers the API chose.
+    #
+    # An EMPTY `?v=` matches `query v=*` too, so it is excluded here and falls through to the API,
+    # which treats it as an unknown hash and returns 404 with the version-mismatch header. That is
+    # the intended answer: an empty pin is a broken pin, not "no pin".
+    @widget {
+        path /pointer.js /pointer.css /embed.js /skill.md /api/branding
+        not query v=*
+    }
+    # `>` replaces rather than appends. Without it Caddy adds its value alongside the API's own
+    # no-cache, and the response carries "no-cache, must-revalidate, no-cache" — harmless to a
+    # browser, but it means the header a client sees is not the one this file specifies.
+    header @widget >Cache-Control "no-cache, must-revalidate"
     reverse_proxy api:8080
 }
 

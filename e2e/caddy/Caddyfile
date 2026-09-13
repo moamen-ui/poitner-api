@@ -1,4 +1,37 @@
+# The e2e proxy, mirroring production's widget cache rules.
+#
+# It exists so R3-03-06b can assert the CADDY HOP rather than only the API's own headers: a proxy
+# that overwrites a pinned asset's immutable header is invisible when you test the API directly,
+# and that is exactly what this file's `not query v=*` prevents.
+
+# TLS site for the mock-domain rehearsal (R2-00-13), which needs a real hostname and a cert.
 pick-it.test:8443 {
     tls internal
+
+    @widget {
+        path /pointer.js /pointer.css /embed.js /skill.md /api/branding
+        not query v=*
+    }
+    # `>` replaces rather than appends. Without it Caddy adds its value alongside the API's own
+    # no-cache, and the response carries "no-cache, must-revalidate, no-cache" — harmless to a
+    # browser, but it means the header a client sees is not the one this file specifies.
+    header @widget >Cache-Control "no-cache, must-revalidate"
+
+    reverse_proxy api:8080
+}
+
+# Plain HTTP on its own port for the cache-header matrix. Separate from 8443 because a port serves
+# either TLS or cleartext, not both — and R3-03-06b is about headers, where a certificate would add
+# nothing but a trust store to configure.
+:8444 {
+    @widget {
+        path /pointer.js /pointer.css /embed.js /skill.md /api/branding
+        not query v=*
+    }
+    # `>` replaces rather than appends. Without it Caddy adds its value alongside the API's own
+    # no-cache, and the response carries "no-cache, must-revalidate, no-cache" — harmless to a
+    # browser, but it means the header a client sees is not the one this file specifies.
+    header @widget >Cache-Control "no-cache, must-revalidate"
+
     reverse_proxy api:8080
 }

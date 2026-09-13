@@ -141,3 +141,66 @@ test('R3-03-06 — cache-header matrix (API hop)', async () => {
     detail: `H=${H}; no-cache/stable/immutable exact; unknown+malformed+empty → 404; ${olderDetail}`,
   });
 });
+
+test('R3-03-06b — cache-header matrix (Caddy hop)', async () => {
+  test.skip(process.env.TIER === 'pr', 'nightly tier only — needs the caddy container');
+  const start = Date.now();
+
+  // Cleartext sibling of the TLS mock-domain port. A certificate would add nothing here: what is
+  // under test is which headers survive the proxy.
+  const PROXY = process.env.E2E_CADDY_URL || 'http://localhost:8444';
+
+  const reachable = await fetch(`${PROXY}/pointer.version.json`).then((r) => r.ok).catch(() => false);
+  test.skip(
+    !reachable,
+    `caddy is not serving ${PROXY} — start it with ` +
+      `docker compose -f docker-compose.yaml -f e2e/compose.caddy.yaml up -d caddy`,
+  );
+
+  const through = async (path) => {
+    const res = await fetch(`${PROXY}${path}`);
+    return {
+      status: res.status,
+      cacheControl: res.headers.get('cache-control'),
+      mismatch: res.headers.get('x-pointer-widget-version-mismatch'),
+    };
+  };
+
+  // The proxy sets no-cache on the unhashed widget files so a deploy actually reaches browsers.
+  // Exact, not "contains": Caddy appends by default, and a response carrying
+  // "no-cache, must-revalidate, no-cache" would pass a substring check while proving the file's
+  // directive is not the one clients see.
+  const bare = await through('/pointer.js');
+  expect(bare.status).toBe(200);
+  expect(bare.cacheControl).toBe('no-cache, must-revalidate');
+
+  // …and it must NOT touch a pinned request. This is the row that matters: the @widget matcher is
+  // query-blind by default, so without `not query v=*` the proxy overwrites the API's immutable
+  // header and silently destroys the year of caching a pin exists to buy. Nothing about the
+  // response would look wrong — the bytes are still correct.
+  const pinned = await through(`/pointer.js?v=${H}`);
+  expect(pinned.status).toBe(200);
+  expect(pinned.cacheControl, 'the proxy must not overwrite an immutable pin').toBe(IMMUTABLE);
+
+  const stable = await through('/pointer.js?v=stable');
+  expect(stable.status).toBe(200);
+  expect(stable.cacheControl, 'the proxy must not overwrite the stable channel either').toBe(STABLE);
+
+  // An unknown pin's 404 and its recovery header pass through untouched.
+  const unknown = await through('/pointer.js?v=000000000000');
+  expect(unknown.status).toBe(404);
+  expect(unknown.mismatch).toBe(H);
+
+  // An EMPTY ?v= matches `query v=*`, so it is excluded from @widget and falls through to the API,
+  // which treats it as an unknown hash. The alternative — the proxy claiming it as an unpinned
+  // request and answering no-cache — would make `?v=` a way to get the floating build cached under
+  // a URL that looks pinned.
+  const empty = await through('/pointer.js?v=');
+  expect(empty.status, 'an empty pin must reach the API, not be claimed by the proxy').toBe(404);
+  expect(empty.mismatch).toBe(H);
+
+  record({
+    id: 'R3-03-06b', tier: 'nightly', layer: 'api', role: '—', result: 'PASS', ms: Date.now() - start,
+    detail: `via ${PROXY}: no-cache exact on bare; immutable and stable preserved; 404+mismatch for unknown and empty`,
+  });
+});
