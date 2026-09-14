@@ -165,6 +165,11 @@ export async function initCommand(cwd: string, options: Record<string, string | 
         } else {
             const match = choice.match(/\((.*?)\)$/);
             if (match) finalProjectKey = match[1];
+            // Carry the name across too. Without this, picking an EXISTING project left projectName
+            // as the empty string it was initialised to, and the summary read:
+            //   ✔ Pointer is set up for project "" (pointer-dashboard)
+            const picked = projects.find((p) => p.key === finalProjectKey);
+            projectName = picked?.name || finalProjectKey;
         }
     } else if (isYes && project && !create) {
         const existing = await api<any[]>(server as string, '/api/admin/projects', { token }).catch(() => []);
@@ -435,7 +440,9 @@ export async function initCommand(cwd: string, options: Record<string, string | 
         filesMod.push(...installed);
         // Kept for the human summary below: "installed" does not tell anyone WHAT was written into
         // their repository, and these are files they will want to find, read and commit.
-        skillFiles = installed.filter((f) => f.includes('SKILL.md') || f.endsWith('.md'));
+        // Deduplicated: several tools share the .agents/ layout, so installing for three of them
+        // listed the same two paths three times over in the summary.
+        skillFiles = [...new Set(installed.filter((f) => f.includes('SKILL.md') || f.endsWith('.md')))];
     }
 
     const pkgStr = await fs.readFile(join(cwd, 'package.json'), 'utf8').catch(() => '{}');
@@ -515,14 +522,45 @@ export async function initCommand(cwd: string, options: Record<string, string | 
         process.exit(0);
     }
 
-    console.log(`Summary:
-✔ ${product} is set up for project "${projectName}" (${finalProjectKey})
-  • Widget: ${injected ? `injected into index.html (${appInfo.kind})` : `run the pointer-init skill in ${tool} (${appInfo.kind})`}
-  • Key: .pointer/credentials.env (gitignored)
-  • Skills: ${skillFiles.length ? skillFiles.join(', ') : 'installed'}
+    // Formatted so the one thing the reader must DO is the thing they see.
+    //
+    // The previous summary ran the state and the next action together in one undifferentiated
+    // list, then buried both under an MCP JSON blob — so an install that still needed the skill
+    // run looked finished. The action now gets its own titled block, in colour, last.
+    const bold = (s: string) => `\x1b[1m${s}\x1b[0m`;
+    const dim = (s: string) => `\x1b[2m${s}\x1b[0m`;
+    const green = (s: string) => `\x1b[32m${s}\x1b[0m`;
+    const cyan = (s: string) => `\x1b[36m${s}\x1b[0m`;
+    const rule = dim('─'.repeat(60));
 
-Next: start your dev server, open the app, click the ${product} button and sign in.
-      Dashboard: ${branding.urls?.app || server}`);
+    const envLabel = envs.length > 1 ? envs.join(', ') : env;
+    console.log(`
+${rule}
+${green('✔')} ${bold(`${product} is set up`)}
+
+  ${dim('Project')}       ${projectName || finalProjectKey} ${dim(`(${finalProjectKey})`)}
+  ${dim('Environments')}  ${envLabel}
+  ${dim('Server')}        ${server}
+  ${dim('Key')}           .pointer/credentials.env ${dim('(gitignored)')}
+  ${dim('Skills')}        ${skillFiles.length ? skillFiles.join('\n                ') : 'installed'}
+${rule}`);
+
+    if (injected) {
+        console.log(`
+${bold('Next')}  Start your dev server and open the app — the ${product} button should appear.
+      ${dim(`Widget mounted in ${filesMod.find((f) => f.endsWith('.html')) ?? 'your HTML'}`)}
+      ${dim(`Dashboard: ${branding.urls?.app || server}`)}`);
+    } else {
+        // The install is NOT finished here, and saying so plainly is the whole point of the block.
+        console.log(`
+${bold('Next')}  ${cyan(`The widget is not mounted yet — ${appInfo.kind} has no single entry point to inject into.`)}
+
+      Run this in ${tool}:   ${bold('/pointer-init')}
+      ${dim('It reads .pointer/config.json, so it will not ask for your key or project again.')}
+
+      ${dim(`Or name the file yourself:  pointer init --html path/to/index.html`)}
+      ${dim(`Dashboard: ${branding.urls?.app || server}`)}`);
+    }
 
     const mcpConfigPaths: Record<string, string> = {
       'claude-code': '~/.claude.json',
@@ -532,19 +570,16 @@ Next: start your dev server, open the app, click the ${product} button and sign 
       opencode: '~/.config/opencode/opencode.json',
     };
     const toolKey = (tool || '').toLowerCase();
-    const configPath = mcpConfigPaths[toolKey] || 'your tool\'s user MCP settings';
+    const configPath = mcpConfigPaths[toolKey] || "your tool's user MCP settings";
 
+    // Optional, so it reads as optional. It used to be the last and largest thing printed, which
+    // made a 12-line JSON blob look like a required step and pushed the actual next action off
+    // screen.
     console.log(`
-MCP setup — user-level config (do not commit):
-Add to ${configPath}:
-{
-  "mcpServers": {
-    "pointer": {
-      "command": "npx",
-      "args": ["-y", "pointer-feedback", "mcp"]
-    }
-  }
-}`);
+${dim('─'.repeat(60))}
+${dim(`Optional — MCP server, for tool-native access to comments (${tool}):`)}
+${dim(`Add to ${configPath}, user-level, do not commit:`)}
+${dim('  { "mcpServers": { "pointer": { "command": "npx", "args": ["-y", "pointer-feedback", "mcp"] } } }')}`);
 
     process.exit(0);
 }

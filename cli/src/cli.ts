@@ -103,7 +103,7 @@ Options:
   --key <key>              API key
   --project <key>          Project key
   --create <name>          Create project with name
-  --environment <env>      Environment (default: local)
+  --environment <list>     Environments, comma-separated: local,staging,production (default: local)
   --tool <tool>            AI tool
   --skills-dir <path>      Skills directory
   --app-url <url>          App URL

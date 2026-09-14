@@ -2592,6 +2592,8 @@ and the pointer-init skill uses them to mount the widget for you afterwards.
       const match = choice.match(/\((.*?)\)$/);
       if (match)
         finalProjectKey = match[1];
+      const picked = projects.find((p) => p.key === finalProjectKey);
+      projectName = picked?.name || finalProjectKey;
     }
   } else if (isYes && project && !create) {
     const existing = await api(server, "/api/admin/projects", { token }).catch(() => []);
@@ -2790,7 +2792,7 @@ and the pointer-init skill uses them to mount the widget for you afterwards.
       installed.push(...await installSkills(server, t, cwd2, t === tool ? skillsDir : void 0));
     }
     filesMod.push(...installed);
-    skillFiles = installed.filter((f) => f.includes("SKILL.md") || f.endsWith(".md"));
+    skillFiles = [...new Set(installed.filter((f) => f.includes("SKILL.md") || f.endsWith(".md")))];
   }
   const pkgStr = await fs10.readFile(join10(cwd2, "package.json"), "utf8").catch(() => "{}");
   const tokens = extractTokens(JSON.parse(pkgStr));
@@ -2848,14 +2850,37 @@ and the pointer-init skill uses them to mount the widget for you afterwards.
     }));
     process.exit(0);
   }
-  console.log(`Summary:
-\u2714 ${product} is set up for project "${projectName}" (${finalProjectKey})
-  \u2022 Widget: ${injected ? `injected into index.html (${appInfo.kind})` : `run the pointer-init skill in ${tool} (${appInfo.kind})`}
-  \u2022 Key: .pointer/credentials.env (gitignored)
-  \u2022 Skills: ${skillFiles.length ? skillFiles.join(", ") : "installed"}
+  const bold = (s) => `\x1B[1m${s}\x1B[0m`;
+  const dim = (s) => `\x1B[2m${s}\x1B[0m`;
+  const green = (s) => `\x1B[32m${s}\x1B[0m`;
+  const cyan = (s) => `\x1B[36m${s}\x1B[0m`;
+  const rule = dim("\u2500".repeat(60));
+  const envLabel = envs.length > 1 ? envs.join(", ") : env;
+  console.log(`
+${rule}
+${green("\u2714")} ${bold(`${product} is set up`)}
 
-Next: start your dev server, open the app, click the ${product} button and sign in.
-      Dashboard: ${branding.urls?.app || server}`);
+  ${dim("Project")}       ${projectName || finalProjectKey} ${dim(`(${finalProjectKey})`)}
+  ${dim("Environments")}  ${envLabel}
+  ${dim("Server")}        ${server}
+  ${dim("Key")}           .pointer/credentials.env ${dim("(gitignored)")}
+  ${dim("Skills")}        ${skillFiles.length ? skillFiles.join("\n                ") : "installed"}
+${rule}`);
+  if (injected) {
+    console.log(`
+${bold("Next")}  Start your dev server and open the app \u2014 the ${product} button should appear.
+      ${dim(`Widget mounted in ${filesMod.find((f) => f.endsWith(".html")) ?? "your HTML"}`)}
+      ${dim(`Dashboard: ${branding.urls?.app || server}`)}`);
+  } else {
+    console.log(`
+${bold("Next")}  ${cyan(`The widget is not mounted yet \u2014 ${appInfo.kind} has no single entry point to inject into.`)}
+
+      Run this in ${tool}:   ${bold("/pointer-init")}
+      ${dim("It reads .pointer/config.json, so it will not ask for your key or project again.")}
+
+      ${dim(`Or name the file yourself:  pointer init --html path/to/index.html`)}
+      ${dim(`Dashboard: ${branding.urls?.app || server}`)}`);
+  }
   const mcpConfigPaths = {
     "claude-code": "~/.claude.json",
     claude: "~/.claude.json",
@@ -2866,16 +2891,10 @@ Next: start your dev server, open the app, click the ${product} button and sign 
   const toolKey = (tool || "").toLowerCase();
   const configPath = mcpConfigPaths[toolKey] || "your tool's user MCP settings";
   console.log(`
-MCP setup \u2014 user-level config (do not commit):
-Add to ${configPath}:
-{
-  "mcpServers": {
-    "pointer": {
-      "command": "npx",
-      "args": ["-y", "pointer-feedback", "mcp"]
-    }
-  }
-}`);
+${dim("\u2500".repeat(60))}
+${dim(`Optional \u2014 MCP server, for tool-native access to comments (${tool}):`)}
+${dim(`Add to ${configPath}, user-level, do not commit:`)}
+${dim('  { "mcpServers": { "pointer": { "command": "npx", "args": ["-y", "pointer-feedback", "mcp"] } } }')}`);
   process.exit(0);
 }
 
@@ -10402,7 +10421,7 @@ Options:
   --key <key>              API key
   --project <key>          Project key
   --create <name>          Create project with name
-  --environment <env>      Environment (default: local)
+  --environment <list>     Environments, comma-separated: local,staging,production (default: local)
   --tool <tool>            AI tool
   --skills-dir <path>      Skills directory
   --app-url <url>          App URL
