@@ -12,14 +12,42 @@ Shadow DOM (no CSS collisions), shows a small toolbar, and lets authenticated st
 element and leave a comment. Projects **self-register**: the first time an app loads/comments with a
 given project key, it appears in the <POINTER_PRODUCT> dashboard.
 
-This skill wires the widget into the **current** app. Do not guess the variables — **ask the user**.
+This skill wires the widget into the **current** app. Take the variables from `.pointer/config.json` when it exists (Step 0); ask the user only for what is missing, and never guess.
 
 > **Server URL** = the deployed <POINTER_PRODUCT> origin (the one you fetched this skill from). When this skill
 > is served by a running <POINTER_PRODUCT> server, the examples below are **auto-filled** with that URL; if you
 > see a literal `<POINTER_SERVER>` placeholder, replace it with your deployed <POINTER_PRODUCT> URL.
 > `http://localhost:8090` is only the local-dev default — **never ship `localhost` to production.**
 
-## Step 1 — Ask the user for the variables
+## Step 0 — Read `.pointer/config.json` FIRST
+
+If `.pointer/config.json` exists, the CLI has already run and every variable below is settled.
+**Use those values and do not ask the user again.** Being asked to re-enter a project key you just
+typed into `pointer init` makes the tool look broken, and a second answer that disagrees with the
+config silently splits the install in two.
+
+```json
+{
+  "server": "https://pointer.example.com",
+  "project": "my-app",
+  "environment": "local",
+  "environments": ["local", "staging", "production"],
+  "htmlPath": "apps/web/src/index.html"
+}
+```
+
+| Field | Use it for |
+|---|---|
+| `server` | the Pointer origin — never prompt for this when it is set |
+| `project` | the project key — never prompt for this when it is set |
+| `environments` | **present and longer than one → do NOT ask which environment.** Emit the runtime-resolving block (Step 3c) so one file is correct on every deployment |
+| `environment` | the single environment, when `environments` is absent |
+| `htmlPath` | where a previous run mounted the widget — edit that same file rather than choosing a new one |
+
+Ask the user **only** for a field that is genuinely missing. If there is no config file at all, fall
+back to Step 1.
+
+## Step 1 — Ask the user for the variables (only those Step 0 did not answer)
 
 | Variable | Required | Meaning / guidance |
 |---|---|---|
