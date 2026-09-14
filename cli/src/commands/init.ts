@@ -205,9 +205,90 @@ export async function initCommand(cwd: string, options: Record<string, string | 
         }
     }
 
-    let env = options['environment'] as string || 'local';
+    // Multi-select: one codebase usually ships to more than one environment, and asking people to
+    // re-run init per environment meant three passes that each overwrote the previous one's config.
+    // `--environment` accepts a comma-separated list for the non-interactive path.
+    const ALL_ENVS = ['local', 'staging', 'production'];
+    let envs: string[] = String(options['environment'] ?? '')
+        .split(',')
+        .map((e) => e.trim())
+        .filter(Boolean);
+
+    const badEnv = envs.find((e) => !ALL_ENVS.includes(e));
+    if (badEnv) {
+        console.error(`Unknown environment "${badEnv}". Valid values: ${ALL_ENVS.join(', ')}.`);
+        process.exit(2);
+    }
+
     if (!isYes && !options['environment']) {
-        env = await select('Environment', ['local', 'staging', 'production'], env);
+        envs = await multiSelect('Which environments does this codebase run in?', ALL_ENVS, ['local']);
+    }
+    if (envs.length === 0) envs = ['local'];
+
+    // The primary environment: what a single-valued field means when several were chosen. First in
+    // the canonical order rather than first-picked, so `local,staging` and `staging,local` agree.
+    const env = ALL_ENVS.filter((e) => envs.includes(e))[0] ?? 'local';
+
+    // Activate the project for every environment chosen.
+    //
+    // Without this the multi-select would be decoration: a project is active per environment on the
+    // server, and `doctor` reports "Project inactive for staging" for one that was never switched
+    // on. Additive — an environment already active stays active, and one not chosen is left alone
+    // rather than being switched off, because init should not silently disable an environment
+    // someone else enabled.
+    const projectRow = await api<any[]>(server as string, '/api/admin/projects', { token })
+        .then((rows) => rows.find((p) => p.key === finalProjectKey))
+        .catch(() => null);
+    if (projectRow?.id) {
+        const activation: Record<string, boolean> = {};
+        if (envs.includes('local') && !projectRow.isActiveLocal) activation['isActiveLocal'] = true;
+        if (envs.includes('staging') && !projectRow.isActiveStaging) activation['isActiveStaging'] = true;
+        if (envs.includes('production') && !projectRow.isActiveProduction) activation['isActiveProduction'] = true;
+        if (Object.keys(activation).length) {
+            try {
+                await api(server as string, `/api/admin/projects/${projectRow.id}`, {
+                    method: 'PATCH',
+                    body: activation,
+                    token,
+                });
+            } catch (err: any) {
+                // A developer without project-edit rights can still install the widget; the
+                // environment simply stays inactive until an admin enables it. Worth saying out
+                // loud, never worth aborting for.
+                if (!isJson) {
+                    console.error(
+                        `Note: could not activate ${Object.keys(activation).length} environment(s) for this project ` +
+                        `(${err?.message ?? err}). An admin can switch them on in the dashboard.`,
+                    );
+                }
+            }
+        }
+    }
+
+    // Origin → environment, read from the URLs already registered against this project rather than
+    // asked for again. The widget resolves its own environment from this at runtime, so one
+    // committed index.html reports `staging` on staging and `production` on production.
+    const envMap: Record<string, string> = {};
+    if (projectRow?.id && envs.length > 1) {
+        try {
+            const [urls, environments] = await Promise.all([
+                api<any[]>(server as string, `/api/admin/projects/${projectRow.id}/app-urls`, { token }),
+                api<any[]>(server as string, '/api/admin/environments', { token }),
+            ]);
+            const nameById = new Map((environments ?? []).map((e: any) => [e.id, String(e.name ?? '').toLowerCase()]));
+            for (const row of urls ?? []) {
+                const name = nameById.get(row.appEnvironmentId);
+                if (!name || !row.url || !envs.includes(name)) continue;
+                try {
+                    envMap[new URL(row.url).origin] = name;
+                } catch {
+                    // A malformed URL in the dashboard should not stop an install.
+                }
+            }
+        } catch {
+            // No rights to read them, or none configured: the block falls back to a localhost check
+            // plus the primary environment, which is still better than one baked-in value.
+        }
     }
 
     let appUrl = options['app-url'] as string | undefined;
@@ -313,6 +394,8 @@ export async function initCommand(cwd: string, options: Record<string, string | 
                 key: finalProjectKey,
                 environment: env,
                 pin,
+                envMap,
+                environments: envs,
             });
             filesMod = [htmlPath];
             injected = true;
@@ -322,7 +405,7 @@ export async function initCommand(cwd: string, options: Record<string, string | 
             injected = true;
             if (!isJson) console.log(`Injected widget into ${filesMod.join(', ')}`);
         } else if (appInfo.kind === 'static') {
-            const htmlPath = await injectStatic(cwd, options['html'] as string, { server: server as string, key: finalProjectKey, environment: env, pin });
+            const htmlPath = await injectStatic(cwd, options['html'] as string, { server: server as string, key: finalProjectKey, environment: env, pin, envMap, environments: envs });
             filesMod = [htmlPath];
             injected = true;
             if (!isJson) console.log(`Injected widget into ${htmlPath}`);
@@ -390,7 +473,7 @@ export async function initCommand(cwd: string, options: Record<string, string | 
     const injectedHtml = injected
         ? filesMod.find((f) => f.toLowerCase().endsWith('.html'))?.replace(`${cwd}/`, '')
         : undefined;
-    await writeConfig(cwd, { server: server as string, project: finalProjectKey, environment: env, aiTool: tool, skillsDir: options['skills-dir'] as string, cliVersion: BUILD_CLI_VERSION, htmlPath: injectedHtml });
+    await writeConfig(cwd, { server: server as string, project: finalProjectKey, environment: env, aiTool: tool, skillsDir: options['skills-dir'] as string, cliVersion: BUILD_CLI_VERSION, htmlPath: injectedHtml, environments: envs.length > 1 ? envs : undefined });
     filesMod.push('.pointer/config.json');
     // Written back at line ~92, long before filesMod exists. It is the one file in this list that
     // holds a secret, so omitting it from `--json`'s `files` is the worst omission of the set: a

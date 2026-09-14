@@ -15,7 +15,7 @@ var init_build_constants = __esm({
   "src/build-constants.ts"() {
     "use strict";
     BUILD_DEFAULT_SERVER = true ? "https://api.pointer.moamen.work" : "https://api.pointer.moamen.work";
-    BUILD_CLI_VERSION = true ? "0.1.3" : "0.0.0-dev";
+    BUILD_CLI_VERSION = true ? "0.1.4" : "0.0.0-dev";
   }
 });
 
@@ -1244,6 +1244,8 @@ async function injectStatic(cwd2, htmlPath, cfg) {
   const pinnedProps = cfg.pin ? `
     s.integrity = '${cfg.pin.integrity}';
     s.crossOrigin = 'anonymous';` : "";
+  const pinnedAttrs = cfg.pin ? ` integrity="${cfg.pin.integrity}" crossorigin="anonymous"` : "";
+  const multiEnv = (cfg.environments?.length ?? 0) > 1 || Object.keys(cfg.envMap ?? {}).length > 0;
   const block = cfg.envGuarded ? `<!-- pointer-feedback:start -->
 <script>
   if (
@@ -1254,19 +1256,61 @@ async function injectStatic(cwd2, htmlPath, cfg) {
     s.src = '%VITE_POINTER_SERVER%/pointer.js${pinnedSrc}';${pinnedProps}
     s.defer = true;
     document.head.appendChild(s);
-    var el = document.createElement('pointer-feedback');
-    el.setAttribute('project', '%VITE_POINTER_PROJECT%');
-    el.setAttribute('server', '%VITE_POINTER_SERVER%');
-    el.setAttribute('environment', '%VITE_POINTER_ENV%');
-    el.setAttribute('source-attr', 'data-component-source');
-    document.body.appendChild(el);
+    // Deferred until the body exists. Injected just above </body> this is already true, but the
+    // block gets copied into other files by hand, and inside <head> document.body is null \u2014
+    // "Cannot read properties of null (reading 'appendChild')", and nothing mounts.
+    var mount = function () {
+      if (document.querySelector('pointer-feedback')) return;
+      var el = document.createElement('pointer-feedback');
+      el.setAttribute('project', '%VITE_POINTER_PROJECT%');
+      el.setAttribute('server', '%VITE_POINTER_SERVER%');
+      el.setAttribute('environment', '%VITE_POINTER_ENV%');
+      el.setAttribute('source-attr', 'data-component-source');
+      document.body.appendChild(el);
+    };
+    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', mount);
+    else mount();
   }
 </script>
-<!-- pointer-feedback:end -->` : cfg.pin ? `<!-- pointer-feedback:start -->
-<script src="${cfg.server}/pointer.js?v=${cfg.pin.version}" integrity="${cfg.pin.integrity}" crossorigin="anonymous" defer></script>
-<pointer-feedback project="${cfg.key}" server="${cfg.server}" environment="${cfg.environment}" source-attr="data-component-source"></pointer-feedback>
-<!-- pointer-feedback:end -->` : `<!-- pointer-feedback:start -->
-<script src="${cfg.server}/pointer.js" defer></script>
+<!-- pointer-feedback:end -->` : multiEnv ? (
+    // One file, several environments.
+    //
+    // The single-environment form writes environment="local" into the markup, which is right
+    // until the same index.html is built for staging and production too — then every comment
+    // from every deployment is tagged `local` and nothing can tell them apart. This form
+    // resolves the environment from the page's own origin at runtime, using the URLs already
+    // registered against the project, so one committed file is correct everywhere.
+    `<!-- pointer-feedback:start -->
+<script${pinnedAttrs} src="${cfg.server}/pointer.js${pinnedSrc}" defer></script>
+<script>
+  (function () {
+    var ORIGINS = ${JSON.stringify(cfg.envMap ?? {})};
+    var FALLBACK = '${cfg.environment}';
+    function pointerEnv() {
+      if (ORIGINS[location.origin]) return ORIGINS[location.origin];
+      // A dev server's port changes more often than anyone updates a URL list, so localhost is
+      // recognised by host rather than by exact origin.
+      if (/^(localhost|127\\.0\\.0\\.1|\\[::1\\])$/.test(location.hostname)) return 'local';
+      return FALLBACK;
+    }
+    function mount() {
+      if (document.querySelector('pointer-feedback')) return;
+      var el = document.createElement('pointer-feedback');
+      el.setAttribute('project', '${cfg.key}');
+      el.setAttribute('server', '${cfg.server}');
+      el.setAttribute('environment', pointerEnv());
+      el.setAttribute('source-attr', 'data-component-source');
+      document.body.appendChild(el);
+    }
+    // document.body is null while the parser is still in <head>. Waiting for DOMContentLoaded
+    // makes the snippet work wherever it is pasted, instead of only just above </body>.
+    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', mount);
+    else mount();
+  })();
+</script>
+<!-- pointer-feedback:end -->`
+  ) : `<!-- pointer-feedback:start -->
+<script${pinnedAttrs} src="${cfg.server}/pointer.js${pinnedSrc}" defer></script>
 <pointer-feedback project="${cfg.key}" server="${cfg.server}" environment="${cfg.environment}" source-attr="data-component-source"></pointer-feedback>
 <!-- pointer-feedback:end -->`;
   const re = /<!-- pointer-feedback:start -->[\s\S]*?<!-- pointer-feedback:end -->/;
@@ -2580,9 +2624,63 @@ and the pointer-init skill uses them to mount the widget for you afterwards.
       }
     }
   }
-  let env = options["environment"] || "local";
+  const ALL_ENVS = ["local", "staging", "production"];
+  let envs = String(options["environment"] ?? "").split(",").map((e) => e.trim()).filter(Boolean);
+  const badEnv = envs.find((e) => !ALL_ENVS.includes(e));
+  if (badEnv) {
+    console.error(`Unknown environment "${badEnv}". Valid values: ${ALL_ENVS.join(", ")}.`);
+    process.exit(2);
+  }
   if (!isYes && !options["environment"]) {
-    env = await select("Environment", ["local", "staging", "production"], env);
+    envs = await multiSelect("Which environments does this codebase run in?", ALL_ENVS, ["local"]);
+  }
+  if (envs.length === 0)
+    envs = ["local"];
+  const env = ALL_ENVS.filter((e) => envs.includes(e))[0] ?? "local";
+  const projectRow = await api(server, "/api/admin/projects", { token }).then((rows) => rows.find((p) => p.key === finalProjectKey)).catch(() => null);
+  if (projectRow?.id) {
+    const activation = {};
+    if (envs.includes("local") && !projectRow.isActiveLocal)
+      activation["isActiveLocal"] = true;
+    if (envs.includes("staging") && !projectRow.isActiveStaging)
+      activation["isActiveStaging"] = true;
+    if (envs.includes("production") && !projectRow.isActiveProduction)
+      activation["isActiveProduction"] = true;
+    if (Object.keys(activation).length) {
+      try {
+        await api(server, `/api/admin/projects/${projectRow.id}`, {
+          method: "PATCH",
+          body: activation,
+          token
+        });
+      } catch (err) {
+        if (!isJson) {
+          console.error(
+            `Note: could not activate ${Object.keys(activation).length} environment(s) for this project (${err?.message ?? err}). An admin can switch them on in the dashboard.`
+          );
+        }
+      }
+    }
+  }
+  const envMap = {};
+  if (projectRow?.id && envs.length > 1) {
+    try {
+      const [urls, environments] = await Promise.all([
+        api(server, `/api/admin/projects/${projectRow.id}/app-urls`, { token }),
+        api(server, "/api/admin/environments", { token })
+      ]);
+      const nameById = new Map((environments ?? []).map((e) => [e.id, String(e.name ?? "").toLowerCase()]));
+      for (const row of urls ?? []) {
+        const name = nameById.get(row.appEnvironmentId);
+        if (!name || !row.url || !envs.includes(name))
+          continue;
+        try {
+          envMap[new URL(row.url).origin] = name;
+        } catch {
+        }
+      }
+    } catch {
+    }
   }
   let appUrl = options["app-url"];
   let noAppUrl = options["no-app-url"];
@@ -2652,7 +2750,9 @@ and the pointer-init skill uses them to mount the widget for you afterwards.
         server,
         key: finalProjectKey,
         environment: env,
-        pin
+        pin,
+        envMap,
+        environments: envs
       });
       filesMod = [htmlPath];
       injected = true;
@@ -2664,7 +2764,7 @@ and the pointer-init skill uses them to mount the widget for you afterwards.
       if (!isJson)
         console.log(`Injected widget into ${filesMod.join(", ")}`);
     } else if (appInfo.kind === "static") {
-      const htmlPath = await injectStatic(cwd2, options["html"], { server, key: finalProjectKey, environment: env, pin });
+      const htmlPath = await injectStatic(cwd2, options["html"], { server, key: finalProjectKey, environment: env, pin, envMap, environments: envs });
       filesMod = [htmlPath];
       injected = true;
       if (!isJson)
@@ -2715,7 +2815,7 @@ and the pointer-init skill uses them to mount the widget for you afterwards.
   const mergedStack = mergeStack(stackMeta, serverStackResponse?.data ?? serverStackResponse, noDesign ? null : designBlock);
   await writeStackFile(cwd2, mergedStack);
   const injectedHtml = injected ? filesMod.find((f) => f.toLowerCase().endsWith(".html"))?.replace(`${cwd2}/`, "") : void 0;
-  await writeConfig(cwd2, { server, project: finalProjectKey, environment: env, aiTool: tool, skillsDir: options["skills-dir"], cliVersion: BUILD_CLI_VERSION, htmlPath: injectedHtml });
+  await writeConfig(cwd2, { server, project: finalProjectKey, environment: env, aiTool: tool, skillsDir: options["skills-dir"], cliVersion: BUILD_CLI_VERSION, htmlPath: injectedHtml, environments: envs.length > 1 ? envs : void 0 });
   filesMod.push(".pointer/config.json");
   filesMod.push(".pointer/credentials.env");
   filesMod.push(".gitignore");

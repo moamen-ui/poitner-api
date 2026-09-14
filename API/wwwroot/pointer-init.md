@@ -130,12 +130,19 @@ Add to `index.html` before `</body>`:
     s.src = '%VITE_POINTER_SERVER%/pointer.js';
     s.defer = true;
     document.head.appendChild(s);
-    var el = document.createElement('pointer-feedback');
-    el.setAttribute('project', '%VITE_POINTER_PROJECT%');
-    el.setAttribute('server', '%VITE_POINTER_SERVER%');
-    el.setAttribute('environment', '%VITE_POINTER_ENV%');
-    el.setAttribute('source-attr', 'data-component-source');
-    document.body.appendChild(el);
+    // document.body is null while the parser is still inside <head>, so the mount waits for the
+    // document rather than assuming the snippet sits just above </body>.
+    var mount = function () {
+      if (document.querySelector('pointer-feedback')) return;
+      var el = document.createElement('pointer-feedback');
+      el.setAttribute('project', '%VITE_POINTER_PROJECT%');
+      el.setAttribute('server', '%VITE_POINTER_SERVER%');
+      el.setAttribute('environment', '%VITE_POINTER_ENV%');
+      el.setAttribute('source-attr', 'data-component-source');
+      document.body.appendChild(el);
+    };
+    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', mount);
+    else mount();
   }
 </script>
 ```
@@ -174,25 +181,44 @@ stack uses:
 
 ```html
 <!-- pointer-feedback:start -->
+<script src="<POINTER_SERVER>/pointer.js" defer></script>
 <script>
-  var POINTER_SERVER = '<POINTER_SERVER>';
-  var POINTER_PROJECT = '<project-key>';
-  // Same activation rule as every other stack: a project key and a server that looks like a URL.
-  // Blank either one and the widget does not mount — no build flag, no dead code path.
-  if (POINTER_PROJECT && POINTER_SERVER.indexOf('http') === 0) {
-    var s = document.createElement('script');
-    s.src = POINTER_SERVER + '/pointer.js';
-    s.defer = true;
-    document.head.appendChild(s);
-    var el = document.createElement('pointer-feedback');
-    el.setAttribute('project', POINTER_PROJECT);
-    el.setAttribute('server', POINTER_SERVER);
-    el.setAttribute('environment', '<environment>');
-    document.body.appendChild(el);
-  }
+  (function () {
+    // origin -> environment. Fill in the URLs this app is deployed at; the widget picks the right
+    // one at runtime, so ONE committed index.html is correct on every deployment. Leave it empty
+    // if the app only runs locally for now.
+    var ORIGINS = { "https://staging.example.com": "staging", "https://example.com": "production" };
+    var FALLBACK = "local";
+    function pointerEnv() {
+      if (ORIGINS[location.origin]) return ORIGINS[location.origin];
+      // Matched by host, not by exact origin: a dev server's port changes far more often than
+      // anyone updates a URL list.
+      if (/^(localhost|127\.0\.0\.1|\[::1\])$/.test(location.hostname)) return "local";
+      return FALLBACK;
+    }
+    function mount() {
+      if (document.querySelector("pointer-feedback")) return;
+      var el = document.createElement("pointer-feedback");
+      el.setAttribute("project", "<project-key>");
+      el.setAttribute("server", "<POINTER_SERVER>");
+      el.setAttribute("environment", pointerEnv());
+      el.setAttribute("source-attr", "data-component-source");
+      document.body.appendChild(el);
+    }
+    // document.body is null while the parser is still inside <head>. Without this guard the
+    // snippet throws "Cannot read properties of null (reading 'appendChild')" and mounts nothing
+    // whenever it is placed anywhere but just above </body> — which is exactly what happened the
+    // first time an agent followed this page.
+    if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", mount);
+    else mount();
+  })();
 </script>
 <!-- pointer-feedback:end -->
 ```
+
+**Never hard-code the environment.** `el.setAttribute("environment", "local")` means every comment
+from staging and production is filed as `local`, and nothing downstream can tell the deployments
+apart. Resolve it from `location.origin` as above.
 
 Place it immediately before `</body>`. Keep the `pointer-feedback:start/end` comments — `doctor`
 looks for them to tell an install from a hand-rolled snippet.
@@ -281,28 +307,44 @@ in the same directives above:
 
 ### 3f. Create React App / Webpack
 
-CRA and most Webpack setups have no HTML placeholder substitution, so mount from JS and read the
-env vars under **the prefix this stack exposes** — `REACT_APP_` for CRA/`react-scripts`, or whatever
-name a custom Webpack `DefinePlugin`/`EnvironmentPlugin` defines (often unprefixed `POINTER_*`). Add
-the mount near the app root (e.g. `src/index.tsx`):
+CRA interpolates `%REACT_APP_*%` into `public/index.html` at build time, exactly as Vite does with
+`%VITE_*%`, so this stays an HTML-only change (Scope rule 1) — **not** a mount added to
+`src/index.tsx`. Nx with webpack behaves the same way under the `NX_PUBLIC_` prefix.
 
-```js
-// uses CRA's REACT_APP_ prefix — swap to your Webpack-defined names if different
-if (process.env.REACT_APP_POINTER_ENABLED === 'true' &&
-    (process.env.REACT_APP_POINTER_SERVER || '').indexOf('http') === 0) {
-  const server = process.env.REACT_APP_POINTER_SERVER;
-  const s = document.createElement('script');
-  s.src = server + '/pointer.js';
-  s.defer = true;
-  document.head.appendChild(s);
-  const el = document.createElement('pointer-feedback');
-  el.setAttribute('project', process.env.REACT_APP_POINTER_PROJECT);
-  el.setAttribute('server', server);
-  el.setAttribute('environment', process.env.REACT_APP_POINTER_ENV || 'staging');
-  el.setAttribute('source-attr', 'data-component-source');
-  document.body.appendChild(el);
-}
+Use the Step 3a block in `public/index.html`, with the prefix this stack exposes substituted
+throughout: `REACT_APP_` for CRA/`react-scripts`, `NX_PUBLIC_` for Nx, or whatever name a custom
+webpack `DefinePlugin`/`EnvironmentPlugin` defines.
+
+```html
+<!-- public/index.html — CRA shown; swap the prefix for your stack -->
+<!-- pointer-feedback:start -->
+<script>
+  if (
+    '%REACT_APP_POINTER_ENABLED%' === 'true' &&
+    '%REACT_APP_POINTER_SERVER%'.indexOf('http') === 0
+  ) {
+    var s = document.createElement('script');
+    s.src = '%REACT_APP_POINTER_SERVER%/pointer.js';
+    s.defer = true;
+    document.head.appendChild(s);
+    var mount = function () {
+      if (document.querySelector('pointer-feedback')) return;
+      var el = document.createElement('pointer-feedback');
+      el.setAttribute('project', '%REACT_APP_POINTER_PROJECT%');
+      el.setAttribute('server', '%REACT_APP_POINTER_SERVER%');
+      el.setAttribute('environment', '%REACT_APP_POINTER_ENV%');
+      el.setAttribute('source-attr', 'data-component-source');
+      document.body.appendChild(el);
+    };
+    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', mount);
+    else mount();
+  }
+</script>
+<!-- pointer-feedback:end -->
 ```
+
+If a stack genuinely has no HTML substitution at all, say so to the user and ask before mounting
+from JavaScript — do not do it silently, and never as the default.
 
 ```
 # .env  (CRA shown — for custom Webpack, use the names your DefinePlugin injects)

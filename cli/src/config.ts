@@ -9,6 +9,13 @@ export interface PointerConfig {
   skillsDir?: string;
   cliVersion?: string;
   /**
+   * Every environment this install covers, when more than one was chosen.
+   *
+   * `environment` stays the primary one — doctor, apply and the server's stack record all read a
+   * single value and predate multi-environment installs.
+   */
+  environments?: string[];
+  /**
    * Where the widget was actually mounted, relative to the repo root.
    *
    * Recorded because `doctor` otherwise guesses from a fixed list of conventional paths
