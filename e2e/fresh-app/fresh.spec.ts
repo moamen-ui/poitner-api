@@ -1014,7 +1014,7 @@ test('R1-02-02 — init-static-no-ai', async () => {
     const injected = block![1].trim();
     const expected = [
       `<script src="${SERVER}/pointer.js" defer></script>`,
-      `<pointer-feedback project="${createdProjectKey}" server="${SERVER}" environment="local" source-attr="data-component-source"></pointer-feedback>`,
+      `<pointer-feedback project="${createdProjectKey}" server="${SERVER}" environment="local"></pointer-feedback>`,
     ].join('\n');
     expect(injected.replace(/\n\s+/g, '\n')).toBe(expected);
 

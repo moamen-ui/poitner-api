@@ -122,11 +122,13 @@ Match the env-var prefix to whichever you detect (see the naming table in Step 3
 
 ## Step 3 — Inject the loader
 
-The loader loads `<POINTER_SERVER>/pointer.js`, then appends a configured `<pointer-feedback>` element.
-Always set `source-attr="data-component-source"` so the widget can capture the source path of clicked
-elements — **and make sure the app actually stamps that attribute** (usually a build plugin behind a
-dev flag such as `VITE_DEBUG`; see the Source mapping note in Step 4). Without it, applies still work
-but can't jump straight to the file.
+The loader loads `<POINTER_SERVER>/pointer.js`, then appends a `<pointer-feedback>` element.
+
+Do NOT write a `source-attr` attribute: `data-component-source` is already the widget's default, and
+the build plugin stamps that same frozen name, so stating it changes nothing. Set it only for an app
+whose stamper uses a different attribute. What DOES matter is that the app actually stamps the
+attribute — usually a build plugin behind a dev flag such as `VITE_DEBUG`; see the Source mapping
+note in Step 4. Without the stamp, applies still work but can't jump straight to the file.
 
 > **Env-var naming is stack-specific — use the prefix the detected stack exposes to the browser, not a
 > fixed `VITE_` one.** Browsers can't read raw env vars, so each bundler only exposes vars carrying its
@@ -166,7 +168,6 @@ Add to `index.html` before `</body>`:
       el.setAttribute('project', '%VITE_POINTER_PROJECT%');
       el.setAttribute('server', '%VITE_POINTER_SERVER%');
       el.setAttribute('environment', '%VITE_POINTER_ENV%');
-      el.setAttribute('source-attr', 'data-component-source');
       document.body.appendChild(el);
     };
     if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', mount);
@@ -195,9 +196,7 @@ Inline literal values before `</body>`:
 <script src="<POINTER_SERVER>/pointer.js" defer></script>
 <pointer-feedback
   project="<project-key>"
-  server="<POINTER_SERVER>"
-  environment="staging"
-  source-attr="data-component-source"></pointer-feedback>
+  server="<POINTER_SERVER>"></pointer-feedback>
 ```
 
 ### 3c. Angular
@@ -212,25 +211,11 @@ stack uses:
 <script src="<POINTER_SERVER>/pointer.js" defer></script>
 <script>
   (function () {
-    // origin -> environment. Fill in the URLs this app is deployed at; the widget picks the right
-    // one at runtime, so ONE committed index.html is correct on every deployment. Leave it empty
-    // if the app only runs locally for now.
-    var ORIGINS = { "https://staging.example.com": "staging", "https://example.com": "production" };
-    var FALLBACK = "local";
-    function pointerEnv() {
-      if (ORIGINS[location.origin]) return ORIGINS[location.origin];
-      // Matched by host, not by exact origin: a dev server's port changes far more often than
-      // anyone updates a URL list.
-      if (/^(localhost|127\.0\.0\.1|\[::1\])$/.test(location.hostname)) return "local";
-      return FALLBACK;
-    }
     function mount() {
       if (document.querySelector("pointer-feedback")) return;
       var el = document.createElement("pointer-feedback");
       el.setAttribute("project", "<project-key>");
       el.setAttribute("server", "<POINTER_SERVER>");
-      el.setAttribute("environment", pointerEnv());
-      el.setAttribute("source-attr", "data-component-source");
       document.body.appendChild(el);
     }
     // document.body is null while the parser is still inside <head>. Without this guard the
@@ -244,9 +229,19 @@ stack uses:
 <!-- pointer-feedback:end -->
 ```
 
-**Never hard-code the environment.** `el.setAttribute("environment", "local")` means every comment
-from staging and production is filed as `local`, and nothing downstream can tell the deployments
-apart. Resolve it from `location.origin` as above.
+**Do not set an `environment` attribute, and do not resolve one in the page.** The server works it
+out per request, by matching the page's origin against the URLs registered for the project in the
+dashboard — so one committed file reports `staging` on staging and `production` on production, and
+changing a URL needs no rebuild anywhere.
+
+An `environment` attribute, if present, **overrides** that resolution. That is deliberate, for an
+embed that must be pinned to one environment on purpose — but it means writing one by default
+silently disables the mechanism and re-creates the problem it solves. A hand-written origin→
+environment map in the page is the same mistake in a longer form: a second copy of something the
+dashboard already owns, going stale the first time a URL changes.
+
+If an origin matches nothing registered, the comment is still captured and tagged `unknown`, and the
+dashboard shows the origin so the owner can register it. Nothing is lost, and nothing is guessed.
 
 Place it immediately before `</body>`. Keep the `pointer-feedback:start/end` comments — `doctor`
 looks for them to tell an install from a hand-rolled snippet.
@@ -361,7 +356,6 @@ webpack `DefinePlugin`/`EnvironmentPlugin` defines.
       el.setAttribute('project', '%REACT_APP_POINTER_PROJECT%');
       el.setAttribute('server', '%REACT_APP_POINTER_SERVER%');
       el.setAttribute('environment', '%REACT_APP_POINTER_ENV%');
-      el.setAttribute('source-attr', 'data-component-source');
       document.body.appendChild(el);
     };
     if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', mount);
@@ -547,13 +541,36 @@ not something either skill repeats on every run.
   aren't CORS-restricted; API calls use the server's permissive CORS policy.
 - **Auth:** stakeholders need a <POINTER_PRODUCT> account; self-signup (an admin-approved request) is built into
   the widget. The token is stored in `localStorage` (`pointer_token`).
-- **Source mapping (enables precise applies — check this):** <POINTER_PRODUCT> records the `source-attr`
-  (default `data-component-source`) of the clicked element, e.g. `path/to/Component:line`, so the
-  apply step opens the **exact file**. Most apps don't emit this by default — it's produced by a
-  **build plugin gated behind a dev/preview flag** (e.g. `VITE_DEBUG=true` driving a Babel/SWC plugin
-  that stamps `data-component-source`). **Enable that flag in the environments where stakeholders give
-  feedback** (local/staging/preview). Without it the widget still works, but applies fall back to
-  searching by element snapshot/classes — slower and less exact. Confirm the attribute is present
-  (inspect an element) as part of verification.
+- **Source mapping (enables precise applies — offer this):** <POINTER_PRODUCT> records the
+  `data-component-source` attribute of the clicked element, so the apply step opens the **exact
+  file** instead of searching by snapshot text. Nothing stamps that attribute by default.
+
+  **Do not tell the user to write a build plugin — one ships with the CLI.** For a Vite app
+  (React, Vue, Svelte):
+
+  ```bash
+  npx -y pointer-feedback init --source-map
+  ```
+
+  which adds the plugin to `vite.config.*` and sets `VITE_POINTER_SOURCE=true` in the
+  development env file. The manual equivalent, if you would rather edit the config yourself:
+
+  ```ts
+  import pointerSource from 'pointer-feedback/vite';
+
+  export default defineConfig({
+    plugins: [react(), pointerSource({ enabled: process.env.VITE_POINTER_SOURCE === 'true' })],
+  });
+  ```
+
+  What it does: stamps each component's root element with an **8-character hash** of its
+  repo-relative path plus export name, and writes `.pointer/manifest.json` mapping hash → file.
+  The hash rather than the path is deliberate — production HTML then reveals nothing about your
+  source layout. The manifest is gitignored and regenerated on every build; `pointer get --json`
+  resolves a hash back to a file, and `pointer map --from-source` rebuilds it after a rename.
+
+  **Non-Vite stacks (Angular, Next, CRA, server-rendered):** there is no plugin yet. Say so plainly
+  rather than inventing one — the widget still works, and applies fall back to matching on the
+  element snapshot, which is slower and less exact.
 - Keep the `enabled` guard so production builds can ship without the widget when desired.
 - **Privacy & self-hosting:** For the full engineering breakdown of what the widget captures, what is never captured, retention and deletion semantics, and self-hosting boundaries, see `<POINTER_SERVER>/data.html`.

@@ -82,6 +82,23 @@ pointer-api/
 └── justfile
 ```
 
+## Source mapping (`cli/src/vite/`)
+
+A Vite plugin ships with the CLI, exported as `pointer-feedback/vite`. It stamps each component's
+root element with `data-component-source="<8-hex>"` — a hash of the component's repo-relative path
+plus its export name — and writes `.pointer/manifest.json` mapping hash back to file. The hash
+rather than the path is the point: production HTML then discloses nothing about the source layout.
+
+The manifest is **gitignored and regenerated**, never committed: it is derived from the tree, and a
+committed copy is wrong the moment anyone renames a file. `manifest.prev.json` is rotated on each
+write, which is what lets a hash captured before a rename still resolve to the name it had.
+
+Wire it in with `pointer init --source-map` (edits `vite.config.*`, sets `VITE_POINTER_SOURCE=true`
+in the development env file). `pointer get --json` resolves a hash, `pointer map --from-source`
+rebuilds the manifest offline, and `doctor` reports a missing one. Vite only — Angular, Next and
+server-rendered stacks have no equivalent yet, and the widget falls back to matching on the element
+snapshot there.
+
 ## Public documentation (`landing/docs/`)
 
 The public docs site is plain HTML served from `landing/docs/`, indexed by `pages.json`, and linked

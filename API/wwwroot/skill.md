@@ -416,8 +416,19 @@ For each item from the apply-queue fetched in Step 3:
      third-party API. Note it in your reply as context, but don't go hunting for a handler that
      isn't in this repo.
 2. **Locate the source** (in this priority order — stop at the first that lands it):
-   - **`element.sourcePath`** if present: open that `file:line` directly. Try it relative to the repo
-     root first; if not found and the repo has an `apps/` dir (Nx/monorepo), try `apps/<sourcePath>`.
+   - **`element.sourcePath`** if present. It comes in one of two shapes, and telling them apart is
+     the difference between opening the right file and grepping blindly:
+     - **An 8-character hex hash** (e.g. `a3f9c21b`) — the app is built with the
+       `pointer-feedback/vite` plugin, which stamps an opaque hash rather than a path so production
+       HTML leaks no source layout. Resolve it, do NOT grep for it:
+       `npx -y pointer-feedback get <comment-id> --json` returns `resolvedSource` with the real
+       `path` and `componentName`. The lookup is local, reading `.pointer/manifest.json`.
+       If it reports **stale** (the file moved or was renamed since the comment was left), it hands
+       you the recorded `componentName` — search for that, not for the hash. Run
+       `npx -y pointer-feedback map --from-source` to rebuild the manifest from the current tree and
+       the next resolve will land.
+     - **A `file:line` path** — an older or non-Vite install. Open it directly: relative to the repo
+       root first, then `apps/<sourcePath>` if the repo has an `apps/` dir (Nx/monorepo).
    - **`data.pages[element.pageRef].route` / `.url`** to find the **right page first** in a routed
      app (map the route to its page/route component), then locate the element within it.
    - **MVC / server-rendered apps (Rails, ASP.NET MVC, Laravel, Django, Spring MVC)** — these have
