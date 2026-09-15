@@ -276,6 +276,22 @@ public class CommentService : ICommentService
         if (filter.Environment.HasValue)
             query = query.Where(c => c.Environment == filter.Environment.Value);
 
+        if (filter.Flagged == true)
+            query = query.Where(c => c.HasPayloadFlag);
+
+        // "Live" only makes sense for applied comments: applied + DeployedAt set is live, applied
+        // + not deployed is the "applied but not live" triage view.
+        if (filter.Live.HasValue)
+            query = filter.Live.Value
+                ? query.Where(c => c.AppliedAt != null && c.DeployedAt != null)
+                : query.Where(c => c.AppliedAt != null && c.DeployedAt == null);
+
+        if (!string.IsNullOrWhiteSpace(filter.Search))
+        {
+            var term = filter.Search.Trim().ToLower();
+            query = query.Where(c => c.Body.ToLower().Contains(term));
+        }
+
         // A quick-access (Client) account only ever sees its own feedback — never the rest of the
         // project's backlog — regardless of status. Every other role keeps seeing everything.
         if (_currentUser.IsQuickAccess)

@@ -102,6 +102,7 @@ public class CommentsController(ICommentService commentService) : ControllerBase
     }
 
     [HttpDelete("api/comments/{id:int}")]
+    [ProducesResponseType(typeof(Pointer.Application.Response.Result), StatusCodes.Status200OK)]
     public async Task<IActionResult> Delete(int id)
     {
         var result = await commentService.DeleteAsync(id, User.GetId(), User.IsAdmin());

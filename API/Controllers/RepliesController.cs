@@ -9,9 +9,12 @@ namespace Pointer.API.Controllers;
 
 [ApiController]
 [Authorize]
+[Produces("application/json")]
+[Tags("Comments")]
 public class RepliesController(ICommentService commentService) : ControllerBase
 {
     [HttpPost("api/comments/{id:int}/replies")]
+    [ProducesResponseType(typeof(ReplyResponse), StatusCodes.Status200OK)]
     // Shares the comments budget deliberately: a reply is the same write, and leaving it
     // unthrottled would just move a burst one endpoint to the left.
     [EnableRateLimiting("comments")]
