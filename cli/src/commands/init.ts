@@ -510,6 +510,9 @@ export async function initCommand(cwd: string, options: Record<string, string | 
         : undefined;
     await writeConfig(cwd, { server: server as string, project: finalProjectKey, environment: env, aiTool: tool, skillsDir: options['skills-dir'] as string, cliVersion: BUILD_CLI_VERSION, htmlPath: injectedHtml, environments: envs.length > 1 ? envs : undefined });
     filesMod.push('.pointer/config.json');
+    // Re-write credentials now that the project key is final, so pointer.sh can resolve
+    // server/project from this file in repos that have no .env (see writeCredentials).
+    await writeCredentials(cwd, key, { server: server as string, project: finalProjectKey });
     // Written back at line ~92, long before filesMod exists. It is the one file in this list that
     // holds a secret, so omitting it from `--json`'s `files` is the worst omission of the set: a
     // caller reading that list to know what to gitignore, review or clean up never sees it.

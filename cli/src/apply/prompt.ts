@@ -8,7 +8,7 @@ import type {
 
 export const AI_RULES_PRECEDENCE_TEXT = `## 🛡️ MANDATORY: AI RULES PRECEDENCE & HIERARCHY
 
-Active AI rules (\`aiRules\`) are attached to each queue item (\`GET .../apply-queue\`, \`./.pointer/pointer.sh queue\`) and comment detail (\`GET .../comments/{id}\`, \`./.pointer/pointer.sh get <id>\`).
+Active AI rules (\`aiRules\`) are attached to each item in this prompt and to the comment detail (\`pointer get <id> --json\`).
 
 > **CRITICAL INSTRUCTION FOR ALL AI CODING AGENTS:**
 > You are **strictly forbidden** from generating code, applying edits, or modifying any file until you have read and analyzed all active rules attached to the comment being worked on.

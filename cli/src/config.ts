@@ -46,12 +46,26 @@ export async function writeConfig(cwd: string, config: PointerConfig): Promise<v
   await fs.writeFile(file, data, 'utf8');
 }
 
-export async function writeCredentials(cwd: string, token: string): Promise<void> {
+/**
+ * Writes `.pointer/credentials.env`. Besides the key it also records POINTER_SERVER / POINTER_PROJECT
+ * when known: `.pointer/pointer.sh` (the no-Node fallback) resolves them from the app's `.env`, the
+ * built bundle, or — its documented last resort — this very file. A repo with no `.env` (Angular,
+ * Rails, static HTML…) therefore only works if we write them here; `init` used to write the key
+ * alone and `pointer.sh list` failed with "Missing configuration".
+ */
+export async function writeCredentials(
+  cwd: string,
+  token: string,
+  extra: { server?: string; project?: string } = {},
+): Promise<void> {
   const file = join(cwd, CREDENTIALS_FILE);
   await fs.mkdir(dirname(file), { recursive: true });
-  await fs.writeFile(file, `POINTER_API_KEY=${token}\n`, { encoding: 'utf8', mode: 0o600 });
+  const lines = [`POINTER_API_KEY=${token}`];
+  if (extra.server) lines.push(`POINTER_SERVER=${extra.server}`);
+  if (extra.project) lines.push(`POINTER_PROJECT=${extra.project}`);
+  await fs.writeFile(file, lines.join('\n') + '\n', { encoding: 'utf8', mode: 0o600 });
   const exampleFile = join(cwd, '.pointer/credentials.env.example');
-  await fs.writeFile(exampleFile, `POINTER_API_KEY=\n`, { encoding: 'utf8' });
+  await fs.writeFile(exampleFile, `POINTER_API_KEY=\nPOINTER_SERVER=\nPOINTER_PROJECT=\n`, { encoding: 'utf8' });
 }
 
 export async function upsertGitignore(cwd: string, productName = 'Feedback tool'): Promise<void> {
