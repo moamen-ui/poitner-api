@@ -124,15 +124,313 @@ var init_api = __esm({
   }
 });
 
+// src/vite/hash.ts
+var hash_exports = {};
+__export(hash_exports, {
+  addToManifest: () => addToManifest,
+  componentHash: () => componentHash
+});
+import { createHash } from "node:crypto";
+function componentHash(repoRelativePath, exportName) {
+  const normalised = repoRelativePath.split("\\").join("/").replace(/^\.\//, "");
+  return createHash("sha1").update(`${normalised}#${exportName}`).digest("hex").slice(0, 8);
+}
+function addToManifest(manifest, hash, entry) {
+  const existing = manifest[hash];
+  if (existing && (existing.path !== entry.path || existing.export !== entry.export)) {
+    throw new Error(
+      `pointer: hash collision on ${hash} between ${existing.path}#${existing.export} and ${entry.path}#${entry.export}. Rename one of the two components.`
+    );
+  }
+  manifest[hash] = entry;
+}
+var init_hash = __esm({
+  "src/vite/hash.ts"() {
+    "use strict";
+  }
+});
+
+// src/vite/transform.ts
+var transform_exports = {};
+__export(transform_exports, {
+  stampSource: () => stampSource
+});
+async function loadBabel() {
+  try {
+    const [parser, traverseMod, generatorMod] = await Promise.all([
+      import("@babel/parser"),
+      // @ts-ignore optional peer — types are not installed for a dependency-free CLI bundle
+      import("@babel/traverse"),
+      // @ts-ignore optional peer — same
+      import("@babel/generator")
+    ]);
+    const unwrap = (mod, name) => {
+      const fn = mod?.default?.default ?? mod?.default ?? mod;
+      if (typeof fn !== "function") {
+        throw new Error(
+          `${name} did not resolve to a function (got ${typeof fn}) \u2014 CJS/ESM interop problem`
+        );
+      }
+      return fn;
+    };
+    return {
+      parse: parser.parse,
+      traverse: unwrap(traverseMod, "@babel/traverse"),
+      generate: unwrap(generatorMod, "@babel/generator")
+    };
+  } catch {
+    throw new Error(
+      "the Vite plugin needs @babel/parser, @babel/traverse and @babel/generator. They ship with @vitejs/plugin-react; install them if you use a different React setup."
+    );
+  }
+}
+function isHostElement(node) {
+  const name = node?.openingElement?.name;
+  return name?.type === "JSXIdentifier" && /^[a-z]/.test(name.name);
+}
+function alreadyStamped(node, attribute) {
+  return (node.openingElement.attributes ?? []).some(
+    (a) => a.type === "JSXAttribute" && a.name?.name === attribute
+  );
+}
+function collectRoots(node, out) {
+  if (!node)
+    return;
+  switch (node.type) {
+    case "JSXElement":
+      if (isHostElement(node))
+        out.push(node);
+      return;
+    case "JSXFragment":
+      for (const child of node.children ?? [])
+        collectRoots(child, out);
+      return;
+    case "ConditionalExpression":
+      collectRoots(node.consequent, out);
+      collectRoots(node.alternate, out);
+      return;
+    case "LogicalExpression":
+      collectRoots(node.right, out);
+      return;
+    case "ParenthesizedExpression":
+      collectRoots(node.expression, out);
+      return;
+    default:
+      return;
+  }
+}
+function componentNameFor(path) {
+  const node = path.node;
+  if (node.id?.name)
+    return node.id.name;
+  const parent = path.parent;
+  if (parent?.type === "VariableDeclarator" && parent.id?.type === "Identifier")
+    return parent.id.name;
+  if (parent?.type === "CallExpression") {
+    const grand = path.parentPath?.parent;
+    if (grand?.type === "VariableDeclarator" && grand.id?.type === "Identifier")
+      return grand.id.name;
+  }
+  if (parent?.type === "ExportDefaultDeclaration")
+    return "default";
+  return null;
+}
+async function stampSource(code, repoRelativePath, attribute) {
+  if (repoRelativePath.endsWith(".vue")) {
+    return stampVue(code, repoRelativePath, attribute);
+  }
+  const { parse, traverse, generate } = await loadBabel();
+  const ast = parse(code, {
+    sourceType: "module",
+    plugins: ["jsx", "typescript", "decorators-legacy", "classProperties"]
+  });
+  const components = {};
+  let changed = false;
+  const visitComponent = (path) => {
+    const name = componentNameFor(path);
+    if (!name || !/^[A-Z]|^default$/.test(name))
+      return;
+    const roots = [];
+    const body = path.node.body;
+    if (body?.type === "BlockStatement") {
+      for (const stmt of body.body) {
+        if (stmt.type === "ReturnStatement")
+          collectRoots(stmt.argument, roots);
+      }
+    } else {
+      collectRoots(body, roots);
+    }
+    if (roots.length === 0)
+      return;
+    const hash = componentHash(repoRelativePath, name);
+    components[hash] = { path: repoRelativePath, export: name };
+    for (const el of roots) {
+      if (alreadyStamped(el, attribute))
+        continue;
+      el.openingElement.attributes.push({
+        type: "JSXAttribute",
+        name: { type: "JSXIdentifier", name: attribute },
+        value: { type: "StringLiteral", value: hash }
+      });
+      changed = true;
+    }
+  };
+  traverse(ast, {
+    FunctionDeclaration: visitComponent,
+    FunctionExpression: visitComponent,
+    ArrowFunctionExpression: visitComponent
+  });
+  if (!changed)
+    return { code, changed: false, components };
+  return { code: generate(ast, { retainLines: true }, code).code, changed: true, components };
+}
+function stampVue(code, repoRelativePath, attribute) {
+  const name = repoRelativePath.split("/").pop().replace(/\.vue$/, "");
+  const hash = componentHash(repoRelativePath, name);
+  const components = { [hash]: { path: repoRelativePath, export: name } };
+  const match = code.match(/<template>([\s\S]*?)<\/template>/);
+  if (!match)
+    return { code, changed: false, components };
+  let changed = false;
+  const stamped = match[1].replace(/<([a-z][\w-]*)((?:\s[^>]*?)?)(\/?)>/g, (whole, tag, attrs, selfClose) => {
+    if (attrs.includes(attribute))
+      return whole;
+    changed = true;
+    return `<${tag}${attrs} ${attribute}="${hash}"${selfClose}>`;
+  });
+  if (!changed)
+    return { code, changed: false, components };
+  return { code: code.replace(match[1], stamped), changed: true, components };
+}
+var init_transform = __esm({
+  "src/vite/transform.ts"() {
+    "use strict";
+    init_hash();
+  }
+});
+
+// src/commands/map.ts
+var map_exports = {};
+__export(map_exports, {
+  buildManifest: () => buildManifest,
+  mapCommand: () => mapCommand
+});
+import { promises as fs12 } from "node:fs";
+import { existsSync as existsSync2 } from "node:fs";
+import { join as join12, relative as relative2, resolve as resolve2 } from "node:path";
+import { execFileSync } from "node:child_process";
+function gitRoot(cwd2) {
+  try {
+    return execFileSync("git", ["rev-parse", "--show-toplevel"], { cwd: cwd2, encoding: "utf8" }).trim();
+  } catch {
+    return cwd2;
+  }
+}
+async function walk(dir, out = []) {
+  let entries;
+  try {
+    entries = await fs12.readdir(dir, { withFileTypes: true });
+  } catch {
+    return out;
+  }
+  for (const entry of entries) {
+    if (entry.name.startsWith(".") && entry.name !== ".") {
+      if (SKIP_DIRS.has(entry.name))
+        continue;
+    }
+    const full = join12(dir, entry.name);
+    if (entry.isDirectory()) {
+      if (SKIP_DIRS.has(entry.name))
+        continue;
+      await walk(full, out);
+    } else if (DEFAULT_INCLUDE_EXTENSIONS.some((ext) => entry.name.endsWith(ext))) {
+      out.push(full);
+    }
+  }
+  return out;
+}
+async function buildManifest(cwd2, opts = {}) {
+  const root = gitRoot(cwd2);
+  const files = await walk(cwd2);
+  if (files.length === 0) {
+    return { ok: false, count: 0, scanned: 0, failed: 0, reason: `no .jsx/.tsx/.vue files under ${cwd2}` };
+  }
+  const { stampSource: stampSource2 } = await Promise.resolve().then(() => (init_transform(), transform_exports));
+  const { addToManifest: addToManifest2 } = await Promise.resolve().then(() => (init_hash(), hash_exports));
+  const manifest = {};
+  let scanned = 0;
+  let failed = 0;
+  for (const file of files) {
+    const relPath = toPosix(relative2(root, file));
+    let code;
+    try {
+      code = await fs12.readFile(file, "utf8");
+    } catch {
+      continue;
+    }
+    try {
+      const result = await stampSource2(code, relPath, "data-component-source");
+      for (const [hash, entry] of Object.entries(result.components)) {
+        addToManifest2(manifest, hash, entry);
+      }
+      scanned++;
+    } catch (err) {
+      failed++;
+      if (!opts.quiet)
+        console.error(`  skipped ${relPath}: ${err?.message ?? err}`);
+    }
+  }
+  const target = resolve2(root, ".pointer/manifest.json");
+  await fs12.mkdir(join12(root, ".pointer"), { recursive: true });
+  const prev = target.replace(/\.json$/, ".prev.json");
+  if (existsSync2(target)) {
+    await fs12.copyFile(target, prev);
+  }
+  const entries = Object.fromEntries(
+    Object.entries(manifest).sort(([a], [b]) => a.localeCompare(b)).map(([hash, entry]) => [hash, { path: entry.path, component: entry.export }])
+  );
+  const tmp = `${target}.tmp`;
+  await fs12.writeFile(tmp, JSON.stringify({ version: 1, entries }, null, 2) + "\n", "utf8");
+  await fs12.rename(tmp, target);
+  const count = Object.keys(entries).length;
+  if (!opts.quiet) {
+    console.log(
+      `Mapped ${count} component${count === 1 ? "" : "s"} from ${scanned} file${scanned === 1 ? "" : "s"} \u2192 .pointer/manifest.json` + (failed ? ` (${failed} skipped)` : "")
+    );
+  }
+  return { ok: true, count, scanned, failed };
+}
+async function mapCommand(cwd2, parsed) {
+  if (parsed["from-source"] !== true) {
+    console.error("Usage: pointer map --from-source");
+    process.exit(2);
+  }
+  const result = await buildManifest(cwd2);
+  if (!result.ok) {
+    console.error(result.reason ?? "could not build the manifest");
+    process.exit(2);
+  }
+  process.exit(0);
+}
+var DEFAULT_INCLUDE_EXTENSIONS, SKIP_DIRS, toPosix;
+var init_map = __esm({
+  "src/commands/map.ts"() {
+    "use strict";
+    DEFAULT_INCLUDE_EXTENSIONS = [".jsx", ".tsx", ".vue"];
+    SKIP_DIRS = /* @__PURE__ */ new Set(["node_modules", "dist", "build", ".git", ".next", ".nuxt", "coverage", ".pointer"]);
+    toPosix = (p) => p.split("\\").join("/");
+  }
+});
+
 // src/auth.ts
-import { promises as fs13 } from "node:fs";
-import { join as join13 } from "node:path";
+import { promises as fs15 } from "node:fs";
+import { join as join15 } from "node:path";
 async function readApiKey(cwd2) {
   if (process.env.POINTER_API_KEY) {
     return process.env.POINTER_API_KEY.trim();
   }
   try {
-    const raw = await fs13.readFile(join13(cwd2, ".pointer/credentials.env"), "utf8");
+    const raw = await fs15.readFile(join15(cwd2, ".pointer/credentials.env"), "utf8");
     const match = raw.match(/^POINTER_API_KEY=(.*)$/m);
     return match?.[1]?.trim() || void 0;
   } catch {
@@ -140,10 +438,10 @@ async function readApiKey(cwd2) {
   }
 }
 async function resolveToken(server, cwd2, explicitApiKey) {
-  const tokenCacheFile = join13(cwd2, ".pointer/.token_cache");
+  const tokenCacheFile = join15(cwd2, ".pointer/.token_cache");
   if (!explicitApiKey) {
     try {
-      const cached = await fs13.readFile(tokenCacheFile, "utf8");
+      const cached = await fs15.readFile(tokenCacheFile, "utf8");
       const token = cached.trim();
       if (token)
         return token;
@@ -164,8 +462,8 @@ async function resolveToken(server, cwd2, explicitApiKey) {
     );
     if (login?.token) {
       try {
-        await fs13.mkdir(join13(cwd2, ".pointer"), { recursive: true });
-        await fs13.writeFile(tokenCacheFile, login.token, "utf8");
+        await fs15.mkdir(join15(cwd2, ".pointer"), { recursive: true });
+        await fs15.writeFile(tokenCacheFile, login.token, "utf8");
       } catch {
       }
       return login.token;
@@ -185,8 +483,8 @@ var init_auth = __esm({
 });
 
 // src/vite/resolve.ts
-import { existsSync as existsSync2, readFileSync } from "node:fs";
-import { join as join14 } from "node:path";
+import { existsSync as existsSync3, readFileSync } from "node:fs";
+import { join as join16 } from "node:path";
 function entryOf(json, hash) {
   if (!json || typeof json !== "object")
     return void 0;
@@ -203,7 +501,7 @@ function normalise(entry) {
   };
 }
 function readJson(path) {
-  if (!existsSync2(path))
+  if (!existsSync3(path))
     return null;
   try {
     return JSON.parse(readFileSync(path, "utf8"));
@@ -215,11 +513,11 @@ function resolveSource(cwd2, hash) {
   const miss = { kind: "unknown", path: null, component: null };
   if (!hash || !/^[0-9a-f]{8}$/.test(hash))
     return miss;
-  const manifestPath = join14(cwd2, ".pointer", "manifest.json");
+  const manifestPath = join16(cwd2, ".pointer", "manifest.json");
   const current = normalise(entryOf(readJson(manifestPath), hash));
   if (current)
     return { kind: "manifest", path: current.path, component: current.component };
-  const prevPath = join14(cwd2, ".pointer", "manifest.prev.json");
+  const prevPath = join16(cwd2, ".pointer", "manifest.prev.json");
   const previous = normalise(entryOf(readJson(prevPath), hash));
   if (previous) {
     return {
@@ -503,294 +801,6 @@ var init_comments = __esm({
     init_auth();
     init_build_constants();
     init_projection();
-  }
-});
-
-// src/vite/hash.ts
-var hash_exports = {};
-__export(hash_exports, {
-  addToManifest: () => addToManifest,
-  componentHash: () => componentHash
-});
-import { createHash } from "node:crypto";
-function componentHash(repoRelativePath, exportName) {
-  const normalised = repoRelativePath.split("\\").join("/").replace(/^\.\//, "");
-  return createHash("sha1").update(`${normalised}#${exportName}`).digest("hex").slice(0, 8);
-}
-function addToManifest(manifest, hash, entry) {
-  const existing = manifest[hash];
-  if (existing && (existing.path !== entry.path || existing.export !== entry.export)) {
-    throw new Error(
-      `pointer: hash collision on ${hash} between ${existing.path}#${existing.export} and ${entry.path}#${entry.export}. Rename one of the two components.`
-    );
-  }
-  manifest[hash] = entry;
-}
-var init_hash = __esm({
-  "src/vite/hash.ts"() {
-    "use strict";
-  }
-});
-
-// src/vite/transform.ts
-var transform_exports = {};
-__export(transform_exports, {
-  stampSource: () => stampSource
-});
-async function loadBabel() {
-  try {
-    const [parser, traverseMod, generatorMod] = await Promise.all([
-      import("@babel/parser"),
-      // @ts-ignore optional peer — types are not installed for a dependency-free CLI bundle
-      import("@babel/traverse"),
-      // @ts-ignore optional peer — same
-      import("@babel/generator")
-    ]);
-    const unwrap = (mod, name) => {
-      const fn = mod?.default?.default ?? mod?.default ?? mod;
-      if (typeof fn !== "function") {
-        throw new Error(
-          `${name} did not resolve to a function (got ${typeof fn}) \u2014 CJS/ESM interop problem`
-        );
-      }
-      return fn;
-    };
-    return {
-      parse: parser.parse,
-      traverse: unwrap(traverseMod, "@babel/traverse"),
-      generate: unwrap(generatorMod, "@babel/generator")
-    };
-  } catch {
-    throw new Error(
-      "the Vite plugin needs @babel/parser, @babel/traverse and @babel/generator. They ship with @vitejs/plugin-react; install them if you use a different React setup."
-    );
-  }
-}
-function isHostElement(node) {
-  const name = node?.openingElement?.name;
-  return name?.type === "JSXIdentifier" && /^[a-z]/.test(name.name);
-}
-function alreadyStamped(node, attribute) {
-  return (node.openingElement.attributes ?? []).some(
-    (a) => a.type === "JSXAttribute" && a.name?.name === attribute
-  );
-}
-function collectRoots(node, out) {
-  if (!node)
-    return;
-  switch (node.type) {
-    case "JSXElement":
-      if (isHostElement(node))
-        out.push(node);
-      return;
-    case "JSXFragment":
-      for (const child of node.children ?? [])
-        collectRoots(child, out);
-      return;
-    case "ConditionalExpression":
-      collectRoots(node.consequent, out);
-      collectRoots(node.alternate, out);
-      return;
-    case "LogicalExpression":
-      collectRoots(node.right, out);
-      return;
-    case "ParenthesizedExpression":
-      collectRoots(node.expression, out);
-      return;
-    default:
-      return;
-  }
-}
-function componentNameFor(path) {
-  const node = path.node;
-  if (node.id?.name)
-    return node.id.name;
-  const parent = path.parent;
-  if (parent?.type === "VariableDeclarator" && parent.id?.type === "Identifier")
-    return parent.id.name;
-  if (parent?.type === "CallExpression") {
-    const grand = path.parentPath?.parent;
-    if (grand?.type === "VariableDeclarator" && grand.id?.type === "Identifier")
-      return grand.id.name;
-  }
-  if (parent?.type === "ExportDefaultDeclaration")
-    return "default";
-  return null;
-}
-async function stampSource(code, repoRelativePath, attribute) {
-  if (repoRelativePath.endsWith(".vue")) {
-    return stampVue(code, repoRelativePath, attribute);
-  }
-  const { parse, traverse, generate } = await loadBabel();
-  const ast = parse(code, {
-    sourceType: "module",
-    plugins: ["jsx", "typescript", "decorators-legacy", "classProperties"]
-  });
-  const components = {};
-  let changed = false;
-  const visitComponent = (path) => {
-    const name = componentNameFor(path);
-    if (!name || !/^[A-Z]|^default$/.test(name))
-      return;
-    const roots = [];
-    const body = path.node.body;
-    if (body?.type === "BlockStatement") {
-      for (const stmt of body.body) {
-        if (stmt.type === "ReturnStatement")
-          collectRoots(stmt.argument, roots);
-      }
-    } else {
-      collectRoots(body, roots);
-    }
-    if (roots.length === 0)
-      return;
-    const hash = componentHash(repoRelativePath, name);
-    components[hash] = { path: repoRelativePath, export: name };
-    for (const el of roots) {
-      if (alreadyStamped(el, attribute))
-        continue;
-      el.openingElement.attributes.push({
-        type: "JSXAttribute",
-        name: { type: "JSXIdentifier", name: attribute },
-        value: { type: "StringLiteral", value: hash }
-      });
-      changed = true;
-    }
-  };
-  traverse(ast, {
-    FunctionDeclaration: visitComponent,
-    FunctionExpression: visitComponent,
-    ArrowFunctionExpression: visitComponent
-  });
-  if (!changed)
-    return { code, changed: false, components };
-  return { code: generate(ast, { retainLines: true }, code).code, changed: true, components };
-}
-function stampVue(code, repoRelativePath, attribute) {
-  const name = repoRelativePath.split("/").pop().replace(/\.vue$/, "");
-  const hash = componentHash(repoRelativePath, name);
-  const components = { [hash]: { path: repoRelativePath, export: name } };
-  const match = code.match(/<template>([\s\S]*?)<\/template>/);
-  if (!match)
-    return { code, changed: false, components };
-  let changed = false;
-  const stamped = match[1].replace(/<([a-z][\w-]*)((?:\s[^>]*?)?)(\/?)>/g, (whole, tag, attrs, selfClose) => {
-    if (attrs.includes(attribute))
-      return whole;
-    changed = true;
-    return `<${tag}${attrs} ${attribute}="${hash}"${selfClose}>`;
-  });
-  if (!changed)
-    return { code, changed: false, components };
-  return { code: code.replace(match[1], stamped), changed: true, components };
-}
-var init_transform = __esm({
-  "src/vite/transform.ts"() {
-    "use strict";
-    init_hash();
-  }
-});
-
-// src/commands/map.ts
-var map_exports = {};
-__export(map_exports, {
-  mapCommand: () => mapCommand
-});
-import { promises as fs16 } from "node:fs";
-import { existsSync as existsSync4 } from "node:fs";
-import { join as join19, relative as relative3, resolve as resolve3 } from "node:path";
-import { execFileSync } from "node:child_process";
-function gitRoot(cwd2) {
-  try {
-    return execFileSync("git", ["rev-parse", "--show-toplevel"], { cwd: cwd2, encoding: "utf8" }).trim();
-  } catch {
-    return cwd2;
-  }
-}
-async function walk(dir, out = []) {
-  let entries;
-  try {
-    entries = await fs16.readdir(dir, { withFileTypes: true });
-  } catch {
-    return out;
-  }
-  for (const entry of entries) {
-    if (entry.name.startsWith(".") && entry.name !== ".") {
-      if (SKIP_DIRS.has(entry.name))
-        continue;
-    }
-    const full = join19(dir, entry.name);
-    if (entry.isDirectory()) {
-      if (SKIP_DIRS.has(entry.name))
-        continue;
-      await walk(full, out);
-    } else if (DEFAULT_INCLUDE_EXTENSIONS.some((ext) => entry.name.endsWith(ext))) {
-      out.push(full);
-    }
-  }
-  return out;
-}
-async function mapCommand(cwd2, parsed) {
-  const fromSource = parsed["from-source"] === true;
-  if (!fromSource) {
-    console.error("Usage: pointer map --from-source");
-    process.exit(2);
-  }
-  const root = gitRoot(cwd2);
-  const files = await walk(cwd2);
-  if (files.length === 0) {
-    console.error(`No .jsx/.tsx/.vue files found under ${cwd2}`);
-    process.exit(2);
-  }
-  const { stampSource: stampSource2 } = await Promise.resolve().then(() => (init_transform(), transform_exports));
-  const { addToManifest: addToManifest2 } = await Promise.resolve().then(() => (init_hash(), hash_exports));
-  const manifest = {};
-  let scanned = 0;
-  let failed = 0;
-  for (const file of files) {
-    const relPath = toPosix(relative3(root, file));
-    let code;
-    try {
-      code = await fs16.readFile(file, "utf8");
-    } catch {
-      continue;
-    }
-    try {
-      const result = await stampSource2(code, relPath, "data-component-source");
-      for (const [hash, entry] of Object.entries(result.components)) {
-        addToManifest2(manifest, hash, entry);
-      }
-      scanned++;
-    } catch (err) {
-      failed++;
-      console.error(`  skipped ${relPath}: ${err?.message ?? err}`);
-    }
-  }
-  const target = resolve3(root, ".pointer/manifest.json");
-  await fs16.mkdir(join19(root, ".pointer"), { recursive: true });
-  const prev = target.replace(/\.json$/, ".prev.json");
-  if (existsSync4(target)) {
-    await fs16.copyFile(target, prev);
-  }
-  const entries = Object.fromEntries(
-    Object.entries(manifest).sort(([a], [b]) => a.localeCompare(b)).map(([hash, entry]) => [hash, { path: entry.path, component: entry.export }])
-  );
-  const tmp = `${target}.tmp`;
-  await fs16.writeFile(tmp, JSON.stringify({ version: 1, entries }, null, 2) + "\n", "utf8");
-  await fs16.rename(tmp, target);
-  const count = Object.keys(entries).length;
-  console.log(
-    `Mapped ${count} component${count === 1 ? "" : "s"} from ${scanned} file${scanned === 1 ? "" : "s"} \u2192 .pointer/manifest.json` + (failed ? ` (${failed} skipped)` : "")
-  );
-  process.exit(0);
-}
-var DEFAULT_INCLUDE_EXTENSIONS, SKIP_DIRS, toPosix;
-var init_map = __esm({
-  "src/commands/map.ts"() {
-    "use strict";
-    DEFAULT_INCLUDE_EXTENSIONS = [".jsx", ".tsx", ".vue"];
-    SKIP_DIRS = /* @__PURE__ */ new Set(["node_modules", "dist", "build", ".git", ".next", ".nuxt", "coverage", ".pointer"]);
-    toPosix = (p) => p.split("\\").join("/");
   }
 });
 
@@ -1245,7 +1255,7 @@ async function injectStatic(cwd2, htmlPath, cfg) {
     s.integrity = '${cfg.pin.integrity}';
     s.crossOrigin = 'anonymous';` : "";
   const pinnedAttrs = cfg.pin ? ` integrity="${cfg.pin.integrity}" crossorigin="anonymous"` : "";
-  const multiEnv = (cfg.environments?.length ?? 0) > 1 || Object.keys(cfg.envMap ?? {}).length > 0;
+  const envAttr = cfg.environmentPinned ? ` environment="${cfg.environment}"` : "";
   const block = cfg.envGuarded ? `<!-- pointer-feedback:start -->
 <script>
   if (
@@ -1264,54 +1274,15 @@ async function injectStatic(cwd2, htmlPath, cfg) {
       var el = document.createElement('pointer-feedback');
       el.setAttribute('project', '%VITE_POINTER_PROJECT%');
       el.setAttribute('server', '%VITE_POINTER_SERVER%');
-      el.setAttribute('environment', '%VITE_POINTER_ENV%');
-      el.setAttribute('source-attr', 'data-component-source');
       document.body.appendChild(el);
     };
     if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', mount);
     else mount();
   }
 </script>
-<!-- pointer-feedback:end -->` : multiEnv ? (
-    // One file, several environments.
-    //
-    // The single-environment form writes environment="local" into the markup, which is right
-    // until the same index.html is built for staging and production too — then every comment
-    // from every deployment is tagged `local` and nothing can tell them apart. This form
-    // resolves the environment from the page's own origin at runtime, using the URLs already
-    // registered against the project, so one committed file is correct everywhere.
-    `<!-- pointer-feedback:start -->
+<!-- pointer-feedback:end -->` : `<!-- pointer-feedback:start -->
 <script${pinnedAttrs} src="${cfg.server}/pointer.js${pinnedSrc}" defer></script>
-<script>
-  (function () {
-    var ORIGINS = ${JSON.stringify(cfg.envMap ?? {})};
-    var FALLBACK = '${cfg.environment}';
-    function pointerEnv() {
-      if (ORIGINS[location.origin]) return ORIGINS[location.origin];
-      // A dev server's port changes more often than anyone updates a URL list, so localhost is
-      // recognised by host rather than by exact origin.
-      if (/^(localhost|127\\.0\\.0\\.1|\\[::1\\])$/.test(location.hostname)) return 'local';
-      return FALLBACK;
-    }
-    function mount() {
-      if (document.querySelector('pointer-feedback')) return;
-      var el = document.createElement('pointer-feedback');
-      el.setAttribute('project', '${cfg.key}');
-      el.setAttribute('server', '${cfg.server}');
-      el.setAttribute('environment', pointerEnv());
-      el.setAttribute('source-attr', 'data-component-source');
-      document.body.appendChild(el);
-    }
-    // document.body is null while the parser is still in <head>. Waiting for DOMContentLoaded
-    // makes the snippet work wherever it is pasted, instead of only just above </body>.
-    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', mount);
-    else mount();
-  })();
-</script>
-<!-- pointer-feedback:end -->`
-  ) : `<!-- pointer-feedback:start -->
-<script${pinnedAttrs} src="${cfg.server}/pointer.js${pinnedSrc}" defer></script>
-<pointer-feedback project="${cfg.key}" server="${cfg.server}" environment="${cfg.environment}" source-attr="data-component-source"></pointer-feedback>
+<pointer-feedback project="${cfg.key}" server="${cfg.server}"${envAttr}></pointer-feedback>
 <!-- pointer-feedback:end -->`;
   const re = /<!-- pointer-feedback:start -->[\s\S]*?<!-- pointer-feedback:end -->/;
   if (re.test(content)) {
@@ -1377,28 +1348,96 @@ async function injectVite(cwd2, cfg, htmlPath) {
   return modified;
 }
 
-// src/skills.ts
+// src/inject/source-map.ts
 import { promises as fs5 } from "node:fs";
-import { join as join5, dirname as dirname2 } from "node:path";
+import { join as join5 } from "node:path";
+var VITE_CONFIGS = ["vite.config.ts", "vite.config.js", "vite.config.mjs", "vite.config.mts"];
+async function injectSourceMap(cwd2) {
+  const configName = await firstExisting(cwd2, VITE_CONFIGS);
+  if (!configName) {
+    return {
+      ok: false,
+      reason: `no vite.config.* found in ${cwd2}. The source-map plugin is Vite-only \u2014 Angular, Next and server-rendered stacks have no equivalent yet.`
+    };
+  }
+  const configPath = join5(cwd2, configName);
+  const original = await fs5.readFile(configPath, "utf8");
+  const files = [];
+  const alreadyPresent = original.includes("pointer-feedback/vite");
+  let next = original;
+  if (!alreadyPresent) {
+    const pluginsMatch = next.match(/plugins\s*:\s*\[/);
+    if (!pluginsMatch || pluginsMatch.index === void 0) {
+      return {
+        ok: false,
+        reason: `could not find a \`plugins: [\` array in ${configName}. Add it by hand:
+  import pointerSource from 'pointer-feedback/vite';
+  plugins: [pointerSource({ enabled: process.env.VITE_POINTER_SOURCE === 'true' })]`
+      };
+    }
+    const at = pluginsMatch.index + pluginsMatch[0].length;
+    const call = `pointerSource({ enabled: process.env.VITE_POINTER_SOURCE === 'true' })`;
+    const rest = next.slice(at);
+    const multiline = /^\s*\n/.test(rest);
+    const indent = multiline ? rest.match(/^\s*\n(\s*)/)?.[1] ?? "    " : "";
+    next = multiline ? next.slice(0, at) + `
+${indent}${call},` + rest.replace(/^\s*\n/, "\n") : next.slice(0, at) + `${call}, ` + rest;
+    const firstImport = next.search(/^import\s/m);
+    const importLine = `import pointerSource from 'pointer-feedback/vite';
+`;
+    next = firstImport === -1 ? importLine + next : next.slice(0, firstImport) + importLine + next.slice(firstImport);
+    await fs5.writeFile(configPath, next, "utf8");
+    files.push(configName);
+  }
+  const envName = await firstExisting(cwd2, [".env.development", ".env.local"]) ?? ".env.development";
+  const envPath = join5(cwd2, envName);
+  const envBefore = await fs5.readFile(envPath, "utf8").catch(() => "");
+  if (!/^VITE_POINTER_SOURCE=/m.test(envBefore)) {
+    const sep = envBefore && !envBefore.endsWith("\n") ? "\n" : "";
+    await fs5.writeFile(
+      envPath,
+      `${envBefore}${sep}# Stamps component source hashes for Pointer. Development only.
+VITE_POINTER_SOURCE=true
+`,
+      "utf8"
+    );
+    files.push(envName);
+  }
+  return { ok: true, files, alreadyPresent };
+}
+async function firstExisting(cwd2, names) {
+  for (const name of names) {
+    try {
+      await fs5.access(join5(cwd2, name));
+      return name;
+    } catch {
+    }
+  }
+  return null;
+}
+
+// src/skills.ts
+import { promises as fs6 } from "node:fs";
+import { join as join6, dirname as dirname2 } from "node:path";
 async function download(url, dest, chmod = false) {
   const res = await fetch(url);
   if (!res.ok)
     throw new Error(`Failed to fetch ${url}: ${res.status}`);
   const txt = await res.text();
-  await fs5.mkdir(dirname2(dest), { recursive: true });
-  await fs5.writeFile(dest, txt, "utf8");
+  await fs6.mkdir(dirname2(dest), { recursive: true });
+  await fs6.writeFile(dest, txt, "utf8");
   if (chmod) {
-    await fs5.chmod(dest, 493).catch(() => {
+    await fs6.chmod(dest, 493).catch(() => {
     });
   }
 }
 async function makeSymlink(target, path) {
-  await fs5.mkdir(dirname2(path), { recursive: true });
+  await fs6.mkdir(dirname2(path), { recursive: true });
   try {
-    await fs5.symlink(target, path);
+    await fs6.symlink(target, path);
   } catch (err) {
     if (err.code === "EPERM" && process.platform === "win32") {
-      await fs5.copyFile(target, path);
+      await fs6.copyFile(target, path);
     } else if (err.code !== "EEXIST") {
       throw err;
     }
@@ -1413,18 +1452,18 @@ var SKILL_FILES = {
 async function installSkills(server, aiTool, cwd2, overrideDir) {
   const files = [];
   server = server.replace(/\/$/, "");
-  const pointerSh = join5(cwd2, ".pointer", "pointer.sh");
+  const pointerSh = join6(cwd2, ".pointer", "pointer.sh");
   await download(`${server}/pointer.sh`, pointerSh, true);
   files.push(".pointer/pointer.sh");
-  const agentsDir = join5(cwd2, ".agents");
+  const agentsDir = join6(cwd2, ".agents");
   async function writeOrLink(primaryPath, skillName, isMd2) {
     const url = skillName === "pointer-init" ? `${server}/pointer-init.md` : `${server}/skill.md`;
-    const finalPath = overrideDir ? join5(cwd2, overrideDir, skillName, "SKILL.md") : join5(cwd2, primaryPath);
+    const finalPath = overrideDir ? join6(cwd2, overrideDir, skillName, "SKILL.md") : join6(cwd2, primaryPath);
     await download(url, finalPath);
-    files.push(overrideDir ? join5(overrideDir, skillName, "SKILL.md") : primaryPath);
+    files.push(overrideDir ? join6(overrideDir, skillName, "SKILL.md") : primaryPath);
     if (!overrideDir && (aiTool === "claude-code" || aiTool === "cursor" || aiTool === "windsurf")) {
-      const symDest = join5(cwd2, ".agents", skillName, "SKILL.md");
-      await makeSymlink(join5("..", "..", primaryPath), symDest);
+      const symDest = join6(cwd2, ".agents", skillName, "SKILL.md");
+      await makeSymlink(join6("..", "..", primaryPath), symDest);
       files.push(`.agents/${skillName}/SKILL.md`);
     }
   }
@@ -1469,17 +1508,17 @@ async function postEvent(server, token, payload) {
 // src/checks.ts
 init_config();
 init_api();
-import { promises as fs7 } from "node:fs";
-import { join as join7 } from "node:path";
+import { promises as fs8 } from "node:fs";
+import { join as join8 } from "node:path";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 
 // src/lib/skill-stamp.ts
-import { promises as fs6 } from "node:fs";
+import { promises as fs7 } from "node:fs";
 async function readStamp(path) {
   let content;
   try {
-    content = await fs6.readFile(path, "utf8");
+    content = await fs7.readFile(path, "utf8");
   } catch {
     return null;
   }
@@ -1513,10 +1552,10 @@ async function readStamp(path) {
 }
 
 // src/lib/skill-paths.ts
-import { join as join6 } from "node:path";
+import { join as join7 } from "node:path";
 function skillFilesFor(config) {
   const layout = SKILL_FILES[config.aiTool ?? ""] ?? SKILL_FILES.other;
-  const skillPaths = config.skillsDir ? ["pointer-init", "pointer-feedback"].map((name) => join6(config.skillsDir, name, "SKILL.md")) : [...layout];
+  const skillPaths = config.skillsDir ? ["pointer-init", "pointer-feedback"].map((name) => join7(config.skillsDir, name, "SKILL.md")) : [...layout];
   return [...skillPaths, ".pointer/pointer.sh"];
 }
 
@@ -1557,7 +1596,7 @@ async function fetchWithTimeout(url, ms, init) {
 }
 async function readCredentialsKey(cwd2) {
   try {
-    const raw = await fs7.readFile(join7(cwd2, ".pointer/credentials.env"), "utf8");
+    const raw = await fs8.readFile(join8(cwd2, ".pointer/credentials.env"), "utf8");
     const match = raw.match(/^POINTER_API_KEY=(.*)$/m);
     return match?.[1]?.trim() || void 0;
   } catch {
@@ -1678,9 +1717,9 @@ async function runInitChecks(cwd2, overrides = {}, cliVersion = "0.0.0") {
   if (meta?.skillVersion) {
     const stale = [];
     for (const rel of skillFilesFor(config)) {
-      const abs = join7(cwd2, rel);
+      const abs = join8(cwd2, rel);
       try {
-        await fs7.access(abs);
+        await fs8.access(abs);
       } catch {
         continue;
       }
@@ -1698,19 +1737,49 @@ async function runInitChecks(cwd2, overrides = {}, cliVersion = "0.0.0") {
   }
   checks.push(...await gitignoreChecks(cwd2));
   try {
-    await fs7.access(join7(cwd2, ".pointer/stack.json"));
+    await fs8.access(join8(cwd2, ".pointer/stack.json"));
     checks.push({ id: "stack", status: "ok", message: "Stack registered" });
   } catch {
     checks.push({ id: "stack", status: "warn", message: "Stack not registered", fixable: true });
   }
+  checks.push(await sourceMapCheck(cwd2));
   return checks;
+}
+async function sourceMapCheck(cwd2) {
+  const configured = await (async () => {
+    for (const name of ["vite.config.ts", "vite.config.js", "vite.config.mjs", "vite.config.mts"]) {
+      const body = await fs8.readFile(join8(cwd2, name), "utf8").catch(() => "");
+      if (body.includes("pointer-feedback/vite"))
+        return true;
+    }
+    return false;
+  })();
+  if (!configured) {
+    return {
+      id: "source-map",
+      status: "ok",
+      message: "Source mapping not configured (optional)"
+    };
+  }
+  try {
+    const raw = await fs8.readFile(join8(cwd2, ".pointer/manifest.json"), "utf8");
+    const count = Object.keys(JSON.parse(raw)?.entries ?? {}).length;
+    return count > 0 ? { id: "source-map", status: "ok", message: `Source manifest present (${count} components)` } : { id: "source-map", status: "warn", message: "Source manifest is empty", fixable: true };
+  } catch {
+    return {
+      id: "source-map",
+      status: "warn",
+      message: "Source manifest missing \u2014 component hashes cannot be resolved to files",
+      fixable: true
+    };
+  }
 }
 async function widgetCheck(cwd2, config = {}) {
   const detection = await detectStack(cwd2).catch(() => null);
   const candidates = [config.htmlPath, detection?.htmlPath, "index.html", "public/index.html", "src/index.html"].filter(Boolean);
   for (const rel of candidates) {
     try {
-      const html = await fs7.readFile(join7(cwd2, rel), "utf8");
+      const html = await fs8.readFile(join8(cwd2, rel), "utf8");
       if (html.includes("<!-- pointer-feedback:start -->") || html.includes("<pointer-feedback")) {
         return { id: "widget", status: "ok", message: `Widget found in ${rel}` };
       }
@@ -1719,7 +1788,7 @@ async function widgetCheck(cwd2, config = {}) {
   }
   for (const envFile of [".env", ".env.local", ".env.development"]) {
     try {
-      const env = await fs7.readFile(join7(cwd2, envFile), "utf8");
+      const env = await fs8.readFile(join8(cwd2, envFile), "utf8");
       if (/^VITE_POINTER_PROJECT=/m.test(env)) {
         return { id: "widget", status: "ok", message: `Widget env configured in ${envFile}` };
       }
@@ -1741,7 +1810,7 @@ async function skillsCheck(cwd2, config) {
   const missing = [];
   for (const rel of expected) {
     try {
-      await fs7.access(join7(cwd2, config.skillsDir ?? "", rel));
+      await fs8.access(join8(cwd2, config.skillsDir ?? "", rel));
     } catch {
       missing.push(rel);
     }
@@ -1767,7 +1836,7 @@ async function gitignoreChecks(cwd2) {
     return results;
   }
   try {
-    const ignore = await fs7.readFile(join7(cwd2, ".gitignore"), "utf8");
+    const ignore = await fs8.readFile(join8(cwd2, ".gitignore"), "utf8");
     results.push(
       ignore.includes(".pointer/") ? { id: "gitignore", status: "ok", message: "Credentials ignored by git" } : { id: "gitignore", status: "warn", message: ".gitignore is missing the .pointer/ entries", fixable: true }
     );
@@ -1778,12 +1847,12 @@ async function gitignoreChecks(cwd2) {
 }
 
 // src/commands/init.ts
-import { promises as fs10 } from "node:fs";
-import { join as join10 } from "node:path";
+import { promises as fs11 } from "node:fs";
+import { join as join11 } from "node:path";
 
 // src/stack/design.ts
-import { promises as fs8, statSync } from "node:fs";
-import { join as join8, relative } from "node:path";
+import { promises as fs9, statSync } from "node:fs";
+import { join as join9, relative } from "node:path";
 var IGNORED_DIRS = /* @__PURE__ */ new Set([
   "node_modules",
   "dist",
@@ -1809,7 +1878,7 @@ async function collectFiles(cwd2, options) {
       return;
     let entries;
     try {
-      entries = await fs8.readdir(dir);
+      entries = await fs9.readdir(dir);
     } catch {
       return;
     }
@@ -1818,10 +1887,10 @@ async function collectFiles(cwd2, options) {
         return;
       if (IGNORED_DIRS.has(entry))
         continue;
-      const fullPath = join8(dir, entry);
+      const fullPath = join9(dir, entry);
       let stat;
       try {
-        stat = await fs8.stat(fullPath);
+        stat = await fs9.stat(fullPath);
       } catch {
         continue;
       }
@@ -1938,7 +2007,7 @@ async function detectTailwind(cwd2, files, readFile) {
   if (foundConfigFile) {
     let content = "";
     try {
-      content = await readFile(join8(cwd2, foundConfigFile));
+      content = await readFile(join9(cwd2, foundConfigFile));
     } catch {
       return null;
     }
@@ -1999,7 +2068,7 @@ async function detectTailwind(cwd2, files, readFile) {
   for (const file of cssFiles) {
     let content = "";
     try {
-      content = await readFile(join8(cwd2, file));
+      content = await readFile(join9(cwd2, file));
     } catch {
       continue;
     }
@@ -2046,7 +2115,7 @@ async function detectCssVars(cwd2, files, readFile) {
   for (const f of files) {
     if ((f.startsWith("src/") || f.includes("/src/")) && (f.endsWith(".css") || f.endsWith(".scss"))) {
       try {
-        const fullPath = join8(cwd2, f);
+        const fullPath = join9(cwd2, f);
         const stat = statSync(fullPath);
         if (stat.size <= 204800) {
           candidateFiles.push({ path: f, size: stat.size });
@@ -2067,7 +2136,7 @@ async function detectCssVars(cwd2, files, readFile) {
   for (const item of selectedFiles) {
     let content = "";
     try {
-      content = await readFile(join8(cwd2, item.path));
+      content = await readFile(join9(cwd2, item.path));
     } catch {
       continue;
     }
@@ -2111,7 +2180,7 @@ async function detectScss(cwd2, files, readFile) {
   for (const f of scssFiles) {
     let content = "";
     try {
-      content = await readFile(join8(cwd2, f));
+      content = await readFile(join9(cwd2, f));
     } catch {
       continue;
     }
@@ -2167,7 +2236,7 @@ async function detectTheme(cwd2, files, readFile) {
   for (const f of themeFiles) {
     let content = "";
     try {
-      content = await readFile(join8(cwd2, f));
+      content = await readFile(join9(cwd2, f));
     } catch {
       continue;
     }
@@ -2197,7 +2266,7 @@ async function detectAngularMaterial(cwd2, files, readFile) {
   for (const f of scssFiles) {
     let content = "";
     try {
-      content = await readFile(join8(cwd2, f));
+      content = await readFile(join9(cwd2, f));
     } catch {
       continue;
     }
@@ -2221,7 +2290,7 @@ async function detectLibraries(cwd2, files, readFile) {
   if (files.includes("package.json")) {
     let pkgContent = "";
     try {
-      pkgContent = await readFile(join8(cwd2, "package.json"));
+      pkgContent = await readFile(join9(cwd2, "package.json"));
       const pkg = JSON.parse(pkgContent);
       const deps = { ...pkg.dependencies, ...pkg.devDependencies };
       const tracked = [
@@ -2293,7 +2362,7 @@ function buildDesignBlock(libraries, tokens) {
   };
 }
 async function detectDesignTokens(cwd2, options) {
-  const readFile = options?.readFile ?? ((p) => fs8.readFile(p, "utf8"));
+  const readFile = options?.readFile ?? ((p) => fs9.readFile(p, "utf8"));
   const files = await collectFiles(cwd2, options);
   const libraries = await detectLibraries(cwd2, files, readFile);
   const tailwind = await detectTailwind(cwd2, files, readFile);
@@ -2346,8 +2415,8 @@ function summarizeDesignTokens(tokens, libraries) {
 }
 
 // src/stack/stackfile.ts
-import { promises as fs9 } from "node:fs";
-import { join as join9 } from "node:path";
+import { promises as fs10 } from "node:fs";
+import { join as join10 } from "node:path";
 function buildRequestBody(stack) {
   const body = {};
   if (stack.frontend !== void 0)
@@ -2362,7 +2431,7 @@ function buildRequestBody(stack) {
 }
 async function readStackFile(cwd2) {
   try {
-    const raw = await fs9.readFile(join9(cwd2, ".pointer/stack.json"), "utf8");
+    const raw = await fs10.readFile(join10(cwd2, ".pointer/stack.json"), "utf8");
     return JSON.parse(raw);
   } catch {
     return null;
@@ -2464,13 +2533,13 @@ function formatStackJson(stack) {
   return JSON.stringify(canonical, null, 2) + "\n";
 }
 async function writeStackFile(cwd2, stack) {
-  const dir = join9(cwd2, ".pointer");
-  await fs9.mkdir(dir, { recursive: true });
-  const targetPath = join9(dir, "stack.json");
-  const tempPath = join9(dir, `stack.json.tmp.${Date.now()}.${Math.random().toString(36).slice(2)}`);
+  const dir = join10(cwd2, ".pointer");
+  await fs10.mkdir(dir, { recursive: true });
+  const targetPath = join10(dir, "stack.json");
+  const tempPath = join10(dir, `stack.json.tmp.${Date.now()}.${Math.random().toString(36).slice(2)}`);
   const content = formatStackJson(stack);
-  await fs9.writeFile(tempPath, content, "utf8");
-  await fs9.rename(tempPath, targetPath);
+  await fs10.writeFile(tempPath, content, "utf8");
+  await fs10.rename(tempPath, targetPath);
 }
 
 // src/commands/init.ts
@@ -2633,9 +2702,7 @@ and the pointer-init skill uses them to mount the widget for you afterwards.
     console.error(`Unknown environment "${badEnv}". Valid values: ${ALL_ENVS.join(", ")}.`);
     process.exit(2);
   }
-  if (!isYes && !options["environment"]) {
-    envs = await multiSelect("Which environments does this codebase run in?", ALL_ENVS, ["local"]);
-  }
+  const environmentPinned = envs.length > 0;
   if (envs.length === 0)
     envs = ["local"];
   const env = ALL_ENVS.filter((e) => envs.includes(e))[0] ?? "local";
@@ -2754,7 +2821,8 @@ and the pointer-init skill uses them to mount the widget for you afterwards.
         environment: env,
         pin,
         envMap,
-        environments: envs
+        environments: envs,
+        environmentPinned
       });
       filesMod = [htmlPath];
       injected = true;
@@ -2766,7 +2834,7 @@ and the pointer-init skill uses them to mount the widget for you afterwards.
       if (!isJson)
         console.log(`Injected widget into ${filesMod.join(", ")}`);
     } else if (appInfo.kind === "static") {
-      const htmlPath = await injectStatic(cwd2, options["html"], { server, key: finalProjectKey, environment: env, pin, envMap, environments: envs });
+      const htmlPath = await injectStatic(cwd2, options["html"], { server, key: finalProjectKey, environment: env, pin, envMap, environments: envs, environmentPinned });
       filesMod = [htmlPath];
       injected = true;
       if (!isJson)
@@ -2783,6 +2851,20 @@ and the pointer-init skill uses them to mount the widget for you afterwards.
       }
     }
   }
+  let sourceMapNote = "";
+  if (options["source-map"]) {
+    const res = await injectSourceMap(cwd2);
+    if (res.ok) {
+      sourceMapNote = res.alreadyPresent ? "source mapping already configured" : `source mapping enabled (${res.files.join(", ")})`;
+      filesMod.push(...res.files);
+      if (!isJson)
+        console.log(`\u2714 ${sourceMapNote}`);
+    } else {
+      sourceMapNote = `source mapping NOT enabled: ${res.reason}`;
+      if (!isJson)
+        console.error(`\u26A0 ${sourceMapNote}`);
+    }
+  }
   if (!options["no-skills"]) {
     if (!isJson)
       console.log(`Installing AI skills for ${tools.join(", ")}`);
@@ -2794,7 +2876,7 @@ and the pointer-init skill uses them to mount the widget for you afterwards.
     filesMod.push(...installed);
     skillFiles = [...new Set(installed.filter((f) => f.includes("SKILL.md") || f.endsWith(".md")))];
   }
-  const pkgStr = await fs10.readFile(join10(cwd2, "package.json"), "utf8").catch(() => "{}");
+  const pkgStr = await fs11.readFile(join11(cwd2, "package.json"), "utf8").catch(() => "{}");
   const tokens = extractTokens(JSON.parse(pkgStr));
   const stackMeta = { frontend: tokens.frontend, backend: tokens.backend, aiTool: tool };
   let serverStackResponse = null;
@@ -2900,8 +2982,8 @@ ${dim('  { "mcpServers": { "pointer": { "command": "npx", "args": ["-y", "pointe
 
 // src/commands/doctor.ts
 init_config();
-import { promises as fs11 } from "node:fs";
-import { join as join11 } from "node:path";
+import { promises as fs13 } from "node:fs";
+import { join as join13 } from "node:path";
 init_api();
 var ICON = { ok: "\u2714", warn: "\u26A0", error: "\u2718" };
 function exitCodeFor(checks) {
@@ -2964,7 +3046,7 @@ async function reportRun(cwd2, options, checks, ok) {
     const server = (options.server || config.server || "").replace(/\/$/, "");
     if (!server)
       return;
-    const apiKey = (await fs11.readFile(join11(cwd2, ".pointer/credentials.env"), "utf8")).match(/^POINTER_API_KEY=(.*)$/m)?.[1]?.trim();
+    const apiKey = (await fs13.readFile(join13(cwd2, ".pointer/credentials.env"), "utf8")).match(/^POINTER_API_KEY=(.*)$/m)?.[1]?.trim();
     if (!apiKey)
       return;
     const login = await api(server, "/api/auth/login-with-key", { method: "POST", body: { apiKey } });
@@ -2987,7 +3069,7 @@ async function applyFixes(cwd2, checks) {
     if (token)
       return token;
     try {
-      const apiKey = (await fs11.readFile(join11(cwd2, ".pointer/credentials.env"), "utf8")).match(/^POINTER_API_KEY=(.*)$/m)?.[1]?.trim();
+      const apiKey = (await fs13.readFile(join13(cwd2, ".pointer/credentials.env"), "utf8")).match(/^POINTER_API_KEY=(.*)$/m)?.[1]?.trim();
       if (!apiKey || !server)
         return void 0;
       const login = await api(server, "/api/auth/login-with-key", { method: "POST", body: { apiKey } });
@@ -3000,8 +3082,8 @@ async function applyFixes(cwd2, checks) {
   for (const check of checks.filter((c) => c.fixable && c.status !== "ok")) {
     try {
       if (check.id === "gitignore") {
-        const path = join11(cwd2, ".gitignore");
-        const existing = await fs11.readFile(path, "utf8").catch(() => "");
+        const path = join13(cwd2, ".gitignore");
+        const existing = await fs13.readFile(path, "utf8").catch(() => "");
         if (!existing.includes(".pointer/")) {
           const block = [
             "",
@@ -3013,9 +3095,14 @@ async function applyFixes(cwd2, checks) {
             "!.pointer/stack.json",
             ""
           ].join("\n");
-          await fs11.writeFile(path, existing + block, "utf8");
+          await fs13.writeFile(path, existing + block, "utf8");
           repaired.push(check.id);
         }
+      } else if (check.id === "source-map") {
+        const { buildManifest: buildManifest2 } = await Promise.resolve().then(() => (init_map(), map_exports));
+        const built = await buildManifest2(cwd2, { quiet: true });
+        if (built.ok)
+          repaired.push(check.id);
       } else if (check.id === "skills" && server && config.aiTool) {
         await installSkills(server, config.aiTool, cwd2, config.skillsDir);
         repaired.push(check.id);
@@ -3028,7 +3115,7 @@ async function applyFixes(cwd2, checks) {
           body: { kind: detection.kind, evidence: detection.evidence }
         }).catch(() => null) : null;
         if (stack) {
-          await fs11.writeFile(join11(cwd2, ".pointer/stack.json"), JSON.stringify(stack, null, 2) + "\n", "utf8");
+          await fs13.writeFile(join13(cwd2, ".pointer/stack.json"), JSON.stringify(stack, null, 2) + "\n", "utf8");
           repaired.push(check.id);
         }
       }
@@ -3041,8 +3128,8 @@ async function applyFixes(cwd2, checks) {
 // src/commands/update.ts
 init_config();
 init_api();
-import { promises as fs12 } from "node:fs";
-import { dirname as dirname3, join as join12 } from "node:path";
+import { promises as fs14 } from "node:fs";
+import { dirname as dirname3, join as join14 } from "node:path";
 function sourceFor(path) {
   if (path.endsWith("pointer.sh"))
     return "/pointer.sh";
@@ -3070,9 +3157,9 @@ async function updateCommand(cwd2, options) {
   const files = skillFilesFor(config);
   const stale = [];
   for (const rel of files) {
-    const abs = join12(cwd2, rel);
+    const abs = join14(cwd2, rel);
     try {
-      await fs12.access(abs);
+      await fs14.access(abs);
     } catch {
       continue;
     }
@@ -3101,11 +3188,11 @@ async function updateCommand(cwd2, options) {
       if (!res.ok)
         throw new Error(`HTTP ${res.status}`);
       const body = await res.text();
-      const abs = join12(cwd2, f.path);
-      await fs12.mkdir(dirname3(abs), { recursive: true });
-      await fs12.writeFile(abs, body, "utf8");
+      const abs = join14(cwd2, f.path);
+      await fs14.mkdir(dirname3(abs), { recursive: true });
+      await fs14.writeFile(abs, body, "utf8");
       if (abs.endsWith(".sh"))
-        await fs12.chmod(abs, 493).catch(() => {
+        await fs14.chmod(abs, 493).catch(() => {
         });
       updated++;
     } catch (err) {
@@ -3125,8 +3212,8 @@ init_build_constants();
 // src/apply/run.ts
 init_resolve();
 init_api();
-import { promises as fs15 } from "node:fs";
-import { join as join16 } from "node:path";
+import { promises as fs17 } from "node:fs";
+import { join as join18 } from "node:path";
 import { spawnSync } from "node:child_process";
 
 // src/apply/queue.ts
@@ -3274,13 +3361,13 @@ async function fetchQueue(ctx, filter) {
 
 // src/apply/context.ts
 init_api();
-import { promises as fs14 } from "node:fs";
-import { join as join15 } from "node:path";
+import { promises as fs16 } from "node:fs";
+import { join as join17 } from "node:path";
 async function loadProjectContext(ctx) {
   const branding = await getBranding(ctx.server);
   let stack = { frontend: [], backend: null, aiTools: [] };
   try {
-    const stackRaw = await fs14.readFile(join15(ctx.cwd, ".pointer/stack.json"), "utf8");
+    const stackRaw = await fs16.readFile(join17(ctx.cwd, ".pointer/stack.json"), "utf8");
     stack = JSON.parse(stackRaw);
   } catch {
   }
@@ -3614,10 +3701,10 @@ function detectAiTool(override) {
   return "other";
 }
 async function ensureToolRegistered(ctx, tool) {
-  const stackPath = join16(ctx.cwd, ".pointer/stack.json");
+  const stackPath = join18(ctx.cwd, ".pointer/stack.json");
   let stackData = {};
   try {
-    const raw = await fs15.readFile(stackPath, "utf8");
+    const raw = await fs17.readFile(stackPath, "utf8");
     stackData = JSON.parse(raw);
   } catch {
   }
@@ -3636,8 +3723,8 @@ async function ensureToolRegistered(ctx, tool) {
         }
       );
       if (res) {
-        await fs15.mkdir(join16(ctx.cwd, ".pointer"), { recursive: true });
-        await fs15.writeFile(stackPath, JSON.stringify(res, null, 2) + "\n", "utf8");
+        await fs17.mkdir(join18(ctx.cwd, ".pointer"), { recursive: true });
+        await fs17.writeFile(stackPath, JSON.stringify(res, null, 2) + "\n", "utf8");
         return;
       }
     } catch {
@@ -3646,8 +3733,8 @@ async function ensureToolRegistered(ctx, tool) {
   aiTools.push(tool);
   stackData.aiTools = aiTools;
   try {
-    await fs15.mkdir(join16(ctx.cwd, ".pointer"), { recursive: true });
-    await fs15.writeFile(stackPath, JSON.stringify(stackData, null, 2) + "\n", "utf8");
+    await fs17.mkdir(join18(ctx.cwd, ".pointer"), { recursive: true });
+    await fs17.writeFile(stackPath, JSON.stringify(stackData, null, 2) + "\n", "utf8");
   } catch {
   }
 }
@@ -3680,6 +3767,11 @@ async function runApply(options, ctx) {
   if (options.environment !== void 0)
     filter.environment = options.environment;
   const items = await fetchQueue(ctx, filter);
+  const hashes = items.map((i) => i.element?.sourcePath).filter((p) => typeof p === "string" && /^[0-9a-f]{8}$/.test(p));
+  if (hashes.length > 0 && hashes.some((h) => resolveSource(ctx.cwd, h).kind !== "manifest")) {
+    const { buildManifest: buildManifest2 } = await Promise.resolve().then(() => (init_map(), map_exports));
+    await buildManifest2(ctx.cwd, { quiet: true }).catch(() => null);
+  }
   const prompt = buildApplyPrompt(items, context, {
     plan: options.plan,
     resolveSource: (hash) => resolveSource(ctx.cwd, hash)
@@ -3708,9 +3800,9 @@ async function runApply(options, ctx) {
         console.error(`Failed to spawn opencode: ${res.error.message}`);
       }
     } else if (tool === "cursor") {
-      const promptFile = join16(ctx.cwd, ".pointer/apply-prompt.md");
-      await fs15.mkdir(join16(ctx.cwd, ".pointer"), { recursive: true });
-      await fs15.writeFile(promptFile, prompt, "utf8");
+      const promptFile = join18(ctx.cwd, ".pointer/apply-prompt.md");
+      await fs17.mkdir(join18(ctx.cwd, ".pointer"), { recursive: true });
+      await fs17.writeFile(promptFile, prompt, "utf8");
       console.log(`Saved apply prompt to ${promptFile}`);
     } else if (tool === "clipboard") {
       const copied = copyToClipboard(prompt);
@@ -4055,7 +4147,7 @@ init_build_constants();
 
 // src/mcp/server.ts
 import { readFileSync as readFileSync3 } from "node:fs";
-import { join as join18 } from "node:path";
+import { join as join20 } from "node:path";
 
 // node_modules/zod/v3/external.js
 var external_exports = {};
@@ -9556,8 +9648,8 @@ var ALL_TOOLS = [
 
 // src/mcp/tools.ts
 init_api();
-import { existsSync as existsSync3, readFileSync as readFileSync2 } from "node:fs";
-import { isAbsolute, join as join17, relative as relative2, resolve as resolve2 } from "node:path";
+import { existsSync as existsSync4, readFileSync as readFileSync2 } from "node:fs";
+import { isAbsolute, join as join19, relative as relative3, resolve as resolve3 } from "node:path";
 import { spawnSync as spawnSync3 } from "node:child_process";
 init_build_constants();
 init_projection();
@@ -9858,12 +9950,12 @@ async function handleCommitAndMark(args, ctx) {
       if (isAbsolute(cleanPath)) {
         throw mcpError("git", `Path must be relative to repo root: ${cleanPath}`);
       }
-      const resolved = resolve2(ctx.cwd, cleanPath);
-      const rel = relative2(ctx.cwd, resolved);
+      const resolved = resolve3(ctx.cwd, cleanPath);
+      const rel = relative3(ctx.cwd, resolved);
       if (rel.startsWith("..") || isAbsolute(rel)) {
         throw mcpError("git", `Path escapes repository root: ${cleanPath}`);
       }
-      if (!existsSync3(resolved)) {
+      if (!existsSync4(resolved)) {
         throw mcpError("git", `File does not exist: ${cleanPath}`);
       }
     }
@@ -10069,8 +10161,8 @@ async function handleResolveSource(args, ctx) {
   if (!hash || typeof hash !== "string") {
     throw mcpError("forbidden", "hash is required");
   }
-  const manifestPath = join17(ctx.cwd, ".pointer/manifest.json");
-  if (!existsSync3(manifestPath)) {
+  const manifestPath = join19(ctx.cwd, ".pointer/manifest.json");
+  if (!existsSync4(manifestPath)) {
     return { path: null, reason: "no-manifest" };
   }
   try {
@@ -10209,12 +10301,12 @@ function createMcpServer(ctx) {
     let configObj = {};
     let stackObj = {};
     try {
-      const configPath = join18(ctx.cwd, ".pointer/config.json");
+      const configPath = join20(ctx.cwd, ".pointer/config.json");
       configObj = JSON.parse(readFileSync3(configPath, "utf8"));
     } catch {
     }
     try {
-      const stackPath = join18(ctx.cwd, ".pointer/stack.json");
+      const stackPath = join20(ctx.cwd, ".pointer/stack.json");
       stackObj = JSON.parse(readFileSync3(stackPath, "utf8"));
     } catch {
     }
@@ -10279,8 +10371,8 @@ function createMcpServer(ctx) {
 async function runMcpServer(ctx, logFile) {
   if (logFile) {
     try {
-      const fs17 = await import("node:fs");
-      const logStream = fs17.createWriteStream(logFile, { flags: "a" });
+      const fs18 = await import("node:fs");
+      const logStream = fs18.createWriteStream(logFile, { flags: "a" });
       const origWrite = process.stderr.write;
       process.stderr.write = function(chunk, encoding, cb) {
         logStream.write(chunk);
@@ -10338,6 +10430,7 @@ function parseArgs(args) {
     "no-inject",
     "no-skills",
     "no-design",
+    "source-map",
     "refresh-stack",
     "from-source",
     "pin",
@@ -10430,6 +10523,7 @@ Options:
   --no-inject              Skip injection
   --no-skills              Skip skills installation
   --no-design              Skip design token detection
+  --source-map             Wire in the Vite plugin that stamps component source hashes
   -y, --yes                Non-interactive
   --json                   JSON output (implies --yes)
   -h, --help               Show help

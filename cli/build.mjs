@@ -41,3 +41,4 @@ await esbuild.build({
     'CLI_VERSION': JSON.stringify(pkgVersion)
   }
 });
+

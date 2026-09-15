@@ -3,6 +3,7 @@ import { BUILD_DEFAULT_SERVER, BUILD_CLI_VERSION } from '../build-constants.js';
 import { readConfig, writeConfig, writeCredentials, upsertGitignore } from '../config.js';
 import { detectStack, detectAppUrl, extractTokens } from '../detect.js';
 import { injectVite, injectStatic } from '../inject/index.js';
+import { injectSourceMap } from '../inject/source-map.js';
 import { installSkills } from '../skills.js';
 import { getBranding } from '../branding.js';
 import { api, ApiError } from '../api.js';
@@ -225,9 +226,17 @@ export async function initCommand(cwd: string, options: Record<string, string | 
         process.exit(2);
     }
 
-    if (!isYes && !options['environment']) {
-        envs = await multiSelect('Which environments does this codebase run in?', ALL_ENVS, ['local']);
-    }
+    // No environment question at all.
+    //
+    // The environment a comment is filed under is resolved by the server from the origin it was
+    // left on, matched against the URLs registered for the project. Asking here produced a value
+    // baked into the markup that was wrong for every deployment except the one the developer
+    // happened to be thinking about — and no answer given at install time can be right for a file
+    // that ships to three environments.
+    //
+    // `--environment` survives as a deliberate override for an install that must be pinned (a
+    // server-rendered embed for one environment, say). Given, it is honoured exactly as before.
+    const environmentPinned = envs.length > 0;
     if (envs.length === 0) envs = ['local'];
 
     // The primary environment: what a single-valued field means when several were chosen. First in
@@ -401,6 +410,7 @@ export async function initCommand(cwd: string, options: Record<string, string | 
                 pin,
                 envMap,
                 environments: envs,
+                environmentPinned,
             });
             filesMod = [htmlPath];
             injected = true;
@@ -410,7 +420,7 @@ export async function initCommand(cwd: string, options: Record<string, string | 
             injected = true;
             if (!isJson) console.log(`Injected widget into ${filesMod.join(', ')}`);
         } else if (appInfo.kind === 'static') {
-            const htmlPath = await injectStatic(cwd, options['html'] as string, { server: server as string, key: finalProjectKey, environment: env, pin, envMap, environments: envs });
+            const htmlPath = await injectStatic(cwd, options['html'] as string, { server: server as string, key: finalProjectKey, environment: env, pin, envMap, environments: envs, environmentPinned });
             filesMod = [htmlPath];
             injected = true;
             if (!isJson) console.log(`Injected widget into ${htmlPath}`);
@@ -424,6 +434,24 @@ export async function initCommand(cwd: string, options: Record<string, string | 
     claude -> /pointer-init (or @pointer-init for cursor)
   Config is already saved in .pointer/config.json, so neither will ask for the key or project again.`);
             }
+        }
+    }
+
+    // --source-map: wire in the Vite plugin that stamps component hashes. Opt-in, because it
+    // edits the user's build config — the most intrusive thing this CLI does.
+    let sourceMapNote = '';
+    if (options['source-map']) {
+        const res = await injectSourceMap(cwd);
+        if (res.ok) {
+            sourceMapNote = res.alreadyPresent
+                ? 'source mapping already configured'
+                : `source mapping enabled (${res.files.join(', ')})`;
+            filesMod.push(...res.files);
+            if (!isJson) console.log(`✔ ${sourceMapNote}`);
+        } else {
+            sourceMapNote = `source mapping NOT enabled: ${res.reason}`;
+            // Never fail the install for this: the widget works without it.
+            if (!isJson) console.error(`⚠ ${sourceMapNote}`);
         }
     }
 

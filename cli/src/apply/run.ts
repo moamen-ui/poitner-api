@@ -105,6 +105,22 @@ export async function runApply(
   if (options.environment !== undefined) filter.environment = options.environment;
 
   const items = await fetchQueue(ctx, filter);
+
+  // Rebuild the manifest before resolving, when the queue contains stamped hashes and the manifest
+  // cannot answer for them.
+  //
+  // Previously the prompt just told the agent the hash was unresolved and suggested the developer
+  // run `pointer map --from-source` — advice delivered to the wrong party, at the wrong moment, by
+  // a process that could simply do it. Regeneration is local and offline, so the cost of being
+  // wrong is a few hundred milliseconds.
+  const hashes = items
+    .map((i) => i.element?.sourcePath)
+    .filter((p): p is string => typeof p === 'string' && /^[0-9a-f]{8}$/.test(p));
+  if (hashes.length > 0 && hashes.some((h) => resolveSource(ctx.cwd, h).kind !== 'manifest')) {
+    const { buildManifest } = await import('../commands/map.js');
+    await buildManifest(ctx.cwd, { quiet: true }).catch(() => null);
+  }
+
   const prompt = buildApplyPrompt(items, context, {
     plan: options.plan,
     resolveSource: (hash) => resolveSource(ctx.cwd, hash),

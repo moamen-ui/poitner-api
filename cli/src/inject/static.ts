@@ -35,6 +35,11 @@ export async function injectStatic(
         envMap?: Record<string, string>;
         /** Every environment this install covers. More than one implies the runtime-resolving form. */
         environments?: string[];
+        /**
+         * The caller asked for a specific environment (`--environment`), so write it into the
+         * markup and let it override the server's origin-based resolution.
+         */
+        environmentPinned?: boolean;
     },
 ): Promise<string> {
     const p = htmlPath || join(cwd, 'index.html');
@@ -54,8 +59,14 @@ export async function injectStatic(
     const pinnedAttrs = cfg.pin
         ? ` integrity="${cfg.pin.integrity}" crossorigin="anonymous"`
         : '';
-    /** More than one environment, or a known origin map, needs the runtime-resolving block. */
-    const multiEnv = (cfg.environments?.length ?? 0) > 1 || Object.keys(cfg.envMap ?? {}).length > 0;
+
+    // No `environment` attribute unless the install is deliberately pinned to one.
+    //
+    // Absent, the server resolves it per request from the page's origin against the URLs registered
+    // for the project — so the same built file reports `staging` on staging and `production` on
+    // production, and changing a URL in the dashboard needs no rebuild. Writing a value here is
+    // what made every deployment of one file report the same environment forever.
+    const envAttr = cfg.environmentPinned ? ` environment="${cfg.environment}"` : '';
 
     const block = cfg.envGuarded
         ? `<!-- pointer-feedback:start -->
@@ -76,8 +87,6 @@ export async function injectStatic(
       var el = document.createElement('pointer-feedback');
       el.setAttribute('project', '%VITE_POINTER_PROJECT%');
       el.setAttribute('server', '%VITE_POINTER_SERVER%');
-      el.setAttribute('environment', '%VITE_POINTER_ENV%');
-      el.setAttribute('source-attr', 'data-component-source');
       document.body.appendChild(el);
     };
     if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', mount);
@@ -85,46 +94,9 @@ export async function injectStatic(
   }
 </script>
 <!-- pointer-feedback:end -->`
-        : multiEnv
-        ? // One file, several environments.
-          //
-          // The single-environment form writes environment="local" into the markup, which is right
-          // until the same index.html is built for staging and production too — then every comment
-          // from every deployment is tagged `local` and nothing can tell them apart. This form
-          // resolves the environment from the page's own origin at runtime, using the URLs already
-          // registered against the project, so one committed file is correct everywhere.
-          `<!-- pointer-feedback:start -->
-<script${pinnedAttrs} src="${cfg.server}/pointer.js${pinnedSrc}" defer></script>
-<script>
-  (function () {
-    var ORIGINS = ${JSON.stringify(cfg.envMap ?? {})};
-    var FALLBACK = '${cfg.environment}';
-    function pointerEnv() {
-      if (ORIGINS[location.origin]) return ORIGINS[location.origin];
-      // A dev server's port changes more often than anyone updates a URL list, so localhost is
-      // recognised by host rather than by exact origin.
-      if (/^(localhost|127\\.0\\.0\\.1|\\[::1\\])$/.test(location.hostname)) return 'local';
-      return FALLBACK;
-    }
-    function mount() {
-      if (document.querySelector('pointer-feedback')) return;
-      var el = document.createElement('pointer-feedback');
-      el.setAttribute('project', '${cfg.key}');
-      el.setAttribute('server', '${cfg.server}');
-      el.setAttribute('environment', pointerEnv());
-      el.setAttribute('source-attr', 'data-component-source');
-      document.body.appendChild(el);
-    }
-    // document.body is null while the parser is still in <head>. Waiting for DOMContentLoaded
-    // makes the snippet work wherever it is pasted, instead of only just above </body>.
-    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', mount);
-    else mount();
-  })();
-</script>
-<!-- pointer-feedback:end -->`
         : `<!-- pointer-feedback:start -->
 <script${pinnedAttrs} src="${cfg.server}/pointer.js${pinnedSrc}" defer></script>
-<pointer-feedback project="${cfg.key}" server="${cfg.server}" environment="${cfg.environment}" source-attr="data-component-source"></pointer-feedback>
+<pointer-feedback project="${cfg.key}" server="${cfg.server}"${envAttr}></pointer-feedback>
 <!-- pointer-feedback:end -->`;
 
     const re = /<!-- pointer-feedback:start -->[\s\S]*?<!-- pointer-feedback:end -->/;

@@ -283,7 +283,54 @@ export async function runInitChecks(
     checks.push({ id: 'stack', status: 'warn', message: 'Stack not registered', fixable: true });
   }
 
+  // source-map ---------------------------------------------------------------
+  //
+  // Only meaningful once the stamping plugin is configured: without it there are no hashes to
+  // resolve, and a missing manifest is the correct state rather than a fault. Checking for the
+  // plugin first is what keeps this quiet for the majority of installs that never enable it.
+  checks.push(await sourceMapCheck(cwd));
+
   return checks;
+}
+
+/**
+ * Is the component manifest present, when the plugin that needs it is configured?
+ *
+ * A stale or missing manifest is not cosmetic: every `sourcePath` the widget captured is an opaque
+ * hash, and without the manifest nothing can turn one back into a file — the apply step silently
+ * degrades to grepping, which is precisely what the stamping exists to avoid.
+ */
+async function sourceMapCheck(cwd: string): Promise<CheckResult> {
+  const configured = await (async () => {
+    for (const name of ['vite.config.ts', 'vite.config.js', 'vite.config.mjs', 'vite.config.mts']) {
+      const body = await fs.readFile(join(cwd, name), 'utf8').catch(() => '');
+      if (body.includes('pointer-feedback/vite')) return true;
+    }
+    return false;
+  })();
+
+  if (!configured) {
+    return {
+      id: 'source-map',
+      status: 'ok',
+      message: 'Source mapping not configured (optional)',
+    };
+  }
+
+  try {
+    const raw = await fs.readFile(join(cwd, '.pointer/manifest.json'), 'utf8');
+    const count = Object.keys(JSON.parse(raw)?.entries ?? {}).length;
+    return count > 0
+      ? { id: 'source-map', status: 'ok', message: `Source manifest present (${count} components)` }
+      : { id: 'source-map', status: 'warn', message: 'Source manifest is empty', fixable: true };
+  } catch {
+    return {
+      id: 'source-map',
+      status: 'warn',
+      message: 'Source manifest missing — component hashes cannot be resolved to files',
+      fixable: true,
+    };
+  }
 }
 
 /**

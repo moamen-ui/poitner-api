@@ -52,7 +52,8 @@
   },
   "exports": {
     ".": "./dist/cli.js",
-    "./vite": "./dist/vite.js"
+    "./vite": "./dist/vite.js",
+    "./package.json": "./package.json"
   },
   "peerDependencies": {
     "@babel/parser": ">=7",

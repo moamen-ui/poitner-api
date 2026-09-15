@@ -24,38 +24,47 @@ test('injectStatic idempotency', async () => {
     }
 });
 
-// Multi-environment installs.
+// Environment resolution belongs to the server.
 //
-// The single-environment block writes environment="local" into the markup, which is correct until
-// the same index.html is also built for staging and production — then every comment from every
-// deployment is tagged `local`. These cover the form that resolves the environment at runtime.
-test('injectStatic: several environments resolve the environment at runtime, not at install time', async () => {
+// The injected markup deliberately carries NO `environment` attribute: the server decides per
+// request, from the page's origin matched against the URLs registered for the project. An
+// attribute, if present, OVERRIDES that — so emitting one by default silently disables the
+// mechanism, which is exactly what an earlier client-side origin map in here did.
+test('injectStatic: several environments still write no environment attribute', async () => {
     const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'pointer-test-multienv-'));
     try {
         const html = path.join(dir, 'index.html');
         await fs.writeFile(html, '<html><head></head><body>Hi</body></html>');
-
         await injectStatic(dir, undefined, {
             server: 'https://api.example.test',
             key: 'proj',
             environment: 'local',
             environments: ['local', 'staging', 'production'],
-            envMap: { 'https://staging.example.test': 'staging', 'https://example.test': 'production' },
         });
         const content = await fs.readFile(html, 'utf8');
+        assert.doesNotMatch(content, /environment=/, 'the server resolves it; the page must not assert one');
+        assert.doesNotMatch(content, /ORIGINS/, 'no hand-maintained origin map — the dashboard owns that');
+        assert.match(content, /<pointer-feedback project="proj"/);
+    } finally {
+        await fs.rm(dir, { recursive: true, force: true });
+    }
+});
 
-        // The origin map is what makes one committed file correct on every deployment.
-        assert.match(content, /https:\/\/staging\.example\.test/);
-        assert.match(content, /"staging"/);
-        assert.match(content, /"production"/);
-        // No baked-in environment attribute in the markup.
-        assert.doesNotMatch(content, /environment="local"/);
-        // localhost is matched by host, because a dev server's port changes more often than any
-        // registered URL list does.
-        assert.match(content, /localhost/);
-        // And it must survive being pasted anywhere, not just above </body>: document.body is null
-        // while the parser is still inside <head>.
-        assert.match(content, /DOMContentLoaded/);
+test('injectStatic: an unpinned install writes NO environment attribute — the server resolves it', async () => {
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'pointer-test-noenv-'));
+    try {
+        const html = path.join(dir, 'index.html');
+        await fs.writeFile(html, '<html><body>Hi</body></html>');
+        await injectStatic(dir, undefined, {
+            server: 'https://api.example.test',
+            key: 'proj',
+            environment: 'local',
+            environments: ['local'],
+        });
+        const content = await fs.readFile(html, 'utf8');
+        // The whole point: one built file, and the environment decided per request from its origin.
+        assert.doesNotMatch(content, /environment=/, 'an unpinned install must not bake an environment in');
+        assert.match(content, /<pointer-feedback project="proj"/);
     } finally {
         await fs.rm(dir, { recursive: true, force: true });
     }
@@ -71,6 +80,7 @@ test('injectStatic: a single environment keeps the simpler declarative block', a
             key: 'proj',
             environment: 'staging',
             environments: ['staging'],
+            environmentPinned: true,
         });
         const content = await fs.readFile(html, 'utf8');
         assert.match(content, /environment="staging"/, 'one environment needs no runtime resolution');

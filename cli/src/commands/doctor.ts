@@ -158,6 +158,12 @@ async function applyFixes(cwd: string, checks: CheckResult[]): Promise<string[]>
           await fs.writeFile(path, existing + block, 'utf8');
           repaired.push(check.id);
         }
+      } else if (check.id === 'source-map') {
+        // Rebuild it rather than telling the developer to run `pointer map --from-source`
+        // themselves: the CLI is standing right here with everything it needs.
+        const { buildManifest } = await import('./map.js');
+        const built = await buildManifest(cwd, { quiet: true });
+        if (built.ok) repaired.push(check.id);
       } else if (check.id === 'skills' && server && config.aiTool) {
         await installSkills(server, config.aiTool, cwd, config.skillsDir);
         repaired.push(check.id);

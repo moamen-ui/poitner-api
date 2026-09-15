@@ -52,22 +52,23 @@ async function walk(dir: string, out: string[] = []): Promise<string[]> {
  *
  * It reads sources only. Nothing is stamped on disk; the output is the map, not the markup.
  */
-export async function mapCommand(
+/**
+ * Rebuilds `.pointer/manifest.json` from the source tree, without a build.
+ *
+ * Split out of `mapCommand` so `doctor` and `apply` can regenerate a missing or stale manifest
+ * themselves instead of printing "run pointer map --from-source" at a developer who then has to run
+ * it — which was the plan's whole point and the part that never got wired up. It returns a result
+ * rather than exiting, because a command that calls process.exit cannot be reused by anything.
+ */
+export async function buildManifest(
   cwd: string,
-  parsed: Record<string, string | boolean>,
-): Promise<void> {
-  const fromSource = parsed['from-source'] === true;
-  if (!fromSource) {
-    console.error('Usage: pointer map --from-source');
-    process.exit(2);
-  }
-
+  opts: { quiet?: boolean } = {},
+): Promise<{ ok: boolean; count: number; scanned: number; failed: number; reason?: string }> {
   const root = gitRoot(cwd);
   const files = await walk(cwd);
 
   if (files.length === 0) {
-    console.error(`No .jsx/.tsx/.vue files found under ${cwd}`);
-    process.exit(2);
+    return { ok: false, count: 0, scanned: 0, failed: 0, reason: `no .jsx/.tsx/.vue files under ${cwd}` };
   }
 
   const { stampSource } = await import('../vite/transform.js');
@@ -96,7 +97,7 @@ export async function mapCommand(
       // One unparseable file must not cost the developer the whole map — the other entries are
       // still correct and still useful. Say which file, so it can be looked at.
       failed++;
-      console.error(`  skipped ${relPath}: ${err?.message ?? err}`);
+      if (!opts.quiet) console.error(`  skipped ${relPath}: ${err?.message ?? err}`);
     }
   }
 
@@ -122,9 +123,28 @@ export async function mapCommand(
   await fs.rename(tmp, target);
 
   const count = Object.keys(entries).length;
-  console.log(
-    `Mapped ${count} component${count === 1 ? '' : 's'} from ${scanned} file${scanned === 1 ? '' : 's'} → .pointer/manifest.json` +
-      (failed ? ` (${failed} skipped)` : ''),
-  );
+  if (!opts.quiet) {
+    console.log(
+      `Mapped ${count} component${count === 1 ? '' : 's'} from ${scanned} file${scanned === 1 ? '' : 's'} → .pointer/manifest.json` +
+        (failed ? ` (${failed} skipped)` : ''),
+    );
+  }
+  return { ok: true, count, scanned, failed };
+}
+
+export async function mapCommand(
+  cwd: string,
+  parsed: Record<string, string | boolean>,
+): Promise<void> {
+  if (parsed['from-source'] !== true) {
+    console.error('Usage: pointer map --from-source');
+    process.exit(2);
+  }
+
+  const result = await buildManifest(cwd);
+  if (!result.ok) {
+    console.error(result.reason ?? 'could not build the manifest');
+    process.exit(2);
+  }
   process.exit(0);
 }

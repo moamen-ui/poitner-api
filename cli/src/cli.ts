@@ -15,6 +15,7 @@ function parseArgs(args: string[]) {
         'no-inject',
         'no-skills',
         'no-design',
+        'source-map',
         'refresh-stack',
         'from-source',
         'pin',
@@ -112,6 +113,7 @@ Options:
   --no-inject              Skip injection
   --no-skills              Skip skills installation
   --no-design              Skip design token detection
+  --source-map             Wire in the Vite plugin that stamps component source hashes
   -y, --yes                Non-interactive
   --json                   JSON output (implies --yes)
   -h, --help               Show help
