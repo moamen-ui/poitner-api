@@ -60,19 +60,43 @@ public class CommentService : ICommentService
         if (_currentUser.IsSuperAdmin)
             return Result<CommentResponse>.Forbidden(MessageKeys.Comment.SuperAdminNotAllowed);
 
-        // Environment-aware: this is the widget's actual "is this environment allowed to submit
-        // feedback" gate — a project deactivated for THIS environment specifically (even while
-        // still active for others) must not accept a new comment tagged with it.
-        var projectResult = await _projectService.EnsureAsync(projectKey, request.Environment);
+        // Resolve the project first, WITHOUT the environment gate, because the environment may not
+        // be known yet — resolving it needs the project's registered URLs.
+        var projectResult = await _projectService.EnsureAsync(projectKey);
         if (!projectResult.IsSuccess)
             return projectResult.IsConflict
                 ? Result<CommentResponse>.Conflict(projectResult.Message ?? MessageKeys.Project.Disabled)
                 : Result<CommentResponse>.NotFound(projectResult.Message ?? MessageKeys.Project.NotFound);
 
+        // An absent environment (the enum's 0) means "you work it out" — the widget no longer bakes
+        // one into the page. A widget that does send one is believed, which keeps every existing
+        // install behaving exactly as before and leaves `fixed-environment` meaningful.
+        var environment = request.Environment == EnvironmentTag.Unknown
+            ? await _projectService.ResolveEnvironmentAsync(projectResult.Data, origin)
+            : request.Environment;
+
+        // Environment-aware gate: a project deactivated for THIS environment specifically (even
+        // while still active for others) must not accept a new comment tagged with it.
+        //
+        // Skipped when the environment is Unknown, and deliberately so: an origin nobody registered
+        // is not yet governed by the per-environment switches, and refusing it would mean feedback
+        // silently disappears from a deployment whose URL someone simply forgot to add. Projects
+        // that want unregistered origins refused already have that control — it is the opt-in
+        // allowed-origins enforcement checked immediately below, which is what "only these URLs may
+        // comment" actually means.
+        if (environment != EnvironmentTag.Unknown)
+        {
+            var gated = await _projectService.EnsureAsync(projectKey, environment);
+            if (!gated.IsSuccess)
+                return gated.IsConflict
+                    ? Result<CommentResponse>.Conflict(gated.Message ?? MessageKeys.Project.Disabled)
+                    : Result<CommentResponse>.NotFound(gated.Message ?? MessageKeys.Project.NotFound);
+        }
+
         // Origin allow-list (R1-05). Opt-in per project; a project that never enabled it is
         // unaffected. Runs after the project resolves so we know which rows to match against.
         if (!await _projectService.IsOriginAllowedAsync(
-                projectResult.Data, origin, request.Environment, _currentUser.IsQuickAccess))
+                projectResult.Data, origin, environment, _currentUser.IsQuickAccess))
             return Result<CommentResponse>.Forbidden(MessageKeys.Project.OriginNotAllowed);
 
         // Stamp OwnerId from the PROJECT's tenant: a comment belongs to whoever owns
@@ -129,7 +153,7 @@ public class CommentService : ICommentService
         var comment = new Comment
         {
             ProjectId = projectResult.Data,
-            Environment = request.Environment,
+            Environment = environment,
             Status = CommentStatus.Open,
             AuthorId = authorId,
             Body = request.Body.Trim(),
@@ -160,7 +184,7 @@ public class CommentService : ICommentService
                 .Query()
                 .Where(s => s.ProjectId == projectResult.Data
                          && s.Route == route
-                         && s.Environment == request.Environment
+                         && s.Environment == environment
                          && s.SessionId == capture.SessionId
                          && s.DeletedAt == null)
                 .FirstOrDefaultAsync();
@@ -170,7 +194,7 @@ public class CommentService : ICommentService
                 pageContext = new PageContextSnapshot
                 {
                     ProjectId = projectResult.Data,
-                    Environment = request.Environment,
+                    Environment = environment,
                     Route = route,
                     SessionId = capture.SessionId,
                     OwnerId = projectOwnerId

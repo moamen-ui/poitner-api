@@ -66,7 +66,21 @@ public static class OriginNormalizer
             return "URL is required.";
 
         if (!IsPattern(raw))
-            return null; // an exact origin — nothing wildcard-specific to check
+        {
+            // NOT "nothing to check" — this used to return null here, which meant every value
+            // without a '*' skipped validation entirely. `not a url at all` and
+            // `ftp://files.example.com` were both accepted and stored, and then matched nothing for
+            // the rest of the project's life. Now that a comment's environment is resolved from
+            // these rows, an unusable one is not merely untidy: it silently files real feedback
+            // as Unknown.
+            if (!Uri.TryCreate(raw.Trim(), UriKind.Absolute, out var exact))
+                return "URL must be an absolute URL, e.g. https://app.example.com.";
+
+            if (exact.Scheme != Uri.UriSchemeHttp && exact.Scheme != Uri.UriSchemeHttps)
+                return "URL must start with http:// or https://.";
+
+            return null;
+        }
 
         if (raw.Count(c => c == '*') > 1)
             return "A URL pattern may contain at most one '*'.";

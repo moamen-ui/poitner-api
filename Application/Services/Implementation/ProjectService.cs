@@ -73,6 +73,74 @@ public class ProjectService : IProjectService
         return host is "localhost" or "127.0.0.1" or "::1" || host.EndsWith(".localhost", StringComparison.Ordinal);
     }
 
+    /// <summary>
+    /// Which environment a request came from, decided by its Origin rather than by what the page
+    /// claims.
+    ///
+    /// An app does not have an environment; a deployment does. Baking one into the markup means the
+    /// same built file tags staging and production feedback identically, and the only cure is
+    /// rebuilding every app whenever a URL changes. The dashboard already stores a URL per
+    /// environment per project, so that mapping — kept current by the people who own it — is the
+    /// answer.
+    ///
+    /// Returns <see cref="EnvironmentTag.Unknown"/> when nothing matches. See the enum for why that
+    /// is preferable to a plausible guess.
+    /// </summary>
+    public async Task<EnvironmentTag> ResolveEnvironmentAsync(int projectId, string? origin)
+    {
+        if (string.IsNullOrWhiteSpace(origin))
+            return EnvironmentTag.Unknown;
+
+        var normalised = OriginNormalizer.Normalize(origin);
+
+        // A dev server is never registered and should not have to be: its port changes far more
+        // often than anyone updates a URL list.
+        if (IsLocalhostOrigin(normalised))
+            return EnvironmentTag.Local;
+
+        // Only rows whose project mapping AND whose workspace environment are both enabled take
+        // part — the same pair of switches ProjectAppUrl.IsActive and AppEnvironment.IsEnabled
+        // document themselves as controlling.
+        var rows = await _unitOfWork.Repository<ProjectAppUrl>()
+            .Query()
+            .AsNoTracking()
+            .Include(u => u.AppEnvironment)
+            .Where(u => u.ProjectId == projectId && u.IsActive && u.DeletedAt == null
+                        && u.AppEnvironment.IsEnabled && u.AppEnvironment.DeletedAt == null)
+            .Select(u => new { u.Url, EnvName = u.AppEnvironment.Name })
+            .ToListAsync();
+
+        // Exact origins before wildcard patterns, so `https://app.example.com` registered on
+        // production wins over a `https://*.example.com` on staging. Without an explicit order the
+        // answer is whatever order the database returned, which can differ between calls — and an
+        // environment that changes under you is worse than one that is merely wrong.
+        foreach (var row in rows.OrderBy(r => r.Url.Contains('*') ? 1 : 0).ThenBy(r => r.Url))
+        {
+            if (!OriginNormalizer.Matches(row.Url, normalised))
+                continue;
+
+            var tag = TagFromEnvironmentName(row.EnvName);
+            // A matched URL whose environment is named something outside the three tags (a tenant
+            // may name environments freely — "qa", "preview", "default") is still Unknown: the
+            // comment's tag is a fixed enum and inventing a mapping would be the same guess this
+            // method exists to refuse.
+            if (tag != EnvironmentTag.Unknown)
+                return tag;
+        }
+
+        return EnvironmentTag.Unknown;
+    }
+
+    /// <summary>Maps a free-form workspace environment name onto the fixed comment tag.</summary>
+    private static EnvironmentTag TagFromEnvironmentName(string? name) =>
+        (name ?? string.Empty).Trim().ToLowerInvariant() switch
+        {
+            "local" or "localhost" or "development" or "dev" => EnvironmentTag.Local,
+            "staging" or "stage" or "test" or "qa" => EnvironmentTag.Staging,
+            "production" or "prod" or "live" => EnvironmentTag.Production,
+            _ => EnvironmentTag.Unknown,
+        };
+
     public async Task<bool> IsOriginAllowedAsync(
         int projectId,
         string? origin,
@@ -159,6 +227,16 @@ public class ProjectService : IProjectService
             var check = await _entitlements.CheckCountAsync(projectOwner, EntitlementCatalog.MaxProjects, activeProjects);
             if (!check.IsSuccess)
                 return Result<ProjectResponse>.LimitReached(check.Message ?? MessageKeys.Plan.LimitReached, check.Limit!);
+        }
+
+        // Same URL rules as SetAppUrlAsync. The create path accepted anything at all — a project
+        // could be born with `definitely not a url` on its local environment, which then matched
+        // nothing forever.
+        if (!string.IsNullOrWhiteSpace(request.AppUrl))
+        {
+            var createUrlError = OriginNormalizer.ValidatePattern(request.AppUrl.Trim());
+            if (createUrlError != null)
+                return Result<ProjectResponse>.Failure(createUrlError);
         }
 
         Domain.Entity.AppEnvironment? environment = null;
@@ -445,6 +523,28 @@ public class ProjectService : IProjectService
 
         if (!environment.IsEnabled || environment.IsRetired)
             return Result<ProjectAppUrlResponse>.Failure(MessageKeys.AppEnvironment.NotEnabled);
+
+        // One origin, one environment — per project.
+        //
+        // Two environments sharing a URL makes "which environment is this comment from?"
+        // unanswerable: resolution matches rows in whatever order the database returns them, so the
+        // same deployment could be filed as staging today and production tomorrow. The write is the
+        // only place this can be settled — by read time the information needed to disambiguate is
+        // already gone.
+        var normalisedNew = OriginNormalizer.Normalize(url);
+        var others = await _unitOfWork.Repository<ProjectAppUrl>()
+            .Query()
+            .AsNoTracking()
+            .Include(u => u.AppEnvironment)
+            .Where(u => u.ProjectId == projectId && u.AppEnvironmentId != environmentId && u.DeletedAt == null)
+            .Select(u => new { u.Url, EnvName = u.AppEnvironment.Name })
+            .ToListAsync();
+
+        var conflicting = others.FirstOrDefault(o => OriginNormalizer.Normalize(o.Url) == normalisedNew);
+        if (conflicting != null)
+            return Result<ProjectAppUrlResponse>.Failure(
+                $"That URL is already registered for the \"{conflicting.EnvName}\" environment of this project. " +
+                "Each environment needs its own URL, otherwise a comment cannot be attributed to one of them.");
 
         var existing = await _unitOfWork.Repository<ProjectAppUrl>()
             .Query()
@@ -829,7 +929,7 @@ public class ProjectService : IProjectService
         return baseResult;
     }
 
-    public async Task<Result<CaptureConfigResponse>> GetCaptureConfigAsync(string key)
+    public async Task<Result<CaptureConfigResponse>> GetCaptureConfigAsync(string key, string? origin = null)
     {
         var projectResult = await EnsureAsync(key);
         if (!projectResult.IsSuccess)
@@ -847,6 +947,9 @@ public class ProjectService : IProjectService
         return Result<CaptureConfigResponse>.Success(new CaptureConfigResponse
         {
             Id = projectResult.Data,
+            // Resolved from THIS request's origin, so the same built file reports `staging` on
+            // staging and `production` on production without being rebuilt.
+            ResolvedEnvironment = await ResolveEnvironmentAsync(projectResult.Data, origin),
             PageContextCaptureEnabled = info.PageContextCaptureEnabled,
             CaptureTextContent = info.CaptureTextContent,
             Name = info.Name,

@@ -15,6 +15,13 @@ public class CaptureConfigResponse
     /// not its numeric id.</summary>
     public int Id { get; set; }
 
+    /// <summary>
+    /// The environment this request's Origin resolves to, from the URLs registered against the
+    /// project. `Unknown` means the origin matched nothing — the widget shows it as such rather
+    /// than guessing, and the owner can register the URL to fix it.
+    /// </summary>
+    public EnvironmentTag ResolvedEnvironment { get; set; }
+
     public bool PageContextCaptureEnabled { get; set; }
     /// <summary>When false, the widget emits no text content in the DOM snapshot for any element and
     /// sets pageTitle to •••; default true.</summary>

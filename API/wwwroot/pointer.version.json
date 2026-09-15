@@ -1,21 +1,33 @@
 {
   "version": "0.1.0",
-  "hash": "96e4a2b787db",
-  "commit": "4ab68c4",
-  "committedAt": "2026-09-13T10:32:15+03:00",
+  "hash": "b2d42aa460c8",
+  "commit": "9f468f0",
+  "committedAt": "2026-09-13T10:43:57+03:00",
   "files": {
     "pointer.js": {
-      "bytes": 144425,
-      "gzipBytes": 36502,
-      "integrity": "sha384-3ONPaA3x0Zhclfo3tSVReRfADDhN5lKriLlKdxWxOSOx4PBZuXiDccnURCIjI9pS"
+      "bytes": 145501,
+      "gzipBytes": 36770,
+      "integrity": "sha384-rsRVyA9qReC9FXRyVhLIF0aF1839+v3UhIY9M6RJUomuxxTDTjVR2Xnr/l5Q3cc+"
     },
     "pointer.css": {
       "bytes": 25141,
-      "gzipBytes": 4643,
+      "gzipBytes": 4644,
       "integrity": "sha384-izlYpWj5bEQNmwjbqyItwqLzRH4F5FwGxrOv5VMDJV3KJNYeplDLGTSYrCGYRA4p"
     }
   },
   "retained": [
+    {
+      "hash": "b2d42aa460c8",
+      "version": "0.1.0",
+      "files": {
+        "pointer.js": {
+          "integrity": "sha384-rsRVyA9qReC9FXRyVhLIF0aF1839+v3UhIY9M6RJUomuxxTDTjVR2Xnr/l5Q3cc+"
+        },
+        "pointer.css": {
+          "integrity": "sha384-izlYpWj5bEQNmwjbqyItwqLzRH4F5FwGxrOv5VMDJV3KJNYeplDLGTSYrCGYRA4p"
+        }
+      }
+    },
     {
       "hash": "96e4a2b787db",
       "version": "0.1.0",

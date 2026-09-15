@@ -37,9 +37,11 @@ export const DIALOG_CONTENT_SELECTOR = [
 ].join(', ');
 
 // Environment string → int mapping (API contract: 1=Local, 2=Staging, 3=Production)
-export const ENV_MAP: Record<string, number> = { local: 1, staging: 2, production: 3 };
+// 0 = Unknown: the page did not state an environment, so the server resolves it from the request's
+// origin against the URLs registered for the project. See EnvironmentTag on the server.
+export const ENV_MAP: Record<string, number> = { unknown: 0, local: 1, staging: 2, production: 3 };
 // Reverse: int → canonical name, for the in-widget environment switcher.
-export const ENV_NAME: Record<number, string> = { 1: 'local', 2: 'staging', 3: 'production' };
+export const ENV_NAME: Record<number, string> = { 0: 'unknown', 1: 'local', 2: 'staging', 3: 'production' };
 
 // Status int → internal string mapping (API contract: 1=Open, 2=ReadyToApply, 3=Applied, 4=Archived).
 // These keys are used as the internal `Comment.status` type and as filter chip keys — do not change.

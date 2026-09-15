@@ -335,7 +335,6 @@ $$"""
     el.setAttribute('project', '{{safeProject}}');
     el.setAttribute('server', server);
     el.setAttribute('environment', '{{safeEnv}}');
-    el.setAttribute('source-attr', 'data-component-source');
     document.body.appendChild(el);
   }
   // embed.js may run in <head> before <body> exists — wait for the DOM.

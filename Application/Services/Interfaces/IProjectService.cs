@@ -48,12 +48,20 @@ public interface IProjectService
     Task<Result<int>> EnsureAsync(string key, EnvironmentTag environment);
 
     /// <summary>
+    /// Resolves which environment a request came from by matching its Origin against the URLs
+    /// registered for the project, so a deployment is labelled by where it is rather than by what
+    /// its markup claims. Localhost always resolves to Local. Returns
+    /// <see cref="EnvironmentTag.Unknown"/> when nothing matches — never a guess.
+    /// </summary>
+    Task<EnvironmentTag> ResolveEnvironmentAsync(int projectId, string? origin);
+
+    /// <summary>
     /// Widget-facing read of PageContextCaptureEnabled for a project, resolved via the same
     /// tenant-scoped EnsureAsync path (a key-only anonymous resolve would collide across tenants —
     /// same reasoning as PredefinedActionsController). Used at widget init to decide whether to
     /// buffer console/network events at all and whether to show "Report as a bug".
     /// </summary>
-    Task<Result<CaptureConfigResponse>> GetCaptureConfigAsync(string key);
+    Task<Result<CaptureConfigResponse>> GetCaptureConfigAsync(string key, string? origin = null);
 
     /// <summary>All of this project's per-environment URLs (global + the tenant's own environments).</summary>
     Task<Result<List<ProjectAppUrlResponse>>> ListAppUrlsAsync(int projectId);

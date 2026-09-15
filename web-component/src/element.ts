@@ -30,7 +30,10 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
   screenshotEnabled = true;
   launcherPosition = 'bottom-end';
   server = '';
-  environmentInt = 2;
+  environmentInt = 0;
+  /** True when the page, the host config or a saved choice named an environment — the server's
+   *  origin-resolved answer is then advisory and must not override it. */
+  environmentExplicit = false;
 
   comments: Comment[] = [];
   statusFilter = 'all';
@@ -135,8 +138,14 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
     this.server = (this.getAttribute('server') ||
       (SCRIPT_SRC ? new URL(SCRIPT_SRC).origin : window.location.origin)).replace(/\/$/, '');
 
-    // Resolve environment int from attribute string (default Staging = 2)
-    this.environmentInt = ENV_MAP[this.environmentAttr.toLowerCase()] || 2;
+    // An absent `environment` attribute now means "server, you tell me": the deployment's own
+    // origin decides, matched against the URLs registered for the project. An app does not have an
+    // environment, a deployment does — and a value baked into the markup tags staging and
+    // production feedback identically forever.
+    //
+    // An attribute that IS present still wins, so every existing install behaves exactly as before.
+    this.environmentExplicit = !!this.environmentAttr;
+    this.environmentInt = this.environmentAttr ? (ENV_MAP[this.environmentAttr.toLowerCase()] ?? 2) : 0;
 
     // Host-injected config (e.g. the browser extension) overrides attributes. Lets
     // a host set server/project/environment programmatically and, via `token`,
@@ -149,6 +158,7 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
       if (injected.environment) {
         this.environmentAttr = injected.environment;
         this.environmentInt = ENV_MAP[injected.environment.toLowerCase()] || this.environmentInt;
+        this.environmentExplicit = true;
         this.hasFixedEnvironment = true;
       }
     }
@@ -164,11 +174,14 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
         if (savedEnv && ENV_MAP[savedEnv.toLowerCase()]) {
           this.environmentAttr = savedEnv.toLowerCase();
           this.environmentInt = ENV_MAP[savedEnv.toLowerCase()];
+          this.environmentExplicit = true;
         }
       } catch (e) { /* ignore */ }
     }
-    // Normalize the display string so the toolbar select always has a matching option.
-    if (!this.environmentAttr) this.environmentAttr = ENV_NAME[this.environmentInt] || 'staging';
+    // Normalize the display string so the toolbar select always has a matching option. Left as
+    // `unknown` until /capture-config answers, rather than guessing `staging` and briefly showing a
+    // label that may be wrong.
+    if (!this.environmentAttr) this.environmentAttr = ENV_NAME[this.environmentInt] || 'unknown';
 
     // Hidden by default on first load: collapsed to a small launcher until the user
     // opens it once, after which it stays shown for the rest of this browser-tab
@@ -601,6 +614,20 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
       const showSelector = envelope?.data?.showEnvironmentSelector;
       this.showEnvironmentSelector = showSelector !== false;
       this.projectId = typeof envelope?.data?.id === 'number' ? envelope.data.id : null;
+
+      // The server resolved this request's origin against the project's registered URLs. Applied
+      // only when the page did not state an environment itself — see `environmentExplicit`.
+      const resolved = envelope?.data?.resolvedEnvironment;
+      if (!this.environmentExplicit && typeof resolved === 'number' && ENV_NAME[resolved]) {
+        this.environmentInt = resolved;
+        this.environmentAttr = ENV_NAME[resolved];
+        // Keep whatever the toolbar is showing — a <select> or the read-only label — in step with
+        // the value we just learned.
+        const envSel = this.root && (this.root.querySelector('#pf-env') as HTMLSelectElement | null);
+        if (envSel && 'value' in envSel) envSel.value = this.environmentAttr;
+        const envLabel = this.root && this.root.querySelector('.pf-env-label');
+        if (envLabel) envLabel.textContent = '· ' + this.environmentAttr;
+      }
       this.commitStyle = typeof envelope?.data?.commitStyle === 'number' ? envelope.data.commitStyle : 1;
       this.canEditSettings = !!envelope?.data?.canEditSettings;
       this.updateProjectNameLabel();
@@ -636,7 +663,7 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
     const label = document.createElement('span');
     label.className = 'pf-env-label';
     label.title = 'Environment';
-    label.textContent = '· ' + (this.environmentAttr || ENV_NAME[this.environmentInt] || 'staging');
+    label.textContent = '· ' + (this.environmentAttr || ENV_NAME[this.environmentInt] || 'unknown');
     sel.replaceWith(label);
   }
 

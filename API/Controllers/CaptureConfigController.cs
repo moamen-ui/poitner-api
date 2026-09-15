@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Pointer.API.Extensions;
 using Pointer.Application.DTOs.Project;
 using Pointer.Application.Services.Interfaces;
 
@@ -21,7 +22,7 @@ public class CaptureConfigController(IProjectService projectService) : Controlle
     [ProducesResponseType(typeof(CaptureConfigResponse), StatusCodes.Status200OK)]
     public async Task<IActionResult> Get(string key)
     {
-        var result = await projectService.GetCaptureConfigAsync(key);
+        var result = await projectService.GetCaptureConfigAsync(key, Request.RequestOrigin());
         if (result.IsNotFound) return NotFound(result);
         if (result.IsConflict) return Conflict(result);
         return result.IsSuccess ? Ok(result) : BadRequest(result);
