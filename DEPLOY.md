@@ -4,17 +4,24 @@ Production runs on a single Linux VM with Docker Compose: **Postgres + API + Cad
 terminates TLS (auto Let's Encrypt), reverse-proxies the API, and serves the built dashboard as
 static files. The current deployment:
 
+Since 2026-09-15 only the React dashboard exists (`pointer-dashboard/react`); Angular and Vue were
+retired at tag `last-three-apps` / branch `legacy/angular-vue` in that repo. Any dashboard work
+targets React only.
+
 | Host | Serves |
 |---|---|
 | `api.pointer.moamen.work` | this API (Swagger, `/pointer.js`, `/embed.js`, skills) |
-| `app-angular.pointer.moamen.work` | the Angular [`pointer-dashboard`](https://github.com/moamen-ui/pointer-dashboard) build (`dashboard/angular`) |
-| `app-react.pointer.moamen.work` | the React dashboard build (`dashboard/react`) |
-| `app-vue.pointer.moamen.work` | the Vue dashboard build (`dashboard/vue`) |
-| `app.pointer.moamen.work` | default dashboard host → also the Angular build (back-compat) |
-| `pointer.moamen.work` | 301 → `app.pointer.moamen.work` |
+| `app.pointer.moamen.work` | the React [`pointer-dashboard`](https://github.com/moamen-ui/pointer-dashboard) build (`dashboard/react`) |
+| `demo.pointer.moamen.work` | same React build, with the "Try the demo" entry |
+| `app-angular.pointer.moamen.work` | legacy — permanent redirect to `app.pointer.moamen.work` (cert kept alive only) |
+| `app-react.pointer.moamen.work` | legacy — permanent redirect to `app.pointer.moamen.work` (cert kept alive only) |
+| `app-vue.pointer.moamen.work` | legacy — permanent redirect to `app.pointer.moamen.work` (cert kept alive only) |
+| `pointer.moamen.work` | the marketing landing page |
 
-> Dashboards are served per-framework from `dashboard/<fw>/`, each at `app-<fw>.pointer.moamen.work`;
-> [`scripts/deploy-dashboards.sh`](scripts/deploy-dashboards.sh) builds and places all three.
+> The dashboard is served from `dashboard/react/`, at `app.pointer.moamen.work` (and
+> `demo.pointer.moamen.work`); [`scripts/deploy-dashboards.sh`](scripts/deploy-dashboards.sh) builds
+> and places it. The three legacy `app-<fw>.pointer.moamen.work` hosts stay defined in the Caddyfile
+> only so their existing certs keep renewing — they serve nothing and 301 to `app.pointer`.
 
 Files: [`docker-compose.prod.yml`](docker-compose.prod.yml), [`Caddyfile`](Caddyfile),
 [`.env.prod.example`](.env.prod.example).
@@ -23,8 +30,10 @@ Files: [`docker-compose.prod.yml`](docker-compose.prod.yml), [`Caddyfile`](Caddy
 
 - A VM with a public IP and **Docker + Compose plugin** installed.
 - Ports **80** and **443** open to the world (host firewall **and** any cloud security list/group).
-- DNS **A records** for each hostname → the VM's public IP (e.g. `api.pointer`, `app-angular.pointer`,
-  `app.pointer`, bare `pointer`). Certs are issued by HTTP-01, so the names must resolve before first start.
+- DNS **A records** for each hostname → the VM's public IP (`api.pointer`, `app.pointer`,
+  `demo.pointer`, bare `pointer`, and the legacy `app-angular.pointer` / `app-react.pointer` /
+  `app-vue.pointer` redirect hosts). Certs are issued by HTTP-01, so the names must resolve before
+  first start.
 
 ## VM setup (one-time)
 
@@ -48,23 +57,22 @@ cp .env.prod.example .env.prod      # fill in real secrets (openssl rand -hex 32
 
 Adjust hostnames in `Caddyfile` and `Pointer__*` / `POINTER_SERVER` if you use different domains.
 
-## 2. Build the dashboard → `./dashboard/angular`
+## 2. Build the dashboard → `./dashboard/react`
 
-The dashboard is a separate repo. It depends on the published `@moamen-ui/pointer-angular`
+The dashboard is a separate repo. It depends on the published `@moamen-ui/pointer-react`
 (GitHub Packages), so the build needs a `read:packages` token as `NODE_AUTH_TOKEN`:
 
 ```bash
 export GH_PKG_TOKEN=ghp_…        # a GitHub token with read:packages
 git clone https://github.com/moamen-ui/pointer-dashboard
-# The dashboard is a monorepo (angular/ react/ vue/) — build the app you want:
-docker run --rm -e NODE_AUTH_TOKEN="$GH_PKG_TOKEN" -v "$PWD/pointer-dashboard/angular":/app -v /app/node_modules -w /app node:22 \
-  bash -lc "npm ci && npx ng build --configuration production"
-# Place the build where Compose mounts it (one dir per framework):
-mkdir -p dashboard && rm -rf dashboard/angular && cp -r pointer-dashboard/angular/dist/admin-web/browser dashboard/angular
+docker run --rm -e NODE_AUTH_TOKEN="$GH_PKG_TOKEN" -v "$PWD/pointer-dashboard/react":/app -v /app/node_modules -w /app node:22 \
+  bash -lc "npm ci && npm run build"
+# Place the build where Compose mounts it:
+mkdir -p dashboard && rm -rf dashboard/react && cp -r pointer-dashboard/react/dist dashboard/react
 ```
 
-> The dashboard's `apiBase` for production lives in its `environment.prod.ts` (swapped in by
-> `angular.json` `fileReplacements`). Point it at your API host there before building if it differs.
+> The dashboard's API base for production is configured via its own env/build config. Point it at
+> your API host there before building if it differs.
 
 ## 3. Run
 
@@ -80,8 +88,8 @@ docker-compose.prod.yml logs caddy`). The API auto-migrates and seeds the admin 
 ```bash
 curl -sI https://api.pointer.moamen.work/swagger/index.html      # 200
 curl -s  "https://api.pointer.moamen.work/embed.js?project=pointer-api" | grep "var server"  # https origin
-curl -sI https://app-angular.pointer.moamen.work/                # 200 (Angular dashboard)
-curl -sI https://app.pointer.moamen.work/                        # 200 (back-compat)
+curl -sI https://app.pointer.moamen.work/                         # 200 (React dashboard)
+curl -sI https://app-angular.pointer.moamen.work/                 # 301/308 → app.pointer.moamen.work (legacy)
 ```
 
 ## Updating
@@ -105,7 +113,7 @@ reads the live spec and auto-bumps the patch version). From your machine (gh aut
 gh workflow run publish-clients.yml -R moamen-ui/poitner-api    # or: just publish-clients
 ```
 
-Then bump `@moamen-ui/pointer-<framework>` in each consumer (e.g. the dashboard) to the new version.
+Then bump `@moamen-ui/pointer-react` in each consumer (e.g. the dashboard) to the new version.
 
 > **Fully automatic option:** the workflow also accepts a `repository_dispatch` of type `api-deployed`.
 > Fire it from the VM at the end of the deploy with a token that has `repo` scope:
@@ -128,13 +136,15 @@ docker compose -f docker-compose.prod.yml up -d --force-recreate caddy
 ```
 
 This recreates **only the Caddy container** (a few seconds) — the API and DB keep running. Deploys
-are per-service; nothing here rebuilds the API or dashboards.
+are per-service; nothing here rebuilds the API or the dashboard.
 
 **Dashboard change** — from your machine `git push origin main` in `pointer-dashboard`, then run
 [`scripts/deploy-dashboards.sh`](scripts/deploy-dashboards.sh) **on the VM**. It pulls
-`~/pointer-dashboard`, builds all three apps in a `node:24` container (`npm ci` authenticates to
-GitHub Packages with `GH_PKG_TOKEN` as `NODE_AUTH_TOKEN`), copies the builds to
-`~/pointer-api/dashboard/{angular,react,vue}`, restarts Caddy and curls the four hosts:
+`~/pointer-dashboard`, builds the React app in a `node:24` container (`npm ci` authenticates to
+GitHub Packages with `GH_PKG_TOKEN` as `NODE_AUTH_TOKEN`), copies the build to
+`~/pointer-api/dashboard/react` (removing any stale `dashboard/angular` / `dashboard/vue` dirs),
+restarts Caddy and curls both the live hosts (`app`, `demo`) and the legacy redirect hosts
+(`app-angular`, `app-react`, `app-vue` — expected 301/308):
 
 ```bash
 # one-liner from your machine (streams the script over SSH, no pull of pointer-api needed)
@@ -148,7 +158,7 @@ bash ~/pointer-api/scripts/deploy-dashboards.sh
 > skip `~/.bashrc`, so the script greps the `export` line out of `~/.bashrc`/`~/.profile` itself —
 > no need to `source` anything or pass the token inline.
 > If the API's endpoints/DTOs changed, first republish the clients (the *Publish API clients* workflow
-> in this repo) and bump `@moamen-ui/pointer-{angular,react,vue}` in the dashboard before deploying.
+> in this repo) and bump `@moamen-ui/pointer-react` in the dashboard before deploying.
 
 ## Notes
 

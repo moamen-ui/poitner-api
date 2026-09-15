@@ -1,7 +1,7 @@
 name: Publish API clients
 
-# Generates the typed client packages from the live API's Swagger spec and
-# publishes them to GitHub Packages (npm.pkg.github.com) under @moamen-ui.
+# Generates the typed React client package from the live API's Swagger spec and
+# publishes it to GitHub Packages (npm.pkg.github.com) under @moamen-ui.
 #
 # Triggers:
 #   - workflow_dispatch  — run from the Actions tab (optionally pin a version)
@@ -43,7 +43,7 @@ jobs:
           set -e
           V="${{ github.event.inputs.version }}"
           if [ -z "$V" ]; then
-            CUR=$(npm view @moamen-ui/pointer-angular version 2>/dev/null || echo "0.0.0")
+            CUR=$(npm view @moamen-ui/pointer-react version 2>/dev/null || echo "0.0.0")
             V=$(node -e "const [a,b,c]=(process.argv[1]||'0.0.0').split('.').map(Number); console.log(\`\${a}.\${b}.\${(c||0)+1}\`)" "$CUR")
             echo "Auto-bump: $CUR → $V"
           fi
@@ -55,22 +55,22 @@ jobs:
           CLIENTS_VERSION: ${{ steps.ver.outputs.version }}
         run: npm run generate-clients
 
-      - name: Compile clients (tsc + ng-packagr)
+      - name: Compile client (tsc)
         env:
           CLIENTS_VERSION: ${{ steps.ver.outputs.version }}
         run: npm run build-clients
 
-      - name: Publish each client
+      - name: Publish client
         env:
           NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -e
-          # react/vue: package.json at the client root (files: [dist]); angular: ng-packagr dist
-          for d in clients/react clients/vue clients/angular/dist; do
+          # react: package.json at the client root (files: [dist])
+          for d in clients/react; do
             echo "::group::publish $d"
             (cd "$d" && npm publish)
             echo "::endgroup::"
           done
 
       - name: Summary
-        run: echo "Published @moamen-ui/pointer-{angular,react,vue}@${{ steps.ver.outputs.version }}" >> "$GITHUB_STEP_SUMMARY"
+        run: echo "Published @moamen-ui/pointer-react@${{ steps.ver.outputs.version }}" >> "$GITHUB_STEP_SUMMARY"

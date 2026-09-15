@@ -4,25 +4,28 @@
 
 ## Essential Reading
 
+Since 2026-09-15 only the React dashboard exists (`pointer-dashboard/react`); Angular and Vue were
+retired at tag `last-three-apps` / branch `legacy/angular-vue`. Any dashboard work targets React only.
+
 - **[Cross-repo sync agents](../docs/roadmap/execution/01-OVERVIEW.md)** — read before changing API
-  endpoints/DTOs: how the typed clients are generated and who syncs the dashboards, and when.
+  endpoints/DTOs: how the typed client is generated and who syncs the dashboard, and when.
 - **[Integrate Pointer Skill](../API/wwwroot/pointer-init.md)** — the consumer-facing init skill, served at
   `/pointer-init.md` (same as the apply skill `skill.md`). Follow when asked to add/init the
   `<pointer-feedback>` widget in a host app (ask for variables → detect stack → inject loader → verify).
 
 More on client generation:
 
-- Angular/React/Vue clients are generated **in this repo** from the running API's Swagger spec —
+- The React client is generated **in this repo** from the running API's Swagger spec —
   `orval.config.ts` → `npm run generate-clients` (honours `POINTER_SWAGGER_URL`, default
   `http://localhost:8090/swagger/v1/swagger.json`) → `npm run build-clients`.
-- Output lands in `clients/{angular,react,vue}/` which is **gitignored** — regenerated every run,
+- Output lands in `clients/react/` which is **gitignored** — regenerated every run,
   never hand-edited, never committed.
-- Published to **GitHub Packages** as `@moamen-ui/pointer-{angular,react,vue}` by the
+- Published to **GitHub Packages** as `@moamen-ui/pointer-react` by the
   *Publish API clients* workflow (that workflow generates from **production**, so an endpoint that is
   not deployed cannot be published yet). Consumers install the package; `export NODE_AUTH_TOKEN=$(gh auth token)`.
 - `orval.config.ts` `filters.tags` gates everything: an action whose `[Tags("X")]` is not in that list
   generates nothing, silently.
-- The API response envelope (`Result<T>`) is unwrapped by each app's interceptor/mutator; client types
+- The API response envelope (`Result<T>`) is unwrapped by the app's interceptor/mutator; client types
   are the **inner** type.
 
 ## Quick Reference
@@ -35,15 +38,14 @@ See [../AGENTS.md](../AGENTS.md) for project overview, commands, and directory s
    a. Add `[ProducesResponseType(typeof(InnerType), 200)]` to the controller action — the **inner**
       type, never `Result<T>`
    b. Ensure the controller's `[Tags("X")]` value is in `orval.config.ts` `filters.tags`
-   c. Record the consequence in the doc's **Dashboard tasks** section. Do **not** regenerate clients
+   c. Record the consequence in the doc's **Dashboard tasks** section. Do **not** regenerate the client
       per PR — the [`dashboard-agent`](agents/dashboard-agent.md) does that **once per phase**, after
       the backend is done and before that phase's e2e run
 2. Never hand-edit anything under `clients/` — it is generated and gitignored
-3. Dashboard apps import from the package barrel (`@moamen-ui/pointer-<fw>`), never deep paths, and
-   never call the API with raw `axios`/`HttpClient`/`fetch`
-4. GET endpoints produce signal-first `httpResource` functions (Angular) / TanStack Query hooks
-   (React, Vue); POST/PATCH/DELETE produce services and mutations
-5. After mutations, call `resource.reload()` (Angular) or invalidate the query (React/Vue)
+3. The dashboard app imports from the package barrel (`@moamen-ui/pointer-react`), never deep paths,
+   and never calls the API with raw `axios`/`fetch`
+4. GET endpoints produce TanStack Query hooks; POST/PATCH/DELETE produce mutations
+5. After mutations, invalidate the query
 6. If a change touches a brand-carrying surface (table, column, entity, migration, endpoint, config
    key, served file, storage key, package/bin, domain, or any new customer-visible name), invoke the
    [`rebranding-agent`](agents/rebranding-agent.md) **as soon as it lands** — eagerly, not batched

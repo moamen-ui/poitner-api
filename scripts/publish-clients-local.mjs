@@ -1,8 +1,8 @@
 /**
  * Fully-local client loop (R1-10 / NEW-4d):
- * Generates API clients against the local running API, builds them,
- * publishes 0.0.0-local.<unix> prerelease packages to the local Verdaccio registry,
- * and prints paste-ready install commands for the dashboard apps.
+ * Generates the React API client against the local running API, builds it,
+ * publishes a 0.0.0-local.<unix> prerelease package to the local Verdaccio registry,
+ * and prints a paste-ready install command for the React dashboard app.
  *
  * Usage:
  *   npm run clients:local
@@ -108,7 +108,7 @@ const publishEnv = {
   npm_config_cache: scratchCache,
 };
 
-const publishDirs = ['clients/react', 'clients/vue', 'clients/angular/dist'];
+const publishDirs = ['clients/react'];
 
 try {
   for (const d of publishDirs) {
@@ -134,9 +134,7 @@ try {
 }
 
 // ── 4. Print paste-ready install commands ────────────────────────
-console.log(`\n✅ Published @moamen-ui/pointer-{angular,react,vue}@${VERSION} → ${REGISTRY}\n`);
-console.log('Use them:');
-console.log(`  (cd ../pointer-dashboard/angular && npm i @moamen-ui/pointer-angular@${VERSION} --registry ${REGISTRY} --@moamen-ui:registry=${REGISTRY} --no-save)`);
-console.log(`  (cd ../pointer-dashboard/react   && npm i @moamen-ui/pointer-react@${VERSION}   --registry ${REGISTRY} --@moamen-ui:registry=${REGISTRY} --no-save)`);
-console.log(`  (cd ../pointer-dashboard/vue     && npm i @moamen-ui/pointer-vue@${VERSION}     --registry ${REGISTRY} --@moamen-ui:registry=${REGISTRY} --no-save)\n`);
-console.log('Back to published:  (cd ../pointer-dashboard/<app> && npm ci)   # needs NODE_AUTH_TOKEN\n');
+console.log(`\n✅ Published @moamen-ui/pointer-react@${VERSION} → ${REGISTRY}\n`);
+console.log('Use it:');
+console.log(`  (cd ../pointer-dashboard/react && npm i @moamen-ui/pointer-react@${VERSION} --registry ${REGISTRY} --@moamen-ui:registry=${REGISTRY} --no-save)\n`);
+console.log('Back to published:  (cd ../pointer-dashboard/react && npm ci)   # needs NODE_AUTH_TOKEN\n');

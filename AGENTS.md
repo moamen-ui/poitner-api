@@ -10,13 +10,16 @@
 - **Serves:** the `<pointer-feedback>` web component (`/pointer.js`), the AI apply/init skills as
   markdown (`/skill.md`, `/pointer-init.md`), and a zero-dependency `/admin/` fallback page
 - **Infrastructure:** Docker Compose (Postgres + API) + Justfile for dev; Compose + Caddy for prod
-- **API Client Generation:** Orval generates typed client packages for Angular, React, and Vue from the
-  live Swagger spec — all from a single `npm run generate-clients` command
+- **API Client Generation:** Orval generates a typed React client package from the
+  live Swagger spec — a single `npm run generate-clients` command
 
+> Since 2026-09-15 only the React dashboard exists (`pointer-dashboard/react`); Angular and Vue were
+> retired at tag `last-three-apps` / branch `legacy/angular-vue`. Any dashboard work targets React only.
+>
 > **The admin dashboard is a separate repo:**
-> [`pointer-dashboard`](https://github.com/moamen-ui/pointer-dashboard) (Angular 22 + Material +
-> Transloco). It generates its API layer from this API's Swagger via Orval — **if you change
-> endpoints or DTOs, regenerate the clients** (`npm run generate-clients`).
+> [`pointer-dashboard`](https://github.com/moamen-ui/pointer-dashboard) — the React app. It generates
+> its API layer from this API's Swagger via Orval — **if you change endpoints or DTOs, regenerate the
+> client** (`npm run generate-clients`).
 
 ## Quick Reference
 
@@ -34,8 +37,8 @@ just up    # Start API + DB via Docker (API on :8090)
 | `just test` | repo root | Run .NET tests |
 | `just fmt` | repo root | CSharpier format |
 | `just migrate name="MyMigration"` | repo root | Add EF Core migration |
-| `npm run generate-clients` | repo root | Regenerate all API client packages (Angular + React + Vue) |
-| `npm run clients:local` | repo root | Local loop: generate, build, and publish clients to local Verdaccio |
+| `npm run generate-clients` | repo root | Regenerate the React API client package |
+| `npm run clients:local` | repo root | Local loop: generate, build, and publish the client to local Verdaccio |
 | `npm run build` | web-component/ | Build `<pointer-feedback>` → `API/wwwroot/pointer.{js,css}` |
 | `npx pointer-feedback apply` | app repos | Apply pending feedback via CLI (`.pointer/pointer.sh` is no-Node fallback) |
 
@@ -66,11 +69,9 @@ pointer-api/
 ├── Domain/           ← Entities (BaseEntity audit), enums
 ├── Infrastructure/   ← EF Core + Postgres (snake_case), repositories, JWT, BCrypt
 ├── web-component/    ← <pointer-feedback> source → builds into wwwroot/
-├── clients/          ← AUTO-GENERATED API client packages (do not edit manually)
-│   ├── angular/      ← @pointer/api-angular (httpResource + HttpClient services)
-│   ├── react/        ← @pointer/api-react   (TanStack Query hooks)
-│   └── vue/          ← @pointer/api-vue     (TanStack Vue Query composables)
-├── orval.config.ts   ← multi-client Orval config (Angular + React + Vue)
+├── clients/          ← AUTO-GENERATED API client package (do not edit manually)
+│   └── react/        ← @moamen-ui/pointer-react (TanStack Query hooks)
+├── orval.config.ts   ← Orval config (React client)
 ├── scripts/
 │   └── generate-clients.mjs  ← downloads spec → runs Orval → creates barrel exports
 ├── openapi.json      ← downloaded Swagger spec (input to Orval)
@@ -128,13 +129,11 @@ nobody wrote.
 
 ## API Client Generation (Orval)
 
-Three typed client packages are generated from the same Swagger spec:
+A single typed client package is generated from the Swagger spec:
 
 | Package | Client | Tech | Pattern |
 |---|---|---|---|
-| `@pointer/api-angular` | `angular` | Angular 19+ | `httpResource` functions (GETs) + `@Injectable` services (mutations) |
-| `@pointer/api-react` | `react-query` | React + TanStack Query | `useQuery` / `useMutation` hooks |
-| `@pointer/api-vue` | `vue-query` | Vue 3 + TanStack Vue Query | `useQuery` / `useMutation` composables |
+| `@moamen-ui/pointer-react` | `react-query` | React + TanStack Query | `useQuery` / `useMutation` hooks |
 
 ### Regenerate after API changes
 
@@ -150,31 +149,15 @@ To test client changes locally in the dashboard without publishing to GitHub Pac
 ```bash
 # Verdaccio on :4873 + API on :8090
 npm run clients:local
-# Then run the printed install command with --no-save in each dashboard app
+# Then run the printed install command with --no-save in the dashboard app
 ```
 
-### How each client consumes the API
+### How the client consumes the API
 
-**Angular** (`@pointer/api-angular`):
+**React** (`@moamen-ui/pointer-react`):
 ```ts
-import { UsersService, getApiAdminUsersResource } from '@pointer/api-angular';
-// GETs → signal-first httpResource functions (auto-refetch)
-// POSTs/PATCHs → injectable service methods (Observable)
-// Envelope unwrapped by the app's HTTP interceptor
-```
-
-**React** (`@pointer/api-react`):
-```ts
-import { useGetApiAdminUsers, usePostApiAdminUsers } from '@pointer/api-react';
+import { useGetApiAdminUsers, usePostApiAdminUsers } from '@moamen-ui/pointer-react';
 // GETs → useQuery hooks
 // POSTs → useMutation hooks
 // Envelope unwrapped by the package's axios mutator (clients/react/mutator.ts)
-```
-
-**Vue** (`@pointer/api-vue`):
-```ts
-import { useGetApiAdminUsers, usePostApiAdminUsers } from '@pointer/api-vue';
-// GETs → useQuery composables (accept refs/reactive)
-// POSTs → useMutation composables
-// Envelope unwrapped by the package's axios mutator (clients/vue/mutator.ts)
 ```

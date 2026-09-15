@@ -57,8 +57,9 @@ services:
     ports: ["80:80", "443:443"]
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
-      # Built dashboards, one dir per framework: dashboard/angular, dashboard/react, …
-      # (each built from its repo → dist → copied here). Served at app-<fw>.pointer.
+      # Built dashboard: dashboard/react (built from pointer-dashboard/react → dist →
+      # copied here). Served at app.pointer / demo.pointer. React is the only dashboard
+      # since 2026-09-15 — see Caddyfile for the legacy app-<fw> redirect hosts.
       - ./dashboard:/srv/dashboard:ro
       - ./landing:/srv/landing:ro
       - caddy_data:/data

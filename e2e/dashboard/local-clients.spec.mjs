@@ -4,6 +4,10 @@
 // - R1-10-03 ⛓: opt-out restores the published client (Nightly)
 // Contract: docs/roadmap/testing/R1-10-tests.md
 // Tier: nightly
+//
+// React is the only dashboard client since 2026-09-15 (Angular/Vue retired at tag
+// `last-three-apps` / branch `legacy/angular-vue` in pointer-dashboard); this spec now
+// only exercises DASHBOARD_DIR/react.
 import { test, expect } from '@playwright/test';
 import { readFileSync, existsSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
@@ -57,7 +61,7 @@ test('R1-10-02 ⛓ — dashboard consumes it without dirtying the repo', async (
   }
 
   if (!V) {
-    const versions = await viewVersions('@moamen-ui/pointer-angular');
+    const versions = await viewVersions('@moamen-ui/pointer-react');
     const localVersions = versions.filter((v) => v.startsWith('0.0.0-local.'));
     if (localVersions.length > 0) {
       V = localVersions[localVersions.length - 1];
@@ -66,13 +70,13 @@ test('R1-10-02 ⛓ — dashboard consumes it without dirtying the repo', async (
     }
   }
 
-  // 2. Run the exact angular install line R1-10-01 printed.
-  const angularDir = join(DASHBOARD_DIR, 'angular');
-  const installCmd = `npm i @moamen-ui/pointer-angular@${V} --registry ${REGISTRY_URL} --@moamen-ui:registry=${REGISTRY_URL} --no-save`;
-  execSync(installCmd, { cwd: angularDir, stdio: 'pipe' });
+  // 2. Run the exact react install line R1-10-01 printed.
+  const reactDir = join(DASHBOARD_DIR, 'react');
+  const installCmd = `npm i @moamen-ui/pointer-react@${V} --registry ${REGISTRY_URL} --@moamen-ui:registry=${REGISTRY_URL} --no-save`;
+  execSync(installCmd, { cwd: reactDir, stdio: 'pipe' });
 
-  // 3. jq -r '.version' $DASHBOARD_DIR/angular/node_modules/@moamen-ui/pointer-angular/package.json
-  const installedPkgPath = join(angularDir, 'node_modules', '@moamen-ui', 'pointer-angular', 'package.json');
+  // 3. jq -r '.version' $DASHBOARD_DIR/react/node_modules/@moamen-ui/pointer-react/package.json
+  const installedPkgPath = join(reactDir, 'node_modules', '@moamen-ui', 'pointer-react', 'package.json');
   expect(existsSync(installedPkgPath), 'installed package.json must exist in node_modules').toBe(true);
   const installedPkg = JSON.parse(readFileSync(installedPkgPath, 'utf8'));
   expect(installedPkg.version, 'Installed package version must match local V (AC-3)').toBe(V);
@@ -83,23 +87,23 @@ test('R1-10-02 ⛓ — dashboard consumes it without dirtying the repo', async (
   }).trim();
   expect(afterStatus, 'git status must be byte-identical to baseline (empty)').toBe(baselineStatus);
 
-  // 5. git -C $DASHBOARD_DIR diff --stat -- angular/package.json angular/package-lock.json -> empty
+  // 5. git -C $DASHBOARD_DIR diff --stat -- react/package.json react/package-lock.json -> empty
   const diffStat = execFileSync(
     'git',
-    ['-C', DASHBOARD_DIR, 'diff', '--stat', '--', 'angular/package.json', 'angular/package-lock.json'],
+    ['-C', DASHBOARD_DIR, 'diff', '--stat', '--', 'react/package.json', 'react/package-lock.json'],
     { encoding: 'utf8' }
   ).trim();
   expect(diffStat, 'git diff --stat must be empty (--no-save touched neither file)').toBe('');
 
-  // 6. (cd $DASHBOARD_DIR/angular && npm run build)
+  // 6. (cd $DASHBOARD_DIR/react && npm run build)
   const buildOutput = execFileSync('npm', ['run', 'build'], {
-    cwd: angularDir,
+    cwd: reactDir,
     encoding: 'utf8',
     stdio: 'pipe',
   });
 
-  // 7. grep -R "ApiMeta" $DASHBOARD_DIR/angular/node_modules/@moamen-ui/pointer-angular/
-  const installedModuleDir = join(angularDir, 'node_modules', '@moamen-ui', 'pointer-angular');
+  // 7. grep -R "ApiMeta" $DASHBOARD_DIR/react/node_modules/@moamen-ui/pointer-react/
+  const installedModuleDir = join(reactDir, 'node_modules', '@moamen-ui', 'pointer-react');
   const grepResult = execFileSync('grep', ['-R', 'ApiMeta', installedModuleDir], {
     encoding: 'utf8',
     stdio: 'pipe',
@@ -142,22 +146,22 @@ test('R1-10-03 ⛓ — opt-out restores the published client', async () => {
     return;
   }
 
-  const angularDir = join(DASHBOARD_DIR, 'angular');
+  const reactDir = join(DASHBOARD_DIR, 'react');
 
-  // 1. (cd $DASHBOARD_DIR/angular && npm ci)
+  // 1. (cd $DASHBOARD_DIR/react && npm ci)
   execFileSync('npm', ['ci'], {
-    cwd: angularDir,
+    cwd: reactDir,
     stdio: 'pipe',
   });
 
-  // 2. jq -r '.version' .../node_modules/@moamen-ui/pointer-angular/package.json
-  const pkgPath = join(angularDir, 'node_modules', '@moamen-ui', 'pointer-angular', 'package.json');
+  // 2. jq -r '.version' .../node_modules/@moamen-ui/pointer-react/package.json
+  const pkgPath = join(reactDir, 'node_modules', '@moamen-ui', 'pointer-react', 'package.json');
   const restoredPkg = JSON.parse(readFileSync(pkgPath, 'utf8'));
   expect(restoredPkg.version, 'Restored version must not be 0.0.0-local.* (AC-4)').not.toMatch(/^0\.0\.0-local/);
   expect(restoredPkg.version, 'Restored version must be a 1.x.y published version (AC-4)').toMatch(/^1\.\d+\.\d+/);
 
-  // 3. grep -R "ApiMeta" .../node_modules/@moamen-ui/pointer-angular/ || echo ABSENT
-  const installedModuleDir = join(angularDir, 'node_modules', '@moamen-ui', 'pointer-angular');
+  // 3. grep -R "ApiMeta" .../node_modules/@moamen-ui/pointer-react/ || echo ABSENT
+  const installedModuleDir = join(reactDir, 'node_modules', '@moamen-ui', 'pointer-react');
   let grepOutput = 'ABSENT';
   try {
     grepOutput = execFileSync('grep', ['-R', 'ApiMeta', installedModuleDir], {

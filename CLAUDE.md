@@ -11,16 +11,18 @@ serves a drop-in feedback Web Component at `/pointer.js`, the AI apply/init skil
 markdown, and a zero-dependency `/admin/` fallback page. Run locally with `just up` (API + Postgres
 via Docker, API on `:8090`).
 
+> Since 2026-09-15 only the React dashboard exists (`pointer-dashboard/react`); Angular and Vue were
+> retired at tag `last-three-apps` / branch `legacy/angular-vue`. Any dashboard work targets React only.
+>
 > The **admin dashboard is a separate repo**:
-> [`pointer-dashboard`](https://github.com/moamen-ui/pointer-dashboard) — **three apps at parity**
-> (Angular 22, React, Vue 3). It does **not** generate anything: the typed clients are generated
-> **here** from this API's Swagger spec (`orval.config.ts` → `npm run generate-clients` →
-> `npm run build-clients` → `clients/{angular,react,vue}/`, gitignored) and published to GitHub
-> Packages as `@moamen-ui/pointer-{angular,react,vue}` by
-> [`.github/workflows/publish-clients.yml`](.github/workflows/publish-clients.yml); each dashboard app
-> installs its package. For **local development without deploying**, run `npm run clients:local`
+> [`pointer-dashboard`](https://github.com/moamen-ui/pointer-dashboard) — the **React** app. It does
+> **not** generate anything: the typed client is generated **here** from this API's Swagger spec
+> (`orval.config.ts` → `npm run generate-clients` → `npm run build-clients` → `clients/react/`,
+> gitignored) and published to GitHub Packages as `@moamen-ui/pointer-react` by
+> [`.github/workflows/publish-clients.yml`](.github/workflows/publish-clients.yml); the dashboard app
+> installs the package. For **local development without deploying**, run `npm run clients:local`
 > (generates against the local API, builds, and publishes `0.0.0-local.<unix>` to local Verdaccio on `:4873`),
-> then install into the dashboard apps using the printed `--no-save` commands. So **if you change endpoints or DTOs**:
+> then install into the dashboard app using the printed `--no-save` command. So **if you change endpoints or DTOs**:
 > annotate the action with the inner type, make sure its `[Tags("X")]` is listed in `orval.config.ts` `filters.tags`
 > (a missing tag silently generates nothing), then regenerate. The sync is performed **once per phase** by the
 > [`dashboard-agent`](.claude/agents/dashboard-agent.md) — see

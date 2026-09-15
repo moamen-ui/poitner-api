@@ -1,7 +1,10 @@
 # Caddy auto-provisions Let's Encrypt certs for each site (HTTP-01).
-# api.pointer        → reverse-proxy to the API.
-# app-<fw>.pointer   → serve that framework's dashboard build (SPA fallback).
-# app.pointer / bare → the Angular dashboard (default; back-compat).
+# api.pointer  → reverse-proxy to the API.
+# app.pointer / demo.pointer → the React dashboard build (SPA fallback).
+# app-angular.pointer / app-react.pointer / app-vue.pointer → legacy per-framework hosts,
+#   kept alive (cert only) and permanently redirected to app.pointer. Since 2026-09-15 only
+#   the React dashboard exists (`pointer-dashboard/react`); Angular and Vue were retired at
+#   tag `last-three-apps` / branch `legacy/angular-vue`.
 
 # Shared static-SPA config. index.html and the runtime-fetched i18n JSON carry fixed
 # (non-fingerprinted) names, so force revalidation on them (etag → 304 when unchanged)
@@ -48,31 +51,31 @@ api.pointer.moamen.work {
     reverse_proxy api:8080
 }
 
+# Legacy per-framework hosts. Kept as their own site blocks purely so their existing
+# Let's Encrypt certs stay valid (auto-renew keeps working); they no longer serve a build —
+# every request permanently redirects to the single React dashboard host.
 app-angular.pointer.moamen.work {
-    root * /srv/dashboard/angular
-    import dashboard
+    redir https://app.pointer.moamen.work{uri} permanent
 }
 
 app-react.pointer.moamen.work {
+    redir https://app.pointer.moamen.work{uri} permanent
+}
+
+app-vue.pointer.moamen.work {
+    redir https://app.pointer.moamen.work{uri} permanent
+}
+
+# Default dashboard host → the React dashboard (the only dashboard since 2026-09-15).
+app.pointer.moamen.work {
     root * /srv/dashboard/react
     import dashboard
 }
 
-app-vue.pointer.moamen.work {
-    root * /srv/dashboard/vue
-    import dashboard
-}
-
-# Default dashboard host → Angular (kept so existing links keep working).
-app.pointer.moamen.work {
-    root * /srv/dashboard/angular
-    import dashboard
-}
-
 # Demo host → the dashboard with the "Try the demo" entry (guests provision an
-# ephemeral, self-expiring tenant). Same Angular build as app.pointer.
+# ephemeral, self-expiring tenant). Same React build as app.pointer.
 demo.pointer.moamen.work {
-    root * /srv/dashboard/angular
+    root * /srv/dashboard/react
     import dashboard
 }
 

@@ -132,3 +132,17 @@ with `commitUrl` + 👍/👎 verify, replies, status change, delete); notificati
 version with `Comments`) can only be published after `584fd0e`+ is deployed. Until then the
 comments screen is built on `npm run clients:local` packages (`0.0.0-local.*`, installed
 `--no-save`) on branch `feat/dashboard-comments`.
+
+### Decision — React-only dashboard (2026-09-15, later same day)
+The owner decided to keep **only the React dashboard** going forward; Angular and Vue are retired
+at tag `last-three-apps` / branch `legacy/angular-vue` in `pointer-dashboard` (last three-app commit
+`6954ad2`). In this repo: `orval.config.ts`, `scripts/{generate,build,publish-clients-local}.mjs`,
+`.github/workflows/publish-clients.yml` and the `e2e/{cli,dashboard}/local-clients.spec.mjs` /
+`e2e/scripts/lib/npmlocal.mjs` harness now generate, build and publish `@moamen-ui/pointer-react`
+only; the `Caddyfile` serves `app`/`demo` from the React build and permanently redirects the legacy
+`app-angular`/`app-react`/`app-vue` hosts to `app.pointer.moamen.work` (certs kept alive, no build
+served); `scripts/deploy-dashboards.sh` and `DEPLOY.md` build/deploy React only; `CLAUDE.md`,
+`.claude/CLAUDE.md`, `AGENTS.md`, `.claude/agents/dashboard-agent.md` and
+`docs/roadmap/execution/01-OVERVIEW.md` were updated to describe a single dashboard app. The backlog
+in this document (item A "Dashboard — the real backlog") now applies to the React app only; the
+Angular- and Vue-specific parity gaps it lists no longer apply since those apps are retired.

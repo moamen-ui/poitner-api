@@ -79,7 +79,7 @@ export async function viewVersions(pkg, { registry = REGISTRY_URL, env = process
 
 /**
  * Runs `npm run clients:local` from repo root and parses the output.
- * Returns { version, installCommands[], angularInstallCommand, stdout, stderr, code }.
+ * Returns { version, installCommands[], reactInstallCommand, stdout, stderr, code }.
  */
 export async function publishLocal({ cwd = repoRoot, env = {}, unsetEnv = [], timeout = 180_000 } = {}) {
   const npmStateDir = join(e2eRoot, 'state', 'npm');
@@ -127,7 +127,7 @@ export async function publishLocal({ cwd = repoRoot, env = {}, unsetEnv = [], ti
           stderr: stderr + `\nTimeout of ${timeout}ms exceeded`,
           version: '',
           installCommands: [],
-          angularInstallCommand: '',
+          reactInstallCommand: '',
         });
       }, timeout);
     }
@@ -142,8 +142,8 @@ export async function publishLocal({ cwd = repoRoot, env = {}, unsetEnv = [], ti
       // Parse install commands (lines containing --no-save)
       const lines = stdout.split('\n').map((l) => l.trim());
       const installCommands = lines.filter((l) => l.includes('--no-save'));
-      const angularInstallCommand =
-        installCommands.find((c) => c.includes('pointer-angular')) || '';
+      const reactInstallCommand =
+        installCommands.find((c) => c.includes('pointer-react')) || '';
 
       resolvePromise({
         code: code ?? 0,
@@ -151,7 +151,7 @@ export async function publishLocal({ cwd = repoRoot, env = {}, unsetEnv = [], ti
         stderr,
         version,
         installCommands,
-        angularInstallCommand,
+        reactInstallCommand,
       });
     });
 
@@ -163,7 +163,7 @@ export async function publishLocal({ cwd = repoRoot, env = {}, unsetEnv = [], ti
         stderr: stderr + `\n${err.message}`,
         version: '',
         installCommands: [],
-        angularInstallCommand: '',
+        reactInstallCommand: '',
       });
     });
   });

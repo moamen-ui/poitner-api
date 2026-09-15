@@ -66,13 +66,13 @@ It is **an input to the phase-end `dashboard-agent` run, not a same-PR obligatio
 sync agents* below. An API-only PR is complete; a *phase* that ends without the dashboard sync is not.
 
 The pipeline those tasks feed is **not** "regenerate in the dashboard repo" — there is no
-`generate-services` script anywhere. Clients are generated **here**:
+`generate-services` script anywhere. The client is generated **here**:
 
 ```
-orval.config.ts ──▶ npm run generate-clients ──▶ clients/{angular,react,vue}/src   (gitignored)
-                ──▶ npm run build-clients    ──▶ dist per client
-                ──▶ published to GitHub Packages as @moamen-ui/pointer-{angular,react,vue}
-pointer-dashboard/{angular,react,vue} ──▶ install those packages; use only their generated hooks/services
+orval.config.ts ──▶ npm run generate-clients ──▶ clients/react/src   (gitignored)
+                ──▶ npm run build-clients    ──▶ clients/react/dist
+                ──▶ published to GitHub Packages as @moamen-ui/pointer-react
+pointer-dashboard/react ──▶ installs that package; uses only its generated hooks
 ```
 
 `npm run generate-clients` honours `POINTER_SWAGGER_URL` (default `http://localhost:8090/…`), so it
@@ -81,7 +81,10 @@ which means a not-yet-deployed endpoint cannot be published — the agent handle
 A controller tag missing from `orval.config.ts` `filters.tags` silently generates nothing.
 
 ### Cross-repo sync agents
-Two repos move with this one: `pointer-dashboard` (three apps at parity) and the rebranding plan on the
+Since 2026-09-15 only the React dashboard exists (`pointer-dashboard/react`); Angular and Vue were
+retired at tag `last-three-apps` / branch `legacy/angular-vue`. Any dashboard work targets React only.
+
+Two repos move with this one: `pointer-dashboard` (the React app) and the rebranding plan on the
 `docs/rebranding-plan` branch. Each has a dedicated agent, and they are invoked on **different
 cadences** — getting that wrong is the failure mode this section exists to prevent.
 
@@ -90,7 +93,7 @@ cadences** — getting that wrong is the failure mode this section exists to pre
 | Cadence | **Eagerly** — as soon as a tracked surface changes; may fire several times in one phase | **Once per phase** — never per doc, never per PR |
 | Trigger | new/renamed table, column, entity, migration, endpoint, DTO, config key, served file, storage key, package/bin, domain, or any new customer-visible name | all backend work for the phase merged and green |
 | Input | what changed + where it landed | the phase's accumulated **Dashboard tasks** sections |
-| Writes | `docs/rebranding/REBRANDING-PLAN.md` (its own worktree) | `orval.config.ts`/tags here + all three dashboard apps |
+| Writes | `docs/rebranding/REBRANDING-PLAN.md` (its own worktree) | `orval.config.ts`/tags here + the React dashboard app |
 | Never | renames anything; pushes | publishes a fake version; hand-edits generated code; pushes |
 
 **Phase lifecycle, in order:**
@@ -101,7 +104,7 @@ cadences** — getting that wrong is the failure mode this section exists to pre
    after the last sync is a surface the rename misses silently.
 3. **Phase BE complete** — everything merged, `dotnet build` + `just test` green.
 4. **`dashboard-agent`** — invoked **once**, with the phase's whole Dashboard-tasks backlog. It fixes
-   tags/annotations, regenerates and builds the clients, and brings angular + react + vue to parity
+   tags/annotations, regenerates and builds the client, and brings the React app up to date
    including `en` **and** `ar` i18n.
 5. **[`e2e-tester-agent`](../../../.claude/agents/e2e-tester-agent.md)** — invoked with the phase id and
    its scenario ids, and deliberately **after** the dashboard sync, because the phase's UI changes are

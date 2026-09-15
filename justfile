@@ -11,7 +11,7 @@ psql:      ; docker compose exec db psql -U pointer -d pointer
 # Web component (<pointer-feedback>) — builds into API/wwwroot/pointer.{js,css}
 widget:        ; cd web-component && npm run watch    # rebuild on change during local dev
 widget-build:  ; cd web-component && npm run build    # one-shot build (run + commit before pushing)
-# API client generation (Angular + React + Vue from Swagger spec)
+# API client generation (React from Swagger spec)
 gen-clients: ; npm run generate-clients
 # Trigger the GitHub Actions publish (auto-bumps patch from the latest published version)
 publish-clients: ; gh workflow run publish-clients.yml -R moamen-ui/poitner-api

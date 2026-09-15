@@ -5,6 +5,10 @@
 // - R1-10-05: release path unchanged, developer config untouched (Nightly)
 // Contract: docs/roadmap/testing/R1-10-tests.md
 // Tier: nightly (runs in --registry phase)
+//
+// React is the only dashboard client since 2026-09-15 (Angular/Vue retired at tag
+// `last-three-apps` / branch `legacy/angular-vue` in pointer-dashboard); this spec now
+// only exercises the React package.
 import { test, expect } from '@playwright/test';
 import { readFileSync, writeFileSync, mkdirSync, existsSync, readdirSync, rmSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
@@ -27,28 +31,26 @@ const STATE_DIR = join(e2eRoot, 'state');
 test.skip(process.env.TIER === 'pr', 'nightly tier only — skipped during PR tier');
 
 /**
- * Asserts that every framework's package barrel exposes the /api/meta client.
+ * Asserts that the React package barrel exposes the /api/meta client.
  *
- * The three re-export differently, and neither shape can be verified by grepping the barrel alone:
- *   Angular:   export { getApiMetaResource } from './meta/meta.service';   // symbol IS in barrel
- *   React/Vue: export * from './meta/meta';                                // symbol is NOT
- * A barrel of `export *` lines can never contain a symbol name, so the original grep could only
- * ever fail for React and Vue. Follow the re-export to the module it names instead.
+ * The barrel is a list of `export * from './x/x'` lines: a symbol name never appears in it, so
+ * grepping the barrel text for getApiMeta can only ever fail. Follow the re-export to the module
+ * it names instead and assert the chain that actually matters — the barrel re-exports the meta
+ * module, and the meta module exports the symbol. That is what a consumer importing from the
+ * package barrel gets.
  */
 function expectMetaClientExported(repoRoot) {
-  for (const fw of ['angular', 'react', 'vue']) {
-    const barrel = readFileSync(join(repoRoot, 'clients', fw, 'src', 'index.ts'), 'utf8');
-    const metaLine = barrel.split('\n').find((l) => /from '\.\/meta\//.test(l));
-    expect(metaLine, `${fw} barrel must reach the meta module (AC-1)`).toBeTruthy();
+  const barrel = readFileSync(join(repoRoot, 'clients', 'react', 'src', 'index.ts'), 'utf8');
+  const metaLine = barrel.split('\n').find((l) => /from '\.\/meta\//.test(l));
+  expect(metaLine, `react barrel must reach the meta module (AC-1)`).toBeTruthy();
 
-    const modulePath = metaLine.match(/from '\.\/(.+?)'/)[1];
-    const moduleSource = readFileSync(join(repoRoot, 'clients', fw, 'src', `${modulePath}.ts`), 'utf8');
+  const modulePath = metaLine.match(/from '\.\/(.+?)'/)[1];
+  const moduleSource = readFileSync(join(repoRoot, 'clients', 'react', 'src', `${modulePath}.ts`), 'utf8');
 
-    expect(
-      /getApiMeta|ApiMeta/.test(metaLine) || /getApiMeta|ApiMeta/.test(moduleSource),
-      `${fw} must expose getApiMeta/ApiMeta through its barrel (AC-1)`,
-    ).toBe(true);
-  }
+  expect(
+    /getApiMeta|ApiMeta/.test(metaLine) || /getApiMeta|ApiMeta/.test(moduleSource),
+    `react must expose getApiMeta/ApiMeta through its barrel (AC-1)`,
+  ).toBe(true);
 }
 
 test('R1-10-01 — local generate → build → publish', async () => {
@@ -81,31 +83,21 @@ test('R1-10-01 — local generate → build → publish', async () => {
   const V = pubResult.version;
   expect(V, 'Printed version V must match 0.0.0-local.<unix> pattern').toMatch(/^0\.0\.0-local\.\d+$/);
 
-  // 4. grep -R "getApiMeta|ApiMeta" clients/angular/src/index.ts clients/react/src/index.ts clients/vue/src/index.ts
-  // A barrel is a list of `export * from './x/x'` lines: a symbol name never appears in it, so
-  // grepping the barrel text for getApiMeta can only ever fail. Follow the re-export instead and
-  // assert the chain that actually matters — the barrel re-exports the meta module, and the meta
-  // module exports the symbol. That is what a consumer importing from the package barrel gets.
+  // 4. grep -R "getApiMeta|ApiMeta" clients/react/src/index.ts
   expectMetaClientExported(repoRoot);
 
-  // 5. For each of angular|react|vue: npm view @moamen-ui/pointer-<fw> versions --registry http://localhost:4873 --json
-  const angularVersions = await viewVersions('@moamen-ui/pointer-angular');
+  // 5. npm view @moamen-ui/pointer-react versions --registry http://localhost:4873 --json
   const reactVersions = await viewVersions('@moamen-ui/pointer-react');
-  const vueVersions = await viewVersions('@moamen-ui/pointer-vue');
 
-  expect(angularVersions, `Verdaccio angular versions must contain ${V} (AC-2)`).toContain(V);
   expect(reactVersions, `Verdaccio react versions must contain ${V} (AC-2)`).toContain(V);
-  expect(vueVersions, `Verdaccio vue versions must contain ${V} (AC-2)`).toContain(V);
 
-  // 6. jq -r '.version' clients/react/package.json and clients/angular/dist/package.json
+  // 6. jq -r '.version' clients/react/package.json
   const reactPkg = JSON.parse(readFileSync(join(repoRoot, 'clients', 'react', 'package.json'), 'utf8'));
-  const angularDistPkg = JSON.parse(readFileSync(join(repoRoot, 'clients', 'angular', 'dist', 'package.json'), 'utf8'));
 
   expect(reactPkg.version, 'clients/react/package.json version must match V').toBe(V);
-  expect(angularDistPkg.version, 'clients/angular/dist/package.json version must match V').toBe(V);
 
-  // stdout contains three --no-save install lines and the npm ci line
-  expect(pubResult.installCommands.length, 'stdout must contain 3 --no-save install lines').toBe(3);
+  // stdout contains one --no-save install line and the npm ci line
+  expect(pubResult.installCommands.length, 'stdout must contain 1 --no-save install line').toBe(1);
   for (const cmd of pubResult.installCommands) {
     expect(cmd, 'install command must specify --no-save').toContain('--no-save');
   }
@@ -119,7 +111,7 @@ test('R1-10-01 — local generate → build → publish', async () => {
       {
         version: V,
         installCommands: pubResult.installCommands,
-        angularInstallCommand: pubResult.angularInstallCommand,
+        reactInstallCommand: pubResult.reactInstallCommand,
       },
       null,
       2
@@ -135,7 +127,7 @@ test('R1-10-01 — local generate → build → publish', async () => {
     role: '—',
     result: 'PASS',
     ms: durationMs,
-    detail: `V=${V}, angular=${JSON.stringify(angularVersions)}, react=${JSON.stringify(reactVersions)}, vue=${JSON.stringify(vueVersions)}`,
+    detail: `V=${V}, react=${JSON.stringify(reactVersions)}`,
   });
 });
 
@@ -173,22 +165,18 @@ test('R1-10-04 ⛓ — the whole loop with no GitHub token', async () => {
 
   expectMetaClientExported(repoRoot);
 
-  const angularVersions = await viewVersions('@moamen-ui/pointer-angular', { env: cleanEnv });
   const reactVersions = await viewVersions('@moamen-ui/pointer-react', { env: cleanEnv });
-  const vueVersions = await viewVersions('@moamen-ui/pointer-vue', { env: cleanEnv });
 
-  expect(angularVersions).toContain(V);
   expect(reactVersions).toContain(V);
-  expect(vueVersions).toContain(V);
 
-  // 2. With the same unset env, run the printed angular install line and npm run build in the app (skip if DASHBOARD_DIR unset).
+  // 2. With the same unset env, run the printed react install line and npm run build in the app (skip if DASHBOARD_DIR unset).
   const DASHBOARD_DIR = process.env.DASHBOARD_DIR;
   if (DASHBOARD_DIR) {
-    const angularDir = join(DASHBOARD_DIR, 'angular');
-    const installCmd = `npm i @moamen-ui/pointer-angular@${V} --registry ${REGISTRY_URL} --@moamen-ui:registry=${REGISTRY_URL} --no-save`;
-    execSync(installCmd, { cwd: angularDir, env: cleanEnv, stdio: 'pipe' });
+    const reactDir = join(DASHBOARD_DIR, 'react');
+    const installCmd = `npm i @moamen-ui/pointer-react@${V} --registry ${REGISTRY_URL} --@moamen-ui:registry=${REGISTRY_URL} --no-save`;
+    execSync(installCmd, { cwd: reactDir, env: cleanEnv, stdio: 'pipe' });
 
-    execSync('npm run build', { cwd: angularDir, env: cleanEnv, stdio: 'pipe' });
+    execSync('npm run build', { cwd: reactDir, env: cleanEnv, stdio: 'pipe' });
   }
 
   // 3. Assert no request went to npm.pkg.github.com: grep the npm debug log in e2e/state/npm/_logs/ for npm.pkg.github.com.
@@ -251,18 +239,18 @@ test('R1-10-05 — release path unchanged, developer config untouched', async ()
   expect(reactPkg.publishConfig?.registry, 'react package.json publishConfig.registry must be https://npm.pkg.github.com (AC-6)').toBe('https://npm.pkg.github.com');
   expect(reactNpmrc, 'clients/react/.npmrc must point to https://npm.pkg.github.com (AC-6)').toContain('https://npm.pkg.github.com');
 
-  // 4. env -u CLIENTS_REGISTRY npm run build-clients; jq -r '.publishConfig.registry' clients/angular/dist/package.json.
+  // 4. env -u CLIENTS_REGISTRY npm run build-clients; jq -r '.publishConfig.registry' clients/react/package.json (post-build).
   execFileSync('npm', ['run', 'build-clients'], {
     cwd: repoRoot,
     env: envNoRegistry,
     stdio: 'pipe',
   });
 
-  const angularDistPkg = JSON.parse(readFileSync(join(repoRoot, 'clients', 'angular', 'dist', 'package.json'), 'utf8'));
-  const angularDistNpmrc = readFileSync(join(repoRoot, 'clients', 'angular', 'dist', '.npmrc'), 'utf8').trim();
+  const reactBuiltPkg = JSON.parse(readFileSync(join(repoRoot, 'clients', 'react', 'package.json'), 'utf8'));
+  const reactBuiltNpmrc = readFileSync(join(repoRoot, 'clients', 'react', '.npmrc'), 'utf8').trim();
 
-  expect(angularDistPkg.publishConfig?.registry, 'angular dist package.json publishConfig.registry must be https://npm.pkg.github.com (AC-6)').toBe('https://npm.pkg.github.com');
-  expect(angularDistNpmrc, 'clients/angular/dist/.npmrc must point to https://npm.pkg.github.com (AC-6)').toContain('https://npm.pkg.github.com');
+  expect(reactBuiltPkg.publishConfig?.registry, 'react package.json publishConfig.registry must be https://npm.pkg.github.com (AC-6)').toBe('https://npm.pkg.github.com');
+  expect(reactBuiltNpmrc, 'clients/react/.npmrc must point to https://npm.pkg.github.com (AC-6)').toContain('https://npm.pkg.github.com');
 
   // 5. Re-record step 1.
   const after = npmrcFingerprint();
@@ -277,6 +265,6 @@ test('R1-10-05 — release path unchanged, developer config untouched', async ()
     role: '—',
     result: 'PASS',
     ms: durationMs,
-    detail: `shaBaseline=${baseline.sha256}, shaAfter=${after.sha256}, regBaseline=${baseline.registry}, regAfter=${after.registry}, regReact=${reactPkg.publishConfig?.registry}, regAng=${angularDistPkg.publishConfig?.registry}`,
+    detail: `shaBaseline=${baseline.sha256}, shaAfter=${after.sha256}, regBaseline=${baseline.registry}, regAfter=${after.registry}, regReact=${reactBuiltPkg.publishConfig?.registry}`,
   });
 });
