@@ -95,3 +95,40 @@ Their dashboard/docs claims were then re-verified by grep; corrections are marke
 | Phase 4 Angular builder (effort flag) | Attempted via `codePlugins`, could not intercept `.ts`; reverted. Vite-only |
 | init injects into Vite/Next/Angular/static | HTML-only injection (index.html / master layout); Next & monorepo routed to the skill |
 | Status table "R1–R3 shipped" | True for API/CLI/widget/e2e; **dashboard tasks for R1.5, R1.8 (React/Vue), R1.9, R2.4–R2.6, R3.1, R3.4 are not shipped** |
+
+---
+
+## Addendum — 2026-09-15 (same day, after the audit)
+
+### A. Dashboard backlog — items 1–7 shipped
+`pointer-dashboard` `aaaf8a3` (merge of `feat/dashboard-sync-r1-r3`, all three apps at parity):
+notifications bell (R2.4), `X-Pointer-Client: dashboard` header (R2.6), quick-access magic link
+copy/rotate/revoke (R2.5), `captureTextContent` (R3.4) and `enforceAllowedOrigins` (R1.5) toggles,
+environment enable/disable + retired badge and greyed project URL rows (R1.9), tenant invites in
+React/Vue (R1.8). Built against `@moamen-ui/pointer-*` **1.0.33** — no client regeneration needed.
+
+### Comments API surfaced to the typed clients (pointer-api `584fd0e`)
+The dashboards had no comments screen, so R2.6 badge/filter, R2.4 verify buttons and R3.1
+`commitSha`/deployed state had nowhere to live. Changes:
+
+- `orval.config.ts` `filters.tags` now includes **`Comments`** (it was never listed, so nothing
+  under `CommentsController`/`RepliesController` had ever been generated).
+- `CommentFilter` gained `Flagged` (bool), `Live` (bool: true = applied **and** deployed, false =
+  applied but not yet live) and `Search` (case-insensitive body substring) — pure narrowing, see
+  `Tests/CommentListFilterTests.cs`.
+- `CommentsController.Delete` annotated with `typeof(Result)`; `RepliesController` gained
+  `[Tags("Comments")]`, `[Produces]` and `ProducesResponseType(ReplyResponse)`.
+
+**Dashboard tasks (this change):** new `/comments` screen in all three apps — project picker,
+Status/Environment/Flagged/Live filters + search, paged table (flag / bug / private badges,
+Applied vs **Live** deploy badge with short `deployedSha`), detail panel (element, applied section
+with `commitUrl` + 👍/👎 verify, replies, status change, delete); notifications bell navigates to
+`/comments?project=<key>&comment=<id>`. Generated operation names: React/Vue
+`useGetApiProjectsKeyComments`, `useGetApiCommentsId`, `usePatchApiCommentsId`,
+`usePostApiCommentsIdVerify`, `usePostApiCommentsIdReplies`, `usePatchApiCommentsIdVisibility`,
+`useDeleteApiCommentsId`; Angular `getApiProjectsKeyCommentsResource`, `getApiCommentsIdResource`.
+
+**Publishing note:** `publish-clients.yml` generates from **production**, so `1.0.34` (the first
+version with `Comments`) can only be published after `584fd0e`+ is deployed. Until then the
+comments screen is built on `npm run clients:local` packages (`0.0.0-local.*`, installed
+`--no-save`) on branch `feat/dashboard-comments`.
