@@ -8,11 +8,13 @@ static files. The current deployment:
 |---|---|
 | `api.pointer.moamen.work` | this API (Swagger, `/pointer.js`, `/embed.js`, skills) |
 | `app-angular.pointer.moamen.work` | the Angular [`pointer-dashboard`](https://github.com/moamen-ui/pointer-dashboard) build (`dashboard/angular`) |
+| `app-react.pointer.moamen.work` | the React dashboard build (`dashboard/react`) |
+| `app-vue.pointer.moamen.work` | the Vue dashboard build (`dashboard/vue`) |
 | `app.pointer.moamen.work` | default dashboard host → also the Angular build (back-compat) |
 | `pointer.moamen.work` | 301 → `app.pointer.moamen.work` |
 
-> Dashboards are served per-framework from `dashboard/<fw>/` (e.g. `dashboard/angular`), each at
-> `app-<fw>.pointer.moamen.work`. React/Vue dashboards can be added later under the same scheme.
+> Dashboards are served per-framework from `dashboard/<fw>/`, each at `app-<fw>.pointer.moamen.work`;
+> [`scripts/deploy-dashboards.sh`](scripts/deploy-dashboards.sh) builds and places all three.
 
 Files: [`docker-compose.prod.yml`](docker-compose.prod.yml), [`Caddyfile`](Caddyfile),
 [`.env.prod.example`](.env.prod.example).
@@ -34,8 +36,8 @@ The dashboard depends on the private `@moamen-ui/pointer-*` GitHub Packages, so 
 echo 'export GH_PKG_TOKEN=ghp_…' >> ~/.bashrc && source ~/.bashrc
 ```
 
-`~/.bashrc` is read for **interactive** SSH (the deploy flow below). For one-liner `ssh vm '…'`
-deploys it's skipped — keep the token in a `chmod 600` file and `source` it instead.
+`~/.bashrc` is only read by **interactive** shells; one-liner `ssh vm '…'` deploys skip it, which is
+why `scripts/deploy-dashboards.sh` greps the `export GH_PKG_TOKEN=` line out of it directly.
 
 ## 1. Configure
 
@@ -128,27 +130,25 @@ docker compose -f docker-compose.prod.yml up -d --force-recreate caddy
 This recreates **only the Caddy container** (a few seconds) — the API and DB keep running. Deploys
 are per-service; nothing here rebuilds the API or dashboards.
 
-**Dashboard change** — from your machine `git push origin main`, then on the VM. The dashboard
-depends on the published `@moamen-ui/pointer-angular` (GitHub Packages), so `npm ci` needs a
-**`read:packages` token** passed as `NODE_AUTH_TOKEN`:
+**Dashboard change** — from your machine `git push origin main` in `pointer-dashboard`, then run
+[`scripts/deploy-dashboards.sh`](scripts/deploy-dashboards.sh) **on the VM**. It pulls
+`~/pointer-dashboard`, builds all three apps in a `node:24` container (`npm ci` authenticates to
+GitHub Packages with `GH_PKG_TOKEN` as `NODE_AUTH_TOKEN`), copies the builds to
+`~/pointer-api/dashboard/{angular,react,vue}`, restarts Caddy and curls the four hosts:
 
 ```bash
-cd ~/pointer-dashboard && git pull --ff-only && cd angular
-docker run --rm -e NODE_AUTH_TOKEN="$GH_PKG_TOKEN" -v "$PWD":/app -v /app/node_modules -w /app node:22 \
-  bash -lc "npm ci && npx ng build --configuration production"
-mkdir -p ~/pointer-api/dashboard && rm -rf ~/pointer-api/dashboard/angular \
-  && cp -r dist/admin-web/browser ~/pointer-api/dashboard/angular
-docker compose -f ~/pointer-api/docker-compose.prod.yml restart caddy
-# React: cd ~/pointer-dashboard/react → build → copy to ~/pointer-api/dashboard/react (served at app-react.pointer)
-# Vue:   cd ~/pointer-dashboard/vue   → build → copy to ~/pointer-api/dashboard/vue   (served at app-vue.pointer)
+# one-liner from your machine (streams the script over SSH, no pull of pointer-api needed)
+ssh -i <key> ubuntu@<vm> 'bash -s' < scripts/deploy-dashboards.sh
+# or, on the VM, after `cd ~/pointer-api && git pull --ff-only`
+bash ~/pointer-api/scripts/deploy-dashboards.sh
 ```
 
-> **Token:** set `GH_PKG_TOKEN` on the VM (a GitHub token with `read:packages`) —
-> `echo 'export GH_PKG_TOKEN=ghp_…' >> ~/.bashrc && source ~/.bashrc`. This works for **interactive**
-> SSH sessions (the flow above). For one-liner `ssh vm '…'` deploys, `~/.bashrc` is skipped — keep the
-> token in a file and `source` it, or pass it inline.
-> If the API's endpoints/DTOs changed, first republish the client (the *Publish API clients* workflow
-> in this repo, bump the version) and bump `@moamen-ui/pointer-angular` in the dashboard.
+> **Token:** set `GH_PKG_TOKEN` on the VM once (a GitHub token with `read:packages`) —
+> `echo 'export GH_PKG_TOKEN=ghp_…' >> ~/.bashrc`. Non-interactive shells (`ssh vm '…'`, `bash -s`)
+> skip `~/.bashrc`, so the script greps the `export` line out of `~/.bashrc`/`~/.profile` itself —
+> no need to `source` anything or pass the token inline.
+> If the API's endpoints/DTOs changed, first republish the clients (the *Publish API clients* workflow
+> in this repo) and bump `@moamen-ui/pointer-{angular,react,vue}` in the dashboard before deploying.
 
 ## Notes
 
