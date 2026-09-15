@@ -34,16 +34,7 @@ public class PlanMapping : IEntityTypeConfiguration<Plan>
 
         // Marketing bullets stored as a JSON list column (order preserved). A value-comparer lets EF
         // track element-level mutations correctly.
-        b.Property(x => x.FeatureBullets)
-            .HasColumnName("feature_bullets")
-            .HasColumnType("jsonb")
-            .HasConversion(
-                v => System.Text.Json.JsonSerializer.Serialize(v, (System.Text.Json.JsonSerializerOptions?)null),
-                v => System.Text.Json.JsonSerializer.Deserialize<List<string>>(v, (System.Text.Json.JsonSerializerOptions?)null) ?? new List<string>(),
-                new ValueComparer<List<string>>(
-                    (a, c) => (a ?? new()).SequenceEqual(c ?? new()),
-                    v => v.Aggregate(0, (h, s) => HashCode.Combine(h, s.GetHashCode())),
-                    v => v.ToList()));
+        b.Property(x => x.FeatureBullets).ConfigureJsonStringList("feature_bullets");
 
         // Entitlements: typed owned VO serialized to one JSON column (mirrors Comment.Element).
         b.OwnsOne(x => x.Entitlements, e => e.ToJson("entitlements"));

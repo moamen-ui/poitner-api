@@ -31,16 +31,7 @@ public class ReplyMapping : IEntityTypeConfiguration<Reply>
         // Advisory payload/secret flags, computed on write (R2-06). The jsonb list mirrors
         // PlanMapping.FeatureBullets: a value-comparer so EF tracks element-level mutations.
         b.Property(x => x.HasPayloadFlag).HasColumnName("has_payload_flag").HasDefaultValue(false);
-        b.Property(x => x.PayloadFlags)
-            .HasColumnName("payload_flags")
-            .HasColumnType("jsonb")
-            .HasConversion(
-                v => System.Text.Json.JsonSerializer.Serialize(v, (System.Text.Json.JsonSerializerOptions?)null),
-                v => System.Text.Json.JsonSerializer.Deserialize<List<string>>(v, (System.Text.Json.JsonSerializerOptions?)null) ?? new List<string>(),
-                new ValueComparer<List<string>>(
-                    (a, c) => (a ?? new()).SequenceEqual(c ?? new()),
-                    v => v.Aggregate(0, (h, s) => HashCode.Combine(h, s.GetHashCode())),
-                    v => v.ToList()));
+        b.Property(x => x.PayloadFlags).ConfigureJsonStringList("payload_flags");
 
     }
 }
