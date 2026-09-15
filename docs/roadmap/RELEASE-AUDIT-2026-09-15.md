@@ -139,9 +139,9 @@ at tag `last-three-apps` / branch `legacy/angular-vue` in `pointer-dashboard` (l
 `6954ad2`). In this repo: `orval.config.ts`, `scripts/{generate,build,publish-clients-local}.mjs`,
 `.github/workflows/publish-clients.yml` and the `e2e/{cli,dashboard}/local-clients.spec.mjs` /
 `e2e/scripts/lib/npmlocal.mjs` harness now generate, build and publish `@moamen-ui/pointer-react`
-only; the `Caddyfile` serves `app`/`demo` from the React build and permanently redirects the legacy
-`app-angular`/`app-react`/`app-vue` hosts to `app.pointer.moamen.work` (certs kept alive, no build
-served); `scripts/deploy-dashboards.sh` and `DEPLOY.md` build/deploy React only; `CLAUDE.md`,
+only; the `Caddyfile` serves `app`/`demo` from the React build (the per-framework
+`app-angular`/`app-react`/`app-vue` hosts were removed from DNS and the Caddyfile the same day);
+`scripts/deploy-dashboards.sh` and `DEPLOY.md` build/deploy React only; `CLAUDE.md`,
 `.claude/CLAUDE.md`, `AGENTS.md`, `.claude/agents/dashboard-agent.md` and
 `docs/roadmap/execution/01-OVERVIEW.md` were updated to describe a single dashboard app. The backlog
 in this document (item A "Dashboard — the real backlog") now applies to the React app only; the

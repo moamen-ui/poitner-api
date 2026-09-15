@@ -13,15 +13,12 @@ targets React only.
 | `api.pointer.moamen.work` | this API (Swagger, `/pointer.js`, `/embed.js`, skills) |
 | `app.pointer.moamen.work` | the React [`pointer-dashboard`](https://github.com/moamen-ui/pointer-dashboard) build (`dashboard/react`) |
 | `demo.pointer.moamen.work` | same React build, with the "Try the demo" entry |
-| `app-angular.pointer.moamen.work` | legacy — permanent redirect to `app.pointer.moamen.work` (cert kept alive only) |
-| `app-react.pointer.moamen.work` | legacy — permanent redirect to `app.pointer.moamen.work` (cert kept alive only) |
-| `app-vue.pointer.moamen.work` | legacy — permanent redirect to `app.pointer.moamen.work` (cert kept alive only) |
 | `pointer.moamen.work` | the marketing landing page |
 
 > The dashboard is served from `dashboard/react/`, at `app.pointer.moamen.work` (and
 > `demo.pointer.moamen.work`); [`scripts/deploy-dashboards.sh`](scripts/deploy-dashboards.sh) builds
-> and places it. The three legacy `app-<fw>.pointer.moamen.work` hosts stay defined in the Caddyfile
-> only so their existing certs keep renewing — they serve nothing and 301 to `app.pointer`.
+> and places it. The former per-framework `app-<fw>.pointer.moamen.work` hosts were removed from
+> DNS and from the Caddyfile on 2026-09-15.
 
 Files: [`docker-compose.prod.yml`](docker-compose.prod.yml), [`Caddyfile`](Caddyfile),
 [`.env.prod.example`](.env.prod.example).
@@ -31,8 +28,7 @@ Files: [`docker-compose.prod.yml`](docker-compose.prod.yml), [`Caddyfile`](Caddy
 - A VM with a public IP and **Docker + Compose plugin** installed.
 - Ports **80** and **443** open to the world (host firewall **and** any cloud security list/group).
 - DNS **A records** for each hostname → the VM's public IP (`api.pointer`, `app.pointer`,
-  `demo.pointer`, bare `pointer`, and the legacy `app-angular.pointer` / `app-react.pointer` /
-  `app-vue.pointer` redirect hosts). Certs are issued by HTTP-01, so the names must resolve before
+  `demo.pointer`, bare `pointer`). Certs are issued by HTTP-01, so the names must resolve before
   first start.
 
 ## VM setup (one-time)
@@ -89,7 +85,7 @@ docker-compose.prod.yml logs caddy`). The API auto-migrates and seeds the admin 
 curl -sI https://api.pointer.moamen.work/swagger/index.html      # 200
 curl -s  "https://api.pointer.moamen.work/embed.js?project=pointer-api" | grep "var server"  # https origin
 curl -sI https://app.pointer.moamen.work/                         # 200 (React dashboard)
-curl -sI https://app-angular.pointer.moamen.work/                 # 301/308 → app.pointer.moamen.work (legacy)
+curl -sI https://demo.pointer.moamen.work/                        # 200 (same build, demo entry)
 ```
 
 ## Updating
@@ -143,8 +139,7 @@ are per-service; nothing here rebuilds the API or the dashboard.
 `~/pointer-dashboard`, builds the React app in a `node:24` container (`npm ci` authenticates to
 GitHub Packages with `GH_PKG_TOKEN` as `NODE_AUTH_TOKEN`), copies the build to
 `~/pointer-api/dashboard/react` (removing any stale `dashboard/angular` / `dashboard/vue` dirs),
-restarts Caddy and curls both the live hosts (`app`, `demo`) and the legacy redirect hosts
-(`app-angular`, `app-react`, `app-vue` — expected 301/308):
+restarts Caddy and curls the two live hosts (`app`, `demo`):
 
 ```bash
 # one-liner from your machine (streams the script over SSH, no pull of pointer-api needed)

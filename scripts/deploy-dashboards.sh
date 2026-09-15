@@ -36,7 +36,3 @@ cd ~/pointer-api && docker compose --env-file .env.prod -f docker-compose.prod.y
 for h in app demo; do
   printf "%s " "$h"; curl -s -o /dev/null -w "%{http_code}\n" "https://$h.pointer.moamen.work/"
 done
-# Legacy hosts must redirect (301/308), not serve a build.
-for h in app-angular app-react app-vue; do
-  printf "%s " "$h"; curl -s -o /dev/null -w "%{http_code}\n" "https://$h.pointer.moamen.work/"
-done

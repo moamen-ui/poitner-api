@@ -1,10 +1,10 @@
 # Caddy auto-provisions Let's Encrypt certs for each site (HTTP-01).
 # api.pointer  → reverse-proxy to the API.
 # app.pointer / demo.pointer → the React dashboard build (SPA fallback).
-# app-angular.pointer / app-react.pointer / app-vue.pointer → legacy per-framework hosts,
-#   kept alive (cert only) and permanently redirected to app.pointer. Since 2026-09-15 only
-#   the React dashboard exists (`pointer-dashboard/react`); Angular and Vue were retired at
-#   tag `last-three-apps` / branch `legacy/angular-vue`.
+# Since 2026-09-15 only the React dashboard exists (`pointer-dashboard/react`); Angular and Vue
+#   were retired at tag `last-three-apps` / branch `legacy/angular-vue`, and the per-framework
+#   app-<fw>.pointer hosts were removed from DNS the same day (no site blocks for them here —
+#   Caddy would otherwise keep failing to issue certs for names that no longer resolve).
 
 # Shared static-SPA config. index.html and the runtime-fetched i18n JSON carry fixed
 # (non-fingerprinted) names, so force revalidation on them (etag → 304 when unchanged)
@@ -49,21 +49,6 @@ api.pointer.moamen.work {
     # browser, but it means the header a client sees is not the one this file specifies.
     header @widget >Cache-Control "no-cache, must-revalidate"
     reverse_proxy api:8080
-}
-
-# Legacy per-framework hosts. Kept as their own site blocks purely so their existing
-# Let's Encrypt certs stay valid (auto-renew keeps working); they no longer serve a build —
-# every request permanently redirects to the single React dashboard host.
-app-angular.pointer.moamen.work {
-    redir https://app.pointer.moamen.work{uri} permanent
-}
-
-app-react.pointer.moamen.work {
-    redir https://app.pointer.moamen.work{uri} permanent
-}
-
-app-vue.pointer.moamen.work {
-    redir https://app.pointer.moamen.work{uri} permanent
 }
 
 # Default dashboard host → the React dashboard (the only dashboard since 2026-09-15).
