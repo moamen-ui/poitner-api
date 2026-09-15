@@ -53,11 +53,7 @@ public class AppEnvironmentService : IAppEnvironmentService
             return Result<AppEnvironmentResponse>.Failure(MessageKeys.AppEnvironment.NameRequired);
 
         var owner = TenantStamp.OwnerFor(_currentUser);
-        var exists = await _unitOfWork.Repository<AppEnvironment>()
-            .Query()
-            .AsNoTracking()
-            .AnyAsync(e => e.DeletedAt == null && e.OwnerId == owner && e.Name.ToLower() == name.ToLower());
-        if (exists)
+        if (await NameTakenAsync(name, owner, excludeId: null))
             return Result<AppEnvironmentResponse>.Conflict(MessageKeys.AppEnvironment.NameTaken);
 
         var environment = new AppEnvironment { Name = name, OwnerId = owner, IsEnabled = true };
@@ -85,11 +81,7 @@ public class AppEnvironmentService : IAppEnvironmentService
             if (string.IsNullOrEmpty(name))
                 return Result<AppEnvironmentResponse>.Failure(MessageKeys.AppEnvironment.NameRequired);
 
-            var exists = await _unitOfWork.Repository<AppEnvironment>()
-                .Query()
-                .AsNoTracking()
-                .AnyAsync(e => e.DeletedAt == null && e.Id != id && e.OwnerId == environment.OwnerId && e.Name.ToLower() == name.ToLower());
-            if (exists)
+            if (await NameTakenAsync(name, environment.OwnerId, excludeId: id))
                 return Result<AppEnvironmentResponse>.Conflict(MessageKeys.AppEnvironment.NameTaken);
 
             environment.Name = name;
@@ -135,6 +127,29 @@ public class AppEnvironmentService : IAppEnvironmentService
     // only its own — mirrors RoleService.CanManage.
     private bool CanManage(AppEnvironment environment) =>
         _currentUser.IsSuperAdmin || environment.OwnerId == _currentUser.TenantId;
+
+    /// <summary>
+    /// A name is taken when it collides, case-insensitively, with any environment the caller's
+    /// workspace can see. A tenant sees the global catalog plus its own rows, so "Local" next to the
+    /// global "local" is a duplicate in every list, picker and per-project URL table — checking only
+    /// the tenant's own rows (the previous behaviour) let exactly that through (prod comment #191).
+    /// A global row is checked against every row, so the catalog never introduces a duplicate into
+    /// some tenant's list either. The (Name, OwnerId) unique index cannot express this: NULL owners
+    /// are distinct in Postgres and the index is case-sensitive.
+    /// </summary>
+    private async Task<bool> NameTakenAsync(string name, Guid? owner, int? excludeId)
+    {
+        var lowered = name.ToLower();
+        var query = _unitOfWork.Repository<AppEnvironment>()
+            .Query()
+            .AsNoTracking()
+            .Where(e => e.DeletedAt == null && e.Name.ToLower() == lowered);
+        if (excludeId is int id)
+            query = query.Where(e => e.Id != id);
+        if (owner is Guid tenant)
+            query = query.Where(e => e.OwnerId == null || e.OwnerId == tenant);
+        return await query.AnyAsync();
+    }
 
     private AppEnvironmentResponse MapToResponse(AppEnvironment environment) => new()
     {

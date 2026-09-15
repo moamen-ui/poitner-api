@@ -73,6 +73,51 @@ public class AppEnvironmentServiceTests
     }
 
     [Fact]
+    public async Task ScopedAdmin_CannotCreateEnvironmentNamedLikeAGlobalOne()
+    {
+        // Prod comment #191: "environments shouldn't be duplicated". A tenant could add "Local"
+        // beside the global "local" and every list/picker then showed the name twice.
+        var dbName = Guid.NewGuid().ToString();
+        SeedGlobalEnvironment(dbName, "local");
+        var admin = new FakeCurrentUser { IsAdmin = true, TenantId = Guid.NewGuid() };
+        var svc = new AppEnvironmentService(new UnitOfWork(BuildContext(admin, dbName)), admin);
+
+        var result = await svc.CreateAsync(new CreateAppEnvironmentRequest { Name = " Local " });
+
+        Assert.True(result.IsConflict);
+        Assert.Single((await svc.ListAsync()).Data!, e => e.Name.Equals("local", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public async Task ScopedAdmin_CannotRenameOwnEnvironmentToAGlobalName()
+    {
+        var dbName = Guid.NewGuid().ToString();
+        SeedGlobalEnvironment(dbName, "staging");
+        var admin = new FakeCurrentUser { IsAdmin = true, TenantId = Guid.NewGuid() };
+        var svc = new AppEnvironmentService(new UnitOfWork(BuildContext(admin, dbName)), admin);
+        var own = (await svc.CreateAsync(new CreateAppEnvironmentRequest { Name = "qa" })).Data!;
+
+        var result = await svc.UpdateAsync(own.Id, new UpdateAppEnvironmentRequest { Name = "STAGING" });
+
+        Assert.True(result.IsConflict);
+    }
+
+    [Fact]
+    public async Task SuperAdmin_CannotCreateGlobalEnvironmentNamedLikeATenantsOwn()
+    {
+        var dbName = Guid.NewGuid().ToString();
+        var tenantAdmin = new FakeCurrentUser { IsAdmin = true, TenantId = Guid.NewGuid() };
+        await new AppEnvironmentService(new UnitOfWork(BuildContext(tenantAdmin, dbName)), tenantAdmin)
+            .CreateAsync(new CreateAppEnvironmentRequest { Name = "preview" });
+        var superAdmin = new FakeCurrentUser { IsSuperAdmin = true };
+        var svc = new AppEnvironmentService(new UnitOfWork(BuildContext(superAdmin, dbName)), superAdmin);
+
+        var result = await svc.CreateAsync(new CreateAppEnvironmentRequest { Name = "Preview" });
+
+        Assert.True(result.IsConflict);
+    }
+
+    [Fact]
     public async Task ScopedAdmin_CannotRenameGlobalEnvironment()
     {
         var dbName = Guid.NewGuid().ToString();
