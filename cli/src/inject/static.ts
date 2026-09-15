@@ -6,8 +6,9 @@ import { join } from 'node:path';
  *
  * `envGuarded` picks the Vite form from pointer-init.md: values come from %VITE_POINTER_*%
  * placeholders instead of being baked in, so one index.html serves dev, staging and production and
- * the widget simply does not mount when VITE_POINTER_ENABLED is false. Hardcoding the server (the
- * plain form) would pin every build to whichever server happened to run `init`.
+ * the widget simply does not mount when VITE_POINTER_SERVER is empty (a build that must ship
+ * without the widget leaves it unset — there is no separate on/off flag). Hardcoding the server
+ * (the plain form) would pin every build to whichever server happened to run `init`.
  */
 export async function injectStatic(
     cwd: string,
@@ -72,8 +73,8 @@ export async function injectStatic(
         ? `<!-- pointer-feedback:start -->
 <script>
   if (
-    '%VITE_POINTER_ENABLED%' === 'true' &&
-    '%VITE_POINTER_SERVER%'.indexOf('http') === 0
+    '%VITE_POINTER_SERVER%'.indexOf('http') === 0 &&
+    '%VITE_POINTER_PROJECT%' !== ''
   ) {
     var s = document.createElement('script');
     s.src = '%VITE_POINTER_SERVER%/pointer.js${pinnedSrc}';${pinnedProps}

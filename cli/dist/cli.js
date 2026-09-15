@@ -1265,8 +1265,8 @@ async function injectStatic(cwd2, htmlPath, cfg) {
   const block = cfg.envGuarded ? `<!-- pointer-feedback:start -->
 <script>
   if (
-    '%VITE_POINTER_ENABLED%' === 'true' &&
-    '%VITE_POINTER_SERVER%'.indexOf('http') === 0
+    '%VITE_POINTER_SERVER%'.indexOf('http') === 0 &&
+    '%VITE_POINTER_PROJECT%' !== ''
   ) {
     var s = document.createElement('script');
     s.src = '%VITE_POINTER_SERVER%/pointer.js${pinnedSrc}';${pinnedProps}
@@ -1314,7 +1314,6 @@ async function injectVite(cwd2, cfg, htmlPath) {
   const envPath = join4(cwd2, ".env");
   let envContent = await fs4.readFile(envPath, "utf8").catch(() => "");
   const envVars = {
-    VITE_POINTER_ENABLED: "true",
     VITE_POINTER_SERVER: cfg.server,
     VITE_POINTER_PROJECT: cfg.key
   };
@@ -1329,19 +1328,16 @@ async function injectVite(cwd2, cfg, htmlPath) {
 `;
     }
   }
-  if (!cfg.environmentPinned)
-    envContent = dropEnvLine(envContent);
+  envContent = dropStaleLines(envContent, cfg.environmentPinned);
   await fs4.writeFile(envPath, envContent, "utf8");
   modified.push(".env");
   for (const example of [".env.example", ".env.sample"]) {
     const exPath = join4(cwd2, example);
     let exContent = await fs4.readFile(exPath, "utf8").catch(() => null);
     if (exContent !== null) {
-      const exVars = { ...envVars, VITE_POINTER_ENABLED: "false" };
-      for (const k of Object.keys(exVars)) {
-        if (k !== "VITE_POINTER_ENABLED")
-          exVars[k] = "";
-      }
+      const exVars = {};
+      for (const k of Object.keys(envVars))
+        exVars[k] = "";
       for (const [k, v] of Object.entries(exVars)) {
         const re = new RegExp(`^${k}=.*$`, "m");
         if (re.test(exContent)) {
@@ -1351,16 +1347,18 @@ async function injectVite(cwd2, cfg, htmlPath) {
 `;
         }
       }
-      if (!cfg.environmentPinned)
-        exContent = dropEnvLine(exContent);
+      exContent = dropStaleLines(exContent, cfg.environmentPinned);
       await fs4.writeFile(exPath, exContent, "utf8");
       modified.push(example);
     }
   }
   return modified;
 }
-function dropEnvLine(content) {
-  return content.replace(/^VITE_POINTER_ENV=.*\n?/m, "");
+function dropStaleLines(content, environmentPinned) {
+  let out = content.replace(/^VITE_POINTER_ENABLED=.*\n?/m, "");
+  if (!environmentPinned)
+    out = out.replace(/^VITE_POINTER_ENV=.*\n?/m, "");
+  return out;
 }
 
 // src/inject/source-map.ts

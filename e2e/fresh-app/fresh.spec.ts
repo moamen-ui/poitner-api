@@ -194,7 +194,7 @@ test('R2-00-01 — fresh-app: vite', async ({ page }) => {
     expect(endMarkers.length).toBe(1);
 
     const envContent = await readFile(join(appDir, '.env'), 'utf8');
-    expect(envContent).toContain('VITE_POINTER_ENABLED=true');
+    expect(envContent).not.toContain('VITE_POINTER_ENABLED');
     expect(envContent).toContain(`VITE_POINTER_SERVER=${SERVER}`);
     expect(envContent).toContain(`VITE_POINTER_PROJECT=${createdProjectKey}`);
     // No environment in .env: the server resolves it from the page origin (only `--environment` pins one).
@@ -1088,7 +1088,7 @@ test('R1-02-01 — init-vite-no-ai', async () => {
     const block = indexHtml.match(
       /<!-- pointer-feedback:start -->([\s\S]*?)<!-- pointer-feedback:end -->/,
     )![1];
-    expect(block).toContain("'%VITE_POINTER_ENABLED%' === 'true'");
+    expect(block).toContain("'%VITE_POINTER_SERVER%'.indexOf('http') === 0");
     expect(block).toContain("document.createElement('pointer-feedback')");
     expect(block).toContain('data-component-source');
 
@@ -1096,7 +1096,6 @@ test('R1-02-01 — init-vite-no-ai', async () => {
     // re-running init must not append a duplicate the bundler then resolves unpredictably.
     const env = await readFile(join(appDir, '.env'), 'utf8');
     for (const [key, value] of [
-      ['VITE_POINTER_ENABLED', 'true'],
       ['VITE_POINTER_SERVER', SERVER],
       ['VITE_POINTER_PROJECT', createdProjectKey],
     ]) {
