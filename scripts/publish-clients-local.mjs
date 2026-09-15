@@ -114,7 +114,9 @@ try {
   for (const d of publishDirs) {
     const dirPath = resolve(root, d);
     console.log(`\n🚀 Publishing ${d} → ${REGISTRY} ...`);
-    execSync(`npm publish --registry "${REGISTRY}"`, {
+    // `0.0.0-local.<unix>` is a prerelease; npm ≥ 11.6 refuses to publish one without an explicit
+    // dist-tag, and we must not claim `latest` anyway.
+    execSync(`npm publish --registry "${REGISTRY}" --tag local`, {
       cwd: dirPath,
       env: publishEnv,
       stdio: 'inherit',
