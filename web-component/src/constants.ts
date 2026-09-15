@@ -1,3 +1,4 @@
+import { rawFetch } from './pagecontext';
 import type { StatusStr } from './types';
 
 export const HL_CLASS = 'pointer-feedback-hl';
@@ -93,7 +94,9 @@ export const STATUS_FALLBACK: StatusItem[] = [
 // which bypasses the page's connect-src CSP. Absent that, it's just global fetch.
 export function pfFetch(url: string, opts?: RequestInit): Promise<Response> {
   const t = typeof window !== 'undefined' ? window.__POINTER_FETCH__ : undefined;
-  return t ? t(url, opts) : fetch(url, opts);
+  // rawFetch = the un-patched fetch, so the widget's own traffic is never recorded as the host
+  // app's failed/slow requests by page-context capture (see pagecontext.ts).
+  return t ? t(url, opts) : rawFetch(url, opts);
 }
 
 // Module-level singleton — the widget assumes one <pointer-feedback> per page (consistent with STATUS_STR/STATUS_LABEL above), so the catalog is shared module state by design.

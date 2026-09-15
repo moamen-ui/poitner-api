@@ -6,7 +6,7 @@ import { escapeHtml, ensureHighlightStyle, matchElement, pageIsRtl, buildClipPat
 import { TPL } from './templates';
 import { ICON } from './icons';
 import { captureScreenshot, captureMetadata } from './capture';
-import { startPageContextCapture, stopPageContextCapture, getPageContextPayload } from './pagecontext';
+import { startPageContextCapture, stopPageContextCapture, getPageContextPayload, rawFetch } from './pagecontext';
 import {
   type ShortcutBinding, parseShortcut, serializeShortcut, matchesShortcut, formatShortcut,
 } from './shortcut';
@@ -398,7 +398,7 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
             fetchOpts.integrity = CSS_INTEGRITY;
           }
           const cssUrl = link.href || CSS_URL;
-          const res = await fetch(cssUrl, fetchOpts);
+          const res = await rawFetch(cssUrl, fetchOpts);
           if (res.ok) {
             const text = await res.text();
             if (typeof CSSStyleSheet !== 'undefined') {

@@ -1,6 +1,210 @@
 /* GENERATED from web-component/src — DO NOT EDIT. Run `npm run build` in web-component/. */
 "use strict";
 (() => {
+  // src/pagecontext.ts
+  var MAX_ENTRIES = 20;
+  var MAX_AGE_MS = 30 * 60 * 1e3;
+  var SLOW_REQUEST_MS = 3e3;
+  var consoleEntries = [];
+  var networkEntries = [];
+  var started = false;
+  var recording = false;
+  var originalConsoleError = null;
+  var originalConsoleWarn = null;
+  var originalFetch = null;
+  var originalXhrOpen = null;
+  var originalXhrSend = null;
+  var onWindowError = null;
+  var onUnhandledRejection = null;
+  function now() {
+    return (/* @__PURE__ */ new Date()).toISOString();
+  }
+  function trim(list, maxAgeGetter) {
+    const cutoff = Date.now() - MAX_AGE_MS;
+    while (list.length && new Date(maxAgeGetter(list[0])).getTime() < cutoff) list.shift();
+    while (list.length > MAX_ENTRIES) list.shift();
+  }
+  function stringifyArg(arg) {
+    if (typeof arg === "string") return arg;
+    if (arg instanceof Error) return arg.message;
+    try {
+      return JSON.stringify(arg);
+    } catch {
+      return String(arg);
+    }
+  }
+  function extractStack(args) {
+    var _a2;
+    const err = args.find((a) => a instanceof Error);
+    return (_a2 = err == null ? void 0 : err.stack) == null ? void 0 : _a2.slice(0, 4e3);
+  }
+  function recordConsole(level, args) {
+    pushConsole(level, args.map(stringifyArg).join(" "), extractStack(args));
+  }
+  function pushConsole(level, rawMessage, stack) {
+    if (recording) return;
+    recording = true;
+    try {
+      const message = rawMessage.slice(0, 2e3);
+      if (message.startsWith("[pointer-feedback]")) return;
+      const last = consoleEntries[consoleEntries.length - 1];
+      if (last && last.level === level && last.message === message) {
+        last.count += 1;
+        last.occurredAt = now();
+      } else {
+        consoleEntries.push({ level, message, stack, count: 1, occurredAt: now() });
+      }
+      trim(consoleEntries, (e) => e.occurredAt);
+    } catch {
+    } finally {
+      recording = false;
+    }
+  }
+  function stripQuery(url) {
+    const cut = url.search(/[?#]/);
+    return cut >= 0 ? url.slice(0, cut) : url;
+  }
+  function shouldRecord(statusCode, durationMs) {
+    if (statusCode === null || statusCode === 0) return true;
+    if (statusCode >= 400) return true;
+    return durationMs >= SLOW_REQUEST_MS;
+  }
+  function recordNetwork(method, url, statusCode, durationMs) {
+    try {
+      networkEntries.push({ method, url: stripQuery(url), statusCode, durationMs, occurredAt: now() });
+      trim(networkEntries, (e) => e.occurredAt);
+    } catch {
+    }
+  }
+  function rawFetch(url, opts) {
+    const f = originalFetch != null ? originalFetch : window.fetch;
+    return f.call(window, url, opts);
+  }
+  function patchFetch() {
+    const original = window.fetch;
+    originalFetch = original;
+    window.fetch = (...args) => {
+      var _a2, _b;
+      const url = typeof args[0] === "string" ? args[0] : args[0] instanceof URL ? args[0].href : args[0].url;
+      const method = (((_a2 = args[1]) == null ? void 0 : _a2.method) || ((_b = args[0]) == null ? void 0 : _b.method) || "GET").toUpperCase();
+      const start = Date.now();
+      return original.apply(window, args).then(
+        (response) => {
+          const durationMs = Date.now() - start;
+          if (shouldRecord(response.status, durationMs)) recordNetwork(method, url, response.status, durationMs);
+          return response;
+        },
+        (err) => {
+          recordNetwork(method, url, null, Date.now() - start);
+          throw err;
+        }
+      );
+    };
+  }
+  function patchXhr() {
+    if (typeof XMLHttpRequest === "undefined") return;
+    const proto = XMLHttpRequest.prototype;
+    originalXhrOpen = proto.open;
+    originalXhrSend = proto.send;
+    proto.open = function(method, url, ...rest) {
+      try {
+        this.__pfMethod = String(method || "GET").toUpperCase();
+        this.__pfUrl = typeof url === "string" ? url : String(url);
+      } catch {
+      }
+      return originalXhrOpen.call(this, method, url, ...rest);
+    };
+    proto.send = function(body) {
+      try {
+        const start = Date.now();
+        const method = this.__pfMethod || "GET";
+        const url = this.__pfUrl || "";
+        this.addEventListener("loadend", () => {
+          const durationMs = Date.now() - start;
+          const status = this.status;
+          if (shouldRecord(status === 0 ? null : status, durationMs)) {
+            recordNetwork(method, url, status === 0 ? null : status, durationMs);
+          }
+        });
+      } catch {
+      }
+      return originalXhrSend.call(this, body);
+    };
+  }
+  function unpatchXhr() {
+    if (typeof XMLHttpRequest === "undefined") return;
+    if (originalXhrOpen) XMLHttpRequest.prototype.open = originalXhrOpen;
+    if (originalXhrSend) XMLHttpRequest.prototype.send = originalXhrSend;
+    originalXhrOpen = null;
+    originalXhrSend = null;
+  }
+  function startPageContextCapture(_server, _scriptOrigin) {
+    if (started) return;
+    started = true;
+    originalConsoleError = console.error.bind(console);
+    originalConsoleWarn = console.warn.bind(console);
+    console.error = (...args) => {
+      recordConsole("error", args);
+      originalConsoleError(...args);
+    };
+    console.warn = (...args) => {
+      recordConsole("warn", args);
+      originalConsoleWarn(...args);
+    };
+    onWindowError = (e) => {
+      var _a2;
+      const err = e.error instanceof Error ? e.error : void 0;
+      const where = e.filename ? ` (${e.filename}:${e.lineno}:${e.colno})` : "";
+      pushConsole("error", `Uncaught ${e.message || err && err.message || "error"}${where}`, (_a2 = err == null ? void 0 : err.stack) == null ? void 0 : _a2.slice(0, 4e3));
+    };
+    onUnhandledRejection = (e) => {
+      var _a2;
+      const reason = e.reason;
+      const err = reason instanceof Error ? reason : void 0;
+      pushConsole("error", `Unhandled promise rejection: ${err ? err.message : stringifyArg(reason)}`, (_a2 = err == null ? void 0 : err.stack) == null ? void 0 : _a2.slice(0, 4e3));
+    };
+    window.addEventListener("error", onWindowError);
+    window.addEventListener("unhandledrejection", onUnhandledRejection);
+    patchFetch();
+    patchXhr();
+  }
+  function stopPageContextCapture() {
+    if (!started) return;
+    if (originalConsoleError) console.error = originalConsoleError;
+    if (originalConsoleWarn) console.warn = originalConsoleWarn;
+    if (originalFetch) window.fetch = originalFetch;
+    if (onWindowError) window.removeEventListener("error", onWindowError);
+    if (onUnhandledRejection) window.removeEventListener("unhandledrejection", onUnhandledRejection);
+    unpatchXhr();
+    originalConsoleError = null;
+    originalConsoleWarn = null;
+    originalFetch = null;
+    onWindowError = null;
+    onUnhandledRejection = null;
+    started = false;
+  }
+  function getOrCreateSessionId() {
+    const KEY = "pointer_page_session_id";
+    try {
+      let id = sessionStorage.getItem(KEY);
+      if (!id) {
+        id = typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+        sessionStorage.setItem(KEY, id);
+      }
+      return id;
+    } catch {
+      return `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    }
+  }
+  function getPageContextPayload() {
+    if (!started) return null;
+    return {
+      sessionId: getOrCreateSessionId(),
+      consoleEntries: consoleEntries.slice(),
+      networkEntries: networkEntries.slice()
+    };
+  }
+
   // src/constants.ts
   var HL_CLASS = "pointer-feedback-hl";
   var BACKDROP_SELECTOR = [
@@ -59,7 +263,7 @@
   ];
   function pfFetch(url, opts) {
     const t = typeof window !== "undefined" ? window.__POINTER_FETCH__ : void 0;
-    return t ? t(url, opts) : fetch(url, opts);
+    return t ? t(url, opts) : rawFetch(url, opts);
   }
   var _catalog = STATUS_FALLBACK;
   async function loadStatusCatalog(server) {
@@ -861,151 +1065,6 @@
     };
   }
 
-  // src/pagecontext.ts
-  var MAX_ENTRIES = 20;
-  var MAX_AGE_MS = 30 * 60 * 1e3;
-  var SLOW_REQUEST_MS = 3e3;
-  var consoleEntries = [];
-  var networkEntries = [];
-  var started = false;
-  var recording = false;
-  var originalConsoleError = null;
-  var originalConsoleWarn = null;
-  var originalFetch = null;
-  var ownOrigins = [];
-  function now() {
-    return (/* @__PURE__ */ new Date()).toISOString();
-  }
-  function trim(list, maxAgeGetter) {
-    const cutoff = Date.now() - MAX_AGE_MS;
-    while (list.length && new Date(maxAgeGetter(list[0])).getTime() < cutoff) list.shift();
-    while (list.length > MAX_ENTRIES) list.shift();
-  }
-  function stringifyArg(arg) {
-    if (typeof arg === "string") return arg;
-    if (arg instanceof Error) return arg.message;
-    try {
-      return JSON.stringify(arg);
-    } catch {
-      return String(arg);
-    }
-  }
-  function extractStack(args) {
-    var _a2;
-    const err = args.find((a) => a instanceof Error);
-    return (_a2 = err == null ? void 0 : err.stack) == null ? void 0 : _a2.slice(0, 4e3);
-  }
-  function recordConsole(level, args) {
-    if (recording) return;
-    recording = true;
-    try {
-      const message = args.map(stringifyArg).join(" ").slice(0, 2e3);
-      if (message.startsWith("[pointer-feedback]")) return;
-      const stack = extractStack(args);
-      const last = consoleEntries[consoleEntries.length - 1];
-      if (last && last.level === level && last.message === message) {
-        last.count += 1;
-        last.occurredAt = now();
-      } else {
-        consoleEntries.push({ level, message, stack, count: 1, occurredAt: now() });
-      }
-      trim(consoleEntries, (e) => e.occurredAt);
-    } catch {
-    } finally {
-      recording = false;
-    }
-  }
-  function stripQuery(url) {
-    const cut = url.search(/[?#]/);
-    return cut >= 0 ? url.slice(0, cut) : url;
-  }
-  function isOwnRequest(url) {
-    try {
-      const origin = new URL(url, window.location.href).origin;
-      return ownOrigins.includes(origin);
-    } catch {
-      return false;
-    }
-  }
-  function recordNetwork(method, url, statusCode, durationMs) {
-    try {
-      networkEntries.push({ method, url: stripQuery(url), statusCode, durationMs, occurredAt: now() });
-      trim(networkEntries, (e) => e.occurredAt);
-    } catch {
-    }
-  }
-  function startPageContextCapture(server, scriptOrigin) {
-    if (started) return;
-    started = true;
-    ownOrigins = [server, scriptOrigin, window.location.origin].filter((o) => !!o).map((o) => {
-      try {
-        return new URL(o).origin;
-      } catch {
-        return o;
-      }
-    });
-    originalConsoleError = console.error.bind(console);
-    originalConsoleWarn = console.warn.bind(console);
-    console.error = (...args) => {
-      recordConsole("error", args);
-      originalConsoleError(...args);
-    };
-    console.warn = (...args) => {
-      recordConsole("warn", args);
-      originalConsoleWarn(...args);
-    };
-    originalFetch = window.fetch.bind(window);
-    window.fetch = (...args) => {
-      var _a2, _b;
-      const url = typeof args[0] === "string" ? args[0] : args[0].url;
-      if (isOwnRequest(url)) return originalFetch(...args);
-      const method = (((_a2 = args[1]) == null ? void 0 : _a2.method) || ((_b = args[0]) == null ? void 0 : _b.method) || "GET").toUpperCase();
-      const start = Date.now();
-      return originalFetch(...args).then(
-        (response) => {
-          const durationMs = Date.now() - start;
-          if (!response.ok || durationMs >= SLOW_REQUEST_MS) {
-            recordNetwork(method, url, response.status, durationMs);
-          }
-          return response;
-        },
-        (err) => {
-          recordNetwork(method, url, null, Date.now() - start);
-          throw err;
-        }
-      );
-    };
-  }
-  function stopPageContextCapture() {
-    if (!started) return;
-    if (originalConsoleError) console.error = originalConsoleError;
-    if (originalConsoleWarn) console.warn = originalConsoleWarn;
-    if (originalFetch) window.fetch = originalFetch;
-    started = false;
-  }
-  function getOrCreateSessionId() {
-    const KEY = "pointer_page_session_id";
-    try {
-      let id = sessionStorage.getItem(KEY);
-      if (!id) {
-        id = typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
-        sessionStorage.setItem(KEY, id);
-      }
-      return id;
-    } catch {
-      return `${Date.now()}-${Math.random().toString(36).slice(2)}`;
-    }
-  }
-  function getPageContextPayload() {
-    if (!started) return null;
-    if (consoleEntries.length === 0 && networkEntries.length === 0) return null;
-    return {
-      sessionId: getOrCreateSessionId(),
-      consoleEntries: consoleEntries.slice(),
-      networkEntries: networkEntries.slice()
-    };
-  }
-
   // src/shortcut.ts
   var DEFAULT_SHORTCUT = { code: "KeyC", alt: true, shift: true, ctrl: true, meta: false };
   var MODIFIER_TOKENS = /* @__PURE__ */ new Set(["ctrl", "alt", "shift", "meta"]);
@@ -1562,7 +1621,7 @@
               fetchOpts.integrity = CSS_INTEGRITY;
             }
             const cssUrl = link.href || CSS_URL;
-            const res = await fetch(cssUrl, fetchOpts);
+            const res = await rawFetch(cssUrl, fetchOpts);
             if (res.ok) {
               const text = await res.text();
               if (typeof CSSStyleSheet !== "undefined") {
