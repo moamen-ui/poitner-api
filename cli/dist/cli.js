@@ -1316,9 +1316,10 @@ async function injectVite(cwd2, cfg, htmlPath) {
   const envVars = {
     VITE_POINTER_ENABLED: "true",
     VITE_POINTER_SERVER: cfg.server,
-    VITE_POINTER_PROJECT: cfg.key,
-    VITE_POINTER_ENV: cfg.environment
+    VITE_POINTER_PROJECT: cfg.key
   };
+  if (cfg.environmentPinned)
+    envVars.VITE_POINTER_ENV = cfg.environment;
   for (const [k, v] of Object.entries(envVars)) {
     const re = new RegExp(`^${k}=.*$`, "m");
     if (re.test(envContent)) {
@@ -1328,6 +1329,8 @@ async function injectVite(cwd2, cfg, htmlPath) {
 `;
     }
   }
+  if (!cfg.environmentPinned)
+    envContent = dropEnvLine(envContent);
   await fs4.writeFile(envPath, envContent, "utf8");
   modified.push(".env");
   for (const example of [".env.example", ".env.sample"]) {
@@ -1335,8 +1338,9 @@ async function injectVite(cwd2, cfg, htmlPath) {
     let exContent = await fs4.readFile(exPath, "utf8").catch(() => null);
     if (exContent !== null) {
       const exVars = { ...envVars, VITE_POINTER_ENABLED: "false" };
-      for (const k of ["VITE_POINTER_SERVER", "VITE_POINTER_PROJECT", "VITE_POINTER_ENV"]) {
-        exVars[k] = "";
+      for (const k of Object.keys(exVars)) {
+        if (k !== "VITE_POINTER_ENABLED")
+          exVars[k] = "";
       }
       for (const [k, v] of Object.entries(exVars)) {
         const re = new RegExp(`^${k}=.*$`, "m");
@@ -1347,11 +1351,16 @@ async function injectVite(cwd2, cfg, htmlPath) {
 `;
         }
       }
+      if (!cfg.environmentPinned)
+        exContent = dropEnvLine(exContent);
       await fs4.writeFile(exPath, exContent, "utf8");
       modified.push(example);
     }
   }
   return modified;
+}
+function dropEnvLine(content) {
+  return content.replace(/^VITE_POINTER_ENV=.*\n?/m, "");
 }
 
 // src/inject/source-map.ts
@@ -2835,7 +2844,7 @@ and the pointer-init skill uses them to mount the widget for you afterwards.
       if (!isJson)
         console.log(`Injected widget into ${htmlPath}`);
     } else if (appInfo.kind === "vite") {
-      filesMod = await injectVite(cwd2, { server, key: finalProjectKey, environment: env, pin }, options["html"]);
+      filesMod = await injectVite(cwd2, { server, key: finalProjectKey, environment: env, pin, environmentPinned }, options["html"]);
       injected = true;
       if (!isJson)
         console.log(`Injected widget into ${filesMod.join(", ")}`);

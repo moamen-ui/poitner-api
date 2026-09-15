@@ -132,8 +132,8 @@ note in Step 4. Without the stamp, applies still work but can't jump straight to
 
 > **Env-var naming is stack-specific — use the prefix the detected stack exposes to the browser, not a
 > fixed `VITE_` one.** Browsers can't read raw env vars, so each bundler only exposes vars carrying its
-> own prefix. Map the four logical keys (`*_POINTER_ENABLED`, `*_POINTER_SERVER`, `*_POINTER_PROJECT`,
-> `*_POINTER_ENV`) onto the host's convention:
+> own prefix. Map the three logical keys (`*_POINTER_ENABLED`, `*_POINTER_SERVER`, `*_POINTER_PROJECT`)
+> onto the host's convention:
 >
 > | Detected stack | Prefix to use | Read in code as |
 > |---|---|---|
@@ -145,6 +145,13 @@ note in Step 4. Without the stamp, applies still work but can't jump straight to
 > | Plain HTML / static | — (no env) | hardcode attributes, or use `embed.js` (3e) |
 >
 > Whichever you pick, **mirror it in `.env.example`** so the names match what the code reads.
+>
+> **There is no environment key and no `environment` attribute.** The server resolves the environment
+> of every comment from the page origin, matched against the URLs registered for the project (the
+> dashboard's Projects → App URLs). One build therefore reports the right environment on local, staging
+> and production without carrying any of them. Only `pointer init --environment <name>` pins an
+> install to one environment, and then the CLI writes the attribute (and `VITE_POINTER_ENV`) itself.
+> Do not add `*_POINTER_ENV`; if you find one from an older install, remove it.
 
 ### 3a. Vite
 
@@ -167,7 +174,6 @@ Add to `index.html` before `</body>`:
       var el = document.createElement('pointer-feedback');
       el.setAttribute('project', '%VITE_POINTER_PROJECT%');
       el.setAttribute('server', '%VITE_POINTER_SERVER%');
-      el.setAttribute('environment', '%VITE_POINTER_ENV%');
       document.body.appendChild(el);
     };
     if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', mount);
@@ -182,7 +188,6 @@ Add the env keys to `.env` (and document them in `.env.example`):
 VITE_POINTER_ENABLED=true
 VITE_POINTER_SERVER=<POINTER_SERVER>          # deployed <POINTER_PRODUCT> URL; http://localhost:8090 only for local dev
 VITE_POINTER_PROJECT=<project-key>
-VITE_POINTER_ENV=staging
 ```
 
 Vite substitutes `%VITE_*%` in `index.html`; the `enabled` guard means a production build with
@@ -355,7 +360,6 @@ webpack `DefinePlugin`/`EnvironmentPlugin` defines.
       var el = document.createElement('pointer-feedback');
       el.setAttribute('project', '%REACT_APP_POINTER_PROJECT%');
       el.setAttribute('server', '%REACT_APP_POINTER_SERVER%');
-      el.setAttribute('environment', '%REACT_APP_POINTER_ENV%');
       document.body.appendChild(el);
     };
     if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', mount);
@@ -373,7 +377,6 @@ from JavaScript — do not do it silently, and never as the default.
 REACT_APP_POINTER_ENABLED=true
 REACT_APP_POINTER_SERVER=<POINTER_SERVER>     # http://localhost:8090 only for local dev
 REACT_APP_POINTER_PROJECT=<project-key>
-REACT_APP_POINTER_ENV=staging
 ```
 
 ### 3g. Server-rendered / MVC

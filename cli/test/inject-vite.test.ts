@@ -29,3 +29,31 @@ test('injectVite idempotency and .env upsert', async () => {
         await fs.rm(dir, { recursive: true, force: true });
     }
 });
+
+test('injectVite writes no VITE_POINTER_ENV unless the environment is pinned, and drops a stale one', async () => {
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'pointer-test-vite-env-'));
+    try {
+        await fs.writeFile(path.join(dir, 'index.html'), '<html><body>Hello</body></html>');
+        // An older init wrote the env var; the widget no longer reads it (environment is resolved
+        // from the page origin server-side), so a re-run must remove it rather than keep it current.
+        await fs.writeFile(path.join(dir, '.env'), 'VITE_POINTER_ENV=staging\nOTHER=1\n');
+        await fs.writeFile(path.join(dir, '.env.example'), 'VITE_POINTER_ENV=\n');
+
+        await injectVite(dir, { server: 's', key: 'k', environment: 'local' });
+        const env = await fs.readFile(path.join(dir, '.env'), 'utf8');
+        assert.doesNotMatch(env, /VITE_POINTER_ENV/);
+        assert.match(env, /OTHER=1/);
+        assert.match(env, /VITE_POINTER_PROJECT=k/);
+        const ex = await fs.readFile(path.join(dir, '.env.example'), 'utf8');
+        assert.doesNotMatch(ex, /VITE_POINTER_ENV/);
+        assert.match(ex, /VITE_POINTER_PROJECT=/);
+
+        // `--environment` given → pinned → the var is written so the snippet's attribute resolves.
+        await injectVite(dir, { server: 's', key: 'k', environment: 'staging', environmentPinned: true });
+        const pinned = await fs.readFile(path.join(dir, '.env'), 'utf8');
+        assert.match(pinned, /^VITE_POINTER_ENV=staging$/m);
+        assert.strictEqual(pinned.match(/VITE_POINTER_ENV/g)?.length, 1);
+    } finally {
+        await fs.rm(dir, { recursive: true, force: true });
+    }
+});

@@ -42,6 +42,11 @@
     "prepublishOnly": "npm run typecheck && npm test && npm run build"
   },
   "devDependencies": {
+    "@babel/generator": "^7.29.8",
+    "@babel/parser": "^7.29.8",
+    "@babel/traverse": "^7.29.8",
+    "@types/babel__generator": "^7.27.0",
+    "@types/babel__traverse": "^7.28.0",
     "@types/node": "^18.19.130",
     "esbuild": "^0.20.2",
     "tsx": "^4.23.13",
@@ -56,9 +61,9 @@
     "./package.json": "./package.json"
   },
   "peerDependencies": {
-    "@babel/parser": ">=7",
-    "@babel/traverse": ">=7",
-    "@babel/generator": ">=7"
+    "@babel/generator": ">=7 <8",
+    "@babel/parser": ">=7 <8",
+    "@babel/traverse": ">=7 <8"
   },
   "peerDependenciesMeta": {
     "@babel/parser": {

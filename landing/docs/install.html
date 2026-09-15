@@ -174,7 +174,7 @@
       </p>
       <ul>
         <li>
-          <strong>Vite</strong>: Injects an environment-guarded script snippet into <code>index.html</code> reading from <code>%VITE_POINTER_*%</code> placeholders, and sets <code>VITE_POINTER_ENABLED=true</code>, <code>VITE_POINTER_SERVER</code>, <code>VITE_POINTER_PROJECT</code>, and <code>VITE_POINTER_ENV</code> in your <code>.env</code> file (plus stub entries in <code>.env.example</code>). This prevents hard-coding production URLs into local builds.
+          <strong>Vite</strong>: Injects an environment-guarded script snippet into <code>index.html</code> reading from <code>%VITE_POINTER_*%</code> placeholders, and sets <code>VITE_POINTER_ENABLED=true</code>, <code>VITE_POINTER_SERVER</code> and <code>VITE_POINTER_PROJECT</code> in your <code>.env</code> file (plus stub entries in <code>.env.example</code>). There is no environment variable: the server resolves each comment's environment from the page origin against the project's registered app URLs, so one build is right everywhere. This prevents hard-coding production URLs into local builds.
         </li>
         <li>
           <strong>Static HTML</strong>: Injects the <code>&lt;script src=".../pointer.js" defer&gt;&lt;/script&gt;</code> tag and <code>&lt;pointer-feedback ...&gt;</code> element directly before the closing <code>&lt;/body&gt;</code> tag of your <code>index.html</code> (or the file passed to <code>--html</code>).

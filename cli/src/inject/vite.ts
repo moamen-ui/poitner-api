@@ -10,6 +10,13 @@ export async function injectVite(
         environment: string;
         /** Forwarded to the injector — see injectStatic's `pin`. */
         pin?: { version: string; integrity: string } | null;
+        /**
+         * `--environment` was given, so the install is deliberately pinned to one environment and
+         * VITE_POINTER_ENV is written for the snippet's `environment` attribute. Otherwise the
+         * environment is resolved by the server from the page origin, nothing in the app carries
+         * it, and any VITE_POINTER_ENV left by an older init is removed.
+         */
+        environmentPinned?: boolean;
     },
     htmlPath?: string,
 ): Promise<string[]> {
@@ -23,12 +30,12 @@ export async function injectVite(
     const envPath = join(cwd, '.env');
     let envContent = await fs.readFile(envPath, 'utf8').catch(() => '');
     
-    const envVars = {
+    const envVars: Record<string, string> = {
         VITE_POINTER_ENABLED: 'true',
         VITE_POINTER_SERVER: cfg.server,
         VITE_POINTER_PROJECT: cfg.key,
-        VITE_POINTER_ENV: cfg.environment
     };
+    if (cfg.environmentPinned) envVars.VITE_POINTER_ENV = cfg.environment;
     
     for (const [k, v] of Object.entries(envVars)) {
         const re = new RegExp(`^${k}=.*$`, 'm');
@@ -38,6 +45,7 @@ export async function injectVite(
             envContent += `${envContent.endsWith('\n') || envContent === '' ? '' : '\n'}${k}=${v}\n`;
         }
     }
+    if (!cfg.environmentPinned) envContent = dropEnvLine(envContent);
     await fs.writeFile(envPath, envContent, 'utf8');
     modified.push('.env');
     
@@ -46,9 +54,9 @@ export async function injectVite(
         const exPath = join(cwd, example);
         let exContent = await fs.readFile(exPath, 'utf8').catch(() => null);
         if (exContent !== null) {
-            const exVars = { ...envVars, VITE_POINTER_ENABLED: 'false' };
-            for (const k of ['VITE_POINTER_SERVER', 'VITE_POINTER_PROJECT', 'VITE_POINTER_ENV']) {
-                exVars[k as keyof typeof exVars] = '';
+            const exVars: Record<string, string> = { ...envVars, VITE_POINTER_ENABLED: 'false' };
+            for (const k of Object.keys(exVars)) {
+                if (k !== 'VITE_POINTER_ENABLED') exVars[k] = '';
             }
             for (const [k, v] of Object.entries(exVars)) {
                 const re = new RegExp(`^${k}=.*$`, 'm');
@@ -58,10 +66,16 @@ export async function injectVite(
                     exContent += `${exContent.endsWith('\n') || exContent === '' ? '' : '\n'}${k}=${v}\n`;
                 }
             }
+            if (!cfg.environmentPinned) exContent = dropEnvLine(exContent);
             await fs.writeFile(exPath, exContent, 'utf8');
             modified.push(example);
         }
     }
     
     return modified;
+}
+
+/** Removes a `VITE_POINTER_ENV=…` line left behind by an init that predates origin-resolved environments. */
+function dropEnvLine(content: string): string {
+    return content.replace(/^VITE_POINTER_ENV=.*\n?/m, '');
 }

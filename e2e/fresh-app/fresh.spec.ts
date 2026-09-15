@@ -197,7 +197,8 @@ test('R2-00-01 — fresh-app: vite', async ({ page }) => {
     expect(envContent).toContain('VITE_POINTER_ENABLED=true');
     expect(envContent).toContain(`VITE_POINTER_SERVER=${SERVER}`);
     expect(envContent).toContain(`VITE_POINTER_PROJECT=${createdProjectKey}`);
-    expect(envContent).toContain('VITE_POINTER_ENV=local');
+    // No environment in .env: the server resolves it from the page origin (only `--environment` pins one).
+    expect(envContent).not.toContain('VITE_POINTER_ENV');
 
     // Run doctor --json
     const docRes = await spawnCli({
@@ -1098,7 +1099,6 @@ test('R1-02-01 — init-vite-no-ai', async () => {
       ['VITE_POINTER_ENABLED', 'true'],
       ['VITE_POINTER_SERVER', SERVER],
       ['VITE_POINTER_PROJECT', createdProjectKey],
-      ['VITE_POINTER_ENV', 'local'],
     ]) {
       const hits = env.split('\n').filter((l) => l.trim().startsWith(`${key}=`));
       expect(hits, `${key} must appear exactly once in .env`).toHaveLength(1);

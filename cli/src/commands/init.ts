@@ -416,7 +416,7 @@ export async function initCommand(cwd: string, options: Record<string, string | 
             injected = true;
             if (!isJson) console.log(`Injected widget into ${htmlPath}`);
         } else if (appInfo.kind === 'vite') {
-            filesMod = await injectVite(cwd, { server: server as string, key: finalProjectKey, environment: env, pin }, options['html'] as string);
+            filesMod = await injectVite(cwd, { server: server as string, key: finalProjectKey, environment: env, pin, environmentPinned }, options['html'] as string);
             injected = true;
             if (!isJson) console.log(`Injected widget into ${filesMod.join(', ')}`);
         } else if (appInfo.kind === 'static') {
