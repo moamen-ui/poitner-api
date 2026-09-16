@@ -61,6 +61,43 @@ public class ProjectAppUrlEnvironmentGuardTests
     }
 
     [Fact]
+    public async Task SetAppUrl_AfterDelete_RevivesTheSoftDeletedRow_InsteadOfInsertingADuplicate()
+    {
+        // Prod 2026-09-16: removing a project's "local" URL and adding it back returned 500 — the
+        // delete is soft, the (project, environment) index is unique, and Set only looked at live rows.
+        var dbName = Guid.NewGuid().ToString();
+        var tenant = Guid.NewGuid();
+        var admin = new FakeCurrentUser { Id = Guid.NewGuid(), IsAdmin = true, TenantId = tenant };
+
+        int envId;
+        using (var db = BuildContext(admin, dbName))
+        {
+            var env = new AppEnvironment { Name = "local", OwnerId = null, IsEnabled = true };
+            db.AppEnvironments.Add(env);
+            db.SaveChanges();
+            envId = env.Id;
+        }
+
+        var svc = new ProjectService(new UnitOfWork(BuildContext(admin, dbName)), admin, new PassThroughEntitlements(), TestProjectServiceDeps.Settings(), TestProjectServiceDeps.Configuration());
+        var created = await svc.CreateAsync(new CreateProjectRequest { Key = "p", Name = "P", AppUrl = "http://localhost:4205", AppEnvironmentId = envId });
+        Assert.True(created.IsSuccess);
+        var projectId = created.Data!.Id;
+
+        Assert.True((await svc.DeleteAppUrlAsync(projectId, envId)).IsSuccess);
+        var readded = await svc.SetAppUrlAsync(projectId, envId, new SetProjectAppUrlRequest { Url = "http://localhost:4205", IsActive = true });
+
+        Assert.True(readded.IsSuccess, readded.Message);
+        using (var db = BuildContext(admin, dbName))
+        {
+            var rows = db.ProjectAppUrls.Where(u => u.ProjectId == projectId && u.AppEnvironmentId == envId).ToList();
+            Assert.Single(rows);
+            Assert.Null(rows[0].DeletedAt);
+            Assert.Equal("http://localhost:4205", rows[0].Url);
+            Assert.True(rows[0].IsActive);
+        }
+    }
+
+    [Fact]
     public async Task CreateAsync_MissingEnvironment_ReturnsNotFound()
     {
         var dbName = Guid.NewGuid().ToString();

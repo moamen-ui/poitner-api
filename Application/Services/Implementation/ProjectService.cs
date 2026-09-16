@@ -546,15 +546,22 @@ public class ProjectService : IProjectService
                 $"That URL is already registered for the \"{conflicting.EnvName}\" environment of this project. " +
                 "Each environment needs its own URL, otherwise a comment cannot be attributed to one of them.");
 
+        // Including soft-deleted rows on purpose. Delete is a soft delete, and (ProjectId,
+        // AppEnvironmentId) is unique, so "remove the local URL, then add it again" must revive the
+        // old row — inserting a second one threw a duplicate-key error the user saw as a bare 500
+        // (prod, project 70, 2026-09-16). Live row → update; soft-deleted row → undelete + update.
         var existing = await _unitOfWork.Repository<ProjectAppUrl>()
             .Query()
-            .Where(u => u.ProjectId == projectId && u.AppEnvironmentId == environmentId && u.DeletedAt == null)
+            .Where(u => u.ProjectId == projectId && u.AppEnvironmentId == environmentId)
+            .OrderBy(u => u.DeletedAt == null ? 0 : 1)
             .FirstOrDefaultAsync();
 
         if (existing != null)
         {
             existing.Url = url;
             existing.IsActive = request.IsActive;
+            existing.DeletedAt = null;
+            existing.DeletedBy = null;
             _unitOfWork.Repository<ProjectAppUrl>().Update(existing);
         }
         else
