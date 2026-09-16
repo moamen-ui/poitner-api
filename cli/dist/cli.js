@@ -15,7 +15,7 @@ var init_build_constants = __esm({
   "src/build-constants.ts"() {
     "use strict";
     BUILD_DEFAULT_SERVER = true ? "https://api.pointer.moamen.work" : "https://api.pointer.moamen.work";
-    BUILD_CLI_VERSION = true ? "0.1.4" : "0.0.0-dev";
+    BUILD_CLI_VERSION = true ? "0.2.0" : "0.0.0-dev";
   }
 });
 
@@ -282,6 +282,9 @@ function globalCredentialsPath() {
 function globalCacheDir() {
   if (process.env.POINTER_CONFIG_DIR)
     return join10(process.env.POINTER_CONFIG_DIR, "cache");
+  if (process.platform === "win32") {
+    return join10(process.env.LOCALAPPDATA || join10(homedir(), "AppData", "Local"), "pointer", "cache");
+  }
   return join10(process.env.XDG_CACHE_HOME || join10(homedir(), ".cache"), "pointer");
 }
 function tokenCacheFile(server, apiKey) {
@@ -2454,6 +2457,7 @@ async function collectFiles(cwd2, options) {
     } catch {
       return;
     }
+    const subdirs = [];
     for (const entry of entries) {
       if (collected.length >= maxFiles || Date.now() - start >= timeoutMs)
         return;
@@ -2467,10 +2471,15 @@ async function collectFiles(cwd2, options) {
         continue;
       }
       if (stat.isDirectory()) {
-        await walk2(fullPath);
+        subdirs.push(fullPath);
       } else if (stat.isFile()) {
         collected.push(relative2(cwd2, fullPath));
       }
+    }
+    for (const sub of subdirs) {
+      if (collected.length >= maxFiles || Date.now() - start >= timeoutMs)
+        return;
+      await walk2(sub);
     }
   }
   await walk2(cwd2);
@@ -2604,7 +2613,16 @@ async function detectTailwind(cwd2, files, readFile, root = cwd2) {
   let foundConfigFile = null;
   let configAbsPath = null;
   for (const name of configNames) {
-    if (files.includes(name)) {
+    let exists = files.includes(name);
+    if (!exists) {
+      try {
+        await readFile(join12(cwd2, name));
+        exists = true;
+      } catch {
+        exists = false;
+      }
+    }
+    if (exists) {
       foundConfigFile = name;
       configAbsPath = join12(cwd2, name);
       break;

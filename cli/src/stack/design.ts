@@ -98,6 +98,11 @@ export async function collectFiles(cwd: string, options?: ScanOptions): Promise<
       return;
     }
 
+    // Files in this directory FIRST, subdirectories after. readdir order is alphabetical, so with a
+    // depth-first walk `src/` (hundreds of files) was consumed before `tailwind.config.js` at the app
+    // root and the 500-file cap was hit with the config never listed — Tailwind detection then found
+    // nothing in a real Nx app. Breadth-first keeps every top-level config file inside the cap.
+    const subdirs: string[] = [];
     for (const entry of entries) {
       if (collected.length >= maxFiles || Date.now() - start >= timeoutMs) return;
       if (IGNORED_DIRS.has(entry)) continue;
@@ -111,10 +116,14 @@ export async function collectFiles(cwd: string, options?: ScanOptions): Promise<
       }
 
       if (stat.isDirectory()) {
-        await walk(fullPath);
+        subdirs.push(fullPath);
       } else if (stat.isFile()) {
         collected.push(relative(cwd, fullPath));
       }
+    }
+    for (const sub of subdirs) {
+      if (collected.length >= maxFiles || Date.now() - start >= timeoutMs) return;
+      await walk(sub);
     }
   }
 
@@ -306,7 +315,13 @@ export async function detectTailwind(
   let foundConfigFile: string | null = null;
   let configAbsPath: string | null = null;
   for (const name of configNames) {
-    if (files.includes(name)) {
+    // Existence check rather than `files.includes`: the listing is capped and time-boxed, so a
+    // config file must never depend on having made it into that list.
+    let exists = files.includes(name);
+    if (!exists) {
+      try { await readFile(join(cwd, name)); exists = true; } catch { exists = false; }
+    }
+    if (exists) {
       foundConfigFile = name;
       configAbsPath = join(cwd, name);
       break;

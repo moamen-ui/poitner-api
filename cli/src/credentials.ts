@@ -77,6 +77,9 @@ export function globalCredentialsPath(): string {
  */
 export function globalCacheDir(): string {
   if (process.env.POINTER_CONFIG_DIR) return join(process.env.POINTER_CONFIG_DIR, 'cache');
+  if (process.platform === 'win32') {
+    return join(process.env.LOCALAPPDATA || join(homedir(), 'AppData', 'Local'), 'pointer', 'cache');
+  }
   return join(process.env.XDG_CACHE_HOME || join(homedir(), '.cache'), 'pointer');
 }
 
