@@ -111,7 +111,8 @@ Options:
   --key <key>              API key
   --project <key>          Project key
   --create <name>          Create project with name
-  --environment <list>     Environments, comma-separated: local,staging,production (default: local)
+  --environment <list>     Also activate the project for these environments (comma-separated);
+                           optional, normally managed in the dashboard
   --tool <tool>            AI tool
   --skills-dir <path>      Skills directory
   --app-url <url>          App URL

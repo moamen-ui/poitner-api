@@ -236,7 +236,6 @@ export async function runInitChecks(
   // `[tuwaiq-profile] Widget found in apps/profile/src/index.html` reads as belonging to that app.
   for (const target of multiProject ? projectTargets : [{ key: project, path: '.', environment, delivery: config.delivery } as ResolvedProject]) {
     const prefix = multiProject ? `[${target.key}] ` : '';
-    const targetEnv = target.environment || 'local';
     const appCwd = multiProject ? join(cwd, target.path) : cwd;
 
     if (token) {
@@ -246,12 +245,24 @@ export async function runInitChecks(
         if (!found) {
           checks.push({ id: 'project', status: 'error', message: `${prefix}Project ${target.key} not found in this workspace` });
         } else {
-          const activeField =
-            targetEnv === 'production' ? 'isActiveProduction' : targetEnv === 'staging' ? 'isActiveStaging' : 'isActiveLocal';
+          // Reported from the server's row alone — never gated on a configured environment.
+          // Environments and their activation are a dashboard concern now (next to the project's
+          // URLs); `init` no longer records one to check against, and a repo whose config predates
+          // that change should not have doctor keep pretending its `environment` field still means
+          // anything.
+          const activeEnvs = (['local', 'staging', 'production'] as const).filter((e) => {
+            const field = e === 'production' ? 'isActiveProduction' : e === 'staging' ? 'isActiveStaging' : 'isActiveLocal';
+            return found[field] === true;
+          });
           checks.push(
-            found[activeField] === false
-              ? { id: 'project', status: 'warn', message: `${prefix}Project inactive for ${targetEnv}` }
-              : { id: 'project', status: 'ok', message: `${prefix}Project ${target.key} active for ${targetEnv}` },
+            activeEnvs.length === 0
+              ? {
+                  id: 'project',
+                  status: 'warn',
+                  message: `${prefix}Project ${target.key} not active for any environment`,
+                  hint: 'Activate environments in the dashboard',
+                }
+              : { id: 'project', status: 'ok', message: `${prefix}Project ${target.key} active for: ${activeEnvs.join(', ')}` },
           );
         }
       } catch (err: any) {

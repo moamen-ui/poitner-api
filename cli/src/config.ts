@@ -11,7 +11,13 @@ import { join, dirname, relative, isAbsolute, sep } from 'node:path';
 export interface ProjectEntry {
   /** Repo-relative directory this app lives in, e.g. `apps/profile`. Required. */
   path: string;
+  /**
+   * @deprecated Environments and their activation live in the dashboard now, next to the project's
+   * URLs — `init` no longer asks which environment(s) an app runs in, and no longer writes this
+   * field. Still read, for an entry written by an install from before this change.
+   */
   environment?: string;
+  /** @deprecated See `environment` above — same reason, never written any more. */
   environments?: string[];
   htmlPath?: string;
   /** Overrides the repo-level default `delivery` for this app only. */
@@ -29,16 +35,20 @@ export interface PointerConfig {
    * for a given app is only ever a key inside `projects`.
    */
   project?: string;
+  /**
+   * @deprecated Environments and their activation live in the dashboard now, next to the project's
+   * URLs — `init` no longer asks which environment(s) an app runs in, and no longer writes this
+   * field (only `--environment`'s explicit, opt-in activation PATCH still reads it, transiently, at
+   * install time). Still read here, for a config written by an install from before this change.
+   */
   environment?: string;
   server?: string;
   aiTool?: string;
   skillsDir?: string;
   cliVersion?: string;
   /**
-   * Every environment this install covers, when more than one was chosen.
-   *
-   * `environment` stays the primary one — doctor, apply and the server's stack record all read a
-   * single value and predate multi-environment installs.
+   * @deprecated Every environment an install covered, when more than one was chosen. Same reason as
+   * `environment` above — never written any more, still read for backward compatibility.
    */
   environments?: string[];
   /**

@@ -1,6 +1,6 @@
 ---
 name: pointer-init
-description: Use when the user wants to add, install, init, or integrate the <POINTER_PRODUCT> feedback widget (<pointer-feedback>) into an app — e.g. "add <POINTER_PRODUCT> to this app", "set up <POINTER_PRODUCT> feedback", "integrate the feedback widget". Asks the user for the variables (project key, <POINTER_PRODUCT> server URL, environment), detects the host stack (Vite/Angular/Next/static), injects the loader, wires the env, and verifies. No build step required.
+description: Use when the user wants to add, install, init, or integrate the <POINTER_PRODUCT> feedback widget (<pointer-feedback>) into an app — e.g. "add <POINTER_PRODUCT> to this app", "set up <POINTER_PRODUCT> feedback", "integrate the feedback widget". Asks the user for the variables (project key, <POINTER_PRODUCT> server URL), detects the host stack (Vite/Angular/Next/static), injects the loader, wires the env, and verifies. No build step required.
 ---
 <!-- pointer-skill-version: <POINTER_SKILL_VERSION> -->
 
@@ -30,8 +30,6 @@ config silently splits the install in two.
 {
   "server": "https://pointer.example.com",
   "project": "my-app",
-  "environment": "local",
-  "environments": ["local", "staging", "production"],
   "htmlPath": "apps/web/src/index.html",
   "delivery": "embed"
 }
@@ -41,11 +39,10 @@ config silently splits the install in two.
 |---|---|
 | `server` | the Pointer origin — never prompt for this when it is set |
 | `project` | the project key — never prompt for this when it is set (single-project repos only — see `projects` below) |
-| `environments` | **present and longer than one → do NOT ask which environment.** Emit the runtime-resolving block (Step 3c) so one file is correct on every deployment |
-| `environment` | the single environment, when `environments` is absent |
+| `environment` / `environments` | **legacy — no longer written by `pointer init`.** Environments and their per-environment activation live in the dashboard now, next to the project's URLs; the widget resolves its environment from the page's own origin at runtime (and a signed-in reviewer can switch it from the toolbar), so **never ask which environment(s) this app runs in.** If one of these fields is present anyway (a config from an older install), ignore it for asking — it does not change what you inject either way; see Step 3's origin-mapping note |
 | `htmlPath` | where a previous run mounted the widget — edit that same file rather than choosing a new one |
 | `delivery` | how reviewers open the widget. `embed` (or absent, from an older install) ⇒ proceed with Step 3 as below. `extension` ⇒ the reviewer's browser extension injects the widget — do **NOT** inject anything; **skip Step 3** entirely and go straight to Step 4 |
-| `projects` | **a monorepo with more than one Pointer project.** When present, there is no single `project`/`environment`/`htmlPath` — each key is one app's own `{ path, environment, environments, htmlPath, delivery }`. See **Monorepo (Nx) install** below; every rule above still applies, just per app instead of once for the whole repo |
+| `projects` | **a monorepo with more than one Pointer project.** When present, there is no single `project`/`htmlPath` — each key is one app's own `{ path, htmlPath, delivery }` (an older install's entry may also carry the legacy `environment`/`environments` above). See **Monorepo (Nx) install** below; every rule above still applies, just per app instead of once for the whole repo |
 
 Ask the user **only** for a field that is genuinely missing. If there is no config file at all, fall
 back to Step 1.
@@ -55,8 +52,9 @@ set, someone already wired this app up — this run is a **join**, not a first i
 exactly what `npx pointer-feedback init` itself does in the same situation: see its `--yes`/`--json`
 `mode: 'join'` output). Concretely:
 
-- Ask the user for **nothing except the API key** (Step 4). Server, project, environment(s), AI
-  tool and delivery are all read from the config above.
+- Ask the user for **nothing except the API key** (Step 4). Server, project, AI tool and delivery
+  are all read from the config above; environments are a dashboard concern and were never part of
+  it to begin with.
 - **Skip Step 3 (inject the loader) entirely.** The `<pointer-feedback>` snippet (or, for
   `delivery: "extension"`, nothing at all) is already in the app's **committed** source — that is
   the whole point of `config.json` being committed. Re-injecting would at best duplicate the
@@ -89,10 +87,18 @@ credentials scaffold, stack detection/registration, verification — proceeds ex
 |---|---|---|
 | **Project key** | ✅ | URL-safe slug — lowercase letters, digits and dashes only, `^[a-z0-9-]+$` (e.g. `my-app`). Identifies this app's feedback. The project must already exist in the dashboard; the widget does not self-register it. |
 | **<POINTER_PRODUCT> server URL** | ✅ | The **deployed** <POINTER_PRODUCT> origin your team gave you (e.g. `https://pointer.example.com`). No trailing slash. `http://localhost:8090` only for local dev. |
-| **Environment** | optional | `local` \| `staging` \| `production` — tags each comment and seeds the toolbar's starting value. Default `staging`. Whether a signed-in stakeholder can then *switch* it is a separate, role-based server setting (project owner configurable in the dashboard) — setting this alone does **not** lock it. |
-| **Fixed environment?** | optional | Pass `fixed-environment="true"` only if this specific deployment must never allow switching regardless of role (e.g. a server-rendered embed pinned to one environment on purpose). Rare — leave unset by default so the role-based switcher (above) actually has a chance to apply. |
 | **Enabled?** | optional | Whether to mount the widget now. Default `true` for dev; usually `false` in production builds unless feedback is wanted in prod. |
 | **Screenshots?** | optional | The widget captures an element screenshot per comment by default. Pass `screenshot="false"` to disable. |
+
+**Do not ask about environments.** Environments and their per-project activation are managed in the
+dashboard, next to the project's URLs — never ask "which environment(s) does this app run in?". By
+default, do not set an `environment` attribute on `<pointer-feedback>` at all: the server resolves it
+per request from the page's own origin, matched against the URLs registered for the project, and a
+signed-in stakeholder can switch it from the toolbar (a separate, role-based server setting decides
+whether they're allowed to). Only if the user explicitly wants **this specific deployment** pinned to
+one environment — mirroring `pointer init --environment <name>` — set `environment="local|staging|
+production"` by hand, and only then consider `fixed-environment="true"` too (rare — it also disables
+the toolbar switcher, regardless of role).
 
 ## Scope rules — read before editing anything
 
@@ -485,7 +491,7 @@ copy instead:
 
 | File | Committed? | Why |
 |---|---|---|
-| `config.json` | ✅ committed | team config — server, project, environment(s), delivery |
+| `config.json` | ✅ committed | team config — server, project, delivery |
 | `stack.json` | ✅ committed | detected frontend/backend/design tokens — not a secret |
 | `credentials.env` | ❌ gitignored | only written when the key is kept repo-local instead of in the global store (`--local-credentials`, or answering "no" to `init`'s save prompt) — holds the real `POINTER_API_KEY` |
 | `pointer.sh` | ❌ gitignored | the no-Node CLI fallback; `npx pointer-feedback update` (or re-running `install.sh`) refreshes it in every clone |
@@ -637,8 +643,9 @@ driving it through this skill instead.
 
 2. **One Pointer project per app the user wants covered.** For each: pick or create its project (Step
    1's question, scoped to that app — the project must already exist in the dashboard, same rule as
-   ever), its environment(s), and its delivery (the repo's own default — see Step 1 — is the
-   suggested starting point, override only if this app genuinely differs).
+   ever) and its delivery (the repo's own default — see Step 1 — is the suggested starting point,
+   override only if this app genuinely differs). Do not ask about environments here either — same
+   rule as Step 1, per app instead of once.
 
 3. **Inject per app**, in that app's own directory — `apps/<app>/index.html`,
    `apps/<app>/src/index.html`, or wherever Step 2's detection finds it for THAT app. Never the repo
@@ -663,15 +670,13 @@ driving it through this skill instead.
      "projects": {
        "<key>": {
          "path": "apps/<app>",
-         "environment": "local",
-         "environments": ["local", "staging"],
          "htmlPath": "apps/<app>/src/index.html",
          "delivery": "embed"
        }
      }
    }
    ```
-   There is **no top-level `project`/`environment`/`htmlPath`** once `projects` exists — every app
+   There is **no top-level `project`/`htmlPath`** once `projects` exists — every app
    is a keyed entry, including one that was already set up as the (formerly) single project: if
    `config.json` currently has a plain `project` and you are adding a second app, move the existing
    one into `projects` first (best-guess `path` from its recorded `htmlPath`, or `.` if it has none

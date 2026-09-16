@@ -219,7 +219,7 @@ test('no key anywhere (env, repo, or global) hints `login`', async () => {
   }
 });
 
-test('a project that exists but is inactive for this environment warns, not errors', async () => {
+test('a project active for nothing warns, not errors, independent of any configured environment', async () => {
   const stub = await stubServer({
     'GET /api/branding': [200, {}],
     'GET /api/meta': [200, { minCliVersion: '0.0.1', serverTime: new Date().toISOString() }],
@@ -227,14 +227,35 @@ test('a project that exists but is inactive for this environment warns, not erro
     'GET /api/admin/projects': [200, [{ key: 'demo', isActiveProduction: false }]],
     'GET /pointer.js': [200, 'console.log(1)'],
   });
-  const dir = await scratch({ server: stub.url, project: 'demo', environment: 'production' }, 'ptr_good');
+  // No `environment` in config any more (the field is deprecated) — the check must not depend on
+  // one being present, or on its value, to decide the message.
+  const dir = await scratch({ server: stub.url, project: 'demo' }, 'ptr_good');
 
   const checks = await runInitChecks(dir, {}, '1.0.0');
   await stub.close();
 
   const project = checks.find((c) => c.id === 'project');
   assert.equal(project?.status, 'warn');
-  assert.match(project?.message ?? '', /inactive for production/);
+  assert.match(project?.message ?? '', /not active for any environment/);
+  assert.match(project?.hint ?? '', /dashboard/i);
+});
+
+test('a project active for several environments reports all of them, from the server row alone', async () => {
+  const stub = await stubServer({
+    'GET /api/branding': [200, {}],
+    'GET /api/meta': [200, { minCliVersion: '0.0.1', serverTime: new Date().toISOString() }],
+    'POST /api/auth/login-with-key': [200, { status: 'ok', token: 'jwt' }],
+    'GET /api/admin/projects': [200, [{ key: 'demo', isActiveLocal: true, isActiveStaging: true, isActiveProduction: false }]],
+    'GET /pointer.js': [200, 'console.log(1)'],
+  });
+  const dir = await scratch({ server: stub.url, project: 'demo' }, 'ptr_good');
+
+  const checks = await runInitChecks(dir, {}, '1.0.0');
+  await stub.close();
+
+  const project = checks.find((c) => c.id === 'project');
+  assert.equal(project?.status, 'ok');
+  assert.match(project?.message ?? '', /active for: local, staging/);
 });
 
 test('a project missing from the workspace is an error', async () => {
@@ -349,7 +370,7 @@ test('multi-project: runs project/widget/stack checks per app, keyed with [proje
   const projectChecks = checks.filter((c) => c.id === 'project');
   assert.equal(projectChecks.length, 2);
   assert.ok(projectChecks.some((c) => c.message.includes('[a]') && c.status === 'ok'));
-  assert.ok(projectChecks.some((c) => c.message.includes('[b]') && c.status === 'warn' && c.message.includes('inactive')));
+  assert.ok(projectChecks.some((c) => c.message.includes('[b]') && c.status === 'warn' && c.message.includes('not active for any environment')));
 
   const stackChecks = checks.filter((c) => c.id === 'stack');
   assert.equal(stackChecks.length, 2);

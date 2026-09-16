@@ -56,8 +56,8 @@ see **Authentication**.
 If `.pointer/config.json` already has a `server` **and** a `project` — because someone already ran
 `init` here and committed the config — a further `init` run is a **join**, not a first install:
 
-- Server, project, environment(s), AI tool and delivery are all read back from the committed
-  config; you are asked for **nothing but your API key** (`--key`, or the interactive prompt) —
+- Server, project, AI tool and delivery are all read back from the committed config; you are asked
+  for **nothing but your API key** (`--key`, or the interactive prompt) —
   and not even that if one already resolves from the environment, this repo, or (the common case,
   once you've run `pointer login` once) **this machine's global credential store**. See
   **Authentication** below.
@@ -75,6 +75,23 @@ pointer init --yes --key ptr_...        # no --project/--create needed
 
 `--json`'s output gains a `mode` field: `"install"` for a first install, `"join"` for the above. The
 human summary prints `Joined <product> project <key> as <you>` instead of `<product> is set up`.
+
+#### Environments: managed in the dashboard, not asked here
+
+`init` never asks which environment(s) an app runs in, and never writes `environment`/
+`environments` to `.pointer/config.json`. Environments and their per-project activation live in the
+dashboard, next to the project's URLs — the widget (and the Chrome extension) resolve the
+environment for a comment from the page's own URL at runtime, and a signed-in reviewer can switch it
+from the toolbar. The injected snippet correspondingly never carries a fixed `environment` attribute
+by default.
+
+`--environment <list>` (comma-separated: `local`, `staging`, `production`) remains as a deliberate,
+**optional** opt-in: given, it activates the project for exactly those environments (server-side,
+additive — it never deactivates one you didn't name) and pins the injected snippet's `environment`
+attribute to the first of them in canonical order. Omitted, nothing about environments is asked,
+activated, or recorded. A config written by a CLI from before this change may still carry
+`environment`/`environments` — those fields are read for backward compatibility (deprecated, never
+written any more).
 
 #### Delivery: embed vs. extension
 
@@ -109,19 +126,19 @@ default project** in this mode:
   "projects": {
     "tuwaiq-profile": {
       "path": "apps/profile",
-      "environment": "local",
-      "environments": ["local", "staging"],
       "htmlPath": "apps/profile/src/index.html",
       "delivery": "embed"
     },
-    "tuwaiq-landing": { "path": "apps/landing", "environment": "local" }
+    "tuwaiq-landing": { "path": "apps/landing" }
   }
 }
 ```
 
 Repo-level fields (`server`, `aiTool`, `skillsDir`, `cliVersion`, `delivery`) apply to every app
 unless a project entry overrides them. Per-project fields: `path` (repo-relative app directory,
-required), `environment`, `environments`, `htmlPath`, `delivery`.
+required), `htmlPath`, `delivery`. (`environment`/`environments` may still appear on an entry written
+by an older CLI — deprecated, read for backward compatibility only; environments now live in the
+dashboard, see above.)
 
 **Resolution order**, identical for every command that touches a project: `--project <key>` → the
 project whose `path` contains the current directory (the CLI walks up from `cwd` to the nearest

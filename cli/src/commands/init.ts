@@ -383,25 +383,31 @@ export async function initCommand(cwd: string, options: Record<string, string | 
         }
     }
 
-    // Multi-select: one codebase usually ships to more than one environment, and asking people to
-    // re-run init per environment meant three passes that each overwrote the previous one's config.
-    // `--environment` accepts a comma-separated list for the non-interactive path.
+    // Environments and their per-environment activation live in the dashboard now, next to the
+    // project's URLs — there is no "Which environment(s) does this app run in?" question any more,
+    // in either this single-project flow or the per-app one in `setupOneProject`. The widget/
+    // extension resolve the environment from the app's URL at runtime, and a signed-in reviewer can
+    // switch it from the toolbar.
+    //
+    // `--environment <list>` survives as a deliberate, EXPLICIT opt-in for the one case that still
+    // needs it: activating a project for specific environments without a trip to the dashboard.
+    // Given, it PATCHes activation exactly as before. Omitted (the default), nothing about
+    // environments is asked, activated, or written to `.pointer/config.json` — see the
+    // `environment`/`environments` fields' `@deprecated` docs in `config.ts` (still read, for
+    // installs from before this change).
     const ALL_ENVS = ['local', 'staging', 'production'];
     let envs: string[];
     let environmentPinned: boolean;
     let env: string;
-    // The project's app-urls, keyed by origin, for the (possibly multi-environment) embed snippet.
-    // Only ever populated on a fresh install — a join never injects, so there is nothing for it to
-    // feed.
-    const envMap: Record<string, string> = {};
 
     if (isJoin) {
-        // Read back, never asked, never re-activated: the environments (and their activation on the
-        // server) were already decided and applied by whoever ran `init` here first.
+        // Read back for backward compatibility only — an install from before this change may still
+        // have `environment`/`environments` recorded. A join asks nothing and activates nothing
+        // either way.
         envs = Array.isArray(config.environments) && config.environments.length
             ? config.environments
             : [config.environment || 'local'];
-        environmentPinned = true;
+        environmentPinned = Boolean(config.environment) || (Array.isArray(config.environments) && config.environments.length > 0);
         env = config.environment || envs[0] || 'local';
     } else {
         envs = String(options['environment'] ?? '')
@@ -415,81 +421,46 @@ export async function initCommand(cwd: string, options: Record<string, string | 
             process.exit(2);
         }
 
-        // No environment question at all.
-        //
-        // The environment a comment is filed under is resolved by the server from the origin it was
-        // left on, matched against the URLs registered for the project. Asking here produced a value
-        // baked into the markup that was wrong for every deployment except the one the developer
-        // happened to be thinking about — and no answer given at install time can be right for a file
-        // that ships to three environments.
-        //
-        // `--environment` survives as a deliberate override for an install that must be pinned (a
-        // server-rendered embed for one environment, say). Given, it is honoured exactly as before.
         environmentPinned = envs.length > 0;
         if (envs.length === 0) envs = ['local'];
 
-        // The primary environment: what a single-valued field means when several were chosen. First in
-        // the canonical order rather than first-picked, so `local,staging` and `staging,local` agree.
+        // The primary environment: what a single-valued field means when several were named. First in
+        // the canonical order rather than first-listed, so `local,staging` and `staging,local` agree.
+        // Only feeds injection (the pinned `environment` attribute) and `--app-url` detection below —
+        // it is never written to config.
         env = ALL_ENVS.filter((e) => envs.includes(e))[0] ?? 'local';
 
-        // Activate the project for every environment chosen.
-        //
-        // Without this the multi-select would be decoration: a project is active per environment on the
-        // server, and `doctor` reports "Project inactive for staging" for one that was never switched
-        // on. Additive — an environment already active stays active, and one not chosen is left alone
-        // rather than being switched off, because init should not silently disable an environment
-        // someone else enabled.
-        const projectRow = await api<any[]>(server as string, '/api/admin/projects', { token })
-            .then((rows) => rows.find((p) => p.key === finalProjectKey))
-            .catch(() => null);
-        if (projectRow?.id) {
-            const activation: Record<string, boolean> = {};
-            if (envs.includes('local') && !projectRow.isActiveLocal) activation['isActiveLocal'] = true;
-            if (envs.includes('staging') && !projectRow.isActiveStaging) activation['isActiveStaging'] = true;
-            if (envs.includes('production') && !projectRow.isActiveProduction) activation['isActiveProduction'] = true;
-            if (Object.keys(activation).length) {
-                try {
-                    await api(server as string, `/api/admin/projects/${projectRow.id}`, {
-                        method: 'PATCH',
-                        body: activation,
-                        token,
-                    });
-                } catch (err: any) {
-                    // A developer without project-edit rights can still install the widget; the
-                    // environment simply stays inactive until an admin enables it. Worth saying out
-                    // loud, never worth aborting for.
-                    if (!isJson) {
-                        console.error(
-                            `Note: could not activate ${Object.keys(activation).length} environment(s) for this project ` +
-                            `(${err?.message ?? err}). An admin can switch them on in the dashboard.`,
-                        );
-                    }
-                }
-            }
-        }
-
-        // Origin → environment, read from the URLs already registered against this project rather than
-        // asked for again. The widget resolves its own environment from this at runtime, so one
-        // committed index.html reports `staging` on staging and `production` on production.
-        if (projectRow?.id && envs.length > 1) {
-            try {
-                const [urls, environments] = await Promise.all([
-                    api<any[]>(server as string, `/api/admin/projects/${projectRow.id}/app-urls`, { token }),
-                    api<any[]>(server as string, '/api/admin/environments', { token }),
-                ]);
-                const nameById = new Map((environments ?? []).map((e: any) => [e.id, String(e.name ?? '').toLowerCase()]));
-                for (const row of urls ?? []) {
-                    const name = nameById.get(row.appEnvironmentId);
-                    if (!name || !row.url || !envs.includes(name)) continue;
+        if (environmentPinned) {
+            // `--environment` was given: activate the project for every environment named — additive,
+            // exactly as before. An environment already active stays active, and one not named is left
+            // alone rather than switched off.
+            const projectRow = await api<any[]>(server as string, '/api/admin/projects', { token })
+                .then((rows) => rows.find((p) => p.key === finalProjectKey))
+                .catch(() => null);
+            if (projectRow?.id) {
+                const activation: Record<string, boolean> = {};
+                if (envs.includes('local') && !projectRow.isActiveLocal) activation['isActiveLocal'] = true;
+                if (envs.includes('staging') && !projectRow.isActiveStaging) activation['isActiveStaging'] = true;
+                if (envs.includes('production') && !projectRow.isActiveProduction) activation['isActiveProduction'] = true;
+                if (Object.keys(activation).length) {
                     try {
-                        envMap[new URL(row.url).origin] = name;
-                    } catch {
-                        // A malformed URL in the dashboard should not stop an install.
+                        await api(server as string, `/api/admin/projects/${projectRow.id}`, {
+                            method: 'PATCH',
+                            body: activation,
+                            token,
+                        });
+                    } catch (err: any) {
+                        // A developer without project-edit rights can still install the widget; the
+                        // environment simply stays inactive until an admin enables it. Worth saying out
+                        // loud, never worth aborting for.
+                        if (!isJson) {
+                            console.error(
+                                `Note: could not activate ${Object.keys(activation).length} environment(s) for this project ` +
+                                `(${err?.message ?? err}). An admin can switch them on in the dashboard.`,
+                            );
+                        }
                     }
                 }
-            } catch {
-                // No rights to read them, or none configured: the block falls back to a localhost check
-                // plus the primary environment, which is still better than one baked-in value.
             }
         }
     }
@@ -623,7 +594,6 @@ export async function initCommand(cwd: string, options: Record<string, string | 
                 key: finalProjectKey,
                 environment: env,
                 pin,
-                envMap,
                 environments: envs,
                 environmentPinned,
             });
@@ -635,7 +605,7 @@ export async function initCommand(cwd: string, options: Record<string, string | 
             injected = true;
             if (!isJson) console.log(`Injected widget into ${filesMod.join(', ')}`);
         } else if (appInfo.kind === 'static') {
-            const htmlPath = await injectStatic(cwd, options['html'] as string, { server: server as string, key: finalProjectKey, environment: env, pin, envMap, environments: envs, environmentPinned });
+            const htmlPath = await injectStatic(cwd, options['html'] as string, { server: server as string, key: finalProjectKey, environment: env, pin, environments: envs, environmentPinned });
             filesMod = [htmlPath];
             injected = true;
             if (!isJson) console.log(`Injected widget into ${htmlPath}`);
@@ -745,14 +715,15 @@ export async function initCommand(cwd: string, options: Record<string, string | 
     const injectedHtml = injected
         ? filesMod.find((f) => f.toLowerCase().endsWith('.html'))?.replace(`${cwd}/`, '')
         : undefined;
+    // No `environment`/`environments` written — see `PointerConfig`'s `@deprecated` docs in
+    // config.ts. Environments and their activation are a dashboard concern now; `env`/`envs` above
+    // exist only to drive this run's injection and (opt-in, via `--environment`) activation.
     const configPatch: Record<string, unknown> = {
         server: server as string,
         project: finalProjectKey,
-        environment: env,
         aiTool: tool,
         skillsDir: options['skills-dir'] as string,
         cliVersion: BUILD_CLI_VERSION,
-        environments: envs.length > 1 ? envs : undefined,
         delivery,
     };
     if (injectedHtml !== undefined) configPatch.htmlPath = injectedHtml;
@@ -793,7 +764,9 @@ export async function initCommand(cwd: string, options: Record<string, string | 
             product,
             server,
             project: { key: finalProjectKey, name: projectName, created },
-            environment: env,
+            // Only present when `--environment` was explicitly given — environments are otherwise a
+            // dashboard concern this run never touched.
+            environment: environmentPinned ? env : undefined,
             delivery,
             extension: { storeUrl: branding.extension?.storeUrl || '', zipUrl: branding.extension?.zipUrl || '' },
             appUrl: appUrl || null,
@@ -820,7 +793,9 @@ export async function initCommand(cwd: string, options: Record<string, string | 
     const cyan = (s: string) => `\x1b[36m${s}\x1b[0m`;
     const rule = dim('─'.repeat(60));
 
-    const envLabel = envs.length > 1 ? envs.join(', ') : env;
+    // Only shown when `--environment` was explicitly given — otherwise environments are a dashboard
+    // concern this run never touched, and printing a defaulted "local" here would misstate that.
+    const envLabel = environmentPinned ? (envs.length > 1 ? envs.join(', ') : env) : null;
     const keyLine = keyLivesGlobally
         ? `this machine's global store ${dim('(~/.config/pointer/credentials.json)')}`
         : `.pointer/credentials.env ${dim('(gitignored)')}`;
@@ -829,8 +804,7 @@ export async function initCommand(cwd: string, options: Record<string, string | 
         console.log(`
 ${rule}
 ${green('✔')} ${bold(`Joined ${product} project ${finalProjectKey} as ${me?.displayName ?? 'you'}`)}
-
-  ${dim('Environment(s)')}  ${envLabel}
+${envLabel !== null ? `\n  ${dim('Environment(s)')}  ${envLabel}` : ''}
   ${dim('Server')}          ${server}
   ${dim('Key')}             ${keyLine}
   ${dim('Skills')}          ${skillFiles.length ? skillFiles.join('\n                    ') : 'installed'}
@@ -841,8 +815,7 @@ ${rule}
 ${green('✔')} ${bold(`${product} is set up`)}
 
   ${dim('Project')}       ${projectName || finalProjectKey} ${dim(`(${finalProjectKey})`)}
-  ${dim('Environments')}  ${envLabel}
-  ${dim('Server')}        ${server}
+${envLabel !== null ? `  ${dim('Environments')}  ${envLabel}\n` : ''}  ${dim('Server')}        ${server}
   ${dim('Key')}           ${keyLine}
   ${dim('Skills')}        ${skillFiles.length ? skillFiles.join('\n                ') : 'installed'}
 ${rule}`);
@@ -915,9 +888,9 @@ ${dim('  { "mcpServers": { "pointer": { "command": "npx", "args": ["-y", "pointe
 /**
  * The app-identifying phrase used in every question asked once per app during multi-project setup
  * — e.g. `apps/tuwaiq-clubs` — so a run that selected several Nx apps never asks an ambiguous
- * "this app?" once app 2 (or 3, ...)'s questions begin. One place, so all three questions
- * (`projectQuestion`, the environment multiSelect, and the delivery select in `setupOneProject`)
- * agree on the wording if it ever changes.
+ * "this app?" once app 2 (or 3, ...)'s questions begin. One place, so both questions
+ * (`projectQuestion` and the delivery select in `setupOneProject`) agree on the wording if it ever
+ * changes.
  */
 export function appLabel(appDir: string): string {
     return appDir;
@@ -1150,9 +1123,11 @@ async function resolvePin(
 }
 
 /**
- * Sets up ONE app inside a multi-project repo: picks/creates its Pointer project, its
- * environment(s), its delivery (defaulting to the repo default), injects the widget into that
- * app's own directory, detects/registers its stack, and writes `.pointer/projects/<key>.stack.json`.
+ * Sets up ONE app inside a multi-project repo: picks/creates its Pointer project, its delivery
+ * (defaulting to the repo default), injects the widget into that app's own directory, detects/
+ * registers its stack, and writes `.pointer/projects/<key>.stack.json`. Environments are never
+ * asked — `presetEnvironments` (from `--environment`) only activates the project, and nothing is
+ * recorded to config either way (see `ProjectEntry`'s `@deprecated` docs in config.ts).
  *
  * Shared by both multi-project entry points: `--path` (exactly one app, presets from flags) and
  * the interactive Nx picker (one call per selected app, nothing preset — everything asked).
@@ -1193,8 +1168,12 @@ async function setupOneProject(ctx: {
 
     const { key, name, created } = await selectOrCreateProject(server, token, ctx.isYes, ctx.presetKey, ctx.presetCreate, label);
 
+    // No "Which environment(s) does this app run in?" prompt — same product decision as the
+    // single-project flow above: environments and their activation live in the dashboard now.
+    // `--environment` (via `--path`'s preset) is the only opt-in, and it activates without asking.
     const ALL_ENVS = ['local', 'staging', 'production'];
     let envs: string[];
+    let environmentPinned: boolean;
     if (ctx.presetEnvironments !== undefined) {
         envs = ctx.presetEnvironments.split(',').map((e) => e.trim()).filter(Boolean);
         const bad = envs.find((e) => !ALL_ENVS.includes(e));
@@ -1202,25 +1181,26 @@ async function setupOneProject(ctx: {
             console.error(`Unknown environment "${bad}". Valid values: ${ALL_ENVS.join(', ')}.`);
             process.exit(2);
         }
+        environmentPinned = envs.length > 0;
         if (envs.length === 0) envs = ['local'];
-    } else if (ctx.interactive) {
-        const picked = await multiSelect(`Which environment(s) does ${label} run in?`, ALL_ENVS, ['local']);
-        envs = picked.length ? picked : ['local'];
     } else {
         envs = ['local'];
+        environmentPinned = false;
     }
     const env = ALL_ENVS.filter((e) => envs.includes(e))[0] ?? 'local';
 
-    const projectRow = await api<any[]>(server, '/api/admin/projects', { token })
-        .then((rows) => rows.find((p) => p.key === key))
-        .catch(() => null);
-    if (projectRow?.id) {
-        const activation: Record<string, boolean> = {};
-        if (envs.includes('local') && !projectRow.isActiveLocal) activation['isActiveLocal'] = true;
-        if (envs.includes('staging') && !projectRow.isActiveStaging) activation['isActiveStaging'] = true;
-        if (envs.includes('production') && !projectRow.isActiveProduction) activation['isActiveProduction'] = true;
-        if (Object.keys(activation).length) {
-            await api(server, `/api/admin/projects/${projectRow.id}`, { method: 'PATCH', body: activation, token }).catch(() => {});
+    if (environmentPinned) {
+        const projectRow = await api<any[]>(server, '/api/admin/projects', { token })
+            .then((rows) => rows.find((p) => p.key === key))
+            .catch(() => null);
+        if (projectRow?.id) {
+            const activation: Record<string, boolean> = {};
+            if (envs.includes('local') && !projectRow.isActiveLocal) activation['isActiveLocal'] = true;
+            if (envs.includes('staging') && !projectRow.isActiveStaging) activation['isActiveStaging'] = true;
+            if (envs.includes('production') && !projectRow.isActiveProduction) activation['isActiveProduction'] = true;
+            if (Object.keys(activation).length) {
+                await api(server, `/api/admin/projects/${projectRow.id}`, { method: 'PATCH', body: activation, token }).catch(() => {});
+            }
         }
     }
 
@@ -1245,12 +1225,12 @@ async function setupOneProject(ctx: {
             if (isVite) {
                 filesModified = await injectVite(
                     targetCwd,
-                    { server, key, environment: env, pin: ctx.pin, environmentPinned: envs.length > 0 },
+                    { server, key, environment: env, pin: ctx.pin, environmentPinned },
                     htmlCandidate,
                 );
             } else {
                 const p = await injectStatic(targetCwd, htmlCandidate, {
-                    server, key, environment: env, pin: ctx.pin, envMap: {}, environments: envs, environmentPinned: envs.length > 0,
+                    server, key, environment: env, pin: ctx.pin, environments: envs, environmentPinned,
                 });
                 filesModified = [p];
             }
@@ -1277,9 +1257,9 @@ async function setupOneProject(ctx: {
     const merged = mergeStack(stackMeta, serverStackResponse?.data ?? serverStackResponse, designBlock);
     await writeStackFile(cwd, merged, key);
 
+    // No `environment`/`environments` recorded — see `ProjectEntry`'s `@deprecated` docs in
+    // config.ts. `env`/`envs` above exist only to drive this call's injection and activation.
     const entry: ProjectEntry = { path: appDir };
-    if (env) entry.environment = env;
-    if (envs.length > 1) entry.environments = envs;
     if (injectedHtmlPath !== undefined) entry.htmlPath = injectedHtmlPath;
     if (delivery !== ctx.repoDefaultDelivery) entry.delivery = delivery;
 

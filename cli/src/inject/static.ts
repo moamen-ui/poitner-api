@@ -27,13 +27,6 @@ export async function injectStatic(
          * third-party script sits on a page handling real users.
          */
         pin?: { version: string; integrity: string } | null;
-        /**
-         * Origin → environment name, from the URLs registered against the project.
-         *
-         * Present (or more than one environment selected) switches the injected block to the form
-         * that resolves its environment at runtime instead of baking one in.
-         */
-        envMap?: Record<string, string>;
         /** Every environment this install covers. More than one implies the runtime-resolving form. */
         environments?: string[];
         /**

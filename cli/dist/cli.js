@@ -2198,7 +2198,6 @@ async function runInitChecks(cwd2, overrides = {}, cliVersion = "0.0.0") {
   }
   for (const target of multiProject ? projectTargets : [{ key: project, path: ".", environment, delivery: config.delivery }]) {
     const prefix = multiProject ? `[${target.key}] ` : "";
-    const targetEnv = target.environment || "local";
     const appCwd = multiProject ? join11(cwd2, target.path) : cwd2;
     if (token) {
       try {
@@ -2207,9 +2206,17 @@ async function runInitChecks(cwd2, overrides = {}, cliVersion = "0.0.0") {
         if (!found) {
           checks.push({ id: "project", status: "error", message: `${prefix}Project ${target.key} not found in this workspace` });
         } else {
-          const activeField = targetEnv === "production" ? "isActiveProduction" : targetEnv === "staging" ? "isActiveStaging" : "isActiveLocal";
+          const activeEnvs = ["local", "staging", "production"].filter((e) => {
+            const field = e === "production" ? "isActiveProduction" : e === "staging" ? "isActiveStaging" : "isActiveLocal";
+            return found[field] === true;
+          });
           checks.push(
-            found[activeField] === false ? { id: "project", status: "warn", message: `${prefix}Project inactive for ${targetEnv}` } : { id: "project", status: "ok", message: `${prefix}Project ${target.key} active for ${targetEnv}` }
+            activeEnvs.length === 0 ? {
+              id: "project",
+              status: "warn",
+              message: `${prefix}Project ${target.key} not active for any environment`,
+              hint: "Activate environments in the dashboard"
+            } : { id: "project", status: "ok", message: `${prefix}Project ${target.key} active for: ${activeEnvs.join(", ")}` }
           );
         }
       } catch (err) {
@@ -3211,10 +3218,9 @@ and the pointer-init skill uses them to mount the widget for you afterwards.
   let envs;
   let environmentPinned;
   let env;
-  const envMap = {};
   if (isJoin) {
     envs = Array.isArray(config.environments) && config.environments.length ? config.environments : [config.environment || "local"];
-    environmentPinned = true;
+    environmentPinned = Boolean(config.environment) || Array.isArray(config.environments) && config.environments.length > 0;
     env = config.environment || envs[0] || "local";
   } else {
     envs = String(options["environment"] ?? "").split(",").map((e) => e.trim()).filter(Boolean);
@@ -3227,48 +3233,31 @@ and the pointer-init skill uses them to mount the widget for you afterwards.
     if (envs.length === 0)
       envs = ["local"];
     env = ALL_ENVS.filter((e) => envs.includes(e))[0] ?? "local";
-    const projectRow = await api(server, "/api/admin/projects", { token }).then((rows) => rows.find((p) => p.key === finalProjectKey)).catch(() => null);
-    if (projectRow?.id) {
-      const activation = {};
-      if (envs.includes("local") && !projectRow.isActiveLocal)
-        activation["isActiveLocal"] = true;
-      if (envs.includes("staging") && !projectRow.isActiveStaging)
-        activation["isActiveStaging"] = true;
-      if (envs.includes("production") && !projectRow.isActiveProduction)
-        activation["isActiveProduction"] = true;
-      if (Object.keys(activation).length) {
-        try {
-          await api(server, `/api/admin/projects/${projectRow.id}`, {
-            method: "PATCH",
-            body: activation,
-            token
-          });
-        } catch (err) {
-          if (!isJson) {
-            console.error(
-              `Note: could not activate ${Object.keys(activation).length} environment(s) for this project (${err?.message ?? err}). An admin can switch them on in the dashboard.`
-            );
-          }
-        }
-      }
-    }
-    if (projectRow?.id && envs.length > 1) {
-      try {
-        const [urls, environments] = await Promise.all([
-          api(server, `/api/admin/projects/${projectRow.id}/app-urls`, { token }),
-          api(server, "/api/admin/environments", { token })
-        ]);
-        const nameById = new Map((environments ?? []).map((e) => [e.id, String(e.name ?? "").toLowerCase()]));
-        for (const row of urls ?? []) {
-          const name = nameById.get(row.appEnvironmentId);
-          if (!name || !row.url || !envs.includes(name))
-            continue;
+    if (environmentPinned) {
+      const projectRow = await api(server, "/api/admin/projects", { token }).then((rows) => rows.find((p) => p.key === finalProjectKey)).catch(() => null);
+      if (projectRow?.id) {
+        const activation = {};
+        if (envs.includes("local") && !projectRow.isActiveLocal)
+          activation["isActiveLocal"] = true;
+        if (envs.includes("staging") && !projectRow.isActiveStaging)
+          activation["isActiveStaging"] = true;
+        if (envs.includes("production") && !projectRow.isActiveProduction)
+          activation["isActiveProduction"] = true;
+        if (Object.keys(activation).length) {
           try {
-            envMap[new URL(row.url).origin] = name;
-          } catch {
+            await api(server, `/api/admin/projects/${projectRow.id}`, {
+              method: "PATCH",
+              body: activation,
+              token
+            });
+          } catch (err) {
+            if (!isJson) {
+              console.error(
+                `Note: could not activate ${Object.keys(activation).length} environment(s) for this project (${err?.message ?? err}). An admin can switch them on in the dashboard.`
+              );
+            }
           }
         }
-      } catch {
       }
     }
   }
@@ -3349,7 +3338,6 @@ and the pointer-init skill uses them to mount the widget for you afterwards.
         key: finalProjectKey,
         environment: env,
         pin,
-        envMap,
         environments: envs,
         environmentPinned
       });
@@ -3363,7 +3351,7 @@ and the pointer-init skill uses them to mount the widget for you afterwards.
       if (!isJson)
         console.log(`Injected widget into ${filesMod.join(", ")}`);
     } else if (appInfo.kind === "static") {
-      const htmlPath = await injectStatic(cwd2, options["html"], { server, key: finalProjectKey, environment: env, pin, envMap, environments: envs, environmentPinned });
+      const htmlPath = await injectStatic(cwd2, options["html"], { server, key: finalProjectKey, environment: env, pin, environments: envs, environmentPinned });
       filesMod = [htmlPath];
       injected = true;
       if (!isJson)
@@ -3440,11 +3428,9 @@ and the pointer-init skill uses them to mount the widget for you afterwards.
   const configPatch = {
     server,
     project: finalProjectKey,
-    environment: env,
     aiTool: tool,
     skillsDir: options["skills-dir"],
     cliVersion: BUILD_CLI_VERSION,
-    environments: envs.length > 1 ? envs : void 0,
     delivery
   };
   if (injectedHtml !== void 0)
@@ -3473,7 +3459,9 @@ and the pointer-init skill uses them to mount the widget for you afterwards.
       product,
       server,
       project: { key: finalProjectKey, name: projectName, created },
-      environment: env,
+      // Only present when `--environment` was explicitly given — environments are otherwise a
+      // dashboard concern this run never touched.
+      environment: environmentPinned ? env : void 0,
       delivery,
       extension: { storeUrl: branding.extension?.storeUrl || "", zipUrl: branding.extension?.zipUrl || "" },
       appUrl: appUrl || null,
@@ -3493,14 +3481,14 @@ and the pointer-init skill uses them to mount the widget for you afterwards.
   const green = (s) => `\x1B[32m${s}\x1B[0m`;
   const cyan = (s) => `\x1B[36m${s}\x1B[0m`;
   const rule = dim("\u2500".repeat(60));
-  const envLabel = envs.length > 1 ? envs.join(", ") : env;
+  const envLabel = environmentPinned ? envs.length > 1 ? envs.join(", ") : env : null;
   const keyLine = keyLivesGlobally ? `this machine's global store ${dim("(~/.config/pointer/credentials.json)")}` : `.pointer/credentials.env ${dim("(gitignored)")}`;
   if (isJoin) {
     console.log(`
 ${rule}
 ${green("\u2714")} ${bold(`Joined ${product} project ${finalProjectKey} as ${me?.displayName ?? "you"}`)}
-
-  ${dim("Environment(s)")}  ${envLabel}
+${envLabel !== null ? `
+  ${dim("Environment(s)")}  ${envLabel}` : ""}
   ${dim("Server")}          ${server}
   ${dim("Key")}             ${keyLine}
   ${dim("Skills")}          ${skillFiles.length ? skillFiles.join("\n                    ") : "installed"}
@@ -3511,8 +3499,8 @@ ${rule}
 ${green("\u2714")} ${bold(`${product} is set up`)}
 
   ${dim("Project")}       ${projectName || finalProjectKey} ${dim(`(${finalProjectKey})`)}
-  ${dim("Environments")}  ${envLabel}
-  ${dim("Server")}        ${server}
+${envLabel !== null ? `  ${dim("Environments")}  ${envLabel}
+` : ""}  ${dim("Server")}        ${server}
   ${dim("Key")}           ${keyLine}
   ${dim("Skills")}        ${skillFiles.length ? skillFiles.join("\n                ") : "installed"}
 ${rule}`);
@@ -3740,6 +3728,7 @@ async function setupOneProject(ctx) {
   const { key, name, created } = await selectOrCreateProject(server, token, ctx.isYes, ctx.presetKey, ctx.presetCreate, label);
   const ALL_ENVS = ["local", "staging", "production"];
   let envs;
+  let environmentPinned;
   if (ctx.presetEnvironments !== void 0) {
     envs = ctx.presetEnvironments.split(",").map((e) => e.trim()).filter(Boolean);
     const bad = envs.find((e) => !ALL_ENVS.includes(e));
@@ -3747,27 +3736,28 @@ async function setupOneProject(ctx) {
       console.error(`Unknown environment "${bad}". Valid values: ${ALL_ENVS.join(", ")}.`);
       process.exit(2);
     }
+    environmentPinned = envs.length > 0;
     if (envs.length === 0)
       envs = ["local"];
-  } else if (ctx.interactive) {
-    const picked = await multiSelect(`Which environment(s) does ${label} run in?`, ALL_ENVS, ["local"]);
-    envs = picked.length ? picked : ["local"];
   } else {
     envs = ["local"];
+    environmentPinned = false;
   }
   const env = ALL_ENVS.filter((e) => envs.includes(e))[0] ?? "local";
-  const projectRow = await api(server, "/api/admin/projects", { token }).then((rows) => rows.find((p) => p.key === key)).catch(() => null);
-  if (projectRow?.id) {
-    const activation = {};
-    if (envs.includes("local") && !projectRow.isActiveLocal)
-      activation["isActiveLocal"] = true;
-    if (envs.includes("staging") && !projectRow.isActiveStaging)
-      activation["isActiveStaging"] = true;
-    if (envs.includes("production") && !projectRow.isActiveProduction)
-      activation["isActiveProduction"] = true;
-    if (Object.keys(activation).length) {
-      await api(server, `/api/admin/projects/${projectRow.id}`, { method: "PATCH", body: activation, token }).catch(() => {
-      });
+  if (environmentPinned) {
+    const projectRow = await api(server, "/api/admin/projects", { token }).then((rows) => rows.find((p) => p.key === key)).catch(() => null);
+    if (projectRow?.id) {
+      const activation = {};
+      if (envs.includes("local") && !projectRow.isActiveLocal)
+        activation["isActiveLocal"] = true;
+      if (envs.includes("staging") && !projectRow.isActiveStaging)
+        activation["isActiveStaging"] = true;
+      if (envs.includes("production") && !projectRow.isActiveProduction)
+        activation["isActiveProduction"] = true;
+      if (Object.keys(activation).length) {
+        await api(server, `/api/admin/projects/${projectRow.id}`, { method: "PATCH", body: activation, token }).catch(() => {
+        });
+      }
     }
   }
   let delivery = ctx.presetDelivery ?? ctx.repoDefaultDelivery;
@@ -3789,7 +3779,7 @@ async function setupOneProject(ctx) {
       if (isVite) {
         filesModified = await injectVite(
           targetCwd,
-          { server, key, environment: env, pin: ctx.pin, environmentPinned: envs.length > 0 },
+          { server, key, environment: env, pin: ctx.pin, environmentPinned },
           htmlCandidate
         );
       } else {
@@ -3798,9 +3788,8 @@ async function setupOneProject(ctx) {
           key,
           environment: env,
           pin: ctx.pin,
-          envMap: {},
           environments: envs,
-          environmentPinned: envs.length > 0
+          environmentPinned
         });
         filesModified = [p];
       }
@@ -3825,10 +3814,6 @@ async function setupOneProject(ctx) {
   const merged = mergeStack(stackMeta, serverStackResponse?.data ?? serverStackResponse, designBlock);
   await writeStackFile(cwd2, merged, key);
   const entry = { path: appDir };
-  if (env)
-    entry.environment = env;
-  if (envs.length > 1)
-    entry.environments = envs;
   if (injectedHtmlPath !== void 0)
     entry.htmlPath = injectedHtmlPath;
   if (delivery !== ctx.repoDefaultDelivery)
@@ -11881,7 +11866,8 @@ Options:
   --key <key>              API key
   --project <key>          Project key
   --create <name>          Create project with name
-  --environment <list>     Environments, comma-separated: local,staging,production (default: local)
+  --environment <list>     Also activate the project for these environments (comma-separated);
+                           optional, normally managed in the dashboard
   --tool <tool>            AI tool
   --skills-dir <path>      Skills directory
   --app-url <url>          App URL
