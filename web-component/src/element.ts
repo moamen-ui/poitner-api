@@ -159,8 +159,12 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
         this.environmentAttr = injected.environment;
         this.environmentInt = ENV_MAP[injected.environment.toLowerCase()] || this.environmentInt;
         this.environmentExplicit = true;
-        this.hasFixedEnvironment = true;
       }
+      // A host-supplied environment is a STARTING value, not a lock. The extension's popup says
+      // "switch environment inside the widget", yet this used to set hasFixedEnvironment and the
+      // switcher rendered as plain text for every role. Only an explicit fixedEnvironment locks it —
+      // the same opt-in the `fixed-environment="true"` attribute gives an embed.
+      if (injected.fixedEnvironment === true) this.hasFixedEnvironment = true;
     }
 
     // The environment is switchable IN the widget (toolbar select) and remembered per project on

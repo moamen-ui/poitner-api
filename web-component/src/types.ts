@@ -122,6 +122,9 @@ export interface PointerInjectedConfig {
   /** Absolute URL for the widget stylesheet — set by a host (e.g. the extension) that bundles
    *  pointer.css instead of serving it, so the shadow-DOM <link> loads from the extension origin. */
   cssUrl?: string;
+  /** Lock the environment (no toolbar switcher) — the host equivalent of `fixed-environment="true"`.
+   *  Absent/false: `environment` only seeds the starting value and the viewer may switch. */
+  fixedEnvironment?: boolean;
   /** Absolute URL for the vendored snapdom script (screenshot capture), same rationale as cssUrl. */
   snapdomUrl?: string;
   /** Notification unread-count polling interval in milliseconds (defaults to 60000; e2e suite sets 1000). */
