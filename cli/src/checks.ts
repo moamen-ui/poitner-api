@@ -123,9 +123,20 @@ export async function runInitChecks(
 
   // server ------------------------------------------------------------------
   let serverReachable = false;
+  // Captured here so the extension-delivery check below can reuse it instead of a second request —
+  // this endpoint is already fetched to prove the server is reachable at all.
+  let branding: { extension?: { storeUrl?: string; zipUrl?: string } } | null = null;
   try {
     const res = await fetchWithTimeout(`${server}/api/branding`, 3000);
     serverReachable = res.ok;
+    if (res.ok) {
+      try {
+        const body = await res.json();
+        branding = body?.data !== undefined ? body.data : body;
+      } catch {
+        // Non-JSON or empty body — the extension check below just won't have a URL to report.
+      }
+    }
     checks.push(
       res.ok
         ? { id: 'server', status: 'ok', message: `Reached ${server}` }
@@ -226,6 +237,22 @@ export async function runInitChecks(
 
   // widget ------------------------------------------------------------------
   checks.push(await widgetCheck(cwd, config));
+
+  // extension ---------------------------------------------------------------
+  // Only meaningful in extension-delivery installs: the widgetCheck above already reports `ok`
+  // there (there is nothing to find in source), but the reviewer still cannot install anything
+  // until a super admin sets the Web Store URL. Non-fatal — the install itself is fine either way.
+  if (config.delivery === 'extension' && serverReachable) {
+    const storeUrl = branding?.extension?.storeUrl ?? '';
+    if (!storeUrl) {
+      checks.push({
+        id: 'extension',
+        status: 'warn',
+        message: 'Chrome Web Store URL not set',
+        hint: 'Ask the super admin to set the Chrome Web Store URL (Settings → Extension)',
+      });
+    }
+  }
 
   // widget-served -----------------------------------------------------------
   if (serverReachable) {
@@ -338,6 +365,16 @@ async function sourceMapCheck(cwd: string): Promise<CheckResult> {
  * scan does not read, so "not found" is genuinely inconclusive.
  */
 async function widgetCheck(cwd: string, config: PointerConfig = {}): Promise<CheckResult> {
+  if (config.delivery === 'extension') {
+    // Nothing was ever injected — that is the point of extension delivery, not a fault. Reporting
+    // "Widget not found" here was the exact false warning this mode exists to avoid.
+    return {
+      id: 'widget',
+      status: 'ok',
+      message: 'Extension delivery — the browser extension injects the widget; no embed expected',
+    };
+  }
+
   const detection = await detectStack(cwd).catch(() => null);
   // The recorded path first: init knows where it wrote, and in a monorepo no amount of convention
   // guessing will find apps/<app>/src/index.html.

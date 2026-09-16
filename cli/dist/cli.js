@@ -1501,7 +1501,11 @@ async function getBranding(server) {
     console.error(`${server} returned no product name \u2014 cannot continue without branding.`);
     process.exit(1);
   }
-  return { productName: branding.productName, urls: { app: branding.urls?.app ?? "" } };
+  return {
+    productName: branding.productName,
+    urls: { app: branding.urls?.app ?? "" },
+    extension: { storeUrl: branding.extension?.storeUrl ?? "", zipUrl: branding.extension?.zipUrl ?? "" }
+  };
 }
 
 // src/commands/init.ts
@@ -1634,9 +1638,17 @@ async function runInitChecks(cwd2, overrides = {}, cliVersion = "0.0.0") {
     return checks;
   }
   let serverReachable = false;
+  let branding = null;
   try {
     const res = await fetchWithTimeout(`${server}/api/branding`, 3e3);
     serverReachable = res.ok;
+    if (res.ok) {
+      try {
+        const body = await res.json();
+        branding = body?.data !== void 0 ? body.data : body;
+      } catch {
+      }
+    }
     checks.push(
       res.ok ? { id: "server", status: "ok", message: `Reached ${server}` } : { id: "server", status: "error", message: `Cannot reach ${server} (HTTP ${res.status})` }
     );
@@ -1715,6 +1727,17 @@ async function runInitChecks(cwd2, overrides = {}, cliVersion = "0.0.0") {
     }
   }
   checks.push(await widgetCheck(cwd2, config));
+  if (config.delivery === "extension" && serverReachable) {
+    const storeUrl = branding?.extension?.storeUrl ?? "";
+    if (!storeUrl) {
+      checks.push({
+        id: "extension",
+        status: "warn",
+        message: "Chrome Web Store URL not set",
+        hint: "Ask the super admin to set the Chrome Web Store URL (Settings \u2192 Extension)"
+      });
+    }
+  }
   if (serverReachable) {
     try {
       const res = await fetchWithTimeout(`${server}/pointer.js`, 3e3);
@@ -1788,6 +1811,13 @@ async function sourceMapCheck(cwd2) {
   }
 }
 async function widgetCheck(cwd2, config = {}) {
+  if (config.delivery === "extension") {
+    return {
+      id: "widget",
+      status: "ok",
+      message: "Extension delivery \u2014 the browser extension injects the widget; no embed expected"
+    };
+  }
   const detection = await detectStack(cwd2).catch(() => null);
   const candidates = [config.htmlPath, detection?.htmlPath, "index.html", "public/index.html", "src/index.html"].filter(Boolean);
   for (const rel of candidates) {
@@ -2559,6 +2589,11 @@ async function writeStackFile(cwd2, stack) {
 async function initCommand(cwd2, options = {}) {
   const isYes = options["yes"] || options["json"];
   const isJson = options["json"];
+  const deliveryFlag = options["delivery"];
+  if (deliveryFlag !== void 0 && deliveryFlag !== "embed" && deliveryFlag !== "extension") {
+    console.error(`Invalid --delivery "${deliveryFlag}". Valid values: embed, extension.`);
+    process.exit(2);
+  }
   if (isYes) {
     if (!options["key"]) {
       console.error("Missing flag: --key is required with --yes");
@@ -2801,7 +2836,6 @@ and the pointer-init skill uses them to mount the widget for you afterwards.
   }
   if (tools.length === 0)
     tools = [tool];
-  closePrompts();
   if (!isJson)
     console.log(`Detecting your stack... -> ${appInfo.kind} (${appInfo.evidence.join(", ")})`);
   let injected = false;
@@ -2825,7 +2859,16 @@ and the pointer-init skill uses them to mount the widget for you afterwards.
       process.exit(1);
     }
   }
-  if (!options["no-inject"]) {
+  let delivery = deliveryFlag === "extension" ? "extension" : "embed";
+  if (!deliveryFlag && !isYes && !options["no-inject"]) {
+    const choice = await select("How will reviewers open the feedback widget?", [
+      "Embed it in this app (recommended \u2014 works for every reviewer, no install)",
+      "Chrome extension only (no code changes; each reviewer installs the extension)"
+    ]);
+    delivery = choice.startsWith("Chrome extension") ? "extension" : "embed";
+  }
+  closePrompts();
+  if (!options["no-inject"] && delivery !== "extension") {
     const explicitHtml = options["html"];
     if (explicitHtml && appInfo.kind !== "vite") {
       const htmlPath = await injectStatic(cwd2, explicitHtml, {
@@ -2912,7 +2955,7 @@ and the pointer-init skill uses them to mount the widget for you afterwards.
   const mergedStack = mergeStack(stackMeta, serverStackResponse?.data ?? serverStackResponse, noDesign ? null : designBlock);
   await writeStackFile(cwd2, mergedStack);
   const injectedHtml = injected ? filesMod.find((f) => f.toLowerCase().endsWith(".html"))?.replace(`${cwd2}/`, "") : void 0;
-  await writeConfig(cwd2, { server, project: finalProjectKey, environment: env, aiTool: tool, skillsDir: options["skills-dir"], cliVersion: BUILD_CLI_VERSION, htmlPath: injectedHtml, environments: envs.length > 1 ? envs : void 0 });
+  await writeConfig(cwd2, { server, project: finalProjectKey, environment: env, aiTool: tool, skillsDir: options["skills-dir"], cliVersion: BUILD_CLI_VERSION, htmlPath: injectedHtml, environments: envs.length > 1 ? envs : void 0, delivery });
   filesMod.push(".pointer/config.json");
   await writeCredentials(cwd2, key, { server, project: finalProjectKey });
   filesMod.push(".pointer/credentials.env");
@@ -2934,6 +2977,8 @@ and the pointer-init skill uses them to mount the widget for you afterwards.
       server,
       project: { key: finalProjectKey, name: projectName, created },
       environment: env,
+      delivery,
+      extension: { storeUrl: branding.extension?.storeUrl || "", zipUrl: branding.extension?.zipUrl || "" },
       appUrl: appUrl || null,
       appUrlSource: source,
       aiTool: tool,
@@ -2962,7 +3007,20 @@ ${green("\u2714")} ${bold(`${product} is set up`)}
   ${dim("Key")}           .pointer/credentials.env ${dim("(gitignored)")}
   ${dim("Skills")}        ${skillFiles.length ? skillFiles.join("\n                ") : "installed"}
 ${rule}`);
-  if (injected) {
+  if (delivery === "extension") {
+    const storeUrl = branding.extension?.storeUrl || "";
+    const zipUrl = branding.extension?.zipUrl || "";
+    const installLine = storeUrl ? `  1. Install the extension: ${cyan(storeUrl)}` : `  1. ${cyan(`Your admin has not set the Chrome Web Store URL yet (${product} \u2192 Settings \u2192 Extension).`)}` + (zipUrl ? `
+     Manual install: ${zipUrl} \u2192 chrome://extensions \u2192 Load unpacked` : "");
+    console.log(`
+${bold("Next")}  Reviewers open the widget through the ${product} Chrome extension \u2014 nothing was injected.
+
+${installLine}
+  2. Extension \u2192 Options \u2192 set server ${server}; sign in with your ${product} account.
+  3. Open your app, click the extension icon, choose project ${dim(finalProjectKey)}, Activate.
+  4. Then ${bold("npx pointer-feedback list")} / ${bold("apply")} as usual.
+      ${dim(`Dashboard: ${branding.urls?.app || server}`)}`);
+  } else if (injected) {
     console.log(`
 ${bold("Next")}  Start your dev server and open the app \u2014 the ${product} button should appear.
       ${dim(`Widget mounted in ${filesMod.find((f) => f.endsWith(".html")) ?? "your HTML"}`)}
@@ -10535,6 +10593,10 @@ Options:
   --no-app-url             Skip App URL
   --html <path>            HTML file to inject into
   --no-inject              Skip injection
+  --delivery <embed|extension>  How reviewers open the widget (default: embed, asked interactively
+                           when omitted). embed = inject <pointer-feedback> into your app (today's
+                           default behaviour). extension = skip code injection; reviewers install
+                           the Chrome extension instead.
   --no-skills              Skip skills installation
   --no-design              Skip design token detection
   --source-map             Wire in the Vite plugin that stamps component source hashes

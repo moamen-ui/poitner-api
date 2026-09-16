@@ -111,6 +111,10 @@ Options:
   --no-app-url             Skip App URL
   --html <path>            HTML file to inject into
   --no-inject              Skip injection
+  --delivery <embed|extension>  How reviewers open the widget (default: embed, asked interactively
+                           when omitted). embed = inject <pointer-feedback> into your app (today's
+                           default behaviour). extension = skip code injection; reviewers install
+                           the Chrome extension instead.
   --no-skills              Skip skills installation
   --no-design              Skip design token detection
   --source-map             Wire in the Vite plugin that stamps component source hashes

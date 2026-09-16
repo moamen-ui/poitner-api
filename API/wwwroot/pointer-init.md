@@ -32,7 +32,8 @@ config silently splits the install in two.
   "project": "my-app",
   "environment": "local",
   "environments": ["local", "staging", "production"],
-  "htmlPath": "apps/web/src/index.html"
+  "htmlPath": "apps/web/src/index.html",
+  "delivery": "embed"
 }
 ```
 
@@ -43,11 +44,23 @@ config silently splits the install in two.
 | `environments` | **present and longer than one → do NOT ask which environment.** Emit the runtime-resolving block (Step 3c) so one file is correct on every deployment |
 | `environment` | the single environment, when `environments` is absent |
 | `htmlPath` | where a previous run mounted the widget — edit that same file rather than choosing a new one |
+| `delivery` | how reviewers open the widget. `embed` (or absent, from an older install) ⇒ proceed with Step 3 as below. `extension` ⇒ the reviewer's browser extension injects the widget — do **NOT** inject anything; **skip Step 3** entirely and go straight to Step 4 |
 
 Ask the user **only** for a field that is genuinely missing. If there is no config file at all, fall
 back to Step 1.
 
 ## Step 1 — Ask the user for the variables (only those Step 0 did not answer)
+
+Ask this question first, before the table below, unless Step 0 already answered it from
+`.pointer/config.json`'s `delivery` field:
+
+> **How will reviewers open the feedback widget?**
+> 1. Embed it in this app (recommended — works for every reviewer, no install) — **default**
+> 2. Chrome extension only (no code changes; each reviewer installs the extension)
+
+If the user picks option 2, treat `delivery` as `extension` for the rest of this run: **skip Step 3
+entirely** (do not inject anything into any file) and go straight to Step 4. Everything else —
+credentials scaffold, stack detection/registration, verification — proceeds exactly as for `embed`.
 
 | Variable | Required | Meaning / guidance |
 |---|---|---|
@@ -121,6 +134,9 @@ beyond that as out of scope.
 Match the env-var prefix to whichever you detect (see the naming table in Step 3).
 
 ## Step 3 — Inject the loader
+
+> **Skip this step entirely when delivery = extension** — no file in this app is touched; the
+> reviewer's Chrome extension injects the widget instead. Go straight to Step 4.
 
 The loader loads `<POINTER_SERVER>/pointer.js`, then appends a `<pointer-feedback>` element.
 
@@ -528,11 +544,26 @@ not something either skill repeats on every run.
 
 ## Step 6 — Verify
 
+**If delivery = embed** (the default):
+
 1. Start the app and ensure `<POINTER_SERVER>` is reachable.
 2. Load a page — a <POINTER_PRODUCT> toolbar appears (no login popup on load; it's deferred).
 3. Click **+ Comment** → sign in or **Create account** → click an element → leave a comment.
 4. Confirm the project appears in the <POINTER_PRODUCT> dashboard (`<POINTER_SERVER>/admin/`) with the comment.
 5. Confirm `.pointer/stack.json` exists and is staged for commit (not gitignored).
+
+**If delivery = extension:** there is nothing to find in this app's source — the widget only
+appears once a reviewer installs the Chrome extension and activates it on this app's tab, so do not
+look for a `<pointer-feedback>` element or a toolbar here. Instead:
+
+1. `GET <POINTER_SERVER>/api/branding` and read `data.extension.storeUrl`.
+2. If it is set, tell the user to install the extension from that URL, open its Options page, set
+   the server to `<POINTER_SERVER>`, sign in, then open the app, click the extension icon, pick
+   this project, and **Activate** — the toolbar then appears on that tab.
+3. If `storeUrl` is empty, tell the user: "Your admin has not set the Chrome Web Store URL yet
+   (Settings → Extension) — ask them to set it before reviewers can install the extension."
+4. Still confirm `.pointer/stack.json` exists and is staged for commit — stack registration is
+   unaffected by delivery mode.
 
 ## Notes & gotchas
 

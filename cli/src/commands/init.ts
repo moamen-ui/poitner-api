@@ -18,6 +18,12 @@ export async function initCommand(cwd: string, options: Record<string, string | 
     const isYes = options['yes'] || options['json'];
     const isJson = options['json'];
 
+    const deliveryFlag = options['delivery'] as string | undefined;
+    if (deliveryFlag !== undefined && deliveryFlag !== 'embed' && deliveryFlag !== 'extension') {
+        console.error(`Invalid --delivery "${deliveryFlag}". Valid values: embed, extension.`);
+        process.exit(2);
+    }
+
     if (isYes) {
         if (!options['key']) {
             console.error("Missing flag: --key is required with --yes");
@@ -358,10 +364,6 @@ export async function initCommand(cwd: string, options: Record<string, string | 
     }
     if (tools.length === 0) tools = [tool];
 
-    // Questioning is over; hand stdin back. The shared interface would otherwise keep the event
-    // loop alive, which only goes unnoticed because every exit path here calls process.exit.
-    closePrompts();
-    
     if (!isJson) console.log(`Detecting your stack... -> ${appInfo.kind} (${appInfo.evidence.join(', ')})`);
 
     let injected = false;
@@ -393,7 +395,25 @@ export async function initCommand(cwd: string, options: Record<string, string | 
         }
     }
 
-    if (!options['no-inject']) {
+    // How reviewers open the widget: embedded in the app (today's default), or via a Chrome
+    // extension that injects it — no code change needed. Asked right before the injection block,
+    // now that the detected stack is known, so an interactive answer is never wasted work: skip it
+    // whenever there is nothing to decide (an explicit --delivery, --yes/--json defaulting to
+    // embed, or --no-inject, which already means "no code injection" and stays embed).
+    let delivery: 'embed' | 'extension' = deliveryFlag === 'extension' ? 'extension' : 'embed';
+    if (!deliveryFlag && !isYes && !options['no-inject']) {
+        const choice = await select('How will reviewers open the feedback widget?', [
+            'Embed it in this app (recommended — works for every reviewer, no install)',
+            'Chrome extension only (no code changes; each reviewer installs the extension)',
+        ]);
+        delivery = choice.startsWith('Chrome extension') ? 'extension' : 'embed';
+    }
+
+    // Questioning is over; hand stdin back. The shared interface would otherwise keep the event
+    // loop alive, which only goes unnoticed because every exit path here calls process.exit.
+    closePrompts();
+
+    if (!options['no-inject'] && delivery !== 'extension') {
         const explicitHtml = options['html'] as string | undefined;
         // An explicitly named HTML file outranks stack detection.
         //
@@ -508,7 +528,7 @@ export async function initCommand(cwd: string, options: Record<string, string | 
     const injectedHtml = injected
         ? filesMod.find((f) => f.toLowerCase().endsWith('.html'))?.replace(`${cwd}/`, '')
         : undefined;
-    await writeConfig(cwd, { server: server as string, project: finalProjectKey, environment: env, aiTool: tool, skillsDir: options['skills-dir'] as string, cliVersion: BUILD_CLI_VERSION, htmlPath: injectedHtml, environments: envs.length > 1 ? envs : undefined });
+    await writeConfig(cwd, { server: server as string, project: finalProjectKey, environment: env, aiTool: tool, skillsDir: options['skills-dir'] as string, cliVersion: BUILD_CLI_VERSION, htmlPath: injectedHtml, environments: envs.length > 1 ? envs : undefined, delivery });
     filesMod.push('.pointer/config.json');
     // Re-write credentials now that the project key is final, so pointer.sh can resolve
     // server/project from this file in repos that have no .env (see writeCredentials).
@@ -540,6 +560,8 @@ export async function initCommand(cwd: string, options: Record<string, string | 
             server,
             project: { key: finalProjectKey, name: projectName, created },
             environment: env,
+            delivery,
+            extension: { storeUrl: branding.extension?.storeUrl || '', zipUrl: branding.extension?.zipUrl || '' },
             appUrl: appUrl || null,
             appUrlSource: source,
             aiTool: tool,
@@ -576,7 +598,22 @@ ${green('✔')} ${bold(`${product} is set up`)}
   ${dim('Skills')}        ${skillFiles.length ? skillFiles.join('\n                ') : 'installed'}
 ${rule}`);
 
-    if (injected) {
+    if (delivery === 'extension') {
+        const storeUrl = branding.extension?.storeUrl || '';
+        const zipUrl = branding.extension?.zipUrl || '';
+        const installLine = storeUrl
+            ? `  1. Install the extension: ${cyan(storeUrl)}`
+            : `  1. ${cyan(`Your admin has not set the Chrome Web Store URL yet (${product} → Settings → Extension).`)}` +
+              (zipUrl ? `\n     Manual install: ${zipUrl} → chrome://extensions → Load unpacked` : '');
+        console.log(`
+${bold('Next')}  Reviewers open the widget through the ${product} Chrome extension — nothing was injected.
+
+${installLine}
+  2. Extension → Options → set server ${server}; sign in with your ${product} account.
+  3. Open your app, click the extension icon, choose project ${dim(finalProjectKey)}, Activate.
+  4. Then ${bold('npx pointer-feedback list')} / ${bold('apply')} as usual.
+      ${dim(`Dashboard: ${branding.urls?.app || server}`)}`);
+    } else if (injected) {
         console.log(`
 ${bold('Next')}  Start your dev server and open the app — the ${product} button should appear.
       ${dim(`Widget mounted in ${filesMod.find((f) => f.endsWith('.html')) ?? 'your HTML'}`)}

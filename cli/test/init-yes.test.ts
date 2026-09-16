@@ -22,7 +22,11 @@ before(async () => {
         res.setHeader('Content-Type', 'application/json');
         
         if (req.url === '/api/branding') {
-            res.end(JSON.stringify({ productName: 'Pointer Test', urls: { app: 'http://test' } }));
+            res.end(JSON.stringify({
+                productName: 'Pointer Test',
+                urls: { app: 'http://test' },
+                extension: { storeUrl: 'https://chromewebstore.google.com/detail/test', zipUrl: '' },
+            }));
         } else if (req.url === '/api/auth/login-with-key') {
             // Models the real endpoint: an API key is exchanged for a JWT, it is NOT a bearer token.
             // The earlier stub accepted the key as `Authorization: Bearer`, which let a CLI bug
@@ -143,6 +147,55 @@ test('init --json prints JSON and nothing else', () => withTempDir(async (dir) =
   const json = JSON.parse(lines[0]);
   assert.strictEqual(json.ok, true);
   assert.strictEqual(json.project.name, "My App");
+}));
+
+test('a default --yes run records delivery: embed', () => withTempDir(async (dir) => {
+  const { stdout } = await execAsync(`node ${cliPath} init --yes --key ptr_good --create "My App" --server ${serverUrl}`, { cwd: dir });
+  assert.match(stdout, /is set up/);
+  const config = JSON.parse(await fs.readFile(path.join(dir, '.pointer/config.json'), 'utf8'));
+  assert.strictEqual(config.delivery, 'embed');
+}));
+
+test('--delivery bogus exits 2', () => withTempDir(async (dir) => {
+  try {
+    await execAsync(`node ${cliPath} init --yes --key ptr_good --create "My App" --server ${serverUrl} --delivery bogus`, { cwd: dir });
+    assert.fail('Should have exited');
+  } catch (err: any) {
+    assert.strictEqual(err.code, 2);
+    assert.match(err.stdout + err.stderr, /Invalid --delivery/);
+  }
+}));
+
+test('init --yes --delivery extension skips injection and records delivery', () => withTempDir(async (dir) => {
+  const indexPath = path.join(dir, 'index.html');
+  const original = '<html><head></head><body></body></html>';
+  await fs.writeFile(indexPath, original, 'utf8');
+
+  const { stdout } = await execAsync(
+    `node ${cliPath} init --yes --key ptr_good --create "My App" --server ${serverUrl} --delivery extension`,
+    { cwd: dir },
+  );
+
+  const html = await fs.readFile(indexPath, 'utf8');
+  assert.strictEqual(html, original, 'extension delivery must not inject anything into the app');
+  assert.doesNotMatch(html, /<pointer-feedback/);
+
+  const config = JSON.parse(await fs.readFile(path.join(dir, '.pointer/config.json'), 'utf8'));
+  assert.strictEqual(config.delivery, 'extension');
+
+  assert.match(stdout, /chromewebstore\.google\.com\/detail\/test/, 'summary must print the Web Store URL');
+}));
+
+test('init --json --delivery extension reports delivery and the extension URLs', () => withTempDir(async (dir) => {
+  const { stdout } = await execAsync(
+    `node ${cliPath} init --json --key ptr_good --create "My App" --server ${serverUrl} --delivery extension`,
+    { cwd: dir },
+  );
+  const json = JSON.parse(stdout.trim().split('\n')[0]);
+  assert.strictEqual(json.delivery, 'extension');
+  assert.strictEqual(json.extension.storeUrl, 'https://chromewebstore.google.com/detail/test');
+  assert.strictEqual(json.extension.zipUrl, '');
+  assert.strictEqual(json.injected, false);
 }));
 
 test('unknown command exits 2', () => withTempDir(async (dir) => {

@@ -23,6 +23,13 @@ export interface PointerConfig {
    * explicitly told about — in the same run that just said it injected there.
    */
   htmlPath?: string;
+  /**
+   * How reviewers open the widget: `embed` (the `<pointer-feedback>` loader is injected into the
+   * app, today's default) or `extension` (no code injection — reviewers install the Chrome
+   * extension and activate it on the tab). `init` always writes this, including `'embed'` for an
+   * embed install, so a config missing the field (written by an older CLI) can only mean `embed`.
+   */
+  delivery?: 'embed' | 'extension';
 }
 
 const CONFIG_FILE = '.pointer/config.json';

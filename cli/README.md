@@ -26,6 +26,23 @@ Set up the feedback widget in your project.
 pointer init --server https://api.pointer.moamen.work --key ptr_... --project my-project
 ```
 
+#### Delivery: embed vs. extension
+
+Interactively, `init` first asks **how reviewers will open the feedback widget**:
+
+- **Embed it in this app** (default, recommended) — today's behaviour: the `<pointer-feedback>`
+  loader is injected into your app.
+- **Chrome extension only** — no code change at all. Each reviewer installs the extension, signs
+  in, opens the app, picks the project from the extension popup and clicks **Activate**; the
+  widget is injected by the extension rather than by your app's own code.
+
+Pass `--delivery embed` or `--delivery extension` to answer non-interactively (`--yes`/`--json`
+default to `embed` and skip the question; `--no-inject` also stays `embed`, it just skips
+injection). The choice is recorded in `.pointer/config.json` as `delivery`, and `pointer doctor`'s
+widget check is mode-aware — it reports `ok` for an extension install instead of a false "widget
+not found". The Chrome Web Store URL shown at the end of an extension-mode `init` (and by `doctor`)
+comes from the server (`GET /api/branding`, a super-admin setting) at run time, never hard-coded.
+
 ### `pointer doctor`
 Diagnose an existing installation and report issues.
 - Checks config files, server reachability, API version compatibility, clock skew, and widget injection.

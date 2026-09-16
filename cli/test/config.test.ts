@@ -14,7 +14,17 @@ test('config read/write and gitignore upsert idempotency', async () => {
         await writeConfig(dir, { server: 'https://test' });
         conf = await readConfig(dir);
         assert.strictEqual(conf.server, 'https://test');
-        
+
+        // `delivery` round-trips like any other field, and a config an older CLI wrote (before this
+        // field existed) simply omits it — readers treat that absence as `embed`, not as an error.
+        assert.strictEqual(conf.delivery, undefined, 'an older config has no delivery field at all');
+        await writeConfig(dir, { delivery: 'extension' });
+        conf = await readConfig(dir);
+        assert.strictEqual(conf.delivery, 'extension');
+        await writeConfig(dir, { delivery: 'embed' });
+        conf = await readConfig(dir);
+        assert.strictEqual(conf.delivery, 'embed');
+
         await writeCredentials(dir, 'test-key');
         const creds = await fs.readFile(path.join(dir, '.pointer/credentials.env'), 'utf8');
         assert.match(creds, /POINTER_API_KEY=test-key/);
