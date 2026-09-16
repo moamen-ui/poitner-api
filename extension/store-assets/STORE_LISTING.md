@@ -50,15 +50,13 @@ Docs: https://github.com/moamen-ui/poitner-api#readme
 Privacy policy: https://pointer.moamen.work/privacy.html
 
 ## Permission justifications (paste into the review form)
-- **Host permissions / `<all_urls>`** — to inject the feedback widget into the page on tabs the user explicitly activates. (No narrower match pattern is possible — the user picks which site to activate on at runtime.)
+- **Host permissions / `<all_urls>` (optional, granted per site)** — to inject the feedback widget into the page on tabs the user explicitly activates. No narrower match pattern is possible: the user picks which site to activate, and access is requested per origin at that moment (`chrome.permissions.request`), never up front.
+- **`activeTab`** — to read the URL of the tab the user is on when they click the toolbar icon, so the popup can show which site it is and request host access for exactly that origin. Before that first grant the extension has no host permission on the site, so this is the only way to know the origin. It is never used to inject scripts or read page content — injection happens only after the user grants host access and clicks Activate.
 - **`declarativeNetRequestWithHostAccess`** — to remove the page's CSP **only on the user-activated tab** so the widget can load; the rule is scoped to that tab and removed on deactivate/close.
 - **`scripting`** — to inject the widget + bridge into the activated tab.
 - **`storage`** — to keep the user signed in (session token) and remember per-domain project preferences.
 
-Not requested: `activeTab` and `tabs` — `<all_urls>` already grants unconditional host access to every
-tab (a superset of what either would add), so declaring them alongside it would be a redundant/unused
-permission, which the review form explicitly flags for rejection. `chrome.tabs.query/reload` and the
-`onUpdated`/`onRemoved` listeners work without any `tabs`-family permission.
+Not requested: `tabs` — the per-origin host grant plus `activeTab` cover everything the popup needs; `chrome.tabs.query/reload` and the `onUpdated`/`onRemoved` listeners work without the `tabs` permission.
 
 ## Data disclosures (Privacy practices tab)
 - Collects: authentication info (login token) and user-submitted content (feedback comments + captured element metadata, including optional console/network context when "Report as a bug" is checked), sent to the user-configured Pointer server.
