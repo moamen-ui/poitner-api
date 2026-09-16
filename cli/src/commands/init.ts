@@ -24,6 +24,7 @@ import { promises as fs, existsSync } from 'node:fs';
 import { join, dirname, relative, resolve, isAbsolute, sep } from 'node:path';
 import { detectDesignTokens, summarizeDesignTokens, type DesignBlock } from '../stack/design.js';
 import { buildRequestBody, mergeStack, writeStackFile, stackFileRelPath } from '../stack/stackfile.js';
+import { resolveApiKey, saveGlobalCredential, type ApiKeySource } from '../credentials.js';
 
 export async function initCommand(cwd: string, options: Record<string, string | boolean> = {}) {
     const isYes = options['yes'] || options['json'];
@@ -56,8 +57,30 @@ export async function initCommand(cwd: string, options: Record<string, string | 
     const isJoin = !isAddProject && Boolean(config.server) && (Boolean(config.project) || configIsMulti);
     const mode: 'join' | 'install' = isJoin ? 'join' : 'install';
 
+    let server = options['server'] || config.server || process.env.POINTER_SERVER || BUILD_DEFAULT_SERVER;
+
+    if (!isYes && !options['server'] && !config.server) {
+        server = await ask('Server URL', { default: server as string });
+    }
+
+    // Resolve a key from the same three sources every other command uses — env var, this repo's
+    // `.pointer/credentials.env`, or the global per-machine store `login` writes to — BEFORE the
+    // `--yes` gate below. A join (or any run) that already has a working key on this machine must
+    // never be told `--key` is "required": that is the whole point of `login`/the global store.
+    // `--key` still wins outright when passed.
+    const localCredentialsFlag = Boolean(options['local-credentials']);
+    let key = options['key'] as string;
+    let keySource: ApiKeySource = null;
+    if (!key) {
+        const resolved = await resolveApiKey(cwd, server as string);
+        if (resolved.key) {
+            key = resolved.key;
+            keySource = resolved.source;
+        }
+    }
+
     if (isYes) {
-        if (!options['key']) {
+        if (!key) {
             console.error("Missing flag: --key is required with --yes");
             process.exit(2);
         }
@@ -68,12 +91,6 @@ export async function initCommand(cwd: string, options: Record<string, string | 
             console.error("Missing flag: --project or --create is required with --yes");
             process.exit(2);
         }
-    }
-
-    let server = options['server'] || config.server || process.env.POINTER_SERVER || BUILD_DEFAULT_SERVER;
-
-    if (!isYes && !options['server'] && !config.server) {
-        server = await ask('Server URL', { default: server as string });
     }
 
     // Refuse to run against a server that requires a newer CLI — same gate `apply`, `mcp` and
@@ -104,15 +121,14 @@ export async function initCommand(cwd: string, options: Record<string, string | 
     // would print the wrong brand to anyone who rebranded, silently.
     const product = branding.productName;
 
-    let key = options['key'] as string;
     let me: any = null;
     let token: string | undefined;
 
-    if (isYes) {
+    // A key that already resolved above (env var, repo credentials.env, or the global store) is
+    // validated silently — no prompt. This is what makes a join (or any re-run) on a machine that
+    // already ran `login` ask for nothing at all.
+    if (keySource) {
         try {
-            // An API key is not a JWT: it must be exchanged for one. Sending it as a Bearer token
-            // to /api/auth/me fails for every valid key — which unit tests against a permissive
-            // stub did not catch, but a real server does immediately.
             const login = await api<any>(server as string, '/api/auth/login-with-key', {
                 method: 'POST',
                 body: { apiKey: key },
@@ -120,22 +136,30 @@ export async function initCommand(cwd: string, options: Record<string, string | 
             if (login?.status !== 'ok' || !login?.token) throw new Error(login?.status || 'invalid');
             token = login.token;
             me = login.user ?? (await api(server as string, '/api/auth/me', { token }));
-        } catch (err: any) {
-            if (isJson) {
-                console.log(JSON.stringify({ ok: false, error: { code: 3, message: "Invalid API key" } }));
-            } else {
-                console.error("Invalid API key.");
+            if (!isJson) {
+                console.log(`Using your saved key for ${server} (${me.displayName})`);
             }
-            process.exit(3);
+        } catch {
+            // Stale/revoked: forget it and fall through exactly as if nothing had resolved — a
+            // rejected saved key is recoverable (re-enter it), not fatal.
+            key = '';
+            keySource = null;
         }
-    } else {
-        let attempts = 0;
-        while (!me) {
-            if (!key) {
-                key = await ask(`API key (from ${product} -> profile -> API key; input hidden)`, { secret: true });
-            }
+    }
+
+    // Whether THIS run had to authenticate a key it did not already trust from somewhere
+    // `resolveApiKey` would find again on its own (typed interactively, passed via --key, or a
+    // pre-resolved one that was just rejected above). Only such a key is a candidate for the
+    // save-to-global-store offer below — one that already came from the global store (or env, or
+    // the repo file) needs nothing written.
+    const freshlyAuthenticated = !me;
+
+    if (!me) {
+        if (isYes) {
             try {
-                // Same exchange as the --yes branch: key -> token -> profile.
+                // An API key is not a JWT: it must be exchanged for one. Sending it as a Bearer token
+                // to /api/auth/me fails for every valid key — which unit tests against a permissive
+                // stub did not catch, but a real server does immediately.
                 const login = await api<any>(server as string, '/api/auth/login-with-key', {
                     method: 'POST',
                     body: { apiKey: key },
@@ -144,19 +168,74 @@ export async function initCommand(cwd: string, options: Record<string, string | 
                 token = login.token;
                 me = login.user ?? (await api(server as string, '/api/auth/me', { token }));
             } catch (err: any) {
-                attempts++;
-                if (attempts >= 3) {
+                if (isJson) {
+                    console.log(JSON.stringify({ ok: false, error: { code: 3, message: "Invalid API key" } }));
+                } else {
                     console.error("Invalid API key.");
-                    process.exit(3);
                 }
-                console.error("Invalid API key.");
-                key = '';
+                process.exit(3);
             }
+        } else {
+            let attempts = 0;
+            while (!me) {
+                if (!key) {
+                    key = await ask(`API key (from ${product} -> profile -> API key; input hidden)`, { secret: true });
+                }
+                try {
+                    // Same exchange as the --yes branch: key -> token -> profile.
+                    const login = await api<any>(server as string, '/api/auth/login-with-key', {
+                        method: 'POST',
+                        body: { apiKey: key },
+                    });
+                    if (login?.status !== 'ok' || !login?.token) throw new Error(login?.status || 'invalid');
+                    token = login.token;
+                    me = login.user ?? (await api(server as string, '/api/auth/me', { token }));
+                } catch (err: any) {
+                    attempts++;
+                    if (attempts >= 3) {
+                        console.error("Invalid API key.");
+                        process.exit(3);
+                    }
+                    console.error("Invalid API key.");
+                    key = '';
+                }
+            }
+            console.log(`✔ Signed in as ${me.displayName} (${me.roleName || 'User'})`);
         }
-        console.log(`✔ Signed in as ${me.displayName} (${me.roleName || 'User'})`);
     }
 
-    await writeCredentials(cwd, key);
+    // Credential persistence.
+    //
+    // `keyLivesGlobally`: true once the key is (or already was) sitting in the global per-machine
+    // store — whether that is because it resolved from there a moment ago, or because THIS run
+    // just saved it there. Drives the human-summary "Key" line further down.
+    //
+    // `writeLocalCreds`: whether to (re)write the repo-local `.pointer/credentials.env`. A key
+    // sourced from `env` or `global` needs nothing written locally at all — it is already
+    // resolvable from wherever it came from, and duplicating it into the repo is exactly what the
+    // global store exists to avoid. A `repo` source keeps writing (idempotent — it is already a
+    // local file, and the later "rewrite with the final project key" step needs to run against it,
+    // same as always). A fresh key (no source yet) defaults to the global store too, unless
+    // `--local-credentials` was passed or — interactively — the user answered "no" below.
+    let keyLivesGlobally = keySource === 'global';
+    let writeLocalCreds = keySource !== 'global' && keySource !== 'env';
+
+    if (freshlyAuthenticated) {
+        let saveGlobally = !localCredentialsFlag;
+        if (saveGlobally && !isYes) {
+            const answer = await ask('Save this key for all repos on this machine? (Y/n)', { default: 'y' });
+            saveGlobally = /^y/i.test(answer.trim());
+        }
+        if (saveGlobally) {
+            await saveGlobalCredential(server as string, { apiKey: key, email: me?.email, displayName: me?.displayName });
+            keyLivesGlobally = true;
+            writeLocalCreds = false;
+        }
+    }
+
+    if (writeLocalCreds) {
+        await writeCredentials(cwd, key);
+    }
     await upsertGitignore(cwd, product, (options['skills-dir'] as string) || config.skillsDir);
 
     // Multi-project join: the repo already has one or more apps configured under `projects`, this
@@ -217,6 +296,7 @@ export async function initCommand(cwd: string, options: Record<string, string | 
             pathFlag,
             nxApps,
             configIsMulti,
+            writeLocalCreds,
         });
         return;
     }
@@ -676,13 +756,18 @@ export async function initCommand(cwd: string, options: Record<string, string | 
     if (injectedHtml !== undefined) configPatch.htmlPath = injectedHtml;
     await writeConfig(cwd, configPatch);
     filesMod.push('.pointer/config.json');
-    // Re-write credentials now that the project key is final, so pointer.sh can resolve
-    // server/project from this file in repos that have no .env (see writeCredentials).
-    await writeCredentials(cwd, key, { server: server as string, project: finalProjectKey });
-    // Written back at line ~92, long before filesMod exists. It is the one file in this list that
-    // holds a secret, so omitting it from `--json`'s `files` is the worst omission of the set: a
-    // caller reading that list to know what to gitignore, review or clean up never sees it.
-    filesMod.push('.pointer/credentials.env');
+    if (writeLocalCreds) {
+        // Re-write credentials now that the project key is final, so pointer.sh can resolve
+        // server/project from this file in repos that have no .env (see writeCredentials). Skipped
+        // entirely when the key lives in the global store instead — there is no repo-local secret
+        // to keep in sync.
+        await writeCredentials(cwd, key, { server: server as string, project: finalProjectKey });
+        // Written back near the top of this function, long before filesMod exists. It is the one
+        // file in this list that holds a secret, so omitting it from `--json`'s `files` is the
+        // worst omission of the set: a caller reading that list to know what to gitignore, review
+        // or clean up never sees it.
+        filesMod.push('.pointer/credentials.env');
+    }
     // upsertGitignore also writes; reported for the same reason.
     filesMod.push('.gitignore');
 
@@ -734,6 +819,9 @@ export async function initCommand(cwd: string, options: Record<string, string | 
     const rule = dim('─'.repeat(60));
 
     const envLabel = envs.length > 1 ? envs.join(', ') : env;
+    const keyLine = keyLivesGlobally
+        ? `this machine's global store ${dim('(~/.config/pointer/credentials.json)')}`
+        : `.pointer/credentials.env ${dim('(gitignored)')}`;
 
     if (isJoin) {
         console.log(`
@@ -742,7 +830,7 @@ ${green('✔')} ${bold(`Joined ${product} project ${finalProjectKey} as ${me?.di
 
   ${dim('Environment(s)')}  ${envLabel}
   ${dim('Server')}          ${server}
-  ${dim('Key')}             .pointer/credentials.env ${dim('(gitignored)')}
+  ${dim('Key')}             ${keyLine}
   ${dim('Skills')}          ${skillFiles.length ? skillFiles.join('\n                    ') : 'installed'}
 ${rule}`);
     } else {
@@ -753,7 +841,7 @@ ${green('✔')} ${bold(`${product} is set up`)}
   ${dim('Project')}       ${projectName || finalProjectKey} ${dim(`(${finalProjectKey})`)}
   ${dim('Environments')}  ${envLabel}
   ${dim('Server')}        ${server}
-  ${dim('Key')}           .pointer/credentials.env ${dim('(gitignored)')}
+  ${dim('Key')}           ${keyLine}
   ${dim('Skills')}        ${skillFiles.length ? skillFiles.join('\n                ') : 'installed'}
 ${rule}`);
     }
@@ -1272,8 +1360,12 @@ async function handleMultiProjectSetup(args: {
     pathFlag?: string;
     nxApps: DiscoveredApp[];
     configIsMulti: boolean;
+    /** Whether to (re)write the repo-local `.pointer/credentials.env` — false when the caller
+     *  already resolved (or just saved) the key somewhere `resolveApiKey` will find it again on
+     *  its own (env var or the global store), so there is nothing to duplicate into the repo. */
+    writeLocalCreds: boolean;
 }): Promise<never> {
-    const { cwd, config, options, server, token, key, isJson, isYes, product, pathFlag, nxApps, configIsMulti } = args;
+    const { cwd, config, options, server, token, key, isJson, isYes, product, pathFlag, nxApps, configIsMulti, writeLocalCreds } = args;
 
     const { tool, tools } = await resolveAiTool(options, config, isYes);
     const repoDefaultDelivery = await resolveDeliveryDefault(options, config, isYes);
@@ -1382,6 +1474,7 @@ async function handleMultiProjectSetup(args: {
 
     const projectsMap: Record<string, ProjectEntry> = { ...(config.projects ?? {}) };
     let migrationNote: string | null = null;
+    let migrationOk: string | null = null;
     if (!configIsMulti && config.project) {
         const oldKey = config.project as string;
         const derivedPath = deriveAppDirFromHtmlPath(config.htmlPath);
@@ -1392,7 +1485,19 @@ async function handleMultiProjectSetup(args: {
             htmlPath: config.htmlPath,
             delivery: config.delivery,
         };
-        migrationNote = `Migrated existing project "${oldKey}" into the multi-project config with path "${derivedPath}" — please verify this path is correct.`;
+        // This same run's --path/--project can target the very project being migrated (e.g.
+        // `init --path apps/profile --project X` where X was already the single project) — the
+        // loop below then overwrites the fallback entry just written above with the real path from
+        // `--path`, so warning "please verify this path is correct" would be describing a value
+        // that no longer exists by the time config.json is written. Only warn when the migrated
+        // entry truly lands on the "." fallback: this run did not touch that project AND there was
+        // no recorded htmlPath to derive a real path from.
+        const targetedByThisRun = results.some((r) => r.key === oldKey);
+        if (targetedByThisRun) {
+            migrationOk = oldKey;
+        } else if (derivedPath === '.') {
+            migrationNote = `Migrated existing project "${oldKey}" into the multi-project config with path "${derivedPath}" — please verify this path is correct.`;
+        }
     }
     for (const r of results) projectsMap[r.key] = r.entry;
 
@@ -1405,7 +1510,9 @@ async function handleMultiProjectSetup(args: {
         projects: projectsMap,
     });
 
-    await writeCredentials(cwd, key, { server, project: results[0]?.key });
+    if (writeLocalCreds) {
+        await writeCredentials(cwd, key, { server, project: results[0]?.key });
+    }
 
     await postEvent(server, token, {
         type: 'installed',
@@ -1426,9 +1533,14 @@ async function handleMultiProjectSetup(args: {
             cliVersion: BUILD_CLI_VERSION,
         }));
     } else {
+        const migrationLine = migrationNote
+            ? `⚠ ${migrationNote}\n`
+            : migrationOk
+              ? `✔ migrated "${migrationOk}" → projects map (${projectsMap[migrationOk]?.path})\n`
+              : '';
         console.log(`
 ✔ ${product}: added ${results.length} project${results.length === 1 ? '' : 's'} — ${results.map((r) => r.key).join(', ')}
-${migrationNote ? `⚠ ${migrationNote}\n` : ''}  Config: .pointer/config.json (projects map)
+${migrationLine}  Config: .pointer/config.json (projects map)
   Stack files: ${results.map((r) => `.pointer/projects/${r.key}.stack.json`).join(', ')}`);
     }
     process.exit(0);

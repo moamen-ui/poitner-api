@@ -9,6 +9,7 @@ import { SKILL_FILES } from './skills.js';
 import { readStamp } from './lib/skill-stamp.js';
 import { skillFilesFor } from './lib/skill-paths.js';
 import { stackFileRelPath } from './stack/stackfile.js';
+import { resolveApiKey, sourceLabel } from './credentials.js';
 
 const execFileAsync = promisify(execFile);
 
@@ -76,16 +77,6 @@ async function fetchWithTimeout(url: string, ms: number, init?: RequestInit): Pr
     return await fetch(url, { ...init, signal: controller.signal });
   } finally {
     clearTimeout(timer);
-  }
-}
-
-async function readCredentialsKey(cwd: string): Promise<string | undefined> {
-  try {
-    const raw = await fs.readFile(join(cwd, '.pointer/credentials.env'), 'utf8');
-    const match = raw.match(/^POINTER_API_KEY=(.*)$/m);
-    return match?.[1]?.trim() || undefined;
-  } catch {
-    return undefined;
   }
 }
 
@@ -210,14 +201,14 @@ export async function runInitChecks(
   }
 
   // key ---------------------------------------------------------------------
-  const apiKey = await readCredentialsKey(cwd);
+  const { key: apiKey, source: apiKeySource } = await resolveApiKey(cwd, server);
   let token: string | undefined;
   if (!apiKey) {
     checks.push({
       id: 'key',
       status: 'error',
-      message: 'No POINTER_API_KEY in .pointer/credentials.env',
-      hint: 'Copy it from Profile → API key',
+      message: 'No API key found (env, repo, or global store)',
+      hint: 'Run `npx pointer-feedback login`',
     });
   } else if (!serverReachable) {
     checks.push({ id: 'key', status: 'warn', message: 'Server unreachable — key not verified' });
@@ -229,7 +220,7 @@ export async function runInitChecks(
       });
       if (login?.status === 'ok' && login.token) {
         token = login.token;
-        checks.push({ id: 'key', status: 'ok', message: 'API key accepted' });
+        checks.push({ id: 'key', status: 'ok', message: `API key accepted (${sourceLabel(apiKeySource)})` });
       } else {
         checks.push({ id: 'key', status: 'error', message: 'API key rejected', hint: 'Regenerate it in Profile → API key' });
       }

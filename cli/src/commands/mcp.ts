@@ -33,11 +33,13 @@ export async function mcpCommand(
     '';
 
   const explicitKey = typeof parsed['key'] === 'string' ? parsed['key'] : undefined;
-  const apiKey = explicitKey || (await readApiKey(root));
+  const apiKey = explicitKey || (await readApiKey(root, server));
 
   // Requirement: Fails fast with a single stderr line and exit 3 if no key
   if (!apiKey) {
-    console.error('Missing POINTER_API_KEY in .pointer/credentials.env or environment');
+    console.error(
+      'Missing API key. Set POINTER_API_KEY, add .pointer/credentials.env, or run `npx pointer-feedback login`.',
+    );
     process.exit(3);
   }
 

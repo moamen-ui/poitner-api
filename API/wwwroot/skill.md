@@ -243,12 +243,19 @@ make the `git commit` yourself (still never `git push`). Do not mix the two flow
 ## Notes
 
 - Config source of truth: `.pointer/config.json` (server, project, environment, AI tool, injected
-  HTML) — committed. The API key lives in the gitignored `.pointer/credentials.env`; never print it.
-  `.pointer/stack.json` (committed) carries the detected stack and design guidance.
+  HTML) — committed. `.pointer/stack.json` (committed) carries the detected stack and design
+  guidance.
+- The API key lives in one of three places, resolved in this order: the `POINTER_API_KEY`
+  environment variable, this repo's gitignored `.pointer/credentials.env`, or — the common case,
+  once `npx pointer-feedback login` has been run once on this machine — the global per-machine
+  store at `~/.config/pointer/credentials.json` (mode `0600`). `npx pointer-feedback whoami` reports
+  which of the three is answering, without ever printing the key itself — **never print it
+  yourself either**, whichever file or store it comes from.
 - Commit style (one vs. separate commits) is a **project setting** read live by the CLI on every
   `apply` — do not hardcode it.
-- Auth is transparent: the CLI exchanges the key for a JWT and caches it; on a `401` it re-logs in.
-  If commands keep failing, `npx pointer-feedback doctor`.
+- Auth is transparent: the CLI exchanges the key for a JWT and caches it (globally, keyed by server
+  and key — not per repo); on a `401` it re-logs in. If commands keep failing, `npx pointer-feedback
+  doctor`, or `npx pointer-feedback login` if it reports no key at all.
 - This file was installed by fetching `<POINTER_SERVER>/skill.md` into
   `.claude/skills/pointer-feedback/SKILL.md` (or `.agents/skills/pointer-feedback/SKILL.md` for
   other tools) and is yours to edit; refresh it with `npx pointer-feedback update`.

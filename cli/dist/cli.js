@@ -121,11 +121,6 @@ async function writeCredentials(cwd2, token, extra = {}) {
   if (extra.project)
     lines.push(`POINTER_PROJECT=${extra.project}`);
   await fs.writeFile(file, lines.join("\n") + "\n", { encoding: "utf8", mode: 384 });
-  const exampleFile = join(cwd2, ".pointer/credentials.env.example");
-  await fs.writeFile(exampleFile, `POINTER_API_KEY=
-POINTER_SERVER=
-POINTER_PROJECT=
-`, { encoding: "utf8" });
 }
 async function upsertGitignore(cwd2, productName = "Feedback tool", skillsDir) {
   const file = join(cwd2, ".gitignore");
@@ -234,16 +229,123 @@ var init_api = __esm({
   }
 });
 
+// src/credentials.ts
+import { promises as fs10 } from "node:fs";
+import { createHash } from "node:crypto";
+import { homedir } from "node:os";
+import { join as join10, dirname as dirname4 } from "node:path";
+function sourceLabel(source) {
+  if (source === "env")
+    return "env var";
+  if (source === "repo")
+    return "repo credentials.env";
+  if (source === "global")
+    return "global store";
+  return "none";
+}
+function normalizeServerOrigin(server) {
+  try {
+    return new URL(server).origin;
+  } catch {
+    return server.replace(/\/+$/, "");
+  }
+}
+function globalConfigDir() {
+  if (process.env.POINTER_CONFIG_DIR)
+    return process.env.POINTER_CONFIG_DIR;
+  if (process.platform === "win32") {
+    return join10(process.env.APPDATA || join10(homedir(), "AppData", "Roaming"), "pointer");
+  }
+  return join10(process.env.XDG_CONFIG_HOME || join10(homedir(), ".config"), "pointer");
+}
+function globalCredentialsPath() {
+  return join10(globalConfigDir(), "credentials.json");
+}
+function globalCacheDir() {
+  if (process.env.POINTER_CONFIG_DIR)
+    return join10(process.env.POINTER_CONFIG_DIR, "cache");
+  return join10(process.env.XDG_CACHE_HOME || join10(homedir(), ".cache"), "pointer");
+}
+function tokenCacheFile(server, apiKey) {
+  const hash = createHash("sha256").update(`${normalizeServerOrigin(server)}:${apiKey}`).digest("hex").slice(0, 32);
+  return join10(globalCacheDir(), `${hash}.json`);
+}
+async function readGlobalStore() {
+  try {
+    const raw = await fs10.readFile(globalCredentialsPath(), "utf8");
+    const parsed = JSON.parse(raw);
+    return parsed && typeof parsed === "object" ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+async function writeGlobalStore(store) {
+  const file = globalCredentialsPath();
+  await fs10.mkdir(dirname4(file), { recursive: true });
+  await fs10.writeFile(file, JSON.stringify(store, null, 2) + "\n", { encoding: "utf8", mode: 384 });
+  await fs10.chmod(file, 384).catch(() => {
+  });
+}
+async function getGlobalCredential(server) {
+  const store = await readGlobalStore();
+  return store[normalizeServerOrigin(server)];
+}
+async function saveGlobalCredential(server, entry) {
+  const store = await readGlobalStore();
+  store[normalizeServerOrigin(server)] = { ...entry, savedAt: (/* @__PURE__ */ new Date()).toISOString() };
+  await writeGlobalStore(store);
+}
+async function removeGlobalCredential(server) {
+  const store = await readGlobalStore();
+  const origin = normalizeServerOrigin(server);
+  if (!(origin in store))
+    return false;
+  delete store[origin];
+  await writeGlobalStore(store);
+  return true;
+}
+async function readRepoApiKey(root) {
+  try {
+    const raw = await fs10.readFile(join10(root, ".pointer", "credentials.env"), "utf8");
+    return raw.match(/^POINTER_API_KEY=(.*)$/m)?.[1]?.trim() || void 0;
+  } catch {
+    return void 0;
+  }
+}
+async function resolveApiKey(root, server) {
+  const envKey = process.env.POINTER_API_KEY?.trim();
+  if (envKey)
+    return { key: envKey, source: "env" };
+  const repoKey = await readRepoApiKey(root);
+  if (repoKey)
+    return { key: repoKey, source: "repo" };
+  if (server) {
+    const globalEntry = await getGlobalCredential(server);
+    if (globalEntry?.apiKey)
+      return { key: globalEntry.apiKey, source: "global" };
+  }
+  return { key: void 0, source: null };
+}
+async function removeStaleRepoTokenCache(root) {
+  await fs10.rm(join10(root, ".pointer", ".token_cache"), { force: true }).catch(() => {
+  });
+}
+var init_credentials = __esm({
+  "src/credentials.ts"() {
+    "use strict";
+  }
+});
+
 // src/vite/hash.ts
 var hash_exports = {};
 __export(hash_exports, {
   addToManifest: () => addToManifest,
   componentHash: () => componentHash
 });
-import { createHash } from "node:crypto";
+import { createHash as createHash2 } from "node:crypto";
 function componentHash(repoRelativePath, exportName) {
   const normalised = repoRelativePath.split("\\").join("/").replace(/^\.\//, "");
-  return createHash("sha1").update(`${normalised}#${exportName}`).digest("hex").slice(0, 8);
+  return createHash2("sha1").update(`${normalised}#${exportName}`).digest("hex").slice(0, 8);
 }
 function addToManifest(manifest, hash, entry) {
   const existing = manifest[hash];
@@ -425,9 +527,9 @@ __export(map_exports, {
   buildManifest: () => buildManifest,
   mapCommand: () => mapCommand
 });
-import { promises as fs13 } from "node:fs";
+import { promises as fs14 } from "node:fs";
 import { existsSync as existsSync3 } from "node:fs";
-import { join as join13, relative as relative4, resolve as resolve3 } from "node:path";
+import { join as join14, relative as relative4, resolve as resolve3 } from "node:path";
 import { execFileSync } from "node:child_process";
 function gitRoot(cwd2) {
   try {
@@ -439,7 +541,7 @@ function gitRoot(cwd2) {
 async function walk(dir, out = []) {
   let entries;
   try {
-    entries = await fs13.readdir(dir, { withFileTypes: true });
+    entries = await fs14.readdir(dir, { withFileTypes: true });
   } catch {
     return out;
   }
@@ -448,7 +550,7 @@ async function walk(dir, out = []) {
       if (SKIP_DIRS.has(entry.name))
         continue;
     }
-    const full = join13(dir, entry.name);
+    const full = join14(dir, entry.name);
     if (entry.isDirectory()) {
       if (SKIP_DIRS.has(entry.name))
         continue;
@@ -474,7 +576,7 @@ async function buildManifest(cwd2, opts = {}) {
     const relPath = toPosix(relative4(root, file));
     let code;
     try {
-      code = await fs13.readFile(file, "utf8");
+      code = await fs14.readFile(file, "utf8");
     } catch {
       continue;
     }
@@ -491,17 +593,17 @@ async function buildManifest(cwd2, opts = {}) {
     }
   }
   const target = resolve3(root, ".pointer/manifest.json");
-  await fs13.mkdir(join13(root, ".pointer"), { recursive: true });
+  await fs14.mkdir(join14(root, ".pointer"), { recursive: true });
   const prev = target.replace(/\.json$/, ".prev.json");
   if (existsSync3(target)) {
-    await fs13.copyFile(target, prev);
+    await fs14.copyFile(target, prev);
   }
   const entries = Object.fromEntries(
     Object.entries(manifest).sort(([a], [b]) => a.localeCompare(b)).map(([hash, entry]) => [hash, { path: entry.path, component: entry.export }])
   );
   const tmp = `${target}.tmp`;
-  await fs13.writeFile(tmp, JSON.stringify({ version: 1, entries }, null, 2) + "\n", "utf8");
-  await fs13.rename(tmp, target);
+  await fs14.writeFile(tmp, JSON.stringify({ version: 1, entries }, null, 2) + "\n", "utf8");
+  await fs14.rename(tmp, target);
   const count = Object.keys(entries).length;
   if (!opts.quiet) {
     console.log(
@@ -533,34 +635,25 @@ var init_map = __esm({
 });
 
 // src/auth.ts
-import { promises as fs16 } from "node:fs";
-import { join as join16 } from "node:path";
-async function readApiKey(cwd2) {
-  if (process.env.POINTER_API_KEY) {
-    return process.env.POINTER_API_KEY.trim();
-  }
-  try {
-    const raw = await fs16.readFile(join16(cwd2, ".pointer/credentials.env"), "utf8");
-    const match = raw.match(/^POINTER_API_KEY=(.*)$/m);
-    return match?.[1]?.trim() || void 0;
-  } catch {
-    return void 0;
-  }
+import { promises as fs17 } from "node:fs";
+import { dirname as dirname7 } from "node:path";
+async function readApiKey(cwd2, server) {
+  const { key } = await resolveApiKey(cwd2, server);
+  return key;
 }
 async function resolveToken(server, cwd2, explicitApiKey) {
-  const tokenCacheFile = join16(cwd2, ".pointer/.token_cache");
-  if (!explicitApiKey) {
-    try {
-      const cached = await fs16.readFile(tokenCacheFile, "utf8");
-      const token = cached.trim();
-      if (token)
-        return token;
-    } catch {
-    }
-  }
-  const apiKey = explicitApiKey || await readApiKey(cwd2);
+  await removeStaleRepoTokenCache(cwd2);
+  const apiKey = explicitApiKey || await readApiKey(cwd2, server);
   if (!apiKey)
     return void 0;
+  const cacheFile = tokenCacheFile(server, apiKey);
+  try {
+    const cached = JSON.parse(await fs17.readFile(cacheFile, "utf8"));
+    const token = typeof cached?.token === "string" ? cached.token.trim() : "";
+    if (token)
+      return token;
+  } catch {
+  }
   try {
     const login = await api(
       server,
@@ -572,8 +665,8 @@ async function resolveToken(server, cwd2, explicitApiKey) {
     );
     if (login?.token) {
       try {
-        await fs16.mkdir(join16(cwd2, ".pointer"), { recursive: true });
-        await fs16.writeFile(tokenCacheFile, login.token, "utf8");
+        await fs17.mkdir(dirname7(cacheFile), { recursive: true });
+        await fs17.writeFile(cacheFile, JSON.stringify({ token: login.token }), "utf8");
       } catch {
       }
       return login.token;
@@ -589,6 +682,7 @@ var init_auth = __esm({
   "src/auth.ts"() {
     "use strict";
     init_api();
+    init_credentials();
   }
 });
 
@@ -762,9 +856,11 @@ async function getClient(cwd2, parsed, opts = {}) {
   }
   const explicitKey = typeof parsed["key"] === "string" ? parsed["key"] : void 0;
   const token = await resolveToken(server, root, explicitKey);
-  const apiKey = explicitKey || await readApiKey(root);
+  const apiKey = explicitKey || await readApiKey(root, server);
   if (!token && !apiKey) {
-    console.error("Missing POINTER_API_KEY in .pointer/credentials.env or environment");
+    console.error(
+      "Missing API key. Set POINTER_API_KEY, add .pointer/credentials.env, or run `npx pointer-feedback login`."
+    );
     process.exit(3);
   }
   let project = "";
@@ -1772,8 +1868,8 @@ async function postEvent(server, token, payload) {
 // src/checks.ts
 init_config();
 init_api();
-import { promises as fs10 } from "node:fs";
-import { join as join10 } from "node:path";
+import { promises as fs11 } from "node:fs";
+import { join as join11 } from "node:path";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 
@@ -1956,6 +2052,7 @@ async function writeStackFile(cwd2, stack, projectKey) {
 }
 
 // src/checks.ts
+init_credentials();
 var execFileAsync = promisify(execFile);
 function tooOldMessage(cliVersion, min) {
   return `CLI ${cliVersion} is older than the server requires (${min}). Upgrade with: npx -y pointer-feedback@latest`;
@@ -1988,15 +2085,6 @@ async function fetchWithTimeout(url, ms, init) {
     return await fetch(url, { ...init, signal: controller.signal });
   } finally {
     clearTimeout(timer);
-  }
-}
-async function readCredentialsKey(cwd2) {
-  try {
-    const raw = await fs10.readFile(join10(cwd2, ".pointer/credentials.env"), "utf8");
-    const match = raw.match(/^POINTER_API_KEY=(.*)$/m);
-    return match?.[1]?.trim() || void 0;
-  } catch {
-    return void 0;
   }
 }
 async function runInitChecks(cwd2, overrides = {}, cliVersion = "0.0.0") {
@@ -2081,14 +2169,14 @@ async function runInitChecks(cwd2, overrides = {}, cliVersion = "0.0.0") {
       skewMs < 5 * 6e4 ? { id: "clock", status: "ok", message: `Clock within ${skewSeconds}s of the server` } : { id: "clock", status: "warn", message: `Clock skew ${skewSeconds}s \u2014 logins may fail` }
     );
   }
-  const apiKey = await readCredentialsKey(cwd2);
+  const { key: apiKey, source: apiKeySource } = await resolveApiKey(cwd2, server);
   let token;
   if (!apiKey) {
     checks.push({
       id: "key",
       status: "error",
-      message: "No POINTER_API_KEY in .pointer/credentials.env",
-      hint: "Copy it from Profile \u2192 API key"
+      message: "No API key found (env, repo, or global store)",
+      hint: "Run `npx pointer-feedback login`"
     });
   } else if (!serverReachable) {
     checks.push({ id: "key", status: "warn", message: "Server unreachable \u2014 key not verified" });
@@ -2100,7 +2188,7 @@ async function runInitChecks(cwd2, overrides = {}, cliVersion = "0.0.0") {
       });
       if (login?.status === "ok" && login.token) {
         token = login.token;
-        checks.push({ id: "key", status: "ok", message: "API key accepted" });
+        checks.push({ id: "key", status: "ok", message: `API key accepted (${sourceLabel(apiKeySource)})` });
       } else {
         checks.push({ id: "key", status: "error", message: "API key rejected", hint: "Regenerate it in Profile \u2192 API key" });
       }
@@ -2111,7 +2199,7 @@ async function runInitChecks(cwd2, overrides = {}, cliVersion = "0.0.0") {
   for (const target of multiProject ? projectTargets : [{ key: project, path: ".", environment, delivery: config.delivery }]) {
     const prefix = multiProject ? `[${target.key}] ` : "";
     const targetEnv = target.environment || "local";
-    const appCwd = multiProject ? join10(cwd2, target.path) : cwd2;
+    const appCwd = multiProject ? join11(cwd2, target.path) : cwd2;
     if (token) {
       try {
         const projects = await api(server, "/api/admin/projects", { token });
@@ -2143,7 +2231,7 @@ async function runInitChecks(cwd2, overrides = {}, cliVersion = "0.0.0") {
       }
     }
     try {
-      await fs10.access(join10(cwd2, stackFileRelPath(multiProject ? target.key : void 0)));
+      await fs11.access(join11(cwd2, stackFileRelPath(multiProject ? target.key : void 0)));
       checks.push({ id: "stack", status: "ok", message: `${prefix}Stack registered` });
     } catch {
       checks.push({ id: "stack", status: "warn", message: `${prefix}Stack not registered`, fixable: true });
@@ -2165,9 +2253,9 @@ async function runInitChecks(cwd2, overrides = {}, cliVersion = "0.0.0") {
   if (meta?.skillVersion) {
     const stale = [];
     for (const rel of skillFilesFor(config)) {
-      const abs = join10(cwd2, rel);
+      const abs = join11(cwd2, rel);
       try {
-        await fs10.access(abs);
+        await fs11.access(abs);
       } catch {
         continue;
       }
@@ -2189,7 +2277,7 @@ async function runInitChecks(cwd2, overrides = {}, cliVersion = "0.0.0") {
 async function sourceMapCheck(cwd2, prefix = "") {
   const configured = await (async () => {
     for (const name of ["vite.config.ts", "vite.config.js", "vite.config.mjs", "vite.config.mts"]) {
-      const body = await fs10.readFile(join10(cwd2, name), "utf8").catch(() => "");
+      const body = await fs11.readFile(join11(cwd2, name), "utf8").catch(() => "");
       if (body.includes("pointer-feedback/vite"))
         return true;
     }
@@ -2203,7 +2291,7 @@ async function sourceMapCheck(cwd2, prefix = "") {
     };
   }
   try {
-    const raw = await fs10.readFile(join10(cwd2, ".pointer/manifest.json"), "utf8");
+    const raw = await fs11.readFile(join11(cwd2, ".pointer/manifest.json"), "utf8");
     const count = Object.keys(JSON.parse(raw)?.entries ?? {}).length;
     return count > 0 ? { id: "source-map", status: "ok", message: `${prefix}Source manifest present (${count} components)` } : { id: "source-map", status: "warn", message: `${prefix}Source manifest is empty`, fixable: true };
   } catch {
@@ -2227,7 +2315,7 @@ async function widgetCheck(cwd2, config = {}, prefix = "") {
   const candidates = [config.htmlPath, detection?.htmlPath, "index.html", "public/index.html", "src/index.html"].filter(Boolean);
   for (const rel of candidates) {
     try {
-      const html = await fs10.readFile(join10(cwd2, rel), "utf8");
+      const html = await fs11.readFile(join11(cwd2, rel), "utf8");
       if (html.includes("<!-- pointer-feedback:start -->") || html.includes("<pointer-feedback")) {
         return { id: "widget", status: "ok", message: `${prefix}Widget found in ${rel}` };
       }
@@ -2236,7 +2324,7 @@ async function widgetCheck(cwd2, config = {}, prefix = "") {
   }
   for (const envFile of [".env", ".env.local", ".env.development"]) {
     try {
-      const env = await fs10.readFile(join10(cwd2, envFile), "utf8");
+      const env = await fs11.readFile(join11(cwd2, envFile), "utf8");
       if (/^VITE_POINTER_PROJECT=/m.test(env)) {
         return { id: "widget", status: "ok", message: `${prefix}Widget env configured in ${envFile}` };
       }
@@ -2258,13 +2346,13 @@ async function skillsCheck(cwd2, config) {
   const missing = [];
   for (const rel of expected) {
     try {
-      await fs10.access(join10(cwd2, config.skillsDir ?? "", rel));
+      await fs11.access(join11(cwd2, config.skillsDir ?? "", rel));
     } catch {
       missing.push(rel);
     }
   }
   try {
-    await fs10.access(join10(cwd2, ".pointer/pointer.sh"));
+    await fs11.access(join11(cwd2, ".pointer/pointer.sh"));
   } catch {
     missing.push(".pointer/pointer.sh");
   }
@@ -2295,7 +2383,7 @@ async function gitignoreChecks(cwd2) {
     return results;
   }
   try {
-    const ignore = await fs10.readFile(join10(cwd2, ".gitignore"), "utf8");
+    const ignore = await fs11.readFile(join11(cwd2, ".gitignore"), "utf8");
     results.push(
       ignore.includes(".pointer/") ? { id: "gitignore", status: "ok", message: "Credentials ignored by git" } : { id: "gitignore", status: "warn", message: ".gitignore is missing the .pointer/ entries", fixable: true }
     );
@@ -2306,12 +2394,12 @@ async function gitignoreChecks(cwd2) {
 }
 
 // src/commands/init.ts
-import { promises as fs12, existsSync as existsSync2 } from "node:fs";
-import { join as join12, dirname as dirname4, relative as relative3, resolve as resolve2, isAbsolute as isAbsolute2, sep as sep2 } from "node:path";
+import { promises as fs13, existsSync as existsSync2 } from "node:fs";
+import { join as join13, dirname as dirname5, relative as relative3, resolve as resolve2, isAbsolute as isAbsolute2, sep as sep2 } from "node:path";
 
 // src/stack/design.ts
-import { promises as fs11, statSync } from "node:fs";
-import { join as join11, relative as relative2 } from "node:path";
+import { promises as fs12, statSync } from "node:fs";
+import { join as join12, relative as relative2 } from "node:path";
 var IGNORED_DIRS = /* @__PURE__ */ new Set([
   "node_modules",
   "dist",
@@ -2337,7 +2425,7 @@ async function collectFiles(cwd2, options) {
       return;
     let entries;
     try {
-      entries = await fs11.readdir(dir);
+      entries = await fs12.readdir(dir);
     } catch {
       return;
     }
@@ -2346,10 +2434,10 @@ async function collectFiles(cwd2, options) {
         return;
       if (IGNORED_DIRS.has(entry))
         continue;
-      const fullPath = join11(dir, entry);
+      const fullPath = join12(dir, entry);
       let stat;
       try {
-        stat = await fs11.stat(fullPath);
+        stat = await fs12.stat(fullPath);
       } catch {
         continue;
       }
@@ -2466,7 +2554,7 @@ async function detectTailwind(cwd2, files, readFile) {
   if (foundConfigFile) {
     let content = "";
     try {
-      content = await readFile(join11(cwd2, foundConfigFile));
+      content = await readFile(join12(cwd2, foundConfigFile));
     } catch {
       return null;
     }
@@ -2527,7 +2615,7 @@ async function detectTailwind(cwd2, files, readFile) {
   for (const file of cssFiles) {
     let content = "";
     try {
-      content = await readFile(join11(cwd2, file));
+      content = await readFile(join12(cwd2, file));
     } catch {
       continue;
     }
@@ -2574,7 +2662,7 @@ async function detectCssVars(cwd2, files, readFile) {
   for (const f of files) {
     if ((f.startsWith("src/") || f.includes("/src/")) && (f.endsWith(".css") || f.endsWith(".scss"))) {
       try {
-        const fullPath = join11(cwd2, f);
+        const fullPath = join12(cwd2, f);
         const stat = statSync(fullPath);
         if (stat.size <= 204800) {
           candidateFiles.push({ path: f, size: stat.size });
@@ -2595,7 +2683,7 @@ async function detectCssVars(cwd2, files, readFile) {
   for (const item of selectedFiles) {
     let content = "";
     try {
-      content = await readFile(join11(cwd2, item.path));
+      content = await readFile(join12(cwd2, item.path));
     } catch {
       continue;
     }
@@ -2639,7 +2727,7 @@ async function detectScss(cwd2, files, readFile) {
   for (const f of scssFiles) {
     let content = "";
     try {
-      content = await readFile(join11(cwd2, f));
+      content = await readFile(join12(cwd2, f));
     } catch {
       continue;
     }
@@ -2695,7 +2783,7 @@ async function detectTheme(cwd2, files, readFile) {
   for (const f of themeFiles) {
     let content = "";
     try {
-      content = await readFile(join11(cwd2, f));
+      content = await readFile(join12(cwd2, f));
     } catch {
       continue;
     }
@@ -2725,7 +2813,7 @@ async function detectAngularMaterial(cwd2, files, readFile) {
   for (const f of scssFiles) {
     let content = "";
     try {
-      content = await readFile(join11(cwd2, f));
+      content = await readFile(join12(cwd2, f));
     } catch {
       continue;
     }
@@ -2749,7 +2837,7 @@ async function detectLibraries(cwd2, files, readFile) {
   if (files.includes("package.json")) {
     let pkgContent = "";
     try {
-      pkgContent = await readFile(join11(cwd2, "package.json"));
+      pkgContent = await readFile(join12(cwd2, "package.json"));
       const pkg = JSON.parse(pkgContent);
       const deps = { ...pkg.dependencies, ...pkg.devDependencies };
       const tracked = [
@@ -2821,7 +2909,7 @@ function buildDesignBlock(libraries, tokens) {
   };
 }
 async function detectDesignTokens(cwd2, options) {
-  const readFile = options?.readFile ?? ((p) => fs11.readFile(p, "utf8"));
+  const readFile = options?.readFile ?? ((p) => fs12.readFile(p, "utf8"));
   const files = await collectFiles(cwd2, options);
   const libraries = await detectLibraries(cwd2, files, readFile);
   const tailwind = await detectTailwind(cwd2, files, readFile);
@@ -2874,6 +2962,7 @@ function summarizeDesignTokens(tokens, libraries) {
 }
 
 // src/commands/init.ts
+init_credentials();
 async function initCommand(cwd2, options = {}) {
   const isYes = options["yes"] || options["json"];
   const isJson = options["json"];
@@ -2888,8 +2977,22 @@ async function initCommand(cwd2, options = {}) {
   const configIsMulti = isMultiProject(config);
   const isJoin = !isAddProject && Boolean(config.server) && (Boolean(config.project) || configIsMulti);
   const mode = isJoin ? "join" : "install";
+  let server = options["server"] || config.server || process.env.POINTER_SERVER || BUILD_DEFAULT_SERVER;
+  if (!isYes && !options["server"] && !config.server) {
+    server = await ask("Server URL", { default: server });
+  }
+  const localCredentialsFlag = Boolean(options["local-credentials"]);
+  let key = options["key"];
+  let keySource = null;
+  if (!key) {
+    const resolved = await resolveApiKey(cwd2, server);
+    if (resolved.key) {
+      key = resolved.key;
+      keySource = resolved.source;
+    }
+  }
   if (isYes) {
-    if (!options["key"]) {
+    if (!key) {
       console.error("Missing flag: --key is required with --yes");
       process.exit(2);
     }
@@ -2897,10 +3000,6 @@ async function initCommand(cwd2, options = {}) {
       console.error("Missing flag: --project or --create is required with --yes");
       process.exit(2);
     }
-  }
-  let server = options["server"] || config.server || process.env.POINTER_SERVER || BUILD_DEFAULT_SERVER;
-  if (!isYes && !options["server"] && !config.server) {
-    server = await ask("Server URL", { default: server });
   }
   try {
     const meta = await api(server, "/api/meta");
@@ -2915,10 +3014,9 @@ async function initCommand(cwd2, options = {}) {
   }
   const branding = await getBranding(server);
   const product = branding.productName;
-  let key = options["key"];
   let me = null;
   let token;
-  if (isYes) {
+  if (keySource) {
     try {
       const login = await api(server, "/api/auth/login-with-key", {
         method: "POST",
@@ -2928,20 +3026,17 @@ async function initCommand(cwd2, options = {}) {
         throw new Error(login?.status || "invalid");
       token = login.token;
       me = login.user ?? await api(server, "/api/auth/me", { token });
-    } catch (err) {
-      if (isJson) {
-        console.log(JSON.stringify({ ok: false, error: { code: 3, message: "Invalid API key" } }));
-      } else {
-        console.error("Invalid API key.");
+      if (!isJson) {
+        console.log(`Using your saved key for ${server} (${me.displayName})`);
       }
-      process.exit(3);
+    } catch {
+      key = "";
+      keySource = null;
     }
-  } else {
-    let attempts = 0;
-    while (!me) {
-      if (!key) {
-        key = await ask(`API key (from ${product} -> profile -> API key; input hidden)`, { secret: true });
-      }
+  }
+  const freshlyAuthenticated = !me;
+  if (!me) {
+    if (isYes) {
       try {
         const login = await api(server, "/api/auth/login-with-key", {
           method: "POST",
@@ -2952,18 +3047,58 @@ async function initCommand(cwd2, options = {}) {
         token = login.token;
         me = login.user ?? await api(server, "/api/auth/me", { token });
       } catch (err) {
-        attempts++;
-        if (attempts >= 3) {
+        if (isJson) {
+          console.log(JSON.stringify({ ok: false, error: { code: 3, message: "Invalid API key" } }));
+        } else {
           console.error("Invalid API key.");
-          process.exit(3);
         }
-        console.error("Invalid API key.");
-        key = "";
+        process.exit(3);
       }
+    } else {
+      let attempts = 0;
+      while (!me) {
+        if (!key) {
+          key = await ask(`API key (from ${product} -> profile -> API key; input hidden)`, { secret: true });
+        }
+        try {
+          const login = await api(server, "/api/auth/login-with-key", {
+            method: "POST",
+            body: { apiKey: key }
+          });
+          if (login?.status !== "ok" || !login?.token)
+            throw new Error(login?.status || "invalid");
+          token = login.token;
+          me = login.user ?? await api(server, "/api/auth/me", { token });
+        } catch (err) {
+          attempts++;
+          if (attempts >= 3) {
+            console.error("Invalid API key.");
+            process.exit(3);
+          }
+          console.error("Invalid API key.");
+          key = "";
+        }
+      }
+      console.log(`\u2714 Signed in as ${me.displayName} (${me.roleName || "User"})`);
     }
-    console.log(`\u2714 Signed in as ${me.displayName} (${me.roleName || "User"})`);
   }
-  await writeCredentials(cwd2, key);
+  let keyLivesGlobally = keySource === "global";
+  let writeLocalCreds = keySource !== "global" && keySource !== "env";
+  if (freshlyAuthenticated) {
+    let saveGlobally = !localCredentialsFlag;
+    if (saveGlobally && !isYes) {
+      const answer = await ask("Save this key for all repos on this machine? (Y/n)", { default: "y" });
+      saveGlobally = /^y/i.test(answer.trim());
+    }
+    if (saveGlobally) {
+      await saveGlobalCredential(server, { apiKey: key, email: me?.email, displayName: me?.displayName });
+      keyLivesGlobally = true;
+      writeLocalCreds = false;
+    }
+  }
+  if (writeLocalCreds) {
+    await writeCredentials(cwd2, key);
+  }
   await upsertGitignore(cwd2, product, options["skills-dir"] || config.skillsDir);
   if (isJoin && configIsMulti) {
     await handleMultiJoin(cwd2, config, server, product, Boolean(isJson), options, token, me);
@@ -3003,7 +3138,8 @@ and the pointer-init skill uses them to mount the widget for you afterwards.
       product,
       pathFlag,
       nxApps,
-      configIsMulti
+      configIsMulti,
+      writeLocalCreds
     });
     return;
   }
@@ -3269,12 +3405,12 @@ and the pointer-init skill uses them to mount the widget for you afterwards.
     filesMod.push(...installed);
     skillFiles = [...new Set(installed.filter((f) => f.includes("SKILL.md") || f.endsWith(".md")))];
   }
-  const pkgStr = await fs12.readFile(join12(cwd2, "package.json"), "utf8").catch(() => "{}");
+  const pkgStr = await fs13.readFile(join13(cwd2, "package.json"), "utf8").catch(() => "{}");
   const tokens = extractTokens(JSON.parse(pkgStr));
   const stackMeta = { frontend: tokens.frontend, backend: tokens.backend, aiTool: tool };
   let stackFileExists = false;
   try {
-    await fs12.access(join12(cwd2, ".pointer/stack.json"));
+    await fs13.access(join13(cwd2, ".pointer/stack.json"));
     stackFileExists = true;
   } catch {
     stackFileExists = false;
@@ -3315,8 +3451,10 @@ and the pointer-init skill uses them to mount the widget for you afterwards.
     configPatch.htmlPath = injectedHtml;
   await writeConfig(cwd2, configPatch);
   filesMod.push(".pointer/config.json");
-  await writeCredentials(cwd2, key, { server, project: finalProjectKey });
-  filesMod.push(".pointer/credentials.env");
+  if (writeLocalCreds) {
+    await writeCredentials(cwd2, key, { server, project: finalProjectKey });
+    filesMod.push(".pointer/credentials.env");
+  }
   filesMod.push(".gitignore");
   if (!isJson)
     console.log("Verifying...");
@@ -3356,6 +3494,7 @@ and the pointer-init skill uses them to mount the widget for you afterwards.
   const cyan = (s) => `\x1B[36m${s}\x1B[0m`;
   const rule = dim("\u2500".repeat(60));
   const envLabel = envs.length > 1 ? envs.join(", ") : env;
+  const keyLine = keyLivesGlobally ? `this machine's global store ${dim("(~/.config/pointer/credentials.json)")}` : `.pointer/credentials.env ${dim("(gitignored)")}`;
   if (isJoin) {
     console.log(`
 ${rule}
@@ -3363,7 +3502,7 @@ ${green("\u2714")} ${bold(`Joined ${product} project ${finalProjectKey} as ${me?
 
   ${dim("Environment(s)")}  ${envLabel}
   ${dim("Server")}          ${server}
-  ${dim("Key")}             .pointer/credentials.env ${dim("(gitignored)")}
+  ${dim("Key")}             ${keyLine}
   ${dim("Skills")}          ${skillFiles.length ? skillFiles.join("\n                    ") : "installed"}
 ${rule}`);
   } else {
@@ -3374,7 +3513,7 @@ ${green("\u2714")} ${bold(`${product} is set up`)}
   ${dim("Project")}       ${projectName || finalProjectKey} ${dim(`(${finalProjectKey})`)}
   ${dim("Environments")}  ${envLabel}
   ${dim("Server")}        ${server}
-  ${dim("Key")}           .pointer/credentials.env ${dim("(gitignored)")}
+  ${dim("Key")}           ${keyLine}
   ${dim("Skills")}        ${skillFiles.length ? skillFiles.join("\n                ") : "installed"}
 ${rule}`);
   }
@@ -3434,14 +3573,14 @@ function toRootRelative(root, p) {
 }
 async function hasViteConfig(appDir) {
   for (const ext of ["ts", "js", "mjs", "mts"]) {
-    if (existsSync2(join12(appDir, `vite.config.${ext}`)))
+    if (existsSync2(join13(appDir, `vite.config.${ext}`)))
       return true;
   }
   return false;
 }
 async function readJsonSafe(p) {
   try {
-    return JSON.parse(await fs12.readFile(p, "utf8"));
+    return JSON.parse(await fs13.readFile(p, "utf8"));
   } catch {
     return null;
   }
@@ -3449,13 +3588,13 @@ async function readJsonSafe(p) {
 async function resolveHtmlCandidate(root, appDir, explicitHtml) {
   if (explicitHtml)
     return explicitHtml;
-  const targetCwd = join12(root, appDir);
-  const candidates = [join12(targetCwd, "index.html"), join12(targetCwd, "src", "index.html")];
-  const projectJson = await readJsonSafe(join12(targetCwd, "project.json"));
+  const targetCwd = join13(root, appDir);
+  const candidates = [join13(targetCwd, "index.html"), join13(targetCwd, "src", "index.html")];
+  const projectJson = await readJsonSafe(join13(targetCwd, "project.json"));
   if (projectJson?.sourceRoot) {
-    candidates.push(join12(root, projectJson.sourceRoot, "index.html"));
+    candidates.push(join13(root, projectJson.sourceRoot, "index.html"));
   }
-  candidates.push(join12(targetCwd, "public", "index.html"));
+  candidates.push(join13(targetCwd, "public", "index.html"));
   for (const c of candidates) {
     if (existsSync2(c))
       return c;
@@ -3465,7 +3604,7 @@ async function resolveHtmlCandidate(root, appDir, explicitHtml) {
 function deriveAppDirFromHtmlPath(htmlPath) {
   if (!htmlPath)
     return ".";
-  let dir = dirname4(htmlPath).replace(/\/src$/, "");
+  let dir = dirname5(htmlPath).replace(/\/src$/, "");
   return dir === "" || dir === "." ? "." : dir;
 }
 async function selectOrCreateProject(server, token, isYes, presetKey, presetCreate) {
@@ -3590,7 +3729,7 @@ async function resolvePin(server, options) {
 }
 async function setupOneProject(ctx) {
   const { cwd: cwd2, appDir, server, token } = ctx;
-  const targetCwd = join12(cwd2, appDir);
+  const targetCwd = join13(cwd2, appDir);
   const { key, name, created } = await selectOrCreateProject(server, token, ctx.isYes, ctx.presetKey, ctx.presetCreate);
   const ALL_ENVS = ["local", "staging", "production"];
   let envs;
@@ -3664,9 +3803,9 @@ async function setupOneProject(ctx) {
       noHtmlFound = true;
     }
   }
-  let pkgStr = await fs12.readFile(join12(targetCwd, "package.json"), "utf8").catch(() => "");
+  let pkgStr = await fs13.readFile(join13(targetCwd, "package.json"), "utf8").catch(() => "");
   if (!pkgStr)
-    pkgStr = await fs12.readFile(join12(cwd2, "package.json"), "utf8").catch(() => "{}");
+    pkgStr = await fs13.readFile(join13(cwd2, "package.json"), "utf8").catch(() => "{}");
   const tokens = extractTokens(JSON.parse(pkgStr || "{}"));
   const stackMeta = { frontend: tokens.frontend, backend: tokens.backend, aiTool: ctx.aiTool };
   let serverStackResponse = null;
@@ -3701,16 +3840,16 @@ async function handleMultiJoin(cwd2, config, server, product, isJson, options, t
     const relStack = stackFileRelPath(p.key);
     let exists = true;
     try {
-      await fs12.access(join12(cwd2, relStack));
+      await fs13.access(join13(cwd2, relStack));
     } catch {
       exists = false;
     }
     if (exists)
       continue;
-    const appCwd = join12(cwd2, p.path);
-    let pkgStr = await fs12.readFile(join12(appCwd, "package.json"), "utf8").catch(() => "");
+    const appCwd = join13(cwd2, p.path);
+    let pkgStr = await fs13.readFile(join13(appCwd, "package.json"), "utf8").catch(() => "");
     if (!pkgStr)
-      pkgStr = await fs12.readFile(join12(cwd2, "package.json"), "utf8").catch(() => "{}");
+      pkgStr = await fs13.readFile(join13(cwd2, "package.json"), "utf8").catch(() => "{}");
     const tokens = extractTokens(JSON.parse(pkgStr || "{}"));
     const stackMeta = { frontend: tokens.frontend, backend: tokens.backend, aiTool: config.aiTool };
     let serverStackResponse = null;
@@ -3753,7 +3892,7 @@ async function handleMultiJoin(cwd2, config, server, product, isJson, options, t
   process.exit(0);
 }
 async function handleMultiProjectSetup(args) {
-  const { cwd: cwd2, config, options, server, token, key, isJson, isYes, product, pathFlag, nxApps, configIsMulti } = args;
+  const { cwd: cwd2, config, options, server, token, key, isJson, isYes, product, pathFlag, nxApps, configIsMulti, writeLocalCreds } = args;
   const { tool, tools } = await resolveAiTool(options, config, isYes);
   const repoDefaultDelivery = await resolveDeliveryDefault(options, config, isYes);
   const pin = await resolvePin(server, options);
@@ -3833,6 +3972,7 @@ async function handleMultiProjectSetup(args) {
   }
   const projectsMap = { ...config.projects ?? {} };
   let migrationNote = null;
+  let migrationOk = null;
   if (!configIsMulti && config.project) {
     const oldKey = config.project;
     const derivedPath = deriveAppDirFromHtmlPath(config.htmlPath);
@@ -3843,7 +3983,12 @@ async function handleMultiProjectSetup(args) {
       htmlPath: config.htmlPath,
       delivery: config.delivery
     };
-    migrationNote = `Migrated existing project "${oldKey}" into the multi-project config with path "${derivedPath}" \u2014 please verify this path is correct.`;
+    const targetedByThisRun = results.some((r) => r.key === oldKey);
+    if (targetedByThisRun) {
+      migrationOk = oldKey;
+    } else if (derivedPath === ".") {
+      migrationNote = `Migrated existing project "${oldKey}" into the multi-project config with path "${derivedPath}" \u2014 please verify this path is correct.`;
+    }
   }
   for (const r of results)
     projectsMap[r.key] = r.entry;
@@ -3855,7 +4000,9 @@ async function handleMultiProjectSetup(args) {
     delivery: repoDefaultDelivery,
     projects: projectsMap
   });
-  await writeCredentials(cwd2, key, { server, project: results[0]?.key });
+  if (writeLocalCreds) {
+    await writeCredentials(cwd2, key, { server, project: results[0]?.key });
+  }
   await postEvent(server, token, {
     type: "installed",
     projectKey: results[0]?.key,
@@ -3874,10 +4021,12 @@ async function handleMultiProjectSetup(args) {
       cliVersion: BUILD_CLI_VERSION
     }));
   } else {
+    const migrationLine = migrationNote ? `\u26A0 ${migrationNote}
+` : migrationOk ? `\u2714 migrated "${migrationOk}" \u2192 projects map (${projectsMap[migrationOk]?.path})
+` : "";
     console.log(`
 \u2714 ${product}: added ${results.length} project${results.length === 1 ? "" : "s"} \u2014 ${results.map((r) => r.key).join(", ")}
-${migrationNote ? `\u26A0 ${migrationNote}
-` : ""}  Config: .pointer/config.json (projects map)
+${migrationLine}  Config: .pointer/config.json (projects map)
   Stack files: ${results.map((r) => `.pointer/projects/${r.key}.stack.json`).join(", ")}`);
   }
   process.exit(0);
@@ -3885,9 +4034,10 @@ ${migrationNote ? `\u26A0 ${migrationNote}
 
 // src/commands/doctor.ts
 init_config();
-import { promises as fs14 } from "node:fs";
-import { join as join14 } from "node:path";
+import { promises as fs15 } from "node:fs";
+import { join as join15 } from "node:path";
 init_api();
+init_credentials();
 var ICON = { ok: "\u2714", warn: "\u26A0", error: "\u2718" };
 function exitCodeFor(checks) {
   const failed = checks.filter((c) => c.status === "error");
@@ -3902,7 +4052,7 @@ async function doctorCommand(cwd2, options, cliVersion) {
     const config = await readConfig(cwd2);
     const multi = isMultiProject(config);
     const projectKey = multi ? options.project || listProjects(config)[0]?.key : void 0;
-    const appCwd = multi && projectKey ? join14(cwd2, config.projects?.[projectKey]?.path ?? ".") : cwd2;
+    const appCwd = multi && projectKey ? join15(cwd2, config.projects?.[projectKey]?.path ?? ".") : cwd2;
     const start = Date.now();
     const designBlock = await detectDesignTokens(appCwd);
     const detectMs = Date.now() - start;
@@ -3954,7 +4104,7 @@ async function reportRun(cwd2, options, checks, ok) {
     const server = (options.server || config.server || "").replace(/\/$/, "");
     if (!server)
       return;
-    const apiKey = (await fs14.readFile(join14(cwd2, ".pointer/credentials.env"), "utf8")).match(/^POINTER_API_KEY=(.*)$/m)?.[1]?.trim();
+    const { key: apiKey } = await resolveApiKey(cwd2, server);
     if (!apiKey)
       return;
     const login = await api(server, "/api/auth/login-with-key", { method: "POST", body: { apiKey } });
@@ -3977,7 +4127,7 @@ async function applyFixes(cwd2, checks) {
     if (token)
       return token;
     try {
-      const apiKey = (await fs14.readFile(join14(cwd2, ".pointer/credentials.env"), "utf8")).match(/^POINTER_API_KEY=(.*)$/m)?.[1]?.trim();
+      const { key: apiKey } = await resolveApiKey(cwd2, server);
       if (!apiKey || !server)
         return void 0;
       const login = await api(server, "/api/auth/login-with-key", { method: "POST", body: { apiKey } });
@@ -3993,10 +4143,10 @@ async function applyFixes(cwd2, checks) {
       continue;
     try {
       if (check.id === "gitignore") {
-        const path = join14(cwd2, ".gitignore");
-        const before = await fs14.readFile(path, "utf8").catch(() => "");
+        const path = join15(cwd2, ".gitignore");
+        const before = await fs15.readFile(path, "utf8").catch(() => "");
         await upsertGitignore(cwd2, "Feedback tool", config.skillsDir);
-        const after = await fs14.readFile(path, "utf8").catch(() => "");
+        const after = await fs15.readFile(path, "utf8").catch(() => "");
         if (after !== before)
           repaired.push(check.id);
       } else if (check.id === "source-map") {
@@ -4017,7 +4167,7 @@ async function applyFixes(cwd2, checks) {
     let any = false;
     for (const t of targets) {
       try {
-        const appCwd = multi ? join14(cwd2, t.path) : cwd2;
+        const appCwd = multi ? join15(cwd2, t.path) : cwd2;
         const detection = await detectStack(appCwd);
         const stackToken = await tokenFor();
         const stack = stackToken ? await api(server, `/api/projects/${t.key}/stack`, {
@@ -4026,7 +4176,7 @@ async function applyFixes(cwd2, checks) {
           body: { kind: detection.kind, evidence: detection.evidence }
         }).catch(() => null) : null;
         if (stack) {
-          await fs14.writeFile(join14(cwd2, stackFileRelPath(multi ? t.key : void 0)), JSON.stringify(stack, null, 2) + "\n", "utf8");
+          await fs15.writeFile(join15(cwd2, stackFileRelPath(multi ? t.key : void 0)), JSON.stringify(stack, null, 2) + "\n", "utf8");
           any = true;
         }
       } catch {
@@ -4041,8 +4191,8 @@ async function applyFixes(cwd2, checks) {
 // src/commands/update.ts
 init_config();
 init_api();
-import { promises as fs15 } from "node:fs";
-import { dirname as dirname5, join as join15 } from "node:path";
+import { promises as fs16 } from "node:fs";
+import { dirname as dirname6, join as join16 } from "node:path";
 function sourceFor(path) {
   if (path.endsWith("pointer.sh"))
     return "/pointer.sh";
@@ -4071,9 +4221,9 @@ async function updateCommand(cwd2, options) {
   const missing = [];
   const stale = [];
   for (const rel of files) {
-    const abs = join15(cwd2, rel);
+    const abs = join16(cwd2, rel);
     try {
-      await fs15.access(abs);
+      await fs16.access(abs);
     } catch {
       missing.push(rel);
       continue;
@@ -4124,11 +4274,11 @@ async function updateCommand(cwd2, options) {
       if (!res.ok)
         throw new Error(`HTTP ${res.status}`);
       const body = await res.text();
-      const abs = join15(cwd2, f.path);
-      await fs15.mkdir(dirname5(abs), { recursive: true });
-      await fs15.writeFile(abs, body, "utf8");
+      const abs = join16(cwd2, f.path);
+      await fs16.mkdir(dirname6(abs), { recursive: true });
+      await fs16.writeFile(abs, body, "utf8");
       if (abs.endsWith(".sh"))
-        await fs15.chmod(abs, 493).catch(() => {
+        await fs16.chmod(abs, 493).catch(() => {
         });
       updated++;
     } catch (err) {
@@ -4152,8 +4302,8 @@ init_build_constants();
 // src/apply/run.ts
 init_resolve();
 init_api();
-import { promises as fs18 } from "node:fs";
-import { join as join19, dirname as dirname6 } from "node:path";
+import { promises as fs19 } from "node:fs";
+import { join as join19, dirname as dirname8 } from "node:path";
 import { spawnSync } from "node:child_process";
 
 // src/apply/queue.ts
@@ -4301,7 +4451,7 @@ async function fetchQueue(ctx, filter) {
 
 // src/apply/context.ts
 init_api();
-import { promises as fs17 } from "node:fs";
+import { promises as fs18 } from "node:fs";
 import { join as join18 } from "node:path";
 init_config();
 async function loadProjectContext(ctx) {
@@ -4310,7 +4460,7 @@ async function loadProjectContext(ctx) {
   try {
     const config = await readConfig(ctx.cwd);
     const relPath = isMultiProject(config) ? stackFileRelPath(ctx.project) : stackFileRelPath();
-    const stackRaw = await fs17.readFile(join18(ctx.cwd, relPath), "utf8");
+    const stackRaw = await fs18.readFile(join18(ctx.cwd, relPath), "utf8");
     stack = JSON.parse(stackRaw);
   } catch {
   }
@@ -4650,7 +4800,7 @@ async function ensureToolRegistered(ctx, tool) {
   const stackPath = join19(ctx.cwd, relStackPath);
   let stackData = {};
   try {
-    const raw = await fs18.readFile(stackPath, "utf8");
+    const raw = await fs19.readFile(stackPath, "utf8");
     stackData = JSON.parse(raw);
   } catch {
   }
@@ -4669,8 +4819,8 @@ async function ensureToolRegistered(ctx, tool) {
         }
       );
       if (res) {
-        await fs18.mkdir(dirname6(stackPath), { recursive: true });
-        await fs18.writeFile(stackPath, JSON.stringify(res, null, 2) + "\n", "utf8");
+        await fs19.mkdir(dirname8(stackPath), { recursive: true });
+        await fs19.writeFile(stackPath, JSON.stringify(res, null, 2) + "\n", "utf8");
         return;
       }
     } catch {
@@ -4679,8 +4829,8 @@ async function ensureToolRegistered(ctx, tool) {
   aiTools.push(tool);
   stackData.aiTools = aiTools;
   try {
-    await fs18.mkdir(dirname6(stackPath), { recursive: true });
-    await fs18.writeFile(stackPath, JSON.stringify(stackData, null, 2) + "\n", "utf8");
+    await fs19.mkdir(dirname8(stackPath), { recursive: true });
+    await fs19.writeFile(stackPath, JSON.stringify(stackData, null, 2) + "\n", "utf8");
   } catch {
   }
 }
@@ -4747,8 +4897,8 @@ async function runApply(options, ctx) {
       }
     } else if (tool === "cursor") {
       const promptFile = join19(ctx.cwd, ".pointer/apply-prompt.md");
-      await fs18.mkdir(join19(ctx.cwd, ".pointer"), { recursive: true });
-      await fs18.writeFile(promptFile, prompt, "utf8");
+      await fs19.mkdir(join19(ctx.cwd, ".pointer"), { recursive: true });
+      await fs19.writeFile(promptFile, prompt, "utf8");
       console.log(`Saved apply prompt to ${promptFile}`);
     } else if (tool === "clipboard") {
       const copied = copyToClipboard(prompt);
@@ -5004,9 +5154,11 @@ async function applyCommand(cwd2, parsed, positionals = []) {
   }
   const explicitKey = typeof parsed["key"] === "string" ? parsed["key"] : void 0;
   const token = await resolveToken(server, root, explicitKey);
-  const apiKey = explicitKey || await readApiKey(root);
+  const apiKey = explicitKey || await readApiKey(root, server);
   if (!token && !apiKey) {
-    console.error("Missing POINTER_API_KEY in .pointer/credentials.env or environment");
+    console.error(
+      "Missing API key. Set POINTER_API_KEY, add .pointer/credentials.env, or run `npx pointer-feedback login`."
+    );
     process.exit(3);
   }
   const clientCtx = {
@@ -5116,9 +5268,11 @@ async function applyAllProjects(root, cwd2, config, server, parsed) {
   }
   const explicitKey = typeof parsed["key"] === "string" ? parsed["key"] : void 0;
   const token = await resolveToken(server, root, explicitKey);
-  const apiKey = explicitKey || await readApiKey(root);
+  const apiKey = explicitKey || await readApiKey(root, server);
   if (!token && !apiKey) {
-    console.error("Missing POINTER_API_KEY in .pointer/credentials.env or environment");
+    console.error(
+      "Missing API key. Set POINTER_API_KEY, add .pointer/credentials.env, or run `npx pointer-feedback login`."
+    );
     process.exit(3);
   }
   const projects = listProjects(config);
@@ -11444,8 +11598,8 @@ function createMcpServer(ctx) {
 async function runMcpServer(ctx, logFile) {
   if (logFile) {
     try {
-      const fs19 = await import("node:fs");
-      const logStream = fs19.createWriteStream(logFile, { flags: "a" });
+      const fs20 = await import("node:fs");
+      const logStream = fs20.createWriteStream(logFile, { flags: "a" });
       const origWrite = process.stderr.write;
       process.stderr.write = function(chunk, encoding, cb) {
         logStream.write(chunk);
@@ -11467,9 +11621,11 @@ async function mcpCommand(cwd2, parsed = {}) {
   const projectFlag = typeof parsed["project"] === "string" ? parsed["project"] : void 0;
   const project = projectFlag || config.project || process.env.POINTER_PROJECT || "";
   const explicitKey = typeof parsed["key"] === "string" ? parsed["key"] : void 0;
-  const apiKey = explicitKey || await readApiKey(root);
+  const apiKey = explicitKey || await readApiKey(root, server);
   if (!apiKey) {
-    console.error("Missing POINTER_API_KEY in .pointer/credentials.env or environment");
+    console.error(
+      "Missing API key. Set POINTER_API_KEY, add .pointer/credentials.env, or run `npx pointer-feedback login`."
+    );
     process.exit(3);
   }
   const token = await resolveToken(server, root, explicitKey).catch(() => void 0);
@@ -11492,6 +11648,127 @@ async function mcpCommand(cwd2, parsed = {}) {
     serverTooOld
   };
   await runMcpServer(ctx, logFile);
+}
+
+// src/commands/login.ts
+init_config();
+init_api();
+init_credentials();
+init_build_constants();
+async function loginCommand(cwd2, options = {}) {
+  const root = await findRepoRoot(cwd2);
+  const config = await readConfig(root).catch(() => ({}));
+  const server = ((typeof options["server"] === "string" ? options["server"] : void 0) || config.server || process.env.POINTER_SERVER || BUILD_DEFAULT_SERVER).replace(/\/$/, "");
+  const branding = await getBranding(server);
+  const product = branding.productName;
+  const flagKey = typeof options["key"] === "string" ? options["key"] : void 0;
+  let key = flagKey;
+  let me;
+  if (flagKey) {
+    try {
+      const login = await api(server, "/api/auth/login-with-key", {
+        method: "POST",
+        body: { apiKey: flagKey }
+      });
+      if (login?.status !== "ok" || !login?.token)
+        throw new Error(login?.status || "invalid");
+      me = login.user ?? await api(server, "/api/auth/me", { token: login.token });
+    } catch {
+      console.error("Invalid API key.");
+      process.exit(3);
+    }
+  } else {
+    let attempts = 0;
+    while (!me) {
+      key = await ask(`API key (from ${product} -> profile -> API key; input hidden)`, { secret: true });
+      try {
+        const login = await api(server, "/api/auth/login-with-key", {
+          method: "POST",
+          body: { apiKey: key }
+        });
+        if (login?.status !== "ok" || !login?.token)
+          throw new Error(login?.status || "invalid");
+        me = login.user ?? await api(server, "/api/auth/me", { token: login.token });
+      } catch {
+        attempts++;
+        if (attempts >= 3) {
+          console.error("Invalid API key.");
+          process.exit(3);
+        }
+        console.error("Invalid API key. Try again.");
+      }
+    }
+    closePrompts();
+  }
+  await saveGlobalCredential(server, { apiKey: key, email: me?.email, displayName: me?.displayName });
+  const who = me?.displayName ? `${me.displayName}${me?.email ? ` (${me.email})` : ""}` : me?.email ?? "you";
+  console.log(`\u2714 Signed in to ${server} as ${who} \u2014 saved for all repos on this machine`);
+  process.exit(0);
+}
+
+// src/commands/logout.ts
+init_config();
+init_credentials();
+init_build_constants();
+async function logoutCommand(cwd2, options = {}) {
+  const root = await findRepoRoot(cwd2);
+  const config = await readConfig(root).catch(() => ({}));
+  const server = ((typeof options["server"] === "string" ? options["server"] : void 0) || config.server || process.env.POINTER_SERVER || BUILD_DEFAULT_SERVER).replace(/\/$/, "");
+  const origin = normalizeServerOrigin(server);
+  const removed = await removeGlobalCredential(server);
+  if (options["json"] === true) {
+    console.log(JSON.stringify({ ok: true, server: origin, removed }));
+    process.exit(0);
+  }
+  console.log(
+    removed ? `\u2714 Removed the saved key for ${origin} from this machine.` : `No saved key for ${origin} on this machine.`
+  );
+  process.exit(0);
+}
+
+// src/commands/whoami.ts
+init_config();
+init_api();
+init_credentials();
+init_build_constants();
+async function whoamiCommand(cwd2, options = {}) {
+  const root = await findRepoRoot(cwd2);
+  const config = await readConfig(root).catch(() => ({}));
+  const server = ((typeof options["server"] === "string" ? options["server"] : void 0) || config.server || process.env.POINTER_SERVER || BUILD_DEFAULT_SERVER).replace(/\/$/, "");
+  const isJson = options["json"] === true;
+  const { key, source } = await resolveApiKey(root, server);
+  if (!key) {
+    if (isJson) {
+      console.log(JSON.stringify({ ok: false, server, source: null }));
+    } else {
+      console.error(`No API key found for ${server} (checked env var, repo, and global store).`);
+      console.error("Run `npx pointer-feedback login` to sign in.");
+    }
+    process.exit(3);
+  }
+  let displayName;
+  let email;
+  try {
+    const login = await api(server, "/api/auth/login-with-key", { method: "POST", body: { apiKey: key } });
+    if (login?.status === "ok" && login.token) {
+      const me = login.user ?? await api(server, "/api/auth/me", { token: login.token });
+      displayName = me?.displayName;
+      email = me?.email;
+    }
+  } catch {
+  }
+  if (source === "global" && (!displayName || !email)) {
+    const cached = await getGlobalCredential(server);
+    displayName = displayName ?? cached?.displayName;
+    email = email ?? cached?.email;
+  }
+  if (isJson) {
+    console.log(JSON.stringify({ ok: true, server, displayName, email, source }));
+    process.exit(0);
+  }
+  const who = displayName ? `${displayName}${email ? ` (${email})` : ""}` : email ?? "unknown user";
+  console.log(`${server} \u2014 ${who} \u2014 key source: ${sourceLabel(source)}`);
+  process.exit(0);
 }
 
 // src/cli.ts
@@ -11517,7 +11794,8 @@ function parseArgs(args) {
     "plan",
     "dry-run",
     "no-commit",
-    "version"
+    "version",
+    "local-credentials"
   ]);
   for (let i = 0; i < args.length; i++) {
     const arg = args[i];
@@ -11550,6 +11828,9 @@ Usage: pointer <command> [options]
 
 Commands:
   init      Set up the feedback widget in your project
+  login     Authenticate once per machine (saves a key for every repo)
+  logout    Remove this machine's saved key for a server
+  whoami    Show the signed-in account and where the API key came from
   doctor    Diagnose an install and report what is wrong
   update    Refresh the served skills to the server's current version
   apply     Turn pending feedback into an AI apply prompt and mark applied
@@ -11603,6 +11884,8 @@ Options:
   --no-skills              Skip skills installation
   --no-design              Skip design token detection
   --source-map             Wire in the Vite plugin that stamps component source hashes
+  --local-credentials      Write .pointer/credentials.env instead of saving the key to this
+                           machine's global store (~/.config/pointer/credentials.json)
   -y, --yes                Non-interactive
   --json                   JSON output (implies --yes)
   -h, --help               Show help
@@ -11610,6 +11893,54 @@ Options:
       process.exit(0);
     }
     await initCommand(cwd(), parsed);
+  } else if (command === "login") {
+    if (parsed["help"]) {
+      console.log(`
+Usage: pointer login [options]
+
+Authenticate once per machine: validates an API key and saves it to
+~/.config/pointer/credentials.json (honours $XDG_CONFIG_HOME / $POINTER_CONFIG_DIR), keyed by
+server. Every repo on this machine then resolves a key for that server without being asked again.
+
+Options:
+  --server <url>     Server URL (default: this repo's .pointer/config.json, then $POINTER_SERVER)
+  --key <key>        API key (prompted, hidden, when omitted)
+  -h, --help         Show this help
+`);
+      process.exit(0);
+    }
+    await loginCommand(cwd(), parsed);
+  } else if (command === "logout") {
+    if (parsed["help"]) {
+      console.log(`
+Usage: pointer logout [options]
+
+Removes this machine's saved global key for a server.
+
+Options:
+  --server <url>     Server URL (default: this repo's .pointer/config.json, then $POINTER_SERVER)
+  --json             Emit { ok, server, removed } as JSON
+  -h, --help         Show this help
+`);
+      process.exit(0);
+    }
+    await logoutCommand(cwd(), parsed);
+  } else if (command === "whoami") {
+    if (parsed["help"]) {
+      console.log(`
+Usage: pointer whoami [options]
+
+Prints the server, the signed-in account, and which of env/repo/global answered the API key \u2014
+never the key itself.
+
+Options:
+  --server <url>     Server URL (default: this repo's .pointer/config.json, then $POINTER_SERVER)
+  --json             Emit { ok, server, displayName, email, source } as JSON
+  -h, --help         Show this help
+`);
+      process.exit(0);
+    }
+    await whoamiCommand(cwd(), parsed);
   } else if (command === "doctor") {
     if (parsed["help"]) {
       console.log(`

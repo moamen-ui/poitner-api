@@ -18,7 +18,8 @@ npx pointer <command> [options]
 
 ### `pointer init`
 Set up the feedback widget in your project.
-- Scaffolds `.pointer/config.json`, `.pointer/credentials.env.example`, `.pointer/stack.json`.
+- Scaffolds `.pointer/config.json`, `.pointer/stack.json`, and authenticates — saving the API key
+  to this machine's **global credential store** by default (see **Authentication** below).
 - Detects the application framework (Vite, Next.js, Angular, static HTML).
 - Injects the `<pointer-feedback>` web component.
 
@@ -30,8 +31,8 @@ pointer init --server https://api.pointer.moamen.work --key ptr_... --project my
 
 `init` only expects these files to be shared via git: **`.pointer/config.json`**, **`.pointer/stack.json`**,
 and — in a multi-project repo (see **Monorepos** below) — every **`.pointer/projects/<key>.stack.json`**.
-Everything else (`credentials.env`, `credentials.env.example`, `pointer.sh`, `manifest.json`,
-`.token_cache`) is derived or per-machine and stays gitignored, along with every skill layout the
+Everything else (`pointer.sh`, `manifest.json`, and — only if you opted into `--local-credentials` —
+`credentials.env`) is derived or per-machine and stays gitignored, along with every skill layout the
 CLI can write: `.claude/skills/pointer-init/`, `.claude/skills/pointer-feedback/` (Claude Code),
 `.cursor/rules/pointer-init.md`, `.cursor/rules/pointer-feedback.md` (Cursor),
 `.windsurf/rules/pointer-init.md`, `.windsurf/rules/pointer-feedback.md` (Windsurf),
@@ -42,12 +43,13 @@ used by `other`/`antigravity`, and symlinked into from the three tools above), a
 `.agents/pointer-feedback/` layout (pre-dating the `.agents/skills/...` convention); it stays
 gitignored too, and the next install removes it. `init` manages the `.gitignore` block for you
 (`upsertGitignore`), migrating an older repo's block — including one that still re-included
-`pointer.sh` or credentials.env.example, or predates any of the paths above — automatically and
-idempotently.
+`pointer.sh` or the now-removed `credentials.env.example`, or predates any of the paths above —
+automatically and idempotently.
 
 That split is why a clone of an already-configured repo has `config.json`/`stack.json` (they were
 committed) but is missing the skills and `pointer.sh` (they were never committed) — see **join
-mode** below and `pointer update`.
+mode** below and `pointer update`. The API key never needs cloning at all, wherever it was saved —
+see **Authentication**.
 
 #### Join mode: re-running `init` in an already-configured repo
 
@@ -55,7 +57,10 @@ If `.pointer/config.json` already has a `server` **and** a `project` — because
 `init` here and committed the config — a further `init` run is a **join**, not a first install:
 
 - Server, project, environment(s), AI tool and delivery are all read back from the committed
-  config; you are asked for **nothing but your API key** (`--key`, or the interactive prompt).
+  config; you are asked for **nothing but your API key** (`--key`, or the interactive prompt) —
+  and not even that if one already resolves from the environment, this repo, or (the common case,
+  once you've run `pointer login` once) **this machine's global credential store**. See
+  **Authentication** below.
 - Nothing is injected — the `<pointer-feedback>` snippet (or, for `delivery: "extension"`, nothing)
   is already in the app's committed source.
 - The skills and `.pointer/pointer.sh` ARE (re-)installed, since they are gitignored and this
@@ -148,6 +153,63 @@ its `path` from the recorded `htmlPath`, or `.` if there is none — `init` warn
 an Nx workspace (`nx.json` at the root), an interactive `init` also offers a multi-select of every
 discovered `apps/*` app (from `project.json` with `projectType: "application"`, or a directory with
 its own `index.html` but no `project.json`) instead of asking about the repo root.
+
+### Authentication
+
+Authenticate **once per machine**, not once per repo. `pointer login` validates an API key and
+saves it to a global, per-machine credential store; every other command (`init` in join mode,
+`doctor`, `apply`, `list`, `mcp`, and `.pointer/pointer.sh`) then finds it without being asked again
+— in this repo, or any other repo on the same machine, against the same server.
+
+**Resolution order**, identical everywhere a key is needed:
+
+1. **`POINTER_API_KEY`** environment variable — the right choice for CI, and always wins outright.
+2. This repo's **`.pointer/credentials.env`** — written only when you opt out of the global store
+   (`--local-credentials`, or answering "no" to the save prompt below).
+3. The **global store**: `~/.config/pointer/credentials.json` (honours `$XDG_CONFIG_HOME`; on
+   Windows, `%APPDATA%\pointer\credentials.json`), keyed by server, mode `0600`.
+
+```bash
+# Once per machine, per server:
+pointer login --server https://api.pointer.moamen.work
+# API key (from Pointer -> profile -> API key; input hidden): ****************
+
+pointer whoami
+# https://api.pointer.moamen.work — Jane Doe (jane@example.com) — key source: global store
+
+pointer logout   # removes this machine's saved key for a server
+```
+
+- **`pointer login [--server <url>] [--key <key>]`** — resolves the server from `--server`, then
+  this repo's `.pointer/config.json`, then `$POINTER_SERVER`, then the build default. Prompts for
+  the key (hidden input) unless `--key` is given; validates it exactly like `init` does
+  (`/api/auth/login-with-key` + `/api/auth/me`); saves it to the global store.
+- **`pointer logout [--server <url>]`** — removes this machine's saved entry for that server. Never
+  touches a repo's own `.pointer/credentials.env`.
+- **`pointer whoami [--server <url>] [--json]`** — prints the server, the signed-in account, and
+  which source answered the key (`env` / `repo` / `global`) — **never the key itself**.
+
+**`init` and the global store.** A first install that authenticates a key it did not already trust
+(typed interactively, or passed via `--key`) asks:
+
+```
+Save this key for all repos on this machine? (Y/n)
+```
+
+Answering yes (the default, and also the default under `--yes`/`--json` when `--key` is given)
+saves it globally and writes **no** `.pointer/credentials.env` at all — there is nothing repo-local
+to gitignore, review, or accidentally commit. Answering no, or passing **`--local-credentials`**,
+keeps the pre-global-store behaviour: the key is written to `.pointer/credentials.env` instead
+(still gitignored, still per-machine). A join (`init` run again in an already-configured repo) never
+even asks, either way: it tries `resolveApiKey`'s three sources first and only prompts when none of
+them resolve.
+
+**CI**: set `POINTER_API_KEY` — it always wins, and nothing is written anywhere.
+
+**Multiple accounts on one machine** (e.g. a personal key for most repos, a service account for
+one): run `pointer init --key <key> --local-credentials` (or `pointer login` normally, then override
+per-repo with `.pointer/credentials.env`) for the repo that needs the different key — the repo-local
+file wins over the global store for that repo only.
 
 ### `pointer doctor`
 Diagnose an existing installation and report issues.

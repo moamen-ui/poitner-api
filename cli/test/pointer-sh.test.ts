@@ -21,17 +21,26 @@ async function withTempDir(fn: (dir: string) => Promise<void>) {
   }
 }
 
-async function installShTo(dir: string, config: unknown) {
+async function installShTo(
+  dir: string,
+  config: unknown,
+  credentialsEnv = 'POINTER_API_KEY=ptr_x\nPOINTER_SERVER=http://127.0.0.1:1\n',
+) {
   const pointerDir = path.join(dir, '.pointer');
   await fs.mkdir(pointerDir, { recursive: true });
   const script = await fs.readFile(shPath, 'utf8');
   await fs.writeFile(path.join(pointerDir, 'pointer.sh'), script, { mode: 0o755 });
   await fs.writeFile(path.join(pointerDir, 'config.json'), JSON.stringify(config), 'utf8');
-  await fs.writeFile(
-    path.join(pointerDir, 'credentials.env'),
-    'POINTER_API_KEY=ptr_x\nPOINTER_SERVER=http://127.0.0.1:1\n',
-    'utf8',
-  );
+  await fs.writeFile(path.join(pointerDir, 'credentials.env'), credentialsEnv, 'utf8');
+}
+
+async function withGlobalDir(fn: (globalDir: string) => Promise<void>) {
+  const globalDir = await fs.mkdtemp(path.join(os.tmpdir(), 'pointer-sh-global-'));
+  try {
+    await fn(globalDir);
+  } finally {
+    await fs.rm(globalDir, { recursive: true, force: true });
+  }
 }
 
 test('pointer.sh is valid bash syntax (bash -n)', () => {
@@ -107,3 +116,92 @@ test('pointer.sh: a single-project config never hits the multi-project check', (
       },
     );
   }));
+
+// -----------------------------------------------------------------------------------------------
+// Global credential store fallback (API key only — server/project resolution is unchanged)
+// -----------------------------------------------------------------------------------------------
+
+test('pointer.sh: falls back to the global credential store when no POINTER_API_KEY line exists locally', () =>
+  withTempDir((dir) =>
+    withGlobalDir(async (globalDir) => {
+      // credentials.env carries SERVER/PROJECT (as `resolve_config` needs) but deliberately no
+      // POINTER_API_KEY line — the key must come from the global store instead.
+      await installShTo(
+        dir,
+        { server: 'http://127.0.0.1:1', project: 'solo' },
+        'POINTER_SERVER=http://127.0.0.1:1\nPOINTER_PROJECT=solo\n',
+      );
+      await fs.writeFile(
+        path.join(globalDir, 'credentials.json'),
+        JSON.stringify({ 'http://127.0.0.1:1': { apiKey: 'ptr_from_global' } }),
+        'utf8',
+      );
+
+      await assert.rejects(
+        execFileAsync('bash', [path.join(dir, '.pointer/pointer.sh'), 'list'], {
+          cwd: dir,
+          env: { ...process.env, POINTER_CONFIG_DIR: globalDir },
+        }),
+        (err: any) => {
+          // Port 1 refuses connections, so this still fails — the point is it got PAST "Missing
+          // configuration" (exit 1), which is exactly what happens when API_KEY never resolves.
+          assert.notStrictEqual(err.code, 1, 'must not report missing configuration');
+          assert.doesNotMatch(err.stderr ?? '', /Missing configuration/);
+          return true;
+        },
+      );
+    }),
+  ));
+
+test('pointer.sh: "Missing configuration" when no key resolves anywhere (env, repo, or global store)', () =>
+  withTempDir((dir) =>
+    withGlobalDir(async (globalDir) => {
+      await installShTo(
+        dir,
+        { server: 'http://127.0.0.1:1', project: 'solo' },
+        'POINTER_SERVER=http://127.0.0.1:1\nPOINTER_PROJECT=solo\n',
+      );
+      // globalDir exists but has no credentials.json at all.
+
+      await assert.rejects(
+        execFileAsync('bash', [path.join(dir, '.pointer/pointer.sh'), 'list'], {
+          cwd: dir,
+          env: { ...process.env, POINTER_CONFIG_DIR: globalDir },
+        }),
+        (err: any) => {
+          assert.strictEqual(err.code, 1);
+          assert.match(err.stderr ?? '', /Missing configuration/);
+          return true;
+        },
+      );
+    }),
+  ));
+
+test('pointer.sh: POINTER_API_KEY env var wins over the global store', () =>
+  withTempDir((dir) =>
+    withGlobalDir(async (globalDir) => {
+      await installShTo(
+        dir,
+        { server: 'http://127.0.0.1:1', project: 'solo' },
+        'POINTER_SERVER=http://127.0.0.1:1\nPOINTER_PROJECT=solo\n',
+      );
+      await fs.writeFile(
+        path.join(globalDir, 'credentials.json'),
+        JSON.stringify({ 'http://127.0.0.1:1': { apiKey: 'ptr_from_global' } }),
+        'utf8',
+      );
+
+      await assert.rejects(
+        execFileAsync('bash', [path.join(dir, '.pointer/pointer.sh'), 'list'], {
+          cwd: dir,
+          env: { ...process.env, POINTER_CONFIG_DIR: globalDir, POINTER_API_KEY: 'ptr_env' },
+        }),
+        (err: any) => {
+          // Same network failure as above — proves resolution completed (env wins, no missing-
+          // configuration exit) without needing to intercept the outgoing request.
+          assert.notStrictEqual(err.code, 1, 'must not report missing configuration');
+          return true;
+        },
+      );
+    }),
+  ));

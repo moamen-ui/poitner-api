@@ -4,6 +4,9 @@ import { updateCommand } from './commands/update.js';
 import { applyCommand } from './commands/apply.js';
 import { listCommand, getCommand, statusCommand, replyCommand } from './commands/comments.js';
 import { mcpCommand } from './commands/mcp.js';
+import { loginCommand } from './commands/login.js';
+import { logoutCommand } from './commands/logout.js';
+import { whoamiCommand } from './commands/whoami.js';
 import { argv, cwd } from 'node:process';
 import { BUILD_CLI_VERSION } from './build-constants.js';
 
@@ -27,7 +30,8 @@ function parseArgs(args: string[]) {
         'plan',
         'dry-run',
         'no-commit',
-        'version'
+        'version',
+        'local-credentials'
     ]);
 
     for (let i = 0; i < args.length; i++) {
@@ -59,6 +63,9 @@ Usage: pointer <command> [options]
 
 Commands:
   init      Set up the feedback widget in your project
+  login     Authenticate once per machine (saves a key for every repo)
+  logout    Remove this machine's saved key for a server
+  whoami    Show the signed-in account and where the API key came from
   doctor    Diagnose an install and report what is wrong
   update    Refresh the served skills to the server's current version
   apply     Turn pending feedback into an AI apply prompt and mark applied
@@ -118,6 +125,8 @@ Options:
   --no-skills              Skip skills installation
   --no-design              Skip design token detection
   --source-map             Wire in the Vite plugin that stamps component source hashes
+  --local-credentials      Write .pointer/credentials.env instead of saving the key to this
+                           machine's global store (~/.config/pointer/credentials.json)
   -y, --yes                Non-interactive
   --json                   JSON output (implies --yes)
   -h, --help               Show help
@@ -125,6 +134,54 @@ Options:
             process.exit(0);
         }
         await initCommand(cwd(), parsed);
+    } else if (command === 'login') {
+        if (parsed['help']) {
+            console.log(`
+Usage: pointer login [options]
+
+Authenticate once per machine: validates an API key and saves it to
+~/.config/pointer/credentials.json (honours $XDG_CONFIG_HOME / $POINTER_CONFIG_DIR), keyed by
+server. Every repo on this machine then resolves a key for that server without being asked again.
+
+Options:
+  --server <url>     Server URL (default: this repo's .pointer/config.json, then $POINTER_SERVER)
+  --key <key>        API key (prompted, hidden, when omitted)
+  -h, --help         Show this help
+`);
+            process.exit(0);
+        }
+        await loginCommand(cwd(), parsed);
+    } else if (command === 'logout') {
+        if (parsed['help']) {
+            console.log(`
+Usage: pointer logout [options]
+
+Removes this machine's saved global key for a server.
+
+Options:
+  --server <url>     Server URL (default: this repo's .pointer/config.json, then $POINTER_SERVER)
+  --json             Emit { ok, server, removed } as JSON
+  -h, --help         Show this help
+`);
+            process.exit(0);
+        }
+        await logoutCommand(cwd(), parsed);
+    } else if (command === 'whoami') {
+        if (parsed['help']) {
+            console.log(`
+Usage: pointer whoami [options]
+
+Prints the server, the signed-in account, and which of env/repo/global answered the API key —
+never the key itself.
+
+Options:
+  --server <url>     Server URL (default: this repo's .pointer/config.json, then $POINTER_SERVER)
+  --json             Emit { ok, server, displayName, email, source } as JSON
+  -h, --help         Show this help
+`);
+            process.exit(0);
+        }
+        await whoamiCommand(cwd(), parsed);
     } else if (command === 'doctor') {
         if (parsed['help']) {
             console.log(`

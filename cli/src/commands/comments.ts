@@ -69,10 +69,12 @@ export async function getClient(
 
   const explicitKey = typeof parsed['key'] === 'string' ? parsed['key'] : undefined;
   const token = await resolveToken(server, root, explicitKey);
-  const apiKey = explicitKey || (await readApiKey(root));
+  const apiKey = explicitKey || (await readApiKey(root, server));
 
   if (!token && !apiKey) {
-    console.error('Missing POINTER_API_KEY in .pointer/credentials.env or environment');
+    console.error(
+      'Missing API key. Set POINTER_API_KEY, add .pointer/credentials.env, or run `npx pointer-feedback login`.',
+    );
     process.exit(3);
   }
 

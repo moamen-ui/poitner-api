@@ -233,6 +233,12 @@ export async function writeConfigFull(cwd: string, config: PointerConfig): Promi
  * built bundle, or — its documented last resort — this very file. A repo with no `.env` (Angular,
  * Rails, static HTML…) therefore only works if we write them here; `init` used to write the key
  * alone and `pointer.sh list` failed with "Missing configuration".
+ *
+ * Called only when `init` writes the key locally — a `--local-credentials` install, or the answer
+ * "no" to "save this key for all repos on this machine?". When the key is instead saved to the
+ * global per-machine store (see `credentials.ts`), `init` skips this call entirely: there is no
+ * local secret to gitignore. `credentials.env.example` — a template for a file that may not even
+ * exist — was dropped along with it; it never held anything but empty placeholders.
  */
 export async function writeCredentials(
   cwd: string,
@@ -245,8 +251,6 @@ export async function writeCredentials(
   if (extra.server) lines.push(`POINTER_SERVER=${extra.server}`);
   if (extra.project) lines.push(`POINTER_PROJECT=${extra.project}`);
   await fs.writeFile(file, lines.join('\n') + '\n', { encoding: 'utf8', mode: 0o600 });
-  const exampleFile = join(cwd, '.pointer/credentials.env.example');
-  await fs.writeFile(exampleFile, `POINTER_API_KEY=\nPOINTER_SERVER=\nPOINTER_PROJECT=\n`, { encoding: 'utf8' });
 }
 
 /**

@@ -8,6 +8,7 @@ import { api } from '../api.js';
 import { postEvent } from '../events.js';
 import { detectDesignTokens } from '../stack/design.js';
 import { readStackFile, mergeStack, writeStackFile, stackFileRelPath } from '../stack/stackfile.js';
+import { resolveApiKey } from '../credentials.js';
 
 const ICON = { ok: '✔', warn: '⚠', error: '✘' } as const;
 
@@ -109,7 +110,7 @@ async function reportRun(cwd: string, options: DoctorOptions, checks: CheckResul
     const server = (options.server || config.server || '').replace(/\/$/, '');
     if (!server) return;
 
-    const apiKey = (await fs.readFile(join(cwd, '.pointer/credentials.env'), 'utf8')).match(/^POINTER_API_KEY=(.*)$/m)?.[1]?.trim();
+    const { key: apiKey } = await resolveApiKey(cwd, server);
     if (!apiKey) return;
 
     const login = await api<{ token?: string }>(server, '/api/auth/login-with-key', { method: 'POST', body: { apiKey } });
@@ -137,7 +138,7 @@ async function applyFixes(cwd: string, checks: CheckResult[]): Promise<string[]>
   const tokenFor = async (): Promise<string | undefined> => {
     if (token) return token;
     try {
-      const apiKey = (await fs.readFile(join(cwd, '.pointer/credentials.env'), 'utf8')).match(/^POINTER_API_KEY=(.*)$/m)?.[1]?.trim();
+      const { key: apiKey } = await resolveApiKey(cwd, server);
       if (!apiKey || !server) return undefined;
       const login = await api<{ token?: string }>(server, '/api/auth/login-with-key', { method: 'POST', body: { apiKey } });
       token = login?.token;

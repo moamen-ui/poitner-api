@@ -458,13 +458,26 @@ Add the `Pointer` section to `appsettings.Development.json` only. Production is 
 later, deliberately, via `appsettings.Production.json` or `Pointer__*` environment variables — see
 Scope rule 3.
 
-## Step 4 — Create the AI apply-tool credentials  ⚠️ do not skip
+## Step 4 — Authenticate the AI apply tool  ⚠️ do not skip
 
 <POINTER_PRODUCT>'s whole point is that an AI agent later **pulls and applies** the feedback queue — and
 **every API endpoint requires auth**. The apply skill (`<POINTER_SERVER>/skill.md`) authenticates
-with a **long-lived personal API key** (not email/password) and reads it from a gitignored
-**`.pointer/credentials.env`**, failing to log in if it's missing. So **always make sure it exists
-now**, even though the key is filled in later — don't leave it as a silent TODO.
+with a **long-lived personal API key** (not email/password), never a raw email/password pair. So
+**always make sure a key is set up now**, even though the value itself may still need filling in —
+don't leave it as a silent TODO.
+
+**Prefer authenticating once per machine, not once per repo.** If `npx`/Node is available:
+
+```bash
+npx pointer-feedback login --server <POINTER_SERVER>
+```
+
+This validates the key (hidden input) and saves it to a **global, per-machine credential store**
+(`~/.config/pointer/credentials.json`, mode `0600` — never printed, never committed, never inside
+this or any other repo). Every command in every repo on this machine — this apply skill included —
+then resolves it automatically: `POINTER_API_KEY` env var → this repo's `.pointer/credentials.env`
+→ the global store, in that order. Run `npx pointer-feedback whoami` to confirm who is signed in and
+which of those three answered; `npx pointer-feedback logout` removes it.
 
 **What's committed vs. gitignored in `.pointer/`** — only two files are meant to be shared via git;
 everything else is derived or per-machine and every clone/developer gets (or refreshes) their own
@@ -474,26 +487,15 @@ copy instead:
 |---|---|---|
 | `config.json` | ✅ committed | team config — server, project, environment(s), delivery |
 | `stack.json` | ✅ committed | detected frontend/backend/design tokens — not a secret |
-| `credentials.env` | ❌ gitignored | holds the real `POINTER_API_KEY` |
-| `credentials.env.example` | ❌ gitignored | a template, but per-machine like the file it documents — regenerate it, don't commit it |
+| `credentials.env` | ❌ gitignored | only written when the key is kept repo-local instead of in the global store (`--local-credentials`, or answering "no" to `init`'s save prompt) — holds the real `POINTER_API_KEY` |
 | `pointer.sh` | ❌ gitignored | the no-Node CLI fallback; `npx pointer-feedback update` (or re-running `install.sh`) refreshes it in every clone |
-| `manifest.json`, `.token_cache` | ❌ gitignored | build-time source map / cached login token |
+| `manifest.json` | ❌ gitignored | build-time source map |
 
-**The recommended installer creates the scaffold for you.** If the skills were installed via:
-
-```bash
-curl -fsSL <POINTER_SERVER>/install.sh | sh
-```
-
-then `.pointer/credentials.env` and `.pointer/credentials.env.example` already exist and `.pointer/`
-is gitignored (with only `config.json`/`stack.json` re-included — see the table above). Skip to
-"tell the user" below.
-
-**If you did NOT use the installer**, create the same scaffold yourself:
+**No Node/npx at all** (the true no-Node fallback — see `pointer.sh`, installed by `install.sh` or
+`npx pointer-feedback update`): create the repo-local scaffold by hand instead of running `login`:
 
 ```bash
 mkdir -p .pointer
-printf 'POINTER_API_KEY=ptr_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\n' > .pointer/credentials.env.example
 [ -f .pointer/credentials.env ] || printf 'POINTER_API_KEY=\n' > .pointer/credentials.env
 touch .gitignore
 grep -qxF '.pointer/*' .gitignore || echo '.pointer/*' >> .gitignore
@@ -510,14 +512,14 @@ ignore `config.json`/`stack.json`/`projects/` too. The last line only matters fo
 
 **Then explicitly tell the user** (this is the critical step they must action):
 
-> `.pointer/credentials.env` exists and is gitignored, along with `credentials.env.example`,
-> `pointer.sh` and everything else in `.pointer/` except `config.json`/`stack.json`. **Fill in
-> `POINTER_API_KEY`** — copy it from your <POINTER_PRODUCT> **profile page** (a
-> "Generate" click if you don't have one yet — it's always re-viewable there afterward, not a
-> one-time reveal), or from the dashboard's **quick-start guide**, which shows it pre-filled for
-> copy-paste. Until it's set, pulling or applying the feedback queue will fail with a login error.
-> Never commit `credentials.env`. Any <POINTER_PRODUCT> account's key works (any role can fetch/apply); using
-> a dedicated `Developer`-role account is conventional but not required.
+> Run `npx pointer-feedback login` once (it will ask for your <POINTER_PRODUCT> API key — copy it
+> from your **profile page**, generating one first if you don't have one yet, or from the
+> dashboard's **quick-start guide**, which shows it pre-filled for copy-paste) and every repo on this
+> machine, this one included, is authenticated from then on. If Node/npx is unavailable, fill in
+> `POINTER_API_KEY` in `.pointer/credentials.env` instead (gitignored — never commit it). Until one
+> of these is done, pulling or applying the feedback queue will fail with a login error. Any
+> <POINTER_PRODUCT> account's key works (any role can fetch/apply); using a dedicated
+> `Developer`-role account is conventional but not required.
 
 The apply workflow itself is the separate <POINTER_PRODUCT> skill served at `<POINTER_SERVER>/skill.md`.
 

@@ -66,7 +66,26 @@ async function withTempDir(fn: (dir: string) => Promise<void>) {
     await fn(dir);
   } finally {
     await fs.rm(dir, { recursive: true, force: true });
+    // The isolated global-store sibling directory (see envFor/globalDirFor) — cleaned up here so
+    // no test leaves one behind.
+    await fs.rm(`${dir}-global`, { recursive: true, force: true });
   }
+}
+
+/**
+ * Every spawned CLI process gets its own isolated global-credential-store directory. `init --yes
+ * --key ...` now defaults to saving the key to this machine's real global store
+ * (`~/.config/pointer/credentials.json`) — without this override every test below would write into
+ * the actual developer/CI machine's home directory.
+ */
+function globalDirFor(dir: string): string {
+  // A SIBLING of the repo temp dir, never inside it — inside it, git status in these tests would
+  // pick up the global store file itself as an untracked path.
+  return `${dir}-global`;
+}
+
+function envFor(dir: string): NodeJS.ProcessEnv {
+  return { ...process.env, POINTER_CONFIG_DIR: globalDirFor(dir) };
 }
 
 function gitStatusPorcelain(dir: string): string[] {
@@ -95,13 +114,13 @@ for (const tool of ['claude-code', 'cursor', 'windsurf', 'other', 'antigravity']
   test(`init --yes --tool ${tool}: git status shows only the committed files`, () =>
     withTempDir(async (dir) => {
       execFileSync('git', ['init'], { cwd: dir, stdio: 'ignore' });
-      execFileSync('git', ['config', 'user.email', 'test@example.com'], { cwd: dir });
-      execFileSync('git', ['config', 'user.name', 'Test'], { cwd: dir });
+      execFileSync('git', ['config', 'user.email', 'test@example.com'], { cwd: dir, env: envFor(dir) });
+      execFileSync('git', ['config', 'user.name', 'Test'], { cwd: dir, env: envFor(dir) });
       await fs.writeFile(path.join(dir, 'index.html'), '<html><head></head><body></body></html>', 'utf8');
 
       await execAsync(
         `node ${cliPath} init --yes --key ptr_good --create "My App" --server ${serverUrl} --tool ${tool}`,
-        { cwd: dir },
+        { cwd: dir, env: envFor(dir) },
       );
 
       const files = gitStatusPorcelain(dir);
@@ -112,13 +131,13 @@ for (const tool of ['claude-code', 'cursor', 'windsurf', 'other', 'antigravity']
 test('init --yes --skills-dir custom/skills: git status shows only the committed files', () =>
   withTempDir(async (dir) => {
     execFileSync('git', ['init'], { cwd: dir, stdio: 'ignore' });
-    execFileSync('git', ['config', 'user.email', 'test@example.com'], { cwd: dir });
-    execFileSync('git', ['config', 'user.name', 'Test'], { cwd: dir });
+    execFileSync('git', ['config', 'user.email', 'test@example.com'], { cwd: dir, env: envFor(dir) });
+    execFileSync('git', ['config', 'user.name', 'Test'], { cwd: dir, env: envFor(dir) });
     await fs.writeFile(path.join(dir, 'index.html'), '<html><head></head><body></body></html>', 'utf8');
 
     await execAsync(
       `node ${cliPath} init --yes --key ptr_good --create "My App" --server ${serverUrl} --skills-dir custom/skills`,
-      { cwd: dir },
+      { cwd: dir, env: envFor(dir) },
     );
 
     // The override directory must exist (proof the flag actually took effect) but be entirely
@@ -133,14 +152,14 @@ test('init --yes --skills-dir custom/skills: git status shows only the committed
 test('init --yes --path apps/a (multi-project): git status shows only the committed files, including .pointer/projects/*.stack.json', () =>
   withTempDir(async (dir) => {
     execFileSync('git', ['init'], { cwd: dir, stdio: 'ignore' });
-    execFileSync('git', ['config', 'user.email', 'test@example.com'], { cwd: dir });
-    execFileSync('git', ['config', 'user.name', 'Test'], { cwd: dir });
+    execFileSync('git', ['config', 'user.email', 'test@example.com'], { cwd: dir, env: envFor(dir) });
+    execFileSync('git', ['config', 'user.name', 'Test'], { cwd: dir, env: envFor(dir) });
     await fs.mkdir(path.join(dir, 'apps/a'), { recursive: true });
     await fs.writeFile(path.join(dir, 'apps/a/index.html'), '<html><head></head><body></body></html>', 'utf8');
 
     await execAsync(
       `node ${cliPath} init --yes --key ptr_good --project p1 --path apps/a --server ${serverUrl}`,
-      { cwd: dir },
+      { cwd: dir, env: envFor(dir) },
     );
 
     const files = gitStatusPorcelain(dir);

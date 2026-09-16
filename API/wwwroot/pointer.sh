@@ -10,6 +10,23 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 CONFIG_FILE="$SCRIPT_DIR/config.json"
 
+# A stale pre-global-store cache: the JWT cache moved to $CACHE_DIR below (keyed by server+key,
+# not by repo), so an old .pointer/.token_cache left over from a previous CLI version is dead
+# weight — remove it best-effort, same as the Node CLI does (see credentials.ts).
+rm -f "$SCRIPT_DIR/.token_cache" 2>/dev/null || true
+
+# The same per-machine directory the Node CLI's global credential store/cache live in (see
+# cli/src/credentials.ts): $POINTER_CONFIG_DIR overrides both, for tests — never referenced with
+# a trailing /pointer suffix when set, exactly like globalConfigDir()/globalCacheDir() there.
+if [[ -n "${POINTER_CONFIG_DIR:-}" ]]; then
+  GLOBAL_CONFIG_DIR="$POINTER_CONFIG_DIR"
+  GLOBAL_CACHE_DIR="$POINTER_CONFIG_DIR/cache"
+else
+  GLOBAL_CONFIG_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/pointer"
+  GLOBAL_CACHE_DIR="${XDG_CACHE_HOME:-$HOME/.cache}/pointer"
+fi
+GLOBAL_CREDS_FILE="$GLOBAL_CONFIG_DIR/credentials.json"
+
 # -p <key>: which Pointer project to act on, in a multi-project (monorepo) repo. Extracted from the
 # argument list here, before the subcommand dispatch at the bottom, which expects the subcommand as
 # $1 — so a preceding `-p <key>` (in any position) must be shifted out first. `-p=<key>` also works.
@@ -93,10 +110,22 @@ else
   PROJECT=$(resolve_config POINTER_PROJECT)
 fi
 
-API_KEY="${POINTER_API_KEY:-$(grep -hE '^POINTER_API_KEY=' "$SCRIPT_DIR/credentials.env" 2>/dev/null | head -1 | cut -d= -f2- | tr -d "'\"" || true)}"
+# API key resolution order: POINTER_API_KEY env -> repo .pointer/credentials.env -> the global
+# per-machine store `pointer login` (or a first `init`) writes, keyed by server origin — same
+# order and same store the Node CLI's resolveApiKey (credentials.ts) implements.
+API_KEY="${POINTER_API_KEY:-}"
+if [[ -z "$API_KEY" ]]; then
+  API_KEY=$(grep -hE '^POINTER_API_KEY=' "$SCRIPT_DIR/credentials.env" 2>/dev/null | head -1 | cut -d= -f2- | tr -d "'\"" || true)
+fi
+if [[ -z "$API_KEY" && -f "$GLOBAL_CREDS_FILE" ]]; then
+  # Keyed by server ORIGIN (no trailing slash) — SERVER read from .env/credentials.env is always a
+  # bare origin in practice, so trimming a trailing slash is enough to match what the CLI stores.
+  API_KEY=$(jq -r --arg o "${SERVER%/}" '.[$o].apiKey // empty' "$GLOBAL_CREDS_FILE" 2>/dev/null || true)
+fi
 
 if [[ -z "$SERVER" || -z "$PROJECT" || -z "$API_KEY" ]]; then
-  echo "Error: Missing configuration in .env or .pointer/credentials.env" >&2
+  echo "Error: Missing configuration in .env, .pointer/credentials.env, or the global store ($GLOBAL_CREDS_FILE)" >&2
+  echo "Run: npx pointer-feedback login" >&2
   exit 1
 fi
 
@@ -108,18 +137,28 @@ else
   STACK_FILE="$SCRIPT_DIR/stack.json"
 fi
 
-TOKEN_FILE="$SCRIPT_DIR/.token_cache"
+# The cached JWT: moved off .pointer/ (a git-repo path) onto the same global per-machine cache
+# directory the Node CLI uses (tokenCacheFile in credentials.ts) — keyed by server+key rather than
+# by repo, so a JWT survives a fresh clone and is shared across every repo authenticated the same
+# way. cksum is POSIX and needs no extra dependency beyond what this script already requires.
+mkdir -p "$GLOBAL_CACHE_DIR" 2>/dev/null || true
+CACHE_KEY=$(printf '%s' "${SERVER}:${API_KEY}" | cksum | awk '{print $1}')
+TOKEN_FILE="$GLOBAL_CACHE_DIR/${CACHE_KEY}.json"
 
 get_token() {
   if [[ -f "$TOKEN_FILE" ]]; then
-    cat "$TOKEN_FILE"
-    return
+    local cached
+    cached=$(jq -r '.token // empty' "$TOKEN_FILE" 2>/dev/null || true)
+    if [[ -n "$cached" ]]; then
+      echo "$cached"
+      return
+    fi
   fi
   local token
   token=$(curl -fsSL "$SERVER/api/auth/login-with-key" \
     -H 'Content-Type: application/json' \
     -d "{\"apiKey\":\"$API_KEY\"}" | jq -r '.data.token // .token')
-  echo "$token" > "$TOKEN_FILE"
+  jq -n --arg t "$token" '{token: $t}' > "$TOKEN_FILE" 2>/dev/null || printf '{"token":"%s"}\n' "$token" > "$TOKEN_FILE"
   echo "$token"
 }
 

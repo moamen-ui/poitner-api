@@ -6,6 +6,7 @@ import { tmpdir } from 'node:os';
 import { createServer, type Server } from 'node:http';
 import { compareSemver, runInitChecks } from '../src/checks.js';
 import { exitCodeFor } from '../src/commands/doctor.js';
+import { saveGlobalCredential } from '../src/credentials.js';
 
 async function scratch(config?: Record<string, unknown>, apiKey?: string): Promise<string> {
   const dir = await fs.mkdtemp(join(tmpdir(), 'pointer-doctor-'));
@@ -157,8 +158,65 @@ test('a rejected API key is an error, and a valid one unlocks the project check'
   await accepting.close();
 
   assert.equal(goodChecks.find((c) => c.id === 'key')?.status, 'ok');
+  assert.match(goodChecks.find((c) => c.id === 'key')?.message ?? '', /\(repo credentials\.env\)/);
   assert.equal(goodChecks.find((c) => c.id === 'project')?.status, 'ok');
   assert.equal(goodChecks.find((c) => c.id === 'widget-served')?.status, 'ok');
+});
+
+/**
+ * The `key` check's message names its SOURCE (env / repo / global) — added when the API key
+ * resolver gained a third source (the global per-machine store `pointer login` writes to). A repo
+ * with no `.pointer/credentials.env` at all should still pass, sourced from the global store, and
+ * doctor's hint on a total miss should point at `login`.
+ */
+test('the key check names its source, including the global store, and hints `login` when nothing resolves', async () => {
+  const now = new Date().toISOString();
+  const stub = await stubServer({
+    'GET /api/branding': [200, {}],
+    'GET /api/meta': [200, { minCliVersion: '0.0.1', serverTime: now }],
+    'POST /api/auth/login-with-key': [200, { status: 'ok', token: 'jwt' }],
+    'GET /api/admin/projects': [200, [{ key: 'demo', isActiveLocal: true }]],
+    'GET /pointer.js': [200, 'console.log(1)'],
+  });
+
+  const prevConfigDir = process.env.POINTER_CONFIG_DIR;
+  const globalDir = await fs.mkdtemp(join(tmpdir(), 'pointer-doctor-global-'));
+  process.env.POINTER_CONFIG_DIR = globalDir;
+  try {
+    // No credentials.env at all — only the global store has a key for this server.
+    const dir = await scratch({ server: stub.url, project: 'demo', environment: 'local' });
+    await saveGlobalCredential(stub.url, { apiKey: 'ptr_global' });
+
+    const checks = await runInitChecks(dir, {}, '1.0.0');
+    assert.equal(checks.find((c) => c.id === 'key')?.status, 'ok');
+    assert.match(checks.find((c) => c.id === 'key')?.message ?? '', /\(global store\)/);
+  } finally {
+    if (prevConfigDir === undefined) delete process.env.POINTER_CONFIG_DIR;
+    else process.env.POINTER_CONFIG_DIR = prevConfigDir;
+    await fs.rm(globalDir, { recursive: true, force: true });
+  }
+  await stub.close();
+});
+
+test('no key anywhere (env, repo, or global) hints `login`', async () => {
+  const prevConfigDir = process.env.POINTER_CONFIG_DIR;
+  const globalDir = await fs.mkdtemp(join(tmpdir(), 'pointer-doctor-global-empty-'));
+  process.env.POINTER_CONFIG_DIR = globalDir;
+  try {
+    const stub = await stubServer({ 'GET /api/branding': [200, {}] });
+    const dir = await scratch({ server: stub.url, project: 'demo', environment: 'local' });
+
+    const checks = await runInitChecks(dir, {}, '1.0.0');
+    await stub.close();
+
+    const key = checks.find((c) => c.id === 'key');
+    assert.equal(key?.status, 'error');
+    assert.match(key?.hint ?? '', /pointer-feedback login/);
+  } finally {
+    if (prevConfigDir === undefined) delete process.env.POINTER_CONFIG_DIR;
+    else process.env.POINTER_CONFIG_DIR = prevConfigDir;
+    await fs.rm(globalDir, { recursive: true, force: true });
+  }
 });
 
 test('a project that exists but is inactive for this environment warns, not errors', async () => {
