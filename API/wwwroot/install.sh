@@ -56,7 +56,7 @@ cat > .pointer/credentials.env.example <<'EOF'
 # Find/copy yours from your <POINTER_PRODUCT> profile page, or the dashboard's quick-start guide.
 POINTER_API_KEY=ptr_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
 EOF
-echo "  ok  credentials.example  (.pointer/credentials.env.example)   — committable template"
+echo "  ok  credentials.example  (.pointer/credentials.env.example)   — template (gitignored, re-created per clone)"
 
 if [ -f .pointer/credentials.env ]; then
   echo "  ok  credentials          (.pointer/credentials.env already exists — left untouched)"
@@ -71,10 +71,10 @@ EOF
 fi
 
 # Gitignore .pointer/ (secrets: credentials.env + pointer.sh's cached JWT in .token_cache) but keep
-# the .example, stack.json, pointer.sh, AND config.json committable — none of those four are secrets
-# (stack.json is detected frontend/backend/aiTools; pointer.sh is the CLI helper itself; config.json
-# is the CLI's committable project config), and every developer/agent needs them via normal git,
-# not a per-machine setup step.
+# stack.json AND config.json committable — neither is a secret (stack.json is detected
+# frontend/backend/aiTools; config.json is the CLI's project config) and every developer/agent needs
+# them via normal git. Everything else in .pointer/ and the AI skill files are served by the server
+# and re-installed per clone, so they stay out of the repo (see docs/ON-DISK-CONTRACT.md).
 #
 # The pattern is `.pointer/*`, NOT `.pointer/`. Git does not descend into an excluded DIRECTORY, so
 # with the directory form it never considers the files inside it and all four `!` lines below are
@@ -86,10 +86,19 @@ if grep -qxF '.pointer/' .gitignore; then
   sed -i.bak 's|^\.pointer/$|.pointer/*|' .gitignore && rm -f .gitignore.bak
 fi
 grep -qxF '.pointer/*' .gitignore || echo '.pointer/*' >> .gitignore
-grep -qxF '!.pointer/credentials.env.example' .gitignore || echo '!.pointer/credentials.env.example' >> .gitignore
 grep -qxF '!.pointer/stack.json' .gitignore || echo '!.pointer/stack.json' >> .gitignore
-grep -qxF '!.pointer/pointer.sh' .gitignore || echo '!.pointer/pointer.sh' >> .gitignore
 grep -qxF '!.pointer/config.json' .gitignore || echo '!.pointer/config.json' >> .gitignore
+# Only config.json + stack.json are committed. pointer.sh, credentials.env.example and the AI skill
+# files are served by the server and re-installed per clone (`npx pointer-feedback init` joins;
+# `update` re-fetches) — drop the negations an earlier version added for them.
+for stale in '!.pointer/pointer.sh' '!.pointer/credentials.env.example'; do
+  if grep -qxF "$stale" .gitignore; then
+    grep -vxF "$stale" .gitignore > .gitignore.tmp && mv .gitignore.tmp .gitignore
+  fi
+done
+for skilldir in '.claude/skills/pointer-init/' '.claude/skills/pointer-feedback/' '.agents/pointer-init/' '.agents/pointer-feedback/'; do
+  grep -qxF "$skilldir" .gitignore || echo "$skilldir" >> .gitignore
+done
 
 echo ""
 echo "Done. Next:"
