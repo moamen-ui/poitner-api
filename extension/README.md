@@ -41,6 +41,21 @@ Security note: the real JWT stays in the background worker — the page only eve
 token (`__pointer_via_proxy__`); the background swaps in the real token on each request. The CSP
 strip is scoped to the single tab you explicitly activate and is removed on deactivate / tab close.
 
+## Install (reviewers)
+
+The extension is published on the **Chrome Web Store**. The listing URL is a server setting — the
+super admin sets it in the dashboard under **Settings → Extension → Chrome Web Store URL** — and every
+surface reads it live from `GET /api/branding` (`extension.storeUrl`), so a new listing URL never
+requires a code change or a CLI release:
+
+- the landing page's "Add to Chrome" button;
+- the dashboard **Install guide → Chrome extension** method;
+- `npx pointer-feedback init` when the developer picks **"Chrome extension only"** (`--delivery extension`)
+  — the CLI then skips code injection and prints the install steps.
+
+Reviewer steps: install from the store link → extension **Options** → set the server URL → sign in
+with your Pointer account → open the app, click the toolbar icon, pick the project, **Activate**.
+
 ## Develop
 
 ```bash
@@ -68,14 +83,28 @@ Set the Pointer server in the extension **Options** (default `https://api.pointe
    change appears with no extension rebuild.
 6. **Deactivate** — Deactivate on the tab → it reloads with its original CSP restored.
 
-## Chrome Web Store notes (before publishing)
+## Publish an update to the Chrome Web Store
 
-- Add `icons` (16/48/128 PNG) to `manifest.json` and an action icon.
-- Justify `<all_urls>` host permission + `declarativeNetRequest` CSP header removal in the listing
-  (needed to inject the widget and load it on CSP'd pages, only on user-activated tabs).
-- The widget is loaded from your server (remote). Review may scrutinise this; if rejected, the
-  fallback is to **bundle** `pointer.js` and inject via `executeScript({world:'MAIN', files:[...]})`
-  (no CSP strip needed) at the cost of pinning the widget version to extension releases.
+Only shell changes (popup, background, options, manifest, icons) need a release — widget changes
+ship through the server (see above).
+
+```bash
+cd extension
+# 1. bump "version" in manifest.json — the store only accepts a version higher than the published one
+npm ci && npm run typecheck && npm run build          # → extension/dist (gitignored)
+V=$(node -p "require('./manifest.json').version")
+(cd dist && zip -qr "../pointer-ext-v$V.zip" . -x '.DS_Store')   # → extension/pointer-ext-v<V>.zip (gitignored)
+```
+
+Test the exact bundle first: `chrome://extensions` → Developer mode → **Load unpacked** →
+`extension/dist` (or drag the zip). Then upload `pointer-ext-v<V>.zip` in the Chrome Web Store
+Developer Dashboard. If the listing URL changes, update **Settings → Extension → Chrome Web Store
+URL** in the dashboard; nothing else needs to change.
+
+Listing notes kept from the first review: justify the `declarativeNetRequest` CSP-header removal
+(widget must load on CSP'd pages, only on user-activated tabs) and the remote `pointer.js` load. If a
+review ever rejects remote code, the fallback is to **bundle** `pointer.js` and inject it via
+`executeScript({world:'MAIN', files:[...]})` at the cost of pinning the widget to extension releases.
 
 ## Not in this MVP
 
