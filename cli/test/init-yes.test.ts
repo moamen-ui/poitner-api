@@ -147,6 +147,9 @@ test('init --json prints JSON and nothing else', () => withTempDir(async (dir) =
   const json = JSON.parse(lines[0]);
   assert.strictEqual(json.ok, true);
   assert.strictEqual(json.project.name, "My App");
+  // A first install (no prior .pointer/config.json) is reported as such — the counterpart to a
+  // "join", which reports mode: 'join' below.
+  assert.strictEqual(json.mode, 'install');
 }));
 
 test('a default --yes run records delivery: embed', () => withTempDir(async (dir) => {
@@ -154,6 +157,70 @@ test('a default --yes run records delivery: embed', () => withTempDir(async (dir
   assert.match(stdout, /is set up/);
   const config = JSON.parse(await fs.readFile(path.join(dir, '.pointer/config.json'), 'utf8'));
   assert.strictEqual(config.delivery, 'embed');
+}));
+
+/**
+ * A "join": .pointer/config.json already names a server and a project (written by whoever ran
+ * `init` here first, then committed). A second developer cloning the repo should only be asked
+ * for their API key — server, project, environment, AI tool and delivery are all read back from
+ * the committed config, and nothing is injected (the embed snippet is already in the app's
+ * committed source).
+ */
+test('init --yes joins an already-configured repo, asking only for the key', () => withTempDir(async (dir) => {
+  await fs.mkdir(path.join(dir, '.pointer'), { recursive: true });
+  await fs.writeFile(
+    path.join(dir, '.pointer/config.json'),
+    JSON.stringify({
+      server: serverUrl,
+      project: 'existing',
+      environment: 'local',
+      aiTool: 'claude-code',
+      delivery: 'embed',
+    }),
+    'utf8',
+  );
+  const indexPath = path.join(dir, 'index.html');
+  const original = '<html><head></head><body></body></html>';
+  await fs.writeFile(indexPath, original, 'utf8');
+
+  // No --project, no --create: a join must succeed with --key alone.
+  const { stdout } = await execAsync(`node ${cliPath} init --yes --key ptr_good --server ${serverUrl}`, { cwd: dir });
+  assert.match(stdout, /Joined/);
+
+  const html = await fs.readFile(indexPath, 'utf8');
+  assert.strictEqual(html, original, 'a join must never inject into the app');
+  assert.doesNotMatch(html, /<pointer-feedback/);
+
+  const creds = await fs.readFile(path.join(dir, '.pointer/credentials.env'), 'utf8');
+  assert.match(creds, /POINTER_API_KEY=ptr_good/);
+
+  const config = JSON.parse(await fs.readFile(path.join(dir, '.pointer/config.json'), 'utf8'));
+  assert.strictEqual(config.project, 'existing', 'the joined project must not change');
+
+  // Skills and pointer.sh are gitignored now, so a join is the thing that installs them.
+  await fs.access(path.join(dir, '.claude/skills/pointer-feedback/SKILL.md'));
+  await fs.access(path.join(dir, '.pointer/pointer.sh'));
+}));
+
+test('init --json in join mode reports mode: join and does not ask for --project', () => withTempDir(async (dir) => {
+  await fs.mkdir(path.join(dir, '.pointer'), { recursive: true });
+  await fs.writeFile(
+    path.join(dir, '.pointer/config.json'),
+    JSON.stringify({
+      server: serverUrl,
+      project: 'existing',
+      environment: 'local',
+      aiTool: 'claude-code',
+      delivery: 'embed',
+    }),
+    'utf8',
+  );
+
+  const { stdout } = await execAsync(`node ${cliPath} init --json --key ptr_good --server ${serverUrl}`, { cwd: dir });
+  const json = JSON.parse(stdout.trim().split('\n')[0]);
+  assert.strictEqual(json.mode, 'join');
+  assert.strictEqual(json.project.key, 'existing');
+  assert.strictEqual(json.injected, false);
 }));
 
 test('--delivery bogus exits 2', () => withTempDir(async (dir) => {

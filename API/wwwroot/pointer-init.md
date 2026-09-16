@@ -49,6 +49,28 @@ config silently splits the install in two.
 Ask the user **only** for a field that is genuinely missing. If there is no config file at all, fall
 back to Step 1.
 
+**Join, not first install.** When `.pointer/config.json` already has BOTH `server` and `project`
+set, someone already wired this app up — this run is a **join**, not a first install (this is
+exactly what `npx pointer-feedback init` itself does in the same situation: see its `--yes`/`--json`
+`mode: 'join'` output). Concretely:
+
+- Ask the user for **nothing except the API key** (Step 4). Server, project, environment(s), AI
+  tool and delivery are all read from the config above.
+- **Skip Step 3 (inject the loader) entirely.** The `<pointer-feedback>` snippet (or, for
+  `delivery: "extension"`, nothing at all) is already in the app's **committed** source — that is
+  the whole point of `config.json` being committed. Re-injecting would at best duplicate the
+  snippet and at worst stamp a different project key over the one the team already committed.
+- **Do still make sure the skills and `.pointer/pointer.sh` are installed on THIS machine.** Unlike
+  `config.json`/`stack.json`, the skill files and `pointer.sh` are gitignored (see the table in
+  Step 4) — a fresh clone has neither, even though `config.json` is right there in git. Run
+  `npx pointer-feedback update` (installs them if missing, refreshes them if stale), or re-run
+  `install.sh`, or fetch `pointer-init.md`/`skill.md`/`pointer.sh` yourself the way Step 4 describes.
+- If `aiTool` is missing from the config (an older install, from before that field existed), fall
+  back to detecting/asking for it as in a first install — everything else above still applies.
+
+Only fall back to the full Step 1 → Step 3 flow below when `config.json` is missing entirely, or is
+missing `server` or `project`.
+
 ## Step 1 — Ask the user for the variables (only those Step 0 did not answer)
 
 Ask this question first, before the table below, unless Step 0 already answered it from
@@ -440,14 +462,27 @@ with a **long-lived personal API key** (not email/password) and reads it from a 
 **`.pointer/credentials.env`**, failing to log in if it's missing. So **always make sure it exists
 now**, even though the key is filled in later — don't leave it as a silent TODO.
 
+**What's committed vs. gitignored in `.pointer/`** — only two files are meant to be shared via git;
+everything else is derived or per-machine and every clone/developer gets (or refreshes) their own
+copy instead:
+
+| File | Committed? | Why |
+|---|---|---|
+| `config.json` | ✅ committed | team config — server, project, environment(s), delivery |
+| `stack.json` | ✅ committed | detected frontend/backend/design tokens — not a secret |
+| `credentials.env` | ❌ gitignored | holds the real `POINTER_API_KEY` |
+| `credentials.env.example` | ❌ gitignored | a template, but per-machine like the file it documents — regenerate it, don't commit it |
+| `pointer.sh` | ❌ gitignored | the no-Node CLI fallback; `npx pointer-feedback update` (or re-running `install.sh`) refreshes it in every clone |
+| `manifest.json`, `.token_cache` | ❌ gitignored | build-time source map / cached login token |
+
 **The recommended installer creates the scaffold for you.** If the skills were installed via:
 
 ```bash
 curl -fsSL <POINTER_SERVER>/install.sh | sh
 ```
 
-then `.pointer/credentials.env` (gitignored) and `.pointer/credentials.env.example` (committable
-template) already exist, and `.pointer/` is gitignored with the `.example` kept committable. Skip to
+then `.pointer/credentials.env` and `.pointer/credentials.env.example` already exist and `.pointer/`
+is gitignored (with only `config.json`/`stack.json` re-included — see the table above). Skip to
 "tell the user" below.
 
 **If you did NOT use the installer**, create the same scaffold yourself:
@@ -457,14 +492,20 @@ mkdir -p .pointer
 printf 'POINTER_API_KEY=ptr_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\n' > .pointer/credentials.env.example
 [ -f .pointer/credentials.env ] || printf 'POINTER_API_KEY=\n' > .pointer/credentials.env
 touch .gitignore
-grep -qxF '.pointer/' .gitignore || echo '.pointer/' >> .gitignore
-grep -qxF '!.pointer/credentials.env.example' .gitignore || echo '!.pointer/credentials.env.example' >> .gitignore
+grep -qxF '.pointer/*' .gitignore || echo '.pointer/*' >> .gitignore
+grep -qxF '!.pointer/config.json' .gitignore || echo '!.pointer/config.json' >> .gitignore
+grep -qxF '!.pointer/stack.json' .gitignore || echo '!.pointer/stack.json' >> .gitignore
 ```
+
+Note the directory form: `.pointer/*` (contents), never bare `.pointer/` — git does not descend into
+an excluded directory, so the bare form would make the two `!` re-includes above inert and silently
+ignore `config.json`/`stack.json` too.
 
 **Then explicitly tell the user** (this is the critical step they must action):
 
-> `.pointer/credentials.env` exists and `.pointer/` is gitignored (with `credentials.env.example` kept
-> committable). **Fill in `POINTER_API_KEY`** — copy it from your <POINTER_PRODUCT> **profile page** (a
+> `.pointer/credentials.env` exists and is gitignored, along with `credentials.env.example`,
+> `pointer.sh` and everything else in `.pointer/` except `config.json`/`stack.json`. **Fill in
+> `POINTER_API_KEY`** — copy it from your <POINTER_PRODUCT> **profile page** (a
 > "Generate" click if you don't have one yet — it's always re-viewable there afterward, not a
 > one-time reveal), or from the dashboard's **quick-start guide**, which shows it pre-filled for
 > copy-paste. Until it's set, pulling or applying the feedback queue will fail with a login error.

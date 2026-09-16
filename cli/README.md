@@ -26,6 +26,42 @@ Set up the feedback widget in your project.
 pointer init --server https://api.pointer.moamen.work --key ptr_... --project my-project
 ```
 
+#### Committed vs. gitignored
+
+`init` only expects two files under `.pointer/` to be shared via git: **`config.json`** and
+**`stack.json`** — everything else (`credentials.env`, `credentials.env.example`, `pointer.sh`,
+`manifest.json`, `.token_cache`) is derived or per-machine and stays gitignored, along with the
+skill directories (`.claude/skills/pointer-init/`, `.claude/skills/pointer-feedback/`,
+`.agents/pointer-init/`, `.agents/pointer-feedback/`). `init` manages the `.gitignore` block for
+you (`upsertGitignore`), migrating an older repo's block — including one that still re-included
+`pointer.sh` or credentials.env.example — to the new split automatically and idempotently.
+
+That split is why a clone of an already-configured repo has `config.json`/`stack.json` (they were
+committed) but is missing the skills and `pointer.sh` (they were never committed) — see **join
+mode** below and `pointer update`.
+
+#### Join mode: re-running `init` in an already-configured repo
+
+If `.pointer/config.json` already has a `server` **and** a `project` — because someone already ran
+`init` here and committed the config — a further `init` run is a **join**, not a first install:
+
+- Server, project, environment(s), AI tool and delivery are all read back from the committed
+  config; you are asked for **nothing but your API key** (`--key`, or the interactive prompt).
+- Nothing is injected — the `<pointer-feedback>` snippet (or, for `delivery: "extension"`, nothing)
+  is already in the app's committed source.
+- The skills and `.pointer/pointer.sh` ARE (re-)installed, since they are gitignored and this
+  clone/machine has none yet.
+- `.pointer/stack.json` is only regenerated if it is missing — it is committed and rarely differs
+  machine to machine.
+
+```bash
+# In a repo that already has .pointer/config.json:
+pointer init --yes --key ptr_...        # no --project/--create needed
+```
+
+`--json`'s output gains a `mode` field: `"install"` for a first install, `"join"` for the above. The
+human summary prints `Joined <product> project <key> as <you>` instead of `<product> is set up`.
+
 #### Delivery: embed vs. extension
 
 Interactively, `init` first asks **how reviewers will open the feedback widget**:
@@ -55,12 +91,18 @@ pointer doctor --fix
 ```
 
 ### `pointer update`
-Refresh the local AI skills (`.claude/skills/`, `.agents/`) and `pointer.sh` from the configured server.
+Refresh the local AI skills (`.claude/skills/`, `.agents/`) and `pointer.sh` from the configured
+server — **and installs them if they are missing entirely**, not just when they're stale. Since
+they're gitignored (see "Committed vs. gitignored" above), a freshly cloned repo that already has
+`.pointer/config.json` has neither until `update` (or a join `init`) puts them there.
 
 ```bash
-pointer update
-pointer update --check
+pointer update           # installs anything missing, refreshes anything stale
+pointer update --check   # reports missing/stale files without changing anything
 ```
+
+`pointer doctor` (below) surfaces the same gap as a `skills` warning — "Skills not installed — run
+`npx pointer-feedback update`" — and `doctor --fix` runs the same install.
 
 ### `pointer apply`
 Turn pending feedback comments into a self-contained AI apply prompt, or hand it off directly to an AI tool.

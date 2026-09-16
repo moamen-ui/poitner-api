@@ -424,10 +424,24 @@ async function skillsCheck(cwd: string, config: PointerConfig): Promise<CheckRes
       missing.push(rel);
     }
   }
+  // pointer.sh is gitignored alongside the skill files (see config.ts upsertGitignore) and is
+  // installed by the same call (installSkills) — a clone that never ran `init`/`update` is
+  // missing it too, and it is the file an AI agent actually executes in the no-Node fallback.
+  try {
+    await fs.access(join(cwd, '.pointer/pointer.sh'));
+  } catch {
+    missing.push('.pointer/pointer.sh');
+  }
 
   return missing.length === 0
     ? { id: 'skills', status: 'ok', message: `Skills installed for ${tool}` }
-    : { id: 'skills', status: 'warn', message: `Skills missing for ${tool}: ${missing.join(', ')}`, fixable: true };
+    : {
+        id: 'skills',
+        status: 'warn',
+        message: 'Skills not installed — run `npx pointer-feedback update`',
+        hint: `Missing: ${missing.join(', ')}`,
+        fixable: true,
+      };
 }
 
 /**

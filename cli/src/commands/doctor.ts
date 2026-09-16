@@ -1,6 +1,6 @@
 import { promises as fs } from 'node:fs';
 import { join } from 'node:path';
-import { readConfig } from '../config.js';
+import { readConfig, upsertGitignore } from '../config.js';
 import { runInitChecks, type CheckResult } from '../checks.js';
 import { installSkills } from '../skills.js';
 import { detectStack } from '../detect.js';
@@ -143,21 +143,13 @@ async function applyFixes(cwd: string, checks: CheckResult[]): Promise<string[]>
     try {
       if (check.id === 'gitignore') {
         const path = join(cwd, '.gitignore');
-        const existing = await fs.readFile(path, 'utf8').catch(() => '');
-        if (!existing.includes('.pointer/')) {
-          const block = [
-            '',
-            '# Local install state. credentials.env holds an API key.',
-            // Contents, not the directory — git will not descend into an excluded directory, so
-            // `.pointer/` would make the two `!` lines below inert.
-            '.pointer/*',
-            '!.pointer/config.json',
-            '!.pointer/stack.json',
-            '',
-          ].join('\n');
-          await fs.writeFile(path, existing + block, 'utf8');
-          repaired.push(check.id);
-        }
+        const before = await fs.readFile(path, 'utf8').catch(() => '');
+        // Reuse the canonical block (and its migration logic) rather than hand-rolling a second,
+        // narrower copy here — this is the same repair `init` applies on every run, just invoked
+        // directly instead of waiting for the next `init`/`update`.
+        await upsertGitignore(cwd, 'Feedback tool');
+        const after = await fs.readFile(path, 'utf8').catch(() => '');
+        if (after !== before) repaired.push(check.id);
       } else if (check.id === 'source-map') {
         // Rebuild it rather than telling the developer to run `pointer map --from-source`
         // themselves: the CLI is standing right here with everything it needs.

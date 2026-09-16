@@ -75,27 +75,43 @@ export async function writeCredentials(
   await fs.writeFile(exampleFile, `POINTER_API_KEY=\nPOINTER_SERVER=\nPOINTER_PROJECT=\n`, { encoding: 'utf8' });
 }
 
+/**
+ * Directories a full install (or a join, see `init`'s "join" mode) writes outside `.pointer/` —
+ * derived, per-machine state, never committed. `.claude/skills/pointer-init/` and
+ * `.claude/skills/pointer-feedback/` are frozen skill directories for Claude Code; `.agents/...`
+ * is the equivalent for every other tool (and the Claude Code symlink target).
+ */
+const IGNORED_SKILL_DIRS = [
+  '.claude/skills/pointer-init/',
+  '.claude/skills/pointer-feedback/',
+  '.agents/pointer-init/',
+  '.agents/pointer-feedback/',
+];
+
 export async function upsertGitignore(cwd: string, productName = 'Feedback tool'): Promise<void> {
   const file = join(cwd, '.gitignore');
   let content = await fs.readFile(file, 'utf8').catch(() => '');
-  // The frozen on-disk contract (R1-01): ignore the whole directory, then re-include the files a
-  // team is meant to commit. Ignoring only credentials.env left .pointer/.token_cache — a cached
-  // JWT — and manifest.json committable, which is how a token ends up in someone's git history.
+  const before = content;
+
+  // The frozen on-disk contract (R1-01): ignore the whole directory, then re-include only the
+  // TEAM config a repo is meant to commit — `config.json` and `stack.json`. Everything else in
+  // `.pointer/` (credentials.env, credentials.env.example, pointer.sh, manifest.json,
+  // .token_cache, …) is derived or per-machine and stays ignored; so do the skill directories,
+  // which live outside `.pointer/` entirely. Committing pointer.sh and the skills used to mean
+  // every consumer repo carried ~800 lines of server-served markdown that went stale the moment
+  // the server changed it — `init`/`update` now install a fresh copy into every clone instead.
   const entry = [
     '',
     `# ${productName}`,
     // `.pointer/*`, not `.pointer/`. Git does not descend into an excluded DIRECTORY, so the
-    // directory form makes every `!` line below inert and the four files this block exists to keep
+    // directory form makes every `!` line below inert and the files this block exists to keep
     // committable are silently ignored instead.
     '.pointer/*',
-    '!.pointer/credentials.env.example',
     '!.pointer/stack.json',
-    '!.pointer/pointer.sh',
     '!.pointer/config.json',
+    ...IGNORED_SKILL_DIRS,
     '',
   ].join('\n');
-
-  const before = content;
 
   // Migrate the directory form an earlier version wrote. Left in place it still wins: any
   // exclusion of the directory stops git looking inside it, so the negations never get a chance.
@@ -105,11 +121,25 @@ export async function upsertGitignore(cwd: string, productName = 'Feedback tool'
   // versions emitted (always the literal product name).
   content = content.replace(/\n?# [^\n]*\n\.pointer\/credentials\.env\n/, '');
 
-  // The negations are what make the migration useful — a .gitignore that only ever said
+  // Drop the re-includes an earlier version of THIS block wrote for files that are gitignored as
+  // of this version: pointer.sh and credentials.env.example were committable, now every clone
+  // installs its own copy (see `installSkills`/`update`) so there is nothing to share via git.
+  content = content.replace(/^!\.pointer\/pointer\.sh\n/m, '');
+  content = content.replace(/^!\.pointer\/credentials\.env\.example\n/m, '');
+
+  // The stack.json negation is what makes the migration useful — a .gitignore that only ever said
   // `.pointer/` has none of them, so rewriting that one line would leave stack.json still ignored.
   // Keying on stack.json rather than on the exclusion line is what catches that case.
   if (!/^!\.pointer\/stack\.json$/m.test(content)) {
     content += entry;
+  }
+
+  // Independent of the block above (and its migration state): a repo whose .gitignore already has
+  // the `.pointer/*` block from an older CLI still needs the skill directories added, since they
+  // were never ignored before this version at all.
+  const missingSkillDirs = IGNORED_SKILL_DIRS.filter((d) => !content.includes(d));
+  if (missingSkillDirs.length > 0) {
+    content += missingSkillDirs.map((d) => `${d}\n`).join('');
   }
 
   if (content !== before) {

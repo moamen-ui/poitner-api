@@ -57,35 +57,47 @@ POINTER_PROJECT=
 async function upsertGitignore(cwd2, productName = "Feedback tool") {
   const file = join(cwd2, ".gitignore");
   let content = await fs.readFile(file, "utf8").catch(() => "");
+  const before = content;
   const entry = [
     "",
     `# ${productName}`,
     // `.pointer/*`, not `.pointer/`. Git does not descend into an excluded DIRECTORY, so the
-    // directory form makes every `!` line below inert and the four files this block exists to keep
+    // directory form makes every `!` line below inert and the files this block exists to keep
     // committable are silently ignored instead.
     ".pointer/*",
-    "!.pointer/credentials.env.example",
     "!.pointer/stack.json",
-    "!.pointer/pointer.sh",
     "!.pointer/config.json",
+    ...IGNORED_SKILL_DIRS,
     ""
   ].join("\n");
-  const before = content;
   content = content.replace(/^\.pointer\/$/m, ".pointer/*");
   content = content.replace(/\n?# [^\n]*\n\.pointer\/credentials\.env\n/, "");
+  content = content.replace(/^!\.pointer\/pointer\.sh\n/m, "");
+  content = content.replace(/^!\.pointer\/credentials\.env\.example\n/m, "");
   if (!/^!\.pointer\/stack\.json$/m.test(content)) {
     content += entry;
+  }
+  const missingSkillDirs = IGNORED_SKILL_DIRS.filter((d) => !content.includes(d));
+  if (missingSkillDirs.length > 0) {
+    content += missingSkillDirs.map((d) => `${d}
+`).join("");
   }
   if (content !== before) {
     await fs.writeFile(file, content, "utf8");
   }
 }
-var CONFIG_FILE, CREDENTIALS_FILE;
+var CONFIG_FILE, CREDENTIALS_FILE, IGNORED_SKILL_DIRS;
 var init_config = __esm({
   "src/config.ts"() {
     "use strict";
     CONFIG_FILE = ".pointer/config.json";
     CREDENTIALS_FILE = ".pointer/credentials.env";
+    IGNORED_SKILL_DIRS = [
+      ".claude/skills/pointer-init/",
+      ".claude/skills/pointer-feedback/",
+      ".agents/pointer-init/",
+      ".agents/pointer-feedback/"
+    ];
   }
 });
 
@@ -1858,7 +1870,18 @@ async function skillsCheck(cwd2, config) {
       missing.push(rel);
     }
   }
-  return missing.length === 0 ? { id: "skills", status: "ok", message: `Skills installed for ${tool}` } : { id: "skills", status: "warn", message: `Skills missing for ${tool}: ${missing.join(", ")}`, fixable: true };
+  try {
+    await fs8.access(join8(cwd2, ".pointer/pointer.sh"));
+  } catch {
+    missing.push(".pointer/pointer.sh");
+  }
+  return missing.length === 0 ? { id: "skills", status: "ok", message: `Skills installed for ${tool}` } : {
+    id: "skills",
+    status: "warn",
+    message: "Skills not installed \u2014 run `npx pointer-feedback update`",
+    hint: `Missing: ${missing.join(", ")}`,
+    fixable: true
+  };
 }
 async function gitignoreChecks(cwd2) {
   const results = [];
@@ -2594,17 +2617,19 @@ async function initCommand(cwd2, options = {}) {
     console.error(`Invalid --delivery "${deliveryFlag}". Valid values: embed, extension.`);
     process.exit(2);
   }
+  const config = await readConfig(cwd2).catch(() => ({}));
+  const isJoin = Boolean(config.server && config.project);
+  const mode = isJoin ? "join" : "install";
   if (isYes) {
     if (!options["key"]) {
       console.error("Missing flag: --key is required with --yes");
       process.exit(2);
     }
-    if (!options["project"] && !options["create"]) {
+    if (!isJoin && !options["project"] && !options["create"]) {
       console.error("Missing flag: --project or --create is required with --yes");
       process.exit(2);
     }
   }
-  const config = await readConfig(cwd2).catch(() => ({}));
   let server = options["server"] || config.server || process.env.POINTER_SERVER || BUILD_DEFAULT_SERVER;
   if (!isYes && !options["server"] && !config.server) {
     server = await ask("Server URL", { default: server });
@@ -2673,8 +2698,8 @@ async function initCommand(cwd2, options = {}) {
   await writeCredentials(cwd2, key);
   await upsertGitignore(cwd2, product);
   const appInfo = await detectStack(cwd2);
-  const canInject = appInfo.kind === "vite" || appInfo.kind === "static" || !!options["html"];
-  if (!isJson && !isYes) {
+  const canInject = !isJoin && (appInfo.kind === "vite" || appInfo.kind === "static" || !!options["html"]);
+  if (!isJson && !isYes && !isJoin) {
     console.log(`
 Stack: ${appInfo.kind}${appInfo.evidence.length ? ` (${appInfo.evidence.join(", ")})` : ""}`);
     if (!canInject && !options["no-inject"]) {
@@ -2688,126 +2713,142 @@ and the pointer-init skill uses them to mount the widget for you afterwards.
   }
   let project = options["project"];
   let create = options["create"];
-  let finalProjectKey = project || "";
-  let projectName = create || finalProjectKey;
+  let finalProjectKey = "";
+  let projectName = "";
   let created = false;
-  if (!isYes && !project && !create) {
-    const projects = await api(server, "/api/admin/projects", { token }).catch(() => []);
-    const createOpt = "\uFF0B Create a new project\u2026";
-    const choices = projects.map((p) => `${p.name}  (${p.key})`).concat(createOpt);
-    let choice = createOpt;
-    if (projects.length > 0) {
-      choice = await select("Which project is this app?", choices);
-    }
-    if (choice === createOpt) {
-      const name = await ask("Project name");
-      let derivedKey = name.toLowerCase().replace(/[^a-z0-9-]/g, "-").replace(/-+/g, "-").replace(/^-|-$/g, "");
-      finalProjectKey = await ask("Project key", { default: derivedKey, validate: (v) => /^[a-z0-9-]+$/.test(v) ? void 0 : "Must match ^[a-z0-9-]+$" });
-      projectName = name;
-      created = true;
-    } else {
-      const match = choice.match(/\((.*?)\)$/);
-      if (match)
-        finalProjectKey = match[1];
-      const picked = projects.find((p) => p.key === finalProjectKey);
-      projectName = picked?.name || finalProjectKey;
-    }
-  } else if (isYes && project && !create) {
-    const existing = await api(server, "/api/admin/projects", { token }).catch(() => []);
-    if (!existing.some((p) => p.key === project)) {
-      created = true;
-      projectName = project;
-    }
-  } else if (create) {
-    created = true;
-    let derivedKey = create.toLowerCase().replace(/[^a-z0-9-]/g, "-").replace(/-+/g, "-").replace(/^-|-$/g, "");
-    finalProjectKey = project || derivedKey;
-    projectName = create;
-  }
-  if (created) {
-    try {
-      await api(server, "/api/admin/projects", { method: "POST", body: { key: finalProjectKey, name: projectName }, token });
-    } catch (err) {
-      if (err instanceof ApiError && err.code === 409) {
-        console.error("Key already exists, choose another.");
-        process.exit(3);
-      } else if (err instanceof ApiError && err.code === 403) {
-        console.error("This account cannot create projects.");
-        process.exit(3);
-      } else if (err instanceof ApiError && err.code === 400) {
-        console.error(err.message);
-        process.exit(1);
+  if (isJoin) {
+    finalProjectKey = config.project;
+    projectName = config.project;
+  } else {
+    finalProjectKey = project || "";
+    projectName = create || finalProjectKey;
+    if (!isYes && !project && !create) {
+      const projects = await api(server, "/api/admin/projects", { token }).catch(() => []);
+      const createOpt = "\uFF0B Create a new project\u2026";
+      const choices = projects.map((p) => `${p.name}  (${p.key})`).concat(createOpt);
+      let choice = createOpt;
+      if (projects.length > 0) {
+        choice = await select("Which project is this app?", choices);
+      }
+      if (choice === createOpt) {
+        const name = await ask("Project name");
+        let derivedKey = name.toLowerCase().replace(/[^a-z0-9-]/g, "-").replace(/-+/g, "-").replace(/^-|-$/g, "");
+        finalProjectKey = await ask("Project key", { default: derivedKey, validate: (v) => /^[a-z0-9-]+$/.test(v) ? void 0 : "Must match ^[a-z0-9-]+$" });
+        projectName = name;
+        created = true;
       } else {
-        console.error(`Could not create project: ${err?.message ?? err}`);
-        process.exit(1);
+        const match = choice.match(/\((.*?)\)$/);
+        if (match)
+          finalProjectKey = match[1];
+        const picked = projects.find((p) => p.key === finalProjectKey);
+        projectName = picked?.name || finalProjectKey;
+      }
+    } else if (isYes && project && !create) {
+      const existing = await api(server, "/api/admin/projects", { token }).catch(() => []);
+      if (!existing.some((p) => p.key === project)) {
+        created = true;
+        projectName = project;
+      }
+    } else if (create) {
+      created = true;
+      let derivedKey = create.toLowerCase().replace(/[^a-z0-9-]/g, "-").replace(/-+/g, "-").replace(/^-|-$/g, "");
+      finalProjectKey = project || derivedKey;
+      projectName = create;
+    }
+    if (created) {
+      try {
+        await api(server, "/api/admin/projects", { method: "POST", body: { key: finalProjectKey, name: projectName }, token });
+      } catch (err) {
+        if (err instanceof ApiError && err.code === 409) {
+          console.error("Key already exists, choose another.");
+          process.exit(3);
+        } else if (err instanceof ApiError && err.code === 403) {
+          console.error("This account cannot create projects.");
+          process.exit(3);
+        } else if (err instanceof ApiError && err.code === 400) {
+          console.error(err.message);
+          process.exit(1);
+        } else {
+          console.error(`Could not create project: ${err?.message ?? err}`);
+          process.exit(1);
+        }
       }
     }
   }
   const ALL_ENVS = ["local", "staging", "production"];
-  let envs = String(options["environment"] ?? "").split(",").map((e) => e.trim()).filter(Boolean);
-  const badEnv = envs.find((e) => !ALL_ENVS.includes(e));
-  if (badEnv) {
-    console.error(`Unknown environment "${badEnv}". Valid values: ${ALL_ENVS.join(", ")}.`);
-    process.exit(2);
-  }
-  const environmentPinned = envs.length > 0;
-  if (envs.length === 0)
-    envs = ["local"];
-  const env = ALL_ENVS.filter((e) => envs.includes(e))[0] ?? "local";
-  const projectRow = await api(server, "/api/admin/projects", { token }).then((rows) => rows.find((p) => p.key === finalProjectKey)).catch(() => null);
-  if (projectRow?.id) {
-    const activation = {};
-    if (envs.includes("local") && !projectRow.isActiveLocal)
-      activation["isActiveLocal"] = true;
-    if (envs.includes("staging") && !projectRow.isActiveStaging)
-      activation["isActiveStaging"] = true;
-    if (envs.includes("production") && !projectRow.isActiveProduction)
-      activation["isActiveProduction"] = true;
-    if (Object.keys(activation).length) {
-      try {
-        await api(server, `/api/admin/projects/${projectRow.id}`, {
-          method: "PATCH",
-          body: activation,
-          token
-        });
-      } catch (err) {
-        if (!isJson) {
-          console.error(
-            `Note: could not activate ${Object.keys(activation).length} environment(s) for this project (${err?.message ?? err}). An admin can switch them on in the dashboard.`
-          );
+  let envs;
+  let environmentPinned;
+  let env;
+  const envMap = {};
+  if (isJoin) {
+    envs = Array.isArray(config.environments) && config.environments.length ? config.environments : [config.environment || "local"];
+    environmentPinned = true;
+    env = config.environment || envs[0] || "local";
+  } else {
+    envs = String(options["environment"] ?? "").split(",").map((e) => e.trim()).filter(Boolean);
+    const badEnv = envs.find((e) => !ALL_ENVS.includes(e));
+    if (badEnv) {
+      console.error(`Unknown environment "${badEnv}". Valid values: ${ALL_ENVS.join(", ")}.`);
+      process.exit(2);
+    }
+    environmentPinned = envs.length > 0;
+    if (envs.length === 0)
+      envs = ["local"];
+    env = ALL_ENVS.filter((e) => envs.includes(e))[0] ?? "local";
+    const projectRow = await api(server, "/api/admin/projects", { token }).then((rows) => rows.find((p) => p.key === finalProjectKey)).catch(() => null);
+    if (projectRow?.id) {
+      const activation = {};
+      if (envs.includes("local") && !projectRow.isActiveLocal)
+        activation["isActiveLocal"] = true;
+      if (envs.includes("staging") && !projectRow.isActiveStaging)
+        activation["isActiveStaging"] = true;
+      if (envs.includes("production") && !projectRow.isActiveProduction)
+        activation["isActiveProduction"] = true;
+      if (Object.keys(activation).length) {
+        try {
+          await api(server, `/api/admin/projects/${projectRow.id}`, {
+            method: "PATCH",
+            body: activation,
+            token
+          });
+        } catch (err) {
+          if (!isJson) {
+            console.error(
+              `Note: could not activate ${Object.keys(activation).length} environment(s) for this project (${err?.message ?? err}). An admin can switch them on in the dashboard.`
+            );
+          }
         }
       }
     }
-  }
-  const envMap = {};
-  if (projectRow?.id && envs.length > 1) {
-    try {
-      const [urls, environments] = await Promise.all([
-        api(server, `/api/admin/projects/${projectRow.id}/app-urls`, { token }),
-        api(server, "/api/admin/environments", { token })
-      ]);
-      const nameById = new Map((environments ?? []).map((e) => [e.id, String(e.name ?? "").toLowerCase()]));
-      for (const row of urls ?? []) {
-        const name = nameById.get(row.appEnvironmentId);
-        if (!name || !row.url || !envs.includes(name))
-          continue;
-        try {
-          envMap[new URL(row.url).origin] = name;
-        } catch {
+    if (projectRow?.id && envs.length > 1) {
+      try {
+        const [urls, environments] = await Promise.all([
+          api(server, `/api/admin/projects/${projectRow.id}/app-urls`, { token }),
+          api(server, "/api/admin/environments", { token })
+        ]);
+        const nameById = new Map((environments ?? []).map((e) => [e.id, String(e.name ?? "").toLowerCase()]));
+        for (const row of urls ?? []) {
+          const name = nameById.get(row.appEnvironmentId);
+          if (!name || !row.url || !envs.includes(name))
+            continue;
+          try {
+            envMap[new URL(row.url).origin] = name;
+          } catch {
+          }
         }
+      } catch {
       }
-    } catch {
     }
   }
   let appUrl = options["app-url"];
   let noAppUrl = options["no-app-url"];
   let source = "";
-  if (!noAppUrl && !appUrl) {
+  if (!isJoin && !noAppUrl && !appUrl) {
     const detected = await detectAppUrl(cwd2, appInfo.kind, env);
     source = detected.source;
     appUrl = detected.url || void 0;
   }
-  let tool = options["tool"];
+  let tool = options["tool"] || config.aiTool;
   let tools = tool ? [tool] : [];
   if (!tool) {
     if (process.env.CLAUDECODE || process.env.CLAUDE_CODE_ENTRYPOINT)
@@ -2836,14 +2877,14 @@ and the pointer-init skill uses them to mount the widget for you afterwards.
   }
   if (tools.length === 0)
     tools = [tool];
-  if (!isJson)
+  if (!isJson && !isJoin)
     console.log(`Detecting your stack... -> ${appInfo.kind} (${appInfo.evidence.join(", ")})`);
   let injected = false;
   let routedToSkill = false;
   let filesMod = [];
   let skillFiles = [];
   let pin = null;
-  if (options["pin"] === true) {
+  if (!isJoin && options["pin"] === true) {
     try {
       const manifest = await api(server, "/pointer.version.json");
       const version = manifest?.hash;
@@ -2859,8 +2900,8 @@ and the pointer-init skill uses them to mount the widget for you afterwards.
       process.exit(1);
     }
   }
-  let delivery = deliveryFlag === "extension" ? "extension" : "embed";
-  if (!deliveryFlag && !isYes && !options["no-inject"]) {
+  let delivery = deliveryFlag === "extension" ? "extension" : deliveryFlag === "embed" ? "embed" : isJoin ? config.delivery ?? "embed" : "embed";
+  if (!deliveryFlag && !isJoin && !isYes && !options["no-inject"]) {
     const choice = await select("How will reviewers open the feedback widget?", [
       "Embed it in this app (recommended \u2014 works for every reviewer, no install)",
       "Chrome extension only (no code changes; each reviewer installs the extension)"
@@ -2868,7 +2909,7 @@ and the pointer-init skill uses them to mount the widget for you afterwards.
     delivery = choice.startsWith("Chrome extension") ? "extension" : "embed";
   }
   closePrompts();
-  if (!options["no-inject"] && delivery !== "extension") {
+  if (!isJoin && !options["no-inject"] && delivery !== "extension") {
     const explicitHtml = options["html"];
     if (explicitHtml && appInfo.kind !== "vite") {
       const htmlPath = await injectStatic(cwd2, explicitHtml, {
@@ -2935,27 +2976,48 @@ and the pointer-init skill uses them to mount the widget for you afterwards.
   const pkgStr = await fs11.readFile(join11(cwd2, "package.json"), "utf8").catch(() => "{}");
   const tokens = extractTokens(JSON.parse(pkgStr));
   const stackMeta = { frontend: tokens.frontend, backend: tokens.backend, aiTool: tool };
-  let serverStackResponse = null;
+  let stackFileExists = false;
   try {
-    const body = buildRequestBody(stackMeta);
-    serverStackResponse = await api(server, `/api/projects/${finalProjectKey}/stack`, { method: "POST", body, token });
-  } catch (e) {
-    if (!isJson)
-      console.log(`\u26A0 Stack not registered (${e.code || 500})`);
+    await fs11.access(join11(cwd2, ".pointer/stack.json"));
+    stackFileExists = true;
+  } catch {
+    stackFileExists = false;
   }
-  const noDesign = Boolean(options["no-design"]);
-  let designBlock = null;
-  if (!noDesign) {
-    designBlock = await detectDesignTokens(cwd2);
-    const designSummary = summarizeDesignTokens(designBlock.tokens, designBlock.libraries);
-    if (!isJson) {
-      console.log(`\u2714 Design tokens: ${designSummary} \u2192 .pointer/stack.json`);
+  if (!isJoin || !stackFileExists) {
+    let serverStackResponse = null;
+    try {
+      const body = buildRequestBody(stackMeta);
+      serverStackResponse = await api(server, `/api/projects/${finalProjectKey}/stack`, { method: "POST", body, token });
+    } catch (e) {
+      if (!isJson)
+        console.log(`\u26A0 Stack not registered (${e.code || 500})`);
     }
+    const noDesign = Boolean(options["no-design"]);
+    let designBlock = null;
+    if (!noDesign) {
+      designBlock = await detectDesignTokens(cwd2);
+      const designSummary = summarizeDesignTokens(designBlock.tokens, designBlock.libraries);
+      if (!isJson) {
+        console.log(`\u2714 Design tokens: ${designSummary} \u2192 .pointer/stack.json`);
+      }
+    }
+    const mergedStack = mergeStack(stackMeta, serverStackResponse?.data ?? serverStackResponse, noDesign ? null : designBlock);
+    await writeStackFile(cwd2, mergedStack);
   }
-  const mergedStack = mergeStack(stackMeta, serverStackResponse?.data ?? serverStackResponse, noDesign ? null : designBlock);
-  await writeStackFile(cwd2, mergedStack);
   const injectedHtml = injected ? filesMod.find((f) => f.toLowerCase().endsWith(".html"))?.replace(`${cwd2}/`, "") : void 0;
-  await writeConfig(cwd2, { server, project: finalProjectKey, environment: env, aiTool: tool, skillsDir: options["skills-dir"], cliVersion: BUILD_CLI_VERSION, htmlPath: injectedHtml, environments: envs.length > 1 ? envs : void 0, delivery });
+  const configPatch = {
+    server,
+    project: finalProjectKey,
+    environment: env,
+    aiTool: tool,
+    skillsDir: options["skills-dir"],
+    cliVersion: BUILD_CLI_VERSION,
+    environments: envs.length > 1 ? envs : void 0,
+    delivery
+  };
+  if (injectedHtml !== void 0)
+    configPatch.htmlPath = injectedHtml;
+  await writeConfig(cwd2, configPatch);
   filesMod.push(".pointer/config.json");
   await writeCredentials(cwd2, key, { server, project: finalProjectKey });
   filesMod.push(".pointer/credentials.env");
@@ -2969,10 +3031,11 @@ and the pointer-init skill uses them to mount the widget for you afterwards.
       console.log(`${icon[c.status]} ${c.id}: ${c.message}`);
     }
   }
-  await postEvent(server, token, { type: "installed", projectKey: finalProjectKey, meta: { stack: stackMeta, aiTool: tool, injected, cliVersion: BUILD_CLI_VERSION } });
+  await postEvent(server, token, { type: "installed", projectKey: finalProjectKey, meta: { stack: stackMeta, aiTool: tool, injected, cliVersion: BUILD_CLI_VERSION, mode } });
   if (isJson) {
     console.log(JSON.stringify({
       ok: true,
+      mode,
       product,
       server,
       project: { key: finalProjectKey, name: projectName, created },
@@ -2997,7 +3060,18 @@ and the pointer-init skill uses them to mount the widget for you afterwards.
   const cyan = (s) => `\x1B[36m${s}\x1B[0m`;
   const rule = dim("\u2500".repeat(60));
   const envLabel = envs.length > 1 ? envs.join(", ") : env;
-  console.log(`
+  if (isJoin) {
+    console.log(`
+${rule}
+${green("\u2714")} ${bold(`Joined ${product} project ${finalProjectKey} as ${me?.displayName ?? "you"}`)}
+
+  ${dim("Environment(s)")}  ${envLabel}
+  ${dim("Server")}          ${server}
+  ${dim("Key")}             .pointer/credentials.env ${dim("(gitignored)")}
+  ${dim("Skills")}          ${skillFiles.length ? skillFiles.join("\n                    ") : "installed"}
+${rule}`);
+  } else {
+    console.log(`
 ${rule}
 ${green("\u2714")} ${bold(`${product} is set up`)}
 
@@ -3007,6 +3081,7 @@ ${green("\u2714")} ${bold(`${product} is set up`)}
   ${dim("Key")}           .pointer/credentials.env ${dim("(gitignored)")}
   ${dim("Skills")}        ${skillFiles.length ? skillFiles.join("\n                ") : "installed"}
 ${rule}`);
+  }
   if (delivery === "extension") {
     const storeUrl = branding.extension?.storeUrl || "";
     const zipUrl = branding.extension?.zipUrl || "";
@@ -3019,6 +3094,12 @@ ${installLine}
   2. Extension \u2192 Options \u2192 set server ${server}; sign in with your ${product} account.
   3. Open your app, click the extension icon, choose project ${dim(finalProjectKey)}, Activate.
   4. Then ${bold("npx pointer-feedback list")} / ${bold("apply")} as usual.
+      ${dim(`Dashboard: ${branding.urls?.app || server}`)}`);
+  } else if (isJoin) {
+    console.log(`
+${bold("Next")}  ${product} is already embedded in this app's committed source \u2014 nothing to inject.
+      Start your dev server, open the app, and the ${product} button should appear.
+      Then ${bold("npx pointer-feedback list")} / ${bold("apply")} as usual.
       ${dim(`Dashboard: ${branding.urls?.app || server}`)}`);
   } else if (injected) {
     console.log(`
@@ -3155,21 +3236,11 @@ async function applyFixes(cwd2, checks) {
     try {
       if (check.id === "gitignore") {
         const path = join13(cwd2, ".gitignore");
-        const existing = await fs13.readFile(path, "utf8").catch(() => "");
-        if (!existing.includes(".pointer/")) {
-          const block = [
-            "",
-            "# Local install state. credentials.env holds an API key.",
-            // Contents, not the directory — git will not descend into an excluded directory, so
-            // `.pointer/` would make the two `!` lines below inert.
-            ".pointer/*",
-            "!.pointer/config.json",
-            "!.pointer/stack.json",
-            ""
-          ].join("\n");
-          await fs13.writeFile(path, existing + block, "utf8");
+        const before = await fs13.readFile(path, "utf8").catch(() => "");
+        await upsertGitignore(cwd2, "Feedback tool");
+        const after = await fs13.readFile(path, "utf8").catch(() => "");
+        if (after !== before)
           repaired.push(check.id);
-        }
       } else if (check.id === "source-map") {
         const { buildManifest: buildManifest2 } = await Promise.resolve().then(() => (init_map(), map_exports));
         const built = await buildManifest2(cwd2, { quiet: true });
@@ -3227,27 +3298,50 @@ async function updateCommand(cwd2, options) {
     return 1;
   }
   const files = skillFilesFor(config);
+  const missing = [];
   const stale = [];
   for (const rel of files) {
     const abs = join14(cwd2, rel);
     try {
       await fs14.access(abs);
     } catch {
+      missing.push(rel);
       continue;
     }
     const installed = await readStamp(abs);
     if (installed !== served)
       stale.push({ path: rel, installed });
   }
-  if (stale.length === 0) {
+  if (missing.length === 0 && stale.length === 0) {
     console.log(`Up to date (skill version ${served ?? "unknown"}).`);
     return 0;
   }
   if (options.check) {
-    console.log(`${stale.length} file${stale.length === 1 ? "" : "s"} out of date (server ${served ?? "unknown"}):`);
-    for (const f of stale)
-      console.log(`  ${f.path} (${f.installed ?? "unstamped"})`);
+    if (missing.length > 0) {
+      console.log(`${missing.length} file${missing.length === 1 ? "" : "s"} not installed:`);
+      for (const f of missing)
+        console.log(`  ${f}`);
+    }
+    if (stale.length > 0) {
+      console.log(`${stale.length} file${stale.length === 1 ? "" : "s"} out of date (server ${served ?? "unknown"}):`);
+      for (const f of stale)
+        console.log(`  ${f.path} (${f.installed ?? "unstamped"})`);
+    }
     return 0;
+  }
+  let installedCount = 0;
+  if (missing.length > 0) {
+    if (!config.aiTool) {
+      console.error("No AI tool configured \u2014 run `npx -y pointer-feedback init` to record one, then `update` again.");
+    } else {
+      try {
+        await installSkills(server, config.aiTool, cwd2, config.skillsDir);
+        installedCount = missing.length;
+        console.log(`installed ${installedCount} file${installedCount === 1 ? "" : "s"}: ${missing.join(", ")}`);
+      } catch (err) {
+        console.error(`  failed to install missing skills: ${err?.message ?? err}`);
+      }
+    }
   }
   let updated = 0;
   const from = stale[0]?.installed ?? "unstamped";
@@ -3271,8 +3365,12 @@ async function updateCommand(cwd2, options) {
       console.error(`  failed to update ${f.path}: ${err?.message ?? err}`);
     }
   }
-  console.log(`updated ${updated} file${updated === 1 ? "" : "s"} (skill version ${from} \u2192 ${served ?? "unknown"})`);
-  return updated === stale.length ? 0 : 1;
+  if (stale.length > 0) {
+    console.log(`updated ${updated} file${updated === 1 ? "" : "s"} (skill version ${from} \u2192 ${served ?? "unknown"})`);
+  }
+  const installedOk = missing.length === 0 || installedCount === missing.length;
+  const updatedOk = updated === stale.length;
+  return installedOk && updatedOk ? 0 : 1;
 }
 
 // src/commands/apply.ts

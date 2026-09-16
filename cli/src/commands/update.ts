@@ -4,6 +4,7 @@ import { readConfig } from '../config.js';
 import { api } from '../api.js';
 import { readStamp } from '../lib/skill-stamp.js';
 import { skillFilesFor } from '../lib/skill-paths.js';
+import { installSkills } from '../skills.js';
 import type { MetaResponse } from '../checks.js';
 
 export interface UpdateOptions {
@@ -20,10 +21,14 @@ function sourceFor(path: string): string | null {
 }
 
 /**
- * Refreshes the served skills and pointer.sh in place.
+ * Refreshes the served skills and pointer.sh in place, and installs them when they are missing
+ * entirely.
  *
  * A skill file installed months ago is frozen prose describing an API that has moved on — the
- * problem the version stamp exists to make visible and this command exists to fix.
+ * problem the version stamp exists to make visible and this command exists to fix. Since skills
+ * and pointer.sh are gitignored (derived, per-machine state — see `config.ts`'s
+ * `upsertGitignore`), a fresh clone of a repo that already has Pointer set up has NEITHER: there
+ * is nothing to refresh, only something to install, which used to be silently skipped here.
  *
  * Symlinks are preserved deliberately: installSkills points `.agents/<name>/SKILL.md` at the
  * tool-specific copy for several tools, so writing through the link keeps that arrangement intact,
@@ -48,6 +53,7 @@ export async function updateCommand(cwd: string, options: UpdateOptions): Promis
   }
 
   const files = skillFilesFor(config);
+  const missing: string[] = [];
   const stale: { path: string; installed: string | null }[] = [];
 
   for (const rel of files) {
@@ -55,21 +61,45 @@ export async function updateCommand(cwd: string, options: UpdateOptions): Promis
     try {
       await fs.access(abs);
     } catch {
-      continue; // not installed for this tool — nothing to refresh
+      missing.push(rel);
+      continue;
     }
     const installed = await readStamp(abs);
     if (installed !== served) stale.push({ path: rel, installed });
   }
 
-  if (stale.length === 0) {
+  if (missing.length === 0 && stale.length === 0) {
     console.log(`Up to date (skill version ${served ?? 'unknown'}).`);
     return 0;
   }
 
   if (options.check) {
-    console.log(`${stale.length} file${stale.length === 1 ? '' : 's'} out of date (server ${served ?? 'unknown'}):`);
-    for (const f of stale) console.log(`  ${f.path} (${f.installed ?? 'unstamped'})`);
+    if (missing.length > 0) {
+      console.log(`${missing.length} file${missing.length === 1 ? '' : 's'} not installed:`);
+      for (const f of missing) console.log(`  ${f}`);
+    }
+    if (stale.length > 0) {
+      console.log(`${stale.length} file${stale.length === 1 ? '' : 's'} out of date (server ${served ?? 'unknown'}):`);
+      for (const f of stale) console.log(`  ${f.path} (${f.installed ?? 'unstamped'})`);
+    }
     return 0;
+  }
+
+  let installedCount = 0;
+  if (missing.length > 0) {
+    if (!config.aiTool) {
+      // No tool recorded at all (a config written before `aiTool` existed, and never re-run
+      // through `init`): there is nothing to tell `installSkills` to install FOR.
+      console.error('No AI tool configured — run `npx -y pointer-feedback init` to record one, then `update` again.');
+    } else {
+      try {
+        await installSkills(server, config.aiTool, cwd, config.skillsDir);
+        installedCount = missing.length;
+        console.log(`installed ${installedCount} file${installedCount === 1 ? '' : 's'}: ${missing.join(', ')}`);
+      } catch (err: any) {
+        console.error(`  failed to install missing skills: ${err?.message ?? err}`);
+      }
+    }
   }
 
   let updated = 0;
@@ -94,6 +124,11 @@ export async function updateCommand(cwd: string, options: UpdateOptions): Promis
     }
   }
 
-  console.log(`updated ${updated} file${updated === 1 ? '' : 's'} (skill version ${from} → ${served ?? 'unknown'})`);
-  return updated === stale.length ? 0 : 1;
+  if (stale.length > 0) {
+    console.log(`updated ${updated} file${updated === 1 ? '' : 's'} (skill version ${from} → ${served ?? 'unknown'})`);
+  }
+
+  const installedOk = missing.length === 0 || installedCount === missing.length;
+  const updatedOk = updated === stale.length;
+  return installedOk && updatedOk ? 0 : 1;
 }

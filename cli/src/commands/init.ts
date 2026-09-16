@@ -24,21 +24,33 @@ export async function initCommand(cwd: string, options: Record<string, string | 
         process.exit(2);
     }
 
+    const config: any = await readConfig(cwd).catch(() => ({}));
+
+    // A "join": .pointer/config.json already names a server AND a project. Whoever ran `init` the
+    // first time already made every decision this command would otherwise ask about — server,
+    // project, environments, delivery — and committed it. A second developer cloning the repo (or
+    // the same developer on a second machine) only needs their own API key: everything else here
+    // is read back from the committed config instead of asked again, and nothing is injected,
+    // since the embed snippet (or the extension) is already in the app's committed source.
+    const isJoin = Boolean(config.server && config.project);
+    const mode: 'join' | 'install' = isJoin ? 'join' : 'install';
+
     if (isYes) {
         if (!options['key']) {
             console.error("Missing flag: --key is required with --yes");
             process.exit(2);
         }
-        if (!options['project'] && !options['create']) {
+        // A join already knows the project; --project/--create would be redundant, and requiring
+        // them here would make `--yes` unusable for the one case it exists to make trivial: cloning
+        // a repo that already has Pointer set up.
+        if (!isJoin && !options['project'] && !options['create']) {
             console.error("Missing flag: --project or --create is required with --yes");
             process.exit(2);
         }
     }
 
-    const config: any = await readConfig(cwd).catch(() => ({}));
-
     let server = options['server'] || config.server || process.env.POINTER_SERVER || BUILD_DEFAULT_SERVER;
-    
+
     if (!isYes && !options['server'] && !config.server) {
         server = await ask('Server URL', { default: server as string });
     }
@@ -74,7 +86,7 @@ export async function initCommand(cwd: string, options: Record<string, string | 
     let key = options['key'] as string;
     let me: any = null;
     let token: string | undefined;
-    
+
     if (isYes) {
         try {
             // An API key is not a JWT: it must be exchanged for one. Sending it as a Bearer token
@@ -133,10 +145,13 @@ export async function initCommand(cwd: string, options: Record<string, string | 
     // learned that the widget would not be mounted. Knowing up front lets us say so while the
     // answers still have a visible purpose — the project and key are what the skill needs in order
     // to finish the job, and they are written to .pointer/config.json either way.
+    //
+    // A join never injects (see below), so there is nothing to say here — it would only be noise
+    // ahead of a single question (the API key).
     const appInfo = await detectStack(cwd);
     // `--html` names the file outright, so it counts as injectable whatever detection concluded.
-    const canInject = appInfo.kind === 'vite' || appInfo.kind === 'static' || !!options['html'];
-    if (!isJson && !isYes) {
+    const canInject = !isJoin && (appInfo.kind === 'vite' || appInfo.kind === 'static' || !!options['html']);
+    if (!isJson && !isYes && !isJoin) {
         console.log(`\nStack: ${appInfo.kind}${appInfo.evidence.length ? ` (${appInfo.evidence.join(', ')})` : ''}`);
         if (!canInject && !options['no-inject']) {
             console.log(
@@ -149,70 +164,80 @@ export async function initCommand(cwd: string, options: Record<string, string | 
 
     let project = options['project'] as string;
     let create = options['create'] as string;
-    let finalProjectKey = project || '';
-    let projectName = create || finalProjectKey;
+    let finalProjectKey = '';
+    let projectName = '';
     let created = false;
 
-    if (!isYes && !project && !create) {
-        const projects = await api<any[]>(server as string, '/api/admin/projects', { token }).catch(() => []);
-        const createOpt = '＋ Create a new project…';
-        const choices = projects.map(p => `${p.name}  (${p.key})`).concat(createOpt);
-        
-        let choice = createOpt;
-        if (projects.length > 0) {
-            choice = await select('Which project is this app?', choices);
-        }
-        
-        if (choice === createOpt) {
-            const name = await ask('Project name');
-            let derivedKey = name.toLowerCase().replace(/[^a-z0-9-]/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '');
-            finalProjectKey = await ask('Project key', { default: derivedKey, validate: (v) => /^[a-z0-9-]+$/.test(v) ? undefined : 'Must match ^[a-z0-9-]+$' });
-            projectName = name;
-            created = true;
-        } else {
-            const match = choice.match(/\((.*?)\)$/);
-            if (match) finalProjectKey = match[1];
-            // Carry the name across too. Without this, picking an EXISTING project left projectName
-            // as the empty string it was initialised to, and the summary read:
-            //   ✔ Pointer is set up for project "" (pointer-dashboard)
-            const picked = projects.find((p) => p.key === finalProjectKey);
-            projectName = picked?.name || finalProjectKey;
-        }
-    } else if (isYes && project && !create) {
-        const existing = await api<any[]>(server as string, '/api/admin/projects', { token }).catch(() => []);
-        if (!existing.some((p) => p.key === project)) {
-            created = true;
-            projectName = project;
-        }
-    } else if (create) {
-        created = true;
-        let derivedKey = create.toLowerCase().replace(/[^a-z0-9-]/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '');
-        finalProjectKey = project || derivedKey;
-        projectName = create;
-    }
+    if (isJoin) {
+        // Nothing to ask, nothing to create, nothing to activate — the project this app belongs to
+        // was decided (and PATCHed active) the first time `init` ran here.
+        finalProjectKey = config.project;
+        projectName = config.project;
+    } else {
+        finalProjectKey = project || '';
+        projectName = create || finalProjectKey;
 
-    if (created) {
-        try {
-            await api(server as string, '/api/admin/projects', { method: 'POST', body: { key: finalProjectKey, name: projectName }, token });
-        } catch (err: any) {
-            if (err instanceof ApiError && err.code === 409) {
-                // Exit 3, not 1: under --yes there is nobody to ask for a different key, so this
-                // is "cannot proceed with the identity you gave me" — the same class as 403 — and
-                // a caller scripting init branches on the code to tell it apart from a generic
-                // failure.
-                console.error("Key already exists, choose another.");
-                process.exit(3);
-            } else if (err instanceof ApiError && err.code === 403) {
-                console.error("This account cannot create projects.");
-                process.exit(3);
-            } else if (err instanceof ApiError && err.code === 400) {
-                console.error(err.message);
-                process.exit(1);
+        if (!isYes && !project && !create) {
+            const projects = await api<any[]>(server as string, '/api/admin/projects', { token }).catch(() => []);
+            const createOpt = '＋ Create a new project…';
+            const choices = projects.map(p => `${p.name}  (${p.key})`).concat(createOpt);
+
+            let choice = createOpt;
+            if (projects.length > 0) {
+                choice = await select('Which project is this app?', choices);
+            }
+
+            if (choice === createOpt) {
+                const name = await ask('Project name');
+                let derivedKey = name.toLowerCase().replace(/[^a-z0-9-]/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '');
+                finalProjectKey = await ask('Project key', { default: derivedKey, validate: (v) => /^[a-z0-9-]+$/.test(v) ? undefined : 'Must match ^[a-z0-9-]+$' });
+                projectName = name;
+                created = true;
             } else {
-                // Previously fell through silently and carried on as though the project existed,
-                // writing a config that points at nothing.
-                console.error(`Could not create project: ${err?.message ?? err}`);
-                process.exit(1);
+                const match = choice.match(/\((.*?)\)$/);
+                if (match) finalProjectKey = match[1];
+                // Carry the name across too. Without this, picking an EXISTING project left projectName
+                // as the empty string it was initialised to, and the summary read:
+                //   ✔ Pointer is set up for project "" (pointer-dashboard)
+                const picked = projects.find((p) => p.key === finalProjectKey);
+                projectName = picked?.name || finalProjectKey;
+            }
+        } else if (isYes && project && !create) {
+            const existing = await api<any[]>(server as string, '/api/admin/projects', { token }).catch(() => []);
+            if (!existing.some((p) => p.key === project)) {
+                created = true;
+                projectName = project;
+            }
+        } else if (create) {
+            created = true;
+            let derivedKey = create.toLowerCase().replace(/[^a-z0-9-]/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '');
+            finalProjectKey = project || derivedKey;
+            projectName = create;
+        }
+
+        if (created) {
+            try {
+                await api(server as string, '/api/admin/projects', { method: 'POST', body: { key: finalProjectKey, name: projectName }, token });
+            } catch (err: any) {
+                if (err instanceof ApiError && err.code === 409) {
+                    // Exit 3, not 1: under --yes there is nobody to ask for a different key, so this
+                    // is "cannot proceed with the identity you gave me" — the same class as 403 — and
+                    // a caller scripting init branches on the code to tell it apart from a generic
+                    // failure.
+                    console.error("Key already exists, choose another.");
+                    process.exit(3);
+                } else if (err instanceof ApiError && err.code === 403) {
+                    console.error("This account cannot create projects.");
+                    process.exit(3);
+                } else if (err instanceof ApiError && err.code === 400) {
+                    console.error(err.message);
+                    process.exit(1);
+                } else {
+                    // Previously fell through silently and carried on as though the project existed,
+                    // writing a config that points at nothing.
+                    console.error(`Could not create project: ${err?.message ?? err}`);
+                    process.exit(1);
+                }
             }
         }
     }
@@ -221,101 +246,119 @@ export async function initCommand(cwd: string, options: Record<string, string | 
     // re-run init per environment meant three passes that each overwrote the previous one's config.
     // `--environment` accepts a comma-separated list for the non-interactive path.
     const ALL_ENVS = ['local', 'staging', 'production'];
-    let envs: string[] = String(options['environment'] ?? '')
-        .split(',')
-        .map((e) => e.trim())
-        .filter(Boolean);
+    let envs: string[];
+    let environmentPinned: boolean;
+    let env: string;
+    // The project's app-urls, keyed by origin, for the (possibly multi-environment) embed snippet.
+    // Only ever populated on a fresh install — a join never injects, so there is nothing for it to
+    // feed.
+    const envMap: Record<string, string> = {};
 
-    const badEnv = envs.find((e) => !ALL_ENVS.includes(e));
-    if (badEnv) {
-        console.error(`Unknown environment "${badEnv}". Valid values: ${ALL_ENVS.join(', ')}.`);
-        process.exit(2);
-    }
+    if (isJoin) {
+        // Read back, never asked, never re-activated: the environments (and their activation on the
+        // server) were already decided and applied by whoever ran `init` here first.
+        envs = Array.isArray(config.environments) && config.environments.length
+            ? config.environments
+            : [config.environment || 'local'];
+        environmentPinned = true;
+        env = config.environment || envs[0] || 'local';
+    } else {
+        envs = String(options['environment'] ?? '')
+            .split(',')
+            .map((e) => e.trim())
+            .filter(Boolean);
 
-    // No environment question at all.
-    //
-    // The environment a comment is filed under is resolved by the server from the origin it was
-    // left on, matched against the URLs registered for the project. Asking here produced a value
-    // baked into the markup that was wrong for every deployment except the one the developer
-    // happened to be thinking about — and no answer given at install time can be right for a file
-    // that ships to three environments.
-    //
-    // `--environment` survives as a deliberate override for an install that must be pinned (a
-    // server-rendered embed for one environment, say). Given, it is honoured exactly as before.
-    const environmentPinned = envs.length > 0;
-    if (envs.length === 0) envs = ['local'];
+        const badEnv = envs.find((e) => !ALL_ENVS.includes(e));
+        if (badEnv) {
+            console.error(`Unknown environment "${badEnv}". Valid values: ${ALL_ENVS.join(', ')}.`);
+            process.exit(2);
+        }
 
-    // The primary environment: what a single-valued field means when several were chosen. First in
-    // the canonical order rather than first-picked, so `local,staging` and `staging,local` agree.
-    const env = ALL_ENVS.filter((e) => envs.includes(e))[0] ?? 'local';
+        // No environment question at all.
+        //
+        // The environment a comment is filed under is resolved by the server from the origin it was
+        // left on, matched against the URLs registered for the project. Asking here produced a value
+        // baked into the markup that was wrong for every deployment except the one the developer
+        // happened to be thinking about — and no answer given at install time can be right for a file
+        // that ships to three environments.
+        //
+        // `--environment` survives as a deliberate override for an install that must be pinned (a
+        // server-rendered embed for one environment, say). Given, it is honoured exactly as before.
+        environmentPinned = envs.length > 0;
+        if (envs.length === 0) envs = ['local'];
 
-    // Activate the project for every environment chosen.
-    //
-    // Without this the multi-select would be decoration: a project is active per environment on the
-    // server, and `doctor` reports "Project inactive for staging" for one that was never switched
-    // on. Additive — an environment already active stays active, and one not chosen is left alone
-    // rather than being switched off, because init should not silently disable an environment
-    // someone else enabled.
-    const projectRow = await api<any[]>(server as string, '/api/admin/projects', { token })
-        .then((rows) => rows.find((p) => p.key === finalProjectKey))
-        .catch(() => null);
-    if (projectRow?.id) {
-        const activation: Record<string, boolean> = {};
-        if (envs.includes('local') && !projectRow.isActiveLocal) activation['isActiveLocal'] = true;
-        if (envs.includes('staging') && !projectRow.isActiveStaging) activation['isActiveStaging'] = true;
-        if (envs.includes('production') && !projectRow.isActiveProduction) activation['isActiveProduction'] = true;
-        if (Object.keys(activation).length) {
-            try {
-                await api(server as string, `/api/admin/projects/${projectRow.id}`, {
-                    method: 'PATCH',
-                    body: activation,
-                    token,
-                });
-            } catch (err: any) {
-                // A developer without project-edit rights can still install the widget; the
-                // environment simply stays inactive until an admin enables it. Worth saying out
-                // loud, never worth aborting for.
-                if (!isJson) {
-                    console.error(
-                        `Note: could not activate ${Object.keys(activation).length} environment(s) for this project ` +
-                        `(${err?.message ?? err}). An admin can switch them on in the dashboard.`,
-                    );
+        // The primary environment: what a single-valued field means when several were chosen. First in
+        // the canonical order rather than first-picked, so `local,staging` and `staging,local` agree.
+        env = ALL_ENVS.filter((e) => envs.includes(e))[0] ?? 'local';
+
+        // Activate the project for every environment chosen.
+        //
+        // Without this the multi-select would be decoration: a project is active per environment on the
+        // server, and `doctor` reports "Project inactive for staging" for one that was never switched
+        // on. Additive — an environment already active stays active, and one not chosen is left alone
+        // rather than being switched off, because init should not silently disable an environment
+        // someone else enabled.
+        const projectRow = await api<any[]>(server as string, '/api/admin/projects', { token })
+            .then((rows) => rows.find((p) => p.key === finalProjectKey))
+            .catch(() => null);
+        if (projectRow?.id) {
+            const activation: Record<string, boolean> = {};
+            if (envs.includes('local') && !projectRow.isActiveLocal) activation['isActiveLocal'] = true;
+            if (envs.includes('staging') && !projectRow.isActiveStaging) activation['isActiveStaging'] = true;
+            if (envs.includes('production') && !projectRow.isActiveProduction) activation['isActiveProduction'] = true;
+            if (Object.keys(activation).length) {
+                try {
+                    await api(server as string, `/api/admin/projects/${projectRow.id}`, {
+                        method: 'PATCH',
+                        body: activation,
+                        token,
+                    });
+                } catch (err: any) {
+                    // A developer without project-edit rights can still install the widget; the
+                    // environment simply stays inactive until an admin enables it. Worth saying out
+                    // loud, never worth aborting for.
+                    if (!isJson) {
+                        console.error(
+                            `Note: could not activate ${Object.keys(activation).length} environment(s) for this project ` +
+                            `(${err?.message ?? err}). An admin can switch them on in the dashboard.`,
+                        );
+                    }
                 }
             }
         }
-    }
 
-    // Origin → environment, read from the URLs already registered against this project rather than
-    // asked for again. The widget resolves its own environment from this at runtime, so one
-    // committed index.html reports `staging` on staging and `production` on production.
-    const envMap: Record<string, string> = {};
-    if (projectRow?.id && envs.length > 1) {
-        try {
-            const [urls, environments] = await Promise.all([
-                api<any[]>(server as string, `/api/admin/projects/${projectRow.id}/app-urls`, { token }),
-                api<any[]>(server as string, '/api/admin/environments', { token }),
-            ]);
-            const nameById = new Map((environments ?? []).map((e: any) => [e.id, String(e.name ?? '').toLowerCase()]));
-            for (const row of urls ?? []) {
-                const name = nameById.get(row.appEnvironmentId);
-                if (!name || !row.url || !envs.includes(name)) continue;
-                try {
-                    envMap[new URL(row.url).origin] = name;
-                } catch {
-                    // A malformed URL in the dashboard should not stop an install.
+        // Origin → environment, read from the URLs already registered against this project rather than
+        // asked for again. The widget resolves its own environment from this at runtime, so one
+        // committed index.html reports `staging` on staging and `production` on production.
+        if (projectRow?.id && envs.length > 1) {
+            try {
+                const [urls, environments] = await Promise.all([
+                    api<any[]>(server as string, `/api/admin/projects/${projectRow.id}/app-urls`, { token }),
+                    api<any[]>(server as string, '/api/admin/environments', { token }),
+                ]);
+                const nameById = new Map((environments ?? []).map((e: any) => [e.id, String(e.name ?? '').toLowerCase()]));
+                for (const row of urls ?? []) {
+                    const name = nameById.get(row.appEnvironmentId);
+                    if (!name || !row.url || !envs.includes(name)) continue;
+                    try {
+                        envMap[new URL(row.url).origin] = name;
+                    } catch {
+                        // A malformed URL in the dashboard should not stop an install.
+                    }
                 }
+            } catch {
+                // No rights to read them, or none configured: the block falls back to a localhost check
+                // plus the primary environment, which is still better than one baked-in value.
             }
-        } catch {
-            // No rights to read them, or none configured: the block falls back to a localhost check
-            // plus the primary environment, which is still better than one baked-in value.
         }
     }
 
     let appUrl = options['app-url'] as string | undefined;
     let noAppUrl = options['no-app-url'] as boolean;
     let source = '';
-    
-    // Detected, never asked.
+
+    // Detected, never asked. Skipped entirely on a join: the value only ever fed `--json` output
+    // and the (skipped) injection step.
     //
     // This used to prompt "Where does this app run in <env>?" and then drop the answer: the only
     // code that consumed it was an empty `if (appUrl && env !== 'local') {}` block, and the value
@@ -326,13 +369,16 @@ export async function initCommand(cwd: string, options: Record<string, string | 
     // Registering it against the project's environment (PUT /api/admin/projects/{id}/app-urls/
     // {environmentId}, which the dashboard already uses) is the real feature this was a stub for.
     // Deliberately still not done — see the note in R1-02.
-    if (!noAppUrl && !appUrl) {
+    if (!isJoin && !noAppUrl && !appUrl) {
         const detected = await detectAppUrl(cwd, appInfo.kind, env);
         source = detected.source;
         appUrl = detected.url || undefined;
     }
 
-    let tool = options['tool'] as string;
+    // `--tool` (or config.aiTool on a join) wins outright; a config missing it — an old install,
+    // written before this field existed — falls back to the same auto-detect / prompt a fresh
+    // install uses.
+    let tool = (options['tool'] as string) || config.aiTool;
     /** Every tool to install skills for; `tool` remains the primary one recorded in config. */
     let tools: string[] = tool ? [tool] : [];
     if (!tool) {
@@ -343,7 +389,7 @@ export async function initCommand(cwd: string, options: Record<string, string | 
         else if (process.env.WINDSURF) tool = 'windsurf';
         else if (process.env.OPENCODE) tool = 'opencode';
         else tool = isYes ? 'other' : 'claude-code';
-        
+
         if (!isYes && !options['tool']) {
             // Multi-select: a repo is rarely worked on through exactly one agent, and installing a
             // second tool's skills later means re-running init. `all` is a row rather than a
@@ -364,20 +410,20 @@ export async function initCommand(cwd: string, options: Record<string, string | 
     }
     if (tools.length === 0) tools = [tool];
 
-    if (!isJson) console.log(`Detecting your stack... -> ${appInfo.kind} (${appInfo.evidence.join(', ')})`);
+    if (!isJson && !isJoin) console.log(`Detecting your stack... -> ${appInfo.kind} (${appInfo.evidence.join(', ')})`);
 
     let injected = false;
     let routedToSkill = false;
     let filesMod: string[] = [];
     let skillFiles: string[] = [];
-    
+
     // --pin asks the server which build it is serving and nails the page to it, with the integrity
     // hash the server itself publishes. Resolved HERE, before the stack branch, because the static
     // and Vite injectors both need it — and resolved once, so a failure to reach the manifest is
     // reported with context instead of silently producing an unpinned tag the developer believes
     // is pinned.
     let pin: { version: string; integrity: string } | null = null;
-    if (options['pin'] === true) {
+    if (!isJoin && options['pin'] === true) {
         try {
             const manifest = await api<any>(server as string, '/pointer.version.json');
             const version = manifest?.hash;
@@ -399,9 +445,13 @@ export async function initCommand(cwd: string, options: Record<string, string | 
     // extension that injects it — no code change needed. Asked right before the injection block,
     // now that the detected stack is known, so an interactive answer is never wasted work: skip it
     // whenever there is nothing to decide (an explicit --delivery, --yes/--json defaulting to
-    // embed, or --no-inject, which already means "no code injection" and stays embed).
-    let delivery: 'embed' | 'extension' = deliveryFlag === 'extension' ? 'extension' : 'embed';
-    if (!deliveryFlag && !isYes && !options['no-inject']) {
+    // embed, a join reading it back from config, or --no-inject, which already means "no code
+    // injection" and stays embed).
+    let delivery: 'embed' | 'extension' =
+        deliveryFlag === 'extension' ? 'extension' :
+        deliveryFlag === 'embed' ? 'embed' :
+        isJoin ? (config.delivery ?? 'embed') : 'embed';
+    if (!deliveryFlag && !isJoin && !isYes && !options['no-inject']) {
         const choice = await select('How will reviewers open the feedback widget?', [
             'Embed it in this app (recommended — works for every reviewer, no install)',
             'Chrome extension only (no code changes; each reviewer installs the extension)',
@@ -413,7 +463,11 @@ export async function initCommand(cwd: string, options: Record<string, string | 
     // loop alive, which only goes unnoticed because every exit path here calls process.exit.
     closePrompts();
 
-    if (!options['no-inject'] && delivery !== 'extension') {
+    // A join never injects: the embed snippet (or nothing, for extension delivery) is already in
+    // the app's committed source — that is the entire point of committing it in the first place.
+    // Re-injecting here would either duplicate the snippet or stamp a different reviewer's project
+    // key over the one the team already committed.
+    if (!isJoin && !options['no-inject'] && delivery !== 'extension') {
         const explicitHtml = options['html'] as string | undefined;
         // An explicitly named HTML file outranks stack detection.
         //
@@ -458,7 +512,8 @@ export async function initCommand(cwd: string, options: Record<string, string | 
     }
 
     // --source-map: wire in the Vite plugin that stamps component hashes. Opt-in, because it
-    // edits the user's build config — the most intrusive thing this CLI does.
+    // edits the user's build config — the most intrusive thing this CLI does. Unaffected by join
+    // mode: still opt-in, still only runs when the flag is passed.
     let sourceMapNote = '';
     if (options['source-map']) {
         const res = await injectSourceMap(cwd);
@@ -476,6 +531,8 @@ export async function initCommand(cwd: string, options: Record<string, string | 
     }
 
     if (!options['no-skills']) {
+        // Skills and pointer.sh are gitignored (derived, per-machine) — every clone needs its own
+        // copy, a join included. This is, in fact, the main thing a join DOES.
         if (!isJson) console.log(`Installing AI skills for ${tools.join(', ')}`);
         const skillsDir = options['skills-dir'] as string;
         // One pass per selected tool. A --skills-dir override names a single directory, so it can
@@ -496,39 +553,69 @@ export async function initCommand(cwd: string, options: Record<string, string | 
     const pkgStr = await fs.readFile(join(cwd, 'package.json'), 'utf8').catch(() => '{}');
     const tokens = extractTokens(JSON.parse(pkgStr));
     const stackMeta = { frontend: tokens.frontend, backend: tokens.backend, aiTool: tool };
-    
-    let serverStackResponse: any = null;
+
+    // On a join, .pointer/stack.json is gitignored derived state exactly like the skills — but
+    // unlike them it is usually ALREADY on disk (the first developer's install wrote it, and it
+    // rarely differs machine to machine). Refreshing it unconditionally would mean every `init`
+    // re-detects design tokens and re-POSTs the stack on every clone; only do that work when the
+    // file is actually missing.
+    let stackFileExists = false;
     try {
-        // `token`, not `key`. /api/projects/{key}/stack is [Authorize] and expects the JWT that
-        // was already exchanged above; sending the raw API key as a Bearer 401s every time. The
-        // catch below swallowed it, so stack.json was never written and `doctor` reported
-        // "Stack not registered" on a perfectly good install.
-        const body = buildRequestBody(stackMeta);
-        serverStackResponse = await api(server as string, `/api/projects/${finalProjectKey}/stack`, { method: 'POST', body, token });
-    } catch (e: any) {
-        if (!isJson) console.log(`⚠ Stack not registered (${e.code || 500})`);
+        await fs.access(join(cwd, '.pointer/stack.json'));
+        stackFileExists = true;
+    } catch {
+        stackFileExists = false;
     }
 
-    const noDesign = Boolean(options['no-design']);
-    let designBlock: DesignBlock | null = null;
-    if (!noDesign) {
-        designBlock = await detectDesignTokens(cwd);
-        const designSummary = summarizeDesignTokens(designBlock.tokens, designBlock.libraries);
-        if (!isJson) {
-            console.log(`✔ Design tokens: ${designSummary} → .pointer/stack.json`);
+    if (!isJoin || !stackFileExists) {
+        let serverStackResponse: any = null;
+        try {
+            // `token`, not `key`. /api/projects/{key}/stack is [Authorize] and expects the JWT that
+            // was already exchanged above; sending the raw API key as a Bearer 401s every time. The
+            // catch below swallowed it, so stack.json was never written and `doctor` reported
+            // "Stack not registered" on a perfectly good install.
+            const body = buildRequestBody(stackMeta);
+            serverStackResponse = await api(server as string, `/api/projects/${finalProjectKey}/stack`, { method: 'POST', body, token });
+        } catch (e: any) {
+            if (!isJson) console.log(`⚠ Stack not registered (${e.code || 500})`);
         }
-    }
 
-    const mergedStack = mergeStack(stackMeta, serverStackResponse?.data ?? serverStackResponse, noDesign ? null : designBlock);
-    await writeStackFile(cwd, mergedStack);
+        const noDesign = Boolean(options['no-design']);
+        let designBlock: DesignBlock | null = null;
+        if (!noDesign) {
+            designBlock = await detectDesignTokens(cwd);
+            const designSummary = summarizeDesignTokens(designBlock.tokens, designBlock.libraries);
+            if (!isJson) {
+                console.log(`✔ Design tokens: ${designSummary} → .pointer/stack.json`);
+            }
+        }
+
+        const mergedStack = mergeStack(stackMeta, serverStackResponse?.data ?? serverStackResponse, noDesign ? null : designBlock);
+        await writeStackFile(cwd, mergedStack);
+    }
 
     // The HTML we actually wrote to, so `doctor` can find the widget in a repo whose layout it
     // would never guess. Relative, because the config is committed and an absolute path would be
     // wrong on every other machine.
+    //
+    // Only set when THIS run injected: a join never injects, and must not clobber an `htmlPath`
+    // an earlier install already recorded — spreading an explicit `undefined` into writeConfig's
+    // merge would drop the existing key instead of leaving it alone.
     const injectedHtml = injected
         ? filesMod.find((f) => f.toLowerCase().endsWith('.html'))?.replace(`${cwd}/`, '')
         : undefined;
-    await writeConfig(cwd, { server: server as string, project: finalProjectKey, environment: env, aiTool: tool, skillsDir: options['skills-dir'] as string, cliVersion: BUILD_CLI_VERSION, htmlPath: injectedHtml, environments: envs.length > 1 ? envs : undefined, delivery });
+    const configPatch: Record<string, unknown> = {
+        server: server as string,
+        project: finalProjectKey,
+        environment: env,
+        aiTool: tool,
+        skillsDir: options['skills-dir'] as string,
+        cliVersion: BUILD_CLI_VERSION,
+        environments: envs.length > 1 ? envs : undefined,
+        delivery,
+    };
+    if (injectedHtml !== undefined) configPatch.htmlPath = injectedHtml;
+    await writeConfig(cwd, configPatch);
     filesMod.push('.pointer/config.json');
     // Re-write credentials now that the project key is final, so pointer.sh can resolve
     // server/project from this file in repos that have no .env (see writeCredentials).
@@ -551,11 +638,12 @@ export async function initCommand(cwd: string, options: Record<string, string | 
         }
     }
 
-    await postEvent(server as string, token, { type: 'installed', projectKey: finalProjectKey, meta: { stack: stackMeta, aiTool: tool, injected, cliVersion: BUILD_CLI_VERSION } });
+    await postEvent(server as string, token, { type: 'installed', projectKey: finalProjectKey, meta: { stack: stackMeta, aiTool: tool, injected, cliVersion: BUILD_CLI_VERSION, mode } });
 
     if (isJson) {
         console.log(JSON.stringify({
             ok: true,
+            mode,
             product,
             server,
             project: { key: finalProjectKey, name: projectName, created },
@@ -587,7 +675,19 @@ export async function initCommand(cwd: string, options: Record<string, string | 
     const rule = dim('─'.repeat(60));
 
     const envLabel = envs.length > 1 ? envs.join(', ') : env;
-    console.log(`
+
+    if (isJoin) {
+        console.log(`
+${rule}
+${green('✔')} ${bold(`Joined ${product} project ${finalProjectKey} as ${me?.displayName ?? 'you'}`)}
+
+  ${dim('Environment(s)')}  ${envLabel}
+  ${dim('Server')}          ${server}
+  ${dim('Key')}             .pointer/credentials.env ${dim('(gitignored)')}
+  ${dim('Skills')}          ${skillFiles.length ? skillFiles.join('\n                    ') : 'installed'}
+${rule}`);
+    } else {
+        console.log(`
 ${rule}
 ${green('✔')} ${bold(`${product} is set up`)}
 
@@ -597,6 +697,7 @@ ${green('✔')} ${bold(`${product} is set up`)}
   ${dim('Key')}           .pointer/credentials.env ${dim('(gitignored)')}
   ${dim('Skills')}        ${skillFiles.length ? skillFiles.join('\n                ') : 'installed'}
 ${rule}`);
+    }
 
     if (delivery === 'extension') {
         const storeUrl = branding.extension?.storeUrl || '';
@@ -612,6 +713,12 @@ ${installLine}
   2. Extension → Options → set server ${server}; sign in with your ${product} account.
   3. Open your app, click the extension icon, choose project ${dim(finalProjectKey)}, Activate.
   4. Then ${bold('npx pointer-feedback list')} / ${bold('apply')} as usual.
+      ${dim(`Dashboard: ${branding.urls?.app || server}`)}`);
+    } else if (isJoin) {
+        console.log(`
+${bold('Next')}  ${product} is already embedded in this app's committed source — nothing to inject.
+      Start your dev server, open the app, and the ${product} button should appear.
+      Then ${bold('npx pointer-feedback list')} / ${bold('apply')} as usual.
       ${dim(`Dashboard: ${branding.urls?.app || server}`)}`);
     } else if (injected) {
         console.log(`
