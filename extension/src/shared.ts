@@ -59,6 +59,7 @@ export type BgRequest =
   | { type: 'projectForOrigin'; origin: string }
   | { type: 'createProject'; key: string; name: string; appUrl: string }
   | { type: 'activate'; tabId: number; hostname: string; origin: string; project: string; environment: string }
+  | { type: 'stageActivation'; tabId: number; hostname: string; origin: string; project: string; environment: string }
   | { type: 'deactivate'; tabId: number };
 
 // page (MAIN world, via content bridge) -> background: proxied API traffic

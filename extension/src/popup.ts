@@ -159,6 +159,10 @@ async function renderMain(user: StoredUser | null) {
       // Must run right here, synchronously in this click handler — chrome.permissions.request only
       // honors a direct user gesture; proxying it through a message to the background loses that.
       // Persists once granted, so this only prompts the first time Pointer activates on this site.
+      // Chrome CLOSES this popup when its permission prompt opens, so on that first time nothing
+      // after the await ever runs. Stage the activation first: the background completes it from
+      // chrome.permissions.onAdded, and a reopened popup shows the staged project as selected.
+      await send({ type: 'stageActivation', tabId: tab!.id!, hostname, origin, project, environment });
       const granted = await chrome.permissions.request({ origins: [`${origin}/*`] });
       if (!granted) return err('Pointer needs access to this site to activate here — click Activate again to allow it.');
       const res = await send<{ ok: boolean; error?: string }>({ type: 'activate', tabId: tab!.id!, hostname, origin, project, environment });

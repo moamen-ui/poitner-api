@@ -100,6 +100,58 @@ async function deactivateAllTabs(): Promise<void> {
 // re-awakened MV3 service worker can still complete the injection (fix 3.1).
 const SESSION_PENDING = 'pendingInject';
 
+// First activation on a site: the popup must call chrome.permissions.request (user gesture), and
+// Chrome closes the popup the moment its prompt opens — the click handler never resumes, so the
+// 'activate' message was never sent and "nothing happened". The popup therefore STAGES the
+// activation before asking, and the background finishes it from chrome.permissions.onAdded.
+const SESSION_STAGED = 'stagedActivation';
+interface StagedActivation { tabId: number; hostname: string; origin: string; project: string; environment: string; at: number }
+async function getStaged(): Promise<StagedActivation | null> {
+  const r = await chrome.storage.session.get(SESSION_STAGED);
+  return (r[SESSION_STAGED] as StagedActivation) || null;
+}
+async function setStaged(s: StagedActivation | null): Promise<void> {
+  if (s) await chrome.storage.session.set({ [SESSION_STAGED]: s });
+  else await chrome.storage.session.remove(SESSION_STAGED);
+}
+// Popup-alive + onAdded can both try to activate the same tab within a second; the second run
+// would reload the tab a second time. Remember the last completed activation per tab.
+const recentlyActivated = new Map<number, { project: string; at: number }>();
+
+async function runActivation(m: { tabId: number; hostname: string; origin: string; project: string; environment: string }): Promise<{ ok: boolean; error?: string }> {
+  const recent = recentlyActivated.get(m.tabId);
+  if (recent && recent.project === m.project && Date.now() - recent.at < 5000) return { ok: true };
+  const su = (await chrome.storage.local.get(LOCAL_KEYS.user))[LOCAL_KEYS.user] as StoredUser | null;
+  if (su?.isSuperAdmin) return { ok: false, error: 'Super admin accounts can’t use Pointer here — sign in with a workspace account instead.' };
+  if (!(await hasHostPermission(m.origin))) {
+    return { ok: false, error: 'Permission for this site was not granted — click Activate again and allow access when Chrome asks.' };
+  }
+  const gate = await apiFetch('/api/extension/activate', {
+    method: 'POST',
+    body: JSON.stringify({ projectKey: m.project, origin: m.origin }),
+  });
+  if (!gate.ok) {
+    const reason = gate.status === 404 ? 'Project not found in your workspace.'
+      : (gate.message || 'The browser extension is not available on your current plan.');
+    return { ok: false, error: reason };
+  }
+  await setStaged(null);
+  recentlyActivated.set(m.tabId, { project: m.project, at: Date.now() });
+  await activate(m.tabId, m.hostname, m.project, m.environment);
+  return { ok: true };
+}
+
+chrome.permissions.onAdded.addListener((added) => {
+  (async () => {
+    const staged = await getStaged();
+    if (!staged) return;
+    if (Date.now() - staged.at > 5 * 60 * 1000) { await setStaged(null); return; }
+    const origins = added.origins || [];
+    if (!origins.some((o) => o.startsWith(`${staged.origin}/`) || o === `${staged.origin}/*` || o === '<all_urls>')) return;
+    await runActivation(staged);
+  })().catch(() => { /* best effort — the popup path still works on the next click */ });
+});
+
 async function getPendingInject(): Promise<Set<number>> {
   const s = await chrome.storage.session.get(SESSION_PENDING);
   return new Set<number>((s[SESSION_PENDING] as number[]) || []);
@@ -288,7 +340,13 @@ chrome.runtime.onMessage.addListener((msg: BgRequest | ProxyRequest, _sender, se
       }
       case 'getTabState': {
         const map = await getProjectMap();
-        return { active: await isActive(m.tabId), remembered: map[m.hostname] || null };
+        const staged = await getStaged();
+        const stagedHere = staged && staged.hostname === m.hostname ? { project: staged.project, environment: staged.environment } : null;
+        return { active: await isActive(m.tabId), remembered: map[m.hostname] || stagedHere || null };
+      }
+      case 'stageActivation': {
+        await setStaged({ tabId: m.tabId, hostname: m.hostname, origin: m.origin, project: m.project, environment: m.environment, at: Date.now() });
+        return { ok: true };
       }
       case 'deactivate': { await deactivate(m.tabId); return { ok: true }; }
       case 'login': {
@@ -340,31 +398,9 @@ chrome.runtime.onMessage.addListener((msg: BgRequest | ProxyRequest, _sender, se
         return { ok: true, project: { key: m.key, name: m.name, isActive: true } };
       }
       case 'activate': {
-        // Defense in depth: listProjects already blocks a super admin from getting this far, but
-        // guard here too — ProjectService.EnsureAsync always 404s for them, which would otherwise
-        // surface as the misleading "Project not found in your workspace."
-        const su = (await chrome.storage.local.get(LOCAL_KEYS.user))[LOCAL_KEYS.user] as StoredUser | null;
-        if (su?.isSuperAdmin) return { ok: false, error: 'Super admin accounts can’t use Pointer here — sign in with a workspace account instead.' };
-        // The popup must have already requested (and the user granted) host access to this origin —
-        // chrome.permissions.request needs a direct user gesture, which only the popup's own click
-        // handler has. Without it, the CSP-bypass rule below would be added but silently do nothing.
-        if (!(await hasHostPermission(m.origin))) {
-          return { ok: false, error: 'Permission for this site was not granted — click Activate again and allow access when Chrome asks.' };
-        }
-        // Entitlement gate + site recording: /api/extension/activate enforces ExtensionEnabled and
-        // MaxExtensionSites (inert while the enforcement kill-switch is off) and validates the project
-        // exists. Block injection — and surface why — when the plan denies it.
-        const gate = await apiFetch('/api/extension/activate', {
-          method: 'POST',
-          body: JSON.stringify({ projectKey: m.project, origin: m.origin }),
-        });
-        if (!gate.ok) {
-          const reason = gate.status === 404 ? 'Project not found in your workspace.'
-            : (gate.message || 'The browser extension is not available on your current plan.');
-          return { ok: false, error: reason };
-        }
-        await activate(m.tabId, m.hostname, m.project, m.environment);
-        return { ok: true };
+        // Super-admin guard, host-permission check, entitlement gate (/api/extension/activate) and the
+        // injection itself live in runActivation so the permissions.onAdded path shares them.
+        return runActivation({ tabId: m.tabId, hostname: m.hostname, origin: m.origin, project: m.project, environment: m.environment });
       }
       default: return { ok: false, error: 'unknown message' };
     }
