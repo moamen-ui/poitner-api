@@ -3097,7 +3097,7 @@ async function initCommand(cwd2, options = {}) {
     }
   }
   if (writeLocalCreds) {
-    await writeCredentials(cwd2, key);
+    await writeCredentials(cwd2, key, { server });
   }
   await upsertGitignore(cwd2, product, options["skills-dir"] || config.skillsDir);
   if (isJoin && configIsMulti) {

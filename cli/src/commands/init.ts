@@ -234,7 +234,9 @@ export async function initCommand(cwd: string, options: Record<string, string | 
     }
 
     if (writeLocalCreds) {
-        await writeCredentials(cwd, key);
+        // Server is known here; project is added later only in single-project mode (a multi-project
+        // repo's pointer.sh takes -p, so a pinned POINTER_PROJECT would be wrong for every other app).
+        await writeCredentials(cwd, key, { server: server as string });
     }
     await upsertGitignore(cwd, product, (options['skills-dir'] as string) || config.skillsDir);
 
