@@ -146,8 +146,13 @@ async function injectInto(tabId: number, url: string): Promise<void> {
   const map = await getProjectMap();
   const entry = map[hostnameOf(url)];
   if (!entry) return;
-  // Only pass the display name into the page — email and role are PII (fix 1.3).
+  // Only the display name plus three non-PII facts reach the page — email and role name stay out
+  // (fix 1.3). The opaque id lets the widget mark the viewer's own comments (so the author sees the
+  // verify buttons), isAdmin extends that to admins, isQuickAccess hides backlog actions.
   const displayName: string | undefined = user?.displayName || undefined;
+  const userId: string | undefined = user?.id ? String(user.id) : undefined;
+  const isAdmin = !!user?.isAdmin;
+  const isQuickAccess = !!user?.isQuickAccess;
   // snapdom (screenshot capture) stays bundled — it changes rarely, unlike pointer.js/css below.
   const snapdomUrl = chrome.runtime.getURL('vendor/snapdom.js');
   // 1) Isolated bridge (relays proxied requests). 2) MAIN-world config + host mount — injectMain
@@ -160,7 +165,7 @@ async function injectInto(tabId: number, url: string): Promise<void> {
     target: { tabId },
     world: 'MAIN',
     func: injectMain,
-    args: [{ server, project: entry.project, environment: entry.environment, displayName, snapdomUrl }],
+    args: [{ server, project: entry.project, environment: entry.environment, displayName, userId, isAdmin, isQuickAccess, snapdomUrl }],
   });
 }
 

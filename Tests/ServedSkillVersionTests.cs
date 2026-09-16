@@ -64,6 +64,27 @@ public class ServedSkillVersionTests
     }
 
     [Fact]
+    public void ContentStamp_ChangesWhenASkillFileChanges_AndIsStableOtherwise()
+    {
+        var a = SkillVersionResolver.WithContentStamp("0.0.0-dev", new[] { "skill A", "init A" });
+        var same = SkillVersionResolver.WithContentStamp("0.0.0-dev", new[] { "skill A", "init A" });
+        var edited = SkillVersionResolver.WithContentStamp("0.0.0-dev", new[] { "skill A (edited)", "init A" });
+
+        Assert.Equal(a, same);
+        Assert.NotEqual(a, edited);
+        Assert.StartsWith("0.0.0-dev+skills.", a);
+        Assert.Equal("0.0.0-dev+skills.".Length + 12, a.Length);
+    }
+
+    [Fact]
+    public void ContentStamp_ReplacesExistingBuildMetadata_SoTheStampHasOnePlus()
+    {
+        var stamped = SkillVersionResolver.WithContentStamp("1.2.3+abc123", new[] { "x" });
+        Assert.StartsWith("1.2.3+skills.", stamped);
+        Assert.Equal(1, stamped.Count(ch => ch == '+'));
+    }
+
+    [Fact]
     public void Resolver_PrefersTheConfiguredValue_SoSkillEditsCanShipWithoutCode()
     {
         var configured = new ConfigurationBuilder()

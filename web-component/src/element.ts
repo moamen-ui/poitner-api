@@ -310,6 +310,10 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
 
     // Login is deferred: on load just show the toolbar/launcher. The popup only
     // appears when the user acts (inspect / Comments) and there's no token yet.
+    // A host-injected session (browser extension) hands over a display name only, so the widget
+    // cannot tell which comments are the viewer's own — and never shows them the verify buttons.
+    // Fill in id/isAdmin from the server before the first comment list renders.
+    if (this.token) await this.hydrateIdentity();
     if (this.token) this.init();
     else this.renderChrome();
 
@@ -1810,6 +1814,35 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
   }
 
   // True when comment `c` was authored by the current logged-in user.
+  /**
+   * Completes `this.user` with the fields the card template needs (`id`, `isAdmin`, `isQuickAccess`)
+   * when the session came from a host that only supplied a display name. One `GET /api/auth/me`,
+   * in memory only for host-owned sessions — the host re-injects its own user object on every
+   * activation, and persisting a wider profile than it chose to share would defeat that choice.
+   */
+  private async hydrateIdentity(): Promise<void> {
+    if (!this.token || (this.user && this.user.id)) return;
+    try {
+      const r = await this.api('/api/auth/me');
+      if (!r.ok) return;
+      const env = await r.json().catch(() => null);
+      const me = env && env.data ? env.data : env;
+      if (!me || !me.id) return;
+      this.user = {
+        ...(this.user || {}),
+        id: String(me.id),
+        displayName: (this.user && this.user.displayName) || me.displayName,
+        isAdmin: !!me.isAdmin,
+        isQuickAccess: !!me.isQuickAccess,
+      };
+      if (!this.authOwnedByHost) {
+        try { localStorage.setItem('pointer_user', JSON.stringify(this.user)); } catch { /* ignore */ }
+      }
+    } catch {
+      /* 401 is handled by api(); anything else just leaves the buttons hidden */
+    }
+  }
+
   isMine(c: Comment): boolean {
     const uid = this.user && this.user.id;
     if (!uid) return false;
@@ -1903,7 +1936,7 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
     }
 
     const isQuickAccess = !!this.user?.isQuickAccess;
-    list.innerHTML = shown.map((c, i) => { c._mine = this.isMine(c); return TPL.card(c, i, isQuickAccess); }).join('');
+    list.innerHTML = shown.map((c, i) => { c._mine = this.isMine(c); c._canVerify = c._mine || !!(this.user && this.user.isAdmin); return TPL.card(c, i, isQuickAccess); }).join('');
 
     list.querySelectorAll<HTMLElement>('[data-act="apply"]').forEach((b) => b.addEventListener('click', () => {
       const c = this.comments.find((x) => String(x.id) === String(b.dataset.id));

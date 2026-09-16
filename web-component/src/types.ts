@@ -58,6 +58,8 @@ export interface Comment {
   element?: ElementCapture;
   replies?: Reply[];
   _mine?: boolean;
+  /** Author or workspace admin, and therefore allowed to verify (👍/👎) an applied comment. */
+  _canVerify?: boolean;
   /** "Report as a bug" checkbox state — set on create, independent of pageContext. */
   isBugReport?: boolean;
   /** Advisory server-side flag; absent for AI callers by design (R2-06). */
@@ -92,6 +94,9 @@ export interface User {
   displayName?: string;
   email?: string;
   roleName?: string;
+  /** Workspace admin (Role.GrantsAdmin). Admins may verify any applied comment, not only
+   *  their own — same rule as the dashboard's comment detail. Comes off the login/me response. */
+  isAdmin?: boolean;
   /** True for quick-access (Client) accounts — gates out backlog-management actions (mark
    *  completed, ready-to-apply, archive/re-open) in the comment card template. Comes straight off
    *  the login/me response's IsQuickAccess claim. */

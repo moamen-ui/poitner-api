@@ -17,6 +17,8 @@ export const LOCAL_KEYS = {
 export const PROXY_TOKEN = '__pointer_via_proxy__';
 
 export interface StoredUser {
+  /** Opaque account id — lets the widget recognise the viewer's own comments (verify buttons). */
+  id?: string;
   displayName?: string;
   email?: string;
   roleName?: string;

@@ -1,4 +1,6 @@
 using System.Reflection;
+using System.Security.Cryptography;
+using System.Text;
 using Microsoft.Extensions.Configuration;
 
 namespace Pointer.Application.Common;
@@ -31,5 +33,28 @@ public static class SkillVersionResolver
             .GetCustomAttribute<AssemblyInformationalVersionAttribute>()?
             .InformationalVersion
             ?? "0.0.0-dev";
+    }
+
+    /// <summary>
+    /// Appends a content hash of the served skill files as semver build metadata:
+    /// <c>0.0.0-dev+skills.3f9c21ab8d0e</c>. The CLI's <c>update</c>/<c>doctor</c> compare stamps by
+    /// exact string, so a stamp that never changes hides every skill edit — which is what happened in
+    /// production, where the image has no git metadata and the assembly version stays "0.0.0-dev".
+    /// Any existing build metadata is dropped first (semver allows a single '+').
+    /// </summary>
+    public static string WithContentStamp(string version, IEnumerable<string> contents)
+    {
+        var core = version.Split('+', 2)[0].Trim();
+        if (string.IsNullOrEmpty(core)) core = "0.0.0-dev";
+        using var sha = SHA256.Create();
+        foreach (var content in contents)
+        {
+            var bytes = Encoding.UTF8.GetBytes(content.Replace("\r\n", "\n"));
+            sha.TransformBlock(bytes, 0, bytes.Length, null, 0);
+            sha.TransformBlock(new byte[] { 0 }, 0, 1, null, 0);
+        }
+        sha.TransformFinalBlock(Array.Empty<byte>(), 0, 0);
+        var hex = Convert.ToHexString(sha.Hash!).ToLowerInvariant()[..12];
+        return $"{core}+skills.{hex}";
     }
 }

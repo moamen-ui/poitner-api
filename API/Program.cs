@@ -19,6 +19,24 @@ using Pointer.API.Startup;
 
 var builder = WebApplication.CreateBuilder(args);
 
+// Skill version stamp. An operator may pin Pointer:SkillVersion; otherwise derive it from the served
+// skill files' content so `npx pointer-feedback update` notices every edit (see SkillVersionResolver).
+if (string.IsNullOrWhiteSpace(builder.Configuration[Pointer.Application.Common.SkillVersionResolver.ConfigKey]))
+{
+    var skillsRoot = builder.Environment.WebRootPath ?? Path.Combine(builder.Environment.ContentRootPath, "wwwroot");
+    var skillContents = new[] { "pointer-init.md", "skill.md", "install.sh", "pointer.sh" }
+        .Select(f => Path.Combine(skillsRoot, f))
+        .Where(File.Exists)
+        .Select(File.ReadAllText)
+        .ToList();
+    if (skillContents.Count > 0)
+    {
+        builder.Configuration[Pointer.Application.Common.SkillVersionResolver.ConfigKey] =
+            Pointer.Application.Common.SkillVersionResolver.WithContentStamp(
+                Pointer.Application.Common.SkillVersionResolver.Resolve(builder.Configuration), skillContents);
+    }
+}
+
 builder.Services.AddControllers(options =>
 {
     options.Filters.Add(new Microsoft.AspNetCore.Mvc.ProducesAttribute("application/json"));

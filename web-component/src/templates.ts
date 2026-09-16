@@ -176,13 +176,13 @@ export const TPL = {
     const verifiedPill = (c.status === 'applied' && c.verifiedAt)
       ? '<span class="pf-pill verified">&#x2713; Verified</span>'
       : '';
-    const verifyGroup = (c.status === 'applied' && !c.verifiedAt && c._mine)
+    const verifyGroup = (c.status === 'applied' && !c.verifiedAt && c._canVerify)
       ? `<span class="pf-verify-group">
           <button class="pf-mini pf-verify-ok" data-act="verify-ok" data-id="${c.id}" title="Looks right">&#x1f44d; Looks right</button>
           <button class="pf-mini pf-verify-reject" data-act="verify-reject" data-id="${c.id}" title="Not fixed">&#x1f44e; Not fixed</button>
         </span>`
       : '';
-    const verifyBox = (c.status === 'applied' && !c.verifiedAt && c._mine)
+    const verifyBox = (c.status === 'applied' && !c.verifiedAt && c._canVerify)
       ? `<div class="pf-verify-box pf-hidden" id="pf-verify-box-${c.id}">
           <input class="pf-input pf-verify-note-input" id="pf-verify-note-${c.id}" placeholder="Explain what is still not fixed…" />
           <div class="pf-verify-actions">

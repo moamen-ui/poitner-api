@@ -7,8 +7,11 @@ export function injectMain(cfg: {
   server: string;
   project: string;
   environment: string;
-  /** Only the display name is forwarded to the page — email and role are omitted (PII, fix 1.3). */
+  /** Display name plus opaque id / admin / quick-access flags — email and role name are omitted (PII, fix 1.3). */
   displayName?: string;
+  userId?: string;
+  isAdmin?: boolean;
+  isQuickAccess?: boolean;
   /** Extension-origin URL for the bundled snapdom (chrome-extension://…) — this one stays bundled
    *  since it changes rarely, unlike pointer.js/pointer.css below. */
   snapdomUrl?: string;
@@ -75,7 +78,9 @@ export function injectMain(cfg: {
     environment: cfg.environment,
     token: PROXY_TOKEN,
     // Only expose the display name — email and roleName are PII and not needed by the widget (1.3).
-    user: cfg.displayName ? { displayName: cfg.displayName } : undefined,
+    user: (cfg.displayName || cfg.userId)
+      ? { displayName: cfg.displayName, id: cfg.userId, isAdmin: !!cfg.isAdmin, isQuickAccess: !!cfg.isQuickAccess }
+      : undefined,
     proxy: true,
     // cssUrl intentionally omitted: with no override, the widget falls back to loading its
     // stylesheet from `${server}/pointer.css` on its own — same as the plain (non-extension) embed.
