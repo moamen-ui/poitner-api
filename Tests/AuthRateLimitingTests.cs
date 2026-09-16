@@ -34,6 +34,8 @@ public class AuthRateLimitingTests
     [InlineData("RegisterInvite")]
     [InlineData("ForgotPassword")]
     [InlineData("ResetPassword")]
+    [InlineData("DeviceStart")]
+    [InlineData("DevicePoll")]
     public void SignupSurface_KeepsSignupRateLimit(string action)
     {
         var method = typeof(AuthController).GetMethod(action);

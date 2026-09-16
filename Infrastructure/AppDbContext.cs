@@ -59,6 +59,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options, ICurrentUser c
     public DbSet<AiRule> AiRules => Set<AiRule>();
     public DbSet<UsageEvent> UsageEvents => Set<UsageEvent>();
     public DbSet<Notification> Notifications => Set<Notification>();
+    public DbSet<DeviceLogin> DeviceLogins => Set<DeviceLogin>();
 
     protected override void OnModelCreating(ModelBuilder b)
     {
@@ -138,6 +139,15 @@ public class AppDbContext(DbContextOptions<AppDbContext> options, ICurrentUser c
         b.Entity<AiRule>().HasQueryFilter(e => currentUser.IsSuperAdmin || (currentUser.TenantId != null && e.OwnerId == currentUser.TenantId) || (currentUser.TenantId == null && !strict && e.OwnerId == null));
         b.Entity<UsageEvent>().HasQueryFilter(e => currentUser.IsSuperAdmin || (currentUser.TenantId != null && e.OwnerId == currentUser.TenantId) || (currentUser.TenantId == null && !strict && e.OwnerId == null));
         b.Entity<Notification>().HasQueryFilter(e => currentUser.IsSuperAdmin || (currentUser.TenantId != null && e.OwnerId == currentUser.TenantId) || (currentUser.TenantId == null && !strict && e.OwnerId == null));
+
+        // DeviceLogin: deliberately NO query filter — exempt from tenant isolation. /device/start
+        // and /device/poll are anonymous (no session, let alone a tenant claim) and OwnerId is only
+        // known once a signed-in user approves the row, so a strict-own filter would hide every
+        // still-Pending row from the very GET/approve/deny endpoints that need to find it before
+        // that happens. The code itself (43 random bytes for the device code, an 8-char alphabet
+        // for the user code) is the access control; OwnerId is stamped on approval for
+        // query-filter-shape parity with every other table only, and is never relied on to scope a
+        // read. See DeviceLogin's remarks.
     }
 
     // Entities whose CreatedAt must survive the SaveChangesAsync stamping loop (the comment-import

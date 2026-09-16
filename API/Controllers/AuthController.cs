@@ -10,7 +10,11 @@ namespace Pointer.API.Controllers;
 
 [ApiController]
 [Route("api/auth")]
-public class AuthController(IAuthService authService, ISettingsService settingsService, IInviteService inviteService) : ControllerBase
+public class AuthController(
+    IAuthService authService,
+    ISettingsService settingsService,
+    IInviteService inviteService,
+    IDeviceLoginService deviceLoginService) : ControllerBase
 {
     [AllowAnonymous]
     [HttpPost("login")]
@@ -133,6 +137,78 @@ public class AuthController(IAuthService authService, ISettingsService settingsS
     public async Task<IActionResult> RegisterInvite([FromBody] AcceptInviteRequest request)
     {
         var result = await inviteService.AcceptAsync(request);
+        if (result.IsNotFound) return NotFound(result);
+        if (result.IsConflict) return Conflict(result);
+        return result.IsSuccess ? Ok(result) : BadRequest(result);
+    }
+
+    // ── Device-code ("browser") sign-in for the CLI, mirroring `gh auth login` ─────────────────
+    // See Pointer.Domain.Entity.DeviceLogin for the full flow.
+
+    /// <summary>Mints a fresh device/user code pair for `pointer login`. Anonymous — there is no
+    /// session yet.</summary>
+    [AllowAnonymous]
+    [HttpPost("device/start")]
+    [EnableRateLimiting("signup")]
+    [ProducesResponseType(typeof(DeviceLoginStartResponse), StatusCodes.Status200OK)]
+    public async Task<IActionResult> DeviceStart([FromBody] DeviceLoginStartRequest request)
+    {
+        var result = await deviceLoginService.StartAsync(request);
+        return result.IsSuccess ? Ok(result) : BadRequest(result);
+    }
+
+    /// <summary>Polled by the CLI every `intervalSeconds` until the code is approved/denied/expired.
+    /// Anonymous by necessity — the CLI has no session until this returns the key.</summary>
+    [AllowAnonymous]
+    [HttpPost("device/poll")]
+    [EnableRateLimiting("signup")]
+    [ProducesResponseType(typeof(DeviceLoginPollResponse), StatusCodes.Status200OK)]
+    public async Task<IActionResult> DevicePoll([FromBody] DeviceLoginPollRequest request)
+    {
+        var result = await deviceLoginService.PollAsync(request);
+        return result.IsSuccess ? Ok(result) : BadRequest(result);
+    }
+
+    /// <summary>For the dashboard's /cli-login page: what a user code is asking for, before the
+    /// user decides. Super admins are refused — they have no personal API key to hand out.</summary>
+    [Authorize]
+    [HttpGet("device/{userCode}")]
+    [ProducesResponseType(typeof(DeviceLoginInfoResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(Result), StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(typeof(Result), StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> DeviceInfo(string userCode)
+    {
+        var result = await deviceLoginService.GetInfoAsync(userCode);
+        if (result.IsForbidden) return StatusCode(StatusCodes.Status403Forbidden, result);
+        if (result.IsNotFound) return NotFound(result);
+        return result.IsSuccess ? Ok(result) : BadRequest(result);
+    }
+
+    [Authorize]
+    [HttpPost("device/approve")]
+    [ProducesResponseType(typeof(DeviceLoginInfoResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(Result), StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(typeof(Result), StatusCodes.Status404NotFound)]
+    [ProducesResponseType(typeof(Result), StatusCodes.Status409Conflict)]
+    public async Task<IActionResult> DeviceApprove([FromBody] DeviceLoginUserCodeRequest request)
+    {
+        var result = await deviceLoginService.ApproveAsync(request.UserCode);
+        if (result.IsForbidden) return StatusCode(StatusCodes.Status403Forbidden, result);
+        if (result.IsNotFound) return NotFound(result);
+        if (result.IsConflict) return Conflict(result);
+        return result.IsSuccess ? Ok(result) : BadRequest(result);
+    }
+
+    [Authorize]
+    [HttpPost("device/deny")]
+    [ProducesResponseType(typeof(DeviceLoginInfoResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(Result), StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(typeof(Result), StatusCodes.Status404NotFound)]
+    [ProducesResponseType(typeof(Result), StatusCodes.Status409Conflict)]
+    public async Task<IActionResult> DeviceDeny([FromBody] DeviceLoginUserCodeRequest request)
+    {
+        var result = await deviceLoginService.DenyAsync(request.UserCode);
+        if (result.IsForbidden) return StatusCode(StatusCodes.Status403Forbidden, result);
         if (result.IsNotFound) return NotFound(result);
         if (result.IsConflict) return Conflict(result);
         return result.IsSuccess ? Ok(result) : BadRequest(result);

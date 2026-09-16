@@ -15,6 +15,13 @@ public static class MessageKeys
         public const string TokenRequired = "Reset token is required.";
     }
 
+    public static class DeviceLogin
+    {
+        public const string NotFound = "This code is invalid or has expired.";
+        public const string AlreadyDecided = "This code has already been approved or denied.";
+        public const string SuperAdminNotAllowed = "Super admins cannot sign in the CLI. Sign in with a tenant account instead.";
+    }
+
     public static class User
     {
         public const string NotFound = "User not found.";
