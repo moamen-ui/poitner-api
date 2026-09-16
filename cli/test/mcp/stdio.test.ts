@@ -75,7 +75,7 @@ test('mcp stdio: spawn node dist/cli.js mcp, initialize, tools/list, tools/call'
   try {
     await client.connect(transport);
 
-    // 1. tools/list: assert all 9 tool names
+    // 1. tools/list: assert all 10 tool names
     const toolsResult = await client.listTools();
     const toolNames = toolsResult.tools.map((t) => t.name).sort();
     assert.deepEqual(toolNames, [
@@ -84,6 +84,7 @@ test('mcp stdio: spawn node dist/cli.js mcp, initialize, tools/list, tools/call'
       'pointer_get_comment',
       'pointer_get_queue',
       'pointer_list_comments',
+      'pointer_list_projects',
       'pointer_mark_applied',
       'pointer_reply',
       'pointer_resolve_source',

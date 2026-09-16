@@ -244,3 +244,84 @@ test('--server and --project override the config file', async () => {
   assert.match(checks.find((c) => c.id === 'config')?.message ?? '', /fresh/);
   assert.equal(checks.find((c) => c.id === 'server')?.status, 'ok');
 });
+
+// -----------------------------------------------------------------------------------------------
+// Multi-project (monorepo) doctor checks
+// -----------------------------------------------------------------------------------------------
+
+test('multi-project: runs project/widget/stack checks per app, keyed with [project] in the message', async () => {
+  const stub = await stubServer({
+    'GET /api/branding': [200, {}],
+    'GET /api/meta': [200, { minCliVersion: '0.0.1', serverTime: new Date().toISOString() }],
+    'POST /api/auth/login-with-key': [200, { status: 'ok', token: 'jwt' }],
+    'GET /api/admin/projects': [
+      200,
+      [
+        { key: 'a', isActiveLocal: true },
+        { key: 'b', isActiveLocal: false },
+      ],
+    ],
+    'GET /pointer.js': [200, 'console.log(1)'],
+  });
+
+  const dir = await scratch(
+    {
+      server: stub.url,
+      delivery: 'embed',
+      projects: {
+        a: { path: 'apps/a', environment: 'local' },
+        b: { path: 'apps/b', environment: 'local' },
+      },
+    },
+    'ptr_good',
+  );
+  await fs.mkdir(join(dir, 'apps/a'), { recursive: true });
+  await fs.mkdir(join(dir, 'apps/b'), { recursive: true });
+  await fs.writeFile(join(dir, 'apps/a/index.html'), '<html><!-- pointer-feedback:start --></html>', 'utf8');
+  // apps/b has no widget at all — must warn for b specifically, not fail a.
+
+  const checks = await runInitChecks(dir, {}, '1.0.0');
+  await stub.close();
+
+  const widgetChecks = checks.filter((c) => c.id === 'widget');
+  assert.equal(widgetChecks.length, 2, 'one widget check per project');
+  assert.ok(widgetChecks.some((c) => c.message.startsWith('[a] ') && c.status === 'ok'));
+  assert.ok(widgetChecks.some((c) => c.message.startsWith('[b] ') && c.status === 'warn'));
+
+  const projectChecks = checks.filter((c) => c.id === 'project');
+  assert.equal(projectChecks.length, 2);
+  assert.ok(projectChecks.some((c) => c.message.includes('[a]') && c.status === 'ok'));
+  assert.ok(projectChecks.some((c) => c.message.includes('[b]') && c.status === 'warn' && c.message.includes('inactive')));
+
+  const stackChecks = checks.filter((c) => c.id === 'stack');
+  assert.equal(stackChecks.length, 2);
+  assert.ok(stackChecks.every((c) => c.status === 'warn' && c.fixable), 'neither project has a stack file yet');
+
+  const config = checks.find((c) => c.id === 'config');
+  assert.equal(config?.status, 'ok');
+  assert.match(config?.message ?? '', /2 projects/);
+});
+
+test('multi-project: --project narrows every per-project check to that one app', async () => {
+  const stub = await stubServer({
+    'GET /api/branding': [200, {}],
+    'GET /api/meta': [200, { minCliVersion: '0.0.1', serverTime: new Date().toISOString() }],
+    'POST /api/auth/login-with-key': [200, { status: 'ok', token: 'jwt' }],
+    'GET /api/admin/projects': [200, [{ key: 'a', isActiveLocal: true }]],
+    'GET /pointer.js': [200, 'console.log(1)'],
+  });
+
+  const dir = await scratch(
+    {
+      server: stub.url,
+      projects: { a: { path: 'apps/a' }, b: { path: 'apps/b' } },
+    },
+    'ptr_good',
+  );
+
+  const checks = await runInitChecks(dir, { project: 'a' }, '1.0.0');
+  await stub.close();
+
+  assert.equal(checks.filter((c) => c.id === 'widget').length, 1);
+  assert.equal(checks.filter((c) => c.id === 'stack').length, 1);
+});

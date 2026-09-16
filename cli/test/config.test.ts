@@ -1,6 +1,17 @@
 import { test } from 'node:test';
 import * as assert from 'node:assert';
-import { readConfig, writeConfig, writeCredentials, upsertGitignore } from '../src/config.js';
+import {
+    readConfig,
+    writeConfig,
+    writeConfigFull,
+    writeCredentials,
+    upsertGitignore,
+    isMultiProject,
+    listProjects,
+    resolveProject,
+    findRepoRoot,
+    type PointerConfig,
+} from '../src/config.js';
 import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
 import * as os from 'node:os';
@@ -107,8 +118,15 @@ test('gitignore keeps config.json/stack.json trackable and ignores everything el
             for (const rel of [
                 '.claude/skills/pointer-init/SKILL.md',
                 '.claude/skills/pointer-feedback/SKILL.md',
+                '.agents/skills/pointer-init/SKILL.md',
+                '.agents/skills/pointer-feedback/SKILL.md',
+                // Legacy (pre-2026-09-16) layout: a repo that has not re-run init/update yet.
                 '.agents/pointer-init/SKILL.md',
                 '.agents/pointer-feedback/SKILL.md',
+                '.cursor/rules/pointer-init.md',
+                '.cursor/rules/pointer-feedback.md',
+                '.windsurf/rules/pointer-init.md',
+                '.windsurf/rules/pointer-feedback.md',
             ]) {
                 await fs.mkdir(path.join(dir, path.dirname(rel)), { recursive: true });
                 await fs.writeFile(path.join(dir, rel), 'x', 'utf8');
@@ -130,17 +148,159 @@ test('gitignore keeps config.json/stack.json trackable and ignores everything el
             for (const f of ['.pointer/credentials.env', '.pointer/credentials.env.example', '.pointer/pointer.sh']) {
                 assert.strictEqual(ignored(f), true, `${label}: ${f} must be ignored`);
             }
-            // The skill directories, gitignored as of this version.
+            // Every skill layout the CLI can write — current and legacy — stays ignored.
             for (const rel of [
                 '.claude/skills/pointer-init/SKILL.md',
                 '.claude/skills/pointer-feedback/SKILL.md',
+                '.agents/skills/pointer-init/SKILL.md',
+                '.agents/skills/pointer-feedback/SKILL.md',
                 '.agents/pointer-init/SKILL.md',
                 '.agents/pointer-feedback/SKILL.md',
+                '.cursor/rules/pointer-init.md',
+                '.cursor/rules/pointer-feedback.md',
+                '.windsurf/rules/pointer-init.md',
+                '.windsurf/rules/pointer-feedback.md',
             ]) {
                 assert.strictEqual(ignored(rel), true, `${label}: ${rel} must be ignored`);
             }
+            // `.pointer/projects/` (per-app stack files in a multi-project repo) is re-included,
+            // just like stack.json/config.json.
+            await fs.mkdir(path.join(dir, '.pointer/projects'), { recursive: true });
+            await fs.writeFile(path.join(dir, '.pointer/projects/some-app.stack.json'), 'x', 'utf8');
+            assert.strictEqual(
+                ignored('.pointer/projects/some-app.stack.json'),
+                false,
+                `${label}: .pointer/projects/*.stack.json must be committable`,
+            );
         } finally {
             await fs.rm(dir, { recursive: true, force: true });
         }
+    }
+});
+
+// -----------------------------------------------------------------------------------------------
+// Multi-project config helpers
+// -----------------------------------------------------------------------------------------------
+
+test('isMultiProject / listProjects: single-project config', () => {
+    const single: PointerConfig = { server: 'https://s', project: 'my-app', environment: 'local' };
+    assert.strictEqual(isMultiProject(single), false);
+    assert.deepStrictEqual(listProjects(single), [
+        { key: 'my-app', path: '.', environment: 'local', environments: undefined, htmlPath: undefined, delivery: undefined },
+    ]);
+
+    // No project at all: no entries, not a single implicit one.
+    assert.deepStrictEqual(listProjects({ server: 'https://s' }), []);
+});
+
+test('isMultiProject / listProjects: multi-project config', () => {
+    const multi: PointerConfig = {
+        server: 'https://s',
+        delivery: 'extension',
+        projects: {
+            a: { path: 'apps/a', environment: 'local' },
+            b: { path: 'apps/b', environment: 'staging', delivery: 'embed' },
+        },
+    };
+    assert.strictEqual(isMultiProject(multi), true);
+    assert.deepStrictEqual(listProjects(multi), [
+        { key: 'a', path: 'apps/a', environment: 'local' },
+        { key: 'b', path: 'apps/b', environment: 'staging', delivery: 'embed' },
+    ]);
+
+    // An empty `projects` map is NOT multi-project — there is nothing to resolve against.
+    assert.strictEqual(isMultiProject({ projects: {} }), false);
+});
+
+test('resolveProject: --project flag wins outright', () => {
+    const config: PointerConfig = { projects: { a: { path: 'apps/a' }, b: { path: 'apps/b' } } };
+    const result = resolveProject(config, '/repo/apps/b', '/repo', 'a');
+    assert.ok(result.ok);
+    assert.strictEqual((result as any).project.key, 'a');
+
+    const notFound = resolveProject(config, '/repo', '/repo', 'nope');
+    assert.strictEqual(notFound.ok, false);
+    assert.strictEqual((notFound as any).reason, 'not-found');
+});
+
+test('resolveProject: cwd inside a project directory resolves it, most-specific match wins', () => {
+    const config: PointerConfig = {
+        projects: {
+            root: { path: '.' },
+            a: { path: 'apps/a' },
+            nested: { path: 'apps/a/nested' },
+        },
+    };
+    const inA = resolveProject(config, '/repo/apps/a/src', '/repo');
+    assert.ok(inA.ok);
+    assert.strictEqual((inA as any).project.key, 'a');
+
+    const inNested = resolveProject(config, '/repo/apps/a/nested/src', '/repo');
+    assert.ok(inNested.ok);
+    assert.strictEqual((inNested as any).project.key, 'nested', 'the deepest matching path wins');
+
+    const atRoot = resolveProject(config, '/repo', '/repo');
+    assert.ok(atRoot.ok);
+    assert.strictEqual((atRoot as any).project.key, 'root');
+});
+
+test('resolveProject: the only configured project resolves without a flag or cwd match', () => {
+    const config: PointerConfig = { project: 'solo', environment: 'local' };
+    const result = resolveProject(config, '/somewhere/else', '/repo');
+    assert.ok(result.ok);
+    assert.strictEqual((result as any).project.key, 'solo');
+});
+
+test('resolveProject: several projects, no flag, cwd outside every one -> ambiguous', () => {
+    const config: PointerConfig = { projects: { a: { path: 'apps/a' }, b: { path: 'apps/b' } } };
+    const result = resolveProject(config, '/repo/apps/c', '/repo');
+    assert.strictEqual(result.ok, false);
+    assert.strictEqual((result as any).reason, 'ambiguous');
+    assert.deepStrictEqual((result as any).keys.sort(), ['a', 'b']);
+});
+
+test('resolveProject: no project configured at all', () => {
+    const result = resolveProject({}, '/repo', '/repo');
+    assert.strictEqual(result.ok, false);
+    assert.strictEqual((result as any).reason, 'none');
+});
+
+test('findRepoRoot: walks up from a nested cwd to the directory holding .pointer/config.json', async () => {
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'pointer-test-root-'));
+    try {
+        await fs.mkdir(path.join(dir, '.pointer'), { recursive: true });
+        await fs.writeFile(path.join(dir, '.pointer/config.json'), '{}', 'utf8');
+        const nested = path.join(dir, 'apps', 'a', 'src');
+        await fs.mkdir(nested, { recursive: true });
+
+        const root = await findRepoRoot(nested);
+        assert.strictEqual(await fs.realpath(root), await fs.realpath(dir));
+    } finally {
+        await fs.rm(dir, { recursive: true, force: true });
+    }
+});
+
+test('findRepoRoot: falls back to cwd unchanged when no .pointer/config.json exists anywhere above it', async () => {
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'pointer-test-noroot-'));
+    try {
+        const root = await findRepoRoot(dir);
+        assert.strictEqual(root, dir);
+    } finally {
+        await fs.rm(dir, { recursive: true, force: true });
+    }
+});
+
+test('writeConfigFull writes exactly the given object, with no merge against the existing file', async () => {
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'pointer-test-fullwrite-'));
+    try {
+        await writeConfig(dir, { server: 'https://s', project: 'old', environment: 'local', htmlPath: 'index.html' });
+        await writeConfigFull(dir, { server: 'https://s', aiTool: 'claude-code', projects: { old: { path: '.' } } });
+        const conf = await readConfig(dir);
+        assert.strictEqual(conf.project, undefined, 'writeConfigFull must not carry the old top-level project forward');
+        assert.strictEqual(conf.environment, undefined);
+        assert.strictEqual(conf.htmlPath, undefined);
+        assert.deepStrictEqual(conf.projects, { old: { path: '.' } });
+    } finally {
+        await fs.rm(dir, { recursive: true, force: true });
     }
 });

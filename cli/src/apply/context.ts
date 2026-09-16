@@ -2,6 +2,8 @@ import { promises as fs } from 'node:fs';
 import { join } from 'node:path';
 import { api } from '../api.js';
 import { getBranding } from '../branding.js';
+import { readConfig, isMultiProject } from '../config.js';
+import { stackFileRelPath } from '../stack/stackfile.js';
 import type { ApplyClientContext, ApplyProjectContext, ProjectStack } from './types.js';
 
 export async function loadProjectContext(
@@ -11,13 +13,17 @@ export async function loadProjectContext(
   // Unreachable branding or missing productName triggers a hard exit 1 in getBranding.
   const branding = await getBranding(ctx.server);
 
-  // Stack resolution: read committable .pointer/stack.json
+  // Stack resolution: read the committable stack file — `.pointer/stack.json` for a
+  // single-project repo, `.pointer/projects/<key>.stack.json` for one app in a multi-project
+  // repo (`ctx.cwd` here is always the repo root, never an app subdirectory).
   let stack: ProjectStack = { frontend: [], backend: null, aiTools: [] };
   try {
-    const stackRaw = await fs.readFile(join(ctx.cwd, '.pointer/stack.json'), 'utf8');
+    const config = await readConfig(ctx.cwd);
+    const relPath = isMultiProject(config) ? stackFileRelPath(ctx.project) : stackFileRelPath();
+    const stackRaw = await fs.readFile(join(ctx.cwd, relPath), 'utf8');
     stack = JSON.parse(stackRaw);
   } catch {
-    // missing or unreadable stack.json is treated as unknown
+    // missing or unreadable stack file is treated as unknown
   }
 
   // Project name and commitStyle resolution

@@ -1,13 +1,13 @@
 import { promises as fs } from 'node:fs';
 import { join } from 'node:path';
-import { readConfig, upsertGitignore } from '../config.js';
+import { readConfig, upsertGitignore, isMultiProject, listProjects } from '../config.js';
 import { runInitChecks, type CheckResult } from '../checks.js';
 import { installSkills } from '../skills.js';
 import { detectStack } from '../detect.js';
 import { api } from '../api.js';
 import { postEvent } from '../events.js';
 import { detectDesignTokens } from '../stack/design.js';
-import { readStackFile, mergeStack, writeStackFile } from '../stack/stackfile.js';
+import { readStackFile, mergeStack, writeStackFile, stackFileRelPath } from '../stack/stackfile.js';
 
 const ICON = { ok: '✔', warn: '⚠', error: '✘' } as const;
 
@@ -39,17 +39,25 @@ export function exitCodeFor(checks: CheckResult[]): number {
 
 export async function doctorCommand(cwd: string, options: DoctorOptions, cliVersion: string): Promise<number> {
   if (options.refreshStack) {
-    const start = Date.now();
-    const designBlock = await detectDesignTokens(cwd);
-    const detectMs = Date.now() - start;
-    const existing = await readStackFile(cwd);
-    const merged = mergeStack(existing, null, designBlock);
-    await writeStackFile(cwd, merged);
+    const config = await readConfig(cwd);
+    const multi = isMultiProject(config);
+    // In multi-project mode, `--project` (or the only configured project) picks which app's stack
+    // file to refresh — there is no single `.pointer/stack.json` to fall back to.
+    const projectKey = multi ? options.project || listProjects(config)[0]?.key : undefined;
+    const appCwd = multi && projectKey ? join(cwd, config.projects?.[projectKey]?.path ?? '.') : cwd;
 
+    const start = Date.now();
+    const designBlock = await detectDesignTokens(appCwd);
+    const detectMs = Date.now() - start;
+    const existing = await readStackFile(cwd, projectKey);
+    const merged = mergeStack(existing, null, designBlock);
+    await writeStackFile(cwd, merged, projectKey);
+
+    const relPath = stackFileRelPath(projectKey);
     if (options.json) {
-      console.log(JSON.stringify({ ok: true, detectMs, design: merged.design }, null, 2));
+      console.log(JSON.stringify({ ok: true, detectMs, design: merged.design, path: relPath }, null, 2));
     } else {
-      console.log(`✔ Refreshed design tokens in .pointer/stack.json (detectMs=${detectMs})`);
+      console.log(`✔ Refreshed design tokens in ${relPath} (detectMs=${detectMs})`);
     }
     return 0;
   }
@@ -139,7 +147,10 @@ async function applyFixes(cwd: string, checks: CheckResult[]): Promise<string[]>
     return token;
   };
 
+  const failing = new Set(checks.filter((c) => c.fixable && c.status !== 'ok').map((c) => c.id));
+
   for (const check of checks.filter((c) => c.fixable && c.status !== 'ok')) {
+    if (check.id === 'stack') continue; // handled once below — see the note there
     try {
       if (check.id === 'gitignore') {
         const path = join(cwd, '.gitignore');
@@ -147,7 +158,7 @@ async function applyFixes(cwd: string, checks: CheckResult[]): Promise<string[]>
         // Reuse the canonical block (and its migration logic) rather than hand-rolling a second,
         // narrower copy here — this is the same repair `init` applies on every run, just invoked
         // directly instead of waiting for the next `init`/`update`.
-        await upsertGitignore(cwd, 'Feedback tool');
+        await upsertGitignore(cwd, 'Feedback tool', config.skillsDir);
         const after = await fs.readFile(path, 'utf8').catch(() => '');
         if (after !== before) repaired.push(check.id);
       } else if (check.id === 'source-map') {
@@ -159,25 +170,41 @@ async function applyFixes(cwd: string, checks: CheckResult[]): Promise<string[]>
       } else if (check.id === 'skills' && server && config.aiTool) {
         await installSkills(server, config.aiTool, cwd, config.skillsDir);
         repaired.push(check.id);
-      } else if (check.id === 'stack' && server && config.project) {
-        const detection = await detectStack(cwd);
+      }
+    } catch {
+      // A failed repair is not fatal: the re-run reports the check as still failing, which is the
+      // honest outcome.
+    }
+  }
+
+  // `stack`: there is one CheckResult per project in multi-project mode (see checks.ts), but the
+  // repair is the same shape for each — re-detect and re-POST — so it runs once here, over every
+  // configured project, rather than once per failing CheckResult instance.
+  if (failing.has('stack') && server) {
+    const multi = isMultiProject(config);
+    const targets = multi ? listProjects(config) : config.project ? [{ key: config.project, path: '.' }] : [];
+    let any = false;
+    for (const t of targets) {
+      try {
+        const appCwd = multi ? join(cwd, t.path) : cwd;
+        const detection = await detectStack(appCwd);
         const stackToken = await tokenFor();
         const stack = stackToken
-          ? await api<any>(server, `/api/projects/${config.project}/stack`, {
+          ? await api<any>(server, `/api/projects/${t.key}/stack`, {
               method: 'POST',
               token: stackToken,
               body: { kind: detection.kind, evidence: detection.evidence },
             }).catch(() => null)
           : null;
         if (stack) {
-          await fs.writeFile(join(cwd, '.pointer/stack.json'), JSON.stringify(stack, null, 2) + '\n', 'utf8');
-          repaired.push(check.id);
+          await fs.writeFile(join(cwd, stackFileRelPath(multi ? t.key : undefined)), JSON.stringify(stack, null, 2) + '\n', 'utf8');
+          any = true;
         }
+      } catch {
+        // Same as every other repair: a failure here just leaves that project's check failing.
       }
-    } catch {
-      // A failed repair is not fatal: the re-run reports the check as still failing, which is the
-      // honest outcome.
     }
+    if (any) repaired.push('stack');
   }
 
   return repaired;

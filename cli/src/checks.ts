@@ -2,12 +2,13 @@ import { promises as fs } from 'node:fs';
 import { join } from 'node:path';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
-import { readConfig, type PointerConfig } from './config.js';
+import { readConfig, isMultiProject, listProjects, type PointerConfig, type ResolvedProject } from './config.js';
 import { api, ApiError } from './api.js';
 import { detectStack } from './detect.js';
 import { SKILL_FILES } from './skills.js';
 import { readStamp } from './lib/skill-stamp.js';
 import { skillFilesFor } from './lib/skill-paths.js';
+import { stackFileRelPath } from './stack/stackfile.js';
 
 const execFileAsync = promisify(execFile);
 
@@ -104,11 +105,34 @@ export async function runInitChecks(
   const checks: CheckResult[] = [];
   const config: PointerConfig = await readConfig(cwd);
   const server = (overrides.server || config.server || '').replace(/\/$/, '');
+  const multiProject = isMultiProject(config);
+  // Single-project mode: the one project this repo has (possibly overridden — legacy behaviour,
+  // unchanged). Multi-project mode: every configured project, or just the one `--project` named.
+  const allProjects = listProjects(config);
+  const projectTargets = multiProject && overrides.project
+    ? allProjects.filter((p) => p.key === overrides.project)
+    : allProjects;
   const project = overrides.project || config.project || '';
   const environment = config.environment || 'local';
 
   // config ------------------------------------------------------------------
-  if (server && project) {
+  if (multiProject) {
+    if (server && allProjects.length > 0) {
+      checks.push({
+        id: 'config',
+        status: 'ok',
+        message: `${allProjects.length} project${allProjects.length === 1 ? '' : 's'} @ ${server}: ${allProjects.map((p) => p.key).join(', ')}`,
+      });
+    } else {
+      checks.push({
+        id: 'config',
+        status: 'error',
+        message: 'No .pointer/config.json',
+        hint: 'Run `npx -y pointer-feedback init`',
+      });
+      return checks;
+    }
+  } else if (server && project) {
     checks.push({ id: 'config', status: 'ok', message: `${project} @ ${server} (${environment})` });
   } else {
     checks.push({
@@ -214,44 +238,67 @@ export async function runInitChecks(
     }
   }
 
-  // project -----------------------------------------------------------------
-  if (token) {
-    try {
-      const projects = await api<any[]>(server, '/api/admin/projects', { token });
-      const found = projects.find((p) => p.key === project);
-      if (!found) {
-        checks.push({ id: 'project', status: 'error', message: `Project ${project} not found in this workspace` });
-      } else {
-        const activeField =
-          environment === 'production' ? 'isActiveProduction' : environment === 'staging' ? 'isActiveStaging' : 'isActiveLocal';
-        checks.push(
-          found[activeField] === false
-            ? { id: 'project', status: 'warn', message: `Project inactive for ${environment}` }
-            : { id: 'project', status: 'ok', message: `Project ${project} active for ${environment}` },
-        );
+  // project / widget / extension ---------------------------------------------
+  //
+  // Single-project mode: exactly as before, one check of each id. Multi-project mode: one of each
+  // per configured app (or the one `--project` named), with the key folded into the message so
+  // `[tuwaiq-profile] Widget found in apps/profile/src/index.html` reads as belonging to that app.
+  for (const target of multiProject ? projectTargets : [{ key: project, path: '.', environment, delivery: config.delivery } as ResolvedProject]) {
+    const prefix = multiProject ? `[${target.key}] ` : '';
+    const targetEnv = target.environment || 'local';
+    const appCwd = multiProject ? join(cwd, target.path) : cwd;
+
+    if (token) {
+      try {
+        const projects = await api<any[]>(server, '/api/admin/projects', { token });
+        const found = projects.find((p) => p.key === target.key);
+        if (!found) {
+          checks.push({ id: 'project', status: 'error', message: `${prefix}Project ${target.key} not found in this workspace` });
+        } else {
+          const activeField =
+            targetEnv === 'production' ? 'isActiveProduction' : targetEnv === 'staging' ? 'isActiveStaging' : 'isActiveLocal';
+          checks.push(
+            found[activeField] === false
+              ? { id: 'project', status: 'warn', message: `${prefix}Project inactive for ${targetEnv}` }
+              : { id: 'project', status: 'ok', message: `${prefix}Project ${target.key} active for ${targetEnv}` },
+          );
+        }
+      } catch (err: any) {
+        checks.push({ id: 'project', status: 'warn', message: `${prefix}Could not list projects: ${err?.message ?? err}` });
       }
-    } catch (err: any) {
-      checks.push({ id: 'project', status: 'warn', message: `Could not list projects: ${err?.message ?? err}` });
     }
-  }
 
-  // widget ------------------------------------------------------------------
-  checks.push(await widgetCheck(cwd, config));
+    const perTargetConfig: PointerConfig = multiProject
+      ? { ...config, htmlPath: target.htmlPath, delivery: target.delivery ?? config.delivery }
+      : config;
+    checks.push(await widgetCheck(appCwd, perTargetConfig, prefix));
 
-  // extension ---------------------------------------------------------------
-  // Only meaningful in extension-delivery installs: the widgetCheck above already reports `ok`
-  // there (there is nothing to find in source), but the reviewer still cannot install anything
-  // until a super admin sets the Web Store URL. Non-fatal — the install itself is fine either way.
-  if (config.delivery === 'extension' && serverReachable) {
-    const storeUrl = branding?.extension?.storeUrl ?? '';
-    if (!storeUrl) {
-      checks.push({
-        id: 'extension',
-        status: 'warn',
-        message: 'Chrome Web Store URL not set',
-        hint: 'Ask the super admin to set the Chrome Web Store URL (Settings → Extension)',
-      });
+    // Only meaningful in extension-delivery installs: the widgetCheck above already reports `ok`
+    // there (there is nothing to find in source), but the reviewer still cannot install anything
+    // until a super admin sets the Web Store URL. Non-fatal — the install itself is fine either way.
+    const effectiveDelivery = target.delivery ?? config.delivery;
+    if (effectiveDelivery === 'extension' && serverReachable) {
+      const storeUrl = branding?.extension?.storeUrl ?? '';
+      if (!storeUrl) {
+        checks.push({
+          id: 'extension',
+          status: 'warn',
+          message: `${prefix}Chrome Web Store URL not set`,
+          hint: 'Ask the super admin to set the Chrome Web Store URL (Settings → Extension)',
+        });
+      }
     }
+
+    // stack ------------------------------------------------------------------
+    try {
+      await fs.access(join(cwd, stackFileRelPath(multiProject ? target.key : undefined)));
+      checks.push({ id: 'stack', status: 'ok', message: `${prefix}Stack registered` });
+    } catch {
+      checks.push({ id: 'stack', status: 'warn', message: `${prefix}Stack not registered`, fixable: true });
+    }
+
+    // source-map ---------------------------------------------------------------
+    checks.push(await sourceMapCheck(appCwd, prefix));
   }
 
   // widget-served -----------------------------------------------------------
@@ -302,20 +349,8 @@ export async function runInitChecks(
   // gitignore ---------------------------------------------------------------
   checks.push(...(await gitignoreChecks(cwd)));
 
-  // stack -------------------------------------------------------------------
-  try {
-    await fs.access(join(cwd, '.pointer/stack.json'));
-    checks.push({ id: 'stack', status: 'ok', message: 'Stack registered' });
-  } catch {
-    checks.push({ id: 'stack', status: 'warn', message: 'Stack not registered', fixable: true });
-  }
-
-  // source-map ---------------------------------------------------------------
-  //
-  // Only meaningful once the stamping plugin is configured: without it there are no hashes to
-  // resolve, and a missing manifest is the correct state rather than a fault. Checking for the
-  // plugin first is what keeps this quiet for the majority of installs that never enable it.
-  checks.push(await sourceMapCheck(cwd));
+  // `stack` and `source-map` are pushed inside the project/widget/extension loop above — one per
+  // project in multi-project mode, matching `stack.json`'s own per-project split.
 
   return checks;
 }
@@ -327,7 +362,7 @@ export async function runInitChecks(
  * hash, and without the manifest nothing can turn one back into a file — the apply step silently
  * degrades to grepping, which is precisely what the stamping exists to avoid.
  */
-async function sourceMapCheck(cwd: string): Promise<CheckResult> {
+async function sourceMapCheck(cwd: string, prefix = ''): Promise<CheckResult> {
   const configured = await (async () => {
     for (const name of ['vite.config.ts', 'vite.config.js', 'vite.config.mjs', 'vite.config.mts']) {
       const body = await fs.readFile(join(cwd, name), 'utf8').catch(() => '');
@@ -340,7 +375,7 @@ async function sourceMapCheck(cwd: string): Promise<CheckResult> {
     return {
       id: 'source-map',
       status: 'ok',
-      message: 'Source mapping not configured (optional)',
+      message: `${prefix}Source mapping not configured (optional)`,
     };
   }
 
@@ -348,13 +383,13 @@ async function sourceMapCheck(cwd: string): Promise<CheckResult> {
     const raw = await fs.readFile(join(cwd, '.pointer/manifest.json'), 'utf8');
     const count = Object.keys(JSON.parse(raw)?.entries ?? {}).length;
     return count > 0
-      ? { id: 'source-map', status: 'ok', message: `Source manifest present (${count} components)` }
-      : { id: 'source-map', status: 'warn', message: 'Source manifest is empty', fixable: true };
+      ? { id: 'source-map', status: 'ok', message: `${prefix}Source manifest present (${count} components)` }
+      : { id: 'source-map', status: 'warn', message: `${prefix}Source manifest is empty`, fixable: true };
   } catch {
     return {
       id: 'source-map',
       status: 'warn',
-      message: 'Source manifest missing — component hashes cannot be resolved to files',
+      message: `${prefix}Source manifest missing — component hashes cannot be resolved to files`,
       fixable: true,
     };
   }
@@ -364,14 +399,14 @@ async function sourceMapCheck(cwd: string): Promise<CheckResult> {
  * Warn, never error: a Next or Angular install mounts the widget from a component file this
  * scan does not read, so "not found" is genuinely inconclusive.
  */
-async function widgetCheck(cwd: string, config: PointerConfig = {}): Promise<CheckResult> {
+async function widgetCheck(cwd: string, config: PointerConfig = {}, prefix = ''): Promise<CheckResult> {
   if (config.delivery === 'extension') {
     // Nothing was ever injected — that is the point of extension delivery, not a fault. Reporting
     // "Widget not found" here was the exact false warning this mode exists to avoid.
     return {
       id: 'widget',
       status: 'ok',
-      message: 'Extension delivery — the browser extension injects the widget; no embed expected',
+      message: `${prefix}Extension delivery — the browser extension injects the widget; no embed expected`,
     };
   }
 
@@ -384,7 +419,7 @@ async function widgetCheck(cwd: string, config: PointerConfig = {}): Promise<Che
     try {
       const html = await fs.readFile(join(cwd, rel), 'utf8');
       if (html.includes('<!-- pointer-feedback:start -->') || html.includes('<pointer-feedback')) {
-        return { id: 'widget', status: 'ok', message: `Widget found in ${rel}` };
+        return { id: 'widget', status: 'ok', message: `${prefix}Widget found in ${rel}` };
       }
     } catch {
       // Missing candidate file is expected — keep looking.
@@ -395,7 +430,7 @@ async function widgetCheck(cwd: string, config: PointerConfig = {}): Promise<Che
     try {
       const env = await fs.readFile(join(cwd, envFile), 'utf8');
       if (/^VITE_POINTER_PROJECT=/m.test(env)) {
-        return { id: 'widget', status: 'ok', message: `Widget env configured in ${envFile}` };
+        return { id: 'widget', status: 'ok', message: `${prefix}Widget env configured in ${envFile}` };
       }
     } catch {
       // Same — absence is not evidence.
@@ -405,7 +440,7 @@ async function widgetCheck(cwd: string, config: PointerConfig = {}): Promise<Che
   return {
     id: 'widget',
     status: 'warn',
-    message: 'Widget not found in this app',
+    message: `${prefix}Widget not found in this app`,
     hint: 'Run `init`, or the pointer-init skill for framework installs',
   };
 }

@@ -1,6 +1,7 @@
 import { execFileSync } from 'node:child_process';
 import { api } from '../api.js';
 import { getClient } from './comments.js';
+import { findRepoRoot, readConfig, resolveProject, listProjects } from '../config.js';
 
 /**
  * Is `ancestor` contained in `sha`?
@@ -42,11 +43,64 @@ function resolveSha(cwd: string, requested?: string): string | null {
  * WITHOUT the widget, so the widget's beacon is absent exactly where "is it live yet?" matters
  * most. The CLI has the repository, so it can answer for any deployed sha, from CI or by hand.
  */
+async function reportBuildFor(
+  server: string,
+  token: string | undefined,
+  cwd: string,
+  project: string,
+  sha: string,
+): Promise<number> {
+  // Applied but not yet deployed. Anything already deployed is skipped: DeployedAt is write-once
+  // server-side, so re-sending it would be noise rather than a correction.
+  let applied: any[] = [];
+  try {
+    const res = await api<any>(server, `/api/projects/${project}/comments?status=3&pageSize=200`, { token });
+    applied = res?.items ?? res ?? [];
+  } catch (err: any) {
+    console.error(`[${project}] Could not read applied comments: ${err?.message ?? err}`);
+    return 0;
+  }
+
+  const candidates = applied.filter((c) => c?.commitSha && !c?.deployedAt);
+  const containedShas = candidates
+    .filter((c) => contains(cwd, c.commitSha, sha))
+    .map((c) => c.commitSha as string);
+
+  // Reported even when nothing matched: the build itself is a fact worth recording, and a repeat
+  // report is explicitly cheap (FirstSeen false, no ids).
+  const unique = [...new Set(containedShas)];
+
+  try {
+    const result = await api<any>(server, `/api/projects/${project}/builds`, {
+      method: 'POST',
+      body: { sha, containsCommitShas: unique },
+      token,
+    });
+    return result?.deployedCommentIds?.length ?? 0;
+  } catch (err: any) {
+    console.error(`[${project}] Could not report the build: ${err?.message ?? err}`);
+    return 0;
+  }
+}
+
+/**
+ * `pointer status --deployed [sha]` — tell the server which comments this build carries live.
+ *
+ * Why the CLI owns this rather than the widget: pointer-init.md recommends shipping production
+ * WITHOUT the widget, so the widget's beacon is absent exactly where "is it live yet?" matters
+ * most. The CLI has the repository, so it can answer for any deployed sha, from CI or by hand.
+ *
+ * In a multi-project repo, `--project` (or cwd) picks one app; without either, every configured
+ * project is reported against the same build sha — one deploy usually ships every app at once.
+ */
 export async function deployedCommand(
   cwd: string,
   parsed: Record<string, string | boolean>,
 ): Promise<void> {
-  const { server, token, project } = await getClient(cwd, parsed);
+  const root = await findRepoRoot(cwd);
+  const config = await readConfig(root);
+  const flag = typeof parsed['project'] === 'string' ? parsed['project'] : undefined;
+  const resolved = resolveProject(config, cwd, root, flag);
 
   const requested = typeof parsed['deployed'] === 'string' ? parsed['deployed'] : undefined;
   const sha = resolveSha(cwd, requested);
@@ -59,39 +113,29 @@ export async function deployedCommand(
     process.exit(2);
   }
 
-  // Applied but not yet deployed. Anything already deployed is skipped: DeployedAt is write-once
-  // server-side, so re-sending it would be noise rather than a correction.
-  let applied: any[] = [];
-  try {
-    const res = await api<any>(server, `/api/projects/${project}/comments?status=3&pageSize=200`, { token });
-    applied = res?.items ?? res ?? [];
-  } catch (err: any) {
-    console.error(`Could not read applied comments: ${err?.message ?? err}`);
-    process.exit(1);
+  if (resolved.ok) {
+    const { server, token } = await getClient(cwd, parsed, { requireProject: true });
+    const marked = await reportBuildFor(server, token, cwd, resolved.project.key, sha);
+    console.log(`${marked} comment${marked === 1 ? '' : 's'} marked deployed in ${sha.slice(0, 7)}`);
+    process.exit(0);
   }
 
-  const candidates = applied.filter((c) => c?.commitSha && !c?.deployedAt);
-  const containedShas = candidates
-    .filter((c) => contains(cwd, c.commitSha, sha))
-    .map((c) => c.commitSha as string);
-
-  // Reported even when nothing matched: the build itself is a fact worth recording, and a repeat
-  // report is explicitly cheap (FirstSeen false, no ids).
-  const unique = [...new Set(containedShas)];
-
-  let result: any;
-  try {
-    result = await api<any>(server, `/api/projects/${project}/builds`, {
-      method: 'POST',
-      body: { sha, containsCommitShas: unique },
-      token,
-    });
-  } catch (err: any) {
-    console.error(`Could not report the build: ${err?.message ?? err}`);
-    process.exit(1);
+  if (resolved.reason === 'not-found') {
+    console.error(`Unknown project "${flag}". Configured: ${resolved.keys.join(', ')}`);
+    process.exit(2);
+  }
+  if (resolved.reason === 'none') {
+    console.error('No project configured. Run `pointer init` or pass --project.');
+    process.exit(2);
   }
 
-  const marked = result?.deployedCommentIds?.length ?? 0;
-  console.log(`${marked} comment${marked === 1 ? '' : 's'} marked deployed in ${sha.slice(0, 7)}`);
+  // Ambiguous: report the build against every configured project.
+  const { server, token } = await getClient(cwd, parsed, { requireProject: false });
+  let total = 0;
+  for (const p of listProjects(config)) {
+    const marked = await reportBuildFor(server, token, cwd, p.key, sha);
+    console.log(`[${p.key}] ${marked} comment${marked === 1 ? '' : 's'} marked deployed in ${sha.slice(0, 7)}`);
+    total += marked;
+  }
   process.exit(0);
 }

@@ -105,15 +105,21 @@ test('skillFilesFor maps each AI tool to the paths init actually wrote', () => {
     '.pointer/pointer.sh',
   ]);
 
-  // An unknown or absent tool falls back to the same layout installSkills uses.
+  // An unknown or absent tool falls back to the same layout installSkills uses: the standard
+  // Agent Skills location (`.agents/skills/<name>/SKILL.md`), current as of 2026-09-16.
   assert.deepEqual(skillFilesFor({ aiTool: 'something-else' }), [
-    '.agents/pointer-init/SKILL.md',
-    '.agents/pointer-feedback/SKILL.md',
+    '.agents/skills/pointer-init/SKILL.md',
+    '.agents/skills/pointer-feedback/SKILL.md',
     '.pointer/pointer.sh',
   ]);
   assert.deepEqual(skillFilesFor({}), [
-    '.agents/pointer-init/SKILL.md',
-    '.agents/pointer-feedback/SKILL.md',
+    '.agents/skills/pointer-init/SKILL.md',
+    '.agents/skills/pointer-feedback/SKILL.md',
+    '.pointer/pointer.sh',
+  ]);
+  assert.deepEqual(skillFilesFor({ aiTool: 'antigravity' }), [
+    '.agents/skills/pointer-init/SKILL.md',
+    '.agents/skills/pointer-feedback/SKILL.md',
     '.pointer/pointer.sh',
   ]);
 });

@@ -28,13 +28,22 @@ pointer init --server https://api.pointer.moamen.work --key ptr_... --project my
 
 #### Committed vs. gitignored
 
-`init` only expects two files under `.pointer/` to be shared via git: **`config.json`** and
-**`stack.json`** — everything else (`credentials.env`, `credentials.env.example`, `pointer.sh`,
-`manifest.json`, `.token_cache`) is derived or per-machine and stays gitignored, along with the
-skill directories (`.claude/skills/pointer-init/`, `.claude/skills/pointer-feedback/`,
-`.agents/pointer-init/`, `.agents/pointer-feedback/`). `init` manages the `.gitignore` block for
-you (`upsertGitignore`), migrating an older repo's block — including one that still re-included
-`pointer.sh` or credentials.env.example — to the new split automatically and idempotently.
+`init` only expects these files to be shared via git: **`.pointer/config.json`**, **`.pointer/stack.json`**,
+and — in a multi-project repo (see **Monorepos** below) — every **`.pointer/projects/<key>.stack.json`**.
+Everything else (`credentials.env`, `credentials.env.example`, `pointer.sh`, `manifest.json`,
+`.token_cache`) is derived or per-machine and stays gitignored, along with every skill layout the
+CLI can write: `.claude/skills/pointer-init/`, `.claude/skills/pointer-feedback/` (Claude Code),
+`.cursor/rules/pointer-init.md`, `.cursor/rules/pointer-feedback.md` (Cursor),
+`.windsurf/rules/pointer-init.md`, `.windsurf/rules/pointer-feedback.md` (Windsurf),
+`.agents/skills/pointer-init/`, `.agents/skills/pointer-feedback/` (the Agent Skills standard layout
+used by `other`/`antigravity`, and symlinked into from the three tools above), and — if you passed
+`--skills-dir <dir>` — `<dir>/pointer-init/`, `<dir>/pointer-feedback/`. A repo that has not re-run
+`init`/`update` since 2026-09-16 may still carry the older `.agents/pointer-init/`,
+`.agents/pointer-feedback/` layout (pre-dating the `.agents/skills/...` convention); it stays
+gitignored too, and the next install removes it. `init` manages the `.gitignore` block for you
+(`upsertGitignore`), migrating an older repo's block — including one that still re-included
+`pointer.sh` or credentials.env.example, or predates any of the paths above — automatically and
+idempotently.
 
 That split is why a clone of an already-configured repo has `config.json`/`stack.json` (they were
 committed) but is missing the skills and `pointer.sh` (they were never committed) — see **join
@@ -78,6 +87,67 @@ injection). The choice is recorded in `.pointer/config.json` as `delivery`, and 
 widget check is mode-aware — it reports `ok` for an extension install instead of a false "widget
 not found". The Chrome Web Store URL shown at the end of an extension-mode `init` (and by `doctor`)
 comes from the server (`GET /api/branding`, a super-admin setting) at run time, never hard-coded.
+
+#### Monorepos
+
+A repo with many independently-deployed apps (an Nx workspace, or any monorepo) can register more
+than one Pointer project against one `.pointer/config.json`. Single-project config is unchanged;
+multi-project config drops the top-level `project` in favour of a `projects` map — there is **no
+default project** in this mode:
+
+```json
+{
+  "server": "https://api.example.com",
+  "aiTool": "claude-code",
+  "delivery": "extension",
+  "cliVersion": "0.2.0",
+  "projects": {
+    "tuwaiq-profile": {
+      "path": "apps/profile",
+      "environment": "local",
+      "environments": ["local", "staging"],
+      "htmlPath": "apps/profile/src/index.html",
+      "delivery": "embed"
+    },
+    "tuwaiq-landing": { "path": "apps/landing", "environment": "local" }
+  }
+}
+```
+
+Repo-level fields (`server`, `aiTool`, `skillsDir`, `cliVersion`, `delivery`) apply to every app
+unless a project entry overrides them. Per-project fields: `path` (repo-relative app directory,
+required), `environment`, `environments`, `htmlPath`, `delivery`.
+
+**Resolution order**, identical for every command that touches a project: `--project <key>` → the
+project whose `path` contains the current directory (the CLI walks up from `cwd` to the nearest
+`.pointer/config.json` to find the repo root first, so this works from inside `apps/<x>` too) → the
+only configured project → otherwise "every project" for commands that support it (`list`, `apply`,
+`status --deployed`), or exit 2 with `Several projects configured — pass --project <key> (one of: a, b, c)`.
+
+- **`list`/`apply`/`apply --plan`**: with no single project resolvable, run for **every** configured
+  project. `list --json` returns `[{ project, comments: [...] }]`; `apply`'s prompt gets one section
+  per project, headed with its key and `path`, so the AI edits the right app. `apply --mark`/`--fail`
+  act on a comment id (unique server-wide) and need no project; `--mark all` does, since it commits
+  the whole pending queue — pass `--project` or run from inside that app.
+- **`doctor`**: `project`/`widget`/`stack`/`source-map` run once per project, the key folded into
+  the message (`[tuwaiq-profile] Widget found in apps/profile/src/index.html`); `config`/`server`/
+  `meta`/`clock`/`key`/`skills`/`stale`/`gitignore` run once for the whole repo.
+- **`mcp`**: accepts `--project`; without it, every project-scoped tool call needs a `project`
+  argument once more than one project applies — call `pointer_list_projects` to see the choices.
+- **`status --deployed`**: per project; with no single project resolvable, reports the build
+  against every configured one.
+- **`.pointer/pointer.sh`** (the no-Node fallback): `-p <key>` (or `POINTER_PROJECT`) picks the
+  project; with neither, in a multi-project repo, it prints the configured keys and exits 2.
+- Each app's own `.pointer/projects/<key>.stack.json` replaces the single `.pointer/stack.json` —
+  committed, exactly like `stack.json` is today.
+
+**Setting it up**: `pointer init --path apps/<dir> --project <key> [--create "Name"]` adds (or
+updates) one app; run it again with a different `--path`/`--project` to add another. The first time
+this runs against a single-project config, that project is migrated into `projects` (best guess at
+its `path` from the recorded `htmlPath`, or `.` if there is none — `init` warns you to check it). In
+an Nx workspace (`nx.json` at the root), an interactive `init` also offers a multi-select of every
+discovered `apps/*` app (from `project.json` with `projectType: "application"`, or a directory with
+its own `index.html` but no `project.json`) instead of asking about the repo root.
 
 ### `pointer doctor`
 Diagnose an existing installation and report issues.

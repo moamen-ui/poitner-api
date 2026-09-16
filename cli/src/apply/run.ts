@@ -1,12 +1,14 @@
 import { promises as fs } from 'node:fs';
 import { resolveSource } from '../vite/resolve.js';
-import { join } from 'node:path';
+import { join, dirname } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { api } from '../api.js';
 import { postEvent } from '../events.js';
 import { fetchQueue, type QueueFilter } from './queue.js';
 import { loadProjectContext } from './context.js';
 import { buildApplyPrompt } from './prompt.js';
+import { readConfig, isMultiProject } from '../config.js';
+import { stackFileRelPath } from '../stack/stackfile.js';
 import type { ApplyClientContext, ApplyProjectContext, ApplyRunResult, QueueItem } from './types.js';
 
 export type ApplyRunOptions = {
@@ -33,7 +35,9 @@ export async function ensureToolRegistered(
   ctx: ApplyClientContext,
   tool: string,
 ): Promise<void> {
-  const stackPath = join(ctx.cwd, '.pointer/stack.json');
+  const config = await readConfig(ctx.cwd).catch(() => ({}) as any);
+  const relStackPath = isMultiProject(config) ? stackFileRelPath(ctx.project) : stackFileRelPath();
+  const stackPath = join(ctx.cwd, relStackPath);
   let stackData: any = {};
   try {
     const raw = await fs.readFile(stackPath, 'utf8');
@@ -55,7 +59,7 @@ export async function ensureToolRegistered(
         },
       );
       if (res) {
-        await fs.mkdir(join(ctx.cwd, '.pointer'), { recursive: true });
+        await fs.mkdir(dirname(stackPath), { recursive: true });
         await fs.writeFile(stackPath, JSON.stringify(res, null, 2) + '\n', 'utf8');
         return;
       }
@@ -66,7 +70,7 @@ export async function ensureToolRegistered(
   aiTools.push(tool);
   stackData.aiTools = aiTools;
   try {
-    await fs.mkdir(join(ctx.cwd, '.pointer'), { recursive: true });
+    await fs.mkdir(dirname(stackPath), { recursive: true });
     await fs.writeFile(stackPath, JSON.stringify(stackData, null, 2) + '\n', 'utf8');
   } catch {}
 }

@@ -1,4 +1,4 @@
-import { readConfig } from '../config.js';
+import { readConfig, findRepoRoot, resolveProject } from '../config.js';
 import { api, ApiError } from '../api.js';
 import { resolveToken, readApiKey } from '../auth.js';
 import { compareSemver, tooOldMessage } from '../checks.js';
@@ -10,20 +10,30 @@ export async function mcpCommand(
   cwd: string,
   parsed: Record<string, string | boolean> = {},
 ): Promise<void> {
-  const config = await readConfig(cwd).catch(() => ({} as any));
+  // `root`, not `cwd`: an MCP client (an editor, typically) can be started from an app
+  // subdirectory of a multi-project repo, and every credential/config path below must resolve
+  // relative to the repo root, not wherever that happened to be.
+  const root = await findRepoRoot(cwd);
+  const config = await readConfig(root).catch(() => ({} as any));
   const server = (
     (typeof parsed['server'] === 'string' ? parsed['server'] : config.server) ||
     process.env.POINTER_SERVER ||
     BUILD_DEFAULT_SERVER
   ).replace(/\/$/, '');
 
+  // `--project` (or POINTER_PROJECT/config.project in single-project mode) is carried as-is —
+  // `executeTool` (mcp/tools.ts) is what actually resolves it per call, falling back to cwd/the
+  // only-configured-project when this is empty, so a multi-project repo works the same way here
+  // as it does from a plain CLI invocation.
+  const projectFlag = typeof parsed['project'] === 'string' ? parsed['project'] : undefined;
   const project =
-    (typeof parsed['project'] === 'string' ? parsed['project'] : config.project) ||
+    projectFlag ||
+    config.project ||
     process.env.POINTER_PROJECT ||
     '';
 
   const explicitKey = typeof parsed['key'] === 'string' ? parsed['key'] : undefined;
-  const apiKey = explicitKey || (await readApiKey(cwd));
+  const apiKey = explicitKey || (await readApiKey(root));
 
   // Requirement: Fails fast with a single stderr line and exit 3 if no key
   if (!apiKey) {
@@ -31,7 +41,7 @@ export async function mcpCommand(
     process.exit(3);
   }
 
-  const token = await resolveToken(server, cwd, explicitKey).catch(() => undefined);
+  const token = await resolveToken(server, root, explicitKey).catch(() => undefined);
 
   // Check /api/meta for minCliVersion compatibility
   let serverTooOld: string | undefined;

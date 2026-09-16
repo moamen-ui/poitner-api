@@ -1,4 +1,4 @@
-import { readConfig } from '../config.js';
+import { findRepoRoot, readConfig, resolveProject, listProjects, type PointerConfig } from '../config.js';
 import { resolveSource } from '../vite/resolve.js';
 import { api } from '../api.js';
 import { resolveToken, readApiKey } from '../auth.js';
@@ -40,39 +40,91 @@ function mapEnvironmentToString(env: number | string): string {
 }
 
 /**
- * Resolves server, project and token from config + flags, exiting with the documented codes when
- * something is missing. Exported so other commands share the exact same resolution and the same
- * exit codes — a second copy would drift the moment one of them gained a flag.
+ * Resolves the repo root, server and token from config + flags, exiting with the documented codes
+ * when something is missing. Exported so other commands share the exact same resolution and the
+ * same exit codes — a second copy would drift the moment one of them gained a flag.
+ *
+ * Does NOT resolve a project by default: comment-id-based commands (`get`, `status <id>`, `reply`)
+ * need none — comment ids are unique server-wide — and forcing project resolution on them broke
+ * the moment a repo went multi-project (there is no longer always exactly one). Pass
+ * `requireProject: true` for a command that needs one (see `resolveProjectOrExit` for the
+ * ambiguous case a multi-project repo can hit).
  */
-export async function getClient(cwd: string, parsed: Record<string, string | boolean>) {
-  const config = await readConfig(cwd);
+export async function getClient(
+  cwd: string,
+  parsed: Record<string, string | boolean>,
+  opts: { requireProject?: boolean } = {},
+) {
+  const root = await findRepoRoot(cwd);
+  const config = await readConfig(root);
   const server = (
     (typeof parsed['server'] === 'string' ? parsed['server'] : config.server) ||
     BUILD_DEFAULT_SERVER
   ).replace(/\/$/, '');
 
-  const project =
-    (typeof parsed['project'] === 'string' ? parsed['project'] : config.project) || '';
-
   if (!server) {
     console.error('No server configured.');
     process.exit(2);
   }
-  if (!project) {
-    console.error('No project configured.');
-    process.exit(2);
-  }
 
   const explicitKey = typeof parsed['key'] === 'string' ? parsed['key'] : undefined;
-  const token = await resolveToken(server, cwd, explicitKey);
-  const apiKey = explicitKey || (await readApiKey(cwd));
+  const token = await resolveToken(server, root, explicitKey);
+  const apiKey = explicitKey || (await readApiKey(root));
 
   if (!token && !apiKey) {
     console.error('Missing POINTER_API_KEY in .pointer/credentials.env or environment');
     process.exit(3);
   }
 
-  return { server, project, token };
+  let project = '';
+  if (opts.requireProject) {
+    const flag = typeof parsed['project'] === 'string' ? parsed['project'] : undefined;
+    const resolved = resolveProject(config, cwd, root, flag);
+    if (!resolved.ok) {
+      exitOnUnresolvedProject(resolved, flag);
+    }
+    project = (resolved as any).project.key;
+  }
+
+  return { server, project, token, root, config };
+}
+
+/** The shared "cannot pick a project" messages/exit codes for every command that requires one. */
+function exitOnUnresolvedProject(
+  resolved: { ok: false; reason: 'none' | 'not-found' | 'ambiguous'; keys: string[] },
+  flag?: string,
+): never {
+  if (resolved.reason === 'none') {
+    console.error('No project configured. Run `pointer init` or pass --project.');
+  } else if (resolved.reason === 'not-found') {
+    console.error(`Unknown project "${flag}". Configured: ${resolved.keys.join(', ')}`);
+  } else {
+    console.error(`Several projects configured — pass --project <key> (one of: ${resolved.keys.join(', ')})`);
+  }
+  process.exit(2);
+}
+
+async function fetchCommentsFor(
+  server: string,
+  token: string | undefined,
+  project: string,
+  statusNum?: number,
+  envNum?: number,
+): Promise<any[]> {
+  const queryParts = ['view=summary'];
+  if (statusNum !== undefined) queryParts.push(`status=${statusNum}`);
+  if (envNum !== undefined) queryParts.push(`environment=${envNum}`);
+  const url = `/api/projects/${encodeURIComponent(project)}/comments?${queryParts.join('&')}`;
+  const res = await api<any>(server, url, { token });
+  return res?.items ?? [];
+}
+
+function printCommentLine(item: any): void {
+  const st = mapStatusToString(item.status);
+  const env = mapEnvironmentToString(item.environment);
+  const author = item.authorName || 'Anonymous';
+  const loc = item.route || item.sourcePath || '';
+  console.log(`#${item.id} [${st}] [${env}] ${author}: ${item.body} ${loc ? `(${loc})` : ''}`);
 }
 
 export async function listCommand(
@@ -80,38 +132,61 @@ export async function listCommand(
   parsed: Record<string, string | boolean>,
   positionals: string[] = [],
 ): Promise<void> {
-  const { server, project, token } = await getClient(cwd, parsed);
+  const { server, token, root, config } = await getClient(cwd, parsed, { requireProject: false });
 
   const statusArg = (typeof parsed['status'] === 'string' ? parsed['status'] : positionals[1]) || undefined;
   const envArg = (typeof parsed['env'] === 'string' ? parsed['env'] : positionals[2]) || undefined;
-
   const statusNum = mapStatusToNumber(statusArg);
   const envNum = mapEnvironmentToNumber(envArg);
 
-  const queryParts = ['view=summary'];
-  if (statusNum !== undefined) queryParts.push(`status=${statusNum}`);
-  if (envNum !== undefined) queryParts.push(`environment=${envNum}`);
+  const flag = typeof parsed['project'] === 'string' ? parsed['project'] : undefined;
+  const resolved = resolveProject(config, cwd, root, flag);
 
-  const url = `/api/projects/${encodeURIComponent(project)}/comments?${queryParts.join('&')}`;
-  const res = await api<any>(server, url, { token });
-  const items: any[] = res?.items ?? [];
-
-  if (parsed['json'] === true) {
-    console.log(JSON.stringify(items, null, 2));
+  if (resolved.ok) {
+    const items = await fetchCommentsFor(server, token, resolved.project.key, statusNum, envNum);
+    if (parsed['json'] === true) {
+      console.log(JSON.stringify(items, null, 2));
+      process.exit(0);
+    }
+    if (items.length === 0) {
+      console.log('No comments found.');
+      process.exit(0);
+    }
+    for (const item of items) printCommentLine(item);
     process.exit(0);
   }
 
-  if (items.length === 0) {
+  if (resolved.reason === 'not-found') {
+    exitOnUnresolvedProject(resolved, flag);
+  }
+  if (resolved.reason === 'none') {
     console.log('No comments found.');
     process.exit(0);
   }
 
-  for (const item of items) {
-    const st = mapStatusToString(item.status);
-    const env = mapEnvironmentToString(item.environment);
-    const author = item.authorName || 'Anonymous';
-    const loc = item.route || item.sourcePath || '';
-    console.log(`#${item.id} [${st}] [${env}] ${author}: ${item.body} ${loc ? `(${loc})` : ''}`);
+  // `ambiguous`: several projects configured, neither --project nor cwd picked one out — `list`
+  // covers every project instead of forcing a choice (unlike commands that must act on exactly
+  // one, e.g. `apply --mark all`).
+  const projects = listProjects(config);
+  const grouped: Array<{ key: string; path: string; comments: any[] }> = [];
+  for (const p of projects) {
+    const comments = await fetchCommentsFor(server, token, p.key, statusNum, envNum);
+    grouped.push({ key: p.key, path: p.path, comments });
+  }
+
+  if (parsed['json'] === true) {
+    console.log(JSON.stringify(grouped.map((g) => ({ project: g.key, comments: g.comments })), null, 2));
+    process.exit(0);
+  }
+
+  for (const g of grouped) {
+    console.log(`## ${g.key} (${g.path})`);
+    if (g.comments.length === 0) {
+      console.log('No comments found.');
+    } else {
+      for (const item of g.comments) printCommentLine(item);
+    }
+    console.log('');
   }
   process.exit(0);
 }
@@ -121,7 +196,8 @@ export async function getCommand(
   parsed: Record<string, string | boolean>,
   positionals: string[] = [],
 ): Promise<void> {
-  const { server, token } = await getClient(cwd, parsed);
+  // Comment ids are unique server-wide — no project needed, and none is asked for.
+  const { server, token } = await getClient(cwd, parsed, { requireProject: false });
   const idStr = positionals[1] || (typeof parsed['id'] === 'string' ? parsed['id'] : undefined);
   if (!idStr) {
     console.error('Usage: pointer get <id>');
@@ -194,7 +270,7 @@ export async function statusCommand(
   parsed: Record<string, string | boolean>,
   positionals: string[] = [],
 ): Promise<void> {
-  const { server, token } = await getClient(cwd, parsed);
+  const { server, token } = await getClient(cwd, parsed, { requireProject: false });
   const idStr = positionals[1];
   const newStatusStr = positionals[2];
 
@@ -230,7 +306,7 @@ export async function replyCommand(
   parsed: Record<string, string | boolean>,
   positionals: string[] = [],
 ): Promise<void> {
-  const { server, token } = await getClient(cwd, parsed);
+  const { server, token } = await getClient(cwd, parsed, { requireProject: false });
   const idStr = positionals[1];
   const body = positionals[2];
 

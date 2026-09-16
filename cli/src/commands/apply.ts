@@ -1,4 +1,4 @@
-import { readConfig } from '../config.js';
+import { findRepoRoot, readConfig, resolveProject, listProjects } from '../config.js';
 import { api, ApiError } from '../api.js';
 import { compareSemver, tooOldMessage } from '../checks.js';
 import { resolveToken, readApiKey } from '../auth.js';
@@ -14,24 +14,47 @@ export async function applyCommand(
   parsed: Record<string, string | boolean>,
   positionals: string[] = [],
 ): Promise<void> {
-  const config = await readConfig(cwd);
+  const root = await findRepoRoot(cwd);
+  const config = await readConfig(root);
   const server = (
     (typeof parsed['server'] === 'string' ? parsed['server'] : config.server) ||
     BUILD_DEFAULT_SERVER
   ).replace(/\/$/, '');
-
-  const project =
-    (typeof parsed['project'] === 'string' ? parsed['project'] : config.project) || '';
 
   if (!server) {
     console.error('No server configured. Run `pointer init` or pass --server.');
     process.exit(2);
   }
 
-  if (!project) {
-    console.error('No project configured. Run `pointer init` or pass --project.');
-    process.exit(2);
+  const projectFlag = typeof parsed['project'] === 'string' ? parsed['project'] : undefined;
+  const resolved = resolveProject(config, cwd, root, projectFlag);
+
+  // `--mark <id>`/`--fail <id>` act on a comment id, unique server-wide — no project needed.
+  // `--mark all` and the default/`--plan`/`--json` queue views DO need one, unless there are
+  // several projects and none was picked out, in which case they cover every configured project.
+  const markVal = parsed['mark'];
+  const needsOneProject = markVal === undefined || String(markVal).toLowerCase() === 'all';
+
+  if (needsOneProject && !resolved.ok) {
+    if (resolved.reason === 'not-found') {
+      console.error(`Unknown project "${projectFlag}". Configured: ${resolved.keys.join(', ')}`);
+      process.exit(2);
+    }
+    if (resolved.reason === 'none') {
+      console.error('No project configured. Run `pointer init` or pass --project.');
+      process.exit(2);
+    }
+    // ambiguous: `--mark all` cannot guess which project's queue to commit, but the default/
+    // --plan/--json views can safely mean "every project".
+    if (markVal !== undefined) {
+      console.error(`Several projects configured — pass --project <key> (one of: ${resolved.keys.join(', ')})`);
+      process.exit(2);
+    }
+    await applyAllProjects(root, cwd, config, server, parsed);
+    return;
   }
+
+  const project = resolved.ok ? resolved.project.key : '';
 
   // Check /api/meta for minCliVersion compatibility
   try {
@@ -49,20 +72,22 @@ export async function applyCommand(
   }
 
   const explicitKey = typeof parsed['key'] === 'string' ? parsed['key'] : undefined;
-  const token = await resolveToken(server, cwd, explicitKey);
-  const apiKey = explicitKey || (await readApiKey(cwd));
+  const token = await resolveToken(server, root, explicitKey);
+  const apiKey = explicitKey || (await readApiKey(root));
 
   if (!token && !apiKey) {
     console.error('Missing POINTER_API_KEY in .pointer/credentials.env or environment');
     process.exit(3);
   }
 
+  // `root`, not the original `cwd`: git operations, the stack file and the manifest all resolve
+  // relative to the repo root, whichever app directory the command was actually run from.
   const clientCtx: ApplyClientContext = {
     server,
     project,
     token,
     apiKey,
-    cwd,
+    cwd: root,
   };
 
   // 1. Handling --mark <id>|all
@@ -160,5 +185,71 @@ export async function applyCommand(
     process.stdout.write(result.prompt);
   }
 
+  process.exit(0);
+}
+
+/**
+ * `apply`/`apply --plan`/`apply --json` with no single project resolvable (several are configured
+ * and neither `--project` nor cwd picked one out): covers every configured project instead of
+ * forcing a choice, one section per project in the printed prompt so the AI edits the right app.
+ * `--tool` is refused here — handing one combined prompt to a spawned tool process per project
+ * is not implemented; pass `--project` to use `--tool` in a multi-project repo.
+ */
+async function applyAllProjects(
+  root: string,
+  cwd: string,
+  config: any,
+  server: string,
+  parsed: Record<string, string | boolean>,
+): Promise<void> {
+  if (typeof parsed['tool'] === 'string') {
+    console.error('--tool needs a single project — pass --project <key> (several are configured).');
+    process.exit(2);
+  }
+
+  try {
+    const meta = await api<any>(server, '/api/meta');
+    const minCli = meta?.minCliVersion || '0.0.0';
+    if (compareSemver(BUILD_CLI_VERSION, minCli) < 0) {
+      console.error(tooOldMessage(BUILD_CLI_VERSION, minCli));
+      process.exit(5);
+    }
+  } catch (err: any) {
+    if (!(err instanceof ApiError && err.code === 404)) {
+      // best-effort
+    }
+  }
+
+  const explicitKey = typeof parsed['key'] === 'string' ? parsed['key'] : undefined;
+  const token = await resolveToken(server, root, explicitKey);
+  const apiKey = explicitKey || (await readApiKey(root));
+  if (!token && !apiKey) {
+    console.error('Missing POINTER_API_KEY in .pointer/credentials.env or environment');
+    process.exit(3);
+  }
+
+  const projects = listProjects(config);
+  const plan = parsed['plan'] === true;
+  const status = typeof parsed['status'] === 'string' ? parsed['status'] : undefined;
+  const environment = typeof parsed['env'] === 'string' ? parsed['env'] : undefined;
+
+  if (parsed['json'] === true && !plan) {
+    const all: Array<{ project: string; path: string; items: unknown[] }> = [];
+    for (const p of projects) {
+      const clientCtx: ApplyClientContext = { server, project: p.key, token, apiKey, cwd: root };
+      const items = await fetchQueue(clientCtx, { status, environment });
+      all.push({ project: p.key, path: p.path, items: items.map((item) => toAiCommentView(item)) });
+    }
+    console.log(JSON.stringify(all, null, 2));
+    process.exit(0);
+  }
+
+  const sections: string[] = [];
+  for (const p of projects) {
+    const clientCtx: ApplyClientContext = { server, project: p.key, token, apiKey, cwd: root };
+    const result = await runApply({ plan, status, environment }, clientCtx);
+    sections.push(`# Project: ${p.key} (${p.path})\n\n${result.prompt}`);
+  }
+  process.stdout.write(sections.join('\n\n---\n\n'));
   process.exit(0);
 }

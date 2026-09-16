@@ -279,3 +279,75 @@ test('--help works', () => withTempDir(async (dir) => {
   const { stdout } = await execAsync(`node ${cliPath} --help`, { cwd: dir });
   assert.match(stdout, /Usage: pointer/);
 }));
+
+// -----------------------------------------------------------------------------------------------
+// Multi-project (monorepo) support: `init --path`
+// -----------------------------------------------------------------------------------------------
+
+test('init --yes --path adds a second app to a multi-project config', () => withTempDir(async (dir) => {
+  await fs.mkdir(path.join(dir, 'apps/a'), { recursive: true });
+  await fs.mkdir(path.join(dir, 'apps/b'), { recursive: true });
+  await fs.writeFile(path.join(dir, 'apps/a/index.html'), '<html><head></head><body></body></html>', 'utf8');
+  await fs.writeFile(path.join(dir, 'apps/b/index.html'), '<html><head></head><body></body></html>', 'utf8');
+
+  await execAsync(
+    `node ${cliPath} init --yes --key ptr_good --project p1 --path apps/a --server ${serverUrl}`,
+    { cwd: dir },
+  );
+  await execAsync(
+    `node ${cliPath} init --yes --key ptr_good --project p2 --path apps/b --server ${serverUrl}`,
+    { cwd: dir },
+  );
+
+  const config = JSON.parse(await fs.readFile(path.join(dir, '.pointer/config.json'), 'utf8'));
+  assert.strictEqual(config.project, undefined, 'a multi-project config carries no top-level project');
+  assert.ok(config.projects, 'config.projects must exist');
+  assert.deepStrictEqual(Object.keys(config.projects).sort(), ['p1', 'p2']);
+  assert.strictEqual(config.projects.p1.path, 'apps/a');
+  assert.strictEqual(config.projects.p2.path, 'apps/b');
+  assert.strictEqual(config.projects.p1.htmlPath, 'apps/a/index.html');
+  assert.strictEqual(config.projects.p2.htmlPath, 'apps/b/index.html');
+
+  const htmlA = await fs.readFile(path.join(dir, 'apps/a/index.html'), 'utf8');
+  const htmlB = await fs.readFile(path.join(dir, 'apps/b/index.html'), 'utf8');
+  assert.match(htmlA, /<pointer-feedback project="p1"/);
+  assert.match(htmlB, /<pointer-feedback project="p2"/);
+
+  await fs.access(path.join(dir, '.pointer/projects/p1.stack.json'));
+  await fs.access(path.join(dir, '.pointer/projects/p2.stack.json'));
+
+  const gitignore = await fs.readFile(path.join(dir, '.gitignore'), 'utf8');
+  assert.match(gitignore, /!\.pointer\/projects\//);
+}));
+
+test('init --yes --path migrates an existing single-project config into `projects`', () => withTempDir(async (dir) => {
+  // Mirrors the real tuwaiq-mono-spa config: single-project, delivery: extension, no htmlPath
+  // (nothing was ever injected for an extension-delivery install).
+  await fs.mkdir(path.join(dir, '.pointer'), { recursive: true });
+  await fs.writeFile(
+    path.join(dir, '.pointer/config.json'),
+    JSON.stringify({
+      server: serverUrl,
+      project: 'tuwaiq-profile',
+      environment: 'local',
+      aiTool: 'claude-code',
+      delivery: 'extension',
+    }),
+    'utf8',
+  );
+  await fs.mkdir(path.join(dir, 'apps/landing'), { recursive: true });
+  await fs.writeFile(path.join(dir, 'apps/landing/index.html'), '<html><head></head><body></body></html>', 'utf8');
+
+  await execAsync(
+    `node ${cliPath} init --yes --key ptr_good --project tuwaiq-landing --path apps/landing --server ${serverUrl}`,
+    { cwd: dir },
+  );
+
+  const config = JSON.parse(await fs.readFile(path.join(dir, '.pointer/config.json'), 'utf8'));
+  assert.strictEqual(config.project, undefined);
+  assert.deepStrictEqual(Object.keys(config.projects).sort(), ['tuwaiq-landing', 'tuwaiq-profile']);
+  // No htmlPath was ever recorded (extension delivery), so the derived path falls back to '.'.
+  assert.strictEqual(config.projects['tuwaiq-profile'].path, '.');
+  assert.strictEqual(config.projects['tuwaiq-profile'].delivery, 'extension');
+  assert.strictEqual(config.projects['tuwaiq-landing'].path, 'apps/landing');
+}));

@@ -63,6 +63,17 @@ All commands run from the app's root (where `.pointer/config.json` lives). Every
 
 `list` also takes positionals: `npx pointer-feedback list ready production`.
 
+### Monorepos
+
+In a repo with more than one Pointer project (a `projects` map in `.pointer/config.json` — see
+`pointer-init.md`'s Monorepo section), `list` and `apply` cover **every** configured project unless
+you pass `--project <key>` or are already running from inside that app's own directory (the CLI
+walks up to find the repo root, so this works from any subdirectory). `apply`'s printed prompt gets
+one section per project, headed with its key and `path` — edit the app that section names, not a
+guess. `apply --mark all` (it commits the whole pending queue) needs one project resolved either
+way; `apply --mark <id>` and `--fail <id>` act on a comment id and need none, since ids are unique
+server-wide.
+
 ### If your tool supports MCP (Model Context Protocol)
 
 If you are running in an MCP-capable environment (Claude Code, Cursor, Windsurf, OpenCode), you can connect to <POINTER_PRODUCT>'s stdio MCP server instead of shelling out:
@@ -239,5 +250,5 @@ make the `git commit` yourself (still never `git push`). Do not mix the two flow
 - Auth is transparent: the CLI exchanges the key for a JWT and caches it; on a `401` it re-logs in.
   If commands keep failing, `npx pointer-feedback doctor`.
 - This file was installed by fetching `<POINTER_SERVER>/skill.md` into
-  `.claude/skills/pointer-feedback/SKILL.md` (or `.agents/…`) and is yours to edit; refresh it with
-  `npx pointer-feedback update`.
+  `.claude/skills/pointer-feedback/SKILL.md` (or `.agents/skills/pointer-feedback/SKILL.md` for
+  other tools) and is yours to edit; refresh it with `npx pointer-feedback update`.

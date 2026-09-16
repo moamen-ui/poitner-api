@@ -1,5 +1,5 @@
 import { promises as fs } from 'node:fs';
-import { join } from 'node:path';
+import { join, dirname } from 'node:path';
 import type { DesignBlock, DesignTokens, LibraryInfo } from './design.js';
 
 export type StackData = {
@@ -32,11 +32,24 @@ export function buildRequestBody(stack: StackData): StackRequestBody {
 }
 
 /**
- * Reads .pointer/stack.json if present. Returns null if missing or unparseable.
+ * Where a project's stack file lives, relative to the repo root: `.pointer/stack.json` for a
+ * single-project repo, `.pointer/projects/<key>.stack.json` for one app inside a multi-project
+ * repo. Exported so callers (doctor's per-project checks, in particular) can name the right file
+ * without duplicating this rule.
  */
-export async function readStackFile(cwd: string): Promise<StackData | null> {
+export function stackFileRelPath(projectKey?: string): string {
+  return projectKey ? join('.pointer', 'projects', `${projectKey}.stack.json`) : join('.pointer', 'stack.json');
+}
+
+/**
+ * Reads a project's stack file if present. Returns null if missing or unparseable.
+ *
+ * `projectKey` names the app in a multi-project repo (see `stackFileRelPath`); omitted, this reads
+ * the single-project `.pointer/stack.json` exactly as before.
+ */
+export async function readStackFile(cwd: string, projectKey?: string): Promise<StackData | null> {
   try {
-    const raw = await fs.readFile(join(cwd, '.pointer/stack.json'), 'utf8');
+    const raw = await fs.readFile(join(cwd, stackFileRelPath(projectKey)), 'utf8');
     return JSON.parse(raw);
   } catch {
     return null;
@@ -165,14 +178,16 @@ export function formatStackJson(stack: StackData): string {
 }
 
 /**
- * Writes .pointer/stack.json atomically.
+ * Writes a project's stack file atomically. See `stackFileRelPath` for which file `projectKey`
+ * selects.
  */
-export async function writeStackFile(cwd: string, stack: StackData): Promise<void> {
-  const dir = join(cwd, '.pointer');
+export async function writeStackFile(cwd: string, stack: StackData, projectKey?: string): Promise<void> {
+  const relPath = stackFileRelPath(projectKey);
+  const dir = join(cwd, dirname(relPath));
   await fs.mkdir(dir, { recursive: true });
 
-  const targetPath = join(dir, 'stack.json');
-  const tempPath = join(dir, `stack.json.tmp.${Date.now()}.${Math.random().toString(36).slice(2)}`);
+  const targetPath = join(cwd, relPath);
+  const tempPath = join(dir, `${projectKey ?? 'stack'}.json.tmp.${Date.now()}.${Math.random().toString(36).slice(2)}`);
 
   const content = formatStackJson(stack);
   await fs.writeFile(tempPath, content, 'utf8');

@@ -8,6 +8,36 @@ set -eo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
+CONFIG_FILE="$SCRIPT_DIR/config.json"
+
+# -p <key>: which Pointer project to act on, in a multi-project (monorepo) repo. Extracted from the
+# argument list here, before the subcommand dispatch at the bottom, which expects the subcommand as
+# $1 — so a preceding `-p <key>` (in any position) must be shifted out first. `-p=<key>` also works.
+PROJECT_FLAG=""
+args=()
+while [ $# -gt 0 ]; do
+  case "$1" in
+    -p)
+      PROJECT_FLAG="${2:-}"
+      shift 2
+      ;;
+    -p=*)
+      PROJECT_FLAG="${1#-p=}"
+      shift
+      ;;
+    *)
+      args+=("$1")
+      shift
+      ;;
+  esac
+done
+set -- "${args[@]}"
+
+# Is this repo's config.json multi-project (a non-empty `projects` map)? Read once, reused below
+# both to resolve PROJECT and, in `ensure_tool_registered`, to pick the right stack file.
+is_multi_project() {
+  [[ -f "$CONFIG_FILE" ]] && jq -e '(.projects // {}) | length > 0' "$CONFIG_FILE" >/dev/null 2>&1
+}
 
 # 1. Resolve Server & Project
 # Tries, in order: (a) root-level .env* (single-app repo), (b) one level of subdirectories (a
@@ -47,12 +77,35 @@ resolve_config() {
 }
 
 SERVER="${POINTER_SERVER:-$(resolve_config POINTER_SERVER)}"
-PROJECT="${POINTER_PROJECT:-$(resolve_config POINTER_PROJECT)}"
+
+# Resolution order: -p flag -> POINTER_PROJECT env/credentials.env line -> for a multi-project
+# repo with neither, print the configured keys and stop (there is no single default to fall back
+# to) -> the single-project .env/credentials.env fallback `resolve_config` already implements.
+if [[ -n "$PROJECT_FLAG" ]]; then
+  PROJECT="$PROJECT_FLAG"
+elif [[ -n "$POINTER_PROJECT" ]]; then
+  PROJECT="$POINTER_PROJECT"
+elif is_multi_project; then
+  KEYS=$(jq -r '(.projects // {}) | keys | join(", ")' "$CONFIG_FILE" 2>/dev/null)
+  echo "Several projects configured — pass -p <key> (one of: $KEYS)" >&2
+  exit 2
+else
+  PROJECT=$(resolve_config POINTER_PROJECT)
+fi
+
 API_KEY="${POINTER_API_KEY:-$(grep -hE '^POINTER_API_KEY=' "$SCRIPT_DIR/credentials.env" 2>/dev/null | head -1 | cut -d= -f2- | tr -d "'\"" || true)}"
 
 if [[ -z "$SERVER" || -z "$PROJECT" || -z "$API_KEY" ]]; then
   echo "Error: Missing configuration in .env or .pointer/credentials.env" >&2
   exit 1
+fi
+
+# The stack cache this project writes to: the single `stack.json` for a single-project repo, or
+# `projects/<key>.stack.json` alongside it for one app in a multi-project repo (see cli/src/config.ts).
+if is_multi_project; then
+  STACK_FILE="$SCRIPT_DIR/projects/$PROJECT.stack.json"
+else
+  STACK_FILE="$SCRIPT_DIR/stack.json"
 fi
 
 TOKEN_FILE="$SCRIPT_DIR/.token_cache"
@@ -84,20 +137,22 @@ detect_ai_tool() {
   echo "other"
 }
 
-# Auto-registers tool identity in .pointer/stack.json and server if not yet recorded (idempotent)
+# Auto-registers tool identity in the project's stack file ($STACK_FILE) and server if not yet
+# recorded (idempotent). $STACK_FILE is stack.json for a single-project repo, or
+# projects/<key>.stack.json (this project's own file) for one app in a multi-project repo.
 ensure_tool_registered() {
   local token="$1"
   local tool
   tool=$(detect_ai_tool)
-  local stack_file="$SCRIPT_DIR/stack.json"
-  if [[ -f "$stack_file" ]] && jq -e --arg t "$tool" '.aiTools // [] | index($t)' "$stack_file" >/dev/null 2>&1; then
+  if [[ -f "$STACK_FILE" ]] && jq -e --arg t "$tool" '.aiTools // [] | index($t)' "$STACK_FILE" >/dev/null 2>&1; then
     return
   fi
   local res
   res=$(curl -fsSL -X POST -H "Authorization: Bearer $token" -H 'Content-Type: application/json' \
     "$SERVER/api/projects/$PROJECT/stack" -d "{\"aiTool\":\"$tool\"}" 2>/dev/null || true)
   if echo "$res" | jq -e '.isSuccess' >/dev/null 2>&1; then
-    echo "$res" | jq '.data' > "$stack_file"
+    mkdir -p "$(dirname "$STACK_FILE")"
+    echo "$res" | jq '.data' > "$STACK_FILE"
   fi
 }
 
@@ -142,7 +197,7 @@ case "${1:-list}" in
       -d "{\"status\":3,\"reply\":\"$MSG\",\"appliedByLabel\":\"$AUTHOR\",\"commitUrl\":\"$COMMIT_URL\"}" | jq '.data'
     ;;
   *)
-    echo "Usage: $0 {list [status] [env]|queue|get <id>|apply <id> [msg] [commitUrl]|serve [port]}"
+    echo "Usage: $0 [-p <project>] {list [status] [env]|queue|get <id>|apply <id> [msg] [commitUrl]|serve [port]}"
     exit 1
     ;;
 esac

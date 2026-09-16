@@ -9,6 +9,7 @@ import { BUILD_CLI_VERSION } from '../build-constants.js';
 import { toAiCommentView } from '../apply/projection.js';
 import { loadProjectContext } from '../apply/context.js';
 import { isStaged, commitAll, headSha, getRemoteUrl, commitUrlFor, getUserEmail } from '../apply/git.js';
+import { findRepoRoot, readConfig, resolveProject, listProjects } from '../config.js';
 import type { ApplyClientContext, ApplyPageDto, PageContextDto } from '../apply/types.js';
 
 export type McpContext = {
@@ -712,6 +713,27 @@ export async function handleDoctor(
   return { ok, checks };
 }
 
+/** `pointer_list_projects` — every Pointer project this repo knows about (one, for a
+ *  single-project repo), so a caller facing an ambiguous project-scoped tool call can see its
+ *  choices before retrying with an explicit `project` argument. */
+export async function handleListProjects(
+  _args: any,
+  ctx: McpContext,
+): Promise<any> {
+  const root = await findRepoRoot(ctx.cwd);
+  const config = await readConfig(root);
+  return { projects: listProjects(config) };
+}
+
+/** Tools that act on a whole project's queue rather than a single comment id — these are the
+ *  ones a multi-project repo needs a resolved `project` for. */
+const PROJECT_SCOPED_TOOLS = new Set([
+  'pointer_list_comments',
+  'pointer_get_queue',
+  'pointer_commit_and_mark',
+  'pointer_doctor',
+]);
+
 export async function executeTool(
   name: string,
   args: any,
@@ -720,25 +742,56 @@ export async function executeTool(
   if (ctx.serverTooOld) {
     throw mcpError('server_too_old', ctx.serverTooOld);
   }
+  if (name === 'pointer_list_projects') {
+    return handleListProjects(args, ctx);
+  }
+
+  // Resolution order, same as every CLI command: an explicit `project` argument on this call →
+  // `--project` given to `pointer mcp` at startup (carried as `ctx.project`) → the project whose
+  // `path` contains the cwd the MCP server was started in → the only configured project.
+  const root = await findRepoRoot(ctx.cwd);
+  const config = await readConfig(root);
+  const flag = (typeof args?.project === 'string' && args.project) || (ctx.project || undefined);
+  const resolved = resolveProject(config, ctx.cwd, root, flag);
+
+  let project = ctx.project;
+  if (resolved.ok) {
+    project = resolved.project.key;
+  } else if (PROJECT_SCOPED_TOOLS.has(name)) {
+    if (resolved.reason === 'not-found') {
+      throw mcpError('not_found', `Unknown project "${flag}". Configured: ${resolved.keys.join(', ')}`);
+    }
+    if (resolved.reason === 'ambiguous') {
+      throw mcpError(
+        'forbidden',
+        `Several projects configured — pass "project" (one of: ${resolved.keys.join(', ')}). Call pointer_list_projects to see them.`,
+      );
+    }
+    // 'none': fall through with whatever ctx.project already was (e.g. a legacy config with
+    // nothing resolvable at all) — the underlying handler reports its own "no project" error.
+  }
+
+  const effectiveCtx: McpContext & { serverTooOld?: string } = { ...ctx, project, cwd: root };
+
   switch (name) {
     case 'pointer_list_comments':
-      return handleListComments(args, ctx);
+      return handleListComments(args, effectiveCtx);
     case 'pointer_get_queue':
-      return handleGetQueue(args, ctx);
+      return handleGetQueue(args, effectiveCtx);
     case 'pointer_get_comment':
-      return handleGetComment(args, ctx);
+      return handleGetComment(args, effectiveCtx);
     case 'pointer_mark_applied':
-      return handleMarkApplied(args, ctx);
+      return handleMarkApplied(args, effectiveCtx);
     case 'pointer_commit_and_mark':
-      return handleCommitAndMark(args, ctx);
+      return handleCommitAndMark(args, effectiveCtx);
     case 'pointer_reply':
-      return handleReply(args, ctx);
+      return handleReply(args, effectiveCtx);
     case 'pointer_set_status':
-      return handleSetStatus(args, ctx);
+      return handleSetStatus(args, effectiveCtx);
     case 'pointer_resolve_source':
-      return handleResolveSource(args, ctx);
+      return handleResolveSource(args, effectiveCtx);
     case 'pointer_doctor':
-      return handleDoctor(args, ctx);
+      return handleDoctor(args, effectiveCtx);
     default:
       throw mcpError('not_found', `Unknown tool: ${name}`);
   }

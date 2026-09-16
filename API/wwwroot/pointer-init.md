@@ -40,11 +40,12 @@ config silently splits the install in two.
 | Field | Use it for |
 |---|---|
 | `server` | the Pointer origin — never prompt for this when it is set |
-| `project` | the project key — never prompt for this when it is set |
+| `project` | the project key — never prompt for this when it is set (single-project repos only — see `projects` below) |
 | `environments` | **present and longer than one → do NOT ask which environment.** Emit the runtime-resolving block (Step 3c) so one file is correct on every deployment |
 | `environment` | the single environment, when `environments` is absent |
 | `htmlPath` | where a previous run mounted the widget — edit that same file rather than choosing a new one |
 | `delivery` | how reviewers open the widget. `embed` (or absent, from an older install) ⇒ proceed with Step 3 as below. `extension` ⇒ the reviewer's browser extension injects the widget — do **NOT** inject anything; **skip Step 3** entirely and go straight to Step 4 |
+| `projects` | **a monorepo with more than one Pointer project.** When present, there is no single `project`/`environment`/`htmlPath` — each key is one app's own `{ path, environment, environments, htmlPath, delivery }`. See **Monorepo (Nx) install** below; every rule above still applies, just per app instead of once for the whole repo |
 
 Ask the user **only** for a field that is genuinely missing. If there is no config file at all, fall
 back to Step 1.
@@ -135,8 +136,11 @@ beyond that as out of scope.
 5. **Do not reformat, reorganise, or "improve" the files you touch.** Add your lines and leave.
 6. **Do not read the whole repository.** Look at the files the detection step names, and stop.
    Reading a large monorepo start-to-finish is why this takes minutes instead of seconds.
-7. **In a monorepo, change one app** — the one the user named. Never a shared library, never a
-   second app.
+7. **In a monorepo, change one app per Pointer project** — the one the user named, or the one being
+   set up right now under **Monorepo (Nx) install** below. Never a shared library, and never an app
+   nobody asked about — a monorepo with several apps gets several independent Pointer projects
+   (`.pointer/config.json`'s `projects` map, one entry per app), not one project covering all of
+   them.
 
 ## Step 2 — Detect the host stack
 
@@ -495,11 +499,14 @@ touch .gitignore
 grep -qxF '.pointer/*' .gitignore || echo '.pointer/*' >> .gitignore
 grep -qxF '!.pointer/config.json' .gitignore || echo '!.pointer/config.json' >> .gitignore
 grep -qxF '!.pointer/stack.json' .gitignore || echo '!.pointer/stack.json' >> .gitignore
+grep -qxF '!.pointer/projects/' .gitignore || echo '!.pointer/projects/' >> .gitignore
 ```
 
 Note the directory form: `.pointer/*` (contents), never bare `.pointer/` — git does not descend into
-an excluded directory, so the bare form would make the two `!` re-includes above inert and silently
-ignore `config.json`/`stack.json` too.
+an excluded directory, so the bare form would make the `!` re-includes above inert and silently
+ignore `config.json`/`stack.json`/`projects/` too. The last line only matters for a monorepo (see
+**Monorepo (Nx) install** below) — it re-includes `.pointer/projects/`, where each app's own
+`projects/<key>.stack.json` lives, committed exactly like `stack.json`.
 
 **Then explicitly tell the user** (this is the critical step they must action):
 
@@ -527,8 +534,9 @@ The apply workflow itself is the separate <POINTER_PRODUCT> skill served at `<PO
 > | Claude Code | `.claude/skills/` (default) |
 > | Cursor | `.cursor/rules/` |
 > | Windsurf | `.windsurf/rules/` |
+> | Antigravity, Codex, or any tool reading the standard Agent Skills layout | `.agents/skills/` |
 > | GitHub Copilot | `.github/` (e.g. a `copilot-instructions.md` / rules location) |
-> | Cline / other | that tool's rules/skills directory |
+> | Cline / other | that tool's rules/skills directory (the CLI's own `other` fallback is also `.agents/skills/`) |
 > | none of these | just hand `skill.md` (and this file) to your agent directly |
 >
 > Identify which tool you are and pick the matching directory; if unsure, ask the user. The
@@ -605,6 +613,76 @@ look for a `<pointer-feedback>` element or a toolbar here. Instead:
    (Settings → Extension) — ask them to set it before reviewers can install the extension."
 4. Still confirm `.pointer/stack.json` exists and is staged for commit — stack registration is
    unaffected by delivery mode.
+
+## Monorepo (Nx) install
+
+A monorepo with several independently-deployed apps gets several independent Pointer projects, one
+per app — never one project that supposedly covers all of them (Scope rule 7). This mirrors exactly
+what `npx pointer-feedback init` itself does for a monorepo; follow the same flow by hand when
+driving it through this skill instead.
+
+1. **Detect it.** An Nx workspace has `nx.json` at the repo root. Discover candidate apps under
+   `apps/*`:
+   - a directory with its own `project.json` whose `projectType` is `"application"` (its Pointer
+     project's suggested key: the `project.json` `name`, or the directory name) — a `"library"`
+     `project.json` is never a candidate;
+   - OR, lacking a `project.json` at all, a directory that still has its own `src/index.html` or
+     `index.html` — include it, but tell the user it has no `project.json` so they can confirm it
+     really is meant to be one.
+
+   A non-Nx monorepo has no `nx.json` to detect from — ask the user which app directory (or
+   directories) they mean instead, and treat each the same way from step 2 on.
+
+2. **One Pointer project per app the user wants covered.** For each: pick or create its project (Step
+   1's question, scoped to that app — the project must already exist in the dashboard, same rule as
+   ever), its environment(s), and its delivery (the repo's own default — see Step 1 — is the
+   suggested starting point, override only if this app genuinely differs).
+
+3. **Inject per app**, in that app's own directory — `apps/<app>/index.html`,
+   `apps/<app>/src/index.html`, or wherever Step 2's detection finds it for THAT app. Never the repo
+   root's `index.html`; a repo like this usually has none, or a placeholder that renders nothing.
+
+4. **Register the stack per app**, writing to `.pointer/projects/<key>.stack.json` — **not**
+   `.pointer/stack.json` — mirroring Step 5, once per app:
+   ```bash
+   mkdir -p .pointer/projects
+   echo '<response data object>' > .pointer/projects/<key>.stack.json
+   ```
+   Add `!.pointer/projects/` to `.gitignore` (Step 4's scaffold, above) so every app's stack file
+   stays committed exactly like a single-project repo's `.pointer/stack.json`.
+
+5. **Write `.pointer/config.json`'s `projects` map** — one entry per app, keyed by its Pointer
+   project key:
+   ```json
+   {
+     "server": "<POINTER_SERVER>",
+     "aiTool": "claude-code",
+     "delivery": "embed",
+     "projects": {
+       "<key>": {
+         "path": "apps/<app>",
+         "environment": "local",
+         "environments": ["local", "staging"],
+         "htmlPath": "apps/<app>/src/index.html",
+         "delivery": "embed"
+       }
+     }
+   }
+   ```
+   There is **no top-level `project`/`environment`/`htmlPath`** once `projects` exists — every app
+   is a keyed entry, including one that was already set up as the (formerly) single project: if
+   `config.json` currently has a plain `project` and you are adding a second app, move the existing
+   one into `projects` first (best-guess `path` from its recorded `htmlPath`, or `.` if it has none
+   — say so, so the user can confirm) rather than leaving it stranded outside the map.
+
+6. **Credentials, skills and `pointer.sh` stay repo-level** — Step 4 runs once for the whole repo,
+   not once per app.
+
+7. **Verify per app**, same as Step 6, run once for each: for `embed` delivery, start that app's dev
+   server and confirm the widget mounts; for `extension`, confirm its project is selectable in the
+   extension popup once activated. `npx pointer-feedback list`/`apply` cover every configured
+   project unless the user passes `--project <key>` or is working from inside that app's directory
+   — see `skill.md`'s Monorepos note.
 
 ## Notes & gotchas
 

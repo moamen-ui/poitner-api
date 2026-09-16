@@ -12,6 +12,12 @@ export type ToolDefinition = {
   };
 };
 
+/** Every project-scoped tool's optional `project` argument — see `PROJECT_ARG_DESCRIPTION`. */
+const PROJECT_ARG_DESCRIPTION =
+  'Pointer project key, for a multi-project (monorepo) repo. Omit in a single-project repo, or ' +
+  'when the current directory resolves one on its own; required when several projects are ' +
+  'configured and neither applies — call pointer_list_projects to see the choices.';
+
 export const TOOL_POINTER_LIST_COMMENTS = {
   name: 'pointer_list_comments',
   description: `List feedback comments in a lean summary view. ${UNTRUSTED_NOTICE}`,
@@ -34,6 +40,10 @@ export const TOOL_POINTER_LIST_COMMENTS = {
         maximum: 100,
         description: 'Page size (1-100)',
       },
+      project: {
+        type: 'string',
+        description: PROJECT_ARG_DESCRIPTION,
+      },
       status: {
         type: 'string',
         enum: ['open', 'ready', 'applied', 'archived'],
@@ -54,6 +64,10 @@ export const TOOL_POINTER_GET_QUEUE = {
         type: 'string',
         enum: ['local', 'staging', 'production'],
         description: 'Filter by environment',
+      },
+      project: {
+        type: 'string',
+        description: PROJECT_ARG_DESCRIPTION,
       },
     },
     additionalProperties: false,
@@ -115,6 +129,10 @@ export const TOOL_POINTER_COMMIT_AND_MARK = {
         type: 'array',
         items: { type: 'integer' },
         description: 'Comment IDs to mark applied',
+      },
+      project: {
+        type: 'string',
+        description: PROJECT_ARG_DESCRIPTION,
       },
       reply: {
         type: 'string',
@@ -188,6 +206,23 @@ export const TOOL_POINTER_DOCTOR = {
   description: `Diagnose installation and report status. ${UNTRUSTED_NOTICE}`,
   inputSchema: {
     type: 'object',
+    properties: {
+      project: {
+        type: 'string',
+        description: PROJECT_ARG_DESCRIPTION,
+      },
+    },
+    additionalProperties: false,
+  },
+} as const;
+
+export const TOOL_POINTER_LIST_PROJECTS = {
+  name: 'pointer_list_projects',
+  description:
+    `List every Pointer project configured in this repo (single-project repos report exactly one). ` +
+    `Call this first in a multi-project repo when a project-scoped tool has no obvious default. ${UNTRUSTED_NOTICE}`,
+  inputSchema: {
+    type: 'object',
     properties: {},
     additionalProperties: false,
   },
@@ -203,6 +238,7 @@ export const ALL_TOOLS = [
   TOOL_POINTER_SET_STATUS,
   TOOL_POINTER_RESOLVE_SOURCE,
   TOOL_POINTER_DOCTOR,
+  TOOL_POINTER_LIST_PROJECTS,
 ] as const;
 
 export const SAMPLE_INPUTS: Record<string, Record<string, any>> = {
@@ -240,4 +276,5 @@ export const SAMPLE_INPUTS: Record<string, Record<string, any>> = {
     hash: 'deadbeef1234',
   },
   pointer_doctor: {},
+  pointer_list_projects: {},
 };

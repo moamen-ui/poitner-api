@@ -8,13 +8,14 @@ import {
   TOOL_POINTER_GET_COMMENT,
   TOOL_POINTER_GET_QUEUE,
   TOOL_POINTER_LIST_COMMENTS,
+  TOOL_POINTER_LIST_PROJECTS,
   TOOL_POINTER_MARK_APPLIED,
   TOOL_POINTER_REPLY,
   TOOL_POINTER_RESOLVE_SOURCE,
   TOOL_POINTER_SET_STATUS,
 } from '../../src/mcp/schemas.js';
 
-test('mcp: tools catalogue matches exactly the 9 frozen names', () => {
+test('mcp: tools catalogue matches exactly the 10 frozen names', () => {
   const names = ALL_TOOLS.map((t) => t.name).sort();
   assert.deepEqual(names, [
     'pointer_commit_and_mark',
@@ -22,6 +23,7 @@ test('mcp: tools catalogue matches exactly the 9 frozen names', () => {
     'pointer_get_comment',
     'pointer_get_queue',
     'pointer_list_comments',
+    'pointer_list_projects',
     'pointer_mark_applied',
     'pointer_reply',
     'pointer_resolve_source',
@@ -45,16 +47,18 @@ test('mcp: schema properties match contract table exactly', () => {
   const propKeys = (tool: { inputSchema: { properties: Record<string, any> } }) =>
     Object.keys(tool.inputSchema.properties).sort();
 
-  assert.deepEqual(propKeys(TOOL_POINTER_COMMIT_AND_MARK), ['files', 'ids', 'reply']);
-  assert.deepEqual(propKeys(TOOL_POINTER_DOCTOR), []);
+  assert.deepEqual(propKeys(TOOL_POINTER_COMMIT_AND_MARK), ['files', 'ids', 'project', 'reply']);
+  assert.deepEqual(propKeys(TOOL_POINTER_DOCTOR), ['project']);
   assert.deepEqual(propKeys(TOOL_POINTER_GET_COMMENT), ['id']);
-  assert.deepEqual(propKeys(TOOL_POINTER_GET_QUEUE), ['environment']);
+  assert.deepEqual(propKeys(TOOL_POINTER_GET_QUEUE), ['environment', 'project']);
   assert.deepEqual(propKeys(TOOL_POINTER_LIST_COMMENTS), [
     'environment',
     'page',
     'pageSize',
+    'project',
     'status',
   ]);
+  assert.deepEqual(propKeys(TOOL_POINTER_LIST_PROJECTS), []);
   assert.deepEqual(propKeys(TOOL_POINTER_MARK_APPLIED), ['commitUrl', 'id', 'reply']);
   assert.deepEqual(propKeys(TOOL_POINTER_REPLY), ['body', 'id']);
   assert.deepEqual(propKeys(TOOL_POINTER_RESOLVE_SOURCE), ['hash']);
