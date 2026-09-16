@@ -8,6 +8,7 @@ import {
     upsertGitignore,
     isMultiProject,
     listProjects,
+    removeLegacyRepoFiles,
     type ProjectEntry,
     type PointerConfig,
 } from '../config.js';
@@ -29,6 +30,14 @@ import { resolveApiKey, saveGlobalCredential, type ApiKeySource } from '../crede
 export async function initCommand(cwd: string, options: Record<string, string | boolean> = {}) {
     const isYes = options['yes'] || options['json'];
     const isJson = options['json'];
+
+    // Every mode (install, join, --path, multi-join) starts from here, so this is the one place
+    // that reaches every one of them: a repo installed by an older CLI may still have files that
+    // version wrote and this one no longer does — see `removeLegacyRepoFiles`.
+    const removedLegacyFiles = await removeLegacyRepoFiles(cwd);
+    if (!isJson) {
+        for (const f of removedLegacyFiles) console.log(`\x1b[2mremoved legacy ${f}\x1b[0m`);
+    }
 
     const deliveryFlag = options['delivery'] as string | undefined;
     if (deliveryFlag !== undefined && deliveryFlag !== 'embed' && deliveryFlag !== 'extension') {
@@ -1253,7 +1262,7 @@ async function setupOneProject(ctx: {
     } catch {
         // best-effort, exactly like the single-project flow
     }
-    const designBlock = ctx.noDesign ? null : await detectDesignTokens(targetCwd).catch(() => null);
+    const designBlock = ctx.noDesign ? null : await detectDesignTokens(targetCwd, { root: cwd }).catch(() => null);
     const merged = mergeStack(stackMeta, serverStackResponse?.data ?? serverStackResponse, designBlock);
     await writeStackFile(cwd, merged, key);
 
@@ -1311,7 +1320,7 @@ async function handleMultiJoin(
         } catch {
             // best-effort
         }
-        const designBlock = await detectDesignTokens(appCwd).catch(() => null);
+        const designBlock = await detectDesignTokens(appCwd, { root: cwd }).catch(() => null);
         const merged = mergeStack(stackMeta, serverStackResponse?.data ?? serverStackResponse, designBlock);
         await writeStackFile(cwd, merged, p.key);
     }

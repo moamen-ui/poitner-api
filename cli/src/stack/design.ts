@@ -1,5 +1,5 @@
 import { promises as fs, statSync } from 'node:fs';
-import { join, relative, resolve } from 'node:path';
+import { dirname, join, relative, resolve } from 'node:path';
 
 export type LibraryInfo = {
   name: string;
@@ -53,6 +53,13 @@ export type ScanOptions = {
   timeoutMs?: number;
   readFile?: (filePath: string) => Promise<string>;
   listFiles?: () => Promise<string[]>;
+  /**
+   * Repo root, when it differs from `cwd` — the app being scanned may sit several directories
+   * below it (a monorepo app), and its `package.json` (if it even has one), any shared
+   * tailwind/postcss config, and any shared `styles/` directory can live up there instead. Defaults
+   * to `cwd`, which reproduces the old single-project-only behaviour exactly.
+   */
+  root?: string;
 };
 
 const IGNORED_DIRS = new Set([
@@ -226,12 +233,68 @@ function parseArrayOrObjectKeys(content: string, matchIndex: number): string[] {
 }
 
 /**
- * Detects Tailwind configuration or v4 @theme declarations.
+ * Merges `package.json` dependencies + devDependencies from every directory on the path from
+ * `root` down to `cwd`, inclusive of both. Read shallow (root) to deep (cwd/app) so that
+ * `Object.assign` lets a deeper, app-level entry win over a same-named root-level one — an app
+ * pinning its own version of something the root also declares should be read as ITS version.
+ *
+ * A monorepo app frequently has no `package.json` of its own at all (deps live solely at the
+ * workspace root); this still finds them, because the chain includes root even when cwd yields
+ * nothing.
+ */
+async function collectDependencyChain(
+  cwd: string,
+  root: string,
+  readFile: (p: string) => Promise<string>,
+): Promise<Record<string, string>> {
+  const cwdAbs = resolve(cwd);
+  const rootAbs = resolve(root);
+
+  const dirs: string[] = [];
+  let dir = cwdAbs;
+  while (true) {
+    dirs.push(dir);
+    if (dir === rootAbs) break;
+    const parent = dirname(dir);
+    if (parent === dir) break; // reached the filesystem root without finding `root` — stop rather than loop forever
+    dir = parent;
+  }
+  dirs.reverse(); // root (or as close to it as we got) first, cwd last
+
+  const merged: Record<string, string> = {};
+  for (const d of dirs) {
+    try {
+      const pkg = JSON.parse(await readFile(join(d, 'package.json')));
+      Object.assign(merged, pkg.dependencies, pkg.devDependencies);
+    } catch {
+      // no package.json at this level, or unreadable/unparsable — just skip it
+    }
+  }
+  return merged;
+}
+
+/**
+ * Root-level shared style locations used as a fallback when the app dir itself has none:
+ * `styles/`, `src/styles/`, and `libs/**\/styles/` (any depth) relative to the repo root.
+ */
+function isRootSharedStylePath(f: string): boolean {
+  if (f.startsWith('styles/') || f.startsWith('src/styles/')) return true;
+  if (f.startsWith('libs/') && f.includes('/styles/')) return true;
+  return false;
+}
+
+/**
+ * Detects Tailwind configuration or v4 @theme declarations. A config found directly in `cwd` is
+ * always this app's own, even when `tailwindcss` itself is only declared as a dependency at
+ * `root` (an app dir need not have its own package.json at all). When `cwd` has no config of its
+ * own, a config at `root` is accepted as a fallback — a monorepo may share one Tailwind config
+ * across every app rather than duplicating it per app.
  */
 export async function detectTailwind(
   cwd: string,
   files: string[],
   readFile: (p: string) => Promise<string>,
+  root: string = cwd,
 ): Promise<TailwindTokens | null> {
   const configNames = [
     'tailwind.config.ts',
@@ -241,17 +304,33 @@ export async function detectTailwind(
   ];
 
   let foundConfigFile: string | null = null;
+  let configAbsPath: string | null = null;
   for (const name of configNames) {
     if (files.includes(name)) {
       foundConfigFile = name;
+      configAbsPath = join(cwd, name);
       break;
     }
   }
 
-  if (foundConfigFile) {
+  if (!foundConfigFile && resolve(root) !== resolve(cwd)) {
+    for (const name of configNames) {
+      const candidate = join(root, name);
+      try {
+        await readFile(candidate);
+        foundConfigFile = relative(cwd, candidate);
+        configAbsPath = candidate;
+        break;
+      } catch {
+        // not at root either — try the next name
+      }
+    }
+  }
+
+  if (foundConfigFile && configAbsPath) {
     let content = '';
     try {
-      content = await readFile(join(cwd, foundConfigFile));
+      content = await readFile(configAbsPath);
     } catch {
       return null;
     }
@@ -370,27 +449,27 @@ export async function detectTailwind(
 }
 
 /**
- * Detects CSS custom properties from the 20 smallest files under src, <= 200 KB.
+ * Core CSS-custom-property scan, shared by `detectCssVars` (scoped to the app dir's own files) and
+ * `detectDesignTokens`'s root-level fallback (scoped to shared style locations at the repo root)
+ * — same 20-smallest/<=200KB caps either way, just against a different `baseDir` + candidate list.
  */
-export async function detectCssVars(
-  cwd: string,
-  files: string[],
+async function scanCssVars(
+  baseDir: string,
+  candidatePaths: string[],
   readFile: (p: string) => Promise<string>,
 ): Promise<CssVarsTokens | null> {
   const candidateFiles: { path: string; size: number }[] = [];
 
-  for (const f of files) {
-    if ((f.startsWith('src/') || f.includes('/src/')) && (f.endsWith('.css') || f.endsWith('.scss'))) {
-      try {
-        const fullPath = join(cwd, f);
-        const stat = statSync(fullPath);
-        if (stat.size <= 204800) {
-          candidateFiles.push({ path: f, size: stat.size });
-        }
-      } catch {
-        // Fallback for mocked files: size 1
-        candidateFiles.push({ path: f, size: 1 });
+  for (const f of candidatePaths) {
+    try {
+      const fullPath = join(baseDir, f);
+      const stat = statSync(fullPath);
+      if (stat.size <= 204800) {
+        candidateFiles.push({ path: f, size: stat.size });
       }
+    } catch {
+      // Fallback for mocked files: size 1
+      candidateFiles.push({ path: f, size: 1 });
     }
   }
 
@@ -407,7 +486,7 @@ export async function detectCssVars(
   for (const item of selectedFiles) {
     let content = '';
     try {
-      content = await readFile(join(cwd, item.path));
+      content = await readFile(join(baseDir, item.path));
     } catch {
       continue;
     }
@@ -445,31 +524,34 @@ export async function detectCssVars(
 }
 
 /**
- * Detects SCSS variables in src/** /_variables.scss, src/** /variables.scss, src/styles/** /*.scss.
+ * Detects CSS custom properties from the 20 smallest files under src, <= 200 KB.
  */
-export async function detectScss(
+export async function detectCssVars(
   cwd: string,
   files: string[],
   readFile: (p: string) => Promise<string>,
+): Promise<CssVarsTokens | null> {
+  const candidates = files.filter(
+    (f) => (f.startsWith('src/') || f.includes('/src/')) && (f.endsWith('.css') || f.endsWith('.scss')),
+  );
+  return scanCssVars(cwd, candidates, readFile);
+}
+
+/**
+ * Core SCSS-variable scan, shared by `detectScss` and `detectDesignTokens`'s root-level fallback.
+ */
+async function scanScss(
+  baseDir: string,
+  candidatePaths: string[],
+  readFile: (p: string) => Promise<string>,
 ): Promise<ScssTokens | null> {
-  const scssFiles = files.filter((f) => {
-    if (!f.endsWith('.scss')) return false;
-    return (
-      f.includes('_variables.scss') ||
-      f.includes('variables.scss') ||
-      (f.startsWith('src/styles/') || f.includes('/src/styles/'))
-    );
-  });
-
-  if (scssFiles.length === 0) return null;
-
   const matchedFiles = new Set<string>();
   const varNames = new Set<string>();
 
-  for (const f of scssFiles) {
+  for (const f of candidatePaths) {
     let content = '';
     try {
-      content = await readFile(join(cwd, f));
+      content = await readFile(join(baseDir, f));
     } catch {
       continue;
     }
@@ -489,6 +571,28 @@ export async function detectScss(
     files: Array.from(matchedFiles).sort(),
     names: Array.from(varNames).sort().slice(0, 60),
   };
+}
+
+/**
+ * Detects SCSS variables in src/** /_variables.scss, src/** /variables.scss, src/styles/** /*.scss.
+ */
+export async function detectScss(
+  cwd: string,
+  files: string[],
+  readFile: (p: string) => Promise<string>,
+): Promise<ScssTokens | null> {
+  const scssFiles = files.filter((f) => {
+    if (!f.endsWith('.scss')) return false;
+    return (
+      f.includes('_variables.scss') ||
+      f.includes('variables.scss') ||
+      (f.startsWith('src/styles/') || f.includes('/src/styles/'))
+    );
+  });
+
+  if (scssFiles.length === 0) return null;
+
+  return scanScss(cwd, scssFiles, readFile);
 }
 
 /**
@@ -607,49 +711,52 @@ export async function detectAngularMaterial(
 }
 
 /**
- * Detects component libraries from package.json and components.json.
+ * Detects component libraries from package.json (walking from `root` down to `cwd`, so a
+ * monorepo app with no `package.json` of its own still sees what's declared at the workspace
+ * root) and from `components.json` (shadcn, checked only in the app dir itself).
  */
 export async function detectLibraries(
   cwd: string,
   files: string[],
   readFile: (p: string) => Promise<string>,
+  root: string = cwd,
 ): Promise<LibraryInfo[]> {
   const libs: LibraryInfo[] = [];
 
-  // 1. package.json deps
-  if (files.includes('package.json')) {
-    let pkgContent = '';
-    try {
-      pkgContent = await readFile(join(cwd, 'package.json'));
-      const pkg = JSON.parse(pkgContent);
-      const deps = { ...pkg.dependencies, ...pkg.devDependencies };
+  const deps = await collectDependencyChain(cwd, root, readFile);
 
-      const tracked = [
-        '@mui/material',
-        '@chakra-ui/react',
-        'antd',
-        '@angular/material',
-        'bootstrap',
-        'vuetify',
-        'element-plus',
-        'primeng',
-        'primevue',
-      ];
+  const tracked = [
+    '@mui/material',
+    '@chakra-ui/react',
+    'antd',
+    '@angular/material',
+    'bootstrap',
+    'vuetify',
+    'element-plus',
+    'primeng',
+    'primevue',
+  ];
+  // In single-project mode (root === cwd, the default) this stays the original, narrower list:
+  // `tokens.tailwind` already reports Tailwind for that case, and doubling it into `libraries` for
+  // every existing install would just be noise. In a monorepo, though, the app dir commonly has NO
+  // package.json at all — detectTailwind's own signal (a config file) may be the only thing that
+  // shows this app uses Tailwind, so it's worth surfacing here too, alongside the component
+  // libraries above.
+  if (resolve(root) !== resolve(cwd)) {
+    tracked.push('tailwindcss');
+  }
 
-      for (const [depName, depVer] of Object.entries<string>(deps)) {
-        if (tracked.includes(depName) || depName.startsWith('@radix-ui/')) {
-          libs.push({
-            name: depName,
-            version: typeof depVer === 'string' ? depVer : null,
-          });
-        }
-      }
-    } catch {
-      // ignore
+  for (const [depName, depVer] of Object.entries(deps)) {
+    if (tracked.includes(depName) || depName.startsWith('@radix-ui/')) {
+      libs.push({
+        name: depName,
+        version: typeof depVer === 'string' ? depVer : null,
+      });
     }
   }
 
-  // 2. shadcn via components.json
+  // shadcn via components.json — scoped to the app dir only, since its rules (aliases, paths) are
+  // per-app even when the dependency declaring them lives at the root.
   if (files.includes('components.json')) {
     libs.push({
       name: 'shadcn',
@@ -721,14 +828,31 @@ export async function detectDesignTokens(
   options?: ScanOptions,
 ): Promise<DesignBlock> {
   const readFile = options?.readFile ?? ((p: string) => fs.readFile(p, 'utf8'));
+  const root = options?.root ?? cwd;
   const files = await collectFiles(cwd, options);
 
-  const libraries = await detectLibraries(cwd, files, readFile);
-  const tailwind = await detectTailwind(cwd, files, readFile);
-  const cssVars = await detectCssVars(cwd, files, readFile);
-  const scss = await detectScss(cwd, files, readFile);
+  const libraries = await detectLibraries(cwd, files, readFile, root);
+  const tailwind = await detectTailwind(cwd, files, readFile, root);
+  let cssVars = await detectCssVars(cwd, files, readFile);
+  let scss = await detectScss(cwd, files, readFile);
   const theme = await detectTheme(cwd, files, readFile);
   const angularMaterial = await detectAngularMaterial(cwd, files, readFile);
+
+  // Neither found anything in the app dir itself — fall back to shared style locations at the
+  // repo root (styles/, src/styles/, libs/**/styles/) before giving up. Only in a monorepo (root
+  // differs from cwd): single-project mode already scanned everything there is to scan above.
+  if ((!cssVars || !scss) && resolve(root) !== resolve(cwd)) {
+    const rootFiles = await collectFiles(root, options);
+    const sharedStyleFiles = rootFiles.filter(isRootSharedStylePath);
+    if (!cssVars) {
+      const cssCandidates = sharedStyleFiles.filter((f) => f.endsWith('.css') || f.endsWith('.scss'));
+      cssVars = await scanCssVars(root, cssCandidates, readFile);
+    }
+    if (!scss) {
+      const scssCandidates = sharedStyleFiles.filter((f) => f.endsWith('.scss'));
+      scss = await scanScss(root, scssCandidates, readFile);
+    }
+  }
 
   const tokens: DesignTokens = {};
   if (tailwind) tokens.tailwind = tailwind;

@@ -122,6 +122,23 @@ async function writeCredentials(cwd2, token, extra = {}) {
     lines.push(`POINTER_PROJECT=${extra.project}`);
   await fs.writeFile(file, lines.join("\n") + "\n", { encoding: "utf8", mode: 384 });
 }
+async function removeLegacyRepoFiles(cwd2) {
+  const removed = [];
+  for (const rel of LEGACY_REPO_FILES) {
+    const abs = join(cwd2, rel);
+    try {
+      await fs.access(abs);
+    } catch {
+      continue;
+    }
+    try {
+      await fs.rm(abs, { force: true });
+      removed.push(rel);
+    } catch {
+    }
+  }
+  return removed;
+}
 async function upsertGitignore(cwd2, productName = "Feedback tool", skillsDir) {
   const file = join(cwd2, ".gitignore");
   let content = await fs.readFile(file, "utf8").catch(() => "");
@@ -163,7 +180,7 @@ async function upsertGitignore(cwd2, productName = "Feedback tool", skillsDir) {
     await fs.writeFile(file, content, "utf8");
   }
 }
-var CONFIG_FILE, CREDENTIALS_FILE, IGNORED_SKILL_DIRS;
+var CONFIG_FILE, CREDENTIALS_FILE, IGNORED_SKILL_DIRS, LEGACY_REPO_FILES;
 var init_config = __esm({
   "src/config.ts"() {
     "use strict";
@@ -185,6 +202,7 @@ var init_config = __esm({
       ".windsurf/rules/pointer-init.md",
       ".windsurf/rules/pointer-feedback.md"
     ];
+    LEGACY_REPO_FILES = [".pointer/credentials.env.example", ".pointer/.token_cache"];
   }
 });
 
@@ -636,7 +654,7 @@ var init_map = __esm({
 
 // src/auth.ts
 import { promises as fs17 } from "node:fs";
-import { dirname as dirname7 } from "node:path";
+import { dirname as dirname8 } from "node:path";
 async function readApiKey(cwd2, server) {
   const { key } = await resolveApiKey(cwd2, server);
   return key;
@@ -665,7 +683,7 @@ async function resolveToken(server, cwd2, explicitApiKey) {
     );
     if (login?.token) {
       try {
-        await fs17.mkdir(dirname7(cacheFile), { recursive: true });
+        await fs17.mkdir(dirname8(cacheFile), { recursive: true });
         await fs17.writeFile(cacheFile, JSON.stringify({ token: login.token }), "utf8");
       } catch {
       }
@@ -2402,11 +2420,11 @@ async function gitignoreChecks(cwd2) {
 
 // src/commands/init.ts
 import { promises as fs13, existsSync as existsSync2 } from "node:fs";
-import { join as join13, dirname as dirname5, relative as relative3, resolve as resolve2, isAbsolute as isAbsolute2, sep as sep2 } from "node:path";
+import { join as join13, dirname as dirname6, relative as relative3, resolve as resolve2, isAbsolute as isAbsolute2, sep as sep2 } from "node:path";
 
 // src/stack/design.ts
 import { promises as fs12, statSync } from "node:fs";
-import { join as join12, relative as relative2 } from "node:path";
+import { dirname as dirname5, join as join12, relative as relative2, resolve } from "node:path";
 var IGNORED_DIRS = /* @__PURE__ */ new Set([
   "node_modules",
   "dist",
@@ -2544,7 +2562,39 @@ function parseArrayOrObjectKeys(content, matchIndex) {
   }
   return [];
 }
-async function detectTailwind(cwd2, files, readFile) {
+async function collectDependencyChain(cwd2, root, readFile) {
+  const cwdAbs = resolve(cwd2);
+  const rootAbs = resolve(root);
+  const dirs = [];
+  let dir = cwdAbs;
+  while (true) {
+    dirs.push(dir);
+    if (dir === rootAbs)
+      break;
+    const parent = dirname5(dir);
+    if (parent === dir)
+      break;
+    dir = parent;
+  }
+  dirs.reverse();
+  const merged = {};
+  for (const d of dirs) {
+    try {
+      const pkg = JSON.parse(await readFile(join12(d, "package.json")));
+      Object.assign(merged, pkg.dependencies, pkg.devDependencies);
+    } catch {
+    }
+  }
+  return merged;
+}
+function isRootSharedStylePath(f) {
+  if (f.startsWith("styles/") || f.startsWith("src/styles/"))
+    return true;
+  if (f.startsWith("libs/") && f.includes("/styles/"))
+    return true;
+  return false;
+}
+async function detectTailwind(cwd2, files, readFile, root = cwd2) {
   const configNames = [
     "tailwind.config.ts",
     "tailwind.config.js",
@@ -2552,16 +2602,30 @@ async function detectTailwind(cwd2, files, readFile) {
     "tailwind.config.mjs"
   ];
   let foundConfigFile = null;
+  let configAbsPath = null;
   for (const name of configNames) {
     if (files.includes(name)) {
       foundConfigFile = name;
+      configAbsPath = join12(cwd2, name);
       break;
     }
   }
-  if (foundConfigFile) {
+  if (!foundConfigFile && resolve(root) !== resolve(cwd2)) {
+    for (const name of configNames) {
+      const candidate = join12(root, name);
+      try {
+        await readFile(candidate);
+        foundConfigFile = relative2(cwd2, candidate);
+        configAbsPath = candidate;
+        break;
+      } catch {
+      }
+    }
+  }
+  if (foundConfigFile && configAbsPath) {
     let content = "";
     try {
-      content = await readFile(join12(cwd2, foundConfigFile));
+      content = await readFile(configAbsPath);
     } catch {
       return null;
     }
@@ -2664,19 +2728,17 @@ async function detectTailwind(cwd2, files, readFile) {
   }
   return null;
 }
-async function detectCssVars(cwd2, files, readFile) {
+async function scanCssVars(baseDir, candidatePaths, readFile) {
   const candidateFiles = [];
-  for (const f of files) {
-    if ((f.startsWith("src/") || f.includes("/src/")) && (f.endsWith(".css") || f.endsWith(".scss"))) {
-      try {
-        const fullPath = join12(cwd2, f);
-        const stat = statSync(fullPath);
-        if (stat.size <= 204800) {
-          candidateFiles.push({ path: f, size: stat.size });
-        }
-      } catch {
-        candidateFiles.push({ path: f, size: 1 });
+  for (const f of candidatePaths) {
+    try {
+      const fullPath = join12(baseDir, f);
+      const stat = statSync(fullPath);
+      if (stat.size <= 204800) {
+        candidateFiles.push({ path: f, size: stat.size });
       }
+    } catch {
+      candidateFiles.push({ path: f, size: 1 });
     }
   }
   candidateFiles.sort((a, b) => {
@@ -2690,7 +2752,7 @@ async function detectCssVars(cwd2, files, readFile) {
   for (const item of selectedFiles) {
     let content = "";
     try {
-      content = await readFile(join12(cwd2, item.path));
+      content = await readFile(join12(baseDir, item.path));
     } catch {
       continue;
     }
@@ -2721,20 +2783,19 @@ async function detectCssVars(cwd2, files, readFile) {
     names
   };
 }
-async function detectScss(cwd2, files, readFile) {
-  const scssFiles = files.filter((f) => {
-    if (!f.endsWith(".scss"))
-      return false;
-    return f.includes("_variables.scss") || f.includes("variables.scss") || (f.startsWith("src/styles/") || f.includes("/src/styles/"));
-  });
-  if (scssFiles.length === 0)
-    return null;
+async function detectCssVars(cwd2, files, readFile) {
+  const candidates = files.filter(
+    (f) => (f.startsWith("src/") || f.includes("/src/")) && (f.endsWith(".css") || f.endsWith(".scss"))
+  );
+  return scanCssVars(cwd2, candidates, readFile);
+}
+async function scanScss(baseDir, candidatePaths, readFile) {
   const matchedFiles = /* @__PURE__ */ new Set();
   const varNames = /* @__PURE__ */ new Set();
-  for (const f of scssFiles) {
+  for (const f of candidatePaths) {
     let content = "";
     try {
-      content = await readFile(join12(cwd2, f));
+      content = await readFile(join12(baseDir, f));
     } catch {
       continue;
     }
@@ -2752,6 +2813,16 @@ async function detectScss(cwd2, files, readFile) {
     files: Array.from(matchedFiles).sort(),
     names: Array.from(varNames).sort().slice(0, 60)
   };
+}
+async function detectScss(cwd2, files, readFile) {
+  const scssFiles = files.filter((f) => {
+    if (!f.endsWith(".scss"))
+      return false;
+    return f.includes("_variables.scss") || f.includes("variables.scss") || (f.startsWith("src/styles/") || f.includes("/src/styles/"));
+  });
+  if (scssFiles.length === 0)
+    return null;
+  return scanScss(cwd2, scssFiles, readFile);
 }
 function parseTopLevelKeys(blockText) {
   const keys = [];
@@ -2839,34 +2910,29 @@ async function detectAngularMaterial(cwd2, files, readFile) {
     palettes: Array.from(palettes).sort()
   };
 }
-async function detectLibraries(cwd2, files, readFile) {
+async function detectLibraries(cwd2, files, readFile, root = cwd2) {
   const libs = [];
-  if (files.includes("package.json")) {
-    let pkgContent = "";
-    try {
-      pkgContent = await readFile(join12(cwd2, "package.json"));
-      const pkg = JSON.parse(pkgContent);
-      const deps = { ...pkg.dependencies, ...pkg.devDependencies };
-      const tracked = [
-        "@mui/material",
-        "@chakra-ui/react",
-        "antd",
-        "@angular/material",
-        "bootstrap",
-        "vuetify",
-        "element-plus",
-        "primeng",
-        "primevue"
-      ];
-      for (const [depName, depVer] of Object.entries(deps)) {
-        if (tracked.includes(depName) || depName.startsWith("@radix-ui/")) {
-          libs.push({
-            name: depName,
-            version: typeof depVer === "string" ? depVer : null
-          });
-        }
-      }
-    } catch {
+  const deps = await collectDependencyChain(cwd2, root, readFile);
+  const tracked = [
+    "@mui/material",
+    "@chakra-ui/react",
+    "antd",
+    "@angular/material",
+    "bootstrap",
+    "vuetify",
+    "element-plus",
+    "primeng",
+    "primevue"
+  ];
+  if (resolve(root) !== resolve(cwd2)) {
+    tracked.push("tailwindcss");
+  }
+  for (const [depName, depVer] of Object.entries(deps)) {
+    if (tracked.includes(depName) || depName.startsWith("@radix-ui/")) {
+      libs.push({
+        name: depName,
+        version: typeof depVer === "string" ? depVer : null
+      });
     }
   }
   if (files.includes("components.json")) {
@@ -2917,13 +2983,26 @@ function buildDesignBlock(libraries, tokens) {
 }
 async function detectDesignTokens(cwd2, options) {
   const readFile = options?.readFile ?? ((p) => fs12.readFile(p, "utf8"));
+  const root = options?.root ?? cwd2;
   const files = await collectFiles(cwd2, options);
-  const libraries = await detectLibraries(cwd2, files, readFile);
-  const tailwind = await detectTailwind(cwd2, files, readFile);
-  const cssVars = await detectCssVars(cwd2, files, readFile);
-  const scss = await detectScss(cwd2, files, readFile);
+  const libraries = await detectLibraries(cwd2, files, readFile, root);
+  const tailwind = await detectTailwind(cwd2, files, readFile, root);
+  let cssVars = await detectCssVars(cwd2, files, readFile);
+  let scss = await detectScss(cwd2, files, readFile);
   const theme = await detectTheme(cwd2, files, readFile);
   const angularMaterial = await detectAngularMaterial(cwd2, files, readFile);
+  if ((!cssVars || !scss) && resolve(root) !== resolve(cwd2)) {
+    const rootFiles = await collectFiles(root, options);
+    const sharedStyleFiles = rootFiles.filter(isRootSharedStylePath);
+    if (!cssVars) {
+      const cssCandidates = sharedStyleFiles.filter((f) => f.endsWith(".css") || f.endsWith(".scss"));
+      cssVars = await scanCssVars(root, cssCandidates, readFile);
+    }
+    if (!scss) {
+      const scssCandidates = sharedStyleFiles.filter((f) => f.endsWith(".scss"));
+      scss = await scanScss(root, scssCandidates, readFile);
+    }
+  }
   const tokens = {};
   if (tailwind)
     tokens.tailwind = tailwind;
@@ -2973,6 +3052,11 @@ init_credentials();
 async function initCommand(cwd2, options = {}) {
   const isYes = options["yes"] || options["json"];
   const isJson = options["json"];
+  const removedLegacyFiles = await removeLegacyRepoFiles(cwd2);
+  if (!isJson) {
+    for (const f of removedLegacyFiles)
+      console.log(`\x1B[2mremoved legacy ${f}\x1B[0m`);
+  }
   const deliveryFlag = options["delivery"];
   if (deliveryFlag !== void 0 && deliveryFlag !== "embed" && deliveryFlag !== "extension") {
     console.error(`Invalid --delivery "${deliveryFlag}". Valid values: embed, extension.`);
@@ -3598,7 +3682,7 @@ async function resolveHtmlCandidate(root, appDir, explicitHtml) {
 function deriveAppDirFromHtmlPath(htmlPath) {
   if (!htmlPath)
     return ".";
-  let dir = dirname5(htmlPath).replace(/\/src$/, "");
+  let dir = dirname6(htmlPath).replace(/\/src$/, "");
   return dir === "" || dir === "." ? "." : dir;
 }
 async function selectOrCreateProject(server, token, isYes, presetKey, presetCreate, label) {
@@ -3810,7 +3894,7 @@ async function setupOneProject(ctx) {
     serverStackResponse = await api(server, `/api/projects/${key}/stack`, { method: "POST", body, token });
   } catch {
   }
-  const designBlock = ctx.noDesign ? null : await detectDesignTokens(targetCwd).catch(() => null);
+  const designBlock = ctx.noDesign ? null : await detectDesignTokens(targetCwd, { root: cwd2 }).catch(() => null);
   const merged = mergeStack(stackMeta, serverStackResponse?.data ?? serverStackResponse, designBlock);
   await writeStackFile(cwd2, merged, key);
   const entry = { path: appDir };
@@ -3850,7 +3934,7 @@ async function handleMultiJoin(cwd2, config, server, product, isJson, options, t
       serverStackResponse = await api(server, `/api/projects/${p.key}/stack`, { method: "POST", body, token });
     } catch {
     }
-    const designBlock = await detectDesignTokens(appCwd).catch(() => null);
+    const designBlock = await detectDesignTokens(appCwd, { root: cwd2 }).catch(() => null);
     const merged = mergeStack(stackMeta, serverStackResponse?.data ?? serverStackResponse, designBlock);
     await writeStackFile(cwd2, merged, p.key);
   }
@@ -4050,7 +4134,7 @@ async function doctorCommand(cwd2, options, cliVersion) {
     const projectKey = multi ? options.project || listProjects(config)[0]?.key : void 0;
     const appCwd = multi && projectKey ? join15(cwd2, config.projects?.[projectKey]?.path ?? ".") : cwd2;
     const start = Date.now();
-    const designBlock = await detectDesignTokens(appCwd);
+    const designBlock = await detectDesignTokens(appCwd, { root: cwd2 });
     const detectMs = Date.now() - start;
     const existing = await readStackFile(cwd2, projectKey);
     const merged = mergeStack(existing, null, designBlock);
@@ -4188,7 +4272,7 @@ async function applyFixes(cwd2, checks) {
 init_config();
 init_api();
 import { promises as fs16 } from "node:fs";
-import { dirname as dirname6, join as join16 } from "node:path";
+import { dirname as dirname7, join as join16 } from "node:path";
 function sourceFor(path) {
   if (path.endsWith("pointer.sh"))
     return "/pointer.sh";
@@ -4199,6 +4283,9 @@ function sourceFor(path) {
   return null;
 }
 async function updateCommand(cwd2, options) {
+  const removedLegacyFiles = await removeLegacyRepoFiles(cwd2);
+  for (const f of removedLegacyFiles)
+    console.log(`\x1B[2mremoved legacy ${f}\x1B[0m`);
   const config = await readConfig(cwd2);
   const server = (options.server || config.server || "").replace(/\/$/, "");
   if (!server) {
@@ -4271,7 +4358,7 @@ async function updateCommand(cwd2, options) {
         throw new Error(`HTTP ${res.status}`);
       const body = await res.text();
       const abs = join16(cwd2, f.path);
-      await fs16.mkdir(dirname6(abs), { recursive: true });
+      await fs16.mkdir(dirname7(abs), { recursive: true });
       await fs16.writeFile(abs, body, "utf8");
       if (abs.endsWith(".sh"))
         await fs16.chmod(abs, 493).catch(() => {
@@ -4299,7 +4386,7 @@ init_build_constants();
 init_resolve();
 init_api();
 import { promises as fs19 } from "node:fs";
-import { join as join19, dirname as dirname8 } from "node:path";
+import { join as join19, dirname as dirname9 } from "node:path";
 import { spawnSync } from "node:child_process";
 
 // src/apply/queue.ts
@@ -4815,7 +4902,7 @@ async function ensureToolRegistered(ctx, tool) {
         }
       );
       if (res) {
-        await fs19.mkdir(dirname8(stackPath), { recursive: true });
+        await fs19.mkdir(dirname9(stackPath), { recursive: true });
         await fs19.writeFile(stackPath, JSON.stringify(res, null, 2) + "\n", "utf8");
         return;
       }
@@ -4825,7 +4912,7 @@ async function ensureToolRegistered(ctx, tool) {
   aiTools.push(tool);
   stackData.aiTools = aiTools;
   try {
-    await fs19.mkdir(dirname8(stackPath), { recursive: true });
+    await fs19.mkdir(dirname9(stackPath), { recursive: true });
     await fs19.writeFile(stackPath, JSON.stringify(stackData, null, 2) + "\n", "utf8");
   } catch {
   }

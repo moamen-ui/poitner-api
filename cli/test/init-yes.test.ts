@@ -527,6 +527,60 @@ test('appLabel/projectQuestion: naming the app disambiguates the project questio
   );
 });
 
+// -----------------------------------------------------------------------------------------------
+// Legacy per-repo files: init (every mode) removes them, never touching credentials.env itself
+// -----------------------------------------------------------------------------------------------
+
+test('init --yes removes legacy .pointer/credentials.env.example and .pointer/.token_cache', () => withTempDir(async (dir) => {
+  await fs.mkdir(path.join(dir, '.pointer'), { recursive: true });
+  await fs.writeFile(path.join(dir, '.pointer/credentials.env.example'), 'POINTER_API_KEY=\n', 'utf8');
+  await fs.writeFile(path.join(dir, '.pointer/.token_cache'), '{"token":"stale"}', 'utf8');
+
+  const { stdout } = await execAsync(
+    `node ${cliPath} init --yes --key ptr_good --create "My App" --server ${serverUrl}`,
+    { cwd: dir, env: envFor(dir) },
+  );
+
+  assert.match(stdout, /removed legacy \.pointer\/credentials\.env\.example/);
+  assert.match(stdout, /removed legacy \.pointer\/\.token_cache/);
+
+  await assert.rejects(fs.access(path.join(dir, '.pointer/credentials.env.example')));
+  await assert.rejects(fs.access(path.join(dir, '.pointer/.token_cache')));
+}));
+
+test('a join also removes legacy .pointer files, without touching credentials.env', () => withTempDir(async (dir) => {
+  await fs.mkdir(path.join(dir, '.pointer'), { recursive: true });
+  await fs.writeFile(
+    path.join(dir, '.pointer/config.json'),
+    JSON.stringify({
+      server: serverUrl,
+      project: 'existing',
+      environment: 'local',
+      aiTool: 'claude-code',
+      delivery: 'embed',
+    }),
+    'utf8',
+  );
+  await fs.writeFile(path.join(dir, '.pointer/credentials.env.example'), 'POINTER_API_KEY=\n', 'utf8');
+  await fs.writeFile(path.join(dir, '.pointer/.token_cache'), '{"token":"stale"}', 'utf8');
+  await fs.writeFile(path.join(dir, 'index.html'), '<html><head></head><body></body></html>', 'utf8');
+
+  const { stdout } = await execAsync(
+    `node ${cliPath} init --yes --key ptr_good --server ${serverUrl} --local-credentials`,
+    { cwd: dir, env: envFor(dir) },
+  );
+
+  assert.match(stdout, /Joined/);
+  assert.match(stdout, /removed legacy \.pointer\/credentials\.env\.example/);
+  assert.match(stdout, /removed legacy \.pointer\/\.token_cache/);
+
+  await assert.rejects(fs.access(path.join(dir, '.pointer/credentials.env.example')));
+  await assert.rejects(fs.access(path.join(dir, '.pointer/.token_cache')));
+
+  const creds = await fs.readFile(path.join(dir, '.pointer/credentials.env'), 'utf8');
+  assert.match(creds, /POINTER_API_KEY=ptr_good/, 'credentials.env itself must never be touched by the cleanup');
+}));
+
 test('init --yes --path twice with --local-credentials: credentials.env has POINTER_SERVER but no POINTER_PROJECT (multi-project)', () => withTempDir(async (dir) => {
   await fs.mkdir(path.join(dir, 'apps/a'), { recursive: true });
   await fs.mkdir(path.join(dir, 'apps/b'), { recursive: true });

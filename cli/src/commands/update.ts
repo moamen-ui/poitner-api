@@ -1,6 +1,6 @@
 import { promises as fs } from 'node:fs';
 import { dirname, join } from 'node:path';
-import { readConfig } from '../config.js';
+import { readConfig, removeLegacyRepoFiles } from '../config.js';
 import { api } from '../api.js';
 import { readStamp } from '../lib/skill-stamp.js';
 import { skillFilesFor } from '../lib/skill-paths.js';
@@ -35,6 +35,12 @@ function sourceFor(path: string): string | null {
  * whereas replacing the file would break it.
  */
 export async function updateCommand(cwd: string, options: UpdateOptions): Promise<number> {
+  // A repo installed by an older CLI may still have files that version wrote and this one no
+  // longer does — see `removeLegacyRepoFiles`. Unconditional: this must happen whether or not the
+  // rest of the command finds anything to update.
+  const removedLegacyFiles = await removeLegacyRepoFiles(cwd);
+  for (const f of removedLegacyFiles) console.log(`\x1b[2mremoved legacy ${f}\x1b[0m`);
+
   const config = await readConfig(cwd);
   const server = (options.server || config.server || '').replace(/\/$/, '');
 

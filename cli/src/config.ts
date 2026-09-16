@@ -291,6 +291,40 @@ const IGNORED_SKILL_DIRS = [
 ];
 
 /**
+ * Legacy per-repo files an earlier CLI version wrote and no longer does — a repo installed before
+ * this version still has them lying around until `init`/`update` clean them up. `credentials.env`
+ * itself (the one file this list must never include) is untouched either way: `credentials.env.example`
+ * was only ever a template of empty placeholders, dropped once every clone installs its own
+ * `credentials.env` instead of committing one; `.token_cache` was the pre-global-store JWT cache
+ * (see `tokenCacheFile` in credentials.ts).
+ */
+const LEGACY_REPO_FILES = ['.pointer/credentials.env.example', '.pointer/.token_cache'];
+
+/**
+ * Deletes whichever of `LEGACY_REPO_FILES` are present under `cwd`, returning the repo-relative
+ * paths actually removed (for the caller to report, one dim line per file) — never
+ * `.pointer/credentials.env`, and never an error for a repo that never had these files at all.
+ */
+export async function removeLegacyRepoFiles(cwd: string): Promise<string[]> {
+  const removed: string[] = [];
+  for (const rel of LEGACY_REPO_FILES) {
+    const abs = join(cwd, rel);
+    try {
+      await fs.access(abs);
+    } catch {
+      continue;
+    }
+    try {
+      await fs.rm(abs, { force: true });
+      removed.push(rel);
+    } catch {
+      // best-effort — a permissions error here must not block init/update
+    }
+  }
+  return removed;
+}
+
+/**
  * Adds/removes the boilerplate that keeps the repo's `.gitignore` covering every path `init` can
  * write. `skillsDir` is `init --skills-dir <dir>`'s override — when set, `installSkills` writes
  * `<dir>/pointer-init/SKILL.md` and `<dir>/pointer-feedback/SKILL.md` instead of the tool-specific

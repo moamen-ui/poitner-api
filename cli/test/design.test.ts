@@ -158,6 +158,32 @@ test('design tokens: ignores node_modules, dist, build, .next', async () => {
   }
 });
 
+// -----------------------------------------------------------------------------------------------
+// Monorepo support: `detectDesignTokens(cwd, { root })` — the app dir has no package.json of its
+// own, and the shared config/dependencies live at the workspace root instead.
+// -----------------------------------------------------------------------------------------------
+
+test('design tokens: monorepo app with no package.json reads deps from the root and its own tailwind config', async () => {
+  const monorepoRoot = join(fixturesDir, 'monorepo');
+  const appDir = join(monorepoRoot, 'apps/x');
+
+  const result = await detectDesignTokens(appDir, { root: monorepoRoot });
+
+  assert.ok(
+    result.libraries.some((l) => l.name === 'tailwindcss'),
+    'tailwindcss is only declared in the ROOT package.json — must still surface as a library',
+  );
+  assert.ok(
+    result.libraries.some((l) => l.name === '@radix-ui/react-progress'),
+    'radix, also only declared at the root, must surface too',
+  );
+  assert.ok(result.tokens.tailwind, "the app's own tailwind.config.js must still be detected directly");
+  assert.notEqual(
+    result.guidance,
+    "No design tokens detected; match the nearest sibling element's existing classes/styles.",
+  );
+});
+
 test('summarizeDesignTokens produces expected human output', () => {
   const summary1 = summarizeDesignTokens(
     {

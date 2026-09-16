@@ -44,7 +44,9 @@ used by `other`/`antigravity`, and symlinked into from the three tools above), a
 gitignored too, and the next install removes it. `init` manages the `.gitignore` block for you
 (`upsertGitignore`), migrating an older repo's block — including one that still re-included
 `pointer.sh` or the now-removed `credentials.env.example`, or predates any of the paths above —
-automatically and idempotently.
+automatically and idempotently. Both `init` (every mode, including a join) and `update` also delete
+an actual leftover `.pointer/credentials.env.example` or `.pointer/.token_cache` file still on disk
+from an older install — never `.pointer/credentials.env` itself.
 
 That split is why a clone of an already-configured repo has `config.json`/`stack.json` (they were
 committed) but is missing the skills and `pointer.sh` (they were never committed) — see **join

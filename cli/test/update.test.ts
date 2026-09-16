@@ -110,3 +110,24 @@ test('update reports up to date once files are installed and match the server ve
     await stub.close();
   }
 });
+
+test('update removes legacy .pointer/credentials.env.example and .pointer/.token_cache, never touching credentials.env', async () => {
+  const stub = await stubServer('2026.09.16');
+  const dir = await scratch({ server: stub.url, project: 'demo', environment: 'local', aiTool: 'claude-code' });
+  try {
+    await fs.writeFile(join(dir, '.pointer/credentials.env.example'), 'POINTER_API_KEY=\n', 'utf8');
+    await fs.writeFile(join(dir, '.pointer/.token_cache'), '{"token":"stale"}', 'utf8');
+    await fs.writeFile(join(dir, '.pointer/credentials.env'), 'POINTER_API_KEY=ptr_good\n', 'utf8');
+
+    await updateCommand(dir, { server: stub.url });
+
+    await assert.rejects(fs.access(join(dir, '.pointer/credentials.env.example')));
+    await assert.rejects(fs.access(join(dir, '.pointer/.token_cache')));
+
+    const creds = await fs.readFile(join(dir, '.pointer/credentials.env'), 'utf8');
+    assert.equal(creds, 'POINTER_API_KEY=ptr_good\n');
+  } finally {
+    await fs.rm(dir, { recursive: true, force: true });
+    await stub.close();
+  }
+});

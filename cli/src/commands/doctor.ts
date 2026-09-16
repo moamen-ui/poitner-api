@@ -48,7 +48,7 @@ export async function doctorCommand(cwd: string, options: DoctorOptions, cliVers
     const appCwd = multi && projectKey ? join(cwd, config.projects?.[projectKey]?.path ?? '.') : cwd;
 
     const start = Date.now();
-    const designBlock = await detectDesignTokens(appCwd);
+    const designBlock = await detectDesignTokens(appCwd, { root: cwd });
     const detectMs = Date.now() - start;
     const existing = await readStackFile(cwd, projectKey);
     const merged = mergeStack(existing, null, designBlock);
