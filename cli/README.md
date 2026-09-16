@@ -31,7 +31,7 @@ pointer init --server https://api.pointer.moamen.work --key ptr_... --project my
 
 `init` only expects these files to be shared via git: **`.pointer/config.json`**, **`.pointer/stack.json`**,
 and — in a multi-project repo (see **Monorepos** below) — every **`.pointer/projects/<key>.stack.json`**.
-Everything else (`pointer.sh`, `manifest.json`, and — only if you opted into `--local-credentials` —
+Everything else (`pointer.sh`, `manifest.json`, and — only if you opted into `--scope repo` —
 `credentials.env`) is derived or per-machine and stays gitignored, along with every skill layout the
 CLI can write: `.claude/skills/pointer-init/`, `.claude/skills/pointer-feedback/` (Claude Code),
 `.cursor/rules/pointer-init.md`, `.cursor/rules/pointer-feedback.md` (Cursor),
@@ -184,7 +184,7 @@ saves it to a global, per-machine credential store; every other command (`init` 
 
 1. **`POINTER_API_KEY`** environment variable — the right choice for CI, and always wins outright.
 2. This repo's **`.pointer/credentials.env`** — written only when you opt out of the global store
-   (`--local-credentials`, or answering "no" to the save prompt below).
+   (`--scope repo`, or choosing "Repo" at the prompt below; `--local-credentials` is the older alias).
 3. The **global store**: `~/.config/pointer/credentials.json` (honours `$XDG_CONFIG_HOME`; on
    Windows, `%APPDATA%\pointer\credentials.json`), keyed by server, mode `0600`.
 
@@ -217,7 +217,7 @@ Save this key for all repos on this machine? (Y/n)
 
 Answering yes (the default, and also the default under `--yes`/`--json` when `--key` is given)
 saves it globally and writes **no** `.pointer/credentials.env` at all — there is nothing repo-local
-to gitignore, review, or accidentally commit. Answering no, or passing **`--local-credentials`**,
+to gitignore, review, or accidentally commit. Choosing "Repo" at the prompt, or passing **`--scope repo`** (alias `--local-credentials`),
 keeps the pre-global-store behaviour: the key is written to `.pointer/credentials.env` instead
 (still gitignored, still per-machine). A join (`init` run again in an already-configured repo) never
 even asks, either way: it tries `resolveApiKey`'s three sources first and only prompts when none of
@@ -226,7 +226,7 @@ them resolve.
 **CI**: set `POINTER_API_KEY` — it always wins, and nothing is written anywhere.
 
 **Multiple accounts on one machine** (e.g. a personal key for most repos, a service account for
-one): run `pointer init --key <key> --local-credentials` (or `pointer login` normally, then override
+one): run `pointer login --scope repo` in that repo, or `pointer init --key <key> --scope repo` (or `pointer login` normally, then override
 per-repo with `.pointer/credentials.env`) for the repo that needs the different key — the repo-local
 file wins over the global store for that repo only.
 

@@ -1,5 +1,5 @@
 import { ask, closePrompts } from '../prompt.js';
-import { findRepoRoot, readConfig } from '../config.js';
+import { findRepoRoot, readConfig, writeCredentials } from '../config.js';
 import { api } from '../api.js';
 import { getBranding } from '../branding.js';
 import { saveGlobalCredential } from '../credentials.js';
@@ -68,9 +68,20 @@ export async function loginCommand(cwd: string, options: Record<string, string |
     closePrompts();
   }
 
-  await saveGlobalCredential(server, { apiKey: key!, email: me?.email, displayName: me?.displayName });
-
+  const scope = typeof options['scope'] === 'string' ? String(options['scope']).toLowerCase() : 'global';
+  if (scope !== 'global' && scope !== 'repo') {
+    console.error(`Invalid --scope "${options['scope']}". Valid values: global, repo.`);
+    process.exit(2);
+  }
   const who = me?.displayName ? `${me.displayName}${me?.email ? ` (${me.email})` : ''}` : me?.email ?? 'you';
+  if (scope === 'repo') {
+    // Repo scope: the multi-account case (a second identity on the same server for one repo). The
+    // repo file wins over the global store in resolveApiKey, so this overrides a machine-wide key.
+    await writeCredentials(root, key!, { server });
+    console.log(`✔ Signed in to ${server} as ${who} — saved to .pointer/credentials.env (this repo only; overrides the global store here)`);
+    process.exit(0);
+  }
+  await saveGlobalCredential(server, { apiKey: key!, email: me?.email, displayName: me?.displayName });
   console.log(`✔ Signed in to ${server} as ${who} — saved for all repos on this machine`);
   process.exit(0);
 }

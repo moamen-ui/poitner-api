@@ -325,3 +325,28 @@ test('logout on a server with no saved key reports nothing removed', () =>
       assert.strictEqual(json.removed, false);
     }),
   ));
+
+test('login --scope repo writes .pointer/credentials.env and leaves the global store alone', () =>
+  withTempDir(async (repo) =>
+    withGlobalDir(async (globalDir) => {
+      const { stdout } = await execAsync(
+        `node ${cliPath} login --key ptr_good --server ${serverUrl} --scope repo`,
+        { cwd: repo, env: envFor(globalDir) },
+      );
+      assert.match(stdout, /this repo only/);
+      const creds = await fs.readFile(path.join(repo, '.pointer/credentials.env'), 'utf8');
+      assert.match(creds, /POINTER_API_KEY=ptr_good/);
+      assert.match(creds, new RegExp(`POINTER_SERVER=${serverUrl.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`));
+      await assert.rejects(fs.access(path.join(globalDir, 'credentials.json')), 'global store must not be created');
+    }),
+  ));
+
+test('login --scope with an unknown value exits 2', () =>
+  withTempDir(async (repo) =>
+    withGlobalDir(async (globalDir) => {
+      await assert.rejects(
+        execAsync(`node ${cliPath} login --key ptr_good --server ${serverUrl} --scope machine`, { cwd: repo, env: envFor(globalDir) }),
+        (err: any) => err.code === 2 && /Invalid --scope/.test(err.stderr),
+      );
+    }),
+  ));

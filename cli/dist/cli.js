@@ -15,7 +15,7 @@ var init_build_constants = __esm({
   "src/build-constants.ts"() {
     "use strict";
     BUILD_DEFAULT_SERVER = true ? "https://api.pointer.moamen.work" : "https://api.pointer.moamen.work";
-    BUILD_CLI_VERSION = true ? "0.2.0" : "0.0.0-dev";
+    BUILD_CLI_VERSION = true ? "0.2.1" : "0.0.0-dev";
   }
 });
 
@@ -3090,7 +3090,12 @@ async function initCommand(cwd2, options = {}) {
   if (!isYes && !options["server"] && !config.server) {
     server = await ask("Server URL", { default: server });
   }
-  const localCredentialsFlag = Boolean(options["local-credentials"]);
+  const scopeFlag = typeof options["scope"] === "string" ? String(options["scope"]).toLowerCase() : void 0;
+  if (scopeFlag !== void 0 && scopeFlag !== "global" && scopeFlag !== "repo") {
+    console.error(`Invalid --scope "${options["scope"]}". Valid values: global, repo.`);
+    process.exit(2);
+  }
+  const localCredentialsFlag = Boolean(options["local-credentials"]) || scopeFlag === "repo";
   let key = options["key"];
   let keySource = null;
   if (!key) {
@@ -3195,9 +3200,12 @@ async function initCommand(cwd2, options = {}) {
   let writeLocalCreds = keySource !== "global" && keySource !== "env";
   if (freshlyAuthenticated) {
     let saveGlobally = !localCredentialsFlag;
-    if (saveGlobally && !isYes) {
-      const answer = await ask("Save this key for all repos on this machine? (Y/n)", { default: "y" });
-      saveGlobally = /^y/i.test(answer.trim());
+    if (saveGlobally && !isYes && scopeFlag === void 0) {
+      const choice = await select("Where should this API key be stored?", [
+        "Global \u2014 this machine, every repo (~/.config/pointer/credentials.json)",
+        "Repo \u2014 .pointer/credentials.env in this repo only (gitignored)"
+      ]);
+      saveGlobally = choice.startsWith("Global");
     }
     if (saveGlobally) {
       await saveGlobalCredential(server, { apiKey: key, email: me?.email, displayName: me?.displayName });
@@ -11801,8 +11809,18 @@ async function loginCommand(cwd2, options = {}) {
     }
     closePrompts();
   }
-  await saveGlobalCredential(server, { apiKey: key, email: me?.email, displayName: me?.displayName });
+  const scope = typeof options["scope"] === "string" ? String(options["scope"]).toLowerCase() : "global";
+  if (scope !== "global" && scope !== "repo") {
+    console.error(`Invalid --scope "${options["scope"]}". Valid values: global, repo.`);
+    process.exit(2);
+  }
   const who = me?.displayName ? `${me.displayName}${me?.email ? ` (${me.email})` : ""}` : me?.email ?? "you";
+  if (scope === "repo") {
+    await writeCredentials(root, key, { server });
+    console.log(`\u2714 Signed in to ${server} as ${who} \u2014 saved to .pointer/credentials.env (this repo only; overrides the global store here)`);
+    process.exit(0);
+  }
+  await saveGlobalCredential(server, { apiKey: key, email: me?.email, displayName: me?.displayName });
   console.log(`\u2714 Signed in to ${server} as ${who} \u2014 saved for all repos on this machine`);
   process.exit(0);
 }
@@ -11986,8 +12004,9 @@ Options:
   --no-skills              Skip skills installation
   --no-design              Skip design token detection
   --source-map             Wire in the Vite plugin that stamps component source hashes
-  --local-credentials      Write .pointer/credentials.env instead of saving the key to this
-                           machine's global store (~/.config/pointer/credentials.json)
+  --scope <global|repo>    Where the API key is stored: global (default \u2014 this machine, all repos,
+                           ~/.config/pointer/credentials.json) or repo (.pointer/credentials.env,
+                           gitignored, this repo only). --local-credentials is an alias for --scope repo
   -y, --yes                Non-interactive
   --json                   JSON output (implies --yes)
   -h, --help               Show help
@@ -12005,9 +12024,11 @@ Authenticate once per machine: validates an API key and saves it to
 server. Every repo on this machine then resolves a key for that server without being asked again.
 
 Options:
-  --server <url>     Server URL (default: this repo's .pointer/config.json, then $POINTER_SERVER)
-  --key <key>        API key (prompted, hidden, when omitted)
-  -h, --help         Show this help
+  --server <url>          Server URL (default: this repo's .pointer/config.json, then $POINTER_SERVER)
+  --key <key>             API key (prompted, hidden, when omitted)
+  --scope <global|repo>   global (default): save for every repo on this machine;
+                          repo: write .pointer/credentials.env in the current repo only
+  -h, --help              Show this help
 `);
       process.exit(0);
     }

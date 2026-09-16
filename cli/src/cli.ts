@@ -126,8 +126,9 @@ Options:
   --no-skills              Skip skills installation
   --no-design              Skip design token detection
   --source-map             Wire in the Vite plugin that stamps component source hashes
-  --local-credentials      Write .pointer/credentials.env instead of saving the key to this
-                           machine's global store (~/.config/pointer/credentials.json)
+  --scope <global|repo>    Where the API key is stored: global (default — this machine, all repos,
+                           ~/.config/pointer/credentials.json) or repo (.pointer/credentials.env,
+                           gitignored, this repo only). --local-credentials is an alias for --scope repo
   -y, --yes                Non-interactive
   --json                   JSON output (implies --yes)
   -h, --help               Show help
@@ -145,9 +146,11 @@ Authenticate once per machine: validates an API key and saves it to
 server. Every repo on this machine then resolves a key for that server without being asked again.
 
 Options:
-  --server <url>     Server URL (default: this repo's .pointer/config.json, then $POINTER_SERVER)
-  --key <key>        API key (prompted, hidden, when omitted)
-  -h, --help         Show this help
+  --server <url>          Server URL (default: this repo's .pointer/config.json, then $POINTER_SERVER)
+  --key <key>             API key (prompted, hidden, when omitted)
+  --scope <global|repo>   global (default): save for every repo on this machine;
+                          repo: write .pointer/credentials.env in the current repo only
+  -h, --help              Show this help
 `);
             process.exit(0);
         }

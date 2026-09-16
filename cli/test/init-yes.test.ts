@@ -604,3 +604,21 @@ test('init --yes --path twice with --local-credentials: credentials.env has POIN
   assert.match(creds, new RegExp(`^POINTER_SERVER=${serverUrl.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'm'));
   assert.doesNotMatch(creds, /^POINTER_PROJECT=/m, 'a multi-project repo must never pin credentials.env to one project — pointer.sh takes -p there');
 }));
+
+test('init --scope repo writes the repo credentials file instead of the global store', () => withTempDir(async (dir) => {
+  await fs.writeFile(path.join(dir, 'index.html'), '<html><head></head><body></body></html>', 'utf8');
+  const { stdout } = await execAsync(
+    `node ${cliPath} init --yes --key ptr_good --server ${serverUrl} --project existing --scope repo`,
+    { cwd: dir, env: envFor(dir) },
+  );
+  assert.match(stdout, /credentials\.env/);
+  const creds = await fs.readFile(path.join(dir, '.pointer/credentials.env'), 'utf8');
+  assert.match(creds, /POINTER_API_KEY=ptr_good/);
+}));
+
+test('init --scope with an unknown value exits 2', () => withTempDir(async (dir) => {
+  await assert.rejects(
+    execAsync(`node ${cliPath} init --yes --key ptr_good --server ${serverUrl} --project existing --scope machine`, { cwd: dir, env: envFor(dir) }),
+    (err: any) => err.code === 2 && /Invalid --scope/.test(err.stderr),
+  );
+}));

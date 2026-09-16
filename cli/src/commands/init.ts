@@ -77,7 +77,14 @@ export async function initCommand(cwd: string, options: Record<string, string | 
     // `--yes` gate below. A join (or any run) that already has a working key on this machine must
     // never be told `--key` is "required": that is the whole point of `login`/the global store.
     // `--key` still wins outright when passed.
-    const localCredentialsFlag = Boolean(options['local-credentials']);
+    // `--scope global|repo` decides where a freshly validated key is stored; `--local-credentials`
+    // is the older alias for `--scope repo`. Anything else is a usage error.
+    const scopeFlag = typeof options['scope'] === 'string' ? String(options['scope']).toLowerCase() : undefined;
+    if (scopeFlag !== undefined && scopeFlag !== 'global' && scopeFlag !== 'repo') {
+        console.error(`Invalid --scope "${options['scope']}". Valid values: global, repo.`);
+        process.exit(2);
+    }
+    const localCredentialsFlag = Boolean(options['local-credentials']) || scopeFlag === 'repo';
     let key = options['key'] as string;
     let keySource: ApiKeySource = null;
     if (!key) {
@@ -231,9 +238,12 @@ export async function initCommand(cwd: string, options: Record<string, string | 
 
     if (freshlyAuthenticated) {
         let saveGlobally = !localCredentialsFlag;
-        if (saveGlobally && !isYes) {
-            const answer = await ask('Save this key for all repos on this machine? (Y/n)', { default: 'y' });
-            saveGlobally = /^y/i.test(answer.trim());
+        if (saveGlobally && !isYes && scopeFlag === undefined) {
+            const choice = await select('Where should this API key be stored?', [
+                'Global — this machine, every repo (~/.config/pointer/credentials.json)',
+                'Repo — .pointer/credentials.env in this repo only (gitignored)',
+            ]);
+            saveGlobally = choice.startsWith('Global');
         }
         if (saveGlobally) {
             await saveGlobalCredential(server as string, { apiKey: key, email: me?.email, displayName: me?.displayName });
