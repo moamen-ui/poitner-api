@@ -3160,7 +3160,7 @@ and the pointer-init skill uses them to mount the widget for you afterwards.
       const choices = projects.map((p) => `${p.name}  (${p.key})`).concat(createOpt);
       let choice = createOpt;
       if (projects.length > 0) {
-        choice = await select("Which project is this app?", choices);
+        choice = await select(projectQuestion(), choices);
       }
       if (choice === createOpt) {
         const name = await ask("Project name");
@@ -3567,6 +3567,12 @@ ${dim(`Add to ${configPath}, user-level, do not commit:`)}
 ${dim('  { "mcpServers": { "pointer": { "command": "npx", "args": ["-y", "pointer-feedback", "mcp"] } } }')}`);
   process.exit(0);
 }
+function appLabel(appDir) {
+  return appDir;
+}
+function projectQuestion(label) {
+  return label ? `Which Pointer project is ${label}?` : "Which project is this app?";
+}
 function toRootRelative(root, p) {
   const abs = isAbsolute2(p) ? p : resolve2(p);
   return relative3(root, abs).split(sep2).join("/");
@@ -3607,7 +3613,7 @@ function deriveAppDirFromHtmlPath(htmlPath) {
   let dir = dirname5(htmlPath).replace(/\/src$/, "");
   return dir === "" || dir === "." ? "." : dir;
 }
-async function selectOrCreateProject(server, token, isYes, presetKey, presetCreate) {
+async function selectOrCreateProject(server, token, isYes, presetKey, presetCreate, label) {
   let finalProjectKey = presetKey || "";
   let projectName = presetCreate || finalProjectKey;
   let created = false;
@@ -3617,7 +3623,7 @@ async function selectOrCreateProject(server, token, isYes, presetKey, presetCrea
     const choices = projects.map((p) => `${p.name}  (${p.key})`).concat(createOpt);
     let choice = createOpt;
     if (projects.length > 0) {
-      choice = await select("Which project is this app?", choices);
+      choice = await select(projectQuestion(label), choices);
     }
     if (choice === createOpt) {
       const name = await ask("Project name");
@@ -3730,7 +3736,8 @@ async function resolvePin(server, options) {
 async function setupOneProject(ctx) {
   const { cwd: cwd2, appDir, server, token } = ctx;
   const targetCwd = join13(cwd2, appDir);
-  const { key, name, created } = await selectOrCreateProject(server, token, ctx.isYes, ctx.presetKey, ctx.presetCreate);
+  const label = appLabel(appDir);
+  const { key, name, created } = await selectOrCreateProject(server, token, ctx.isYes, ctx.presetKey, ctx.presetCreate, label);
   const ALL_ENVS = ["local", "staging", "production"];
   let envs;
   if (ctx.presetEnvironments !== void 0) {
@@ -3743,7 +3750,7 @@ async function setupOneProject(ctx) {
     if (envs.length === 0)
       envs = ["local"];
   } else if (ctx.interactive) {
-    const picked = await multiSelect(`Which environment(s) does ${appDir} run in?`, ALL_ENVS, ["local"]);
+    const picked = await multiSelect(`Which environment(s) does ${label} run in?`, ALL_ENVS, ["local"]);
     envs = picked.length ? picked : ["local"];
   } else {
     envs = ["local"];
@@ -3765,7 +3772,7 @@ async function setupOneProject(ctx) {
   }
   let delivery = ctx.presetDelivery ?? ctx.repoDefaultDelivery;
   if (ctx.interactive && ctx.presetDelivery === void 0) {
-    const choice = await select(`How will reviewers open the widget for ${appDir}?`, [
+    const choice = await select(`How will reviewers open the widget for ${label}?`, [
       `Embed it in this app${ctx.repoDefaultDelivery === "embed" ? " (repo default)" : ""}`,
       `Chrome extension only${ctx.repoDefaultDelivery === "extension" ? " (repo default)" : ""}`
     ]);
@@ -3929,6 +3936,10 @@ async function handleMultiProjectSetup(args) {
   }
   const results = [];
   for (const app of apps) {
+    if (!isYes) {
+      console.log(`
+\u2500\u2500 ${appLabel(app.dir)} \u2500\u2500`);
+    }
     const result = await setupOneProject({
       cwd: cwd2,
       appDir: app.dir,
@@ -4001,7 +4012,7 @@ async function handleMultiProjectSetup(args) {
     projects: projectsMap
   });
   if (writeLocalCreds) {
-    await writeCredentials(cwd2, key, { server, project: results[0]?.key });
+    await writeCredentials(cwd2, key, { server });
   }
   await postEvent(server, token, {
     type: "installed",

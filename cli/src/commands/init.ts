@@ -323,7 +323,7 @@ export async function initCommand(cwd: string, options: Record<string, string | 
 
             let choice = createOpt;
             if (projects.length > 0) {
-                choice = await select('Which project is this app?', choices);
+                choice = await select(projectQuestion(), choices);
             }
 
             if (choice === createOpt) {
@@ -910,6 +910,27 @@ ${dim('  { "mcpServers": { "pointer": { "command": "npx", "args": ["-y", "pointe
 // Multi-project (monorepo) support
 // ---------------------------------------------------------------------------------------------
 
+/**
+ * The app-identifying phrase used in every question asked once per app during multi-project setup
+ * — e.g. `apps/tuwaiq-clubs` — so a run that selected several Nx apps never asks an ambiguous
+ * "this app?" once app 2 (or 3, ...)'s questions begin. One place, so all three questions
+ * (`projectQuestion`, the environment multiSelect, and the delivery select in `setupOneProject`)
+ * agree on the wording if it ever changes.
+ */
+export function appLabel(appDir: string): string {
+    return appDir;
+}
+
+/**
+ * Wording for "which project": unambiguous ("this app") for the single-project flow, where there is
+ * only ever one app to ask about — or naming the app (`appLabel`) once a single interactive run can
+ * ask this question more than once, back to back, for several apps (see `handleMultiProjectSetup`'s
+ * per-app header).
+ */
+export function projectQuestion(label?: string): string {
+    return label ? `Which Pointer project is ${label}?` : 'Which project is this app?';
+}
+
 /** An absolute path made repo-root-relative, with forward slashes — what a `ProjectEntry` stores. */
 function toRootRelative(root: string, p: string): string {
     const abs = isAbsolute(p) ? p : resolve(p);
@@ -988,6 +1009,10 @@ async function selectOrCreateProject(
     isYes: boolean,
     presetKey?: string,
     presetCreate?: string,
+    /** Names the app in the question — e.g. `apps/tuwaiq-clubs` — when this run may ask it more
+     *  than once (see `appLabel`). Omitted for the single-project flow, where "this app?" is
+     *  already unambiguous. */
+    label?: string,
 ): Promise<{ key: string; name: string; created: boolean }> {
     let finalProjectKey = presetKey || '';
     let projectName = presetCreate || finalProjectKey;
@@ -1000,7 +1025,7 @@ async function selectOrCreateProject(
 
         let choice = createOpt;
         if (projects.length > 0) {
-            choice = await select('Which project is this app?', choices);
+            choice = await select(projectQuestion(label), choices);
         }
 
         if (choice === createOpt) {
@@ -1162,8 +1187,9 @@ async function setupOneProject(ctx: {
 }> {
     const { cwd, appDir, server, token } = ctx;
     const targetCwd = join(cwd, appDir);
+    const label = appLabel(appDir);
 
-    const { key, name, created } = await selectOrCreateProject(server, token, ctx.isYes, ctx.presetKey, ctx.presetCreate);
+    const { key, name, created } = await selectOrCreateProject(server, token, ctx.isYes, ctx.presetKey, ctx.presetCreate, label);
 
     const ALL_ENVS = ['local', 'staging', 'production'];
     let envs: string[];
@@ -1176,7 +1202,7 @@ async function setupOneProject(ctx: {
         }
         if (envs.length === 0) envs = ['local'];
     } else if (ctx.interactive) {
-        const picked = await multiSelect(`Which environment(s) does ${appDir} run in?`, ALL_ENVS, ['local']);
+        const picked = await multiSelect(`Which environment(s) does ${label} run in?`, ALL_ENVS, ['local']);
         envs = picked.length ? picked : ['local'];
     } else {
         envs = ['local'];
@@ -1198,7 +1224,7 @@ async function setupOneProject(ctx: {
 
     let delivery: 'embed' | 'extension' = ctx.presetDelivery ?? ctx.repoDefaultDelivery;
     if (ctx.interactive && ctx.presetDelivery === undefined) {
-        const choice = await select(`How will reviewers open the widget for ${appDir}?`, [
+        const choice = await select(`How will reviewers open the widget for ${label}?`, [
             `Embed it in this app${ctx.repoDefaultDelivery === 'embed' ? ' (repo default)' : ''}`,
             `Chrome extension only${ctx.repoDefaultDelivery === 'extension' ? ' (repo default)' : ''}`,
         ]);
@@ -1426,6 +1452,15 @@ async function handleMultiProjectSetup(args: {
         noHtmlFound: boolean;
     }> = [];
     for (const app of apps) {
+        // A visible header per app: the questions below (`selectOrCreateProject`, environment,
+        // delivery) already run strictly one app at a time (this loop is sequential), but with
+        // several apps selected from the Nx multi-select, nothing on screen said WHICH app's
+        // questions were currently being asked — every one read as a bare "Which project is this
+        // app?" no matter how many had already gone by. Interactive only: --yes/--json presets
+        // everything and asks nothing, so there is nothing to head.
+        if (!isYes) {
+            console.log(`\n── ${appLabel(app.dir)} ──`);
+        }
         const result = await setupOneProject({
             cwd,
             appDir: app.dir,
@@ -1511,7 +1546,11 @@ async function handleMultiProjectSetup(args: {
     });
 
     if (writeLocalCreds) {
-        await writeCredentials(cwd, key, { server, project: results[0]?.key });
+        // No `project`: this repo is multi-project from here on (`projectsMap` has 2+ entries, or
+        // did already), and `.pointer/pointer.sh` takes `-p <key>` in that mode — a single
+        // hardcoded POINTER_PROJECT line would silently pin every no-Node invocation to whichever
+        // app happened to be `results[0]`, wrong for every other configured app.
+        await writeCredentials(cwd, key, { server });
     }
 
     await postEvent(server, token, {

@@ -511,3 +511,42 @@ test('a join needs no --key at all when a key is already saved in the global sto
     'a key that resolved from the global store must not also be written to the repo',
   );
 }));
+
+// -----------------------------------------------------------------------------------------------
+// Multi-project setup: per-app question wording, and no POINTER_PROJECT in credentials.env
+// -----------------------------------------------------------------------------------------------
+
+test('appLabel/projectQuestion: naming the app disambiguates the project question, one-app phrasing is unchanged', async () => {
+  const { appLabel, projectQuestion } = await import('../src/commands/init.js');
+
+  assert.strictEqual(appLabel('apps/tuwaiq-clubs'), 'apps/tuwaiq-clubs');
+  assert.strictEqual(projectQuestion(), 'Which project is this app?');
+  assert.strictEqual(
+    projectQuestion(appLabel('apps/tuwaiq-clubs')),
+    'Which Pointer project is apps/tuwaiq-clubs?',
+  );
+});
+
+test('init --yes --path twice with --local-credentials: credentials.env has POINTER_SERVER but no POINTER_PROJECT (multi-project)', () => withTempDir(async (dir) => {
+  await fs.mkdir(path.join(dir, 'apps/a'), { recursive: true });
+  await fs.mkdir(path.join(dir, 'apps/b'), { recursive: true });
+  await fs.writeFile(path.join(dir, 'apps/a/index.html'), '<html><head></head><body></body></html>', 'utf8');
+  await fs.writeFile(path.join(dir, 'apps/b/index.html'), '<html><head></head><body></body></html>', 'utf8');
+
+  await execAsync(
+    `node ${cliPath} init --yes --key ptr_good --project p1 --path apps/a --server ${serverUrl} --local-credentials`,
+    { cwd: dir, env: envFor(dir) },
+  );
+  await execAsync(
+    `node ${cliPath} init --yes --key ptr_good --project p2 --path apps/b --server ${serverUrl} --local-credentials`,
+    { cwd: dir, env: envFor(dir) },
+  );
+
+  const config = JSON.parse(await fs.readFile(path.join(dir, '.pointer/config.json'), 'utf8'));
+  assert.ok(config.projects && Object.keys(config.projects).length > 1, 'must be multi-project by the second --path');
+
+  const creds = await fs.readFile(path.join(dir, '.pointer/credentials.env'), 'utf8');
+  assert.match(creds, /^POINTER_API_KEY=ptr_good$/m);
+  assert.match(creds, new RegExp(`^POINTER_SERVER=${serverUrl.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'm'));
+  assert.doesNotMatch(creds, /^POINTER_PROJECT=/m, 'a multi-project repo must never pin credentials.env to one project — pointer.sh takes -p there');
+}));
