@@ -284,11 +284,20 @@ test('--help works', () => withTempDir(async (dir) => {
 // Multi-project (monorepo) support: `init --path`
 // -----------------------------------------------------------------------------------------------
 
-test('init --yes --path adds a second app to a multi-project config', () => withTempDir(async (dir) => {
-  await fs.mkdir(path.join(dir, 'apps/a'), { recursive: true });
-  await fs.mkdir(path.join(dir, 'apps/b'), { recursive: true });
-  await fs.writeFile(path.join(dir, 'apps/a/index.html'), '<html><head></head><body></body></html>', 'utf8');
-  await fs.writeFile(path.join(dir, 'apps/b/index.html'), '<html><head></head><body></body></html>', 'utf8');
+test('init --yes --path adds a second app to a multi-project config (real Nx-app shape: src/index.html)', () => withTempDir(async (dir) => {
+  // The real shape every app in an Nx workspace (e.g. tuwaiq-mono-spa) has: index.html lives
+  // under src/, not at the app's own root, and there is no package.json inside the app dir either
+  // — apps/a additionally has an Nx project.json (application), apps/b does not (still a valid
+  // no-project.json app, per discoverNxApps).
+  await fs.mkdir(path.join(dir, 'apps/a/src'), { recursive: true });
+  await fs.mkdir(path.join(dir, 'apps/b/src'), { recursive: true });
+  await fs.writeFile(
+    path.join(dir, 'apps/a/project.json'),
+    JSON.stringify({ name: 'a', projectType: 'application', sourceRoot: 'apps/a/src' }),
+    'utf8',
+  );
+  await fs.writeFile(path.join(dir, 'apps/a/src/index.html'), '<html><head></head><body></body></html>', 'utf8');
+  await fs.writeFile(path.join(dir, 'apps/b/src/index.html'), '<html><head></head><body></body></html>', 'utf8');
 
   await execAsync(
     `node ${cliPath} init --yes --key ptr_good --project p1 --path apps/a --server ${serverUrl}`,
@@ -305,11 +314,11 @@ test('init --yes --path adds a second app to a multi-project config', () => with
   assert.deepStrictEqual(Object.keys(config.projects).sort(), ['p1', 'p2']);
   assert.strictEqual(config.projects.p1.path, 'apps/a');
   assert.strictEqual(config.projects.p2.path, 'apps/b');
-  assert.strictEqual(config.projects.p1.htmlPath, 'apps/a/index.html');
-  assert.strictEqual(config.projects.p2.htmlPath, 'apps/b/index.html');
+  assert.strictEqual(config.projects.p1.htmlPath, 'apps/a/src/index.html', 'the src/index.html candidate must be found and recorded');
+  assert.strictEqual(config.projects.p2.htmlPath, 'apps/b/src/index.html');
 
-  const htmlA = await fs.readFile(path.join(dir, 'apps/a/index.html'), 'utf8');
-  const htmlB = await fs.readFile(path.join(dir, 'apps/b/index.html'), 'utf8');
+  const htmlA = await fs.readFile(path.join(dir, 'apps/a/src/index.html'), 'utf8');
+  const htmlB = await fs.readFile(path.join(dir, 'apps/b/src/index.html'), 'utf8');
   assert.match(htmlA, /<pointer-feedback project="p1"/);
   assert.match(htmlB, /<pointer-feedback project="p2"/);
 

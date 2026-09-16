@@ -20,7 +20,7 @@ import { getBranding } from '../branding.js';
 import { api, ApiError } from '../api.js';
 import { postEvent } from '../events.js';
 import { runInitChecks, compareSemver, tooOldMessage } from '../checks.js';
-import { promises as fs } from 'node:fs';
+import { promises as fs, existsSync } from 'node:fs';
 import { join, dirname, relative, resolve, isAbsolute, sep } from 'node:path';
 import { detectDesignTokens, summarizeDesignTokens, type DesignBlock } from '../stack/design.js';
 import { buildRequestBody, mergeStack, writeStackFile, stackFileRelPath } from '../stack/stackfile.js';
@@ -828,6 +828,52 @@ function toRootRelative(root: string, p: string): string {
     return relative(root, abs).split(sep).join('/');
 }
 
+/** Does this app directory have its own Vite config? Decides `injectVite` vs `injectStatic`. */
+async function hasViteConfig(appDir: string): Promise<boolean> {
+    for (const ext of ['ts', 'js', 'mjs', 'mts']) {
+        if (existsSync(join(appDir, `vite.config.${ext}`))) return true;
+    }
+    return false;
+}
+
+async function readJsonSafe(p: string): Promise<any | null> {
+    try {
+        return JSON.parse(await fs.readFile(p, 'utf8'));
+    } catch {
+        return null;
+    }
+}
+
+/**
+ * The HTML file to inject into for one app, tried in order: an explicit `--html` (used as-is,
+ * trusted — `injectStatic`/`injectVite` themselves report a clear error if it does not exist),
+ * `<appDir>/index.html`, `<appDir>/src/index.html` (the real shape of every app in an Nx workspace
+ * like tuwaiq-mono-spa — `detectStack`'s own `<cwd>/index.html`-only check misses this entirely,
+ * and an app directory with no `package.json` of its own never resolves to a `vite`/`static` kind
+ * in the first place, so injection silently did nothing), `<sourceRoot>/index.html` when the app's
+ * `project.json` declares a `sourceRoot` (Nx's own field for exactly this, relative to the repo
+ * root rather than the app directory), then `<appDir>/public/index.html` (CRA/Nx-with-webpack).
+ * Returns the first that exists, or `undefined` if none do.
+ */
+async function resolveHtmlCandidate(root: string, appDir: string, explicitHtml?: string): Promise<string | undefined> {
+    if (explicitHtml) return explicitHtml;
+
+    const targetCwd = join(root, appDir);
+    const candidates = [join(targetCwd, 'index.html'), join(targetCwd, 'src', 'index.html')];
+
+    const projectJson = await readJsonSafe(join(targetCwd, 'project.json'));
+    if (projectJson?.sourceRoot) {
+        candidates.push(join(root, projectJson.sourceRoot, 'index.html'));
+    }
+
+    candidates.push(join(targetCwd, 'public', 'index.html'));
+
+    for (const c of candidates) {
+        if (existsSync(c)) return c;
+    }
+    return undefined;
+}
+
 /**
  * Where the app that used to be THE single project probably lives, for the single→multi
  * migration (see `handleMultiProjectSetup`). Derived from the recorded `htmlPath`
@@ -1020,6 +1066,11 @@ async function setupOneProject(ctx: {
     entry: ProjectEntry;
     injected: boolean;
     filesModified: string[];
+    /** The delivery actually used for this app (repo default, or this app's own override). */
+    effectiveDelivery: 'embed' | 'extension';
+    /** Set when injection was attempted (delivery !== 'extension', --no-inject not given) but no
+     *  HTML candidate existed to inject into — the caller surfaces this as a heads-up. */
+    noHtmlFound: boolean;
 }> {
     const { cwd, appDir, server, token } = ctx;
     const targetCwd = join(cwd, appDir);
@@ -1069,31 +1120,28 @@ async function setupOneProject(ctx: {
     let injected = false;
     let filesModified: string[] = [];
     let injectedHtmlPath: string | undefined;
+    let noHtmlFound = false;
 
     if (!ctx.noInject && delivery !== 'extension') {
-        const appInfo = await detectStack(targetCwd);
-        if (ctx.explicitHtml && appInfo.kind !== 'vite') {
-            const p = await injectStatic(targetCwd, ctx.explicitHtml, {
-                server, key, environment: env, pin: ctx.pin, envMap: {}, environments: envs, environmentPinned: envs.length > 0,
-            });
-            filesModified = [p];
+        const htmlCandidate = await resolveHtmlCandidate(cwd, appDir, ctx.explicitHtml);
+        if (htmlCandidate) {
+            const isVite = await hasViteConfig(targetCwd);
+            if (isVite) {
+                filesModified = await injectVite(
+                    targetCwd,
+                    { server, key, environment: env, pin: ctx.pin, environmentPinned: envs.length > 0 },
+                    htmlCandidate,
+                );
+            } else {
+                const p = await injectStatic(targetCwd, htmlCandidate, {
+                    server, key, environment: env, pin: ctx.pin, envMap: {}, environments: envs, environmentPinned: envs.length > 0,
+                });
+                filesModified = [p];
+            }
             injected = true;
-            injectedHtmlPath = toRootRelative(cwd, p);
-        } else if (appInfo.kind === 'vite') {
-            filesModified = await injectVite(
-                targetCwd,
-                { server, key, environment: env, pin: ctx.pin, environmentPinned: envs.length > 0 },
-                ctx.explicitHtml,
-            );
-            injected = true;
-            injectedHtmlPath = toRootRelative(cwd, ctx.explicitHtml ?? join(targetCwd, 'index.html'));
-        } else if (appInfo.kind === 'static') {
-            const p = await injectStatic(targetCwd, ctx.explicitHtml, {
-                server, key, environment: env, pin: ctx.pin, envMap: {}, environments: envs, environmentPinned: envs.length > 0,
-            });
-            filesModified = [p];
-            injected = true;
-            injectedHtmlPath = toRootRelative(cwd, p);
+            injectedHtmlPath = toRootRelative(cwd, htmlCandidate);
+        } else {
+            noHtmlFound = true;
         }
     }
 
@@ -1119,7 +1167,7 @@ async function setupOneProject(ctx: {
     if (injectedHtmlPath !== undefined) entry.htmlPath = injectedHtmlPath;
     if (delivery !== ctx.repoDefaultDelivery) entry.delivery = delivery;
 
-    return { key, name, created, entry, injected, filesModified };
+    return { key, name, created, entry, injected, filesModified, effectiveDelivery: delivery, noHtmlFound };
 }
 
 /**
@@ -1282,6 +1330,8 @@ async function handleMultiProjectSetup(args: {
         entry: ProjectEntry;
         injected: boolean;
         filesModified: string[];
+        effectiveDelivery: 'embed' | 'extension';
+        noHtmlFound: boolean;
     }> = [];
     for (const app of apps) {
         const result = await setupOneProject({
@@ -1303,7 +1353,23 @@ async function handleMultiProjectSetup(args: {
             aiTool: tool,
         });
         results.push(result);
-        if (!isJson) console.log(`✔ ${result.key} (${app.dir})${result.injected ? ' — widget injected' : ''}`);
+        if (!isJson) {
+            if (result.effectiveDelivery === 'extension') {
+                console.log(`✔ ${result.key} (${app.dir}) — nothing injected (extension)`);
+            } else if (result.injected && result.entry.htmlPath) {
+                console.log(`✔ ${result.key} (${app.dir}) — injected into ${result.entry.htmlPath}`);
+            } else {
+                console.log(`✔ ${result.key} (${app.dir})`);
+                if (result.noHtmlFound) {
+                    console.log(
+                        `\x1b[33mHeads up:\x1b[0m automatic widget injection isn't supported for ${app.dir} yet — ` +
+                        `no index.html found (checked index.html, src/index.html, public/index.html). ` +
+                        `The project is still registered; run \`pointer init --path ${app.dir} --project ${result.key} --html <path>\` ` +
+                        `once you know the file, or mount the widget by hand.`,
+                    );
+                }
+            }
+        }
     }
 
     closePrompts();

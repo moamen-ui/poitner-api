@@ -126,16 +126,24 @@ export async function detectStack(cwd: string): Promise<{ kind: AppType, evidenc
   }
   const deps = { ...pkg.dependencies, ...pkg.devDependencies };
   const hasIndexHtml = existsSync(join(cwd, 'index.html'));
-  
+  // Fallbacks beyond the root `index.html`, for a standalone app laid out the way every app in an
+  // Nx (or Nx-style) workspace is: `src/index.html` (Vite/webpack's convention) or
+  // `public/index.html` (CRA). Checked in this order; the first that exists wins. Kept separate
+  // from `hasIndexHtml` above, which is specifically "does cwd itself look like a monorepo ROOT"
+  // and must stay keyed on the root file only.
+  const htmlFallback = ['index.html', 'src/index.html', 'public/index.html']
+    .map((rel) => ({ rel, abs: join(cwd, rel) }))
+    .find(({ abs }) => existsSync(abs));
+
   const evidence: string[] = [];
-  
+
   if (deps.vite) {
     evidence.push('package.json (vite)');
     for (const ext of ['js', 'ts', 'mjs', 'mts']) {
       if (existsSync(join(cwd, `vite.config.${ext}`))) evidence.push(`vite.config.${ext}`);
     }
-    if (hasIndexHtml) evidence.push('index.html');
-    return { kind: 'vite', evidence, htmlPath: hasIndexHtml ? join(cwd, 'index.html') : undefined };
+    if (htmlFallback) evidence.push(htmlFallback.rel);
+    return { kind: 'vite', evidence, htmlPath: htmlFallback?.abs };
   }
   
   if (deps.next) {
@@ -169,11 +177,11 @@ export async function detectStack(cwd: string): Promise<{ kind: AppType, evidenc
     return { kind: 'monorepo', evidence };
   }
   
-  if (hasIndexHtml && !pkgStr) {
-    evidence.push('index.html');
-    return { kind: 'static', evidence, htmlPath: join(cwd, 'index.html') };
+  if (htmlFallback && !pkgStr) {
+    evidence.push(htmlFallback.rel);
+    return { kind: 'static', evidence, htmlPath: htmlFallback.abs };
   }
-  
+
   return { kind: 'unknown', evidence };
 }
 

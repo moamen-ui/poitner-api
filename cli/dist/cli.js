@@ -426,7 +426,7 @@ __export(map_exports, {
   mapCommand: () => mapCommand
 });
 import { promises as fs13 } from "node:fs";
-import { existsSync as existsSync2 } from "node:fs";
+import { existsSync as existsSync3 } from "node:fs";
 import { join as join13, relative as relative4, resolve as resolve3 } from "node:path";
 import { execFileSync } from "node:child_process";
 function gitRoot(cwd2) {
@@ -493,7 +493,7 @@ async function buildManifest(cwd2, opts = {}) {
   const target = resolve3(root, ".pointer/manifest.json");
   await fs13.mkdir(join13(root, ".pointer"), { recursive: true });
   const prev = target.replace(/\.json$/, ".prev.json");
-  if (existsSync2(target)) {
+  if (existsSync3(target)) {
     await fs13.copyFile(target, prev);
   }
   const entries = Object.fromEntries(
@@ -593,7 +593,7 @@ var init_auth = __esm({
 });
 
 // src/vite/resolve.ts
-import { existsSync as existsSync3, readFileSync } from "node:fs";
+import { existsSync as existsSync4, readFileSync } from "node:fs";
 import { join as join17 } from "node:path";
 function entryOf(json, hash) {
   if (!json || typeof json !== "object")
@@ -611,7 +611,7 @@ function normalise(entry) {
   };
 }
 function readJson2(path) {
-  if (!existsSync3(path))
+  if (!existsSync4(path))
     return null;
   try {
     return JSON.parse(readFileSync(path, "utf8"));
@@ -1358,6 +1358,7 @@ async function detectStack(cwd2) {
   }
   const deps = { ...pkg.dependencies, ...pkg.devDependencies };
   const hasIndexHtml = existsSync(join2(cwd2, "index.html"));
+  const htmlFallback = ["index.html", "src/index.html", "public/index.html"].map((rel) => ({ rel, abs: join2(cwd2, rel) })).find(({ abs }) => existsSync(abs));
   const evidence = [];
   if (deps.vite) {
     evidence.push("package.json (vite)");
@@ -1365,9 +1366,9 @@ async function detectStack(cwd2) {
       if (existsSync(join2(cwd2, `vite.config.${ext}`)))
         evidence.push(`vite.config.${ext}`);
     }
-    if (hasIndexHtml)
-      evidence.push("index.html");
-    return { kind: "vite", evidence, htmlPath: hasIndexHtml ? join2(cwd2, "index.html") : void 0 };
+    if (htmlFallback)
+      evidence.push(htmlFallback.rel);
+    return { kind: "vite", evidence, htmlPath: htmlFallback?.abs };
   }
   if (deps.next) {
     evidence.push("package.json (next)");
@@ -1398,9 +1399,9 @@ async function detectStack(cwd2) {
     evidence.push("package.json (workspaces)");
     return { kind: "monorepo", evidence };
   }
-  if (hasIndexHtml && !pkgStr) {
-    evidence.push("index.html");
-    return { kind: "static", evidence, htmlPath: join2(cwd2, "index.html") };
+  if (htmlFallback && !pkgStr) {
+    evidence.push(htmlFallback.rel);
+    return { kind: "static", evidence, htmlPath: htmlFallback.abs };
   }
   return { kind: "unknown", evidence };
 }
@@ -2305,7 +2306,7 @@ async function gitignoreChecks(cwd2) {
 }
 
 // src/commands/init.ts
-import { promises as fs12 } from "node:fs";
+import { promises as fs12, existsSync as existsSync2 } from "node:fs";
 import { join as join12, dirname as dirname4, relative as relative3, resolve as resolve2, isAbsolute as isAbsolute2, sep as sep2 } from "node:path";
 
 // src/stack/design.ts
@@ -3431,6 +3432,36 @@ function toRootRelative(root, p) {
   const abs = isAbsolute2(p) ? p : resolve2(p);
   return relative3(root, abs).split(sep2).join("/");
 }
+async function hasViteConfig(appDir) {
+  for (const ext of ["ts", "js", "mjs", "mts"]) {
+    if (existsSync2(join12(appDir, `vite.config.${ext}`)))
+      return true;
+  }
+  return false;
+}
+async function readJsonSafe(p) {
+  try {
+    return JSON.parse(await fs12.readFile(p, "utf8"));
+  } catch {
+    return null;
+  }
+}
+async function resolveHtmlCandidate(root, appDir, explicitHtml) {
+  if (explicitHtml)
+    return explicitHtml;
+  const targetCwd = join12(root, appDir);
+  const candidates = [join12(targetCwd, "index.html"), join12(targetCwd, "src", "index.html")];
+  const projectJson = await readJsonSafe(join12(targetCwd, "project.json"));
+  if (projectJson?.sourceRoot) {
+    candidates.push(join12(root, projectJson.sourceRoot, "index.html"));
+  }
+  candidates.push(join12(targetCwd, "public", "index.html"));
+  for (const c of candidates) {
+    if (existsSync2(c))
+      return c;
+  }
+  return void 0;
+}
 function deriveAppDirFromHtmlPath(htmlPath) {
   if (!htmlPath)
     return ".";
@@ -3604,42 +3635,33 @@ async function setupOneProject(ctx) {
   let injected = false;
   let filesModified = [];
   let injectedHtmlPath;
+  let noHtmlFound = false;
   if (!ctx.noInject && delivery !== "extension") {
-    const appInfo = await detectStack(targetCwd);
-    if (ctx.explicitHtml && appInfo.kind !== "vite") {
-      const p = await injectStatic(targetCwd, ctx.explicitHtml, {
-        server,
-        key,
-        environment: env,
-        pin: ctx.pin,
-        envMap: {},
-        environments: envs,
-        environmentPinned: envs.length > 0
-      });
-      filesModified = [p];
+    const htmlCandidate = await resolveHtmlCandidate(cwd2, appDir, ctx.explicitHtml);
+    if (htmlCandidate) {
+      const isVite = await hasViteConfig(targetCwd);
+      if (isVite) {
+        filesModified = await injectVite(
+          targetCwd,
+          { server, key, environment: env, pin: ctx.pin, environmentPinned: envs.length > 0 },
+          htmlCandidate
+        );
+      } else {
+        const p = await injectStatic(targetCwd, htmlCandidate, {
+          server,
+          key,
+          environment: env,
+          pin: ctx.pin,
+          envMap: {},
+          environments: envs,
+          environmentPinned: envs.length > 0
+        });
+        filesModified = [p];
+      }
       injected = true;
-      injectedHtmlPath = toRootRelative(cwd2, p);
-    } else if (appInfo.kind === "vite") {
-      filesModified = await injectVite(
-        targetCwd,
-        { server, key, environment: env, pin: ctx.pin, environmentPinned: envs.length > 0 },
-        ctx.explicitHtml
-      );
-      injected = true;
-      injectedHtmlPath = toRootRelative(cwd2, ctx.explicitHtml ?? join12(targetCwd, "index.html"));
-    } else if (appInfo.kind === "static") {
-      const p = await injectStatic(targetCwd, ctx.explicitHtml, {
-        server,
-        key,
-        environment: env,
-        pin: ctx.pin,
-        envMap: {},
-        environments: envs,
-        environmentPinned: envs.length > 0
-      });
-      filesModified = [p];
-      injected = true;
-      injectedHtmlPath = toRootRelative(cwd2, p);
+      injectedHtmlPath = toRootRelative(cwd2, htmlCandidate);
+    } else {
+      noHtmlFound = true;
     }
   }
   let pkgStr = await fs12.readFile(join12(targetCwd, "package.json"), "utf8").catch(() => "");
@@ -3665,7 +3687,7 @@ async function setupOneProject(ctx) {
     entry.htmlPath = injectedHtmlPath;
   if (delivery !== ctx.repoDefaultDelivery)
     entry.delivery = delivery;
-  return { key, name, created, entry, injected, filesModified };
+  return { key, name, created, entry, injected, filesModified, effectiveDelivery: delivery, noHtmlFound };
 }
 async function handleMultiJoin(cwd2, config, server, product, isJson, options, token, me) {
   closePrompts();
@@ -3787,8 +3809,20 @@ async function handleMultiProjectSetup(args) {
       aiTool: tool
     });
     results.push(result);
-    if (!isJson)
-      console.log(`\u2714 ${result.key} (${app.dir})${result.injected ? " \u2014 widget injected" : ""}`);
+    if (!isJson) {
+      if (result.effectiveDelivery === "extension") {
+        console.log(`\u2714 ${result.key} (${app.dir}) \u2014 nothing injected (extension)`);
+      } else if (result.injected && result.entry.htmlPath) {
+        console.log(`\u2714 ${result.key} (${app.dir}) \u2014 injected into ${result.entry.htmlPath}`);
+      } else {
+        console.log(`\u2714 ${result.key} (${app.dir})`);
+        if (result.noHtmlFound) {
+          console.log(
+            `\x1B[33mHeads up:\x1B[0m automatic widget injection isn't supported for ${app.dir} yet \u2014 no index.html found (checked index.html, src/index.html, public/index.html). The project is still registered; run \`pointer init --path ${app.dir} --project ${result.key} --html <path>\` once you know the file, or mount the widget by hand.`
+          );
+        }
+      }
+    }
   }
   closePrompts();
   if (!options["no-skills"]) {
@@ -10653,7 +10687,7 @@ var ALL_TOOLS = [
 
 // src/mcp/tools.ts
 init_api();
-import { existsSync as existsSync4, readFileSync as readFileSync2 } from "node:fs";
+import { existsSync as existsSync5, readFileSync as readFileSync2 } from "node:fs";
 import { isAbsolute as isAbsolute3, join as join20, relative as relative5, resolve as resolve4 } from "node:path";
 import { spawnSync as spawnSync3 } from "node:child_process";
 init_build_constants();
@@ -10961,7 +10995,7 @@ async function handleCommitAndMark(args, ctx) {
       if (rel.startsWith("..") || isAbsolute3(rel)) {
         throw mcpError("git", `Path escapes repository root: ${cleanPath}`);
       }
-      if (!existsSync4(resolved)) {
+      if (!existsSync5(resolved)) {
         throw mcpError("git", `File does not exist: ${cleanPath}`);
       }
     }
@@ -11168,7 +11202,7 @@ async function handleResolveSource(args, ctx) {
     throw mcpError("forbidden", "hash is required");
   }
   const manifestPath = join20(ctx.cwd, ".pointer/manifest.json");
-  if (!existsSync4(manifestPath)) {
+  if (!existsSync5(manifestPath)) {
     return { path: null, reason: "no-manifest" };
   }
   try {
