@@ -146,3 +146,17 @@ only; the `Caddyfile` serves `app`/`demo` from the React build (the per-framewor
 `docs/roadmap/execution/01-OVERVIEW.md` were updated to describe a single dashboard app. The backlog
 in this document (item A "Dashboard — the real backlog") now applies to the React app only; the
 Angular- and Vue-specific parity gaps it lists no longer apply since those apps are retired.
+
+### Browser sign-in for the CLI (2026-09-16) — DX-UX-CX-PLAN §2b un-held
+`AuthController` gained the device-code flow `gh auth login` uses: `POST /api/auth/device/start`
+(anonymous, mints a `deviceCode`/`userCode` pair), `POST /api/auth/device/poll` (anonymous, hands
+back the caller's personal API key exactly once on approval), and `GET /api/auth/device/{userCode}`
++ `POST /api/auth/device/approve` + `POST /api/auth/device/deny` (authenticated, non-super-admin —
+these back the dashboard's approval screen). New `DeviceLogin` entity/table
+(`Domain/Entity/DeviceLogin.cs`, migration `AddDeviceLogins`), deliberately exempt from the tenant
+query filter (see the entity's remarks). `pointer login` (and `init`'s first-run sign-in prompt) now
+default to this browser flow instead of pasting a key; `--key` keeps the old path.
+
+**Dashboard tasks:** build `/cli-login` page (`GET device/{code}` → approve/deny) — the React app,
+built after the client is republished with `Auth`'s new operations (tag already listed in
+`orval.config.ts`, no config change needed).

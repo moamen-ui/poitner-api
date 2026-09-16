@@ -76,7 +76,7 @@ server-wide.
 
 ### If your tool supports MCP (Model Context Protocol)
 
-If you are running in an MCP-capable environment (Claude Code, Cursor, Windsurf, OpenCode), you can connect to <POINTER_PRODUCT>'s stdio MCP server instead of shelling out:
+If your AI tool supports MCP, you can connect to <POINTER_PRODUCT>'s stdio MCP server instead of shelling out:
 ```json
 { "mcpServers": { "pointer": { "command": "npx", "args": ["-y", "pointer-feedback", "mcp"] } } }
 ```

@@ -175,10 +175,14 @@ its own `index.html` but no `project.json`) instead of asking about the repo roo
 
 ### Authentication
 
-Authenticate **once per machine**, not once per repo. `pointer login` validates an API key and
-saves it to a global, per-machine credential store; every other command (`init` in join mode,
-`doctor`, `apply`, `list`, `mcp`, and `.pointer/pointer.sh`) then finds it without being asked again
-— in this repo, or any other repo on the same machine, against the same server.
+Authenticate **once per machine**, not once per repo. `pointer login` — with no `--key`, on a real
+terminal — opens your browser to sign in (mirrors `gh auth login`): it prints a link and a short
+code, waits for you to approve it in the dashboard, and saves the personal API key it hands back to
+a global, per-machine credential store. Pass `--key <key>` to skip the browser and validate a pasted
+key instead (from your profile page or the dashboard's quick-start guide). Every other command
+(`init` in join mode, `doctor`, `apply`, `list`, `mcp`, and `.pointer/pointer.sh`) then finds
+whichever key was saved without being asked again — in this repo, or any other repo on the same
+machine, against the same server.
 
 **Resolution order**, identical everywhere a key is needed:
 
@@ -191,7 +195,11 @@ saves it to a global, per-machine credential store; every other command (`init` 
 ```bash
 # Once per machine, per server:
 pointer login --server https://api.pointer.moamen.work
-# API key (from Pointer -> profile -> API key; input hidden): ****************
+# Open this link and enter the code to sign in:
+#   https://app.pointer.moamen.work/cli-login?code=ABCD-EFGH
+#   Code: ABCD-EFGH
+# Waiting for approval… (Ctrl+C to cancel)
+# ✔ Signed in to https://api.pointer.moamen.work as Jane Doe (jane@example.com) — saved for all repos on this machine
 
 pointer whoami
 # https://api.pointer.moamen.work — Jane Doe (jane@example.com) — key source: global store
@@ -199,17 +207,24 @@ pointer whoami
 pointer logout   # removes this machine's saved key for a server
 ```
 
-- **`pointer login [--server <url>] [--key <key>]`** — resolves the server from `--server`, then
-  this repo's `.pointer/config.json`, then `$POINTER_SERVER`, then the build default. Prompts for
-  the key (hidden input) unless `--key` is given; validates it exactly like `init` does
-  (`/api/auth/login-with-key` + `/api/auth/me`); saves it to the global store.
+- **`pointer login [--server <url>] [--key <key>] [--no-browser]`** — resolves the server from
+  `--server`, then this repo's `.pointer/config.json`, then `$POINTER_SERVER`, then the build
+  default. With no `--key` it runs the browser sign-in flow above (`--no-browser` prints the
+  link/code but skips trying to open a browser); `--key <key>` validates a pasted key instead,
+  exactly like `init` does (`/api/auth/login-with-key` + `/api/auth/me`). Either way the resulting
+  key is saved to the global store (or `.pointer/credentials.env` with `--scope repo`).
 - **`pointer logout [--server <url>]`** — removes this machine's saved entry for that server. Never
   touches a repo's own `.pointer/credentials.env`.
 - **`pointer whoami [--server <url>] [--json]`** — prints the server, the signed-in account, and
   which source answered the key (`env` / `repo` / `global`) — **never the key itself**.
 
+**`init`'s first-run sign-in.** When no key resolves from anywhere (env, repo, or global store) and
+`--key` wasn't passed, an interactive `init` asks how to sign in — "Sign in in your browser
+(recommended)" (the same device-code flow as `pointer login`) or "Paste an API key" (today's hidden
+prompt). `--yes`/`--json` skip the question and require `--key`.
+
 **`init` and the global store.** A first install that authenticates a key it did not already trust
-(typed interactively, or passed via `--key`) asks:
+(typed interactively, signed in via the browser, or passed via `--key`) asks:
 
 ```
 Save this key for all repos on this machine? (Y/n)
@@ -322,7 +337,7 @@ pointer reply 12 "Investigating this now."
 ### `pointer mcp`
 Run the Model Context Protocol (MCP) server over standard I/O for AI coding agents.
 
-Exposes typed tools to Claude Code, Cursor, Windsurf, OpenCode, and any MCP-compatible environment without exposing API keys to the model context.
+Exposes typed tools to your AI tool over MCP — any MCP-compatible environment — without exposing API keys to the model context.
 
 #### Configuration (User-Level, Do Not Commit)
 

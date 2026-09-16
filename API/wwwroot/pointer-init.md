@@ -478,12 +478,15 @@ don't leave it as a silent TODO.
 npx pointer-feedback login --server <POINTER_SERVER>
 ```
 
-This validates the key (hidden input) and saves it to a **global, per-machine credential store**
-(`~/.config/pointer/credentials.json`, mode `0600` — never printed, never committed, never inside
-this or any other repo). Every command in every repo on this machine — this apply skill included —
-then resolves it automatically: `POINTER_API_KEY` env var → this repo's `.pointer/credentials.env`
-→ the global store, in that order. Run `npx pointer-feedback whoami` to confirm who is signed in and
-which of those three answered; `npx pointer-feedback logout` removes it.
+With no `--key` on a real terminal this opens a browser to sign in (prints a link + a short code,
+waits for approval, mirrors `gh auth login`); pass `--key <key>` instead to skip the browser and
+validate a pasted key (from the **profile page**, or the dashboard's **quick-start guide**, which
+shows it pre-filled for copy-paste). Either way the result is saved to a **global, per-machine
+credential store** (`~/.config/pointer/credentials.json`, mode `0600` — never printed, never
+committed, never inside this or any other repo). Every command in every repo on this machine — this
+apply skill included — then resolves it automatically: `POINTER_API_KEY` env var → this repo's
+`.pointer/credentials.env` → the global store, in that order. Run `npx pointer-feedback whoami` to
+confirm who is signed in and which of those three answered; `npx pointer-feedback logout` removes it.
 
 **What's committed vs. gitignored in `.pointer/`** — only two files are meant to be shared via git;
 everything else is derived or per-machine and every clone/developer gets (or refreshes) their own
@@ -518,14 +521,15 @@ ignore `config.json`/`stack.json`/`projects/` too. The last line only matters fo
 
 **Then explicitly tell the user** (this is the critical step they must action):
 
-> Run `npx pointer-feedback login` once (it will ask for your <POINTER_PRODUCT> API key — copy it
-> from your **profile page**, generating one first if you don't have one yet, or from the
-> dashboard's **quick-start guide**, which shows it pre-filled for copy-paste) and every repo on this
-> machine, this one included, is authenticated from then on. If Node/npx is unavailable, fill in
-> `POINTER_API_KEY` in `.pointer/credentials.env` instead (gitignored — never commit it). Until one
-> of these is done, pulling or applying the feedback queue will fail with a login error. Any
-> <POINTER_PRODUCT> account's key works (any role can fetch/apply); using a dedicated
-> `Developer`-role account is conventional but not required.
+> Run `npx pointer-feedback login` once — it opens your browser to sign in, or pass
+> `--key <your <POINTER_PRODUCT> API key>` to skip the browser (copy the key from your **profile
+> page**, generating one first if you don't have one yet, or from the dashboard's **quick-start
+> guide**, which shows it pre-filled for copy-paste) — and every repo on this machine, this one
+> included, is authenticated from then on. If Node/npx is unavailable, fill in `POINTER_API_KEY` in
+> `.pointer/credentials.env` instead (gitignored — never commit it). Until one of these is done,
+> pulling or applying the feedback queue will fail with a login error. Any <POINTER_PRODUCT>
+> account's key works (any role can fetch/apply); using a dedicated `Developer`-role account is
+> conventional but not required.
 
 The apply workflow itself is the separate <POINTER_PRODUCT> skill served at `<POINTER_SERVER>/skill.md`.
 

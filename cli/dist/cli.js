@@ -3067,6 +3067,65 @@ function summarizeDesignTokens(tokens, libraries) {
 
 // src/commands/init.ts
 init_credentials();
+
+// src/device-login.ts
+init_api();
+import { spawn } from "node:child_process";
+import { hostname } from "node:os";
+function openBrowser(url) {
+  try {
+    let child;
+    if (process.platform === "darwin") {
+      child = spawn("open", [url], { detached: true, stdio: "ignore" });
+    } else if (process.platform === "win32") {
+      child = spawn("cmd", ["/c", "start", '""', url], { detached: true, stdio: "ignore", windowsHide: true });
+    } else {
+      child = spawn("xdg-open", [url], { detached: true, stdio: "ignore" });
+    }
+    child.unref();
+    child.on("error", () => {
+    });
+  } catch {
+  }
+}
+function sleep(ms) {
+  return new Promise((resolve5) => setTimeout(resolve5, ms));
+}
+async function runDeviceLogin(server, options = {}) {
+  const clientName = options.clientName ?? `pointer-feedback CLI on ${hostname()}`;
+  const start = await api(server, "/api/auth/device/start", {
+    method: "POST",
+    body: { clientName }
+  });
+  console.log("Open this link and enter the code to sign in:");
+  console.log(`  ${start.verificationUrl}`);
+  console.log(`  Code: ${start.userCode}`);
+  console.log("Waiting for approval\u2026 (Ctrl+C to cancel)");
+  if (!options.noBrowser)
+    openBrowser(start.verificationUrl);
+  const deadline = Date.now() + start.expiresInSeconds * 1e3;
+  const intervalMs = Math.max(1, start.intervalSeconds) * 1e3;
+  while (Date.now() < deadline) {
+    await sleep(intervalMs);
+    const poll = await api(server, "/api/auth/device/poll", {
+      method: "POST",
+      body: { deviceCode: start.deviceCode }
+    });
+    if (poll.status === "approved") {
+      if (!poll.apiKey) {
+        return { ok: false, reason: "expired" };
+      }
+      return { ok: true, result: { apiKey: poll.apiKey, displayName: poll.displayName, email: poll.email } };
+    }
+    if (poll.status === "denied")
+      return { ok: false, reason: "denied" };
+    if (poll.status === "expired" || poll.status === "unknown")
+      return { ok: false, reason: "expired" };
+  }
+  return { ok: false, reason: "expired" };
+}
+
+// src/commands/init.ts
 async function initCommand(cwd2, options = {}) {
   const isYes = options["yes"] || options["json"];
   const isJson = options["json"];
@@ -3170,6 +3229,37 @@ async function initCommand(cwd2, options = {}) {
       }
     } else {
       let attempts = 0;
+      if (!key) {
+        const choice = await select("How do you want to sign in?", [
+          "Sign in in your browser (recommended)",
+          "Paste an API key"
+        ]);
+        if (choice.startsWith("Sign in in your browser")) {
+          const outcome = await runDeviceLogin(server, { noBrowser: options["no-browser"] === true });
+          if (!outcome.ok) {
+            if (outcome.reason === "denied") {
+              console.error("Sign-in was denied.");
+            } else {
+              console.error("The sign-in code expired. Run `pointer init` again.");
+            }
+            process.exit(3);
+          }
+          key = outcome.result.apiKey;
+          try {
+            const login = await api(server, "/api/auth/login-with-key", {
+              method: "POST",
+              body: { apiKey: key }
+            });
+            if (login?.status !== "ok" || !login?.token)
+              throw new Error(login?.status || "invalid");
+            token = login.token;
+            me = login.user ?? await api(server, "/api/auth/me", { token });
+          } catch {
+            console.error("Invalid API key.");
+            process.exit(3);
+          }
+        }
+      }
       while (!me) {
         if (!key) {
           key = await ask(`API key (from ${product} -> profile -> API key; input hidden)`, { secret: true });
@@ -3473,7 +3563,7 @@ and the pointer-init skill uses them to mount the widget for you afterwards.
   If you know the file, name it and re-run \u2014 that always wins over detection:
     npx -y pointer-feedback init --html path/to/index.html
   Otherwise the pointer-init skill was installed for ${tool}; run it and it will mount the widget:
-    claude -> /pointer-init (or @pointer-init for cursor)
+    /pointer-init (or @pointer-init, depending on your AI tool)
   Config is already saved in .pointer/config.json, so neither will ask for the key or project again.`);
       }
     }
@@ -11786,28 +11876,21 @@ async function loginCommand(cwd2, options = {}) {
       console.error("Invalid API key.");
       process.exit(3);
     }
-  } else {
-    let attempts = 0;
-    while (!me) {
-      key = await ask(`API key (from ${product} -> profile -> API key; input hidden)`, { secret: true });
-      try {
-        const login = await api(server, "/api/auth/login-with-key", {
-          method: "POST",
-          body: { apiKey: key }
-        });
-        if (login?.status !== "ok" || !login?.token)
-          throw new Error(login?.status || "invalid");
-        me = login.user ?? await api(server, "/api/auth/me", { token: login.token });
-      } catch {
-        attempts++;
-        if (attempts >= 3) {
-          console.error("Invalid API key.");
-          process.exit(3);
-        }
-        console.error("Invalid API key. Try again.");
+  } else if (process.stdin.isTTY || options["no-browser"] === true) {
+    const outcome = await runDeviceLogin(server, { noBrowser: options["no-browser"] === true });
+    if (!outcome.ok) {
+      if (outcome.reason === "denied") {
+        console.error("Sign-in was denied.");
+      } else {
+        console.error("The sign-in code expired. Run `pointer login` again.");
       }
+      process.exit(3);
     }
-    closePrompts();
+    key = outcome.result.apiKey;
+    me = { displayName: outcome.result.displayName, email: outcome.result.email };
+  } else {
+    console.error("No key provided and no terminal to sign in from \u2014 run `pointer login --key <key>` or set POINTER_API_KEY.");
+    process.exit(2);
   }
   const scope = typeof options["scope"] === "string" ? String(options["scope"]).toLowerCase() : "global";
   if (scope !== "global" && scope !== "repo") {
@@ -11914,7 +11997,8 @@ function parseArgs(args) {
     "dry-run",
     "no-commit",
     "version",
-    "local-credentials"
+    "local-credentials",
+    "no-browser"
   ]);
   for (let i = 0; i < args.length; i++) {
     const arg = args[i];
@@ -12007,6 +12091,8 @@ Options:
   --scope <global|repo>    Where the API key is stored: global (default \u2014 this machine, all repos,
                            ~/.config/pointer/credentials.json) or repo (.pointer/credentials.env,
                            gitignored, this repo only). --local-credentials is an alias for --scope repo
+  --no-browser             When signing in in the browser (first run, no key resolved yet), print
+                           the link/code but don't try to open a browser
   -y, --yes                Non-interactive
   --json                   JSON output (implies --yes)
   -h, --help               Show help
@@ -12019,13 +12105,19 @@ Options:
       console.log(`
 Usage: pointer login [options]
 
-Authenticate once per machine: validates an API key and saves it to
+Authenticate once per machine and save the result to
 ~/.config/pointer/credentials.json (honours $XDG_CONFIG_HOME / $POINTER_CONFIG_DIR), keyed by
 server. Every repo on this machine then resolves a key for that server without being asked again.
 
+With no --key on a real terminal, opens your browser to sign in (mirrors \`gh auth login\`): prints
+a link and a short code, waits for you to approve it in the dashboard, then saves the personal API
+key it hands back. Pass --key to skip the browser and validate a pasted key instead, unchanged from
+before.
+
 Options:
   --server <url>          Server URL (default: this repo's .pointer/config.json, then $POINTER_SERVER)
-  --key <key>             API key (prompted, hidden, when omitted)
+  --key <key>             API key \u2014 skips the browser flow entirely
+  --no-browser            Print the sign-in link/code but don't try to open a browser
   --scope <global|repo>   global (default): save for every repo on this machine;
                           repo: write .pointer/credentials.env in the current repo only
   -h, --help              Show this help

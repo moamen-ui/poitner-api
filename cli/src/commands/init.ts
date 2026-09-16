@@ -26,6 +26,7 @@ import { join, dirname, relative, resolve, isAbsolute, sep } from 'node:path';
 import { detectDesignTokens, summarizeDesignTokens, type DesignBlock } from '../stack/design.js';
 import { buildRequestBody, mergeStack, writeStackFile, stackFileRelPath } from '../stack/stackfile.js';
 import { resolveApiKey, saveGlobalCredential, type ApiKeySource } from '../credentials.js';
+import { runDeviceLogin } from '../device-login.js';
 
 export async function initCommand(cwd: string, options: Record<string, string | boolean> = {}) {
     const isYes = options['yes'] || options['json'];
@@ -193,6 +194,43 @@ export async function initCommand(cwd: string, options: Record<string, string | 
             }
         } else {
             let attempts = 0;
+            // First-time interactive with nothing resolved yet (no --key, no env/repo/global hit):
+            // ask how to sign in before falling into the paste-a-key loop below. A retry after a
+            // rejected --key (key is already set here) skips straight to that loop — the user
+            // already told us they want to type one.
+            if (!key) {
+                const choice = await select('How do you want to sign in?', [
+                    'Sign in in your browser (recommended)',
+                    'Paste an API key',
+                ]);
+                if (choice.startsWith('Sign in in your browser')) {
+                    const outcome = await runDeviceLogin(server as string, { noBrowser: options['no-browser'] === true });
+                    if (!outcome.ok) {
+                        if (outcome.reason === 'denied') {
+                            console.error('Sign-in was denied.');
+                        } else {
+                            console.error('The sign-in code expired. Run `pointer init` again.');
+                        }
+                        process.exit(3);
+                    }
+                    key = outcome.result.apiKey;
+                    // The rest of init needs a JWT (`token`) and the full `me` profile (roleName,
+                    // etc.), not just the key the device flow handed back — same exchange as the
+                    // paste path just below.
+                    try {
+                        const login = await api<any>(server as string, '/api/auth/login-with-key', {
+                            method: 'POST',
+                            body: { apiKey: key },
+                        });
+                        if (login?.status !== 'ok' || !login?.token) throw new Error(login?.status || 'invalid');
+                        token = login.token;
+                        me = login.user ?? (await api(server as string, '/api/auth/me', { token }));
+                    } catch {
+                        console.error('Invalid API key.');
+                        process.exit(3);
+                    }
+                }
+            }
             while (!me) {
                 if (!key) {
                     key = await ask(`API key (from ${product} -> profile -> API key; input hidden)`, { secret: true });
@@ -635,7 +673,7 @@ export async function initCommand(cwd: string, options: Record<string, string | 
   If you know the file, name it and re-run — that always wins over detection:
     npx -y pointer-feedback init --html path/to/index.html
   Otherwise the pointer-init skill was installed for ${tool}; run it and it will mount the widget:
-    claude -> /pointer-init (or @pointer-init for cursor)
+    /pointer-init (or @pointer-init, depending on your AI tool)
   Config is already saved in .pointer/config.json, so neither will ask for the key or project again.`);
             }
         }

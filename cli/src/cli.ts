@@ -31,7 +31,8 @@ function parseArgs(args: string[]) {
         'dry-run',
         'no-commit',
         'version',
-        'local-credentials'
+        'local-credentials',
+        'no-browser'
     ]);
 
     for (let i = 0; i < args.length; i++) {
@@ -129,6 +130,8 @@ Options:
   --scope <global|repo>    Where the API key is stored: global (default — this machine, all repos,
                            ~/.config/pointer/credentials.json) or repo (.pointer/credentials.env,
                            gitignored, this repo only). --local-credentials is an alias for --scope repo
+  --no-browser             When signing in in the browser (first run, no key resolved yet), print
+                           the link/code but don't try to open a browser
   -y, --yes                Non-interactive
   --json                   JSON output (implies --yes)
   -h, --help               Show help
@@ -141,13 +144,19 @@ Options:
             console.log(`
 Usage: pointer login [options]
 
-Authenticate once per machine: validates an API key and saves it to
+Authenticate once per machine and save the result to
 ~/.config/pointer/credentials.json (honours $XDG_CONFIG_HOME / $POINTER_CONFIG_DIR), keyed by
 server. Every repo on this machine then resolves a key for that server without being asked again.
 
+With no --key on a real terminal, opens your browser to sign in (mirrors \`gh auth login\`): prints
+a link and a short code, waits for you to approve it in the dashboard, then saves the personal API
+key it hands back. Pass --key to skip the browser and validate a pasted key instead, unchanged from
+before.
+
 Options:
   --server <url>          Server URL (default: this repo's .pointer/config.json, then $POINTER_SERVER)
-  --key <key>             API key (prompted, hidden, when omitted)
+  --key <key>             API key — skips the browser flow entirely
+  --no-browser            Print the sign-in link/code but don't try to open a browser
   --scope <global|repo>   global (default): save for every repo on this machine;
                           repo: write .pointer/credentials.env in the current repo only
   -h, --help              Show this help
