@@ -33,8 +33,14 @@ export function injectMain(cfg: {
     const resolve = pending[d.id];
     if (!resolve) return;
     delete pending[d.id];
+    // status 0 = the background refused (allowlist) or its fetch failed. `new Response(...,
+    // {status: 0})` throws a RangeError (valid range is 200–599) and that used to surface as an
+    // uncaught error in the page; hand the widget a network-error Response instead (ok=false),
+    // which it already handles like any failed request.
+    const status = Number(d.status) || 0;
+    if (status < 200 || status > 599) { resolve(Response.error()); return; }
     resolve(new Response(d.body, {
-      status: d.status || 0,
+      status,
       headers: d.contentType ? { 'Content-Type': d.contentType } : {},
     }));
   });

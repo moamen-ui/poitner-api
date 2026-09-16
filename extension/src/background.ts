@@ -211,7 +211,9 @@ async function login(email: string, password: string, server: string) {
 // ---- proxied API traffic (from the page via the content bridge) ----------
 
 // Allowed HTTP methods for regular fetch proxying.
-const ALLOWED_METHODS = new Set(['GET', 'POST', 'PATCH']);
+// Every method the widget uses against /api/: PATCH (status/edit), DELETE (delete comment), PUT
+// (settings such as the comment shortcut). Anything else is refused as `blocked` (status 0).
+const ALLOWED_METHODS = new Set(['GET', 'POST', 'PATCH', 'PUT', 'DELETE']);
 
 /**
  * Validate that a URL is safe to proxy:
