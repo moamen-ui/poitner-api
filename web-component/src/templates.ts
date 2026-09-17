@@ -75,7 +75,7 @@ export const TPL = {
           ${displayName ? `
           <span class="fbk-toolbar__divider" aria-hidden="true"></span>
           <button type="button" class="fbk-toolbar-btn fbk-toolbar-btn--avatar" id="fbk-user" data-fbk-act="account" aria-expanded="false" aria-haspopup="dialog" data-toggle="tooltip" data-placement="top" title="Signed in as ${displayName}${roleLabel ? ' · ' + roleLabel : ''}" aria-label="Account, ${displayName}">${avatarInitials}</button>` : ''}
-          <button type="button" class="fbk-toolbar-btn fbk-toolbar-btn--icon" id="fbk-hide" data-fbk-act="hide" data-toggle="tooltip" data-placement="top" title="Hide ${escapeHtml(getBrandName())}" aria-label="Hide ${escapeHtml(getBrandName())}"><span class="fbk-toolbar-btn__icon">${ICON.eyeOff}</span></button>
+          <button type="button" class="fbk-toolbar-btn fbk-toolbar-btn--icon fbk-toolbar-btn--brand" id="fbk-hide" data-fbk-act="hide" data-toggle="tooltip" data-placement="top" title="Hide ${escapeHtml(getBrandName())}" aria-label="Hide ${escapeHtml(getBrandName())}"><span class="fbk-toolbar-btn__icon">${ICON.eyeOff}</span></button>
           <span class="fbk-toolbar__divider fbk-toolbar__divider--moved" aria-hidden="true"></span>
           <button type="button" class="fbk-toolbar-btn fbk-toolbar-btn--icon fbk-toolbar__reset" id="fbk-reset-pos" data-fbk-act="reset-position" data-toggle="tooltip" data-placement="top" title="Reset toolbar position" aria-label="Reset toolbar position"><span class="fbk-toolbar-btn__icon">${ICON.restore}</span></button>
         </aside>
@@ -300,10 +300,14 @@ export const TPL = {
   // to THIS comment; it never controls whether that buffer exists (see pagecontext.ts).
   popover: (meta: Meta, left: number, top: number, shotEnabled: boolean, actions: PredefinedActionOption[] = [], bugReportEnabled = false) => `
         <div class="fbk-popover" data-fbk-left="${left}" data-fbk-top="${top}">
-          <button type="button" class="fbk-popover-private-toggle" id="fbk-comment-private" title="Make private (only you)" aria-label="Make private" aria-pressed="false">${ICON.unlock}</button>
-          <h3>Comment on &lt;${escapeHtml(meta._tag)}&gt;</h3>
-          <div class="fbk-snippet">${escapeHtml(meta._snapshotPreview.slice(0, 200))}</div>
-          ${meta._sourcePath ? `<div class="fbk-src">&#x26ec; ${escapeHtml(meta._sourcePath)}</div>` : ''}
+          <div class="fbk-popover-nav">
+            <button type="button" class="fbk-popover-nav-btn" id="fbk-target-up" title="Select parent element" aria-label="Select parent element">${ICON.chevronUp}</button>
+            <button type="button" class="fbk-popover-nav-btn" id="fbk-target-down" title="Select first child element" aria-label="Select first child element">${ICON.chevronDown}</button>
+            <button type="button" class="fbk-popover-private-toggle" id="fbk-comment-private" title="Make private (only you)" aria-label="Make private" aria-pressed="false">${ICON.unlock}</button>
+          </div>
+          <h3 id="fbk-popover-title">Comment on &lt;${escapeHtml(meta._tag)}&gt;</h3>
+          <div class="fbk-snippet" id="fbk-popover-snippet">${escapeHtml(meta._snapshotPreview.slice(0, 200))}</div>
+          <div class="fbk-src${meta._sourcePath ? '' : ' fbk-hidden'}" id="fbk-popover-src">&#x26ec; <span id="fbk-popover-src-path">${escapeHtml(meta._sourcePath || '')}</span></div>
           <textarea class="fbk-textarea" id="fbk-comment-text" placeholder="What should change here?"></textarea>
           ${actions.length ? `<div class="fbk-field-label">Predefined prompts</div>
           <div class="fbk-ms" id="fbk-action-ms">

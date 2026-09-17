@@ -15,18 +15,24 @@
 .fbk-popover h3 {
   margin-block: 0 8px;
   margin-inline: 0;
-  padding-inline-end: 30px; // room for .fbk-popover-private-toggle, absolutely positioned top-end
+  padding-inline-end: 96px; // room for .fbk-popover-nav (3 buttons), absolutely positioned top-end
   font-size: 13px;
   color: v.token('text');
 }
-// "Keep private" toggle — top-end corner of the popover (see .fbk-popover's own `position: fixed`,
-// which is what this anchors against) rather than a checkbox row in the form body, so it reads as
-// a property of the comment itself (like the card's own visibility toggle below) instead of one
-// more option to fill in.
-.fbk-popover-private-toggle {
+// Element-nav (parent/first-child) + "keep private" toggle — top-end corner of the popover (see
+// .fbk-popover's own `position: fixed`, which is what this anchors against) rather than inline
+// in the form body, so they read as properties of the TARGET (which element, how visible) rather
+// than options to fill in alongside the comment text.
+.fbk-popover-nav {
   position: absolute;
   inset-block-start: 10px;
   inset-inline-end: 10px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.fbk-popover-nav-btn,
+.fbk-popover-private-toggle {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -39,8 +45,14 @@
   border-radius: v.token('radius-sm');
   cursor: pointer;
 }
+.fbk-popover-nav-btn:hover,
 .fbk-popover-private-toggle:hover {
   background: v.token('surface-hover');
+}
+.fbk-popover-nav-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+  background: v.token('surface-muted');
 }
 .fbk-popover-private-toggle.is-active {
   color: v.token('danger-strong');

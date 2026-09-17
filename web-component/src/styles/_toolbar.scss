@@ -132,6 +132,20 @@
   position: relative;
 }
 
+// The toolbar's own "Hide <brand>" button — same deliberately-inverted black/white treatment as
+// the collapsed launcher (.fbk-launcher in _launcher.scss: 'launcher-bg'/'launcher-fg', swapped
+// in _theme.scss's dark block), so the app's own mark reads the same whether the toolbar is
+// collapsed to the launcher or expanded.
+.fbk-toolbar-btn--brand {
+  color: v.token('launcher-fg');
+  background: v.token('launcher-bg');
+}
+.fbk-toolbar-btn--brand:hover,
+.fbk-toolbar-btn--brand:active {
+  background: v.token('launcher-bg');
+  opacity: 0.85;
+}
+
 .fbk-toolbar-btn--avatar {
   inline-size: 32px;
   padding-inline: 0;

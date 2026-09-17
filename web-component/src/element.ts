@@ -1631,7 +1631,12 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
   // (named openCommentPopover, not showPopover, to avoid clashing with the
   //  built-in HTMLElement.showPopover() from the Popover API.)
   openCommentPopover(x: number, y: number, el: Element): void {
-    const meta = captureMetadata(el, this.sourceAttr, { captureText: this.captureTextContent });
+    // `currentEl`/`currentMeta` — mutable: the up/down nav buttons below let the viewer retarget
+    // the comment to the clicked element's parent or first child without closing and re-picking,
+    // for the "clicked the wrong element" case. Everything downstream (screenshot capture, the
+    // highlight, and the eventual createComment call) reads these, not the original `el`.
+    let currentEl: Element = el;
+    let currentMeta = captureMetadata(currentEl, this.sourceAttr, { captureText: this.captureTextContent });
     const host = this.root.querySelector('#fbk-popover-host') as HTMLElement;
     // Render at the raw click point first so the REAL box can be measured below — a fixed
     // height guess here (this used to clamp against a hardcoded 220px) goes stale the moment the
@@ -1639,7 +1644,7 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
     // ...) and starts rendering off-screen below the fold for a click near the bottom of the
     // page — unreachable, can't type or submit. Width IS fixed by CSS (280px), but measuring it
     // too costs nothing and stays correct if that ever changes.
-    host.innerHTML = TPL.popover(meta, x, y, this.screenshotEnabled, this.predefinedActions, this.pageContextCaptureEnabled);
+    host.innerHTML = TPL.popover(currentMeta, x, y, this.screenshotEnabled, this.predefinedActions, this.pageContextCaptureEnabled);
     // Position applied through the CSSOM, not a style attribute — see applyDataPosition.
     applyDataPosition(host, '.fbk-popover');
     const popoverEl = host.querySelector('.fbk-popover') as HTMLElement | null;
@@ -1651,8 +1656,45 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
       popoverEl.style.left = `${Math.round(left)}px`;
       popoverEl.style.top = `${Math.round(top)}px`;
     }
+    // Highlight the current target on the actual page (same visual language as the picking-mode
+    // hover) so retargeting via the nav buttons below is visible, not just reflected in the text.
+    currentEl.classList.add(HL_CLASS);
     const ta = host.querySelector('#fbk-comment-text') as HTMLTextAreaElement;
     ta.focus();
+    // Element nav — move the comment's target up to its parent or down to its first child, for
+    // when the wrong element got picked. Disabled at either end (no parent left to go up to, no
+    // child to go down into) rather than hidden, so the row's width stays stable.
+    const upBtn = host.querySelector('#fbk-target-up') as HTMLButtonElement | null;
+    const downBtn = host.querySelector('#fbk-target-down') as HTMLButtonElement | null;
+    const titleEl = host.querySelector('#fbk-popover-title') as HTMLElement | null;
+    const snippetEl = host.querySelector('#fbk-popover-snippet') as HTMLElement | null;
+    const srcEl = host.querySelector('#fbk-popover-src') as HTMLElement | null;
+    const srcPathEl = host.querySelector('#fbk-popover-src-path') as HTMLElement | null;
+    const updateNavButtons = () => {
+      if (upBtn) upBtn.disabled = !currentEl.parentElement;
+      if (downBtn) downBtn.disabled = currentEl.children.length === 0;
+    };
+    const navigateTo = (nextEl: Element) => {
+      currentEl.classList.remove(HL_CLASS);
+      currentEl = nextEl;
+      currentMeta = captureMetadata(currentEl, this.sourceAttr, { captureText: this.captureTextContent });
+      currentEl.classList.add(HL_CLASS);
+      currentEl.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+      if (titleEl) titleEl.innerHTML = `Comment on &lt;${escapeHtml(currentMeta._tag)}&gt;`;
+      if (snippetEl) snippetEl.textContent = currentMeta._snapshotPreview.slice(0, 200);
+      if (srcEl) srcEl.classList.toggle('fbk-hidden', !currentMeta._sourcePath);
+      if (srcPathEl) srcPathEl.textContent = currentMeta._sourcePath || '';
+      updateNavButtons();
+    };
+    if (upBtn) upBtn.addEventListener('click', () => {
+      const parent = currentEl.parentElement;
+      if (parent) navigateTo(parent);
+    });
+    if (downBtn) downBtn.addEventListener('click', () => {
+      const child = currentEl.children[0];
+      if (child) navigateTo(child);
+    });
+    updateNavButtons();
     // Private is opt-in (off by default) — a lock/unlock icon toggle rather than a checkbox, same
     // pattern as the card's own visibility toggle. Tracked here (not re-derived from the DOM at
     // submit time) so the click handler is the single place that updates both the icon and the
@@ -1760,7 +1802,7 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
       attachShotComment = !attachShotComment;
       shotToggle.classList.toggle('is-active', attachShotComment);
       shotToggle.setAttribute('aria-pressed', String(attachShotComment));
-      if (attachShotComment) this.beginScreenshotCapture(el);
+      if (attachShotComment) this.beginScreenshotCapture(currentEl);
     });
     let isBugReportComment = false;
     const bugToggle = host.querySelector('#fbk-comment-bug') as HTMLButtonElement | null;
@@ -1769,7 +1811,12 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
       bugToggle.classList.toggle('is-active', isBugReportComment);
       bugToggle.setAttribute('aria-pressed', String(isBugReportComment));
     });
-    const cancelPopover = () => { host.innerHTML = ''; this._pendingShotPromise = null; stopMsListening?.(); };
+    const cancelPopover = () => {
+      currentEl.classList.remove(HL_CLASS);
+      host.innerHTML = '';
+      this._pendingShotPromise = null;
+      stopMsListening?.();
+    };
     (host.querySelector('#fbk-cancel') as HTMLElement).addEventListener('click', cancelPopover);
     // Esc cancels the comment box, same as clicking Cancel — stopPropagation so it doesn't also
     // reach the document-level Esc handler for element-picking mode (picking already stopped by
@@ -1791,8 +1838,8 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
       const predefinedActionIds = Array.from(selectedActionIds);
       const submitBtn = host.querySelector('#fbk-submit') as HTMLButtonElement;
       submitBtn.disabled = true; submitBtn.textContent = 'Saving…';
-      const saved = await this.createComment({ ...meta, text, isPrivate, attachShot, shotPromise, predefinedActionIds, isBugReport });
-      if (saved) { host.innerHTML = ''; stopMsListening?.(); }
+      const saved = await this.createComment({ ...currentMeta, text, isPrivate, attachShot, shotPromise, predefinedActionIds, isBugReport });
+      if (saved) { currentEl.classList.remove(HL_CLASS); host.innerHTML = ''; stopMsListening?.(); }
       else { submitBtn.disabled = false; submitBtn.textContent = 'Add'; }
     });
   }

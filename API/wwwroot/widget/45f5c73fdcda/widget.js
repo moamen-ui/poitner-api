@@ -309,7 +309,7 @@
   var SHOT_HIGHLIGHT = "#2563eb";
   var _a;
   var SCRIPT_SRC = ((_a = document.currentScript) == null ? void 0 : _a.src) || "";
-  var CSS_INTEGRITY = true ? "sha384-GvfRm0R+FvMSUJEaZDg2HIp35dWGxUP4yY60N4Ds6vX9zZ4KxXPWtqoaUMmLMJqx" : "";
+  var CSS_INTEGRITY = true ? "sha384-0GwtH0cEu59iSG9NOYB8F/ALvQ5Q5aLy/ehdQqepp8GHYEHzn5MXHdSciGwhChks" : "";
   function resolveCssUrl(scriptSrc) {
     var _a2;
     if (!scriptSrc) return "pointer.css";
@@ -364,7 +364,21 @@
   };
   var ensureHighlightStyle = () => {
     if (document.getElementById("pointer-feedback-hl-style")) return;
-    const css = `.${HL_CLASS}{outline:2px dashed #2563eb!important;outline-offset:1px!important;cursor:crosshair!important;}`;
+    const css = `
+.${HL_CLASS}{
+  outline:2px dashed #0969da!important;
+  outline-offset:1px!important;
+  cursor:crosshair!important;
+  box-shadow:0 0 0 0 rgba(9,105,218,.3)!important;
+  animation:pointer-feedback-hl-pulse 2.4s cubic-bezier(.25,1,.5,1) infinite!important;
+}
+@keyframes pointer-feedback-hl-pulse{
+  0%,100%{outline-color:#0969da;box-shadow:0 0 0 0 rgba(9,105,218,.3);}
+  50%{outline-color:#7c3aed;box-shadow:0 0 10px 2px rgba(124,58,237,.3);}
+}
+@media (prefers-reduced-motion: reduce){
+  .${HL_CLASS}{animation:none!important;outline-color:#0969da!important;box-shadow:none!important;}
+}`;
     try {
       if ("adoptedStyleSheets" in Document.prototype && typeof CSSStyleSheet !== "undefined") {
         const sheet = new CSSStyleSheet();
@@ -494,7 +508,14 @@
     // Bold checkmark — the applied/verified pin (thicker stroke reads at 12px inside a 28px pin).
     checkBold: '<svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>',
     // Small reply-count bubble — the pin hover preview's "N replies" line.
-    bubbleSm: '<svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>'
+    bubbleSm: '<svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>',
+    // User menu's theme toggle — light/dark option icons.
+    sun: '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2"/><path d="M12 20v2"/><path d="m4.93 4.93 1.41 1.41"/><path d="m17.66 17.66 1.41 1.41"/><path d="M2 12h2"/><path d="M20 12h2"/><path d="m6.34 17.66-1.41 1.41"/><path d="m19.07 4.93-1.41 1.41"/></svg>',
+    moon: '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/></svg>',
+    // Popover's element-navigation buttons — move the comment's target up to its parent or down to
+    // its first child.
+    chevronUp: '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="18 15 12 9 6 15"/></svg>',
+    chevronDown: '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>'
   };
 
   // src/templates.ts
@@ -558,15 +579,15 @@
         <aside class="fbk-toolbar" id="fbk-toolbar" role="toolbar" aria-label="${escapeHtml(getBrandName())}" part="toolbar">
           <span class="fbk-toolbar__grip" id="fbk-grip" data-fbk-drag data-toggle="tooltip" data-placement="top" title="Drag to reposition" aria-hidden="true">${ICON.grip}</span>
           <span class="fbk-toolbar__divider" aria-hidden="true"></span>
-          <button type="button" class="fbk-toolbar-btn fbk-toolbar-btn--primary" id="fbk-add" data-fbk-act="inspect" aria-pressed="false" data-toggle="tooltip" data-placement="top" title="Comment on an element${shortcutLabel ? ` (${escapeHtml(shortcutLabel)})` : ""}" aria-label="Comment on an element"${ariaShortcut ? ` aria-keyshortcuts="${escapeHtml(ariaShortcut)}"` : ""}><span class="fbk-toolbar-btn__icon">${ICON.crosshair}</span><span class="fbk-toolbar-btn__label">Comment on an element</span></button>
-          <button type="button" class="fbk-toolbar-btn fbk-toolbar-btn--comments" id="fbk-toggle" data-fbk-act="comments" aria-expanded="false" aria-haspopup="dialog" data-toggle="tooltip" data-placement="top" title="View comments list" aria-label="Comments"><span class="fbk-toolbar-btn__icon">${ICON.bubble}</span><span class="fbk-toolbar-btn__label">Comments</span> <span class="fbk-toolbar-count" id="fbk-count" data-fbk-count>0</span></button>
+          <button type="button" class="fbk-toolbar-btn fbk-toolbar-btn--primary fbk-toolbar-btn--icon" id="fbk-add" data-fbk-act="inspect" aria-pressed="false" data-toggle="tooltip" data-placement="top" title="Comment on an element${shortcutLabel ? ` (${escapeHtml(shortcutLabel)})` : ""}" aria-label="Comment on an element"${ariaShortcut ? ` aria-keyshortcuts="${escapeHtml(ariaShortcut)}"` : ""}><span class="fbk-toolbar-btn__icon">${ICON.crosshair}</span></button>
+          <button type="button" class="fbk-toolbar-btn fbk-toolbar-btn--comments" id="fbk-toggle" data-fbk-act="comments" aria-expanded="false" aria-haspopup="dialog" data-toggle="tooltip" data-placement="top" title="View comments list" aria-label="Comments"><span class="fbk-toolbar-btn__icon">${ICON.bubble}</span> <span class="fbk-toolbar-count" id="fbk-count" data-fbk-count>0</span></button>
           <button type="button" class="fbk-toolbar-btn fbk-toolbar-btn--icon" id="fbk-updates" data-fbk-act="updates" aria-expanded="false" aria-haspopup="dialog" data-toggle="tooltip" data-placement="top" title="Recent activity &amp; updates" aria-label="Updates${unreadNotifyCount > 0 ? `, ${unreadNotifyCount > 99 ? "99+" : unreadNotifyCount} unread` : ""}"><span class="fbk-toolbar-btn__icon">${ICON.bell}</span><span class="fbk-toolbar-dot${unreadNotifyCount > 0 ? "" : " fbk-hidden"}" id="fbk-notify-count" data-fbk-unread aria-hidden="true"></span></button>
           ${displayName ? `
           <span class="fbk-toolbar__divider" aria-hidden="true"></span>
           <button type="button" class="fbk-toolbar-btn fbk-toolbar-btn--avatar" id="fbk-user" data-fbk-act="account" aria-expanded="false" aria-haspopup="dialog" data-toggle="tooltip" data-placement="top" title="Signed in as ${displayName}${roleLabel ? " · " + roleLabel : ""}" aria-label="Account, ${displayName}">${avatarInitials}</button>` : ""}
-          <button type="button" class="fbk-toolbar-btn fbk-toolbar-btn--icon" id="fbk-hide" data-fbk-act="hide" data-toggle="tooltip" data-placement="top" title="Hide ${escapeHtml(getBrandName())}" aria-label="Hide ${escapeHtml(getBrandName())}"><span class="fbk-toolbar-btn__icon">${ICON.eyeOff}</span></button>
+          <button type="button" class="fbk-toolbar-btn fbk-toolbar-btn--icon fbk-toolbar-btn--brand" id="fbk-hide" data-fbk-act="hide" data-toggle="tooltip" data-placement="top" title="Hide ${escapeHtml(getBrandName())}" aria-label="Hide ${escapeHtml(getBrandName())}"><span class="fbk-toolbar-btn__icon">${ICON.eyeOff}</span></button>
           <span class="fbk-toolbar__divider fbk-toolbar__divider--moved" aria-hidden="true"></span>
-          <button type="button" class="fbk-toolbar-btn fbk-toolbar__reset" id="fbk-reset-pos" data-fbk-act="reset-position" data-toggle="tooltip" data-placement="top" title="Reset toolbar position" aria-label="Reset toolbar position"><span class="fbk-toolbar-btn__icon">${ICON.restore}</span>Reset position</button>
+          <button type="button" class="fbk-toolbar-btn fbk-toolbar-btn--icon fbk-toolbar__reset" id="fbk-reset-pos" data-fbk-act="reset-position" data-toggle="tooltip" data-placement="top" title="Reset toolbar position" aria-label="Reset toolbar position"><span class="fbk-toolbar-btn__icon">${ICON.restore}</span></button>
         </aside>
         <div class="fbk-sidebar" id="fbk-sidebar">
           <div class="fbk-sidebar-head">
@@ -605,8 +626,8 @@
           <option value="2" ${commitStyle === 2 ? "selected" : ""}>Separate commits</option>
         </select>`,
     // Dropdown under the user icon: shows identity, the per-user "add comment" shortcut
-    // (click to rebind, ↺ to reset), and a Sign out action.
-    userMenu: (displayName, roleLabel, shortcutLabel, authOwnedByHost) => `
+    // (click to rebind, ↺ to reset), theme + language toggles, and a Sign out action.
+    userMenu: (displayName, roleLabel, shortcutLabel, authOwnedByHost, theme = "light", language = "en") => `
         <div class="fbk-menu" id="fbk-user-menu" role="menu">
           <div class="fbk-menu-id">
             <span>${displayName}</span>
@@ -616,6 +637,16 @@
             <span class="fbk-menu-shortcut-label">Add comment</span>
             <button type="button" id="fbk-shortcut-edit" class="fbk-mini" title="Click, then press a new key combo">${escapeHtml(shortcutLabel)}</button>
             <button type="button" id="fbk-shortcut-reset" class="fbk-mini fbk-icon" title="Reset to default">&#8635;</button>
+          </div>
+          <div class="fbk-menu-shortcut">
+            <span class="fbk-menu-shortcut-label">Theme</span>
+            <button type="button" id="fbk-theme-light" class="fbk-mini fbk-icon${theme === "light" ? " is-active" : ""}" title="Light" aria-label="Light theme" aria-pressed="${theme === "light"}">${ICON.sun}</button>
+            <button type="button" id="fbk-theme-dark" class="fbk-mini fbk-icon${theme === "dark" ? " is-active" : ""}" title="Dark" aria-label="Dark theme" aria-pressed="${theme === "dark"}">${ICON.moon}</button>
+          </div>
+          <div class="fbk-menu-shortcut">
+            <span class="fbk-menu-shortcut-label">Language</span>
+            <button type="button" id="fbk-lang-en" class="fbk-mini${language === "en" ? " is-active" : ""}" aria-pressed="${language === "en"}">EN</button>
+            <button type="button" id="fbk-lang-ar" class="fbk-mini${language === "ar" ? " is-active" : ""}" aria-pressed="${language === "ar"}">AR</button>
           </div>
           ${authOwnedByHost ? `<div class="fbk-menu-note fbk-caption">Signed in via the browser extension — sign out from its popup.</div>` : `<button class="fbk-menu-item" id="fbk-signout" role="menuitem">${ICON.logout}<span>Sign out</span></button>`}
         </div>`,
@@ -731,17 +762,27 @@
     // to THIS comment; it never controls whether that buffer exists (see pagecontext.ts).
     popover: (meta, left, top, shotEnabled, actions = [], bugReportEnabled = false) => `
         <div class="fbk-popover" data-fbk-left="${left}" data-fbk-top="${top}">
-          <h3>Comment on &lt;${escapeHtml(meta._tag)}&gt;</h3>
-          <div class="fbk-snippet">${escapeHtml(meta._snapshotPreview.slice(0, 200))}</div>
-          ${meta._sourcePath ? `<div class="fbk-src">&#x26ec; ${escapeHtml(meta._sourcePath)}</div>` : ""}
+          <div class="fbk-popover-nav">
+            <button type="button" class="fbk-popover-nav-btn" id="fbk-target-up" title="Select parent element" aria-label="Select parent element">${ICON.chevronUp}</button>
+            <button type="button" class="fbk-popover-nav-btn" id="fbk-target-down" title="Select first child element" aria-label="Select first child element">${ICON.chevronDown}</button>
+            <button type="button" class="fbk-popover-private-toggle" id="fbk-comment-private" title="Make private (only you)" aria-label="Make private" aria-pressed="false">${ICON.unlock}</button>
+          </div>
+          <h3 id="fbk-popover-title">Comment on &lt;${escapeHtml(meta._tag)}&gt;</h3>
+          <div class="fbk-snippet" id="fbk-popover-snippet">${escapeHtml(meta._snapshotPreview.slice(0, 200))}</div>
+          <div class="fbk-src${meta._sourcePath ? "" : " fbk-hidden"}" id="fbk-popover-src">&#x26ec; <span id="fbk-popover-src-path">${escapeHtml(meta._sourcePath || "")}</span></div>
           <textarea class="fbk-textarea" id="fbk-comment-text" placeholder="What should change here?"></textarea>
           ${actions.length ? `<div class="fbk-field-label">Predefined prompts</div>
-          <div class="fbk-actions-pick" id="fbk-action-pick">
-            ${actions.map((a) => `<label class="fbk-check"><input type="checkbox" class="fbk-action-opt" value="${a.id}" /> ${escapeHtml(a.text)}</label>`).join("")}
+          <div class="fbk-ms" id="fbk-action-ms">
+            <div class="fbk-ms-control" id="fbk-action-ms-control">
+              <div class="fbk-ms-chips" id="fbk-action-ms-chips"></div>
+              <input type="text" class="fbk-ms-input" id="fbk-action-ms-input" placeholder="Search prompts…" autocomplete="off" role="combobox" aria-expanded="false" aria-haspopup="listbox" aria-label="Search predefined prompts" />
+            </div>
+            <div class="fbk-ms-list" id="fbk-action-ms-list" role="listbox" hidden></div>
           </div>` : ""}
-          ${shotEnabled ? `<label class="fbk-check"><input type="checkbox" id="fbk-comment-shot" /> &#x1f4f7; Attach screenshot</label>` : ""}
-          ${bugReportEnabled ? `<label class="fbk-check" title="Attaches any console errors/warnings and failed or slow network requests seen on this page"><input type="checkbox" id="fbk-comment-bug" /> &#x1f41e; Report as a bug</label>` : ""}
-          <label class="fbk-check"><input type="checkbox" id="fbk-comment-private" /> &#x1f512; Keep private — only me</label>
+          ${shotEnabled || bugReportEnabled ? `<div class="fbk-popover-toggles">
+            ${shotEnabled ? `<button type="button" class="fbk-mini" id="fbk-comment-shot" aria-pressed="false">&#x1f4f7; Attach screenshot</button>` : ""}
+            ${bugReportEnabled ? `<button type="button" class="fbk-mini" id="fbk-comment-bug" aria-pressed="false" title="Attaches any console errors/warnings and failed or slow network requests seen on this page">&#x1f41e; Report as a bug</button>` : ""}
+          </div>` : ""}
           <div class="fbk-reply-row">
             <button class="fbk-btn primary fbk-btn-fill" id="fbk-submit">Add</button>
             <button class="fbk-mini" id="fbk-cancel">Cancel</button>
@@ -1257,6 +1298,44 @@
     return parts.join("+");
   }
 
+  // src/theme.ts
+  function relativeLuminance(r, g, b) {
+    const lin = (c) => {
+      const s = c / 255;
+      return s <= 0.03928 ? s / 12.92 : Math.pow((s + 0.055) / 1.055, 2.4);
+    };
+    return 0.2126 * lin(r) + 0.7152 * lin(g) + 0.0722 * lin(b);
+  }
+  function parseRgba(color) {
+    const m = color.match(/rgba?\(([^)]+)\)/i);
+    if (!m) return null;
+    const parts = m[1].split(",").map((s) => parseFloat(s.trim()));
+    const [r, g, b] = parts;
+    const a = parts[3];
+    if (r === void 0 || g === void 0 || b === void 0) return null;
+    if ([r, g, b].some((n) => Number.isNaN(n))) return null;
+    return [r, g, b, a === void 0 || Number.isNaN(a) ? 1 : a];
+  }
+  function detectSystemTheme() {
+    var _a2;
+    try {
+      return typeof window !== "undefined" && ((_a2 = window.matchMedia) == null ? void 0 : _a2.call(window, "(prefers-color-scheme: dark)").matches) ? "dark" : "light";
+    } catch {
+      return "light";
+    }
+  }
+  function detectSiteTheme() {
+    try {
+      const candidates = [document.body, document.documentElement].filter(Boolean);
+      for (const el of candidates) {
+        const rgba = parseRgba(getComputedStyle(el).backgroundColor);
+        if (rgba && rgba[3] > 0) return relativeLuminance(rgba[0], rgba[1], rgba[2]) < 0.5 ? "dark" : "light";
+      }
+    } catch {
+    }
+    return detectSystemTheme();
+  }
+
   // src/auth-ui.ts
   function showLoginModal(host, afterLogin) {
     host.afterLogin = afterLogin || null;
@@ -1618,6 +1697,7 @@
         this.shortcut = parseShortcut((_b = this.user) == null ? void 0 : _b.addCommentShortcut);
         this.authOwnedByHost = true;
       }
+      this.applyTheme();
       this.style.position = "fixed";
       this.style.zIndex = "2147483647";
       this.style.top = "0";
@@ -1931,6 +2011,55 @@
     handle401() {
       this.clearAuth();
       showLoginModal(this);
+    }
+    // --- Theme ------------------------------------------------------------
+    // Deliberately WIDGET-LOCAL, not account-wide: `User.theme`/`/api/me/preferences` is the same
+    // field the dashboard's own theme toggle reads to paint the entire admin app, so persisting the
+    // widget's choice there would silently flip the dashboard's site-wide theme too. An explicit
+    // per-browser override (localStorage, set from the user menu below) wins; otherwise the host
+    // page's own rendered theme; otherwise the OS preference. See theme.ts.
+    resolveTheme() {
+      try {
+        const stored = localStorage.getItem("pointer_widget_theme");
+        if (stored === "light" || stored === "dark") return stored;
+      } catch {
+      }
+      return detectSiteTheme();
+    }
+    // Reflects the resolved mode onto the host element (light DOM, not shadowRoot) as
+    // `data-fbk-theme` — _theme.scss's `:host([data-fbk-theme="dark"])` block reads it to swap the
+    // shadow UI's token values, and a consuming app can target the same attribute from its own CSS
+    // to override any single token per project, exactly like the light defaults.
+    applyTheme() {
+      this.setAttribute("data-fbk-theme", this.resolveTheme());
+    }
+    // Sets the widget's own per-browser theme override — never touches the account (see the note
+    // on resolveTheme above), so it can never bleed into the host dashboard's own theme.
+    setThemeOverride(mode) {
+      try {
+        localStorage.setItem("pointer_widget_theme", mode);
+      } catch {
+      }
+      this.applyTheme();
+    }
+    // Persists the account's language preference — the widget's own UI text stays English (see
+    // the language-scope decision); this only keeps the account in sync with the dashboard's
+    // language switcher, which reads the same field.
+    async saveLanguagePreference(lang) {
+      try {
+        const r = await this.api("/api/me/preferences", {
+          method: "PATCH",
+          body: JSON.stringify({ language: lang })
+        });
+        if (!r.ok) return false;
+        if (this.user) {
+          this.user = { ...this.user, language: lang };
+          localStorage.setItem("pointer_user", JSON.stringify(this.user));
+        }
+        return true;
+      } catch {
+        return false;
+      }
     }
     async init() {
       await loadStatusCatalog(this.server);
@@ -2384,6 +2513,7 @@
     }
     // --- User menu (identity + sign out) ------------------------------------
     toggleUserMenu() {
+      var _a2;
       this.closeUpdatesMenu();
       this.closeClusterMenu();
       const host = this.root.querySelector("#fbk-menu-host");
@@ -2394,7 +2524,14 @@
       }
       const displayName = this.user ? escapeHtml(this.user.displayName || this.user.email) : "";
       const roleLabel = this.user ? escapeHtml(this.user.roleName || "") : "";
-      host.innerHTML = TPL.userMenu(displayName, roleLabel, formatShortcut(this.shortcut), this.authOwnedByHost);
+      host.innerHTML = TPL.userMenu(
+        displayName,
+        roleLabel,
+        formatShortcut(this.shortcut),
+        this.authOwnedByHost,
+        this.resolveTheme(),
+        ((_a2 = this.user) == null ? void 0 : _a2.language) === "ar" ? "ar" : "en"
+      );
       const menu = host.querySelector("#fbk-user-menu");
       const btn = this.root.querySelector("#fbk-user");
       if (btn) {
@@ -2417,6 +2554,32 @@
         if (editBtn) editBtn.textContent = formatShortcut(this.shortcut);
         this.toast(ok ? "Shortcut reset to default" : "Failed to reset — try again", ok ? "" : "error");
       });
+      const reopenUserMenu = () => {
+        this.closeUserMenu();
+        this.toggleUserMenu();
+      };
+      const wireThemeBtn = (id, mode) => {
+        host.querySelector(id).addEventListener("click", (e) => {
+          e.stopPropagation();
+          if (this.resolveTheme() === mode) return;
+          this.setThemeOverride(mode);
+          reopenUserMenu();
+        });
+      };
+      wireThemeBtn("#fbk-theme-light", "light");
+      wireThemeBtn("#fbk-theme-dark", "dark");
+      const wireLangBtn = (id, lang) => {
+        host.querySelector(id).addEventListener("click", async (e) => {
+          var _a3;
+          e.stopPropagation();
+          if ((((_a3 = this.user) == null ? void 0 : _a3.language) === "ar" ? "ar" : "en") === lang) return;
+          const ok = await this.saveLanguagePreference(lang);
+          if (ok) reopenUserMenu();
+          else this.toast("Failed to save language — try again", "error");
+        });
+      };
+      wireLangBtn("#fbk-lang-en", "en");
+      wireLangBtn("#fbk-lang-ar", "ar");
       this._userMenuClose = (e) => {
         const path = e.composedPath();
         if (!path.includes(menu) && (!btn || !path.includes(btn))) this.closeUserMenu();
@@ -2721,8 +2884,9 @@
       tb == null ? void 0 : tb.classList.add("is-dim");
       const addBtn = this.root.querySelector("#fbk-add");
       addBtn.setAttribute("aria-pressed", "true");
-      addBtn.innerHTML = `<span class="fbk-toolbar-btn__icon">${ICON.close}</span><span class="fbk-toolbar-btn__label">Cancel</span>`;
+      addBtn.innerHTML = `<span class="fbk-toolbar-btn__icon">${ICON.close}</span>`;
       addBtn.title = "Cancel";
+      addBtn.setAttribute("aria-label", "Cancel");
       document.addEventListener("mousemove", this._onHover, true);
       document.addEventListener("click", this._onPick, true);
       document.addEventListener("keydown", this._onPickKey, true);
@@ -2736,8 +2900,9 @@
       const addBtn = this.root && this.root.querySelector("#fbk-add");
       if (addBtn) {
         addBtn.setAttribute("aria-pressed", "false");
-        addBtn.innerHTML = `<span class="fbk-toolbar-btn__icon">${ICON.crosshair}</span><span class="fbk-toolbar-btn__label">Comment on an element</span>`;
+        addBtn.innerHTML = `<span class="fbk-toolbar-btn__icon">${ICON.crosshair}</span>`;
         addBtn.title = "Comment on an element";
+        addBtn.setAttribute("aria-label", "Comment on an element");
       }
       document.removeEventListener("mousemove", this._onHover, true);
       document.removeEventListener("click", this._onPick, true);
@@ -2845,9 +3010,10 @@
     // (named openCommentPopover, not showPopover, to avoid clashing with the
     //  built-in HTMLElement.showPopover() from the Popover API.)
     openCommentPopover(x, y, el) {
-      const meta = captureMetadata(el, this.sourceAttr, { captureText: this.captureTextContent });
+      let currentEl = el;
+      let currentMeta = captureMetadata(currentEl, this.sourceAttr, { captureText: this.captureTextContent });
       const host = this.root.querySelector("#fbk-popover-host");
-      host.innerHTML = TPL.popover(meta, x, y, this.screenshotEnabled, this.predefinedActions, this.pageContextCaptureEnabled);
+      host.innerHTML = TPL.popover(currentMeta, x, y, this.screenshotEnabled, this.predefinedActions, this.pageContextCaptureEnabled);
       applyDataPosition(host, ".fbk-popover");
       const popoverEl = host.querySelector(".fbk-popover");
       if (popoverEl) {
@@ -2858,15 +3024,154 @@
         popoverEl.style.left = `${Math.round(left)}px`;
         popoverEl.style.top = `${Math.round(top)}px`;
       }
+      currentEl.classList.add(HL_CLASS);
       const ta = host.querySelector("#fbk-comment-text");
       ta.focus();
+      const upBtn = host.querySelector("#fbk-target-up");
+      const downBtn = host.querySelector("#fbk-target-down");
+      const titleEl = host.querySelector("#fbk-popover-title");
+      const snippetEl = host.querySelector("#fbk-popover-snippet");
+      const srcEl = host.querySelector("#fbk-popover-src");
+      const srcPathEl = host.querySelector("#fbk-popover-src-path");
+      const updateNavButtons = () => {
+        if (upBtn) upBtn.disabled = !currentEl.parentElement;
+        if (downBtn) downBtn.disabled = currentEl.children.length === 0;
+      };
+      const navigateTo = (nextEl) => {
+        currentEl.classList.remove(HL_CLASS);
+        currentEl = nextEl;
+        currentMeta = captureMetadata(currentEl, this.sourceAttr, { captureText: this.captureTextContent });
+        currentEl.classList.add(HL_CLASS);
+        currentEl.scrollIntoView({ block: "nearest", inline: "nearest" });
+        if (titleEl) titleEl.innerHTML = `Comment on &lt;${escapeHtml(currentMeta._tag)}&gt;`;
+        if (snippetEl) snippetEl.textContent = currentMeta._snapshotPreview.slice(0, 200);
+        if (srcEl) srcEl.classList.toggle("fbk-hidden", !currentMeta._sourcePath);
+        if (srcPathEl) srcPathEl.textContent = currentMeta._sourcePath || "";
+        updateNavButtons();
+      };
+      if (upBtn) upBtn.addEventListener("click", () => {
+        const parent = currentEl.parentElement;
+        if (parent) navigateTo(parent);
+      });
+      if (downBtn) downBtn.addEventListener("click", () => {
+        const child = currentEl.children[0];
+        if (child) navigateTo(child);
+      });
+      updateNavButtons();
+      let isPrivateComment = false;
+      const privateToggle = host.querySelector("#fbk-comment-private");
+      if (privateToggle) privateToggle.addEventListener("click", () => {
+        isPrivateComment = !isPrivateComment;
+        privateToggle.classList.toggle("is-active", isPrivateComment);
+        privateToggle.setAttribute("aria-pressed", String(isPrivateComment));
+        privateToggle.title = isPrivateComment ? "Private — click to make public" : "Make private (only you)";
+        privateToggle.setAttribute("aria-label", isPrivateComment ? "Make public" : "Make private");
+        privateToggle.innerHTML = isPrivateComment ? ICON.lock : ICON.unlock;
+      });
+      const selectedActionIds = /* @__PURE__ */ new Set();
+      let stopMsListening = null;
+      const actionMsControl = host.querySelector("#fbk-action-ms-control");
+      const actionMsInput = host.querySelector("#fbk-action-ms-input");
+      const actionMsChips = host.querySelector("#fbk-action-ms-chips");
+      const actionMsList = host.querySelector("#fbk-action-ms-list");
+      if (actionMsControl && actionMsInput && actionMsChips && actionMsList) {
+        const renderChips = () => {
+          actionMsChips.innerHTML = Array.from(selectedActionIds).map((id) => {
+            const a = this.predefinedActions.find((x2) => x2.id === id);
+            if (!a) return "";
+            return `<span class="fbk-ms-chip"><span class="fbk-ms-chip-label">${escapeHtml(a.text)}</span><button type="button" class="fbk-ms-chip-remove" data-id="${id}" aria-label="Remove ${escapeHtml(a.text)}">&times;</button></span>`;
+          }).join("");
+          actionMsChips.querySelectorAll(".fbk-ms-chip-remove").forEach((btn) => {
+            btn.addEventListener("click", (e) => {
+              e.stopPropagation();
+              selectedActionIds.delete(Number(btn.dataset.id));
+              renderChips();
+              renderOptions(actionMsInput.value);
+            });
+          });
+        };
+        const renderOptions = (query) => {
+          const q = query.trim().toLowerCase();
+          const matches = this.predefinedActions.filter(
+            (a) => !selectedActionIds.has(a.id) && (!q || a.text.toLowerCase().includes(q))
+          );
+          actionMsList.innerHTML = matches.length ? matches.map((a) => `<div class="fbk-ms-option" role="option" data-id="${a.id}">${escapeHtml(a.text)}</div>`).join("") : `<div class="fbk-ms-empty">No matches</div>`;
+          actionMsList.querySelectorAll(".fbk-ms-option").forEach((opt) => {
+            opt.addEventListener("mousedown", (e) => {
+              e.preventDefault();
+              selectedActionIds.add(Number(opt.dataset.id));
+              actionMsInput.value = "";
+              renderChips();
+              renderOptions("");
+              actionMsInput.focus();
+            });
+          });
+        };
+        const openList = () => {
+          actionMsList.hidden = false;
+          actionMsInput.setAttribute("aria-expanded", "true");
+        };
+        const closeList = () => {
+          actionMsList.hidden = true;
+          actionMsInput.setAttribute("aria-expanded", "false");
+        };
+        actionMsInput.addEventListener("focus", () => {
+          renderOptions(actionMsInput.value);
+          openList();
+        });
+        actionMsInput.addEventListener("input", () => {
+          renderOptions(actionMsInput.value);
+          openList();
+        });
+        actionMsInput.addEventListener("keydown", (e) => {
+          if (e.key === "Escape") {
+            e.stopPropagation();
+            closeList();
+          } else if (e.key === "Enter") {
+            e.preventDefault();
+            const first = actionMsList.querySelector(".fbk-ms-option");
+            const id = first == null ? void 0 : first.dataset.id;
+            if (id) {
+              selectedActionIds.add(Number(id));
+              actionMsInput.value = "";
+              renderChips();
+              renderOptions("");
+            }
+          } else if (e.key === "Backspace" && !actionMsInput.value && selectedActionIds.size) {
+            const last = Array.from(selectedActionIds).pop();
+            selectedActionIds.delete(last);
+            renderChips();
+            renderOptions("");
+          }
+        });
+        const onDocClick = (e) => {
+          const path = e.composedPath();
+          if (!path.includes(actionMsControl) && !path.includes(actionMsList)) closeList();
+        };
+        document.addEventListener("click", onDocClick, true);
+        stopMsListening = () => document.removeEventListener("click", onDocClick, true);
+        renderOptions("");
+      }
+      let attachShotComment = false;
       const shotToggle = host.querySelector("#fbk-comment-shot");
-      if (shotToggle) shotToggle.addEventListener("change", () => {
-        if (shotToggle.checked) this.beginScreenshotCapture(el);
+      if (shotToggle) shotToggle.addEventListener("click", () => {
+        attachShotComment = !attachShotComment;
+        shotToggle.classList.toggle("is-active", attachShotComment);
+        shotToggle.setAttribute("aria-pressed", String(attachShotComment));
+        if (attachShotComment) this.beginScreenshotCapture(currentEl);
+      });
+      let isBugReportComment = false;
+      const bugToggle = host.querySelector("#fbk-comment-bug");
+      if (bugToggle) bugToggle.addEventListener("click", () => {
+        isBugReportComment = !isBugReportComment;
+        bugToggle.classList.toggle("is-active", isBugReportComment);
+        bugToggle.setAttribute("aria-pressed", String(isBugReportComment));
       });
       const cancelPopover = () => {
+        currentEl.classList.remove(HL_CLASS);
         host.innerHTML = "";
         this._pendingShotPromise = null;
+        stopMsListening == null ? void 0 : stopMsListening();
       };
       host.querySelector("#fbk-cancel").addEventListener("click", cancelPopover);
       host.addEventListener("keydown", (e) => {
@@ -2878,23 +3183,21 @@
       host.querySelector("#fbk-submit").addEventListener("click", async () => {
         const text = ta.value.trim();
         if (!text) return this.toast("Comment cannot be empty", "error");
-        const privateEl = host.querySelector("#fbk-comment-private");
-        const isPrivate = !!(privateEl && privateEl.checked);
-        const shotEl = host.querySelector("#fbk-comment-shot");
-        const attachShot = !!(shotEl && shotEl.checked);
-        const bugEl = host.querySelector("#fbk-comment-bug");
-        const isBugReport = !!(bugEl && bugEl.checked);
+        const isPrivate = isPrivateComment;
+        const attachShot = attachShotComment;
+        const isBugReport = isBugReportComment;
         const shotPromise = this._pendingShotPromise;
         this._pendingShotPromise = null;
-        const predefinedActionIds = Array.from(
-          host.querySelectorAll(".fbk-action-opt:checked")
-        ).map((el2) => Number(el2.value));
+        const predefinedActionIds = Array.from(selectedActionIds);
         const submitBtn = host.querySelector("#fbk-submit");
         submitBtn.disabled = true;
         submitBtn.textContent = "Saving…";
-        const saved = await this.createComment({ ...meta, text, isPrivate, attachShot, shotPromise, predefinedActionIds, isBugReport });
-        if (saved) host.innerHTML = "";
-        else {
+        const saved = await this.createComment({ ...currentMeta, text, isPrivate, attachShot, shotPromise, predefinedActionIds, isBugReport });
+        if (saved) {
+          currentEl.classList.remove(HL_CLASS);
+          host.innerHTML = "";
+          stopMsListening == null ? void 0 : stopMsListening();
+        } else {
           submitBtn.disabled = false;
           submitBtn.textContent = "Add";
         }
@@ -3212,7 +3515,8 @@
           id: String(me.id),
           displayName: this.user && this.user.displayName || me.displayName,
           isAdmin: !!me.isAdmin,
-          isQuickAccess: !!me.isQuickAccess
+          isQuickAccess: !!me.isQuickAccess,
+          language: this.user && this.user.language || me.language
         };
         if (!this.authOwnedByHost) {
           try {

@@ -252,6 +252,17 @@
   position: relative;
 }
 
+.fbk-toolbar-btn--brand {
+  color: var(--fbk-launcher-fg, #fff);
+  background: var(--fbk-launcher-bg, #000);
+}
+
+.fbk-toolbar-btn--brand:hover,
+.fbk-toolbar-btn--brand:active {
+  background: var(--fbk-launcher-bg, #000);
+  opacity: 0.85;
+}
+
 .fbk-toolbar-btn--avatar {
   inline-size: 32px;
   padding-inline: 0;
@@ -1361,15 +1372,22 @@
 .fbk-popover h3 {
   margin-block: 0 8px;
   margin-inline: 0;
-  padding-inline-end: 30px;
+  padding-inline-end: 96px;
   font-size: 13px;
   color: var(--fbk-text, #1f2328);
 }
 
-.fbk-popover-private-toggle {
+.fbk-popover-nav {
   position: absolute;
   inset-block-start: 10px;
   inset-inline-end: 10px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.fbk-popover-nav-btn,
+.fbk-popover-private-toggle {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -1383,8 +1401,15 @@
   cursor: pointer;
 }
 
+.fbk-popover-nav-btn:hover,
 .fbk-popover-private-toggle:hover {
   background: var(--fbk-surface-hover, #f3f4f6);
+}
+
+.fbk-popover-nav-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+  background: var(--fbk-surface-muted, #eaeef2);
 }
 
 .fbk-popover-private-toggle.is-active {

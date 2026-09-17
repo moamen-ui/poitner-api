@@ -309,7 +309,7 @@
   var SHOT_HIGHLIGHT = "#2563eb";
   var _a;
   var SCRIPT_SRC = ((_a = document.currentScript) == null ? void 0 : _a.src) || "";
-  var CSS_INTEGRITY = true ? "sha384-mzWfjVzCzzgNkQSoOHx+MSGtGC/svEwseSbzyKtQzFNMVPur0qSuZapV5Z6NnUwu" : "";
+  var CSS_INTEGRITY = true ? "sha384-0GwtH0cEu59iSG9NOYB8F/ALvQ5Q5aLy/ehdQqepp8GHYEHzn5MXHdSciGwhChks" : "";
   function resolveCssUrl(scriptSrc) {
     var _a2;
     if (!scriptSrc) return "pointer.css";
@@ -511,7 +511,11 @@
     bubbleSm: '<svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>',
     // User menu's theme toggle — light/dark option icons.
     sun: '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2"/><path d="M12 20v2"/><path d="m4.93 4.93 1.41 1.41"/><path d="m17.66 17.66 1.41 1.41"/><path d="M2 12h2"/><path d="M20 12h2"/><path d="m6.34 17.66-1.41 1.41"/><path d="m19.07 4.93-1.41 1.41"/></svg>',
-    moon: '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/></svg>'
+    moon: '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/></svg>',
+    // Popover's element-navigation buttons — move the comment's target up to its parent or down to
+    // its first child.
+    chevronUp: '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="18 15 12 9 6 15"/></svg>',
+    chevronDown: '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>'
   };
 
   // src/templates.ts
@@ -581,7 +585,7 @@
           ${displayName ? `
           <span class="fbk-toolbar__divider" aria-hidden="true"></span>
           <button type="button" class="fbk-toolbar-btn fbk-toolbar-btn--avatar" id="fbk-user" data-fbk-act="account" aria-expanded="false" aria-haspopup="dialog" data-toggle="tooltip" data-placement="top" title="Signed in as ${displayName}${roleLabel ? " · " + roleLabel : ""}" aria-label="Account, ${displayName}">${avatarInitials}</button>` : ""}
-          <button type="button" class="fbk-toolbar-btn fbk-toolbar-btn--icon" id="fbk-hide" data-fbk-act="hide" data-toggle="tooltip" data-placement="top" title="Hide ${escapeHtml(getBrandName())}" aria-label="Hide ${escapeHtml(getBrandName())}"><span class="fbk-toolbar-btn__icon">${ICON.eyeOff}</span></button>
+          <button type="button" class="fbk-toolbar-btn fbk-toolbar-btn--icon fbk-toolbar-btn--brand" id="fbk-hide" data-fbk-act="hide" data-toggle="tooltip" data-placement="top" title="Hide ${escapeHtml(getBrandName())}" aria-label="Hide ${escapeHtml(getBrandName())}"><span class="fbk-toolbar-btn__icon">${ICON.eyeOff}</span></button>
           <span class="fbk-toolbar__divider fbk-toolbar__divider--moved" aria-hidden="true"></span>
           <button type="button" class="fbk-toolbar-btn fbk-toolbar-btn--icon fbk-toolbar__reset" id="fbk-reset-pos" data-fbk-act="reset-position" data-toggle="tooltip" data-placement="top" title="Reset toolbar position" aria-label="Reset toolbar position"><span class="fbk-toolbar-btn__icon">${ICON.restore}</span></button>
         </aside>
@@ -758,10 +762,14 @@
     // to THIS comment; it never controls whether that buffer exists (see pagecontext.ts).
     popover: (meta, left, top, shotEnabled, actions = [], bugReportEnabled = false) => `
         <div class="fbk-popover" data-fbk-left="${left}" data-fbk-top="${top}">
-          <button type="button" class="fbk-popover-private-toggle" id="fbk-comment-private" title="Make private (only you)" aria-label="Make private" aria-pressed="false">${ICON.unlock}</button>
-          <h3>Comment on &lt;${escapeHtml(meta._tag)}&gt;</h3>
-          <div class="fbk-snippet">${escapeHtml(meta._snapshotPreview.slice(0, 200))}</div>
-          ${meta._sourcePath ? `<div class="fbk-src">&#x26ec; ${escapeHtml(meta._sourcePath)}</div>` : ""}
+          <div class="fbk-popover-nav">
+            <button type="button" class="fbk-popover-nav-btn" id="fbk-target-up" title="Select parent element" aria-label="Select parent element">${ICON.chevronUp}</button>
+            <button type="button" class="fbk-popover-nav-btn" id="fbk-target-down" title="Select first child element" aria-label="Select first child element">${ICON.chevronDown}</button>
+            <button type="button" class="fbk-popover-private-toggle" id="fbk-comment-private" title="Make private (only you)" aria-label="Make private" aria-pressed="false">${ICON.unlock}</button>
+          </div>
+          <h3 id="fbk-popover-title">Comment on &lt;${escapeHtml(meta._tag)}&gt;</h3>
+          <div class="fbk-snippet" id="fbk-popover-snippet">${escapeHtml(meta._snapshotPreview.slice(0, 200))}</div>
+          <div class="fbk-src${meta._sourcePath ? "" : " fbk-hidden"}" id="fbk-popover-src">&#x26ec; <span id="fbk-popover-src-path">${escapeHtml(meta._sourcePath || "")}</span></div>
           <textarea class="fbk-textarea" id="fbk-comment-text" placeholder="What should change here?"></textarea>
           ${actions.length ? `<div class="fbk-field-label">Predefined prompts</div>
           <div class="fbk-ms" id="fbk-action-ms">
@@ -3002,9 +3010,10 @@
     // (named openCommentPopover, not showPopover, to avoid clashing with the
     //  built-in HTMLElement.showPopover() from the Popover API.)
     openCommentPopover(x, y, el) {
-      const meta = captureMetadata(el, this.sourceAttr, { captureText: this.captureTextContent });
+      let currentEl = el;
+      let currentMeta = captureMetadata(currentEl, this.sourceAttr, { captureText: this.captureTextContent });
       const host = this.root.querySelector("#fbk-popover-host");
-      host.innerHTML = TPL.popover(meta, x, y, this.screenshotEnabled, this.predefinedActions, this.pageContextCaptureEnabled);
+      host.innerHTML = TPL.popover(currentMeta, x, y, this.screenshotEnabled, this.predefinedActions, this.pageContextCaptureEnabled);
       applyDataPosition(host, ".fbk-popover");
       const popoverEl = host.querySelector(".fbk-popover");
       if (popoverEl) {
@@ -3015,8 +3024,40 @@
         popoverEl.style.left = `${Math.round(left)}px`;
         popoverEl.style.top = `${Math.round(top)}px`;
       }
+      currentEl.classList.add(HL_CLASS);
       const ta = host.querySelector("#fbk-comment-text");
       ta.focus();
+      const upBtn = host.querySelector("#fbk-target-up");
+      const downBtn = host.querySelector("#fbk-target-down");
+      const titleEl = host.querySelector("#fbk-popover-title");
+      const snippetEl = host.querySelector("#fbk-popover-snippet");
+      const srcEl = host.querySelector("#fbk-popover-src");
+      const srcPathEl = host.querySelector("#fbk-popover-src-path");
+      const updateNavButtons = () => {
+        if (upBtn) upBtn.disabled = !currentEl.parentElement;
+        if (downBtn) downBtn.disabled = currentEl.children.length === 0;
+      };
+      const navigateTo = (nextEl) => {
+        currentEl.classList.remove(HL_CLASS);
+        currentEl = nextEl;
+        currentMeta = captureMetadata(currentEl, this.sourceAttr, { captureText: this.captureTextContent });
+        currentEl.classList.add(HL_CLASS);
+        currentEl.scrollIntoView({ block: "nearest", inline: "nearest" });
+        if (titleEl) titleEl.innerHTML = `Comment on &lt;${escapeHtml(currentMeta._tag)}&gt;`;
+        if (snippetEl) snippetEl.textContent = currentMeta._snapshotPreview.slice(0, 200);
+        if (srcEl) srcEl.classList.toggle("fbk-hidden", !currentMeta._sourcePath);
+        if (srcPathEl) srcPathEl.textContent = currentMeta._sourcePath || "";
+        updateNavButtons();
+      };
+      if (upBtn) upBtn.addEventListener("click", () => {
+        const parent = currentEl.parentElement;
+        if (parent) navigateTo(parent);
+      });
+      if (downBtn) downBtn.addEventListener("click", () => {
+        const child = currentEl.children[0];
+        if (child) navigateTo(child);
+      });
+      updateNavButtons();
       let isPrivateComment = false;
       const privateToggle = host.querySelector("#fbk-comment-private");
       if (privateToggle) privateToggle.addEventListener("click", () => {
@@ -3117,7 +3158,7 @@
         attachShotComment = !attachShotComment;
         shotToggle.classList.toggle("is-active", attachShotComment);
         shotToggle.setAttribute("aria-pressed", String(attachShotComment));
-        if (attachShotComment) this.beginScreenshotCapture(el);
+        if (attachShotComment) this.beginScreenshotCapture(currentEl);
       });
       let isBugReportComment = false;
       const bugToggle = host.querySelector("#fbk-comment-bug");
@@ -3127,6 +3168,7 @@
         bugToggle.setAttribute("aria-pressed", String(isBugReportComment));
       });
       const cancelPopover = () => {
+        currentEl.classList.remove(HL_CLASS);
         host.innerHTML = "";
         this._pendingShotPromise = null;
         stopMsListening == null ? void 0 : stopMsListening();
@@ -3150,8 +3192,9 @@
         const submitBtn = host.querySelector("#fbk-submit");
         submitBtn.disabled = true;
         submitBtn.textContent = "Saving…";
-        const saved = await this.createComment({ ...meta, text, isPrivate, attachShot, shotPromise, predefinedActionIds, isBugReport });
+        const saved = await this.createComment({ ...currentMeta, text, isPrivate, attachShot, shotPromise, predefinedActionIds, isBugReport });
         if (saved) {
+          currentEl.classList.remove(HL_CLASS);
           host.innerHTML = "";
           stopMsListening == null ? void 0 : stopMsListening();
         } else {
