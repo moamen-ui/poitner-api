@@ -309,7 +309,7 @@
   var SHOT_HIGHLIGHT = "#2563eb";
   var _a;
   var SCRIPT_SRC = ((_a = document.currentScript) == null ? void 0 : _a.src) || "";
-  var CSS_INTEGRITY = true ? "sha384-1Dbg0TcL+xf9JjU4229T7p8F27PEZ18wtJD7d69avzaBmeR7+pZZe2HdISIW47lY" : "";
+  var CSS_INTEGRITY = true ? "sha384-7mtsmkmpbA4262br89SwkVtQpqzkaMdQCmdLyWA4NfnGPeBU/6o5JQzIBkBHSVus" : "";
   function resolveCssUrl(scriptSrc) {
     var _a2;
     if (!scriptSrc) return "pointer.css";
@@ -641,6 +641,7 @@
       "card.commit": "commit",
       "card.containsSecretPayload": "contains a secret/payload?",
       "card.defaultReplyAuthor": "User",
+      "card.automatedReply": "Automated reply",
       "card.edited": "edited",
       "card.replyPlaceholder": "Reply…",
       "card.markedReadyClickToUnmark": "Marked ready — click to unmark",
@@ -661,6 +662,7 @@
       "card.removeImage": "Remove image",
       "card.save": "Save",
       "card.deleteThisComment": "Delete this comment?",
+      "card.deleteThisReply": "Delete this reply?",
       "card.confirmDelete": "Confirm delete",
       // --- comment popover ---
       "popover.selectParentElement": "Select parent element",
@@ -840,6 +842,7 @@
       "card.commit": "التزام",
       "card.containsSecretPayload": "قد يحتوي على بيانات سرية؟",
       "card.defaultReplyAuthor": "مستخدم",
+      "card.automatedReply": "رد آلي",
       "card.edited": "مُعدَّل",
       "card.replyPlaceholder": "رد…",
       "card.markedReadyClickToUnmark": "وُضع علامة جاهز — انقر لإلغائها",
@@ -860,6 +863,7 @@
       "card.removeImage": "إزالة الصورة",
       "card.save": "حفظ",
       "card.deleteThisComment": "هل تريد حذف هذا التعليق؟",
+      "card.deleteThisReply": "هل تريد حذف هذا الرد؟",
       "card.confirmDelete": "تأكيد الحذف",
       // --- comment popover ---
       "popover.selectParentElement": "اختر العنصر الأصل",
@@ -1133,7 +1137,25 @@
         </div>` : "";
       const commitLink = c.status === "applied" ? `<a class="fbk-pill" href="${c.commitUrl ? escapeHtml(c.commitUrl) : "#"}" ${c.commitUrl ? 'target="_blank" rel="noopener noreferrer"' : ""} title="${c.commitUrl ? t("card.viewCommit") : t("card.noCommitRecorded")}">&#x1f517; ${t("card.commit")}</a>` : "";
       const payloadPill = c.hasPayloadFlag ? `<span class="fbk-pill fbk-payload-flag" title="${escapeHtml((c.payloadFlags || []).join(", "))}">&#x26a0; ${t("card.containsSecretPayload")}</span>` : "";
-      const replies = (c.replies || []).map((r) => `<div class="fbk-reply ${r.isAi ? "ai" : ""}"><b>${escapeHtml(r.authorName || r.authorLabel || t("card.defaultReplyAuthor"))}:</b> ${escapeHtml(r.body || r.text || "")}</div>`).join("");
+      const replies = (c.replies || []).map((r) => {
+        var _a2, _b;
+        const body = escapeHtml(r.body || r.text || "");
+        const authorName = escapeHtml(r.authorName || r.authorLabel || t("card.defaultReplyAuthor"));
+        if (r.isAi) {
+          return `<details class="fbk-reply fbk-reply-ai" data-reply-id="${(_a2 = r.id) != null ? _a2 : ""}">
+            <summary class="fbk-reply-ai-summary">&#x1f916; <b>${t("card.automatedReply")}</b> <span class="fbk-reply-ai-author">${authorName}</span></summary>
+            <div class="fbk-reply-main"><span class="fbk-reply-body">${body}</span></div>
+          </details>`;
+        }
+        const actions = r._mine ? `<span class="fbk-reply-actions">
+            <button type="button" class="fbk-mini fbk-icon" data-act="reply-edit" data-comment-id="${c.id}" data-reply-id="${r.id}" title="${t("card.edit")}" aria-label="${t("card.edit")}">${ICON.pencil}</button>
+            <button type="button" class="fbk-mini danger fbk-icon" data-act="reply-delete" data-comment-id="${c.id}" data-reply-id="${r.id}" title="${t("card.delete")}" aria-label="${t("card.delete")}">${ICON.trash}</button>
+          </span>` : "";
+        return `<div class="fbk-reply" data-reply-id="${(_b = r.id) != null ? _b : ""}">
+          <div class="fbk-reply-main"><b>${authorName}:</b> <span class="fbk-reply-body">${body}</span></div>
+          ${actions}
+        </div>`;
+      }).join("");
       const envInt = c.environment;
       const envLabel = envInt === 1 ? t("card.envLocal") : envInt === 2 ? t("card.envStaging") : envInt === 3 ? t("card.envProduction") : envInt ? String(envInt) : "";
       const authorLabel = c.authorName || "";
@@ -1162,7 +1184,7 @@
             ${verifyBox}
             ${replies ? `<div class="fbk-replies">${replies}</div>` : ""}
             <div class="fbk-reply-row">
-              <input class="fbk-input fbk-reply-input" placeholder="${t("card.replyPlaceholder")}" data-id="${c.id}" />
+              <textarea class="fbk-textarea fbk-reply-input" placeholder="${t("card.replyPlaceholder")}" data-id="${c.id}" rows="1"></textarea>
             </div>
             <div class="fbk-actions">
               ${isQuickAccess ? "" : c.status === "applied" || c.status === "archived" ? "" : `<button class="fbk-mini ${c.status === "pending-apply" ? "apply" : "ready"}" data-act="apply" data-id="${c.id}" title="${c.status === "pending-apply" ? t("card.markedReadyClickToUnmark") : t("card.markReadyToApply")}">
@@ -2541,13 +2563,14 @@
         this.showEnvironmentSelector = showSelector !== false;
         this.projectId = typeof ((_b = envelope == null ? void 0 : envelope.data) == null ? void 0 : _b.id) === "number" ? envelope.data.id : null;
         const resolved = (_c = envelope == null ? void 0 : envelope.data) == null ? void 0 : _c.resolvedEnvironment;
-        if (!this.environmentExplicit && typeof resolved === "number" && ENV_NAME[resolved]) {
+        if (!this.environmentExplicit && typeof resolved === "number" && ENV_NAME[resolved] && resolved !== this.environmentInt) {
           this.environmentInt = resolved;
           this.environmentAttr = ENV_NAME[resolved];
           const envSel = this.root && this.root.querySelector("#fbk-env");
           if (envSel && "value" in envSel) envSel.value = this.environmentAttr;
           const envLabel = this.root && this.root.querySelector(".fbk-env-label");
           if (envLabel) envLabel.textContent = "· " + this.envDisplayLabel(this.environmentAttr);
+          await this.fetchComments();
         }
         this.commitStyle = typeof ((_d = envelope == null ? void 0 : envelope.data) == null ? void 0 : _d.commitStyle) === "number" ? envelope.data.commitStyle : 1;
         this.canEditSettings = !!((_e = envelope == null ? void 0 : envelope.data) == null ? void 0 : _e.canEditSettings);
@@ -3939,6 +3962,114 @@
         if (e.message !== "HTTP 401 Unauthorized") this.toast(e.message || t("toast.failedToUpdateComment"), "error");
       }
     }
+    // Inline edit for a single reply (own replies only) — same swap-body-for-a-textarea pattern
+    // as the comment's own startEdit, scoped to one .fbk-reply row instead of the whole card.
+    startEditReply(commentId, replyId) {
+      const row = this.root && this.root.querySelector(`.fbk-reply[data-reply-id="${replyId}"]`);
+      if (!row || row.querySelector(".fbk-edit")) return;
+      const comment = (this.comments || []).find((x) => String(x.id) === String(commentId));
+      const reply = comment && (comment.replies || []).find((r) => String(r.id) === String(replyId));
+      if (!reply) return;
+      const mainEl = row.querySelector(".fbk-reply-main");
+      const actionsEl = row.querySelector(".fbk-reply-actions");
+      if (!mainEl) return;
+      const editor = document.createElement("div");
+      editor.className = "fbk-edit";
+      editor.style.flex = "1";
+      editor.innerHTML = `
+        <textarea class="fbk-textarea fbk-reply-edit-body">${escapeHtml(reply.body || reply.text || "")}</textarea>
+        <div class="fbk-reply-row">
+          <button class="fbk-btn primary fbk-btn-fill fbk-edit-save">${t("card.save")}</button>
+          <button class="fbk-mini fbk-edit-cancel">${t("toolbar.cancel")}</button>
+        </div>`;
+      mainEl.style.display = "none";
+      if (actionsEl) actionsEl.style.display = "none";
+      mainEl.insertAdjacentElement("afterend", editor);
+      const ta = editor.querySelector(".fbk-reply-edit-body");
+      ta.focus();
+      const close = () => {
+        editor.remove();
+        mainEl.style.display = "";
+        if (actionsEl) actionsEl.style.display = "";
+      };
+      editor.querySelector(".fbk-edit-cancel").addEventListener("click", close);
+      editor.querySelector(".fbk-edit-save").addEventListener("click", () => {
+        const body = ta.value.trim();
+        if (!body) {
+          this.toast(t("popover.commentCannotBeEmpty"), "error");
+          return;
+        }
+        this.saveReplyEdit(replyId, body);
+      });
+    }
+    async saveReplyEdit(replyId, body) {
+      try {
+        const r = await this.api(`/api/replies/${replyId}`, {
+          method: "PUT",
+          body: JSON.stringify({ body })
+        });
+        if (!r.ok) {
+          const b = await r.json().catch(() => null);
+          throw new Error(b && b.message || "HTTP " + r.status);
+        }
+        await this.fetchComments();
+        this.renderSidebar();
+        this.toast(t("toast.commentUpdated"), "success");
+      } catch (e) {
+        if (e.message !== "HTTP 401 Unauthorized") this.toast(e.message || t("toast.failedToUpdateComment"), "error");
+      }
+    }
+    // Same inline "Delete this…?" confirm-row pattern as confirmDelete, scoped to one reply's own
+    // actions row instead of the comment's.
+    confirmDeleteReply(btn) {
+      const commentId = btn.dataset.commentId;
+      const replyId = btn.dataset.replyId;
+      const row = btn.closest(".fbk-reply-actions");
+      if (!commentId || !replyId || !row || row.querySelector(".fbk-confirm")) return;
+      const others = Array.from(row.children);
+      others.forEach((el) => {
+        el.style.display = "none";
+      });
+      const wrap = document.createElement("div");
+      wrap.className = "fbk-confirm fbk-confirm-row";
+      wrap.innerHTML = `<span class="fbk-confirm-q">${t("card.deleteThisReply")}</span><span class="fbk-confirm-btns"><button type="button" class="fbk-mini danger fbk-icon" data-c="yes" title="${t("card.confirmDelete")}" aria-label="${t("card.confirmDelete")}">${ICON.checkPlain}</button><button type="button" class="fbk-mini fbk-icon" data-c="no" title="${t("toolbar.cancel")}" aria-label="${t("toolbar.cancel")}">&#x2715;</button></span>`;
+      row.appendChild(wrap);
+      let closed = false;
+      const close = () => {
+        if (closed) return;
+        closed = true;
+        clearTimeout(timer);
+        wrap.remove();
+        others.forEach((el) => {
+          el.style.display = "";
+        });
+      };
+      const timer = setTimeout(close, 4e3);
+      wrap.querySelector('[data-c="yes"]').addEventListener("click", (e) => {
+        e.stopPropagation();
+        close();
+        this.deleteReply(replyId);
+      });
+      wrap.querySelector('[data-c="no"]').addEventListener("click", (e) => {
+        e.stopPropagation();
+        close();
+      });
+    }
+    async deleteReply(replyId) {
+      try {
+        const r = await this.api(`/api/replies/${replyId}`, { method: "DELETE" });
+        if (!r.ok) {
+          const b = await r.json().catch(() => null);
+          throw new Error(b && b.message || "HTTP " + r.status);
+        }
+        await this.fetchComments();
+        this.renderSidebar();
+        this.renderPins();
+        this.toast(t("toast.deleted"));
+      } catch (e) {
+        if (e.message !== "HTTP 401 Unauthorized") this.toast(e.message || t("toast.deleteFailed"), "error");
+      }
+    }
     // True when comment `c` was authored by the current logged-in user.
     /**
      * Completes `this.user` with the fields the card template needs (`id`, `isAdmin`, `isQuickAccess`)
@@ -3997,7 +4128,7 @@
     }
     // --- Sidebar render ------------------------------------------------------
     renderSidebar() {
-      var _a2, _b;
+      var _a2, _b, _c;
       const all = this.pageComments();
       const canMine = !!(this.user && this.user.id);
       if (!canMine) this.mineOnly = false;
@@ -4054,9 +4185,13 @@
         return;
       }
       const isQuickAccess = !!((_b = this.user) == null ? void 0 : _b.isQuickAccess);
+      const myId = ((_c = this.user) == null ? void 0 : _c.id) ? String(this.user.id).toLowerCase() : null;
       list.innerHTML = shown.map((c, i) => {
         c._mine = this.isMine(c);
         c._canVerify = c._mine || !!(this.user && this.user.isAdmin);
+        (c.replies || []).forEach((r) => {
+          r._mine = !r.isAi && !!(myId && r.authorId && String(r.authorId).toLowerCase() === myId);
+        });
         return TPL.card(c, i, isQuickAccess);
       }).join("");
       list.querySelectorAll('[data-act="apply"]').forEach((b) => b.addEventListener("click", () => {
@@ -4082,11 +4217,18 @@
         if (c) this.setStatus(c, "archived", t("toast.archivedMsg"));
       }));
       list.querySelectorAll(".fbk-reply-input").forEach((inp) => inp.addEventListener("keydown", (e) => {
-        if (e.key === "Enter" && inp.value.trim()) {
-          this.addReply(inp.dataset.id, inp.value.trim());
-          inp.value = "";
+        if (e.key === "Enter" && !e.shiftKey) {
+          e.preventDefault();
+          if (inp.value.trim()) {
+            this.addReply(inp.dataset.id, inp.value.trim());
+            inp.value = "";
+          }
         }
       }));
+      list.querySelectorAll('[data-act="reply-edit"]').forEach((b) => b.addEventListener("click", () => {
+        if (b.dataset.commentId && b.dataset.replyId) this.startEditReply(b.dataset.commentId, b.dataset.replyId);
+      }));
+      list.querySelectorAll('[data-act="reply-delete"]').forEach((b) => b.addEventListener("click", () => this.confirmDeleteReply(b)));
       list.querySelectorAll('[data-act="verify-ok"]').forEach((b) => b.addEventListener("click", () => {
         const id = b.dataset.id;
         if (id) this.apiVerify(id, true);

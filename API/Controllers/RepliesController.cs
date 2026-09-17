@@ -26,4 +26,26 @@ public class RepliesController(ICommentService commentService) : ControllerBase
         if (result.IsConflict) return Conflict(result);
         return result.IsSuccess ? Ok(result) : BadRequest(result);
     }
+
+    // Edit a reply's body. Author-only (enforced in the service) — mirrors CommentsController.Edit.
+    [HttpPut("api/replies/{id:int}")]
+    [ProducesResponseType(typeof(ReplyResponse), StatusCodes.Status200OK)]
+    public async Task<IActionResult> EditReply(int id, [FromBody] UpdateReplyRequest request)
+    {
+        var result = await commentService.EditReplyAsync(id, request, User.GetId());
+        if (result.IsNotFound) return NotFound(result);
+        if (result.IsConflict) return Conflict(result);
+        return result.IsSuccess ? Ok(result) : BadRequest(result);
+    }
+
+    // Author or workspace admin — mirrors CommentsController.Delete.
+    [HttpDelete("api/replies/{id:int}")]
+    [ProducesResponseType(typeof(Pointer.Application.Response.Result), StatusCodes.Status200OK)]
+    public async Task<IActionResult> DeleteReply(int id)
+    {
+        var result = await commentService.DeleteReplyAsync(id, User.GetId(), User.IsAdmin());
+        if (result.IsNotFound) return NotFound(result);
+        if (result.IsConflict) return Conflict(result);
+        return result.IsSuccess ? Ok(result) : BadRequest(result);
+    }
 }

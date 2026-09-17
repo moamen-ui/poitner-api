@@ -3,11 +3,15 @@
 export type StatusStr = 'open' | 'pending-apply' | 'applied' | 'archived';
 
 export interface Reply {
+  id?: number | string;
+  authorId?: string;
   authorName?: string;
   authorLabel?: string;
   body?: string;
   text?: string;
   isAi?: boolean;
+  /** Computed client-side at render time (renderSidebar) — gates the edit/delete buttons. */
+  _mine?: boolean;
 }
 
 export interface ElementCapture {

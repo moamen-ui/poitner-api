@@ -42,10 +42,10 @@ shared via git.
 to the widget's shadow DOM, the served skill docs, or the marketing pages — never part of the
 host-facing contract:
 
-`data-id`, `data-act`, `data-toggle`, `data-placement`, `data-private`, `data-c`, `data-i`,
-`data-path`, `data-testid`, `data-theme`, `data-step`, `data-brand-logo`, `data-brand-name`,
-`data-fbk-left`, `data-fbk-top`, `data-fbk-act`, `data-fbk-drag`, `data-fbk-count`, `data-fbk-unread`,
-`data-fbk-tip-side`, `data-ids`
+`data-id`, `data-act`, `data-comment-id`, `data-reply-id`, `data-toggle`, `data-placement`,
+`data-private`, `data-c`, `data-i`, `data-path`, `data-testid`, `data-theme`, `data-step`,
+`data-brand-logo`, `data-brand-name`, `data-fbk-left`, `data-fbk-top`, `data-fbk-act`,
+`data-fbk-drag`, `data-fbk-count`, `data-fbk-unread`, `data-fbk-tip-side`, `data-ids`
 
 `data-fbk-left` / `data-fbk-top` carry the toolbar's position on the host element so the widget can
 place it from a stylesheet rule instead of an inline `style` attribute, which a host page's
@@ -53,7 +53,8 @@ Content-Security-Policy blocks. `data-fbk-act` / `data-fbk-drag` / `data-fbk-cou
 `data-fbk-unread` are the toolbar's own selector hooks for element.ts's click wiring.
 `data-fbk-tip-side` flips a pin's hover tooltip below the pin when it's too close to the top of the
 viewport for the tooltip to open upward. `data-ids` is the comma-joined comment id list on a merged
-pin cluster wrapper (element.ts's toggleClusterMenu). All of these live inside the widget's own
+pin cluster wrapper (element.ts's toggleClusterMenu). `data-comment-id` / `data-reply-id` are the
+per-reply edit/delete action hooks on a comment card. All of these live inside the widget's own
 shadow DOM and no host ever reads them.
 
 Any other `data-*` name — in particular any `data-pointer*` or `data-pf*` — must be added to the

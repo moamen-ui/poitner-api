@@ -100,6 +100,9 @@ public class OnDiskContractTests
     {
         "data-id",
         "data-act",
+        // Reply edit/delete action wiring (comment card) — internal selectors, not host-facing.
+        "data-comment-id",
+        "data-reply-id",
         "data-toggle",
         "data-placement",
         "data-private",

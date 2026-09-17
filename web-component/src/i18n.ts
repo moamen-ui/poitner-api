@@ -143,6 +143,7 @@ const STRINGS: Record<Lang, Record<string, string>> = {
     'card.commit': 'commit',
     'card.containsSecretPayload': 'contains a secret/payload?',
     'card.defaultReplyAuthor': 'User',
+    'card.automatedReply': 'Automated reply',
     'card.edited': 'edited',
     'card.replyPlaceholder': 'Reply…',
     'card.markedReadyClickToUnmark': 'Marked ready — click to unmark',
@@ -163,6 +164,7 @@ const STRINGS: Record<Lang, Record<string, string>> = {
     'card.removeImage': 'Remove image',
     'card.save': 'Save',
     'card.deleteThisComment': 'Delete this comment?',
+    'card.deleteThisReply': 'Delete this reply?',
     'card.confirmDelete': 'Confirm delete',
 
     // --- comment popover ---
@@ -351,6 +353,7 @@ const STRINGS: Record<Lang, Record<string, string>> = {
     'card.commit': 'التزام',
     'card.containsSecretPayload': 'قد يحتوي على بيانات سرية؟',
     'card.defaultReplyAuthor': 'مستخدم',
+    'card.automatedReply': 'رد آلي',
     'card.edited': 'مُعدَّل',
     'card.replyPlaceholder': 'رد…',
     'card.markedReadyClickToUnmark': 'وُضع علامة جاهز — انقر لإلغائها',
@@ -371,6 +374,7 @@ const STRINGS: Record<Lang, Record<string, string>> = {
     'card.removeImage': 'إزالة الصورة',
     'card.save': 'حفظ',
     'card.deleteThisComment': 'هل تريد حذف هذا التعليق؟',
+    'card.deleteThisReply': 'هل تريد حذف هذا الرد؟',
     'card.confirmDelete': 'تأكيد الحذف',
 
     // --- comment popover ---

@@ -8,6 +8,11 @@ public class ReplyResponse
     public string Body { get; set; } = string.Empty;
     public DateTime CreatedAt { get; set; }
 
+    /// <summary>True when posted by the automated AI apply flow (CLI/pointer.sh/skill.md), not a
+    /// human typing into the widget or dashboard — see Reply.IsAi. Read-only client-side: the
+    /// widget hides edit/delete for these regardless of author, and the server refuses both too.</summary>
+    public bool IsAi { get; set; }
+
     /// <summary>
     /// Advisory: this text looked like it contained a credential or executable payload.
     /// </summary>

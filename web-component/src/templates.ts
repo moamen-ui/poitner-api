@@ -256,8 +256,29 @@ export const TPL = {
       ? `<span class="fbk-pill fbk-payload-flag" title="${escapeHtml((c.payloadFlags || []).join(', '))}">&#x26a0; ${t('card.containsSecretPayload')}</span>`
       : '';
 
-    const replies = (c.replies || []).map((r) =>
-      `<div class="fbk-reply ${r.isAi ? 'ai' : ''}"><b>${escapeHtml(r.authorName || r.authorLabel || t('card.defaultReplyAuthor'))}:</b> ${escapeHtml(r.body || r.text || '')}</div>`).join('');
+    const replies = (c.replies || []).map((r) => {
+      const body = escapeHtml(r.body || r.text || '');
+      const authorName = escapeHtml(r.authorName || r.authorLabel || t('card.defaultReplyAuthor'));
+      // Automated (AI apply flow) replies are always read-only — no edit/delete regardless of
+      // author or admin, enforced server-side too (see CommentService.EditReplyAsync/
+      // DeleteReplyAsync) — and collapsed by default, since they tend to be long changelogs.
+      if (r.isAi) {
+        return `<details class="fbk-reply fbk-reply-ai" data-reply-id="${r.id ?? ''}">
+            <summary class="fbk-reply-ai-summary">&#x1f916; <b>${t('card.automatedReply')}</b> <span class="fbk-reply-ai-author">${authorName}</span></summary>
+            <div class="fbk-reply-main"><span class="fbk-reply-body">${body}</span></div>
+          </details>`;
+      }
+      const actions = r._mine
+        ? `<span class="fbk-reply-actions">
+            <button type="button" class="fbk-mini fbk-icon" data-act="reply-edit" data-comment-id="${c.id}" data-reply-id="${r.id}" title="${t('card.edit')}" aria-label="${t('card.edit')}">${ICON.pencil}</button>
+            <button type="button" class="fbk-mini danger fbk-icon" data-act="reply-delete" data-comment-id="${c.id}" data-reply-id="${r.id}" title="${t('card.delete')}" aria-label="${t('card.delete')}">${ICON.trash}</button>
+          </span>`
+        : '';
+      return `<div class="fbk-reply" data-reply-id="${r.id ?? ''}">
+          <div class="fbk-reply-main"><b>${authorName}:</b> <span class="fbk-reply-body">${body}</span></div>
+          ${actions}
+        </div>`;
+    }).join('');
     const envInt = c.environment;
     const envLabel = envInt === 1 ? t('card.envLocal') : envInt === 2 ? t('card.envStaging') : envInt === 3 ? t('card.envProduction') : (envInt ? String(envInt) : '');
     const authorLabel = c.authorName || '';
@@ -288,7 +309,7 @@ export const TPL = {
             ${verifyBox}
             ${replies ? `<div class="fbk-replies">${replies}</div>` : ''}
             <div class="fbk-reply-row">
-              <input class="fbk-input fbk-reply-input" placeholder="${t('card.replyPlaceholder')}" data-id="${c.id}" />
+              <textarea class="fbk-textarea fbk-reply-input" placeholder="${t('card.replyPlaceholder')}" data-id="${c.id}" rows="1"></textarea>
             </div>
             <div class="fbk-actions">
               ${isQuickAccess ? '' : (c.status === 'applied' || c.status === 'archived') ? '' : `<button class="fbk-mini ${c.status === 'pending-apply' ? 'apply' : 'ready'}" data-act="apply" data-id="${c.id}" title="${c.status === 'pending-apply' ? t('card.markedReadyClickToUnmark') : t('card.markReadyToApply')}">

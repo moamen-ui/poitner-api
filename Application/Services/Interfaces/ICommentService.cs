@@ -25,5 +25,7 @@ public interface ICommentService
     Task<Result<CommentResponse>> EditAsync(int id, EditCommentRequest request, Guid editorId);
     Task<Result<CommentResponse>> SetVisibilityAsync(int id, Guid callerId, bool isPrivate);
     Task<Result<ReplyResponse>> AddReplyAsync(int commentId, AddReplyRequest request, Guid authorId, string? origin = null);
+    Task<Result<ReplyResponse>> EditReplyAsync(int replyId, UpdateReplyRequest request, Guid editorId);
+    Task<Result> DeleteReplyAsync(int replyId, Guid actorId, bool isAdmin);
     Task<Result> DeleteAsync(int id, Guid actorId, bool isAdmin);
 }

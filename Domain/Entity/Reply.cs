@@ -15,4 +15,15 @@ public class Reply : BaseEntity
     /// <summary>Names of the matched detector patterns; empty when clean.</summary>
     public List<string> PayloadFlags { get; set; } = new();
 
+    /// <summary>
+    /// True when this reply was posted by an automated caller (the AI apply flow — CLI/pointer.sh/
+    /// skill.md) rather than a human typing into the widget or dashboard.
+    /// </summary>
+    /// <remarks>
+    /// Same signal as <see cref="Comment.HasPayloadFlag"/>'s exposure rule: the X-Pointer-Client
+    /// header (ICurrentClient.IsHumanSurface), which only the widget and dashboard send. Read-only
+    /// forever once set — see CommentService.EditReplyAsync/DeleteReplyAsync, which refuse to
+    /// touch an AI reply regardless of caller.
+    /// </remarks>
+    public bool IsAi { get; set; }
 }

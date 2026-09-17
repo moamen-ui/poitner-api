@@ -708,7 +708,7 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
       // The server resolved this request's origin against the project's registered URLs. Applied
       // only when the page did not state an environment itself — see `environmentExplicit`.
       const resolved = envelope?.data?.resolvedEnvironment;
-      if (!this.environmentExplicit && typeof resolved === 'number' && ENV_NAME[resolved]) {
+      if (!this.environmentExplicit && typeof resolved === 'number' && ENV_NAME[resolved] && resolved !== this.environmentInt) {
         this.environmentInt = resolved;
         this.environmentAttr = ENV_NAME[resolved];
         // Keep whatever the toolbar is showing — a <select> or the read-only label — in step with
@@ -717,6 +717,13 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
         if (envSel && 'value' in envSel) envSel.value = this.environmentAttr;
         const envLabel = this.root && this.root.querySelector('.fbk-env-label');
         if (envLabel) envLabel.textContent = '· ' + this.envDisplayLabel(this.environmentAttr);
+        // init() fires this request CONCURRENTLY with the very first fetchComments() (Promise.all)
+        // — that first call always ran with the pre-resolution environment (0, "unknown"), which
+        // the server has no comments for, so the sidebar/pins silently rendered empty until
+        // something else (e.g. touching the environment dropdown) happened to trigger a refetch.
+        // Correcting it here means init()'s OWN renderSidebar()/renderPins() calls — which run
+        // after this whole Promise.all settles — already see the right data.
+        await this.fetchComments();
       }
       this.commitStyle = typeof envelope?.data?.commitStyle === 'number' ? envelope.data.commitStyle : 1;
       this.canEditSettings = !!envelope?.data?.canEditSettings;
@@ -2187,6 +2194,117 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
     }
   }
 
+  // Inline edit for a single reply (own replies only) — same swap-body-for-a-textarea pattern
+  // as the comment's own startEdit, scoped to one .fbk-reply row instead of the whole card.
+  startEditReply(commentId: string, replyId: string): void {
+    const row = this.root && this.root.querySelector(`.fbk-reply[data-reply-id="${replyId}"]`);
+    if (!row || row.querySelector('.fbk-edit')) return;
+    const comment = (this.comments || []).find((x) => String(x.id) === String(commentId));
+    const reply = comment && (comment.replies || []).find((r) => String(r.id) === String(replyId));
+    if (!reply) return;
+    const mainEl = row.querySelector('.fbk-reply-main') as HTMLElement | null;
+    const actionsEl = row.querySelector('.fbk-reply-actions') as HTMLElement | null;
+    if (!mainEl) return;
+    const editor = document.createElement('div');
+    editor.className = 'fbk-edit';
+    editor.style.flex = '1';
+    editor.innerHTML = `
+        <textarea class="fbk-textarea fbk-reply-edit-body">${escapeHtml(reply.body || reply.text || '')}</textarea>
+        <div class="fbk-reply-row">
+          <button class="fbk-btn primary fbk-btn-fill fbk-edit-save">${t('card.save')}</button>
+          <button class="fbk-mini fbk-edit-cancel">${t('toolbar.cancel')}</button>
+        </div>`;
+    mainEl.style.display = 'none';
+    if (actionsEl) actionsEl.style.display = 'none';
+    mainEl.insertAdjacentElement('afterend', editor);
+    const ta = editor.querySelector('.fbk-reply-edit-body') as HTMLTextAreaElement;
+    ta.focus();
+    const close = () => { editor.remove(); mainEl.style.display = ''; if (actionsEl) actionsEl.style.display = ''; };
+    (editor.querySelector('.fbk-edit-cancel') as HTMLElement).addEventListener('click', close);
+    (editor.querySelector('.fbk-edit-save') as HTMLElement).addEventListener('click', () => {
+      const body = ta.value.trim();
+      if (!body) { this.toast(t('popover.commentCannotBeEmpty'), 'error'); return; }
+      this.saveReplyEdit(replyId, body);
+    });
+  }
+
+  async saveReplyEdit(replyId: string, body: string): Promise<void> {
+    // PUT /api/replies/{id} — author-only edit (enforced server-side).
+    try {
+      const r = await this.api(`/api/replies/${replyId}`, {
+        method: 'PUT',
+        body: JSON.stringify({ body }),
+      });
+      if (!r.ok) {
+        const b = await r.json().catch(() => null);
+        throw new Error((b && b.message) || ('HTTP ' + r.status));
+      }
+      await this.fetchComments();
+      this.renderSidebar();
+      this.toast(t('toast.commentUpdated'), 'success');
+    } catch (e) {
+      if ((e as Error).message !== 'HTTP 401 Unauthorized') this.toast((e as Error).message || t('toast.failedToUpdateComment'), 'error');
+    }
+  }
+
+  // Same inline "Delete this…?" confirm-row pattern as confirmDelete, scoped to one reply's own
+  // actions row instead of the comment's.
+  confirmDeleteReply(btn: HTMLElement): void {
+    const commentId = btn.dataset.commentId;
+    const replyId = btn.dataset.replyId;
+    const row = btn.closest('.fbk-reply-actions') as HTMLElement | null;
+    if (!commentId || !replyId || !row || row.querySelector('.fbk-confirm')) return;
+
+    const others = Array.from(row.children) as HTMLElement[];
+    others.forEach((el) => { el.style.display = 'none'; });
+
+    const wrap = document.createElement('div');
+    wrap.className = 'fbk-confirm fbk-confirm-row';
+    wrap.innerHTML =
+      `<span class="fbk-confirm-q">${t('card.deleteThisReply')}</span>` +
+      `<span class="fbk-confirm-btns">` +
+      `<button type="button" class="fbk-mini danger fbk-icon" data-c="yes" title="${t('card.confirmDelete')}" aria-label="${t('card.confirmDelete')}">${ICON.checkPlain}</button>` +
+      `<button type="button" class="fbk-mini fbk-icon" data-c="no" title="${t('toolbar.cancel')}" aria-label="${t('toolbar.cancel')}">&#x2715;</button>` +
+      `</span>`;
+    row.appendChild(wrap);
+
+    let closed = false;
+    const close = () => {
+      if (closed) return;
+      closed = true;
+      clearTimeout(timer);
+      wrap.remove();
+      others.forEach((el) => { el.style.display = ''; });
+    };
+    const timer = setTimeout(close, 4000);
+    wrap.querySelector('[data-c="yes"]')!.addEventListener('click', (e) => {
+      e.stopPropagation();
+      close();
+      this.deleteReply(replyId);
+    });
+    wrap.querySelector('[data-c="no"]')!.addEventListener('click', (e) => {
+      e.stopPropagation();
+      close();
+    });
+  }
+
+  async deleteReply(replyId: string): Promise<void> {
+    // DELETE /api/replies/{id} — author or workspace admin (enforced server-side).
+    try {
+      const r = await this.api(`/api/replies/${replyId}`, { method: 'DELETE' });
+      if (!r.ok) {
+        const b = await r.json().catch(() => null);
+        throw new Error((b && b.message) || ('HTTP ' + r.status));
+      }
+      await this.fetchComments();
+      this.renderSidebar();
+      this.renderPins();
+      this.toast(t('toast.deleted'));
+    } catch (e) {
+      if ((e as Error).message !== 'HTTP 401 Unauthorized') this.toast((e as Error).message || t('toast.deleteFailed'), 'error');
+    }
+  }
+
   // True when comment `c` was authored by the current logged-in user.
   /**
    * Completes `this.user` with the fields the card template needs (`id`, `isAdmin`, `isQuickAccess`)
@@ -2314,7 +2432,15 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
     }
 
     const isQuickAccess = !!this.user?.isQuickAccess;
-    list.innerHTML = shown.map((c, i) => { c._mine = this.isMine(c); c._canVerify = c._mine || !!(this.user && this.user.isAdmin); return TPL.card(c, i, isQuickAccess); }).join('');
+    const myId = this.user?.id ? String(this.user.id).toLowerCase() : null;
+    list.innerHTML = shown.map((c, i) => {
+      c._mine = this.isMine(c);
+      c._canVerify = c._mine || !!(this.user && this.user.isAdmin);
+      // Automated (AI) replies are always read-only — never "mine" for edit/delete purposes,
+      // regardless of whose account posted them (enforced server-side too).
+      (c.replies || []).forEach((r) => { r._mine = !r.isAi && !!(myId && r.authorId && String(r.authorId).toLowerCase() === myId); });
+      return TPL.card(c, i, isQuickAccess);
+    }).join('');
 
     list.querySelectorAll<HTMLElement>('[data-act="apply"]').forEach((b) => b.addEventListener('click', () => {
       const c = this.comments.find((x) => String(x.id) === String(b.dataset.id));
@@ -2338,9 +2464,18 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
       const c = this.comments.find((x) => String(x.id) === String(b.dataset.id));
       if (c) this.setStatus(c, 'archived', t('toast.archivedMsg'));
     }));
-    list.querySelectorAll<HTMLInputElement>('.fbk-reply-input').forEach((inp) => inp.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter' && inp.value.trim()) { this.addReply(inp.dataset.id!, inp.value.trim()); inp.value = ''; }
+    list.querySelectorAll<HTMLTextAreaElement>('.fbk-reply-input').forEach((inp) => inp.addEventListener('keydown', (e) => {
+      // Enter sends (matches the old single-line input's behavior); Shift+Enter inserts a
+      // newline, now that this is a textarea instead of a text input.
+      if (e.key === 'Enter' && !e.shiftKey) {
+        e.preventDefault();
+        if (inp.value.trim()) { this.addReply(inp.dataset.id!, inp.value.trim()); inp.value = ''; }
+      }
     }));
+    list.querySelectorAll<HTMLElement>('[data-act="reply-edit"]').forEach((b) => b.addEventListener('click', () => {
+      if (b.dataset.commentId && b.dataset.replyId) this.startEditReply(b.dataset.commentId, b.dataset.replyId);
+    }));
+    list.querySelectorAll<HTMLElement>('[data-act="reply-delete"]').forEach((b) => b.addEventListener('click', () => this.confirmDeleteReply(b)));
 
     // Verify actions (R2-04)
     list.querySelectorAll<HTMLElement>('[data-act="verify-ok"]').forEach((b) => b.addEventListener('click', () => {

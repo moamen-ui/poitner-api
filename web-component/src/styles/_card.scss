@@ -252,18 +252,68 @@
   padding-block-start: 8px;
 }
 .fbk-reply {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 6px;
   font-size: 13px;
   color: v.token('text-slate-2');
   padding-block: 4px;
   padding-inline: 0;
 }
-.fbk-reply.ai {
-  color: v.token('success-strong');
+.fbk-reply-main {
+  flex: 1;
+  min-inline-size: 0;
+  overflow-wrap: break-word;
+}
+// Automated (AI apply flow) reply — a native <details> disclosure instead of the plain flex row
+// above, collapsed by default since these tend to be long changelogs; always read-only, so it
+// never gets a .fbk-reply-actions slot at all (not just a hidden one).
+.fbk-reply-ai {
+  display: block;
+  cursor: default;
+}
+.fbk-reply-ai-summary {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  cursor: pointer;
+  color: v.token('text-subtle');
+  font-size: 12px;
+}
+.fbk-reply-ai-author {
+  color: v.token('text-slate');
+  font-weight: 500;
+}
+.fbk-reply-ai .fbk-reply-main {
+  margin-block-start: 4px;
+  padding-inline-start: 20px;
+  color: v.token('text-slate-2');
+}
+// Edit/delete — own replies only (data-act="reply-edit"/"reply-delete"), same icon-button
+// pattern as the comment's own actions row; hidden until hover/focus so a long reply thread
+// doesn't turn into a wall of icons.
+.fbk-reply-actions {
+  flex: 0 0 auto;
+  display: flex;
+  gap: 2px;
+  opacity: 0;
+  transition: opacity v.token('transition-fast');
+}
+.fbk-reply:hover .fbk-reply-actions,
+.fbk-reply-actions:focus-within {
+  opacity: 1;
 }
 .fbk-reply-row {
   display: flex;
   gap: 6px;
   margin-block-start: 6px;
+}
+// Compact starting height for the reply/edit-reply textareas — still resizable, just not the
+// full comment-compose 64px minimum, which reads as oversized for a one-line reply.
+.fbk-reply-input,
+.fbk-reply-edit-body {
+  min-block-size: 36px;
 }
 .fbk-input,
 .fbk-textarea {

@@ -863,7 +863,10 @@ public class CommentService : ICommentService
             Body = body,
             PayloadFlags = PayloadFlagDetector.Detect(body).ToList(),
             HasPayloadFlag = PayloadFlagDetector.Detect(body).Count > 0,
-            OwnerId = comment.OwnerId
+            OwnerId = comment.OwnerId,
+            // Same signal ShowsPayloadFlags uses: the widget/dashboard send X-Pointer-Client, the
+            // AI apply flow (CLI/pointer.sh/skill.md) does not.
+            IsAi = !(_currentClient?.IsHumanSurface ?? false)
         };
 
         await _unitOfWork.Repository<Reply>().AddAsync(reply);
@@ -893,6 +896,70 @@ public class CommentService : ICommentService
 
         var names = await ResolveNamesAsync(new[] { reply.AuthorId });
         return Result<ReplyResponse>.Success(MapReplyToResponse(reply, names));
+    }
+
+    public async Task<Result<ReplyResponse>> EditReplyAsync(int replyId, UpdateReplyRequest request, Guid editorId)
+    {
+        var reply = await _unitOfWork.Repository<Reply>()
+            .Query()
+            .Where(r => r.Id == replyId)
+            .FirstOrDefaultAsync();
+
+        if (reply == null)
+            return Result<ReplyResponse>.NotFound(MessageKeys.Comment.NotFound);
+
+        // Read-only forever, regardless of caller — see Reply.IsAi's doc comment.
+        if (reply.IsAi)
+            return Result<ReplyResponse>.Failure("Automated replies can't be edited.");
+
+        // Own replies only — not even admins edit someone else's content (mirrors comment EditAsync).
+        if (reply.AuthorId != editorId)
+            return Result<ReplyResponse>.Failure("You can only edit your own replies.");
+
+        var body = (request.Body ?? string.Empty).Trim();
+        if (body.Length == 0)
+            return Result<ReplyResponse>.Failure(MessageKeys.Comment.BodyRequired);
+        if (body.Length > 4000)
+            return Result<ReplyResponse>.Failure(MessageKeys.Comment.BodyRequired);
+
+        reply.Body = body;
+        // Recomputed, not left alone — same reasoning as comment EditAsync.
+        reply.PayloadFlags = PayloadFlagDetector.Detect(body).ToList();
+        reply.HasPayloadFlag = reply.PayloadFlags.Count > 0;
+        reply.UpdatedAt = DateTime.UtcNow;
+        reply.UpdatedBy = editorId;
+
+        _unitOfWork.Repository<Reply>().Update(reply);
+        await _unitOfWork.SaveChangesAsync();
+
+        var names = await ResolveNamesAsync(new[] { reply.AuthorId });
+        return Result<ReplyResponse>.Success(MapReplyToResponse(reply, names), "Reply updated.");
+    }
+
+    public async Task<Result> DeleteReplyAsync(int replyId, Guid actorId, bool isAdmin)
+    {
+        var reply = await _unitOfWork.Repository<Reply>()
+            .Query()
+            .Where(r => r.Id == replyId)
+            .FirstOrDefaultAsync();
+
+        if (reply == null)
+            return Result.NotFound(MessageKeys.Comment.NotFound);
+
+        // Read-only forever, regardless of caller (author or admin) — see Reply.IsAi's doc comment.
+        if (reply.IsAi)
+            return Result.Failure("Automated replies can't be deleted.");
+
+        if (actorId != reply.AuthorId && !isAdmin)
+            return Result.Failure("You do not have permission to delete this reply.");
+
+        // Hard delete (unlike the parent comment's soft delete) — Reply has no
+        // DeletedAt-aware query filter anywhere Replies get mapped, and there is no
+        // undo/restore flow for a single reply the way there is for a whole comment.
+        _unitOfWork.Repository<Reply>().Remove(reply);
+        await _unitOfWork.SaveChangesAsync();
+
+        return Result.Success();
     }
 
     public async Task<Result> DeleteAsync(int id, Guid actorId, bool isAdmin)
@@ -987,6 +1054,7 @@ public class CommentService : ICommentService
         AuthorName = names.GetValueOrDefault(reply.AuthorId),
         Body = reply.Body,
         CreatedAt = reply.CreatedAt,
+        IsAi = reply.IsAi,
         HasPayloadFlag = includeFlags ? reply.HasPayloadFlag : null,
         PayloadFlags = includeFlags ? reply.PayloadFlags : null
     };

@@ -262,8 +262,8 @@
     { value: 4, name: "Archived", label: "Archived", color: "#6b7280", order: 4 }
   ];
   function pfFetch(url, opts) {
-    const t = typeof window !== "undefined" ? window.__POINTER_FETCH__ : void 0;
-    return t ? t(url, opts) : rawFetch(url, opts);
+    const t2 = typeof window !== "undefined" ? window.__POINTER_FETCH__ : void 0;
+    return t2 ? t2(url, opts) : rawFetch(url, opts);
   }
   var _catalog = STATUS_FALLBACK;
   async function loadStatusCatalog(server) {
@@ -309,7 +309,7 @@
   var SHOT_HIGHLIGHT = "#2563eb";
   var _a;
   var SCRIPT_SRC = ((_a = document.currentScript) == null ? void 0 : _a.src) || "";
-  var CSS_INTEGRITY = true ? "sha384-OVshXgU1mUTDb09VB2zGDW1nosazB7AC3kTMGTwqNik9HiWUNevis7ZG36c8khX3" : "";
+  var CSS_INTEGRITY = true ? "sha384-7mtsmkmpbA4262br89SwkVtQpqzkaMdQCmdLyWA4NfnGPeBU/6o5JQzIBkBHSVus" : "";
   function resolveCssUrl(scriptSrc) {
     var _a2;
     if (!scriptSrc) return "pointer.css";
@@ -511,7 +511,430 @@
     bubbleSm: '<svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>',
     // User menu's theme toggle — light/dark option icons.
     sun: '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2"/><path d="M12 20v2"/><path d="m4.93 4.93 1.41 1.41"/><path d="m17.66 17.66 1.41 1.41"/><path d="M2 12h2"/><path d="M20 12h2"/><path d="m6.34 17.66-1.41 1.41"/><path d="m19.07 4.93-1.41 1.41"/></svg>',
-    moon: '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/></svg>'
+    moon: '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/></svg>',
+    // Popover's element-navigation buttons — move the comment's target up to its parent or down to
+    // its first child.
+    chevronUp: '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="18 15 12 9 6 15"/></svg>',
+    chevronDown: '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>'
+  };
+
+  // src/i18n.ts
+  var currentLang = "en";
+  function setLang(lang) {
+    const next = lang === "ar" ? "ar" : "en";
+    if (next === currentLang) return false;
+    currentLang = next;
+    return true;
+  }
+  function t(key, vars) {
+    var _a2, _b;
+    const raw = (_b = (_a2 = STRINGS[currentLang][key]) != null ? _a2 : STRINGS.en[key]) != null ? _b : key;
+    if (!vars) return raw;
+    return raw.replace(/\{(\w+)\}/g, (_, k) => k in vars ? String(vars[k]) : `{${k}}`);
+  }
+  var STRINGS = {
+    en: {
+      // --- auth (login/signup modal) ---
+      "auth.leaveFeedbackOn": "Leave feedback on",
+      "auth.skipForNow": "Skip for now",
+      "auth.email": "Email",
+      "auth.password": "Password",
+      "auth.signIn": "Sign in",
+      "auth.chooseRoleToRequestAgain": "Choose a role to request again",
+      "auth.requestAgain": "Request again",
+      "auth.noAccount": "No account?",
+      "auth.createAccount": "Create account",
+      "auth.name": "Name",
+      "auth.role": "Role",
+      "auth.alreadyHaveAccount": "Already have an account?",
+      "auth.backToSignIn": "Back to sign in",
+      "auth.loadingRoles": "Loading roles…",
+      "auth.noRolesAvailable": "No roles available",
+      "auth.couldNotLoadRoles": "Could not load roles.",
+      "auth.pleaseEnterEmail": "Please enter your email.",
+      "auth.pleaseEnterPassword": "Please enter your password.",
+      "auth.pendingApproval": "Your request is awaiting admin approval.",
+      "auth.accountDisabled": "Your account is disabled.",
+      "auth.requestRejected": "Your request was rejected.",
+      "auth.invalidCredentials": "Invalid email or password.",
+      "auth.networkError": "Network error. Please try again.",
+      "auth.signingIn": "Signing in…",
+      "auth.pleaseChooseRole": "Please choose a role.",
+      "auth.enterEmailPasswordToRequestAgain": "Enter your email and password to request again.",
+      "auth.submitting": "Submitting…",
+      "auth.couldNotSubmitRequest": "Could not submit your request.",
+      "auth.requestSubmittedMsg": "Request submitted — an admin will review it.",
+      "auth.pleaseEnterName": "Please enter your name.",
+      "auth.pleaseChoosePassword": "Please choose a password.",
+      "auth.couldNotCreateAccount": "Could not create your account.",
+      "auth.requestSubmittedBtn": "Request submitted",
+      // --- toolbar ---
+      "toolbar.dragToReposition": "Drag to reposition",
+      "toolbar.commentOnElement": "Comment on an element",
+      "toolbar.commentOnElementShortcut": "Comment on an element, shortcut {label}",
+      "toolbar.cancel": "Cancel",
+      "toolbar.viewCommentsList": "View comments list",
+      "toolbar.comments": "Comments",
+      "toolbar.recentActivityUpdates": "Recent activity &amp; updates",
+      "toolbar.updates": "Updates",
+      "toolbar.signedInAs": "Signed in as",
+      "toolbar.account": "Account",
+      "toolbar.hideBrand": "Hide {brand}",
+      "toolbar.resetToolbarPosition": "Reset toolbar position",
+      "toolbar.refreshComments": "Refresh comments",
+      "toolbar.close": "Close",
+      "toolbar.envFixedTitle": "Environment — fixed for this install",
+      "toolbar.envSwitchTitle": "Environment — comments are scoped per environment",
+      "toolbar.envLocal": "local",
+      "toolbar.envStaging": "staging",
+      "toolbar.envProduction": "production",
+      "toolbar.environment": "Environment",
+      "toolbar.commitStyle": "Commit style",
+      "toolbar.commitStyleTitle": "How the AI apply flow commits applied comments",
+      "toolbar.oneCommit": "One commit",
+      "toolbar.separateCommits": "Separate commits",
+      // --- user menu ---
+      "menu.addComment": "Add comment",
+      "menu.clickThenPressKeyCombo": "Click, then press a new key combo",
+      "menu.resetToDefault": "Reset to default",
+      "menu.theme": "Theme",
+      "menu.light": "Light",
+      "menu.lightTheme": "Light theme",
+      "menu.dark": "Dark",
+      "menu.darkTheme": "Dark theme",
+      "menu.language": "Language",
+      "menu.extensionSignedInNote": "Signed in via the browser extension — sign out from its popup.",
+      "menu.signOut": "Sign out",
+      "menu.pressKeysToCancel": "Press keys… (Esc to cancel)",
+      "menu.addModifierKey": "Add a modifier key (Alt/Shift/Ctrl/⌘)…",
+      "menu.saving": "Saving…",
+      "menu.resetting": "Resetting…",
+      "menu.shortcutUpdated": "Shortcut updated",
+      "menu.failedToSaveTryAgain": "Failed to save — try again",
+      "menu.shortcutResetToDefault": "Shortcut reset to default",
+      "menu.failedToResetTryAgain": "Failed to reset — try again",
+      // --- launcher ---
+      "launcher.openFeedbackFor": "Open {brand} feedback",
+      // --- sidebar / filters ---
+      "sidebar.mineOnly": "Mine only",
+      "sidebar.showOnlyMyComments": "Show only my comments",
+      "sidebar.filterByStatus": "Filter by status",
+      "sidebar.filterByUser": "Filter by user",
+      "sidebar.allUsers": "All users",
+      "sidebar.noCommentsYet": "No comments on this project yet.<br/>Click the inspect icon, then click an element.",
+      "sidebar.noOwnComments": "You haven't left any comments yet.",
+      "sidebar.noFilteredComments": 'No comments in "{label}"{suffix}.',
+      "sidebar.ofYours": " of yours",
+      // --- comment card ---
+      "card.deployedIn": "Deployed in {sha}",
+      "card.live": "live",
+      "card.completed": "completed",
+      "card.pending": "pending",
+      "card.archived": "archived",
+      "card.verified": "Verified",
+      "card.looksRight": "Looks right",
+      "card.notFixed": "Not fixed",
+      "card.explainNotFixed": "Explain what is still not fixed…",
+      "card.submit": "Submit",
+      "card.viewCommit": "View commit",
+      "card.noCommitRecorded": "No commit recorded for this comment",
+      "card.commit": "commit",
+      "card.containsSecretPayload": "contains a secret/payload?",
+      "card.defaultReplyAuthor": "User",
+      "card.automatedReply": "Automated reply",
+      "card.edited": "edited",
+      "card.replyPlaceholder": "Reply…",
+      "card.markedReadyClickToUnmark": "Marked ready — click to unmark",
+      "card.markReadyToApply": "Mark ready to apply",
+      "card.ready": "Ready",
+      "card.markCompleted": "Mark completed",
+      "card.reopen": "Re-open",
+      "card.archive": "Archive",
+      "card.edit": "Edit",
+      "card.delete": "Delete",
+      "card.envLocal": "Local",
+      "card.envStaging": "Staging",
+      "card.envProduction": "Production",
+      "card.privateClickToMakePublic": "Private — click to make public",
+      "card.makePrivateOnlyYou": "Make private (only you)",
+      "card.makePublic": "Make public",
+      "card.makePrivate": "Make private",
+      "card.removeImage": "Remove image",
+      "card.save": "Save",
+      "card.deleteThisComment": "Delete this comment?",
+      "card.deleteThisReply": "Delete this reply?",
+      "card.confirmDelete": "Confirm delete",
+      // --- comment popover ---
+      "popover.selectParentElement": "Select parent element",
+      "popover.selectFirstChildElement": "Select first child element",
+      "popover.commentOn": "Comment on",
+      "popover.whatShouldChange": "What should change here?",
+      "popover.predefinedPrompts": "Predefined prompts",
+      "popover.searchPrompts": "Search prompts…",
+      "popover.searchPredefinedPrompts": "Search predefined prompts",
+      "popover.noMatches": "No matches",
+      "popover.remove": "Remove",
+      "popover.attachScreenshot": "Attach screenshot",
+      "popover.reportBugTitle": "Attaches any console errors/warnings and failed or slow network requests seen on this page",
+      "popover.reportAsABug": "Report as a bug",
+      "popover.add": "Add",
+      "popover.commentCannotBeEmpty": "Comment cannot be empty",
+      "popover.clickAnyElementToComment": "Click any element to comment on it — or press Esc to cancel",
+      "popover.cancelled": "Cancelled",
+      // --- pins ---
+      "pin.ready": "Ready",
+      "pin.applied": "Applied",
+      "pin.archived": "Archived",
+      "pin.open": "Open",
+      "pin.commentHash": "Comment #{n}",
+      "pin.byAuthor": " by {author}",
+      "pin.reply": "reply",
+      "pin.replies": "replies",
+      "pin.overlappingComments": "{n} overlapping comments at this location",
+      // --- notifications ---
+      "notifications.updates": "Updates",
+      "notifications.noUpdatesYet": "No updates yet",
+      "notifications.update": "Update",
+      "notifications.applied": "Applied",
+      "notifications.reopened": "Reopened",
+      "notifications.newReply": "New reply",
+      "notifications.commit": "Commit",
+      // --- toasts ---
+      "toast.failedToVerifyComment": "Failed to verify comment",
+      "toast.commentVerified": "Comment verified",
+      "toast.commentReopened": "Comment re-opened",
+      "toast.signedOut": "Signed out",
+      "toast.hiddenClickToReopen": "{brand} hidden — click the button to reopen",
+      "toast.couldNotReachServer": "Could not reach {brand} server",
+      "toast.retry": "Retry",
+      "toast.refreshed": "Refreshed",
+      "toast.commitStyleUpdated": "Commit style updated",
+      "toast.updateFailed": "Update failed",
+      "toast.updated": "Updated",
+      "toast.actionNoLongerAvailable": "That action is no longer available — please choose another and try again.",
+      "toast.commentsNotAllowedFromAddress": "Comments are not allowed from this address",
+      "toast.tooManyCommentsRetryIn": "Too many comments — try again in {n} second{s}.",
+      "toast.tooManyCommentsWait": "Too many comments — please wait a moment and try again.",
+      "toast.screenshotUploadFailed": "Screenshot upload failed — saving without it",
+      "toast.commentAdded": "Comment added",
+      "toast.undo": "Undo",
+      "toast.failedToSaveComment": "Failed to save comment",
+      "toast.failedToReply": "Failed to reply",
+      "toast.markedForApply": "Marked for apply",
+      "toast.unmarked": "Unmarked",
+      "toast.markedPrivate": "Marked private",
+      "toast.madePublic": "Made public",
+      "toast.markedCompleted": "Marked completed",
+      "toast.deleted": "Deleted",
+      "toast.deleteFailed": "Delete failed",
+      "toast.commentUpdated": "Comment updated",
+      "toast.failedToUpdateComment": "Failed to update comment",
+      "toast.reopenedMsg": "Re-opened",
+      "toast.archivedMsg": "Archived",
+      "toast.pleaseProvideNoteNotFixed": "Please provide a note explaining what is not fixed",
+      "toast.notifications": "Notifications"
+    },
+    ar: {
+      // --- auth (login/signup modal) ---
+      "auth.leaveFeedbackOn": "قدّم ملاحظاتك على",
+      "auth.skipForNow": "تخطَّ هذا الآن",
+      "auth.email": "البريد الإلكتروني",
+      "auth.password": "كلمة المرور",
+      "auth.signIn": "تسجيل الدخول",
+      "auth.chooseRoleToRequestAgain": "اختر دورًا لإعادة الطلب",
+      "auth.requestAgain": "إعادة الطلب",
+      "auth.noAccount": "ليس لديك حساب؟",
+      "auth.createAccount": "إنشاء حساب",
+      "auth.name": "الاسم",
+      "auth.role": "الدور",
+      "auth.alreadyHaveAccount": "لديك حساب بالفعل؟",
+      "auth.backToSignIn": "العودة لتسجيل الدخول",
+      "auth.loadingRoles": "جارٍ تحميل الأدوار…",
+      "auth.noRolesAvailable": "لا توجد أدوار متاحة",
+      "auth.couldNotLoadRoles": "تعذّر تحميل الأدوار.",
+      "auth.pleaseEnterEmail": "يرجى إدخال بريدك الإلكتروني.",
+      "auth.pleaseEnterPassword": "يرجى إدخال كلمة المرور.",
+      "auth.pendingApproval": "طلبك بانتظار موافقة المسؤول.",
+      "auth.accountDisabled": "حسابك معطّل.",
+      "auth.requestRejected": "تم رفض طلبك.",
+      "auth.invalidCredentials": "البريد الإلكتروني أو كلمة المرور غير صحيحة.",
+      "auth.networkError": "خطأ في الشبكة. يرجى المحاولة مرة أخرى.",
+      "auth.signingIn": "جارٍ تسجيل الدخول…",
+      "auth.pleaseChooseRole": "يرجى اختيار دور.",
+      "auth.enterEmailPasswordToRequestAgain": "أدخل بريدك الإلكتروني وكلمة المرور لإعادة الطلب.",
+      "auth.submitting": "جارٍ الإرسال…",
+      "auth.couldNotSubmitRequest": "تعذّر إرسال طلبك.",
+      "auth.requestSubmittedMsg": "تم إرسال الطلب — سيراجعه أحد المسؤولين.",
+      "auth.pleaseEnterName": "يرجى إدخال اسمك.",
+      "auth.pleaseChoosePassword": "يرجى اختيار كلمة مرور.",
+      "auth.couldNotCreateAccount": "تعذّر إنشاء حسابك.",
+      "auth.requestSubmittedBtn": "تم إرسال الطلب",
+      // --- toolbar ---
+      "toolbar.dragToReposition": "اسحب لتغيير الموضع",
+      "toolbar.commentOnElement": "أضف تعليقًا على عنصر",
+      "toolbar.commentOnElementShortcut": "أضف تعليقًا على عنصر، الاختصار {label}",
+      "toolbar.cancel": "إلغاء",
+      "toolbar.viewCommentsList": "عرض قائمة التعليقات",
+      "toolbar.comments": "التعليقات",
+      "toolbar.recentActivityUpdates": "النشاط الأخير والتحديثات",
+      "toolbar.updates": "التحديثات",
+      "toolbar.signedInAs": "مسجّل الدخول باسم",
+      "toolbar.account": "الحساب",
+      "toolbar.hideBrand": "إخفاء {brand}",
+      "toolbar.resetToolbarPosition": "إعادة ضبط موضع شريط الأدوات",
+      "toolbar.refreshComments": "تحديث التعليقات",
+      "toolbar.close": "إغلاق",
+      "toolbar.envFixedTitle": "البيئة — ثابتة لهذا التثبيت",
+      "toolbar.envSwitchTitle": "البيئة — التعليقات مرتبطة بكل بيئة على حدة",
+      "toolbar.envLocal": "محلي",
+      "toolbar.envStaging": "الاختبار",
+      "toolbar.envProduction": "الإنتاج",
+      "toolbar.environment": "البيئة",
+      "toolbar.commitStyle": "أسلوب الالتزام",
+      "toolbar.commitStyleTitle": "كيفية التزام التعليقات المطبَّقة عبر مسار تطبيق الذكاء الاصطناعي",
+      "toolbar.oneCommit": "التزام واحد",
+      "toolbar.separateCommits": "التزامات منفصلة",
+      // --- user menu ---
+      "menu.addComment": "إضافة تعليق",
+      "menu.clickThenPressKeyCombo": "انقر، ثم اضغط تركيبة مفاتيح جديدة",
+      "menu.resetToDefault": "إعادة إلى الافتراضي",
+      "menu.theme": "المظهر",
+      "menu.light": "فاتح",
+      "menu.lightTheme": "المظهر الفاتح",
+      "menu.dark": "داكن",
+      "menu.darkTheme": "المظهر الداكن",
+      "menu.language": "اللغة",
+      "menu.extensionSignedInNote": "تم تسجيل الدخول عبر إضافة المتصفح — سجّل الخروج من نافذتها المنبثقة.",
+      "menu.signOut": "تسجيل الخروج",
+      "menu.pressKeysToCancel": "اضغط المفاتيح… (Esc للإلغاء)",
+      "menu.addModifierKey": "أضف مفتاح تعديل (Alt/Shift/Ctrl/⌘)…",
+      "menu.saving": "جارٍ الحفظ…",
+      "menu.resetting": "جارٍ إعادة الضبط…",
+      "menu.shortcutUpdated": "تم تحديث الاختصار",
+      "menu.failedToSaveTryAgain": "فشل الحفظ — حاول مرة أخرى",
+      "menu.shortcutResetToDefault": "تمت إعادة الاختصار إلى الافتراضي",
+      "menu.failedToResetTryAgain": "فشلت إعادة الضبط — حاول مرة أخرى",
+      // --- launcher ---
+      "launcher.openFeedbackFor": "فتح ملاحظات {brand}",
+      // --- sidebar / filters ---
+      "sidebar.mineOnly": "تعليقاتي فقط",
+      "sidebar.showOnlyMyComments": "عرض تعليقاتي فقط",
+      "sidebar.filterByStatus": "تصفية حسب الحالة",
+      "sidebar.filterByUser": "تصفية حسب المستخدم",
+      "sidebar.allUsers": "جميع المستخدمين",
+      "sidebar.noCommentsYet": "لا توجد تعليقات على هذا المشروع بعد.<br/>انقر على أيقونة الفحص، ثم انقر على عنصر.",
+      "sidebar.noOwnComments": "لم تترك أي تعليقات بعد.",
+      "sidebar.noFilteredComments": 'لا توجد تعليقات ضمن "{label}"{suffix}.',
+      "sidebar.ofYours": " الخاصة بك",
+      // --- comment card ---
+      "card.deployedIn": "تم النشر في {sha}",
+      "card.live": "مباشر",
+      "card.completed": "مكتمل",
+      "card.pending": "قيد الانتظار",
+      "card.archived": "مؤرشف",
+      "card.verified": "تم التحقق",
+      "card.looksRight": "يبدو صحيحًا",
+      "card.notFixed": "لم يُصلح",
+      "card.explainNotFixed": "اشرح ما لم يتم إصلاحه بعد…",
+      "card.submit": "إرسال",
+      "card.viewCommit": "عرض الالتزام",
+      "card.noCommitRecorded": "لا يوجد التزام مسجَّل لهذا التعليق",
+      "card.commit": "التزام",
+      "card.containsSecretPayload": "قد يحتوي على بيانات سرية؟",
+      "card.defaultReplyAuthor": "مستخدم",
+      "card.automatedReply": "رد آلي",
+      "card.edited": "مُعدَّل",
+      "card.replyPlaceholder": "رد…",
+      "card.markedReadyClickToUnmark": "وُضع علامة جاهز — انقر لإلغائها",
+      "card.markReadyToApply": "وضع علامة جاهز للتطبيق",
+      "card.ready": "جاهز",
+      "card.markCompleted": "وضع علامة مكتمل",
+      "card.reopen": "إعادة الفتح",
+      "card.archive": "أرشفة",
+      "card.edit": "تعديل",
+      "card.delete": "حذف",
+      "card.envLocal": "محلي",
+      "card.envStaging": "الاختبار",
+      "card.envProduction": "الإنتاج",
+      "card.privateClickToMakePublic": "خاص — انقر لجعله عامًا",
+      "card.makePrivateOnlyYou": "اجعله خاصًا (أنت فقط)",
+      "card.makePublic": "اجعله عامًا",
+      "card.makePrivate": "اجعله خاصًا",
+      "card.removeImage": "إزالة الصورة",
+      "card.save": "حفظ",
+      "card.deleteThisComment": "هل تريد حذف هذا التعليق؟",
+      "card.deleteThisReply": "هل تريد حذف هذا الرد؟",
+      "card.confirmDelete": "تأكيد الحذف",
+      // --- comment popover ---
+      "popover.selectParentElement": "اختر العنصر الأصل",
+      "popover.selectFirstChildElement": "اختر العنصر الفرعي الأول",
+      "popover.commentOn": "تعليق على",
+      "popover.whatShouldChange": "ما الذي يجب تغييره هنا؟",
+      "popover.predefinedPrompts": "اقتراحات جاهزة",
+      "popover.searchPrompts": "ابحث في الاقتراحات…",
+      "popover.searchPredefinedPrompts": "البحث في الاقتراحات الجاهزة",
+      "popover.noMatches": "لا توجد نتائج",
+      "popover.remove": "إزالة",
+      "popover.attachScreenshot": "إرفاق لقطة شاشة",
+      "popover.reportBugTitle": "يُرفق أي أخطاء/تحذيرات في وحدة التحكم وطلبات الشبكة الفاشلة أو البطيئة في هذه الصفحة",
+      "popover.reportAsABug": "الإبلاغ كخلل",
+      "popover.add": "إضافة",
+      "popover.commentCannotBeEmpty": "لا يمكن أن يكون التعليق فارغًا",
+      "popover.clickAnyElementToComment": "انقر على أي عنصر للتعليق عليه — أو اضغط Esc للإلغاء",
+      "popover.cancelled": "تم الإلغاء",
+      // --- pins ---
+      "pin.ready": "جاهز",
+      "pin.applied": "مطبَّق",
+      "pin.archived": "مؤرشف",
+      "pin.open": "مفتوح",
+      "pin.commentHash": "تعليق رقم {n}",
+      "pin.byAuthor": " بواسطة {author}",
+      "pin.reply": "رد واحد",
+      "pin.replies": "{n} ردود",
+      "pin.overlappingComments": "{n} تعليقات متداخلة في هذا الموضع",
+      // --- notifications ---
+      "notifications.updates": "التحديثات",
+      "notifications.noUpdatesYet": "لا توجد تحديثات بعد",
+      "notifications.update": "تحديث",
+      "notifications.applied": "تم التطبيق",
+      "notifications.reopened": "أُعيد فتحه",
+      "notifications.newReply": "رد جديد",
+      "notifications.commit": "الالتزام",
+      // --- toasts ---
+      "toast.failedToVerifyComment": "فشل التحقق من التعليق",
+      "toast.commentVerified": "تم التحقق من التعليق",
+      "toast.commentReopened": "أُعيد فتح التعليق",
+      "toast.signedOut": "تم تسجيل الخروج",
+      "toast.hiddenClickToReopen": "تم إخفاء {brand} — انقر على الزر لإعادة فتحه",
+      "toast.couldNotReachServer": "تعذّر الوصول إلى خادم {brand}",
+      "toast.retry": "إعادة المحاولة",
+      "toast.refreshed": "تم التحديث",
+      "toast.commitStyleUpdated": "تم تحديث أسلوب الالتزام",
+      "toast.updateFailed": "فشل التحديث",
+      "toast.updated": "تم التحديث",
+      "toast.actionNoLongerAvailable": "لم يعد هذا الإجراء متاحًا — يرجى اختيار إجراء آخر والمحاولة مرة أخرى.",
+      "toast.commentsNotAllowedFromAddress": "التعليقات غير مسموح بها من هذا العنوان",
+      "toast.tooManyCommentsRetryIn": "عدد كبير جدًا من التعليقات — حاول مرة أخرى بعد {n} ثانية.",
+      "toast.tooManyCommentsWait": "عدد كبير جدًا من التعليقات — يرجى الانتظار قليلًا والمحاولة مرة أخرى.",
+      "toast.screenshotUploadFailed": "فشل رفع لقطة الشاشة — سيُحفظ التعليق دونها",
+      "toast.commentAdded": "تمت إضافة التعليق",
+      "toast.undo": "تراجع",
+      "toast.failedToSaveComment": "فشل حفظ التعليق",
+      "toast.failedToReply": "فشل إرسال الرد",
+      "toast.markedForApply": "وُضعت علامة للتطبيق",
+      "toast.unmarked": "تم إلغاء العلامة",
+      "toast.markedPrivate": "وُضعت علامة خاص",
+      "toast.madePublic": "أصبح عامًا",
+      "toast.markedCompleted": "وُضعت علامة مكتمل",
+      "toast.deleted": "تم الحذف",
+      "toast.deleteFailed": "فشل الحذف",
+      "toast.commentUpdated": "تم تحديث التعليق",
+      "toast.failedToUpdateComment": "فشل تحديث التعليق",
+      "toast.reopenedMsg": "أُعيد فتحه",
+      "toast.archivedMsg": "تمت الأرشفة",
+      "toast.pleaseProvideNoteNotFixed": "يرجى كتابة ملاحظة تشرح ما لم يتم إصلاحه",
+      "toast.notifications": "الإشعارات"
+    }
   };
 
   // src/templates.ts
@@ -524,39 +947,39 @@
         <div class="fbk-modal-overlay">
           <div class="fbk-modal">
             <h2>${escapeHtml(getBrandName())}</h2>
-            <p>Leave feedback on <b>${escapeHtml(project)}</b>.</p>
+            <p>${t("auth.leaveFeedbackOn")} <b>${escapeHtml(project)}</b>.</p>
             <div id="fbk-auth-body"></div>
-            <button class="fbk-btn fbk-link fbk-btn-block fbk-auth-skip" id="fbk-login-skip">Skip for now</button>
+            <button class="fbk-btn fbk-link fbk-btn-block fbk-auth-skip" id="fbk-login-skip">${t("auth.skipForNow")}</button>
           </div>
         </div>`,
     // Sign-in body. After a "rejected" login it also renders an inline re-apply
     // block (role select + "Request again"); pass rejected=true to show it.
     loginBody: (rejected) => `
-        <input class="fbk-input fbk-stack-gap" id="fbk-email" type="email" placeholder="Email" />
-        <input class="fbk-input fbk-stack-gap" id="fbk-password" type="password" placeholder="Password" />
+        <input class="fbk-input fbk-stack-gap" id="fbk-email" type="email" placeholder="${t("auth.email")}" />
+        <input class="fbk-input fbk-stack-gap" id="fbk-password" type="password" placeholder="${t("auth.password")}" />
         <div class="fbk-modal-error" id="fbk-login-error"></div>
-        <button class="fbk-btn primary fbk-btn-block" id="fbk-login-submit">Sign in</button>
+        <button class="fbk-btn primary fbk-btn-block" id="fbk-login-submit">${t("auth.signIn")}</button>
         ${rejected ? `
         <div class="fbk-reapply" id="fbk-reapply">
-          <label class="fbk-field-label" for="fbk-reapply-role">Choose a role to request again</label>
+          <label class="fbk-field-label" for="fbk-reapply-role">${t("auth.chooseRoleToRequestAgain")}</label>
           <select class="fbk-input fbk-stack-gap" id="fbk-reapply-role"></select>
-          <button class="fbk-btn primary fbk-btn-block" id="fbk-reapply-submit">Request again</button>
+          <button class="fbk-btn primary fbk-btn-block" id="fbk-reapply-submit">${t("auth.requestAgain")}</button>
         </div>` : ""}
         <div class="fbk-auth-foot">
-          No account? <button class="fbk-btn fbk-link fbk-link-inline" id="fbk-show-signup">Create account</button>
+          ${t("auth.noAccount")} <button class="fbk-btn fbk-link fbk-link-inline" id="fbk-show-signup">${t("auth.createAccount")}</button>
         </div>`,
     // Sign-up body. The role <select> is populated at runtime from GET /api/roles.
     signupBody: () => `
-        <input class="fbk-input fbk-stack-gap" id="fbk-su-name" type="text" placeholder="Name" />
-        <input class="fbk-input fbk-stack-gap" id="fbk-su-email" type="email" placeholder="Email" />
-        <input class="fbk-input fbk-stack-gap" id="fbk-su-password" type="password" placeholder="Password" />
-        <label class="fbk-field-label" for="fbk-su-role">Role</label>
+        <input class="fbk-input fbk-stack-gap" id="fbk-su-name" type="text" placeholder="${t("auth.name")}" />
+        <input class="fbk-input fbk-stack-gap" id="fbk-su-email" type="email" placeholder="${t("auth.email")}" />
+        <input class="fbk-input fbk-stack-gap" id="fbk-su-password" type="password" placeholder="${t("auth.password")}" />
+        <label class="fbk-field-label" for="fbk-su-role">${t("auth.role")}</label>
         <select class="fbk-input fbk-stack-gap" id="fbk-su-role"></select>
         <div class="fbk-modal-error" id="fbk-signup-error"></div>
         <div class="fbk-modal-success" id="fbk-signup-success"></div>
-        <button class="fbk-btn primary fbk-btn-block" id="fbk-signup-submit">Create account</button>
+        <button class="fbk-btn primary fbk-btn-block" id="fbk-signup-submit">${t("auth.createAccount")}</button>
         <div class="fbk-auth-foot">
-          Already have an account? <button class="fbk-btn fbk-link fbk-link-inline" id="fbk-show-login">Back to sign in</button>
+          ${t("auth.alreadyHaveAccount")} <button class="fbk-btn fbk-link fbk-link-inline" id="fbk-show-login">${t("auth.backToSignIn")}</button>
         </div>`,
     // `fixedEnvLabel`: when the host fixed the environment at install time (attribute or injected
     // config), pass its display name to render a read-only label instead of the switcher — letting a
@@ -573,34 +996,34 @@
     // or "⌃⌥⇧C" on Mac) since ARIA wants full, platform-independent modifier names.
     chrome: (displayName, roleLabel, fixedEnvLabel, projectName = "", shortcutLabel = "", unreadNotifyCount = 0, avatarInitials = "", ariaShortcut = "") => `
         <aside class="fbk-toolbar" id="fbk-toolbar" role="toolbar" aria-label="${escapeHtml(getBrandName())}" part="toolbar">
-          <span class="fbk-toolbar__grip" id="fbk-grip" data-fbk-drag data-toggle="tooltip" data-placement="top" title="Drag to reposition" aria-hidden="true">${ICON.grip}</span>
+          <span class="fbk-toolbar__grip" id="fbk-grip" data-fbk-drag data-toggle="tooltip" data-placement="top" title="${t("toolbar.dragToReposition")}" aria-hidden="true">${ICON.grip}</span>
           <span class="fbk-toolbar__divider" aria-hidden="true"></span>
-          <button type="button" class="fbk-toolbar-btn fbk-toolbar-btn--primary fbk-toolbar-btn--icon" id="fbk-add" data-fbk-act="inspect" aria-pressed="false" data-toggle="tooltip" data-placement="top" title="Comment on an element${shortcutLabel ? ` (${escapeHtml(shortcutLabel)})` : ""}" aria-label="Comment on an element"${ariaShortcut ? ` aria-keyshortcuts="${escapeHtml(ariaShortcut)}"` : ""}><span class="fbk-toolbar-btn__icon">${ICON.crosshair}</span></button>
-          <button type="button" class="fbk-toolbar-btn fbk-toolbar-btn--comments" id="fbk-toggle" data-fbk-act="comments" aria-expanded="false" aria-haspopup="dialog" data-toggle="tooltip" data-placement="top" title="View comments list" aria-label="Comments"><span class="fbk-toolbar-btn__icon">${ICON.bubble}</span> <span class="fbk-toolbar-count" id="fbk-count" data-fbk-count>0</span></button>
-          <button type="button" class="fbk-toolbar-btn fbk-toolbar-btn--icon" id="fbk-updates" data-fbk-act="updates" aria-expanded="false" aria-haspopup="dialog" data-toggle="tooltip" data-placement="top" title="Recent activity &amp; updates" aria-label="Updates${unreadNotifyCount > 0 ? `, ${unreadNotifyCount > 99 ? "99+" : unreadNotifyCount} unread` : ""}"><span class="fbk-toolbar-btn__icon">${ICON.bell}</span><span class="fbk-toolbar-dot${unreadNotifyCount > 0 ? "" : " fbk-hidden"}" id="fbk-notify-count" data-fbk-unread aria-hidden="true"></span></button>
+          <button type="button" class="fbk-toolbar-btn fbk-toolbar-btn--primary fbk-toolbar-btn--icon fbk-toolbar-btn--brand" id="fbk-add" data-fbk-act="inspect" aria-pressed="false" data-toggle="tooltip" data-placement="top" title="${t("toolbar.commentOnElement")}${shortcutLabel ? ` (${escapeHtml(shortcutLabel)})` : ""}" aria-label="${t("toolbar.commentOnElement")}"${ariaShortcut ? ` aria-keyshortcuts="${escapeHtml(ariaShortcut)}"` : ""}><span class="fbk-toolbar-btn__icon">${ICON.crosshair}</span></button>
+          <button type="button" class="fbk-toolbar-btn fbk-toolbar-btn--comments" id="fbk-toggle" data-fbk-act="comments" aria-expanded="false" aria-haspopup="dialog" data-toggle="tooltip" data-placement="top" title="${t("toolbar.viewCommentsList")}" aria-label="${t("toolbar.comments")}"><span class="fbk-toolbar-btn__icon">${ICON.bubble}</span> <span class="fbk-toolbar-count" id="fbk-count" data-fbk-count>0</span></button>
+          <button type="button" class="fbk-toolbar-btn fbk-toolbar-btn--icon" id="fbk-updates" data-fbk-act="updates" aria-expanded="false" aria-haspopup="dialog" data-toggle="tooltip" data-placement="top" title="${t("toolbar.recentActivityUpdates")}" aria-label="${t("toolbar.updates")}${unreadNotifyCount > 0 ? `, ${unreadNotifyCount > 99 ? "99+" : unreadNotifyCount} unread` : ""}"><span class="fbk-toolbar-btn__icon">${ICON.bell}</span><span class="fbk-toolbar-dot${unreadNotifyCount > 0 ? "" : " fbk-hidden"}" id="fbk-notify-count" data-fbk-unread aria-hidden="true"></span></button>
           ${displayName ? `
           <span class="fbk-toolbar__divider" aria-hidden="true"></span>
-          <button type="button" class="fbk-toolbar-btn fbk-toolbar-btn--avatar" id="fbk-user" data-fbk-act="account" aria-expanded="false" aria-haspopup="dialog" data-toggle="tooltip" data-placement="top" title="Signed in as ${displayName}${roleLabel ? " · " + roleLabel : ""}" aria-label="Account, ${displayName}">${avatarInitials}</button>` : ""}
-          <button type="button" class="fbk-toolbar-btn fbk-toolbar-btn--icon" id="fbk-hide" data-fbk-act="hide" data-toggle="tooltip" data-placement="top" title="Hide ${escapeHtml(getBrandName())}" aria-label="Hide ${escapeHtml(getBrandName())}"><span class="fbk-toolbar-btn__icon">${ICON.eyeOff}</span></button>
+          <button type="button" class="fbk-toolbar-btn fbk-toolbar-btn--avatar" id="fbk-user" data-fbk-act="account" aria-expanded="false" aria-haspopup="dialog" data-toggle="tooltip" data-placement="top" title="${t("toolbar.signedInAs")} ${displayName}${roleLabel ? " · " + roleLabel : ""}" aria-label="${t("toolbar.account")}, ${displayName}">${avatarInitials}</button>` : ""}
+          <button type="button" class="fbk-toolbar-btn fbk-toolbar-btn--icon" id="fbk-hide" data-fbk-act="hide" data-toggle="tooltip" data-placement="top" title="${t("toolbar.hideBrand", { brand: escapeHtml(getBrandName()) })}" aria-label="${t("toolbar.hideBrand", { brand: escapeHtml(getBrandName()) })}"><span class="fbk-toolbar-btn__icon">${ICON.eyeOff}</span></button>
           <span class="fbk-toolbar__divider fbk-toolbar__divider--moved" aria-hidden="true"></span>
-          <button type="button" class="fbk-toolbar-btn fbk-toolbar-btn--icon fbk-toolbar__reset" id="fbk-reset-pos" data-fbk-act="reset-position" data-toggle="tooltip" data-placement="top" title="Reset toolbar position" aria-label="Reset toolbar position"><span class="fbk-toolbar-btn__icon">${ICON.restore}</span></button>
+          <button type="button" class="fbk-toolbar-btn fbk-toolbar-btn--icon fbk-toolbar__reset" id="fbk-reset-pos" data-fbk-act="reset-position" data-toggle="tooltip" data-placement="top" title="${t("toolbar.resetToolbarPosition")}" aria-label="${t("toolbar.resetToolbarPosition")}"><span class="fbk-toolbar-btn__icon">${ICON.restore}</span></button>
         </aside>
         <div class="fbk-sidebar" id="fbk-sidebar">
           <div class="fbk-sidebar-head">
             <div class="fbk-sidebar-head-row">
-              <h2>Comments</h2>
-              <button class="fbk-mini fbk-icon" id="fbk-close" title="Close" aria-label="Close">&#x2715;</button>
+              <h2>${t("toolbar.comments")}</h2>
+              <button class="fbk-mini fbk-icon" id="fbk-close" title="${t("toolbar.close")}" aria-label="${t("toolbar.close")}">&#x2715;</button>
             </div>
             <div class="fbk-sidebar-head-row">
               <div class="fbk-sidebar-meta">
                 <span class="fbk-project-name fbk-caption" id="fbk-project-name" title="${escapeHtml(projectName)}">${escapeHtml(projectName)}</span>
-                ${fixedEnvLabel ? `<span class="fbk-env-label fbk-caption" title="Environment — fixed for this install">&middot; ${escapeHtml(fixedEnvLabel)}</span>` : `<select class="fbk-input fbk-env-select" id="fbk-env" title="Environment — comments are scoped per environment">
-                <option value="local">local</option>
-                <option value="staging">staging</option>
-                <option value="production">production</option>
+                ${fixedEnvLabel ? `<span class="fbk-env-label fbk-caption" title="${t("toolbar.envFixedTitle")}">&middot; ${escapeHtml(fixedEnvLabel)}</span>` : `<select class="fbk-input fbk-env-select" id="fbk-env" title="${t("toolbar.envSwitchTitle")}">
+                <option value="local">${t("toolbar.envLocal")}</option>
+                <option value="staging">${t("toolbar.envStaging")}</option>
+                <option value="production">${t("toolbar.envProduction")}</option>
               </select>`}
               </div>
-              <button class="fbk-mini fbk-icon" id="fbk-refresh" title="Refresh comments" aria-label="Refresh comments">&#8635;</button>
+              <button class="fbk-mini fbk-icon" id="fbk-refresh" title="${t("toolbar.refreshComments")}" aria-label="${t("toolbar.refreshComments")}">&#8635;</button>
             </div>
             <div class="fbk-commit-style fbk-hidden" id="fbk-commit-style"></div>
           </div>
@@ -616,10 +1039,10 @@
     // choose whether the AI apply flow bundles applied comments into one commit or commits each one
     // separately — read by skill.md's Step 1 the next time an agent applies.
     commitStyleControl: (commitStyle) => `
-        <span class="fbk-caption">Commit style</span>
-        <select class="fbk-input fbk-commit-style-select" id="fbk-commit-style-select" title="How the AI apply flow commits applied comments">
-          <option value="1" ${commitStyle === 1 ? "selected" : ""}>One commit</option>
-          <option value="2" ${commitStyle === 2 ? "selected" : ""}>Separate commits</option>
+        <span class="fbk-caption">${t("toolbar.commitStyle")}</span>
+        <select class="fbk-input fbk-commit-style-select" id="fbk-commit-style-select" title="${t("toolbar.commitStyleTitle")}">
+          <option value="1" ${commitStyle === 1 ? "selected" : ""}>${t("toolbar.oneCommit")}</option>
+          <option value="2" ${commitStyle === 2 ? "selected" : ""}>${t("toolbar.separateCommits")}</option>
         </select>`,
     // Dropdown under the user icon: shows identity, the per-user "add comment" shortcut
     // (click to rebind, ↺ to reset), theme + language toggles, and a Sign out action.
@@ -630,21 +1053,21 @@
             ${roleLabel ? `<span class="fbk-menu-role">${roleLabel}</span>` : ""}
           </div>
           <div class="fbk-menu-shortcut">
-            <span class="fbk-menu-shortcut-label">Add comment</span>
-            <button type="button" id="fbk-shortcut-edit" class="fbk-mini" title="Click, then press a new key combo">${escapeHtml(shortcutLabel)}</button>
-            <button type="button" id="fbk-shortcut-reset" class="fbk-mini fbk-icon" title="Reset to default">&#8635;</button>
+            <span class="fbk-menu-shortcut-label">${t("menu.addComment")}</span>
+            <button type="button" id="fbk-shortcut-edit" class="fbk-mini" title="${t("menu.clickThenPressKeyCombo")}">${escapeHtml(shortcutLabel)}</button>
+            <button type="button" id="fbk-shortcut-reset" class="fbk-mini fbk-icon" title="${t("menu.resetToDefault")}">&#8635;</button>
           </div>
           <div class="fbk-menu-shortcut">
-            <span class="fbk-menu-shortcut-label">Theme</span>
-            <button type="button" id="fbk-theme-light" class="fbk-mini fbk-icon${theme === "light" ? " is-active" : ""}" title="Light" aria-label="Light theme" aria-pressed="${theme === "light"}">${ICON.sun}</button>
-            <button type="button" id="fbk-theme-dark" class="fbk-mini fbk-icon${theme === "dark" ? " is-active" : ""}" title="Dark" aria-label="Dark theme" aria-pressed="${theme === "dark"}">${ICON.moon}</button>
+            <span class="fbk-menu-shortcut-label">${t("menu.theme")}</span>
+            <button type="button" id="fbk-theme-light" class="fbk-mini fbk-icon${theme === "light" ? " is-active" : ""}" title="${t("menu.light")}" aria-label="${t("menu.lightTheme")}" aria-pressed="${theme === "light"}">${ICON.sun}</button>
+            <button type="button" id="fbk-theme-dark" class="fbk-mini fbk-icon${theme === "dark" ? " is-active" : ""}" title="${t("menu.dark")}" aria-label="${t("menu.darkTheme")}" aria-pressed="${theme === "dark"}">${ICON.moon}</button>
           </div>
           <div class="fbk-menu-shortcut">
-            <span class="fbk-menu-shortcut-label">Language</span>
+            <span class="fbk-menu-shortcut-label">${t("menu.language")}</span>
             <button type="button" id="fbk-lang-en" class="fbk-mini${language === "en" ? " is-active" : ""}" aria-pressed="${language === "en"}">EN</button>
             <button type="button" id="fbk-lang-ar" class="fbk-mini${language === "ar" ? " is-active" : ""}" aria-pressed="${language === "ar"}">AR</button>
           </div>
-          ${authOwnedByHost ? `<div class="fbk-menu-note fbk-caption">Signed in via the browser extension — sign out from its popup.</div>` : `<button class="fbk-menu-item" id="fbk-signout" role="menuitem">${ICON.logout}<span>Sign out</span></button>`}
+          ${authOwnedByHost ? `<div class="fbk-menu-note fbk-caption">${t("menu.extensionSignedInNote")}</div>` : `<button class="fbk-menu-item" id="fbk-signout" role="menuitem">${ICON.logout}<span>${t("menu.signOut")}</span></button>`}
         </div>`,
     // Collapsed state: a small floating launcher that re-opens the overlay.
     // `rtl` makes start/end resolve against the host page direction (the shadow
@@ -652,8 +1075,9 @@
     launcher: (count, position, rtl, unreadNotifyCount = 0) => {
       const hasUnread = unreadNotifyCount > 0;
       const badgeCount = hasUnread ? unreadNotifyCount : count;
+      const openLabel = t("launcher.openFeedbackFor", { brand: escapeHtml(getBrandName()) });
       return `
-        <button class="fbk-launcher fbk-pos-${position || "bottom-end"}${rtl ? " fbk-rtl" : ""}" id="fbk-launcher" title="Open ${escapeHtml(getBrandName())} feedback" aria-label="Open ${escapeHtml(getBrandName())} feedback">
+        <button class="fbk-launcher fbk-pos-${position || "bottom-end"}${rtl ? " fbk-rtl" : ""}" id="fbk-launcher" title="${openLabel}" aria-label="${openLabel}">
           <span class="fbk-launcher-ring" aria-hidden="true"></span>
           ${ICON.bubbleLg}
           ${badgeCount ? `<span class="fbk-launcher-badge${hasUnread ? " fbk-notify-badge" : ""}">${badgeCount > 99 ? "99+" : badgeCount}</span>` : ""}
@@ -664,7 +1088,8 @@
     // success/warn (polite — announced without interrupting); the shared container around these
     // already carries `aria-live="polite"`, so screen readers pick either up without extra wiring.
     // `element.ts`'s toast() owns the click listeners (Undo/Retry callback + dismiss); this is a
-    // pure string builder like the rest of TPL.
+    // pure string builder like the rest of TPL. `message`/`actionLabel` arrive already resolved
+    // through t() by the caller — this function itself does no translation.
     toast: (variant, message, actionLabel) => {
       const icon = variant === "success" ? ICON.checkPlain : variant === "warn" ? ICON.warnTriangle : ICON.dangerCircle;
       const role = variant === "danger" ? "alert" : "status";
@@ -677,7 +1102,9 @@
         </div>`;
     },
     // Status filter as a dropdown (rather than a row of chip buttons) — keeps the filter bar compact.
-    statusFilterSelect: (filters, active, counts) => `<select class="fbk-status-select" id="fbk-status-filter" title="Filter by status">
+    // Filter labels themselves are server-provided status-catalog text (customizable per project) —
+    // never translated by the widget, which cannot know what language an admin wrote them in.
+    statusFilterSelect: (filters, active, counts) => `<select class="fbk-status-select" id="fbk-status-filter" title="${t("sidebar.filterByStatus")}">
              ${filters.map((f) => {
       var _a2;
       return `<option value="${f.key}" ${f.key === active ? "selected" : ""}>${escapeHtml(f.label)} (${(_a2 = counts[f.key]) != null ? _a2 : 0})</option>`;
@@ -685,34 +1112,52 @@
            </select>`,
     // "Mine only" toggle — a chip that composes with the status chips above.
     // Rendered only when a user is logged in.
-    mineToggle: (active) => `<button class="fbk-chip fbk-mine ${active ? "active" : ""}" id="fbk-mine-toggle" title="Show only my comments" aria-pressed="${active ? "true" : "false"}">
-             &#x1f464; Mine only
+    mineToggle: (active) => `<button class="fbk-chip fbk-mine ${active ? "active" : ""}" id="fbk-mine-toggle" title="${t("sidebar.showOnlyMyComments")}" aria-pressed="${active ? "true" : "false"}">
+             &#x1f464; ${t("sidebar.mineOnly")}
            </button>`,
     // User filter — only rendered when the list has comments from >1 author.
-    authorFilter: (authors, selectedId) => `<select class="fbk-userfilter" id="fbk-author-filter" title="Filter by user">
-             <option value="">&#x1f465; All users</option>
+    authorFilter: (authors, selectedId) => `<select class="fbk-userfilter" id="fbk-author-filter" title="${t("sidebar.filterByUser")}">
+             <option value="">&#x1f465; ${t("sidebar.allUsers")}</option>
              ${authors.map((a) => `<option value="${escapeHtml(a.id)}" ${a.id === selectedId ? "selected" : ""}>${escapeHtml(a.name)}</option>`).join("")}
            </select>`,
     card: (c, i, isQuickAccess) => {
       const cls = c.status === "pending-apply" ? "pending" : c.status === "applied" ? "applied" : c.status === "archived" ? "archived" : "";
-      const statusPill = c.status === "applied" && c.deployedAt ? `<span class="fbk-pill status-applied" title="Deployed in ${escapeHtml((c.deployedSha || "").slice(0, 7))}">&#x2713; live</span>` : c.status === "applied" ? '<span class="fbk-pill status-applied">&#x2713; completed</span>' : c.status === "pending-apply" ? '<span class="fbk-pill status-pending">pending</span>' : c.status === "archived" ? '<span class="fbk-pill status-archived">&#x1f4e6; archived</span>' : "";
-      const verifiedPill = c.status === "applied" && c.verifiedAt ? '<span class="fbk-pill verified">&#x2713; Verified</span>' : "";
+      const statusPill = c.status === "applied" && c.deployedAt ? `<span class="fbk-pill status-applied" title="${escapeHtml(t("card.deployedIn", { sha: (c.deployedSha || "").slice(0, 7) }))}">&#x2713; ${t("card.live")}</span>` : c.status === "applied" ? `<span class="fbk-pill status-applied">&#x2713; ${t("card.completed")}</span>` : c.status === "pending-apply" ? `<span class="fbk-pill status-pending">${t("card.pending")}</span>` : c.status === "archived" ? `<span class="fbk-pill status-archived">&#x1f4e6; ${t("card.archived")}</span>` : "";
+      const verifiedPill = c.status === "applied" && c.verifiedAt ? `<span class="fbk-pill verified">&#x2713; ${t("card.verified")}</span>` : "";
       const verifyGroup = c.status === "applied" && !c.verifiedAt && c._canVerify ? `<span class="fbk-verify-group">
-          <button class="fbk-mini fbk-verify-ok" data-act="verify-ok" data-id="${c.id}" title="Looks right">&#x1f44d; Looks right</button>
-          <button class="fbk-mini fbk-verify-reject" data-act="verify-reject" data-id="${c.id}" title="Not fixed">&#x1f44e; Not fixed</button>
+          <button class="fbk-mini fbk-verify-ok" data-act="verify-ok" data-id="${c.id}" title="${t("card.looksRight")}">&#x1f44d; ${t("card.looksRight")}</button>
+          <button class="fbk-mini fbk-verify-reject" data-act="verify-reject" data-id="${c.id}" title="${t("card.notFixed")}">&#x1f44e; ${t("card.notFixed")}</button>
         </span>` : "";
       const verifyBox = c.status === "applied" && !c.verifiedAt && c._canVerify ? `<div class="fbk-verify-box fbk-hidden" id="fbk-verify-box-${c.id}">
-          <input class="fbk-input fbk-verify-note-input" id="fbk-verify-note-${c.id}" placeholder="Explain what is still not fixed…" />
+          <input class="fbk-input fbk-verify-note-input" id="fbk-verify-note-${c.id}" placeholder="${t("card.explainNotFixed")}" />
           <div class="fbk-verify-actions">
-            <button class="fbk-mini primary" data-act="verify-submit" data-id="${c.id}">Submit</button>
-            <button class="fbk-mini" data-act="verify-cancel" data-id="${c.id}">Cancel</button>
+            <button class="fbk-mini primary" data-act="verify-submit" data-id="${c.id}">${t("card.submit")}</button>
+            <button class="fbk-mini" data-act="verify-cancel" data-id="${c.id}">${t("toolbar.cancel")}</button>
           </div>
         </div>` : "";
-      const commitLink = c.status === "applied" ? `<a class="fbk-pill" href="${c.commitUrl ? escapeHtml(c.commitUrl) : "#"}" ${c.commitUrl ? 'target="_blank" rel="noopener noreferrer"' : ""} title="${c.commitUrl ? "View commit" : "No commit recorded for this comment"}">&#x1f517; commit</a>` : "";
-      const payloadPill = c.hasPayloadFlag ? `<span class="fbk-pill fbk-payload-flag" title="${escapeHtml((c.payloadFlags || []).join(", "))}">&#x26a0; contains a secret/payload?</span>` : "";
-      const replies = (c.replies || []).map((r) => `<div class="fbk-reply ${r.isAi ? "ai" : ""}"><b>${escapeHtml(r.authorName || r.authorLabel || "User")}:</b> ${escapeHtml(r.body || r.text || "")}</div>`).join("");
+      const commitLink = c.status === "applied" ? `<a class="fbk-pill" href="${c.commitUrl ? escapeHtml(c.commitUrl) : "#"}" ${c.commitUrl ? 'target="_blank" rel="noopener noreferrer"' : ""} title="${c.commitUrl ? t("card.viewCommit") : t("card.noCommitRecorded")}">&#x1f517; ${t("card.commit")}</a>` : "";
+      const payloadPill = c.hasPayloadFlag ? `<span class="fbk-pill fbk-payload-flag" title="${escapeHtml((c.payloadFlags || []).join(", "))}">&#x26a0; ${t("card.containsSecretPayload")}</span>` : "";
+      const replies = (c.replies || []).map((r) => {
+        var _a2, _b;
+        const body = escapeHtml(r.body || r.text || "");
+        const authorName = escapeHtml(r.authorName || r.authorLabel || t("card.defaultReplyAuthor"));
+        if (r.isAi) {
+          return `<details class="fbk-reply fbk-reply-ai" data-reply-id="${(_a2 = r.id) != null ? _a2 : ""}">
+            <summary class="fbk-reply-ai-summary">&#x1f916; <b>${t("card.automatedReply")}</b> <span class="fbk-reply-ai-author">${authorName}</span></summary>
+            <div class="fbk-reply-main"><span class="fbk-reply-body">${body}</span></div>
+          </details>`;
+        }
+        const actions = r._mine ? `<span class="fbk-reply-actions">
+            <button type="button" class="fbk-mini fbk-icon" data-act="reply-edit" data-comment-id="${c.id}" data-reply-id="${r.id}" title="${t("card.edit")}" aria-label="${t("card.edit")}">${ICON.pencil}</button>
+            <button type="button" class="fbk-mini danger fbk-icon" data-act="reply-delete" data-comment-id="${c.id}" data-reply-id="${r.id}" title="${t("card.delete")}" aria-label="${t("card.delete")}">${ICON.trash}</button>
+          </span>` : "";
+        return `<div class="fbk-reply" data-reply-id="${(_b = r.id) != null ? _b : ""}">
+          <div class="fbk-reply-main"><b>${authorName}:</b> <span class="fbk-reply-body">${body}</span></div>
+          ${actions}
+        </div>`;
+      }).join("");
       const envInt = c.environment;
-      const envLabel = envInt === 1 ? "Local" : envInt === 2 ? "Staging" : envInt === 3 ? "Production" : envInt ? String(envInt) : "";
+      const envLabel = envInt === 1 ? t("card.envLocal") : envInt === 2 ? t("card.envStaging") : envInt === 3 ? t("card.envProduction") : envInt ? String(envInt) : "";
       const authorLabel = c.authorName || "";
       const shotUrl = c.element && c.element.screenshotUrl;
       const shot = shotUrl ? `<a class="fbk-shot-link" href="${escapeHtml(shotUrl)}" target="_blank" rel="noopener noreferrer" title="Open full screenshot">
@@ -729,27 +1174,27 @@
               ${verifyGroup}
               ${commitLink}
               <div class="fbk-actions-end">
-                ${c._mine ? `<button class="fbk-mini fbk-icon${c.isPrivate ? " private-on" : ""}" data-act="visibility" data-id="${c.id}" data-private="${c.isPrivate ? "false" : "true"}" title="${c.isPrivate ? "Private — click to make public" : "Make private (only you)"}" aria-label="${c.isPrivate ? "Make public" : "Make private"}">${c.isPrivate ? ICON.lock : ICON.unlock}</button>` : ""}
-                ${c.status === "open" ? `<button class="fbk-mini danger fbk-icon" data-act="delete" data-id="${c.id}" title="Delete" aria-label="Delete">${ICON.trash}</button>` : ""}
+                ${c._mine ? `<button class="fbk-mini fbk-icon${c.isPrivate ? " private-on" : ""}" data-act="visibility" data-id="${c.id}" data-private="${c.isPrivate ? "false" : "true"}" title="${c.isPrivate ? t("card.privateClickToMakePublic") : t("card.makePrivateOnlyYou")}" aria-label="${c.isPrivate ? t("card.makePublic") : t("card.makePrivate")}">${c.isPrivate ? ICON.lock : ICON.unlock}</button>` : ""}
+                ${c.status === "open" ? `<button class="fbk-mini danger fbk-icon" data-act="delete" data-id="${c.id}" title="${t("card.delete")}" aria-label="${t("card.delete")}">${ICON.trash}</button>` : ""}
               </div>
             </div>
             <div class="fbk-text">${escapeHtml(c.body || c.text || "")}</div>
             ${shot}
-            <div class="fbk-sub">${escapeHtml(authorLabel)} &middot; ${c.createdAt ? new Date(c.createdAt).toLocaleDateString() : ""}${c.editedAt ? ' &middot; <span class="fbk-edited">edited</span>' : ""}</div>
+            <div class="fbk-sub">${escapeHtml(authorLabel)} &middot; ${c.createdAt ? new Date(c.createdAt).toLocaleDateString() : ""}${c.editedAt ? ` &middot; <span class="fbk-edited">${t("card.edited")}</span>` : ""}</div>
             ${verifyBox}
             ${replies ? `<div class="fbk-replies">${replies}</div>` : ""}
             <div class="fbk-reply-row">
-              <input class="fbk-input fbk-reply-input" placeholder="Reply…" data-id="${c.id}" />
+              <textarea class="fbk-textarea fbk-reply-input" placeholder="${t("card.replyPlaceholder")}" data-id="${c.id}" rows="1"></textarea>
             </div>
             <div class="fbk-actions">
-              ${isQuickAccess ? "" : c.status === "applied" || c.status === "archived" ? "" : `<button class="fbk-mini ${c.status === "pending-apply" ? "apply" : "ready"}" data-act="apply" data-id="${c.id}" title="${c.status === "pending-apply" ? "Marked ready — click to unmark" : "Mark ready to apply"}">
-                ${ICON.flag}<span>Ready</span>
+              ${isQuickAccess ? "" : c.status === "applied" || c.status === "archived" ? "" : `<button class="fbk-mini ${c.status === "pending-apply" ? "apply" : "ready"}" data-act="apply" data-id="${c.id}" title="${c.status === "pending-apply" ? t("card.markedReadyClickToUnmark") : t("card.markReadyToApply")}">
+                ${ICON.flag}<span>${t("card.ready")}</span>
               </button>`}
-              ${!isQuickAccess && (c.status === "open" || c.status === "pending-apply") ? `<button class="fbk-mini done fbk-icon" data-act="complete" data-id="${c.id}" title="Mark completed" aria-label="Mark completed">${ICON.check}</button>` : ""}
-              ${!isQuickAccess && c.status === "applied" ? `<button class="fbk-mini ready" data-act="reopen" data-id="${c.id}" title="Re-open">${ICON.reopen}<span>Re-open</span></button>
-              <button class="fbk-mini fbk-icon" data-act="archive" data-id="${c.id}" title="Archive" aria-label="Archive">${ICON.archive}</button>` : ""}
-              ${!isQuickAccess && c.status === "archived" ? `<button class="fbk-mini ready" data-act="reopen" data-id="${c.id}" title="Re-open">${ICON.reopen}<span>Re-open</span></button>` : ""}
-              ${c._mine ? `<div class="fbk-actions-end"><button class="fbk-mini fbk-icon" data-act="edit" data-id="${c.id}" title="Edit" aria-label="Edit">${ICON.pencil}</button></div>` : ""}
+              ${!isQuickAccess && (c.status === "open" || c.status === "pending-apply") ? `<button class="fbk-mini done fbk-icon" data-act="complete" data-id="${c.id}" title="${t("card.markCompleted")}" aria-label="${t("card.markCompleted")}">${ICON.check}</button>` : ""}
+              ${!isQuickAccess && c.status === "applied" ? `<button class="fbk-mini ready" data-act="reopen" data-id="${c.id}" title="${t("card.reopen")}">${ICON.reopen}<span>${t("card.reopen")}</span></button>
+              <button class="fbk-mini fbk-icon" data-act="archive" data-id="${c.id}" title="${t("card.archive")}" aria-label="${t("card.archive")}">${ICON.archive}</button>` : ""}
+              ${!isQuickAccess && c.status === "archived" ? `<button class="fbk-mini ready" data-act="reopen" data-id="${c.id}" title="${t("card.reopen")}">${ICON.reopen}<span>${t("card.reopen")}</span></button>` : ""}
+              ${c._mine ? `<div class="fbk-actions-end"><button class="fbk-mini fbk-icon" data-act="edit" data-id="${c.id}" title="${t("card.edit")}" aria-label="${t("card.edit")}">${ICON.pencil}</button></div>` : ""}
             </div>
           </div>`;
     },
@@ -758,20 +1203,30 @@
     // to THIS comment; it never controls whether that buffer exists (see pagecontext.ts).
     popover: (meta, left, top, shotEnabled, actions = [], bugReportEnabled = false) => `
         <div class="fbk-popover" data-fbk-left="${left}" data-fbk-top="${top}">
-          <button type="button" class="fbk-popover-private-toggle" id="fbk-comment-private" title="Keep private — only me" aria-label="Keep private — only me" aria-pressed="false">${ICON.unlock}</button>
-          <h3>Comment on &lt;${escapeHtml(meta._tag)}&gt;</h3>
-          <div class="fbk-snippet">${escapeHtml(meta._snapshotPreview.slice(0, 200))}</div>
-          ${meta._sourcePath ? `<div class="fbk-src">&#x26ec; ${escapeHtml(meta._sourcePath)}</div>` : ""}
-          <textarea class="fbk-textarea" id="fbk-comment-text" placeholder="What should change here?"></textarea>
-          ${actions.length ? `<div class="fbk-field-label">Predefined prompts</div>
-          <div class="fbk-actions-pick" id="fbk-action-pick">
-            ${actions.map((a) => `<label class="fbk-check"><input type="checkbox" class="fbk-action-opt" value="${a.id}" /> ${escapeHtml(a.text)}</label>`).join("")}
+          <div class="fbk-popover-nav">
+            <button type="button" class="fbk-popover-nav-btn" id="fbk-target-up" data-toggle="tooltip" data-placement="top" title="${t("popover.selectParentElement")}" aria-label="${t("popover.selectParentElement")}">${ICON.chevronUp}</button>
+            <button type="button" class="fbk-popover-nav-btn" id="fbk-target-down" data-toggle="tooltip" data-placement="top" title="${t("popover.selectFirstChildElement")}" aria-label="${t("popover.selectFirstChildElement")}">${ICON.chevronDown}</button>
+            <button type="button" class="fbk-popover-private-toggle" id="fbk-comment-private" data-toggle="tooltip" data-placement="top" title="${t("card.makePrivateOnlyYou")}" aria-label="${t("card.makePrivate")}" aria-pressed="false">${ICON.unlock}</button>
+          </div>
+          <h3 id="fbk-popover-title">${t("popover.commentOn")} &lt;${escapeHtml(meta._tag)}&gt;</h3>
+          <div class="fbk-snippet" id="fbk-popover-snippet">${escapeHtml(meta._snapshotPreview.slice(0, 200))}</div>
+          <div class="fbk-src${meta._sourcePath ? "" : " fbk-hidden"}" id="fbk-popover-src">&#x26ec; <span id="fbk-popover-src-path">${escapeHtml(meta._sourcePath || "")}</span></div>
+          <textarea class="fbk-textarea" id="fbk-comment-text" placeholder="${t("popover.whatShouldChange")}"></textarea>
+          ${actions.length ? `<div class="fbk-field-label">${t("popover.predefinedPrompts")}</div>
+          <div class="fbk-ms" id="fbk-action-ms">
+            <div class="fbk-ms-control" id="fbk-action-ms-control">
+              <div class="fbk-ms-chips" id="fbk-action-ms-chips"></div>
+              <input type="text" class="fbk-ms-input" id="fbk-action-ms-input" placeholder="${t("popover.searchPrompts")}" autocomplete="off" role="combobox" aria-expanded="false" aria-haspopup="listbox" aria-label="${t("popover.searchPredefinedPrompts")}" />
+            </div>
+            <div class="fbk-ms-list" id="fbk-action-ms-list" role="listbox" hidden></div>
           </div>` : ""}
-          ${shotEnabled ? `<label class="fbk-check"><input type="checkbox" id="fbk-comment-shot" /> &#x1f4f7; Attach screenshot</label>` : ""}
-          ${bugReportEnabled ? `<label class="fbk-check" title="Attaches any console errors/warnings and failed or slow network requests seen on this page"><input type="checkbox" id="fbk-comment-bug" /> &#x1f41e; Report as a bug</label>` : ""}
+          ${shotEnabled || bugReportEnabled ? `<div class="fbk-popover-toggles">
+            ${shotEnabled ? `<button type="button" class="fbk-mini" id="fbk-comment-shot" aria-pressed="false">&#x1f4f7; ${t("popover.attachScreenshot")}</button>` : ""}
+            ${bugReportEnabled ? `<button type="button" class="fbk-mini" id="fbk-comment-bug" aria-pressed="false" title="${t("popover.reportBugTitle")}">&#x1f41e; ${t("popover.reportAsABug")}</button>` : ""}
+          </div>` : ""}
           <div class="fbk-reply-row">
-            <button class="fbk-btn primary fbk-btn-fill" id="fbk-submit">Add</button>
-            <button class="fbk-mini" id="fbk-cancel">Cancel</button>
+            <button class="fbk-btn primary fbk-btn-fill" id="fbk-submit">${t("popover.add")}</button>
+            <button class="fbk-mini" id="fbk-cancel">${t("toolbar.cancel")}</button>
           </div>
         </div>`,
     // `isNew`: shows the attention ripple once, on the pin for the comment the viewer just added
@@ -782,12 +1237,12 @@
     // element.ts's renderPins() decides based on how close the pin sits to the viewport's top edge.
     pin: (c, i, rect, isNew = false, tipSide = "top") => {
       const status = c.status === "pending-apply" ? "ready" : c.status === "applied" ? "applied" : c.status === "archived" ? "archived" : "open";
-      const statusLabel = status === "ready" ? "Ready" : status === "applied" ? "Applied" : status === "archived" ? "Archived" : "Open";
+      const statusLabel = status === "ready" ? t("pin.ready") : status === "applied" ? t("pin.applied") : status === "archived" ? t("pin.archived") : t("pin.open");
       const author = c.authorName || "";
       const bodyText = c.body || c.text || "";
       const replyCount = (c.replies || []).length;
       const selector = c.element && c.element.selector || "";
-      const label = `Comment #${i + 1}${author ? ` by ${author}` : ""}${bodyText ? `: ${bodyText}` : ""}`;
+      const label = `${t("pin.commentHash", { n: i + 1 })}${author ? t("pin.byAuthor", { author }) : ""}${bodyText ? `: ${bodyText}` : ""}`;
       const showMeta = !!(selector || replyCount);
       return `
         <div class="fbk-pin-wrapper" data-id="${c.id}" data-fbk-left="${rect.left}" data-fbk-top="${rect.top}" data-fbk-tip-side="${tipSide}">
@@ -805,7 +1260,7 @@
             ${showMeta ? `
             <div class="fbk-pin-tooltip-meta">
               ${selector ? `<span class="fbk-pin-tag" title="${escapeHtml(selector)}">${escapeHtml(selector)}</span>` : "<span></span>"}
-              ${replyCount ? `<span class="fbk-pin-reply-count">${ICON.bubbleSm} ${replyCount} ${replyCount === 1 ? "reply" : "replies"}</span>` : ""}
+              ${replyCount ? `<span class="fbk-pin-reply-count">${ICON.bubbleSm} ${replyCount === 1 ? t("pin.reply") : t("pin.replies", { n: replyCount })}</span>` : ""}
             </div>` : ""}
           </div>
         </div>`;
@@ -815,7 +1270,7 @@
     // Clicking it opens pinClusterMenu below, listing each one individually.
     pinCluster: (comments, rect) => `
         <div class="fbk-pin-wrapper" data-ids="${comments.map((c) => c.id).join(",")}" data-fbk-left="${rect.left}" data-fbk-top="${rect.top}">
-          <button type="button" class="fbk-pin fbk-pin-cluster" aria-label="${comments.length} overlapping comments at this location" aria-expanded="false">
+          <button type="button" class="fbk-pin fbk-pin-cluster" aria-label="${t("pin.overlappingComments", { n: comments.length })}" aria-expanded="false">
             <span class="fbk-pin-cluster-count">${comments.length}+</span>
             <span class="fbk-pin-cluster-dots" aria-hidden="true">&bull;&bull;&bull;</span>
           </button>
@@ -826,7 +1281,7 @@
         <div class="fbk-pin-cluster-menu" id="fbk-pin-cluster-menu" role="menu">
           ${comments.map((c) => {
       const status = c.status === "pending-apply" ? "ready" : c.status === "applied" ? "applied" : c.status === "archived" ? "archived" : "open";
-      const statusLabel = status === "ready" ? "Ready" : status === "applied" ? "Applied" : status === "archived" ? "Archived" : "Open";
+      const statusLabel = status === "ready" ? t("pin.ready") : status === "applied" ? t("pin.applied") : status === "archived" ? t("pin.archived") : t("pin.open");
       const bodyText = c.body || c.text || "";
       return `
           <button type="button" class="fbk-pin-cluster-item" data-id="${c.id}" role="menuitem">
@@ -838,25 +1293,25 @@
     notificationsMenu: (items) => `
         <div class="fbk-notifications-menu" id="fbk-notifications-menu" role="menu">
           <div class="fbk-notifications-head">
-            <h3>Updates</h3>
+            <h3>${t("notifications.updates")}</h3>
           </div>
           <div class="fbk-notifications-body">
-            ${items.length === 0 ? '<div class="fbk-empty fbk-notifications-empty">No updates yet</div>' : items.map((item) => {
+            ${items.length === 0 ? `<div class="fbk-empty fbk-notifications-empty">${t("notifications.noUpdatesYet")}</div>` : items.map((item) => {
       var _a2, _b;
       const isUnread = !item.readAt;
-      let typeLabel = "Update";
+      let typeLabel = t("notifications.update");
       let icon = ICON.pin;
       let detail = "";
       const typeNum = typeof item.type === "string" ? item.type === "CommentApplied" ? 1 : item.type === "CommentReopened" ? 2 : item.type === "ReplyAdded" ? 3 : 0 : item.type;
       if (typeNum === 1) {
-        typeLabel = "Applied";
+        typeLabel = t("notifications.applied");
         icon = ICON.check;
-        detail = ((_a2 = item.payload) == null ? void 0 : _a2.commitUrl) ? `<div class="fbk-notification-item-commit"><a class="fbk-pill" href="${escapeHtml(item.payload.commitUrl)}" target="_blank" rel="noopener noreferrer" onclick="event.stopPropagation()">&#x1f517; Commit</a></div>` : "";
+        detail = ((_a2 = item.payload) == null ? void 0 : _a2.commitUrl) ? `<div class="fbk-notification-item-commit"><a class="fbk-pill" href="${escapeHtml(item.payload.commitUrl)}" target="_blank" rel="noopener noreferrer" onclick="event.stopPropagation()">&#x1f517; ${t("notifications.commit")}</a></div>` : "";
       } else if (typeNum === 2) {
-        typeLabel = "Reopened";
+        typeLabel = t("notifications.reopened");
         icon = ICON.reopen;
       } else if (typeNum === 3) {
-        typeLabel = "New reply";
+        typeLabel = t("notifications.newReply");
         icon = ICON.inspect;
         if ((_b = item.payload) == null ? void 0 : _b.replyExcerpt) {
           detail = `<div class="fbk-notification-reply fbk-caption">"${escapeHtml(item.payload.replyExcerpt)}"</div>`;
@@ -1336,18 +1791,18 @@
   async function populateRoles(host, selectEl, errEl) {
     if (!selectEl) return;
     selectEl.disabled = true;
-    selectEl.innerHTML = '<option value="">Loading roles…</option>';
+    selectEl.innerHTML = `<option value="">${t("auth.loadingRoles")}</option>`;
     try {
       const roles = await host.apiRoles();
       if (!roles.length) {
-        selectEl.innerHTML = '<option value="">No roles available</option>';
+        selectEl.innerHTML = `<option value="">${t("auth.noRolesAvailable")}</option>`;
         return;
       }
       selectEl.innerHTML = roles.map((r) => `<option value="${escapeHtml(r.id)}">${escapeHtml(r.name)}</option>`).join("");
       selectEl.disabled = false;
     } catch (e) {
-      selectEl.innerHTML = '<option value="">Could not load roles</option>';
-      if (errEl) errEl.textContent = e.message || "Could not load roles.";
+      selectEl.innerHTML = `<option value="">${t("auth.couldNotLoadRoles")}</option>`;
+      if (errEl) errEl.textContent = e.message || t("auth.couldNotLoadRoles");
     }
   }
   function afterAuthOk(host, token, user) {
@@ -1373,19 +1828,19 @@
       const email = emailEl.value.trim();
       const password = passEl.value;
       if (!email) {
-        errEl.textContent = "Please enter your email.";
+        errEl.textContent = t("auth.pleaseEnterEmail");
         return;
       }
       if (!password) {
-        errEl.textContent = "Please enter your password.";
+        errEl.textContent = t("auth.pleaseEnterPassword");
         return;
       }
       errEl.textContent = "";
       submitBtn.disabled = true;
-      submitBtn.textContent = "Signing in…";
+      submitBtn.textContent = t("auth.signingIn");
       const restore = () => {
         submitBtn.disabled = false;
-        submitBtn.textContent = "Sign in";
+        submitBtn.textContent = t("auth.signIn");
       };
       try {
         const r = await host.apiLogin(email, password);
@@ -1397,12 +1852,12 @@
           return;
         }
         if (status === "pending") {
-          errEl.textContent = envelope.message || "Your request is awaiting admin approval.";
+          errEl.textContent = envelope.message || t("auth.pendingApproval");
           restore();
           return;
         }
         if (status === "disabled") {
-          errEl.textContent = envelope.message || "Your account is disabled.";
+          errEl.textContent = envelope.message || t("auth.accountDisabled");
           restore();
           return;
         }
@@ -1411,13 +1866,13 @@
           const re = host.root.querySelector("#fbk-auth-body");
           re.querySelector("#fbk-email").value = email;
           re.querySelector("#fbk-password").value = password;
-          re.querySelector("#fbk-login-error").textContent = envelope.message || "Your request was rejected.";
+          re.querySelector("#fbk-login-error").textContent = envelope.message || t("auth.requestRejected");
           return;
         }
-        errEl.textContent = envelope.message || "Invalid email or password.";
+        errEl.textContent = envelope.message || t("auth.invalidCredentials");
         restore();
       } catch (e) {
-        errEl.textContent = "Network error. Please try again.";
+        errEl.textContent = t("auth.networkError");
         restore();
       }
     };
@@ -1435,33 +1890,33 @@
         const password = passEl.value;
         const roleId = roleEl.value;
         if (!roleId) {
-          errEl.textContent = "Please choose a role.";
+          errEl.textContent = t("auth.pleaseChooseRole");
           return;
         }
         if (!email || !password) {
-          errEl.textContent = "Enter your email and password to request again.";
+          errEl.textContent = t("auth.enterEmailPasswordToRequestAgain");
           return;
         }
         errEl.textContent = "";
         reBtn.disabled = true;
-        reBtn.textContent = "Submitting…";
+        reBtn.textContent = t("auth.submitting");
         try {
           const r = await host.apiRegister({ email, password, displayName: "", roleId });
           const envelope = await r.json();
           if (!r.ok || !envelope.isSuccess) {
-            errEl.textContent = envelope.message || "Could not submit your request.";
+            errEl.textContent = envelope.message || t("auth.couldNotSubmitRequest");
             reBtn.disabled = false;
-            reBtn.textContent = "Request again";
+            reBtn.textContent = t("auth.requestAgain");
             return;
           }
           renderLoginView(host);
           const reBody = host.root.querySelector("#fbk-auth-body");
           reBody.querySelector("#fbk-email").value = email;
-          reBody.querySelector("#fbk-login-error").textContent = envelope.message || "Request submitted — an admin will review it.";
+          reBody.querySelector("#fbk-login-error").textContent = envelope.message || t("auth.requestSubmittedMsg");
         } catch (e) {
-          errEl.textContent = "Network error. Please try again.";
+          errEl.textContent = t("auth.networkError");
           reBtn.disabled = false;
-          reBtn.textContent = "Request again";
+          reBtn.textContent = t("auth.requestAgain");
         }
       });
     }
@@ -1487,43 +1942,43 @@
       errEl.textContent = "";
       okEl.textContent = "";
       if (!displayName) {
-        errEl.textContent = "Please enter your name.";
+        errEl.textContent = t("auth.pleaseEnterName");
         return;
       }
       if (!email) {
-        errEl.textContent = "Please enter your email.";
+        errEl.textContent = t("auth.pleaseEnterEmail");
         return;
       }
       if (!password) {
-        errEl.textContent = "Please choose a password.";
+        errEl.textContent = t("auth.pleaseChoosePassword");
         return;
       }
       if (!roleId) {
-        errEl.textContent = "Please choose a role.";
+        errEl.textContent = t("auth.pleaseChooseRole");
         return;
       }
       submitBtn.disabled = true;
-      submitBtn.textContent = "Submitting…";
+      submitBtn.textContent = t("auth.submitting");
       const restore = () => {
         submitBtn.disabled = false;
-        submitBtn.textContent = "Create account";
+        submitBtn.textContent = t("auth.createAccount");
       };
       try {
         const r = await host.apiRegister({ email, password, displayName, roleId });
         const envelope = await r.json();
         if (!r.ok || !envelope.isSuccess) {
-          errEl.textContent = envelope.message || "Could not create your account.";
+          errEl.textContent = envelope.message || t("auth.couldNotCreateAccount");
           restore();
           return;
         }
-        okEl.textContent = envelope.message || "Request submitted — an admin will review it.";
-        submitBtn.textContent = "Request submitted";
+        okEl.textContent = envelope.message || t("auth.requestSubmittedMsg");
+        submitBtn.textContent = t("auth.requestSubmittedBtn");
         submitBtn.disabled = true;
         [nameEl, emailEl, passEl, roleEl].forEach((el) => {
           el.disabled = true;
         });
       } catch (e) {
-        errEl.textContent = "Network error. Please try again.";
+        errEl.textContent = t("auth.networkError");
         restore();
       }
     };
@@ -1684,6 +2139,7 @@
         this.authOwnedByHost = true;
       }
       this.applyTheme();
+      setLang(this.resolveLang());
       this.style.position = "fixed";
       this.style.zIndex = "2147483647";
       this.style.top = "0";
@@ -1747,6 +2203,7 @@
         this._pendingInviteToken = null;
       }
       if (this.token) await this.hydrateIdentity();
+      setLang(this.resolveLang());
       if (this.token) this.init();
       else this.renderChrome();
       try {
@@ -1906,7 +2363,7 @@
     beginRecordingShortcut(btnEl) {
       this._recordingShortcut = true;
       const original = btnEl.textContent || "";
-      btnEl.textContent = "Press keys… (Esc to cancel)";
+      btnEl.textContent = t("menu.pressKeysToCancel");
       const onKey = (e) => {
         e.preventDefault();
         e.stopPropagation();
@@ -1917,7 +2374,7 @@
         }
         if (e.key === "Shift" || e.key === "Alt" || e.key === "Control" || e.key === "Meta") return;
         if (!(e.altKey || e.ctrlKey || e.metaKey || e.shiftKey)) {
-          btnEl.textContent = "Add a modifier key (Alt/Shift/Ctrl/⌘)…";
+          btnEl.textContent = t("menu.addModifierKey");
           return;
         }
         const binding = {
@@ -1927,11 +2384,11 @@
           ctrl: e.ctrlKey,
           meta: e.metaKey
         };
-        btnEl.textContent = "Saving…";
+        btnEl.textContent = t("menu.saving");
         cleanup();
         this.saveShortcutPreference(binding).then((ok) => {
           btnEl.textContent = formatShortcut(this.shortcut);
-          this.toast(ok ? "Shortcut updated" : "Failed to save — try again", ok ? "" : "error");
+          this.toast(ok ? t("menu.shortcutUpdated") : t("menu.failedToSaveTryAgain"), ok ? "" : "error");
         });
       };
       const cleanup = () => {
@@ -2028,24 +2485,39 @@
       }
       this.applyTheme();
     }
-    // Persists the account's language preference — the widget's own UI text stays English (see
-    // the language-scope decision); this only keeps the account in sync with the dashboard's
-    // language switcher, which reads the same field.
-    async saveLanguagePreference(lang) {
+    // --- Language ---------------------------------------------------------
+    // Same widget-local shape as theme above, for the same reason: `User.language` is the SAME
+    // field the dashboard's own language switcher writes to paint the whole admin app, so an
+    // explicit per-browser override (localStorage, set from the user menu below) must win without
+    // ever being written back to the account — otherwise picking a language in the widget would
+    // silently flip the dashboard's language too. Falling back to the account's EXISTING value
+    // (read-only) when there is no local override yet is fine — the widget just never sets it.
+    resolveLang() {
+      var _a2;
       try {
-        const r = await this.api("/api/me/preferences", {
-          method: "PATCH",
-          body: JSON.stringify({ language: lang })
-        });
-        if (!r.ok) return false;
-        if (this.user) {
-          this.user = { ...this.user, language: lang };
-          localStorage.setItem("pointer_user", JSON.stringify(this.user));
-        }
-        return true;
+        const stored = localStorage.getItem("pointer_widget_language");
+        if (stored === "ar" || stored === "en") return stored;
       } catch {
-        return false;
       }
+      const accountLang = (_a2 = this.user) == null ? void 0 : _a2.language;
+      if (accountLang === "ar") return "ar";
+      if (accountLang === "en") return "en";
+      try {
+        return (navigator.language || "").toLowerCase().startsWith("ar") ? "ar" : "en";
+      } catch {
+        return "en";
+      }
+    }
+    // Sets the widget's own per-browser language override — never touches the account (see the
+    // note on resolveLang above). The caller (wireLangBtn in toggleUserMenu) still needs to
+    // re-render everything language-bearing afterward — unlike theme, a language change can't be
+    // reflected by a CSS attribute flip alone, since the text itself is baked into rendered markup.
+    setLanguageOverride(lang) {
+      try {
+        localStorage.setItem("pointer_widget_language", lang);
+      } catch {
+      }
+      setLang(lang);
     }
     async init() {
       await loadStatusCatalog(this.server);
@@ -2091,13 +2563,14 @@
         this.showEnvironmentSelector = showSelector !== false;
         this.projectId = typeof ((_b = envelope == null ? void 0 : envelope.data) == null ? void 0 : _b.id) === "number" ? envelope.data.id : null;
         const resolved = (_c = envelope == null ? void 0 : envelope.data) == null ? void 0 : _c.resolvedEnvironment;
-        if (!this.environmentExplicit && typeof resolved === "number" && ENV_NAME[resolved]) {
+        if (!this.environmentExplicit && typeof resolved === "number" && ENV_NAME[resolved] && resolved !== this.environmentInt) {
           this.environmentInt = resolved;
           this.environmentAttr = ENV_NAME[resolved];
           const envSel = this.root && this.root.querySelector("#fbk-env");
           if (envSel && "value" in envSel) envSel.value = this.environmentAttr;
           const envLabel = this.root && this.root.querySelector(".fbk-env-label");
-          if (envLabel) envLabel.textContent = "· " + this.environmentAttr;
+          if (envLabel) envLabel.textContent = "· " + this.envDisplayLabel(this.environmentAttr);
+          await this.fetchComments();
         }
         this.commitStyle = typeof ((_d = envelope == null ? void 0 : envelope.data) == null ? void 0 : _d.commitStyle) === "number" ? envelope.data.commitStyle : 1;
         this.canEditSettings = !!((_e = envelope == null ? void 0 : envelope.data) == null ? void 0 : _e.canEditSettings);
@@ -2131,9 +2604,18 @@
       if (!sel) return;
       const label = document.createElement("span");
       label.className = "fbk-env-label";
-      label.title = "Environment";
-      label.textContent = "· " + (this.environmentAttr || ENV_NAME[this.environmentInt] || "unknown");
+      label.title = t("toolbar.environment");
+      label.textContent = "· " + this.envDisplayLabel(this.environmentAttr || ENV_NAME[this.environmentInt] || "unknown");
       sel.replaceWith(label);
+    }
+    // Translated display text for an environment key ('local'/'staging'/'production') — falls back
+    // to the raw key for anything else (e.g. 'unknown', before the server has resolved one).
+    envDisplayLabel(key) {
+      const k = (key || "").toLowerCase();
+      if (k === "local") return t("toolbar.envLocal");
+      if (k === "staging") return t("toolbar.envStaging");
+      if (k === "production") return t("toolbar.envProduction");
+      return key;
     }
     // Patches #fbk-commit-style in place (same reasoning as updateEnvironmentSelectorVisibility) —
     // hidden entirely unless the current caller is authorized to change it (canEditSettings), so a
@@ -2160,11 +2642,11 @@
           body: JSON.stringify({ commitStyle: value })
         });
         if (!r.ok) throw new Error("HTTP " + r.status);
-        this.toast("Commit style updated");
+        this.toast(t("toast.commitStyleUpdated"));
       } catch (e) {
         this.commitStyle = previous;
         this.renderCommitStyleControl();
-        if (e.message !== "HTTP 401 Unauthorized") this.toast("Update failed", "error");
+        if (e.message !== "HTTP 401 Unauthorized") this.toast(t("toast.updateFailed"), "error");
       }
     }
     // Keeps the "Comment on an element" button's tooltip showing the current shortcut after it's
@@ -2173,8 +2655,8 @@
       const btn = this.root && this.root.querySelector("#fbk-add");
       if (!btn) return;
       const label = formatShortcut(this.shortcut);
-      btn.setAttribute("title", `Comment on an element (${label})`);
-      btn.setAttribute("aria-label", `Comment on an element, shortcut ${label}`);
+      btn.setAttribute("title", `${t("toolbar.commentOnElement")} (${label})`);
+      btn.setAttribute("aria-label", t("toolbar.commentOnElementShortcut", { label }));
     }
     // --- API ----------------------------------------------------------------
     async apiLogin(email, password) {
@@ -2190,7 +2672,7 @@
         headers: { "Content-Type": "application/json" }
       });
       const envelope = await r.json();
-      if (!r.ok || !envelope.isSuccess) throw new Error(envelope.message || "Could not load roles.");
+      if (!r.ok || !envelope.isSuccess) throw new Error(envelope.message || t("auth.couldNotLoadRoles"));
       return envelope.data || [];
     }
     // Anonymous: self-signup AND re-apply (one endpoint). No token returned.
@@ -2285,7 +2767,7 @@
         }));
       } catch (e) {
         if (e.message !== "HTTP 401 Unauthorized") {
-          this.toast(`Could not reach ${getBrandName()} server`, "error", "Retry", () => {
+          this.toast(t("toast.couldNotReachServer", { brand: getBrandName() }), "error", t("toast.retry"), () => {
             this.fetchComments().then(() => {
               this.renderSidebar();
               this.renderPins();
@@ -2345,7 +2827,7 @@
         await this.fetchComments();
         this.renderSidebar();
         this.renderPins();
-        this.toast("Refreshed");
+        this.toast(t("toast.refreshed"));
       });
       this.root.querySelector("#fbk-close").addEventListener("click", () => this.toggleSidebar(false));
       const envSel = this.root.querySelector("#fbk-env");
@@ -2499,7 +2981,6 @@
     }
     // --- User menu (identity + sign out) ------------------------------------
     toggleUserMenu() {
-      var _a2;
       this.closeUpdatesMenu();
       this.closeClusterMenu();
       const host = this.root.querySelector("#fbk-menu-host");
@@ -2516,7 +2997,7 @@
         formatShortcut(this.shortcut),
         this.authOwnedByHost,
         this.resolveTheme(),
-        ((_a2 = this.user) == null ? void 0 : _a2.language) === "ar" ? "ar" : "en"
+        this.resolveLang()
       );
       const menu = host.querySelector("#fbk-user-menu");
       const btn = this.root.querySelector("#fbk-user");
@@ -2535,10 +3016,10 @@
       host.querySelector("#fbk-shortcut-reset").addEventListener("click", async (e) => {
         e.stopPropagation();
         const editBtn = host.querySelector("#fbk-shortcut-edit");
-        if (editBtn) editBtn.textContent = "Resetting…";
+        if (editBtn) editBtn.textContent = t("menu.resetting");
         const ok = await this.saveShortcutPreference(null);
         if (editBtn) editBtn.textContent = formatShortcut(this.shortcut);
-        this.toast(ok ? "Shortcut reset to default" : "Failed to reset — try again", ok ? "" : "error");
+        this.toast(ok ? t("menu.shortcutResetToDefault") : t("menu.failedToResetTryAgain"), ok ? "" : "error");
       });
       const reopenUserMenu = () => {
         this.closeUserMenu();
@@ -2555,13 +3036,14 @@
       wireThemeBtn("#fbk-theme-light", "light");
       wireThemeBtn("#fbk-theme-dark", "dark");
       const wireLangBtn = (id, lang) => {
-        host.querySelector(id).addEventListener("click", async (e) => {
-          var _a3;
+        host.querySelector(id).addEventListener("click", (e) => {
           e.stopPropagation();
-          if ((((_a3 = this.user) == null ? void 0 : _a3.language) === "ar" ? "ar" : "en") === lang) return;
-          const ok = await this.saveLanguagePreference(lang);
-          if (ok) reopenUserMenu();
-          else this.toast("Failed to save language — try again", "error");
+          if (this.resolveLang() === lang) return;
+          this.setLanguageOverride(lang);
+          this.renderChrome();
+          this.renderSidebar();
+          this.renderPins();
+          reopenUserMenu();
         });
       };
       wireLangBtn("#fbk-lang-en", "en");
@@ -2731,7 +3213,7 @@
           body: JSON.stringify({ ok, note: note || null })
         });
         if (!r.ok) {
-          let errMessage = "Failed to verify comment";
+          let errMessage = t("toast.failedToVerifyComment");
           try {
             const err = await r.json();
             if (err == null ? void 0 : err.message) errMessage = err.message;
@@ -2756,10 +3238,10 @@
         }
         this.renderSidebar();
         this.renderPins();
-        this.toast(ok ? "Comment verified" : "Comment re-opened");
+        this.toast(ok ? t("toast.commentVerified") : t("toast.commentReopened"));
         return true;
       } catch {
-        this.toast("Failed to verify comment", "error");
+        this.toast(t("toast.failedToVerifyComment"), "error");
         return false;
       }
     }
@@ -2780,7 +3262,7 @@
       this.renderChrome();
       this.renderSidebar();
       this.renderPins();
-      this.toast("Signed out");
+      this.toast(t("toast.signedOut"));
     }
     // Collapse the overlay to the floating launcher (remembered for this tab session).
     hideOverlay() {
@@ -2792,7 +3274,7 @@
       } catch (e) {
       }
       this.renderChrome();
-      this.toast(`${getBrandName()} hidden — click the button to reopen`);
+      this.toast(t("toast.hiddenClickToReopen", { brand: getBrandName() }));
     }
     // Restore the full overlay from the launcher; remembered for this tab session.
     showOverlay() {
@@ -2853,9 +3335,9 @@
       const targets = document.querySelectorAll(`${BACKDROP_SELECTOR}, ${DIALOG_CONTENT_SELECTOR}`);
       if (targets.length === 0) return;
       const rects = this.ownUiRects();
-      targets.forEach((t) => {
-        const clipPath = rects.length === 0 ? "" : buildClipPathWithHoles(rects, t.getBoundingClientRect());
-        if (t.style.clipPath !== clipPath) t.style.clipPath = clipPath;
+      targets.forEach((t2) => {
+        const clipPath = rects.length === 0 ? "" : buildClipPathWithHoles(rects, t2.getBoundingClientRect());
+        if (t2.style.clipPath !== clipPath) t2.style.clipPath = clipPath;
       });
     }
     // --- Element picking -----------------------------------------------------
@@ -2871,12 +3353,12 @@
       const addBtn = this.root.querySelector("#fbk-add");
       addBtn.setAttribute("aria-pressed", "true");
       addBtn.innerHTML = `<span class="fbk-toolbar-btn__icon">${ICON.close}</span>`;
-      addBtn.title = "Cancel";
-      addBtn.setAttribute("aria-label", "Cancel");
+      addBtn.title = t("toolbar.cancel");
+      addBtn.setAttribute("aria-label", t("toolbar.cancel"));
       document.addEventListener("mousemove", this._onHover, true);
       document.addEventListener("click", this._onPick, true);
       document.addEventListener("keydown", this._onPickKey, true);
-      this.toast("Click any element to comment on it — or press Esc to cancel");
+      this.toast(t("popover.clickAnyElementToComment"));
     }
     stopPicking() {
       var _a2, _b, _c, _d;
@@ -2887,9 +3369,8 @@
       if (addBtn) {
         addBtn.setAttribute("aria-pressed", "false");
         addBtn.innerHTML = `<span class="fbk-toolbar-btn__icon">${ICON.crosshair}</span>`;
-        addBtn.title = "Comment on an element";
-        addBtn.setAttribute("aria-label", "Comment on an element");
       }
+      this.updateAddButtonTooltip();
       document.removeEventListener("mousemove", this._onHover, true);
       document.removeEventListener("click", this._onPick, true);
       document.removeEventListener("keydown", this._onPickKey, true);
@@ -2901,7 +3382,7 @@
       e.preventDefault();
       e.stopPropagation();
       this.stopPicking();
-      this.toast("Cancelled");
+      this.toast(t("popover.cancelled"));
     }
     clearHover() {
       if (this.hovered) {
@@ -2996,9 +3477,10 @@
     // (named openCommentPopover, not showPopover, to avoid clashing with the
     //  built-in HTMLElement.showPopover() from the Popover API.)
     openCommentPopover(x, y, el) {
-      const meta = captureMetadata(el, this.sourceAttr, { captureText: this.captureTextContent });
+      let currentEl = el;
+      let currentMeta = captureMetadata(currentEl, this.sourceAttr, { captureText: this.captureTextContent });
       const host = this.root.querySelector("#fbk-popover-host");
-      host.innerHTML = TPL.popover(meta, x, y, this.screenshotEnabled, this.predefinedActions, this.pageContextCaptureEnabled);
+      host.innerHTML = TPL.popover(currentMeta, x, y, this.screenshotEnabled, this.predefinedActions, this.pageContextCaptureEnabled);
       applyDataPosition(host, ".fbk-popover");
       const popoverEl = host.querySelector(".fbk-popover");
       if (popoverEl) {
@@ -3009,24 +3491,154 @@
         popoverEl.style.left = `${Math.round(left)}px`;
         popoverEl.style.top = `${Math.round(top)}px`;
       }
+      currentEl.classList.add(HL_CLASS);
       const ta = host.querySelector("#fbk-comment-text");
       ta.focus();
+      const upBtn = host.querySelector("#fbk-target-up");
+      const downBtn = host.querySelector("#fbk-target-down");
+      const titleEl = host.querySelector("#fbk-popover-title");
+      const snippetEl = host.querySelector("#fbk-popover-snippet");
+      const srcEl = host.querySelector("#fbk-popover-src");
+      const srcPathEl = host.querySelector("#fbk-popover-src-path");
+      const updateNavButtons = () => {
+        if (upBtn) upBtn.disabled = !currentEl.parentElement;
+        if (downBtn) downBtn.disabled = currentEl.children.length === 0;
+      };
+      const navigateTo = (nextEl) => {
+        currentEl.classList.remove(HL_CLASS);
+        currentEl = nextEl;
+        currentMeta = captureMetadata(currentEl, this.sourceAttr, { captureText: this.captureTextContent });
+        currentEl.classList.add(HL_CLASS);
+        currentEl.scrollIntoView({ block: "nearest", inline: "nearest" });
+        if (titleEl) titleEl.innerHTML = `Comment on &lt;${escapeHtml(currentMeta._tag)}&gt;`;
+        if (snippetEl) snippetEl.textContent = currentMeta._snapshotPreview.slice(0, 200);
+        if (srcEl) srcEl.classList.toggle("fbk-hidden", !currentMeta._sourcePath);
+        if (srcPathEl) srcPathEl.textContent = currentMeta._sourcePath || "";
+        updateNavButtons();
+      };
+      if (upBtn) upBtn.addEventListener("click", () => {
+        const parent = currentEl.parentElement;
+        if (parent) navigateTo(parent);
+      });
+      if (downBtn) downBtn.addEventListener("click", () => {
+        const child = currentEl.children[0];
+        if (child) navigateTo(child);
+      });
+      updateNavButtons();
       let isPrivateComment = false;
       const privateToggle = host.querySelector("#fbk-comment-private");
       if (privateToggle) privateToggle.addEventListener("click", () => {
         isPrivateComment = !isPrivateComment;
         privateToggle.classList.toggle("is-active", isPrivateComment);
         privateToggle.setAttribute("aria-pressed", String(isPrivateComment));
-        privateToggle.title = isPrivateComment ? "Private — only me" : "Keep private — only me";
+        privateToggle.title = isPrivateComment ? t("card.privateClickToMakePublic") : t("card.makePrivateOnlyYou");
+        privateToggle.setAttribute("aria-label", isPrivateComment ? t("card.makePublic") : t("card.makePrivate"));
         privateToggle.innerHTML = isPrivateComment ? ICON.lock : ICON.unlock;
       });
+      const selectedActionIds = /* @__PURE__ */ new Set();
+      let stopMsListening = null;
+      const actionMsControl = host.querySelector("#fbk-action-ms-control");
+      const actionMsInput = host.querySelector("#fbk-action-ms-input");
+      const actionMsChips = host.querySelector("#fbk-action-ms-chips");
+      const actionMsList = host.querySelector("#fbk-action-ms-list");
+      if (actionMsControl && actionMsInput && actionMsChips && actionMsList) {
+        const renderChips = () => {
+          actionMsChips.innerHTML = Array.from(selectedActionIds).map((id) => {
+            const a = this.predefinedActions.find((x2) => x2.id === id);
+            if (!a) return "";
+            return `<span class="fbk-ms-chip"><span class="fbk-ms-chip-label">${escapeHtml(a.text)}</span><button type="button" class="fbk-ms-chip-remove" data-id="${id}" aria-label="${t("popover.remove")} ${escapeHtml(a.text)}">&times;</button></span>`;
+          }).join("");
+          actionMsChips.querySelectorAll(".fbk-ms-chip-remove").forEach((btn) => {
+            btn.addEventListener("click", (e) => {
+              e.stopPropagation();
+              selectedActionIds.delete(Number(btn.dataset.id));
+              renderChips();
+              renderOptions(actionMsInput.value);
+            });
+          });
+        };
+        const renderOptions = (query) => {
+          const q = query.trim().toLowerCase();
+          const matches = this.predefinedActions.filter(
+            (a) => !selectedActionIds.has(a.id) && (!q || a.text.toLowerCase().includes(q))
+          );
+          actionMsList.innerHTML = matches.length ? matches.map((a) => `<div class="fbk-ms-option" role="option" data-id="${a.id}">${escapeHtml(a.text)}</div>`).join("") : `<div class="fbk-ms-empty">${t("popover.noMatches")}</div>`;
+          actionMsList.querySelectorAll(".fbk-ms-option").forEach((opt) => {
+            opt.addEventListener("mousedown", (e) => {
+              e.preventDefault();
+              selectedActionIds.add(Number(opt.dataset.id));
+              actionMsInput.value = "";
+              renderChips();
+              renderOptions("");
+              actionMsInput.focus();
+            });
+          });
+        };
+        const openList = () => {
+          actionMsList.hidden = false;
+          actionMsInput.setAttribute("aria-expanded", "true");
+        };
+        const closeList = () => {
+          actionMsList.hidden = true;
+          actionMsInput.setAttribute("aria-expanded", "false");
+        };
+        actionMsInput.addEventListener("focus", () => {
+          renderOptions(actionMsInput.value);
+          openList();
+        });
+        actionMsInput.addEventListener("input", () => {
+          renderOptions(actionMsInput.value);
+          openList();
+        });
+        actionMsInput.addEventListener("keydown", (e) => {
+          if (e.key === "Escape") {
+            e.stopPropagation();
+            closeList();
+          } else if (e.key === "Enter") {
+            e.preventDefault();
+            const first = actionMsList.querySelector(".fbk-ms-option");
+            const id = first == null ? void 0 : first.dataset.id;
+            if (id) {
+              selectedActionIds.add(Number(id));
+              actionMsInput.value = "";
+              renderChips();
+              renderOptions("");
+            }
+          } else if (e.key === "Backspace" && !actionMsInput.value && selectedActionIds.size) {
+            const last = Array.from(selectedActionIds).pop();
+            selectedActionIds.delete(last);
+            renderChips();
+            renderOptions("");
+          }
+        });
+        const onDocClick = (e) => {
+          const path = e.composedPath();
+          if (!path.includes(actionMsControl) && !path.includes(actionMsList)) closeList();
+        };
+        document.addEventListener("click", onDocClick, true);
+        stopMsListening = () => document.removeEventListener("click", onDocClick, true);
+        renderOptions("");
+      }
+      let attachShotComment = false;
       const shotToggle = host.querySelector("#fbk-comment-shot");
-      if (shotToggle) shotToggle.addEventListener("change", () => {
-        if (shotToggle.checked) this.beginScreenshotCapture(el);
+      if (shotToggle) shotToggle.addEventListener("click", () => {
+        attachShotComment = !attachShotComment;
+        shotToggle.classList.toggle("is-active", attachShotComment);
+        shotToggle.setAttribute("aria-pressed", String(attachShotComment));
+        if (attachShotComment) this.beginScreenshotCapture(currentEl);
+      });
+      let isBugReportComment = false;
+      const bugToggle = host.querySelector("#fbk-comment-bug");
+      if (bugToggle) bugToggle.addEventListener("click", () => {
+        isBugReportComment = !isBugReportComment;
+        bugToggle.classList.toggle("is-active", isBugReportComment);
+        bugToggle.setAttribute("aria-pressed", String(isBugReportComment));
       });
       const cancelPopover = () => {
+        currentEl.classList.remove(HL_CLASS);
         host.innerHTML = "";
         this._pendingShotPromise = null;
+        stopMsListening == null ? void 0 : stopMsListening();
       };
       host.querySelector("#fbk-cancel").addEventListener("click", cancelPopover);
       host.addEventListener("keydown", (e) => {
@@ -3037,25 +3649,24 @@
       });
       host.querySelector("#fbk-submit").addEventListener("click", async () => {
         const text = ta.value.trim();
-        if (!text) return this.toast("Comment cannot be empty", "error");
+        if (!text) return this.toast(t("popover.commentCannotBeEmpty"), "error");
         const isPrivate = isPrivateComment;
-        const shotEl = host.querySelector("#fbk-comment-shot");
-        const attachShot = !!(shotEl && shotEl.checked);
-        const bugEl = host.querySelector("#fbk-comment-bug");
-        const isBugReport = !!(bugEl && bugEl.checked);
+        const attachShot = attachShotComment;
+        const isBugReport = isBugReportComment;
         const shotPromise = this._pendingShotPromise;
         this._pendingShotPromise = null;
-        const predefinedActionIds = Array.from(
-          host.querySelectorAll(".fbk-action-opt:checked")
-        ).map((el2) => Number(el2.value));
+        const predefinedActionIds = Array.from(selectedActionIds);
         const submitBtn = host.querySelector("#fbk-submit");
         submitBtn.disabled = true;
-        submitBtn.textContent = "Saving…";
-        const saved = await this.createComment({ ...meta, text, isPrivate, attachShot, shotPromise, predefinedActionIds, isBugReport });
-        if (saved) host.innerHTML = "";
-        else {
+        submitBtn.textContent = t("menu.saving");
+        const saved = await this.createComment({ ...currentMeta, text, isPrivate, attachShot, shotPromise, predefinedActionIds, isBugReport });
+        if (saved) {
+          currentEl.classList.remove(HL_CLASS);
+          host.innerHTML = "";
+          stopMsListening == null ? void 0 : stopMsListening();
+        } else {
           submitBtn.disabled = false;
-          submitBtn.textContent = "Add";
+          submitBtn.textContent = t("popover.add");
         }
       });
     }
@@ -3091,7 +3702,7 @@
         if (blob) {
           const url = await this.uploadToServer(blob);
           if (url) element.screenshotUrl = url;
-          else this.toast("Screenshot upload failed — saving without it", "error");
+          else this.toast(t("toast.screenshotUploadFailed"), "error");
         }
       }
       const bodyObj = {
@@ -3120,17 +3731,17 @@
           const msg = errEnv && errEnv.message || "";
           if (data.predefinedActionIds && data.predefinedActionIds.length && msg.toLowerCase().includes("action")) {
             await this.fetchPredefinedActions();
-            this.toast("That action is no longer available — please choose another and try again.", "error");
+            this.toast(t("toast.actionNoLongerAvailable"), "error");
             return false;
           }
           if (r.status === 403) {
-            this.toast("Comments are not allowed from this address", "error");
+            this.toast(t("toast.commentsNotAllowedFromAddress"), "error");
             return false;
           }
           if (r.status === 429) {
             const retryAfter = Number((_b = (_a2 = r.headers) == null ? void 0 : _a2.get) == null ? void 0 : _b.call(_a2, "retry-after"));
             this.toast(
-              retryAfter > 0 ? `Too many comments — try again in ${retryAfter} second${retryAfter === 1 ? "" : "s"}.` : "Too many comments — please wait a moment and try again.",
+              retryAfter > 0 ? t("toast.tooManyCommentsRetryIn", { n: retryAfter, s: retryAfter === 1 ? "" : "s" }) : t("toast.tooManyCommentsWait"),
               "error"
             );
             return false;
@@ -3149,11 +3760,11 @@
         if (newId) setTimeout(() => {
           if (String(this._newPinId) === newId) this._newPinId = null;
         }, 3e3);
-        this.toast("Comment added", "success", newId ? "Undo" : void 0, newId ? () => this.deleteComment(newId) : void 0);
+        this.toast(t("toast.commentAdded"), "success", newId ? t("toast.undo") : void 0, newId ? () => this.deleteComment(newId) : void 0);
         return true;
       } catch (e) {
         if (e.message !== "HTTP 401 Unauthorized") {
-          this.toast("Failed to save comment", "error");
+          this.toast(t("toast.failedToSaveComment"), "error");
         }
         return false;
       }
@@ -3170,7 +3781,7 @@
         this.renderSidebar();
         this.renderPins();
       } catch (e) {
-        if (e.message !== "HTTP 401 Unauthorized") this.toast("Failed to reply", "error");
+        if (e.message !== "HTTP 401 Unauthorized") this.toast(t("toast.failedToReply"), "error");
       }
     }
     async toggleApply(comment) {
@@ -3185,9 +3796,9 @@
         comment.status = nextStr;
         this.renderSidebar();
         this.renderPins();
-        this.toast(nextStr === "pending-apply" ? "Marked for apply" : "Unmarked");
+        this.toast(nextStr === "pending-apply" ? t("toast.markedForApply") : t("toast.unmarked"));
       } catch (e) {
-        if (e.message !== "HTTP 401 Unauthorized") this.toast("Update failed", "error");
+        if (e.message !== "HTTP 401 Unauthorized") this.toast(t("toast.updateFailed"), "error");
       }
     }
     // Generic status change (Re-open → open, Archive → archived).
@@ -3202,9 +3813,9 @@
         comment.status = nextStr;
         this.renderSidebar();
         this.renderPins();
-        this.toast(toastMsg || "Updated");
+        this.toast(toastMsg || t("toast.updated"));
       } catch (e) {
-        if (e.message !== "HTTP 401 Unauthorized") this.toast("Update failed", "error");
+        if (e.message !== "HTTP 401 Unauthorized") this.toast(t("toast.updateFailed"), "error");
       }
     }
     // Toggle a comment's privacy — author-only (enforced server-side too).
@@ -3218,9 +3829,9 @@
         comment.isPrivate = isPrivate;
         this.renderSidebar();
         this.renderPins();
-        this.toast(isPrivate ? "Marked private" : "Made public");
+        this.toast(isPrivate ? t("toast.markedPrivate") : t("toast.madePublic"));
       } catch (e) {
-        if (e.message !== "HTTP 401 Unauthorized") this.toast("Update failed", "error");
+        if (e.message !== "HTTP 401 Unauthorized") this.toast(t("toast.updateFailed"), "error");
       }
     }
     async markCompleted(comment) {
@@ -3235,9 +3846,9 @@
         if (label) comment.appliedByLabel = label;
         this.renderSidebar();
         this.renderPins();
-        this.toast("Marked completed");
+        this.toast(t("toast.markedCompleted"));
       } catch (e) {
-        if (e.message !== "HTTP 401 Unauthorized") this.toast("Update failed", "error");
+        if (e.message !== "HTTP 401 Unauthorized") this.toast(t("toast.updateFailed"), "error");
       }
     }
     /**
@@ -3257,7 +3868,7 @@
       });
       const wrap = document.createElement("div");
       wrap.className = "fbk-confirm fbk-confirm-row";
-      wrap.innerHTML = `<span class="fbk-confirm-q">Delete this comment?</span><span class="fbk-confirm-btns"><button type="button" class="fbk-mini danger fbk-icon" data-c="yes" title="Confirm delete" aria-label="Confirm delete">${ICON.checkPlain}</button><button type="button" class="fbk-mini fbk-icon" data-c="no" title="Cancel" aria-label="Cancel">&#x2715;</button></span>`;
+      wrap.innerHTML = `<span class="fbk-confirm-q">${t("card.deleteThisComment")}</span><span class="fbk-confirm-btns"><button type="button" class="fbk-mini danger fbk-icon" data-c="yes" title="${t("card.confirmDelete")}" aria-label="${t("card.confirmDelete")}">${ICON.checkPlain}</button><button type="button" class="fbk-mini fbk-icon" data-c="no" title="${t("toolbar.cancel")}" aria-label="${t("toolbar.cancel")}">&#x2715;</button></span>`;
       row.appendChild(wrap);
       let closed = false;
       const close = () => {
@@ -3290,9 +3901,9 @@
         this.comments = this.comments.filter((c) => String(c.id) !== String(id));
         this.renderSidebar();
         this.renderPins();
-        this.toast("Deleted");
+        this.toast(t("toast.deleted"));
       } catch (e) {
-        if (e.message !== "HTTP 401 Unauthorized") this.toast(e.message || "Delete failed", "error");
+        if (e.message !== "HTTP 401 Unauthorized") this.toast(e.message || t("toast.deleteFailed"), "error");
       }
     }
     // Inline edit (own comments only): swap the body text for a textarea + controls.
@@ -3309,10 +3920,10 @@
       editor.style.margin = "6px 0";
       editor.innerHTML = `
         <textarea class="fbk-textarea fbk-edit-body">${escapeHtml(comment.body || "")}</textarea>
-        ${hasShot ? `<label class="fbk-edit-option"><input type="checkbox" class="fbk-edit-rmshot" /> Remove image</label>` : ""}
+        ${hasShot ? `<label class="fbk-edit-option"><input type="checkbox" class="fbk-edit-rmshot" /> ${t("card.removeImage")}</label>` : ""}
         <div class="fbk-reply-row">
-          <button class="fbk-btn primary fbk-btn-fill fbk-edit-save">Save</button>
-          <button class="fbk-mini fbk-edit-cancel">Cancel</button>
+          <button class="fbk-btn primary fbk-btn-fill fbk-edit-save">${t("card.save")}</button>
+          <button class="fbk-mini fbk-edit-cancel">${t("toolbar.cancel")}</button>
         </div>`;
       textEl.style.display = "none";
       textEl.insertAdjacentElement("afterend", editor);
@@ -3325,7 +3936,7 @@
       editor.querySelector(".fbk-edit-save").addEventListener("click", () => {
         const body = ta.value.trim();
         if (!body) {
-          this.toast("Comment cannot be empty", "error");
+          this.toast(t("popover.commentCannotBeEmpty"), "error");
           return;
         }
         const rm = editor.querySelector(".fbk-edit-rmshot");
@@ -3346,9 +3957,117 @@
         await this.fetchComments();
         this.renderSidebar();
         this.renderPins();
-        this.toast("Comment updated", "success");
+        this.toast(t("toast.commentUpdated"), "success");
       } catch (e) {
-        if (e.message !== "HTTP 401 Unauthorized") this.toast(e.message || "Failed to update comment", "error");
+        if (e.message !== "HTTP 401 Unauthorized") this.toast(e.message || t("toast.failedToUpdateComment"), "error");
+      }
+    }
+    // Inline edit for a single reply (own replies only) — same swap-body-for-a-textarea pattern
+    // as the comment's own startEdit, scoped to one .fbk-reply row instead of the whole card.
+    startEditReply(commentId, replyId) {
+      const row = this.root && this.root.querySelector(`.fbk-reply[data-reply-id="${replyId}"]`);
+      if (!row || row.querySelector(".fbk-edit")) return;
+      const comment = (this.comments || []).find((x) => String(x.id) === String(commentId));
+      const reply = comment && (comment.replies || []).find((r) => String(r.id) === String(replyId));
+      if (!reply) return;
+      const mainEl = row.querySelector(".fbk-reply-main");
+      const actionsEl = row.querySelector(".fbk-reply-actions");
+      if (!mainEl) return;
+      const editor = document.createElement("div");
+      editor.className = "fbk-edit";
+      editor.style.flex = "1";
+      editor.innerHTML = `
+        <textarea class="fbk-textarea fbk-reply-edit-body">${escapeHtml(reply.body || reply.text || "")}</textarea>
+        <div class="fbk-reply-row">
+          <button class="fbk-btn primary fbk-btn-fill fbk-edit-save">${t("card.save")}</button>
+          <button class="fbk-mini fbk-edit-cancel">${t("toolbar.cancel")}</button>
+        </div>`;
+      mainEl.style.display = "none";
+      if (actionsEl) actionsEl.style.display = "none";
+      mainEl.insertAdjacentElement("afterend", editor);
+      const ta = editor.querySelector(".fbk-reply-edit-body");
+      ta.focus();
+      const close = () => {
+        editor.remove();
+        mainEl.style.display = "";
+        if (actionsEl) actionsEl.style.display = "";
+      };
+      editor.querySelector(".fbk-edit-cancel").addEventListener("click", close);
+      editor.querySelector(".fbk-edit-save").addEventListener("click", () => {
+        const body = ta.value.trim();
+        if (!body) {
+          this.toast(t("popover.commentCannotBeEmpty"), "error");
+          return;
+        }
+        this.saveReplyEdit(replyId, body);
+      });
+    }
+    async saveReplyEdit(replyId, body) {
+      try {
+        const r = await this.api(`/api/replies/${replyId}`, {
+          method: "PUT",
+          body: JSON.stringify({ body })
+        });
+        if (!r.ok) {
+          const b = await r.json().catch(() => null);
+          throw new Error(b && b.message || "HTTP " + r.status);
+        }
+        await this.fetchComments();
+        this.renderSidebar();
+        this.toast(t("toast.commentUpdated"), "success");
+      } catch (e) {
+        if (e.message !== "HTTP 401 Unauthorized") this.toast(e.message || t("toast.failedToUpdateComment"), "error");
+      }
+    }
+    // Same inline "Delete this…?" confirm-row pattern as confirmDelete, scoped to one reply's own
+    // actions row instead of the comment's.
+    confirmDeleteReply(btn) {
+      const commentId = btn.dataset.commentId;
+      const replyId = btn.dataset.replyId;
+      const row = btn.closest(".fbk-reply-actions");
+      if (!commentId || !replyId || !row || row.querySelector(".fbk-confirm")) return;
+      const others = Array.from(row.children);
+      others.forEach((el) => {
+        el.style.display = "none";
+      });
+      const wrap = document.createElement("div");
+      wrap.className = "fbk-confirm fbk-confirm-row";
+      wrap.innerHTML = `<span class="fbk-confirm-q">${t("card.deleteThisReply")}</span><span class="fbk-confirm-btns"><button type="button" class="fbk-mini danger fbk-icon" data-c="yes" title="${t("card.confirmDelete")}" aria-label="${t("card.confirmDelete")}">${ICON.checkPlain}</button><button type="button" class="fbk-mini fbk-icon" data-c="no" title="${t("toolbar.cancel")}" aria-label="${t("toolbar.cancel")}">&#x2715;</button></span>`;
+      row.appendChild(wrap);
+      let closed = false;
+      const close = () => {
+        if (closed) return;
+        closed = true;
+        clearTimeout(timer);
+        wrap.remove();
+        others.forEach((el) => {
+          el.style.display = "";
+        });
+      };
+      const timer = setTimeout(close, 4e3);
+      wrap.querySelector('[data-c="yes"]').addEventListener("click", (e) => {
+        e.stopPropagation();
+        close();
+        this.deleteReply(replyId);
+      });
+      wrap.querySelector('[data-c="no"]').addEventListener("click", (e) => {
+        e.stopPropagation();
+        close();
+      });
+    }
+    async deleteReply(replyId) {
+      try {
+        const r = await this.api(`/api/replies/${replyId}`, { method: "DELETE" });
+        if (!r.ok) {
+          const b = await r.json().catch(() => null);
+          throw new Error(b && b.message || "HTTP " + r.status);
+        }
+        await this.fetchComments();
+        this.renderSidebar();
+        this.renderPins();
+        this.toast(t("toast.deleted"));
+      } catch (e) {
+        if (e.message !== "HTTP 401 Unauthorized") this.toast(e.message || t("toast.deleteFailed"), "error");
       }
     }
     // True when comment `c` was authored by the current logged-in user.
@@ -3409,7 +4128,7 @@
     }
     // --- Sidebar render ------------------------------------------------------
     renderSidebar() {
-      var _a2, _b;
+      var _a2, _b, _c;
       const all = this.pageComments();
       const canMine = !!(this.user && this.user.id);
       if (!canMine) this.mineOnly = false;
@@ -3453,19 +4172,26 @@
       const awaitingMyVerification = (c) => c.status === "applied" && !c.verifiedAt && this.isMine(c);
       const shown = this.statusFilter === "all" ? scoped.filter((c) => c.status !== "archived" && (c.status !== "applied" || awaitingMyVerification(c))) : scoped.filter((c) => c.status === this.statusFilter);
       if (!scoped.length) {
-        list.innerHTML = TPL.empty(this.mineOnly ? "You haven't left any comments yet." : "No comments on this project yet.<br/>Click the inspect icon, then click an element.");
+        list.innerHTML = TPL.empty(this.mineOnly ? t("sidebar.noOwnComments") : t("sidebar.noCommentsYet"));
         return;
       }
       if (!shown.length) {
         const activeFilters = catalogToFilters();
         const filterLabel = ((_a2 = activeFilters.find((f) => f.key === this.statusFilter)) != null ? _a2 : { label: this.statusFilter }).label;
-        list.innerHTML = TPL.empty(`No ${filterLabel.toLowerCase()} comments${this.mineOnly ? " of yours" : ""}.`);
+        list.innerHTML = TPL.empty(t("sidebar.noFilteredComments", {
+          label: filterLabel.toLowerCase(),
+          suffix: this.mineOnly ? t("sidebar.ofYours") : ""
+        }));
         return;
       }
       const isQuickAccess = !!((_b = this.user) == null ? void 0 : _b.isQuickAccess);
+      const myId = ((_c = this.user) == null ? void 0 : _c.id) ? String(this.user.id).toLowerCase() : null;
       list.innerHTML = shown.map((c, i) => {
         c._mine = this.isMine(c);
         c._canVerify = c._mine || !!(this.user && this.user.isAdmin);
+        (c.replies || []).forEach((r) => {
+          r._mine = !r.isAi && !!(myId && r.authorId && String(r.authorId).toLowerCase() === myId);
+        });
         return TPL.card(c, i, isQuickAccess);
       }).join("");
       list.querySelectorAll('[data-act="apply"]').forEach((b) => b.addEventListener("click", () => {
@@ -3484,18 +4210,25 @@
       }));
       list.querySelectorAll('[data-act="reopen"]').forEach((b) => b.addEventListener("click", () => {
         const c = this.comments.find((x) => String(x.id) === String(b.dataset.id));
-        if (c) this.setStatus(c, "open", "Re-opened");
+        if (c) this.setStatus(c, "open", t("toast.reopenedMsg"));
       }));
       list.querySelectorAll('[data-act="archive"]').forEach((b) => b.addEventListener("click", () => {
         const c = this.comments.find((x) => String(x.id) === String(b.dataset.id));
-        if (c) this.setStatus(c, "archived", "Archived");
+        if (c) this.setStatus(c, "archived", t("toast.archivedMsg"));
       }));
       list.querySelectorAll(".fbk-reply-input").forEach((inp) => inp.addEventListener("keydown", (e) => {
-        if (e.key === "Enter" && inp.value.trim()) {
-          this.addReply(inp.dataset.id, inp.value.trim());
-          inp.value = "";
+        if (e.key === "Enter" && !e.shiftKey) {
+          e.preventDefault();
+          if (inp.value.trim()) {
+            this.addReply(inp.dataset.id, inp.value.trim());
+            inp.value = "";
+          }
         }
       }));
+      list.querySelectorAll('[data-act="reply-edit"]').forEach((b) => b.addEventListener("click", () => {
+        if (b.dataset.commentId && b.dataset.replyId) this.startEditReply(b.dataset.commentId, b.dataset.replyId);
+      }));
+      list.querySelectorAll('[data-act="reply-delete"]').forEach((b) => b.addEventListener("click", () => this.confirmDeleteReply(b)));
       list.querySelectorAll('[data-act="verify-ok"]').forEach((b) => b.addEventListener("click", () => {
         const id = b.dataset.id;
         if (id) this.apiVerify(id, true);
@@ -3529,7 +4262,7 @@
         const note = (_a3 = input == null ? void 0 : input.value) == null ? void 0 : _a3.trim();
         if (!note) {
           input == null ? void 0 : input.focus();
-          this.toast("Please provide a note explaining what is not fixed", "error");
+          this.toast(t("toast.pleaseProvideNoteNotFixed"), "error");
           return;
         }
         this.apiVerify(id, false, note);
@@ -3540,7 +4273,7 @@
           const note = inp.value.trim();
           if (!note) {
             inp.focus();
-            this.toast("Please provide a note explaining what is not fixed", "error");
+            this.toast(t("toast.pleaseProvideNoteNotFixed"), "error");
             return;
           }
           this.apiVerify(id, false, note);
@@ -3701,7 +4434,7 @@
         host.id = "fbk-toast-container";
         host.className = "fbk-toast-container";
         host.setAttribute("role", "region");
-        host.setAttribute("aria-label", "Notifications");
+        host.setAttribute("aria-label", t("toast.notifications"));
         host.setAttribute("aria-live", "polite");
         this.root.appendChild(host);
       }
