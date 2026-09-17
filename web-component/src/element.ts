@@ -355,6 +355,11 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
     // nothing to report with.
     if (this.token) void this._reportBuildSha();
 
+    // Once per tab session, tell the server which languages this visit actually involved (widget
+    // UI, host page, browser) — see _reportWidgetLanguage. Same authenticated-only gating as the
+    // build-sha beacon above: an anonymous visitor has no token to post an event with.
+    if (this.token) void this._reportWidgetLanguage();
+
     if (inviteFailed) this.toast('This invite link is invalid or expired — ask for a new one.', 'error');
   }
 
@@ -381,6 +386,39 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
       });
     } catch {
       /* never surface a build-beacon failure to a visitor */
+    }
+  }
+
+  /**
+   * Reports the widget's own UI language, the host page's `<html lang>`, and the visiting
+   * browser's locale — once per tab session (sessionStorage guard `pointer_lang_reported`), so a
+   * future widget-translation priority list can be based on real usage instead of guesswork. Fire-
+   * and-forget and failure-silent, same as `_reportBuildSha`: a visitor must never see (or wait on)
+   * a usage beacon. Posted through the existing authenticated `POST /api/events` pipeline, so an
+   * anonymous visitor (no token) simply never reports — acceptable, see the plan.
+   */
+  private async _reportWidgetLanguage(): Promise<void> {
+    try {
+      if (sessionStorage.getItem('pointer_lang_reported') === '1') return;
+      sessionStorage.setItem('pointer_lang_reported', '1');
+    } catch { /* ignore — worst case this posts more than once per tab */ }
+    try {
+      await pfFetch(`${this.server}/api/events`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${this.token}` },
+        body: JSON.stringify({
+          type: 'widget_language',
+          source: 'web-component',
+          projectKey: this.project,
+          meta: {
+            ui: this.resolveLang(),
+            browser: typeof navigator !== 'undefined' ? navigator.language : null,
+            page: (typeof document !== 'undefined' && document.documentElement?.lang) || null,
+          },
+        }),
+      });
+    } catch {
+      /* never surface a usage-beacon failure to a visitor */
     }
   }
 

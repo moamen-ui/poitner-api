@@ -51,6 +51,9 @@ builder.Services.AddControllers(options =>
     options.Filters.Add(new Microsoft.AspNetCore.Mvc.ProducesAttribute("application/json"));
 });
 builder.Services.AddEndpointsApiExplorer();
+// Backs [ResponseCache(...)] on the public stats endpoint (Cache-Control headers regardless, but
+// this also lets the middleware itself short-circuit repeat anonymous requests within the window).
+builder.Services.AddResponseCaching();
 // Run registered FluentValidation validators automatically on model binding, so write DTOs
 // (CreateCommentRequest, CreateProjectRequest, AddReplyRequest, etc.) return 400 on invalid input
 // before reaching the controller/service. Validators themselves are registered in AddApplication().
@@ -334,6 +337,7 @@ static bool IsDashboardOnly(HttpContext ctx)
 app.UseWhen(IsDashboardOnly, branch => branch.UseCors(DashboardCorsPolicy));
 app.UseWhen(ctx => !IsDashboardOnly(ctx), branch => branch.UseCors());
 
+app.UseResponseCaching();
 app.UseAuthentication();
 app.UseAuthorization();
 app.UseRateLimiter();

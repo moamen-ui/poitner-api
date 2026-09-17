@@ -2288,6 +2288,7 @@
       } catch {
       }
       if (this.token) void this._reportBuildSha();
+      if (this.token) void this._reportWidgetLanguage();
       if (inviteFailed) this.toast("This invite link is invalid or expired — ask for a new one.", "error");
     }
     /**
@@ -2311,6 +2312,39 @@
           method: "POST",
           headers: { "Content-Type": "application/json", Authorization: `Bearer ${this.token}` },
           body: JSON.stringify({ sha })
+        });
+      } catch {
+      }
+    }
+    /**
+     * Reports the widget's own UI language, the host page's `<html lang>`, and the visiting
+     * browser's locale — once per tab session (sessionStorage guard `pointer_lang_reported`), so a
+     * future widget-translation priority list can be based on real usage instead of guesswork. Fire-
+     * and-forget and failure-silent, same as `_reportBuildSha`: a visitor must never see (or wait on)
+     * a usage beacon. Posted through the existing authenticated `POST /api/events` pipeline, so an
+     * anonymous visitor (no token) simply never reports — acceptable, see the plan.
+     */
+    async _reportWidgetLanguage() {
+      var _a2;
+      try {
+        if (sessionStorage.getItem("pointer_lang_reported") === "1") return;
+        sessionStorage.setItem("pointer_lang_reported", "1");
+      } catch {
+      }
+      try {
+        await pfFetch(`${this.server}/api/events`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${this.token}` },
+          body: JSON.stringify({
+            type: "widget_language",
+            source: "web-component",
+            projectKey: this.project,
+            meta: {
+              ui: this.resolveLang(),
+              browser: typeof navigator !== "undefined" ? navigator.language : null,
+              page: typeof document !== "undefined" && ((_a2 = document.documentElement) == null ? void 0 : _a2.lang) || null
+            }
+          })
         });
       } catch {
       }

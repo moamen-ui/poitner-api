@@ -82,6 +82,7 @@ public class OnDiskContractTests
         "pointer_widget_language",
         "pointer_visible",
         "pointer_page_session_id",
+        "pointer_lang_reported",
         // MCP config + npm
         ".mcp.json",
         "pointer-feedback",
@@ -144,6 +145,7 @@ public class OnDiskContractTests
         "pointer_widget_language",
         "pointer_visible",
         "pointer_page_session_id",
+        "pointer_lang_reported",
     };
 
     private static readonly string[] WindowGlobals =

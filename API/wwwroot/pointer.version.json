@@ -1,13 +1,13 @@
 {
   "version": "0.1.0",
-  "hash": "b755405b5e8f",
-  "commit": "cfa679d",
-  "committedAt": "2026-09-18T01:23:51+03:00",
+  "hash": "95d4aca51f2b",
+  "commit": "9ea5cac",
+  "committedAt": "2026-09-18T02:21:53+03:00",
   "files": {
     "widget.js": {
-      "bytes": 225214,
-      "gzipBytes": 55886,
-      "integrity": "sha384-5avlRH1TI3spoxkhhVZir245rJVpfpu/3jLeowaj1hopei+auPlcwOTPxfMzrfSv"
+      "bytes": 226772,
+      "gzipBytes": 56282,
+      "integrity": "sha384-QnMTBxFTPhLhdYKt9xDAFP43y2eggPbpp6l9AbEFEvrxa1wEk7XPr9uo4+NtKGol"
     },
     "widget.css": {
       "bytes": 48418,
@@ -15,9 +15,9 @@
       "integrity": "sha384-7mtsmkmpbA4262br89SwkVtQpqzkaMdQCmdLyWA4NfnGPeBU/6o5JQzIBkBHSVus"
     },
     "pointer.js": {
-      "bytes": 225214,
-      "gzipBytes": 55886,
-      "integrity": "sha384-5avlRH1TI3spoxkhhVZir245rJVpfpu/3jLeowaj1hopei+auPlcwOTPxfMzrfSv"
+      "bytes": 226772,
+      "gzipBytes": 56282,
+      "integrity": "sha384-QnMTBxFTPhLhdYKt9xDAFP43y2eggPbpp6l9AbEFEvrxa1wEk7XPr9uo4+NtKGol"
     },
     "pointer.css": {
       "bytes": 48418,
@@ -26,6 +26,24 @@
     }
   },
   "retained": [
+    {
+      "hash": "95d4aca51f2b",
+      "version": "0.1.0",
+      "files": {
+        "widget.js": {
+          "integrity": "sha384-QnMTBxFTPhLhdYKt9xDAFP43y2eggPbpp6l9AbEFEvrxa1wEk7XPr9uo4+NtKGol"
+        },
+        "widget.css": {
+          "integrity": "sha384-7mtsmkmpbA4262br89SwkVtQpqzkaMdQCmdLyWA4NfnGPeBU/6o5JQzIBkBHSVus"
+        },
+        "pointer.js": {
+          "integrity": "sha384-QnMTBxFTPhLhdYKt9xDAFP43y2eggPbpp6l9AbEFEvrxa1wEk7XPr9uo4+NtKGol"
+        },
+        "pointer.css": {
+          "integrity": "sha384-7mtsmkmpbA4262br89SwkVtQpqzkaMdQCmdLyWA4NfnGPeBU/6o5JQzIBkBHSVus"
+        }
+      }
+    },
     {
       "hash": "b755405b5e8f",
       "version": "0.1.0",
@@ -185,24 +203,6 @@
         },
         "pointer.css": {
           "integrity": "sha384-0GwtH0cEu59iSG9NOYB8F/ALvQ5Q5aLy/ehdQqepp8GHYEHzn5MXHdSciGwhChks"
-        }
-      }
-    },
-    {
-      "hash": "222ba0256bfc",
-      "version": "0.1.0",
-      "files": {
-        "widget.js": {
-          "integrity": "sha384-2u9SOLrz8LdMeSPtRVWbAKQ1xo9CnGC5iZa9WPfcayy+ciYZY6sm2zJLYo3kR740"
-        },
-        "widget.css": {
-          "integrity": "sha384-vg7J1YHa0zOqlee8msuShe31CNxbWKCK8iRjkc/qwD+eyExhb/MhLTRTnwiMjLey"
-        },
-        "pointer.js": {
-          "integrity": "sha384-2u9SOLrz8LdMeSPtRVWbAKQ1xo9CnGC5iZa9WPfcayy+ciYZY6sm2zJLYo3kR740"
-        },
-        "pointer.css": {
-          "integrity": "sha384-vg7J1YHa0zOqlee8msuShe31CNxbWKCK8iRjkc/qwD+eyExhb/MhLTRTnwiMjLey"
         }
       }
     }

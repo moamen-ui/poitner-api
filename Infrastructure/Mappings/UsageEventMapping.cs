@@ -22,9 +22,12 @@ public class UsageEventMapping : IEntityTypeConfiguration<UsageEvent>
             .HasMaxLength(40)
             .IsRequired();
             
+        // 10 was tight enough that "web-component" (the widget's own Source value for the
+        // widget_language usage event — see PlatformInsightsService) didn't fit; widened once,
+        // generously, rather than re-widening every time a new caller's name is a few chars longer.
         builder.Property(e => e.Source)
             .HasColumnName("source")
-            .HasMaxLength(10)
+            .HasMaxLength(32)
             .IsRequired();
             
         builder.Property(e => e.Meta)

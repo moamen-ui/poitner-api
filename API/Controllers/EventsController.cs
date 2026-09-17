@@ -21,7 +21,8 @@ public class EventsController(IUsageEventService usageEventService) : Controller
     [Produces("application/json")]
     public async Task<IActionResult> RecordEvent([FromBody] RecordEventRequest request)
     {
-        var result = await usageEventService.RecordEventAsync(request.Type, "cli", request.ProjectKey, request.Meta);
+        var source = string.IsNullOrWhiteSpace(request.Source) ? "cli" : request.Source;
+        var result = await usageEventService.RecordEventAsync(request.Type, source, request.ProjectKey, request.Meta);
         if (!result.IsSuccess)
         {
             if (result.IsNotFound) return NotFound(result);
