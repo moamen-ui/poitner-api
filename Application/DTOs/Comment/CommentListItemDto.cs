@@ -46,6 +46,10 @@ public class CommentListItemDto
     /// page context was captured for this comment.</summary>
     public int? PageContextId { get; set; }
 
+    /// <summary>BCP-47 primary tag detected client-side from the comment text, or null when the
+    /// widget wasn't confident. See Comment.Language.</summary>
+    public string? Language { get; set; }
+
     /// <summary>
     /// Advisory: this text looked like it contained a credential or executable payload.
     /// </summary>

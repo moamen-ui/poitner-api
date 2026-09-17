@@ -64,4 +64,10 @@ public class Comment : BaseEntity
     /// <summary>Names of the matched detector patterns; empty when clean.</summary>
     public List<string> PayloadFlags { get; set; } = new();
 
+    /// <summary>
+    /// BCP-47 primary tag detected from the comment's own text client-side (e.g. "ar", "fa"), or
+    /// null when detection wasn't confident. Never derived from the widget's UI language.
+    /// </summary>
+    public string? Language { get; set; }
+
 }

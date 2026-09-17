@@ -36,6 +36,10 @@ public class CommentApplyItemDto
 
     /// <summary>Reference into the sibling PagedData.PageContexts dict — see CommentListItemDto.PageContextId.</summary>
     public int? PageContextId { get; set; }
+
+    /// <summary>BCP-47 primary tag detected client-side from the comment text, or null when the
+    /// widget wasn't confident — the apply-time skill uses this to decide whether to translate.</summary>
+    public string? Language { get; set; }
 }
 
 public class PickedActionDto

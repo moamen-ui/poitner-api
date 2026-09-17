@@ -24,4 +24,11 @@ public class CreateCommentRequest
     /// <summary>Only meaningful when IsBugReport is true; ignored server-side otherwise regardless
     /// of what the client sends.</summary>
     public PageContextCaptureDto? PageContext { get; set; }
+
+    /// <summary>
+    /// BCP-47 primary tag the widget's rule-based/on-device detector assigned to the comment text
+    /// (e.g. "ar"), or "unknown"/empty when not confident. Normalized server-side — see
+    /// CommentService.NormalizeLanguage.
+    /// </summary>
+    public string? Language { get; set; }
 }

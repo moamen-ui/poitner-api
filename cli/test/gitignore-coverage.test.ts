@@ -35,7 +35,14 @@ before(async () => {
       return;
     } else if (req.url === '/api/admin/projects') {
       res.end(JSON.stringify(req.method === 'POST' ? { key: 'my-app', name: 'My App' } : []));
-    } else if (req.url === '/skill.md' || req.url === '/pointer-init.md' || req.url === '/pointer.sh') {
+    } else if (
+      req.url === '/skill.md' ||
+      req.url === '/pointer-init.md' ||
+      req.url === '/pointer.sh' ||
+      req.url === '/skills/apply.md' ||
+      req.url === '/skills/translate.md' ||
+      req.url === '/skills/advanced.md'
+    ) {
       res.setHeader('Content-Type', 'text/plain');
       res.end('skill content');
     } else if (req.url?.startsWith('/api/projects/') && req.url.endsWith('/stack')) {

@@ -252,6 +252,17 @@
   position: relative;
 }
 
+.fbk-toolbar-btn--brand {
+  color: var(--fbk-launcher-fg, #fff);
+  background: var(--fbk-launcher-bg, #000);
+}
+
+.fbk-toolbar-btn--brand:hover,
+.fbk-toolbar-btn--brand:active {
+  background: var(--fbk-launcher-bg, #000);
+  opacity: 0.85;
+}
+
 .fbk-toolbar-btn--avatar {
   inline-size: 32px;
   padding-inline: 0;
@@ -1018,20 +1029,69 @@
 }
 
 .fbk-reply {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 6px;
   font-size: 13px;
   color: var(--fbk-text-slate-2, #334155);
   padding-block: 4px;
   padding-inline: 0;
 }
 
-.fbk-reply.ai {
-  color: var(--fbk-success-strong, #166534);
+.fbk-reply-main {
+  flex: 1;
+  min-inline-size: 0;
+  overflow-wrap: break-word;
+}
+
+.fbk-reply-ai {
+  display: block;
+  cursor: default;
+}
+
+.fbk-reply-ai-summary {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  cursor: pointer;
+  color: var(--fbk-text-subtle, #8c959f);
+  font-size: 12px;
+}
+
+.fbk-reply-ai-author {
+  color: var(--fbk-text-slate, #475569);
+  font-weight: 500;
+}
+
+.fbk-reply-ai .fbk-reply-main {
+  margin-block-start: 4px;
+  padding-inline-start: 20px;
+  color: var(--fbk-text-slate-2, #334155);
+}
+
+.fbk-reply-actions {
+  flex: 0 0 auto;
+  display: flex;
+  gap: 2px;
+  opacity: 0;
+  transition: opacity var(--fbk-transition-fast, 120ms cubic-bezier(0.16, 1, 0.3, 1));
+}
+
+.fbk-reply:hover .fbk-reply-actions,
+.fbk-reply-actions:focus-within {
+  opacity: 1;
 }
 
 .fbk-reply-row {
   display: flex;
   gap: 6px;
   margin-block-start: 6px;
+}
+
+.fbk-reply-input,
+.fbk-reply-edit-body {
+  min-block-size: 36px;
 }
 
 .fbk-input,
@@ -1046,23 +1106,6 @@
 .fbk-textarea {
   resize: vertical;
   min-height: 64px;
-}
-
-.fbk-check {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 12px;
-  color: var(--fbk-text-slate, #475569);
-  margin-block: 8px;
-  margin-inline: 0;
-  cursor: pointer;
-}
-
-.fbk-check input {
-  width: auto;
-  margin: 0;
-  cursor: pointer;
 }
 
 .fbk-pins-layer {
@@ -1099,7 +1142,7 @@
   place-items: center;
   cursor: pointer;
   padding: 0;
-  transition: transform var(--fbk-transition-spring, 220ms cubic-bezier(0.34, 1.56, 0.64, 1)), box-shadow var(--fbk-transition-fast, 120ms cubic-bezier(0.16, 1, 0.3, 1));
+  transition: transform var(--fbk-transition-spring, 220ms cubic-bezier(0.16, 1, 0.3, 1)), box-shadow var(--fbk-transition-fast, 120ms cubic-bezier(0.16, 1, 0.3, 1));
   user-select: none;
   position: relative;
 }
@@ -1378,15 +1421,22 @@
 .fbk-popover h3 {
   margin-block: 0 8px;
   margin-inline: 0;
-  padding-inline-end: 30px;
+  padding-inline-end: 96px;
   font-size: 13px;
   color: var(--fbk-text, #1f2328);
 }
 
-.fbk-popover-private-toggle {
+.fbk-popover-nav {
   position: absolute;
   inset-block-start: 10px;
   inset-inline-end: 10px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.fbk-popover-nav-btn,
+.fbk-popover-private-toggle {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -1400,8 +1450,15 @@
   cursor: pointer;
 }
 
+.fbk-popover-nav-btn:hover,
 .fbk-popover-private-toggle:hover {
   background: var(--fbk-surface-hover, #f3f4f6);
+}
+
+.fbk-popover-nav-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+  background: var(--fbk-surface-muted, #eaeef2);
 }
 
 .fbk-popover-private-toggle.is-active {
@@ -1526,6 +1583,13 @@
   padding-inline: 10px;
   font-size: 12px;
   color: var(--fbk-text-subtle, #8c959f);
+}
+
+.fbk-popover-toggles {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-block-end: 8px;
 }
 
 .fbk-modal-overlay {
@@ -1662,7 +1726,7 @@ select.fbk-input:disabled {
   font-size: 13px;
   line-height: 1.4;
   user-select: none;
-  animation: fbk-toast-in var(--fbk-transition-spring, 220ms cubic-bezier(0.34, 1.56, 0.64, 1)) forwards;
+  animation: fbk-toast-in var(--fbk-transition-spring, 220ms cubic-bezier(0.16, 1, 0.3, 1)) forwards;
   transition: transform var(--fbk-transition-fast, 120ms cubic-bezier(0.16, 1, 0.3, 1)), opacity var(--fbk-transition-fast, 120ms cubic-bezier(0.16, 1, 0.3, 1));
 }
 

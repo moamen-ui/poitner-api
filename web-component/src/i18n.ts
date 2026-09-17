@@ -22,6 +22,95 @@ export function getLang(): Lang {
   return currentLang;
 }
 
+// --- Comment-text language detection ------------------------------------
+// Detects the language of a COMMENT's own text (not the widget's UI language — a user can write
+// Arabic in an English-language widget). Deterministic, offline, no dependencies: Unicode script
+// ranges plus a handful of letters that distinguish scripts shared by several languages. Returns
+// a confident BCP-47 primary tag, or 'unknown' when the rules aren't sure — callers should only
+// spend a real detection pass (e.g. an LLM call) on 'unknown', never on a returned tag.
+const ARABIC_URDU_ONLY = /[ٹڈڑںےھ]/;
+const ARABIC_PASHTO_ONLY = /[ټډړږښڼ]/;
+const ARABIC_PERSIAN_ONLY = /[پچژگ]/;
+// ك / ي (Arabic keyboard) vs ک / ی (Persian keyboard) — the Persian forms alone aren't
+// conclusive, since many Arabic writers' input methods/fonts normalize to them too.
+const ARABIC_PERSIAN_KEYBOARD = /[کی]/;
+const ARABIC_SCRIPT = /[؀-ۿݐ-ݿࢠ-ࣿﭐ-﷿ﹰ-﻿]/;
+const HEBREW_SCRIPT = /[֐-׿]/;
+const HANGUL_SCRIPT = /[가-힯ᄀ-ᇿ]/;
+const KANA_SCRIPT = /[぀-ヿ]/;
+const HAN_SCRIPT = /[一-鿿]/;
+const CYRILLIC_SCRIPT = /[Ѐ-ӿ]/;
+const CYRILLIC_UKRAINIAN_ONLY = /[їєґ]/;
+const LETTER_RE = /\p{L}/gu;
+// Any LETTER outside ASCII (é ñ ü ç …) — punctuation like “ ” — is deliberately ignored so
+// smart quotes / dashes in an English comment don't demote it to 'unknown'.
+const NON_ASCII_LETTER_RE = /(?![\x00-\x7F])\p{L}/u;
+const ENGLISH_STOPWORDS = new Set([
+  'the', 'and', 'this', 'that', 'should', 'with', 'when', 'please', 'button', 'click', 'text',
+  'page', 'not', 'but', 'from', 'are', 'was', 'have', 'has', 'will', 'can',
+]);
+
+export function detectTextLanguage(text: string): string {
+  const stripped = (text || '')
+    .replace(/`[^`]*`/g, ' ')
+    .replace(/```[\s\S]*?```/g, ' ')
+    .replace(/https?:\/\/\S+/gi, ' ')
+    .replace(/\d+/g, ' ');
+  const letters = stripped.match(LETTER_RE) || [];
+  if (letters.length < 20) return 'unknown';
+
+  if (ARABIC_SCRIPT.test(stripped)) {
+    if (ARABIC_URDU_ONLY.test(stripped)) return 'ur';
+    if (ARABIC_PASHTO_ONLY.test(stripped)) return 'ps';
+    if (ARABIC_PERSIAN_ONLY.test(stripped)) return 'fa';
+    if (ARABIC_PERSIAN_KEYBOARD.test(stripped)) return 'unknown';
+    return 'ar';
+  }
+  if (HEBREW_SCRIPT.test(stripped)) return 'he';
+  if (HANGUL_SCRIPT.test(stripped)) return 'ko';
+  if (KANA_SCRIPT.test(stripped)) return 'ja';
+  if (HAN_SCRIPT.test(stripped)) return 'zh';
+  if (CYRILLIC_SCRIPT.test(stripped)) {
+    return CYRILLIC_UKRAINIAN_ONLY.test(stripped) ? 'uk' : 'unknown';
+  }
+
+  if (NON_ASCII_LETTER_RE.test(stripped)) return 'unknown';
+  const words = stripped.toLowerCase().match(/[a-z]+/g) || [];
+  const matched = new Set(words.filter((w) => ENGLISH_STOPWORDS.has(w)));
+  return matched.size >= 3 ? 'en' : 'unknown';
+}
+
+// Chrome's on-device LanguageDetector API, when present: preferred over the rule-based detector
+// above for its accuracy, but strictly optional and never allowed to slow down or block posting a
+// comment — guarded by a feature check, an availability check, a short race timeout, and a
+// confidence floor, with any failure (including the timeout) falling back to the caller's own
+// rule-based result.
+interface ChromeLanguageDetection { detectedLanguage: string; confidence: number }
+interface ChromeLanguageDetector { detect(text: string): Promise<ChromeLanguageDetection[]> }
+interface ChromeLanguageDetectorCtor {
+  availability(): Promise<'unavailable' | 'downloadable' | 'downloading' | 'available'>;
+  create(): Promise<ChromeLanguageDetector>;
+}
+
+export async function detectTextLanguageAsync(text: string): Promise<string> {
+  const fallback = detectTextLanguage(text);
+  try {
+    const ctor = (self as unknown as { LanguageDetector?: ChromeLanguageDetectorCtor }).LanguageDetector;
+    if (!ctor) return fallback;
+    const availability = await ctor.availability();
+    if (availability !== 'available') return fallback;
+    const detector = await ctor.create();
+    const timeout = new Promise<null>((resolve) => setTimeout(() => resolve(null), 300));
+    const results = await Promise.race([detector.detect(text), timeout]);
+    if (!results || !results.length) return fallback;
+    const best = results[0];
+    if (best.confidence >= 0.8 && best.detectedLanguage) return best.detectedLanguage;
+    return fallback;
+  } catch {
+    return fallback;
+  }
+}
+
 /** `{name}`-style placeholder substitution — used for the handful of strings with dynamic parts. */
 export function t(key: string, vars?: Record<string, string | number>): string {
   const raw = STRINGS[currentLang][key] ?? STRINGS.en[key] ?? key;

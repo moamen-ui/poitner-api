@@ -526,6 +526,83 @@
     currentLang = next;
     return true;
   }
+  var ARABIC_URDU_ONLY = /[ٹڈڑںےھ]/;
+  var ARABIC_PASHTO_ONLY = /[ټډړږښڼ]/;
+  var ARABIC_PERSIAN_ONLY = /[پچژگ]/;
+  var ARABIC_PERSIAN_KEYBOARD = /[کی]/;
+  var ARABIC_SCRIPT = /[؀-ۿݐ-ݿࢠ-ࣿﭐ-﷿ﹰ-﻿]/;
+  var HEBREW_SCRIPT = /[֐-׿]/;
+  var HANGUL_SCRIPT = /[가-힯ᄀ-ᇿ]/;
+  var KANA_SCRIPT = /[぀-ヿ]/;
+  var HAN_SCRIPT = /[一-鿿]/;
+  var CYRILLIC_SCRIPT = /[Ѐ-ӿ]/;
+  var CYRILLIC_UKRAINIAN_ONLY = /[їєґ]/;
+  var LETTER_RE = /\p{L}/gu;
+  var NON_ASCII_LETTER_RE = /(?![\x00-\x7F])\p{L}/u;
+  var ENGLISH_STOPWORDS = /* @__PURE__ */ new Set([
+    "the",
+    "and",
+    "this",
+    "that",
+    "should",
+    "with",
+    "when",
+    "please",
+    "button",
+    "click",
+    "text",
+    "page",
+    "not",
+    "but",
+    "from",
+    "are",
+    "was",
+    "have",
+    "has",
+    "will",
+    "can"
+  ]);
+  function detectTextLanguage(text) {
+    const stripped = (text || "").replace(/`[^`]*`/g, " ").replace(/```[\s\S]*?```/g, " ").replace(/https?:\/\/\S+/gi, " ").replace(/\d+/g, " ");
+    const letters = stripped.match(LETTER_RE) || [];
+    if (letters.length < 20) return "unknown";
+    if (ARABIC_SCRIPT.test(stripped)) {
+      if (ARABIC_URDU_ONLY.test(stripped)) return "ur";
+      if (ARABIC_PASHTO_ONLY.test(stripped)) return "ps";
+      if (ARABIC_PERSIAN_ONLY.test(stripped)) return "fa";
+      if (ARABIC_PERSIAN_KEYBOARD.test(stripped)) return "unknown";
+      return "ar";
+    }
+    if (HEBREW_SCRIPT.test(stripped)) return "he";
+    if (HANGUL_SCRIPT.test(stripped)) return "ko";
+    if (KANA_SCRIPT.test(stripped)) return "ja";
+    if (HAN_SCRIPT.test(stripped)) return "zh";
+    if (CYRILLIC_SCRIPT.test(stripped)) {
+      return CYRILLIC_UKRAINIAN_ONLY.test(stripped) ? "uk" : "unknown";
+    }
+    if (NON_ASCII_LETTER_RE.test(stripped)) return "unknown";
+    const words = stripped.toLowerCase().match(/[a-z]+/g) || [];
+    const matched = new Set(words.filter((w) => ENGLISH_STOPWORDS.has(w)));
+    return matched.size >= 3 ? "en" : "unknown";
+  }
+  async function detectTextLanguageAsync(text) {
+    const fallback = detectTextLanguage(text);
+    try {
+      const ctor = self.LanguageDetector;
+      if (!ctor) return fallback;
+      const availability = await ctor.availability();
+      if (availability !== "available") return fallback;
+      const detector = await ctor.create();
+      const timeout = new Promise((resolve) => setTimeout(() => resolve(null), 300));
+      const results = await Promise.race([detector.detect(text), timeout]);
+      if (!results || !results.length) return fallback;
+      const best = results[0];
+      if (best.confidence >= 0.8 && best.detectedLanguage) return best.detectedLanguage;
+      return fallback;
+    } catch {
+      return fallback;
+    }
+  }
   function t(key, vars) {
     var _a2, _b;
     const raw = (_b = (_a2 = STRINGS[currentLang][key]) != null ? _a2 : STRINGS.en[key]) != null ? _b : key;
@@ -3672,7 +3749,7 @@
     }
     // Returns true on success (popover should close), false on failure (popover stays open).
     async createComment(data) {
-      var _a2, _b;
+      var _a2, _b, _c;
       const vw = window.innerWidth;
       const vh = window.innerHeight;
       const deviceType = vw < 768 ? "mobile" : vw < 1024 ? "tablet" : "desktop";
@@ -3705,12 +3782,14 @@
           else this.toast(t("toast.screenshotUploadFailed"), "error");
         }
       }
+      const language = (_a2 = data.language) != null ? _a2 : await detectTextLanguageAsync(data.text);
       const bodyObj = {
         body: data.text,
         environment: this.environmentInt,
         isPrivate: !!data.isPrivate,
         element,
-        isBugReport: !!data.isBugReport
+        isBugReport: !!data.isBugReport,
+        language
       };
       if (data.predefinedActionIds && data.predefinedActionIds.length) bodyObj.predefinedActionIds = data.predefinedActionIds;
       if (data.isBugReport) {
@@ -3739,7 +3818,7 @@
             return false;
           }
           if (r.status === 429) {
-            const retryAfter = Number((_b = (_a2 = r.headers) == null ? void 0 : _a2.get) == null ? void 0 : _b.call(_a2, "retry-after"));
+            const retryAfter = Number((_c = (_b = r.headers) == null ? void 0 : _b.get) == null ? void 0 : _c.call(_b, "retry-after"));
             this.toast(
               retryAfter > 0 ? t("toast.tooManyCommentsRetryIn", { n: retryAfter, s: retryAfter === 1 ? "" : "s" }) : t("toast.tooManyCommentsWait"),
               "error"

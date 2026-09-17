@@ -93,12 +93,19 @@ test('does not mistake a later mention in the prose for the stamp', async () => 
 });
 
 test('skillFilesFor maps each AI tool to the paths init actually wrote', () => {
+  // Folder-capable tools (claude-code, and the .agents/skills/ fallbacks below) get
+  // apply.md/translate.md/advanced.md as siblings of SKILL.md — see skills.ts SUB_SKILLS.
   assert.deepEqual(skillFilesFor({ aiTool: 'claude-code' }), [
     '.claude/skills/pointer-init/SKILL.md',
     '.claude/skills/pointer-feedback/SKILL.md',
+    '.claude/skills/pointer-feedback/apply.md',
+    '.claude/skills/pointer-feedback/translate.md',
+    '.claude/skills/pointer-feedback/advanced.md',
     '.pointer/pointer.sh',
   ]);
 
+  // cursor/windsurf have no folder for siblings — their pointer-feedback entry stays one flat
+  // file containing all four sections (see buildFlatPointerFeedback), so no sub-file paths here.
   assert.deepEqual(skillFilesFor({ aiTool: 'cursor' }), [
     '.cursor/rules/pointer-init.md',
     '.cursor/rules/pointer-feedback.md',
@@ -110,24 +117,38 @@ test('skillFilesFor maps each AI tool to the paths init actually wrote', () => {
   assert.deepEqual(skillFilesFor({ aiTool: 'something-else' }), [
     '.agents/skills/pointer-init/SKILL.md',
     '.agents/skills/pointer-feedback/SKILL.md',
+    '.agents/skills/pointer-feedback/apply.md',
+    '.agents/skills/pointer-feedback/translate.md',
+    '.agents/skills/pointer-feedback/advanced.md',
     '.pointer/pointer.sh',
   ]);
   assert.deepEqual(skillFilesFor({}), [
     '.agents/skills/pointer-init/SKILL.md',
     '.agents/skills/pointer-feedback/SKILL.md',
+    '.agents/skills/pointer-feedback/apply.md',
+    '.agents/skills/pointer-feedback/translate.md',
+    '.agents/skills/pointer-feedback/advanced.md',
     '.pointer/pointer.sh',
   ]);
   assert.deepEqual(skillFilesFor({ aiTool: 'antigravity' }), [
     '.agents/skills/pointer-init/SKILL.md',
     '.agents/skills/pointer-feedback/SKILL.md',
+    '.agents/skills/pointer-feedback/apply.md',
+    '.agents/skills/pointer-feedback/translate.md',
+    '.agents/skills/pointer-feedback/advanced.md',
     '.pointer/pointer.sh',
   ]);
 });
 
 test('a recorded skillsDir overrides the tool mapping', () => {
+  // A --skills-dir override always writes the folder shape, regardless of aiTool (here cursor's
+  // normal aiTool would mean "flat file") — see skillFilesFor's and installSkills' handling.
   assert.deepEqual(skillFilesFor({ aiTool: 'claude-code', skillsDir: 'custom/skills' }), [
     'custom/skills/pointer-init/SKILL.md',
     'custom/skills/pointer-feedback/SKILL.md',
+    'custom/skills/pointer-feedback/apply.md',
+    'custom/skills/pointer-feedback/translate.md',
+    'custom/skills/pointer-feedback/advanced.md',
     '.pointer/pointer.sh',
   ]);
 });

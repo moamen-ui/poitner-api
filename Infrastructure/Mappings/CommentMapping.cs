@@ -83,5 +83,7 @@ public class CommentMapping : IEntityTypeConfiguration<Comment>
         b.Property(x => x.HasPayloadFlag).HasColumnName("has_payload_flag").HasDefaultValue(false);
         b.Property(x => x.PayloadFlags).ConfigureJsonStringList("payload_flags");
 
+        b.Property(x => x.Language).HasColumnName("language").HasMaxLength(16);
+
     }
 }

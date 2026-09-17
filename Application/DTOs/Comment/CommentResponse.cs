@@ -45,6 +45,10 @@ public class CommentResponse
     /// <summary>Effective AI rules for this comment, ordered by strict priority: Workspace > Project > Personal.</summary>
     public List<AiRuleApplyDto> AiRules { get; set; } = new();
 
+    /// <summary>BCP-47 primary tag detected client-side from the comment text, or null when the
+    /// widget wasn't confident. See Comment.Language.</summary>
+    public string? Language { get; set; }
+
     /// <summary>
     /// Advisory: this text looked like it contained a credential or executable payload.
     /// </summary>

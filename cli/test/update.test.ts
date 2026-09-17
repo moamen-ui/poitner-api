@@ -31,6 +31,11 @@ async function stubServer(skillVersion: string): Promise<{ url: string; close: (
       res.end(`---\nname: x\n---\n<!-- pointer-skill-version: ${skillVersion} -->\n\nbody\n`);
       return;
     }
+    if (req.url === '/skills/apply.md' || req.url === '/skills/translate.md' || req.url === '/skills/advanced.md') {
+      res.writeHead(200, { 'content-type': 'text/markdown' });
+      res.end(`<!-- pointer-skill-version: ${skillVersion} -->\n\n# ${req.url}\n`);
+      return;
+    }
     res.writeHead(404, { 'content-type': 'application/json' });
     res.end(JSON.stringify({ isSuccess: false, message: 'not found' }));
   });
@@ -52,6 +57,9 @@ test('update installs pointer.sh and the skill files when they are entirely miss
     for (const rel of [
       '.claude/skills/pointer-init/SKILL.md',
       '.claude/skills/pointer-feedback/SKILL.md',
+      '.claude/skills/pointer-feedback/apply.md',
+      '.claude/skills/pointer-feedback/translate.md',
+      '.claude/skills/pointer-feedback/advanced.md',
       '.pointer/pointer.sh',
     ]) {
       const stat = await fs.stat(join(dir, rel));
@@ -72,13 +80,46 @@ test('update re-installs a skill file that was deleted after a previous install'
     assert.equal(first, 0);
 
     const feedbackSkill = join(dir, '.claude/skills/pointer-feedback/SKILL.md');
+    const translateSkill = join(dir, '.claude/skills/pointer-feedback/translate.md');
     await fs.access(feedbackSkill); // sanity: it exists before we delete it
+    await fs.access(translateSkill); // sanity: the sub-file was installed too
     await fs.rm(feedbackSkill);
+    await fs.rm(translateSkill);
 
     const second = await updateCommand(dir, { server: stub.url });
     assert.equal(second, 0);
 
     await fs.access(feedbackSkill); // re-installed
+    await fs.access(translateSkill); // sub-file re-installed alongside it
+  } finally {
+    await fs.rm(dir, { recursive: true, force: true });
+    await stub.close();
+  }
+});
+
+test('update rebuilds the flat Cursor rules file (not just /skill.md\'s body) when it is stale', async () => {
+  const stub = await stubServer('2026.09.16');
+  const dir = await scratch({ server: stub.url, project: 'demo', environment: 'local', aiTool: 'cursor' });
+  try {
+    const first = await updateCommand(dir, { server: stub.url });
+    assert.equal(first, 0);
+
+    const rulesFile = join(dir, '.cursor/rules/pointer-feedback.md');
+    const before = await fs.readFile(rulesFile, 'utf8');
+    for (const marker of ['<!-- pointer-skill: apply -->', '<!-- pointer-skill: translate -->', '<!-- pointer-skill: advanced -->']) {
+      assert.ok(before.includes(marker), `expected ${marker} in the concatenated rules file`);
+    }
+
+    // Simulate staleness: an older stamp than what the (still-running) stub server reports.
+    await fs.writeFile(rulesFile, before.replace('2026.09.16', '2026.09.01'), 'utf8');
+
+    const second = await updateCommand(dir, { server: stub.url });
+    assert.equal(second, 0);
+
+    const after = await fs.readFile(rulesFile, 'utf8');
+    for (const marker of ['<!-- pointer-skill: apply -->', '<!-- pointer-skill: translate -->', '<!-- pointer-skill: advanced -->']) {
+      assert.ok(after.includes(marker), `refreshed rules file must still contain ${marker}`);
+    }
   } finally {
     await fs.rm(dir, { recursive: true, force: true });
     await stub.close();

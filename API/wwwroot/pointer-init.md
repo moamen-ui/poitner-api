@@ -531,7 +531,10 @@ ignore `config.json`/`stack.json`/`projects/` too. The last line only matters fo
 > account's key works (any role can fetch/apply); using a dedicated `Developer`-role account is
 > conventional but not required.
 
-The apply workflow itself is the separate <POINTER_PRODUCT> skill served at `<POINTER_SERVER>/skill.md`.
+The apply workflow itself is the separate <POINTER_PRODUCT> skill served at `<POINTER_SERVER>/skill.md`
+— a small entry file plus three sibling sub-files (`apply.md`, `translate.md`, `advanced.md`) fetched
+alongside it into the same skill folder (or concatenated into one file for Cursor/Windsurf); all four
+install and refresh together, so there is nothing extra to do here.
 
 > **⚠️ Install the skills into YOUR AI tool's own directory — not blindly into `.claude/`.**
 > The installer defaults to `.claude/skills/` (Claude Code). **If you are not Claude Code, clone the

@@ -11,7 +11,7 @@ import {
   type ShortcutBinding, parseShortcut, serializeShortcut, matchesShortcut, formatShortcut, ariaKeyshortcuts,
 } from './shortcut';
 import { type ThemeMode, detectSiteTheme } from './theme';
-import { type Lang, t, setLang } from './i18n';
+import { type Lang, t, setLang, detectTextLanguageAsync } from './i18n';
 import { showLoginModal } from './auth-ui';
 import type { AuthorOption, Comment, Meta, NotificationItem, PointerHost, PredefinedActionOption, RoleOption, StatusStr, User } from './types';
 
@@ -36,6 +36,7 @@ interface CreateCommentData extends Meta {
   shotPromise: Promise<Blob | null> | null;
   predefinedActionIds?: number[];
   isBugReport: boolean;
+  language?: string;
 }
 
 export class PointerFeedback extends HTMLElement implements PointerHost {
@@ -1923,12 +1924,14 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
       }
     }
 
+    const language = data.language ?? await detectTextLanguageAsync(data.text);
     const bodyObj: Record<string, unknown> = {
       body: data.text,
       environment: this.environmentInt,
       isPrivate: !!data.isPrivate,
       element,
       isBugReport: !!data.isBugReport,
+      language,
     };
     if (data.predefinedActionIds && data.predefinedActionIds.length) bodyObj.predefinedActionIds = data.predefinedActionIds;
     // Only attach the buffered console/network snapshot when the box is checked — unchecked means

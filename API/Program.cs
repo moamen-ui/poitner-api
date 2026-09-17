@@ -24,7 +24,16 @@ var builder = WebApplication.CreateBuilder(args);
 if (string.IsNullOrWhiteSpace(builder.Configuration[Pointer.Application.Common.SkillVersionResolver.ConfigKey]))
 {
     var skillsRoot = builder.Environment.WebRootPath ?? Path.Combine(builder.Environment.ContentRootPath, "wwwroot");
-    var skillContents = new[] { "pointer-init.md", "skill.md", "install.sh", "pointer.sh" }
+    var skillContents = new[]
+        {
+            "pointer-init.md",
+            "skill.md",
+            "install.sh",
+            "pointer.sh",
+            Path.Combine("skills", "apply.md"),
+            Path.Combine("skills", "translate.md"),
+            Path.Combine("skills", "advanced.md"),
+        }
         .Select(f => Path.Combine(skillsRoot, f))
         .Where(File.Exists)
         .Select(File.ReadAllText)
@@ -232,6 +241,9 @@ var injectedFiles = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
 {
     "/pointer-init.md",
     "/skill.md",
+    "/skills/apply.md",
+    "/skills/translate.md",
+    "/skills/advanced.md",
     "/install.sh",
     "/pointer.sh",
 };

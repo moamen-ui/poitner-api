@@ -4,7 +4,7 @@ import { readConfig, removeLegacyRepoFiles } from '../config.js';
 import { api } from '../api.js';
 import { readStamp } from '../lib/skill-stamp.js';
 import { skillFilesFor } from '../lib/skill-paths.js';
-import { installSkills } from '../skills.js';
+import { installSkills, buildFlatPointerFeedback } from '../skills.js';
 import type { MetaResponse } from '../checks.js';
 
 export interface UpdateOptions {
@@ -12,12 +12,27 @@ export interface UpdateOptions {
   check?: boolean;
 }
 
-/** Which served file backs each installed path. */
+/**
+ * Which served file backs each installed path. `null` means the path needs its own fetch logic
+ * instead of a straight body copy — see the flat-file (Cursor/Windsurf) case in the stale loop
+ * below, where `pointer-feedback`'s single rules file is rebuilt from all four served sources
+ * (skill.md + the three skills/*.md sub-files), not overwritten with just `/skill.md`'s body.
+ */
 function sourceFor(path: string): string | null {
   if (path.endsWith('pointer.sh')) return '/pointer.sh';
   if (path.includes('pointer-init')) return '/pointer-init.md';
+  if (path.endsWith('/apply.md')) return '/skills/apply.md';
+  if (path.endsWith('/translate.md')) return '/skills/translate.md';
+  if (path.endsWith('/advanced.md')) return '/skills/advanced.md';
   if (path.includes('pointer-feedback')) return '/skill.md';
   return null;
+}
+
+/** True for the single flat pointer-feedback rules file a Cursor/Windsurf install writes — see
+ * `buildFlatPointerFeedback`. That file must be rebuilt from all four served sources on refresh,
+ * not overwritten with just `/skill.md`'s body (which would drop the concatenated sub-sections). */
+function isFlatPointerFeedbackFile(path: string, aiTool: string | undefined, skillsDir: string | undefined): boolean {
+  return !skillsDir && (aiTool === 'cursor' || aiTool === 'windsurf') && path.endsWith('pointer-feedback.md');
 }
 
 /**
@@ -112,12 +127,18 @@ export async function updateCommand(cwd: string, options: UpdateOptions): Promis
   const from = stale[0]?.installed ?? 'unstamped';
 
   for (const f of stale) {
+    const flat = isFlatPointerFeedbackFile(f.path, config.aiTool, config.skillsDir);
     const source = sourceFor(f.path);
-    if (!source) continue;
+    if (!flat && !source) continue;
     try {
-      const res = await fetch(`${server}${source}`);
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const body = await res.text();
+      let body: string;
+      if (flat) {
+        body = await buildFlatPointerFeedback(server);
+      } else {
+        const res = await fetch(`${server}${source}`);
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        body = await res.text();
+      }
 
       const abs = join(cwd, f.path);
       await fs.mkdir(dirname(abs), { recursive: true });

@@ -1,10 +1,14 @@
 import { promises as fs } from 'node:fs';
 import { join, dirname } from 'node:path';
 
-async function download(url: string, dest: string, chmod = false) {
+async function fetchText(url: string): Promise<string> {
     const res = await fetch(url);
     if (!res.ok) throw new Error(`Failed to fetch ${url}: ${res.status}`);
-    const txt = await res.text();
+    return res.text();
+}
+
+async function download(url: string, dest: string, chmod = false) {
+    const txt = await fetchText(url);
     await fs.mkdir(dirname(dest), { recursive: true });
     await fs.writeFile(dest, txt, 'utf8');
     if (chmod) {
@@ -26,6 +30,24 @@ async function makeSymlink(target: string, path: string) {
 }
 
 /**
+ * The `pointer-feedback` skill's sub-files, served at `/skills/<name>.md` alongside the entry file
+ * `/skill.md`. `pointer-init` has no sub-files.
+ *
+ * A folder-capable install (`claude-code`, `other`, `antigravity`, or any `--skills-dir` override)
+ * writes these as siblings of `SKILL.md` in the same `pointer-feedback/` folder, so the entry file's
+ * "read apply.md" references resolve by relative path. A flat-file tool (`cursor`, `windsurf`) has
+ * no folder to put siblings in, so `installSkills` concatenates all four into the one rules file
+ * instead — see `buildFlatPointerFeedback`.
+ */
+export const SUB_SKILLS = ['apply', 'translate', 'advanced'] as const;
+
+const SUB_SKILL_TITLES: Record<(typeof SUB_SKILLS)[number], string> = {
+    apply: 'Apply workflow',
+    translate: 'Translation',
+    advanced: 'Advanced',
+};
+
+/**
  * Where each AI tool's two skill files live, relative to the project root.
  *
  * Exported because `doctor` must check exactly the paths `installSkills` writes. When these lived
@@ -37,14 +59,55 @@ async function makeSymlink(target: string, path: string) {
  * Cursor and Windsurf each have their own native location as their PRIMARY path, and additionally
  * get a symlink at this same `.agents/skills/...` path (see `writeOrLink`) so any tool that reads
  * the standard location finds the skill regardless of which tool actually installed it.
+ *
+ * `claude-code`/`other`/`antigravity` are folder-capable, so their `pointer-feedback` entry is
+ * followed by its three sub-files (`apply.md`, `translate.md`, `advanced.md`) as siblings of
+ * `SKILL.md` — `writeOrLink` writes those, this table just documents (and lets `doctor`/`update`
+ * check) the paths. `cursor`/`windsurf` have no folder for siblings, so their `pointer-feedback`
+ * entry stays a single flat file that CONTAINS all four sections (see `buildFlatPointerFeedback`).
  */
 export const SKILL_FILES: Record<string, string[]> = {
-  'claude-code': ['.claude/skills/pointer-init/SKILL.md', '.claude/skills/pointer-feedback/SKILL.md'],
+  'claude-code': [
+    '.claude/skills/pointer-init/SKILL.md',
+    '.claude/skills/pointer-feedback/SKILL.md',
+    ...SUB_SKILLS.map((name) => `.claude/skills/pointer-feedback/${name}.md`),
+  ],
   cursor: ['.cursor/rules/pointer-init.md', '.cursor/rules/pointer-feedback.md'],
   windsurf: ['.windsurf/rules/pointer-init.md', '.windsurf/rules/pointer-feedback.md'],
-  other: ['.agents/skills/pointer-init/SKILL.md', '.agents/skills/pointer-feedback/SKILL.md'],
-  antigravity: ['.agents/skills/pointer-init/SKILL.md', '.agents/skills/pointer-feedback/SKILL.md'],
+  other: [
+    '.agents/skills/pointer-init/SKILL.md',
+    '.agents/skills/pointer-feedback/SKILL.md',
+    ...SUB_SKILLS.map((name) => `.agents/skills/pointer-feedback/${name}.md`),
+  ],
+  antigravity: [
+    '.agents/skills/pointer-init/SKILL.md',
+    '.agents/skills/pointer-feedback/SKILL.md',
+    ...SUB_SKILLS.map((name) => `.agents/skills/pointer-feedback/${name}.md`),
+  ],
 };
+
+/**
+ * Fetches the entry skill (`/skill.md`) plus its three sub-files and concatenates them into the one
+ * flat file a rules-file tool (Cursor, Windsurf) needs — the entry first, then each sub-skill under
+ * a `## <Title> (<name>.md)` heading preceded by a `<!-- pointer-skill: <name> -->` marker, so the
+ * entry's "read apply.md" style references still resolve by name even without a folder to put them
+ * in as siblings.
+ */
+export async function buildFlatPointerFeedback(server: string): Promise<string> {
+    server = server.replace(/\/$/, '');
+    const entry = await fetchText(`${server}/skill.md`);
+    const subs = await Promise.all(
+        SUB_SKILLS.map(async (name) => ({ name, text: await fetchText(`${server}/skills/${name}.md`) })),
+    );
+
+    const parts = [entry.trimEnd()];
+    for (const { name, text } of subs) {
+        parts.push(
+            `---\n\n<!-- pointer-skill: ${name} -->\n## ${SUB_SKILL_TITLES[name]} (${name}.md)\n\n${text.trim()}`,
+        );
+    }
+    return `${parts.join('\n\n')}\n`;
+}
 
 /**
  * Removes the pre-2026-09-16 `.agents/pointer-init/SKILL.md` / `.agents/pointer-feedback/SKILL.md`
@@ -81,11 +144,24 @@ export async function installSkills(server: string, aiTool: string, cwd: string,
     await download(`${server}/pointer.sh`, pointerSh, true);
     files.push('.pointer/pointer.sh');
 
+    // A flat-file tool (no folder of its own to put apply.md/translate.md/advanced.md into as
+    // siblings) gets everything concatenated into the one rules file instead — see
+    // buildFlatPointerFeedback. An `overrideDir` always writes the folder shape (see finalPath
+    // below), regardless of aiTool, so it is excluded here even for cursor/windsurf.
+    const isFlatFileTool = !overrideDir && (aiTool === 'cursor' || aiTool === 'windsurf');
+
     async function writeOrLink(primaryPath: string, skillName: string) {
         const url = skillName === 'pointer-init' ? `${server}/pointer-init.md` : `${server}/skill.md`;
 
         const finalPath = overrideDir ? join(cwd, overrideDir, skillName, 'SKILL.md') : join(cwd, primaryPath);
-        await download(url, finalPath);
+
+        if (skillName === 'pointer-feedback' && isFlatFileTool) {
+            const combined = await buildFlatPointerFeedback(server);
+            await fs.mkdir(dirname(finalPath), { recursive: true });
+            await fs.writeFile(finalPath, combined, 'utf8');
+        } else {
+            await download(url, finalPath);
+        }
         files.push(overrideDir ? join(overrideDir, skillName, 'SKILL.md') : primaryPath);
 
         if (!overrideDir && (aiTool === 'claude-code' || aiTool === 'cursor' || aiTool === 'windsurf')) {
@@ -95,6 +171,18 @@ export async function installSkills(server: string, aiTool: string, cwd: string,
             const symDest = join(cwd, '.agents', 'skills', skillName, 'SKILL.md');
             await makeSymlink(join('..', '..', '..', primaryPath), symDest);
             files.push(`.agents/skills/${skillName}/SKILL.md`);
+        }
+
+        // Folder-capable install (native or overrideDir): apply.md/translate.md/advanced.md land as
+        // siblings of SKILL.md in the same folder. A flat-file tool already has all four sections
+        // in the one file written above, so there is nothing more to write here.
+        if (skillName === 'pointer-feedback' && !isFlatFileTool) {
+            const siblingDir = dirname(finalPath);
+            const relDir = overrideDir ? join(overrideDir, skillName) : dirname(primaryPath);
+            for (const name of SUB_SKILLS) {
+                await download(`${server}/skills/${name}.md`, join(siblingDir, `${name}.md`));
+                files.push(join(relDir, `${name}.md`));
+            }
         }
     }
 

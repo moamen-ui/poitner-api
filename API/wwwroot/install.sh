@@ -20,6 +20,10 @@ curl -fsSL --create-dirs "$SERVER/pointer-init.md" -o "$DIR/pointer-init/SKILL.m
 echo "  ok  pointer-init      ($DIR/pointer-init/SKILL.md)   — add the widget to an app"
 curl -fsSL --create-dirs "$SERVER/skill.md" -o "$DIR/pointer-feedback/SKILL.md"
 echo "  ok  pointer-feedback  ($DIR/pointer-feedback/SKILL.md)   — list / apply comments"
+curl -fsSL --create-dirs "$SERVER/skills/apply.md" -o "$DIR/pointer-feedback/apply.md"
+curl -fsSL --create-dirs "$SERVER/skills/translate.md" -o "$DIR/pointer-feedback/translate.md"
+curl -fsSL --create-dirs "$SERVER/skills/advanced.md" -o "$DIR/pointer-feedback/advanced.md"
+echo "  ok  pointer-feedback sub-skills (apply.md, translate.md, advanced.md) in $DIR/pointer-feedback/"
 
 # Also link .agents/ to the same files — a tool-agnostic convention some AI coding agents read
 # from directly, so a non-Claude agent finds the skill without the .claude-specific path. A

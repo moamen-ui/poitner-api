@@ -14,5 +14,8 @@ public class CreateCommentValidator : AbstractValidator<CreateCommentRequest>
 
         RuleFor(x => x.Environment)
             .IsInEnum();
+
+        RuleFor(x => x.Language)
+            .MaximumLength(16);
     }
 }

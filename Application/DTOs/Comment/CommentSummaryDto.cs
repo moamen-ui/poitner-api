@@ -18,4 +18,8 @@ public class CommentSummaryDto
     public string? Route { get; set; }
     public string? SourcePath { get; set; }
     public string? AuthorName { get; set; }
+
+    /// <summary>BCP-47 primary tag detected client-side from the comment text, or null when the
+    /// widget wasn't confident. See Comment.Language.</summary>
+    public string? Language { get; set; }
 }

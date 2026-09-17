@@ -1,5 +1,5 @@
 import { join } from 'node:path';
-import { SKILL_FILES } from '../skills.js';
+import { SKILL_FILES, SUB_SKILLS } from '../skills.js';
 import type { PointerConfig } from '../config.js';
 
 /**
@@ -16,8 +16,14 @@ import type { PointerConfig } from '../config.js';
 export function skillFilesFor(config: PointerConfig): string[] {
   const layout = SKILL_FILES[config.aiTool ?? ''] ?? SKILL_FILES.other;
 
+  // A `--skills-dir` override always writes the folder shape (see installSkills' `isFlatFileTool`),
+  // so it always gets apply.md/translate.md/advanced.md as siblings too, regardless of aiTool.
   const skillPaths = config.skillsDir
-    ? ['pointer-init', 'pointer-feedback'].map((name) => join(config.skillsDir!, name, 'SKILL.md'))
+    ? [
+        join(config.skillsDir, 'pointer-init', 'SKILL.md'),
+        join(config.skillsDir, 'pointer-feedback', 'SKILL.md'),
+        ...SUB_SKILLS.map((name) => join(config.skillsDir!, 'pointer-feedback', `${name}.md`)),
+      ]
     : [...layout];
 
   return [...skillPaths, '.pointer/pointer.sh'];

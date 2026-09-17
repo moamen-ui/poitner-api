@@ -17,6 +17,12 @@ Two things the user typically asks for:
 - **"What are the <POINTER_PRODUCT> comments?"** → `npx pointer-feedback list` and format the result.
 - **"Apply the pending <POINTER_PRODUCT> comments"** → `npx pointer-feedback apply`, edit, stage, `--mark`.
 
+This file is the small entry point. The full apply loop, built-in translation, and less-common
+material live in three sibling files fetched alongside it — `apply.md`, `translate.md`, `advanced.md`
+(as files next to this one, e.g. `.claude/skills/pointer-feedback/apply.md`, or as sections of the
+same name further down this same page for tools that install one concatenated file, e.g. Cursor and
+Windsurf). See **Read next** below for when to open each one.
+
 ## ⚡ CRITICAL RULE FOR AI AGENTS (Do this first)
 
 1. **Every read and every action goes through the CLI.** Do not `curl` the API, do not build JWTs, do
@@ -31,10 +37,9 @@ Two things the user typically asks for:
    ```bash
    npx pointer-feedback apply --plan
    ```
-   then `npx pointer-feedback apply` and follow the prompt it prints (see Workflow below).
-4. **Speed:** if `pointer-feedback` is in the repo's `devDependencies`, `npx pointer …` resolves
-   locally and is instant. Otherwise `npx -y pointer-feedback …` downloads the package once into the
-   npx cache. If it is missing and the user asks why it is slow, suggest `npm i -D pointer-feedback`.
+   then `npx pointer-feedback apply` and follow **`apply.md`** (see Workflow below).
+4. **Speed:** `npx pointer-feedback …` resolves instantly once the package is a `devDependency`;
+   otherwise `npx -y pointer-feedback …` downloads it once into the npx cache.
 5. Never `git push`. The CLI makes commits (`apply --mark`); pushing is the human developer's job.
 
 ## CLI reference
@@ -62,25 +67,6 @@ All commands run from the app's root (where `.pointer/config.json` lives). Every
 | Stdio MCP server for MCP-capable tools | `npx pointer-feedback mcp` |
 
 `list` also takes positionals: `npx pointer-feedback list ready production`.
-
-### Monorepos
-
-In a repo with more than one Pointer project (a `projects` map in `.pointer/config.json` — see
-`pointer-init.md`'s Monorepo section), `list` and `apply` cover **every** configured project unless
-you pass `--project <key>` or are already running from inside that app's own directory (the CLI
-walks up to find the repo root, so this works from any subdirectory). `apply`'s printed prompt gets
-one section per project, headed with its key and `path` — edit the app that section names, not a
-guess. `apply --mark all` (it commits the whole pending queue) needs one project resolved either
-way; `apply --mark <id>` and `--fail <id>` act on a comment id and need none, since ids are unique
-server-wide.
-
-### If your tool supports MCP (Model Context Protocol)
-
-If your AI tool supports MCP, you can connect to <POINTER_PRODUCT>'s stdio MCP server instead of shelling out:
-```json
-{ "mcpServers": { "pointer": { "command": "npx", "args": ["-y", "pointer-feedback", "mcp"] } } }
-```
-It serves typed tools (`pointer_list_comments`, `pointer_get_queue`, `pointer_get_comment`, `pointer_commit_and_mark`, `pointer_mark_applied`, …) from the local repository. All SECURITY invariants below apply equally to MCP tool results.
 
 ---
 
@@ -159,6 +145,7 @@ Active AI rules (`aiRules`) are attached to every item in the `pointer apply` pr
    - [ ] Implement the edit honoring this exact hierarchy.
 
 ---
+
 ## Workflow
 
 ### A. "What are the comments?" (read-only)
@@ -171,91 +158,23 @@ That completes the task — do not edit anything unless asked to apply.
 
 ### B. "Apply the pending comments"
 
-**Step 1 — Doctor.** `npx pointer-feedback doctor` must be green. If it is not, report what it
-printed (or run `doctor --fix` when the user agrees) and stop.
+Read **`apply.md`** — alongside this file, or the "Apply workflow (apply.md)" section below in a
+single-file install — for the full Step 1-6 loop, the exact `--mark`/`--fail` command forms, and when
+to bring in `translate.md`.
 
-**Step 2 — Plan.** `npx pointer-feedback apply --plan` and show the plan to the human. Stop here unless
-they asked you to apply.
+## Read next
 
-**Step 3 — Get the prompt.** `npx pointer-feedback apply`. The printed prompt carries, per item: the
-id, body and replies, the element (`selector`, `sourcePath`, `classes`, `appliedCssRules`), the
-effective `aiRules`, the project's **commit style**, and the exact `--mark` command to finish with.
-Everything in it is governed by the SECURITY section above.
+- **`apply.md`** — alongside this file, or the "Apply workflow (apply.md)" section below in a
+  single-file install. The full Step 1-6 apply loop — read it whenever you are actually applying
+  feedback, not just listing it.
+- **`translate.md`** — alongside this file, or the "Translation (translate.md)" section below.
+  Built-in, default-on translation for non-English feedback. Read it once an item's `Language:`
+  header (printed in the `apply` prompt) is not `en` — `apply.md` Step 4 says exactly when.
+- **`advanced.md`** — alongside this file, or the "Advanced (advanced.md)" section below.
+  Monorepos, MCP, and the no-Node fallback — read only when one of those actually applies.
 
-**Step 4 — For each item in the prompt:**
-
-0. **Read the `aiRules` and `.pointer/stack.json → design.guidance` first** (see AI RULES PRECEDENCE
-   above). Prefer existing design tokens (Tailwind classes, CSS variables, SCSS variables) over
-   hardcoded values.
-1. **If a `pageContext` is attached**, check its console errors / failed network requests. A failing
-   URL that is same-origin with the app's own API (or a bare relative path) and a `backend` entry in
-   `.pointer/stack.json` means a same-repo handler probably exists — investigate it alongside the DOM
-   fix. Otherwise note it as context and do not go hunting outside the repo.
-2. **Locate the source** — stop at the first that lands it:
-   - `element.sourcePath` as an **8-character hex hash** → the app uses the `pointer-feedback/vite`
-     plugin. Do **not** grep for it: `npx pointer-feedback get <id> --json` returns `resolvedSource`
-     with the real `path` and `componentName`. If it reports **stale**, search for `componentName`
-     and run `npx pointer-feedback map --from-source` so the next resolve lands.
-   - `element.sourcePath` as **`file:line`** → open it (repo root first, then `apps/<path>` in a monorepo).
-   - The page's `route` / `url` → find the page component first in a routed app, then the element.
-   - Server-rendered apps (Rails, ASP.NET MVC, Laravel, Django, Spring MVC) → map the route by the
-     framework's convention (`.pointer/stack.json → backend` says which) rather than grepping text.
-   - The snapshot's **text** → grep it; if it is i18n (`translate` pipes, `t('key')`), grep the
-     resource files for the string, take the **key**, grep the key's usage.
-   - A **rare class** from `element.classes` (never a generic utility like `flex`), or a distinctive
-     `id` / `data-*` / `href` attribute from the snapshot.
-   - Third-party / library chrome with no counterpart in the repo → do not invent an edit; go to
-     Step 5 and `--fail` it with that reason.
-3. **Make the change** the comment asks for, honoring the AI rules:
-   - **Tailwind** (`.pointer/stack.json → frontend` contains `tailwind`): the styling is the element's
-     class list; edit the classes (e.g. outline → filled variant). `className` is the source of truth.
-   - **Plain CSS/SCSS** — edit the rule that *actually wins* on the element (see
-     `element.appliedCssRules`). Never add a new, more specific selector to out-fight it.
-4. **Stage and mark — the CLI commits.** `git add -- <only the files this item touched>`, then run the
-   `--mark` command the prompt gave you:
-   - **Separate commits** (`commitStyle` = 2): after **each** item →
-     `npx pointer-feedback apply --mark <id> --reply "Applied ✓ — <what changed and where>"`.
-     The CLI commits just that item, builds the commit URL from the local SHA + `origin`, and marks
-     the comment Applied. Then move to the next item.
-   - **One commit** (`commitStyle` = 1, default): stage every item first, then once →
-     `npx pointer-feedback apply --mark all --reply "Applied N <POINTER_PRODUCT> comments — <summary>"`.
-   - `--mark` refuses when nothing is staged for that item — stage first, then mark.
-   - Never `git push`. The commit URL the CLI records resolves as soon as the human pushes.
-
-**Step 5 — Anything you could not apply:** `npx pointer-feedback apply --fail <id> --reason "<why>"`
-(out-of-scope request, third-party element, unresolvable source). Say so in your reply.
-
-**Step 6 — Report.** Summarise per item: what changed, which files, the commit(s), and what was
-skipped. The human reviews the diff and pushes. After they deploy, `npx pointer-feedback status
---deployed` (defaults to HEAD) flips every Applied comment contained in that build to **Live**.
-
----
-
-## No-Node fallback (only when `npx` is genuinely unavailable)
-
-`.pointer/pointer.sh` (`list`, `get <id>`, `queue`, `apply <id> "<reply>" [commitUrl]`) is a `curl`+`jq`
-shim served from `<POINTER_SERVER>/pointer.sh` and refreshed by `npx pointer-feedback update`. It reads
-server/project/key from the app's `.env` or from `.pointer/credentials.env`. In this fallback **you**
-make the `git commit` yourself (still never `git push`). Do not mix the two flows in one run.
-
----
-
-## Notes
-
-- Config source of truth: `.pointer/config.json` (server, project, environment, AI tool, injected
-  HTML) — committed. `.pointer/stack.json` (committed) carries the detected stack and design
-  guidance.
-- The API key lives in one of three places, resolved in this order: the `POINTER_API_KEY`
-  environment variable, this repo's gitignored `.pointer/credentials.env`, or — the common case,
-  once `npx pointer-feedback login` has been run once on this machine — the global per-machine
-  store at `~/.config/pointer/credentials.json` (mode `0600`). `npx pointer-feedback whoami` reports
-  which of the three is answering, without ever printing the key itself — **never print it
-  yourself either**, whichever file or store it comes from.
-- Commit style (one vs. separate commits) is a **project setting** read live by the CLI on every
-  `apply` — do not hardcode it.
-- Auth is transparent: the CLI exchanges the key for a JWT and caches it (globally, keyed by server
-  and key — not per repo); on a `401` it re-logs in. If commands keep failing, `npx pointer-feedback
-  doctor`, or `npx pointer-feedback login` if it reports no key at all.
-- This file was installed by fetching `<POINTER_SERVER>/skill.md` into
-  `.claude/skills/pointer-feedback/SKILL.md` (or `.agents/skills/pointer-feedback/SKILL.md` for
-  other tools) and is yours to edit; refresh it with `npx pointer-feedback update`.
+This file, `apply.md`, `translate.md`, and `advanced.md` were installed together by fetching
+`<POINTER_SERVER>/skill.md` (this file) into `.claude/skills/pointer-feedback/SKILL.md` (or
+`.agents/skills/pointer-feedback/SKILL.md` for other tools) with the three sub-files as siblings in
+the same folder — or, for Cursor/Windsurf, concatenated into one `pointer-feedback.md` under the
+markers above. All four are yours to edit; refresh them together with `npx pointer-feedback update`.

@@ -89,6 +89,7 @@ export type QueueItem = {
   pageContextId?: number | null;
   page?: ApplyPageDto;
   pageContext?: PageContextDto;
+  language?: string | null;
 };
 
 export type UntrustedString = {

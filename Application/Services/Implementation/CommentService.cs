@@ -163,7 +163,8 @@ public class CommentService : ICommentService
             IsPrivate = request.IsPrivate,
             OwnerId = projectOwnerId,
             Element = MapToEntity(request.Element),
-            IsBugReport = request.IsBugReport
+            IsBugReport = request.IsBugReport,
+            Language = NormalizeLanguage(request.Language)
         };
         comment.Element.Snapshot = SnapshotSanitizer.Sanitize(request.Element.Snapshot, projectInfo.CaptureTextContent);
         if (!projectInfo.CaptureTextContent && !string.IsNullOrEmpty(comment.Element.PageTitle))
@@ -386,7 +387,8 @@ public class CommentService : ICommentService
                 c.CreatedAt,
                 c.AuthorId,
                 Route = c.Element.Route,
-                SourcePath = c.Element.SourcePath
+                SourcePath = c.Element.SourcePath,
+                c.Language
             })
             .ToListAsync();
 
@@ -408,7 +410,8 @@ public class CommentService : ICommentService
             CreatedAt = r.CreatedAt,
             Route = r.Route,
             SourcePath = r.SourcePath,
-            AuthorName = names.GetValueOrDefault(r.AuthorId)
+            AuthorName = names.GetValueOrDefault(r.AuthorId),
+            Language = r.Language
         }).ToList();
 
         return Result<PagedData<CommentSummaryDto>>.Success(new PagedData<CommentSummaryDto>(items, pagination, hiddenPrivateCount));
@@ -1085,7 +1088,8 @@ public class CommentService : ICommentService
         IsBugReport = comment.IsBugReport,
         PageContextId = comment.PageContextSnapshotId,
         HasPayloadFlag = ShowsPayloadFlags ? comment.HasPayloadFlag : null,
-        PayloadFlags = ShowsPayloadFlags ? comment.PayloadFlags : null
+        PayloadFlags = ShowsPayloadFlags ? comment.PayloadFlags : null,
+        Language = comment.Language
     };
 
     private CommentResponse MapToResponse(Comment comment, IReadOnlyDictionary<Guid, string> names, List<AiRuleApplyDto>? rules = null) => new()
@@ -1115,7 +1119,8 @@ public class CommentService : ICommentService
         PageContext = MapPageContextToDto(comment.PageContextSnapshot),
         AiRules = rules ?? new List<AiRuleApplyDto>(),
         HasPayloadFlag = ShowsPayloadFlags ? comment.HasPayloadFlag : null,
-        PayloadFlags = ShowsPayloadFlags ? comment.PayloadFlags : null
+        PayloadFlags = ShowsPayloadFlags ? comment.PayloadFlags : null,
+        Language = comment.Language
     };
 
     // Apply-queue export mapper — the ONLY mapper that carries PickedActionPrompt (admin/AI path).
@@ -1232,8 +1237,17 @@ public class CommentService : ICommentService
             .Select(a => new PickedActionDto { Text = a.Text, Prompt = a.Prompt }).ToList(),
         AiRules = rules ?? new List<AiRuleApplyDto>(),
         IsBugReport = comment.IsBugReport,
-        PageContextId = comment.PageContextSnapshotId
+        PageContextId = comment.PageContextSnapshotId,
+        Language = comment.Language
     };
+
+    // Lowercase/trim the client-detected tag; "unknown" (the detector's not-confident sentinel)
+    // and empty both collapse to null rather than being stored as a literal string.
+    private static string? NormalizeLanguage(string? language)
+    {
+        var trimmed = language?.Trim().ToLowerInvariant();
+        return string.IsNullOrEmpty(trimmed) || trimmed == "unknown" ? null : trimmed;
+    }
 
     // Path only — no query/hash — so /checkout?step=1 and ?step=2 share one PageContextSnapshot.
     private static string NormalizeRoute(string? route)
