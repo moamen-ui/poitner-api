@@ -64,8 +64,8 @@ npm run typecheck      # tsc --noEmit
 
 - Source: `web-component/src/` (`element.ts`, `auth-ui.ts`, `capture.ts`, `templates.ts`, …) and
   `web-component/src/styles/` (SCSS partials + `_variables.scss`).
-- **Theming:** styles use `var(--pf-*, default)` tokens (defaults in `_variables.scss`); consumers
-  override per project from their own CSS, e.g. `pointer-feedback { --pf-primary: #0aa36e; }`.
+- **Theming:** styles use `var(--fbk-*, default)` tokens (defaults in `_variables.scss`); consumers
+  override per project from their own CSS, e.g. `pointer-feedback { --fbk-primary: #0aa36e; }`.
 - After editing the component, run `npm run build` and commit the regenerated `wwwroot/pointer.*`
   (the Docker image bakes in `wwwroot`, so a deploy just needs the built files present).
 

@@ -43,7 +43,7 @@ describe('stylesheet fallback', () => {
       }
       return {
         ok: true,
-        text: async () => '.pf-root { display: block; }',
+        text: async () => '.fbk-root { display: block; }',
       };
     });
     globalThis.fetch = fetchMock;

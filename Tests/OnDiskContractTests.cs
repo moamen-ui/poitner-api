@@ -51,7 +51,12 @@ public class OnDiskContractTests
         "data-component-source",
         "data-build-sha",
         "data-snapshot-mask",
+        // Widget-set (output) attribute on <pointer-feedback> itself — see the ON-DISK-CONTRACT.md
+        // footnote for why this is frozen, not internal, despite being widget-authored.
+        "data-fbk-theme",
         // Served URLs
+        "/widget.js",
+        "/widget.css",
         "/pointer.js",
         "/pointer.css",
         "/embed.js",
@@ -70,6 +75,7 @@ public class OnDiskContractTests
         "pointer_user",
         "pointer_env_<project>",
         "pointer_toolbar_pos",
+        "pointer_widget_theme",
         "pointer_visible",
         "pointer_page_session_id",
         // MCP config + npm
@@ -84,6 +90,7 @@ public class OnDiskContractTests
         "data-component-source",
         "data-build-sha",
         "data-snapshot-mask",
+        "data-fbk-theme",
     };
 
     // Non-customer-facing data-* attributes (widget shadow DOM, served docs, marketing markup).
@@ -105,8 +112,19 @@ public class OnDiskContractTests
         "data-brand-name",
         // Toolbar position, moved off an inline style attribute so the widget runs under a host
         // page's strict Content-Security-Policy. Shadow-DOM internal; no host reads them.
-        "data-pf-left",
-        "data-pf-top",
+        "data-fbk-left",
+        "data-fbk-top",
+        // Toolbar action/state hooks — internal selectors for element.ts's own click wiring, not a
+        // host-facing API.
+        "data-fbk-act",
+        "data-fbk-drag",
+        "data-fbk-count",
+        "data-fbk-unread",
+        // Which side a pin's hover tooltip opens on (flipped near the top edge of the viewport).
+        "data-fbk-tip-side",
+        // Comma-joined comment ids on a merged pin cluster wrapper (renderPins) — internal selector
+        // for toggleClusterMenu(), not a host-facing attribute.
+        "data-ids",
     };
 
     private static readonly string[] StorageKeys =
@@ -115,6 +133,7 @@ public class OnDiskContractTests
         "pointer_user",
         "pointer_env_",
         "pointer_toolbar_pos",
+        "pointer_widget_theme",
         "pointer_visible",
         "pointer_page_session_id",
     };

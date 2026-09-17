@@ -138,8 +138,8 @@ the tokens pierce the Shadow DOM:
 
 ```css
 pointer-feedback {
-  --pf-primary: #0aa36e;
-  --pf-radius-lg: 16px;
+  --fbk-primary: #0aa36e;
+  --fbk-radius-lg: 16px;
 }
 ```
 

@@ -3,7 +3,7 @@ import { escapeHtml } from './dom';
 import type { PointerHost, User } from './types';
 
 // One modal shell, two swappable bodies (sign-in / sign-up). The shell owns the
-// Skip control (deferred-login dismissal); the views fill #pf-auth-body and wire
+// Skip control (deferred-login dismissal); the views fill #fbk-auth-body and wire
 // their own events. Decoupled from the element via the PointerHost interface.
 
 export function showLoginModal(host: PointerHost, afterLogin?: () => void): void {
@@ -12,7 +12,7 @@ export function showLoginModal(host: PointerHost, afterLogin?: () => void): void
 
   // Skip → dismiss without logging in; restore the toolbar so the user can come
   // back to it later by clicking the tool again.
-  const skipBtn = host.root.querySelector('#pf-login-skip');
+  const skipBtn = host.root.querySelector('#fbk-login-skip');
   if (skipBtn) skipBtn.addEventListener('click', () => { host.afterLogin = null; host.renderChrome(); });
 
   renderLoginView(host);
@@ -55,14 +55,14 @@ function afterAuthOk(host: PointerHost, token: string, user: User | null): void 
 
 // --- Sign-in view --------------------------------------------------------
 export function renderLoginView(host: PointerHost, opts: { rejected?: boolean } = {}): void {
-  const body = host.root.querySelector('#pf-auth-body') as HTMLElement | null;
+  const body = host.root.querySelector('#fbk-auth-body') as HTMLElement | null;
   if (!body) return;
   body.innerHTML = TPL.loginBody(!!opts.rejected);
 
-  const emailEl = body.querySelector('#pf-email') as HTMLInputElement;
-  const passEl = body.querySelector('#pf-password') as HTMLInputElement;
-  const errEl = body.querySelector('#pf-login-error') as HTMLElement;
-  const submitBtn = body.querySelector('#pf-login-submit') as HTMLButtonElement;
+  const emailEl = body.querySelector('#fbk-email') as HTMLInputElement;
+  const passEl = body.querySelector('#fbk-password') as HTMLInputElement;
+  const errEl = body.querySelector('#fbk-login-error') as HTMLElement;
+  const submitBtn = body.querySelector('#fbk-login-submit') as HTMLButtonElement;
 
   const doLogin = async () => {
     const email = emailEl.value.trim();
@@ -95,10 +95,10 @@ export function renderLoginView(host: PointerHost, opts: { rejected?: boolean } 
       if (status === 'rejected') {
         // Re-render with the re-apply block, preserving the typed credentials.
         renderLoginView(host, { rejected: true });
-        const re = host.root.querySelector('#pf-auth-body') as HTMLElement;
-        (re.querySelector('#pf-email') as HTMLInputElement).value = email;
-        (re.querySelector('#pf-password') as HTMLInputElement).value = password;
-        (re.querySelector('#pf-login-error') as HTMLElement).textContent =
+        const re = host.root.querySelector('#fbk-auth-body') as HTMLElement;
+        (re.querySelector('#fbk-email') as HTMLInputElement).value = email;
+        (re.querySelector('#fbk-password') as HTMLInputElement).value = password;
+        (re.querySelector('#fbk-login-error') as HTMLElement).textContent =
           envelope.message || 'Your request was rejected.';
         return;
       }
@@ -114,12 +114,12 @@ export function renderLoginView(host: PointerHost, opts: { rejected?: boolean } 
   submitBtn.addEventListener('click', doLogin);
   passEl.addEventListener('keydown', (e) => { if (e.key === 'Enter') doLogin(); });
 
-  (body.querySelector('#pf-show-signup') as HTMLElement).addEventListener('click', () => renderSignupView(host));
+  (body.querySelector('#fbk-show-signup') as HTMLElement).addEventListener('click', () => renderSignupView(host));
 
   // Rejected re-apply block: populate roles and wire "Request again".
   if (opts.rejected) {
-    const roleEl = body.querySelector('#pf-reapply-role') as HTMLSelectElement;
-    const reBtn = body.querySelector('#pf-reapply-submit') as HTMLButtonElement;
+    const roleEl = body.querySelector('#fbk-reapply-role') as HTMLSelectElement;
+    const reBtn = body.querySelector('#fbk-reapply-submit') as HTMLButtonElement;
     populateRoles(host, roleEl, errEl);
     reBtn.addEventListener('click', async () => {
       const email = emailEl.value.trim();
@@ -141,9 +141,9 @@ export function renderLoginView(host: PointerHost, opts: { rejected?: boolean } 
         }
         // Success → collapse the re-apply block; show the submitted message.
         renderLoginView(host);
-        const reBody = host.root.querySelector('#pf-auth-body') as HTMLElement;
-        (reBody.querySelector('#pf-email') as HTMLInputElement).value = email;
-        (reBody.querySelector('#pf-login-error') as HTMLElement).textContent =
+        const reBody = host.root.querySelector('#fbk-auth-body') as HTMLElement;
+        (reBody.querySelector('#fbk-email') as HTMLInputElement).value = email;
+        (reBody.querySelector('#fbk-login-error') as HTMLElement).textContent =
           envelope.message || 'Request submitted — an admin will review it.';
       } catch (e) {
         errEl.textContent = 'Network error. Please try again.';
@@ -156,22 +156,22 @@ export function renderLoginView(host: PointerHost, opts: { rejected?: boolean } 
 
 // --- Sign-up view --------------------------------------------------------
 export function renderSignupView(host: PointerHost): void {
-  const body = host.root.querySelector('#pf-auth-body') as HTMLElement | null;
+  const body = host.root.querySelector('#fbk-auth-body') as HTMLElement | null;
   if (!body) return;
   body.innerHTML = TPL.signupBody();
 
-  const nameEl = body.querySelector('#pf-su-name') as HTMLInputElement;
-  const emailEl = body.querySelector('#pf-su-email') as HTMLInputElement;
-  const passEl = body.querySelector('#pf-su-password') as HTMLInputElement;
-  const roleEl = body.querySelector('#pf-su-role') as HTMLSelectElement;
-  const errEl = body.querySelector('#pf-signup-error') as HTMLElement;
-  const okEl = body.querySelector('#pf-signup-success') as HTMLElement;
-  const submitBtn = body.querySelector('#pf-signup-submit') as HTMLButtonElement;
+  const nameEl = body.querySelector('#fbk-su-name') as HTMLInputElement;
+  const emailEl = body.querySelector('#fbk-su-email') as HTMLInputElement;
+  const passEl = body.querySelector('#fbk-su-password') as HTMLInputElement;
+  const roleEl = body.querySelector('#fbk-su-role') as HTMLSelectElement;
+  const errEl = body.querySelector('#fbk-signup-error') as HTMLElement;
+  const okEl = body.querySelector('#fbk-signup-success') as HTMLElement;
+  const submitBtn = body.querySelector('#fbk-signup-submit') as HTMLButtonElement;
 
   // Populate the role <select> from /api/roles when the form opens.
   populateRoles(host, roleEl, errEl);
 
-  (body.querySelector('#pf-show-login') as HTMLElement).addEventListener('click', () => renderLoginView(host));
+  (body.querySelector('#fbk-show-login') as HTMLElement).addEventListener('click', () => renderLoginView(host));
 
   const doSignup = async () => {
     const displayName = nameEl.value.trim();

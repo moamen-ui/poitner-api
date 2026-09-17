@@ -1,11 +1,11 @@
 @use 'variables' as v;
 
-.pf-notify-badge {
+.fbk-notify-badge {
   background: v.token('notify') !important;
   color: #ffffff !important;
 }
 
-.pf-pill.verified {
+.fbk-pill.verified {
   background: v.token('success-bg');
   color: v.token('success-strong');
   font-weight: 600;
@@ -14,24 +14,27 @@
   gap: 3px;
 }
 
-.pf-card.highlight {
+.fbk-card.highlight {
   outline: 2px solid v.token('primary');
-  box-shadow: 0 0 12px rgba(37, 99, 235, 0.35);
+  // color-mix (not a hardcoded rgba) so a consumer's --fbk-primary override tints the glow
+  // too, instead of the glow staying the default blue forever.
+  box-shadow: 0 0 12px color-mix(in srgb, v.token('primary') 35%, transparent);
   transition: outline 0.3s ease, box-shadow 0.3s ease;
 }
 
-.pf-verify-group {
+.fbk-verify-group {
   display: inline-flex;
   align-items: center;
   gap: 4px;
   margin-inline-start: 6px;
 }
 
-.pf-verify-ok,
-.pf-verify-reject {
+.fbk-verify-ok,
+.fbk-verify-reject {
   cursor: pointer;
   border-radius: v.token('radius-sm');
-  padding: 2px 6px;
+  padding-block: 2px;
+  padding-inline: 6px;
   font-size: 11px;
   font-weight: 600;
   display: inline-flex;
@@ -48,30 +51,33 @@
   }
 }
 
-.pf-verify-ok:hover {
+.fbk-verify-ok:hover {
   background: v.token('success-surface');
   border-color: v.token('success');
   color: v.token('success-strong');
 }
 
-.pf-verify-reject:hover {
+.fbk-verify-reject:hover {
   background: v.token('danger-bg');
   border-color: v.token('danger');
   color: v.token('danger-strong');
 }
 
-.pf-verify-box {
+.fbk-verify-box {
   background: v.token('surface-alt');
   border: 1px solid v.token('border');
   border-radius: v.token('radius');
-  padding: 8px 10px;
-  margin: 6px 0;
+  padding-block: 8px;
+  padding-inline: 10px;
+  margin-block: 6px;
+  margin-inline: 0;
 
-  .pf-verify-note-input {
+  .fbk-verify-note-input {
     width: 100%;
     box-sizing: border-box;
     font-size: 12px;
-    padding: 6px 8px;
+    padding-block: 6px;
+    padding-inline: 8px;
     border: 1px solid v.token('border');
     border-radius: v.token('radius-sm');
     background: v.token('surface');
@@ -80,14 +86,14 @@
 }
 
 // Submit/Cancel row at the bottom of the verify box — pushed to the end.
-.pf-verify-actions {
+.fbk-verify-actions {
   display: flex;
   justify-content: flex-end;
   gap: 6px;
-  margin-top: 6px;
+  margin-block-start: 6px;
 }
 
-.pf-notifications-menu {
+.fbk-notifications-menu {
   position: fixed;
   z-index: 2147483647;
   width: 320px;
@@ -104,12 +110,13 @@
   font-size: 13px;
 }
 
-.pf-notifications-head {
+.fbk-notifications-head {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 10px 14px;
-  border-bottom: 1px solid v.token('border');
+  padding-block: 10px;
+  padding-inline: 14px;
+  border-block-end: 1px solid v.token('border');
   font-weight: 700;
   font-size: 13px;
   background: v.token('surface-alt');
@@ -122,14 +129,15 @@
   }
 }
 
-.pf-notifications-body {
+.fbk-notifications-body {
   max-height: 320px;
   overflow-y: auto;
 }
 
-.pf-notification-item {
-  padding: 10px 14px;
-  border-bottom: 1px solid v.token('border-soft');
+.fbk-notification-item {
+  padding-block: 10px;
+  padding-inline: 14px;
+  border-block-end: 1px solid v.token('border-soft');
   display: flex;
   flex-direction: column;
   gap: 4px;
@@ -141,7 +149,7 @@
   }
 
   &:last-child {
-    border-bottom: none;
+    border-block-end: none;
   }
 
   &.unread {
@@ -149,14 +157,14 @@
   }
 }
 
-.pf-notification-item-head {
+.fbk-notification-item-head {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 8px;
 }
 
-.pf-notification-item-type {
+.fbk-notification-item-type {
   display: inline-flex;
   align-items: center;
   gap: 4px;
@@ -167,29 +175,29 @@
   color: v.token('text-muted');
 }
 
-.pf-notification-item-time {
+.fbk-notification-item-time {
   font-size: 11px;
   color: v.token('text-muted');
 }
 
-.pf-notification-item-body {
+.fbk-notification-item-body {
   color: v.token('text');
   line-height: 1.4;
   word-break: break-word;
 }
 
-.pf-notification-item-commit {
-  margin-top: 2px;
+.fbk-notification-item-commit {
+  margin-block-start: 2px;
 }
 
-// Quoted reply excerpt under a "New reply" notification (pf-caption supplies the
+// Quoted reply excerpt under a "New reply" notification (fbk-caption supplies the
 // 12px muted text look).
-.pf-notification-reply {
+.fbk-notification-reply {
   font-style: italic;
 }
 
-// The notifications menu's empty state — compacter than the sidebar's .pf-empty
+// The notifications menu's empty state — compacter than the sidebar's .fbk-empty
 // (loads earlier in the cascade, so this padding wins).
-.pf-notifications-empty {
+.fbk-notifications-empty {
   padding: 16px;
 }

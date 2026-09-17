@@ -1,100 +1,290 @@
 @use 'variables' as v;
 
-// Icon-only toolbar button (e.g. Hide)
-.pf-btn.pf-icon-btn {
-  padding: 8px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-}
+/* ---------------------------------------------------------- container */
 
-// Drag handle: grab the toolbar and move it so it never covers the target element.
-.pf-grip {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  color: v.token('text-subtle');
-  cursor: grab;
-  padding: 2px;
-  border-radius: v.token('radius-sm');
-  touch-action: none;          // pointer-drag on touch without page scroll
-  user-select: none;
-}
-.pf-grip:hover { color: v.token('text'); background: v.token('surface-muted'); }
-.pf-grip.dragging { cursor: grabbing; }
-
-// Toolbar — frosted-glass: translucent + blurred so it reads well floating over an
-// arbitrary host page background, not just a plain light one.
-.pf-toolbar {
+// Toolbar — frosted-glass: translucent + blurred so it reads well floating over an arbitrary
+// host page background, not just a plain light one. Default corner is bottom-right; dragging
+// applies a translate offset (--fbk-toolbar-dx/dy, set inline by element.ts's
+// enableToolbarDrag) instead of switching to absolute left/top, so the anchor itself never
+// changes. z-toolbar sits BELOW every overlay (sidebar/pins/modal/popover/menu, 2147483645-647)
+// so none of those ever has to fight the toolbar for stacking order.
+.fbk-toolbar {
   position: fixed;
-  top: 16px;
-  right: 16px;
-  z-index: 2147483646;
-  display: flex;
+  z-index: v.token('z-toolbar');
+  inset-block-end: v.token('space-6');
+  inset-inline-end: v.token('space-6');
+  translate: var(--fbk-toolbar-dx, 0px) var(--fbk-toolbar-dy, 0px);
+
+  display: inline-flex;
   align-items: center;
-  gap: 8px;
+  gap: v.token('space-1') v.token('space-2');
+  height: 44px;
+  padding-inline: v.token('space-2');
+
+  font-family: v.token('font-ui');
+  color: v.token('text');
   background: v.token('toolbar-bg');
-  backdrop-filter: blur(16px) saturate(180%);
-  -webkit-backdrop-filter: blur(16px) saturate(180%);
   border: 1px solid v.token('toolbar-border');
-  border-radius: v.token('radius-lg');
-  padding: 8px;
-  box-shadow: 0 6px 24px v.token('shadow');
+  border-radius: 12px; // component-scoped literal — see the radii note in _variables.scss
+  box-shadow: v.token('shadow');
   pointer-events: auto;
+  user-select: none;
+
+  transition:
+    opacity v.token('dur-base') v.token('ease-out'),
+    width v.token('dur-base') v.token('ease-out'),
+    box-shadow v.token('dur-fast') v.token('ease-out');
 }
 // Graceful fallback for browsers without backdrop-filter support: fall back to a fully
-// opaque surface so the toolbar stays readable instead of looking washed-out.
-@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
-  .pf-toolbar {
-    background: v.token('surface');
+// opaque surface so the toolbar stays readable instead of looking washed-out. The frost is an
+// enhancement — toolbar-bg is authored opaque enough to stand on its own without it.
+@supports (backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px)) {
+  .fbk-toolbar {
+    -webkit-backdrop-filter: blur(14px) saturate(180%);
+    backdrop-filter: blur(14px) saturate(180%);
   }
 }
-.pf-btn {
+
+// While an element is being picked, the toolbar (other than the Cancel button it's showing —
+// Esc or clicking elsewhere also cancels) steps back rather than sitting there fully interactive
+// and clickable mid-pick.
+.fbk-toolbar.is-dim {
+  opacity: 0.45;
+  pointer-events: none;
+}
+.fbk-toolbar.is-dragging {
+  box-shadow: 0 16px 40px rgb(1 4 9 / 0.28);
+  user-select: none;
+}
+
+.fbk-toolbar__grip {
+  display: flex;
+  padding-inline: 2px;
+  color: v.token('text-subtle');
+  cursor: grab;
+  touch-action: none; // the drag handle, and only this
+}
+.fbk-toolbar.is-dragging .fbk-toolbar__grip {
+  cursor: grabbing;
+}
+
+.fbk-toolbar__divider {
+  flex: 0 0 auto;
+  inline-size: 1px;
+  block-size: 20px;
+  background: v.token('toolbar-border');
+}
+
+/* ------------------------------------------------------------ buttons */
+
+// Toolbar action button — Comment/Comments/Updates/account/minimize. A DISTINCT block from the
+// general-purpose `.fbk-btn` below (login modal, popover, edit forms) even though the
+// upstream design calls this one just ".pf-btn": reusing our shared `.fbk-btn` name here
+// would collide with its very different rules (height, radius, always-filled `.primary`) used
+// by those other surfaces.
+.fbk-toolbar-btn {
   display: inline-flex;
   align-items: center;
+  gap: v.token('space-1');
+  flex: 0 0 auto;
+  block-size: 32px;
+  padding-inline: 10px;
+  margin: 0;
+
+  font: inherit;
+  font-size: v.token('size-md');
+  line-height: v.token('lh-md');
+  font-weight: 500;
+  color: v.token('text');
+  white-space: nowrap;
+
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 6px; // component-scoped literal — see the radii note in _variables.scss
+  cursor: pointer;
+  transition: background-color v.token('dur-fast') v.token('ease-out');
+}
+.fbk-toolbar-btn:hover { background: v.token('surface-hover'); }
+.fbk-toolbar-btn:active { background: v.token('surface-muted'); }
+.fbk-toolbar-btn[aria-expanded='true'] { background: v.token('surface-muted'); }
+.fbk-toolbar-btn:focus-visible {
+  outline: 2px solid v.token('primary');
+  outline-offset: 2px;
+}
+
+// The "pressed" (picking) state, driven by JS toggling this class + aria-pressed together —
+// same idea as [aria-expanded] above, just a stronger (filled) treatment for a modal pick mode
+// rather than a plain dropdown.
+.fbk-toolbar-btn--primary,
+.fbk-toolbar-btn--primary:hover {
+  color: v.token('primary-contrast');
+  background: v.token('primary');
+}
+.fbk-toolbar-btn--primary { font-weight: 600; }
+.fbk-toolbar-btn--primary:hover,
+.fbk-toolbar-btn--primary:active { background: v.token('primary-hover'); }
+
+.fbk-toolbar-btn--icon {
+  inline-size: 32px;
+  padding-inline: 0;
+  justify-content: center;
+  color: v.token('text-muted');
+  position: relative;
+}
+
+.fbk-toolbar-btn--avatar {
+  inline-size: 32px;
+  padding-inline: 0;
+  justify-content: center;
+  font-size: v.token('size-xs');
+  font-weight: 600;
+  color: v.token('text-muted');
+  background: v.token('surface-muted');
+  border-color: v.token('toolbar-border');
+  border-radius: 50%;
+}
+
+.fbk-toolbar-btn__icon { flex: 0 0 auto; } // 15-16px inline svg, currentColor
+// Every toolbar button is icon-only — the name lives in `title` (the tooltip) and `aria-label`
+// instead of a visible label, so the toolbar reads at a glance instead of as a row of buttons.
+// The Comments button is the one exception: it also carries a count, so it stays auto-width
+// instead of a fixed 32px square.
+.fbk-toolbar-btn--comments { inline-size: auto; padding-inline: 7px; }
+
+/* -------------------------------------------------------- indicators */
+
+// Count badge inside the Comments button.
+.fbk-toolbar-count {
+  min-inline-size: 18px;
+  padding-inline: 5px;
+  font-size: v.token('size-xs');
+  line-height: 16px;
+  font-weight: 600;
+  text-align: center;
+  color: v.token('text-muted');
+  background: v.token('surface-muted');
+  border-radius: v.token('radius-full');
+  font-family: v.token('font-mono');
+}
+.fbk-toolbar-btn--primary .fbk-toolbar-count {
+  color: v.token('primary');
+  background: v.token('primary-contrast');
+}
+
+// Unread-activity indicator on the Updates button — a plain dot, not a count (the exact
+// number is one click away, in the dropdown itself). Red (not primary) so it reads as "look at
+// this" the same way an unread badge does anywhere else.
+.fbk-toolbar-dot {
+  position: absolute;
+  inset-block-start: 4px;
+  inset-inline-end: 4px;
+  inline-size: 7px;
+  block-size: 7px;
+  border-radius: 50%;
+  background: v.token('danger');
+  box-shadow: 0 0 0 2px v.token('surface');
+}
+
+/* ---------------------------------------------------------- variants */
+
+// Reset position: exists only once the toolbar has actually been moved (element.ts toggles
+// `.is-moved` on the toolbar itself — see resetToolbarPos/restoreToolbarPos).
+.fbk-toolbar__reset,
+.fbk-toolbar__divider--moved {
+  display: none;
+}
+.fbk-toolbar.is-moved .fbk-toolbar__reset,
+.fbk-toolbar.is-moved .fbk-toolbar__divider--moved {
+  display: inline-flex;
+}
+.fbk-toolbar__reset {
+  block-size: 26px;
+  color: v.token('text-muted');
+  background: v.token('surface-alt');
+  border-color: v.token('toolbar-border');
+}
+
+/* ----------------------------------------------------------- phone */
+
+@media (max-width: 600px) {
+  .fbk-toolbar {
+    inset-inline-start: v.token('space-4'); // away from the host's own FAB
+    inset-inline-end: auto;
+    inset-block-end: v.token('space-5');
+    block-size: 52px;
+    gap: v.token('space-1');
+  }
+  .fbk-toolbar-btn,
+  .fbk-toolbar-btn--icon,
+  .fbk-toolbar-btn--avatar {
+    block-size: 44px;
+    min-inline-size: 44px;
+  }
+  .fbk-toolbar__grip { display: none; } // no dragging on touch
+}
+
+/* ------------------------------------------------------ reduced motion */
+
+@media (prefers-reduced-motion: reduce) {
+  .fbk-toolbar,
+  .fbk-toolbar-btn { transition-duration: 1ms; }
+}
+
+// General-purpose button — login/signup modal, popover "Add", inline-edit Save. The toolbar's
+// own buttons use `.fbk-toolbar-btn` above instead.
+.fbk-btn {
+  display: inline-flex;
+  align-items: center;
+  height: 36px;
   gap: 6px;
   border: none;
-  border-radius: v.token('radius');
-  padding: 8px 12px;
+  border-radius: v.token('radius-md');
+  padding-block: 0;
+  padding-inline: 10px;
   font-size: 13px;
   font-weight: 600;
   cursor: pointer;
-  background: v.token('surface-muted');
+  background: transparent;
   color: v.token('text');
+  transition: background 0.12s ease, color 0.12s ease;
+  white-space: nowrap;
 }
-.pf-btn:hover {
+.fbk-btn:hover {
   background: v.token('surface-hover');
 }
-.pf-btn.primary {
+.fbk-btn:focus-visible {
+  outline: 2px solid v.token('primary');
+  outline-offset: 1px;
+}
+.fbk-btn.primary {
   background: v.token('primary');
   color: v.token('primary-contrast');
 }
-.pf-btn.primary:hover {
+.fbk-btn.primary:hover {
   background: v.token('primary-hover');
 }
-.pf-btn.active {
-  background: v.token('primary-hover');
-  color: v.token('primary-contrast');
-}
-.pf-btn.pf-link {
+.fbk-btn.fbk-link {
   background: transparent;
   color: v.token('text-muted');
   font-weight: 500;
 }
-.pf-btn.pf-link:hover {
+.fbk-btn.fbk-link:hover {
   background: v.token('surface-muted');
   color: v.token('text');
 }
-.pf-badge {
+// Comment-card numbering pill (see templates.ts's card renderer) — unrelated to the toolbar,
+// just declared in this file historically.
+.fbk-badge {
   background: v.token('primary');
   color: v.token('primary-contrast');
   border-radius: 999px;
-  padding: 1px 7px;
+  padding-block: 1px;
+  padding-inline: 7px;
   font-size: 11px;
 }
 
 // User dropdown menu (identity + sign out), anchored under the user icon.
-.pf-menu {
+.fbk-menu {
   position: fixed;
   z-index: 2147483647;
   min-width: 180px;
@@ -105,23 +295,24 @@
   padding: 6px;
   pointer-events: auto;
 }
-.pf-menu-id {
+.fbk-menu-id {
   display: flex;
   flex-direction: column;
   gap: 2px;
-  padding: 6px 8px;
+  padding-block: 6px;
+  padding-inline: 8px;
   font-size: 12px;
   font-weight: 600;
   color: v.token('text');
-  border-bottom: 1px solid v.token('border-soft');
-  margin-bottom: 4px;
+  border-block-end: 1px solid v.token('border-soft');
+  margin-block-end: 4px;
 }
-.pf-menu-role {
+.fbk-menu-role {
   font-size: 11px;
   font-weight: 500;
   color: v.token('text-subtle');
 }
-.pf-menu-item {
+.fbk-menu-item {
   display: flex;
   align-items: center;
   gap: 8px;
@@ -136,27 +327,37 @@
   color: v.token('text');
   text-align: start;
 }
-.pf-menu-item:hover {
+.fbk-menu-item:hover {
   background: v.token('surface-muted');
 }
 // Per-user "Add comment" shortcut row (label + rebind + reset buttons).
-.pf-menu-shortcut {
+.fbk-menu-shortcut {
   display: flex;
   align-items: center;
   gap: 6px;
-  padding: 6px 12px;
+  padding-block: 6px;
+  padding-inline: 12px;
   font-size: 12px;
 }
-.pf-menu-shortcut-label {
+.fbk-menu-shortcut-label {
   flex: 1;
   color: inherit;
 }
-// Extension-auth note (pf-caption supplies the 12px muted text look).
-.pf-menu-note {
-  padding: 8px 12px;
+// Selected state for the theme/language toggle buttons in the user menu (fbk-menu-shortcut rows).
+.fbk-mini.is-active {
+  background: v.token('primary');
+  color: v.token('primary-contrast');
+}
+.fbk-mini.is-active:hover {
+  background: v.token('primary-hover');
+}
+// Extension-auth note (fbk-caption supplies the 12px muted text look).
+.fbk-menu-note {
+  padding-block: 8px;
+  padding-inline: 12px;
 }
 // Action button that grows to fill its row (popover Add, inline-edit Save).
-.pf-btn.pf-btn-fill {
+.fbk-btn.fbk-btn-fill {
   flex: 1;
   justify-content: center;
 }

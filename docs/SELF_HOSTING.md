@@ -121,7 +121,7 @@ npm run typecheck      # tsc --noEmit
 
 - Source: `web-component/src/` (`element.ts`, `auth-ui.ts`, `capture.ts`, `templates.ts`, …) +
   `web-component/src/styles/` (SCSS partials + `_variables.scss`).
-- **Theming:** styles use `var(--pf-*, default)` tokens (defaults in `_variables.scss`); consumers
+- **Theming:** styles use `var(--fbk-*, default)` tokens (defaults in `_variables.scss`); consumers
   override per project from their own CSS.
 - After editing, run `npm run build` and commit the regenerated `wwwroot/pointer.*` (the Docker image
   bakes in `wwwroot`).

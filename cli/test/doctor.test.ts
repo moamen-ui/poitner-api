@@ -35,7 +35,7 @@ async function stubServer(routes: Record<string, [number, unknown]>): Promise<{ 
       return;
     }
     const [status, body] = hit;
-    const isScript = key.endsWith('/pointer.js');
+    const isScript = key.endsWith('/widget.js');
     res.writeHead(status, { 'content-type': isScript ? 'application/javascript' : 'application/json' });
     res.end(isScript ? String(body) : JSON.stringify({ isSuccess: status < 400, data: body }));
   });
@@ -151,7 +151,7 @@ test('a rejected API key is an error, and a valid one unlocks the project check'
     'GET /api/meta': [200, { minCliVersion: '0.0.1', serverTime: now }],
     'POST /api/auth/login-with-key': [200, { status: 'ok', token: 'jwt' }],
     'GET /api/admin/projects': [200, [{ key: 'demo', isActiveLocal: true }]],
-    'GET /pointer.js': [200, 'console.log(1)'],
+    'GET /widget.js': [200, 'console.log(1)'],
   });
   const goodDir = await scratch({ server: accepting.url, project: 'demo', environment: 'local' }, 'ptr_good');
   const goodChecks = await runInitChecks(goodDir, {}, '1.0.0');
@@ -176,7 +176,7 @@ test('the key check names its source, including the global store, and hints `log
     'GET /api/meta': [200, { minCliVersion: '0.0.1', serverTime: now }],
     'POST /api/auth/login-with-key': [200, { status: 'ok', token: 'jwt' }],
     'GET /api/admin/projects': [200, [{ key: 'demo', isActiveLocal: true }]],
-    'GET /pointer.js': [200, 'console.log(1)'],
+    'GET /widget.js': [200, 'console.log(1)'],
   });
 
   const prevConfigDir = process.env.POINTER_CONFIG_DIR;
@@ -225,7 +225,7 @@ test('a project active for nothing warns, not errors, independent of any configu
     'GET /api/meta': [200, { minCliVersion: '0.0.1', serverTime: new Date().toISOString() }],
     'POST /api/auth/login-with-key': [200, { status: 'ok', token: 'jwt' }],
     'GET /api/admin/projects': [200, [{ key: 'demo', isActiveProduction: false }]],
-    'GET /pointer.js': [200, 'console.log(1)'],
+    'GET /widget.js': [200, 'console.log(1)'],
   });
   // No `environment` in config any more (the field is deprecated) — the check must not depend on
   // one being present, or on its value, to decide the message.
@@ -246,7 +246,7 @@ test('a project active for several environments reports all of them, from the se
     'GET /api/meta': [200, { minCliVersion: '0.0.1', serverTime: new Date().toISOString() }],
     'POST /api/auth/login-with-key': [200, { status: 'ok', token: 'jwt' }],
     'GET /api/admin/projects': [200, [{ key: 'demo', isActiveLocal: true, isActiveStaging: true, isActiveProduction: false }]],
-    'GET /pointer.js': [200, 'console.log(1)'],
+    'GET /widget.js': [200, 'console.log(1)'],
   });
   const dir = await scratch({ server: stub.url, project: 'demo' }, 'ptr_good');
 
@@ -264,7 +264,7 @@ test('a project missing from the workspace is an error', async () => {
     'GET /api/meta': [200, { minCliVersion: '0.0.1', serverTime: new Date().toISOString() }],
     'POST /api/auth/login-with-key': [200, { status: 'ok', token: 'jwt' }],
     'GET /api/admin/projects': [200, [{ key: 'something-else', isActiveLocal: true }]],
-    'GET /pointer.js': [200, 'console.log(1)'],
+    'GET /widget.js': [200, 'console.log(1)'],
   });
   const dir = await scratch({ server: stub.url, project: 'demo', environment: 'local' }, 'ptr_good');
 
@@ -340,7 +340,7 @@ test('multi-project: runs project/widget/stack checks per app, keyed with [proje
         { key: 'b', isActiveLocal: false },
       ],
     ],
-    'GET /pointer.js': [200, 'console.log(1)'],
+    'GET /widget.js': [200, 'console.log(1)'],
   });
 
   const dir = await scratch(
@@ -387,7 +387,7 @@ test('multi-project: --project narrows every per-project check to that one app',
     'GET /api/meta': [200, { minCliVersion: '0.0.1', serverTime: new Date().toISOString() }],
     'POST /api/auth/login-with-key': [200, { status: 'ok', token: 'jwt' }],
     'GET /api/admin/projects': [200, [{ key: 'a', isActiveLocal: true }]],
-    'GET /pointer.js': [200, 'console.log(1)'],
+    'GET /widget.js': [200, 'console.log(1)'],
   });
 
   const dir = await scratch(

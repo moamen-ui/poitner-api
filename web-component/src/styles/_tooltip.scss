@@ -4,7 +4,7 @@
 // on hover/focus, positioned by `data-placement`. Instant and stylable, unlike the native browser
 // tooltip. Ported from https://codepen.io/moamen/pen/bwZWMO for the toolbar's icon-only buttons.
 // Usage: add `data-toggle="tooltip" data-placement="top|right|bottom|left"` alongside `title`.
-%pf-tooltip-pos {
+%fbk-tooltip-pos {
   position: absolute;
   color: #fff;
   transition: margin 120ms ease-out, opacity 120ms ease-out, visibility 120ms ease-out;
@@ -13,25 +13,26 @@
   pointer-events: none;
   z-index: 1;
 }
-%pf-tooltip-top { bottom: 101%; left: 50%; transform: translateX(-50%); margin-bottom: 14px; }
-%pf-tooltip-bottom { top: 101%; left: 50%; transform: translateX(-50%); margin-top: 14px; }
-%pf-tooltip-right { top: 50%; left: 101%; transform: translateY(-50%); margin-left: 14px; }
-%pf-tooltip-left { top: 50%; right: 101%; transform: translateY(-50%); margin-right: 14px; }
+%fbk-tooltip-top { inset-block-end: 101%; inset-inline-start: 50%; transform: translateX(-50%); margin-block-end: 14px; }
+%fbk-tooltip-bottom { inset-block-start: 101%; inset-inline-start: 50%; transform: translateX(-50%); margin-block-start: 14px; }
+%fbk-tooltip-right { inset-block-start: 50%; inset-inline-start: 101%; transform: translateY(-50%); margin-inline-start: 14px; }
+%fbk-tooltip-left { inset-block-start: 50%; inset-inline-end: 101%; transform: translateY(-50%); margin-inline-end: 14px; }
 
 // Each placement's arrow points back at the trigger, so it needs the margin on the OPPOSITE
 // side shrunk on hover (the box/arrow slide in slightly while fading in).
-$pf-tooltip-opposite: ('top': 'bottom', 'right': 'left', 'bottom': 'top', 'left': 'right');
+$fbk-tooltip-opposite: ('top': 'bottom', 'right': 'left', 'bottom': 'top', 'left': 'right');
 
 [data-toggle='tooltip'] {
   position: relative;
 
   &::before,
   &::after {
-    @extend %pf-tooltip-pos;
+    @extend %fbk-tooltip-pos;
   }
   &::before {
     content: attr(title);
-    padding: 5px 9px;
+    padding-block: 5px;
+    padding-inline: 9px;
     border-radius: v.token('radius-sm');
     background: v.token('text');
     font-size: 11px;
@@ -53,11 +54,11 @@ $pf-tooltip-opposite: ('top': 'bottom', 'right': 'left', 'bottom': 'top', 'left'
     }
   }
 
-  @each $place, $opposite in $pf-tooltip-opposite {
+  @each $place, $opposite in $fbk-tooltip-opposite {
     &[data-placement='#{$place}'] {
       &::before,
       &::after {
-        @extend %pf-tooltip-#{$place};
+        @extend %fbk-tooltip-#{$place};
       }
       &:hover,
       &:focus-visible {

@@ -1,23 +1,133 @@
 @use 'variables' as v;
 
-// Toast
-.pf-toast {
+// Toast stack — a fixed, bottom-centered column that grows upward as more toasts appear.
+// `column-reverse` + always appending new toasts as the LAST DOM child means each new one lands
+// closest to the anchor and pushes older ones up, which is the stacking order people expect.
+// `pointer-events: none` on the container (re-enabled per-card below) keeps the host page
+// clickable through the gaps between toasts.
+.fbk-toast-container {
   position: fixed;
-  bottom: 20px;
-  left: 50%;
+  inset-block-end: 84px; // sits above the 52px floating launcher/toolbar
+  inset-inline-start: 50%;
   transform: translateX(-50%);
+  display: flex;
+  flex-direction: column-reverse;
+  align-items: center;
+  gap: 8px;
   z-index: 2147483647;
-  background: v.token('text');
-  color: v.token('primary-contrast');
-  padding: 10px 16px;
-  border-radius: v.token('radius');
+  pointer-events: none;
+  width: max-content;
+  max-width: calc(100vw - 32px);
+}
+
+.fbk-toast {
+  pointer-events: auto;
+  background: v.token('surface');
+  color: v.token('text');
+  border: 1px solid v.token('border');
+  border-radius: 8px;
+  box-shadow: v.token('shadow-toast');
+  padding-block: 8px;
+  padding-inline: 12px;
+  min-height: 40px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-family: v.token('font-ui');
   font-size: 13px;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
+  line-height: 1.4;
+  user-select: none;
+  animation: fbk-toast-in v.token('transition-spring') forwards;
+  transition: transform v.token('transition-fast'), opacity v.token('transition-fast');
+}
+@keyframes fbk-toast-in {
+  from { opacity: 0; transform: translateY(12px) scale(0.96); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+// Applied by element.ts's toast() right before removing the node, so the exit plays instead of
+// the toast just vanishing.
+.fbk-toast.dismissing {
+  opacity: 0;
+  transform: translateY(-8px) scale(0.95);
   pointer-events: none;
 }
-.pf-toast.error {
-  background: v.token('danger-strong');
+
+.fbk-toast-content {
+  display: flex;
+  align-items: center;
+  gap: 4px;
 }
-.pf-toast.success {
-  background: v.token('success');
+.fbk-toast-message strong {
+  font-weight: 600;
+}
+
+.fbk-toast-icon {
+  width: 20px;
+  height: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+.fbk-toast-success {
+  border-color: v.token('toast-success-border');
+}
+.fbk-toast-success .fbk-toast-icon {
+  color: v.token('toast-success');
+}
+.fbk-toast-warn {
+  border-color: v.token('toast-warn-border');
+}
+.fbk-toast-warn .fbk-toast-icon {
+  color: v.token('toast-warn');
+}
+.fbk-toast-danger {
+  border-color: v.token('toast-danger-border');
+}
+.fbk-toast-danger .fbk-toast-icon {
+  color: v.token('toast-danger');
+}
+
+.fbk-toast-action {
+  background: transparent;
+  border: none;
+  color: v.token('primary');
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  padding-block: 2px;
+  padding-inline: 6px;
+  border-radius: 6px;
+  cursor: pointer;
+  margin-inline-start: 2px;
+  transition: background v.token('transition-fast');
+}
+.fbk-toast-action:hover {
+  background: v.token('surface-hover');
+  text-decoration: underline;
+}
+
+.fbk-toast-close {
+  background: transparent;
+  border: none;
+  color: v.token('text-muted');
+  width: 22px;
+  height: 22px;
+  border-radius: 6px;
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+  padding: 0;
+  margin-inline-start: 4px;
+  transition: background v.token('transition-fast'), color v.token('transition-fast');
+}
+.fbk-toast-close:hover {
+  background: v.token('surface-hover');
+  color: v.token('text');
+}
+
+.fbk-toast-action:focus-visible,
+.fbk-toast-close:focus-visible {
+  outline: 2px solid v.token('primary');
+  outline-offset: 1px;
 }

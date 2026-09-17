@@ -30,7 +30,7 @@ async function stubServer(routes: Record<string, [number, unknown]>): Promise<{ 
       return;
     }
     const [status, body] = hit;
-    const isScript = key.endsWith('/pointer.js');
+    const isScript = key.endsWith('/widget.js');
     res.writeHead(status, { 'content-type': isScript ? 'application/javascript' : 'application/json' });
     res.end(isScript ? String(body) : JSON.stringify({ isSuccess: status < 400, data: body }));
   });

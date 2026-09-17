@@ -21,7 +21,7 @@ export async function injectStatic(
         /**
          * Pin the widget to one immutable build, with Subresource Integrity.
          *
-         * Unpinned, `/pointer.js` is whatever the server is serving today — convenient, and the
+         * Unpinned, `/widget.js` is whatever the server is serving today — convenient, and the
          * right default for most installs. Pinned, the page loads exactly the bytes it was tested
          * against and the browser refuses anything else, which is what a site needs when a
          * third-party script sits on a page handling real users.
@@ -70,7 +70,7 @@ export async function injectStatic(
     '%VITE_POINTER_PROJECT%' !== ''
   ) {
     var s = document.createElement('script');
-    s.src = '%VITE_POINTER_SERVER%/pointer.js${pinnedSrc}';${pinnedProps}
+    s.src = '%VITE_POINTER_SERVER%/widget.js${pinnedSrc}';${pinnedProps}
     s.defer = true;
     document.head.appendChild(s);
     // Deferred until the body exists. Injected just above </body> this is already true, but the
@@ -89,7 +89,7 @@ export async function injectStatic(
 </script>
 <!-- pointer-feedback:end -->`
         : `<!-- pointer-feedback:start -->
-<script${pinnedAttrs} src="${cfg.server}/pointer.js${pinnedSrc}" defer></script>
+<script${pinnedAttrs} src="${cfg.server}/widget.js${pinnedSrc}" defer></script>
 <pointer-feedback project="${cfg.key}" server="${cfg.server}"${envAttr}></pointer-feedback>
 <!-- pointer-feedback:end -->`;
 

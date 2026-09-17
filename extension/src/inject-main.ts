@@ -13,7 +13,7 @@ export function injectMain(cfg: {
   isAdmin?: boolean;
   isQuickAccess?: boolean;
   /** Extension-origin URL for the bundled snapdom (chrome-extension://…) — this one stays bundled
-   *  since it changes rarely, unlike pointer.js/pointer.css below. */
+   *  since it changes rarely, unlike widget.js/widget.css below. */
   snapdomUrl?: string;
 }): void {
   const w = window as unknown as Record<string, unknown>;
@@ -89,7 +89,7 @@ export function injectMain(cfg: {
       : undefined,
     proxy: true,
     // cssUrl intentionally omitted: with no override, the widget falls back to loading its
-    // stylesheet from `${server}/pointer.css` on its own — same as the plain (non-extension) embed.
+    // stylesheet from `${server}/widget.css` on its own — same as the plain (non-extension) embed.
     // snapdom stays bundled at the extension origin (changes rarely).
     snapdomUrl: cfg.snapdomUrl,
   };
@@ -100,14 +100,14 @@ export function injectMain(cfg: {
   // tag a website could add itself. That's what makes a CSS tweak or a small widget fix a server-side
   // deploy, live for every installed copy immediately, with no extension update/re-review needed.
   const script = document.createElement('script');
-  script.src = `${cfg.server}/pointer.js`;
+  script.src = `${cfg.server}/widget.js`;
   script.defer = true;
   document.head.appendChild(script);
 
   // Mount the widget host — and KEEP it mounted. SPA frameworks (React/Vue/Angular) re-render
   // and routinely evict a node appended to <body> (or replace <body> entirely) once they hydrate,
   // so a one-shot append vanishes. Re-append whenever it goes missing; the custom-element
-  // definition (from pointer.js) persists on the window, so re-adding the host is cheap.
+  // definition (from widget.js) persists on the window, so re-adding the host is cheap.
   const mount = (): void => {
     if (!document.querySelector('pointer-feedback')) {
       (document.body || document.documentElement).appendChild(document.createElement('pointer-feedback'));

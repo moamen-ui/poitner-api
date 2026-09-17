@@ -596,9 +596,9 @@ export async function initCommand(cwd: string, options: Record<string, string | 
         try {
             const manifest = await api<any>(server as string, '/pointer.version.json');
             const version = manifest?.hash;
-            const integrity = manifest?.files?.['pointer.js']?.integrity;
+            const integrity = manifest?.files?.['widget.js']?.integrity;
             if (!version || !integrity) {
-                throw new Error('the server published no hash/integrity for pointer.js');
+                throw new Error('the server published no hash/integrity for widget.js');
             }
             pin = { version, integrity };
         } catch (err: any) {
@@ -1168,8 +1168,8 @@ async function resolvePin(
     try {
         const manifest = await api<any>(server, '/pointer.version.json');
         const version = manifest?.hash;
-        const integrity = manifest?.files?.['pointer.js']?.integrity;
-        if (!version || !integrity) throw new Error('the server published no hash/integrity for pointer.js');
+        const integrity = manifest?.files?.['widget.js']?.integrity;
+        if (!version || !integrity) throw new Error('the server published no hash/integrity for widget.js');
         return { version, integrity };
     } catch (err: any) {
         console.error(

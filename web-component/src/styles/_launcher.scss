@@ -1,56 +1,78 @@
 @use 'variables' as v;
 
 // Collapsed launcher (floating button that re-opens the overlay). Corner is set
-// by a pf-pos-* class; logical insets follow the shadow UI's writing direction.
-.pf-launcher {
+// by a fbk-pos-* class; logical insets follow the shadow UI's writing direction.
+.fbk-launcher {
   position: fixed;
   z-index: 2147483647;
   width: 52px;
   height: 52px;
-  border-radius: 50%;
-  border: none;
-  background: v.token('primary');
-  color: v.token('primary-contrast');
+  border-radius: v.token('radius-full');
+  border: 1px solid v.token('border');
+  background: v.token('launcher-bg');
+  color: v.token('launcher-fg');
   display: flex;
   align-items: center;
   justify-content: center;
   cursor: pointer;
-  box-shadow: 0 8px 24px rgba(37, 99, 235, 0.45);
+  box-shadow: v.token('shadow-lg');
   pointer-events: auto;
-  // Pulse a few times on appear to draw the eye, then settle.
-  animation: pf-launcher-pop 0.25s ease-out, pf-launcher-pulse 2s ease-out 0.25s 3;
+  transition: transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 0.18s ease;
+  animation: fbk-launcher-pop 0.25s ease-out;
 }
-.pf-launcher:hover {
-  background: v.token('primary-hover');
+.fbk-launcher:hover {
   transform: scale(1.06);
+  box-shadow: v.token('shadow-floating');
 }
-.pf-launcher.pf-rtl { direction: rtl; }
-.pf-launcher.pf-pos-bottom-end { inset-block-end: 20px; inset-inline-end: 20px; }
-.pf-launcher.pf-pos-bottom-start { inset-block-end: 20px; inset-inline-start: 20px; }
-.pf-launcher.pf-pos-top-end { inset-block-start: 20px; inset-inline-end: 20px; }
-.pf-launcher.pf-pos-top-start { inset-block-start: 20px; inset-inline-start: 20px; }
-@keyframes pf-launcher-pop {
+.fbk-launcher:focus-visible {
+  outline: 2px solid v.token('primary');
+  outline-offset: 2px;
+}
+.fbk-launcher.fbk-rtl { direction: rtl; }
+.fbk-launcher.fbk-pos-bottom-end { inset-block-end: 20px; inset-inline-end: 20px; }
+.fbk-launcher.fbk-pos-bottom-start { inset-block-end: 20px; inset-inline-start: 20px; }
+.fbk-launcher.fbk-pos-top-end { inset-block-start: 20px; inset-inline-end: 20px; }
+.fbk-launcher.fbk-pos-top-start { inset-block-start: 20px; inset-inline-start: 20px; }
+@keyframes fbk-launcher-pop {
   from { transform: scale(0.5); opacity: 0; }
   to { transform: scale(1); opacity: 1; }
 }
-@keyframes pf-launcher-pulse {
-  0% { box-shadow: 0 8px 24px rgba(37, 99, 235, 0.45), 0 0 0 0 rgba(37, 99, 235, 0.5); }
-  70% { box-shadow: 0 8px 24px rgba(37, 99, 235, 0.45), 0 0 0 14px rgba(37, 99, 235, 0); }
-  100% { box-shadow: 0 8px 24px rgba(37, 99, 235, 0.45), 0 0 0 0 rgba(37, 99, 235, 0); }
-}
-.pf-launcher-badge {
+
+// Attention ring: a slow, continuous pulse that draws the eye to the launcher. Rendered as its
+// own element (not a box-shadow animation) so it scales/fades independently of the launcher's
+// own hover transform.
+.fbk-launcher-ring {
   position: absolute;
-  top: -4px;
-  right: -4px;
-  min-width: 18px;
-  height: 18px;
-  padding: 0 4px;
-  border-radius: 999px;
+  inset: -4px;
+  border-radius: v.token('radius-full');
+  border: 2px solid v.token('primary');
+  pointer-events: none;
+  opacity: 0;
+  animation: fbk-launcher-ring-pulse 2.4s cubic-bezier(0.25, 1, 0.5, 1) infinite;
+}
+@keyframes fbk-launcher-ring-pulse {
+  0% { transform: scale(0.95); opacity: 0.8; }
+  70% { transform: scale(1.25); opacity: 0; }
+  100% { transform: scale(1.25); opacity: 0; }
+}
+
+.fbk-launcher-badge {
+  position: absolute;
+  inset-block-start: -3px;
+  inset-inline-end: -3px;
+  min-width: 20px;
+  height: 20px;
+  padding-block: 0;
+  padding-inline: 5px;
+  border-radius: v.token('radius-full');
   background: v.token('badge');
-  color: v.token('primary-contrast');
+  color: #fff;
   font-size: 11px;
   font-weight: 700;
-  line-height: 18px;
+  line-height: 18px; // minus the 2px border top+bottom, so text sits centered
   text-align: center;
-  border: 2px solid v.token('surface');
+  // Matches .fbk-launcher's own background (not 'surface') so the ring reads as a punch-out of
+  // the actual button behind it.
+  border: 2px solid v.token('launcher-bg');
+  font-family: ui-monospace, monospace;
 }

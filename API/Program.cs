@@ -208,7 +208,7 @@ app.UseSwaggerUI(c =>
     // EVERY setting comes from the "Pointer" section of appsettings*.json, so it's
     // toggled/tuned per environment (appsettings.{Environment}.json or env vars):
     //   Enabled      — turn the embed on/off
-    //   Server       — absolute Pointer server URL (used for embed.js + pointer.js)
+    //   Server       — absolute Pointer server URL (used for embed.js + widget.js)
     //   Project      — dashboard project key; blank → this app's name (assembly)
     //   Environment  — comment environment tag (local|staging|production)
     var pointer = app.Configuration.GetSection("Pointer");
@@ -290,7 +290,7 @@ app.Use(async (ctx, next) =>
     await next();
 });
 
-// Widget versioning pipeline for /pointer.js and /pointer.css (R3-03)
+// Widget versioning pipeline for /widget.js and /widget.css (R3-03)
 app.Use((ctx, next) =>
 {
     var widgetInfo = ctx.RequestServices.GetRequiredService<WidgetVersionInfo>();
@@ -328,7 +328,7 @@ app.UseRateLimiter();
 
 // Self-configuring embed loader: any page (e.g. another API's Swagger UI) can add
 //   <script src="https://<pointer-server>/embed.js?project=<key>"></script>
-// and it injects pointer.js + a configured <pointer-feedback>, with server = this
+// and it injects widget.js + a configured <pointer-feedback>, with server = this
 // origin. Reusable across projects; the project key comes from the query string.
 app.MapGet("/embed.js", (HttpContext ctx) =>
 {
@@ -346,7 +346,7 @@ $$"""
   var server = '{{origin}}';
   function mount() {
     var s = document.createElement('script');
-    s.src = server + '/pointer.js';
+    s.src = server + '/widget.js';
     s.defer = true;
     document.head.appendChild(s);
     var el = document.createElement('pointer-feedback');

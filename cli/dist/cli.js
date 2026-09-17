@@ -1617,7 +1617,7 @@ async function injectStatic(cwd2, htmlPath, cfg) {
     '%VITE_POINTER_PROJECT%' !== ''
   ) {
     var s = document.createElement('script');
-    s.src = '%VITE_POINTER_SERVER%/pointer.js${pinnedSrc}';${pinnedProps}
+    s.src = '%VITE_POINTER_SERVER%/widget.js${pinnedSrc}';${pinnedProps}
     s.defer = true;
     document.head.appendChild(s);
     // Deferred until the body exists. Injected just above </body> this is already true, but the
@@ -1635,7 +1635,7 @@ async function injectStatic(cwd2, htmlPath, cfg) {
   }
 </script>
 <!-- pointer-feedback:end -->` : `<!-- pointer-feedback:start -->
-<script${pinnedAttrs} src="${cfg.server}/pointer.js${pinnedSrc}" defer></script>
+<script${pinnedAttrs} src="${cfg.server}/widget.js${pinnedSrc}" defer></script>
 <pointer-feedback project="${cfg.key}" server="${cfg.server}"${envAttr}></pointer-feedback>
 <!-- pointer-feedback:end -->`;
   const re = /<!-- pointer-feedback:start -->[\s\S]*?<!-- pointer-feedback:end -->/;
@@ -2268,7 +2268,7 @@ async function runInitChecks(cwd2, overrides = {}, cliVersion = "0.0.0") {
   }
   if (serverReachable) {
     try {
-      const res = await fetchWithTimeout(`${server}/pointer.js`, 3e3);
+      const res = await fetchWithTimeout(`${server}/widget.js`, 3e3);
       const type = res.headers.get("content-type") || "";
       checks.push(
         res.ok && type.includes("javascript") ? { id: "widget-served", status: "ok", message: "Widget script served" } : { id: "widget-served", status: "error", message: `Widget script not served (HTTP ${res.status})` }
@@ -3534,9 +3534,9 @@ and the pointer-init skill uses them to mount the widget for you afterwards.
     try {
       const manifest = await api(server, "/pointer.version.json");
       const version = manifest?.hash;
-      const integrity = manifest?.files?.["pointer.js"]?.integrity;
+      const integrity = manifest?.files?.["widget.js"]?.integrity;
       if (!version || !integrity) {
-        throw new Error("the server published no hash/integrity for pointer.js");
+        throw new Error("the server published no hash/integrity for widget.js");
       }
       pin = { version, integrity };
     } catch (err) {
@@ -3935,9 +3935,9 @@ async function resolvePin(server, options) {
   try {
     const manifest = await api(server, "/pointer.version.json");
     const version = manifest?.hash;
-    const integrity = manifest?.files?.["pointer.js"]?.integrity;
+    const integrity = manifest?.files?.["widget.js"]?.integrity;
     if (!version || !integrity)
-      throw new Error("the server published no hash/integrity for pointer.js");
+      throw new Error("the server published no hash/integrity for widget.js");
     return { version, integrity };
   } catch (err) {
     console.error(

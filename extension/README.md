@@ -2,12 +2,12 @@
 
 An **alternative delivery channel** for [Pointer](../README.md): inject the Pointer
 feedback widget into **any** web page — including sites you don't control and can't add the
-`pointer.js` loader to — and **log in once** instead of per-site. The embedded `<pointer-feedback>`
+`widget.js` loader to — and **log in once** instead of per-site. The embedded `<pointer-feedback>`
 widget remains the base product; this extension is a way to *carry it anywhere*.
 
 ## How it relates to the widget
 
-The extension does **not** reimplement the UI. On activation it loads the **live `pointer.js`
+The extension does **not** reimplement the UI. On activation it loads the **live `widget.js`
 from your Pointer server**, so any widget update you deploy shows up in the extension automatically
 — **no extension re-release needed**. Only changes to the extension *shell* (popup, background,
 manifest) require rebuilding/re-publishing.
@@ -29,12 +29,12 @@ background service worker
   • API proxy: every widget request is re-issued here with the real token —
     bypasses the page's connect-src CSP
   • activation: adds a per-tab declarativeNetRequest rule that strips the page's
-    CSP header (so the remote pointer.js/css can load), reloads the tab, then
+    CSP header (so the remote widget.js/css can load), reloads the tab, then
     injects the content bridge (ISOLATED) + config/loader (MAIN world)
       ▲  window.postMessage
       │
 content-bridge.js (ISOLATED)  ⇄  inject-main (MAIN world: __POINTER_CONFIG__ +
-                                   __POINTER_FETCH__ + loads pointer.js)
+                                   __POINTER_FETCH__ + loads widget.js)
 ```
 
 Security note: the real JWT stays in the background worker — the page only ever sees a placeholder
@@ -102,8 +102,8 @@ Developer Dashboard. If the listing URL changes, update **Settings → Extension
 URL** in the dashboard; nothing else needs to change.
 
 Listing notes kept from the first review: justify the `declarativeNetRequest` CSP-header removal
-(widget must load on CSP'd pages, only on user-activated tabs) and the remote `pointer.js` load. If a
-review ever rejects remote code, the fallback is to **bundle** `pointer.js` and inject it via
+(widget must load on CSP'd pages, only on user-activated tabs) and the remote `widget.js` load. If a
+review ever rejects remote code, the fallback is to **bundle** `widget.js` and inject it via
 `executeScript({world:'MAIN', files:[...]})` at the cost of pinning the widget to extension releases.
 
 ## Not in this MVP

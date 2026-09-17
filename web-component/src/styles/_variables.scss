@@ -2,40 +2,41 @@
 
 // Design tokens for the <pointer-feedback> UI.
 //
-// Each token compiles to `var(--pf-<name>, <default>)`. The default lives here
+// Each token compiles to `var(--fbk-<name>, <default>)`. The default lives here
 // (in SCSS), but because the value is read through a CSS custom property, any
 // consuming app can OVERRIDE it per project from its own stylesheet — CSS
 // custom properties pierce the Shadow DOM:
 //
 //   pointer-feedback {
-//     --pf-primary: #0aa36e;
-//     --pf-primary-hover: #088f60;
-//     --pf-radius-lg: 16px;
+//     --fbk-primary: #0aa36e;
+//     --fbk-primary-hover: #088f60;
+//     --fbk-radius-lg: 16px;
 //   }
 //
 // We deliberately do NOT set these on :host (that would out-specify an external
 // rule); the default is the var() fallback, so external overrides always win.
 $tokens: (
-  // Brand
-  'primary': #2563eb,
-  'primary-hover': #1d4ed8,
+  // Brand — also sets the 4-jobs rule: primary actions, focus rings, active states, links.
+  'primary': #0969da,
+  'primary-hover': #0856b3,
   'primary-contrast': #fff,
+  'focus-ring': rgba(9, 105, 218, 0.4),
 
   // Surfaces
   'surface': #fff,
   'surface-alt': #f8fafc,
-  'surface-muted': #f1f5f9,
-  'surface-hover': #e2e8f0,
+  'surface-muted': #eaeef2,
+  'surface-hover': #f3f4f6,
 
   // Borders
-  'border': #e2e8f0,
+  'border': #d0d7de,
   'border-soft': #eef2f7,
   'border-strong': #cbd5e1,
 
   // Text
-  'text': #0f172a,
-  'text-muted': #64748b,
-  'text-subtle': #94a3b8,
+  'text': #1f2328,
+  'text-muted': #59636e,
+  'text-subtle': #8c959f,
   'text-slate': #475569,
   'text-slate-2': #334155,
 
@@ -57,6 +58,19 @@ $tokens: (
   'danger-bg': #fef2f2,
   'danger-bg-2': #fee2e2,
 
+  // Toast variants — deliberately separate from 'success'/'warn'/'danger' above (those color the
+  // persistent status system: card borders, pills, verify buttons) so a palette tweak aimed at
+  // the ephemeral toast doesn't also recolor "applied"/"pending" everywhere else.
+  'toast-success': #1a7f37,
+  'toast-success-bg': #dafbe1,
+  'toast-success-border': rgba(26, 127, 55, 0.25),
+  'toast-warn': #9a6700,
+  'toast-warn-bg': #fff8c5,
+  'toast-warn-border': rgba(154, 103, 0, 0.25),
+  'toast-danger': #d1242f,
+  'toast-danger-bg': #ffebe9,
+  'toast-danger-border': rgba(209, 36, 47, 0.25),
+
   // Accents
   'info-bg': #dbeafe,
   'info-text': #1e40af,
@@ -71,22 +85,85 @@ $tokens: (
   'overlay': rgba(15, 23, 42, 0.5),
   'shadow': rgba(0, 0, 0, 0.12),
 
-  // Toolbar glass effect — translucent + blurred (see .pf-toolbar) so it reads well floating
-  // over an arbitrary host page background, not just a plain white/light one.
-  'toolbar-bg': rgba(255, 255, 255, 0.68),
-  'toolbar-border': rgba(255, 255, 255, 0.4),
+  // Launcher-specific elevation — a softer, larger spread than the generic 'shadow' token so the
+  // floating button reads as sitting above the page at rest, and lifts further on hover.
+  'shadow-lg': (0 12px 28px rgba(15, 23, 42, 0.16), 0 2px 4px rgba(15, 23, 42, 0.06)),
+  'shadow-floating': (0 16px 36px -4px rgba(15, 23, 42, 0.18), 0 4px 12px -2px rgba(15, 23, 42, 0.08)),
+  'shadow-toast': (0 10px 28px -4px rgba(15, 23, 42, 0.16), 0 3px 8px -2px rgba(15, 23, 42, 0.08)),
+  'shadow-pin': (0 2px 6px rgba(15, 23, 42, 0.3)),
+  'shadow-tooltip': (0 8px 24px -4px rgba(15, 23, 42, 0.2), 0 2px 8px -2px rgba(15, 23, 42, 0.1)),
 
-  // Radii
+  // Pin workflow status — a color per comment status (open → ready → applied), distinct from
+  // 'success'/'warn'/'danger' above (those grade action severity, not this workflow) and
+  // independently overridable from 'primary' even though 'open' defaults to the same blue.
+  'status-open': #0969da,
+  'status-open-contrast': #fff,
+  'status-ready': #4338ca,
+  'status-ready-contrast': #fff,
+  'status-applied': #16a34a,
+  'status-applied-contrast': #fff,
+  'status-archived': #8c959f,
+  'status-archived-contrast': #fff,
+
+  // Toolbar glass effect — translucent + blurred (see .fbk-toolbar) so it reads well floating
+  // over an arbitrary host page background, not just a plain white/light one.
+  'toolbar-bg': rgba(255, 255, 255, 0.88),
+  'toolbar-border': rgba(208, 215, 222, 0.8),
+
+  // Collapsed launcher — deliberately inverted, not tied to surface/primary: a solid black button
+  // in light mode, solid white in dark mode (swapped in _theme.scss's dark block), so it always
+  // reads as high-contrast against the rest of the (non-inverted) widget chrome.
+  'launcher-bg': #000,
+  'launcher-fg': #fff,
+
+  // Radii — 'radius-md'/'radius-xl' stay their existing values below because cards, the
+  // notifications dropdown, and the login modal already rely on them; the toolbar's own button
+  // and container corners (6px/12px) are literals in _toolbar.scss instead of new token entries,
+  // so a future change to those doesn't reshape unrelated UI that happens to share a token name.
   'radius-sm': 6px,
   'radius': 8px,
   'radius-md': 10px,
   'radius-lg': 12px,
   'radius-xl': 14px,
+  'radius-full': 9999px,
+
+  // Toolbar type — Arabic-first stack (the dashboard already ships `ar.json`); 'font-mono' is
+  // used for the toolbar's numeric badge only, everything else stays on _base.scss's system stack.
+  'font-ui': ('IBM Plex Sans Arabic', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif),
+  'font-mono': ('IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, Monaco, monospace),
+
+  // Motion
+  'transition-fast': 120ms cubic-bezier(0.16, 1, 0.3, 1),
+  'transition-base': 180ms cubic-bezier(0.16, 1, 0.3, 1),
+  'transition-spring': 220ms cubic-bezier(0.34, 1.56, 0.64, 1),
+
+  // Toolbar v2 scale — a proper 4px-based spacing/size/motion scale (the toolbar's own tokens
+  // below), instead of one-off pixel literals. 'space-*'/'size-*'/'lh-*' match values already
+  // used elsewhere (space-6/24px was the old toolbar inset, size-md/13px the old button text,
+  // size-xs/11px the old badge text) so nothing actually moves, it's just named now.
+  'space-1': 4px,
+  'space-2': 8px,
+  'space-3': 12px,
+  'space-4': 16px,
+  'space-5': 20px,
+  'space-6': 24px,
+  'size-xs': 11px,
+  'size-md': 13px,
+  'lh-md': 1.4,
+  // Split duration/easing (the toolbar composes them itself, e.g. `var(--fbk-dur-base)
+  // var(--fbk-ease-out)`) — 'transition-fast'/'transition-base' above stay as the combined
+  // shorthand everything else already uses.
+  'dur-fast': 120ms,
+  'dur-base': 180ms,
+  'ease-out': cubic-bezier(0.16, 1, 0.3, 1),
+  // Below every overlay (sidebar/pins/modal/popover/menu all sit at 2147483645-647) so none of
+  // those ever have to fight the toolbar for stacking order.
+  'z-toolbar': 2147483000,
 );
 
 @function token($key) {
   @if not map.has-key($tokens, $key) {
     @error "Unknown Pointer design token: #{$key}";
   }
-  @return var(--pf-#{$key}, #{map.get($tokens, $key)});
+  @return var(--fbk-#{$key}, #{map.get($tokens, $key)});
 }

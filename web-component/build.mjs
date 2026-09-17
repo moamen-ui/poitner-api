@@ -1,8 +1,13 @@
 // Builds the <pointer-feedback> web component into the served static files:
-//   src/index.ts          → ../API/wwwroot/pointer.js   (single bundled IIFE, no runtime deps)
-//   src/styles/index.scss → ../API/wwwroot/pointer.css (compiled, with --pf-* CSS variables)
-//   retained versions     → ../API/wwwroot/widget/<hash>/pointer.{js,css}
+//   src/index.ts          → ../API/wwwroot/widget.js    (single bundled IIFE, no runtime deps)
+//   src/styles/index.scss → ../API/wwwroot/widget.css (compiled, with --fbk-* CSS variables)
+//   retained versions     → ../API/wwwroot/widget/<hash>/widget.{js,css}
 //   version descriptor    → ../API/wwwroot/pointer.version.json
+//
+// pointer.js/pointer.css (top level, retained dirs, and version.json's `files`) are written as
+// byte-identical copies of widget.js/widget.css — the pre-rename names, kept as permanent aliases
+// per docs/ON-DISK-CONTRACT.md so an already-integrated site (or an older CLI's `--pin`, which
+// reads files['pointer.js']) never breaks.
 //
 // Usage:  node build.mjs          (one-shot build)
 //         node build.mjs --watch  (rebuild on change)
@@ -44,12 +49,13 @@ async function runBuild() {
 
   // 1. Build CSS first so integrity can be embedded into JS
   const css = compileCss();
-  writeFileSync(resolve(OUT_DIR, 'pointer.css'), css.content);
+  writeFileSync(resolve(OUT_DIR, 'widget.css'), css.content);
+  writeFileSync(resolve(OUT_DIR, 'pointer.css'), css.content); // pre-rename alias, see header comment
 
   // 2. Build JS with esbuild and embed CSS_INTEGRITY
   const jsOptions = {
     entryPoints: [resolve(here, 'src/index.ts')],
-    outfile: resolve(OUT_DIR, 'pointer.js'),
+    outfile: resolve(OUT_DIR, 'widget.js'),
     bundle: true,
     format: 'iife',
     target: 'es2019',
@@ -66,7 +72,8 @@ async function runBuild() {
   await build(jsOptions);
 
   // 3. Compute JS stats
-  const jsBuffer = readFileSync(resolve(OUT_DIR, 'pointer.js'));
+  const jsBuffer = readFileSync(resolve(OUT_DIR, 'widget.js'));
+  writeFileSync(resolve(OUT_DIR, 'pointer.js'), jsBuffer); // pre-rename alias, see header comment
   const jsBytes = jsBuffer.length;
   const jsGzipBytes = zlib.gzipSync(jsBuffer).length;
   const jsIntegrity = 'sha384-' + crypto.createHash('sha384').update(jsBuffer).digest('base64');
@@ -114,7 +121,9 @@ async function runBuild() {
   // 7. Write pinned artifacts
   const pinnedDir = resolve(OUT_DIR, 'widget', hash);
   mkdirSync(pinnedDir, { recursive: true });
-  writeFileSync(resolve(pinnedDir, 'pointer.js'), jsBuffer);
+  writeFileSync(resolve(pinnedDir, 'widget.js'), jsBuffer);
+  writeFileSync(resolve(pinnedDir, 'widget.css'), css.buffer);
+  writeFileSync(resolve(pinnedDir, 'pointer.js'), jsBuffer); // pre-rename alias
   writeFileSync(resolve(pinnedDir, 'pointer.css'), css.buffer);
 
   // 8. Update retained builds list (max 10)
@@ -122,6 +131,8 @@ async function runBuild() {
     hash,
     version: pkgVersion,
     files: {
+      'widget.js': { integrity: jsIntegrity },
+      'widget.css': { integrity: css.integrity },
       'pointer.js': { integrity: jsIntegrity },
       'pointer.css': { integrity: css.integrity },
     },
@@ -148,6 +159,17 @@ async function runBuild() {
     commit,
     committedAt,
     files: {
+      'widget.js': {
+        bytes: jsBytes,
+        gzipBytes: jsGzipBytes,
+        integrity: jsIntegrity,
+      },
+      'widget.css': {
+        bytes: css.bytes,
+        gzipBytes: css.gzipBytes,
+        integrity: css.integrity,
+      },
+      // Pre-rename aliases — byte-identical to widget.{js,css} above (see header comment).
       'pointer.js': {
         bytes: jsBytes,
         gzipBytes: jsGzipBytes,
@@ -170,14 +192,14 @@ async function runBuild() {
   // 11. Enforce size budget
   if (jsGzipBytes > GZIP_BUDGET) {
     console.error(
-      `Budget breach: pointer.js gzip size (${jsGzipBytes} B) exceeds max budget of ${GZIP_BUDGET} B!`
+      `Budget breach: widget.js gzip size (${jsGzipBytes} B) exceeds max budget of ${GZIP_BUDGET} B!`
     );
     process.exit(1);
   }
 
   // 12. One-line size report
   console.log(
-    `pointer.js ${jsBytes} raw / ${jsGzipBytes} gz (budget ${GZIP_BUDGET}) · hash ${hash} · retained ${retained.length}`
+    `widget.js ${jsBytes} raw / ${jsGzipBytes} gz (budget ${GZIP_BUDGET}) · hash ${hash} · retained ${retained.length}`
   );
 }
 
@@ -185,7 +207,7 @@ if (watch) {
   const css = compileCss();
   const ctx = await context({
     entryPoints: [resolve(here, 'src/index.ts')],
-    outfile: resolve(OUT_DIR, 'pointer.js'),
+    outfile: resolve(OUT_DIR, 'widget.js'),
     bundle: true,
     format: 'iife',
     target: 'es2019',

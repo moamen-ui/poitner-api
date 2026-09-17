@@ -9,7 +9,7 @@ const here = dirname(fileURLToPath(import.meta.url));
 const OUT = resolve(here, 'dist');
 const STATIC = ['manifest.json', 'popup.html', 'options.html'];
 const ICONS = ['16.png', '32.png', '48.png', '128.png'];
-// pointer.js/pointer.css load LIVE from the server (see src/inject-main.ts) — a plain page-context
+// widget.js/widget.css load LIVE from the server (see src/inject-main.ts) — a plain page-context
 // <script src>/<link>, same as the non-extension embed, not extension-privileged code. Only snapdom
 // (screenshot capture, changes rarely) stays bundled from the API's wwwroot.
 const WWWROOT = resolve(here, '..', 'API', 'wwwroot');

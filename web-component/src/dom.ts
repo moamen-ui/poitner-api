@@ -9,6 +9,33 @@ export const escapeHtml = (s: unknown): string =>
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#39;');
 
+// First 1-2 letters for the toolbar account avatar (e.g. "Sara Ali" → "SA", "sara" → "SA").
+// Falls back to '?' for an empty/whitespace-only name so the avatar never renders blank.
+export const initials = (name: string): string => {
+  const parts = (name || '').trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return '?';
+  if (parts.length === 1) return parts[0]!.slice(0, 2).toUpperCase();
+  return (parts[0]![0] + parts[parts.length - 1]![0]).toUpperCase();
+};
+
+// Compact relative time for the pin hover preview ("2m ago", "3h ago", "5d ago"). Falls back to
+// a plain locale date past 30 days, and to '' for a missing/unparseable timestamp rather than
+// showing something misleading like "NaNm ago".
+export const timeAgo = (iso?: string | null): string => {
+  if (!iso) return '';
+  const then = new Date(iso).getTime();
+  if (Number.isNaN(then)) return '';
+  const seconds = Math.round((Date.now() - then) / 1000);
+  if (seconds < 45) return 'just now';
+  const minutes = Math.round(seconds / 60);
+  if (minutes < 60) return `${minutes}m ago`;
+  const hours = Math.round(minutes / 60);
+  if (hours < 24) return `${hours}h ago`;
+  const days = Math.round(hours / 24);
+  if (days < 30) return `${days}d ago`;
+  return new Date(iso).toLocaleDateString();
+};
+
 // Builds a CSS clip-path (SVG path, evenodd fill rule) covering `refBox` with a rectangular hole
 // cut out for each rect — used to keep our own UI clickable/visible through a host app's modal
 // backdrop or dialog content pane (see Element.punchBackdropHoles) without disabling it elsewhere.
@@ -39,7 +66,27 @@ export const buildClipPathWithHoles = (
 export const ensureHighlightStyle = (): void => {
   if (document.getElementById('pointer-feedback-hl-style')) return;
 
-  const css = `.${HL_CLASS}{outline:2px dashed #2563eb!important;outline-offset:1px!important;cursor:crosshair!important;}`;
+  // A dashed outline (not `border`) so it never changes the host element's own box size or
+  // layout — same reason it's `outline-color`/box-shadow that animate below, not anything that
+  // would. The color cycles blue → violet → blue (our primary and accent tokens, as literals:
+  // this stylesheet lives in the HOST page's light DOM, so it can't reach the shadow-scoped
+  // --fbk-* custom properties) with a matching glow, echoing the same 2.4s pulse timing already
+  // used for the launcher and pin attention rings, so the whole widget's motion language matches.
+  const css = `
+.${HL_CLASS}{
+  outline:2px dashed #0969da!important;
+  outline-offset:1px!important;
+  cursor:crosshair!important;
+  box-shadow:0 0 0 0 rgba(9,105,218,.3)!important;
+  animation:pointer-feedback-hl-pulse 2.4s cubic-bezier(.25,1,.5,1) infinite!important;
+}
+@keyframes pointer-feedback-hl-pulse{
+  0%,100%{outline-color:#0969da;box-shadow:0 0 0 0 rgba(9,105,218,.3);}
+  50%{outline-color:#7c3aed;box-shadow:0 0 10px 2px rgba(124,58,237,.3);}
+}
+@media (prefers-reduced-motion: reduce){
+  .${HL_CLASS}{animation:none!important;outline-color:#0969da!important;box-shadow:none!important;}
+}`;
 
   // A constructed stylesheet first. A <style> element is markup, so `style-src` blocks it on a
   // strict-CSP host and the pick highlight silently never appears — on exactly the sites most
@@ -135,7 +182,7 @@ export const pageIsRtl = (): boolean => {
 };
 
 /**
- * Applies the position an element carries in `data-pf-left` / `data-pf-top`.
+ * Applies the position an element carries in `data-fbk-left` / `data-fbk-top`.
  *
  * These two are computed per element — a popover anchored to a click, a pin anchored to the thing
  * it marks — so they cannot become a CSS class. They also cannot stay in a `style` attribute:
@@ -148,8 +195,8 @@ export const pageIsRtl = (): boolean => {
  */
 export function applyDataPosition(root: ParentNode, selector: string): void {
   root.querySelectorAll<HTMLElement>(selector).forEach((el) => {
-    const left = el.dataset.pfLeft;
-    const top = el.dataset.pfTop;
+    const left = el.dataset.fbkLeft;
+    const top = el.dataset.fbkTop;
     if (left !== undefined) el.style.left = `${left}px`;
     if (top !== undefined) el.style.top = `${top}px`;
   });

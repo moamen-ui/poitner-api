@@ -30,17 +30,23 @@ public class WidgetCacheHeadersTests : IDisposable
         File.WriteAllBytes(Path.Combine(_wwwrootDir, "pointer.js"), _currentBytes);
         File.WriteAllBytes(Path.Combine(_wwwrootDir, "pointer.css"), _cssBytes);
 
-        // Current retained dir
+        // Current retained dir — build.mjs writes both the current widget.js/css names and the
+        // pointer.js/css aliases side by side (see docs/ON-DISK-CONTRACT.md); WidgetVersionInfo's
+        // existence check looks for widget.js specifically.
         var currentDir = Path.Combine(_wwwrootDir, "widget", _currentHash);
         Directory.CreateDirectory(currentDir);
         File.WriteAllBytes(Path.Combine(currentDir, "pointer.js"), _currentBytes);
         File.WriteAllBytes(Path.Combine(currentDir, "pointer.css"), _cssBytes);
+        File.WriteAllBytes(Path.Combine(currentDir, "widget.js"), _currentBytes);
+        File.WriteAllBytes(Path.Combine(currentDir, "widget.css"), _cssBytes);
 
         // Older retained dir
         var olderDir = Path.Combine(_wwwrootDir, "widget", _olderHash);
         Directory.CreateDirectory(olderDir);
         File.WriteAllBytes(Path.Combine(olderDir, "pointer.js"), _olderBytes);
         File.WriteAllBytes(Path.Combine(olderDir, "pointer.css"), _cssBytes);
+        File.WriteAllBytes(Path.Combine(olderDir, "widget.js"), _olderBytes);
+        File.WriteAllBytes(Path.Combine(olderDir, "widget.css"), _cssBytes);
 
         // pointer.version.json
         var versionJson = $$"""

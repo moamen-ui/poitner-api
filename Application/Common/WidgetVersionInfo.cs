@@ -60,7 +60,7 @@ public sealed class WidgetVersionInfo
                         if (!string.IsNullOrWhiteSpace(itemHash))
                         {
                             var dir = Path.Combine(contentRootPath, "wwwroot", "widget", itemHash);
-                            if (Directory.Exists(dir) && File.Exists(Path.Combine(dir, "pointer.js")))
+                            if (Directory.Exists(dir) && File.Exists(Path.Combine(dir, "widget.js")))
                             {
                                 retained.Add(itemHash);
                             }
@@ -77,7 +77,7 @@ public sealed class WidgetVersionInfo
             if (!string.IsNullOrWhiteSpace(hash) && !retained.Contains(hash, StringComparer.OrdinalIgnoreCase))
             {
                 var dir = Path.Combine(contentRootPath, "wwwroot", "widget", hash);
-                if (Directory.Exists(dir) && File.Exists(Path.Combine(dir, "pointer.js")))
+                if (Directory.Exists(dir) && File.Exists(Path.Combine(dir, "widget.js")))
                 {
                     retained.Add(hash);
                 }

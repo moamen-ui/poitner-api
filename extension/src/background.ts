@@ -36,7 +36,7 @@ async function apiFetch(path: string, init: RequestInit = {}): Promise<{ ok: boo
 }
 
 // ---- CSP bypass (per-tab session DNR rule) -------------------------------
-// Removing the CSP header lets the page load the remote pointer.js/pointer.css.
+// Removing the CSP header lets the page load the remote widget.js/widget.css.
 // Scoped to the activated tab and removed on deactivate / tab close.
 const CSP_RULE_BASE = 100000;
 const ruleId = (tabId: number) => CSP_RULE_BASE + tabId;
@@ -205,10 +205,10 @@ async function injectInto(tabId: number, url: string): Promise<void> {
   const userId: string | undefined = user?.id ? String(user.id) : undefined;
   const isAdmin = !!user?.isAdmin;
   const isQuickAccess = !!user?.isQuickAccess;
-  // snapdom (screenshot capture) stays bundled — it changes rarely, unlike pointer.js/css below.
+  // snapdom (screenshot capture) stays bundled — it changes rarely, unlike widget.js/css below.
   const snapdomUrl = chrome.runtime.getURL('vendor/snapdom.js');
   // 1) Isolated bridge (relays proxied requests). 2) MAIN-world config + host mount — injectMain
-  // itself appends <script src>/<link> tags pointing at the server's live pointer.js/pointer.css,
+  // itself appends <script src>/<link> tags pointing at the server's live widget.js/widget.css,
   // exactly like the plain (non-extension) widget embed does. That's page-context code, not
   // extension-privileged code, so it isn't "remotely hosted code" under MV3's policy — and it means
   // a CSS tweak or a small widget fix ships by deploying the server, no extension update needed.

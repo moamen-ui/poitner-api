@@ -95,13 +95,13 @@ Same world as the dashboard, so reviewers moving between them feel one product.
   Danger `#d1242f`. Neutrals: surfaces `#ffffff`/`#0d1117`, panels `#f6f8fa`/`#161b22`, text
   `#1f2328`/`#e6edf3`, hairline `#d0d7de`/`#30363d`. Radii 6px; 8–10px for floating surfaces.
 - Map every color you use onto the widget's existing token names so engineering can wire it without
-  redesign: `--pf-primary`, `--pf-primary-hover`, `--pf-primary-contrast`, `--pf-surface`,
-  `--pf-surface-alt`, `--pf-surface-muted`, `--pf-surface-hover`, `--pf-border`, `--pf-border-soft`,
-  `--pf-border-strong`, `--pf-text`, `--pf-text-muted`, `--pf-text-subtle`, `--pf-success*`,
-  `--pf-warn*`, `--pf-danger*`, `--pf-info-bg/text`, `--pf-overlay`, `--pf-shadow`,
-  `--pf-toolbar-bg/border`, `--pf-radius-sm/md/lg/xl`. Propose new tokens only for spacing and type
+  redesign: `--fbk-primary`, `--fbk-primary-hover`, `--fbk-primary-contrast`, `--fbk-surface`,
+  `--fbk-surface-alt`, `--fbk-surface-muted`, `--fbk-surface-hover`, `--fbk-border`, `--fbk-border-soft`,
+  `--fbk-border-strong`, `--fbk-text`, `--fbk-text-muted`, `--fbk-text-subtle`, `--fbk-success*`,
+  `--fbk-warn*`, `--fbk-danger*`, `--fbk-info-bg/text`, `--fbk-overlay`, `--fbk-shadow`,
+  `--fbk-toolbar-bg/border`, `--fbk-radius-sm/md/lg/xl`. Propose new tokens only for spacing and type
   scale (none exist today) and for dark mode.
-- Host apps override tokens per project (e.g. `pointer-feedback { --pf-primary: #0aa36e }`), so the
+- Host apps override tokens per project (e.g. `pointer-feedback { --fbk-primary: #0aa36e }`), so the
   design must survive a different primary without breaking contrast.
 
 ## Hard constraints
@@ -141,7 +141,7 @@ affordance since they are the difference between a vague note and an actionable 
    list (every status, verified and not, mine and others, with a screenshot); a single card at 1:1
    with annotations; updates menu; account menu; sign-in modal; toasts.
 2. **Component spec**: anatomy, states, sizes, spacing, and behaviour notes per surface.
-3. **Token sheet**: light and dark values for every `--pf-*` name above plus the new spacing and type
+3. **Token sheet**: light and dark values for every `--fbk-*` name above plus the new spacing and type
    tokens, with contrast checks against a white and a dark host.
 4. **Motion spec**: launcher appear, drawer slide, popover open, pin pulse, toast in/out, verify
    feedback — durations and easings, all under 250ms, reduced-motion behaviour.

@@ -5,11 +5,11 @@
 :host {
   all: initial;
   direction: ltr;
-  text-align: left;
+  text-align: start;
 }
 :host > div {
   direction: ltr;
-  text-align: left;
+  text-align: start;
 }
 * {
   box-sizing: border-box;
@@ -21,15 +21,15 @@
 // verify box). Replaces the old static style="display:none" attributes so the widget
 // stays clean under a strict style-src CSP without 'unsafe-inline'; JS toggles this
 // class instead of writing style.display. !important so it beats component display
-// rules (.pf-btn & co. load in later partials).
-.pf-hidden {
+// rules (.fbk-btn & co. load in later partials).
+.fbk-hidden {
   display: none !important;
 }
 
 // Small muted helper text — sidebar meta labels, commit-style label, menu note,
 // notification reply excerpt. Composed alongside component classes that add their
 // own extras (truncation, italics, padding).
-.pf-caption {
+.fbk-caption {
   font-size: 12px;
   color: v.token('text-muted');
 }

@@ -104,6 +104,11 @@ export interface User {
   /** "Add comment" widget shortcut, e.g. "alt+shift+c" — synced to the account. Absent/undefined
    *  means the widget's built-in default. */
   addCommentShortcut?: string;
+  /** Account language preference ('en'|'ar'), same field the dashboard's language switcher writes.
+   *  The widget only persists this alongside a language choice — its own UI text stays English.
+   *  (Theme is deliberately NOT here — it's a widget-local localStorage override, never synced to
+   *  the account, since that field also drives the dashboard's own site-wide theme. See theme.ts.) */
+  language?: string;
 }
 
 /**

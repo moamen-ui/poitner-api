@@ -81,7 +81,7 @@ export function isMacPlatform(): boolean {
 
 // Turns a physical-key code into a short display label — "KeyC" -> "C", "Digit1" -> "1",
 // "F5" stays "F5", etc. Falls back to the raw code for anything unrecognized.
-function codeToLabel(code: string): string {
+export function codeToLabel(code: string): string {
   if (code.startsWith('Key')) return code.slice(3);
   if (code.startsWith('Digit')) return code.slice(5);
   if (code === 'Space') return 'Space';
@@ -107,5 +107,19 @@ export function formatShortcut(binding: ShortcutBinding, mac = isMacPlatform()):
   if (binding.alt) parts.push('Alt');
   if (binding.shift) parts.push('Shift');
   parts.push(label);
+  return parts.join('+');
+}
+
+/** `aria-keyshortcuts` value, e.g. "Control+Alt+Shift+C" — full modifier names in the ARIA
+ *  spec's own canonical order, unlike formatShortcut()'s abbreviated/localized display label
+ *  ("Ctrl+Alt+Shift+C" or "⌃⌥⇧C"). Platform-independent: screen readers announce this the same
+ *  way regardless of OS, so it always uses the long Windows/Linux-style modifier names. */
+export function ariaKeyshortcuts(binding: ShortcutBinding): string {
+  const parts: string[] = [];
+  if (binding.ctrl) parts.push('Control');
+  if (binding.alt) parts.push('Alt');
+  if (binding.shift) parts.push('Shift');
+  if (binding.meta) parts.push('Meta');
+  parts.push(codeToLabel(binding.code));
   return parts.join('+');
 }

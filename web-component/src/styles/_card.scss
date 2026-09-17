@@ -1,87 +1,90 @@
 @use 'variables' as v;
 
 // Comment card
-.pf-card {
+.fbk-card {
   border: 1px solid v.token('border-soft');
   border-radius: v.token('radius-md');
   padding: 12px;
-  margin-bottom: 10px;
+  margin-block-end: 10px;
 }
-.pf-card.pending {
+.fbk-card.pending {
   border-color: v.token('warn');
   background: v.token('warn-surface');
 }
-.pf-card.applied {
+.fbk-card.applied {
   border-color: v.token('success');
   background: v.token('success-surface');
 }
-.pf-card.archived {
+.fbk-card.archived {
   border-color: v.token('border-strong');
   background: v.token('surface-alt');
   opacity: 0.85;
 }
-.pf-meta {
+.fbk-meta {
   display: flex;
   gap: 6px;
   align-items: center;
   flex-wrap: wrap;
-  margin-bottom: 6px;
+  margin-block-end: 6px;
 }
-.pf-pill {
+.fbk-pill {
   font-size: 10px;
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.03em;
-  padding: 2px 6px;
+  padding-block: 2px;
+  padding-inline: 6px;
   border-radius: v.token('radius-sm');
   background: v.token('border-soft');
   color: v.token('text-slate');
 }
-.pf-pill.role {
+.fbk-pill.role {
   background: v.token('info-bg');
   color: v.token('info-text');
 }
-.pf-pill.env {
+.fbk-pill.env {
   background: v.token('accent-bg');
   color: v.token('accent');
 }
-.pf-pill.status-applied {
+.fbk-pill.status-applied {
   background: v.token('success-bg');
   color: v.token('success-strong');
 }
-.pf-pill.status-pending {
+.fbk-pill.status-pending {
   background: v.token('warn-bg');
   color: v.token('warn-strong');
 }
-.pf-pill.status-archived {
+.fbk-pill.status-archived {
   background: v.token('surface-hover');
   color: v.token('text-slate');
 }
-.pf-text {
+.fbk-text {
   font-size: 14px;
   color: v.token('text');
-  margin: 4px 0 8px;
+  margin-block: 4px 8px;
+  margin-inline: 0;
   white-space: pre-wrap;
 }
-.pf-sub {
+.fbk-sub {
   font-size: 11px;
   color: v.token('text-subtle');
 }
 // "edited" marker inside the sub line.
-.pf-edited {
+.fbk-edited {
   font-style: italic;
 }
-// Auxiliary checkbox row in the inline editor ("Remove image"). Deliberately NOT .pf-check:
+// Auxiliary checkbox row in the inline editor ("Remove image"). Deliberately NOT .fbk-check:
 // tighter margins and no pointer cursor, matching the old inline styling.
-.pf-edit-option {
+.fbk-edit-option {
   display: flex;
   gap: 6px;
   align-items: center;
   font-size: 12px;
   color: v.token('text-slate');
-  margin: 6px 0;
+  margin-block: 6px;
+  margin-inline: 0;
 }
-.pf-src {
+.fbk-src {
   font-size: 11px;
   color: v.token('src');
   font-family: ui-monospace, monospace;
@@ -89,11 +92,12 @@
 }
 
 // Screenshot thumbnail (kept small — click to open full image)
-.pf-shot-link {
+.fbk-shot-link {
   display: block;
-  margin: 4px 0 8px;
+  margin-block: 4px 8px;
+  margin-inline: 0;
 }
-.pf-shot {
+.fbk-shot {
   display: block;
   max-width: 160px;
   max-height: 50px;
@@ -103,56 +107,59 @@
   object-fit: contain;
   background: v.token('surface-alt');
 }
-.pf-shot:hover {
+.fbk-shot:hover {
   border-color: v.token('primary');
 }
 // Background-upload states
-.pf-shot-loading {
+.fbk-shot-loading {
   display: flex;
   align-items: center;
   gap: 8px;
   height: 56px;
-  margin: 4px 0 8px;
-  padding: 0 10px;
+  margin-block: 4px 8px;
+  margin-inline: 0;
+  padding-block: 0;
+  padding-inline: 10px;
   color: v.token('text-muted');
   font-size: 12px;
   background: v.token('surface-alt');
   border: 1px dashed v.token('border');
   border-radius: v.token('radius');
 }
-.pf-spinner {
+.fbk-spinner {
   width: 14px;
   height: 14px;
   border: 2px solid v.token('border-strong');
   border-top-color: v.token('primary');
   border-radius: 50%;
-  animation: pf-spin 0.8s linear infinite;
+  animation: fbk-spin 0.8s linear infinite;
   flex: none;
 }
-@keyframes pf-spin {
+@keyframes fbk-spin {
   to { transform: rotate(360deg); }
 }
-.pf-shot-failed {
+.fbk-shot-failed {
   font-size: 11px;
   color: v.token('danger-strong');
-  margin: 4px 0 8px;
+  margin-block: 4px 8px;
+  margin-inline: 0;
 }
 
 // Card actions
-.pf-actions {
+.fbk-actions {
   display: flex;
   gap: 6px;
   flex-wrap: wrap;
-  margin-top: 8px;
+  margin-block-start: 8px;
   align-items: center;
 }
-.pf-actions-end {
+.fbk-actions-end {
   margin-inline-start: auto;
   display: flex;
   gap: 6px;
   align-items: center;
 }
-.pf-mini {
+.fbk-mini {
   display: inline-flex;
   align-items: center;
   gap: 5px;
@@ -161,124 +168,112 @@
   background: v.token('surface-muted');
   color: v.token('text');
   border-radius: v.token('radius-sm');
-  padding: 6px 10px;
+  padding-block: 6px;
+  padding-inline: 10px;
   font-size: 12px;
   font-weight: 600;
   cursor: pointer;
 }
-.pf-mini svg {
+.fbk-mini svg {
   display: block;
   flex: none;
 }
-.pf-mini.pf-icon {
+.fbk-mini.fbk-icon {
   padding: 7px;
 }
-.pf-mini:hover {
+.fbk-mini:hover {
   background: v.token('surface-hover');
 }
-.pf-mini.apply {
+.fbk-mini.apply {
   background: v.token('warn-bg');
   color: v.token('warn-strong');
 }
-.pf-mini.applied {
+.fbk-mini.applied {
   background: v.token('success-bg');
   color: v.token('success-strong');
 }
-.pf-mini.ready {
+.fbk-mini.ready {
   background: v.token('info-bg');
   color: v.token('primary-hover');
 }
-.pf-mini.done {
+.fbk-mini.done {
   background: v.token('success-bg');
   color: v.token('success-strong');
 }
-.pf-mini.danger {
+.fbk-mini.danger {
   background: v.token('danger-bg');
   color: v.token('danger');
 }
-.pf-mini.danger:hover {
+.fbk-mini.danger:hover {
   background: v.token('danger-bg-2');
   color: v.token('danger-strong');
 }
 /* "Delete this comment?" confirmation that replaces the WHOLE actions row on first click —
    every other button in the row is hidden (not removed) while this is shown. */
-.pf-confirm {
+.fbk-confirm {
   display: inline-flex;
   align-items: center;
   gap: 4px;
 }
-.pf-confirm-row {
+.fbk-confirm-row {
   display: flex;
   width: 100%;
   align-items: center;
   justify-content: space-between;
   gap: 8px;
 }
-.pf-confirm-btns {
+.fbk-confirm-btns {
   display: flex;
   align-items: center;
   gap: 6px;
   flex: none;
 }
-.pf-confirm-q {
+.fbk-confirm-q {
   font-size: 12px;
   font-weight: 600;
   color: v.token('danger');
-  padding: 0 2px;
+  padding-block: 0;
+  padding-inline: 2px;
 }
 // Private comment — the lock toggle is tinted red while the comment is private.
-.pf-mini.private-on {
+.fbk-mini.private-on {
   background: v.token('danger-bg-2');
   color: v.token('danger-strong');
 }
-.pf-mini.private-on:hover {
+.fbk-mini.private-on:hover {
   background: #fecaca;
   color: #991b1b;
 }
 
 // Replies + inputs
-.pf-replies {
-  margin-top: 8px;
-  border-top: 1px dashed v.token('border');
-  padding-top: 8px;
+.fbk-replies {
+  margin-block-start: 8px;
+  border-block-start: 1px dashed v.token('border');
+  padding-block-start: 8px;
 }
-.pf-reply {
+.fbk-reply {
   font-size: 13px;
   color: v.token('text-slate-2');
-  padding: 4px 0;
+  padding-block: 4px;
+  padding-inline: 0;
 }
-.pf-reply.ai {
+.fbk-reply.ai {
   color: v.token('success-strong');
 }
-.pf-reply-row {
+.fbk-reply-row {
   display: flex;
   gap: 6px;
-  margin-top: 6px;
+  margin-block-start: 6px;
 }
-.pf-input,
-.pf-textarea {
+.fbk-input,
+.fbk-textarea {
   width: 100%;
   border: 1px solid v.token('border-strong');
   border-radius: v.token('radius');
   padding: 8px;
   font-size: 13px;
 }
-.pf-textarea {
+.fbk-textarea {
   resize: vertical;
   min-height: 64px;
-}
-// Inline checkboxes in the comment popover.
-.pf-check {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 12px;
-  color: v.token('text-slate');
-  margin: 8px 0;
-  cursor: pointer;
-}
-.pf-check input {
-  width: auto;
-  margin: 0;
-  cursor: pointer;
 }

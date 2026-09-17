@@ -306,7 +306,7 @@ export async function runInitChecks(
   // widget-served -----------------------------------------------------------
   if (serverReachable) {
     try {
-      const res = await fetchWithTimeout(`${server}/pointer.js`, 3000);
+      const res = await fetchWithTimeout(`${server}/widget.js`, 3000);
       const type = res.headers.get('content-type') || '';
       checks.push(
         res.ok && type.includes('javascript')

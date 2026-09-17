@@ -28,7 +28,7 @@ Open the extension **Options** → set server = `https://api.pointer.moamen.work
 
 ## 3. CSP-strict site (the reason the extension exists)
 - [ ] Open a site with a strict `connect-src`/`script-src` CSP (e.g. `https://github.com`).
-- [ ] Activate → the remote `pointer.js`/`pointer.css` load despite the page CSP; leave a comment; it saves.
+- [ ] Activate → the remote `widget.js`/`widget.css` load despite the page CSP; leave a comment; it saves.
 - [ ] **Security (CSP scope):** open a *second* tab to another site; confirm that tab's CSP is intact
       (only the activated tab is stripped). Deactivate (or close the tab) → re-open the site → its CSP
       is back (rule removed).

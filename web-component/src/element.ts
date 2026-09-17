@@ -2,16 +2,31 @@ import {
   HL_CLASS, BACKDROP_SELECTOR, DIALOG_CONTENT_SELECTOR, ENV_MAP, ENV_NAME, STATUS_STR, STATUS_INT, POSITIONS, CSS_URL, SCRIPT_SRC,
   loadStatusCatalog, catalogToFilters, pfFetch, loadBranding, getBrandName, CSS_INTEGRITY,
 } from './constants';
-import { escapeHtml, ensureHighlightStyle, matchElement, pageIsRtl, buildClipPathWithHoles, applyDataPosition } from './dom';
+import { escapeHtml, initials, ensureHighlightStyle, matchElement, pageIsRtl, buildClipPathWithHoles, applyDataPosition } from './dom';
 import { TPL } from './templates';
 import { ICON } from './icons';
 import { captureScreenshot, captureMetadata } from './capture';
 import { startPageContextCapture, stopPageContextCapture, getPageContextPayload, rawFetch } from './pagecontext';
 import {
-  type ShortcutBinding, parseShortcut, serializeShortcut, matchesShortcut, formatShortcut,
+  type ShortcutBinding, parseShortcut, serializeShortcut, matchesShortcut, formatShortcut, ariaKeyshortcuts,
 } from './shortcut';
+import { type ThemeMode, detectSiteTheme } from './theme';
 import { showLoginModal } from './auth-ui';
 import type { AuthorOption, Comment, Meta, NotificationItem, PointerHost, PredefinedActionOption, RoleOption, StatusStr, User } from './types';
+
+// Two pin anchors this close together (px) collide visually — the 28px pin plus its border
+// already covers most of that gap — so renderPins() merges them into one expandable cluster
+// instead of stacking indistinguishable pins on top of each other.
+const PIN_CLUSTER_RADIUS = 24;
+// The pin's own rendered footprint — half its width and its full height (28px pin + a couple px
+// of border/shadow) — used to nudge a pin back on-screen when its target sits right at a
+// viewport edge (see the clamp in renderPins()).
+const PIN_HALF_WIDTH = 16;
+const PIN_HEIGHT = 30;
+// Conservative estimate of the hover tooltip's rendered height, used only to decide whether it
+// has room to open upward — doesn't need to be exact, just enough to flip it early rather than
+// late.
+const PIN_TOOLTIP_HEIGHT_ESTIMATE = 150;
 
 interface CreateCommentData extends Meta {
   text: string;
@@ -107,11 +122,18 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
   private _onShortcutKeydown!: (e: KeyboardEvent) => void;
   private _reposition!: () => void;
   private _pendingShotPromise: Promise<Blob | null> | null = null;
+  // The comment id whose pin should show the attention ripple on its NEXT renderPins() — cleared
+  // shortly after so re-renders (env switch, poll, etc.) don't replay it forever.
+  private _newPinId: string | number | null = null;
+  // The toolbar's drag offset from its default bottom-right anchor (see enableToolbarDrag).
+  private _toolbarDx = 0;
+  private _toolbarDy = 0;
   unreadNotifyCount = 0;
   private _notifyPollTimer: number | null = null;
   private _updatesMenuClose: ((e: MouseEvent) => void) | null = null;
   private _onVisibilityChange: (() => void) | null = null;
   private _userMenuClose: ((e: MouseEvent) => void) | null = null;
+  private _clusterMenuClose: ((e: MouseEvent) => void) | null = null;
   private _recordingShortcut = false;
   private _shortcutRecordingCleanup: (() => void) | null = null;
   private _backdropObserver: MutationObserver | null = null;
@@ -209,6 +231,7 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
       this.shortcut = parseShortcut(this.user?.addCommentShortcut);
       this.authOwnedByHost = true;
     }
+    this.applyTheme();
 
     // Host element must not block page clicks; only inner panels are interactive.
     this.style.position = 'fixed';
@@ -246,7 +269,7 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
     this._onPick = this.onPick.bind(this);
     this._onPickKey = this.onPickKey.bind(this);
     this._onShortcutKeydown = this.onShortcutKeydown.bind(this);
-    this._reposition = () => this.renderPins();
+    this._reposition = () => { this.renderPins(); this.updateMenuSide(); };
     window.addEventListener('scroll', this._reposition, true);
     window.addEventListener('resize', this._reposition);
 
@@ -265,7 +288,7 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
     };
     window.addEventListener('resize', this._scheduleBackdropUpdate);
     window.addEventListener('scroll', this._scheduleBackdropUpdate, true);
-    // The mutation that opens .pf-sidebar/.pf-popover (a class toggle) fires at the START of their
+    // The mutation that opens .fbk-sidebar/.fbk-popover (a class toggle) fires at the START of their
     // CSS transition (translateX/opacity), not at the end — so the rAF this schedules measures a
     // MID-TRANSITION rect and never gets recomputed again once the panel settles, leaving a
     // permanently-misaligned hole (confirmed: sidebar slides from x:1100→740 over 200ms, but the
@@ -386,7 +409,7 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
     this._disabled = true;
     try { this.stopPicking(); } catch { /* ignore */ }
     this.comments = [];
-    if (this.root) this.root.innerHTML = ''; // removes toolbar, launcher, and pins (#pf-pins lives here)
+    if (this.root) this.root.innerHTML = ''; // removes toolbar, launcher, and pins (#fbk-pins-layer lives here)
   }
 
   private _stylesPromise: Promise<void> | null = null;
@@ -466,7 +489,7 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
 
   // Shared by both the toolbar's "add" button and the keyboard shortcut — expands the widget
   // first if it's collapsed (the toolbar buttons don't exist in the DOM until then), then either
-  // prompts login or toggles element-picking, exactly like clicking #pf-add.
+  // prompts login or toggles element-picking, exactly like clicking #fbk-add.
   activateAddComment(): void {
     if (this._collapsed) this.showOverlay();
     if (!this.token) {
@@ -579,6 +602,55 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
     showLoginModal(this);
   }
 
+  // --- Theme ------------------------------------------------------------
+  // Deliberately WIDGET-LOCAL, not account-wide: `User.theme`/`/api/me/preferences` is the same
+  // field the dashboard's own theme toggle reads to paint the entire admin app, so persisting the
+  // widget's choice there would silently flip the dashboard's site-wide theme too. An explicit
+  // per-browser override (localStorage, set from the user menu below) wins; otherwise the host
+  // page's own rendered theme; otherwise the OS preference. See theme.ts.
+  private resolveTheme(): ThemeMode {
+    try {
+      const stored = localStorage.getItem('pointer_widget_theme');
+      if (stored === 'light' || stored === 'dark') return stored;
+    } catch { /* ignore */ }
+    return detectSiteTheme();
+  }
+
+  // Reflects the resolved mode onto the host element (light DOM, not shadowRoot) as
+  // `data-fbk-theme` — _theme.scss's `:host([data-fbk-theme="dark"])` block reads it to swap the
+  // shadow UI's token values, and a consuming app can target the same attribute from its own CSS
+  // to override any single token per project, exactly like the light defaults.
+  private applyTheme(): void {
+    this.setAttribute('data-fbk-theme', this.resolveTheme());
+  }
+
+  // Sets the widget's own per-browser theme override — never touches the account (see the note
+  // on resolveTheme above), so it can never bleed into the host dashboard's own theme.
+  private setThemeOverride(mode: ThemeMode): void {
+    try { localStorage.setItem('pointer_widget_theme', mode); } catch { /* ignore */ }
+    this.applyTheme();
+  }
+
+  // Persists the account's language preference — the widget's own UI text stays English (see
+  // the language-scope decision); this only keeps the account in sync with the dashboard's
+  // language switcher, which reads the same field.
+  private async saveLanguagePreference(lang: string): Promise<boolean> {
+    try {
+      const r = await this.api('/api/me/preferences', {
+        method: 'PATCH',
+        body: JSON.stringify({ language: lang }),
+      });
+      if (!r.ok) return false;
+      if (this.user) {
+        this.user = { ...this.user, language: lang };
+        localStorage.setItem('pointer_user', JSON.stringify(this.user));
+      }
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
   async init(): Promise<void> {
     // Load the status catalog from the server before the first render so that
     // filter chips and status labels reflect server-configured values.
@@ -631,9 +703,9 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
         this.environmentAttr = ENV_NAME[resolved];
         // Keep whatever the toolbar is showing — a <select> or the read-only label — in step with
         // the value we just learned.
-        const envSel = this.root && (this.root.querySelector('#pf-env') as HTMLSelectElement | null);
+        const envSel = this.root && (this.root.querySelector('#fbk-env') as HTMLSelectElement | null);
         if (envSel && 'value' in envSel) envSel.value = this.environmentAttr;
-        const envLabel = this.root && this.root.querySelector('.pf-env-label');
+        const envLabel = this.root && this.root.querySelector('.fbk-env-label');
         if (envLabel) envLabel.textContent = '· ' + this.environmentAttr;
       }
       this.commitStyle = typeof envelope?.data?.commitStyle === 'number' ? envelope.data.commitStyle : 1;
@@ -651,7 +723,7 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
   // Patches the already-rendered header label in place rather than a full renderChrome() —
   // re-rendering chrome here would drop the sidebar's open/closed state mid-session.
   private updateProjectNameLabel(): void {
-    const el = this.root && this.root.querySelector('#pf-project-name');
+    const el = this.root && this.root.querySelector('#fbk-project-name');
     if (el) {
       el.textContent = this.projectName;
       el.setAttribute('title', this.projectName);
@@ -660,31 +732,31 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
 
   // /capture-config resolves AFTER the first renderChrome() (which assumed the switcher was
   // visible), so if it turns out this caller should NOT see it, swap the already-rendered
-  // <select id="pf-env"> for the same read-only label used for a host-fixed environment — same
+  // <select id="fbk-env"> for the same read-only label used for a host-fixed environment — same
   // reasoning as updateProjectNameLabel() above (no full re-render, mid-session state stays put).
   // A no-op when the toolbar isn't open yet or the switcher was already hidden — the NEXT
   // renderChrome() (e.g. when the visitor opens the toolbar) already reads the updated flag.
   private updateEnvironmentSelectorVisibility(): void {
     if (this.showEnvironmentSelector || this.hasFixedEnvironment) return;
-    const sel = this.root && this.root.querySelector('#pf-env');
+    const sel = this.root && this.root.querySelector('#fbk-env');
     if (!sel) return;
     const label = document.createElement('span');
-    label.className = 'pf-env-label';
+    label.className = 'fbk-env-label';
     label.title = 'Environment';
     label.textContent = '· ' + (this.environmentAttr || ENV_NAME[this.environmentInt] || 'unknown');
     sel.replaceWith(label);
   }
 
-  // Patches #pf-commit-style in place (same reasoning as updateEnvironmentSelectorVisibility) —
+  // Patches #fbk-commit-style in place (same reasoning as updateEnvironmentSelectorVisibility) —
   // hidden entirely unless the current caller is authorized to change it (canEditSettings), so a
   // stakeholder who couldn't save the PATCH never sees a control that would just 403.
   private renderCommitStyleControl(): void {
-    const host = this.root && this.root.querySelector('#pf-commit-style');
+    const host = this.root && this.root.querySelector('#fbk-commit-style');
     if (!host) return;
-    if (!this.canEditSettings) { host.classList.add('pf-hidden'); return; }
-    host.classList.remove('pf-hidden');
+    if (!this.canEditSettings) { host.classList.add('fbk-hidden'); return; }
+    host.classList.remove('fbk-hidden');
     host.innerHTML = TPL.commitStyleControl(this.commitStyle);
-    const sel = this.root!.querySelector('#pf-commit-style-select') as HTMLSelectElement | null;
+    const sel = this.root!.querySelector('#fbk-commit-style-select') as HTMLSelectElement | null;
     if (sel) sel.addEventListener('change', () => this.setCommitStyle(Number(sel.value)));
   }
 
@@ -709,7 +781,7 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
   // Keeps the "Comment on an element" button's tooltip showing the current shortcut after it's
   // changed from the user menu — same in-place-patch reasoning as updateProjectNameLabel().
   private updateAddButtonTooltip(): void {
-    const btn = this.root && this.root.querySelector('#pf-add');
+    const btn = this.root && this.root.querySelector('#fbk-add');
     if (!btn) return;
     const label = formatShortcut(this.shortcut);
     btn.setAttribute('title', `Comment on an element (${label})`);
@@ -835,7 +907,9 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
       }));
     } catch (e) {
       if ((e as Error).message !== 'HTTP 401 Unauthorized') {
-        this.toast(`Could not reach ${getBrandName()} server`, 'error');
+        this.toast(`Could not reach ${getBrandName()} server`, 'error', 'Retry', () => {
+          this.fetchComments().then(() => { this.renderSidebar(); this.renderPins(); });
+        });
       }
       this.comments = [];
       this.hiddenPrivateCount = 0;
@@ -854,50 +928,53 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
     if (this._collapsed) {
       const n = (this.comments || []).filter((c) => c.status !== 'archived' && c.status !== 'applied').length;
       this.root.innerHTML = TPL.launcher(n, this.launcherPosition, pageIsRtl(), this.unreadNotifyCount);
-      const launcher = this.root.querySelector('#pf-launcher');
+      const launcher = this.root.querySelector('#fbk-launcher');
       if (launcher) launcher.addEventListener('click', () => this.showOverlay());
       return;
     }
 
     const displayName = this.user ? escapeHtml(this.user.displayName || this.user.email) : '';
     const roleLabel = this.user ? escapeHtml(this.user.roleName || '') : '';
+    // Computed from the RAW name (before escaping above) — see the chrome() doc comment.
+    const avatarInitials = this.user ? escapeHtml(initials(this.user.displayName || this.user.email || '')) : '';
     const fixedEnvLabel = (this.hasFixedEnvironment || !this.showEnvironmentSelector)
       ? (this.environmentAttr || ENV_NAME[this.environmentInt] || 'staging')
       : null;
-    this.root.innerHTML = TPL.chrome(displayName, roleLabel, fixedEnvLabel, this.projectName || this.project, formatShortcut(this.shortcut), this.unreadNotifyCount);
+    this.root.innerHTML = TPL.chrome(displayName, roleLabel, fixedEnvLabel, this.projectName || this.project, formatShortcut(this.shortcut), this.unreadNotifyCount, avatarInitials, ariaKeyshortcuts(this.shortcut));
 
-    const hideBtn = this.root.querySelector('#pf-hide');
+    const hideBtn = this.root.querySelector('#fbk-hide');
     if (hideBtn) hideBtn.addEventListener('click', () => this.hideOverlay());
 
-    const userBtn = this.root.querySelector('#pf-user');
+    const userBtn = this.root.querySelector('#fbk-user');
     if (userBtn) userBtn.addEventListener('click', (e) => { e.stopPropagation(); this.toggleUserMenu(); });
 
-    const updatesBtn = this.root.querySelector('#pf-updates');
+    const updatesBtn = this.root.querySelector('#fbk-updates');
     if (updatesBtn) updatesBtn.addEventListener('click', (e) => { e.stopPropagation(); this.toggleUpdatesMenu(); });
 
-    this.root.querySelector('#pf-add')!.addEventListener('click', () => this.activateAddComment());
-    this.root.querySelector('#pf-toggle')!.addEventListener('click', () => {
+    this.root.querySelector('#fbk-add')!.addEventListener('click', () => this.activateAddComment());
+    this.root.querySelector('#fbk-toggle')!.addEventListener('click', () => {
       if (!this.token) { showLoginModal(this, () => { Promise.resolve(this.init()).then(() => this.toggleSidebar(true)); }); return; }
       this.toggleSidebar();
     });
-    this.root.querySelector('#pf-refresh')!.addEventListener('click', async () => {
+    this.root.querySelector('#fbk-refresh')!.addEventListener('click', async () => {
       if (!this.token) { showLoginModal(this, () => this.init()); return; }
       await this.fetchComments(); this.renderSidebar(); this.renderPins(); this.toast('Refreshed');
     });
-    this.root.querySelector('#pf-close')!.addEventListener('click', () => this.toggleSidebar(false));
+    this.root.querySelector('#fbk-close')!.addEventListener('click', () => this.toggleSidebar(false));
 
     // Environment switcher — comments are scoped per environment; switching re-queries + persists.
-    const envSel = this.root.querySelector('#pf-env') as HTMLSelectElement | null;
+    const envSel = this.root.querySelector('#fbk-env') as HTMLSelectElement | null;
     if (envSel) {
       envSel.value = (this.environmentAttr || ENV_NAME[this.environmentInt] || 'staging').toLowerCase();
       envSel.addEventListener('change', () => this.setEnvironment(envSel.value));
     }
 
-    const resetBtn = this.root.querySelector('#pf-reset-pos');
+    const resetBtn = this.root.querySelector('#fbk-reset-pos');
     if (resetBtn) resetBtn.addEventListener('click', () => this.resetToolbarPos());
 
     this.restoreToolbarPos();
     this.enableToolbarDrag();
+    this.updateMenuSide();
   }
 
   // Switch the active environment from the toolbar. Comments are environment-scoped, so this
@@ -913,68 +990,114 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
   }
 
   // --- Draggable toolbar ---------------------------------------------------
-  // The toolbar is fixed at the top; let the user drag it by its grip so it
-  // never covers the element they want to comment on. Position persists per tab.
+  // The toolbar's default corner is bottom-right (CSS inset-block-end/inset-inline-end); let the
+  // user drag it by its grip so it never covers the element they want to comment on. Dragging
+  // sets a `translate(dx, dy)` offset (--fbk-toolbar-dx/dy) rather than switching the anchor
+  // to absolute left/top, so the anchor itself never changes — only the offset from it does.
+  // Position persists per tab.
   private restoreToolbarPos(): void {
-    const tb = this.root.querySelector('.pf-toolbar') as HTMLElement | null;
+    const tb = this.root.querySelector('.fbk-toolbar') as HTMLElement | null;
     if (!tb) return;
-    let saved: { left: number; top: number } | null = null;
+    let saved: { dx: number; dy: number } | null = null;
     try { saved = JSON.parse(localStorage.getItem('pointer_toolbar_pos') || 'null'); } catch { /* ignore */ }
-    if (!saved || typeof saved.left !== 'number' || typeof saved.top !== 'number') return;
-    const maxLeft = Math.max(0, window.innerWidth - tb.offsetWidth);
-    const maxTop = Math.max(0, window.innerHeight - tb.offsetHeight);
-    tb.style.left = Math.min(Math.max(0, saved.left), maxLeft) + 'px';
-    tb.style.top = Math.min(Math.max(0, saved.top), maxTop) + 'px';
-    tb.style.right = 'auto';
-    this._setResetVisible(true);
+    if (!saved || typeof saved.dx !== 'number' || typeof saved.dy !== 'number') return;
+    // The translate is still 0 here, so this rect IS the untranslated anchor position — clamp
+    // the saved offset against it so a viewport that's shrunk since last time can't push the
+    // toolbar off-screen.
+    const rect = tb.getBoundingClientRect();
+    const maxDx = Math.max(0, window.innerWidth - rect.width) - rect.left;
+    const maxDy = Math.max(0, window.innerHeight - rect.height) - rect.top;
+    this._toolbarDx = Math.min(Math.max(saved.dx, -rect.left), maxDx);
+    this._toolbarDy = Math.min(Math.max(saved.dy, -rect.top), maxDy);
+    this.applyToolbarOffset(tb);
+    tb.classList.add('is-moved');
   }
 
-  // Show/hide the "reset position" button (it only makes sense once the toolbar has moved).
-  private _setResetVisible(visible: boolean): void {
-    const btn = this.root.querySelector('#pf-reset-pos') as HTMLElement | null;
-    if (btn) btn.classList.toggle('pf-hidden', !visible);
+  private applyToolbarOffset(tb: HTMLElement): void {
+    tb.style.setProperty('--fbk-toolbar-dx', `${this._toolbarDx}px`);
+    tb.style.setProperty('--fbk-toolbar-dy', `${this._toolbarDy}px`);
   }
 
   // Restore the toolbar to its default corner and forget the saved position.
   private resetToolbarPos(): void {
     try { localStorage.removeItem('pointer_toolbar_pos'); } catch { /* ignore */ }
-    const tb = this.root.querySelector('.pf-toolbar') as HTMLElement | null;
-    if (tb) { tb.style.left = ''; tb.style.top = ''; tb.style.right = ''; }
-    this._setResetVisible(false);
+    this._toolbarDx = 0;
+    this._toolbarDy = 0;
+    const tb = this.root.querySelector('.fbk-toolbar') as HTMLElement | null;
+    if (tb) {
+      tb.style.removeProperty('--fbk-toolbar-dx');
+      tb.style.removeProperty('--fbk-toolbar-dy');
+      tb.classList.remove('is-moved');
+    }
+    this.updateMenuSide();
+  }
+
+  // The toolbar's own dropdowns (account/updates/pin-cluster) all open BELOW their trigger by
+  // default — fine when the toolbar sits at the top of the screen, but the default corner is
+  // bottom-right, and a dropdown opening downward from something already near the bottom edge
+  // renders mostly or entirely off-screen (unreachable — this was the actual bug, not just a
+  // dragged-toolbar edge case). Recorded once here as an attribute on the toolbar itself, rather
+  // than remeasured by each menu, since all three anchor off the same toolbar and the answer is
+  // the same for all of them; toggleUserMenu/toggleUpdatesMenu/toggleClusterMenu read it.
+  private updateMenuSide(): void {
+    const tb = this.root.querySelector('.fbk-toolbar') as HTMLElement | null;
+    if (!tb) return;
+    const rect = tb.getBoundingClientRect();
+    const spaceBelow = window.innerHeight - rect.bottom;
+    // 340px comfortably covers every dropdown's own max-height (the tallest, the notifications
+    // menu, caps at 320px) plus the anchor gap.
+    tb.dataset.fbkMenuSide = spaceBelow < 340 ? 'top' : 'bottom';
+  }
+
+  // Vertically anchors a toolbar dropdown (account/updates/pin-cluster) above or below `rect`
+  // per updateMenuSide()'s reading of the toolbar's own position — shared by all three so a
+  // toolbar sitting near the bottom edge doesn't open a menu that renders off-screen below it.
+  private positionMenuVertically(menu: HTMLElement, rect: DOMRect, gap = 6): void {
+    const openUp = (this.root.querySelector('.fbk-toolbar') as HTMLElement | null)?.dataset.fbkMenuSide === 'top';
+    if (openUp) {
+      menu.style.top = 'auto';
+      menu.style.bottom = `${Math.max(8, Math.round(window.innerHeight - rect.top + gap))}px`;
+    } else {
+      menu.style.bottom = 'auto';
+      menu.style.top = `${Math.round(rect.bottom + gap)}px`;
+    }
   }
 
   private enableToolbarDrag(): void {
-    const tb = this.root.querySelector('.pf-toolbar') as HTMLElement | null;
-    const grip = this.root.querySelector('#pf-grip') as HTMLElement | null;
+    const tb = this.root.querySelector('.fbk-toolbar') as HTMLElement | null;
+    const grip = this.root.querySelector('#fbk-grip') as HTMLElement | null;
     if (!tb || !grip) return;
-    let sx = 0, sy = 0, startLeft = 0, startTop = 0, dragging = false;
+    let sx = 0, sy = 0, startDx = 0, startDy = 0, baseLeft = 0, baseTop = 0, baseWidth = 0, baseHeight = 0, dragging = false;
     const onMove = (e: PointerEvent) => {
       if (!dragging) return;
-      const maxLeft = Math.max(0, window.innerWidth - tb.offsetWidth);
-      const maxTop = Math.max(0, window.innerHeight - tb.offsetHeight);
-      tb.style.left = Math.min(Math.max(0, startLeft + (e.clientX - sx)), maxLeft) + 'px';
-      tb.style.top = Math.min(Math.max(0, startTop + (e.clientY - sy)), maxTop) + 'px';
-      tb.style.right = 'auto';
+      const maxDx = Math.max(0, window.innerWidth - baseWidth) - baseLeft;
+      const maxDy = Math.max(0, window.innerHeight - baseHeight) - baseTop;
+      this._toolbarDx = Math.min(Math.max(startDx + (e.clientX - sx), -baseLeft), maxDx);
+      this._toolbarDy = Math.min(Math.max(startDy + (e.clientY - sy), -baseTop), maxDy);
+      this.applyToolbarOffset(tb);
     };
     const onUp = (e: PointerEvent) => {
       if (!dragging) return;
       dragging = false;
-      grip.classList.remove('dragging');
+      tb.classList.remove('is-dragging');
       try { grip.releasePointerCapture(e.pointerId); } catch { /* ignore */ }
-      try {
-        localStorage.setItem('pointer_toolbar_pos', JSON.stringify({
-          left: parseInt(tb.style.left, 10) || 0,
-          top: parseInt(tb.style.top, 10) || 0,
-        }));
-      } catch { /* ignore */ }
-      this._setResetVisible(true);
+      try { localStorage.setItem('pointer_toolbar_pos', JSON.stringify({ dx: this._toolbarDx, dy: this._toolbarDy })); } catch { /* ignore */ }
+      tb.classList.add('is-moved');
+      this.updateMenuSide();
     };
     grip.addEventListener('pointerdown', (e: PointerEvent) => {
       e.preventDefault();
+      // Baseline = the current rect with the CURRENT offset subtracted back out, so dragging
+      // from an already-moved position still clamps against the true anchor, not the shifted one.
       const rect = tb.getBoundingClientRect();
-      startLeft = rect.left; startTop = rect.top; sx = e.clientX; sy = e.clientY;
+      baseLeft = rect.left - this._toolbarDx;
+      baseTop = rect.top - this._toolbarDy;
+      baseWidth = rect.width;
+      baseHeight = rect.height;
+      startDx = this._toolbarDx; startDy = this._toolbarDy;
+      sx = e.clientX; sy = e.clientY;
       dragging = true;
-      grip.classList.add('dragging');
+      tb.classList.add('is-dragging');
       try { grip.setPointerCapture(e.pointerId); } catch { /* ignore */ }
     });
     grip.addEventListener('pointermove', onMove);
@@ -985,38 +1108,74 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
   // --- User menu (identity + sign out) ------------------------------------
   private toggleUserMenu(): void {
     this.closeUpdatesMenu();
-    const host = this.root.querySelector('#pf-menu-host') as HTMLElement | null;
+    this.closeClusterMenu();
+    const host = this.root.querySelector('#fbk-menu-host') as HTMLElement | null;
     if (!host) return;
-    if (host.querySelector('#pf-user-menu')) { this.closeUserMenu(); return; }
+    if (host.querySelector('#fbk-user-menu')) { this.closeUserMenu(); return; }
 
     const displayName = this.user ? escapeHtml(this.user.displayName || this.user.email) : '';
     const roleLabel = this.user ? escapeHtml(this.user.roleName || '') : '';
-    host.innerHTML = TPL.userMenu(displayName, roleLabel, formatShortcut(this.shortcut), this.authOwnedByHost);
-    const menu = host.querySelector('#pf-user-menu') as HTMLElement;
+    host.innerHTML = TPL.userMenu(
+      displayName,
+      roleLabel,
+      formatShortcut(this.shortcut),
+      this.authOwnedByHost,
+      this.resolveTheme(),
+      this.user?.language === 'ar' ? 'ar' : 'en',
+    );
+    const menu = host.querySelector('#fbk-user-menu') as HTMLElement;
 
     // Anchor the dropdown under the user icon.
-    const btn = this.root.querySelector('#pf-user') as HTMLElement | null;
+    const btn = this.root.querySelector('#fbk-user') as HTMLElement | null;
     if (btn) {
+      btn.setAttribute('aria-expanded', 'true');
       const r = btn.getBoundingClientRect();
-      menu.style.top = `${Math.round(r.bottom + 6)}px`;
+      this.positionMenuVertically(menu, r);
       menu.style.right = `${Math.max(8, Math.round(window.innerWidth - r.right))}px`;
     }
 
     // No sign-out control to wire up when the extension owns auth (see authOwnedByHost).
-    const signoutBtn = host.querySelector('#pf-signout') as HTMLElement | null;
+    const signoutBtn = host.querySelector('#fbk-signout') as HTMLElement | null;
     if (signoutBtn) signoutBtn.addEventListener('click', () => this.signOut());
-    (host.querySelector('#pf-shortcut-edit') as HTMLElement).addEventListener('click', (e) => {
+    (host.querySelector('#fbk-shortcut-edit') as HTMLElement).addEventListener('click', (e) => {
       e.stopPropagation();
-      this.beginRecordingShortcut(host.querySelector('#pf-shortcut-edit') as HTMLElement);
+      this.beginRecordingShortcut(host.querySelector('#fbk-shortcut-edit') as HTMLElement);
     });
-    (host.querySelector('#pf-shortcut-reset') as HTMLElement).addEventListener('click', async (e) => {
+    (host.querySelector('#fbk-shortcut-reset') as HTMLElement).addEventListener('click', async (e) => {
       e.stopPropagation();
-      const editBtn = host.querySelector('#pf-shortcut-edit') as HTMLElement | null;
+      const editBtn = host.querySelector('#fbk-shortcut-edit') as HTMLElement | null;
       if (editBtn) editBtn.textContent = 'Resetting…';
       const ok = await this.saveShortcutPreference(null);
       if (editBtn) editBtn.textContent = formatShortcut(this.shortcut);
       this.toast(ok ? 'Shortcut reset to default' : 'Failed to reset — try again', ok ? '' : 'error');
     });
+
+    // Re-opens the menu fresh (rather than patching two buttons' classes in place) so its
+    // active/pressed state always matches what was actually persisted.
+    const reopenUserMenu = () => { this.closeUserMenu(); this.toggleUserMenu(); };
+
+    const wireThemeBtn = (id: string, mode: ThemeMode) => {
+      (host.querySelector(id) as HTMLElement).addEventListener('click', (e) => {
+        e.stopPropagation();
+        if (this.resolveTheme() === mode) return;
+        this.setThemeOverride(mode);
+        reopenUserMenu();
+      });
+    };
+    wireThemeBtn('#fbk-theme-light', 'light');
+    wireThemeBtn('#fbk-theme-dark', 'dark');
+
+    const wireLangBtn = (id: string, lang: string) => {
+      (host.querySelector(id) as HTMLElement).addEventListener('click', async (e) => {
+        e.stopPropagation();
+        if ((this.user?.language === 'ar' ? 'ar' : 'en') === lang) return;
+        const ok = await this.saveLanguagePreference(lang);
+        if (ok) reopenUserMenu();
+        else this.toast('Failed to save language — try again', 'error');
+      });
+    };
+    wireLangBtn('#fbk-lang-en', 'en');
+    wireLangBtn('#fbk-lang-ar', 'ar');
 
     // Close on click outside (composedPath crosses the shadow boundary).
     this._userMenuClose = (e: MouseEvent) => {
@@ -1027,8 +1186,9 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
   }
 
   private closeUserMenu(): void {
-    const host = this.root.querySelector('#pf-menu-host');
-    if (host && host.querySelector('#pf-user-menu')) host.innerHTML = '';
+    const host = this.root.querySelector('#fbk-menu-host');
+    if (host && host.querySelector('#fbk-user-menu')) host.innerHTML = '';
+    (this.root.querySelector('#fbk-user') as HTMLElement | null)?.setAttribute('aria-expanded', 'false');
     if (this._userMenuClose) {
       document.removeEventListener('click', this._userMenuClose, true);
       this._userMenuClose = null;
@@ -1040,13 +1200,14 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
 
   // --- Updates menu (in-app notifications) --------------------------------
   private async toggleUpdatesMenu(): Promise<void> {
-    const host = this.root.querySelector('#pf-menu-host') as HTMLElement | null;
+    const host = this.root.querySelector('#fbk-menu-host') as HTMLElement | null;
     if (!host) return;
-    if (host.querySelector('#pf-notifications-menu')) {
+    if (host.querySelector('#fbk-notifications-menu')) {
       this.closeUpdatesMenu();
       return;
     }
     this.closeUserMenu();
+    this.closeClusterMenu();
 
     const items = await this.apiNotifications();
     if (this.unreadNotifyCount > 0) {
@@ -1056,19 +1217,20 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
     }
 
     host.innerHTML = TPL.notificationsMenu(items);
-    const menu = host.querySelector('#pf-notifications-menu') as HTMLElement | null;
+    const menu = host.querySelector('#fbk-notifications-menu') as HTMLElement | null;
     if (!menu) return;
 
     // Anchor the dropdown under the Updates button.
-    const btn = this.root.querySelector('#pf-updates') as HTMLElement | null;
+    const btn = this.root.querySelector('#fbk-updates') as HTMLElement | null;
     if (btn) {
+      btn.setAttribute('aria-expanded', 'true');
       const r = btn.getBoundingClientRect();
-      menu.style.top = `${Math.round(r.bottom + 6)}px`;
+      this.positionMenuVertically(menu, r);
       menu.style.left = `${Math.max(8, Math.min(window.innerWidth - 330, Math.round(r.left)))}px`;
     }
 
     // Clicking an item opens the sidebar, switches filter to 'all' if needed, and scrolls to/highlights card.
-    menu.querySelectorAll('.pf-notification-item').forEach((el) => {
+    menu.querySelectorAll('.fbk-notification-item').forEach((el) => {
       el.addEventListener('click', () => {
         const commentId = el.getAttribute('data-id');
         this.closeUpdatesMenu();
@@ -1080,7 +1242,7 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
           this.toggleSidebar(true);
           this.renderSidebar();
           setTimeout(() => {
-            const card = this.root.querySelector(`.pf-card[data-id="${commentId}"]`) as HTMLElement | null;
+            const card = this.root.querySelector(`.fbk-card[data-id="${commentId}"]`) as HTMLElement | null;
             if (card) {
               card.scrollIntoView({ behavior: 'smooth', block: 'center' });
               card.classList.add('highlight');
@@ -1100,8 +1262,9 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
   }
 
   private closeUpdatesMenu(): void {
-    const host = this.root.querySelector('#pf-menu-host');
-    if (host && host.querySelector('#pf-notifications-menu')) host.innerHTML = '';
+    const host = this.root.querySelector('#fbk-menu-host');
+    if (host && host.querySelector('#fbk-notifications-menu')) host.innerHTML = '';
+    (this.root.querySelector('#fbk-updates') as HTMLElement | null)?.setAttribute('aria-expanded', 'false');
     if (this._updatesMenuClose) {
       document.removeEventListener('click', this._updatesMenuClose, true);
       this._updatesMenuClose = null;
@@ -1158,15 +1321,14 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
       this.renderChrome();
       return;
     }
-    const badge = this.root.querySelector('#pf-notify-count') as HTMLElement | null;
-    if (badge) {
-      if (this.unreadNotifyCount > 0) {
-        badge.textContent = this.unreadNotifyCount > 99 ? '99+' : String(this.unreadNotifyCount);
-        badge.classList.remove('pf-hidden');
-      } else {
-        badge.textContent = '0';
-        badge.classList.add('pf-hidden');
-      }
+    // A plain dot, not a count — the exact number lives in the Updates dropdown itself, and in
+    // the button's own aria-label for anyone who can't see the dot.
+    const dot = this.root.querySelector('#fbk-notify-count') as HTMLElement | null;
+    if (dot) dot.classList.toggle('fbk-hidden', this.unreadNotifyCount <= 0);
+    const updatesBtn = this.root.querySelector('#fbk-updates') as HTMLElement | null;
+    if (updatesBtn) {
+      const n = this.unreadNotifyCount;
+      updatesBtn.setAttribute('aria-label', `Updates${n > 0 ? `, ${n > 99 ? '99+' : n} unread` : ''}`);
     }
   }
 
@@ -1271,7 +1433,8 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
 
   toggleSidebar(force?: boolean): void {
     this.sidebarOpen = force === undefined ? !this.sidebarOpen : force;
-    this.root.querySelector('#pf-sidebar')!.classList.toggle('open', this.sidebarOpen);
+    this.root.querySelector('#fbk-sidebar')!.classList.toggle('open', this.sidebarOpen);
+    (this.root.querySelector('#fbk-toggle') as HTMLElement | null)?.setAttribute('aria-expanded', String(this.sidebarOpen));
     // Opening → pull fresh server state so applied/"completed" comments show.
     if (this.sidebarOpen) {
       this.fetchComments().then(() => { this.renderSidebar(); this.renderPins(); });
@@ -1284,7 +1447,7 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
   // clickable. Elements not currently rendered/visible in this.root simply aren't found and are
   // skipped; no need to check display/visibility explicitly.
   private ownUiRects(): DOMRect[] {
-    const selectors = ['.pf-launcher', '.pf-toolbar', '.pf-sidebar', '.pf-modal-overlay', '.pf-popover', '.pf-menu'];
+    const selectors = ['.fbk-launcher', '.fbk-toolbar', '.fbk-sidebar', '.fbk-modal-overlay', '.fbk-popover', '.fbk-menu'];
     const rects: DOMRect[] = [];
     for (const sel of selectors) {
       const el = this.root?.querySelector(sel) as HTMLElement | null;
@@ -1329,11 +1492,16 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
     // to our own host, resolveHitTarget() discards it as own-UI, and the pick silently does nothing.
     // The more pins a page accumulates, the more of it becomes un-commentable. Mark the pin layer
     // for the duration of picking so clicks fall through to the page underneath.
-    this.root.querySelector('#pf-pins')?.classList.add('picking');
-    const addBtn = this.root.querySelector('#pf-add') as HTMLButtonElement;
-    addBtn.classList.add('active');
-    addBtn.innerHTML = ICON.close;
+    this.root.querySelector('#fbk-pins-layer')?.classList.add('picking');
+    const tb = this.root.querySelector('.fbk-toolbar') as HTMLElement | null;
+    tb?.classList.add('is-dim'); // the rest of the toolbar steps back — only Cancel stays live
+    // Stays `--primary` throughout — it's always the toolbar's main action; only its icon/label
+    // and aria-pressed change to reflect "start picking" vs "cancel".
+    const addBtn = this.root.querySelector('#fbk-add') as HTMLButtonElement;
+    addBtn.setAttribute('aria-pressed', 'true');
+    addBtn.innerHTML = `<span class="fbk-toolbar-btn__icon">${ICON.close}</span>`;
     addBtn.title = 'Cancel';
+    addBtn.setAttribute('aria-label', 'Cancel');
     document.addEventListener('mousemove', this._onHover, true);
     document.addEventListener('click', this._onPick, true);
     document.addEventListener('keydown', this._onPickKey, true);
@@ -1341,9 +1509,15 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
   }
   stopPicking(): void {
     this.picking = false;
-    this.root?.querySelector('#pf-pins')?.classList.remove('picking');
-    const addBtn = this.root && (this.root.querySelector('#pf-add') as HTMLButtonElement | null);
-    if (addBtn) { addBtn.classList.remove('active'); addBtn.innerHTML = ICON.inspect; addBtn.title = 'Comment on an element'; }
+    this.root?.querySelector('#fbk-pins-layer')?.classList.remove('picking');
+    (this.root?.querySelector('.fbk-toolbar') as HTMLElement | null)?.classList.remove('is-dim');
+    const addBtn = this.root && (this.root.querySelector('#fbk-add') as HTMLButtonElement | null);
+    if (addBtn) {
+      addBtn.setAttribute('aria-pressed', 'false');
+      addBtn.innerHTML = `<span class="fbk-toolbar-btn__icon">${ICON.crosshair}</span>`;
+      addBtn.title = 'Comment on an element';
+      addBtn.setAttribute('aria-label', 'Comment on an element');
+    }
     document.removeEventListener('mousemove', this._onHover, true);
     document.removeEventListener('click', this._onPick, true);
     document.removeEventListener('keydown', this._onPickKey, true);
@@ -1458,22 +1632,145 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
   //  built-in HTMLElement.showPopover() from the Popover API.)
   openCommentPopover(x: number, y: number, el: Element): void {
     const meta = captureMetadata(el, this.sourceAttr, { captureText: this.captureTextContent });
-    const host = this.root.querySelector('#pf-popover-host') as HTMLElement;
-    const left = Math.min(x, window.innerWidth - 300);
-    const top = Math.min(y, window.innerHeight - 220);
-    host.innerHTML = TPL.popover(meta, left, top, this.screenshotEnabled, this.predefinedActions, this.pageContextCaptureEnabled);
+    const host = this.root.querySelector('#fbk-popover-host') as HTMLElement;
+    // Render at the raw click point first so the REAL box can be measured below — a fixed
+    // height guess here (this used to clamp against a hardcoded 220px) goes stale the moment the
+    // popover gains a new field (predefined actions, screenshot preview, bug-report checkbox,
+    // ...) and starts rendering off-screen below the fold for a click near the bottom of the
+    // page — unreachable, can't type or submit. Width IS fixed by CSS (280px), but measuring it
+    // too costs nothing and stays correct if that ever changes.
+    host.innerHTML = TPL.popover(meta, x, y, this.screenshotEnabled, this.predefinedActions, this.pageContextCaptureEnabled);
     // Position applied through the CSSOM, not a style attribute — see applyDataPosition.
-    applyDataPosition(host, '.pf-popover');
-    const ta = host.querySelector('#pf-comment-text') as HTMLTextAreaElement;
+    applyDataPosition(host, '.fbk-popover');
+    const popoverEl = host.querySelector('.fbk-popover') as HTMLElement | null;
+    if (popoverEl) {
+      const rect = popoverEl.getBoundingClientRect();
+      const margin = 8;
+      const left = Math.max(margin, Math.min(x, window.innerWidth - rect.width - margin));
+      const top = Math.max(margin, Math.min(y, window.innerHeight - rect.height - margin));
+      popoverEl.style.left = `${Math.round(left)}px`;
+      popoverEl.style.top = `${Math.round(top)}px`;
+    }
+    const ta = host.querySelector('#fbk-comment-text') as HTMLTextAreaElement;
     ta.focus();
-    // Screenshot is opt-in (unchecked by default): only capture once the user ticks
-    // the box, so we don't render a screenshot for comments that won't use one.
-    const shotToggle = host.querySelector('#pf-comment-shot') as HTMLInputElement | null;
-    if (shotToggle) shotToggle.addEventListener('change', () => {
-      if (shotToggle.checked) this.beginScreenshotCapture(el);
+    // Private is opt-in (off by default) — a lock/unlock icon toggle rather than a checkbox, same
+    // pattern as the card's own visibility toggle. Tracked here (not re-derived from the DOM at
+    // submit time) so the click handler is the single place that updates both the icon and the
+    // state together.
+    let isPrivateComment = false;
+    const privateToggle = host.querySelector('#fbk-comment-private') as HTMLButtonElement | null;
+    if (privateToggle) privateToggle.addEventListener('click', () => {
+      isPrivateComment = !isPrivateComment;
+      privateToggle.classList.toggle('is-active', isPrivateComment);
+      privateToggle.setAttribute('aria-pressed', String(isPrivateComment));
+      // Same wording pattern as the card's own visibility toggle, for consistency.
+      privateToggle.title = isPrivateComment ? 'Private — click to make public' : 'Make private (only you)';
+      privateToggle.setAttribute('aria-label', isPrivateComment ? 'Make public' : 'Make private');
+      privateToggle.innerHTML = isPrivateComment ? ICON.lock : ICON.unlock;
     });
-    const cancelPopover = () => { host.innerHTML = ''; this._pendingShotPromise = null; };
-    (host.querySelector('#pf-cancel') as HTMLElement).addEventListener('click', cancelPopover);
+    // Predefined prompts — searchable multi-select combobox. `selectedActionIds` is read directly
+    // at submit time (same pattern as isPrivateComment above) instead of re-deriving it from the
+    // DOM. Declared here (not inside the `if` below) so cancelPopover/submit can always call
+    // `stopMsListening` without a type error when the project has no predefined actions at all.
+    const selectedActionIds = new Set<number>();
+    let stopMsListening: (() => void) | null = null;
+    const actionMsControl = host.querySelector('#fbk-action-ms-control') as HTMLElement | null;
+    const actionMsInput = host.querySelector('#fbk-action-ms-input') as HTMLInputElement | null;
+    const actionMsChips = host.querySelector('#fbk-action-ms-chips') as HTMLElement | null;
+    const actionMsList = host.querySelector('#fbk-action-ms-list') as HTMLElement | null;
+    if (actionMsControl && actionMsInput && actionMsChips && actionMsList) {
+      const renderChips = () => {
+        actionMsChips.innerHTML = Array.from(selectedActionIds).map((id) => {
+          const a = this.predefinedActions.find((x) => x.id === id);
+          if (!a) return '';
+          return `<span class="fbk-ms-chip"><span class="fbk-ms-chip-label">${escapeHtml(a.text)}</span><button type="button" class="fbk-ms-chip-remove" data-id="${id}" aria-label="Remove ${escapeHtml(a.text)}">&times;</button></span>`;
+        }).join('');
+        actionMsChips.querySelectorAll('.fbk-ms-chip-remove').forEach((btn) => {
+          btn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            selectedActionIds.delete(Number((btn as HTMLElement).dataset.id));
+            renderChips();
+            renderOptions(actionMsInput.value);
+          });
+        });
+      };
+      const renderOptions = (query: string) => {
+        const q = query.trim().toLowerCase();
+        const matches = this.predefinedActions.filter(
+          (a) => !selectedActionIds.has(a.id) && (!q || a.text.toLowerCase().includes(q)),
+        );
+        actionMsList.innerHTML = matches.length
+          ? matches.map((a) => `<div class="fbk-ms-option" role="option" data-id="${a.id}">${escapeHtml(a.text)}</div>`).join('')
+          : `<div class="fbk-ms-empty">No matches</div>`;
+        actionMsList.querySelectorAll('.fbk-ms-option').forEach((opt) => {
+          // mousedown (not click) so selection registers BEFORE the input's blur would otherwise
+          // fire and close the list first.
+          opt.addEventListener('mousedown', (e) => {
+            e.preventDefault();
+            selectedActionIds.add(Number((opt as HTMLElement).dataset.id));
+            actionMsInput.value = '';
+            renderChips();
+            renderOptions('');
+            actionMsInput.focus();
+          });
+        });
+      };
+      const openList = () => { actionMsList.hidden = false; actionMsInput.setAttribute('aria-expanded', 'true'); };
+      const closeList = () => { actionMsList.hidden = true; actionMsInput.setAttribute('aria-expanded', 'false'); };
+      actionMsInput.addEventListener('focus', () => { renderOptions(actionMsInput.value); openList(); });
+      actionMsInput.addEventListener('input', () => { renderOptions(actionMsInput.value); openList(); });
+      actionMsInput.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') {
+          e.stopPropagation(); // don't also trigger the popover's own Escape-to-cancel below
+          closeList();
+        } else if (e.key === 'Enter') {
+          e.preventDefault(); // don't submit the comment from this field
+          const first = actionMsList.querySelector('.fbk-ms-option') as HTMLElement | null;
+          const id = first?.dataset.id;
+          if (id) {
+            selectedActionIds.add(Number(id));
+            actionMsInput.value = '';
+            renderChips();
+            renderOptions('');
+          }
+        } else if (e.key === 'Backspace' && !actionMsInput.value && selectedActionIds.size) {
+          const last = Array.from(selectedActionIds).pop()!;
+          selectedActionIds.delete(last);
+          renderChips();
+          renderOptions('');
+        }
+      });
+      // Close on click outside the control/list (composedPath crosses the shadow boundary) — same
+      // pattern as the toolbar's user/updates/cluster menus elsewhere in this file.
+      const onDocClick = (e: MouseEvent) => {
+        const path = e.composedPath();
+        if (!path.includes(actionMsControl) && !path.includes(actionMsList)) closeList();
+      };
+      document.addEventListener('click', onDocClick, true);
+      stopMsListening = () => document.removeEventListener('click', onDocClick, true);
+      renderOptions('');
+    }
+    // Screenshot / bug-report are opt-in (off by default), press-to-toggle buttons rather than
+    // checkboxes — same tracked-in-closure pattern as isPrivateComment above. Screenshot capture
+    // only starts the moment the user turns it ON, not on every toggle, so it's never captured for
+    // a comment that ends up not using one.
+    let attachShotComment = false;
+    const shotToggle = host.querySelector('#fbk-comment-shot') as HTMLButtonElement | null;
+    if (shotToggle) shotToggle.addEventListener('click', () => {
+      attachShotComment = !attachShotComment;
+      shotToggle.classList.toggle('is-active', attachShotComment);
+      shotToggle.setAttribute('aria-pressed', String(attachShotComment));
+      if (attachShotComment) this.beginScreenshotCapture(el);
+    });
+    let isBugReportComment = false;
+    const bugToggle = host.querySelector('#fbk-comment-bug') as HTMLButtonElement | null;
+    if (bugToggle) bugToggle.addEventListener('click', () => {
+      isBugReportComment = !isBugReportComment;
+      bugToggle.classList.toggle('is-active', isBugReportComment);
+      bugToggle.setAttribute('aria-pressed', String(isBugReportComment));
+    });
+    const cancelPopover = () => { host.innerHTML = ''; this._pendingShotPromise = null; stopMsListening?.(); };
+    (host.querySelector('#fbk-cancel') as HTMLElement).addEventListener('click', cancelPopover);
     // Esc cancels the comment box, same as clicking Cancel — stopPropagation so it doesn't also
     // reach the document-level Esc handler for element-picking mode (picking already stopped by
     // the time this popover is open, but this keeps the two handlers unambiguous either way).
@@ -1483,24 +1780,19 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
       e.stopPropagation();
       cancelPopover();
     });
-    (host.querySelector('#pf-submit') as HTMLButtonElement).addEventListener('click', async () => {
+    (host.querySelector('#fbk-submit') as HTMLButtonElement).addEventListener('click', async () => {
       const text = ta.value.trim();
       if (!text) return this.toast('Comment cannot be empty', 'error');
-      const privateEl = host.querySelector('#pf-comment-private') as HTMLInputElement | null;
-      const isPrivate = !!(privateEl && privateEl.checked);
-      const shotEl = host.querySelector('#pf-comment-shot') as HTMLInputElement | null;
-      const attachShot = !!(shotEl && shotEl.checked); // toggle: off by default
-      const bugEl = host.querySelector('#pf-comment-bug') as HTMLInputElement | null;
-      const isBugReport = !!(bugEl && bugEl.checked); // toggle: off by default
+      const isPrivate = isPrivateComment;
+      const attachShot = attachShotComment;
+      const isBugReport = isBugReportComment;
       const shotPromise = this._pendingShotPromise;
       this._pendingShotPromise = null;
-      const predefinedActionIds = Array.from(
-        host.querySelectorAll('.pf-action-opt:checked') as NodeListOf<HTMLInputElement>,
-      ).map((el) => Number(el.value));
-      const submitBtn = host.querySelector('#pf-submit') as HTMLButtonElement;
+      const predefinedActionIds = Array.from(selectedActionIds);
+      const submitBtn = host.querySelector('#fbk-submit') as HTMLButtonElement;
       submitBtn.disabled = true; submitBtn.textContent = 'Saving…';
       const saved = await this.createComment({ ...meta, text, isPrivate, attachShot, shotPromise, predefinedActionIds, isBugReport });
-      if (saved) host.innerHTML = '';
+      if (saved) { host.innerHTML = ''; stopMsListening?.(); }
       else { submitBtn.disabled = false; submitBtn.textContent = 'Add'; }
     });
   }
@@ -1608,9 +1900,12 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
       if (comment) {
         this.comments.push({ ...comment, status: STATUS_STR[comment.status as unknown as number] || 'open' });
       }
+      const newId = comment ? String(comment.id) : '';
+      this._newPinId = newId || null;
       this.renderSidebar();
       this.renderPins();
-      this.toast('Comment added', 'success');
+      if (newId) setTimeout(() => { if (String(this._newPinId) === newId) this._newPinId = null; }, 3000);
+      this.toast('Comment added', 'success', newId ? 'Undo' : undefined, newId ? () => this.deleteComment(newId) : undefined);
       return true;
     } catch (e) {
       if ((e as Error).message !== 'HTTP 401 Unauthorized') {
@@ -1712,19 +2007,19 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
    */
   confirmDelete(btn: HTMLElement): void {
     const id = btn.dataset.id;
-    const row = btn.closest('.pf-actions-end') as HTMLElement | null;
-    if (!id || !row || row.querySelector('.pf-confirm')) return; // already confirming
+    const row = btn.closest('.fbk-actions-end') as HTMLElement | null;
+    if (!id || !row || row.querySelector('.fbk-confirm')) return; // already confirming
 
     const others = Array.from(row.children) as HTMLElement[];
     others.forEach((el) => { el.style.display = 'none'; });
 
     const wrap = document.createElement('div');
-    wrap.className = 'pf-confirm pf-confirm-row';
+    wrap.className = 'fbk-confirm fbk-confirm-row';
     wrap.innerHTML =
-      `<span class="pf-confirm-q">Delete this comment?</span>` +
-      `<span class="pf-confirm-btns">` +
-      `<button type="button" class="pf-mini danger pf-icon" data-c="yes" title="Confirm delete" aria-label="Confirm delete">${ICON.checkPlain}</button>` +
-      `<button type="button" class="pf-mini pf-icon" data-c="no" title="Cancel" aria-label="Cancel">&#x2715;</button>` +
+      `<span class="fbk-confirm-q">Delete this comment?</span>` +
+      `<span class="fbk-confirm-btns">` +
+      `<button type="button" class="fbk-mini danger fbk-icon" data-c="yes" title="Confirm delete" aria-label="Confirm delete">${ICON.checkPlain}</button>` +
+      `<button type="button" class="fbk-mini fbk-icon" data-c="no" title="Cancel" aria-label="Cancel">&#x2715;</button>` +
       `</span>`;
     row.appendChild(wrap);
 
@@ -1766,32 +2061,32 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
 
   // Inline edit (own comments only): swap the body text for a textarea + controls.
   startEdit(id: string): void {
-    const card = this.root && this.root.querySelector(`.pf-card[data-id="${id}"]`);
-    if (!card || card.querySelector('.pf-edit')) return;
+    const card = this.root && this.root.querySelector(`.fbk-card[data-id="${id}"]`);
+    if (!card || card.querySelector('.fbk-edit')) return;
     const comment = (this.comments || []).find((x) => String(x.id) === String(id));
     if (!comment) return;
-    const textEl = card.querySelector('.pf-text') as HTMLElement | null;
+    const textEl = card.querySelector('.fbk-text') as HTMLElement | null;
     if (!textEl) return;
     const hasShot = !!(comment.element && comment.element.screenshotUrl);
     const editor = document.createElement('div');
-    editor.className = 'pf-edit';
+    editor.className = 'fbk-edit';
     editor.style.margin = '6px 0';
     editor.innerHTML = `
-        <textarea class="pf-textarea pf-edit-body">${escapeHtml(comment.body || '')}</textarea>
-        ${hasShot ? `<label class="pf-edit-option"><input type="checkbox" class="pf-edit-rmshot" /> Remove image</label>` : ''}
-        <div class="pf-reply-row">
-          <button class="pf-btn primary pf-btn-fill pf-edit-save">Save</button>
-          <button class="pf-mini pf-edit-cancel">Cancel</button>
+        <textarea class="fbk-textarea fbk-edit-body">${escapeHtml(comment.body || '')}</textarea>
+        ${hasShot ? `<label class="fbk-edit-option"><input type="checkbox" class="fbk-edit-rmshot" /> Remove image</label>` : ''}
+        <div class="fbk-reply-row">
+          <button class="fbk-btn primary fbk-btn-fill fbk-edit-save">Save</button>
+          <button class="fbk-mini fbk-edit-cancel">Cancel</button>
         </div>`;
     textEl.style.display = 'none';
     textEl.insertAdjacentElement('afterend', editor);
-    const ta = editor.querySelector('.pf-edit-body') as HTMLTextAreaElement;
+    const ta = editor.querySelector('.fbk-edit-body') as HTMLTextAreaElement;
     ta.focus();
-    (editor.querySelector('.pf-edit-cancel') as HTMLElement).addEventListener('click', () => { editor.remove(); textEl.style.display = ''; });
-    (editor.querySelector('.pf-edit-save') as HTMLElement).addEventListener('click', () => {
+    (editor.querySelector('.fbk-edit-cancel') as HTMLElement).addEventListener('click', () => { editor.remove(); textEl.style.display = ''; });
+    (editor.querySelector('.fbk-edit-save') as HTMLElement).addEventListener('click', () => {
       const body = ta.value.trim();
       if (!body) { this.toast('Comment cannot be empty', 'error'); return; }
-      const rm = editor.querySelector('.pf-edit-rmshot') as HTMLInputElement | null;
+      const rm = editor.querySelector('.fbk-edit-rmshot') as HTMLInputElement | null;
       const removeScreenshot = !!(rm && rm.checked);
       this.saveEdit(id, body, removeScreenshot);
     });
@@ -1838,6 +2133,7 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
         displayName: (this.user && this.user.displayName) || me.displayName,
         isAdmin: !!me.isAdmin,
         isQuickAccess: !!me.isQuickAccess,
+        language: (this.user && this.user.language) || me.language,
       };
       if (!this.authOwnedByHost) {
         try { localStorage.setItem('pointer_user', JSON.stringify(this.user)); } catch { /* ignore */ }
@@ -1888,31 +2184,31 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
       archived: scoped.filter((c) => c.status === 'archived').length,
     };
 
-    const countEl = this.root.querySelector('#pf-count');
+    const countEl = this.root.querySelector('#fbk-count');
     if (countEl) countEl.textContent = String(all.filter((c) => c.status !== 'archived' && c.status !== 'applied').length);
 
-    const filtersEl = this.root.querySelector('#pf-filters');
+    const filtersEl = this.root.querySelector('#fbk-filters');
     if (filtersEl) {
       const activeFilters = catalogToFilters();
       filtersEl.innerHTML = TPL.statusFilterSelect(activeFilters, this.statusFilter, counts)
         + ((authors.length > 1 && !this.mineOnly) ? TPL.authorFilter(authors, this.authorFilter || '') : '')
         + (canMine ? TPL.mineToggle(this.mineOnly) : '');
-      const statusSel = filtersEl.querySelector('#pf-status-filter') as HTMLSelectElement | null;
+      const statusSel = filtersEl.querySelector('#fbk-status-filter') as HTMLSelectElement | null;
       if (statusSel) statusSel.addEventListener('change', () => {
         this.statusFilter = statusSel.value; this.renderSidebar();
       });
-      const mineBtn = filtersEl.querySelector('#pf-mine-toggle');
+      const mineBtn = filtersEl.querySelector('#fbk-mine-toggle');
       if (mineBtn) mineBtn.addEventListener('click', () => {
         this.mineOnly = !this.mineOnly; this.renderSidebar(); this.renderPins();
       });
-      const authorSel = filtersEl.querySelector('#pf-author-filter') as HTMLSelectElement | null;
+      const authorSel = filtersEl.querySelector('#fbk-author-filter') as HTMLSelectElement | null;
       if (authorSel) authorSel.addEventListener('change', () => {
         this.authorFilter = authorSel.value || null;
         this.renderSidebar(); this.renderPins();
       });
     }
 
-    const list = this.root.querySelector('#pf-list');
+    const list = this.root.querySelector('#fbk-list');
     if (!list) return;
 
     // Applied comments are hidden from the default view — they are done, and leaving them there
@@ -1964,7 +2260,7 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
       const c = this.comments.find((x) => String(x.id) === String(b.dataset.id));
       if (c) this.setStatus(c, 'archived', 'Archived');
     }));
-    list.querySelectorAll<HTMLInputElement>('.pf-reply-input').forEach((inp) => inp.addEventListener('keydown', (e) => {
+    list.querySelectorAll<HTMLInputElement>('.fbk-reply-input').forEach((inp) => inp.addEventListener('keydown', (e) => {
       if (e.key === 'Enter' && inp.value.trim()) { this.addReply(inp.dataset.id!, inp.value.trim()); inp.value = ''; }
     }));
 
@@ -1976,28 +2272,28 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
     list.querySelectorAll<HTMLElement>('[data-act="verify-reject"]').forEach((b) => b.addEventListener('click', () => {
       const id = b.dataset.id;
       if (!id) return;
-      const box = list.querySelector<HTMLElement>(`#pf-verify-box-${id}`);
+      const box = list.querySelector<HTMLElement>(`#fbk-verify-box-${id}`);
       if (box) {
-        const show = box.classList.contains('pf-hidden');
-        box.classList.toggle('pf-hidden', !show);
-        const input = box.querySelector<HTMLInputElement>(`#pf-verify-note-${id}`);
+        const show = box.classList.contains('fbk-hidden');
+        box.classList.toggle('fbk-hidden', !show);
+        const input = box.querySelector<HTMLInputElement>(`#fbk-verify-note-${id}`);
         if (input && show) input.focus();
       }
     }));
     list.querySelectorAll<HTMLElement>('[data-act="verify-cancel"]').forEach((b) => b.addEventListener('click', () => {
       const id = b.dataset.id;
       if (!id) return;
-      const box = list.querySelector<HTMLElement>(`#pf-verify-box-${id}`);
+      const box = list.querySelector<HTMLElement>(`#fbk-verify-box-${id}`);
       if (box) {
-        box.classList.add('pf-hidden');
-        const input = box.querySelector<HTMLInputElement>(`#pf-verify-note-${id}`);
+        box.classList.add('fbk-hidden');
+        const input = box.querySelector<HTMLInputElement>(`#fbk-verify-note-${id}`);
         if (input) input.value = '';
       }
     }));
     list.querySelectorAll<HTMLElement>('[data-act="verify-submit"]').forEach((b) => b.addEventListener('click', () => {
       const id = b.dataset.id;
       if (!id) return;
-      const input = list.querySelector<HTMLInputElement>(`#pf-verify-note-${id}`);
+      const input = list.querySelector<HTMLInputElement>(`#fbk-verify-note-${id}`);
       const note = input?.value?.trim();
       if (!note) {
         input?.focus();
@@ -2006,9 +2302,9 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
       }
       this.apiVerify(id, false, note);
     }));
-    list.querySelectorAll<HTMLInputElement>('.pf-verify-note-input').forEach((inp) => inp.addEventListener('keydown', (e) => {
+    list.querySelectorAll<HTMLInputElement>('.fbk-verify-note-input').forEach((inp) => inp.addEventListener('keydown', (e) => {
       if (e.key === 'Enter') {
-        const id = inp.id.replace('pf-verify-note-', '');
+        const id = inp.id.replace('fbk-verify-note-', '');
         const note = inp.value.trim();
         if (!note) {
           inp.focus();
@@ -2022,31 +2318,198 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
 
   // --- Pins ----------------------------------------------------------------
   renderPins(): void {
-    const wrap = this.root && this.root.querySelector('#pf-pins');
+    const wrap = this.root && this.root.querySelector('#fbk-pins-layer');
     if (!wrap) return;
     const all = this.pageComments().filter((c) => c.status !== 'archived' && c.status !== 'applied');
     const here = this.scopeByWho(all);
-    wrap.innerHTML = here.map((c, i) => {
+
+    // `i` is each comment's position in `here` — kept per-item (not per-group) so a
+    // non-clustered pin's number still matches its card's number in the sidebar, which iterates
+    // this same `here` array in the same order; a cluster shows a count instead of numbers, so it
+    // doesn't need one.
+    type Item = { c: Comment; i: number; x: number; y: number };
+    const items: Item[] = [];
+    here.forEach((c, i) => {
       const el = matchElement(c);
-      if (!el) return '';
+      if (!el) return;
       const rect = el.getBoundingClientRect();
-      if (rect.width === 0 && rect.height === 0) return '';
-      return TPL.pin(c, i, rect);
+      if (rect.width === 0 && rect.height === 0) return;
+      items.push({ c, i, x: rect.left, y: rect.top });
+    });
+
+    // Greedy single-linkage clustering: each item joins the first existing group whose anchor
+    // (its first item — good enough at this scale; not true nearest-centroid clustering) is
+    // within PIN_CLUSTER_RADIUS px, else it starts a new group.
+    const groups: Item[][] = [];
+    for (const item of items) {
+      const group = groups.find((g) => Math.hypot(item.x - g[0]!.x, item.y - g[0]!.y) <= PIN_CLUSTER_RADIUS);
+      if (group) group.push(item); else groups.push([item]);
+    }
+
+    wrap.innerHTML = groups.map((g) => {
+      // Centroid of the group's anchors — a single pin still lands exactly on its target;
+      // a cluster sits at the middle of what it's standing in for, rather than snapped to
+      // whichever comment happened to be scanned first.
+      const cx = g.reduce((sum, it) => sum + it.x, 0) / g.length;
+      const cy = g.reduce((sum, it) => sum + it.y, 0) / g.length;
+      // The wrapper is anchored via `transform: translate(-50%, -100%)` so the pin's TIP (not its
+      // own top-left corner) lands on the target pixel — which means a target genuinely visible
+      // right at the top or left edge of the viewport had part of the pin pushed off-screen by
+      // that same transform. Nudge it back on-screen in that case ONLY (a target actually
+      // scrolled well past the edge, at a much more negative coordinate, is correctly left alone —
+      // its pin isn't supposed to be visible until scrolled back into view).
+      const clampedCx = (cx >= 0 && cx < PIN_HALF_WIDTH) ? PIN_HALF_WIDTH
+        : (cx <= window.innerWidth && cx > window.innerWidth - PIN_HALF_WIDTH) ? window.innerWidth - PIN_HALF_WIDTH
+        : cx;
+      const clampedCy = (cy >= 0 && cy < PIN_HEIGHT) ? PIN_HEIGHT : cy;
+      const rect = { left: clampedCx, top: clampedCy };
+      if (g.length > 1) return TPL.pinCluster(g.map((it) => it.c), rect);
+      // The hover tooltip opens ABOVE the pin by default; flip it below when there's not enough
+      // room above (same failure this whole clamp exists for, one level up: a pin near the top
+      // of the viewport has nowhere for a ~150px tooltip to open upward into).
+      const tipSide: 'top' | 'bottom' = (clampedCy - PIN_HEIGHT - PIN_TOOLTIP_HEIGHT_ESTIMATE) < 0 ? 'bottom' : 'top';
+      return TPL.pin(g[0]!.c, g[0]!.i, rect, String(g[0]!.c.id) === String(this._newPinId), tipSide);
     }).join('');
-    applyDataPosition(wrap, '.pf-pin');
-    wrap.querySelectorAll<HTMLElement>('.pf-pin').forEach((p) => p.addEventListener('click', () => {
-      this.toggleSidebar(true);
-      const card = this.root.querySelector(`.pf-card[data-id="${p.dataset.id}"]`);
-      if (card) card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    applyDataPosition(wrap, '.fbk-pin-wrapper');
+
+    wrap.querySelectorAll<HTMLElement>('.fbk-pin-cluster').forEach((btn) => btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const wrapper = btn.closest('.fbk-pin-wrapper') as HTMLElement | null;
+      const ids = (wrapper?.dataset.ids || '').split(',').filter(Boolean);
+      const clustered = ids.map((id) => this.comments.find((c) => String(c.id) === id)).filter((c): c is Comment => !!c);
+      this.toggleClusterMenu(btn, clustered);
     }));
+    wrap.querySelectorAll<HTMLElement>('.fbk-pin').forEach((btn) => {
+      if (btn.classList.contains('fbk-pin-cluster')) return; // handled above
+      btn.addEventListener('click', () => {
+        const wrapper = btn.closest('.fbk-pin-wrapper') as HTMLElement | null;
+        const id = wrapper?.dataset.id;
+        if (id) this.highlightCommentCard(id);
+      });
+    });
+  }
+
+  // Opens the sidebar (if needed) and scrolls/highlights one comment's card — shared by a
+  // standalone pin's click and the expanded cluster menu's item clicks.
+  private highlightCommentCard(id: string): void {
+    this.toggleSidebar(true);
+    this.renderSidebar(); // synchronous, from the comments already in memory, so the card
+                           // exists in the DOM immediately instead of waiting on
+                           // toggleSidebar's own re-fetch.
+    setTimeout(() => {
+      const card = this.root.querySelector(`.fbk-card[data-id="${id}"]`) as HTMLElement | null;
+      if (card) {
+        card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        card.classList.add('highlight');
+        setTimeout(() => card.classList.remove('highlight'), 2000);
+      }
+    }, 100);
+  }
+
+  // --- Pin cluster menu ------------------------------------------------------
+  private toggleClusterMenu(btn: HTMLElement, comments: Comment[]): void {
+    const host = this.root.querySelector('#fbk-menu-host') as HTMLElement | null;
+    if (!host) return;
+    if (host.querySelector('#fbk-pin-cluster-menu')) { this.closeClusterMenu(); return; }
+    this.closeUserMenu();
+    this.closeUpdatesMenu();
+    if (comments.length === 0) return;
+
+    host.innerHTML = TPL.pinClusterMenu(comments);
+    const menu = host.querySelector('#fbk-pin-cluster-menu') as HTMLElement | null;
+    if (!menu) return;
+    btn.setAttribute('aria-expanded', 'true');
+
+    // Anchor the menu under the cluster pin — or above it, if there isn't room. Computed from
+    // the PIN's own position (already rendered, so `menu.offsetHeight` is real, not guessed),
+    // not the toolbar's: a cluster can sit anywhere on the page, unlike the account/updates
+    // dropdowns which are always anchored to the toolbar itself (see positionMenuVertically).
+    const r = btn.getBoundingClientRect();
+    const menuHeight = menu.offsetHeight;
+    const spaceBelow = window.innerHeight - r.bottom;
+    if (spaceBelow < menuHeight + 6 && r.top > spaceBelow) {
+      menu.style.top = 'auto';
+      menu.style.bottom = `${Math.max(8, Math.round(window.innerHeight - r.top + 6))}px`;
+    } else {
+      menu.style.bottom = 'auto';
+      menu.style.top = `${Math.round(r.bottom + 6)}px`;
+    }
+    menu.style.left = `${Math.max(8, Math.min(window.innerWidth - 248, Math.round(r.left - 100)))}px`;
+
+    menu.querySelectorAll<HTMLElement>('.fbk-pin-cluster-item').forEach((item) => {
+      item.addEventListener('click', () => {
+        const id = item.dataset.id;
+        this.closeClusterMenu();
+        if (id) this.highlightCommentCard(id);
+      });
+    });
+
+    this._clusterMenuClose = (e: MouseEvent) => {
+      const path = e.composedPath();
+      if (!path.includes(menu) && !path.includes(btn)) this.closeClusterMenu();
+    };
+    setTimeout(() => { if (this._clusterMenuClose) document.addEventListener('click', this._clusterMenuClose, true); }, 0);
+  }
+
+  private closeClusterMenu(): void {
+    const host = this.root.querySelector('#fbk-menu-host');
+    if (host && host.querySelector('#fbk-pin-cluster-menu')) {
+      host.innerHTML = '';
+      this.root.querySelectorAll('.fbk-pin-cluster[aria-expanded="true"]').forEach((b) => b.setAttribute('aria-expanded', 'false'));
+    }
+    if (this._clusterMenuClose) {
+      document.removeEventListener('click', this._clusterMenuClose, true);
+      this._clusterMenuClose = null;
+    }
   }
 
   // --- Toast ---------------------------------------------------------------
-  toast(msg: string, type = ''): void {
-    const t = document.createElement('div');
-    t.className = `pf-toast ${type}`;
-    t.textContent = msg;
-    this.root.appendChild(t);
-    setTimeout(() => t.remove(), 2200);
+  // `type` keeps every existing call site's convention ('', 'success', 'error') working
+  // unchanged — '' and 'success' both render the success (green check) variant; 'error' maps to
+  // the danger (red) variant. 'warn' (amber) is available for a future call site; nothing emits
+  // it yet. `actionLabel`/`onAction` add an optional inline button (e.g. "Undo", "Retry") —
+  // `onAction` runs, then the toast dismisses either way.
+  toast(msg: string, type = '', actionLabel?: string, onAction?: () => void): void {
+    const variant: 'success' | 'warn' | 'danger' = type === 'error' ? 'danger' : type === 'warn' ? 'warn' : 'success';
+    const host = this.ensureToastContainer();
+    const wrap = document.createElement('div');
+    wrap.innerHTML = TPL.toast(variant, msg, actionLabel);
+    const el = wrap.firstElementChild as HTMLElement;
+    host.appendChild(el);
+
+    let dismissed = false;
+    const dismiss = () => {
+      if (dismissed) return;
+      dismissed = true;
+      el.classList.add('dismissing');
+      // Matches --fbk-transition-fast (140ms) — long enough for the exit animation to play.
+      setTimeout(() => el.remove(), 160);
+    };
+    el.querySelector('.fbk-toast-close')?.addEventListener('click', dismiss);
+    if (actionLabel) {
+      el.querySelector('.fbk-toast-action')?.addEventListener('click', () => {
+        onAction?.();
+        dismiss();
+      });
+    }
+    setTimeout(dismiss, 2200);
+  }
+
+  // Toasts stack in their own fixed container (see _toast.scss) rather than as loose siblings —
+  // otherwise two toasts shown close together would render on top of each other. Created lazily
+  // and reused; renderChrome()'s full innerHTML swap can wipe it (same as any other overlay it
+  // doesn't own), which only matters if a re-render happens to land inside a toast's ~2s life.
+  private ensureToastContainer(): HTMLElement {
+    let host = this.root.querySelector('#fbk-toast-container') as HTMLElement | null;
+    if (!host) {
+      host = document.createElement('div');
+      host.id = 'fbk-toast-container';
+      host.className = 'fbk-toast-container';
+      host.setAttribute('role', 'region');
+      host.setAttribute('aria-label', 'Notifications');
+      host.setAttribute('aria-live', 'polite');
+      this.root.appendChild(host);
+    }
+    return host;
   }
 }

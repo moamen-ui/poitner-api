@@ -5,18 +5,26 @@ using Pointer.Application.Common;
 namespace Pointer.API.Extensions;
 
 /// <summary>
-/// Static-file caching and version-routing pipeline for pointer.js/pointer.css (R3-03).
+/// Static-file caching and version-routing pipeline for widget.js/widget.css (R3-03).
+/// `/pointer.js`/`/pointer.css` are the pre-rename names, served byte-identical (see build.mjs)
+/// and kept working as permanent aliases per docs/ON-DISK-CONTRACT.md — every already-integrated
+/// site that hardcodes them must never break.
 /// </summary>
 public static class WidgetStaticPipeline
 {
+    private static bool IsWidgetBundlePath(PathString path) =>
+        path.Equals("/widget.js", StringComparison.OrdinalIgnoreCase) ||
+        path.Equals("/widget.css", StringComparison.OrdinalIgnoreCase) ||
+        path.Equals("/pointer.js", StringComparison.OrdinalIgnoreCase) ||
+        path.Equals("/pointer.css", StringComparison.OrdinalIgnoreCase);
+
     public static async Task HandleWidgetVersioningAsync(
         HttpContext ctx,
         Func<Task> next,
         WidgetVersionInfo widgetInfo)
     {
         var path = ctx.Request.Path;
-        if (path.Equals("/pointer.js", StringComparison.OrdinalIgnoreCase) ||
-            path.Equals("/pointer.css", StringComparison.OrdinalIgnoreCase))
+        if (IsWidgetBundlePath(path))
         {
             if (ctx.Request.Query.TryGetValue("v", out var vVal))
             {
@@ -86,13 +94,15 @@ public static class WidgetStaticPipeline
         // The widget's own assets are fetched cross-origin from every customer site that embeds it,
         // and this static-file middleware runs BEFORE UseCors — so the response is written and sent
         // without the CORS middleware ever seeing it. Without this header the browser blocks
-        // pointer.css on every install and the widget renders unstyled.
+        // widget.css on every install and the widget renders unstyled.
         //
         // `*` is correct rather than permissive: these are public, unauthenticated, read-only build
         // artifacts served to arbitrary unknown origins by design. That is the same reasoning
         // behind the open DEFAULT CORS policy for the widget surface.
         var isWidgetAsset =
-            name.Equals("pointer.js", StringComparison.OrdinalIgnoreCase)
+            name.Equals("widget.js", StringComparison.OrdinalIgnoreCase)
+            || name.Equals("widget.css", StringComparison.OrdinalIgnoreCase)
+            || name.Equals("pointer.js", StringComparison.OrdinalIgnoreCase)
             || name.Equals("pointer.css", StringComparison.OrdinalIgnoreCase)
             || name.Equals("pointer.version.json", StringComparison.OrdinalIgnoreCase)
             || ctx.Context.Request.Path.StartsWithSegments("/widget", StringComparison.OrdinalIgnoreCase);
@@ -109,7 +119,9 @@ public static class WidgetStaticPipeline
         {
             ctx.Context.Response.Headers.CacheControl = "public, max-age=31536000, immutable";
         }
-        else if (name.Equals("pointer.js", StringComparison.OrdinalIgnoreCase)
+        else if (name.Equals("widget.js", StringComparison.OrdinalIgnoreCase)
+            || name.Equals("widget.css", StringComparison.OrdinalIgnoreCase)
+            || name.Equals("pointer.js", StringComparison.OrdinalIgnoreCase)
             || name.Equals("pointer.css", StringComparison.OrdinalIgnoreCase)
             || name.Equals("pointer.version.json", StringComparison.OrdinalIgnoreCase))
         {

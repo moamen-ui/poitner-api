@@ -1,44 +1,287 @@
 @use 'variables' as v;
 
-// Pins
-.pf-pin {
-  position: fixed;
-  z-index: 2147483645;
-  width: 24px;
-  height: 24px;
-  border-radius: 50% 50% 50% 0;
-  background: v.token('primary');
-  color: v.token('primary-contrast');
-  font-size: 12px;
-  font-weight: 700;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  transform: rotate(-45deg);
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
-  cursor: pointer;
-  pointer-events: auto;
-}
-.pf-pin span {
-  transform: rotate(45deg);
-}
-.pf-pin.pending {
-  background: v.token('warn');
-}
-.pf-pin.applied {
-  background: v.token('success');
+// Pin layer — a plain grouping container, not itself positioned. Each pin wrapper below is
+// independently `position: fixed` with its own viewport-relative coordinates (recomputed on
+// every scroll/resize — see element.ts's renderPins), so the layer needs no `inset`/positioning
+// of its own; `pointer-events: none` here (re-enabled per-wrapper) keeps the host page clickable
+// through the gaps between pins.
+.fbk-pins-layer {
+  pointer-events: none;
 }
 
+// Positioned via data-fbk-left/top (see dom.ts's applyDataPosition) at the target element's
+// own top-left, then pulled so the pin's downward-pointing TIP lands on that pixel instead of
+// its top-left corner.
+.fbk-pin-wrapper {
+  position: fixed;
+  transform: translate(-50%, -100%);
+  pointer-events: auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  z-index: 2147483645;
+}
 // While element-picking is active the pin layer must not swallow clicks, or any element sitting
 // under an existing pin can never be commented on (see element.ts startPicking).
-#pf-pins.picking .pf-pin {
+#fbk-pins-layer.picking .fbk-pin-wrapper {
   pointer-events: none;
+}
+
+// Base pin marker — a teardrop (droplet) shape, rotated so its point faces straight down.
+.fbk-pin {
+  width: 28px;
+  height: 28px;
+  border-start-start-radius: 50%;
+  border-start-end-radius: 50%;
+  border-end-end-radius: 50%;
+  border-end-start-radius: 4px;
+  transform: rotate(-45deg);
+  background: v.token('status-open');
+  color: v.token('status-open-contrast');
+  border: 2px solid v.token('surface');
+  box-shadow: v.token('shadow-pin');
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+  padding: 0;
+  transition: transform v.token('transition-spring'), box-shadow v.token('transition-fast');
+  user-select: none;
+  position: relative;
+}
+// Counter-rotate content so the number/icon stays upright despite the pin's own -45deg rotation.
+.fbk-pin-number,
+.fbk-pin-cluster-count,
+.fbk-pin svg {
+  transform: rotate(45deg);
+  font-family: v.token('font-mono');
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1;
+}
+.fbk-pin-wrapper:hover .fbk-pin,
+.fbk-pin.active {
+  transform: rotate(-45deg) scale(1.15);
+  box-shadow: v.token('shadow-tooltip');
+  z-index: 2;
+}
+.fbk-pin:focus-visible {
+  outline: 2px solid v.token('primary');
+  outline-offset: 3px;
+}
+
+// Status variants
+.fbk-pin-open {
+  background: v.token('status-open');
+  color: v.token('status-open-contrast');
+}
+.fbk-pin-ready {
+  background: v.token('status-ready');
+  color: v.token('status-ready-contrast');
+}
+.fbk-pin-applied {
+  background: v.token('status-applied');
+  color: v.token('status-applied-contrast');
+}
+.fbk-pin-archived {
+  background: v.token('status-archived');
+  color: v.token('status-archived-contrast');
+}
+
+// Collision cluster — 2+ comments anchored to the same element render one pill instead of
+// stacking indistinguishable pins on top of each other (see element.ts's renderPins grouping).
+.fbk-pin-cluster {
+  background: v.token('surface');
+  color: v.token('text');
+  border-color: v.token('border');
+  border-radius: v.token('radius-full');
+  transform: none !important;
+  width: 32px;
+  height: 28px;
+  padding-block: 0;
+  padding-inline: 4px;
+}
+.fbk-pin-cluster .fbk-pin-cluster-count {
+  transform: none;
+  font-size: 12px;
+  font-weight: 700;
+}
+.fbk-pin-cluster .fbk-pin-cluster-dots {
+  display: none;
+}
+
+// Attention ripple — only rendered on the pin for a comment just added this session (see
+// element.ts's `_newPinId`); a ring that showed on every pin every render would just be noise.
+.fbk-pin-ring {
+  position: absolute;
+  inset: -6px;
+  border-radius: inherit;
+  border: 2px solid v.token('status-open');
+  animation: fbk-pin-ring-pulse 2.4s infinite cubic-bezier(0.25, 1, 0.5, 1);
+  pointer-events: none;
+  opacity: 0;
+}
+@keyframes fbk-pin-ring-pulse {
+  0% { transform: scale(0.9); opacity: 0.8; }
+  70% { transform: scale(1.4); opacity: 0; }
+  100% { transform: scale(1.4); opacity: 0; }
+}
+
+// Hover preview — a compact read of the comment without opening the sidebar.
+.fbk-pin-tooltip {
+  position: absolute;
+  inset-block-end: calc(100% + 8px);
+  inset-inline-start: 50%;
+  transform: translateX(-50%) translateY(4px) scale(0.96);
+  background: v.token('surface');
+  color: v.token('text');
+  border: 1px solid v.token('border');
+  border-radius: 10px;
+  box-shadow: v.token('shadow-tooltip');
+  padding-block: 8px;
+  padding-inline: 12px;
+  width: 220px;
+  font-family: v.token('font-ui');
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transition: opacity v.token('transition-fast'), transform v.token('transition-fast'), visibility v.token('transition-fast');
+  z-index: 2147483647;
+}
+.fbk-pin-wrapper:hover .fbk-pin-tooltip {
+  opacity: 1;
+  visibility: visible;
+  transform: translateX(-50%) translateY(0) scale(1);
+  pointer-events: auto;
+}
+// A pin near the top of the viewport has nowhere for the tooltip to open upward into — flip it
+// below the pin instead (element.ts's renderPins() sets this per pin, based on real position).
+.fbk-pin-wrapper[data-fbk-tip-side='bottom'] .fbk-pin-tooltip {
+  inset-block-end: auto;
+  inset-block-start: calc(100% + 8px);
+}
+.fbk-pin-tooltip-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  margin-block-end: 4px;
+}
+.fbk-pin-status-badge {
+  font-size: 10px;
+  font-weight: 600;
+  padding-block: 1px;
+  padding-inline: 5px;
+  border-radius: v.token('radius-full');
+}
+.fbk-pin-status-badge.fbk-status-open {
+  background: color-mix(in srgb, v.token('status-open') 12%, v.token('surface'));
+  color: v.token('status-open');
+}
+.fbk-pin-status-badge.fbk-status-ready {
+  background: color-mix(in srgb, v.token('status-ready') 12%, v.token('surface'));
+  color: v.token('status-ready');
+}
+.fbk-pin-status-badge.fbk-status-applied {
+  background: color-mix(in srgb, v.token('status-applied') 12%, v.token('surface'));
+  color: v.token('status-applied');
+}
+.fbk-pin-status-badge.fbk-status-archived {
+  background: color-mix(in srgb, v.token('status-archived') 12%, v.token('surface'));
+  color: v.token('status-archived');
+}
+.fbk-pin-author {
+  font-weight: 600;
+  color: v.token('text');
+}
+.fbk-pin-time {
+  color: v.token('text-muted');
+  margin-inline-start: auto;
+}
+.fbk-pin-tooltip-body {
+  font-size: 12px;
+  line-height: 1.4;
+  margin: 0;
+  margin-block-end: 6px;
+  color: v.token('text');
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.fbk-pin-tooltip-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 11px;
+  color: v.token('text-muted');
+  border-block-start: 1px solid v.token('border');
+  padding-block-start: 4px;
+}
+.fbk-pin-tag {
+  font-family: v.token('font-mono');
+  font-size: 10px;
+  background: v.token('surface-alt');
+  padding-block: 1px;
+  padding-inline: 4px;
+  border-radius: 4px;
+  max-width: 120px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.fbk-pin-reply-count {
+  display: flex;
+  align-items: center;
+  gap: 3px;
 }
 
 // Advisory payload/secret badge. Muted on purpose: it is a prompt to look, not an alarm, and an
 // alarming badge on a false positive trains people to ignore it.
-.pf-pill.pf-payload-flag {
+.fbk-pill.fbk-payload-flag {
   background: v.token('warn');
   color: v.token('primary-contrast');
   opacity: 0.85;
+}
+
+// Expanded cluster menu (see element.ts's toggleClusterMenu) — same look as .fbk-menu, kept
+// separate so a future change to the account dropdown doesn't also reshape this.
+.fbk-pin-cluster-menu {
+  position: fixed;
+  z-index: 2147483647;
+  width: 240px;
+  max-height: 280px;
+  overflow-y: auto;
+  background: v.token('surface');
+  border: 1px solid v.token('border');
+  border-radius: 10px;
+  box-shadow: v.token('shadow-tooltip');
+  padding: 6px;
+  pointer-events: auto;
+}
+.fbk-pin-cluster-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  padding-block: 8px;
+  padding-inline: 8px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-family: v.token('font-ui');
+  color: v.token('text');
+  text-align: start;
+}
+.fbk-pin-cluster-item:hover {
+  background: v.token('surface-hover');
+}
+.fbk-pin-cluster-item .fbk-pin-status-badge {
+  flex-shrink: 0;
+}
+.fbk-pin-cluster-item-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }

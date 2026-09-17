@@ -15,12 +15,12 @@ guard test fails otherwise.
 | `.gitignore` lines (current) | `.pointer/*`, `!.pointer/stack.json`, `!.pointer/config.json`, `!.pointer/projects/` — only these are re-included; everything else in `.pointer/` stays covered by the `.pointer/*` wildcard | CLI | keep |
 | `.gitignore` lines (skill dirs, current) | `.claude/skills/pointer-init/`, `.claude/skills/pointer-feedback/`, `.agents/skills/pointer-init/`, `.agents/skills/pointer-feedback/`, `.cursor/rules/pointer-init.md`, `.cursor/rules/pointer-feedback.md`, `.windsurf/rules/pointer-init.md`, `.windsurf/rules/pointer-feedback.md` — gitignored as of this version; a fresh clone has none of these until `init`/`update` (re-)installs them. Also still ignored: `.agents/pointer-init/`, `.agents/pointer-feedback/` — the **legacy location (pre-2026-09-16)**, superseded by `.agents/skills/pointer-*/` (the Agent Skills standard layout); `installSkills` removes this pair on every install, so it only lingers in a repo that has not re-run `init`/`update` since | CLI | keep |
 | Env vars | `POINTER_API_KEY` — resolved in order from the env var itself, `credentials.env`, or the global credential store above (`resolveApiKey`); `POINTER_SERVER`, `POINTER_PROJECT`, `POINTER_ENV`, `POINTER_ENABLED` with framework prefixes `VITE_`, `NEXT_PUBLIC_`, `REACT_APP_` (see `pointer-init.md:55-65`); `POINTER_CONFIG_DIR` overrides the global store/cache directory (tests only) | CLI, skill | dual-read old + new names |
-| Custom element | `<pointer-feedback>` + attributes `project`, `server`, `environment`, `fixed-environment`, `screenshot`, `source-attr` | host HTML | keep; dual-register if ever renamed |
+| Custom element | `<pointer-feedback>` + host-set attributes `project`, `server`, `environment`, `fixed-environment`, `screenshot`, `source-attr`; widget-set (output) attribute `data-fbk-theme` (`light`\|`dark`, resolved by the widget itself — see footnote) | host HTML | keep; dual-register if ever renamed |
 | Global | `window.__pointerEmbedded`, `window.__POINTER_CONFIG__`, `window.__POINTER_FETCH__` | `/embed.js`, extension | keep |
 | DOM attributes | `data-component-source` (source hint; existing), `data-build-sha` (R3-01), `data-snapshot-mask` (R3-04) | build plugin / host | **brand-neutral by design — never rename** |
-| Served URLs | `/pointer.js`, `/pointer.css`, `/embed.js`, `/install.sh`, `/skill.md`, `/pointer-init.md`, `/pointer.sh`, `/vendor/snapdom.js` | API | keep as permanent aliases |
+| Served URLs | `/widget.js`, `/widget.css` (current, 2026-09-17+ — the bundled file names, matching the widget's own naming), `/pointer.js`, `/pointer.css` (pre-rename names, served byte-identical forever), `/embed.js`, `/install.sh`, `/skill.md`, `/pointer-init.md`, `/pointer.sh`, `/vendor/snapdom.js` | API | keep as permanent aliases |
 | Skill directories | `.claude/skills/pointer-init/`, `.claude/skills/pointer-feedback/`, `.agents/skills/pointer-init/`, `.agents/skills/pointer-feedback/` (current, 2026-09-16+ — the Agent Skills standard layout, used by `other`/`antigravity` and symlinked into from the three tools above) — **gitignored** (see the `.gitignore` row above); every clone/machine gets its own copy via `init`/`update`/`install.sh`. `.agents/pointer-init/`, `.agents/pointer-feedback/` — **legacy location (pre-2026-09-16), removed on the next `init`/`update`** | `install.sh`, CLI | keep |
-| Browser storage | `localStorage` `pointer_token`, `pointer_user` (`element.ts:413`), `pointer_env_<project>`, `pointer_toolbar_pos`; `sessionStorage` `pointer_visible`, `pointer_page_session_id` (`pagecontext.ts:179`) | widget | keep (or accept one re-login) |
+| Browser storage | `localStorage` `pointer_token`, `pointer_user` (`element.ts:413`), `pointer_env_<project>`, `pointer_toolbar_pos`, `pointer_widget_theme` (widget's own light/dark override — see the `data-fbk-theme` footnote); `sessionStorage` `pointer_visible`, `pointer_page_session_id` (`pagecontext.ts:179`) | widget | keep (or accept one re-login) |
 | MCP config | `.mcp.json` entry `"pointer": { "command": "npx", "args": ["-y", "pointer-feedback", "mcp"] }` — **user-level**, not repo-committed | user, docs | deprecate-stub package forwards forever |
 | npm | package `pointer-feedback`, bin `pointer` | — | never unpublish; permanent deprecate-stub printing the new command |
 
@@ -44,12 +44,30 @@ host-facing contract:
 
 `data-id`, `data-act`, `data-toggle`, `data-placement`, `data-private`, `data-c`, `data-i`,
 `data-path`, `data-testid`, `data-theme`, `data-step`, `data-brand-logo`, `data-brand-name`,
-`data-pf-left`, `data-pf-top`
+`data-fbk-left`, `data-fbk-top`, `data-fbk-act`, `data-fbk-drag`, `data-fbk-count`, `data-fbk-unread`,
+`data-fbk-tip-side`, `data-ids`
 
-`data-pf-left` / `data-pf-top` carry the toolbar's position on the host element so the widget can
+`data-fbk-left` / `data-fbk-top` carry the toolbar's position on the host element so the widget can
 place it from a stylesheet rule instead of an inline `style` attribute, which a host page's
-Content-Security-Policy blocks. They live inside the widget's own shadow DOM and no host ever reads
-them.
+Content-Security-Policy blocks. `data-fbk-act` / `data-fbk-drag` / `data-fbk-count` /
+`data-fbk-unread` are the toolbar's own selector hooks for element.ts's click wiring.
+`data-fbk-tip-side` flips a pin's hover tooltip below the pin when it's too close to the top of the
+viewport for the tooltip to open upward. `data-ids` is the comma-joined comment id list on a merged
+pin cluster wrapper (element.ts's toggleClusterMenu). All of these live inside the widget's own
+shadow DOM and no host ever reads them.
 
 Any other `data-*` name — in particular any `data-pointer*` or `data-pf*` — must be added to the
 frozen table above and to the test's allowlists in the same PR that introduces it.
+
+**Footnote — `data-fbk-theme` (frozen, not internal).** Unlike the attributes above, this one is
+set by the widget on the `<pointer-feedback>` element itself (light DOM, not shadow DOM), so it's
+inspectable from the host page and part of the frozen contract, not the internal allowlist. The
+widget resolves it once at boot to `light` or `dark` — an explicit per-browser override (set from
+the widget's own account menu, stored in `localStorage` under `pointer_widget_theme`) wins;
+otherwise the host page's own rendered background decides; otherwise the OS preference. This is
+deliberately NOT the same field as `User.theme`/`/api/me/preferences` (the dashboard's own
+site-wide theme toggle) — persisting the widget's choice there would silently flip the dashboard's
+theme too, so the widget's theme choice stays local to the browser it was made in and never
+touches the account. A consuming app can override any single design token for one mode from its
+own CSS without waiting on the widget, e.g.
+`pointer-feedback[data-fbk-theme="dark"] { --fbk-primary: #0aa36e; }`.

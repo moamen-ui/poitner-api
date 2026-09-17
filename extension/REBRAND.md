@@ -4,7 +4,7 @@ Most of the product brand is **runtime-driven** from the super-admin Branding pa
 (`GET /api/branding`) and needs **no extension change**:
 
 - The **popup** fetches `/api/branding` and shows the current product name in its heading + copy.
-- The **injected widget** (`pointer.js`, loaded live from the server) already reflects the branded
+- The **injected widget** (`widget.js`, loaded live from the server) already reflects the branded
   name in its UI.
 
 The following are **static** parts of a Chrome/Chromium MV3 extension — they are baked into the
