@@ -11,6 +11,7 @@ import {
   type ShortcutBinding, parseShortcut, serializeShortcut, matchesShortcut, formatShortcut, ariaKeyshortcuts,
 } from './shortcut';
 import { type ThemeMode, detectSiteTheme } from './theme';
+import { type Lang, t, setLang } from './i18n';
 import { showLoginModal } from './auth-ui';
 import type { AuthorOption, Comment, Meta, NotificationItem, PointerHost, PredefinedActionOption, RoleOption, StatusStr, User } from './types';
 
@@ -232,6 +233,7 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
       this.authOwnedByHost = true;
     }
     this.applyTheme();
+    setLang(this.resolveLang());
 
     // Host element must not block page clicks; only inner panels are interactive.
     this.style.position = 'fixed';
@@ -341,6 +343,7 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
     // cannot tell which comments are the viewer's own — and never shows them the verify buttons.
     // Fill in id/isAdmin from the server before the first comment list renders.
     if (this.token) await this.hydrateIdentity();
+    setLang(this.resolveLang());
     if (this.token) this.init();
     else this.renderChrome();
 
@@ -504,7 +507,7 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
   private beginRecordingShortcut(btnEl: HTMLElement): void {
     this._recordingShortcut = true;
     const original = btnEl.textContent || '';
-    btnEl.textContent = 'Press keys… (Esc to cancel)';
+    btnEl.textContent = t('menu.pressKeysToCancel');
 
     const onKey = (e: KeyboardEvent) => {
       e.preventDefault();
@@ -516,7 +519,7 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
       }
       if (e.key === 'Shift' || e.key === 'Alt' || e.key === 'Control' || e.key === 'Meta') return;
       if (!(e.altKey || e.ctrlKey || e.metaKey || e.shiftKey)) {
-        btnEl.textContent = 'Add a modifier key (Alt/Shift/Ctrl/⌘)…';
+        btnEl.textContent = t('menu.addModifierKey');
         return;
       }
       const binding: ShortcutBinding = {
@@ -526,11 +529,11 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
         ctrl: e.ctrlKey,
         meta: e.metaKey,
       };
-      btnEl.textContent = 'Saving…';
+      btnEl.textContent = t('menu.saving');
       cleanup();
       this.saveShortcutPreference(binding).then((ok) => {
         btnEl.textContent = formatShortcut(this.shortcut);
-        this.toast(ok ? 'Shortcut updated' : 'Failed to save — try again', ok ? '' : 'error');
+        this.toast(ok ? t('menu.shortcutUpdated') : t('menu.failedToSaveTryAgain'), ok ? '' : 'error');
       });
     };
     const cleanup = () => {
@@ -631,9 +634,21 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
     this.applyTheme();
   }
 
-  // Persists the account's language preference — the widget's own UI text stays English (see
-  // the language-scope decision); this only keeps the account in sync with the dashboard's
-  // language switcher, which reads the same field.
+  // --- Language ---------------------------------------------------------
+  // Unlike theme (deliberately widget-local, see above), language STAYS account-level: an
+  // explicit choice (from this widget's own menu or the dashboard's language switcher — same
+  // field) wins; otherwise the browser's own language. There is no widget-local override here —
+  // the dashboard and widget are meant to agree on language, unlike theme where they must not.
+  private resolveLang(): Lang {
+    const stored = this.user?.language;
+    if (stored === 'ar') return 'ar';
+    if (stored === 'en') return 'en';
+    try { return (navigator.language || '').toLowerCase().startsWith('ar') ? 'ar' : 'en'; } catch { return 'en'; }
+  }
+
+  // Persists the account's language preference (PATCH /api/me/preferences) — the SAME field the
+  // dashboard's own language switcher writes, so the two agree. Renders this widget's own UI text
+  // too (see wireLangBtn in toggleUserMenu, which calls setLang() + a full re-render on success).
   private async saveLanguagePreference(lang: string): Promise<boolean> {
     try {
       const r = await this.api('/api/me/preferences', {
@@ -706,7 +721,7 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
         const envSel = this.root && (this.root.querySelector('#fbk-env') as HTMLSelectElement | null);
         if (envSel && 'value' in envSel) envSel.value = this.environmentAttr;
         const envLabel = this.root && this.root.querySelector('.fbk-env-label');
-        if (envLabel) envLabel.textContent = '· ' + this.environmentAttr;
+        if (envLabel) envLabel.textContent = '· ' + this.envDisplayLabel(this.environmentAttr);
       }
       this.commitStyle = typeof envelope?.data?.commitStyle === 'number' ? envelope.data.commitStyle : 1;
       this.canEditSettings = !!envelope?.data?.canEditSettings;
@@ -742,9 +757,19 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
     if (!sel) return;
     const label = document.createElement('span');
     label.className = 'fbk-env-label';
-    label.title = 'Environment';
-    label.textContent = '· ' + (this.environmentAttr || ENV_NAME[this.environmentInt] || 'unknown');
+    label.title = t('toolbar.environment');
+    label.textContent = '· ' + this.envDisplayLabel(this.environmentAttr || ENV_NAME[this.environmentInt] || 'unknown');
     sel.replaceWith(label);
+  }
+
+  // Translated display text for an environment key ('local'/'staging'/'production') — falls back
+  // to the raw key for anything else (e.g. 'unknown', before the server has resolved one).
+  private envDisplayLabel(key: string): string {
+    const k = (key || '').toLowerCase();
+    if (k === 'local') return t('toolbar.envLocal');
+    if (k === 'staging') return t('toolbar.envStaging');
+    if (k === 'production') return t('toolbar.envProduction');
+    return key;
   }
 
   // Patches #fbk-commit-style in place (same reasoning as updateEnvironmentSelectorVisibility) —
@@ -770,11 +795,11 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
         body: JSON.stringify({ commitStyle: value }),
       });
       if (!r.ok) throw new Error('HTTP ' + r.status);
-      this.toast('Commit style updated');
+      this.toast(t('toast.commitStyleUpdated'));
     } catch (e) {
       this.commitStyle = previous;
       this.renderCommitStyleControl();
-      if ((e as Error).message !== 'HTTP 401 Unauthorized') this.toast('Update failed', 'error');
+      if ((e as Error).message !== 'HTTP 401 Unauthorized') this.toast(t('toast.updateFailed'), 'error');
     }
   }
 
@@ -784,8 +809,8 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
     const btn = this.root && this.root.querySelector('#fbk-add');
     if (!btn) return;
     const label = formatShortcut(this.shortcut);
-    btn.setAttribute('title', `Comment on an element (${label})`);
-    btn.setAttribute('aria-label', `Comment on an element, shortcut ${label}`);
+    btn.setAttribute('title', `${t('toolbar.commentOnElement')} (${label})`);
+    btn.setAttribute('aria-label', t('toolbar.commentOnElementShortcut', { label }));
   }
 
   // --- API ----------------------------------------------------------------
@@ -803,7 +828,7 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
       headers: { 'Content-Type': 'application/json' },
     });
     const envelope = await r.json();
-    if (!r.ok || !envelope.isSuccess) throw new Error(envelope.message || 'Could not load roles.');
+    if (!r.ok || !envelope.isSuccess) throw new Error(envelope.message || t('auth.couldNotLoadRoles'));
     return envelope.data || [];
   }
 
@@ -907,7 +932,7 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
       }));
     } catch (e) {
       if ((e as Error).message !== 'HTTP 401 Unauthorized') {
-        this.toast(`Could not reach ${getBrandName()} server`, 'error', 'Retry', () => {
+        this.toast(t('toast.couldNotReachServer', { brand: getBrandName() }), 'error', t('toast.retry'), () => {
           this.fetchComments().then(() => { this.renderSidebar(); this.renderPins(); });
         });
       }
@@ -958,7 +983,7 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
     });
     this.root.querySelector('#fbk-refresh')!.addEventListener('click', async () => {
       if (!this.token) { showLoginModal(this, () => this.init()); return; }
-      await this.fetchComments(); this.renderSidebar(); this.renderPins(); this.toast('Refreshed');
+      await this.fetchComments(); this.renderSidebar(); this.renderPins(); this.toast(t('toast.refreshed'));
     });
     this.root.querySelector('#fbk-close')!.addEventListener('click', () => this.toggleSidebar(false));
 
@@ -1144,10 +1169,10 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
     (host.querySelector('#fbk-shortcut-reset') as HTMLElement).addEventListener('click', async (e) => {
       e.stopPropagation();
       const editBtn = host.querySelector('#fbk-shortcut-edit') as HTMLElement | null;
-      if (editBtn) editBtn.textContent = 'Resetting…';
+      if (editBtn) editBtn.textContent = t('menu.resetting');
       const ok = await this.saveShortcutPreference(null);
       if (editBtn) editBtn.textContent = formatShortcut(this.shortcut);
-      this.toast(ok ? 'Shortcut reset to default' : 'Failed to reset — try again', ok ? '' : 'error');
+      this.toast(ok ? t('menu.shortcutResetToDefault') : t('menu.failedToResetTryAgain'), ok ? '' : 'error');
     });
 
     // Re-opens the menu fresh (rather than patching two buttons' classes in place) so its
@@ -1170,8 +1195,20 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
         e.stopPropagation();
         if ((this.user?.language === 'ar' ? 'ar' : 'en') === lang) return;
         const ok = await this.saveLanguagePreference(lang);
-        if (ok) reopenUserMenu();
-        else this.toast('Failed to save language — try again', 'error');
+        if (ok) {
+          // Unlike theme (a CSS attribute flip), every piece of UI text is baked into the
+          // rendered markup — a language change needs a real re-render, not just re-opening the
+          // menu. setLang() first so renderChrome()/renderSidebar()/renderPins() below (which all
+          // call t() through TPL.*) pick up the new language immediately; reopenUserMenu() runs
+          // AFTER since renderChrome() wipes and rebuilds #fbk-menu-host/#fbk-user.
+          setLang(lang);
+          this.renderChrome();
+          this.renderSidebar();
+          this.renderPins();
+          reopenUserMenu();
+        } else {
+          this.toast(t('menu.failedToSaveLanguage'), 'error');
+        }
       });
     };
     wireLangBtn('#fbk-lang-en', 'en');
@@ -1359,7 +1396,7 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
         body: JSON.stringify({ ok, note: note || null }),
       });
       if (!r.ok) {
-        let errMessage = 'Failed to verify comment';
+        let errMessage = t('toast.failedToVerifyComment');
         try {
           const err = await r.json();
           if (err?.message) errMessage = err.message;
@@ -1383,10 +1420,10 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
       }
       this.renderSidebar();
       this.renderPins();
-      this.toast(ok ? 'Comment verified' : 'Comment re-opened');
+      this.toast(ok ? t('toast.commentVerified') : t('toast.commentReopened'));
       return true;
     } catch {
-      this.toast('Failed to verify comment', 'error');
+      this.toast(t('toast.failedToVerifyComment'), 'error');
       return false;
     }
   }
@@ -1408,7 +1445,7 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
     this.renderChrome();
     this.renderSidebar();
     this.renderPins();
-    this.toast('Signed out');
+    this.toast(t('toast.signedOut'));
   }
 
   // Collapse the overlay to the floating launcher (remembered for this tab session).
@@ -1418,7 +1455,7 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
     this._collapsed = true;
     try { sessionStorage.removeItem('pointer_visible'); } catch (e) {}
     this.renderChrome();
-    this.toast(`${getBrandName()} hidden — click the button to reopen`);
+    this.toast(t('toast.hiddenClickToReopen', { brand: getBrandName() }));
   }
 
   // Restore the full overlay from the launcher; remembered for this tab session.
@@ -1500,12 +1537,12 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
     const addBtn = this.root.querySelector('#fbk-add') as HTMLButtonElement;
     addBtn.setAttribute('aria-pressed', 'true');
     addBtn.innerHTML = `<span class="fbk-toolbar-btn__icon">${ICON.close}</span>`;
-    addBtn.title = 'Cancel';
-    addBtn.setAttribute('aria-label', 'Cancel');
+    addBtn.title = t('toolbar.cancel');
+    addBtn.setAttribute('aria-label', t('toolbar.cancel'));
     document.addEventListener('mousemove', this._onHover, true);
     document.addEventListener('click', this._onPick, true);
     document.addEventListener('keydown', this._onPickKey, true);
-    this.toast('Click any element to comment on it — or press Esc to cancel');
+    this.toast(t('popover.clickAnyElementToComment'));
   }
   stopPicking(): void {
     this.picking = false;
@@ -1515,9 +1552,11 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
     if (addBtn) {
       addBtn.setAttribute('aria-pressed', 'false');
       addBtn.innerHTML = `<span class="fbk-toolbar-btn__icon">${ICON.crosshair}</span>`;
-      addBtn.title = 'Comment on an element';
-      addBtn.setAttribute('aria-label', 'Comment on an element');
     }
+    // Restores the shortcut-suffixed tooltip (updateAddButtonTooltip), not a bare "Comment on an
+    // element" — the button's title otherwise loses the "(⌃⌥⇧C)" hint the very first time picking
+    // mode is entered and cancelled, since that hint isn't part of the icon-swap above.
+    this.updateAddButtonTooltip();
     document.removeEventListener('mousemove', this._onHover, true);
     document.removeEventListener('click', this._onPick, true);
     document.removeEventListener('keydown', this._onPickKey, true);
@@ -1529,7 +1568,7 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
     e.preventDefault();
     e.stopPropagation();
     this.stopPicking();
-    this.toast('Cancelled');
+    this.toast(t('popover.cancelled'));
   }
   clearHover(): void {
     if (this.hovered) { this.hovered.classList.remove(HL_CLASS); this.hovered = null; }
@@ -1706,8 +1745,8 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
       privateToggle.classList.toggle('is-active', isPrivateComment);
       privateToggle.setAttribute('aria-pressed', String(isPrivateComment));
       // Same wording pattern as the card's own visibility toggle, for consistency.
-      privateToggle.title = isPrivateComment ? 'Private — click to make public' : 'Make private (only you)';
-      privateToggle.setAttribute('aria-label', isPrivateComment ? 'Make public' : 'Make private');
+      privateToggle.title = isPrivateComment ? t('card.privateClickToMakePublic') : t('card.makePrivateOnlyYou');
+      privateToggle.setAttribute('aria-label', isPrivateComment ? t('card.makePublic') : t('card.makePrivate'));
       privateToggle.innerHTML = isPrivateComment ? ICON.lock : ICON.unlock;
     });
     // Predefined prompts — searchable multi-select combobox. `selectedActionIds` is read directly
@@ -1725,7 +1764,7 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
         actionMsChips.innerHTML = Array.from(selectedActionIds).map((id) => {
           const a = this.predefinedActions.find((x) => x.id === id);
           if (!a) return '';
-          return `<span class="fbk-ms-chip"><span class="fbk-ms-chip-label">${escapeHtml(a.text)}</span><button type="button" class="fbk-ms-chip-remove" data-id="${id}" aria-label="Remove ${escapeHtml(a.text)}">&times;</button></span>`;
+          return `<span class="fbk-ms-chip"><span class="fbk-ms-chip-label">${escapeHtml(a.text)}</span><button type="button" class="fbk-ms-chip-remove" data-id="${id}" aria-label="${t('popover.remove')} ${escapeHtml(a.text)}">&times;</button></span>`;
         }).join('');
         actionMsChips.querySelectorAll('.fbk-ms-chip-remove').forEach((btn) => {
           btn.addEventListener('click', (e) => {
@@ -1743,7 +1782,7 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
         );
         actionMsList.innerHTML = matches.length
           ? matches.map((a) => `<div class="fbk-ms-option" role="option" data-id="${a.id}">${escapeHtml(a.text)}</div>`).join('')
-          : `<div class="fbk-ms-empty">No matches</div>`;
+          : `<div class="fbk-ms-empty">${t('popover.noMatches')}</div>`;
         actionMsList.querySelectorAll('.fbk-ms-option').forEach((opt) => {
           // mousedown (not click) so selection registers BEFORE the input's blur would otherwise
           // fire and close the list first.
@@ -1829,7 +1868,7 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
     });
     (host.querySelector('#fbk-submit') as HTMLButtonElement).addEventListener('click', async () => {
       const text = ta.value.trim();
-      if (!text) return this.toast('Comment cannot be empty', 'error');
+      if (!text) return this.toast(t('popover.commentCannotBeEmpty'), 'error');
       const isPrivate = isPrivateComment;
       const attachShot = attachShotComment;
       const isBugReport = isBugReportComment;
@@ -1837,10 +1876,10 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
       this._pendingShotPromise = null;
       const predefinedActionIds = Array.from(selectedActionIds);
       const submitBtn = host.querySelector('#fbk-submit') as HTMLButtonElement;
-      submitBtn.disabled = true; submitBtn.textContent = 'Saving…';
+      submitBtn.disabled = true; submitBtn.textContent = t('menu.saving');
       const saved = await this.createComment({ ...currentMeta, text, isPrivate, attachShot, shotPromise, predefinedActionIds, isBugReport });
       if (saved) { currentEl.classList.remove(HL_CLASS); host.innerHTML = ''; stopMsListening?.(); }
-      else { submitBtn.disabled = false; submitBtn.textContent = 'Add'; }
+      else { submitBtn.disabled = false; submitBtn.textContent = t('popover.add'); }
     });
   }
 
@@ -1884,7 +1923,7 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
       if (blob) {
         const url = await this.uploadToServer(blob);
         if (url) element!.screenshotUrl = url;
-        else this.toast('Screenshot upload failed — saving without it', 'error');
+        else this.toast(t('toast.screenshotUploadFailed'), 'error');
       }
     }
 
@@ -1917,14 +1956,14 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
         // Refetch the list once so the picker is fresh, then ask the user to retry.
         if (data.predefinedActionIds && data.predefinedActionIds.length && msg.toLowerCase().includes('action')) {
           await this.fetchPredefinedActions();
-          this.toast('That action is no longer available — please choose another and try again.', 'error');
+          this.toast(t('toast.actionNoLongerAvailable'), 'error');
           return false;
         }
         // A blocked origin is the one failure the user can actually act on — their site is not on
         // the project's allowed list. "Failed to save comment" sends them hunting through the
         // console for a 403 they will read as a bug in Pointer.
         if (r.status === 403) {
-          this.toast('Comments are not allowed from this address', 'error');
+          this.toast(t('toast.commentsNotAllowedFromAddress'), 'error');
           return false;
         }
         // Rate limited: also actionable, and self-resolving. Retry-After is seconds.
@@ -1934,8 +1973,8 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
           const retryAfter = Number(r.headers?.get?.('retry-after'));
           this.toast(
             retryAfter > 0
-              ? `Too many comments — try again in ${retryAfter} second${retryAfter === 1 ? '' : 's'}.`
-              : 'Too many comments — please wait a moment and try again.',
+              ? t('toast.tooManyCommentsRetryIn', { n: retryAfter, s: retryAfter === 1 ? '' : 's' })
+              : t('toast.tooManyCommentsWait'),
             'error',
           );
           return false;
@@ -1952,11 +1991,11 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
       this.renderSidebar();
       this.renderPins();
       if (newId) setTimeout(() => { if (String(this._newPinId) === newId) this._newPinId = null; }, 3000);
-      this.toast('Comment added', 'success', newId ? 'Undo' : undefined, newId ? () => this.deleteComment(newId) : undefined);
+      this.toast(t('toast.commentAdded'), 'success', newId ? t('toast.undo') : undefined, newId ? () => this.deleteComment(newId) : undefined);
       return true;
     } catch (e) {
       if ((e as Error).message !== 'HTTP 401 Unauthorized') {
-        this.toast('Failed to save comment', 'error');
+        this.toast(t('toast.failedToSaveComment'), 'error');
       }
       return false;
     }
@@ -1972,7 +2011,7 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
       if (!r.ok) throw new Error();
       await this.fetchComments(); this.renderSidebar(); this.renderPins();
     } catch (e) {
-      if ((e as Error).message !== 'HTTP 401 Unauthorized') this.toast('Failed to reply', 'error');
+      if ((e as Error).message !== 'HTTP 401 Unauthorized') this.toast(t('toast.failedToReply'), 'error');
     }
   }
 
@@ -1988,9 +2027,9 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
       if (!r.ok) throw new Error();
       comment.status = nextStr;
       this.renderSidebar(); this.renderPins();
-      this.toast(nextStr === 'pending-apply' ? 'Marked for apply' : 'Unmarked');
+      this.toast(nextStr === 'pending-apply' ? t('toast.markedForApply') : t('toast.unmarked'));
     } catch (e) {
-      if ((e as Error).message !== 'HTTP 401 Unauthorized') this.toast('Update failed', 'error');
+      if ((e as Error).message !== 'HTTP 401 Unauthorized') this.toast(t('toast.updateFailed'), 'error');
     }
   }
 
@@ -2005,9 +2044,9 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
       if (!r.ok) throw new Error();
       comment.status = nextStr;
       this.renderSidebar(); this.renderPins();
-      this.toast(toastMsg || 'Updated');
+      this.toast(toastMsg || t('toast.updated'));
     } catch (e) {
-      if ((e as Error).message !== 'HTTP 401 Unauthorized') this.toast('Update failed', 'error');
+      if ((e as Error).message !== 'HTTP 401 Unauthorized') this.toast(t('toast.updateFailed'), 'error');
     }
   }
 
@@ -2021,9 +2060,9 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
       if (!r.ok) throw new Error('HTTP ' + r.status);
       comment.isPrivate = isPrivate;
       this.renderSidebar(); this.renderPins();
-      this.toast(isPrivate ? 'Marked private' : 'Made public');
+      this.toast(isPrivate ? t('toast.markedPrivate') : t('toast.madePublic'));
     } catch (e) {
-      if ((e as Error).message !== 'HTTP 401 Unauthorized') this.toast('Update failed', 'error');
+      if ((e as Error).message !== 'HTTP 401 Unauthorized') this.toast(t('toast.updateFailed'), 'error');
     }
   }
 
@@ -2039,9 +2078,9 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
       comment.status = 'applied';
       if (label) comment.appliedByLabel = label;
       this.renderSidebar(); this.renderPins();
-      this.toast('Marked completed');
+      this.toast(t('toast.markedCompleted'));
     } catch (e) {
-      if ((e as Error).message !== 'HTTP 401 Unauthorized') this.toast('Update failed', 'error');
+      if ((e as Error).message !== 'HTTP 401 Unauthorized') this.toast(t('toast.updateFailed'), 'error');
     }
   }
 
@@ -2063,10 +2102,10 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
     const wrap = document.createElement('div');
     wrap.className = 'fbk-confirm fbk-confirm-row';
     wrap.innerHTML =
-      `<span class="fbk-confirm-q">Delete this comment?</span>` +
+      `<span class="fbk-confirm-q">${t('card.deleteThisComment')}</span>` +
       `<span class="fbk-confirm-btns">` +
-      `<button type="button" class="fbk-mini danger fbk-icon" data-c="yes" title="Confirm delete" aria-label="Confirm delete">${ICON.checkPlain}</button>` +
-      `<button type="button" class="fbk-mini fbk-icon" data-c="no" title="Cancel" aria-label="Cancel">&#x2715;</button>` +
+      `<button type="button" class="fbk-mini danger fbk-icon" data-c="yes" title="${t('card.confirmDelete')}" aria-label="${t('card.confirmDelete')}">${ICON.checkPlain}</button>` +
+      `<button type="button" class="fbk-mini fbk-icon" data-c="no" title="${t('toolbar.cancel')}" aria-label="${t('toolbar.cancel')}">&#x2715;</button>` +
       `</span>`;
     row.appendChild(wrap);
 
@@ -2100,9 +2139,9 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
       }
       this.comments = this.comments.filter((c) => String(c.id) !== String(id));
       this.renderSidebar(); this.renderPins();
-      this.toast('Deleted');
+      this.toast(t('toast.deleted'));
     } catch (e) {
-      if ((e as Error).message !== 'HTTP 401 Unauthorized') this.toast((e as Error).message || 'Delete failed', 'error');
+      if ((e as Error).message !== 'HTTP 401 Unauthorized') this.toast((e as Error).message || t('toast.deleteFailed'), 'error');
     }
   }
 
@@ -2120,10 +2159,10 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
     editor.style.margin = '6px 0';
     editor.innerHTML = `
         <textarea class="fbk-textarea fbk-edit-body">${escapeHtml(comment.body || '')}</textarea>
-        ${hasShot ? `<label class="fbk-edit-option"><input type="checkbox" class="fbk-edit-rmshot" /> Remove image</label>` : ''}
+        ${hasShot ? `<label class="fbk-edit-option"><input type="checkbox" class="fbk-edit-rmshot" /> ${t('card.removeImage')}</label>` : ''}
         <div class="fbk-reply-row">
-          <button class="fbk-btn primary fbk-btn-fill fbk-edit-save">Save</button>
-          <button class="fbk-mini fbk-edit-cancel">Cancel</button>
+          <button class="fbk-btn primary fbk-btn-fill fbk-edit-save">${t('card.save')}</button>
+          <button class="fbk-mini fbk-edit-cancel">${t('toolbar.cancel')}</button>
         </div>`;
     textEl.style.display = 'none';
     textEl.insertAdjacentElement('afterend', editor);
@@ -2132,7 +2171,7 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
     (editor.querySelector('.fbk-edit-cancel') as HTMLElement).addEventListener('click', () => { editor.remove(); textEl.style.display = ''; });
     (editor.querySelector('.fbk-edit-save') as HTMLElement).addEventListener('click', () => {
       const body = ta.value.trim();
-      if (!body) { this.toast('Comment cannot be empty', 'error'); return; }
+      if (!body) { this.toast(t('popover.commentCannotBeEmpty'), 'error'); return; }
       const rm = editor.querySelector('.fbk-edit-rmshot') as HTMLInputElement | null;
       const removeScreenshot = !!(rm && rm.checked);
       this.saveEdit(id, body, removeScreenshot);
@@ -2153,9 +2192,9 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
       await this.fetchComments();
       this.renderSidebar();
       this.renderPins();
-      this.toast('Comment updated', 'success');
+      this.toast(t('toast.commentUpdated'), 'success');
     } catch (e) {
-      if ((e as Error).message !== 'HTTP 401 Unauthorized') this.toast((e as Error).message || 'Failed to update comment', 'error');
+      if ((e as Error).message !== 'HTTP 401 Unauthorized') this.toast((e as Error).message || t('toast.failedToUpdateComment'), 'error');
     }
   }
 
@@ -2271,14 +2310,17 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
       : scoped.filter((c) => c.status === this.statusFilter);
     if (!scoped.length) {
       list.innerHTML = TPL.empty(this.mineOnly
-        ? "You haven't left any comments yet."
-        : 'No comments on this project yet.<br/>Click the inspect icon, then click an element.');
+        ? t('sidebar.noOwnComments')
+        : t('sidebar.noCommentsYet'));
       return;
     }
     if (!shown.length) {
       const activeFilters = catalogToFilters();
       const filterLabel = (activeFilters.find((f) => f.key === this.statusFilter) ?? { label: this.statusFilter }).label;
-      list.innerHTML = TPL.empty(`No ${filterLabel.toLowerCase()} comments${this.mineOnly ? ' of yours' : ''}.`);
+      list.innerHTML = TPL.empty(t('sidebar.noFilteredComments', {
+        label: filterLabel.toLowerCase(),
+        suffix: this.mineOnly ? t('sidebar.ofYours') : '',
+      }));
       return;
     }
 
@@ -2301,11 +2343,11 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
     }));
     list.querySelectorAll<HTMLElement>('[data-act="reopen"]').forEach((b) => b.addEventListener('click', () => {
       const c = this.comments.find((x) => String(x.id) === String(b.dataset.id));
-      if (c) this.setStatus(c, 'open', 'Re-opened');
+      if (c) this.setStatus(c, 'open', t('toast.reopenedMsg'));
     }));
     list.querySelectorAll<HTMLElement>('[data-act="archive"]').forEach((b) => b.addEventListener('click', () => {
       const c = this.comments.find((x) => String(x.id) === String(b.dataset.id));
-      if (c) this.setStatus(c, 'archived', 'Archived');
+      if (c) this.setStatus(c, 'archived', t('toast.archivedMsg'));
     }));
     list.querySelectorAll<HTMLInputElement>('.fbk-reply-input').forEach((inp) => inp.addEventListener('keydown', (e) => {
       if (e.key === 'Enter' && inp.value.trim()) { this.addReply(inp.dataset.id!, inp.value.trim()); inp.value = ''; }
@@ -2344,7 +2386,7 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
       const note = input?.value?.trim();
       if (!note) {
         input?.focus();
-        this.toast('Please provide a note explaining what is not fixed', 'error');
+        this.toast(t('toast.pleaseProvideNoteNotFixed'), 'error');
         return;
       }
       this.apiVerify(id, false, note);
@@ -2355,7 +2397,7 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
         const note = inp.value.trim();
         if (!note) {
           inp.focus();
-          this.toast('Please provide a note explaining what is not fixed', 'error');
+          this.toast(t('toast.pleaseProvideNoteNotFixed'), 'error');
           return;
         }
         this.apiVerify(id, false, note);
@@ -2553,7 +2595,7 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
       host.id = 'fbk-toast-container';
       host.className = 'fbk-toast-container';
       host.setAttribute('role', 'region');
-      host.setAttribute('aria-label', 'Notifications');
+      host.setAttribute('aria-label', t('toast.notifications'));
       host.setAttribute('aria-live', 'polite');
       this.root.appendChild(host);
     }

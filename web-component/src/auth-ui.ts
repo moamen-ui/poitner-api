@@ -1,5 +1,6 @@
 import { TPL } from './templates';
 import { escapeHtml } from './dom';
+import { t } from './i18n';
 import type { PointerHost, User } from './types';
 
 // One modal shell, two swappable bodies (sign-in / sign-up). The shell owns the
@@ -23,19 +24,19 @@ export function showLoginModal(host: PointerHost, afterLogin?: () => void): void
 async function populateRoles(host: PointerHost, selectEl: HTMLSelectElement | null, errEl: HTMLElement | null): Promise<void> {
   if (!selectEl) return;
   selectEl.disabled = true;
-  selectEl.innerHTML = '<option value="">Loading roles…</option>';
+  selectEl.innerHTML = `<option value="">${t('auth.loadingRoles')}</option>`;
   try {
     const roles = await host.apiRoles();
     if (!roles.length) {
-      selectEl.innerHTML = '<option value="">No roles available</option>';
+      selectEl.innerHTML = `<option value="">${t('auth.noRolesAvailable')}</option>`;
       return;
     }
     selectEl.innerHTML = roles.map((r) =>
       `<option value="${escapeHtml(r.id)}">${escapeHtml(r.name)}</option>`).join('');
     selectEl.disabled = false;
   } catch (e) {
-    selectEl.innerHTML = '<option value="">Could not load roles</option>';
-    if (errEl) errEl.textContent = (e as Error).message || 'Could not load roles.';
+    selectEl.innerHTML = `<option value="">${t('auth.couldNotLoadRoles')}</option>`;
+    if (errEl) errEl.textContent = (e as Error).message || t('auth.couldNotLoadRoles');
   }
 }
 
@@ -67,12 +68,12 @@ export function renderLoginView(host: PointerHost, opts: { rejected?: boolean } 
   const doLogin = async () => {
     const email = emailEl.value.trim();
     const password = passEl.value;
-    if (!email) { errEl.textContent = 'Please enter your email.'; return; }
-    if (!password) { errEl.textContent = 'Please enter your password.'; return; }
+    if (!email) { errEl.textContent = t('auth.pleaseEnterEmail'); return; }
+    if (!password) { errEl.textContent = t('auth.pleaseEnterPassword'); return; }
     errEl.textContent = '';
     submitBtn.disabled = true;
-    submitBtn.textContent = 'Signing in…';
-    const restore = () => { submitBtn.disabled = false; submitBtn.textContent = 'Sign in'; };
+    submitBtn.textContent = t('auth.signingIn');
+    const restore = () => { submitBtn.disabled = false; submitBtn.textContent = t('auth.signIn'); };
     try {
       const r = await host.apiLogin(email, password);
       const envelope = await r.json();
@@ -83,12 +84,12 @@ export function renderLoginView(host: PointerHost, opts: { rejected?: boolean } 
         return;
       }
       if (status === 'pending') {
-        errEl.textContent = envelope.message || 'Your request is awaiting admin approval.';
+        errEl.textContent = envelope.message || t('auth.pendingApproval');
         restore();
         return;
       }
       if (status === 'disabled') {
-        errEl.textContent = envelope.message || 'Your account is disabled.';
+        errEl.textContent = envelope.message || t('auth.accountDisabled');
         restore();
         return;
       }
@@ -99,14 +100,14 @@ export function renderLoginView(host: PointerHost, opts: { rejected?: boolean } 
         (re.querySelector('#fbk-email') as HTMLInputElement).value = email;
         (re.querySelector('#fbk-password') as HTMLInputElement).value = password;
         (re.querySelector('#fbk-login-error') as HTMLElement).textContent =
-          envelope.message || 'Your request was rejected.';
+          envelope.message || t('auth.requestRejected');
         return;
       }
       // Missing/unknown status with failure → generic message.
-      errEl.textContent = envelope.message || 'Invalid email or password.';
+      errEl.textContent = envelope.message || t('auth.invalidCredentials');
       restore();
     } catch (e) {
-      errEl.textContent = 'Network error. Please try again.';
+      errEl.textContent = t('auth.networkError');
       restore();
     }
   };
@@ -125,18 +126,18 @@ export function renderLoginView(host: PointerHost, opts: { rejected?: boolean } 
       const email = emailEl.value.trim();
       const password = passEl.value;
       const roleId = roleEl.value;
-      if (!roleId) { errEl.textContent = 'Please choose a role.'; return; }
-      if (!email || !password) { errEl.textContent = 'Enter your email and password to request again.'; return; }
+      if (!roleId) { errEl.textContent = t('auth.pleaseChooseRole'); return; }
+      if (!email || !password) { errEl.textContent = t('auth.enterEmailPasswordToRequestAgain'); return; }
       errEl.textContent = '';
       reBtn.disabled = true;
-      reBtn.textContent = 'Submitting…';
+      reBtn.textContent = t('auth.submitting');
       try {
         const r = await host.apiRegister({ email, password, displayName: '', roleId });
         const envelope = await r.json();
         if (!r.ok || !envelope.isSuccess) {
-          errEl.textContent = envelope.message || 'Could not submit your request.';
+          errEl.textContent = envelope.message || t('auth.couldNotSubmitRequest');
           reBtn.disabled = false;
-          reBtn.textContent = 'Request again';
+          reBtn.textContent = t('auth.requestAgain');
           return;
         }
         // Success → collapse the re-apply block; show the submitted message.
@@ -144,11 +145,11 @@ export function renderLoginView(host: PointerHost, opts: { rejected?: boolean } 
         const reBody = host.root.querySelector('#fbk-auth-body') as HTMLElement;
         (reBody.querySelector('#fbk-email') as HTMLInputElement).value = email;
         (reBody.querySelector('#fbk-login-error') as HTMLElement).textContent =
-          envelope.message || 'Request submitted — an admin will review it.';
+          envelope.message || t('auth.requestSubmittedMsg');
       } catch (e) {
-        errEl.textContent = 'Network error. Please try again.';
+        errEl.textContent = t('auth.networkError');
         reBtn.disabled = false;
-        reBtn.textContent = 'Request again';
+        reBtn.textContent = t('auth.requestAgain');
       }
     });
   }
@@ -180,28 +181,28 @@ export function renderSignupView(host: PointerHost): void {
     const roleId = roleEl.value;
     errEl.textContent = '';
     okEl.textContent = '';
-    if (!displayName) { errEl.textContent = 'Please enter your name.'; return; }
-    if (!email) { errEl.textContent = 'Please enter your email.'; return; }
-    if (!password) { errEl.textContent = 'Please choose a password.'; return; }
-    if (!roleId) { errEl.textContent = 'Please choose a role.'; return; }
+    if (!displayName) { errEl.textContent = t('auth.pleaseEnterName'); return; }
+    if (!email) { errEl.textContent = t('auth.pleaseEnterEmail'); return; }
+    if (!password) { errEl.textContent = t('auth.pleaseChoosePassword'); return; }
+    if (!roleId) { errEl.textContent = t('auth.pleaseChooseRole'); return; }
     submitBtn.disabled = true;
-    submitBtn.textContent = 'Submitting…';
-    const restore = () => { submitBtn.disabled = false; submitBtn.textContent = 'Create account'; };
+    submitBtn.textContent = t('auth.submitting');
+    const restore = () => { submitBtn.disabled = false; submitBtn.textContent = t('auth.createAccount'); };
     try {
       const r = await host.apiRegister({ email, password, displayName, roleId });
       const envelope = await r.json();
       if (!r.ok || !envelope.isSuccess) {
-        errEl.textContent = envelope.message || 'Could not create your account.';
+        errEl.textContent = envelope.message || t('auth.couldNotCreateAccount');
         restore();
         return;
       }
       // Success: lock the form, show the inline message + a way back to sign in.
-      okEl.textContent = envelope.message || 'Request submitted — an admin will review it.';
-      submitBtn.textContent = 'Request submitted';
+      okEl.textContent = envelope.message || t('auth.requestSubmittedMsg');
+      submitBtn.textContent = t('auth.requestSubmittedBtn');
       submitBtn.disabled = true;
       [nameEl, emailEl, passEl, roleEl].forEach((el) => { el.disabled = true; });
     } catch (e) {
-      errEl.textContent = 'Network error. Please try again.';
+      errEl.textContent = t('auth.networkError');
       restore();
     }
   };
