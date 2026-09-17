@@ -635,35 +635,30 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
   }
 
   // --- Language ---------------------------------------------------------
-  // Unlike theme (deliberately widget-local, see above), language STAYS account-level: an
-  // explicit choice (from this widget's own menu or the dashboard's language switcher — same
-  // field) wins; otherwise the browser's own language. There is no widget-local override here —
-  // the dashboard and widget are meant to agree on language, unlike theme where they must not.
+  // Same widget-local shape as theme above, for the same reason: `User.language` is the SAME
+  // field the dashboard's own language switcher writes to paint the whole admin app, so an
+  // explicit per-browser override (localStorage, set from the user menu below) must win without
+  // ever being written back to the account — otherwise picking a language in the widget would
+  // silently flip the dashboard's language too. Falling back to the account's EXISTING value
+  // (read-only) when there is no local override yet is fine — the widget just never sets it.
   private resolveLang(): Lang {
-    const stored = this.user?.language;
-    if (stored === 'ar') return 'ar';
-    if (stored === 'en') return 'en';
+    try {
+      const stored = localStorage.getItem('pointer_widget_language');
+      if (stored === 'ar' || stored === 'en') return stored;
+    } catch { /* ignore */ }
+    const accountLang = this.user?.language;
+    if (accountLang === 'ar') return 'ar';
+    if (accountLang === 'en') return 'en';
     try { return (navigator.language || '').toLowerCase().startsWith('ar') ? 'ar' : 'en'; } catch { return 'en'; }
   }
 
-  // Persists the account's language preference (PATCH /api/me/preferences) — the SAME field the
-  // dashboard's own language switcher writes, so the two agree. Renders this widget's own UI text
-  // too (see wireLangBtn in toggleUserMenu, which calls setLang() + a full re-render on success).
-  private async saveLanguagePreference(lang: string): Promise<boolean> {
-    try {
-      const r = await this.api('/api/me/preferences', {
-        method: 'PATCH',
-        body: JSON.stringify({ language: lang }),
-      });
-      if (!r.ok) return false;
-      if (this.user) {
-        this.user = { ...this.user, language: lang };
-        localStorage.setItem('pointer_user', JSON.stringify(this.user));
-      }
-      return true;
-    } catch {
-      return false;
-    }
+  // Sets the widget's own per-browser language override — never touches the account (see the
+  // note on resolveLang above). The caller (wireLangBtn in toggleUserMenu) still needs to
+  // re-render everything language-bearing afterward — unlike theme, a language change can't be
+  // reflected by a CSS attribute flip alone, since the text itself is baked into rendered markup.
+  private setLanguageOverride(lang: Lang): void {
+    try { localStorage.setItem('pointer_widget_language', lang); } catch { /* ignore */ }
+    setLang(lang);
   }
 
   async init(): Promise<void> {
@@ -1146,7 +1141,7 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
       formatShortcut(this.shortcut),
       this.authOwnedByHost,
       this.resolveTheme(),
-      this.user?.language === 'ar' ? 'ar' : 'en',
+      this.resolveLang(),
     );
     const menu = host.querySelector('#fbk-user-menu') as HTMLElement;
 
@@ -1190,25 +1185,19 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
     wireThemeBtn('#fbk-theme-light', 'light');
     wireThemeBtn('#fbk-theme-dark', 'dark');
 
-    const wireLangBtn = (id: string, lang: string) => {
-      (host.querySelector(id) as HTMLElement).addEventListener('click', async (e) => {
+    const wireLangBtn = (id: string, lang: Lang) => {
+      (host.querySelector(id) as HTMLElement).addEventListener('click', (e) => {
         e.stopPropagation();
-        if ((this.user?.language === 'ar' ? 'ar' : 'en') === lang) return;
-        const ok = await this.saveLanguagePreference(lang);
-        if (ok) {
-          // Unlike theme (a CSS attribute flip), every piece of UI text is baked into the
-          // rendered markup — a language change needs a real re-render, not just re-opening the
-          // menu. setLang() first so renderChrome()/renderSidebar()/renderPins() below (which all
-          // call t() through TPL.*) pick up the new language immediately; reopenUserMenu() runs
-          // AFTER since renderChrome() wipes and rebuilds #fbk-menu-host/#fbk-user.
-          setLang(lang);
-          this.renderChrome();
-          this.renderSidebar();
-          this.renderPins();
-          reopenUserMenu();
-        } else {
-          this.toast(t('menu.failedToSaveLanguage'), 'error');
-        }
+        if (this.resolveLang() === lang) return;
+        this.setLanguageOverride(lang);
+        // Unlike theme (a CSS attribute flip), every piece of UI text is baked into the rendered
+        // markup — a language change needs a real re-render, not just re-opening the menu.
+        // reopenUserMenu() runs AFTER since renderChrome() wipes and rebuilds
+        // #fbk-menu-host/#fbk-user.
+        this.renderChrome();
+        this.renderSidebar();
+        this.renderPins();
+        reopenUserMenu();
       });
     };
     wireLangBtn('#fbk-lang-en', 'en');

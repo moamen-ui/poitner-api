@@ -76,6 +76,7 @@ public class OnDiskContractTests
         "pointer_env_<project>",
         "pointer_toolbar_pos",
         "pointer_widget_theme",
+        "pointer_widget_language",
         "pointer_visible",
         "pointer_page_session_id",
         // MCP config + npm
@@ -134,6 +135,7 @@ public class OnDiskContractTests
         "pointer_env_",
         "pointer_toolbar_pos",
         "pointer_widget_theme",
+        "pointer_widget_language",
         "pointer_visible",
         "pointer_page_session_id",
     };

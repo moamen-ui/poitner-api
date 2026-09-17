@@ -613,7 +613,6 @@
       "menu.failedToSaveTryAgain": "Failed to save — try again",
       "menu.shortcutResetToDefault": "Shortcut reset to default",
       "menu.failedToResetTryAgain": "Failed to reset — try again",
-      "menu.failedToSaveLanguage": "Failed to save language — try again",
       // --- launcher ---
       "launcher.openFeedbackFor": "Open {brand} feedback",
       // --- sidebar / filters ---
@@ -813,7 +812,6 @@
       "menu.failedToSaveTryAgain": "فشل الحفظ — حاول مرة أخرى",
       "menu.shortcutResetToDefault": "تمت إعادة الاختصار إلى الافتراضي",
       "menu.failedToResetTryAgain": "فشلت إعادة الضبط — حاول مرة أخرى",
-      "menu.failedToSaveLanguage": "فشل حفظ اللغة — حاول مرة أخرى",
       // --- launcher ---
       "launcher.openFeedbackFor": "فتح ملاحظات {brand}",
       // --- sidebar / filters ---
@@ -2466,39 +2464,38 @@
       this.applyTheme();
     }
     // --- Language ---------------------------------------------------------
-    // Unlike theme (deliberately widget-local, see above), language STAYS account-level: an
-    // explicit choice (from this widget's own menu or the dashboard's language switcher — same
-    // field) wins; otherwise the browser's own language. There is no widget-local override here —
-    // the dashboard and widget are meant to agree on language, unlike theme where they must not.
+    // Same widget-local shape as theme above, for the same reason: `User.language` is the SAME
+    // field the dashboard's own language switcher writes to paint the whole admin app, so an
+    // explicit per-browser override (localStorage, set from the user menu below) must win without
+    // ever being written back to the account — otherwise picking a language in the widget would
+    // silently flip the dashboard's language too. Falling back to the account's EXISTING value
+    // (read-only) when there is no local override yet is fine — the widget just never sets it.
     resolveLang() {
       var _a2;
-      const stored = (_a2 = this.user) == null ? void 0 : _a2.language;
-      if (stored === "ar") return "ar";
-      if (stored === "en") return "en";
+      try {
+        const stored = localStorage.getItem("pointer_widget_language");
+        if (stored === "ar" || stored === "en") return stored;
+      } catch {
+      }
+      const accountLang = (_a2 = this.user) == null ? void 0 : _a2.language;
+      if (accountLang === "ar") return "ar";
+      if (accountLang === "en") return "en";
       try {
         return (navigator.language || "").toLowerCase().startsWith("ar") ? "ar" : "en";
       } catch {
         return "en";
       }
     }
-    // Persists the account's language preference (PATCH /api/me/preferences) — the SAME field the
-    // dashboard's own language switcher writes, so the two agree. Renders this widget's own UI text
-    // too (see wireLangBtn in toggleUserMenu, which calls setLang() + a full re-render on success).
-    async saveLanguagePreference(lang) {
+    // Sets the widget's own per-browser language override — never touches the account (see the
+    // note on resolveLang above). The caller (wireLangBtn in toggleUserMenu) still needs to
+    // re-render everything language-bearing afterward — unlike theme, a language change can't be
+    // reflected by a CSS attribute flip alone, since the text itself is baked into rendered markup.
+    setLanguageOverride(lang) {
       try {
-        const r = await this.api("/api/me/preferences", {
-          method: "PATCH",
-          body: JSON.stringify({ language: lang })
-        });
-        if (!r.ok) return false;
-        if (this.user) {
-          this.user = { ...this.user, language: lang };
-          localStorage.setItem("pointer_user", JSON.stringify(this.user));
-        }
-        return true;
+        localStorage.setItem("pointer_widget_language", lang);
       } catch {
-        return false;
       }
+      setLang(lang);
     }
     async init() {
       await loadStatusCatalog(this.server);
@@ -2961,7 +2958,6 @@
     }
     // --- User menu (identity + sign out) ------------------------------------
     toggleUserMenu() {
-      var _a2;
       this.closeUpdatesMenu();
       this.closeClusterMenu();
       const host = this.root.querySelector("#fbk-menu-host");
@@ -2978,7 +2974,7 @@
         formatShortcut(this.shortcut),
         this.authOwnedByHost,
         this.resolveTheme(),
-        ((_a2 = this.user) == null ? void 0 : _a2.language) === "ar" ? "ar" : "en"
+        this.resolveLang()
       );
       const menu = host.querySelector("#fbk-user-menu");
       const btn = this.root.querySelector("#fbk-user");
@@ -3017,20 +3013,14 @@
       wireThemeBtn("#fbk-theme-light", "light");
       wireThemeBtn("#fbk-theme-dark", "dark");
       const wireLangBtn = (id, lang) => {
-        host.querySelector(id).addEventListener("click", async (e) => {
-          var _a3;
+        host.querySelector(id).addEventListener("click", (e) => {
           e.stopPropagation();
-          if ((((_a3 = this.user) == null ? void 0 : _a3.language) === "ar" ? "ar" : "en") === lang) return;
-          const ok = await this.saveLanguagePreference(lang);
-          if (ok) {
-            setLang(lang);
-            this.renderChrome();
-            this.renderSidebar();
-            this.renderPins();
-            reopenUserMenu();
-          } else {
-            this.toast(t("menu.failedToSaveLanguage"), "error");
-          }
+          if (this.resolveLang() === lang) return;
+          this.setLanguageOverride(lang);
+          this.renderChrome();
+          this.renderSidebar();
+          this.renderPins();
+          reopenUserMenu();
         });
       };
       wireLangBtn("#fbk-lang-en", "en");

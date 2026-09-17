@@ -112,7 +112,6 @@ const STRINGS: Record<Lang, Record<string, string>> = {
     'menu.failedToSaveTryAgain': 'Failed to save — try again',
     'menu.shortcutResetToDefault': 'Shortcut reset to default',
     'menu.failedToResetTryAgain': 'Failed to reset — try again',
-    'menu.failedToSaveLanguage': 'Failed to save language — try again',
 
     // --- launcher ---
     'launcher.openFeedbackFor': 'Open {brand} feedback',
@@ -321,7 +320,6 @@ const STRINGS: Record<Lang, Record<string, string>> = {
     'menu.failedToSaveTryAgain': 'فشل الحفظ — حاول مرة أخرى',
     'menu.shortcutResetToDefault': 'تمت إعادة الاختصار إلى الافتراضي',
     'menu.failedToResetTryAgain': 'فشلت إعادة الضبط — حاول مرة أخرى',
-    'menu.failedToSaveLanguage': 'فشل حفظ اللغة — حاول مرة أخرى',
 
     // --- launcher ---
     'launcher.openFeedbackFor': 'فتح ملاحظات {brand}',
