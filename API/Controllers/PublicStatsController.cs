@@ -20,6 +20,10 @@ public class PublicStatsController(IPlatformInsightsService platformInsightsServ
 {
     private const string CacheKey = "public-stats:v1";
 
+    // Coalesces concurrent misses: the aggregation scans every comment across all tenants, and
+    // this endpoint is anonymous, so a burst right after the TTL expires must compute it once.
+    private static readonly SemaphoreSlim Refresh = new(1, 1);
+
     [HttpGet]
     [ResponseCache(Duration = 3600)]
     [ProducesResponseType(typeof(PublicStatsResponse), StatusCodes.Status200OK)]
@@ -28,10 +32,22 @@ public class PublicStatsController(IPlatformInsightsService platformInsightsServ
         if (cache.TryGetValue(CacheKey, out PublicStatsResponse? cached) && cached != null)
             return Ok(Result<PublicStatsResponse>.Success(cached));
 
-        var result = await platformInsightsService.GetPublicStatsAsync();
-        if (result.IsSuccess && result.Data != null)
-            cache.Set(CacheKey, result.Data, TimeSpan.FromHours(1));
+        await Refresh.WaitAsync(HttpContext.RequestAborted);
+        try
+        {
+            // Re-check: whoever held the semaphore before us has probably just filled the cache.
+            if (cache.TryGetValue(CacheKey, out cached) && cached != null)
+                return Ok(Result<PublicStatsResponse>.Success(cached));
 
-        return result.IsSuccess ? Ok(result) : BadRequest(result);
+            var result = await platformInsightsService.GetPublicStatsAsync();
+            if (result.IsSuccess && result.Data != null)
+                cache.Set(CacheKey, result.Data, TimeSpan.FromHours(1));
+
+            return result.IsSuccess ? Ok(result) : BadRequest(result);
+        }
+        finally
+        {
+            Refresh.Release();
+        }
     }
 }

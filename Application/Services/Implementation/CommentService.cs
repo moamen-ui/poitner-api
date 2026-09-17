@@ -1243,10 +1243,14 @@ public class CommentService : ICommentService
 
     // Lowercase/trim the client-detected tag; "unknown" (the detector's not-confident sentinel)
     // and empty both collapse to null rather than being stored as a literal string.
+    // Defense in depth behind CreateCommentValidator's charset rule: strip anything outside
+    // [a-z0-9-] so a stored tag can never carry newlines or markup into the apply prompt.
     private static string? NormalizeLanguage(string? language)
     {
         var trimmed = language?.Trim().ToLowerInvariant();
-        return string.IsNullOrEmpty(trimmed) || trimmed == "unknown" ? null : trimmed;
+        if (string.IsNullOrEmpty(trimmed) || trimmed == "unknown") return null;
+        var safe = System.Text.RegularExpressions.Regex.Replace(trimmed, "[^a-z0-9-]", "");
+        return string.IsNullOrEmpty(safe) ? null : safe;
     }
 
     // Path only — no query/hash — so /checkout?step=1 and ?step=2 share one PageContextSnapshot.
