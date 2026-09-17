@@ -149,7 +149,7 @@ public class AuthController(
     /// session yet.</summary>
     [AllowAnonymous]
     [HttpPost("device/start")]
-    [EnableRateLimiting("signup")]
+    [EnableRateLimiting("device-start")]
     [ProducesResponseType(typeof(DeviceLoginStartResponse), StatusCodes.Status200OK)]
     public async Task<IActionResult> DeviceStart([FromBody] DeviceLoginStartRequest request)
     {
@@ -161,7 +161,7 @@ public class AuthController(
     /// Anonymous by necessity — the CLI has no session until this returns the key.</summary>
     [AllowAnonymous]
     [HttpPost("device/poll")]
-    [EnableRateLimiting("signup")]
+    [EnableRateLimiting("device-poll")]
     [ProducesResponseType(typeof(DeviceLoginPollResponse), StatusCodes.Status200OK)]
     public async Task<IActionResult> DevicePoll([FromBody] DeviceLoginPollRequest request)
     {

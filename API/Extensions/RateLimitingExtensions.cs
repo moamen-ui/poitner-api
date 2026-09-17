@@ -52,6 +52,29 @@ public static class RateLimitingExtensions
                     QueueLimit = 0
                 }));
 
+        // Device-code sign-in (`pointer login`). `start` mints a code — a handful per network is
+        // plenty. `poll` is the CLI asking "approved yet?" every ~3s for up to 10 minutes; sharing the
+        // 5-per-hour "signup" budget with it (the original wiring) exhausted the budget 15 seconds
+        // into the very first sign-in and every later attempt from that IP was a 429.
+        o.AddPolicy("device-start", ctx =>
+            RateLimitPartition.GetFixedWindowLimiter(
+                ClientIp(ctx),
+                _ => new FixedWindowRateLimiterOptions
+                {
+                    PermitLimit = 20,
+                    Window = TimeSpan.FromMinutes(10),
+                    QueueLimit = 0
+                }));
+        o.AddPolicy("device-poll", ctx =>
+            RateLimitPartition.GetFixedWindowLimiter(
+                ClientIp(ctx),
+                _ => new FixedWindowRateLimiterOptions
+                {
+                    PermitLimit = 120,
+                    Window = TimeSpan.FromMinutes(1),
+                    QueueLimit = 0
+                }));
+
         o.AddPolicy("demo", ctx =>
             RateLimitPartition.GetFixedWindowLimiter(
                 ClientIp(ctx),

@@ -1,6 +1,6 @@
 import { spawn } from 'node:child_process';
 import { hostname } from 'node:os';
-import { api } from './api.js';
+import { api, ApiError } from './api.js';
 
 /** Shape returned by the server on POST /api/auth/device/start. */
 interface DeviceStartResponse {
@@ -75,10 +75,19 @@ export async function runDeviceLogin(
 ): Promise<DeviceLoginOutcome> {
   const clientName = options.clientName ?? `pointer-feedback CLI on ${hostname()}`;
 
-  const start = await api<DeviceStartResponse>(server, '/api/auth/device/start', {
-    method: 'POST',
-    body: { clientName },
-  });
+  let start: DeviceStartResponse;
+  try {
+    start = await api<DeviceStartResponse>(server, '/api/auth/device/start', {
+      method: 'POST',
+      body: { clientName },
+    });
+  } catch (err) {
+    if (err instanceof ApiError && err.code === 429) {
+      console.error('Too many sign-in attempts from this network — wait a minute and run the command again.');
+      process.exit(4);
+    }
+    throw err;
+  }
 
   console.log('Open this link and enter the code to sign in:');
   console.log(`  ${start.verificationUrl}`);
@@ -90,13 +99,25 @@ export async function runDeviceLogin(
   const deadline = Date.now() + start.expiresInSeconds * 1000;
   const intervalMs = Math.max(1, start.intervalSeconds) * 1000;
 
+  let consecutiveFailures = 0;
   while (Date.now() < deadline) {
     await sleep(intervalMs);
 
-    const poll = await api<DevicePollResponse>(server, '/api/auth/device/poll', {
-      method: 'POST',
-      body: { deviceCode: start.deviceCode },
-    });
+    let poll: DevicePollResponse;
+    try {
+      poll = await api<DevicePollResponse>(server, '/api/auth/device/poll', {
+        method: 'POST',
+        body: { deviceCode: start.deviceCode },
+      });
+      consecutiveFailures = 0;
+    } catch (err) {
+      // A throttled or momentarily unreachable server must not kill a sign-in the user is in the
+      // middle of approving in the browser: back off and keep waiting, up to the code's own expiry.
+      consecutiveFailures++;
+      if (err instanceof ApiError && err.code === 429) { await sleep(intervalMs * 3); continue; }
+      if (consecutiveFailures <= 5) { await sleep(intervalMs * 2); continue; }
+      throw err;
+    }
 
     if (poll.status === 'approved') {
       if (!poll.apiKey) {

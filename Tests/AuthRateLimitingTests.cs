@@ -34,8 +34,6 @@ public class AuthRateLimitingTests
     [InlineData("RegisterInvite")]
     [InlineData("ForgotPassword")]
     [InlineData("ResetPassword")]
-    [InlineData("DeviceStart")]
-    [InlineData("DevicePoll")]
     public void SignupSurface_KeepsSignupRateLimit(string action)
     {
         var method = typeof(AuthController).GetMethod(action);
@@ -43,6 +41,25 @@ public class AuthRateLimitingTests
 
         var rateLimits = method!.GetCustomAttributes<EnableRateLimitingAttribute>(inherit: true).ToList();
         Assert.Contains(rateLimits, a => a.PolicyName == "signup");
+    }
+
+    /// <summary>
+    /// The device-code sign-in endpoints must NOT share the 5-per-hour "signup" budget: the CLI polls
+    /// `device/poll` every ~3s for up to 10 minutes, so that budget was gone 15 seconds into the first
+    /// sign-in and every later `start` from the same IP was a 429 (prod, 2026-09-17). Each has its own
+    /// policy sized for its traffic.
+    /// </summary>
+    [Theory]
+    [InlineData("DeviceStart", "device-start")]
+    [InlineData("DevicePoll", "device-poll")]
+    public void DeviceCodeSurface_HasItsOwnRateLimit(string action, string policy)
+    {
+        var method = typeof(AuthController).GetMethod(action);
+        Assert.NotNull(method);
+
+        var rateLimits = method!.GetCustomAttributes<EnableRateLimitingAttribute>(inherit: true).ToList();
+        Assert.Contains(rateLimits, a => a.PolicyName == policy);
+        Assert.DoesNotContain(rateLimits, a => a.PolicyName == "signup");
     }
 
     [Fact]

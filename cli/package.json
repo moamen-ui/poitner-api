@@ -1,6 +1,6 @@
 {
   "name": "pointer-feedback",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "description": "Click-to-comment feedback for your web app: install the widget, then turn pending comments into AI apply prompts.",
   "type": "module",
   "license": "MIT",
@@ -25,7 +25,8 @@
     "cli"
   ],
   "bin": {
-    "pointer": "dist/cli.js"
+    "pointer": "dist/cli.js",
+    "pointer-feedback": "dist/cli.js"
   },
   "files": [
     "dist",

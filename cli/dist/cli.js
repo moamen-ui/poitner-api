@@ -15,7 +15,7 @@ var init_build_constants = __esm({
   "src/build-constants.ts"() {
     "use strict";
     BUILD_DEFAULT_SERVER = true ? "https://api.pointer.moamen.work" : "https://api.pointer.moamen.work";
-    BUILD_CLI_VERSION = true ? "0.2.1" : "0.0.0-dev";
+    BUILD_CLI_VERSION = true ? "0.2.2" : "0.0.0-dev";
   }
 });
 
@@ -3093,10 +3093,19 @@ function sleep(ms) {
 }
 async function runDeviceLogin(server, options = {}) {
   const clientName = options.clientName ?? `pointer-feedback CLI on ${hostname()}`;
-  const start = await api(server, "/api/auth/device/start", {
-    method: "POST",
-    body: { clientName }
-  });
+  let start;
+  try {
+    start = await api(server, "/api/auth/device/start", {
+      method: "POST",
+      body: { clientName }
+    });
+  } catch (err) {
+    if (err instanceof ApiError && err.code === 429) {
+      console.error("Too many sign-in attempts from this network \u2014 wait a minute and run the command again.");
+      process.exit(4);
+    }
+    throw err;
+  }
   console.log("Open this link and enter the code to sign in:");
   console.log(`  ${start.verificationUrl}`);
   console.log(`  Code: ${start.userCode}`);
@@ -3105,12 +3114,28 @@ async function runDeviceLogin(server, options = {}) {
     openBrowser(start.verificationUrl);
   const deadline = Date.now() + start.expiresInSeconds * 1e3;
   const intervalMs = Math.max(1, start.intervalSeconds) * 1e3;
+  let consecutiveFailures = 0;
   while (Date.now() < deadline) {
     await sleep(intervalMs);
-    const poll = await api(server, "/api/auth/device/poll", {
-      method: "POST",
-      body: { deviceCode: start.deviceCode }
-    });
+    let poll;
+    try {
+      poll = await api(server, "/api/auth/device/poll", {
+        method: "POST",
+        body: { deviceCode: start.deviceCode }
+      });
+      consecutiveFailures = 0;
+    } catch (err) {
+      consecutiveFailures++;
+      if (err instanceof ApiError && err.code === 429) {
+        await sleep(intervalMs * 3);
+        continue;
+      }
+      if (consecutiveFailures <= 5) {
+        await sleep(intervalMs * 2);
+        continue;
+      }
+      throw err;
+    }
     if (poll.status === "approved") {
       if (!poll.apiKey) {
         return { ok: false, reason: "expired" };
