@@ -110,21 +110,13 @@
   padding-inline: 12px;
 }
 
-// Sidebar head meta — project name + environment identity, left of the refresh button.
-// min-width:0 lets the project name truncate inside the flex row instead of pushing it out.
+// Sidebar head meta — environment identity, left of the refresh button (the project name lives
+// only in the "{project} comments" heading above, not duplicated here).
 .fbk-sidebar-meta {
   display: flex;
   align-items: center;
   gap: 6px;
   min-width: 0;
-}
-// Project name — truncate, never push the refresh button off. (fbk-caption supplies the
-// 12px muted text look.)
-.fbk-project-name {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  max-width: 150px;
 }
 // Fixed-environment label — shown when the install pinned the env, replacing the switcher.
 .fbk-env-label {

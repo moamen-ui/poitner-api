@@ -767,7 +767,7 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
           const envSel = this.root && (this.root.querySelector('#fbk-env') as HTMLSelectElement | null);
           if (envSel && 'value' in envSel) envSel.value = this.environmentAttr;
           const envLabel = this.root && this.root.querySelector('.fbk-env-label');
-          if (envLabel) envLabel.textContent = '· ' + this.envDisplayLabel(this.environmentAttr);
+          if (envLabel) envLabel.textContent = this.envDisplayLabel(this.environmentAttr);
           // init() fires this request CONCURRENTLY with the very first fetchComments() (Promise.all)
           // — that first call always ran with the pre-resolution environment (0, "unknown"), which
           // the server has no comments for, so the sidebar/pins silently rendered empty until
@@ -779,7 +779,7 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
       }
       this.commitStyle = typeof envelope?.data?.commitStyle === 'number' ? envelope.data.commitStyle : 1;
       this.canEditSettings = !!envelope?.data?.canEditSettings;
-      this.updateProjectNameLabel();
+      this.updateCommentsHeading();
       this.updateEnvironmentSelectorVisibility();
       this.renderCommitStyleControl();
       if (this.pageContextCaptureEnabled) startPageContextCapture(this.server, SCRIPT_SRC);
@@ -789,17 +789,13 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
     }
   }
 
-  // Patches the already-rendered header label (and the "{project} comments" heading, which
-  // embeds the same name) in place rather than a full renderChrome() — re-rendering chrome here
-  // would drop the sidebar's open/closed state mid-session. Needed because the initial
-  // renderChrome() runs before fetchCaptureConfig() resolves the real project name, so both
-  // start out showing the raw project key as a fallback.
-  private updateProjectNameLabel(): void {
-    const el = this.root && this.root.querySelector('#fbk-project-name');
-    if (el) {
-      el.textContent = this.projectName;
-      el.setAttribute('title', this.projectName);
-    }
+  // Patches the already-rendered "{project} comments" heading in place rather than a full
+  // renderChrome() — re-rendering chrome here would drop the sidebar's open/closed state
+  // mid-session. Needed because the initial renderChrome() runs before fetchCaptureConfig()
+  // resolves the real project name, so the heading starts out showing the raw project key as a
+  // fallback. The project name is shown only in this heading — not duplicated elsewhere in the
+  // header, so there's nothing else to keep in step with it.
+  private updateCommentsHeading(): void {
     const heading = this.root && this.root.querySelector('#fbk-comments-heading');
     if (heading) heading.textContent = t('toolbar.commentsHeading', { project: this.projectName });
   }
@@ -807,7 +803,7 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
   // /capture-config resolves AFTER the first renderChrome() (which assumed the switcher was
   // visible), so if it turns out this caller should NOT see it, swap the already-rendered
   // <select id="fbk-env"> for the same read-only label used for a host-fixed environment — same
-  // reasoning as updateProjectNameLabel() above (no full re-render, mid-session state stays put).
+  // reasoning as updateCommentsHeading() above (no full re-render, mid-session state stays put).
   // A no-op when the toolbar isn't open yet or the switcher was already hidden — the NEXT
   // renderChrome() (e.g. when the visitor opens the toolbar) already reads the updated flag.
   private updateEnvironmentSelectorVisibility(): void {
@@ -817,7 +813,7 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
     const label = document.createElement('span');
     label.className = 'fbk-env-label';
     label.title = t('toolbar.environment');
-    label.textContent = '· ' + this.envDisplayLabel(this.environmentAttr || ENV_NAME[this.environmentInt] || 'unknown');
+    label.textContent = this.envDisplayLabel(this.environmentAttr || ENV_NAME[this.environmentInt] || 'unknown');
     sel.replaceWith(label);
   }
 
@@ -863,7 +859,7 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
   }
 
   // Keeps the "Comment on an element" button's tooltip showing the current shortcut after it's
-  // changed from the user menu — same in-place-patch reasoning as updateProjectNameLabel().
+  // changed from the user menu — same in-place-patch reasoning as updateCommentsHeading().
   private updateAddButtonTooltip(): void {
     const btn = this.root && this.root.querySelector('#fbk-add');
     if (!btn) return;

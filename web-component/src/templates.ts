@@ -91,9 +91,8 @@ export const TPL = {
             </div>
             <div class="fbk-sidebar-head-row">
               <div class="fbk-sidebar-meta">
-                <span class="fbk-project-name fbk-caption" id="fbk-project-name" title="${escapeHtml(projectName)}">${escapeHtml(projectName)}</span>
                 ${fixedEnvLabel
-                  ? `<span class="fbk-env-label fbk-caption" title="${t('toolbar.envFixedTitle')}">&middot; ${escapeHtml(fixedEnvLabel)}</span>`
+                  ? `<span class="fbk-env-label fbk-caption" title="${t('toolbar.envFixedTitle')}">${escapeHtml(fixedEnvLabel)}</span>`
                   : `<select class="fbk-input fbk-env-select" id="fbk-env" title="${t('toolbar.envSwitchTitle')}">
                 <option value="all">${t('toolbar.envAll')}</option>
                 <option value="local">${t('toolbar.envLocal')}</option>

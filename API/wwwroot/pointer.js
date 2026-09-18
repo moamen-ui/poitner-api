@@ -309,7 +309,7 @@
   var SHOT_HIGHLIGHT = "#2563eb";
   var _a;
   var SCRIPT_SRC = ((_a = document.currentScript) == null ? void 0 : _a.src) || "";
-  var CSS_INTEGRITY = true ? "sha384-xX6/jjS5rLtovoWscH5ktKTBoOpR4fxRJWEHGA/TD5343iNt2OpiMnzQmqic1Pj7" : "";
+  var CSS_INTEGRITY = true ? "sha384-zCZRLhRcMSH6+d1eGxw4MK2jMg+X3w7iriYbvV0wJGBCL2EMWd6MQu5wV9j0kxs4" : "";
   function resolveCssUrl(scriptSrc) {
     var _a2;
     if (!scriptSrc) return "pointer.css";
@@ -1103,8 +1103,7 @@
             </div>
             <div class="fbk-sidebar-head-row">
               <div class="fbk-sidebar-meta">
-                <span class="fbk-project-name fbk-caption" id="fbk-project-name" title="${escapeHtml(projectName)}">${escapeHtml(projectName)}</span>
-                ${fixedEnvLabel ? `<span class="fbk-env-label fbk-caption" title="${t("toolbar.envFixedTitle")}">&middot; ${escapeHtml(fixedEnvLabel)}</span>` : `<select class="fbk-input fbk-env-select" id="fbk-env" title="${t("toolbar.envSwitchTitle")}">
+                ${fixedEnvLabel ? `<span class="fbk-env-label fbk-caption" title="${t("toolbar.envFixedTitle")}">${escapeHtml(fixedEnvLabel)}</span>` : `<select class="fbk-input fbk-env-select" id="fbk-env" title="${t("toolbar.envSwitchTitle")}">
                 <option value="all">${t("toolbar.envAll")}</option>
                 <option value="local">${t("toolbar.envLocal")}</option>
                 <option value="staging">${t("toolbar.envStaging")}</option>
@@ -2714,13 +2713,13 @@
             const envSel = this.root && this.root.querySelector("#fbk-env");
             if (envSel && "value" in envSel) envSel.value = this.environmentAttr;
             const envLabel = this.root && this.root.querySelector(".fbk-env-label");
-            if (envLabel) envLabel.textContent = "· " + this.envDisplayLabel(this.environmentAttr);
+            if (envLabel) envLabel.textContent = this.envDisplayLabel(this.environmentAttr);
             await this.fetchComments();
           }
         }
         this.commitStyle = typeof ((_d = envelope == null ? void 0 : envelope.data) == null ? void 0 : _d.commitStyle) === "number" ? envelope.data.commitStyle : 1;
         this.canEditSettings = !!((_e = envelope == null ? void 0 : envelope.data) == null ? void 0 : _e.canEditSettings);
-        this.updateProjectNameLabel();
+        this.updateCommentsHeading();
         this.updateEnvironmentSelectorVisibility();
         this.renderCommitStyleControl();
         if (this.pageContextCaptureEnabled) startPageContextCapture(this.server, SCRIPT_SRC);
@@ -2729,24 +2728,20 @@
         this.captureTextContent = true;
       }
     }
-    // Patches the already-rendered header label (and the "{project} comments" heading, which
-    // embeds the same name) in place rather than a full renderChrome() — re-rendering chrome here
-    // would drop the sidebar's open/closed state mid-session. Needed because the initial
-    // renderChrome() runs before fetchCaptureConfig() resolves the real project name, so both
-    // start out showing the raw project key as a fallback.
-    updateProjectNameLabel() {
-      const el = this.root && this.root.querySelector("#fbk-project-name");
-      if (el) {
-        el.textContent = this.projectName;
-        el.setAttribute("title", this.projectName);
-      }
+    // Patches the already-rendered "{project} comments" heading in place rather than a full
+    // renderChrome() — re-rendering chrome here would drop the sidebar's open/closed state
+    // mid-session. Needed because the initial renderChrome() runs before fetchCaptureConfig()
+    // resolves the real project name, so the heading starts out showing the raw project key as a
+    // fallback. The project name is shown only in this heading — not duplicated elsewhere in the
+    // header, so there's nothing else to keep in step with it.
+    updateCommentsHeading() {
       const heading = this.root && this.root.querySelector("#fbk-comments-heading");
       if (heading) heading.textContent = t("toolbar.commentsHeading", { project: this.projectName });
     }
     // /capture-config resolves AFTER the first renderChrome() (which assumed the switcher was
     // visible), so if it turns out this caller should NOT see it, swap the already-rendered
     // <select id="fbk-env"> for the same read-only label used for a host-fixed environment — same
-    // reasoning as updateProjectNameLabel() above (no full re-render, mid-session state stays put).
+    // reasoning as updateCommentsHeading() above (no full re-render, mid-session state stays put).
     // A no-op when the toolbar isn't open yet or the switcher was already hidden — the NEXT
     // renderChrome() (e.g. when the visitor opens the toolbar) already reads the updated flag.
     updateEnvironmentSelectorVisibility() {
@@ -2756,7 +2751,7 @@
       const label = document.createElement("span");
       label.className = "fbk-env-label";
       label.title = t("toolbar.environment");
-      label.textContent = "· " + this.envDisplayLabel(this.environmentAttr || ENV_NAME[this.environmentInt] || "unknown");
+      label.textContent = this.envDisplayLabel(this.environmentAttr || ENV_NAME[this.environmentInt] || "unknown");
       sel.replaceWith(label);
     }
     // Translated display text for an environment key ('local'/'staging'/'production') — falls back
@@ -2801,7 +2796,7 @@
       }
     }
     // Keeps the "Comment on an element" button's tooltip showing the current shortcut after it's
-    // changed from the user menu — same in-place-patch reasoning as updateProjectNameLabel().
+    // changed from the user menu — same in-place-patch reasoning as updateCommentsHeading().
     updateAddButtonTooltip() {
       const btn = this.root && this.root.querySelector("#fbk-add");
       if (!btn) return;
