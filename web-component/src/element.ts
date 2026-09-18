@@ -2,7 +2,7 @@ import {
   HL_CLASS, BACKDROP_SELECTOR, DIALOG_CONTENT_SELECTOR, ENV_MAP, ENV_NAME, STATUS_STR, STATUS_INT, POSITIONS, CSS_URL, SCRIPT_SRC,
   loadStatusCatalog, catalogToFilters, pfFetch, loadBranding, getBrandName, CSS_INTEGRITY,
 } from './constants';
-import { escapeHtml, initials, ensureHighlightStyle, matchElement, pageIsRtl, buildClipPathWithHoles, applyDataPosition } from './dom';
+import { escapeHtml, initials, ensureHighlightStyle, matchElement, isCurrentPage, pageIsRtl, buildClipPathWithHoles, applyDataPosition } from './dom';
 import { TPL } from './templates';
 import { ICON } from './icons';
 import { captureScreenshot, captureMetadata } from './capture';
@@ -32,6 +32,10 @@ const PIN_HEIGHT = 30;
 // has room to open upward — doesn't need to be exact, just enough to flip it early rather than
 // late.
 const PIN_TOOLTIP_HEIGHT_ESTIMATE = 150;
+// The tooltip's actual rendered width (see _pins.scss's .fbk-pin-tooltip) plus a small margin —
+// used to decide whether a centered tooltip would spill past the left/right viewport edge.
+const PIN_TOOLTIP_WIDTH = 220;
+const PIN_TOOLTIP_EDGE_MARGIN = 8;
 
 interface CreateCommentData extends Meta {
   text: string;
@@ -65,6 +69,10 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
   statusFilter = 'all';
   mineOnly = false;
   authorFilter: string | null = null;
+  // Whether #fbk-filters (status/environment/author) is currently revealed — collapsed by
+  // default so the filter bar isn't taking up space for visitors who never touch it; toggled by
+  // the fbk-filters-toggle button (see renderChrome/TPL.chrome).
+  filtersOpen = false;
   hiddenPrivateCount = 0;
   private _collapsed = true;
   private _disabled = false;
@@ -1009,7 +1017,7 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
     const roleLabel = this.user ? escapeHtml(this.user.roleName || '') : '';
     // Computed from the RAW name (before escaping above) — see the chrome() doc comment.
     const avatarInitials = this.user ? escapeHtml(initials(this.user.displayName || this.user.email || '')) : '';
-    this.root.innerHTML = TPL.chrome(displayName, roleLabel, this.projectName || this.project, formatShortcut(this.shortcut), this.unreadNotifyCount, avatarInitials, ariaKeyshortcuts(this.shortcut));
+    this.root.innerHTML = TPL.chrome(displayName, roleLabel, this.projectName || this.project, formatShortcut(this.shortcut), this.unreadNotifyCount, avatarInitials, ariaKeyshortcuts(this.shortcut), this.filtersOpen);
 
     const hideBtn = this.root.querySelector('#fbk-hide');
     if (hideBtn) hideBtn.addEventListener('click', () => this.hideOverlay());
@@ -1028,6 +1036,17 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
     this.root.querySelector('#fbk-refresh')!.addEventListener('click', async () => {
       if (!this.token) { showLoginModal(this, () => this.init()); return; }
       await this.fetchComments(); this.renderSidebar(); this.renderPins(); this.toast(t('toast.refreshed'));
+    });
+    const filtersToggle = this.root.querySelector('#fbk-filters-toggle') as HTMLElement | null;
+    if (filtersToggle) filtersToggle.addEventListener('click', () => {
+      this.filtersOpen = !this.filtersOpen;
+      this.root.querySelector('#fbk-filters')!.classList.toggle('fbk-hidden', !this.filtersOpen);
+      filtersToggle.classList.toggle('is-active', this.filtersOpen);
+      filtersToggle.setAttribute('aria-pressed', String(this.filtersOpen));
+      filtersToggle.setAttribute('aria-expanded', String(this.filtersOpen));
+      const label = this.filtersOpen ? t('sidebar.hideFilters') : t('sidebar.showFilters');
+      filtersToggle.setAttribute('title', label);
+      filtersToggle.setAttribute('aria-label', label);
     });
     this.root.querySelector('#fbk-close')!.addEventListener('click', () => this.toggleSidebar(false));
 
@@ -2414,9 +2433,20 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
         ? this.envDisplayLabel(this.environmentAttr || ENV_NAME[this.environmentInt] || 'staging')
         : null;
       const envValue = this.viewAllEnvironments ? 'all' : (this.environmentAttr || ENV_NAME[this.environmentInt] || 'staging').toLowerCase();
-      filtersEl.innerHTML = TPL.statusFilterSelect(activeFilters, this.statusFilter, counts)
-        + TPL.envFilterSelect(fixedEnvLabel, envValue)
+      // "Mine only" now lives inside #fbk-filters too, so it hides/shows along with the rest of
+      // the filter bar behind the fbk-filters-toggle button instead of always taking up its own
+      // row above it. Two rows (see .fbk-filters-row): the "who" controls (mine + author) on top,
+      // "what" controls (status + environment) below — each its own horizontally-scrollable line
+      // rather than everything crammed into one.
+      const whoRow = (canMine ? TPL.mineToggle(this.mineOnly) : '')
         + ((authors.length > 1 && !this.mineOnly) ? TPL.authorFilter(authors, this.authorFilter || '') : '');
+      const whatRow = TPL.statusFilterSelect(activeFilters, this.statusFilter, counts)
+        + TPL.envFilterSelect(fixedEnvLabel, envValue);
+      filtersEl.innerHTML = `<div class="fbk-filters-row">${whoRow}</div><div class="fbk-filters-row">${whatRow}</div>`;
+      const mineBtn = filtersEl.querySelector('#fbk-mine-toggle');
+      if (mineBtn) mineBtn.addEventListener('click', () => {
+        this.mineOnly = !this.mineOnly; this.renderSidebar(); this.renderPins();
+      });
       const statusSel = filtersEl.querySelector('#fbk-status-filter') as HTMLSelectElement | null;
       if (statusSel) statusSel.addEventListener('change', () => {
         this.statusFilter = statusSel.value; this.renderSidebar();
@@ -2427,19 +2457,6 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
       if (authorSel) authorSel.addEventListener('change', () => {
         this.authorFilter = authorSel.value || null;
         this.renderSidebar(); this.renderPins();
-      });
-    }
-
-    // "Mine only" gets its own row above the filters (where the commit-style control used to
-    // sit — see renderCommitStyleControl, currently force-hidden) rather than living inside
-    // #fbk-filters: it's a single on/off setting, not one choice among the status/environment
-    // selects beside it.
-    const mineRowEl = this.root.querySelector('#fbk-mine-row');
-    if (mineRowEl) {
-      mineRowEl.innerHTML = canMine ? TPL.mineToggle(this.mineOnly) : '';
-      const mineBtn = mineRowEl.querySelector('#fbk-mine-toggle');
-      if (mineBtn) mineBtn.addEventListener('click', () => {
-        this.mineOnly = !this.mineOnly; this.renderSidebar(); this.renderPins();
       });
     }
 
@@ -2498,6 +2515,14 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
     }));
     // Reopen now lives in the kebab menu (see cardMenu template + toggleCardMenu) — archive stays
     // here since only applied comments ever show it, right next to the "Ready" button it replaces.
+    // Card's own id badge (see templates.ts's card renderer) — clicking it flashes the comment's
+    // on-page pin instead of opening the sidebar's card (that's the pin→card direction already
+    // covered by highlightCommentCard/renderPins' click wiring; this is the reverse).
+    list.querySelectorAll<HTMLElement>('[data-act="flash-pin"]').forEach((b) => b.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const id = b.dataset.id;
+      if (id) this.flashPin(id);
+    }));
     list.querySelectorAll<HTMLElement>('[data-act="archive"]').forEach((b) => b.addEventListener('click', () => {
       const c = this.comments.find((x) => String(x.id) === String(b.dataset.id));
       if (c) this.setStatus(c, 'archived', t('toast.archivedMsg'));
@@ -2607,18 +2632,18 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
     const all = this.pageComments().filter((c) => c.status !== 'archived' && c.status !== 'applied');
     const here = this.scopeByWho(all);
 
-    // `i` is each comment's position in `here` — kept per-item (not per-group) so a
-    // non-clustered pin's number still matches its card's number in the sidebar, which iterates
-    // this same `here` array in the same order; a cluster shows a count instead of numbers, so it
-    // doesn't need one.
-    type Item = { c: Comment; i: number; x: number; y: number };
+    type Item = { c: Comment; x: number; y: number };
     const items: Item[] = [];
-    here.forEach((c, i) => {
+    here.forEach((c) => {
+      // A pin only ever belongs on the page its comment was captured on — otherwise two pages
+      // sharing the same layout/component could each match the same selector and show a pin
+      // that has nothing to do with what's actually on screen (see isCurrentPage).
+      if (!isCurrentPage(c)) return;
       const el = matchElement(c);
       if (!el) return;
       const rect = el.getBoundingClientRect();
       if (rect.width === 0 && rect.height === 0) return;
-      items.push({ c, i, x: rect.left, y: rect.top });
+      items.push({ c, x: rect.left, y: rect.top });
     });
 
     // Greedy single-linkage clustering: each item joins the first existing group whose anchor
@@ -2652,7 +2677,15 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
       // room above (same failure this whole clamp exists for, one level up: a pin near the top
       // of the viewport has nowhere for a ~150px tooltip to open upward into).
       const tipSide: 'top' | 'bottom' = (clampedCy - PIN_HEIGHT - PIN_TOOLTIP_HEIGHT_ESTIMATE) < 0 ? 'bottom' : 'top';
-      return TPL.pin(g[0]!.c, g[0]!.i, rect, String(g[0]!.c.id) === String(this._newPinId), tipSide);
+      // Same idea, horizontally: a pin sitting close enough to the left/right edge that the
+      // tooltip's own half-width would carry it past the viewport gets the tooltip anchored to
+      // whichever edge of the pin still has room, instead of centered.
+      const tooltipHalf = PIN_TOOLTIP_WIDTH / 2;
+      const tipAlign: 'start' | 'center' | 'end' =
+        (clampedCx - tooltipHalf < PIN_TOOLTIP_EDGE_MARGIN) ? 'start'
+        : (clampedCx + tooltipHalf > window.innerWidth - PIN_TOOLTIP_EDGE_MARGIN) ? 'end'
+        : 'center';
+      return TPL.pin(g[0]!.c, rect, String(g[0]!.c.id) === String(this._newPinId), tipSide, tipAlign);
     }).join('');
     applyDataPosition(wrap, '.fbk-pin-wrapper');
 
@@ -2688,6 +2721,62 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
         setTimeout(() => card.classList.remove('highlight'), 2000);
       }
     }, 100);
+  }
+
+  // Reverse of highlightCommentCard: clicking a card's id badge flashes that comment's pin on
+  // the page instead. A standalone pin is `[data-id]`; one folded into a collision cluster (see
+  // renderPins' clustering) only carries the comma-joined `data-ids` on its wrapper, so both are
+  // checked. When the comment belongs to a DIFFERENT page (see isCurrentPage) there is no pin to
+  // flash here at all — renderPins() never rendered one — so follow the comment to its own page
+  // instead of reporting a dead end; flashing the pin there too is deliberately skipped (would
+  // need to survive a full navigation/reload, for little payoff over just landing on the page).
+  // Once we know we're on the RIGHT page, a still-missing pin (doFlashPin's own check) means the
+  // target element itself can't be found right now — applied/archived, removed, or (a common
+  // case) a portal/overlay node (a menu, tooltip, modal) that only exists in the DOM while open —
+  // never "wrong page" at that point, so say so with a different message than the redirect above.
+  private flashPin(id: string): void {
+    const comment = this.comments.find((x) => String(x.id) === String(id));
+    const pageUrl = comment && comment.element && comment.element.pageUrl;
+    if (comment && pageUrl && !isCurrentPage(comment)) {
+      window.location.href = pageUrl;
+      return;
+    }
+    // Slide the sidebar out of the way for the flash's duration — it's the one thing on top of
+    // the pins layer (see its z-index vs. #fbk-pins-layer in _pins.scss) and the comment's pin
+    // may well sit underneath it. Purely visual (see .fbk-peek-hide) — sidebarOpen/toggleSidebar
+    // are untouched, so this never triggers a re-fetch and always restores below.
+    const sidebar = this.root.querySelector('#fbk-sidebar');
+    sidebar?.classList.add('fbk-peek-hide');
+    // `.fbk-pin-wrapper` is `position: fixed`, so calling scrollIntoView on the PIN itself is a
+    // no-op — the browser already considers a fixed element "in view" regardless of document
+    // scroll. Scroll the comment's real page target instead. That target's own scroll fires the
+    // window `scroll` listener (this._reposition), which calls renderPins() and replaces the
+    // ENTIRE pins layer's innerHTML — tearing down whatever wrapper/pin node we could grab right
+    // now and rebuilding a fresh one at the new position. So: scroll first, then look up and
+    // flash a freshly-queried pin after giving that re-render a moment to land, instead of
+    // flashing a node that a moment later gets ripped out from under the animation.
+    const target = comment && matchElement(comment);
+    if (target) target.scrollIntoView({ block: 'center' });
+    setTimeout(() => this.doFlashPin(id), target ? 150 : 0);
+  }
+
+  private doFlashPin(id: string): void {
+    const restoreSidebar = () => this.root.querySelector('#fbk-sidebar')?.classList.remove('fbk-peek-hide');
+    const layer = this.root.querySelector('#fbk-pins-layer');
+    if (!layer) { restoreSidebar(); return; }
+    let wrapper = layer.querySelector<HTMLElement>(`.fbk-pin-wrapper[data-id="${id}"]`);
+    if (!wrapper) {
+      wrapper = Array.from(layer.querySelectorAll<HTMLElement>('.fbk-pin-wrapper[data-ids]'))
+        .find((w) => (w.dataset.ids || '').split(',').includes(String(id))) || null;
+    }
+    const pin = wrapper?.querySelector<HTMLElement>('.fbk-pin');
+    if (!pin) { this.toast(t('toast.pinElementNotFound')); restoreSidebar(); return; }
+    pin.classList.remove('fbk-pin-flash');
+    // Re-triggers the animation even if the same pin was just flashed (a bare class re-add is a
+    // no-op to the browser without forcing a reflow in between).
+    void pin.offsetWidth;
+    pin.classList.add('fbk-pin-flash');
+    setTimeout(() => { pin.classList.remove('fbk-pin-flash'); restoreSidebar(); }, 1600);
   }
 
   // --- Pin cluster menu ------------------------------------------------------
@@ -2948,7 +3037,9 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
         dismiss();
       });
     }
-    setTimeout(dismiss, 2200);
+    // Scale with message length so a long toast gets time to read, clamped both ends.
+    const duration = Math.min(6000, Math.max(2200, msg.length * 50));
+    setTimeout(dismiss, duration);
   }
 
   // Toasts stack in their own fixed container (see _toast.scss) rather than as loose siblings —

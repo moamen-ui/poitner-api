@@ -1,0 +1,14 @@
+{
+  "detector": {
+    "ignoreRules": [],
+    "ignoreFiles": [],
+    "ignoreValues": [
+      {
+        "rule": "bounce-easing",
+        "value": "cubic-bezier(0.34, 1.56, 0.64, 1)",
+        "createdAt": "2026-09-17T06:37:00.451Z",
+        "reason": "user provided this exact spring curve verbatim in three separate pasted CSS specs (toolbar, toast, pin tokens) as --wc-transition-spring; it's the intended overshoot 'pop' for the launcher hover and toast entrance, not an accidental bounce"
+      }
+    ]
+  }
+}

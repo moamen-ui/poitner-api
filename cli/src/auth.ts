@@ -22,6 +22,25 @@ export async function readApiKeyWithSource(
 }
 
 /**
+ * True when `token` decodes as a JWT whose `exp` claim is already in the past (a few seconds of
+ * slack so a token expiring right this instant is still treated as dead, not raced against). A
+ * string that isn't a three-segment JWT — a test fixture's plain `'jwt-for-test'`, say — decodes
+ * to nothing here and is treated as NOT expired: this check only ever discards a cache entry it
+ * can positively prove is dead, never one it merely doesn't understand.
+ */
+function isJwtExpired(token: string): boolean {
+  const parts = token.split('.');
+  if (parts.length !== 3) return false;
+  try {
+    const json = Buffer.from(parts[1].replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString('utf8');
+    const payload = JSON.parse(json);
+    return typeof payload.exp === 'number' && payload.exp * 1000 <= Date.now() + 5000;
+  } catch {
+    return false;
+  }
+}
+
+/**
  * Exchanges an API key for a JWT, caching the result under the global per-(server,key) cache file
  * (see `tokenCacheFile`) so repeated commands in the same repo — or a different repo against the
  * same server and key — don't re-login every time.
@@ -41,7 +60,10 @@ export async function resolveToken(
   try {
     const cached = JSON.parse(await fs.readFile(cacheFile, 'utf8'));
     const token = typeof cached?.token === 'string' ? cached.token.trim() : '';
-    if (token) return token;
+    // A cached JWT past its own `exp` is worse than no cache at all: every command silently
+    // fails 401 against a dead token until someone thinks to clear ~/.cache/pointer by hand.
+    // Fall through to a fresh exchange instead of trusting it.
+    if (token && !isJwtExpired(token)) return token;
   } catch {
     // Missing, unreadable, or not JSON — fall through to a fresh login.
   }

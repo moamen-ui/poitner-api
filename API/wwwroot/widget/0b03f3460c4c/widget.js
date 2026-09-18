@@ -309,21 +309,21 @@
   var SHOT_HIGHLIGHT = "#2563eb";
   var _a;
   var SCRIPT_SRC = ((_a = document.currentScript) == null ? void 0 : _a.src) || "";
-  var CSS_INTEGRITY = true ? "sha384-martuyKA38/p8YDGK1WhjRHpDMbq8JZODpXZqJSR/iyDBfJ2soer1E3p+KheGQQC" : "";
+  var CSS_INTEGRITY = true ? "sha384-PbauAky6ibe0yNWOIdDZvHOujyj3ae0OUhyee5KURH+QYfa5CiYzKGK9aFJmd71F" : "";
   function resolveCssUrl(scriptSrc) {
     var _a2;
-    if (!scriptSrc) return "pointer.css";
+    if (!scriptSrc) return "widget.css";
     try {
       const base = typeof window !== "undefined" && ((_a2 = window.location) == null ? void 0 : _a2.href) ? window.location.href : "http://localhost";
       const parsedScript = new URL(scriptSrc, base);
-      const css = new URL("pointer.css", parsedScript);
+      const css = new URL("widget.css", parsedScript);
       const v = parsedScript.searchParams.get("v");
       if (v) {
         css.searchParams.set("v", v);
       }
       return css.href;
     } catch {
-      return "pointer.css";
+      return "widget.css";
     }
   }
   var CSS_URL = resolveCssUrl(SCRIPT_SRC);
@@ -723,13 +723,13 @@
       "card.explainNotFixed": "Explain what is still not fixed…",
       "card.submit": "Submit",
       "card.viewCommit": "View commit",
-      "card.noCommitRecorded": "No commit recorded for this comment",
       "card.commit": "commit",
       "card.containsSecretPayload": "contains a secret/payload?",
       "card.defaultReplyAuthor": "User",
       "card.automatedReply": "Automated reply",
       "card.aiVia": "via {name}",
       "card.edited": "edited",
+      "card.jumpToPin": "Flash this comment's pin on the page",
       "card.reply": "Reply",
       "card.replyPlaceholder": "Reply…",
       "card.markedReadyClickToUnmark": "Marked ready — click to unmark",
@@ -798,6 +798,7 @@
       "toast.couldNotReachServer": "Could not reach {brand} server",
       "toast.retry": "Retry",
       "toast.refreshed": "Refreshed",
+      "toast.pinNotOnThisPage": "This comment's pin is not on the current page",
       "toast.applyPromptCopied": "Apply prompt copied — paste it into your AI tool",
       "toast.copyFailed": "Could not copy to clipboard",
       "toast.commitStyleUpdated": "Commit style updated",
@@ -933,13 +934,13 @@
       "card.explainNotFixed": "اشرح ما لم يتم إصلاحه بعد…",
       "card.submit": "إرسال",
       "card.viewCommit": "عرض الالتزام",
-      "card.noCommitRecorded": "لا يوجد التزام مسجَّل لهذا التعليق",
       "card.commit": "التزام",
       "card.containsSecretPayload": "قد يحتوي على بيانات سرية؟",
       "card.defaultReplyAuthor": "مستخدم",
       "card.automatedReply": "رد آلي",
       "card.aiVia": "بواسطة {name}",
       "card.edited": "مُعدَّل",
+      "card.jumpToPin": "إظهار دبوس هذا التعليق على الصفحة",
       "card.reply": "رد",
       "card.replyPlaceholder": "رد…",
       "card.markedReadyClickToUnmark": "وُضع علامة جاهز — انقر لإلغائها",
@@ -1008,6 +1009,7 @@
       "toast.couldNotReachServer": "تعذّر الوصول إلى خادم {brand}",
       "toast.retry": "إعادة المحاولة",
       "toast.refreshed": "تم التحديث",
+      "toast.pinNotOnThisPage": "دبوس هذا التعليق غير موجود في الصفحة الحالية",
       "toast.applyPromptCopied": "تم نسخ تعليمة التطبيق — الصقها في أداة الذكاء الاصطناعي",
       "toast.copyFailed": "تعذر النسخ إلى الحافظة",
       "toast.commitStyleUpdated": "تم تحديث أسلوب الالتزام",
@@ -1275,7 +1277,7 @@
             <button class="fbk-mini" data-act="verify-cancel" data-id="${c.id}">${t("toolbar.cancel")}</button>
           </div>
         </div>` : "";
-      const commitLink = c.status === "applied" ? `<a class="fbk-pill" href="${c.commitUrl ? escapeHtml(c.commitUrl) : "#"}" ${c.commitUrl ? 'target="_blank" rel="noopener noreferrer"' : ""} title="${c.commitUrl ? t("card.viewCommit") : t("card.noCommitRecorded")}">&#x1f517; ${t("card.commit")}</a>` : "";
+      const commitLink = c.status === "applied" && c.commitUrl ? `<a class="fbk-pill" href="${escapeHtml(c.commitUrl)}" target="_blank" rel="noopener noreferrer" title="${t("card.viewCommit")}">&#x1f517; ${t("card.commit")}</a>` : "";
       const payloadPill = c.hasPayloadFlag ? `<span class="fbk-pill fbk-payload-flag" title="${escapeHtml((c.payloadFlags || []).join(", "))}">&#x26a0; ${t("card.containsSecretPayload")}</span>` : "";
       const replies = (c.replies || []).map((r) => {
         var _a2, _b, _c;
@@ -1310,7 +1312,7 @@
       return `
           <div class="fbk-card ${cls}" data-id="${c.id}">
             <div class="fbk-meta">
-              <span class="fbk-badge">${i + 1}</span>
+              <button type="button" class="fbk-badge" data-act="flash-pin" data-id="${c.id}" title="${t("card.jumpToPin")}">#${c.id}</button>
               ${envLabel ? `<span class="fbk-pill env">${escapeHtml(envLabel)}</span>` : ""}
               ${payloadPill}
               ${statusPill}
@@ -1375,7 +1377,9 @@
     // element.ts's cluster grouping passes a plain centroid point, not a real element rect.
     // `tipSide`: 'top' (default) opens the hover tooltip above the pin, 'bottom' flips it below —
     // element.ts's renderPins() decides based on how close the pin sits to the viewport's top edge.
-    pin: (c, i, rect, isNew = false, tipSide = "top") => {
+    // `tipAlign`: 'center' (default) centers the tooltip on the pin, 'start'/'end' anchor it to
+    // that edge of the pin instead — same reasoning as tipSide, but for the left/right viewport edge.
+    pin: (c, i, rect, isNew = false, tipSide = "top", tipAlign = "center") => {
       const status = c.status === "pending-apply" ? "ready" : c.status === "applied" ? "applied" : c.status === "archived" ? "archived" : "open";
       const statusLabel = status === "ready" ? t("pin.ready") : status === "applied" ? t("pin.applied") : status === "archived" ? t("pin.archived") : t("pin.open");
       const author = c.authorName || "";
@@ -1385,7 +1389,7 @@
       const label = `${t("pin.commentHash", { n: i + 1 })}${author ? t("pin.byAuthor", { author }) : ""}${bodyText ? `: ${bodyText}` : ""}`;
       const showMeta = !!(selector || replyCount);
       return `
-        <div class="fbk-pin-wrapper" data-id="${c.id}" data-fbk-left="${rect.left}" data-fbk-top="${rect.top}" data-fbk-tip-side="${tipSide}">
+        <div class="fbk-pin-wrapper" data-id="${c.id}" data-fbk-left="${rect.left}" data-fbk-top="${rect.top}" data-fbk-tip-side="${tipSide}" data-fbk-tip-align="${tipAlign}">
           <button type="button" class="fbk-pin fbk-pin-${status}" aria-label="${escapeHtml(label)}">
             ${isNew ? '<span class="fbk-pin-ring" aria-hidden="true"></span>' : ""}
             ${status === "applied" ? ICON.checkBold : `<span class="fbk-pin-number">${i + 1}</span>`}
@@ -2134,6 +2138,8 @@
   var PIN_HALF_WIDTH = 16;
   var PIN_HEIGHT = 30;
   var PIN_TOOLTIP_HEIGHT_ESTIMATE = 150;
+  var PIN_TOOLTIP_WIDTH = 220;
+  var PIN_TOOLTIP_EDGE_MARGIN = 8;
   var _PointerFeedback = class _PointerFeedback extends HTMLElement {
     constructor() {
       super(...arguments);
@@ -2301,7 +2307,7 @@
         this._styleLink.integrity = CSS_INTEGRITY;
         this._styleLink.crossOrigin = "anonymous";
       }
-      this._styleLink.href = (injected == null ? void 0 : injected.cssUrl) || CSS_URL || `${this.server}/pointer.css`;
+      this._styleLink.href = (injected == null ? void 0 : injected.cssUrl) || CSS_URL || `${this.server}/widget.css`;
       this.shadowRoot.appendChild(this._styleLink);
       this.root = document.createElement("div");
       this.shadowRoot.appendChild(this.root);
@@ -4363,6 +4369,11 @@
         const c = this.comments.find((x) => String(x.id) === String(b.dataset.id));
         if (c) this.toggleCardMenu(b, c);
       }));
+      list.querySelectorAll('[data-act="flash-pin"]').forEach((b) => b.addEventListener("click", (e) => {
+        e.stopPropagation();
+        const id = b.dataset.id;
+        if (id) this.flashPin(id);
+      }));
       list.querySelectorAll('[data-act="archive"]').forEach((b) => b.addEventListener("click", () => {
         const c = this.comments.find((x) => String(x.id) === String(b.dataset.id));
         if (c) this.setStatus(c, "archived", t("toast.archivedMsg"));
@@ -4489,7 +4500,9 @@
         const rect = { left: clampedCx, top: clampedCy };
         if (g.length > 1) return TPL.pinCluster(g.map((it) => it.c), rect);
         const tipSide = clampedCy - PIN_HEIGHT - PIN_TOOLTIP_HEIGHT_ESTIMATE < 0 ? "bottom" : "top";
-        return TPL.pin(g[0].c, g[0].i, rect, String(g[0].c.id) === String(this._newPinId), tipSide);
+        const tooltipHalf = PIN_TOOLTIP_WIDTH / 2;
+        const tipAlign = clampedCx - tooltipHalf < PIN_TOOLTIP_EDGE_MARGIN ? "start" : clampedCx + tooltipHalf > window.innerWidth - PIN_TOOLTIP_EDGE_MARGIN ? "end" : "center";
+        return TPL.pin(g[0].c, g[0].i, rect, String(g[0].c.id) === String(this._newPinId), tipSide, tipAlign);
       }).join("");
       applyDataPosition(wrap, ".fbk-pin-wrapper");
       wrap.querySelectorAll(".fbk-pin-cluster").forEach((btn) => btn.addEventListener("click", (e) => {
@@ -4521,6 +4534,29 @@
           setTimeout(() => card.classList.remove("highlight"), 2e3);
         }
       }, 100);
+    }
+    // Reverse of highlightCommentCard: clicking a card's id badge flashes that comment's pin on
+    // the page instead. A standalone pin is `[data-id]`; one folded into a collision cluster (see
+    // renderPins' clustering) only carries the comma-joined `data-ids` on its wrapper, so both are
+    // checked. No pin exists at all when the comment's target element isn't on the current page
+    // (applied/archived, or the element was removed) — say so rather than doing nothing silently.
+    flashPin(id) {
+      const layer = this.root.querySelector("#fbk-pins-layer");
+      if (!layer) return;
+      let wrapper = layer.querySelector(`.fbk-pin-wrapper[data-id="${id}"]`);
+      if (!wrapper) {
+        wrapper = Array.from(layer.querySelectorAll(".fbk-pin-wrapper[data-ids]")).find((w) => (w.dataset.ids || "").split(",").includes(String(id))) || null;
+      }
+      const pin = wrapper == null ? void 0 : wrapper.querySelector(".fbk-pin");
+      if (!pin) {
+        this.toast(t("toast.pinNotOnThisPage"));
+        return;
+      }
+      pin.scrollIntoView({ behavior: "smooth", block: "center" });
+      pin.classList.remove("fbk-pin-flash");
+      void pin.offsetWidth;
+      pin.classList.add("fbk-pin-flash");
+      setTimeout(() => pin.classList.remove("fbk-pin-flash"), 1600);
     }
     // --- Pin cluster menu ------------------------------------------------------
     toggleClusterMenu(btn, comments) {
@@ -4695,7 +4731,7 @@
       if (copyPromptBtn) {
         copyPromptBtn.addEventListener("click", () => {
           this.closeCardMenu();
-          this.copyApplyPrompt(c);
+          this.copyApplyPrompt(c, true);
         });
       }
       const editBtn = menu.querySelector('[data-menu-act="edit"]');
@@ -4725,13 +4761,16 @@
     // apply. No comment/reply text is embedded (so there's nothing here that needs fencing as
     // untrusted input): the agent already has the apply skill installed and pulls the real content
     // itself via `get --json`, exactly as it would for any item from the normal apply queue.
-    buildSingleItemApplyPrompt(c) {
+    // `isFollowUp`: true when copied from a REPLY's own kebab (see toggleReplyMenu) rather than the
+    // comment's — flags that there's more context than just the original comment body to read.
+    buildSingleItemApplyPrompt(c, isFollowUp = false) {
       const brand = getBrandName();
-      return `Apply ${brand} comment #${c.id} in this repo — run \`npx pointer-feedback get ${c.id} --json\` to see it, then follow the apply skill to fix it and mark it done.`;
+      const followUp = isFollowUp ? " (there is a follow-up reply on it — read all replies, not just the original comment)" : "";
+      return `Apply ${brand} comment #${c.id} in this repo — run \`npx pointer-feedback get ${c.id} --json\` to see it${followUp}, then follow the apply skill to fix it and mark it done.`;
     }
-    async copyApplyPrompt(c) {
+    async copyApplyPrompt(c, isFollowUp = false) {
       try {
-        await navigator.clipboard.writeText(this.buildSingleItemApplyPrompt(c));
+        await navigator.clipboard.writeText(this.buildSingleItemApplyPrompt(c, isFollowUp));
         this.toast(t("toast.applyPromptCopied"));
       } catch {
         this.toast(t("toast.copyFailed"), "error");

@@ -406,12 +406,20 @@
 }
 
 .fbk-badge {
+  border: none;
   background: var(--fbk-primary, #0969da);
   color: var(--fbk-primary-contrast, #fff);
   border-radius: 999px;
   padding-block: 1px;
   padding-inline: 7px;
   font-size: 11px;
+  font-family: var(--fbk-font-ui, IBM Plex Sans Arabic, -apple-system, BlinkMacSystemFont, Segoe UI, Roboto, sans-serif);
+  cursor: pointer;
+  line-height: 1.4;
+}
+
+.fbk-badge:hover {
+  background: var(--fbk-primary-hover, #0856b3);
 }
 
 .fbk-menu {
@@ -610,11 +618,15 @@
   transform: translateX(0);
 }
 
+.fbk-sidebar.open.fbk-peek-hide {
+  transform: translateX(100%);
+}
+
 .fbk-sidebar-close-arrow {
   position: absolute;
   inset-block-start: 20px;
   inset-inline-start: 0;
-  transform: translateX(-50%);
+  transform: translateX(-85%);
   width: 28px;
   height: 28px;
   border-radius: 50%;
@@ -627,10 +639,19 @@
   cursor: pointer;
   box-shadow: -2px 0 6px rgba(0, 0, 0, 0.15);
   z-index: 1;
+  opacity: 1;
+  visibility: visible;
+  transition: opacity 0.15s ease, visibility 0.15s ease, background-color var(--fbk-transition-fast, 120ms cubic-bezier(0.16, 1, 0.3, 1));
 }
 
 .fbk-sidebar-close-arrow:hover {
   background: var(--fbk-surface-hover, #f3f4f6);
+}
+
+.fbk-sidebar:not(.open) .fbk-sidebar-close-arrow {
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
 }
 
 .fbk-sidebar-head {
@@ -646,6 +667,13 @@
   align-items: center;
   justify-content: space-between;
   gap: 8px;
+}
+
+.fbk-sidebar-head-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex: none;
 }
 
 .fbk-sidebar-head h2 {
@@ -707,19 +735,17 @@
   border-color: var(--fbk-text, #1f2328);
 }
 
-.fbk-mine-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  min-block-size: 0;
-}
-
 .fbk-toggle-row {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 8px;
   inline-size: 100%;
+}
+
+.fbk-filters .fbk-toggle-row {
+  flex: none;
+  inline-size: auto;
 }
 
 .fbk-toggle-row-label {
@@ -886,6 +912,14 @@
   color: var(--fbk-text-slate, #475569);
 }
 
+.fbk-card-page {
+  display: block;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  margin-block-end: 6px;
+}
+
 .fbk-text {
   font-size: 14px;
   color: var(--fbk-text, #1f2328);
@@ -983,7 +1017,10 @@
   display: flex;
   gap: 6px;
   flex-wrap: wrap;
-  margin-block-start: 8px;
+  justify-content: flex-end;
+  margin-block-start: 10px;
+  padding-block-start: 8px;
+  border-block-start: 1px solid var(--fbk-border-soft, #eef2f7);
   align-items: center;
 }
 
@@ -1180,20 +1217,35 @@
 }
 
 .fbk-reply {
+  position: relative;
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
   gap: 6px;
   font-size: 13px;
   color: var(--fbk-text-slate-2, #334155);
-  padding-block: 4px;
-  padding-inline: 0;
+  background: var(--fbk-surface-muted, #eaeef2);
+  border-radius: var(--fbk-radius-sm, 6px);
+  padding-block: 6px;
+  padding-inline: 8px;
+  margin-block-end: 4px;
 }
 
 .fbk-reply-main {
   flex: 1;
   min-inline-size: 0;
   overflow-wrap: break-word;
+  cursor: pointer;
+}
+
+.fbk-reply:not(.expanded):not(.fbk-reply-ai) .fbk-reply-main {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.fbk-reply.expanded .fbk-reply-main {
+  white-space: normal;
 }
 
 .fbk-reply-ai {
@@ -1219,19 +1271,27 @@
   margin-block-start: 4px;
   padding-inline-start: 20px;
   color: var(--fbk-text-slate-2, #334155);
+  cursor: default;
 }
 
-.fbk-reply-actions {
+.fbk-reply-kebab {
   flex: 0 0 auto;
-  display: flex;
-  gap: 2px;
+  background: transparent;
+  color: var(--fbk-text-slate, #475569);
+  padding: 4px;
   opacity: 0;
   transition: opacity var(--fbk-transition-fast, 120ms cubic-bezier(0.16, 1, 0.3, 1));
 }
 
-.fbk-reply:hover .fbk-reply-actions,
-.fbk-reply-actions:focus-within {
+.fbk-reply:hover .fbk-reply-kebab,
+.fbk-reply-kebab:focus-visible,
+.fbk-reply-kebab[aria-expanded=true] {
   opacity: 1;
+}
+
+.fbk-reply-kebab:hover,
+.fbk-reply-kebab[aria-expanded=true] {
+  background: var(--fbk-surface-hover, #f3f4f6);
 }
 
 .fbk-reply-row {
@@ -1386,11 +1446,56 @@
     opacity: 0;
   }
 }
+.fbk-pin.fbk-pin-flash {
+  animation: fbk-pin-flash-pulse 1.6s cubic-bezier(0.34, 1.56, 0.64, 1);
+  z-index: 3;
+}
+
+.fbk-pin.fbk-pin-flash::before,
+.fbk-pin.fbk-pin-flash::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  border: 2px solid var(--fbk-primary, #0969da);
+  opacity: 0;
+  pointer-events: none;
+  animation: fbk-pin-flash-ring 1.6s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.fbk-pin.fbk-pin-flash::after {
+  animation-delay: 0.35s;
+}
+
+@keyframes fbk-pin-flash-pulse {
+  0%, 100% {
+    transform: rotate(-45deg) scale(1);
+    box-shadow: var(--fbk-shadow-pin, 0 2px 6px rgba(15, 23, 42, 0.3));
+  }
+  20%, 60% {
+    transform: rotate(-45deg) scale(1.9);
+    box-shadow: 0 0 0 10px color-mix(in srgb, var(--fbk-primary, #0969da) 35%, transparent), var(--fbk-shadow-tooltip, 0 8px 24px -4px rgba(15, 23, 42, 0.2), 0 2px 8px -2px rgba(15, 23, 42, 0.1));
+  }
+  40%, 80% {
+    transform: rotate(-45deg) scale(1.15);
+    box-shadow: var(--fbk-shadow-pin, 0 2px 6px rgba(15, 23, 42, 0.3));
+  }
+}
+@keyframes fbk-pin-flash-ring {
+  0% {
+    transform: scale(1);
+    opacity: 0.9;
+  }
+  75%, 100% {
+    transform: scale(2.8);
+    opacity: 0;
+  }
+}
 .fbk-pin-tooltip {
   position: absolute;
   inset-block-end: calc(100% + 8px);
-  inset-inline-start: 50%;
-  transform: translateX(-50%) translateY(4px) scale(0.96);
+  inset-inline-start: var(--fbk-tip-x, 50%);
+  transform: translateX(var(--fbk-tip-tx, -50%)) translateY(4px) scale(0.96);
   background: var(--fbk-surface, #fff);
   color: var(--fbk-text, #1f2328);
   border: 1px solid var(--fbk-border, #d0d7de);
@@ -1410,8 +1515,18 @@
 .fbk-pin-wrapper:hover .fbk-pin-tooltip {
   opacity: 1;
   visibility: visible;
-  transform: translateX(-50%) translateY(0) scale(1);
+  transform: translateX(var(--fbk-tip-tx, -50%)) translateY(0) scale(1);
   pointer-events: auto;
+}
+
+.fbk-pin-wrapper[data-fbk-tip-align=start] .fbk-pin-tooltip {
+  --fbk-tip-x: 0%;
+  --fbk-tip-tx: 0%;
+}
+
+.fbk-pin-wrapper[data-fbk-tip-align=end] .fbk-pin-tooltip {
+  --fbk-tip-x: 100%;
+  --fbk-tip-tx: -100%;
 }
 
 .fbk-pin-wrapper[data-fbk-tip-side=bottom] .fbk-pin-tooltip {

@@ -288,15 +288,24 @@
   background: v.token('surface-muted');
   color: v.token('text');
 }
-// Comment-card numbering pill (see templates.ts's card renderer) — unrelated to the toolbar,
-// just declared in this file historically.
+// Comment-card id pill (see templates.ts's card renderer) — unrelated to the toolbar, just
+// declared in this file historically. A real <button> (not a span) since clicking it flashes the
+// comment's on-page pin (element.ts's flashPin) — border/font reset because it's a plain
+// pill-shaped button, not the browser's default button chrome.
 .fbk-badge {
+  border: none;
   background: v.token('primary');
   color: v.token('primary-contrast');
   border-radius: 999px;
   padding-block: 1px;
   padding-inline: 7px;
   font-size: 11px;
+  font-family: v.token('font-ui');
+  cursor: pointer;
+  line-height: 1.4;
+}
+.fbk-badge:hover {
+  background: v.token('primary-hover');
 }
 
 // User dropdown menu (identity + sign out), anchored under the user icon.

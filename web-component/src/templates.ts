@@ -67,7 +67,10 @@ export const TPL = {
   // or "⌃⌥⇧C" on Mac) since ARIA wants full, platform-independent modifier names.
   // The environment select/label used to live in this shell too; it's now rendered inside
   // #fbk-filters (see envFilterSelect), beside the status filter — both scoping controls together.
-  chrome: (displayName: string, roleLabel: string, projectName = '', shortcutLabel = '', unreadNotifyCount = 0, avatarInitials = '', ariaShortcut = '') => `
+  // `filtersOpen`: #fbk-filters starts collapsed (see element.ts's filtersOpen field) so the
+  // status/environment/author controls don't take up space until someone actually wants them —
+  // the fbk-filters-toggle button in the head row reveals them on demand.
+  chrome: (displayName: string, roleLabel: string, projectName = '', shortcutLabel = '', unreadNotifyCount = 0, avatarInitials = '', ariaShortcut = '', filtersOpen = false) => `
         <aside class="fbk-toolbar" id="fbk-toolbar" role="toolbar" aria-label="${escapeHtml(getBrandName())}" part="toolbar">
           <span class="fbk-toolbar__grip" id="fbk-grip" data-fbk-drag data-toggle="tooltip" data-placement="top" title="${t('toolbar.dragToReposition')}" aria-hidden="true">${ICON.grip}</span>
           <span class="fbk-toolbar__divider" aria-hidden="true"></span>
@@ -86,12 +89,14 @@ export const TPL = {
           <div class="fbk-sidebar-head">
             <div class="fbk-sidebar-head-row">
               <h2 id="fbk-comments-heading">${t('toolbar.projectHeading', { project: escapeHtml(projectName) })}</h2>
-              <button class="fbk-mini fbk-icon" id="fbk-refresh" title="${t('toolbar.refreshComments')}" aria-label="${t('toolbar.refreshComments')}">&#8635;</button>
+              <span class="fbk-sidebar-head-actions">
+                <button type="button" class="fbk-mini fbk-icon${filtersOpen ? ' is-active' : ''}" id="fbk-filters-toggle" title="${filtersOpen ? t('sidebar.hideFilters') : t('sidebar.showFilters')}" aria-label="${filtersOpen ? t('sidebar.hideFilters') : t('sidebar.showFilters')}" aria-pressed="${filtersOpen ? 'true' : 'false'}" aria-expanded="${filtersOpen ? 'true' : 'false'}" aria-controls="fbk-filters">${ICON.filter}</button>
+                <button class="fbk-mini fbk-icon" id="fbk-refresh" title="${t('toolbar.refreshComments')}" aria-label="${t('toolbar.refreshComments')}">&#8635;</button>
+              </span>
             </div>
-            <div class="fbk-mine-row" id="fbk-mine-row"></div>
             <div class="fbk-commit-style fbk-hidden" id="fbk-commit-style"></div>
           </div>
-          <div class="fbk-filters" id="fbk-filters"></div>
+          <div class="fbk-filters${filtersOpen ? '' : ' fbk-hidden'}" id="fbk-filters"></div>
           <div class="fbk-sidebar-body" id="fbk-list"></div>
         </div>
         <div class="fbk-pins-layer" id="fbk-pins-layer"></div>
@@ -210,10 +215,10 @@ export const TPL = {
                </select>`}
            </label>`,
 
-  // "Mine only" — a real switch (track + thumb), not a filter chip: it's a single on/off
-  // setting, not one choice among several (unlike the status/environment selects beside it),
-  // so it gets its own row rather than living inside #fbk-filters. Rendered only when a user is
-  // logged in (see renderSidebar's canMine).
+  // "Mine only" — a real switch (track + thumb), not a filter chip, since it's a single on/off
+  // setting rather than one choice among several. Lives inside #fbk-filters alongside the
+  // status/environment/author fields (see renderSidebar) so it hides/shows with the rest of the
+  // filter bar. Rendered only when a user is logged in (see renderSidebar's canMine).
   mineToggle: (active: boolean) =>
     `<div class="fbk-toggle-row">
              <span class="fbk-toggle-row-label">&#x1f464; ${t('sidebar.mineOnly')}</span>
@@ -222,12 +227,18 @@ export const TPL = {
              </button>
            </div>`,
 
-  // User filter — only rendered when the list has comments from >1 author.
+  // User filter — only rendered when the list has comments from >1 author. Wrapped in the same
+  // labeled fbk-filter-field shape as statusFilterSelect/envFilterSelect (a visible label above
+  // it, not just the select's own title tooltip) — it sits beside "Mine only" in the filter bar's
+  // first row (see renderSidebar).
   authorFilter: (authors: AuthorOption[], selectedId: string) =>
-    `<select class="fbk-userfilter" id="fbk-author-filter" title="${t('sidebar.filterByUser')}">
-             <option value="">&#x1f465; ${t('sidebar.allUsers')}</option>
-             ${authors.map((a) => `<option value="${escapeHtml(a.id)}" ${a.id === selectedId ? 'selected' : ''}>${escapeHtml(a.name)}</option>`).join('')}
-           </select>`,
+    `<label class="fbk-filter-field">
+             <span class="fbk-filter-field-label">${t('sidebar.user')}</span>
+             <select class="fbk-userfilter" id="fbk-author-filter" title="${t('sidebar.filterByUser')}">
+               <option value="">&#x1f465; ${t('sidebar.allUsers')}</option>
+               ${authors.map((a) => `<option value="${escapeHtml(a.id)}" ${a.id === selectedId ? 'selected' : ''}>${escapeHtml(a.name)}</option>`).join('')}
+             </select>
+           </label>`,
 
   // Kebab-menu dropdown for a comment card's own actions — rendered into the shared portal host
   // (#fbk-menu-host), anchored under the card's kebab button by toggleCardMenu. Copy-prompt/
@@ -337,6 +348,14 @@ export const TPL = {
     const envInt = c.environment;
     const envLabel = envInt === 1 ? t('card.envLocal') : envInt === 2 ? t('card.envStaging') : envInt === 3 ? t('card.envProduction') : (envInt ? String(envInt) : '');
     const authorLabel = c.authorName || '';
+    // Path (+ query) of the page this comment was left on — dropping the origin keeps it short;
+    // the full URL is still available via the title tooltip. Absent for comments captured before
+    // element.pageUrl existed, so the row is simply skipped rather than showing nothing useful.
+    const pageUrl = c.element && c.element.pageUrl;
+    const pagePath = (() => {
+      if (!pageUrl) return '';
+      try { const u = new URL(pageUrl); return u.pathname + u.search; } catch (e) { return pageUrl; }
+    })();
     const shotUrl = c.element && c.element.screenshotUrl;
     const shot = shotUrl
       ? `<a class="fbk-shot-link" href="${escapeHtml(shotUrl)}" target="_blank" rel="noopener noreferrer" title="Open full screenshot">
@@ -346,7 +365,7 @@ export const TPL = {
     return `
           <div class="fbk-card ${cls}" data-id="${c.id}">
             <div class="fbk-meta">
-              <span class="fbk-badge">${i + 1}</span>
+              <button type="button" class="fbk-badge" data-act="flash-pin" data-id="${c.id}" title="${t('card.jumpToPin')}">#${c.id}</button>
               ${envLabel ? `<span class="fbk-pill env">${escapeHtml(envLabel)}</span>` : ''}
               ${payloadPill}
               ${statusPill}
@@ -357,6 +376,7 @@ export const TPL = {
                 <button class="fbk-mini fbk-icon fbk-card-kebab" data-act="card-menu" data-id="${c.id}" title="${t('card.moreActions')}" aria-label="${t('card.moreActions')}" aria-haspopup="true" aria-expanded="false">${ICON.kebab}</button>
               </div>` : ''}
             </div>
+            ${pagePath ? `<div class="fbk-caption fbk-card-page" title="${escapeHtml(pageUrl!)}">&#x1f4cd; ${escapeHtml(pagePath)}</div>` : ''}
             <div class="fbk-text">${escapeHtml(c.body || c.text || '')}</div>
             ${shot}
             <div class="fbk-sub">${escapeHtml(authorLabel)} &middot; ${c.createdAt ? new Date(c.createdAt).toLocaleDateString() : ''}${c.editedAt ? ` &middot; <span class="fbk-edited">${t('card.edited')}</span>` : ''}</div>
@@ -413,20 +433,26 @@ export const TPL = {
   // element.ts's cluster grouping passes a plain centroid point, not a real element rect.
   // `tipSide`: 'top' (default) opens the hover tooltip above the pin, 'bottom' flips it below —
   // element.ts's renderPins() decides based on how close the pin sits to the viewport's top edge.
-  pin: (c: Comment, i: number, rect: { left: number; top: number }, isNew = false, tipSide: 'top' | 'bottom' = 'top') => {
+  // `tipAlign`: 'center' (default) centers the tooltip on the pin, 'start'/'end' anchor it to
+  // that edge of the pin instead — same reasoning as tipSide, but for the left/right viewport edge.
+  // The pin's own number is the comment's id (matches the card's id badge in the sidebar — see
+  // card() below — so a viewer can tell which pin a given card refers to at a glance), not a
+  // position index, which would drift out of sync with the badge as soon as the list is
+  // filtered/sorted differently from the pin layer's own z-order.
+  pin: (c: Comment, rect: { left: number; top: number }, isNew = false, tipSide: 'top' | 'bottom' = 'top', tipAlign: 'start' | 'center' | 'end' = 'center') => {
     const status = c.status === 'pending-apply' ? 'ready' : c.status === 'applied' ? 'applied' : c.status === 'archived' ? 'archived' : 'open';
     const statusLabel = status === 'ready' ? t('pin.ready') : status === 'applied' ? t('pin.applied') : status === 'archived' ? t('pin.archived') : t('pin.open');
     const author = c.authorName || '';
     const bodyText = c.body || c.text || '';
     const replyCount = (c.replies || []).length;
     const selector = (c.element && c.element.selector) || '';
-    const label = `${t('pin.commentHash', { n: i + 1 })}${author ? t('pin.byAuthor', { author }) : ''}${bodyText ? `: ${bodyText}` : ''}`;
+    const label = `${t('pin.commentHash', { n: c.id })}${author ? t('pin.byAuthor', { author }) : ''}${bodyText ? `: ${bodyText}` : ''}`;
     const showMeta = !!(selector || replyCount);
     return `
-        <div class="fbk-pin-wrapper" data-id="${c.id}" data-fbk-left="${rect.left}" data-fbk-top="${rect.top}" data-fbk-tip-side="${tipSide}">
+        <div class="fbk-pin-wrapper" data-id="${c.id}" data-fbk-left="${rect.left}" data-fbk-top="${rect.top}" data-fbk-tip-side="${tipSide}" data-fbk-tip-align="${tipAlign}">
           <button type="button" class="fbk-pin fbk-pin-${status}" aria-label="${escapeHtml(label)}">
             ${isNew ? '<span class="fbk-pin-ring" aria-hidden="true"></span>' : ''}
-            ${status === 'applied' ? ICON.checkBold : `<span class="fbk-pin-number">${i + 1}</span>`}
+            ${status === 'applied' ? ICON.checkBold : `<span class="fbk-pin-number">${c.id}</span>`}
           </button>
           <div class="fbk-pin-tooltip" role="tooltip">
             <div class="fbk-pin-tooltip-header">

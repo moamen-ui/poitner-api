@@ -309,21 +309,21 @@
   var SHOT_HIGHLIGHT = "#2563eb";
   var _a;
   var SCRIPT_SRC = ((_a = document.currentScript) == null ? void 0 : _a.src) || "";
-  var CSS_INTEGRITY = true ? "sha384-WqbG5atGKsHwKnlubv2os5MVloVC/RriB1xW+KQFS8nyCS4bKIHmm4kh+UE3HfPd" : "";
+  var CSS_INTEGRITY = true ? "sha384-rZwg8+oaqUdtaRLZBXpq7fxiCSgJ171g9ouz6/fB3PKwMngPm+pjOjeu2N8NJT6p" : "";
   function resolveCssUrl(scriptSrc) {
     var _a2;
-    if (!scriptSrc) return "pointer.css";
+    if (!scriptSrc) return "widget.css";
     try {
       const base = typeof window !== "undefined" && ((_a2 = window.location) == null ? void 0 : _a2.href) ? window.location.href : "http://localhost";
       const parsedScript = new URL(scriptSrc, base);
-      const css = new URL("pointer.css", parsedScript);
+      const css = new URL("widget.css", parsedScript);
       const v = parsedScript.searchParams.get("v");
       if (v) {
         css.searchParams.set("v", v);
       }
       return css.href;
     } catch {
-      return "pointer.css";
+      return "widget.css";
     }
   }
   var CSS_URL = resolveCssUrl(SCRIPT_SRC);
@@ -429,6 +429,15 @@
     else if (cur === document.documentElement) parts.unshift("html");
     return parts.join(" > ");
   };
+  var isCurrentPage = (comment) => {
+    const url = comment.element && comment.element.pageUrl;
+    if (!url) return true;
+    try {
+      return new URL(url, window.location.href).pathname === window.location.pathname;
+    } catch (e) {
+      return true;
+    }
+  };
   var matchElement = (comment) => {
     const selector = comment.element && comment.element.selector;
     const snapshot = comment.element && comment.element.snapshot;
@@ -521,7 +530,9 @@
     // its first child.
     chevronUp: '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="18 15 12 9 6 15"/></svg>',
     chevronDown: '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>',
-    chevronRight: '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 6 15 12 9 18"/></svg>'
+    chevronRight: '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 6 15 12 9 18"/></svg>',
+    // Funnel — the sidebar-head button that shows/hides the status/environment/author filters.
+    filter: '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/></svg>'
   };
 
   // src/i18n.ts
@@ -706,6 +717,9 @@
       "sidebar.status": "Status",
       "sidebar.filterByStatus": "Filter by status",
       "sidebar.filterByUser": "Filter by user",
+      "sidebar.user": "User",
+      "sidebar.showFilters": "Show filters",
+      "sidebar.hideFilters": "Hide filters",
       "sidebar.allUsers": "All users",
       "sidebar.noCommentsYet": "No comments on this project yet.<br/>Click the inspect icon, then click an element.",
       "sidebar.noOwnComments": "You haven't left any comments yet.",
@@ -723,13 +737,13 @@
       "card.explainNotFixed": "Explain what is still not fixed…",
       "card.submit": "Submit",
       "card.viewCommit": "View commit",
-      "card.noCommitRecorded": "No commit recorded for this comment",
       "card.commit": "commit",
       "card.containsSecretPayload": "contains a secret/payload?",
       "card.defaultReplyAuthor": "User",
       "card.automatedReply": "Automated reply",
       "card.aiVia": "via {name}",
       "card.edited": "edited",
+      "card.jumpToPin": "Flash this comment's pin on the page",
       "card.reply": "Reply",
       "card.replyPlaceholder": "Reply…",
       "card.markedReadyClickToUnmark": "Marked ready — click to unmark",
@@ -798,6 +812,7 @@
       "toast.couldNotReachServer": "Could not reach {brand} server",
       "toast.retry": "Retry",
       "toast.refreshed": "Refreshed",
+      "toast.pinElementNotFound": "This comment's element isn't visible right now (hidden, removed, or shown only temporarily)",
       "toast.applyPromptCopied": "Apply prompt copied — paste it into your AI tool",
       "toast.copyFailed": "Could not copy to clipboard",
       "toast.commitStyleUpdated": "Commit style updated",
@@ -916,6 +931,9 @@
       "sidebar.status": "الحالة",
       "sidebar.filterByStatus": "تصفية حسب الحالة",
       "sidebar.filterByUser": "تصفية حسب المستخدم",
+      "sidebar.user": "المستخدم",
+      "sidebar.showFilters": "إظهار الفلاتر",
+      "sidebar.hideFilters": "إخفاء الفلاتر",
       "sidebar.allUsers": "جميع المستخدمين",
       "sidebar.noCommentsYet": "لا توجد تعليقات على هذا المشروع بعد.<br/>انقر على أيقونة الفحص، ثم انقر على عنصر.",
       "sidebar.noOwnComments": "لم تترك أي تعليقات بعد.",
@@ -933,13 +951,13 @@
       "card.explainNotFixed": "اشرح ما لم يتم إصلاحه بعد…",
       "card.submit": "إرسال",
       "card.viewCommit": "عرض الالتزام",
-      "card.noCommitRecorded": "لا يوجد التزام مسجَّل لهذا التعليق",
       "card.commit": "التزام",
       "card.containsSecretPayload": "قد يحتوي على بيانات سرية؟",
       "card.defaultReplyAuthor": "مستخدم",
       "card.automatedReply": "رد آلي",
       "card.aiVia": "بواسطة {name}",
       "card.edited": "مُعدَّل",
+      "card.jumpToPin": "إظهار دبوس هذا التعليق على الصفحة",
       "card.reply": "رد",
       "card.replyPlaceholder": "رد…",
       "card.markedReadyClickToUnmark": "وُضع علامة جاهز — انقر لإلغائها",
@@ -1008,6 +1026,7 @@
       "toast.couldNotReachServer": "تعذّر الوصول إلى خادم {brand}",
       "toast.retry": "إعادة المحاولة",
       "toast.refreshed": "تم التحديث",
+      "toast.pinElementNotFound": "عنصر هذا التعليق غير ظاهر حاليًا (مخفي أو محذوف أو مؤقت)",
       "toast.applyPromptCopied": "تم نسخ تعليمة التطبيق — الصقها في أداة الذكاء الاصطناعي",
       "toast.copyFailed": "تعذر النسخ إلى الحافظة",
       "toast.commitStyleUpdated": "تم تحديث أسلوب الالتزام",
@@ -1093,7 +1112,10 @@
     // or "⌃⌥⇧C" on Mac) since ARIA wants full, platform-independent modifier names.
     // The environment select/label used to live in this shell too; it's now rendered inside
     // #fbk-filters (see envFilterSelect), beside the status filter — both scoping controls together.
-    chrome: (displayName, roleLabel, projectName = "", shortcutLabel = "", unreadNotifyCount = 0, avatarInitials = "", ariaShortcut = "") => `
+    // `filtersOpen`: #fbk-filters starts collapsed (see element.ts's filtersOpen field) so the
+    // status/environment/author controls don't take up space until someone actually wants them —
+    // the fbk-filters-toggle button in the head row reveals them on demand.
+    chrome: (displayName, roleLabel, projectName = "", shortcutLabel = "", unreadNotifyCount = 0, avatarInitials = "", ariaShortcut = "", filtersOpen = false) => `
         <aside class="fbk-toolbar" id="fbk-toolbar" role="toolbar" aria-label="${escapeHtml(getBrandName())}" part="toolbar">
           <span class="fbk-toolbar__grip" id="fbk-grip" data-fbk-drag data-toggle="tooltip" data-placement="top" title="${t("toolbar.dragToReposition")}" aria-hidden="true">${ICON.grip}</span>
           <span class="fbk-toolbar__divider" aria-hidden="true"></span>
@@ -1112,12 +1134,14 @@
           <div class="fbk-sidebar-head">
             <div class="fbk-sidebar-head-row">
               <h2 id="fbk-comments-heading">${t("toolbar.projectHeading", { project: escapeHtml(projectName) })}</h2>
-              <button class="fbk-mini fbk-icon" id="fbk-refresh" title="${t("toolbar.refreshComments")}" aria-label="${t("toolbar.refreshComments")}">&#8635;</button>
+              <span class="fbk-sidebar-head-actions">
+                <button type="button" class="fbk-mini fbk-icon${filtersOpen ? " is-active" : ""}" id="fbk-filters-toggle" title="${filtersOpen ? t("sidebar.hideFilters") : t("sidebar.showFilters")}" aria-label="${filtersOpen ? t("sidebar.hideFilters") : t("sidebar.showFilters")}" aria-pressed="${filtersOpen ? "true" : "false"}" aria-expanded="${filtersOpen ? "true" : "false"}" aria-controls="fbk-filters">${ICON.filter}</button>
+                <button class="fbk-mini fbk-icon" id="fbk-refresh" title="${t("toolbar.refreshComments")}" aria-label="${t("toolbar.refreshComments")}">&#8635;</button>
+              </span>
             </div>
-            <div class="fbk-mine-row" id="fbk-mine-row"></div>
             <div class="fbk-commit-style fbk-hidden" id="fbk-commit-style"></div>
           </div>
-          <div class="fbk-filters" id="fbk-filters"></div>
+          <div class="fbk-filters${filtersOpen ? "" : " fbk-hidden"}" id="fbk-filters"></div>
           <div class="fbk-sidebar-body" id="fbk-list"></div>
         </div>
         <div class="fbk-pins-layer" id="fbk-pins-layer"></div>
@@ -1218,21 +1242,27 @@
                  <option value="production" ${currentValue === "production" ? "selected" : ""}>${t("toolbar.envProduction")}</option>
                </select>`}
            </label>`,
-    // "Mine only" — a real switch (track + thumb), not a filter chip: it's a single on/off
-    // setting, not one choice among several (unlike the status/environment selects beside it),
-    // so it gets its own row rather than living inside #fbk-filters. Rendered only when a user is
-    // logged in (see renderSidebar's canMine).
+    // "Mine only" — a real switch (track + thumb), not a filter chip, since it's a single on/off
+    // setting rather than one choice among several. Lives inside #fbk-filters alongside the
+    // status/environment/author fields (see renderSidebar) so it hides/shows with the rest of the
+    // filter bar. Rendered only when a user is logged in (see renderSidebar's canMine).
     mineToggle: (active) => `<div class="fbk-toggle-row">
              <span class="fbk-toggle-row-label">&#x1f464; ${t("sidebar.mineOnly")}</span>
              <button type="button" class="fbk-toggle-switch${active ? " active" : ""}" id="fbk-mine-toggle" role="switch" aria-checked="${active ? "true" : "false"}" title="${t("sidebar.showOnlyMyComments")}" aria-label="${t("sidebar.showOnlyMyComments")}">
                <span class="fbk-toggle-switch-thumb"></span>
              </button>
            </div>`,
-    // User filter — only rendered when the list has comments from >1 author.
-    authorFilter: (authors, selectedId) => `<select class="fbk-userfilter" id="fbk-author-filter" title="${t("sidebar.filterByUser")}">
-             <option value="">&#x1f465; ${t("sidebar.allUsers")}</option>
-             ${authors.map((a) => `<option value="${escapeHtml(a.id)}" ${a.id === selectedId ? "selected" : ""}>${escapeHtml(a.name)}</option>`).join("")}
-           </select>`,
+    // User filter — only rendered when the list has comments from >1 author. Wrapped in the same
+    // labeled fbk-filter-field shape as statusFilterSelect/envFilterSelect (a visible label above
+    // it, not just the select's own title tooltip) — it sits beside "Mine only" in the filter bar's
+    // first row (see renderSidebar).
+    authorFilter: (authors, selectedId) => `<label class="fbk-filter-field">
+             <span class="fbk-filter-field-label">${t("sidebar.user")}</span>
+             <select class="fbk-userfilter" id="fbk-author-filter" title="${t("sidebar.filterByUser")}">
+               <option value="">&#x1f465; ${t("sidebar.allUsers")}</option>
+               ${authors.map((a) => `<option value="${escapeHtml(a.id)}" ${a.id === selectedId ? "selected" : ""}>${escapeHtml(a.name)}</option>`).join("")}
+             </select>
+           </label>`,
     // Kebab-menu dropdown for a comment card's own actions — rendered into the shared portal host
     // (#fbk-menu-host), anchored under the card's kebab button by toggleCardMenu. Copy-prompt/
     // complete/reopen are workflow actions open to anyone who can see the card; visibility/edit are
@@ -1275,7 +1305,7 @@
             <button class="fbk-mini" data-act="verify-cancel" data-id="${c.id}">${t("toolbar.cancel")}</button>
           </div>
         </div>` : "";
-      const commitLink = c.status === "applied" ? `<a class="fbk-pill" href="${c.commitUrl ? escapeHtml(c.commitUrl) : "#"}" ${c.commitUrl ? 'target="_blank" rel="noopener noreferrer"' : ""} title="${c.commitUrl ? t("card.viewCommit") : t("card.noCommitRecorded")}">&#x1f517; ${t("card.commit")}</a>` : "";
+      const commitLink = c.status === "applied" && c.commitUrl ? `<a class="fbk-pill" href="${escapeHtml(c.commitUrl)}" target="_blank" rel="noopener noreferrer" title="${t("card.viewCommit")}">&#x1f517; ${t("card.commit")}</a>` : "";
       const payloadPill = c.hasPayloadFlag ? `<span class="fbk-pill fbk-payload-flag" title="${escapeHtml((c.payloadFlags || []).join(", "))}">&#x26a0; ${t("card.containsSecretPayload")}</span>` : "";
       const replies = (c.replies || []).map((r) => {
         var _a2, _b, _c;
@@ -1303,6 +1333,16 @@
       const envInt = c.environment;
       const envLabel = envInt === 1 ? t("card.envLocal") : envInt === 2 ? t("card.envStaging") : envInt === 3 ? t("card.envProduction") : envInt ? String(envInt) : "";
       const authorLabel = c.authorName || "";
+      const pageUrl = c.element && c.element.pageUrl;
+      const pagePath = (() => {
+        if (!pageUrl) return "";
+        try {
+          const u = new URL(pageUrl);
+          return u.pathname + u.search;
+        } catch (e) {
+          return pageUrl;
+        }
+      })();
       const shotUrl = c.element && c.element.screenshotUrl;
       const shot = shotUrl ? `<a class="fbk-shot-link" href="${escapeHtml(shotUrl)}" target="_blank" rel="noopener noreferrer" title="Open full screenshot">
             <img class="fbk-shot" src="${escapeHtml(shotUrl)}" alt="Element screenshot" loading="lazy" />
@@ -1310,7 +1350,7 @@
       return `
           <div class="fbk-card ${cls}" data-id="${c.id}">
             <div class="fbk-meta">
-              <span class="fbk-badge">${i + 1}</span>
+              <button type="button" class="fbk-badge" data-act="flash-pin" data-id="${c.id}" title="${t("card.jumpToPin")}">#${c.id}</button>
               ${envLabel ? `<span class="fbk-pill env">${escapeHtml(envLabel)}</span>` : ""}
               ${payloadPill}
               ${statusPill}
@@ -1321,6 +1361,7 @@
                 <button class="fbk-mini fbk-icon fbk-card-kebab" data-act="card-menu" data-id="${c.id}" title="${t("card.moreActions")}" aria-label="${t("card.moreActions")}" aria-haspopup="true" aria-expanded="false">${ICON.kebab}</button>
               </div>` : ""}
             </div>
+            ${pagePath ? `<div class="fbk-caption fbk-card-page" title="${escapeHtml(pageUrl)}">&#x1f4cd; ${escapeHtml(pagePath)}</div>` : ""}
             <div class="fbk-text">${escapeHtml(c.body || c.text || "")}</div>
             ${shot}
             <div class="fbk-sub">${escapeHtml(authorLabel)} &middot; ${c.createdAt ? new Date(c.createdAt).toLocaleDateString() : ""}${c.editedAt ? ` &middot; <span class="fbk-edited">${t("card.edited")}</span>` : ""}</div>
@@ -1375,20 +1416,26 @@
     // element.ts's cluster grouping passes a plain centroid point, not a real element rect.
     // `tipSide`: 'top' (default) opens the hover tooltip above the pin, 'bottom' flips it below —
     // element.ts's renderPins() decides based on how close the pin sits to the viewport's top edge.
-    pin: (c, i, rect, isNew = false, tipSide = "top") => {
+    // `tipAlign`: 'center' (default) centers the tooltip on the pin, 'start'/'end' anchor it to
+    // that edge of the pin instead — same reasoning as tipSide, but for the left/right viewport edge.
+    // The pin's own number is the comment's id (matches the card's id badge in the sidebar — see
+    // card() below — so a viewer can tell which pin a given card refers to at a glance), not a
+    // position index, which would drift out of sync with the badge as soon as the list is
+    // filtered/sorted differently from the pin layer's own z-order.
+    pin: (c, rect, isNew = false, tipSide = "top", tipAlign = "center") => {
       const status = c.status === "pending-apply" ? "ready" : c.status === "applied" ? "applied" : c.status === "archived" ? "archived" : "open";
       const statusLabel = status === "ready" ? t("pin.ready") : status === "applied" ? t("pin.applied") : status === "archived" ? t("pin.archived") : t("pin.open");
       const author = c.authorName || "";
       const bodyText = c.body || c.text || "";
       const replyCount = (c.replies || []).length;
       const selector = c.element && c.element.selector || "";
-      const label = `${t("pin.commentHash", { n: i + 1 })}${author ? t("pin.byAuthor", { author }) : ""}${bodyText ? `: ${bodyText}` : ""}`;
+      const label = `${t("pin.commentHash", { n: c.id })}${author ? t("pin.byAuthor", { author }) : ""}${bodyText ? `: ${bodyText}` : ""}`;
       const showMeta = !!(selector || replyCount);
       return `
-        <div class="fbk-pin-wrapper" data-id="${c.id}" data-fbk-left="${rect.left}" data-fbk-top="${rect.top}" data-fbk-tip-side="${tipSide}">
+        <div class="fbk-pin-wrapper" data-id="${c.id}" data-fbk-left="${rect.left}" data-fbk-top="${rect.top}" data-fbk-tip-side="${tipSide}" data-fbk-tip-align="${tipAlign}">
           <button type="button" class="fbk-pin fbk-pin-${status}" aria-label="${escapeHtml(label)}">
             ${isNew ? '<span class="fbk-pin-ring" aria-hidden="true"></span>' : ""}
-            ${status === "applied" ? ICON.checkBold : `<span class="fbk-pin-number">${i + 1}</span>`}
+            ${status === "applied" ? ICON.checkBold : `<span class="fbk-pin-number">${c.id}</span>`}
           </button>
           <div class="fbk-pin-tooltip" role="tooltip">
             <div class="fbk-pin-tooltip-header">
@@ -2134,6 +2181,8 @@
   var PIN_HALF_WIDTH = 16;
   var PIN_HEIGHT = 30;
   var PIN_TOOLTIP_HEIGHT_ESTIMATE = 150;
+  var PIN_TOOLTIP_WIDTH = 220;
+  var PIN_TOOLTIP_EDGE_MARGIN = 8;
   var _PointerFeedback = class _PointerFeedback extends HTMLElement {
     constructor() {
       super(...arguments);
@@ -2157,6 +2206,10 @@
       this.statusFilter = "all";
       this.mineOnly = false;
       this.authorFilter = null;
+      // Whether #fbk-filters (status/environment/author) is currently revealed — collapsed by
+      // default so the filter bar isn't taking up space for visitors who never touch it; toggled by
+      // the fbk-filters-toggle button (see renderChrome/TPL.chrome).
+      this.filtersOpen = false;
       this.hiddenPrivateCount = 0;
       this._collapsed = true;
       this._disabled = false;
@@ -2301,7 +2354,7 @@
         this._styleLink.integrity = CSS_INTEGRITY;
         this._styleLink.crossOrigin = "anonymous";
       }
-      this._styleLink.href = (injected == null ? void 0 : injected.cssUrl) || CSS_URL || `${this.server}/pointer.css`;
+      this._styleLink.href = (injected == null ? void 0 : injected.cssUrl) || CSS_URL || `${this.server}/widget.css`;
       this.shadowRoot.appendChild(this._styleLink);
       this.root = document.createElement("div");
       this.shadowRoot.appendChild(this.root);
@@ -2964,7 +3017,7 @@
       const displayName = this.user ? escapeHtml(this.user.displayName || this.user.email) : "";
       const roleLabel = this.user ? escapeHtml(this.user.roleName || "") : "";
       const avatarInitials = this.user ? escapeHtml(initials(this.user.displayName || this.user.email || "")) : "";
-      this.root.innerHTML = TPL.chrome(displayName, roleLabel, this.projectName || this.project, formatShortcut(this.shortcut), this.unreadNotifyCount, avatarInitials, ariaKeyshortcuts(this.shortcut));
+      this.root.innerHTML = TPL.chrome(displayName, roleLabel, this.projectName || this.project, formatShortcut(this.shortcut), this.unreadNotifyCount, avatarInitials, ariaKeyshortcuts(this.shortcut), this.filtersOpen);
       const hideBtn = this.root.querySelector("#fbk-hide");
       if (hideBtn) hideBtn.addEventListener("click", () => this.hideOverlay());
       const userBtn = this.root.querySelector("#fbk-user");
@@ -2996,6 +3049,17 @@
         this.renderSidebar();
         this.renderPins();
         this.toast(t("toast.refreshed"));
+      });
+      const filtersToggle = this.root.querySelector("#fbk-filters-toggle");
+      if (filtersToggle) filtersToggle.addEventListener("click", () => {
+        this.filtersOpen = !this.filtersOpen;
+        this.root.querySelector("#fbk-filters").classList.toggle("fbk-hidden", !this.filtersOpen);
+        filtersToggle.classList.toggle("is-active", this.filtersOpen);
+        filtersToggle.setAttribute("aria-pressed", String(this.filtersOpen));
+        filtersToggle.setAttribute("aria-expanded", String(this.filtersOpen));
+        const label = this.filtersOpen ? t("sidebar.hideFilters") : t("sidebar.showFilters");
+        filtersToggle.setAttribute("title", label);
+        filtersToggle.setAttribute("aria-label", label);
       });
       this.root.querySelector("#fbk-close").addEventListener("click", () => this.toggleSidebar(false));
       const resetBtn = this.root.querySelector("#fbk-reset-pos");
@@ -4302,7 +4366,15 @@
         const activeFilters = catalogToFilters();
         const fixedEnvLabel = this.hasFixedEnvironment || !this.showEnvironmentSelector ? this.envDisplayLabel(this.environmentAttr || ENV_NAME[this.environmentInt] || "staging") : null;
         const envValue = this.viewAllEnvironments ? "all" : (this.environmentAttr || ENV_NAME[this.environmentInt] || "staging").toLowerCase();
-        filtersEl.innerHTML = TPL.statusFilterSelect(activeFilters, this.statusFilter, counts) + TPL.envFilterSelect(fixedEnvLabel, envValue) + (authors.length > 1 && !this.mineOnly ? TPL.authorFilter(authors, this.authorFilter || "") : "");
+        const whoRow = (canMine ? TPL.mineToggle(this.mineOnly) : "") + (authors.length > 1 && !this.mineOnly ? TPL.authorFilter(authors, this.authorFilter || "") : "");
+        const whatRow = TPL.statusFilterSelect(activeFilters, this.statusFilter, counts) + TPL.envFilterSelect(fixedEnvLabel, envValue);
+        filtersEl.innerHTML = `<div class="fbk-filters-row">${whoRow}</div><div class="fbk-filters-row">${whatRow}</div>`;
+        const mineBtn = filtersEl.querySelector("#fbk-mine-toggle");
+        if (mineBtn) mineBtn.addEventListener("click", () => {
+          this.mineOnly = !this.mineOnly;
+          this.renderSidebar();
+          this.renderPins();
+        });
         const statusSel = filtersEl.querySelector("#fbk-status-filter");
         if (statusSel) statusSel.addEventListener("change", () => {
           this.statusFilter = statusSel.value;
@@ -4313,16 +4385,6 @@
         const authorSel = filtersEl.querySelector("#fbk-author-filter");
         if (authorSel) authorSel.addEventListener("change", () => {
           this.authorFilter = authorSel.value || null;
-          this.renderSidebar();
-          this.renderPins();
-        });
-      }
-      const mineRowEl = this.root.querySelector("#fbk-mine-row");
-      if (mineRowEl) {
-        mineRowEl.innerHTML = canMine ? TPL.mineToggle(this.mineOnly) : "";
-        const mineBtn = mineRowEl.querySelector("#fbk-mine-toggle");
-        if (mineBtn) mineBtn.addEventListener("click", () => {
-          this.mineOnly = !this.mineOnly;
           this.renderSidebar();
           this.renderPins();
         });
@@ -4362,6 +4424,11 @@
         e.stopPropagation();
         const c = this.comments.find((x) => String(x.id) === String(b.dataset.id));
         if (c) this.toggleCardMenu(b, c);
+      }));
+      list.querySelectorAll('[data-act="flash-pin"]').forEach((b) => b.addEventListener("click", (e) => {
+        e.stopPropagation();
+        const id = b.dataset.id;
+        if (id) this.flashPin(id);
       }));
       list.querySelectorAll('[data-act="archive"]').forEach((b) => b.addEventListener("click", () => {
         const c = this.comments.find((x) => String(x.id) === String(b.dataset.id));
@@ -4468,12 +4535,13 @@
       const all = this.pageComments().filter((c) => c.status !== "archived" && c.status !== "applied");
       const here = this.scopeByWho(all);
       const items = [];
-      here.forEach((c, i) => {
+      here.forEach((c) => {
+        if (!isCurrentPage(c)) return;
         const el = matchElement(c);
         if (!el) return;
         const rect = el.getBoundingClientRect();
         if (rect.width === 0 && rect.height === 0) return;
-        items.push({ c, i, x: rect.left, y: rect.top });
+        items.push({ c, x: rect.left, y: rect.top });
       });
       const groups = [];
       for (const item of items) {
@@ -4489,7 +4557,9 @@
         const rect = { left: clampedCx, top: clampedCy };
         if (g.length > 1) return TPL.pinCluster(g.map((it) => it.c), rect);
         const tipSide = clampedCy - PIN_HEIGHT - PIN_TOOLTIP_HEIGHT_ESTIMATE < 0 ? "bottom" : "top";
-        return TPL.pin(g[0].c, g[0].i, rect, String(g[0].c.id) === String(this._newPinId), tipSide);
+        const tooltipHalf = PIN_TOOLTIP_WIDTH / 2;
+        const tipAlign = clampedCx - tooltipHalf < PIN_TOOLTIP_EDGE_MARGIN ? "start" : clampedCx + tooltipHalf > window.innerWidth - PIN_TOOLTIP_EDGE_MARGIN ? "end" : "center";
+        return TPL.pin(g[0].c, rect, String(g[0].c.id) === String(this._newPinId), tipSide, tipAlign);
       }).join("");
       applyDataPosition(wrap, ".fbk-pin-wrapper");
       wrap.querySelectorAll(".fbk-pin-cluster").forEach((btn) => btn.addEventListener("click", (e) => {
@@ -4521,6 +4591,58 @@
           setTimeout(() => card.classList.remove("highlight"), 2e3);
         }
       }, 100);
+    }
+    // Reverse of highlightCommentCard: clicking a card's id badge flashes that comment's pin on
+    // the page instead. A standalone pin is `[data-id]`; one folded into a collision cluster (see
+    // renderPins' clustering) only carries the comma-joined `data-ids` on its wrapper, so both are
+    // checked. When the comment belongs to a DIFFERENT page (see isCurrentPage) there is no pin to
+    // flash here at all — renderPins() never rendered one — so follow the comment to its own page
+    // instead of reporting a dead end; flashing the pin there too is deliberately skipped (would
+    // need to survive a full navigation/reload, for little payoff over just landing on the page).
+    // Once we know we're on the RIGHT page, a still-missing pin (doFlashPin's own check) means the
+    // target element itself can't be found right now — applied/archived, removed, or (a common
+    // case) a portal/overlay node (a menu, tooltip, modal) that only exists in the DOM while open —
+    // never "wrong page" at that point, so say so with a different message than the redirect above.
+    flashPin(id) {
+      const comment = this.comments.find((x) => String(x.id) === String(id));
+      const pageUrl = comment && comment.element && comment.element.pageUrl;
+      if (comment && pageUrl && !isCurrentPage(comment)) {
+        window.location.href = pageUrl;
+        return;
+      }
+      const sidebar = this.root.querySelector("#fbk-sidebar");
+      sidebar == null ? void 0 : sidebar.classList.add("fbk-peek-hide");
+      const target = comment && matchElement(comment);
+      if (target) target.scrollIntoView({ block: "center" });
+      setTimeout(() => this.doFlashPin(id), target ? 150 : 0);
+    }
+    doFlashPin(id) {
+      const restoreSidebar = () => {
+        var _a2;
+        return (_a2 = this.root.querySelector("#fbk-sidebar")) == null ? void 0 : _a2.classList.remove("fbk-peek-hide");
+      };
+      const layer = this.root.querySelector("#fbk-pins-layer");
+      if (!layer) {
+        restoreSidebar();
+        return;
+      }
+      let wrapper = layer.querySelector(`.fbk-pin-wrapper[data-id="${id}"]`);
+      if (!wrapper) {
+        wrapper = Array.from(layer.querySelectorAll(".fbk-pin-wrapper[data-ids]")).find((w) => (w.dataset.ids || "").split(",").includes(String(id))) || null;
+      }
+      const pin = wrapper == null ? void 0 : wrapper.querySelector(".fbk-pin");
+      if (!pin) {
+        this.toast(t("toast.pinElementNotFound"));
+        restoreSidebar();
+        return;
+      }
+      pin.classList.remove("fbk-pin-flash");
+      void pin.offsetWidth;
+      pin.classList.add("fbk-pin-flash");
+      setTimeout(() => {
+        pin.classList.remove("fbk-pin-flash");
+        restoreSidebar();
+      }, 1600);
     }
     // --- Pin cluster menu ------------------------------------------------------
     toggleClusterMenu(btn, comments) {
@@ -4768,7 +4890,8 @@
           dismiss();
         });
       }
-      setTimeout(dismiss, 2200);
+      const duration = Math.min(6e3, Math.max(2200, msg.length * 50));
+      setTimeout(dismiss, duration);
     }
     // Toasts stack in their own fixed container (see _toast.scss) rather than as loose siblings —
     // otherwise two toasts shown close together would render on top of each other. Created lazily

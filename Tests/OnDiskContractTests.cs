@@ -132,6 +132,9 @@ public class OnDiskContractTests
         "data-fbk-unread",
         // Which side a pin's hover tooltip opens on (flipped near the top edge of the viewport).
         "data-fbk-tip-side",
+        // Horizontal counterpart to data-fbk-tip-side — anchors the tooltip to whichever edge of
+        // the pin still has room, near the left/right viewport edge, instead of centering it.
+        "data-fbk-tip-align",
         // Comma-joined comment ids on a merged pin cluster wrapper (renderPins) — internal selector
         // for toggleClusterMenu(), not a host-facing attribute.
         "data-ids",

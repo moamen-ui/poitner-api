@@ -21,16 +21,25 @@
 .fbk-sidebar.open {
   transform: translateX(0);
 }
-// Floating close tab straddling the sidebar's own border (facing the page, opposite the screen
-// edge it slides in from) — a drawer "collapse" handle rather than a button inside the header,
-// so it stays reachable even though it moves off-screen WITH the sidebar when closed (fine: the
-// collapsed launcher, a separate element, is what's visible then). translate (not a logical
+// Purely visual "peek" — element.ts's flashPin slides the sidebar out of the way for the
+// duration of a pin flash (without touching sidebarOpen/toggleSidebar or its own re-fetch), for
+// the case where the pin sits underneath it. Extra classes (not !important) win over `.open`
+// because `.fbk-sidebar.open.fbk-peek-hide` is more specific than `.fbk-sidebar.open` alone.
+.fbk-sidebar.open.fbk-peek-hide {
+  transform: translateX(100%);
+}
+// Floating close tab sitting mostly outside the sidebar's own border (facing the page, opposite
+// the screen edge it slides in from) — a drawer "collapse" handle rather than a button inside the
+// header. Its own opacity/visibility is toggled off explicitly when the sidebar isn't `.open`
+// (below) rather than relying only on it riding the sidebar's translateX off-screen: pushed this
+// far outside the sidebar's box, the closed-state transform alone could leave it resting back
+// inside the viewport instead of off-screen with the rest of the drawer. translate (not a logical
 // inset) is deliberate: the shadow UI stays LTR regardless of language (see templates.ts).
 .fbk-sidebar-close-arrow {
   position: absolute;
   inset-block-start: 20px;
   inset-inline-start: 0;
-  transform: translateX(-50%);
+  transform: translateX(-85%);
   width: 28px;
   height: 28px;
   border-radius: 50%;
@@ -43,9 +52,18 @@
   cursor: pointer;
   box-shadow: -2px 0 6px rgba(0, 0, 0, 0.15);
   z-index: 1;
+  opacity: 1;
+  visibility: visible;
+  transition: opacity 0.15s ease, visibility 0.15s ease, background-color v.token('transition-fast');
 }
 .fbk-sidebar-close-arrow:hover {
   background: v.token('surface-hover');
+}
+// Hidden (not just off-screen) while the sidebar is closed — see the comment above.
+.fbk-sidebar:not(.open) .fbk-sidebar-close-arrow {
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
 }
 .fbk-sidebar-head {
   padding: 16px;
@@ -60,24 +78,39 @@
   justify-content: space-between;
   gap: 8px;
 }
+// Groups the filters-toggle + refresh buttons so they move together against the heading.
+.fbk-sidebar-head-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex: none;
+}
 .fbk-sidebar-head h2 {
   margin: 0;
   font-size: 16px;
   color: v.token('text');
 }
-// nowrap + horizontal scroll (rather than wrapping to a second row) keeps every control on one
-// compact line even when status+environment+author don't all fit the sidebar's width — each
-// control keeps its natural size (flex: none below) instead of being squeezed/broken.
+// Two stacked rows (see element.ts's renderSidebar): "who" (mine + author) on top, "what"
+// (status + environment) below.
 .fbk-filters {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-block: 10px;
+  padding-inline: 12px;
+  background: v.token('surface-alt');
+  border-block-end: 1px solid v.token('border-soft');
+}
+// nowrap + horizontal scroll (rather than wrapping onto another row) keeps each row's own
+// controls on one compact line even when they don't all fit the sidebar's width — each control
+// keeps its natural size (flex: none on fbk-filter-field/fbk-userfilter) instead of being
+// squeezed/broken.
+.fbk-filters-row {
   display: flex;
   align-items: flex-end;
   gap: 10px;
   flex-wrap: nowrap;
   overflow-x: auto;
-  padding-block: 10px;
-  padding-inline: 12px;
-  background: v.token('surface-alt');
-  border-block-end: 1px solid v.token('border-soft');
 }
 // A filter control (status, environment) with its own visible label above it — as opposed to
 // the plain author-filter select / mine-only chip, which rely on a title tooltip alone.
@@ -117,21 +150,21 @@
   color: v.token('primary-contrast');
   border-color: v.token('text');
 }
-// "Mine only" row — its own row above the filters (see element.ts's #fbk-mine-row), a real
-// switch rather than a filter chip since it's a single on/off setting, not one choice among
-// several. Empty (no children) when not logged in, so it takes up no space.
-.fbk-mine-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  min-block-size: 0;
-}
+// "Mine only" switch — a real track+thumb switch rather than a filter chip, since it's a single
+// on/off setting rather than one choice among several. Lives inside #fbk-filters (see
+// element.ts's renderSidebar) alongside the status/environment/author fields, so it hides/shows
+// with the rest of the filter bar; overridden below to size to its content instead of stretching
+// full-width like a standalone row would.
 .fbk-toggle-row {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 8px;
   inline-size: 100%;
+}
+.fbk-filters .fbk-toggle-row {
+  flex: none;
+  inline-size: auto;
 }
 .fbk-toggle-row-label {
   font-size: 13px;

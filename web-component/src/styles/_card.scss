@@ -59,6 +59,15 @@
   background: v.token('surface-hover');
   color: v.token('text-slate');
 }
+// The page path this comment was left on (see templates.ts's card()) — a single line, ellipsized
+// rather than wrapped, since a long query string shouldn't push the card's height around.
+.fbk-card-page {
+  display: block;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  margin-block-end: 6px;
+}
 .fbk-text {
   font-size: 14px;
   color: v.token('text');

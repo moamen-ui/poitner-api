@@ -45,7 +45,7 @@ host-facing contract:
 `data-id`, `data-act`, `data-menu-act`, `data-comment-id`, `data-reply-id`, `data-toggle`, `data-placement`,
 `data-private`, `data-c`, `data-i`, `data-path`, `data-testid`, `data-theme`, `data-step`,
 `data-brand-logo`, `data-brand-name`, `data-fbk-left`, `data-fbk-top`, `data-fbk-act`,
-`data-fbk-drag`, `data-fbk-count`, `data-fbk-unread`, `data-fbk-tip-side`, `data-ids`
+`data-fbk-drag`, `data-fbk-count`, `data-fbk-unread`, `data-fbk-tip-side`, `data-fbk-tip-align`, `data-ids`
 
 `data-menu-act` is the kebab-menu item selector (comment card + reply), kept separate from
 `data-act` so a menu item's own click handler never collides with a plain inline button sharing
@@ -56,7 +56,9 @@ place it from a stylesheet rule instead of an inline `style` attribute, which a 
 Content-Security-Policy blocks. `data-fbk-act` / `data-fbk-drag` / `data-fbk-count` /
 `data-fbk-unread` are the toolbar's own selector hooks for element.ts's click wiring.
 `data-fbk-tip-side` flips a pin's hover tooltip below the pin when it's too close to the top of the
-viewport for the tooltip to open upward. `data-ids` is the comma-joined comment id list on a merged
+viewport for the tooltip to open upward. `data-fbk-tip-align` is its horizontal counterpart: `start`
+or `end` anchors the tooltip to that edge of the pin instead of centering it, when centering would
+carry the tooltip past the left/right viewport edge. `data-ids` is the comma-joined comment id list on a merged
 pin cluster wrapper (element.ts's toggleClusterMenu). `data-comment-id` / `data-reply-id` are the
 per-reply edit/delete action hooks on a comment card. All of these live inside the widget's own
 shadow DOM and no host ever reads them.

@@ -309,21 +309,21 @@
   var SHOT_HIGHLIGHT = "#2563eb";
   var _a;
   var SCRIPT_SRC = ((_a = document.currentScript) == null ? void 0 : _a.src) || "";
-  var CSS_INTEGRITY = true ? "sha384-VRlgP/U47uKR/HwPBBI7Uf3d1pQg0VbXCuuN9iQbUariBCzN+Hj4TyxZ2GaYCDAP" : "";
+  var CSS_INTEGRITY = true ? "sha384-PbauAky6ibe0yNWOIdDZvHOujyj3ae0OUhyee5KURH+QYfa5CiYzKGK9aFJmd71F" : "";
   function resolveCssUrl(scriptSrc) {
     var _a2;
-    if (!scriptSrc) return "pointer.css";
+    if (!scriptSrc) return "widget.css";
     try {
       const base = typeof window !== "undefined" && ((_a2 = window.location) == null ? void 0 : _a2.href) ? window.location.href : "http://localhost";
       const parsedScript = new URL(scriptSrc, base);
-      const css = new URL("pointer.css", parsedScript);
+      const css = new URL("widget.css", parsedScript);
       const v = parsedScript.searchParams.get("v");
       if (v) {
         css.searchParams.set("v", v);
       }
       return css.href;
     } catch {
-      return "pointer.css";
+      return "widget.css";
     }
   }
   var CSS_URL = resolveCssUrl(SCRIPT_SRC);
@@ -723,13 +723,13 @@
       "card.explainNotFixed": "Explain what is still not fixed…",
       "card.submit": "Submit",
       "card.viewCommit": "View commit",
-      "card.noCommitRecorded": "No commit recorded for this comment",
       "card.commit": "commit",
       "card.containsSecretPayload": "contains a secret/payload?",
       "card.defaultReplyAuthor": "User",
       "card.automatedReply": "Automated reply",
       "card.aiVia": "via {name}",
       "card.edited": "edited",
+      "card.jumpToPin": "Flash this comment's pin on the page",
       "card.reply": "Reply",
       "card.replyPlaceholder": "Reply…",
       "card.markedReadyClickToUnmark": "Marked ready — click to unmark",
@@ -798,6 +798,7 @@
       "toast.couldNotReachServer": "Could not reach {brand} server",
       "toast.retry": "Retry",
       "toast.refreshed": "Refreshed",
+      "toast.pinNotOnThisPage": "This comment's pin is not on the current page",
       "toast.applyPromptCopied": "Apply prompt copied — paste it into your AI tool",
       "toast.copyFailed": "Could not copy to clipboard",
       "toast.commitStyleUpdated": "Commit style updated",
@@ -933,13 +934,13 @@
       "card.explainNotFixed": "اشرح ما لم يتم إصلاحه بعد…",
       "card.submit": "إرسال",
       "card.viewCommit": "عرض الالتزام",
-      "card.noCommitRecorded": "لا يوجد التزام مسجَّل لهذا التعليق",
       "card.commit": "التزام",
       "card.containsSecretPayload": "قد يحتوي على بيانات سرية؟",
       "card.defaultReplyAuthor": "مستخدم",
       "card.automatedReply": "رد آلي",
       "card.aiVia": "بواسطة {name}",
       "card.edited": "مُعدَّل",
+      "card.jumpToPin": "إظهار دبوس هذا التعليق على الصفحة",
       "card.reply": "رد",
       "card.replyPlaceholder": "رد…",
       "card.markedReadyClickToUnmark": "وُضع علامة جاهز — انقر لإلغائها",
@@ -1008,6 +1009,7 @@
       "toast.couldNotReachServer": "تعذّر الوصول إلى خادم {brand}",
       "toast.retry": "إعادة المحاولة",
       "toast.refreshed": "تم التحديث",
+      "toast.pinNotOnThisPage": "دبوس هذا التعليق غير موجود في الصفحة الحالية",
       "toast.applyPromptCopied": "تم نسخ تعليمة التطبيق — الصقها في أداة الذكاء الاصطناعي",
       "toast.copyFailed": "تعذر النسخ إلى الحافظة",
       "toast.commitStyleUpdated": "تم تحديث أسلوب الالتزام",
@@ -1248,6 +1250,18 @@
           ${c._mine ? `<button type="button" class="fbk-card-menu-item" data-menu-act="edit" role="menuitem">${ICON.pencil}<span>${t("card.edit")}</span></button>` : ""}
           ${c.status === "open" ? `<button type="button" class="fbk-card-menu-item danger" data-menu-act="delete" role="menuitem">${ICON.trash}<span>${t("card.delete")}</span></button>` : ""}
         </div>`,
+    // Kebab-menu dropdown for a single REPLY (see TPL.card's `kebab` above) — shares the same
+    // #fbk-card-menu id/class/portal as the comment's own menu (only one can ever be open at once),
+    // rendered by toggleReplyMenu. Copy-apply-prompt reuses the PARENT COMMENT's id — applying
+    // still operates on the comment, `get --json` already returns every reply — so this is just a
+    // more convenient place to reach it while reading a specific reply's context; gated on the same
+    // comment status as the comment's own copy-apply-prompt item.
+    replyMenu: (c, r) => `
+        <div class="fbk-card-menu" id="fbk-card-menu" role="menu">
+          ${c.status === "open" || c.status === "pending-apply" ? `<button type="button" class="fbk-card-menu-item" data-menu-act="copy-apply-prompt" role="menuitem">${ICON.copy}<span>${t("card.copyApplyPrompt")}</span></button>` : ""}
+          ${r._mine ? `<button type="button" class="fbk-card-menu-item" data-menu-act="edit" role="menuitem">${ICON.pencil}<span>${t("card.edit")}</span></button>` : ""}
+          ${r._mine ? `<button type="button" class="fbk-card-menu-item danger" data-menu-act="delete" role="menuitem">${ICON.trash}<span>${t("card.delete")}</span></button>` : ""}
+        </div>`,
     card: (c, i, isQuickAccess) => {
       const cls = c.status === "pending-apply" ? "pending" : c.status === "applied" ? "applied" : c.status === "archived" ? "archived" : "";
       const statusPill = c.status === "applied" && c.deployedAt ? `<span class="fbk-pill status-applied" title="${escapeHtml(t("card.deployedIn", { sha: (c.deployedSha || "").slice(0, 7) }))}">&#x2713; ${t("card.live")}</span>` : c.status === "applied" ? `<span class="fbk-pill status-applied">&#x2713; ${t("card.completed")}</span>` : c.status === "pending-apply" ? `<span class="fbk-pill status-pending">${t("card.pending")}</span>` : c.status === "archived" ? `<span class="fbk-pill status-archived">&#x1f4e6; ${t("card.archived")}</span>` : "";
@@ -1263,10 +1277,10 @@
             <button class="fbk-mini" data-act="verify-cancel" data-id="${c.id}">${t("toolbar.cancel")}</button>
           </div>
         </div>` : "";
-      const commitLink = c.status === "applied" ? `<a class="fbk-pill" href="${c.commitUrl ? escapeHtml(c.commitUrl) : "#"}" ${c.commitUrl ? 'target="_blank" rel="noopener noreferrer"' : ""} title="${c.commitUrl ? t("card.viewCommit") : t("card.noCommitRecorded")}">&#x1f517; ${t("card.commit")}</a>` : "";
+      const commitLink = c.status === "applied" && c.commitUrl ? `<a class="fbk-pill" href="${escapeHtml(c.commitUrl)}" target="_blank" rel="noopener noreferrer" title="${t("card.viewCommit")}">&#x1f517; ${t("card.commit")}</a>` : "";
       const payloadPill = c.hasPayloadFlag ? `<span class="fbk-pill fbk-payload-flag" title="${escapeHtml((c.payloadFlags || []).join(", "))}">&#x26a0; ${t("card.containsSecretPayload")}</span>` : "";
       const replies = (c.replies || []).map((r) => {
-        var _a2, _b;
+        var _a2, _b, _c;
         const body = escapeHtml(r.body || r.text || "");
         const authorName = escapeHtml(r.authorName || r.authorLabel || t("card.defaultReplyAuthor"));
         if (r.isAi) {
@@ -1281,13 +1295,11 @@
             <div class="fbk-reply-main"><span class="fbk-reply-body">${body}</span></div>
           </details>`;
         }
-        const actions = r._mine ? `<span class="fbk-reply-actions">
-            <button type="button" class="fbk-mini fbk-icon" data-act="reply-edit" data-comment-id="${c.id}" data-reply-id="${r.id}" title="${t("card.edit")}" aria-label="${t("card.edit")}">${ICON.pencil}</button>
-            <button type="button" class="fbk-mini danger fbk-icon" data-act="reply-delete" data-comment-id="${c.id}" data-reply-id="${r.id}" title="${t("card.delete")}" aria-label="${t("card.delete")}">${ICON.trash}</button>
-          </span>` : "";
-        return `<div class="fbk-reply" data-reply-id="${(_b = r.id) != null ? _b : ""}">
+        const showReplyKebab = r._mine || c.status === "open" || c.status === "pending-apply";
+        const kebab = showReplyKebab ? `<button type="button" class="fbk-mini fbk-icon fbk-reply-kebab" data-act="reply-menu" data-comment-id="${c.id}" data-reply-id="${(_b = r.id) != null ? _b : ""}" title="${t("card.moreActions")}" aria-label="${t("card.moreActions")}" aria-haspopup="true" aria-expanded="false">${ICON.kebab}</button>` : "";
+        return `<div class="fbk-reply" data-reply-id="${(_c = r.id) != null ? _c : ""}">
           <div class="fbk-reply-main"><b>${authorName}:</b> <span class="fbk-reply-body">${body}</span></div>
-          ${actions}
+          ${kebab}
         </div>`;
       }).join("");
       const envInt = c.environment;
@@ -1300,7 +1312,7 @@
       return `
           <div class="fbk-card ${cls}" data-id="${c.id}">
             <div class="fbk-meta">
-              <span class="fbk-badge">${i + 1}</span>
+              <button type="button" class="fbk-badge" data-act="flash-pin" data-id="${c.id}" title="${t("card.jumpToPin")}">#${c.id}</button>
               ${envLabel ? `<span class="fbk-pill env">${escapeHtml(envLabel)}</span>` : ""}
               ${payloadPill}
               ${statusPill}
@@ -1365,20 +1377,26 @@
     // element.ts's cluster grouping passes a plain centroid point, not a real element rect.
     // `tipSide`: 'top' (default) opens the hover tooltip above the pin, 'bottom' flips it below —
     // element.ts's renderPins() decides based on how close the pin sits to the viewport's top edge.
-    pin: (c, i, rect, isNew = false, tipSide = "top") => {
+    // `tipAlign`: 'center' (default) centers the tooltip on the pin, 'start'/'end' anchor it to
+    // that edge of the pin instead — same reasoning as tipSide, but for the left/right viewport edge.
+    // The pin's own number is the comment's id (matches the card's id badge in the sidebar — see
+    // card() below — so a viewer can tell which pin a given card refers to at a glance), not a
+    // position index, which would drift out of sync with the badge as soon as the list is
+    // filtered/sorted differently from the pin layer's own z-order.
+    pin: (c, rect, isNew = false, tipSide = "top", tipAlign = "center") => {
       const status = c.status === "pending-apply" ? "ready" : c.status === "applied" ? "applied" : c.status === "archived" ? "archived" : "open";
       const statusLabel = status === "ready" ? t("pin.ready") : status === "applied" ? t("pin.applied") : status === "archived" ? t("pin.archived") : t("pin.open");
       const author = c.authorName || "";
       const bodyText = c.body || c.text || "";
       const replyCount = (c.replies || []).length;
       const selector = c.element && c.element.selector || "";
-      const label = `${t("pin.commentHash", { n: i + 1 })}${author ? t("pin.byAuthor", { author }) : ""}${bodyText ? `: ${bodyText}` : ""}`;
+      const label = `${t("pin.commentHash", { n: c.id })}${author ? t("pin.byAuthor", { author }) : ""}${bodyText ? `: ${bodyText}` : ""}`;
       const showMeta = !!(selector || replyCount);
       return `
-        <div class="fbk-pin-wrapper" data-id="${c.id}" data-fbk-left="${rect.left}" data-fbk-top="${rect.top}" data-fbk-tip-side="${tipSide}">
+        <div class="fbk-pin-wrapper" data-id="${c.id}" data-fbk-left="${rect.left}" data-fbk-top="${rect.top}" data-fbk-tip-side="${tipSide}" data-fbk-tip-align="${tipAlign}">
           <button type="button" class="fbk-pin fbk-pin-${status}" aria-label="${escapeHtml(label)}">
             ${isNew ? '<span class="fbk-pin-ring" aria-hidden="true"></span>' : ""}
-            ${status === "applied" ? ICON.checkBold : `<span class="fbk-pin-number">${i + 1}</span>`}
+            ${status === "applied" ? ICON.checkBold : `<span class="fbk-pin-number">${c.id}</span>`}
           </button>
           <div class="fbk-pin-tooltip" role="tooltip">
             <div class="fbk-pin-tooltip-header">
@@ -2124,6 +2142,8 @@
   var PIN_HALF_WIDTH = 16;
   var PIN_HEIGHT = 30;
   var PIN_TOOLTIP_HEIGHT_ESTIMATE = 150;
+  var PIN_TOOLTIP_WIDTH = 220;
+  var PIN_TOOLTIP_EDGE_MARGIN = 8;
   var _PointerFeedback = class _PointerFeedback extends HTMLElement {
     constructor() {
       super(...arguments);
@@ -2291,7 +2311,7 @@
         this._styleLink.integrity = CSS_INTEGRITY;
         this._styleLink.crossOrigin = "anonymous";
       }
-      this._styleLink.href = (injected == null ? void 0 : injected.cssUrl) || CSS_URL || `${this.server}/pointer.css`;
+      this._styleLink.href = (injected == null ? void 0 : injected.cssUrl) || CSS_URL || `${this.server}/widget.css`;
       this.shadowRoot.appendChild(this._styleLink);
       this.root = document.createElement("div");
       this.shadowRoot.appendChild(this.root);
@@ -4130,7 +4150,7 @@
       const reply = comment && (comment.replies || []).find((r) => String(r.id) === String(replyId));
       if (!reply) return;
       const mainEl = row.querySelector(".fbk-reply-main");
-      const actionsEl = row.querySelector(".fbk-reply-actions");
+      const actionsEl = row.querySelector(".fbk-reply-kebab");
       if (!mainEl) return;
       const editor = document.createElement("div");
       editor.className = "fbk-edit";
@@ -4178,40 +4198,23 @@
         if (e.message !== "HTTP 401 Unauthorized") this.toast(e.message || t("toast.failedToUpdateComment"), "error");
       }
     }
-    // Same inline "Delete this…?" confirm-row pattern as confirmDelete, scoped to one reply's own
-    // actions row instead of the comment's.
-    confirmDeleteReply(btn) {
-      const commentId = btn.dataset.commentId;
-      const replyId = btn.dataset.replyId;
-      const row = btn.closest(".fbk-reply-actions");
-      if (!commentId || !replyId || !row || row.querySelector(".fbk-confirm")) return;
-      const others = Array.from(row.children);
-      others.forEach((el) => {
-        el.style.display = "none";
-      });
-      const wrap = document.createElement("div");
-      wrap.className = "fbk-confirm fbk-confirm-row";
-      wrap.innerHTML = `<span class="fbk-confirm-q">${t("card.deleteThisReply")}</span><span class="fbk-confirm-btns"><button type="button" class="fbk-mini danger fbk-icon" data-c="yes" title="${t("card.confirmDelete")}" aria-label="${t("card.confirmDelete")}">${ICON.checkPlain}</button><button type="button" class="fbk-mini fbk-icon" data-c="no" title="${t("toolbar.cancel")}" aria-label="${t("toolbar.cancel")}">&#x2715;</button></span>`;
-      row.appendChild(wrap);
-      let closed = false;
-      const close = () => {
-        if (closed) return;
-        closed = true;
-        clearTimeout(timer);
-        wrap.remove();
-        others.forEach((el) => {
-          el.style.display = "";
-        });
-      };
-      const timer = setTimeout(close, 4e3);
-      wrap.querySelector('[data-c="yes"]').addEventListener("click", (e) => {
+    // Delete confirmation for a single reply: an overlay covering that reply's own bubble — same
+    // "on the thing itself, not inside a menu" treatment as confirmDeleteCard. The kebab menu is
+    // already closed by the time this runs (see toggleReplyMenu's delete wiring).
+    confirmDeleteReplyBubble(replyId) {
+      const row = this.root && this.root.querySelector(`.fbk-reply[data-reply-id="${replyId}"]`);
+      if (!row || row.querySelector(".fbk-card-delete-confirm")) return;
+      const overlay = document.createElement("div");
+      overlay.className = "fbk-card-delete-confirm";
+      overlay.innerHTML = `<p class="fbk-card-delete-confirm-q">${t("card.deleteThisReply")}</p><div class="fbk-card-delete-confirm-actions"><button type="button" class="fbk-mini danger" data-c="yes">${t("card.confirmDelete")}</button><button type="button" class="fbk-mini" data-c="no">${t("toolbar.cancel")}</button></div>`;
+      row.appendChild(overlay);
+      overlay.querySelector('[data-c="yes"]').addEventListener("click", (e) => {
         e.stopPropagation();
-        close();
         this.deleteReply(replyId);
       });
-      wrap.querySelector('[data-c="no"]').addEventListener("click", (e) => {
+      overlay.querySelector('[data-c="no"]').addEventListener("click", (e) => {
         e.stopPropagation();
-        close();
+        overlay.remove();
       });
     }
     async deleteReply(replyId) {
@@ -4370,6 +4373,11 @@
         const c = this.comments.find((x) => String(x.id) === String(b.dataset.id));
         if (c) this.toggleCardMenu(b, c);
       }));
+      list.querySelectorAll('[data-act="flash-pin"]').forEach((b) => b.addEventListener("click", (e) => {
+        e.stopPropagation();
+        const id = b.dataset.id;
+        if (id) this.flashPin(id);
+      }));
       list.querySelectorAll('[data-act="archive"]').forEach((b) => b.addEventListener("click", () => {
         const c = this.comments.find((x) => String(x.id) === String(b.dataset.id));
         if (c) this.setStatus(c, "archived", t("toast.archivedMsg"));
@@ -4382,19 +4390,35 @@
         inp.classList.remove("fbk-hidden");
         inp.focus();
       }));
-      list.querySelectorAll(".fbk-reply-input").forEach((inp) => inp.addEventListener("keydown", (e) => {
-        if (e.key === "Enter" && !e.shiftKey) {
-          e.preventDefault();
-          if (inp.value.trim()) {
-            this.addReply(inp.dataset.id, inp.value.trim());
+      list.querySelectorAll(".fbk-reply-input").forEach((inp) => {
+        const collapse = () => {
+          const row = inp.closest(".fbk-reply-row");
+          const btn = row == null ? void 0 : row.querySelector('[data-act="reply-toggle"]');
+          inp.classList.add("fbk-hidden");
+          btn == null ? void 0 : btn.classList.remove("fbk-hidden");
+        };
+        inp.addEventListener("keydown", (e) => {
+          if (e.key === "Enter" && !e.shiftKey) {
+            e.preventDefault();
+            if (inp.value.trim()) {
+              this.addReply(inp.dataset.id, inp.value.trim());
+              inp.value = "";
+            }
+          } else if (e.key === "Escape") {
             inp.value = "";
+            collapse();
           }
-        }
+        });
+        inp.addEventListener("blur", () => {
+          if (!inp.value.trim()) collapse();
+        });
+      });
+      list.querySelectorAll('[data-act="reply-menu"]').forEach((b) => b.addEventListener("click", (e) => {
+        e.stopPropagation();
+        const comment = this.comments.find((x) => String(x.id) === String(b.dataset.commentId));
+        const reply = comment && (comment.replies || []).find((r) => String(r.id) === String(b.dataset.replyId));
+        if (comment && reply) this.toggleReplyMenu(b, comment, reply);
       }));
-      list.querySelectorAll('[data-act="reply-edit"]').forEach((b) => b.addEventListener("click", () => {
-        if (b.dataset.commentId && b.dataset.replyId) this.startEditReply(b.dataset.commentId, b.dataset.replyId);
-      }));
-      list.querySelectorAll('[data-act="reply-delete"]').forEach((b) => b.addEventListener("click", () => this.confirmDeleteReply(b)));
       list.querySelectorAll(".fbk-reply:not(.fbk-reply-ai) .fbk-reply-main").forEach((el) => {
         el.addEventListener("click", () => {
           var _a3;
@@ -4459,12 +4483,12 @@
       const all = this.pageComments().filter((c) => c.status !== "archived" && c.status !== "applied");
       const here = this.scopeByWho(all);
       const items = [];
-      here.forEach((c, i) => {
+      here.forEach((c) => {
         const el = matchElement(c);
         if (!el) return;
         const rect = el.getBoundingClientRect();
         if (rect.width === 0 && rect.height === 0) return;
-        items.push({ c, i, x: rect.left, y: rect.top });
+        items.push({ c, x: rect.left, y: rect.top });
       });
       const groups = [];
       for (const item of items) {
@@ -4480,7 +4504,9 @@
         const rect = { left: clampedCx, top: clampedCy };
         if (g.length > 1) return TPL.pinCluster(g.map((it) => it.c), rect);
         const tipSide = clampedCy - PIN_HEIGHT - PIN_TOOLTIP_HEIGHT_ESTIMATE < 0 ? "bottom" : "top";
-        return TPL.pin(g[0].c, g[0].i, rect, String(g[0].c.id) === String(this._newPinId), tipSide);
+        const tooltipHalf = PIN_TOOLTIP_WIDTH / 2;
+        const tipAlign = clampedCx - tooltipHalf < PIN_TOOLTIP_EDGE_MARGIN ? "start" : clampedCx + tooltipHalf > window.innerWidth - PIN_TOOLTIP_EDGE_MARGIN ? "end" : "center";
+        return TPL.pin(g[0].c, rect, String(g[0].c.id) === String(this._newPinId), tipSide, tipAlign);
       }).join("");
       applyDataPosition(wrap, ".fbk-pin-wrapper");
       wrap.querySelectorAll(".fbk-pin-cluster").forEach((btn) => btn.addEventListener("click", (e) => {
@@ -4512,6 +4538,34 @@
           setTimeout(() => card.classList.remove("highlight"), 2e3);
         }
       }, 100);
+    }
+    // Reverse of highlightCommentCard: clicking a card's id badge flashes that comment's pin on
+    // the page instead. A standalone pin is `[data-id]`; one folded into a collision cluster (see
+    // renderPins' clustering) only carries the comma-joined `data-ids` on its wrapper, so both are
+    // checked. No pin exists at all when the comment's target element isn't on the current page
+    // (applied/archived, or the element was removed) — say so rather than doing nothing silently.
+    flashPin(id) {
+      const comment = this.comments.find((x) => String(x.id) === String(id));
+      const target = comment && matchElement(comment);
+      if (target) target.scrollIntoView({ block: "center" });
+      setTimeout(() => this.doFlashPin(id), target ? 150 : 0);
+    }
+    doFlashPin(id) {
+      const layer = this.root.querySelector("#fbk-pins-layer");
+      if (!layer) return;
+      let wrapper = layer.querySelector(`.fbk-pin-wrapper[data-id="${id}"]`);
+      if (!wrapper) {
+        wrapper = Array.from(layer.querySelectorAll(".fbk-pin-wrapper[data-ids]")).find((w) => (w.dataset.ids || "").split(",").includes(String(id))) || null;
+      }
+      const pin = wrapper == null ? void 0 : wrapper.querySelector(".fbk-pin");
+      if (!pin) {
+        this.toast(t("toast.pinNotOnThisPage"));
+        return;
+      }
+      pin.classList.remove("fbk-pin-flash");
+      void pin.offsetWidth;
+      pin.classList.add("fbk-pin-flash");
+      setTimeout(() => pin.classList.remove("fbk-pin-flash"), 1600);
     }
     // --- Pin cluster menu ------------------------------------------------------
     toggleClusterMenu(btn, comments) {
@@ -4647,25 +4701,85 @@
       const host = this.root.querySelector("#fbk-menu-host");
       if (host && host.querySelector("#fbk-card-menu")) {
         host.innerHTML = "";
-        this.root.querySelectorAll('.fbk-card-kebab[aria-expanded="true"]').forEach((b) => b.setAttribute("aria-expanded", "false"));
+        this.root.querySelectorAll('.fbk-card-kebab[aria-expanded="true"], .fbk-reply-kebab[aria-expanded="true"]').forEach((b) => b.setAttribute("aria-expanded", "false"));
       }
       if (this._cardMenuClose) {
         document.removeEventListener("click", this._cardMenuClose, true);
         this._cardMenuClose = null;
       }
     }
+    // Kebab menu for a single reply (see replyMenu template) — shares #fbk-card-menu/closeCardMenu
+    // with the comment's own kebab (only one such menu is ever open at once), just anchored under
+    // the reply's own trigger instead and built from TPL.replyMenu instead of TPL.cardMenu.
+    toggleReplyMenu(btn, c, r) {
+      const host = this.root.querySelector("#fbk-menu-host");
+      if (!host) return;
+      if (host.querySelector("#fbk-card-menu")) {
+        this.closeCardMenu();
+        return;
+      }
+      this.closeUserMenu();
+      this.closeUpdatesMenu();
+      this.closeClusterMenu();
+      host.innerHTML = TPL.replyMenu(c, r);
+      const menu = host.querySelector("#fbk-card-menu");
+      if (!menu) return;
+      btn.setAttribute("aria-expanded", "true");
+      const rect = btn.getBoundingClientRect();
+      const menuHeight = menu.offsetHeight;
+      const spaceBelow = window.innerHeight - rect.bottom;
+      if (spaceBelow < menuHeight + 6 && rect.top > spaceBelow) {
+        menu.style.top = "auto";
+        menu.style.bottom = `${Math.max(8, Math.round(window.innerHeight - rect.top + 6))}px`;
+      } else {
+        menu.style.bottom = "auto";
+        menu.style.top = `${Math.round(rect.bottom + 6)}px`;
+      }
+      menu.style.right = `${Math.max(8, Math.round(window.innerWidth - rect.right))}px`;
+      const copyPromptBtn = menu.querySelector('[data-menu-act="copy-apply-prompt"]');
+      if (copyPromptBtn) {
+        copyPromptBtn.addEventListener("click", () => {
+          this.closeCardMenu();
+          this.copyApplyPrompt(c, true);
+        });
+      }
+      const editBtn = menu.querySelector('[data-menu-act="edit"]');
+      if (editBtn) {
+        editBtn.addEventListener("click", () => {
+          this.closeCardMenu();
+          this.startEditReply(String(c.id), String(r.id));
+        });
+      }
+      const delBtn = menu.querySelector('[data-menu-act="delete"]');
+      if (delBtn) {
+        delBtn.addEventListener("click", () => {
+          this.closeCardMenu();
+          this.confirmDeleteReplyBubble(String(r.id));
+        });
+      }
+      this._cardMenuClose = (e) => {
+        const path = e.composedPath();
+        if (!path.includes(menu) && !path.includes(btn)) this.closeCardMenu();
+      };
+      setTimeout(() => {
+        if (this._cardMenuClose) document.addEventListener("click", this._cardMenuClose, true);
+      }, 0);
+    }
     // --- Single-item apply prompt ("Copy apply prompt" in the kebab menu) ----
     // A short, human-style instruction — not a technical spec — naming just the one comment to
     // apply. No comment/reply text is embedded (so there's nothing here that needs fencing as
     // untrusted input): the agent already has the apply skill installed and pulls the real content
     // itself via `get --json`, exactly as it would for any item from the normal apply queue.
-    buildSingleItemApplyPrompt(c) {
+    // `isFollowUp`: true when copied from a REPLY's own kebab (see toggleReplyMenu) rather than the
+    // comment's — flags that there's more context than just the original comment body to read.
+    buildSingleItemApplyPrompt(c, isFollowUp = false) {
       const brand = getBrandName();
-      return `Apply ${brand} comment #${c.id} in this repo — run \`npx pointer-feedback get ${c.id} --json\` to see it, then follow the apply skill to fix it and mark it done.`;
+      const followUp = isFollowUp ? " (there is a follow-up reply on it — read all replies, not just the original comment)" : "";
+      return `Apply ${brand} comment #${c.id} in this repo — run \`npx pointer-feedback get ${c.id} --json\` to see it${followUp}, then follow the apply skill to fix it and mark it done.`;
     }
-    async copyApplyPrompt(c) {
+    async copyApplyPrompt(c, isFollowUp = false) {
       try {
-        await navigator.clipboard.writeText(this.buildSingleItemApplyPrompt(c));
+        await navigator.clipboard.writeText(this.buildSingleItemApplyPrompt(c, isFollowUp));
         this.toast(t("toast.applyPromptCopied"));
       } catch {
         this.toast(t("toast.copyFailed"), "error");

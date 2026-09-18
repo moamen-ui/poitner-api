@@ -126,12 +126,61 @@
   100% { transform: scale(1.4); opacity: 0; }
 }
 
+// One-shot attention flash — triggered on demand (element.ts's flashPin) when a viewer clicks a
+// comment card's id badge, so they can find that exact pin on a page that may have many. Three
+// layers, all timed to the same 1.6s so they read as one effect: (1) the pin itself throbbing up
+// to 1.9x (well past the 1.15x hover/active scale above) with a tight glow, (2) two teardrop-
+// shaped sonar rings (::before/::after, staggered) expanding outward and fading — same visual
+// language as the "just added" .fbk-pin-ring above, reused here via pseudo-elements instead of a
+// real sibling since this class is toggled on/off after the fact rather than rendered once. An
+// animation always wins over a plain, non-!important rule on the same property regardless of the
+// other rule's specificity, so none of this needs !important to beat :hover/.active.
+.fbk-pin.fbk-pin-flash {
+  animation: fbk-pin-flash-pulse 1.6s cubic-bezier(0.34, 1.56, 0.64, 1);
+  z-index: 3;
+}
+.fbk-pin.fbk-pin-flash::before,
+.fbk-pin.fbk-pin-flash::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  border: 2px solid v.token('primary');
+  opacity: 0;
+  pointer-events: none;
+  animation: fbk-pin-flash-ring 1.6s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.fbk-pin.fbk-pin-flash::after {
+  animation-delay: 0.35s;
+}
+@keyframes fbk-pin-flash-pulse {
+  0%, 100% {
+    transform: rotate(-45deg) scale(1);
+    box-shadow: v.token('shadow-pin');
+  }
+  20%, 60% {
+    transform: rotate(-45deg) scale(1.9);
+    box-shadow: 0 0 0 10px color-mix(in srgb, v.token('primary') 35%, transparent), v.token('shadow-tooltip');
+  }
+  40%, 80% {
+    transform: rotate(-45deg) scale(1.15);
+    box-shadow: v.token('shadow-pin');
+  }
+}
+@keyframes fbk-pin-flash-ring {
+  0% { transform: scale(1); opacity: 0.9; }
+  75%, 100% { transform: scale(2.8); opacity: 0; }
+}
+
 // Hover preview — a compact read of the comment without opening the sidebar.
 .fbk-pin-tooltip {
   position: absolute;
   inset-block-end: calc(100% + 8px);
-  inset-inline-start: 50%;
-  transform: translateX(-50%) translateY(4px) scale(0.96);
+  // Horizontal position/offset are CSS custom properties (not hardcoded here) so the
+  // data-fbk-tip-align override below only needs to change the variable, not re-declare the
+  // whole transform (which also carries the hover-state's Y/scale animation).
+  inset-inline-start: var(--fbk-tip-x, 50%);
+  transform: translateX(var(--fbk-tip-tx, -50%)) translateY(4px) scale(0.96);
   background: v.token('surface');
   color: v.token('text');
   border: 1px solid v.token('border');
@@ -150,8 +199,19 @@
 .fbk-pin-wrapper:hover .fbk-pin-tooltip {
   opacity: 1;
   visibility: visible;
-  transform: translateX(-50%) translateY(0) scale(1);
+  transform: translateX(var(--fbk-tip-tx, -50%)) translateY(0) scale(1);
   pointer-events: auto;
+}
+// A pin close enough to the left/right viewport edge that a centered 220px-wide tooltip would
+// spill off-screen (half hidden, unreachable) anchors it to whichever edge of the pin still has
+// room instead — element.ts's renderPins() decides this per pin from the real viewport width.
+.fbk-pin-wrapper[data-fbk-tip-align='start'] .fbk-pin-tooltip {
+  --fbk-tip-x: 0%;
+  --fbk-tip-tx: 0%;
+}
+.fbk-pin-wrapper[data-fbk-tip-align='end'] .fbk-pin-tooltip {
+  --fbk-tip-x: 100%;
+  --fbk-tip-tx: -100%;
 }
 // A pin near the top of the viewport has nowhere for the tooltip to open upward into — flip it
 // below the pin instead (element.ts's renderPins() sets this per pin, based on real position).

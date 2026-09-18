@@ -15,7 +15,7 @@ var init_build_constants = __esm({
   "src/build-constants.ts"() {
     "use strict";
     BUILD_DEFAULT_SERVER = true ? "https://api.pointer.moamen.work" : "https://api.pointer.moamen.work";
-    BUILD_CLI_VERSION = true ? "0.4.0" : "0.0.0-dev";
+    BUILD_CLI_VERSION = true ? "0.4.1" : "0.0.0-dev";
   }
 });
 
@@ -662,6 +662,18 @@ async function readApiKey(cwd2, server) {
   const { key } = await resolveApiKey(cwd2, server);
   return key;
 }
+function isJwtExpired(token) {
+  const parts = token.split(".");
+  if (parts.length !== 3)
+    return false;
+  try {
+    const json = Buffer.from(parts[1].replace(/-/g, "+").replace(/_/g, "/"), "base64").toString("utf8");
+    const payload = JSON.parse(json);
+    return typeof payload.exp === "number" && payload.exp * 1e3 <= Date.now() + 5e3;
+  } catch {
+    return false;
+  }
+}
 async function resolveToken(server, cwd2, explicitApiKey) {
   await removeStaleRepoTokenCache(cwd2);
   const apiKey = explicitApiKey || await readApiKey(cwd2, server);
@@ -671,7 +683,7 @@ async function resolveToken(server, cwd2, explicitApiKey) {
   try {
     const cached = JSON.parse(await fs17.readFile(cacheFile, "utf8"));
     const token = typeof cached?.token === "string" ? cached.token.trim() : "";
-    if (token)
+    if (token && !isJwtExpired(token))
       return token;
   } catch {
   }

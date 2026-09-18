@@ -149,6 +149,22 @@ export const generateSelector = (el: Element): string => {
   return parts.join(' > ');
 };
 
+// True when `comment` was captured on the page currently loaded — compared by pathname only, so
+// a query-string or hash difference (a filter param, a scroll anchor) doesn't count as "another
+// page". A comment with no recorded `element.pageUrl` (created before that field existed) is
+// treated as current, since there's nothing to compare against. Used to keep a comment's pin off
+// pages it doesn't belong to (see renderPins) — a selector match alone isn't enough, since two
+// different pages can easily share the same DOM structure (a repeated layout/component).
+export const isCurrentPage = (comment: Comment): boolean => {
+  const url = comment.element && comment.element.pageUrl;
+  if (!url) return true;
+  try {
+    return new URL(url, window.location.href).pathname === window.location.pathname;
+  } catch (e) {
+    return true;
+  }
+};
+
 // Re-find an element from a stored comment (selector first, snapshot fallback).
 export const matchElement = (comment: Comment): Element | null => {
   const selector = comment.element && comment.element.selector;

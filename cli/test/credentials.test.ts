@@ -15,7 +15,9 @@ import {
   normalizeServerOrigin,
   sourceLabel,
   globalCredentialsPath,
+  tokenCacheFile,
 } from '../src/credentials.js';
+import { resolveToken } from '../src/auth.js';
 
 const execAsync = promisify(exec);
 const __filename = fileURLToPath(import.meta.url);
@@ -348,5 +350,69 @@ test('login --scope with an unknown value exits 2', () =>
         execAsync(`node ${cliPath} login --key ptr_good --server ${serverUrl} --scope machine`, { cwd: repo, env: envFor(globalDir) }),
         (err: any) => err.code === 2 && /Invalid --scope/.test(err.stderr),
       );
+    }),
+  ));
+
+// -----------------------------------------------------------------------------------------------
+// Expired cached JWT (see auth.ts's isJwtExpired) — a dead cache entry must not wedge every
+// later command into a 401 until someone thinks to clear ~/.cache/pointer by hand.
+// -----------------------------------------------------------------------------------------------
+
+function fakeJwt(exp: number): string {
+  const b64url = (obj: object) => Buffer.from(JSON.stringify(obj)).toString('base64url');
+  return `${b64url({ alg: 'none' })}.${b64url({ exp })}.sig`;
+}
+
+// `resolveToken` (not `whoami`, which does its own standalone login-with-key call and never
+// touches the cache) is the one path real commands like `list`/`apply` share — see auth.ts.
+test('resolveToken discards an expired cached JWT and re-exchanges the key, instead of trusting it forever', () =>
+  withTempDir(async (repo) =>
+    withGlobalDir(async (globalDir) => {
+      const prevConfigDir = process.env.POINTER_CONFIG_DIR;
+      process.env.POINTER_CONFIG_DIR = globalDir;
+      try {
+        await saveGlobalCredential(serverUrl, { apiKey: 'ptr_good' });
+
+        // Seed the cache with a structurally-real but long-expired JWT — exactly what a token
+        // minted hours ago (in an earlier session, say) and never revalidated looks like on disk.
+        const cacheFile = tokenCacheFile(serverUrl, 'ptr_good');
+        await fs.mkdir(path.dirname(cacheFile), { recursive: true });
+        await fs.writeFile(cacheFile, JSON.stringify({ token: fakeJwt(Math.floor(Date.now() / 1000) - 3600) }), 'utf8');
+
+        const token = await resolveToken(serverUrl, repo);
+        // Before the fix this returns the dead cached JWT verbatim, and every later request the
+        // caller makes with it 401s — reproducing the reported bug (login succeeds, list fails).
+        assert.strictEqual(token, 'jwt-for-test', 'must fall through to a fresh exchange, not the dead cache entry');
+
+        // The dead entry must have been overwritten with a live one, not merely bypassed in memory.
+        const refreshed = JSON.parse(await fs.readFile(cacheFile, 'utf8'));
+        assert.strictEqual(refreshed.token, 'jwt-for-test');
+      } finally {
+        if (prevConfigDir === undefined) delete process.env.POINTER_CONFIG_DIR;
+        else process.env.POINTER_CONFIG_DIR = prevConfigDir;
+      }
+    }),
+  ));
+
+test('resolveToken keeps a non-expiring cached token as-is (a test stub / non-JWT string is never second-guessed)', () =>
+  withTempDir(async (repo) =>
+    withGlobalDir(async (globalDir) => {
+      const prevConfigDir = process.env.POINTER_CONFIG_DIR;
+      process.env.POINTER_CONFIG_DIR = globalDir;
+      try {
+        await saveGlobalCredential(serverUrl, { apiKey: 'ptr_good' });
+        const cacheFile = tokenCacheFile(serverUrl, 'ptr_good');
+        await fs.mkdir(path.dirname(cacheFile), { recursive: true });
+        await fs.writeFile(cacheFile, JSON.stringify({ token: 'jwt-for-test' }), 'utf8');
+        const mtimeBefore = (await fs.stat(cacheFile)).mtimeMs;
+
+        const token = await resolveToken(serverUrl, repo);
+        assert.strictEqual(token, 'jwt-for-test');
+        // Must be returned straight from the cache — not rewritten via a fresh (unnecessary) exchange.
+        assert.strictEqual((await fs.stat(cacheFile)).mtimeMs, mtimeBefore);
+      } finally {
+        if (prevConfigDir === undefined) delete process.env.POINTER_CONFIG_DIR;
+        else process.env.POINTER_CONFIG_DIR = prevConfigDir;
+      }
     }),
   ));
