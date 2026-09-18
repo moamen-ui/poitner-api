@@ -4770,8 +4770,11 @@ init_config();
 async function loadProjectContext(ctx) {
   const branding = await getBranding(ctx.server);
   let stack = { frontend: [], backend: null, aiTools: [] };
+  let delegation = "auto";
   try {
     const config = await readConfig(ctx.cwd);
+    if (config.delegation === "off")
+      delegation = "off";
     const relPath = isMultiProject(config) ? stackFileRelPath(ctx.project) : stackFileRelPath();
     const stackRaw = await fs18.readFile(join18(ctx.cwd, relPath), "utf8");
     stack = JSON.parse(stackRaw);
@@ -4815,6 +4818,7 @@ async function loadProjectContext(ctx) {
     projectName,
     projectKey: ctx.project,
     commitStyle,
+    delegation,
     stack
   };
 }
@@ -4940,7 +4944,7 @@ function buildApplyPrompt(items, context, opts) {
     lines.push("> PLAN ONLY: list files you would change per item; make NO edits\n");
   }
   lines.push(
-    `# Apply ${context.productName} feedback \u2014 project ${context.projectKey} (${items.length} items, commitStyle=${context.commitStyle})`
+    `# Apply ${context.productName} feedback \u2014 project ${context.projectKey} (${items.length} items, commitStyle=${context.commitStyle}, delegation=${context.delegation ?? "auto"})`
   );
   lines.push("");
   lines.push(SECURITY_TEXT);
