@@ -295,10 +295,16 @@ export function buildApplyPrompt(
 
   lines.push('## When you finish an item');
   lines.push(
-    'Run exactly: `npx pointer-feedback apply --mark <id> --reply "<what changed>"`   (Separate style: after each item;',
+    'Run exactly: `npx pointer-feedback apply --mark <id> --reply "<what changed>" --model <your-model-id>`',
   );
   lines.push(
-    'Single style: run `npx pointer-feedback apply --mark all --reply "..."` once at the end). Never run git push.',
+    '(Separate style: after each item; Single style: run `npx pointer-feedback apply --mark all --reply "..." --model <your-model-id>`',
+  );
+  lines.push(
+    'once at the end). Never run git push. `--model` records which model you are running as (e.g. `claude-sonnet-5`,',
+  );
+  lines.push(
+    '`gpt-5.2`) on the reply, alongside `--tool` (defaults to the tool recorded at init).',
   );
 
   return lines.join('\n') + '\n';

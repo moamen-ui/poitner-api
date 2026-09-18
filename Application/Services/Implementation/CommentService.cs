@@ -615,7 +615,12 @@ public class CommentService : ICommentService
                 Body = request.Reply.Trim(),
                 PayloadFlags = PayloadFlagDetector.Detect(request.Reply).ToList(),
                 HasPayloadFlag = PayloadFlagDetector.Detect(request.Reply).Count > 0,
-                OwnerId = comment.OwnerId
+                OwnerId = comment.OwnerId,
+                // Same signal ShowsPayloadFlags/AddReplyAsync use: the widget/dashboard send
+                // X-Pointer-Client, the AI apply flow (CLI `apply --mark`/pointer.sh/skill.md) does not.
+                IsAi = IsNonHumanCaller,
+                AiTool = IsNonHumanCaller ? NormalizeAiTool(request.AiTool) : null,
+                AiModel = IsNonHumanCaller ? NormalizeAiModel(request.AiModel) : null
             };
             // comment is tracked (loaded without AsNoTracking); adding to its
             // collection lets EF insert the new reply on save. Do NOT also call
@@ -869,7 +874,9 @@ public class CommentService : ICommentService
             OwnerId = comment.OwnerId,
             // Same signal ShowsPayloadFlags uses: the widget/dashboard send X-Pointer-Client, the
             // AI apply flow (CLI/pointer.sh/skill.md) does not.
-            IsAi = !(_currentClient?.IsHumanSurface ?? false)
+            IsAi = IsNonHumanCaller,
+            AiTool = IsNonHumanCaller ? NormalizeAiTool(request.AiTool) : null,
+            AiModel = IsNonHumanCaller ? NormalizeAiModel(request.AiModel) : null
         };
 
         await _unitOfWork.Repository<Reply>().AddAsync(reply);
@@ -1050,6 +1057,23 @@ public class CommentService : ICommentService
     /// </summary>
     private bool ShowsPayloadFlags => _currentClient?.IsHumanSurface ?? false;
 
+    /// <summary>Whether this caller may attribute a reply to an AI tool — the inverse of
+    /// <see cref="ShowsPayloadFlags"/>'s human-surface check. A human typing into the widget or
+    /// dashboard can't claim to be an AI, so AiTool/AiModel are dropped (stored null) for them
+    /// regardless of what the request body carries — see NormalizeAiTool/NormalizeAiModel.</summary>
+    private bool IsNonHumanCaller => !(_currentClient?.IsHumanSurface ?? false);
+
+    /// <summary>Trims and lowercases a tool identifier (e.g. "Claude-Code" -&gt; "claude-code"),
+    /// null/empty when absent. Format is enforced upstream by AddReplyValidator/
+    /// UpdateCommentStatusValidator; this only normalises casing/whitespace for storage.</summary>
+    private static string? NormalizeAiTool(string? value) =>
+        string.IsNullOrWhiteSpace(value) ? null : value.Trim().ToLowerInvariant();
+
+    /// <summary>Trims a model identifier, preserving case (model ids like "GPT-5.2" or
+    /// "Claude-Sonnet-5" are conventionally cased) — null/empty when absent.</summary>
+    private static string? NormalizeAiModel(string? value) =>
+        string.IsNullOrWhiteSpace(value) ? null : value.Trim();
+
     private static ReplyResponse MapReplyToResponse(Reply reply, IReadOnlyDictionary<Guid, string> names, bool includeFlags = false) => new()
     {
         Id = reply.Id,
@@ -1058,6 +1082,8 @@ public class CommentService : ICommentService
         Body = reply.Body,
         CreatedAt = reply.CreatedAt,
         IsAi = reply.IsAi,
+        AiTool = reply.AiTool,
+        AiModel = reply.AiModel,
         HasPayloadFlag = includeFlags ? reply.HasPayloadFlag : null,
         PayloadFlags = includeFlags ? reply.PayloadFlags : null
     };

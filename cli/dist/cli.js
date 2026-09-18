@@ -15,7 +15,7 @@ var init_build_constants = __esm({
   "src/build-constants.ts"() {
     "use strict";
     BUILD_DEFAULT_SERVER = true ? "https://api.pointer.moamen.work" : "https://api.pointer.moamen.work";
-    BUILD_CLI_VERSION = true ? "0.3.1" : "0.0.0-dev";
+    BUILD_CLI_VERSION = true ? "0.4.0" : "0.0.0-dev";
   }
 });
 
@@ -5071,10 +5071,16 @@ function buildApplyPrompt(items, context, opts) {
   }
   lines.push("## When you finish an item");
   lines.push(
-    'Run exactly: `npx pointer-feedback apply --mark <id> --reply "<what changed>"`   (Separate style: after each item;'
+    'Run exactly: `npx pointer-feedback apply --mark <id> --reply "<what changed>" --model <your-model-id>`'
   );
   lines.push(
-    'Single style: run `npx pointer-feedback apply --mark all --reply "..."` once at the end). Never run git push.'
+    '(Separate style: after each item; Single style: run `npx pointer-feedback apply --mark all --reply "..." --model <your-model-id>`'
+  );
+  lines.push(
+    "once at the end). Never run git push. `--model` records which model you are running as (e.g. `claude-sonnet-5`,"
+  );
+  lines.push(
+    "`gpt-5.2`) on the reply, alongside `--tool` (defaults to the tool recorded at init)."
   );
   return lines.join("\n") + "\n";
 }
@@ -5341,7 +5347,11 @@ async function markApplied(options, ctx) {
           // The raw sha alongside the display URL. Deploy detection tests ancestry against a
           // deployed build, which only a sha can answer — without it a comment stays "applied"
           // forever, even once the fix is live.
-          commitSha: sha || null
+          commitSha: sha || null,
+          // Structured AI attribution on the reply itself (Reply.AiTool/AiModel), distinct from the
+          // free-text appliedByLabel above — see CommentService.Normalize server-side.
+          aiTool: options.tool || void 0,
+          aiModel: options.model || void 0
         },
         token: ctx.token
       });
@@ -5383,7 +5393,9 @@ async function markApplied(options, ctx) {
         commitUrl,
         // Same reason as the single-commit path above: only a sha can be tested for ancestry
         // against a deployed build.
-        commitSha: sha || null
+        commitSha: sha || null,
+        aiTool: options.tool || void 0,
+        aiModel: options.model || void 0
       },
       token: ctx.token
     });
@@ -5401,11 +5413,11 @@ async function markApplied(options, ctx) {
     patchedIds
   };
 }
-async function markFailed(id, reason, ctx) {
+async function markFailed(id, reason, ctx, tool, model) {
   const replyBody = `Could not apply: ${reason}`;
   await api(ctx.server, `/api/comments/${id}/replies`, {
     method: "POST",
-    body: { body: replyBody },
+    body: { body: replyBody, aiTool: tool || void 0, aiModel: model || void 0 },
     token: ctx.token
   });
   await postEvent(ctx.server, ctx.token, {
@@ -5496,14 +5508,16 @@ async function applyCommand(cwd2, parsed, positionals = []) {
     }
     const noCommit = parsed["no-commit"] === true;
     const dryRun = parsed["dry-run"] === true;
-    const tool2 = typeof parsed["tool"] === "string" ? parsed["tool"] : void 0;
+    const tool2 = (typeof parsed["tool"] === "string" ? parsed["tool"] : void 0) || config.aiTool;
+    const model = (typeof parsed["model"] === "string" ? parsed["model"] : void 0) || process.env.POINTER_AI_MODEL;
     await markApplied(
       {
         id: markId,
         reply,
         noCommit,
         dryRun,
-        tool: tool2
+        tool: tool2,
+        model
       },
       clientCtx
     );
@@ -5525,7 +5539,9 @@ async function applyCommand(cwd2, parsed, positionals = []) {
       console.error('--reason "<text>" is required when using --fail');
       process.exit(2);
     }
-    await markFailed(failId, reason, clientCtx);
+    const failTool = (typeof parsed["tool"] === "string" ? parsed["tool"] : void 0) || config.aiTool;
+    const failModel = (typeof parsed["model"] === "string" ? parsed["model"] : void 0) || process.env.POINTER_AI_MODEL;
+    await markFailed(failId, reason, clientCtx, failTool, failModel);
     process.exit(0);
   }
   if (parsed["json"] === true && !parsed["plan"] && !parsed["tool"]) {
@@ -11019,6 +11035,14 @@ var TOOL_POINTER_MARK_APPLIED = {
       reply: {
         type: "string",
         description: "Reply text to post on comment"
+      },
+      tool: {
+        type: "string",
+        description: 'The AI tool posting this reply (e.g. "claude-code"). Defaults to the tool recorded at init.'
+      },
+      model: {
+        type: "string",
+        description: 'The model id you are running as (e.g. "claude-sonnet-5", "gpt-5.2"), if known.'
       }
     },
     required: ["id", "reply"],
@@ -11048,6 +11072,14 @@ var TOOL_POINTER_COMMIT_AND_MARK = {
       reply: {
         type: "string",
         description: "Reply text to post on comments"
+      },
+      tool: {
+        type: "string",
+        description: 'The AI tool posting this reply (e.g. "claude-code"). Defaults to the tool recorded at init.'
+      },
+      model: {
+        type: "string",
+        description: 'The model id you are running as (e.g. "claude-sonnet-5", "gpt-5.2"), if known.'
       }
     },
     required: ["ids", "reply"],
@@ -11067,6 +11099,14 @@ var TOOL_POINTER_REPLY = {
       id: {
         type: "integer",
         description: "Comment ID"
+      },
+      tool: {
+        type: "string",
+        description: 'The AI tool posting this reply (e.g. "claude-code"). Defaults to the tool recorded at init.'
+      },
+      model: {
+        type: "string",
+        description: 'The model id you are running as (e.g. "claude-sonnet-5", "gpt-5.2"), if known.'
       }
     },
     required: ["id", "body"],
@@ -11415,13 +11455,17 @@ async function handleMarkApplied(args, ctx) {
   const email = getUserEmail(ctx.cwd);
   const appliedByLabel = email;
   const commitUrl = args.commitUrl || null;
+  const tool = args.tool || ctx.configAiTool;
+  const model = args.model || process.env.POINTER_AI_MODEL;
   await api(ctx.server, `/api/comments/${id}`, {
     method: "PATCH",
     body: {
       status: 3,
       reply,
       appliedByLabel,
-      commitUrl
+      commitUrl,
+      aiTool: tool || void 0,
+      aiModel: model || void 0
     },
     token: ctx.token
   });
@@ -11440,6 +11484,8 @@ async function handleCommitAndMark(args, ctx) {
   const ids = args?.ids;
   const reply = args?.reply;
   const files = args?.files;
+  const tool = args?.tool || ctx.configAiTool;
+  const model = args?.model || process.env.POINTER_AI_MODEL;
   if (!Array.isArray(ids) || ids.length === 0 || typeof reply !== "string") {
     throw mcpError("git", "ids (non-empty array) and reply (string) are required");
   }
@@ -11528,7 +11574,9 @@ async function handleCommitAndMark(args, ctx) {
             // The raw sha as well as the link. Without it a comment applied through MCP can never
             // be detected as deployed — only a sha can be tested for ancestry against a build —
             // so the same fix that shipped for `pointer apply` has to hold here.
-            commitSha: sha
+            commitSha: sha,
+            aiTool: tool || void 0,
+            aiModel: model || void 0
           },
           token: ctx.token
         });
@@ -11572,7 +11620,9 @@ async function handleCommitAndMark(args, ctx) {
           appliedByLabel,
           commitUrl,
           // Same reason as the single-comment path above.
-          commitSha: sha
+          commitSha: sha,
+          aiTool: tool || void 0,
+          aiModel: model || void 0
         },
         token: ctx.token
       });
@@ -11608,7 +11658,9 @@ async function handleCommitAndMark(args, ctx) {
           status: 3,
           reply,
           appliedByLabel,
-          commitUrl
+          commitUrl,
+          aiTool: tool || void 0,
+          aiModel: model || void 0
         },
         token: ctx.token
       });
@@ -11628,9 +11680,11 @@ async function handleReply(args, ctx) {
   if (!id || isNaN(id) || typeof body !== "string") {
     throw mcpError("forbidden", "id and body are required");
   }
+  const tool = args?.tool || ctx.configAiTool;
+  const model = args?.model || process.env.POINTER_AI_MODEL;
   const res = await api(ctx.server, `/api/comments/${id}/replies`, {
     method: "POST",
-    body: { body },
+    body: { body, aiTool: tool || void 0, aiModel: model || void 0 },
     token: ctx.token
   });
   return { replyId: res?.id ?? res?.data?.id ?? null };
@@ -11727,7 +11781,12 @@ async function executeTool(name, args, ctx) {
       );
     }
   }
-  const effectiveCtx = { ...ctx, project, cwd: root };
+  const effectiveCtx = {
+    ...ctx,
+    project,
+    cwd: root,
+    configAiTool: config.aiTool
+  };
   switch (name) {
     case "pointer_list_comments":
       return handleListComments(args, effectiveCtx);

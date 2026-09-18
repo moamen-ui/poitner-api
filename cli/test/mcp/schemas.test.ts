@@ -47,7 +47,7 @@ test('mcp: schema properties match contract table exactly', () => {
   const propKeys = (tool: { inputSchema: { properties: Record<string, any> } }) =>
     Object.keys(tool.inputSchema.properties).sort();
 
-  assert.deepEqual(propKeys(TOOL_POINTER_COMMIT_AND_MARK), ['files', 'ids', 'project', 'reply']);
+  assert.deepEqual(propKeys(TOOL_POINTER_COMMIT_AND_MARK), ['files', 'ids', 'model', 'project', 'reply', 'tool']);
   assert.deepEqual(propKeys(TOOL_POINTER_DOCTOR), ['project']);
   assert.deepEqual(propKeys(TOOL_POINTER_GET_COMMENT), ['id']);
   assert.deepEqual(propKeys(TOOL_POINTER_GET_QUEUE), ['environment', 'project']);
@@ -59,8 +59,8 @@ test('mcp: schema properties match contract table exactly', () => {
     'status',
   ]);
   assert.deepEqual(propKeys(TOOL_POINTER_LIST_PROJECTS), []);
-  assert.deepEqual(propKeys(TOOL_POINTER_MARK_APPLIED), ['commitUrl', 'id', 'reply']);
-  assert.deepEqual(propKeys(TOOL_POINTER_REPLY), ['body', 'id']);
+  assert.deepEqual(propKeys(TOOL_POINTER_MARK_APPLIED), ['commitUrl', 'id', 'model', 'reply', 'tool']);
+  assert.deepEqual(propKeys(TOOL_POINTER_REPLY), ['body', 'id', 'model', 'tool']);
   assert.deepEqual(propKeys(TOOL_POINTER_RESOLVE_SOURCE), ['hash']);
   assert.deepEqual(propKeys(TOOL_POINTER_SET_STATUS), ['id', 'status']);
 });

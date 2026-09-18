@@ -18,6 +18,9 @@ export type McpContext = {
   project: string;
   token?: string;
   apiKey?: string;
+  /** The tool recorded at `init` time (config.aiTool) — the default for a call's `tool` argument
+   *  when the caller omits it. Set by executeTool from the repo's `.pointer/config.json`. */
+  configAiTool?: string;
 };
 
 export type McpError = {
@@ -360,7 +363,7 @@ export async function handleGetComment(
 }
 
 export async function handleMarkApplied(
-  args: { id: number; reply: string; commitUrl?: string },
+  args: { id: number; reply: string; commitUrl?: string; tool?: string; model?: string },
   ctx: McpContext,
 ): Promise<any> {
   const id = Number(args?.id);
@@ -372,6 +375,8 @@ export async function handleMarkApplied(
   const email = getUserEmail(ctx.cwd);
   const appliedByLabel = email;
   const commitUrl = args.commitUrl || null;
+  const tool = args.tool || ctx.configAiTool;
+  const model = args.model || process.env.POINTER_AI_MODEL;
 
   await api(ctx.server, `/api/comments/${id}`, {
     method: 'PATCH',
@@ -380,6 +385,8 @@ export async function handleMarkApplied(
       reply,
       appliedByLabel,
       commitUrl,
+      aiTool: tool || undefined,
+      aiModel: model || undefined,
     },
     token: ctx.token,
   });
@@ -398,12 +405,14 @@ export async function handleMarkApplied(
 }
 
 export async function handleCommitAndMark(
-  args: { ids: number[]; reply: string; files?: string[] },
+  args: { ids: number[]; reply: string; files?: string[]; tool?: string; model?: string },
   ctx: McpContext,
 ): Promise<any> {
   const ids = args?.ids;
   const reply = args?.reply;
   const files = args?.files;
+  const tool = args?.tool || ctx.configAiTool;
+  const model = args?.model || process.env.POINTER_AI_MODEL;
 
   if (!Array.isArray(ids) || ids.length === 0 || typeof reply !== 'string') {
     throw mcpError('git', 'ids (non-empty array) and reply (string) are required');
@@ -507,6 +516,8 @@ export async function handleCommitAndMark(
             // be detected as deployed — only a sha can be tested for ancestry against a build —
             // so the same fix that shipped for `pointer apply` has to hold here.
             commitSha: sha,
+            aiTool: tool || undefined,
+            aiModel: model || undefined,
           },
           token: ctx.token,
         });
@@ -557,6 +568,8 @@ export async function handleCommitAndMark(
           commitUrl,
           // Same reason as the single-comment path above.
           commitSha: sha,
+          aiTool: tool || undefined,
+          aiModel: model || undefined,
         },
         token: ctx.token,
       });
@@ -599,6 +612,8 @@ export async function handleCommitAndMark(
           reply,
           appliedByLabel,
           commitUrl,
+          aiTool: tool || undefined,
+          aiModel: model || undefined,
         },
         token: ctx.token,
       });
@@ -617,7 +632,7 @@ export async function handleCommitAndMark(
 }
 
 export async function handleReply(
-  args: { id: number; body: string },
+  args: { id: number; body: string; tool?: string; model?: string },
   ctx: McpContext,
 ): Promise<any> {
   const id = Number(args?.id);
@@ -626,9 +641,12 @@ export async function handleReply(
     throw mcpError('forbidden', 'id and body are required');
   }
 
+  const tool = args?.tool || ctx.configAiTool;
+  const model = args?.model || process.env.POINTER_AI_MODEL;
+
   const res = await api<any>(ctx.server, `/api/comments/${id}/replies`, {
     method: 'POST',
-    body: { body },
+    body: { body, aiTool: tool || undefined, aiModel: model || undefined },
     token: ctx.token,
   });
 
@@ -771,7 +789,12 @@ export async function executeTool(
     // nothing resolvable at all) — the underlying handler reports its own "no project" error.
   }
 
-  const effectiveCtx: McpContext & { serverTooOld?: string } = { ...ctx, project, cwd: root };
+  const effectiveCtx: McpContext & { serverTooOld?: string } = {
+    ...ctx,
+    project,
+    cwd: root,
+    configAiTool: config.aiTool,
+  };
 
   switch (name) {
     case 'pointer_list_comments':

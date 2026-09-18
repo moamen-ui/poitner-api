@@ -108,6 +108,15 @@ export const TOOL_POINTER_MARK_APPLIED = {
         type: 'string',
         description: 'Reply text to post on comment',
       },
+      tool: {
+        type: 'string',
+        description:
+          'The AI tool posting this reply (e.g. "claude-code"). Defaults to the tool recorded at init.',
+      },
+      model: {
+        type: 'string',
+        description: 'The model id you are running as (e.g. "claude-sonnet-5", "gpt-5.2"), if known.',
+      },
     },
     required: ['id', 'reply'],
     additionalProperties: false,
@@ -138,6 +147,15 @@ export const TOOL_POINTER_COMMIT_AND_MARK = {
         type: 'string',
         description: 'Reply text to post on comments',
       },
+      tool: {
+        type: 'string',
+        description:
+          'The AI tool posting this reply (e.g. "claude-code"). Defaults to the tool recorded at init.',
+      },
+      model: {
+        type: 'string',
+        description: 'The model id you are running as (e.g. "claude-sonnet-5", "gpt-5.2"), if known.',
+      },
     },
     required: ['ids', 'reply'],
     additionalProperties: false,
@@ -157,6 +175,15 @@ export const TOOL_POINTER_REPLY = {
       id: {
         type: 'integer',
         description: 'Comment ID',
+      },
+      tool: {
+        type: 'string',
+        description:
+          'The AI tool posting this reply (e.g. "claude-code"). Defaults to the tool recorded at init.',
+      },
+      model: {
+        type: 'string',
+        description: 'The model id you are running as (e.g. "claude-sonnet-5", "gpt-5.2"), if known.',
       },
     },
     required: ['id', 'body'],

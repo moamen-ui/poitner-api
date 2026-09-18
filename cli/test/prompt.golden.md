@@ -108,5 +108,7 @@ Picked actions (trusted):
 - Make primary: Swap the outline button classes for the filled/primary variant.
 
 ## When you finish an item
-Run exactly: `npx pointer-feedback apply --mark <id> --reply "<what changed>"`   (Separate style: after each item;
-Single style: run `npx pointer-feedback apply --mark all --reply "..."` once at the end). Never run git push.
+Run exactly: `npx pointer-feedback apply --mark <id> --reply "<what changed>" --model <your-model-id>`
+(Separate style: after each item; Single style: run `npx pointer-feedback apply --mark all --reply "..." --model <your-model-id>`
+once at the end). Never run git push. `--model` records which model you are running as (e.g. `claude-sonnet-5`,
+`gpt-5.2`) on the reply, alongside `--tool` (defaults to the tool recorded at init).

@@ -10,6 +10,12 @@ export interface Reply {
   body?: string;
   text?: string;
   isAi?: boolean;
+  /** The automated tool that posted this reply (e.g. "claude-code"), when isAi. See Reply.AiTool
+   *  server-side. */
+  aiTool?: string;
+  /** The model id the tool reported running as (e.g. "claude-sonnet-5"), when isAi. See
+   *  Reply.AiModel server-side. */
+  aiModel?: string;
   /** Computed client-side at render time (renderSidebar) — gates the edit/delete buttons. */
   _mine?: boolean;
 }

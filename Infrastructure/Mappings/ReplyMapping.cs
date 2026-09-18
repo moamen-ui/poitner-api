@@ -33,5 +33,8 @@ public class ReplyMapping : IEntityTypeConfiguration<Reply>
         b.Property(x => x.HasPayloadFlag).HasColumnName("has_payload_flag").HasDefaultValue(false);
         b.Property(x => x.PayloadFlags).ConfigureJsonStringList("payload_flags");
 
+        // Structured AI attribution — see Reply.AiTool/AiModel doc comments.
+        b.Property(x => x.AiTool).HasColumnName("ai_tool").HasMaxLength(64);
+        b.Property(x => x.AiModel).HasColumnName("ai_model").HasMaxLength(64);
     }
 }

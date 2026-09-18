@@ -105,6 +105,88 @@ test('markApplied in Separate style commits and patches single comment with comm
     assert.equal(patchedBody.reply, 'Fixed the console log statement');
     assert.equal(patchedBody.appliedByLabel, 'dev@example.com');
     assert.equal(patchedBody.commitUrl, result.commitUrl);
+    // No --tool/--model passed: structured attribution fields are simply absent.
+    assert.equal(patchedBody.aiTool, undefined);
+    assert.equal(patchedBody.aiModel, undefined);
+  } finally {
+    await stub.close();
+    await fs.rm(dir, { recursive: true, force: true });
+  }
+});
+
+test('markApplied sends structured aiTool/aiModel in the PATCH body when provided', async () => {
+  const dir = await fs.mkdtemp(join(tmpdir(), 'pointer-mark-test-'));
+  spawnSync('git', ['init'], { cwd: dir });
+  spawnSync('git', ['config', 'user.name', 'Developer'], { cwd: dir });
+  spawnSync('git', ['config', 'user.email', 'dev@example.com'], { cwd: dir });
+  spawnSync('git', ['remote', 'add', 'origin', 'https://github.com/myorg/myrepo.git'], { cwd: dir });
+
+  await fs.writeFile(join(dir, 'README.md'), '# test\n');
+  spawnSync('git', ['add', 'README.md'], { cwd: dir });
+  spawnSync('git', ['commit', '-m', 'Initial commit'], { cwd: dir });
+
+  await fs.writeFile(join(dir, 'app.js'), 'console.log("fix");\n');
+  spawnSync('git', ['add', 'app.js'], { cwd: dir });
+
+  let patchedBody: any = null;
+  const stub = await stubServer((req, res) => {
+    if (req.method === 'GET' && req.url === '/api/branding') {
+      res.writeHead(200, { 'content-type': 'application/json' });
+      res.end(JSON.stringify({ isSuccess: true, data: { productName: 'Pointer' } }));
+      return;
+    }
+    if (req.method === 'GET' && req.url?.startsWith('/api/projects/my-app/capture-config')) {
+      res.writeHead(200, { 'content-type': 'application/json' });
+      res.end(JSON.stringify({ isSuccess: true, data: { commitStyle: 2 } }));
+      return;
+    }
+    if (req.method === 'GET' && req.url === '/api/comments/11') {
+      res.writeHead(200, { 'content-type': 'application/json' });
+      res.end(JSON.stringify({ isSuccess: true, data: { id: 11, body: 'Fix console log' } }));
+      return;
+    }
+    if (req.method === 'PATCH' && req.url === '/api/comments/11') {
+      let data = '';
+      req.on('data', (chunk: any) => (data += chunk));
+      req.on('end', () => {
+        patchedBody = JSON.parse(data);
+        res.writeHead(200, { 'content-type': 'application/json' });
+        res.end(JSON.stringify({ isSuccess: true, data: {} }));
+      });
+      return;
+    }
+    if (req.method === 'POST' && req.url === '/api/events') {
+      res.writeHead(200, { 'content-type': 'application/json' });
+      res.end(JSON.stringify({ isSuccess: true }));
+      return;
+    }
+    res.writeHead(404, { 'content-type': 'application/json' });
+    res.end(JSON.stringify({ isSuccess: false }));
+  });
+
+  try {
+    const ctx: ApplyClientContext = {
+      server: stub.url,
+      project: 'my-app',
+      token: 'test-token',
+      cwd: dir,
+    };
+
+    await markApplied(
+      {
+        id: 11,
+        reply: 'Fixed the console log statement',
+        tool: 'claude-code',
+        model: 'claude-sonnet-5',
+      },
+      ctx,
+    );
+
+    assert.ok(patchedBody, 'PATCH request must have been made');
+    assert.equal(patchedBody.aiTool, 'claude-code');
+    assert.equal(patchedBody.aiModel, 'claude-sonnet-5');
+    // appliedByLabel keeps its own "via <tool>" free-text form — unrelated to the structured fields.
+    assert.equal(patchedBody.appliedByLabel, 'dev@example.com via claude-code');
   } finally {
     await stub.close();
     await fs.rm(dir, { recursive: true, force: true });
@@ -152,10 +234,57 @@ test('markFailed posts reply with reason and emits event', async () => {
 
     assert.ok(replyBody, 'Reply request must be sent');
     assert.equal(replyBody.body, 'Could not apply: Element cannot be styled via CSS');
+    assert.equal(replyBody.aiTool, undefined);
+    assert.equal(replyBody.aiModel, undefined);
 
     assert.ok(eventPayload, 'Event must be emitted');
     assert.equal(eventPayload.type, 'apply_failed');
     assert.equal(eventPayload.meta.commentId, 25);
+  } finally {
+    await stub.close();
+  }
+});
+
+test('markFailed sends structured aiTool/aiModel in the reply body when provided', async () => {
+  let replyBody: any = null;
+
+  const stub = await stubServer((req, res) => {
+    if (req.method === 'POST' && req.url === '/api/comments/26/replies') {
+      let data = '';
+      req.on('data', (chunk: any) => (data += chunk));
+      req.on('end', () => {
+        replyBody = JSON.parse(data);
+        res.writeHead(200, { 'content-type': 'application/json' });
+        res.end(JSON.stringify({ isSuccess: true, data: { id: 100 } }));
+      });
+      return;
+    }
+    if (req.method === 'POST' && req.url === '/api/events') {
+      let data = '';
+      req.on('data', (chunk: any) => (data += chunk));
+      req.on('end', () => {
+        res.writeHead(200, { 'content-type': 'application/json' });
+        res.end(JSON.stringify({ isSuccess: true }));
+      });
+      return;
+    }
+    res.writeHead(404, { 'content-type': 'application/json' });
+    res.end(JSON.stringify({ isSuccess: false }));
+  });
+
+  try {
+    const ctx: ApplyClientContext = {
+      server: stub.url,
+      project: 'my-app',
+      token: 'test-token',
+      cwd: '/tmp',
+    };
+
+    await markFailed(26, 'Third-party widget, no repo counterpart', ctx, 'claude-code', 'gpt-5.2');
+
+    assert.ok(replyBody, 'Reply request must be sent');
+    assert.equal(replyBody.aiTool, 'claude-code');
+    assert.equal(replyBody.aiModel, 'gpt-5.2');
   } finally {
     await stub.close();
   }

@@ -11,6 +11,9 @@ export type MarkAppliedOptions = {
   noCommit?: boolean;
   dryRun?: boolean;
   tool?: string;
+  /** The model id the tool reported running as (e.g. "claude-sonnet-5"), for structured AI
+   *  attribution on the reply — see Reply.AiTool/AiModel server-side. */
+  model?: string;
 };
 
 export type MarkAppliedResult = {
@@ -81,6 +84,10 @@ export async function markApplied(
           // deployed build, which only a sha can answer — without it a comment stays "applied"
           // forever, even once the fix is live.
           commitSha: sha || null,
+          // Structured AI attribution on the reply itself (Reply.AiTool/AiModel), distinct from the
+          // free-text appliedByLabel above — see CommentService.Normalize server-side.
+          aiTool: options.tool || undefined,
+          aiModel: options.model || undefined,
         },
         token: ctx.token,
       });
@@ -128,6 +135,8 @@ export async function markApplied(
         // Same reason as the single-commit path above: only a sha can be tested for ancestry
         // against a deployed build.
         commitSha: sha || null,
+        aiTool: options.tool || undefined,
+        aiModel: options.model || undefined,
       },
       token: ctx.token,
     });
@@ -151,11 +160,13 @@ export async function markFailed(
   id: number,
   reason: string,
   ctx: ApplyClientContext,
+  tool?: string,
+  model?: string,
 ): Promise<void> {
   const replyBody = `Could not apply: ${reason}`;
   await api(ctx.server, `/api/comments/${id}/replies`, {
     method: 'POST',
-    body: { body: replyBody },
+    body: { body: replyBody, aiTool: tool || undefined, aiModel: model || undefined },
     token: ctx.token,
   });
 

@@ -118,7 +118,12 @@ export async function applyCommand(
 
     const noCommit = parsed['no-commit'] === true;
     const dryRun = parsed['dry-run'] === true;
-    const tool = typeof parsed['tool'] === 'string' ? parsed['tool'] : undefined;
+    // `--tool` wins outright; falls back to the tool recorded at `init` time (config.aiTool) so an
+    // agent that forgets the flag still gets attributed correctly.
+    const tool = (typeof parsed['tool'] === 'string' ? parsed['tool'] : undefined) || config.aiTool;
+    const model =
+      (typeof parsed['model'] === 'string' ? parsed['model'] : undefined) ||
+      process.env.POINTER_AI_MODEL;
 
     await markApplied(
       {
@@ -127,6 +132,7 @@ export async function applyCommand(
         noCommit,
         dryRun,
         tool,
+        model,
       },
       clientCtx,
     );
@@ -152,7 +158,12 @@ export async function applyCommand(
       process.exit(2);
     }
 
-    await markFailed(failId, reason, clientCtx);
+    const failTool = (typeof parsed['tool'] === 'string' ? parsed['tool'] : undefined) || config.aiTool;
+    const failModel =
+      (typeof parsed['model'] === 'string' ? parsed['model'] : undefined) ||
+      process.env.POINTER_AI_MODEL;
+
+    await markFailed(failId, reason, clientCtx, failTool, failModel);
     process.exit(0);
   }
 

@@ -263,8 +263,19 @@ export const TPL = {
       // author or admin, enforced server-side too (see CommentService.EditReplyAsync/
       // DeleteReplyAsync) — and collapsed by default, since they tend to be long changelogs.
       if (r.isAi) {
+        // "claude-code · claude-sonnet-5 · via Moamen" — tool and model are absent on rows written
+        // before this field existed, and "via {name}" only when the author is actually known (not
+        // the generic defaultReplyAuthor fallback), so older/anonymous AI replies degrade gracefully.
+        const attributionParts: string[] = [];
+        if (r.aiTool) attributionParts.push(escapeHtml(r.aiTool));
+        if (r.aiModel) attributionParts.push(escapeHtml(r.aiModel));
+        const knownAuthorName = r.authorName || r.authorLabel;
+        if (knownAuthorName) attributionParts.push(t('card.aiVia', { name: escapeHtml(knownAuthorName) }));
+        const attribution = attributionParts.length > 0
+          ? `<span class="fbk-reply-ai-author">${attributionParts.join(' &middot; ')}</span>`
+          : '';
         return `<details class="fbk-reply fbk-reply-ai" data-reply-id="${r.id ?? ''}">
-            <summary class="fbk-reply-ai-summary">&#x1f916; <b>${t('card.automatedReply')}</b> <span class="fbk-reply-ai-author">${authorName}</span></summary>
+            <summary class="fbk-reply-ai-summary">&#x1f916; <b>${t('card.automatedReply')}</b> ${attribution}</summary>
             <div class="fbk-reply-main"><span class="fbk-reply-body">${body}</span></div>
           </details>`;
       }

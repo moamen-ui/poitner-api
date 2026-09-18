@@ -26,4 +26,17 @@ public class Reply : BaseEntity
     /// touch an AI reply regardless of caller.
     /// </remarks>
     public bool IsAi { get; set; }
+
+    /// <summary>
+    /// The automated tool that posted this reply (e.g. "claude-code", "cursor", "codex"), lowercased.
+    /// Null for human replies (<see cref="IsAi"/> false) — a human surface's caller can never set this,
+    /// see CommentService's Normalize helper.
+    /// </summary>
+    public string? AiTool { get; set; }
+
+    /// <summary>
+    /// The model id the tool reported running as (e.g. "claude-sonnet-5", "gpt-5.2"), case preserved.
+    /// Null for human replies, same rule as <see cref="AiTool"/>.
+    /// </summary>
+    public string? AiModel { get; set; }
 }

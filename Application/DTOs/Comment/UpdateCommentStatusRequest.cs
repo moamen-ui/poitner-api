@@ -15,4 +15,15 @@ public class UpdateCommentStatusRequest
     /// deploy detection tests for ancestry against a deployed build, which a URL cannot answer.
     /// </summary>
     public string? CommitSha { get; set; }
+
+    /// <summary>
+    /// The automated tool posting the accompanying <see cref="Reply"/> (e.g. "claude-code"), for the
+    /// AI apply flow (`apply --mark`) only — ignored (stored null) when the caller is a human surface.
+    /// See CommentService.Normalize.
+    /// </summary>
+    public string? AiTool { get; set; }
+
+    /// <summary>The model id the tool reported running as (e.g. "claude-sonnet-5"). Same rule as
+    /// <see cref="AiTool"/>.</summary>
+    public string? AiModel { get; set; }
 }

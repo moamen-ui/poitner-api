@@ -719,6 +719,7 @@
       "card.containsSecretPayload": "contains a secret/payload?",
       "card.defaultReplyAuthor": "User",
       "card.automatedReply": "Automated reply",
+      "card.aiVia": "via {name}",
       "card.edited": "edited",
       "card.replyPlaceholder": "Reply…",
       "card.markedReadyClickToUnmark": "Marked ready — click to unmark",
@@ -920,6 +921,7 @@
       "card.containsSecretPayload": "قد يحتوي على بيانات سرية؟",
       "card.defaultReplyAuthor": "مستخدم",
       "card.automatedReply": "رد آلي",
+      "card.aiVia": "بواسطة {name}",
       "card.edited": "مُعدَّل",
       "card.replyPlaceholder": "رد…",
       "card.markedReadyClickToUnmark": "وُضع علامة جاهز — انقر لإلغائها",
@@ -1219,8 +1221,14 @@
         const body = escapeHtml(r.body || r.text || "");
         const authorName = escapeHtml(r.authorName || r.authorLabel || t("card.defaultReplyAuthor"));
         if (r.isAi) {
+          const attributionParts = [];
+          if (r.aiTool) attributionParts.push(escapeHtml(r.aiTool));
+          if (r.aiModel) attributionParts.push(escapeHtml(r.aiModel));
+          const knownAuthorName = r.authorName || r.authorLabel;
+          if (knownAuthorName) attributionParts.push(t("card.aiVia", { name: escapeHtml(knownAuthorName) }));
+          const attribution = attributionParts.length > 0 ? `<span class="fbk-reply-ai-author">${attributionParts.join(" &middot; ")}</span>` : "";
           return `<details class="fbk-reply fbk-reply-ai" data-reply-id="${(_a2 = r.id) != null ? _a2 : ""}">
-            <summary class="fbk-reply-ai-summary">&#x1f916; <b>${t("card.automatedReply")}</b> <span class="fbk-reply-ai-author">${authorName}</span></summary>
+            <summary class="fbk-reply-ai-summary">&#x1f916; <b>${t("card.automatedReply")}</b> ${attribution}</summary>
             <div class="fbk-reply-main"><span class="fbk-reply-body">${body}</span></div>
           </details>`;
         }

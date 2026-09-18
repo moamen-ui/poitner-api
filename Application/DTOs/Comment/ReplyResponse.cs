@@ -13,6 +13,14 @@ public class ReplyResponse
     /// widget hides edit/delete for these regardless of author, and the server refuses both too.</summary>
     public bool IsAi { get; set; }
 
+    /// <summary>The automated tool that posted this reply (e.g. "claude-code"), lowercased. Null for
+    /// human replies. See Reply.AiTool.</summary>
+    public string? AiTool { get; set; }
+
+    /// <summary>The model id the tool reported running as (e.g. "claude-sonnet-5"), case preserved.
+    /// Null for human replies. See Reply.AiModel.</summary>
+    public string? AiModel { get; set; }
+
     /// <summary>
     /// Advisory: this text looked like it contained a credential or executable payload.
     /// </summary>

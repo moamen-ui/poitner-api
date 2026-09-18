@@ -116,6 +116,7 @@ public static class MessageKeys
         public const string VerifyNoteRequired = "A note is required when reporting an issue.";
         public const string Verified = "Comment marked as verified.";
         public const string Reopened = "Comment reopened.";
+        public const string AiAttributionInvalid = "AI tool/model must be plain identifiers (letters, digits, ., _, :, /, +, -) with no spaces, up to 64 characters.";
     }
 
     public static class PredefinedAction
