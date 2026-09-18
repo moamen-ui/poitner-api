@@ -2510,13 +2510,21 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
       const c = this.comments.find((x) => String(x.id) === String(b.dataset.id));
       if (c) this.toggleCardMenu(b, c);
     }));
-    list.querySelectorAll<HTMLElement>('[data-act="reopen"]').forEach((b) => b.addEventListener('click', () => {
-      const c = this.comments.find((x) => String(x.id) === String(b.dataset.id));
-      if (c) this.setStatus(c, 'open', t('toast.reopenedMsg'));
-    }));
+    // Reopen now lives in the kebab menu (see cardMenu template + toggleCardMenu) — archive stays
+    // here since only applied comments ever show it, right next to the "Ready" button it replaces.
     list.querySelectorAll<HTMLElement>('[data-act="archive"]').forEach((b) => b.addEventListener('click', () => {
       const c = this.comments.find((x) => String(x.id) === String(b.dataset.id));
       if (c) this.setStatus(c, 'archived', t('toast.archivedMsg'));
+    }));
+    // Reply is collapsed to a button by default — clicking it swaps in the textarea (focused) so
+    // a card scanned while triaging doesn't show an open text box for every single item.
+    list.querySelectorAll<HTMLElement>('[data-act="reply-toggle"]').forEach((btn) => btn.addEventListener('click', () => {
+      const row = btn.closest('.fbk-reply-row');
+      const inp = row?.querySelector<HTMLTextAreaElement>('.fbk-reply-input');
+      if (!inp) return;
+      btn.classList.add('fbk-hidden');
+      inp.classList.remove('fbk-hidden');
+      inp.focus();
     }));
     list.querySelectorAll<HTMLTextAreaElement>('.fbk-reply-input').forEach((inp) => inp.addEventListener('keydown', (e) => {
       // Enter sends (matches the old single-line input's behavior); Shift+Enter inserts a
@@ -2771,6 +2779,13 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
       completeBtn.addEventListener('click', () => {
         this.closeCardMenu();
         if (c.status !== 'applied') this.markCompleted(c);
+      });
+    }
+    const reopenBtn = menu.querySelector('[data-menu-act="reopen"]') as HTMLElement | null;
+    if (reopenBtn) {
+      reopenBtn.addEventListener('click', () => {
+        this.closeCardMenu();
+        this.setStatus(c, 'open', t('toast.reopenedMsg'));
       });
     }
     const visBtn = menu.querySelector('[data-menu-act="visibility"]') as HTMLElement | null;

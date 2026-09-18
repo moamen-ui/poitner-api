@@ -309,7 +309,7 @@
   var SHOT_HIGHLIGHT = "#2563eb";
   var _a;
   var SCRIPT_SRC = ((_a = document.currentScript) == null ? void 0 : _a.src) || "";
-  var CSS_INTEGRITY = true ? "sha384-xX6/jjS5rLtovoWscH5ktKTBoOpR4fxRJWEHGA/TD5343iNt2OpiMnzQmqic1Pj7" : "";
+  var CSS_INTEGRITY = true ? "sha384-xB4/yxHr8AT2zpT8nsolDnn+Sm/vR27i6CFEnObM7e4Uz/4/+4Hgqn/vkiJCq0gl" : "";
   function resolveCssUrl(scriptSrc) {
     var _a2;
     if (!scriptSrc) return "pointer.css";
@@ -470,7 +470,10 @@
   // src/icons.ts
   var ICON = {
     // Vertical "more actions" kebab — three stacked dots, same filled-circle style as `grip`.
-    kebab: '<svg viewBox="0 0 16 16" width="14" height="14" fill="currentColor" stroke="none"><circle cx="8" cy="3.2" r="1.3"/><circle cx="8" cy="8" r="1.3"/><circle cx="8" cy="12.8" r="1.3"/></svg>',
+    kebab: '<svg viewBox="0 0 16 16" width="14" height="14" fill="currentColor" stroke="none"><circle cx="8" cy="3.2" r="1.7"/><circle cx="8" cy="8" r="1.7"/><circle cx="8" cy="12.8" r="1.7"/></svg>',
+    copy: '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>',
+    thumbsUp: '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 9V5a3 3 0 0 0-3-3l-4 9v11h11.28a2 2 0 0 0 2-1.7l1.38-9a2 2 0 0 0-2-2.3z"/><path d="M7 22H4a2 2 0 0 1-2-2v-7a2 2 0 0 1 2-2h3"/></svg>',
+    thumbsDown: '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 15v4a3 3 0 0 0 3 3l4-9V2H5.72a2 2 0 0 0-2 1.7l-1.38 9a2 2 0 0 0 2 2.3z"/><path d="M17 2h2.67A2.31 2.31 0 0 1 22 4v7a2.31 2.31 0 0 1-2.33 2H17"/></svg>',
     flag: '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><line x1="4" y1="22" x2="4" y2="15"/></svg>',
     check: '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>',
     // Plain checkmark (no circle) — for compact confirm actions like "confirm delete".
@@ -517,7 +520,8 @@
     // Popover's element-navigation buttons — move the comment's target up to its parent or down to
     // its first child.
     chevronUp: '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="18 15 12 9 6 15"/></svg>',
-    chevronDown: '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>'
+    chevronDown: '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>',
+    chevronRight: '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 6 15 12 9 18"/></svg>'
   };
 
   // src/i18n.ts
@@ -654,7 +658,7 @@
       "toolbar.cancel": "Cancel",
       "toolbar.viewCommentsList": "View comments list",
       "toolbar.comments": "Comments",
-      "toolbar.commentsHeading": "{project} comments",
+      "toolbar.projectHeading": "{project}",
       "toolbar.recentActivityUpdates": "Recent activity &amp; updates",
       "toolbar.updates": "Updates",
       "toolbar.signedInAs": "Signed in as",
@@ -699,6 +703,7 @@
       // --- sidebar / filters ---
       "sidebar.mineOnly": "Mine only",
       "sidebar.showOnlyMyComments": "Show only my comments",
+      "sidebar.status": "Status",
       "sidebar.filterByStatus": "Filter by status",
       "sidebar.filterByUser": "Filter by user",
       "sidebar.allUsers": "All users",
@@ -725,16 +730,18 @@
       "card.automatedReply": "Automated reply",
       "card.aiVia": "via {name}",
       "card.edited": "edited",
+      "card.reply": "Reply",
       "card.replyPlaceholder": "Reply…",
       "card.markedReadyClickToUnmark": "Marked ready — click to unmark",
       "card.markReadyToApply": "Mark ready to apply",
       "card.ready": "Ready",
-      "card.markCompleted": "Mark completed",
       "card.reopen": "Re-open",
       "card.archive": "Archive",
       "card.edit": "Edit",
       "card.delete": "Delete",
       "card.moreActions": "More actions",
+      "card.copyApplyPrompt": "Copy apply prompt",
+      "card.complete": "Complete",
       "card.envLocal": "Local",
       "card.envStaging": "Staging",
       "card.envProduction": "Production",
@@ -791,6 +798,8 @@
       "toast.couldNotReachServer": "Could not reach {brand} server",
       "toast.retry": "Retry",
       "toast.refreshed": "Refreshed",
+      "toast.applyPromptCopied": "Apply prompt copied — paste it into your AI tool",
+      "toast.copyFailed": "Could not copy to clipboard",
       "toast.commitStyleUpdated": "Commit style updated",
       "toast.updateFailed": "Update failed",
       "toast.updated": "Updated",
@@ -859,7 +868,7 @@
       "toolbar.cancel": "إلغاء",
       "toolbar.viewCommentsList": "عرض قائمة التعليقات",
       "toolbar.comments": "التعليقات",
-      "toolbar.commentsHeading": "تعليقات {project}",
+      "toolbar.projectHeading": "{project}",
       "toolbar.recentActivityUpdates": "النشاط الأخير والتحديثات",
       "toolbar.updates": "التحديثات",
       "toolbar.signedInAs": "مسجّل الدخول باسم",
@@ -904,6 +913,7 @@
       // --- sidebar / filters ---
       "sidebar.mineOnly": "تعليقاتي فقط",
       "sidebar.showOnlyMyComments": "عرض تعليقاتي فقط",
+      "sidebar.status": "الحالة",
       "sidebar.filterByStatus": "تصفية حسب الحالة",
       "sidebar.filterByUser": "تصفية حسب المستخدم",
       "sidebar.allUsers": "جميع المستخدمين",
@@ -930,16 +940,18 @@
       "card.automatedReply": "رد آلي",
       "card.aiVia": "بواسطة {name}",
       "card.edited": "مُعدَّل",
+      "card.reply": "رد",
       "card.replyPlaceholder": "رد…",
       "card.markedReadyClickToUnmark": "وُضع علامة جاهز — انقر لإلغائها",
       "card.markReadyToApply": "وضع علامة جاهز للتطبيق",
       "card.ready": "جاهز",
-      "card.markCompleted": "وضع علامة مكتمل",
       "card.reopen": "إعادة الفتح",
       "card.archive": "أرشفة",
       "card.edit": "تعديل",
       "card.delete": "حذف",
       "card.moreActions": "المزيد من الإجراءات",
+      "card.copyApplyPrompt": "نسخ تعليمة التطبيق",
+      "card.complete": "إكمال",
       "card.envLocal": "محلي",
       "card.envStaging": "الاختبار",
       "card.envProduction": "الإنتاج",
@@ -996,6 +1008,8 @@
       "toast.couldNotReachServer": "تعذّر الوصول إلى خادم {brand}",
       "toast.retry": "إعادة المحاولة",
       "toast.refreshed": "تم التحديث",
+      "toast.applyPromptCopied": "تم نسخ تعليمة التطبيق — الصقها في أداة الذكاء الاصطناعي",
+      "toast.copyFailed": "تعذر النسخ إلى الحافظة",
       "toast.commitStyleUpdated": "تم تحديث أسلوب الالتزام",
       "toast.updateFailed": "فشل التحديث",
       "toast.updated": "تم التحديث",
@@ -1068,12 +1082,8 @@
         <div class="fbk-auth-foot">
           ${t("auth.alreadyHaveAccount")} <button class="fbk-btn fbk-link fbk-link-inline" id="fbk-show-login">${t("auth.backToSignIn")}</button>
         </div>`,
-    // `fixedEnvLabel`: when the host fixed the environment at install time (attribute or injected
-    // config), pass its display name to render a read-only label instead of the switcher — letting a
-    // visitor switch an environment that was already explicitly configured is redundant and risks
-    // misfiling a comment into the wrong bucket. Pass null/undefined to render the normal switcher.
-    // `projectName`: shown next to the environment indicator so a visitor can immediately tell which
-    // project this install is bound to — project keys aren't unique across a workspace, so two
+    // `projectName`: embedded in the "{project}" heading so a visitor can immediately tell
+    // which project this install is bound to — project keys aren't unique across a workspace, so two
     // different installs can easily look identical without this.
     // `avatarInitials`: 1-2 letters (see dom.ts's initials()) for the account button, already
     // safe to interpolate as-is — computed by the caller from the RAW display name (before
@@ -1081,7 +1091,9 @@
     // `ariaShortcut`: the ARIA-format string ("Control+Alt+Shift+C" — see shortcut.ts's
     // ariaKeyshortcuts), separate from `shortcutLabel` (the human-display form, "Ctrl+Alt+Shift+C"
     // or "⌃⌥⇧C" on Mac) since ARIA wants full, platform-independent modifier names.
-    chrome: (displayName, roleLabel, fixedEnvLabel, projectName = "", shortcutLabel = "", unreadNotifyCount = 0, avatarInitials = "", ariaShortcut = "") => `
+    // The environment select/label used to live in this shell too; it's now rendered inside
+    // #fbk-filters (see envFilterSelect), beside the status filter — both scoping controls together.
+    chrome: (displayName, roleLabel, projectName = "", shortcutLabel = "", unreadNotifyCount = 0, avatarInitials = "", ariaShortcut = "") => `
         <aside class="fbk-toolbar" id="fbk-toolbar" role="toolbar" aria-label="${escapeHtml(getBrandName())}" part="toolbar">
           <span class="fbk-toolbar__grip" id="fbk-grip" data-fbk-drag data-toggle="tooltip" data-placement="top" title="${t("toolbar.dragToReposition")}" aria-hidden="true">${ICON.grip}</span>
           <span class="fbk-toolbar__divider" aria-hidden="true"></span>
@@ -1096,23 +1108,13 @@
           <button type="button" class="fbk-toolbar-btn fbk-toolbar-btn--icon fbk-toolbar__reset" id="fbk-reset-pos" data-fbk-act="reset-position" data-toggle="tooltip" data-placement="top" title="${t("toolbar.resetToolbarPosition")}" aria-label="${t("toolbar.resetToolbarPosition")}"><span class="fbk-toolbar-btn__icon">${ICON.restore}</span></button>
         </aside>
         <div class="fbk-sidebar" id="fbk-sidebar">
+          <button class="fbk-sidebar-close-arrow" id="fbk-close" title="${t("toolbar.close")}" aria-label="${t("toolbar.close")}">${ICON.chevronRight}</button>
           <div class="fbk-sidebar-head">
             <div class="fbk-sidebar-head-row">
-              <h2 id="fbk-comments-heading">${t("toolbar.commentsHeading", { project: escapeHtml(projectName) })}</h2>
-              <button class="fbk-mini fbk-icon" id="fbk-close" title="${t("toolbar.close")}" aria-label="${t("toolbar.close")}">&#x2715;</button>
-            </div>
-            <div class="fbk-sidebar-head-row">
-              <div class="fbk-sidebar-meta">
-                <span class="fbk-project-name fbk-caption" id="fbk-project-name" title="${escapeHtml(projectName)}">${escapeHtml(projectName)}</span>
-                ${fixedEnvLabel ? `<span class="fbk-env-label fbk-caption" title="${t("toolbar.envFixedTitle")}">&middot; ${escapeHtml(fixedEnvLabel)}</span>` : `<select class="fbk-input fbk-env-select" id="fbk-env" title="${t("toolbar.envSwitchTitle")}">
-                <option value="all">${t("toolbar.envAll")}</option>
-                <option value="local">${t("toolbar.envLocal")}</option>
-                <option value="staging">${t("toolbar.envStaging")}</option>
-                <option value="production">${t("toolbar.envProduction")}</option>
-              </select>`}
-              </div>
+              <h2 id="fbk-comments-heading">${t("toolbar.projectHeading", { project: escapeHtml(projectName) })}</h2>
               <button class="fbk-mini fbk-icon" id="fbk-refresh" title="${t("toolbar.refreshComments")}" aria-label="${t("toolbar.refreshComments")}">&#8635;</button>
             </div>
+            <div class="fbk-mine-row" id="fbk-mine-row"></div>
             <div class="fbk-commit-style fbk-hidden" id="fbk-commit-style"></div>
           </div>
           <div class="fbk-filters" id="fbk-filters"></div>
@@ -1192,39 +1194,67 @@
     // Status filter as a dropdown (rather than a row of chip buttons) — keeps the filter bar compact.
     // Filter labels themselves are server-provided status-catalog text (customizable per project) —
     // never translated by the widget, which cannot know what language an admin wrote them in.
-    statusFilterSelect: (filters, active, counts) => `<select class="fbk-status-select" id="fbk-status-filter" title="${t("sidebar.filterByStatus")}">
-             ${filters.map((f) => {
+    // Wrapped in a <label> with a visible text label (not just the select's own title tooltip) —
+    // sits beside envFilterSelect, which follows the same fbk-filter-field shape.
+    statusFilterSelect: (filters, active, counts) => `<label class="fbk-filter-field">
+             <span class="fbk-filter-field-label">${t("sidebar.status")}</span>
+             <select class="fbk-status-select" id="fbk-status-filter" title="${t("sidebar.filterByStatus")}">
+               ${filters.map((f) => {
       var _a2;
       return `<option value="${f.key}" ${f.key === active ? "selected" : ""}>${escapeHtml(f.label)} (${(_a2 = counts[f.key]) != null ? _a2 : 0})</option>`;
     }).join("")}
-           </select>`,
-    // "Mine only" toggle — a chip that composes with the status chips above.
-    // Rendered only when a user is logged in.
-    mineToggle: (active) => `<button class="fbk-chip fbk-mine ${active ? "active" : ""}" id="fbk-mine-toggle" title="${t("sidebar.showOnlyMyComments")}" aria-pressed="${active ? "true" : "false"}">
-             &#x1f464; ${t("sidebar.mineOnly")}
-           </button>`,
+             </select>
+           </label>`,
+    // Environment filter — sits beside the status filter (see statusFilterSelect) rather than in the
+    // sidebar head, so both scoping controls live together. `fixedEnvLabel` renders a read-only
+    // value instead of a select when the install pinned the environment, or the project turned the
+    // switcher off for everyone (see `showEnvironmentSelector`); null/undefined renders the switcher.
+    envFilterSelect: (fixedEnvLabel, currentValue) => `<label class="fbk-filter-field">
+             <span class="fbk-filter-field-label">${t("toolbar.environment")}</span>
+             ${fixedEnvLabel ? `<span class="fbk-env-label fbk-caption" title="${t("toolbar.envFixedTitle")}">${escapeHtml(fixedEnvLabel)}</span>` : `<select class="fbk-input fbk-env-select" id="fbk-env" title="${t("toolbar.envSwitchTitle")}">
+                 <option value="all" ${currentValue === "all" ? "selected" : ""}>${t("toolbar.envAll")}</option>
+                 <option value="local" ${currentValue === "local" ? "selected" : ""}>${t("toolbar.envLocal")}</option>
+                 <option value="staging" ${currentValue === "staging" ? "selected" : ""}>${t("toolbar.envStaging")}</option>
+                 <option value="production" ${currentValue === "production" ? "selected" : ""}>${t("toolbar.envProduction")}</option>
+               </select>`}
+           </label>`,
+    // "Mine only" — a real switch (track + thumb), not a filter chip: it's a single on/off
+    // setting, not one choice among several (unlike the status/environment selects beside it),
+    // so it gets its own row rather than living inside #fbk-filters. Rendered only when a user is
+    // logged in (see renderSidebar's canMine).
+    mineToggle: (active) => `<div class="fbk-toggle-row">
+             <span class="fbk-toggle-row-label">&#x1f464; ${t("sidebar.mineOnly")}</span>
+             <button type="button" class="fbk-toggle-switch${active ? " active" : ""}" id="fbk-mine-toggle" role="switch" aria-checked="${active ? "true" : "false"}" title="${t("sidebar.showOnlyMyComments")}" aria-label="${t("sidebar.showOnlyMyComments")}">
+               <span class="fbk-toggle-switch-thumb"></span>
+             </button>
+           </div>`,
     // User filter — only rendered when the list has comments from >1 author.
     authorFilter: (authors, selectedId) => `<select class="fbk-userfilter" id="fbk-author-filter" title="${t("sidebar.filterByUser")}">
              <option value="">&#x1f465; ${t("sidebar.allUsers")}</option>
              ${authors.map((a) => `<option value="${escapeHtml(a.id)}" ${a.id === selectedId ? "selected" : ""}>${escapeHtml(a.name)}</option>`).join("")}
            </select>`,
-    // Kebab-menu dropdown for a comment card's own actions (private/public, edit, delete) —
-    // rendered into the shared portal host (#fbk-menu-host), anchored under the card's kebab
-    // button by toggleCardMenu. Visibility/edit are owner-only; delete only while still open
-    // (matches the previous inline buttons' conditions exactly, just relocated).
-    cardMenu: (c) => `
+    // Kebab-menu dropdown for a comment card's own actions — rendered into the shared portal host
+    // (#fbk-menu-host), anchored under the card's kebab button by toggleCardMenu. Copy-prompt/
+    // complete/reopen are workflow actions open to anyone who can see the card; visibility/edit are
+    // owner-only; delete only while still open (matches the previous inline buttons' conditions
+    // exactly, just relocated). `isQuickAccess` matches TPL.card's own gate on "Complete"/"Reopen" —
+    // a quick-access (Client) account never gets to change its own feedback's status directly.
+    cardMenu: (c, isQuickAccess) => `
         <div class="fbk-card-menu" id="fbk-card-menu" role="menu">
+          ${c.status === "open" || c.status === "pending-apply" ? `<button type="button" class="fbk-card-menu-item" data-menu-act="copy-apply-prompt" role="menuitem">${ICON.copy}<span>${t("card.copyApplyPrompt")}</span></button>` : ""}
+          ${!isQuickAccess && (c.status === "open" || c.status === "pending-apply") ? `<button type="button" class="fbk-card-menu-item" data-menu-act="complete" role="menuitem">${ICON.check}<span>${t("card.complete")}</span></button>` : ""}
+          ${!isQuickAccess && (c.status === "applied" || c.status === "archived") ? `<button type="button" class="fbk-card-menu-item" data-menu-act="reopen" role="menuitem">${ICON.reopen}<span>${t("card.reopen")}</span></button>` : ""}
           ${c._mine ? `<button type="button" class="fbk-card-menu-item" data-menu-act="visibility" data-private="${c.isPrivate ? "false" : "true"}" role="menuitem">${c.isPrivate ? ICON.unlock : ICON.lock}<span>${c.isPrivate ? t("card.makePublic") : t("card.makePrivate")}</span></button>` : ""}
           ${c._mine ? `<button type="button" class="fbk-card-menu-item" data-menu-act="edit" role="menuitem">${ICON.pencil}<span>${t("card.edit")}</span></button>` : ""}
-          ${c.status === "open" ? `<div class="fbk-actions-end fbk-card-menu-delete-row"><button type="button" class="fbk-card-menu-item danger" data-menu-act="delete" data-id="${c.id}" role="menuitem">${ICON.trash}<span>${t("card.delete")}</span></button></div>` : ""}
+          ${c.status === "open" ? `<button type="button" class="fbk-card-menu-item danger" data-menu-act="delete" role="menuitem">${ICON.trash}<span>${t("card.delete")}</span></button>` : ""}
         </div>`,
     card: (c, i, isQuickAccess) => {
       const cls = c.status === "pending-apply" ? "pending" : c.status === "applied" ? "applied" : c.status === "archived" ? "archived" : "";
       const statusPill = c.status === "applied" && c.deployedAt ? `<span class="fbk-pill status-applied" title="${escapeHtml(t("card.deployedIn", { sha: (c.deployedSha || "").slice(0, 7) }))}">&#x2713; ${t("card.live")}</span>` : c.status === "applied" ? `<span class="fbk-pill status-applied">&#x2713; ${t("card.completed")}</span>` : c.status === "pending-apply" ? `<span class="fbk-pill status-pending">${t("card.pending")}</span>` : c.status === "archived" ? `<span class="fbk-pill status-archived">&#x1f4e6; ${t("card.archived")}</span>` : "";
       const verifiedPill = c.status === "applied" && c.verifiedAt ? `<span class="fbk-pill verified">&#x2713; ${t("card.verified")}</span>` : "";
       const verifyGroup = c.status === "applied" && !c.verifiedAt && c._canVerify ? `<span class="fbk-verify-group">
-          <button class="fbk-mini fbk-verify-ok" data-act="verify-ok" data-id="${c.id}" title="${t("card.looksRight")}">&#x1f44d; ${t("card.looksRight")}</button>
-          <button class="fbk-mini fbk-verify-reject" data-act="verify-reject" data-id="${c.id}" title="${t("card.notFixed")}">&#x1f44e; ${t("card.notFixed")}</button>
+          <button class="fbk-mini fbk-verify-ok" data-act="verify-ok" data-id="${c.id}" title="${t("card.looksRight")}">${ICON.thumbsUp}<span>${t("card.looksRight")}</span></button>
+          <button class="fbk-mini fbk-verify-reject" data-act="verify-reject" data-id="${c.id}" title="${t("card.notFixed")}">${ICON.thumbsDown}<span>${t("card.notFixed")}</span></button>
         </span>` : "";
       const verifyBox = c.status === "applied" && !c.verifiedAt && c._canVerify ? `<div class="fbk-verify-box fbk-hidden" id="fbk-verify-box-${c.id}">
           <input class="fbk-input fbk-verify-note-input" id="fbk-verify-note-${c.id}" placeholder="${t("card.explainNotFixed")}" />
@@ -1277,7 +1307,7 @@
               ${verifiedPill}
               ${verifyGroup}
               ${commitLink}
-              ${c._mine || c.status === "open" ? `<div class="fbk-actions-end">
+              ${c._mine || c.status === "open" || c.status === "pending-apply" || !isQuickAccess && (c.status === "applied" || c.status === "archived") ? `<div class="fbk-actions-end">
                 <button class="fbk-mini fbk-icon fbk-card-kebab" data-act="card-menu" data-id="${c.id}" title="${t("card.moreActions")}" aria-label="${t("card.moreActions")}" aria-haspopup="true" aria-expanded="false">${ICON.kebab}</button>
               </div>` : ""}
             </div>
@@ -1287,16 +1317,14 @@
             ${verifyBox}
             ${replies ? `<div class="fbk-replies">${replies}</div>` : ""}
             <div class="fbk-reply-row">
-              <textarea class="fbk-textarea fbk-reply-input" placeholder="${t("card.replyPlaceholder")}" data-id="${c.id}" rows="1"></textarea>
+              <button type="button" class="fbk-mini fbk-reply-toggle" data-act="reply-toggle" data-id="${c.id}">${ICON.bubbleSm}<span>${t("card.reply")}</span></button>
+              <textarea class="fbk-textarea fbk-reply-input fbk-hidden" placeholder="${t("card.replyPlaceholder")}" data-id="${c.id}" rows="1"></textarea>
             </div>
             <div class="fbk-actions">
               ${isQuickAccess ? "" : c.status === "applied" || c.status === "archived" ? "" : `<button class="fbk-mini ${c.status === "pending-apply" ? "apply" : "ready"}" data-act="apply" data-id="${c.id}" title="${c.status === "pending-apply" ? t("card.markedReadyClickToUnmark") : t("card.markReadyToApply")}">
                 ${ICON.flag}<span>${t("card.ready")}</span>
               </button>`}
-              ${!isQuickAccess && (c.status === "open" || c.status === "pending-apply") ? `<button class="fbk-mini done fbk-icon" data-act="complete" data-id="${c.id}" title="${t("card.markCompleted")}" aria-label="${t("card.markCompleted")}">${ICON.check}</button>` : ""}
-              ${!isQuickAccess && c.status === "applied" ? `<button class="fbk-mini ready" data-act="reopen" data-id="${c.id}" title="${t("card.reopen")}">${ICON.reopen}<span>${t("card.reopen")}</span></button>
-              <button class="fbk-mini fbk-icon" data-act="archive" data-id="${c.id}" title="${t("card.archive")}" aria-label="${t("card.archive")}">${ICON.archive}</button>` : ""}
-              ${!isQuickAccess && c.status === "archived" ? `<button class="fbk-mini ready" data-act="reopen" data-id="${c.id}" title="${t("card.reopen")}">${ICON.reopen}<span>${t("card.reopen")}</span></button>` : ""}
+              ${!isQuickAccess && c.status === "applied" ? `<button class="fbk-mini" data-act="archive" data-id="${c.id}" title="${t("card.archive")}">${ICON.archive}<span>${t("card.archive")}</span></button>` : ""}
             </div>
           </div>`;
     },
@@ -2091,6 +2119,7 @@
   }
 
   // src/element.ts
+  var COMMIT_STYLE_CONTROL_ENABLED = false;
   var PIN_CLUSTER_RADIUS = 24;
   var PIN_HALF_WIDTH = 16;
   var PIN_HEIGHT = 30;
@@ -2711,17 +2740,13 @@
           this.environmentInt = resolved;
           this.environmentAttr = ENV_NAME[resolved];
           if (!this.viewAllEnvironments) {
-            const envSel = this.root && this.root.querySelector("#fbk-env");
-            if (envSel && "value" in envSel) envSel.value = this.environmentAttr;
-            const envLabel = this.root && this.root.querySelector(".fbk-env-label");
-            if (envLabel) envLabel.textContent = "· " + this.envDisplayLabel(this.environmentAttr);
             await this.fetchComments();
           }
         }
         this.commitStyle = typeof ((_d = envelope == null ? void 0 : envelope.data) == null ? void 0 : _d.commitStyle) === "number" ? envelope.data.commitStyle : 1;
         this.canEditSettings = !!((_e = envelope == null ? void 0 : envelope.data) == null ? void 0 : _e.canEditSettings);
-        this.updateProjectNameLabel();
-        this.updateEnvironmentSelectorVisibility();
+        this.updateCommentsHeading();
+        this.renderSidebar();
         this.renderCommitStyleControl();
         if (this.pageContextCaptureEnabled) startPageContextCapture(this.server, SCRIPT_SRC);
       } catch {
@@ -2729,35 +2754,15 @@
         this.captureTextContent = true;
       }
     }
-    // Patches the already-rendered header label (and the "{project} comments" heading, which
-    // embeds the same name) in place rather than a full renderChrome() — re-rendering chrome here
-    // would drop the sidebar's open/closed state mid-session. Needed because the initial
-    // renderChrome() runs before fetchCaptureConfig() resolves the real project name, so both
-    // start out showing the raw project key as a fallback.
-    updateProjectNameLabel() {
-      const el = this.root && this.root.querySelector("#fbk-project-name");
-      if (el) {
-        el.textContent = this.projectName;
-        el.setAttribute("title", this.projectName);
-      }
+    // Patches the already-rendered "{project}" heading in place rather than a full
+    // renderChrome() — re-rendering chrome here would drop the sidebar's open/closed state
+    // mid-session. Needed because the initial renderChrome() runs before fetchCaptureConfig()
+    // resolves the real project name, so the heading starts out showing the raw project key as a
+    // fallback. The project name is shown only in this heading — not duplicated elsewhere in the
+    // header, so there's nothing else to keep in step with it.
+    updateCommentsHeading() {
       const heading = this.root && this.root.querySelector("#fbk-comments-heading");
-      if (heading) heading.textContent = t("toolbar.commentsHeading", { project: this.projectName });
-    }
-    // /capture-config resolves AFTER the first renderChrome() (which assumed the switcher was
-    // visible), so if it turns out this caller should NOT see it, swap the already-rendered
-    // <select id="fbk-env"> for the same read-only label used for a host-fixed environment — same
-    // reasoning as updateProjectNameLabel() above (no full re-render, mid-session state stays put).
-    // A no-op when the toolbar isn't open yet or the switcher was already hidden — the NEXT
-    // renderChrome() (e.g. when the visitor opens the toolbar) already reads the updated flag.
-    updateEnvironmentSelectorVisibility() {
-      if (this.showEnvironmentSelector || this.hasFixedEnvironment) return;
-      const sel = this.root && this.root.querySelector("#fbk-env");
-      if (!sel) return;
-      const label = document.createElement("span");
-      label.className = "fbk-env-label";
-      label.title = t("toolbar.environment");
-      label.textContent = "· " + this.envDisplayLabel(this.environmentAttr || ENV_NAME[this.environmentInt] || "unknown");
-      sel.replaceWith(label);
+      if (heading) heading.textContent = t("toolbar.projectHeading", { project: this.projectName });
     }
     // Translated display text for an environment key ('local'/'staging'/'production') — falls back
     // to the raw key for anything else (e.g. 'unknown', before the server has resolved one).
@@ -2771,10 +2776,12 @@
     // Patches #fbk-commit-style in place (same reasoning as updateEnvironmentSelectorVisibility) —
     // hidden entirely unless the current caller is authorized to change it (canEditSettings), so a
     // stakeholder who couldn't save the PATCH never sees a control that would just 403.
+    // TEMPORARILY forced off entirely, per explicit request — flip COMMIT_STYLE_CONTROL_ENABLED
+    // back to true to restore that behavior.
     renderCommitStyleControl() {
       const host = this.root && this.root.querySelector("#fbk-commit-style");
       if (!host) return;
-      if (!this.canEditSettings) {
+      if (!COMMIT_STYLE_CONTROL_ENABLED || !this.canEditSettings) {
         host.classList.add("fbk-hidden");
         return;
       }
@@ -2801,7 +2808,7 @@
       }
     }
     // Keeps the "Comment on an element" button's tooltip showing the current shortcut after it's
-    // changed from the user menu — same in-place-patch reasoning as updateProjectNameLabel().
+    // changed from the user menu — same in-place-patch reasoning as updateCommentsHeading().
     updateAddButtonTooltip() {
       const btn = this.root && this.root.querySelector("#fbk-add");
       if (!btn) return;
@@ -2947,8 +2954,7 @@
       const displayName = this.user ? escapeHtml(this.user.displayName || this.user.email) : "";
       const roleLabel = this.user ? escapeHtml(this.user.roleName || "") : "";
       const avatarInitials = this.user ? escapeHtml(initials(this.user.displayName || this.user.email || "")) : "";
-      const fixedEnvLabel = this.hasFixedEnvironment || !this.showEnvironmentSelector ? this.environmentAttr || ENV_NAME[this.environmentInt] || "staging" : null;
-      this.root.innerHTML = TPL.chrome(displayName, roleLabel, fixedEnvLabel, this.projectName || this.project, formatShortcut(this.shortcut), this.unreadNotifyCount, avatarInitials, ariaKeyshortcuts(this.shortcut));
+      this.root.innerHTML = TPL.chrome(displayName, roleLabel, this.projectName || this.project, formatShortcut(this.shortcut), this.unreadNotifyCount, avatarInitials, ariaKeyshortcuts(this.shortcut));
       const hideBtn = this.root.querySelector("#fbk-hide");
       if (hideBtn) hideBtn.addEventListener("click", () => this.hideOverlay());
       const userBtn = this.root.querySelector("#fbk-user");
@@ -2982,11 +2988,6 @@
         this.toast(t("toast.refreshed"));
       });
       this.root.querySelector("#fbk-close").addEventListener("click", () => this.toggleSidebar(false));
-      const envSel = this.root.querySelector("#fbk-env");
-      if (envSel) {
-        envSel.value = this.viewAllEnvironments ? "all" : (this.environmentAttr || ENV_NAME[this.environmentInt] || "staging").toLowerCase();
-        envSel.addEventListener("change", () => this.setEnvironment(envSel.value));
-      }
       const resetBtn = this.root.querySelector("#fbk-reset-pos");
       if (resetBtn) resetBtn.addEventListener("click", () => this.resetToolbarPos());
       this.restoreToolbarPos();
@@ -4026,43 +4027,26 @@
       }
     }
     /**
-     * Two-step delete: replaces the whole end-cluster it lives in (the visibility toggle sits
-     * alongside it) with a "Delete this comment? ✓ ✕" confirmation, so nothing else in that
-     * cluster can be mis-clicked while confirming. Confirms on ✓, cancels on ✕, and
-     * auto-dismisses after a few seconds. Other buttons are hidden (not removed), so their
-     * existing click listeners survive once restored.
+     * Delete confirmation for a comment's own card: an opaque overlay covering the WHOLE card
+     * (not just the kebab menu — the menu is already closed by the time this runs), so nothing
+     * else on the card can be mis-clicked while confirming. No auto-dismiss: unlike the old
+     * in-menu confirm (which had to give the dropdown back for other uses), this is a deliberate
+     * modal-style prompt that stays until the viewer explicitly confirms or cancels.
      */
-    confirmDelete(btn) {
-      const id = btn.dataset.id;
-      const row = btn.closest(".fbk-actions-end");
-      if (!id || !row || row.querySelector(".fbk-confirm")) return;
-      const others = Array.from(row.children);
-      others.forEach((el) => {
-        el.style.display = "none";
-      });
-      const wrap = document.createElement("div");
-      wrap.className = "fbk-confirm fbk-confirm-row";
-      wrap.innerHTML = `<span class="fbk-confirm-q">${t("card.deleteThisComment")}</span><span class="fbk-confirm-btns"><button type="button" class="fbk-mini danger fbk-icon" data-c="yes" title="${t("card.confirmDelete")}" aria-label="${t("card.confirmDelete")}">${ICON.checkPlain}</button><button type="button" class="fbk-mini fbk-icon" data-c="no" title="${t("toolbar.cancel")}" aria-label="${t("toolbar.cancel")}">&#x2715;</button></span>`;
-      row.appendChild(wrap);
-      let closed = false;
-      const close = () => {
-        if (closed) return;
-        closed = true;
-        clearTimeout(timer);
-        wrap.remove();
-        others.forEach((el) => {
-          el.style.display = "";
-        });
-      };
-      const timer = setTimeout(close, 4e3);
-      wrap.querySelector('[data-c="yes"]').addEventListener("click", (e) => {
+    confirmDeleteCard(id) {
+      const card = this.root && this.root.querySelector(`.fbk-card[data-id="${id}"]`);
+      if (!card || card.querySelector(".fbk-card-delete-confirm")) return;
+      const overlay = document.createElement("div");
+      overlay.className = "fbk-card-delete-confirm";
+      overlay.innerHTML = `<p class="fbk-card-delete-confirm-q">${t("card.deleteThisComment")}</p><div class="fbk-card-delete-confirm-actions"><button type="button" class="fbk-mini danger" data-c="yes">${t("card.confirmDelete")}</button><button type="button" class="fbk-mini" data-c="no">${t("toolbar.cancel")}</button></div>`;
+      card.appendChild(overlay);
+      overlay.querySelector('[data-c="yes"]').addEventListener("click", (e) => {
         e.stopPropagation();
-        close();
         this.deleteComment(id);
       });
-      wrap.querySelector('[data-c="no"]').addEventListener("click", (e) => {
+      overlay.querySelector('[data-c="no"]').addEventListener("click", (e) => {
         e.stopPropagation();
-        close();
+        overlay.remove();
       });
     }
     async deleteComment(id) {
@@ -4323,21 +4307,29 @@
       const filtersEl = this.root.querySelector("#fbk-filters");
       if (filtersEl) {
         const activeFilters = catalogToFilters();
-        filtersEl.innerHTML = TPL.statusFilterSelect(activeFilters, this.statusFilter, counts) + (authors.length > 1 && !this.mineOnly ? TPL.authorFilter(authors, this.authorFilter || "") : "") + (canMine ? TPL.mineToggle(this.mineOnly) : "");
+        const fixedEnvLabel = this.hasFixedEnvironment || !this.showEnvironmentSelector ? this.envDisplayLabel(this.environmentAttr || ENV_NAME[this.environmentInt] || "staging") : null;
+        const envValue = this.viewAllEnvironments ? "all" : (this.environmentAttr || ENV_NAME[this.environmentInt] || "staging").toLowerCase();
+        filtersEl.innerHTML = TPL.statusFilterSelect(activeFilters, this.statusFilter, counts) + TPL.envFilterSelect(fixedEnvLabel, envValue) + (authors.length > 1 && !this.mineOnly ? TPL.authorFilter(authors, this.authorFilter || "") : "");
         const statusSel = filtersEl.querySelector("#fbk-status-filter");
         if (statusSel) statusSel.addEventListener("change", () => {
           this.statusFilter = statusSel.value;
           this.renderSidebar();
         });
-        const mineBtn = filtersEl.querySelector("#fbk-mine-toggle");
-        if (mineBtn) mineBtn.addEventListener("click", () => {
-          this.mineOnly = !this.mineOnly;
-          this.renderSidebar();
-          this.renderPins();
-        });
+        const envSel = filtersEl.querySelector("#fbk-env");
+        if (envSel) envSel.addEventListener("change", () => this.setEnvironment(envSel.value));
         const authorSel = filtersEl.querySelector("#fbk-author-filter");
         if (authorSel) authorSel.addEventListener("change", () => {
           this.authorFilter = authorSel.value || null;
+          this.renderSidebar();
+          this.renderPins();
+        });
+      }
+      const mineRowEl = this.root.querySelector("#fbk-mine-row");
+      if (mineRowEl) {
+        mineRowEl.innerHTML = canMine ? TPL.mineToggle(this.mineOnly) : "";
+        const mineBtn = mineRowEl.querySelector("#fbk-mine-toggle");
+        if (mineBtn) mineBtn.addEventListener("click", () => {
+          this.mineOnly = !this.mineOnly;
           this.renderSidebar();
           this.renderPins();
         });
@@ -4373,22 +4365,22 @@
         const c = this.comments.find((x) => String(x.id) === String(b.dataset.id));
         if (c && c.status !== "applied") this.toggleApply(c);
       }));
-      list.querySelectorAll('[data-act="complete"]').forEach((b) => b.addEventListener("click", () => {
-        const c = this.comments.find((x) => String(x.id) === String(b.dataset.id));
-        if (c && c.status !== "applied") this.markCompleted(c);
-      }));
       list.querySelectorAll('[data-act="card-menu"]').forEach((b) => b.addEventListener("click", (e) => {
         e.stopPropagation();
         const c = this.comments.find((x) => String(x.id) === String(b.dataset.id));
         if (c) this.toggleCardMenu(b, c);
       }));
-      list.querySelectorAll('[data-act="reopen"]').forEach((b) => b.addEventListener("click", () => {
-        const c = this.comments.find((x) => String(x.id) === String(b.dataset.id));
-        if (c) this.setStatus(c, "open", t("toast.reopenedMsg"));
-      }));
       list.querySelectorAll('[data-act="archive"]').forEach((b) => b.addEventListener("click", () => {
         const c = this.comments.find((x) => String(x.id) === String(b.dataset.id));
         if (c) this.setStatus(c, "archived", t("toast.archivedMsg"));
+      }));
+      list.querySelectorAll('[data-act="reply-toggle"]').forEach((btn) => btn.addEventListener("click", () => {
+        const row = btn.closest(".fbk-reply-row");
+        const inp = row == null ? void 0 : row.querySelector(".fbk-reply-input");
+        if (!inp) return;
+        btn.classList.add("fbk-hidden");
+        inp.classList.remove("fbk-hidden");
+        inp.focus();
       }));
       list.querySelectorAll(".fbk-reply-input").forEach((inp) => inp.addEventListener("keydown", (e) => {
         if (e.key === "Enter" && !e.shiftKey) {
@@ -4570,6 +4562,7 @@
     }
     // --- Card actions menu (kebab menu: private/public, edit, delete) --------
     toggleCardMenu(btn, c) {
+      var _a2;
       const host = this.root.querySelector("#fbk-menu-host");
       if (!host) return;
       if (host.querySelector("#fbk-card-menu")) {
@@ -4579,7 +4572,7 @@
       this.closeUserMenu();
       this.closeUpdatesMenu();
       this.closeClusterMenu();
-      host.innerHTML = TPL.cardMenu(c);
+      host.innerHTML = TPL.cardMenu(c, !!((_a2 = this.user) == null ? void 0 : _a2.isQuickAccess));
       const menu = host.querySelector("#fbk-card-menu");
       if (!menu) return;
       btn.setAttribute("aria-expanded", "true");
@@ -4594,6 +4587,27 @@
         menu.style.top = `${Math.round(r.bottom + 6)}px`;
       }
       menu.style.right = `${Math.max(8, Math.round(window.innerWidth - r.right))}px`;
+      const copyPromptBtn = menu.querySelector('[data-menu-act="copy-apply-prompt"]');
+      if (copyPromptBtn) {
+        copyPromptBtn.addEventListener("click", () => {
+          this.closeCardMenu();
+          this.copyApplyPrompt(c);
+        });
+      }
+      const completeBtn = menu.querySelector('[data-menu-act="complete"]');
+      if (completeBtn) {
+        completeBtn.addEventListener("click", () => {
+          this.closeCardMenu();
+          if (c.status !== "applied") this.markCompleted(c);
+        });
+      }
+      const reopenBtn = menu.querySelector('[data-menu-act="reopen"]');
+      if (reopenBtn) {
+        reopenBtn.addEventListener("click", () => {
+          this.closeCardMenu();
+          this.setStatus(c, "open", t("toast.reopenedMsg"));
+        });
+      }
       const visBtn = menu.querySelector('[data-menu-act="visibility"]');
       if (visBtn) {
         visBtn.addEventListener("click", () => {
@@ -4610,9 +4624,9 @@
       }
       const delBtn = menu.querySelector('[data-menu-act="delete"]');
       if (delBtn) {
-        delBtn.addEventListener("click", (e) => {
-          e.stopPropagation();
-          this.confirmDelete(delBtn);
+        delBtn.addEventListener("click", () => {
+          this.closeCardMenu();
+          this.confirmDeleteCard(String(c.id));
         });
       }
       this._cardMenuClose = (e) => {
@@ -4632,6 +4646,23 @@
       if (this._cardMenuClose) {
         document.removeEventListener("click", this._cardMenuClose, true);
         this._cardMenuClose = null;
+      }
+    }
+    // --- Single-item apply prompt ("Copy apply prompt" in the kebab menu) ----
+    // A short, human-style instruction — not a technical spec — naming just the one comment to
+    // apply. No comment/reply text is embedded (so there's nothing here that needs fencing as
+    // untrusted input): the agent already has the apply skill installed and pulls the real content
+    // itself via `get --json`, exactly as it would for any item from the normal apply queue.
+    buildSingleItemApplyPrompt(c) {
+      const brand = getBrandName();
+      return `Apply ${brand} comment #${c.id} in this repo — run \`npx pointer-feedback get ${c.id} --json\` to see it, then follow the apply skill to fix it and mark it done.`;
+    }
+    async copyApplyPrompt(c) {
+      try {
+        await navigator.clipboard.writeText(this.buildSingleItemApplyPrompt(c));
+        this.toast(t("toast.applyPromptCopied"));
+      } catch {
+        this.toast(t("toast.copyFailed"), "error");
       }
     }
     // --- Toast ---------------------------------------------------------------

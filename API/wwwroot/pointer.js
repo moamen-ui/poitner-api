@@ -730,6 +730,7 @@
       "card.automatedReply": "Automated reply",
       "card.aiVia": "via {name}",
       "card.edited": "edited",
+      "card.reply": "Reply",
       "card.replyPlaceholder": "Reply…",
       "card.markedReadyClickToUnmark": "Marked ready — click to unmark",
       "card.markReadyToApply": "Mark ready to apply",
@@ -939,6 +940,7 @@
       "card.automatedReply": "رد آلي",
       "card.aiVia": "بواسطة {name}",
       "card.edited": "مُعدَّل",
+      "card.reply": "رد",
       "card.replyPlaceholder": "رد…",
       "card.markedReadyClickToUnmark": "وُضع علامة جاهز — انقر لإلغائها",
       "card.markReadyToApply": "وضع علامة جاهز للتطبيق",
@@ -1233,14 +1235,15 @@
            </select>`,
     // Kebab-menu dropdown for a comment card's own actions — rendered into the shared portal host
     // (#fbk-menu-host), anchored under the card's kebab button by toggleCardMenu. Copy-prompt/
-    // complete are workflow actions open to anyone who can see the card; visibility/edit are
+    // complete/reopen are workflow actions open to anyone who can see the card; visibility/edit are
     // owner-only; delete only while still open (matches the previous inline buttons' conditions
-    // exactly, just relocated). `isQuickAccess` matches TPL.card's own gate on "Complete" — a quick-
-    // access (Client) account never gets to mark its own feedback done.
+    // exactly, just relocated). `isQuickAccess` matches TPL.card's own gate on "Complete"/"Reopen" —
+    // a quick-access (Client) account never gets to change its own feedback's status directly.
     cardMenu: (c, isQuickAccess) => `
         <div class="fbk-card-menu" id="fbk-card-menu" role="menu">
           ${c.status === "open" || c.status === "pending-apply" ? `<button type="button" class="fbk-card-menu-item" data-menu-act="copy-apply-prompt" role="menuitem">${ICON.copy}<span>${t("card.copyApplyPrompt")}</span></button>` : ""}
           ${!isQuickAccess && (c.status === "open" || c.status === "pending-apply") ? `<button type="button" class="fbk-card-menu-item" data-menu-act="complete" role="menuitem">${ICON.check}<span>${t("card.complete")}</span></button>` : ""}
+          ${!isQuickAccess && (c.status === "applied" || c.status === "archived") ? `<button type="button" class="fbk-card-menu-item" data-menu-act="reopen" role="menuitem">${ICON.reopen}<span>${t("card.reopen")}</span></button>` : ""}
           ${c._mine ? `<button type="button" class="fbk-card-menu-item" data-menu-act="visibility" data-private="${c.isPrivate ? "false" : "true"}" role="menuitem">${c.isPrivate ? ICON.unlock : ICON.lock}<span>${c.isPrivate ? t("card.makePublic") : t("card.makePrivate")}</span></button>` : ""}
           ${c._mine ? `<button type="button" class="fbk-card-menu-item" data-menu-act="edit" role="menuitem">${ICON.pencil}<span>${t("card.edit")}</span></button>` : ""}
           ${c.status === "open" ? `<button type="button" class="fbk-card-menu-item danger" data-menu-act="delete" role="menuitem">${ICON.trash}<span>${t("card.delete")}</span></button>` : ""}
@@ -1304,7 +1307,7 @@
               ${verifiedPill}
               ${verifyGroup}
               ${commitLink}
-              ${c._mine || c.status === "open" || c.status === "pending-apply" ? `<div class="fbk-actions-end">
+              ${c._mine || c.status === "open" || c.status === "pending-apply" || !isQuickAccess && (c.status === "applied" || c.status === "archived") ? `<div class="fbk-actions-end">
                 <button class="fbk-mini fbk-icon fbk-card-kebab" data-act="card-menu" data-id="${c.id}" title="${t("card.moreActions")}" aria-label="${t("card.moreActions")}" aria-haspopup="true" aria-expanded="false">${ICON.kebab}</button>
               </div>` : ""}
             </div>
@@ -1314,15 +1317,14 @@
             ${verifyBox}
             ${replies ? `<div class="fbk-replies">${replies}</div>` : ""}
             <div class="fbk-reply-row">
-              <textarea class="fbk-textarea fbk-reply-input" placeholder="${t("card.replyPlaceholder")}" data-id="${c.id}" rows="1"></textarea>
+              <button type="button" class="fbk-mini fbk-reply-toggle" data-act="reply-toggle" data-id="${c.id}">${ICON.bubbleSm}<span>${t("card.reply")}</span></button>
+              <textarea class="fbk-textarea fbk-reply-input fbk-hidden" placeholder="${t("card.replyPlaceholder")}" data-id="${c.id}" rows="1"></textarea>
             </div>
             <div class="fbk-actions">
               ${isQuickAccess ? "" : c.status === "applied" || c.status === "archived" ? "" : `<button class="fbk-mini ${c.status === "pending-apply" ? "apply" : "ready"}" data-act="apply" data-id="${c.id}" title="${c.status === "pending-apply" ? t("card.markedReadyClickToUnmark") : t("card.markReadyToApply")}">
                 ${ICON.flag}<span>${t("card.ready")}</span>
               </button>`}
-              ${!isQuickAccess && c.status === "applied" ? `<button class="fbk-mini ready" data-act="reopen" data-id="${c.id}" title="${t("card.reopen")}">${ICON.reopen}<span>${t("card.reopen")}</span></button>
-              <button class="fbk-mini fbk-icon" data-act="archive" data-id="${c.id}" title="${t("card.archive")}" aria-label="${t("card.archive")}">${ICON.archive}</button>` : ""}
-              ${!isQuickAccess && c.status === "archived" ? `<button class="fbk-mini ready" data-act="reopen" data-id="${c.id}" title="${t("card.reopen")}">${ICON.reopen}<span>${t("card.reopen")}</span></button>` : ""}
+              ${!isQuickAccess && c.status === "applied" ? `<button class="fbk-mini" data-act="archive" data-id="${c.id}" title="${t("card.archive")}">${ICON.archive}<span>${t("card.archive")}</span></button>` : ""}
             </div>
           </div>`;
     },
@@ -4368,13 +4370,17 @@
         const c = this.comments.find((x) => String(x.id) === String(b.dataset.id));
         if (c) this.toggleCardMenu(b, c);
       }));
-      list.querySelectorAll('[data-act="reopen"]').forEach((b) => b.addEventListener("click", () => {
-        const c = this.comments.find((x) => String(x.id) === String(b.dataset.id));
-        if (c) this.setStatus(c, "open", t("toast.reopenedMsg"));
-      }));
       list.querySelectorAll('[data-act="archive"]').forEach((b) => b.addEventListener("click", () => {
         const c = this.comments.find((x) => String(x.id) === String(b.dataset.id));
         if (c) this.setStatus(c, "archived", t("toast.archivedMsg"));
+      }));
+      list.querySelectorAll('[data-act="reply-toggle"]').forEach((btn) => btn.addEventListener("click", () => {
+        const row = btn.closest(".fbk-reply-row");
+        const inp = row == null ? void 0 : row.querySelector(".fbk-reply-input");
+        if (!inp) return;
+        btn.classList.add("fbk-hidden");
+        inp.classList.remove("fbk-hidden");
+        inp.focus();
       }));
       list.querySelectorAll(".fbk-reply-input").forEach((inp) => inp.addEventListener("keydown", (e) => {
         if (e.key === "Enter" && !e.shiftKey) {
@@ -4593,6 +4599,13 @@
         completeBtn.addEventListener("click", () => {
           this.closeCardMenu();
           if (c.status !== "applied") this.markCompleted(c);
+        });
+      }
+      const reopenBtn = menu.querySelector('[data-menu-act="reopen"]');
+      if (reopenBtn) {
+        reopenBtn.addEventListener("click", () => {
+          this.closeCardMenu();
+          this.setStatus(c, "open", t("toast.reopenedMsg"));
         });
       }
       const visBtn = menu.querySelector('[data-menu-act="visibility"]');
