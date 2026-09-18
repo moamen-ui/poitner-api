@@ -309,7 +309,7 @@
   var SHOT_HIGHLIGHT = "#2563eb";
   var _a;
   var SCRIPT_SRC = ((_a = document.currentScript) == null ? void 0 : _a.src) || "";
-  var CSS_INTEGRITY = true ? "sha384-xB4/yxHr8AT2zpT8nsolDnn+Sm/vR27i6CFEnObM7e4Uz/4/+4Hgqn/vkiJCq0gl" : "";
+  var CSS_INTEGRITY = true ? "sha384-D1QPjNW0W6+hO8Qrd4dwWdKRRyzrwJz0PGWKVEFktG8GSN97lgJ0xqVwCeQ03KiX" : "";
   function resolveCssUrl(scriptSrc) {
     var _a2;
     if (!scriptSrc) return "pointer.css";
@@ -4395,6 +4395,12 @@
         if (b.dataset.commentId && b.dataset.replyId) this.startEditReply(b.dataset.commentId, b.dataset.replyId);
       }));
       list.querySelectorAll('[data-act="reply-delete"]').forEach((b) => b.addEventListener("click", () => this.confirmDeleteReply(b)));
+      list.querySelectorAll(".fbk-reply:not(.fbk-reply-ai) .fbk-reply-main").forEach((el) => {
+        el.addEventListener("click", () => {
+          var _a3;
+          return (_a3 = el.closest(".fbk-reply")) == null ? void 0 : _a3.classList.toggle("expanded");
+        });
+      });
       list.querySelectorAll('[data-act="verify-ok"]').forEach((b) => b.addEventListener("click", () => {
         const id = b.dataset.id;
         if (id) this.apiVerify(id, true);

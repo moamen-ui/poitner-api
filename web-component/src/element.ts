@@ -2538,6 +2538,11 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
       if (b.dataset.commentId && b.dataset.replyId) this.startEditReply(b.dataset.commentId, b.dataset.replyId);
     }));
     list.querySelectorAll<HTMLElement>('[data-act="reply-delete"]').forEach((b) => b.addEventListener('click', () => this.confirmDeleteReply(b)));
+    // A plain reply starts truncated to one line (see .fbk-reply CSS) — click it to read the
+    // full text. Excludes AI replies: their <details> already has its own native expand/collapse.
+    list.querySelectorAll<HTMLElement>('.fbk-reply:not(.fbk-reply-ai) .fbk-reply-main').forEach((el) => {
+      el.addEventListener('click', () => el.closest('.fbk-reply')?.classList.toggle('expanded'));
+    });
 
     // Verify actions (R2-04)
     list.querySelectorAll<HTMLElement>('[data-act="verify-ok"]').forEach((b) => b.addEventListener('click', () => {

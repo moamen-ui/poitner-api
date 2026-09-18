@@ -1186,14 +1186,28 @@
   gap: 6px;
   font-size: 13px;
   color: var(--fbk-text-slate-2, #334155);
-  padding-block: 4px;
-  padding-inline: 0;
+  background: var(--fbk-surface-muted, #eaeef2);
+  border-radius: var(--fbk-radius-sm, 6px);
+  padding-block: 6px;
+  padding-inline: 8px;
+  margin-block-end: 4px;
 }
 
 .fbk-reply-main {
   flex: 1;
   min-inline-size: 0;
   overflow-wrap: break-word;
+  cursor: pointer;
+}
+
+.fbk-reply:not(.expanded):not(.fbk-reply-ai) .fbk-reply-main {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.fbk-reply.expanded .fbk-reply-main {
+  white-space: normal;
 }
 
 .fbk-reply-ai {
@@ -1219,6 +1233,7 @@
   margin-block-start: 4px;
   padding-inline-start: 20px;
   color: var(--fbk-text-slate-2, #334155);
+  cursor: default;
 }
 
 .fbk-reply-actions {

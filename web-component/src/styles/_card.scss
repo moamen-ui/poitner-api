@@ -331,6 +331,9 @@
   border-block-start: 1px dashed v.token('border');
   padding-block-start: 8px;
 }
+// Background + padding/radius make a reply read as its own bubble nested inside the comment
+// card, rather than another top-level comment — the same visual cue chat UIs use to separate a
+// thread's replies from the original message.
 .fbk-reply {
   display: flex;
   align-items: flex-start;
@@ -338,13 +341,29 @@
   gap: 6px;
   font-size: 13px;
   color: v.token('text-slate-2');
-  padding-block: 4px;
-  padding-inline: 0;
+  background: v.token('surface-muted');
+  border-radius: v.token('radius-sm');
+  padding-block: 6px;
+  padding-inline: 8px;
+  margin-block-end: 4px;
 }
 .fbk-reply-main {
   flex: 1;
   min-inline-size: 0;
   overflow-wrap: break-word;
+  cursor: pointer;
+}
+// Collapsed to one line ("Author: reply text…") until clicked — the ellipsis only actually shows
+// once the line doesn't fit, same as any truncated text; toggled by element.ts on click. Excludes
+// .fbk-reply-ai: its <details> already has its own native expand/collapse, and this would
+// otherwise force the changelog body back to one line even while the <details> sits open.
+.fbk-reply:not(.expanded):not(.fbk-reply-ai) .fbk-reply-main {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.fbk-reply.expanded .fbk-reply-main {
+  white-space: normal;
 }
 // Automated (AI apply flow) reply — a native <details> disclosure instead of the plain flex row
 // above, collapsed by default since these tend to be long changelogs; always read-only, so it
@@ -369,6 +388,7 @@
   margin-block-start: 4px;
   padding-inline-start: 20px;
   color: v.token('text-slate-2');
+  cursor: default;
 }
 // Edit/delete — own replies only (data-act="reply-edit"/"reply-delete"), same icon-button
 // pattern as the comment's own actions row; hidden until hover/focus so a long reply thread
