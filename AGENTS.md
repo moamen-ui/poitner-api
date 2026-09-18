@@ -7,7 +7,7 @@
 **Pointer API** is a .NET 8 Clean Architecture solution — the backend for the Pointer feedback tool.
 
 - **Backend:** ASP.NET Core 8 + EF Core + PostgreSQL (solution root)
-- **Serves:** the `<pointer-feedback>` web component (`/pointer.js`), the AI apply/init skills as
+- **Serves:** the `<pointer-feedback>` web component (`/widget.js`), the AI apply/init skills as
   markdown (`/skill.md`, `/pointer-init.md`), and a zero-dependency `/admin/` fallback page
 - **Infrastructure:** Docker Compose (Postgres + API) + Justfile for dev; Compose + Caddy for prod
 - **API Client Generation:** Orval generates a typed React client package from the

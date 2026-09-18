@@ -6,17 +6,12 @@ namespace Pointer.API.Extensions;
 
 /// <summary>
 /// Static-file caching and version-routing pipeline for widget.js/widget.css (R3-03).
-/// `/pointer.js`/`/pointer.css` are the pre-rename names, served byte-identical (see build.mjs)
-/// and kept working as permanent aliases per docs/ON-DISK-CONTRACT.md — every already-integrated
-/// site that hardcodes them must never break.
 /// </summary>
 public static class WidgetStaticPipeline
 {
     private static bool IsWidgetBundlePath(PathString path) =>
         path.Equals("/widget.js", StringComparison.OrdinalIgnoreCase) ||
-        path.Equals("/widget.css", StringComparison.OrdinalIgnoreCase) ||
-        path.Equals("/pointer.js", StringComparison.OrdinalIgnoreCase) ||
-        path.Equals("/pointer.css", StringComparison.OrdinalIgnoreCase);
+        path.Equals("/widget.css", StringComparison.OrdinalIgnoreCase);
 
     public static async Task HandleWidgetVersioningAsync(
         HttpContext ctx,
@@ -102,8 +97,6 @@ public static class WidgetStaticPipeline
         var isWidgetAsset =
             name.Equals("widget.js", StringComparison.OrdinalIgnoreCase)
             || name.Equals("widget.css", StringComparison.OrdinalIgnoreCase)
-            || name.Equals("pointer.js", StringComparison.OrdinalIgnoreCase)
-            || name.Equals("pointer.css", StringComparison.OrdinalIgnoreCase)
             || name.Equals("pointer.version.json", StringComparison.OrdinalIgnoreCase)
             || ctx.Context.Request.Path.StartsWithSegments("/widget", StringComparison.OrdinalIgnoreCase);
 
@@ -121,8 +114,6 @@ public static class WidgetStaticPipeline
         }
         else if (name.Equals("widget.js", StringComparison.OrdinalIgnoreCase)
             || name.Equals("widget.css", StringComparison.OrdinalIgnoreCase)
-            || name.Equals("pointer.js", StringComparison.OrdinalIgnoreCase)
-            || name.Equals("pointer.css", StringComparison.OrdinalIgnoreCase)
             || name.Equals("pointer.version.json", StringComparison.OrdinalIgnoreCase))
         {
             ctx.Context.Response.Headers.CacheControl = "no-cache";

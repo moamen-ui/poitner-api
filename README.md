@@ -9,7 +9,7 @@ account (never anonymous).
 
 | | URL |
 |---|---|
-| API + widget (`pointer.js`) | `https://api.pointer.moamen.work` |
+| API + widget (`widget.js`) | `https://api.pointer.moamen.work` |
 | Dashboard (review comments) | `https://app.pointer.moamen.work` |
 
 > Want to run your own instance, build the component, or deploy? See
@@ -47,11 +47,11 @@ Then run **`/pointer-init`** in your AI tool. (Skill details + applying feedback
 Prefer to wire it by hand? Drop these before `</body>`:
 
 ```html
-<script src="https://api.pointer.moamen.work/pointer.js" defer></script>
+<script src="https://api.pointer.moamen.work/widget.js" defer></script>
 <pointer-feedback project="my-app" environment="staging"></pointer-feedback>
 ```
 
-That's the whole install — `server` defaults to the script's own origin, so loading `pointer.js`
+That's the whole install — `server` defaults to the script's own origin, so loading `widget.js`
 from the Pointer server is enough.
 
 ### Manual — env-gated (any bundler, ship it only where you want)
@@ -86,7 +86,7 @@ VITE_POINTER_PROJECT=my-app
 <script>
   if ('%VITE_POINTER_ENABLED%' === 'true' && '%VITE_POINTER_SERVER%'.indexOf('http') === 0) {
     var s = document.createElement('script');
-    s.src = '%VITE_POINTER_SERVER%/pointer.js'; s.defer = true;
+    s.src = '%VITE_POINTER_SERVER%/widget.js'; s.defer = true;
     document.head.appendChild(s);
     var el = document.createElement('pointer-feedback');
     el.setAttribute('project', '%VITE_POINTER_PROJECT%');
@@ -106,7 +106,7 @@ HTML, server-rendered docs), skip env wiring entirely and use the [`embed.js` lo
 | Attribute | Required | Default | Description |
 |---|---|---|---|
 | `project` | ✅ | — | Project key the feedback is partitioned under (e.g. `my-app`). |
-| `server` |  | the `pointer.js` script's own origin | Pointer API base URL (e.g. `https://api.pointer.moamen.work`). |
+| `server` |  | the `widget.js` script's own origin | Pointer API base URL (e.g. `https://api.pointer.moamen.work`). |
 | `environment` |  | `staging` | Tag stored on each comment: `local` \| `staging` \| `production`. |
 | `source-attr` |  | `data-component-source` | DOM attribute that carries an element's source path (`file.tsx:line`) so applies jump straight to the code. |
 | `launcher-position` |  | `bottom-end` | Corner of the collapsed launcher button: `top-start` \| `top-end` \| `bottom-start` \| `bottom-end`. |
@@ -198,7 +198,7 @@ item by `element.sourcePath`, and `PATCH`es it to `Applied` with an `appliedByLa
 
 A Swagger UI is just an HTML page, so any API can show the feedback widget on its own docs — let
 consumers comment directly on endpoints. The Pointer server hosts a self-configuring loader at
-**`<pointer-server>/embed.js?project=<key>`** that injects `pointer.js` and mounts a configured
+**`<pointer-server>/embed.js?project=<key>`** that injects `widget.js` and mounts a configured
 `<pointer-feedback>`. The API owner does two things.
 
 **1. Config (`appsettings.json`)** — all settings live here, so they're per-environment overridable

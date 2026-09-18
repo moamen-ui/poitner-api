@@ -156,28 +156,28 @@ export const SHOT_MAX_WIDTH = 1280; // downscale cap for the exported screenshot
 export const SHOT_HIGHLIGHT = '#2563eb';
 
 // This bundle's own URL (resolved at load time — in the IIFE, document.currentScript
-// is the <script> that loaded pointer.js). Used to resolve sibling assets.
+// is the <script> that loaded widget.js). Used to resolve sibling assets.
 export const SCRIPT_SRC: string =
   ((document.currentScript as HTMLScriptElement | null)?.src) || '';
 
-// Build-time embedded integrity for pointer.css (injected by esbuild define in build.mjs)
+// Build-time embedded integrity for widget.css (injected by esbuild define in build.mjs)
 declare const __CSS_INTEGRITY__: string | undefined;
 export const CSS_INTEGRITY: string =
   typeof __CSS_INTEGRITY__ !== 'undefined' ? __CSS_INTEGRITY__ : '';
 
 export function resolveCssUrl(scriptSrc: string): string {
-  if (!scriptSrc) return 'pointer.css';
+  if (!scriptSrc) return 'widget.css';
   try {
     const base = typeof window !== 'undefined' && window.location?.href ? window.location.href : 'http://localhost';
     const parsedScript = new URL(scriptSrc, base);
-    const css = new URL('pointer.css', parsedScript);
+    const css = new URL('widget.css', parsedScript);
     const v = parsedScript.searchParams.get('v');
     if (v) {
       css.searchParams.set('v', v);
     }
     return css.href;
   } catch {
-    return 'pointer.css';
+    return 'widget.css';
   }
 }
 

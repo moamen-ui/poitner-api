@@ -27,24 +27,18 @@ public class WidgetCacheHeadersTests : IDisposable
         Directory.CreateDirectory(_wwwrootDir);
 
         // Bare files
-        File.WriteAllBytes(Path.Combine(_wwwrootDir, "pointer.js"), _currentBytes);
-        File.WriteAllBytes(Path.Combine(_wwwrootDir, "pointer.css"), _cssBytes);
+        File.WriteAllBytes(Path.Combine(_wwwrootDir, "widget.js"), _currentBytes);
+        File.WriteAllBytes(Path.Combine(_wwwrootDir, "widget.css"), _cssBytes);
 
-        // Current retained dir — build.mjs writes both the current widget.js/css names and the
-        // pointer.js/css aliases side by side (see docs/ON-DISK-CONTRACT.md); WidgetVersionInfo's
-        // existence check looks for widget.js specifically.
+        // Current retained dir — WidgetVersionInfo's existence check looks for widget.js specifically.
         var currentDir = Path.Combine(_wwwrootDir, "widget", _currentHash);
         Directory.CreateDirectory(currentDir);
-        File.WriteAllBytes(Path.Combine(currentDir, "pointer.js"), _currentBytes);
-        File.WriteAllBytes(Path.Combine(currentDir, "pointer.css"), _cssBytes);
         File.WriteAllBytes(Path.Combine(currentDir, "widget.js"), _currentBytes);
         File.WriteAllBytes(Path.Combine(currentDir, "widget.css"), _cssBytes);
 
         // Older retained dir
         var olderDir = Path.Combine(_wwwrootDir, "widget", _olderHash);
         Directory.CreateDirectory(olderDir);
-        File.WriteAllBytes(Path.Combine(olderDir, "pointer.js"), _olderBytes);
-        File.WriteAllBytes(Path.Combine(olderDir, "pointer.css"), _cssBytes);
         File.WriteAllBytes(Path.Combine(olderDir, "widget.js"), _olderBytes);
         File.WriteAllBytes(Path.Combine(olderDir, "widget.css"), _cssBytes);
 
@@ -56,14 +50,14 @@ public class WidgetCacheHeadersTests : IDisposable
           "commit": "abc1234",
           "committedAt": "2026-09-12T00:00:00Z",
           "files": {
-            "pointer.js": { "bytes": {{_currentBytes.Length}}, "gzipBytes": 50, "integrity": "sha384-current" },
-            "pointer.css": { "bytes": {{_cssBytes.Length}}, "gzipBytes": 20, "integrity": "sha384-css" }
+            "widget.js": { "bytes": {{_currentBytes.Length}}, "gzipBytes": 50, "integrity": "sha384-current" },
+            "widget.css": { "bytes": {{_cssBytes.Length}}, "gzipBytes": 20, "integrity": "sha384-css" }
           },
           "retained": [
             { "hash": "{{_currentHash}}", "version": "0.1.0", "files": {} },
             { "hash": "{{_olderHash}}", "version": "0.0.9", "files": {} }
           ],
-          "budget": { "pointerJsGzipMax": 61440 }
+          "budget": { "widgetJsGzipMax": 61440 }
         }
         """;
         File.WriteAllText(Path.Combine(_wwwrootDir, "pointer.version.json"), versionJson);
@@ -130,9 +124,9 @@ public class WidgetCacheHeadersTests : IDisposable
     }
 
     [Fact]
-    public async Task Bare_PointerJs_Serves_NoCache()
+    public async Task Bare_WidgetJs_Serves_NoCache()
     {
-        var (status, cacheControl, _, body) = await ExecuteAsync("/pointer.js");
+        var (status, cacheControl, _, body) = await ExecuteAsync("/widget.js");
 
         Assert.Equal(200, status);
         Assert.Equal("no-cache", cacheControl);
@@ -153,7 +147,7 @@ public class WidgetCacheHeadersTests : IDisposable
     [Fact]
     public async Task Current_Pinned_Version_Serves_Immutable_And_Matches_Current_Bytes()
     {
-        var (status, cacheControl, _, body) = await ExecuteAsync($"/pointer.js?v={_currentHash}");
+        var (status, cacheControl, _, body) = await ExecuteAsync($"/widget.js?v={_currentHash}");
 
         Assert.Equal(200, status);
         Assert.Equal("public, max-age=31536000, immutable", cacheControl);
@@ -163,7 +157,7 @@ public class WidgetCacheHeadersTests : IDisposable
     [Fact]
     public async Task Older_Retained_Version_Serves_Immutable_And_Older_Bytes()
     {
-        var (status, cacheControl, _, body) = await ExecuteAsync($"/pointer.js?v={_olderHash}");
+        var (status, cacheControl, _, body) = await ExecuteAsync($"/widget.js?v={_olderHash}");
 
         Assert.Equal(200, status);
         Assert.Equal("public, max-age=31536000, immutable", cacheControl);
@@ -173,7 +167,7 @@ public class WidgetCacheHeadersTests : IDisposable
     [Fact]
     public async Task Wrong_Version_Returns_404_With_Mismatch_Header()
     {
-        var (status, _, mismatch, body) = await ExecuteAsync("/pointer.js?v=000000000000");
+        var (status, _, mismatch, body) = await ExecuteAsync("/widget.js?v=000000000000");
 
         Assert.Equal(StatusCodes.Status404NotFound, status);
         Assert.Equal(_currentHash, mismatch);
@@ -183,7 +177,7 @@ public class WidgetCacheHeadersTests : IDisposable
     [Fact]
     public async Task Stable_Channel_Returns_MaxAge_3600()
     {
-        var (status, cacheControl, _, body) = await ExecuteAsync("/pointer.js?v=stable");
+        var (status, cacheControl, _, body) = await ExecuteAsync("/widget.js?v=stable");
 
         Assert.Equal(200, status);
         Assert.Equal("public, max-age=3600", cacheControl);
@@ -196,7 +190,7 @@ public class WidgetCacheHeadersTests : IDisposable
     [InlineData("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA")]
     public async Task Malformed_V_Returns_404_Without_Exception(string malformedV)
     {
-        var (status, _, mismatch, body) = await ExecuteAsync($"/pointer.js?v={Uri.EscapeDataString(malformedV)}");
+        var (status, _, mismatch, body) = await ExecuteAsync($"/widget.js?v={Uri.EscapeDataString(malformedV)}");
 
         Assert.Equal(StatusCodes.Status404NotFound, status);
         Assert.Equal(_currentHash, mismatch);
@@ -209,17 +203,17 @@ public class WidgetCacheHeadersTests : IDisposable
         var emptyInfo = WidgetVersionInfo.Empty;
 
         // Bare file still works
-        var (bareStatus, bareCc, _, _) = await ExecuteAsync("/pointer.js", emptyInfo);
+        var (bareStatus, bareCc, _, _) = await ExecuteAsync("/widget.js", emptyInfo);
         Assert.Equal(200, bareStatus);
         Assert.Equal("no-cache", bareCc);
 
         // ?v= returns 404 with mismatch header 'unknown'
-        var (pinnedStatus, _, mismatch, _) = await ExecuteAsync($"/pointer.js?v={_currentHash}", emptyInfo);
+        var (pinnedStatus, _, mismatch, _) = await ExecuteAsync($"/widget.js?v={_currentHash}", emptyInfo);
         Assert.Equal(StatusCodes.Status404NotFound, pinnedStatus);
         Assert.Equal("unknown", mismatch);
 
         // ?v=stable also 404s when version is corrupt/missing
-        var (stableStatus, _, stableMismatch, _) = await ExecuteAsync("/pointer.js?v=stable", emptyInfo);
+        var (stableStatus, _, stableMismatch, _) = await ExecuteAsync("/widget.js?v=stable", emptyInfo);
         Assert.Equal(StatusCodes.Status404NotFound, stableStatus);
         Assert.Equal("unknown", stableMismatch);
     }

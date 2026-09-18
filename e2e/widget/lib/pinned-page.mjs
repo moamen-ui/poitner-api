@@ -15,7 +15,7 @@ export function pinnedPage({
   project = 'e2e-widget-smoke',
   environment = 'local',
 } = {}) {
-  const src = v ? `${server}/pointer.js?v=${v}` : `${server}/pointer.js`;
+  const src = v ? `${server}/widget.js?v=${v}` : `${server}/widget.js`;
   const integrityAttr = integrity ? ` integrity="${integrity}" crossorigin="anonymous"` : '';
 
   return `<!doctype html>

@@ -253,9 +253,9 @@ test('R3-01-07 — init --pin covers the Vite stack, not only static', async () 
   const manifest = JSON.parse(
     execFileSync('curl', ['-s', `${SERVER}/pointer.version.json`], { encoding: 'utf8' }),
   );
-  expect(html, 'the loader must request the pinned build').toContain(`/pointer.js?v=${manifest.hash}`);
+  expect(html, 'the loader must request the pinned build').toContain(`/widget.js?v=${manifest.hash}`);
   expect(html, 'and carry the integrity hash the server published').toContain(
-    `s.integrity = '${manifest.files['pointer.js'].integrity}'`,
+    `s.integrity = '${manifest.files['widget.js'].integrity}'`,
   );
   expect(html, 'SRI on a cross-origin script requires crossOrigin').toContain("s.crossOrigin = 'anonymous'");
 

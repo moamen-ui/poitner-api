@@ -57,8 +57,6 @@ public class OnDiskContractTests
         // Served URLs
         "/widget.js",
         "/widget.css",
-        "/pointer.js",
-        "/pointer.css",
         "/embed.js",
         "/install.sh",
         "/skill.md",
@@ -107,6 +105,10 @@ public class OnDiskContractTests
         // Reply edit/delete action wiring (comment card) — internal selectors, not host-facing.
         "data-comment-id",
         "data-reply-id",
+        // Kebab-menu item wiring (comment card + reply — see toggleCardMenu/toggleReplyMenu),
+        // separate from data-act so a menu item's click handler never collides with a plain
+        // inline button that happens to share the same data-act value.
+        "data-menu-act",
         "data-toggle",
         "data-placement",
         "data-private",

@@ -320,7 +320,7 @@ test('R2-00-02 — fresh-app: static', async ({ page }) => {
     const endMarkers = indexHtml.match(/<!-- pointer-feedback:end -->/g) || [];
     expect(startMarkers.length).toBe(1);
     expect(endMarkers.length).toBe(1);
-    expect(indexHtml).toContain(`<script src="${SERVER}/pointer.js" defer></script>`);
+    expect(indexHtml).toContain(`<script src="${SERVER}/widget.js" defer></script>`);
     expect(indexHtml).toContain(`<pointer-feedback project="${createdProjectKey}"`);
 
     // Doctor check
@@ -1014,7 +1014,7 @@ test('R1-02-02 — init-static-no-ai', async () => {
 
     const injected = block![1].trim();
     const expected = [
-      `<script src="${SERVER}/pointer.js" defer></script>`,
+      `<script src="${SERVER}/widget.js" defer></script>`,
       `<pointer-feedback project="${createdProjectKey}" server="${SERVER}" environment="local"></pointer-feedback>`,
     ].join('\n');
     expect(injected.replace(/\n\s+/g, '\n')).toBe(expected);

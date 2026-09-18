@@ -7,7 +7,7 @@ essentials so Claude surfaces them too.
 ## Project
 
 **Pointer API** — a .NET 8 Clean Architecture backend (ASP.NET Core + EF Core + PostgreSQL) that
-serves a drop-in feedback Web Component at `/pointer.js`, the AI apply/init skills as served
+serves a drop-in feedback Web Component at `/widget.js`, the AI apply/init skills as served
 markdown, and a zero-dependency `/admin/` fallback page. Run locally with `just up` (API + Postgres
 via Docker, API on `:8090`).
 
@@ -50,7 +50,7 @@ via Docker, API on `:8090`).
 
 ## Web component (`<pointer-feedback>`)
 
-The served `API/wwwroot/pointer.js` and `API/wwwroot/pointer.css` are **build artifacts** — do
+The served `API/wwwroot/widget.js` and `API/wwwroot/widget.css` are **build artifacts** — do
 **not** edit them by hand. Source lives in [`web-component/`](web-component/) (TypeScript modules +
 SCSS, esbuild + sass; no runtime deps in the output).
 

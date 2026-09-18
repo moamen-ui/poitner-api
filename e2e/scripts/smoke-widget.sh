@@ -78,16 +78,16 @@ ok version-json
 # ── 2. banner-hash ───────────────────────────────────────────────────────────
 # The served bytes must hash to the hash the manifest advertises. This is the check that catches a
 # half-finished deploy: a new manifest next to the previous build's JavaScript.
-served_hash="$(fetch "$SERVER/pointer.js" | sha256_short)"
+served_hash="$(fetch "$SERVER/widget.js" | sha256_short)"
 if [ "$served_hash" != "$hash" ]; then
-  fail banner-hash "/pointer.js hashes to ${served_hash:-<empty>}, manifest says $hash"
+  fail banner-hash "/widget.js hashes to ${served_hash:-<empty>}, manifest says $hash"
 else
   ok banner-hash
 fi
 
 # ── 3. pinned-immutable ──────────────────────────────────────────────────────
-pinned_status="$(status_of "$SERVER/pointer.js?v=$hash")"
-pinned_cc="$(header_of "$SERVER/pointer.js?v=$hash" cache-control)"
+pinned_status="$(status_of "$SERVER/widget.js?v=$hash")"
+pinned_cc="$(header_of "$SERVER/widget.js?v=$hash" cache-control)"
 if [ "$pinned_status" != "200" ]; then
   fail pinned-immutable "?v=$hash returned $pinned_status"
 elif ! printf '%s' "$pinned_cc" | grep -q 'immutable'; then
@@ -99,7 +99,7 @@ fi
 # ── 4. unknown-404 ───────────────────────────────────────────────────────────
 # An unknown pin must 404 rather than quietly fall back to the current build — a fallback would
 # serve different bytes under a hash that promised they could never change.
-unknown_status="$(status_of "$SERVER/pointer.js?v=000000000000")"
+unknown_status="$(status_of "$SERVER/widget.js?v=000000000000")"
 if [ "$unknown_status" != "404" ]; then
   fail unknown-404 "an unknown pin returned $unknown_status, expected 404"
 else
@@ -107,9 +107,9 @@ else
 fi
 
 # ── 5. css ───────────────────────────────────────────────────────────────────
-css_status="$(status_of "$SERVER/pointer.css?v=$hash")"
+css_status="$(status_of "$SERVER/widget.css?v=$hash")"
 if [ "$css_status" != "200" ]; then
-  fail css "/pointer.css?v=$hash returned $css_status"
+  fail css "/widget.css?v=$hash returned $css_status"
 else
   ok css
 fi

@@ -122,7 +122,7 @@ export interface User {
 }
 
 /**
- * Optional config a host can inject before pointer.js runs (used by the browser
+ * Optional config a host can inject before widget.js runs (used by the browser
  * extension). Values here take precedence over HTML attributes; a supplied
  * `token` pre-authenticates the widget so it skips its own login.
  */
@@ -135,7 +135,7 @@ export interface PointerInjectedConfig {
   /** Hint that API traffic is proxied via `window.__POINTER_FETCH__`. */
   proxy?: boolean;
   /** Absolute URL for the widget stylesheet — set by a host (e.g. the extension) that bundles
-   *  pointer.css instead of serving it, so the shadow-DOM <link> loads from the extension origin. */
+   *  widget.css instead of serving it, so the shadow-DOM <link> loads from the extension origin. */
   cssUrl?: string;
   /** Lock the environment (no toolbar switcher) — the host equivalent of `fixed-environment="true"`.
    *  Absent/false: `environment` only seeds the starting value and the viewer may switch. */

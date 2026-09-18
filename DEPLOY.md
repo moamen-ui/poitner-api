@@ -10,7 +10,7 @@ targets React only.
 
 | Host | Serves |
 |---|---|
-| `api.pointer.moamen.work` | this API (Swagger, `/pointer.js`, `/embed.js`, skills) |
+| `api.pointer.moamen.work` | this API (Swagger, `/widget.js`, `/embed.js`, skills) |
 | `app.pointer.moamen.work` | the React [`pointer-dashboard`](https://github.com/moamen-ui/pointer-dashboard) build (`dashboard/react`) |
 | `demo.pointer.moamen.work` | same React build, with the "Try the demo" entry |
 | `pointer.moamen.work` | the marketing landing page |

@@ -43,8 +43,8 @@ test('R3-03-01 — widget-pinned-sri-loads', async ({ page }) => {
 
   const H = manifest.hash;
   expect(H, 'the manifest must name a 12-hex build').toMatch(/^[0-9a-f]{12}$/);
-  const integrity = manifest.files['pointer.js'].integrity;
-  expect(integrity, 'the manifest must publish an SRI hash for pointer.js').toMatch(/^sha384-/);
+  const integrity = manifest.files['widget.js'].integrity;
+  expect(integrity, 'the manifest must publish an SRI hash for widget.js').toMatch(/^sha384-/);
 
   // Membership, never position: `retained` is ordered by the server and asserting retained[0]
   // would break on a reorder that changes nothing about what is retained.
@@ -58,7 +58,7 @@ test('R3-03-01 — widget-pinned-sri-loads', async ({ page }) => {
   const host = await servePinnedPage(PINNED_PORT, { v: H, integrity });
   let js;
   try {
-    const jsResponse = page.waitForResponse((r) => r.url().includes('/pointer.js?v='));
+    const jsResponse = page.waitForResponse((r) => r.url().includes('/widget.js?v='));
     await page.goto(host.url);
     js = await jsResponse;
 
@@ -102,7 +102,7 @@ test('R3-03-02 ⛓ — widget-pinned-older-build', async ({ page }) => {
   const current = (await res.json()) as Manifest;
   const olderEntry = (current.retained as Array<{ hash: string; files?: Record<string, { integrity: string }> }>)
     .find((r) => r.hash === older!.hash);
-  const olderIntegrity = olderEntry?.files?.['pointer.js']?.integrity;
+  const olderIntegrity = olderEntry?.files?.['widget.js']?.integrity;
   expect(olderIntegrity, 'a retained build must publish its own integrity hash').toMatch(/^sha384-/);
 
   const consoleErrors: string[] = [];
@@ -113,7 +113,7 @@ test('R3-03-02 ⛓ — widget-pinned-older-build', async ({ page }) => {
   const host = await servePinnedPage(PINNED_PORT, { v: older!.hash, integrity: olderIntegrity });
   let js;
   try {
-    const jsResponse = page.waitForResponse((r) => r.url().includes('/pointer.js?v='));
+    const jsResponse = page.waitForResponse((r) => r.url().includes('/widget.js?v='));
     await page.goto(host.url);
     js = await jsResponse;
 
@@ -147,11 +147,11 @@ test('R3-03-03 ⛓ — widget-pinned-unknown-404', async ({ page }) => {
   // passed anyway so the page is otherwise identical to the working one.
   const host = await servePinnedPage(PINNED_PORT, {
     v: '000000000000',
-    integrity: manifest.files['pointer.js'].integrity,
+    integrity: manifest.files['widget.js'].integrity,
   });
   let js;
   try {
-    const jsResponse = page.waitForResponse((r) => r.url().includes('/pointer.js?v=000000000000'));
+    const jsResponse = page.waitForResponse((r) => r.url().includes('/widget.js?v=000000000000'));
     await page.goto(host.url);
     js = await jsResponse;
 
@@ -215,7 +215,7 @@ test('R3-03-04 — widget-nonce-csp-styles', async ({ page }) => {
     // The stylesheet, NOT capture-config. fetchCaptureConfig runs only from init(), which _boot()
     // calls only when there is a token — this page is a deliberately unauthenticated boot, so a
     // capture-config waiter would hang until timeout and look like a CSP failure.
-    const cssResponse = page.waitForResponse((r) => r.url().includes('/pointer.css'));
+    const cssResponse = page.waitForResponse((r) => r.url().includes('/widget.css'));
     await page.goto(url);
     await cssResponse;
 
@@ -240,7 +240,7 @@ test('R3-03-04 — widget-nonce-csp-styles', async ({ page }) => {
     const styling = await page.evaluate(() => {
       const root = document.querySelector('pointer-feedback')?.shadowRoot;
       if (!root) return null;
-      const link = root.querySelector('link[href*="pointer.css"]') as HTMLLinkElement | null;
+      const link = root.querySelector('link[href*="widget.css"]') as HTMLLinkElement | null;
       const add = root.querySelector('#pf-add') as HTMLElement | null;
       return {
         linkPresent: !!link,

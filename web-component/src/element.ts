@@ -266,7 +266,7 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
     }
     // A host may bundle the CSS (extension) and pass its URL; otherwise resolve from the script's
     // own origin, falling back to the API server.
-    this._styleLink.href = injected?.cssUrl || CSS_URL || `${this.server}/pointer.css`;
+    this._styleLink.href = injected?.cssUrl || CSS_URL || `${this.server}/widget.css`;
     this.shadowRoot!.appendChild(this._styleLink);
     this.root = document.createElement('div');
     this.shadowRoot!.appendChild(this.root);

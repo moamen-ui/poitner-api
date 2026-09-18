@@ -7,7 +7,7 @@ description: Use when the user wants to add, install, init, or integrate the <PO
 # Add <POINTER_PRODUCT> to this app
 
 <POINTER_PRODUCT> is an element-level feedback widget delivered as a single Web Component,
-`<pointer-feedback>`, loaded from a <POINTER_PRODUCT> server's `/pointer.js`. It renders entirely inside a
+`<pointer-feedback>`, loaded from a <POINTER_PRODUCT> server's `/widget.js`. It renders entirely inside a
 Shadow DOM (no CSS collisions), shows a small toolbar, and lets authenticated stakeholders click any
 element and leave a comment. Projects **self-register**: the first time an app loads/comments with a
 given project key, it appears in the <POINTER_PRODUCT> dashboard.
@@ -170,7 +170,7 @@ Match the env-var prefix to whichever you detect (see the naming table in Step 3
 > **Skip this step entirely when delivery = extension** — no file in this app is touched; the
 > reviewer's Chrome extension injects the widget instead. Go straight to Step 4.
 
-The loader loads `<POINTER_SERVER>/pointer.js`, then appends a `<pointer-feedback>` element.
+The loader loads `<POINTER_SERVER>/widget.js`, then appends a `<pointer-feedback>` element.
 
 Do NOT write a `source-attr` attribute: `data-component-source` is already the widget's default, and
 the build plugin stamps that same frozen name, so stating it changes nothing. Set it only for an app
@@ -212,7 +212,7 @@ Add to `index.html` before `</body>`:
     '%VITE_POINTER_PROJECT%' !== ''
   ) {
     var s = document.createElement('script');
-    s.src = '%VITE_POINTER_SERVER%/pointer.js';
+    s.src = '%VITE_POINTER_SERVER%/widget.js';
     s.defer = true;
     document.head.appendChild(s);
     // document.body is null while the parser is still inside <head>, so the mount waits for the
@@ -246,7 +246,7 @@ simply leaves it empty and carries zero <POINTER_PRODUCT> code paths.
 Inline literal values before `</body>`:
 
 ```html
-<script src="<POINTER_SERVER>/pointer.js" defer></script>
+<script src="<POINTER_SERVER>/widget.js" defer></script>
 <pointer-feedback
   project="<project-key>"
   server="<POINTER_SERVER>"></pointer-feedback>
@@ -261,7 +261,7 @@ stack uses:
 
 ```html
 <!-- pointer-feedback:start -->
-<script src="<POINTER_SERVER>/pointer.js" defer></script>
+<script src="<POINTER_SERVER>/widget.js" defer></script>
 <script>
   (function () {
     function mount() {
@@ -317,14 +317,14 @@ user named. Never a shared lib, never a second app because it looked similar.
 ### 3d. Next.js
 
 Use a client component (e.g. in the root `app/layout.tsx` via a `'use client'` effect, or a
-`<Script>` for pointer.js + an effect that creates `<pointer-feedback>`), reading values from
+`<Script>` for widget.js + an effect that creates `<pointer-feedback>`), reading values from
 `NEXT_PUBLIC_POINTER_*` env vars. Guard on an `enabled` flag so prod can opt out.
 
 ### 3e. API Swagger / OpenAPI docs page
 
 A Swagger UI is just an HTML page — embed <POINTER_PRODUCT> so consumers can leave element-level comments on
 endpoints. The <POINTER_PRODUCT> server hosts a one-line loader at **`<POINTER_SERVER>/embed.js?project=<key>`**
-that injects `pointer.js` and mounts a configured `<pointer-feedback>` (server pre-filled). The page
+that injects `widget.js` and mounts a configured `<pointer-feedback>` (server pre-filled). The page
 owner just (1) references that loader and (2) — if the page sends a CSP — allowlists the <POINTER_PRODUCT> origin.
 
 **ASP.NET / Swashbuckle (recommended: config-driven).** Put every <POINTER_PRODUCT> setting in a `<POINTER_PRODUCT>`
@@ -370,8 +370,8 @@ $"default-src 'self'; script-src 'self' 'unsafe-inline'{pAllow}; connect-src 'se
 $"style-src 'self' 'unsafe-inline'{pAllow}; img-src 'self' data:{pAllow}; frame-ancestors 'none'"
 ```
 
-(`script-src` loads embed.js/pointer.js; `connect-src` the comments/login/upload API; `style-src`
-the shadow-DOM `pointer.css` `<link>`; `img-src` screenshot thumbnails.)
+(`script-src` loads embed.js/widget.js; `connect-src` the comments/login/upload API; `style-src`
+the shadow-DOM `widget.css` `<link>`; `img-src` screenshot thumbnails.)
 
 **Other renderers** (Scalar, Redoc, standalone swagger-ui, static docs): just add one script tag
 wherever that renderer allows custom JS — and, if the page has a CSP, allowlist `<POINTER_SERVER>`
@@ -400,7 +400,7 @@ webpack `DefinePlugin`/`EnvironmentPlugin` defines.
     '%REACT_APP_POINTER_PROJECT%' !== ''
   ) {
     var s = document.createElement('script');
-    s.src = '%REACT_APP_POINTER_SERVER%/pointer.js';
+    s.src = '%REACT_APP_POINTER_SERVER%/widget.js';
     s.defer = true;
     document.head.appendChild(s);
     var mount = function () {
@@ -451,7 +451,7 @@ ships the script at all. Razor, as the most common case:
 @if (Config.GetValue<bool>("Pointer:Enabled") && !string.IsNullOrWhiteSpace(Config["Pointer:Project"]))
 {
     <!-- pointer-feedback:start -->
-    <script src="@Config["Pointer:Server"]/pointer.js" defer></script>
+    <script src="@Config["Pointer:Server"]/widget.js" defer></script>
     <pointer-feedback
         project="@Config["Pointer:Project"]"
         server="@Config["Pointer:Server"]"
@@ -703,7 +703,7 @@ driving it through this skill instead.
 - **`project` is required**; the component disables itself without it.
 - **`server`** defaults to the script's origin if omitted — set it explicitly when the app and the
   <POINTER_PRODUCT> server are different origins (the usual case).
-- **Cross-origin is fine:** `pointer.js` (script), `pointer.css` (link), and uploaded images (`<img>`)
+- **Cross-origin is fine:** `widget.js` (script), `widget.css` (link), and uploaded images (`<img>`)
   aren't CORS-restricted; API calls use the server's permissive CORS policy.
 - **Auth:** stakeholders need a <POINTER_PRODUCT> account; self-signup (an admin-approved request) is built into
   the widget. The token is stored in `localStorage` (`pointer_token`).

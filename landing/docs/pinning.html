@@ -72,9 +72,9 @@
       <p>
         A plain install loads the floating build:
       </p>
-      <pre><code>&lt;script src="https://your-server.example/pointer.js" defer&gt;&lt;/script&gt;</code></pre>
+      <pre><code>&lt;script src="https://your-server.example/widget.js" defer&gt;&lt;/script&gt;</code></pre>
       <p>
-        Unpinned, <code>/pointer.js</code> is whatever the server is serving today. The server marks
+        Unpinned, <code>/widget.js</code> is whatever the server is serving today. The server marks
         it <code>no-cache</code> so browsers revalidate, and every widget release replaces it in
         place — your site picks up fixes without you touching anything. That auto-update behaviour
         is convenient and is the right default for most installs.
@@ -82,7 +82,7 @@
       <p>
         A pinned install asks for one immutable build and verifies its bytes:
       </p>
-      <pre><code>&lt;script src="https://your-server.example/pointer.js?v=&lt;hash&gt;"
+      <pre><code>&lt;script src="https://your-server.example/widget.js?v=&lt;hash&gt;"
         integrity="sha384-&lt;hash&gt;"
         crossorigin="anonymous" defer&gt;&lt;/script&gt;</code></pre>
       <p>
@@ -100,12 +100,12 @@
         <code>sha384</code> integrity value:
       </p>
       <pre><code>&lt;!-- pointer-feedback:start --&gt;
-&lt;script src="https://your-server.example/pointer.js?v=9f1c2ab3" integrity="sha384-…" crossorigin="anonymous" defer&gt;&lt;/script&gt;
+&lt;script src="https://your-server.example/widget.js?v=9f1c2ab3" integrity="sha384-…" crossorigin="anonymous" defer&gt;&lt;/script&gt;
 &lt;pointer-feedback project="my-project" server="https://your-server.example" environment="staging"&gt;&lt;/pointer-feedback&gt;
 &lt;!-- pointer-feedback:end --&gt;</code></pre>
       <p>
         If the server's manifest cannot be reached or publishes no hash for
-        <code>pointer.js</code>, <code>init</code> exits with an error and tells you to re-run
+        <code>widget.js</code>, <code>init</code> exits with an error and tells you to re-run
         without <code>--pin</code> — it never silently writes an unpinned tag you believe is pinned.
       </p>
       <p>
@@ -114,7 +114,7 @@
         created element:
       </p>
       <pre><code>var s = document.createElement('script');
-s.src = '%VITE_POINTER_SERVER%/pointer.js?v=&lt;hash&gt;';
+s.src = '%VITE_POINTER_SERVER%/widget.js?v=&lt;hash&gt;';
 s.integrity = 'sha384-…';
 s.crossOrigin = 'anonymous';</code></pre>
       <p>
@@ -184,7 +184,7 @@ s.crossOrigin = 'anonymous';</code></pre>
       <p>
         Previous builds are retained on the server (the widget build pipeline keeps the 10 newest
         releases), so a pin keeps working across roughly ten widget releases. When your pinned
-        build finally falls out of the retained set, <code>/pointer.js?v=&lt;your hash&gt;</code>
+        build finally falls out of the retained set, <code>/widget.js?v=&lt;your hash&gt;</code>
         starts returning <code>404</code> with a recovery hint in a response header:
       </p>
       <pre><code>HTTP/1.1 404 Not Found
@@ -201,7 +201,7 @@ X-Pointer-Widget-Version-Mismatch: &lt;the server's current build hash&gt;</code
 
       <h2>Self-hosting behind a proxy: keep your cache rules off the pin</h2>
       <p>
-        Self-hosters commonly put a no-cache rule in front of <code>/pointer.js</code> so the
+        Self-hosters commonly put a no-cache rule in front of <code>/widget.js</code> so the
         floating build really does auto-update. That rule must <strong>exclude requests carrying a
         <code>v</code> query</strong>: a pinned request is content-addressed and immutable, and a
         proxy no-cache rule would overwrite the year-long immutable header the API chose. The bytes
@@ -212,7 +212,7 @@ X-Pointer-Widget-Version-Mismatch: &lt;the server's current build hash&gt;</code
         This is the matcher from this project's own <code>Caddyfile</code>:
       </p>
       <pre><code>@widget {
-    path /pointer.js /pointer.css /embed.js /skill.md /api/branding
+    path /widget.js /widget.css /embed.js /skill.md /api/branding
     not query v=*
 }
 header @widget &gt;Cache-Control "no-cache, must-revalidate"</code></pre>

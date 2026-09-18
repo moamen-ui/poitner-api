@@ -20,7 +20,7 @@ test.describe('R3-06 Landing page refresh', () => {
 
     // 1. Abort all /api/ calls and the widget script before goto
     await page.route('**/api/**', (route) => route.abort());
-    await page.route('**/pointer.js', (route) => route.abort());
+    await page.route('**/widget.js', (route) => route.abort());
 
     // 2. Load page
     await page.goto(LANDING_URL, { waitUntil: 'domcontentloaded' });
@@ -53,7 +53,7 @@ test.describe('R3-06 Landing page refresh', () => {
 
   // R3-06-02: each live section degrades independently
   test('R3-06-02: each live section degrades independently', async ({ page }) => {
-    await page.route('**/pointer.js', (route) => route.abort());
+    await page.route('**/widget.js', (route) => route.abort());
 
     // (a) abort /api/plans -> pricing shows fallback CTA
     await page.route('**/api/plans', (route) => route.abort());
@@ -122,7 +122,7 @@ test.describe('R3-06 Landing page refresh', () => {
       // 3. Fresh context & load page
       const context = await browser.newContext();
       const page = await context.newPage();
-      await page.route('**/pointer.js', (route) => route.abort());
+      await page.route('**/widget.js', (route) => route.abort());
 
       const brandingPromise = page.waitForResponse('**/api/branding');
       await page.goto(LANDING_URL, { waitUntil: 'domcontentloaded' });
@@ -141,7 +141,7 @@ test.describe('R3-06 Landing page refresh', () => {
       const ariaAttrs = await page.$$eval('[aria-label]', (els) => els.map((e) => e.getAttribute('aria-label') || ''));
       const allText = [bodyText, ...titleAttrs, ...ariaAttrs].join(' ');
 
-      // Regex ignoring frozen names: pointer.js, <pointer-feedback>, .pointer/
+      // Regex ignoring frozen names: widget.js, <pointer-feedback>, .pointer/
       const leakRegex = /(?<!-)\bPointer\b(?!-)/g;
       const matches = allText.match(leakRegex) || [];
       expect(matches.length).toBe(0);
@@ -155,7 +155,7 @@ test.describe('R3-06 Landing page refresh', () => {
 
   // R3-06-04: en <-> ar + RTL, and dark mode
   test('R3-06-04: en <-> ar + RTL, and dark mode', async ({ page }) => {
-    await page.route('**/pointer.js', (route) => route.abort());
+    await page.route('**/widget.js', (route) => route.abort());
     await page.goto(LANDING_URL, { waitUntil: 'domcontentloaded' });
 
     // 1. Click language toggle
@@ -199,7 +199,7 @@ test.describe('R3-06 Landing page refresh', () => {
 
   // R3-06-05: no horizontal scroll at 390 px and 320 px
   test('R3-06-05: no horizontal scroll at 390 px and 320 px', async ({ page }) => {
-    await page.route('**/pointer.js', (route) => route.abort());
+    await page.route('**/widget.js', (route) => route.abort());
 
     for (const width of [390, 320]) {
       await page.setViewportSize({ width, height: 844 });
@@ -220,7 +220,7 @@ test.describe('R3-06 Landing page refresh', () => {
     const creds = loadCredentials();
     const tester = await login(creds.tester.email, creds.tester.password);
 
-    // 1. Do NOT block pointer.js
+    // 1. Do NOT block widget.js
     // 2. Pre-auth widget as tester
     await preAuthWidget(page, tester.token, tester.user);
 

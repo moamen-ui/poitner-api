@@ -9,7 +9,7 @@ pick-it.test:8443 {
     tls internal
 
     @widget {
-        path /pointer.js /pointer.css /embed.js /skill.md /api/branding
+        path /widget.js /widget.css /embed.js /skill.md /api/branding
         not query v=*
     }
     # `>` replaces rather than appends. Without it Caddy adds its value alongside the API's own
@@ -25,7 +25,7 @@ pick-it.test:8443 {
 # nothing but a trust store to configure.
 :8444 {
     @widget {
-        path /pointer.js /pointer.css /embed.js /skill.md /api/branding
+        path /widget.js /widget.css /embed.js /skill.md /api/branding
         not query v=*
     }
     # `>` replaces rather than appends. Without it Caddy adds its value alongside the API's own

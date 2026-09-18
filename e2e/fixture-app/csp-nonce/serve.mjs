@@ -33,7 +33,7 @@ createServer((req, res) => {
   <head>
     <meta charset="UTF-8" />
     <title>CSP nonce fixture</title>
-    <script nonce="${nonce}" src="${SERVER}/pointer.js" defer></script>
+    <script nonce="${nonce}" src="${SERVER}/widget.js" defer></script>
   </head>
   <body>
     <h1 id="title">Strict CSP</h1>

@@ -312,18 +312,18 @@
   var CSS_INTEGRITY = true ? "sha384-WqbG5atGKsHwKnlubv2os5MVloVC/RriB1xW+KQFS8nyCS4bKIHmm4kh+UE3HfPd" : "";
   function resolveCssUrl(scriptSrc) {
     var _a2;
-    if (!scriptSrc) return "pointer.css";
+    if (!scriptSrc) return "widget.css";
     try {
       const base = typeof window !== "undefined" && ((_a2 = window.location) == null ? void 0 : _a2.href) ? window.location.href : "http://localhost";
       const parsedScript = new URL(scriptSrc, base);
-      const css = new URL("pointer.css", parsedScript);
+      const css = new URL("widget.css", parsedScript);
       const v = parsedScript.searchParams.get("v");
       if (v) {
         css.searchParams.set("v", v);
       }
       return css.href;
     } catch {
-      return "pointer.css";
+      return "widget.css";
     }
   }
   var CSS_URL = resolveCssUrl(SCRIPT_SRC);
@@ -2299,7 +2299,7 @@
         this._styleLink.integrity = CSS_INTEGRITY;
         this._styleLink.crossOrigin = "anonymous";
       }
-      this._styleLink.href = (injected == null ? void 0 : injected.cssUrl) || CSS_URL || `${this.server}/pointer.css`;
+      this._styleLink.href = (injected == null ? void 0 : injected.cssUrl) || CSS_URL || `${this.server}/widget.css`;
       this.shadowRoot.appendChild(this._styleLink);
       this.root = document.createElement("div");
       this.shadowRoot.appendChild(this.root);

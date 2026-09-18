@@ -295,7 +295,7 @@ public class DemoService : IDemoService
 
     private static string BuildDemoEmailHtml(string login, string password, string projectKey, string serverUrl, DateTime expiresUtc, string productName)
     {
-        var snippet = $"&lt;script src=\"{serverUrl}/pointer.js\" defer&gt;&lt;/script&gt;<br/>" +
+        var snippet = $"&lt;script src=\"{serverUrl}/widget.js\" defer&gt;&lt;/script&gt;<br/>" +
                       $"&lt;pointer-feedback project=\"{projectKey}\" server=\"{serverUrl}\"&gt;&lt;/pointer-feedback&gt;";
         return $@"<div style=""font-family:system-ui,Segoe UI,Roboto,sans-serif;color:#0f172a;line-height:1.6"">
   <h2 style=""margin:0 0 8px"">Your {productName} demo is ready 🐕</h2>

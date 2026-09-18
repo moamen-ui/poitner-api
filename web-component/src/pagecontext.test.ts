@@ -74,7 +74,7 @@ describe('pagecontext', () => {
   });
 
   it('does not exclude same-origin or Pointer-server requests by origin (dogfooding case)', async () => {
-    startPageContextCapture('https://api.pointer.example', 'https://api.pointer.example/pointer.js');
+    startPageContextCapture('https://api.pointer.example', 'https://api.pointer.example/widget.js');
     await window.fetch(`${window.location.origin}/fail`);
     await window.fetch('https://api.pointer.example/api/fail');
     expect(getPageContextPayload()!.networkEntries).toHaveLength(2);

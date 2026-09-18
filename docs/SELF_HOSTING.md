@@ -77,7 +77,7 @@ On boot the API auto-migrates (`DBMigrationEnabled=true`) and **seeds one admin*
 |---|---|
 | Swagger | http://localhost:8090/swagger |
 | Admin UI (fallback) | http://localhost:8090/admin/ |
-| Web component | http://localhost:8090/pointer.js |
+| Web component | http://localhost:8090/widget.js |
 | Apply skill (`pointer-feedback`) | http://localhost:8090/skill.md |
 | Init skill (`pointer-init`) | http://localhost:8090/pointer-init.md |
 
@@ -107,7 +107,7 @@ create accounts directly:
 
 ## Building the web component
 
-The served `API/wwwroot/pointer.js` and `pointer.css` are **build artifacts** — don't edit them
+The served `API/wwwroot/widget.js` and `widget.css` are **build artifacts** — don't edit them
 directly. Source is a TypeScript + SCSS project in [`web-component/`](../web-component/) (esbuild +
 sass; dependency-free output).
 

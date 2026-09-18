@@ -24,14 +24,14 @@
 
 api.pointer.moamen.work {
     # The widget loader/styles/skill are UNHASHED and updated in place on every deploy. Without this,
-    # browsers (and the extension's injected <script src=".../pointer.js">) heuristically cache the old
+    # browsers (and the extension's injected <script src=".../widget.js">) heuristically cache the old
     # copy — stale widget, and the "widget auto-updates from the server" premise silently breaks.
     # /api/branding is the live branding config (name/urls) consumed by landing+dashboards+widget;
     # keep it revalidated so rebrands propagate. (Its /asset/* subpath is versioned by ?v and keeps
     # its own long cache — the exact-path matcher below does not include the asset subpath.)
     #
     # `not query v=*` is load-bearing. The matcher is otherwise query-blind, so it also matched
-    # /pointer.js?v=<hash> — a PINNED, content-addressed build the API serves as
+    # /widget.js?v=<hash> — a PINNED, content-addressed build the API serves as
     # `public, max-age=31536000, immutable` — and overwrote that with no-cache. The pin still got
     # the right bytes, but the year of caching it exists to buy was destroyed at the proxy, and
     # nothing about the response looked wrong. Excluding any request that carries `v` lets both
@@ -41,7 +41,7 @@ api.pointer.moamen.work {
     # which treats it as an unknown hash and returns 404 with the version-mismatch header. That is
     # the intended answer: an empty pin is a broken pin, not "no pin".
     @widget {
-        path /pointer.js /pointer.css /embed.js /skill.md /api/branding
+        path /widget.js /widget.css /embed.js /skill.md /api/branding
         not query v=*
     }
     # `>` replaces rather than appends. Without it Caddy adds its value alongside the API's own

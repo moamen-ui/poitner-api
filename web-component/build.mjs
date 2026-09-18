@@ -4,10 +4,8 @@
 //   retained versions     → ../API/wwwroot/widget/<hash>/widget.{js,css}
 //   version descriptor    → ../API/wwwroot/pointer.version.json
 //
-// pointer.js/pointer.css (top level, retained dirs, and version.json's `files`) are written as
-// byte-identical copies of widget.js/widget.css — the pre-rename names, kept as permanent aliases
-// per docs/ON-DISK-CONTRACT.md so an already-integrated site (or an older CLI's `--pin`, which
-// reads files['pointer.js']) never breaks.
+// No consumers predate this build yet, so there is no pointer.js/pointer.css alias to keep in
+// sync — widget.js/widget.css are the only served bundle names.
 //
 // Usage:  node build.mjs          (one-shot build)
 //         node build.mjs --watch  (rebuild on change)
@@ -50,7 +48,6 @@ async function runBuild() {
   // 1. Build CSS first so integrity can be embedded into JS
   const css = compileCss();
   writeFileSync(resolve(OUT_DIR, 'widget.css'), css.content);
-  writeFileSync(resolve(OUT_DIR, 'pointer.css'), css.content); // pre-rename alias, see header comment
 
   // 2. Build JS with esbuild and embed CSS_INTEGRITY
   const jsOptions = {
@@ -73,7 +70,6 @@ async function runBuild() {
 
   // 3. Compute JS stats
   const jsBuffer = readFileSync(resolve(OUT_DIR, 'widget.js'));
-  writeFileSync(resolve(OUT_DIR, 'pointer.js'), jsBuffer); // pre-rename alias, see header comment
   const jsBytes = jsBuffer.length;
   const jsGzipBytes = zlib.gzipSync(jsBuffer).length;
   const jsIntegrity = 'sha384-' + crypto.createHash('sha384').update(jsBuffer).digest('base64');
@@ -123,8 +119,6 @@ async function runBuild() {
   mkdirSync(pinnedDir, { recursive: true });
   writeFileSync(resolve(pinnedDir, 'widget.js'), jsBuffer);
   writeFileSync(resolve(pinnedDir, 'widget.css'), css.buffer);
-  writeFileSync(resolve(pinnedDir, 'pointer.js'), jsBuffer); // pre-rename alias
-  writeFileSync(resolve(pinnedDir, 'pointer.css'), css.buffer);
 
   // 8. Update retained builds list (max 10)
   const currentRetained = {
@@ -133,8 +127,6 @@ async function runBuild() {
     files: {
       'widget.js': { integrity: jsIntegrity },
       'widget.css': { integrity: css.integrity },
-      'pointer.js': { integrity: jsIntegrity },
-      'pointer.css': { integrity: css.integrity },
     },
   };
 
@@ -169,21 +161,10 @@ async function runBuild() {
         gzipBytes: css.gzipBytes,
         integrity: css.integrity,
       },
-      // Pre-rename aliases — byte-identical to widget.{js,css} above (see header comment).
-      'pointer.js': {
-        bytes: jsBytes,
-        gzipBytes: jsGzipBytes,
-        integrity: jsIntegrity,
-      },
-      'pointer.css': {
-        bytes: css.bytes,
-        gzipBytes: css.gzipBytes,
-        integrity: css.integrity,
-      },
     },
     retained,
     budget: {
-      pointerJsGzipMax: GZIP_BUDGET,
+      widgetJsGzipMax: GZIP_BUDGET,
     },
   };
 

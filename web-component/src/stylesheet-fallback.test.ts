@@ -59,10 +59,10 @@ describe('stylesheet fallback', () => {
 
     await (el as any)._stylesReady();
 
-    const cssCalls = fetchMock.mock.calls.filter(([url]) => String(url).includes('pointer.css'));
+    const cssCalls = fetchMock.mock.calls.filter(([url]) => String(url).includes('widget.css'));
     expect(cssCalls.length).toBeGreaterThan(0);
     const [calledUrl, fetchOpts] = cssCalls[0];
-    expect(calledUrl).toContain('pointer.css');
+    expect(calledUrl).toContain('widget.css');
     expect(fetchOpts.mode).toBe('cors');
     expect(el.shadowRoot!.adoptedStyleSheets.length).toBeGreaterThan(0);
   });
@@ -87,7 +87,7 @@ describe('stylesheet fallback', () => {
 
     await (el as any)._stylesReady();
 
-    const cssCalls = fetchMock.mock.calls.filter(([url]) => String(url).includes('pointer.css'));
+    const cssCalls = fetchMock.mock.calls.filter(([url]) => String(url).includes('widget.css'));
     expect(cssCalls.length).toBe(0);
     expect(el.shadowRoot!.adoptedStyleSheets.length).toBe(0);
   });
@@ -112,7 +112,7 @@ describe('stylesheet fallback', () => {
 
       await stylesReadyPromise;
 
-      const cssCalls = fetchMock.mock.calls.filter(([url]) => String(url).includes('pointer.css'));
+      const cssCalls = fetchMock.mock.calls.filter(([url]) => String(url).includes('widget.css'));
       expect(cssCalls.length).toBe(0);
       expect(el.shadowRoot!.adoptedStyleSheets.length).toBe(0);
     } finally {
