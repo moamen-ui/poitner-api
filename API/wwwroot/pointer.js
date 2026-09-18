@@ -723,7 +723,6 @@
       "card.explainNotFixed": "Explain what is still not fixed…",
       "card.submit": "Submit",
       "card.viewCommit": "View commit",
-      "card.noCommitRecorded": "No commit recorded for this comment",
       "card.commit": "commit",
       "card.containsSecretPayload": "contains a secret/payload?",
       "card.defaultReplyAuthor": "User",
@@ -933,7 +932,6 @@
       "card.explainNotFixed": "اشرح ما لم يتم إصلاحه بعد…",
       "card.submit": "إرسال",
       "card.viewCommit": "عرض الالتزام",
-      "card.noCommitRecorded": "لا يوجد التزام مسجَّل لهذا التعليق",
       "card.commit": "التزام",
       "card.containsSecretPayload": "قد يحتوي على بيانات سرية؟",
       "card.defaultReplyAuthor": "مستخدم",
@@ -1275,7 +1273,7 @@
             <button class="fbk-mini" data-act="verify-cancel" data-id="${c.id}">${t("toolbar.cancel")}</button>
           </div>
         </div>` : "";
-      const commitLink = c.status === "applied" ? `<a class="fbk-pill" href="${c.commitUrl ? escapeHtml(c.commitUrl) : "#"}" ${c.commitUrl ? 'target="_blank" rel="noopener noreferrer"' : ""} title="${c.commitUrl ? t("card.viewCommit") : t("card.noCommitRecorded")}">&#x1f517; ${t("card.commit")}</a>` : "";
+      const commitLink = c.status === "applied" && c.commitUrl ? `<a class="fbk-pill" href="${escapeHtml(c.commitUrl)}" target="_blank" rel="noopener noreferrer" title="${t("card.viewCommit")}">&#x1f517; ${t("card.commit")}</a>` : "";
       const payloadPill = c.hasPayloadFlag ? `<span class="fbk-pill fbk-payload-flag" title="${escapeHtml((c.payloadFlags || []).join(", "))}">&#x26a0; ${t("card.containsSecretPayload")}</span>` : "";
       const replies = (c.replies || []).map((r) => {
         var _a2, _b, _c;

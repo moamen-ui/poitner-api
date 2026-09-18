@@ -287,10 +287,10 @@ export const TPL = {
           </div>
         </div>`
       : '';
-    // A "#" href for comments with no tracked commit (applied before this field existed, or by a
-    // flow that doesn't record one) — inert rather than a broken/missing link.
-    const commitLink = c.status === 'applied'
-      ? `<a class="fbk-pill" href="${c.commitUrl ? escapeHtml(c.commitUrl) : '#'}" ${c.commitUrl ? 'target="_blank" rel="noopener noreferrer"' : ''} title="${c.commitUrl ? t('card.viewCommit') : t('card.noCommitRecorded')}">&#x1f517; ${t('card.commit')}</a>`
+    // Hidden entirely when there's no tracked commit (applied before this field existed, or by a
+    // flow that doesn't record one) — no pill at all, rather than a dead "#" link.
+    const commitLink = (c.status === 'applied' && c.commitUrl)
+      ? `<a class="fbk-pill" href="${escapeHtml(c.commitUrl)}" target="_blank" rel="noopener noreferrer" title="${t('card.viewCommit')}">&#x1f517; ${t('card.commit')}</a>`
       : '';
     // Advisory only: the server flagged this text as looking like a credential or payload, so a
     // reviewer notices before acting on it. Nothing is blocked and nothing is rewritten — and the
