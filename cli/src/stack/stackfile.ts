@@ -58,6 +58,12 @@ export async function readStackFile(cwd: string, projectKey?: string): Promise<S
 
 /**
  * Merges server response (or existing frontend/backend/aiTools) with local design block.
+ *
+ * frontend/backend: what THIS machine just detected wins whenever it found anything — the server's
+ * copy may be a stale record from before a framework migration (or from a teammate's checkout), and
+ * `init` is the one place with a fresh, local reading. The server value is only the fallback for a
+ * run that detected nothing (repo root without a package.json). aiTools always come from the server,
+ * which is the union across every tool that has ever touched the project.
  */
 export function mergeStack(
   existing: StackData | null,
@@ -65,8 +71,10 @@ export function mergeStack(
   designBlock?: DesignBlock | null,
 ): StackData {
   const base = serverResponse || existing || {};
-  const frontend = serverResponse?.frontend ?? existing?.frontend ?? [];
-  const backend = serverResponse?.backend !== undefined ? serverResponse.backend : (existing?.backend ?? null);
+  const localFrontend = Array.isArray(existing?.frontend) && existing!.frontend!.length > 0 ? existing!.frontend! : null;
+  const localBackend = Array.isArray(existing?.backend) && existing!.backend!.length > 0 ? existing!.backend! : null;
+  const frontend = localFrontend ?? serverResponse?.frontend ?? existing?.frontend ?? [];
+  const backend = localBackend ?? (serverResponse?.backend !== undefined ? serverResponse.backend : (existing?.backend ?? null));
 
   // aiTools merge
   let aiTools: string[] = [];

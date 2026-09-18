@@ -10,9 +10,11 @@ using Xunit;
 namespace Pointer.Tests;
 
 /// <summary>
-/// Project stack registration: `frontend`/`backend` are write-once-if-empty (a second call with a
-/// different payload is a no-op), while `aiTool` is append-if-new — a project can legitimately be
-/// touched by more than one AI coding tool over its lifetime, so that field is never write-once.
+/// Project stack registration: `frontend`/`backend` follow the latest NON-EMPTY detection (stacks
+/// migrate — a write-once record kept reporting Angular for a dashboard that had moved to React),
+/// while an empty detection is ignored so a root-dir `init` can never wipe a real record. `aiTool`
+/// is append-if-new — a project can legitimately be touched by more than one AI coding tool over
+/// its lifetime, so that field is never write-once.
 /// </summary>
 public class ProjectStackTests
 {
@@ -63,17 +65,35 @@ public class ProjectStackTests
     }
 
     [Fact]
-    public async Task SetStack_SecondCallWithDifferentPayload_IsNoOp_ReturnsOriginalValue()
+    public async Task SetStack_SecondCallWithDifferentPayload_ReplacesStack()
     {
+        // A framework migration must show up on the next `init`, not stay frozen at first registration.
+        var (db, tenant) = SeedProject("proj");
+        var svc = BuildService(MemberOf(tenant), db);
+
+        await svc.SetStackAsync("proj", new SetProjectStackRequest { Frontend = new() { "angular", "tailwind" }, Backend = new() { "dotnet" } });
+        var second = await svc.SetStackAsync("proj", new SetProjectStackRequest { Frontend = new() { "react", "vite", "tailwind" }, Backend = new() { "dotnet" } });
+
+        Assert.True(second.IsSuccess);
+        Assert.Equal(new[] { "react", "vite", "tailwind" }, second.Data!.Frontend);
+        Assert.Equal(new[] { "dotnet" }, second.Data!.Backend);
+    }
+
+    [Fact]
+    public async Task SetStack_EmptyDetection_DoesNotWipeExistingStack()
+    {
+        // `init` run from a repo root with no package.json detects nothing — that must not erase the
+        // record a teammate registered from the app directory.
         var (db, tenant) = SeedProject("proj");
         var svc = BuildService(MemberOf(tenant), db);
 
         await svc.SetStackAsync("proj", new SetProjectStackRequest { Frontend = new() { "react" }, Backend = new() { "dotnet" } });
-        var second = await svc.SetStackAsync("proj", new SetProjectStackRequest { Frontend = new() { "vue" }, Backend = new() { "go" } });
+        var second = await svc.SetStackAsync("proj", new SetProjectStackRequest { Frontend = new(), Backend = new(), AiTool = "cursor" });
 
         Assert.True(second.IsSuccess);
-        Assert.Equal(new[] { "react" }, second.Data!.Frontend); // original value, not overwritten
+        Assert.Equal(new[] { "react" }, second.Data!.Frontend);
         Assert.Equal(new[] { "dotnet" }, second.Data!.Backend);
+        Assert.Contains("cursor", second.Data!.AiTools);
     }
 
     [Fact]

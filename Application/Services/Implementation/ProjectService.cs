@@ -981,12 +981,21 @@ public class ProjectService : IProjectService
 
         var changed = false;
 
-        // frontend/backend: write-once-if-empty — ignored (not merged, not overwritten) once set,
-        // so this call is always safe regardless of which developer/machine triggers it first.
-        if (string.IsNullOrEmpty(project.TechStack) && (request.Frontend != null || request.Backend != null))
+        // frontend/backend: the LATEST non-empty detection wins. Stacks migrate (this product's own
+        // dashboard went Angular → React) and a write-once record silently kept reporting the old
+        // framework to `init`, the stack insights and the landing page. An empty detection — `init`
+        // run from a repo root with no package.json, say — is ignored so it can never wipe a real
+        // record, which keeps the call safe regardless of which developer/machine triggers it.
+        var hasFrontend = request.Frontend is { Count: > 0 };
+        var hasBackend = request.Backend is { Count: > 0 };
+        if (hasFrontend || hasBackend)
         {
-            project.TechStack = JsonSerializer.Serialize(new { frontend = request.Frontend, backend = request.Backend });
-            changed = true;
+            var next = JsonSerializer.Serialize(new { frontend = request.Frontend ?? new List<string>(), backend = request.Backend });
+            if (!string.Equals(project.TechStack, next, StringComparison.Ordinal))
+            {
+                project.TechStack = next;
+                changed = true;
+            }
         }
 
         // aiTool: append-if-new to the growing set — a project can legitimately be touched by more

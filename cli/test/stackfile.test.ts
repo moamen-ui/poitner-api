@@ -71,10 +71,25 @@ test('stackfile: mergeStack preserves frontend/backend/aiTools and updates desig
   };
 
   const merged = mergeStack(existing, serverResponse.data, design);
-  assert.deepEqual(merged.frontend, ['react', 'tailwind']);
-  assert.deepEqual(merged.backend, ['dotnet', 'postgres']);
+  // Local detection is the fresh reading for this machine — it wins over the server's copy, which
+  // may predate a framework migration. aiTools are the server's union across every tool ever used.
+  assert.deepEqual(merged.frontend, ['react']);
+  assert.deepEqual(merged.backend, ['dotnet']);
   assert.deepEqual(merged.aiTools, ['claude-code', 'cursor']);
   assert.deepEqual(merged.design, design);
+});
+
+test('stackfile: mergeStack falls back to the server stack when local detection found nothing', () => {
+  // `init` from a repo root with no package.json: nothing detected locally, so the server record
+  // (registered by someone running from the app dir) is the best available answer.
+  const merged = mergeStack(
+    { frontend: [], backend: [], aiTools: [] },
+    { frontend: ['react', 'vite'], backend: null, aiTools: ['claude-code'] },
+    null,
+  );
+  assert.deepEqual(merged.frontend, ['react', 'vite']);
+  assert.equal(merged.backend, null);
+  assert.deepEqual(merged.aiTools, ['claude-code']);
 });
 
 test('stackfile: canonical key order and byte-identical determinism', () => {
