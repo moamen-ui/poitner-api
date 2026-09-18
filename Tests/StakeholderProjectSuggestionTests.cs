@@ -326,7 +326,7 @@ public class StakeholderProjectSuggestionTests
         var db = BuildContext(user, dbName);
         var uow = new UnitOfWork(db);
         var email = new FakeEmail();
-        return (new SuggestionService(uow, user, email), db, email);
+        return (new SuggestionService(uow, user, email, new NotificationService(uow, user)), db, email);
     }
 
     [Fact]

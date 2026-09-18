@@ -38,8 +38,9 @@ public class NotificationService(IUnitOfWork unitOfWork, ICurrentUser currentUse
 
         var query = MyNotifications()
             .Include(n => n.Comment)
-                .ThenInclude(c => c.Project)
+                .ThenInclude(c => c!.Project)
             .Include(n => n.Project)
+            .Include(n => n.Suggestion)
             .AsNoTracking();
 
         if (unread == true)
@@ -79,8 +80,9 @@ public class NotificationService(IUnitOfWork unitOfWork, ICurrentUser currentUse
     {
         var notification = await MyNotifications()
             .Include(n => n.Comment)
-                .ThenInclude(c => c.Project)
+                .ThenInclude(c => c!.Project)
             .Include(n => n.Project)
+            .Include(n => n.Suggestion)
             .FirstOrDefaultAsync(n => n.Id == id);
 
         if (notification == null)
@@ -119,7 +121,10 @@ public class NotificationService(IUnitOfWork unitOfWork, ICurrentUser currentUse
 
     private static NotificationDto MapToDto(Notification n)
     {
-        var body = n.Comment?.Body ?? string.Empty;
+        // Old clients render CommentBodyExcerpt regardless of notification kind — when there is no
+        // Comment (suggestion-flow notifications), fall back to the suggestion's text so they still
+        // show something meaningful.
+        var body = n.Comment != null ? n.Comment.Body : n.Suggestion?.Text ?? string.Empty;
         var excerpt = body.Length > 80 ? body[..80] : body;
 
         NotificationPayloadDto? payload = null;
@@ -140,6 +145,7 @@ public class NotificationService(IUnitOfWork unitOfWork, ICurrentUser currentUse
             Id = n.Id,
             Type = n.Type,
             CommentId = n.CommentId,
+            SuggestionId = n.SuggestionId,
             ProjectKey = n.Project?.Key ?? n.Comment?.Project?.Key ?? string.Empty,
             ProjectName = n.Project?.Name ?? n.Comment?.Project?.Name ?? string.Empty,
             CommentBodyExcerpt = excerpt,

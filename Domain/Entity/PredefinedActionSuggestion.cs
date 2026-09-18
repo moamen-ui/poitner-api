@@ -27,8 +27,12 @@ public class PredefinedActionSuggestion : BaseEntity
 
     public SuggestionStatus Status { get; set; } = SuggestionStatus.Pending;
 
-    /// <summary>Admin who approved/rejected.</summary>
+    /// <summary>Admin who approved/rejected/requested changes.</summary>
     public Guid? ReviewedBy { get; set; }
 
     public DateTime? ReviewedAt { get; set; }
+
+    /// <summary>Admin's feedback when requesting changes (Status == ChangesRequested). Cleared back
+    /// to null once the submitter edits and resubmits (Status returns to Pending).</summary>
+    public string? AdminFeedback { get; set; }
 }

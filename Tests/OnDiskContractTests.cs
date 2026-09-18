@@ -24,6 +24,8 @@ public class OnDiskContractTests
         "aiTool",
         "skillsDir",
         "cliVersion",
+        "delivery",
+        "delegation",
         // .gitignore lines
         "!.pointer/credentials.env.example",
         "!.pointer/stack.json",

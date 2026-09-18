@@ -9,7 +9,7 @@ namespace Pointer.Application.Common;
 /// </summary>
 public static class UserMapper
 {
-    public static MeResponse ToMeResponse(User user) => new()
+    public static MeResponse ToMeResponse(User user, string? tenantName = null) => new()
     {
         Id = user.PublicId,
         Email = user.Email,
@@ -22,5 +22,6 @@ public static class UserMapper
         Language = user.Language,
         Theme = user.Theme,
         AddCommentShortcut = user.AddCommentShortcut,
+        TenantName = tenantName,
     };
 }

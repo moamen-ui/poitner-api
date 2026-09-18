@@ -28,6 +28,7 @@ public class PredefinedActionSuggestionMapping : IEntityTypeConfiguration<Predef
         b.Property(x => x.Status).HasColumnName("status").HasDefaultValue(Pointer.Domain.Enums.SuggestionStatus.Pending);
         b.Property(x => x.ReviewedBy).HasColumnName("reviewed_by");
         b.Property(x => x.ReviewedAt).HasColumnName("reviewed_at");
+        b.Property(x => x.AdminFeedback).HasColumnName("admin_feedback").HasColumnType("text");
 
         // Admin review-queue lookup by tenant + status.
         b.HasIndex(x => new { x.OwnerId, x.Status });

@@ -151,6 +151,24 @@ public class AuthService : IAuthService
         return Result.Success(MessageKeys.User.PasswordChanged);
     }
 
+    // Resolves the tenant "display name" = the tenant owner user's DisplayName. A tenant is a
+    // self-owned User (OwnerId == PublicId), so this lookup is uniform for both the owner itself
+    // and any of its stakeholders. Null ownerId (super-admin) → null.
+    private async Task<string?> ResolveTenantNameAsync(Guid? ownerId)
+    {
+        if (ownerId == null)
+            return null;
+
+        var owner = await _unitOfWork.Repository<User>()
+            .Query()
+            .IgnoreQueryFilters()
+            .AsNoTracking()
+            .Where(u => u.PublicId == ownerId.Value && u.DeletedAt == null)
+            .FirstOrDefaultAsync();
+
+        return owner?.DisplayName;
+    }
+
     private static string BuildPasswordChangedEmailHtml(string displayName, string productName) =>
         $@"<div style=""font-family:system-ui,sans-serif;color:#0f172a;line-height:1.6"">
   <h2 style=""margin:0 0 8px"">Your password was changed</h2>
@@ -203,7 +221,7 @@ public class AuthService : IAuthService
         {
             Status = "ok",
             Token = token,
-            User = UserMapper.ToMeResponse(user)
+            User = UserMapper.ToMeResponse(user, await ResolveTenantNameAsync(user.OwnerId))
         };
 
         return Result<LoginResponse>.Success(response);
@@ -247,7 +265,7 @@ public class AuthService : IAuthService
         {
             Status = "ok",
             Token = token,
-            User = UserMapper.ToMeResponse(user)
+            User = UserMapper.ToMeResponse(user, await ResolveTenantNameAsync(user.OwnerId))
         });
     }
 
@@ -449,7 +467,8 @@ public class AuthService : IAuthService
         if (user == null)
             return Result<MeResponse>.NotFound(MessageKeys.User.NotFound);
 
-        return Result<MeResponse>.Success(UserMapper.ToMeResponse(user));
+        var tenantName = await ResolveTenantNameAsync(_currentUser.TenantId);
+        return Result<MeResponse>.Success(UserMapper.ToMeResponse(user, tenantName));
     }
     public async Task<Result<LoginResponse>> LoginWithInviteAsync(string token)
     {
@@ -497,7 +516,7 @@ public class AuthService : IAuthService
         {
             Status = "ok",
             Token = _tokenService.Issue(user),
-            User = UserMapper.ToMeResponse(user),
+            User = UserMapper.ToMeResponse(user, await ResolveTenantNameAsync(user.OwnerId)),
         });
     }
 

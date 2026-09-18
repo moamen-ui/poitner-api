@@ -138,6 +138,10 @@ public static class MessageKeys
         public const string Created = "Suggestion sent for admin review.";
         public const string Approved = "Suggestion approved.";
         public const string Rejected = "Suggestion rejected.";
+        public const string FeedbackRequired = "Feedback is required.";
+        public const string ChangesRequested = "Changes requested from the suggester.";
+        public const string Resubmitted = "Suggestion resubmitted for admin review.";
+        public const string NotEditable = "Only suggestions awaiting your changes can be edited.";
     }
 
     public static class Project_Delete

@@ -1,6 +1,8 @@
+using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using Pointer.Application.Abstractions;
 using Pointer.Application.Common;
+using Pointer.Application.DTOs.Notification;
 using Pointer.Application.DTOs.Suggestion;
 using Pointer.Application.Resources;
 using Pointer.Application.Response;
@@ -15,12 +17,18 @@ public class SuggestionService : ISuggestionService
     private readonly IUnitOfWork _unitOfWork;
     private readonly ICurrentUser _currentUser;
     private readonly IEmailService _emailService;
+    private readonly INotificationService _notificationService;
 
-    public SuggestionService(IUnitOfWork unitOfWork, ICurrentUser currentUser, IEmailService emailService)
+    public SuggestionService(
+        IUnitOfWork unitOfWork,
+        ICurrentUser currentUser,
+        IEmailService emailService,
+        INotificationService? notificationService = null)
     {
         _unitOfWork = unitOfWork;
         _currentUser = currentUser;
         _emailService = emailService;
+        _notificationService = notificationService ?? new NotificationService(unitOfWork, currentUser);
     }
 
     public async Task<Result<SuggestionResponse>> SuggestAsync(int projectId, CreateSuggestionRequest request)
@@ -66,7 +74,7 @@ public class SuggestionService : ISuggestionService
         await _unitOfWork.SaveChangesAsync();
 
         // Best-effort admin notification — never blocks or fails the suggestion.
-        await NotifyAdminsAsync(project);
+        await NotifyAdminsAsync(project, suggestion, NotificationType.SuggestionSubmitted);
 
         var suggesterName = await ResolveNameAsync(suggestion.CreatedBy);
         return Result<SuggestionResponse>.Success(MapToResponse(suggestion, project, suggesterName), MessageKeys.Suggestion.Created);
@@ -76,10 +84,13 @@ public class SuggestionService : ISuggestionService
     {
         // Query filter scopes to this tenant (strict-own). Join to the project to exclude
         // suggestions whose project has been soft-deleted and to surface project name/key.
+        // The admin review queue covers both Pending (never reviewed) and ChangesRequested
+        // (sent back, awaiting the submitter's resubmission — still tracked here for visibility).
         var pending = await _unitOfWork.Repository<PredefinedActionSuggestion>()
             .Query()
             .AsNoTracking()
-            .Where(s => s.DeletedAt == null && s.Status == SuggestionStatus.Pending)
+            .Where(s => s.DeletedAt == null &&
+                        (s.Status == SuggestionStatus.Pending || s.Status == SuggestionStatus.ChangesRequested))
             .ToListAsync();
 
         if (pending.Count == 0)
@@ -97,7 +108,8 @@ public class SuggestionService : ISuggestionService
         var responses = pending
             // Exclude suggestions whose project is soft-deleted (absent from the dictionary).
             .Where(s => projects.ContainsKey(s.ProjectId))
-            .OrderByDescending(s => s.CreatedAt)
+            .OrderBy(s => s.Status == SuggestionStatus.Pending ? 0 : 1)
+            .ThenByDescending(s => s.CreatedAt)
             .Select(s => MapToResponse(s, projects[s.ProjectId], names.GetValueOrDefault(s.CreatedBy)))
             .ToList();
 
@@ -176,6 +188,133 @@ public class SuggestionService : ISuggestionService
         return Result<SuggestionResponse>.Success(MapToResponse(suggestion, project, name), MessageKeys.Suggestion.Rejected);
     }
 
+    public async Task<Result<SuggestionResponse>> RequestChangesAsync(int id, RequestChangesRequest request)
+    {
+        var suggestion = await LoadOwnAsync(id);
+        if (suggestion == null)
+            return Result<SuggestionResponse>.NotFound(MessageKeys.Suggestion.NotFound);
+
+        if (suggestion.Status != SuggestionStatus.Pending)
+            return Result<SuggestionResponse>.Conflict(MessageKeys.Suggestion.NotFound);
+
+        var feedback = (request.Feedback ?? string.Empty).Trim();
+        if (feedback.Length == 0)
+            return Result<SuggestionResponse>.Failure(MessageKeys.Suggestion.FeedbackRequired);
+
+        suggestion.Status = SuggestionStatus.ChangesRequested;
+        suggestion.AdminFeedback = feedback;
+        suggestion.ReviewedBy = _currentUser.Id;
+        suggestion.ReviewedAt = DateTime.UtcNow;
+        _unitOfWork.Repository<PredefinedActionSuggestion>().Update(suggestion);
+        await _unitOfWork.SaveChangesAsync();
+
+        // Best-effort: notify the submitter. Never blocks or fails the request.
+        try
+        {
+            var payload = new NotificationPayloadDto
+            {
+                SuggestionText = suggestion.Text,
+                AdminFeedback = feedback.Length > 200 ? feedback[..200] : feedback
+            };
+            await _notificationService.EnqueueAsync(new Notification
+            {
+                OwnerId = suggestion.OwnerId,
+                UserId = suggestion.CreatedBy,
+                Type = NotificationType.SuggestionChangesRequested,
+                SuggestionId = suggestion.Id,
+                ProjectId = suggestion.ProjectId,
+                ActorId = _currentUser.Id,
+                Payload = JsonSerializer.Serialize(payload),
+                CreatedAt = DateTime.UtcNow
+            });
+            await _unitOfWork.SaveChangesAsync();
+        }
+        catch { /* notification is best-effort — never block the request */ }
+
+        var project = await _unitOfWork.Repository<Project>()
+            .Query().IgnoreQueryFilters().AsNoTracking()
+            .FirstOrDefaultAsync(p => p.Id == suggestion.ProjectId);
+        var name = await ResolveNameAsync(suggestion.CreatedBy);
+        return Result<SuggestionResponse>.Success(MapToResponse(suggestion, project, name), MessageKeys.Suggestion.ChangesRequested);
+    }
+
+    public async Task<Result<List<SuggestionResponse>>> ListMineAsync()
+    {
+        var callerId = _currentUser.Id ?? Guid.Empty;
+
+        // Normal query filter (strict-own) already scopes by tenant; further filter to the caller's
+        // own suggestions across ALL statuses.
+        var mine = await _unitOfWork.Repository<PredefinedActionSuggestion>()
+            .Query()
+            .AsNoTracking()
+            .Where(s => s.DeletedAt == null && s.CreatedBy == callerId)
+            .ToListAsync();
+
+        if (mine.Count == 0)
+            return Result<List<SuggestionResponse>>.Success(new List<SuggestionResponse>());
+
+        var projectIds = mine.Select(s => s.ProjectId).Distinct().ToList();
+        var projects = await _unitOfWork.Repository<Project>()
+            .Query()
+            .AsNoTracking()
+            .Where(p => projectIds.Contains(p.Id) && p.DeletedAt == null)
+            .ToDictionaryAsync(p => p.Id, p => p);
+
+        var responses = mine
+            // Exclude suggestions whose project is soft-deleted (absent from the dictionary).
+            .Where(s => projects.ContainsKey(s.ProjectId))
+            .OrderByDescending(s => s.CreatedAt)
+            .Select(s => MapToResponse(s, projects[s.ProjectId], null))
+            .ToList();
+
+        return Result<List<SuggestionResponse>>.Success(responses);
+    }
+
+    public async Task<Result<SuggestionResponse>> UpdateAsync(int id, UpdateSuggestionRequest request)
+    {
+        var callerId = _currentUser.Id ?? Guid.Empty;
+
+        // Normal query filter (strict-own scoping) + own-authorship: a cross-tenant or another
+        // stakeholder's suggestion is invisible → NotFound (never reveals existence).
+        var suggestion = await _unitOfWork.Repository<PredefinedActionSuggestion>()
+            .Query()
+            .Where(s => s.Id == id && s.DeletedAt == null && s.CreatedBy == callerId)
+            .FirstOrDefaultAsync();
+
+        if (suggestion == null)
+            return Result<SuggestionResponse>.NotFound(MessageKeys.Suggestion.NotFound);
+
+        if (suggestion.Status != SuggestionStatus.ChangesRequested)
+            return Result<SuggestionResponse>.Conflict(MessageKeys.Suggestion.NotEditable);
+
+        var text = (request.Text ?? string.Empty).Trim();
+        if (text.Length == 0)
+            return Result<SuggestionResponse>.Failure(MessageKeys.Suggestion.TextRequired);
+        var prompt = (request.Prompt ?? string.Empty).Trim();
+        if (prompt.Length == 0)
+            return Result<SuggestionResponse>.Failure(MessageKeys.Suggestion.PromptRequired);
+
+        suggestion.Text = text;
+        suggestion.Prompt = prompt;
+        suggestion.Status = SuggestionStatus.Pending;
+        suggestion.AdminFeedback = null;
+        suggestion.ReviewedBy = null;
+        suggestion.ReviewedAt = null;
+        _unitOfWork.Repository<PredefinedActionSuggestion>().Update(suggestion);
+        await _unitOfWork.SaveChangesAsync();
+
+        var project = await _unitOfWork.Repository<Project>()
+            .Query().IgnoreQueryFilters().AsNoTracking()
+            .FirstOrDefaultAsync(p => p.Id == suggestion.ProjectId);
+
+        // Best-effort, in-app only (no email) — never blocks or fails the resubmission.
+        if (project != null)
+            await NotifyAdminsAsync(project, suggestion, NotificationType.SuggestionResubmitted);
+
+        var name = await ResolveNameAsync(suggestion.CreatedBy);
+        return Result<SuggestionResponse>.Success(MapToResponse(suggestion, project, name), MessageKeys.Suggestion.Resubmitted);
+    }
+
     // Explicit own-owner load (mirrors PredefinedActionService.LoadOwnTenantWideAsync): scope by the
     // caller's own owner rather than relying on the (strict-own) filter alone. Super-admin sees all.
     private async Task<PredefinedActionSuggestion?> LoadOwnAsync(int id)
@@ -194,8 +333,9 @@ public class SuggestionService : ISuggestionService
         return await q.FirstOrDefaultAsync();
     }
 
-    // Best-effort: resolve the tenant's GrantsAdmin users' emails and notify them. Never throws.
-    private async Task NotifyAdminsAsync(Project project)
+    // Best-effort: notify the tenant's admins of a suggestion event — one Notification row per admin,
+    // plus (for SuggestionSubmitted only, unchanged from before) an email. Never throws.
+    private async Task NotifyAdminsAsync(Project project, PredefinedActionSuggestion suggestion, NotificationType type)
     {
         try
         {
@@ -208,21 +348,45 @@ public class SuggestionService : ISuggestionService
                             && u.IsActive
                             && u.OwnerId == project.OwnerId
                             && u.Role.GrantsAdmin
-                            && !u.Role.IsSuperAdmin)
-                .Select(u => new { u.Email, u.RecipientEmail })
+                            && !u.Role.IsSuperAdmin
+                            && u.PublicId != _currentUser.Id)
+                .Select(u => new { u.PublicId, u.Email, u.RecipientEmail })
                 .ToListAsync();
 
-            var subject = "New predefined-prompt suggestion for review";
-            var html = $"<p>A stakeholder suggested a predefined prompt for project <b>{project.Name}</b>.</p>" +
-                       "<p>Review it in your Pointer dashboard.</p>";
+            if (type == NotificationType.SuggestionSubmitted)
+            {
+                var subject = "New predefined-prompt suggestion for review";
+                var html = $"<p>A stakeholder suggested a predefined prompt for project <b>{project.Name}</b>.</p>" +
+                           "<p>Review it in your Pointer dashboard.</p>";
 
+                foreach (var admin in admins)
+                {
+                    var to = string.IsNullOrWhiteSpace(admin.RecipientEmail) ? admin.Email : admin.RecipientEmail;
+                    if (string.IsNullOrWhiteSpace(to)) continue;
+                    try { await _emailService.SendAsync(to, subject, html); }
+                    catch { /* quota/transport failure is non-fatal */ }
+                }
+            }
+
+            var payload = JsonSerializer.Serialize(new NotificationPayloadDto { SuggestionText = suggestion.Text });
+            var now = DateTime.UtcNow;
             foreach (var admin in admins)
             {
-                var to = string.IsNullOrWhiteSpace(admin.RecipientEmail) ? admin.Email : admin.RecipientEmail;
-                if (string.IsNullOrWhiteSpace(to)) continue;
-                try { await _emailService.SendAsync(to, subject, html); }
-                catch { /* quota/transport failure is non-fatal */ }
+                await _notificationService.EnqueueAsync(new Notification
+                {
+                    OwnerId = suggestion.OwnerId,
+                    UserId = admin.PublicId,
+                    Type = type,
+                    SuggestionId = suggestion.Id,
+                    ProjectId = project.Id,
+                    ActorId = _currentUser.Id,
+                    Payload = payload,
+                    CreatedAt = now
+                });
             }
+
+            if (admins.Count > 0)
+                await _unitOfWork.SaveChangesAsync();
         }
         catch { /* notification is best-effort — never block the suggestion */ }
     }
@@ -254,6 +418,8 @@ public class SuggestionService : ISuggestionService
         Prompt = s.Prompt,
         Status = s.Status,
         SuggestedByName = suggestedByName,
-        CreatedAt = s.CreatedAt
+        CreatedAt = s.CreatedAt,
+        AdminFeedback = s.AdminFeedback,
+        ReviewedAt = s.ReviewedAt
     };
 }

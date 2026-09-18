@@ -25,4 +25,22 @@ public class SuggestionsController(ISuggestionService service) : ControllerBase
         if (result.IsForbidden) return StatusCode(StatusCodes.Status403Forbidden, result);
         return result.IsSuccess ? Ok(result) : BadRequest(result);
     }
+
+    [HttpGet("api/me/predefined-action-suggestions")]
+    [ProducesResponseType(typeof(List<SuggestionResponse>), StatusCodes.Status200OK)]
+    public async Task<IActionResult> ListMine()
+    {
+        var result = await service.ListMineAsync();
+        return result.IsSuccess ? Ok(result) : BadRequest(result);
+    }
+
+    [HttpPut("api/predefined-action-suggestions/{id:int}")]
+    [ProducesResponseType(typeof(SuggestionResponse), StatusCodes.Status200OK)]
+    public async Task<IActionResult> Update(int id, [FromBody] UpdateSuggestionRequest request)
+    {
+        var result = await service.UpdateAsync(id, request);
+        if (result.IsNotFound) return NotFound(result);
+        if (result.IsConflict) return Conflict(result);
+        return result.IsSuccess ? Ok(result) : BadRequest(result);
+    }
 }

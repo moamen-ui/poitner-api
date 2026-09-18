@@ -44,4 +44,14 @@ public class SuggestionsController(ISuggestionService service) : ControllerBase
         if (result.IsConflict) return Conflict(result);
         return result.IsSuccess ? Ok(result) : BadRequest(result);
     }
+
+    [HttpPost("{id:int}/request-changes")]
+    [ProducesResponseType(typeof(SuggestionResponse), StatusCodes.Status200OK)]
+    public async Task<IActionResult> RequestChanges(int id, [FromBody] RequestChangesRequest request)
+    {
+        var result = await service.RequestChangesAsync(id, request);
+        if (result.IsNotFound) return NotFound(result);
+        if (result.IsConflict) return Conflict(result);
+        return result.IsSuccess ? Ok(result) : BadRequest(result);
+    }
 }

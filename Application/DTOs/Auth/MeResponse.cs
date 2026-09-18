@@ -15,4 +15,8 @@ public class MeResponse
 
     /// <summary>Per-user "add comment" widget shortcut, e.g. "ctrl+alt+shift+KeyC". Null = widget default.</summary>
     public string? AddCommentShortcut { get; set; }
+
+    /// <summary>The workspace (tenant) display name — the tenant owner user's DisplayName. Null for
+    /// super-admins, who have no tenant.</summary>
+    public string? TenantName { get; set; }
 }

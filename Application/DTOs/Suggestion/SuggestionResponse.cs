@@ -17,4 +17,10 @@ public class SuggestionResponse
     public SuggestionStatus Status { get; set; }
     public string? SuggestedByName { get; set; }
     public DateTime CreatedAt { get; set; }
+
+    /// <summary>Admin's feedback when Status == ChangesRequested. Null otherwise (including once
+    /// the submitter has edited and resubmitted — it reverts to Pending and this clears).</summary>
+    public string? AdminFeedback { get; set; }
+
+    public DateTime? ReviewedAt { get; set; }
 }

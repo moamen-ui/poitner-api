@@ -13,7 +13,8 @@ public interface ISuggestionService
     /// </summary>
     Task<Result<SuggestionResponse>> SuggestAsync(int projectId, CreateSuggestionRequest request);
 
-    /// <summary>Admin: this tenant's Pending suggestions (excludes those on soft-deleted projects).</summary>
+    /// <summary>Admin: this tenant's Pending or ChangesRequested suggestions (its review queue),
+    /// excluding those on soft-deleted projects. Pending first, then by CreatedAt desc.</summary>
     Task<Result<List<SuggestionResponse>>> ListPendingAsync();
 
     /// <summary>
@@ -24,4 +25,16 @@ public interface ISuggestionService
 
     /// <summary>Admin: reject a Pending suggestion.</summary>
     Task<Result<SuggestionResponse>> RejectAsync(int id);
+
+    /// <summary>Admin: send a Pending suggestion back to the submitter with feedback (Conflict if not
+    /// Pending). Best-effort notifies the submitter.</summary>
+    Task<Result<SuggestionResponse>> RequestChangesAsync(int id, RequestChangesRequest request);
+
+    /// <summary>Any authenticated user: their own suggestions (all statuses), newest first.</summary>
+    Task<Result<List<SuggestionResponse>>> ListMineAsync();
+
+    /// <summary>The original submitter: edit + resubmit a suggestion an admin sent back
+    /// (Status == ChangesRequested → Pending). Conflict otherwise; NotFound if not the caller's own.
+    /// Best-effort notifies the tenant's admins.</summary>
+    Task<Result<SuggestionResponse>> UpdateAsync(int id, UpdateSuggestionRequest request);
 }
