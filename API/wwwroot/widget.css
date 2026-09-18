@@ -983,7 +983,10 @@
   display: flex;
   gap: 6px;
   flex-wrap: wrap;
-  margin-block-start: 8px;
+  justify-content: flex-end;
+  margin-block-start: 10px;
+  padding-block-start: 8px;
+  border-block-start: 1px solid var(--fbk-border-soft, #eef2f7);
   align-items: center;
 }
 

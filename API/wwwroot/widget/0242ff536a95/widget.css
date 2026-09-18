@@ -610,6 +610,29 @@
   transform: translateX(0);
 }
 
+.fbk-sidebar-close-arrow {
+  position: absolute;
+  inset-block-start: 20px;
+  inset-inline-start: 0;
+  transform: translateX(-50%);
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  border: 1px solid var(--fbk-border, #d0d7de);
+  background: var(--fbk-surface, #fff);
+  color: var(--fbk-text-slate, #475569);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  box-shadow: -2px 0 6px rgba(0, 0, 0, 0.15);
+  z-index: 1;
+}
+
+.fbk-sidebar-close-arrow:hover {
+  background: var(--fbk-surface-hover, #f3f4f6);
+}
+
 .fbk-sidebar-head {
   padding: 16px;
   border-block-end: 1px solid var(--fbk-border-soft, #eef2f7);
@@ -633,11 +656,30 @@
 
 .fbk-filters {
   display: flex;
-  gap: 6px;
-  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 10px;
+  flex-wrap: nowrap;
+  overflow-x: auto;
   padding-block: 10px;
   padding-inline: 12px;
+  background: var(--fbk-surface-alt, #f8fafc);
   border-block-end: 1px solid var(--fbk-border-soft, #eef2f7);
+}
+
+.fbk-filter-field {
+  display: flex;
+  flex: none;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.fbk-filter-field-label {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--fbk-text-subtle, #8c959f);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
 }
 
 .fbk-chip {
@@ -665,14 +707,56 @@
   border-color: var(--fbk-text, #1f2328);
 }
 
-.fbk-chip.fbk-mine {
-  margin-inline-start: auto;
+.fbk-mine-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-block-size: 0;
 }
 
-.fbk-chip.fbk-mine.active {
+.fbk-toggle-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  inline-size: 100%;
+}
+
+.fbk-toggle-row-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--fbk-text-slate, #475569);
+}
+
+.fbk-toggle-switch {
+  position: relative;
+  inline-size: 36px;
+  block-size: 20px;
+  flex: none;
+  border: none;
+  border-radius: 999px;
+  background: var(--fbk-border-strong, #cbd5e1);
+  cursor: pointer;
+  transition: background-color var(--fbk-transition-fast, 120ms cubic-bezier(0.16, 1, 0.3, 1));
+}
+
+.fbk-toggle-switch.active {
   background: var(--fbk-indigo, #4338ca);
-  color: var(--fbk-primary-contrast, #fff);
-  border-color: var(--fbk-indigo, #4338ca);
+}
+
+.fbk-toggle-switch-thumb {
+  position: absolute;
+  inset-block-start: 2px;
+  inset-inline-start: 2px;
+  inline-size: 16px;
+  block-size: 16px;
+  border-radius: 50%;
+  background: var(--fbk-primary-contrast, #fff);
+  transition: transform var(--fbk-transition-fast, 120ms cubic-bezier(0.16, 1, 0.3, 1));
+}
+
+.fbk-toggle-switch.active .fbk-toggle-switch-thumb {
+  transform: translateX(16px);
 }
 
 .fbk-status-select,
@@ -690,6 +774,7 @@
 
 .fbk-userfilter {
   max-width: 150px;
+  flex: none;
 }
 
 .fbk-sidebar-body {
@@ -704,13 +789,6 @@
   text-align: center;
   padding-block: 32px;
   padding-inline: 12px;
-}
-
-.fbk-sidebar-meta {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  min-width: 0;
 }
 
 .fbk-env-label {
@@ -905,7 +983,10 @@
   display: flex;
   gap: 6px;
   flex-wrap: wrap;
-  margin-block-start: 8px;
+  justify-content: flex-end;
+  margin-block-start: 10px;
+  padding-block-start: 8px;
+  border-block-start: 1px solid var(--fbk-border-soft, #eef2f7);
   align-items: center;
 }
 
@@ -1006,6 +1087,12 @@
   padding-inline: 2px;
 }
 
+.fbk-card-kebab {
+  background: transparent;
+  color: var(--fbk-text, #1f2328);
+}
+
+.fbk-card-kebab:hover,
 .fbk-card-kebab[aria-expanded=true] {
   background: var(--fbk-surface-hover, #f3f4f6);
 }
@@ -1102,14 +1189,28 @@
   gap: 6px;
   font-size: 13px;
   color: var(--fbk-text-slate-2, #334155);
-  padding-block: 4px;
-  padding-inline: 0;
+  background: var(--fbk-surface-muted, #eaeef2);
+  border-radius: var(--fbk-radius-sm, 6px);
+  padding-block: 6px;
+  padding-inline: 8px;
+  margin-block-end: 4px;
 }
 
 .fbk-reply-main {
   flex: 1;
   min-inline-size: 0;
   overflow-wrap: break-word;
+  cursor: pointer;
+}
+
+.fbk-reply:not(.expanded):not(.fbk-reply-ai) .fbk-reply-main {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.fbk-reply.expanded .fbk-reply-main {
+  white-space: normal;
 }
 
 .fbk-reply-ai {
@@ -1135,6 +1236,7 @@
   margin-block-start: 4px;
   padding-inline-start: 20px;
   color: var(--fbk-text-slate-2, #334155);
+  cursor: default;
 }
 
 .fbk-reply-actions {

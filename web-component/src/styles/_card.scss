@@ -147,11 +147,16 @@
 }
 
 // Card actions
+// Reads as the card's footer (top divider, like .fbk-replies above it) with its buttons pushed
+// to the inline-end — a deliberate action row, not just more content flowing from the top.
 .fbk-actions {
   display: flex;
   gap: 6px;
   flex-wrap: wrap;
-  margin-block-start: 8px;
+  justify-content: flex-end;
+  margin-block-start: 10px;
+  padding-block-start: 8px;
+  border-block-start: 1px solid v.token('border-soft');
   align-items: center;
 }
 .fbk-actions-end {
