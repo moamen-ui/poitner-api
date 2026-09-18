@@ -160,7 +160,9 @@ That completes the task — do not edit anything unless asked to apply.
 
 Read **`apply.md`** — alongside this file, or the "Apply workflow (apply.md)" section below in a
 single-file install — for the full Step 1-6 loop, the exact `--mark`/`--fail` command forms, and when
-to bring in `translate.md`.
+to bring in `translate.md`. Its Step 3b also says when you may hand a mechanical edit to a cheaper
+worker model (`delegation=auto` in the prompt header, the default) and when you must not — you plan
+and review; a worker only types.
 
 ## Read next
 

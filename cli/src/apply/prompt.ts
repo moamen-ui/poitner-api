@@ -114,7 +114,7 @@ export function buildApplyPrompt(
   }
 
   lines.push(
-    `# Apply ${context.productName} feedback — project ${context.projectKey} (${items.length} items, commitStyle=${context.commitStyle})`,
+    `# Apply ${context.productName} feedback — project ${context.projectKey} (${items.length} items, commitStyle=${context.commitStyle}, delegation=${context.delegation ?? 'auto'})`,
   );
   lines.push('');
   lines.push(SECURITY_TEXT);

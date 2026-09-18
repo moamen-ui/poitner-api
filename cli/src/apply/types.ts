@@ -151,6 +151,8 @@ export type ApplyProjectContext = {
   projectName: string;
   projectKey: string;
   commitStyle: 'Single' | 'Separate';
+  /** `.pointer/config.json → delegation`; absent (older config, or a test fixture) means `auto`. */
+  delegation?: 'auto' | 'off';
   stack: ProjectStack;
   aiRules?: AiRuleApplyDto[];
 };

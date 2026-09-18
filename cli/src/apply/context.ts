@@ -17,8 +17,10 @@ export async function loadProjectContext(
   // single-project repo, `.pointer/projects/<key>.stack.json` for one app in a multi-project
   // repo (`ctx.cwd` here is always the repo root, never an app subdirectory).
   let stack: ProjectStack = { frontend: [], backend: null, aiTools: [] };
+  let delegation: 'auto' | 'off' = 'auto';
   try {
     const config = await readConfig(ctx.cwd);
+    if (config.delegation === 'off') delegation = 'off';
     const relPath = isMultiProject(config) ? stackFileRelPath(ctx.project) : stackFileRelPath();
     const stackRaw = await fs.readFile(join(ctx.cwd, relPath), 'utf8');
     stack = JSON.parse(stackRaw);
@@ -72,6 +74,7 @@ export async function loadProjectContext(
     projectName,
     projectKey: ctx.project,
     commitStyle,
+    delegation,
     stack,
   };
 }
