@@ -340,6 +340,7 @@
 // card, rather than another top-level comment — the same visual cue chat UIs use to separate a
 // thread's replies from the original message.
 .fbk-reply {
+  position: relative; // anchors .fbk-card-delete-confirm to this bubble, not the ancestor .fbk-card
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
@@ -372,7 +373,7 @@
 }
 // Automated (AI apply flow) reply — a native <details> disclosure instead of the plain flex row
 // above, collapsed by default since these tend to be long changelogs; always read-only, so it
-// never gets a .fbk-reply-actions slot at all (not just a hidden one).
+// never gets a kebab at all (not just a hidden one).
 .fbk-reply-ai {
   display: block;
   cursor: default;
@@ -395,19 +396,27 @@
   color: v.token('text-slate-2');
   cursor: default;
 }
-// Edit/delete — own replies only (data-act="reply-edit"/"reply-delete"), same icon-button
-// pattern as the comment's own actions row; hidden until hover/focus so a long reply thread
-// doesn't turn into a wall of icons.
-.fbk-reply-actions {
+// Reply's own kebab (edit/delete/copy-apply-prompt — see replyMenu) — same no-fill treatment as
+// the comment card's .fbk-card-kebab, just sized down slightly to sit comfortably in a bubble
+// this compact.
+.fbk-reply-kebab {
   flex: 0 0 auto;
-  display: flex;
-  gap: 2px;
+  background: transparent;
+  color: v.token('text-slate');
+  padding: 4px;
   opacity: 0;
   transition: opacity v.token('transition-fast');
 }
-.fbk-reply:hover .fbk-reply-actions,
-.fbk-reply-actions:focus-within {
+// Hidden until hover/focus (same reasoning as the old .fbk-reply-actions it replaces) — stays
+// visible while its own menu is open even if the pointer moves off the reply to reach the menu.
+.fbk-reply:hover .fbk-reply-kebab,
+.fbk-reply-kebab:focus-visible,
+.fbk-reply-kebab[aria-expanded='true'] {
   opacity: 1;
+}
+.fbk-reply-kebab:hover,
+.fbk-reply-kebab[aria-expanded='true'] {
+  background: v.token('surface-hover');
 }
 .fbk-reply-row {
   display: flex;

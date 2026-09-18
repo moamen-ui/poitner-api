@@ -2,7 +2,7 @@ import { escapeHtml, timeAgo } from './dom';
 import { ICON } from './icons';
 import { getBrandName } from './constants';
 import { t } from './i18n';
-import type { AuthorOption, Comment, Meta, NotificationItem, PredefinedActionOption } from './types';
+import type { AuthorOption, Comment, Meta, NotificationItem, PredefinedActionOption, Reply } from './types';
 
 // All component markup lives here (pure string builders). Event wiring stays in
 // the element / UI modules, which call these then attach listeners to the nodes.
@@ -245,6 +245,19 @@ export const TPL = {
           ${c.status === 'open' ? `<button type="button" class="fbk-card-menu-item danger" data-menu-act="delete" role="menuitem">${ICON.trash}<span>${t('card.delete')}</span></button>` : ''}
         </div>`,
 
+  // Kebab-menu dropdown for a single REPLY (see TPL.card's `kebab` above) — shares the same
+  // #fbk-card-menu id/class/portal as the comment's own menu (only one can ever be open at once),
+  // rendered by toggleReplyMenu. Copy-apply-prompt reuses the PARENT COMMENT's id — applying
+  // still operates on the comment, `get --json` already returns every reply — so this is just a
+  // more convenient place to reach it while reading a specific reply's context; gated on the same
+  // comment status as the comment's own copy-apply-prompt item.
+  replyMenu: (c: Comment, r: Reply) => `
+        <div class="fbk-card-menu" id="fbk-card-menu" role="menu">
+          ${(c.status === 'open' || c.status === 'pending-apply') ? `<button type="button" class="fbk-card-menu-item" data-menu-act="copy-apply-prompt" role="menuitem">${ICON.copy}<span>${t('card.copyApplyPrompt')}</span></button>` : ''}
+          ${r._mine ? `<button type="button" class="fbk-card-menu-item" data-menu-act="edit" role="menuitem">${ICON.pencil}<span>${t('card.edit')}</span></button>` : ''}
+          ${r._mine ? `<button type="button" class="fbk-card-menu-item danger" data-menu-act="delete" role="menuitem">${ICON.trash}<span>${t('card.delete')}</span></button>` : ''}
+        </div>`,
+
   card: (c: Comment, i: number, isQuickAccess?: boolean) => {
     const cls = c.status === 'pending-apply' ? 'pending' : c.status === 'applied' ? 'applied' : c.status === 'archived' ? 'archived' : '';
     // "completed" means a developer applied it; "live" means it is actually on the site. Those
@@ -309,15 +322,16 @@ export const TPL = {
             <div class="fbk-reply-main"><span class="fbk-reply-body">${body}</span></div>
           </details>`;
       }
-      const actions = r._mine
-        ? `<span class="fbk-reply-actions">
-            <button type="button" class="fbk-mini fbk-icon" data-act="reply-edit" data-comment-id="${c.id}" data-reply-id="${r.id}" title="${t('card.edit')}" aria-label="${t('card.edit')}">${ICON.pencil}</button>
-            <button type="button" class="fbk-mini danger fbk-icon" data-act="reply-delete" data-comment-id="${c.id}" data-reply-id="${r.id}" title="${t('card.delete')}" aria-label="${t('card.delete')}">${ICON.trash}</button>
-          </span>`
+      // Kebab mirrors the comment card's own (copy-apply-prompt is open to anyone while the
+      // comment is still actionable, so an AI asked to apply it can be pointed at a specific
+      // reply's context too; edit/delete stay owner-only) — see replyMenu + toggleReplyMenu.
+      const showReplyKebab = r._mine || c.status === 'open' || c.status === 'pending-apply';
+      const kebab = showReplyKebab
+        ? `<button type="button" class="fbk-mini fbk-icon fbk-reply-kebab" data-act="reply-menu" data-comment-id="${c.id}" data-reply-id="${r.id ?? ''}" title="${t('card.moreActions')}" aria-label="${t('card.moreActions')}" aria-haspopup="true" aria-expanded="false">${ICON.kebab}</button>`
         : '';
       return `<div class="fbk-reply" data-reply-id="${r.id ?? ''}">
           <div class="fbk-reply-main"><b>${authorName}:</b> <span class="fbk-reply-body">${body}</span></div>
-          ${actions}
+          ${kebab}
         </div>`;
     }).join('');
     const envInt = c.environment;

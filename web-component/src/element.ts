@@ -13,7 +13,7 @@ import {
 import { type ThemeMode, detectSiteTheme } from './theme';
 import { type Lang, t, setLang, detectTextLanguageAsync } from './i18n';
 import { showLoginModal } from './auth-ui';
-import type { AuthorOption, Comment, Meta, NotificationItem, PointerHost, PredefinedActionOption, RoleOption, StatusStr, User } from './types';
+import type { AuthorOption, Comment, Meta, NotificationItem, PointerHost, PredefinedActionOption, Reply, RoleOption, StatusStr, User } from './types';
 
 // TEMPORARY feature flag, per explicit request — hides the "commit style" project setting from
 // the sidebar entirely regardless of the caller's canEditSettings. Flip to true to restore it.
@@ -2241,7 +2241,7 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
     const reply = comment && (comment.replies || []).find((r) => String(r.id) === String(replyId));
     if (!reply) return;
     const mainEl = row.querySelector('.fbk-reply-main') as HTMLElement | null;
-    const actionsEl = row.querySelector('.fbk-reply-actions') as HTMLElement | null;
+    const actionsEl = row.querySelector('.fbk-reply-kebab') as HTMLElement | null;
     if (!mainEl) return;
     const editor = document.createElement('div');
     editor.className = 'fbk-edit';
@@ -2285,44 +2285,30 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
     }
   }
 
-  // Same inline "Delete this…?" confirm-row pattern as confirmDelete, scoped to one reply's own
-  // actions row instead of the comment's.
-  confirmDeleteReply(btn: HTMLElement): void {
-    const commentId = btn.dataset.commentId;
-    const replyId = btn.dataset.replyId;
-    const row = btn.closest('.fbk-reply-actions') as HTMLElement | null;
-    if (!commentId || !replyId || !row || row.querySelector('.fbk-confirm')) return;
+  // Delete confirmation for a single reply: an overlay covering that reply's own bubble — same
+  // "on the thing itself, not inside a menu" treatment as confirmDeleteCard. The kebab menu is
+  // already closed by the time this runs (see toggleReplyMenu's delete wiring).
+  confirmDeleteReplyBubble(replyId: string): void {
+    const row = this.root && (this.root.querySelector(`.fbk-reply[data-reply-id="${replyId}"]`) as HTMLElement | null);
+    if (!row || row.querySelector('.fbk-card-delete-confirm')) return;
 
-    const others = Array.from(row.children) as HTMLElement[];
-    others.forEach((el) => { el.style.display = 'none'; });
+    const overlay = document.createElement('div');
+    overlay.className = 'fbk-card-delete-confirm';
+    overlay.innerHTML =
+      `<p class="fbk-card-delete-confirm-q">${t('card.deleteThisReply')}</p>` +
+      `<div class="fbk-card-delete-confirm-actions">` +
+      `<button type="button" class="fbk-mini danger" data-c="yes">${t('card.confirmDelete')}</button>` +
+      `<button type="button" class="fbk-mini" data-c="no">${t('toolbar.cancel')}</button>` +
+      `</div>`;
+    row.appendChild(overlay);
 
-    const wrap = document.createElement('div');
-    wrap.className = 'fbk-confirm fbk-confirm-row';
-    wrap.innerHTML =
-      `<span class="fbk-confirm-q">${t('card.deleteThisReply')}</span>` +
-      `<span class="fbk-confirm-btns">` +
-      `<button type="button" class="fbk-mini danger fbk-icon" data-c="yes" title="${t('card.confirmDelete')}" aria-label="${t('card.confirmDelete')}">${ICON.checkPlain}</button>` +
-      `<button type="button" class="fbk-mini fbk-icon" data-c="no" title="${t('toolbar.cancel')}" aria-label="${t('toolbar.cancel')}">&#x2715;</button>` +
-      `</span>`;
-    row.appendChild(wrap);
-
-    let closed = false;
-    const close = () => {
-      if (closed) return;
-      closed = true;
-      clearTimeout(timer);
-      wrap.remove();
-      others.forEach((el) => { el.style.display = ''; });
-    };
-    const timer = setTimeout(close, 4000);
-    wrap.querySelector('[data-c="yes"]')!.addEventListener('click', (e) => {
+    overlay.querySelector('[data-c="yes"]')!.addEventListener('click', (e) => {
       e.stopPropagation();
-      close();
       this.deleteReply(replyId);
     });
-    wrap.querySelector('[data-c="no"]')!.addEventListener('click', (e) => {
+    overlay.querySelector('[data-c="no"]')!.addEventListener('click', (e) => {
       e.stopPropagation();
-      close();
+      overlay.remove();
     });
   }
 
@@ -2517,7 +2503,9 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
       if (c) this.setStatus(c, 'archived', t('toast.archivedMsg'));
     }));
     // Reply is collapsed to a button by default — clicking it swaps in the textarea (focused) so
-    // a card scanned while triaging doesn't show an open text box for every single item.
+    // a card scanned while triaging doesn't show an open text box for every single item. Collapses
+    // back on Escape (always) or on blur while still empty (nothing typed to lose) — never on
+    // blur with unsent text, so clicking e.g. a formatting toolbar outside doesn't silently drop it.
     list.querySelectorAll<HTMLElement>('[data-act="reply-toggle"]').forEach((btn) => btn.addEventListener('click', () => {
       const row = btn.closest('.fbk-reply-row');
       const inp = row?.querySelector<HTMLTextAreaElement>('.fbk-reply-input');
@@ -2526,18 +2514,34 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
       inp.classList.remove('fbk-hidden');
       inp.focus();
     }));
-    list.querySelectorAll<HTMLTextAreaElement>('.fbk-reply-input').forEach((inp) => inp.addEventListener('keydown', (e) => {
-      // Enter sends (matches the old single-line input's behavior); Shift+Enter inserts a
-      // newline, now that this is a textarea instead of a text input.
-      if (e.key === 'Enter' && !e.shiftKey) {
-        e.preventDefault();
-        if (inp.value.trim()) { this.addReply(inp.dataset.id!, inp.value.trim()); inp.value = ''; }
-      }
+    list.querySelectorAll<HTMLTextAreaElement>('.fbk-reply-input').forEach((inp) => {
+      const collapse = () => {
+        const row = inp.closest('.fbk-reply-row');
+        const btn = row?.querySelector<HTMLElement>('[data-act="reply-toggle"]');
+        inp.classList.add('fbk-hidden');
+        btn?.classList.remove('fbk-hidden');
+      };
+      inp.addEventListener('keydown', (e) => {
+        // Enter sends (matches the old single-line input's behavior); Shift+Enter inserts a
+        // newline, now that this is a textarea instead of a text input.
+        if (e.key === 'Enter' && !e.shiftKey) {
+          e.preventDefault();
+          if (inp.value.trim()) { this.addReply(inp.dataset.id!, inp.value.trim()); inp.value = ''; }
+        } else if (e.key === 'Escape') {
+          inp.value = '';
+          collapse();
+        }
+      });
+      inp.addEventListener('blur', () => { if (!inp.value.trim()) collapse(); });
+    });
+    // Edit/delete/copy-apply-prompt for a single reply now live in its own kebab menu (see
+    // replyMenu template + toggleReplyMenu), same treatment as the comment's own kebab.
+    list.querySelectorAll<HTMLElement>('[data-act="reply-menu"]').forEach((b) => b.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const comment = this.comments.find((x) => String(x.id) === String(b.dataset.commentId));
+      const reply = comment && (comment.replies || []).find((r) => String(r.id) === String(b.dataset.replyId));
+      if (comment && reply) this.toggleReplyMenu(b, comment, reply);
     }));
-    list.querySelectorAll<HTMLElement>('[data-act="reply-edit"]').forEach((b) => b.addEventListener('click', () => {
-      if (b.dataset.commentId && b.dataset.replyId) this.startEditReply(b.dataset.commentId, b.dataset.replyId);
-    }));
-    list.querySelectorAll<HTMLElement>('[data-act="reply-delete"]').forEach((b) => b.addEventListener('click', () => this.confirmDeleteReply(b)));
     // A plain reply starts truncated to one line (see .fbk-reply CSS) — click it to read the
     // full text. Excludes AI replies: their <details> already has its own native expand/collapse.
     list.querySelectorAll<HTMLElement>('.fbk-reply:not(.fbk-reply-ai) .fbk-reply-main').forEach((el) => {
@@ -2828,7 +2832,7 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
     const host = this.root.querySelector('#fbk-menu-host');
     if (host && host.querySelector('#fbk-card-menu')) {
       host.innerHTML = '';
-      this.root.querySelectorAll('.fbk-card-kebab[aria-expanded="true"]').forEach((b) => b.setAttribute('aria-expanded', 'false'));
+      this.root.querySelectorAll('.fbk-card-kebab[aria-expanded="true"], .fbk-reply-kebab[aria-expanded="true"]').forEach((b) => b.setAttribute('aria-expanded', 'false'));
     }
     if (this._cardMenuClose) {
       document.removeEventListener('click', this._cardMenuClose, true);
@@ -2836,19 +2840,79 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
     }
   }
 
+  // Kebab menu for a single reply (see replyMenu template) — shares #fbk-card-menu/closeCardMenu
+  // with the comment's own kebab (only one such menu is ever open at once), just anchored under
+  // the reply's own trigger instead and built from TPL.replyMenu instead of TPL.cardMenu.
+  private toggleReplyMenu(btn: HTMLElement, c: Comment, r: Reply): void {
+    const host = this.root.querySelector('#fbk-menu-host') as HTMLElement | null;
+    if (!host) return;
+    if (host.querySelector('#fbk-card-menu')) { this.closeCardMenu(); return; }
+    this.closeUserMenu();
+    this.closeUpdatesMenu();
+    this.closeClusterMenu();
+
+    host.innerHTML = TPL.replyMenu(c, r);
+    const menu = host.querySelector('#fbk-card-menu') as HTMLElement | null;
+    if (!menu) return;
+    btn.setAttribute('aria-expanded', 'true');
+
+    const rect = btn.getBoundingClientRect();
+    const menuHeight = menu.offsetHeight;
+    const spaceBelow = window.innerHeight - rect.bottom;
+    if (spaceBelow < menuHeight + 6 && rect.top > spaceBelow) {
+      menu.style.top = 'auto';
+      menu.style.bottom = `${Math.max(8, Math.round(window.innerHeight - rect.top + 6))}px`;
+    } else {
+      menu.style.bottom = 'auto';
+      menu.style.top = `${Math.round(rect.bottom + 6)}px`;
+    }
+    menu.style.right = `${Math.max(8, Math.round(window.innerWidth - rect.right))}px`;
+
+    const copyPromptBtn = menu.querySelector('[data-menu-act="copy-apply-prompt"]') as HTMLElement | null;
+    if (copyPromptBtn) {
+      copyPromptBtn.addEventListener('click', () => {
+        this.closeCardMenu();
+        this.copyApplyPrompt(c, true);
+      });
+    }
+    const editBtn = menu.querySelector('[data-menu-act="edit"]') as HTMLElement | null;
+    if (editBtn) {
+      editBtn.addEventListener('click', () => {
+        this.closeCardMenu();
+        this.startEditReply(String(c.id), String(r.id));
+      });
+    }
+    const delBtn = menu.querySelector('[data-menu-act="delete"]') as HTMLElement | null;
+    if (delBtn) {
+      delBtn.addEventListener('click', () => {
+        this.closeCardMenu();
+        this.confirmDeleteReplyBubble(String(r.id));
+      });
+    }
+
+    this._cardMenuClose = (e: MouseEvent) => {
+      const path = e.composedPath();
+      if (!path.includes(menu) && !path.includes(btn)) this.closeCardMenu();
+    };
+    setTimeout(() => { if (this._cardMenuClose) document.addEventListener('click', this._cardMenuClose, true); }, 0);
+  }
+
   // --- Single-item apply prompt ("Copy apply prompt" in the kebab menu) ----
   // A short, human-style instruction — not a technical spec — naming just the one comment to
   // apply. No comment/reply text is embedded (so there's nothing here that needs fencing as
   // untrusted input): the agent already has the apply skill installed and pulls the real content
   // itself via `get --json`, exactly as it would for any item from the normal apply queue.
-  private buildSingleItemApplyPrompt(c: Comment): string {
+  // `isFollowUp`: true when copied from a REPLY's own kebab (see toggleReplyMenu) rather than the
+  // comment's — flags that there's more context than just the original comment body to read.
+  private buildSingleItemApplyPrompt(c: Comment, isFollowUp = false): string {
     const brand = getBrandName();
-    return `Apply ${brand} comment #${c.id} in this repo — run \`npx pointer-feedback get ${c.id} --json\` to see it, then follow the apply skill to fix it and mark it done.`;
+    const followUp = isFollowUp ? ' (there is a follow-up reply on it — read all replies, not just the original comment)' : '';
+    return `Apply ${brand} comment #${c.id} in this repo — run \`npx pointer-feedback get ${c.id} --json\` to see it${followUp}, then follow the apply skill to fix it and mark it done.`;
   }
 
-  async copyApplyPrompt(c: Comment): Promise<void> {
+  async copyApplyPrompt(c: Comment, isFollowUp = false): Promise<void> {
     try {
-      await navigator.clipboard.writeText(this.buildSingleItemApplyPrompt(c));
+      await navigator.clipboard.writeText(this.buildSingleItemApplyPrompt(c, isFollowUp));
       this.toast(t('toast.applyPromptCopied'));
     } catch {
       this.toast(t('toast.copyFailed'), 'error');
