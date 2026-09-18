@@ -1,13 +1,13 @@
 {
   "version": "0.1.0",
-  "hash": "5489eafb59e3",
-  "commit": "0192740",
-  "committedAt": "2026-09-18T05:00:04+03:00",
+  "hash": "cdb123be7c3f",
+  "commit": "45e49e4",
+  "committedAt": "2026-09-18T05:42:16+03:00",
   "files": {
     "widget.js": {
-      "bytes": 238635,
-      "gzipBytes": 59749,
-      "integrity": "sha384-RwKWSx1/bSTyCo/EKBMqlpu/ZrmCRloH0oK3UaCjkd82HaxcTqMB8x3VK0lclDYb"
+      "bytes": 235895,
+      "gzipBytes": 58713,
+      "integrity": "sha384-iJnSbuwCIpLC1lnOTojej3UNR4oJlt+QRHGAuN0dDIUCPeFBySZNnpHgotfpGhXO"
     },
     "widget.css": {
       "bytes": 51669,
@@ -15,9 +15,9 @@
       "integrity": "sha384-xB4/yxHr8AT2zpT8nsolDnn+Sm/vR27i6CFEnObM7e4Uz/4/+4Hgqn/vkiJCq0gl"
     },
     "pointer.js": {
-      "bytes": 238635,
-      "gzipBytes": 59749,
-      "integrity": "sha384-RwKWSx1/bSTyCo/EKBMqlpu/ZrmCRloH0oK3UaCjkd82HaxcTqMB8x3VK0lclDYb"
+      "bytes": 235895,
+      "gzipBytes": 58713,
+      "integrity": "sha384-iJnSbuwCIpLC1lnOTojej3UNR4oJlt+QRHGAuN0dDIUCPeFBySZNnpHgotfpGhXO"
     },
     "pointer.css": {
       "bytes": 51669,
@@ -26,6 +26,42 @@
     }
   },
   "retained": [
+    {
+      "hash": "cdb123be7c3f",
+      "version": "0.1.0",
+      "files": {
+        "widget.js": {
+          "integrity": "sha384-iJnSbuwCIpLC1lnOTojej3UNR4oJlt+QRHGAuN0dDIUCPeFBySZNnpHgotfpGhXO"
+        },
+        "widget.css": {
+          "integrity": "sha384-xB4/yxHr8AT2zpT8nsolDnn+Sm/vR27i6CFEnObM7e4Uz/4/+4Hgqn/vkiJCq0gl"
+        },
+        "pointer.js": {
+          "integrity": "sha384-iJnSbuwCIpLC1lnOTojej3UNR4oJlt+QRHGAuN0dDIUCPeFBySZNnpHgotfpGhXO"
+        },
+        "pointer.css": {
+          "integrity": "sha384-xB4/yxHr8AT2zpT8nsolDnn+Sm/vR27i6CFEnObM7e4Uz/4/+4Hgqn/vkiJCq0gl"
+        }
+      }
+    },
+    {
+      "hash": "c9d41bea8762",
+      "version": "0.1.0",
+      "files": {
+        "widget.js": {
+          "integrity": "sha384-0IQyRN0sC+cIpa6RTwOanpevb3YY9H8HPX6gS+09xSVcGiBA2nD7oDByXiA7EVj5"
+        },
+        "widget.css": {
+          "integrity": "sha384-xB4/yxHr8AT2zpT8nsolDnn+Sm/vR27i6CFEnObM7e4Uz/4/+4Hgqn/vkiJCq0gl"
+        },
+        "pointer.js": {
+          "integrity": "sha384-0IQyRN0sC+cIpa6RTwOanpevb3YY9H8HPX6gS+09xSVcGiBA2nD7oDByXiA7EVj5"
+        },
+        "pointer.css": {
+          "integrity": "sha384-xB4/yxHr8AT2zpT8nsolDnn+Sm/vR27i6CFEnObM7e4Uz/4/+4Hgqn/vkiJCq0gl"
+        }
+      }
+    },
     {
       "hash": "5489eafb59e3",
       "version": "0.1.0",
@@ -164,42 +200,6 @@
         },
         "pointer.js": {
           "integrity": "sha384-8zfiXQ/L1xOAVfWECozc5Xql8HrPdskPX81k8fK0vMsgT5cQVYyiUq6Dxucaa2lg"
-        },
-        "pointer.css": {
-          "integrity": "sha384-xX6/jjS5rLtovoWscH5ktKTBoOpR4fxRJWEHGA/TD5343iNt2OpiMnzQmqic1Pj7"
-        }
-      }
-    },
-    {
-      "hash": "99390efb43c6",
-      "version": "0.1.0",
-      "files": {
-        "widget.js": {
-          "integrity": "sha384-pHAR5vE3GS3esTGskMTa8UkAuBgaJNRXexT0hYggaADV7avqpHR3owlDGTEhnDwf"
-        },
-        "widget.css": {
-          "integrity": "sha384-xX6/jjS5rLtovoWscH5ktKTBoOpR4fxRJWEHGA/TD5343iNt2OpiMnzQmqic1Pj7"
-        },
-        "pointer.js": {
-          "integrity": "sha384-pHAR5vE3GS3esTGskMTa8UkAuBgaJNRXexT0hYggaADV7avqpHR3owlDGTEhnDwf"
-        },
-        "pointer.css": {
-          "integrity": "sha384-xX6/jjS5rLtovoWscH5ktKTBoOpR4fxRJWEHGA/TD5343iNt2OpiMnzQmqic1Pj7"
-        }
-      }
-    },
-    {
-      "hash": "e0ccc00bf1e4",
-      "version": "0.1.0",
-      "files": {
-        "widget.js": {
-          "integrity": "sha384-35FbFLN7fvcu22Wf+VfyICOm9nNgNuTjtbQukYy6b4VWEBSi48zzte19m/JSHNeX"
-        },
-        "widget.css": {
-          "integrity": "sha384-xX6/jjS5rLtovoWscH5ktKTBoOpR4fxRJWEHGA/TD5343iNt2OpiMnzQmqic1Pj7"
-        },
-        "pointer.js": {
-          "integrity": "sha384-35FbFLN7fvcu22Wf+VfyICOm9nNgNuTjtbQukYy6b4VWEBSi48zzte19m/JSHNeX"
         },
         "pointer.css": {
           "integrity": "sha384-xX6/jjS5rLtovoWscH5ktKTBoOpR4fxRJWEHGA/TD5343iNt2OpiMnzQmqic1Pj7"

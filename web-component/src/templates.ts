@@ -260,8 +260,8 @@ export const TPL = {
       : '';
     const verifyGroup = (c.status === 'applied' && !c.verifiedAt && c._canVerify)
       ? `<span class="fbk-verify-group">
-          <button class="fbk-mini fbk-verify-ok" data-act="verify-ok" data-id="${c.id}" title="${t('card.looksRight')}">&#x1f44d; ${t('card.looksRight')}</button>
-          <button class="fbk-mini fbk-verify-reject" data-act="verify-reject" data-id="${c.id}" title="${t('card.notFixed')}">&#x1f44e; ${t('card.notFixed')}</button>
+          <button class="fbk-mini fbk-verify-ok" data-act="verify-ok" data-id="${c.id}" title="${t('card.looksRight')}">${ICON.thumbsUp}<span>${t('card.looksRight')}</span></button>
+          <button class="fbk-mini fbk-verify-reject" data-act="verify-reject" data-id="${c.id}" title="${t('card.notFixed')}">${ICON.thumbsDown}<span>${t('card.notFixed')}</span></button>
         </span>`
       : '';
     const verifyBox = (c.status === 'applied' && !c.verifiedAt && c._canVerify)
