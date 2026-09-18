@@ -625,6 +625,10 @@
   gap: 8px;
 }
 
+.fbk-refresh-btn {
+  margin-inline-start: auto;
+}
+
 .fbk-sidebar-head h2 {
   margin: 0;
   font-size: 16px;
@@ -633,11 +637,27 @@
 
 .fbk-filters {
   display: flex;
-  gap: 6px;
+  align-items: flex-end;
+  gap: 10px;
   flex-wrap: wrap;
   padding-block: 10px;
   padding-inline: 12px;
   border-block-end: 1px solid var(--fbk-border-soft, #eef2f7);
+}
+
+.fbk-filter-field {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.fbk-filter-field-label {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--fbk-text-subtle, #8c959f);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
 }
 
 .fbk-chip {
@@ -706,20 +726,6 @@
   padding-inline: 12px;
 }
 
-.fbk-sidebar-meta {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  min-width: 0;
-}
-
-.fbk-project-name {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  max-width: 150px;
-}
-
 .fbk-env-label {
   font-size: 12px;
   color: var(--fbk-muted, #64748b);
@@ -747,6 +753,7 @@
 }
 
 .fbk-card {
+  position: relative;
   border: 1px solid var(--fbk-border-soft, #eef2f7);
   border-radius: var(--fbk-radius-md, 10px);
   padding: 12px;
@@ -1010,6 +1017,79 @@
   color: var(--fbk-danger, #dc2626);
   padding-block: 0;
   padding-inline: 2px;
+}
+
+.fbk-card-kebab[aria-expanded=true] {
+  background: var(--fbk-surface-hover, #f3f4f6);
+}
+
+.fbk-card-menu {
+  position: fixed;
+  z-index: 2147483647;
+  min-width: 170px;
+  background: var(--fbk-surface, #fff);
+  border: 1px solid var(--fbk-border, #d0d7de);
+  border-radius: var(--fbk-radius, 8px);
+  box-shadow: 0 8px 24px var(--fbk-shadow, rgba(0, 0, 0, 0.12));
+  padding: 6px;
+  pointer-events: auto;
+}
+
+.fbk-card-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  padding: 8px;
+  border-radius: var(--fbk-radius-sm, 6px);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--fbk-text, #1f2328);
+  text-align: start;
+}
+
+.fbk-card-menu-item:hover {
+  background: var(--fbk-surface-muted, #eaeef2);
+}
+
+.fbk-card-menu-item.danger {
+  color: var(--fbk-danger, #dc2626);
+}
+
+.fbk-card-menu-item.danger:hover {
+  background: var(--fbk-danger-bg, #fef2f2);
+  color: var(--fbk-danger-strong, #b91c1c);
+}
+
+.fbk-card-delete-confirm {
+  position: absolute;
+  inset: 0;
+  z-index: 4;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 12px;
+  text-align: center;
+  background: var(--fbk-surface, #fff);
+  border-radius: inherit;
+}
+
+.fbk-card-delete-confirm-q {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--fbk-danger, #dc2626);
+}
+
+.fbk-card-delete-confirm-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 
 .fbk-mini.private-on {

@@ -1,31 +1,67 @@
 {
   "version": "0.1.0",
-  "hash": "42a3f1a61bf2",
-  "commit": "9531c98",
-  "committedAt": "2026-09-18T04:29:42+03:00",
+  "hash": "92467c8e669c",
+  "commit": "129dad2",
+  "committedAt": "2026-09-18T04:32:09+03:00",
   "files": {
     "widget.js": {
-      "bytes": 232772,
-      "gzipBytes": 57618,
-      "integrity": "sha384-EGgD4hIc0HMZDUITiSvMW50XY+pyohyYi/HttwUeRUcZTs1tUt185iiLZnj58O62"
+      "bytes": 231769,
+      "gzipBytes": 57547,
+      "integrity": "sha384-SUfd6AimPGx0VqpP6/8mMrZQ31nIDWC2dZyGcff7W0/IKxDSQGUJ2HcRROQtOwa8"
     },
     "widget.css": {
-      "bytes": 49353,
-      "gzipBytes": 8112,
-      "integrity": "sha384-zCZRLhRcMSH6+d1eGxw4MK2jMg+X3w7iriYbvV0wJGBCL2EMWd6MQu5wV9j0kxs4"
+      "bytes": 50063,
+      "gzipBytes": 8189,
+      "integrity": "sha384-pvHO9AunA5LURYQLxr9XaEzF00FiZdrpRN9n4FacZEIN05PiAeHQ6OiSvJjWXi55"
     },
     "pointer.js": {
-      "bytes": 232772,
-      "gzipBytes": 57618,
-      "integrity": "sha384-EGgD4hIc0HMZDUITiSvMW50XY+pyohyYi/HttwUeRUcZTs1tUt185iiLZnj58O62"
+      "bytes": 231769,
+      "gzipBytes": 57547,
+      "integrity": "sha384-SUfd6AimPGx0VqpP6/8mMrZQ31nIDWC2dZyGcff7W0/IKxDSQGUJ2HcRROQtOwa8"
     },
     "pointer.css": {
-      "bytes": 49353,
-      "gzipBytes": 8112,
-      "integrity": "sha384-zCZRLhRcMSH6+d1eGxw4MK2jMg+X3w7iriYbvV0wJGBCL2EMWd6MQu5wV9j0kxs4"
+      "bytes": 50063,
+      "gzipBytes": 8189,
+      "integrity": "sha384-pvHO9AunA5LURYQLxr9XaEzF00FiZdrpRN9n4FacZEIN05PiAeHQ6OiSvJjWXi55"
     }
   },
   "retained": [
+    {
+      "hash": "92467c8e669c",
+      "version": "0.1.0",
+      "files": {
+        "widget.js": {
+          "integrity": "sha384-SUfd6AimPGx0VqpP6/8mMrZQ31nIDWC2dZyGcff7W0/IKxDSQGUJ2HcRROQtOwa8"
+        },
+        "widget.css": {
+          "integrity": "sha384-pvHO9AunA5LURYQLxr9XaEzF00FiZdrpRN9n4FacZEIN05PiAeHQ6OiSvJjWXi55"
+        },
+        "pointer.js": {
+          "integrity": "sha384-SUfd6AimPGx0VqpP6/8mMrZQ31nIDWC2dZyGcff7W0/IKxDSQGUJ2HcRROQtOwa8"
+        },
+        "pointer.css": {
+          "integrity": "sha384-pvHO9AunA5LURYQLxr9XaEzF00FiZdrpRN9n4FacZEIN05PiAeHQ6OiSvJjWXi55"
+        }
+      }
+    },
+    {
+      "hash": "46113a751367",
+      "version": "0.1.0",
+      "files": {
+        "widget.js": {
+          "integrity": "sha384-ToKgbGdv1lOMnPEtH7VCFsvhnmy+puzRGrlMBwTeF7WAlczYWGsjZgmFPowPfYxa"
+        },
+        "widget.css": {
+          "integrity": "sha384-816jC/87s71um9MuQSNmI1YB6hwJyIAPpylQ1B3rQ1Z1duDlGzj07T6FsWLGFm51"
+        },
+        "pointer.js": {
+          "integrity": "sha384-ToKgbGdv1lOMnPEtH7VCFsvhnmy+puzRGrlMBwTeF7WAlczYWGsjZgmFPowPfYxa"
+        },
+        "pointer.css": {
+          "integrity": "sha384-816jC/87s71um9MuQSNmI1YB6hwJyIAPpylQ1B3rQ1Z1duDlGzj07T6FsWLGFm51"
+        }
+      }
+    },
     {
       "hash": "42a3f1a61bf2",
       "version": "0.1.0",
@@ -167,42 +203,6 @@
         },
         "pointer.css": {
           "integrity": "sha384-7mtsmkmpbA4262br89SwkVtQpqzkaMdQCmdLyWA4NfnGPeBU/6o5JQzIBkBHSVus"
-        }
-      }
-    },
-    {
-      "hash": "cd96adb89d42",
-      "version": "0.1.0",
-      "files": {
-        "widget.js": {
-          "integrity": "sha384-7pi0DwXstRL0BkCzTePSArRVYkOfFylBhHFJvo7y58I8Yu0P7asKok41yr1ce5sJ"
-        },
-        "widget.css": {
-          "integrity": "sha384-7mtsmkmpbA4262br89SwkVtQpqzkaMdQCmdLyWA4NfnGPeBU/6o5JQzIBkBHSVus"
-        },
-        "pointer.js": {
-          "integrity": "sha384-7pi0DwXstRL0BkCzTePSArRVYkOfFylBhHFJvo7y58I8Yu0P7asKok41yr1ce5sJ"
-        },
-        "pointer.css": {
-          "integrity": "sha384-7mtsmkmpbA4262br89SwkVtQpqzkaMdQCmdLyWA4NfnGPeBU/6o5JQzIBkBHSVus"
-        }
-      }
-    },
-    {
-      "hash": "8c4c50ab0294",
-      "version": "0.1.0",
-      "files": {
-        "widget.js": {
-          "integrity": "sha384-W558nKKcMkJp/cB/hrAckHC7NUDcqgaWrfr0fzpdCKow3BbCqmSiIl1KOKUJHzBF"
-        },
-        "widget.css": {
-          "integrity": "sha384-cBLtHu209QxlrvtGqOzm7b5ylLzt1CxMa58DXjhPKc3OEwp8IB/uvWlFFhvYoFmu"
-        },
-        "pointer.js": {
-          "integrity": "sha384-W558nKKcMkJp/cB/hrAckHC7NUDcqgaWrfr0fzpdCKow3BbCqmSiIl1KOKUJHzBF"
-        },
-        "pointer.css": {
-          "integrity": "sha384-cBLtHu209QxlrvtGqOzm7b5ylLzt1CxMa58DXjhPKc3OEwp8IB/uvWlFFhvYoFmu"
         }
       }
     }

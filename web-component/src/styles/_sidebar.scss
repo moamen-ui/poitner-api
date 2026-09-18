@@ -36,6 +36,12 @@
   justify-content: space-between;
   gap: 8px;
 }
+// Sole child of the second head-row now that the environment control moved into #fbk-filters —
+// margin-inline-start:auto keeps it pinned to the end instead of collapsing to the start, the
+// same place space-between put it back when it shared the row with the environment meta.
+.fbk-refresh-btn {
+  margin-inline-start: auto;
+}
 .fbk-sidebar-head h2 {
   margin: 0;
   font-size: 16px;
@@ -43,11 +49,27 @@
 }
 .fbk-filters {
   display: flex;
-  gap: 6px;
+  align-items: flex-end;
+  gap: 10px;
   flex-wrap: wrap;
   padding-block: 10px;
   padding-inline: 12px;
   border-block-end: 1px solid v.token('border-soft');
+}
+// A filter control (status, environment) with its own visible label above it — as opposed to
+// the plain author-filter select / mine-only chip, which rely on a title tooltip alone.
+.fbk-filter-field {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+.fbk-filter-field-label {
+  font-size: 11px;
+  font-weight: 600;
+  color: v.token('text-subtle');
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
 }
 .fbk-chip {
   border: 1px solid v.token('border');
@@ -110,14 +132,6 @@
   padding-inline: 12px;
 }
 
-// Sidebar head meta — environment identity, left of the refresh button (the project name lives
-// only in the "{project} comments" heading above, not duplicated here).
-.fbk-sidebar-meta {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  min-width: 0;
-}
 // Fixed-environment label — shown when the install pinned the env, replacing the switcher.
 .fbk-env-label {
   // font-size and colour used to be assigned via style.cssText at the call site. Setting cssText

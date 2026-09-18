@@ -210,6 +210,7 @@ const STRINGS: Record<Lang, Record<string, string>> = {
     // --- sidebar / filters ---
     'sidebar.mineOnly': 'Mine only',
     'sidebar.showOnlyMyComments': 'Show only my comments',
+    'sidebar.status': 'Status',
     'sidebar.filterByStatus': 'Filter by status',
     'sidebar.filterByUser': 'Filter by user',
     'sidebar.allUsers': 'All users',
@@ -424,6 +425,7 @@ const STRINGS: Record<Lang, Record<string, string>> = {
     // --- sidebar / filters ---
     'sidebar.mineOnly': 'تعليقاتي فقط',
     'sidebar.showOnlyMyComments': 'عرض تعليقاتي فقط',
+    'sidebar.status': 'الحالة',
     'sidebar.filterByStatus': 'تصفية حسب الحالة',
     'sidebar.filterByUser': 'تصفية حسب المستخدم',
     'sidebar.allUsers': 'جميع المستخدمين',

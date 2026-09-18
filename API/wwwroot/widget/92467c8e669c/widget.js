@@ -309,7 +309,7 @@
   var SHOT_HIGHLIGHT = "#2563eb";
   var _a;
   var SCRIPT_SRC = ((_a = document.currentScript) == null ? void 0 : _a.src) || "";
-  var CSS_INTEGRITY = true ? "sha384-cBLtHu209QxlrvtGqOzm7b5ylLzt1CxMa58DXjhPKc3OEwp8IB/uvWlFFhvYoFmu" : "";
+  var CSS_INTEGRITY = true ? "sha384-pvHO9AunA5LURYQLxr9XaEzF00FiZdrpRN9n4FacZEIN05PiAeHQ6OiSvJjWXi55" : "";
   function resolveCssUrl(scriptSrc) {
     var _a2;
     if (!scriptSrc) return "pointer.css";
@@ -469,6 +469,8 @@
 
   // src/icons.ts
   var ICON = {
+    // Vertical "more actions" kebab — three stacked dots, same filled-circle style as `grip`.
+    kebab: '<svg viewBox="0 0 16 16" width="14" height="14" fill="currentColor" stroke="none"><circle cx="8" cy="3.2" r="1.3"/><circle cx="8" cy="8" r="1.3"/><circle cx="8" cy="12.8" r="1.3"/></svg>',
     flag: '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><line x1="4" y1="22" x2="4" y2="15"/></svg>',
     check: '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>',
     // Plain checkmark (no circle) — for compact confirm actions like "confirm delete".
@@ -526,6 +528,83 @@
     currentLang = next;
     return true;
   }
+  var ARABIC_URDU_ONLY = /[ٹڈڑںےھ]/;
+  var ARABIC_PASHTO_ONLY = /[ټډړږښڼ]/;
+  var ARABIC_PERSIAN_ONLY = /[پچژگ]/;
+  var ARABIC_PERSIAN_KEYBOARD = /[کی]/;
+  var ARABIC_SCRIPT = /[؀-ۿݐ-ݿࢠ-ࣿﭐ-﷿ﹰ-﻿]/;
+  var HEBREW_SCRIPT = /[֐-׿]/;
+  var HANGUL_SCRIPT = /[가-힯ᄀ-ᇿ]/;
+  var KANA_SCRIPT = /[぀-ヿ]/;
+  var HAN_SCRIPT = /[一-鿿]/;
+  var CYRILLIC_SCRIPT = /[Ѐ-ӿ]/;
+  var CYRILLIC_UKRAINIAN_ONLY = /[їєґ]/;
+  var LETTER_RE = /\p{L}/gu;
+  var NON_ASCII_LETTER_RE = /(?![\x00-\x7F])\p{L}/u;
+  var ENGLISH_STOPWORDS = /* @__PURE__ */ new Set([
+    "the",
+    "and",
+    "this",
+    "that",
+    "should",
+    "with",
+    "when",
+    "please",
+    "button",
+    "click",
+    "text",
+    "page",
+    "not",
+    "but",
+    "from",
+    "are",
+    "was",
+    "have",
+    "has",
+    "will",
+    "can"
+  ]);
+  function detectTextLanguage(text) {
+    const stripped = (text || "").replace(/`[^`]*`/g, " ").replace(/```[\s\S]*?```/g, " ").replace(/https?:\/\/\S+/gi, " ").replace(/\d+/g, " ");
+    const letters = stripped.match(LETTER_RE) || [];
+    if (letters.length < 20) return "unknown";
+    if (ARABIC_SCRIPT.test(stripped)) {
+      if (ARABIC_URDU_ONLY.test(stripped)) return "ur";
+      if (ARABIC_PASHTO_ONLY.test(stripped)) return "ps";
+      if (ARABIC_PERSIAN_ONLY.test(stripped)) return "fa";
+      if (ARABIC_PERSIAN_KEYBOARD.test(stripped)) return "unknown";
+      return "ar";
+    }
+    if (HEBREW_SCRIPT.test(stripped)) return "he";
+    if (HANGUL_SCRIPT.test(stripped)) return "ko";
+    if (KANA_SCRIPT.test(stripped)) return "ja";
+    if (HAN_SCRIPT.test(stripped)) return "zh";
+    if (CYRILLIC_SCRIPT.test(stripped)) {
+      return CYRILLIC_UKRAINIAN_ONLY.test(stripped) ? "uk" : "unknown";
+    }
+    if (NON_ASCII_LETTER_RE.test(stripped)) return "unknown";
+    const words = stripped.toLowerCase().match(/[a-z]+/g) || [];
+    const matched = new Set(words.filter((w) => ENGLISH_STOPWORDS.has(w)));
+    return matched.size >= 3 ? "en" : "unknown";
+  }
+  async function detectTextLanguageAsync(text) {
+    const fallback = detectTextLanguage(text);
+    try {
+      const ctor = self.LanguageDetector;
+      if (!ctor) return fallback;
+      const availability = await ctor.availability();
+      if (availability !== "available") return fallback;
+      const detector = await ctor.create();
+      const timeout = new Promise((resolve) => setTimeout(() => resolve(null), 300));
+      const results = await Promise.race([detector.detect(text), timeout]);
+      if (!results || !results.length) return fallback;
+      const best = results[0];
+      if (best.confidence >= 0.8 && best.detectedLanguage) return best.detectedLanguage;
+      return fallback;
+    } catch {
+      return fallback;
+    }
+  }
   function t(key, vars) {
     var _a2, _b;
     const raw = (_b = (_a2 = STRINGS[currentLang][key]) != null ? _a2 : STRINGS.en[key]) != null ? _b : key;
@@ -575,6 +654,7 @@
       "toolbar.cancel": "Cancel",
       "toolbar.viewCommentsList": "View comments list",
       "toolbar.comments": "Comments",
+      "toolbar.commentsHeading": "{project} comments",
       "toolbar.recentActivityUpdates": "Recent activity &amp; updates",
       "toolbar.updates": "Updates",
       "toolbar.signedInAs": "Signed in as",
@@ -585,6 +665,7 @@
       "toolbar.close": "Close",
       "toolbar.envFixedTitle": "Environment — fixed for this install",
       "toolbar.envSwitchTitle": "Environment — comments are scoped per environment",
+      "toolbar.envAll": "All",
       "toolbar.envLocal": "local",
       "toolbar.envStaging": "staging",
       "toolbar.envProduction": "production",
@@ -618,6 +699,7 @@
       // --- sidebar / filters ---
       "sidebar.mineOnly": "Mine only",
       "sidebar.showOnlyMyComments": "Show only my comments",
+      "sidebar.status": "Status",
       "sidebar.filterByStatus": "Filter by status",
       "sidebar.filterByUser": "Filter by user",
       "sidebar.allUsers": "All users",
@@ -641,6 +723,8 @@
       "card.commit": "commit",
       "card.containsSecretPayload": "contains a secret/payload?",
       "card.defaultReplyAuthor": "User",
+      "card.automatedReply": "Automated reply",
+      "card.aiVia": "via {name}",
       "card.edited": "edited",
       "card.replyPlaceholder": "Reply…",
       "card.markedReadyClickToUnmark": "Marked ready — click to unmark",
@@ -651,6 +735,7 @@
       "card.archive": "Archive",
       "card.edit": "Edit",
       "card.delete": "Delete",
+      "card.moreActions": "More actions",
       "card.envLocal": "Local",
       "card.envStaging": "Staging",
       "card.envProduction": "Production",
@@ -775,6 +860,7 @@
       "toolbar.cancel": "إلغاء",
       "toolbar.viewCommentsList": "عرض قائمة التعليقات",
       "toolbar.comments": "التعليقات",
+      "toolbar.commentsHeading": "تعليقات {project}",
       "toolbar.recentActivityUpdates": "النشاط الأخير والتحديثات",
       "toolbar.updates": "التحديثات",
       "toolbar.signedInAs": "مسجّل الدخول باسم",
@@ -785,6 +871,7 @@
       "toolbar.close": "إغلاق",
       "toolbar.envFixedTitle": "البيئة — ثابتة لهذا التثبيت",
       "toolbar.envSwitchTitle": "البيئة — التعليقات مرتبطة بكل بيئة على حدة",
+      "toolbar.envAll": "الكل",
       "toolbar.envLocal": "محلي",
       "toolbar.envStaging": "الاختبار",
       "toolbar.envProduction": "الإنتاج",
@@ -818,6 +905,7 @@
       // --- sidebar / filters ---
       "sidebar.mineOnly": "تعليقاتي فقط",
       "sidebar.showOnlyMyComments": "عرض تعليقاتي فقط",
+      "sidebar.status": "الحالة",
       "sidebar.filterByStatus": "تصفية حسب الحالة",
       "sidebar.filterByUser": "تصفية حسب المستخدم",
       "sidebar.allUsers": "جميع المستخدمين",
@@ -841,6 +929,8 @@
       "card.commit": "التزام",
       "card.containsSecretPayload": "قد يحتوي على بيانات سرية؟",
       "card.defaultReplyAuthor": "مستخدم",
+      "card.automatedReply": "رد آلي",
+      "card.aiVia": "بواسطة {name}",
       "card.edited": "مُعدَّل",
       "card.replyPlaceholder": "رد…",
       "card.markedReadyClickToUnmark": "وُضع علامة جاهز — انقر لإلغائها",
@@ -851,6 +941,7 @@
       "card.archive": "أرشفة",
       "card.edit": "تعديل",
       "card.delete": "حذف",
+      "card.moreActions": "المزيد من الإجراءات",
       "card.envLocal": "محلي",
       "card.envStaging": "الاختبار",
       "card.envProduction": "الإنتاج",
@@ -979,12 +1070,8 @@
         <div class="fbk-auth-foot">
           ${t("auth.alreadyHaveAccount")} <button class="fbk-btn fbk-link fbk-link-inline" id="fbk-show-login">${t("auth.backToSignIn")}</button>
         </div>`,
-    // `fixedEnvLabel`: when the host fixed the environment at install time (attribute or injected
-    // config), pass its display name to render a read-only label instead of the switcher — letting a
-    // visitor switch an environment that was already explicitly configured is redundant and risks
-    // misfiling a comment into the wrong bucket. Pass null/undefined to render the normal switcher.
-    // `projectName`: shown next to the environment indicator so a visitor can immediately tell which
-    // project this install is bound to — project keys aren't unique across a workspace, so two
+    // `projectName`: embedded in the "{project} comments" heading so a visitor can immediately tell
+    // which project this install is bound to — project keys aren't unique across a workspace, so two
     // different installs can easily look identical without this.
     // `avatarInitials`: 1-2 letters (see dom.ts's initials()) for the account button, already
     // safe to interpolate as-is — computed by the caller from the RAW display name (before
@@ -992,7 +1079,9 @@
     // `ariaShortcut`: the ARIA-format string ("Control+Alt+Shift+C" — see shortcut.ts's
     // ariaKeyshortcuts), separate from `shortcutLabel` (the human-display form, "Ctrl+Alt+Shift+C"
     // or "⌃⌥⇧C" on Mac) since ARIA wants full, platform-independent modifier names.
-    chrome: (displayName, roleLabel, fixedEnvLabel, projectName = "", shortcutLabel = "", unreadNotifyCount = 0, avatarInitials = "", ariaShortcut = "") => `
+    // The environment select/label used to live in this shell too; it's now rendered inside
+    // #fbk-filters (see envFilterSelect), beside the status filter — both scoping controls together.
+    chrome: (displayName, roleLabel, projectName = "", shortcutLabel = "", unreadNotifyCount = 0, avatarInitials = "", ariaShortcut = "") => `
         <aside class="fbk-toolbar" id="fbk-toolbar" role="toolbar" aria-label="${escapeHtml(getBrandName())}" part="toolbar">
           <span class="fbk-toolbar__grip" id="fbk-grip" data-fbk-drag data-toggle="tooltip" data-placement="top" title="${t("toolbar.dragToReposition")}" aria-hidden="true">${ICON.grip}</span>
           <span class="fbk-toolbar__divider" aria-hidden="true"></span>
@@ -1009,19 +1098,11 @@
         <div class="fbk-sidebar" id="fbk-sidebar">
           <div class="fbk-sidebar-head">
             <div class="fbk-sidebar-head-row">
-              <h2>${t("toolbar.comments")}</h2>
+              <h2 id="fbk-comments-heading">${t("toolbar.commentsHeading", { project: escapeHtml(projectName) })}</h2>
               <button class="fbk-mini fbk-icon" id="fbk-close" title="${t("toolbar.close")}" aria-label="${t("toolbar.close")}">&#x2715;</button>
             </div>
             <div class="fbk-sidebar-head-row">
-              <div class="fbk-sidebar-meta">
-                <span class="fbk-project-name fbk-caption" id="fbk-project-name" title="${escapeHtml(projectName)}">${escapeHtml(projectName)}</span>
-                ${fixedEnvLabel ? `<span class="fbk-env-label fbk-caption" title="${t("toolbar.envFixedTitle")}">&middot; ${escapeHtml(fixedEnvLabel)}</span>` : `<select class="fbk-input fbk-env-select" id="fbk-env" title="${t("toolbar.envSwitchTitle")}">
-                <option value="local">${t("toolbar.envLocal")}</option>
-                <option value="staging">${t("toolbar.envStaging")}</option>
-                <option value="production">${t("toolbar.envProduction")}</option>
-              </select>`}
-              </div>
-              <button class="fbk-mini fbk-icon" id="fbk-refresh" title="${t("toolbar.refreshComments")}" aria-label="${t("toolbar.refreshComments")}">&#8635;</button>
+              <button class="fbk-mini fbk-icon fbk-refresh-btn" id="fbk-refresh" title="${t("toolbar.refreshComments")}" aria-label="${t("toolbar.refreshComments")}">&#8635;</button>
             </div>
             <div class="fbk-commit-style fbk-hidden" id="fbk-commit-style"></div>
           </div>
@@ -1102,12 +1183,30 @@
     // Status filter as a dropdown (rather than a row of chip buttons) — keeps the filter bar compact.
     // Filter labels themselves are server-provided status-catalog text (customizable per project) —
     // never translated by the widget, which cannot know what language an admin wrote them in.
-    statusFilterSelect: (filters, active, counts) => `<select class="fbk-status-select" id="fbk-status-filter" title="${t("sidebar.filterByStatus")}">
-             ${filters.map((f) => {
+    // Wrapped in a <label> with a visible text label (not just the select's own title tooltip) —
+    // sits beside envFilterSelect, which follows the same fbk-filter-field shape.
+    statusFilterSelect: (filters, active, counts) => `<label class="fbk-filter-field">
+             <span class="fbk-filter-field-label">${t("sidebar.status")}</span>
+             <select class="fbk-status-select" id="fbk-status-filter" title="${t("sidebar.filterByStatus")}">
+               ${filters.map((f) => {
       var _a2;
       return `<option value="${f.key}" ${f.key === active ? "selected" : ""}>${escapeHtml(f.label)} (${(_a2 = counts[f.key]) != null ? _a2 : 0})</option>`;
     }).join("")}
-           </select>`,
+             </select>
+           </label>`,
+    // Environment filter — sits beside the status filter (see statusFilterSelect) rather than in the
+    // sidebar head, so both scoping controls live together. `fixedEnvLabel` renders a read-only
+    // value instead of a select when the install pinned the environment, or the project turned the
+    // switcher off for everyone (see `showEnvironmentSelector`); null/undefined renders the switcher.
+    envFilterSelect: (fixedEnvLabel, currentValue) => `<label class="fbk-filter-field">
+             <span class="fbk-filter-field-label">${t("toolbar.environment")}</span>
+             ${fixedEnvLabel ? `<span class="fbk-env-label fbk-caption" title="${t("toolbar.envFixedTitle")}">${escapeHtml(fixedEnvLabel)}</span>` : `<select class="fbk-input fbk-env-select" id="fbk-env" title="${t("toolbar.envSwitchTitle")}">
+                 <option value="all" ${currentValue === "all" ? "selected" : ""}>${t("toolbar.envAll")}</option>
+                 <option value="local" ${currentValue === "local" ? "selected" : ""}>${t("toolbar.envLocal")}</option>
+                 <option value="staging" ${currentValue === "staging" ? "selected" : ""}>${t("toolbar.envStaging")}</option>
+                 <option value="production" ${currentValue === "production" ? "selected" : ""}>${t("toolbar.envProduction")}</option>
+               </select>`}
+           </label>`,
     // "Mine only" toggle — a chip that composes with the status chips above.
     // Rendered only when a user is logged in.
     mineToggle: (active) => `<button class="fbk-chip fbk-mine ${active ? "active" : ""}" id="fbk-mine-toggle" title="${t("sidebar.showOnlyMyComments")}" aria-pressed="${active ? "true" : "false"}">
@@ -1118,6 +1217,16 @@
              <option value="">&#x1f465; ${t("sidebar.allUsers")}</option>
              ${authors.map((a) => `<option value="${escapeHtml(a.id)}" ${a.id === selectedId ? "selected" : ""}>${escapeHtml(a.name)}</option>`).join("")}
            </select>`,
+    // Kebab-menu dropdown for a comment card's own actions (private/public, edit, delete) —
+    // rendered into the shared portal host (#fbk-menu-host), anchored under the card's kebab
+    // button by toggleCardMenu. Visibility/edit are owner-only; delete only while still open
+    // (matches the previous inline buttons' conditions exactly, just relocated).
+    cardMenu: (c) => `
+        <div class="fbk-card-menu" id="fbk-card-menu" role="menu">
+          ${c._mine ? `<button type="button" class="fbk-card-menu-item" data-menu-act="visibility" data-private="${c.isPrivate ? "false" : "true"}" role="menuitem">${c.isPrivate ? ICON.unlock : ICON.lock}<span>${c.isPrivate ? t("card.makePublic") : t("card.makePrivate")}</span></button>` : ""}
+          ${c._mine ? `<button type="button" class="fbk-card-menu-item" data-menu-act="edit" role="menuitem">${ICON.pencil}<span>${t("card.edit")}</span></button>` : ""}
+          ${c.status === "open" ? `<button type="button" class="fbk-card-menu-item danger" data-menu-act="delete" role="menuitem">${ICON.trash}<span>${t("card.delete")}</span></button>` : ""}
+        </div>`,
     card: (c, i, isQuickAccess) => {
       const cls = c.status === "pending-apply" ? "pending" : c.status === "applied" ? "applied" : c.status === "archived" ? "archived" : "";
       const statusPill = c.status === "applied" && c.deployedAt ? `<span class="fbk-pill status-applied" title="${escapeHtml(t("card.deployedIn", { sha: (c.deployedSha || "").slice(0, 7) }))}">&#x2713; ${t("card.live")}</span>` : c.status === "applied" ? `<span class="fbk-pill status-applied">&#x2713; ${t("card.completed")}</span>` : c.status === "pending-apply" ? `<span class="fbk-pill status-pending">${t("card.pending")}</span>` : c.status === "archived" ? `<span class="fbk-pill status-archived">&#x1f4e6; ${t("card.archived")}</span>` : "";
@@ -1136,13 +1245,27 @@
       const commitLink = c.status === "applied" ? `<a class="fbk-pill" href="${c.commitUrl ? escapeHtml(c.commitUrl) : "#"}" ${c.commitUrl ? 'target="_blank" rel="noopener noreferrer"' : ""} title="${c.commitUrl ? t("card.viewCommit") : t("card.noCommitRecorded")}">&#x1f517; ${t("card.commit")}</a>` : "";
       const payloadPill = c.hasPayloadFlag ? `<span class="fbk-pill fbk-payload-flag" title="${escapeHtml((c.payloadFlags || []).join(", "))}">&#x26a0; ${t("card.containsSecretPayload")}</span>` : "";
       const replies = (c.replies || []).map((r) => {
-        var _a2;
+        var _a2, _b;
+        const body = escapeHtml(r.body || r.text || "");
+        const authorName = escapeHtml(r.authorName || r.authorLabel || t("card.defaultReplyAuthor"));
+        if (r.isAi) {
+          const attributionParts = [];
+          if (r.aiTool) attributionParts.push(escapeHtml(r.aiTool));
+          if (r.aiModel) attributionParts.push(escapeHtml(r.aiModel));
+          const knownAuthorName = r.authorName || r.authorLabel;
+          if (knownAuthorName) attributionParts.push(t("card.aiVia", { name: escapeHtml(knownAuthorName) }));
+          const attribution = attributionParts.length > 0 ? `<span class="fbk-reply-ai-author">${attributionParts.join(" &middot; ")}</span>` : "";
+          return `<details class="fbk-reply fbk-reply-ai" data-reply-id="${(_a2 = r.id) != null ? _a2 : ""}">
+            <summary class="fbk-reply-ai-summary">&#x1f916; <b>${t("card.automatedReply")}</b> ${attribution}</summary>
+            <div class="fbk-reply-main"><span class="fbk-reply-body">${body}</span></div>
+          </details>`;
+        }
         const actions = r._mine ? `<span class="fbk-reply-actions">
             <button type="button" class="fbk-mini fbk-icon" data-act="reply-edit" data-comment-id="${c.id}" data-reply-id="${r.id}" title="${t("card.edit")}" aria-label="${t("card.edit")}">${ICON.pencil}</button>
             <button type="button" class="fbk-mini danger fbk-icon" data-act="reply-delete" data-comment-id="${c.id}" data-reply-id="${r.id}" title="${t("card.delete")}" aria-label="${t("card.delete")}">${ICON.trash}</button>
           </span>` : "";
-        return `<div class="fbk-reply ${r.isAi ? "ai" : ""}" data-reply-id="${(_a2 = r.id) != null ? _a2 : ""}">
-          <div class="fbk-reply-main"><b>${escapeHtml(r.authorName || r.authorLabel || t("card.defaultReplyAuthor"))}:</b> <span class="fbk-reply-body">${escapeHtml(r.body || r.text || "")}</span></div>
+        return `<div class="fbk-reply" data-reply-id="${(_b = r.id) != null ? _b : ""}">
+          <div class="fbk-reply-main"><b>${authorName}:</b> <span class="fbk-reply-body">${body}</span></div>
           ${actions}
         </div>`;
       }).join("");
@@ -1163,10 +1286,9 @@
               ${verifiedPill}
               ${verifyGroup}
               ${commitLink}
-              <div class="fbk-actions-end">
-                ${c._mine ? `<button class="fbk-mini fbk-icon${c.isPrivate ? " private-on" : ""}" data-act="visibility" data-id="${c.id}" data-private="${c.isPrivate ? "false" : "true"}" title="${c.isPrivate ? t("card.privateClickToMakePublic") : t("card.makePrivateOnlyYou")}" aria-label="${c.isPrivate ? t("card.makePublic") : t("card.makePrivate")}">${c.isPrivate ? ICON.lock : ICON.unlock}</button>` : ""}
-                ${c.status === "open" ? `<button class="fbk-mini danger fbk-icon" data-act="delete" data-id="${c.id}" title="${t("card.delete")}" aria-label="${t("card.delete")}">${ICON.trash}</button>` : ""}
-              </div>
+              ${c._mine || c.status === "open" ? `<div class="fbk-actions-end">
+                <button class="fbk-mini fbk-icon fbk-card-kebab" data-act="card-menu" data-id="${c.id}" title="${t("card.moreActions")}" aria-label="${t("card.moreActions")}" aria-haspopup="true" aria-expanded="false">${ICON.kebab}</button>
+              </div>` : ""}
             </div>
             <div class="fbk-text">${escapeHtml(c.body || c.text || "")}</div>
             ${shot}
@@ -1184,7 +1306,6 @@
               ${!isQuickAccess && c.status === "applied" ? `<button class="fbk-mini ready" data-act="reopen" data-id="${c.id}" title="${t("card.reopen")}">${ICON.reopen}<span>${t("card.reopen")}</span></button>
               <button class="fbk-mini fbk-icon" data-act="archive" data-id="${c.id}" title="${t("card.archive")}" aria-label="${t("card.archive")}">${ICON.archive}</button>` : ""}
               ${!isQuickAccess && c.status === "archived" ? `<button class="fbk-mini ready" data-act="reopen" data-id="${c.id}" title="${t("card.reopen")}">${ICON.reopen}<span>${t("card.reopen")}</span></button>` : ""}
-              ${c._mine ? `<div class="fbk-actions-end"><button class="fbk-mini fbk-icon" data-act="edit" data-id="${c.id}" title="${t("card.edit")}" aria-label="${t("card.edit")}">${ICON.pencil}</button></div>` : ""}
             </div>
           </div>`;
     },
@@ -1997,6 +2118,11 @@
       /** True when the page, the host config or a saved choice named an environment — the server's
        *  origin-resolved answer is then advisory and must not override it. */
       this.environmentExplicit = false;
+      /** True when the toolbar's environment select is on "All" — comments are fetched unfiltered
+       *  (no `?environment=` query param) across every environment. Independent of environmentInt/
+       *  environmentAttr, which keep tracking the actual (resolved or last-picked) environment so a
+       *  NEW comment composed while viewing "All" still gets tagged with a real environment, not "all". */
+      this.viewAllEnvironments = false;
       this.comments = [];
       this.statusFilter = "all";
       this.mineOnly = false;
@@ -2066,6 +2192,7 @@
       this._onVisibilityChange = null;
       this._userMenuClose = null;
       this._clusterMenuClose = null;
+      this._cardMenuClose = null;
       this._recordingShortcut = false;
       this._shortcutRecordingCleanup = null;
       this._backdropObserver = null;
@@ -2103,10 +2230,12 @@
       }
       if (!this.hasFixedEnvironment) {
         try {
-          const savedEnv = localStorage.getItem("pointer_env_" + this.project);
-          if (savedEnv && ENV_MAP[savedEnv.toLowerCase()]) {
-            this.environmentAttr = savedEnv.toLowerCase();
-            this.environmentInt = ENV_MAP[savedEnv.toLowerCase()];
+          const savedEnv = (localStorage.getItem("pointer_env_" + this.project) || "").toLowerCase();
+          if (savedEnv === "all") {
+            this.viewAllEnvironments = true;
+          } else if (savedEnv && ENV_MAP[savedEnv]) {
+            this.environmentAttr = savedEnv;
+            this.environmentInt = ENV_MAP[savedEnv];
             this.environmentExplicit = true;
           }
         } catch (e) {
@@ -2201,6 +2330,7 @@
       } catch {
       }
       if (this.token) void this._reportBuildSha();
+      if (this.token) void this._reportWidgetLanguage();
       if (inviteFailed) this.toast("This invite link is invalid or expired — ask for a new one.", "error");
     }
     /**
@@ -2224,6 +2354,39 @@
           method: "POST",
           headers: { "Content-Type": "application/json", Authorization: `Bearer ${this.token}` },
           body: JSON.stringify({ sha })
+        });
+      } catch {
+      }
+    }
+    /**
+     * Reports the widget's own UI language, the host page's `<html lang>`, and the visiting
+     * browser's locale — once per tab session (sessionStorage guard `pointer_lang_reported`), so a
+     * future widget-translation priority list can be based on real usage instead of guesswork. Fire-
+     * and-forget and failure-silent, same as `_reportBuildSha`: a visitor must never see (or wait on)
+     * a usage beacon. Posted through the existing authenticated `POST /api/events` pipeline, so an
+     * anonymous visitor (no token) simply never reports — acceptable, see the plan.
+     */
+    async _reportWidgetLanguage() {
+      var _a2;
+      try {
+        if (sessionStorage.getItem("pointer_lang_reported") === "1") return;
+        sessionStorage.setItem("pointer_lang_reported", "1");
+      } catch {
+      }
+      try {
+        await pfFetch(`${this.server}/api/events`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${this.token}` },
+          body: JSON.stringify({
+            type: "widget_language",
+            source: "web-component",
+            projectKey: this.project,
+            meta: {
+              ui: this.resolveLang(),
+              browser: typeof navigator !== "undefined" ? navigator.language : null,
+              page: typeof document !== "undefined" && ((_a2 = document.documentElement) == null ? void 0 : _a2.lang) || null
+            }
+          })
         });
       } catch {
       }
@@ -2556,16 +2719,14 @@
         if (!this.environmentExplicit && typeof resolved === "number" && ENV_NAME[resolved] && resolved !== this.environmentInt) {
           this.environmentInt = resolved;
           this.environmentAttr = ENV_NAME[resolved];
-          const envSel = this.root && this.root.querySelector("#fbk-env");
-          if (envSel && "value" in envSel) envSel.value = this.environmentAttr;
-          const envLabel = this.root && this.root.querySelector(".fbk-env-label");
-          if (envLabel) envLabel.textContent = "· " + this.envDisplayLabel(this.environmentAttr);
-          await this.fetchComments();
+          if (!this.viewAllEnvironments) {
+            await this.fetchComments();
+          }
         }
         this.commitStyle = typeof ((_d = envelope == null ? void 0 : envelope.data) == null ? void 0 : _d.commitStyle) === "number" ? envelope.data.commitStyle : 1;
         this.canEditSettings = !!((_e = envelope == null ? void 0 : envelope.data) == null ? void 0 : _e.canEditSettings);
-        this.updateProjectNameLabel();
-        this.updateEnvironmentSelectorVisibility();
+        this.updateCommentsHeading();
+        this.renderSidebar();
         this.renderCommitStyleControl();
         if (this.pageContextCaptureEnabled) startPageContextCapture(this.server, SCRIPT_SRC);
       } catch {
@@ -2573,30 +2734,15 @@
         this.captureTextContent = true;
       }
     }
-    // Patches the already-rendered header label in place rather than a full renderChrome() —
-    // re-rendering chrome here would drop the sidebar's open/closed state mid-session.
-    updateProjectNameLabel() {
-      const el = this.root && this.root.querySelector("#fbk-project-name");
-      if (el) {
-        el.textContent = this.projectName;
-        el.setAttribute("title", this.projectName);
-      }
-    }
-    // /capture-config resolves AFTER the first renderChrome() (which assumed the switcher was
-    // visible), so if it turns out this caller should NOT see it, swap the already-rendered
-    // <select id="fbk-env"> for the same read-only label used for a host-fixed environment — same
-    // reasoning as updateProjectNameLabel() above (no full re-render, mid-session state stays put).
-    // A no-op when the toolbar isn't open yet or the switcher was already hidden — the NEXT
-    // renderChrome() (e.g. when the visitor opens the toolbar) already reads the updated flag.
-    updateEnvironmentSelectorVisibility() {
-      if (this.showEnvironmentSelector || this.hasFixedEnvironment) return;
-      const sel = this.root && this.root.querySelector("#fbk-env");
-      if (!sel) return;
-      const label = document.createElement("span");
-      label.className = "fbk-env-label";
-      label.title = t("toolbar.environment");
-      label.textContent = "· " + this.envDisplayLabel(this.environmentAttr || ENV_NAME[this.environmentInt] || "unknown");
-      sel.replaceWith(label);
+    // Patches the already-rendered "{project} comments" heading in place rather than a full
+    // renderChrome() — re-rendering chrome here would drop the sidebar's open/closed state
+    // mid-session. Needed because the initial renderChrome() runs before fetchCaptureConfig()
+    // resolves the real project name, so the heading starts out showing the raw project key as a
+    // fallback. The project name is shown only in this heading — not duplicated elsewhere in the
+    // header, so there's nothing else to keep in step with it.
+    updateCommentsHeading() {
+      const heading = this.root && this.root.querySelector("#fbk-comments-heading");
+      if (heading) heading.textContent = t("toolbar.commentsHeading", { project: this.projectName });
     }
     // Translated display text for an environment key ('local'/'staging'/'production') — falls back
     // to the raw key for anything else (e.g. 'unknown', before the server has resolved one).
@@ -2640,7 +2786,7 @@
       }
     }
     // Keeps the "Comment on an element" button's tooltip showing the current shortcut after it's
-    // changed from the user menu — same in-place-patch reasoning as updateProjectNameLabel().
+    // changed from the user menu — same in-place-patch reasoning as updateCommentsHeading().
     updateAddButtonTooltip() {
       const btn = this.root && this.root.querySelector("#fbk-add");
       if (!btn) return;
@@ -2742,7 +2888,8 @@
     }
     async fetchComments() {
       try {
-        const r = await this.api(`/api/projects/${encodeURIComponent(this.project)}/comments?environment=${this.environmentInt}`);
+        const envQuery = this.viewAllEnvironments ? "" : `?environment=${this.environmentInt}`;
+        const r = await this.api(`/api/projects/${encodeURIComponent(this.project)}/comments${envQuery}`);
         if (r.status === 409 || r.status === 404) {
           this.disableSilently();
           return;
@@ -2785,8 +2932,7 @@
       const displayName = this.user ? escapeHtml(this.user.displayName || this.user.email) : "";
       const roleLabel = this.user ? escapeHtml(this.user.roleName || "") : "";
       const avatarInitials = this.user ? escapeHtml(initials(this.user.displayName || this.user.email || "")) : "";
-      const fixedEnvLabel = this.hasFixedEnvironment || !this.showEnvironmentSelector ? this.environmentAttr || ENV_NAME[this.environmentInt] || "staging" : null;
-      this.root.innerHTML = TPL.chrome(displayName, roleLabel, fixedEnvLabel, this.projectName || this.project, formatShortcut(this.shortcut), this.unreadNotifyCount, avatarInitials, ariaKeyshortcuts(this.shortcut));
+      this.root.innerHTML = TPL.chrome(displayName, roleLabel, this.projectName || this.project, formatShortcut(this.shortcut), this.unreadNotifyCount, avatarInitials, ariaKeyshortcuts(this.shortcut));
       const hideBtn = this.root.querySelector("#fbk-hide");
       if (hideBtn) hideBtn.addEventListener("click", () => this.hideOverlay());
       const userBtn = this.root.querySelector("#fbk-user");
@@ -2820,11 +2966,6 @@
         this.toast(t("toast.refreshed"));
       });
       this.root.querySelector("#fbk-close").addEventListener("click", () => this.toggleSidebar(false));
-      const envSel = this.root.querySelector("#fbk-env");
-      if (envSel) {
-        envSel.value = (this.environmentAttr || ENV_NAME[this.environmentInt] || "staging").toLowerCase();
-        envSel.addEventListener("change", () => this.setEnvironment(envSel.value));
-      }
       const resetBtn = this.root.querySelector("#fbk-reset-pos");
       if (resetBtn) resetBtn.addEventListener("click", () => this.resetToolbarPos());
       this.restoreToolbarPos();
@@ -2833,9 +2974,27 @@
     }
     // Switch the active environment from the toolbar. Comments are environment-scoped, so this
     // re-queries the server and re-renders; the choice is remembered per project on this origin.
+    // "all" is a widget-only filter state (see viewAllEnvironments' field doc) — it doesn't touch
+    // environmentAttr/environmentInt, which keep tracking the real environment for tagging new
+    // comments composed while every environment is shown.
     setEnvironment(env) {
       const key = (env || "").toLowerCase();
-      if (!ENV_MAP[key] || key === this.environmentAttr.toLowerCase()) return;
+      if (key === "all") {
+        if (this.viewAllEnvironments) return;
+        this.viewAllEnvironments = true;
+        try {
+          localStorage.setItem("pointer_env_" + this.project, "all");
+        } catch (e) {
+        }
+        if (!this.token) return;
+        this.fetchComments().then(() => {
+          this.renderSidebar();
+          this.renderPins();
+        });
+        return;
+      }
+      if (!ENV_MAP[key] || !this.viewAllEnvironments && key === this.environmentAttr.toLowerCase()) return;
+      this.viewAllEnvironments = false;
       this.environmentAttr = key;
       this.environmentInt = ENV_MAP[key];
       try {
@@ -2973,6 +3132,7 @@
     toggleUserMenu() {
       this.closeUpdatesMenu();
       this.closeClusterMenu();
+      this.closeCardMenu();
       const host = this.root.querySelector("#fbk-menu-host");
       if (!host) return;
       if (host.querySelector("#fbk-user-menu")) {
@@ -3067,6 +3227,7 @@
       }
       this.closeUserMenu();
       this.closeClusterMenu();
+      this.closeCardMenu();
       const items = await this.apiNotifications();
       if (this.unreadNotifyCount > 0) {
         await this.apiMarkAllNotificationsRead();
@@ -3662,7 +3823,7 @@
     }
     // Returns true on success (popover should close), false on failure (popover stays open).
     async createComment(data) {
-      var _a2, _b;
+      var _a2, _b, _c;
       const vw = window.innerWidth;
       const vh = window.innerHeight;
       const deviceType = vw < 768 ? "mobile" : vw < 1024 ? "tablet" : "desktop";
@@ -3695,12 +3856,14 @@
           else this.toast(t("toast.screenshotUploadFailed"), "error");
         }
       }
+      const language = (_a2 = data.language) != null ? _a2 : await detectTextLanguageAsync(data.text);
       const bodyObj = {
         body: data.text,
         environment: this.environmentInt,
         isPrivate: !!data.isPrivate,
         element,
-        isBugReport: !!data.isBugReport
+        isBugReport: !!data.isBugReport,
+        language
       };
       if (data.predefinedActionIds && data.predefinedActionIds.length) bodyObj.predefinedActionIds = data.predefinedActionIds;
       if (data.isBugReport) {
@@ -3729,7 +3892,7 @@
             return false;
           }
           if (r.status === 429) {
-            const retryAfter = Number((_b = (_a2 = r.headers) == null ? void 0 : _a2.get) == null ? void 0 : _b.call(_a2, "retry-after"));
+            const retryAfter = Number((_c = (_b = r.headers) == null ? void 0 : _b.get) == null ? void 0 : _c.call(_b, "retry-after"));
             this.toast(
               retryAfter > 0 ? t("toast.tooManyCommentsRetryIn", { n: retryAfter, s: retryAfter === 1 ? "" : "s" }) : t("toast.tooManyCommentsWait"),
               "error"
@@ -3842,43 +4005,26 @@
       }
     }
     /**
-     * Two-step delete: replaces the whole end-cluster it lives in (the visibility toggle sits
-     * alongside it) with a "Delete this comment? ✓ ✕" confirmation, so nothing else in that
-     * cluster can be mis-clicked while confirming. Confirms on ✓, cancels on ✕, and
-     * auto-dismisses after a few seconds. Other buttons are hidden (not removed), so their
-     * existing click listeners survive once restored.
+     * Delete confirmation for a comment's own card: an opaque overlay covering the WHOLE card
+     * (not just the kebab menu — the menu is already closed by the time this runs), so nothing
+     * else on the card can be mis-clicked while confirming. No auto-dismiss: unlike the old
+     * in-menu confirm (which had to give the dropdown back for other uses), this is a deliberate
+     * modal-style prompt that stays until the viewer explicitly confirms or cancels.
      */
-    confirmDelete(btn) {
-      const id = btn.dataset.id;
-      const row = btn.closest(".fbk-actions-end");
-      if (!id || !row || row.querySelector(".fbk-confirm")) return;
-      const others = Array.from(row.children);
-      others.forEach((el) => {
-        el.style.display = "none";
-      });
-      const wrap = document.createElement("div");
-      wrap.className = "fbk-confirm fbk-confirm-row";
-      wrap.innerHTML = `<span class="fbk-confirm-q">${t("card.deleteThisComment")}</span><span class="fbk-confirm-btns"><button type="button" class="fbk-mini danger fbk-icon" data-c="yes" title="${t("card.confirmDelete")}" aria-label="${t("card.confirmDelete")}">${ICON.checkPlain}</button><button type="button" class="fbk-mini fbk-icon" data-c="no" title="${t("toolbar.cancel")}" aria-label="${t("toolbar.cancel")}">&#x2715;</button></span>`;
-      row.appendChild(wrap);
-      let closed = false;
-      const close = () => {
-        if (closed) return;
-        closed = true;
-        clearTimeout(timer);
-        wrap.remove();
-        others.forEach((el) => {
-          el.style.display = "";
-        });
-      };
-      const timer = setTimeout(close, 4e3);
-      wrap.querySelector('[data-c="yes"]').addEventListener("click", (e) => {
+    confirmDeleteCard(id) {
+      const card = this.root && this.root.querySelector(`.fbk-card[data-id="${id}"]`);
+      if (!card || card.querySelector(".fbk-card-delete-confirm")) return;
+      const overlay = document.createElement("div");
+      overlay.className = "fbk-card-delete-confirm";
+      overlay.innerHTML = `<p class="fbk-card-delete-confirm-q">${t("card.deleteThisComment")}</p><div class="fbk-card-delete-confirm-actions"><button type="button" class="fbk-mini danger" data-c="yes">${t("card.confirmDelete")}</button><button type="button" class="fbk-mini" data-c="no">${t("toolbar.cancel")}</button></div>`;
+      card.appendChild(overlay);
+      overlay.querySelector('[data-c="yes"]').addEventListener("click", (e) => {
         e.stopPropagation();
-        close();
         this.deleteComment(id);
       });
-      wrap.querySelector('[data-c="no"]').addEventListener("click", (e) => {
+      overlay.querySelector('[data-c="no"]').addEventListener("click", (e) => {
         e.stopPropagation();
-        close();
+        overlay.remove();
       });
     }
     async deleteComment(id) {
@@ -3889,6 +4035,7 @@
           throw new Error(body && body.message || "HTTP " + r.status);
         }
         this.comments = this.comments.filter((c) => String(c.id) !== String(id));
+        this.closeCardMenu();
         this.renderSidebar();
         this.renderPins();
         this.toast(t("toast.deleted"));
@@ -4138,12 +4285,16 @@
       const filtersEl = this.root.querySelector("#fbk-filters");
       if (filtersEl) {
         const activeFilters = catalogToFilters();
-        filtersEl.innerHTML = TPL.statusFilterSelect(activeFilters, this.statusFilter, counts) + (authors.length > 1 && !this.mineOnly ? TPL.authorFilter(authors, this.authorFilter || "") : "") + (canMine ? TPL.mineToggle(this.mineOnly) : "");
+        const fixedEnvLabel = this.hasFixedEnvironment || !this.showEnvironmentSelector ? this.envDisplayLabel(this.environmentAttr || ENV_NAME[this.environmentInt] || "staging") : null;
+        const envValue = this.viewAllEnvironments ? "all" : (this.environmentAttr || ENV_NAME[this.environmentInt] || "staging").toLowerCase();
+        filtersEl.innerHTML = TPL.statusFilterSelect(activeFilters, this.statusFilter, counts) + TPL.envFilterSelect(fixedEnvLabel, envValue) + (authors.length > 1 && !this.mineOnly ? TPL.authorFilter(authors, this.authorFilter || "") : "") + (canMine ? TPL.mineToggle(this.mineOnly) : "");
         const statusSel = filtersEl.querySelector("#fbk-status-filter");
         if (statusSel) statusSel.addEventListener("change", () => {
           this.statusFilter = statusSel.value;
           this.renderSidebar();
         });
+        const envSel = filtersEl.querySelector("#fbk-env");
+        if (envSel) envSel.addEventListener("change", () => this.setEnvironment(envSel.value));
         const mineBtn = filtersEl.querySelector("#fbk-mine-toggle");
         if (mineBtn) mineBtn.addEventListener("click", () => {
           this.mineOnly = !this.mineOnly;
@@ -4180,7 +4331,7 @@
         c._mine = this.isMine(c);
         c._canVerify = c._mine || !!(this.user && this.user.isAdmin);
         (c.replies || []).forEach((r) => {
-          r._mine = !!(myId && r.authorId && String(r.authorId).toLowerCase() === myId);
+          r._mine = !r.isAi && !!(myId && r.authorId && String(r.authorId).toLowerCase() === myId);
         });
         return TPL.card(c, i, isQuickAccess);
       }).join("");
@@ -4192,11 +4343,10 @@
         const c = this.comments.find((x) => String(x.id) === String(b.dataset.id));
         if (c && c.status !== "applied") this.markCompleted(c);
       }));
-      list.querySelectorAll('[data-act="delete"]').forEach((b) => b.addEventListener("click", () => this.confirmDelete(b)));
-      list.querySelectorAll('[data-act="edit"]').forEach((b) => b.addEventListener("click", () => this.startEdit(b.dataset.id)));
-      list.querySelectorAll('[data-act="visibility"]').forEach((b) => b.addEventListener("click", () => {
+      list.querySelectorAll('[data-act="card-menu"]').forEach((b) => b.addEventListener("click", (e) => {
+        e.stopPropagation();
         const c = this.comments.find((x) => String(x.id) === String(b.dataset.id));
-        if (c) this.setVisibility(c, b.dataset.private === "true");
+        if (c) this.toggleCardMenu(b, c);
       }));
       list.querySelectorAll('[data-act="reopen"]').forEach((b) => b.addEventListener("click", () => {
         const c = this.comments.find((x) => String(x.id) === String(b.dataset.id));
@@ -4341,6 +4491,7 @@
       }
       this.closeUserMenu();
       this.closeUpdatesMenu();
+      this.closeCardMenu();
       if (comments.length === 0) return;
       host.innerHTML = TPL.pinClusterMenu(comments);
       const menu = host.querySelector("#fbk-pin-cluster-menu");
@@ -4381,6 +4532,72 @@
       if (this._clusterMenuClose) {
         document.removeEventListener("click", this._clusterMenuClose, true);
         this._clusterMenuClose = null;
+      }
+    }
+    // --- Card actions menu (kebab menu: private/public, edit, delete) --------
+    toggleCardMenu(btn, c) {
+      const host = this.root.querySelector("#fbk-menu-host");
+      if (!host) return;
+      if (host.querySelector("#fbk-card-menu")) {
+        this.closeCardMenu();
+        return;
+      }
+      this.closeUserMenu();
+      this.closeUpdatesMenu();
+      this.closeClusterMenu();
+      host.innerHTML = TPL.cardMenu(c);
+      const menu = host.querySelector("#fbk-card-menu");
+      if (!menu) return;
+      btn.setAttribute("aria-expanded", "true");
+      const r = btn.getBoundingClientRect();
+      const menuHeight = menu.offsetHeight;
+      const spaceBelow = window.innerHeight - r.bottom;
+      if (spaceBelow < menuHeight + 6 && r.top > spaceBelow) {
+        menu.style.top = "auto";
+        menu.style.bottom = `${Math.max(8, Math.round(window.innerHeight - r.top + 6))}px`;
+      } else {
+        menu.style.bottom = "auto";
+        menu.style.top = `${Math.round(r.bottom + 6)}px`;
+      }
+      menu.style.right = `${Math.max(8, Math.round(window.innerWidth - r.right))}px`;
+      const visBtn = menu.querySelector('[data-menu-act="visibility"]');
+      if (visBtn) {
+        visBtn.addEventListener("click", () => {
+          this.closeCardMenu();
+          this.setVisibility(c, visBtn.dataset.private === "true");
+        });
+      }
+      const editBtn = menu.querySelector('[data-menu-act="edit"]');
+      if (editBtn) {
+        editBtn.addEventListener("click", () => {
+          this.closeCardMenu();
+          this.startEdit(String(c.id));
+        });
+      }
+      const delBtn = menu.querySelector('[data-menu-act="delete"]');
+      if (delBtn) {
+        delBtn.addEventListener("click", () => {
+          this.closeCardMenu();
+          this.confirmDeleteCard(String(c.id));
+        });
+      }
+      this._cardMenuClose = (e) => {
+        const path = e.composedPath();
+        if (!path.includes(menu) && !path.includes(btn)) this.closeCardMenu();
+      };
+      setTimeout(() => {
+        if (this._cardMenuClose) document.addEventListener("click", this._cardMenuClose, true);
+      }, 0);
+    }
+    closeCardMenu() {
+      const host = this.root.querySelector("#fbk-menu-host");
+      if (host && host.querySelector("#fbk-card-menu")) {
+        host.innerHTML = "";
+        this.root.querySelectorAll('.fbk-card-kebab[aria-expanded="true"]').forEach((b) => b.setAttribute("aria-expanded", "false"));
+      }
+      if (this._cardMenuClose) {
+        document.removeEventListener("click", this._cardMenuClose, true);
+        this._cardMenuClose = null;
       }
     }
     // --- Toast ---------------------------------------------------------------

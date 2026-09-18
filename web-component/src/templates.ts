@@ -56,12 +56,8 @@ export const TPL = {
           ${t('auth.alreadyHaveAccount')} <button class="fbk-btn fbk-link fbk-link-inline" id="fbk-show-login">${t('auth.backToSignIn')}</button>
         </div>`,
 
-  // `fixedEnvLabel`: when the host fixed the environment at install time (attribute or injected
-  // config), pass its display name to render a read-only label instead of the switcher — letting a
-  // visitor switch an environment that was already explicitly configured is redundant and risks
-  // misfiling a comment into the wrong bucket. Pass null/undefined to render the normal switcher.
-  // `projectName`: shown next to the environment indicator so a visitor can immediately tell which
-  // project this install is bound to — project keys aren't unique across a workspace, so two
+  // `projectName`: embedded in the "{project} comments" heading so a visitor can immediately tell
+  // which project this install is bound to — project keys aren't unique across a workspace, so two
   // different installs can easily look identical without this.
   // `avatarInitials`: 1-2 letters (see dom.ts's initials()) for the account button, already
   // safe to interpolate as-is — computed by the caller from the RAW display name (before
@@ -69,7 +65,9 @@ export const TPL = {
   // `ariaShortcut`: the ARIA-format string ("Control+Alt+Shift+C" — see shortcut.ts's
   // ariaKeyshortcuts), separate from `shortcutLabel` (the human-display form, "Ctrl+Alt+Shift+C"
   // or "⌃⌥⇧C" on Mac) since ARIA wants full, platform-independent modifier names.
-  chrome: (displayName: string, roleLabel: string, fixedEnvLabel?: string | null, projectName = '', shortcutLabel = '', unreadNotifyCount = 0, avatarInitials = '', ariaShortcut = '') => `
+  // The environment select/label used to live in this shell too; it's now rendered inside
+  // #fbk-filters (see envFilterSelect), beside the status filter — both scoping controls together.
+  chrome: (displayName: string, roleLabel: string, projectName = '', shortcutLabel = '', unreadNotifyCount = 0, avatarInitials = '', ariaShortcut = '') => `
         <aside class="fbk-toolbar" id="fbk-toolbar" role="toolbar" aria-label="${escapeHtml(getBrandName())}" part="toolbar">
           <span class="fbk-toolbar__grip" id="fbk-grip" data-fbk-drag data-toggle="tooltip" data-placement="top" title="${t('toolbar.dragToReposition')}" aria-hidden="true">${ICON.grip}</span>
           <span class="fbk-toolbar__divider" aria-hidden="true"></span>
@@ -90,17 +88,7 @@ export const TPL = {
               <button class="fbk-mini fbk-icon" id="fbk-close" title="${t('toolbar.close')}" aria-label="${t('toolbar.close')}">&#x2715;</button>
             </div>
             <div class="fbk-sidebar-head-row">
-              <div class="fbk-sidebar-meta">
-                ${fixedEnvLabel
-                  ? `<span class="fbk-env-label fbk-caption" title="${t('toolbar.envFixedTitle')}">${escapeHtml(fixedEnvLabel)}</span>`
-                  : `<select class="fbk-input fbk-env-select" id="fbk-env" title="${t('toolbar.envSwitchTitle')}">
-                <option value="all">${t('toolbar.envAll')}</option>
-                <option value="local">${t('toolbar.envLocal')}</option>
-                <option value="staging">${t('toolbar.envStaging')}</option>
-                <option value="production">${t('toolbar.envProduction')}</option>
-              </select>`}
-              </div>
-              <button class="fbk-mini fbk-icon" id="fbk-refresh" title="${t('toolbar.refreshComments')}" aria-label="${t('toolbar.refreshComments')}">&#8635;</button>
+              <button class="fbk-mini fbk-icon fbk-refresh-btn" id="fbk-refresh" title="${t('toolbar.refreshComments')}" aria-label="${t('toolbar.refreshComments')}">&#8635;</button>
             </div>
             <div class="fbk-commit-style fbk-hidden" id="fbk-commit-style"></div>
           </div>
@@ -196,10 +184,32 @@ export const TPL = {
   // Status filter as a dropdown (rather than a row of chip buttons) — keeps the filter bar compact.
   // Filter labels themselves are server-provided status-catalog text (customizable per project) —
   // never translated by the widget, which cannot know what language an admin wrote them in.
+  // Wrapped in a <label> with a visible text label (not just the select's own title tooltip) —
+  // sits beside envFilterSelect, which follows the same fbk-filter-field shape.
   statusFilterSelect: (filters: { key: string; label: string; color?: string }[], active: string, counts: Record<string, number>) =>
-    `<select class="fbk-status-select" id="fbk-status-filter" title="${t('sidebar.filterByStatus')}">
-             ${filters.map((f) => `<option value="${f.key}" ${f.key === active ? 'selected' : ''}>${escapeHtml(f.label)} (${counts[f.key] ?? 0})</option>`).join('')}
-           </select>`,
+    `<label class="fbk-filter-field">
+             <span class="fbk-filter-field-label">${t('sidebar.status')}</span>
+             <select class="fbk-status-select" id="fbk-status-filter" title="${t('sidebar.filterByStatus')}">
+               ${filters.map((f) => `<option value="${f.key}" ${f.key === active ? 'selected' : ''}>${escapeHtml(f.label)} (${counts[f.key] ?? 0})</option>`).join('')}
+             </select>
+           </label>`,
+
+  // Environment filter — sits beside the status filter (see statusFilterSelect) rather than in the
+  // sidebar head, so both scoping controls live together. `fixedEnvLabel` renders a read-only
+  // value instead of a select when the install pinned the environment, or the project turned the
+  // switcher off for everyone (see `showEnvironmentSelector`); null/undefined renders the switcher.
+  envFilterSelect: (fixedEnvLabel: string | null | undefined, currentValue: string) =>
+    `<label class="fbk-filter-field">
+             <span class="fbk-filter-field-label">${t('toolbar.environment')}</span>
+             ${fixedEnvLabel
+               ? `<span class="fbk-env-label fbk-caption" title="${t('toolbar.envFixedTitle')}">${escapeHtml(fixedEnvLabel)}</span>`
+               : `<select class="fbk-input fbk-env-select" id="fbk-env" title="${t('toolbar.envSwitchTitle')}">
+                 <option value="all" ${currentValue === 'all' ? 'selected' : ''}>${t('toolbar.envAll')}</option>
+                 <option value="local" ${currentValue === 'local' ? 'selected' : ''}>${t('toolbar.envLocal')}</option>
+                 <option value="staging" ${currentValue === 'staging' ? 'selected' : ''}>${t('toolbar.envStaging')}</option>
+                 <option value="production" ${currentValue === 'production' ? 'selected' : ''}>${t('toolbar.envProduction')}</option>
+               </select>`}
+           </label>`,
 
   // "Mine only" toggle — a chip that composes with the status chips above.
   // Rendered only when a user is logged in.
@@ -223,7 +233,7 @@ export const TPL = {
         <div class="fbk-card-menu" id="fbk-card-menu" role="menu">
           ${c._mine ? `<button type="button" class="fbk-card-menu-item" data-menu-act="visibility" data-private="${c.isPrivate ? 'false' : 'true'}" role="menuitem">${c.isPrivate ? ICON.unlock : ICON.lock}<span>${c.isPrivate ? t('card.makePublic') : t('card.makePrivate')}</span></button>` : ''}
           ${c._mine ? `<button type="button" class="fbk-card-menu-item" data-menu-act="edit" role="menuitem">${ICON.pencil}<span>${t('card.edit')}</span></button>` : ''}
-          ${c.status === 'open' ? `<div class="fbk-actions-end fbk-card-menu-delete-row"><button type="button" class="fbk-card-menu-item danger" data-menu-act="delete" data-id="${c.id}" role="menuitem">${ICON.trash}<span>${t('card.delete')}</span></button></div>` : ''}
+          ${c.status === 'open' ? `<button type="button" class="fbk-card-menu-item danger" data-menu-act="delete" role="menuitem">${ICON.trash}<span>${t('card.delete')}</span></button>` : ''}
         </div>`,
 
   card: (c: Comment, i: number, isQuickAccess?: boolean) => {

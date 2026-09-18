@@ -758,16 +758,12 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
       if (!this.environmentExplicit && typeof resolved === 'number' && ENV_NAME[resolved] && resolved !== this.environmentInt) {
         this.environmentInt = resolved;
         this.environmentAttr = ENV_NAME[resolved];
-        // Keep whatever the toolbar is showing — a <select> or the read-only label — in step with
-        // the value we just learned. Skipped while viewing "All": environmentInt/environmentAttr
-        // still need the real resolved environment (a NEW comment composed in this state must be
-        // tagged with it, not "all"), but the select itself must keep showing "All", and a refetch
-        // here would silently narrow the list down to one environment, undoing the viewer's choice.
+        // Skipped while viewing "All": environmentInt/environmentAttr still need the real resolved
+        // environment (a NEW comment composed in this state must be tagged with it, not "all"),
+        // but a refetch here would silently narrow the list down to one environment, undoing the
+        // viewer's choice — the renderSidebar() below still picks up the corrected value for
+        // composing without needing to touch what's currently shown.
         if (!this.viewAllEnvironments) {
-          const envSel = this.root && (this.root.querySelector('#fbk-env') as HTMLSelectElement | null);
-          if (envSel && 'value' in envSel) envSel.value = this.environmentAttr;
-          const envLabel = this.root && this.root.querySelector('.fbk-env-label');
-          if (envLabel) envLabel.textContent = this.envDisplayLabel(this.environmentAttr);
           // init() fires this request CONCURRENTLY with the very first fetchComments() (Promise.all)
           // — that first call always ran with the pre-resolution environment (0, "unknown"), which
           // the server has no comments for, so the sidebar/pins silently rendered empty until
@@ -780,7 +776,10 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
       this.commitStyle = typeof envelope?.data?.commitStyle === 'number' ? envelope.data.commitStyle : 1;
       this.canEditSettings = !!envelope?.data?.canEditSettings;
       this.updateCommentsHeading();
-      this.updateEnvironmentSelectorVisibility();
+      // Rebuilds the filters row (status + environment selects) with whatever we just learned —
+      // showEnvironmentSelector, hasFixedEnvironment and the corrected environmentAttr all live
+      // there now, same as the status/author filters already do on every render.
+      this.renderSidebar();
       this.renderCommitStyleControl();
       if (this.pageContextCaptureEnabled) startPageContextCapture(this.server, SCRIPT_SRC);
     } catch {
@@ -798,23 +797,6 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
   private updateCommentsHeading(): void {
     const heading = this.root && this.root.querySelector('#fbk-comments-heading');
     if (heading) heading.textContent = t('toolbar.commentsHeading', { project: this.projectName });
-  }
-
-  // /capture-config resolves AFTER the first renderChrome() (which assumed the switcher was
-  // visible), so if it turns out this caller should NOT see it, swap the already-rendered
-  // <select id="fbk-env"> for the same read-only label used for a host-fixed environment — same
-  // reasoning as updateCommentsHeading() above (no full re-render, mid-session state stays put).
-  // A no-op when the toolbar isn't open yet or the switcher was already hidden — the NEXT
-  // renderChrome() (e.g. when the visitor opens the toolbar) already reads the updated flag.
-  private updateEnvironmentSelectorVisibility(): void {
-    if (this.showEnvironmentSelector || this.hasFixedEnvironment) return;
-    const sel = this.root && this.root.querySelector('#fbk-env');
-    if (!sel) return;
-    const label = document.createElement('span');
-    label.className = 'fbk-env-label';
-    label.title = t('toolbar.environment');
-    label.textContent = this.envDisplayLabel(this.environmentAttr || ENV_NAME[this.environmentInt] || 'unknown');
-    sel.replaceWith(label);
   }
 
   // Translated display text for an environment key ('local'/'staging'/'production') — falls back
@@ -1021,10 +1003,7 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
     const roleLabel = this.user ? escapeHtml(this.user.roleName || '') : '';
     // Computed from the RAW name (before escaping above) — see the chrome() doc comment.
     const avatarInitials = this.user ? escapeHtml(initials(this.user.displayName || this.user.email || '')) : '';
-    const fixedEnvLabel = (this.hasFixedEnvironment || !this.showEnvironmentSelector)
-      ? (this.environmentAttr || ENV_NAME[this.environmentInt] || 'staging')
-      : null;
-    this.root.innerHTML = TPL.chrome(displayName, roleLabel, fixedEnvLabel, this.projectName || this.project, formatShortcut(this.shortcut), this.unreadNotifyCount, avatarInitials, ariaKeyshortcuts(this.shortcut));
+    this.root.innerHTML = TPL.chrome(displayName, roleLabel, this.projectName || this.project, formatShortcut(this.shortcut), this.unreadNotifyCount, avatarInitials, ariaKeyshortcuts(this.shortcut));
 
     const hideBtn = this.root.querySelector('#fbk-hide');
     if (hideBtn) hideBtn.addEventListener('click', () => this.hideOverlay());
@@ -1045,13 +1024,6 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
       await this.fetchComments(); this.renderSidebar(); this.renderPins(); this.toast(t('toast.refreshed'));
     });
     this.root.querySelector('#fbk-close')!.addEventListener('click', () => this.toggleSidebar(false));
-
-    // Environment switcher — comments are scoped per environment; switching re-queries + persists.
-    const envSel = this.root.querySelector('#fbk-env') as HTMLSelectElement | null;
-    if (envSel) {
-      envSel.value = this.viewAllEnvironments ? 'all' : (this.environmentAttr || ENV_NAME[this.environmentInt] || 'staging').toLowerCase();
-      envSel.addEventListener('change', () => this.setEnvironment(envSel.value));
-    }
 
     const resetBtn = this.root.querySelector('#fbk-reset-pos');
     if (resetBtn) resetBtn.addEventListener('click', () => this.resetToolbarPos());
@@ -2154,47 +2126,33 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
   }
 
   /**
-   * Two-step delete: replaces the whole end-cluster it lives in (the visibility toggle sits
-   * alongside it) with a "Delete this comment? ✓ ✕" confirmation, so nothing else in that
-   * cluster can be mis-clicked while confirming. Confirms on ✓, cancels on ✕, and
-   * auto-dismisses after a few seconds. Other buttons are hidden (not removed), so their
-   * existing click listeners survive once restored.
+   * Delete confirmation for a comment's own card: an opaque overlay covering the WHOLE card
+   * (not just the kebab menu — the menu is already closed by the time this runs), so nothing
+   * else on the card can be mis-clicked while confirming. No auto-dismiss: unlike the old
+   * in-menu confirm (which had to give the dropdown back for other uses), this is a deliberate
+   * modal-style prompt that stays until the viewer explicitly confirms or cancels.
    */
-  confirmDelete(btn: HTMLElement): void {
-    const id = btn.dataset.id;
-    const row = btn.closest('.fbk-actions-end') as HTMLElement | null;
-    if (!id || !row || row.querySelector('.fbk-confirm')) return; // already confirming
+  confirmDeleteCard(id: string): void {
+    const card = this.root && (this.root.querySelector(`.fbk-card[data-id="${id}"]`) as HTMLElement | null);
+    if (!card || card.querySelector('.fbk-card-delete-confirm')) return; // already confirming
 
-    const others = Array.from(row.children) as HTMLElement[];
-    others.forEach((el) => { el.style.display = 'none'; });
+    const overlay = document.createElement('div');
+    overlay.className = 'fbk-card-delete-confirm';
+    overlay.innerHTML =
+      `<p class="fbk-card-delete-confirm-q">${t('card.deleteThisComment')}</p>` +
+      `<div class="fbk-card-delete-confirm-actions">` +
+      `<button type="button" class="fbk-mini danger" data-c="yes">${t('card.confirmDelete')}</button>` +
+      `<button type="button" class="fbk-mini" data-c="no">${t('toolbar.cancel')}</button>` +
+      `</div>`;
+    card.appendChild(overlay);
 
-    const wrap = document.createElement('div');
-    wrap.className = 'fbk-confirm fbk-confirm-row';
-    wrap.innerHTML =
-      `<span class="fbk-confirm-q">${t('card.deleteThisComment')}</span>` +
-      `<span class="fbk-confirm-btns">` +
-      `<button type="button" class="fbk-mini danger fbk-icon" data-c="yes" title="${t('card.confirmDelete')}" aria-label="${t('card.confirmDelete')}">${ICON.checkPlain}</button>` +
-      `<button type="button" class="fbk-mini fbk-icon" data-c="no" title="${t('toolbar.cancel')}" aria-label="${t('toolbar.cancel')}">&#x2715;</button>` +
-      `</span>`;
-    row.appendChild(wrap);
-
-    let closed = false;
-    const close = () => {
-      if (closed) return;
-      closed = true;
-      clearTimeout(timer);
-      wrap.remove();
-      others.forEach((el) => { el.style.display = ''; });
-    };
-    const timer = setTimeout(close, 4000);
-    wrap.querySelector('[data-c="yes"]')!.addEventListener('click', (e) => {
+    overlay.querySelector('[data-c="yes"]')!.addEventListener('click', (e) => {
       e.stopPropagation();
-      close();
       this.deleteComment(id);
     });
-    wrap.querySelector('[data-c="no"]')!.addEventListener('click', (e) => {
+    overlay.querySelector('[data-c="no"]')!.addEventListener('click', (e) => {
       e.stopPropagation();
-      close();
+      overlay.remove();
     });
   }
 
@@ -2457,13 +2415,23 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
     const filtersEl = this.root.querySelector('#fbk-filters');
     if (filtersEl) {
       const activeFilters = catalogToFilters();
+      // Fixed/read-only when the install pinned the environment or the project turned the
+      // switcher off for everyone — same condition renderChrome() used to compute this for the
+      // now-removed sidebar-head select.
+      const fixedEnvLabel = (this.hasFixedEnvironment || !this.showEnvironmentSelector)
+        ? this.envDisplayLabel(this.environmentAttr || ENV_NAME[this.environmentInt] || 'staging')
+        : null;
+      const envValue = this.viewAllEnvironments ? 'all' : (this.environmentAttr || ENV_NAME[this.environmentInt] || 'staging').toLowerCase();
       filtersEl.innerHTML = TPL.statusFilterSelect(activeFilters, this.statusFilter, counts)
+        + TPL.envFilterSelect(fixedEnvLabel, envValue)
         + ((authors.length > 1 && !this.mineOnly) ? TPL.authorFilter(authors, this.authorFilter || '') : '')
         + (canMine ? TPL.mineToggle(this.mineOnly) : '');
       const statusSel = filtersEl.querySelector('#fbk-status-filter') as HTMLSelectElement | null;
       if (statusSel) statusSel.addEventListener('change', () => {
         this.statusFilter = statusSel.value; this.renderSidebar();
       });
+      const envSel = filtersEl.querySelector('#fbk-env') as HTMLSelectElement | null;
+      if (envSel) envSel.addEventListener('change', () => this.setEnvironment(envSel.value));
       const mineBtn = filtersEl.querySelector('#fbk-mine-toggle');
       if (mineBtn) mineBtn.addEventListener('click', () => {
         this.mineOnly = !this.mineOnly; this.renderSidebar(); this.renderPins();
@@ -2794,15 +2762,13 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
         this.startEdit(String(c.id));
       });
     }
-    // Delete keeps the existing two-step "confirm?" UI, which replaces the row it lives in —
-    // that row is this menu's own delete item wrapper (see cardMenu's `.fbk-actions-end` div) —
-    // so confirming/cancelling happens inline in the still-open menu, and only a successful
-    // delete (deleteComment) closes the menu, via its own closeCardMenu() call.
+    // Delete closes the menu immediately (like edit/visibility above) and shows its confirmation
+    // as an overlay on the card itself, not inside the dropdown — see confirmDeleteCard.
     const delBtn = menu.querySelector('[data-menu-act="delete"]') as HTMLElement | null;
     if (delBtn) {
-      delBtn.addEventListener('click', (e) => {
-        e.stopPropagation();
-        this.confirmDelete(delBtn);
+      delBtn.addEventListener('click', () => {
+        this.closeCardMenu();
+        this.confirmDeleteCard(String(c.id));
       });
     }
 
