@@ -1,6 +1,6 @@
 {
   "name": "pointer-feedback",
-  "version": "0.4.1",
+  "version": "0.5.0",
   "description": "Click-to-comment feedback for your web app: install the widget, then turn pending comments into AI apply prompts.",
   "type": "module",
   "license": "MIT",

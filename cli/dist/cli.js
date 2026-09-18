@@ -15,7 +15,7 @@ var init_build_constants = __esm({
   "src/build-constants.ts"() {
     "use strict";
     BUILD_DEFAULT_SERVER = true ? "https://api.pointer.moamen.work" : "https://api.pointer.moamen.work";
-    BUILD_CLI_VERSION = true ? "0.4.1" : "0.0.0-dev";
+    BUILD_CLI_VERSION = true ? "0.5.0" : "0.0.0-dev";
   }
 });
 
