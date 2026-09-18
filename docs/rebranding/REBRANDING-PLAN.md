@@ -461,6 +461,7 @@ Counts are files containing a case-insensitive `pointer`, measured 2026-09-08.
 | Placeholder token | `<POINTER_SERVER>` — in the `.Replace()` call **and** in the markdown bodies (`pointer-init.md:18,47,80`, `skill.md`) | `Program.cs` + `wwwroot/*.md` |
 | JWT issuer/audience | `pointer-api` — see §4.6 | compose + `AuthenticationExtensions.cs` |
 | Config section | `Pointer` — see §4.7 | `appsettings.json`, `Program.cs:180`, compose |
+| `.pointer/config.json` key (added 2026-09-19) | `delegation` (`auto`\|`off`, absent = `auto`) — opt-out for the apply skill's cost-aware delegation (Step 3b: orchestrator hands mechanical edits to a cheaper worker model). **Key name is brand-neutral, not itself renamed**, but it is echoed as literal text `delegation=auto`/`delegation=off` in the `apply` prompt header next to `commitStyle=` — grep that format string when renaming anything nearby so the literal isn't mangled | `cli/src/config.ts` (`PointerConfig.delegation`), `cli/src/apply/context.ts`, `cli/src/apply/prompt.ts`, `docs/ON-DISK-CONTRACT.md` (`config.json` keys row), `Tests/OnDiskContractTests.cs` |
 | Upload dir | `API/wwwroot/uploads/pointer-api` | per-project, keyed by project key — **data**, see §11 |
 
 ### 5.4 Skills (served + installed)
@@ -471,6 +472,7 @@ Counts are files containing a case-insensitive `pointer`, measured 2026-09-08.
 | `API/wwwroot/skill.md` | `name: pointer-feedback` | Installed to `.claude/skills/pointer-feedback/SKILL.md`. **Filename `skill.md` is a legacy URL** — new name should be `<kebab>-feedback.md` with `skill.md` kept as an alias if `LIVE_INSTALLS=yes` |
 | `API/wwwroot/install.sh` | Writes both skills, `.agents/*` symlinks, `.pointer/pointer.sh`, `.pointer/bridge.mjs`, `.pointer/credentials.env{,.example}` | The single highest-leverage file: 20+ brand strings, and it defines the on-disk contract in customer repos |
 | Skill **description trigger phrases** | "add Pointer to this app", "what are the pointer comments", "apply pending pointer comments" | These are how a user invokes the skill in natural language — rename them or the skill stops triggering on the new brand |
+| `API/wwwroot/skills/apply.md` Step 3b (added 2026-09-19) | Reads `.pointer/config.json → delegation` and describes the cost-aware delegation flow; `skill.md` and `pointer-init.md` (Step 0 table) point readers at it | No brand strings introduced beyond the existing `.pointer/` path and prompt-header format already tracked above (§5.3) — still reword the surrounding prose consistently with the rest of the skill on rename |
 
 ### 5.5 Infrastructure
 
