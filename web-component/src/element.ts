@@ -15,6 +15,10 @@ import { type Lang, t, setLang, detectTextLanguageAsync } from './i18n';
 import { showLoginModal } from './auth-ui';
 import type { AuthorOption, Comment, Meta, NotificationItem, PointerHost, PredefinedActionOption, RoleOption, StatusStr, User } from './types';
 
+// TEMPORARY feature flag, per explicit request — hides the "commit style" project setting from
+// the sidebar entirely regardless of the caller's canEditSettings. Flip to true to restore it.
+const COMMIT_STYLE_CONTROL_ENABLED = false;
+
 // Two pin anchors this close together (px) collide visually — the 28px pin plus its border
 // already covers most of that gap — so renderPins() merges them into one expandable cluster
 // instead of stacking indistinguishable pins on top of each other.
@@ -812,10 +816,12 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
   // Patches #fbk-commit-style in place (same reasoning as updateEnvironmentSelectorVisibility) —
   // hidden entirely unless the current caller is authorized to change it (canEditSettings), so a
   // stakeholder who couldn't save the PATCH never sees a control that would just 403.
+  // TEMPORARILY forced off entirely, per explicit request — flip COMMIT_STYLE_CONTROL_ENABLED
+  // back to true to restore that behavior.
   private renderCommitStyleControl(): void {
     const host = this.root && this.root.querySelector('#fbk-commit-style');
     if (!host) return;
-    if (!this.canEditSettings) { host.classList.add('fbk-hidden'); return; }
+    if (!COMMIT_STYLE_CONTROL_ENABLED || !this.canEditSettings) { host.classList.add('fbk-hidden'); return; }
     host.classList.remove('fbk-hidden');
     host.innerHTML = TPL.commitStyleControl(this.commitStyle);
     const sel = this.root!.querySelector('#fbk-commit-style-select') as HTMLSelectElement | null;
@@ -2424,22 +2430,30 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
       const envValue = this.viewAllEnvironments ? 'all' : (this.environmentAttr || ENV_NAME[this.environmentInt] || 'staging').toLowerCase();
       filtersEl.innerHTML = TPL.statusFilterSelect(activeFilters, this.statusFilter, counts)
         + TPL.envFilterSelect(fixedEnvLabel, envValue)
-        + ((authors.length > 1 && !this.mineOnly) ? TPL.authorFilter(authors, this.authorFilter || '') : '')
-        + (canMine ? TPL.mineToggle(this.mineOnly) : '');
+        + ((authors.length > 1 && !this.mineOnly) ? TPL.authorFilter(authors, this.authorFilter || '') : '');
       const statusSel = filtersEl.querySelector('#fbk-status-filter') as HTMLSelectElement | null;
       if (statusSel) statusSel.addEventListener('change', () => {
         this.statusFilter = statusSel.value; this.renderSidebar();
       });
       const envSel = filtersEl.querySelector('#fbk-env') as HTMLSelectElement | null;
       if (envSel) envSel.addEventListener('change', () => this.setEnvironment(envSel.value));
-      const mineBtn = filtersEl.querySelector('#fbk-mine-toggle');
-      if (mineBtn) mineBtn.addEventListener('click', () => {
-        this.mineOnly = !this.mineOnly; this.renderSidebar(); this.renderPins();
-      });
       const authorSel = filtersEl.querySelector('#fbk-author-filter') as HTMLSelectElement | null;
       if (authorSel) authorSel.addEventListener('change', () => {
         this.authorFilter = authorSel.value || null;
         this.renderSidebar(); this.renderPins();
+      });
+    }
+
+    // "Mine only" gets its own row above the filters (where the commit-style control used to
+    // sit — see renderCommitStyleControl, currently force-hidden) rather than living inside
+    // #fbk-filters: it's a single on/off setting, not one choice among the status/environment
+    // selects beside it.
+    const mineRowEl = this.root.querySelector('#fbk-mine-row');
+    if (mineRowEl) {
+      mineRowEl.innerHTML = canMine ? TPL.mineToggle(this.mineOnly) : '';
+      const mineBtn = mineRowEl.querySelector('#fbk-mine-toggle');
+      if (mineBtn) mineBtn.addEventListener('click', () => {
+        this.mineOnly = !this.mineOnly; this.renderSidebar(); this.renderPins();
       });
     }
 

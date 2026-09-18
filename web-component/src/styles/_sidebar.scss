@@ -93,14 +93,57 @@
   color: v.token('primary-contrast');
   border-color: v.token('text');
 }
-// "Mine only" toggle — separated from the status filter, indigo when active.
-.fbk-chip.fbk-mine {
-  margin-inline-start: auto;
+// "Mine only" row — its own row above the filters (see element.ts's #fbk-mine-row), a real
+// switch rather than a filter chip since it's a single on/off setting, not one choice among
+// several. Empty (no children) when not logged in, so it takes up no space.
+.fbk-mine-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-block-size: 0;
 }
-.fbk-chip.fbk-mine.active {
+.fbk-toggle-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  inline-size: 100%;
+}
+.fbk-toggle-row-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: v.token('text-slate');
+}
+// Track + thumb switch, indigo when on (matches the old chip's active color).
+.fbk-toggle-switch {
+  position: relative;
+  inline-size: 36px;
+  block-size: 20px;
+  flex: none;
+  border: none;
+  border-radius: 999px;
+  background: v.token('border-strong');
+  cursor: pointer;
+  transition: background-color v.token('transition-fast');
+}
+.fbk-toggle-switch.active {
   background: v.token('indigo');
-  color: v.token('primary-contrast');
-  border-color: v.token('indigo');
+}
+.fbk-toggle-switch-thumb {
+  position: absolute;
+  inset-block-start: 2px;
+  inset-inline-start: 2px;
+  inline-size: 16px;
+  block-size: 16px;
+  border-radius: 50%;
+  background: v.token('primary-contrast');
+  transition: transform v.token('transition-fast');
+}
+// translateX (not a logical inset) is deliberate: the shadow UI itself always stays LTR
+// regardless of language (see templates.ts's header comment) — this is a text-only translation,
+// not a layout mirror.
+.fbk-toggle-switch.active .fbk-toggle-switch-thumb {
+  transform: translateX(16px);
 }
 // Status filter dropdown + user (author) filter — the author filter is shown only when the
 // list spans more than one author.

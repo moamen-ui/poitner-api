@@ -90,6 +90,7 @@ export const TPL = {
             <div class="fbk-sidebar-head-row">
               <button class="fbk-mini fbk-icon fbk-refresh-btn" id="fbk-refresh" title="${t('toolbar.refreshComments')}" aria-label="${t('toolbar.refreshComments')}">&#8635;</button>
             </div>
+            <div class="fbk-mine-row" id="fbk-mine-row"></div>
             <div class="fbk-commit-style fbk-hidden" id="fbk-commit-style"></div>
           </div>
           <div class="fbk-filters" id="fbk-filters"></div>
@@ -211,12 +212,17 @@ export const TPL = {
                </select>`}
            </label>`,
 
-  // "Mine only" toggle — a chip that composes with the status chips above.
-  // Rendered only when a user is logged in.
+  // "Mine only" — a real switch (track + thumb), not a filter chip: it's a single on/off
+  // setting, not one choice among several (unlike the status/environment selects beside it),
+  // so it gets its own row rather than living inside #fbk-filters. Rendered only when a user is
+  // logged in (see renderSidebar's canMine).
   mineToggle: (active: boolean) =>
-    `<button class="fbk-chip fbk-mine ${active ? 'active' : ''}" id="fbk-mine-toggle" title="${t('sidebar.showOnlyMyComments')}" aria-pressed="${active ? 'true' : 'false'}">
-             &#x1f464; ${t('sidebar.mineOnly')}
-           </button>`,
+    `<div class="fbk-toggle-row">
+             <span class="fbk-toggle-row-label">&#x1f464; ${t('sidebar.mineOnly')}</span>
+             <button type="button" class="fbk-toggle-switch${active ? ' active' : ''}" id="fbk-mine-toggle" role="switch" aria-checked="${active ? 'true' : 'false'}" title="${t('sidebar.showOnlyMyComments')}" aria-label="${t('sidebar.showOnlyMyComments')}">
+               <span class="fbk-toggle-switch-thumb"></span>
+             </button>
+           </div>`,
 
   // User filter — only rendered when the list has comments from >1 author.
   authorFilter: (authors: AuthorOption[], selectedId: string) =>

@@ -309,7 +309,7 @@
   var SHOT_HIGHLIGHT = "#2563eb";
   var _a;
   var SCRIPT_SRC = ((_a = document.currentScript) == null ? void 0 : _a.src) || "";
-  var CSS_INTEGRITY = true ? "sha384-pvHO9AunA5LURYQLxr9XaEzF00FiZdrpRN9n4FacZEIN05PiAeHQ6OiSvJjWXi55" : "";
+  var CSS_INTEGRITY = true ? "sha384-kOcmkvt70WLKPOLvf9b5oINlXykuF+kpwylJSKL7sEcBpqdJAEHgn3Oa5hUCCp1x" : "";
   function resolveCssUrl(scriptSrc) {
     var _a2;
     if (!scriptSrc) return "pointer.css";
@@ -1104,6 +1104,7 @@
             <div class="fbk-sidebar-head-row">
               <button class="fbk-mini fbk-icon fbk-refresh-btn" id="fbk-refresh" title="${t("toolbar.refreshComments")}" aria-label="${t("toolbar.refreshComments")}">&#8635;</button>
             </div>
+            <div class="fbk-mine-row" id="fbk-mine-row"></div>
             <div class="fbk-commit-style fbk-hidden" id="fbk-commit-style"></div>
           </div>
           <div class="fbk-filters" id="fbk-filters"></div>
@@ -1207,11 +1208,16 @@
                  <option value="production" ${currentValue === "production" ? "selected" : ""}>${t("toolbar.envProduction")}</option>
                </select>`}
            </label>`,
-    // "Mine only" toggle — a chip that composes with the status chips above.
-    // Rendered only when a user is logged in.
-    mineToggle: (active) => `<button class="fbk-chip fbk-mine ${active ? "active" : ""}" id="fbk-mine-toggle" title="${t("sidebar.showOnlyMyComments")}" aria-pressed="${active ? "true" : "false"}">
-             &#x1f464; ${t("sidebar.mineOnly")}
-           </button>`,
+    // "Mine only" — a real switch (track + thumb), not a filter chip: it's a single on/off
+    // setting, not one choice among several (unlike the status/environment selects beside it),
+    // so it gets its own row rather than living inside #fbk-filters. Rendered only when a user is
+    // logged in (see renderSidebar's canMine).
+    mineToggle: (active) => `<div class="fbk-toggle-row">
+             <span class="fbk-toggle-row-label">&#x1f464; ${t("sidebar.mineOnly")}</span>
+             <button type="button" class="fbk-toggle-switch${active ? " active" : ""}" id="fbk-mine-toggle" role="switch" aria-checked="${active ? "true" : "false"}" title="${t("sidebar.showOnlyMyComments")}" aria-label="${t("sidebar.showOnlyMyComments")}">
+               <span class="fbk-toggle-switch-thumb"></span>
+             </button>
+           </div>`,
     // User filter — only rendered when the list has comments from >1 author.
     authorFilter: (authors, selectedId) => `<select class="fbk-userfilter" id="fbk-author-filter" title="${t("sidebar.filterByUser")}">
              <option value="">&#x1f465; ${t("sidebar.allUsers")}</option>
@@ -2100,6 +2106,7 @@
   }
 
   // src/element.ts
+  var COMMIT_STYLE_CONTROL_ENABLED = false;
   var PIN_CLUSTER_RADIUS = 24;
   var PIN_HALF_WIDTH = 16;
   var PIN_HEIGHT = 30;
@@ -2756,10 +2763,12 @@
     // Patches #fbk-commit-style in place (same reasoning as updateEnvironmentSelectorVisibility) —
     // hidden entirely unless the current caller is authorized to change it (canEditSettings), so a
     // stakeholder who couldn't save the PATCH never sees a control that would just 403.
+    // TEMPORARILY forced off entirely, per explicit request — flip COMMIT_STYLE_CONTROL_ENABLED
+    // back to true to restore that behavior.
     renderCommitStyleControl() {
       const host = this.root && this.root.querySelector("#fbk-commit-style");
       if (!host) return;
-      if (!this.canEditSettings) {
+      if (!COMMIT_STYLE_CONTROL_ENABLED || !this.canEditSettings) {
         host.classList.add("fbk-hidden");
         return;
       }
@@ -4287,7 +4296,7 @@
         const activeFilters = catalogToFilters();
         const fixedEnvLabel = this.hasFixedEnvironment || !this.showEnvironmentSelector ? this.envDisplayLabel(this.environmentAttr || ENV_NAME[this.environmentInt] || "staging") : null;
         const envValue = this.viewAllEnvironments ? "all" : (this.environmentAttr || ENV_NAME[this.environmentInt] || "staging").toLowerCase();
-        filtersEl.innerHTML = TPL.statusFilterSelect(activeFilters, this.statusFilter, counts) + TPL.envFilterSelect(fixedEnvLabel, envValue) + (authors.length > 1 && !this.mineOnly ? TPL.authorFilter(authors, this.authorFilter || "") : "") + (canMine ? TPL.mineToggle(this.mineOnly) : "");
+        filtersEl.innerHTML = TPL.statusFilterSelect(activeFilters, this.statusFilter, counts) + TPL.envFilterSelect(fixedEnvLabel, envValue) + (authors.length > 1 && !this.mineOnly ? TPL.authorFilter(authors, this.authorFilter || "") : "");
         const statusSel = filtersEl.querySelector("#fbk-status-filter");
         if (statusSel) statusSel.addEventListener("change", () => {
           this.statusFilter = statusSel.value;
@@ -4295,15 +4304,19 @@
         });
         const envSel = filtersEl.querySelector("#fbk-env");
         if (envSel) envSel.addEventListener("change", () => this.setEnvironment(envSel.value));
-        const mineBtn = filtersEl.querySelector("#fbk-mine-toggle");
-        if (mineBtn) mineBtn.addEventListener("click", () => {
-          this.mineOnly = !this.mineOnly;
-          this.renderSidebar();
-          this.renderPins();
-        });
         const authorSel = filtersEl.querySelector("#fbk-author-filter");
         if (authorSel) authorSel.addEventListener("change", () => {
           this.authorFilter = authorSel.value || null;
+          this.renderSidebar();
+          this.renderPins();
+        });
+      }
+      const mineRowEl = this.root.querySelector("#fbk-mine-row");
+      if (mineRowEl) {
+        mineRowEl.innerHTML = canMine ? TPL.mineToggle(this.mineOnly) : "";
+        const mineBtn = mineRowEl.querySelector("#fbk-mine-toggle");
+        if (mineBtn) mineBtn.addEventListener("click", () => {
+          this.mineOnly = !this.mineOnly;
           this.renderSidebar();
           this.renderPins();
         });
