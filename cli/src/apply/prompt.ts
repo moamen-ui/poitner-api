@@ -295,16 +295,22 @@ export function buildApplyPrompt(
 
   lines.push('## When you finish an item');
   lines.push(
-    'Run exactly: `npx pointer-feedback apply --mark <id> --reply "<what changed>" --model <your-model-id>`',
+    'Run exactly: `npx pointer-feedback apply --mark <id> --reply "<what changed>" --model <your-model-id> --tool <your-tool-name>`',
   );
   lines.push(
-    '(Separate style: after each item; Single style: run `npx pointer-feedback apply --mark all --reply "..." --model <your-model-id>`',
+    '(Separate style: after each item; Single style: run `npx pointer-feedback apply --mark all --reply "..." --model <your-model-id> --tool <your-tool-name>`',
   );
   lines.push(
-    'once at the end). Never run git push. `--model` records which model you are running as (e.g. `claude-sonnet-5`,',
+    'once at the end). Never run git push. `--model` (e.g. `claude-sonnet-5`, `gpt-5.2`) and `--tool` (e.g.',
   );
   lines.push(
-    '`gpt-5.2`) on the reply, alongside `--tool` (defaults to the tool recorded at init).',
+    '`claude-code`, `opencode`, `cursor`, `windsurf`, `antigravity`) record which model and agent you are',
+  );
+  lines.push(
+    'running as. ALWAYS pass both explicitly, even on a project you ran `init` on — `--tool` silently falls back',
+  );
+  lines.push(
+    'to whichever tool happened to run `init`, which is wrong the moment a different tool applies a comment later.',
   );
 
   return lines.join('\n') + '\n';

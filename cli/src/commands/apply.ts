@@ -118,9 +118,18 @@ export async function applyCommand(
 
     const noCommit = parsed['no-commit'] === true;
     const dryRun = parsed['dry-run'] === true;
-    // `--tool` wins outright; falls back to the tool recorded at `init` time (config.aiTool) so an
-    // agent that forgets the flag still gets attributed correctly.
-    const tool = (typeof parsed['tool'] === 'string' ? parsed['tool'] : undefined) || config.aiTool;
+    // `--tool` wins outright; falls back to the tool recorded at `init` time (config.aiTool) —
+    // ONLY correct when the same tool that ran `init` is the one applying now. A project worked on
+    // by more than one tool over time will silently misattribute every reply that omits --tool to
+    // whichever one happened to run `init`, so warn loudly rather than attribute it silently.
+    const toolExplicit = typeof parsed['tool'] === 'string' ? parsed['tool'] : undefined;
+    const tool = toolExplicit || config.aiTool;
+    if (!toolExplicit && config.aiTool) {
+      console.error(
+        `⚠ --tool not passed — defaulting to "${config.aiTool}" (recorded when this project was initialized). ` +
+          `Pass --tool <your-tool-name> explicitly if you are not that tool.`,
+      );
+    }
     const model =
       (typeof parsed['model'] === 'string' ? parsed['model'] : undefined) ||
       process.env.POINTER_AI_MODEL;
@@ -158,7 +167,14 @@ export async function applyCommand(
       process.exit(2);
     }
 
-    const failTool = (typeof parsed['tool'] === 'string' ? parsed['tool'] : undefined) || config.aiTool;
+    const failToolExplicit = typeof parsed['tool'] === 'string' ? parsed['tool'] : undefined;
+    const failTool = failToolExplicit || config.aiTool;
+    if (!failToolExplicit && config.aiTool) {
+      console.error(
+        `⚠ --tool not passed — defaulting to "${config.aiTool}" (recorded when this project was initialized). ` +
+          `Pass --tool <your-tool-name> explicitly if you are not that tool.`,
+      );
+    }
     const failModel =
       (typeof parsed['model'] === 'string' ? parsed['model'] : undefined) ||
       process.env.POINTER_AI_MODEL;

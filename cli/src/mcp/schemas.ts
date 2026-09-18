@@ -111,11 +111,13 @@ export const TOOL_POINTER_MARK_APPLIED = {
       tool: {
         type: 'string',
         description:
-          'The AI tool posting this reply (e.g. "claude-code"). Defaults to the tool recorded at init.',
+          'The AI tool posting this reply (e.g. "claude-code", "opencode", "cursor"). ALWAYS pass this ' +
+          'explicitly — it falls back to the tool recorded at init if omitted, which is wrong the moment a ' +
+          'different tool applies a comment on the same project later.',
       },
       model: {
         type: 'string',
-        description: 'The model id you are running as (e.g. "claude-sonnet-5", "gpt-5.2"), if known.',
+        description: 'The model id you are running as (e.g. "claude-sonnet-5", "gpt-5.2"). Always pass this too.',
       },
     },
     required: ['id', 'reply'],
@@ -150,11 +152,13 @@ export const TOOL_POINTER_COMMIT_AND_MARK = {
       tool: {
         type: 'string',
         description:
-          'The AI tool posting this reply (e.g. "claude-code"). Defaults to the tool recorded at init.',
+          'The AI tool posting this reply (e.g. "claude-code", "opencode", "cursor"). ALWAYS pass this ' +
+          'explicitly — it falls back to the tool recorded at init if omitted, which is wrong the moment a ' +
+          'different tool applies a comment on the same project later.',
       },
       model: {
         type: 'string',
-        description: 'The model id you are running as (e.g. "claude-sonnet-5", "gpt-5.2"), if known.',
+        description: 'The model id you are running as (e.g. "claude-sonnet-5", "gpt-5.2"). Always pass this too.',
       },
     },
     required: ['ids', 'reply'],
@@ -179,11 +183,13 @@ export const TOOL_POINTER_REPLY = {
       tool: {
         type: 'string',
         description:
-          'The AI tool posting this reply (e.g. "claude-code"). Defaults to the tool recorded at init.',
+          'The AI tool posting this reply (e.g. "claude-code", "opencode", "cursor"). ALWAYS pass this ' +
+          'explicitly — it falls back to the tool recorded at init if omitted, which is wrong the moment a ' +
+          'different tool applies a comment on the same project later.',
       },
       model: {
         type: 'string',
-        description: 'The model id you are running as (e.g. "claude-sonnet-5", "gpt-5.2"), if known.',
+        description: 'The model id you are running as (e.g. "claude-sonnet-5", "gpt-5.2"). Always pass this too.',
       },
     },
     required: ['id', 'body'],

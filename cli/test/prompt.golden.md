@@ -108,7 +108,9 @@ Picked actions (trusted):
 - Make primary: Swap the outline button classes for the filled/primary variant.
 
 ## When you finish an item
-Run exactly: `npx pointer-feedback apply --mark <id> --reply "<what changed>" --model <your-model-id>`
-(Separate style: after each item; Single style: run `npx pointer-feedback apply --mark all --reply "..." --model <your-model-id>`
-once at the end). Never run git push. `--model` records which model you are running as (e.g. `claude-sonnet-5`,
-`gpt-5.2`) on the reply, alongside `--tool` (defaults to the tool recorded at init).
+Run exactly: `npx pointer-feedback apply --mark <id> --reply "<what changed>" --model <your-model-id> --tool <your-tool-name>`
+(Separate style: after each item; Single style: run `npx pointer-feedback apply --mark all --reply "..." --model <your-model-id> --tool <your-tool-name>`
+once at the end). Never run git push. `--model` (e.g. `claude-sonnet-5`, `gpt-5.2`) and `--tool` (e.g.
+`claude-code`, `opencode`, `cursor`, `windsurf`, `antigravity`) record which model and agent you are
+running as. ALWAYS pass both explicitly, even on a project you ran `init` on — `--tool` silently falls back
+to whichever tool happened to run `init`, which is wrong the moment a different tool applies a comment later.

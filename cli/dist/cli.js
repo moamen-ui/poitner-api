@@ -5071,16 +5071,22 @@ function buildApplyPrompt(items, context, opts) {
   }
   lines.push("## When you finish an item");
   lines.push(
-    'Run exactly: `npx pointer-feedback apply --mark <id> --reply "<what changed>" --model <your-model-id>`'
+    'Run exactly: `npx pointer-feedback apply --mark <id> --reply "<what changed>" --model <your-model-id> --tool <your-tool-name>`'
   );
   lines.push(
-    '(Separate style: after each item; Single style: run `npx pointer-feedback apply --mark all --reply "..." --model <your-model-id>`'
+    '(Separate style: after each item; Single style: run `npx pointer-feedback apply --mark all --reply "..." --model <your-model-id> --tool <your-tool-name>`'
   );
   lines.push(
-    "once at the end). Never run git push. `--model` records which model you are running as (e.g. `claude-sonnet-5`,"
+    "once at the end). Never run git push. `--model` (e.g. `claude-sonnet-5`, `gpt-5.2`) and `--tool` (e.g."
   );
   lines.push(
-    "`gpt-5.2`) on the reply, alongside `--tool` (defaults to the tool recorded at init)."
+    "`claude-code`, `opencode`, `cursor`, `windsurf`, `antigravity`) record which model and agent you are"
+  );
+  lines.push(
+    "running as. ALWAYS pass both explicitly, even on a project you ran `init` on \u2014 `--tool` silently falls back"
+  );
+  lines.push(
+    "to whichever tool happened to run `init`, which is wrong the moment a different tool applies a comment later."
   );
   return lines.join("\n") + "\n";
 }
@@ -5508,7 +5514,13 @@ async function applyCommand(cwd2, parsed, positionals = []) {
     }
     const noCommit = parsed["no-commit"] === true;
     const dryRun = parsed["dry-run"] === true;
-    const tool2 = (typeof parsed["tool"] === "string" ? parsed["tool"] : void 0) || config.aiTool;
+    const toolExplicit = typeof parsed["tool"] === "string" ? parsed["tool"] : void 0;
+    const tool2 = toolExplicit || config.aiTool;
+    if (!toolExplicit && config.aiTool) {
+      console.error(
+        `\u26A0 --tool not passed \u2014 defaulting to "${config.aiTool}" (recorded when this project was initialized). Pass --tool <your-tool-name> explicitly if you are not that tool.`
+      );
+    }
     const model = (typeof parsed["model"] === "string" ? parsed["model"] : void 0) || process.env.POINTER_AI_MODEL;
     await markApplied(
       {
@@ -5539,7 +5551,13 @@ async function applyCommand(cwd2, parsed, positionals = []) {
       console.error('--reason "<text>" is required when using --fail');
       process.exit(2);
     }
-    const failTool = (typeof parsed["tool"] === "string" ? parsed["tool"] : void 0) || config.aiTool;
+    const failToolExplicit = typeof parsed["tool"] === "string" ? parsed["tool"] : void 0;
+    const failTool = failToolExplicit || config.aiTool;
+    if (!failToolExplicit && config.aiTool) {
+      console.error(
+        `\u26A0 --tool not passed \u2014 defaulting to "${config.aiTool}" (recorded when this project was initialized). Pass --tool <your-tool-name> explicitly if you are not that tool.`
+      );
+    }
     const failModel = (typeof parsed["model"] === "string" ? parsed["model"] : void 0) || process.env.POINTER_AI_MODEL;
     await markFailed(failId, reason, clientCtx, failTool, failModel);
     process.exit(0);
@@ -11038,11 +11056,11 @@ var TOOL_POINTER_MARK_APPLIED = {
       },
       tool: {
         type: "string",
-        description: 'The AI tool posting this reply (e.g. "claude-code"). Defaults to the tool recorded at init.'
+        description: 'The AI tool posting this reply (e.g. "claude-code", "opencode", "cursor"). ALWAYS pass this explicitly \u2014 it falls back to the tool recorded at init if omitted, which is wrong the moment a different tool applies a comment on the same project later.'
       },
       model: {
         type: "string",
-        description: 'The model id you are running as (e.g. "claude-sonnet-5", "gpt-5.2"), if known.'
+        description: 'The model id you are running as (e.g. "claude-sonnet-5", "gpt-5.2"). Always pass this too.'
       }
     },
     required: ["id", "reply"],
@@ -11075,11 +11093,11 @@ var TOOL_POINTER_COMMIT_AND_MARK = {
       },
       tool: {
         type: "string",
-        description: 'The AI tool posting this reply (e.g. "claude-code"). Defaults to the tool recorded at init.'
+        description: 'The AI tool posting this reply (e.g. "claude-code", "opencode", "cursor"). ALWAYS pass this explicitly \u2014 it falls back to the tool recorded at init if omitted, which is wrong the moment a different tool applies a comment on the same project later.'
       },
       model: {
         type: "string",
-        description: 'The model id you are running as (e.g. "claude-sonnet-5", "gpt-5.2"), if known.'
+        description: 'The model id you are running as (e.g. "claude-sonnet-5", "gpt-5.2"). Always pass this too.'
       }
     },
     required: ["ids", "reply"],
@@ -11102,11 +11120,11 @@ var TOOL_POINTER_REPLY = {
       },
       tool: {
         type: "string",
-        description: 'The AI tool posting this reply (e.g. "claude-code"). Defaults to the tool recorded at init.'
+        description: 'The AI tool posting this reply (e.g. "claude-code", "opencode", "cursor"). ALWAYS pass this explicitly \u2014 it falls back to the tool recorded at init if omitted, which is wrong the moment a different tool applies a comment on the same project later.'
       },
       model: {
         type: "string",
-        description: 'The model id you are running as (e.g. "claude-sonnet-5", "gpt-5.2"), if known.'
+        description: 'The model id you are running as (e.g. "claude-sonnet-5", "gpt-5.2"). Always pass this too.'
       }
     },
     required: ["id", "body"],

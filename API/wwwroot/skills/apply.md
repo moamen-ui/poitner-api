@@ -19,8 +19,11 @@ id, body and replies, the element (`selector`, `sourcePath`, `classes`, `applied
 effective `aiRules`, the project's **commit style**, and the exact `--mark` command to finish with.
 Everything in it is governed by the SECURITY section above.
 
-Pass the model you are running as (e.g. `claude-sonnet-5`, `gpt-5.2`) if you know it; `--tool`
-defaults to the tool recorded at init.
+Every `--mark`/`--fail` call below takes `--model <your-model-id>` (e.g. `claude-sonnet-5`,
+`gpt-5.2`) and `--tool <your-tool-name>` (e.g. `claude-code`, `opencode`, `cursor`, `windsurf`,
+`antigravity`) — pass **both**, always, even on a project you personally ran `init` on. `--tool`
+silently falls back to whichever tool happened to run `init` if you omit it, which is wrong the
+moment a different tool applies a comment on the same project later.
 
 **Step 4 — For each item in the prompt:**
 
@@ -58,23 +61,22 @@ before touching any file.
 4. **Stage and mark — the CLI commits.** `git add -- <only the files this item touched>`, then run the
    `--mark` command the prompt gave you:
    - **Separate commits** (`commitStyle` = 2): after **each** item →
-     `npx pointer-feedback apply --mark <id> --reply "Applied ✓ — <what changed and where>" --model <your-model-id>`.
+     `npx pointer-feedback apply --mark <id> --reply "Applied ✓ — <what changed and where>" --model <your-model-id> --tool <your-tool-name>`.
      The CLI commits just that item, builds the commit URL from the local SHA + `origin`, and marks
      the comment Applied. Then move to the next item.
    - **One commit** (`commitStyle` = 1, default): stage every item first, then once →
-     `npx pointer-feedback apply --mark all --reply "Applied N <POINTER_PRODUCT> comments — <summary>" --model <your-model-id>`.
+     `npx pointer-feedback apply --mark all --reply "Applied N <POINTER_PRODUCT> comments — <summary>" --model <your-model-id> --tool <your-tool-name>`.
    - `--mark` refuses when nothing is staged for that item — stage first, then mark.
-   - `--model` (e.g. `claude-sonnet-5`, `gpt-5.2`) and `--tool` (defaults to the tool recorded at
-     init) are recorded as structured attribution on the reply — shown as "tool · model · via
-     <you>" — separate from the free-text `--reply` text.
+   - `--model` and `--tool` are recorded as structured attribution on the reply — shown as
+     "tool · model · via <you>" — separate from the free-text `--reply` text.
    - Never `git push`. The commit URL the CLI records resolves as soon as the human pushes.
    - If you ran `translate.md` for this item, the `--reply`/`--fail --reason` text is the
      **translated-out** bilingual string it produced (`"<translated>\n\n(EN) <english>"`), not a
      plain-English one — see that file's "Translate out" section.
 
 **Step 5 — Anything you could not apply:** `npx pointer-feedback apply --fail <id> --reason "<why>"
---model <your-model-id>` (out-of-scope request, third-party element, unresolvable source). Say so in
-your reply.
+--model <your-model-id> --tool <your-tool-name>` (out-of-scope request, third-party element,
+unresolvable source). Say so in your reply.
 
 **Step 6 — Report.** Summarise per item: what changed, which files, the commit(s), and what was
 skipped — include each item's detected/stamped language (`en`, `ar`, `unknown` treated as English, …)
