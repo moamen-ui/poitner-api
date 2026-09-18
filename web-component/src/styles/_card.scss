@@ -236,8 +236,15 @@
   padding-block: 0;
   padding-inline: 2px;
 }
-// Kebab trigger at the top-end of a card (see .fbk-actions-end above for its wrapper) —
-// visually identical to any other .fbk-mini.fbk-icon button, just semantically distinct.
+// Kebab trigger at the top-end of a card (see .fbk-actions-end above for its wrapper) — no fill
+// and no border, unlike other .fbk-mini.fbk-icon buttons, so it doesn't compete visually with the
+// card's status pills; the dots (icons.ts's kebab has a larger radius than a typical icon) and a
+// full-strength text color carry it instead.
+.fbk-card-kebab {
+  background: transparent;
+  color: v.token('text');
+}
+.fbk-card-kebab:hover,
 .fbk-card-kebab[aria-expanded='true'] {
   background: v.token('surface-hover');
 }

@@ -56,7 +56,7 @@ export const TPL = {
           ${t('auth.alreadyHaveAccount')} <button class="fbk-btn fbk-link fbk-link-inline" id="fbk-show-login">${t('auth.backToSignIn')}</button>
         </div>`,
 
-  // `projectName`: embedded in the "{project} comments" heading so a visitor can immediately tell
+  // `projectName`: embedded in the "{project}" heading so a visitor can immediately tell
   // which project this install is bound to — project keys aren't unique across a workspace, so two
   // different installs can easily look identical without this.
   // `avatarInitials`: 1-2 letters (see dom.ts's initials()) for the account button, already
@@ -82,13 +82,11 @@ export const TPL = {
           <button type="button" class="fbk-toolbar-btn fbk-toolbar-btn--icon fbk-toolbar__reset" id="fbk-reset-pos" data-fbk-act="reset-position" data-toggle="tooltip" data-placement="top" title="${t('toolbar.resetToolbarPosition')}" aria-label="${t('toolbar.resetToolbarPosition')}"><span class="fbk-toolbar-btn__icon">${ICON.restore}</span></button>
         </aside>
         <div class="fbk-sidebar" id="fbk-sidebar">
+          <button class="fbk-sidebar-close-arrow" id="fbk-close" title="${t('toolbar.close')}" aria-label="${t('toolbar.close')}">${ICON.chevronRight}</button>
           <div class="fbk-sidebar-head">
             <div class="fbk-sidebar-head-row">
-              <h2 id="fbk-comments-heading">${t('toolbar.commentsHeading', { project: escapeHtml(projectName) })}</h2>
-              <button class="fbk-mini fbk-icon" id="fbk-close" title="${t('toolbar.close')}" aria-label="${t('toolbar.close')}">&#x2715;</button>
-            </div>
-            <div class="fbk-sidebar-head-row">
-              <button class="fbk-mini fbk-icon fbk-refresh-btn" id="fbk-refresh" title="${t('toolbar.refreshComments')}" aria-label="${t('toolbar.refreshComments')}">&#8635;</button>
+              <h2 id="fbk-comments-heading">${t('toolbar.projectHeading', { project: escapeHtml(projectName) })}</h2>
+              <button class="fbk-mini fbk-icon" id="fbk-refresh" title="${t('toolbar.refreshComments')}" aria-label="${t('toolbar.refreshComments')}">&#8635;</button>
             </div>
             <div class="fbk-mine-row" id="fbk-mine-row"></div>
             <div class="fbk-commit-style fbk-hidden" id="fbk-commit-style"></div>
@@ -231,12 +229,16 @@ export const TPL = {
              ${authors.map((a) => `<option value="${escapeHtml(a.id)}" ${a.id === selectedId ? 'selected' : ''}>${escapeHtml(a.name)}</option>`).join('')}
            </select>`,
 
-  // Kebab-menu dropdown for a comment card's own actions (private/public, edit, delete) —
-  // rendered into the shared portal host (#fbk-menu-host), anchored under the card's kebab
-  // button by toggleCardMenu. Visibility/edit are owner-only; delete only while still open
-  // (matches the previous inline buttons' conditions exactly, just relocated).
-  cardMenu: (c: Comment) => `
+  // Kebab-menu dropdown for a comment card's own actions — rendered into the shared portal host
+  // (#fbk-menu-host), anchored under the card's kebab button by toggleCardMenu. Copy-prompt/
+  // complete are workflow actions open to anyone who can see the card; visibility/edit are
+  // owner-only; delete only while still open (matches the previous inline buttons' conditions
+  // exactly, just relocated). `isQuickAccess` matches TPL.card's own gate on "Complete" — a quick-
+  // access (Client) account never gets to mark its own feedback done.
+  cardMenu: (c: Comment, isQuickAccess: boolean) => `
         <div class="fbk-card-menu" id="fbk-card-menu" role="menu">
+          ${(c.status === 'open' || c.status === 'pending-apply') ? `<button type="button" class="fbk-card-menu-item" data-menu-act="copy-apply-prompt" role="menuitem">${ICON.copy}<span>${t('card.copyApplyPrompt')}</span></button>` : ''}
+          ${(!isQuickAccess && (c.status === 'open' || c.status === 'pending-apply')) ? `<button type="button" class="fbk-card-menu-item" data-menu-act="complete" role="menuitem">${ICON.check}<span>${t('card.complete')}</span></button>` : ''}
           ${c._mine ? `<button type="button" class="fbk-card-menu-item" data-menu-act="visibility" data-private="${c.isPrivate ? 'false' : 'true'}" role="menuitem">${c.isPrivate ? ICON.unlock : ICON.lock}<span>${c.isPrivate ? t('card.makePublic') : t('card.makePrivate')}</span></button>` : ''}
           ${c._mine ? `<button type="button" class="fbk-card-menu-item" data-menu-act="edit" role="menuitem">${ICON.pencil}<span>${t('card.edit')}</span></button>` : ''}
           ${c.status === 'open' ? `<button type="button" class="fbk-card-menu-item danger" data-menu-act="delete" role="menuitem">${ICON.trash}<span>${t('card.delete')}</span></button>` : ''}
@@ -336,7 +338,7 @@ export const TPL = {
               ${verifiedPill}
               ${verifyGroup}
               ${commitLink}
-              ${(c._mine || c.status === 'open') ? `<div class="fbk-actions-end">
+              ${(c._mine || c.status === 'open' || c.status === 'pending-apply') ? `<div class="fbk-actions-end">
                 <button class="fbk-mini fbk-icon fbk-card-kebab" data-act="card-menu" data-id="${c.id}" title="${t('card.moreActions')}" aria-label="${t('card.moreActions')}" aria-haspopup="true" aria-expanded="false">${ICON.kebab}</button>
               </div>` : ''}
             </div>
@@ -352,7 +354,6 @@ export const TPL = {
               ${isQuickAccess ? '' : (c.status === 'applied' || c.status === 'archived') ? '' : `<button class="fbk-mini ${c.status === 'pending-apply' ? 'apply' : 'ready'}" data-act="apply" data-id="${c.id}" title="${c.status === 'pending-apply' ? t('card.markedReadyClickToUnmark') : t('card.markReadyToApply')}">
                 ${ICON.flag}<span>${t('card.ready')}</span>
               </button>`}
-              ${(!isQuickAccess && (c.status === 'open' || c.status === 'pending-apply')) ? `<button class="fbk-mini done fbk-icon" data-act="complete" data-id="${c.id}" title="${t('card.markCompleted')}" aria-label="${t('card.markCompleted')}">${ICON.check}</button>` : ''}
               ${(!isQuickAccess && c.status === 'applied') ? `<button class="fbk-mini ready" data-act="reopen" data-id="${c.id}" title="${t('card.reopen')}">${ICON.reopen}<span>${t('card.reopen')}</span></button>
               <button class="fbk-mini fbk-icon" data-act="archive" data-id="${c.id}" title="${t('card.archive')}" aria-label="${t('card.archive')}">${ICON.archive}</button>` : ''}
               ${(!isQuickAccess && c.status === 'archived') ? `<button class="fbk-mini ready" data-act="reopen" data-id="${c.id}" title="${t('card.reopen')}">${ICON.reopen}<span>${t('card.reopen')}</span></button>` : ''}

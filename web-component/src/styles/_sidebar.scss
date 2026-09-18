@@ -21,8 +21,32 @@
 .fbk-sidebar.open {
   transform: translateX(0);
 }
-// Two stacked rows: title + close on top, project/environment + refresh below —
-// keeps refresh away from close so they can't be mis-tapped for one another.
+// Floating close tab straddling the sidebar's own border (facing the page, opposite the screen
+// edge it slides in from) — a drawer "collapse" handle rather than a button inside the header,
+// so it stays reachable even though it moves off-screen WITH the sidebar when closed (fine: the
+// collapsed launcher, a separate element, is what's visible then). translate (not a logical
+// inset) is deliberate: the shadow UI stays LTR regardless of language (see templates.ts).
+.fbk-sidebar-close-arrow {
+  position: absolute;
+  inset-block-start: 20px;
+  inset-inline-start: 0;
+  transform: translateX(-50%);
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  border: 1px solid v.token('border');
+  background: v.token('surface');
+  color: v.token('text-slate');
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  box-shadow: -2px 0 6px rgba(0, 0, 0, 0.15);
+  z-index: 1;
+}
+.fbk-sidebar-close-arrow:hover {
+  background: v.token('surface-hover');
+}
 .fbk-sidebar-head {
   padding: 16px;
   border-block-end: 1px solid v.token('border-soft');
@@ -36,30 +60,30 @@
   justify-content: space-between;
   gap: 8px;
 }
-// Sole child of the second head-row now that the environment control moved into #fbk-filters —
-// margin-inline-start:auto keeps it pinned to the end instead of collapsing to the start, the
-// same place space-between put it back when it shared the row with the environment meta.
-.fbk-refresh-btn {
-  margin-inline-start: auto;
-}
 .fbk-sidebar-head h2 {
   margin: 0;
   font-size: 16px;
   color: v.token('text');
 }
+// nowrap + horizontal scroll (rather than wrapping to a second row) keeps every control on one
+// compact line even when status+environment+author don't all fit the sidebar's width — each
+// control keeps its natural size (flex: none below) instead of being squeezed/broken.
 .fbk-filters {
   display: flex;
   align-items: flex-end;
   gap: 10px;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
+  overflow-x: auto;
   padding-block: 10px;
   padding-inline: 12px;
+  background: v.token('surface-alt');
   border-block-end: 1px solid v.token('border-soft');
 }
 // A filter control (status, environment) with its own visible label above it — as opposed to
 // the plain author-filter select / mine-only chip, which rely on a title tooltip alone.
 .fbk-filter-field {
   display: flex;
+  flex: none;
   flex-direction: column;
   gap: 3px;
   min-width: 0;
@@ -161,6 +185,7 @@
 }
 .fbk-userfilter {
   max-width: 150px;
+  flex: none;
 }
 .fbk-sidebar-body {
   overflow-y: auto;

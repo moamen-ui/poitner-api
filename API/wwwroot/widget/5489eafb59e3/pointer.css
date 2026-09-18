@@ -610,6 +610,29 @@
   transform: translateX(0);
 }
 
+.fbk-sidebar-close-arrow {
+  position: absolute;
+  inset-block-start: 20px;
+  inset-inline-start: 0;
+  transform: translateX(-50%);
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  border: 1px solid var(--fbk-border, #d0d7de);
+  background: var(--fbk-surface, #fff);
+  color: var(--fbk-text-slate, #475569);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  box-shadow: -2px 0 6px rgba(0, 0, 0, 0.15);
+  z-index: 1;
+}
+
+.fbk-sidebar-close-arrow:hover {
+  background: var(--fbk-surface-hover, #f3f4f6);
+}
+
 .fbk-sidebar-head {
   padding: 16px;
   border-block-end: 1px solid var(--fbk-border-soft, #eef2f7);
@@ -633,11 +656,30 @@
 
 .fbk-filters {
   display: flex;
-  gap: 6px;
-  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 10px;
+  flex-wrap: nowrap;
+  overflow-x: auto;
   padding-block: 10px;
   padding-inline: 12px;
+  background: var(--fbk-surface-alt, #f8fafc);
   border-block-end: 1px solid var(--fbk-border-soft, #eef2f7);
+}
+
+.fbk-filter-field {
+  display: flex;
+  flex: none;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.fbk-filter-field-label {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--fbk-text-subtle, #8c959f);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
 }
 
 .fbk-chip {
@@ -665,14 +707,56 @@
   border-color: var(--fbk-text, #1f2328);
 }
 
-.fbk-chip.fbk-mine {
-  margin-inline-start: auto;
+.fbk-mine-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-block-size: 0;
 }
 
-.fbk-chip.fbk-mine.active {
+.fbk-toggle-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  inline-size: 100%;
+}
+
+.fbk-toggle-row-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--fbk-text-slate, #475569);
+}
+
+.fbk-toggle-switch {
+  position: relative;
+  inline-size: 36px;
+  block-size: 20px;
+  flex: none;
+  border: none;
+  border-radius: 999px;
+  background: var(--fbk-border-strong, #cbd5e1);
+  cursor: pointer;
+  transition: background-color var(--fbk-transition-fast, 120ms cubic-bezier(0.16, 1, 0.3, 1));
+}
+
+.fbk-toggle-switch.active {
   background: var(--fbk-indigo, #4338ca);
-  color: var(--fbk-primary-contrast, #fff);
-  border-color: var(--fbk-indigo, #4338ca);
+}
+
+.fbk-toggle-switch-thumb {
+  position: absolute;
+  inset-block-start: 2px;
+  inset-inline-start: 2px;
+  inline-size: 16px;
+  block-size: 16px;
+  border-radius: 50%;
+  background: var(--fbk-primary-contrast, #fff);
+  transition: transform var(--fbk-transition-fast, 120ms cubic-bezier(0.16, 1, 0.3, 1));
+}
+
+.fbk-toggle-switch.active .fbk-toggle-switch-thumb {
+  transform: translateX(16px);
 }
 
 .fbk-status-select,
@@ -690,6 +774,7 @@
 
 .fbk-userfilter {
   max-width: 150px;
+  flex: none;
 }
 
 .fbk-sidebar-body {
@@ -704,20 +789,6 @@
   text-align: center;
   padding-block: 32px;
   padding-inline: 12px;
-}
-
-.fbk-sidebar-meta {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  min-width: 0;
-}
-
-.fbk-project-name {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  max-width: 150px;
 }
 
 .fbk-env-label {
@@ -747,6 +818,7 @@
 }
 
 .fbk-card {
+  position: relative;
   border: 1px solid var(--fbk-border-soft, #eef2f7);
   border-radius: var(--fbk-radius-md, 10px);
   padding: 12px;
@@ -1010,6 +1082,85 @@
   color: var(--fbk-danger, #dc2626);
   padding-block: 0;
   padding-inline: 2px;
+}
+
+.fbk-card-kebab {
+  background: transparent;
+  color: var(--fbk-text, #1f2328);
+}
+
+.fbk-card-kebab:hover,
+.fbk-card-kebab[aria-expanded=true] {
+  background: var(--fbk-surface-hover, #f3f4f6);
+}
+
+.fbk-card-menu {
+  position: fixed;
+  z-index: 2147483647;
+  min-width: 170px;
+  background: var(--fbk-surface, #fff);
+  border: 1px solid var(--fbk-border, #d0d7de);
+  border-radius: var(--fbk-radius, 8px);
+  box-shadow: 0 8px 24px var(--fbk-shadow, rgba(0, 0, 0, 0.12));
+  padding: 6px;
+  pointer-events: auto;
+}
+
+.fbk-card-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  padding: 8px;
+  border-radius: var(--fbk-radius-sm, 6px);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--fbk-text, #1f2328);
+  text-align: start;
+}
+
+.fbk-card-menu-item:hover {
+  background: var(--fbk-surface-muted, #eaeef2);
+}
+
+.fbk-card-menu-item.danger {
+  color: var(--fbk-danger, #dc2626);
+}
+
+.fbk-card-menu-item.danger:hover {
+  background: var(--fbk-danger-bg, #fef2f2);
+  color: var(--fbk-danger-strong, #b91c1c);
+}
+
+.fbk-card-delete-confirm {
+  position: absolute;
+  inset: 0;
+  z-index: 4;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 12px;
+  text-align: center;
+  background: var(--fbk-surface, #fff);
+  border-radius: inherit;
+}
+
+.fbk-card-delete-confirm-q {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--fbk-danger, #dc2626);
+}
+
+.fbk-card-delete-confirm-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 
 .fbk-mini.private-on {
