@@ -86,7 +86,7 @@ export const TPL = {
         <div class="fbk-sidebar" id="fbk-sidebar">
           <div class="fbk-sidebar-head">
             <div class="fbk-sidebar-head-row">
-              <h2>${t('toolbar.comments')}</h2>
+              <h2 id="fbk-comments-heading">${t('toolbar.commentsHeading', { project: escapeHtml(projectName) })}</h2>
               <button class="fbk-mini fbk-icon" id="fbk-close" title="${t('toolbar.close')}" aria-label="${t('toolbar.close')}">&#x2715;</button>
             </div>
             <div class="fbk-sidebar-head-row">
@@ -95,6 +95,7 @@ export const TPL = {
                 ${fixedEnvLabel
                   ? `<span class="fbk-env-label fbk-caption" title="${t('toolbar.envFixedTitle')}">&middot; ${escapeHtml(fixedEnvLabel)}</span>`
                   : `<select class="fbk-input fbk-env-select" id="fbk-env" title="${t('toolbar.envSwitchTitle')}">
+                <option value="all">${t('toolbar.envAll')}</option>
                 <option value="local">${t('toolbar.envLocal')}</option>
                 <option value="staging">${t('toolbar.envStaging')}</option>
                 <option value="production">${t('toolbar.envProduction')}</option>

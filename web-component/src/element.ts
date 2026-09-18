@@ -51,6 +51,11 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
   /** True when the page, the host config or a saved choice named an environment — the server's
    *  origin-resolved answer is then advisory and must not override it. */
   environmentExplicit = false;
+  /** True when the toolbar's environment select is on "All" — comments are fetched unfiltered
+   *  (no `?environment=` query param) across every environment. Independent of environmentInt/
+   *  environmentAttr, which keep tracking the actual (resolved or last-picked) environment so a
+   *  NEW comment composed while viewing "All" still gets tagged with a real environment, not "all". */
+  viewAllEnvironments = false;
 
   comments: Comment[] = [];
   statusFilter = 'all';
@@ -199,10 +204,12 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
     // the host added the attribute must never override it.
     if (!this.hasFixedEnvironment) {
       try {
-        const savedEnv = localStorage.getItem('pointer_env_' + this.project);
-        if (savedEnv && ENV_MAP[savedEnv.toLowerCase()]) {
-          this.environmentAttr = savedEnv.toLowerCase();
-          this.environmentInt = ENV_MAP[savedEnv.toLowerCase()];
+        const savedEnv = (localStorage.getItem('pointer_env_' + this.project) || '').toLowerCase();
+        if (savedEnv === 'all') {
+          this.viewAllEnvironments = true;
+        } else if (savedEnv && ENV_MAP[savedEnv]) {
+          this.environmentAttr = savedEnv;
+          this.environmentInt = ENV_MAP[savedEnv];
           this.environmentExplicit = true;
         }
       } catch (e) { /* ignore */ }
@@ -752,18 +759,23 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
         this.environmentInt = resolved;
         this.environmentAttr = ENV_NAME[resolved];
         // Keep whatever the toolbar is showing — a <select> or the read-only label — in step with
-        // the value we just learned.
-        const envSel = this.root && (this.root.querySelector('#fbk-env') as HTMLSelectElement | null);
-        if (envSel && 'value' in envSel) envSel.value = this.environmentAttr;
-        const envLabel = this.root && this.root.querySelector('.fbk-env-label');
-        if (envLabel) envLabel.textContent = '· ' + this.envDisplayLabel(this.environmentAttr);
-        // init() fires this request CONCURRENTLY with the very first fetchComments() (Promise.all)
-        // — that first call always ran with the pre-resolution environment (0, "unknown"), which
-        // the server has no comments for, so the sidebar/pins silently rendered empty until
-        // something else (e.g. touching the environment dropdown) happened to trigger a refetch.
-        // Correcting it here means init()'s OWN renderSidebar()/renderPins() calls — which run
-        // after this whole Promise.all settles — already see the right data.
-        await this.fetchComments();
+        // the value we just learned. Skipped while viewing "All": environmentInt/environmentAttr
+        // still need the real resolved environment (a NEW comment composed in this state must be
+        // tagged with it, not "all"), but the select itself must keep showing "All", and a refetch
+        // here would silently narrow the list down to one environment, undoing the viewer's choice.
+        if (!this.viewAllEnvironments) {
+          const envSel = this.root && (this.root.querySelector('#fbk-env') as HTMLSelectElement | null);
+          if (envSel && 'value' in envSel) envSel.value = this.environmentAttr;
+          const envLabel = this.root && this.root.querySelector('.fbk-env-label');
+          if (envLabel) envLabel.textContent = '· ' + this.envDisplayLabel(this.environmentAttr);
+          // init() fires this request CONCURRENTLY with the very first fetchComments() (Promise.all)
+          // — that first call always ran with the pre-resolution environment (0, "unknown"), which
+          // the server has no comments for, so the sidebar/pins silently rendered empty until
+          // something else (e.g. touching the environment dropdown) happened to trigger a refetch.
+          // Correcting it here means init()'s OWN renderSidebar()/renderPins() calls — which run
+          // after this whole Promise.all settles — already see the right data.
+          await this.fetchComments();
+        }
       }
       this.commitStyle = typeof envelope?.data?.commitStyle === 'number' ? envelope.data.commitStyle : 1;
       this.canEditSettings = !!envelope?.data?.canEditSettings;
@@ -777,14 +789,19 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
     }
   }
 
-  // Patches the already-rendered header label in place rather than a full renderChrome() —
-  // re-rendering chrome here would drop the sidebar's open/closed state mid-session.
+  // Patches the already-rendered header label (and the "{project} comments" heading, which
+  // embeds the same name) in place rather than a full renderChrome() — re-rendering chrome here
+  // would drop the sidebar's open/closed state mid-session. Needed because the initial
+  // renderChrome() runs before fetchCaptureConfig() resolves the real project name, so both
+  // start out showing the raw project key as a fallback.
   private updateProjectNameLabel(): void {
     const el = this.root && this.root.querySelector('#fbk-project-name');
     if (el) {
       el.textContent = this.projectName;
       el.setAttribute('title', this.projectName);
     }
+    const heading = this.root && this.root.querySelector('#fbk-comments-heading');
+    if (heading) heading.textContent = t('toolbar.commentsHeading', { project: this.projectName });
   }
 
   // /capture-config resolves AFTER the first renderChrome() (which assumed the switcher was
@@ -958,7 +975,11 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
 
   async fetchComments(): Promise<void> {
     try {
-      const r = await this.api(`/api/projects/${encodeURIComponent(this.project)}/comments?environment=${this.environmentInt}`);
+      // Omitting `environment` entirely (rather than passing any int) is what asks the server for
+      // every environment — the filter is nullable server-side (CommentFilter.Environment), and
+      // 0 is a real value ("unknown"), not a wildcard.
+      const envQuery = this.viewAllEnvironments ? '' : `?environment=${this.environmentInt}`;
+      const r = await this.api(`/api/projects/${encodeURIComponent(this.project)}/comments${envQuery}`);
       // 409 = the project was disabled by an admin → tear the widget down silently.
       // 404 = unknown/undefined project (project must be dashboard-created) → also hide silently.
       if (r.status === 409 || r.status === 404) { this.disableSilently(); return; }
@@ -1032,7 +1053,7 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
     // Environment switcher — comments are scoped per environment; switching re-queries + persists.
     const envSel = this.root.querySelector('#fbk-env') as HTMLSelectElement | null;
     if (envSel) {
-      envSel.value = (this.environmentAttr || ENV_NAME[this.environmentInt] || 'staging').toLowerCase();
+      envSel.value = this.viewAllEnvironments ? 'all' : (this.environmentAttr || ENV_NAME[this.environmentInt] || 'staging').toLowerCase();
       envSel.addEventListener('change', () => this.setEnvironment(envSel.value));
     }
 
@@ -1046,9 +1067,21 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
 
   // Switch the active environment from the toolbar. Comments are environment-scoped, so this
   // re-queries the server and re-renders; the choice is remembered per project on this origin.
+  // "all" is a widget-only filter state (see viewAllEnvironments' field doc) — it doesn't touch
+  // environmentAttr/environmentInt, which keep tracking the real environment for tagging new
+  // comments composed while every environment is shown.
   setEnvironment(env: string): void {
     const key = (env || '').toLowerCase();
-    if (!ENV_MAP[key] || key === this.environmentAttr.toLowerCase()) return;
+    if (key === 'all') {
+      if (this.viewAllEnvironments) return;
+      this.viewAllEnvironments = true;
+      try { localStorage.setItem('pointer_env_' + this.project, 'all'); } catch (e) { /* ignore */ }
+      if (!this.token) return;
+      this.fetchComments().then(() => { this.renderSidebar(); this.renderPins(); });
+      return;
+    }
+    if (!ENV_MAP[key] || (!this.viewAllEnvironments && key === this.environmentAttr.toLowerCase())) return;
+    this.viewAllEnvironments = false;
     this.environmentAttr = key;
     this.environmentInt = ENV_MAP[key];
     try { localStorage.setItem('pointer_env_' + this.project, key); } catch (e) { /* ignore */ }

@@ -309,7 +309,7 @@
   var SHOT_HIGHLIGHT = "#2563eb";
   var _a;
   var SCRIPT_SRC = ((_a = document.currentScript) == null ? void 0 : _a.src) || "";
-  var CSS_INTEGRITY = true ? "sha384-1Dbg0TcL+xf9JjU4229T7p8F27PEZ18wtJD7d69avzaBmeR7+pZZe2HdISIW47lY" : "";
+  var CSS_INTEGRITY = true ? "sha384-xX6/jjS5rLtovoWscH5ktKTBoOpR4fxRJWEHGA/TD5343iNt2OpiMnzQmqic1Pj7" : "";
   function resolveCssUrl(scriptSrc) {
     var _a2;
     if (!scriptSrc) return "pointer.css";
@@ -469,6 +469,8 @@
 
   // src/icons.ts
   var ICON = {
+    // Vertical "more actions" kebab — three stacked dots, same filled-circle style as `grip`.
+    kebab: '<svg viewBox="0 0 16 16" width="14" height="14" fill="currentColor" stroke="none"><circle cx="8" cy="3.2" r="1.3"/><circle cx="8" cy="8" r="1.3"/><circle cx="8" cy="12.8" r="1.3"/></svg>',
     flag: '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><line x1="4" y1="22" x2="4" y2="15"/></svg>',
     check: '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>',
     // Plain checkmark (no circle) — for compact confirm actions like "confirm delete".
@@ -525,6 +527,83 @@
     if (next === currentLang) return false;
     currentLang = next;
     return true;
+  }
+  var ARABIC_URDU_ONLY = /[ٹڈڑںےھ]/;
+  var ARABIC_PASHTO_ONLY = /[ټډړږښڼ]/;
+  var ARABIC_PERSIAN_ONLY = /[پچژگ]/;
+  var ARABIC_PERSIAN_KEYBOARD = /[کی]/;
+  var ARABIC_SCRIPT = /[؀-ۿݐ-ݿࢠ-ࣿﭐ-﷿ﹰ-﻿]/;
+  var HEBREW_SCRIPT = /[֐-׿]/;
+  var HANGUL_SCRIPT = /[가-힯ᄀ-ᇿ]/;
+  var KANA_SCRIPT = /[぀-ヿ]/;
+  var HAN_SCRIPT = /[一-鿿]/;
+  var CYRILLIC_SCRIPT = /[Ѐ-ӿ]/;
+  var CYRILLIC_UKRAINIAN_ONLY = /[їєґ]/;
+  var LETTER_RE = /\p{L}/gu;
+  var NON_ASCII_LETTER_RE = /(?![\x00-\x7F])\p{L}/u;
+  var ENGLISH_STOPWORDS = /* @__PURE__ */ new Set([
+    "the",
+    "and",
+    "this",
+    "that",
+    "should",
+    "with",
+    "when",
+    "please",
+    "button",
+    "click",
+    "text",
+    "page",
+    "not",
+    "but",
+    "from",
+    "are",
+    "was",
+    "have",
+    "has",
+    "will",
+    "can"
+  ]);
+  function detectTextLanguage(text) {
+    const stripped = (text || "").replace(/`[^`]*`/g, " ").replace(/```[\s\S]*?```/g, " ").replace(/https?:\/\/\S+/gi, " ").replace(/\d+/g, " ");
+    const letters = stripped.match(LETTER_RE) || [];
+    if (letters.length < 20) return "unknown";
+    if (ARABIC_SCRIPT.test(stripped)) {
+      if (ARABIC_URDU_ONLY.test(stripped)) return "ur";
+      if (ARABIC_PASHTO_ONLY.test(stripped)) return "ps";
+      if (ARABIC_PERSIAN_ONLY.test(stripped)) return "fa";
+      if (ARABIC_PERSIAN_KEYBOARD.test(stripped)) return "unknown";
+      return "ar";
+    }
+    if (HEBREW_SCRIPT.test(stripped)) return "he";
+    if (HANGUL_SCRIPT.test(stripped)) return "ko";
+    if (KANA_SCRIPT.test(stripped)) return "ja";
+    if (HAN_SCRIPT.test(stripped)) return "zh";
+    if (CYRILLIC_SCRIPT.test(stripped)) {
+      return CYRILLIC_UKRAINIAN_ONLY.test(stripped) ? "uk" : "unknown";
+    }
+    if (NON_ASCII_LETTER_RE.test(stripped)) return "unknown";
+    const words = stripped.toLowerCase().match(/[a-z]+/g) || [];
+    const matched = new Set(words.filter((w) => ENGLISH_STOPWORDS.has(w)));
+    return matched.size >= 3 ? "en" : "unknown";
+  }
+  async function detectTextLanguageAsync(text) {
+    const fallback = detectTextLanguage(text);
+    try {
+      const ctor = self.LanguageDetector;
+      if (!ctor) return fallback;
+      const availability = await ctor.availability();
+      if (availability !== "available") return fallback;
+      const detector = await ctor.create();
+      const timeout = new Promise((resolve) => setTimeout(() => resolve(null), 300));
+      const results = await Promise.race([detector.detect(text), timeout]);
+      if (!results || !results.length) return fallback;
+      const best = results[0];
+      if (best.confidence >= 0.8 && best.detectedLanguage) return best.detectedLanguage;
+      return fallback;
+    } catch {
+      return fallback;
+    }
   }
   function t(key, vars) {
     var _a2, _b;
@@ -585,6 +664,7 @@
       "toolbar.close": "Close",
       "toolbar.envFixedTitle": "Environment — fixed for this install",
       "toolbar.envSwitchTitle": "Environment — comments are scoped per environment",
+      "toolbar.envAll": "All",
       "toolbar.envLocal": "local",
       "toolbar.envStaging": "staging",
       "toolbar.envProduction": "production",
@@ -613,7 +693,6 @@
       "menu.failedToSaveTryAgain": "Failed to save — try again",
       "menu.shortcutResetToDefault": "Shortcut reset to default",
       "menu.failedToResetTryAgain": "Failed to reset — try again",
-      "menu.failedToSaveLanguage": "Failed to save language — try again",
       // --- launcher ---
       "launcher.openFeedbackFor": "Open {brand} feedback",
       // --- sidebar / filters ---
@@ -642,6 +721,8 @@
       "card.commit": "commit",
       "card.containsSecretPayload": "contains a secret/payload?",
       "card.defaultReplyAuthor": "User",
+      "card.automatedReply": "Automated reply",
+      "card.aiVia": "via {name}",
       "card.edited": "edited",
       "card.replyPlaceholder": "Reply…",
       "card.markedReadyClickToUnmark": "Marked ready — click to unmark",
@@ -652,6 +733,7 @@
       "card.archive": "Archive",
       "card.edit": "Edit",
       "card.delete": "Delete",
+      "card.moreActions": "More actions",
       "card.envLocal": "Local",
       "card.envStaging": "Staging",
       "card.envProduction": "Production",
@@ -662,6 +744,7 @@
       "card.removeImage": "Remove image",
       "card.save": "Save",
       "card.deleteThisComment": "Delete this comment?",
+      "card.deleteThisReply": "Delete this reply?",
       "card.confirmDelete": "Confirm delete",
       // --- comment popover ---
       "popover.selectParentElement": "Select parent element",
@@ -785,6 +868,7 @@
       "toolbar.close": "إغلاق",
       "toolbar.envFixedTitle": "البيئة — ثابتة لهذا التثبيت",
       "toolbar.envSwitchTitle": "البيئة — التعليقات مرتبطة بكل بيئة على حدة",
+      "toolbar.envAll": "الكل",
       "toolbar.envLocal": "محلي",
       "toolbar.envStaging": "الاختبار",
       "toolbar.envProduction": "الإنتاج",
@@ -813,7 +897,6 @@
       "menu.failedToSaveTryAgain": "فشل الحفظ — حاول مرة أخرى",
       "menu.shortcutResetToDefault": "تمت إعادة الاختصار إلى الافتراضي",
       "menu.failedToResetTryAgain": "فشلت إعادة الضبط — حاول مرة أخرى",
-      "menu.failedToSaveLanguage": "فشل حفظ اللغة — حاول مرة أخرى",
       // --- launcher ---
       "launcher.openFeedbackFor": "فتح ملاحظات {brand}",
       // --- sidebar / filters ---
@@ -842,6 +925,8 @@
       "card.commit": "التزام",
       "card.containsSecretPayload": "قد يحتوي على بيانات سرية؟",
       "card.defaultReplyAuthor": "مستخدم",
+      "card.automatedReply": "رد آلي",
+      "card.aiVia": "بواسطة {name}",
       "card.edited": "مُعدَّل",
       "card.replyPlaceholder": "رد…",
       "card.markedReadyClickToUnmark": "وُضع علامة جاهز — انقر لإلغائها",
@@ -852,6 +937,7 @@
       "card.archive": "أرشفة",
       "card.edit": "تعديل",
       "card.delete": "حذف",
+      "card.moreActions": "المزيد من الإجراءات",
       "card.envLocal": "محلي",
       "card.envStaging": "الاختبار",
       "card.envProduction": "الإنتاج",
@@ -862,6 +948,7 @@
       "card.removeImage": "إزالة الصورة",
       "card.save": "حفظ",
       "card.deleteThisComment": "هل تريد حذف هذا التعليق؟",
+      "card.deleteThisReply": "هل تريد حذف هذا الرد؟",
       "card.confirmDelete": "تأكيد الحذف",
       // --- comment popover ---
       "popover.selectParentElement": "اختر العنصر الأصل",
@@ -1016,6 +1103,7 @@
               <div class="fbk-sidebar-meta">
                 <span class="fbk-project-name fbk-caption" id="fbk-project-name" title="${escapeHtml(projectName)}">${escapeHtml(projectName)}</span>
                 ${fixedEnvLabel ? `<span class="fbk-env-label fbk-caption" title="${t("toolbar.envFixedTitle")}">&middot; ${escapeHtml(fixedEnvLabel)}</span>` : `<select class="fbk-input fbk-env-select" id="fbk-env" title="${t("toolbar.envSwitchTitle")}">
+                <option value="all">${t("toolbar.envAll")}</option>
                 <option value="local">${t("toolbar.envLocal")}</option>
                 <option value="staging">${t("toolbar.envStaging")}</option>
                 <option value="production">${t("toolbar.envProduction")}</option>
@@ -1118,6 +1206,16 @@
              <option value="">&#x1f465; ${t("sidebar.allUsers")}</option>
              ${authors.map((a) => `<option value="${escapeHtml(a.id)}" ${a.id === selectedId ? "selected" : ""}>${escapeHtml(a.name)}</option>`).join("")}
            </select>`,
+    // Kebab-menu dropdown for a comment card's own actions (private/public, edit, delete) —
+    // rendered into the shared portal host (#fbk-menu-host), anchored under the card's kebab
+    // button by toggleCardMenu. Visibility/edit are owner-only; delete only while still open
+    // (matches the previous inline buttons' conditions exactly, just relocated).
+    cardMenu: (c) => `
+        <div class="fbk-card-menu" id="fbk-card-menu" role="menu">
+          ${c._mine ? `<button type="button" class="fbk-card-menu-item" data-menu-act="visibility" data-private="${c.isPrivate ? "false" : "true"}" role="menuitem">${c.isPrivate ? ICON.unlock : ICON.lock}<span>${c.isPrivate ? t("card.makePublic") : t("card.makePrivate")}</span></button>` : ""}
+          ${c._mine ? `<button type="button" class="fbk-card-menu-item" data-menu-act="edit" role="menuitem">${ICON.pencil}<span>${t("card.edit")}</span></button>` : ""}
+          ${c.status === "open" ? `<div class="fbk-actions-end fbk-card-menu-delete-row"><button type="button" class="fbk-card-menu-item danger" data-menu-act="delete" data-id="${c.id}" role="menuitem">${ICON.trash}<span>${t("card.delete")}</span></button></div>` : ""}
+        </div>`,
     card: (c, i, isQuickAccess) => {
       const cls = c.status === "pending-apply" ? "pending" : c.status === "applied" ? "applied" : c.status === "archived" ? "archived" : "";
       const statusPill = c.status === "applied" && c.deployedAt ? `<span class="fbk-pill status-applied" title="${escapeHtml(t("card.deployedIn", { sha: (c.deployedSha || "").slice(0, 7) }))}">&#x2713; ${t("card.live")}</span>` : c.status === "applied" ? `<span class="fbk-pill status-applied">&#x2713; ${t("card.completed")}</span>` : c.status === "pending-apply" ? `<span class="fbk-pill status-pending">${t("card.pending")}</span>` : c.status === "archived" ? `<span class="fbk-pill status-archived">&#x1f4e6; ${t("card.archived")}</span>` : "";
@@ -1135,7 +1233,31 @@
         </div>` : "";
       const commitLink = c.status === "applied" ? `<a class="fbk-pill" href="${c.commitUrl ? escapeHtml(c.commitUrl) : "#"}" ${c.commitUrl ? 'target="_blank" rel="noopener noreferrer"' : ""} title="${c.commitUrl ? t("card.viewCommit") : t("card.noCommitRecorded")}">&#x1f517; ${t("card.commit")}</a>` : "";
       const payloadPill = c.hasPayloadFlag ? `<span class="fbk-pill fbk-payload-flag" title="${escapeHtml((c.payloadFlags || []).join(", "))}">&#x26a0; ${t("card.containsSecretPayload")}</span>` : "";
-      const replies = (c.replies || []).map((r) => `<div class="fbk-reply ${r.isAi ? "ai" : ""}"><b>${escapeHtml(r.authorName || r.authorLabel || t("card.defaultReplyAuthor"))}:</b> ${escapeHtml(r.body || r.text || "")}</div>`).join("");
+      const replies = (c.replies || []).map((r) => {
+        var _a2, _b;
+        const body = escapeHtml(r.body || r.text || "");
+        const authorName = escapeHtml(r.authorName || r.authorLabel || t("card.defaultReplyAuthor"));
+        if (r.isAi) {
+          const attributionParts = [];
+          if (r.aiTool) attributionParts.push(escapeHtml(r.aiTool));
+          if (r.aiModel) attributionParts.push(escapeHtml(r.aiModel));
+          const knownAuthorName = r.authorName || r.authorLabel;
+          if (knownAuthorName) attributionParts.push(t("card.aiVia", { name: escapeHtml(knownAuthorName) }));
+          const attribution = attributionParts.length > 0 ? `<span class="fbk-reply-ai-author">${attributionParts.join(" &middot; ")}</span>` : "";
+          return `<details class="fbk-reply fbk-reply-ai" data-reply-id="${(_a2 = r.id) != null ? _a2 : ""}">
+            <summary class="fbk-reply-ai-summary">&#x1f916; <b>${t("card.automatedReply")}</b> ${attribution}</summary>
+            <div class="fbk-reply-main"><span class="fbk-reply-body">${body}</span></div>
+          </details>`;
+        }
+        const actions = r._mine ? `<span class="fbk-reply-actions">
+            <button type="button" class="fbk-mini fbk-icon" data-act="reply-edit" data-comment-id="${c.id}" data-reply-id="${r.id}" title="${t("card.edit")}" aria-label="${t("card.edit")}">${ICON.pencil}</button>
+            <button type="button" class="fbk-mini danger fbk-icon" data-act="reply-delete" data-comment-id="${c.id}" data-reply-id="${r.id}" title="${t("card.delete")}" aria-label="${t("card.delete")}">${ICON.trash}</button>
+          </span>` : "";
+        return `<div class="fbk-reply" data-reply-id="${(_b = r.id) != null ? _b : ""}">
+          <div class="fbk-reply-main"><b>${authorName}:</b> <span class="fbk-reply-body">${body}</span></div>
+          ${actions}
+        </div>`;
+      }).join("");
       const envInt = c.environment;
       const envLabel = envInt === 1 ? t("card.envLocal") : envInt === 2 ? t("card.envStaging") : envInt === 3 ? t("card.envProduction") : envInt ? String(envInt) : "";
       const authorLabel = c.authorName || "";
@@ -1153,10 +1275,9 @@
               ${verifiedPill}
               ${verifyGroup}
               ${commitLink}
-              <div class="fbk-actions-end">
-                ${c._mine ? `<button class="fbk-mini fbk-icon${c.isPrivate ? " private-on" : ""}" data-act="visibility" data-id="${c.id}" data-private="${c.isPrivate ? "false" : "true"}" title="${c.isPrivate ? t("card.privateClickToMakePublic") : t("card.makePrivateOnlyYou")}" aria-label="${c.isPrivate ? t("card.makePublic") : t("card.makePrivate")}">${c.isPrivate ? ICON.lock : ICON.unlock}</button>` : ""}
-                ${c.status === "open" ? `<button class="fbk-mini danger fbk-icon" data-act="delete" data-id="${c.id}" title="${t("card.delete")}" aria-label="${t("card.delete")}">${ICON.trash}</button>` : ""}
-              </div>
+              ${c._mine || c.status === "open" ? `<div class="fbk-actions-end">
+                <button class="fbk-mini fbk-icon fbk-card-kebab" data-act="card-menu" data-id="${c.id}" title="${t("card.moreActions")}" aria-label="${t("card.moreActions")}" aria-haspopup="true" aria-expanded="false">${ICON.kebab}</button>
+              </div>` : ""}
             </div>
             <div class="fbk-text">${escapeHtml(c.body || c.text || "")}</div>
             ${shot}
@@ -1164,7 +1285,7 @@
             ${verifyBox}
             ${replies ? `<div class="fbk-replies">${replies}</div>` : ""}
             <div class="fbk-reply-row">
-              <input class="fbk-input fbk-reply-input" placeholder="${t("card.replyPlaceholder")}" data-id="${c.id}" />
+              <textarea class="fbk-textarea fbk-reply-input" placeholder="${t("card.replyPlaceholder")}" data-id="${c.id}" rows="1"></textarea>
             </div>
             <div class="fbk-actions">
               ${isQuickAccess ? "" : c.status === "applied" || c.status === "archived" ? "" : `<button class="fbk-mini ${c.status === "pending-apply" ? "apply" : "ready"}" data-act="apply" data-id="${c.id}" title="${c.status === "pending-apply" ? t("card.markedReadyClickToUnmark") : t("card.markReadyToApply")}">
@@ -1174,7 +1295,6 @@
               ${!isQuickAccess && c.status === "applied" ? `<button class="fbk-mini ready" data-act="reopen" data-id="${c.id}" title="${t("card.reopen")}">${ICON.reopen}<span>${t("card.reopen")}</span></button>
               <button class="fbk-mini fbk-icon" data-act="archive" data-id="${c.id}" title="${t("card.archive")}" aria-label="${t("card.archive")}">${ICON.archive}</button>` : ""}
               ${!isQuickAccess && c.status === "archived" ? `<button class="fbk-mini ready" data-act="reopen" data-id="${c.id}" title="${t("card.reopen")}">${ICON.reopen}<span>${t("card.reopen")}</span></button>` : ""}
-              ${c._mine ? `<div class="fbk-actions-end"><button class="fbk-mini fbk-icon" data-act="edit" data-id="${c.id}" title="${t("card.edit")}" aria-label="${t("card.edit")}">${ICON.pencil}</button></div>` : ""}
             </div>
           </div>`;
     },
@@ -1987,6 +2107,11 @@
       /** True when the page, the host config or a saved choice named an environment — the server's
        *  origin-resolved answer is then advisory and must not override it. */
       this.environmentExplicit = false;
+      /** True when the toolbar's environment select is on "All" — comments are fetched unfiltered
+       *  (no `?environment=` query param) across every environment. Independent of environmentInt/
+       *  environmentAttr, which keep tracking the actual (resolved or last-picked) environment so a
+       *  NEW comment composed while viewing "All" still gets tagged with a real environment, not "all". */
+      this.viewAllEnvironments = false;
       this.comments = [];
       this.statusFilter = "all";
       this.mineOnly = false;
@@ -2056,6 +2181,7 @@
       this._onVisibilityChange = null;
       this._userMenuClose = null;
       this._clusterMenuClose = null;
+      this._cardMenuClose = null;
       this._recordingShortcut = false;
       this._shortcutRecordingCleanup = null;
       this._backdropObserver = null;
@@ -2093,10 +2219,12 @@
       }
       if (!this.hasFixedEnvironment) {
         try {
-          const savedEnv = localStorage.getItem("pointer_env_" + this.project);
-          if (savedEnv && ENV_MAP[savedEnv.toLowerCase()]) {
-            this.environmentAttr = savedEnv.toLowerCase();
-            this.environmentInt = ENV_MAP[savedEnv.toLowerCase()];
+          const savedEnv = (localStorage.getItem("pointer_env_" + this.project) || "").toLowerCase();
+          if (savedEnv === "all") {
+            this.viewAllEnvironments = true;
+          } else if (savedEnv && ENV_MAP[savedEnv]) {
+            this.environmentAttr = savedEnv;
+            this.environmentInt = ENV_MAP[savedEnv];
             this.environmentExplicit = true;
           }
         } catch (e) {
@@ -2191,6 +2319,7 @@
       } catch {
       }
       if (this.token) void this._reportBuildSha();
+      if (this.token) void this._reportWidgetLanguage();
       if (inviteFailed) this.toast("This invite link is invalid or expired — ask for a new one.", "error");
     }
     /**
@@ -2214,6 +2343,39 @@
           method: "POST",
           headers: { "Content-Type": "application/json", Authorization: `Bearer ${this.token}` },
           body: JSON.stringify({ sha })
+        });
+      } catch {
+      }
+    }
+    /**
+     * Reports the widget's own UI language, the host page's `<html lang>`, and the visiting
+     * browser's locale — once per tab session (sessionStorage guard `pointer_lang_reported`), so a
+     * future widget-translation priority list can be based on real usage instead of guesswork. Fire-
+     * and-forget and failure-silent, same as `_reportBuildSha`: a visitor must never see (or wait on)
+     * a usage beacon. Posted through the existing authenticated `POST /api/events` pipeline, so an
+     * anonymous visitor (no token) simply never reports — acceptable, see the plan.
+     */
+    async _reportWidgetLanguage() {
+      var _a2;
+      try {
+        if (sessionStorage.getItem("pointer_lang_reported") === "1") return;
+        sessionStorage.setItem("pointer_lang_reported", "1");
+      } catch {
+      }
+      try {
+        await pfFetch(`${this.server}/api/events`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${this.token}` },
+          body: JSON.stringify({
+            type: "widget_language",
+            source: "web-component",
+            projectKey: this.project,
+            meta: {
+              ui: this.resolveLang(),
+              browser: typeof navigator !== "undefined" ? navigator.language : null,
+              page: typeof document !== "undefined" && ((_a2 = document.documentElement) == null ? void 0 : _a2.lang) || null
+            }
+          })
         });
       } catch {
       }
@@ -2466,39 +2628,38 @@
       this.applyTheme();
     }
     // --- Language ---------------------------------------------------------
-    // Unlike theme (deliberately widget-local, see above), language STAYS account-level: an
-    // explicit choice (from this widget's own menu or the dashboard's language switcher — same
-    // field) wins; otherwise the browser's own language. There is no widget-local override here —
-    // the dashboard and widget are meant to agree on language, unlike theme where they must not.
+    // Same widget-local shape as theme above, for the same reason: `User.language` is the SAME
+    // field the dashboard's own language switcher writes to paint the whole admin app, so an
+    // explicit per-browser override (localStorage, set from the user menu below) must win without
+    // ever being written back to the account — otherwise picking a language in the widget would
+    // silently flip the dashboard's language too. Falling back to the account's EXISTING value
+    // (read-only) when there is no local override yet is fine — the widget just never sets it.
     resolveLang() {
       var _a2;
-      const stored = (_a2 = this.user) == null ? void 0 : _a2.language;
-      if (stored === "ar") return "ar";
-      if (stored === "en") return "en";
+      try {
+        const stored = localStorage.getItem("pointer_widget_language");
+        if (stored === "ar" || stored === "en") return stored;
+      } catch {
+      }
+      const accountLang = (_a2 = this.user) == null ? void 0 : _a2.language;
+      if (accountLang === "ar") return "ar";
+      if (accountLang === "en") return "en";
       try {
         return (navigator.language || "").toLowerCase().startsWith("ar") ? "ar" : "en";
       } catch {
         return "en";
       }
     }
-    // Persists the account's language preference (PATCH /api/me/preferences) — the SAME field the
-    // dashboard's own language switcher writes, so the two agree. Renders this widget's own UI text
-    // too (see wireLangBtn in toggleUserMenu, which calls setLang() + a full re-render on success).
-    async saveLanguagePreference(lang) {
+    // Sets the widget's own per-browser language override — never touches the account (see the
+    // note on resolveLang above). The caller (wireLangBtn in toggleUserMenu) still needs to
+    // re-render everything language-bearing afterward — unlike theme, a language change can't be
+    // reflected by a CSS attribute flip alone, since the text itself is baked into rendered markup.
+    setLanguageOverride(lang) {
       try {
-        const r = await this.api("/api/me/preferences", {
-          method: "PATCH",
-          body: JSON.stringify({ language: lang })
-        });
-        if (!r.ok) return false;
-        if (this.user) {
-          this.user = { ...this.user, language: lang };
-          localStorage.setItem("pointer_user", JSON.stringify(this.user));
-        }
-        return true;
+        localStorage.setItem("pointer_widget_language", lang);
       } catch {
-        return false;
       }
+      setLang(lang);
     }
     async init() {
       await loadStatusCatalog(this.server);
@@ -2544,13 +2705,16 @@
         this.showEnvironmentSelector = showSelector !== false;
         this.projectId = typeof ((_b = envelope == null ? void 0 : envelope.data) == null ? void 0 : _b.id) === "number" ? envelope.data.id : null;
         const resolved = (_c = envelope == null ? void 0 : envelope.data) == null ? void 0 : _c.resolvedEnvironment;
-        if (!this.environmentExplicit && typeof resolved === "number" && ENV_NAME[resolved]) {
+        if (!this.environmentExplicit && typeof resolved === "number" && ENV_NAME[resolved] && resolved !== this.environmentInt) {
           this.environmentInt = resolved;
           this.environmentAttr = ENV_NAME[resolved];
-          const envSel = this.root && this.root.querySelector("#fbk-env");
-          if (envSel && "value" in envSel) envSel.value = this.environmentAttr;
-          const envLabel = this.root && this.root.querySelector(".fbk-env-label");
-          if (envLabel) envLabel.textContent = "· " + this.envDisplayLabel(this.environmentAttr);
+          if (!this.viewAllEnvironments) {
+            const envSel = this.root && this.root.querySelector("#fbk-env");
+            if (envSel && "value" in envSel) envSel.value = this.environmentAttr;
+            const envLabel = this.root && this.root.querySelector(".fbk-env-label");
+            if (envLabel) envLabel.textContent = "· " + this.envDisplayLabel(this.environmentAttr);
+            await this.fetchComments();
+          }
         }
         this.commitStyle = typeof ((_d = envelope == null ? void 0 : envelope.data) == null ? void 0 : _d.commitStyle) === "number" ? envelope.data.commitStyle : 1;
         this.canEditSettings = !!((_e = envelope == null ? void 0 : envelope.data) == null ? void 0 : _e.canEditSettings);
@@ -2732,7 +2896,8 @@
     }
     async fetchComments() {
       try {
-        const r = await this.api(`/api/projects/${encodeURIComponent(this.project)}/comments?environment=${this.environmentInt}`);
+        const envQuery = this.viewAllEnvironments ? "" : `?environment=${this.environmentInt}`;
+        const r = await this.api(`/api/projects/${encodeURIComponent(this.project)}/comments${envQuery}`);
         if (r.status === 409 || r.status === 404) {
           this.disableSilently();
           return;
@@ -2812,7 +2977,7 @@
       this.root.querySelector("#fbk-close").addEventListener("click", () => this.toggleSidebar(false));
       const envSel = this.root.querySelector("#fbk-env");
       if (envSel) {
-        envSel.value = (this.environmentAttr || ENV_NAME[this.environmentInt] || "staging").toLowerCase();
+        envSel.value = this.viewAllEnvironments ? "all" : (this.environmentAttr || ENV_NAME[this.environmentInt] || "staging").toLowerCase();
         envSel.addEventListener("change", () => this.setEnvironment(envSel.value));
       }
       const resetBtn = this.root.querySelector("#fbk-reset-pos");
@@ -2823,9 +2988,27 @@
     }
     // Switch the active environment from the toolbar. Comments are environment-scoped, so this
     // re-queries the server and re-renders; the choice is remembered per project on this origin.
+    // "all" is a widget-only filter state (see viewAllEnvironments' field doc) — it doesn't touch
+    // environmentAttr/environmentInt, which keep tracking the real environment for tagging new
+    // comments composed while every environment is shown.
     setEnvironment(env) {
       const key = (env || "").toLowerCase();
-      if (!ENV_MAP[key] || key === this.environmentAttr.toLowerCase()) return;
+      if (key === "all") {
+        if (this.viewAllEnvironments) return;
+        this.viewAllEnvironments = true;
+        try {
+          localStorage.setItem("pointer_env_" + this.project, "all");
+        } catch (e) {
+        }
+        if (!this.token) return;
+        this.fetchComments().then(() => {
+          this.renderSidebar();
+          this.renderPins();
+        });
+        return;
+      }
+      if (!ENV_MAP[key] || !this.viewAllEnvironments && key === this.environmentAttr.toLowerCase()) return;
+      this.viewAllEnvironments = false;
       this.environmentAttr = key;
       this.environmentInt = ENV_MAP[key];
       try {
@@ -2961,9 +3144,9 @@
     }
     // --- User menu (identity + sign out) ------------------------------------
     toggleUserMenu() {
-      var _a2;
       this.closeUpdatesMenu();
       this.closeClusterMenu();
+      this.closeCardMenu();
       const host = this.root.querySelector("#fbk-menu-host");
       if (!host) return;
       if (host.querySelector("#fbk-user-menu")) {
@@ -2978,7 +3161,7 @@
         formatShortcut(this.shortcut),
         this.authOwnedByHost,
         this.resolveTheme(),
-        ((_a2 = this.user) == null ? void 0 : _a2.language) === "ar" ? "ar" : "en"
+        this.resolveLang()
       );
       const menu = host.querySelector("#fbk-user-menu");
       const btn = this.root.querySelector("#fbk-user");
@@ -3017,20 +3200,14 @@
       wireThemeBtn("#fbk-theme-light", "light");
       wireThemeBtn("#fbk-theme-dark", "dark");
       const wireLangBtn = (id, lang) => {
-        host.querySelector(id).addEventListener("click", async (e) => {
-          var _a3;
+        host.querySelector(id).addEventListener("click", (e) => {
           e.stopPropagation();
-          if ((((_a3 = this.user) == null ? void 0 : _a3.language) === "ar" ? "ar" : "en") === lang) return;
-          const ok = await this.saveLanguagePreference(lang);
-          if (ok) {
-            setLang(lang);
-            this.renderChrome();
-            this.renderSidebar();
-            this.renderPins();
-            reopenUserMenu();
-          } else {
-            this.toast(t("menu.failedToSaveLanguage"), "error");
-          }
+          if (this.resolveLang() === lang) return;
+          this.setLanguageOverride(lang);
+          this.renderChrome();
+          this.renderSidebar();
+          this.renderPins();
+          reopenUserMenu();
         });
       };
       wireLangBtn("#fbk-lang-en", "en");
@@ -3064,6 +3241,7 @@
       }
       this.closeUserMenu();
       this.closeClusterMenu();
+      this.closeCardMenu();
       const items = await this.apiNotifications();
       if (this.unreadNotifyCount > 0) {
         await this.apiMarkAllNotificationsRead();
@@ -3659,7 +3837,7 @@
     }
     // Returns true on success (popover should close), false on failure (popover stays open).
     async createComment(data) {
-      var _a2, _b;
+      var _a2, _b, _c;
       const vw = window.innerWidth;
       const vh = window.innerHeight;
       const deviceType = vw < 768 ? "mobile" : vw < 1024 ? "tablet" : "desktop";
@@ -3692,12 +3870,14 @@
           else this.toast(t("toast.screenshotUploadFailed"), "error");
         }
       }
+      const language = (_a2 = data.language) != null ? _a2 : await detectTextLanguageAsync(data.text);
       const bodyObj = {
         body: data.text,
         environment: this.environmentInt,
         isPrivate: !!data.isPrivate,
         element,
-        isBugReport: !!data.isBugReport
+        isBugReport: !!data.isBugReport,
+        language
       };
       if (data.predefinedActionIds && data.predefinedActionIds.length) bodyObj.predefinedActionIds = data.predefinedActionIds;
       if (data.isBugReport) {
@@ -3726,7 +3906,7 @@
             return false;
           }
           if (r.status === 429) {
-            const retryAfter = Number((_b = (_a2 = r.headers) == null ? void 0 : _a2.get) == null ? void 0 : _b.call(_a2, "retry-after"));
+            const retryAfter = Number((_c = (_b = r.headers) == null ? void 0 : _b.get) == null ? void 0 : _c.call(_b, "retry-after"));
             this.toast(
               retryAfter > 0 ? t("toast.tooManyCommentsRetryIn", { n: retryAfter, s: retryAfter === 1 ? "" : "s" }) : t("toast.tooManyCommentsWait"),
               "error"
@@ -3886,6 +4066,7 @@
           throw new Error(body && body.message || "HTTP " + r.status);
         }
         this.comments = this.comments.filter((c) => String(c.id) !== String(id));
+        this.closeCardMenu();
         this.renderSidebar();
         this.renderPins();
         this.toast(t("toast.deleted"));
@@ -3949,6 +4130,114 @@
         if (e.message !== "HTTP 401 Unauthorized") this.toast(e.message || t("toast.failedToUpdateComment"), "error");
       }
     }
+    // Inline edit for a single reply (own replies only) — same swap-body-for-a-textarea pattern
+    // as the comment's own startEdit, scoped to one .fbk-reply row instead of the whole card.
+    startEditReply(commentId, replyId) {
+      const row = this.root && this.root.querySelector(`.fbk-reply[data-reply-id="${replyId}"]`);
+      if (!row || row.querySelector(".fbk-edit")) return;
+      const comment = (this.comments || []).find((x) => String(x.id) === String(commentId));
+      const reply = comment && (comment.replies || []).find((r) => String(r.id) === String(replyId));
+      if (!reply) return;
+      const mainEl = row.querySelector(".fbk-reply-main");
+      const actionsEl = row.querySelector(".fbk-reply-actions");
+      if (!mainEl) return;
+      const editor = document.createElement("div");
+      editor.className = "fbk-edit";
+      editor.style.flex = "1";
+      editor.innerHTML = `
+        <textarea class="fbk-textarea fbk-reply-edit-body">${escapeHtml(reply.body || reply.text || "")}</textarea>
+        <div class="fbk-reply-row">
+          <button class="fbk-btn primary fbk-btn-fill fbk-edit-save">${t("card.save")}</button>
+          <button class="fbk-mini fbk-edit-cancel">${t("toolbar.cancel")}</button>
+        </div>`;
+      mainEl.style.display = "none";
+      if (actionsEl) actionsEl.style.display = "none";
+      mainEl.insertAdjacentElement("afterend", editor);
+      const ta = editor.querySelector(".fbk-reply-edit-body");
+      ta.focus();
+      const close = () => {
+        editor.remove();
+        mainEl.style.display = "";
+        if (actionsEl) actionsEl.style.display = "";
+      };
+      editor.querySelector(".fbk-edit-cancel").addEventListener("click", close);
+      editor.querySelector(".fbk-edit-save").addEventListener("click", () => {
+        const body = ta.value.trim();
+        if (!body) {
+          this.toast(t("popover.commentCannotBeEmpty"), "error");
+          return;
+        }
+        this.saveReplyEdit(replyId, body);
+      });
+    }
+    async saveReplyEdit(replyId, body) {
+      try {
+        const r = await this.api(`/api/replies/${replyId}`, {
+          method: "PUT",
+          body: JSON.stringify({ body })
+        });
+        if (!r.ok) {
+          const b = await r.json().catch(() => null);
+          throw new Error(b && b.message || "HTTP " + r.status);
+        }
+        await this.fetchComments();
+        this.renderSidebar();
+        this.toast(t("toast.commentUpdated"), "success");
+      } catch (e) {
+        if (e.message !== "HTTP 401 Unauthorized") this.toast(e.message || t("toast.failedToUpdateComment"), "error");
+      }
+    }
+    // Same inline "Delete this…?" confirm-row pattern as confirmDelete, scoped to one reply's own
+    // actions row instead of the comment's.
+    confirmDeleteReply(btn) {
+      const commentId = btn.dataset.commentId;
+      const replyId = btn.dataset.replyId;
+      const row = btn.closest(".fbk-reply-actions");
+      if (!commentId || !replyId || !row || row.querySelector(".fbk-confirm")) return;
+      const others = Array.from(row.children);
+      others.forEach((el) => {
+        el.style.display = "none";
+      });
+      const wrap = document.createElement("div");
+      wrap.className = "fbk-confirm fbk-confirm-row";
+      wrap.innerHTML = `<span class="fbk-confirm-q">${t("card.deleteThisReply")}</span><span class="fbk-confirm-btns"><button type="button" class="fbk-mini danger fbk-icon" data-c="yes" title="${t("card.confirmDelete")}" aria-label="${t("card.confirmDelete")}">${ICON.checkPlain}</button><button type="button" class="fbk-mini fbk-icon" data-c="no" title="${t("toolbar.cancel")}" aria-label="${t("toolbar.cancel")}">&#x2715;</button></span>`;
+      row.appendChild(wrap);
+      let closed = false;
+      const close = () => {
+        if (closed) return;
+        closed = true;
+        clearTimeout(timer);
+        wrap.remove();
+        others.forEach((el) => {
+          el.style.display = "";
+        });
+      };
+      const timer = setTimeout(close, 4e3);
+      wrap.querySelector('[data-c="yes"]').addEventListener("click", (e) => {
+        e.stopPropagation();
+        close();
+        this.deleteReply(replyId);
+      });
+      wrap.querySelector('[data-c="no"]').addEventListener("click", (e) => {
+        e.stopPropagation();
+        close();
+      });
+    }
+    async deleteReply(replyId) {
+      try {
+        const r = await this.api(`/api/replies/${replyId}`, { method: "DELETE" });
+        if (!r.ok) {
+          const b = await r.json().catch(() => null);
+          throw new Error(b && b.message || "HTTP " + r.status);
+        }
+        await this.fetchComments();
+        this.renderSidebar();
+        this.renderPins();
+        this.toast(t("toast.deleted"));
+      } catch (e) {
+        if (e.message !== "HTTP 401 Unauthorized") this.toast(e.message || t("toast.deleteFailed"), "error");
+      }
+    }
     // True when comment `c` was authored by the current logged-in user.
     /**
      * Completes `this.user` with the fields the card template needs (`id`, `isAdmin`, `isQuickAccess`)
@@ -4007,7 +4296,7 @@
     }
     // --- Sidebar render ------------------------------------------------------
     renderSidebar() {
-      var _a2, _b;
+      var _a2, _b, _c;
       const all = this.pageComments();
       const canMine = !!(this.user && this.user.id);
       if (!canMine) this.mineOnly = false;
@@ -4064,9 +4353,13 @@
         return;
       }
       const isQuickAccess = !!((_b = this.user) == null ? void 0 : _b.isQuickAccess);
+      const myId = ((_c = this.user) == null ? void 0 : _c.id) ? String(this.user.id).toLowerCase() : null;
       list.innerHTML = shown.map((c, i) => {
         c._mine = this.isMine(c);
         c._canVerify = c._mine || !!(this.user && this.user.isAdmin);
+        (c.replies || []).forEach((r) => {
+          r._mine = !r.isAi && !!(myId && r.authorId && String(r.authorId).toLowerCase() === myId);
+        });
         return TPL.card(c, i, isQuickAccess);
       }).join("");
       list.querySelectorAll('[data-act="apply"]').forEach((b) => b.addEventListener("click", () => {
@@ -4077,11 +4370,10 @@
         const c = this.comments.find((x) => String(x.id) === String(b.dataset.id));
         if (c && c.status !== "applied") this.markCompleted(c);
       }));
-      list.querySelectorAll('[data-act="delete"]').forEach((b) => b.addEventListener("click", () => this.confirmDelete(b)));
-      list.querySelectorAll('[data-act="edit"]').forEach((b) => b.addEventListener("click", () => this.startEdit(b.dataset.id)));
-      list.querySelectorAll('[data-act="visibility"]').forEach((b) => b.addEventListener("click", () => {
+      list.querySelectorAll('[data-act="card-menu"]').forEach((b) => b.addEventListener("click", (e) => {
+        e.stopPropagation();
         const c = this.comments.find((x) => String(x.id) === String(b.dataset.id));
-        if (c) this.setVisibility(c, b.dataset.private === "true");
+        if (c) this.toggleCardMenu(b, c);
       }));
       list.querySelectorAll('[data-act="reopen"]').forEach((b) => b.addEventListener("click", () => {
         const c = this.comments.find((x) => String(x.id) === String(b.dataset.id));
@@ -4092,11 +4384,18 @@
         if (c) this.setStatus(c, "archived", t("toast.archivedMsg"));
       }));
       list.querySelectorAll(".fbk-reply-input").forEach((inp) => inp.addEventListener("keydown", (e) => {
-        if (e.key === "Enter" && inp.value.trim()) {
-          this.addReply(inp.dataset.id, inp.value.trim());
-          inp.value = "";
+        if (e.key === "Enter" && !e.shiftKey) {
+          e.preventDefault();
+          if (inp.value.trim()) {
+            this.addReply(inp.dataset.id, inp.value.trim());
+            inp.value = "";
+          }
         }
       }));
+      list.querySelectorAll('[data-act="reply-edit"]').forEach((b) => b.addEventListener("click", () => {
+        if (b.dataset.commentId && b.dataset.replyId) this.startEditReply(b.dataset.commentId, b.dataset.replyId);
+      }));
+      list.querySelectorAll('[data-act="reply-delete"]').forEach((b) => b.addEventListener("click", () => this.confirmDeleteReply(b)));
       list.querySelectorAll('[data-act="verify-ok"]').forEach((b) => b.addEventListener("click", () => {
         const id = b.dataset.id;
         if (id) this.apiVerify(id, true);
@@ -4219,6 +4518,7 @@
       }
       this.closeUserMenu();
       this.closeUpdatesMenu();
+      this.closeCardMenu();
       if (comments.length === 0) return;
       host.innerHTML = TPL.pinClusterMenu(comments);
       const menu = host.querySelector("#fbk-pin-cluster-menu");
@@ -4259,6 +4559,72 @@
       if (this._clusterMenuClose) {
         document.removeEventListener("click", this._clusterMenuClose, true);
         this._clusterMenuClose = null;
+      }
+    }
+    // --- Card actions menu (kebab menu: private/public, edit, delete) --------
+    toggleCardMenu(btn, c) {
+      const host = this.root.querySelector("#fbk-menu-host");
+      if (!host) return;
+      if (host.querySelector("#fbk-card-menu")) {
+        this.closeCardMenu();
+        return;
+      }
+      this.closeUserMenu();
+      this.closeUpdatesMenu();
+      this.closeClusterMenu();
+      host.innerHTML = TPL.cardMenu(c);
+      const menu = host.querySelector("#fbk-card-menu");
+      if (!menu) return;
+      btn.setAttribute("aria-expanded", "true");
+      const r = btn.getBoundingClientRect();
+      const menuHeight = menu.offsetHeight;
+      const spaceBelow = window.innerHeight - r.bottom;
+      if (spaceBelow < menuHeight + 6 && r.top > spaceBelow) {
+        menu.style.top = "auto";
+        menu.style.bottom = `${Math.max(8, Math.round(window.innerHeight - r.top + 6))}px`;
+      } else {
+        menu.style.bottom = "auto";
+        menu.style.top = `${Math.round(r.bottom + 6)}px`;
+      }
+      menu.style.right = `${Math.max(8, Math.round(window.innerWidth - r.right))}px`;
+      const visBtn = menu.querySelector('[data-menu-act="visibility"]');
+      if (visBtn) {
+        visBtn.addEventListener("click", () => {
+          this.closeCardMenu();
+          this.setVisibility(c, visBtn.dataset.private === "true");
+        });
+      }
+      const editBtn = menu.querySelector('[data-menu-act="edit"]');
+      if (editBtn) {
+        editBtn.addEventListener("click", () => {
+          this.closeCardMenu();
+          this.startEdit(String(c.id));
+        });
+      }
+      const delBtn = menu.querySelector('[data-menu-act="delete"]');
+      if (delBtn) {
+        delBtn.addEventListener("click", (e) => {
+          e.stopPropagation();
+          this.confirmDelete(delBtn);
+        });
+      }
+      this._cardMenuClose = (e) => {
+        const path = e.composedPath();
+        if (!path.includes(menu) && !path.includes(btn)) this.closeCardMenu();
+      };
+      setTimeout(() => {
+        if (this._cardMenuClose) document.addEventListener("click", this._cardMenuClose, true);
+      }, 0);
+    }
+    closeCardMenu() {
+      const host = this.root.querySelector("#fbk-menu-host");
+      if (host && host.querySelector("#fbk-card-menu")) {
+        host.innerHTML = "";
+        this.root.querySelectorAll('.fbk-card-kebab[aria-expanded="true"]').forEach((b) => b.setAttribute("aria-expanded", "false"));
+      }
+      if (this._cardMenuClose) {
+        document.removeEventListener("click", this._cardMenuClose, true);
+        this._cardMenuClose = null;
       }
     }
     // --- Toast ---------------------------------------------------------------

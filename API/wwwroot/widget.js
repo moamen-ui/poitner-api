@@ -654,6 +654,7 @@
       "toolbar.cancel": "Cancel",
       "toolbar.viewCommentsList": "View comments list",
       "toolbar.comments": "Comments",
+      "toolbar.commentsHeading": "{project} comments",
       "toolbar.recentActivityUpdates": "Recent activity &amp; updates",
       "toolbar.updates": "Updates",
       "toolbar.signedInAs": "Signed in as",
@@ -664,6 +665,7 @@
       "toolbar.close": "Close",
       "toolbar.envFixedTitle": "Environment — fixed for this install",
       "toolbar.envSwitchTitle": "Environment — comments are scoped per environment",
+      "toolbar.envAll": "All",
       "toolbar.envLocal": "local",
       "toolbar.envStaging": "staging",
       "toolbar.envProduction": "production",
@@ -857,6 +859,7 @@
       "toolbar.cancel": "إلغاء",
       "toolbar.viewCommentsList": "عرض قائمة التعليقات",
       "toolbar.comments": "التعليقات",
+      "toolbar.commentsHeading": "تعليقات {project}",
       "toolbar.recentActivityUpdates": "النشاط الأخير والتحديثات",
       "toolbar.updates": "التحديثات",
       "toolbar.signedInAs": "مسجّل الدخول باسم",
@@ -867,6 +870,7 @@
       "toolbar.close": "إغلاق",
       "toolbar.envFixedTitle": "البيئة — ثابتة لهذا التثبيت",
       "toolbar.envSwitchTitle": "البيئة — التعليقات مرتبطة بكل بيئة على حدة",
+      "toolbar.envAll": "الكل",
       "toolbar.envLocal": "محلي",
       "toolbar.envStaging": "الاختبار",
       "toolbar.envProduction": "الإنتاج",
@@ -1094,13 +1098,14 @@
         <div class="fbk-sidebar" id="fbk-sidebar">
           <div class="fbk-sidebar-head">
             <div class="fbk-sidebar-head-row">
-              <h2>${t("toolbar.comments")}</h2>
+              <h2 id="fbk-comments-heading">${t("toolbar.commentsHeading", { project: escapeHtml(projectName) })}</h2>
               <button class="fbk-mini fbk-icon" id="fbk-close" title="${t("toolbar.close")}" aria-label="${t("toolbar.close")}">&#x2715;</button>
             </div>
             <div class="fbk-sidebar-head-row">
               <div class="fbk-sidebar-meta">
                 <span class="fbk-project-name fbk-caption" id="fbk-project-name" title="${escapeHtml(projectName)}">${escapeHtml(projectName)}</span>
                 ${fixedEnvLabel ? `<span class="fbk-env-label fbk-caption" title="${t("toolbar.envFixedTitle")}">&middot; ${escapeHtml(fixedEnvLabel)}</span>` : `<select class="fbk-input fbk-env-select" id="fbk-env" title="${t("toolbar.envSwitchTitle")}">
+                <option value="all">${t("toolbar.envAll")}</option>
                 <option value="local">${t("toolbar.envLocal")}</option>
                 <option value="staging">${t("toolbar.envStaging")}</option>
                 <option value="production">${t("toolbar.envProduction")}</option>
@@ -2104,6 +2109,11 @@
       /** True when the page, the host config or a saved choice named an environment — the server's
        *  origin-resolved answer is then advisory and must not override it. */
       this.environmentExplicit = false;
+      /** True when the toolbar's environment select is on "All" — comments are fetched unfiltered
+       *  (no `?environment=` query param) across every environment. Independent of environmentInt/
+       *  environmentAttr, which keep tracking the actual (resolved or last-picked) environment so a
+       *  NEW comment composed while viewing "All" still gets tagged with a real environment, not "all". */
+      this.viewAllEnvironments = false;
       this.comments = [];
       this.statusFilter = "all";
       this.mineOnly = false;
@@ -2211,10 +2221,12 @@
       }
       if (!this.hasFixedEnvironment) {
         try {
-          const savedEnv = localStorage.getItem("pointer_env_" + this.project);
-          if (savedEnv && ENV_MAP[savedEnv.toLowerCase()]) {
-            this.environmentAttr = savedEnv.toLowerCase();
-            this.environmentInt = ENV_MAP[savedEnv.toLowerCase()];
+          const savedEnv = (localStorage.getItem("pointer_env_" + this.project) || "").toLowerCase();
+          if (savedEnv === "all") {
+            this.viewAllEnvironments = true;
+          } else if (savedEnv && ENV_MAP[savedEnv]) {
+            this.environmentAttr = savedEnv;
+            this.environmentInt = ENV_MAP[savedEnv];
             this.environmentExplicit = true;
           }
         } catch (e) {
@@ -2698,11 +2710,13 @@
         if (!this.environmentExplicit && typeof resolved === "number" && ENV_NAME[resolved] && resolved !== this.environmentInt) {
           this.environmentInt = resolved;
           this.environmentAttr = ENV_NAME[resolved];
-          const envSel = this.root && this.root.querySelector("#fbk-env");
-          if (envSel && "value" in envSel) envSel.value = this.environmentAttr;
-          const envLabel = this.root && this.root.querySelector(".fbk-env-label");
-          if (envLabel) envLabel.textContent = "· " + this.envDisplayLabel(this.environmentAttr);
-          await this.fetchComments();
+          if (!this.viewAllEnvironments) {
+            const envSel = this.root && this.root.querySelector("#fbk-env");
+            if (envSel && "value" in envSel) envSel.value = this.environmentAttr;
+            const envLabel = this.root && this.root.querySelector(".fbk-env-label");
+            if (envLabel) envLabel.textContent = "· " + this.envDisplayLabel(this.environmentAttr);
+            await this.fetchComments();
+          }
         }
         this.commitStyle = typeof ((_d = envelope == null ? void 0 : envelope.data) == null ? void 0 : _d.commitStyle) === "number" ? envelope.data.commitStyle : 1;
         this.canEditSettings = !!((_e = envelope == null ? void 0 : envelope.data) == null ? void 0 : _e.canEditSettings);
@@ -2715,14 +2729,19 @@
         this.captureTextContent = true;
       }
     }
-    // Patches the already-rendered header label in place rather than a full renderChrome() —
-    // re-rendering chrome here would drop the sidebar's open/closed state mid-session.
+    // Patches the already-rendered header label (and the "{project} comments" heading, which
+    // embeds the same name) in place rather than a full renderChrome() — re-rendering chrome here
+    // would drop the sidebar's open/closed state mid-session. Needed because the initial
+    // renderChrome() runs before fetchCaptureConfig() resolves the real project name, so both
+    // start out showing the raw project key as a fallback.
     updateProjectNameLabel() {
       const el = this.root && this.root.querySelector("#fbk-project-name");
       if (el) {
         el.textContent = this.projectName;
         el.setAttribute("title", this.projectName);
       }
+      const heading = this.root && this.root.querySelector("#fbk-comments-heading");
+      if (heading) heading.textContent = t("toolbar.commentsHeading", { project: this.projectName });
     }
     // /capture-config resolves AFTER the first renderChrome() (which assumed the switcher was
     // visible), so if it turns out this caller should NOT see it, swap the already-rendered
@@ -2884,7 +2903,8 @@
     }
     async fetchComments() {
       try {
-        const r = await this.api(`/api/projects/${encodeURIComponent(this.project)}/comments?environment=${this.environmentInt}`);
+        const envQuery = this.viewAllEnvironments ? "" : `?environment=${this.environmentInt}`;
+        const r = await this.api(`/api/projects/${encodeURIComponent(this.project)}/comments${envQuery}`);
         if (r.status === 409 || r.status === 404) {
           this.disableSilently();
           return;
@@ -2964,7 +2984,7 @@
       this.root.querySelector("#fbk-close").addEventListener("click", () => this.toggleSidebar(false));
       const envSel = this.root.querySelector("#fbk-env");
       if (envSel) {
-        envSel.value = (this.environmentAttr || ENV_NAME[this.environmentInt] || "staging").toLowerCase();
+        envSel.value = this.viewAllEnvironments ? "all" : (this.environmentAttr || ENV_NAME[this.environmentInt] || "staging").toLowerCase();
         envSel.addEventListener("change", () => this.setEnvironment(envSel.value));
       }
       const resetBtn = this.root.querySelector("#fbk-reset-pos");
@@ -2975,9 +2995,27 @@
     }
     // Switch the active environment from the toolbar. Comments are environment-scoped, so this
     // re-queries the server and re-renders; the choice is remembered per project on this origin.
+    // "all" is a widget-only filter state (see viewAllEnvironments' field doc) — it doesn't touch
+    // environmentAttr/environmentInt, which keep tracking the real environment for tagging new
+    // comments composed while every environment is shown.
     setEnvironment(env) {
       const key = (env || "").toLowerCase();
-      if (!ENV_MAP[key] || key === this.environmentAttr.toLowerCase()) return;
+      if (key === "all") {
+        if (this.viewAllEnvironments) return;
+        this.viewAllEnvironments = true;
+        try {
+          localStorage.setItem("pointer_env_" + this.project, "all");
+        } catch (e) {
+        }
+        if (!this.token) return;
+        this.fetchComments().then(() => {
+          this.renderSidebar();
+          this.renderPins();
+        });
+        return;
+      }
+      if (!ENV_MAP[key] || !this.viewAllEnvironments && key === this.environmentAttr.toLowerCase()) return;
+      this.viewAllEnvironments = false;
       this.environmentAttr = key;
       this.environmentInt = ENV_MAP[key];
       try {
