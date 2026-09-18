@@ -235,6 +235,55 @@
   padding-block: 0;
   padding-inline: 2px;
 }
+// Kebab trigger at the top-end of a card (see .fbk-actions-end above for its wrapper) —
+// visually identical to any other .fbk-mini.fbk-icon button, just semantically distinct.
+.fbk-card-kebab[aria-expanded='true'] {
+  background: v.token('surface-hover');
+}
+// Dropdown opened by the kebab (see element.ts's toggleCardMenu) — same portal/positioning
+// approach as .fbk-pin-cluster-menu, kept separate so the two can diverge independently.
+.fbk-card-menu {
+  position: fixed;
+  z-index: 2147483647;
+  min-width: 170px;
+  background: v.token('surface');
+  border: 1px solid v.token('border');
+  border-radius: v.token('radius');
+  box-shadow: 0 8px 24px v.token('shadow');
+  padding: 6px;
+  pointer-events: auto;
+}
+.fbk-card-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  padding: 8px;
+  border-radius: v.token('radius-sm');
+  font-size: 13px;
+  font-weight: 600;
+  color: v.token('text');
+  text-align: start;
+}
+.fbk-card-menu-item:hover {
+  background: v.token('surface-muted');
+}
+.fbk-card-menu-item.danger {
+  color: v.token('danger');
+}
+.fbk-card-menu-item.danger:hover {
+  background: v.token('danger-bg');
+  color: v.token('danger-strong');
+}
+// Delete's two-step "confirm?" row (see confirmDelete) replaces this item in place, so it needs
+// the same full-width flex wrapper as the card's old .fbk-actions-end, just scoped to the menu.
+.fbk-card-menu-delete-row {
+  margin-inline-start: 0;
+}
+
 // Private comment — the lock toggle is tinted red while the comment is private.
 .fbk-mini.private-on {
   background: v.token('danger-bg-2');

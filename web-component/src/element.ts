@@ -136,6 +136,7 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
   private _onVisibilityChange: (() => void) | null = null;
   private _userMenuClose: ((e: MouseEvent) => void) | null = null;
   private _clusterMenuClose: ((e: MouseEvent) => void) | null = null;
+  private _cardMenuClose: ((e: MouseEvent) => void) | null = null;
   private _recordingShortcut = false;
   private _shortcutRecordingCleanup: (() => void) | null = null;
   private _backdropObserver: MutationObserver | null = null;
@@ -1175,6 +1176,7 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
   private toggleUserMenu(): void {
     this.closeUpdatesMenu();
     this.closeClusterMenu();
+    this.closeCardMenu();
     const host = this.root.querySelector('#fbk-menu-host') as HTMLElement | null;
     if (!host) return;
     if (host.querySelector('#fbk-user-menu')) { this.closeUserMenu(); return; }
@@ -1280,6 +1282,7 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
     }
     this.closeUserMenu();
     this.closeClusterMenu();
+    this.closeCardMenu();
 
     const items = await this.apiNotifications();
     if (this.unreadNotifyCount > 0) {
@@ -2175,6 +2178,7 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
         throw new Error((body && body.message) || ('HTTP ' + r.status));
       }
       this.comments = this.comments.filter((c) => String(c.id) !== String(id));
+      this.closeCardMenu();
       this.renderSidebar(); this.renderPins();
       this.toast(t('toast.deleted'));
     } catch (e) {
@@ -2491,11 +2495,12 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
       const c = this.comments.find((x) => String(x.id) === String(b.dataset.id));
       if (c && c.status !== 'applied') this.markCompleted(c);
     }));
-    list.querySelectorAll<HTMLElement>('[data-act="delete"]').forEach((b) => b.addEventListener('click', () => this.confirmDelete(b)));
-    list.querySelectorAll<HTMLElement>('[data-act="edit"]').forEach((b) => b.addEventListener('click', () => this.startEdit(b.dataset.id!)));
-    list.querySelectorAll<HTMLElement>('[data-act="visibility"]').forEach((b) => b.addEventListener('click', () => {
+    // Private/public, edit, and delete now live in the kebab menu at the top-end of the card
+    // (see cardMenu template + toggleCardMenu) instead of separate inline buttons.
+    list.querySelectorAll<HTMLElement>('[data-act="card-menu"]').forEach((b) => b.addEventListener('click', (e) => {
+      e.stopPropagation();
       const c = this.comments.find((x) => String(x.id) === String(b.dataset.id));
-      if (c) this.setVisibility(c, b.dataset.private === 'true');
+      if (c) this.toggleCardMenu(b, c);
     }));
     list.querySelectorAll<HTMLElement>('[data-act="reopen"]').forEach((b) => b.addEventListener('click', () => {
       const c = this.comments.find((x) => String(x.id) === String(b.dataset.id));
@@ -2667,6 +2672,7 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
     if (host.querySelector('#fbk-pin-cluster-menu')) { this.closeClusterMenu(); return; }
     this.closeUserMenu();
     this.closeUpdatesMenu();
+    this.closeCardMenu();
     if (comments.length === 0) return;
 
     host.innerHTML = TPL.pinClusterMenu(comments);
@@ -2714,6 +2720,79 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
     if (this._clusterMenuClose) {
       document.removeEventListener('click', this._clusterMenuClose, true);
       this._clusterMenuClose = null;
+    }
+  }
+
+  // --- Card actions menu (kebab menu: private/public, edit, delete) --------
+  private toggleCardMenu(btn: HTMLElement, c: Comment): void {
+    const host = this.root.querySelector('#fbk-menu-host') as HTMLElement | null;
+    if (!host) return;
+    if (host.querySelector('#fbk-card-menu')) { this.closeCardMenu(); return; }
+    this.closeUserMenu();
+    this.closeUpdatesMenu();
+    this.closeClusterMenu();
+
+    host.innerHTML = TPL.cardMenu(c);
+    const menu = host.querySelector('#fbk-card-menu') as HTMLElement | null;
+    if (!menu) return;
+    btn.setAttribute('aria-expanded', 'true');
+
+    // Same anchor-above-or-below-the-trigger logic as the pin cluster menu — this button can sit
+    // anywhere in a scrollable sidebar, so it's measured from its own rect, not the toolbar's.
+    const r = btn.getBoundingClientRect();
+    const menuHeight = menu.offsetHeight;
+    const spaceBelow = window.innerHeight - r.bottom;
+    if (spaceBelow < menuHeight + 6 && r.top > spaceBelow) {
+      menu.style.top = 'auto';
+      menu.style.bottom = `${Math.max(8, Math.round(window.innerHeight - r.top + 6))}px`;
+    } else {
+      menu.style.bottom = 'auto';
+      menu.style.top = `${Math.round(r.bottom + 6)}px`;
+    }
+    menu.style.right = `${Math.max(8, Math.round(window.innerWidth - r.right))}px`;
+
+    const visBtn = menu.querySelector('[data-menu-act="visibility"]') as HTMLElement | null;
+    if (visBtn) {
+      visBtn.addEventListener('click', () => {
+        this.closeCardMenu();
+        this.setVisibility(c, visBtn.dataset.private === 'true');
+      });
+    }
+    const editBtn = menu.querySelector('[data-menu-act="edit"]') as HTMLElement | null;
+    if (editBtn) {
+      editBtn.addEventListener('click', () => {
+        this.closeCardMenu();
+        this.startEdit(String(c.id));
+      });
+    }
+    // Delete keeps the existing two-step "confirm?" UI, which replaces the row it lives in —
+    // that row is this menu's own delete item wrapper (see cardMenu's `.fbk-actions-end` div) —
+    // so confirming/cancelling happens inline in the still-open menu, and only a successful
+    // delete (deleteComment) closes the menu, via its own closeCardMenu() call.
+    const delBtn = menu.querySelector('[data-menu-act="delete"]') as HTMLElement | null;
+    if (delBtn) {
+      delBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        this.confirmDelete(delBtn);
+      });
+    }
+
+    this._cardMenuClose = (e: MouseEvent) => {
+      const path = e.composedPath();
+      if (!path.includes(menu) && !path.includes(btn)) this.closeCardMenu();
+    };
+    setTimeout(() => { if (this._cardMenuClose) document.addEventListener('click', this._cardMenuClose, true); }, 0);
+  }
+
+  private closeCardMenu(): void {
+    const host = this.root.querySelector('#fbk-menu-host');
+    if (host && host.querySelector('#fbk-card-menu')) {
+      host.innerHTML = '';
+      this.root.querySelectorAll('.fbk-card-kebab[aria-expanded="true"]').forEach((b) => b.setAttribute('aria-expanded', 'false'));
+    }
+    if (this._cardMenuClose) {
+      document.removeEventListener('click', this._cardMenuClose, true);
+      this._cardMenuClose = null;
     }
   }
 

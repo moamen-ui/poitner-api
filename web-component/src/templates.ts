@@ -215,6 +215,17 @@ export const TPL = {
              ${authors.map((a) => `<option value="${escapeHtml(a.id)}" ${a.id === selectedId ? 'selected' : ''}>${escapeHtml(a.name)}</option>`).join('')}
            </select>`,
 
+  // Kebab-menu dropdown for a comment card's own actions (private/public, edit, delete) —
+  // rendered into the shared portal host (#fbk-menu-host), anchored under the card's kebab
+  // button by toggleCardMenu. Visibility/edit are owner-only; delete only while still open
+  // (matches the previous inline buttons' conditions exactly, just relocated).
+  cardMenu: (c: Comment) => `
+        <div class="fbk-card-menu" id="fbk-card-menu" role="menu">
+          ${c._mine ? `<button type="button" class="fbk-card-menu-item" data-menu-act="visibility" data-private="${c.isPrivate ? 'false' : 'true'}" role="menuitem">${c.isPrivate ? ICON.unlock : ICON.lock}<span>${c.isPrivate ? t('card.makePublic') : t('card.makePrivate')}</span></button>` : ''}
+          ${c._mine ? `<button type="button" class="fbk-card-menu-item" data-menu-act="edit" role="menuitem">${ICON.pencil}<span>${t('card.edit')}</span></button>` : ''}
+          ${c.status === 'open' ? `<div class="fbk-actions-end fbk-card-menu-delete-row"><button type="button" class="fbk-card-menu-item danger" data-menu-act="delete" data-id="${c.id}" role="menuitem">${ICON.trash}<span>${t('card.delete')}</span></button></div>` : ''}
+        </div>`,
+
   card: (c: Comment, i: number, isQuickAccess?: boolean) => {
     const cls = c.status === 'pending-apply' ? 'pending' : c.status === 'applied' ? 'applied' : c.status === 'archived' ? 'archived' : '';
     // "completed" means a developer applied it; "live" means it is actually on the site. Those
@@ -309,10 +320,9 @@ export const TPL = {
               ${verifiedPill}
               ${verifyGroup}
               ${commitLink}
-              <div class="fbk-actions-end">
-                ${c._mine ? `<button class="fbk-mini fbk-icon${c.isPrivate ? ' private-on' : ''}" data-act="visibility" data-id="${c.id}" data-private="${c.isPrivate ? 'false' : 'true'}" title="${c.isPrivate ? t('card.privateClickToMakePublic') : t('card.makePrivateOnlyYou')}" aria-label="${c.isPrivate ? t('card.makePublic') : t('card.makePrivate')}">${c.isPrivate ? ICON.lock : ICON.unlock}</button>` : ''}
-                ${c.status === 'open' ? `<button class="fbk-mini danger fbk-icon" data-act="delete" data-id="${c.id}" title="${t('card.delete')}" aria-label="${t('card.delete')}">${ICON.trash}</button>` : ''}
-              </div>
+              ${(c._mine || c.status === 'open') ? `<div class="fbk-actions-end">
+                <button class="fbk-mini fbk-icon fbk-card-kebab" data-act="card-menu" data-id="${c.id}" title="${t('card.moreActions')}" aria-label="${t('card.moreActions')}" aria-haspopup="true" aria-expanded="false">${ICON.kebab}</button>
+              </div>` : ''}
             </div>
             <div class="fbk-text">${escapeHtml(c.body || c.text || '')}</div>
             ${shot}
@@ -330,7 +340,6 @@ export const TPL = {
               ${(!isQuickAccess && c.status === 'applied') ? `<button class="fbk-mini ready" data-act="reopen" data-id="${c.id}" title="${t('card.reopen')}">${ICON.reopen}<span>${t('card.reopen')}</span></button>
               <button class="fbk-mini fbk-icon" data-act="archive" data-id="${c.id}" title="${t('card.archive')}" aria-label="${t('card.archive')}">${ICON.archive}</button>` : ''}
               ${(!isQuickAccess && c.status === 'archived') ? `<button class="fbk-mini ready" data-act="reopen" data-id="${c.id}" title="${t('card.reopen')}">${ICON.reopen}<span>${t('card.reopen')}</span></button>` : ''}
-              ${c._mine ? `<div class="fbk-actions-end"><button class="fbk-mini fbk-icon" data-act="edit" data-id="${c.id}" title="${t('card.edit')}" aria-label="${t('card.edit')}">${ICON.pencil}</button></div>` : ''}
             </div>
           </div>`;
   },

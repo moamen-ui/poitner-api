@@ -1012,6 +1012,55 @@
   padding-inline: 2px;
 }
 
+.fbk-card-kebab[aria-expanded=true] {
+  background: var(--fbk-surface-hover, #f3f4f6);
+}
+
+.fbk-card-menu {
+  position: fixed;
+  z-index: 2147483647;
+  min-width: 170px;
+  background: var(--fbk-surface, #fff);
+  border: 1px solid var(--fbk-border, #d0d7de);
+  border-radius: var(--fbk-radius, 8px);
+  box-shadow: 0 8px 24px var(--fbk-shadow, rgba(0, 0, 0, 0.12));
+  padding: 6px;
+  pointer-events: auto;
+}
+
+.fbk-card-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  padding: 8px;
+  border-radius: var(--fbk-radius-sm, 6px);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--fbk-text, #1f2328);
+  text-align: start;
+}
+
+.fbk-card-menu-item:hover {
+  background: var(--fbk-surface-muted, #eaeef2);
+}
+
+.fbk-card-menu-item.danger {
+  color: var(--fbk-danger, #dc2626);
+}
+
+.fbk-card-menu-item.danger:hover {
+  background: var(--fbk-danger-bg, #fef2f2);
+  color: var(--fbk-danger-strong, #b91c1c);
+}
+
+.fbk-card-menu-delete-row {
+  margin-inline-start: 0;
+}
+
 .fbk-mini.private-on {
   background: var(--fbk-danger-bg-2, #fee2e2);
   color: var(--fbk-danger-strong, #b91c1c);

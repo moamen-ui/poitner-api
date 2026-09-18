@@ -309,7 +309,7 @@
   var SHOT_HIGHLIGHT = "#2563eb";
   var _a;
   var SCRIPT_SRC = ((_a = document.currentScript) == null ? void 0 : _a.src) || "";
-  var CSS_INTEGRITY = true ? "sha384-7mtsmkmpbA4262br89SwkVtQpqzkaMdQCmdLyWA4NfnGPeBU/6o5JQzIBkBHSVus" : "";
+  var CSS_INTEGRITY = true ? "sha384-xX6/jjS5rLtovoWscH5ktKTBoOpR4fxRJWEHGA/TD5343iNt2OpiMnzQmqic1Pj7" : "";
   function resolveCssUrl(scriptSrc) {
     var _a2;
     if (!scriptSrc) return "pointer.css";
@@ -469,6 +469,8 @@
 
   // src/icons.ts
   var ICON = {
+    // Vertical "more actions" kebab — three stacked dots, same filled-circle style as `grip`.
+    kebab: '<svg viewBox="0 0 16 16" width="14" height="14" fill="currentColor" stroke="none"><circle cx="8" cy="3.2" r="1.3"/><circle cx="8" cy="8" r="1.3"/><circle cx="8" cy="12.8" r="1.3"/></svg>',
     flag: '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><line x1="4" y1="22" x2="4" y2="15"/></svg>',
     check: '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>',
     // Plain checkmark (no circle) — for compact confirm actions like "confirm delete".
@@ -730,6 +732,7 @@
       "card.archive": "Archive",
       "card.edit": "Edit",
       "card.delete": "Delete",
+      "card.moreActions": "More actions",
       "card.envLocal": "Local",
       "card.envStaging": "Staging",
       "card.envProduction": "Production",
@@ -932,6 +935,7 @@
       "card.archive": "أرشفة",
       "card.edit": "تعديل",
       "card.delete": "حذف",
+      "card.moreActions": "المزيد من الإجراءات",
       "card.envLocal": "محلي",
       "card.envStaging": "الاختبار",
       "card.envProduction": "الإنتاج",
@@ -1199,6 +1203,16 @@
              <option value="">&#x1f465; ${t("sidebar.allUsers")}</option>
              ${authors.map((a) => `<option value="${escapeHtml(a.id)}" ${a.id === selectedId ? "selected" : ""}>${escapeHtml(a.name)}</option>`).join("")}
            </select>`,
+    // Kebab-menu dropdown for a comment card's own actions (private/public, edit, delete) —
+    // rendered into the shared portal host (#fbk-menu-host), anchored under the card's kebab
+    // button by toggleCardMenu. Visibility/edit are owner-only; delete only while still open
+    // (matches the previous inline buttons' conditions exactly, just relocated).
+    cardMenu: (c) => `
+        <div class="fbk-card-menu" id="fbk-card-menu" role="menu">
+          ${c._mine ? `<button type="button" class="fbk-card-menu-item" data-menu-act="visibility" data-private="${c.isPrivate ? "false" : "true"}" role="menuitem">${c.isPrivate ? ICON.unlock : ICON.lock}<span>${c.isPrivate ? t("card.makePublic") : t("card.makePrivate")}</span></button>` : ""}
+          ${c._mine ? `<button type="button" class="fbk-card-menu-item" data-menu-act="edit" role="menuitem">${ICON.pencil}<span>${t("card.edit")}</span></button>` : ""}
+          ${c.status === "open" ? `<div class="fbk-actions-end fbk-card-menu-delete-row"><button type="button" class="fbk-card-menu-item danger" data-menu-act="delete" data-id="${c.id}" role="menuitem">${ICON.trash}<span>${t("card.delete")}</span></button></div>` : ""}
+        </div>`,
     card: (c, i, isQuickAccess) => {
       const cls = c.status === "pending-apply" ? "pending" : c.status === "applied" ? "applied" : c.status === "archived" ? "archived" : "";
       const statusPill = c.status === "applied" && c.deployedAt ? `<span class="fbk-pill status-applied" title="${escapeHtml(t("card.deployedIn", { sha: (c.deployedSha || "").slice(0, 7) }))}">&#x2713; ${t("card.live")}</span>` : c.status === "applied" ? `<span class="fbk-pill status-applied">&#x2713; ${t("card.completed")}</span>` : c.status === "pending-apply" ? `<span class="fbk-pill status-pending">${t("card.pending")}</span>` : c.status === "archived" ? `<span class="fbk-pill status-archived">&#x1f4e6; ${t("card.archived")}</span>` : "";
@@ -1258,10 +1272,9 @@
               ${verifiedPill}
               ${verifyGroup}
               ${commitLink}
-              <div class="fbk-actions-end">
-                ${c._mine ? `<button class="fbk-mini fbk-icon${c.isPrivate ? " private-on" : ""}" data-act="visibility" data-id="${c.id}" data-private="${c.isPrivate ? "false" : "true"}" title="${c.isPrivate ? t("card.privateClickToMakePublic") : t("card.makePrivateOnlyYou")}" aria-label="${c.isPrivate ? t("card.makePublic") : t("card.makePrivate")}">${c.isPrivate ? ICON.lock : ICON.unlock}</button>` : ""}
-                ${c.status === "open" ? `<button class="fbk-mini danger fbk-icon" data-act="delete" data-id="${c.id}" title="${t("card.delete")}" aria-label="${t("card.delete")}">${ICON.trash}</button>` : ""}
-              </div>
+              ${c._mine || c.status === "open" ? `<div class="fbk-actions-end">
+                <button class="fbk-mini fbk-icon fbk-card-kebab" data-act="card-menu" data-id="${c.id}" title="${t("card.moreActions")}" aria-label="${t("card.moreActions")}" aria-haspopup="true" aria-expanded="false">${ICON.kebab}</button>
+              </div>` : ""}
             </div>
             <div class="fbk-text">${escapeHtml(c.body || c.text || "")}</div>
             ${shot}
@@ -1279,7 +1292,6 @@
               ${!isQuickAccess && c.status === "applied" ? `<button class="fbk-mini ready" data-act="reopen" data-id="${c.id}" title="${t("card.reopen")}">${ICON.reopen}<span>${t("card.reopen")}</span></button>
               <button class="fbk-mini fbk-icon" data-act="archive" data-id="${c.id}" title="${t("card.archive")}" aria-label="${t("card.archive")}">${ICON.archive}</button>` : ""}
               ${!isQuickAccess && c.status === "archived" ? `<button class="fbk-mini ready" data-act="reopen" data-id="${c.id}" title="${t("card.reopen")}">${ICON.reopen}<span>${t("card.reopen")}</span></button>` : ""}
-              ${c._mine ? `<div class="fbk-actions-end"><button class="fbk-mini fbk-icon" data-act="edit" data-id="${c.id}" title="${t("card.edit")}" aria-label="${t("card.edit")}">${ICON.pencil}</button></div>` : ""}
             </div>
           </div>`;
     },
@@ -2161,6 +2173,7 @@
       this._onVisibilityChange = null;
       this._userMenuClose = null;
       this._clusterMenuClose = null;
+      this._cardMenuClose = null;
       this._recordingShortcut = false;
       this._shortcutRecordingCleanup = null;
       this._backdropObserver = null;
@@ -3102,6 +3115,7 @@
     toggleUserMenu() {
       this.closeUpdatesMenu();
       this.closeClusterMenu();
+      this.closeCardMenu();
       const host = this.root.querySelector("#fbk-menu-host");
       if (!host) return;
       if (host.querySelector("#fbk-user-menu")) {
@@ -3196,6 +3210,7 @@
       }
       this.closeUserMenu();
       this.closeClusterMenu();
+      this.closeCardMenu();
       const items = await this.apiNotifications();
       if (this.unreadNotifyCount > 0) {
         await this.apiMarkAllNotificationsRead();
@@ -4020,6 +4035,7 @@
           throw new Error(body && body.message || "HTTP " + r.status);
         }
         this.comments = this.comments.filter((c) => String(c.id) !== String(id));
+        this.closeCardMenu();
         this.renderSidebar();
         this.renderPins();
         this.toast(t("toast.deleted"));
@@ -4323,11 +4339,10 @@
         const c = this.comments.find((x) => String(x.id) === String(b.dataset.id));
         if (c && c.status !== "applied") this.markCompleted(c);
       }));
-      list.querySelectorAll('[data-act="delete"]').forEach((b) => b.addEventListener("click", () => this.confirmDelete(b)));
-      list.querySelectorAll('[data-act="edit"]').forEach((b) => b.addEventListener("click", () => this.startEdit(b.dataset.id)));
-      list.querySelectorAll('[data-act="visibility"]').forEach((b) => b.addEventListener("click", () => {
+      list.querySelectorAll('[data-act="card-menu"]').forEach((b) => b.addEventListener("click", (e) => {
+        e.stopPropagation();
         const c = this.comments.find((x) => String(x.id) === String(b.dataset.id));
-        if (c) this.setVisibility(c, b.dataset.private === "true");
+        if (c) this.toggleCardMenu(b, c);
       }));
       list.querySelectorAll('[data-act="reopen"]').forEach((b) => b.addEventListener("click", () => {
         const c = this.comments.find((x) => String(x.id) === String(b.dataset.id));
@@ -4472,6 +4487,7 @@
       }
       this.closeUserMenu();
       this.closeUpdatesMenu();
+      this.closeCardMenu();
       if (comments.length === 0) return;
       host.innerHTML = TPL.pinClusterMenu(comments);
       const menu = host.querySelector("#fbk-pin-cluster-menu");
@@ -4512,6 +4528,72 @@
       if (this._clusterMenuClose) {
         document.removeEventListener("click", this._clusterMenuClose, true);
         this._clusterMenuClose = null;
+      }
+    }
+    // --- Card actions menu (kebab menu: private/public, edit, delete) --------
+    toggleCardMenu(btn, c) {
+      const host = this.root.querySelector("#fbk-menu-host");
+      if (!host) return;
+      if (host.querySelector("#fbk-card-menu")) {
+        this.closeCardMenu();
+        return;
+      }
+      this.closeUserMenu();
+      this.closeUpdatesMenu();
+      this.closeClusterMenu();
+      host.innerHTML = TPL.cardMenu(c);
+      const menu = host.querySelector("#fbk-card-menu");
+      if (!menu) return;
+      btn.setAttribute("aria-expanded", "true");
+      const r = btn.getBoundingClientRect();
+      const menuHeight = menu.offsetHeight;
+      const spaceBelow = window.innerHeight - r.bottom;
+      if (spaceBelow < menuHeight + 6 && r.top > spaceBelow) {
+        menu.style.top = "auto";
+        menu.style.bottom = `${Math.max(8, Math.round(window.innerHeight - r.top + 6))}px`;
+      } else {
+        menu.style.bottom = "auto";
+        menu.style.top = `${Math.round(r.bottom + 6)}px`;
+      }
+      menu.style.right = `${Math.max(8, Math.round(window.innerWidth - r.right))}px`;
+      const visBtn = menu.querySelector('[data-menu-act="visibility"]');
+      if (visBtn) {
+        visBtn.addEventListener("click", () => {
+          this.closeCardMenu();
+          this.setVisibility(c, visBtn.dataset.private === "true");
+        });
+      }
+      const editBtn = menu.querySelector('[data-menu-act="edit"]');
+      if (editBtn) {
+        editBtn.addEventListener("click", () => {
+          this.closeCardMenu();
+          this.startEdit(String(c.id));
+        });
+      }
+      const delBtn = menu.querySelector('[data-menu-act="delete"]');
+      if (delBtn) {
+        delBtn.addEventListener("click", (e) => {
+          e.stopPropagation();
+          this.confirmDelete(delBtn);
+        });
+      }
+      this._cardMenuClose = (e) => {
+        const path = e.composedPath();
+        if (!path.includes(menu) && !path.includes(btn)) this.closeCardMenu();
+      };
+      setTimeout(() => {
+        if (this._cardMenuClose) document.addEventListener("click", this._cardMenuClose, true);
+      }, 0);
+    }
+    closeCardMenu() {
+      const host = this.root.querySelector("#fbk-menu-host");
+      if (host && host.querySelector("#fbk-card-menu")) {
+        host.innerHTML = "";
+        this.root.querySelectorAll('.fbk-card-kebab[aria-expanded="true"]').forEach((b) => b.setAttribute("aria-expanded", "false"));
+      }
+      if (this._cardMenuClose) {
+        document.removeEventListener("click", this._cardMenuClose, true);
+        this._cardMenuClose = null;
       }
     }
     // --- Toast ---------------------------------------------------------------
