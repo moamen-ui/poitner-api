@@ -1,5 +1,5 @@
 // e2e/landing/landing.spec.ts
-// Automated scenarios R3-06-01 ... R3-06-05, R3-06-07 from docs/roadmap/testing/R3-06-tests.md
+// Automated scenarios R3-06-01 ... R3-06-05, R3-06-07 from docs/roadmap/LANDING-PLAN.md (Part 3 — Test scenarios)
 import { test, expect } from '@playwright/test';
 import { get, put, login } from '../scripts/lib/api.mjs';
 import { credentials as loadCredentials } from '../scripts/lib/state.mjs';

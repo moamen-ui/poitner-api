@@ -130,7 +130,7 @@ Read before estimating anything — several items are *wiring*, not features.
 | R3.3 | **NEW-3** widget release engineering — immutable `pointer.js?v=<sha>`, short-TTL `stable`, SRI snippet, deploy smoke, **≤ 60 KB gz** budget in CI, CSP note (constructed `CSSStyleSheet` for nonce-strict hosts) | 3–4 d |
 | R3.4 | **§33-lite** DOM-snapshot privacy — drop `value` of `input/textarea/select` in `shallowSnapshot`; `data-snapshot-mask` → `•••`; per-project "no text content" toggle | 2–3 d |
 | R3.5 | **NEW-6** public privacy / self-host page (what is captured, retention, deletion, self-host = your Postgres) | ½ d |
-| R3.6 | **§53 landing-page refresh** — rebuild the page's *argument* around the real thesis (an AI tool is only as good as the feedback it receives): the structured brief a comment carries as the second-screen proof, the loop ending at a commit URL, objection handling, and a token claim with **no invented figure**. PRD: [`prd/LANDING-PRD.md`](prd/LANDING-PRD.md). Also retires `landing/v2/`. | 3–4 d |
+| R3.6 | **§53 landing-page refresh** — rebuild the page's *argument* around the real thesis (an AI tool is only as good as the feedback it receives): the structured brief a comment carries as the second-screen proof, the loop ending at a commit URL, objection handling, and a token claim with **no invented figure**. Plan: [`LANDING-PLAN.md`](LANDING-PLAN.md). Also retires `landing/v2/`. | 3–4 d |
 
 ### Hold list (item → un-hold trigger)
 
@@ -332,8 +332,7 @@ Today: tier 1 `data-component-source` attr → tier 2 dev-mode fiber/Vue interna
     written before the fix shipped** — so no percentage goes on the page until the telemetry is re-run
     against the shipped path. Each item's `## Docs` section names the landing sentence it unblocks, so
     the page changes with the feature rather than drifting into fiction.
-    Spec: [`execution/R3-06-landing-refresh.md`](execution/R3-06-landing-refresh.md) ·
-    Tests: [`testing/R3-06-tests.md`](testing/R3-06-tests.md) · PRD: [`prd/LANDING-PRD.md`](prd/LANDING-PRD.md).
+    Plan (PRD + execution + tests, consolidated): [`LANDING-PLAN.md`](LANDING-PLAN.md).
 
 ### NEW items from review
 

@@ -1,5 +1,5 @@
 // e2e/landing/forbidden-claims.mjs
-// Derived from docs/roadmap/prd/LANDING-PRD.md §7 "Blocked — do not claim until the item ships".
+// Derived from docs/roadmap/LANDING-PLAN.md (Part 1 — PRD) §7 "Blocked — do not claim until the item ships".
 // When an item ships and unblocks a claim, its execution doc's ## Docs section removes the entry.
 
 export const FORBIDDEN_CLAIMS = [
