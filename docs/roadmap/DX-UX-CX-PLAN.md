@@ -133,6 +133,12 @@ Read before estimating anything — several items are *wiring*, not features.
 | R3.5 | **NEW-6** public privacy / self-host page (what is captured, retention, deletion, self-host = your Postgres) | ½ d |
 | R3.6 | **§53 landing-page refresh** — rebuild the page's *argument* around the real thesis (an AI tool is only as good as the feedback it receives): the structured brief a comment carries as the second-screen proof, the loop ending at a commit URL, objection handling, and a token claim with **no invented figure**. Plan: [`LANDING-PLAN.md`](LANDING-PLAN.md). Also retires `landing/v2/`. | 3–4 d |
 
+### Release 4 — context for the AI (opened 2026-09-22)
+
+| # | Item | Est. |
+|---|---|---|
+| R4.1 | **§54 admin-defined comment fields** — workspace admins define up to ten optional extra fields a comment can carry (text / url / select, allowed-host pattern, *suggested tool* hint); the widget offers them behind **"Add more fields"** in the composer and **"Edit fields"** in the card ⋯ menu; values in one `comments.custom_fields` jsonb, schema in one jsonb on a new one-row-per-workspace `workspace_settings` table (also the future home of the §32 webhook URL); apply prompt hands them to the AI with the hint ("Jira link → read the ticket if you have an Atlassian tool, else ask"); dashboard Settings → *Comment fields*. First instance: Jira ticket URL. Execution: [`execution/R4-01-comment-fields.md`](execution/R4-01-comment-fields.md). | 4–6 d |
+
 ### Hold list (item → un-hold trigger)
 
 §9 `apply --pr` → §42 done + a PR-based team · §11 batch-by-file → manifest live in prod · §14 @mentions → multiple repliers per thread · §15 template chips → widget polish sprint · §16 audit log → before first non-founder apply · §18 scoping rules → first Client-role commenter on prod · §19/§44 workspace fields + clients → first external workspace · §20 → **dissolved** into feature-attached wiring (email→`EmailsPerMonth`, retention job→`RetentionDays`, §35→`MaxEnvironments`) · §25 full scoped keys UI → first key in CI / committed config · §26 editor ext → Phase 4 stable + demand · §27 dedupe → queue noise reported · §28 before/after → **redesigned as manual attach**; stakeholders demand proof · §29 multi-element → hashes stable in prod · §30 changelog → §31 live · §32 webhooks → first "notify my tool" (**before email**) · §33 full (retention job, blur toggle, image delete UI) → first privacy-question customer · **project purge job** (physical delete of soft-deleted projects' rows + screenshot files, `RetentionDays`-driven; today delete is soft-only, `ProjectService.DeleteAsync`) → before NEW-6 can promise deletion · §35 preview environments (**days**, `ProjectAppUrl` rows) → §42 + §9 live · §36 board → ownership requested · §37 AI triage → comment volume · §38 QR / §39 bookmarklet → §13 adopted; CSP kills bookmarklets · §40 kill switch (flag → `disableSilently`) → first leaked key · §42 repo mapping → day before §9/§35/§43 · §43 cloud apply → CLI apply proven on 3+ repos (**a quarter**) · §46 nudge → vague-comment rate measured · §47 seeded demo (absorbs §23) → first signup without hand-holding · **full-app dashboard UX audit** (the React app (Angular/Vue retired 2026-09-15, branch `legacy/angular-vue`), every screen, `impeccable`-driven, incl. dark mode and RTL parity) → first external workspace, or the first user-reported usability complaint — until then each phase's dashboard-agent run does a UX pass scoped to the screens it touched · §49 badge → paid plans · email channel → trigger above.
@@ -177,7 +183,7 @@ Full §1 init (even with Next/monorepo on the skill path) · §24 MCP · Phase 4
 
 13. **Passwordless quick-access** — `Role.QuickAccess` + `Invite`: magic link → widget authed; link-copy delivery first.
 14. **Threaded replies + @mention** from CLI/dashboard. *(held)*
-15. **Comment templates as chips** (existing `PredefinedAction`s). *(held)*
+15. **Comment templates as chips** (existing `PredefinedAction`s). *(held)* · 54. **Admin-defined comment fields** (R4.1) — optional per-workspace extra fields on a comment with a suggested-tool hint for the AI; Jira ticket URL first; the CLI only *prints* the hint, never installs an MCP (install helper `pointer mcp suggest` = later stage 3, held: first customer with two AI tools).
 
 ### Phase 4 — Source-path resolution in production
 

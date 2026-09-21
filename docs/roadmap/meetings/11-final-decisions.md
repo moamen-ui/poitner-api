@@ -67,6 +67,8 @@ Rounds: 01–03 GLM review + debate · 04 Claude position · 05 agy review · 06
 
 **Cut**: §17 injection regex (→ S6 flag) · §23 fake terminal demo (→ §47).
 
+**Added after the meeting** — 2026-09-22, founder: **§54 admin-defined comment fields** (Release 4, R4.1; execution `execution/R4-01-comment-fields.md`): optional extra fields on a comment (first: Jira ticket URL) with a suggested-tool hint for the AI; workspace scope; jsonb values + jsonb schema; no first-class Jira integration.
+
 ## Cross-cutting rules (apply to every item)
 1. **Dashboard column**: every DTO/endpoint change lists its Orval regen + Angular UI task in the separate `pointer-dashboard` repo.
 2. **Additive-only EF migrations** while self-hosters exist; migrations run on boot.
