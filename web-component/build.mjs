@@ -30,7 +30,7 @@ const OUT_DIR = resolve(here, '../API/wwwroot');
 const watch = process.argv.includes('--watch');
 
 const BANNER = '/* GENERATED from web-component/src — DO NOT EDIT. Run `npm run build` in web-component/. */';
-const GZIP_BUDGET = 61440; // 60 KB
+const GZIP_BUDGET = 65536; // 64 KB; raised 2026-09-22 by R4-01 for admin-defined comment fields; NEW-3's original ceiling was 60 KB
 
 function compileCss() {
   const res = sass.compile(resolve(here, 'src/styles/index.scss'), { style: 'expanded' });

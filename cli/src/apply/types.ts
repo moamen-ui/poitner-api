@@ -85,6 +85,7 @@ export type QueueItem = {
   replies: QueueItemReply[];
   pickedActions: PickedActionDto[];
   aiRules: AiRuleApplyDto[];
+  customFields?: { key: string; label: string; type: number | string; value: string; suggestedTool?: string | null }[];
   isBugReport: boolean;
   pageContextId?: number | null;
   page?: ApplyPageDto;

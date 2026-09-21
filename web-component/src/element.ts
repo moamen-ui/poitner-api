@@ -13,7 +13,8 @@ import {
 import { type ThemeMode, detectSiteTheme } from './theme';
 import { type Lang, t, setLang, detectTextLanguageAsync } from './i18n';
 import { showLoginModal } from './auth-ui';
-import type { AuthorOption, Comment, Meta, NotificationItem, PointerHost, PredefinedActionOption, Reply, RoleOption, StatusStr, User } from './types';
+import type { AuthorOption, Comment, Meta, NotificationItem, PointerHost, PredefinedActionOption, Reply, RoleOption, StatusStr, User, CommentFieldDefinition } from './types';
+import { validateFieldValue, collectFieldValues, renderFieldInputs } from './fields';
 
 // TEMPORARY feature flag, per explicit request — hides the "commit style" project setting from
 // the sidebar entirely regardless of the caller's canEditSettings. Flip to true to restore it.
@@ -45,6 +46,7 @@ interface CreateCommentData extends Meta {
   predefinedActionIds?: number[];
   isBugReport: boolean;
   language?: string;
+  customFields?: import('./types').CommentFieldValue[];
 }
 
 export class PointerFeedback extends HTMLElement implements PointerHost {
@@ -107,6 +109,7 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
   // Project-level opt-in (default off), read once at init via /capture-config. Gates both whether
   // the widget buffers console/network events at all and whether "Report as a bug" is shown.
   pageContextCaptureEnabled = false;
+  commentFields: CommentFieldDefinition[] = [];
   // Per-project text capture toggle (default true until /capture-config resolves).
   // When false, the widget emits no text content in the DOM snapshot and masks pageTitle.
   captureTextContent = true;
@@ -754,6 +757,7 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
       const r = await this.api(`/api/projects/${encodeURIComponent(this.project)}/capture-config`);
       if (!r.ok) { this.pageContextCaptureEnabled = false; return; }
       const envelope = await r.json();
+      this.commentFields = envelope?.data?.commentFields ?? [];
       this.pageContextCaptureEnabled = !!(envelope && envelope.data && envelope.data.pageContextCaptureEnabled);
       if (envelope?.data && typeof envelope.data.captureTextContent === 'boolean') {
         this.captureTextContent = envelope.data.captureTextContent;
@@ -1747,7 +1751,7 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
     // ...) and starts rendering off-screen below the fold for a click near the bottom of the
     // page — unreachable, can't type or submit. Width IS fixed by CSS (280px), but measuring it
     // too costs nothing and stays correct if that ever changes.
-    host.innerHTML = TPL.popover(currentMeta, x, y, this.screenshotEnabled, this.predefinedActions, this.pageContextCaptureEnabled);
+    host.innerHTML = TPL.popover(currentMeta, x, y, this.screenshotEnabled, this.predefinedActions, this.pageContextCaptureEnabled, this.commentFields);
     // Position applied through the CSSOM, not a style attribute — see applyDataPosition.
     applyDataPosition(host, '.fbk-popover');
     const popoverEl = host.querySelector('.fbk-popover') as HTMLElement | null;
@@ -1930,9 +1934,70 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
       e.stopPropagation();
       cancelPopover();
     });
+    const moreFieldsBtn = host.querySelector('#fbk-more-fields') as HTMLButtonElement | null;
+    const extraFieldsDiv = host.querySelector('#fbk-extra-fields') as HTMLElement | null;
+    if (moreFieldsBtn && extraFieldsDiv) {
+      moreFieldsBtn.addEventListener('click', () => {
+        const isExpanded = moreFieldsBtn.getAttribute('aria-expanded') === 'true';
+        moreFieldsBtn.setAttribute('aria-expanded', String(!isExpanded));
+        moreFieldsBtn.textContent = !isExpanded ? t('fields.fewer') : t('fields.more');
+        extraFieldsDiv.hidden = isExpanded;
+        if (!isExpanded) {
+          const firstInput = extraFieldsDiv.querySelector('input, select') as HTMLElement;
+          if (firstInput) firstInput.focus();
+        }
+      });
+    }
+
     (host.querySelector('#fbk-submit') as HTMLButtonElement).addEventListener('click', async () => {
       const text = ta.value.trim();
       if (!text) return this.toast(t('popover.commentCannotBeEmpty'), 'error');
+      
+      let customFields: import('./types').CommentFieldValue[] | undefined = undefined;
+      let valMap: Record<string, string> = {};
+      if (extraFieldsDiv) {
+        extraFieldsDiv.querySelectorAll('.fbk-field-error').forEach(el => el.remove());
+        extraFieldsDiv.querySelectorAll('[aria-invalid="true"]').forEach(el => {
+          el.removeAttribute('aria-invalid');
+          el.removeAttribute('aria-describedby');
+        });
+
+        valMap = collectFieldValues(extraFieldsDiv);
+        let hasError = false;
+        const arr: import('./types').CommentFieldValue[] = [];
+        for (const def of this.commentFields) {
+          const val = valMap[def.key];
+          if (val !== undefined) {
+            const errKey = validateFieldValue(def, val);
+            if (errKey) {
+              hasError = true;
+              const input = extraFieldsDiv.querySelector(`[name="fbk-cf-${escapeHtml(def.key)}"]`);
+              if (input) {
+                input.setAttribute('aria-invalid', 'true');
+                const errId = `cf-${def.key}-error`;
+                input.setAttribute('aria-describedby', errId);
+                const errEl = document.createElement('p');
+                errEl.className = 'fbk-field-error';
+                errEl.id = errId;
+                // For hostNotAllowed, substitute hosts
+                errEl.textContent = t(errKey as any, { hosts: (def.allowedHosts || []).join(', ') });
+                input.parentElement?.appendChild(errEl);
+              }
+            } else {
+              arr.push({
+                key: def.key,
+                label: def.label,
+                type: def.type,
+                value: val,
+                suggestedTool: def.suggestedTool
+              });
+            }
+          }
+        }
+        if (hasError) return;
+        if (arr.length > 0) customFields = arr;
+      }
+
       const isPrivate = isPrivateComment;
       const attachShot = attachShotComment;
       const isBugReport = isBugReportComment;
@@ -1941,14 +2006,26 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
       const predefinedActionIds = Array.from(selectedActionIds);
       const submitBtn = host.querySelector('#fbk-submit') as HTMLButtonElement;
       submitBtn.disabled = true; submitBtn.textContent = t('menu.saving');
-      const saved = await this.createComment({ ...currentMeta, text, isPrivate, attachShot, shotPromise, predefinedActionIds, isBugReport });
-      if (saved) { currentEl.classList.remove(HL_CLASS); host.innerHTML = ''; stopMsListening?.(); }
-      else { submitBtn.disabled = false; submitBtn.textContent = t('popover.add'); }
+      const saved = await this.createComment({ ...currentMeta, text, isPrivate, attachShot, shotPromise, predefinedActionIds, isBugReport, customFields });
+      if (saved === true) { 
+        currentEl.classList.remove(HL_CLASS); host.innerHTML = ''; stopMsListening?.(); 
+      } else if (typeof saved === 'string') {
+        submitBtn.disabled = false; submitBtn.textContent = t('popover.add');
+        if (extraFieldsDiv) {
+          extraFieldsDiv.innerHTML = renderFieldInputs(this.commentFields, valMap, 'cf');
+          let errEl = document.createElement('p');
+          errEl.className = 'fbk-field-error';
+          errEl.textContent = t('fields.serverRejected') + ' ' + saved;
+          extraFieldsDiv.prepend(errEl);
+        }
+      } else { 
+        submitBtn.disabled = false; submitBtn.textContent = t('popover.add'); 
+      }
     });
   }
 
   // Returns true on success (popover should close), false on failure (popover stays open).
-  async createComment(data: CreateCommentData): Promise<boolean> {
+  async createComment(data: CreateCommentData): Promise<boolean | string> {
     // Capture the viewport so triage knows which device the feedback came from.
     // deviceType is the common mobile/tablet/desktop split by CSS-px width.
     const vw = window.innerWidth;
@@ -2001,6 +2078,7 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
       language,
     };
     if (data.predefinedActionIds && data.predefinedActionIds.length) bodyObj.predefinedActionIds = data.predefinedActionIds;
+    if (data.customFields && data.customFields.length > 0) bodyObj.customFields = data.customFields;
     // Only attach the buffered console/network snapshot when the box is checked — unchecked means
     // zero extra payload, regardless of what's been silently buffered in the browser.
     if (data.isBugReport) {
@@ -2020,6 +2098,10 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
         const msg: string = (errEnv && errEnv.message) || '';
         // Stale predefined action: the server rejected the action as invalid/unavailable.
         // Refetch the list once so the picker is fresh, then ask the user to retry.
+        if (msg.toLowerCase().includes('field')) {
+          await this.fetchCaptureConfig();
+          return msg;
+        }
         if (data.predefinedActionIds && data.predefinedActionIds.length && msg.toLowerCase().includes('action')) {
           await this.fetchPredefinedActions();
           this.toast(t('toast.actionNoLongerAvailable'), 'error');
@@ -2846,7 +2928,8 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
     this.closeUpdatesMenu();
     this.closeClusterMenu();
 
-    host.innerHTML = TPL.cardMenu(c, !!this.user?.isQuickAccess);
+    const canEditFields = this.commentFields.length > 0 && !!(c._mine || this.user?.isAdmin);
+    host.innerHTML = TPL.cardMenu(c, !!this.user?.isQuickAccess, canEditFields);
     const menu = host.querySelector('#fbk-card-menu') as HTMLElement | null;
     if (!menu) return;
     btn.setAttribute('aria-expanded', 'true');

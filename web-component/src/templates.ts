@@ -2,7 +2,8 @@ import { escapeHtml, timeAgo } from './dom';
 import { ICON } from './icons';
 import { getBrandName } from './constants';
 import { t } from './i18n';
-import type { AuthorOption, Comment, Meta, NotificationItem, PredefinedActionOption, Reply } from './types';
+import type { AuthorOption, Comment, Meta, NotificationItem, PredefinedActionOption, Reply, CommentFieldDefinition } from './types';
+import { renderFieldInputs } from './fields';
 
 // All component markup lives here (pure string builders). Event wiring stays in
 // the element / UI modules, which call these then attach listeners to the nodes.
@@ -246,13 +247,14 @@ export const TPL = {
   // owner-only; delete only while still open (matches the previous inline buttons' conditions
   // exactly, just relocated). `isQuickAccess` matches TPL.card's own gate on "Complete"/"Reopen" —
   // a quick-access (Client) account never gets to change its own feedback's status directly.
-  cardMenu: (c: Comment, isQuickAccess: boolean) => `
+  cardMenu: (c: Comment, isQuickAccess: boolean, canEditFields: boolean = false) => `
         <div class="fbk-card-menu" id="fbk-card-menu" role="menu">
           ${(c.status === 'open' || c.status === 'pending-apply') ? `<button type="button" class="fbk-card-menu-item" data-menu-act="copy-apply-prompt" role="menuitem">${ICON.copy}<span>${t('card.copyApplyPrompt')}</span></button>` : ''}
           ${(!isQuickAccess && (c.status === 'open' || c.status === 'pending-apply')) ? `<button type="button" class="fbk-card-menu-item" data-menu-act="complete" role="menuitem">${ICON.check}<span>${t('card.complete')}</span></button>` : ''}
           ${(!isQuickAccess && (c.status === 'applied' || c.status === 'archived')) ? `<button type="button" class="fbk-card-menu-item" data-menu-act="reopen" role="menuitem">${ICON.reopen}<span>${t('card.reopen')}</span></button>` : ''}
           ${c._mine ? `<button type="button" class="fbk-card-menu-item" data-menu-act="visibility" data-private="${c.isPrivate ? 'false' : 'true'}" role="menuitem">${c.isPrivate ? ICON.unlock : ICON.lock}<span>${c.isPrivate ? t('card.makePublic') : t('card.makePrivate')}</span></button>` : ''}
           ${c._mine ? `<button type="button" class="fbk-card-menu-item" data-menu-act="edit" role="menuitem">${ICON.pencil}<span>${t('card.edit')}</span></button>` : ''}
+          ${canEditFields ? `<button type="button" class="fbk-card-menu-item" data-menu-act="edit-fields" role="menuitem">${ICON.pencil}<span>${t('fields.edit')}</span></button>` : ''}
           ${c.status === 'open' ? `<button type="button" class="fbk-card-menu-item danger" data-menu-act="delete" role="menuitem">${ICON.trash}<span>${t('card.delete')}</span></button>` : ''}
         </div>`,
 
@@ -378,6 +380,22 @@ export const TPL = {
             </div>
             ${pagePath ? `<div class="fbk-caption fbk-card-page" title="${escapeHtml(pageUrl!)}">&#x1f4cd; ${escapeHtml(pagePath)}</div>` : ''}
             <div class="fbk-text">${escapeHtml(c.body || c.text || '')}</div>
+            ${c.customFields && c.customFields.length > 0 ? `<dl class="fbk-card-fields">
+              ${c.customFields.map(f => {
+                const isUrl = f.type === 2 || f.type === 'Url';
+                let valHtml = escapeHtml(f.value);
+                if (isUrl) {
+                  let d = valHtml;
+                  try {
+                    const u = new URL(f.value);
+                    const full = u.host + u.pathname;
+                    d = escapeHtml(full.length > 60 ? full.substring(0, 60) + '…' : full);
+                  } catch {}
+                  valHtml = `<a href="${escapeHtml(f.value)}" target="_blank" rel="noopener noreferrer">${d}</a>`;
+                }
+                return `<dt>${escapeHtml(f.label)}</dt><dd>${valHtml}</dd>`;
+              }).join('')}
+            </dl>` : ''}
             ${shot}
             <div class="fbk-sub">${escapeHtml(authorLabel)} &middot; ${c.createdAt ? new Date(c.createdAt).toLocaleDateString() : ''}${c.editedAt ? ` &middot; <span class="fbk-edited">${t('card.edited')}</span>` : ''}</div>
             ${verifyBox}
@@ -398,7 +416,7 @@ export const TPL = {
   // `bugReportEnabled`: only true when the project has page-context capture turned on — the
   // checkbox controls whether the console/network buffer already sitting in memory gets attached
   // to THIS comment; it never controls whether that buffer exists (see pagecontext.ts).
-  popover: (meta: Meta, left: number, top: number, shotEnabled: boolean, actions: PredefinedActionOption[] = [], bugReportEnabled = false) => `
+  popover: (meta: Meta, left: number, top: number, shotEnabled: boolean, actions: PredefinedActionOption[] = [], bugReportEnabled = false, commentFields: CommentFieldDefinition[] = []) => `
         <div class="fbk-popover" data-fbk-left="${left}" data-fbk-top="${top}">
           <div class="fbk-popover-nav">
             <button type="button" class="fbk-popover-nav-btn" id="fbk-target-up" data-toggle="tooltip" data-placement="top" title="${t('popover.selectParentElement')}" aria-label="${t('popover.selectParentElement')}">${ICON.chevronUp}</button>
@@ -417,6 +435,8 @@ export const TPL = {
             </div>
             <div class="fbk-ms-list" id="fbk-action-ms-list" role="listbox" hidden></div>
           </div>` : ''}
+          ${commentFields.length > 0 ? `<button type="button" id="fbk-more-fields" class="fbk-mini" aria-expanded="false" aria-controls="fbk-extra-fields">${t('fields.more')}</button>
+          <div id="fbk-extra-fields" class="fbk-extra-fields" hidden>${renderFieldInputs(commentFields, {}, 'cf')}</div>` : ''}
           ${(shotEnabled || bugReportEnabled) ? `<div class="fbk-popover-toggles">
             ${shotEnabled ? `<button type="button" class="fbk-mini" id="fbk-comment-shot" aria-pressed="false">&#x1f4f7; ${t('popover.attachScreenshot')}</button>` : ''}
             ${bugReportEnabled ? `<button type="button" class="fbk-mini" id="fbk-comment-bug" aria-pressed="false" title="${t('popover.reportBugTitle')}">&#x1f41e; ${t('popover.reportAsABug')}</button>` : ''}

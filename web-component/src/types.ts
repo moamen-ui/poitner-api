@@ -56,6 +56,7 @@ export interface Comment {
   createdAt?: string;
   editedAt?: string;
   appliedByLabel?: string | null;
+  customFields?: CommentFieldValue[];
   /** Link to the commit that applied this comment — null for comments applied before this field
    *  existed, or by a flow that doesn't track it; the card renders "#" in that case. */
   commitUrl?: string | null;
@@ -207,4 +208,24 @@ export interface PointerHost {
   init(): Promise<void> | void;
   renderChrome(): void;
   afterLogin: (() => void) | null;
+}
+
+export interface CommentFieldDefinition {
+  key: string;
+  label: string;
+  type: number | string;
+  allowedHosts?: string[];
+  options?: string[];
+  suggestedTool?: string;
+  enabled: boolean;
+  hint?: string;
+  sortOrder?: number;
+}
+
+export interface CommentFieldValue {
+  key: string;
+  label: string;
+  type: number | string;
+  value: string;
+  suggestedTool?: string;
 }

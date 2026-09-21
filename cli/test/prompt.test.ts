@@ -95,3 +95,57 @@ test('multiSelect: defaults arrive pre-ticked', async () => {
   key('return');
   assert.deepStrictEqual(await pending, ['cursor']);
 });
+
+import { buildApplyPrompt } from '../src/apply/prompt.js';
+import { readFileSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { dirname } from 'node:path';
+
+test('buildApplyPrompt matches golden file', () => {
+  const item = {
+    id: 12,
+    status: 'Staging',
+    environment: 'Staging',
+    page: { path: '/checkout' },
+    body: 'Make the CTA button primary',
+    authorName: 'Stakeholder',
+    createdAt: '2026-01-01T00:00:00Z',
+    isBugReport: false,
+    element: {
+      selector: 'section > div:nth-of-type(2) > button',
+      sourcePath: 'src/components/Header.tsx:42',
+      classes: 'border border-primary-500 text-primary-500',
+      snapshot: '<button type="submit" data-testid="join">Join</button>'
+    },
+    replies: [
+      { id: 1, body: 'Agreed, looks too subdued right now', authorName: 'Sam' }
+    ],
+    pickedActions: [
+      { text: 'Make primary', prompt: 'Swap the outline button classes for the filled/primary variant.' }
+    ],
+    aiRules: [],
+    customFields: [
+      { key: 'jira', label: 'Jira ticket', type: 2, value: 'https://example.atlassian.net/browse/PROJ-123', suggestedTool: 'atlassian' },
+      { key: 'category', label: 'Category', type: 1, value: 'UX Polish' }
+    ],
+    pageContextId: 1,
+    pageContext: {
+      consoleEntries: [ { level: 'error', message: "TypeError: cannot read 'total' of undefined (at Cart.tsx:42)" } ],
+      networkEntries: [ { method: 'POST', url: 'https://api.example.com/checkout/quote', statusCode: 500 } ]
+    }
+  };
+
+  const context = {
+    productName: 'Pointer',
+    projectName: 'example-app',
+    projectKey: 'example-app',
+    commitStyle: 'Separate',
+    stack: { frontend: ['react', 'tailwind'], backend: ['dotnet'] }
+  };
+
+  const actual = buildApplyPrompt([item as any], context as any);
+  const goldenPath = join(dirname(fileURLToPath(import.meta.url)), 'prompt.golden.md');
+  const expected = readFileSync(goldenPath, 'utf8');
+  assert.strictEqual(actual.trim(), expected.trim());
+});
