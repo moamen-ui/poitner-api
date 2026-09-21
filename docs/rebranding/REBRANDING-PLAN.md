@@ -277,6 +277,17 @@ to every user.
 That string is the primary key in the `__EFMigrationsHistory` table on every deployed database.
 Change it and EF sees an **unapplied migration** and re-runs it against production.
 
+**Frozen migration IDs (grows over time — do not treat this as exhaustive without re-grepping
+`Infrastructure/Migrations/*.cs` for `[Migration(`):**
+
+| Migration ID | Landed | Deployed? |
+|---|---|---|
+| `20260827124245_ReassignPointerLandingOwnership` | pre-2026-09-08 | yes |
+| `20260921215630_AddCommentFieldsAndWorkspaceSettings` (R4-01, `main` a1880b1..2554104; adds `workspace_settings` table and `comments.custom_fields`) | 2026-09-22 | **imminent tonight — treat as deployed as of the next prod deploy; once applied, its ID is frozen by the same rule as the row above** |
+
+Same correction procedure applies to any row in this table: rename file + class + attribute together,
+and `UPDATE "__EFMigrationsHistory"` in the same deploy, or leave the ID alone and allowlist it.
+
 **Correct procedure** (only if you want the name gone):
 
 1. Rename file + class → `20260827124245_Reassign${NAME_PASCAL}LandingOwnership`.
@@ -411,23 +422,26 @@ Note `Pointer__Project: "pointer-api"` is a **project key** (data, §11), not ju
 
 ## 5. Inventory — every brand surface, by area
 
-Counts are files containing a case-insensitive `pointer`, measured 2026-09-08.
+Counts are files containing a case-insensitive `pointer`, measured 2026-09-08. **R4-01 (2026-09-22,
+`main` a1880b1..2554104) added files under `Application/`, `Infrastructure/`, `API/` and `Domain/`
+after that measurement — counts below are now stale for those four rows; not re-measured here, see
+notes appended to each row instead.**
 
 ### 5.1 `poitner-api` (.NET 8 API + widget + extension + landing + e2e)
 
 | Area | Files | What carries the brand |
 |---|---|---|
-| `Application/` | 191 | Namespaces `Pointer.Application.*` (DTOs, Services, Validators, Resources) |
-| `Infrastructure/` | 107 | Namespaces + **migration snapshot strings** (§4.2) |
-| `API/` | 57 | Namespaces `Pointer.API.*`, `Pointer.API.csproj`, `Pointer.API.http`, `Extensions/PointerUrlResolver.cs`, `wwwroot/` assets, `Program.cs` (`POINTER_SERVER`) |
+| `Application/` | 191 (stale, R4-01 added ≥3 more) | Namespaces `Pointer.Application.*` (DTOs, Services, Validators, Resources). **+R4-01:** `DTOs/Workspace/*` (workspace comment-field DTOs), `DTOs/Comment/UpdateCommentFieldsRequest.cs`, additive `customFields`/`commentFields` properties on `CommentListItemDto`, `CommentResponse`, `CommentApplyItemDto`, `CaptureConfigResponse`, `CreateCommentRequest` — brand-neutral names, namespace only |
+| `Infrastructure/` | 107 (stale, R4-01 added ≥4 more) | Namespaces + **migration snapshot strings** (§4.2). **+R4-01:** `Migrations/20260921215630_AddCommentFieldsAndWorkspaceSettings.{cs,Designer.cs}` (frozen, §4.1), `Mappings/WorkspaceSettingMapping.cs` (new table `workspace_settings`: `id`, `owner_id`, `comment_field_definitions` jsonb, audit columns; unique filtered index `IX_workspace_settings_owner_id`), `Mappings/CommentMapping.cs` amended for new column `comments.custom_fields` jsonb, new `Mappings/JsonColumn.cs` converter |
+| `API/` | 57 (stale, R4-01 added ≥1 more) | Namespaces `Pointer.API.*`, `Pointer.API.csproj`, `Pointer.API.http`, `Extensions/PointerUrlResolver.cs`, `wwwroot/` assets, `Program.cs` (`POINTER_SERVER`). **+R4-01:** `Controllers/Admin/WorkspaceController.cs`, route prefix `api/admin/workspace` (`GET`/`PUT` `api/admin/workspace/comment-fields`), new endpoint `PATCH api/comments/{id}/fields` on `CommentsController`, new Swagger/orval tag `Workspace` — added to `orval.config.ts` `filters.tags` (§5.7); none of this is brand-carrying by name, but it is a new API/DTO surface the dashboard-agent syncs from, and the tag-gating note in §5.7 now covers it too |
 | `Tests/` | 48 | Namespaces + `Pointer.Tests.csproj` + hardcoded `*.pointer.moamen.work` URLs in 7 test files |
-| `Domain/` | 32 | Namespaces `Pointer.Domain.*` |
+| `Domain/` | 32 (stale, R4-01 added ≥2 more) | Namespaces `Pointer.Domain.*`. **+R4-01:** `ValueObjects/CommentFieldDefinition.cs`, `Enums/CommentFieldType.cs` — brand-neutral names, namespace only |
 | `web-component/` | 25 | **Widget source** — `define('pointer-feedback')`, `pointer-feedback-hl` class, `pointer-feedback-hl-style` id, storage keys, `__POINTER_*` globals |
 | `extension/` | 19 | `manifest.json` (name "Pointer Feedback", description), `src/shared.ts`, `src/popup.ts`, README, E2E checklist, store assets, `pointer-ext-v0.1.0.zip` |
 | `e2e/` | 35 | **A working replica of the customer contract** — and therefore a real gate. `fixture-app/beta/index.html:16-21` and `fixture-app/smoke/index.html:40` embed `<pointer-feedback>` + `http://localhost:8090/pointer.js`; `fixture-app/*/.env` carry `*_POINTER_*` keys; `widget/widget.spec.ts` asserts on the tag; `ai/cases/tc*.txt` are natural-language prompts naming the skills; `ai/harness.mjs` + `scripts/lib/api.mjs` drive the API; `state/scratch/*/` holds generated `.pointer/` and `.claude/skills/pointer-*` fixtures (regenerable — delete rather than edit) |
 | `docs/` | 38 | Specs and plans — historical, see §5.10 |
 | `clients/` | **479** | **orval-generated** — never hand-edit; regenerated in phase 6 |
-| `landing/` | 2 | `index.html` copy + `pointer-extension.zip` |
+| `landing/` | 2 (stale, R4-01 added 1 more) | `index.html` copy + `pointer-extension.zip`. **+R4-01:** `docs/comment-fields.html` added to `landing/docs/pages.json` — brand-neutral content per caller, not re-verified here |
 | `scripts/` | 2 | `generate-clients.mjs`, `build-clients.mjs` |
 | `.github/` | 1 | `workflows/publish-clients.yml` |
 | Root | — | `Pointer.sln`, `Caddyfile`, `docker-compose.prod.yml`, `justfile`, `.env.prod.example`, `.gitignore` (`.pointer/*`), `AGENTS.md`, `CLAUDE.md`, `DEPLOY.md`, `README.md`, `.pointer/` |
@@ -437,7 +451,7 @@ Counts are files containing a case-insensitive `pointer`, measured 2026-09-08.
 | App | Files | Notable |
 |---|---|---|
 | `angular/` | 39 | `@moamen-ui/pointer-angular` (74 import sites across all three apps), `core/pointer-dogfood/pointer-dogfood.service.ts` (dir + class + `WIDGET_TAG`), `shared/install-guide/*` (emits the install snippets), storage keys, `environment*.ts` |
-| `react/` | 40 | `@moamen-ui/pointer-react`, `index.html` `<title>Pointer Admin</title>`, `.env.development`/`.env.production` (`VITE_API_BASE=https://api.pointer.moamen.work`), `src/lib/storage.ts` |
+| `react/` | 40 (stale — plus, per repo drift below, angular/vue retired 2026-09-15, not yet reflected in this row split) | `@moamen-ui/pointer-react`, `index.html` `<title>Pointer Admin</title>`, `.env.development`/`.env.production` (`VITE_API_BASE=https://api.pointer.moamen.work`), `src/lib/storage.ts`. **R4-01 (in progress, not yet merged as of 2026-09-22):** new Settings section "Comment fields" and i18n namespace `commentFields` — brand-neutral names; re-check on merge, since this agent has not seen the diff |
 | `vue/` | 44 | `@moamen-ui/pointer-vue`, same `<title>`, same env files, `src/lib/storage.ts`, `src/lib/demoSession.ts` |
 | Root | — | `AGENTS.md`, `CLAUDE.md`, `README.md`, `.gitignore` (`.pointer/`), `.pointer/` |
 
@@ -469,7 +483,7 @@ Counts are files containing a case-insensitive `pointer`, measured 2026-09-08.
 | Artifact | Today | Notes |
 |---|---|---|
 | `API/wwwroot/pointer-init.md` | `name: pointer-init` | Installed to `.claude/skills/pointer-init/SKILL.md` |
-| `API/wwwroot/skill.md` | `name: pointer-feedback` | Installed to `.claude/skills/pointer-feedback/SKILL.md`. **Filename `skill.md` is a legacy URL** — new name should be `<kebab>-feedback.md` with `skill.md` kept as an alias if `LIVE_INSTALLS=yes` |
+| `API/wwwroot/skill.md` | `name: pointer-feedback` | Installed to `.claude/skills/pointer-feedback/SKILL.md`. **Filename `skill.md` is a legacy URL** — new name should be `<kebab>-feedback.md` with `skill.md` kept as an alias if `LIVE_INSTALLS=yes`. **+R4-01 (2026-09-22):** gained a "Comment fields" section describing the new `PATCH api/comments/{id}/fields` endpoint — content only, served URL unchanged, no new brand strings introduced |
 | `API/wwwroot/install.sh` | Writes both skills, `.agents/*` symlinks, `.pointer/pointer.sh`, `.pointer/bridge.mjs`, `.pointer/credentials.env{,.example}` | The single highest-leverage file: 20+ brand strings, and it defines the on-disk contract in customer repos |
 | Skill **description trigger phrases** | "add Pointer to this app", "what are the pointer comments", "apply pending pointer comments" | These are how a user invokes the skill in natural language — rename them or the skill stops triggering on the new brand |
 | `API/wwwroot/skills/apply.md` Step 3b (added 2026-09-19) | Reads `.pointer/config.json → delegation` and describes the cost-aware delegation flow; `skill.md` and `pointer-init.md` (Step 0 table) point readers at it | No brand strings introduced beyond the existing `.pointer/` path and prompt-header format already tracked above (§5.3) — still reword the surrounding prose consistently with the rest of the skill on rename |
@@ -503,6 +517,11 @@ Counts are files containing a case-insensitive `pointer`, measured 2026-09-08.
 and `scripts/build-clients.mjs` orchestrate; `.github/workflows/publish-clients.yml` publishes and
 auto-bumps. 479 generated files — phase 6 regenerates them; only the config, the two scripts, the
 three `package.json` templates, the mutator files, and the workflow are edited by hand.
+
+**+R4-01 (2026-09-22):** new Swagger/controller tag `Workspace` (`WorkspaceController`, §5.1) was
+added to `orval.config.ts` `filters.tags` — without that entry the new `api/admin/workspace/*`
+endpoints generate nothing, silently, same as any other ungated tag. Not yet regenerated against
+production (deploy pending); the dashboard-agent picks this up on its next once-per-phase sync.
 
 ### 5.8 Tests with hardcoded hostnames
 
