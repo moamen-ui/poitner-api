@@ -1,13 +1,13 @@
 {
   "version": "0.1.0",
-  "hash": "aedfaad4e94f",
-  "commit": "26b4364",
-  "committedAt": "2026-09-19T00:01:11+03:00",
+  "hash": "bd5655280692",
+  "commit": "9d895f9",
+  "committedAt": "2026-09-22T01:01:30+03:00",
   "files": {
     "widget.js": {
-      "bytes": 258072,
-      "gzipBytes": 63704,
-      "integrity": "sha384-XmGBJG9RsiXGPtkW303s8BwIx36hYJXNuQSml0tf40rIAXsFOneiASotOg2/FAzY"
+      "bytes": 262362,
+      "gzipBytes": 64502,
+      "integrity": "sha384-nFSFcroDxgG6RgHcceGnePKS4VEJ363wmCpgu2x9nrHlsReO1dIpsBq0WYuspKqn"
     },
     "widget.css": {
       "bytes": 56249,
@@ -16,6 +16,18 @@
     }
   },
   "retained": [
+    {
+      "hash": "bd5655280692",
+      "version": "0.1.0",
+      "files": {
+        "widget.js": {
+          "integrity": "sha384-nFSFcroDxgG6RgHcceGnePKS4VEJ363wmCpgu2x9nrHlsReO1dIpsBq0WYuspKqn"
+        },
+        "widget.css": {
+          "integrity": "sha384-tZeHVZSb2LhuQqVkGd9SbqDaaOJ6yPbL3g1N9TGX57NbHo2DIzMGUxVOxygZbPtZ"
+        }
+      }
+    },
     {
       "hash": "aedfaad4e94f",
       "version": "0.1.0",
@@ -121,18 +133,6 @@
         },
         "widget.css": {
           "integrity": "sha384-s212xYVDasxqZVPhy+gvu1SRN8cs7zjRZc/XvTPoDxYOoAmrV5NsUFN9e1MvK4fM"
-        }
-      }
-    },
-    {
-      "hash": "dc425b16b294",
-      "version": "0.1.0",
-      "files": {
-        "widget.js": {
-          "integrity": "sha384-XhktwB4f3s7ncVQyTuJw9fW0WwaEczz6MI2voevDwsAI9q3ilXHcmclHFXgGx81X"
-        },
-        "widget.css": {
-          "integrity": "sha384-PbauAky6ibe0yNWOIdDZvHOujyj3ae0OUhyee5KURH+QYfa5CiYzKGK9aFJmd71F"
         }
       }
     }

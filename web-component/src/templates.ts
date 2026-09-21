@@ -385,13 +385,21 @@ export const TPL = {
                 const isUrl = f.type === 2 || f.type === 'Url';
                 let valHtml = escapeHtml(f.value);
                 if (isUrl) {
-                  let d = valHtml;
+                  let u: URL | null = null;
                   try {
-                    const u = new URL(f.value);
+                    u = new URL(f.value);
+                  } catch {
+                    u = null;
+                  }
+                  // Only ever render an <a> when the value parses as an absolute URL AND the
+                  // protocol is http/https — never put an unparsed or non-http(s) value into
+                  // href (e.g. javascript:, data:), even though the server already validates
+                  // this on write; a stale/legacy row must not become a click-to-execute link.
+                  if (u && (u.protocol === 'http:' || u.protocol === 'https:')) {
                     const full = u.host + u.pathname;
-                    d = escapeHtml(full.length > 60 ? full.substring(0, 60) + '…' : full);
-                  } catch {}
-                  valHtml = `<a href="${escapeHtml(f.value)}" target="_blank" rel="noopener noreferrer">${d}</a>`;
+                    const d = escapeHtml(full.length > 60 ? full.substring(0, 60) + '…' : full);
+                    valHtml = `<a href="${escapeHtml(f.value)}" target="_blank" rel="noopener noreferrer">${d}</a>`;
+                  }
                 }
                 return `<dt>${escapeHtml(f.label)}</dt><dd>${valHtml}</dd>`;
               }).join('')}

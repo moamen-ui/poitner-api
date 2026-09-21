@@ -847,6 +847,7 @@
       "fields.cancel": "Cancel",
       "fields.none": "None",
       "fields.invalidUrl": "Must be a valid URL",
+      "fields.invalidOption": "Pick one of the listed options",
       "fields.hostNotAllowed": "Must be a link on {hosts}",
       "fields.tooLong": "Value is too long",
       "fields.saved": "Fields saved",
@@ -1072,6 +1073,7 @@
       "fields.cancel": "إلغاء",
       "fields.none": "لا شيء",
       "fields.invalidUrl": "يجب أن يكون رابطاً صالحاً",
+      "fields.invalidOption": "اختر أحد الخيارات المدرجة",
       "fields.hostNotAllowed": "يجب أن يكون الرابط من {hosts}",
       "fields.tooLong": "القيمة طويلة جداً",
       "fields.saved": "تم حفظ الحقول",
@@ -1095,7 +1097,7 @@
   function validateFieldValue(def, value) {
     value = value.trim();
     if (!value) return null;
-    const type = typeof def.type === "number" ? def.type : def.type;
+    const type = def.type;
     const isText = type === 1 || type === "Text";
     const isUrl = type === 2 || type === "Url";
     const isSelect = type === 3 || type === "Select";
@@ -1124,7 +1126,7 @@
       }
     } else if (isSelect) {
       if (def.options && !def.options.includes(value)) {
-        return "fields.serverRejected";
+        return "fields.invalidOption";
       }
     }
     return null;
@@ -1488,14 +1490,17 @@
         const isUrl = f.type === 2 || f.type === "Url";
         let valHtml = escapeHtml(f.value);
         if (isUrl) {
-          let d = valHtml;
+          let u = null;
           try {
-            const u = new URL(f.value);
-            const full = u.host + u.pathname;
-            d = escapeHtml(full.length > 60 ? full.substring(0, 60) + "…" : full);
+            u = new URL(f.value);
           } catch {
+            u = null;
           }
-          valHtml = `<a href="${escapeHtml(f.value)}" target="_blank" rel="noopener noreferrer">${d}</a>`;
+          if (u && (u.protocol === "http:" || u.protocol === "https:")) {
+            const full = u.host + u.pathname;
+            const d = escapeHtml(full.length > 60 ? full.substring(0, 60) + "…" : full);
+            valHtml = `<a href="${escapeHtml(f.value)}" target="_blank" rel="noopener noreferrer">${d}</a>`;
+          }
         }
         return `<dt>${escapeHtml(f.label)}</dt><dd>${valHtml}</dd>`;
       }).join("")}
@@ -4050,7 +4055,6 @@
         });
       }
       host.querySelector("#fbk-submit").addEventListener("click", async () => {
-        var _a2;
         const text = ta.value.trim();
         if (!text) return this.toast(t("popover.commentCannotBeEmpty"), "error");
         let customFields = void 0;
@@ -4063,37 +4067,21 @@
           });
           valMap = collectFieldValues(extraFieldsDiv);
           let hasError = false;
-          const arr = [];
+          const fieldsOut = {};
           for (const def of this.commentFields) {
             const val = valMap[def.key];
             if (val !== void 0) {
               const errKey = validateFieldValue(def, val);
               if (errKey) {
                 hasError = true;
-                const input = extraFieldsDiv.querySelector(`[name="fbk-cf-${escapeHtml(def.key)}"]`);
-                if (input) {
-                  input.setAttribute("aria-invalid", "true");
-                  const errId = `cf-${def.key}-error`;
-                  input.setAttribute("aria-describedby", errId);
-                  const errEl = document.createElement("p");
-                  errEl.className = "fbk-field-error";
-                  errEl.id = errId;
-                  errEl.textContent = t(errKey, { hosts: (def.allowedHosts || []).join(", ") });
-                  (_a2 = input.parentElement) == null ? void 0 : _a2.appendChild(errEl);
-                }
+                this.renderFieldError(extraFieldsDiv, def, errKey);
               } else {
-                arr.push({
-                  key: def.key,
-                  label: def.label,
-                  type: def.type,
-                  value: val,
-                  suggestedTool: def.suggestedTool
-                });
+                fieldsOut[def.key] = val;
               }
             }
           }
           if (hasError) return;
-          if (arr.length > 0) customFields = arr;
+          if (Object.keys(fieldsOut).length > 0) customFields = fieldsOut;
         }
         const isPrivate = isPrivateComment;
         const attachShot = attachShotComment;
@@ -4124,6 +4112,22 @@
           submitBtn.textContent = t("popover.add");
         }
       });
+    }
+    // Shared by the composer's extra-fields panel and the card's inline "Edit fields" form: renders
+    // an inline error under the offending input and marks it aria-invalid/aria-describedby, so both
+    // surfaces show identical validation feedback for the same i18n error key.
+    renderFieldError(container, def, errKey, idPrefix = "cf") {
+      var _a2;
+      const input = container.querySelector(`[name="fbk-cf-${escapeHtml(def.key)}"]`);
+      if (!input) return;
+      input.setAttribute("aria-invalid", "true");
+      const errId = `${idPrefix}-${def.key}-error`;
+      input.setAttribute("aria-describedby", errId);
+      const errEl = document.createElement("p");
+      errEl.className = "fbk-field-error";
+      errEl.id = errId;
+      errEl.textContent = t(errKey, { hosts: (def.allowedHosts || []).join(", ") });
+      (_a2 = input.parentElement) == null ? void 0 : _a2.appendChild(errEl);
     }
     // Returns true on success (popover should close), false on failure (popover stays open).
     async createComment(data) {
@@ -4170,7 +4174,7 @@
         language
       };
       if (data.predefinedActionIds && data.predefinedActionIds.length) bodyObj.predefinedActionIds = data.predefinedActionIds;
-      if (data.customFields && data.customFields.length > 0) bodyObj.customFields = data.customFields;
+      if (data.customFields && Object.keys(data.customFields).length > 0) bodyObj.customFields = data.customFields;
       if (data.isBugReport) {
         const pageContext = getPageContextPayload();
         if (pageContext) bodyObj.pageContext = pageContext;
@@ -4406,6 +4410,91 @@
         this.toast(t("toast.commentUpdated"), "success");
       } catch (e) {
         if (e.message !== "HTTP 401 Unauthorized") this.toast(e.message || t("toast.failedToUpdateComment"), "error");
+      }
+    }
+    // Inline edit for a comment's admin-defined field values — same swap-in-place pattern as
+    // startEdit, but replaces .fbk-card-fields (or inserts one after .fbk-text when the card has
+    // no values yet) with input controls instead of a textarea. Wired from the kebab menu's
+    // "Edit fields" item (see toggleCardMenu).
+    startEditFields(c) {
+      const card = this.root && this.root.querySelector(`.fbk-card[data-id="${c.id}"]`);
+      if (!card || card.querySelector(".fbk-card-fields-edit")) return;
+      const textEl = card.querySelector(".fbk-text");
+      const existingDl = card.querySelector(".fbk-card-fields");
+      if (!existingDl && !textEl) return;
+      const currentValues = {};
+      (c.customFields || []).forEach((f) => {
+        currentValues[f.key] = f.value;
+      });
+      const idPrefix = "ef-" + c.id;
+      const editor = document.createElement("div");
+      editor.className = "fbk-card-fields-edit";
+      editor.innerHTML = `
+        ${renderFieldInputs(this.commentFields, currentValues, idPrefix)}
+        <div class="fbk-reply-row">
+          <button type="button" class="fbk-mini fbk-fields-save">${t("fields.save")}</button>
+          <button type="button" class="fbk-mini fbk-fields-cancel">${t("fields.cancel")}</button>
+        </div>`;
+      if (existingDl) existingDl.replaceWith(editor);
+      else textEl.insertAdjacentElement("afterend", editor);
+      editor.querySelector(".fbk-fields-cancel").addEventListener("click", () => {
+        this.renderSidebar();
+      });
+      editor.querySelector(".fbk-fields-save").addEventListener("click", () => {
+        this.saveEditFields(c, editor, idPrefix);
+      });
+    }
+    async saveEditFields(c, editor, idPrefix) {
+      var _a2;
+      editor.querySelectorAll(".fbk-field-error").forEach((el) => el.remove());
+      editor.querySelectorAll('[aria-invalid="true"]').forEach((el) => {
+        el.removeAttribute("aria-invalid");
+        el.removeAttribute("aria-describedby");
+      });
+      const valMap = collectFieldValues(editor);
+      let hasError = false;
+      const fieldsOut = {};
+      for (const def of this.commentFields) {
+        const val = valMap[def.key];
+        if (val !== void 0) {
+          const errKey = validateFieldValue(def, val);
+          if (errKey) {
+            hasError = true;
+            this.renderFieldError(editor, def, errKey, idPrefix);
+          } else {
+            fieldsOut[def.key] = val;
+          }
+        }
+      }
+      if (hasError) return;
+      const saveBtn = editor.querySelector(".fbk-fields-save");
+      if (saveBtn) {
+        saveBtn.disabled = true;
+        saveBtn.textContent = t("menu.saving");
+      }
+      try {
+        const r = await this.api(`/api/comments/${c.id}/fields`, {
+          method: "PATCH",
+          body: JSON.stringify({ customFields: fieldsOut })
+        });
+        if (!r.ok) {
+          const b = await r.json().catch(() => null);
+          throw new Error(b && b.message || "HTTP " + r.status);
+        }
+        const envelope = await r.json();
+        const updated = (_a2 = envelope == null ? void 0 : envelope.data) != null ? _a2 : envelope;
+        const idx = this.comments.findIndex((x) => String(x.id) === String(c.id));
+        if (idx !== -1 && updated) {
+          this.comments[idx] = { ...this.comments[idx], ...updated };
+        }
+        this.renderSidebar();
+        this.toast(t("fields.saved"));
+      } catch (e) {
+        if (saveBtn) {
+          saveBtn.disabled = false;
+          saveBtn.textContent = t("fields.save");
+        }
+        if (e.message !== "HTTP 401 Unauthorized") this.toast(e.message || t("toast.updateFailed"), "error");
       }
     }
     // Inline edit for a single reply (own replies only) — same swap-body-for-a-textarea pattern
@@ -4971,6 +5060,13 @@
         editBtn.addEventListener("click", () => {
           this.closeCardMenu();
           this.startEdit(String(c.id));
+        });
+      }
+      const editFieldsBtn = menu.querySelector('[data-menu-act="edit-fields"]');
+      if (editFieldsBtn) {
+        editFieldsBtn.addEventListener("click", () => {
+          this.closeCardMenu();
+          this.startEditFields(c);
         });
       }
       const delBtn = menu.querySelector('[data-menu-act="delete"]');

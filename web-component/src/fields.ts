@@ -19,7 +19,7 @@ export function validateFieldValue(def: CommentFieldDefinition, value: string): 
   value = value.trim();
   if (!value) return null;
 
-  const type = (typeof def.type === 'number') ? def.type : def.type;
+  const type = def.type;
   // Handle string names as well 1=Text, 2=Url, 3=Select
   const isText = type === 1 || type === 'Text';
   const isUrl = type === 2 || type === 'Url';
@@ -51,11 +51,7 @@ export function validateFieldValue(def: CommentFieldDefinition, value: string): 
     }
   } else if (isSelect) {
     if (def.options && !def.options.includes(value)) {
-      // Actually we just return null or an error? The spec says returns i18n key or null.
-      // But there isn't a specific key for Select. Maybe fields.invalid? Wait, the UI uses a native select so user can't pick invalid unless they tamper.
-      // The instructions don't give a key for select failure. Let's return 'fields.invalidUrl' if select is invalid?
-      // No, wait, if we look at i18n keys: `fields.more`, `fields.fewer`, `fields.edit`, `fields.save`, `fields.cancel`, `fields.none`, `fields.invalidUrl`, `fields.hostNotAllowed` (`{hosts}`), `fields.tooLong`, `fields.saved`, `fields.serverRejected`. There is no key for select. It's fine to just return 'fields.serverRejected' or skip. Native select prevents it.
-      return 'fields.serverRejected';
+      return 'fields.invalidOption';
     }
   }
   return null;

@@ -52,7 +52,7 @@ describe('fields', () => {
     it('validates Select', () => {
       expect(validateFieldValue(selectDef, 'A')).toBeNull();
       expect(validateFieldValue(selectDef, 'B')).toBeNull();
-      expect(validateFieldValue(selectDef, 'C')).toBe('fields.serverRejected');
+      expect(validateFieldValue(selectDef, 'C')).toBe('fields.invalidOption');
     });
   });
 });

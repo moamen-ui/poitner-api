@@ -46,7 +46,7 @@ interface CreateCommentData extends Meta {
   predefinedActionIds?: number[];
   isBugReport: boolean;
   language?: string;
-  customFields?: import('./types').CommentFieldValue[];
+  customFields?: Record<string, string>;
 }
 
 export class PointerFeedback extends HTMLElement implements PointerHost {
@@ -1953,7 +1953,7 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
       const text = ta.value.trim();
       if (!text) return this.toast(t('popover.commentCannotBeEmpty'), 'error');
       
-      let customFields: import('./types').CommentFieldValue[] | undefined = undefined;
+      let customFields: Record<string, string> | undefined = undefined;
       let valMap: Record<string, string> = {};
       if (extraFieldsDiv) {
         extraFieldsDiv.querySelectorAll('.fbk-field-error').forEach(el => el.remove());
@@ -1964,38 +1964,21 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
 
         valMap = collectFieldValues(extraFieldsDiv);
         let hasError = false;
-        const arr: import('./types').CommentFieldValue[] = [];
+        const fieldsOut: Record<string, string> = {};
         for (const def of this.commentFields) {
           const val = valMap[def.key];
           if (val !== undefined) {
             const errKey = validateFieldValue(def, val);
             if (errKey) {
               hasError = true;
-              const input = extraFieldsDiv.querySelector(`[name="fbk-cf-${escapeHtml(def.key)}"]`);
-              if (input) {
-                input.setAttribute('aria-invalid', 'true');
-                const errId = `cf-${def.key}-error`;
-                input.setAttribute('aria-describedby', errId);
-                const errEl = document.createElement('p');
-                errEl.className = 'fbk-field-error';
-                errEl.id = errId;
-                // For hostNotAllowed, substitute hosts
-                errEl.textContent = t(errKey as any, { hosts: (def.allowedHosts || []).join(', ') });
-                input.parentElement?.appendChild(errEl);
-              }
+              this.renderFieldError(extraFieldsDiv, def, errKey);
             } else {
-              arr.push({
-                key: def.key,
-                label: def.label,
-                type: def.type,
-                value: val,
-                suggestedTool: def.suggestedTool
-              });
+              fieldsOut[def.key] = val;
             }
           }
         }
         if (hasError) return;
-        if (arr.length > 0) customFields = arr;
+        if (Object.keys(fieldsOut).length > 0) customFields = fieldsOut;
       }
 
       const isPrivate = isPrivateComment;
@@ -2022,6 +2005,22 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
         submitBtn.disabled = false; submitBtn.textContent = t('popover.add'); 
       }
     });
+  }
+
+  // Shared by the composer's extra-fields panel and the card's inline "Edit fields" form: renders
+  // an inline error under the offending input and marks it aria-invalid/aria-describedby, so both
+  // surfaces show identical validation feedback for the same i18n error key.
+  private renderFieldError(container: HTMLElement, def: CommentFieldDefinition, errKey: string, idPrefix = 'cf'): void {
+    const input = container.querySelector(`[name="fbk-cf-${escapeHtml(def.key)}"]`);
+    if (!input) return;
+    input.setAttribute('aria-invalid', 'true');
+    const errId = `${idPrefix}-${def.key}-error`;
+    input.setAttribute('aria-describedby', errId);
+    const errEl = document.createElement('p');
+    errEl.className = 'fbk-field-error';
+    errEl.id = errId;
+    errEl.textContent = t(errKey as any, { hosts: (def.allowedHosts || []).join(', ') });
+    input.parentElement?.appendChild(errEl);
   }
 
   // Returns true on success (popover should close), false on failure (popover stays open).
@@ -2078,7 +2077,7 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
       language,
     };
     if (data.predefinedActionIds && data.predefinedActionIds.length) bodyObj.predefinedActionIds = data.predefinedActionIds;
-    if (data.customFields && data.customFields.length > 0) bodyObj.customFields = data.customFields;
+    if (data.customFields && Object.keys(data.customFields).length > 0) bodyObj.customFields = data.customFields;
     // Only attach the buffered console/network snapshot when the box is checked — unchecked means
     // zero extra payload, regardless of what's been silently buffered in the browser.
     if (data.isBugReport) {
@@ -2330,6 +2329,92 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
       this.toast(t('toast.commentUpdated'), 'success');
     } catch (e) {
       if ((e as Error).message !== 'HTTP 401 Unauthorized') this.toast((e as Error).message || t('toast.failedToUpdateComment'), 'error');
+    }
+  }
+
+  // Inline edit for a comment's admin-defined field values — same swap-in-place pattern as
+  // startEdit, but replaces .fbk-card-fields (or inserts one after .fbk-text when the card has
+  // no values yet) with input controls instead of a textarea. Wired from the kebab menu's
+  // "Edit fields" item (see toggleCardMenu).
+  startEditFields(c: Comment): void {
+    const card = this.root && (this.root.querySelector(`.fbk-card[data-id="${c.id}"]`) as HTMLElement | null);
+    if (!card || card.querySelector('.fbk-card-fields-edit')) return;
+    const textEl = card.querySelector('.fbk-text') as HTMLElement | null;
+    const existingDl = card.querySelector('.fbk-card-fields');
+    if (!existingDl && !textEl) return;
+
+    const currentValues: Record<string, string> = {};
+    (c.customFields || []).forEach((f) => { currentValues[f.key] = f.value; });
+    const idPrefix = 'ef-' + c.id;
+
+    const editor = document.createElement('div');
+    editor.className = 'fbk-card-fields-edit';
+    editor.innerHTML = `
+        ${renderFieldInputs(this.commentFields, currentValues, idPrefix)}
+        <div class="fbk-reply-row">
+          <button type="button" class="fbk-mini fbk-fields-save">${t('fields.save')}</button>
+          <button type="button" class="fbk-mini fbk-fields-cancel">${t('fields.cancel')}</button>
+        </div>`;
+
+    if (existingDl) existingDl.replaceWith(editor);
+    else (textEl as HTMLElement).insertAdjacentElement('afterend', editor);
+
+    (editor.querySelector('.fbk-fields-cancel') as HTMLElement).addEventListener('click', () => {
+      this.renderSidebar();
+    });
+    (editor.querySelector('.fbk-fields-save') as HTMLElement).addEventListener('click', () => {
+      this.saveEditFields(c, editor, idPrefix);
+    });
+  }
+
+  async saveEditFields(c: Comment, editor: HTMLElement, idPrefix: string): Promise<void> {
+    editor.querySelectorAll('.fbk-field-error').forEach((el) => el.remove());
+    editor.querySelectorAll('[aria-invalid="true"]').forEach((el) => {
+      el.removeAttribute('aria-invalid');
+      el.removeAttribute('aria-describedby');
+    });
+
+    const valMap = collectFieldValues(editor);
+    let hasError = false;
+    const fieldsOut: Record<string, string> = {};
+    for (const def of this.commentFields) {
+      const val = valMap[def.key];
+      if (val !== undefined) {
+        const errKey = validateFieldValue(def, val);
+        if (errKey) {
+          hasError = true;
+          this.renderFieldError(editor, def, errKey, idPrefix);
+        } else {
+          fieldsOut[def.key] = val;
+        }
+      }
+    }
+    if (hasError) return;
+
+    const saveBtn = editor.querySelector('.fbk-fields-save') as HTMLButtonElement | null;
+    if (saveBtn) { saveBtn.disabled = true; saveBtn.textContent = t('menu.saving'); }
+    try {
+      const r = await this.api(`/api/comments/${c.id}/fields`, {
+        method: 'PATCH',
+        body: JSON.stringify({ customFields: fieldsOut }),
+      });
+      if (!r.ok) {
+        const b = await r.json().catch(() => null);
+        throw new Error((b && b.message) || ('HTTP ' + r.status));
+      }
+      const envelope = await r.json();
+      const updated = envelope?.data ?? envelope;
+      const idx = this.comments.findIndex((x) => String(x.id) === String(c.id));
+      if (idx !== -1 && updated) {
+        // Spread the old entry first so client-only flags (_mine, _canVerify, …) survive —
+        // same pattern as apiVerify's normalizedComment.
+        this.comments[idx] = { ...this.comments[idx], ...updated };
+      }
+      this.renderSidebar();
+      this.toast(t('fields.saved'));
+    } catch (e) {
+      if (saveBtn) { saveBtn.disabled = false; saveBtn.textContent = t('fields.save'); }
+      if ((e as Error).message !== 'HTTP 401 Unauthorized') this.toast((e as Error).message || t('toast.updateFailed'), 'error');
     }
   }
 
@@ -2981,6 +3066,13 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
       editBtn.addEventListener('click', () => {
         this.closeCardMenu();
         this.startEdit(String(c.id));
+      });
+    }
+    const editFieldsBtn = menu.querySelector('[data-menu-act="edit-fields"]') as HTMLElement | null;
+    if (editFieldsBtn) {
+      editFieldsBtn.addEventListener('click', () => {
+        this.closeCardMenu();
+        this.startEditFields(c);
       });
     }
     // Delete closes the menu immediately (like edit/visibility above) and shows its confirmation
