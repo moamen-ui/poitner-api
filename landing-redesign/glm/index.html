@@ -1,0 +1,643 @@
+<!doctype html>
+<html lang="en" dir="ltr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Pointer — A comment becomes a change</title>
+  <meta name="description" content="Pointer is element-level feedback for any web app that an AI coding tool can act on. A stakeholder clicks an element and writes one sentence in their own language — Pointer ships the AI a structured brief it applies to the real source. Committed, never pushed; a human reviews the diff.">
+  <link rel="canonical" href="https://pointer.moamen.work/">
+  <!-- PHASE2: /api/branding rewrites canonical + og:url from urls.landing, and og:image if an asset ever exists (none this round — do not fabricate one) -->
+  <meta name="pointer-api" content="https://api.pointer.moamen.work">
+  <meta name="theme-color" content="#F4F0E6" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#161512" media="(prefers-color-scheme: dark)">
+  <meta property="og:title" content="Pointer — A comment becomes a change">
+  <meta property="og:description" content="Element-level feedback your AI coding tool can act on. Click, comment in any language — the agent gets a structured brief and edits the real source. Committed, never pushed.">
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="https://pointer.moamen.work/">
+  <meta property="og:locale" content="en_US">
+  <meta property="og:locale:alternate" content="ar">
+  <meta name="twitter:card" content="summary">
+  <meta name="twitter:title" content="Pointer — A comment becomes a change">
+  <meta name="twitter:description" content="Element-level feedback your AI coding tool can act on. Click, comment in any language — the agent gets a structured brief and edits the real source. Committed, never pushed.">
+  <link rel="icon" type="image/svg+xml" href="favicon.svg">
+  <link rel="stylesheet" href="fonts.css">
+  <link rel="stylesheet" href="styles.css">
+  <script>
+    (function () {
+      try {
+        var t = localStorage.getItem("p-theme");
+        if (t === "light" || t === "dark") document.documentElement.dataset.theme = t;
+        if (localStorage.getItem("p-lang") === "ar") {
+          document.documentElement.lang = "ar";
+          document.documentElement.dir = "rtl";
+        }
+      } catch (e) {}
+    })();
+  </script>
+</head>
+<body>
+  <a class="skip-link" href="#main" data-i18n="skip">Skip to content</a>
+
+  <!-- SECTION 1: nav (built) -->
+  <header class="site-nav">
+    <div class="nav-inner container">
+      <a class="brand" href="#top" aria-label="Pointer — home">
+        <svg class="brand-mark" viewBox="0 0 48 48" aria-hidden="true" fill="none">
+          <circle cx="24" cy="24" r="12.5" stroke="currentColor" stroke-width="3.5"/>
+          <path d="M24 3v9M24 36v9M3 24h9M36 24h9" stroke="currentColor" stroke-width="3.5" stroke-linecap="square"/>
+          <circle cx="24" cy="24" r="3.4" fill="currentColor"/>
+        </svg>
+        <span class="brand-name" data-brand-name>Pointer</span>
+      </a>
+
+      <div class="nav-menu" id="nav-menu">
+        <nav aria-label="Primary">
+          <ul class="nav-links">
+            <li><a href="#brief" data-i18n="nav.brief">The brief</a></li>
+            <li><a href="#how" data-i18n="nav.how">How it works</a></li>
+            <li><a href="#pricing" data-i18n="nav.pricing">Pricing</a></li>
+            <li><a href="#extension" data-i18n="nav.extension">Extension</a></li>
+            <li><a href="/docs/" data-docs-link data-i18n="nav.docs">Docs</a></li>
+          </ul>
+        </nav>
+        <div class="nav-utils">
+          <button type="button" class="icon-btn" id="lang-toggle" data-i18n="lang.toggle" data-i18n-aria="lang.aria">ع</button>
+          <button type="button" class="icon-btn" id="theme-toggle" aria-label="Switch to dark mode">
+            <svg class="tt-moon" width="18" height="18" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 14.5A8.5 8.5 0 0 1 9.5 4a8.5 8.5 0 1 0 10.5 10.5Z"/></svg>
+            <svg class="tt-sun" width="18" height="18" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="4.5"/><path d="M12 1.5v3M12 19.5v3M1.5 12h3M19.5 12h3M4.6 4.6l2 2M17.4 17.4l2 2M19.4 4.6l-2 2M6.6 17.4l-2 2"/></svg>
+          </button>
+          <a class="btn nav-signin" data-app-link href="https://app.pointer.moamen.work" data-i18n="nav.signin">Sign in</a>
+        </div>
+      </div>
+
+      <div class="nav-cta-group">
+        <a class="btn btn-primary" data-demo-link href="https://demo.pointer.moamen.work" data-i18n="nav.demo">Try the demo</a>
+        <button type="button" class="icon-btn nav-burger" id="nav-toggle" aria-controls="nav-menu" aria-expanded="false" data-i18n-aria="nav.menu" aria-label="Menu">
+          <span class="burger-box" aria-hidden="true"><span class="burger-bar"></span><span class="burger-bar"></span></span>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <main id="main">
+    <!-- SECTION 2: hero (built) -->
+    <section class="hero" id="top" aria-labelledby="hero-title">
+      <div class="hero-grid container">
+        <div class="hero-copy">
+          <p class="kicker" data-i18n="hero.kicker">Element-level feedback · AI-ready</p>
+          <h1 class="hero-title" id="hero-title" data-i18n="hero.title">A comment becomes a change.</h1>
+          <p class="hero-sub" data-i18n="hero.sub">Pointer pins a stakeholder’s one sentence to the exact element they clicked, detects their language, and hands your AI coding tool a structured brief — selector, winning CSS, route, viewport. The agent edits the real source, commits, never pushes. You review the diff.</p>
+          <div class="hero-ctas">
+            <a class="btn btn-primary btn-lg" data-demo-link href="https://demo.pointer.moamen.work" data-i18n="hero.cta1">Try the demo — no install</a>
+            <a class="btn btn-lg" data-app-link href="https://app.pointer.moamen.work" data-i18n="hero.cta2">Create an account</a>
+          </div>
+          <p class="hero-proof" data-i18n="hero.proof">plain HTTP · any AI tool · every language, translated in</p>
+          <p class="sr-only" data-i18n="hero.sr">How Pointer works, shown as a demo: a stakeholder writes a comment in Arabic on an upgrade button; Pointer translates it to English, builds a structured brief — selector, winning CSS, route, viewport, source — and an AI tool applies the edit as a commit that awaits human review. Nothing is ever pushed automatically.</p>
+        </div>
+
+        <div class="hero-stage" aria-hidden="true">
+          <p class="stage-cap">field demo · comment → commit</p>
+          <div class="stage">
+            <div class="stage-rail"><span class="rail-dot"></span></div>
+            <ol class="stage-steps">
+              <li class="step">
+                <p class="step-tag"><span class="num">01</span>Point</p>
+                <div class="panel app-card">
+                  <div class="app-bar"><span>/pricing</span><span>390 × 844 · mobile</span></div>
+                  <div class="app-body">
+                    <p class="app-plan">Pro plan <span class="price">$29 / mo</span></p>
+                    <ul class="app-feats">
+                      <li>Unlimited projects</li>
+                      <li>Multi-tenant workspaces</li>
+                      <li>Priority support</li>
+                    </ul>
+                    <div class="upgrade-wrap">
+                      <span class="app-btn">Upgrade</span>
+                      <svg class="reticle" viewBox="0 0 48 48" fill="none">
+                        <circle cx="24" cy="24" r="12.5" stroke="currentColor" stroke-width="2"/>
+                        <path d="M24 1v8M24 39v8M1 24h8M39 24h8" stroke="currentColor" stroke-width="2" stroke-linecap="square"/>
+                        <circle cx="24" cy="24" r="2.6" fill="currentColor"/>
+                      </svg>
+                      <span class="coords">x 214 · y 412</span>
+                    </div>
+                    <span class="pin-line"></span>
+                    <div class="comment-bubble">
+                      <p class="comment-ar" lang="ar" dir="rtl">زرّ الترقية صغير جدًا</p>
+                      <div class="comment-tr">
+                        <span class="chip">ar → en · auto</span>
+                        <p class="comment-en">“The upgrade button is too small.”</p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </li>
+              <li class="step">
+                <p class="step-tag"><span class="num">02</span>Brief</p>
+                <div class="panel brief-card">
+                  <dl class="brief">
+                    <div class="brief-row" style="--i:0"><dt>selector</dt><dd>button.upgrade</dd></div>
+                    <div class="brief-row" style="--i:1"><dt>applied css</dt><dd>.btn-sm · padding 10px 16px — wins</dd></div>
+                    <div class="brief-row" style="--i:2"><dt>route</dt><dd>/pricing</dd></div>
+                    <div class="brief-row" style="--i:3"><dt>viewport</dt><dd>390 × 844 · phone</dd></div>
+                    <div class="brief-row" style="--i:4"><dt>source</dt><dd>PricingCard.tsx · mapping on</dd></div>
+                  </dl>
+                </div>
+              </li>
+              <li class="step">
+                <p class="step-tag"><span class="num">03</span>Change</p>
+                <div class="panel change-card">
+                  <p class="change-file">PricingCard.tsx</p>
+                  <pre class="diff"><code><span class="diff-r">- className="btn-sm"</span><span class="diff-a">+ className="btn-lg"</span></code></pre>
+                  <p class="commit"><span>commit a41f9c2 · committed, never pushed</span><span class="commit-status">status — awaiting your review</span></p>
+                </div>
+              </li>
+            </ol>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- SECTION 3: the brief -->
+    <section class="section" id="brief" aria-labelledby="brief-title">
+      <div class="container">
+        <div class="section-head">
+          <p class="kicker"><span class="kicker-num" aria-hidden="true">03</span><span data-i18n="brief.kicker">The brief</span></p>
+          <h2 class="section-title" id="brief-title" data-i18n="brief.title">One comment, nine coordinates.</h2>
+          <p class="section-sub" data-i18n="brief.sub">Every comment ships as a structured brief the agent can act on directly — not a screenshot with a sentence attached.</p>
+        </div>
+        <div class="panel field-table">
+          <dl class="field-list">
+            <div class="field-row">
+              <dt><code>selector</code></dt>
+              <dd data-i18n="brief.f1">Names the exact DOM element. No screenshot, no description needed.</dd>
+            </div>
+            <div class="field-row">
+              <dt><code>snapshot</code></dt>
+              <dd data-i18n="brief.f2">The element’s own opening tag, attributes and text — capped short, deliberately shallow so the model isn’t drowned in child markup.</dd>
+            </div>
+            <div class="field-row">
+              <dt><code>appliedCssRules</code></dt>
+              <dd data-i18n="brief.f3">The rules that actually win — not the full computed dump. Answers “why is it blue?” before the agent has to ask.</dd>
+            </div>
+            <div class="field-row">
+              <dt><code>computedStyles</code><code>classes</code><code>parentInfo</code></dt>
+              <dd data-i18n="brief.f4">Disambiguate the structure when the selector alone is generic.</dd>
+            </div>
+            <div class="field-row">
+              <dt><code>route</code><code>pageUrl</code><code>pageTitle</code></dt>
+              <dd data-i18n="brief.f5">Identifies which screen or view to open.</dd>
+            </div>
+            <div class="field-row">
+              <dt><code>viewport</code><code>deviceType</code><code>devicePixelRatio</code></dt>
+              <dd data-i18n="brief.f6">Turns “broken on mobile” into a reproducible condition.</dd>
+            </div>
+            <div class="field-row">
+              <dt><code>PageContextSnapshot</code><span class="chip" data-i18n="brief.optin">opt-in · bug reports</span></dt>
+              <dd data-i18n="brief.f7">Console errors and failed or slow network requests, captured at the moment of the issue.</dd>
+            </div>
+            <div class="field-row">
+              <dt><code>sourcePath</code><span class="chip" data-i18n="brief.mapping">when source mapping is on</span></dt>
+              <dd data-i18n="brief.f8">The source file behind the element, when mapping is enabled — tiered by what the build exposes.</dd>
+            </div>
+            <div class="field-row">
+              <dt><code>language</code></dt>
+              <dd data-i18n="brief.f9">The BCP-47 tag the comment was detected in — so translation is automatic, in both directions.</dd>
+            </div>
+          </dl>
+        </div>
+      </div>
+    </section>
+
+    <!-- SECTION 4: how it works / the loop -->
+    <section class="section" id="how" aria-labelledby="how-title">
+      <div class="container">
+        <div class="section-head">
+          <p class="kicker"><span class="kicker-num" aria-hidden="true">04</span><span data-i18n="how.kicker">The loop</span></p>
+          <h2 class="section-title" id="how-title" data-i18n="how.title">Point. Triage. Apply. Commit.</h2>
+          <p class="section-sub" data-i18n="how.sub">Four steps from a stakeholder’s sentence to a reviewed commit — and the reply comes back in their own language.</p>
+        </div>
+
+        <div class="flow-tabs" id="flow-tabs" role="tablist" aria-label="How Pointer works">
+          <button type="button" class="flow-tab" id="flow-tab-1" role="tab" aria-selected="true" aria-controls="flow-panel-1" tabindex="0">
+            <span class="flow-tab-num" aria-hidden="true">01</span><span data-i18n="how.tab1">Point &amp; comment</span>
+          </button>
+          <button type="button" class="flow-tab" id="flow-tab-2" role="tab" aria-selected="false" aria-controls="flow-panel-2" tabindex="-1">
+            <span class="flow-tab-num" aria-hidden="true">02</span><span data-i18n="how.tab2">Triage</span>
+          </button>
+          <button type="button" class="flow-tab" id="flow-tab-3" role="tab" aria-selected="false" aria-controls="flow-panel-3" tabindex="-1">
+            <span class="flow-tab-num" aria-hidden="true">03</span><span data-i18n="how.tab3">Applied by AI</span>
+          </button>
+          <button type="button" class="flow-tab" id="flow-tab-4" role="tab" aria-selected="false" aria-controls="flow-panel-4" tabindex="-1">
+            <span class="flow-tab-num" aria-hidden="true">04</span><span data-i18n="how.tab4">Committed, never pushed</span>
+          </button>
+        </div>
+
+        <div class="panel flow-panel" id="flow-panel-1" role="tabpanel" aria-labelledby="flow-tab-1">
+          <div class="flow-inner">
+            <div class="flow-copy">
+              <p data-i18n="how.p1">Anyone you invite can click any element on the running app and leave one sentence — in the language they think in. Pointer detects the language and translates it in automatically, on every install, by default.</p>
+              <p class="mono-note" data-i18n="how.n1">signed in · click · one sentence</p>
+            </div>
+            <div class="tr-motif" aria-hidden="true">
+              <p class="tr-orig" lang="ar" dir="rtl">زرّ الترقية صغير جدًا</p>
+              <span class="chip">ar → en · auto</span>
+              <p class="tr-trans">“The upgrade button is too small.”</p>
+            </div>
+          </div>
+        </div>
+        <div class="panel flow-panel" id="flow-panel-2" role="tabpanel" aria-labelledby="flow-tab-2" hidden>
+          <div class="flow-inner">
+            <div class="flow-copy">
+              <p data-i18n="how.p2">Comments land in one queue in the dashboard, tagged by project, environment, stakeholder and status — not scattered as screenshots across five channels.</p>
+              <p class="mono-note" data-i18n="how.n2">one queue · tagged · triaged</p>
+            </div>
+            <div class="tag-row" aria-hidden="true">
+              <span class="tag">project · acme-web</span>
+              <span class="tag">env · production</span>
+              <span class="tag">stakeholder · layla</span>
+              <span class="tag">status · open</span>
+            </div>
+          </div>
+        </div>
+        <div class="panel flow-panel" id="flow-panel-3" role="tabpanel" aria-labelledby="flow-tab-3" hidden>
+          <div class="flow-inner">
+            <div class="flow-copy">
+              <p data-i18n="how.p3">A developer hands the queue to any AI coding tool over plain HTTP. The agent starts at the selector and the winning CSS rule — not at <code>src/</code> — and when a run holds mechanical edits, they’re typed out by a cheaper model while the premium one plans and reviews.</p>
+              <p class="mono-note" data-i18n="how.n3">any tool · plain HTTP · no lock-in</p>
+            </div>
+            <div class="panel brief-card" aria-hidden="true">
+              <dl class="brief">
+                <div class="brief-row" style="--i:0"><dt>queue</dt><dd>#128 → agent · brief attached</dd></div>
+                <div class="brief-row" style="--i:1"><dt>selector</dt><dd>button.upgrade</dd></div>
+                <div class="brief-row" style="--i:2"><dt>delegate</dt><dd>mechanical → cheaper model</dd></div>
+              </dl>
+            </div>
+          </div>
+        </div>
+        <div class="panel flow-panel" id="flow-panel-4" role="tabpanel" aria-labelledby="flow-tab-4" hidden>
+          <div class="flow-inner">
+            <div class="flow-copy">
+              <p data-i18n="how.p4">The agent commits in your project’s style and never pushes. Every applied comment carries its commit URL and links back to its author. You review the diff; when the fix ships, the author is notified and confirms — or reopens it.</p>
+              <p class="mono-note" data-i18n="how.n4">your review · then 👍 or 👎</p>
+            </div>
+            <div class="flow-stack" aria-hidden="true">
+              <div class="panel change-card">
+                <p class="change-file">PricingCard.tsx</p>
+                <pre class="diff"><code><span class="diff-r">- className="btn-sm"</span><span class="diff-a">+ className="btn-lg"</span></code></pre>
+                <p class="commit"><span>commit a41f9c2 · committed, never pushed</span><span class="commit-status">status — awaiting your review</span></p>
+              </div>
+              <div class="tr-motif">
+                <p class="tr-orig">“Done — the upgrade button is bigger now.”</p>
+                <span class="chip">en → ar · auto</span>
+                <p class="tr-trans" lang="ar" dir="rtl">تم — زرّ الترقية أكبر الآن، بانتظار تأكيدك.</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- SECTION 5: before/after contrast -->
+    <section class="section" id="contrast" aria-labelledby="contrast-title">
+      <div class="container">
+        <div class="section-head">
+          <p class="kicker"><span class="kicker-num" aria-hidden="true">05</span><span data-i18n="contrast.kicker">The contrast</span></p>
+          <h2 class="section-title" id="contrast-title" data-i18n="contrast.title">The same request, with and without coordinates.</h2>
+        </div>
+        <div class="duo">
+          <div class="duo-card duo-without">
+            <h3 class="duo-h" data-i18n="contrast.without">Without Pointer</h3>
+            <ul class="duo-list">
+              <li data-i18n="contrast.w1">“The checkout feels broken on my phone” — no element, no repro, no viewport.</li>
+              <li data-i18n="contrast.w2">A developer guesses the file, the rule, the screen.</li>
+              <li data-i18n="contrast.w3">An AI agent loops through blind exploration of the codebase before it touches the right file.</li>
+              <li data-i18n="contrast.w4">The fix lands as a screenshot reply in a thread — nothing links back to a commit.</li>
+            </ul>
+          </div>
+          <div class="panel duo-card duo-with">
+            <h3 class="duo-h" data-i18n="contrast.with">With Pointer</h3>
+            <ul class="duo-list">
+              <li data-i18n="contrast.c1">Click the element — the brief already carries the selector, the winning CSS, the route, the viewport.</li>
+              <li data-i18n="contrast.c2">The agent starts at the selector and the winning rule, not at <code>src/</code>.</li>
+              <li data-i18n="contrast.c3">Mechanical edits and translation delegate to a cheaper model; judgment stays on the premium one.</li>
+              <li data-i18n="contrast.c4">Every applied comment links back to its commit URL — committed, never pushed.</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- SECTION 6: why it saves time/cost/tokens -->
+    <section class="section" id="why" aria-labelledby="why-title">
+      <div class="container">
+        <div class="section-head">
+          <p class="kicker"><span class="kicker-num" aria-hidden="true">06</span><span data-i18n="why.kicker">The margin</span></p>
+          <h2 class="section-title" id="why-title" data-i18n="why.title">Why teams point instead of screenshot.</h2>
+        </div>
+        <div class="grid-4">
+          <div class="panel card">
+            <p class="card-tag" data-i18n="why.t1tag">time</p>
+            <h3 class="card-h" data-i18n="why.t1">Context attached to the click</h3>
+            <p data-i18n="why.b1">No meeting to reconstruct what “broken on mobile” meant — the brief already says where, what, and at which viewport.</p>
+          </div>
+          <div class="panel card">
+            <p class="card-tag" data-i18n="why.t2tag">cost</p>
+            <h3 class="card-h" data-i18n="why.t2">Fewer clarification loops</h3>
+            <p data-i18n="why.b2">The ask arrives with its coordinates attached, so threads stay short and meetings turn into reviews.</p>
+          </div>
+          <div class="panel card">
+            <p class="card-tag" data-i18n="why.t3tag">tokens</p>
+            <h3 class="card-h" data-i18n="why.t3">Fewer premium-model tokens</h3>
+            <p data-i18n="why.b3">The agent starts at the selector and the winning CSS rule. Mechanical edits and translation go to a cheaper model, so the expensive one spends its tokens on the parts that need judgment.</p>
+          </div>
+          <div class="panel card">
+            <p class="card-tag" data-i18n="why.t4tag">queue</p>
+            <h3 class="card-h" data-i18n="why.t4">One organized queue</h3>
+            <p data-i18n="why.b4">Tagged, triaged, per project and environment — not screenshots in five channels.</p>
+          </div>
+        </div>
+
+        <!-- SECTION 7: cost-aware apply graph (subsection of §6, own numbered kicker) -->
+        <figure class="cost-graph" id="cost-graph">
+          <div class="section-head">
+            <p class="kicker"><span class="kicker-num" aria-hidden="true">07</span><span data-i18n="cost.kicker">Cost-aware apply</span></p>
+            <h3 class="section-title cost-title" data-i18n="cost.title">Delegation, drawn to shape.</h3>
+            <p class="section-sub" data-i18n="cost.sub">When a run has 3+ comments in disjoint files and an edit is mechanical — a copy tweak, a color swap, a prop change — the orchestrating model plans and reviews while a cheaper worker types the edit out.</p>
+          </div>
+          <div class="cost-plot" id="cost-plot">
+            <div class="bar-col">
+              <div class="bar bar-a"><span class="seg-label" data-i18n="cost.aSeg">investigation · review · edits · translation</span></div>
+              <p class="bar-name" data-i18n="cost.aName">One model does everything</p>
+              <p class="bar-note" data-i18n="cost.aNote">every task on the premium model</p>
+            </div>
+            <div class="bar-col">
+              <div class="bar bar-b">
+                <div class="seg seg-premium"><span class="seg-label" data-i18n="cost.bSeg1">investigation + review</span></div>
+                <div class="seg seg-cheap"><span class="seg-label" data-i18n="cost.bSeg2">mechanical edits + translation</span></div>
+              </div>
+              <p class="bar-name" data-i18n="cost.bName">Pointer: cost-aware delegation</p>
+              <ul class="bar-legend">
+                <li data-i18n="cost.l1">mechanical edits — typed by the cheaper model</li>
+                <li data-i18n="cost.l2">translation, both directions — cheaper model</li>
+              </ul>
+            </div>
+          </div>
+          <figcaption class="cost-cap">
+            <span data-i18n="cost.cap">Qualitative by rule: no savings percentage, token count, or speed figure is printed anywhere — none has been measured yet. The bar shapes show only that the delegated share is the minority; investigation and review remain the harder part.</span>
+          </figcaption>
+        </figure>
+      </div>
+    </section>
+
+    <!-- SECTION 8: features grid -->
+    <section class="section" id="features" aria-labelledby="feat-title">
+      <div class="container">
+        <div class="section-head">
+          <p class="kicker"><span class="kicker-num" aria-hidden="true">08</span><span data-i18n="feat.kicker">The kit</span></p>
+          <h2 class="section-title" id="feat-title" data-i18n="feat.title">Small to install. Wide to work with.</h2>
+        </div>
+        <div class="grid-4">
+          <div class="panel card">
+            <p class="card-tag" data-i18n="feat.t1tag">install</p>
+            <h3 class="card-h" data-i18n="feat.t1">Two-line install</h3>
+            <pre class="code-block" aria-label="Install snippet"><code>&lt;script src="https://api.pointer.moamen.work/widget.js" defer&gt;&lt;/script&gt;
+&lt;pointer-feedback project="acme-web" server="https://your-api"&gt;&lt;/pointer-feedback&gt;</code></pre>
+            <p data-i18n="feat.b1">A script tag and a custom element. No SDK, no build step, no framework lock-in.</p>
+          </div>
+          <div class="panel card">
+            <p class="card-tag" data-i18n="feat.t2tag">tenancy</p>
+            <h3 class="card-h" data-i18n="feat.t2">Multi-project, multi-tenant</h3>
+            <p data-i18n="feat.b2">Workspaces with isolation enforced server-side. Every comment is tagged by project, environment, and stakeholder.</p>
+          </div>
+          <div class="panel card">
+            <p class="card-tag" data-i18n="feat.t3tag">isolation</p>
+            <h3 class="card-h" data-i18n="feat.t3">Shadow-DOM widget</h3>
+            <p data-i18n="feat.b3">The widget lives in its own shadow root — your styles can’t leak in, its styles can’t leak out. Any framework, any stack.</p>
+          </div>
+          <div class="panel card">
+            <p class="card-tag" data-i18n="feat.t4tag">extension</p>
+            <h3 class="card-h" data-i18n="feat.t4">Browser extension</h3>
+            <p data-i18n="feat.b4">The same element-level comments on pages you don’t host — client sites, staging behind login, third-party tools.</p>
+            <a class="text-link" href="#extension" data-i18n="feat.b4link">See the install stepper</a>
+          </div>
+        </div>
+        <ul class="chip-row" aria-label="More capabilities">
+          <li class="chip" data-i18n="feat.x1">environments · local / staging / production</li>
+          <li class="chip" data-i18n="feat.x2">AI rules · workspace › project › personal</li>
+          <li class="chip" data-i18n="feat.x3">picked actions</li>
+          <li class="chip" data-i18n="feat.x4">CLI pointer-feedback</li>
+          <li class="chip" data-i18n="feat.x5">source mapping · Vite</li>
+          <li class="chip" data-i18n="feat.x6">deploy awareness · applied vs live</li>
+          <li class="chip" data-i18n="feat.x7">👍 / 👎 verification</li>
+          <li class="chip" data-i18n="feat.x8">secret detection</li>
+          <li class="chip" data-i18n="feat.x9">input-value masking</li>
+          <li class="chip" data-i18n="feat.x10">hashed, rotatable API keys</li>
+          <li class="chip" data-i18n="feat.x11">self-hostable · API + Postgres</li>
+        </ul>
+      </div>
+    </section>
+
+    <!-- SECTION 9: works with your stack (live; hidden until data) -->
+    <section class="section" id="stacks" aria-labelledby="stacks-title" hidden>
+      <div class="container">
+        <div class="section-head">
+          <p class="kicker"><span class="kicker-num" aria-hidden="true">09</span><span data-i18n="stacks.kicker">Field evidence</span></p>
+          <h2 class="section-title" id="stacks-title" data-i18n="stacks.title">Works with your stack.</h2>
+          <p class="section-sub" data-i18n="stacks.sub">Anonymized counts from projects syncing feedback through Pointer — totals live from the server, names withheld.</p>
+        </div>
+        <div class="tag-block">
+          <p class="tag-label" data-i18n="stacks.stacksLabel">stacks</p>
+          <ul class="tag-row" id="stack-tags"></ul>
+        </div>
+        <div class="tag-block">
+          <p class="tag-label" data-i18n="stacks.aiLabel">AI tools</p>
+          <ul class="tag-row" id="aitool-tags"></ul>
+        </div>
+      </div>
+    </section>
+
+    <!-- SECTION 10: pointer in numbers (live; hidden until data) -->
+    <section class="section" id="numbers" aria-labelledby="numbers-title" hidden>
+      <div class="container">
+        <div class="section-head">
+          <p class="kicker"><span class="kicker-num" aria-hidden="true">10</span><span data-i18n="stats.kicker">The count</span></p>
+          <h2 class="section-title" id="numbers-title" data-i18n="stats.title">Pointer in numbers.</h2>
+          <p class="section-sub" data-i18n="stats.sub">Public totals, thresholded for anonymity — each one appears only once it clears the server’s bar.</p>
+        </div>
+        <dl class="stat-grid" id="stat-grid"></dl>
+        <div class="tag-block" id="lang-block" hidden>
+          <p class="tag-label" data-i18n="stats.langLabel">feedback written in</p>
+          <ul class="tag-row" id="lang-tags"></ul>
+        </div>
+        <div class="tag-block" id="stat-aitools-block" hidden>
+          <p class="tag-label" data-i18n="stats.aiLabel">applied by</p>
+          <ul class="tag-row" id="stat-aitool-tags"></ul>
+        </div>
+      </div>
+    </section>
+
+    <!-- SECTION 11: built for the whole team -->
+    <section class="section" id="team" aria-labelledby="team-title">
+      <div class="container">
+        <div class="section-head">
+          <p class="kicker"><span class="kicker-num" aria-hidden="true">11</span><span data-i18n="team.kicker">The crew</span></p>
+          <h2 class="section-title" id="team-title" data-i18n="team.title">Built for the whole team.</h2>
+        </div>
+        <div class="duo">
+          <div class="panel duo-card">
+            <h3 class="duo-h" data-i18n="team.h1">The people who point</h3>
+            <p data-i18n="team.b1">Clients, PMs, testers — invited in, nothing to install, nothing to learn. Click any element, type one sentence in your own language, done. Replies come back in that same language.</p>
+            <div class="tr-motif" aria-hidden="true">
+              <p class="tr-orig" lang="ar" dir="rtl">زرّ الترقية صغير جدًا</p>
+              <span class="chip">ar → en · auto</span>
+              <p class="tr-trans">“The upgrade button is too small.”</p>
+            </div>
+            <p class="mono-note" data-i18n="team.n1">invited · no install · any language</p>
+          </div>
+          <div class="panel duo-card">
+            <h3 class="duo-h" data-i18n="team.h2">The people who apply</h3>
+            <p data-i18n="team.b2">Pull the queue with any AI coding tool over plain HTTP, let cost-aware delegation type the mechanical parts, and review the result. Committed, never pushed — the final word is yours.</p>
+            <pre class="code-block" aria-label="Queue fetch flavor"><code>queue → brief → agent → commit</code></pre>
+            <p class="mono-note" data-i18n="team.n2">any tool · plain HTTP · your review</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- SECTION 12: trust & privacy -->
+    <section class="section" id="trust" aria-labelledby="trust-title">
+      <div class="container">
+        <div class="section-head">
+          <p class="kicker"><span class="kicker-num" aria-hidden="true">12</span><span data-i18n="trust.kicker">On the record</span></p>
+          <h2 class="section-title" id="trust-title" data-i18n="trust.title">Fair questions, straight answers.</h2>
+        </div>
+        <div class="grid-4 grid-trust">
+          <div class="panel card">
+            <h3 class="card-h" data-i18n="trust.q1">“An AI edits my code?”</h3>
+            <p data-i18n="trust.a1">It commits, never pushes. You review every diff before it lands, and each applied comment carries its commit URL — the change traces back to the ask.</p>
+          </div>
+          <div class="panel card">
+            <h3 class="card-h" data-i18n="trust.q2">“What exactly do you capture?”</h3>
+            <p data-i18n="trust.a2">Element-level DOM metadata only: selector, winning CSS, route, viewport. Never form values, cookies, localStorage, or request bodies.</p>
+            <p class="card-links"><a class="text-link" href="/privacy.html" data-i18n="trust.l1">Privacy</a><a class="text-link" href="/data.html" data-i18n="trust.l2">Data &amp; self-hosting</a></p>
+          </div>
+          <div class="panel card">
+            <h3 class="card-h" data-i18n="trust.q3">“Which AI tool do I need?”</h3>
+            <p data-i18n="trust.a3">Any. The queue is plain HTTP, so whatever agent you already use can pull it — and if your tool speaks MCP, there’s a server for that too. No lock-in.</p>
+          </div>
+          <div class="panel card">
+            <h3 class="card-h" data-i18n="trust.q4">“Is my data stuck with you?”</h3>
+            <p data-i18n="trust.a4">No. Pointer self-hosts: the API plus a Postgres database you own. Your data stays yours.</p>
+            <p class="card-links"><a class="text-link" href="/data.html" data-i18n="trust.l2b">Self-hosting details</a></p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- SECTION 13: pricing (live) -->
+    <section class="section" id="pricing" aria-labelledby="pricing-title">
+      <div class="container">
+        <div class="section-head">
+          <p class="kicker"><span class="kicker-num" aria-hidden="true">13</span><span data-i18n="plan.kicker">Pricing</span></p>
+          <h2 class="section-title" id="pricing-title" data-i18n="plan.title">Pricing.</h2>
+          <p class="section-sub" data-i18n="plan.sub">Rendered live from the server — what you see is what the API says right now.</p>
+        </div>
+        <div class="plan-grid" id="plan-grid">
+          <div class="panel plan" id="plan-fallback">
+            <h3 class="plan-name" data-i18n="plan.fbTitle">Plans are being drawn up.</h3>
+            <p data-i18n="plan.fbBody">Pricing isn’t reachable from the server at this moment. You can still create an account and start pointing.</p>
+            <a class="btn btn-primary" data-app-link href="https://app.pointer.moamen.work" data-i18n="hero.cta2">Create an account</a>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- SECTION 14: browser extension + install stepper -->
+    <section class="section" id="extension" aria-labelledby="ext-title">
+      <div class="container">
+        <div class="section-head">
+          <p class="kicker"><span class="kicker-num" aria-hidden="true">14</span><span data-i18n="ext.kicker">The extension</span></p>
+          <h2 class="section-title" id="ext-title" data-i18n="ext.title">Feedback on sites you don’t host.</h2>
+          <p class="section-sub" data-i18n="ext.sub">The browser extension pins the same element-level comments on pages you can’t instrument — client sites, staging behind login, third-party tools.</p>
+        </div>
+        <div class="ext-actions">
+          <a class="btn btn-primary btn-lg" id="ext-store" href="#" hidden rel="noopener" data-i18n="ext.store">Install from the Chrome Web Store</a>
+          <a class="btn" id="ext-zip" href="#" hidden data-i18n="ext.zip">Download the zip</a>
+        </div>
+        <div class="stepper">
+          <p class="stepper-progress"><span id="step-count" aria-live="polite">0 / 6</span> <span data-i18n="ext.stepsDone">steps done</span>
+            <button type="button" class="step-reset" id="step-reset" data-i18n="ext.reset">Reset</button>
+          </p>
+          <ol class="steps" id="ext-steps">
+            <li><button type="button" class="step-btn" aria-pressed="false"><span class="step-n" aria-hidden="true">01</span><span class="step-t" data-i18n="ext.s1">Download the extension zip and keep it somewhere stable</span></button></li>
+            <li><button type="button" class="step-btn" aria-pressed="false"><span class="step-n" aria-hidden="true">02</span><span class="step-t" data-i18n="ext.s2">Unzip it</span></button></li>
+            <li><button type="button" class="step-btn" aria-pressed="false"><span class="step-n" aria-hidden="true">03</span><span class="step-t" data-i18n="ext.s3">Open <code>chrome://extensions</code></span></button></li>
+            <li><button type="button" class="step-btn" aria-pressed="false"><span class="step-n" aria-hidden="true">04</span><span class="step-t" data-i18n="ext.s4">Switch on Developer mode</span></button></li>
+            <li><button type="button" class="step-btn" aria-pressed="false"><span class="step-n" aria-hidden="true">05</span><span class="step-t" data-i18n="ext.s5">Click “Load unpacked” and pick the unzipped folder</span></button></li>
+            <li><button type="button" class="step-btn" aria-pressed="false"><span class="step-n" aria-hidden="true">06</span><span class="step-t" data-i18n="ext.s6">Sign in from the extension’s toolbar button</span></button></li>
+          </ol>
+        </div>
+      </div>
+    </section>
+
+    <!-- SECTION 15a: final CTA band -->
+    <section class="cta-band" aria-labelledby="cta-title">
+      <div class="container cta-inner">
+        <p class="kicker cta-kicker"><span class="kicker-num" aria-hidden="true">15</span><span data-i18n="cta.kicker">Plot your first comment</span></p>
+        <h2 class="cta-title" id="cta-title" data-i18n="cta.title">Point at it. It gets done.</h2>
+        <p class="cta-sub" data-i18n="cta.sub">Open the demo and leave a comment on anything — no install, no account. Or set up a project and point your own app.</p>
+        <div class="hero-ctas">
+          <a class="btn btn-primary btn-lg" data-demo-link href="https://demo.pointer.moamen.work" data-i18n="hero.cta1">Try the demo — no install</a>
+          <a class="btn btn-lg" data-app-link href="https://app.pointer.moamen.work" data-i18n="hero.cta2">Create an account</a>
+        </div>
+        <p class="cta-proof" data-i18n="cta.proof">committed, never pushed · every language, translated in</p>
+      </div>
+    </section>
+  </main>
+
+  <!-- SECTION 15b: footer -->
+  <footer class="site-foot">
+    <div class="container">
+      <div class="foot-grid">
+        <div class="foot-brand">
+          <a class="brand" href="#top" aria-label="Pointer — home">
+            <svg class="brand-mark" viewBox="0 0 48 48" aria-hidden="true" fill="none">
+              <circle cx="24" cy="24" r="12.5" stroke="currentColor" stroke-width="3.5"/>
+              <path d="M24 3v9M24 36v9M3 24h9M36 24h9" stroke="currentColor" stroke-width="3.5" stroke-linecap="square"/>
+              <circle cx="24" cy="24" r="3.4" fill="currentColor"/>
+            </svg>
+            <span class="brand-name" data-brand-name>Pointer</span>
+          </a>
+          <p class="foot-tag" data-brand-tagline data-i18n="foot.tagline">A comment becomes a change.</p>
+        </div>
+        <nav class="foot-col" aria-label="Documentation">
+          <h3 class="foot-h" data-i18n="foot.docsH">Docs</h3>
+          <a href="/docs/install.html" data-i18n="foot.docsInstall">Install</a>
+          <a href="/docs/apply.html" data-i18n="foot.docsApply">Apply feedback</a>
+          <a href="/docs/mcp.html" data-i18n="foot.docsMcp">MCP server</a>
+          <a href="/docs/api-keys.html" data-i18n="foot.docsKeys">API keys</a>
+          <a href="/docs/" data-docs-link data-i18n="foot.docsAll">All docs</a>
+        </nav>
+        <nav class="foot-col" aria-label="Product">
+          <h3 class="foot-h" data-i18n="foot.productH">Product</h3>
+          <a data-app-link href="https://app.pointer.moamen.work" data-i18n="foot.dashboard">Dashboard</a>
+          <a data-demo-link href="https://demo.pointer.moamen.work" data-i18n="nav.demo">Try the demo</a>
+          <a href="#extension" data-i18n="nav.extension">Extension</a>
+          <a href="#pricing" data-i18n="nav.pricing">Pricing</a>
+        </nav>
+        <nav class="foot-col" aria-label="Legal">
+          <h3 class="foot-h" data-i18n="foot.legalH">Legal &amp; more</h3>
+          <a href="/privacy.html" data-i18n="foot.privacy">Privacy</a>
+          <a href="/data.html" data-i18n="foot.data">Data &amp; self-hosting</a>
+          <a href="https://github.com/moamen-ui" rel="noopener" data-i18n="foot.github">GitHub</a>
+        </nav>
+      </div>
+      <div class="foot-bar">
+        <p class="foot-copy">© <span id="f-year">2026</span> <span data-brand-name>Pointer</span></p>
+        <p class="foot-note" data-i18n="foot.note">self-hostable · API + Postgres · your data stays yours</p>
+      </div>
+    </div>
+  </footer>
+  <script src="main.js" defer></script>
+</body>
+</html>

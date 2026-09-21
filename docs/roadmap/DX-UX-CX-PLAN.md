@@ -52,6 +52,7 @@ the whole team lives in — not just the developer.
 | OSS vs SaaS | Undecided → **white-label first.** Server URL is the *only* input; name/logo/urls from `GET /api/branding`; skills and widget served by the server; one build-time `DEFAULT_SERVER`. |
 | Self-hosting boundary | Self-hosted = **API + Postgres** (+ **dashboard, deployed separately**). Thin clients — **npm CLI, extension, landing** — are published centrally and take `--server`. Self-hosting bootstrap is out of scope. |
 | Notifications | In-app (widget badge + dashboard bell) is the free default. **Email is held** until a real trigger (first non-dev stakeholder outside the founder workspace, or comment→revisit p50 > 24 h); when un-held it is admin-configured per workspace and capped by the existing `EmailsPerMonth` entitlement. **Webhooks (§32) before email.** |
+| Jira / issue trackers (2026-09-21) | **No first-class Jira integration.** Jira, Slack, Linear, Notion etc. are all served by §32 generic outbound webhooks: Pointer POSTs a stable, versioned JSON envelope; the customer's **Jira Automation "Incoming webhook" rule** turns it into an issue (`{{webhookData.text}}` → summary, `{{webhookData.link}}` → description). Zero Atlassian code, no OAuth/app registration, free on Jira Cloud for single-project rules. Jira → Pointer status sync (Jira system webhooks hitting a public endpoint) is a **separate, later** item with its own trigger. Ships with a one-page "Jira recipe" doc. |
 | Source-path manifest | **Never committed** — deterministic, regenerated locally (Phase 4). |
 | API keys | Hash for lookup + encrypt for display at rest **now** (NEW-5; keeps the served "always re-viewable" promise); full scoped-key UI (§25) later. |
 | AI and git | AI commits per project `CommitStyle`; **AI never pushes** — the human's CLI does. |
@@ -200,7 +201,7 @@ Today: tier 1 `data-component-source` attr → tier 2 dev-mode fiber/Vue interna
 
 ### Phase 7 — Comment quality & after-apply
 
-27. Dedupe · 28. Before/after (manual attach) · 29. Multi-element · 30. Auto-changelog · 31. **Deploy awareness** (`CommitSha`, `data-build-sha`, first-seen table; `applied → deployed`; staging first) — R3.1 · 32. Outbound webhooks (before email). *(all held except 31)*
+27. Dedupe · 28. Before/after (manual attach) · 29. Multi-element · 30. Auto-changelog · 31. **Deploy awareness** (`CommitSha`, `data-build-sha`, first-seen table; `applied → deployed`; staging first) — R3.1 · 32. **Outbound webhooks** (before email) — workspace-level `WebhookUrl` + shared secret; events `comment.created`, `comment.applied` (later `comment.replied`, `comment.verified`); body = `{ version, event, commentId, text, language, project, environment, route, status, link }`; `X-Pointer-Signature` HMAC-SHA256; fire-and-forget from the R2-04 notification pipeline with one short retry; dashboard: URL field + "send test" button. **Jira = a consumer of this, not a feature** (see Decisions → Jira / issue trackers): the customer pastes a Jira Automation incoming-webhook URL; docs ship a copy-paste Jira recipe. Later, only on a paying ask: thin "Create Jira issue" button (customer's own API token, one-way, stores the issue key as `ExternalRef` on the comment) and Jira → Pointer status sync. ~1 day for the core. *(all held except 31)*
 
 ### Phase 8 — Privacy & security
 

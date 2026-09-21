@@ -1,0 +1,831 @@
+<!DOCTYPE html>
+<html lang="en" dir="ltr" data-theme="light">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Pointer — Agentic Feedback</title>
+  
+  <meta name="description" content="An AI coding tool is only as good as the feedback it receives. Point and click to generate a structured brief for any AI agent.">
+  <meta property="og:title" content="Pointer — Agentic Feedback">
+  <meta property="og:description" content="An AI coding tool is only as good as the feedback it receives.">
+  <meta property="og:type" content="website">
+  
+  <!-- Favicon -->
+  <link rel="icon" href="./assets/favicon.ico" id="favicon">
+  
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700&family=Inter:wght@400;600;700&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
+  
+  <link rel="stylesheet" href="./styles.css">
+
+  <script>
+    // Early Theme & Language Init to prevent FOUC
+    try {
+      var savedTheme = localStorage.getItem('pointer-theme');
+      if (savedTheme) {
+        document.documentElement.setAttribute('data-theme', savedTheme);
+      } else if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) {
+        document.documentElement.setAttribute('data-theme', 'dark');
+      }
+      var savedLang = localStorage.getItem('pointer-lang');
+      if (savedLang === 'ar') {
+        document.documentElement.setAttribute('dir', 'rtl');
+        document.documentElement.setAttribute('lang', 'ar');
+      }
+    } catch (e) {}
+  </script>
+</head>
+<body>
+
+  <!-- SECTION 1: Nav -->
+  <header class="site-nav">
+    <div class="container nav-container">
+      <a href="/" class="nav-brand">
+        <img src="./assets/dog-mascot.png" alt="Pointer Logo" class="nav-logo" id="nav-logo" onerror="this.style.display='none'">
+        <span data-brand-name>Pointer</span>
+      </a>
+      
+      <div class="nav-actions">
+        <div class="nav-toggles">
+          <button id="lang-toggle" class="toggle-btn" aria-label="Toggle Language">AR</button>
+          <button id="theme-toggle" class="toggle-btn" aria-label="Toggle Theme">◐</button>
+        </div>
+        <a href="https://app.pointer.moamen.work" class="btn btn-sm btn-outline" data-i18n="nav_signin">Sign in</a>
+        <a href="https://demo.pointer.moamen.work" class="btn btn-sm btn-primary" data-i18n="nav_try_demo">Try the demo</a>
+      </div>
+    </div>
+  </header>
+
+  <main>
+    <!-- SECTION 2: Hero -->
+    <section class="hero">
+      <div class="container hero-container">
+        
+        <div class="hero-content">
+          <h1 class="hero-title" data-i18n="hero_title">An AI coding tool is only as good as the feedback it receives.</h1>
+          <p class="hero-subtitle" data-i18n="hero_subtitle">
+            Point, click, and comment on your live app. Generate a structured DOM and state brief that any AI agent can action immediately.
+          </p>
+          <div class="hero-ctas">
+            <a href="https://demo.pointer.moamen.work" class="btn btn-primary" data-i18n="hero_cta_demo">Try the demo — no install</a>
+            <a href="https://app.pointer.moamen.work" class="btn btn-outline" data-i18n="hero_cta_account">Create an account</a>
+          </div>
+        </div>
+        
+        <div class="hero-visual" aria-label="Animation showing a text comment transforming into a structured DOM payload">
+          <div class="visual-flow">
+            <!-- Human Input Node -->
+            <div class="visual-node node-human">
+              <div class="node-header">
+                <span data-i18n="hero_human_label">Stakeholder Comment</span>
+                <span class="mono" data-i18n="hero_human_time">Just now</span>
+              </div>
+              <p style="margin:0;" data-i18n="hero_human_text">"Make this submit button span the full width."</p>
+            </div>
+            
+            <div class="visual-connector"></div>
+            
+            <!-- Structured Output Node -->
+            <div class="visual-node node-machine">
+              <div class="node-header">
+                <span data-i18n="hero_machine_label">Structured Brief</span>
+                <span class="mono">JSON</span>
+              </div>
+              <pre class="code-block mono">
+{
+  <span class="code-key">"selector"</span>: <span class="code-string">"button#submit-form"</span>,
+  <span class="code-key">"appliedCssRules"</span>: [
+    <span class="code-string">".btn { display: inline-flex; }"</span>
+  ],
+  <span class="code-key">"viewport"</span>: <span class="code-string">"390px"</span>
+}</pre>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </section>
+
+    <!-- SECTION 3: The Brief -->
+    <section class="brief-section" id="the-brief">
+      <div class="container">
+        <div class="section-header">
+          <span class="section-badge" data-i18n="brief_badge">The Living Spec</span>
+          <h2 class="section-title" data-i18n="brief_title">The Structured Brief</h2>
+          <p class="section-subtitle" data-i18n="brief_subtitle">
+            Every comment carries the exact DOM, style, and runtime state an AI tool needs to touch the right file on the first turn.
+          </p>
+        </div>
+
+        <div class="brief-layout">
+          <div class="brief-table-card">
+            <div class="brief-table-wrap">
+              <table class="brief-table">
+                <thead>
+                  <tr>
+                    <th data-i18n="brief_col_field">Field</th>
+                    <th data-i18n="brief_col_reason">Why an AI tool cares</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td><code class="brief-field-tag accent">selector</code></td>
+                    <td data-i18n="brief_f_selector_desc">Identifies the exact DOM element without a screenshot or a description</td>
+                  </tr>
+                  <tr>
+                    <td><code class="brief-field-tag">snapshot</code></td>
+                    <td data-i18n="brief_f_snapshot_desc">The element's own opening tag, attributes (≤120 chars), text (≤160 chars) — deliberately shallow so it doesn't drown the model in child markup</td>
+                  </tr>
+                  <tr>
+                    <td><code class="brief-field-tag accent">appliedCssRules</code></td>
+                    <td data-i18n="brief_f_applied_desc">The rules that win, not the full computed dump — answers "why is it blue?" before the agent asks</td>
+                  </tr>
+                  <tr>
+                    <td><code class="brief-field-tag">computedStyles, classes, parentInfo</code></td>
+                    <td data-i18n="brief_f_computed_desc">Disambiguates structure when the selector is generic</td>
+                  </tr>
+                  <tr>
+                    <td><code class="brief-field-tag">route, pageUrl, pageTitle</code></td>
+                    <td data-i18n="brief_f_route_desc">Identifies which screen/view to open</td>
+                  </tr>
+                  <tr>
+                    <td><code class="brief-field-tag">viewport, deviceType, devicePixelRatio</code></td>
+                    <td data-i18n="brief_f_viewport_desc">Turns "broken on mobile" into a reproducible condition</td>
+                  </tr>
+                  <tr>
+                    <td><code class="brief-field-tag">PageContextSnapshot</code></td>
+                    <td data-i18n="brief_f_context_desc">Console errors and failed/slow network requests at the moment of the issue (opt-in for bug reports)</td>
+                  </tr>
+                  <tr>
+                    <td><code class="brief-field-tag accent">sourcePath</code></td>
+                    <td data-i18n="brief_f_source_desc">Configured attribute or framework dev-mode path when present (when source mapping is enabled)</td>
+                  </tr>
+                  <tr>
+                    <td><code class="brief-field-tag">language</code></td>
+                    <td data-i18n="brief_f_lang_desc">The BCP-47 tag the comment was detected in</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <div class="brief-inspector-card">
+            <div class="inspector-header">
+              <span data-i18n="brief_sample_header">Sample Captured Payload</span>
+              <div class="inspector-dots">
+                <span class="inspector-dot"></span>
+                <span class="inspector-dot"></span>
+                <span class="inspector-dot"></span>
+              </div>
+            </div>
+            <div class="inspector-body">
+              <pre class="inspector-code"><code>{
+  <span class="code-key">"comment"</span>: <span class="code-string">"Header text wraps awkwardly on phone"</span>,
+  <span class="code-key">"language"</span>: <span class="code-string">"en"</span>,
+  <span class="code-key">"selector"</span>: <span class="code-string">"main.wrap &gt; h1.hero-title"</span>,
+  <span class="code-key">"snapshot"</span>: {
+    <span class="code-key">"tag"</span>: <span class="code-string">"h1"</span>,
+    <span class="code-key">"classes"</span>: [<span class="code-string">"hero-title"</span>],
+    <span class="code-key">"text"</span>: <span class="code-string">"An AI coding tool is only as good..."</span>
+  },
+  <span class="code-key">"appliedCssRules"</span>: [
+    <span class="code-string">".hero-title { font-size: 3rem; white-space: nowrap; }"</span>
+  ],
+  <span class="code-key">"viewport"</span>: {
+    <span class="code-key">"width"</span>: <span class="code-string">"390px"</span>,
+    <span class="code-key">"devicePixelRatio"</span>: <span class="code-string">3</span>
+  },
+  <span class="code-key">"sourcePath"</span>: <span class="code-string">"src/components/Hero.tsx"</span>
+}</code></pre>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- SECTION 4: How it works / the loop -->
+    <section class="loop-section" id="how-it-works">
+      <div class="container">
+        <div class="section-header">
+          <span class="section-badge" data-i18n="loop_badge">Feedback Loop</span>
+          <h2 class="section-title" data-i18n="loop_title">How it works</h2>
+          <p class="section-subtitle" data-i18n="loop_subtitle">Four steps from raw feedback to a verified local commit.</p>
+        </div>
+
+        <div class="loop-grid">
+          <div class="step-card">
+            <span class="step-num-badge">01</span>
+            <h3 class="step-title" data-i18n="loop_step1_title">1. Point & comment</h3>
+            <p class="step-desc" data-i18n="loop_step1_desc">
+              Anyone signed in clicks an element on the running app and leaves a short comment in whatever language they think in.
+            </p>
+          </div>
+
+          <div class="step-card">
+            <span class="step-num-badge">02</span>
+            <h3 class="step-title" data-i18n="loop_step2_title">2. Triage in dashboard</h3>
+            <p class="step-desc" data-i18n="loop_step2_desc">
+              Tagged by project, environment (Local, Staging, Production), stakeholder, and status in one unified queue.
+            </p>
+          </div>
+
+          <div class="step-card">
+            <span class="step-num-badge">03</span>
+            <h3 class="step-title" data-i18n="loop_step3_title">3. Applied by AI</h3>
+            <p class="step-desc" data-i18n="loop_step3_desc">
+              A developer hands the queue to any AI coding tool over plain HTTP. Non-English comments are translated automatically.
+            </p>
+          </div>
+
+          <div class="step-card">
+            <span class="step-num-badge">04</span>
+            <h3 class="step-title" data-i18n="loop_step4_title">4. Committed, never pushed</h3>
+            <p class="step-desc" data-i18n="loop_step4_desc">
+              The AI commits per project style and links each applied comment back to author. It never pushes — human reviews the diff.
+            </p>
+          </div>
+        </div>
+
+        <div class="translation-callout">
+          <span class="translation-badge" data-i18n="loop_translation_badge">Worker Model Translation</span>
+          <p class="translation-text" data-i18n="loop_translation_text">
+            Non-English comments are translated in, and replies translated back out, by a lightweight model — never the expensive orchestrator.
+          </p>
+        </div>
+      </div>
+    </section>
+
+    <!-- SECTION 5: Before/after contrast -->
+    <section class="contrast-section" id="contrast">
+      <div class="container">
+        <div class="section-header">
+          <span class="section-badge" data-i18n="contrast_badge">The Contrast</span>
+          <h2 class="section-title" data-i18n="contrast_title">Why precision changes everything</h2>
+          <p class="section-subtitle" data-i18n="contrast_subtitle">
+            Stop treating AI coding tools like human juniors who have to guess your intent.
+          </p>
+        </div>
+
+        <div class="contrast-grid">
+          <div class="contrast-card bad">
+            <div class="contrast-header">
+              <h3 class="contrast-title" data-i18n="contrast_without_title">Without Pointer</h3>
+              <span class="contrast-status">The Guesswork Loop</span>
+            </div>
+            <ul class="contrast-list">
+              <li class="contrast-item">
+                <span class="contrast-icon">×</span>
+                <span data-i18n="contrast_without_item1">Vague Slack threads: "The button on checkout looks wrong."</span>
+              </li>
+              <li class="contrast-item">
+                <span class="contrast-icon">×</span>
+                <span data-i18n="contrast_without_item2">Dev guesses intent; AI agent searches codebase files blindly.</span>
+              </li>
+              <li class="contrast-item">
+                <span class="contrast-icon">×</span>
+                <span data-i18n="contrast_without_item3">Missing viewport, device pixel ratio, and winning CSS cascades.</span>
+              </li>
+              <li class="contrast-item">
+                <span class="contrast-icon">×</span>
+                <span data-i18n="contrast_without_item4">Multiple back-and-forth review rounds and wasted iteration loops.</span>
+              </li>
+            </ul>
+          </div>
+
+          <div class="contrast-card good">
+            <div class="contrast-header">
+              <h3 class="contrast-title" data-i18n="contrast_with_title">With Pointer</h3>
+              <span class="contrast-status">The Targeted Apply</span>
+            </div>
+            <ul class="contrast-list">
+              <li class="contrast-item">
+                <span class="contrast-icon">✓</span>
+                <span data-i18n="contrast_with_item1">Exact DOM selector, winning CSS rules, and shallow element snapshot.</span>
+              </li>
+              <li class="contrast-item">
+                <span class="contrast-icon">✓</span>
+                <span data-i18n="contrast_with_item2">Pinpoints source file directly when source mapping is enabled.</span>
+              </li>
+              <li class="contrast-item">
+                <span class="contrast-icon">✓</span>
+                <span data-i18n="contrast_with_item3">Automatic translation for multilingual stakeholder feedback.</span>
+              </li>
+              <li class="contrast-item">
+                <span class="contrast-icon">✓</span>
+                <span data-i18n="contrast_with_item4">Clean local git commit created; human reviews diff before pushing.</span>
+              </li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- SECTION 6 & 7: Why it saves time/cost/tokens + Cost-Aware Apply Graph -->
+    <section class="economics-section" id="economics">
+      <div class="container">
+        <div class="section-header">
+          <span class="section-badge" data-i18n="econ_badge">AI Economics</span>
+          <h2 class="section-title" data-i18n="econ_title">Why it saves time, cost, and tokens</h2>
+          <p class="section-subtitle" data-i18n="econ_subtitle">
+            Structured inputs eliminate exploratory loops and delegate repetitive tasks to cheaper models.
+          </p>
+        </div>
+
+        <div class="economics-grid">
+          <div class="econ-card">
+            <h3 class="econ-card-title" data-i18n="econ_card1_title">Save developer time</h3>
+            <p class="econ-card-desc" data-i18n="econ_card1_desc">
+              Context is attached at capture time. No more "what browser were you on?" clarification meetings.
+            </p>
+          </div>
+
+          <div class="econ-card">
+            <h3 class="econ-card-title" data-i18n="econ_card2_title">Cut iteration costs</h3>
+            <p class="econ-card-desc" data-i18n="econ_card2_desc">
+              Fewer dead-end prompts and discarded edits before touching the correct component.
+            </p>
+          </div>
+
+          <div class="econ-card">
+            <h3 class="econ-card-title" data-i18n="econ_card3_title">Spend fewer AI tokens</h3>
+            <p class="econ-card-desc" data-i18n="econ_card3_desc">
+              The agent starts at the winning CSS rule and selector, replacing whole-repo exploration with a targeted brief.
+            </p>
+          </div>
+
+          <div class="econ-card">
+            <h3 class="econ-card-title" data-i18n="econ_card4_title">One organized queue</h3>
+            <p class="econ-card-desc" data-i18n="econ_card4_desc">
+              Multi-tenant, multi-environment queue eliminates scattered screenshots across five Slack channels.
+            </p>
+          </div>
+        </div>
+
+        <!-- Cost-Aware Apply Graph (Section 7) -->
+        <div class="cost-graph-card" id="cost-graph-card">
+          <div class="cost-graph-header">
+            <h3 class="cost-graph-title" data-i18n="graph_title">Cost-aware apply delegation</h3>
+            <p class="cost-graph-desc" data-i18n="graph_desc">
+              When an edit touches multiple files or is mechanical (copy tweaks, style adjustments, prop changes), Pointer splits the work: the premium model plans and reviews, while a cheaper model executes mechanical typing and background translations.
+            </p>
+          </div>
+
+          <div class="cost-bars-viewport" aria-label="Comparison showing one model doing everything vs cost-aware delegation">
+            <!-- Bar A -->
+            <div class="cost-bar-col">
+              <div class="cost-bar-visual">
+                <div class="bar-monolith"></div>
+              </div>
+              <div class="cost-bar-labels">
+                <div class="cost-col-name" data-i18n="graph_bar_a_title">One model does everything</div>
+                <p class="cost-col-sub" data-i18n="graph_bar_a_desc">Investigation, review, edits, translation — all on one expensive model.</p>
+              </div>
+            </div>
+
+            <!-- Bar B -->
+            <div class="cost-bar-col">
+              <div class="cost-bar-visual">
+                <div class="bar-segmented">
+                  <div class="seg-premium" title="Investigation + review (premium model)"></div>
+                  <div class="seg-worker" title="Mechanical edits + translation (cheaper model)"></div>
+                </div>
+              </div>
+              <div class="cost-bar-labels">
+                <div class="cost-col-name" data-i18n="graph_bar_b_title">Pointer: cost-aware delegation</div>
+                <p class="cost-col-sub" data-i18n="graph_seg_worker">Mechanical edits + translation → cheaper model</p>
+              </div>
+            </div>
+          </div>
+
+          <div class="cost-graph-footer">
+            <div class="cost-legend">
+              <div class="legend-item">
+                <span class="legend-swatch swatch-premium"></span>
+                <span data-i18n="graph_seg_review">Investigation + review (premium model)</span>
+              </div>
+              <div class="legend-item">
+                <span class="legend-swatch swatch-worker"></span>
+                <span data-i18n="graph_seg_worker">Mechanical edits + translation → cheaper model</span>
+              </div>
+              <div class="legend-item">
+                <span class="mono">1.</span> <span data-i18n="graph_legend_1">Mechanical edits (copy tweaks, style swaps, component props)</span>
+              </div>
+              <div class="legend-item">
+                <span class="mono">2.</span> <span data-i18n="graph_legend_2">Built-in translation (multilingual input &amp; reply translation)</span>
+              </div>
+            </div>
+
+            <div>
+              <span class="cost-honesty-note mono" data-i18n="graph_honesty_note">
+                Fewer premium-model tokens spent on typing and translating.
+              </span>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </section>
+
+    <!-- SECTION 8: Features grid -->
+    <section class="features-section" id="features">
+      <div class="container">
+        <div class="section-header">
+          <span class="section-badge" data-i18n="feat_badge">Engineering Standards</span>
+          <h2 class="section-title" data-i18n="feat_title">Engineered for production environments</h2>
+          <p class="section-subtitle" data-i18n="feat_subtitle">
+            Lightweight integration without runtime bloat or framework lock-in.
+          </p>
+        </div>
+
+        <div class="features-grid">
+          <div class="feature-card">
+            <span class="feature-icon-badge mono">&lt;script&gt;</span>
+            <h3 class="feature-title" data-i18n="feat_card1_title">Two-line install</h3>
+            <p class="feature-desc" data-i18n="feat_card1_desc">
+              Drop a script tag and custom element onto your page. No heavy SDK or bundle bloat.
+            </p>
+          </div>
+
+          <div class="feature-card">
+            <span class="feature-icon-badge mono">[tenant_id]</span>
+            <h3 class="feature-title" data-i18n="feat_card2_title">Multi-project &amp; multi-tenant</h3>
+            <p class="feature-desc" data-i18n="feat_card2_desc">
+              Strict isolation enforced server-side. Manage Local, Staging, and Production environments.
+            </p>
+          </div>
+
+          <div class="feature-card">
+            <span class="feature-icon-badge mono">#shadow-root</span>
+            <h3 class="feature-title" data-i18n="feat_card3_title">Shadow DOM isolation</h3>
+            <p class="feature-desc" data-i18n="feat_card3_desc">
+              Complete CSS encapsulation. Host styles never leak into the widget, and widget styles never affect host markup.
+            </p>
+          </div>
+
+          <div class="feature-card">
+            <span class="feature-icon-badge mono">ext://</span>
+            <h3 class="feature-title" data-i18n="feat_card4_title">Browser extension</h3>
+            <p class="feature-desc" data-i18n="feat_card4_desc">
+              Inspect and leave agent-ready comments on staging sites, client builds, or web apps you don't host.
+            </p>
+          </div>
+        </div>
+
+        <div class="features-chips-strip">
+          <span class="feature-chip" data-i18n="feat_chip1">Input-value masking</span>
+          <span class="feature-chip" data-i18n="feat_chip2">Secret detection (sk-, AKIA... flagged)</span>
+          <span class="feature-chip" data-i18n="feat_chip3">Deploy awareness (Applied vs Live)</span>
+          <span class="feature-chip" data-i18n="feat_chip4">Self-hostable: API + Postgres</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- SECTION 9: Works with your stack (Live from API) -->
+    <section class="stacks-section" id="stacks-section" style="display: none;">
+      <div class="container">
+        <div class="section-header">
+          <h2 class="section-title" data-i18n="stack_title">Works with your stack</h2>
+          <p class="section-subtitle" data-i18n="stack_subtitle">Live telemetry from active projects and AI coding tools.</p>
+        </div>
+
+        <div class="stacks-container-card">
+          <div class="stacks-row-group">
+            <span class="stacks-row-label" data-i18n="stack_group_frameworks">Frameworks &amp; Backend:</span>
+            <div id="stacks-frameworks-list" class="stack-tags-list"></div>
+          </div>
+          <div class="stacks-row-group">
+            <span class="stacks-row-label" data-i18n="stack_group_tools">AI Coding Tools:</span>
+            <div id="stacks-tools-list" class="stack-tags-list"></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- SECTION 10: Pointer in numbers (Live from API) -->
+    <section class="stats-section" id="stats-section" style="display: none;">
+      <div class="container">
+        <div class="section-header center">
+          <h2 class="section-title" data-i18n="stats_title">Pointer in numbers</h2>
+          <p class="section-subtitle" data-i18n="stats_subtitle">Public telemetry cleared through anonymity thresholds.</p>
+        </div>
+
+        <div id="stats-grid" class="stats-grid"></div>
+        <div id="stats-languages" class="stats-languages-wrap" style="display: none;"></div>
+      </div>
+    </section>
+
+    <!-- SECTION 11: Built for the whole team -->
+    <section class="team-section" id="team">
+      <div class="container">
+        <div class="section-header">
+          <span class="section-badge" data-i18n="team_badge">Collaboration</span>
+          <h2 class="section-title" data-i18n="team_title">Built for the whole team</h2>
+          <p class="section-subtitle" data-i18n="team_subtitle">
+            Stakeholders give clear visual feedback. Developers receive clean, actionable tasks.
+          </p>
+        </div>
+
+        <div class="team-grid">
+          <div class="team-card">
+            <h3 class="team-card-title" data-i18n="team_stakeholder_title">For Stakeholders &amp; Clients</h3>
+            <ul class="team-points-list">
+              <li class="team-point">
+                <span class="team-bullet">→</span>
+                <span data-i18n="team_stakeholder_p1">Click directly on the running app and leave a sentence in your own language.</span>
+              </li>
+              <li class="team-point">
+                <span class="team-bullet">→</span>
+                <span data-i18n="team_stakeholder_p2">Nothing to install and zero technical knowledge required.</span>
+              </li>
+              <li class="team-point">
+                <span class="team-bullet">→</span>
+                <span data-i18n="team_stakeholder_p3">Feedback is translated automatically, and replies return in your language.</span>
+              </li>
+              <li class="team-point">
+                <span class="team-bullet">→</span>
+                <span data-i18n="team_stakeholder_p4">Confirm fixes with a single 👍 or 👎 once deployed to production.</span>
+              </li>
+            </ul>
+          </div>
+
+          <div class="team-card">
+            <h3 class="team-card-title" data-i18n="team_dev_title">For Developers &amp; AI Engineers</h3>
+            <ul class="team-points-list">
+              <li class="team-point">
+                <span class="team-bullet">→</span>
+                <span data-i18n="team_dev_p1">Pull the structured queue over plain HTTP with your preferred AI coding tool.</span>
+              </li>
+              <li class="team-point">
+                <span class="team-bullet">→</span>
+                <span data-i18n="team_dev_p2">Agent starts at the selector and winning CSS rules (and source path when source mapping is enabled).</span>
+              </li>
+              <li class="team-point">
+                <span class="team-bullet">→</span>
+                <span data-i18n="team_dev_p3">Compatible with Claude Code, Cursor, Windsurf, OpenCode, and Antigravity.</span>
+              </li>
+              <li class="team-point">
+                <span class="team-bullet">→</span>
+                <span data-i18n="team_dev_p4">AI commits locally with commit URL; you review the diff before pushing.</span>
+              </li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- SECTION 12: Trust & privacy -->
+    <section class="trust-section" id="trust">
+      <div class="container">
+        <div class="section-header">
+          <span class="section-badge" data-i18n="trust_badge">Security &amp; Ethics</span>
+          <h2 class="section-title" data-i18n="trust_title">Trust &amp; privacy</h2>
+          <p class="section-subtitle" data-i18n="trust_subtitle">
+            Strict boundaries around your code, your data, and your user privacy.
+          </p>
+        </div>
+
+        <div class="trust-grid">
+          <div class="trust-card">
+            <div class="trust-question" data-i18n="trust_q1">An AI edits my code?</div>
+            <p class="trust-answer" data-i18n="trust_a1">
+              The AI commits locally; it never pushes. Every applied comment carries its git commit URL so you can inspect the diff before anything touches your repository.
+            </p>
+          </div>
+
+          <div class="trust-card">
+            <div class="trust-question" data-i18n="trust_q2">What do you capture?</div>
+            <p class="trust-answer">
+              <span data-i18n="trust_a2">Element-level DOM metadata only: selector, shallow HTML snippet, winning CSS rules, and route. Never passwords, form inputs, session cookies, localStorage, or API request bodies. See our Data &amp; Self-Hosting and Privacy Policy pages.</span>
+              <br><br>
+              <a href="./data.html">Data &amp; Self-Hosting Guide</a> · <a href="./privacy.html">Privacy Policy</a>
+            </p>
+          </div>
+
+          <div class="trust-card">
+            <div class="trust-question" data-i18n="trust_q3">Which AI tool do I use?</div>
+            <p class="trust-answer" data-i18n="trust_a3">
+              Any AI coding tool you already use (Claude Code, Cursor, Windsurf, OpenCode, Antigravity). Plain HTTP integration with zero vendor lock-in.
+            </p>
+          </div>
+
+          <div class="trust-card">
+            <div class="trust-question" data-i18n="trust_q4">Is my data stuck with you?</div>
+            <p class="trust-answer" data-i18n="trust_a4">
+              Fully self-hostable. Run the open API and Postgres database on your own infrastructure so data never leaves your network.
+            </p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- SECTION 13: Pricing -->
+    <section class="pricing-section" id="pricing">
+      <div class="container">
+        <div class="section-header center">
+          <span class="section-badge" data-i18n="pricing_badge">Transparent Tiers</span>
+          <h2 class="section-title" data-i18n="pricing_title">Simple, transparent pricing</h2>
+          <p class="section-subtitle" data-i18n="pricing_subtitle">
+            Start free on your local stack. Upgrade when you need team collaboration.
+          </p>
+        </div>
+
+        <div id="plans-grid" class="plans-grid">
+          <!-- Static fallback cards pre-rendered so no layout shift occurs if API is slow or offline -->
+          <div class="pricing-card">
+            <div class="pricing-card-header">
+              <div class="pricing-card-meta">
+                <h3 class="pricing-plan-name" data-i18n="pricing_free_title">Free</h3>
+              </div>
+              <div class="pricing-price-wrap">
+                <span class="pricing-price" data-i18n="pricing_free_price">$0</span>
+                <span class="pricing-cadence" data-i18n="pricing_free_period">forever</span>
+              </div>
+            </div>
+            <ul class="pricing-bullets">
+              <li><span class="bullet-check">✓</span> <span data-i18n="pricing_free_b1">3 projects</span></li>
+              <li><span class="bullet-check">✓</span> <span data-i18n="pricing_free_b2">5 seats</span></li>
+              <li><span class="bullet-check">✓</span> <span data-i18n="pricing_free_b3">100 comments / month</span></li>
+              <li><span class="bullet-check">✓</span> <span data-i18n="pricing_free_b4">Community support</span></li>
+            </ul>
+            <div class="pricing-cta-wrap">
+              <a href="https://app.pointer.moamen.work" class="btn btn-outline" style="width: 100%;" data-i18n="pricing_cta_account">Create an account</a>
+            </div>
+          </div>
+
+          <div class="pricing-card">
+            <div class="pricing-card-header">
+              <div class="pricing-card-meta">
+                <h3 class="pricing-plan-name" data-i18n="pricing_pro_title">Pro</h3>
+              </div>
+              <div class="pricing-price-wrap">
+                <span class="pricing-price" data-i18n="pricing_pro_price">$5</span>
+                <span class="pricing-cadence" data-i18n="pricing_pro_period">per month</span>
+              </div>
+            </div>
+            <ul class="pricing-bullets">
+              <li><span class="bullet-check">✓</span> <span data-i18n="pricing_pro_b1">Unlimited projects</span></li>
+              <li><span class="bullet-check">✓</span> <span data-i18n="pricing_pro_b2">Unlimited seats</span></li>
+              <li><span class="bullet-check">✓</span> <span data-i18n="pricing_pro_b3">Priority support</span></li>
+              <li><span class="bullet-check">✓</span> <span data-i18n="pricing_pro_b4">Cost-aware delegation</span></li>
+            </ul>
+            <div class="pricing-cta-wrap">
+              <a href="https://app.pointer.moamen.work" class="btn btn-primary" style="width: 100%;" data-i18n="pricing_cta_account">Create an account</a>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- SECTION 14: Browser extension section + install stepper -->
+    <section class="extension-section" id="extension">
+      <div class="container">
+        <div class="section-header">
+          <span class="section-badge" data-i18n="ext_badge">Browser Extension</span>
+          <h2 class="section-title" data-i18n="ext_title">Browser extension &amp; install stepper</h2>
+          <p class="section-subtitle" data-i18n="ext_subtitle">
+            Leave structured comments on staging builds, client apps, or any site you don't host.
+          </p>
+        </div>
+
+        <div class="stepper-box">
+          <div class="stepper-tabs" role="tablist">
+            <button class="stepper-tab is-active" role="tab" aria-selected="true" data-i18n="ext_tab1">1. Download</button>
+            <button class="stepper-tab" role="tab" aria-selected="false" data-i18n="ext_tab2">2. Unzip</button>
+            <button class="stepper-tab" role="tab" aria-selected="false" data-i18n="ext_tab3">3. Extensions</button>
+            <button class="stepper-tab" role="tab" aria-selected="false" data-i18n="ext_tab4">4. Load</button>
+            <button class="stepper-tab" role="tab" aria-selected="false" data-i18n="ext_tab5">5. Point</button>
+          </div>
+
+          <div class="stepper-content">
+            <!-- Step 1 -->
+            <div class="stepper-pane is-active">
+              <h3 class="stepper-step-title" data-i18n="ext_s1_title">Step 1: Download Extension</h3>
+              <p class="stepper-step-desc" data-i18n="ext_s1_desc">
+                Download the extension package or install directly from the Chrome Web Store.
+              </p>
+              <div class="stepper-actions">
+                <a href="https://chromewebstore.google.com/detail/pointer-feedback/dilmhkkffghagljpbijnacjebfcjlcji?authuser=0&hl=en" class="btn btn-primary" id="ext-primary-btn" target="_blank" data-i18n="ext_s1_btn">Install Extension</a>
+                <button type="button" class="btn btn-outline" data-stepper-next data-i18n="ext_next_btn">Next step</button>
+              </div>
+            </div>
+
+            <!-- Step 2 -->
+            <div class="stepper-pane">
+              <h3 class="stepper-step-title" data-i18n="ext_s2_title">Step 2: Extract Archive</h3>
+              <p class="stepper-step-desc" data-i18n="ext_s2_desc">
+                Unzip the downloaded archive into a permanent folder on your local machine.
+              </p>
+              <div class="stepper-actions">
+                <button type="button" class="btn btn-outline" data-stepper-prev data-i18n="ext_prev_btn">Previous step</button>
+                <button type="button" class="btn btn-primary" data-stepper-next data-i18n="ext_next_btn">Next step</button>
+              </div>
+            </div>
+
+            <!-- Step 3 -->
+            <div class="stepper-pane">
+              <h3 class="stepper-step-title" data-i18n="ext_s3_title">Step 3: Open Chrome Extensions</h3>
+              <p class="stepper-step-desc" data-i18n="ext_s3_desc">
+                In Chrome, Brave, or Edge, navigate to chrome://extensions in the address bar.
+              </p>
+              <div class="stepper-actions">
+                <button type="button" class="btn btn-outline" data-stepper-prev data-i18n="ext_prev_btn">Previous step</button>
+                <button type="button" class="btn btn-primary" data-stepper-next data-i18n="ext_next_btn">Next step</button>
+              </div>
+            </div>
+
+            <!-- Step 4 -->
+            <div class="stepper-pane">
+              <h3 class="stepper-step-title" data-i18n="ext_s4_title">Step 4: Enable Developer Mode &amp; Load</h3>
+              <p class="stepper-step-desc" data-i18n="ext_s4_desc">
+                Toggle Developer mode in the top-right corner, click "Load unpacked", and choose the extracted folder.
+              </p>
+              <div class="stepper-actions">
+                <button type="button" class="btn btn-outline" data-stepper-prev data-i18n="ext_prev_btn">Previous step</button>
+                <button type="button" class="btn btn-primary" data-stepper-next data-i18n="ext_next_btn">Next step</button>
+              </div>
+            </div>
+
+            <!-- Step 5 -->
+            <div class="stepper-pane">
+              <h3 class="stepper-step-title" data-i18n="ext_s5_title">Step 5: Sign in &amp; Point</h3>
+              <p class="stepper-step-desc" data-i18n="ext_s5_desc">
+                Click the Pointer icon in your browser toolbar, sign in, and click any element on the running web app.
+              </p>
+              <div class="stepper-actions">
+                <button type="button" class="btn btn-outline" data-stepper-prev data-i18n="ext_prev_btn">Previous step</button>
+                <a href="https://demo.pointer.moamen.work" class="btn btn-primary" data-i18n="hero_cta_demo">Try the demo — no install</a>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <!-- SECTION 15: Final CTA band + Footer -->
+  <section class="final-cta" id="final-cta">
+    <div class="container final-cta-container">
+      <h2 class="final-cta-title" data-i18n="final_title">Ready to give your AI agent exact feedback?</h2>
+      <p class="final-cta-subtitle" data-i18n="final_subtitle">
+        Cut out vague screenshots and endless exploratory loops. Start pointing at the UI today.
+      </p>
+      <div class="final-cta-buttons">
+        <a href="https://demo.pointer.moamen.work" class="btn btn-primary" data-i18n="final_cta_demo">Try the demo — no install</a>
+        <a href="https://app.pointer.moamen.work" class="btn btn-outline" data-i18n="final_cta_account">Create an account</a>
+      </div>
+    </div>
+  </section>
+
+  <footer class="site-footer">
+    <div class="container">
+      <div class="footer-top">
+        <div class="footer-brand">
+          <div class="footer-logo-wrap">
+            <img src="./assets/dog-mascot.png" alt="Pointer Logo" class="footer-logo" id="footer-logo" onerror="this.style.display='none'">
+            <span data-brand-name>Pointer</span>
+          </div>
+          <p class="footer-tagline" data-i18n="footer_tagline">Agentic feedback for web applications.</p>
+          <p class="footer-review-note" data-i18n="footer_review_note">Commits, never pushes. Built for human verification.</p>
+        </div>
+
+        <div class="footer-col">
+          <h4 class="footer-heading" data-i18n="footer_col_docs">Documentation</h4>
+          <ul class="footer-links">
+            <li><a href="https://pointer.moamen.work/docs/" data-link="docs" data-i18n="footer_link_install">Install Guide</a></li>
+            <li><a href="https://pointer.moamen.work/docs/" data-link="docs" data-i18n="footer_link_apply">Apply Feedback</a></li>
+            <li><a href="https://pointer.moamen.work/docs/" data-link="docs" data-i18n="footer_link_keys">API Keys</a></li>
+            <li><a href="https://pointer.moamen.work/docs/" data-link="docs" data-i18n="footer_link_alldocs">All Documentation</a></li>
+          </ul>
+        </div>
+
+        <div class="footer-col">
+          <h4 class="footer-heading" data-i18n="footer_col_app">Product</h4>
+          <ul class="footer-links">
+            <li><a href="https://app.pointer.moamen.work" data-i18n="footer_link_dashboard">Web Dashboard</a></li>
+            <li><a href="https://demo.pointer.moamen.work" data-i18n="footer_link_demo">Interactive Demo</a></li>
+            <li><a href="#extension" data-i18n="footer_link_extension">Browser Extension</a></li>
+          </ul>
+        </div>
+
+        <div class="footer-col">
+          <h4 class="footer-heading" data-i18n="footer_col_trust">Trust &amp; Legal</h4>
+          <ul class="footer-links">
+            <li><a href="./privacy.html" data-i18n="footer_link_privacy">Privacy Policy</a></li>
+            <li><a href="./data.html" data-i18n="footer_link_data">Data &amp; Self-Hosting</a></li>
+            <li><a href="https://github.com/moamenwork/pointer-api" target="_blank" rel="noopener noreferrer" data-i18n="footer_link_github">GitHub Repository</a></li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="footer-bottom">
+        <div data-i18n="footer_copy">Pointer. Precision input layer for AI coding tools.</div>
+        <div class="mono">v1.0.0</div>
+      </div>
+    </div>
+  </footer>
+
+  <!-- Production Client Script -->
+  <script src="./script.js"></script>
+</body>
+</html>

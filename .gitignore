@@ -19,3 +19,8 @@ openapi.json
 # Delegation briefs. Written into a worktree when handing work to another agent; scratch by
 # definition, and one was committed by an `add -A` before this line existed.
 TASK.md
+
+# landing redesign scratch (pipeline logs, staging dirs) and impeccable screenshot evidence
+landing-redesign/**/*.log
+landing-redesign/**/.tmp/
+.impeccable/review/
