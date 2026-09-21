@@ -120,10 +120,19 @@ for (const file of files) {
     .map((s) => `  ${s.trim()}\n`)
     .join('');
 
-  // Unwrap the existing .wrap, drop the old footer if it sat inside <main>, and remove the eyebrow
-  // badge above <h1> — the sidebar now says which section you are in.
-  inner = inner.replace(/^\s*<div class="wrap">/, '').replace(/<\/div>\s*$/, '');
+  // Drop the old footer first (it sits after the .wrap's closing </div>, at the very end of
+  // `inner`) — otherwise the "strip trailing </div>" step below never matches (the string ends in
+  // </footer>, not </div>), and the wrap's real closing tag is left behind to be wrapped again next
+  // run, growing by one stray </div> on every regeneration. Then unwrap the existing .wrap and
+  // remove the eyebrow badge above <h1> — the sidebar now says which section you are in.
   inner = inner.replace(/<footer>[\s\S]*?<\/footer>/g, '');
+  // The template below re-adds exactly one newline after `<div class="wrap">` before splicing
+  // `mainInner` back in; collapse whatever leading blank line(s) survive the tag strip down to a
+  // single leading newline so that round-tripping doesn't grow the gap by one blank line per run.
+  inner = inner
+    .replace(/^\s*<div class="wrap">/, '')
+    .replace(/^\n+/, '\n')
+    .replace(/(\s*<\/div>)+\s*$/, '');
   inner = inner.replace(/^\s*<(div|span) class="badge">[\s\S]*?<\/\1>\s*\n/m, '');
   inner = inner.trimEnd();
 

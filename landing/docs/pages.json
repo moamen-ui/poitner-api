@@ -37,6 +37,13 @@
       "summary": "Applied means committed; live means on the site. Report deployed builds from CI with pointer status --deployed."
     },
     {
+      "file": "comment-fields.html",
+      "title": "Comment fields",
+      "nav": "Workflow",
+      "ownedBy": "R4-01",
+      "summary": "Admin-defined extra inputs on a comment — like a Jira ticket link — and what the AI apply loop does with them."
+    },
+    {
       "file": "mcp.html",
       "title": "MCP Server",
       "nav": "Integration",
