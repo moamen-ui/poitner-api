@@ -341,6 +341,19 @@ const STRINGS: Record<Lang, Record<string, string>> = {
     'toast.archivedMsg': 'Archived',
     'toast.pleaseProvideNoteNotFixed': 'Please provide a note explaining what is not fixed',
     'toast.notifications': 'Notifications',
+    'fields.more': 'Add more fields',
+    'fields.fewer': 'Fewer fields',
+    'fields.edit': 'Edit fields',
+    'fields.save': 'Save fields',
+    'fields.cancel': 'Cancel',
+    'fields.none': 'None',
+    'fields.invalidUrl': 'Must be a valid URL',
+    'fields.invalidOption': 'Pick one of the listed options',
+    'fields.hostNotAllowed': 'Must be a link on {hosts}',
+    'fields.tooLong': 'Value is too long',
+    'fields.saved': 'Fields saved',
+    'fields.serverRejected': 'Server rejected:',
+
   },
   ar: {
     // --- auth (login/signup modal) ---
@@ -564,5 +577,18 @@ const STRINGS: Record<Lang, Record<string, string>> = {
     'toast.archivedMsg': 'تمت الأرشفة',
     'toast.pleaseProvideNoteNotFixed': 'يرجى كتابة ملاحظة تشرح ما لم يتم إصلاحه',
     'toast.notifications': 'الإشعارات',
+    'fields.more': 'إضافة المزيد من الحقول',
+    'fields.fewer': 'حقول أقل',
+    'fields.edit': 'تعديل الحقول',
+    'fields.save': 'حفظ الحقول',
+    'fields.cancel': 'إلغاء',
+    'fields.none': 'لا شيء',
+    'fields.invalidUrl': 'يجب أن يكون رابطاً صالحاً',
+    'fields.invalidOption': 'اختر أحد الخيارات المدرجة',
+    'fields.hostNotAllowed': 'يجب أن يكون الرابط من {hosts}',
+    'fields.tooLong': 'القيمة طويلة جداً',
+    'fields.saved': 'تم حفظ الحقول',
+    'fields.serverRejected': 'رفض الخادم:',
+
   },
 };

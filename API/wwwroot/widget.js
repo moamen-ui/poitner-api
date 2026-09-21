@@ -309,7 +309,7 @@
   var SHOT_HIGHLIGHT = "#2563eb";
   var _a;
   var SCRIPT_SRC = ((_a = document.currentScript) == null ? void 0 : _a.src) || "";
-  var CSS_INTEGRITY = true ? "sha384-rZwg8+oaqUdtaRLZBXpq7fxiCSgJ171g9ouz6/fB3PKwMngPm+pjOjeu2N8NJT6p" : "";
+  var CSS_INTEGRITY = true ? "sha384-tZeHVZSb2LhuQqVkGd9SbqDaaOJ6yPbL3g1N9TGX57NbHo2DIzMGUxVOxygZbPtZ" : "";
   function resolveCssUrl(scriptSrc) {
     var _a2;
     if (!scriptSrc) return "widget.css";
@@ -839,7 +839,19 @@
       "toast.reopenedMsg": "Re-opened",
       "toast.archivedMsg": "Archived",
       "toast.pleaseProvideNoteNotFixed": "Please provide a note explaining what is not fixed",
-      "toast.notifications": "Notifications"
+      "toast.notifications": "Notifications",
+      "fields.more": "Add more fields",
+      "fields.fewer": "Fewer fields",
+      "fields.edit": "Edit fields",
+      "fields.save": "Save fields",
+      "fields.cancel": "Cancel",
+      "fields.none": "None",
+      "fields.invalidUrl": "Must be a valid URL",
+      "fields.invalidOption": "Pick one of the listed options",
+      "fields.hostNotAllowed": "Must be a link on {hosts}",
+      "fields.tooLong": "Value is too long",
+      "fields.saved": "Fields saved",
+      "fields.serverRejected": "Server rejected:"
     },
     ar: {
       // --- auth (login/signup modal) ---
@@ -1053,9 +1065,118 @@
       "toast.reopenedMsg": "أُعيد فتحه",
       "toast.archivedMsg": "تمت الأرشفة",
       "toast.pleaseProvideNoteNotFixed": "يرجى كتابة ملاحظة تشرح ما لم يتم إصلاحه",
-      "toast.notifications": "الإشعارات"
+      "toast.notifications": "الإشعارات",
+      "fields.more": "إضافة المزيد من الحقول",
+      "fields.fewer": "حقول أقل",
+      "fields.edit": "تعديل الحقول",
+      "fields.save": "حفظ الحقول",
+      "fields.cancel": "إلغاء",
+      "fields.none": "لا شيء",
+      "fields.invalidUrl": "يجب أن يكون رابطاً صالحاً",
+      "fields.invalidOption": "اختر أحد الخيارات المدرجة",
+      "fields.hostNotAllowed": "يجب أن يكون الرابط من {hosts}",
+      "fields.tooLong": "القيمة طويلة جداً",
+      "fields.saved": "تم حفظ الحقول",
+      "fields.serverRejected": "رفض الخادم:"
     }
   };
+
+  // src/fields.ts
+  function hostMatches(host, pattern) {
+    host = host.toLowerCase();
+    pattern = pattern.toLowerCase();
+    if (host === pattern) return true;
+    if (pattern.startsWith("*.")) {
+      const domain = pattern.substring(2);
+      if (host === domain || host.endsWith("." + domain)) {
+        return true;
+      }
+    }
+    return false;
+  }
+  function validateFieldValue(def, value) {
+    value = value.trim();
+    if (!value) return null;
+    const type = def.type;
+    const isText = type === 1 || type === "Text";
+    const isUrl = type === 2 || type === "Url";
+    const isSelect = type === 3 || type === "Select";
+    if (isText) {
+      if (value.length > 500) return "fields.tooLong";
+    } else if (isUrl) {
+      if (value.length > 2e3) return "fields.tooLong";
+      let url;
+      try {
+        url = new URL(value);
+      } catch {
+        return "fields.invalidUrl";
+      }
+      if (url.protocol !== "http:" && url.protocol !== "https:") {
+        return "fields.invalidUrl";
+      }
+      if (url.username || url.password) {
+        return "fields.invalidUrl";
+      }
+      if (!url.hostname) {
+        return "fields.invalidUrl";
+      }
+      if (def.allowedHosts && def.allowedHosts.length > 0) {
+        const match = def.allowedHosts.some((h) => hostMatches(url.hostname, h));
+        if (!match) return "fields.hostNotAllowed";
+      }
+    } else if (isSelect) {
+      if (def.options && !def.options.includes(value)) {
+        return "fields.invalidOption";
+      }
+    }
+    return null;
+  }
+  function renderFieldInputs(defs, values, idPrefix) {
+    if (!defs || defs.length === 0) return "";
+    return defs.map((def) => {
+      const isUrl = def.type === 2 || def.type === "Url";
+      const isSelect = def.type === 3 || def.type === "Select";
+      const id = escapeHtml(`${idPrefix}-${def.key}`);
+      const name = escapeHtml(`fbk-cf-${def.key}`);
+      const val = values[def.key] || "";
+      let inputHtml = "";
+      if (isSelect) {
+        inputHtml = `<select id="${id}" name="${name}" class="fbk-input">
+        <option value="">${escapeHtml(t("fields.none"))}</option>
+        ${(def.options || []).map((o) => `<option value="${escapeHtml(o)}" ${o === val ? "selected" : ""}>${escapeHtml(o)}</option>`).join("")}
+      </select>`;
+      } else {
+        const typeAttr = isUrl ? "url" : "text";
+        const inputMode = isUrl ? ' inputmode="url"' : "";
+        const maxLength = isUrl ? ' maxlength="2000"' : ' maxlength="500"';
+        inputHtml = `<input type="${typeAttr}" id="${id}" name="${name}" class="fbk-input" value="${escapeHtml(val)}"${inputMode}${maxLength}>`;
+      }
+      let hintHtml = "";
+      if (def.hint) {
+        hintHtml = `<small class="fbk-field-hint" id="${id}-hint">${escapeHtml(def.hint)}</small>`;
+      }
+      return `
+      <div class="fbk-field">
+        <label for="${id}">${escapeHtml(def.label)}</label>
+        ${inputHtml}
+        ${hintHtml}
+      </div>
+    `;
+    }).join("");
+  }
+  function collectFieldValues(root) {
+    const map = {};
+    const inputs = root.querySelectorAll('[name^="fbk-cf-"]');
+    for (let i = 0; i < inputs.length; i++) {
+      const el = inputs[i];
+      const key = el.name.substring(7);
+      const val = el.value.trim();
+      if (val) {
+        map[key] = val;
+      }
+    }
+    return map;
+  }
 
   // src/templates.ts
   var TPL = {
@@ -1269,13 +1390,14 @@
     // owner-only; delete only while still open (matches the previous inline buttons' conditions
     // exactly, just relocated). `isQuickAccess` matches TPL.card's own gate on "Complete"/"Reopen" —
     // a quick-access (Client) account never gets to change its own feedback's status directly.
-    cardMenu: (c, isQuickAccess) => `
+    cardMenu: (c, isQuickAccess, canEditFields = false) => `
         <div class="fbk-card-menu" id="fbk-card-menu" role="menu">
           ${c.status === "open" || c.status === "pending-apply" ? `<button type="button" class="fbk-card-menu-item" data-menu-act="copy-apply-prompt" role="menuitem">${ICON.copy}<span>${t("card.copyApplyPrompt")}</span></button>` : ""}
           ${!isQuickAccess && (c.status === "open" || c.status === "pending-apply") ? `<button type="button" class="fbk-card-menu-item" data-menu-act="complete" role="menuitem">${ICON.check}<span>${t("card.complete")}</span></button>` : ""}
           ${!isQuickAccess && (c.status === "applied" || c.status === "archived") ? `<button type="button" class="fbk-card-menu-item" data-menu-act="reopen" role="menuitem">${ICON.reopen}<span>${t("card.reopen")}</span></button>` : ""}
           ${c._mine ? `<button type="button" class="fbk-card-menu-item" data-menu-act="visibility" data-private="${c.isPrivate ? "false" : "true"}" role="menuitem">${c.isPrivate ? ICON.unlock : ICON.lock}<span>${c.isPrivate ? t("card.makePublic") : t("card.makePrivate")}</span></button>` : ""}
           ${c._mine ? `<button type="button" class="fbk-card-menu-item" data-menu-act="edit" role="menuitem">${ICON.pencil}<span>${t("card.edit")}</span></button>` : ""}
+          ${canEditFields ? `<button type="button" class="fbk-card-menu-item" data-menu-act="edit-fields" role="menuitem">${ICON.pencil}<span>${t("fields.edit")}</span></button>` : ""}
           ${c.status === "open" ? `<button type="button" class="fbk-card-menu-item danger" data-menu-act="delete" role="menuitem">${ICON.trash}<span>${t("card.delete")}</span></button>` : ""}
         </div>`,
     // Kebab-menu dropdown for a single REPLY (see TPL.card's `kebab` above) — shares the same
@@ -1363,6 +1485,26 @@
             </div>
             ${pagePath ? `<div class="fbk-caption fbk-card-page" title="${escapeHtml(pageUrl)}">&#x1f4cd; ${escapeHtml(pagePath)}</div>` : ""}
             <div class="fbk-text">${escapeHtml(c.body || c.text || "")}</div>
+            ${c.customFields && c.customFields.length > 0 ? `<dl class="fbk-card-fields">
+              ${c.customFields.map((f) => {
+        const isUrl = f.type === 2 || f.type === "Url";
+        let valHtml = escapeHtml(f.value);
+        if (isUrl) {
+          let u = null;
+          try {
+            u = new URL(f.value);
+          } catch {
+            u = null;
+          }
+          if (u && (u.protocol === "http:" || u.protocol === "https:")) {
+            const full = u.host + u.pathname;
+            const d = escapeHtml(full.length > 60 ? full.substring(0, 60) + "…" : full);
+            valHtml = `<a href="${escapeHtml(f.value)}" target="_blank" rel="noopener noreferrer">${d}</a>`;
+          }
+        }
+        return `<dt>${escapeHtml(f.label)}</dt><dd>${valHtml}</dd>`;
+      }).join("")}
+            </dl>` : ""}
             ${shot}
             <div class="fbk-sub">${escapeHtml(authorLabel)} &middot; ${c.createdAt ? new Date(c.createdAt).toLocaleDateString() : ""}${c.editedAt ? ` &middot; <span class="fbk-edited">${t("card.edited")}</span>` : ""}</div>
             ${verifyBox}
@@ -1382,7 +1524,7 @@
     // `bugReportEnabled`: only true when the project has page-context capture turned on — the
     // checkbox controls whether the console/network buffer already sitting in memory gets attached
     // to THIS comment; it never controls whether that buffer exists (see pagecontext.ts).
-    popover: (meta, left, top, shotEnabled, actions = [], bugReportEnabled = false) => `
+    popover: (meta, left, top, shotEnabled, actions = [], bugReportEnabled = false, commentFields = []) => `
         <div class="fbk-popover" data-fbk-left="${left}" data-fbk-top="${top}">
           <div class="fbk-popover-nav">
             <button type="button" class="fbk-popover-nav-btn" id="fbk-target-up" data-toggle="tooltip" data-placement="top" title="${t("popover.selectParentElement")}" aria-label="${t("popover.selectParentElement")}">${ICON.chevronUp}</button>
@@ -1401,6 +1543,8 @@
             </div>
             <div class="fbk-ms-list" id="fbk-action-ms-list" role="listbox" hidden></div>
           </div>` : ""}
+          ${commentFields.length > 0 ? `<button type="button" id="fbk-more-fields" class="fbk-mini" aria-expanded="false" aria-controls="fbk-extra-fields">${t("fields.more")}</button>
+          <div id="fbk-extra-fields" class="fbk-extra-fields" hidden>${renderFieldInputs(commentFields, {}, "cf")}</div>` : ""}
           ${shotEnabled || bugReportEnabled ? `<div class="fbk-popover-toggles">
             ${shotEnabled ? `<button type="button" class="fbk-mini" id="fbk-comment-shot" aria-pressed="false">&#x1f4f7; ${t("popover.attachScreenshot")}</button>` : ""}
             ${bugReportEnabled ? `<button type="button" class="fbk-mini" id="fbk-comment-bug" aria-pressed="false" title="${t("popover.reportBugTitle")}">&#x1f41e; ${t("popover.reportAsABug")}</button>` : ""}
@@ -2237,6 +2381,7 @@
       // Project-level opt-in (default off), read once at init via /capture-config. Gates both whether
       // the widget buffers console/network events at all and whether "Report as a bug" is shown.
       this.pageContextCaptureEnabled = false;
+      this.commentFields = [];
       // Per-project text capture toggle (default true until /capture-config resolves).
       // When false, the widget emits no text content in the DOM snapshot and masks pageTitle.
       this.captureTextContent = true;
@@ -2782,7 +2927,7 @@
     // Read the project's page-context capture toggle and, if on, start buffering
     // console/network events. Silently no-ops on failure (feature stays off).
     async fetchCaptureConfig() {
-      var _a2, _b, _c, _d, _e;
+      var _a2, _b, _c, _d, _e, _f, _g;
       try {
         const r = await this.api(`/api/projects/${encodeURIComponent(this.project)}/capture-config`);
         if (!r.ok) {
@@ -2790,15 +2935,16 @@
           return;
         }
         const envelope = await r.json();
+        this.commentFields = (_b = (_a2 = envelope == null ? void 0 : envelope.data) == null ? void 0 : _a2.commentFields) != null ? _b : [];
         this.pageContextCaptureEnabled = !!(envelope && envelope.data && envelope.data.pageContextCaptureEnabled);
         if ((envelope == null ? void 0 : envelope.data) && typeof envelope.data.captureTextContent === "boolean") {
           this.captureTextContent = envelope.data.captureTextContent;
         }
         this.projectName = envelope && envelope.data && envelope.data.name || this.project;
-        const showSelector = (_a2 = envelope == null ? void 0 : envelope.data) == null ? void 0 : _a2.showEnvironmentSelector;
+        const showSelector = (_c = envelope == null ? void 0 : envelope.data) == null ? void 0 : _c.showEnvironmentSelector;
         this.showEnvironmentSelector = showSelector !== false;
-        this.projectId = typeof ((_b = envelope == null ? void 0 : envelope.data) == null ? void 0 : _b.id) === "number" ? envelope.data.id : null;
-        const resolved = (_c = envelope == null ? void 0 : envelope.data) == null ? void 0 : _c.resolvedEnvironment;
+        this.projectId = typeof ((_d = envelope == null ? void 0 : envelope.data) == null ? void 0 : _d.id) === "number" ? envelope.data.id : null;
+        const resolved = (_e = envelope == null ? void 0 : envelope.data) == null ? void 0 : _e.resolvedEnvironment;
         if (!this.environmentExplicit && typeof resolved === "number" && ENV_NAME[resolved] && resolved !== this.environmentInt) {
           this.environmentInt = resolved;
           this.environmentAttr = ENV_NAME[resolved];
@@ -2806,8 +2952,8 @@
             await this.fetchComments();
           }
         }
-        this.commitStyle = typeof ((_d = envelope == null ? void 0 : envelope.data) == null ? void 0 : _d.commitStyle) === "number" ? envelope.data.commitStyle : 1;
-        this.canEditSettings = !!((_e = envelope == null ? void 0 : envelope.data) == null ? void 0 : _e.canEditSettings);
+        this.commitStyle = typeof ((_f = envelope == null ? void 0 : envelope.data) == null ? void 0 : _f.commitStyle) === "number" ? envelope.data.commitStyle : 1;
+        this.canEditSettings = !!((_g = envelope == null ? void 0 : envelope.data) == null ? void 0 : _g.canEditSettings);
         this.updateCommentsHeading();
         this.renderSidebar();
         this.renderCommitStyleControl();
@@ -3727,7 +3873,7 @@
       let currentEl = el;
       let currentMeta = captureMetadata(currentEl, this.sourceAttr, { captureText: this.captureTextContent });
       const host = this.root.querySelector("#fbk-popover-host");
-      host.innerHTML = TPL.popover(currentMeta, x, y, this.screenshotEnabled, this.predefinedActions, this.pageContextCaptureEnabled);
+      host.innerHTML = TPL.popover(currentMeta, x, y, this.screenshotEnabled, this.predefinedActions, this.pageContextCaptureEnabled, this.commentFields);
       applyDataPosition(host, ".fbk-popover");
       const popoverEl = host.querySelector(".fbk-popover");
       if (popoverEl) {
@@ -3894,9 +4040,49 @@
         e.stopPropagation();
         cancelPopover();
       });
+      const moreFieldsBtn = host.querySelector("#fbk-more-fields");
+      const extraFieldsDiv = host.querySelector("#fbk-extra-fields");
+      if (moreFieldsBtn && extraFieldsDiv) {
+        moreFieldsBtn.addEventListener("click", () => {
+          const isExpanded = moreFieldsBtn.getAttribute("aria-expanded") === "true";
+          moreFieldsBtn.setAttribute("aria-expanded", String(!isExpanded));
+          moreFieldsBtn.textContent = !isExpanded ? t("fields.fewer") : t("fields.more");
+          extraFieldsDiv.hidden = isExpanded;
+          if (!isExpanded) {
+            const firstInput = extraFieldsDiv.querySelector("input, select");
+            if (firstInput) firstInput.focus();
+          }
+        });
+      }
       host.querySelector("#fbk-submit").addEventListener("click", async () => {
         const text = ta.value.trim();
         if (!text) return this.toast(t("popover.commentCannotBeEmpty"), "error");
+        let customFields = void 0;
+        let valMap = {};
+        if (extraFieldsDiv) {
+          extraFieldsDiv.querySelectorAll(".fbk-field-error").forEach((el2) => el2.remove());
+          extraFieldsDiv.querySelectorAll('[aria-invalid="true"]').forEach((el2) => {
+            el2.removeAttribute("aria-invalid");
+            el2.removeAttribute("aria-describedby");
+          });
+          valMap = collectFieldValues(extraFieldsDiv);
+          let hasError = false;
+          const fieldsOut = {};
+          for (const def of this.commentFields) {
+            const val = valMap[def.key];
+            if (val !== void 0) {
+              const errKey = validateFieldValue(def, val);
+              if (errKey) {
+                hasError = true;
+                this.renderFieldError(extraFieldsDiv, def, errKey);
+              } else {
+                fieldsOut[def.key] = val;
+              }
+            }
+          }
+          if (hasError) return;
+          if (Object.keys(fieldsOut).length > 0) customFields = fieldsOut;
+        }
         const isPrivate = isPrivateComment;
         const attachShot = attachShotComment;
         const isBugReport = isBugReportComment;
@@ -3906,16 +4092,42 @@
         const submitBtn = host.querySelector("#fbk-submit");
         submitBtn.disabled = true;
         submitBtn.textContent = t("menu.saving");
-        const saved = await this.createComment({ ...currentMeta, text, isPrivate, attachShot, shotPromise, predefinedActionIds, isBugReport });
-        if (saved) {
+        const saved = await this.createComment({ ...currentMeta, text, isPrivate, attachShot, shotPromise, predefinedActionIds, isBugReport, customFields });
+        if (saved === true) {
           currentEl.classList.remove(HL_CLASS);
           host.innerHTML = "";
           stopMsListening == null ? void 0 : stopMsListening();
+        } else if (typeof saved === "string") {
+          submitBtn.disabled = false;
+          submitBtn.textContent = t("popover.add");
+          if (extraFieldsDiv) {
+            extraFieldsDiv.innerHTML = renderFieldInputs(this.commentFields, valMap, "cf");
+            let errEl = document.createElement("p");
+            errEl.className = "fbk-field-error";
+            errEl.textContent = t("fields.serverRejected") + " " + saved;
+            extraFieldsDiv.prepend(errEl);
+          }
         } else {
           submitBtn.disabled = false;
           submitBtn.textContent = t("popover.add");
         }
       });
+    }
+    // Shared by the composer's extra-fields panel and the card's inline "Edit fields" form: renders
+    // an inline error under the offending input and marks it aria-invalid/aria-describedby, so both
+    // surfaces show identical validation feedback for the same i18n error key.
+    renderFieldError(container, def, errKey, idPrefix = "cf") {
+      var _a2;
+      const input = container.querySelector(`[name="fbk-cf-${escapeHtml(def.key)}"]`);
+      if (!input) return;
+      input.setAttribute("aria-invalid", "true");
+      const errId = `${idPrefix}-${def.key}-error`;
+      input.setAttribute("aria-describedby", errId);
+      const errEl = document.createElement("p");
+      errEl.className = "fbk-field-error";
+      errEl.id = errId;
+      errEl.textContent = t(errKey, { hosts: (def.allowedHosts || []).join(", ") });
+      (_a2 = input.parentElement) == null ? void 0 : _a2.appendChild(errEl);
     }
     // Returns true on success (popover should close), false on failure (popover stays open).
     async createComment(data) {
@@ -3962,6 +4174,7 @@
         language
       };
       if (data.predefinedActionIds && data.predefinedActionIds.length) bodyObj.predefinedActionIds = data.predefinedActionIds;
+      if (data.customFields && Object.keys(data.customFields).length > 0) bodyObj.customFields = data.customFields;
       if (data.isBugReport) {
         const pageContext = getPageContextPayload();
         if (pageContext) bodyObj.pageContext = pageContext;
@@ -3978,6 +4191,10 @@
         if (!r.ok) {
           const errEnv = await r.json().catch(() => null);
           const msg = errEnv && errEnv.message || "";
+          if (msg.toLowerCase().includes("field")) {
+            await this.fetchCaptureConfig();
+            return msg;
+          }
           if (data.predefinedActionIds && data.predefinedActionIds.length && msg.toLowerCase().includes("action")) {
             await this.fetchPredefinedActions();
             this.toast(t("toast.actionNoLongerAvailable"), "error");
@@ -4193,6 +4410,91 @@
         this.toast(t("toast.commentUpdated"), "success");
       } catch (e) {
         if (e.message !== "HTTP 401 Unauthorized") this.toast(e.message || t("toast.failedToUpdateComment"), "error");
+      }
+    }
+    // Inline edit for a comment's admin-defined field values — same swap-in-place pattern as
+    // startEdit, but replaces .fbk-card-fields (or inserts one after .fbk-text when the card has
+    // no values yet) with input controls instead of a textarea. Wired from the kebab menu's
+    // "Edit fields" item (see toggleCardMenu).
+    startEditFields(c) {
+      const card = this.root && this.root.querySelector(`.fbk-card[data-id="${c.id}"]`);
+      if (!card || card.querySelector(".fbk-card-fields-edit")) return;
+      const textEl = card.querySelector(".fbk-text");
+      const existingDl = card.querySelector(".fbk-card-fields");
+      if (!existingDl && !textEl) return;
+      const currentValues = {};
+      (c.customFields || []).forEach((f) => {
+        currentValues[f.key] = f.value;
+      });
+      const idPrefix = "ef-" + c.id;
+      const editor = document.createElement("div");
+      editor.className = "fbk-card-fields-edit";
+      editor.innerHTML = `
+        ${renderFieldInputs(this.commentFields, currentValues, idPrefix)}
+        <div class="fbk-reply-row">
+          <button type="button" class="fbk-mini fbk-fields-save">${t("fields.save")}</button>
+          <button type="button" class="fbk-mini fbk-fields-cancel">${t("fields.cancel")}</button>
+        </div>`;
+      if (existingDl) existingDl.replaceWith(editor);
+      else textEl.insertAdjacentElement("afterend", editor);
+      editor.querySelector(".fbk-fields-cancel").addEventListener("click", () => {
+        this.renderSidebar();
+      });
+      editor.querySelector(".fbk-fields-save").addEventListener("click", () => {
+        this.saveEditFields(c, editor, idPrefix);
+      });
+    }
+    async saveEditFields(c, editor, idPrefix) {
+      var _a2;
+      editor.querySelectorAll(".fbk-field-error").forEach((el) => el.remove());
+      editor.querySelectorAll('[aria-invalid="true"]').forEach((el) => {
+        el.removeAttribute("aria-invalid");
+        el.removeAttribute("aria-describedby");
+      });
+      const valMap = collectFieldValues(editor);
+      let hasError = false;
+      const fieldsOut = {};
+      for (const def of this.commentFields) {
+        const val = valMap[def.key];
+        if (val !== void 0) {
+          const errKey = validateFieldValue(def, val);
+          if (errKey) {
+            hasError = true;
+            this.renderFieldError(editor, def, errKey, idPrefix);
+          } else {
+            fieldsOut[def.key] = val;
+          }
+        }
+      }
+      if (hasError) return;
+      const saveBtn = editor.querySelector(".fbk-fields-save");
+      if (saveBtn) {
+        saveBtn.disabled = true;
+        saveBtn.textContent = t("menu.saving");
+      }
+      try {
+        const r = await this.api(`/api/comments/${c.id}/fields`, {
+          method: "PATCH",
+          body: JSON.stringify({ customFields: fieldsOut })
+        });
+        if (!r.ok) {
+          const b = await r.json().catch(() => null);
+          throw new Error(b && b.message || "HTTP " + r.status);
+        }
+        const envelope = await r.json();
+        const updated = (_a2 = envelope == null ? void 0 : envelope.data) != null ? _a2 : envelope;
+        const idx = this.comments.findIndex((x) => String(x.id) === String(c.id));
+        if (idx !== -1 && updated) {
+          this.comments[idx] = { ...this.comments[idx], ...updated };
+        }
+        this.renderSidebar();
+        this.toast(t("fields.saved"));
+      } catch (e) {
+        if (saveBtn) {
+          saveBtn.disabled = false;
+          saveBtn.textContent = t("fields.save");
+        }
+        if (e.message !== "HTTP 401 Unauthorized") this.toast(e.message || t("toast.updateFailed"), "error");
       }
     }
     // Inline edit for a single reply (own replies only) — same swap-body-for-a-textarea pattern
@@ -4699,7 +5001,7 @@
     }
     // --- Card actions menu (kebab menu: private/public, edit, delete) --------
     toggleCardMenu(btn, c) {
-      var _a2;
+      var _a2, _b;
       const host = this.root.querySelector("#fbk-menu-host");
       if (!host) return;
       if (host.querySelector("#fbk-card-menu")) {
@@ -4709,7 +5011,8 @@
       this.closeUserMenu();
       this.closeUpdatesMenu();
       this.closeClusterMenu();
-      host.innerHTML = TPL.cardMenu(c, !!((_a2 = this.user) == null ? void 0 : _a2.isQuickAccess));
+      const canEditFields = this.commentFields.length > 0 && !!(c._mine || ((_a2 = this.user) == null ? void 0 : _a2.isAdmin));
+      host.innerHTML = TPL.cardMenu(c, !!((_b = this.user) == null ? void 0 : _b.isQuickAccess), canEditFields);
       const menu = host.querySelector("#fbk-card-menu");
       if (!menu) return;
       btn.setAttribute("aria-expanded", "true");
@@ -4757,6 +5060,13 @@
         editBtn.addEventListener("click", () => {
           this.closeCardMenu();
           this.startEdit(String(c.id));
+        });
+      }
+      const editFieldsBtn = menu.querySelector('[data-menu-act="edit-fields"]');
+      if (editFieldsBtn) {
+        editFieldsBtn.addEventListener("click", () => {
+          this.closeCardMenu();
+          this.startEditFields(c);
         });
       }
       const delBtn = menu.querySelector('[data-menu-act="delete"]');

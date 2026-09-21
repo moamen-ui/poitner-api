@@ -179,3 +179,31 @@
   gap: 6px;
   margin-block-end: 8px;
 }
+
+.fbk-extra-fields {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-block-end: 12px;
+}
+.fbk-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.fbk-field > label {
+  font-size: v.token('size-xs');
+  color: v.token('text-muted');
+  font-weight: 500;
+}
+.fbk-field-hint {
+  font-size: v.token('size-xs');
+  color: v.token('text-muted');
+  margin-block-start: 2px;
+}
+.fbk-field-error {
+  font-size: v.token('size-xs');
+  color: v.token('danger');
+  margin: 0;
+  margin-block-start: 4px;
+}

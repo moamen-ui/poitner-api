@@ -13,7 +13,8 @@ import {
 import { type ThemeMode, detectSiteTheme } from './theme';
 import { type Lang, t, setLang, detectTextLanguageAsync } from './i18n';
 import { showLoginModal } from './auth-ui';
-import type { AuthorOption, Comment, Meta, NotificationItem, PointerHost, PredefinedActionOption, Reply, RoleOption, StatusStr, User } from './types';
+import type { AuthorOption, Comment, Meta, NotificationItem, PointerHost, PredefinedActionOption, Reply, RoleOption, StatusStr, User, CommentFieldDefinition } from './types';
+import { validateFieldValue, collectFieldValues, renderFieldInputs } from './fields';
 
 // TEMPORARY feature flag, per explicit request — hides the "commit style" project setting from
 // the sidebar entirely regardless of the caller's canEditSettings. Flip to true to restore it.
@@ -45,6 +46,7 @@ interface CreateCommentData extends Meta {
   predefinedActionIds?: number[];
   isBugReport: boolean;
   language?: string;
+  customFields?: Record<string, string>;
 }
 
 export class PointerFeedback extends HTMLElement implements PointerHost {
@@ -107,6 +109,7 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
   // Project-level opt-in (default off), read once at init via /capture-config. Gates both whether
   // the widget buffers console/network events at all and whether "Report as a bug" is shown.
   pageContextCaptureEnabled = false;
+  commentFields: CommentFieldDefinition[] = [];
   // Per-project text capture toggle (default true until /capture-config resolves).
   // When false, the widget emits no text content in the DOM snapshot and masks pageTitle.
   captureTextContent = true;
@@ -754,6 +757,7 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
       const r = await this.api(`/api/projects/${encodeURIComponent(this.project)}/capture-config`);
       if (!r.ok) { this.pageContextCaptureEnabled = false; return; }
       const envelope = await r.json();
+      this.commentFields = envelope?.data?.commentFields ?? [];
       this.pageContextCaptureEnabled = !!(envelope && envelope.data && envelope.data.pageContextCaptureEnabled);
       if (envelope?.data && typeof envelope.data.captureTextContent === 'boolean') {
         this.captureTextContent = envelope.data.captureTextContent;
@@ -1747,7 +1751,7 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
     // ...) and starts rendering off-screen below the fold for a click near the bottom of the
     // page — unreachable, can't type or submit. Width IS fixed by CSS (280px), but measuring it
     // too costs nothing and stays correct if that ever changes.
-    host.innerHTML = TPL.popover(currentMeta, x, y, this.screenshotEnabled, this.predefinedActions, this.pageContextCaptureEnabled);
+    host.innerHTML = TPL.popover(currentMeta, x, y, this.screenshotEnabled, this.predefinedActions, this.pageContextCaptureEnabled, this.commentFields);
     // Position applied through the CSSOM, not a style attribute — see applyDataPosition.
     applyDataPosition(host, '.fbk-popover');
     const popoverEl = host.querySelector('.fbk-popover') as HTMLElement | null;
@@ -1930,9 +1934,53 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
       e.stopPropagation();
       cancelPopover();
     });
+    const moreFieldsBtn = host.querySelector('#fbk-more-fields') as HTMLButtonElement | null;
+    const extraFieldsDiv = host.querySelector('#fbk-extra-fields') as HTMLElement | null;
+    if (moreFieldsBtn && extraFieldsDiv) {
+      moreFieldsBtn.addEventListener('click', () => {
+        const isExpanded = moreFieldsBtn.getAttribute('aria-expanded') === 'true';
+        moreFieldsBtn.setAttribute('aria-expanded', String(!isExpanded));
+        moreFieldsBtn.textContent = !isExpanded ? t('fields.fewer') : t('fields.more');
+        extraFieldsDiv.hidden = isExpanded;
+        if (!isExpanded) {
+          const firstInput = extraFieldsDiv.querySelector('input, select') as HTMLElement;
+          if (firstInput) firstInput.focus();
+        }
+      });
+    }
+
     (host.querySelector('#fbk-submit') as HTMLButtonElement).addEventListener('click', async () => {
       const text = ta.value.trim();
       if (!text) return this.toast(t('popover.commentCannotBeEmpty'), 'error');
+      
+      let customFields: Record<string, string> | undefined = undefined;
+      let valMap: Record<string, string> = {};
+      if (extraFieldsDiv) {
+        extraFieldsDiv.querySelectorAll('.fbk-field-error').forEach(el => el.remove());
+        extraFieldsDiv.querySelectorAll('[aria-invalid="true"]').forEach(el => {
+          el.removeAttribute('aria-invalid');
+          el.removeAttribute('aria-describedby');
+        });
+
+        valMap = collectFieldValues(extraFieldsDiv);
+        let hasError = false;
+        const fieldsOut: Record<string, string> = {};
+        for (const def of this.commentFields) {
+          const val = valMap[def.key];
+          if (val !== undefined) {
+            const errKey = validateFieldValue(def, val);
+            if (errKey) {
+              hasError = true;
+              this.renderFieldError(extraFieldsDiv, def, errKey);
+            } else {
+              fieldsOut[def.key] = val;
+            }
+          }
+        }
+        if (hasError) return;
+        if (Object.keys(fieldsOut).length > 0) customFields = fieldsOut;
+      }
+
       const isPrivate = isPrivateComment;
       const attachShot = attachShotComment;
       const isBugReport = isBugReportComment;
@@ -1941,14 +1989,42 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
       const predefinedActionIds = Array.from(selectedActionIds);
       const submitBtn = host.querySelector('#fbk-submit') as HTMLButtonElement;
       submitBtn.disabled = true; submitBtn.textContent = t('menu.saving');
-      const saved = await this.createComment({ ...currentMeta, text, isPrivate, attachShot, shotPromise, predefinedActionIds, isBugReport });
-      if (saved) { currentEl.classList.remove(HL_CLASS); host.innerHTML = ''; stopMsListening?.(); }
-      else { submitBtn.disabled = false; submitBtn.textContent = t('popover.add'); }
+      const saved = await this.createComment({ ...currentMeta, text, isPrivate, attachShot, shotPromise, predefinedActionIds, isBugReport, customFields });
+      if (saved === true) { 
+        currentEl.classList.remove(HL_CLASS); host.innerHTML = ''; stopMsListening?.(); 
+      } else if (typeof saved === 'string') {
+        submitBtn.disabled = false; submitBtn.textContent = t('popover.add');
+        if (extraFieldsDiv) {
+          extraFieldsDiv.innerHTML = renderFieldInputs(this.commentFields, valMap, 'cf');
+          let errEl = document.createElement('p');
+          errEl.className = 'fbk-field-error';
+          errEl.textContent = t('fields.serverRejected') + ' ' + saved;
+          extraFieldsDiv.prepend(errEl);
+        }
+      } else { 
+        submitBtn.disabled = false; submitBtn.textContent = t('popover.add'); 
+      }
     });
   }
 
+  // Shared by the composer's extra-fields panel and the card's inline "Edit fields" form: renders
+  // an inline error under the offending input and marks it aria-invalid/aria-describedby, so both
+  // surfaces show identical validation feedback for the same i18n error key.
+  private renderFieldError(container: HTMLElement, def: CommentFieldDefinition, errKey: string, idPrefix = 'cf'): void {
+    const input = container.querySelector(`[name="fbk-cf-${escapeHtml(def.key)}"]`);
+    if (!input) return;
+    input.setAttribute('aria-invalid', 'true');
+    const errId = `${idPrefix}-${def.key}-error`;
+    input.setAttribute('aria-describedby', errId);
+    const errEl = document.createElement('p');
+    errEl.className = 'fbk-field-error';
+    errEl.id = errId;
+    errEl.textContent = t(errKey as any, { hosts: (def.allowedHosts || []).join(', ') });
+    input.parentElement?.appendChild(errEl);
+  }
+
   // Returns true on success (popover should close), false on failure (popover stays open).
-  async createComment(data: CreateCommentData): Promise<boolean> {
+  async createComment(data: CreateCommentData): Promise<boolean | string> {
     // Capture the viewport so triage knows which device the feedback came from.
     // deviceType is the common mobile/tablet/desktop split by CSS-px width.
     const vw = window.innerWidth;
@@ -2001,6 +2077,7 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
       language,
     };
     if (data.predefinedActionIds && data.predefinedActionIds.length) bodyObj.predefinedActionIds = data.predefinedActionIds;
+    if (data.customFields && Object.keys(data.customFields).length > 0) bodyObj.customFields = data.customFields;
     // Only attach the buffered console/network snapshot when the box is checked — unchecked means
     // zero extra payload, regardless of what's been silently buffered in the browser.
     if (data.isBugReport) {
@@ -2020,6 +2097,10 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
         const msg: string = (errEnv && errEnv.message) || '';
         // Stale predefined action: the server rejected the action as invalid/unavailable.
         // Refetch the list once so the picker is fresh, then ask the user to retry.
+        if (msg.toLowerCase().includes('field')) {
+          await this.fetchCaptureConfig();
+          return msg;
+        }
         if (data.predefinedActionIds && data.predefinedActionIds.length && msg.toLowerCase().includes('action')) {
           await this.fetchPredefinedActions();
           this.toast(t('toast.actionNoLongerAvailable'), 'error');
@@ -2248,6 +2329,92 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
       this.toast(t('toast.commentUpdated'), 'success');
     } catch (e) {
       if ((e as Error).message !== 'HTTP 401 Unauthorized') this.toast((e as Error).message || t('toast.failedToUpdateComment'), 'error');
+    }
+  }
+
+  // Inline edit for a comment's admin-defined field values — same swap-in-place pattern as
+  // startEdit, but replaces .fbk-card-fields (or inserts one after .fbk-text when the card has
+  // no values yet) with input controls instead of a textarea. Wired from the kebab menu's
+  // "Edit fields" item (see toggleCardMenu).
+  startEditFields(c: Comment): void {
+    const card = this.root && (this.root.querySelector(`.fbk-card[data-id="${c.id}"]`) as HTMLElement | null);
+    if (!card || card.querySelector('.fbk-card-fields-edit')) return;
+    const textEl = card.querySelector('.fbk-text') as HTMLElement | null;
+    const existingDl = card.querySelector('.fbk-card-fields');
+    if (!existingDl && !textEl) return;
+
+    const currentValues: Record<string, string> = {};
+    (c.customFields || []).forEach((f) => { currentValues[f.key] = f.value; });
+    const idPrefix = 'ef-' + c.id;
+
+    const editor = document.createElement('div');
+    editor.className = 'fbk-card-fields-edit';
+    editor.innerHTML = `
+        ${renderFieldInputs(this.commentFields, currentValues, idPrefix)}
+        <div class="fbk-reply-row">
+          <button type="button" class="fbk-mini fbk-fields-save">${t('fields.save')}</button>
+          <button type="button" class="fbk-mini fbk-fields-cancel">${t('fields.cancel')}</button>
+        </div>`;
+
+    if (existingDl) existingDl.replaceWith(editor);
+    else (textEl as HTMLElement).insertAdjacentElement('afterend', editor);
+
+    (editor.querySelector('.fbk-fields-cancel') as HTMLElement).addEventListener('click', () => {
+      this.renderSidebar();
+    });
+    (editor.querySelector('.fbk-fields-save') as HTMLElement).addEventListener('click', () => {
+      this.saveEditFields(c, editor, idPrefix);
+    });
+  }
+
+  async saveEditFields(c: Comment, editor: HTMLElement, idPrefix: string): Promise<void> {
+    editor.querySelectorAll('.fbk-field-error').forEach((el) => el.remove());
+    editor.querySelectorAll('[aria-invalid="true"]').forEach((el) => {
+      el.removeAttribute('aria-invalid');
+      el.removeAttribute('aria-describedby');
+    });
+
+    const valMap = collectFieldValues(editor);
+    let hasError = false;
+    const fieldsOut: Record<string, string> = {};
+    for (const def of this.commentFields) {
+      const val = valMap[def.key];
+      if (val !== undefined) {
+        const errKey = validateFieldValue(def, val);
+        if (errKey) {
+          hasError = true;
+          this.renderFieldError(editor, def, errKey, idPrefix);
+        } else {
+          fieldsOut[def.key] = val;
+        }
+      }
+    }
+    if (hasError) return;
+
+    const saveBtn = editor.querySelector('.fbk-fields-save') as HTMLButtonElement | null;
+    if (saveBtn) { saveBtn.disabled = true; saveBtn.textContent = t('menu.saving'); }
+    try {
+      const r = await this.api(`/api/comments/${c.id}/fields`, {
+        method: 'PATCH',
+        body: JSON.stringify({ customFields: fieldsOut }),
+      });
+      if (!r.ok) {
+        const b = await r.json().catch(() => null);
+        throw new Error((b && b.message) || ('HTTP ' + r.status));
+      }
+      const envelope = await r.json();
+      const updated = envelope?.data ?? envelope;
+      const idx = this.comments.findIndex((x) => String(x.id) === String(c.id));
+      if (idx !== -1 && updated) {
+        // Spread the old entry first so client-only flags (_mine, _canVerify, …) survive —
+        // same pattern as apiVerify's normalizedComment.
+        this.comments[idx] = { ...this.comments[idx], ...updated };
+      }
+      this.renderSidebar();
+      this.toast(t('fields.saved'));
+    } catch (e) {
+      if (saveBtn) { saveBtn.disabled = false; saveBtn.textContent = t('fields.save'); }
+      if ((e as Error).message !== 'HTTP 401 Unauthorized') this.toast((e as Error).message || t('toast.updateFailed'), 'error');
     }
   }
 
@@ -2846,7 +3013,8 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
     this.closeUpdatesMenu();
     this.closeClusterMenu();
 
-    host.innerHTML = TPL.cardMenu(c, !!this.user?.isQuickAccess);
+    const canEditFields = this.commentFields.length > 0 && !!(c._mine || this.user?.isAdmin);
+    host.innerHTML = TPL.cardMenu(c, !!this.user?.isQuickAccess, canEditFields);
     const menu = host.querySelector('#fbk-card-menu') as HTMLElement | null;
     if (!menu) return;
     btn.setAttribute('aria-expanded', 'true');
@@ -2898,6 +3066,13 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
       editBtn.addEventListener('click', () => {
         this.closeCardMenu();
         this.startEdit(String(c.id));
+      });
+    }
+    const editFieldsBtn = menu.querySelector('[data-menu-act="edit-fields"]') as HTMLElement | null;
+    if (editFieldsBtn) {
+      editFieldsBtn.addEventListener('click', () => {
+        this.closeCardMenu();
+        this.startEditFields(c);
       });
     }
     // Delete closes the menu immediately (like edit/visibility above) and shows its confirmation
