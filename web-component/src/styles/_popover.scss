@@ -186,6 +186,10 @@
   gap: 12px;
   margin-block-end: 12px;
 }
+// The class's display:flex outranks the UA's [hidden]{display:none}; keep the panel collapsible.
+.fbk-extra-fields[hidden] {
+  display: none;
+}
 .fbk-field {
   display: flex;
   flex-direction: column;

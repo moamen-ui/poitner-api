@@ -309,7 +309,7 @@
   var SHOT_HIGHLIGHT = "#2563eb";
   var _a;
   var SCRIPT_SRC = ((_a = document.currentScript) == null ? void 0 : _a.src) || "";
-  var CSS_INTEGRITY = true ? "sha384-tZeHVZSb2LhuQqVkGd9SbqDaaOJ6yPbL3g1N9TGX57NbHo2DIzMGUxVOxygZbPtZ" : "";
+  var CSS_INTEGRITY = true ? "sha384-WMg6ThjxOgP+BW2uLSApzSmvPBZ6W4XLTbeQqpnNdvMduV1ulTw8NUAF4EhUGqwD" : "";
   function resolveCssUrl(scriptSrc) {
     var _a2;
     if (!scriptSrc) return "widget.css";

@@ -1917,6 +1917,10 @@
   margin-block-end: 12px;
 }
 
+.fbk-extra-fields[hidden] {
+  display: none;
+}
+
 .fbk-field {
   display: flex;
   flex-direction: column;
