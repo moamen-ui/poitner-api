@@ -8,7 +8,7 @@
 all of them at once and nothing measures the widget's weight. After this item: hosts can **pin** a
 build with a content-addressed URL + SRI that keeps working across the next ~10 releases, the
 default **latest** path stays self-updating, every build is described by a committed
-`pointer.version.json`, CI fails when the bundle exceeds **60 KB gzip** or the committed artifacts are
+`pointer.version.json`, CI fails when the bundle exceeds **60 KB gzip** (budget raised to 64 KB by R4-01 on 2026-09-22) or the committed artifacts are
 stale, a post-deploy smoke script proves the served widget matches the build, and nonce-strict CSP
 hosts get a documented, working stylesheet path. It also introduces the widget's first unit-test
 harness (vitest + jsdom), which R3-04 builds on.
