@@ -70,4 +70,12 @@ public class Comment : BaseEntity
     /// </summary>
     public string? Language { get; set; }
 
+    /// <summary>
+    /// Admin-defined extra fields (R4-01): machine key → stakeholder-typed value. Validated on
+    /// every write against the workspace's definitions (CommentFieldService.ValidateValues) —
+    /// keys the workspace never defined are rejected, not stored. Stored as one canonical jsonb
+    /// value (custom_fields); values are untrusted data wherever they are re-printed.
+    /// </summary>
+    public Dictionary<string, string> CustomFields { get; set; } = new();
+
 }

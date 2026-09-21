@@ -90,6 +90,20 @@ public class CommentsController(ICommentService commentService) : ControllerBase
         return result.IsSuccess ? Ok(result) : BadRequest(result);
     }
 
+    // Replace a comment's admin-defined field values (R4-01). Author (incl. quick-access) or a
+    // workspace admin — the service loads through the tenant-filtered query, so another
+    // workspace's admin gets 404 rather than access.
+    [HttpPatch("api/comments/{id:int}/fields")]
+    [ProducesResponseType(typeof(CommentResponse), StatusCodes.Status200OK)]
+    public async Task<IActionResult> UpdateFields(int id, [FromBody] UpdateCommentFieldsRequest request)
+    {
+        var result = await commentService.UpdateFieldsAsync(id, request, User.GetId());
+        if (result.IsForbidden) return StatusCode(StatusCodes.Status403Forbidden, result);
+        if (result.IsNotFound) return NotFound(result);
+        if (result.IsConflict) return Conflict(result);
+        return result.IsSuccess ? Ok(result) : BadRequest(result);
+    }
+
     // Toggle a comment's private flag. Author-only (enforced in the service).
     [HttpPatch("api/comments/{id:int}/visibility")]
     [ProducesResponseType(typeof(CommentResponse), StatusCodes.Status200OK)]

@@ -57,6 +57,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options, ICurrentUser c
     public DbSet<AppEnvironment> AppEnvironments => Set<AppEnvironment>();
     public DbSet<ProjectAppUrl> ProjectAppUrls => Set<ProjectAppUrl>();
     public DbSet<AiRule> AiRules => Set<AiRule>();
+    public DbSet<WorkspaceSetting> WorkspaceSettings => Set<WorkspaceSetting>();
     public DbSet<UsageEvent> UsageEvents => Set<UsageEvent>();
     public DbSet<Notification> Notifications => Set<Notification>();
     public DbSet<DeviceLogin> DeviceLogins => Set<DeviceLogin>();
@@ -137,6 +138,11 @@ public class AppDbContext(DbContextOptions<AppDbContext> options, ICurrentUser c
         b.Entity<Subscription>().HasQueryFilter(e => currentUser.IsSuperAdmin || (currentUser.TenantId != null && e.OwnerId == currentUser.TenantId) || (currentUser.TenantId == null && !strict && e.OwnerId == null));
         b.Entity<ExtensionSite>().HasQueryFilter(e => currentUser.IsSuperAdmin || (currentUser.TenantId != null && e.OwnerId == currentUser.TenantId) || (currentUser.TenantId == null && !strict && e.OwnerId == null));
         b.Entity<AiRule>().HasQueryFilter(e => currentUser.IsSuperAdmin || (currentUser.TenantId != null && e.OwnerId == currentUser.TenantId) || (currentUser.TenantId == null && !strict && e.OwnerId == null));
+        // WorkspaceSetting: strict-own, Project-filter shape (R4-01) — one row per workspace. The
+        // filter alone is never the only scope on a workspace-level read: a super admin passes it
+        // for EVERY row, so services additionally filter .Where(x => x.OwnerId == owner) with an
+        // owner resolved server-side (see CommentFieldService / R4-01 A2).
+        b.Entity<WorkspaceSetting>().HasQueryFilter(e => currentUser.IsSuperAdmin || (currentUser.TenantId != null && e.OwnerId == currentUser.TenantId) || (currentUser.TenantId == null && !strict && e.OwnerId == null));
         b.Entity<UsageEvent>().HasQueryFilter(e => currentUser.IsSuperAdmin || (currentUser.TenantId != null && e.OwnerId == currentUser.TenantId) || (currentUser.TenantId == null && !strict && e.OwnerId == null));
         b.Entity<Notification>().HasQueryFilter(e => currentUser.IsSuperAdmin || (currentUser.TenantId != null && e.OwnerId == currentUser.TenantId) || (currentUser.TenantId == null && !strict && e.OwnerId == null));
 

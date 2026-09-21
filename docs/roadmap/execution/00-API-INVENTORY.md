@@ -48,11 +48,21 @@
 | `GET /api/comments/{id}` | `:43-50` | `CommentResponse` (full, embedded PageContext) |
 | `PATCH /api/comments/{id}` | `:52-60` | `UpdateCommentStatusRequest { Status, Reply?, AppliedByLabel?, CommitUrl? }` |
 | `PUT /api/comments/{id}` (author) | `:63-70` | `EditCommentRequest { Body, RemoveScreenshot }` |
+| `PATCH /api/comments/{id}/fields` (author or workspace admin) | `API/Controllers/CommentsController.cs` | `UpdateCommentFieldsRequest { CustomFields: Dictionary<string,string> }` → `CommentResponse`; replaces the whole map, validated against the workspace's definitions (R4-01) |
 | `PATCH /api/comments/{id}/visibility` (author) | `:73-80` | `{ IsPrivate }` |
 | `DELETE /api/comments/{id}` (author or admin) | `:82-89` | |
 | `POST /api/comments/{id}/replies` | `API/Controllers/RepliesController.cs:13-20` | `{ Body }` |
 
-Enums: `CommentStatus` 1=Open 2=ReadyToApply 3=Applied 4=Archived · `EnvironmentTag` 1=Local 2=Staging 3=Production (`Domain/Enums/`).
+Enums: `CommentStatus` 1=Open 2=ReadyToApply 3=Applied 4=Archived · `EnvironmentTag` 1=Local 2=Staging 3=Production · `CommentFieldType` 1=Text 2=Url 3=Select (`Domain/Enums/`).
+
+### 3a. Workspace (admin)
+
+| Endpoint | File | Notes |
+|---|---|---|
+| `GET /api/admin/workspace/comment-fields` **[Authorize(Policy="Admin")]** | `API/Controllers/Admin/WorkspaceController.cs` | `CommentFieldDefinitionsResponse { Fields: List<CommentFieldDefinitionDto> }` — all definitions incl. disabled, sorted (R4-01). 403 for super admins and quick-access users (service-level refusal) |
+| `PUT /api/admin/workspace/comment-fields` **[Authorize(Policy="Admin")]** | `:34-42` | `UpdateCommentFieldDefinitionsRequest { Fields }` — replaces the whole list (≤ 10, distinct keys); upserts the workspace's one `workspace_settings` row |
+
+`CommentFieldDefinitionDto { Key, Label, Type, Options[], AllowedHosts[], SuggestedTool?, Hint?, Enabled, SortOrder }`; comment read DTOs (`CommentListItemDto`, `CommentResponse`, `CommentApplyItemDto`) carry `CustomFields: List<CommentFieldValueDto { Key, Label, Type, Value, SuggestedTool? }>`; `CaptureConfigResponse.CommentFields` lists **enabled** definitions for the widget (R4-01).
 
 ## 4. Public / branding / plans
 

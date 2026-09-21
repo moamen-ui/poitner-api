@@ -5,6 +5,7 @@ using Pointer.Application.Abstractions;
 using Pointer.Application.Common;
 using Pointer.Application.DTOs.PredefinedAction;
 using Pointer.Application.DTOs.Project;
+using Pointer.Application.DTOs.Workspace;
 using Pointer.Application.Resources;
 using Pointer.Application.Response;
 using Pointer.Application.Services.Interfaces;
@@ -18,19 +19,22 @@ public class ProjectService : IProjectService
     private readonly IUnitOfWork _unitOfWork;
     private readonly ICurrentUser _currentUser;
     private readonly IEntitlementService _entitlements;
+    private readonly ICommentFieldService _commentFields;
 
     public ProjectService(
         IUnitOfWork unitOfWork,
         ICurrentUser currentUser,
         IEntitlementService entitlements,
         ISettingsService settings,
-        IConfiguration configuration)
+        IConfiguration configuration,
+        ICommentFieldService? commentFields = null)
     {
         _unitOfWork = unitOfWork;
         _currentUser = currentUser;
         _entitlements = entitlements;
         _settings = settings;
         _configuration = configuration;
+        _commentFields = commentFields ?? new CommentFieldService(unitOfWork, currentUser);
     }
 
     private readonly ISettingsService _settings;
@@ -948,8 +952,12 @@ public class ProjectService : IProjectService
             .Query()
             .AsNoTracking()
             .Where(p => p.Id == projectResult.Data)
-            .Select(p => new { p.PageContextCaptureEnabled, p.CaptureTextContent, p.Name, p.EnvironmentSelectorRoleIds, p.CommitStyle, p.CreatedBy })
+            .Select(p => new { p.PageContextCaptureEnabled, p.CaptureTextContent, p.Name, p.EnvironmentSelectorRoleIds, p.CommitStyle, p.CreatedBy, p.OwnerId })
             .FirstAsync();
+
+        // R4-01: the widget's "Add more fields" panel is driven by the PROJECT's workspace
+        // definitions — enabled only, resolved server-side from the owner.
+        var commentFieldDefs = await _commentFields.GetDefinitionsForOwnerAsync(info.OwnerId, enabledOnly: true);
 
         return Result<CaptureConfigResponse>.Success(new CaptureConfigResponse
         {
@@ -965,6 +973,7 @@ public class ProjectService : IProjectService
             // Same gate as UpdateAsync (line ~192) — the widget hides/disables the commit-style
             // control entirely for a caller who couldn't actually save a change to it.
             CanEditSettings = _currentUser.IsAdmin || info.CreatedBy == _currentUser.Id,
+            CommentFields = commentFieldDefs.Select(CommentFieldDefinitionDto.FromDomain).ToList(),
         });
     }
 

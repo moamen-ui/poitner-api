@@ -26,6 +26,7 @@ public class CommentService : ICommentService
     private readonly ISettingsService _settings;
     private readonly IEntitlementService _entitlements;
     private readonly INotificationService _notificationService;
+    private readonly ICommentFieldService _commentFields;
 
     private readonly ICurrentClient? _currentClient;
 
@@ -39,7 +40,8 @@ public class CommentService : ICommentService
         ISettingsService settings,
         IEntitlementService entitlements,
         ICurrentClient? currentClient = null,
-        INotificationService? notificationService = null)
+        INotificationService? notificationService = null,
+        ICommentFieldService? commentFields = null)
     {
         _unitOfWork = unitOfWork;
         _projectService = projectService;
@@ -51,6 +53,7 @@ public class CommentService : ICommentService
         _entitlements = entitlements;
         _currentClient = currentClient;
         _notificationService = notificationService ?? new NotificationService(unitOfWork, currentUser);
+        _commentFields = commentFields ?? new CommentFieldService(unitOfWork, currentUser);
     }
 
     public async Task<Result<CommentResponse>> CreateAsync(string projectKey, CreateCommentRequest request, Guid authorId, string? origin = null)
@@ -108,6 +111,15 @@ public class CommentService : ICommentService
             .FirstAsync();
         var projectOwnerId = projectInfo.OwnerId;
 
+        // Admin-defined fields (R4-01): validated against the PROJECT's workspace definitions —
+        // the owner is always derived server-side, never from the request. enabledOnly here: on
+        // create a disabled definition behaves like an unknown key (refused); the PATCH path
+        // loads all definitions so it can say "disabled" instead.
+        var fieldDefs = await _commentFields.GetDefinitionsForOwnerAsync(projectOwnerId, enabledOnly: true);
+        var fieldValues = _commentFields.ValidateValues(fieldDefs, request.CustomFields);
+        if (!fieldValues.IsSuccess)
+            return Result<CommentResponse>.Failure(fieldValues.Message!);
+
         // Enforce the demo comment cap for demo tenants. A per-tenant override wins; otherwise
         // the global super-admin-tunable setting (default 10) applies.
         if (projectOwnerId is Guid owner)
@@ -164,7 +176,8 @@ public class CommentService : ICommentService
             OwnerId = projectOwnerId,
             Element = MapToEntity(request.Element),
             IsBugReport = request.IsBugReport,
-            Language = NormalizeLanguage(request.Language)
+            Language = NormalizeLanguage(request.Language),
+            CustomFields = fieldValues.Data!
         };
         comment.Element.Snapshot = SnapshotSanitizer.Sanitize(request.Element.Snapshot, projectInfo.CaptureTextContent);
         if (!projectInfo.CaptureTextContent && !string.IsNullOrEmpty(comment.Element.PageTitle))
@@ -256,7 +269,7 @@ public class CommentService : ICommentService
         }
 
         var names = await ResolveNamesAsync(AuthorIds(comment));
-        return Result<CommentResponse>.Success(MapToResponse(comment, names), MessageKeys.Comment.Created);
+        return Result<CommentResponse>.Success(MapToResponse(comment, names, fieldDefs: fieldDefs), MessageKeys.Comment.Created);
     }
 
     // Shared, security-sensitive query base for both ListAsync and ListSummaryAsync — status/
@@ -311,6 +324,9 @@ public class CommentService : ICommentService
 
         var projectId = projectResult.Data;
 
+        // R4-01: field definitions are loaded ONCE per request, not per row.
+        var fieldDefs = await LoadFieldDefinitionsAsync(projectId);
+
         IQueryable<Comment> query = BuildCommentQuery(projectId, filter, callerId).Include(c => c.Replies);
 
         // Count private comments owned by someone else: hidden from this caller
@@ -345,7 +361,7 @@ public class CommentService : ICommentService
         var names = await ResolveNamesAsync(items.SelectMany(AuthorIds));
         var pageContexts = await LoadPageContextsAsync(items.Select(c => c.PageContextSnapshotId));
         return Result<PagedData<CommentListItemDto>>.Success(
-            new PagedData<CommentListItemDto>(items.Select(c => MapToListItem(c, names)).ToList(), pagination, hiddenPrivateCount, pageContexts));
+            new PagedData<CommentListItemDto>(items.Select(c => MapToListItem(c, names, fieldDefs)).ToList(), pagination, hiddenPrivateCount, pageContexts));
     }
 
     public async Task<Result<PagedData<CommentSummaryDto>>> ListSummaryAsync(string projectKey, CommentFilter filter, Guid callerId)
@@ -426,6 +442,10 @@ public class CommentService : ICommentService
                 : Result<PagedData<CommentApplyItemDto>>.NotFound(projectResult.Message ?? MessageKeys.Project.NotFound);
 
         var projectId = projectResult.Data;
+
+        // R4-01: field definitions once per request (all definitions — Resolve keeps values of
+        // disabled/deleted definitions visible).
+        var fieldDefs = await LoadFieldDefinitionsAsync(projectId);
 
         var query = _unitOfWork.Repository<Comment>()
             .Query()
@@ -516,7 +536,7 @@ public class CommentService : ICommentService
                 items.Select(c =>
                 {
                     var commentRules = adminRules.Concat(personalRulesByAuthor.GetValueOrDefault(c.AuthorId) ?? Enumerable.Empty<AiRuleApplyDto>()).ToList();
-                    return MapToApplyItem(c, names, pageRefByCommentId.GetValueOrDefault(c.Id), commentRules);
+                    return MapToApplyItem(c, names, pageRefByCommentId.GetValueOrDefault(c.Id), commentRules, fieldDefs);
                 }).ToList(),
                 pagination,
                 pageContexts: pageContexts,
@@ -568,7 +588,10 @@ public class CommentService : ICommentService
             })
             .ToListAsync();
 
-        return Result<CommentResponse>.Success(MapToResponse(comment, names, effectiveRules));
+        // R4-01: resolved against the comment's own workspace owner, once.
+        var fieldDefs = await _commentFields.GetDefinitionsForOwnerAsync(comment.OwnerId, enabledOnly: false);
+
+        return Result<CommentResponse>.Success(MapToResponse(comment, names, effectiveRules, fieldDefs));
     }
 
     public async Task<Result<CommentResponse>> UpdateStatusAsync(int id, UpdateCommentStatusRequest request, Guid actorId)
@@ -678,7 +701,8 @@ public class CommentService : ICommentService
 
         var names = await ResolveNamesAsync(AuthorIds(comment));
         var message = request.Status == CommentStatus.Applied ? MessageKeys.Comment.Applied : null;
-        return Result<CommentResponse>.Success(MapToResponse(comment, names), message);
+        var updatedFieldDefs = await _commentFields.GetDefinitionsForOwnerAsync(comment.OwnerId, enabledOnly: false);
+        return Result<CommentResponse>.Success(MapToResponse(comment, names, fieldDefs: updatedFieldDefs), message);
     }
 
     public async Task<Result<CommentResponse>> VerifyAsync(int id, VerifyCommentRequest request, Guid actorId)
@@ -766,7 +790,8 @@ public class CommentService : ICommentService
 
         var names = await ResolveNamesAsync(AuthorIds(comment));
         var message = request.Ok ? MessageKeys.Comment.Verified : MessageKeys.Comment.Reopened;
-        return Result<CommentResponse>.Success(MapToResponse(comment, names), message);
+        var verifyFieldDefs = await _commentFields.GetDefinitionsForOwnerAsync(comment.OwnerId, enabledOnly: false);
+        return Result<CommentResponse>.Success(MapToResponse(comment, names, fieldDefs: verifyFieldDefs), message);
     }
 
     public async Task<Result<CommentResponse>> EditAsync(int id, EditCommentRequest request, Guid editorId)
@@ -806,7 +831,46 @@ public class CommentService : ICommentService
         await _unitOfWork.SaveChangesAsync();
 
         var editNames = await ResolveNamesAsync(AuthorIds(comment));
-        return Result<CommentResponse>.Success(MapToResponse(comment, editNames), "Comment updated.");
+        var editFieldDefs = await _commentFields.GetDefinitionsForOwnerAsync(comment.OwnerId, enabledOnly: false);
+        return Result<CommentResponse>.Success(MapToResponse(comment, editNames, fieldDefs: editFieldDefs), "Comment updated.");
+    }
+
+    // R4-01: replace a comment's admin-defined field values. Allowed for the AUTHOR (incl.
+    // quick-access — they own the comment) or a workspace admin; deliberately unlike EditAsync's
+    // author-only body edit. Loaded through the FILTERED query exactly like EditAsync — never
+    // IgnoreQueryFilters here: the strict-own filter is what returns 404 to another workspace's
+    // admin instead of exposing the comment.
+    public async Task<Result<CommentResponse>> UpdateFieldsAsync(int id, UpdateCommentFieldsRequest request, Guid actorId)
+    {
+        var comment = await _unitOfWork.Repository<Comment>()
+            .Query()
+            .Include(c => c.Replies)
+            .Include(c => c.PageContextSnapshot)
+            .Where(c => c.Id == id && c.DeletedAt == null)
+            .FirstOrDefaultAsync();
+
+        if (comment == null)
+            return Result<CommentResponse>.NotFound(MessageKeys.Comment.NotFound);
+
+        if (!_currentUser.IsAdmin && comment.AuthorId != actorId)
+            return Result<CommentResponse>.Forbidden("You do not have permission to edit this comment's fields.");
+
+        // All definitions (incl. disabled) so a disabled key fails with the specific disabled
+        // message rather than the generic unknown-key one.
+        var fieldDefs = await _commentFields.GetDefinitionsForOwnerAsync(comment.OwnerId, enabledOnly: false);
+        var validated = _commentFields.ValidateValues(fieldDefs, request.CustomFields);
+        if (!validated.IsSuccess)
+            return Result<CommentResponse>.Failure(validated.Message!);
+
+        comment.CustomFields = validated.Data!;
+        comment.EditedAt = DateTime.UtcNow;
+        comment.EditedBy = actorId;
+
+        _unitOfWork.Repository<Comment>().Update(comment);
+        await _unitOfWork.SaveChangesAsync();
+
+        var names = await ResolveNamesAsync(AuthorIds(comment));
+        return Result<CommentResponse>.Success(MapToResponse(comment, names, fieldDefs: fieldDefs), "Comment fields updated.");
     }
 
     public async Task<Result<CommentResponse>> SetVisibilityAsync(int id, Guid callerId, bool isPrivate)
@@ -830,7 +894,8 @@ public class CommentService : ICommentService
         await _unitOfWork.SaveChangesAsync();
 
         var names = await ResolveNamesAsync(AuthorIds(comment));
-        return Result<CommentResponse>.Success(MapToResponse(comment, names));
+        var visibilityFieldDefs = await _commentFields.GetDefinitionsForOwnerAsync(comment.OwnerId, enabledOnly: false);
+        return Result<CommentResponse>.Success(MapToResponse(comment, names, fieldDefs: visibilityFieldDefs));
     }
 
     public async Task<Result<ReplyResponse>> AddReplyAsync(int commentId, AddReplyRequest request, Guid authorId, string? origin = null)
@@ -1088,7 +1153,21 @@ public class CommentService : ICommentService
         PayloadFlags = includeFlags ? reply.PayloadFlags : null
     };
 
-    private CommentListItemDto MapToListItem(Comment comment, IReadOnlyDictionary<Guid, string> names) => new()
+    private static readonly List<CommentFieldDefinition> NoFieldDefinitions = new();
+
+    // R4-01: the workspace definitions behind a project's comments — loaded once per request and
+    // handed to the mappers, so a page of N comments costs one definitions query, not N.
+    private async Task<List<CommentFieldDefinition>> LoadFieldDefinitionsAsync(int projectId)
+    {
+        var ownerId = await _unitOfWork.Repository<Project>()
+            .Query()
+            .Where(p => p.Id == projectId)
+            .Select(p => p.OwnerId)
+            .FirstAsync();
+        return await _commentFields.GetDefinitionsForOwnerAsync(ownerId, enabledOnly: false);
+    }
+
+    private CommentListItemDto MapToListItem(Comment comment, IReadOnlyDictionary<Guid, string> names, IReadOnlyList<CommentFieldDefinition>? fieldDefs = null) => new()
     {
         Id = comment.Id,
         Status = comment.Status,
@@ -1115,10 +1194,11 @@ public class CommentService : ICommentService
         PageContextId = comment.PageContextSnapshotId,
         HasPayloadFlag = ShowsPayloadFlags ? comment.HasPayloadFlag : null,
         PayloadFlags = ShowsPayloadFlags ? comment.PayloadFlags : null,
-        Language = comment.Language
+        Language = comment.Language,
+        CustomFields = _commentFields.Resolve(fieldDefs ?? NoFieldDefinitions, comment.CustomFields)
     };
 
-    private CommentResponse MapToResponse(Comment comment, IReadOnlyDictionary<Guid, string> names, List<AiRuleApplyDto>? rules = null) => new()
+    private CommentResponse MapToResponse(Comment comment, IReadOnlyDictionary<Guid, string> names, List<AiRuleApplyDto>? rules = null, IReadOnlyList<CommentFieldDefinition>? fieldDefs = null) => new()
     {
         Id = comment.Id,
         Status = comment.Status,
@@ -1146,7 +1226,8 @@ public class CommentService : ICommentService
         AiRules = rules ?? new List<AiRuleApplyDto>(),
         HasPayloadFlag = ShowsPayloadFlags ? comment.HasPayloadFlag : null,
         PayloadFlags = ShowsPayloadFlags ? comment.PayloadFlags : null,
-        Language = comment.Language
+        Language = comment.Language,
+        CustomFields = _commentFields.Resolve(fieldDefs ?? NoFieldDefinitions, comment.CustomFields)
     };
 
     // Apply-queue export mapper — the ONLY mapper that carries PickedActionPrompt (admin/AI path).
@@ -1239,7 +1320,7 @@ public class CommentService : ICommentService
         return (pages, userAgents, pageRefByCommentId);
     }
 
-    private CommentApplyItemDto MapToApplyItem(Comment comment, IReadOnlyDictionary<Guid, string> names, string? pageRef, List<AiRuleApplyDto>? rules = null) => new()
+    private CommentApplyItemDto MapToApplyItem(Comment comment, IReadOnlyDictionary<Guid, string> names, string? pageRef, List<AiRuleApplyDto>? rules = null, IReadOnlyList<CommentFieldDefinition>? fieldDefs = null) => new()
     {
         Id = comment.Id,
         Status = comment.Status,
@@ -1264,7 +1345,9 @@ public class CommentService : ICommentService
         AiRules = rules ?? new List<AiRuleApplyDto>(),
         IsBugReport = comment.IsBugReport,
         PageContextId = comment.PageContextSnapshotId,
-        Language = comment.Language
+        Language = comment.Language,
+        // R4-01: resolved label/type/suggested-tool per stored value, for the CLI's Fields fence.
+        CustomFields = _commentFields.Resolve(fieldDefs ?? NoFieldDefinitions, comment.CustomFields)
     };
 
     // Lowercase/trim the client-detected tag; "unknown" (the detector's not-confident sentinel)
