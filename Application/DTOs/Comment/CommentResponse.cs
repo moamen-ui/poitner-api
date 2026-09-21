@@ -1,4 +1,5 @@
 using Pointer.Domain.Enums;
+using Pointer.Application.DTOs.Workspace;
 
 namespace Pointer.Application.DTOs.Comment;
 
@@ -44,6 +45,9 @@ public class CommentResponse
 
     /// <summary>Effective AI rules for this comment, ordered by strict priority: Workspace > Project > Personal.</summary>
     public List<AiRuleApplyDto> AiRules { get; set; } = new();
+
+    /// <summary>Admin-defined field values resolved against their definitions (R4-01); orphans fall back to Label = Key.</summary>
+    public List<CommentFieldValueDto> CustomFields { get; set; } = new();
 
     /// <summary>BCP-47 primary tag detected client-side from the comment text, or null when the
     /// widget wasn't confident. See Comment.Language.</summary>

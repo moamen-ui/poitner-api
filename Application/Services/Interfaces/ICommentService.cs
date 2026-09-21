@@ -23,6 +23,14 @@ public interface ICommentService
     Task<Result<CommentResponse>> UpdateStatusAsync(int id, UpdateCommentStatusRequest request, Guid actorId);
     Task<Result<CommentResponse>> VerifyAsync(int id, VerifyCommentRequest request, Guid actorId);
     Task<Result<CommentResponse>> EditAsync(int id, EditCommentRequest request, Guid editorId);
+
+    /// <summary>
+    /// R4-01: replace a comment's admin-defined field values (PATCH /api/comments/{id}/fields).
+    /// Author (incl. quick-access) or workspace admin; the comment is loaded through the FILTERED
+    /// query so another workspace's admin gets 404. Values are re-validated against the
+    /// workspace's definitions; EditedAt/EditedBy are stamped.
+    /// </summary>
+    Task<Result<CommentResponse>> UpdateFieldsAsync(int id, UpdateCommentFieldsRequest request, Guid actorId);
     Task<Result<CommentResponse>> SetVisibilityAsync(int id, Guid callerId, bool isPrivate);
     Task<Result<ReplyResponse>> AddReplyAsync(int commentId, AddReplyRequest request, Guid authorId, string? origin = null);
     Task<Result<ReplyResponse>> EditReplyAsync(int replyId, UpdateReplyRequest request, Guid editorId);

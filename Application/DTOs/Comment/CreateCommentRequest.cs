@@ -31,4 +31,12 @@ public class CreateCommentRequest
     /// CommentService.NormalizeLanguage.
     /// </summary>
     public string? Language { get; set; }
+
+    /// <summary>
+    /// Optional admin-defined field values (R4-01): machine key → value. Validated server-side
+    /// against the PROJECT's workspace definitions (CommentFieldService.ValidateValues); unknown,
+    /// disabled or invalid entries reject the request rather than being silently dropped. Trimmed
+    /// empty values are treated as unset.
+    /// </summary>
+    public Dictionary<string, string>? CustomFields { get; set; }
 }

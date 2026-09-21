@@ -1,3 +1,4 @@
+using Pointer.Application.DTOs.Workspace;
 using Pointer.Domain.Enums;
 
 namespace Pointer.Application.DTOs.Project;
@@ -44,4 +45,11 @@ public class CaptureConfigResponse
     /// widget must check this before rendering the commit-style control, rather than rendering it
     /// and letting the PATCH 403.</summary>
     public bool CanEditSettings { get; set; }
+
+    /// <summary>
+    /// The workspace's ENABLED comment-field definitions (R4-01), sorted — the widget's composer
+    /// offers these behind "Add more fields". Empty list when the workspace defines none: a
+    /// stakeholder who never opens the extra panel ships the same short comment as before.
+    /// </summary>
+    public List<CommentFieldDefinitionDto> CommentFields { get; set; } = new();
 }

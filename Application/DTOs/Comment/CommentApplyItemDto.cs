@@ -1,4 +1,5 @@
 using Pointer.Domain.Enums;
+using Pointer.Application.DTOs.Workspace;
 
 namespace Pointer.Application.DTOs.Comment;
 
@@ -40,6 +41,13 @@ public class CommentApplyItemDto
     /// <summary>BCP-47 primary tag detected client-side from the comment text, or null when the
     /// widget wasn't confident — the apply-time skill uses this to decide whether to translate.</summary>
     public string? Language { get; set; }
+
+    /// <summary>
+    /// Admin-defined field values resolved against their definitions (R4-01) — the CLI prints
+    /// these in the per-item Fields fence (values untrusted) plus a trusted suggested-tool hint
+    /// line outside it.
+    /// </summary>
+    public List<CommentFieldValueDto> CustomFields { get; set; } = new();
 }
 
 public class PickedActionDto
