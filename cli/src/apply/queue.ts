@@ -118,6 +118,20 @@ export async function fetchQueue(
         pageContextId: pageContextId ?? null,
         page,
         pageContext,
+        // Server-stamped comment language (R4 translate) and admin-defined fields (R4-01) —
+        // both must be copied through or buildApplyPrompt silently omits them.
+        language: typeof item.language === 'string' && item.language ? item.language : null,
+        customFields: Array.isArray(item.customFields)
+          ? item.customFields
+              .filter((f: any) => f && typeof f.key === 'string')
+              .map((f: any) => ({
+                key: String(f.key),
+                label: typeof f.label === 'string' ? f.label : String(f.key),
+                type: f.type,
+                value: typeof f.value === 'string' ? f.value : String(f.value ?? ''),
+                suggestedTool: typeof f.suggestedTool === 'string' ? f.suggestedTool : null,
+              }))
+          : undefined,
       };
     });
   } catch (err: any) {
