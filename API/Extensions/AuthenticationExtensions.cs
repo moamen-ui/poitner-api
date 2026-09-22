@@ -5,6 +5,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.IdentityModel.Tokens;
 using Pointer.API.Auth;
+using Pointer.Domain.Enums;
 using Pointer.Infrastructure;
 using System;
 using System.IdentityModel.Tokens.Jwt;
@@ -27,10 +28,10 @@ public static class AuthenticationExtensions
         if (keyBytes.Length < 32)
             throw new InvalidOperationException($"JWT:SigningKey is too short ({keyBytes.Length} bytes). HS256 requires at least 32 bytes.");
 
-        // H1: session-invalidation stamp check. Default OFF → behavior identical to before (stateless
-        // JWT). When on, every authenticated request re-checks the token's `stamp` claim against the
-        // user's current SecurityStamp (cached ~60s to bound the DB cost), so disable/reject/password
-        // change revoke live tokens within the cache TTL. Enable only after deploying + a smoke test.
+        // H1 / DB-11a / DB-RULES R16: session-invalidation stamp check. Default OFF → behavior identical
+        // to before (stateless JWT). When on, checks the token's identity stamp and, when tenant is present,
+        // membership stamp against live state (cached ~60s to bound the DB cost), so disable/reject/removal/password
+        // change revoke live tokens within the cache TTL (docs/db/DB-RULES.md R16).
         var validateStamp = config.GetValue("Auth:ValidateSecurityStamp", false);
         services.AddMemoryCache();
 
@@ -68,21 +69,66 @@ public static class AuthenticationExtensions
                                 return;
                             }
 
+                            var tenantClaim = principal?.FindFirst("tenant")?.Value;
+                            Guid? tenantId = null;
+                            if (tenantClaim is not null)
+                            {
+                                if (!Guid.TryParse(tenantClaim, out var parsedTenant))
+                                {
+                                    ctx.Fail("Invalid token.");
+                                    return;
+                                }
+                                tenantId = parsedTenant;
+                            }
+
+                            var mstampClaim = principal?.FindFirst("mstamp")?.Value;
+                            Guid? tokenMstamp = null;
+                            if (mstampClaim is not null && Guid.TryParse(mstampClaim, out var parsedMstamp))
+                            {
+                                tokenMstamp = parsedMstamp;
+                            }
+
                             var sp = ctx.HttpContext.RequestServices;
                             var cache = sp.GetRequiredService<IMemoryCache>();
-                            Guid? currentStamp;
+                            StampValidationState? state;
                             try
                             {
-                                currentStamp = await cache.GetOrCreateAsync($"secstamp:{publicId}", async entry =>
+                                // DB-11a / DB-RULES R16: cache key includes tenant (or "-" for super admin).
+                                state = await cache.GetOrCreateAsync($"secstamp:{publicId}:{tenantClaim ?? "-"}", async entry =>
                                 {
                                     entry.AbsoluteExpirationRelativeToNow = TimeSpan.FromSeconds(60);
                                     var db = sp.GetRequiredService<AppDbContext>();
-                                    return await db.Users
+
+                                    var user = await db.Users
                                         .IgnoreQueryFilters()
                                         .AsNoTracking()
                                         .Where(u => u.PublicId == publicId && u.DeletedAt == null)
-                                        .Select(u => (Guid?)u.SecurityStamp)
+                                        .Select(u => new { u.Id, u.SecurityStamp })
                                         .FirstOrDefaultAsync();
+
+                                    if (user is null)
+                                        return new StampValidationState(null, null, false);
+
+                                    // Super-admin tokens (no tenant) skip membership check (DB-RULES R16).
+                                    if (tenantId is null)
+                                        return new StampValidationState(user.SecurityStamp, null, false);
+
+                                    var membership = await db.WorkspaceMemberships
+                                        .IgnoreQueryFilters()
+                                        .AsNoTracking()
+                                        .Where(m => m.UserId == user.Id && m.OwnerId == tenantId.Value && m.DeletedAt == null && m.LeftAt == null)
+                                        .Select(m => new
+                                        {
+                                            m.SecurityStamp,
+                                            Live = m.IsActive && m.ApprovalStatus == ApprovalStatus.Approved
+                                        })
+                                        .FirstOrDefaultAsync();
+
+                                    return new StampValidationState(
+                                        user.SecurityStamp,
+                                        membership?.SecurityStamp,
+                                        membership?.Live ?? false
+                                    );
                                 });
                             }
                             catch (Exception ex)
@@ -96,9 +142,9 @@ public static class AuthenticationExtensions
                                 return;
                             }
 
-                            // Missing user (deleted) or a stamp mismatch (disabled/rejected/password
-                            // changed since this token was issued) → reject. Up to ~60s stale via cache.
-                            if (currentStamp is null || currentStamp.Value != tokenStamp)
+                            // DB-RULES R16: reject when identity stamp mismatches, or when a tenant token's
+                            // membership is missing, inactive, unapproved, or membership stamp mismatches.
+                            if (!StampValidator.Validate(tokenStamp, tokenMstamp, tenantId is not null, state))
                                 ctx.Fail("Token has been revoked.");
                         },
                     };
