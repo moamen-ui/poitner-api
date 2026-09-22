@@ -19,6 +19,7 @@ public class RoleTenantOverrideMapping : IEntityTypeConfiguration<RoleTenantOver
         b.Property(x => x.DeletedBy).HasColumnName("deleted_by");
 
         b.Property(x => x.RoleId).HasColumnName("role_id").IsRequired();
+        b.HasOne<Role>().WithMany().HasForeignKey(x => x.RoleId).OnDelete(DeleteBehavior.Cascade);
         b.Property(x => x.OwnerId).HasColumnName("owner_id").IsRequired();
         b.HasOne<Workspace>()
             .WithMany()

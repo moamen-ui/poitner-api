@@ -21,6 +21,11 @@ public class UsageEventMapping : IEntityTypeConfiguration<UsageEvent>
             .OnDelete(DeleteBehavior.SetNull)
             .HasConstraintName("fk_usage_events_workspaces_owner_id");
         builder.Property(e => e.ProjectId).HasColumnName("project_id");
+        builder
+            .HasOne<Project>()
+            .WithMany()
+            .HasForeignKey(e => e.ProjectId)
+            .OnDelete(DeleteBehavior.SetNull);
         builder.Property(e => e.UserId).HasColumnName("user_id");
 
         builder.Property(e => e.Type).HasColumnName("type").HasMaxLength(40).IsRequired();

@@ -42,7 +42,7 @@ public class NotificationMapping : IEntityTypeConfiguration<Notification>
         b.HasOne(x => x.Project)
             .WithMany()
             .HasForeignKey(x => x.ProjectId)
-            .OnDelete(DeleteBehavior.Restrict);
+            .OnDelete(DeleteBehavior.Cascade);
         b.HasOne(x => x.Suggestion)
             .WithMany()
             .HasForeignKey(x => x.SuggestionId)

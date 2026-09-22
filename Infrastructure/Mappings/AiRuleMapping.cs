@@ -25,13 +25,16 @@ public class AiRuleMapping : IEntityTypeConfiguration<AiRule>
             .OnDelete(DeleteBehavior.Restrict)
             .HasConstraintName("fk_ai_rules_workspaces_owner_id");
         b.Property(x => x.ProjectId).HasColumnName("project_id");
+        b.HasOne<Project>()
+            .WithMany()
+            .HasForeignKey(x => x.ProjectId)
+            .OnDelete(DeleteBehavior.Cascade);
         b.Property(x => x.UserId).HasColumnName("user_id");
         b.Property(x => x.Title).HasColumnName("title").IsRequired().HasMaxLength(256);
         b.Property(x => x.Prompt).HasColumnName("prompt").HasColumnType("text").IsRequired();
         b.Property(x => x.IsActive).HasColumnName("is_active").HasDefaultValue(true);
         b.Property(x => x.SortOrder).HasColumnName("sort_order");
 
-        b.HasIndex(x => x.OwnerId);
         b.HasIndex(x => new { x.OwnerId, x.ProjectId });
         b.HasIndex(x => new { x.OwnerId, x.UserId });
     }

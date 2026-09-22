@@ -20,7 +20,15 @@ public class QuickAccessLinkMapping : IEntityTypeConfiguration<QuickAccessLink>
             .HasConstraintName("fk_quick_access_links_workspaces_owner_id");
         b.Property(x => x.UserId).HasColumnName("user_id").IsRequired();
         b.Property(x => x.ProjectId).HasColumnName("project_id").IsRequired();
+        b.HasOne<Project>()
+            .WithMany()
+            .HasForeignKey(x => x.ProjectId)
+            .OnDelete(DeleteBehavior.Cascade);
         b.Property(x => x.InviteId).HasColumnName("invite_id").IsRequired();
+        b.HasOne<Invite>()
+            .WithMany()
+            .HasForeignKey(x => x.InviteId)
+            .OnDelete(DeleteBehavior.Restrict);
         b.Property(x => x.TokenHash).HasColumnName("token_hash").HasMaxLength(64).IsRequired();
         b.Property(x => x.ExpiresAt).HasColumnName("expires_at").IsRequired();
         b.Property(x => x.MaxUses).HasColumnName("max_uses").HasDefaultValue(0);

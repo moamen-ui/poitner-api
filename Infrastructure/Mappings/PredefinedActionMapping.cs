@@ -30,6 +30,10 @@ public class PredefinedActionMapping : IEntityTypeConfiguration<PredefinedAction
             .OnDelete(DeleteBehavior.Restrict)
             .HasConstraintName("fk_predefined_actions_workspaces_owner_id");
         b.Property(x => x.ProjectId).HasColumnName("project_id");
+        b.HasOne<Project>()
+            .WithMany()
+            .HasForeignKey(x => x.ProjectId)
+            .OnDelete(DeleteBehavior.Cascade);
         b.Property(x => x.UserId).HasColumnName("user_id");
         // Text bounded ≤256; Prompt is Postgres `text` (multi-paragraph — no length cap).
         b.Property(x => x.Text).HasColumnName("text").IsRequired().HasMaxLength(256);
@@ -38,7 +42,6 @@ public class PredefinedActionMapping : IEntityTypeConfiguration<PredefinedAction
         b.Property(x => x.SortOrder).HasColumnName("sort_order");
 
         // btree indexes over NULLable columns still serve tenant-wide (ProjectId IS NULL) rows.
-        b.HasIndex(x => x.OwnerId);
         b.HasIndex(x => new { x.OwnerId, x.ProjectId });
     }
 }

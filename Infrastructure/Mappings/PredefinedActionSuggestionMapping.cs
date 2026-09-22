@@ -28,6 +28,10 @@ public class PredefinedActionSuggestionMapping
             .OnDelete(DeleteBehavior.Restrict)
             .HasConstraintName("fk_predefined_action_suggestions_workspaces_owner_id");
         b.Property(x => x.ProjectId).HasColumnName("project_id").IsRequired();
+        b.HasOne<Project>()
+            .WithMany()
+            .HasForeignKey(x => x.ProjectId)
+            .OnDelete(DeleteBehavior.Cascade);
         b.Property(x => x.Text).HasColumnName("text").IsRequired().HasMaxLength(256);
         b.Property(x => x.Prompt).HasColumnName("prompt").HasColumnType("text").IsRequired();
         // Enum stored as int (existing convention).

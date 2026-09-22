@@ -30,13 +30,19 @@ public class InviteMapping : IEntityTypeConfiguration<Invite>
         b.Property(x => x.Code).HasColumnName("code").IsRequired().HasMaxLength(64);
         b.HasIndex(x => x.Code).IsUnique();
         b.Property(x => x.RoleId).HasColumnName("role_id");
+        b.HasOne<Role>().WithMany().HasForeignKey(x => x.RoleId).OnDelete(DeleteBehavior.SetNull);
         b.Property(x => x.ProjectId).HasColumnName("project_id");
+        b.HasOne<Project>()
+            .WithMany()
+            .HasForeignKey(x => x.ProjectId)
+            .OnDelete(DeleteBehavior.SetNull);
         b.Property(x => x.Email).HasColumnName("email").HasMaxLength(256);
         b.Property(x => x.ExpiresAt).HasColumnName("expires_at");
         b.Property(x => x.MaxUses).HasColumnName("max_uses");
         b.Property(x => x.Uses).HasColumnName("uses");
         b.Property(x => x.RevokedAt).HasColumnName("revoked_at");
         b.Property(x => x.PlanId).HasColumnName("plan_id");
+        b.HasOne<Plan>().WithMany().HasForeignKey(x => x.PlanId).OnDelete(DeleteBehavior.Restrict);
         b.Property(x => x.DisplayName).HasColumnName("display_name").HasMaxLength(120);
         b.HasIndex(x => x.OwnerId);
     }
