@@ -168,7 +168,7 @@ scratch `pointer_rehearsal` database on the dev container with exactly the `pg_r
 (26 tables, all 58 migration rows, row counts matched). The rehearsal recipe is `docs/db/DB-RULES.md`
 §R11; repeat it whenever `backup-db.sh` or the restore steps change.
 
-**Last drilled:** <date> on the prod VM — `bash scripts/restore-drill.sh` restored the newest
+**Last drilled:** 2026-09-23 (UTC), on the VM from the off-box copy in `offsite:pointer-backups` — `pointer-20260922T201244Z-pre-db11a-rehearsal.dump` restored into `pointer_drill` in 4 s; users/comments/projects/replies/migrations matched live (7/122/27/140/65); 3 upload files extracted; scratch dropped. Runbook: `scripts/restore-drill.sh` (R5-60).
 off-site dump into `pointer_drill`, verified row counts matched, and dropped the scratch DB in
 <N>s. Repeat monthly or after any change to `backup-db.sh`, `offsite-backup.sh`, or the restore
 procedure above.
