@@ -1,0 +1,227 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Terms of Service — Pointer</title>
+  <meta name="description" content="Terms of Service for the Pointer feedback widget, dashboard, browser extension, and CLI, governed by the laws of the Kingdom of Saudi Arabia.">
+  <link rel="canonical" href="https://pointer.moamen.work/terms.html">
+  <link rel="icon" href="assets/favicon.ico">
+  <!--
+    R5-63 — new page (2026-09-23), companion to the rewritten landing/privacy.html. Governing law
+    and dispute venue follow founder decision F1 (KSA/GCC-first). Sections marked [LEGAL-REVIEW]
+    are placeholders for counsel review (founder decision F6: self-written now, counsel engaged at
+    first paying customer with a DPA).
+    This page is English only. The Arabic translation is out of scope here and is tracked as
+    R5-65's audit territory (Arabic parity for legal/marketing copy).
+    Not legal advice — have counsel review before this is the sole legal basis for a paying customer.
+  -->
+  <style>
+    :root {
+      --pf-green: #16a34a;
+      --pf-blue: #2563eb;
+      --pf-amber: #b45309;
+      --pf-text: #0f172a;
+      --pf-muted: #475569;
+      --pf-bg: #ffffff;
+      --pf-soft: #f1f5f9;
+      --pf-border: #e2e8f0;
+      --pf-max: 820px;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --pf-bg: #0b0f19;
+        --pf-text: #f1f5f9;
+        --pf-muted: #94a3b8;
+        --pf-soft: #1e293b;
+        --pf-border: #334155;
+        --pf-amber: #fbbf24;
+      }
+    }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; padding: 0; }
+    body {
+      font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+      color: var(--pf-text);
+      background: var(--pf-bg);
+      line-height: 1.65;
+    }
+    a { color: var(--pf-blue); }
+    .wrap { max-width: var(--pf-max); margin: 0 auto; padding: 0 20px; }
+    header.top {
+      border-bottom: 1px solid var(--pf-border);
+      padding: 18px 0;
+    }
+    header.top .wrap { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
+    .brand { font-weight: 800; font-size: 17px; text-decoration: none; color: var(--pf-text); }
+    .top-links { display: flex; gap: 16px; font-size: 14px; font-weight: 600; }
+    .top-links a[aria-current="page"] { color: var(--pf-text); text-decoration: underline; text-underline-offset: 3px; }
+    main { padding: 40px 0 64px; }
+    h1 { font-size: clamp(26px, 4vw, 36px); margin: 0 0 4px; }
+    .updated { color: var(--pf-muted); font-size: 14px; margin: 0 0 24px; }
+    h2 { font-size: 20px; margin: 36px 0 10px; }
+    h2 .num { color: var(--pf-muted); font-weight: 600; margin-inline-end: 6px; }
+    p, li { color: var(--pf-text); }
+    ul { padding-inline-start: 22px; }
+    .note {
+      background: var(--pf-soft);
+      border: 1px solid var(--pf-border);
+      border-radius: 10px;
+      padding: 14px 16px;
+      font-size: 14px;
+      color: var(--pf-muted);
+      margin: 0 0 28px;
+    }
+    .legal-review {
+      display: inline;
+      color: var(--pf-amber);
+      background: color-mix(in srgb, var(--pf-amber) 14%, transparent);
+      border: 1px dashed var(--pf-amber);
+      border-radius: 5px;
+      padding: 0 5px;
+      font-size: 0.92em;
+      font-weight: 600;
+    }
+    footer.bottom {
+      border-top: 1px solid var(--pf-border);
+      padding: 20px 0;
+      font-size: 13px;
+      color: var(--pf-muted);
+    }
+    footer.bottom .foot-inner { display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+    footer.bottom .foot-links { display: flex; gap: 14px; flex-wrap: wrap; }
+  </style>
+</head>
+<body>
+  <header class="top">
+    <div class="wrap">
+      <a class="brand" href="/">🐕 Pointer</a>
+      <nav class="top-links">
+        <a href="/privacy.html">Privacy</a>
+        <a href="/terms.html" aria-current="page">Terms</a>
+        <a href="/">Back to home</a>
+      </nav>
+    </div>
+  </header>
+
+  <main class="wrap">
+    <h1>Terms of Service</h1>
+    <p class="updated">Effective date: 2026-09-23</p>
+
+    <p class="note">
+      These terms govern use of the Pointer feedback widget (<code>&lt;pointer-feedback&gt;</code>),
+      the Pointer dashboard, the Pointer browser extension, and the Pointer CLI, whether you use the
+      hosted service at <code>pointer.moamen.work</code> or a self-hosted installation your
+      organization runs. For how we handle data, see the <a href="/privacy.html">Privacy Policy</a>.
+    </p>
+
+    <h2><span class="num">1.</span>Acceptance &amp; eligibility</h2>
+    <p>
+      By creating an account, installing the widget, using the browser extension, or otherwise
+      accessing the service, you agree to these terms on behalf of yourself and, if applicable, the
+      organization you represent. You must be legally able to enter into a binding agreement to use
+      the service.
+    </p>
+
+    <h2><span class="num">2.</span>Service description</h2>
+    <p>
+      Pointer is a software-as-a-service feedback and annotation tool: a browser widget and
+      extension let people click an element on a running web app and leave a comment; a dashboard
+      organizes those comments by project, environment, and status; and a CLI/skill lets a
+      developer apply the requested change to the real source code using an AI coding tool of their
+      choice. Pointer does not include or operate an AI coding tool itself.
+    </p>
+
+    <h2><span class="num">3.</span>Account responsibilities</h2>
+    <p>
+      You are responsible for maintaining the confidentiality of your account credentials and API
+      keys, and for all activity under your account. Notify us promptly if you suspect unauthorized
+      use. Workspace administrators are responsible for who they invite and what roles they grant.
+    </p>
+
+    <h2><span class="num">4.</span>Acceptable use</h2>
+    <p>You agree not to:</p>
+    <ul>
+      <li>use the service to collect data you are not authorized to collect from the people using your product;</li>
+      <li>attempt to bypass workspace isolation, rate limits, or authentication;</li>
+      <li>reverse-engineer, resell, or white-label the hosted service without a separate agreement;</li>
+      <li>use the service to submit unlawful, infringing, or malicious content.</li>
+    </ul>
+
+    <h2><span class="num">5.</span>Intellectual property</h2>
+    <p>
+      Pointer (the software, branding, and hosted infrastructure) is owned by its operator. You
+      retain ownership of the comments, screenshots, and other content you submit through the
+      service ("your content"). You grant us a license to store, process, and display your content
+      solely to operate the service for you and your workspace.
+    </p>
+
+    <h2><span class="num">6.</span>Data processing</h2>
+    <p>
+      How we collect, store, and retain data — including data residency (Oracle Cloud, Riyadh
+      region), retention periods, subprocessors, and your rights — is described in the
+      <a href="/privacy.html">Privacy Policy</a>, which is incorporated into these terms by
+      reference.
+    </p>
+
+    <h2><span class="num">7.</span>Availability &amp; SLA</h2>
+    <p>
+      We aim to keep the hosted service available and responsive, but it is provided on a
+      <strong>best-effort basis with no uptime guarantee or formal SLA</strong> at this time.
+      Planned maintenance and incidents may cause temporary unavailability. Self-hosted
+      installations are entirely your organization's responsibility to keep available.
+    </p>
+
+    <h2><span class="num">8.</span>Limitation of liability</h2>
+    <p>
+      To the maximum extent permitted by applicable law, Pointer is provided "as is" without
+      warranties of any kind, and the operator's total liability arising from your use of the
+      service is limited.
+      <span class="legal-review">[LEGAL-REVIEW: set the specific liability cap (e.g. fees paid in
+      the preceding 12 months) and the exact categories of excluded damages before this clause is
+      relied on against a paying customer.]</span>
+    </p>
+
+    <h2><span class="num">9.</span>Indemnification</h2>
+    <p>
+      You agree to indemnify the operator against claims arising from your misuse of the service or
+      your violation of these terms or applicable law.
+      <span class="legal-review">[LEGAL-REVIEW: confirm the indemnification scope and any mutual
+      indemnification obligations before this clause is finalized for a paying customer contract.]</span>
+    </p>
+
+    <h2><span class="num">10.</span>Termination</h2>
+    <p>
+      Either party may stop using/offering the service at any time. We may suspend or terminate an
+      account for a material breach of these terms, including abusive or unlawful use. On
+      termination, your workspace data is handled per the deletion semantics in the
+      <a href="/privacy.html">Privacy Policy</a>.
+    </p>
+
+    <h2><span class="num">11.</span>Governing law &amp; disputes</h2>
+    <p>
+      These terms are governed by the laws of the <strong>Kingdom of Saudi Arabia</strong>. Any
+      dispute arising from these terms or your use of the service is subject to the exclusive
+      jurisdiction of the courts of <strong>Riyadh</strong>.
+      <span class="legal-review">[LEGAL-REVIEW: confirm whether a specific KSA court/arbitration
+      body (e.g. SCCA) should be named as the dispute venue, in place of the general Riyadh courts
+      reference above, before this is relied on for a paying customer contract.]</span>
+    </p>
+
+    <h2><span class="num">12.</span>Changes to these terms</h2>
+    <p>If these terms change, the updated version will be published at this same URL with a new effective date.</p>
+
+    <h2><span class="num">13.</span>Contact</h2>
+    <p>Questions about these terms: <a href="mailto:moamen.ui@gmail.com">moamen.ui@gmail.com</a></p>
+
+    <p class="note">This is not legal advice; see the Privacy Policy's closing note on scheduled legal review and DPA availability.</p>
+  </main>
+
+  <footer class="bottom">
+    <div class="wrap foot-inner">
+      <span>Pointer</span>
+      <span class="foot-links"><a href="/privacy.html">Privacy Policy</a> · <a href="/data.html">Data &amp; self-hosting</a> · <a href="/">Home</a></span>
+    </div>
+  </footer>
+</body>
+</html>

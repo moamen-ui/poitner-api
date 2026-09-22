@@ -91,6 +91,22 @@
       "nav": "Privacy & self-hosting",
       "ownedBy": "R3-05",
       "summary": "What is captured, what is never captured, retention, deletion semantics, and self-hosting boundaries."
+    },
+    {
+      "file": "/privacy.html",
+      "title": "Privacy Policy",
+      "nav": "Legal",
+      "external": true,
+      "ownedBy": "R5-63",
+      "summary": "PDPL-first privacy policy (with a GDPR section): what is collected, widget browser storage, retention, residency, and subprocessors."
+    },
+    {
+      "file": "/terms.html",
+      "title": "Terms of Service",
+      "nav": "Legal",
+      "external": true,
+      "ownedBy": "R5-63",
+      "summary": "SaaS terms of service, governed by the laws of the Kingdom of Saudi Arabia."
     }
   ]
 }

@@ -4,26 +4,33 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Privacy Policy — Pointer</title>
-  <meta name="description" content="How Pointer's widget, browser extension, and dashboard handle your data.">
+  <meta name="description" content="How Pointer's widget, browser extension, dashboard, and CLI handle your data — PDPL-first, with a GDPR section, Riyadh data residency.">
+  <link rel="canonical" href="https://pointer.moamen.work/privacy.html">
   <link rel="icon" href="assets/favicon.ico">
   <!--
-    DRAFT — review before publishing. Two things still need filling in by the operator:
-    1. The "Contact" section below has a placeholder email.
-    2. The "Effective date" at the top has a placeholder — set it to the date you actually publish this.
-    This is not legal advice; have someone review it against your actual data-handling practices,
-    applicable law (GDPR/CCPA/etc. depending on where your users are), and your Chrome Web Store
-    "Data usage" disclosures (they must match this document).
+    R5-63 — full rewrite (2026-09-23). PDPL-first per founder decision F1 (see
+    docs/roadmap/meetings/2026-09-22-foundations/00-founder-decisions.md), with a GDPR section,
+    Riyadh (Oracle Cloud) data residency, the widget's actual browser-storage keys
+    (docs/ON-DISK-CONTRACT.md), the DB-08 retention numbers, and the current (not-yet-audited)
+    operator-access posture per docs/db/execution/DB-13-operator-impersonation.md §1 — revise that
+    section once DB-11c/DB-12/DB-13 ship (see R5-63 §9 Release steps).
+    Sections marked [LEGAL-REVIEW] are placeholders for counsel review (founder decision F6:
+    self-written now, counsel engaged at first paying customer with a DPA).
+    This page is English only. The Arabic translation is out of scope here and is tracked as
+    R5-65's audit territory (Arabic parity for legal/marketing copy).
+    Not legal advice — have counsel review before this is the sole legal basis for a paying customer.
   -->
   <style>
     :root {
       --pf-green: #16a34a;
       --pf-blue: #2563eb;
+      --pf-amber: #b45309;
       --pf-text: #0f172a;
       --pf-muted: #475569;
       --pf-bg: #ffffff;
       --pf-soft: #f1f5f9;
       --pf-border: #e2e8f0;
-      --pf-max: 760px;
+      --pf-max: 820px;
     }
     @media (prefers-color-scheme: dark) {
       :root {
@@ -32,6 +39,7 @@
         --pf-muted: #94a3b8;
         --pf-soft: #1e293b;
         --pf-border: #334155;
+        --pf-amber: #fbbf24;
       }
     }
     * { box-sizing: border-box; }
@@ -48,12 +56,15 @@
       border-bottom: 1px solid var(--pf-border);
       padding: 18px 0;
     }
-    header.top .wrap { display: flex; align-items: center; justify-content: space-between; }
+    header.top .wrap { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
     .brand { font-weight: 800; font-size: 17px; text-decoration: none; color: var(--pf-text); }
+    .top-links { display: flex; gap: 16px; font-size: 14px; font-weight: 600; }
+    .top-links a[aria-current="page"] { color: var(--pf-text); text-decoration: underline; text-underline-offset: 3px; }
     main { padding: 40px 0 64px; }
     h1 { font-size: clamp(26px, 4vw, 36px); margin: 0 0 4px; }
-    .updated { color: var(--pf-muted); font-size: 14px; margin: 0 0 32px; }
+    .updated { color: var(--pf-muted); font-size: 14px; margin: 0 0 24px; }
     h2 { font-size: 20px; margin: 36px 0 10px; }
+    h2 .num { color: var(--pf-muted); font-weight: 600; margin-inline-end: 6px; }
     p, li { color: var(--pf-text); }
     ul { padding-inline-start: 22px; }
     .note {
@@ -65,35 +76,126 @@
       color: var(--pf-muted);
       margin: 0 0 28px;
     }
+    .legal-table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 10px 0 22px;
+      font-size: 13.5px;
+    }
+    .legal-table th, .legal-table td {
+      text-align: start;
+      padding: 9px 12px;
+      border-bottom: 1px solid var(--pf-border);
+      vertical-align: top;
+    }
+    .legal-table th { background: var(--pf-soft); font-weight: 700; white-space: nowrap; }
+    .legal-table code {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: 12.5px;
+      background: var(--pf-soft);
+      padding: 1px 5px;
+      border-radius: 4px;
+    }
+    .table-scroll { overflow-x: auto; }
+    .paste-block {
+      background: var(--pf-soft);
+      border: 1px solid var(--pf-border);
+      border-inline-start: 3px solid var(--pf-blue);
+      border-radius: 10px;
+      padding: 16px 18px;
+      font-size: 14.5px;
+      margin: 10px 0 22px;
+    }
+    .paste-block p { margin: 0; }
+    .paste-label {
+      display: block;
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: .06em;
+      text-transform: uppercase;
+      color: var(--pf-muted);
+      margin-bottom: 8px;
+    }
+    .legal-review {
+      display: inline;
+      color: var(--pf-amber);
+      background: color-mix(in srgb, var(--pf-amber) 14%, transparent);
+      border: 1px dashed var(--pf-amber);
+      border-radius: 5px;
+      padding: 0 5px;
+      font-size: 0.92em;
+      font-weight: 600;
+    }
     footer.bottom {
       border-top: 1px solid var(--pf-border);
       padding: 20px 0;
       font-size: 13px;
       color: var(--pf-muted);
     }
+    footer.bottom .foot-inner { display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+    footer.bottom .foot-links { display: flex; gap: 14px; flex-wrap: wrap; }
   </style>
 </head>
 <body>
   <header class="top">
     <div class="wrap">
       <a class="brand" href="/">🐕 Pointer</a>
-      <a href="/">Back to home</a>
+      <nav class="top-links">
+        <a href="/privacy.html" aria-current="page">Privacy</a>
+        <a href="/terms.html">Terms</a>
+        <a href="/">Back to home</a>
+      </nav>
     </div>
   </header>
 
   <main class="wrap">
     <h1>Privacy Policy</h1>
-    <p class="updated">Effective date: 2026-09-12</p>
+    <p class="updated">Effective date: 2026-09-23</p>
 
     <p class="note">
       This policy covers the Pointer feedback widget (<code>&lt;pointer-feedback&gt;</code>), the
-      Pointer browser extension, and the Pointer dashboard. Pointer can be run as a hosted service
-      or self-hosted by an organization on its own server. When you use a self-hosted instance, that
+      Pointer dashboard, the Pointer browser extension, and the Pointer CLI (<code>pointer-feedback</code>,
+      used to install the widget and apply comments). Pointer can be run as a hosted service or
+      self-hosted by an organization on its own server. When you use a self-hosted instance, that
       organization — not the operator of the hosted service — controls your data; this policy
-      describes how the software handles data in either case. For the engineering view of what is captured, see <a href="/data.html">Data &amp; self-hosting</a>.
+      describes how the software handles data in either case. For the engineering-level view of
+      what is captured, see <a href="/data.html">Data &amp; self-hosting</a>.
     </p>
 
-    <h2>What we collect</h2>
+    <h2><span class="num">1.</span>Data controller</h2>
+    <p>
+      The hosted service at <code>pointer.moamen.work</code> is operated by Moamen UI (operating as
+      "Pointer"), based in Riyadh, Kingdom of Saudi Arabia, which acts as the data controller for
+      hosted-service accounts under the Saudi Personal Data Protection Law (PDPL).
+      <span class="legal-review">[LEGAL-REVIEW: confirm the controller's registered legal name,
+      commercial registration (CR) number, and registered address before this page is relied on by a
+      paying customer.]</span>
+      If your organization self-hosts Pointer, your organization is the data controller for your
+      installation, not Moamen UI.
+    </p>
+
+    <h2><span class="num">2.</span>Legal basis (PDPL)</h2>
+    <p>
+      Under the Saudi Personal Data Protection Law, we process account information and feedback
+      content on the basis of <strong>legitimate interest</strong> — operating the feedback and
+      annotation service you or your organization signed up for. Where a project enables the
+      optional "Report as a bug" diagnostic context, we rely on your <strong>consent</strong>,
+      given per comment, to collect that additional data.
+      <span class="legal-review">[LEGAL-REVIEW: confirm this maps to the correct PDPL Article
+      references for legitimate-interest and consent processing once counsel reviews.]</span>
+    </p>
+
+    <h2><span class="num">3.</span>Legal basis (GDPR section)</h2>
+    <p>
+      For users located in the European Economic Area, we additionally note the equivalent GDPR
+      basis: <strong>legitimate interest</strong> (Art. 6(1)(f)) for operating the service, and
+      <strong>consent</strong> (Art. 6(1)(a)) for optional diagnostic context. Pointer does not make
+      an EU-residency promise — all data is stored in the Oracle Cloud Riyadh region regardless of
+      where you are located (see <a href="#residency">Data residency</a> below); this section
+      exists so EEA-based users know which rights apply to them, not to promise EU storage.
+    </p>
+
+    <h2><span class="num">4.</span>What we collect</h2>
     <ul>
       <li><strong>Account information</strong> — email address, a hashed password, display name, and role, used to sign in and identify who left a comment.</li>
       <li><strong>Feedback content</strong> — the comment text you write, the page route, the environment (local/staging/production), and metadata about the element you clicked: its selector, the CSS rules that apply to it, a text snapshot of nearby content, and (optionally) a screenshot. For the engineering view of what is captured, see <a href="/data.html">Data &amp; self-hosting</a>.</li>
@@ -102,57 +204,147 @@
       <li><strong>Browser extension data</strong> — your session sign-in token, stored only in the extension's isolated session storage and never exposed to the pages you visit; and, per browser, which project/environment you last picked for each domain you activated the extension on.</li>
     </ul>
 
-    <h2>How we use it</h2>
+    <h2><span class="num">5.</span>Browser storage — what the widget stores on your device</h2>
     <p>
-      Collected data is used solely to operate the feedback/annotation workflow: authenticating you,
-      displaying and organizing comments for your team, and giving an AI coding tool (which you choose
-      and run yourself — Pointer does not include or operate one) enough context to apply the requested
-      change to your real source code.
+      The <code>&lt;pointer-feedback&gt;</code> widget stores the following in your browser. <strong>No
+      cookie is set</strong> — the widget uses only <code>localStorage</code> and
+      <code>sessionStorage</code>, scoped to the site that embeds it.
+    </p>
+    <div class="table-scroll">
+      <table class="legal-table">
+        <thead>
+          <tr><th>Key</th><th>Storage</th><th>Purpose</th><th>Cleared when</th></tr>
+        </thead>
+        <tbody>
+          <tr><td><code>pointer_token</code></td><td>localStorage</td><td>JWT session token</td><td>logout / manual clear</td></tr>
+          <tr><td><code>pointer_user</code></td><td>localStorage</td><td>Display name, role, preferences</td><td>logout</td></tr>
+          <tr><td><code>pointer_env_&lt;project&gt;</code></td><td>localStorage</td><td>Last-selected environment per project</td><td>manual</td></tr>
+          <tr><td><code>pointer_toolbar_pos</code></td><td>localStorage</td><td>Draggable toolbar position</td><td>reset position</td></tr>
+          <tr><td><code>pointer_widget_theme</code></td><td>localStorage</td><td>Light/dark override</td><td>manual</td></tr>
+          <tr><td><code>pointer_widget_language</code></td><td>localStorage</td><td>Language override (en/ar)</td><td>manual</td></tr>
+          <tr><td><code>pointer_visible</code></td><td>sessionStorage</td><td>Sidebar open/closed state</td><td>tab close</td></tr>
+          <tr><td><code>pointer_page_session_id</code></td><td>sessionStorage</td><td>Diagnostic session ID</td><td>tab close</td></tr>
+          <tr><td><code>pointer_lang_reported</code></td><td>sessionStorage</td><td>Language beacon guard (once per tab session)</td><td>tab close</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h2><span class="num">6.</span>Screenshots</h2>
+    <p>
+      A screenshot may be captured alongside a comment when the screenshot option is enabled for
+      the project. It is stored server-side, attached to that comment, and is <strong>deleted when
+      the comment or the workspace it belongs to is deleted</strong> — there is no separate
+      screenshot retention window. A screenshot depicts the customer's application UI at the moment
+      of the comment, not the commenter's personal data. On a data-subject access/erasure request,
+      the operator can delete individual screenshots on a targeted basis.
     </p>
 
-    <h2>Where it's sent</h2>
+    <h2><span class="num">7.</span>Data retention</h2>
     <p>
-      All of the above is sent only to the Pointer server URL configured for your installation — either
-      the hosted service, or a self-hosted server your organization runs and controls. Pointer does not
-      sell your data, does not use it for advertising, and does not share it with third parties beyond
-      what's needed to operate the server you've chosen to use.
+      Comments and user accounts are retained until deleted by you or an administrator of your
+      workspace; deleting a comment or project hides it everywhere immediately. Separately, the
+      following operational data classes are retained on a fixed schedule and then purged
+      automatically:
+    </p>
+    <div class="table-scroll">
+      <table class="legal-table">
+        <thead><tr><th>Data class</th><th>Retention</th></tr></thead>
+        <tbody>
+          <tr><td>Usage events (product analytics)</td><td>180 days</td></tr>
+          <tr><td>Read notifications</td><td>90 days</td></tr>
+          <tr><td>Page context snapshots (diagnostic context)</td><td>30 days</td></tr>
+          <tr><td>Dead (unaccepted/expired) invites</td><td>90 days</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p>
+      A full account deletion tombstones your account: your comments and replies are kept but
+      re-attributed to the tombstone rather than your name. A full, unrecoverable hard-delete of a
+      workspace's comment rows happens only when the whole workspace is deleted.
     </p>
 
-    <h2>Browser extension permissions</h2>
-    <p>The Pointer browser extension requests the following, each solely to inject the feedback widget on a tab you explicitly activate:</p>
-    <ul>
-      <li><strong>Host access (all sites)</strong> — to inject the widget into the page on tabs you activate. You choose which sites to activate on; the extension does not act on tabs you haven't activated.</li>
-      <li><strong>Content-Security-Policy adjustment</strong> — on an activated tab only, so the widget can load on sites with a strict CSP. Removed automatically when you deactivate or close the tab.</li>
-      <li><strong>Scripting</strong> — to inject the widget into the activated tab.</li>
-      <li><strong>Storage</strong> — to keep you signed in and remember your per-site project choice.</li>
-    </ul>
-
-    <h2>Data retention</h2>
+    <h2 id="residency"><span class="num">8.</span>Data residency</h2>
     <p>
-      Comments and account data are retained until deleted by you or an administrator of your workspace.
-      Deleting a comment or project hides it everywhere immediately.
-      Physical purge of deleted records and their screenshot files (and automatic expiry after your plan's retention period) is on our roadmap; until then, contact us for a manual purge.
+      All Pointer data — accounts, comments, screenshots, and diagnostic context — is stored in the
+      <strong>Oracle Cloud Riyadh region</strong> (Middle East). No data is transferred to the EU or
+      US except for transactional email delivery via Brevo (see Subprocessors below).
     </p>
 
-    <h2>Security</h2>
+    <h2><span class="num">9.</span>Subprocessors</h2>
+    <div class="table-scroll">
+      <table class="legal-table">
+        <thead><tr><th>Subprocessor</th><th>Purpose</th><th>Location</th></tr></thead>
+        <tbody>
+          <tr><td>Oracle Cloud</td><td>Infrastructure, compute, storage</td><td>Riyadh, KSA</td></tr>
+          <tr><td>Brevo</td><td>Transactional email</td><td>EU</td></tr>
+          <tr><td>GitHub</td><td>CI/CD, package registry</td><td>US</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h2><span class="num">10.</span>Widget consent posture — for your own privacy policy</h2>
     <p>
-      Passwords are stored hashed, never in plain text. API keys are stored hashed (SHA-256) and encrypted for display. The browser extension keeps your sign-in token in
-      isolated session storage — it is never written into any page you visit. Each workspace's data is
-      isolated from other workspaces on the server side.
+      If you embed the Pointer widget in your own product, you are the data controller for the
+      people who use it. The paragraph below is written so you can paste it into your own privacy
+      policy as a starting point:
+    </p>
+    <div class="paste-block">
+      <span class="paste-label">Paste into your privacy policy</span>
+      <p>
+        "We use Pointer (a third-party feedback tool) to collect feedback from our team and users.
+        The Pointer widget stores a session token and display preferences in your browser's
+        localStorage (no cookies are set). Data is processed in Saudi Arabia. See
+        <a href="/privacy.html">Pointer's privacy policy</a> for details."
+      </p>
+    </div>
+
+    <h2><span class="num">11.</span>Internal access &amp; operator visibility</h2>
+    <p>
+      By default, Pointer staff access to the hosted service is <strong>metadata only</strong> —
+      counts, statuses, tenants, billing, and health — not the content of your comments or replies.
+      <strong>Current status (as of this policy's effective date):</strong> the underlying database
+      access used by operator/support tooling can, today, read any workspace's comment content when
+      an operator uses it, and that access is not yet logged to a customer-visible security log.
+      An audited, time-boxed impersonation flow — visible to your workspace admin through an
+      in-product audit log — is designed and is being built, but has not shipped yet. Until it
+      ships, treat operator access to comment content as "staff access on an as-needed basis,"
+      not as "audited and time-boxed." This section will be updated, with a changed effective date,
+      once that audited access log ships.
     </p>
 
-    <h2>Children's privacy</h2>
-    <p>Pointer is a developer tool and is not directed at children.</p>
+    <h2><span class="num">12.</span>Your rights (PDPL)</h2>
+    <p>Under the PDPL, you may request: access to your personal data, correction of inaccurate data, deletion of your data, portability of your data to another provider, and to object to certain processing. Contact us using the details below to exercise any of these.</p>
 
-    <h2>Changes to this policy</h2>
+    <h2><span class="num">13.</span>Your rights (GDPR)</h2>
+    <p>If you are located in the EEA, you additionally have the standard GDPR rights: access, rectification, erasure, restriction of processing, data portability, and objection, plus the right to lodge a complaint with your local supervisory authority. These rights apply only to the extent GDPR applies to you as an EEA-based data subject; Pointer does not claim EU establishment.</p>
+
+    <h2><span class="num">14.</span>Children's privacy</h2>
+    <p>Pointer is a developer tool and is not directed at children. We do not knowingly collect data from children.
+      <span class="legal-review">[LEGAL-REVIEW: confirm the applicable minimum age threshold for
+      account holders (e.g. 16, per GDPR Art. 8, vs. a locally applicable PDPL threshold) before
+      this page is relied on for a paying customer.]</span>
+    </p>
+
+    <h2><span class="num">15.</span>Changes to this policy</h2>
     <p>If this policy changes, the updated version will be published at this same URL with a new effective date.</p>
 
-    <h2>Contact</h2>
-    <p>Questions about this policy: <a href="mailto:moamen.ui@gmail.com">moamen.ui@gmail.com</a></p>
+    <h2><span class="num">16.</span>Contact</h2>
+    <p>Questions about this policy, or to exercise your rights above: <a href="mailto:moamen.ui@gmail.com">moamen.ui@gmail.com</a></p>
+
+    <p class="note">
+      This is not legal advice. A Data Processing Agreement (DPA) is not yet offered — it is
+      deferred to the first paying customer (founder decision F6).
+      <span class="legal-review">[LEGAL-REVIEW: schedule a full legal review of this policy, and
+      confirm DPA availability/timeline, before it is the sole basis for a paying customer's
+      compliance obligations.]</span>
+    </p>
   </main>
 
   <footer class="bottom">
-    <div class="wrap">Pointer</div>
+    <div class="wrap foot-inner">
+      <span>Pointer</span>
+      <span class="foot-links"><a href="/terms.html">Terms of Service</a> · <a href="/data.html">Data &amp; self-hosting</a> · <a href="/">Home</a></span>
+    </div>
   </footer>
 </body>
 </html>
