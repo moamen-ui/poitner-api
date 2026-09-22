@@ -1,5 +1,9 @@
 # R5-60 — Production-side restore drill (§60 · Release 5 · 0.5 d)
 
+**Status (2026-09-23):** shipped `58f0fe7`; **drilled on production 2026-09-23** from the off-box
+copy — 4 s, users/comments/projects/replies/migrations matched live, scratch dropped (see
+`DEPLOY.md` "Last drilled").
+
 ## 1. Goal
 
 Prove that the backup-and-restore chain works end-to-end on the production VM by scripting a

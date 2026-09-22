@@ -1,5 +1,9 @@
 # R5-63 — Privacy policy + Terms of Service (§63 · Release 5 · 3–5 d writing)
 
+**Status (2026-09-23):** shipped `3afe171` (+ `ab0cc98` wording fix: screenshots removed by
+scheduled clean-up / workspace deletion); live at pointer.moamen.work/privacy.html and
+/terms.html; `[LEGAL-REVIEW]` placeholders remain (§3.1 item 17, §3.2 item 14).
+
 ## 1. Goal
 
 Publish `landing/privacy.html` and `landing/terms.html` before the demo goes public. The privacy

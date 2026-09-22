@@ -1,5 +1,7 @@
 # R5-62 — JWT `kid` + two-key rotation window (§62 · Release 5 · 1 d)
 
+**Status (2026-09-23):** queued behind DB-11a (shared auth files) — not started.
+
 ## 1. Goal
 
 Today rotating the JWT signing key means every outstanding token becomes invalid — a global logout

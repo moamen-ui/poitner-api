@@ -1,5 +1,11 @@
 # R5-59 — Security headers + login rate limit + `security.txt` (§59 · Release 5 · 1 d)
 
+**Status (2026-09-23):** shipped `5a37117` + `c55dc46` (per-host `X-Frame-Options`, heredoc
+`security.txt`); **§12 amendment shipped `6ca148b`**: password login now locks after 10 failed
+attempts per e-mail for 15 min (success resets), 429 + `Retry-After`; per-IP floor `login-ip`
+60/min; verified live (10×400 → 429, Retry-After 900, other e-mail unaffected). CSP is
+report-only; enforcement is this doc's follow-up (§10).
+
 ## 1. Goal
 
 Harden the public-facing surface before any customer data arrives: add security headers to every

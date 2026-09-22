@@ -1,5 +1,8 @@
 # R5-65 — Arabic / RTL completeness audit (§65 · Release 5 · 1 d)
 
+**Status (2026-09-23):** in progress — static pass under way (GLM), writing
+`docs/runbooks/RTL-AUDIT-2026-09-23.md`; the browser/screenshot pass (§3.2 Option A/B) is pending.
+
 ## 1. Goal
 
 Produce an **audit checklist** (not fixes) that covers every dashboard route, widget state, and

@@ -1,5 +1,11 @@
 # R5-58 — Observability baseline (§58 · Release 5 · 2–3 d)
 
+**Status (2026-09-23):** shipped `b3160c2`; live — `/health` returns `{"status":"Healthy",…}`,
+`X-Request-Id` is echoed, JSON logs carry a request scope. `SENTRY_DSN` and `UPTIME_PING_URL` are
+**empty in production** until the owner supplies them; `docs/runbooks/ALERTING.md` exists.
+Implementation finding: claims are read lazily at log-write time because the request-id
+middleware runs before authentication (§3.2 design note).
+
 ## 1. Goal
 
 Ship the minimum observability stack before any customer data hits the system: structured JSON logs

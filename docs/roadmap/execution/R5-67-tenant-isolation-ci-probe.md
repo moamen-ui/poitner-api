@@ -1,5 +1,8 @@
 # R5-67 — Tenant-isolation CI probe (§67 · Release 5 · 1 d)
 
+**Status (2026-09-23):** shipped `86656df`; runs in the e2e `api` phase; green in CI (23 tests)
+since run 35789122040.
+
 ## 1. Goal
 
 Add an e2e job that proves no tenant can see or mutate another tenant’s data. The probe seeds two

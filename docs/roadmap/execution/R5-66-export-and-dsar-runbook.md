@@ -1,5 +1,10 @@
 # R5-66 — Export verification + DSAR runbook (§66 · Release 5 · 1 d)
 
+**Status (2026-09-23):** shipped; `docs/runbooks/DSAR.md` and
+`docs/runbooks/EXPORT-VERIFICATION-2026-09-23.md` are live (results also summarized in §3.1's
+"Results" note); follow-ups logged in the R5-00 index as **DB-16** (screenshot purge of
+soft-deleted comments; export DTO gaps).
+
 ## 1. Goal
 
 Verify that the existing `ExportImportService` round-trips correctly on the current schema, document

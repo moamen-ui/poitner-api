@@ -164,8 +164,8 @@ pulls NEW-6 forward (before demo-public).
 | R5.2 | **§16** audit log (un-held) — `docs/db/execution/DB-12-*.md` (not yet written; schema in parallel with DB-11b/c) | 3–4 d |
 | R5.3 | **§56** impersonation — `docs/db/execution/DB-13-*.md` (not yet written; after DB-12) | 2–3 d |
 | R5.4 | **§57** e-mail verification / password policy — `docs/db/execution/DB-14-*.md` (not yet written) | 3–4 d |
-| R5.5 | Ops pack, parallel: **§58** observability · **§59** security headers + login limiter · **§60** restore drill · **§61** operator MFA · **§62** JWT `kid` rotation · **§67** tenant-isolation CI probe · **§68** versioning policy + `/api/v1` alias | 0.5–3 d each |
-| R5.6 | Writing pack: **§63** privacy + ToS (pulls **NEW-6** forward alongside it) · **§64** activation funnel · **§65** RTL audit · **§66** export verification + DSAR runbook | 1–5 d each |
+| R5.5 | Ops pack, parallel: **§58** observability — **shipped** `b3160c2`, live (`SENTRY_DSN`/`UPTIME_PING_URL` empty until owner supplies them) · **§59** security headers + login limiter — **shipped** `5a37117`+`c55dc46`, **§12 amendment shipped** `6ca148b` (per-e-mail lockout after 10 failed attempts/15 min; CSP still report-only) · **§60** restore drill — **shipped** `58f0fe7`, **drilled on production 2026-09-23** (4 s, counts matched) · **§61** operator MFA — queued behind DB-11a · **§62** JWT `kid` rotation — queued behind DB-11a · **§67** tenant-isolation CI probe — **shipped** `86656df`, green in CI (23 tests) · **§68** versioning policy + `/api/v1` alias — **shipped** `435f688`, live, parity verified | 0.5–3 d each |
+| R5.6 | Writing pack: **§63** privacy + ToS (pulls **NEW-6** forward alongside it) — **shipped** `3afe171`+`ab0cc98`, live, `[LEGAL-REVIEW]` placeholders remain · **§64** activation funnel · **§65** RTL audit — **in progress** (static pass by GLM; browser pass pending) · **§66** export verification + DSAR runbook — **shipped**, `docs/runbooks/DSAR.md`+`EXPORT-VERIFICATION-2026-09-23.md` live | 1–5 d each |
 | R5.7 | Demo as a product path (F4): convert-to-workspace + 24 h TTL via the retention job, after DB-11 | — |
 
 ### Hold list (item → un-hold trigger)
