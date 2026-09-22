@@ -4,8 +4,12 @@
 # sentinel containing the verdict, and classifies quota/empty/short output explicitly.
 TOOL="$1"; MODEL="$2"; DIR="$3"; PROMPT="$4"; OUT="$5"; SENT="$6"
 START=$(date +%s)
+# Prefer the /usr/local/bin build: on 2026-09-23 the Homebrew 1.18.30 build failed every print-mode run
+# with an internal "TypeError … evaluating 'a.name'" (surfaced as "Unexpected server error") while 1.18.31
+# at /usr/local/bin worked. Override with OPENCODE_BIN.
+OPENCODE="${OPENCODE_BIN:-}"; [ -z "$OPENCODE" ] && { [ -x /usr/local/bin/opencode ] && OPENCODE=/usr/local/bin/opencode || OPENCODE=opencode; }
 if [ "$TOOL" = "opencode" ]; then
-  (cd "$DIR" && opencode run -m "$MODEL" "$(cat "$PROMPT")") > "$OUT" 2>&1
+  (cd "$DIR" && "$OPENCODE" run -m "$MODEL" "$(cat "$PROMPT")") > "$OUT" 2>&1
 else
   (cd "$DIR" && agy -p "$(cat "$PROMPT")" --model "$MODEL" --dangerously-skip-permissions --print-timeout 30m) > "$OUT" 2>&1
 fi
