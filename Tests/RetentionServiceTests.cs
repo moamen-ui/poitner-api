@@ -110,31 +110,33 @@ public class RetentionServiceTests
 
         var old = DateTime.UtcNow.AddDays(-200);
         var recent = DateTime.UtcNow.AddDays(-1);
+        // ProjectId left null — DB-06 made it a real (nullable) FK to projects, and this test only
+        // exercises the age/type predicate, not project association.
         db.UsageEvents.AddRange(
             new UsageEvent
             {
-                ProjectId = 1,
+                ProjectId = null,
                 Type = "x",
                 Source = "test",
                 CreatedAt = old,
             },
             new UsageEvent
             {
-                ProjectId = 1,
+                ProjectId = null,
                 Type = "first_comment",
                 Source = "test",
                 CreatedAt = old,
             },
             new UsageEvent
             {
-                ProjectId = 1,
+                ProjectId = null,
                 Type = "first_apply",
                 Source = "test",
                 CreatedAt = old,
             },
             new UsageEvent
             {
-                ProjectId = 1,
+                ProjectId = null,
                 Type = "x",
                 Source = "test",
                 CreatedAt = recent,
@@ -380,7 +382,7 @@ public class RetentionServiceTests
         db.UsageEvents.Add(
             new UsageEvent
             {
-                ProjectId = 1,
+                ProjectId = projectId,
                 Type = "x",
                 Source = "test",
                 CreatedAt = old,
@@ -445,7 +447,7 @@ public class RetentionServiceTests
         db.UsageEvents.Add(
             new UsageEvent
             {
-                ProjectId = 1,
+                ProjectId = projectId,
                 Type = "x",
                 Source = "test",
                 CreatedAt = old,
@@ -485,12 +487,13 @@ public class RetentionServiceTests
         using var db = testDb.MakeContext();
 
         var old = DateTime.UtcNow.AddDays(-200);
+        // ProjectId left null — see UsageEvents_OlderThanCutoff_AreDeleted_ExceptFirstFacts.
         for (var i = 0; i < 5; i++)
         {
             db.UsageEvents.Add(
                 new UsageEvent
                 {
-                    ProjectId = 1,
+                    ProjectId = null,
                     Type = "x",
                     Source = "test",
                     CreatedAt = old,
