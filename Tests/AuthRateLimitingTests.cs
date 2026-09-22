@@ -9,25 +9,24 @@ using Xunit;
 namespace Pointer.Tests;
 
 /// <summary>
-/// BINDING (R5-59): password login IS rate-limited, per normalised e-mail address — NOT per IP,
-/// because the widget is called from arbitrary host origins and a whole office/agency behind one
-/// NAT address must not share a single budget. This reverses the pre-R5-59 decision (login was
-/// deliberately unlimited); the per-IP "signup" limiter remains separate and continues to cover
-/// only the account-creation/password-email surface. Magic-link redemption ("login-with-invite"
-/// and, since R5-59, "login-with-key") keeps its own per-IP "login" policy — a 256-bit token is
-/// already the credential, so IP partitioning is enough there.
+/// BINDING (R5-59 §12): password login limits failed attempts per normalised e-mail address
+/// (via ILoginAttemptLimiter), while post-authentication and raw network flood abuse is throttled
+/// by a per-IP floor ("login-ip", 60/min). The per-IP "signup" limiter remains separate and
+/// covers account creation/password email surfaces. Magic-link redemption ("login-with-invite"
+/// and "login-with-key") keeps its own per-IP "login" policy — a 256-bit token is already the
+/// credential, so IP partitioning is enough there.
 /// Rejections must read as throttling (429 + Retry-After), not an outage (503).
 /// </summary>
 public class AuthRateLimitingTests
 {
     [Fact]
-    public void Login_HasPasswordLoginRateLimit()
+    public void Login_HasIpFloorRateLimit()
     {
         var method = typeof(AuthController).GetMethod("Login");
         Assert.NotNull(method);
 
         var rateLimits = method!.GetCustomAttributes<EnableRateLimitingAttribute>(inherit: true).ToList();
-        Assert.Contains(rateLimits, a => a.PolicyName == "password-login");
+        Assert.Contains(rateLimits, a => a.PolicyName == "login-ip");
     }
 
     [Fact]

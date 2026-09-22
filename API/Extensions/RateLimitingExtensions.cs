@@ -131,40 +131,17 @@ public static class RateLimitingExtensions
                     QueueLimit = 0
                 }));
 
-        // Password login (R5-59). Partitioned per normalised e-mail (from the JSON body), not per
-        // IP: a whole office/agency behind one NAT address must not share one budget, the same
-        // reasoning as "login" above. Falls back to per-IP only when the body can't be parsed —
-        // an unreadable body means the request will fail model binding anyway, so the fallback
-        // exists purely so the limiter itself never throws.
-        o.AddPolicy("password-login", ctx =>
-        {
-            string partitionKey;
-            ctx.Request.EnableBuffering();
-            try
-            {
-                ctx.Request.Body.Position = 0;
-                using var reader = new System.IO.StreamReader(ctx.Request.Body, leaveOpen: true);
-                var body = reader.ReadToEndAsync().GetAwaiter().GetResult();
-                ctx.Request.Body.Position = 0;
-                var doc = System.Text.Json.JsonDocument.Parse(body);
-                var email = doc.RootElement.TryGetProperty("email", out var e) ? e.GetString() : null;
-                partitionKey = !string.IsNullOrWhiteSpace(email)
-                    ? $"email:{email.Trim().ToLowerInvariant()}"
-                    : $"ip:{ClientIp(ctx)}";
-            }
-            catch
-            {
-                partitionKey = $"ip:{ClientIp(ctx)}";
-            }
-            return RateLimitPartition.GetFixedWindowLimiter(
-                partitionKey,
+        // Per-IP flood floor for password login (R5-59 §12). Failed attempts are counted
+        // per-email by ILoginAttemptLimiter; this per-IP floor exists purely to stop raw network floods.
+        o.AddPolicy("login-ip", ctx =>
+            RateLimitPartition.GetFixedWindowLimiter(
+                ClientIp(ctx),
                 _ => new FixedWindowRateLimiterOptions
                 {
-                    PermitLimit = 10,
-                    Window = TimeSpan.FromMinutes(15),
+                    PermitLimit = 60,
+                    Window = TimeSpan.FromMinutes(1),
                     QueueLimit = 0
-                });
-        });
+                }));
 
         o.AddPolicy("comments", CommentsPartition);
 

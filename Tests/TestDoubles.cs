@@ -1,11 +1,20 @@
 using System.Data.Common;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore.Diagnostics;
+using Pointer.Application.Abstractions;
 using Pointer.Application.Response;
 using Pointer.Application.Services.Interfaces;
 using Pointer.Domain.ValueObjects;
 
 namespace Pointer.Tests;
+
+public sealed class FakeLoginAttemptLimiter : ILoginAttemptLimiter
+{
+    public Task<bool> IsLockedAsync(string email) => Task.FromResult(false);
+    public Task<int> GetRetryAfterSecondsAsync(string email) => Task.FromResult(0);
+    public Task RecordFailureAsync(string email) => Task.CompletedTask;
+    public Task ResetAsync(string email) => Task.CompletedTask;
+}
 
 /// <summary>
 /// A pass-through <see cref="IEntitlementService"/> for tests that don't exercise plan enforcement.

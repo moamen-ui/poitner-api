@@ -20,6 +20,12 @@ public class Result
     /// <summary>Populated only when <see cref="IsLimitReached"/> is true.</summary>
     public PlanLimit? Limit { get; protected init; }
 
+    /// <summary>Set when login attempts exceeded the lockout threshold. Returned as a 429 (TooManyRequests).</summary>
+    public bool IsLocked { get; protected init; }
+
+    /// <summary>Seconds remaining on lockout, populated when <see cref="IsLocked"/> is true.</summary>
+    public int? RetryAfterSeconds { get; protected init; }
+
     public string? Message { get; protected init; }
 
     public static Result Success(string? msg = null) => new() { IsSuccess = true, Message = msg };
@@ -27,6 +33,8 @@ public class Result
     public static Result NotFound(string msg) => new() { IsNotFound = true, Message = msg };
     public static Result Conflict(string msg) => new() { IsConflict = true, Message = msg };
     public static Result Forbidden(string msg) => new() { IsForbidden = true, Message = msg };
+    public static Result Locked(string msg, int? retryAfterSeconds = null) =>
+        new() { IsSuccess = false, IsLocked = true, RetryAfterSeconds = retryAfterSeconds, Message = msg };
     public static Result LimitReached(string msg, PlanLimit limit) =>
         new() { IsSuccess = false, IsLimitReached = true, Limit = limit, Message = msg };
 }
@@ -41,6 +49,10 @@ public class Result<T> : Result
     public new static Result<T> NotFound(string msg) => new() { IsNotFound = true, Message = msg };
     public new static Result<T> Conflict(string msg) => new() { IsConflict = true, Message = msg };
     public new static Result<T> Forbidden(string msg) => new() { IsForbidden = true, Message = msg };
+    public new static Result<T> Locked(string msg, int? retryAfterSeconds = null) =>
+        new() { IsSuccess = false, IsLocked = true, RetryAfterSeconds = retryAfterSeconds, Message = msg };
+    public static Result<T> Locked(string msg, T data, int? retryAfterSeconds = null) =>
+        new() { IsSuccess = false, IsLocked = true, Data = data, RetryAfterSeconds = retryAfterSeconds, Message = msg };
     public new static Result<T> LimitReached(string msg, PlanLimit limit) =>
         new() { IsSuccess = false, IsLimitReached = true, Limit = limit, Message = msg };
 }

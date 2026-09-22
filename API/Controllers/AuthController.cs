@@ -18,12 +18,21 @@ public class AuthController(
 {
     [AllowAnonymous]
     [HttpPost("login")]
-    [EnableRateLimiting("password-login")]
+    [EnableRateLimiting("login-ip")]
     [ProducesResponseType(typeof(LoginResponse), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(Result), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(Result<LoginResponse>), StatusCodes.Status429TooManyRequests)]
     public async Task<IActionResult> Login([FromBody] LoginRequest request)
     {
         var result = await authService.LoginAsync(request);
+        if (result.IsLocked || result.Data?.Status == "locked")
+        {
+            if (result.RetryAfterSeconds.HasValue)
+            {
+                Response.Headers.RetryAfter = result.RetryAfterSeconds.Value.ToString();
+            }
+            return StatusCode(StatusCodes.Status429TooManyRequests, result);
+        }
         if (result.IsNotFound) return NotFound(result);
         if (result.IsConflict) return Conflict(result);
         return result.IsSuccess ? Ok(result) : BadRequest(result);

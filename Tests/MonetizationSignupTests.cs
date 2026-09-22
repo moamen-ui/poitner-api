@@ -96,7 +96,7 @@ public class MonetizationSignupTests
     private static AuthService Auth(AppDbContext db, ICurrentUser user)
     {
         var uow = new UnitOfWork(db);
-        return new AuthService(uow, new IdentityHasher(), new FakeToken(), user, new SignupEnabledSettings(), new FakeReset(), new NoopEmail(), new NoopBrandingService(), new ApiKeyService(new UnitOfWork(db), new TestApiKeyProtector()));
+        return new AuthService(uow, new IdentityHasher(), new FakeToken(), user, new SignupEnabledSettings(), new FakeReset(), new NoopEmail(), new NoopBrandingService(), new ApiKeyService(new UnitOfWork(db), new TestApiKeyProtector()), new FakeLoginAttemptLimiter());
     }
 
     [Fact]

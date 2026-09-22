@@ -431,7 +431,8 @@ public class WorkspaceServiceTests
                 new FakeResetTokens(),
                 new NoopEmail(),
                 new FakeBrandingService(),
-                new ApiKeyService(new UnitOfWork(db), new TestApiKeyProtector())
+                new ApiKeyService(new UnitOfWork(db), new TestApiKeyProtector()),
+                new FakeLoginAttemptLimiter()
             );
 
             var me = await authSvc.MeAsync();

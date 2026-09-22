@@ -13,6 +13,7 @@ public static class MessageKeys
         public const string RegistrationSubmitted = "Request submitted for approval.";
         public const string AccountExists = "An account with this email already exists.";
         public const string TokenRequired = "Reset token is required.";
+        public const string TooManyAttempts = "Too many failed login attempts. Please try again later.";
     }
 
     public static class DeviceLogin

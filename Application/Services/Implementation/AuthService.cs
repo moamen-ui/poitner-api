@@ -21,6 +21,7 @@ public class AuthService : IAuthService
     private readonly IEmailService _emailService;
     private readonly IBrandingService _branding;
     private readonly IApiKeyService _apiKeys;
+    private readonly ILoginAttemptLimiter _loginLimiter;
 
     public AuthService(
         IUnitOfWork unitOfWork,
@@ -31,7 +32,8 @@ public class AuthService : IAuthService
         IResetTokenService resetTokens,
         IEmailService emailService,
         IBrandingService branding,
-        IApiKeyService apiKeys
+        IApiKeyService apiKeys,
+        ILoginAttemptLimiter loginLimiter
     )
     {
         _unitOfWork = unitOfWork;
@@ -43,6 +45,7 @@ public class AuthService : IAuthService
         _resetTokens = resetTokens;
         _emailService = emailService;
         _branding = branding;
+        _loginLimiter = loginLimiter;
     }
 
     public async Task<Result> RequestPasswordResetAsync(ForgotPasswordRequest request)
@@ -233,7 +236,18 @@ public class AuthService : IAuthService
 
     public async Task<Result<LoginResponse>> LoginAsync(LoginRequest request)
     {
-        var emailNormalized = request.Email.Trim().ToLower();
+        var emailNormalized = (request.Email ?? string.Empty).Trim().ToLowerInvariant();
+
+        // Locked accounts are rejected BEFORE touching the DB or verifying passwords (R5-59 §12).
+        if (await _loginLimiter.IsLockedAsync(emailNormalized))
+        {
+            var retryAfter = await _loginLimiter.GetRetryAfterSecondsAsync(emailNormalized);
+            return Result<LoginResponse>.Locked(
+                MessageKeys.Auth.TooManyAttempts,
+                new LoginResponse { Status = "locked" },
+                retryAfter
+            );
+        }
 
         // Login is anonymous (no tenant claim yet), so the User global query filter would
         // only see OwnerId==null users — bypass it to authenticate any tenant's user by email.
@@ -248,8 +262,12 @@ public class AuthService : IAuthService
 
         // Verify the password FIRST so account status is only revealed to correct credentials
         // (avoids leaking which emails exist / are pending/rejected to anonymous guessers).
+        // Unknown e-mails and wrong passwords BOTH count as failures to prevent enumeration side channels.
         if (user == null || !_passwordHasher.Verify(request.Password, user.PasswordHash))
+        {
+            await _loginLimiter.RecordFailureAsync(emailNormalized);
             return Result<LoginResponse>.Failure(MessageKeys.Auth.InvalidCredentials);
+        }
 
         // A quick-access client signs in only through their magic link. Their PasswordHash is
         // random and unusable, so the check above already fails — this is the EXPLICIT refusal, so
@@ -257,7 +275,10 @@ public class AuthService : IAuthService
         // message as a wrong password: which accounts are passwordless is not an anonymous
         // caller's business.
         if (user.PasswordlessOnly)
+        {
+            await _loginLimiter.RecordFailureAsync(emailNormalized);
             return Result<LoginResponse>.Failure(MessageKeys.Auth.InvalidCredentials);
+        }
 
         if (user.ApprovalStatus == ApprovalStatus.Pending)
             return Result<LoginResponse>.Failure(
@@ -276,6 +297,9 @@ public class AuthService : IAuthService
                 MessageKeys.Auth.Disabled,
                 new LoginResponse { Status = "disabled" }
             );
+
+        // Password verified and account active: reset lockout counter.
+        await _loginLimiter.ResetAsync(emailNormalized);
 
         var token = _tokenService.Issue(user);
 

@@ -43,6 +43,8 @@ public static class DependencyInjection
         s.AddScoped<IFileStorage, LocalFileStorage>();
         s.AddSingleton<IUploadSigner, UploadSigner>();
         s.AddSingleton<IResetTokenService, ResetTokenService>();
+        s.Configure<LoginLockoutOptions>(c.GetSection("Auth:LoginLockout"));
+        s.AddSingleton<ILoginAttemptLimiter, LoginAttemptLimiter>();
         // Email:Provider=smtp (local dev only — see local-mail-server/) swaps in a plain-SMTP
         // sender pointed at a local catch-all mailbox; unset/anything else keeps Brevo (prod).
         if (string.Equals(c["Email:Provider"], "smtp", StringComparison.OrdinalIgnoreCase))

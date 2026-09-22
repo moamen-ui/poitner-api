@@ -81,7 +81,7 @@ public class ApiKeyAuthTests
             new Microsoft.Extensions.Configuration.ConfigurationBuilder().Build());
 
     private static AuthService BuildAuthService(AppDbContext db, ICurrentUser user) =>
-        new(new UnitOfWork(db), new IdentityHasher(), new FakeToken(), user, new NoopSettings(), new FakeReset(), new NoopEmail(), new NoopBrandingService(), new ApiKeyService(new UnitOfWork(db), new TestApiKeyProtector()));
+        new(new UnitOfWork(db), new IdentityHasher(), new FakeToken(), user, new NoopSettings(), new FakeReset(), new NoopEmail(), new NoopBrandingService(), new ApiKeyService(new UnitOfWork(db), new TestApiKeyProtector()), new FakeLoginAttemptLimiter());
 
     private static ProfileService BuildProfileService(AppDbContext db) => new(new UnitOfWork(db), new ApiKeyService(new UnitOfWork(db), new TestApiKeyProtector()));
 

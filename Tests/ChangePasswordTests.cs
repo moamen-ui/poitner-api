@@ -83,7 +83,7 @@ public class ChangePasswordTests
 
     private static AuthService Auth(AppDbContext db, ICurrentUser user, SpyEmailService? email = null) =>
         new(new UnitOfWork(db), new IdentityHasher(), new FakeToken(), user, new FakeSettings(),
-            new FakeReset(), email ?? new SpyEmailService(), new NoopBrandingService(), new ApiKeyService(new UnitOfWork(db), new TestApiKeyProtector()));
+            new FakeReset(), email ?? new SpyEmailService(), new NoopBrandingService(), new ApiKeyService(new UnitOfWork(db), new TestApiKeyProtector()), new FakeLoginAttemptLimiter());
 
     // Seeds one active user with password "OldPass123" and returns (publicId, ownerId, originalStamp).
     // workspaceName, when given, also seeds a Workspace row for ownerId (used by the reset/changed
