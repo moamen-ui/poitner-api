@@ -156,6 +156,22 @@ EF migrations auto-apply on boot; db + caddy stay up. Because of that auto-apply
 migration without the dump** — the script is the only supported path. Schema changes themselves are
 planned by the `db-architect` agent and follow [`docs/db/DB-RULES.md`](docs/db/DB-RULES.md).
 
+**Two deploy paths (DB-09).** A migration whose class carries `[ContractMigration]` — every
+migration that carries a DB-RULES approval marker — never auto-applies on an ordinary deploy:
+
+- **Ordinary**: `bash scripts/deploy-api.sh`. Additive (unmarked) migrations auto-apply as above. If
+  a pending migration is marked, the script's pre-flight refuses before rebuilding anything and
+  prints `deploy REFUSED (DB-09): pending migration(s) carry [ContractMigration]` — the running API
+  is untouched, the checkout is simply ahead of it.
+- **Contract**: `POINTER_APPLY_CONTRACT=1 POINTER_CONTRACT_LABEL=pre-<slug> bash
+  scripts/deploy-api.sh`. Stops the API first, takes a labelled dump
+  (`scripts/backup-db.sh pre-<slug>`), then rebuilds with `DBApplyContractMigrations=true` so the
+  marked migration(s) apply on boot.
+
+If `DB-09 REFUSED` ever appears in `docker compose logs api` after an *ordinary* deploy, that is a
+bug — see [`docs/db/DB-RULES.md`](docs/db/DB-RULES.md) R7 and
+[`docs/db/execution/DB-09-migration-apply-gate.md`](docs/db/execution/DB-09-migration-apply-gate.md).
+
 If endpoints/DTOs changed, **republish the typed clients** once the new API is live (the workflow
 reads the live spec and auto-bumps the patch version). From your machine (gh authed):
 

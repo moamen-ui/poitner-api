@@ -10,7 +10,7 @@ public class MigrationSafetyTests
 
     // 58 migration ids, frozen as of 2026-09-22 (DB-02). Never rename or delete one of these files
     // — the `__EFMigrationsHistory` table keys on this exact string. See DB-RULES.md R10.
-    private static readonly HashSet<string> Baseline = new(StringComparer.Ordinal)
+    internal static readonly HashSet<string> Baseline = new(StringComparer.Ordinal)
     {
         "20260623133436_InitialCreate",
         "20260624130359_AddElementScreenshotUrl",
@@ -138,6 +138,38 @@ public class MigrationSafetyTests
         Assert.True(
             violations.Count == 0,
             "New migration(s) with risky operations missing an approval marker (see DB-RULES.md R2/R3/R13):\n"
+                + string.Join("\n", violations)
+        );
+    }
+
+    [Fact]
+    public void ApprovalMarkerAndContractAttributeAgree()
+    {
+        var violations = new List<string>();
+
+        foreach (var file in MigrationFiles())
+        {
+            var id = Path.GetFileNameWithoutExtension(file);
+            if (Baseline.Contains(id))
+                continue; // historical migrations are frozen and exempt on purpose
+
+            var content = File.ReadAllText(file);
+            var hasMarker = ApprovalMarker.IsMatch(content);
+            var hasAttribute = content.Contains("[ContractMigration");
+
+            if (hasMarker && !hasAttribute)
+                violations.Add(
+                    $"{Path.GetFileName(file)}: has approval marker but no [ContractMigration] attribute"
+                );
+            else if (!hasMarker && hasAttribute)
+                violations.Add(
+                    $"{Path.GetFileName(file)}: has [ContractMigration] attribute but no approval marker"
+                );
+        }
+
+        Assert.True(
+            violations.Count == 0,
+            "DB-RULES approval marker and [ContractMigration] attribute must agree (see DB-RULES.md R7, docs/db/execution/DB-09-migration-apply-gate.md):\n"
                 + string.Join("\n", violations)
         );
     }

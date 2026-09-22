@@ -11,30 +11,80 @@
 # docs/db/DB-RULES.md requires a fresh backup before any deploy that may carry a migration, and a
 # restore procedure is in DEPLOY.md § Backups. The dump is labelled `pre-deploy` so it is easy to
 # find if the migration has to be rolled back.
+# Migrations auto-apply on boot except those marked [ContractMigration] (DB-09) — see the block
+# below for how those ship.
 set -euo pipefail
 
 REPO="${POINTER_REPO:-$HOME/pointer-api}"
 cd "$REPO"
 
-echo "== 1/4 pull =="
+# DB-09 (DB-RULES R7): a migration whose class carries [ContractMigration] — every migration with a
+# DB-RULES approval marker — never auto-applies on an ordinary deploy. It ships through this script as
+#   POINTER_APPLY_CONTRACT=1 POINTER_CONTRACT_LABEL=pre-<slug> bash scripts/deploy-api.sh
+# which stops the API first, dumps under that label, and boots with DBApplyContractMigrations=true.
+APPLY_CONTRACT="${POINTER_APPLY_CONTRACT:-0}"
+export DB_APPLY_CONTRACT=false
+COMPOSE=(docker compose --env-file .env.prod -f docker-compose.prod.yml)
+
+echo "== 1/5 pull =="
 git pull --ff-only
 git log --oneline -1
 
-echo "== 2/4 backup =="
-bash "$REPO/scripts/backup-db.sh" pre-deploy
+echo "== 2/5 contract-migration pre-flight =="
+applied="$("${COMPOSE[@]}" exec -T db psql -U pointer -d pointer -tAc 'SELECT "MigrationId" FROM "__EFMigrationsHistory"' 2>/dev/null || true)"
+pending_contract=""
+for f in "$REPO"/Infrastructure/Migrations/[0-9]*_*.cs; do
+  case "$f" in *.Designer.cs) continue ;; esac
+  id="$(basename "$f" .cs)"
+  grep -qx "$id" <<<"$applied" && continue
+  grep -q '\[ContractMigration' "$f" && pending_contract+="$id"$'\n'
+done
+if [ -n "$pending_contract" ]; then
+  if [ "$APPLY_CONTRACT" != "1" ]; then
+    echo "deploy REFUSED (DB-09): pending migration(s) carry [ContractMigration]:" >&2
+    printf '  %s\n' $pending_contract >&2
+    echo "Nothing was rebuilt; the running API is unchanged (the checkout is now ahead of it)." >&2
+    echo "Read the execution doc named in the attribute, run its pre-checks on prod, then:" >&2
+    echo "  POINTER_APPLY_CONTRACT=1 POINTER_CONTRACT_LABEL=pre-<slug> bash scripts/deploy-api.sh" >&2
+    exit 2
+  fi
+  : "${POINTER_CONTRACT_LABEL:?POINTER_APPLY_CONTRACT=1 requires POINTER_CONTRACT_LABEL=pre-<slug> (the dump label from the execution doc)}"
+  echo "will apply contract migration(s):"; printf '  %s\n' $pending_contract
+elif [ "$APPLY_CONTRACT" = "1" ]; then
+  echo "note: POINTER_APPLY_CONTRACT=1 but no pending contract migration — proceeding as an ordinary deploy"
+  APPLY_CONTRACT=0
+fi
 
-echo "== 3/4 rebuild api =="
-docker compose --env-file .env.prod -f docker-compose.prod.yml up -d --build api
+echo "== 3/5 backup =="
+if [ "$APPLY_CONTRACT" = "1" ]; then
+  "${COMPOSE[@]}" stop api                       # R7: no request may hit a half-migrated schema
+  bash "$REPO/scripts/backup-db.sh" "$POINTER_CONTRACT_LABEL"
+  export DB_APPLY_CONTRACT=true
+else
+  bash "$REPO/scripts/backup-db.sh" pre-deploy
+fi
 
-echo "== 4/4 verify =="
+echo "== 4/5 rebuild api =="
+"${COMPOSE[@]}" up -d --build api
+
+echo "== 5/5 verify =="
 for i in $(seq 1 30); do
-  if docker compose -f docker-compose.prod.yml logs --since 3m api 2>/dev/null | grep -q "Now listening"; then
-    break
+  logs="$("${COMPOSE[@]}" logs --since 3m api 2>/dev/null || true)"
+  grep -q "Now listening" <<<"$logs" && break
+  if grep -q "DB-09 REFUSED" <<<"$logs"; then
+    echo "deploy FAILED: the API refused to auto-apply a contract migration and is restarting in a loop." >&2
+    grep "DB-09" <<<"$logs" | tail -3 >&2
+    echo "Either re-run with POINTER_APPLY_CONTRACT=1 POINTER_CONTRACT_LABEL=pre-<slug>, or roll back:" >&2
+    echo "  git checkout <previous commit> && ${COMPOSE[*]} up -d --build api" >&2
+    exit 3
   fi
   sleep 2
 done
-docker compose -f docker-compose.prod.yml ps api
-docker compose -f docker-compose.prod.yml logs --since 3m api | grep -iE "Now listening|migrat|error|exception" | tail -20 || true
+"${COMPOSE[@]}" ps api
+"${COMPOSE[@]}" logs --since 3m api | grep -iE "Now listening|migrat|DB-09|error|exception" | tail -20 || true
+if [ "$DB_APPLY_CONTRACT" = "true" ]; then
+  "${COMPOSE[@]}" exec -T db psql -U pointer -d pointer -c 'SELECT "MigrationId" FROM "__EFMigrationsHistory" ORDER BY 1 DESC LIMIT 3'
+fi
 for path in /api/branding /swagger/v1/swagger.json; do
   code=$(curl -s -o /dev/null -w '%{http_code}' "https://api.pointer.moamen.work$path")
   echo "$path $code"

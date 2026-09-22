@@ -24,6 +24,8 @@ services:
       ASPNETCORE_URLS: "http://0.0.0.0:8080"
       ASPNETCORE_ENVIRONMENT: "Production"
       DBMigrationEnabled: "true"
+      # DB-09: set to true only by scripts/deploy-api.sh on its POINTER_APPLY_CONTRACT=1 path. Never put DB_APPLY_CONTRACT in .env.prod.
+      DBApplyContractMigrations: "${DB_APPLY_CONTRACT:-false}"
       # C1: strict tenant isolation — a null-tenant non-super principal sees NO strict-own rows.
       # Safe to enable now that legacy null-owner data has been back-filled to real owners
       # (see docs/reviews/fable-c1-backfill-runbook.md).

@@ -166,6 +166,11 @@ if (builder.Configuration.GetValue<bool>("DBMigrationEnabled"))
 {
     using var scope = app.Services.CreateScope();
     var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+    // DB-09 / DB-RULES R7: a pending migration marked [ContractMigration] is applied only through the
+    // explicit deploy path (API stopped, labelled dump, DBApplyContractMigrations=true). Otherwise
+    // refuse and exit non-zero so scripts/deploy-api.sh fails loudly instead of migrating unattended.
+    if (!await MigrationGate.AllowMigrateAsync(db, builder.Configuration, app.Logger))
+        return 3;
     await db.Database.MigrateAsync();
     await AdminSeeder.SeedAsync(app.Services);
     // Moves any pre-hardening plaintext User.ApiKey into the hashed+encrypted api_keys table.
@@ -415,3 +420,4 @@ $"""
 app.MapControllers();
 
 app.Run();
+return 0;

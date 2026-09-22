@@ -5,6 +5,7 @@
 namespace Pointer.Infrastructure.Migrations
 {
     /// <inheritdoc />
+    [ContractMigration("DB-05")]
     public partial class SoftDeleteAwareUniqueIndexes : Migration
     {
         /// <inheritdoc />

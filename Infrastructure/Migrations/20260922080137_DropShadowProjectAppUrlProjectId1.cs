@@ -5,6 +5,7 @@
 namespace Pointer.Infrastructure.Migrations
 {
     /// <inheritdoc />
+    [ContractMigration("DB-04")]
     public partial class DropShadowProjectAppUrlProjectId1 : Migration
     {
         /// <inheritdoc />
