@@ -86,7 +86,9 @@ public class ChangePasswordTests
             new FakeReset(), email ?? new SpyEmailService(), new NoopBrandingService(), new ApiKeyService(new UnitOfWork(db), new TestApiKeyProtector()));
 
     // Seeds one active user with password "OldPass123" and returns (publicId, ownerId, originalStamp).
-    private static (Guid publicId, Guid ownerId, Guid stamp) SeedUser(string db)
+    // workspaceName, when given, also seeds a Workspace row for ownerId (used by the reset/changed
+    // email tests below to exercise the workspace-naming/placeholder-fallback behavior).
+    private static (Guid publicId, Guid ownerId, Guid stamp) SeedUser(string db, string? workspaceName = null)
     {
         using var seed = Ctx(new FakeCurrentUser { IsSuperAdmin = true }, db);
         var role = new Role { Name = "Engineer", GrantsAdmin = false, IsActive = true };
@@ -95,6 +97,16 @@ public class ChangePasswordTests
 
         var publicId = Guid.NewGuid();
         var ownerId = Guid.NewGuid();
+        if (workspaceName != null)
+        {
+            seed.Workspaces.Add(new Workspace
+            {
+                Id = ownerId,
+                Name = workspaceName,
+                CreatedAt = DateTime.UtcNow,
+                CreatedBy = ownerId,
+            });
+        }
         var user = new User
         {
             Email = "user@t.com", PasswordHash = "h:OldPass123", DisplayName = "User",
@@ -155,5 +167,78 @@ public class ChangePasswordTests
         { CurrentPassword = "OldPass123", NewPassword = "NewPass123" });
 
         Assert.False(result.IsSuccess);
+    }
+
+    // ── Workspace name in the reset/changed emails ──────────────────────────────
+
+    [Fact]
+    public async Task ChangePassword_NamedWorkspace_ConfirmationEmailNamesIt()
+    {
+        var db = Guid.NewGuid().ToString();
+        var (publicId, ownerId, _) = SeedUser(db, workspaceName: "Acme Inc");
+        var caller = new FakeCurrentUser { Id = publicId, TenantId = ownerId };
+        var ctx = Ctx(caller, db);
+        var spy = new SpyEmailService();
+
+        var result = await Auth(ctx, caller, spy).ChangePasswordAsync(new ChangePasswordRequest
+        { CurrentPassword = "OldPass123", NewPassword = "NewPass123" });
+
+        Assert.True(result.IsSuccess);
+        Assert.Single(spy.Sent);
+        Assert.Equal("Your Pointer password was changed", spy.Sent[0].Subject); // subject stays product-only
+        Assert.Contains("Acme Inc", spy.Sent[0].Html);
+    }
+
+    [Fact]
+    public async Task ChangePassword_PlaceholderWorkspace_ConfirmationEmailOmitsWorkspaceLine()
+    {
+        var db = Guid.NewGuid().ToString();
+        var (publicId, ownerId, _) = SeedUser(db, workspaceName: Workspace.PlaceholderName);
+        var caller = new FakeCurrentUser { Id = publicId, TenantId = ownerId };
+        var ctx = Ctx(caller, db);
+        var spy = new SpyEmailService();
+
+        var result = await Auth(ctx, caller, spy).ChangePasswordAsync(new ChangePasswordRequest
+        { CurrentPassword = "OldPass123", NewPassword = "NewPass123" });
+
+        Assert.True(result.IsSuccess);
+        // Exactly the old wording — no "in the Workspace workspace".
+        Assert.Contains("account password was just changed", spy.Sent[0].Html);
+    }
+
+    [Fact]
+    public async Task RequestPasswordReset_NamedWorkspace_BodyNamesIt()
+    {
+        var db = Guid.NewGuid().ToString();
+        SeedUser(db, workspaceName: "Acme Inc");
+        var anon = new FakeCurrentUser();
+        var ctx = Ctx(anon, db);
+        var spy = new SpyEmailService();
+
+        var result = await Auth(ctx, anon, spy).RequestPasswordResetAsync(
+            new ForgotPasswordRequest { Email = "user@t.com" });
+
+        Assert.True(result.IsSuccess);
+        Assert.Single(spy.Sent);
+        Assert.Equal("Reset your Pointer password", spy.Sent[0].Subject); // subject stays product-only
+        Assert.Contains("Acme Inc", spy.Sent[0].Html);
+    }
+
+    [Fact]
+    public async Task RequestPasswordReset_PlaceholderWorkspace_BodyOmitsWorkspaceLine()
+    {
+        var db = Guid.NewGuid().ToString();
+        SeedUser(db, workspaceName: Workspace.PlaceholderName);
+        var anon = new FakeCurrentUser();
+        var ctx = Ctx(anon, db);
+        var spy = new SpyEmailService();
+
+        var result = await Auth(ctx, anon, spy).RequestPasswordResetAsync(
+            new ForgotPasswordRequest { Email = "user@t.com" });
+
+        Assert.True(result.IsSuccess);
+        Assert.Single(spy.Sent);
+        Assert.Equal("Reset your Pointer password", spy.Sent[0].Subject);
+        Assert.DoesNotContain("workspace", spy.Sent[0].Html, StringComparison.OrdinalIgnoreCase);
     }
 }

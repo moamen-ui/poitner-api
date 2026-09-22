@@ -112,7 +112,8 @@ public class InviteServiceTests
         ICurrentUser user,
         AppDbContext db,
         IEmailService? email = null,
-        IBrandingService? branding = null
+        IBrandingService? branding = null,
+        ISettingsService? settings = null
     )
     {
         var uow = new UnitOfWork(db);
@@ -121,16 +122,40 @@ public class InviteServiceTests
             user,
             new FakePasswordHasher(),
             new FakeTokenService(),
-            new FakeSettings(),
+            settings ?? new FakeSettings(),
             new PassThroughEntitlements(),
             email ?? new SpyEmailService(),
             branding ?? new FakeBrandingService()
         );
     }
 
+    // Same as FakeSettings, but reports the quick-access invite email as enabled — used only by the
+    // quick-access email-body test below (email is off by default, see
+    // QuickAccess_Create_ProvisionsUserImmediately_AndIssuesAMagicLink).
+    private sealed class QuickAccessEmailEnabledSettings : ISettingsService
+    {
+        public Task<bool> GetBoolAsync(string key, bool fallback = false) =>
+            Task.FromResult(key == ISettingsService.QuickAccessInviteEmailEnabled || fallback);
+
+        public Task SetBoolAsync(string key, bool value) => Task.CompletedTask;
+
+        public Task<string> GetStringAsync(string key, string fallback = "") =>
+            Task.FromResult(fallback);
+
+        public Task SetStringAsync(string key, string value) => Task.CompletedTask;
+
+        public Task<int> GetIntAsync(string key, int fallback = 0) => Task.FromResult(fallback);
+
+        public Task SetIntAsync(string key, int value) => Task.CompletedTask;
+    }
+
     // Seeds a tenant with an admin user (for the workspace-name preview) and a non-admin role,
-    // returns the tenant id + the non-admin role id.
-    private static (Guid tenantId, int roleId) SeedTenant(string dbName)
+    // returns the tenant id + the non-admin role id. workspaceName defaults to a normal, non-
+    // placeholder name; pass Workspace.PlaceholderName to exercise the "not yet renamed" fallback.
+    private static (Guid tenantId, int roleId) SeedTenant(
+        string dbName,
+        string workspaceName = "Acme Inc"
+    )
     {
         var tenant = Guid.NewGuid();
         using var seed = BuildContext(new FakeCurrentUser { IsSuperAdmin = true }, dbName);
@@ -141,7 +166,7 @@ public class InviteServiceTests
             new Workspace
             {
                 Id = tenant,
-                Name = "Acme Inc",
+                Name = workspaceName,
                 CreatedAt = DateTime.UtcNow,
                 CreatedBy = tenant,
             }
@@ -305,6 +330,84 @@ public class InviteServiceTests
         Assert.True(result.IsSuccess);
         Assert.False(result.Data!.EmailSent);
         Assert.Single(spy.Sent); // it DID try
+    }
+
+    // ── Invite email names the workspace ───────────────────────────────────────
+
+    [Fact]
+    public async Task Create_WithEmail_NamedWorkspace_SubjectAndBodyIncludeWorkspaceName()
+    {
+        var dbName = Guid.NewGuid().ToString();
+        var (tenant, roleId) = SeedTenant(dbName, "Acme Inc");
+        var admin = new FakeCurrentUser
+        {
+            Id = Guid.NewGuid(),
+            TenantId = tenant,
+            IsAdmin = true,
+        };
+        using var db = BuildContext(admin, dbName);
+        var spy = new SpyEmailService();
+        var svc = BuildService(admin, db, spy);
+
+        var result = await svc.CreateAsync(
+            new CreateInviteRequest { RoleId = roleId, Email = "new@invitee.com" }
+        );
+
+        Assert.True(result.IsSuccess);
+        Assert.Single(spy.Sent);
+        Assert.Equal("You're invited to Acme Inc on Pointer", spy.Sent[0].Subject);
+        Assert.Contains("Acme Inc", spy.Sent[0].Html);
+    }
+
+    [Fact]
+    public async Task Create_WithEmail_PlaceholderWorkspace_FallsBackToOldWording()
+    {
+        var dbName = Guid.NewGuid().ToString();
+        var (tenant, roleId) = SeedTenant(dbName, Workspace.PlaceholderName);
+        var admin = new FakeCurrentUser
+        {
+            Id = Guid.NewGuid(),
+            TenantId = tenant,
+            IsAdmin = true,
+        };
+        using var db = BuildContext(admin, dbName);
+        var spy = new SpyEmailService();
+        var svc = BuildService(admin, db, spy);
+
+        var result = await svc.CreateAsync(
+            new CreateInviteRequest { RoleId = roleId, Email = "new@invitee.com" }
+        );
+
+        Assert.True(result.IsSuccess);
+        Assert.Single(spy.Sent);
+        // Exactly the old wording — no "join the Workspace workspace".
+        Assert.Equal("You're invited to Pointer", spy.Sent[0].Subject);
+        Assert.DoesNotContain("workspace", spy.Sent[0].Html, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task Create_WithEmail_WorkspaceNameWithMarkup_IsHtmlEncodedInBody()
+    {
+        var dbName = Guid.NewGuid().ToString();
+        var (tenant, roleId) = SeedTenant(dbName, "<b>Acme</b>");
+        var admin = new FakeCurrentUser
+        {
+            Id = Guid.NewGuid(),
+            TenantId = tenant,
+            IsAdmin = true,
+        };
+        using var db = BuildContext(admin, dbName);
+        var spy = new SpyEmailService();
+        var svc = BuildService(admin, db, spy);
+
+        var result = await svc.CreateAsync(
+            new CreateInviteRequest { RoleId = roleId, Email = "new@invitee.com" }
+        );
+
+        Assert.True(result.IsSuccess);
+        Assert.Single(spy.Sent);
+        Assert.DoesNotContain("<b>Acme</b> workspace", spy.Sent[0].Html);
+        Assert.Contains("&lt;b&gt;Acme&lt;/b&gt;", spy.Sent[0].Html);
     }
 
     [Fact]
@@ -1575,6 +1678,40 @@ public class InviteServiceTests
             Pointer.Application.Common.QuickAccessTokenGenerator.Hash(rawToken),
             link.TokenHash
         );
+    }
+
+    [Fact]
+    public async Task QuickAccess_Create_WithEmailEnabled_BodyNamesTheWorkspace()
+    {
+        var dbName = Guid.NewGuid().ToString();
+        var (tenant, _) = SeedTenant(dbName, "Acme Inc");
+        var clientRoleId = SeedQuickAccessRole(dbName, tenant);
+        var projectId = SeedProject(dbName, tenant, "https://client.example.com");
+
+        var admin = new FakeCurrentUser
+        {
+            Id = Guid.NewGuid(),
+            TenantId = tenant,
+            IsAdmin = true,
+        };
+        using var db = BuildContext(admin, dbName);
+        var spy = new SpyEmailService();
+        var svc = BuildService(admin, db, spy, settings: new QuickAccessEmailEnabledSettings());
+
+        var result = await svc.CreateAsync(
+            new CreateInviteRequest
+            {
+                RoleId = clientRoleId,
+                Email = "client@acme.com",
+                ProjectId = projectId,
+            }
+        );
+
+        Assert.True(result.IsSuccess);
+        Assert.True(result.Data!.EmailSent);
+        Assert.Single(spy.Sent);
+        Assert.Equal("You're invited to review Acme App", spy.Sent[0].Subject); // subject unchanged
+        Assert.Contains("Acme Inc", spy.Sent[0].Html); // body names the workspace
     }
 
     [Fact]

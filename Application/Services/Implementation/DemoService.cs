@@ -107,6 +107,9 @@ public class DemoService : IDemoService
         var publicId = Guid.NewGuid();
         var email = $"demo-{slug}@demo.pointer";
         var password = Guid.NewGuid().ToString("N")[..12] + "Aa1!";
+        // Minted fresh right below — not the DB-03 placeholder, so it always names the workspace in
+        // the ready-email (no extra lookup needed: we already hold the name we just chose for it).
+        const string demoWorkspaceName = "Demo Workspace";
 
         var demoUser = new User
         {
@@ -127,7 +130,7 @@ public class DemoService : IDemoService
             new Workspace
             {
                 Id = publicId,
-                Name = "Demo Workspace",
+                Name = demoWorkspaceName,
                 CreatedAt = DateTime.UtcNow,
                 CreatedBy = publicId,
             }
@@ -213,7 +216,15 @@ public class DemoService : IDemoService
         var emailSent = await _emailService.SendAsync(
             recipientEmail,
             $"Your {demoProductName} demo is ready",
-            BuildDemoEmailHtml(email, password, project.Key, serverUrl, expiresAt, demoProductName)
+            BuildDemoEmailHtml(
+                email,
+                password,
+                project.Key,
+                serverUrl,
+                expiresAt,
+                demoProductName,
+                demoWorkspaceName
+            )
         );
 
         // g. Record one demo against this email for today's per-email limit.
@@ -351,15 +362,22 @@ public class DemoService : IDemoService
         string projectKey,
         string serverUrl,
         DateTime expiresUtc,
-        string productName
+        string productName,
+        string? workspaceName = null
     )
     {
         var snippet =
             $"&lt;script src=\"{serverUrl}/widget.js\" defer&gt;&lt;/script&gt;<br/>"
             + $"&lt;pointer-feedback project=\"{projectKey}\" server=\"{serverUrl}\"&gt;&lt;/pointer-feedback&gt;";
+        // workspaceName is RAW (not yet encoded) — null (never the case for the current mint point,
+        // which always names it "Demo Workspace") falls back to the pre-existing wording.
+        var workspaceClause =
+            workspaceName != null
+                ? $", <b>{System.Net.WebUtility.HtmlEncode(workspaceName)}</b>,"
+                : string.Empty;
         return $@"<div style=""font-family:system-ui,Segoe UI,Roboto,sans-serif;color:#0f172a;line-height:1.6"">
   <h2 style=""margin:0 0 8px"">Your {productName} demo is ready 🐕</h2>
-  <p style=""color:#475569;margin:0 0 16px"">This demo workspace expires on {expiresUtc:yyyy-MM-dd HH:mm} UTC.</p>
+  <p style=""color:#475569;margin:0 0 16px"">This demo workspace{workspaceClause} expires on {expiresUtc:yyyy-MM-dd HH:mm} UTC.</p>
   <table style=""border-collapse:collapse;font-size:14px"">
     <tr><td style=""padding:4px 12px 4px 0;color:#475569"">Project key</td><td><code>{projectKey}</code></td></tr>
     <tr><td style=""padding:4px 12px 4px 0;color:#475569"">Widget login</td><td><code>{login}</code></td></tr>

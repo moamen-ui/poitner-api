@@ -355,8 +355,17 @@ public class SuggestionService : ISuggestionService
 
             if (type == NotificationType.SuggestionSubmitted)
             {
-                var subject = "New predefined-prompt suggestion for review";
+                // One lookup per send; null (missing row or still the DB-03 placeholder) omits the
+                // workspace mention from both the subject and the body.
+                var workspaceName = await WorkspaceNameResolver.ResolveForEmailAsync(_unitOfWork, project.OwnerId);
+                var subject = workspaceName != null
+                    ? $"New predefined-prompt suggestion for review — {workspaceName}"
+                    : "New predefined-prompt suggestion for review";
+                var workspaceLine = workspaceName != null
+                    ? $"<p>Workspace: <b>{System.Net.WebUtility.HtmlEncode(workspaceName)}</b></p>"
+                    : string.Empty;
                 var html = $"<p>A stakeholder suggested a predefined prompt for project <b>{project.Name}</b>.</p>" +
+                           workspaceLine +
                            "<p>Review it in your Pointer dashboard.</p>";
 
                 foreach (var admin in admins)

@@ -191,10 +191,20 @@ public class UserService : IUserService
         var approveBrand = await _branding.BuildResponseAsync("", new HashSet<string>());
         var approveProductName = approveBrand.ProductName;
         var approveAppUrl = approveBrand.Urls.App.TrimEnd('/');
-        await SafeSendAsync(user.Email, $"Your {approveProductName} account is approved",
+        // One lookup per send; null (missing row or still the DB-03 placeholder) falls back to the
+        // pre-existing, workspace-agnostic wording.
+        var approveWorkspaceName = await WorkspaceNameResolver.ResolveForEmailAsync(_unitOfWork, user.OwnerId);
+        var approveSubject = approveWorkspaceName != null
+            ? $"Your {approveProductName} account for {approveWorkspaceName} is approved"
+            : $"Your {approveProductName} account is approved";
+        var approveWorkspaceLine = approveWorkspaceName != null
+            ? $@"<p>You now have access to the <b>{System.Net.WebUtility.HtmlEncode(approveWorkspaceName)}</b> workspace.</p>"
+            : string.Empty;
+        await SafeSendAsync(user.Email, approveSubject,
             $@"<div style=""font-family:system-ui,sans-serif;color:#0f172a;line-height:1.6"">
   <h2 style=""margin:0 0 8px"">You're in ✅</h2>
   <p>Your {approveProductName} account (<b>{user.Email}</b>) has been approved and is now active.</p>
+  {approveWorkspaceLine}
   <p><a href=""{approveAppUrl}"" style=""color:#2563eb"">Sign in to {approveProductName} →</a></p>
 </div>");
 
@@ -218,10 +228,18 @@ public class UserService : IUserService
 
         var rejectBrand = await _branding.BuildResponseAsync("", new HashSet<string>());
         var rejectProductName = rejectBrand.ProductName;
-        await SafeSendAsync(user.Email, $"Your {rejectProductName} account request",
+        var rejectWorkspaceName = await WorkspaceNameResolver.ResolveForEmailAsync(_unitOfWork, user.OwnerId);
+        var rejectSubject = rejectWorkspaceName != null
+            ? $"Your {rejectProductName} account request for {rejectWorkspaceName}"
+            : $"Your {rejectProductName} account request";
+        var rejectWorkspaceLine = rejectWorkspaceName != null
+            ? $@"<p>This was for the <b>{System.Net.WebUtility.HtmlEncode(rejectWorkspaceName)}</b> workspace.</p>"
+            : string.Empty;
+        await SafeSendAsync(user.Email, rejectSubject,
             $@"<div style=""font-family:system-ui,sans-serif;color:#0f172a;line-height:1.6"">
   <p>Thanks for your interest in {rejectProductName}. Unfortunately your account request for
   <b>{user.Email}</b> was not approved at this time.</p>
+  {rejectWorkspaceLine}
 </div>");
 
         var role = await GetActiveRoleAsync(user.RoleId);

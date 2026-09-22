@@ -291,4 +291,75 @@ public class SuggestionChangesRequestedTests
         Assert.Equal("A1", row.Text);
         Assert.Equal(SuggestionStatus.Rejected, row.Status);
     }
+
+    // ── Suggestion-submitted email names the workspace ─────────────────────────
+
+    private sealed class CapturingEmail : IEmailService
+    {
+        public List<(string To, string Subject, string Html)> Sent { get; } = new();
+
+        public Task<bool> SendAsync(string to, string subject, string htmlBody, CancellationToken ct = default)
+        {
+            Sent.Add((to, subject, htmlBody));
+            return Task.FromResult(true);
+        }
+    }
+
+    // Same as SeedProjectWithAdmin, but also names the tenant's workspace so the "New predefined-
+    // prompt suggestion" admin email can be asserted against it.
+    private static (Guid tenant, int projectId, Guid creator, Guid adminId) SeedProjectWithAdminAndWorkspace(
+        string dbName, string workspaceName, string key = "wsproj")
+    {
+        var (tenant, projectId, creator, adminId) = SeedProjectWithAdmin(dbName, key);
+        using var seed = BuildContext(new FakeCurrentUser { IsSuperAdmin = true }, dbName);
+        seed.Workspaces.Add(new Workspace
+        {
+            Id = tenant,
+            Name = workspaceName,
+            CreatedAt = DateTime.UtcNow,
+            CreatedBy = tenant,
+        });
+        seed.SaveChanges();
+        return (tenant, projectId, creator, adminId);
+    }
+
+    [Fact]
+    public async Task Suggest_NamedWorkspace_AdminEmail_NamesTheWorkspace()
+    {
+        var dbName = Guid.NewGuid().ToString();
+        var (tenant, pid, _, _) = SeedProjectWithAdminAndWorkspace(dbName, "Acme Inc");
+
+        var suggester = new FakeCurrentUser { Id = Guid.NewGuid(), TenantId = tenant };
+        var db = BuildContext(suggester, dbName);
+        var uow = new UnitOfWork(db);
+        var email = new CapturingEmail();
+        var svc = new SuggestionService(uow, suggester, email, new NotificationService(uow, suggester));
+
+        var create = await svc.SuggestAsync(pid, new CreateSuggestionRequest { Text = "Idea", Prompt = "P" });
+        Assert.True(create.IsSuccess);
+
+        var sent = Assert.Single(email.Sent);
+        Assert.Contains("Acme Inc", sent.Subject);
+        Assert.Contains("Acme Inc", sent.Html);
+    }
+
+    [Fact]
+    public async Task Suggest_PlaceholderWorkspace_AdminEmail_FallsBackToOldWording()
+    {
+        var dbName = Guid.NewGuid().ToString();
+        var (tenant, pid, _, _) = SeedProjectWithAdminAndWorkspace(dbName, Workspace.PlaceholderName);
+
+        var suggester = new FakeCurrentUser { Id = Guid.NewGuid(), TenantId = tenant };
+        var db = BuildContext(suggester, dbName);
+        var uow = new UnitOfWork(db);
+        var email = new CapturingEmail();
+        var svc = new SuggestionService(uow, suggester, email, new NotificationService(uow, suggester));
+
+        var create = await svc.SuggestAsync(pid, new CreateSuggestionRequest { Text = "Idea", Prompt = "P" });
+        Assert.True(create.IsSuccess);
+
+        var sent = Assert.Single(email.Sent);
+        Assert.Equal("New predefined-prompt suggestion for review", sent.Subject);
+        Assert.DoesNotContain("Workspace:", sent.Html);
+    }
 }

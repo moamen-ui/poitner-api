@@ -68,6 +68,18 @@ public class AuthService : IAuthService
                 var resetAppUrl = resetBrand.Urls.App.TrimEnd('/');
                 var token = _resetTokens.Create(user.PublicId, user.SecurityStamp);
                 var link = $"{resetAppUrl}/reset?token={Uri.EscapeDataString(token)}";
+                // Subject stays product-only for a reset email (it is sent before the recipient is
+                // known to be who they claim, so it should read the same for everyone); the workspace
+                // name, when there is one to name, only appears in the body. One lookup per send;
+                // null (missing row or still the DB-03 placeholder) omits the line entirely.
+                var resetWorkspaceName = await WorkspaceNameResolver.ResolveForEmailAsync(
+                    _unitOfWork,
+                    user.OwnerId
+                );
+                var resetWorkspaceLine =
+                    resetWorkspaceName != null
+                        ? $@"<p style=""color:#475569;font-size:13px"">This is for your account in the <b>{System.Net.WebUtility.HtmlEncode(resetWorkspaceName)}</b> workspace.</p>"
+                        : string.Empty;
                 try
                 {
                     await _emailService.SendAsync(
@@ -77,6 +89,7 @@ public class AuthService : IAuthService
   <h2 style=""margin:0 0 8px"">Reset your password</h2>
   <p>Click the link below to choose a new password. It expires in 30 minutes.</p>
   <p><a href=""{link}"" style=""color:#2563eb"">Reset my password &rarr;</a></p>
+  {resetWorkspaceLine}
   <p style=""color:#94a3b8;font-size:12px"">If you didn't request this, you can safely ignore this email.</p>
 </div>"
                     );
@@ -158,12 +171,23 @@ public class AuthService : IAuthService
         await _unitOfWork.SaveChangesAsync();
 
         var brand = await _branding.BuildResponseAsync("", new HashSet<string>());
+        // Subject stays product-only; the workspace name (when there is one to name) only appears in
+        // the body. One lookup per send; null (missing row or still the DB-03 placeholder) falls back
+        // to the pre-existing wording.
+        var changeWorkspaceName = await WorkspaceNameResolver.ResolveForEmailAsync(
+            _unitOfWork,
+            user.OwnerId
+        );
         try
         {
             await _emailService.SendAsync(
                 user.Email,
                 $"Your {brand.ProductName} password was changed",
-                BuildPasswordChangedEmailHtml(user.DisplayName, brand.ProductName)
+                BuildPasswordChangedEmailHtml(
+                    user.DisplayName,
+                    brand.ProductName,
+                    changeWorkspaceName
+                )
             );
         }
         catch
@@ -188,12 +212,24 @@ public class AuthService : IAuthService
             .FirstOrDefaultAsync();
     }
 
-    private static string BuildPasswordChangedEmailHtml(string displayName, string productName) =>
-        $@"<div style=""font-family:system-ui,sans-serif;color:#0f172a;line-height:1.6"">
+    // workspaceName is RAW (not yet encoded) — null means omit (missing row, super-admin/global user,
+    // or still the DB-03 placeholder).
+    private static string BuildPasswordChangedEmailHtml(
+        string displayName,
+        string productName,
+        string? workspaceName = null
+    )
+    {
+        var workspaceClause =
+            workspaceName != null
+                ? $" in the <b>{System.Net.WebUtility.HtmlEncode(workspaceName)}</b> workspace"
+                : string.Empty;
+        return $@"<div style=""font-family:system-ui,sans-serif;color:#0f172a;line-height:1.6"">
   <h2 style=""margin:0 0 8px"">Your password was changed</h2>
-  <p style=""margin:0 0 16px"">Hi {displayName}, this confirms your {productName} account password was just changed. You've been signed out of all devices.</p>
+  <p style=""margin:0 0 16px"">Hi {displayName}, this confirms your {productName} account password{workspaceClause} was just changed. You've been signed out of all devices.</p>
   <p style=""color:#94a3b8;font-size:12px"">If you didn't make this change, reset your password immediately and contact your workspace admin.</p>
 </div>";
+    }
 
     public async Task<Result<LoginResponse>> LoginAsync(LoginRequest request)
     {
