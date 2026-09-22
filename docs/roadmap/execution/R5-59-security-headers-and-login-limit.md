@@ -278,3 +278,37 @@ each persona in exactly once (≤ 10/15 min per e-mail, comfortably under the po
 in the same pass) and `e2e/api/origins.spec.mjs`/`e2e/api/tenant-invite.spec.mjs` for two further
 spec-side fixes unrelated to this policy (a pre-existing wildcard-app-url seed collision, and an
 `emailSent` assertion that depends on a mail transport CI does not configure).
+
+## 12. Amendment 2026-09-23 — password login limits FAILED attempts, not logins
+
+**Why.** The shipped `password-login` fixed-window policy (10 requests / 15 min per normalised e-mail)
+counted successful logins too. The first full e2e run on `main` proved the consequence: browser-driven
+specs sign in through the real form and the same account hit 429 after ten sign-ins; a stakeholder
+signing in from several devices, or a QA person re-testing a flow, would hit exactly the same wall.
+Brute-force protection must count failures.
+
+**Design (replaces §3's policy for `POST /api/auth/login` only; the Caddy headers and `security.txt`
+are unchanged).**
+1. Remove `[EnableRateLimiting("password-login")]` from `AuthController.Login`; delete the
+   `password-login` policy and its tests. Add `[EnableRateLimiting("login-ip")]` instead: a lenient
+   per-IP fixed window (60 requests / 1 min, `QueueLimit = 0`) as a flood floor — partition on
+   `ClientIp` exactly like the existing `signup` policy.
+2. New `ILoginAttemptLimiter` (Application) + `LoginAttemptLimiter` (Infrastructure or API/Auth) backed
+   by `IMemoryCache`: key `login-fail:<normalised e-mail>`, sliding 15-minute window, threshold 10.
+   `AuthService.LoginAsync`: before verifying the password call `IsLockedAsync(email)` → if locked
+   return `Result.Failure(MessageKeys.Auth.TooManyAttempts)` mapped to HTTP **429** with
+   `Retry-After: <seconds left>`; on wrong password call `RecordFailureAsync(email)`; on success call
+   `ResetAsync(email)`. Unknown e-mails count as failures too (no enumeration difference).
+   Configuration `Auth:LoginLockout:{Threshold=10, WindowMinutes=15}`; a single-process in-memory store
+   is acceptable today (one API instance); note the Redis swap point for the future.
+3. Response shape: the existing `Result` envelope with `status: "locked"`; the dashboard shows the
+   existing generic error plus the retry hint (no new client type — `LoginResponse.Status` already
+   carries `"disabled"`, add `"locked"`).
+4. Tests: `Tests/LoginAttemptLimiterTests.cs` (10 failures → locked; success resets; window expiry
+   unlocks; e-mail normalisation shares the counter; unknown e-mail counts) and update
+   `Tests/AuthRateLimitingTests.cs` (`Login_HasPasswordLoginRateLimit` → `Login_HasIpFloorRateLimit`
+   asserting `login-ip`; keep `LoginWithKey_HasLoginRateLimit`).
+5. Acceptance: 10 wrong passwords for one e-mail → the 11th returns 429 with `Retry-After`, while a
+   different e-mail from the same IP still gets 400; one correct login after 9 failures resets the
+   counter; 61 requests in a minute from one IP → 429 regardless of e-mail; e2e widget phase green.
+6. Release: ordinary deploy (`scripts/deploy-api.sh`); no migration.
