@@ -3,6 +3,9 @@
 > Verified against the code on 2026-09-11. Paths are repo-relative. If a line number drifts, search
 > the symbol. **Implementers: read this before touching anything; do not re-derive it.**
 
+> `/api/v1/*` is a supported alias for `/api/*` (R5-68). All examples in this document use the
+> unversioned `/api/*` prefix.
+
 ## 1. Auth
 
 | Endpoint | File | Request | Response |

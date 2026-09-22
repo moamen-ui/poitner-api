@@ -68,6 +68,8 @@ public class OnDiskContractTests
         "/pointer-init.md",
         "/pointer.sh",
         "/vendor/snapdom.js",
+        // API alias (R5-68) — rewrites /api/v1/* to /api/*
+        "/api/v1/",
         // Skill directories
         ".claude/skills/pointer-init/",
         ".claude/skills/pointer-feedback/",

@@ -189,6 +189,29 @@ fwd.KnownNetworks.Clear();
 fwd.KnownProxies.Clear();
 app.UseForwardedHeaders(fwd);
 
+// R5-68: /api/v1/* → /api/* rewrite. Lets external docs declare /api/v1 as canonical while all
+// controllers stay at /api. Swagger is unaffected (it reads from the controller routes, not
+// from the request path).
+//
+// Must run before endpoint routing matches the request: with no explicit UseRouting() call
+// elsewhere in this pipeline, WebApplication auto-inserts route matching as the very first
+// middleware (ahead of anything added via app.Use), so a path rewrite placed after that point
+// would be invisible to routing (the match already happened against the un-rewritten path,
+// producing a 404 downstream even though the path looks right by the time MapControllers runs).
+// The explicit app.UseRouting() call right after this middleware pins matching to occur *here*
+// instead, so it sees the rewritten path; endpoint execution still runs at app.MapControllers()
+// below, unaffected by this being explicit.
+app.Use(async (ctx, next) =>
+{
+    var path = ctx.Request.Path;
+    if (path.StartsWithSegments("/api/v1", out var rest))
+    {
+        ctx.Request.Path = "/api" + rest;
+    }
+    await next();
+});
+app.UseRouting();
+
 // Global exception handler (early in the pipeline): map unhandled exceptions to the Result
 // envelope so no error escapes as a raw 500 with a leaky text body. An UnauthorizedAccessException
 // (e.g. an authenticated request whose token carries no valid subject — see
