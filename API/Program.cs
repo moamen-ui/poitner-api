@@ -98,7 +98,6 @@ string[] dashboardOrigins =
 [
     "https://app.pointer.moamen.work",
     "https://app-react.pointer.moamen.work",
-    "https://app-vue.pointer.moamen.work",
     "https://demo.pointer.moamen.work",
     "https://pointer.moamen.work",
 ];

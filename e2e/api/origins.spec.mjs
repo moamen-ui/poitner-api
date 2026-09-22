@@ -321,7 +321,10 @@ test('R1-05-07 — dashboard-origin exemption', async () => {
   const parentId = parent?.id;
   expect(parentId, 'Parent comment with Production environment must exist on e2e-beta').toBeTruthy();
 
-  // 1. Reply with Origin: https://app.pointer.moamen.work (BrandUrlApp default) -> 200 (AC-4)
+  // 1. Reply with Origin: https://app.pointer.moamen.work (BrandUrlApp default, also the sole
+  //    Security:TrustedDashboardOrigins default entry) -> 200 (AC-4). AC-8's original second entry,
+  //    https://app-angular.pointer.moamen.work, was removed from that default when the Angular
+  //    dashboard (and its DNS host) was retired 2026-09-15, so that sub-case no longer applies.
   const r1 = await raw('POST', `/api/comments/${parentId}/replies`, {
     token: wsAdmin.token,
     body: { body: 'reply from default dashboard app' },
@@ -329,20 +332,12 @@ test('R1-05-07 — dashboard-origin exemption', async () => {
   });
   expect(r1.status).toBe(200);
 
-  // 2. Reply with Origin: https://app-angular.pointer.moamen.work (Security:TrustedDashboardOrigins default) -> 200 (AC-8)
+  // 2. Look-alike negative: https://app.pointer.moamen.work.evil.example -> 403
+  // Normalized exact comparison prevents suffix bypasses.
   const r2 = await raw('POST', `/api/comments/${parentId}/replies`, {
     token: wsAdmin.token,
-    body: { body: 'reply from angular dashboard app' },
-    headers: { Origin: 'https://app-angular.pointer.moamen.work' },
-  });
-  expect(r2.status).toBe(200);
-
-  // 3. Look-alike negative: https://app-angular.pointer.moamen.work.evil.example -> 403
-  // Normalized exact comparison prevents suffix bypasses.
-  const r3 = await raw('POST', `/api/comments/${parentId}/replies`, {
-    token: wsAdmin.token,
     body: { body: 'reply from evil lookalike' },
-    headers: { Origin: 'https://app-angular.pointer.moamen.work.evil.example' },
+    headers: { Origin: 'https://app.pointer.moamen.work.evil.example' },
   });
-  expect(r3.status).toBe(403);
+  expect(r2.status).toBe(403);
 });
