@@ -9,10 +9,17 @@ Rules: R1, R2, R3, R5, R7, R8, R9, R10, R11, R13, R14 (amended by this doc), R16
 backfill, a new unique index, and the code switch of every per-workspace read from `users.owner_id`
 /`users.role_id` to memberships). Three migrations, one release, explicit R7 deploy path. The old
 columns `users.owner_id` and `users.role_id` **stay** and are still written at identity creation;
-their removal is a later contract doc (DB-11d, not yet written).
+their removal is a later contract doc (DB-11e, not yet written; DB-11d is the change-e-mail code doc).
 **Status 2026-09-22: written; not implemented.** Owner decisions D1–D7 and D13 have defaults (§3.9);
 none blocks implementation, but the **production census (§9 step 1) must be pasted to the owner
 before the deploy** because D1/D2 only matter if it shows duplicates.
+**Amended 2026-09-22 (evening)** after the cross-review (`docs/roadmap/meetings/2026-09-22-foundations/04-chair-synthesis.md`
+§1 rows D1/D7/D8 = GLM A1/A7/A8). Inside this doc the amendments are cited by the reviewer's finding id, because
+D1–D13 here are **owner decisions** (§3.9): **GLM A1** the unique identity is enforced by the database on
+`lower(email)` (expression index, raw SQL) and every write path goes through one `EmailNormalizer` (§3.3a);
+**GLM A7** block 2.4 uses `DISTINCT ON` so a merged pair of soft-deleted rows yields one ended membership;
+**GLM A8** a wrong password on a merged identity suggests "Forgot password" (§3.5 Login). Migration 3
+therefore carries the `index change` marker too (§3.2, §4).
 
 Staging: **DB-11a ships alone** (this doc) → [DB-11b](DB-11b-login-workspace-picker-and-switch.md)
 (login picker, `switch-workspace`, `/me` memberships; code only) →
@@ -123,6 +130,16 @@ founding admin is just the first membership.
 - DB-02 guard (`Tests/MigrationSafetyTests.cs:75-82,158-172`): risky ops regex includes `DropIndex`
   and `.Sql(`; marker regex `// DB-RULES: (R2 contract|R3 backfill|index change|R4 constraint) approved yyyy-mm-dd by <non-space>`;
   marker ⇔ `[ContractMigration("…")]` (`Infrastructure/Migrations/ContractMigrationAttribute.cs`).
+  Because the regex matches `.Sql(` inside `Up()`, **any migration whose `Up()` calls `migrationBuilder.Sql`
+  needs a marker + attribute** — Migration 3 included (GLM A1).
+- **E-mail normalisation today (GLM A1):** ten hand-written `.Trim().ToLower()` calls and no shared routine —
+  `AuthService.cs:50,236,344,454`, `UserService.cs:62`, `DemoService.cs:267`, `InviteService.cs:154,518,799`,
+  `API/Seed/AdminSeeder.cs:128` (and `:139` compares `u.Email.ToLower() == adminEmail`). Static-normaliser
+  precedent: `Application/Common/OriginNormalizer.cs`. `UserMapping.cs:26-30` is the only e-mail index;
+  EF Core 8 `HasIndex` has no expression-index API, so an index on `lower(email)` is raw SQL and is **not**
+  in the model (`AppDbContextModelSnapshot.cs` does not change for it). DB-10 CI
+  (`.github/workflows/db-migrations.yml:46-58`) applies every migration from empty, round-trips the newest
+  `Down()`/`Up()`, and has `psql` on the runner (`:51`).
 - Test fixtures: InMemory `AppDbContext` + `FakeCurrentUser` (`Tests/WorkspaceAdminOwnershipTests.cs:24-46`,
   `UserGovernanceTests.cs:20-60` with `IdentityHasher`, `NoopEmail`, `NoopBrandingService`); Sqlite `TestDb`
   (`Tests/UsageEventFirstCommentTests.cs:43-62`; `SqliteBtrimFunctionInterceptor` in `Tests/TestDoubles.cs:40`);
@@ -176,11 +193,18 @@ No query filter (mapping comment: "lookup table keyed by a uuid the caller alrea
 
 **`users`** — one new column: `MergedIntoUserId` / `merged_into_user_id int NULL`, FK `users(id)`
 Restrict, `fk_users_merged_into_user`. Non-null ⇔ this row was merged by §3.3 and is soft-deleted.
-New navigation `ICollection<WorkspaceMembership> Memberships`. New unique index (Migration 3):
-`ux_users_email_live` unique `(email) WHERE deleted_at IS NULL`. **Keep** `ux_users_email_owner_live`
+New navigation `ICollection<WorkspaceMembership> Memberships`. New unique index (Migration 3, **GLM A1**):
+`ux_users_email_live` — `CREATE UNIQUE INDEX … ON users (lower(email)) WHERE deleted_at IS NULL`, an
+**expression** index written with `migrationBuilder.Sql` because EF cannot express `lower()` in
+`HasIndex`. The EF model keeps **no** index for it; `UserMapping.cs` gets a two-line comment above the
+`Email` property ("`ux_users_email_live` on `lower(email)` is raw SQL in migration
+`*_AddUsersEmailLiveUniqueIndex`; not modelled — DB-11a GLM A1") so nobody "fixes" the snapshot. The DB-10 CI
+job applies it from empty and round-trips its `Down()`/`Up()`, which is the mechanical check that the raw
+SQL and the model agree. Application code still normalises (§3.3a) so equality lookups hit the row; the
+database is the authority. **Keep** `ux_users_email_owner_live`
 and the `(Email, OwnerId)` mapping lines — dropping them is the contract doc's job. New doc-comments
 on `OwnerId` and `RoleId`: "**Legacy (DB-11a).** Written once at identity creation (first workspace /
-super-admin role); never read by application code after DB-11a. Dropped by DB-11d." On `IsActive`:
+super-admin role); never read by application code after DB-11a. Dropped by DB-11e." On `IsActive`:
 "Identity-level switch (false only after erase/merge). Per-workspace enable/disable is
 `WorkspaceMembership.IsActive`." On `ApprovalStatus`: "Legacy for non-super-admins; per-workspace
 approval is `WorkspaceMembership.ApprovalStatus`."
@@ -222,8 +246,9 @@ Because of the `DropIndex`: `[ContractMigration("DB-11a")]` two lines above the 
 above `Up(`, verbatim:
 `// DB-RULES: index change approved 2026-09-22 by Moamen (owner; requirement "one identity, memberships per workspace, keys per membership", relayed by the orchestrator; docs/db/execution/DB-11a-identity-and-workspace-memberships.md)`
 `Down()` is the generated inverse (drops both tables, the column, restores the old key index).
-**Two-scaffold recipe (GLM B4):** write the `ux_users_email_live` mapping line commented out with the
-prefix `// DB-11a step 3: ` so this scaffold does not contain it.
+**GLM A1:** the model carries **no** `HasIndex` for `ux_users_email_live`, so this scaffold must contain no
+index on `users.email` other than the existing `ux_users_email_owner_live`; if it does, a mapping edit
+leaked — stop and report.
 
 **Migration 2 — `MergeSameEmailIdentitiesAndBackfillMemberships`** (scaffolded with **no** model change →
 empty `Up()`/`Down()`; fill `Up()` by hand with the SQL blocks below, in order, one `migrationBuilder.Sql(@"…")`
@@ -272,9 +297,16 @@ ON CONFLICT (alias_public_id) DO NOTHING;
 --     pointing at the canonical identity. A soft-deleted row becomes an ENDED membership
 --     (left_at = deleted_at, reason Removed=1). Runs BEFORE 2.6 so merged rows are still live here.
 --     NOT EXISTS makes a second run a no-op. created_by = the all-zero uuid (system).
+--     GLM A7: DISTINCT ON (identity, workspace, live?) — several pre-merge rows of the same person
+--     in the same workspace (two soft-deleted rows; or a live pair differing only in e-mail case, which
+--     ux_users_email_owner_live did not catch) collapse to ONE membership per (identity, workspace, live?).
+--     Live partition: the canonical row's own membership wins, else the oldest. Ended partition: the most
+--     recently ended row wins. Without this the live pair would violate ux_workspace_memberships_user_workspace_live
+--     and the migration would fail with a unique-violation instead of a clean ABORT.
 INSERT INTO workspace_memberships
   (user_id, owner_id, role_id, is_active, approval_status, security_stamp, joined_at, left_at, left_reason, invite_id, created_at, created_by)
-SELECT coalesce(m.canonical_id, u.id), u.owner_id, u.role_id,
+SELECT DISTINCT ON (coalesce(m.canonical_id, u.id), u.owner_id, (u.deleted_at IS NULL))
+       coalesce(m.canonical_id, u.id), u.owner_id, u.role_id,
        (u.is_active AND u.deleted_at IS NULL), u.approval_status, gen_random_uuid(), u.created_at,
        CASE WHEN u.deleted_at IS NOT NULL THEN u.deleted_at END,
        CASE WHEN u.deleted_at IS NOT NULL THEN 1 END,
@@ -284,7 +316,9 @@ WHERE u.owner_id IS NOT NULL
   AND NOT EXISTS (SELECT 1 FROM workspace_memberships w
                   WHERE w.user_id = coalesce(m.canonical_id, u.id) AND w.owner_id = u.owner_id
                     AND w.deleted_at IS NULL
-                    AND (w.left_at IS NULL) = (u.deleted_at IS NULL));
+                    AND (w.left_at IS NULL) = (u.deleted_at IS NULL))
+ORDER BY coalesce(m.canonical_id, u.id), u.owner_id, (u.deleted_at IS NULL),
+         (u.id = coalesce(m.canonical_id, u.id)) DESC, u.deleted_at DESC NULLS LAST, u.created_at, u.id;
 ```
 ```sql
 -- 2.4b invite_id for quick-access memberships (the only ones we can attribute today).
@@ -348,9 +382,16 @@ END $$;
 DROP TABLE IF EXISTS db11_merge;
 ```
 
-**Migration 3 — `AddUsersEmailLiveUniqueIndex`** (scaffolded after removing the `// DB-11a step 3: `
-prefix): exactly one `CreateIndex("ux_users_email_live", "users", "email", unique: true, filter: "deleted_at IS NULL")`
-and its `DropIndex` in `Down()`. No marker, no attribute (R13 still applies).
+**Migration 3 — `AddUsersEmailLiveUniqueIndex`** (**GLM A1**; scaffolded with **no** model change → empty
+`Up()`/`Down()`, filled by hand). `Up()` is exactly one call:
+```csharp
+migrationBuilder.Sql("CREATE UNIQUE INDEX IF NOT EXISTS ux_users_email_live ON users (lower(email)) WHERE deleted_at IS NULL;");
+```
+`Down()` is exactly one call: `migrationBuilder.Sql("DROP INDEX IF EXISTS ux_users_email_live;");`.
+Plain (not `CONCURRENTLY`): `users` is far below the R4 threshold. Because `Up()` calls `.Sql(`, the
+DB-02 guard requires `[ContractMigration("DB-11a")]` on the class and, on the line above `Up(`, verbatim:
+`// DB-RULES: index change approved 2026-09-22 by Moamen (owner; requirement "one identity per e-mail", relayed by the orchestrator; docs/db/execution/DB-11a-identity-and-workspace-memberships.md)`
+It runs only if 2.7 did not abort, so `GROUP BY lower(email)` duplicates are already known to be zero.
 
 **Every existing row, after the three migrations:** `users` — unchanged except: merged duplicates
 (if any) are soft-deleted with `merged_into_user_id` set; the canonical row may have a new
@@ -374,6 +415,16 @@ SELECT w.id, w.name, count(m.*) FILTER (WHERE m.left_at IS NULL AND r.name = 'Wo
   FROM workspaces w LEFT JOIN workspace_memberships m ON m.owner_id = w.id LEFT JOIN roles r ON r.id = m.role_id
   GROUP BY w.id, w.name;                                                                              -- informational: 0 live_admins = admin-less (owner question, not an abort)
 SELECT indexname FROM pg_indexes WHERE tablename = 'api_keys' AND indexname LIKE 'ux_api_keys_active%';  -- ux_api_keys_active_per_membership only
+SELECT indexdef FROM pg_indexes WHERE indexname = 'ux_users_email_live';                                -- … UNIQUE INDEX … ON public.users USING btree (lower((email)::text)) WHERE (deleted_at IS NULL)
+```
+GLM A1 negative check on the rehearsal copy (must **fail** with `duplicate key value violates unique constraint "ux_users_email_live"`;
+wrap in a transaction and roll back):
+```sql
+BEGIN;
+INSERT INTO users (public_id, email, password_hash, display_name, role_id, is_active, approval_status, security_stamp, is_demo, "DemoExtended", created_at, created_by)
+SELECT gen_random_uuid(), upper(email), password_hash, 'dup', role_id, true, 1, gen_random_uuid(), false, false, now(), '00000000-0000-0000-0000-000000000000'
+FROM users WHERE deleted_at IS NULL LIMIT 1;   -- expected: ERROR … ux_users_email_live
+ROLLBACK;
 ```
 
 ### 3.3 Identity creation and "join" — the shared routine
@@ -383,14 +434,14 @@ auto-registers by the `Service` suffix, `Application/DependencyInjection.cs:11-1
 `IgnoreQueryFilters()` inside — they run on anonymous paths or are scoped by an explicit workspace id):
 
 ```csharp
-Task<User?> FindIdentityByEmailAsync(string emailNormalized);              // live row, Include(Role)
+Task<User?> FindIdentityByEmailAsync(string email);                        // live row, Include(Role); applies EmailNormalizer.Normalize itself (GLM A1) — callers may pass raw input
 Task<User?> FindIdentityByPublicIdAsync(Guid publicId);                    // live row, Include(Role)
 Task<WorkspaceMembership?> GetMembershipAsync(int userId, Guid workspaceId); // live (LeftAt == null, DeletedAt == null), Include(Role)
 Task<List<WorkspaceMembership>> ListForIdentityAsync(int userId);          // live memberships, Include(Role), workspaces not deleted
 IQueryable<WorkspaceMembership> InWorkspace(Guid workspaceId);             // IgnoreQueryFilters().Where(m => m.OwnerId == workspaceId && m.DeletedAt == null).Include(m => m.User).Include(m => m.Role)
 Task<WorkspaceMembership?> CurrentAdminAsync(Guid workspaceId);            // InWorkspace + LeftAt == null + Role.Name == "Workspace Admin"
 Task<WorkspaceMembership> JoinAsync(User identity, Guid workspaceId, Role role, ApprovalStatus status, bool isActive, int? inviteId); // builds the row (JoinedAt = UtcNow, SecurityStamp = NewGuid), AddAsync; does NOT SaveChanges
-User NewIdentity(string emailNormalized, string passwordHash, string displayName, Role firstRole, Guid firstWorkspaceId, bool passwordlessOnly = false); // PublicId = NewGuid; legacy OwnerId = firstWorkspaceId, RoleId = firstRole.Id (dual-write, never read)
+User NewIdentity(string email, string passwordHash, string displayName, Role firstRole, Guid firstWorkspaceId, bool passwordlessOnly = false); // PublicId = NewGuid; Email = EmailNormalizer.Normalize(email) (GLM A1); legacy OwnerId = firstWorkspaceId, RoleId = firstRole.Id (dual-write, never read)
 ```
 Why `InWorkspace` uses `IgnoreQueryFilters` **and** an explicit `OwnerId` predicate: an `Include(m => m.User)`
 through the filtered `User` set is exactly the kind of navigation filter EF applies inconsistently;
@@ -407,6 +458,38 @@ the explicit predicate is the isolation, and §6 test 2 proves tenant B gets not
    (or the path's existing conflict message).
 5. Else `JoinAsync(identity, workspaceId, role, status, isActive, inviteId)`. The identity's
    `DisplayName`, `PasswordHash`, preferences are **not** changed by a join.
+
+### 3.3a E-mail normalisation — one routine (GLM A1)
+
+New `Application/Common/EmailNormalizer.cs` (precedent for a static normaliser: `OriginNormalizer.cs`):
+```csharp
+namespace Pointer.Application.Common;
+
+/// <summary>
+/// The ONLY e-mail normalisation in the codebase (DB-11a, GLM A1). The database enforces one live identity per
+/// <c>lower(email)</c> (<c>ux_users_email_live</c>, expression index); this routine exists so every equality
+/// lookup finds that row and every write stores the same shape. Trim + lower-invariant. Returns null for
+/// null/whitespace so optional fields (invite e-mail lock) stay null. Never add a second normaliser —
+/// the DB-11a acceptance criteria grep for stray <c>.Trim().ToLower()</c> on e-mails.
+/// </summary>
+public static class EmailNormalizer
+{
+    public static string? Normalize(string? email) =>
+        string.IsNullOrWhiteSpace(email) ? null : email.Trim().ToLowerInvariant();
+
+    /// <summary>For required fields: normalises or returns "" (so validators, not this class, decide emptiness).</summary>
+    public static string NormalizeRequired(string? email) => Normalize(email) ?? string.Empty;
+}
+```
+Every site listed in §2 "E-mail normalisation today" replaces its hand-written expression with
+`EmailNormalizer.NormalizeRequired(request.Email)` (required fields) or `EmailNormalizer.Normalize(request.Email)`
+(nullable: `InviteService.cs:154,799`). `MembershipService.FindIdentityByEmailAsync` and `NewIdentity`
+normalise internally as well (double normalisation is idempotent). `AdminSeeder.cs:128` uses
+`NormalizeRequired`; `:139` may keep `u.Email.ToLower() ==` (after 2.6 every live e-mail is already
+lower-case, so the comparison is redundant but harmless). Postgres `lower()` and .NET `ToLowerInvariant()`
+agree on every ASCII address; for the rare non-ASCII local part the database wins (a second identity
+cannot be inserted), and the app-level lookup miss surfaces as `AccountExists`/`EmailTaken`, never as a
+duplicate.
 
 ### 3.4 JWT, current user, stamp validation
 
@@ -432,7 +515,7 @@ the explicit predicate is the isolation, and §6 test 2 proves tenant B gets not
 |---|---|---|
 | Tenant query filters | `owner_id == tenant` on 23 tables | unchanged; `workspace_memberships` joins them with the same shape; `User` filter becomes membership-based (§3.1) |
 | JWT `tenant` | `users.owner_id` | the chosen membership's `OwnerId`; chosen at login (§3.5 Login) or, in DB-11b, via `switch-workspace` |
-| Password login (`AuthService.LoginAsync`) | arbitrary row by email | identity by email → password → `PasswordlessOnly` → if `Role.IsSuperAdmin`: as today (identity `ApprovalStatus`/`IsActive`). Else `ListForIdentityAsync` → candidates = `IsActive && Approved && identity.IsActive`; **none**: any `Pending` → `"pending"`, else any `Rejected` → `"rejected"`, else `"disabled"` (DB-11b adds `"no-workspace"`); **one or more**: pick the one whose `OwnerId == identity.OwnerId` (home) if present, else the earliest `JoinedAt` → `Issue(identity, membership)` (DB-11b replaces the pick with the picker) |
+| Password login (`AuthService.LoginAsync`) | arbitrary row by email | identity by email → password → `PasswordlessOnly` → if `Role.IsSuperAdmin`: as today (identity `ApprovalStatus`/`IsActive`). Else `ListForIdentityAsync` → candidates = `IsActive && Approved && identity.IsActive`; **none**: any `Pending` → `"pending"`, else any `Rejected` → `"rejected"`, else `"disabled"` (DB-11b adds `"no-workspace"`); **one or more**: pick the one whose `OwnerId == identity.OwnerId` (home) if present, else the earliest `JoinedAt` → `Issue(identity, membership)` (DB-11b replaces the pick with the picker). **GLM A8:** when the identity exists but the password does not verify, and `Users.IgnoreQueryFilters().Any(u => u.MergedIntoUserId == identity.Id)`, return `Failure(MessageKeys.Auth.InvalidCredentialsAfterMerge)` instead of `InvalidCredentials` — the person whose password lost in 2.2 is told to use "Forgot password". Same status code and shape; the only difference is the message. (It reveals that the address exists, but only for identities that were merged — the census is expected to make this set empty.) |
 | `login-with-key` | key → user | key → identity + `key.OwnerId` → `GetMembershipAsync(user.Id, key.OwnerId)` must be live+active+Approved, else `"disabled"`; null-owner key = super admin path |
 | Magic link (`LoginWithInviteAsync`) | `link.UserId` → user, role QuickAccess | identity by `link.UserId` → membership `(identity, link.OwnerId)` live+active+Approved with `Role.QuickAccess` → `Issue(identity, membership)` |
 | `/api/auth/me` (`MeAsync`) | user + `TenantName` | identity + membership `(sub, tenant)` → `UserMapper.ToMeResponse(user, role, tenantName)` (signature gains `Role? role`; role = membership's, or `user.Role` for super admins). Shape unchanged (DB-11b adds `Workspaces`) |
@@ -491,7 +574,8 @@ Delete the two comments that justify the fallback (`ProjectService.cs:217-219`, 
 
 `User.PasswordManagedElsewhere = "This user also belongs to other workspaces — they must change their password themselves."`,
 `User.AlreadyMember = "This person is already a member of this workspace."`,
-`Auth.NoWorkspace = "Your account is not a member of any workspace."` (used by DB-11b; harmless now).
+`Auth.NoWorkspace = "Your account is not a member of any workspace."` (used by DB-11b; harmless now),
+`Auth.InvalidCredentialsAfterMerge = "Invalid email or password. Accounts that shared this e-mail were combined into one — if your previous password no longer works, use \"Forgot password\"."` (GLM A8).
 
 ### 3.8 What is deliberately not read any more
 
@@ -505,7 +589,7 @@ membership's `Role`. Acceptance criteria §7 mechanise this.
 
 | # | Question | Default encoded |
 |---|---|---|
-| D1 | Two live rows, same e-mail, different passwords | the most recently written row's hash wins (2.2); the canonical's sessions are revoked; the other password simply stops working — "forgot password" is the recovery |
+| D1 | Two live rows, same e-mail, different passwords | the most recently written row's hash wins (2.2); the canonical's sessions are revoked; the other password stops working — and the login failure for a merged identity **says so** and points at "Forgot password" (GLM A8, §3.5 Login). Uniqueness is enforced by the database on `lower(email)` (§3.1), not by convention |
 | D2 | Which row is the identity | Workspace Admin row, else Deputy, else oldest (2.1); its `public_id` survives |
 | D3 | API keys per identity or per membership | per membership |
 | D4 | Anonymous accept/register with an existing e-mail | must present the existing account's password; else `AccountExists` |
@@ -518,8 +602,8 @@ membership's `Role`. Acceptance criteria §7 mechanise this.
 
 **Expand** (R1 tables/column/index, R3 abort-guarded backfill and in-place uuid rewrite, R9 filtered
 unique indexes) with **one index swap** on `api_keys` and **one data-moving rewrite** (2.5) whose
-only inverse is the dump (§8). Migration 1 (index change) and Migration 2 (R3) carry markers and
-`[ContractMigration("DB-11a")]`; Migration 3 is plain. Ships through the explicit R7 path,
+only inverse is the dump (§8). Migration 1 (index change), Migration 2 (R3) **and Migration 3 (index
+change, raw SQL — GLM A1)** carry markers and `[ContractMigration("DB-11a")]`. Ships through the explicit R7 path,
 **alone** (R7.1 batching is not used: this is the first release whose rollback is "restore the
 dump", and the census must be read by a human first). No column is dropped, renamed or narrowed.
 
@@ -529,11 +613,12 @@ Order matters: 1–4 compile without touching behaviour; 5–7 are the migration
 
 1. `Domain/Enums/MembershipEndReason.cs` — `public enum MembershipEndReason { Removed = 1, Left = 2, AccountErased = 3 }` with the R10 append-only comment.
 2. `Domain/Entity/WorkspaceMembership.cs`, `Domain/Entity/UserAlias.cs` — per §3.1, with the doc-comments quoted there. `Domain/Entity/User.cs` — add `public int? MergedIntoUserId { get; set; }`, `public ICollection<WorkspaceMembership> Memberships { get; set; } = new List<WorkspaceMembership>();`, and the four doc-comment changes (§3.1 "users").
-3. `Infrastructure/Mappings/WorkspaceMembershipMapping.cs`, `UserAliasMapping.cs` — new; copy the column-naming style of `ApiKeyMapping.cs`. Membership FKs: `HasOne(x => x.User).WithMany(u => u.Memberships).HasForeignKey(x => x.UserId).OnDelete(DeleteBehavior.Restrict)`; `HasOne<Workspace>().WithMany().HasForeignKey(x => x.OwnerId).OnDelete(Restrict).HasConstraintName("fk_workspace_memberships_workspaces_owner_id")`; `HasOne(x => x.Role).WithMany().HasForeignKey(x => x.RoleId).OnDelete(Restrict)`; `HasOne<Invite>().WithMany().HasForeignKey(x => x.InviteId).OnDelete(DeleteBehavior.SetNull)`; the two indexes of §3.1. `UserMapping.cs` — add `MergedIntoUserId` column + self FK `HasOne<User>().WithMany().HasForeignKey(x => x.MergedIntoUserId).OnDelete(Restrict).HasConstraintName("fk_users_merged_into_user")`; add, **commented out with prefix `// DB-11a step 3: `**, `b.HasIndex(x => x.Email).IsUnique().HasFilter("deleted_at IS NULL").HasDatabaseName("ux_users_email_live");`. `ApiKeyMapping.cs:50-53` — replace the `HasIndex(x => x.UserId)…ux_api_keys_active_per_user` block with `b.HasIndex(x => new { x.UserId, x.OwnerId }).IsUnique().HasFilter("revoked_at IS NULL AND deleted_at IS NULL").AreNullsDistinct(false).HasDatabaseName("ux_api_keys_active_per_membership");` and rewrite the comment above it ("one live key per membership").
+3. `Infrastructure/Mappings/WorkspaceMembershipMapping.cs`, `UserAliasMapping.cs` — new; copy the column-naming style of `ApiKeyMapping.cs`. Membership FKs: `HasOne(x => x.User).WithMany(u => u.Memberships).HasForeignKey(x => x.UserId).OnDelete(DeleteBehavior.Restrict)`; `HasOne<Workspace>().WithMany().HasForeignKey(x => x.OwnerId).OnDelete(Restrict).HasConstraintName("fk_workspace_memberships_workspaces_owner_id")`; `HasOne(x => x.Role).WithMany().HasForeignKey(x => x.RoleId).OnDelete(Restrict)`; `HasOne<Invite>().WithMany().HasForeignKey(x => x.InviteId).OnDelete(DeleteBehavior.SetNull)`; the two indexes of §3.1. `UserMapping.cs` — add `MergedIntoUserId` column + self FK `HasOne<User>().WithMany().HasForeignKey(x => x.MergedIntoUserId).OnDelete(Restrict).HasConstraintName("fk_users_merged_into_user")`; add, directly above the `b.Property(x => x.Email)` line (`:26`), the two-line comment `// ux_users_email_live: UNIQUE on lower(email) WHERE deleted_at IS NULL — raw SQL in *_AddUsersEmailLiveUniqueIndex (DB-11a GLM A1),` / `// deliberately NOT modelled (EF cannot express lower()); do not add a HasIndex for it.` — **no** `HasIndex` line. `ApiKeyMapping.cs:50-53` — replace the `HasIndex(x => x.UserId)…ux_api_keys_active_per_user` block with `b.HasIndex(x => new { x.UserId, x.OwnerId }).IsUnique().HasFilter("revoked_at IS NULL AND deleted_at IS NULL").AreNullsDistinct(false).HasDatabaseName("ux_api_keys_active_per_membership");` and rewrite the comment above it ("one live key per membership").
 4. `Infrastructure/AppDbContext.cs` — `DbSet<WorkspaceMembership> WorkspaceMemberships`, `DbSet<UserAlias> UserAliases` after line 71; replace the `User` filter (`:91-96`) with §3.1's; add the strict-own filter for `WorkspaceMembership` (copy `:85-90`) with a two-line comment; add a comment block for `UserAlias` (no filter, reason in §3.1). `Application/Abstractions/IUnitOfWork.cs:10` + `Infrastructure/Repository/UnitOfWork.cs:21` — add `DbSet<UserAlias> UserAliases`.
-5. `just migrate name="AddWorkspaceMembershipsAndUserAliases"` → read it against §3.2 Migration 1. Any `CreateIndex` on `users` named `ux_users_email_live` → the step-3 prefix was not applied — stop. Any operation on a table other than `workspace_memberships`, `user_aliases`, `users`, `api_keys` → stop and report. Add the attribute and the marker verbatim.
+5. `just migrate name="AddWorkspaceMembershipsAndUserAliases"` → read it against §3.2 Migration 1. Any `CreateIndex` on `users` other than the existing ones → a mapping edit leaked — stop. Any operation on a table other than `workspace_memberships`, `user_aliases`, `users`, `api_keys` → stop and report. Add the attribute and the marker verbatim.
 6. `just migrate name="MergeSameEmailIdentitiesAndBackfillMemberships"` → the file must have **empty** `Up()`/`Down()` (if not, a mapping change leaked — stop). Paste the seven SQL blocks of §3.2 as separate `migrationBuilder.Sql(@"…")` calls in order (2.1, 2.2, 2.3, 2.4, 2.4b, 2.5 (both statements in one call), 2.6, 2.7). The `DO $$ … $$` blocks contain no `"`; the `format()` call's single quotes are fine inside a C# verbatim string. Add the attribute and the R3 marker verbatim. Leave `Down()` empty and add the comment `// No inverse: 2.5 rewrites uuid references in place. Rollback = restore the pre-db11a dump (docs/db/execution/DB-11a-… §8).`
-7. Remove the `// DB-11a step 3: ` prefix in `UserMapping.cs`; `just migrate name="AddUsersEmailLiveUniqueIndex"` → exactly one `CreateIndex` + one `DropIndex`. `grep -rn "DB-11a step 3" Infrastructure/Mappings | wc -l` → 0.
+7. `just migrate name="AddUsersEmailLiveUniqueIndex"` → the file must have **empty** `Up()`/`Down()` (else a mapping change leaked — stop). Paste the two `migrationBuilder.Sql(…)` calls of §3.2 Migration 3 (one in `Up()`, one in `Down()`), add `[ContractMigration("DB-11a")]` and the `index change` marker verbatim. `dotnet ef migrations has-pending-model-changes -p Infrastructure -s API` must still print "No changes have been made to the model since the last migration."
+7a. `Application/Common/EmailNormalizer.cs` — §3.3a verbatim. Replace the ten hand-normalisations listed in §2 (`AuthService.cs:50,236,344,454`, `UserService.cs:62`, `DemoService.cs:267`, `InviteService.cs:154,518,799`, `API/Seed/AdminSeeder.cs:128`) with `EmailNormalizer.NormalizeRequired(...)` / `.Normalize(...)` as §3.3a says; do this before task 8 so `MembershipService` is born normalised.
 8. `Application/Services/Interfaces/IMembershipService.cs` + `Application/Services/Implementation/MembershipService.cs` — §3.3 verbatim signatures. `Application/Services/Implementation/UserNameResolver.cs` — §3.5 "Name resolution".
 9. `Application/Abstractions/ITokenService.cs`, `Infrastructure/Auth/JwtTokenService.cs` — §3.4. `Application/Common/UserMapper.cs` — `ToMeResponse(User user, Role? role, string? tenantName = null)`; every `user.Role?.X` becomes `role?.X`. `API/Extensions/AuthenticationExtensions.cs:55-105` — §3.4 validator change.
 10. `Application/Common/TenantStamp.cs` + the 13 S-14 lines (§3.6).
@@ -567,25 +652,41 @@ New `Tests/WorkspaceMembershipTests.cs` (InMemory fixture from `WorkspaceAdminOw
 12. `StampValidator_RejectsMembershipStampMismatch` — build the `OnTokenValidated` handler as `Tests/ApiKeyAuthTests.cs` builds auth pieces (or extract the lookup into a static `SecurityStampCheck.EvaluateAsync(AppDbContext, Guid sub, Guid? tenant, Guid stamp, Guid? mstamp)` and test that directly — preferred; then the handler is a one-line call).
 13. `S14_NullTenantNonSuperAdmin_IsForbidden` — for `ProjectService.CreateAsync`, `UserService.CreateAsync`, `InviteService.CreateAsync`, `PredefinedActionService` create, `WorkspaceService.RenameAsync`: `FakeCurrentUser { Id = x, IsAdmin = true, TenantId = null }` → `IsForbidden`, and `db.Workspaces.Count()` / `db.Projects.Count()` unchanged.
 14. `TokenService_Issue_WithMembership_EmitsTenantAndMstamp` (extend `TokenServiceTests`).
+15. **GLM A1** `Tests/EmailNormalizerTests.cs`: `Normalize_TrimsAndLowers` (`"  User@X.COM "` → `"user@x.com"`), `Normalize_NullOrWhitespace_ReturnsNull`, `NormalizeRequired_Whitespace_ReturnsEmpty`.
+16. **GLM A1** `FindIdentityByEmail_MixedCaseInput_FindsLowerCaseRow` (InMemory) and `AcceptInvite_MixedCaseEmail_JoinsExistingIdentity_NoSecondRow` (InMemory; `users.Count == 1` after accepting with `"USER@x.com"` for an identity stored as `user@x.com`).
+17. **GLM A1, database-level** — the expression index cannot be tested on InMemory/Sqlite, so it is a CI step: in `.github/workflows/db-migrations.yml`, after the "Newest migration Down/Up round-trip" step and before the guard tests, add
+    ```yaml
+      - name: Mixed-case duplicate e-mail is rejected by the database (DB-11a, GLM A1)
+        run: |
+          PGPASSWORD=pointer psql -h localhost -U pointer -d pointer -v ON_ERROR_STOP=1 -c "INSERT INTO roles (name, is_super_admin, grants_admin, quick_access, is_active, is_system, created_at, created_by) VALUES ('db11a-ci', false, false, false, true, false, now(), '00000000-0000-0000-0000-000000000000') ON CONFLICT DO NOTHING;" || true   # roles may already be seeded by a migration
+          rid=$(PGPASSWORD=pointer psql -h localhost -U pointer -d pointer -tAc "SELECT id FROM roles ORDER BY id LIMIT 1")
+          PGPASSWORD=pointer psql -h localhost -U pointer -d pointer -v ON_ERROR_STOP=1 -c "INSERT INTO users (public_id, email, password_hash, display_name, role_id, is_active, approval_status, security_stamp, is_demo, \"DemoExtended\", created_at, created_by) VALUES (gen_random_uuid(), 'ci-dup@example.com', 'x', 'a', $rid, true, 1, gen_random_uuid(), false, false, now(), '00000000-0000-0000-0000-000000000000');"
+          if PGPASSWORD=pointer psql -h localhost -U pointer -d pointer -v ON_ERROR_STOP=1 -c "INSERT INTO users (public_id, email, password_hash, display_name, role_id, is_active, approval_status, security_stamp, is_demo, \"DemoExtended\", created_at, created_by) VALUES (gen_random_uuid(), 'CI-Dup@Example.com', 'x', 'b', $rid, true, 1, gen_random_uuid(), false, false, now(), '00000000-0000-0000-0000-000000000000');" 2>/tmp/dup.err; then echo "second insert succeeded — ux_users_email_live is not an expression index"; exit 1; fi
+          grep -q ux_users_email_live /tmp/dup.err
+    ```
+    (Column lists verified against `AppDbContextModelSnapshot.cs` on 2026-09-22: every NOT NULL column without a default is supplied — `users`: `is_demo`, `"DemoExtended"` (unmapped PascalCase column, hence quoted), `is_active`, `security_stamp`, `created_by`; `roles`: `is_system`. The first statement only guarantees one role exists and may fail if roles are already seeded; the assertion is the last two lines.)
+18. **GLM A7** negative rehearsal addition (§6 last paragraph): on the second scratch database also seed a person with **two soft-deleted** rows in the same workspace plus a live row differing only in case (`Bob@x.com` / `bob@x.com`) in that workspace; after the migrations: exactly **one** ended membership and **one** live membership for (identity, workspace), and Migration 2 did not fail on `ux_workspace_memberships_user_workspace_live`.
+19. **GLM A8** `Login_WrongPassword_MergedIdentity_SuggestsForgotPassword` — identity with a soft-deleted row whose `MergedIntoUserId` points at it; wrong password → `Message == MessageKeys.Auth.InvalidCredentialsAfterMerge`; the same wrong password for an unmerged identity → `InvalidCredentials`.
 
 "Existing data survives" is the rehearsal (§3.2 queries) — the SQL is Npgsql-only (`gen_random_uuid`, `DO $$`, `information_schema`), Sqlite cannot run it; say so in the PR. Negative rehearsal: on a second scratch database insert two live users with the same e-mail in two workspaces plus a comment by each, run the migrations, and check: one live user, one alias, both comments' `author_id` equal the survivor's `public_id`, two live memberships.
 
 ## 7. Acceptance criteria
 
 1. `dotnet ef migrations list -p Infrastructure -s API --no-connect` shows exactly three new ids ending `_AddWorkspaceMembershipsAndUserAliases`, `_MergeSameEmailIdentitiesAndBackfillMemberships`, `_AddUsersEmailLiveUniqueIndex`, in that order.
-2. `grep -c "ContractMigration(\"DB-11a\")" Infrastructure/Migrations/*_AddWorkspaceMembershipsAndUserAliases.cs Infrastructure/Migrations/*_MergeSameEmailIdentitiesAndBackfillMemberships.cs` → 1 each; `grep -c "ContractMigration" Infrastructure/Migrations/*_AddUsersEmailLiveUniqueIndex.cs` → 0; `grep -c "RAISE EXCEPTION 'DB-11a ABORT" Infrastructure/Migrations/*_MergeSameEmail*.cs` → 2; `grep -c "migrationBuilder.Sql(" …_MergeSameEmail*.cs` → 8.
+2. `grep -c "ContractMigration(\"DB-11a\")" Infrastructure/Migrations/*_AddWorkspaceMembershipsAndUserAliases.cs Infrastructure/Migrations/*_MergeSameEmailIdentitiesAndBackfillMemberships.cs Infrastructure/Migrations/*_AddUsersEmailLiveUniqueIndex.cs` → 1 each (GLM A1: Migration 3 is raw SQL); `grep -c "lower(email)" Infrastructure/Migrations/*_AddUsersEmailLiveUniqueIndex.cs` → 1; `grep -c "HasIndex" Infrastructure/Mappings/UserMapping.cs` → 2 (`PublicId`, `ux_users_email_owner_live` — no third); `grep -c "RAISE EXCEPTION 'DB-11a ABORT" Infrastructure/Migrations/*_MergeSameEmail*.cs` → 2; `grep -c "migrationBuilder.Sql(" …_MergeSameEmail*.cs` → 8; `grep -c "DISTINCT ON (coalesce(m.canonical_id, u.id), u.owner_id" …_MergeSameEmail*.cs` → 1 (GLM A7).
 3. `grep -rn '?? _currentUser.Id\|?? currentUser.Id' Application API Infrastructure --include='*.cs' | wc -l` → 0.
 4. `grep -rn '"Workspace Admin"' Application --include='*.cs' | grep -v "const string\|///" | wc -l` → 0 outside `AdminSeeder.cs` and the constants (every check goes through `MembershipService.CurrentAdminAsync` or a membership's `Role.Name` constant).
 5. `grep -rn "Role.Name == WorkspaceAdminRoleName" Application --include='*.cs'` → only lines whose receiver is a membership (`m.Role`, `membership.Role`, `admin.Role` where `admin` is a `WorkspaceMembership`) — reviewer reads each.
 6. `grep -c "await DeleteOwnedAsync<" Application/Services/Implementation/TenantService.cs` → 23; `HardDeleteOrder` has 23 entries.
 7. `grep -rn "GetOrCreateAsync(Guid publicId)" Application` → 0 (new signature everywhere); `grep -rn "\.Issue(" Application API --include='*.cs' | wc -l` → 7 and none passes a `User` alone without a membership argument (super-admin paths pass `null`).
-8. `just test` green, incl. the 14+ new facts; `MigrationSafetyTests` passes with markers/attributes as in §3.2.
-9. Rehearsal: §3.2 queries print the expected values; the negative rehearsal shows one survivor, one alias, rewritten `author_id`s; `\d api_keys` shows `ux_api_keys_active_per_membership` and not `_per_user`; `\d users` shows `ux_users_email_live`.
+8. `just test` green, incl. the 19+ new facts; `MigrationSafetyTests` passes with markers/attributes as in §3.2; the DB-10 workflow is green **including** the new GLM A1 step (§6 test 17).
+9. Rehearsal: §3.2 queries print the expected values; the negative rehearsal shows one survivor, one alias, rewritten `author_id`s; `\d api_keys` shows `ux_api_keys_active_per_membership` and not `_per_user`; `\d users` shows `"ux_users_email_live" UNIQUE, btree (lower(email)) WHERE deleted_at IS NULL`; the GLM A1 negative INSERT of §3.2 fails with that constraint name.
+11. **GLM A1** `grep -rn "Trim().ToLower" Application API --include='*.cs' | grep -i email | wc -l` → 0; `grep -rln "EmailNormalizer\." Application API --include='*.cs' | wc -l` → ≥ 6 (`AuthService`, `UserService`, `DemoService`, `InviteService`, `MembershipService`, `AdminSeeder`).
 10. On the rehearsal API: password login of the production admin → JWT has `tenant` = their workspace id and an `mstamp` claim; `GET /api/auth/me` unchanged shape; `GET /api/admin/users` lists the same people as before; `GET /api/admin/tenants` lists the same workspaces; CLI `pointer whoami` with the existing key still works.
 
 ## 8. Rollback
 
-Migrations 1 and 3 have full `Down()`s. **Migration 2 has none: 2.5 rewrites `author_id`/audit uuids
+Migrations 1 and 3 have full `Down()`s (Migration 3's is `DROP INDEX IF EXISTS ux_users_email_live`). **Migration 2 has none: 2.5 rewrites `author_id`/audit uuids
 in place and 2.6 soft-deletes merged rows; the inverse is the labelled dump.** Rollback = API stopped,
 `DEPLOY.md` § Restore from `pre-db11a`, `git checkout <commit before DB-11a>`, `up -d --build api`.
 Anything written after the deploy (new comments, new members) is lost in that case — which is why
@@ -605,7 +706,7 @@ requires the dump.
    e-mail listed; if they override, the SQL in 2.1/2.2 changes and this doc is amended first.
 2. Merge; R11 rehearsal on a same-day dump (outputs in the PR).
 3. On the VM: `POINTER_APPLY_CONTRACT=1 POINTER_CONTRACT_LABEL=pre-db11a bash scripts/deploy-api.sh`.
-   Expect three `Applying migration` lines and `DB-09: applying 2 contract migration(s)`. A `DB-11a ABORT`
+   Expect three `Applying migration` lines and `DB-09: applying 3 contract migration(s)` (GLM A1 made Migration 3 a marked one). A `DB-11a ABORT`
    line means the database is unchanged (Migration 1 **did** apply — it is in its own transaction —
    so run `git checkout <previous commit> && … up -d --build api`, then `dotnet ef database update <id before Migration 1>` with the API stopped, or simply restore `pre-db11a`).
 4. Verify: the §3.2 rehearsal queries against prod; `GET /api/auth/me` for the real admin returns
@@ -619,7 +720,9 @@ requires the dump.
 ## 10. Out of scope
 
 Dropping `users.owner_id`, `users.role_id`, `users.approval_status`, `ux_users_email_owner_live`
-(contract doc DB-11d, after one release of zero readers); the workspace picker, `switch-workspace`,
+(contract doc **DB-11e**, after one release of zero readers); changing an identity's e-mail
+(`POST /api/me/change-email`, [DB-11d](DB-11d-change-email.md)); applying the `login` rate limit to
+password login (foundations #6, ops pack — not this doc); the workspace picker, `switch-workspace`,
 `/me.workspaces`, `LoginRequest.ProjectKey`, status `no-workspace` (DB-11b); remove/disable/leave/erase
 semantics, key/link revocation on removal, sole-admin guard, `users.erased_at`, revoke-invite response
 (DB-11c); moving `is_demo/expires_at/caps/recipient_email` to `workspaces` (S-8); FKs from

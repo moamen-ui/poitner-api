@@ -3,7 +3,9 @@
 Standing rules for every schema change in this repository. Created 2026-09-22 by the db-architect
 review ([`DB-REVIEW-2026-09-22.md`](DB-REVIEW-2026-09-22.md)); amended the same day after the
 cross-reviews (R4, R6, R7, R13 — marked *(amended)*) and again the same evening after the owner
-decisions (R7 marker form, **R7.1 batching**, R8 point 6); amend, do not fork. Every execution
+decisions (R7 marker form, **R7.1 batching**, R8 point 6), and again the same night after the DB-11
+cross-review (R9 expression indexes, R14 normaliser + erase inventory, R16 exact fence + scoped tokens);
+amend, do not fork. Every execution
 doc under [`execution/`](execution/) cites the rule numbers it relies on. `scripts/deploy-api.sh`
 already points here.
 
@@ -204,6 +206,16 @@ a `BaseEntity` table is partial: `.HasFilter("deleted_at IS NULL")` (precedents
 `WorkspaceSettingMapping.cs:30`); no more raw-SQL `_global` indexes (`20260629130828:147-149` is
 the anti-precedent, fixed by DB-05).
 
+*(added 2026-09-22 night, DB-11a GLM A1)* **Expression indexes.** When uniqueness must hold on an
+expression EF cannot model (`lower(email)`), the index is `migrationBuilder.Sql("CREATE UNIQUE INDEX …")`
+in a migration of its own with **nothing else** in it, carries the `index change` marker +
+`[ContractMigration]` (the DB-02 regex flags `.Sql(`), has a `Down()` that drops it, and is **not**
+mirrored by a `HasIndex` in the model — the mapping carries a two-line comment naming the migration so
+nobody "repairs" the snapshot. The DB-10 CI job (apply from empty + newest `Down()`/`Up()` round-trip)
+is the mechanical check that raw SQL and model agree. Precedent: DB-11a Migration 3
+(`*_AddUsersEmailLiveUniqueIndex`). Application code still normalises the value it compares
+(R14) so equality lookups find the row; the database is the authority.
+
 ## R10. Frozen identifiers
 
 - **Migration ids** — all of them, not just the two listed: `REBRANDING-PLAN.md` §4.1 (branch
@@ -270,7 +282,8 @@ undo its `Up()`, fails the PR before the R11 rehearsal.
 
 ## R14. Identity of users *(amended 2026-09-22 night, DB-11a)*
 
-**One `users` row per e-mail** (`ux_users_email_live (email) WHERE deleted_at IS NULL`, DB-11a).
+**One `users` row per e-mail** (`ux_users_email_live UNIQUE (lower(email)) WHERE deleted_at IS NULL`,
+an expression index — DB-11a Migration 3, GLM A1; R9).
 `users.id int` is the PK; `users.public_id uuid` is the identity everything else refers to
 (`comments.author_id`, JWT `sub`, `created_by/updated_by/deleted_by`). Two kinds of reference:
 
@@ -288,6 +301,21 @@ Erasing a person (DB-11c) keeps the `users` row as a tombstone with the same `pu
 `erased+<id>@tombstone.invalid`, name → `Deleted user`, `erased_at` + `deleted_at` set) precisely so
 content references stay resolvable. Hard-deleting a `users` row is allowed only inside a workspace
 hard delete and only when the identity has no membership elsewhere (DB-11a §3.5).
+
+*(added 2026-09-22 night)* Two consequences of "e-mail is the key":
+
+- **One normaliser.** Every e-mail that is compared with or written to `users.email` (or to any
+  e-mail-bearing column) passes through `Application/Common/EmailNormalizer.Normalize` /
+  `NormalizeRequired` (DB-11a §3.3a). No `.Trim().ToLower()` on an e-mail anywhere else — DB-11a
+  acceptance criterion 11 greps for it. Changing an identity's address is `POST /api/me/change-email`
+  (DB-11d): password + confirmation link to the new address, **Conflict when the address already
+  belongs to a live identity — never a runtime merge** (the merge is the one-time, census-guarded
+  DB-11a Migration 2).
+- **Erase inventory.** DB-11c §3.4 lists every column that can carry a person's address or name and
+  what erase does with each (overwrite, null, tombstone, delete, keep-by-design — e.g. `invites.email`
+  is **tombstoned, never nulled**, because null means "anyone may accept"; screenshots are kept, F5).
+  A new column that carries a person's e-mail or name is added to that table **and** to
+  `IdentityEraseService.EraseAsync` in the same PR, with a line in `Erase_LeavesNoEmailBehind`.
 
 ## R15. Never edit `clients/`, never hand-edit `*.Designer.cs` or the snapshot
 
@@ -310,7 +338,18 @@ membership's workspace), `stamp` (identity `users.security_stamp`) and `mstamp` 
   codes are **per membership** (`owner_id` = the workspace) and are checked against the same
   membership state at login. Removing a person from a workspace revokes that workspace's keys and
   links; disabling leaves them in place but inert.
-- A `scope=select_workspace` token (DB-11b) is accepted **only** by `POST /api/auth/switch-workspace`;
-  the fence runs in `OnTokenValidated` regardless of `Auth:ValidateSecurityStamp`.
+- A `scope=select_workspace` token (DB-11b) is accepted **only** by `POST /api/auth/switch-workspace`
+  — **exact** path comparison (`SelectionScopeFence.Allows`, `PathString.Equals`, never
+  `StartsWithSegments`; GLM A6), and the fence runs in `OnTokenValidated` regardless of
+  `Auth:ValidateSecurityStamp`.
+- **E-mailed one-time tokens** (password reset, erase confirmation, e-mail change) are
+  `IResetTokenService` tokens: stateless, HMAC-signed, 30 min, bound to the identity **and its current
+  `users.security_stamp`** (so the action that consumes one rotates the stamp = single-use), and — for
+  anything but the legacy reset — bound to a **purpose** (`TokenPurposes`, DB-11c §3.4a) so a link can
+  only do the one thing it was minted for. Never a database row; a new purpose is a new constant, not a
+  new table. Endpoints that redeem or send such tokens anonymously carry `[EnableRateLimiting("signup")]`
+  and return one indistinguishable failure message.
+- **Changing the identity's e-mail** (DB-11d) is an identity-wide event: it rotates `users.security_stamp`
+  (every workspace's sessions end); it never changes `public_id` or `users.id`.
 - `TenantStamp.TryRequireOwner` (S-14) is the only way to obtain "the caller's workspace" for a
   write; a non-super-admin without a `tenant` claim is Forbidden. `?? _currentUser.Id` never returns.

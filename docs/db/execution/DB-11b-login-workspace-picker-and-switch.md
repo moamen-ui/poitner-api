@@ -6,6 +6,10 @@ with an email that exists in several workspaces must offer a workspace choice in
 arbitrary row". Rules: R8 (point 5 test), R13 (no migration — nothing to read), R16.
 **Class: Code only.** No migration. Ships as an ordinary `bash scripts/deploy-api.sh`.
 **Status 2026-09-22: written; not implemented.** Owner decision D11 has a default (§3.6).
+**Amended 2026-09-22 (evening)** after the cross-review (`docs/roadmap/meetings/2026-09-22-foundations/04-chair-synthesis.md`
+§1 rows D5/D6 = GLM A5/A6; cited below by finding id): **GLM A5** the new endpoint's rate limit is named
+explicitly — `[EnableRateLimiting("login")]` — because `Login` carries no such attribute to copy; **GLM A6**
+the selection-token fence compares the exact path, not a prefix.
 
 ## 1. Goal
 
@@ -39,8 +43,12 @@ that project (D11), so a stakeholder never sees a picker inside someone's app. T
   Dashboard: `features/login/LoginPage.tsx` (status handling around `:105-111`), `features/shell/Shell.tsx:82-89`
   (`useAuth`, `me?.tenantName`), `features/cli-login/` (device approval page).
   CLI: `cli/src/commands/login.ts:45-50`, `whoami.ts:35-37` use `login-with-key` + `/api/auth/me`.
-- Rate limiting: `API/Extensions/RateLimitingExtensions.cs` — the login policy name applied to
-  `POST /api/auth/login` (read the attribute on `AuthController.Login`; apply the same one to the new endpoint).
+- Rate limiting (**GLM A5**, verified today): `AuthController.Login` (`API/Controllers/AuthController.cs:19-23`)
+  has **no** `[EnableRateLimiting]` — password login is deliberately unlimited (`API/Program.cs:90-92`) and
+  `Tests/AuthRateLimitingTests.cs:21-29 Login_IsNotRateLimited` pins that. The `"login"` policy exists
+  (`RateLimitingExtensions.cs:124-132`: per IP, 60/min, `QueueLimit = 0`) and is applied today only to
+  `login-with-invite` (`AuthController.cs:38-39`). The new endpoint uses **that** policy by name; this doc
+  does not touch `Login` (the foundations "login limiter" item is a separate ops doc).
 
 ## 3. Design
 
@@ -87,11 +95,23 @@ claims `sub`, `email`, `name`, `stamp`, and `scope = "select_workspace"`; **no**
 `if (validateStamp)` block; the stamp lookup inside stays gated by `validateStamp`) and adds, first:
 ```csharp
 if (principal?.FindFirst("scope")?.Value == "select_workspace"
-    && !ctx.HttpContext.Request.Path.StartsWithSegments("/api/auth/switch-workspace"))
+    && !SelectionScopeFence.Allows(ctx.HttpContext.Request.Path))
 { ctx.Fail("Selection token."); return; }
 ```
+with, in `API/Extensions/SelectionScopeFence.cs` (new, static, so §6 test 5 can call it directly):
+```csharp
+public static class SelectionScopeFence
+{
+    public static readonly PathString SwitchWorkspacePath = new("/api/auth/switch-workspace");
+    /// <summary>GLM A6 (DB-11b): EXACT path match, case-insensitive, no trailing slash, no sub-routes —
+    /// a future /api/auth/switch-workspace/anything must NOT accept a selection token.</summary>
+    public static bool Allows(PathString path) =>
+        path.HasValue && path.Equals(SwitchWorkspacePath, StringComparison.OrdinalIgnoreCase);
+}
+```
+(`StartsWithSegments` is **not** used — GLM A6.)
 
-`POST /api/auth/switch-workspace` (`AuthController`, `[Authorize]`, same rate-limit policy as `Login`,
+`POST /api/auth/switch-workspace` (`AuthController`, `[Authorize]`, `[EnableRateLimiting("login")]` (GLM A5),
 `[ProducesResponseType(typeof(LoginResponse), 200)]`, 403 `Result`):
 body `SwitchWorkspaceRequest { Guid WorkspaceId }`. `AuthService.SwitchWorkspaceAsync(Guid workspaceId)`:
 identity = `FindIdentityByPublicIdAsync(_currentUser.Id)` (live, `IsActive`); if `identity.Role.IsSuperAdmin`
@@ -155,13 +175,14 @@ and no token. The selection token is fenced by the path check in §3.2 (test 5).
 2. `Application/Validators/LoginValidator.cs` — `RuleFor(x => x.ProjectKey).MaximumLength(64).When(x => x.ProjectKey != null);`.
    New `Application/Validators/SwitchWorkspaceValidator.cs` — `RuleFor(x => x.WorkspaceId).NotEmpty()`.
 3. `Application/Abstractions/ITokenService.cs` + `Infrastructure/Auth/JwtTokenService.cs` — `IssueSelection(User)` per §3.2; `JwtOptions.SelectionLifetimeMinutes` (default 5).
-4. `API/Extensions/AuthenticationExtensions.cs` — hoist `OnTokenValidated` out of `if (validateStamp)`; add the `scope` fence as the first statement; keep the stamp lookup under `if (validateStamp)`.
+4. `API/Extensions/AuthenticationExtensions.cs` — hoist `OnTokenValidated` out of `if (validateStamp)`; add the `scope` fence as the first statement, calling `SelectionScopeFence.Allows` (new file `API/Extensions/SelectionScopeFence.cs`, §3.2 verbatim — exact `PathString.Equals`, never `StartsWithSegments`); keep the stamp lookup under `if (validateStamp)`.
 5. `Application/Services/Interfaces/IAuthService.cs` — `Task<Result<LoginResponse>> SwitchWorkspaceAsync(Guid workspaceId);`. `AuthService.cs` — `LoginAsync` decision table (§3.1), `SwitchWorkspaceAsync` (§3.2), `MeAsync` (§3.3), private `BuildMeAsync`.
 6. `API/Controllers/AuthController.cs` — add after `Login`:
    ```csharp
    /// <summary>Opens a session in one of the caller's workspaces. Accepts a full token or the 5-minute selection token returned with status "choose-workspace".</summary>
    [Authorize]
    [HttpPost("switch-workspace")]
+   [EnableRateLimiting("login")]
    [ProducesResponseType(typeof(LoginResponse), StatusCodes.Status200OK)]
    [ProducesResponseType(typeof(Result), StatusCodes.Status403Forbidden)]
    public async Task<IActionResult> SwitchWorkspace([FromBody] SwitchWorkspaceRequest request)
@@ -171,7 +192,7 @@ and no token. The selection token is fenced by the path check in §3.2 (test 5).
        return result.IsSuccess ? Ok(result) : BadRequest(result);
    }
    ```
-   (copy the rate-limit attribute from `Login`; the field name `authService` must match the primary constructor at `:13`).
+   (the attribute is written out above — there is nothing on `Login` to copy (GLM A5); `using Microsoft.AspNetCore.RateLimiting;` is already imported at `:3`; the field name `authService` must match the primary constructor at `:13`).
 7. `Application/Resources/MessageKeys.cs` — §3.4.
 8. Widget (`web-component/src/element.ts:921-927`, `auth-ui.ts:79-108`, `templates.ts`, i18n strings) — §3.5; `npm run build`; commit `API/wwwroot/pointer.*`; check the 64 KB budget noted in memory (`MetaWidgetVersionTests`/size test if present).
 9. Tests (§6). 10. `just fmt`, `just test`. 11. PR description: **Dashboard tasks** section = §11.
@@ -184,15 +205,16 @@ and no token. The selection token is fenced by the path check in §3.2 (test 5).
 2. `Login_TwoMemberships_ProjectKeyPicksTheOwner` — `ProjectKey` of a project in B → `"ok"`, `tenant == B`. Unknown key → `"choose-workspace"`.
 3. `Switch_NonMember_Forbidden_NoToken`; `Switch_InactiveMembership_Forbidden`; `Switch_Member_Ok_TenantAndMstampMatch`.
 4. `Login_NoLiveMemberships_ReturnsNoWorkspace`.
-5. `SelectionToken_RejectedOutsideSwitchEndpoint` — evaluate the `OnTokenValidated` fence (extract it as a static `SelectionScopeFence.Allows(ClaimsPrincipal, PathString)` and test that) for `/api/comments` → false, `/api/auth/switch-workspace` → true.
+5. `SelectionToken_RejectedOutsideSwitchEndpoint` — `SelectionScopeFence.Allows(PathString)` (GLM A6): `/api/auth/switch-workspace` → true, `/API/Auth/Switch-Workspace` → true (case), `/api/auth/switch-workspace/` → false (trailing slash), `/api/auth/switch-workspace/anything` → false (sub-route — the prefix bug), `/api/auth/switch-workspacex` → false, `/api/comments` → false, empty path → false.
 6. `Me_ListsMemberships_AndCurrentWorkspaceId`.
 7. `SwitchWorkspaceValidator_RejectsEmptyGuid`; `LoginValidator_ProjectKey_MaxLength` (extend `LoginValidatorTests`).
+8. **GLM A5** in `Tests/AuthRateLimitingTests.cs`: add `SwitchWorkspace_HasLoginRateLimit` (reflection on `AuthController.SwitchWorkspace`, `PolicyName == "login"`, same shape as `SignupSurface_KeepsSignupRateLimit`). `Login_IsNotRateLimited` stays untouched and must still pass.
 
 ## 7. Acceptance criteria
 
 1. `curl -s http://localhost:8090/swagger/v1/swagger.json | jq '.paths["/api/auth/switch-workspace"].post.tags'` → `["Auth"]`; `jq '.components.schemas.LoginResponse.properties.workspaces, .components.schemas.MeResponse.properties.workspaces, .components.schemas.LoginRequest.properties.projectKey'` → all non-null.
 2. `grep -c "select_workspace" Infrastructure/Auth/JwtTokenService.cs API/Extensions/AuthenticationExtensions.cs` → ≥1 each.
-3. `grep -n "if (validateStamp)" API/Extensions/AuthenticationExtensions.cs` → the block no longer wraps the `new JwtBearerEvents` construction (reviewer reads it).
+3. `grep -n "if (validateStamp)" API/Extensions/AuthenticationExtensions.cs` → the block no longer wraps the `new JwtBearerEvents` construction (reviewer reads it). `grep -c "StartsWithSegments" API/Extensions/SelectionScopeFence.cs API/Extensions/AuthenticationExtensions.cs` → 0 each (GLM A6). `grep -c 'EnableRateLimiting("login")' API/Controllers/AuthController.cs` → 2 (`login-with-invite` + `switch-workspace`; GLM A5), and `Login` still has none.
 4. `just test` green with the 7+ new facts.
 5. Manual on the rehearsal API: seed a second membership for the production admin's identity (via an invite accept) → login returns `choose-workspace`; `switch-workspace` with the selection token → full token; the selection token on `GET /api/comments/...` → 401; widget login with `projectKey` → `ok` without a picker.
 6. Widget bundle within budget; `web-component` typecheck passes.

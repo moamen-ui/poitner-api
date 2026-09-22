@@ -64,7 +64,7 @@ Legend: **NOW** pre-launch · **PAY** at first paying customer · **TRIG** defer
 | 21 | DR to a second region; on-call | TRIG: first paying customer or >10 tenants | — | |
 | 22 | SSO / OIDC | TRIG: first enterprise ask | — | |
 | 23 | Screenshots to object storage (from the VM volume) | TRIG: disk > 50 %, second API instance, or CDN need; **enable VM disk encryption now (ops)** | — | agy NOW overruled: backups already include the volume (DB-01); serving from disk is faster and needs no code |
-| 24 | Global EF soft-delete filter | NOT NOW | — | agy reverse overruled: 148 `IgnoreQueryFilters` calls to audit; #14 (isolation probe) gives the guarantee cheaper. Revisit with DB-11d |
+| 24 | Global EF soft-delete filter | NOT NOW | — | agy reverse overruled: 148 `IgnoreQueryFilters` calls to audit; #14 (isolation probe) gives the guarantee cheaper. Revisit with DB-11e (legacy-column contract) |
 | 25 | Postgres RLS | NEVER (revisit only for self-host enterprise) | — | DB review §7 |
 | 26 | Per-seat pricing | NEVER | — | F3 |
 
