@@ -6,7 +6,8 @@ metadata only by default … requires an audited, time-boxed impersonation sessi
 `SelectionScopeFence` precedent), R17 (every start/end is an audit row).
 **Class: Additive** (one new table) **+ a permission narrowing in code** (six query filters lose their unconditional super-admin branch).
 Ships as an ordinary `bash scripts/deploy-api.sh`.
-**Status 2026-09-22: written; not implemented.** Owner decisions D13.1–D13.7 have defaults (§3.8); none blocks.
+**Status 2026-09-22: written; not implemented. Cross-reviewed 2026-09-22 (GLM, agy — `docs/db/reviews/`); amendments folded 2026-09-23 (§12).**
+Owner decisions D13.1–D13.7 have defaults (§3.8); none blocks.
 
 **Dependencies.** Requires **DB-12 merged** (`IAuditWriter`, `AuditActions.ImpersonationStarted/Ended`, `audit_events.impersonation_session_id`)
 and **DB-11a in production** (`ITokenService.Issue(User, WorkspaceMembership?, …)` signature; the validator's membership branch this doc adds an
@@ -47,6 +48,14 @@ in that workspace's security log, and **read-only**. User-visible: the workspace
   (`includePrivate = options.IncludePrivate && _currentUser.IsAdmin`); `ProjectService.EnsureAsync :881-888` (`if (_currentUser.IsSuperAdmin) return NotFound`;
   `ownerId = TenantStamp.OwnerFor(_currentUser)`); `WorkspaceService.GetAsync :33` / `RenameAsync :56` (super admin → Forbidden); `CommentFieldService :250,268`;
   `CommentService.CreateAsync :63` (super admin → Forbidden, write); `PredefinedActionService.CreateTenantAsync :46` (write).
+- **Reads that skip the owner predicate for super admins outside the filters (agy DB-13 #1, verified 2026-09-23):** `SuggestionService.LoadOwnAsync :320-334`
+  (`IgnoreQueryFilters()`, then `if (!_currentUser.IsSuperAdmin) q = q.Where(s => s.OwnerId == owner)` — a plain operator loads **any** workspace's
+  `PredefinedActionSuggestion`, whose `Text`/`Prompt`/`AdminFeedback` are content; callers `ApproveAsync :121`, `RejectAsync :171`, `RequestChangesAsync :193`
+  return `MapToResponse(suggestion, …)` and **mutate** the row). `PredefinedActionService.LoadOwnTenantWideAsync :91-101` is safe (owner = `OwnerFor ?? Id`,
+  becomes `TryRequireOwner` in DB-11a → null for super admins → NotFound). `ProfileService.BuildAsync :74-89` (agy #2) reads `Comment`/`Reply` **through the
+  filter** with `AuthorId == pid` — counts only, no body — and is reached by `GET /api/admin/users/{id}/profile` (`UsersController.cs:74-78`, `Policies.Admin`)
+  and `GET /api/me/profile`; its constructor is `(IUnitOfWork, IApiKeyService)` (`:17`). `ExportImportService.ExportWorkspaceAsync :63-66` resolves no project
+  (no `EnsureAsync`), unlike `ExportProjectAsync :53-61` (GLM DB-13 #3).
 - E-mail precedent: `AuthService.ChangePasswordAsync :173-195` (`_branding.BuildResponseAsync("", new HashSet<string>())`, `brand.ProductName`,
   `WorkspaceNameResolver.ResolveForEmailAsync`, `_emailService.SendAsync` in best-effort `try/catch`). `IEmailService` is capped per day.
 - Notification rows require `Notification.ProjectId int` **NOT NULL** with FK `projects` Restrict (`Domain/Entity/Notification.cs:12-13`) — a workspace-level
@@ -90,13 +99,14 @@ of comments (`StatsService`, `PlatformInsightsService`, `TenantService.ListAsync
 | `RequestCount` | `request_count` | `int` | no | default 0; incremented per authenticated request carrying `imp` |
 | `LastRequestAt` | `last_request_at` | `timestamptz` | yes | |
 
-Indexes: `ix_impersonation_sessions_owner_started (owner_id, started_at DESC)`, `ix_impersonation_sessions_operator_live (operator_user_id) WHERE ended_at IS NULL`
-(one live session per operator is enforced in code; the partial index makes the lookup cheap). Filter: strict-own copy of `UsageEvent` (`:263-268`) —
+Indexes: `ix_impersonation_sessions_owner_started (owner_id, started_at DESC)`, **`ux_impersonation_sessions_operator_live UNIQUE (operator_user_id) WHERE ended_at IS NULL`**
+(`.IsUnique().HasFilter("ended_at IS NULL")` — one live session per operator is enforced by the **database**, GLM DB-13 #4; the `AlreadyActive` pre-check in
+`StartAsync` is the friendly message, the unique violation is the race guard — see §3.6 for the catch). Sqlite honours the `HasFilter` string (DB-15 §2 fact). Filter: strict-own copy of `UsageEvent` (`:263-268`) —
 a workspace admin may list the sessions that targeted **their** workspace (`GET /api/admin/impersonation` for admins returns own-workspace rows;
 super admin sees all). `DbSet<ImpersonationSession> ImpersonationSessions` on `AppDbContext`, `IUnitOfWork`, `UnitOfWork`. `Tests/WorkspaceTests.cs:311-312`
 → add `&& t != typeof(ImpersonationSession)` with the comment "operator record: FK SET NULL, survives the workspace (DB-13)".
 
-**Migration `AddImpersonationSessions`** (scaffolded): `CreateTable` + FK + 2 indexes, nothing else (R1; no marker). `Down()` = `DropTable`.
+**Migration `AddImpersonationSessions`** (scaffolded): `CreateTable` + FK + 2 indexes (`CreateIndex(... unique: true, filter: "ended_at IS NULL")` for the second), nothing else (R1; no marker). `Down()` = `DropTable`.
 **Every existing row:** untouched.
 
 ### 3.3 The impersonation token and `ICurrentUser`
@@ -145,11 +155,23 @@ branches as they are, and add above each the comment `// DB-13 (F2): content —
 | `WorkspaceService.GetAsync :33` | super admin → Forbidden | `if (IsSuperAdmin && !IsImpersonating) return Forbidden` (the impersonating operator sees the target's workspace card). `RenameAsync :56` unchanged (write) |
 | `CommentFieldService :250` (read) / `:268` (write) | super admin branches | read: same pattern as `WorkspaceService.GetAsync`; write: unchanged |
 | `CommentService.CreateAsync :63`, `PredefinedActionService.CreateTenantAsync :46`, DB-11a `TryRequireOwner` | writes refuse super admins | unchanged — and the fence (§3.5) blocks every non-GET anyway |
+| **`SuggestionService.LoadOwnAsync :320-334`** (agy DB-13 #1, **Blocker**) | `IgnoreQueryFilters`; owner predicate skipped when `IsSuperAdmin` → a plain operator reads **and approves/rejects** any workspace's suggestion text | replace the `if (!_currentUser.IsSuperAdmin) { … }` block with: `if (_currentUser.IsSuperAdmin) return null; // DB-13 (F2): suggestion review is a workspace write on content — the operator never performs it (the fence blocks it under impersonation too)` followed by an **unconditional** `q = q.Where(s => s.OwnerId == _currentUser.TenantId);`. Callers already map `null` → `NotFound(Suggestion.NotFound)`. Delete the "Super-admin sees all" comment at `:319` |
+| **`ProfileService.BuildAsync :74-89`** (agy DB-13 #2) | `Comment`/`Reply`/`Project` reads through the filter → after the six-filter change a plain operator's `GET /api/admin/users/{id}/profile` shows **zero** counts | inject `ICurrentUser` (ctor `:17` gains it; tests constructing `ProfileService` by hand pass a fake); `bool wide = _currentUser.IsSuperAdmin && !_currentUser.IsImpersonating;` and append `.IgnoreQueryFilters()` to the three queries when `wide` (the `AuthorId == pid` predicate stays — counts and project key/name only, no body: metadata). Under impersonation the filter pins to the target |
+| **`ExportImportService.ExportWorkspaceAsync :63-66`** (GLM DB-13 #3) | no `EnsureAsync`; a plain operator gets a 200 export with every workspace's project metadata and zero comments | first line: `if (_currentUser.IsSuperAdmin && !_currentUser.IsImpersonating) return Result<ExportFileDto>.Forbidden(MessageKeys.Impersonation.Required);` (mirrors `ListAllRulesAsync`). Impersonating: the export is a GET (fence allows), audited `export.downloaded`, private notes clamped by the row above |
+| **`AuditQueryService.ListForWorkspaceAsync`** (DB-12 §3.8a; GLM DB-12 #5) | `TryRequireOwner` false for super admins → an impersonating operator gets 403 on the target's Security log | replace the `// DB-13:` placeholder with `if (_currentUser.IsImpersonating && _currentUser.TenantId is Guid t) owner = t; else if (!TenantStamp.TryRequireOwner(_currentUser, out owner)) return Forbidden(...)`. The D12.5 redaction is keyed on `IsSuperAdmin`, so the operator still sees full actor identity in that view |
+| `ActivationStatsService.GetWorkspaceActivationAsync` (DB-15 §3.5) | `TryRequireOwner` | same two-line branch — **only if DB-15 is already merged**; otherwise DB-15 adds it (its §3.5 says so) |
 | `UserNameResolver`, `CommentService.GetByIdAsync :547`, `ListAsync :317`, `SuggestionService.ListPendingAsync :83`, `PredefinedActionService.ListTenantAsync :29` | filter-scoped | unchanged — they now return nothing for a plain operator and the target's rows under impersonation |
 
-Rule for anything not listed: **a read that derives its scope from `_currentUser.TenantId` works unchanged; a read that widens on `IsSuperAdmin`
-must add `&& !IsImpersonating` (pinned to the session) — and if it exposes content it must instead refuse a non-impersonating operator.**
-`grep -rn "IsSuperAdmin" Application/Services/Implementation --include='*.cs'` (61 lines today) is the checklist; the reviewer reads each.
+Rule for anything not listed — three shapes (the third was missed by the first draft, agy DB-13 #1):
+1. **a read that derives its scope from `_currentUser.TenantId`** (filter or explicit predicate) works unchanged — empty/404 for a plain operator, the target's rows under impersonation;
+2. **a read that widens on `IsSuperAdmin`** (`IgnoreQueryFilters`, `effectiveTenantId`, `ignoreFilters: true`) must add `&& !IsImpersonating` (pinned to the session) — and if it exposes content it must instead refuse a non-impersonating operator (`Forbidden(Impersonation.Required)` or `NotFound`);
+3. **a loader that `IgnoreQueryFilters()` and then *skips its owner predicate* when `IsSuperAdmin`** (`LoadOwnAsync` shape) is a content read in disguise — the owner predicate becomes unconditional and the super admin gets `null`.
+Checklists the reviewer reads line by line: `grep -rn "IsSuperAdmin" Application/Services/Implementation --include='*.cs'` (60 lines today) **and**
+`grep -rn "IgnoreQueryFilters" Application/Services/Implementation --include='*.cs'` (≈130 lines today) — for the second, every hit on `Comment`, `Reply`,
+`PageContextSnapshot`, `PredefinedActionSuggestion`, `AiRule`, `PredefinedAction` is either a count/projection without body (metadata — say so in a comment) or
+has an explicit owner predicate that a super admin cannot skip. Swept 2026-09-23: the only shape-3 hit was `SuggestionService.LoadOwnAsync`; `PredefinedActionService.LoadOwnTenantWideAsync`
+is safe after DB-11a; `CommentService :129-158`, `ExportImportService :529-544`, `TenantService :83`, `PlatformInsightsService :234` are counts/`CommentRow`;
+`ProjectService :650-688` is the delete cascade (write, unreachable for super admins via `EnsureAsync`).
 
 ### 3.5 Fence, liveness, request counting — `AuthenticationExtensions.OnTokenValidated`
 
@@ -194,7 +216,7 @@ in a best-effort `try/catch` (relational-only; InMemory tests skip it via `db.Da
 
 | Route | Policy | Behaviour |
 |---|---|---|
-| `POST /api/admin/tenants/{workspaceId:guid}/impersonate` (`TenantsController`; `[Audited(AuditActions.ImpersonationStarted)]`) | SuperAdmin | body `StartImpersonationRequest { string Reason; int Minutes = 30 }` (validator: `Reason` 10–500 chars, `Minutes` 1–60). `StartAsync(workspaceId, req)`: caller `IsSuperAdmin && !IsImpersonating` else `Forbidden`; workspace live (`Workspaces.IgnoreQueryFilters()`, `DeletedAt == null`) else `NotFound(Workspace.NotFound)`; a live session for this operator exists → `Conflict(Impersonation.AlreadyActive)`; insert the row; `SaveChangesAsync`; `token = IssueImpersonation(operator, workspaceId, session.Id, expiresAt)`; audit `impersonation.started` (`OwnerId` = workspace, `after: {reason, minutes, session_id}`); e-mail (§3.7); return `ImpersonationStartResponse { Token, SessionId, ExpiresAt, WorkspaceId, WorkspaceName }` |
+| `POST /api/admin/tenants/{workspaceId:guid}/impersonate` (`TenantsController`; `[Audited(AuditActions.ImpersonationStarted)]`) | SuperAdmin | body `StartImpersonationRequest { string Reason; int Minutes = 30 }` (validator: `Reason` 10–500 chars, `Minutes` 1–60). `StartAsync(workspaceId, req)`: caller `IsSuperAdmin && !IsImpersonating` else `Forbidden`; workspace live (`Workspaces.IgnoreQueryFilters()`, `DeletedAt == null`) else `NotFound(Workspace.NotFound)`; a live session for this operator exists → `Conflict(Impersonation.AlreadyActive)`; insert the row; `SaveChangesAsync` inside `try/catch (DbUpdateException) when 23505 / Sqlite 19` (copy the predicate from `CommentService.cs:694-695` verbatim) → `_unitOfWork.ClearChangeTracker(); return Conflict(Impersonation.AlreadyActive)` (the unique partial index `ux_impersonation_sessions_operator_live` is the race guard, GLM DB-13 #4); `token = IssueImpersonation(operator, workspaceId, session.Id, expiresAt)`; audit `impersonation.started` (`OwnerId` = workspace, `after: {reason, minutes, session_id}`); e-mail (§3.7); return `ImpersonationStartResponse { Token, SessionId, ExpiresAt, WorkspaceId, WorkspaceName }` |
 | `POST /api/admin/impersonation/end` (new `ImpersonationController`, `[Route("api/admin/impersonation")]`, `[Tags("Impersonation")]`, `[Produces]`, `Policies.SuperAdmin`; `[Audited(AuditActions.ImpersonationEnded)]`) | SuperAdmin (accepts the **impersonation** token — the only write the fence allows — or a plain super-admin token with body `{ long? SessionId }`) | `EndAsync(long? sessionId)`: session = `currentUser.ImpersonationSessionId ?? sessionId` else `Failure(Impersonation.NoSession)`; row live and `OperatorUserId == caller` else `NotFound`; set `EndedAt = now`, `EndReason = Manual`; save; audit `impersonation.ended` (`after: {request_count, duration_seconds, reason: "manual"}`); return `Result.Success(Impersonation.Ended)` |
 | `GET /api/admin/impersonation?workspaceId&page&pageSize` (`ImpersonationController`; `Policies.Admin`; `[NoAudit("read")]`) | Admin | `ListAsync`: super admin → all (optional `workspaceId`); workspace admin → `TryRequireOwner` + explicit `OwnerId == owner` (their own history). `PagedData<ImpersonationSessionDto>` (`Id, WorkspaceId, WorkspaceName, StartedAt, ExpiresAt, EndedAt, EndReason, RequestCount, Reason`; **operator identity omitted for workspace admins — D13.6**) |
 
@@ -212,8 +234,12 @@ At **start**, one best-effort e-mail to every live admin of the workspace — af
 Subject `$"An operator is viewing your {brand.ProductName} workspace"`; body (copy the `ChangePasswordAsync` template shape; HTML-encode reason and names):
 "Hi {DisplayName}, the {ProductName} operator opened a read-only view of the **{WorkspaceName}** workspace at {StartedAt:u} for up to {Minutes} minutes.
 Reason given: *{Reason}*. This is logged in your Security log (Settings → Security log), where you will also see when it ended. If you did not
-expect this, reply to this e-mail." No operator name/e-mail (D13.6). At **end**: no e-mail (the audit row is the record; the sweep writes it for
-expiries). **No `notifications` row** (D13.4): `notifications.project_id` is NOT NULL with a Restrict FK to `projects` — a workspace-level bell
+expect this, reply to this e-mail." No operator name/e-mail (D13.6). **A workspace with zero live admins** (DB-11a §3.5 allows it — `TenantService.ListAsync` shows it with `Id = 0`) gets
+**no e-mail at all**; the start is still recorded as an `impersonation.started` row that the next admin (or the operator via `/all`) can read — F2's "visible
+to that workspace's admin" degrades to the audit row (GLM DB-13 #2). `StartAsync` logs `Information` "impersonation of {WorkspaceId}: no admin to notify"
+in that case and still succeeds. At **end**: no e-mail (the audit row is the record; the sweep writes it for expiries).
+**D13.6 depends on DB-12 §3.8a (D12.5):** the workspace audit view redacts `actor_user_id`/`actor_name` to `"Operator"` for `SuperAdmin`/`Impersonation`
+rows — without that redaction the promise below is false. It is DB-12's task 12; this doc's §6 test 13 re-asserts it end to end. **No `notifications` row** (D13.4): `notifications.project_id` is NOT NULL with a Restrict FK to `projects` — a workspace-level bell
 entry would need a marked `AlterColumn`; the e-mail + Security log cover the requirement; revisit if the owner wants the bell.
 
 ### 3.8 Owner decisions encoded here (defaults apply unless the owner says otherwise before §9)
@@ -225,7 +251,7 @@ entry would need a marked `AlterColumn`; the e-mail + Security log cover the req
 | D13.3 | Is an impersonation session read-only? | **Yes** — GET/HEAD/OPTIONS + the `end` call only (`ImpersonationScopeFence`). An operator who must change a workspace's data does it through the existing super-admin surfaces (tenants/plans) or asks the admin |
 | D13.4 | How is the workspace told? | E-mail to every live admin at start + `impersonation.started/ended` rows in their Security log. No `notifications` bell row (schema reason in §3.7) |
 | D13.5 | Time box | `Minutes` 1–60, default 30; token `exp` = hard expiry; the sweep closes expired sessions within 5 min |
-| D13.6 | Is the operator's identity shown to the workspace? | **No** — "the operator"; `operator_user_id` is visible to super admins only (`/all` audit view, `impersonation` list for super admins) |
+| D13.6 | Is the operator's identity shown to the workspace? | **No** — "the operator"; `operator_user_id` is visible to super admins only (`/all` audit view, `impersonation` list for super admins). Enforced by DB-12 D12.5 (audit DTO redaction) + this doc's `ImpersonationSessionDto` (no operator field for workspace callers) |
 | D13.7 | Private comments (`is_private`) under impersonation | **Never visible** (list/get already hide them from non-authors; export gets the explicit `!IsSuperAdmin` clamp) |
 
 ## 4. Safety classification
@@ -238,15 +264,15 @@ content; impersonating operator sees only the target's content; workspace B sees
 ## 5. File-level tasks
 
 1. `Domain/Enums/ImpersonationEndReason.cs`; `Domain/Entity/ImpersonationSession.cs` (§3.2, doc-comment "Operator record (DB-13): FK to workspaces SET NULL; survives the workspace; excluded from HardDeleteOrder").
-2. `Infrastructure/Mappings/ImpersonationSessionMapping.cs` (copy `UsageEventMapping.cs`; FK `SetNull` named `fk_impersonation_sessions_workspaces_owner_id`; two indexes with `HasDatabaseName`, the partial one `.HasFilter("ended_at IS NULL")`). `AppDbContext.cs` — DbSet after `Workspaces`; strict-own filter copied from `:263-268`. `IUnitOfWork`/`UnitOfWork` — `DbSet<ImpersonationSession> ImpersonationSessions`. `Tests/WorkspaceTests.cs:311-312` — add the exclusion.
+2. `Infrastructure/Mappings/ImpersonationSessionMapping.cs` (copy `UsageEventMapping.cs`; FK `SetNull` named `fk_impersonation_sessions_workspaces_owner_id`; two indexes with `HasDatabaseName`, the partial one `.IsUnique().HasFilter("ended_at IS NULL").HasDatabaseName("ux_impersonation_sessions_operator_live")`). `AppDbContext.cs` — DbSet after `Workspaces`; strict-own filter copied from `:263-268`. `IUnitOfWork`/`UnitOfWork` — `DbSet<ImpersonationSession> ImpersonationSessions`. `Tests/WorkspaceTests.cs:311-312` — add the exclusion.
 3. `just migrate name="AddImpersonationSessions"` → read against §3.2 (one table, one FK, two indexes; anything else → stop and report). No marker.
 4. `Application/Abstractions/ICurrentUser.cs` + `Infrastructure/CurrentUser/HttpCurrentUser.cs` — §3.3 members; every `FakeCurrentUser` in `Tests` (§2 grep) gains them.
 5. `Application/Abstractions/ITokenService.cs` + `Infrastructure/Auth/JwtTokenService.cs` — `IssueImpersonation` per §3.3 (claims list verbatim; `expires: expiresAt`).
 6. `Infrastructure/AppDbContext.cs` — the six filter edits of §3.4, comments verbatim.
-7. Service edits of §3.4 (`AiRuleService`, `PlatformInsightsService`, `StatsService` (+ `ICurrentUser` ctor param; tests constructing `StatsService` by hand pass a fake), `ExportImportService`, `ProjectService`, `WorkspaceService`, `CommentFieldService`).
+7. Service edits of §3.4 (`AiRuleService`, `PlatformInsightsService`, `StatsService` (+ `ICurrentUser` ctor param; tests constructing `StatsService` by hand pass a fake), `ExportImportService` (`FilteredCommentQuery` clamp **and** `ExportWorkspaceAsync` refusal), `ProjectService`, `WorkspaceService`, `CommentFieldService`, **`SuggestionService.LoadOwnAsync`** (unconditional owner predicate; super admin → `null`), **`ProfileService`** (+ `ICurrentUser` ctor param; `IgnoreQueryFilters` when `IsSuperAdmin && !IsImpersonating`; tests constructing `ProfileService` by hand pass a fake), **`AuditQueryService.ListForWorkspaceAsync`** (impersonation branch replacing DB-12's `// DB-13:` placeholder), `ActivationStatsService` if DB-15 is merged).
 8. `API/Extensions/ImpersonationScopeFence.cs` (§3.5 verbatim); `API/Extensions/AuthenticationExtensions.cs` — the §3.5 block after the selection fence, membership branch becomes `else if`; `API/Auth/ImpersonationRequestCounter.cs` + `Program.cs:49-52` `options.Filters.Add<ImpersonationRequestCounter>()`.
 9. `Application/DTOs/Impersonation/StartImpersonationRequest.cs`, `ImpersonationStartResponse.cs`, `ImpersonationSessionDto.cs`, `EndImpersonationRequest.cs { long? SessionId }`; `Application/Validators/StartImpersonationValidator.cs` (`Reason` `NotEmpty().Length(10, 500)`, `Minutes` `InclusiveBetween(1, 60)`).
-10. `Application/Services/Interfaces/IImpersonationService.cs` + `Implementation/ImpersonationService.cs` (§3.6; ctor: `IUnitOfWork, ICurrentUser, ITokenService, IAuditWriter, IMembershipService, IEmailService, IBrandingService, ILogger`).
+10. `Application/Services/Interfaces/IImpersonationService.cs` + `Implementation/ImpersonationService.cs` (§3.6; ctor: `IUnitOfWork, ICurrentUser, ITokenService, IAuditWriter, IMembershipService, IEmailService, IBrandingService, ILogger`; `StartAsync` wraps its `SaveChangesAsync` in the 23505/Sqlite-19 catch → `Conflict(AlreadyActive)`; zero admins → log + succeed).
 11. `API/Controllers/Admin/TenantsController.cs` — add `Impersonate(Guid workspaceId, [FromBody] StartImpersonationRequest request)` with `[HttpPost("{workspaceId:guid}/impersonate")]`, `[Audited(AuditActions.ImpersonationStarted)]`, `[ProducesResponseType(typeof(ImpersonationStartResponse), 200)]` + 403/404/409 `Result`. New `API/Controllers/Admin/ImpersonationController.cs` per §3.6. `orval.config.ts:6` → `'Impersonation'`.
 12. `API/Hosted/ImpersonationSweepService.cs` + `Program.cs` registration after `:81`.
 13. `Application/Resources/MessageKeys.cs` — class `Impersonation`: `Required = "This content is only available inside an impersonation session (View as…)."`, `AlreadyActive = "You already have a live impersonation session — end it first."`, `NoSession = "No impersonation session to end."`, `Ended = "Impersonation session ended."`, `ReadOnly = "Impersonation sessions are read-only."`.
@@ -268,16 +294,25 @@ content; impersonating operator sees only the target's content; workspace B sees
 10. `ProjectEnsure_Impersonating_ResolvesTargetProject_PlainOperator_NotFound`; `WorkspaceGet_Impersonating_ReturnsTarget`.
 11. `RequestCounter_IncrementsOnSqlite` (Sqlite `TestDb`; InMemory skipped via `IsRelational()`).
 12. Existing data survives: N/A (new table); the migration is exercised by DB-10 from empty and by the R11 rehearsal.
+13. **Cross-review additions (2026-09-23):** `Suggestions_PlainOperator_ApproveRejectRequestChanges_NotFound` (seed a pending suggestion in A; `FakeCurrentUser { IsSuperAdmin = true }` → all three return `IsNotFound`, the row is still `Pending`, and the returned `Result` carries no `Text`/`Prompt`); `Suggestions_WorkspaceAdmin_StillApproves` (regression: A's admin approves A's suggestion; B's admin → NotFound);
+    `Profile_PlainOperator_CountsAcrossWorkspaces` (author with comments in A and B; plain operator → both counted; A's admin → only A's; impersonating A → only A's);
+    `ExportWorkspace_PlainOperator_Forbidden` (`IsForbidden`, message `Impersonation.Required`) and `ExportWorkspace_Impersonating_ReturnsTargetComments_NoPrivate`;
+    `Start_ConcurrentSecondSession_Conflict_ViaUniqueIndex` (Sqlite `TestDb`: insert a live session row for the operator directly, then call `StartAsync` → `IsConflict`, exactly one live row; proves the catch, not just the pre-check);
+    `AuditWorkspaceView_Impersonating_ReturnsTargetRows` (`FakeCurrentUser { IsSuperAdmin = true, TenantId = A, ImpersonationSessionId = 1 }` → `ListForWorkspaceAsync` returns A's rows, not Forbidden, with actor identity **not** redacted because the caller is a super admin);
+    `AuditWorkspaceView_WorkspaceAdmin_SeesNoOperatorIdentity` (end to end: `StartAsync` as the operator, then as A's admin `ListForWorkspaceAsync(action: "impersonation.")` → `ActorName == "Operator"`, `ActorUserId == null`, and the serialised page contains neither the operator's uuid nor display name);
+    `Start_WorkspaceWithoutAdmins_SucceedsWithoutMail` (zero live admin memberships → `IsSuccess`, zero mails, one `impersonation.started` row).
 
 ## 7. Acceptance criteria
 
 1. `dotnet ef migrations list -p Infrastructure -s API --no-connect` ends with `_AddImpersonationSessions`; `grep -c ContractMigration Infrastructure/Migrations/*_AddImpersonationSessions.cs` → 0.
 2. `grep -n "currentUser.IsSuperAdmin$\|currentUser.IsSuperAdmin *$" Infrastructure/AppDbContext.cs` — reviewer confirms the line is **absent** from the `Comment`, `Reply`, `PageContextSnapshot`, `PredefinedActionSuggestion`, `AiRule` filters and rewritten in `PredefinedAction`; present everywhere else (count of `IsSuperAdmin` occurrences in the file drops by exactly 5).
 3. `grep -c "StartsWithSegments" API/Extensions/ImpersonationScopeFence.cs` → 0; `grep -c '"impersonate"' Infrastructure/Auth/JwtTokenService.cs API/Extensions/AuthenticationExtensions.cs` → ≥ 1 each.
-4. `grep -rn "IsSuperAdmin" Application/Services/Implementation --include='*.cs' | grep -v "IsImpersonating\|Forbidden\|//\|GrantsAdmin\|IsSuperAdmin = \|r.IsSuperAdmin\|Role.IsSuperAdmin\|u.Role" ` — reviewer reads every remaining line against the §3.4 rule.
+4. `grep -rn "IsSuperAdmin" Application/Services/Implementation --include='*.cs' | grep -v "IsImpersonating\|Forbidden\|//\|GrantsAdmin\|IsSuperAdmin = \|r.IsSuperAdmin\|Role.IsSuperAdmin\|u.Role" ` — reviewer reads every remaining line against the §3.4 rule (three shapes).
+4a. `grep -n "IsSuperAdmin" Application/Services/Implementation/SuggestionService.cs` → exactly one hit, `if (_currentUser.IsSuperAdmin) return null;` (plus the `!u.Role.IsSuperAdmin` admin-list predicate); `grep -c "IgnoreQueryFilters" Application/Services/Implementation/ProfileService.cs` → 3; `grep -c "Impersonation.Required" Application/Services/Implementation/ExportImportService.cs` → 1; `grep -c "IsImpersonating" Application/Services/Implementation/AuditQueryService.cs` → 1.
+4b. `grep -c "ux_impersonation_sessions_operator_live" Infrastructure/Migrations/*_AddImpersonationSessions.cs` → ≥ 1 and the `CreateIndex` carries `unique: true` and `filter: "ended_at IS NULL"`.
 5. `curl -s …/swagger.json | jq '.paths["/api/admin/tenants/{workspaceId}/impersonate"].post.tags, .paths["/api/admin/impersonation/end"].post.tags'` → `["Tenants"]`, `["Impersonation"]`; `grep -c "'Impersonation'" orval.config.ts` → 1.
 6. `just test` green with the 20+ new facts; DB-10 green.
-7. Manual on the rehearsal API: as super admin `GET /api/projects/{key}/comments` → 404 and `GET /api/admin/ai-rules/all` → 403; `POST …/impersonate {reason, 15}` → token; with it `GET /api/projects/{key}/comments` → the target's comments, `PUT /api/admin/workspace/name` → 401, a private comment is absent; `POST /api/admin/impersonation/end` → 200 and the next GET with that token → 401; `GET /api/admin/audit?action=impersonation.` as the workspace admin shows start and end; the local mail server received the start e-mail without the operator's address; `/api/admin/stats/insights` and `/api/admin/stats` still show non-zero comment counts for the plain operator.
+7. Manual on the rehearsal API: as super admin `GET /api/projects/{key}/comments` → 404, `GET /api/admin/ai-rules/all` → 403, `POST /api/admin/suggestions/{id}/approve` → 404, `GET /api/admin/export/workspace` → 403; `POST …/impersonate {reason, 15}` → token; with it `GET /api/projects/{key}/comments` → the target's comments, `PUT /api/admin/workspace/name` → 401, a private comment is absent; `POST /api/admin/impersonation/end` → 200 and the next GET with that token → 401; `GET /api/admin/audit?action=impersonation.` as the workspace admin shows start and end; the local mail server received the start e-mail without the operator's address; `/api/admin/stats/insights` and `/api/admin/stats` still show non-zero comment counts for the plain operator.
 8. Leave a session to expire on the rehearsal API (Minutes = 1): within 6 minutes `impersonation_sessions.ended_at` is set with `end_reason = 2` and an `impersonation.ended` audit row with `reason: expired` exists.
 
 ## 8. Rollback
@@ -289,7 +324,7 @@ access to content — say so in the release notes; the audit rows already writte
 
 1. Merge after DB-12 is in production and DB-11b is merged. R11 rehearsal (§7 criterion 7–8) on a same-day dump.
 2. `bash scripts/deploy-api.sh` (ordinary). Expect one `Applying migration` line.
-3. Verify criterion 7 against production with the owner's super-admin account and the real workspace (reason "post-deploy verification, DB-13"; end it immediately; the workspace's admin — the owner — receives the e-mail).
+3. Verify criterion 7 against production with the owner's super-admin account and the real workspace — **one that has a live Workspace Admin membership** (`TenantService.ListAsync` row with `id != 0`), otherwise no e-mail is expected (GLM DB-13 #2) — (reason "post-deploy verification, DB-13"; end it immediately; the workspace's admin — the owner — receives the e-mail; `GET /api/admin/audit?action=impersonation.` as that admin shows `actorName: "Operator"`).
 4. Watch `docker compose logs api` for `Impersonation session has ended` (expected after `end`), `Impersonation tokens are read-only` (the dashboard tried a write under the banner — UI bug, not a server bug) and for `ImpersonationSweepService` errors.
 5. Dashboard: `dashboard-agent` regenerates the client from production once, then §11.
 
@@ -310,3 +345,17 @@ add "plain super-admin token gets 404/403 on content" to its inventory when it i
 5. Settings (workspace admin): a small "Operator access" card listing `GET /api/admin/impersonation` (own workspace) — date, duration, reason, requests. No operator identity (D13.6).
 
 **Widget:** none. **CLI:** none.
+
+## 12. Cross-review adjudication (2026-09-22 reviews, folded 2026-09-23)
+
+Reports: `docs/db/reviews/REVIEW-GLM-DB12-15-2026-09-22.md`, `docs/db/reviews/REVIEW-AGY-DB12-15-2026-09-22.md`. Every citation re-checked against the tree on 2026-09-23.
+
+| Finding | Claim | Verdict | Where it landed |
+|---|---|---|---|
+| agy DB-13 #1 (**Blocker**) | `SuggestionService.LoadOwnAsync` (`:320-334`) skips the owner predicate for super admins → a plain operator reads and approves/rejects any workspace's suggestion content | **Accepted** — verified; GLM's sweep missed it because it only walked `IsSuperAdmin` reads that *widen*, not loaders that *skip* the owner predicate | §2 fact, §3.4 new row + rule shape 3, §5 task 7, §6 test 13, §7 crit. 4a/7 |
+| agy DB-13 #2 (Major) | `ProfileService.BuildAsync` counts go to zero for operators | **Accepted as Minor** — counts/project names only (metadata), no leak, no data loss; reachable via `GET /api/admin/users/{id}/profile` | §3.4 row, §5 task 7, §6 test 13 |
+| GLM DB-13 #1 (Major, = GLM DB-12 #3) | D13.6 broken by DB-12's audit DTO | **Accepted** — fixed in DB-12 §3.8a (D12.5); this doc re-asserts it end to end | §3.7 paragraph, D13.6 row, §6 test 13 |
+| GLM DB-13 #2 (Minor) | Admin-less workspaces get no notification | **Accepted** (words + log + release-step workspace choice) | §3.7, §5 task 10, §6 test 13, §9 step 3 |
+| GLM DB-13 #3 (Minor) | `ExportWorkspaceAsync` returns a misleading 200 for a plain operator | **Accepted** — `ExportImportService.cs:63-66` has no `EnsureAsync` | §2, §3.4 row, §5 task 7, §6 test 13, §7 crit. 4a/7 |
+| GLM DB-13 #4 (Minor) | One-live-session-per-operator is code-only | **Accepted** — the partial index becomes unique (same DDL cost) + 23505 catch | §3.2, §3.6, §5 tasks 2/10, §6 test 13, §7 crit. 4b |
+| GLM DB-13 "verified correct" list | Six-filter removal breaks no operator screen; token design sound | **Confirmed**, with the one omission above (`LoadOwnAsync`); the §3.4 checklist now includes the `IgnoreQueryFilters` grep so the class of miss cannot recur | §3.4 rule |

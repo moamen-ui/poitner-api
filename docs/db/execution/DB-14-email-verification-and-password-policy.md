@@ -4,8 +4,8 @@ Roadmap: §57, Release 5 row **R5.4**; foundations report §2 row 4 ("verificati
 column), R3 (one guarded backfill — grandfathering), R5, R7 (the backfill is raw SQL → marker + `[ContractMigration]` → explicit deploy path, alone as
 `pre-db14` or batched with DB-12 as `pre-db12-14` under R7.1), R8 (no new tenant data), R10, R11, R13, R14 (the normaliser; verification is bound to the
 **normalised** address), R16 (e-mailed one-time tokens are `IResetTokenService` scoped tokens with a purpose — **`TokenPurposes.VerifyEmail`**, never a table).
-**Class: Expand** (additive column + a one-time, idempotent backfill; no drop, no rename). **Status 2026-09-22: written; not implemented.** Owner
-decisions D14.1–D14.5 have defaults (§3.8); none blocks.
+**Class: Expand** (additive column + a one-time, idempotent backfill; no drop, no rename). **Status 2026-09-22: written; not implemented. Cross-reviewed
+2026-09-22 (GLM, agy — `docs/db/reviews/`); amendments folded 2026-09-23 (§12).** Owner decisions D14.1–D14.7 have defaults (§3.8); none blocks.
 
 **Dependencies.** Requires **DB-11a in production** (`IMembershipService.FindIdentityByPublicIdAsync/FindIdentityByEmailAsync`, `EmailNormalizer`,
 `ITokenService.Issue(User, WorkspaceMembership?, …)`, the join-or-create rule — every "identity is created here" site below is the DB-11a version) and
@@ -35,8 +35,11 @@ weak password is refused at every place a password is set.
   `DemoService.UpgradeAsync` (sets the real address, `:288-300` after DB-11a: global uniqueness), `API/Seed/AdminSeeder.cs:128-160` (super admin from `ADMIN__EMAIL`).
 - Password rules today: `MinimumLength(8)` in `Application/Validators/RegisterValidator.cs:15-17`, `RegisterAdminValidator.cs:15-17`, `CreateUserValidator.cs:15-17`,
   `CreateTenantValidator.cs:15-17`, `ChangePasswordRequestValidator.cs:14-16` (`NewPassword`), `ResetPasswordValidator.cs:14-16` (`NewPassword`),
-  `UpdateUserValidator.cs:14-15` (optional `Password`), `AcceptInviteRequestValidator.cs:24-27`, `UpgradeDemoValidator.cs:15-18`; inline
-  `AuthService.ResetPasswordAsync :109-110` (`NewPassword.Length < 8`). Message `MessageKeys.User.PasswordWeak = "Password must be at least 8 characters."` (`MessageKeys.cs:31`).
+  `UpdateUserValidator.cs:14-15` (optional `Password`), `AcceptInviteRequestValidator.cs:24-27`, `UpgradeDemoValidator.cs:15-18`; **three** inline service
+  checks (GLM DB-14 #1 — the first draft listed one): `AuthService.ResetPasswordAsync :109-110` (`NewPassword.Length < 8`, literal message
+  `"Password must be at least 8 characters."`), `TenantService.CreateAsync :168-169` (`request.Password.Length < 8`, **literal** message, not `MessageKeys`),
+  `InviteService.AcceptAsync :513-514` (`request.Password.Length < 8`, `MessageKeys.User.PasswordWeak`). `grep -rn "Length < 8\|MinimumLength(8)\|at least 8" Application --include='*.cs'`
+  → 13 lines today (9 validators + 3 services + `MessageKeys.cs:31`). Message `MessageKeys.User.PasswordWeak = "Password must be at least 8 characters."` (`MessageKeys.cs:31`).
   `UpgradeDemoValidator` is run inline by `DemoService.UpgradeAsync` (`:262-264`), not by auto-validation.
 - Token rail (DB-11c §3.4a): `IResetTokenService.CreateScoped(Guid publicId, Guid stamp, string purpose, string? payload)` / `TryValidateScoped(token, purpose, out pid, out stamp, out payload)`,
   30-min TTL, purpose `^[a-z-]+$`; `Application/Common/TokenPurposes { Erase, ChangeEmail }`. Anonymous redeem endpoints carry `[EnableRateLimiting("signup")]`
@@ -44,6 +47,10 @@ weak password is refused at every place a password is set.
 - E-mail template precedent: `AuthService.RequestPasswordResetAsync :66-100` (`brand.Urls.App.TrimEnd('/')`, `{app}/reset?token=…`, `WorkspaceNameResolver.ResolveForEmailAsync`,
   best-effort `try/catch`). `IEmailService.SendAsync(to, subject, html)` capped per day.
 - `MeController` (`API/Controllers/MeController.cs:10-19`: `[Route("api/me")]`, `[Authorize]`, tag `Me`), `AuthController` (`:11-17`, tag `Auth`) — both tags in `orval.config.ts:6`.
+- **Identity from claims:** `User.PublicId` is a **`Guid`** (`Domain/Entity/User.cs:7`); the JWT `sub` is a string and — because the bearer handler maps inbound claims —
+  may surface as `ClaimTypes.NameIdentifier` rather than `"sub"`. `Infrastructure/CurrentUser/HttpCurrentUser.cs:9-16` already does the right thing
+  (`Guid.TryParse(FindFirst(NameIdentifier) ?? FindFirst("sub"))` → `Guid?`); `AuthenticationExtensions.cs:61-66` does the same with `ctx.Fail` on failure.
+  **Any filter that needs the caller's identity resolves `ICurrentUser` from `RequestServices` and uses `.Id`** — never compares a claim string to `PublicId` (agy DB-14 #1).
 - Authorization: `Policies.Admin` = claim `is_admin`, `Policies.SuperAdmin` = `is_super_admin` (`API/Extensions/AuthenticationExtensions.cs:110-113`). Global MVC filters:
   `Program.cs:49-52` (`options.Filters.Add(new ProducesAttribute(...))`; DB-12 adds `AuditCoverageFilter` there). `IMemoryCache` registered (`Infrastructure/DependencyInjection.cs:33`);
   the stamp validator's 60 s cache pattern `AuthenticationExtensions.cs:76-86`.
@@ -100,7 +107,7 @@ happen on or before that date — release step 1 checks it). `Down()` stays **em
 | `DemoService.UpgradeAsync` | set to **null** (new address) | **yes** | the convert step is exactly where the address becomes real (F4) |
 | `AdminSeeder` super admin | `now` (set when creating; on reconcile set if null) | no | configured on the server |
 | DB-11d `ConfirmEmailChangeAsync` step 5 | set to `now` | no | the link went to the new address (amend DB-11d §3.3 step 5: one line) |
-| join-or-create onto an **existing** identity (DB-11a §3.3 rule 5) | unchanged | no | a join never changes the identity |
+| join-or-create onto an **existing** identity (DB-11a §3.3 rule 5) | unchanged — **except**: when the path is an invite accept, `invite.Email != null`, `EmailNormalizer.Normalize(invite.Email) == identity.Email` and `identity.EmailVerifiedAt == null` → set `now` (agy DB-14 #2) | no | a join never changes the identity — but D14.2's proof (an addressed link, delivered to that address, presented together with the account's password per DB-11a rule 3) holds for an existing identity exactly as for a new one; leaving it unverified would gate a person who just proved possession twice |
 
 "Verification mail" = `EmailVerificationService.SendAsync(identity)` (§3.3) called best-effort right after the creating method's `SaveChangesAsync`.
 
@@ -112,7 +119,7 @@ happen on or before that date — release step 1 checks it). `Down()` stays **em
   address the link proves — a token minted before a DB-11d change cannot verify the new address);
   `link = $"{brand.Urls.App.TrimEnd('/')}/verify-email?token={Uri.EscapeDataString(token)}"`; subject `$"Verify your {brand.ProductName} e-mail address"`; body
   (copy the reset template shape; HTML-encode nothing dynamic but the link): "Confirm that {Email} is yours to unlock admin actions in {ProductName}. The
-  link expires in 30 minutes. If you did not sign up, ignore this e-mail." Best-effort `try/catch`. Records `_cache.Set($"verify_sent:{pid}", true, 5 min)`.
+  link expires in 30 minutes. If you did not sign up, ignore this e-mail." Best-effort `try/catch` — **log the failure at `Warning`** (`"Verification mail to {PublicId} failed: {Reason}"`, no address), not `Information`: `IEmailService` is capped per day, so a signup burst can leave identities unverified with a throttled resend (GLM DB-14 #4); §9 step 5 watches this line. Records `_cache.Set($"verify_sent:{pid}", true, 5 min)`.
 - `ResendAsync()` (`POST /api/me/verification/resend`, `MeController`, `[Authorize]` class-level, `[EnableRateLimiting("signup")]`, `[ProducesResponseType(typeof(Result), 200)]`):
   identity by `sub` (`FindIdentityByPublicIdAsync`); already verified → `Success(Auth.AlreadyVerified)`; demo/passwordless/super → `Failure(Auth.VerificationNotApplicable)`;
   `_cache.TryGetValue($"verify_sent:{pid}")` → `Failure(Auth.VerificationRecentlySent)` (one mail per identity per 5 min, on top of the per-IP budget);
@@ -129,12 +136,60 @@ happen on or before that date — release step 1 checks it). `Down()` stays **em
 
 Applies when **all** hold: the request is authenticated; the method is not GET/HEAD/OPTIONS; the controller type's namespace starts with
 `Pointer.API.Controllers.Admin`; the action does not carry `[AllowUnverified]` (new attribute; none is needed today — it exists so a future exception is
-explicit and greppable). Skips when `is_super_admin == "true"` (operator; seeded verified anyway).
-Lookup (60 s `IMemoryCache`, key `emailverified:{sub}`): `db.Users.IgnoreQueryFilters().AsNoTracking().Where(u => u.PublicId == sub && u.DeletedAt == null).Select(u => new { u.EmailVerifiedAt, u.IsDemo }).FirstOrDefaultAsync()`;
-verified ⇔ row exists and (`EmailVerifiedAt != null || IsDemo`). Not verified → short-circuit with `403` body `Result.Forbidden(MessageKeys.Auth.EmailNotVerified)`
-and response header `X-Email-Verification-Required: true` (the dashboard keys its banner on it). Missing row → let the request proceed (the stamp validator
-already rejected deleted identities; the filter is not an authentication layer). Exceptions in the lookup: fail **open** with a warning (same reasoning as the stamp check —
-a DB blip must not 500 every admin write).
+explicit and greppable). **Namespace invariant (GLM DB-14 #3):** a new admin mutation **must** live under `API/Controllers/Admin/` or this filter will not gate
+it (silently un-gated); a stakeholder-facing POST accidentally placed there is gated (fail-closed, safe). The DB-12 coverage test (`AuditCoverageTests`, same
+namespace rule) is the twin check — a controller that trips one will trip the other. Record the invariant as a one-line comment on the filter class.
+
+Exact mechanics (agy DB-14 #1 — the first draft compared a `string sub` to the `Guid PublicId`, which does not compile):
+```csharp
+public async Task OnActionExecutionAsync(ActionExecutingContext ctx, ActionExecutionDelegate next)
+{
+    var http = ctx.HttpContext;
+    if (http.User?.Identity?.IsAuthenticated != true || HttpMethods.IsGet(http.Request.Method) || HttpMethods.IsHead(http.Request.Method) || HttpMethods.IsOptions(http.Request.Method))
+    { await next(); return; }
+    var cad = ctx.ActionDescriptor as ControllerActionDescriptor;
+    if (cad is null || cad.ControllerTypeInfo.Namespace?.StartsWith("Pointer.API.Controllers.Admin", StringComparison.Ordinal) != true
+        || cad.MethodInfo.GetCustomAttribute<AllowUnverifiedAttribute>() is not null)
+    { await next(); return; }
+
+    var current = http.RequestServices.GetRequiredService<ICurrentUser>();          // Guid? Id — parses sub/NameIdentifier once, the codebase's one precedent
+    if (current.IsSuperAdmin) { await next(); return; }                               // operator: seeded verified; never gated
+    if (current.Id is not Guid publicId)
+    {
+        // An authenticated principal without a parsable sub cannot come from this API's own tokens (JwtTokenService always writes sub).
+        // Fail OPEN like the lookup-exception path: the filter is not an authentication layer. Log once per request.
+        _logger.LogWarning("RequireVerifiedEmailFilter: authenticated request without a parsable sub on {Method} {Path}; not gated", http.Request.Method, http.Request.Path);
+        await next(); return;
+    }
+
+    bool verified;
+    try
+    {
+        verified = await _cache.GetOrCreateAsync($"emailverified:{publicId}", async entry =>
+        {
+            entry.AbsoluteExpirationRelativeToNow = TimeSpan.FromSeconds(60);
+            var db = http.RequestServices.GetRequiredService<AppDbContext>();
+            var row = await db.Users.IgnoreQueryFilters().AsNoTracking()
+                .Where(u => u.PublicId == publicId && u.DeletedAt == null)
+                .Select(u => new { u.EmailVerifiedAt, u.IsDemo })
+                .FirstOrDefaultAsync();
+            return row is null || row.EmailVerifiedAt != null || row.IsDemo;        // missing row → not gated (stamp validator already rejected deleted identities)
+        });
+    }
+    catch (Exception ex)
+    {
+        _logger.LogWarning(ex, "RequireVerifiedEmailFilter: lookup failed; allowing request (fail-open).");
+        await next(); return;
+    }
+
+    if (verified) { await next(); return; }
+    http.Response.Headers["X-Email-Verification-Required"] = "true";
+    ctx.Result = new ObjectResult(Result.Forbidden(MessageKeys.Auth.EmailNotVerified)) { StatusCode = StatusCodes.Status403Forbidden };
+}
+```
+Constructor: `IMemoryCache cache, ILogger<RequireVerifiedEmailFilter> logger` (type-registered filter, DI-activated). `ConfirmAsync` removes the cache key
+`emailverified:{pid}` (§3.3) so the unlock is immediate for the identity that just clicked. `AppDbContext` is referenced from `API` already (`Program.cs`,
+`AuthenticationExtensions.cs`) — no new project reference.
 
 What stays open to an unverified identity: every GET; every non-admin write (comments, replies, uploads, verify comment, events, `/api/me/*` incl. change-password,
 leave, erase, resend; `POST /api/demo/upgrade`; the anonymous auth endpoints). Login succeeds with `Status = "ok"` — the *session* is not gated, the *admin actions* are.
@@ -171,9 +226,20 @@ public static IRuleBuilderOptions<T, string> StrongPassword<T>(this IRuleBuilder
 ```
 Replace the `MinimumLength(8)` rule at each site in §2 with `.StrongPassword(x => x.Email)` (`RegisterValidator`, `RegisterAdminValidator`, `CreateUserValidator`,
 `CreateTenantValidator`, `AcceptInviteRequestValidator`, `UpgradeDemoValidator`), `.StrongPassword(_ => null)` for `ChangePasswordRequestValidator.NewPassword` and
-`ResetPasswordValidator.NewPassword` (no address in the request — the **service** re-validates with the loaded identity's e-mail: `ChangePasswordAsync` after the
-current-password check, `ResetPasswordAsync` replacing `:109-110`), and `.StrongPassword(_ => null).When(x => x.Password != null)` for `UpdateUserValidator`
-(`UserService.UpdateAsync` re-validates with the member's e-mail before hashing). Messages: `User.PasswordWeak = "Password must be at least 10 characters."`,
+`ResetPasswordValidator.NewPassword`, and `.StrongPassword(_ => null).When(x => x.Password != null)` for `UpdateUserValidator`.
+
+**Service-layer re-validations — exactly five, all through `PasswordPolicy.Validate` (GLM DB-14 #1):** the pattern at every site is
+`if (PasswordPolicy.Validate(pw, email) is string pwErr) return Result<…>.Failure(pwErr);` — never a length literal, never a literal message.
+| Site | Password | E-mail passed | Replaces |
+|---|---|---|---|
+| `AuthService.ResetPasswordAsync :109-110` | `request.NewPassword` | the loaded identity's `Email` (after the token resolved the identity) | the `Length < 8` check + literal message |
+| `AuthService.ChangePasswordAsync` (after the current-password check) | `request.NewPassword` | the loaded identity's `Email` | nothing (new — the validator has no address) |
+| `UserService.UpdateAsync` (before hashing, only when `request.Password != null`) | `request.Password` | the member identity's `Email` | nothing (new) |
+| `TenantService.CreateAsync :168-169` | `request.Password` | `request.Email` | the `Length < 8` check + **literal** `"Password must be at least 8 characters."` |
+| `InviteService.AcceptAsync :513-514` | `request.Password` | `request.Email` | the `Length < 8` check + `MessageKeys.User.PasswordWeak` |
+The last two are shadowed by their validators today (`CreateTenantValidator`, `AcceptInviteRequestValidator`) — they are kept as re-validation (the codebase's
+"M2: guard nulls" convention keeps service-level guards) but must speak the **new** policy, otherwise the repo ends with a 10-char rule in validators and a stale
+8-char fallback in two services and criterion 2 fails. Messages: `User.PasswordWeak = "Password must be at least 10 characters."`,
 `User.PasswordTooLong = "Password must be 128 characters or fewer."`, `User.PasswordCommon = "That password is too common — choose something less guessable."`,
 `User.PasswordIsEmail = "Your password must not be your e-mail address."`. Demo passwords (`DemoService.ProvisionAsync` generates 16 chars) pass; the seeded
 super-admin password is **not** validated (config-owned; a warning is logged at boot if `PasswordPolicy.Validate` fails — `AdminSeeder`).
@@ -195,6 +261,7 @@ super-admin password is **not** validated (config-owned; a warning is logged at 
 | D14.4 | Password policy | 10–128 chars, not top-1000, not the address/local part. No composition rules (NIST 800-63B), no expiry, no history |
 | D14.5 | Existing passwords | **Never re-checked**; enforced only when a password is set or changed |
 | D14.6 | What an unverified identity may do | Everything a member does (read, comment, reply, upload, change own password/e-mail, leave, erase) **except** admin writes (`/api/admin/*` non-GET) |
+| D14.7 *(added 2026-09-23, GLM DB-14 #2)* | Support remedy when the verification mail cannot arrive (typo at signup, provider cap) | **Change-e-mail is the remedy** — DB-11d's confirm step sets `EmailVerifiedAt` (§3.2 row 11), so the person fixes the address themselves; the banner text names it ("wrong address? change it in your profile"). **No operator "mark verified" endpoint by design** (it would let the operator vouch for an address nobody proved). Revisit if support tickets show the gap |
 
 ## 4. Safety classification
 
@@ -239,22 +306,22 @@ and is rate-limited (R16).
    }
    ```
    Both `[NoAudit("…")]`/`[Audited(AuditActions.AuthEmailVerified)]` per DB-12 when it is merged (`VerifyEmail` audited; `ResendVerification` `[NoAudit("mail send, no state change")]`).
-8. `API/Auth/AllowUnverifiedAttribute.cs`; `API/Auth/RequireVerifiedEmailFilter.cs` (§3.4); `Program.cs:49-52` → `options.Filters.Add<RequireVerifiedEmailFilter>();`.
-9. Creation sites (§3.2): set `EmailVerifiedAt = DateTime.UtcNow` where the table says `now`; call `_emailVerification.SendAsync(identity)` where it says **yes** (constructor dependency in `AuthService`, `InviteService`, `UserService`, `DemoService`); `DemoService.UpgradeAsync` sets `EmailVerifiedAt = null` next to `user.Email = emailNormalized`; `AdminSeeder` sets it on create and on reconcile when null. `docs/db/execution/DB-11d-change-email.md` §3.3 step 5 — add `identity.EmailVerifiedAt = DateTime.UtcNow;` (doc edit; DB-11d's implementer or this one, whichever lands second, adds the line to code).
+8. `API/Auth/AllowUnverifiedAttribute.cs`; `API/Auth/RequireVerifiedEmailFilter.cs` (§3.4 code **verbatim** — identity via `ICurrentUser.Id`, `Guid` compare, fail-open + Warning on a missing/unparsable sub, namespace-invariant comment); `Program.cs:49-52` → `options.Filters.Add<RequireVerifiedEmailFilter>();`.
+9. Creation sites (§3.2): set `EmailVerifiedAt = DateTime.UtcNow` where the table says `now`; call `_emailVerification.SendAsync(identity)` where it says **yes** (constructor dependency in `AuthService`, `InviteService`, `UserService`, `DemoService`); `DemoService.UpgradeAsync` sets `EmailVerifiedAt = null` next to `user.Email = emailNormalized`; `AdminSeeder` sets it on create and on reconcile when null. **Join onto an existing identity via an addressed invite** (`InviteService.AcceptJoinExistingWorkspaceAsync` / `AcceptCreateNewWorkspaceAsync`, the `identity != null` branch of the DB-11a join-or-create): `if (invite.Email != null && EmailNormalizer.Normalize(invite.Email) == identity.Email && identity.EmailVerifiedAt == null) identity.EmailVerifiedAt = DateTime.UtcNow;` before the save (agy DB-14 #2). `docs/db/execution/DB-11d-change-email.md` §3.3 step 5 — add `identity.EmailVerifiedAt = DateTime.UtcNow;` (doc edit; DB-11d's implementer or this one, whichever lands second, adds the line to code).
 10. `Application/Common/UserMapper.cs` + `Application/DTOs/Auth/MeResponse.cs` — §3.5.
-11. `Application/Common/PasswordPolicy.cs`, `Application/Resources/common-passwords.txt` (+ csproj `EmbeddedResource`), `Application/Validators/PasswordRules.cs`; the nine validator edits and the two service re-validations of §3.6; `AuthService.ResetPasswordAsync :109-110` replaced; `MessageKeys` (§3.6, §3.7).
+11. `Application/Common/PasswordPolicy.cs`, `Application/Resources/common-passwords.txt` (+ csproj `EmbeddedResource`), `Application/Validators/PasswordRules.cs`; the nine validator edits and the **five** service re-validations of the §3.6 table (`AuthService.ResetPasswordAsync :109-110`, `AuthService.ChangePasswordAsync`, `UserService.UpdateAsync`, `TenantService.CreateAsync :168-169`, `InviteService.AcceptAsync :513-514`) — each via `PasswordPolicy.Validate`, no length literal, no literal message; `MessageKeys` (§3.6, §3.7).
 12. Tests (§6); `just fmt`; `just test`; rehearsal (§3.1 query); `docs/db/SCHEMA.md` `users` row: add `email_verified_at`.
 
 ## 6. Tests
 
 `Tests/EmailVerificationTests.cs` (InMemory fixture `UserGovernanceTests.cs:20-60`, `CapturingEmail`, `ResetTokenService` as in `ResetTokenServiceTests`, `TestSeed.Join`):
 1. `RegisterAdmin_CreatesUnverified_SendsLink` — `EmailVerifiedAt == null`; one mail containing `verify-email?token=`; `TryValidateScoped(token, "verify-email")` true with payload == normalised e-mail; `TryValidateScoped(token, "change-email")` false; `TryValidate(token)` false.
-2. `AcceptInvite_Addressed_VerifiedNoMail` (invite `Email = "A@x.com"`, accept as `"a@x.com"` → verified, zero mails); `AcceptInvite_Open_UnverifiedWithMail`; `QuickAccess_VerifiedAtCreation`; `TenantCreate_BySuperAdmin_Verified` (D14.3); `UserCreate_ByAdmin_UnverifiedWithMail`; `DemoUpgrade_ResetsVerification_SendsMail`; `JoinExistingIdentity_DoesNotTouchVerification`.
+2. `AcceptInvite_Addressed_VerifiedNoMail` (invite `Email = "A@x.com"`, accept as `"a@x.com"` → verified, zero mails); `AcceptInvite_Addressed_ExistingUnverifiedIdentity_BecomesVerified` (seed an unverified identity `a@x.com` with a membership in B; addressed invite to A for `A@x.com`; accept with the account's password → `EmailVerifiedAt != null`, zero mails; a **second** identity `c@x.com` accepting an addressed invite for `A@x.com` is refused by DB-11a's address lock, not by this doc); `AcceptInvite_Open_ExistingUnverifiedIdentity_StaysUnverified`; `AcceptInvite_Open_UnverifiedWithMail`; `QuickAccess_VerifiedAtCreation`; `TenantCreate_BySuperAdmin_Verified` (D14.3); `UserCreate_ByAdmin_UnverifiedWithMail`; `DemoUpgrade_ResetsVerification_SendsMail`; `JoinExistingIdentity_DoesNotTouchVerification`.
 3. `Confirm_ValidToken_SetsVerifiedAt_Idempotent` (second click → success, timestamp unchanged); `Confirm_PayloadMismatch_AfterEmailChange_Invalid`; `Confirm_WrongPurpose_Invalid` (an `erase` token); `Confirm_StampRotated_Invalid`; `Confirm_Deleted_Invalid` — all failures return `Auth.VerificationLinkInvalid`.
 4. `Resend_Throttled_5Minutes` (second call → `VerificationRecentlySent`, one mail); `Resend_AlreadyVerified`; `Resend_Demo_NotApplicable`.
-5. `Tests/RequireVerifiedEmailFilterTests.cs` — build `ActionExecutingContext` (controller type `Pointer.API.Controllers.Admin.ProjectsController`, method POST, principal with `sub`) over an InMemory `AppDbContext`: unverified → result is `ObjectResult` 403 with header `X-Email-Verification-Required`; verified → `next` called; `IsDemo` → next; `is_super_admin` claim → next without a lookup; GET → next without a lookup; controller in `Pointer.API.Controllers` (non-admin) → next; `[AllowUnverified]` → next; cache: two calls, one query (count via a `DbCommandInterceptor` or assert the cache key exists).
+5. `Tests/RequireVerifiedEmailFilterTests.cs` — build `ActionExecutingContext` (controller type `Pointer.API.Controllers.Admin.ProjectsController`, method POST, `RequestServices` providing a `FakeCurrentUser { Id = <guid> }`, an InMemory `AppDbContext`, a `MemoryCache`): unverified → result is `ObjectResult` 403 with header `X-Email-Verification-Required`; verified → `next` called; `IsDemo` → next; `FakeCurrentUser { IsSuperAdmin = true }` → next without a lookup; **`FakeCurrentUser { Id = null }` (unparsable/missing sub) → next, no lookup, one Warning logged** (agy DB-14 #1); missing `users` row → next; GET → next without a lookup; controller in `Pointer.API.Controllers` (non-admin) → next; `[AllowUnverified]` → next; cache: two calls, one query (count via a `DbCommandInterceptor` or assert the cache key `emailverified:{guid}` exists); after `ConfirmAsync` the key is gone and the next call passes.
 6. `Tests/PasswordPolicyTests.cs` — `"short1"` → `PasswordWeak`; 129 chars → `PasswordTooLong`; `"password123"`, `"Password123"` → `PasswordCommon`; `"a@x.com"` and `"A"` (local part) with e-mail `a@x.com` → `PasswordIsEmail`; `"correct-horse-battery"` → null; embedded list has exactly 1 000 entries and contains `"123456"`.
-7. `Tests/PasswordValidatorsTests.cs` — `[Theory]` over the nine validators with `"password1"` → invalid with `PasswordCommon`; `"long-enough-pw-1"` → valid; `UpdateUserValidator` with `Password = null` → valid. `ResetPassword_ServiceRejectsEmailAsPassword` (through `AuthService.ResetPasswordAsync` with a valid token); `ChangePassword_ServiceRejectsCommon`.
+7. `Tests/PasswordValidatorsTests.cs` — `[Theory]` over the nine validators with `"password1"` → invalid with `PasswordCommon`; `"long-enough-pw-1"` → valid; `UpdateUserValidator` with `Password = null` → valid. `ResetPassword_ServiceRejectsEmailAsPassword` (through `AuthService.ResetPasswordAsync` with a valid token); `ChangePassword_ServiceRejectsCommon`; `TenantCreate_ServiceRejectsCommon` and `AcceptInvite_ServiceRejectsCommon` (call the service directly with `"password1"` — bypassing the validator — → `Failure` with `PasswordCommon`; proves the two re-validations speak the new policy, GLM DB-14 #1); `UserUpdate_ServiceRejectsEmailAsPassword`.
 8. `Tests/AuthRateLimitingTests.cs` — `[InlineData("VerifyEmail")]` on `SignupSurface_KeepsSignupRateLimit`; new `ResendVerification_HasSignupRateLimit` on `typeof(MeController).GetMethod("ResendVerification")`.
 9. `Me_EmailVerifiedFlags` — unverified admin → `EmailVerified false, EmailVerificationRequired true`; unverified stakeholder → `false, false`; verified → `true, false`; demo → `true`.
 10. Existing data survives: the rehearsal query (§3.1) prints 0 unverified live identities after Migration 2; the seeded super admin logs in and `POST /api/admin/projects` is not blocked. Tenancy: this doc adds no workspace-scoped rows; the R8 test is DB-11a's `InWorkspace_TenantB_SeesNothingOfTenantA` (unchanged).
@@ -262,7 +329,8 @@ and is rate-limited (R16).
 ## 7. Acceptance criteria
 
 1. `dotnet ef migrations list -p Infrastructure -s API --no-connect` ends with `_AddUsersEmailVerifiedAt`, `_BackfillUsersEmailVerifiedAt`; `grep -c "ContractMigration(\"DB-14\")" Infrastructure/Migrations/*_BackfillUsersEmailVerifiedAt.cs` → 1; `grep -c "TIMESTAMPTZ '20" Infrastructure/Migrations/*_BackfillUsersEmailVerifiedAt.cs` → 1 and the date is ≥ today.
-2. `grep -rn "MinimumLength(8)" Application --include='*.cs' | wc -l` → 0; `grep -rn "Length < 8" Application --include='*.cs' | wc -l` → 0; `grep -rln "StrongPassword(" Application/Validators | wc -l` → 9.
+2. `grep -rn "MinimumLength(8)" Application --include='*.cs' | wc -l` → 0; `grep -rn "Length < 8" Application --include='*.cs' | wc -l` → 0; `grep -rn "at least 8" Application --include='*.cs' | wc -l` → 0 (the two literal messages in `AuthService`/`TenantService` and `MessageKeys.cs:31` are gone); `grep -rln "StrongPassword(" Application/Validators | wc -l` → 9; `grep -rl "PasswordPolicy.Validate" Application/Services/Implementation | sort` → exactly `AuthService.cs InviteService.cs TenantService.cs UserService.cs` (four files, five call sites).
+2a. `grep -c "ICurrentUser" API/Auth/RequireVerifiedEmailFilter.cs` → ≥ 1; `grep -c 'FindFirst("sub")\|FindFirst(JwtRegisteredClaimNames.Sub)' API/Auth/RequireVerifiedEmailFilter.cs` → 0; `grep -c "Controllers.Admin" API/Auth/RequireVerifiedEmailFilter.cs` → ≥ 2 (the check and the invariant comment).
 3. `wc -l Application/Resources/common-passwords.txt` → 1 002 (1 000 + 2 header lines); `grep -c "EmbeddedResource" Application/Pointer.Application.csproj` → ≥ 1.
 4. `grep -c "verify-email" Application/Common/TokenPurposes.cs` → 1; `grep -c "TokenPurposes.VerifyEmail" Application/Services/Implementation/EmailVerificationService.cs` → 2.
 5. `curl -s …/swagger.json | jq '.paths["/api/me/verification/resend"].post.tags, .paths["/api/auth/verify-email"].post.tags, .components.schemas.MeResponse.properties.emailVerified'` → `["Me"]`, `["Auth"]`, non-null.
@@ -285,7 +353,7 @@ Dump label `pre-db14` (or the R7.1 batch label) mandatory because Migration 2 is
    lines and `DB-09: applying 1 contract migration(s)`.
 4. Verify: `psql … -c "SELECT count(*) FROM users WHERE deleted_at IS NULL AND email_verified_at IS NULL"` → 0; log in as the real admin → `GET /api/auth/me` has
    `emailVerified: true`; rename the workspace → 200 (not gated); create a disposable identity via invite accept (open link) → banner path per criterion 8; erase it (DB-11c).
-5. Watch `docker compose logs api` for `RequireVerifiedEmailFilter` warnings (lookup failures → fail-open) and for `EmailVerificationService` send failures (daily cap).
+5. Watch `docker compose logs api` for `RequireVerifiedEmailFilter` warnings (lookup failures and "without a parsable sub" → fail-open; the latter must be zero) and for `Verification mail to … failed` at Warning (daily cap — if it appears during a signup burst, the affected people use change-e-mail or wait 5 min and resend, D14.7).
 6. Dashboard: `dashboard-agent` regenerates the client from production once, then §11.
 
 ## 10. Out of scope
@@ -298,7 +366,7 @@ a `notifications` row for "verify your e-mail" (banner is enough); the widget's 
 ## 11. Dashboard / widget / CLI tasks
 
 **Dashboard** (after client regen: `usePostApiMeVerificationResend`, `usePostApiAuthVerifyEmail`, `MeResponse.emailVerified/emailVerificationRequired`):
-1. `Shell.tsx`: when `me.emailVerificationRequired` render a top banner "Verify your e-mail address to manage this workspace — [Resend link]"; when `!me.emailVerified && !required` a dismissible soft hint in the profile page only. Resend → toast `envelope.message` (429 → "Too many requests — try again later").
+1. `Shell.tsx`: when `me.emailVerificationRequired` render a top banner "Verify your e-mail address to manage this workspace — [Resend link] · Wrong address? [Change it]" (link to the DB-11d change-e-mail dialog; D14.7); when `!me.emailVerified && !required` a dismissible soft hint in the profile page only. Resend → toast `envelope.message` (429 → "Too many requests — try again later").
 2. Axios mutator: on a 403 with header `X-Email-Verification-Required: true` show the banner's toast instead of the generic forbidden message.
 3. New anonymous route `/verify-email` (`App.tsx`, next to `/reset` `:45`) → `features/auth/VerifyEmailPage.tsx` copied from `ResetPasswordPage.tsx`: reads `?token=`, **one button** "Verify" (never auto-submit — mail scanners pre-fetch links; DB-11d precedent), shows `envelope.message`, link to `/login` or `/`.
 4. `SignupPage.tsx`, `JoinPage.tsx`, `ResetPasswordPage.tsx`, profile change-password dialog, users "add member" dialog, tenants "create" dialog: password helper text "At least 10 characters; avoid common passwords"; surface the server's message verbatim (the policy lives server-side; do not duplicate the list client-side). After self-serve signup show "Check your inbox to verify your address".
@@ -306,3 +374,17 @@ a `notifications` row for "verify your e-mail" (banner is enough); the widget's 
 
 **Widget:** none — the server returns the policy message on the widget's register form as it does for every validation error today; the bundle stays untouched (budget).
 **CLI:** none (`login-with-key` unaffected; keys are minted from a verified-or-not identity — reading keys is not gated, and key creation is under `/api/me`, not gated by D14.6).
+
+## 12. Cross-review adjudication (2026-09-22 reviews, folded 2026-09-23)
+
+Reports: `docs/db/reviews/REVIEW-GLM-DB12-15-2026-09-22.md`, `docs/db/reviews/REVIEW-AGY-DB12-15-2026-09-22.md`. Every citation re-checked against the tree on 2026-09-23.
+
+| Finding | Claim | Verdict | Where it landed |
+|---|---|---|---|
+| agy DB-14 #1 (**Blocker**) | `RequireVerifiedEmailFilter` compares `string sub` to `Guid PublicId` → does not compile | **Accepted** — `User.PublicId` is `Guid` (`User.cs:7`). Fixed by resolving `ICurrentUser.Id` (the codebase's one claim-parsing precedent, which also covers the `NameIdentifier` inbound mapping agy did not mention); missing/unparsable sub → fail-open + Warning (cannot come from this API's tokens) | §2 fact, §3.4 code verbatim, §5 task 8, §6 test 5, §7 crit. 2a, §9 step 5 |
+| agy DB-14 #2 (Major) | Existing unverified identity accepting an addressed invite stays gated | **Accepted as Minor** (the banner + resend already existed, so "stuck" overstates it) — D14.2's proof holds for an existing identity too | §3.2 row 12, §5 task 9, §6 test 2 |
+| GLM DB-14 #1 (Major) | Two inline length checks unlisted → criterion 2 fails | **Accepted** — `TenantService.cs:168-169` (literal message), `InviteService.cs:513-514` verified | §2, §3.6 five-site table, §5 task 11, §6 test 7, §7 crit. 2 |
+| GLM DB-14 #2 (Minor) | No support override for an undeliverable address | **Accepted as a decision** — change-e-mail is the remedy; no operator override by design | D14.7, §9 step 5, §11.1 |
+| GLM DB-14 #3 (Minor) | Namespace-based gate needs its invariant stated | **Accepted** | §3.4 first paragraph, §5 task 8, §7 crit. 2a |
+| GLM DB-14 #4 (Minor) | Send failures need a Warning surface | **Accepted** | §3.3, §9 step 5 |
+| GLM lockout analysis / agy "note on others" | No lockout for super admin, invitees, demo; backfill sound | **Confirmed** — no change |

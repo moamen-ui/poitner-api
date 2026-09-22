@@ -4,7 +4,8 @@ Standing rules for every schema change in this repository. Created 2026-09-22 by
 review ([`DB-REVIEW-2026-09-22.md`](DB-REVIEW-2026-09-22.md)); amended the same day after the
 cross-reviews (R4, R6, R7, R13 — marked *(amended)*) and again the same evening after the owner
 decisions (R7 marker form, **R7.1 batching**, R8 point 6), and again the same night after the DB-11
-cross-review (R9 expression indexes, R14 normaliser + erase inventory, R16 exact fence + scoped tokens), and again the same night (late) after DB-12–15 (R8 point 8 operator/analytics tables, **R17 append-only tables and the audit obligation**);
+cross-review (R9 expression indexes, R14 normaliser + erase inventory, R16 exact fence + scoped tokens), and again the same night (late) after DB-12–15 (R8 point 8 operator/analytics tables, **R17 append-only tables and the audit obligation**),
+and on 2026-09-23 after the DB-12–15 cross-review (R16 claim parsing, R17 shape-based trigger + operator redaction, **R18 operator content boundary**);
 amend, do not fork. Every execution
 doc under [`execution/`](execution/) cites the rule numbers it relies on. `scripts/deploy-api.sh`
 already points here.
@@ -359,12 +360,19 @@ membership's workspace), `stamp` (identity `users.security_stamp`) and `mstamp` 
   (every workspace's sessions end); it never changes `public_id` or `users.id`.
 - `TenantStamp.TryRequireOwner` (S-14) is the only way to obtain "the caller's workspace" for a
   write; a non-super-admin without a `tenant` claim is Forbidden. `?? _currentUser.Id` never returns.
+- *(added 2026-09-23, agy DB-14 #1)* **The caller's identity is `ICurrentUser.Id` (`Guid?`), never a raw claim string.** `users.public_id` is a
+  `Guid`; the JWT `sub` is a string that the bearer handler may surface as `ClaimTypes.NameIdentifier`. Filters, middleware and services resolve
+  `ICurrentUser` (`Infrastructure/CurrentUser/HttpCurrentUser.cs:9-16` is the one parser) and compare `Guid`s; a component that cannot use DI-scoped
+  `ICurrentUser` (the token validator) uses `Guid.TryParse(FindFirst(Sub) ?? FindFirst("sub"))` and fails the request when it does not parse
+  (`AuthenticationExtensions.cs:61-66`). A doc that writes `u.PublicId == sub` is wrong by construction.
 
 ## R17. Append-only tables and the audit obligation *(added 2026-09-22 late night, DB-12)*
 
 - **`audit_events` is append-only at three layers:** properties are `init`-only (no C# update path), `AppDbContext.SaveChangesAsync` throws on a
   Modified/Deleted `AuditEvent` entry, and the Postgres triggers `trg_audit_events_append_only` / `trg_audit_events_no_truncate` raise on UPDATE, DELETE and
-  TRUNCATE — the single permitted UPDATE is the FK's `ON DELETE SET NULL` detaching a hard-deleted workspace (byte-identical otherwise). **DB-08 never sweeps it**;
+  TRUNCATE — the single permitted UPDATE *shape* is the FK's `ON DELETE SET NULL` detaching a hard-deleted workspace (`owner_id` non-null → NULL, byte-identical
+  otherwise). *(amended 2026-09-23, GLM DB-12 #4)* The trigger admits the **shape**, it cannot attribute the UPDATE to the FK — a manual detach of that exact
+  shape is equally permitted and only the psql history shows it; that is acceptable because detaching hides nothing from the `/all` view. **DB-08 never sweeps it**;
   a retention policy for audit rows is its own execution doc with an owner decision (D12.2 default: forever). A table that must be immutable follows the same
   three layers; the trigger migration carries the **`R4 constraint`** marker (`Tests/MigrationSafetyTests.cs` accepts only the four marker kinds; a trigger that
   enforces immutability is a constraint) and `[ContractMigration]`, and contains nothing else.
@@ -381,3 +389,28 @@ membership's workspace), `stamp` (identity `users.security_stamp`) and `mstamp` 
 - **Reserved action strings** (DB-12 §3.6) are the vocabulary for later docs: DB-11b `auth.workspace_switched`, DB-11c `member.left`, `identity.erase_requested`,
   `identity.erased`, DB-11d `auth.email.change_requested`, `auth.email.changed`, DB-14 `auth.email.verified`, DB-13 `impersonation.started`, `impersonation.ended`.
   Whichever doc lands second writes the row; the spelling never changes (R10).
+- *(added 2026-09-23, GLM DB-12 #3 / DB-13 #1)* **Audit read DTOs never name the operator to a workspace.** In any workspace-scoped audit or session view
+  (`GET /api/admin/audit`, `GET /api/admin/impersonation` for admins), rows whose actor kind is `SuperAdmin` or `Impersonation` are emitted with
+  `actor_user_id = null` and `actor_name = "Operator"` (DB-12 §3.8a, D12.5); the full identity exists only in the super-admin `/all` view. A new operator-facing
+  DTO that carries an actor field applies the same redaction and has a test that serialises the workspace view and asserts the operator uuid/name is absent.
+
+## R18. Operator content boundary *(added 2026-09-23, DB-13 cross-review — agy DB-13 #1)*
+
+After DB-13 the super-admin token reads **metadata** everywhere and **content** (comments, replies, snapshots, screenshots, suggestions, AI rules,
+tenant predefined actions, exports — the DB-13 §3.1 list) only under a live impersonation token whose `tenant` claim is the target workspace.
+Consequences for every later change:
+
+- **Every content read path reachable by an operator token is enumerated in the impersonation doc** (DB-13 §3.4, service table + the three rule
+  shapes). A PR that adds or changes a read of a content entity edits that table in the same PR, and the reviewer re-runs both checklists
+  (`grep -rn "IsSuperAdmin" Application/Services/Implementation` and `grep -rn "IgnoreQueryFilters" Application/Services/Implementation`).
+- **Three shapes, one rule each:** a read scoped by `_currentUser.TenantId` needs nothing; a read that *widens* on `IsSuperAdmin` adds `&& !IsImpersonating`
+  and, if it returns content, refuses a non-impersonating operator (`Forbidden(MessageKeys.Impersonation.Required)` or `NotFound`); a loader that
+  `IgnoreQueryFilters()` **and skips its owner predicate when `IsSuperAdmin`** is a content read in disguise (`SuggestionService.LoadOwnAsync` was the
+  instance) — the owner predicate becomes unconditional and the super admin gets `null`. The pre-DB-11a helper `TenantStamp.OwnerFor(u) ?? u.Id` never
+  substitutes for the predicate.
+- **A new content entity** (a table whose rows hold customer-authored text or media) gets: no `IsSuperAdmin ||` branch in its query filter, a line in
+  DB-13 §3.1 "Content", a seed in DB-13 §6 test 1 (`SuperAdmin_WithoutTenantClaim_SeesNoContent`) and test 2, and — if an operator screen ever needs a
+  count of it — a count-only query behind `IsSuperAdmin && !IsImpersonating` (the `StatsService`/`ProfileService` pattern).
+- **`TryRequireOwner` under impersonation** returns false (operators own nothing). Every workspace-scoped **read** endpoint that an impersonating operator
+  should see uses the two-line branch `if (_currentUser.IsImpersonating && _currentUser.TenantId is Guid t) owner = t; else if (!TenantStamp.TryRequireOwner(...)) return Forbidden(...)`
+  (DB-12 §3.8a, DB-15 §3.5). Writes never get that branch — the fence rejects them anyway.

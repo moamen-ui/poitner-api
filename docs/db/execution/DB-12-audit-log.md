@@ -7,7 +7,8 @@ address), **R17 (new — append-only tables and the audit obligation; written by
 **Class: Additive** (one new table, three indexes, one FK) **+ one raw-SQL migration** (the append-only
 trigger; `.Sql(` ⇒ DB-02 marker + `[ContractMigration("DB-12")]` ⇒ ships through `POINTER_APPLY_CONTRACT=1`,
 alone as `pre-db12` or batched with DB-14 as `pre-db12-14` under R7.1).
-**Status 2026-09-22: written; not implemented.** Owner decisions D12.1–D12.4 have defaults (§3.9); none blocks.
+**Status 2026-09-22: written; not implemented. Cross-reviewed 2026-09-22 (GLM, agy — `docs/db/reviews/`); amendments folded 2026-09-23 (§12).**
+Owner decisions D12.1–D12.5 have defaults (§3.9); none blocks.
 
 **Dependencies.** Independent of DB-11a for the *schema*. The *writer call sites* (§3.6) are written against
 the **DB-11a versions** of `AuthService`, `UserService`, `InviteService`, `TenantService`, `DemoService`
@@ -153,6 +154,10 @@ CREATE TRIGGER trg_audit_events_append_only BEFORE UPDATE OR DELETE ON audit_eve
 CREATE TRIGGER trg_audit_events_no_truncate BEFORE TRUNCATE ON audit_events FOR EACH STATEMENT EXECUTE FUNCTION audit_events_append_only();
 ```
 `Down()` is exactly one call: `migrationBuilder.Sql("DROP TRIGGER IF EXISTS trg_audit_events_no_truncate ON audit_events; DROP TRIGGER IF EXISTS trg_audit_events_append_only ON audit_events; DROP FUNCTION IF EXISTS audit_events_append_only();");`
+**What the exemption is, honestly (GLM DB-12 #4):** the trigger admits the FK action's *shape* — `owner_id` non-null → NULL, every other column
+byte-identical — it cannot attribute the UPDATE to the FK (Postgres gives a trigger no reliable "I am a referential action" signal; `pg_trigger_depth()`
+does not distinguish it). A manual `UPDATE audit_events SET owner_id = NULL WHERE …` of exactly that shape is equally permitted and only the release log /
+psql history would show it. Acceptable: detaching a row from a workspace hides nothing (the operator `/all` view still lists it) and changes no fact.
 The trigger is **not** modelled (EF has no trigger API); `AuditEventMapping.cs` carries a two-line comment naming the migration (as DB-11a does for
 its expression index, R9). Sqlite (`EnsureCreated`) has no trigger — the §3.1 code guard covers tests; Postgres behaviour is proven by the DB-10 CI
 step (§6 test 3) and the R11 rehearsal. The ERRCODE `restrict_violation` (`23001`) is what a future caller sees as `PostgresException.SqlState`.
@@ -340,11 +345,48 @@ this middleware; do not write a second one.
 - Every mutating action (`[HttpPost|HttpPut|HttpPatch|HttpDelete]`) on a controller whose namespace starts with `Pointer.API.Controllers.Admin`,
   plus every action of `AuthController`, `MeController`, `DemoController`, `ExportImportController` (including the two GET exports), carries exactly one
   of the two attributes. §6 test 1 enforces it by reflection.
-- `API/Auth/AuditCoverageFilter.cs : IAsyncActionFilter` (added in `Program.cs:49-52` as `options.Filters.Add<AuditCoverageFilter>()`): after
-  `await next()`, if the action descriptor carries `[Audited]`, the response status is `< 400`, and `ctx.HttpContext.Items[AuditWriter.WrittenItemKey]`
-  is not set → `ctx.HttpContext.Items["audit.gap"] = attribute.Action` and `logger.LogError("AUDIT GAP: {Action} completed without an audit row", …)`.
-  With `Audit:StrictCoverage=true` (set in `appsettings.Development.json` and the test host) it additionally rewrites the response to
-  `500 Result.Failure("Audit gap")` — so a forgotten writer call fails locally and in e2e, never silently in production.
+- `API/Auth/AuditCoverageFilter.cs : IAsyncActionFilter` (added in `Program.cs:49-52` as `options.Filters.Add<AuditCoverageFilter>()`). Exact mechanics
+  (GLM DB-12 #2 — the original wording "response status" / "rewrite the response" was ambiguous; this is the contract):
+  ```csharp
+  public async Task OnActionExecutionAsync(ActionExecutingContext ctx, ActionExecutionDelegate next)
+  {
+      var executed = await next();                       // runs the ACTION only; the IActionResult has NOT been executed yet (MVC runs result filters +
+                                                         // result execution after every action filter returns) — Response.HasStarted is false here.
+      var audited = (ctx.ActionDescriptor as ControllerActionDescriptor)?.MethodInfo.GetCustomAttribute<AuditedAttribute>();
+      if (audited is null || executed.Exception is not null || executed.Canceled) return;
+      var status = (executed.Result as IStatusCodeActionResult)?.StatusCode ?? StatusCodes.Status200OK;   // NEVER HttpContext.Response.StatusCode — it is still the default 200 at this point
+      if (status >= 400) return;
+      if (ctx.HttpContext.Items.ContainsKey(AuditWriter.WrittenItemKey)) return;
+      ctx.HttpContext.Items["audit.gap"] = audited.Action;
+      _logger.LogError("AUDIT GAP: {Action} completed without an audit row ({Method} {Path})", audited.Action, ctx.HttpContext.Request.Method, ctx.HttpContext.Request.Path);
+      if (_config.GetValue("Audit:StrictCoverage", false))
+          executed.Result = new ObjectResult(Result.Failure("Audit gap")) { StatusCode = StatusCodes.Status500InternalServerError };   // legal: the result is replaced before it executes
+  }
+  ```
+  Constructor: `ILogger<AuditCoverageFilter> logger, IConfiguration config` (type-registered filters are DI-activated). `Audit:StrictCoverage=true` is set in
+  `appsettings.Development.json` and the test host — so a forgotten writer call fails locally and in e2e, never silently in production. `Ok(result)` /
+  `BadRequest(result)` in this codebase are `ObjectResult`s whose `StatusCode` is set (`IStatusCodeActionResult`) — that is why the status must be read from
+  `executed.Result`, not from the response.
+
+### 3.8a Read API — scope and operator-identity redaction (D12.5; GLM DB-12 #3 / DB-13 #1, GLM DB-12 #5)
+
+`AuditQueryService` (`Application/Services/Implementation/AuditQueryService.cs : IAuditQueryService`; ctor `IUnitOfWork, ICurrentUser`):
+
+- **`ListForWorkspaceAsync(q)` — scope.** `owner` is resolved as: `if (!TenantStamp.TryRequireOwner(_currentUser, out var owner)) return Forbidden(MessageKeys.Common.Forbidden);`
+  — a super admin is Forbidden here and uses `/all`. **DB-13 amends this one line** to
+  `if (_currentUser.IsImpersonating && _currentUser.TenantId is Guid t) owner = t; else if (!TryRequireOwner…) return Forbidden;` so an impersonating operator
+  can read the target's own Security log mid-session (GLM DB-12 #5; DB-15 §3.5 uses the same branch). Until DB-13 lands leave a `// DB-13: impersonating
+  operator → owner = TenantId` comment on the line. Then `.Where(e => e.OwnerId == owner)` **explicitly** on top of the filter (R8 belt-and-braces, as
+  `WorkspaceSetting` reads do); order `OccurredAt DESC, Id DESC`.
+- **`ListAllAsync(q)`** — `IgnoreQueryFilters()` is *not* needed (the super-admin branch of the filter admits everything); optional `q.WorkspaceId` predicate.
+- **Redaction — the operator is never named to a workspace (D12.5).** When the **caller is not a super admin** (`!_currentUser.IsSuperAdmin`) and the row's
+  `ActorKind` is `SuperAdmin` **or** `Impersonation`, the DTO is emitted with `ActorUserId = null` and `ActorName = "Operator"` (constant
+  `AuditEventDto.OperatorLabel`). Applied in one place: `AuditEventDto Map(AuditEvent e, IReadOnlyDictionary<Guid,string> names, bool callerIsSuperAdmin)`.
+  `/all` (super admins only) keeps both. This is what makes DB-13's D13.6 ("the operator's identity is shown to super admins only") true — without it the
+  workspace admin's Security log would render the operator's display name on `impersonation.started` and on every `tenant.*` row. The `q.Actor` filter is
+  still honoured for workspace callers (a uuid they do not know finds nothing; a uuid they do know — a member — is fine).
+- **Column visibility per view:** workspace view: `Id, OccurredAt, WorkspaceId, ActorUserId*, ActorName*, ActorKind, Action, TargetType, TargetId, Before,
+  After, RequestId, ImpersonationSessionId` (`*` redacted per above); `/all` adds `UserAgent, IpHash`. Same DTO type, nulls for the hidden ones.
 
 ### 3.9 Owner decisions encoded here (defaults apply unless the owner says otherwise before §9)
 
@@ -354,6 +396,7 @@ this middleware; do not write a second one.
 | D12.2 | Retention of `audit_events` | **Forever**; never swept by DB-08 (R17). Size: ~300 B/row; 1 000 admin mutations/day ≈ 110 MB/year |
 | D12.3 | E-mail addresses in audit rows (login failures, e-mail changes) | **Never raw** — `sha256` 16-hex pseudonym; the identity row and the DB-11d notification e-mails are the readable trail. Append-only cannot be erased (R14) |
 | D12.4 | `user_agent` stored | **Yes**, 256 chars (device forensics); `ip_hash` keyed HMAC, never the address |
+| D12.5 *(added 2026-09-23, GLM DB-12 #3)* | Does a workspace admin see **which** operator acted (`tenant.*`, `impersonation.*` rows)? | **No** — `actor_user_id` null, `actor_name = "Operator"` for `SuperAdmin`/`Impersonation` actor kinds in the workspace view; full identity in `/all`. Consistent with DB-13 D13.6 |
 
 ## 4. Safety classification
 
@@ -371,12 +414,15 @@ Order: 1–5 compile without behaviour change; 6–7 migrations; 8–13 wiring; 
    `Domain/Entity/AuditEvent.cs` — §3.1 properties, all `{ get; init; }`, class doc-comment "Append-only (DB-12). Never updated or deleted; Postgres trigger `trg_audit_events_append_only` + `AppDbContext.SaveChangesAsync` guard."
 2. `Infrastructure/Mappings/AuditEventMapping.cs` — copy `UsageEventMapping.cs`: `ToTable("audit_events")`, `HasKey(x => x.Id)`, `Property(x => x.Id).HasColumnName("id").UseIdentityByDefaultColumn()`, every column per §3.1 (`HasMaxLength(64)` action/target_type/request_id/ip_hash, `128` target_id, `256` user_agent), FK `HasOne<Workspace>().WithMany().HasForeignKey(x => x.OwnerId).OnDelete(DeleteBehavior.SetNull).HasConstraintName("fk_audit_events_workspaces_owner_id")`, `ConfigureJsonColumn` for `Before`/`After`, the three indexes with `HasDatabaseName`, and the two-line trigger comment.
 3. `Infrastructure/AppDbContext.cs` — `public DbSet<AuditEvent> AuditEvents => Set<AuditEvent>();` after `:71`; strict-own filter for `AuditEvent` copied from `:263-268` with the comment "DB-12: audit rows are metadata; super admin sees all (DB-13 does not narrow this)"; the §3.1 guard at the top of `SaveChangesAsync`. `Application/Abstractions/IUnitOfWork.cs` + `Infrastructure/Repository/UnitOfWork.cs` — `DbSet<AuditEvent> AuditEvents`.
+   **`Tests/WorkspaceTests.cs:311-312`** (R8.5 reflection test `HardDeleteOrder_CoversEveryOwnerCarryingEntity`) — after the line `&& t != typeof(UsageEvent)` add
+   `&& t != typeof(AuditEvent) // operator record: FK SET NULL, survives the workspace (DB-12, R8.8)`. Without this line `just test` fails after task 1 with
+   "Type(s) not covered by TenantService.HardDeleteOrder: AuditEvent" (GLM DB-12 #1). Do **not** touch `:323` (`HardDeleteOrder.Length`) — `AuditEvent` is not in the array.
 4. `Application/Common/AuditActions.cs`, `AuditTargets.cs`, `AuditFields.cs`, `PseudonymHasher.cs` — §3.5/§3.6 constants (`AuditActions.All` = reflection over the public const strings).
 5. `Application/Abstractions/IAuditWriter.cs` (+ `AuditEntry` record) — §3.3 verbatim. `Infrastructure/Audit/AuditWriter.cs` — §3.3 steps 1–7; `public const string WrittenItemKey = "audit.written";`. `Infrastructure/DependencyInjection.cs` — `s.AddScoped<IAuditWriter, AuditWriter>();` after `:45`.
 6. `just migrate name="AddAuditEvents"` → read against §3.2 Migration 1 (only `audit_events` + its FK/indexes; anything else → stop and report).
 7. `just migrate name="AddAuditEventsAppendOnlyTrigger"` → must be **empty**; paste the §3.2 SQL into `Up()`/`Down()`; add `[ContractMigration("DB-12")]` and the marker verbatim. `dotnet ef migrations has-pending-model-changes -p Infrastructure -s API` → "No changes".
 8. `API/Middleware/RequestIdMiddleware.cs` + `Program.cs` registration after `:189`; extend the `LogError` at `:210` with `{RequestId}`.
-9. `API/Auth/AuditedAttribute.cs`, `NoAuditAttribute.cs`, `AuditCoverageFilter.cs`; `Program.cs:49-52` → `options.Filters.Add<AuditCoverageFilter>();`. `API/appsettings.Development.json` → `"Audit": { "StrictCoverage": true }`.
+9. `API/Auth/AuditedAttribute.cs`, `NoAuditAttribute.cs`, `AuditCoverageFilter.cs` (§3.8 code verbatim — status from `executed.Result`, never from `HttpContext.Response`; strict mode replaces `executed.Result`); `Program.cs:49-52` → `options.Filters.Add<AuditCoverageFilter>();`. `API/appsettings.Development.json` → `"Audit": { "StrictCoverage": true }`.
 10. Attributes on every action listed in §3.6/§3.8 (53 admin mutations + auth/me/demo/export). Reason strings for `[NoAudit]` verbatim from §3.6.
 11. Writer calls in every service listed in §3.6 (constructor gains `IAuditWriter audit`; tests that construct services by hand — `WorkspaceAdminOwnershipTests`, `UserGovernanceTests`, `InviteServiceTests.BuildService`, `TenantInviteServiceTests`, `DemoSessionEmailTests`, `DemoUpgradeTests`, `ChangePasswordTests`, `ApiKeyServiceTests`, `DeviceLoginServiceTests`, `RoleService*Tests`, `AppEnvironmentServiceTests`, `PlanServiceTests`, `ExportImportServiceTests`, `SuggestionChangesRequestedTests`, `AiRuleServiceTests`, `ProjectsControllerAuthzTests` — pass `new FakeAuditWriter()` from `Tests/TestDoubles.cs`).
     `DemoCleanupService.cs` and `TenantsController.Delete` write `tenant.hard_deleted` per §3.6 (System / SuperAdmin).
@@ -384,7 +430,7 @@ Order: 1–5 compile without behaviour change; 6–7 migrations; 8–13 wiring; 
     `GET` (`List([FromQuery] AuditQuery q)`) → `IAuditQueryService.ListForWorkspaceAsync(q)`; `GET all` (`[Authorize(Policy = Policies.SuperAdmin)]`) → `ListAllAsync(q)`.
     `Application/DTOs/Audit/AuditQuery.cs` (`DateTime? Since, Until; string? Action (prefix match, e.g. "member."), Guid? Actor, string? TargetType, string? TargetId, Guid? WorkspaceId (all only), int Page = 1, int PageSize = 50 (≤ 200)`),
     `AuditEventDto` (`Id, OccurredAt, WorkspaceId, ActorUserId, ActorName (UserNameResolver; null → "System"), ActorKind (string), Action, TargetType, TargetId, Before, After, RequestId, ImpersonationSessionId; UserAgent and IpHash only in the all view`),
-    `[ProducesResponseType(typeof(PagedData<AuditEventDto>), 200)]`. `Application/Services/Implementation/AuditQueryService.cs`: workspace view requires `TenantStamp.TryRequireOwner` (super admin → Forbidden, use `/all`) and adds `.Where(e => e.OwnerId == owner)` **explicitly** on top of the filter (R8 belt-and-braces, as `WorkspaceSetting` reads do); order `OccurredAt DESC, Id DESC`. Both actions `[NoAudit("read of the audit log itself")]`. `orval.config.ts:6` → add `'Audit'`.
+    `[ProducesResponseType(typeof(PagedData<AuditEventDto>), 200)]`. `Application/Services/Implementation/AuditQueryService.cs` per **§3.8a**: workspace view scope via `TenantStamp.TryRequireOwner` (super admin → Forbidden, use `/all`; `// DB-13:` comment for the impersonation branch), explicit `.Where(e => e.OwnerId == owner)`, order `OccurredAt DESC, Id DESC`; **one `Map(...)` with the D12.5 redaction** (`ActorKind ∈ {SuperAdmin, Impersonation}` and caller not super admin → `ActorUserId = null`, `ActorName = AuditEventDto.OperatorLabel` = `"Operator"`). Both actions `[NoAudit("read of the audit log itself")]`. `orval.config.ts:6` → add `'Audit'`.
 13. `Application/Resources/MessageKeys.cs` — `Audit.PageSizeTooLarge = "Page size must be 200 or fewer."`.
 14. Tests (§6); `just fmt`; `just test`; rehearsal (§3.2); `docs/db/SCHEMA.md` row `audit_events` from *(planned)* to present (only doc edit allowed here).
 
@@ -395,8 +441,10 @@ Order: 1–5 compile without behaviour change; 6–7 migrations; 8–13 wiring; 
 3. **Database-level append-only** (CI step in `.github/workflows/db-migrations.yml`, after DB-11a's step): insert a probe row with `psql -v ON_ERROR_STOP=1`, then `if psql -c "UPDATE audit_events SET action='x'" 2>/tmp/upd.err; then echo "UPDATE succeeded"; exit 1; fi; grep -q "append-only" /tmp/upd.err`; same for `DELETE` and `TRUNCATE audit_events`. Then `DELETE FROM workspaces …` is **not** probed (needs a seeded workspace) — the SET NULL path is covered by test 4.
 4. `Tests/AuditAppendOnlyGuardTests.cs` (InMemory): `db.Entry(ev).State = Modified` → `SaveChangesAsync` throws `InvalidOperationException`; `Remove(ev)` → throws; adding is fine. (Sqlite `TestDb`) `HardDelete_Workspace_DetachesAuditRows_KeepsThem` — seed workspace + one audit row with `OwnerId` = it; `TenantService.HardDeleteAsync(workspaceId)` → the audit row still exists with `OwnerId == null` (Sqlite honours `ON DELETE SET NULL`; the guard in `SaveChangesAsync` is not hit because the FK action runs in the database).
 5. `Tests/AuditQueryFilterTests.cs` (copy `TenantQueryFilterTests`): tenant B's context sees **no** audit row of A; `AuditQueryService.ListForWorkspaceAsync` under tenant B with `WorkspaceId = A` in the query still returns only B's rows; super admin `ListAllAsync` returns both plus `owner_id IS NULL` rows; super admin calling the workspace view → Forbidden.
+   **Redaction (D12.5):** seed in A one row `ActorKind = Impersonation, ActorUserId = <operator uuid>` and one `ActorKind = SuperAdmin` (`tenant.status_changed`) and one `ActorKind = User`; as A's admin `ListForWorkspaceAsync` → the two operator rows have `ActorUserId == null && ActorName == "Operator"` and the serialised DTO contains neither the operator uuid nor the operator's display name; the `User` row keeps its uuid/name; as super admin `ListAllAsync` → all three carry `ActorUserId`.
+   **R8.5 exclusion list:** in `Tests/WorkspaceTests.cs` add `Assert.Equal(new[] { typeof(Workspace), typeof(UsageEvent), typeof(AuditEvent) }.Length, 3)`-style guard — concretely a `[Fact] HardDeleteOrder_Exclusions_AreExactlyTheNamedOperatorTables` that lists the excluded types as a static array `Exclusions` used by the reflection test and asserts it equals `{ Workspace, UsageEvent, AuditEvent }` (DB-13 appends `ImpersonationSession`, DB-15 `UsageDaily`).
 6. `Tests/AuditWrittenByServicesTests.cs` (InMemory fixture `UserGovernanceTests.cs:20-60` + `TestSeed.Join` from DB-11a; `FakeAuditWriter` records entries): one fact per row — `LoginAsync` success → `auth.login.succeeded` with `OwnerId` = membership workspace; wrong password → `auth.login.failed` with `target_type == email_hash` and `TargetId == PseudonymHasher.EmailHash(email)` and **no raw e-mail anywhere in the entry**; `ChangePasswordAsync` → `auth.password.changed`; `UserService.UpdateAsync` role change → `member.updated` with `before.role_id != after.role_id`; `DeleteAsync` → `member.removed`; `InviteService.CreateAsync` → `invite.created`; `RevokeAsync` → `invite.revoked`; `WorkspaceService.RenameAsync` → `workspace.renamed` before/after name; `ProjectService.CreateAsync` → `project.created`; `TenantService.SetStatusAsync` → `tenant.status_changed`; `TransferOwnershipAsync` → two `ownership.transferred` rows.
-7. `Tests/AuditCoverageFilterTests.cs` — build an `ActionExecutingContext` for a descriptor carrying `[Audited("x.y")]` with a 200 response and no `Items` key → `Items["audit.gap"] == "x.y"`; with the key → no gap; with `[NoAudit]` → no gap; `StrictCoverage=true` → status 500.
+7. `Tests/AuditCoverageFilterTests.cs` — build an `ActionExecutingContext` for a `ControllerActionDescriptor` whose `MethodInfo` carries `[Audited("x.y")]`, with a `next` delegate returning an `ActionExecutedContext` whose `Result = new OkObjectResult(Result.Success())` and no `Items` key → `Items["audit.gap"] == "x.y"`; with `Result = new BadRequestObjectResult(Result.Failure("x"))` (status 400 **on the result**, `HttpContext.Response.StatusCode` untouched) → no gap; with the key → no gap; with `[NoAudit]` → no gap; with `executed.Exception` set → no gap; `StrictCoverage=true` → `executed.Result is ObjectResult { StatusCode: 500 }` whose `Value` is a failed `Result` with message `"Audit gap"`.
 8. `Tests/RequestIdMiddlewareTests.cs` — `Resolve("abc-123", "t")` → `"abc-123"`; 65 chars → `"t"`; `"a b"` → `"t"`; null → `"t"`.
 9. Existing-data test: N/A (new table). Rehearsal (§3.2) is the Postgres proof: `\d audit_events` shows both triggers; the UPDATE/DELETE probes fail.
 
@@ -405,13 +453,15 @@ Order: 1–5 compile without behaviour change; 6–7 migrations; 8–13 wiring; 
 1. `dotnet ef migrations list -p Infrastructure -s API --no-connect` ends with `_AddAuditEvents`, `_AddAuditEventsAppendOnlyTrigger` (after DB-11a's three).
 2. `grep -c "ContractMigration(\"DB-12\")" Infrastructure/Migrations/*_AddAuditEventsAppendOnlyTrigger.cs` → 1; `grep -c "ContractMigration" Infrastructure/Migrations/*_AddAuditEvents.cs` → 0; `grep -c "trg_audit_events_append_only\|trg_audit_events_no_truncate" Infrastructure/Migrations/*_AddAuditEventsAppendOnlyTrigger.cs` → ≥ 4 (Up + Down).
 3. `grep -rn "\[Audited(\|\[NoAudit(" API/Controllers --include='*.cs' | wc -l` → ≥ 70; `just test` green including `AuditCoverageTests`.
+3a. `grep -c "typeof(AuditEvent)" Tests/WorkspaceTests.cs` → ≥ 1 (the R8.5 exclusion); `grep -c "HttpContext.Response.StatusCode" API/Auth/AuditCoverageFilter.cs` → 0; `grep -c "IStatusCodeActionResult" API/Auth/AuditCoverageFilter.cs` → 1.
+3b. `grep -c '"Operator"' Application/DTOs/Audit/AuditEventDto.cs` → 1; `grep -c "OperatorLabel" Application/Services/Implementation/AuditQueryService.cs` → ≥ 1.
 4. `grep -rn "AuditActions\.\|new AuditEntry(" Application API --include='*.cs' | grep -v "Common/AuditActions.cs" | wc -l` → ≥ 60 (one per catalogue row that exists at implementation time).
 5. `grep -rn '"auth\.\|"member\.\|"invite\.\|"tenant\.\|"project\.' Application/Services --include='*.cs' | grep -v AuditActions | wc -l` → 0 (no literal action strings at call sites).
 6. `curl -s http://localhost:8090/swagger/v1/swagger.json | jq '.paths["/api/admin/audit"].get.tags, .paths["/api/admin/audit/all"].get.tags'` → `["Audit"]` twice; `grep -c "'Audit'" orval.config.ts` → 1.
 7. `curl -si http://localhost:8090/api/meta | grep -i x-request-id` → one header; sending `X-Request-Id: test-1` echoes `test-1`.
 8. Rehearsal: `\d audit_events` shows the FK `ON DELETE SET NULL`, three indexes, two triggers; the UPDATE and DELETE probes fail with `append-only`; `SELECT count(*) FROM audit_events` on the rehearsal API after one login + one rename → 2.
 9. DB-10 workflow green including the new append-only step.
-10. On the rehearsal API: `GET /api/admin/audit` as the workspace admin lists the rename with `actorName`; as super admin → 403; `GET /api/admin/audit/all` as super admin lists it with `ipHash`; the dashboard-less check `GET /api/admin/audit?action=workspace.` filters by prefix.
+10. On the rehearsal API: `GET /api/admin/audit` as the workspace admin lists the rename with `actorName`; as super admin → 403; `GET /api/admin/audit/all` as super admin lists it with `ipHash`; the dashboard-less check `GET /api/admin/audit?action=workspace.` filters by prefix; after a super-admin `PUT /api/admin/tenants/{id}/status`, the workspace admin's `GET /api/admin/audit?action=tenant.` shows `actorName: "Operator"` and `actorUserId: null`.
 
 ## 8. Rollback
 
@@ -439,9 +489,22 @@ customer); auditing comment/reply content changes; changing `RetentionService`; 
 ## 11. Dashboard / widget / CLI tasks
 
 **Dashboard** (after client regen: `useGetApiAdminAudit`, `useGetApiAdminAuditAll`, `AuditEventDto`, `PagedData<AuditEventDto>`):
-1. New route `/security-log` → `features/security-log/SecurityLogPage.tsx` (DataTable precedent `TenantsPage.tsx`): columns time, actor (`actorName`, badge for `actorKind`), action (rendered from a label map `member.updated → "Member updated"`, fallback the raw string), target, details (compact `before → after` diff of the whitelisted keys), request id (copyable). Filters: since/until, action prefix select (`auth.`, `member.`, `invite.`, `workspace.`, `project.`, `impersonation.`), actor. Pagination 50.
+1. New route `/security-log` → `features/security-log/SecurityLogPage.tsx` (DataTable precedent `TenantsPage.tsx`): columns time, actor (`actorName` — for `SuperAdmin`/`Impersonation` rows the server already sends `"Operator"` and no uuid; render it with the operator badge, never try to resolve it), badge for `actorKind`, action (rendered from a label map `member.updated → "Member updated"`, fallback the raw string), target, details (compact `before → after` diff of the whitelisted keys), request id (copyable). Filters: since/until, action prefix select (`auth.`, `member.`, `invite.`, `workspace.`, `project.`, `impersonation.`), actor. Pagination 50.
 2. Nav: `Shell.tsx` — add "Security log" under the admin group (`:261-295`); for super admins the page calls `/all` and adds a workspace column + filter.
 3. Empty state text: "Nothing yet — actions taken in this workspace will appear here."
 4. i18n keys for the action label map (en + ar; RTL audit §65 covers layout).
 
 **Widget:** none (the widget never calls admin endpoints). **CLI:** none (`login-with-key` is audited server-side).
+
+## 12. Cross-review adjudication (2026-09-22 reviews, folded 2026-09-23)
+
+Reports: `docs/db/reviews/REVIEW-GLM-DB12-15-2026-09-22.md`, `docs/db/reviews/REVIEW-AGY-DB12-15-2026-09-22.md`. Every citation was re-checked against the tree.
+
+| Finding | Claim | Verdict | Where it landed |
+|---|---|---|---|
+| GLM DB-12 #1 (Major) | R8.5 reflection test not amended → build break | **Accepted** — `Tests/WorkspaceTests.cs:305-313` excludes only `Workspace`/`UsageEvent`; `AuditEvent` has `OwnerId` | §5 task 3 (explicit edit), §6 test 5 (exclusion-list fact), §7 crit. 3a |
+| GLM DB-12 #2 (Major) | `StrictCoverage` 500 rewrite impossible from an action filter after `await next()` | **Partially accepted.** The mechanism claim is wrong: `IAsyncActionFilter.OnActionExecutionAsync`'s `await next()` returns after the *action*, before result filters and result execution — `ActionExecutedContext.Result` may be replaced and `Response.HasStarted` is false. The real trap is the doc's "response status" wording: `HttpContext.Response.StatusCode` is still the default 200 there; the status must be read from `executed.Result` (`IStatusCodeActionResult`) | §3.8 now contains the filter verbatim; §5 task 9; §6 test 7 (400-on-result case); §7 crit. 3a greps |
+| GLM DB-12 #3 / DB-13 #1 (Major) | Workspace audit view leaks the operator's identity (breaks D13.6) | **Accepted, widened** to every `SuperAdmin` row too (`tenant.*` rows would name the operator as well) | §3.8a redaction, D12.5, §5 task 12, §6 test 5, §7 crit. 3b/10, §11.1 |
+| GLM DB-12 #4 (Minor) | Trigger exemption is shape-based, not FK-attributed; wording overclaims | **Accepted** | §3.2 paragraph; DB-RULES R17 sentence |
+| GLM DB-12 #5 (Minor) | Workspace audit view 403s an impersonating operator | **Accepted** — `TryRequireOwner` is false for super admins (DB-11a §3.6) | §3.8a (one-line branch owned by DB-13; comment placeholder here); DB-13 §3.4 row |
+| agy DB-12 #1 (Minor, "safe as-is") | Trigger "reliably permits only the workspace hard-delete cascade" | **Overclaim, no action** — see GLM #4: the trigger admits the *shape*, it cannot attribute the UPDATE to the FK. The conclusion (safe) stands | §3.2 wording covers it |
