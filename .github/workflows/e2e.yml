@@ -45,6 +45,12 @@ jobs:
           filters: |
             cli:
               - 'cli/**'
+      - name: Install e2e dependencies and the Playwright browser
+        # The api/widget/cli phases run `npx playwright test`; without `npm ci` in e2e/ the run died
+        # with ERR_MODULE_NOT_FOUND '@playwright/test' right after the seed phase.
+        run: |
+          cd e2e && npm ci --no-audit --no-fund
+          npx playwright install --with-deps chromium
       - name: Create dev .env for the compose stack
         # docker-compose.yaml declares `env_file: .env` (gitignored). Without it every e2e run died in
         # the reset phase with "env file … .env not found" — the suite had never been green on main.
