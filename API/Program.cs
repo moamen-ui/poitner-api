@@ -87,9 +87,10 @@ builder.Services.AddApiRateLimiting(builder.Configuration);
 // predefined-actions) cross-origin from those unknown origins — so the DEFAULT policy stays
 // open-origin (bearer API, no cookies → no AllowCredentials, so this is not CSRF-exploitable).
 // login is a widget endpoint: the widget performs in-page login from whatever origin hosts it,
-// so it cannot sit behind an origin allow-list. Login is deliberately NOT rate-limited (a shared
-// NAT would exhaust any per-IP budget and lock everyone out); the "signup" limiter covers the
-// account-creation/password-email surface only (see RateLimitingExtensions + AuthRateLimitingTests).
+// so it cannot sit behind an origin allow-list. Login is rate-limited per e-mail (R5-59), not per
+// IP, so a shared NAT does not exhaust one budget and lock everyone out; the "signup" limiter
+// covers the account-creation/password-email surface only (see RateLimitingExtensions +
+// AuthRateLimitingTests).
 // The DASHBOARD-only surface (/api/admin/* and the dashboard-only auth endpoints: me /
 // forgot-password / reset-password) is locked to an allow-list of known dashboard origins via the
 // "dashboard" policy, applied by route below. This shrinks the origins that can drive privileged

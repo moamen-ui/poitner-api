@@ -22,6 +22,31 @@
     file_server
 }
 
+# R5-59: baseline security headers, shared by every site block below. CSP is intentionally NOT
+# included here — it differs per host (dashboard vs API vs landing), so each site block sets its
+# own Content-Security-Policy-Report-Only. X-Frame-Options defaults to DENY here; the API host
+# overrides it to SAMEORIGIN (it serves the widget check/swagger pages, framed by themselves).
+(security-headers) {
+    header {
+        Strict-Transport-Security "max-age=63072000; includeSubDomains; preload"
+        X-Content-Type-Options "nosniff"
+        X-Frame-Options "DENY"
+        Referrer-Policy "strict-origin-when-cross-origin"
+        Permissions-Policy "camera=(), microphone=(), geolocation=(), payment=()"
+        -Server
+    }
+}
+
+# R5-59: RFC 9116 security.txt, identical on every host. `handle` is evaluated ahead of
+# try_files/file_server/reverse_proxy in Caddy's default directive order and `respond` is
+# terminal, so this always wins over the dashboard SPA fallback and the API reverse proxy.
+(security-txt) {
+    handle /.well-known/security.txt {
+        header Content-Type "text/plain; charset=utf-8"
+        respond "Contact: mailto:moamen.ui@gmail.com\nPreferred-Languages: en, ar\nExpires: 2027-09-22T00:00:00.000Z\n" 200
+    }
+}
+
 api.pointer.moamen.work {
     # The widget loader/styles/skill are UNHASHED and updated in place on every deploy. Without this,
     # browsers (and the extension's injected <script src=".../widget.js">) heuristically cache the old
@@ -48,6 +73,17 @@ api.pointer.moamen.work {
     # no-cache, and the response carries "no-cache, must-revalidate, no-cache" — harmless to a
     # browser, but it means the header a client sees is not the one this file specifies.
     header @widget >Cache-Control "no-cache, must-revalidate"
+
+    import security-headers
+    import security-txt
+    # The widget is embedded via <script>/<iframe> on arbitrary customer sites, and Swagger/the
+    # /check page are framed by themselves — DENY (the shared default) would break both.
+    header >X-Frame-Options "SAMEORIGIN"
+    # Report-only for one deploy cycle (§9 release steps) before switching to enforced CSP.
+    # frame-ancestors * mirrors the SAMEORIGIN override above: the widget must be embeddable by
+    # any customer origin.
+    header Content-Security-Policy-Report-Only "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'; connect-src 'self'; frame-ancestors *; base-uri 'self'"
+
     reverse_proxy api:8080
 }
 
@@ -55,6 +91,12 @@ api.pointer.moamen.work {
 app.pointer.moamen.work {
     root * /srv/dashboard/react
     import dashboard
+    import security-headers
+    import security-txt
+    # Report-only for one deploy cycle (§9 release steps) before switching to enforced CSP. The
+    # dashboard loads the Pointer widget (script + styles) from the API origin and calls the API
+    # for data; style-src needs 'unsafe-inline' because the widget injects inline styles.
+    header Content-Security-Policy-Report-Only "default-src 'self'; script-src 'self' https://api.pointer.moamen.work; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'; connect-src 'self' https://api.pointer.moamen.work; frame-ancestors 'none'; base-uri 'self'; form-action 'self'"
 }
 
 # Demo host → the dashboard with the "Try the demo" entry (guests provision an
@@ -62,10 +104,21 @@ app.pointer.moamen.work {
 demo.pointer.moamen.work {
     root * /srv/dashboard/react
     import dashboard
+    import security-headers
+    import security-txt
+    header Content-Security-Policy-Report-Only "default-src 'self'; script-src 'self' https://api.pointer.moamen.work; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'; connect-src 'self' https://api.pointer.moamen.work; frame-ancestors 'none'; base-uri 'self'; form-action 'self'"
 }
 
 # Bare domain → the marketing landing page (served from the bind-mounted landing/ dir).
 pointer.moamen.work {
     root * /srv/landing
     import dashboard
+    import security-headers
+    import security-txt
+    # landing/index.html fetches the API (plans/stacks-summary/stats/branding) and loads the
+    # widget loader script + the <pointer-feedback> element from the API origin
+    # (landing/index.html:942,1010,1046,1105,1166,1265,1268) — so, unlike the doc's original
+    # "self-only connect-src" draft, script-src/connect-src must allow the API origin too, same
+    # as the dashboard hosts. style-src needs 'unsafe-inline' for the same widget reason.
+    header Content-Security-Policy-Report-Only "default-src 'self'; script-src 'self' https://api.pointer.moamen.work; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'; connect-src 'self' https://api.pointer.moamen.work; frame-ancestors 'none'; base-uri 'self'; form-action 'self'"
 }

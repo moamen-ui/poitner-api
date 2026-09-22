@@ -9,23 +9,35 @@ using Xunit;
 namespace Pointer.Tests;
 
 /// <summary>
-/// BINDING: the per-IP "signup" limiter exists to throttle account-creation and
-/// password-email abuse — NOT login. Login is called by the widget from arbitrary
-/// host origins; throttling it locks legitimate users out for the whole window
-/// (and everyone behind one NAT shares the budget). These assertions fail loudly
-/// if the limiter ever creeps back onto login or falls off the signup surface.
+/// BINDING (R5-59): password login IS rate-limited, per normalised e-mail address — NOT per IP,
+/// because the widget is called from arbitrary host origins and a whole office/agency behind one
+/// NAT address must not share a single budget. This reverses the pre-R5-59 decision (login was
+/// deliberately unlimited); the per-IP "signup" limiter remains separate and continues to cover
+/// only the account-creation/password-email surface. Magic-link redemption ("login-with-invite"
+/// and, since R5-59, "login-with-key") keeps its own per-IP "login" policy — a 256-bit token is
+/// already the credential, so IP partitioning is enough there.
 /// Rejections must read as throttling (429 + Retry-After), not an outage (503).
 /// </summary>
 public class AuthRateLimitingTests
 {
     [Fact]
-    public void Login_IsNotRateLimited()
+    public void Login_HasPasswordLoginRateLimit()
     {
         var method = typeof(AuthController).GetMethod("Login");
         Assert.NotNull(method);
 
-        var rateLimits = method!.GetCustomAttributes<EnableRateLimitingAttribute>(inherit: true);
-        Assert.Empty(rateLimits);
+        var rateLimits = method!.GetCustomAttributes<EnableRateLimitingAttribute>(inherit: true).ToList();
+        Assert.Contains(rateLimits, a => a.PolicyName == "password-login");
+    }
+
+    [Fact]
+    public void LoginWithKey_HasLoginRateLimit()
+    {
+        var method = typeof(AuthController).GetMethod("LoginWithKey");
+        Assert.NotNull(method);
+
+        var rateLimits = method!.GetCustomAttributes<EnableRateLimitingAttribute>(inherit: true).ToList();
+        Assert.Contains(rateLimits, a => a.PolicyName == "login");
     }
 
     [Theory]

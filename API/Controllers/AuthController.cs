@@ -18,6 +18,7 @@ public class AuthController(
 {
     [AllowAnonymous]
     [HttpPost("login")]
+    [EnableRateLimiting("password-login")]
     [ProducesResponseType(typeof(LoginResponse), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(Result), StatusCodes.Status400BadRequest)]
     public async Task<IActionResult> Login([FromBody] LoginRequest request)
@@ -46,6 +47,7 @@ public class AuthController(
     }
 
     [HttpPost("login-with-key")]
+    [EnableRateLimiting("login")]
     [ProducesResponseType(typeof(LoginResponse), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(Result), StatusCodes.Status400BadRequest)]
     public async Task<IActionResult> LoginWithKey([FromBody] LoginWithApiKeyRequest request)
