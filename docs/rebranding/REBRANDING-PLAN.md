@@ -61,7 +61,7 @@ for explicit approval** before any edit.
 | # | Question | Default if you say "same shape as today" |
 |---|---|---|
 | Q5 | **Apex domain purchased?** (e.g. `pointkit.dev`) | — |
-| Q6 | Which **subdomains** will exist? | `api.`, `app.`, `app-angular.`, `app-react.`, `app-vue.`, `demo.`, plus apex for the landing page |
+| Q6 | Which **subdomains** will exist? | Default shape as measured 2026-09-08: `api.`, `app.`, `app-angular.`, `app-react.`, `app-vue.`, `demo.`, plus apex for the landing page. **Stale as of 2026-09-15:** only React is maintained (Angular/Vue retired, frozen at tag `last-three-apps` / branch `legacy/angular-vue` — see §5.2); `app-angular.`/`app-vue.` are candidates for retirement too, but this plan does not decide that on its own authority — ask the owner before dropping the subdomains/Caddy blocks |
 | Q7 | Will the **apex** serve the landing page, or redirect to `www`? | apex serves landing (today's behaviour) |
 | Q8 | **Transactional-email sender address** (Brevo) and **From name**? | `noreply@<domain>` / the product name |
 | Q9 | Any other mailboxes to create (`support@`, `hello@`, `admin@`)? | `support@` |
@@ -324,11 +324,11 @@ allowlist. A historical migration name is not customer-visible.
 
 | App | File | Keys |
 |---|---|---|
-| Angular | `src/app/core/prefs/preferences.service.ts` | `pointer_admin_token`, `pointer_admin_user`, `pointer_admin_lang`, `pointer_admin_theme` |
-| Angular | `src/app/features/shell/demo-panel.component.ts` | `pointer_demo`, `pointer_demo_dismissed` |
-| Angular | `src/app/shared/install-guide/install-guide.service.ts` | `pointer_install_seen`, `pointer_install_suppressed`, `pointer_install_shown_session` |
+| Angular — **removed 2026-09-15**, retired; frozen at tag `last-three-apps` / branch `legacy/angular-vue`; only relevant if that branch is revived or an old deployed instance still holds these keys in a browser | `src/app/core/prefs/preferences.service.ts` | `pointer_admin_token`, `pointer_admin_user`, `pointer_admin_lang`, `pointer_admin_theme` |
+| Angular — **removed 2026-09-15**, same reason | `src/app/features/shell/demo-panel.component.ts` | `pointer_demo`, `pointer_demo_dismissed` |
+| Angular — **removed 2026-09-15**, same reason | `src/app/shared/install-guide/install-guide.service.ts` | `pointer_install_seen`, `pointer_install_suppressed`, `pointer_install_shown_session` |
 | React | `src/lib/storage.ts` | `pointer_token`, `pointer_user`, `pointer_lang`, `pointer_theme` |
-| Vue | `src/lib/storage.ts`, `src/lib/demoSession.ts` | same four + `pointer_demo`, `pointer_demo_dismissed` |
+| Vue — **removed 2026-09-15**, retired; frozen at tag `last-three-apps` / branch `legacy/angular-vue`; only relevant if that branch is revived or an old deployed instance still holds these keys in a browser | `src/lib/storage.ts`, `src/lib/demoSession.ts` | same four + `pointer_demo`, `pointer_demo_dismissed` |
 | Widget | `API/wwwroot/pointer.js` (built) / `web-component/src/*` | `pointer_token`, `pointer_user`, `pointer_visible`, `pointer_toolbar_pos`, `pointer_page_session_id`, `pointer_env_*` |
 | Static admin | `API/wwwroot/admin/app.js` | `pointer_admin_token`, `pointer_admin_user` |
 | Extension | `extension/src/shared.ts` | `pointer_via_proxy__` |
@@ -348,14 +348,18 @@ function read(key: string): string | null {
 }
 ```
 
-Apply it in all three dashboards **and** the widget. Without it, deploy day = every user logged out,
-every language/theme preference reset, and every dismissed demo panel reappearing.
-Keep the fallback for at least one release; delete it on the `COMPAT_UNTIL` date.
+Apply it in `react/` (the one app that ships today — see §5.2) **and** the widget. Without it,
+deploy day = every user logged out, every language/theme preference reset, and every dismissed demo
+panel reappearing. Keep the fallback for at least one release; delete it on the `COMPAT_UNTIL` date.
+The Angular/Vue rows above are retired but left in place per §0 rule 2 — an old deployed instance may
+still hold those keys.
 
 ### 4.4 Published npm packages
 
-Never `npm unpublish` `@moamen-ui/pointer-{angular,react,vue}` — anything pinned to them breaks.
-`npm deprecate '<pkg>@*' 'Renamed to <new pkg>'` instead.
+Never `npm unpublish` `@moamen-ui/pointer-{angular,react,vue}` — anything pinned to them breaks, even
+though `angular` and `vue` are no longer built (retired 2026-09-15, frozen at tag `last-three-apps` /
+branch `legacy/angular-vue` in `pointer-dashboard`). `npm deprecate '<pkg>@*' 'Renamed to <new pkg>'`
+applies to all three; deprecating `angular`/`vue` does not require reviving them.
 
 ### 4.5 Customer-side artifacts (only if `LIVE_INSTALLS=yes`)
 
@@ -446,13 +450,20 @@ notes appended to each row instead.**
 | `.github/` | 1 | `workflows/publish-clients.yml` |
 | Root | — | `Pointer.sln`, `Caddyfile`, `docker-compose.prod.yml`, `justfile`, `.env.prod.example`, `.gitignore` (`.pointer/*`), `AGENTS.md`, `CLAUDE.md`, `DEPLOY.md`, `README.md`, `.pointer/` |
 
-### 5.2 `pointer-dashboard` (three apps at parity)
+### 5.2 `pointer-dashboard` (one app today — React; Angular and Vue retired)
+
+Since 2026-09-15 only `react/` is maintained. Angular and Vue were retired at tag `last-three-apps` /
+branch `legacy/angular-vue` in the `pointer-dashboard` repo; `scripts/deploy-dashboards.sh` now builds
+only `react` and deletes `~/pointer-api/dashboard/angular` and `.../vue` on the VM on deploy. The
+rename only has to touch `react/` going forward — see the removed rows below for what a rename would
+still have to clean up on any instance that predates the retirement. File counts below are as
+measured 2026-09-08, i.e. **before** the retirement; not recomputed here.
 
 | App | Files | Notable |
 |---|---|---|
-| `angular/` | 39 | `@moamen-ui/pointer-angular` (74 import sites across all three apps), `core/pointer-dogfood/pointer-dogfood.service.ts` (dir + class + `WIDGET_TAG`), `shared/install-guide/*` (emits the install snippets), storage keys, `environment*.ts` |
-| `react/` | 40 (stale — plus, per repo drift below, angular/vue retired 2026-09-15, not yet reflected in this row split) | `@moamen-ui/pointer-react`, `index.html` `<title>Pointer Admin</title>`, `.env.development`/`.env.production` (`VITE_API_BASE=https://api.pointer.moamen.work`), `src/lib/storage.ts`. **R4-01 (in progress, not yet merged as of 2026-09-22):** new Settings section "Comment fields" and i18n namespace `commentFields` — brand-neutral names; re-check on merge, since this agent has not seen the diff |
-| `vue/` | 44 | `@moamen-ui/pointer-vue`, same `<title>`, same env files, `src/lib/storage.ts`, `src/lib/demoSession.ts` |
+| `angular/` | 39 | **Removed 2026-09-15 — retired; frozen at tag `last-three-apps` / branch `legacy/angular-vue`; the rename does not need to touch it unless that branch is ever revived — anything deployed from it was replaced by `deploy-dashboards.sh`, which removes `dashboard/angular` on the VM.** Was: `@moamen-ui/pointer-angular` (74 import sites across all three apps), `core/pointer-dogfood/pointer-dogfood.service.ts` (dir + class + `WIDGET_TAG`), `shared/install-guide/*` (emits the install snippets), storage keys, `environment*.ts` |
+| `react/` | 40 | `@moamen-ui/pointer-react`, `index.html` `<title>Pointer Admin</title>`, `.env.development`/`.env.production` (`VITE_API_BASE=https://api.pointer.moamen.work`), `src/lib/storage.ts`. **R4-01 (in progress, not yet merged as of 2026-09-22):** new Settings section "Comment fields" and i18n namespace `commentFields` — brand-neutral names; re-check on merge, since this agent has not seen the diff |
+| `vue/` | 44 | **Removed 2026-09-15 — retired; frozen at tag `last-three-apps` / branch `legacy/angular-vue`; the rename does not need to touch it unless that branch is ever revived — anything deployed from it was replaced by `deploy-dashboards.sh`, which removes `dashboard/vue` on the VM.** Was: `@moamen-ui/pointer-vue`, same `<title>`, same env files, `src/lib/storage.ts`, `src/lib/demoSession.ts` |
 | Root | — | `AGENTS.md`, `CLAUDE.md`, `README.md`, `.gitignore` (`.pointer/`), `.pointer/` |
 
 ### 5.3 Runtime identifiers (the invisible contract)
@@ -492,7 +503,7 @@ notes appended to each row instead.**
 
 | File | Brand content |
 |---|---|
-| `Caddyfile` | 7 host blocks: `api.`, `app-angular.`, `app-react.`, `app-vue.`, `app.`, `demo.`, apex `pointer.moamen.work`; `root` paths `~/pointer-api/dashboard/*` |
+| `Caddyfile` | 7 host blocks: `api.`, `app-angular.`, `app-react.`, `app-vue.`, `app.`, `demo.`, apex `pointer.moamen.work`; `root` paths `~/pointer-api/dashboard/*`. **`app-angular.` and `app-vue.` — flag for removal, not yet done as of 2026-09-22: `scripts/deploy-dashboards.sh` no longer builds or deploys those apps (retired 2026-09-15, frozen at tag `last-three-apps` / branch `legacy/angular-vue`), so those host blocks and `dashboard/angular`, `dashboard/vue` `root` paths are dead on the VM today; this plan does not remove Caddyfile blocks on its own authority — surfacing per §0 rule 5, confirm with the owner before dropping them during the rename** |
 | `docker-compose.prod.yml` | `POSTGRES_USER: pointer`, `POSTGRES_DB: pointer`, `ConnectionStrings__Default`, `Email__FromName: ${EMAIL_FROM_NAME:-Pointer}` |
 | `.env.prod.example` | host + email defaults |
 | `justfile` | `psql: docker compose exec db psql -U pointer -d pointer`, `bash -n API/wwwroot/pointer.sh`, widget build → `API/wwwroot/pointer.{js,css}`, `cd ../pointer-dashboard` |
@@ -507,12 +518,15 @@ notes appended to each row instead.**
 | C# class | `ReassignPointerLandingOwnership` | migration — §4.1 |
 | C# default | `"Pointer"` fallback From-name | `Infrastructure/Email/BrevoEmailSender.cs:34`, `API/Controllers/Admin/SettingsController.cs:66` |
 | C# default | `BrandingService.DefaultProductName` | drives dashboard chrome, emails, install guide at runtime — **renaming this one constant renames most user-visible copy** |
-| Angular | `PointerDogfoodService` + `core/pointer-dogfood/` dir + `WIDGET_TAG` | dashboard |
+| Angular — **removed 2026-09-15**, retired; frozen at tag `last-three-apps` / branch `legacy/angular-vue`; dogfood widget was Angular-only, so this row has no live React equivalent | `PointerDogfoodService` + `core/pointer-dogfood/` dir + `WIDGET_TAG` | dashboard |
 | TS const | `POINTER_*` config keys | widget, extension |
 
 ### 5.7 Generated clients (do not hand-edit)
 
-`orval.config.ts` → three targets writing `clients/{angular,react,vue}/src` + `/model`, with
+`orval.config.ts` → three targets writing `clients/{angular,react,vue}/src` + `/model` (the
+`angular`/`vue` targets are now generating for a retired app — §5.2 — and should be dropped from
+`orval.config.ts` the next time this file is touched, but this agent does not edit config, only the
+plan), with
 `customInstance` mutators. `clients/*/package.json` carry the package names. `scripts/generate-clients.mjs`
 and `scripts/build-clients.mjs` orchestrate; `.github/workflows/publish-clients.yml` publishes and
 auto-bumps. 479 generated files — phase 6 regenerates them; only the config, the two scripts, the
