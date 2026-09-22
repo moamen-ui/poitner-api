@@ -61,7 +61,7 @@ for explicit approval** before any edit.
 | # | Question | Default if you say "same shape as today" |
 |---|---|---|
 | Q5 | **Apex domain purchased?** (e.g. `pointkit.dev`) | — |
-| Q6 | Which **subdomains** will exist? | Default shape as measured 2026-09-08: `api.`, `app.`, `app-angular.`, `app-react.`, `app-vue.`, `demo.`, plus apex for the landing page. **Stale as of 2026-09-15:** only React is maintained (Angular/Vue retired, frozen at tag `last-three-apps` / branch `legacy/angular-vue` — see §5.2); `app-angular.`/`app-vue.` are candidates for retirement too, but this plan does not decide that on its own authority — ask the owner before dropping the subdomains/Caddy blocks |
+| Q6 | Which **subdomains** will exist? | Default shape as measured 2026-09-08: `api.`, `app.`, `app-angular.`, `app-react.`, `app-vue.`, `demo.`, plus apex for the landing page. **`app-angular.`/`app-vue.` — removed 2026-09-15** (Angular/Vue retired, frozen at tag `last-three-apps` / branch `legacy/angular-vue` — see §5.2). **Owner decision, 2026-09-22:** also remove the `app-angular.`/`app-vue.` **Caddy host blocks** — this is being done in code by the main session in parallel with this update; treat as **in progress 2026-09-22**, confirmed by the main session, not by this plan. The current live shape is `api.`, `app.` (React), `demo.`, plus apex. **DNS A-record deletion for `app-angular`/`app-vue` is a separate manual step, not covered by dropping the Caddy blocks** — do it explicitly if/when decided; until then the records may point at a VM that no longer serves those hosts |
 | Q7 | Will the **apex** serve the landing page, or redirect to `www`? | apex serves landing (today's behaviour) |
 | Q8 | **Transactional-email sender address** (Brevo) and **From name**? | `noreply@<domain>` / the product name |
 | Q9 | Any other mailboxes to create (`support@`, `hello@`, `admin@`)? | `support@` |
@@ -81,7 +81,7 @@ for explicit approval** before any edit.
 | # | Question | Today |
 |---|---|---|
 | Q15 | **npm scope** for the generated clients — keep `@moamen-ui` or move to `@<newname>`? | `@moamen-ui` |
-| Q16 | **Package names** for the three orval clients | `@moamen-ui/pointer-{angular,react,vue}` @ 1.0.31 |
+| Q16 | **Package name** for the orval client | `@moamen-ui/pointer-react` @ 1.0.31 today. **`@moamen-ui/pointer-{angular,vue}` — removed 2026-09-15** (Angular/Vue retired, frozen at tag `last-three-apps` / branch `legacy/angular-vue`); those two names stay relevant to this plan **only** for the never-unpublish / `npm deprecate` step (§4.4, §8.6) — they are not built, not published going forward, and not a required input anywhere else |
 | Q17 | Publish the new packages starting at **`1.0.0`** (clean slate) or continue at **`1.0.32`** (continuity)? | Recommended `1.0.0` — a new package name has no history to continue |
 | Q18 | **Deprecate or unpublish** the old packages? | `npm deprecate` (never unpublish — it breaks anyone pinned) |
 | Q19 | Same GitHub Packages registry, or npmjs.com? | GitHub Packages (`npm.pkg.github.com`), token `NODE_AUTH_TOKEN` |
@@ -121,10 +121,10 @@ TAGLINE:        ""      # Q4  <=132 chars
 # --- domain ------------------------------------------------------------
 DOMAIN:         ""      # Q5  e.g. pointkit.dev
 HOST_API:       ""      #     api.$DOMAIN
-HOST_APP:       ""      #     app.$DOMAIN
-HOST_APP_NG:    ""      #     app-angular.$DOMAIN
-HOST_APP_REACT: ""      #     app-react.$DOMAIN
-HOST_APP_VUE:   ""      #     app-vue.$DOMAIN
+HOST_APP:       ""      #     app.$DOMAIN (React — the only dashboard app)
+HOST_APP_NG:    "REMOVED 2026-09-15" # app-angular.$DOMAIN — Angular retired, frozen at legacy/angular-vue; NOT a required input; kept in this table for history only (§0 rule 2)
+HOST_APP_REACT: ""      #     app-react.$DOMAIN — historical alias of HOST_APP; both may collapse to one host, confirm with owner
+HOST_APP_VUE:   "REMOVED 2026-09-15" # app-vue.$DOMAIN — Vue retired, frozen at legacy/angular-vue; NOT a required input; kept in this table for history only (§0 rule 2)
 HOST_DEMO:      ""      #     demo.$DOMAIN
 HOST_LANDING:   ""      #     $DOMAIN
 EMAIL_FROM:     ""      # Q8  noreply@$DOMAIN
@@ -138,9 +138,9 @@ REPO_WIDGET:    ""      # Q11
 HISTORY_MODE:   ""      # Q12/Q13: mirror | filter-repo | fresh
 # --- packages ----------------------------------------------------------
 NPM_SCOPE:      ""      # Q15 e.g. @moamen-ui
-PKG_ANGULAR:    ""      # Q16 e.g. @moamen-ui/pointkit-angular
-PKG_REACT:      ""      # Q16
-PKG_VUE:        ""      # Q16
+PKG_ANGULAR:    "REMOVED 2026-09-15" # Q16 e.g. @moamen-ui/pointkit-angular — Angular retired; NOT a required input for generation/publish (§8.6); relevant ONLY to run `npm deprecate '@moamen-ui/pointer-angular@*' 'Renamed to ${PKG_ANGULAR}'` once, never unpublish (§4.4)
+PKG_REACT:      ""      # Q16 — the only orval client built and published going forward
+PKG_VUE:        "REMOVED 2026-09-15" # Q16 — Vue retired; NOT a required input for generation/publish (§8.6); relevant ONLY to run `npm deprecate '@moamen-ui/pointer-vue@*' 'Renamed to ${PKG_VUE}'` once, never unpublish (§4.4)
 PKG_START_VER:  ""      # Q17 e.g. 1.0.0
 # --- policy ------------------------------------------------------------
 LIVE_INSTALLS:  ""      # Q20 yes | no      <- the single biggest branch in this plan
@@ -185,7 +185,8 @@ grep -rin "${NAME_LOWER}" . --exclude-dir=node_modules --exclude-dir=.git | head
 # 2. Would replacement create a doubled word (e.g. "kit" -> "kitkit")?
 #    Check the new token is not a substring of an existing identifier you keep.
 # 3. Is the npm package name free in the target registry?
-npm view "${PKG_ANGULAR}" version 2>&1 | head -1
+#    (React only — PKG_ANGULAR/PKG_VUE are removed 2026-09-15 and not part of this check, §2)
+npm view "${PKG_REACT}" version 2>&1 | head -1
 # 4. Is the custom element name valid?
 node -e 'const t=process.env.TAG; if(!/^[a-z][a-z0-9._]*-[a-z0-9._-]*$/.test(t)) throw new Error("invalid custom element name: "+t); console.log("tag ok:",t)'
 ```
@@ -225,7 +226,9 @@ This is why §7 replaces **specific tokens**, never the bare substring.
       `pointer|Pointer|POINTER|poitner` outside the documented allowlist, across all four repos.
 - [ ] No file, directory, or branch **name** contains the old brand (§5.9).
 - [ ] `dotnet build` + `dotnet test` green (**re-baseline the count before you start** — see §8.0).
-- [ ] All three dashboards `npm run build` green; Angular unit suite green at its baseline count.
+- [ ] `pointer-dashboard/react` `npm run build` green at its baseline count. **Angular/Vue removed
+      2026-09-15** (retired, frozen at `legacy/angular-vue`) — no build/test gate applies to them; this
+      plan is out of scope for that branch (§0 rule 5).
 - [ ] New packages published and consumed; no app resolves an old `pointer-*` package.
 - [ ] The five verification scenarios in §12.3 pass against the deployed stack.
 - [ ] If `LIVE_INSTALLS=yes`: the old contract still works (§9), and no user was logged out (§4.3).
@@ -247,9 +250,10 @@ live, database-backed white-labeling subsystem:
 
 1. Editing `DefaultProductName` renames almost nothing on a deployed instance — the DB row wins.
    The user-visible rename happens in §11.3 (SQL) or through the Branding admin page.
-2. Conversely, most product-name strings you find in the dashboards are *fallbacks* (`productName:
-   'Pointer'` in `useBranding.ts:37`, `BrandingPage.vue:100,309`) — rename them, but know that they
-   are only visible when `/api/branding` is unreachable.
+2. Conversely, most product-name strings you find in the dashboard are *fallbacks* (`productName:
+   'Pointer'` in React's `src/lib/branding*` — see §5.2) — rename them, but know that they are only
+   visible when `/api/branding` is unreachable. (The Angular `useBranding.ts:37` and Vue
+   `BrandingPage.vue:100,309` equivalents are **removed 2026-09-15**, retired with those apps.)
 3. The **artwork** (logo, favicon) is uploaded data, not files in the repo. New artwork must be
    produced and uploaded (Q29); no find/replace will do it.
 4. Because branding is **per-tenant**, every tenant's rows need review, not just the default one.
@@ -389,8 +393,9 @@ ValidAudience  = config["JWT:Issuer"],     // issuer doubles as audience
 (`Issuer = "pointer-api"`) and issues tokens with it as **both** `iss` and `aud` (line 35).
 
 **Change that value and every token already in the wild is rejected on the next request** — every
-signed-in dashboard user in all three apps, every widget session on every customer page, and every
-AI-agent CLI session holding a token. They do not get a grace period; they get 401.
+signed-in dashboard user (React today; historically Angular and Vue too, before their 2026-09-15
+retirement), every widget session on every customer page, and every AI-agent CLI session holding a
+token. They do not get a grace period; they get 401.
 
 > This is precisely the failure mode that caused the dashboard's 401 request-storm crash. A mass
 > 401 event is the worst possible way to start a rebrand.
@@ -503,7 +508,7 @@ measured 2026-09-08, i.e. **before** the retirement; not recomputed here.
 
 | File | Brand content |
 |---|---|
-| `Caddyfile` | 7 host blocks: `api.`, `app-angular.`, `app-react.`, `app-vue.`, `app.`, `demo.`, apex `pointer.moamen.work`; `root` paths `~/pointer-api/dashboard/*`. **`app-angular.` and `app-vue.` — flag for removal, not yet done as of 2026-09-22: `scripts/deploy-dashboards.sh` no longer builds or deploys those apps (retired 2026-09-15, frozen at tag `last-three-apps` / branch `legacy/angular-vue`), so those host blocks and `dashboard/angular`, `dashboard/vue` `root` paths are dead on the VM today; this plan does not remove Caddyfile blocks on its own authority — surfacing per §0 rule 5, confirm with the owner before dropping them during the rename** |
+| `Caddyfile` | 7 host blocks as measured 2026-09-08: `api.`, `app-angular.`, `app-react.`, `app-vue.`, `app.`, `demo.`, apex `pointer.moamen.work`; `root` paths `~/pointer-api/dashboard/*`. **Owner decision, 2026-09-22: drop the `app-angular.` and `app-vue.` host blocks** (they were already dead — `scripts/deploy-dashboards.sh` no longer builds or deploys those apps, retired 2026-09-15, frozen at tag `last-three-apps` / branch `legacy/angular-vue`). **In progress 2026-09-22** — being done in code by the main session in parallel with this plan update; the main session confirms once the Caddyfile edit lands. Live shape once done: 5 host blocks (`api.`, `app-react.`/`app.`, `demo.`, apex). DNS A-record cleanup for `app-angular`/`app-vue` is a separate manual step, not implied by the Caddy edit |
 | `docker-compose.prod.yml` | `POSTGRES_USER: pointer`, `POSTGRES_DB: pointer`, `ConnectionStrings__Default`, `Email__FromName: ${EMAIL_FROM_NAME:-Pointer}` |
 | `.env.prod.example` | host + email defaults |
 | `justfile` | `psql: docker compose exec db psql -U pointer -d pointer`, `bash -n API/wwwroot/pointer.sh`, widget build → `API/wwwroot/pointer.{js,css}`, `cd ../pointer-dashboard` |
@@ -523,11 +528,14 @@ measured 2026-09-08, i.e. **before** the retirement; not recomputed here.
 
 ### 5.7 Generated clients (do not hand-edit)
 
-`orval.config.ts` → three targets writing `clients/{angular,react,vue}/src` + `/model` (the
-`angular`/`vue` targets are now generating for a retired app — §5.2 — and should be dropped from
-`orval.config.ts` the next time this file is touched, but this agent does not edit config, only the
-plan), with
-`customInstance` mutators. `clients/*/package.json` carry the package names. `scripts/generate-clients.mjs`
+`orval.config.ts` → as measured 2026-09-08, three targets writing `clients/{angular,react,vue}/src` +
+`/model` (the `angular`/`vue` targets generate for a retired app — §5.2). **Owner decision, 2026-09-22:
+drop the `angular`/`vue` orval targets from `orval.config.ts`.** **In progress 2026-09-22** — being
+done in code by the main session in parallel with this plan update; the main session confirms once
+the config edit lands. This agent does not edit config, only the plan — once confirmed, the live
+shape is a single `react` target, and `clients/angular`, `clients/vue` stop being regenerated (the
+existing generated output there is stale from the last run, not deleted by this decision alone). All
+targets use `customInstance` mutators. `clients/*/package.json` carry the package names. `scripts/generate-clients.mjs`
 and `scripts/build-clients.mjs` orchestrate; `.github/workflows/publish-clients.yml` publishes and
 auto-bumps. 479 generated files — phase 6 regenerates them; only the config, the two scripts, the
 three `package.json` templates, the mutator files, and the workflow are edited by hand.
@@ -560,7 +568,8 @@ extension/pointer-ext-v0.1.0.zip
 extension/store-assets/pointer-{marquee-1400x560,small-tile-440x280,screenshot-1280x800}.jpg
 landing/pointer-extension.zip
 Infrastructure/Migrations/20260827124245_ReassignPointerLandingOwnership.{cs,Designer.cs}   (§4.1)
-pointer-dashboard/angular/src/app/core/pointer-dogfood/
+pointer-dashboard/angular/src/app/core/pointer-dogfood/                (REMOVED 2026-09-15 — retired
+    with Angular, frozen at legacy/angular-vue; nothing to rename here going forward, §5.6)
 e2e/state/scratch/*/{.pointer,.claude/skills/pointer-*}                (regenerable fixtures)
 ```
 
@@ -634,7 +643,7 @@ decision here — an undocumented survivor is indistinguishable from an oversigh
 | 4 | Widget rename (+ compat aliases) | §8.3, §9 | Widget builds; both tags register; picker works |
 | 5 | Skills, installer, CLI | §8.4, §9 | `install.sh` end-to-end into a scratch repo |
 | 6 | orval clients + publish | §8.6 | New packages installable from the registry |
-| 7 | Dashboards ×3 (parity) | §8.7 | 3 builds green, Angular tests green, no forced logout |
+| 7 | Dashboard (React only) | §8.7 | 1 build green, no forced logout |
 | 8 | Extension | §8.8 | Loads unpacked; proxy + capture work |
 | 9 | Docs, landing, agent guides | §8.9 | — |
 | 10 | Infra: DNS, Caddy, compose, DB, email | §10 | All hosts 200 over TLS; test email delivered |
@@ -674,6 +683,8 @@ EXCL='--exclude-dir=node_modules --exclude-dir=.git --exclude-dir=obj --exclude-
       --exclude-dir=clients --exclude-dir=TestResults --exclude-dir=.playwright-mcp
       --exclude-dir=.playwright-cli --exclude-dir=playwright-report --exclude-dir=test-results
       --exclude-dir=.zcode'
+# .angular is a harmless no-op exclude kept for legacy/angular-vue (removed 2026-09-15) in case
+# that frozen branch is ever checked out alongside this tree; it matches nothing on main today.
 # clients/ is excluded because it is REGENERATED (§8.6), not edited.
 # The browser-automation dirs hold DOM snapshots: 316 + 68 brand-matching files in pointer-api and
 # 189 in pointer-dashboard. Left in, they bury every real hit — and editing them achieves nothing.
@@ -709,7 +720,7 @@ Apply with word/context-anchored patterns. `SED='sed -i ""'` on macOS, `sed -i` 
 | 1 | `poitner` | `${NAME_LOWER}` | everywhere (fix the typo **first**, or sets 4/6 will not see it). Known homes: `Application/Services/Implementation/BrandingService.cs:15` (`DefaultUrlDocs` — a **customer-facing** docs URL), all three `clients/*/package.json` `repository.url`, `justfile:17`, `.github/workflows/publish-clients.yml`, `DEPLOY.md`. Note `clients/react/package.json:28` reads `poitner-api`, so a replace keyed on the string `pointer-api` skips it entirely — that is the whole reason this set runs first |
 | 2 | `Poitner` | `${NAME_PASCAL}` | everywhere |
 | 3 | `pointer\.moamen\.work` | `${DOMAIN}` | everywhere — do **before** set 6, or `pointer` inside the host gets mangled |
-| 4 | `@moamen-ui/pointer-(angular\|react\|vue)` | `${NPM_SCOPE}/${NAME_LOWER}-\1` | everywhere |
+| 4 | `@moamen-ui/pointer-(react)` | `${NPM_SCOPE}/${NAME_LOWER}-\1` | everywhere. The pattern's `angular\|vue` alternatives are **removed 2026-09-15** with those apps — the regex only needs to match the live package; `pointer-angular`/`pointer-vue` strings that still exist (published package names, lockfiles) are handled by §4.4/§8.6's never-unpublish/deprecate step, not this replacement set |
 | 5 | `pointer-feedback-hl-style` → `pointer-feedback-hl` → `pointer-feedback` | `${NAME_KEBAB}-feedback…` | longest first |
 | 6 | `pointer-(init\|dogfood\|api\|dashboard\|landing\|ext\|extension)` | `${NAME_KEBAB}-\1` | hyphenated compounds |
 | 7 | `__POINTER_(CONFIG\|FETCH)__` | `__${NAME_UPPER}_\1__` | JS globals |
@@ -771,11 +782,13 @@ git switch -c rebrand/<new-name>
       "$(grep -rl $t . $EXCL | wc -l)" "$(grep -ro $t . $EXCL | wc -l)"; done
   echo "protected tokens: $(protected_count)"; } > docs/rebranding/BASELINE.txt
 # 4. Baseline the TEST SUITES too — never hardcode a remembered count.
-#    (For reference: 309 [Fact]/[Theory] methods + 28 [InlineData] rows exist in Tests/ and 43
-#    it() blocks in the Angular specs as of 2026-09-08, but the only number that matters is what
-#    `dotnet test` / `npm test` actually report on YOUR checkout, right now, before any edit.)
+#    (For reference: 309 [Fact]/[Theory] methods + 28 [InlineData] rows exist in Tests/ as of
+#    2026-09-08; the 43 it() blocks once counted in the Angular specs are moot — Angular/Vue were
+#    retired 2026-09-15 (frozen at legacy/angular-vue) and carry no build/test gate in this plan.
+#    The only number that matters is what `dotnet test` / `npm test` actually report on YOUR
+#    checkout, right now, before any edit.)
 dotnet test 2>&1 | tail -5 >> docs/rebranding/BASELINE.txt
-(cd ../pointer-dashboard/angular && npm test -- --watch=false 2>&1 | tail -5) >> docs/rebranding/BASELINE.txt
+(cd ../pointer-dashboard/react && npm test -- --watch=false 2>&1 | tail -5) >> docs/rebranding/BASELINE.txt
 
 git add docs/rebranding/BASELINE.txt && git commit -m "rebrand(1): baseline inventory"
 ```
@@ -808,7 +821,7 @@ Then, in the **old** repos: update the README to point at the new URL and archiv
 | Reference | File |
 |---|---|
 | `gh workflow run publish-clients.yml -R moamen-ui/poitner-api` | `justfile:` `publish-clients` |
-| `repository.url: git+https://github.com/moamen-ui/poitner-api.git` | `clients/{angular,react,vue}/package.json` |
+| `repository.url: git+https://github.com/moamen-ui/poitner-api.git` | `clients/react/package.json` (only live target — §5.7; `clients/angular`, `clients/vue` are stale output from before the 2026-09-15 retirement, not regenerated) |
 | GitHub Packages scope binding | `.github/workflows/publish-clients.yml` (`scope: '@moamen-ui'`) |
 | Clone URLs in `DEPLOY.md`, `README.md`, `AGENTS.md`, `CLAUDE.md` (both repos) | docs |
 | VM git remotes | `cd ~/pointer-api && git remote set-url origin …` (§10.6) |
@@ -953,13 +966,19 @@ Today one repo builds everything: `web-component/` compiles **into** `API/wwwroo
 right steady state. Same question applies to `extension/` (it only shares the store assets and README,
 so splitting it is cheap) and to `landing/` (decide whether it goes with the API repo or its own).
 
-### 8.6 Phase 6 — generated clients, orval, npm
+### 8.6 Phase 6 — generated client, orval, npm
 
-1. `clients/{angular,react,vue}/package.json`: `name` → `${PKG_*}`, `description`,
+**Single live target (React) as of 2026-09-15.** `clients/angular/package.json` and
+`clients/vue/package.json` are stale output from before the retirement — **removed 2026-09-15**, not
+touched by this phase; they are relevant only to step 8's `npm deprecate` (never unpublish, §4.4).
+
+1. `clients/react/package.json`: `name` → `${PKG_REACT}`, `description`,
    `repository.url` → the **new API repo** (see the GitHub Packages gotcha in §8.1).
 2. Root `package.json`: `"name": "pointer-api-clients"` → `${NAME_LOWER}-api-clients`.
-3. `orval.config.ts`: no brand in the targets today, but re-read it — the mutator paths and
-   `filters.tags` must still resolve after any file moves.
+3. `orval.config.ts`: as of 2026-09-22 the owner has decided to drop the `angular`/`vue` targets
+   (in progress, main session, §5.7) — after that lands, only the `react` target remains; no brand in
+   it today, but re-read it — the mutator paths and `filters.tags` must still resolve after any file
+   moves.
 4. `scripts/generate-clients.mjs:24`: reads **`process.env.POINTER_SWAGGER_URL`** first, then falls
    back to `http://localhost:8090/swagger/v1/swagger.json`. The workflow sets that env var to a
    **hardcoded old host** (`.github/workflows/publish-clients.yml:54`:
@@ -971,7 +990,7 @@ so splitting it is cheap) and to `landing/` (decide whether it goes with the API
 5. `scripts/build-clients.mjs`: check for package-name assumptions.
 6. `.github/workflows/publish-clients.yml`:
    - `scope:` → `${NPM_SCOPE}`
-   - the auto-bump step runs `npm view @moamen-ui/pointer-angular version || echo 0.0.0`.
+   - the auto-bump step runs `npm view @moamen-ui/pointer-react version || echo 0.0.0`.
      **With a brand-new package name this returns nothing → `CUR=0.0.0` → the first publish becomes
      `0.0.1`, not `1.0.0`.** Pass the explicit `version` input on the first run
      (`gh workflow run publish-clients.yml -f version=${PKG_START_VER}`), then let auto-bump resume.
@@ -980,59 +999,72 @@ so splitting it is cheap) and to `landing/` (decide whether it goes with the API
    ```bash
    npm ci && npm run generate-clients && npm run build-clients
    gh workflow run publish-clients.yml -R <new-api-repo> -f version="${PKG_START_VER}"
-   npm view "${PKG_ANGULAR}" version    # confirm
+   npm view "${PKG_REACT}" version    # confirm
    ```
-8. `npm deprecate '@moamen-ui/pointer-angular@*' 'Renamed to ${PKG_ANGULAR}'` (×3). **Never unpublish.**
+8. `npm deprecate '@moamen-ui/pointer-react@*' 'Renamed to ${PKG_REACT}'`, and — because they were
+   never unpublished (§4.4) — also `npm deprecate '@moamen-ui/pointer-angular@*' 'Renamed to
+   ${PKG_ANGULAR}'` and `npm deprecate '@moamen-ui/pointer-vue@*' 'Renamed to ${PKG_VUE}'` even though
+   neither is rebuilt. **Never unpublish any of the three.**
 
-**Gate 6:** all three new packages resolve from the registry with `NODE_AUTH_TOKEN` set, and
-`clients/` contains no brand string except the intended package names.
+**Gate 6:** the new `${PKG_REACT}` package resolves from the registry with `NODE_AUTH_TOKEN` set, and
+`clients/react` contains no brand string except the intended package name.
 
-### 8.7 Phase 7 — the three dashboards (parity rule applies: identical change in all three)
+### 8.7 Phase 7 — the dashboard (React only; parity rule retired)
 
-Per `CLAUDE.md`, every change lands in `angular/`, `react/`, and `vue/`. Dispatch one agent per app
-with the same brief, then diff the three results for parity.
+**React only, since 2026-09-15.** The old parity rule ("identical change in `angular/`, `react/`, and
+`vue/`, diff the three results") is **retired along with those apps** — there is nothing to diff
+against. `legacy/angular-vue` (tag `last-three-apps`) is **frozen and out of scope for this rename**:
+do not touch it, do not dispatch an agent against it, and do not re-derive a parity table from it. If
+that branch is ever revived, treat it as a new inventory item and re-run this agent, not as an
+assumption baked into this plan.
 
-| Change | Angular | React | Vue |
-|---|---|---|---|
-| Dependency + 74 import sites | `@moamen-ui/pointer-angular` → `${PKG_ANGULAR}` | idem | idem |
-| Storage keys **with fallback** (§4.3) | `core/prefs/preferences.service.ts`, `features/shell/demo-panel.component.ts`, `shared/install-guide/install-guide.service.ts` | `src/lib/storage.ts` | `src/lib/storage.ts`, `src/lib/demoSession.ts` |
-| API base URL | `src/environments/environment*.ts` | `.env.development`, `.env.production` (`VITE_API_BASE`) | same |
-| Page title | `src/index.html` | `index.html` (`<title>Pointer Admin</title>`) | `index.html` |
-| Dogfood widget | rename `core/pointer-dogfood/` dir + `PointerDogfoodService` + `WIDGET_TAG` + `${apiBase}/pointer.js` | n/a (Angular-only today — note it) | n/a |
-| Install-guide copy + snippets | `shared/install-guide/install-guide.component.ts` (emits `<pointer-feedback …>`, `/pointer.js`, `install.sh`, the init prompt) + its spec | mirror | mirror |
-| i18n — **132 literals, measured** | `public/assets/i18n/en.json` (23) + `ar.json` (23) | `en.json` (21) + `ar.json` (21) | `en.json` (22) + `ar.json` (22) |
-| Hardcoded landing URL `EXTENSION_ZIP_URL = 'https://pointer.moamen.work/pointer-extension.zip'` | `shared/install-guide/install-guide.component.ts:40` (+ asserted in `install-guide.spec.ts:96,208`) | `src/lib/install-guide.ts:10` | `src/shared/install-guide/buildSteps.ts:11` |
-| Branding fallback `productName: 'Pointer'` | `core/branding/*` | `src/lib/branding*` | `src/composables/useBranding.ts:37`, `features/branding/BrandingPage.vue:100,309` |
-| Export filename `pointer-comments-<key>.json` | projects page | projects page | `features/projects/ProjectsPage.vue:255` |
-| Favicon / logo / manifest assets | `public/` | `public/` | `public/` |
-| Docs | `AGENTS.md`, `CLAUDE.md`, `README.md`, `.gitignore`, `.pointer/` | — | — |
+| Change | React |
+|---|---|
+| Dependency | `@moamen-ui/pointer-react` → `${PKG_REACT}` |
+| Storage keys **with fallback** (§4.3) | `src/lib/storage.ts` |
+| API base URL | `.env.development`, `.env.production` (`VITE_API_BASE`) |
+| Page title | `index.html` (`<title>Pointer Admin</title>`) |
+| Install-guide copy + snippets | `src/lib/install-guide.ts` (emits `<pointer-feedback …>`, `/pointer.js`, `install.sh`, the init prompt) + its spec |
+| i18n | `en.json`, `ar.json` — re-measure the literal count at execution time; the 2026-09-08 count of 21+21 predates R4-01's new `commentFields` namespace (§5.2) |
+| Hardcoded landing URL `EXTENSION_ZIP_URL = 'https://pointer.moamen.work/pointer-extension.zip'` | `src/lib/install-guide.ts:10` |
+| Branding fallback `productName: 'Pointer'` | `src/lib/branding*` |
+| Export filename `pointer-comments-<key>.json` | projects page |
+| Favicon / logo / manifest assets | `public/` |
+| Docs | `AGENTS.md`, `CLAUDE.md`, `README.md`, `.gitignore`, `.pointer/` |
 
-> **If you need to verify a dashboard before the packages are published**, do not reorder the
+**Removed 2026-09-15 (retired with Angular/Vue — kept here for history, §0 rule 2; not part of this
+phase's work):** the Angular dogfood widget (`core/pointer-dogfood/` dir, `PointerDogfoodService`,
+`WIDGET_TAG`); Angular's `core/prefs/preferences.service.ts`, `features/shell/demo-panel.component.ts`,
+`shared/install-guide/install-guide.service.ts` storage-key sites; Vue's `src/lib/storage.ts` +
+`src/lib/demoSession.ts`, `src/composables/useBranding.ts:37`, `features/branding/BrandingPage.vue:100,309`,
+`features/projects/ProjectsPage.vue:255`; both apps' `en.json`/`ar.json` i18n literals (23/23 and 22/22
+as last measured) and `src/environments/environment*.ts`.
+
+> **If you need to verify the dashboard before the package is published**, do not reorder the
 > phases — point the dependency at the local build instead:
-> `npm i file:../../<api-repo>/clients/angular` (or `npm link`), build, then restore the registry
+> `npm i file:../../<api-repo>/clients/react` (or `npm link`), build, then restore the registry
 > version before committing. Committing a `file:` dependency is how a lockfile ends up unbuildable
 > in CI.
 
 ```bash
-for a in angular react vue; do (cd $a && npm i "$PKG" && npm run build) || echo "FAIL $a"; done
-(cd angular && npm test -- --watch=false)     # compare against the baseline
+(cd react && npm i "$PKG" && npm run build) || echo "FAIL react"
+(cd react && npm test -- --watch=false)     # compare against the baseline, if a test script exists
 ```
 
-**On the i18n files:** the copy is *not* all runtime-branded. 132 hardcoded literals live in the six
-`{en,ar}.json` files — install-guide hints naming `pointer-init`/`pointer-feedback`/`.pointer/…`,
+**On the i18n files:** the copy is *not* all runtime-branded. Hardcoded literals live in
+`en.json`/`ar.json` — install-guide hints naming `pointer-init`/`pointer-feedback`/`.pointer/…`,
 settings hints ("the maximum number of emails Pointer sends per day"), `"brand": "Pointer Admin"`,
-`"productNamePlaceholder": "e.g. Pointer"`, and the extension steps. The **Arabic** files carry the
+`"productNamePlaceholder": "e.g. Pointer"`, and the extension steps. The **Arabic** file carries the
 Latin-script brand inline inside RTL sentences (`أداة Pointer`, `خادم Pointer`) — per Q4b, either keep
-that convention or apply one agreed transliteration consistently. Do **not** let three agents each
-invent their own Arabic rendering: decide once, put it in the answers block, and diff the three
-`ar.json` results for identical wording.
+that convention or apply one agreed transliteration consistently, and record the decision once (there
+is only one app's `ar.json` to keep consistent now, not three).
 
 Note also: several literals name the **skills** and the **`.pointer/` path** in user-facing help text.
 Those must match what `install.sh` actually writes (§8.4), or the dashboard tells users to run
 commands that produce different paths than the guide shows.
 
-**Gate 7:** three green builds, Angular tests green at baseline, and the **no-forced-logout check**: with a
-session created *before* the change, reload → still signed in, language and theme preserved.
+**Gate 7:** one green build (React), and the **no-forced-logout check**: with a session created
+*before* the change, reload → still signed in, language and theme preserved.
 
 ### 8.8 Phase 8 — browser extension
 
@@ -1060,8 +1092,10 @@ and proxy paths work on a test page.
 
 ### 8.9 Phase 9 — docs, landing, agent guides
 
-- `AGENTS.md` + `CLAUDE.md` in **both** repos: product name, repo URLs, package names, the
-  "never call the API with raw axios" rule (package names appear inside it), the parity table.
+- `AGENTS.md` + `CLAUDE.md` in **both** repos: product name, repo URLs, package name, the
+  "never call the API with raw axios" rule (the package name appears inside it). The old
+  "parity across three apps" rule in `CLAUDE.md` is **removed 2026-09-15** — replace it with
+  "React only; `legacy/angular-vue` is frozen and out of scope for the rename" (§8.7).
 - `README.md` (both), `DEPLOY.md`, and the root-level docs corpus — measured: `docs/SELF_HOSTING.md`,
   `docs/DESIGN.md`, `docs/PLAN.md`, `docs/TASKS.md`, `docs/E2E_TEST_PLAN.md`,
   `docs/ADMIN_WEB_DESIGN.md`, `docs/ADMIN_PREFS_I18N_DESIGN.md`,
@@ -1108,19 +1142,28 @@ calendar reminder for `COMPAT_UNTIL`. Aliases with no owner and no date become p
 
 ### 10.1 DNS
 
-Create A records → the VM IP for: `api`, `app`, `app-angular`, `app-react`, `app-vue`, `demo`, and
-the apex. Keep the old records until `COMPAT_UNTIL`. Caddy issues TLS on first request per host —
-a missing record shows up as a cert failure, not a 404.
+Create A records → the VM IP for: `api`, `app` (React), `demo`, and the apex. Keep the old records
+until `COMPAT_UNTIL`. Caddy issues TLS on first request per host — a missing record shows up as a
+cert failure, not a 404.
+
+**`app-angular`/`app-vue` — removed 2026-09-15** (Angular/Vue retired, frozen at `legacy/angular-vue`)
+**and their Caddy host blocks are being dropped 2026-09-22** (§5.5, in progress, main session). Do not
+create A records for them as part of this rename. **DNS record deletion for the two existing
+`app-angular`/`app-vue` records, if they still exist, is a separate manual step** — dropping the
+Caddy blocks does not remove DNS entries; do that explicitly if/when decided.
 
 ### 10.2 Caddyfile
 
-Seven host blocks today (`Caddyfile:22,34,39,44,50,57,63`). Add the new hosts, keep the old ones with
-redirects (§9). Update the `root * /srv/dashboard/*` paths only if the VM directory layout changes.
+Five host blocks going forward (`api.`, `app.`/`app-react.`, `demo.`, apex, plus whichever of
+`app.`/`app-react.` the owner keeps as canonical — see §1.2 Q6). Historically seven
+(`Caddyfile:22,34,39,44,50,57,63`, measured 2026-09-08) before the `app-angular.`/`app-vue.` blocks
+were dropped (§5.5). Add the new hosts, keep the old ones with redirects (§9). Update the
+`root * /srv/dashboard/*` paths only if the VM directory layout changes.
 
 ```bash
 docker compose exec caddy caddy validate --config /etc/caddy/Caddyfile
 docker compose restart caddy
-for h in api app app-angular app-react app-vue demo; do
+for h in api app demo; do
   echo -n "$h: "; curl -s -o /dev/null -w "%{http_code}\n" "https://$h.$DOMAIN/"; done
 curl -s -o /dev/null -w "landing: %{http_code}\n" "https://$DOMAIN/"
 ```
@@ -1397,7 +1440,10 @@ Anything else is a bug. `git log` and CHANGELOG entries are exempt (history is n
 **Clean generated output first.** `obj/` and `bin/` hold `Pointer.*.dll`, `Pointer.*.AssemblyInfo.cs`,
 `*.deps.json`, and `*.sourcelink.json` — the last one embeds the **old GitHub repo URL**. Stale
 artifacts make the grep gate fail (or, worse, pass while the real build still emits old assembly
-names). Same for `node_modules/`, `dist/`, `.angular/`, and the three dashboards' lockfiles.
+names). Same for `node_modules/`, `dist/`, and the React dashboard's lockfile. (`.angular/` is
+retained in the exclusion list below only because it is Node's own cache-dir convention if that
+tree is ever regenerated on `legacy/angular-vue` — the app itself is **removed 2026-09-15** and
+carries no build gate here.)
 
 ```bash
 dotnet clean && find . -type d \( -name obj -o -name bin \) -not -path "*/node_modules/*" -exec rm -rf {} +
@@ -1410,9 +1456,9 @@ dotnet ef migrations list                        # no pending migration against 
 bash -n API/wwwroot/${NAME_LOWER}.sh             # CLI still parses
 # widget
 (cd web-component && npm ci && npm run build)
-# dashboards
-for a in angular react vue; do (cd $a && npm ci && npm run build) || echo "FAIL $a"; done
-(cd angular && npm test -- --watch=false)        # must match the phase-1 baseline
+# dashboard (React only — Angular/Vue removed 2026-09-15, §8.7)
+(cd react && npm ci && npm run build) || echo "FAIL react"
+(cd react && npm test -- --watch=false)          # must match the phase-1 baseline, if a test script exists
 # grep gates
 ./docs/rebranding/verify-no-pointer.sh
 ```
@@ -1421,7 +1467,8 @@ for a in angular react vue; do (cd $a && npm ci && npm run build) || echo "FAIL 
 
 1. **New contract, end to end.** A scratch page loads `${HOST_API}/${NAME_LOWER}.js` with
    `<${NAME_KEBAB}-feedback project="…" server="…">`, picks an element, submits a comment; the
-   comment (with screenshot, selector, computed styles) appears in all three dashboards.
+   comment (with screenshot, selector, computed styles) appears in the dashboard (React only,
+   since 2026-09-15 — §8.7).
 2. **Installer + skills.** `curl -fsSL ${HOST_API}/install.sh | sh` in an empty repo installs
    `${NAME_KEBAB}-init` and `${NAME_KEBAB}-feedback`, scaffolds `.${NAME_LOWER}/credentials.env`, and
    `./.${NAME_LOWER}/${NAME_LOWER}.sh list` returns the comment from (1). Then an AI agent, given only
@@ -1440,8 +1487,9 @@ AI-agent cases that install the skills and apply a comment). Update the fixtures
 and run `e2e/run-e2e.sh`; if `LIVE_INSTALLS=yes`, keep **one** fixture app on the old tag + old
 loader path so the compat layer is regression-tested on every run, not just once by hand.
 
-Plus: all seven hostnames 200 over TLS; `/api/branding` returns the new product name and the
-dashboards' chrome reflects it; screenshots from before the rename still render.
+Plus: all five hostnames (§10.2 — `app-angular`/`app-vue` removed 2026-09-15) 200 over TLS;
+`/api/branding` returns the new product name and the dashboard's chrome reflects it; screenshots
+from before the rename still render.
 
 ---
 
@@ -1490,7 +1538,7 @@ and possibly 4/5/6.
 | R7 | First client publish auto-bumps to `0.0.1` | Medium | Apps resolve a nonsense version | §8.6 — pass explicit `version` on the first run |
 | R8 | Customer installs break (old tag / old skill paths) | High if `LIVE_INSTALLS=yes` | Silent breakage in someone else's app; support load | §9 dual support with dated removal |
 | R9 | Extension `host_permissions` still list the old domain | Medium | Proxy silently fails; capture looks broken | §8.8, tested unpacked |
-| R10 | Three dashboards drift apart during the rename | Medium | Parity rule violated; divergent UX | One agent per app, same brief, diff the results (§8.7) |
+| R10 | Three dashboards drift apart during the rename | ~~Medium~~ **Resolved 2026-09-15** | ~~Parity rule violated; divergent UX~~ Moot — Angular/Vue retired, frozen at `legacy/angular-vue`; only React ships, so there is nothing left to drift (§8.7) | N/A — retirement removed the risk |
 | R11 | The `poitner` typo survives (43 + 9 occurrences) | Medium | "Zero pointer" gate passes while the misspelling remains | Replacement set 1 runs **first**; the gate greps `poitner` too |
 | R12 | Historical `docs/` churn buries the real diff | Low | Review fatigue; the meaningful changes get rubber-stamped | Decide §5.10 up front; do docs in their own commit |
 | R13 | Trademark conflict discovered after announcement | Low | Forced second rename | Screen before cutover (§6.1) |
@@ -1523,12 +1571,12 @@ and possibly 4/5/6.
 | `__POINTER_CONFIG__`, `__POINTER_FETCH__` | `__${NAME_UPPER}_…__` | JS global | widget |
 | `POINTER_{SERVER,PROJECT,ENV,ENABLED,API_KEY,AI_TOOL}` (+ `VITE_`/`REACT_APP_`/`NEXT_PUBLIC_`) | `${NAME_UPPER}_…` | env var | widget, CLI, skills, host apps |
 | `pointer_{token,user,visible,toolbar_pos,page_session_id,env_*}` | `${NAME_SNAKE}_…` | storage key | widget |
-| `pointer_admin_{token,user,lang,theme}` | `${NAME_SNAKE}_admin_…` | storage key | Angular + static admin |
-| `pointer_{token,user,lang,theme}` | `${NAME_SNAKE}_…` | storage key | React, Vue |
-| `pointer_demo`, `pointer_demo_dismissed` | `${NAME_SNAKE}_…` | storage key | all three dashboards |
-| `pointer_install_{seen,suppressed,shown_session}` | `${NAME_SNAKE}_install_…` | storage key | Angular |
+| `pointer_admin_{token,user,lang,theme}` | `${NAME_SNAKE}_admin_…` | storage key | static admin (live). **Angular row — removed 2026-09-15**, retired, frozen at `legacy/angular-vue`; only relevant if that branch is revived or an old deployed instance still holds these keys |
+| `pointer_{token,user,lang,theme}` | `${NAME_SNAKE}_…` | storage key | React (live). **Vue row — removed 2026-09-15**, same reason as above |
+| `pointer_demo`, `pointer_demo_dismissed` | `${NAME_SNAKE}_…` | storage key | React (live, one dashboard). **Was "all three dashboards" as measured 2026-09-08 — that count is stale; Angular/Vue rows removed 2026-09-15** |
+| `pointer_install_{seen,suppressed,shown_session}` | `${NAME_SNAKE}_install_…` | storage key | **Angular — removed 2026-09-15**, retired, frozen at `legacy/angular-vue`; no live React equivalent |
 | `pointer_via_proxy__` | `${NAME_SNAKE}_via_proxy__` | storage key | extension |
-| `@moamen-ui/pointer-{angular,react,vue}` | `${PKG_*}` | npm package | 74 import sites + 3 `package.json` |
+| `@moamen-ui/pointer-react` | `${PKG_REACT}` | npm package | import sites (74 as measured 2026-09-08 across all three apps then; React-only count not re-measured) + `clients/react/package.json`. **`@moamen-ui/pointer-{angular,vue}` — removed 2026-09-15**, retired with those apps; the two names remain relevant **only** for the never-unpublish / `npm deprecate` step (§4.4, §8.6) |
 | `pointer-api-clients` | `${NAME_LOWER}-api-clients` | npm package (private) | root `package.json` |
 | `poitner-api`, `pointer-dashboard` | new repo names | GitHub repo | remotes, workflow, docs, VM |
 | `*.pointer.moamen.work` (7 hosts) | `*.${DOMAIN}` | hostname | Caddyfile, env files, tests, docs, extension |
