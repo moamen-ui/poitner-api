@@ -504,6 +504,8 @@ const STRINGS: Record<Lang, Record<string, string>> = {
     'card.deleteThisComment': 'هل تريد حذف هذا التعليق؟',
     'card.deleteThisReply': 'هل تريد حذف هذا الرد؟',
     'card.confirmDelete': 'تأكيد الحذف',
+    'card.readMore': 'قراءة المزيد',
+    'card.readLess': 'قراءة أقل',
 
     // --- comment popover ---
     'popover.selectParentElement': 'اختر العنصر الأصل',
@@ -582,7 +584,8 @@ const STRINGS: Record<Lang, Record<string, string>> = {
     'toast.notifications': 'الإشعارات',
     'fields.more': 'إضافة المزيد من الحقول',
     'fields.fewer': 'حقول أقل',
-    'fields.edit': 'تعديل الحقول',
+    'fields.extra': 'حقول إضافية',
+    'fields.edit': 'حقول إضافية',
     'fields.save': 'حفظ الحقول',
     'fields.cancel': 'إلغاء',
     'fields.none': 'لا شيء',

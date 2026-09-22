@@ -194,6 +194,7 @@
 .fbk-toolbar-btn {
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   gap: var(--fbk-space-1, 4px);
   flex: 0 0 auto;
   block-size: 32px;
@@ -276,7 +277,15 @@
 }
 
 .fbk-toolbar-btn__icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   flex: 0 0 auto;
+  line-height: 0;
+}
+.fbk-toolbar-btn__icon svg {
+  display: block;
+  margin: auto;
 }
 
 .fbk-toolbar-btn--comments {
@@ -326,10 +335,19 @@
 }
 
 .fbk-toolbar__reset {
+  inline-size: 26px;
   block-size: 26px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
   color: var(--fbk-text-muted, #59636e);
   background: var(--fbk-surface-alt, #f8fafc);
   border-color: var(--fbk-toolbar-border, rgba(208, 215, 222, 0.8));
+}
+
+#fbk-updates.fbk-hidden {
+  display: none !important;
 }
 
 /* ----------------------------------------------------------- phone */
@@ -684,14 +702,20 @@
 
 .fbk-filters {
   display: flex;
-  align-items: flex-end;
-  gap: 10px;
-  flex-wrap: nowrap;
-  overflow-x: auto;
+  flex-direction: column;
+  gap: 8px;
   padding-block: 10px;
   padding-inline: 12px;
   background: var(--fbk-surface-alt, #f8fafc);
   border-block-end: 1px solid var(--fbk-border-soft, #eef2f7);
+}
+
+.fbk-filters-row {
+  display: flex;
+  align-items: flex-end;
+  gap: 10px;
+  flex-wrap: nowrap;
+  overflow-x: auto;
 }
 
 .fbk-filter-field {
@@ -735,19 +759,17 @@
   border-color: var(--fbk-text, #1f2328);
 }
 
-.fbk-mine-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  min-block-size: 0;
-}
-
 .fbk-toggle-row {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 8px;
   inline-size: 100%;
+}
+
+.fbk-filters .fbk-toggle-row {
+  flex: none;
+  inline-size: auto;
 }
 
 .fbk-toggle-row-label {
@@ -914,12 +936,40 @@
   color: var(--fbk-text-slate, #475569);
 }
 
+.fbk-card-page {
+  display: block;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  margin-block-end: 6px;
+}
+
 .fbk-text {
   font-size: 14px;
   color: var(--fbk-text, #1f2328);
   margin-block: 4px 8px;
   margin-inline: 0;
   white-space: pre-wrap;
+}
+
+.fbk-text-clamped {
+  display: -webkit-box;
+  -webkit-line-clamp: 4;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.fbk-read-more-btn {
+  background: none;
+  border: none;
+  padding: 0;
+  color: var(--fbk-accent, #7c3aed);
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  text-decoration: underline;
+  margin-block: -4px 8px;
+  display: inline-block;
 }
 
 .fbk-sub {
@@ -1311,6 +1361,84 @@
 .fbk-textarea {
   resize: vertical;
   min-height: 64px;
+}
+
+.fbk-card-fields-wrapper {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  margin: 12px 0 0 0;
+}
+.fbk-card-fields-wrapper .fbk-card-fields {
+  flex: 1;
+  margin: 0;
+}
+
+.fbk-card-fields-edit-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  background: transparent;
+  border: none;
+  padding: 4px;
+  border-radius: var(--fbk-radius-sm, 6px);
+  color: var(--fbk-text-muted, #59636e);
+  cursor: pointer;
+  line-height: 1;
+}
+.fbk-card-fields-edit-btn:hover {
+  background: var(--fbk-surface-hover, #f3f4f6);
+  color: var(--fbk-text, #1f2328);
+}
+.fbk-card-fields-edit-btn svg {
+  display: block;
+}
+
+.fbk-card-fields {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: 4px 12px;
+  margin: 12px 0 0 0;
+  padding: 12px;
+  background: var(--fbk-surface-alt, #f8fafc);
+  border-radius: var(--fbk-radius-md, 10px);
+  font-size: var(--fbk-size-md, 13px);
+}
+.fbk-card-fields dt {
+  color: var(--fbk-text-muted, #59636e);
+  font-weight: 500;
+}
+.fbk-card-fields dd {
+  margin: 0;
+  color: var(--fbk-text, #1f2328);
+  word-break: break-word;
+}
+.fbk-card-fields a {
+  color: var(--fbk-primary, #0969da);
+  text-decoration: none;
+}
+.fbk-card-fields a:hover {
+  text-decoration: underline;
+}
+@media (max-width: 360px) {
+  .fbk-card-fields {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 2px;
+  }
+  .fbk-card-fields dt {
+    margin-block-start: 6px;
+  }
+  .fbk-card-fields dt:first-child {
+    margin-block-start: 0;
+  }
+}
+
+.fbk-card-fields-editor {
+  margin: 12px 0;
+  padding: 12px;
+  background: var(--fbk-surface-alt, #f8fafc);
+  border-radius: var(--fbk-radius-md, 10px);
 }
 
 .fbk-pins-layer {
@@ -1845,11 +1973,94 @@
   color: var(--fbk-text-subtle, #8c959f);
 }
 
+.fbk-popover-more-fields-row {
+  display: flex;
+  justify-content: flex-end;
+  margin-block: 4px 8px;
+}
+
+.fbk-popover-more-link {
+  background: none;
+  border: none;
+  padding: 0;
+  color: var(--fbk-accent, #7c3aed);
+  font-size: 12px;
+  font-weight: 500;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
 .fbk-popover-toggles {
   display: flex;
-  flex-wrap: wrap;
+  flex-direction: column;
+  gap: 8px;
+  margin-block-end: 12px;
+}
+
+.fbk-popover-toggle-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.fbk-popover-toggle-label {
+  display: inline-flex;
+  align-items: center;
   gap: 6px;
-  margin-block-end: 8px;
+  font-size: 12px;
+  color: var(--fbk-text-muted, #59636e);
+  cursor: default;
+}
+.fbk-popover-toggle-label svg {
+  display: block;
+  flex: none;
+}
+
+#fbk-cancel {
+  background: none;
+  border-color: transparent;
+  color: var(--fbk-text-muted, #59636e);
+}
+#fbk-cancel:hover {
+  background: var(--fbk-surface-hover, #f3f4f6);
+  color: var(--fbk-text, #1f2328);
+}
+
+.fbk-extra-fields {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-block-end: 12px;
+}
+
+.fbk-extra-fields[hidden] {
+  display: none;
+}
+
+.fbk-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.fbk-field > label {
+  font-size: var(--fbk-size-xs, 11px);
+  color: var(--fbk-text-muted, #59636e);
+  font-weight: 500;
+}
+
+.fbk-field-hint {
+  font-size: var(--fbk-size-xs, 11px);
+  color: var(--fbk-text-muted, #59636e);
+  margin-block-start: 2px;
+}
+
+.fbk-field-error {
+  font-size: var(--fbk-size-xs, 11px);
+  color: var(--fbk-danger, #dc2626);
+  margin: 0;
+  margin-block-start: 4px;
 }
 
 .fbk-modal-overlay {

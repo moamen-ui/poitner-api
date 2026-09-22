@@ -309,7 +309,7 @@
   var SHOT_HIGHLIGHT = "#2563eb";
   var _a;
   var SCRIPT_SRC = ((_a = document.currentScript) == null ? void 0 : _a.src) || "";
-  var CSS_INTEGRITY = true ? "sha384-izlYpWj5bEQNmwjbqyItwqLzRH4F5FwGxrOv5VMDJV3KJNYeplDLGTSYrCGYRA4p" : "";
+  var CSS_INTEGRITY = true ? "sha384-EQFMh9KeWiahQhAl80bHXM21JBTCekGhbbas29GxlQk1z3+y5wmLB0v0AgW76nOe" : "";
   function resolveCssUrl(scriptSrc) {
     var _a2;
     if (!scriptSrc) return "widget.css";
@@ -1000,6 +1000,8 @@
       "card.deleteThisComment": "هل تريد حذف هذا التعليق؟",
       "card.deleteThisReply": "هل تريد حذف هذا الرد؟",
       "card.confirmDelete": "تأكيد الحذف",
+      "card.readMore": "قراءة المزيد",
+      "card.readLess": "قراءة أقل",
       // --- comment popover ---
       "popover.selectParentElement": "اختر العنصر الأصل",
       "popover.selectFirstChildElement": "اختر العنصر الفرعي الأول",
@@ -1074,7 +1076,8 @@
       "toast.notifications": "الإشعارات",
       "fields.more": "إضافة المزيد من الحقول",
       "fields.fewer": "حقول أقل",
-      "fields.edit": "تعديل الحقول",
+      "fields.extra": "حقول إضافية",
+      "fields.edit": "حقول إضافية",
       "fields.save": "حفظ الحقول",
       "fields.cancel": "إلغاء",
       "fields.none": "لا شيء",
@@ -1248,7 +1251,7 @@
           <span class="fbk-toolbar__divider" aria-hidden="true"></span>
           <button type="button" class="fbk-toolbar-btn fbk-toolbar-btn--primary fbk-toolbar-btn--icon fbk-toolbar-btn--brand" id="fbk-add" data-fbk-act="inspect" aria-pressed="false" data-toggle="tooltip" data-placement="top" title="${t("toolbar.commentOnElement")}${shortcutLabel ? ` (${escapeHtml(shortcutLabel)})` : ""}" aria-label="${t("toolbar.commentOnElement")}"${ariaShortcut ? ` aria-keyshortcuts="${escapeHtml(ariaShortcut)}"` : ""}><span class="fbk-toolbar-btn__icon">${ICON.crosshair}</span></button>
           <button type="button" class="fbk-toolbar-btn fbk-toolbar-btn--comments" id="fbk-toggle" data-fbk-act="comments" aria-expanded="false" aria-haspopup="dialog" data-toggle="tooltip" data-placement="top" title="${t("toolbar.viewCommentsList")}" aria-label="${t("toolbar.comments")}"><span class="fbk-toolbar-btn__icon">${ICON.bubble}</span> <span class="fbk-toolbar-count" id="fbk-count" data-fbk-count>0</span></button>
-          <button type="button" class="fbk-toolbar-btn fbk-toolbar-btn--icon" id="fbk-updates" data-fbk-act="updates" aria-expanded="false" aria-haspopup="dialog" data-toggle="tooltip" data-placement="top" title="${t("toolbar.recentActivityUpdates")}" aria-label="${t("toolbar.updates")}${unreadNotifyCount > 0 ? `, ${unreadNotifyCount > 99 ? "99+" : unreadNotifyCount} unread` : ""}"><span class="fbk-toolbar-btn__icon">${ICON.bell}</span><span class="fbk-toolbar-dot${unreadNotifyCount > 0 ? "" : " fbk-hidden"}" id="fbk-notify-count" data-fbk-unread aria-hidden="true"></span></button>
+          <button type="button" class="fbk-toolbar-btn fbk-toolbar-btn--icon fbk-hidden" id="fbk-updates" data-fbk-act="updates" aria-expanded="false" aria-haspopup="dialog" data-toggle="tooltip" data-placement="top" title="${t("toolbar.recentActivityUpdates")}" aria-label="${t("toolbar.updates")}${unreadNotifyCount > 0 ? `, ${unreadNotifyCount > 99 ? "99+" : unreadNotifyCount} unread` : ""}"><span class="fbk-toolbar-btn__icon">${ICON.bell}</span><span class="fbk-toolbar-dot${unreadNotifyCount > 0 ? "" : " fbk-hidden"}" id="fbk-notify-count" data-fbk-unread aria-hidden="true"></span></button>
           ${displayName ? `
           <span class="fbk-toolbar__divider" aria-hidden="true"></span>
           <button type="button" class="fbk-toolbar-btn fbk-toolbar-btn--avatar" id="fbk-user" data-fbk-act="account" aria-expanded="false" aria-haspopup="dialog" data-toggle="tooltip" data-placement="top" title="${t("toolbar.signedInAs")} ${displayName}${roleLabel ? " · " + roleLabel : ""}" aria-label="${t("toolbar.account")}, ${displayName}">${avatarInitials}</button>` : ""}
@@ -1403,7 +1406,7 @@
           ${!isQuickAccess && (c.status === "applied" || c.status === "archived") ? `<button type="button" class="fbk-card-menu-item" data-menu-act="reopen" role="menuitem">${ICON.reopen}<span>${t("card.reopen")}</span></button>` : ""}
           ${c._mine ? `<button type="button" class="fbk-card-menu-item" data-menu-act="visibility" data-private="${c.isPrivate ? "false" : "true"}" role="menuitem">${c.isPrivate ? ICON.unlock : ICON.lock}<span>${c.isPrivate ? t("card.makePublic") : t("card.makePrivate")}</span></button>` : ""}
           ${c._mine ? `<button type="button" class="fbk-card-menu-item" data-menu-act="edit" role="menuitem">${ICON.pencil}<span>${t("card.edit")}</span></button>` : ""}
-          ${canEditFields ? `<button type="button" class="fbk-card-menu-item" data-menu-act="edit-fields" role="menuitem">${ICON.pencil}<span>${t("fields.edit")}</span></button>` : ""}
+          ${canEditFields ? `<button type="button" class="fbk-card-menu-item" data-menu-act="edit-fields" role="menuitem">${ICON.extraFields}<span>${t("fields.extra")}</span></button>` : ""}
           ${c.status === "open" ? `<button type="button" class="fbk-card-menu-item danger" data-menu-act="delete" role="menuitem">${ICON.trash}<span>${t("card.delete")}</span></button>` : ""}
         </div>`,
     // Kebab-menu dropdown for a single REPLY (see TPL.card's `kebab` above) — shares the same
@@ -1490,9 +1493,10 @@
               </div>` : ""}
             </div>
             ${pagePath ? `<div class="fbk-caption fbk-card-page" title="${escapeHtml(pageUrl)}">&#x1f4cd; ${escapeHtml(pagePath)}</div>` : ""}
-            <div class="fbk-text">${escapeHtml(c.body || c.text || "")}</div>
-            ${c.customFields && c.customFields.length > 0 ? `<dl class="fbk-card-fields">
-              ${c.customFields.map((f) => {
+            <div class="fbk-text fbk-text-clamped">${escapeHtml(c.body || c.text || "")}</div><button type="button" class="fbk-read-more-btn fbk-hidden" data-act="toggle-read-more" data-id="${c.id}">${t("card.readMore")}</button>
+            ${c.customFields && c.customFields.length > 0 ? `<div class="fbk-card-fields-wrapper">
+              <dl class="fbk-card-fields">
+                ${c.customFields.map((f) => {
         const isUrl = f.type === 2 || f.type === "Url";
         let valHtml = escapeHtml(f.value);
         if (isUrl) {
@@ -1510,7 +1514,9 @@
         }
         return `<dt>${escapeHtml(f.label)}</dt><dd>${valHtml}</dd>`;
       }).join("")}
-            </dl>` : ""}
+              </dl>
+              ${!isQuickAccess && !!(c._mine || c._canVerify) ? `<button type="button" class="fbk-card-fields-edit-btn" data-act="edit-fields" data-id="${c.id}" title="${t("fields.extra")}" aria-label="${t("fields.extra")}">${ICON.pencil}</button>` : ""}
+            </div>` : ""}
             ${shot}
             <div class="fbk-sub">${escapeHtml(authorLabel)} &middot; ${c.createdAt ? new Date(c.createdAt).toLocaleDateString() : ""}${c.editedAt ? ` &middot; <span class="fbk-edited">${t("card.edited")}</span>` : ""}</div>
             ${verifyBox}
@@ -1549,11 +1555,11 @@
             </div>
             <div class="fbk-ms-list" id="fbk-action-ms-list" role="listbox" hidden></div>
           </div>` : ""}
-          ${commentFields.length > 0 ? `<button type="button" id="fbk-more-fields" class="fbk-mini" aria-expanded="false" aria-controls="fbk-extra-fields">${t("fields.more")}</button>
+          ${commentFields.length > 0 ? `<div class="fbk-popover-more-fields-row"><button type="button" id="fbk-more-fields" class="fbk-popover-more-link" aria-expanded="false" aria-controls="fbk-extra-fields">${t("fields.extra")}</button></div>
           <div id="fbk-extra-fields" class="fbk-extra-fields" hidden>${renderFieldInputs(commentFields, {}, "cf")}</div>` : ""}
           ${shotEnabled || bugReportEnabled ? `<div class="fbk-popover-toggles">
-            ${shotEnabled ? `<button type="button" class="fbk-mini" id="fbk-comment-shot" aria-pressed="false">&#x1f4f7; ${t("popover.attachScreenshot")}</button>` : ""}
-            ${bugReportEnabled ? `<button type="button" class="fbk-mini" id="fbk-comment-bug" aria-pressed="false" title="${t("popover.reportBugTitle")}">&#x1f41e; ${t("popover.reportAsABug")}</button>` : ""}
+            ${shotEnabled ? `<div class="fbk-popover-toggle-row"><span class="fbk-popover-toggle-label">${ICON.camera} ${t("popover.attachScreenshot")}</span><button type="button" class="fbk-toggle-switch" id="fbk-comment-shot" role="switch" aria-checked="false" aria-label="${t("popover.attachScreenshot")}" title="${t("popover.attachScreenshot")}"><span class="fbk-toggle-switch-thumb"></span></button></div>` : ""}
+            ${bugReportEnabled ? `<div class="fbk-popover-toggle-row"><span class="fbk-popover-toggle-label" title="${t("popover.reportBugTitle")}">${ICON.bug} ${t("popover.reportAsABug")}</span><button type="button" class="fbk-toggle-switch" id="fbk-comment-bug" role="switch" aria-checked="false" aria-label="${t("popover.reportAsABug")}" title="${t("popover.reportBugTitle")}"><span class="fbk-toggle-switch-thumb"></span></button></div>` : ""}
           </div>` : ""}
           <div class="fbk-reply-row">
             <button class="fbk-btn primary fbk-btn-fill" id="fbk-submit">${t("popover.add")}</button>
@@ -2388,6 +2394,7 @@
       // the widget buffers console/network events at all and whether "Report as a bug" is shown.
       this.pageContextCaptureEnabled = false;
       this.commentFields = [];
+      this.expandedCommentIds = /* @__PURE__ */ new Set();
       // Per-project text capture toggle (default true until /capture-config resolves).
       // When false, the widget emits no text content in the DOM snapshot and masks pageTitle.
       this.captureTextContent = true;
@@ -4022,16 +4029,16 @@
       const shotToggle = host.querySelector("#fbk-comment-shot");
       if (shotToggle) shotToggle.addEventListener("click", () => {
         attachShotComment = !attachShotComment;
-        shotToggle.classList.toggle("is-active", attachShotComment);
-        shotToggle.setAttribute("aria-pressed", String(attachShotComment));
+        shotToggle.classList.toggle("active", attachShotComment);
+        shotToggle.setAttribute("aria-checked", String(attachShotComment));
         if (attachShotComment) this.beginScreenshotCapture(currentEl);
       });
       let isBugReportComment = false;
       const bugToggle = host.querySelector("#fbk-comment-bug");
       if (bugToggle) bugToggle.addEventListener("click", () => {
         isBugReportComment = !isBugReportComment;
-        bugToggle.classList.toggle("is-active", isBugReportComment);
-        bugToggle.setAttribute("aria-pressed", String(isBugReportComment));
+        bugToggle.classList.toggle("active", isBugReportComment);
+        bugToggle.setAttribute("aria-checked", String(isBugReportComment));
       });
       const cancelPopover = () => {
         currentEl.classList.remove(HL_CLASS);
@@ -4052,7 +4059,7 @@
         moreFieldsBtn.addEventListener("click", () => {
           const isExpanded = moreFieldsBtn.getAttribute("aria-expanded") === "true";
           moreFieldsBtn.setAttribute("aria-expanded", String(!isExpanded));
-          moreFieldsBtn.textContent = !isExpanded ? t("fields.fewer") : t("fields.more");
+          moreFieldsBtn.textContent = !isExpanded ? t("fields.fewer") : t("fields.extra");
           extraFieldsDiv.hidden = isExpanded;
           if (!isExpanded) {
             const firstInput = extraFieldsDiv.querySelector("input, select");
@@ -4427,21 +4434,25 @@
       if (!card || card.querySelector(".fbk-card-fields-edit")) return;
       const textEl = card.querySelector(".fbk-text");
       const existingDl = card.querySelector(".fbk-card-fields");
-      if (!existingDl && !textEl) return;
+      const existingWrapper = card.querySelector(".fbk-card-fields-wrapper");
+      if (!existingDl && !existingWrapper && !textEl) return;
       const currentValues = {};
       (c.customFields || []).forEach((f) => {
         currentValues[f.key] = f.value;
       });
       const idPrefix = "ef-" + c.id;
+      const defs = this.commentFields;
+      if (!defs || defs.length === 0) return;
       const editor = document.createElement("div");
       editor.className = "fbk-card-fields-edit";
       editor.innerHTML = `
-        ${renderFieldInputs(this.commentFields, currentValues, idPrefix)}
+        ${renderFieldInputs(defs, currentValues, idPrefix)}
         <div class="fbk-reply-row">
           <button type="button" class="fbk-mini fbk-fields-save">${t("fields.save")}</button>
           <button type="button" class="fbk-mini fbk-fields-cancel">${t("fields.cancel")}</button>
         </div>`;
-      if (existingDl) existingDl.replaceWith(editor);
+      if (existingWrapper) existingWrapper.replaceWith(editor);
+      else if (existingDl) existingDl.replaceWith(editor);
       else textEl.insertAdjacentElement("afterend", editor);
       editor.querySelector(".fbk-fields-cancel").addEventListener("click", () => {
         this.renderSidebar();
@@ -4724,6 +4735,35 @@
         });
         return TPL.card(c, i, isQuickAccess);
       }).join("");
+      list.querySelectorAll(".fbk-card").forEach((card) => {
+        const id = card.dataset.id;
+        const textEl = card.querySelector(".fbk-text");
+        const readMoreBtn = card.querySelector('[data-act="toggle-read-more"]');
+        if (textEl && readMoreBtn && id) {
+          if (this.expandedCommentIds.has(id)) {
+            textEl.classList.remove("fbk-text-clamped");
+            readMoreBtn.classList.remove("fbk-hidden");
+            readMoreBtn.textContent = t("card.readLess");
+          } else if (textEl.scrollHeight > textEl.clientHeight + 1) {
+            readMoreBtn.classList.remove("fbk-hidden");
+          }
+          readMoreBtn.addEventListener("click", () => {
+            const isClamped = textEl.classList.toggle("fbk-text-clamped");
+            if (isClamped) {
+              this.expandedCommentIds.delete(id);
+              readMoreBtn.textContent = t("card.readMore");
+            } else {
+              this.expandedCommentIds.add(id);
+              readMoreBtn.textContent = t("card.readLess");
+            }
+          });
+        }
+      });
+      list.querySelectorAll('[data-act="edit-fields"]').forEach((b) => b.addEventListener("click", (e) => {
+        e.stopPropagation();
+        const c = this.comments.find((x) => String(x.id) === String(b.dataset.id));
+        if (c) this.startEditFields(c);
+      }));
       list.querySelectorAll('[data-act="apply"]').forEach((b) => b.addEventListener("click", () => {
         const c = this.comments.find((x) => String(x.id) === String(b.dataset.id));
         if (c && c.status !== "applied") this.toggleApply(c);

@@ -170,14 +170,60 @@
   font-size: 12px;
   color: v.token('text-subtle');
 }
-// "Attach screenshot" / "Report as a bug" — press-to-toggle buttons (.fbk-mini, same base as the
-// popover's Add/Cancel-adjacent minis) instead of checkboxes; `.is-active` (shared with the user
-// menu's theme/language toggles) marks the pressed one.
+.fbk-popover-more-fields-row {
+  display: flex;
+  justify-content: flex-end;
+  margin-block: 4px 8px;
+}
+
+.fbk-popover-more-link {
+  background: none;
+  border: none;
+  padding: 0;
+  color: v.token('accent');
+  font-size: 12px;
+  font-weight: 500;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
 .fbk-popover-toggles {
   display: flex;
-  flex-wrap: wrap;
+  flex-direction: column;
+  gap: 8px;
+  margin-block-end: 12px;
+}
+
+.fbk-popover-toggle-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.fbk-popover-toggle-label {
+  display: inline-flex;
+  align-items: center;
   gap: 6px;
-  margin-block-end: 8px;
+  font-size: 12px;
+  color: v.token('text-muted');
+  cursor: default;
+
+  svg {
+    display: block;
+    flex: none;
+  }
+}
+
+#fbk-cancel {
+  background: none;
+  border-color: transparent;
+  color: v.token('text-muted');
+
+  &:hover {
+    background: v.token('surface-hover');
+    color: v.token('text');
+  }
 }
 
 .fbk-extra-fields {

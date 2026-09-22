@@ -110,6 +110,7 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
   // the widget buffers console/network events at all and whether "Report as a bug" is shown.
   pageContextCaptureEnabled = false;
   commentFields: CommentFieldDefinition[] = [];
+  expandedCommentIds = new Set<string>();
   // Per-project text capture toggle (default true until /capture-config resolves).
   // When false, the widget emits no text content in the DOM snapshot and masks pageTitle.
   captureTextContent = true;
@@ -1907,16 +1908,16 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
     const shotToggle = host.querySelector('#fbk-comment-shot') as HTMLButtonElement | null;
     if (shotToggle) shotToggle.addEventListener('click', () => {
       attachShotComment = !attachShotComment;
-      shotToggle.classList.toggle('is-active', attachShotComment);
-      shotToggle.setAttribute('aria-pressed', String(attachShotComment));
+      shotToggle.classList.toggle('active', attachShotComment);
+      shotToggle.setAttribute('aria-checked', String(attachShotComment));
       if (attachShotComment) this.beginScreenshotCapture(currentEl);
     });
     let isBugReportComment = false;
     const bugToggle = host.querySelector('#fbk-comment-bug') as HTMLButtonElement | null;
     if (bugToggle) bugToggle.addEventListener('click', () => {
       isBugReportComment = !isBugReportComment;
-      bugToggle.classList.toggle('is-active', isBugReportComment);
-      bugToggle.setAttribute('aria-pressed', String(isBugReportComment));
+      bugToggle.classList.toggle('active', isBugReportComment);
+      bugToggle.setAttribute('aria-checked', String(isBugReportComment));
     });
     const cancelPopover = () => {
       currentEl.classList.remove(HL_CLASS);
@@ -1940,7 +1941,7 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
       moreFieldsBtn.addEventListener('click', () => {
         const isExpanded = moreFieldsBtn.getAttribute('aria-expanded') === 'true';
         moreFieldsBtn.setAttribute('aria-expanded', String(!isExpanded));
-        moreFieldsBtn.textContent = !isExpanded ? t('fields.fewer') : t('fields.more');
+        moreFieldsBtn.textContent = !isExpanded ? t('fields.fewer') : t('fields.extra');
         extraFieldsDiv.hidden = isExpanded;
         if (!isExpanded) {
           const firstInput = extraFieldsDiv.querySelector('input, select') as HTMLElement;
@@ -2341,22 +2342,27 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
     if (!card || card.querySelector('.fbk-card-fields-edit')) return;
     const textEl = card.querySelector('.fbk-text') as HTMLElement | null;
     const existingDl = card.querySelector('.fbk-card-fields');
-    if (!existingDl && !textEl) return;
+    const existingWrapper = card.querySelector('.fbk-card-fields-wrapper');
+    if (!existingDl && !existingWrapper && !textEl) return;
 
     const currentValues: Record<string, string> = {};
     (c.customFields || []).forEach((f) => { currentValues[f.key] = f.value; });
     const idPrefix = 'ef-' + c.id;
 
+    const defs = this.commentFields;
+    if (!defs || defs.length === 0) return;
+
     const editor = document.createElement('div');
     editor.className = 'fbk-card-fields-edit';
     editor.innerHTML = `
-        ${renderFieldInputs(this.commentFields, currentValues, idPrefix)}
+        ${renderFieldInputs(defs, currentValues, idPrefix)}
         <div class="fbk-reply-row">
           <button type="button" class="fbk-mini fbk-fields-save">${t('fields.save')}</button>
           <button type="button" class="fbk-mini fbk-fields-cancel">${t('fields.cancel')}</button>
         </div>`;
 
-    if (existingDl) existingDl.replaceWith(editor);
+    if (existingWrapper) existingWrapper.replaceWith(editor);
+    else if (existingDl) existingDl.replaceWith(editor);
     else (textEl as HTMLElement).insertAdjacentElement('afterend', editor);
 
     (editor.querySelector('.fbk-fields-cancel') as HTMLElement).addEventListener('click', () => {
@@ -2667,6 +2673,37 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
       (c.replies || []).forEach((r) => { r._mine = !r.isAi && !!(myId && r.authorId && String(r.authorId).toLowerCase() === myId); });
       return TPL.card(c, i, isQuickAccess);
     }).join('');
+
+    list.querySelectorAll<HTMLElement>('.fbk-card').forEach((card) => {
+      const id = card.dataset.id;
+      const textEl = card.querySelector<HTMLElement>('.fbk-text');
+      const readMoreBtn = card.querySelector<HTMLElement>('[data-act="toggle-read-more"]');
+      if (textEl && readMoreBtn && id) {
+        if (this.expandedCommentIds.has(id)) {
+          textEl.classList.remove('fbk-text-clamped');
+          readMoreBtn.classList.remove('fbk-hidden');
+          readMoreBtn.textContent = t('card.readLess');
+        } else if (textEl.scrollHeight > textEl.clientHeight + 1) {
+          readMoreBtn.classList.remove('fbk-hidden');
+        }
+        readMoreBtn.addEventListener('click', () => {
+          const isClamped = textEl.classList.toggle('fbk-text-clamped');
+          if (isClamped) {
+            this.expandedCommentIds.delete(id);
+            readMoreBtn.textContent = t('card.readMore');
+          } else {
+            this.expandedCommentIds.add(id);
+            readMoreBtn.textContent = t('card.readLess');
+          }
+        });
+      }
+    });
+
+    list.querySelectorAll<HTMLElement>('[data-act="edit-fields"]').forEach((b) => b.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const c = this.comments.find((x) => String(x.id) === String(b.dataset.id));
+      if (c) this.startEditFields(c);
+    }));
 
     list.querySelectorAll<HTMLElement>('[data-act="apply"]').forEach((b) => b.addEventListener('click', () => {
       const c = this.comments.find((x) => String(x.id) === String(b.dataset.id));

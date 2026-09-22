@@ -77,7 +77,7 @@ export const TPL = {
           <span class="fbk-toolbar__divider" aria-hidden="true"></span>
           <button type="button" class="fbk-toolbar-btn fbk-toolbar-btn--primary fbk-toolbar-btn--icon fbk-toolbar-btn--brand" id="fbk-add" data-fbk-act="inspect" aria-pressed="false" data-toggle="tooltip" data-placement="top" title="${t('toolbar.commentOnElement')}${shortcutLabel ? ` (${escapeHtml(shortcutLabel)})` : ''}" aria-label="${t('toolbar.commentOnElement')}"${ariaShortcut ? ` aria-keyshortcuts="${escapeHtml(ariaShortcut)}"` : ''}><span class="fbk-toolbar-btn__icon">${ICON.crosshair}</span></button>
           <button type="button" class="fbk-toolbar-btn fbk-toolbar-btn--comments" id="fbk-toggle" data-fbk-act="comments" aria-expanded="false" aria-haspopup="dialog" data-toggle="tooltip" data-placement="top" title="${t('toolbar.viewCommentsList')}" aria-label="${t('toolbar.comments')}"><span class="fbk-toolbar-btn__icon">${ICON.bubble}</span> <span class="fbk-toolbar-count" id="fbk-count" data-fbk-count>0</span></button>
-          <button type="button" class="fbk-toolbar-btn fbk-toolbar-btn--icon" id="fbk-updates" data-fbk-act="updates" aria-expanded="false" aria-haspopup="dialog" data-toggle="tooltip" data-placement="top" title="${t('toolbar.recentActivityUpdates')}" aria-label="${t('toolbar.updates')}${unreadNotifyCount > 0 ? `, ${unreadNotifyCount > 99 ? '99+' : unreadNotifyCount} unread` : ''}"><span class="fbk-toolbar-btn__icon">${ICON.bell}</span><span class="fbk-toolbar-dot${unreadNotifyCount > 0 ? '' : ' fbk-hidden'}" id="fbk-notify-count" data-fbk-unread aria-hidden="true"></span></button>
+          <button type="button" class="fbk-toolbar-btn fbk-toolbar-btn--icon fbk-hidden" id="fbk-updates" data-fbk-act="updates" aria-expanded="false" aria-haspopup="dialog" data-toggle="tooltip" data-placement="top" title="${t('toolbar.recentActivityUpdates')}" aria-label="${t('toolbar.updates')}${unreadNotifyCount > 0 ? `, ${unreadNotifyCount > 99 ? '99+' : unreadNotifyCount} unread` : ''}"><span class="fbk-toolbar-btn__icon">${ICON.bell}</span><span class="fbk-toolbar-dot${unreadNotifyCount > 0 ? '' : ' fbk-hidden'}" id="fbk-notify-count" data-fbk-unread aria-hidden="true"></span></button>
           ${displayName ? `
           <span class="fbk-toolbar__divider" aria-hidden="true"></span>
           <button type="button" class="fbk-toolbar-btn fbk-toolbar-btn--avatar" id="fbk-user" data-fbk-act="account" aria-expanded="false" aria-haspopup="dialog" data-toggle="tooltip" data-placement="top" title="${t('toolbar.signedInAs')} ${displayName}${roleLabel ? ' · ' + roleLabel : ''}" aria-label="${t('toolbar.account')}, ${displayName}">${avatarInitials}</button>` : ''}
@@ -254,7 +254,7 @@ export const TPL = {
           ${(!isQuickAccess && (c.status === 'applied' || c.status === 'archived')) ? `<button type="button" class="fbk-card-menu-item" data-menu-act="reopen" role="menuitem">${ICON.reopen}<span>${t('card.reopen')}</span></button>` : ''}
           ${c._mine ? `<button type="button" class="fbk-card-menu-item" data-menu-act="visibility" data-private="${c.isPrivate ? 'false' : 'true'}" role="menuitem">${c.isPrivate ? ICON.unlock : ICON.lock}<span>${c.isPrivate ? t('card.makePublic') : t('card.makePrivate')}</span></button>` : ''}
           ${c._mine ? `<button type="button" class="fbk-card-menu-item" data-menu-act="edit" role="menuitem">${ICON.pencil}<span>${t('card.edit')}</span></button>` : ''}
-          ${canEditFields ? `<button type="button" class="fbk-card-menu-item" data-menu-act="edit-fields" role="menuitem">${ICON.pencil}<span>${t('fields.edit')}</span></button>` : ''}
+          ${canEditFields ? `<button type="button" class="fbk-card-menu-item" data-menu-act="edit-fields" role="menuitem">${ICON.extraFields}<span>${t('fields.extra')}</span></button>` : ''}
           ${c.status === 'open' ? `<button type="button" class="fbk-card-menu-item danger" data-menu-act="delete" role="menuitem">${ICON.trash}<span>${t('card.delete')}</span></button>` : ''}
         </div>`,
 
@@ -379,31 +379,34 @@ export const TPL = {
               </div>` : ''}
             </div>
             ${pagePath ? `<div class="fbk-caption fbk-card-page" title="${escapeHtml(pageUrl!)}">&#x1f4cd; ${escapeHtml(pagePath)}</div>` : ''}
-            <div class="fbk-text">${escapeHtml(c.body || c.text || '')}</div>
-            ${c.customFields && c.customFields.length > 0 ? `<dl class="fbk-card-fields">
-              ${c.customFields.map(f => {
-                const isUrl = f.type === 2 || f.type === 'Url';
-                let valHtml = escapeHtml(f.value);
-                if (isUrl) {
-                  let u: URL | null = null;
-                  try {
-                    u = new URL(f.value);
-                  } catch {
-                    u = null;
+            <div class="fbk-text fbk-text-clamped">${escapeHtml(c.body || c.text || '')}</div><button type="button" class="fbk-read-more-btn fbk-hidden" data-act="toggle-read-more" data-id="${c.id}">${t('card.readMore')}</button>
+            ${c.customFields && c.customFields.length > 0 ? `<div class="fbk-card-fields-wrapper">
+              <dl class="fbk-card-fields">
+                ${c.customFields.map(f => {
+                  const isUrl = f.type === 2 || f.type === 'Url';
+                  let valHtml = escapeHtml(f.value);
+                  if (isUrl) {
+                    let u: URL | null = null;
+                    try {
+                      u = new URL(f.value);
+                    } catch {
+                      u = null;
+                    }
+                    // Only ever render an <a> when the value parses as an absolute URL AND the
+                    // protocol is http/https — never put an unparsed or non-http(s) value into
+                    // href (e.g. javascript:, data:), even though the server already validates
+                    // this on write; a stale/legacy row must not become a click-to-execute link.
+                    if (u && (u.protocol === 'http:' || u.protocol === 'https:')) {
+                      const full = u.host + u.pathname;
+                      const d = escapeHtml(full.length > 60 ? full.substring(0, 60) + '…' : full);
+                      valHtml = `<a href="${escapeHtml(f.value)}" target="_blank" rel="noopener noreferrer">${d}</a>`;
+                    }
                   }
-                  // Only ever render an <a> when the value parses as an absolute URL AND the
-                  // protocol is http/https — never put an unparsed or non-http(s) value into
-                  // href (e.g. javascript:, data:), even though the server already validates
-                  // this on write; a stale/legacy row must not become a click-to-execute link.
-                  if (u && (u.protocol === 'http:' || u.protocol === 'https:')) {
-                    const full = u.host + u.pathname;
-                    const d = escapeHtml(full.length > 60 ? full.substring(0, 60) + '…' : full);
-                    valHtml = `<a href="${escapeHtml(f.value)}" target="_blank" rel="noopener noreferrer">${d}</a>`;
-                  }
-                }
-                return `<dt>${escapeHtml(f.label)}</dt><dd>${valHtml}</dd>`;
-              }).join('')}
-            </dl>` : ''}
+                  return `<dt>${escapeHtml(f.label)}</dt><dd>${valHtml}</dd>`;
+                }).join('')}
+              </dl>
+              ${(!isQuickAccess && !!(c._mine || c._canVerify)) ? `<button type="button" class="fbk-card-fields-edit-btn" data-act="edit-fields" data-id="${c.id}" title="${t('fields.extra')}" aria-label="${t('fields.extra')}">${ICON.pencil}</button>` : ''}
+            </div>` : ''}
             ${shot}
             <div class="fbk-sub">${escapeHtml(authorLabel)} &middot; ${c.createdAt ? new Date(c.createdAt).toLocaleDateString() : ''}${c.editedAt ? ` &middot; <span class="fbk-edited">${t('card.edited')}</span>` : ''}</div>
             ${verifyBox}
@@ -443,11 +446,11 @@ export const TPL = {
             </div>
             <div class="fbk-ms-list" id="fbk-action-ms-list" role="listbox" hidden></div>
           </div>` : ''}
-          ${commentFields.length > 0 ? `<button type="button" id="fbk-more-fields" class="fbk-mini" aria-expanded="false" aria-controls="fbk-extra-fields">${t('fields.more')}</button>
+          ${commentFields.length > 0 ? `<div class="fbk-popover-more-fields-row"><button type="button" id="fbk-more-fields" class="fbk-popover-more-link" aria-expanded="false" aria-controls="fbk-extra-fields">${t('fields.extra')}</button></div>
           <div id="fbk-extra-fields" class="fbk-extra-fields" hidden>${renderFieldInputs(commentFields, {}, 'cf')}</div>` : ''}
           ${(shotEnabled || bugReportEnabled) ? `<div class="fbk-popover-toggles">
-            ${shotEnabled ? `<button type="button" class="fbk-mini" id="fbk-comment-shot" aria-pressed="false">&#x1f4f7; ${t('popover.attachScreenshot')}</button>` : ''}
-            ${bugReportEnabled ? `<button type="button" class="fbk-mini" id="fbk-comment-bug" aria-pressed="false" title="${t('popover.reportBugTitle')}">&#x1f41e; ${t('popover.reportAsABug')}</button>` : ''}
+            ${shotEnabled ? `<div class="fbk-popover-toggle-row"><span class="fbk-popover-toggle-label">${ICON.camera} ${t('popover.attachScreenshot')}</span><button type="button" class="fbk-toggle-switch" id="fbk-comment-shot" role="switch" aria-checked="false" aria-label="${t('popover.attachScreenshot')}" title="${t('popover.attachScreenshot')}"><span class="fbk-toggle-switch-thumb"></span></button></div>` : ''}
+            ${bugReportEnabled ? `<div class="fbk-popover-toggle-row"><span class="fbk-popover-toggle-label" title="${t('popover.reportBugTitle')}">${ICON.bug} ${t('popover.reportAsABug')}</span><button type="button" class="fbk-toggle-switch" id="fbk-comment-bug" role="switch" aria-checked="false" aria-label="${t('popover.reportAsABug')}" title="${t('popover.reportBugTitle')}"><span class="fbk-toggle-switch-thumb"></span></button></div>` : ''}
           </div>` : ''}
           <div class="fbk-reply-row">
             <button class="fbk-btn primary fbk-btn-fill" id="fbk-submit">${t('popover.add')}</button>

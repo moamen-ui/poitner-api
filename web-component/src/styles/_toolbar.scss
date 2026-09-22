@@ -85,6 +85,7 @@
 .fbk-toolbar-btn {
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   gap: v.token('space-1');
   flex: 0 0 auto;
   block-size: 32px;
@@ -160,7 +161,18 @@
   border-radius: 50%;
 }
 
-.fbk-toolbar-btn__icon { flex: 0 0 auto; } // 15-16px inline svg, currentColor
+.fbk-toolbar-btn__icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  line-height: 0;
+
+  svg {
+    display: block;
+    margin: auto;
+  }
+}
 // Every toolbar button is icon-only — the name lives in `title` (the tooltip) and `aria-label`
 // instead of a visible label, so the toolbar reads at a glance instead of as a row of buttons.
 // The Comments button is the one exception: it also carries a count, so it stays auto-width
@@ -214,10 +226,19 @@
   display: inline-flex;
 }
 .fbk-toolbar__reset {
+  inline-size: 26px;
   block-size: 26px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
   color: v.token('text-muted');
   background: v.token('surface-alt');
   border-color: v.token('toolbar-border');
+}
+
+#fbk-updates.fbk-hidden {
+  display: none !important;
 }
 
 /* ----------------------------------------------------------- phone */

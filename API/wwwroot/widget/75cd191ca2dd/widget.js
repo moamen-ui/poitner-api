@@ -309,7 +309,7 @@
   var SHOT_HIGHLIGHT = "#2563eb";
   var _a;
   var SCRIPT_SRC = ((_a = document.currentScript) == null ? void 0 : _a.src) || "";
-  var CSS_INTEGRITY = true ? "sha384-rKm89iO9XEq+548K3UfQhNUAd1PQX/TU99O24XAgNyMCs8ORG9GXeCjnbqmnqnwA" : "";
+  var CSS_INTEGRITY = true ? "sha384-EQFMh9KeWiahQhAl80bHXM21JBTCekGhbbas29GxlQk1z3+y5wmLB0v0AgW76nOe" : "";
   function resolveCssUrl(scriptSrc) {
     var _a2;
     if (!scriptSrc) return "widget.css";
@@ -506,7 +506,7 @@
     grip: '<svg viewBox="0 0 16 16" width="16" height="16" fill="currentColor" stroke="none"><circle cx="6" cy="3.6" r="1.1"/><circle cx="10" cy="3.6" r="1.1"/><circle cx="6" cy="8" r="1.1"/><circle cx="10" cy="8" r="1.1"/><circle cx="6" cy="12.4" r="1.1"/><circle cx="10" cy="12.4" r="1.1"/></svg>',
     close: '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>',
     // Target-reset — "reset toolbar to its default position".
-    restore: '<svg viewBox="0 0 16 16" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" aria-hidden="true"><path d="M8 2.4v3.2M8 10.4v3.2M2.4 8h3.2M10.4 8h3.2"/><rect x="5.6" y="5.6" width="4.8" height="4.8" rx="1"/></svg>',
+    restore: '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>',
     // Speech-bubble "feedback" mark — the launcher (22px) and the toolbar's Comments button (16px)
     // are drawn separately (bubble vs bubbleLg) rather than one path at two sizes.
     bubble: '<svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round" aria-hidden="true"><path d="M2 3.6a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v6a1 1 0 0 1-1 1H6.4L3.2 13.6v-3H3a1 1 0 0 1-1-1z"/></svg>',
@@ -532,7 +532,10 @@
     chevronDown: '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>',
     chevronRight: '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 6 15 12 9 18"/></svg>',
     // Funnel — the sidebar-head button that shows/hides the status/environment/author filters.
-    filter: '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/></svg>'
+    filter: '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/></svg>',
+    extraFields: '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 12H3"/><path d="M16 6H3"/><path d="M16 18H3"/><path d="M18 9v6"/><path d="M21 12h-6"/></svg>',
+    camera: '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>',
+    bug: '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m8 2 1.88 1.88"/><path d="M14.12 3.88 16 2"/><path d="M9 7.13v-1a3.003 3.003 0 1 1 6 0v1"/><path d="M12 20c-3.3 0-6-2.7-6-6v-3a4 4 0 0 1 4-4h4a4 4 0 0 1 4 4v3c0 3.3-2.7 6-6 6"/><path d="M12 20v-9"/><path d="M6.53 9C4.6 8.8 3 7.1 3 5"/><path d="M6 13H2"/><path d="M3 21c0-2.1 1.7-3.9 3.8-4"/><path d="M20.97 5c0 2.1-1.6 3.8-3.5 4"/><path d="M22 13h-4"/><path d="M17.2 17c2.1.1 3.8 1.9 3.8 4"/></svg>'
   };
 
   // src/i18n.ts
@@ -717,6 +720,7 @@
       "sidebar.status": "Status",
       "sidebar.filterByStatus": "Filter by status",
       "sidebar.filterByUser": "Filter by user",
+      "sidebar.user": "User",
       "sidebar.showFilters": "Show filters",
       "sidebar.hideFilters": "Hide filters",
       "sidebar.allUsers": "All users",
@@ -767,6 +771,8 @@
       "card.deleteThisComment": "Delete this comment?",
       "card.deleteThisReply": "Delete this reply?",
       "card.confirmDelete": "Confirm delete",
+      "card.readMore": "Read more",
+      "card.readLess": "Read less",
       // --- comment popover ---
       "popover.selectParentElement": "Select parent element",
       "popover.selectFirstChildElement": "Select first child element",
@@ -811,7 +817,7 @@
       "toast.couldNotReachServer": "Could not reach {brand} server",
       "toast.retry": "Retry",
       "toast.refreshed": "Refreshed",
-      "toast.pinNotOnThisPage": "This comment's pin is not on the current page",
+      "toast.pinElementNotFound": "This comment's element isn't visible right now (hidden, removed, or temporary)",
       "toast.applyPromptCopied": "Apply prompt copied — paste it into your AI tool",
       "toast.copyFailed": "Could not copy to clipboard",
       "toast.commitStyleUpdated": "Commit style updated",
@@ -838,7 +844,20 @@
       "toast.reopenedMsg": "Re-opened",
       "toast.archivedMsg": "Archived",
       "toast.pleaseProvideNoteNotFixed": "Please provide a note explaining what is not fixed",
-      "toast.notifications": "Notifications"
+      "toast.notifications": "Notifications",
+      "fields.more": "Add more fields",
+      "fields.fewer": "Fewer fields",
+      "fields.extra": "Extra fields",
+      "fields.edit": "Extra fields",
+      "fields.save": "Save fields",
+      "fields.cancel": "Cancel",
+      "fields.none": "None",
+      "fields.invalidUrl": "Must be a valid URL",
+      "fields.invalidOption": "Pick one of the listed options",
+      "fields.hostNotAllowed": "Must be a link on {hosts}",
+      "fields.tooLong": "Value is too long",
+      "fields.saved": "Fields saved",
+      "fields.serverRejected": "Server rejected:"
     },
     ar: {
       // --- auth (login/signup modal) ---
@@ -930,6 +949,7 @@
       "sidebar.status": "الحالة",
       "sidebar.filterByStatus": "تصفية حسب الحالة",
       "sidebar.filterByUser": "تصفية حسب المستخدم",
+      "sidebar.user": "المستخدم",
       "sidebar.showFilters": "إظهار الفلاتر",
       "sidebar.hideFilters": "إخفاء الفلاتر",
       "sidebar.allUsers": "جميع المستخدمين",
@@ -980,6 +1000,8 @@
       "card.deleteThisComment": "هل تريد حذف هذا التعليق؟",
       "card.deleteThisReply": "هل تريد حذف هذا الرد؟",
       "card.confirmDelete": "تأكيد الحذف",
+      "card.readMore": "قراءة المزيد",
+      "card.readLess": "قراءة أقل",
       // --- comment popover ---
       "popover.selectParentElement": "اختر العنصر الأصل",
       "popover.selectFirstChildElement": "اختر العنصر الفرعي الأول",
@@ -1024,7 +1046,7 @@
       "toast.couldNotReachServer": "تعذّر الوصول إلى خادم {brand}",
       "toast.retry": "إعادة المحاولة",
       "toast.refreshed": "تم التحديث",
-      "toast.pinNotOnThisPage": "دبوس هذا التعليق غير موجود في الصفحة الحالية",
+      "toast.pinElementNotFound": "عنصر هذا التعليق غير ظاهر حاليًا (مخفي أو محذوف أو مؤقت)",
       "toast.applyPromptCopied": "تم نسخ تعليمة التطبيق — الصقها في أداة الذكاء الاصطناعي",
       "toast.copyFailed": "تعذر النسخ إلى الحافظة",
       "toast.commitStyleUpdated": "تم تحديث أسلوب الالتزام",
@@ -1051,9 +1073,119 @@
       "toast.reopenedMsg": "أُعيد فتحه",
       "toast.archivedMsg": "تمت الأرشفة",
       "toast.pleaseProvideNoteNotFixed": "يرجى كتابة ملاحظة تشرح ما لم يتم إصلاحه",
-      "toast.notifications": "الإشعارات"
+      "toast.notifications": "الإشعارات",
+      "fields.more": "إضافة المزيد من الحقول",
+      "fields.fewer": "حقول أقل",
+      "fields.extra": "حقول إضافية",
+      "fields.edit": "حقول إضافية",
+      "fields.save": "حفظ الحقول",
+      "fields.cancel": "إلغاء",
+      "fields.none": "لا شيء",
+      "fields.invalidUrl": "يجب أن يكون رابطاً صالحاً",
+      "fields.invalidOption": "اختر أحد الخيارات المدرجة",
+      "fields.hostNotAllowed": "يجب أن يكون الرابط من {hosts}",
+      "fields.tooLong": "القيمة طويلة جداً",
+      "fields.saved": "تم حفظ الحقول",
+      "fields.serverRejected": "رفض الخادم:"
     }
   };
+
+  // src/fields.ts
+  function hostMatches(host, pattern) {
+    host = host.toLowerCase();
+    pattern = pattern.toLowerCase();
+    if (host === pattern) return true;
+    if (pattern.startsWith("*.")) {
+      const domain = pattern.substring(2);
+      if (host === domain || host.endsWith("." + domain)) {
+        return true;
+      }
+    }
+    return false;
+  }
+  function validateFieldValue(def, value) {
+    value = value.trim();
+    if (!value) return null;
+    const type = def.type;
+    const isText = type === 1 || type === "Text";
+    const isUrl = type === 2 || type === "Url";
+    const isSelect = type === 3 || type === "Select";
+    if (isText) {
+      if (value.length > 500) return "fields.tooLong";
+    } else if (isUrl) {
+      if (value.length > 2e3) return "fields.tooLong";
+      let url;
+      try {
+        url = new URL(value);
+      } catch {
+        return "fields.invalidUrl";
+      }
+      if (url.protocol !== "http:" && url.protocol !== "https:") {
+        return "fields.invalidUrl";
+      }
+      if (url.username || url.password) {
+        return "fields.invalidUrl";
+      }
+      if (!url.hostname) {
+        return "fields.invalidUrl";
+      }
+      if (def.allowedHosts && def.allowedHosts.length > 0) {
+        const match = def.allowedHosts.some((h) => hostMatches(url.hostname, h));
+        if (!match) return "fields.hostNotAllowed";
+      }
+    } else if (isSelect) {
+      if (def.options && !def.options.includes(value)) {
+        return "fields.invalidOption";
+      }
+    }
+    return null;
+  }
+  function renderFieldInputs(defs, values, idPrefix) {
+    if (!defs || defs.length === 0) return "";
+    return defs.map((def) => {
+      const isUrl = def.type === 2 || def.type === "Url";
+      const isSelect = def.type === 3 || def.type === "Select";
+      const id = escapeHtml(`${idPrefix}-${def.key}`);
+      const name = escapeHtml(`fbk-cf-${def.key}`);
+      const val = values[def.key] || "";
+      let inputHtml = "";
+      if (isSelect) {
+        inputHtml = `<select id="${id}" name="${name}" class="fbk-input">
+        <option value="">${escapeHtml(t("fields.none"))}</option>
+        ${(def.options || []).map((o) => `<option value="${escapeHtml(o)}" ${o === val ? "selected" : ""}>${escapeHtml(o)}</option>`).join("")}
+      </select>`;
+      } else {
+        const typeAttr = isUrl ? "url" : "text";
+        const inputMode = isUrl ? ' inputmode="url"' : "";
+        const maxLength = isUrl ? ' maxlength="2000"' : ' maxlength="500"';
+        inputHtml = `<input type="${typeAttr}" id="${id}" name="${name}" class="fbk-input" value="${escapeHtml(val)}"${inputMode}${maxLength}>`;
+      }
+      let hintHtml = "";
+      if (def.hint) {
+        hintHtml = `<small class="fbk-field-hint" id="${id}-hint">${escapeHtml(def.hint)}</small>`;
+      }
+      return `
+      <div class="fbk-field">
+        <label for="${id}">${escapeHtml(def.label)}</label>
+        ${inputHtml}
+        ${hintHtml}
+      </div>
+    `;
+    }).join("");
+  }
+  function collectFieldValues(root) {
+    const map = {};
+    const inputs = root.querySelectorAll('[name^="fbk-cf-"]');
+    for (let i = 0; i < inputs.length; i++) {
+      const el = inputs[i];
+      const key = el.name.substring(7);
+      const val = el.value.trim();
+      if (val) {
+        map[key] = val;
+      }
+    }
+    return map;
+  }
 
   // src/templates.ts
   var TPL = {
@@ -1119,7 +1251,7 @@
           <span class="fbk-toolbar__divider" aria-hidden="true"></span>
           <button type="button" class="fbk-toolbar-btn fbk-toolbar-btn--primary fbk-toolbar-btn--icon fbk-toolbar-btn--brand" id="fbk-add" data-fbk-act="inspect" aria-pressed="false" data-toggle="tooltip" data-placement="top" title="${t("toolbar.commentOnElement")}${shortcutLabel ? ` (${escapeHtml(shortcutLabel)})` : ""}" aria-label="${t("toolbar.commentOnElement")}"${ariaShortcut ? ` aria-keyshortcuts="${escapeHtml(ariaShortcut)}"` : ""}><span class="fbk-toolbar-btn__icon">${ICON.crosshair}</span></button>
           <button type="button" class="fbk-toolbar-btn fbk-toolbar-btn--comments" id="fbk-toggle" data-fbk-act="comments" aria-expanded="false" aria-haspopup="dialog" data-toggle="tooltip" data-placement="top" title="${t("toolbar.viewCommentsList")}" aria-label="${t("toolbar.comments")}"><span class="fbk-toolbar-btn__icon">${ICON.bubble}</span> <span class="fbk-toolbar-count" id="fbk-count" data-fbk-count>0</span></button>
-          <button type="button" class="fbk-toolbar-btn fbk-toolbar-btn--icon" id="fbk-updates" data-fbk-act="updates" aria-expanded="false" aria-haspopup="dialog" data-toggle="tooltip" data-placement="top" title="${t("toolbar.recentActivityUpdates")}" aria-label="${t("toolbar.updates")}${unreadNotifyCount > 0 ? `, ${unreadNotifyCount > 99 ? "99+" : unreadNotifyCount} unread` : ""}"><span class="fbk-toolbar-btn__icon">${ICON.bell}</span><span class="fbk-toolbar-dot${unreadNotifyCount > 0 ? "" : " fbk-hidden"}" id="fbk-notify-count" data-fbk-unread aria-hidden="true"></span></button>
+          <button type="button" class="fbk-toolbar-btn fbk-toolbar-btn--icon fbk-hidden" id="fbk-updates" data-fbk-act="updates" aria-expanded="false" aria-haspopup="dialog" data-toggle="tooltip" data-placement="top" title="${t("toolbar.recentActivityUpdates")}" aria-label="${t("toolbar.updates")}${unreadNotifyCount > 0 ? `, ${unreadNotifyCount > 99 ? "99+" : unreadNotifyCount} unread` : ""}"><span class="fbk-toolbar-btn__icon">${ICON.bell}</span><span class="fbk-toolbar-dot${unreadNotifyCount > 0 ? "" : " fbk-hidden"}" id="fbk-notify-count" data-fbk-unread aria-hidden="true"></span></button>
           ${displayName ? `
           <span class="fbk-toolbar__divider" aria-hidden="true"></span>
           <button type="button" class="fbk-toolbar-btn fbk-toolbar-btn--avatar" id="fbk-user" data-fbk-act="account" aria-expanded="false" aria-haspopup="dialog" data-toggle="tooltip" data-placement="top" title="${t("toolbar.signedInAs")} ${displayName}${roleLabel ? " · " + roleLabel : ""}" aria-label="${t("toolbar.account")}, ${displayName}">${avatarInitials}</button>` : ""}
@@ -1250,24 +1382,31 @@
                <span class="fbk-toggle-switch-thumb"></span>
              </button>
            </div>`,
-    // User filter — only rendered when the list has comments from >1 author.
-    authorFilter: (authors, selectedId) => `<select class="fbk-userfilter" id="fbk-author-filter" title="${t("sidebar.filterByUser")}">
-             <option value="">&#x1f465; ${t("sidebar.allUsers")}</option>
-             ${authors.map((a) => `<option value="${escapeHtml(a.id)}" ${a.id === selectedId ? "selected" : ""}>${escapeHtml(a.name)}</option>`).join("")}
-           </select>`,
+    // User filter — only rendered when the list has comments from >1 author. Wrapped in the same
+    // labeled fbk-filter-field shape as statusFilterSelect/envFilterSelect (a visible label above
+    // it, not just the select's own title tooltip) — it sits beside "Mine only" in the filter bar's
+    // first row (see renderSidebar).
+    authorFilter: (authors, selectedId) => `<label class="fbk-filter-field">
+             <span class="fbk-filter-field-label">${t("sidebar.user")}</span>
+             <select class="fbk-userfilter" id="fbk-author-filter" title="${t("sidebar.filterByUser")}">
+               <option value="">&#x1f465; ${t("sidebar.allUsers")}</option>
+               ${authors.map((a) => `<option value="${escapeHtml(a.id)}" ${a.id === selectedId ? "selected" : ""}>${escapeHtml(a.name)}</option>`).join("")}
+             </select>
+           </label>`,
     // Kebab-menu dropdown for a comment card's own actions — rendered into the shared portal host
     // (#fbk-menu-host), anchored under the card's kebab button by toggleCardMenu. Copy-prompt/
     // complete/reopen are workflow actions open to anyone who can see the card; visibility/edit are
     // owner-only; delete only while still open (matches the previous inline buttons' conditions
     // exactly, just relocated). `isQuickAccess` matches TPL.card's own gate on "Complete"/"Reopen" —
     // a quick-access (Client) account never gets to change its own feedback's status directly.
-    cardMenu: (c, isQuickAccess) => `
+    cardMenu: (c, isQuickAccess, canEditFields = false) => `
         <div class="fbk-card-menu" id="fbk-card-menu" role="menu">
           ${c.status === "open" || c.status === "pending-apply" ? `<button type="button" class="fbk-card-menu-item" data-menu-act="copy-apply-prompt" role="menuitem">${ICON.copy}<span>${t("card.copyApplyPrompt")}</span></button>` : ""}
           ${!isQuickAccess && (c.status === "open" || c.status === "pending-apply") ? `<button type="button" class="fbk-card-menu-item" data-menu-act="complete" role="menuitem">${ICON.check}<span>${t("card.complete")}</span></button>` : ""}
           ${!isQuickAccess && (c.status === "applied" || c.status === "archived") ? `<button type="button" class="fbk-card-menu-item" data-menu-act="reopen" role="menuitem">${ICON.reopen}<span>${t("card.reopen")}</span></button>` : ""}
           ${c._mine ? `<button type="button" class="fbk-card-menu-item" data-menu-act="visibility" data-private="${c.isPrivate ? "false" : "true"}" role="menuitem">${c.isPrivate ? ICON.unlock : ICON.lock}<span>${c.isPrivate ? t("card.makePublic") : t("card.makePrivate")}</span></button>` : ""}
           ${c._mine ? `<button type="button" class="fbk-card-menu-item" data-menu-act="edit" role="menuitem">${ICON.pencil}<span>${t("card.edit")}</span></button>` : ""}
+          ${canEditFields ? `<button type="button" class="fbk-card-menu-item" data-menu-act="edit-fields" role="menuitem">${ICON.extraFields}<span>${t("fields.extra")}</span></button>` : ""}
           ${c.status === "open" ? `<button type="button" class="fbk-card-menu-item danger" data-menu-act="delete" role="menuitem">${ICON.trash}<span>${t("card.delete")}</span></button>` : ""}
         </div>`,
     // Kebab-menu dropdown for a single REPLY (see TPL.card's `kebab` above) — shares the same
@@ -1354,7 +1493,30 @@
               </div>` : ""}
             </div>
             ${pagePath ? `<div class="fbk-caption fbk-card-page" title="${escapeHtml(pageUrl)}">&#x1f4cd; ${escapeHtml(pagePath)}</div>` : ""}
-            <div class="fbk-text">${escapeHtml(c.body || c.text || "")}</div>
+            <div class="fbk-text fbk-text-clamped">${escapeHtml(c.body || c.text || "")}</div><button type="button" class="fbk-read-more-btn fbk-hidden" data-act="toggle-read-more" data-id="${c.id}">${t("card.readMore")}</button>
+            ${c.customFields && c.customFields.length > 0 ? `<div class="fbk-card-fields-wrapper">
+              <dl class="fbk-card-fields">
+                ${c.customFields.map((f) => {
+        const isUrl = f.type === 2 || f.type === "Url";
+        let valHtml = escapeHtml(f.value);
+        if (isUrl) {
+          let u = null;
+          try {
+            u = new URL(f.value);
+          } catch {
+            u = null;
+          }
+          if (u && (u.protocol === "http:" || u.protocol === "https:")) {
+            const full = u.host + u.pathname;
+            const d = escapeHtml(full.length > 60 ? full.substring(0, 60) + "…" : full);
+            valHtml = `<a href="${escapeHtml(f.value)}" target="_blank" rel="noopener noreferrer">${d}</a>`;
+          }
+        }
+        return `<dt>${escapeHtml(f.label)}</dt><dd>${valHtml}</dd>`;
+      }).join("")}
+              </dl>
+              <button type="button" class="fbk-card-fields-edit-btn" data-act="edit-fields" data-id="${c.id}" title="${t("fields.extra")}">${ICON.pencil}</button>
+            </div>` : ""}
             ${shot}
             <div class="fbk-sub">${escapeHtml(authorLabel)} &middot; ${c.createdAt ? new Date(c.createdAt).toLocaleDateString() : ""}${c.editedAt ? ` &middot; <span class="fbk-edited">${t("card.edited")}</span>` : ""}</div>
             ${verifyBox}
@@ -1374,7 +1536,7 @@
     // `bugReportEnabled`: only true when the project has page-context capture turned on — the
     // checkbox controls whether the console/network buffer already sitting in memory gets attached
     // to THIS comment; it never controls whether that buffer exists (see pagecontext.ts).
-    popover: (meta, left, top, shotEnabled, actions = [], bugReportEnabled = false) => `
+    popover: (meta, left, top, shotEnabled, actions = [], bugReportEnabled = false, commentFields = []) => `
         <div class="fbk-popover" data-fbk-left="${left}" data-fbk-top="${top}">
           <div class="fbk-popover-nav">
             <button type="button" class="fbk-popover-nav-btn" id="fbk-target-up" data-toggle="tooltip" data-placement="top" title="${t("popover.selectParentElement")}" aria-label="${t("popover.selectParentElement")}">${ICON.chevronUp}</button>
@@ -1393,9 +1555,11 @@
             </div>
             <div class="fbk-ms-list" id="fbk-action-ms-list" role="listbox" hidden></div>
           </div>` : ""}
+          ${commentFields.length > 0 ? `<div class="fbk-popover-more-fields-row"><button type="button" id="fbk-more-fields" class="fbk-popover-more-link" aria-expanded="false" aria-controls="fbk-extra-fields">${t("fields.extra")}</button></div>
+          <div id="fbk-extra-fields" class="fbk-extra-fields" hidden>${renderFieldInputs(commentFields, {}, "cf")}</div>` : ""}
           ${shotEnabled || bugReportEnabled ? `<div class="fbk-popover-toggles">
-            ${shotEnabled ? `<button type="button" class="fbk-mini" id="fbk-comment-shot" aria-pressed="false">&#x1f4f7; ${t("popover.attachScreenshot")}</button>` : ""}
-            ${bugReportEnabled ? `<button type="button" class="fbk-mini" id="fbk-comment-bug" aria-pressed="false" title="${t("popover.reportBugTitle")}">&#x1f41e; ${t("popover.reportAsABug")}</button>` : ""}
+            ${shotEnabled ? `<div class="fbk-popover-toggle-row"><span class="fbk-popover-toggle-label">${ICON.camera} ${t("popover.attachScreenshot")}</span><button type="button" class="fbk-toggle-switch" id="fbk-comment-shot" role="switch" aria-checked="false"><span class="fbk-toggle-switch-thumb"></span></button></div>` : ""}
+            ${bugReportEnabled ? `<div class="fbk-popover-toggle-row"><span class="fbk-popover-toggle-label" title="${t("popover.reportBugTitle")}">${ICON.bug} ${t("popover.reportAsABug")}</span><button type="button" class="fbk-toggle-switch" id="fbk-comment-bug" role="switch" aria-checked="false" title="${t("popover.reportBugTitle")}"><span class="fbk-toggle-switch-thumb"></span></button></div>` : ""}
           </div>` : ""}
           <div class="fbk-reply-row">
             <button class="fbk-btn primary fbk-btn-fill" id="fbk-submit">${t("popover.add")}</button>
@@ -2229,6 +2393,7 @@
       // Project-level opt-in (default off), read once at init via /capture-config. Gates both whether
       // the widget buffers console/network events at all and whether "Report as a bug" is shown.
       this.pageContextCaptureEnabled = false;
+      this.commentFields = [];
       // Per-project text capture toggle (default true until /capture-config resolves).
       // When false, the widget emits no text content in the DOM snapshot and masks pageTitle.
       this.captureTextContent = true;
@@ -2774,7 +2939,7 @@
     // Read the project's page-context capture toggle and, if on, start buffering
     // console/network events. Silently no-ops on failure (feature stays off).
     async fetchCaptureConfig() {
-      var _a2, _b, _c, _d, _e;
+      var _a2, _b, _c, _d, _e, _f, _g;
       try {
         const r = await this.api(`/api/projects/${encodeURIComponent(this.project)}/capture-config`);
         if (!r.ok) {
@@ -2782,15 +2947,16 @@
           return;
         }
         const envelope = await r.json();
+        this.commentFields = (_b = (_a2 = envelope == null ? void 0 : envelope.data) == null ? void 0 : _a2.commentFields) != null ? _b : [];
         this.pageContextCaptureEnabled = !!(envelope && envelope.data && envelope.data.pageContextCaptureEnabled);
         if ((envelope == null ? void 0 : envelope.data) && typeof envelope.data.captureTextContent === "boolean") {
           this.captureTextContent = envelope.data.captureTextContent;
         }
         this.projectName = envelope && envelope.data && envelope.data.name || this.project;
-        const showSelector = (_a2 = envelope == null ? void 0 : envelope.data) == null ? void 0 : _a2.showEnvironmentSelector;
+        const showSelector = (_c = envelope == null ? void 0 : envelope.data) == null ? void 0 : _c.showEnvironmentSelector;
         this.showEnvironmentSelector = showSelector !== false;
-        this.projectId = typeof ((_b = envelope == null ? void 0 : envelope.data) == null ? void 0 : _b.id) === "number" ? envelope.data.id : null;
-        const resolved = (_c = envelope == null ? void 0 : envelope.data) == null ? void 0 : _c.resolvedEnvironment;
+        this.projectId = typeof ((_d = envelope == null ? void 0 : envelope.data) == null ? void 0 : _d.id) === "number" ? envelope.data.id : null;
+        const resolved = (_e = envelope == null ? void 0 : envelope.data) == null ? void 0 : _e.resolvedEnvironment;
         if (!this.environmentExplicit && typeof resolved === "number" && ENV_NAME[resolved] && resolved !== this.environmentInt) {
           this.environmentInt = resolved;
           this.environmentAttr = ENV_NAME[resolved];
@@ -2798,8 +2964,8 @@
             await this.fetchComments();
           }
         }
-        this.commitStyle = typeof ((_d = envelope == null ? void 0 : envelope.data) == null ? void 0 : _d.commitStyle) === "number" ? envelope.data.commitStyle : 1;
-        this.canEditSettings = !!((_e = envelope == null ? void 0 : envelope.data) == null ? void 0 : _e.canEditSettings);
+        this.commitStyle = typeof ((_f = envelope == null ? void 0 : envelope.data) == null ? void 0 : _f.commitStyle) === "number" ? envelope.data.commitStyle : 1;
+        this.canEditSettings = !!((_g = envelope == null ? void 0 : envelope.data) == null ? void 0 : _g.canEditSettings);
         this.updateCommentsHeading();
         this.renderSidebar();
         this.renderCommitStyleControl();
@@ -3719,7 +3885,7 @@
       let currentEl = el;
       let currentMeta = captureMetadata(currentEl, this.sourceAttr, { captureText: this.captureTextContent });
       const host = this.root.querySelector("#fbk-popover-host");
-      host.innerHTML = TPL.popover(currentMeta, x, y, this.screenshotEnabled, this.predefinedActions, this.pageContextCaptureEnabled);
+      host.innerHTML = TPL.popover(currentMeta, x, y, this.screenshotEnabled, this.predefinedActions, this.pageContextCaptureEnabled, this.commentFields);
       applyDataPosition(host, ".fbk-popover");
       const popoverEl = host.querySelector(".fbk-popover");
       if (popoverEl) {
@@ -3862,16 +4028,16 @@
       const shotToggle = host.querySelector("#fbk-comment-shot");
       if (shotToggle) shotToggle.addEventListener("click", () => {
         attachShotComment = !attachShotComment;
-        shotToggle.classList.toggle("is-active", attachShotComment);
-        shotToggle.setAttribute("aria-pressed", String(attachShotComment));
+        shotToggle.classList.toggle("active", attachShotComment);
+        shotToggle.setAttribute("aria-checked", String(attachShotComment));
         if (attachShotComment) this.beginScreenshotCapture(currentEl);
       });
       let isBugReportComment = false;
       const bugToggle = host.querySelector("#fbk-comment-bug");
       if (bugToggle) bugToggle.addEventListener("click", () => {
         isBugReportComment = !isBugReportComment;
-        bugToggle.classList.toggle("is-active", isBugReportComment);
-        bugToggle.setAttribute("aria-pressed", String(isBugReportComment));
+        bugToggle.classList.toggle("active", isBugReportComment);
+        bugToggle.setAttribute("aria-checked", String(isBugReportComment));
       });
       const cancelPopover = () => {
         currentEl.classList.remove(HL_CLASS);
@@ -3886,9 +4052,49 @@
         e.stopPropagation();
         cancelPopover();
       });
+      const moreFieldsBtn = host.querySelector("#fbk-more-fields");
+      const extraFieldsDiv = host.querySelector("#fbk-extra-fields");
+      if (moreFieldsBtn && extraFieldsDiv) {
+        moreFieldsBtn.addEventListener("click", () => {
+          const isExpanded = moreFieldsBtn.getAttribute("aria-expanded") === "true";
+          moreFieldsBtn.setAttribute("aria-expanded", String(!isExpanded));
+          moreFieldsBtn.textContent = !isExpanded ? t("fields.fewer") : t("fields.extra");
+          extraFieldsDiv.hidden = isExpanded;
+          if (!isExpanded) {
+            const firstInput = extraFieldsDiv.querySelector("input, select");
+            if (firstInput) firstInput.focus();
+          }
+        });
+      }
       host.querySelector("#fbk-submit").addEventListener("click", async () => {
         const text = ta.value.trim();
         if (!text) return this.toast(t("popover.commentCannotBeEmpty"), "error");
+        let customFields = void 0;
+        let valMap = {};
+        if (extraFieldsDiv) {
+          extraFieldsDiv.querySelectorAll(".fbk-field-error").forEach((el2) => el2.remove());
+          extraFieldsDiv.querySelectorAll('[aria-invalid="true"]').forEach((el2) => {
+            el2.removeAttribute("aria-invalid");
+            el2.removeAttribute("aria-describedby");
+          });
+          valMap = collectFieldValues(extraFieldsDiv);
+          let hasError = false;
+          const fieldsOut = {};
+          for (const def of this.commentFields) {
+            const val = valMap[def.key];
+            if (val !== void 0) {
+              const errKey = validateFieldValue(def, val);
+              if (errKey) {
+                hasError = true;
+                this.renderFieldError(extraFieldsDiv, def, errKey);
+              } else {
+                fieldsOut[def.key] = val;
+              }
+            }
+          }
+          if (hasError) return;
+          if (Object.keys(fieldsOut).length > 0) customFields = fieldsOut;
+        }
         const isPrivate = isPrivateComment;
         const attachShot = attachShotComment;
         const isBugReport = isBugReportComment;
@@ -3898,16 +4104,42 @@
         const submitBtn = host.querySelector("#fbk-submit");
         submitBtn.disabled = true;
         submitBtn.textContent = t("menu.saving");
-        const saved = await this.createComment({ ...currentMeta, text, isPrivate, attachShot, shotPromise, predefinedActionIds, isBugReport });
-        if (saved) {
+        const saved = await this.createComment({ ...currentMeta, text, isPrivate, attachShot, shotPromise, predefinedActionIds, isBugReport, customFields });
+        if (saved === true) {
           currentEl.classList.remove(HL_CLASS);
           host.innerHTML = "";
           stopMsListening == null ? void 0 : stopMsListening();
+        } else if (typeof saved === "string") {
+          submitBtn.disabled = false;
+          submitBtn.textContent = t("popover.add");
+          if (extraFieldsDiv) {
+            extraFieldsDiv.innerHTML = renderFieldInputs(this.commentFields, valMap, "cf");
+            let errEl = document.createElement("p");
+            errEl.className = "fbk-field-error";
+            errEl.textContent = t("fields.serverRejected") + " " + saved;
+            extraFieldsDiv.prepend(errEl);
+          }
         } else {
           submitBtn.disabled = false;
           submitBtn.textContent = t("popover.add");
         }
       });
+    }
+    // Shared by the composer's extra-fields panel and the card's inline "Edit fields" form: renders
+    // an inline error under the offending input and marks it aria-invalid/aria-describedby, so both
+    // surfaces show identical validation feedback for the same i18n error key.
+    renderFieldError(container, def, errKey, idPrefix = "cf") {
+      var _a2;
+      const input = container.querySelector(`[name="fbk-cf-${escapeHtml(def.key)}"]`);
+      if (!input) return;
+      input.setAttribute("aria-invalid", "true");
+      const errId = `${idPrefix}-${def.key}-error`;
+      input.setAttribute("aria-describedby", errId);
+      const errEl = document.createElement("p");
+      errEl.className = "fbk-field-error";
+      errEl.id = errId;
+      errEl.textContent = t(errKey, { hosts: (def.allowedHosts || []).join(", ") });
+      (_a2 = input.parentElement) == null ? void 0 : _a2.appendChild(errEl);
     }
     // Returns true on success (popover should close), false on failure (popover stays open).
     async createComment(data) {
@@ -3954,6 +4186,7 @@
         language
       };
       if (data.predefinedActionIds && data.predefinedActionIds.length) bodyObj.predefinedActionIds = data.predefinedActionIds;
+      if (data.customFields && Object.keys(data.customFields).length > 0) bodyObj.customFields = data.customFields;
       if (data.isBugReport) {
         const pageContext = getPageContextPayload();
         if (pageContext) bodyObj.pageContext = pageContext;
@@ -3970,6 +4203,10 @@
         if (!r.ok) {
           const errEnv = await r.json().catch(() => null);
           const msg = errEnv && errEnv.message || "";
+          if (msg.toLowerCase().includes("field")) {
+            await this.fetchCaptureConfig();
+            return msg;
+          }
           if (data.predefinedActionIds && data.predefinedActionIds.length && msg.toLowerCase().includes("action")) {
             await this.fetchPredefinedActions();
             this.toast(t("toast.actionNoLongerAvailable"), "error");
@@ -4187,6 +4424,106 @@
         if (e.message !== "HTTP 401 Unauthorized") this.toast(e.message || t("toast.failedToUpdateComment"), "error");
       }
     }
+    // Inline edit for a comment's admin-defined field values — same swap-in-place pattern as
+    // startEdit, but replaces .fbk-card-fields (or inserts one after .fbk-text when the card has
+    // no values yet) with input controls instead of a textarea. Wired from the kebab menu's
+    // "Edit fields" item (see toggleCardMenu).
+    startEditFields(c) {
+      const card = this.root && this.root.querySelector(`.fbk-card[data-id="${c.id}"]`);
+      if (!card || card.querySelector(".fbk-card-fields-edit")) return;
+      const textEl = card.querySelector(".fbk-text");
+      const existingDl = card.querySelector(".fbk-card-fields");
+      const existingWrapper = card.querySelector(".fbk-card-fields-wrapper");
+      if (!existingDl && !existingWrapper && !textEl) return;
+      const currentValues = {};
+      (c.customFields || []).forEach((f) => {
+        currentValues[f.key] = f.value;
+      });
+      const idPrefix = "ef-" + c.id;
+      const defs = [...this.commentFields];
+      (c.customFields || []).forEach((f) => {
+        var _a2;
+        if (!defs.some((d) => d.key === f.key)) {
+          defs.push({
+            key: f.key,
+            label: f.label || f.key,
+            type: (_a2 = f.type) != null ? _a2 : 1,
+            suggestedTool: f.suggestedTool,
+            enabled: true
+          });
+        }
+      });
+      const editor = document.createElement("div");
+      editor.className = "fbk-card-fields-edit";
+      editor.innerHTML = `
+        ${renderFieldInputs(defs, currentValues, idPrefix)}
+        <div class="fbk-reply-row">
+          <button type="button" class="fbk-mini fbk-fields-save">${t("fields.save")}</button>
+          <button type="button" class="fbk-mini fbk-fields-cancel">${t("fields.cancel")}</button>
+        </div>`;
+      if (existingWrapper) existingWrapper.replaceWith(editor);
+      else if (existingDl) existingDl.replaceWith(editor);
+      else textEl.insertAdjacentElement("afterend", editor);
+      editor.querySelector(".fbk-fields-cancel").addEventListener("click", () => {
+        this.renderSidebar();
+      });
+      editor.querySelector(".fbk-fields-save").addEventListener("click", () => {
+        this.saveEditFields(c, editor, idPrefix, defs);
+      });
+    }
+    async saveEditFields(c, editor, idPrefix, defs = this.commentFields) {
+      var _a2;
+      editor.querySelectorAll(".fbk-field-error").forEach((el) => el.remove());
+      editor.querySelectorAll('[aria-invalid="true"]').forEach((el) => {
+        el.removeAttribute("aria-invalid");
+        el.removeAttribute("aria-describedby");
+      });
+      const valMap = collectFieldValues(editor);
+      let hasError = false;
+      const fieldsOut = {};
+      for (const def of defs) {
+        const val = valMap[def.key];
+        if (val !== void 0) {
+          const errKey = validateFieldValue(def, val);
+          if (errKey) {
+            hasError = true;
+            this.renderFieldError(editor, def, errKey, idPrefix);
+          } else {
+            fieldsOut[def.key] = val;
+          }
+        }
+      }
+      if (hasError) return;
+      const saveBtn = editor.querySelector(".fbk-fields-save");
+      if (saveBtn) {
+        saveBtn.disabled = true;
+        saveBtn.textContent = t("menu.saving");
+      }
+      try {
+        const r = await this.api(`/api/comments/${c.id}/fields`, {
+          method: "PATCH",
+          body: JSON.stringify({ customFields: fieldsOut })
+        });
+        if (!r.ok) {
+          const b = await r.json().catch(() => null);
+          throw new Error(b && b.message || "HTTP " + r.status);
+        }
+        const envelope = await r.json();
+        const updated = (_a2 = envelope == null ? void 0 : envelope.data) != null ? _a2 : envelope;
+        const idx = this.comments.findIndex((x) => String(x.id) === String(c.id));
+        if (idx !== -1 && updated) {
+          this.comments[idx] = { ...this.comments[idx], ...updated };
+        }
+        this.renderSidebar();
+        this.toast(t("fields.saved"));
+      } catch (e) {
+        if (saveBtn) {
+          saveBtn.disabled = false;
+          saveBtn.textContent = t("fields.save");
+        }
+        if (e.message !== "HTTP 401 Unauthorized") this.toast(e.message || t("toast.updateFailed"), "error");
+      }
+    }
     // Inline edit for a single reply (own replies only) — same swap-body-for-a-textarea pattern
     // as the comment's own startEdit, scoped to one .fbk-reply row instead of the whole card.
     startEditReply(commentId, replyId) {
@@ -4358,7 +4695,9 @@
         const activeFilters = catalogToFilters();
         const fixedEnvLabel = this.hasFixedEnvironment || !this.showEnvironmentSelector ? this.envDisplayLabel(this.environmentAttr || ENV_NAME[this.environmentInt] || "staging") : null;
         const envValue = this.viewAllEnvironments ? "all" : (this.environmentAttr || ENV_NAME[this.environmentInt] || "staging").toLowerCase();
-        filtersEl.innerHTML = (canMine ? TPL.mineToggle(this.mineOnly) : "") + TPL.statusFilterSelect(activeFilters, this.statusFilter, counts) + TPL.envFilterSelect(fixedEnvLabel, envValue) + (authors.length > 1 && !this.mineOnly ? TPL.authorFilter(authors, this.authorFilter || "") : "");
+        const whoRow = (canMine ? TPL.mineToggle(this.mineOnly) : "") + (authors.length > 1 && !this.mineOnly ? TPL.authorFilter(authors, this.authorFilter || "") : "");
+        const whatRow = TPL.statusFilterSelect(activeFilters, this.statusFilter, counts) + TPL.envFilterSelect(fixedEnvLabel, envValue);
+        filtersEl.innerHTML = `<div class="fbk-filters-row">${whoRow}</div><div class="fbk-filters-row">${whatRow}</div>`;
         const mineBtn = filtersEl.querySelector("#fbk-mine-toggle");
         if (mineBtn) mineBtn.addEventListener("click", () => {
           this.mineOnly = !this.mineOnly;
@@ -4406,6 +4745,24 @@
         });
         return TPL.card(c, i, isQuickAccess);
       }).join("");
+      list.querySelectorAll(".fbk-card").forEach((card) => {
+        const textEl = card.querySelector(".fbk-text");
+        const readMoreBtn = card.querySelector('[data-act="toggle-read-more"]');
+        if (textEl && readMoreBtn) {
+          if (textEl.scrollHeight > textEl.clientHeight + 1) {
+            readMoreBtn.classList.remove("fbk-hidden");
+          }
+          readMoreBtn.addEventListener("click", () => {
+            const isClamped = textEl.classList.toggle("fbk-text-clamped");
+            readMoreBtn.textContent = isClamped ? t("card.readMore") : t("card.readLess");
+          });
+        }
+      });
+      list.querySelectorAll('[data-act="edit-fields"]').forEach((b) => b.addEventListener("click", (e) => {
+        e.stopPropagation();
+        const c = this.comments.find((x) => String(x.id) === String(b.dataset.id));
+        if (c) this.startEditFields(c);
+      }));
       list.querySelectorAll('[data-act="apply"]').forEach((b) => b.addEventListener("click", () => {
         const c = this.comments.find((x) => String(x.id) === String(b.dataset.id));
         if (c && c.status !== "applied") this.toggleApply(c);
@@ -4589,8 +4946,10 @@
     // flash here at all — renderPins() never rendered one — so follow the comment to its own page
     // instead of reporting a dead end; flashing the pin there too is deliberately skipped (would
     // need to survive a full navigation/reload, for little payoff over just landing on the page).
-    // No pin exists at all when the comment's target element isn't on the current page
-    // (applied/archived, or the element was removed) — say so rather than doing nothing silently.
+    // Once we know we're on the RIGHT page, a still-missing pin (doFlashPin's own check) means the
+    // target element itself can't be found right now — applied/archived, removed, or (a common
+    // case) a portal/overlay node (a menu, tooltip, modal) that only exists in the DOM while open —
+    // never "wrong page" at that point, so say so with a different message than the redirect above.
     flashPin(id) {
       const comment = this.comments.find((x) => String(x.id) === String(id));
       const pageUrl = comment && comment.element && comment.element.pageUrl;
@@ -4620,7 +4979,7 @@
       }
       const pin = wrapper == null ? void 0 : wrapper.querySelector(".fbk-pin");
       if (!pin) {
-        this.toast(t("toast.pinNotOnThisPage"));
+        this.toast(t("toast.pinElementNotFound"));
         restoreSidebar();
         return;
       }
@@ -4687,7 +5046,7 @@
     }
     // --- Card actions menu (kebab menu: private/public, edit, delete) --------
     toggleCardMenu(btn, c) {
-      var _a2;
+      var _a2, _b;
       const host = this.root.querySelector("#fbk-menu-host");
       if (!host) return;
       if (host.querySelector("#fbk-card-menu")) {
@@ -4697,7 +5056,8 @@
       this.closeUserMenu();
       this.closeUpdatesMenu();
       this.closeClusterMenu();
-      host.innerHTML = TPL.cardMenu(c, !!((_a2 = this.user) == null ? void 0 : _a2.isQuickAccess));
+      const canEditFields = (this.commentFields.length > 0 || (c.customFields || []).length > 0) && !!(c._mine || ((_a2 = this.user) == null ? void 0 : _a2.isAdmin));
+      host.innerHTML = TPL.cardMenu(c, !!((_b = this.user) == null ? void 0 : _b.isQuickAccess), canEditFields);
       const menu = host.querySelector("#fbk-card-menu");
       if (!menu) return;
       btn.setAttribute("aria-expanded", "true");
@@ -4745,6 +5105,13 @@
         editBtn.addEventListener("click", () => {
           this.closeCardMenu();
           this.startEdit(String(c.id));
+        });
+      }
+      const editFieldsBtn = menu.querySelector('[data-menu-act="edit-fields"]');
+      if (editFieldsBtn) {
+        editFieldsBtn.addEventListener("click", () => {
+          this.closeCardMenu();
+          this.startEditFields(c);
         });
       }
       const delBtn = menu.querySelector('[data-menu-act="delete"]');
@@ -4878,7 +5245,8 @@
           dismiss();
         });
       }
-      setTimeout(dismiss, 2200);
+      const duration = Math.min(6e3, Math.max(2200, msg.length * 50));
+      setTimeout(dismiss, duration);
     }
     // Toasts stack in their own fixed container (see _toast.scss) rather than as loose siblings —
     // otherwise two toasts shown close together would render on top of each other. Created lazily
