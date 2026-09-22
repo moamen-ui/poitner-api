@@ -191,10 +191,18 @@ test('R1-05-03 — wildcard app-url matrix', async () => {
     });
     expect(s3.status).toBe(400);
 
-    // 4. Non-empty literal part on shared host (myapp-*.vercel.app) -> 200
+    // 4. Non-empty literal part on shared host (labapp-*.vercel.app) -> 200
+    // NOT the seed's own https://myapp-*.vercel.app: ProjectService.SetAppUrlAsync (since
+    // 452c992, 2026-09-15) rejects a second environment on the same project reusing a
+    // normalised-equal pattern ("One origin, one environment — per project"), and
+    // scripts/seed.mjs already puts exactly that pattern on e2e-beta's previewEnv. Using the same
+    // literal prefix here made this step collide with the seed and get a genuine 400, not the one
+    // this row means to prove (a literal-prefixed shared-host pattern validates as 200). A
+    // different, still shared-host, still literal-prefixed pattern proves the same rule without
+    // the collision.
     const s4 = await raw('PUT', `/api/admin/projects/${betaId}/app-urls/${labEnvId}`, {
       token: wsAdmin.token,
-      body: { url: 'https://myapp-*.vercel.app' },
+      body: { url: 'https://labapp-*.vercel.app' },
     });
     expect(s4.status).toBe(200);
 

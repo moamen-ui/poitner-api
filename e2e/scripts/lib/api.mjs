@@ -72,10 +72,53 @@ export const patchRaw = (path, body, opts = {}) => raw('PATCH', path, { ...opts,
 export const putRaw = (path, body, opts = {}) => raw('PUT', path, { ...opts, body });
 export const delRaw = (path, opts) => raw('DELETE', path, opts);
 
-export async function login(email, password) {
-  const data = await post('/api/auth/login', { email, password });
-  if (data.status !== 'ok' || !data.token) {
-    throw new Error(`login failed for ${email}: status=${data.status}`);
+// R5-59 put a per-e-mail fixed-window limit on POST /api/auth/login (10 requests / 15 min,
+// normalised e-mail in the JSON body — see API/Extensions/RateLimitingExtensions.cs policy
+// "password-login"). The suite logs the same seeded personas in dozens of times per run (every
+// spec that needs an admin/tester/etc. token calls login() in its own beforeAll/test body), which
+// blew straight through that budget and turned the whole run into a wall of 429s.
+//
+// Fix: cache the JWT per (baseUrl, email) for the life of this process. playwright.config.ts runs
+// this suite with workers: 1 and fullyParallel: false, so a module-level Map is a real per-run
+// cache, not a per-worker illusion — and each phase (`scripts/pw.sh <dir>`) is its own `npx
+// playwright test` process, so the cache also resets cleanly between phases.
+//
+// A handful of specs deliberately test login itself (wrong password, passwordless-account
+// refusal, the login-with-invite 429 bucket, …) — those must never see a cached success. They
+// either exercise raw()/postRaw() directly (bypassing this helper entirely — see
+// api/quick-access.spec.mjs's R2-05-05 and api/login-with-invite-429.spec.mjs's negative control)
+// or can pass { forceFresh: true } here to force a real round trip and skip/refresh the cache.
+const tokenCache = new Map();
+
+export async function login(email, password, { forceFresh = false } = {}) {
+  const cacheKey = `${BASE_URL}::${email}`;
+  if (!forceFresh) {
+    const cached = tokenCache.get(cacheKey);
+    if (cached) return cached;
   }
-  return { token: data.token, user: data.user };
+
+  const promise = (async () => {
+    const res = await raw('POST', '/api/auth/login', { body: { email, password } });
+    if (res.status === 429) {
+      throw new Error(
+        `login rate-limited for ${email} (POST /api/auth/login -> 429) — use the cached token ` +
+          'or forceFresh only where the test needs a real login',
+      );
+    }
+    if (!res.ok) {
+      throw new ApiError(`POST /api/auth/login -> ${res.status}`, res.status, res.body);
+    }
+    const data = res.data;
+    if (data?.status !== 'ok' || !data.token) {
+      throw new Error(`login failed for ${email}: status=${data?.status}`);
+    }
+    return { token: data.token, user: data.user };
+  })();
+
+  if (!forceFresh) {
+    tokenCache.set(cacheKey, promise);
+    // A failed login must not poison the cache for a later, legitimate retry.
+    promise.catch(() => tokenCache.delete(cacheKey));
+  }
+  return promise;
 }

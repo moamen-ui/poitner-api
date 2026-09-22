@@ -262,3 +262,19 @@ Enforced CSP (report-only first), CORS changes, CSRF tokens (bearer API, no cook
 (deprecated), Expect-CT (deprecated), Subresource Integrity on the widget (the widget is served
 from the same origin), rate limiting on other endpoints, IP-based login blocking,
 account-lockout after N failures, CAPTCHA.
+
+## 11. Follow-up — e2e suite adjustment (2026-09-23)
+
+The `password-login` policy (10 req / 15 min, per normalised e-mail) broke the e2e suite's `api`
+phase in CI: the shared login helper (`e2e/scripts/lib/api.mjs`'s `login()`) re-authenticated every
+seeded persona once per spec file (dozens of times per run for `wsAdmin`/`superAdmin`), which blew
+through the new budget and turned into a wall of `429`s (run `35787191644`, 14 failed tests). Fixed
+in the suite, not here: `login()` now caches the JWT per `(baseUrl, email)` for the life of the
+Playwright process (single-worker config, so this is a real per-phase cache), with a `forceFresh`
+escape hatch for a spec that ever needs a guaranteed-real round trip, and an explicit
+rate-limited error message when a login does still get a `429`. After caching, the `api` phase logs
+each persona in exactly once (≤ 10/15 min per e-mail, comfortably under the policy). See
+`e2e/api/key-store.spec.mjs` (DB-07 dropped `users.api_key` — unrelated column-removal drift caught
+in the same pass) and `e2e/api/origins.spec.mjs`/`e2e/api/tenant-invite.spec.mjs` for two further
+spec-side fixes unrelated to this policy (a pre-existing wildcard-app-url seed collision, and an
+`emailSent` assertion that depends on a mail transport CI does not configure).

@@ -48,10 +48,18 @@ test('R1-06-01 — DB is hash-only + indexes + boot warning', async () => {
   const matchCount = (logs.match(warningPattern) || []).length;
   expect(matchCount, 'boot warning "set Auth:ApiKeyEncryptionKey for production" must appear in api logs').toBeGreaterThanOrEqual(1);
 
-  // 2. Backfill check: legacy users.api_key column must have been nulled out
-  const legacyKeyCountStr = psql('SELECT count(*) FROM users WHERE api_key IS NOT NULL');
-  const legacyKeyCount = parseInt(legacyKeyCountStr, 10);
-  expect(legacyKeyCount, 'users.api_key must be all NULL after backfill').toBe(0);
+  // 2. DB-07 (2026-09-22, docs/db/execution/DB-07-drop-users-api-key.md) dropped the legacy
+  // plaintext users.api_key column outright — it is no longer merely nulled by a boot backfill,
+  // it does not exist. API/Startup/ApiKeyBackfillService.cs (the backfill this used to check) was
+  // deleted in the same change, so "SELECT ... FROM users WHERE api_key ..." is itself now a
+  // column-does-not-exist error (confirmed against a live DB while writing this fix). The distinct
+  // "backfill ran" boot warning this step used to also imply is gone with it; step 1's warning is
+  // a different, still-current message (ApiKeyProtector.cs deriving-key warning), left as is.
+  const legacyColumnCountStr = psql(
+    "SELECT count(*) FROM information_schema.columns WHERE table_name = 'users' AND column_name = 'api_key'",
+  );
+  const legacyColumnCount = parseInt(legacyColumnCountStr, 10);
+  expect(legacyColumnCount, 'users.api_key column must not exist (DB-07)').toBe(0);
 
   // 3. Row count check: one row per seeded persona key (at least 8 seeded accounts)
   const apiKeysCountStr = psql('SELECT count(*) FROM api_keys');
@@ -93,7 +101,7 @@ test('R1-06-01 — DB is hash-only + indexes + boot warning', async () => {
   expect(hasPartialUniqueActivePerUser, 'must have partial UNIQUE index on (user_id) WHERE revoked_at IS NULL').toBe(true);
 
   const durationMs = Date.now() - start;
-  const detail = `logsWarningCount=${matchCount}, legacyUserApiKeyCount=${legacyKeyCount}, apiKeysCount=${apiKeysCount}, row=[${row}], plaintextScanCount=${plaintextScanCount}, uniqueHash=${hasUniqueHashIndex}, partialUniqueUser=${hasPartialUniqueActivePerUser}`;
+  const detail = `logsWarningCount=${matchCount}, legacyUserApiKeyColumnCount=${legacyColumnCount}, apiKeysCount=${apiKeysCount}, row=[${row}], plaintextScanCount=${plaintextScanCount}, uniqueHash=${hasUniqueHashIndex}, partialUniqueUser=${hasPartialUniqueActivePerUser}`;
 
   record({
     id: 'R1-06-01',
