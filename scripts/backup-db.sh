@@ -46,7 +46,8 @@ chmod 600 "$out"
 UPLOADS_VOLUME="${UPLOADS_VOLUME:-pointer-api_uploads}"
 up="$BACKUP_DIR/uploads-${ts}${LABEL:+-$LABEL}.tgz"
 if docker volume inspect "$UPLOADS_VOLUME" >/dev/null 2>&1; then
-  docker run --rm -v "$UPLOADS_VOLUME":/u:ro -v "$BACKUP_DIR":/b alpine:3 \
+  # --user: otherwise the archive is created as root and the chmod below fails (bit us on 2026-09-22).
+  docker run --rm --user "$(id -u):$(id -g)" -v "$UPLOADS_VOLUME":/u:ro -v "$BACKUP_DIR":/b alpine:3 \
     tar -C /u -czf "/b/$(basename "$up.tmp")" .
   mv "$up.tmp" "$up"; chmod 600 "$up"
 else
