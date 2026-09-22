@@ -116,6 +116,21 @@ once anyway to confirm the round-trip mechanically works end-to-end (schema vers
 body/status/environment fidelity) — the DTO-shape gaps above don't need a live run to confirm, but
 the round-trip itself (auth, tenant scoping, re-attribution, timestamps) does.
 
+**Results (2026-09-23, live run against a throwaway restored-dump copy, `pointer_export_check`,
+dropped afterward):** **PASS.** Full command log, output, and byte-for-byte diff are in
+[`docs/runbooks/EXPORT-VERIFICATION-2026-09-23.md`](../../runbooks/EXPORT-VERIFICATION-2026-09-23.md).
+Summary: exported 2 comments (with 1 reply each) from a disposable project, imported into a second
+disposable project (`{"importedComments":2,"importedReplies":2,"skippedDuplicates":0,"warnings":[]}`),
+re-exported and diffed — the only difference was the documented import attribution footnote
+appended to `body`; `status`/`environment`/`is_private`/`created_at`/`element` were identical.
+Workspace-level export (`GET /api/export`) confirmed it spans every project in the tenant (4
+comments across 2 projects). `dotnet test --filter ExportImportServiceTests` — **4/4 passed**. One
+gap surfaced beyond the three DTO-shape gaps above: `CommentService.DeleteAsync`
+(`Application/Services/Implementation/CommentService.cs:1040-1057`) never deletes a comment's
+screenshot file on soft-delete, which does not match `landing/privacy.html` §6's public wording
+("deleted when the comment … is deleted") — filed with exact file:line and two remediation options
+in `docs/runbooks/DSAR.md` "Follow-up code items" (not fixed here — no C# was changed for this task).
+
 ### 3.2 DSAR runbook (`docs/runbooks/DSAR.md`)
 
 Content:
