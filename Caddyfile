@@ -30,7 +30,7 @@
     header {
         Strict-Transport-Security "max-age=63072000; includeSubDomains; preload"
         X-Content-Type-Options "nosniff"
-        X-Frame-Options "DENY"
+        X-Frame-Options "{args[0]}"
         Referrer-Policy "strict-origin-when-cross-origin"
         Permissions-Policy "camera=(), microphone=(), geolocation=(), payment=()"
         -Server
@@ -43,7 +43,11 @@
 (security-txt) {
     handle /.well-known/security.txt {
         header Content-Type "text/plain; charset=utf-8"
-        respond "Contact: mailto:moamen.ui@gmail.com\nPreferred-Languages: en, ar\nExpires: 2027-09-22T00:00:00.000Z\n" 200
+        respond <<TXT
+Contact: mailto:moamen.ui@gmail.com
+Preferred-Languages: en, ar
+Expires: 2027-09-22T00:00:00.000Z
+TXT 200
     }
 }
 
@@ -74,11 +78,10 @@ api.pointer.moamen.work {
     # browser, but it means the header a client sees is not the one this file specifies.
     header @widget >Cache-Control "no-cache, must-revalidate"
 
-    import security-headers
+    import security-headers SAMEORIGIN
     import security-txt
     # The widget is embedded via <script>/<iframe> on arbitrary customer sites, and Swagger/the
     # /check page are framed by themselves — DENY (the shared default) would break both.
-    header >X-Frame-Options "SAMEORIGIN"
     # Report-only for one deploy cycle (§9 release steps) before switching to enforced CSP.
     # frame-ancestors * mirrors the SAMEORIGIN override above: the widget must be embeddable by
     # any customer origin.
@@ -91,7 +94,7 @@ api.pointer.moamen.work {
 app.pointer.moamen.work {
     root * /srv/dashboard/react
     import dashboard
-    import security-headers
+    import security-headers DENY
     import security-txt
     # Report-only for one deploy cycle (§9 release steps) before switching to enforced CSP. The
     # dashboard loads the Pointer widget (script + styles) from the API origin and calls the API
@@ -104,7 +107,7 @@ app.pointer.moamen.work {
 demo.pointer.moamen.work {
     root * /srv/dashboard/react
     import dashboard
-    import security-headers
+    import security-headers DENY
     import security-txt
     header Content-Security-Policy-Report-Only "default-src 'self'; script-src 'self' https://api.pointer.moamen.work; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'; connect-src 'self' https://api.pointer.moamen.work; frame-ancestors 'none'; base-uri 'self'; form-action 'self'"
 }
@@ -113,7 +116,7 @@ demo.pointer.moamen.work {
 pointer.moamen.work {
     root * /srv/landing
     import dashboard
-    import security-headers
+    import security-headers DENY
     import security-txt
     # landing/index.html fetches the API (plans/stacks-summary/stats/branding) and loads the
     # widget loader script + the <pointer-feedback> element from the API origin
