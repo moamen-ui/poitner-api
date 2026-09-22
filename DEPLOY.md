@@ -96,6 +96,11 @@ plus a best-effort `uploads-<UTC ts>[-<label>].tgz` archive of the compose `uplo
 screenshots — not in Postgres). It refuses to keep a dump that is not a valid archive, and prunes
 both patterns older than 14 days while always keeping the newest three of each.
 
+Row retention (DB-08, on by default) deletes `usage_events` > 180 d (never the `first_*` facts),
+read `notifications` > 90 d, `page_context_snapshots` > 30 d with no live comment, and never-used
+expired/revoked `invites` > 90 d, in batches of 5000, daily from 5 min after boot. Every such row
+exists in at least the last 14 nightly dumps. Pause with `RETENTION_ENABLED=false` + `up -d api`.
+
 Two callers:
 
 - **Before every API deploy** — `scripts/deploy-api.sh` calls it with the label `pre-deploy`. That

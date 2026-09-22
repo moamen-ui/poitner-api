@@ -33,6 +33,14 @@ services:
       # H1/H2: enforce the SecurityStamp check per request (revokes tokens on disable/reject/password
       # change). Enabling this logs out all currently-issued tokens once (they predate the stamp claim).
       Auth__ValidateSecurityStamp: "true"
+      # DB-08: daily row retention (usage_events / read notifications / orphaned page context
+      # snapshots / dead invites). RETENTION_ENABLED=false pauses the whole job; each period is
+      # independently overridable and 0 disables retention for that table only.
+      Retention__Enabled: "${RETENTION_ENABLED:-true}"
+      Retention__UsageEventsDays: "${RETENTION_USAGE_EVENTS_DAYS:-180}"
+      Retention__NotificationsReadDays: "${RETENTION_NOTIFICATIONS_READ_DAYS:-90}"
+      Retention__PageContextSnapshotDays: "${RETENTION_SNAPSHOT_DAYS:-30}"
+      Retention__InvitesDays: "${RETENTION_INVITES_DAYS:-90}"
       JWT__SigningKey: "${JWT_SIGNING_KEY}"
       JWT__Issuer: "pointer-api"
       JWT__LifetimeHours: "12"

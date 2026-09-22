@@ -78,6 +78,7 @@ builder.Services.AddInfrastructure(builder.Configuration);
 builder.Services.AddJwtAuth(builder.Configuration);
 builder.Services.AddAuthorization();
 builder.Services.AddHostedService<DemoCleanupService>();
+builder.Services.AddHostedService<RetentionService>();
 
 builder.Services.AddApiRateLimiting(builder.Configuration);
 
