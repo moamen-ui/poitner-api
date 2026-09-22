@@ -25,9 +25,9 @@ export async function preAuthWidget(page: Page, token: string, user: unknown): P
 /**
  * Waits for the widget to be interactive AND for page-context capture to have started.
  *
- * element.ts's init() renders the toolbar (#pf-add) BEFORE awaiting fetchCaptureConfig(), and it
+ * element.ts's init() renders the toolbar (#fbk-add) BEFORE awaiting fetchCaptureConfig(), and it
  * is that fetch which calls startPageContextCapture() to patch console.error / window.fetch. So
- * "#pf-add is visible" does NOT imply capture is running: a test that triggers its error as soon
+ * "#fbk-add is visible" does NOT imply capture is running: a test that triggers its error as soon
  * as the button appears races the patch and PageContextSnapshot silently stays null.
  *
  * Pass the promise returned by page.waitForResponse(...) for /capture-config, created BEFORE
@@ -38,7 +38,7 @@ export async function waitForWidgetReady(
   captureConfigLoaded?: Promise<unknown>,
 ): Promise<void> {
   const widget = page.locator('pointer-feedback');
-  await widget.locator('#pf-add').waitFor({ state: 'visible', timeout: 10_000 });
+  await widget.locator('#fbk-add').waitFor({ state: 'visible', timeout: 10_000 });
   if (captureConfigLoaded) await captureConfigLoaded;
 }
 
@@ -47,17 +47,19 @@ export async function waitForWidgetReady(
  *
  * Two non-obvious requirements, both of which have already produced silent failures:
  *
- * 1. Wait for #pf-add to flip to `active` before clicking the target. That class and the
- *    document-level click listener are installed by the same startPicking() call, so clicking
- *    earlier lands on the page as an ordinary click and no pick happens.
+ * 1. Wait for #fbk-add to flip to `aria-pressed="true"` before clicking the target. That
+ *    attribute and the document-level click listener are installed by the same startPicking()
+ *    call, so clicking earlier lands on the page as an ordinary click and no pick happens.
+ *    (startPicking() no longer toggles a CSS class — element.ts sets aria-pressed and swaps the
+ *    button's icon/title instead; see element.ts's startPicking()/stopPicking().)
  * 2. Click the target with `force`. In pick mode the widget draws a hover highlight over the
  *    element; Playwright's actionability check sees the element as obscured and would wait
  *    forever.
  */
 export async function pickElement(page: Page, targetSelector: string): Promise<void> {
   const widget = page.locator('pointer-feedback');
-  await widget.locator('#pf-add').click();
-  await expect(widget.locator('#pf-add')).toHaveClass(/active/);
+  await widget.locator('#fbk-add').click();
+  await expect(widget.locator('#fbk-add')).toHaveAttribute('aria-pressed', 'true');
   await page.locator(targetSelector).click({ force: true });
-  await page.locator('#pf-popover-host').locator('#pf-comment-text').waitFor({ timeout: 10_000 });
+  await page.locator('#fbk-popover-host').locator('#fbk-comment-text').waitFor({ timeout: 10_000 });
 }

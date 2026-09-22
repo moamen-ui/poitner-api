@@ -10,7 +10,7 @@
 // pointer_token ever leaks between scenarios and each row is independently runnable — the doc's
 // State coupling section lists none of these, and absence is a positive claim.
 //
-// Widget reveal (contract Preconditions): a fresh context renders ONLY #pf-launcher until
+// Widget reveal (contract Preconditions): a fresh context renders ONLY #fbk-launcher until
 // sessionStorage.pointer_visible is set, so every signed-in assertion clicks the launcher first.
 import { test, expect } from '@playwright/test';
 import { spawn, type ChildProcess } from 'node:child_process';
@@ -106,14 +106,14 @@ test('R2-05-01 — quick-access: magic link signs in', async ({ browser }, testI
     const widget = page.locator('pointer-feedback');
 
     // 4. No auth modal ever appeared — the init() branch took over from saveAuth.
-    await expect(widget.locator('.pf-modal-overlay')).toHaveCount(0);
+    await expect(widget.locator('.fbk-modal-overlay')).toHaveCount(0);
 
     // Reveal the toolbar (fresh context renders only the launcher), then assert the signed-in
     // chrome. DisplayName is the EMAIL LOCAL PART (InviteService), not the full address; the
     // title template is `Signed in as ${displayName} · ${roleLabel}`.
-    await widget.locator('#pf-launcher').click();
-    await expect(widget.locator('#pf-add')).toBeVisible({ timeout: 10_000 });
-    await expect(widget.locator('#pf-user')).toHaveAttribute(
+    await widget.locator('#fbk-launcher').click();
+    await expect(widget.locator('#fbk-add')).toBeVisible({ timeout: 10_000 });
+    await expect(widget.locator('#fbk-user')).toHaveAttribute(
       'title',
       `Signed in as qa-cl-${RUN_ID}-1 · Client`,
     );
@@ -172,19 +172,19 @@ test('R2-05-02 — quick-access: url param stripped on success', async ({ browse
     expect(await page.evaluate(() => location.search)).toBe('?project=e2e-qa-invite');
 
     const widget = page.locator('pointer-feedback');
-    await expect(widget.locator('.pf-modal-overlay')).toHaveCount(0);
-    await widget.locator('#pf-launcher').click();
-    await expect(widget.locator('#pf-add')).toBeVisible({ timeout: 10_000 });
+    await expect(widget.locator('.fbk-modal-overlay')).toHaveCount(0);
+    await widget.locator('#fbk-launcher').click();
+    await expect(widget.locator('#fbk-add')).toBeVisible({ timeout: 10_000 });
 
     // 2. The client posts a comment through the widget on the smoke page's checkout button.
-    await widget.locator('#pf-add').click();
-    await expect(widget.locator('#pf-add')).toHaveClass(/active/);
+    await widget.locator('#fbk-add').click();
+    await expect(widget.locator('#fbk-add')).toHaveAttribute('aria-pressed', 'true');
     await page.locator('#checkout-btn').click({ force: true });
 
-    const popover = page.locator('#pf-popover-host');
-    await expect(popover.locator('#pf-comment-text')).toBeVisible({ timeout: 10_000 });
-    await popover.locator('#pf-comment-text').fill('qa-invite comment');
-    await popover.locator('#pf-submit').click();
+    const popover = page.locator('#fbk-popover-host');
+    await expect(popover.locator('#fbk-comment-text')).toBeVisible({ timeout: 10_000 });
+    await popover.locator('#fbk-comment-text').fill('qa-invite comment');
+    await popover.locator('#fbk-submit').click();
     await expect(popover).toBeEmpty({ timeout: 10_000 });
 
     // 3. Staff-side check: newest comment is the client's, and the strip happened before any
@@ -205,9 +205,9 @@ test('R2-05-02 — quick-access: url param stripped on success', async ({ browse
     const captureConfigAgain = page.waitForResponse('**/capture-config');
     await page.goto(magicLink);
     await captureConfigAgain;
-    await expect(widget.locator('.pf-modal-overlay')).toHaveCount(0);
-    await expect(widget.locator('#pf-add')).toBeVisible({ timeout: 10_000 });
-    await expect(widget.locator('#pf-user')).toHaveAttribute(
+    await expect(widget.locator('.fbk-modal-overlay')).toHaveCount(0);
+    await expect(widget.locator('#fbk-add')).toBeVisible({ timeout: 10_000 });
+    await expect(widget.locator('#fbk-user')).toHaveAttribute(
       'title',
       `Signed in as qa-cl-${RUN_ID}-2 · Client`,
     );
@@ -262,19 +262,19 @@ test('R2-05-03 — quick-access: url param stripped on failure', async ({ browse
     const widget = page.locator('pointer-feedback');
 
     // 4. The invalid/expired notice (a 2.2 s toast — poll before it self-removes) and the normal
-    // login still offered: reveal the chrome, act on #pf-add with no token, get the login modal.
+    // login still offered: reveal the chrome, act on #fbk-add with no token, get the login modal.
     await expect
-      .poll(async () => widget.locator('.pf-toast.error').textContent().catch(() => null), {
+      .poll(async () => widget.locator('.fbk-toast.fbk-toast-danger').textContent().catch(() => null), {
         message: `Expected the invalid-link notice "${LINK_INVALID_NOTICE}"`,
         intervals: [250],
         timeout: 10_000,
       })
       .toBe(LINK_INVALID_NOTICE);
 
-    await widget.locator('#pf-launcher').click();
-    await expect(widget.locator('#pf-add')).toBeVisible({ timeout: 10_000 });
-    await widget.locator('#pf-add').click();
-    await expect(widget.locator('.pf-modal-overlay')).toBeVisible({ timeout: 10_000 });
+    await widget.locator('#fbk-launcher').click();
+    await expect(widget.locator('#fbk-add')).toBeVisible({ timeout: 10_000 });
+    await widget.locator('#fbk-add').click();
+    await expect(widget.locator('.fbk-modal-overlay')).toBeVisible({ timeout: 10_000 });
 
     expect(await page.evaluate(() => location.search)).toBe('?project=e2e-qa-invite');
 
@@ -304,7 +304,7 @@ test('R2-05-04 — quick-access: rotated link works', async ({ browser }) => {
   expect(newMagicLink).not.toBe(oldMagicLink);
 
   // 1-2. The rotated (new) link signs the client in — same assertions as R2-05-01 steps 4-5,
-  // including the #pf-launcher reveal before #pf-add/#pf-user exist.
+  // including the #fbk-launcher reveal before #fbk-add/#fbk-user exist.
   const ctx = await browser.newContext();
   const page = await ctx.newPage();
   try {
@@ -313,10 +313,10 @@ test('R2-05-04 — quick-access: rotated link works', async ({ browser }) => {
     await captureConfigLoaded;
 
     const widget = page.locator('pointer-feedback');
-    await expect(widget.locator('.pf-modal-overlay')).toHaveCount(0);
-    await widget.locator('#pf-launcher').click();
-    await expect(widget.locator('#pf-add')).toBeVisible({ timeout: 10_000 });
-    await expect(widget.locator('#pf-user')).toHaveAttribute(
+    await expect(widget.locator('.fbk-modal-overlay')).toHaveCount(0);
+    await widget.locator('#fbk-launcher').click();
+    await expect(widget.locator('#fbk-add')).toBeVisible({ timeout: 10_000 });
+    await expect(widget.locator('#fbk-user')).toHaveAttribute(
       'title',
       `Signed in as qa-cl-${RUN_ID}-4 · Client`,
     );
@@ -339,17 +339,17 @@ test('R2-05-04 — quick-access: rotated link works', async ({ browser }) => {
 
     const widget = page2.locator('pointer-feedback');
     await expect
-      .poll(async () => widget.locator('.pf-toast.error').textContent().catch(() => null), {
+      .poll(async () => widget.locator('.fbk-toast.fbk-toast-danger').textContent().catch(() => null), {
         message: `Expected the invalid-link notice after revoke: "${LINK_INVALID_NOTICE}"`,
         intervals: [250],
         timeout: 10_000,
       })
       .toBe(LINK_INVALID_NOTICE);
 
-    await widget.locator('#pf-launcher').click();
-    await expect(widget.locator('#pf-add')).toBeVisible({ timeout: 10_000 });
-    await widget.locator('#pf-add').click();
-    await expect(widget.locator('.pf-modal-overlay')).toBeVisible({ timeout: 10_000 });
+    await widget.locator('#fbk-launcher').click();
+    await expect(widget.locator('#fbk-add')).toBeVisible({ timeout: 10_000 });
+    await widget.locator('#fbk-add').click();
+    await expect(widget.locator('.fbk-modal-overlay')).toBeVisible({ timeout: 10_000 });
     expect(await page2.evaluate(() => location.search)).toBe('?project=e2e-qa-invite');
 
     record({

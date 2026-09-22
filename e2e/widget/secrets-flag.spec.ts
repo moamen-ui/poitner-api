@@ -5,7 +5,7 @@
 // Contract: docs/roadmap/testing/R2-06-tests.md
 //
 // Fixture: the ALPHA page on 4181 (PORTS.alpha — 4173 is reserved for the smoke fixture R2-05
-// needs). It mounts environment="staging", so every test must switch #pf-env to 'local' before
+// needs). It mounts environment="staging", so every test must switch #fbk-env to 'local' before
 // the list will include comment F (fetchComments filters by environmentInt, element.ts:751).
 import { test, expect } from '@playwright/test';
 import { spawn, type ChildProcess } from 'node:child_process';
@@ -29,11 +29,11 @@ const credentials = () => loadCredentials();
 const ALPHA_FIXTURE_PORT = 4181; // PORTS.alpha (scripts/lib/constants.mjs)
 const ALPHA_FIXTURE_URL = `http://localhost:${ALPHA_FIXTURE_PORT}/`;
 
-// The advisory pill as SHIPPED: class pf-payload-flag (web-component/src/templates.ts:198).
+// The advisory pill as SHIPPED: class fbk-payload-flag (web-component/src/templates.ts:198).
 // R2-06-tests.md originally pinned `.pf-pill.pf-flag`; that was a contract-time decision taken
 // without checking the widget, and the doc has since been corrected to the shipped name. The
 // selector here matches the code.
-const FLAG_PILL = '.pf-pill.pf-payload-flag';
+const FLAG_PILL = '.fbk-pill.fbk-payload-flag';
 
 const WIDGET_HEADERS = { 'X-Pointer-Client': 'widget' };
 
@@ -75,13 +75,13 @@ async function openWidgetOnLocal(page: import('@playwright/test').Page, token: s
   await page.goto(ALPHA_FIXTURE_URL);
 
   const widget = page.locator('pointer-feedback');
-  await expect(widget.locator('#pf-add')).toBeVisible({ timeout: 10_000 });
+  await expect(widget.locator('#fbk-add')).toBeVisible({ timeout: 10_000 });
   await captureConfigLoaded;
 
   // F lives on environment 1 (Local) while the fixture mounts environment="staging" — switch
   // first, or the list never contains F.
-  await widget.locator('#pf-env').selectOption('local');
-  await widget.locator('#pf-toggle').click();
+  await widget.locator('#fbk-env').selectOption('local');
+  await widget.locator('#fbk-toggle').click();
   return widget;
 }
 
@@ -96,7 +96,7 @@ test('R2-06-01 — flag: secret in comment shows badge in widget', async ({ page
   const widget = await openWidgetOnLocal(page, tester.token, tester.user);
 
   // 3. The advisory pill on F's card: ⚠ text + the matched pattern in its tooltip.
-  const card = widget.locator(`.pf-card[data-id="${F}"]`);
+  const card = widget.locator(`.fbk-card[data-id="${F}"]`);
   await expect(card).toBeVisible({ timeout: 10_000 });
   const pill = card.locator(FLAG_PILL);
   await expect(pill).toBeVisible();
@@ -104,14 +104,14 @@ test('R2-06-01 — flag: secret in comment shows badge in widget', async ({ page
   await expect(pill).toHaveAttribute('title', /github_token/);
 
   // 4. Reply carrying an executable-payload canary → refresh the list via the widget's own
-  // control (#pf-refresh).
+  // control (#fbk-refresh).
   await post(`/api/comments/${F}/replies`, { body: SCRIPT_REPLY }, { token: tester.token });
-  await widget.locator('#pf-refresh').click();
-  await expect(card.locator('.pf-replies')).toContainText('alert(1)');
+  await widget.locator('#fbk-refresh').click();
+  await expect(card.locator('.fbk-replies')).toContainText('alert(1)');
 
   // 5. The reply itself is flagged server-side (AC-6 — detector runs on the AddReplyAsync path).
   // R2-06-tests.md expects a reply PILL here too; the shipped widget renders no pill on replies
-  // (templates.ts card() draws pf-reply divs with author + text only) — reported as
+  // (templates.ts card() draws fbk-reply divs with author + text only) — reported as
   // SPEC-CONFLICT, so the reply flag is asserted at the API layer the widget list consumes.
   const detail = await raw('GET', `/api/comments/${F}`, { token: tester.token, headers: WIDGET_HEADERS });
   expect(detail.status).toBe(200);
@@ -135,7 +135,7 @@ test('R2-06-04 — flag: edit removes secret → flag cleared on reload (widget 
   // the list → the pill is gone. F is status=2 after R2-06-03 step 4 — the widget list is not
   // status-filtered, so the card is still listed.
   const widget = await openWidgetOnLocal(page, tester.token, tester.user);
-  const card = widget.locator(`.pf-card[data-id="${F}"]`);
+  const card = widget.locator(`.fbk-card[data-id="${F}"]`);
   await expect(card).toBeVisible({ timeout: 10_000 });
   await expect(card.locator(FLAG_PILL)).toHaveCount(0);
 
@@ -147,6 +147,6 @@ test('R2-06-04 — flag: edit removes secret → flag cleared on reload (widget 
   expect(afterReadd.status).toBe(200);
   expect(afterReadd.text).toContain('"hasPayloadFlag":true');
 
-  await widget.locator('#pf-refresh').click();
+  await widget.locator('#fbk-refresh').click();
   await expect(card.locator(FLAG_PILL)).toBeVisible();
 });

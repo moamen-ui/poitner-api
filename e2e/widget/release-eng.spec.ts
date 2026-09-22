@@ -168,7 +168,7 @@ test('R3-03-03 ⛓ — widget-pinned-unknown-404', async ({ page }) => {
     () => !!document.querySelector('pointer-feedback')?.shadowRoot,
   );
   expect(hasShadow, 'a 404 pin must leave the widget unbooted').toBe(false);
-  expect(await page.locator('pointer-feedback #pf-add').count()).toBe(0);
+  expect(await page.locator('pointer-feedback #fbk-add').count()).toBe(0);
 
   // The failure must read as "that build does not exist", not as a tampered file — an integrity
   // message here would send someone hunting a supply-chain problem they do not have.
@@ -227,12 +227,12 @@ test('R3-03-04 — widget-nonce-csp-styles', async ({ page }) => {
     // rendered it returns 0, the click is skipped, and the assertion below then fails on a
     // toolbar nobody ever opened. Waiting for whichever element appears first removes the race
     // without assuming which state this page produces.
-    const launcher = widget.locator('#pf-launcher');
-    const addBtn = widget.locator('#pf-add');
+    const launcher = widget.locator('#fbk-launcher');
+    const addBtn = widget.locator('#fbk-add');
     await expect(launcher.or(addBtn).first()).toBeVisible({ timeout: 15_000 });
     if (await launcher.isVisible().catch(() => false)) await launcher.click();
 
-    await expect(widget.locator('#pf-add')).toBeVisible({ timeout: 15_000 });
+    await expect(widget.locator('#fbk-add')).toBeVisible({ timeout: 15_000 });
 
     // Styles must have actually APPLIED. Under a nonce CSP with no 'unsafe-inline', a widget that
     // injected a <style> would render unstyled while every element still existed — so presence
@@ -241,7 +241,7 @@ test('R3-03-04 — widget-nonce-csp-styles', async ({ page }) => {
       const root = document.querySelector('pointer-feedback')?.shadowRoot;
       if (!root) return null;
       const link = root.querySelector('link[href*="widget.css"]') as HTMLLinkElement | null;
-      const add = root.querySelector('#pf-add') as HTMLElement | null;
+      const add = root.querySelector('#fbk-add') as HTMLElement | null;
       return {
         linkPresent: !!link,
         // A cross-origin stylesheet exposes no cssRules, so `sheet` being non-null is as far as

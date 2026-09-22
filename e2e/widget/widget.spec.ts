@@ -43,16 +43,16 @@ test('Tester creates a staging bug report by clicking the real broken checkout b
   const tester = await login(credentials().tester.email, credentials().tester.password);
   await preAuthWidget(page, tester.token, tester.user);
 
-  // element.ts's init() renders the toolbar (#pf-add) BEFORE awaiting fetchCaptureConfig(), which
+  // element.ts's init() renders the toolbar (#fbk-add) BEFORE awaiting fetchCaptureConfig(), which
   // is what actually calls startPageContextCapture() (pagecontext.ts) to patch console.error/
-  // window.fetch — so #pf-add being visible does NOT mean capture has started yet. Wait for the
+  // window.fetch — so #fbk-add being visible does NOT mean capture has started yet. Wait for the
   // specific capture-config response before triggering the error below, or it races ahead of the
   // patch and PageContextSnapshot silently stays null.
   const captureConfigLoaded = page.waitForResponse((r) => r.url().includes('/capture-config'));
   await page.goto(SMOKE_PATH);
 
   const widget = page.locator('pointer-feedback');
-  await expect(widget.locator('#pf-add')).toBeVisible({ timeout: 10_000 });
+  await expect(widget.locator('#fbk-add')).toBeVisible({ timeout: 10_000 });
   await captureConfigLoaded;
 
   // Trigger the REAL bug with a normal click BEFORE entering pick mode — not after. The widget's
@@ -64,15 +64,15 @@ test('Tester creates a staging bug report by clicking the real broken checkout b
   await page.locator('#checkout-btn').click();
 
   // Switch environment to Staging before picking (env select only renders when not fixed).
-  await widget.locator('#pf-env').selectOption('staging');
-  await widget.locator('#pf-add').click();
+  await widget.locator('#fbk-env').selectOption('staging');
+  await widget.locator('#fbk-add').click();
   await page.locator('#checkout-btn').click({ force: true }); // now just identifies the target element
 
-  const popover = page.locator('#pf-popover-host');
-  await expect(popover.locator('#pf-comment-text')).toBeVisible();
-  await popover.locator('#pf-comment-text').fill('Confirmed via widget: checkout throws and the quote request fails.');
-  await popover.locator('#pf-comment-bug').check();
-  await popover.locator('#pf-submit').click();
+  const popover = page.locator('#fbk-popover-host');
+  await expect(popover.locator('#fbk-comment-text')).toBeVisible();
+  await popover.locator('#fbk-comment-text').fill('Confirmed via widget: checkout throws and the quote request fails.');
+  await popover.locator('#fbk-comment-bug').check();
+  await popover.locator('#fbk-submit').click();
   await expect(popover).toBeEmpty({ timeout: 10_000 });
 });
 
@@ -82,7 +82,7 @@ test('Client creates a comment without an environment switcher, and it syncs cor
   await page.goto(SMOKE_PATH);
 
   const widget = page.locator('pointer-feedback');
-  await expect(widget.locator('#pf-add')).toBeVisible({ timeout: 10_000 });
+  await expect(widget.locator('#fbk-add')).toBeVisible({ timeout: 10_000 });
 
   // A Client (QuickAccess) account deliberately does NOT get the environment switcher: with no
   // explicit EnvironmentSelectorRoleIds the rule is "everyone except Client"
@@ -90,19 +90,20 @@ test('Client creates a comment without an environment switcher, and it syncs cor
   // here, which asked the Client to do something the product forbids — it hung for 30s waiting for
   // a control that is correctly absent. Assert the absence instead, and let the comment take the
   // page's own environment.
-  await expect(widget.locator('#pf-env')).toHaveCount(0);
+  await expect(widget.locator('#fbk-env')).toHaveCount(0);
 
-  await widget.locator('#pf-add').click();
-  // Picking is active once #pf-add flips to `active` — the same toggle that installs the
-  // document-level click listener. The previously-removed selectOption call was providing this
-  // wait by accident.
-  await expect(widget.locator('#pf-add')).toHaveClass(/active/);
+  await widget.locator('#fbk-add').click();
+  // Picking is active once #fbk-add flips to aria-pressed="true" — the same toggle that installs
+  // the document-level click listener (element.ts's startPicking() sets the attribute and swaps
+  // the icon/title rather than toggling a CSS class). The previously-removed selectOption call
+  // was providing this wait by accident.
+  await expect(widget.locator('#fbk-add')).toHaveAttribute('aria-pressed', 'true');
   await page.locator('#join-btn').click({ force: true });
 
-  const popover = page.locator('#pf-popover-host');
-  await expect(popover.locator('#pf-comment-text')).toBeVisible();
-  await popover.locator('#pf-comment-text').fill('Widget-created client comment for sync verification.');
-  await popover.locator('#pf-submit').click();
+  const popover = page.locator('#fbk-popover-host');
+  await expect(popover.locator('#fbk-comment-text')).toBeVisible();
+  await popover.locator('#fbk-comment-text').fill('Widget-created client comment for sync verification.');
+  await popover.locator('#fbk-submit').click();
   await expect(popover).toBeEmpty({ timeout: 10_000 });
 
   // Sync verification via a staff token: the Client (QuickAccess) only ever sees its OWN

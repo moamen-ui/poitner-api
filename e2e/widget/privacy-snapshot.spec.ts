@@ -85,7 +85,7 @@ test.describe.configure({ timeout: 180_000 });
  * It watches the POST rather than only the popover. Comment creation is rate-limited to 30/min
  * per USER, and this file authors four comments as the tester — who also authors most of the rest
  * of the widget phase. When that budget runs out the submit 429s, the popover stays open, and the
- * only symptom is `toBeEmpty` timing out on `#pf-popover-host`: a message that points at the
+ * only symptom is `toBeEmpty` timing out on `#fbk-popover-host`: a message that points at the
  * widget and says nothing about the limit. Reading the response turns that into either a clean
  * wait-and-retry (the limit is real product behaviour, not something to switch off for tests) or
  * a failure that names the actual status.
@@ -93,14 +93,14 @@ test.describe.configure({ timeout: 180_000 });
 async function pickAndComment(page: Page, targetSelector: string, body: string): Promise<void> {
   const submitOnce = async (): Promise<number> => {
     await pickElement(page, targetSelector);
-    const popover = page.locator('#pf-popover-host');
-    await popover.locator('#pf-comment-text').fill(body);
+    const popover = page.locator('#fbk-popover-host');
+    await popover.locator('#fbk-comment-text').fill(body);
 
     const posted = page.waitForResponse(
       (r) => r.request().method() === 'POST' && /\/comments$/.test(new URL(r.url()).pathname),
       { timeout: 15_000 },
     );
-    await popover.locator('#pf-submit').click();
+    await popover.locator('#fbk-submit').click();
     return (await posted).status();
   };
 
@@ -114,7 +114,7 @@ async function pickAndComment(page: Page, targetSelector: string, body: string):
   }
 
   expect(status, `submitting "${body}" must be accepted`).toBeLessThan(400);
-  await expect(page.locator('#pf-popover-host')).toBeEmpty({ timeout: 10_000 });
+  await expect(page.locator('#fbk-popover-host')).toBeEmpty({ timeout: 10_000 });
 }
 
 interface ListResult {

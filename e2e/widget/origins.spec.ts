@@ -64,19 +64,19 @@ test('R1-05-06 — origin-403 widget toast', async ({ page }) => {
   await page.goto(BETA_FIXTURE_URL);
 
   const widget = page.locator('pointer-feedback');
-  await expect(widget.locator('#pf-add')).toBeVisible({ timeout: 10_000 });
+  await expect(widget.locator('#fbk-add')).toBeVisible({ timeout: 10_000 });
   await captureConfigLoaded;
 
   // 3. Initiate element pick on .sidebar and submit comment in default pinned environment (Production).
-  // Clicking #pf-add flips it to active and attaches the document pick listener.
-  await widget.locator('#pf-add').click();
-  await expect(widget.locator('#pf-add')).toHaveClass(/active/);
+  // Clicking #fbk-add flips aria-pressed to true and attaches the document pick listener.
+  await widget.locator('#fbk-add').click();
+  await expect(widget.locator('#fbk-add')).toHaveAttribute('aria-pressed', 'true');
   await page.locator('.sidebar').click({ force: true });
 
-  const popover = page.locator('#pf-popover-host');
-  await expect(popover.locator('#pf-comment-text')).toBeVisible({ timeout: 10_000 });
-  await popover.locator('#pf-comment-text').fill('origin toast probe');
-  await popover.locator('#pf-submit').click();
+  const popover = page.locator('#fbk-popover-host');
+  await expect(popover.locator('#fbk-comment-text')).toBeVisible({ timeout: 10_000 });
+  await popover.locator('#fbk-comment-text').fill('origin toast probe');
+  await popover.locator('#fbk-submit').click();
 
   // Expected 3: The POST receives a real 403 Forbidden because e2e-beta enforces allowed origins,
   // the page origin is http://localhost:4182, environment is Production, and no matching row exists.
@@ -85,7 +85,7 @@ test('R1-05-06 — origin-403 widget toast', async ({ page }) => {
   await expect
     .poll(
       async () => {
-        return await widget.locator('.pf-toast.error').textContent().catch(() => null);
+        return await widget.locator('.fbk-toast.fbk-toast-danger').textContent().catch(() => null);
       },
       {
         message: 'Expected 403 error toast "Comments are not allowed from this address"',
@@ -96,20 +96,20 @@ test('R1-05-06 — origin-403 widget toast', async ({ page }) => {
     .toBe('Comments are not allowed from this address');
 
   // Popover stays open on 403 rejection so the commenter does not lose their typed text.
-  await expect(popover.locator('#pf-comment-text')).toBeVisible();
+  await expect(popover.locator('#fbk-comment-text')).toBeVisible();
 
-  // 4. Positive control: switch environment dropdown to 'local' (#pf-env is rendered because
+  // 4. Positive control: switch environment dropdown to 'local' (#fbk-env is rendered because
   // the beta fixture sets environment="production", not fixed-environment).
-  await widget.locator('#pf-env').selectOption('local');
-  await popover.locator('#pf-comment-text').fill('origin toast probe local allowed');
-  await popover.locator('#pf-submit').click();
+  await widget.locator('#fbk-env').selectOption('local');
+  await popover.locator('#fbk-comment-text').fill('origin toast probe local allowed');
+  await popover.locator('#fbk-submit').click();
 
   // Expected 4: Allowed under localhost exemption for Local env -> success toast "Comment added",
   // and popover closes (host is emptied).
   await expect
     .poll(
       async () => {
-        return await widget.locator('.pf-toast.success').textContent().catch(() => null);
+        return await widget.locator('.fbk-toast.fbk-toast-success').textContent().catch(() => null);
       },
       {
         message: 'Expected success toast "Comment added"',

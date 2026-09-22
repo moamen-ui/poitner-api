@@ -83,7 +83,7 @@ test.describe('R2-04: In-app notifications and author verify loop', () => {
     await page.goto(SMOKE_PATH);
 
     const widget = page.locator('pointer-feedback');
-    await expect(widget.locator('#pf-updates')).toBeVisible({ timeout: 10_000 });
+    await expect(widget.locator('#fbk-updates')).toBeVisible({ timeout: 10_000 });
 
     // 3. Dev applies the comment
     await patch(
@@ -97,11 +97,23 @@ test.describe('R2-04: In-app notifications and author verify loop', () => {
     // Assert the badge EXISTS and carries a positive count — not that it equals "1". The seeded
     // workspace already generates notifications for this client, so an absolute count is a
     // property of the seed rather than of this feature, and it drifts every time the seed grows.
-    const badge = widget.locator('#pf-notify-count');
+    //
+    // element.ts's updateNotifyBadges() renders #fbk-notify-count as "a plain dot, not a count —
+    // the exact number lives in ... the button's own aria-label" (#fbk-updates), so the count is
+    // read from there rather than from the dot's textContent.
+    const badge = widget.locator('#fbk-notify-count');
     await expect(badge).toBeVisible({ timeout: 70_000 });
-    await expect(badge).toHaveClass(/pf-notify-badge/);
+    const updatesBtn = widget.locator('#fbk-updates');
+    await expect(updatesBtn).toHaveAttribute('aria-label', /unread/, { timeout: 10_000 });
     await expect
-      .poll(async () => Number((await badge.textContent())?.trim() || '0'), { timeout: 10_000 })
+      .poll(
+        async () => {
+          const label = await updatesBtn.getAttribute('aria-label');
+          const match = label?.match(/(\d+)\+? unread/);
+          return match ? Number(match[1]) : 0;
+        },
+        { timeout: 10_000 },
+      )
       .toBeGreaterThan(0);
   });
 
@@ -127,10 +139,10 @@ test.describe('R2-04: In-app notifications and author verify loop', () => {
     await page.goto(SMOKE_PATH);
 
     const widget = page.locator('pointer-feedback');
-    await expect(widget.locator('#pf-toggle')).toBeVisible({ timeout: 10_000 });
+    await expect(widget.locator('#fbk-toggle')).toBeVisible({ timeout: 10_000 });
 
     // Open sidebar to view the applied comment
-    await widget.locator('#pf-toggle').click();
+    await widget.locator('#fbk-toggle').click();
 
     // Verify rejection button should be visible on own applied comment
     const rejectBtn = widget.locator(`[data-act="verify-reject"][data-id="${commentId}"]`);
@@ -140,20 +152,20 @@ test.describe('R2-04: In-app notifications and author verify loop', () => {
     await rejectBtn.click();
 
     // The inline verify box should appear
-    const verifyBox = widget.locator(`#pf-verify-box-${commentId}`);
+    const verifyBox = widget.locator(`#fbk-verify-box-${commentId}`);
     await expect(verifyBox).toBeVisible();
 
     // Enter note and submit
-    const noteInput = verifyBox.locator(`#pf-verify-note-${commentId}`);
+    const noteInput = verifyBox.locator(`#fbk-verify-note-${commentId}`);
     await noteInput.fill('Still broken on mobile viewport');
     await verifyBox.locator('[data-act="verify-submit"]').click();
 
     // Comment should now be re-opened (no status-applied pill, status is open)
-    const card = widget.locator(`.pf-card[data-id="${commentId}"]`);
-    await expect(card.locator('.pf-pill.status-applied')).toHaveCount(0);
+    const card = widget.locator(`.fbk-card[data-id="${commentId}"]`);
+    await expect(card.locator('.fbk-pill.status-applied')).toHaveCount(0);
 
     // Reply containing "Not fixed: Still broken on mobile viewport" should appear in card
-    await expect(card.locator('.pf-replies')).toContainText('Not fixed: Still broken on mobile viewport');
+    await expect(card.locator('.fbk-replies')).toContainText('Not fixed: Still broken on mobile viewport');
   });
 
   test('R2-04-03 ⛓ — notify: read-all clears badge', async ({ page }) => {
@@ -179,16 +191,16 @@ test.describe('R2-04: In-app notifications and author verify loop', () => {
     await page.goto(SMOKE_PATH);
 
     const widget = page.locator('pointer-feedback');
-    const badge = widget.locator('#pf-notify-count');
+    const badge = widget.locator('#fbk-notify-count');
     // Wait for notification badge to appear
     await expect(badge).toBeVisible({ timeout: 70_000 });
 
     // Click Updates button to open notifications menu
-    const updatesBtn = widget.locator('#pf-updates');
+    const updatesBtn = widget.locator('#fbk-updates');
     await updatesBtn.click();
 
     // Notifications menu should open
-    const menu = widget.locator('#pf-notifications-menu');
+    const menu = widget.locator('#fbk-notifications-menu');
     await expect(menu).toBeVisible();
 
     // Badge should be cleared / hidden

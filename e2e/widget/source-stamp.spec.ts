@@ -26,7 +26,7 @@ const FIXTURE_URL = 'http://localhost:4175/';
  * It used to be created only by api/builds.spec.mjs's beforeAll, so these scenarios silently
  * depended on that FILE having run first in the same database. Any reset between the two — or
  * running this file alone — left the project missing, the widget correctly refused to render on an
- * unknown project, and the failure read as "#pf-add not found": a widget bug, three steps from the
+ * unknown project, and the failure read as "#fbk-add not found": a widget bug, three steps from the
  * actual cause.
  */
 test.beforeAll(async () => {
@@ -79,11 +79,11 @@ test('R3-01-01 — source-stamp-prod-build (widget: steps 5–12)', async ({ pag
     // rendered it returns 0, the click is skipped, and the assertion below then fails on a
     // toolbar nobody ever opened. Waiting for whichever element appears first removes the race
     // without assuming which state this page produces.
-    const launcher = widget.locator('#pf-launcher');
-    const addBtn = widget.locator('#pf-add');
+    const launcher = widget.locator('#fbk-launcher');
+    const addBtn = widget.locator('#fbk-add');
     await expect(launcher.or(addBtn).first()).toBeVisible({ timeout: 15_000 });
     if (await launcher.isVisible().catch(() => false)) await launcher.click();
-    await expect(widget.locator('#pf-add')).toBeVisible({ timeout: 10_000 });
+    await expect(widget.locator('#fbk-add')).toBeVisible({ timeout: 10_000 });
     await captureConfigLoaded;
 
     // 6. page.locator('.card').first() -> data-component-source matches /^[0-9a-f]{8}$/ and equals Card's hash
@@ -123,15 +123,15 @@ test('R3-01-01 — source-stamp-prod-build (widget: steps 5–12)', async ({ pag
       expect(shellStampedCount).toBe(0);
     }
 
-    // 9. Widget pick: widget.locator('#pf-add').click(); page.locator('.card').first().click({ force: true })
-    await widget.locator('#pf-add').click();
-    await expect(widget.locator('#pf-add')).toHaveClass(/active/);
+    // 9. Widget pick: widget.locator('#fbk-add').click(); page.locator('.card').first().click({ force: true })
+    await widget.locator('#fbk-add').click();
+    await expect(widget.locator('#fbk-add')).toHaveAttribute('aria-pressed', 'true');
     await cardEl.click({ force: true });
 
-    const popover = page.locator('#pf-popover-host');
-    await expect(popover.locator('#pf-comment-text')).toBeVisible({ timeout: 10_000 });
-    await popover.locator('#pf-comment-text').fill('R3-01-01 stamp check');
-    await popover.locator('#pf-submit').click();
+    const popover = page.locator('#fbk-popover-host');
+    await expect(popover.locator('#fbk-comment-text')).toBeVisible({ timeout: 10_000 });
+    await popover.locator('#fbk-comment-text').fill('R3-01-01 stamp check');
+    await popover.locator('#fbk-submit').click();
     await expect(popover).toBeEmpty({ timeout: 10_000 });
 
     // 10. API (QA token): GET /api/projects/e2e-r301/comments?view=summary&pageSize=5 -> newest item sourcePath === CardHash
@@ -284,8 +284,8 @@ test('R3-01-03 ⛓ — deploy-awareness-widget', async ({ page }) => {
     // Wait for EITHER state before deciding. `count()` alone does not wait, so called before the
     // widget rendered it reports 0, the reveal is skipped, and the failure lands on a toolbar
     // nobody opened rather than on what this scenario checks.
-    const launcher = widget.locator('#pf-launcher');
-    const toggle = widget.locator('#pf-toggle');
+    const launcher = widget.locator('#fbk-launcher');
+    const toggle = widget.locator('#fbk-toggle');
     await expect(launcher.or(toggle).first()).toBeVisible({ timeout: 15_000 });
     if (await launcher.isVisible().catch(() => false)) {
       await launcher.click();
@@ -295,27 +295,27 @@ test('R3-01-03 ⛓ — deploy-awareness-widget', async ({ page }) => {
     // The list is filtered by the selected environment, and these comments are staging (2). A
     // widget showing another environment renders no card at all, which looks identical to "the
     // deployed pill is missing" at the assertion below.
-    const envSelect = widget.locator('#pf-env');
+    const envSelect = widget.locator('#fbk-env');
     if (await envSelect.count()) {
       await envSelect.selectOption('staging').catch(() => {});
     }
 
-    await widget.locator('#pf-toggle').click();
+    await widget.locator('#fbk-toggle').click();
 
     // Switch to the completed list. The default "all" filter deliberately means ACTIVE comments —
     // completed and archived ones move out to their own chips — so an applied comment renders no
     // card at all until this is selected, and the missing pill would look like a rendering bug
     // rather than the default view doing exactly what it is meant to.
-    const statusFilter = widget.locator('#pf-status-filter');
+    const statusFilter = widget.locator('#fbk-status-filter');
     await expect(statusFilter).toBeVisible({ timeout: 10_000 });
     await statusFilter.selectOption('applied');
 
-    const card1Pill = widget.locator(`.pf-card[data-id="${comment1Id}"] .pf-pill.status-applied`);
+    const card1Pill = widget.locator(`.fbk-card[data-id="${comment1Id}"] .fbk-pill.status-applied`);
     await expect(card1Pill).toHaveText(/✓ live/);
     await expect(card1Pill).toHaveAttribute('title', `Deployed in ${S.slice(0, 7)}`);
 
     // 8. Old-style comment: pill text "✓ completed", API deployedAt === null
-    const card2Pill = widget.locator(`.pf-card[data-id="${comment2Id}"] .pf-pill.status-applied`);
+    const card2Pill = widget.locator(`.fbk-card[data-id="${comment2Id}"] .fbk-pill.status-applied`);
     await expect(card2Pill).toHaveText(/✓ completed/);
     const comment2After = await raw('GET', `/api/comments/${comment2Id}`, { token: qa.token });
     expect(comment2After.status).toBe(200);

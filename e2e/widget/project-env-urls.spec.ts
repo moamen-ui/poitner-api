@@ -210,12 +210,12 @@ test('R1-09-07 ⛓ — disabled environment: extension lookup misses, widget doe
     // The element tag is in the fixture's markup, so it is always attached. What must NOT happen is
     // the widget rendering its chrome: _checkWidgetActive() returns false and init() never runs, so
     // no toolbar and no launcher ever appear.
-    await expect(widget.locator('#pf-add')).toHaveCount(0);
-    await expect(widget.locator('#pf-launcher')).toHaveCount(0);
+    await expect(widget.locator('#fbk-add')).toHaveCount(0);
+    await expect(widget.locator('#fbk-launcher')).toHaveCount(0);
 
     // Give the gate a real chance to be wrong — a race would show the toolbar a moment later.
     await page.waitForTimeout(2000);
-    await expect(widget.locator('#pf-add')).toHaveCount(0);
+    await expect(widget.locator('#fbk-add')).toHaveCount(0);
 
     record({
       id: 'R1-09-07',
