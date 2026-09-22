@@ -100,4 +100,7 @@ for path in /api/branding /swagger/v1/swagger.json; do
   echo "$path $code"
   [ "$code" = "200" ] || { echo "smoke FAILED on $path" >&2; exit 1; }
 done
+# Housekeeping: every `up --build` leaves the previous image dangling (268 MB each; 110 had piled up
+# by 2026-09-22 = 5 GB). Remove unreferenced images only — the running image and volumes are untouched.
+docker image prune -f >/dev/null 2>&1 || true
 echo "deploy OK"
