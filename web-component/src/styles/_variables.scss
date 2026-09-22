@@ -24,6 +24,7 @@ $tokens: (
 
   // Surfaces
   'surface': #fff,
+  'surface-card': #fff,
   'surface-alt': #f8fafc,
   'surface-muted': #eaeef2,
   'surface-hover': #f3f4f6,
@@ -151,6 +152,7 @@ $tokens: (
   'space-6': 24px,
   'size-xs': 11px,
   'size-md': 13px,
+  'size-base': 14px,
   'lh-md': 1.4,
   // Split duration/easing (the toolbar composes them itself, e.g. `var(--fbk-dur-base)
   // var(--fbk-ease-out)`) — 'transition-fast'/'transition-base' above stay as the combined
@@ -163,9 +165,12 @@ $tokens: (
   'z-toolbar': 2147483000,
 );
 
-@function token($key) {
-  @if not map.has-key($tokens, $key) {
-    @error "Unknown Pointer design token: #{$key}";
+@function token($key, $fallback: null) {
+  @if map.has-key($tokens, $key) {
+    @return var(--fbk-#{$key}, #{map.get($tokens, $key)});
   }
-  @return var(--fbk-#{$key}, #{map.get($tokens, $key)});
+  @if $fallback != null {
+    @return var(--fbk-#{$key}, #{$fallback});
+  }
+  @error "Unknown Pointer design token: #{$key}";
 }

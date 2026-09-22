@@ -197,8 +197,24 @@
 .fbk-popover-toggle-row {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: flex-start;
   gap: 8px;
+}
+
+.fbk-toggle-switch.fbk-toggle-switch-sm {
+  inline-size: 28px;
+  block-size: 16px;
+
+  .fbk-toggle-switch-thumb {
+    inline-size: 12px;
+    block-size: 12px;
+    inset-block-start: 2px;
+    inset-inline-start: 2px;
+  }
+
+  &.active .fbk-toggle-switch-thumb {
+    transform: translateX(12px);
+  }
 }
 
 .fbk-popover-toggle-label {

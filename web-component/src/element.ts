@@ -38,7 +38,7 @@ const PIN_TOOLTIP_HEIGHT_ESTIMATE = 150;
 const PIN_TOOLTIP_WIDTH = 220;
 const PIN_TOOLTIP_EDGE_MARGIN = 8;
 
-interface CreateCommentData extends Meta {
+type CreateCommentData = Meta & {
   text: string;
   isPrivate: boolean;
   attachShot: boolean;
@@ -47,7 +47,7 @@ interface CreateCommentData extends Meta {
   isBugReport: boolean;
   language?: string;
   customFields?: Record<string, string>;
-}
+};
 
 export class PointerFeedback extends HTMLElement implements PointerHost {
   private _mounted = false;
@@ -1937,6 +1937,9 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
     });
     const moreFieldsBtn = host.querySelector('#fbk-more-fields') as HTMLButtonElement | null;
     const extraFieldsDiv = host.querySelector('#fbk-extra-fields') as HTMLElement | null;
+    if (extraFieldsDiv) {
+      this.bindFieldValidation(extraFieldsDiv, 'cf');
+    }
     if (moreFieldsBtn && extraFieldsDiv) {
       moreFieldsBtn.addEventListener('click', () => {
         const isExpanded = moreFieldsBtn.getAttribute('aria-expanded') === 'true';
@@ -1957,29 +1960,10 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
       let customFields: Record<string, string> | undefined = undefined;
       let valMap: Record<string, string> = {};
       if (extraFieldsDiv) {
-        extraFieldsDiv.querySelectorAll('.fbk-field-error').forEach(el => el.remove());
-        extraFieldsDiv.querySelectorAll('[aria-invalid="true"]').forEach(el => {
-          el.removeAttribute('aria-invalid');
-          el.removeAttribute('aria-describedby');
-        });
-
-        valMap = collectFieldValues(extraFieldsDiv);
-        let hasError = false;
-        const fieldsOut: Record<string, string> = {};
-        for (const def of this.commentFields) {
-          const val = valMap[def.key];
-          if (val !== undefined) {
-            const errKey = validateFieldValue(def, val);
-            if (errKey) {
-              hasError = true;
-              this.renderFieldError(extraFieldsDiv, def, errKey);
-            } else {
-              fieldsOut[def.key] = val;
-            }
-          }
-        }
-        if (hasError) return;
-        if (Object.keys(fieldsOut).length > 0) customFields = fieldsOut;
+        const res = this.validateAndCollectFields(extraFieldsDiv, 'cf');
+        if (res.hasError) return;
+        customFields = res.fields;
+        valMap = res.valMap;
       }
 
       const isPrivate = isPrivateComment;
@@ -1997,6 +1981,7 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
         submitBtn.disabled = false; submitBtn.textContent = t('popover.add');
         if (extraFieldsDiv) {
           extraFieldsDiv.innerHTML = renderFieldInputs(this.commentFields, valMap, 'cf');
+          this.bindFieldValidation(extraFieldsDiv, 'cf');
           let errEl = document.createElement('p');
           errEl.className = 'fbk-field-error';
           errEl.textContent = t('fields.serverRejected') + ' ' + saved;
@@ -2005,6 +1990,48 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
       } else { 
         submitBtn.disabled = false; submitBtn.textContent = t('popover.add'); 
       }
+    });
+  }
+
+  private validateAndCollectFields(container: HTMLElement, idPrefix = 'cf') {
+    container.querySelectorAll('.fbk-field-error').forEach((el) => el.remove());
+    container.querySelectorAll('[aria-invalid="true"]').forEach((el) => {
+      el.removeAttribute('aria-invalid');
+      el.removeAttribute('aria-describedby');
+    });
+    const valMap = collectFieldValues(container);
+    let hasError = false;
+    const fieldsOut: Record<string, string> = {};
+    for (const def of this.commentFields) {
+      const val = valMap[def.key];
+      if (val !== undefined) {
+        const errKey = validateFieldValue(def, val);
+        if (errKey) {
+          hasError = true;
+          this.renderFieldError(container, def, errKey, idPrefix);
+        } else {
+          fieldsOut[def.key] = val;
+        }
+      }
+    }
+    return { fields: Object.keys(fieldsOut).length ? fieldsOut : undefined, hasError, valMap };
+  }
+
+  private bindFieldValidation(container: HTMLElement, idPrefix: string): void {
+    container.querySelectorAll<HTMLInputElement | HTMLSelectElement>('[name^="fbk-cf-"]').forEach((el) => {
+      const validate = () => {
+        const key = el.name.replace(/^fbk-cf-/, '');
+        const def = this.commentFields.find((d) => d.key === key);
+        container.querySelector(`#${idPrefix}-${key}-error`)?.remove();
+        el.removeAttribute('aria-invalid');
+        el.removeAttribute('aria-describedby');
+
+        if (def && el.value.trim()) {
+          const errKey = validateFieldValue(def, el.value.trim());
+          if (errKey) this.renderFieldError(container, def, errKey, idPrefix);
+        }
+      };
+      ['input', 'change', 'blur'].forEach((ev) => el.addEventListener(ev, validate));
     });
   }
 
@@ -2360,6 +2387,7 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
           <button type="button" class="fbk-mini fbk-fields-save">${t('fields.save')}</button>
           <button type="button" class="fbk-mini fbk-fields-cancel">${t('fields.cancel')}</button>
         </div>`;
+    this.bindFieldValidation(editor, idPrefix);
 
     if (existingWrapper) existingWrapper.replaceWith(editor);
     else if (existingDl) existingDl.replaceWith(editor);
@@ -2374,28 +2402,9 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
   }
 
   async saveEditFields(c: Comment, editor: HTMLElement, idPrefix: string): Promise<void> {
-    editor.querySelectorAll('.fbk-field-error').forEach((el) => el.remove());
-    editor.querySelectorAll('[aria-invalid="true"]').forEach((el) => {
-      el.removeAttribute('aria-invalid');
-      el.removeAttribute('aria-describedby');
-    });
-
-    const valMap = collectFieldValues(editor);
-    let hasError = false;
-    const fieldsOut: Record<string, string> = {};
-    for (const def of this.commentFields) {
-      const val = valMap[def.key];
-      if (val !== undefined) {
-        const errKey = validateFieldValue(def, val);
-        if (errKey) {
-          hasError = true;
-          this.renderFieldError(editor, def, errKey, idPrefix);
-        } else {
-          fieldsOut[def.key] = val;
-        }
-      }
-    }
-    if (hasError) return;
+    const res = this.validateAndCollectFields(editor, idPrefix);
+    if (res.hasError) return;
+    const fieldsOut = res.fields || {};
 
     const saveBtn = editor.querySelector('.fbk-fields-save') as HTMLButtonElement | null;
     if (saveBtn) { saveBtn.disabled = true; saveBtn.textContent = t('menu.saving'); }
@@ -2681,20 +2690,47 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
       if (textEl && readMoreBtn && id) {
         if (this.expandedCommentIds.has(id)) {
           textEl.classList.remove('fbk-text-clamped');
+          textEl.appendChild(readMoreBtn);
           readMoreBtn.classList.remove('fbk-hidden');
           readMoreBtn.textContent = t('card.readLess');
-        } else if (textEl.scrollHeight > textEl.clientHeight + 1) {
-          readMoreBtn.classList.remove('fbk-hidden');
+        } else {
+          textEl.classList.add('fbk-text-clamped');
+          textEl.prepend(readMoreBtn);
+          readMoreBtn.textContent = '… ' + t('card.readMore');
+          if (textEl.scrollHeight > textEl.clientHeight + 1) {
+            readMoreBtn.classList.remove('fbk-hidden');
+          }
         }
-        readMoreBtn.addEventListener('click', () => {
+        readMoreBtn.addEventListener('click', (e) => {
+          e.stopPropagation();
           const isClamped = textEl.classList.toggle('fbk-text-clamped');
           if (isClamped) {
             this.expandedCommentIds.delete(id);
-            readMoreBtn.textContent = t('card.readMore');
+            textEl.prepend(readMoreBtn);
+            readMoreBtn.textContent = '… ' + t('card.readMore');
           } else {
             this.expandedCommentIds.add(id);
+            textEl.appendChild(readMoreBtn);
             readMoreBtn.textContent = t('card.readLess');
           }
+        });
+      }
+    });
+
+    list.querySelectorAll<HTMLElement>('.fbk-card-field-val').forEach((valEl) => {
+      const textEl = valEl.querySelector<HTMLElement>('.fbk-card-field-val-text');
+      const moreBtn = valEl.querySelector<HTMLElement>('[data-act="toggle-field-more"]');
+      if (textEl && moreBtn) {
+        if (valEl.classList.contains('is-expanded')) {
+          moreBtn.classList.remove('fbk-hidden');
+          moreBtn.textContent = t('fields.seeLess');
+        } else if (textEl.scrollWidth > textEl.clientWidth + 1) {
+          moreBtn.classList.remove('fbk-hidden');
+        }
+        moreBtn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          const expanded = valEl.classList.toggle('is-expanded');
+          moreBtn.textContent = expanded ? t('fields.seeLess') : t('fields.seeMore');
         });
       }
     });

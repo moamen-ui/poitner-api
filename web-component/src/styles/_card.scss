@@ -69,17 +69,40 @@
   margin-block-end: 6px;
 }
 .fbk-text {
-  font-size: 14px;
+  font-size: v.token('size-base');
+  line-height: 1.45;
   color: v.token('text');
-  margin-block: 4px 8px;
-  margin-inline: 0;
+  word-break: break-word;
   white-space: pre-wrap;
-}
-.fbk-text-clamped {
-  display: -webkit-box;
-  -webkit-line-clamp: 4;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
+  margin: 0 0 10px 0;
+  position: relative;
+
+  &.fbk-text-clamped {
+    max-height: calc(1.45em * 3);
+    overflow: hidden;
+
+    &::before {
+      content: "";
+      float: inline-end;
+      height: calc(1.45em * 2);
+      width: 0;
+    }
+
+    .fbk-read-more-btn {
+      float: inline-end;
+      clear: inline-end;
+      background: v.token('surface-card');
+      padding-inline-start: 4px;
+    }
+  }
+
+  &:not(.fbk-text-clamped) {
+    .fbk-read-more-btn {
+      float: none;
+      display: inline-block;
+      margin-inline-start: 6px;
+    }
+  }
 }
 .fbk-read-more-btn {
   background: none;
@@ -90,8 +113,6 @@
   font-weight: 500;
   cursor: pointer;
   text-decoration: underline;
-  margin-block: -4px 8px;
-  display: inline-block;
 }
 .fbk-sub {
   font-size: 11px;
@@ -523,6 +544,48 @@
     color: v.token('text');
     word-break: break-word;
   }
+  .fbk-card-field-val {
+    display: flex;
+    align-items: baseline;
+    min-width: 0;
+    gap: 4px;
+    margin: 0;
+    color: v.token('text');
+
+    .fbk-card-field-val-text {
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      min-width: 0;
+      flex: 1 1 auto;
+    }
+
+    .fbk-field-more-btn {
+      flex: 0 0 auto;
+      background: none;
+      border: none;
+      padding: 0;
+      color: v.token('primary');
+      font-size: 11px;
+      font-weight: 500;
+      cursor: pointer;
+      text-decoration: underline;
+    }
+
+    &.is-expanded {
+      display: block;
+
+      .fbk-card-field-val-text {
+        white-space: normal;
+        word-break: break-word;
+      }
+
+      .fbk-field-more-btn {
+        display: inline-block;
+        margin-inline-start: 4px;
+      }
+    }
+  }
   a {
     color: v.token('primary');
     text-decoration: none;
@@ -540,9 +603,13 @@
     }
   }
 }
+.fbk-card-fields-edit,
 .fbk-card-fields-editor {
   margin: 12px 0;
   padding: 12px;
   background: v.token('surface-alt');
   border-radius: v.token('radius-md');
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
 }

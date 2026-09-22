@@ -309,7 +309,7 @@
   var SHOT_HIGHLIGHT = "#2563eb";
   var _a;
   var SCRIPT_SRC = ((_a = document.currentScript) == null ? void 0 : _a.src) || "";
-  var CSS_INTEGRITY = true ? "sha384-EQFMh9KeWiahQhAl80bHXM21JBTCekGhbbas29GxlQk1z3+y5wmLB0v0AgW76nOe" : "";
+  var CSS_INTEGRITY = true ? "sha384-rp+gwTngXwGbUjcIM5Qf/NViGSWbuTzgHtnOAdnoplt9QrpplMX1Y2ng8ArsFrtc" : "";
   function resolveCssUrl(scriptSrc) {
     var _a2;
     if (!scriptSrc) return "widget.css";
@@ -857,7 +857,9 @@
       "fields.hostNotAllowed": "Must be a link on {hosts}",
       "fields.tooLong": "Value is too long",
       "fields.saved": "Fields saved",
-      "fields.serverRejected": "Server rejected:"
+      "fields.serverRejected": "Server rejected:",
+      "fields.seeMore": "See more",
+      "fields.seeLess": "See less"
     },
     ar: {
       // --- auth (login/signup modal) ---
@@ -1086,7 +1088,9 @@
       "fields.hostNotAllowed": "يجب أن يكون الرابط من {hosts}",
       "fields.tooLong": "القيمة طويلة جداً",
       "fields.saved": "تم حفظ الحقول",
-      "fields.serverRejected": "رفض الخادم:"
+      "fields.serverRejected": "رفض الخادم:",
+      "fields.seeMore": "عرض المزيد",
+      "fields.seeLess": "عرض أقل"
     }
   };
 
@@ -1114,29 +1118,16 @@
       if (value.length > 500) return "fields.tooLong";
     } else if (isUrl) {
       if (value.length > 2e3) return "fields.tooLong";
-      let url;
       try {
-        url = new URL(value);
+        const u = new URL(value);
+        if (u.protocol !== "http:" && u.protocol !== "https:") return "fields.invalidUrl";
+        if (u.username || u.password || !u.hostname) return "fields.invalidUrl";
+        if (def.allowedHosts && def.allowedHosts.length > 0 && !def.allowedHosts.some((h) => hostMatches(u.hostname, h))) return "fields.hostNotAllowed";
       } catch {
         return "fields.invalidUrl";
       }
-      if (url.protocol !== "http:" && url.protocol !== "https:") {
-        return "fields.invalidUrl";
-      }
-      if (url.username || url.password) {
-        return "fields.invalidUrl";
-      }
-      if (!url.hostname) {
-        return "fields.invalidUrl";
-      }
-      if (def.allowedHosts && def.allowedHosts.length > 0) {
-        const match = def.allowedHosts.some((h) => hostMatches(url.hostname, h));
-        if (!match) return "fields.hostNotAllowed";
-      }
     } else if (isSelect) {
-      if (def.options && !def.options.includes(value)) {
-        return "fields.invalidOption";
-      }
+      if (def.options && !def.options.includes(value)) return "fields.invalidOption";
     }
     return null;
   }
@@ -1150,40 +1141,20 @@
       const val = values[def.key] || "";
       let inputHtml = "";
       if (isSelect) {
-        inputHtml = `<select id="${id}" name="${name}" class="fbk-input">
-        <option value="">${escapeHtml(t("fields.none"))}</option>
-        ${(def.options || []).map((o) => `<option value="${escapeHtml(o)}" ${o === val ? "selected" : ""}>${escapeHtml(o)}</option>`).join("")}
-      </select>`;
+        inputHtml = `<select id="${id}" name="${name}" class="fbk-input"><option value="">${escapeHtml(t("fields.none"))}</option>${(def.options || []).map((o) => `<option value="${escapeHtml(o)}"${o === val ? " selected" : ""}>${escapeHtml(o)}</option>`).join("")}</select>`;
       } else {
-        const typeAttr = isUrl ? "url" : "text";
-        const inputMode = isUrl ? ' inputmode="url"' : "";
-        const maxLength = isUrl ? ' maxlength="2000"' : ' maxlength="500"';
-        inputHtml = `<input type="${typeAttr}" id="${id}" name="${name}" class="fbk-input" value="${escapeHtml(val)}"${inputMode}${maxLength}>`;
+        inputHtml = `<input type="${isUrl ? "url" : "text"}" id="${id}" name="${name}" class="fbk-input" value="${escapeHtml(val)}"${isUrl ? ' inputmode="url" maxlength="2000"' : ' maxlength="500"'}>`;
       }
-      let hintHtml = "";
-      if (def.hint) {
-        hintHtml = `<small class="fbk-field-hint" id="${id}-hint">${escapeHtml(def.hint)}</small>`;
-      }
-      return `
-      <div class="fbk-field">
-        <label for="${id}">${escapeHtml(def.label)}</label>
-        ${inputHtml}
-        ${hintHtml}
-      </div>
-    `;
+      const hintHtml = def.hint ? `<small class="fbk-field-hint" id="${id}-hint">${escapeHtml(def.hint)}</small>` : "";
+      return `<div class="fbk-field"><label for="${id}">${escapeHtml(def.label)}</label>${inputHtml}${hintHtml}</div>`;
     }).join("");
   }
   function collectFieldValues(root) {
     const map = {};
-    const inputs = root.querySelectorAll('[name^="fbk-cf-"]');
-    for (let i = 0; i < inputs.length; i++) {
-      const el = inputs[i];
-      const key = el.name.substring(7);
+    root.querySelectorAll('[name^="fbk-cf-"]').forEach((el) => {
       const val = el.value.trim();
-      if (val) {
-        map[key] = val;
-      }
-    }
+      if (val) map[el.name.substring(7)] = val;
+    });
     return map;
   }
 
@@ -1194,43 +1165,43 @@
     // between loginBody and signupBody. The shell keeps the Skip control so
     // deferred-login dismissal works from either view.
     loginModal: (project) => `
-        <div class="fbk-modal-overlay">
-          <div class="fbk-modal">
-            <h2>${escapeHtml(getBrandName())}</h2>
-            <p>${t("auth.leaveFeedbackOn")} <b>${escapeHtml(project)}</b>.</p>
-            <div id="fbk-auth-body"></div>
-            <button class="fbk-btn fbk-link fbk-btn-block fbk-auth-skip" id="fbk-login-skip">${t("auth.skipForNow")}</button>
-          </div>
-        </div>`,
+  <div class="fbk-modal-overlay">
+  <div class="fbk-modal">
+  <h2>${escapeHtml(getBrandName())}</h2>
+  <p>${t("auth.leaveFeedbackOn")} <b>${escapeHtml(project)}</b>.</p>
+  <div id="fbk-auth-body"></div>
+  <button class="fbk-btn fbk-link fbk-btn-block fbk-auth-skip" id="fbk-login-skip">${t("auth.skipForNow")}</button>
+  </div>
+  </div>`,
     // Sign-in body. After a "rejected" login it also renders an inline re-apply
     // block (role select + "Request again"); pass rejected=true to show it.
     loginBody: (rejected) => `
-        <input class="fbk-input fbk-stack-gap" id="fbk-email" type="email" placeholder="${t("auth.email")}" />
-        <input class="fbk-input fbk-stack-gap" id="fbk-password" type="password" placeholder="${t("auth.password")}" />
-        <div class="fbk-modal-error" id="fbk-login-error"></div>
-        <button class="fbk-btn primary fbk-btn-block" id="fbk-login-submit">${t("auth.signIn")}</button>
-        ${rejected ? `
-        <div class="fbk-reapply" id="fbk-reapply">
-          <label class="fbk-field-label" for="fbk-reapply-role">${t("auth.chooseRoleToRequestAgain")}</label>
-          <select class="fbk-input fbk-stack-gap" id="fbk-reapply-role"></select>
-          <button class="fbk-btn primary fbk-btn-block" id="fbk-reapply-submit">${t("auth.requestAgain")}</button>
-        </div>` : ""}
-        <div class="fbk-auth-foot">
-          ${t("auth.noAccount")} <button class="fbk-btn fbk-link fbk-link-inline" id="fbk-show-signup">${t("auth.createAccount")}</button>
-        </div>`,
+  <input class="fbk-input fbk-stack-gap" id="fbk-email" type="email" placeholder="${t("auth.email")}" />
+  <input class="fbk-input fbk-stack-gap" id="fbk-password" type="password" placeholder="${t("auth.password")}" />
+  <div class="fbk-modal-error" id="fbk-login-error"></div>
+  <button class="fbk-btn primary fbk-btn-block" id="fbk-login-submit">${t("auth.signIn")}</button>
+  ${rejected ? `
+  <div class="fbk-reapply" id="fbk-reapply">
+  <label class="fbk-field-label" for="fbk-reapply-role">${t("auth.chooseRoleToRequestAgain")}</label>
+  <select class="fbk-input fbk-stack-gap" id="fbk-reapply-role"></select>
+  <button class="fbk-btn primary fbk-btn-block" id="fbk-reapply-submit">${t("auth.requestAgain")}</button>
+  </div>` : ""}
+  <div class="fbk-auth-foot">
+  ${t("auth.noAccount")} <button class="fbk-btn fbk-link fbk-link-inline" id="fbk-show-signup">${t("auth.createAccount")}</button>
+  </div>`,
     // Sign-up body. The role <select> is populated at runtime from GET /api/roles.
     signupBody: () => `
-        <input class="fbk-input fbk-stack-gap" id="fbk-su-name" type="text" placeholder="${t("auth.name")}" />
-        <input class="fbk-input fbk-stack-gap" id="fbk-su-email" type="email" placeholder="${t("auth.email")}" />
-        <input class="fbk-input fbk-stack-gap" id="fbk-su-password" type="password" placeholder="${t("auth.password")}" />
-        <label class="fbk-field-label" for="fbk-su-role">${t("auth.role")}</label>
-        <select class="fbk-input fbk-stack-gap" id="fbk-su-role"></select>
-        <div class="fbk-modal-error" id="fbk-signup-error"></div>
-        <div class="fbk-modal-success" id="fbk-signup-success"></div>
-        <button class="fbk-btn primary fbk-btn-block" id="fbk-signup-submit">${t("auth.createAccount")}</button>
-        <div class="fbk-auth-foot">
-          ${t("auth.alreadyHaveAccount")} <button class="fbk-btn fbk-link fbk-link-inline" id="fbk-show-login">${t("auth.backToSignIn")}</button>
-        </div>`,
+  <input class="fbk-input fbk-stack-gap" id="fbk-su-name" type="text" placeholder="${t("auth.name")}" />
+  <input class="fbk-input fbk-stack-gap" id="fbk-su-email" type="email" placeholder="${t("auth.email")}" />
+  <input class="fbk-input fbk-stack-gap" id="fbk-su-password" type="password" placeholder="${t("auth.password")}" />
+  <label class="fbk-field-label" for="fbk-su-role">${t("auth.role")}</label>
+  <select class="fbk-input fbk-stack-gap" id="fbk-su-role"></select>
+  <div class="fbk-modal-error" id="fbk-signup-error"></div>
+  <div class="fbk-modal-success" id="fbk-signup-success"></div>
+  <button class="fbk-btn primary fbk-btn-block" id="fbk-signup-submit">${t("auth.createAccount")}</button>
+  <div class="fbk-auth-foot">
+  ${t("auth.alreadyHaveAccount")} <button class="fbk-btn fbk-link fbk-link-inline" id="fbk-show-login">${t("auth.backToSignIn")}</button>
+  </div>`,
     // `projectName`: embedded in the "{project}" heading so a visitor can immediately tell
     // which project this install is bound to — project keys aren't unique across a workspace, so two
     // different installs can easily look identical without this.
@@ -1246,73 +1217,73 @@
     // status/environment/author controls don't take up space until someone actually wants them —
     // the fbk-filters-toggle button in the head row reveals them on demand.
     chrome: (displayName, roleLabel, projectName = "", shortcutLabel = "", unreadNotifyCount = 0, avatarInitials = "", ariaShortcut = "", filtersOpen = false) => `
-        <aside class="fbk-toolbar" id="fbk-toolbar" role="toolbar" aria-label="${escapeHtml(getBrandName())}" part="toolbar">
-          <span class="fbk-toolbar__grip" id="fbk-grip" data-fbk-drag data-toggle="tooltip" data-placement="top" title="${t("toolbar.dragToReposition")}" aria-hidden="true">${ICON.grip}</span>
-          <span class="fbk-toolbar__divider" aria-hidden="true"></span>
-          <button type="button" class="fbk-toolbar-btn fbk-toolbar-btn--primary fbk-toolbar-btn--icon fbk-toolbar-btn--brand" id="fbk-add" data-fbk-act="inspect" aria-pressed="false" data-toggle="tooltip" data-placement="top" title="${t("toolbar.commentOnElement")}${shortcutLabel ? ` (${escapeHtml(shortcutLabel)})` : ""}" aria-label="${t("toolbar.commentOnElement")}"${ariaShortcut ? ` aria-keyshortcuts="${escapeHtml(ariaShortcut)}"` : ""}><span class="fbk-toolbar-btn__icon">${ICON.crosshair}</span></button>
-          <button type="button" class="fbk-toolbar-btn fbk-toolbar-btn--comments" id="fbk-toggle" data-fbk-act="comments" aria-expanded="false" aria-haspopup="dialog" data-toggle="tooltip" data-placement="top" title="${t("toolbar.viewCommentsList")}" aria-label="${t("toolbar.comments")}"><span class="fbk-toolbar-btn__icon">${ICON.bubble}</span> <span class="fbk-toolbar-count" id="fbk-count" data-fbk-count>0</span></button>
-          <button type="button" class="fbk-toolbar-btn fbk-toolbar-btn--icon fbk-hidden" id="fbk-updates" data-fbk-act="updates" aria-expanded="false" aria-haspopup="dialog" data-toggle="tooltip" data-placement="top" title="${t("toolbar.recentActivityUpdates")}" aria-label="${t("toolbar.updates")}${unreadNotifyCount > 0 ? `, ${unreadNotifyCount > 99 ? "99+" : unreadNotifyCount} unread` : ""}"><span class="fbk-toolbar-btn__icon">${ICON.bell}</span><span class="fbk-toolbar-dot${unreadNotifyCount > 0 ? "" : " fbk-hidden"}" id="fbk-notify-count" data-fbk-unread aria-hidden="true"></span></button>
-          ${displayName ? `
-          <span class="fbk-toolbar__divider" aria-hidden="true"></span>
-          <button type="button" class="fbk-toolbar-btn fbk-toolbar-btn--avatar" id="fbk-user" data-fbk-act="account" aria-expanded="false" aria-haspopup="dialog" data-toggle="tooltip" data-placement="top" title="${t("toolbar.signedInAs")} ${displayName}${roleLabel ? " · " + roleLabel : ""}" aria-label="${t("toolbar.account")}, ${displayName}">${avatarInitials}</button>` : ""}
-          <button type="button" class="fbk-toolbar-btn fbk-toolbar-btn--icon" id="fbk-hide" data-fbk-act="hide" data-toggle="tooltip" data-placement="top" title="${t("toolbar.hideBrand", { brand: escapeHtml(getBrandName()) })}" aria-label="${t("toolbar.hideBrand", { brand: escapeHtml(getBrandName()) })}"><span class="fbk-toolbar-btn__icon">${ICON.eyeOff}</span></button>
-          <span class="fbk-toolbar__divider fbk-toolbar__divider--moved" aria-hidden="true"></span>
-          <button type="button" class="fbk-toolbar-btn fbk-toolbar-btn--icon fbk-toolbar__reset" id="fbk-reset-pos" data-fbk-act="reset-position" data-toggle="tooltip" data-placement="top" title="${t("toolbar.resetToolbarPosition")}" aria-label="${t("toolbar.resetToolbarPosition")}"><span class="fbk-toolbar-btn__icon">${ICON.restore}</span></button>
-        </aside>
-        <div class="fbk-sidebar" id="fbk-sidebar">
-          <button class="fbk-sidebar-close-arrow" id="fbk-close" title="${t("toolbar.close")}" aria-label="${t("toolbar.close")}">${ICON.chevronRight}</button>
-          <div class="fbk-sidebar-head">
-            <div class="fbk-sidebar-head-row">
-              <h2 id="fbk-comments-heading">${t("toolbar.projectHeading", { project: escapeHtml(projectName) })}</h2>
-              <span class="fbk-sidebar-head-actions">
-                <button type="button" class="fbk-mini fbk-icon${filtersOpen ? " is-active" : ""}" id="fbk-filters-toggle" title="${filtersOpen ? t("sidebar.hideFilters") : t("sidebar.showFilters")}" aria-label="${filtersOpen ? t("sidebar.hideFilters") : t("sidebar.showFilters")}" aria-pressed="${filtersOpen ? "true" : "false"}" aria-expanded="${filtersOpen ? "true" : "false"}" aria-controls="fbk-filters">${ICON.filter}</button>
-                <button class="fbk-mini fbk-icon" id="fbk-refresh" title="${t("toolbar.refreshComments")}" aria-label="${t("toolbar.refreshComments")}">&#8635;</button>
-              </span>
-            </div>
-            <div class="fbk-commit-style fbk-hidden" id="fbk-commit-style"></div>
-          </div>
-          <div class="fbk-filters${filtersOpen ? "" : " fbk-hidden"}" id="fbk-filters"></div>
-          <div class="fbk-sidebar-body" id="fbk-list"></div>
-        </div>
-        <div class="fbk-pins-layer" id="fbk-pins-layer"></div>
-        <div id="fbk-popover-host"></div>
-        <div id="fbk-menu-host"></div>`,
+  <aside class="fbk-toolbar" id="fbk-toolbar" role="toolbar" aria-label="${escapeHtml(getBrandName())}" part="toolbar">
+  <span class="fbk-toolbar__grip" id="fbk-grip" data-fbk-drag data-toggle="tooltip" data-placement="top" title="${t("toolbar.dragToReposition")}" aria-hidden="true">${ICON.grip}</span>
+  <span class="fbk-toolbar__divider" aria-hidden="true"></span>
+  <button type="button" class="fbk-toolbar-btn fbk-toolbar-btn--primary fbk-toolbar-btn--icon fbk-toolbar-btn--brand" id="fbk-add" data-fbk-act="inspect" aria-pressed="false" data-toggle="tooltip" data-placement="top" title="${t("toolbar.commentOnElement")}${shortcutLabel ? ` (${escapeHtml(shortcutLabel)})` : ""}" aria-label="${t("toolbar.commentOnElement")}"${ariaShortcut ? ` aria-keyshortcuts="${escapeHtml(ariaShortcut)}"` : ""}><span class="fbk-toolbar-btn__icon">${ICON.crosshair}</span></button>
+  <button type="button" class="fbk-toolbar-btn fbk-toolbar-btn--comments" id="fbk-toggle" data-fbk-act="comments" aria-expanded="false" aria-haspopup="dialog" data-toggle="tooltip" data-placement="top" title="${t("toolbar.viewCommentsList")}" aria-label="${t("toolbar.comments")}"><span class="fbk-toolbar-btn__icon">${ICON.bubble}</span> <span class="fbk-toolbar-count" id="fbk-count" data-fbk-count>0</span></button>
+  <button type="button" class="fbk-toolbar-btn fbk-toolbar-btn--icon fbk-hidden" id="fbk-updates" data-fbk-act="updates" aria-expanded="false" aria-haspopup="dialog" data-toggle="tooltip" data-placement="top" title="${t("toolbar.recentActivityUpdates")}" aria-label="${t("toolbar.updates")}${unreadNotifyCount > 0 ? `, ${unreadNotifyCount > 99 ? "99+" : unreadNotifyCount} unread` : ""}"><span class="fbk-toolbar-btn__icon">${ICON.bell}</span><span class="fbk-toolbar-dot${unreadNotifyCount > 0 ? "" : " fbk-hidden"}" id="fbk-notify-count" data-fbk-unread aria-hidden="true"></span></button>
+  ${displayName ? `
+  <span class="fbk-toolbar__divider" aria-hidden="true"></span>
+  <button type="button" class="fbk-toolbar-btn fbk-toolbar-btn--avatar" id="fbk-user" data-fbk-act="account" aria-expanded="false" aria-haspopup="dialog" data-toggle="tooltip" data-placement="top" title="${t("toolbar.signedInAs")} ${displayName}${roleLabel ? " · " + roleLabel : ""}" aria-label="${t("toolbar.account")}, ${displayName}">${avatarInitials}</button>` : ""}
+  <button type="button" class="fbk-toolbar-btn fbk-toolbar-btn--icon" id="fbk-hide" data-fbk-act="hide" data-toggle="tooltip" data-placement="top" title="${t("toolbar.hideBrand", { brand: escapeHtml(getBrandName()) })}" aria-label="${t("toolbar.hideBrand", { brand: escapeHtml(getBrandName()) })}"><span class="fbk-toolbar-btn__icon">${ICON.eyeOff}</span></button>
+  <span class="fbk-toolbar__divider fbk-toolbar__divider--moved" aria-hidden="true"></span>
+  <button type="button" class="fbk-toolbar-btn fbk-toolbar-btn--icon fbk-toolbar__reset" id="fbk-reset-pos" data-fbk-act="reset-position" data-toggle="tooltip" data-placement="top" title="${t("toolbar.resetToolbarPosition")}" aria-label="${t("toolbar.resetToolbarPosition")}"><span class="fbk-toolbar-btn__icon">${ICON.restore}</span></button>
+  </aside>
+  <div class="fbk-sidebar" id="fbk-sidebar">
+  <button class="fbk-sidebar-close-arrow" id="fbk-close" title="${t("toolbar.close")}" aria-label="${t("toolbar.close")}">${ICON.chevronRight}</button>
+  <div class="fbk-sidebar-head">
+  <div class="fbk-sidebar-head-row">
+  <h2 id="fbk-comments-heading">${t("toolbar.projectHeading", { project: escapeHtml(projectName) })}</h2>
+  <span class="fbk-sidebar-head-actions">
+  <button type="button" class="fbk-mini fbk-icon${filtersOpen ? " is-active" : ""}" id="fbk-filters-toggle" title="${filtersOpen ? t("sidebar.hideFilters") : t("sidebar.showFilters")}" aria-label="${filtersOpen ? t("sidebar.hideFilters") : t("sidebar.showFilters")}" aria-pressed="${filtersOpen ? "true" : "false"}" aria-expanded="${filtersOpen ? "true" : "false"}" aria-controls="fbk-filters">${ICON.filter}</button>
+  <button class="fbk-mini fbk-icon" id="fbk-refresh" title="${t("toolbar.refreshComments")}" aria-label="${t("toolbar.refreshComments")}">&#8635;</button>
+  </span>
+  </div>
+  <div class="fbk-commit-style fbk-hidden" id="fbk-commit-style"></div>
+  </div>
+  <div class="fbk-filters${filtersOpen ? "" : " fbk-hidden"}" id="fbk-filters"></div>
+  <div class="fbk-sidebar-body" id="fbk-list"></div>
+  </div>
+  <div class="fbk-pins-layer" id="fbk-pins-layer"></div>
+  <div id="fbk-popover-host"></div>
+  <div id="fbk-menu-host"></div>`,
     // Commit-style control (see element.ts's fetchCaptureConfig/renderCommitStyleControl) — only
     // ever rendered when the CURRENT caller is authorized to change project settings
     // (CaptureConfigResponse.CanEditSettings, same gate as the PATCH itself). Lets whoever's looking
     // choose whether the AI apply flow bundles applied comments into one commit or commits each one
     // separately — read by skill.md's Step 1 the next time an agent applies.
     commitStyleControl: (commitStyle) => `
-        <span class="fbk-caption">${t("toolbar.commitStyle")}</span>
-        <select class="fbk-input fbk-commit-style-select" id="fbk-commit-style-select" title="${t("toolbar.commitStyleTitle")}">
-          <option value="1" ${commitStyle === 1 ? "selected" : ""}>${t("toolbar.oneCommit")}</option>
-          <option value="2" ${commitStyle === 2 ? "selected" : ""}>${t("toolbar.separateCommits")}</option>
-        </select>`,
+  <span class="fbk-caption">${t("toolbar.commitStyle")}</span>
+  <select class="fbk-input fbk-commit-style-select" id="fbk-commit-style-select" title="${t("toolbar.commitStyleTitle")}">
+  <option value="1" ${commitStyle === 1 ? "selected" : ""}>${t("toolbar.oneCommit")}</option>
+  <option value="2" ${commitStyle === 2 ? "selected" : ""}>${t("toolbar.separateCommits")}</option>
+  </select>`,
     // Dropdown under the user icon: shows identity, the per-user "add comment" shortcut
     // (click to rebind, ↺ to reset), theme + language toggles, and a Sign out action.
     userMenu: (displayName, roleLabel, shortcutLabel, authOwnedByHost, theme = "light", language = "en") => `
-        <div class="fbk-menu" id="fbk-user-menu" role="menu">
-          <div class="fbk-menu-id">
-            <span>${displayName}</span>
-            ${roleLabel ? `<span class="fbk-menu-role">${roleLabel}</span>` : ""}
-          </div>
-          <div class="fbk-menu-shortcut">
-            <span class="fbk-menu-shortcut-label">${t("menu.addComment")}</span>
-            <button type="button" id="fbk-shortcut-edit" class="fbk-mini" title="${t("menu.clickThenPressKeyCombo")}">${escapeHtml(shortcutLabel)}</button>
-            <button type="button" id="fbk-shortcut-reset" class="fbk-mini fbk-icon" title="${t("menu.resetToDefault")}">&#8635;</button>
-          </div>
-          <div class="fbk-menu-shortcut">
-            <span class="fbk-menu-shortcut-label">${t("menu.theme")}</span>
-            <button type="button" id="fbk-theme-light" class="fbk-mini fbk-icon${theme === "light" ? " is-active" : ""}" title="${t("menu.light")}" aria-label="${t("menu.lightTheme")}" aria-pressed="${theme === "light"}">${ICON.sun}</button>
-            <button type="button" id="fbk-theme-dark" class="fbk-mini fbk-icon${theme === "dark" ? " is-active" : ""}" title="${t("menu.dark")}" aria-label="${t("menu.darkTheme")}" aria-pressed="${theme === "dark"}">${ICON.moon}</button>
-          </div>
-          <div class="fbk-menu-shortcut">
-            <span class="fbk-menu-shortcut-label">${t("menu.language")}</span>
-            <button type="button" id="fbk-lang-en" class="fbk-mini${language === "en" ? " is-active" : ""}" aria-pressed="${language === "en"}">EN</button>
-            <button type="button" id="fbk-lang-ar" class="fbk-mini${language === "ar" ? " is-active" : ""}" aria-pressed="${language === "ar"}">AR</button>
-          </div>
-          ${authOwnedByHost ? `<div class="fbk-menu-note fbk-caption">${t("menu.extensionSignedInNote")}</div>` : `<button class="fbk-menu-item" id="fbk-signout" role="menuitem">${ICON.logout}<span>${t("menu.signOut")}</span></button>`}
-        </div>`,
+  <div class="fbk-menu" id="fbk-user-menu" role="menu">
+  <div class="fbk-menu-id">
+  <span>${displayName}</span>
+  ${roleLabel ? `<span class="fbk-menu-role">${roleLabel}</span>` : ""}
+  </div>
+  <div class="fbk-menu-shortcut">
+  <span class="fbk-menu-shortcut-label">${t("menu.addComment")}</span>
+  <button type="button" id="fbk-shortcut-edit" class="fbk-mini" title="${t("menu.clickThenPressKeyCombo")}">${escapeHtml(shortcutLabel)}</button>
+  <button type="button" id="fbk-shortcut-reset" class="fbk-mini fbk-icon" title="${t("menu.resetToDefault")}">&#8635;</button>
+  </div>
+  <div class="fbk-menu-shortcut">
+  <span class="fbk-menu-shortcut-label">${t("menu.theme")}</span>
+  <button type="button" id="fbk-theme-light" class="fbk-mini fbk-icon${theme === "light" ? " is-active" : ""}" title="${t("menu.light")}" aria-label="${t("menu.lightTheme")}" aria-pressed="${theme === "light"}">${ICON.sun}</button>
+  <button type="button" id="fbk-theme-dark" class="fbk-mini fbk-icon${theme === "dark" ? " is-active" : ""}" title="${t("menu.dark")}" aria-label="${t("menu.darkTheme")}" aria-pressed="${theme === "dark"}">${ICON.moon}</button>
+  </div>
+  <div class="fbk-menu-shortcut">
+  <span class="fbk-menu-shortcut-label">${t("menu.language")}</span>
+  <button type="button" id="fbk-lang-en" class="fbk-mini${language === "en" ? " is-active" : ""}" aria-pressed="${language === "en"}">EN</button>
+  <button type="button" id="fbk-lang-ar" class="fbk-mini${language === "ar" ? " is-active" : ""}" aria-pressed="${language === "ar"}">AR</button>
+  </div>
+  ${authOwnedByHost ? `<div class="fbk-menu-note fbk-caption">${t("menu.extensionSignedInNote")}</div>` : `<button class="fbk-menu-item" id="fbk-signout" role="menuitem">${ICON.logout}<span>${t("menu.signOut")}</span></button>`}
+  </div>`,
     // Collapsed state: a small floating launcher that re-opens the overlay.
     // `rtl` makes start/end resolve against the host page direction (the shadow
     // UI is otherwise forced LTR), so e.g. `top-end` lands top-left on an RTL page.
@@ -1321,11 +1292,11 @@
       const badgeCount = hasUnread ? unreadNotifyCount : count;
       const openLabel = t("launcher.openFeedbackFor", { brand: escapeHtml(getBrandName()) });
       return `
-        <button class="fbk-launcher fbk-pos-${position || "bottom-end"}${rtl ? " fbk-rtl" : ""}" id="fbk-launcher" title="${openLabel}" aria-label="${openLabel}">
-          <span class="fbk-launcher-ring" aria-hidden="true"></span>
-          ${ICON.bubbleLg}
-          ${badgeCount ? `<span class="fbk-launcher-badge${hasUnread ? " fbk-notify-badge" : ""}">${badgeCount > 99 ? "99+" : badgeCount}</span>` : ""}
-        </button>`;
+  <button class="fbk-launcher fbk-pos-${position || "bottom-end"}${rtl ? " fbk-rtl" : ""}" id="fbk-launcher" title="${openLabel}" aria-label="${openLabel}">
+  <span class="fbk-launcher-ring" aria-hidden="true"></span>
+  ${ICON.bubbleLg}
+  ${badgeCount ? `<span class="fbk-launcher-badge${hasUnread ? " fbk-notify-badge" : ""}">${badgeCount > 99 ? "99+" : badgeCount}</span>` : ""}
+  </button>`;
     },
     empty: (msg) => `<div class="fbk-empty">${msg}</div>`,
     // One toast card. `role="alert"` for danger (assertive — interrupts) vs `role="status"` for
@@ -1338,12 +1309,12 @@
       const icon = variant === "success" ? ICON.checkPlain : variant === "warn" ? ICON.warnTriangle : ICON.dangerCircle;
       const role = variant === "danger" ? "alert" : "status";
       return `
-        <div class="fbk-toast fbk-toast-${variant}" role="${role}">
-          <div class="fbk-toast-icon" aria-hidden="true">${icon}</div>
-          <div class="fbk-toast-content"><span class="fbk-toast-message">${escapeHtml(message)}</span></div>
-          ${actionLabel ? `<button type="button" class="fbk-toast-action">${escapeHtml(actionLabel)}</button>` : ""}
-          <button type="button" class="fbk-toast-close" aria-label="Dismiss notification">${ICON.close}</button>
-        </div>`;
+  <div class="fbk-toast fbk-toast-${variant}" role="${role}">
+  <div class="fbk-toast-icon" aria-hidden="true">${icon}</div>
+  <div class="fbk-toast-content"><span class="fbk-toast-message">${escapeHtml(message)}</span></div>
+  ${actionLabel ? `<button type="button" class="fbk-toast-action">${escapeHtml(actionLabel)}</button>` : ""}
+  <button type="button" class="fbk-toast-close" aria-label="Dismiss notification">${ICON.close}</button>
+  </div>`;
     },
     // Status filter as a dropdown (rather than a row of chip buttons) — keeps the filter bar compact.
     // Filter labels themselves are server-provided status-catalog text (customizable per project) —
@@ -1351,48 +1322,48 @@
     // Wrapped in a <label> with a visible text label (not just the select's own title tooltip) —
     // sits beside envFilterSelect, which follows the same fbk-filter-field shape.
     statusFilterSelect: (filters, active, counts) => `<label class="fbk-filter-field">
-             <span class="fbk-filter-field-label">${t("sidebar.status")}</span>
-             <select class="fbk-status-select" id="fbk-status-filter" title="${t("sidebar.filterByStatus")}">
-               ${filters.map((f) => {
+  <span class="fbk-filter-field-label">${t("sidebar.status")}</span>
+  <select class="fbk-status-select" id="fbk-status-filter" title="${t("sidebar.filterByStatus")}">
+  ${filters.map((f) => {
       var _a2;
       return `<option value="${f.key}" ${f.key === active ? "selected" : ""}>${escapeHtml(f.label)} (${(_a2 = counts[f.key]) != null ? _a2 : 0})</option>`;
     }).join("")}
-             </select>
-           </label>`,
+  </select>
+  </label>`,
     // Environment filter — sits beside the status filter (see statusFilterSelect) rather than in the
     // sidebar head, so both scoping controls live together. `fixedEnvLabel` renders a read-only
     // value instead of a select when the install pinned the environment, or the project turned the
     // switcher off for everyone (see `showEnvironmentSelector`); null/undefined renders the switcher.
     envFilterSelect: (fixedEnvLabel, currentValue) => `<label class="fbk-filter-field">
-             <span class="fbk-filter-field-label">${t("toolbar.environment")}</span>
-             ${fixedEnvLabel ? `<span class="fbk-env-label fbk-caption" title="${t("toolbar.envFixedTitle")}">${escapeHtml(fixedEnvLabel)}</span>` : `<select class="fbk-input fbk-env-select" id="fbk-env" title="${t("toolbar.envSwitchTitle")}">
-                 <option value="all" ${currentValue === "all" ? "selected" : ""}>${t("toolbar.envAll")}</option>
-                 <option value="local" ${currentValue === "local" ? "selected" : ""}>${t("toolbar.envLocal")}</option>
-                 <option value="staging" ${currentValue === "staging" ? "selected" : ""}>${t("toolbar.envStaging")}</option>
-                 <option value="production" ${currentValue === "production" ? "selected" : ""}>${t("toolbar.envProduction")}</option>
-               </select>`}
-           </label>`,
+  <span class="fbk-filter-field-label">${t("toolbar.environment")}</span>
+  ${fixedEnvLabel ? `<span class="fbk-env-label fbk-caption" title="${t("toolbar.envFixedTitle")}">${escapeHtml(fixedEnvLabel)}</span>` : `<select class="fbk-input fbk-env-select" id="fbk-env" title="${t("toolbar.envSwitchTitle")}">
+  <option value="all" ${currentValue === "all" ? "selected" : ""}>${t("toolbar.envAll")}</option>
+  <option value="local" ${currentValue === "local" ? "selected" : ""}>${t("toolbar.envLocal")}</option>
+  <option value="staging" ${currentValue === "staging" ? "selected" : ""}>${t("toolbar.envStaging")}</option>
+  <option value="production" ${currentValue === "production" ? "selected" : ""}>${t("toolbar.envProduction")}</option>
+  </select>`}
+  </label>`,
     // "Mine only" — a real switch (track + thumb), not a filter chip, since it's a single on/off
     // setting rather than one choice among several. Lives inside #fbk-filters alongside the
     // status/environment/author fields (see renderSidebar) so it hides/shows with the rest of the
     // filter bar. Rendered only when a user is logged in (see renderSidebar's canMine).
     mineToggle: (active) => `<div class="fbk-toggle-row">
-             <span class="fbk-toggle-row-label">&#x1f464; ${t("sidebar.mineOnly")}</span>
-             <button type="button" class="fbk-toggle-switch${active ? " active" : ""}" id="fbk-mine-toggle" role="switch" aria-checked="${active ? "true" : "false"}" title="${t("sidebar.showOnlyMyComments")}" aria-label="${t("sidebar.showOnlyMyComments")}">
-               <span class="fbk-toggle-switch-thumb"></span>
-             </button>
-           </div>`,
+  <span class="fbk-toggle-row-label">&#x1f464; ${t("sidebar.mineOnly")}</span>
+  <button type="button" class="fbk-toggle-switch${active ? " active" : ""}" id="fbk-mine-toggle" role="switch" aria-checked="${active ? "true" : "false"}" title="${t("sidebar.showOnlyMyComments")}" aria-label="${t("sidebar.showOnlyMyComments")}">
+  <span class="fbk-toggle-switch-thumb"></span>
+  </button>
+  </div>`,
     // User filter — only rendered when the list has comments from >1 author. Wrapped in the same
     // labeled fbk-filter-field shape as statusFilterSelect/envFilterSelect (a visible label above
     // it, not just the select's own title tooltip) — it sits beside "Mine only" in the filter bar's
     // first row (see renderSidebar).
     authorFilter: (authors, selectedId) => `<label class="fbk-filter-field">
-             <span class="fbk-filter-field-label">${t("sidebar.user")}</span>
-             <select class="fbk-userfilter" id="fbk-author-filter" title="${t("sidebar.filterByUser")}">
-               <option value="">&#x1f465; ${t("sidebar.allUsers")}</option>
-               ${authors.map((a) => `<option value="${escapeHtml(a.id)}" ${a.id === selectedId ? "selected" : ""}>${escapeHtml(a.name)}</option>`).join("")}
-             </select>
-           </label>`,
+  <span class="fbk-filter-field-label">${t("sidebar.user")}</span>
+  <select class="fbk-userfilter" id="fbk-author-filter" title="${t("sidebar.filterByUser")}">
+  <option value="">&#x1f465; ${t("sidebar.allUsers")}</option>
+  ${authors.map((a) => `<option value="${escapeHtml(a.id)}" ${a.id === selectedId ? "selected" : ""}>${escapeHtml(a.name)}</option>`).join("")}
+  </select>
+  </label>`,
     // Kebab-menu dropdown for a comment card's own actions — rendered into the shared portal host
     // (#fbk-menu-host), anchored under the card's kebab button by toggleCardMenu. Copy-prompt/
     // complete/reopen are workflow actions open to anyone who can see the card; visibility/edit are
@@ -1400,15 +1371,15 @@
     // exactly, just relocated). `isQuickAccess` matches TPL.card's own gate on "Complete"/"Reopen" —
     // a quick-access (Client) account never gets to change its own feedback's status directly.
     cardMenu: (c, isQuickAccess, canEditFields = false) => `
-        <div class="fbk-card-menu" id="fbk-card-menu" role="menu">
-          ${c.status === "open" || c.status === "pending-apply" ? `<button type="button" class="fbk-card-menu-item" data-menu-act="copy-apply-prompt" role="menuitem">${ICON.copy}<span>${t("card.copyApplyPrompt")}</span></button>` : ""}
-          ${!isQuickAccess && (c.status === "open" || c.status === "pending-apply") ? `<button type="button" class="fbk-card-menu-item" data-menu-act="complete" role="menuitem">${ICON.check}<span>${t("card.complete")}</span></button>` : ""}
-          ${!isQuickAccess && (c.status === "applied" || c.status === "archived") ? `<button type="button" class="fbk-card-menu-item" data-menu-act="reopen" role="menuitem">${ICON.reopen}<span>${t("card.reopen")}</span></button>` : ""}
-          ${c._mine ? `<button type="button" class="fbk-card-menu-item" data-menu-act="visibility" data-private="${c.isPrivate ? "false" : "true"}" role="menuitem">${c.isPrivate ? ICON.unlock : ICON.lock}<span>${c.isPrivate ? t("card.makePublic") : t("card.makePrivate")}</span></button>` : ""}
-          ${c._mine ? `<button type="button" class="fbk-card-menu-item" data-menu-act="edit" role="menuitem">${ICON.pencil}<span>${t("card.edit")}</span></button>` : ""}
-          ${canEditFields ? `<button type="button" class="fbk-card-menu-item" data-menu-act="edit-fields" role="menuitem">${ICON.extraFields}<span>${t("fields.extra")}</span></button>` : ""}
-          ${c.status === "open" ? `<button type="button" class="fbk-card-menu-item danger" data-menu-act="delete" role="menuitem">${ICON.trash}<span>${t("card.delete")}</span></button>` : ""}
-        </div>`,
+  <div class="fbk-card-menu" id="fbk-card-menu" role="menu">
+  ${c.status === "open" || c.status === "pending-apply" ? `<button type="button" class="fbk-card-menu-item" data-menu-act="copy-apply-prompt" role="menuitem">${ICON.copy}<span>${t("card.copyApplyPrompt")}</span></button>` : ""}
+  ${!isQuickAccess && (c.status === "open" || c.status === "pending-apply") ? `<button type="button" class="fbk-card-menu-item" data-menu-act="complete" role="menuitem">${ICON.check}<span>${t("card.complete")}</span></button>` : ""}
+  ${!isQuickAccess && (c.status === "applied" || c.status === "archived") ? `<button type="button" class="fbk-card-menu-item" data-menu-act="reopen" role="menuitem">${ICON.reopen}<span>${t("card.reopen")}</span></button>` : ""}
+  ${c._mine ? `<button type="button" class="fbk-card-menu-item" data-menu-act="visibility" data-private="${c.isPrivate ? "false" : "true"}" role="menuitem">${c.isPrivate ? ICON.unlock : ICON.lock}<span>${c.isPrivate ? t("card.makePublic") : t("card.makePrivate")}</span></button>` : ""}
+  ${c._mine ? `<button type="button" class="fbk-card-menu-item" data-menu-act="edit" role="menuitem">${ICON.pencil}<span>${t("card.edit")}</span></button>` : ""}
+  ${canEditFields ? `<button type="button" class="fbk-card-menu-item" data-menu-act="edit-fields" role="menuitem">${ICON.extraFields}<span>${t("fields.extra")}</span></button>` : ""}
+  ${c.status === "open" ? `<button type="button" class="fbk-card-menu-item danger" data-menu-act="delete" role="menuitem">${ICON.trash}<span>${t("card.delete")}</span></button>` : ""}
+  </div>`,
     // Kebab-menu dropdown for a single REPLY (see TPL.card's `kebab` above) — shares the same
     // #fbk-card-menu id/class/portal as the comment's own menu (only one can ever be open at once),
     // rendered by toggleReplyMenu. Copy-apply-prompt reuses the PARENT COMMENT's id — applying
@@ -1416,26 +1387,26 @@
     // more convenient place to reach it while reading a specific reply's context; gated on the same
     // comment status as the comment's own copy-apply-prompt item.
     replyMenu: (c, r) => `
-        <div class="fbk-card-menu" id="fbk-card-menu" role="menu">
-          ${c.status === "open" || c.status === "pending-apply" ? `<button type="button" class="fbk-card-menu-item" data-menu-act="copy-apply-prompt" role="menuitem">${ICON.copy}<span>${t("card.copyApplyPrompt")}</span></button>` : ""}
-          ${r._mine ? `<button type="button" class="fbk-card-menu-item" data-menu-act="edit" role="menuitem">${ICON.pencil}<span>${t("card.edit")}</span></button>` : ""}
-          ${r._mine ? `<button type="button" class="fbk-card-menu-item danger" data-menu-act="delete" role="menuitem">${ICON.trash}<span>${t("card.delete")}</span></button>` : ""}
-        </div>`,
+  <div class="fbk-card-menu" id="fbk-card-menu" role="menu">
+  ${c.status === "open" || c.status === "pending-apply" ? `<button type="button" class="fbk-card-menu-item" data-menu-act="copy-apply-prompt" role="menuitem">${ICON.copy}<span>${t("card.copyApplyPrompt")}</span></button>` : ""}
+  ${r._mine ? `<button type="button" class="fbk-card-menu-item" data-menu-act="edit" role="menuitem">${ICON.pencil}<span>${t("card.edit")}</span></button>` : ""}
+  ${r._mine ? `<button type="button" class="fbk-card-menu-item danger" data-menu-act="delete" role="menuitem">${ICON.trash}<span>${t("card.delete")}</span></button>` : ""}
+  </div>`,
     card: (c, i, isQuickAccess) => {
       const cls = c.status === "pending-apply" ? "pending" : c.status === "applied" ? "applied" : c.status === "archived" ? "archived" : "";
       const statusPill = c.status === "applied" && c.deployedAt ? `<span class="fbk-pill status-applied" title="${escapeHtml(t("card.deployedIn", { sha: (c.deployedSha || "").slice(0, 7) }))}">&#x2713; ${t("card.live")}</span>` : c.status === "applied" ? `<span class="fbk-pill status-applied">&#x2713; ${t("card.completed")}</span>` : c.status === "pending-apply" ? `<span class="fbk-pill status-pending">${t("card.pending")}</span>` : c.status === "archived" ? `<span class="fbk-pill status-archived">&#x1f4e6; ${t("card.archived")}</span>` : "";
       const verifiedPill = c.status === "applied" && c.verifiedAt ? `<span class="fbk-pill verified">&#x2713; ${t("card.verified")}</span>` : "";
       const verifyGroup = c.status === "applied" && !c.verifiedAt && c._canVerify ? `<span class="fbk-verify-group">
-          <button class="fbk-mini fbk-verify-ok" data-act="verify-ok" data-id="${c.id}" title="${t("card.looksRight")}">${ICON.thumbsUp}<span>${t("card.looksRight")}</span></button>
-          <button class="fbk-mini fbk-verify-reject" data-act="verify-reject" data-id="${c.id}" title="${t("card.notFixed")}">${ICON.thumbsDown}<span>${t("card.notFixed")}</span></button>
-        </span>` : "";
+  <button class="fbk-mini fbk-verify-ok" data-act="verify-ok" data-id="${c.id}" title="${t("card.looksRight")}">${ICON.thumbsUp}<span>${t("card.looksRight")}</span></button>
+  <button class="fbk-mini fbk-verify-reject" data-act="verify-reject" data-id="${c.id}" title="${t("card.notFixed")}">${ICON.thumbsDown}<span>${t("card.notFixed")}</span></button>
+  </span>` : "";
       const verifyBox = c.status === "applied" && !c.verifiedAt && c._canVerify ? `<div class="fbk-verify-box fbk-hidden" id="fbk-verify-box-${c.id}">
-          <input class="fbk-input fbk-verify-note-input" id="fbk-verify-note-${c.id}" placeholder="${t("card.explainNotFixed")}" />
-          <div class="fbk-verify-actions">
-            <button class="fbk-mini primary" data-act="verify-submit" data-id="${c.id}">${t("card.submit")}</button>
-            <button class="fbk-mini" data-act="verify-cancel" data-id="${c.id}">${t("toolbar.cancel")}</button>
-          </div>
-        </div>` : "";
+  <input class="fbk-input fbk-verify-note-input" id="fbk-verify-note-${c.id}" placeholder="${t("card.explainNotFixed")}" />
+  <div class="fbk-verify-actions">
+  <button class="fbk-mini primary" data-act="verify-submit" data-id="${c.id}">${t("card.submit")}</button>
+  <button class="fbk-mini" data-act="verify-cancel" data-id="${c.id}">${t("toolbar.cancel")}</button>
+  </div>
+  </div>` : "";
       const commitLink = c.status === "applied" && c.commitUrl ? `<a class="fbk-pill" href="${escapeHtml(c.commitUrl)}" target="_blank" rel="noopener noreferrer" title="${t("card.viewCommit")}">&#x1f517; ${t("card.commit")}</a>` : "";
       const payloadPill = c.hasPayloadFlag ? `<span class="fbk-pill fbk-payload-flag" title="${escapeHtml((c.payloadFlags || []).join(", "))}">&#x26a0; ${t("card.containsSecretPayload")}</span>` : "";
       const replies = (c.replies || []).map((r) => {
@@ -1450,16 +1421,16 @@
           if (knownAuthorName) attributionParts.push(t("card.aiVia", { name: escapeHtml(knownAuthorName) }));
           const attribution = attributionParts.length > 0 ? `<span class="fbk-reply-ai-author">${attributionParts.join(" &middot; ")}</span>` : "";
           return `<details class="fbk-reply fbk-reply-ai" data-reply-id="${(_a2 = r.id) != null ? _a2 : ""}">
-            <summary class="fbk-reply-ai-summary">&#x1f916; <b>${t("card.automatedReply")}</b> ${attribution}</summary>
-            <div class="fbk-reply-main"><span class="fbk-reply-body">${body}</span></div>
-          </details>`;
+  <summary class="fbk-reply-ai-summary">&#x1f916; <b>${t("card.automatedReply")}</b> ${attribution}</summary>
+  <div class="fbk-reply-main"><span class="fbk-reply-body">${body}</span></div>
+  </details>`;
         }
         const showReplyKebab = r._mine || c.status === "open" || c.status === "pending-apply";
         const kebab = showReplyKebab ? `<button type="button" class="fbk-mini fbk-icon fbk-reply-kebab" data-act="reply-menu" data-comment-id="${c.id}" data-reply-id="${(_b = r.id) != null ? _b : ""}" title="${t("card.moreActions")}" aria-label="${t("card.moreActions")}" aria-haspopup="true" aria-expanded="false">${ICON.kebab}</button>` : "";
         return `<div class="fbk-reply" data-reply-id="${(_c = r.id) != null ? _c : ""}">
-          <div class="fbk-reply-main"><b>${authorName}:</b> <span class="fbk-reply-body">${body}</span></div>
-          ${kebab}
-        </div>`;
+  <div class="fbk-reply-main"><b>${authorName}:</b> <span class="fbk-reply-body">${body}</span></div>
+  ${kebab}
+  </div>`;
       }).join("");
       const envInt = c.environment;
       const envLabel = envInt === 1 ? t("card.envLocal") : envInt === 2 ? t("card.envStaging") : envInt === 3 ? t("card.envProduction") : envInt ? String(envInt) : "";
@@ -1476,96 +1447,92 @@
       })();
       const shotUrl = c.element && c.element.screenshotUrl;
       const shot = shotUrl ? `<a class="fbk-shot-link" href="${escapeHtml(shotUrl)}" target="_blank" rel="noopener noreferrer" title="Open full screenshot">
-            <img class="fbk-shot" src="${escapeHtml(shotUrl)}" alt="Element screenshot" loading="lazy" />
-          </a>` : "";
+  <img class="fbk-shot" src="${escapeHtml(shotUrl)}" alt="Element screenshot" loading="lazy" />
+  </a>` : "";
       return `
-          <div class="fbk-card ${cls}" data-id="${c.id}">
-            <div class="fbk-meta">
-              <button type="button" class="fbk-badge" data-act="flash-pin" data-id="${c.id}" title="${t("card.jumpToPin")}">#${c.id}</button>
-              ${envLabel ? `<span class="fbk-pill env">${escapeHtml(envLabel)}</span>` : ""}
-              ${payloadPill}
-              ${statusPill}
-              ${verifiedPill}
-              ${verifyGroup}
-              ${commitLink}
-              ${c._mine || c.status === "open" || c.status === "pending-apply" || !isQuickAccess && (c.status === "applied" || c.status === "archived") ? `<div class="fbk-actions-end">
-                <button class="fbk-mini fbk-icon fbk-card-kebab" data-act="card-menu" data-id="${c.id}" title="${t("card.moreActions")}" aria-label="${t("card.moreActions")}" aria-haspopup="true" aria-expanded="false">${ICON.kebab}</button>
-              </div>` : ""}
-            </div>
-            ${pagePath ? `<div class="fbk-caption fbk-card-page" title="${escapeHtml(pageUrl)}">&#x1f4cd; ${escapeHtml(pagePath)}</div>` : ""}
-            <div class="fbk-text fbk-text-clamped">${escapeHtml(c.body || c.text || "")}</div><button type="button" class="fbk-read-more-btn fbk-hidden" data-act="toggle-read-more" data-id="${c.id}">${t("card.readMore")}</button>
-            ${c.customFields && c.customFields.length > 0 ? `<div class="fbk-card-fields-wrapper">
-              <dl class="fbk-card-fields">
-                ${c.customFields.map((f) => {
-        const isUrl = f.type === 2 || f.type === "Url";
+  <div class="fbk-card ${cls}" data-id="${c.id}">
+  <div class="fbk-meta">
+  <button type="button" class="fbk-badge" data-act="flash-pin" data-id="${c.id}" title="${t("card.jumpToPin")}">#${c.id}</button>
+  ${envLabel ? `<span class="fbk-pill env">${escapeHtml(envLabel)}</span>` : ""}
+  ${payloadPill}
+  ${statusPill}
+  ${verifiedPill}
+  ${verifyGroup}
+  ${commitLink}
+  ${c._mine || c.status === "open" || c.status === "pending-apply" || !isQuickAccess && (c.status === "applied" || c.status === "archived") ? `<div class="fbk-actions-end">
+  <button class="fbk-mini fbk-icon fbk-card-kebab" data-act="card-menu" data-id="${c.id}" title="${t("card.moreActions")}" aria-label="${t("card.moreActions")}" aria-haspopup="true" aria-expanded="false">${ICON.kebab}</button>
+  </div>` : ""}
+  </div>
+  ${pagePath ? `<div class="fbk-caption fbk-card-page" title="${escapeHtml(pageUrl)}">&#x1f4cd; ${escapeHtml(pagePath)}</div>` : ""}
+  <div class="fbk-text fbk-text-clamped" data-id="${c.id}"><button type="button" class="fbk-read-more-btn fbk-hidden" data-act="toggle-read-more" data-id="${c.id}">… ${t("card.readMore")}</button><span class="fbk-text-content">${escapeHtml(c.body || c.text || "")}</span></div>
+  ${c.customFields && c.customFields.length > 0 ? `<div class="fbk-card-fields-wrapper">
+  <dl class="fbk-card-fields">
+  ${c.customFields.map((f) => {
         let valHtml = escapeHtml(f.value);
-        if (isUrl) {
-          let u = null;
+        if (f.type === 2 || f.type === "Url") {
           try {
-            u = new URL(f.value);
+            const u = new URL(f.value);
+            if (u.protocol === "http:" || u.protocol === "https:") {
+              const full = u.host + u.pathname;
+              valHtml = `<a href="${escapeHtml(f.value)}" target="_blank" rel="noopener noreferrer">${escapeHtml(full.length > 60 ? full.slice(0, 60) + "…" : full)}</a>`;
+            }
           } catch {
-            u = null;
-          }
-          if (u && (u.protocol === "http:" || u.protocol === "https:")) {
-            const full = u.host + u.pathname;
-            const d = escapeHtml(full.length > 60 ? full.substring(0, 60) + "…" : full);
-            valHtml = `<a href="${escapeHtml(f.value)}" target="_blank" rel="noopener noreferrer">${d}</a>`;
           }
         }
-        return `<dt>${escapeHtml(f.label)}</dt><dd>${valHtml}</dd>`;
+        return `<dt>${escapeHtml(f.label)}</dt><dd class="fbk-card-field-val"><span class="fbk-card-field-val-text">${valHtml}</span><button type="button" class="fbk-field-more-btn fbk-hidden" data-act="toggle-field-more">${t("fields.seeMore")}</button></dd>`;
       }).join("")}
-              </dl>
-              ${!isQuickAccess && !!(c._mine || c._canVerify) ? `<button type="button" class="fbk-card-fields-edit-btn" data-act="edit-fields" data-id="${c.id}" title="${t("fields.extra")}" aria-label="${t("fields.extra")}">${ICON.pencil}</button>` : ""}
-            </div>` : ""}
-            ${shot}
-            <div class="fbk-sub">${escapeHtml(authorLabel)} &middot; ${c.createdAt ? new Date(c.createdAt).toLocaleDateString() : ""}${c.editedAt ? ` &middot; <span class="fbk-edited">${t("card.edited")}</span>` : ""}</div>
-            ${verifyBox}
-            ${replies ? `<div class="fbk-replies">${replies}</div>` : ""}
-            <div class="fbk-reply-row">
-              <button type="button" class="fbk-mini fbk-reply-toggle" data-act="reply-toggle" data-id="${c.id}">${ICON.bubbleSm}<span>${t("card.reply")}</span></button>
-              <textarea class="fbk-textarea fbk-reply-input fbk-hidden" placeholder="${t("card.replyPlaceholder")}" data-id="${c.id}" rows="1"></textarea>
-            </div>
-            <div class="fbk-actions">
-              ${isQuickAccess ? "" : c.status === "applied" || c.status === "archived" ? "" : `<button class="fbk-mini ${c.status === "pending-apply" ? "apply" : "ready"}" data-act="apply" data-id="${c.id}" title="${c.status === "pending-apply" ? t("card.markedReadyClickToUnmark") : t("card.markReadyToApply")}">
-                ${ICON.flag}<span>${t("card.ready")}</span>
-              </button>`}
-              ${!isQuickAccess && c.status === "applied" ? `<button class="fbk-mini" data-act="archive" data-id="${c.id}" title="${t("card.archive")}">${ICON.archive}<span>${t("card.archive")}</span></button>` : ""}
-            </div>
-          </div>`;
+  </dl>
+  ${!isQuickAccess && !!(c._mine || c._canVerify) ? `<button type="button" class="fbk-card-fields-edit-btn" data-act="edit-fields" data-id="${c.id}" title="${t("fields.extra")}" aria-label="${t("fields.extra")}">${ICON.pencil}</button>` : ""}
+  </div>` : ""}
+  ${shot}
+  <div class="fbk-sub">${escapeHtml(authorLabel)} &middot; ${c.createdAt ? new Date(c.createdAt).toLocaleDateString() : ""}${c.editedAt ? ` &middot; <span class="fbk-edited">${t("card.edited")}</span>` : ""}</div>
+  ${verifyBox}
+  ${replies ? `<div class="fbk-replies">${replies}</div>` : ""}
+  <div class="fbk-reply-row">
+  <button type="button" class="fbk-mini fbk-reply-toggle" data-act="reply-toggle" data-id="${c.id}">${ICON.bubbleSm}<span>${t("card.reply")}</span></button>
+  <textarea class="fbk-textarea fbk-reply-input fbk-hidden" placeholder="${t("card.replyPlaceholder")}" data-id="${c.id}" rows="1"></textarea>
+  </div>
+  <div class="fbk-actions">
+  ${isQuickAccess ? "" : c.status === "applied" || c.status === "archived" ? "" : `<button class="fbk-mini ${c.status === "pending-apply" ? "apply" : "ready"}" data-act="apply" data-id="${c.id}" title="${c.status === "pending-apply" ? t("card.markedReadyClickToUnmark") : t("card.markReadyToApply")}">
+  ${ICON.flag}<span>${t("card.ready")}</span>
+  </button>`}
+  ${!isQuickAccess && c.status === "applied" ? `<button class="fbk-mini" data-act="archive" data-id="${c.id}" title="${t("card.archive")}">${ICON.archive}<span>${t("card.archive")}</span></button>` : ""}
+  </div>
+  </div>`;
     },
     // `bugReportEnabled`: only true when the project has page-context capture turned on — the
     // checkbox controls whether the console/network buffer already sitting in memory gets attached
     // to THIS comment; it never controls whether that buffer exists (see pagecontext.ts).
     popover: (meta, left, top, shotEnabled, actions = [], bugReportEnabled = false, commentFields = []) => `
-        <div class="fbk-popover" data-fbk-left="${left}" data-fbk-top="${top}">
-          <div class="fbk-popover-nav">
-            <button type="button" class="fbk-popover-nav-btn" id="fbk-target-up" data-toggle="tooltip" data-placement="top" title="${t("popover.selectParentElement")}" aria-label="${t("popover.selectParentElement")}">${ICON.chevronUp}</button>
-            <button type="button" class="fbk-popover-nav-btn" id="fbk-target-down" data-toggle="tooltip" data-placement="top" title="${t("popover.selectFirstChildElement")}" aria-label="${t("popover.selectFirstChildElement")}">${ICON.chevronDown}</button>
-            <button type="button" class="fbk-popover-private-toggle" id="fbk-comment-private" data-toggle="tooltip" data-placement="top" title="${t("card.makePrivateOnlyYou")}" aria-label="${t("card.makePrivate")}" aria-pressed="false">${ICON.unlock}</button>
-          </div>
-          <h3 id="fbk-popover-title">${t("popover.commentOn")} &lt;${escapeHtml(meta._tag)}&gt;</h3>
-          <div class="fbk-snippet" id="fbk-popover-snippet">${escapeHtml(meta._snapshotPreview.slice(0, 200))}</div>
-          <div class="fbk-src${meta._sourcePath ? "" : " fbk-hidden"}" id="fbk-popover-src">&#x26ec; <span id="fbk-popover-src-path">${escapeHtml(meta._sourcePath || "")}</span></div>
-          <textarea class="fbk-textarea" id="fbk-comment-text" placeholder="${t("popover.whatShouldChange")}"></textarea>
-          ${actions.length ? `<div class="fbk-field-label">${t("popover.predefinedPrompts")}</div>
-          <div class="fbk-ms" id="fbk-action-ms">
-            <div class="fbk-ms-control" id="fbk-action-ms-control">
-              <div class="fbk-ms-chips" id="fbk-action-ms-chips"></div>
-              <input type="text" class="fbk-ms-input" id="fbk-action-ms-input" placeholder="${t("popover.searchPrompts")}" autocomplete="off" role="combobox" aria-expanded="false" aria-haspopup="listbox" aria-label="${t("popover.searchPredefinedPrompts")}" />
-            </div>
-            <div class="fbk-ms-list" id="fbk-action-ms-list" role="listbox" hidden></div>
-          </div>` : ""}
-          ${commentFields.length > 0 ? `<div class="fbk-popover-more-fields-row"><button type="button" id="fbk-more-fields" class="fbk-popover-more-link" aria-expanded="false" aria-controls="fbk-extra-fields">${t("fields.extra")}</button></div>
-          <div id="fbk-extra-fields" class="fbk-extra-fields" hidden>${renderFieldInputs(commentFields, {}, "cf")}</div>` : ""}
-          ${shotEnabled || bugReportEnabled ? `<div class="fbk-popover-toggles">
-            ${shotEnabled ? `<div class="fbk-popover-toggle-row"><span class="fbk-popover-toggle-label">${ICON.camera} ${t("popover.attachScreenshot")}</span><button type="button" class="fbk-toggle-switch" id="fbk-comment-shot" role="switch" aria-checked="false" aria-label="${t("popover.attachScreenshot")}" title="${t("popover.attachScreenshot")}"><span class="fbk-toggle-switch-thumb"></span></button></div>` : ""}
-            ${bugReportEnabled ? `<div class="fbk-popover-toggle-row"><span class="fbk-popover-toggle-label" title="${t("popover.reportBugTitle")}">${ICON.bug} ${t("popover.reportAsABug")}</span><button type="button" class="fbk-toggle-switch" id="fbk-comment-bug" role="switch" aria-checked="false" aria-label="${t("popover.reportAsABug")}" title="${t("popover.reportBugTitle")}"><span class="fbk-toggle-switch-thumb"></span></button></div>` : ""}
-          </div>` : ""}
-          <div class="fbk-reply-row">
-            <button class="fbk-btn primary fbk-btn-fill" id="fbk-submit">${t("popover.add")}</button>
-            <button class="fbk-mini" id="fbk-cancel">${t("toolbar.cancel")}</button>
-          </div>
-        </div>`,
+  <div class="fbk-popover" data-fbk-left="${left}" data-fbk-top="${top}">
+  <div class="fbk-popover-nav">
+  <button type="button" class="fbk-popover-nav-btn" id="fbk-target-up" data-toggle="tooltip" data-placement="top" title="${t("popover.selectParentElement")}" aria-label="${t("popover.selectParentElement")}">${ICON.chevronUp}</button>
+  <button type="button" class="fbk-popover-nav-btn" id="fbk-target-down" data-toggle="tooltip" data-placement="top" title="${t("popover.selectFirstChildElement")}" aria-label="${t("popover.selectFirstChildElement")}">${ICON.chevronDown}</button>
+  <button type="button" class="fbk-popover-private-toggle" id="fbk-comment-private" data-toggle="tooltip" data-placement="top" title="${t("card.makePrivateOnlyYou")}" aria-label="${t("card.makePrivate")}" aria-pressed="false">${ICON.unlock}</button>
+  </div>
+  <h3 id="fbk-popover-title">${t("popover.commentOn")} &lt;${escapeHtml(meta._tag)}&gt;</h3>
+  <div class="fbk-snippet" id="fbk-popover-snippet">${escapeHtml(meta._snapshotPreview.slice(0, 200))}</div>
+  <div class="fbk-src${meta._sourcePath ? "" : " fbk-hidden"}" id="fbk-popover-src">&#x26ec; <span id="fbk-popover-src-path">${escapeHtml(meta._sourcePath || "")}</span></div>
+  <textarea class="fbk-textarea" id="fbk-comment-text" placeholder="${t("popover.whatShouldChange")}"></textarea>
+  ${actions.length ? `<div class="fbk-field-label">${t("popover.predefinedPrompts")}</div>
+  <div class="fbk-ms" id="fbk-action-ms">
+  <div class="fbk-ms-control" id="fbk-action-ms-control">
+  <div class="fbk-ms-chips" id="fbk-action-ms-chips"></div>
+  <input type="text" class="fbk-ms-input" id="fbk-action-ms-input" placeholder="${t("popover.searchPrompts")}" autocomplete="off" role="combobox" aria-expanded="false" aria-haspopup="listbox" aria-label="${t("popover.searchPredefinedPrompts")}" />
+  </div>
+  <div class="fbk-ms-list" id="fbk-action-ms-list" role="listbox" hidden></div>
+  </div>` : ""}
+  ${commentFields.length > 0 ? `<div class="fbk-popover-more-fields-row"><button type="button" id="fbk-more-fields" class="fbk-popover-more-link" aria-expanded="false" aria-controls="fbk-extra-fields">${t("fields.extra")}</button></div>
+  <div id="fbk-extra-fields" class="fbk-extra-fields" hidden>${renderFieldInputs(commentFields, {}, "cf")}</div>` : ""}
+  ${shotEnabled || bugReportEnabled ? `<div class="fbk-popover-toggles">
+  ${shotEnabled ? `<div class="fbk-popover-toggle-row"><button type="button" class="fbk-toggle-switch fbk-toggle-switch-sm" id="fbk-comment-shot" role="switch" aria-checked="false" aria-label="${t("popover.attachScreenshot")}" title="${t("popover.attachScreenshot")}"><span class="fbk-toggle-switch-thumb"></span></button><span class="fbk-popover-toggle-label">${ICON.camera} ${t("popover.attachScreenshot")}</span></div>` : ""}
+  ${bugReportEnabled ? `<div class="fbk-popover-toggle-row"><button type="button" class="fbk-toggle-switch fbk-toggle-switch-sm" id="fbk-comment-bug" role="switch" aria-checked="false" aria-label="${t("popover.reportAsABug")}" title="${t("popover.reportBugTitle")}"><span class="fbk-toggle-switch-thumb"></span></button><span class="fbk-popover-toggle-label" title="${t("popover.reportBugTitle")}">${ICON.bug} ${t("popover.reportAsABug")}</span></div>` : ""}
+  </div>` : ""}
+  <div class="fbk-reply-row">
+  <button class="fbk-btn primary fbk-btn-fill" id="fbk-submit">${t("popover.add")}</button>
+  <button class="fbk-mini" id="fbk-cancel">${t("toolbar.cancel")}</button>
+  </div>
+  </div>`,
     // `isNew`: shows the attention ripple once, on the pin for the comment the viewer just added
     // this session (see element.ts's `_newPinId`) — never for a pin restored from a re-render.
     // `rect` only ever needs left/top (the pixel the pin's tip anchors to), not a full DOMRect —
@@ -1588,58 +1555,58 @@
       const label = `${t("pin.commentHash", { n: c.id })}${author ? t("pin.byAuthor", { author }) : ""}${bodyText ? `: ${bodyText}` : ""}`;
       const showMeta = !!(selector || replyCount);
       return `
-        <div class="fbk-pin-wrapper" data-id="${c.id}" data-fbk-left="${rect.left}" data-fbk-top="${rect.top}" data-fbk-tip-side="${tipSide}" data-fbk-tip-align="${tipAlign}">
-          <button type="button" class="fbk-pin fbk-pin-${status}" aria-label="${escapeHtml(label)}">
-            ${isNew ? '<span class="fbk-pin-ring" aria-hidden="true"></span>' : ""}
-            ${status === "applied" ? ICON.checkBold : `<span class="fbk-pin-number">${c.id}</span>`}
-          </button>
-          <div class="fbk-pin-tooltip" role="tooltip">
-            <div class="fbk-pin-tooltip-header">
-              <span class="fbk-pin-status-badge fbk-status-${status}">${statusLabel}</span>
-              ${author ? `<span class="fbk-pin-author">${escapeHtml(author)}</span>` : ""}
-              <span class="fbk-pin-time">${escapeHtml(timeAgo(c.createdAt))}</span>
-            </div>
-            ${bodyText ? `<p class="fbk-pin-tooltip-body">${escapeHtml(bodyText)}</p>` : ""}
-            ${showMeta ? `
-            <div class="fbk-pin-tooltip-meta">
-              ${selector ? `<span class="fbk-pin-tag" title="${escapeHtml(selector)}">${escapeHtml(selector)}</span>` : "<span></span>"}
-              ${replyCount ? `<span class="fbk-pin-reply-count">${ICON.bubbleSm} ${replyCount === 1 ? t("pin.reply") : t("pin.replies", { n: replyCount })}</span>` : ""}
-            </div>` : ""}
-          </div>
-        </div>`;
+  <div class="fbk-pin-wrapper" data-id="${c.id}" data-fbk-left="${rect.left}" data-fbk-top="${rect.top}" data-fbk-tip-side="${tipSide}" data-fbk-tip-align="${tipAlign}">
+  <button type="button" class="fbk-pin fbk-pin-${status}" aria-label="${escapeHtml(label)}">
+  ${isNew ? '<span class="fbk-pin-ring" aria-hidden="true"></span>' : ""}
+  ${status === "applied" ? ICON.checkBold : `<span class="fbk-pin-number">${c.id}</span>`}
+  </button>
+  <div class="fbk-pin-tooltip" role="tooltip">
+  <div class="fbk-pin-tooltip-header">
+  <span class="fbk-pin-status-badge fbk-status-${status}">${statusLabel}</span>
+  ${author ? `<span class="fbk-pin-author">${escapeHtml(author)}</span>` : ""}
+  <span class="fbk-pin-time">${escapeHtml(timeAgo(c.createdAt))}</span>
+  </div>
+  ${bodyText ? `<p class="fbk-pin-tooltip-body">${escapeHtml(bodyText)}</p>` : ""}
+  ${showMeta ? `
+  <div class="fbk-pin-tooltip-meta">
+  ${selector ? `<span class="fbk-pin-tag" title="${escapeHtml(selector)}">${escapeHtml(selector)}</span>` : "<span></span>"}
+  ${replyCount ? `<span class="fbk-pin-reply-count">${ICON.bubbleSm} ${replyCount === 1 ? t("pin.reply") : t("pin.replies", { n: replyCount })}</span>` : ""}
+  </div>` : ""}
+  </div>
+  </div>`;
     },
     // 2+ pins within 24px of each other (see element.ts's renderPins clustering) render as one
     // expandable "N+" badge instead of stacking indistinguishable pins on top of each other.
     // Clicking it opens pinClusterMenu below, listing each one individually.
     pinCluster: (comments, rect) => `
-        <div class="fbk-pin-wrapper" data-ids="${comments.map((c) => c.id).join(",")}" data-fbk-left="${rect.left}" data-fbk-top="${rect.top}">
-          <button type="button" class="fbk-pin fbk-pin-cluster" aria-label="${t("pin.overlappingComments", { n: comments.length })}" aria-expanded="false">
-            <span class="fbk-pin-cluster-count">${comments.length}+</span>
-            <span class="fbk-pin-cluster-dots" aria-hidden="true">&bull;&bull;&bull;</span>
-          </button>
-        </div>`,
+  <div class="fbk-pin-wrapper" data-ids="${comments.map((c) => c.id).join(",")}" data-fbk-left="${rect.left}" data-fbk-top="${rect.top}">
+  <button type="button" class="fbk-pin fbk-pin-cluster" aria-label="${t("pin.overlappingComments", { n: comments.length })}" aria-expanded="false">
+  <span class="fbk-pin-cluster-count">${comments.length}+</span>
+  <span class="fbk-pin-cluster-dots" aria-hidden="true">&bull;&bull;&bull;</span>
+  </button>
+  </div>`,
     // Expanded cluster — one row per clustered comment, click-through to the same
     // scroll+highlight behavior as clicking a standalone pin.
     pinClusterMenu: (comments) => `
-        <div class="fbk-pin-cluster-menu" id="fbk-pin-cluster-menu" role="menu">
-          ${comments.map((c) => {
+  <div class="fbk-pin-cluster-menu" id="fbk-pin-cluster-menu" role="menu">
+  ${comments.map((c) => {
       const status = c.status === "pending-apply" ? "ready" : c.status === "applied" ? "applied" : c.status === "archived" ? "archived" : "open";
       const statusLabel = status === "ready" ? t("pin.ready") : status === "applied" ? t("pin.applied") : status === "archived" ? t("pin.archived") : t("pin.open");
       const bodyText = c.body || c.text || "";
       return `
-          <button type="button" class="fbk-pin-cluster-item" data-id="${c.id}" role="menuitem">
-            <span class="fbk-pin-status-badge fbk-status-${status}">${statusLabel}</span>
-            <span class="fbk-pin-cluster-item-text">${escapeHtml(bodyText)}</span>
-          </button>`;
+  <button type="button" class="fbk-pin-cluster-item" data-id="${c.id}" role="menuitem">
+  <span class="fbk-pin-status-badge fbk-status-${status}">${statusLabel}</span>
+  <span class="fbk-pin-cluster-item-text">${escapeHtml(bodyText)}</span>
+  </button>`;
     }).join("")}
-        </div>`,
+  </div>`,
     notificationsMenu: (items) => `
-        <div class="fbk-notifications-menu" id="fbk-notifications-menu" role="menu">
-          <div class="fbk-notifications-head">
-            <h3>${t("notifications.updates")}</h3>
-          </div>
-          <div class="fbk-notifications-body">
-            ${items.length === 0 ? `<div class="fbk-empty fbk-notifications-empty">${t("notifications.noUpdatesYet")}</div>` : items.map((item) => {
+  <div class="fbk-notifications-menu" id="fbk-notifications-menu" role="menu">
+  <div class="fbk-notifications-head">
+  <h3>${t("notifications.updates")}</h3>
+  </div>
+  <div class="fbk-notifications-body">
+  ${items.length === 0 ? `<div class="fbk-empty fbk-notifications-empty">${t("notifications.noUpdatesYet")}</div>` : items.map((item) => {
       var _a2, _b;
       const isUnread = !item.readAt;
       let typeLabel = t("notifications.update");
@@ -1662,19 +1629,19 @@
       }
       const timeAgo2 = item.createdAt ? new Date(item.createdAt).toLocaleDateString() : "";
       return `
-                    <div class="fbk-notification-item${isUnread ? " unread" : ""}" data-id="${item.commentId}" role="menuitem">
-                      <div class="fbk-notification-item-head">
-                        <span class="fbk-notification-item-type">${icon} ${escapeHtml(typeLabel)}</span>
-                        <span class="fbk-notification-item-time">${escapeHtml(timeAgo2)}</span>
-                      </div>
-                      <div class="fbk-notification-item-body">
-                        ${escapeHtml(item.commentBodyExcerpt || "")}
-                      </div>
-                      ${detail}
-                    </div>`;
+  <div class="fbk-notification-item${isUnread ? " unread" : ""}" data-id="${item.commentId}" role="menuitem">
+  <div class="fbk-notification-item-head">
+  <span class="fbk-notification-item-type">${icon} ${escapeHtml(typeLabel)}</span>
+  <span class="fbk-notification-item-time">${escapeHtml(timeAgo2)}</span>
+  </div>
+  <div class="fbk-notification-item-body">
+  ${escapeHtml(item.commentBodyExcerpt || "")}
+  </div>
+  ${detail}
+  </div>`;
     }).join("")}
-          </div>
-        </div>`
+  </div>
+  </div>`
   };
 
   // src/framework-source.ts
@@ -4055,6 +4022,9 @@
       });
       const moreFieldsBtn = host.querySelector("#fbk-more-fields");
       const extraFieldsDiv = host.querySelector("#fbk-extra-fields");
+      if (extraFieldsDiv) {
+        this.bindFieldValidation(extraFieldsDiv, "cf");
+      }
       if (moreFieldsBtn && extraFieldsDiv) {
         moreFieldsBtn.addEventListener("click", () => {
           const isExpanded = moreFieldsBtn.getAttribute("aria-expanded") === "true";
@@ -4073,28 +4043,10 @@
         let customFields = void 0;
         let valMap = {};
         if (extraFieldsDiv) {
-          extraFieldsDiv.querySelectorAll(".fbk-field-error").forEach((el2) => el2.remove());
-          extraFieldsDiv.querySelectorAll('[aria-invalid="true"]').forEach((el2) => {
-            el2.removeAttribute("aria-invalid");
-            el2.removeAttribute("aria-describedby");
-          });
-          valMap = collectFieldValues(extraFieldsDiv);
-          let hasError = false;
-          const fieldsOut = {};
-          for (const def of this.commentFields) {
-            const val = valMap[def.key];
-            if (val !== void 0) {
-              const errKey = validateFieldValue(def, val);
-              if (errKey) {
-                hasError = true;
-                this.renderFieldError(extraFieldsDiv, def, errKey);
-              } else {
-                fieldsOut[def.key] = val;
-              }
-            }
-          }
-          if (hasError) return;
-          if (Object.keys(fieldsOut).length > 0) customFields = fieldsOut;
+          const res = this.validateAndCollectFields(extraFieldsDiv, "cf");
+          if (res.hasError) return;
+          customFields = res.fields;
+          valMap = res.valMap;
         }
         const isPrivate = isPrivateComment;
         const attachShot = attachShotComment;
@@ -4115,6 +4067,7 @@
           submitBtn.textContent = t("popover.add");
           if (extraFieldsDiv) {
             extraFieldsDiv.innerHTML = renderFieldInputs(this.commentFields, valMap, "cf");
+            this.bindFieldValidation(extraFieldsDiv, "cf");
             let errEl = document.createElement("p");
             errEl.className = "fbk-field-error";
             errEl.textContent = t("fields.serverRejected") + " " + saved;
@@ -4124,6 +4077,46 @@
           submitBtn.disabled = false;
           submitBtn.textContent = t("popover.add");
         }
+      });
+    }
+    validateAndCollectFields(container, idPrefix = "cf") {
+      container.querySelectorAll(".fbk-field-error").forEach((el) => el.remove());
+      container.querySelectorAll('[aria-invalid="true"]').forEach((el) => {
+        el.removeAttribute("aria-invalid");
+        el.removeAttribute("aria-describedby");
+      });
+      const valMap = collectFieldValues(container);
+      let hasError = false;
+      const fieldsOut = {};
+      for (const def of this.commentFields) {
+        const val = valMap[def.key];
+        if (val !== void 0) {
+          const errKey = validateFieldValue(def, val);
+          if (errKey) {
+            hasError = true;
+            this.renderFieldError(container, def, errKey, idPrefix);
+          } else {
+            fieldsOut[def.key] = val;
+          }
+        }
+      }
+      return { fields: Object.keys(fieldsOut).length ? fieldsOut : void 0, hasError, valMap };
+    }
+    bindFieldValidation(container, idPrefix) {
+      container.querySelectorAll('[name^="fbk-cf-"]').forEach((el) => {
+        const validate = () => {
+          var _a2;
+          const key = el.name.replace(/^fbk-cf-/, "");
+          const def = this.commentFields.find((d) => d.key === key);
+          (_a2 = container.querySelector(`#${idPrefix}-${key}-error`)) == null ? void 0 : _a2.remove();
+          el.removeAttribute("aria-invalid");
+          el.removeAttribute("aria-describedby");
+          if (def && el.value.trim()) {
+            const errKey = validateFieldValue(def, el.value.trim());
+            if (errKey) this.renderFieldError(container, def, errKey, idPrefix);
+          }
+        };
+        ["input", "change", "blur"].forEach((ev) => el.addEventListener(ev, validate));
       });
     }
     // Shared by the composer's extra-fields panel and the card's inline "Edit fields" form: renders
@@ -4451,6 +4444,7 @@
           <button type="button" class="fbk-mini fbk-fields-save">${t("fields.save")}</button>
           <button type="button" class="fbk-mini fbk-fields-cancel">${t("fields.cancel")}</button>
         </div>`;
+      this.bindFieldValidation(editor, idPrefix);
       if (existingWrapper) existingWrapper.replaceWith(editor);
       else if (existingDl) existingDl.replaceWith(editor);
       else textEl.insertAdjacentElement("afterend", editor);
@@ -4463,27 +4457,9 @@
     }
     async saveEditFields(c, editor, idPrefix) {
       var _a2;
-      editor.querySelectorAll(".fbk-field-error").forEach((el) => el.remove());
-      editor.querySelectorAll('[aria-invalid="true"]').forEach((el) => {
-        el.removeAttribute("aria-invalid");
-        el.removeAttribute("aria-describedby");
-      });
-      const valMap = collectFieldValues(editor);
-      let hasError = false;
-      const fieldsOut = {};
-      for (const def of this.commentFields) {
-        const val = valMap[def.key];
-        if (val !== void 0) {
-          const errKey = validateFieldValue(def, val);
-          if (errKey) {
-            hasError = true;
-            this.renderFieldError(editor, def, errKey, idPrefix);
-          } else {
-            fieldsOut[def.key] = val;
-          }
-        }
-      }
-      if (hasError) return;
+      const res = this.validateAndCollectFields(editor, idPrefix);
+      if (res.hasError) return;
+      const fieldsOut = res.fields || {};
       const saveBtn = editor.querySelector(".fbk-fields-save");
       if (saveBtn) {
         saveBtn.disabled = true;
@@ -4742,20 +4718,46 @@
         if (textEl && readMoreBtn && id) {
           if (this.expandedCommentIds.has(id)) {
             textEl.classList.remove("fbk-text-clamped");
+            textEl.appendChild(readMoreBtn);
             readMoreBtn.classList.remove("fbk-hidden");
             readMoreBtn.textContent = t("card.readLess");
-          } else if (textEl.scrollHeight > textEl.clientHeight + 1) {
-            readMoreBtn.classList.remove("fbk-hidden");
+          } else {
+            textEl.classList.add("fbk-text-clamped");
+            textEl.prepend(readMoreBtn);
+            readMoreBtn.textContent = "… " + t("card.readMore");
+            if (textEl.scrollHeight > textEl.clientHeight + 1) {
+              readMoreBtn.classList.remove("fbk-hidden");
+            }
           }
-          readMoreBtn.addEventListener("click", () => {
+          readMoreBtn.addEventListener("click", (e) => {
+            e.stopPropagation();
             const isClamped = textEl.classList.toggle("fbk-text-clamped");
             if (isClamped) {
               this.expandedCommentIds.delete(id);
-              readMoreBtn.textContent = t("card.readMore");
+              textEl.prepend(readMoreBtn);
+              readMoreBtn.textContent = "… " + t("card.readMore");
             } else {
               this.expandedCommentIds.add(id);
+              textEl.appendChild(readMoreBtn);
               readMoreBtn.textContent = t("card.readLess");
             }
+          });
+        }
+      });
+      list.querySelectorAll(".fbk-card-field-val").forEach((valEl) => {
+        const textEl = valEl.querySelector(".fbk-card-field-val-text");
+        const moreBtn = valEl.querySelector('[data-act="toggle-field-more"]');
+        if (textEl && moreBtn) {
+          if (valEl.classList.contains("is-expanded")) {
+            moreBtn.classList.remove("fbk-hidden");
+            moreBtn.textContent = t("fields.seeLess");
+          } else if (textEl.scrollWidth > textEl.clientWidth + 1) {
+            moreBtn.classList.remove("fbk-hidden");
+          }
+          moreBtn.addEventListener("click", (e) => {
+            e.stopPropagation();
+            const expanded = valEl.classList.toggle("is-expanded");
+            moreBtn.textContent = expanded ? t("fields.seeLess") : t("fields.seeMore");
           });
         }
       });

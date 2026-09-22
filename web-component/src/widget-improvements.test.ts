@@ -10,20 +10,24 @@ describe('widget improvements', () => {
   });
 
   describe('i18n strings', () => {
-    it('returns English readMore, readLess, fields.extra, fields.edit', () => {
+    it('returns English readMore, readLess, fields.extra, fields.edit, fields.seeMore, fields.seeLess', () => {
       setLang('en');
       expect(t('card.readMore')).toBe('Read more');
       expect(t('card.readLess')).toBe('Read less');
       expect(t('fields.extra')).toBe('Extra fields');
       expect(t('fields.edit')).toBe('Extra fields');
+      expect(t('fields.seeMore')).toBe('See more');
+      expect(t('fields.seeLess')).toBe('See less');
     });
 
-    it('returns Arabic readMore, readLess, fields.extra, fields.edit', () => {
+    it('returns Arabic readMore, readLess, fields.extra, fields.edit, fields.seeMore, fields.seeLess', () => {
       setLang('ar');
       expect(t('card.readMore')).toBe('قراءة المزيد');
       expect(t('card.readLess')).toBe('قراءة أقل');
       expect(t('fields.extra')).toBe('حقول إضافية');
       expect(t('fields.edit')).toBe('حقول إضافية');
+      expect(t('fields.seeMore')).toBe('عرض المزيد');
+      expect(t('fields.seeLess')).toBe('عرض أقل');
     });
   });
 
@@ -53,16 +57,16 @@ describe('widget improvements', () => {
       expect(html).toMatch(/class="[^"]*fbk-toolbar-btn--icon[^"]*fbk-hidden[^"]*"[^>]*id="fbk-updates"/);
     });
 
-    it('renders card with fbk-text-clamped and toggle-read-more button', () => {
+    it('renders card with fbk-text-clamped and toggle-read-more button inside fbk-text', () => {
       const c: Comment = {
         id: 101,
         status: 'open',
         body: 'A long comment text that needs to be clamped',
       };
       const html = TPL.card(c, 0);
-      expect(html).toContain('class="fbk-text fbk-text-clamped"');
-      expect(html).toContain('data-act="toggle-read-more"');
-      expect(html).toContain('class="fbk-read-more-btn fbk-hidden"');
+      expect(html).toContain('class="fbk-text fbk-text-clamped" data-id="101"');
+      expect(html).toContain('<button type="button" class="fbk-read-more-btn fbk-hidden" data-act="toggle-read-more" data-id="101">… Read more</button>');
+      expect(html).toContain('<span class="fbk-text-content">A long comment text that needs to be clamped</span>');
     });
 
     it('wraps custom fields in fbk-card-fields-wrapper and gates edit button by permission', () => {
@@ -80,6 +84,7 @@ describe('widget improvements', () => {
       expect(htmlMine).toContain('class="fbk-card-fields-edit-btn"');
       expect(htmlMine).toContain('data-act="edit-fields"');
       expect(htmlMine).toContain('data-id="102"');
+      expect(htmlMine).toContain('<dd class="fbk-card-field-val"><span class="fbk-card-field-val-text">PROJ-123</span><button type="button" class="fbk-field-more-btn fbk-hidden" data-act="toggle-field-more">See more</button></dd>');
 
       const htmlNotMine = TPL.card({ ...c, _mine: false, _canVerify: false }, 0);
       expect(htmlNotMine).toContain('class="fbk-card-fields-wrapper"');
@@ -94,7 +99,7 @@ describe('widget improvements', () => {
       expect(html).toContain(`<span>${t('fields.extra')}</span>`);
     });
 
-    it('renders popover with more-fields link row and toggle switches', () => {
+    it('renders popover with more-fields link row and toggle switch before label with fbk-toggle-switch-sm', () => {
       const meta = {
         _tag: 'button',
         _sourcePath: null,
@@ -115,10 +120,10 @@ describe('widget improvements', () => {
       expect(html).toContain('id="fbk-more-fields"');
       expect(html).toContain(t('fields.extra'));
 
-      // Switches
+      // Switches before label with fbk-toggle-switch-sm
       expect(html).toContain('class="fbk-popover-toggle-row"');
-      expect(html).toContain('class="fbk-toggle-switch" id="fbk-comment-shot"');
-      expect(html).toContain('class="fbk-toggle-switch" id="fbk-comment-bug"');
+      expect(html).toContain('<div class="fbk-popover-toggle-row"><button type="button" class="fbk-toggle-switch fbk-toggle-switch-sm" id="fbk-comment-shot"');
+      expect(html).toContain('<div class="fbk-popover-toggle-row"><button type="button" class="fbk-toggle-switch fbk-toggle-switch-sm" id="fbk-comment-bug"');
       expect(html).toContain(ICON.camera);
       expect(html).toContain(ICON.bug);
     });

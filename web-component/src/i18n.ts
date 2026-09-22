@@ -356,6 +356,8 @@ const STRINGS: Record<Lang, Record<string, string>> = {
     'fields.tooLong': 'Value is too long',
     'fields.saved': 'Fields saved',
     'fields.serverRejected': 'Server rejected:',
+    'fields.seeMore': 'See more',
+    'fields.seeLess': 'See less',
 
   },
   ar: {
@@ -595,6 +597,8 @@ const STRINGS: Record<Lang, Record<string, string>> = {
     'fields.tooLong': 'القيمة طويلة جداً',
     'fields.saved': 'تم حفظ الحقول',
     'fields.serverRejected': 'رفض الخادم:',
+    'fields.seeMore': 'عرض المزيد',
+    'fields.seeLess': 'عرض أقل',
 
   },
 };
