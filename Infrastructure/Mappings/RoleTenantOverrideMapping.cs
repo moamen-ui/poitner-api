@@ -21,6 +21,9 @@ public class RoleTenantOverrideMapping : IEntityTypeConfiguration<RoleTenantOver
         b.Property(x => x.RoleId).HasColumnName("role_id").IsRequired();
         b.Property(x => x.OwnerId).HasColumnName("owner_id").IsRequired();
         b.Property(x => x.IsActive).HasColumnName("is_active");
-        b.HasIndex(x => new { x.RoleId, x.OwnerId }).IsUnique();
+        b.HasIndex(x => new { x.RoleId, x.OwnerId })
+            .IsUnique()
+            .HasFilter("deleted_at IS NULL")
+            .HasDatabaseName("ux_role_tenant_overrides_role_owner_live");
     }
 }

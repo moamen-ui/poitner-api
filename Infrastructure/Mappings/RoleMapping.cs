@@ -21,7 +21,11 @@ public class RoleMapping : IEntityTypeConfiguration<Role>
 
         // Role-specific columns
         b.Property(x => x.Name).HasColumnName("name").IsRequired().HasMaxLength(64);
-        b.HasIndex(x => new { x.Name, x.OwnerId }).IsUnique();
+        b.HasIndex(x => new { x.Name, x.OwnerId })
+            .IsUnique()
+            .HasFilter("deleted_at IS NULL")
+            .AreNullsDistinct(false)
+            .HasDatabaseName("ux_roles_name_owner_live");
         b.Property(x => x.GrantsAdmin).HasColumnName("grants_admin");
         b.Property(x => x.IsSystem).HasColumnName("is_system");
         b.Property(x => x.IsActive).HasColumnName("is_active");

@@ -23,6 +23,9 @@ public class ExtensionSiteMapping : IEntityTypeConfiguration<ExtensionSite>
         b.Property(x => x.OwnerId).HasColumnName("owner_id").IsRequired(); // tenant boundary — never null
         b.Property(x => x.Origin).HasColumnName("origin").IsRequired().HasMaxLength(256);
         b.Property(x => x.FirstSeenAt).HasColumnName("first_seen_at");
-        b.HasIndex(x => new { x.OwnerId, x.Origin }).IsUnique();
+        b.HasIndex(x => new { x.OwnerId, x.Origin })
+            .IsUnique()
+            .HasFilter("deleted_at IS NULL")
+            .HasDatabaseName("ux_extension_sites_owner_origin_live");
     }
 }

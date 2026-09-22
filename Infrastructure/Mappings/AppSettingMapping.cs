@@ -22,6 +22,9 @@ public class AppSettingMapping : IEntityTypeConfiguration<AppSetting>
         // AppSetting-specific columns
         b.Property(x => x.Key).HasColumnName("key").IsRequired();
         b.Property(x => x.Value).HasColumnName("value");
-        b.HasIndex(x => x.Key).IsUnique();
+        b.HasIndex(x => x.Key)
+            .IsUnique()
+            .HasFilter("deleted_at IS NULL")
+            .HasDatabaseName("ux_app_settings_key_live");
     }
 }

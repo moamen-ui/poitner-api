@@ -22,10 +22,18 @@ public class PlanMapping : IEntityTypeConfiguration<Plan>
 
         // Plan-specific columns
         b.Property(x => x.Name).HasColumnName("name").IsRequired().HasMaxLength(64);
-        b.HasIndex(x => x.Name).IsUnique();
+        b.HasIndex(x => x.Name)
+            .IsUnique()
+            .HasFilter("deleted_at IS NULL")
+            .HasDatabaseName("ux_plans_name_live");
         b.Property(x => x.Slug).HasColumnName("slug").IsRequired().HasMaxLength(64);
-        b.HasIndex(x => x.Slug).IsUnique();
-        b.Property(x => x.PriceMonthly).HasColumnName("price_monthly").HasColumnType("numeric(12,2)");
+        b.HasIndex(x => x.Slug)
+            .IsUnique()
+            .HasFilter("deleted_at IS NULL")
+            .HasDatabaseName("ux_plans_slug_live");
+        b.Property(x => x.PriceMonthly)
+            .HasColumnName("price_monthly")
+            .HasColumnType("numeric(12,2)");
         b.Property(x => x.Currency).HasColumnName("currency").IsRequired().HasMaxLength(8);
         b.Property(x => x.Interval).HasColumnName("interval");
         b.Property(x => x.SortOrder).HasColumnName("sort_order");

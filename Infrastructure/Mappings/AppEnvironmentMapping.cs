@@ -19,7 +19,11 @@ public class AppEnvironmentMapping : IEntityTypeConfiguration<AppEnvironment>
         b.Property(x => x.DeletedBy).HasColumnName("deleted_by");
 
         b.Property(x => x.Name).HasColumnName("name").IsRequired().HasMaxLength(64);
-        b.HasIndex(x => new { x.Name, x.OwnerId }).IsUnique();
+        b.HasIndex(x => new { x.Name, x.OwnerId })
+            .IsUnique()
+            .HasFilter("deleted_at IS NULL")
+            .AreNullsDistinct(false)
+            .HasDatabaseName("ux_app_environments_name_owner_live");
         b.Property(x => x.OwnerId).HasColumnName("owner_id");
         b.HasIndex(x => x.OwnerId);
 

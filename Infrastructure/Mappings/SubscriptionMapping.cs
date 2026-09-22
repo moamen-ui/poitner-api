@@ -21,15 +21,25 @@ public class SubscriptionMapping : IEntityTypeConfiguration<Subscription>
 
         // Subscription-specific columns
         b.Property(x => x.OwnerId).HasColumnName("owner_id").IsRequired(); // tenant boundary — never null
-        b.HasIndex(x => x.OwnerId).IsUnique(); // one subscription per tenant
+        b.HasIndex(x => x.OwnerId)
+            .IsUnique()
+            .HasFilter("deleted_at IS NULL")
+            .HasDatabaseName("ux_subscriptions_owner_live"); // one subscription per tenant
         b.Property(x => x.PlanId).HasColumnName("plan_id");
         b.Property(x => x.Status).HasColumnName("status");
         b.Property(x => x.BillingProvider).HasColumnName("billing_provider").HasMaxLength(128);
-        b.Property(x => x.ExternalCustomerId).HasColumnName("external_customer_id").HasMaxLength(128);
-        b.Property(x => x.ExternalSubscriptionId).HasColumnName("external_subscription_id").HasMaxLength(128);
+        b.Property(x => x.ExternalCustomerId)
+            .HasColumnName("external_customer_id")
+            .HasMaxLength(128);
+        b.Property(x => x.ExternalSubscriptionId)
+            .HasColumnName("external_subscription_id")
+            .HasMaxLength(128);
         b.Property(x => x.CurrentPeriodEnd).HasColumnName("current_period_end");
         b.Property(x => x.TrialEndsAt).HasColumnName("trial_ends_at");
 
-        b.HasOne(x => x.Plan).WithMany().HasForeignKey(x => x.PlanId).OnDelete(DeleteBehavior.Restrict);
+        b.HasOne(x => x.Plan)
+            .WithMany()
+            .HasForeignKey(x => x.PlanId)
+            .OnDelete(DeleteBehavior.Restrict);
     }
 }
