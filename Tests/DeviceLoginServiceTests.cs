@@ -220,6 +220,65 @@ public class DeviceLoginServiceTests
         Assert.True(second.IsConflict);
     }
 
+    // §6.11 (DB-11a review): approval is refused when the caller's own MEMBERSHIP in the tenant is
+    // not live/active/Approved — a disabled member cannot approve a device login even though their
+    // identity is otherwise fine.
+    [Fact]
+    public async Task Approve_DisabledMembership_IsForbidden()
+    {
+        var db = Guid.NewGuid().ToString();
+        Guid tenant = Guid.NewGuid();
+        Guid publicId;
+        using (var seed = BuildContext(new FakeCurrentUser { IsSuperAdmin = true }, db))
+        {
+            var role = new Role { Name = "Developer", IsActive = true };
+            seed.Roles.Add(role);
+            seed.SaveChanges();
+            var user = new User
+            {
+                PublicId = Guid.NewGuid(),
+                Email = "disabled-dev@example.com",
+                PasswordHash = "h:pw",
+                DisplayName = "Disabled Dev",
+                RoleId = role.Id,
+                OwnerId = tenant,
+                IsActive = true,
+                ApprovalStatus = ApprovalStatus.Approved,
+            };
+            seed.Users.Add(user);
+            seed.SaveChanges();
+            TestSeed.Join(seed, user, tenant, role, isActive: false);
+            publicId = user.PublicId;
+        }
+
+        var start = await BuildService(BuildContext(new FakeCurrentUser(), db), new FakeCurrentUser())
+            .StartAsync(new DeviceLoginStartRequest());
+
+        var approver = new FakeCurrentUser { Id = publicId, TenantId = tenant };
+        var result = await BuildService(BuildContext(approver, db), approver).ApproveAsync(start.Data!.UserCode);
+
+        Assert.True(result.IsForbidden);
+    }
+
+    // §6.11 (DB-11a review): a caller with no membership at all in the claimed tenant is refused
+    // the same way as one with a disabled membership.
+    [Fact]
+    public async Task Approve_NoMembershipInTenant_IsForbidden()
+    {
+        var db = Guid.NewGuid().ToString();
+        var publicId = SeedUser(db, out _);
+        var otherTenant = Guid.NewGuid();
+
+        var start = await BuildService(BuildContext(new FakeCurrentUser(), db), new FakeCurrentUser())
+            .StartAsync(new DeviceLoginStartRequest());
+
+        // Claims a DIFFERENT workspace than the one it actually has a membership in.
+        var approver = new FakeCurrentUser { Id = publicId, TenantId = otherTenant };
+        var result = await BuildService(BuildContext(approver, db), approver).ApproveAsync(start.Data!.UserCode);
+
+        Assert.True(result.IsForbidden);
+    }
+
     [Fact]
     public async Task Approve_SuperAdmin_IsForbidden()
     {

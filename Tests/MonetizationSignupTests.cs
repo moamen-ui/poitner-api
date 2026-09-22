@@ -189,13 +189,14 @@ public class MonetizationSignupTests
             TestSeed.Join(seed, tenantUser, pid, waRole);
             tenantPid = pid;
         }
-        var tenantIntId = Ctx(new FakeCurrentUser { IsSuperAdmin = true }, db).Users.IgnoreQueryFilters().Single(u => u.Email == "t@a.com").Id;
 
         var admin = new FakeCurrentUser { IsSuperAdmin = true };
         using var ctx = Ctx(admin, db);
         var svc = new TenantService(new UnitOfWork(ctx), new IdentityHasher(), new NoopFileStorage(), new SignupEnabledSettings(), new NoopBillingProvider(), new MembershipService(new UnitOfWork(ctx)));
 
-        var res = await svc.ChangePlanAsync(tenantIntId, proId);
+        // F9 (DB-11a cross-review): ChangePlanAsync now takes the WORKSPACE id (tenantPid, the
+        // membership's OwnerId seeded above), never the admin's `users.id`.
+        var res = await svc.ChangePlanAsync(tenantPid, proId);
         Assert.True(res.IsSuccess);
 
         var sub = ctx.Subscriptions.IgnoreQueryFilters().Single(s => s.OwnerId == tenantPid);

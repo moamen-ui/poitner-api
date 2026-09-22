@@ -71,6 +71,22 @@ Enums: `CommentStatus` 1=Open 2=ReadyToApply 3=Applied 4=Archived · `Environmen
 
 `TenantResponse` (super-admin `GET /api/admin/tenants`, `Application/DTOs/Tenant/TenantResponse.cs`) gained `WorkspaceName` (DB-03b) — the workspace's own name (`workspaces.name`), next to the existing `DisplayName` (the admin's).
 
+**F9 (DB-11a cross-review, contract change):** `TenantResponse` gains `WorkspaceId: Guid` — the
+canonical key for every super-admin tenant action (same value as the existing `OwnerId`; `Id: int`,
+the current admin's `users.id`, is kept but doc-commented **legacy** — it is `0` for an admin-less
+workspace and, once one identity can administer several workspaces (D13), the same int can appear on
+more than one row). The three tenant-admin routes in `API/Controllers/Admin/TenantsController.cs`
+move from the admin's int id to the workspace id:
+- `PATCH /api/admin/tenants/{id:int}` → `PATCH /api/admin/tenants/{workspaceId:guid}/status`
+- `PATCH /api/admin/tenants/{id:int}/plan` → `PATCH /api/admin/tenants/{workspaceId:guid}/plan`
+- `DELETE /api/admin/tenants/{id:int}` → `DELETE /api/admin/tenants/{workspaceId:guid}`
+
+(`ExtendDemo`/`SetDemoConfig` are unaffected — they key on a demo identity's own `users.id`, unrelated
+to the admin-membership ambiguity F9 fixed.) `ITenantService.SetStatusAsync`/`ChangePlanAsync` now
+take `Guid workspaceId` (`ResolveWorkspaceIdAsync` was removed — `HardDeleteAsync` already took the
+workspace id directly). **Dashboard task:** `TenantsPage` must call the new routes with
+`tenant.WorkspaceId`, not `tenant.Id`; the client needs regenerating (see DB-11a §11).
+
 ## 4. Public / branding / plans
 
 - `GET /api/branding` (`API/Controllers/BrandingController.cs:34-42`) → `BrandingResponse { ProductName, Tagline, PrimaryColor, Urls { App, Demo, Docs, Landing }, Assets { Logo, IconSquare, Favicon, AppleTouch, Pwa192, Pwa512 }, Extension { StoreUrl, ZipUrl }, Version }`. Assets via `GET /api/branding/asset/{kind}?v=`.

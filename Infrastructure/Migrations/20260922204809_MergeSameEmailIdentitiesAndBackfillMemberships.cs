@@ -13,7 +13,13 @@ namespace Pointer.Infrastructure.Migrations
         protected override void Up(MigrationBuilder migrationBuilder)
         {
             // 2.1 Who merges into whom. Only LIVE rows (deleted_at IS NULL) are considered. Canonical per
-            //     lower(email): a 'Workspace Admin' row first, then a Deputy, then the oldest row (D2).
+            //     lower(email): F2 (DB-11a cross-review) — a super-admin row first (never merge the
+            //     platform super admin away; if a super admin genuinely shares an address with a tenant
+            //     row, the tenant row folds INTO the super admin rather than the reverse), then a
+            //     'Workspace Admin' row, then a Deputy, then the oldest row (D2). F2 also excludes any
+            //     super-admin row (owner_id IS NULL and/or Role.IsSuperAdmin) from ever being the LOSING
+            //     ("u"/merged) side — the platform super admin can never be soft-deleted by this merge,
+            //     even if it is not picked as canonical for some other reason.
             //     Empty when the census (§9 step 1) shows no duplicates — every later block is then a no-op.
             migrationBuilder.Sql(
                 @"
@@ -21,14 +27,16 @@ CREATE TEMP TABLE db11_merge AS
 SELECT u.id AS merged_id, u.public_id AS merged_public_id, u.owner_id AS merged_owner_id,
        c.id AS canonical_id
 FROM users u
+JOIN roles ur ON ur.id = u.role_id
 JOIN LATERAL (
   SELECT c.id
   FROM users c JOIN roles r ON r.id = c.role_id
   WHERE c.deleted_at IS NULL AND lower(c.email) = lower(u.email)
-  ORDER BY (r.name = 'Workspace Admin') DESC, (r.name = 'Workspace Admin Deputy') DESC, c.created_at, c.id
+  ORDER BY (r.is_super_admin) DESC, (r.name = 'Workspace Admin') DESC, (r.name = 'Workspace Admin Deputy') DESC, c.created_at, c.id
   LIMIT 1
 ) c ON true
-WHERE u.deleted_at IS NULL AND u.id <> c.id;
+WHERE u.deleted_at IS NULL AND u.id <> c.id
+  AND u.owner_id IS NOT NULL AND NOT ur.is_super_admin;
 "
             );
 
@@ -104,8 +112,29 @@ WHERE m.invite_id IS NULL AND m.owner_id = q.owner_id
             //     workspaces.id, users.public_id/security_stamp, workspace_memberships.security_stamp and the
             //     alias table itself. Expected to touch exactly the columns listed in §2 ("Every uuid column").
             //     Also api_keys.user_id (int). Idempotent: after one run nothing matches an alias.
+            //     F1 (DB-11a cross-review) — a same-workspace duplicate pair (canonical and merged
+            //     both members of the SAME workspace W) each have their own active api_keys row for
+            //     (user_id, W). Rewriting the merged row's key to user_id = canonical_id would then
+            //     leave TWO active keys for (canonical_id, W), violating
+            //     ux_api_keys_active_per_membership (Migration 1) with a raw unique-violation instead
+            //     of the designed 'DB-11a ABORT'. Revoke the merged (losing) identity's active key
+            //     FIRST, but only where the canonical identity already holds a live active key for
+            //     that SAME owner_id — a merged identity's key for a workspace the canonical identity
+            //     does NOT also hold is simply reassigned, unaffected. Idempotent: on a second run
+            //     db11_merge is empty (2.1's WHERE excludes already-soft-deleted rows).
             migrationBuilder.Sql(
                 @"
+UPDATE api_keys k
+SET revoked_at = now()
+FROM db11_merge m
+WHERE k.user_id = m.merged_id
+  AND k.revoked_at IS NULL AND k.deleted_at IS NULL
+  AND EXISTS (
+    SELECT 1 FROM api_keys c
+    WHERE c.user_id = m.canonical_id
+      AND c.owner_id IS NOT DISTINCT FROM k.owner_id
+      AND c.revoked_at IS NULL AND c.deleted_at IS NULL
+  );
 DO $$
 DECLARE t record;
 BEGIN

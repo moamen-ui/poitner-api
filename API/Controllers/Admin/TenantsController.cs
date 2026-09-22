@@ -78,11 +78,15 @@ public class TenantsController(ITenantService tenantService, ITenantInviteServic
         return result.IsSuccess ? Ok(result) : BadRequest(result);
     }
 
-    [HttpPatch("{id:int}")]
+    // F9 (DB-11a cross-review): keyed on the workspace id, not an admin's `users.id` — the previous
+    // "exactly one admin membership" resolution 404'd for any identity administering more than one
+    // workspace (D13, this release's headline capability). Route gains an explicit "/status"
+    // segment because the workspace-scoped routes below all key on the same {workspaceId:guid}.
+    [HttpPatch("{workspaceId:guid}/status")]
     [ProducesResponseType(typeof(Result), StatusCodes.Status200OK)]
-    public async Task<IActionResult> SetStatus(int id, [FromBody] SetTenantStatusRequest request)
+    public async Task<IActionResult> SetStatus(Guid workspaceId, [FromBody] SetTenantStatusRequest request)
     {
-        var result = await tenantService.SetStatusAsync(id, request.Action);
+        var result = await tenantService.SetStatusAsync(workspaceId, request.Action);
         if (result.IsNotFound) return NotFound(result);
         return result.IsSuccess ? Ok(result) : BadRequest(result);
     }
@@ -105,26 +109,24 @@ public class TenantsController(ITenantService tenantService, ITenantInviteServic
         return result.IsSuccess ? Ok(result) : BadRequest(result);
     }
 
-    [HttpPatch("{id:int}/plan")]
+    // F9 (DB-11a cross-review): keyed on the workspace id, not an admin's `users.id` (see SetStatus).
+    [HttpPatch("{workspaceId:guid}/plan")]
     [ProducesResponseType(typeof(Result), StatusCodes.Status200OK)]
-    public async Task<IActionResult> ChangePlan(int id, [FromBody] ChangeTenantPlanRequest request)
+    public async Task<IActionResult> ChangePlan(Guid workspaceId, [FromBody] ChangeTenantPlanRequest request)
     {
-        var result = await tenantService.ChangePlanAsync(id, request.PlanId);
+        var result = await tenantService.ChangePlanAsync(workspaceId, request.PlanId);
         if (result.IsNotFound) return NotFound(result);
         return result.IsSuccess ? Ok(result) : BadRequest(result);
     }
 
-    [HttpDelete("{id:int}")]
+    // F9 (DB-11a cross-review): keyed on the workspace id directly — `workspaces.id` no longer
+    // equals any admin's `public_id`, and it never required resolving through an admin membership
+    // in the first place (HardDeleteAsync already took the workspace id).
+    [HttpDelete("{workspaceId:guid}")]
     [ProducesResponseType(typeof(Result), StatusCodes.Status200OK)]
-    public async Task<IActionResult> Delete(int id)
+    public async Task<IActionResult> Delete(Guid workspaceId)
     {
-        // DB-11a: workspaces.id no longer equals any admin's public_id — resolve the workspace via
-        // the admin's membership instead of a PublicId lookup.
-        var workspaceId = await tenantService.ResolveWorkspaceIdAsync(id);
-        if (workspaceId is not Guid resolvedWorkspaceId)
-            return NotFound(Result.NotFound("Tenant not found."));
-
-        var result = await tenantService.HardDeleteAsync(resolvedWorkspaceId);
+        var result = await tenantService.HardDeleteAsync(workspaceId);
         if (result.IsNotFound) return NotFound(result);
         return result.IsSuccess ? Ok(result) : BadRequest(result);
     }

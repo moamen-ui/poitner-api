@@ -334,6 +334,73 @@ public class NotificationServiceTests
         Assert.Equal(1, countB.Data!.Count);
     }
 
+    // ── §6.11 (DB-11a review) — EnqueueAsync skips a recipient with no live, active, Approved
+    // membership in the notification's workspace: no membership at all, an ended membership, a
+    // disabled membership, and a pending-approval membership all silently skip; only a live,
+    // active, Approved membership actually queues the row. ────────────────────────────────────
+    [Fact]
+    public async Task Enqueue_SkipsRecipientWithoutLiveApprovedMembership()
+    {
+        var db = Guid.NewGuid().ToString();
+        var tenant = Guid.NewGuid();
+        var recipientNoMembershipId = Guid.NewGuid();
+        Guid endedId,
+            disabledId,
+            pendingId,
+            liveId;
+
+        using (var seed = BuildContext(new FakeCurrentUser { IsSuperAdmin = true }, db))
+        {
+            var role = new Role { Name = "Member", OwnerId = tenant, IsActive = true };
+            seed.Roles.Add(role);
+            seed.SaveChanges();
+
+            var ended = new User { PublicId = Guid.NewGuid(), Email = "ended@x.com", PasswordHash = "x", DisplayName = "Ended", RoleId = role.Id, OwnerId = tenant, IsActive = true };
+            var disabled = new User { PublicId = Guid.NewGuid(), Email = "disabled@x.com", PasswordHash = "x", DisplayName = "Disabled", RoleId = role.Id, OwnerId = tenant, IsActive = true };
+            var pending = new User { PublicId = Guid.NewGuid(), Email = "pending@x.com", PasswordHash = "x", DisplayName = "Pending", RoleId = role.Id, OwnerId = tenant, IsActive = true };
+            var live = new User { PublicId = Guid.NewGuid(), Email = "live@x.com", PasswordHash = "x", DisplayName = "Live", RoleId = role.Id, OwnerId = tenant, IsActive = true };
+            seed.Users.AddRange(ended, disabled, pending, live);
+            seed.SaveChanges();
+
+            var endedMembership = TestSeed.Join(seed, ended, tenant, role);
+            endedMembership.LeftAt = DateTime.UtcNow;
+            endedMembership.LeftReason = MembershipEndReason.Removed;
+            endedMembership.IsActive = false;
+            TestSeed.Join(seed, disabled, tenant, role, isActive: false);
+            TestSeed.Join(seed, pending, tenant, role, status: ApprovalStatus.Pending);
+            TestSeed.Join(seed, live, tenant, role);
+            seed.SaveChanges();
+
+            endedId = ended.PublicId;
+            disabledId = disabled.PublicId;
+            pendingId = pending.PublicId;
+            liveId = live.PublicId;
+        }
+
+        var svcUser = new FakeCurrentUser { IsSuperAdmin = true };
+        var uow = new UnitOfWork(BuildContext(svcUser, db));
+        var notifSvc = new NotificationService(uow, svcUser);
+
+        async Task<int> EnqueueAndCountAsync(Guid recipient)
+        {
+            await notifSvc.EnqueueAsync(new Notification
+            {
+                OwnerId = tenant,
+                UserId = recipient,
+                Type = NotificationType.CommentApplied,
+                CreatedAt = DateTime.UtcNow,
+            });
+            await uow.SaveChangesAsync();
+            return await uow.Repository<Notification>().Query().CountAsync(n => n.UserId == recipient);
+        }
+
+        Assert.Equal(0, await EnqueueAndCountAsync(recipientNoMembershipId));
+        Assert.Equal(0, await EnqueueAndCountAsync(endedId));
+        Assert.Equal(0, await EnqueueAndCountAsync(disabledId));
+        Assert.Equal(0, await EnqueueAndCountAsync(pendingId));
+        Assert.Equal(1, await EnqueueAndCountAsync(liveId));
+    }
+
     [Fact]
     public async Task UnreadCount_And_ReadAll_Workflow()
     {

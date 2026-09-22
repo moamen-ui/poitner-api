@@ -2,6 +2,11 @@ namespace Pointer.Application.DTOs.Tenant;
 
 public class TenantResponse
 {
+    // LEGACY (F9, DB-11a cross-review): the current admin's `users.id`, kept only so existing
+    // dashboard code that happens to read it does not immediately null-ref; it is 0 for an
+    // admin-less workspace and — once one identity can administer several workspaces (D13) — the
+    // SAME int can legitimately appear on more than one row. Never key a super-admin tenant action
+    // on this; use WorkspaceId.
     public int Id { get; set; }
     public Guid PublicId { get; set; }
 
@@ -10,6 +15,13 @@ public class TenantResponse
     // Callers that need to reliably re-target this workspace later (e.g. the super-admin add-user/
     // invite workspace picker's TargetOwnerId) must use this, not PublicId.
     public Guid OwnerId { get; set; }
+
+    // F9 (DB-11a cross-review): the canonical route key for every super-admin tenant action
+    // (SetStatusAsync/ChangePlanAsync/HardDeleteAsync and the corresponding TenantsController
+    // routes) — always the workspace's own id, always unique per row, unlike Id above. Same value
+    // as OwnerId today (both are `Workspace.Id`); kept as its own field so the route contract reads
+    // by name rather than by the historical "OwnerId happens to be the workspace id" convention.
+    public Guid WorkspaceId { get; set; }
 
     public string Email { get; set; } = string.Empty;
     public string DisplayName { get; set; } = string.Empty;

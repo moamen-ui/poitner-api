@@ -68,6 +68,11 @@ public static class UserNameResolver
 
         var aliased = await aliasQuery
             .Where(a => missing.Contains(a.AliasPublicId))
+            // F4 (DB-11a review): UserAlias itself carries no query filter, but `a.User` still
+            // expands under the (possibly non-ignored) User filter — for an alias whose canonical
+            // identity the caller's tenant cannot see, EF would otherwise project a null `a.User`
+            // into the non-nullable DisplayName/Email below. Drop those rather than crash.
+            .Where(a => a.User != null)
             .Select(a => new
             {
                 a.AliasPublicId,

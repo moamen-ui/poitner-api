@@ -529,7 +529,7 @@ duplicate.
 | Quick-access invite (`CreateQuickAccessInviteAsync`) | passwordless row | identity by email: exists → join with the Client role (its password, if any, is untouched); else `NewIdentity(passwordlessOnly: true)`; `inviteId` set |
 | Demo mint (`DemoService.ProvisionAsync`) | self-owned demo row | `workspaceId = Guid.NewGuid()`; identity (`IsDemo`, `ExpiresAt`, `RecipientEmail` stay on `users` — S-8 later) + admin membership. `UpgradeAsync`: e-mail uniqueness becomes **global** (`FindIdentityByEmailAsync(email) != null && id != caller` → `Conflict(MessageKeys.Demo.EmailTaken)`, D7) |
 | Demo cap lookups (`CommentService.cs:127`, `ExportImportService.cs:527`) | `users.public_id == owner && IsDemo` | `CurrentAdminAsync(owner)` → `.User.IsDemo / DemoCommentCapOverride` (the founding admin's `public_id` no longer equals the workspace id) |
-| Users list (`UserService.ListAsync`) | `users` under filter | `InWorkspace(tenant)` where `LeftAt == null` (+ optional approval filter on the membership) → `UserResponse` (`Id = User.Id`, `PublicId`, `Email`, `DisplayName` from the identity; `RoleId/RoleName/IsAdmin/IsActive/ApprovalStatus` from the membership; `CreatedAt = JoinedAt`) |
+| Users list (`UserService.ListAsync`) | `users` under filter | `InWorkspace(tenant)` where `LeftAt == null` (+ optional approval filter on the membership) → `UserResponse` (`Id = User.Id`, `PublicId`, `Email`, `DisplayName` from the identity; `RoleId/RoleName/IsAdmin/IsActive/ApprovalStatus` from the membership; `CreatedAt = JoinedAt`). **F7 (cross-review):** this is a workspace-scoped member list, not a global one — `TryRequireOwner` returns `Forbidden` for a super admin (no `tenant` claim), a **behaviour change** from `main` where a super admin's `GET /api/admin/users` returned every user across every tenant. No global "every user, every workspace" replacement is added by this doc — the super-admin operator view of tenants is `TenantService.ListAsync` (one row per workspace with its current admin). If a global all-users view is wanted later, it is a new, explicitly-designed endpoint, not a silent branch here. |
 | Approve / Reject (`UserService`) | user row | the membership `(users.id == id, tenant)`; reject rotates the **membership** stamp |
 | Update role / `isActive` (`UserService.UpdateAsync`) | user row + user stamp | membership `RoleId`/`IsActive` + **membership** stamp; the self-demotion guard reads the membership's role; `Password` → identity `PasswordHash` + identity stamp **only if** `ListForIdentityAsync(user.Id).Count == 1`, else `Failure(MessageKeys.User.PasswordManagedElsewhere)` (D6) |
 | Delete (`UserService.DeleteAsync`) | soft-delete row | **end membership**: `LeftAt = UtcNow`, `LeftReason = Removed`, `IsActive = false`, membership stamp rotated. Guards as today (self, Workspace Admin, deputy matrix). Key/link revocation and the sole-admin guard are DB-11c |
@@ -734,6 +734,18 @@ keep their fields).
 
 ## 11. Dashboard / widget / CLI tasks
 
-- **Dashboard** — none required for this release. Optional: `TenantsPage` disables row actions when `id === 0` (admin-less workspace). Record in the PR's **Dashboard tasks** section.
+- **Dashboard** — **required, F9 (cross-review fix).** The super-admin tenant endpoints
+  (`PATCH /api/admin/tenants/{id}` → `.../status`, `PATCH /api/admin/tenants/{id}/plan`,
+  `DELETE /api/admin/tenants/{id}`) now key on the **workspace id**
+  (`{workspaceId:guid}`), never the admin's `users.id` — the previous "exactly one admin
+  membership" resolution 404'd for any identity administering more than one workspace, this
+  release's own headline capability (D13). `TenantResponse` gains `WorkspaceId: Guid` (`Id: int` is
+  now doc-commented legacy — 0 for an admin-less workspace, and no longer unique once one identity
+  administers several workspaces). `TenantsPage` must build these three requests from
+  `tenant.WorkspaceId`, not `tenant.Id`. This is a route/DTO contract change: the client needs
+  regenerating (`orval.config.ts` already lists the `Tenants` tag) before the dashboard is synced —
+  the `dashboard-agent` handles this once per phase per `docs/roadmap/execution/00-API-INVENTORY.md`
+  § Cross-repo sync agents. Optional, still open: `TenantsPage` disables row actions when
+  `id === 0` (admin-less workspace).
 - **Widget** — none. Login statuses unchanged.
 - **CLI** — none. Keys keep working (they are already stamped with the workspace); `login-with-key` now lands in the key's workspace deterministically.

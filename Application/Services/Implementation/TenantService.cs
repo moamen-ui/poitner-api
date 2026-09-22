@@ -136,6 +136,7 @@ public class TenantService : ITenantService
                     Id = admin?.User.Id ?? 0,
                     PublicId = admin?.User.PublicId ?? Guid.Empty,
                     OwnerId = w.Id,
+                    WorkspaceId = w.Id,
                     Email = admin?.User.Email ?? string.Empty,
                     DisplayName = admin?.User.DisplayName ?? string.Empty,
                     WorkspaceName = w.Name,
@@ -235,6 +236,7 @@ public class TenantService : ITenantService
                 Id = identity!.Id,
                 PublicId = identity.PublicId,
                 OwnerId = workspaceId, // a freshly created tenant's stable identifier
+                WorkspaceId = workspaceId,
                 Email = identity.Email,
                 DisplayName = identity.DisplayName,
                 WorkspaceName = Workspace.PlaceholderName,
@@ -247,39 +249,35 @@ public class TenantService : ITenantService
     }
 
     /// <summary>
-    /// Resolves the identity (users.id == id, live) and — only when unambiguous — its CURRENT live
-    /// Workspace Admin membership. DB-11a does not extend these single-int-id admin actions to a
-    /// multi-workspace picker: an identity that administers more than one workspace cannot be acted
-    /// on through this id alone (a narrow, documented limitation — DB-11b's picker is for login).
+    /// F9 (DB-11a cross-review): the super-admin tenant endpoints key on the WORKSPACE id, never on
+    /// an admin's `users.id` — the previous "exactly one admin membership" resolution returned a
+    /// null membership (404) for any identity administering more than one workspace, the exact
+    /// capability this release ships (D13). Resolves the workspace directly and its current live
+    /// Workspace Admin membership (`IMembershipService.CurrentAdminAsync`, §3.5) — no ambiguity, no
+    /// ternary: a workspace has at most one row satisfying "current admin" and this asks for it by
+    /// the one identifier that can never collide.
     /// </summary>
-    private async Task<(User? Identity, WorkspaceMembership? AdminMembership)> ResolveCanonicalAdminAsync(int id)
+    private async Task<(bool WorkspaceExists, WorkspaceMembership? AdminMembership)> ResolveWorkspaceAdminAsync(
+        Guid workspaceId
+    )
     {
-        var identity = await _unitOfWork
-            .Repository<User>()
-            .Query()
-            .IgnoreQueryFilters()
-            .FirstOrDefaultAsync(u => u.Id == id && u.DeletedAt == null);
-        if (identity == null)
-            return (null, null);
+        var workspaceExists = await _unitOfWork
+            .Workspaces.IgnoreQueryFilters()
+            .AnyAsync(w => w.Id == workspaceId && w.DeletedAt == null);
+        if (!workspaceExists)
+            return (false, null);
 
-        var adminMemberships = await _unitOfWork
-            .Repository<WorkspaceMembership>()
-            .Query()
-            .IgnoreQueryFilters()
-            .Include(m => m.Role)
-            .Where(m => m.UserId == identity.Id && m.LeftAt == null && m.Role.Name == WorkspaceAdminRoleName)
-            .ToListAsync();
-
-        return (identity, adminMemberships.Count == 1 ? adminMemberships[0] : null);
+        var membership = await _memberships.CurrentAdminAsync(workspaceId);
+        return (true, membership);
     }
 
-    public async Task<Result> SetStatusAsync(int id, string action)
+    public async Task<Result> SetStatusAsync(Guid workspaceId, string action)
     {
         if (string.IsNullOrWhiteSpace(action))
             return Result.Failure("Action is required. Valid values: approve, enable, disable.");
 
-        var (identity, membership) = await ResolveCanonicalAdminAsync(id);
-        if (identity == null || membership == null)
+        var (workspaceExists, membership) = await ResolveWorkspaceAdminAsync(workspaceId);
+        if (!workspaceExists || membership == null)
             return Result.NotFound("Tenant not found.");
 
         switch (action.Trim().ToLower())
@@ -374,13 +372,17 @@ public class TenantService : ITenantService
         return Result.Success();
     }
 
-    public async Task<Result> ChangePlanAsync(int tenantId, int planId)
+    public async Task<Result> ChangePlanAsync(Guid workspaceId, int planId)
     {
-        var (identity, membership) = await ResolveCanonicalAdminAsync(tenantId);
-        if (identity == null || membership == null)
+        // F9: the subscription is already keyed by the workspace id directly — no admin membership
+        // needs resolving at all here (unlike SetStatusAsync, which acts ON the admin's membership).
+        var workspaceExists = await _unitOfWork
+            .Workspaces.IgnoreQueryFilters()
+            .AnyAsync(w => w.Id == workspaceId && w.DeletedAt == null);
+        if (!workspaceExists)
             return Result.NotFound("Tenant not found.");
 
-        var tenantOwnerId = membership.OwnerId;
+        var tenantOwnerId = workspaceId;
 
         // Plan is global (no filter) — plain query. Must exist, be active, not deleted.
         var plan = await _unitOfWork
@@ -422,14 +424,6 @@ public class TenantService : ITenantService
 
         await _unitOfWork.SaveChangesAsync();
         return Result.Success(MessageKeys.Plan.SubscriptionUpdated);
-    }
-
-    /// <summary>Resolves the int id (users.id) of the tenant's admin → its stable workspace id, for
-    /// the controller to pass into <see cref="HardDeleteAsync"/>. Null when ambiguous or not found.</summary>
-    public async Task<Guid?> ResolveWorkspaceIdAsync(int adminUserId)
-    {
-        var (_, membership) = await ResolveCanonicalAdminAsync(adminUserId);
-        return membership?.OwnerId;
     }
 
     public async Task<Result> HardDeleteAsync(Guid workspaceId)

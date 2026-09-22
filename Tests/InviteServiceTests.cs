@@ -1281,6 +1281,139 @@ public class InviteServiceTests
         Assert.Empty(db.Users.IgnoreQueryFilters().Where(u => u.Email == "second@user.com"));
     }
 
+    // ── §6.5 / D4 (DB-11a review): anonymous accept, existing identity, password gate ───────────
+
+    [Fact]
+    public async Task AcceptInvite_ExistingEmail_WrongPassword_Conflict_NoRowOrMembershipCreated()
+    {
+        var dbName = Guid.NewGuid().ToString();
+        var (tenant, roleId) = SeedTenant(dbName);
+        var inviteId = SeedInvite(dbName, tenant, i => i.RoleId = roleId);
+        var code = CodeOf(dbName, inviteId);
+
+        // An identity that already exists — in a DIFFERENT workspace, so "already a member here"
+        // never fires and the password gate (D4) is the only thing standing between the anonymous
+        // caller and the account.
+        var otherTenant = Guid.NewGuid();
+        int existingUserId;
+        using (var seed = BuildContext(new FakeCurrentUser { IsSuperAdmin = true }, dbName))
+        {
+            seed.Workspaces.Add(new Workspace { Id = otherTenant, Name = "Other", CreatedAt = DateTime.UtcNow, CreatedBy = otherTenant });
+            var otherRole = new Role { Name = "Developer", OwnerId = otherTenant, IsActive = true };
+            seed.Roles.Add(otherRole);
+            seed.SaveChanges();
+            var existing = new User
+            {
+                Email = "shared@x.com",
+                PasswordHash = "hashed:rightpw123",
+                DisplayName = "Shared",
+                RoleId = otherRole.Id,
+                PublicId = Guid.NewGuid(),
+                OwnerId = otherTenant,
+                IsActive = true,
+                ApprovalStatus = ApprovalStatus.Approved,
+            };
+            seed.Users.Add(existing);
+            seed.SaveChanges();
+            TestSeed.Join(seed, existing, otherTenant, otherRole);
+            existingUserId = existing.Id;
+        }
+
+        var anon = new FakeCurrentUser();
+        using var db = BuildContext(anon, dbName);
+        var svc = BuildService(anon, db);
+
+        var result = await svc.AcceptAsync(
+            new AcceptInviteRequest
+            {
+                Code = code,
+                Email = "shared@x.com",
+                Password = "wrongpw123",
+                DisplayName = "Shared",
+            }
+        );
+
+        Assert.True(result.IsConflict);
+        // No second `users` row (still exactly one for this address) and no membership was created
+        // for the invite's tenant — the wrong password never gets to touch anything.
+        Assert.Single(db.Users.IgnoreQueryFilters().Where(u => u.Email == "shared@x.com"));
+        Assert.Empty(
+            db.Set<WorkspaceMembership>()
+                .IgnoreQueryFilters()
+                .Where(m => m.UserId == existingUserId && m.OwnerId == tenant)
+        );
+        var invite = db.Invites.IgnoreQueryFilters().Single(i => i.Id == inviteId);
+        Assert.Equal(0, invite.Uses); // slot never claimed
+    }
+
+    [Fact]
+    public async Task AcceptInvite_ExistingEmail_RightPassword_AddsMembership_KeepsPublicId()
+    {
+        var dbName = Guid.NewGuid().ToString();
+        var (tenant, roleId) = SeedTenant(dbName);
+        var inviteId = SeedInvite(dbName, tenant, i => i.RoleId = roleId);
+        var code = CodeOf(dbName, inviteId);
+
+        var otherTenant = Guid.NewGuid();
+        Guid existingPublicId;
+        int existingUserId;
+        using (var seed = BuildContext(new FakeCurrentUser { IsSuperAdmin = true }, dbName))
+        {
+            seed.Workspaces.Add(new Workspace { Id = otherTenant, Name = "Other", CreatedAt = DateTime.UtcNow, CreatedBy = otherTenant });
+            var otherRole = new Role { Name = "Developer", OwnerId = otherTenant, IsActive = true };
+            seed.Roles.Add(otherRole);
+            seed.SaveChanges();
+            var existing = new User
+            {
+                Email = "shared2@x.com",
+                PasswordHash = "hashed:rightpw123",
+                DisplayName = "Shared",
+                RoleId = otherRole.Id,
+                PublicId = Guid.NewGuid(),
+                OwnerId = otherTenant,
+                IsActive = true,
+                ApprovalStatus = ApprovalStatus.Approved,
+            };
+            seed.Users.Add(existing);
+            seed.SaveChanges();
+            TestSeed.Join(seed, existing, otherTenant, otherRole);
+            existingPublicId = existing.PublicId;
+            existingUserId = existing.Id;
+        }
+
+        var anon = new FakeCurrentUser();
+        using var db = BuildContext(anon, dbName);
+        var svc = BuildService(anon, db);
+
+        var result = await svc.AcceptAsync(
+            new AcceptInviteRequest
+            {
+                Code = code,
+                Email = "shared2@x.com",
+                Password = "rightpw123",
+                DisplayName = "Shared",
+            }
+        );
+
+        Assert.True(result.IsSuccess);
+        // Still exactly ONE users row for this address — no second identity minted.
+        Assert.Single(db.Users.IgnoreQueryFilters().Where(u => u.Email == "shared2@x.com"));
+        Assert.Equal(existingPublicId, result.Data!.User!.Id);
+
+        var newMembership = db.Set<WorkspaceMembership>()
+            .IgnoreQueryFilters()
+            .Single(m => m.UserId == existingUserId && m.OwnerId == tenant);
+        Assert.Null(newMembership.LeftAt);
+        Assert.Equal(ApprovalStatus.Approved, newMembership.ApprovalStatus);
+
+        // The identity's OTHER membership (in its original workspace) is untouched.
+        Assert.NotNull(
+            db.Set<WorkspaceMembership>()
+                .IgnoreQueryFilters()
+                .SingleOrDefault(m => m.UserId == existingUserId && m.OwnerId == otherTenant && m.LeftAt == null)
+        );
+    }
+
     // ── M2: validation / null guards ─────────────────────────────────────────────
 
     [Fact]

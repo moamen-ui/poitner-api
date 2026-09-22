@@ -404,7 +404,15 @@ public class AuthService : IAuthService
             // DB-11a: keys are per membership. login-with-key lands deterministically in the key's
             // own workspace — no picker needed (agents are non-interactive).
             membership = await _memberships.GetMembershipAsync(user.Id, ownerId);
-            if (membership == null || !membership.IsActive || membership.ApprovalStatus != ApprovalStatus.Approved)
+            // F6 (DB-11a review): the membership check alone is not enough — the IDENTITY can also be
+            // deactivated (merge, and DB-11c's erase-that-keeps-the-row) independently of any one
+            // membership's own IsActive flag. Restore the identity-level guard `main` had.
+            if (
+                membership == null
+                || !membership.IsActive
+                || membership.ApprovalStatus != ApprovalStatus.Approved
+                || !user.IsActive
+            )
                 return Result<LoginResponse>.Failure(
                     MessageKeys.Auth.Disabled,
                     new LoginResponse { Status = "disabled" }
@@ -744,6 +752,9 @@ public class AuthService : IAuthService
             || !membership.IsActive
             || membership.ApprovalStatus != ApprovalStatus.Approved
             || membership.Role is not { QuickAccess: true }
+            // F6 (DB-11a review): restore the identity-level guard `main` had alongside the
+            // membership check — an identity can be deactivated independently of this membership.
+            || !user.IsActive
         )
             return Result<LoginResponse>.Failure(MessageKeys.Invite.LinkInvalid);
 

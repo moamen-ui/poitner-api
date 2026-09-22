@@ -3,12 +3,14 @@ using Microsoft.EntityFrameworkCore;
 using Pointer.API.Auth;
 using Pointer.Application.Abstractions;
 using Pointer.Application.Common;
+using Pointer.Application.DTOs.Auth;
 using Pointer.Application.DTOs.User;
 using Pointer.Application.Resources;
 using Pointer.Application.Services.Implementation;
 using Pointer.Application.Services.Interfaces;
 using Pointer.Domain.Entity;
 using Pointer.Domain.Enums;
+using Pointer.Domain.ValueObjects;
 using Pointer.Infrastructure;
 using Pointer.Infrastructure.Billing;
 using Pointer.Infrastructure.Repository;
@@ -44,6 +46,23 @@ public class WorkspaceMembershipTests
         public Task<string> SaveAsync(string ownerSegment, string project, Stream content, string extension) => Task.FromResult("");
         public Task DeleteAsync(string relativePathOrUrl) => Task.CompletedTask;
         public Task DeleteOwnerFilesAsync(string ownerSegment) => Task.CompletedTask;
+    }
+
+    private sealed class FakeTokenService : ITokenService
+    {
+        public string Issue(User user, WorkspaceMembership? membership, int? keyScopes = null) =>
+            "token-for-" + user.PublicId.ToString("N");
+    }
+
+    private sealed class FakeResetTokenService : IResetTokenService
+    {
+        public string Create(Guid id, Guid stamp) => "r";
+        public bool TryValidate(string token, out Guid id, out Guid stamp)
+        {
+            id = Guid.Empty;
+            stamp = Guid.Empty;
+            return false;
+        }
     }
 
     private sealed class FakeSettings : ISettingsService
@@ -148,6 +167,23 @@ public class WorkspaceMembershipTests
             new NoopEmail(),
             new PassThroughEntitlements(),
             new NoopBrandingService(),
+            new MembershipService(uow)
+        );
+    }
+
+    private static AuthService BuildAuthService(ICurrentUser user, AppDbContext ctx)
+    {
+        var uow = new UnitOfWork(ctx);
+        return new AuthService(
+            uow,
+            new FakePasswordHasher(),
+            new FakeTokenService(),
+            user,
+            new FakeSettings(),
+            new FakeResetTokenService(),
+            new NoopEmail(),
+            new NoopBrandingService(),
+            new ApiKeyService(new UnitOfWork(ctx), new TestApiKeyProtector()),
             new MembershipService(uow)
         );
     }
@@ -258,6 +294,12 @@ public class WorkspaceMembershipTests
         var visibleUsers = scopedCtx.Set<User>().ToList();
         Assert.Single(visibleUsers);
         Assert.Equal(userBId, visibleUsers[0].PublicId);
+
+        // F5 (DB-11a review): assert the WorkspaceMembership side of R8.7 too, not just User —
+        // tenant B's context must not see tenant A's membership row either.
+        var visibleMemberships = scopedCtx.Set<WorkspaceMembership>().ToList();
+        Assert.Single(visibleMemberships);
+        Assert.Equal(workspaceB, visibleMemberships[0].OwnerId);
     }
 
     [Fact]
@@ -303,6 +345,99 @@ public class WorkspaceMembershipTests
         Assert.Equal(2, live.Count);
         Assert.Contains(live, m => m.OwnerId == workspaceA);
         Assert.Contains(live, m => m.OwnerId == workspaceB);
+    }
+
+    // ── §6.19 / GLM A8 (DB-11a review): a wrong password on a MERGED identity points at "Forgot
+    // password" instead of the generic invalid-credentials message; an ordinary wrong password on
+    // an identity that never absorbed a merge gets the plain message. ─────────────────────────────
+    [Fact]
+    public async Task Login_WrongPassword_MergedIdentity_SuggestsForgotPassword()
+    {
+        var db = Guid.NewGuid().ToString();
+        var (workspaceA, _, roleId) = SeedTwoWorkspaces(db);
+
+        using (var seed = Ctx(new FakeCurrentUser { IsSuperAdmin = true }, db))
+        {
+            var role = seed.Roles.Single(r => r.Id == roleId);
+            var canonical = new User
+            {
+                Email = "merged@x.com",
+                PasswordHash = "hashed:rightpw123",
+                DisplayName = "Canonical",
+                PublicId = Guid.NewGuid(),
+                RoleId = role.Id,
+                OwnerId = workspaceA,
+                IsActive = true,
+                ApprovalStatus = ApprovalStatus.Approved,
+            };
+            seed.Users.Add(canonical);
+            seed.SaveChanges();
+            TestSeed.Join(seed, canonical, workspaceA, role);
+
+            // A row that Migration 2 (2.6) merged INTO the canonical identity: soft-deleted,
+            // MergedIntoUserId pointing at it.
+            var merged = new User
+            {
+                Email = "merged@x.com",
+                PasswordHash = "hashed:oldpw12345",
+                DisplayName = "Merged away",
+                PublicId = Guid.NewGuid(),
+                RoleId = role.Id,
+                OwnerId = workspaceA,
+                IsActive = false,
+                ApprovalStatus = ApprovalStatus.Approved,
+                DeletedAt = DateTime.UtcNow,
+                MergedIntoUserId = canonical.Id,
+            };
+            seed.Users.Add(merged);
+            seed.SaveChanges();
+        }
+
+        var anon = new FakeCurrentUser();
+        var auth = BuildAuthService(anon, Ctx(anon, db));
+
+        var result = await auth.LoginAsync(
+            new LoginRequest { Email = "merged@x.com", Password = "totallywrongpw" }
+        );
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(MessageKeys.Auth.InvalidCredentialsAfterMerge, result.Message);
+    }
+
+    [Fact]
+    public async Task Login_WrongPassword_UnmergedIdentity_GenericInvalidCredentials()
+    {
+        var db = Guid.NewGuid().ToString();
+        var (workspaceA, _, roleId) = SeedTwoWorkspaces(db);
+
+        using (var seed = Ctx(new FakeCurrentUser { IsSuperAdmin = true }, db))
+        {
+            var role = seed.Roles.Single(r => r.Id == roleId);
+            var user = new User
+            {
+                Email = "solo@x.com",
+                PasswordHash = "hashed:rightpw123",
+                DisplayName = "Solo",
+                PublicId = Guid.NewGuid(),
+                RoleId = role.Id,
+                OwnerId = workspaceA,
+                IsActive = true,
+                ApprovalStatus = ApprovalStatus.Approved,
+            };
+            seed.Users.Add(user);
+            seed.SaveChanges();
+            TestSeed.Join(seed, user, workspaceA, role);
+        }
+
+        var anon = new FakeCurrentUser();
+        var auth = BuildAuthService(anon, Ctx(anon, db));
+
+        var result = await auth.LoginAsync(
+            new LoginRequest { Email = "solo@x.com", Password = "totallywrongpw" }
+        );
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(MessageKeys.Auth.InvalidCredentials, result.Message);
     }
 
     [Fact]
@@ -467,6 +602,108 @@ public class WorkspaceMembershipTests
         using var tenantBContext = db.MakeContext(new FakeCurrentUser { TenantId = workspaceB });
         var visibleUsers = await tenantBContext.Users.ToListAsync();
         Assert.Contains(visibleUsers, u => u.Id == survivingX.Id);
+    }
+
+    // ── F9 (DB-11a cross-review): before the fix, an identity that is Workspace Admin of MORE
+    // THAN ONE workspace made `ResolveCanonicalAdminAsync` return a null membership
+    // (`adminMemberships.Count != 1`), so `SetStatusAsync`/`ChangePlanAsync`/hard-delete 404'd for
+    // BOTH workspaces — the exact capability this release ships (D13). Keying every one of these on
+    // the WORKSPACE id (never the admin's `users.id`) must resolve each workspace independently. ──
+    [Fact]
+    public async Task TenantService_MultiWorkspaceAdmin_ResolvesEachWorkspaceIndependently()
+    {
+        using var db = new TestDb();
+        var workspaceA = Guid.NewGuid();
+        var workspaceB = Guid.NewGuid();
+        var superAdmin = new FakeCurrentUser { IsSuperAdmin = true };
+        int proId;
+
+        using (var seed = db.MakeContext(superAdmin))
+        {
+            seed.Workspaces.Add(new Workspace { Id = workspaceA, Name = "Workspace A", CreatedAt = DateTime.UtcNow, CreatedBy = workspaceA });
+            seed.Workspaces.Add(new Workspace { Id = workspaceB, Name = "Workspace B", CreatedAt = DateTime.UtcNow, CreatedBy = workspaceB });
+
+            var adminRole = new Role { Name = "Workspace Admin", GrantsAdmin = true, IsActive = true };
+            seed.Roles.Add(adminRole);
+            var proPlan = new Plan
+            {
+                Name = "Pro",
+                Slug = "pro",
+                IsActive = true,
+                DisplayState = PlanDisplayState.Visible,
+                Entitlements = new PlanEntitlements(),
+            };
+            seed.Plans.Add(proPlan);
+            await seed.SaveChangesAsync();
+            proId = proPlan.Id;
+
+            var admin = new User
+            {
+                PublicId = Guid.NewGuid(),
+                Email = "multiadmin@example.com",
+                PasswordHash = "hash",
+                DisplayName = "Multi Admin",
+                RoleId = adminRole.Id,
+                OwnerId = workspaceA,
+                ApprovalStatus = ApprovalStatus.Approved,
+                IsActive = true,
+            };
+            seed.Users.Add(admin);
+            await seed.SaveChangesAsync();
+
+            TestSeed.Join(seed, admin, workspaceA, adminRole);
+            TestSeed.Join(seed, admin, workspaceB, adminRole);
+        }
+
+        using var ctx = db.MakeContext(superAdmin);
+        var svc = new TenantService(
+            new UnitOfWork(ctx),
+            new FakePasswordHasher(),
+            new NoopFileStorage(),
+            new FakeSettings(),
+            new NoopBillingProvider(),
+            new MembershipService(new UnitOfWork(ctx))
+        );
+
+        // Disabling A's membership must succeed (not 404) and touch ONLY A's membership.
+        var disableA = await svc.SetStatusAsync(workspaceA, "disable");
+        Assert.True(disableA.IsSuccess, disableA.Message);
+
+        // Changing B's plan must ALSO succeed (not 404) and scope the subscription to B, not A.
+        var changePlanB = await svc.ChangePlanAsync(workspaceB, proId);
+        Assert.True(changePlanB.IsSuccess, changePlanB.Message);
+
+        using (var verify = db.MakeContext(superAdmin))
+        {
+            var membershipA = await verify
+                .WorkspaceMemberships.IgnoreQueryFilters()
+                .Include(m => m.User)
+                .FirstAsync(m => m.OwnerId == workspaceA && m.User.Email == "multiadmin@example.com");
+            var membershipB = await verify
+                .WorkspaceMemberships.IgnoreQueryFilters()
+                .Include(m => m.User)
+                .FirstAsync(m => m.OwnerId == workspaceB && m.User.Email == "multiadmin@example.com");
+
+            Assert.False(membershipA.IsActive); // disabled by SetStatusAsync(workspaceA, ...)
+            Assert.True(membershipB.IsActive); // untouched
+
+            var subA = await verify.Subscriptions.IgnoreQueryFilters().FirstOrDefaultAsync(s => s.OwnerId == workspaceA);
+            var subB = await verify.Subscriptions.IgnoreQueryFilters().FirstOrDefaultAsync(s => s.OwnerId == workspaceB);
+            Assert.Null(subA);
+            Assert.NotNull(subB);
+            Assert.Equal(proId, subB!.PlanId);
+        }
+
+        // Hard-delete of A must also succeed directly off the workspace id (no admin-membership
+        // resolution at all) — and the identity survives via its remaining membership in B.
+        var deleteA = await svc.HardDeleteAsync(workspaceA);
+        Assert.True(deleteA.IsSuccess, deleteA.Message);
+
+        using var verify2 = db.MakeContext(superAdmin);
+        Assert.Null(await verify2.Workspaces.IgnoreQueryFilters().FirstOrDefaultAsync(w => w.Id == workspaceA));
+        var survivor = await verify2.Users.IgnoreQueryFilters().FirstOrDefaultAsync(u => u.Email == "multiadmin@example.com");
+        Assert.NotNull(survivor);
+        Assert.Equal(workspaceB, survivor!.OwnerId);
     }
 
     [Fact]
