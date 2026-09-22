@@ -23,6 +23,10 @@
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
       <PrivateAssets>all</PrivateAssets>
     </PackageReference>
+    <!-- R5-58: AddDbContextCheck<T> lives here, not in the ASP.NET Core shared framework. -->
+    <PackageReference Include="Microsoft.Extensions.Diagnostics.HealthChecks.EntityFrameworkCore" Version="8.0.*" />
+    <!-- R5-58: error tracking. Disabled at runtime whenever SENTRY_DSN is empty/unset. -->
+    <PackageReference Include="Sentry.AspNetCore" Version="4.*" />
     <PackageReference Include="Swashbuckle.AspNetCore" Version="6.*" />
   </ItemGroup>
 

@@ -9,6 +9,7 @@ using Microsoft.Extensions.FileProviders;
 using Microsoft.OpenApi.Models;
 using Pointer.API.Extensions;
 using Pointer.API.Hosted;
+using Pointer.API.Middleware;
 using Pointer.API.Seed;
 using Pointer.Application;
 using Pointer.Application.Common;
@@ -18,6 +19,11 @@ using Pointer.Infrastructure;
 using Pointer.API.Startup;
 
 var builder = WebApplication.CreateBuilder(args);
+
+// R5-58: structured JSON console logging + the /health DB check registration (§3.1/§3.3), and
+// Sentry error tracking, wired up only when SENTRY_DSN is set (§3.4) — a no-op locally/in tests.
+builder.Services.AddObservability(builder.Configuration, builder.Logging);
+builder.AddSentryIfConfigured();
 
 // Skill version stamp. An operator may pin Pointer:SkillVersion; otherwise derive it from the served
 // skill files' content so `npx pointer-feedback update` notices every edit (see SkillVersionResolver).
@@ -79,6 +85,7 @@ builder.Services.AddJwtAuth(builder.Configuration);
 builder.Services.AddAuthorization();
 builder.Services.AddHostedService<DemoCleanupService>();
 builder.Services.AddHostedService<RetentionService>();
+builder.Services.AddHostedService<UptimePingService>();
 
 builder.Services.AddApiRateLimiting(builder.Configuration);
 
@@ -188,6 +195,11 @@ var fwd = new ForwardedHeadersOptions
 fwd.KnownNetworks.Clear();
 fwd.KnownProxies.Clear();
 app.UseForwardedHeaders(fwd);
+
+// R5-58: assign/echo X-Request-Id and push the { RequestId, UserId, TenantId } logging scope
+// around everything downstream — early, so even the exception handler's log line below carries
+// the request id.
+app.UseMiddleware<RequestIdMiddleware>();
 
 // R5-68: /api/v1/* → /api/* rewrite. Lets external docs declare /api/v1 as canonical while all
 // controllers stay at /api. Swagger is unaffected (it reads from the controller routes, not
@@ -440,6 +452,28 @@ $"""
 });
 
 app.MapControllers();
+
+// R5-58 §3.3 — anonymous, DB-backed health check for uptime monitors / load balancers (they
+// cannot authenticate). Rate-limited under the existing "meta" policy (120/min/IP,
+// RateLimitingExtensions.cs) and excluded from auth via AllowAnonymous(), overriding the global
+// auth pipeline that already ran above.
+app.MapHealthChecks("/health", new Microsoft.AspNetCore.Diagnostics.HealthChecks.HealthCheckOptions
+{
+    ResponseWriter = async (ctx, report) =>
+    {
+        ctx.Response.ContentType = "application/json";
+        await ctx.Response.WriteAsJsonAsync(new
+        {
+            status = report.Status.ToString(),
+            checks = report.Entries.Select(e => new
+            {
+                name = e.Key,
+                status = e.Value.Status.ToString(),
+                ms = e.Value.Duration.TotalMilliseconds,
+            }),
+        });
+    },
+}).AllowAnonymous().RequireRateLimiting("meta");
 
 app.Run();
 return 0;

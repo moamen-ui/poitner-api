@@ -95,7 +95,7 @@ done
 if [ "$DB_APPLY_CONTRACT" = "true" ]; then
   "${COMPOSE[@]}" exec -T db psql -U pointer -d pointer -c 'SELECT "MigrationId" FROM "__EFMigrationsHistory" ORDER BY 1 DESC LIMIT 3'
 fi
-for path in /api/branding /swagger/v1/swagger.json; do
+for path in /api/branding /swagger/v1/swagger.json /health; do
   code=$(curl -s -o /dev/null -w '%{http_code}' "https://api.pointer.moamen.work$path")
   echo "$path $code"
   [ "$code" = "200" ] || { echo "smoke FAILED on $path" >&2; exit 1; }

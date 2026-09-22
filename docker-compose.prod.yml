@@ -57,6 +57,10 @@ services:
       Email__ApiKey: "${EMAIL_API_KEY:-}"
       Email__FromEmail: "${EMAIL_FROM_EMAIL:-}"
       Email__FromName: "${EMAIL_FROM_NAME:-Pointer}"
+      # R5-58 observability baseline. Both empty by default — Sentry stays uninitialized and the
+      # uptime dead-man's-switch does nothing until an operator sets them.
+      SENTRY_DSN: "${SENTRY_DSN:-}"
+      UPTIME_PING_URL: "${UPTIME_PING_URL:-}"
     volumes: ["uploads:/app/wwwroot/uploads"]
     # Not published to the host — Caddy is the only public entrypoint.
 
