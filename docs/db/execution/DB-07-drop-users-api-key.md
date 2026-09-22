@@ -1,8 +1,12 @@
 # DB-07 — Drop the legacy plaintext `users.api_key` column
 
 Review finding: S-10. Rules: R2 (contract), R5, R7, R10, R11, R13. **Class: Destructive** (drops a
-column). One migration + removal of the one-shot backfill code. Independent of every other doc;
-schedule any time after DB-01.
+column). One migration + removal of the one-shot backfill code. Independent of every other doc's
+*schema*, but **must not start before [DB-09](DB-09-migration-apply-gate.md) has shipped**: this is
+the first Destructive migration and it has to go through the enforced explicit path
+(`POINTER_APPLY_CONTRACT=1 POINTER_CONTRACT_LABEL=pre-db07 bash scripts/deploy-api.sh`) rather than
+the written-only R7 procedure. The migration class also carries `[ContractMigration("DB-07")]`
+next to the marker (DB-09 §3).
 
 **Owner approval (required before task 1):** `Approved to drop users.api_key on ____-__-__ by ________` — fill in and paste into the PR description.
 
@@ -42,7 +46,7 @@ Dump `pre-db07` immediately before; R7 explicit step. Owner approval line above 
 
 ## 5. File-level tasks
 
-1. Delete `API/Startup/ApiKeyBackfillService.cs`; remove `API/Program.cs:171-173` (the comment and the `await ApiKeyBackfill.RunAsync(app.Services);` line) — `MigrateAsync` and `SeedAsync` stay.
+1. Delete `API/Startup/ApiKeyBackfillService.cs`; remove the comment and the `await ApiKeyBackfill.RunAsync(app.Services);` line from `API/Program.cs` (at `:171-173` as of `03093ad`; DB-09 inserts the gate above `MigrateAsync`, so re-locate by text, not line number) — `MigrateAsync`, the DB-09 gate and `SeedAsync` stay.
 2. `Domain/Entity/User.cs:33-40` — delete the property and its doc-comment.
 3. `Infrastructure/Mappings/UserMapping.cs:37-38` — delete both lines.
 4. `Domain/Entity/ApiKey.cs:10-12` — replace the sentence "Replaces the plaintext `User.ApiKey` column, which is kept for one release … dropped in R2." with "Replaces the plaintext `User.ApiKey` column (dropped by DB-07)." `Application/Services/Interfaces/IAuthService.cs:10` — replace "(User.ApiKey)" with "(an `api_keys` row)".

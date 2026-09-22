@@ -3,6 +3,12 @@
 Review findings: P0-4, M-3, M-5. Rules: R2, R3, R7, R10, R13. **Additive — test code and two
 comment edits only. No migration.**
 
+**Status: shipped** in `94ebf27` (2026-09-22) as `Tests/MigrationSafetyTests.cs`. The frozen
+baseline is the 58 ids below; `20260922080137_DropShadowProjectAppUrlProjectId1` (DB-04) is the
+first post-baseline file and passes fact B through its marker (`…ProjectId1.cs:11`). §11 lists the
+hardening follow-ups found by the cross-review; the runtime gate this test cannot provide is
+[DB-09](DB-09-migration-apply-gate.md).
+
 ## 1. Goal
 
 A migration that drops, renames, narrows or runs raw SQL can no longer reach `main` — and therefore
@@ -80,7 +86,7 @@ This doc *is* tests. Sanity check for B: temporarily create a fake `Infrastructu
 1. `dotnet test --filter MigrationSafetyTests` → 2 passed.
 2. `grep -rn "gmail.com" Infrastructure/Migrations/` → no output.
 3. `git diff --stat` touches exactly: the new test file and the two migration `.cs` files (comment lines only; `.Designer.cs` untouched).
-4. `dotnet ef migrations list -p Infrastructure -s API --no-connect` still lists 58 migrations (renaming nothing).
+4. `dotnet ef migrations list -p Infrastructure -s API --no-connect` lists **59** migrations as of 2026-09-22 (58 frozen baseline + `20260922080137_DropShadowProjectAppUrlProjectId1`); the number grows with every doc that ships — the invariant is "every baseline id still exists", which fact A checks, not the total.
 
 ## 8. Rollback
 
@@ -92,4 +98,37 @@ Merge to `main`. Deploy is unaffected (no migration); the next `deploy-api.sh` r
 
 ## 10. Out of scope
 
-Any migration body, `.Designer.cs`, the snapshot, CI YAML (Q7), `DB-RULES.md`.
+Any migration body, `.Designer.cs`, the snapshot, CI YAML (Q7 → DB-10), `DB-RULES.md`.
+
+## 11. Follow-up hardening (post-ship; GLM A4, DB-09) — small, additive, one PR
+
+Verified against the shipped file on 2026-09-22:
+
+- `Tests/MigrationSafetyTests.cs:124-126` — `if (!upToDown.Success) continue;` skips any file whose
+  text has no `void Down(`; a hand-written migration without `Down()` is never scanned.
+- `:76` — `RiskyOperation` lacks `DropCheckConstraint`, `DropUniqueConstraint`, `DropSequence`,
+  `AlterDatabase`.
+
+Tasks (same file; no new file):
+
+1. Replace lines 124-126 with: if `upToDown` does not match **and** the id is not in `Baseline`,
+   add a violation `"{file}: no 'void Down(' found — every migration declares Down() (R5; an
+   intentionally empty Down carries a comment saying why)"` and `continue`. Baseline files stay
+   exempt.
+2. Extend the alternation at `:76` to
+   `\.(DropColumn|DropTable|RenameColumn|RenameTable|DropIndex|DropForeignKey|DropPrimaryKey|DropCheckConstraint|DropUniqueConstraint|DropSequence|AlterColumn|AlterDatabase|Sql)\(`.
+3. Add a third fact `ApprovalMarkerAndContractAttributeAgree` **only when DB-09 has merged** (it
+   introduces `[ContractMigration]`): for every non-baseline file,
+   `ApprovalMarker.IsMatch(content) == content.Contains("[ContractMigration")`; failure message
+   names the file and which of the two is missing. DB-09 §5 task 7 owns this fact; do not add it
+   before the attribute exists or the build breaks.
+4. Re-run the §6 probe (`29990101000000_Probe.cs`) twice: once without `Down()` (must fail with the
+   new message), once with `DropCheckConstraint` and no marker (must fail). Delete the probe.
+
+Acceptance: `dotnet test --filter MigrationSafetyTests` → 2 passed (3 after DB-09); both probes
+fail as described; `git diff --stat` touches only `Tests/MigrationSafetyTests.cs`.
+
+Not changed (frozen, GLM B6): the DB-04 marker names "orchestrator (owner instruction …)" — DB-RULES
+R7 now states that a marker names the human owner **or** the standing instruction it acts under,
+so this marker is compliant; `Down()` re-adds the FK without `onDelete: Restrict`, which is
+`NO ACTION` ≡ `RESTRICT` for a non-deferred constraint.

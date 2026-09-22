@@ -3,6 +3,10 @@
 Review findings: S-1, S-2, I-1 (deferred), M-1. Rules: R1, R2, R3, R7, R8, R10, R11, R13.
 **Class: Expand** (new table + backfill into it + 23 FK constraints + code). Two migrations, one
 release. Owner decisions **Q2 and Q3** (review §8) must be answered before task 1.
+**Amended 2026-09-22** after cross-review: §3.2 index census (GLM B1), §3.3 two-scaffold recipe
+(GLM B4) and soft-deleted-admin caveat (GLM B5), §3.4 explicit delete calls (AGY 3.1). Requires
+[DB-09](DB-09-migration-apply-gate.md) to have shipped (both migrations carry markers and therefore
+`[ContractMigration("DB-03")]`, and release goes through the explicit `deploy-api.sh` path).
 
 ## 1. Goal
 
@@ -65,7 +69,28 @@ b.HasOne<Workspace>().WithMany().HasForeignKey(x => x.OwnerId)
     .OnDelete(DeleteBehavior.Restrict).HasConstraintName("fk_<table>_workspaces_owner_id");
 ```
 
-Exception — `usage_events`: `.OnDelete(DeleteBehavior.SetNull)` (analytics survive a tenant's deletion with `owner_id = NULL`; Q4 in the review). Nullable `owner_id` columns stay nullable (NULL = super admin / global bucket / pre-approval). EF will add a conventional index `IX_<table>_owner_id` wherever none exists whose **first** column is `owner_id`; expected new indexes: `extension_sites` (existing index starts with `owner_id` — EF may still emit one; accept either), `role_tenant_overrides`, `subscriptions` (already unique on `owner_id`; expect none). Any other new index in the generated migration → stop and report.
+Exception — `usage_events`: `.OnDelete(DeleteBehavior.SetNull)` (analytics survive a tenant's deletion with `owner_id = NULL`; Q4 in the review). Nullable `owner_id` columns stay nullable (NULL = super admin / global bucket / pre-approval).
+
+**Expected new indexes (census verified 2026-09-22 against every mapping).** EF's
+`ForeignKeyIndexConvention` adds `IX_<table>_owner_id` for each new FK unless the table already has
+an index whose **first** column is `owner_id` (a unique or filtered one counts). Result:
+
+| Table | Existing owner-leading index? | Expect in Migration 2 |
+|---|---|---|
+| `api_keys` | none (`ApiKeyMapping.cs:39-48` index hash / `user_id` only) | **`IX_api_keys_owner_id`** |
+| `device_logins` | none (`DeviceLoginMapping.cs:35,39`) | **`IX_device_logins_owner_id`** |
+| `project_builds` | none (`ProjectBuildMapping.cs:32` is `(project_id, sha)`) | **`IX_project_builds_owner_id`** |
+| `quick_access_links` | none (`QuickAccessLinkMapping.cs:35` is `token_hash`) | **`IX_quick_access_links_owner_id`** |
+| `role_tenant_overrides` | `(role_id, owner_id)` — owner not leading (`RoleTenantOverrideMapping.cs:24`) | **`IX_role_tenant_overrides_owner_id`** |
+| `extension_sites` | `(owner_id, origin)` unique (`ExtensionSiteMapping.cs:26`) | none expected; **accept either** (after DB-05 the index is filtered — EF 8 still treats it as covering) |
+| `subscriptions` | `owner_id` unique (`SubscriptionMapping.cs:24`) | none expected; **accept either** (same reason) |
+| `workspace_settings` | `owner_id` unique, filtered (`WorkspaceSettingMapping.cs:30`) | none expected; **accept either** |
+| all 15 others (`ai_rules :29`, `app_environments :24`, `comments :44`, `invites :36`, `notifications :39`, `page_context_snapshots :46`, `predefined_action_suggestions :34` `(owner_id, status)`, `predefined_actions :36`, `project_app_urls :43`, `projects :45`, `replies :28`, `roles :31`, `status_presentations :25`, `usage_events :42` `(owner_id, …)`, `users :40`) | yes, owner-leading | **none** |
+
+So Migration 2 contains **exactly 5** `CreateIndex` operations plus **0–3** optional ones from the
+"accept either" rows. Any `CreateIndex` on a table not in the first eight rows, or any operation
+that is not `AddForeignKey`/`CreateIndex`, → **stop and report**; do not delete operations to make
+the file match.
 
 ### 3.3 Migrations (two files, this order)
 
@@ -96,18 +121,39 @@ Exception — `usage_events`: `.OnDelete(DeleteBehavior.SetNull)` (analytics sur
    ) o
    WHERE o.owner_id IS NOT NULL AND NOT EXISTS (SELECT 1 FROM workspaces w WHERE w.id = o.owner_id);
    ```
-   The generated migration will also contain the 23 `AddForeignKey` operations (because the mappings declare them). **Move every `AddForeignKey` (and any `CreateIndex` EF emitted for them) out of this file into Migration 2** so Migration 1 is: CreateTable → SQL 3a → SQL 3b, nothing else.
+   **How to keep the FKs out of this file without hand-moving anything (two-scaffold recipe):**
+   write the 23 FK lines of §3.2 into the mappings **commented out** (prefix each with
+   `// DB-03 step 2: `), scaffold Migration 1 with `just migrate name="AddWorkspaces"` — it then
+   contains only `CreateTable("workspaces")` (+ `PK_workspaces`) — add the marker, the attribute
+   and the two SQL blocks by hand, **then** remove the `// DB-03 step 2: ` prefixes from all 23
+   lines and scaffold Migration 2. Never move operations between generated files.
 4. `Down`: `DropTable("workspaces")` (generated).
 
-**Migration 2 — `AddWorkspaceForeignKeys`** (created empty with `just migrate`, then filled with the moved operations): 23 × `AddForeignKey` (+ the accepted `CreateIndex` ops). `Down` drops them. No marker needed (no risky operation) — but R13 applies: the file must contain **only** `AddForeignKey`/`CreateIndex`/their inverses.
+**Migration 2 — `AddWorkspaceForeignKeys`** (scaffolded with `just migrate` after uncommenting the
+23 FK lines): 23 × `AddForeignKey` + the `CreateIndex` ops from the §3.2 table (5 expected, up to
+3 optional). `Down` drops them. It contains no risky operation, so no marker and no
+`[ContractMigration]` — R13 still applies: the file must contain **only**
+`AddForeignKey`/`CreateIndex`/their inverses.
 
 **Expected state of every existing row:** unchanged. Every existing `owner_id` value gains a matching `workspaces` row (3a or 3b) *before* any FK is created, so no FK creation can fail. NULL `owner_id` rows are untouched (FKs ignore NULL).
 
-Rehearsal pre-check (R11 step 4), must print the same number twice and then `0`:
+**Soft-deleted founding admins (GLM B5).** 3a deliberately requires `u.deleted_at IS NULL`. A
+workspace whose Workspace Admin rows are *all* soft-deleted therefore gets its row from 3b, named
+`Recovered <id>`, even though it is a perfectly reachable tenant. That is not corruption — it is a
+workspace with no live admin. Run the fourth query below to know how many of the `Recovered` rows
+are of this kind before reporting the count to the owner (Q2).
+
+Rehearsal pre-check (R11 step 4). The first two must print the same number; the third is the Q2
+count; the fourth explains how many of the third are "no live admin" rather than true orphans:
 ```sql
 SELECT count(*) FROM users u JOIN roles r ON r.id=u.role_id WHERE r.name='Workspace Admin' AND u.deleted_at IS NULL AND u.owner_id IS NOT NULL;
 SELECT count(*) FROM workspaces WHERE name NOT LIKE 'Recovered %';
 SELECT count(*) FROM workspaces WHERE name LIKE 'Recovered %';   -- Q2: report this number to the owner; expected 0
+SELECT count(DISTINCT u.owner_id) FROM users u JOIN roles r ON r.id=u.role_id
+ WHERE r.name='Workspace Admin' AND u.owner_id IS NOT NULL AND u.deleted_at IS NOT NULL
+   AND NOT EXISTS (SELECT 1 FROM users u2 JOIN roles r2 ON r2.id=u2.role_id
+                   WHERE u2.owner_id=u.owner_id AND u2.deleted_at IS NULL AND r2.name='Workspace Admin');
+-- ^ workspaces whose only admins are soft-deleted: these appear as 'Recovered …' by design
 ```
 
 ### 3.4 Code changes
@@ -115,9 +161,43 @@ SELECT count(*) FROM workspaces WHERE name LIKE 'Recovered %';   -- Q2: report t
 - **Mint**: at each of the four mint points, immediately before `AddAsync(<user>)`, add
   `await _unitOfWork.Workspaces.AddAsync(new Workspace { Id = publicId, Name = <name>, CreatedAt = DateTime.UtcNow, CreatedBy = publicId });`
   where `<name>` is the same expression used for the user's `DisplayName` at that site (`request.DisplayName`, `request.DisplayName.Trim()`, `"Demo User"`), truncated to 120 with `[..Math.Min(120, s.Length)]`. The existing `SaveChangesAsync` that follows persists both.
-- **HardDelete**: replace the six blocks at `TenantService.cs:388-437` with a loop over a new `internal static readonly Type[] HardDeleteOrder` (children before parents; every entry must have an `OwnerId` property):
-  `Notification, Reply, Comment, PageContextSnapshot, ProjectBuild, ProjectAppUrl, PredefinedActionSuggestion, PredefinedAction, AiRule, QuickAccessLink, Project, ExtensionSite, Invite, StatusPresentation, RoleTenantOverride, WorkspaceSetting, Subscription, ApiKey, DeviceLogin, User, Role, AppEnvironment`.
-  Because `Repository<T>` is generic, implement the loop with a private generic helper `Task DeleteOwnedAsync<T>(Guid ownerId) where T : BaseEntity` and a `switch`/dictionary from `Type` to that helper (or call `db.Set<T>()` via the `AppDbContext`; either is fine — no reflection-invoked generics needed if the helper is called once per type in the order above). `UsageEvent` is intentionally absent (FK `SET NULL`). After the loop, delete the `workspaces` row (`_unitOfWork.Workspaces` → `Remove`). Keep the existing `IgnoreQueryFilters()` + `Where(x => x.OwnerId == realOwnerId)` shape.
+- **HardDelete** (amended, AGY 3.1 — **no loop, no reflection in production code**): replace the six blocks at `TenantService.cs:388-437` with **22 explicit, sequential calls** in exactly this order (children before parents):
+  ```csharp
+  await DeleteOwnedAsync<Notification>(x => x.OwnerId == realOwnerId);
+  await DeleteOwnedAsync<Reply>(x => x.OwnerId == realOwnerId);
+  await DeleteOwnedAsync<Comment>(x => x.OwnerId == realOwnerId);
+  await DeleteOwnedAsync<PageContextSnapshot>(x => x.OwnerId == realOwnerId);
+  await DeleteOwnedAsync<ProjectBuild>(x => x.OwnerId == realOwnerId);
+  await DeleteOwnedAsync<ProjectAppUrl>(x => x.OwnerId == realOwnerId);
+  await DeleteOwnedAsync<PredefinedActionSuggestion>(x => x.OwnerId == realOwnerId);
+  await DeleteOwnedAsync<PredefinedAction>(x => x.OwnerId == realOwnerId);
+  await DeleteOwnedAsync<AiRule>(x => x.OwnerId == realOwnerId);
+  await DeleteOwnedAsync<QuickAccessLink>(x => x.OwnerId == realOwnerId);
+  await DeleteOwnedAsync<Project>(x => x.OwnerId == realOwnerId);
+  await DeleteOwnedAsync<ExtensionSite>(x => x.OwnerId == realOwnerId);
+  await DeleteOwnedAsync<Invite>(x => x.OwnerId == realOwnerId);
+  await DeleteOwnedAsync<StatusPresentation>(x => x.OwnerId == realOwnerId);
+  await DeleteOwnedAsync<RoleTenantOverride>(x => x.OwnerId == realOwnerId);
+  await DeleteOwnedAsync<WorkspaceSetting>(x => x.OwnerId == realOwnerId);
+  await DeleteOwnedAsync<Subscription>(x => x.OwnerId == realOwnerId);
+  await DeleteOwnedAsync<ApiKey>(x => x.OwnerId == realOwnerId);
+  await DeleteOwnedAsync<DeviceLogin>(x => x.OwnerId == realOwnerId);
+  await DeleteOwnedAsync<User>(x => x.OwnerId == realOwnerId);
+  await DeleteOwnedAsync<Role>(x => x.OwnerId == realOwnerId);
+  await DeleteOwnedAsync<AppEnvironment>(x => x.OwnerId == realOwnerId);
+  ```
+  with one private generic helper that takes the predicate (so it compiles for the three entities whose `OwnerId` is `Guid` and the nineteen whose is `Guid?` — no `EF.Property`, no reflection):
+  ```csharp
+  private async Task DeleteOwnedAsync<T>(Expression<Func<T, bool>> ownedBy) where T : BaseEntity
+  {
+      var repo = _unitOfWork.Repository<T>();
+      var rows = await repo.Query().IgnoreQueryFilters().Where(ownedBy).ToListAsync();
+      if (rows.Count > 0)
+          repo.RemoveRange(rows);
+  }
+  ```
+  (`Repository<T>.Query()` and `RemoveRange` exist: `Infrastructure/Repository/Repository.cs:11,23`; this is the exact shape of the six blocks being replaced, `TenantService.cs:386-392`. Add `using System.Linq.Expressions;`.) `UsageEvent` is intentionally absent (FK `SET NULL`). After the 22 calls, delete the `workspaces` row (`_unitOfWork.Workspaces.Remove(...)` after loading it with `IgnoreQueryFilters()`), then the existing `SaveChangesAsync` inside `ExecuteInTransactionAsync`.
+  Also add `internal static readonly Type[] HardDeleteOrder = { typeof(Notification), typeof(Reply), … typeof(AppEnvironment) };` — the **same 22 types in the same order**. It is **only** read by the reflection test in §6 (it is the list the test compares against the entity assembly); production code never iterates it. Put a comment above it: `// Documentation + test input. Keep in the same order as the DeleteOwnedAsync<T> calls above. Never loop over this in production code.`
 - `ListAsync`, `ResolveTenantNameAsync`, `TransferOwnershipAsync`, JWT claims, DTOs: **unchanged** (stage B later).
 
 ## 4. Safety classification
@@ -130,11 +210,11 @@ SELECT count(*) FROM workspaces WHERE name LIKE 'Recovered %';   -- Q2: report t
 2. `Infrastructure/Mappings/WorkspaceMapping.cs` — new `IEntityTypeConfiguration<Workspace>`: `ToTable("workspaces")`, `HasKey(x => x.Id)`, `Property(x => x.Id).HasColumnName("id").ValueGeneratedNever()`, `Name` `.HasColumnName("name").IsRequired().HasMaxLength(120)`, the six audit columns with the same `HasColumnName` calls every other mapping uses.
 3. `Infrastructure/AppDbContext.cs` — add `public DbSet<Workspace> Workspaces => Set<Workspace>();` after line 63; add the query filter from §3.1 after line 147 with a two-line comment.
 4. `Application/Abstractions/IUnitOfWork.cs` — add `DbSet<Workspace> Workspaces { get; }` after line 9. `Infrastructure/Repository/UnitOfWork.cs` — add `public DbSet<Workspace> Workspaces => db.Workspaces;` after line 21.
-5. The 23 mapping files (§2 list) — add the FK line from §3.2 after the `OwnerId` property line; `usage_events` uses `SetNull`.
-6. `just migrate name="AddWorkspaces"` → open the generated file, apply §3.3 step 2-3 (marker, two SQL blocks, move FK ops out). **Compare with §3.3; if the generated `CreateTable` has a column not in §3.1 or the FK count is not 23, stop and report.**
-7. `just migrate name="AddWorkspaceForeignKeys"` → paste the moved operations into `Up`/`Down`.
+5. The 23 mapping files (§2 list) — add the FK line from §3.2 after the `OwnerId` property line, **commented out** with the prefix `// DB-03 step 2: ` (so the first scaffold does not see them); `usage_events` uses `SetNull`.
+6. `just migrate name="AddWorkspaces"` → open the generated file. `Up()` must contain **only** `CreateTable("workspaces", …)` (with `PK_workspaces`) and `Down()` only `DropTable`. **If it contains any `AddForeignKey` or `CreateIndex`, a step-5 line was not commented out — stop and report.** If the `CreateTable` has a column not in §3.1 → stop and report. Then add, by hand: the marker line and `[ContractMigration("DB-03")]` (DB-09 §3) above the class/`Up(`, and the two SQL blocks (3a, 3b) after `CreateTable`.
+7. Remove the `// DB-03 step 2: ` prefix from all 23 lines (`grep -rn "DB-03 step 2" Infrastructure/Mappings | wc -l` → 0 afterwards). `just migrate name="AddWorkspaceForeignKeys"` → open it: `Up()` = 23 × `AddForeignKey` + the `CreateIndex` ops listed in the §3.2 table (5, plus up to 3 optional), nothing else. Anything else → stop and report. No marker, no attribute (no risky operation).
 8. Mint points (§2, four files) — add the `Workspaces.AddAsync` line per §3.4.
-9. `Application/Services/Implementation/TenantService.cs:388-437` — replace with the ordered routine per §3.4; add `internal static readonly Type[] HardDeleteOrder`. Add `[assembly: InternalsVisibleTo("Pointer.Tests")]` only if the Application project does not already expose internals to tests (check `Application/*.csproj` and existing `InternalsVisibleTo`; if absent, make the array `public static readonly` instead — either is acceptable).
+9. `Application/Services/Implementation/TenantService.cs:388-437` — replace with the 22 explicit `await DeleteOwnedAsync<T>(realOwnerId)` calls and the helper per §3.4; add `internal static readonly Type[] HardDeleteOrder` (22 entries, same order). Add `[assembly: InternalsVisibleTo("Pointer.Tests")]` only if the Application project does not already expose internals to tests (check `Application/*.csproj` and existing `InternalsVisibleTo`; if absent, make the array `public static readonly` instead — either is acceptable).
 10. Tests (§6). 11. `just fmt`, `just test`. 12. Rehearsal (R11) with the §3.3 pre-check queries; paste the three counts into the PR.
 13. Regenerate nothing under `clients/` (no endpoint changed). Update `docs/db/SCHEMA.md`'s `workspaces` row from "planned" to present (one-line edit) — the only doc edit allowed here.
 
@@ -144,7 +224,7 @@ New file `Tests/WorkspaceTests.cs` (copy the Sqlite `TestDb` fixture verbatim fr
 
 1. `Project_WithUnknownOwner_IsRejectedByForeignKey` — insert a `Project` whose `OwnerId` has no `workspaces` row → `Assert.ThrowsAsync<DbUpdateException>`. (Tenancy-integrity proof.)
 2. `TenantService_CreateAsync_MintsWorkspaceRow` — build `TenantService` the way `Tests/TenantInviteServiceTests.cs` or `WorkspaceAdminOwnershipTests.cs` builds it; call `CreateAsync`; assert `db.Workspaces.IgnoreQueryFilters().Single(w => w.Id == result.Data.OwnerId).Name == request.DisplayName`.
-3. `HardDeleteOrder_CoversEveryOwnerCarryingEntity` — reflection: every type in `typeof(BaseEntity).Assembly` that is a class, not abstract, has a property named `OwnerId`, and is not `Workspace` or `UsageEvent`, must be contained in `TenantService.HardDeleteOrder`. Failure message names the missing type. (This is the rule R8 point 5 enforcer.)
+3. `HardDeleteOrder_CoversEveryOwnerCarryingEntity` — reflection: every type in `typeof(BaseEntity).Assembly` that is a class, not abstract, has a property named `OwnerId`, and is not `Workspace` or `UsageEvent`, must be contained in `TenantService.HardDeleteOrder`; and `HardDeleteOrder.Length == 22`. Failure message names the missing type. (This is the rule R8 point 5 enforcer. The array is test input only — see §3.4.)
 4. `HardDelete_RemovesEverything_EvenWithSuggestionNotification` — seed one workspace with a project, a comment, a suggestion, a `Notification { CommentId = null, SuggestionId = …, ProjectId = … }`, a subscription, a workspace_settings row; call `HardDeleteAsync`; assert `IsSuccess` and, for every type in `HardDeleteOrder`, `Set<T>().IgnoreQueryFilters().Count(x => x.OwnerId == id) == 0`, and `Workspaces.Count() == 0`.
 5. `Workspace_TenantB_CannotReadTenantA` — InMemory is fine here: two workspaces, context for tenant B, `db.Workspaces.ToList()` returns only B. (Copy shape from `TenantQueryFilterTests.Project_TenantA_SeesOnlyOwnRows`.)
 
@@ -153,11 +233,11 @@ New file `Tests/WorkspaceTests.cs` (copy the Sqlite `TestDb` fixture verbatim fr
 ## 7. Acceptance criteria
 
 1. `dotnet ef migrations list -p Infrastructure -s API --no-connect` shows exactly two new ids ending in `_AddWorkspaces` and `_AddWorkspaceForeignKeys`, in that order.
-2. `grep -c "AddForeignKey(" Infrastructure/Migrations/*_AddWorkspaceForeignKeys.cs` → 23; `grep -c "AddForeignKey(" Infrastructure/Migrations/*_AddWorkspaces.cs` → 0.
-3. `grep -rn "HasOne<Workspace>" Infrastructure/Mappings | wc -l` → 23.
-4. `grep -n "Workspaces.AddAsync" Application/Services/Implementation/*.cs | wc -l` → 4.
-5. `just test` green; `Tests/WorkspaceTests.cs` has the 5 facts above; `MigrationSafetyTests` (DB-02) passes with the R3 marker present.
-6. Rehearsal: the three §3.3 queries print `N`, `N`, `0`; `\d comments` shows `fk_comments_workspaces_owner_id`; `SELECT count(*) FROM comments c LEFT JOIN workspaces w ON w.id=c.owner_id WHERE w.id IS NULL` → 0 (repeat for `projects`, `users` where `owner_id IS NOT NULL`).
+2. `grep -c "AddForeignKey(" Infrastructure/Migrations/*_AddWorkspaceForeignKeys.cs` → 23; `grep -c "AddForeignKey(" Infrastructure/Migrations/*_AddWorkspaces.cs` → 0; `grep -c "CreateIndex(" Infrastructure/Migrations/*_AddWorkspaceForeignKeys.cs` → between 5 and 8, and every `name:` among them is one of `IX_api_keys_owner_id`, `IX_device_logins_owner_id`, `IX_project_builds_owner_id`, `IX_quick_access_links_owner_id`, `IX_role_tenant_overrides_owner_id`, `IX_extension_sites_owner_id`, `IX_subscriptions_owner_id`, `IX_workspace_settings_owner_id`.
+3. `grep -rn "HasOne<Workspace>" Infrastructure/Mappings | wc -l` → 23; `grep -rn "DB-03 step 2" Infrastructure/Mappings | wc -l` → 0.
+4. `grep -n "Workspaces.AddAsync" Application/Services/Implementation/*.cs | wc -l` → 4; `grep -c "await DeleteOwnedAsync<" Application/Services/Implementation/TenantService.cs` → 22; `grep -c "foreach.*HardDeleteOrder\|HardDeleteOrder\[" Application/Services/Implementation/TenantService.cs` → 0.
+5. `just test` green; `Tests/WorkspaceTests.cs` has the 5 facts above; `MigrationSafetyTests` (DB-02) passes with the R3 marker and `[ContractMigration]` present on Migration 1 and neither on Migration 2.
+6. Rehearsal: the four §3.3 queries print `N`, `N`, `R`, `S` with `R == S` (every Recovered row is a no-live-admin workspace) — report `R` to the owner either way; `\d comments` shows `fk_comments_workspaces_owner_id`; `SELECT count(*) FROM comments c LEFT JOIN workspaces w ON w.id=c.owner_id WHERE w.id IS NULL` → 0 (repeat for `projects`, `users` where `owner_id IS NOT NULL`).
 7. A registered user's JWT still carries the same `tenant` value as before (login → decode → compare to `users.owner_id`): no auth change.
 8. `DemoCleanupService` log on the rehearsal API shows `hard-deleted demo tenant` (seed one expired demo first) rather than `HardDeleteAsync returned failure`.
 
@@ -168,8 +248,8 @@ Both migrations have full `Down()`s: drop 23 FKs (+ indexes), then drop `workspa
 ## 9. Release steps
 
 1. Owner confirms Q2 (default: attach "Recovered" rows) and Q3 (name = admin display name).
-2. Merge; on the VM: `git pull`; `docker compose -f docker-compose.prod.yml stop api`; `bash scripts/backup-db.sh pre-db03`.
-3. `docker compose --env-file .env.prod -f docker-compose.prod.yml up -d --build api`; `docker compose -f docker-compose.prod.yml logs --since 5m api | grep -iE "migrat|error|exception"` — expect two `Applying migration` lines and no error.
+2. Merge; on the VM: `POINTER_APPLY_CONTRACT=1 POINTER_CONTRACT_LABEL=pre-db03 bash scripts/deploy-api.sh` (DB-09 path: pulls, stops the API, dumps `pre-db03`, rebuilds with `DBApplyContractMigrations=true`).
+3. The script prints the log grep; expect two `Applying migration` lines, one `DB-09: applying 1 contract migration(s)` line, and no error.
 4. Verify: `docker compose -f docker-compose.prod.yml exec -T db psql -U pointer -d pointer -c "SELECT id, name FROM workspaces;"` → the expected workspaces, none named `Recovered …` (if any are, do **not** delete them; report to the owner).
 5. Smoke: dashboard login, comment list, `GET /api/tenants` (super admin) unchanged.
 6. Watch `DemoCleanupService` lines over the next hour for failures.

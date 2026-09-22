@@ -31,6 +31,14 @@ Columns without an FK (mapping line of the property):
 | `usage_events.project_id` | `UsageEventMapping.cs:17` | `projects(id)` | yes | **Q4 default: `SetNull`** |
 | `notifications.project_id` | `NotificationMapping.cs:34` — exists as `Restrict` | `projects(id)` | no | change to `Cascade` (I-2; a notification never outlives its project; `comment_id` is already `Cascade` at `:33`) |
 
+Not touched — and deliberately left as is: `project_app_urls.app_environment_id` is `Cascade`
+(`ProjectAppUrlMapping.cs:29-32`). Because global `app_environments` rows are shared by every
+tenant, a **hard** delete of one would cascade into every tenant's URLs (cross-review AGY 1.2 / GLM
+B7). Today that path does not exist: `AppEnvironmentService.DeleteAsync` soft-deletes and refuses
+while any live URL references the row (`AppEnvironmentService.cs:101-124`), soft deletes fire no
+FK action, and the only hard delete of environments is the tenant-scoped ordered routine (DB-03
+deletes `ProjectAppUrl` before `AppEnvironment`). See §10 for the trigger that changes this.
+
 Not touched (uuid references to `users.public_id`, rule R14): `ai_rules.user_id`, `predefined_actions.user_id`, `quick_access_links.user_id`, `device_logins.user_id`, `notifications.user_id/actor_id`, `comments.author_id`, `replies.author_id`.
 
 Redundant indexes: `AiRuleMapping.cs:29` `b.HasIndex(x => x.OwnerId);` (covered by `:30` `(OwnerId, ProjectId)`), `PredefinedActionMapping.cs:36` `b.HasIndex(x => x.OwnerId);` (covered by `:37`).
@@ -121,3 +129,9 @@ re-adds the two single-column indexes. No data change either way. Dump `pre-db06
 uuid user references (R14, Q5), `owner_id` FKs (DB-03), `comments.project_id` behaviour (stays
 `Restrict` — a comment must never vanish by cascade), `page_context_snapshots`, `api_keys`,
 `subscriptions.plan_id`, application code (no service changes needed), `clients/`, dashboard.
+
+**Watch item (B7):** `project_app_urls.app_environment_id` stays `Cascade` only while no hard-delete
+path for global environments exists. The day one appears (an endpoint, an admin tool, or a manual
+`DELETE FROM app_environments`), switch `ProjectAppUrlMapping.cs:32` to
+`OnDelete(DeleteBehavior.Restrict)` in the same PR — a one-line mapping change and a
+`DropForeignKey`/`AddForeignKey` migration with the `R4 constraint` marker.

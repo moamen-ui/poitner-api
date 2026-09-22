@@ -1,7 +1,8 @@
 # DB rules
 
 Standing rules for every schema change in this repository. Created 2026-09-22 by the db-architect
-review ([`DB-REVIEW-2026-09-22.md`](DB-REVIEW-2026-09-22.md)); amend, do not fork. Every execution
+review ([`DB-REVIEW-2026-09-22.md`](DB-REVIEW-2026-09-22.md)); amended the same day after the
+cross-reviews (R4, R6, R7, R13 — marked *(amended)*); amend, do not fork. Every execution
 doc under [`execution/`](execution/) cites the rule numbers it relies on. `scripts/deploy-api.sh`
 already points here.
 
@@ -27,7 +28,8 @@ Renames, splits, merges and type changes take three deploys minimum:
 2. **Migrate** — backfill (R3). Code switches reads to the new shape; still writes both.
 3. **Contract** — drop the old shape in a later release, after the rehearsal (R11) shows zero
    readers. Contract migrations carry a `// DB-RULES: R2 contract approved <yyyy-mm-dd> by <name>`
-   comment on the line above `Up()`; the DB-02 guard test requires it.
+   comment on the line above `Up()`; the DB-02 guard test requires it, and (after DB-09) the
+   class also carries `[ContractMigration("DB-NN")]` so the runtime gate can see it (R7).
 
 `20260903191419_ProjectPerEnvironmentActivation` did all three in one `Up()`. Do not copy it.
 
@@ -54,6 +56,18 @@ that: `migrationBuilder.Sql("CREATE INDEX CONCURRENTLY …", suppressTransaction
 `ADD CONSTRAINT … NOT VALID` followed by `VALIDATE CONSTRAINT` in a second statement. The
 execution doc states which mode applies and why.
 
+*(amended, GLM C1)* Two consequences the doc must spell out when the concurrent mode is used:
+
+- A `CREATE INDEX CONCURRENTLY` that fails or is interrupted leaves an **INVALID** index behind
+  (`\d table` shows `INVALID`; `SELECT indexrelid::regclass FROM pg_index WHERE NOT indisvalid`).
+  The migration must start with `DROP INDEX CONCURRENTLY IF EXISTS <name>;` so a retry is clean, and
+  a migration that builds an index concurrently contains **nothing else** (no other DDL, no data)
+  — `suppressTransaction: true` means there is no rollback to lean on.
+- `NOT VALID` is a deferral, not an exemption. The `VALIDATE CONSTRAINT` statement ships in the
+  same release (its own migration is fine) and the release steps verify
+  `SELECT conname FROM pg_constraint WHERE NOT convalidated` returns nothing. An FK left `NOT VALID`
+  enforces new writes but hides existing orphans and is not used by the planner.
+
 ## R5. Every execution doc has a Rollback section
 
 It names the exact `Down()` behaviour or states in bold that none exists. Anything that destroys
@@ -66,8 +80,10 @@ only when the doc says so.
 
 `scripts/deploy-api.sh` calls `scripts/backup-db.sh pre-deploy` before rebuilding the API
 (`deploy-api.sh:23-24`); it is the **only** supported deploy path. Restore is `DEPLOY.md` § Backups
-/ Restore and must have been rehearsed at least once (DB-01). After DB-01 the nightly dump is also
-copied off-box and the `uploads` volume is archived beside it.
+/ Restore; *(amended)* it was **rehearsed locally on 2026-09-22** ("Last rehearsed" line) and is
+re-rehearsed whenever `backup-db.sh` or the restore steps change. After DB-01 the nightly dump is
+also copied off-box, the `uploads` volume is archived beside it, and `deploy-api.sh` refuses to run
+when the newest dump is older than 26 h.
 
 ## R7. Auto-migrate on boot is for additive migrations only
 
@@ -84,8 +100,25 @@ docker compose -f docker-compose.prod.yml logs --since 5m api | grep -iE "migrat
 ```
 
 i.e. the same commands `deploy-api.sh` runs, but with the API **stopped first** so no request
-hits a half-migrated schema, and with a human reading the log. Until DB-02's guard exists, the
-reviewer of the PR is the gate.
+hits a half-migrated schema, and with a human reading the log. *(amended)* After DB-09 this manual
+sequence is refused at boot unless `export DB_APPLY_CONTRACT=true` precedes the `up`; the
+supported form is simply `POINTER_APPLY_CONTRACT=1 POINTER_CONTRACT_LABEL=pre-<slug> bash
+scripts/deploy-api.sh`, which performs exactly these steps.
+
+*(amended)* **Enforcement is [DB-09](execution/DB-09-migration-apply-gate.md), not the PR
+reviewer.** Every migration that carries a DB-RULES approval marker (R2 contract, R3 backfill,
+index change, R4 constraint — i.e. anything the DB-02 guard flags) also carries the attribute
+`[ContractMigration("DB-NN")]` on its class. `API/Program.cs` checks pending migrations before
+`MigrateAsync()`; if any pending one carries the attribute and `DBApplyContractMigrations` is not
+`true`, the API logs the ids at Critical, exits with code 3 and does **not** migrate. Only
+`POINTER_APPLY_CONTRACT=1 POINTER_CONTRACT_LABEL=pre-<slug> bash scripts/deploy-api.sh` sets that
+flag — and that path is the block above (stop api → labelled dump → up). The DB-02 test requires
+marker and attribute to agree. Until DB-09 ships, the reviewer of the PR is the gate.
+
+**Who signs a marker.** `by <name>` names the human owner, or names the agent **and** the standing
+owner instruction it acts under, in parentheses — precedent
+`20260922080137_DropShadowProjectAppUrlProjectId1.cs:11` ("by orchestrator (owner instruction
+"proceed"; …)"). A marker that names only an agent is not an approval.
 
 ## R8. Tenancy invariant
 
@@ -171,7 +204,11 @@ After `just migrate name="<PascalCase>"`, open `Infrastructure/Migrations/<ts>_<
 compare every operation to the doc's design table **before** building. A migration named for one
 feature that also carries an unrelated column is a red flag (`20260911223426_AddTenantInviteFields`
 silently shipped the shadow `ProjectId1`, see DB-04). Also diff `AppDbContextModelSnapshot.cs`;
-changes outside the entity you touched mean a mapping bug.
+changes outside the entity you touched mean a mapping bug. *(amended)* After
+[DB-10](execution/DB-10-ci-postgres-migration-job.md) ships, CI also applies every migration to an
+empty `postgres:15`, fails on `dotnet ef migrations has-pending-model-changes`, and round-trips
+the newest `Down()`/`Up()` — so a mapping edit without a migration, or a `Down()` that does not
+undo its `Up()`, fails the PR before the R11 rehearsal.
 
 ## R14. Identity of users
 

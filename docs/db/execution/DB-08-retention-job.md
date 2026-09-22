@@ -2,7 +2,8 @@
 
 Review finding: S-9. Rules: R3 (batched deletes), R5, R11. **Class: code only, no schema change;
 deletes old rows by policy** — ships **disabled** and is switched on by config once the owner has
-confirmed the periods (**Q8**). Last in the execution order.
+confirmed the periods (**Q8**). Last of the schema/code docs in the execution order (only DB-01's
+off-box half, waiting on Q1, may trail it).
 
 **Owner decision (fill before enabling in prod):** `Retention__UsageEventsDays=____ Retention__NotificationsReadDays=____ Retention__PageContextSnapshotDays=____` (doc defaults: 180 / 90 / 30).
 
