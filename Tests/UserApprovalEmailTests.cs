@@ -116,7 +116,8 @@ public class UserApprovalEmailTests
             caller,
             email,
             new PassThroughEntitlements(),
-            new NoopBrandingService()
+            new NoopBrandingService(),
+            new MembershipService(uow)
         );
     }
 
@@ -160,6 +161,7 @@ public class UserApprovalEmailTests
         };
         seed.Users.Add(user);
         seed.SaveChanges();
+        TestSeed.Join(seed, user, tenant, role, isActive: false, status: ApprovalStatus.Pending);
 
         return (user.Id, tenant, role.Id);
     }

@@ -174,12 +174,14 @@ public class CommentSummaryProjectionTests
             var role = new Role { Name = "Developer", OwnerId = null };
             seed.Roles.Add(role);
             seed.SaveChanges();
-            seed.Users.Add(new User
+            var author = new User
             {
                 PublicId = authorId, Email = "dev@example.com", PasswordHash = "x",
                 DisplayName = "Dev Person", RoleId = role.Id, OwnerId = tenant, IsActive = true,
-            });
+            };
+            seed.Users.Add(author);
             seed.SaveChanges();
+            TestSeed.Join(seed, author, tenant, role);
             seed.Comments.Add(new Comment
             {
                 ProjectId = project.Id, OwnerId = tenant, AuthorId = authorId, Body = "fix this",

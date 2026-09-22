@@ -31,18 +31,21 @@ public class ExportImportService : IExportImportService
     private readonly IProjectService _projectService;
     private readonly ICurrentUser _currentUser;
     private readonly ISettingsService _settings;
+    private readonly IMembershipService _memberships;
 
     public ExportImportService(
         IUnitOfWork unitOfWork,
         IProjectService projectService,
         ICurrentUser currentUser,
-        ISettingsService settings
+        ISettingsService settings,
+        IMembershipService? memberships = null
     )
     {
         _unitOfWork = unitOfWork;
         _projectService = projectService;
         _currentUser = currentUser;
         _settings = settings;
+        _memberships = memberships ?? new MembershipService(unitOfWork);
     }
 
     // ===========================================================================
@@ -523,20 +526,14 @@ public class ExportImportService : IExportImportService
         if (projectOwnerId is not Guid owner)
             return null;
 
-        var demoOwner = await _unitOfWork
-            .Repository<User>()
-            .Query()
-            .IgnoreQueryFilters()
-            .AsNoTracking()
-            .Where(u => u.PublicId == owner && u.IsDemo && u.DeletedAt == null)
-            .Select(u => new { u.DemoCommentCapOverride })
-            .FirstOrDefaultAsync();
-
-        if (demoOwner == null)
+        // DB-11a: the founding admin's public_id no longer equals the workspace id — resolve via
+        // the workspace's current admin membership instead of users.public_id == owner.
+        var currentAdmin = await _memberships.CurrentAdminAsync(owner);
+        if (currentAdmin?.User.IsDemo != true)
             return null;
 
         var cap =
-            demoOwner.DemoCommentCapOverride
+            currentAdmin.User.DemoCommentCapOverride
             ?? await _settings.GetIntAsync(ISettingsService.DemoCommentCap, 10);
         var existing = await _unitOfWork
             .Repository<Comment>()
@@ -563,12 +560,7 @@ public class ExportImportService : IExportImportService
         if (missing.Count == 0)
             return;
 
-        var resolved = await _unitOfWork
-            .Repository<User>()
-            .Query()
-            .AsNoTracking()
-            .Where(u => missing.Contains(u.PublicId))
-            .ToDictionaryAsync(u => u.PublicId, u => u.DisplayName);
+        var resolved = await UserNameResolver.ResolveAsync(_unitOfWork, missing);
 
         foreach (var kv in resolved)
             names[kv.Key] = kv.Value;

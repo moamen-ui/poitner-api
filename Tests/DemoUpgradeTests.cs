@@ -44,7 +44,7 @@ public class DemoUpgradeTests
     private sealed class RecordingTokenService : ITokenService
     {
         public User? IssuedFor { get; private set; }
-        public string Issue(User user, int? keyScopes = null)
+        public string Issue(User user, WorkspaceMembership? membership, int? keyScopes = null)
         {
             IssuedFor = user;
             return "token-for-" + user.Email;
@@ -67,7 +67,7 @@ public class DemoUpgradeTests
         var email = new NoopEmailService();
         var settings = new NoopSettingsService();
         var branding = new NoopBrandingService();
-        var svc = new DemoService(uow, new FakePasswordHasher(), tokens, email, settings, branding);
+        var svc = new DemoService(uow, new FakePasswordHasher(), tokens, email, settings, branding, new MembershipService(uow));
         return (svc, db, tokens);
     }
 
@@ -263,11 +263,12 @@ public class DemoUpgradeTests
     // -----------------------------------------------------------------
 
     [Fact]
-    public async Task Upgrade_with_email_used_by_a_different_tenant_is_allowed()
+    public async Task Upgrade_with_email_used_by_a_different_tenant_is_a_conflict()
     {
-        // Emails are unique PER TENANT, not globally. A user in a completely separate tenant holding
-        // the same email must NOT block the upgrade (and must not leak that user's existence via 409).
-        var (svc, db, _) = Build(nameof(Upgrade_with_email_used_by_a_different_tenant_is_allowed));
+        // DB-11a (D7): e-mail uniqueness for demo upgrade is now GLOBAL — one identity per e-mail.
+        // A different tenant's identity already holding this address blocks the upgrade (Conflict,
+        // no automatic merge), where it used to be allowed (emails were unique per tenant only).
+        var (svc, db, _) = Build(nameof(Upgrade_with_email_used_by_a_different_tenant_is_a_conflict));
         var demo = SeedDemoUser(db);
         var otherOwner = Guid.NewGuid();
         var role = db.Roles.First();
@@ -288,8 +289,9 @@ public class DemoUpgradeTests
 
         var result = await svc.UpgradeAsync(demo.PublicId, ValidRequest("shared@user.com"));
 
-        Assert.True(result.IsSuccess);
-        Assert.Equal("shared@user.com", db.Users.Single(u => u.PublicId == demo.PublicId).Email);
+        Assert.True(result.IsConflict);
+        // The demo user's own row is untouched.
+        Assert.Equal(demo.Email, db.Users.Single(u => u.PublicId == demo.PublicId).Email);
     }
 
     // -----------------------------------------------------------------

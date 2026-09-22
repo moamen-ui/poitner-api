@@ -39,6 +39,7 @@ public class DemoCleanupService(
             using var scope = scopeFactory.CreateScope();
             var uow = scope.ServiceProvider.GetRequiredService<IUnitOfWork>();
 
+            // DB-11a: HardDeleteAsync now takes the WORKSPACE id, not the demo admin's PublicId.
             expiredIds = await uow.Repository<User>()
                 .Query()
                 .IgnoreQueryFilters()
@@ -47,8 +48,9 @@ public class DemoCleanupService(
                     u.IsDemo &&
                     u.DeletedAt == null &&
                     u.ExpiresAt != null &&
-                    u.ExpiresAt < DateTime.UtcNow)
-                .Select(u => u.PublicId)
+                    u.ExpiresAt < DateTime.UtcNow &&
+                    u.OwnerId != null)
+                .Select(u => u.OwnerId!.Value)
                 .ToListAsync(stoppingToken);
         }
         catch (Exception ex)

@@ -35,7 +35,7 @@ public class WorkspaceService : IWorkspaceService
         if (_currentUser.IsQuickAccess)
             return Result<WorkspaceResponse>.Forbidden(MessageKeys.Common.Forbidden);
 
-        var ownerId = TenantStamp.OwnerFor(_currentUser) ?? _currentUser.Id;
+        var ownerId = TenantStamp.OwnerFor(_currentUser);
         if (ownerId is not Guid owner)
             return Result<WorkspaceResponse>.Forbidden(MessageKeys.Common.Forbidden);
 
@@ -58,7 +58,7 @@ public class WorkspaceService : IWorkspaceService
         if (_currentUser.IsQuickAccess)
             return Result<WorkspaceResponse>.Forbidden(MessageKeys.Common.Forbidden);
 
-        var ownerId = TenantStamp.OwnerFor(_currentUser) ?? _currentUser.Id;
+        var ownerId = TenantStamp.OwnerFor(_currentUser);
         if (ownerId is not Guid owner)
             return Result<WorkspaceResponse>.Forbidden(MessageKeys.Common.Forbidden);
 

@@ -30,8 +30,11 @@ public class RoleServiceDeleteTests
     private static AppDbContext BuildContext(ICurrentUser user, string dbName) =>
         new(new DbContextOptionsBuilder<AppDbContext>().UseInMemoryDatabase(dbName).Options, user, new Microsoft.Extensions.Configuration.ConfigurationBuilder().Build());
 
-    private static RoleService BuildService(ICurrentUser user, AppDbContext db) =>
-        new(new UnitOfWork(db), user);
+    private static RoleService BuildService(ICurrentUser user, AppDbContext db)
+    {
+        var uow = new UnitOfWork(db);
+        return new(uow, user, new MembershipService(uow));
+    }
 
     // Seeds: a tenant-owned role to delete (with one assigned user), plus a set of candidate
     // reassignment targets (own non-admin, own admin, global non-admin, other-tenant non-admin).
@@ -52,7 +55,7 @@ public class RoleServiceDeleteTests
         seed.SaveChanges();
 
         // One user assigned to the role being deleted → reassignment is required.
-        seed.Users.Add(new User
+        var member = new User
         {
             Email = "member@a.com",
             PasswordHash = "x",
@@ -62,8 +65,10 @@ public class RoleServiceDeleteTests
             ApprovalStatus = ApprovalStatus.Approved,
             IsActive = true,
             OwnerId = tenant
-        });
+        };
+        seed.Users.Add(member);
         seed.SaveChanges();
+        TestSeed.Join(seed, member, tenant, deleteRole);
 
         return new Seeded(tenant, deleteRole.Id, ownNonAdmin.Id, ownAdmin.Id, global.Id, otherTenantRole.Id);
     }
@@ -132,7 +137,10 @@ public class RoleServiceDeleteTests
         Assert.True(result.IsSuccess);
         Assert.Equal(1, result.Data!.ReassignedUsers);
         Assert.NotNull(db.Roles.IgnoreQueryFilters().Single(r => r.Id == s.DeleteRoleId).DeletedAt);
-        Assert.Equal(s.OwnNonAdmin, db.Users.IgnoreQueryFilters().Single(u => u.Email == "member@a.com").RoleId);
+        // DB-11a: reassignment happens on the MEMBERSHIP, not users.role_id.
+        var memberUserId = db.Users.IgnoreQueryFilters().Single(u => u.Email == "member@a.com").Id;
+        Assert.Equal(s.OwnNonAdmin, db.Set<Pointer.Domain.Entity.WorkspaceMembership>().IgnoreQueryFilters()
+            .Single(m => m.UserId == memberUserId && m.LeftAt == null).RoleId);
     }
 
     [Fact]
@@ -148,6 +156,8 @@ public class RoleServiceDeleteTests
         var result = await svc.DeleteAsync(s.DeleteRoleId, s.OwnAdmin);
 
         Assert.True(result.IsSuccess);
-        Assert.Equal(s.OwnAdmin, db.Users.IgnoreQueryFilters().Single(u => u.Email == "member@a.com").RoleId);
+        var memberUserId = db.Users.IgnoreQueryFilters().Single(u => u.Email == "member@a.com").Id;
+        Assert.Equal(s.OwnAdmin, db.Set<Pointer.Domain.Entity.WorkspaceMembership>().IgnoreQueryFilters()
+            .Single(m => m.UserId == memberUserId && m.LeftAt == null).RoleId);
     }
 }

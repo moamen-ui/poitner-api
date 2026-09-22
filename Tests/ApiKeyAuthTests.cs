@@ -34,7 +34,7 @@ public class ApiKeyAuthTests
         public bool Verify(string p, string h) => h == "h:" + p;
     }
 
-    private sealed class FakeToken : ITokenService { public string Issue(User u, int? keyScopes = null) => "jwt-for-" + u.Email; }
+    private sealed class FakeToken : ITokenService { public string Issue(User u, WorkspaceMembership? membership, int? keyScopes = null) => "jwt-for-" + u.Email; }
 
     private sealed class FakeReset : IResetTokenService
     {
@@ -81,7 +81,7 @@ public class ApiKeyAuthTests
             new Microsoft.Extensions.Configuration.ConfigurationBuilder().Build());
 
     private static AuthService BuildAuthService(AppDbContext db, ICurrentUser user) =>
-        new(new UnitOfWork(db), new IdentityHasher(), new FakeToken(), user, new NoopSettings(), new FakeReset(), new NoopEmail(), new NoopBrandingService(), new ApiKeyService(new UnitOfWork(db), new TestApiKeyProtector()), new FakeLoginAttemptLimiter());
+        new(new UnitOfWork(db), new IdentityHasher(), new FakeToken(), user, new NoopSettings(), new FakeReset(), new NoopEmail(), new NoopBrandingService(), new ApiKeyService(new UnitOfWork(db), new TestApiKeyProtector()), new FakeLoginAttemptLimiter(), new MembershipService(new UnitOfWork(db)));
 
     private static ProfileService BuildProfileService(AppDbContext db) => new(new UnitOfWork(db), new ApiKeyService(new UnitOfWork(db), new TestApiKeyProtector()));
 
@@ -93,7 +93,7 @@ public class ApiKeyAuthTests
         var role = new Role { Name = "Developer", IsActive = true, OwnerId = null };
         seed.Roles.Add(role);
         seed.SaveChanges();
-        seed.Users.Add(new User
+        var user = new User
         {
             PublicId = publicId,
             Email = "dev@example.com",
@@ -103,8 +103,10 @@ public class ApiKeyAuthTests
             OwnerId = tenant,
             IsActive = true,
             ApprovalStatus = ApprovalStatus.Approved,
-        });
+        };
+        seed.Users.Add(user);
         seed.SaveChanges();
+        TestSeed.Join(seed, user, tenant, role);
         return publicId;
     }
 
@@ -115,7 +117,7 @@ public class ApiKeyAuthTests
         var publicId = SeedUser(db, out var tenant);
         var svc = BuildProfileService(BuildContext(new FakeCurrentUser { Id = publicId, TenantId = tenant }, db));
 
-        var result = await svc.GetOrCreateApiKeyAsync(publicId);
+        var result = await svc.GetOrCreateApiKeyAsync(publicId, tenant);
 
         Assert.True(result.IsSuccess);
         Assert.StartsWith("ptr_", result.Data!.ApiKey);
@@ -127,10 +129,10 @@ public class ApiKeyAuthTests
         var db = Guid.NewGuid().ToString();
         var publicId = SeedUser(db, out var tenant);
         var svc1 = BuildProfileService(BuildContext(new FakeCurrentUser { Id = publicId, TenantId = tenant }, db));
-        var first = await svc1.GetOrCreateApiKeyAsync(publicId);
+        var first = await svc1.GetOrCreateApiKeyAsync(publicId, tenant);
 
         var svc2 = BuildProfileService(BuildContext(new FakeCurrentUser { Id = publicId, TenantId = tenant }, db));
-        var second = await svc2.GetOrCreateApiKeyAsync(publicId);
+        var second = await svc2.GetOrCreateApiKeyAsync(publicId, tenant);
 
         Assert.Equal(first.Data!.ApiKey, second.Data!.ApiKey);
     }
@@ -142,8 +144,8 @@ public class ApiKeyAuthTests
         var publicId = SeedUser(db, out var tenant);
         var user = new FakeCurrentUser { Id = publicId, TenantId = tenant };
 
-        var first = await BuildProfileService(BuildContext(user, db)).GetOrCreateApiKeyAsync(publicId);
-        var regenerated = await BuildProfileService(BuildContext(user, db)).RegenerateApiKeyAsync(publicId);
+        var first = await BuildProfileService(BuildContext(user, db)).GetOrCreateApiKeyAsync(publicId, tenant);
+        var regenerated = await BuildProfileService(BuildContext(user, db)).RegenerateApiKeyAsync(publicId, tenant);
 
         Assert.NotEqual(first.Data!.ApiKey, regenerated.Data!.ApiKey);
 
@@ -159,7 +161,7 @@ public class ApiKeyAuthTests
         var db = Guid.NewGuid().ToString();
         var publicId = SeedUser(db, out var tenant);
         var key = await BuildProfileService(BuildContext(new FakeCurrentUser { Id = publicId, TenantId = tenant }, db))
-            .GetOrCreateApiKeyAsync(publicId);
+            .GetOrCreateApiKeyAsync(publicId, tenant);
 
         var result = await BuildAuthService(BuildContext(new FakeCurrentUser(), db), new FakeCurrentUser())
             .LoginWithApiKeyAsync(new LoginWithApiKeyRequest { ApiKey = key.Data!.ApiKey });
@@ -188,12 +190,17 @@ public class ApiKeyAuthTests
         var db = Guid.NewGuid().ToString();
         var publicId = SeedUser(db, out var tenant);
         var key = await BuildProfileService(BuildContext(new FakeCurrentUser { Id = publicId, TenantId = tenant }, db))
-            .GetOrCreateApiKeyAsync(publicId);
+            .GetOrCreateApiKeyAsync(publicId, tenant);
 
         using (var ctx = BuildContext(new FakeCurrentUser { IsSuperAdmin = true }, db))
         {
+            // DB-11a: keys are per membership — disabling the MEMBERSHIP (not the legacy
+            // users.is_active) is what login-with-key now checks.
             var user = ctx.Users.First(u => u.PublicId == publicId);
-            user.IsActive = false;
+            var membership = ctx.Set<Pointer.Domain.Entity.WorkspaceMembership>()
+                .IgnoreQueryFilters()
+                .Single(m => m.UserId == user.Id && m.OwnerId == tenant && m.LeftAt == null);
+            membership.IsActive = false;
             ctx.SaveChanges();
         }
 

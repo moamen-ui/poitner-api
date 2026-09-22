@@ -13,11 +13,13 @@ public class RoleService : IRoleService
 {
     private readonly IUnitOfWork _unitOfWork;
     private readonly ICurrentUser _currentUser;
+    private readonly IMembershipService _memberships;
 
-    public RoleService(IUnitOfWork unitOfWork, ICurrentUser currentUser)
+    public RoleService(IUnitOfWork unitOfWork, ICurrentUser currentUser, IMembershipService memberships)
     {
         _unitOfWork = unitOfWork;
         _currentUser = currentUser;
+        _memberships = memberships;
     }
 
     public async Task<Result<RoleResponse>> CreateAsync(CreateRoleRequest request)
@@ -229,13 +231,15 @@ public class RoleService : IRoleService
         if (!_currentUser.IsSuperAdmin && role.OwnerId != _currentUser.TenantId)
             return Result<RoleDeleteResponse>.NotFound(MessageKeys.Role.NotFound);
 
-        var users = await _unitOfWork.Repository<User>()
-            .Query()
-            .Where(u => u.DeletedAt == null && u.RoleId == id)
-            .ToListAsync();
+        // DB-11a: "in use" is a membership fact, not users.role_id — never read after this doc.
+        var membershipsQuery = _currentUser.IsSuperAdmin
+            ? _unitOfWork.Repository<WorkspaceMembership>().Query().IgnoreQueryFilters()
+                .Where(m => m.DeletedAt == null && m.RoleId == id)
+            : _memberships.InWorkspace(_currentUser.TenantId ?? Guid.Empty).Where(m => m.RoleId == id);
+        var memberships = await membershipsQuery.ToListAsync();
 
         var reassigned = 0;
-        if (users.Count > 0)
+        if (memberships.Count > 0)
         {
             if (reassignToRoleId == null)
                 return Result<RoleDeleteResponse>.Conflict(MessageKeys.Role.HasUsers);
@@ -268,12 +272,12 @@ public class RoleService : IRoleService
                     return Result<RoleDeleteResponse>.Failure(MessageKeys.Role.EscalationNotAllowed);
             }
 
-            foreach (var u in users)
+            foreach (var m in memberships)
             {
-                u.RoleId = reassignToRoleId.Value;
-                _unitOfWork.Repository<User>().Update(u);
+                m.RoleId = reassignToRoleId.Value;
+                _unitOfWork.Repository<WorkspaceMembership>().Update(m);
             }
-            reassigned = users.Count;
+            reassigned = memberships.Count;
         }
 
         role.DeletedAt = DateTime.UtcNow;

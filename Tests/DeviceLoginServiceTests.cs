@@ -52,7 +52,7 @@ public class DeviceLoginServiceTests
             new Microsoft.Extensions.Configuration.ConfigurationBuilder().Build());
 
     private static DeviceLoginService BuildService(AppDbContext db, ICurrentUser user) =>
-        new(new UnitOfWork(db), user, new ApiKeyService(new UnitOfWork(db), new TestApiKeyProtector()), new NoopBrandingService());
+        new(new UnitOfWork(db), user, new ApiKeyService(new UnitOfWork(db), new TestApiKeyProtector()), new NoopBrandingService(), new MembershipService(new UnitOfWork(db)));
 
     private static Guid SeedUser(string dbName, out Guid tenant, bool superAdmin = false)
     {
@@ -62,7 +62,7 @@ public class DeviceLoginServiceTests
         var role = new Role { Name = superAdmin ? "Super Admin" : "Developer", IsActive = true, OwnerId = null, IsSuperAdmin = superAdmin };
         seed.Roles.Add(role);
         seed.SaveChanges();
-        seed.Users.Add(new User
+        var user = new User
         {
             PublicId = publicId,
             Email = "dev@example.com",
@@ -72,8 +72,11 @@ public class DeviceLoginServiceTests
             OwnerId = tenant,
             IsActive = true,
             ApprovalStatus = ApprovalStatus.Approved,
-        });
+        };
+        seed.Users.Add(user);
         seed.SaveChanges();
+        if (!superAdmin)
+            TestSeed.Join(seed, user, tenant, role);
         return publicId;
     }
 

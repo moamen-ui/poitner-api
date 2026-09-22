@@ -9,23 +9,25 @@ namespace Pointer.Application.Services.Implementation;
 /// <summary>
 /// Personal API keys, stored hashed for lookup and encrypted for display.
 ///
-/// Every query here uses <c>IgnoreQueryFilters()</c>: login resolves a key before any tenant context
-/// exists, and the backfill/last-used paths run outside a request entirely, so the strict-own filter
-/// would return zero rows. Tenant scoping is preserved by stamping <see cref="ApiKey.OwnerId"/> from
-/// the owning user and by only ever reaching a row through that user's own id or the raw key itself.
+/// DB-11a: keys are per MEMBERSHIP (identity, workspace) — <c>workspaceId</c> is the membership's
+/// workspace (null = the super-admin / no-workspace key). Every query here uses
+/// <c>IgnoreQueryFilters()</c>: login resolves a key before any tenant context exists, and the
+/// backfill/last-used paths run outside a request entirely, so the strict-own filter would return
+/// zero rows. Tenant scoping is preserved by stamping <see cref="ApiKey.OwnerId"/> explicitly and by
+/// only ever reaching a row through that user's own id (+ workspace) or the raw key itself.
 /// </summary>
 public class ApiKeyService(IUnitOfWork unitOfWork, IApiKeyProtector protector) : IApiKeyService
 {
     /// <summary>How stale LastUsedAt may get before we write again. Keeps a busy agent off the write path.</summary>
     private static readonly TimeSpan TouchInterval = TimeSpan.FromMinutes(1);
 
-    public async Task<ApiKeyResult> GetOrCreateAsync(Guid publicId)
+    public async Task<ApiKeyResult> GetOrCreateAsync(Guid publicId, Guid? workspaceId)
     {
         var user = await FindUserAsync(publicId);
         if (user is null)
             return ApiKeyResult.NotFound();
 
-        var existing = await ActiveKeyQuery(user.Id).FirstOrDefaultAsync();
+        var existing = await ActiveKeyQuery(user.Id, workspaceId).FirstOrDefaultAsync();
         if (existing is not null)
         {
             var raw = protector.Decrypt(existing.Encrypted);
@@ -34,16 +36,16 @@ public class ApiKeyService(IUnitOfWork unitOfWork, IApiKeyProtector protector) :
             return raw is null ? ApiKeyResult.Undecryptable(existing) : ApiKeyResult.Ok(existing, raw);
         }
 
-        return await MintAsync(user);
+        return await MintAsync(user, workspaceId);
     }
 
-    public async Task<ApiKeyResult> RegenerateAsync(Guid publicId)
+    public async Task<ApiKeyResult> RegenerateAsync(Guid publicId, Guid? workspaceId)
     {
         var user = await FindUserAsync(publicId);
         if (user is null)
             return ApiKeyResult.NotFound();
 
-        var existing = await ActiveKeyQuery(user.Id).FirstOrDefaultAsync();
+        var existing = await ActiveKeyQuery(user.Id, workspaceId).FirstOrDefaultAsync();
         if (existing is not null)
         {
             // Revoke rather than delete: the row is the record that this key once existed, and
@@ -53,7 +55,7 @@ public class ApiKeyService(IUnitOfWork unitOfWork, IApiKeyProtector protector) :
             await unitOfWork.SaveChangesAsync();
         }
 
-        return await MintAsync(user);
+        return await MintAsync(user, workspaceId);
     }
 
     public async Task<ApiKey?> ResolveAsync(string rawKey)
@@ -99,17 +101,17 @@ public class ApiKeyService(IUnitOfWork unitOfWork, IApiKeyProtector protector) :
             .IgnoreQueryFilters()
             .FirstOrDefaultAsync(u => u.PublicId == publicId && u.DeletedAt == null);
 
-    private IQueryable<ApiKey> ActiveKeyQuery(int userId) =>
+    private IQueryable<ApiKey> ActiveKeyQuery(int userId, Guid? ownerId) =>
         unitOfWork
             .Repository<ApiKey>()
             .Query()
             .IgnoreQueryFilters()
-            .Where(k => k.UserId == userId && k.RevokedAt == null && k.DeletedAt == null);
+            .Where(k => k.UserId == userId && k.OwnerId == ownerId && k.RevokedAt == null && k.DeletedAt == null);
 
-    private async Task<ApiKeyResult> MintAsync(User user)
+    private async Task<ApiKeyResult> MintAsync(User user, Guid? workspaceId)
     {
         var raw = await GenerateUniqueAsync();
-        var key = BuildRow(user, raw);
+        var key = BuildRow(user, workspaceId, raw);
 
         await unitOfWork.Repository<ApiKey>().AddAsync(key);
         await unitOfWork.SaveChangesAsync();
@@ -119,13 +121,15 @@ public class ApiKeyService(IUnitOfWork unitOfWork, IApiKeyProtector protector) :
 
     /// <summary>
     /// Builds a row from a raw key without persisting it — shared with the backfill so migrated keys
-    /// are stored byte-identically to newly minted ones.
+    /// are stored byte-identically to newly minted ones. DB-11a: <paramref name="ownerId"/> is the
+    /// membership's workspace (the caller resolves it — <c>_currentUser.TenantId</c> for
+    /// MeController/ProfileService, <c>row.OwnerId</c> for the device-login poll).
     /// </summary>
-    public ApiKey BuildRow(User user, string raw) =>
+    public ApiKey BuildRow(User user, Guid? ownerId, string raw) =>
         new()
         {
             UserId = user.Id,
-            OwnerId = user.OwnerId,
+            OwnerId = ownerId,
             Prefix = raw.Length >= 12 ? raw[..12] : raw,
             Hash = protector.Hash(raw),
             Encrypted = protector.Encrypt(raw),

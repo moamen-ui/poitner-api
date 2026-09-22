@@ -49,7 +49,7 @@ public class WorkspaceAdminOwnershipTests
     {
         var uow = new UnitOfWork(ctx);
         return new UserService(uow, new IdentityHasher(), user, new NoopEmail(),
-            new EntitlementService(uow, user, new FakeSettings()), new NoopBrandingService());
+            new EntitlementService(uow, user, new FakeSettings()), new NoopBrandingService(), new MembershipService(uow));
     }
 
     // Seeds the two global admin-tier roles plus an existing self-owned workspace (its "Workspace
@@ -63,12 +63,14 @@ public class WorkspaceAdminOwnershipTests
         seed.SaveChanges();
 
         var ownerId = Guid.NewGuid();
-        seed.Users.Add(new User
+        var founder = new User
         {
             Email = "founder@tuwaiq.edu.sa", PasswordHash = "h", DisplayName = "Founder",
             PublicId = ownerId, OwnerId = ownerId, RoleId = adminRole.Id, IsActive = true
-        });
+        };
+        seed.Users.Add(founder);
         seed.SaveChanges();
+        TestSeed.Join(seed, founder, ownerId, adminRole);
 
         return (adminRole.Id, deputyRole.Id, ownerId);
     }

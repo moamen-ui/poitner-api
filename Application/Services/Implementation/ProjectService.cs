@@ -214,10 +214,11 @@ public class ProjectService : IProjectService
         if (_currentUser.IsQuickAccess)
             return Result<ProjectResponse>.Forbidden(MessageKeys.Project.QuickAccessNotAllowed);
 
-        // OwnerId stamps the tenant. `?? _currentUser.Id` is defensive: TenantId is null only for a
-        // super admin (blocked above) or a malformed/missing `tenant` claim, which should never
-        // happen for a real tenant user but must not silently produce a null-owner row if it did.
-        var ownerId = TenantStamp.OwnerFor(_currentUser) ?? _currentUser.Id;
+        // OwnerId stamps the tenant. S-14: a non-super-admin without a tenant claim is Forbidden,
+        // never minted a tenant from its own id.
+        var ownerId = TenantStamp.OwnerFor(_currentUser);
+        if (ownerId is not Guid owner)
+            return Result<ProjectResponse>.Forbidden(MessageKeys.Common.Forbidden);
 
         // MaxProjects: count active projects owned by this tenant (grandfather-safe — checked only on
         // create, counts only DeletedAt == null rows). Explicit OwnerId + IgnoreQueryFilters so the
@@ -295,7 +296,7 @@ public class ProjectService : IProjectService
             // MaxPredefinedActionsPerProject: a freshly-created project starts at 0 actions, so the
             // running count is just how many we've added so far this loop. Owner tenant = the project's
             // owner (fall back to the caller for a null-owner project so the check still resolves).
-            var actionTenant = project.OwnerId ?? _currentUser.Id ?? Guid.Empty;
+            var actionTenant = project.OwnerId ?? throw new InvalidOperationException("project without owner");
             var sort = 0;
             var addedSoFar = 0;
             foreach (var input in request.PredefinedActions)
@@ -760,7 +761,7 @@ public class ProjectService : IProjectService
         var resultingCount = desired.Count(d => d.Id is not int did || existingIds.Contains(did));
         if (resultingCount > 0)
         {
-            var actionTenant = owner ?? _currentUser.Id ?? Guid.Empty;
+            var actionTenant = owner ?? throw new InvalidOperationException("project without owner");
             // resultingCount-1 >= limit  ⇔  resultingCount > limit (block when the final count exceeds it).
             var check = await _entitlements.CheckCountAsync(
                 actionTenant, EntitlementCatalog.MaxPredefinedActionsPerProject, resultingCount - 1);
@@ -1172,18 +1173,8 @@ public class ProjectService : IProjectService
     }
 
     // Batch-resolve creator display names (Project.CreatedBy is a User.PublicId). One query.
-    private async Task<Dictionary<Guid, string>> ResolveCreatorNamesAsync(IEnumerable<Guid> ids)
-    {
-        var distinct = ids.Where(g => g != Guid.Empty).Distinct().ToList();
-        if (distinct.Count == 0)
-            return new Dictionary<Guid, string>();
-
-        return await _unitOfWork.Repository<User>()
-            .Query()
-            .AsNoTracking()
-            .Where(u => distinct.Contains(u.PublicId))
-            .ToDictionaryAsync(u => u.PublicId, u => u.DisplayName);
-    }
+    private Task<Dictionary<Guid, string>> ResolveCreatorNamesAsync(IEnumerable<Guid> ids) =>
+        UserNameResolver.ResolveAsync(_unitOfWork, ids);
 
     private async Task<string?> ResolveCreatorNameAsync(Guid id) =>
         (await ResolveCreatorNamesAsync(new[] { id })).GetValueOrDefault(id);

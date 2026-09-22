@@ -44,7 +44,7 @@ public class MonetizationSignupTests
         public bool Verify(string p, string h) => h == "h:" + p;
     }
 
-    private sealed class FakeToken : ITokenService { public string Issue(User u, int? keyScopes = null) => "t"; }
+    private sealed class FakeToken : ITokenService { public string Issue(User u, WorkspaceMembership? membership, int? keyScopes = null) => "t"; }
     private sealed class FakeReset : IResetTokenService
     {
         public string Create(Guid id, Guid stamp) => "r";
@@ -96,7 +96,7 @@ public class MonetizationSignupTests
     private static AuthService Auth(AppDbContext db, ICurrentUser user)
     {
         var uow = new UnitOfWork(db);
-        return new AuthService(uow, new IdentityHasher(), new FakeToken(), user, new SignupEnabledSettings(), new FakeReset(), new NoopEmail(), new NoopBrandingService(), new ApiKeyService(new UnitOfWork(db), new TestApiKeyProtector()), new FakeLoginAttemptLimiter());
+        return new AuthService(uow, new IdentityHasher(), new FakeToken(), user, new SignupEnabledSettings(), new FakeReset(), new NoopEmail(), new NoopBrandingService(), new ApiKeyService(new UnitOfWork(db), new TestApiKeyProtector()), new FakeLoginAttemptLimiter(), new MembershipService(uow));
     }
 
     [Fact]
@@ -114,7 +114,11 @@ public class MonetizationSignupTests
         Assert.True(res.IsSuccess);
 
         var newUser = ctx.Users.IgnoreQueryFilters().Single(u => u.Email == "paid@a.com");
-        var sub = ctx.Subscriptions.IgnoreQueryFilters().Single(s => s.OwnerId == newUser.PublicId);
+        // DB-11a: the subscription is keyed by the WORKSPACE id, which no longer equals the admin's
+        // public_id — resolve it via the identity's (freshly minted) membership.
+        var membership = ctx.Set<Pointer.Domain.Entity.WorkspaceMembership>().IgnoreQueryFilters()
+            .Single(m => m.UserId == newUser.Id && m.LeftAt == null);
+        var sub = ctx.Subscriptions.IgnoreQueryFilters().Single(s => s.OwnerId == membership.OwnerId);
         Assert.Equal(proId, sub.PlanId);
         Assert.Equal(SubscriptionStatus.PendingActivation, sub.Status);
     }
@@ -179,15 +183,17 @@ public class MonetizationSignupTests
         {
             var waRole = seed.Roles.Single(r => r.Name == "Workspace Admin");
             var pid = Guid.NewGuid();
-            seed.Users.Add(new User { Email = "t@a.com", PasswordHash = "x", DisplayName = "T", RoleId = waRole.Id, PublicId = pid, OwnerId = pid, IsActive = true, ApprovalStatus = ApprovalStatus.Approved });
+            var tenantUser = new User { Email = "t@a.com", PasswordHash = "x", DisplayName = "T", RoleId = waRole.Id, PublicId = pid, OwnerId = pid, IsActive = true, ApprovalStatus = ApprovalStatus.Approved };
+            seed.Users.Add(tenantUser);
             seed.SaveChanges();
+            TestSeed.Join(seed, tenantUser, pid, waRole);
             tenantPid = pid;
         }
         var tenantIntId = Ctx(new FakeCurrentUser { IsSuperAdmin = true }, db).Users.IgnoreQueryFilters().Single(u => u.Email == "t@a.com").Id;
 
         var admin = new FakeCurrentUser { IsSuperAdmin = true };
         using var ctx = Ctx(admin, db);
-        var svc = new TenantService(new UnitOfWork(ctx), new IdentityHasher(), new NoopFileStorage(), new SignupEnabledSettings(), new NoopBillingProvider());
+        var svc = new TenantService(new UnitOfWork(ctx), new IdentityHasher(), new NoopFileStorage(), new SignupEnabledSettings(), new NoopBillingProvider(), new MembershipService(new UnitOfWork(ctx)));
 
         var res = await svc.ChangePlanAsync(tenantIntId, proId);
         Assert.True(res.IsSuccess);

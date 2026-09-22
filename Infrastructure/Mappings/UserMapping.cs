@@ -22,6 +22,9 @@ public class UserMapping : IEntityTypeConfiguration<User>
         // User-specific columns
         b.Property(x => x.PublicId).HasColumnName("public_id").IsRequired();
         b.HasIndex(x => x.PublicId).IsUnique();
+        // ux_users_email_live: UNIQUE on lower(email) WHERE deleted_at IS NULL — raw SQL in
+        // *_AddUsersEmailLiveUniqueIndex (DB-11a GLM A1),
+        // deliberately NOT modelled (EF cannot express lower()); do not add a HasIndex for it.
         b.Property(x => x.Email).HasColumnName("email").IsRequired().HasMaxLength(256);
         b.HasIndex(x => new { x.Email, x.OwnerId })
             .IsUnique()
@@ -60,5 +63,13 @@ public class UserMapping : IEntityTypeConfiguration<User>
             .WithMany(r => r.Users)
             .HasForeignKey(x => x.RoleId)
             .OnDelete(DeleteBehavior.Restrict);
+
+        // Non-null ⇔ this row was merged into another identity by the DB-11a same-e-mail merge.
+        b.Property(x => x.MergedIntoUserId).HasColumnName("merged_into_user_id");
+        b.HasOne<User>()
+            .WithMany()
+            .HasForeignKey(x => x.MergedIntoUserId)
+            .OnDelete(DeleteBehavior.Restrict)
+            .HasConstraintName("fk_users_merged_into_user");
     }
 }

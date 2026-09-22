@@ -35,7 +35,7 @@ public class DemoSessionEmailTests
 
     private sealed class FakeTokenService : ITokenService
     {
-        public string Issue(User user, int? keyScopes = null) => "token-for-" + user.Email;
+        public string Issue(User user, WorkspaceMembership? membership, int? keyScopes = null) => "token-for-" + user.Email;
     }
 
     private sealed class FakeSettings : ISettingsService
@@ -141,7 +141,8 @@ public class DemoSessionEmailTests
             new FakeTokenService(),
             email,
             new FakeSettings(),
-            new NoopBrandingService()
+            new NoopBrandingService(),
+            new MembershipService(uow)
         );
         return (svc, db, email);
     }

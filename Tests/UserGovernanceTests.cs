@@ -80,7 +80,7 @@ public class UserGovernanceTests
     {
         var uow = new UnitOfWork(ctx);
         return new UserService(uow, new IdentityHasher(), user, new NoopEmail(),
-            new EntitlementService(uow, user, new FakeSettings()), new NoopBrandingService());
+            new EntitlementService(uow, user, new FakeSettings()), new NoopBrandingService(), new MembershipService(uow));
     }
 
     private sealed class Workspace
@@ -115,6 +115,11 @@ public class UserGovernanceTests
         var member = new User { Email = "member@t.com", PasswordHash = "h", DisplayName = "Member", PublicId = Guid.NewGuid(), OwnerId = ownerId, RoleId = memberRole.Id, IsActive = true };
         seed.Users.AddRange(admin, deputy, deputy2, member);
         seed.SaveChanges();
+
+        TestSeed.Join(seed, admin, ownerId, adminRole);
+        TestSeed.Join(seed, deputy, ownerId, deputyRole);
+        TestSeed.Join(seed, deputy2, ownerId, deputyRole);
+        TestSeed.Join(seed, member, ownerId, memberRole);
 
         return new Workspace
         {
@@ -270,13 +275,16 @@ public class UserGovernanceTests
         var result = await Svc(admin, ctx).TransferOwnershipAsync(ws.DeputyPublicId);
         Assert.True(result.IsSuccess);
 
-        var newAdmin = ctx.Users.IgnoreQueryFilters().Single(u => u.PublicId == ws.DeputyPublicId);
-        var oldAdmin = ctx.Users.IgnoreQueryFilters().Single(u => u.PublicId == ws.AdminPublicId);
-        Assert.Equal(ws.AdminRoleId, newAdmin.RoleId);
-        Assert.Equal(ws.DeputyRoleId, oldAdmin.RoleId);
+        // DB-11a: the swap is on the MEMBERSHIPS, not users.role_id (which is legacy/never re-read).
+        var newAdminMembership = ctx.Set<WorkspaceMembership>().IgnoreQueryFilters()
+            .Include(m => m.User).Single(m => m.User.PublicId == ws.DeputyPublicId && m.OwnerId == ws.OwnerId && m.LeftAt == null);
+        var oldAdminMembership = ctx.Set<WorkspaceMembership>().IgnoreQueryFilters()
+            .Include(m => m.User).Single(m => m.User.PublicId == ws.AdminPublicId && m.OwnerId == ws.OwnerId && m.LeftAt == null);
+        Assert.Equal(ws.AdminRoleId, newAdminMembership.RoleId);
+        Assert.Equal(ws.DeputyRoleId, oldAdminMembership.RoleId);
         // OwnerId is untouched for both — the tenant identifier never moves.
-        Assert.Equal(ws.OwnerId, newAdmin.OwnerId);
-        Assert.Equal(ws.OwnerId, oldAdmin.OwnerId);
+        Assert.Equal(ws.OwnerId, newAdminMembership.OwnerId);
+        Assert.Equal(ws.OwnerId, oldAdminMembership.OwnerId);
     }
 
     [Fact]
@@ -322,10 +330,14 @@ public class UserGovernanceTests
         {
             deputyRoleId = seed.Roles.Single(r => r.Name == "Workspace Admin Deputy").Id;
             var adminRoleId = seed.Roles.Single(r => r.Name == "Workspace Admin").Id;
+            var adminRoleForOther = seed.Roles.Single(r => r.Id == adminRoleId);
+            var deputyRoleForOther = seed.Roles.Single(r => r.Id == deputyRoleId);
             var otherAdmin = new User { Email = "other-admin@t.com", PasswordHash = "h", DisplayName = "OtherAdmin", PublicId = otherOwnerId, OwnerId = otherOwnerId, RoleId = adminRoleId, IsActive = true };
             var otherDeputy = new User { Email = "other-deputy@t.com", PasswordHash = "h", DisplayName = "OtherDeputy", PublicId = Guid.NewGuid(), OwnerId = otherOwnerId, RoleId = deputyRoleId, IsActive = true };
             seed.Users.AddRange(otherAdmin, otherDeputy);
             seed.SaveChanges();
+            TestSeed.Join(seed, otherAdmin, otherOwnerId, adminRoleForOther);
+            TestSeed.Join(seed, otherDeputy, otherOwnerId, deputyRoleForOther);
             otherDeputyPublicId = otherDeputy.PublicId;
         }
 
@@ -357,8 +369,9 @@ public class UserGovernanceTests
         Assert.True(transfer.IsSuccess);
 
         var superAdmin = new FakeCurrentUser { Id = Guid.NewGuid(), IsSuperAdmin = true };
-        var tenantSvc = new TenantService(new UnitOfWork(Ctx(superAdmin, db)), new IdentityHasher(),
-            new NoopFileStorage(), new FakeSettings(), new NoopBillingProvider());
+        var tenantUow = new UnitOfWork(Ctx(superAdmin, db));
+        var tenantSvc = new TenantService(tenantUow, new IdentityHasher(),
+            new NoopFileStorage(), new FakeSettings(), new NoopBillingProvider(), new MembershipService(tenantUow));
 
         var list = await tenantSvc.ListAsync();
         Assert.True(list.IsSuccess);
@@ -424,12 +437,16 @@ public class UserGovernanceTests
         var ws = SeedWorkspace(db);
         var admin = new FakeCurrentUser { Id = ws.AdminPublicId, TenantId = ws.OwnerId, IsAdmin = true };
         var ctx = Ctx(admin, db);
-        var before = ctx.Users.IgnoreQueryFilters().Single(u => u.Id == ws.MemberRowId).SecurityStamp;
+        // DB-11a/R16: a role change is workspace-scoped — it rotates the MEMBERSHIP stamp, never the
+        // identity's own stamp (that would revoke every OTHER workspace's sessions too).
+        var before = ctx.Set<WorkspaceMembership>().IgnoreQueryFilters()
+            .Single(m => m.UserId == ws.MemberRowId && m.OwnerId == ws.OwnerId && m.LeftAt == null).SecurityStamp;
 
         var result = await Svc(admin, ctx).UpdateAsync(ws.MemberRowId, new UpdateUserRequest { RoleId = ws.DeputyRoleId });
 
         Assert.True(result.IsSuccess);
-        var after = ctx.Users.IgnoreQueryFilters().Single(u => u.Id == ws.MemberRowId).SecurityStamp;
+        var after = ctx.Set<WorkspaceMembership>().IgnoreQueryFilters()
+            .Single(m => m.UserId == ws.MemberRowId && m.OwnerId == ws.OwnerId && m.LeftAt == null).SecurityStamp;
         Assert.NotEqual(before, after);
     }
 

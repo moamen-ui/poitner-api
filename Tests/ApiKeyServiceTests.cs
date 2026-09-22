@@ -71,8 +71,8 @@ public class ApiKeyServiceTests
         using var db = Ctx(name);
         var svc = Service(db);
 
-        var first = await svc.GetOrCreateAsync(publicId);
-        var second = await svc.GetOrCreateAsync(publicId);
+        var first = await svc.GetOrCreateAsync(publicId, tenant);
+        var second = await svc.GetOrCreateAsync(publicId, tenant);
 
         Assert.True(first.Found);
         Assert.StartsWith("ptr_", first.RawKey);
@@ -86,10 +86,10 @@ public class ApiKeyServiceTests
     public async Task Stores_No_Plaintext()
     {
         var name = nameof(Stores_No_Plaintext);
-        var (publicId, _) = SeedUser(name);
+        var (publicId, tenant) = SeedUser(name);
         using var db = Ctx(name);
 
-        var result = await Service(db).GetOrCreateAsync(publicId);
+        var result = await Service(db).GetOrCreateAsync(publicId, tenant);
         var row = await db.ApiKeys.IgnoreQueryFilters().SingleAsync();
 
         Assert.NotEqual(result.RawKey, row.Hash);
@@ -101,12 +101,12 @@ public class ApiKeyServiceTests
     public async Task Regenerate_Revokes_The_Old_Key_And_The_Old_Key_Stops_Resolving()
     {
         var name = nameof(Regenerate_Revokes_The_Old_Key_And_The_Old_Key_Stops_Resolving);
-        var (publicId, _) = SeedUser(name);
+        var (publicId, tenant) = SeedUser(name);
         using var db = Ctx(name);
         var svc = Service(db);
 
-        var original = await svc.GetOrCreateAsync(publicId);
-        var replacement = await svc.RegenerateAsync(publicId);
+        var original = await svc.GetOrCreateAsync(publicId, tenant);
+        var replacement = await svc.RegenerateAsync(publicId, tenant);
 
         Assert.NotEqual(original.RawKey, replacement.RawKey);
         Assert.Null(await svc.ResolveAsync(original.RawKey!));
@@ -121,11 +121,11 @@ public class ApiKeyServiceTests
     public async Task Resolve_Returns_The_User_And_Ignores_Unknown_Keys()
     {
         var name = nameof(Resolve_Returns_The_User_And_Ignores_Unknown_Keys);
-        var (publicId, _) = SeedUser(name);
+        var (publicId, tenant) = SeedUser(name);
         using var db = Ctx(name);
         var svc = Service(db);
 
-        var minted = await svc.GetOrCreateAsync(publicId);
+        var minted = await svc.GetOrCreateAsync(publicId, tenant);
 
         var resolved = await svc.ResolveAsync(minted.RawKey!);
         Assert.NotNull(resolved);
@@ -141,15 +141,15 @@ public class ApiKeyServiceTests
         // The rotated-encryption-key case. Regenerating here would silently invalidate every
         // developer's stored key the moment they opened their profile page.
         var name = nameof(An_Undecryptable_Key_Is_Reported_Not_Replaced);
-        var (publicId, _) = SeedUser(name);
+        var (publicId, tenant) = SeedUser(name);
         using var db = Ctx(name);
         var protector = new TestApiKeyProtector();
         var svc = Service(db, protector);
 
-        var original = await svc.GetOrCreateAsync(publicId);
+        var original = await svc.GetOrCreateAsync(publicId, tenant);
         protector.FailDecrypt = true;
 
-        var afterRotation = await svc.GetOrCreateAsync(publicId);
+        var afterRotation = await svc.GetOrCreateAsync(publicId, tenant);
 
         Assert.True(afterRotation.Found); // exists…
         Assert.Null(afterRotation.RawKey); // …but cannot be displayed
@@ -165,11 +165,11 @@ public class ApiKeyServiceTests
     public async Task TouchLastUsed_Is_Throttled()
     {
         var name = nameof(TouchLastUsed_Is_Throttled);
-        var (publicId, _) = SeedUser(name);
+        var (publicId, tenant) = SeedUser(name);
         using var db = Ctx(name);
         var svc = Service(db);
 
-        await svc.GetOrCreateAsync(publicId);
+        await svc.GetOrCreateAsync(publicId, tenant);
         var key = await db.ApiKeys.IgnoreQueryFilters().SingleAsync();
 
         await svc.TouchLastUsedAsync(key.Id);
@@ -187,7 +187,7 @@ public class ApiKeyServiceTests
         SeedUser(name);
         using var db = Ctx(name);
 
-        var result = await Service(db).GetOrCreateAsync(Guid.NewGuid());
+        var result = await Service(db).GetOrCreateAsync(Guid.NewGuid(), null);
 
         Assert.False(result.Found);
         Assert.Null(result.RawKey);

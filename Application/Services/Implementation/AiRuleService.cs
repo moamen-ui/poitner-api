@@ -164,7 +164,7 @@ public class AiRuleService : IAiRuleService
         if (_currentUser.IsQuickAccess)
             return Result<AiRuleResponse>.Forbidden(MessageKeys.Common.Forbidden);
 
-        var ownerId = TenantStamp.OwnerFor(_currentUser) ?? _currentUser.Id;
+        var ownerId = TenantStamp.OwnerFor(_currentUser);
         if (ownerId is not Guid owner)
             return Result<AiRuleResponse>.Forbidden(MessageKeys.Common.Forbidden);
 
@@ -387,28 +387,11 @@ public class AiRuleService : IAiRuleService
             .Select(r => r.UserId!.Value)
             .Distinct()
             .ToList();
-        var users = new Dictionary<Guid, (string DisplayName, string? Email)>();
-        if (userIds.Count > 0)
-        {
-            var dbUsers = await _unitOfWork
-                .Repository<User>()
-                .Query()
-                .AsNoTracking()
-                .IgnoreQueryFilters()
-                .Where(u => userIds.Contains(u.PublicId))
-                .Select(u => new
-                {
-                    u.PublicId,
-                    u.DisplayName,
-                    u.Email,
-                })
-                .ToListAsync();
-
-            foreach (var u in dbUsers)
-            {
-                users[u.PublicId] = (u.DisplayName, u.Email);
-            }
-        }
+        var users = await UserNameResolver.ResolveWithEmailAsync(
+            _unitOfWork,
+            userIds,
+            ignoreQueryFilters: true
+        );
 
         var userSummaries = allRules
             .Where(r => r.UserId != null)
@@ -552,28 +535,11 @@ public class AiRuleService : IAiRuleService
             .Select(r => r.UserId!.Value)
             .Distinct()
             .ToList();
-        var users = new Dictionary<Guid, (string DisplayName, string? Email)>();
-        if (userIds.Count > 0)
-        {
-            var dbUsers = await _unitOfWork
-                .Repository<User>()
-                .Query()
-                .IgnoreQueryFilters()
-                .AsNoTracking()
-                .Where(u => userIds.Contains(u.PublicId))
-                .Select(u => new
-                {
-                    u.PublicId,
-                    u.DisplayName,
-                    u.Email,
-                })
-                .ToListAsync();
-
-            foreach (var u in dbUsers)
-            {
-                users[u.PublicId] = (u.DisplayName, u.Email);
-            }
-        }
+        var users = await UserNameResolver.ResolveWithEmailAsync(
+            _unitOfWork,
+            userIds,
+            ignoreQueryFilters: true
+        );
 
         var tenantMap = new Dictionary<Guid, string>();
         if (_currentUser.IsSuperAdmin)

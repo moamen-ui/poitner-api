@@ -73,7 +73,16 @@ public class CommentVerifyTests
         using var seed = BuildContext(new FakeCurrentUser { IsSuperAdmin = true }, dbName);
         var project = new Project { Key = "proj", Name = "Proj", OwnerId = tenant, IsActiveLocal = true, IsActiveStaging = true, IsActiveProduction = true };
         seed.Projects.Add(project);
+        var role = new Role { Name = "Member", OwnerId = tenant, IsActive = true };
+        seed.Roles.Add(role);
         seed.SaveChanges();
+
+        // DB-11a: EnqueueAsync only queues a notification for a recipient with a live, active,
+        // Approved membership — appliedBy needs a real identity + membership to receive one.
+        var appliedByUser = new User { PublicId = appliedBy, Email = "dev@x.com", PasswordHash = "x", DisplayName = "Dev", RoleId = role.Id, OwnerId = tenant, IsActive = true };
+        seed.Users.Add(appliedByUser);
+        seed.SaveChanges();
+        TestSeed.Join(seed, appliedByUser, tenant, role);
 
         var comment = new Comment
         {

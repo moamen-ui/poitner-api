@@ -24,6 +24,7 @@ public class DemoService : IDemoService
     private readonly IEmailService _emailService;
     private readonly ISettingsService _settings;
     private readonly IBrandingService _branding;
+    private readonly IMembershipService _memberships;
 
     public DemoService(
         IUnitOfWork unitOfWork,
@@ -31,7 +32,8 @@ public class DemoService : IDemoService
         ITokenService tokenService,
         IEmailService emailService,
         ISettingsService settings,
-        IBrandingService branding
+        IBrandingService branding,
+        IMembershipService memberships
     )
     {
         _unitOfWork = unitOfWork;
@@ -40,6 +42,7 @@ public class DemoService : IDemoService
         _emailService = emailService;
         _settings = settings;
         _branding = branding;
+        _memberships = memberships;
     }
 
     public async Task<Result<DemoSessionResponse>> ProvisionAsync(
@@ -102,9 +105,11 @@ public class DemoService : IDemoService
                 "Workspace Admin role not found. Please contact the administrator."
             );
 
-        // c. Build demo user
+        // c. Build demo user. DB-11a: workspaces.id no longer equals anyone's public_id — mint a
+        // fresh workspace id and make the demo admin the first membership.
         var slug = Guid.NewGuid().ToString("N")[..8];
         var publicId = Guid.NewGuid();
+        var workspaceId = Guid.NewGuid();
         var email = $"demo-{slug}@demo.pointer";
         var password = Guid.NewGuid().ToString("N")[..12] + "Aa1!";
         // Minted fresh right below — not the DB-03 placeholder, so it always names the workspace in
@@ -118,7 +123,7 @@ public class DemoService : IDemoService
             PasswordHash = _passwordHasher.Hash(password),
             DisplayName = "Demo User",
             RoleId = role.Id,
-            OwnerId = publicId,
+            OwnerId = workspaceId,
             ApprovalStatus = ApprovalStatus.Approved,
             IsActive = true,
             IsDemo = true,
@@ -129,10 +134,10 @@ public class DemoService : IDemoService
         await _unitOfWork.Workspaces.AddAsync(
             new Workspace
             {
-                Id = publicId,
+                Id = workspaceId,
                 Name = demoWorkspaceName,
                 CreatedAt = DateTime.UtcNow,
-                CreatedBy = publicId,
+                CreatedBy = workspaceId,
             }
         );
         await _unitOfWork.Repository<User>().AddAsync(demoUser);
@@ -142,7 +147,7 @@ public class DemoService : IDemoService
         {
             Key = $"demo-{slug}",
             Name = "Demo Project",
-            OwnerId = publicId,
+            OwnerId = workspaceId,
         };
 
         await _unitOfWork.Repository<Project>().AddAsync(project);
@@ -154,7 +159,7 @@ public class DemoService : IDemoService
             new Comment
             {
                 ProjectId = project.Id,
-                OwnerId = publicId,
+                OwnerId = workspaceId,
                 AuthorId = publicId,
                 Environment = EnvironmentTag.Staging,
                 Status = CommentStatus.Open,
@@ -169,7 +174,7 @@ public class DemoService : IDemoService
             new Comment
             {
                 ProjectId = project.Id,
-                OwnerId = publicId,
+                OwnerId = workspaceId,
                 AuthorId = publicId,
                 Environment = EnvironmentTag.Staging,
                 Status = CommentStatus.ReadyToApply,
@@ -184,7 +189,7 @@ public class DemoService : IDemoService
             new Comment
             {
                 ProjectId = project.Id,
-                OwnerId = publicId,
+                OwnerId = workspaceId,
                 AuthorId = publicId,
                 Environment = EnvironmentTag.Staging,
                 Status = CommentStatus.Applied,
@@ -203,9 +208,36 @@ public class DemoService : IDemoService
 
         await _unitOfWork.SaveChangesAsync();
 
-        // e. Issue token (Role must be populated for claims)
+        // DB-11a: the demo admin's presence in its own workspace is a membership, not owner_id.
+        var demoMembership = await _memberships.JoinAsync(
+            demoUser,
+            workspaceId,
+            role,
+            ApprovalStatus.Approved,
+            isActive: true,
+            inviteId: null
+        );
+        await _unitOfWork.SaveChangesAsync();
+
+        // g. Record one demo against this email for today's per-email limit. Done BEFORE the Role
+        // navigation is populated below, so this SaveChangesAsync never sees a detached Role
+        // reference on the tracked membership (which EF would otherwise try to re-insert).
+        if (throttle == null)
+            await _unitOfWork
+                .Repository<AppSetting>()
+                .AddAsync(new AppSetting { Key = throttleKey, Value = "1" });
+        else
+        {
+            throttle.Value = (usedToday + 1).ToString();
+            _unitOfWork.Repository<AppSetting>().Update(throttle);
+        }
+        await _unitOfWork.SaveChangesAsync();
+
+        // e. Issue token. Role populated AFTER every SaveChangesAsync above has run, so EF never
+        // tries to re-insert the already-existing role row.
         demoUser.Role = role;
-        var token = _tokenService.Issue(demoUser);
+        demoMembership.Role = role;
+        var token = _tokenService.Issue(demoUser, demoMembership);
 
         // f. Email the credentials to the requester. On success we blank the password in the
         //    response (they read it from their inbox); on failure/cap we fall back to inline creds
@@ -226,18 +258,6 @@ public class DemoService : IDemoService
                 demoWorkspaceName
             )
         );
-
-        // g. Record one demo against this email for today's per-email limit.
-        if (throttle == null)
-            await _unitOfWork
-                .Repository<AppSetting>()
-                .AddAsync(new AppSetting { Key = throttleKey, Value = "1" });
-        else
-        {
-            throttle.Value = (usedToday + 1).ToString();
-            _unitOfWork.Repository<AppSetting>().Update(throttle);
-        }
-        await _unitOfWork.SaveChangesAsync();
 
         // h. Return response
         return Result<DemoSessionResponse>.Success(
@@ -264,7 +284,7 @@ public class DemoService : IDemoService
         if (!validation.IsValid)
             return Result<UpgradeDemoResponse>.Failure(validation.Errors[0].ErrorMessage);
 
-        var emailNormalized = request.Email.Trim().ToLower();
+        var emailNormalized = EmailNormalizer.NormalizeRequired(request.Email);
 
         // 2. Load the caller, bypassing the tenant query filter (the JWT carries the tenant claim
         //    but resolving by PublicId + DeletedAt is authoritative).
@@ -286,24 +306,11 @@ public class DemoService : IDemoService
         if (user.ExpiresAt != null && user.ExpiresAt < DateTime.UtcNow)
             return Result<UpgradeDemoResponse>.Failure(MessageKeys.Demo.DemoExpired);
 
-        // 5. Email uniqueness SCOPED to the caller's own tenant (a demo workspace owns itself:
-        //    OwnerId == PublicId). Emails are unique per tenant ((email, owner_id) index), not
-        //    globally — a same email under a DIFFERENT tenant is not a conflict and must not leak.
-        //    Exclude the caller's own row. IgnoreQueryFilters() bypasses the tenant filter so we can
-        //    scope explicitly by OwnerId.
-        var emailTaken = await _unitOfWork
-            .Repository<User>()
-            .Query()
-            .IgnoreQueryFilters()
-            .AsNoTracking()
-            .AnyAsync(u =>
-                u.DeletedAt == null
-                && u.PublicId != callerPublicId
-                && u.OwnerId == user.OwnerId
-                && u.Email == emailNormalized
-            );
-
-        if (emailTaken)
+        // 5. DB-11a (D7): e-mail uniqueness is now GLOBAL — one identity per e-mail. A demo
+        //    upgrading to an address that already belongs to a live identity is a Conflict; there is
+        //    no automatic merge (D7 default: no).
+        var existingIdentity = await _memberships.FindIdentityByEmailAsync(emailNormalized);
+        if (existingIdentity != null && existingIdentity.PublicId != callerPublicId)
             return Result<UpgradeDemoResponse>.Conflict(MessageKeys.Demo.EmailTaken);
 
         // 6-8. Mutate the user entity in place, then persist. A concurrent upgrade racing past
@@ -335,11 +342,20 @@ public class DemoService : IDemoService
         }
 
         // 9-10. Role navigation is already loaded above; issue a fresh token with the real email.
-        var token = _tokenService.Issue(user);
+        // DB-11a: the demo admin's own membership (in its own workspace) carries the role/tenant now.
+        var upgradeMembership =
+            user.OwnerId is Guid demoOwnerId
+                ? await _memberships.GetMembershipAsync(user.Id, demoOwnerId)
+                : null;
+        var token = _tokenService.Issue(user, upgradeMembership);
 
         // 11. Return token + MeResponse in the same shape as a successful login.
         return Result<UpgradeDemoResponse>.Success(
-            new UpgradeDemoResponse { Token = token, User = UserMapper.ToMeResponse(user) },
+            new UpgradeDemoResponse
+            {
+                Token = token,
+                User = UserMapper.ToMeResponse(user, upgradeMembership?.Role ?? user.Role),
+            },
             MessageKeys.Demo.UpgradeSuccess
         );
     }

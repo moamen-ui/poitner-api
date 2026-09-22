@@ -33,8 +33,14 @@ public class EntitlementService : IEntitlementService
         return entitlements;
     }
 
-    public Task<Result> CheckCountAsync(string key, int currentCount) =>
-        CheckCountAsync(CurrentTenantId(), key, currentCount);
+    public Task<Result> CheckCountAsync(string key, int currentCount)
+    {
+        if (CurrentTenantId() is not Guid tenantId)
+            return Task.FromResult(
+                _currentUser.IsSuperAdmin ? Result.Success() : Result.Forbidden(MessageKeys.Common.Forbidden)
+            );
+        return CheckCountAsync(tenantId, key, currentCount);
+    }
 
     public async Task<Result> CheckCountAsync(Guid tenantId, string key, int currentCount)
     {
@@ -54,7 +60,14 @@ public class EntitlementService : IEntitlementService
         return Result.Success();
     }
 
-    public Task<Result> EnforceFlagAsync(string key) => EnforceFlagAsync(CurrentTenantId(), key);
+    public Task<Result> EnforceFlagAsync(string key)
+    {
+        if (CurrentTenantId() is not Guid tenantId)
+            return Task.FromResult(
+                _currentUser.IsSuperAdmin ? Result.Success() : Result.Forbidden(MessageKeys.Common.Forbidden)
+            );
+        return EnforceFlagAsync(tenantId, key);
+    }
 
     public async Task<Result> EnforceFlagAsync(Guid tenantId, string key)
     {
@@ -73,8 +86,7 @@ public class EntitlementService : IEntitlementService
 
     // ── Internals ──────────────────────────────────────────────────────────────
 
-    private Guid CurrentTenantId() =>
-        TenantStamp.OwnerFor(_currentUser) ?? _currentUser.Id ?? Guid.Empty;
+    private Guid? CurrentTenantId() => TenantStamp.OwnerFor(_currentUser);
 
     private async Task<bool> EnforcementOnAsync()
     {

@@ -76,6 +76,9 @@ public class PlanSeederTests
         seed.SaveChanges();
         var pid = Guid.NewGuid();
         seed.Users.Add(new User { Email = "old@a.com", PasswordHash = "x", DisplayName = "Old", RoleId = role.Id, PublicId = pid, OwnerId = pid, IsActive = true, ApprovalStatus = ApprovalStatus.Approved });
+        // DB-11a: a tenant is a workspaces row (AdminSeeder's legacy backfill now enumerates
+        // db.Workspaces, not self-owned admin users).
+        seed.Workspaces.Add(new Workspace { Id = pid, Name = "Old Co", CreatedAt = DateTime.UtcNow, CreatedBy = pid });
         seed.SaveChanges();
         return pid;
     }

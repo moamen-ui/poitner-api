@@ -120,26 +120,27 @@ public class ExportImportServiceTests
             seed.Roles.Add(role);
             await seed.SaveChangesAsync();
 
-            seed.Users.Add(
-                new User
-                {
-                    PublicId = alice,
-                    Email = "alice@x",
-                    DisplayName = "Alice",
-                    OwnerId = tenant,
-                    RoleId = role.Id,
-                }
-            );
-            seed.Users.Add(
-                new User
-                {
-                    PublicId = bob,
-                    Email = "bob@x",
-                    DisplayName = "Bob",
-                    OwnerId = tenant,
-                    RoleId = role.Id,
-                }
-            );
+            var aliceUser = new User
+            {
+                PublicId = alice,
+                Email = "alice@x",
+                DisplayName = "Alice",
+                OwnerId = tenant,
+                RoleId = role.Id,
+            };
+            var bobUser = new User
+            {
+                PublicId = bob,
+                Email = "bob@x",
+                DisplayName = "Bob",
+                OwnerId = tenant,
+                RoleId = role.Id,
+            };
+            seed.Users.Add(aliceUser);
+            seed.Users.Add(bobUser);
+            await seed.SaveChangesAsync();
+            TestSeed.Join(seed, aliceUser, tenant, role);
+            TestSeed.Join(seed, bobUser, tenant, role);
             var project = new Project
             {
                 Key = "alpha",

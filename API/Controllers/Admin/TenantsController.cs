@@ -118,24 +118,13 @@ public class TenantsController(ITenantService tenantService, ITenantInviteServic
     [ProducesResponseType(typeof(Result), StatusCodes.Status200OK)]
     public async Task<IActionResult> Delete(int id)
     {
-        // Resolve int id → PublicId via a lightweight ListAsync is expensive; instead load the user directly.
-        // We need to resolve the PublicId from the int id. Use ITenantService to resolve.
-        // Since we don't want to expose a separate resolve method, we do it via ListAsync first to get PublicId.
-        // Actually, let's add the convenience: ListAsync returns TenantResponse which has PublicId.
-        // But that's too heavy. Better: add HardDeleteByIdAsync overload OR resolve here via the repo.
-        // Per brief: "have the controller resolve the int id → PublicId → call HardDeleteAsync(publicId)".
-        // We'll call SetStatusAsync to verify existence (it already does), then look up PublicId.
-        // Simpler: call ListAsync, find by id. But expensive. Let's add a private resolve approach:
-        // The brief says controller resolves it — use ITenantService.ListAsync to get PublicId.
-        var listResult = await tenantService.ListAsync();
-        if (!listResult.IsSuccess)
-            return BadRequest(listResult);
-
-        var tenant = listResult.Data?.FirstOrDefault(t => t.Id == id);
-        if (tenant == null)
+        // DB-11a: workspaces.id no longer equals any admin's public_id — resolve the workspace via
+        // the admin's membership instead of a PublicId lookup.
+        var workspaceId = await tenantService.ResolveWorkspaceIdAsync(id);
+        if (workspaceId is not Guid resolvedWorkspaceId)
             return NotFound(Result.NotFound("Tenant not found."));
 
-        var result = await tenantService.HardDeleteAsync(tenant.PublicId);
+        var result = await tenantService.HardDeleteAsync(resolvedWorkspaceId);
         if (result.IsNotFound) return NotFound(result);
         return result.IsSuccess ? Ok(result) : BadRequest(result);
     }

@@ -51,7 +51,7 @@ public class MeController(
     public async Task<IActionResult> GetApiKey()
     {
         if (currentUser.Id is null) return Unauthorized();
-        var result = await profileService.GetOrCreateApiKeyAsync(currentUser.Id.Value);
+        var result = await profileService.GetOrCreateApiKeyAsync(currentUser.Id.Value, currentUser.TenantId);
         if (result.IsNotFound) return NotFound(result);
         return result.IsSuccess ? Ok(result) : BadRequest(result);
     }
@@ -61,7 +61,7 @@ public class MeController(
     public async Task<IActionResult> RegenerateApiKey()
     {
         if (currentUser.Id is null) return Unauthorized();
-        var result = await profileService.RegenerateApiKeyAsync(currentUser.Id.Value);
+        var result = await profileService.RegenerateApiKeyAsync(currentUser.Id.Value, currentUser.TenantId);
         if (result.IsNotFound) return NotFound(result);
         return result.IsSuccess ? Ok(result) : BadRequest(result);
     }

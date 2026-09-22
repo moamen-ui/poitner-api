@@ -32,6 +32,7 @@ public class InviteService : IInviteService
     private readonly IEntitlementService _entitlements;
     private readonly IEmailService _emailService;
     private readonly IBrandingService _branding;
+    private readonly IMembershipService _memberships;
 
     private const int DefaultTtlDays = 7;
 
@@ -47,7 +48,8 @@ public class InviteService : IInviteService
         ISettingsService settings,
         IEntitlementService entitlements,
         IEmailService emailService,
-        IBrandingService branding
+        IBrandingService branding,
+        IMembershipService memberships
     )
     {
         _unitOfWork = unitOfWork;
@@ -58,6 +60,7 @@ public class InviteService : IInviteService
         _entitlements = entitlements;
         _emailService = emailService;
         _branding = branding;
+        _memberships = memberships;
     }
 
     // ── Admin (auth, tenant-scoped) ────────────────────────────────────────────
@@ -86,17 +89,8 @@ public class InviteService : IInviteService
                 if (request.TargetOwnerId is not Guid targetOwnerId)
                     return Result<InviteResponse>.Failure(MessageKeys.User.TargetWorkspaceRequired);
 
-                var targetAdminExists = await _unitOfWork
-                    .Repository<User>()
-                    .Query()
-                    .IgnoreQueryFilters()
-                    .AsNoTracking()
-                    .AnyAsync(u =>
-                        u.OwnerId == targetOwnerId
-                        && u.DeletedAt == null
-                        && u.Role.Name == WorkspaceAdminRoleName
-                    );
-                if (!targetAdminExists)
+                var targetAdmin = await _memberships.CurrentAdminAsync(targetOwnerId);
+                if (targetAdmin == null)
                     return Result<InviteResponse>.Failure(MessageKeys.User.WorkspaceNotFound);
 
                 role = await _unitOfWork
@@ -120,9 +114,9 @@ public class InviteService : IInviteService
                 return Result<InviteResponse>.Forbidden(MessageKeys.Invite.Forbidden);
 
             // ISOLATION-LOAD-BEARING: a join-existing-tenant invite MUST carry a non-null owner —
-            // it is the tenant boundary. Scoped admin → their tenant.
-            var ownerId = TenantStamp.OwnerFor(_currentUser) ?? _currentUser.Id;
-            if (ownerId is not Guid scopedOwner)
+            // it is the tenant boundary. S-14: a non-super-admin without a tenant claim is Forbidden,
+            // never minted a tenant from its own id.
+            if (!TenantStamp.TryRequireOwner(_currentUser, out var scopedOwner))
                 return Result<InviteResponse>.Forbidden(MessageKeys.Invite.Forbidden);
             owner = scopedOwner;
 
@@ -149,9 +143,7 @@ public class InviteService : IInviteService
         }
 
         var ttlDays = request.ExpiresInDays is int d && d > 0 ? d : DefaultTtlDays;
-        var emailNormalized = string.IsNullOrWhiteSpace(request.Email)
-            ? null
-            : request.Email.Trim().ToLower();
+        var emailNormalized = EmailNormalizer.Normalize(request.Email);
         var maxUses = request.MaxUses is int m && m > 0 ? m : (int?)null;
 
         // A workspace invite mints a whole tenant, so it is held to stricter rules than a member
@@ -170,20 +162,9 @@ public class InviteService : IInviteService
             // Bounded lifetime; a year-long workspace-minting link is not a reasonable artefact.
             ttlDays = Math.Clamp(ttlDays, 1, 30);
 
-            // An address that already owns a workspace cannot accept, and the failure would happen
-            // only after the invite was created and emailed — leaving a pending row that can never
-            // clear. Refuse up front instead.
-            var alreadyOwns = await _unitOfWork
-                .Repository<User>()
-                .Query()
-                .IgnoreQueryFilters()
-                .AsNoTracking()
-                .AnyAsync(u =>
-                    u.DeletedAt == null && u.Email == emailNormalized && u.OwnerId == u.PublicId
-                );
-
-            if (alreadyOwns)
-                return Result<InviteResponse>.Conflict(MessageKeys.Auth.AccountExists);
+            // DB-11a (D13): one identity may administer several workspaces — the old
+            // "an address that already owns a workspace cannot accept" refusal is removed. Accept
+            // now join-or-creates the identity (AcceptCreateNewWorkspaceAsync).
         }
 
         var invite = new Invite
@@ -435,8 +416,7 @@ public class InviteService : IInviteService
                 .FirstOrDefaultAsync();
         }
 
-        var ownerId = TenantStamp.OwnerFor(_currentUser) ?? _currentUser.Id;
-        if (ownerId is not Guid owner)
+        if (!TenantStamp.TryRequireOwner(_currentUser, out var owner))
             return null;
 
         return await _unitOfWork
@@ -515,7 +495,7 @@ public class InviteService : IInviteService
         if (string.IsNullOrWhiteSpace(request.DisplayName))
             return Result<LoginResponse>.Failure(MessageKeys.User.DisplayNameRequired);
 
-        var emailNormalized = request.Email.Trim().ToLower();
+        var emailNormalized = EmailNormalizer.NormalizeRequired(request.Email);
 
         // 1. Resolve the invite (anonymous path → IgnoreQueryFilters, like RegisterAsync). Reject
         //    anything not currently acceptable. The invite is the authorization — validate fully.
@@ -564,27 +544,31 @@ public class InviteService : IInviteService
         if (role == null)
             return Result<LoginResponse>.Failure(MessageKeys.Role.Invalid);
 
-        // 3. M1: scope the duplicate-email check to THIS invite's tenant only — a same-email user
-        //    under a different tenant is not a conflict (the (email, owner_id) unique index allows it,
-        //    and cross-tenant existence must not be revealed via 409 vs 400 distinction).
-        var existing = await _unitOfWork
-            .Repository<User>()
-            .Query()
-            .IgnoreQueryFilters()
-            .AsNoTracking()
-            .Where(u => u.DeletedAt == null && u.Email == emailNormalized && u.OwnerId == ownerId)
-            .FirstOrDefaultAsync();
+        // DB-11a join-or-create (§3.3): one identity per e-mail; a membership per workspace.
+        var identity = await _memberships.FindIdentityByEmailAsync(emailNormalized);
+        var isNewIdentity = identity == null;
 
-        if (existing != null)
-            return Result<LoginResponse>.Conflict(MessageKeys.Auth.AccountExists);
+        if (identity != null)
+        {
+            // Step 3: anonymous caller with an existing identity must present its password (D4) —
+            // same message as a brand-new conflict, revealing nothing new.
+            if (
+                identity.PasswordlessOnly
+                || !_passwordHasher.Verify(request.Password, identity.PasswordHash)
+            )
+                return Result<LoginResponse>.Conflict(MessageKeys.Auth.AccountExists);
 
-        // MaxSeats: count active users owned by the invite's tenant. Checked BEFORE claiming a slot so
-        // an over-limit accept never consumes a use. Grandfather-safe (counts DeletedAt == null, on add).
-        var seatCount = await _unitOfWork
-            .Repository<User>()
-            .Query()
-            .IgnoreQueryFilters()
-            .CountAsync(u => u.OwnerId == ownerId && u.DeletedAt == null);
+            // Step 4: a live membership already in THIS workspace → conflict (M1: scoped to this
+            // invite's tenant only — a same-email identity already active elsewhere is not a
+            // conflict here).
+            var already = await _memberships.GetMembershipAsync(identity.Id, ownerId);
+            if (already != null)
+                return Result<LoginResponse>.Conflict(MessageKeys.Auth.AccountExists);
+        }
+
+        // MaxSeats: count LIVE memberships of the invite's tenant. Checked BEFORE claiming a slot so
+        // an over-limit accept never consumes a use.
+        var seatCount = await _memberships.InWorkspace(ownerId).CountAsync(m => m.LeftAt == null);
         var seatCheck = await _entitlements.CheckCountAsync(
             ownerId,
             EntitlementCatalog.MaxSeats,
@@ -596,7 +580,7 @@ public class InviteService : IInviteService
                 seatCheck.Limit!
             );
 
-        // 4. H1: atomically claim a usage slot BEFORE creating the user. The UnitOfWork issues a
+        // 4. H1: atomically claim a usage slot BEFORE creating anything. The UnitOfWork issues a
         //    single UPDATE … WHERE (not deleted/revoked/expired AND uses < maxUses) … SET uses+=1
         //    returning rows-affected. Two concurrent requests both seeing Uses=0/MaxUses=1 cannot
         //    both succeed — only one gets claimed=1; the other gets claimed=0 and is rejected
@@ -604,47 +588,60 @@ public class InviteService : IInviteService
         var claimed = await _unitOfWork.AtomicClaimInviteSlotAsync(invite.Id, DateTime.UtcNow);
 
         if (claimed == 0)
-            // Exhausted or revoked concurrently — do NOT create the user.
+            // Exhausted or revoked concurrently — do NOT create anything.
             return Result<LoginResponse>.NotFound(MessageKeys.Invite.NotFound);
 
-        // 5. Create the user pre-authorized + pre-scoped to the invite's tenant. The invite is the
-        //    authorization, so we SKIP the pending approval queue: Approved + active immediately.
-        var newUser = new User
+        // 5. Create the identity pre-authorized + pre-scoped to the invite's tenant. The invite is
+        //    the authorization, so we SKIP the pending approval queue: Approved + active immediately.
+        //    DisplayName from the request only for a NEW identity (an existing identity's own
+        //    DisplayName is never overwritten by a join).
+        if (isNewIdentity)
         {
-            Email = emailNormalized,
-            PasswordHash = _passwordHasher.Hash(request.Password),
             // The super admin may have named the workspace when inviting; the invitee can override it.
-            DisplayName = string.IsNullOrWhiteSpace(request.DisplayName)
-                ? (invite.DisplayName ?? request.DisplayName)
-                : request.DisplayName,
-            RoleId = role.Id,
-            PublicId = Guid.NewGuid(),
-            ApprovalStatus = ApprovalStatus.Approved,
-            IsActive = true,
-            OwnerId = ownerId,
-        };
+            var displayName = string.IsNullOrWhiteSpace(request.DisplayName)
+                ? (invite.DisplayName ?? request.DisplayName ?? string.Empty)
+                : request.DisplayName;
+            identity = _memberships.NewIdentity(
+                emailNormalized,
+                _passwordHasher.Hash(request.Password),
+                displayName,
+                role,
+                ownerId
+            );
 
-        try
-        {
-            await _unitOfWork.Repository<User>().AddAsync(newUser);
-            await _unitOfWork.SaveChangesAsync();
+            try
+            {
+                await _unitOfWork.Repository<User>().AddAsync(identity);
+                await _unitOfWork.SaveChangesAsync();
+            }
+            catch (Microsoft.EntityFrameworkCore.DbUpdateException)
+            {
+                // L2: duplicate-email insert race (two concurrent accepts with the same email both
+                // pass the check above; the second violates ux_users_email_live).
+                return Result<LoginResponse>.Conflict(MessageKeys.Auth.AccountExists);
+            }
         }
-        catch (Microsoft.EntityFrameworkCore.DbUpdateException)
-        {
-            // L2: duplicate-email insert race (two concurrent accepts with the same email both
-            // pass the check above; the second violates the unique index (email, owner_id)).
-            return Result<LoginResponse>.Conflict(MessageKeys.Auth.AccountExists);
-        }
+
+        var membership = await _memberships.JoinAsync(
+            identity!,
+            ownerId,
+            role,
+            ApprovalStatus.Approved,
+            isActive: true,
+            inviteId: invite.Id
+        );
+        await _unitOfWork.SaveChangesAsync();
+        // Populated AFTER the save above so EF never tries to re-insert the already-existing role row.
+        membership.Role = role;
 
         // 6. Auto-signin: return a login token + user (reuse the login response builder).
-        newUser.Role = role;
-        var token = _tokenService.Issue(newUser);
+        var token = _tokenService.Issue(identity!, membership);
         return Result<LoginResponse>.Success(
             new LoginResponse
             {
                 Status = "ok",
                 Token = token,
-                User = UserMapper.ToMeResponse(newUser),
+                User = UserMapper.ToMeResponse(identity!, membership.Role),
             }
         );
     }
@@ -659,18 +656,8 @@ public class InviteService : IInviteService
         AcceptInviteRequest request
     )
     {
-        var exists = await _unitOfWork
-            .Repository<User>()
-            .Query()
-            .IgnoreQueryFilters()
-            .AsNoTracking()
-            .AnyAsync(u =>
-                u.DeletedAt == null && u.Email == emailNormalized && u.OwnerId == u.PublicId
-            );
-
-        if (exists)
-            return Result<LoginResponse>.Conflict(MessageKeys.Auth.AccountExists);
-
+        // DB-11a (D13): one identity may administer several workspaces — join-or-create the
+        // identity rather than refusing outright.
         var workspaceAdminRole = await _unitOfWork
             .Repository<Role>()
             .Query()
@@ -685,25 +672,40 @@ public class InviteService : IInviteService
         if (workspaceAdminRole == null)
             return Result<LoginResponse>.Failure(MessageKeys.Role.Invalid);
 
+        var identity = await _memberships.FindIdentityByEmailAsync(emailNormalized);
+        var isNewIdentity = identity == null;
+
+        if (identity != null)
+        {
+            // D4/D5: the existing account's password must verify.
+            if (
+                identity.PasswordlessOnly
+                || !_passwordHasher.Verify(request.Password, identity.PasswordHash)
+            )
+                return Result<LoginResponse>.Conflict(MessageKeys.Auth.AccountExists);
+        }
+
         var claimed = await _unitOfWork.AtomicClaimInviteSlotAsync(invite.Id, DateTime.UtcNow);
         if (claimed == 0)
             return Result<LoginResponse>.NotFound(MessageKeys.Invite.NotFound);
 
-        var publicId = Guid.NewGuid();
-        var newUser = new User
-        {
-            Email = emailNormalized,
-            PasswordHash = _passwordHasher.Hash(request.Password),
-            DisplayName = request.DisplayName,
-            RoleId = workspaceAdminRole.Id,
-            PublicId = publicId,
-            ApprovalStatus = ApprovalStatus.Approved,
-            IsActive = true,
-            OwnerId = publicId, // a brand-new tenant owns itself
-        };
+        // workspaces.id no longer needs to equal anyone's public_id — a fresh id every time.
+        var workspaceId = Guid.NewGuid();
 
         try
         {
+            if (isNewIdentity)
+            {
+                identity = _memberships.NewIdentity(
+                    emailNormalized,
+                    _passwordHasher.Hash(request.Password),
+                    request.DisplayName,
+                    workspaceAdminRole,
+                    workspaceId
+                );
+                await _unitOfWork.Repository<User>().AddAsync(identity);
+            }
+
             // A brand-new tenant: the workspace's own name (Q3) comes from what the super admin
             // typed on the invite, never from the invitee's DisplayName.
             var trimmedInviteName = invite.DisplayName?.Trim();
@@ -713,19 +715,28 @@ public class InviteService : IInviteService
             await _unitOfWork.Workspaces.AddAsync(
                 new Workspace
                 {
-                    Id = publicId,
+                    Id = workspaceId,
                     Name = workspaceName,
                     CreatedAt = DateTime.UtcNow,
-                    CreatedBy = publicId,
+                    CreatedBy = workspaceId,
                 }
             );
-            await _unitOfWork.Repository<User>().AddAsync(newUser);
             await _unitOfWork.SaveChangesAsync();
         }
         catch (Microsoft.EntityFrameworkCore.DbUpdateException)
         {
             return Result<LoginResponse>.Conflict(MessageKeys.Auth.AccountExists);
         }
+
+        var membership = await _memberships.JoinAsync(
+            identity!,
+            workspaceId,
+            workspaceAdminRole,
+            ApprovalStatus.Approved,
+            isActive: true,
+            inviteId: invite.Id
+        );
+        await _unitOfWork.SaveChangesAsync();
 
         // Apply the invited plan. Written inline rather than through TenantService.ChangePlanAsync:
         // TenantService already composes IInviteService, so calling back would be a DI cycle.
@@ -763,7 +774,7 @@ public class InviteService : IInviteService
                         {
                             // Set explicitly: accept runs with no tenant context, so TenantStamp would
                             // produce null and violate this entity's non-null OwnerId.
-                            OwnerId = publicId,
+                            OwnerId = workspaceId,
                             PlanId = plan.Id,
                             Status = SubscriptionStatus.Active,
                         }
@@ -772,14 +783,16 @@ public class InviteService : IInviteService
             }
         }
 
-        newUser.Role = workspaceAdminRole;
-        var token = _tokenService.Issue(newUser);
+        // Populated AFTER every SaveChangesAsync in this method has run, so EF never tries to
+        // re-insert the already-existing role row.
+        membership.Role = workspaceAdminRole;
+        var token = _tokenService.Issue(identity!, membership);
         return Result<LoginResponse>.Success(
             new LoginResponse
             {
                 Status = "ok",
                 Token = token,
-                User = UserMapper.ToMeResponse(newUser),
+                User = UserMapper.ToMeResponse(identity!, membership.Role),
             }
         );
     }
@@ -794,9 +807,7 @@ public class InviteService : IInviteService
         CreateInviteRequest request
     )
     {
-        var emailNormalized = string.IsNullOrWhiteSpace(request.Email)
-            ? null
-            : request.Email.Trim().ToLower();
+        var emailNormalized = EmailNormalizer.Normalize(request.Email);
         if (emailNormalized == null)
             return Result<InviteResponse>.Failure(MessageKeys.Invite.QuickAccessEmailRequired);
 
@@ -816,23 +827,20 @@ public class InviteService : IInviteService
         if (string.IsNullOrWhiteSpace(project.AppUrl))
             return Result<InviteResponse>.Failure(MessageKeys.Invite.QuickAccessAppUrlRequired);
 
-        // Tenant-scoped duplicate-email guard (mirrors AcceptJoinExistingWorkspaceAsync).
-        var existing = await _unitOfWork
-            .Repository<User>()
-            .Query()
-            .IgnoreQueryFilters()
-            .AsNoTracking()
-            .AnyAsync(u =>
-                u.DeletedAt == null && u.Email == emailNormalized && u.OwnerId == ownerId
-            );
-        if (existing)
-            return Result<InviteResponse>.Conflict(MessageKeys.Auth.AccountExists);
+        // DB-11a join-or-create: an identity that already exists just gets a Client membership in
+        // this workspace (its password, if any, is untouched); a live membership already here is a
+        // conflict (mirrors AcceptJoinExistingWorkspaceAsync).
+        var identity = await _memberships.FindIdentityByEmailAsync(emailNormalized);
+        var isNewIdentity = identity == null;
 
-        var seatCount = await _unitOfWork
-            .Repository<User>()
-            .Query()
-            .IgnoreQueryFilters()
-            .CountAsync(u => u.OwnerId == ownerId && u.DeletedAt == null);
+        if (identity != null)
+        {
+            var alreadyMember = await _memberships.GetMembershipAsync(identity.Id, ownerId);
+            if (alreadyMember != null)
+                return Result<InviteResponse>.Conflict(MessageKeys.Auth.AccountExists);
+        }
+
+        var seatCount = await _memberships.InWorkspace(ownerId).CountAsync(m => m.LeftAt == null);
         var seatCheck = await _entitlements.CheckCountAsync(
             ownerId,
             EntitlementCatalog.MaxSeats,
@@ -844,26 +852,25 @@ public class InviteService : IInviteService
                 seatCheck.Limit!
             );
 
-        // Deliberately UNUSABLE. The account has no password anyone knows, types, or receives —
-        // a random hash input that is never revealed, plus PasswordlessOnly so LoginAsync refuses
-        // the account explicitly rather than relying on the hash never matching.
-        //
-        // This replaces emailing a generated password in plaintext (CWE-319).
-        var unusableSecret = Guid.NewGuid().ToString("N") + Guid.NewGuid().ToString("N");
         var ttlDays = request.ExpiresInDays is int d && d > 0 ? d : QuickAccessLinkTtlDays;
 
-        var newUser = new User
+        if (isNewIdentity)
         {
-            Email = emailNormalized,
-            PasswordHash = _passwordHasher.Hash(unusableSecret),
-            PasswordlessOnly = true,
-            DisplayName = emailNormalized.Split('@')[0],
-            RoleId = role.Id,
-            PublicId = Guid.NewGuid(),
-            ApprovalStatus = ApprovalStatus.Approved,
-            IsActive = true,
-            OwnerId = ownerId,
-        };
+            // Deliberately UNUSABLE. The account has no password anyone knows, types, or receives —
+            // a random hash input that is never revealed, plus PasswordlessOnly so LoginAsync refuses
+            // the account explicitly rather than relying on the hash never matching.
+            //
+            // This replaces emailing a generated password in plaintext (CWE-319).
+            var unusableSecret = Guid.NewGuid().ToString("N") + Guid.NewGuid().ToString("N");
+            identity = _memberships.NewIdentity(
+                emailNormalized,
+                _passwordHasher.Hash(unusableSecret),
+                emailNormalized.Split('@')[0],
+                role,
+                ownerId,
+                passwordlessOnly: true
+            );
+        }
 
         // Already "used": there is no accept step left to consume — the Invite row exists purely for
         // the admin's own audit/history view (who was invited, when, to which project).
@@ -881,11 +888,23 @@ public class InviteService : IInviteService
         };
 
         var rawToken = QuickAccessTokenGenerator.NewToken();
+        WorkspaceMembership membership;
 
         try
         {
-            await _unitOfWork.Repository<User>().AddAsync(newUser);
+            if (isNewIdentity)
+                await _unitOfWork.Repository<User>().AddAsync(identity!);
             await _unitOfWork.Repository<Invite>().AddAsync(invite);
+            await _unitOfWork.SaveChangesAsync();
+
+            membership = await _memberships.JoinAsync(
+                identity!,
+                ownerId,
+                role,
+                ApprovalStatus.Approved,
+                isActive: true,
+                inviteId: invite.Id
+            );
             await _unitOfWork.SaveChangesAsync();
 
             await _unitOfWork
@@ -894,7 +913,7 @@ public class InviteService : IInviteService
                     new QuickAccessLink
                     {
                         OwnerId = ownerId,
-                        UserId = newUser.PublicId,
+                        UserId = identity!.PublicId,
                         ProjectId = projectId,
                         InviteId = invite.Id,
                         TokenHash = QuickAccessTokenGenerator.Hash(rawToken),

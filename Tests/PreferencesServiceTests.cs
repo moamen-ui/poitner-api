@@ -36,16 +36,19 @@ public class PreferencesServiceTests
         var userId = Guid.NewGuid();
         var user = new FakeCurrentUser { Id = userId, TenantId = tenant, IsSuperAdmin = false };
         var db = BuildContext(user, dbName);
-        db.Roles.Add(new Role { Id = 1, Name = "Member", OwnerId = tenant });
-        db.Users.Add(new User
+        var role = new Role { Id = 1, Name = "Member", OwnerId = tenant };
+        db.Roles.Add(role);
+        var dbUser = new User
         {
             PublicId = userId, Email = "u@test.com", PasswordHash = "x",
             DisplayName = "U", RoleId = 1, OwnerId = tenant,
-        });
+        };
+        db.Users.Add(dbUser);
         db.SaveChanges();
+        TestSeed.Join(db, dbUser, tenant, role);
 
         var uow = new UnitOfWork(db);
-        return (db, new PreferencesService(uow, user), userId);
+        return (db, new PreferencesService(uow, user, new MembershipService(uow)), userId);
     }
 
     [Fact]

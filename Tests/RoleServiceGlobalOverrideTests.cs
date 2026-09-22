@@ -49,20 +49,20 @@ public class RoleServiceGlobalOverrideTests
         var tenantB = Guid.NewGuid();
 
         var adminA = new FakeCurrentUser { IsAdmin = true, TenantId = tenantA };
-        var result = await new RoleService(new UnitOfWork(BuildContext(adminA, dbName)), adminA)
+        var result = await new RoleService(new UnitOfWork(BuildContext(adminA, dbName)), adminA, new MembershipService(new UnitOfWork(BuildContext(adminA, dbName))))
             .UpdateAsync(roleId, new UpdateRoleRequest { IsActive = false });
 
         Assert.True(result.IsSuccess);
         Assert.False(result.Data!.IsActive);
 
         // Tenant A now sees it disabled...
-        var adminAView = (await new RoleService(new UnitOfWork(BuildContext(adminA, dbName)), adminA)
+        var adminAView = (await new RoleService(new UnitOfWork(BuildContext(adminA, dbName)), adminA, new MembershipService(new UnitOfWork(BuildContext(adminA, dbName))))
             .ListAsync()).Data!.Single(r => r.Id == roleId);
         Assert.False(adminAView.IsActive);
 
         // ...but tenant B still sees the global default (untouched).
         var adminB = new FakeCurrentUser { IsAdmin = true, TenantId = tenantB };
-        var adminBView = (await new RoleService(new UnitOfWork(BuildContext(adminB, dbName)), adminB)
+        var adminBView = (await new RoleService(new UnitOfWork(BuildContext(adminB, dbName)), adminB, new MembershipService(new UnitOfWork(BuildContext(adminB, dbName))))
             .ListAsync()).Data!.Single(r => r.Id == roleId);
         Assert.True(adminBView.IsActive);
 
@@ -79,10 +79,10 @@ public class RoleServiceGlobalOverrideTests
         var tenant = Guid.NewGuid();
         var admin = new FakeCurrentUser { IsAdmin = true, TenantId = tenant };
 
-        var off = await new RoleService(new UnitOfWork(BuildContext(admin, dbName)), admin)
+        var off = await new RoleService(new UnitOfWork(BuildContext(admin, dbName)), admin, new MembershipService(new UnitOfWork(BuildContext(admin, dbName))))
             .UpdateAsync(roleId, new UpdateRoleRequest { IsActive = false });
         Assert.True(off.IsSuccess);
-        var on = await new RoleService(new UnitOfWork(BuildContext(admin, dbName)), admin)
+        var on = await new RoleService(new UnitOfWork(BuildContext(admin, dbName)), admin, new MembershipService(new UnitOfWork(BuildContext(admin, dbName))))
             .UpdateAsync(roleId, new UpdateRoleRequest { IsActive = true });
         Assert.True(on.IsSuccess);
         Assert.True(on.Data!.IsActive);
@@ -100,7 +100,7 @@ public class RoleServiceGlobalOverrideTests
         var roleId = SeedGlobalRole(dbName);
         var admin = new FakeCurrentUser { IsAdmin = true, TenantId = Guid.NewGuid() };
 
-        var result = await new RoleService(new UnitOfWork(BuildContext(admin, dbName)), admin)
+        var result = await new RoleService(new UnitOfWork(BuildContext(admin, dbName)), admin, new MembershipService(new UnitOfWork(BuildContext(admin, dbName))))
             .UpdateAsync(roleId, new UpdateRoleRequest { Name = "Renamed" });
 
         Assert.False(result.IsSuccess);
@@ -115,7 +115,7 @@ public class RoleServiceGlobalOverrideTests
         var roleId = SeedGlobalRole(dbName);
         var admin = new FakeCurrentUser { IsAdmin = true, TenantId = Guid.NewGuid() };
 
-        var result = await new RoleService(new UnitOfWork(BuildContext(admin, dbName)), admin)
+        var result = await new RoleService(new UnitOfWork(BuildContext(admin, dbName)), admin, new MembershipService(new UnitOfWork(BuildContext(admin, dbName))))
             .UpdateAsync(roleId, new UpdateRoleRequest { GrantsAdmin = true });
 
         Assert.False(result.IsSuccess);
@@ -128,7 +128,7 @@ public class RoleServiceGlobalOverrideTests
         var roleId = SeedGlobalRole(dbName);
         var superAdmin = new FakeCurrentUser { IsSuperAdmin = true };
 
-        var result = await new RoleService(new UnitOfWork(BuildContext(superAdmin, dbName)), superAdmin)
+        var result = await new RoleService(new UnitOfWork(BuildContext(superAdmin, dbName)), superAdmin, new MembershipService(new UnitOfWork(BuildContext(superAdmin, dbName))))
             .UpdateAsync(roleId, new UpdateRoleRequest { IsActive = false });
 
         Assert.True(result.IsSuccess);
@@ -144,7 +144,7 @@ public class RoleServiceGlobalOverrideTests
         SeedGlobalRole(dbName);
         var admin = new FakeCurrentUser { IsAdmin = true, TenantId = Guid.NewGuid() };
 
-        var role = (await new RoleService(new UnitOfWork(BuildContext(admin, dbName)), admin)
+        var role = (await new RoleService(new UnitOfWork(BuildContext(admin, dbName)), admin, new MembershipService(new UnitOfWork(BuildContext(admin, dbName))))
             .ListAsync()).Data!.Single(r => r.Name == "Tester");
 
         Assert.False(role.CanManage);
@@ -162,7 +162,7 @@ public class RoleServiceGlobalOverrideTests
         }
         var admin = new FakeCurrentUser { IsAdmin = true, TenantId = Guid.NewGuid() };
 
-        var role = (await new RoleService(new UnitOfWork(BuildContext(admin, dbName)), admin)
+        var role = (await new RoleService(new UnitOfWork(BuildContext(admin, dbName)), admin, new MembershipService(new UnitOfWork(BuildContext(admin, dbName))))
             .ListAsync()).Data!.Single(r => r.Name == "Admin");
 
         Assert.False(role.CanManage);

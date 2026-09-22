@@ -27,6 +27,7 @@ public class CommentService : ICommentService
     private readonly IEntitlementService _entitlements;
     private readonly INotificationService _notificationService;
     private readonly ICommentFieldService _commentFields;
+    private readonly IMembershipService _memberships;
 
     private readonly ICurrentClient? _currentClient;
 
@@ -41,7 +42,8 @@ public class CommentService : ICommentService
         IEntitlementService entitlements,
         ICurrentClient? currentClient = null,
         INotificationService? notificationService = null,
-        ICommentFieldService? commentFields = null)
+        ICommentFieldService? commentFields = null,
+        IMembershipService? memberships = null)
     {
         _unitOfWork = unitOfWork;
         _projectService = projectService;
@@ -54,6 +56,7 @@ public class CommentService : ICommentService
         _currentClient = currentClient;
         _notificationService = notificationService ?? new NotificationService(unitOfWork, currentUser);
         _commentFields = commentFields ?? new CommentFieldService(unitOfWork, currentUser);
+        _memberships = memberships ?? new MembershipService(unitOfWork);
     }
 
     public async Task<Result<CommentResponse>> CreateAsync(string projectKey, CreateCommentRequest request, Guid authorId, string? origin = null)
@@ -124,13 +127,12 @@ public class CommentService : ICommentService
         // the global super-admin-tunable setting (default 10) applies.
         if (projectOwnerId is Guid owner)
         {
-            var demoOwner = await _unitOfWork.Repository<User>()
-                .Query()
-                .IgnoreQueryFilters()
-                .AsNoTracking()
-                .Where(u => u.PublicId == owner && u.IsDemo && u.DeletedAt == null)
-                .Select(u => new { u.DemoCommentCapOverride })
-                .FirstOrDefaultAsync();
+            // DB-11a: the founding admin's public_id no longer equals the workspace id — resolve
+            // via the workspace's current admin membership instead of users.public_id == owner.
+            var currentAdmin = await _memberships.CurrentAdminAsync(owner);
+            var demoOwner = currentAdmin?.User.IsDemo == true
+                ? new { currentAdmin.User.DemoCommentCapOverride }
+                : null;
 
             if (demoOwner != null)
             {
@@ -1102,18 +1104,8 @@ public class CommentService : ICommentService
 
     // Resolve display names for a set of author ids (User.PublicId == Comment.AuthorId).
     // One batched query; missing ids simply have no name (component falls back gracefully).
-    private async Task<Dictionary<Guid, string>> ResolveNamesAsync(IEnumerable<Guid> ids)
-    {
-        var distinct = ids.Where(g => g != Guid.Empty).Distinct().ToList();
-        if (distinct.Count == 0)
-            return new Dictionary<Guid, string>();
-
-        return await _unitOfWork.Repository<User>()
-            .Query()
-            .AsNoTracking()
-            .Where(u => distinct.Contains(u.PublicId))
-            .ToDictionaryAsync(u => u.PublicId, u => u.DisplayName);
-    }
+    private Task<Dictionary<Guid, string>> ResolveNamesAsync(IEnumerable<Guid> ids) =>
+        UserNameResolver.ResolveAsync(_unitOfWork, ids);
 
     /// <summary>
     /// Whether this caller is a surface a human is looking at, and so may see the advisory payload

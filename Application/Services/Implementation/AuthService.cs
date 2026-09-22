@@ -22,6 +22,7 @@ public class AuthService : IAuthService
     private readonly IBrandingService _branding;
     private readonly IApiKeyService _apiKeys;
     private readonly ILoginAttemptLimiter _loginLimiter;
+    private readonly IMembershipService _memberships;
 
     public AuthService(
         IUnitOfWork unitOfWork,
@@ -33,7 +34,8 @@ public class AuthService : IAuthService
         IEmailService emailService,
         IBrandingService branding,
         IApiKeyService apiKeys,
-        ILoginAttemptLimiter loginLimiter
+        ILoginAttemptLimiter loginLimiter,
+        IMembershipService memberships
     )
     {
         _unitOfWork = unitOfWork;
@@ -46,11 +48,12 @@ public class AuthService : IAuthService
         _emailService = emailService;
         _branding = branding;
         _loginLimiter = loginLimiter;
+        _memberships = memberships;
     }
 
     public async Task<Result> RequestPasswordResetAsync(ForgotPasswordRequest request)
     {
-        var emailNormalized = (request.Email ?? string.Empty).Trim().ToLower();
+        var emailNormalized = EmailNormalizer.NormalizeRequired(request.Email);
         if (emailNormalized.Length > 0)
         {
             // Anonymous path → bypass the tenant query filter; only real (non-demo) active accounts.
@@ -59,10 +62,20 @@ public class AuthService : IAuthService
                 .Query()
                 .IgnoreQueryFilters()
                 .AsNoTracking()
+                .Include(u => u.Role)
                 .Where(u =>
                     u.DeletedAt == null && u.IsActive && !u.IsDemo && u.Email == emailNormalized
                 )
                 .FirstOrDefaultAsync();
+
+            // DB-11a: a non-super-admin identity with no live membership anywhere has nothing to
+            // reset into — treat the same as "no such account" (still silent to the caller).
+            if (user != null && !(user.Role?.IsSuperAdmin ?? false))
+            {
+                var memberships = await _memberships.ListForIdentityAsync(user.Id);
+                if (memberships.Count == 0)
+                    user = null;
+            }
 
             if (user != null)
             {
@@ -236,7 +249,7 @@ public class AuthService : IAuthService
 
     public async Task<Result<LoginResponse>> LoginAsync(LoginRequest request)
     {
-        var emailNormalized = (request.Email ?? string.Empty).Trim().ToLowerInvariant();
+        var emailNormalized = EmailNormalizer.NormalizeRequired(request.Email);
 
         // Locked accounts are rejected BEFORE touching the DB or verifying passwords (R5-59 §12).
         if (await _loginLimiter.IsLockedAsync(emailNormalized))
@@ -249,16 +262,9 @@ public class AuthService : IAuthService
             );
         }
 
-        // Login is anonymous (no tenant claim yet), so the User global query filter would
-        // only see OwnerId==null users — bypass it to authenticate any tenant's user by email.
-        var user = await _unitOfWork
-            .Repository<User>()
-            .Query()
-            .IgnoreQueryFilters()
-            .AsNoTracking()
-            .Include(u => u.Role)
-            .Where(u => u.DeletedAt == null && u.Email == emailNormalized)
-            .FirstOrDefaultAsync();
+        // DB-11a: one identity per e-mail. Login is anonymous (no tenant claim yet), so
+        // FindIdentityByEmailAsync bypasses the (now membership-based) User query filter itself.
+        var user = await _memberships.FindIdentityByEmailAsync(emailNormalized);
 
         // Verify the password FIRST so account status is only revealed to correct credentials
         // (avoids leaking which emails exist / are pending/rejected to anonymous guessers).
@@ -266,6 +272,22 @@ public class AuthService : IAuthService
         if (user == null || !_passwordHasher.Verify(request.Password, user.PasswordHash))
         {
             await _loginLimiter.RecordFailureAsync(emailNormalized);
+
+            // GLM A8: the identity exists but the password does not verify, and it absorbed a
+            // merged row (DB-11a Migration 2 — D1: newest password wins) — point at "Forgot
+            // password" instead of the generic message. Reveals nothing beyond "merged identities
+            // exist", and the census is expected to make this set empty in production. Still a
+            // failed password attempt, so the lockout counter above already recorded it.
+            if (
+                user != null
+                && await _unitOfWork
+                    .Repository<User>()
+                    .Query()
+                    .IgnoreQueryFilters()
+                    .AnyAsync(u => u.MergedIntoUserId == user.Id)
+            )
+                return Result<LoginResponse>.Failure(MessageKeys.Auth.InvalidCredentialsAfterMerge);
+
             return Result<LoginResponse>.Failure(MessageKeys.Auth.InvalidCredentials);
         }
 
@@ -280,34 +302,78 @@ public class AuthService : IAuthService
             return Result<LoginResponse>.Failure(MessageKeys.Auth.InvalidCredentials);
         }
 
-        if (user.ApprovalStatus == ApprovalStatus.Pending)
-            return Result<LoginResponse>.Failure(
-                MessageKeys.Auth.PendingApproval,
-                new LoginResponse { Status = "pending" }
-            );
+        WorkspaceMembership? membership = null;
+        Role? role = user.Role;
+        string? tenantName = null;
 
-        if (user.ApprovalStatus == ApprovalStatus.Rejected)
-            return Result<LoginResponse>.Failure(
-                MessageKeys.Auth.Rejected,
-                new LoginResponse { Status = "rejected" }
-            );
+        if (user.Role?.IsSuperAdmin == true)
+        {
+            // Super admins own no workspace — unchanged, identity-level status.
+            if (user.ApprovalStatus == ApprovalStatus.Pending)
+                return Result<LoginResponse>.Failure(
+                    MessageKeys.Auth.PendingApproval,
+                    new LoginResponse { Status = "pending" }
+                );
 
-        if (!user.IsActive)
-            return Result<LoginResponse>.Failure(
-                MessageKeys.Auth.Disabled,
-                new LoginResponse { Status = "disabled" }
-            );
+            if (user.ApprovalStatus == ApprovalStatus.Rejected)
+                return Result<LoginResponse>.Failure(
+                    MessageKeys.Auth.Rejected,
+                    new LoginResponse { Status = "rejected" }
+                );
 
-        // Password verified and account active: reset lockout counter.
+            if (!user.IsActive)
+                return Result<LoginResponse>.Failure(
+                    MessageKeys.Auth.Disabled,
+                    new LoginResponse { Status = "disabled" }
+                );
+        }
+        else
+        {
+            var memberships = await _memberships.ListForIdentityAsync(user.Id);
+            var candidates = memberships
+                .Where(m =>
+                    m.IsActive && m.ApprovalStatus == ApprovalStatus.Approved && user.IsActive
+                )
+                .ToList();
+
+            if (candidates.Count == 0)
+            {
+                if (memberships.Any(m => m.ApprovalStatus == ApprovalStatus.Pending))
+                    return Result<LoginResponse>.Failure(
+                        MessageKeys.Auth.PendingApproval,
+                        new LoginResponse { Status = "pending" }
+                    );
+                if (memberships.Any(m => m.ApprovalStatus == ApprovalStatus.Rejected))
+                    return Result<LoginResponse>.Failure(
+                        MessageKeys.Auth.Rejected,
+                        new LoginResponse { Status = "rejected" }
+                    );
+                // No workspace at all, or every membership disabled — DB-11b distinguishes
+                // "no-workspace"; for now both surface as "disabled".
+                return Result<LoginResponse>.Failure(
+                    MessageKeys.Auth.Disabled,
+                    new LoginResponse { Status = "disabled" }
+                );
+            }
+
+            // Home wins (the workspace recorded at identity creation); else the earliest joined.
+            membership =
+                candidates.FirstOrDefault(m => m.OwnerId == user.OwnerId)
+                ?? candidates.OrderBy(m => m.JoinedAt).First();
+            role = membership.Role;
+            tenantName = await ResolveTenantNameAsync(membership.OwnerId);
+        }
+
+        // Password verified and every status gate passed: reset the lockout counter.
         await _loginLimiter.ResetAsync(emailNormalized);
 
-        var token = _tokenService.Issue(user);
+        var token = _tokenService.Issue(user, membership);
 
         var response = new LoginResponse
         {
             Status = "ok",
             Token = token,
-            User = UserMapper.ToMeResponse(user, await ResolveTenantNameAsync(user.OwnerId)),
+            User = UserMapper.ToMeResponse(user, role, tenantName),
         };
 
         return Result<LoginResponse>.Success(response);
@@ -330,42 +396,63 @@ public class AuthService : IAuthService
         if (user.DeletedAt != null)
             return Result<LoginResponse>.Failure(MessageKeys.Auth.InvalidApiKey);
 
-        if (user.ApprovalStatus == ApprovalStatus.Pending)
-            return Result<LoginResponse>.Failure(
-                MessageKeys.Auth.PendingApproval,
-                new LoginResponse { Status = "pending" }
-            );
+        WorkspaceMembership? membership = null;
+        Role? role = user.Role;
 
-        if (user.ApprovalStatus == ApprovalStatus.Rejected)
-            return Result<LoginResponse>.Failure(
-                MessageKeys.Auth.Rejected,
-                new LoginResponse { Status = "rejected" }
-            );
+        if (apiKey.OwnerId is Guid ownerId)
+        {
+            // DB-11a: keys are per membership. login-with-key lands deterministically in the key's
+            // own workspace — no picker needed (agents are non-interactive).
+            membership = await _memberships.GetMembershipAsync(user.Id, ownerId);
+            if (membership == null || !membership.IsActive || membership.ApprovalStatus != ApprovalStatus.Approved)
+                return Result<LoginResponse>.Failure(
+                    MessageKeys.Auth.Disabled,
+                    new LoginResponse { Status = "disabled" }
+                );
+            role = membership.Role;
+        }
+        else
+        {
+            // Null-owner key = super admin path — identity-level status, unchanged.
+            if (user.ApprovalStatus == ApprovalStatus.Pending)
+                return Result<LoginResponse>.Failure(
+                    MessageKeys.Auth.PendingApproval,
+                    new LoginResponse { Status = "pending" }
+                );
 
-        if (!user.IsActive)
-            return Result<LoginResponse>.Failure(
-                MessageKeys.Auth.Disabled,
-                new LoginResponse { Status = "disabled" }
-            );
+            if (user.ApprovalStatus == ApprovalStatus.Rejected)
+                return Result<LoginResponse>.Failure(
+                    MessageKeys.Auth.Rejected,
+                    new LoginResponse { Status = "rejected" }
+                );
 
-        var token = _tokenService.Issue(user, apiKey.Scopes);
+            if (!user.IsActive)
+                return Result<LoginResponse>.Failure(
+                    MessageKeys.Auth.Disabled,
+                    new LoginResponse { Status = "disabled" }
+                );
+        }
+
+        var token = _tokenService.Issue(user, membership, apiKey.Scopes);
 
         // Best-effort usage stamp; throttled to once a minute inside the service.
         await _apiKeys.TouchLastUsedAsync(apiKey.Id);
+
+        var tenantName = membership != null ? await ResolveTenantNameAsync(membership.OwnerId) : null;
 
         return Result<LoginResponse>.Success(
             new LoginResponse
             {
                 Status = "ok",
                 Token = token,
-                User = UserMapper.ToMeResponse(user, await ResolveTenantNameAsync(user.OwnerId)),
+                User = UserMapper.ToMeResponse(user, role, tenantName),
             }
         );
     }
 
     public async Task<Result> RegisterAsync(RegisterRequest request)
     {
-        var emailNormalized = request.Email.Trim().ToLower();
+        var emailNormalized = EmailNormalizer.NormalizeRequired(request.Email);
 
         // 1. Resolve the project by key to determine the tenant owner.
         //    Anonymous path → no tenant claim → global query filter hides tenant rows.
@@ -390,7 +477,10 @@ public class AuthService : IAuthService
         if (projectMatches.Count > 1)
             return Result.Conflict(MessageKeys.Project.KeyAmbiguous);
 
-        var projectOwnerId = projectMatches[0].OwnerId;
+        // DB-11a: a workspace_memberships row always belongs to a real workspace (OwnerId NOT
+        // NULL) — a null-owner (global) project has no workspace to join a stakeholder into.
+        if (projectMatches[0].OwnerId is not Guid projectOwnerId)
+            return Result.Failure(MessageKeys.Project.NotFound);
 
         // 2. Role must exist, be active, NON-admin, and belong to this tenant (or be a global role).
         //    IgnoreQueryFilters() required for the same anonymous-path reason above.
@@ -411,58 +501,74 @@ public class AuthService : IAuthService
         if (role == null)
             return Result.Failure(MessageKeys.Role.Invalid);
 
-        // 3. Look up the existing user (if any) by normalized email, SCOPED to THIS project's tenant.
-        //    A same-email user under a different tenant is not a conflict — the (email, owner_id)
-        //    unique index allows it, and cross-tenant existence must not be revealed. Anonymous path
-        //    → bypass the User global query filter (it would only see OwnerId==null users otherwise).
-        var user = await _unitOfWork
-            .Repository<User>()
-            .Query()
-            .IgnoreQueryFilters()
-            .Where(u =>
-                u.DeletedAt == null && u.Email == emailNormalized && u.OwnerId == projectOwnerId
-            )
-            .FirstOrDefaultAsync();
+        // 3. Join-or-create (DB-11a §3.3): one identity per e-mail; a membership per workspace.
+        var identity = await _memberships.FindIdentityByEmailAsync(emailNormalized);
 
-        if (user == null)
+        if (identity == null)
         {
-            // No account → create a pending, inactive user bound to the project's tenant.
-            var newUser = new User
+            identity = _memberships.NewIdentity(
+                emailNormalized,
+                _passwordHasher.Hash(request.Password),
+                request.DisplayName,
+                role,
+                projectOwnerId
+            );
+            await _unitOfWork.Repository<User>().AddAsync(identity);
+            await _unitOfWork.SaveChangesAsync();
+
+            await _memberships.JoinAsync(
+                identity,
+                projectOwnerId,
+                role,
+                ApprovalStatus.Pending,
+                isActive: false,
+                inviteId: null
+            );
+            await _unitOfWork.SaveChangesAsync();
+
+            return Result.Success(MessageKeys.Auth.RegistrationSubmitted);
+        }
+
+        var membership = await _memberships.GetMembershipAsync(identity.Id, projectOwnerId);
+
+        if (membership != null)
+        {
+            if (membership.ApprovalStatus == ApprovalStatus.Rejected)
             {
-                Email = emailNormalized,
-                PasswordHash = _passwordHasher.Hash(request.Password),
-                DisplayName = request.DisplayName,
-                RoleId = role.Id,
-                PublicId = Guid.NewGuid(),
-                ApprovalStatus = ApprovalStatus.Pending,
-                IsActive = false,
-                OwnerId = projectOwnerId,
-            };
+                // Re-apply ("Request again"): only the genuine account owner (correct password) may
+                // re-queue — same message as today.
+                if (!_passwordHasher.Verify(request.Password, identity.PasswordHash))
+                    return Result.Failure(MessageKeys.Auth.InvalidCredentials);
 
-            await _unitOfWork.Repository<User>().AddAsync(newUser);
-            await _unitOfWork.SaveChangesAsync();
+                membership.ApprovalStatus = ApprovalStatus.Pending;
+                membership.RoleId = role.Id;
+                _unitOfWork.Repository<WorkspaceMembership>().Update(membership);
+                await _unitOfWork.SaveChangesAsync();
 
-            return Result.Success(MessageKeys.Auth.RegistrationSubmitted);
+                return Result.Success(MessageKeys.Auth.RegistrationSubmitted);
+            }
+
+            // Pending or Approved → already has a membership in this workspace.
+            return Result.Conflict(MessageKeys.Auth.AccountExists);
         }
 
-        if (user.ApprovalStatus == ApprovalStatus.Rejected)
-        {
-            // Re-apply ("Request again"): only the genuine account owner (correct password) may re-queue.
-            if (!_passwordHasher.Verify(request.Password, user.PasswordHash))
-                return Result.Failure(MessageKeys.Auth.InvalidCredentials);
+        // Identity exists (in some other workspace) but has no membership here yet — the
+        // join-or-create generic rule: the request's password must verify against the existing
+        // identity, or a PasswordlessOnly identity, before a membership is added (D4).
+        if (identity.PasswordlessOnly || !_passwordHasher.Verify(request.Password, identity.PasswordHash))
+            return Result.Conflict(MessageKeys.Auth.AccountExists);
 
-            user.ApprovalStatus = ApprovalStatus.Pending;
-            user.RoleId = role.Id;
-            user.OwnerId = projectOwnerId;
+        await _memberships.JoinAsync(
+            identity,
+            projectOwnerId,
+            role,
+            ApprovalStatus.Pending,
+            isActive: false,
+            inviteId: null
+        );
+        await _unitOfWork.SaveChangesAsync();
 
-            _unitOfWork.Repository<User>().Update(user);
-            await _unitOfWork.SaveChangesAsync();
-
-            return Result.Success(MessageKeys.Auth.RegistrationSubmitted);
-        }
-
-        // Pending or Approved → already has an account.
-        return Result.Conflict(MessageKeys.Auth.AccountExists);
+        return Result.Success(MessageKeys.Auth.RegistrationSubmitted);
     }
 
     public async Task<Result> RegisterAdminAsync(RegisterAdminRequest request)
@@ -475,24 +581,7 @@ public class AuthService : IAuthService
         if (!enabled)
             return Result.Forbidden("Self-signup is disabled.");
 
-        var emailNormalized = request.Email.Trim().ToLower();
-
-        // Duplicate email check — scoped to self-owned WORKSPACE accounts (OwnerId == PublicId), the
-        // tenant boundary for a new workspace. A same email existing only as a stakeholder under some
-        // OTHER tenant is not a conflict here (each workspace is its own tenant; the (email, owner_id)
-        // unique index permits the same address across tenants). Anonymous path → IgnoreQueryFilters().
-        var existing = await _unitOfWork
-            .Repository<User>()
-            .Query()
-            .IgnoreQueryFilters()
-            .AsNoTracking()
-            .Where(u =>
-                u.DeletedAt == null && u.Email == emailNormalized && u.OwnerId == u.PublicId
-            )
-            .FirstOrDefaultAsync();
-
-        if (existing != null)
-            return Result.Conflict("An account with that email already exists.");
+        var emailNormalized = EmailNormalizer.NormalizeRequired(request.Email);
 
         // Resolve the global "Workspace Admin" role — anonymous path, must bypass query filter.
         var role = await _unitOfWork
@@ -507,30 +596,52 @@ public class AuthService : IAuthService
         if (role == null)
             return Result.Failure("Workspace Admin role not found.");
 
-        var publicId = Guid.NewGuid();
-        var newUser = new User
+        // DB-11a: one identity per e-mail may administer several workspaces (D13 — the old
+        // "an address that already owns a workspace cannot accept a new-workspace invite" refusal
+        // is removed). A brand-new workspace is minted every time; join-or-create resolves the
+        // identity.
+        var workspaceId = Guid.NewGuid();
+        var identity = await _memberships.FindIdentityByEmailAsync(emailNormalized);
+
+        if (identity != null)
         {
-            Email = emailNormalized,
-            PasswordHash = _passwordHasher.Hash(request.Password),
-            DisplayName = request.DisplayName,
-            RoleId = role.Id,
-            PublicId = publicId,
-            ApprovalStatus = ApprovalStatus.Pending,
-            IsActive = false,
-            // Tenant owns itself while pending; super-admin activates later.
-            OwnerId = publicId,
-        };
+            // D5: same as D4 — the existing account's password must verify.
+            if (identity.PasswordlessOnly || !_passwordHasher.Verify(request.Password, identity.PasswordHash))
+                return Result.Conflict("An account with that email already exists.");
+        }
+        else
+        {
+            identity = _memberships.NewIdentity(
+                emailNormalized,
+                _passwordHasher.Hash(request.Password),
+                request.DisplayName,
+                role,
+                workspaceId
+            );
+            // Tenant owns itself while pending; super-admin activates later — false for a new
+            // identity, as today.
+            identity.IsActive = false;
+            await _unitOfWork.Repository<User>().AddAsync(identity);
+            await _unitOfWork.SaveChangesAsync();
+        }
 
         await _unitOfWork.Workspaces.AddAsync(
             new Workspace
             {
-                Id = publicId,
+                Id = workspaceId,
                 Name = Workspace.PlaceholderName,
                 CreatedAt = DateTime.UtcNow,
-                CreatedBy = publicId,
+                CreatedBy = workspaceId,
             }
         );
-        await _unitOfWork.Repository<User>().AddAsync(newUser);
+        await _memberships.JoinAsync(
+            identity,
+            workspaceId,
+            role,
+            ApprovalStatus.Pending,
+            isActive: false,
+            inviteId: null
+        );
         await _unitOfWork.SaveChangesAsync();
 
         // Signup plan selector (workspace signup only). Free / none ⇒ today's flow (no subscription row;
@@ -558,7 +669,7 @@ public class AuthService : IAuthService
                     .AddAsync(
                         new Subscription
                         {
-                            OwnerId = publicId,
+                            OwnerId = workspaceId,
                             PlanId = plan.Id,
                             Status = SubscriptionStatus.PendingActivation,
                         }
@@ -577,19 +688,21 @@ public class AuthService : IAuthService
         if (publicId == null)
             return Result<MeResponse>.Failure(MessageKeys.Auth.InvalidCredentials);
 
-        var user = await _unitOfWork
-            .Repository<User>()
-            .Query()
-            .AsNoTracking()
-            .Include(u => u.Role)
-            .Where(u => u.DeletedAt == null && u.PublicId == publicId.Value)
-            .FirstOrDefaultAsync();
+        var user = await _memberships.FindIdentityByPublicIdAsync(publicId.Value);
 
         if (user == null)
             return Result<MeResponse>.NotFound(MessageKeys.User.NotFound);
 
-        var tenantName = await ResolveTenantNameAsync(_currentUser.TenantId);
-        return Result<MeResponse>.Success(UserMapper.ToMeResponse(user, tenantName));
+        var role = user.Role;
+        string? tenantName = null;
+        if (_currentUser.TenantId is Guid tenant)
+        {
+            var membership = await _memberships.GetMembershipAsync(user.Id, tenant);
+            role = membership?.Role ?? user.Role;
+            tenantName = await ResolveTenantNameAsync(tenant);
+        }
+
+        return Result<MeResponse>.Success(UserMapper.ToMeResponse(user, role, tenantName));
     }
 
     public async Task<Result<LoginResponse>> LoginWithInviteAsync(string token)
@@ -611,7 +724,7 @@ public class AuthService : IAuthService
             .Where(l => l.TokenHash == hash && l.DeletedAt == null)
             .FirstOrDefaultAsync();
 
-        if (link is null || link.RevokedAt != null || link.ExpiresAt <= now)
+        if (link is null || link.RevokedAt != null || link.ExpiresAt <= now || link.OwnerId is not Guid ownerId)
             return Result<LoginResponse>.Failure(MessageKeys.Invite.LinkInvalid);
 
         // MaxUses 0 means unlimited within the TTL — the default. A client returning after the 12h
@@ -619,21 +732,18 @@ public class AuthService : IAuthService
         if (link.MaxUses > 0 && link.Uses >= link.MaxUses)
             return Result<LoginResponse>.Failure(MessageKeys.Invite.LinkInvalid);
 
-        var user = await _unitOfWork
-            .Repository<User>()
-            .Query()
-            .IgnoreQueryFilters()
-            .Include(u => u.Role)
-            .Where(u => u.PublicId == link.UserId && u.DeletedAt == null)
-            .FirstOrDefaultAsync();
+        var user = await _memberships.FindIdentityByPublicIdAsync(link.UserId);
+        var membership = user == null ? null : await _memberships.GetMembershipAsync(user.Id, ownerId);
 
-        // The account must still be the low-privilege one this link was minted for. A link whose
-        // user was disabled, or somehow promoted out of QuickAccess, is not honoured.
+        // The account must still be the low-privilege one this link was minted for, live and
+        // approved IN THIS WORKSPACE. A link whose membership was disabled, ended, or somehow
+        // promoted out of QuickAccess, is not honoured.
         if (
             user is null
-            || !user.IsActive
-            || user.ApprovalStatus != ApprovalStatus.Approved
-            || user.Role is not { QuickAccess: true }
+            || membership is null
+            || !membership.IsActive
+            || membership.ApprovalStatus != ApprovalStatus.Approved
+            || membership.Role is not { QuickAccess: true }
         )
             return Result<LoginResponse>.Failure(MessageKeys.Invite.LinkInvalid);
 
@@ -645,8 +755,8 @@ public class AuthService : IAuthService
             new LoginResponse
             {
                 Status = "ok",
-                Token = _tokenService.Issue(user),
-                User = UserMapper.ToMeResponse(user, await ResolveTenantNameAsync(user.OwnerId)),
+                Token = _tokenService.Issue(user, membership),
+                User = UserMapper.ToMeResponse(user, membership.Role, await ResolveTenantNameAsync(membership.OwnerId)),
             }
         );
     }

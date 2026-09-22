@@ -27,17 +27,20 @@ public class DeviceLoginService : IDeviceLoginService
     private readonly ICurrentUser _currentUser;
     private readonly IApiKeyService _apiKeys;
     private readonly IBrandingService _branding;
+    private readonly IMembershipService _memberships;
 
     public DeviceLoginService(
         IUnitOfWork unitOfWork,
         ICurrentUser currentUser,
         IApiKeyService apiKeys,
-        IBrandingService branding)
+        IBrandingService branding,
+        IMembershipService memberships)
     {
         _unitOfWork = unitOfWork;
         _currentUser = currentUser;
         _apiKeys = apiKeys;
         _branding = branding;
+        _memberships = memberships;
     }
 
     public async Task<Result<DeviceLoginStartResponse>> StartAsync(DeviceLoginStartRequest request)
@@ -139,7 +142,7 @@ public class DeviceLoginService : IDeviceLoginService
                 if (user is null)
                     return Result<DeviceLoginPollResponse>.Success(new DeviceLoginPollResponse { Status = "expired" });
 
-                var keyResult = await _apiKeys.GetOrCreateAsync(user.PublicId);
+                var keyResult = await _apiKeys.GetOrCreateAsync(user.PublicId, row.OwnerId);
                 if (!keyResult.Found || keyResult.RawKey is null)
                     // Key exists but couldn't be decrypted/minted — nothing to hand the CLI. Report
                     // "expired" (a retryable "start over"), never leave the row Approved-forever.
@@ -186,6 +189,18 @@ public class DeviceLoginService : IDeviceLoginService
             return Result<DeviceLoginInfoResponse>.Forbidden(MessageKeys.DeviceLogin.SuperAdminNotAllowed);
         if (_currentUser.Id is not Guid publicId)
             return Result<DeviceLoginInfoResponse>.Failure(MessageKeys.Auth.InvalidCredentials);
+        // S-14: a non-super-admin without a tenant claim is Forbidden, never approves into a null workspace.
+        if (_currentUser.TenantId is not Guid tenant)
+            return Result<DeviceLoginInfoResponse>.Forbidden(MessageKeys.Common.Forbidden);
+
+        // DB-11a/R16: the caller's own MEMBERSHIP in this workspace must be live, active and
+        // Approved — a disabled/removed admin cannot approve a device login.
+        var callerIdentity = await _memberships.FindIdentityByPublicIdAsync(publicId);
+        var callerMembership = callerIdentity != null
+            ? await _memberships.GetMembershipAsync(callerIdentity.Id, tenant)
+            : null;
+        if (callerMembership == null || !callerMembership.IsActive || callerMembership.ApprovalStatus != Domain.Enums.ApprovalStatus.Approved)
+            return Result<DeviceLoginInfoResponse>.Forbidden(MessageKeys.Auth.Disabled);
 
         var now = DateTime.UtcNow;
         var row = await FindLatestByUserCodeAsync(userCode);

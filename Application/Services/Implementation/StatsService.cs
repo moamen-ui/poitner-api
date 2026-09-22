@@ -11,10 +11,14 @@ namespace Pointer.Application.Services.Implementation;
 public class StatsService : IStatsService
 {
     private readonly IUnitOfWork _unitOfWork;
+    private readonly ICurrentUser _currentUser;
+    private readonly IMembershipService _memberships;
 
-    public StatsService(IUnitOfWork unitOfWork)
+    public StatsService(IUnitOfWork unitOfWork, ICurrentUser currentUser, IMembershipService memberships)
     {
         _unitOfWork = unitOfWork;
+        _currentUser = currentUser;
+        _memberships = memberships;
     }
 
     public async Task<Result<StatsResponse>> GetAsync()
@@ -26,15 +30,37 @@ public class StatsService : IStatsService
             .Select(p => new { p.Id, p.Key, p.Name, p.IsActiveLocal, p.IsActiveStaging, p.IsActiveProduction })
             .ToListAsync();
 
-        var usersCount = await _unitOfWork.Repository<User>()
-            .Query()
-            .AsNoTracking()
-            .CountAsync(u => u.DeletedAt == null);
-
-        var pendingUsersCount = await _unitOfWork.Repository<User>()
-            .Query()
-            .AsNoTracking()
-            .CountAsync(u => u.DeletedAt == null && u.ApprovalStatus == ApprovalStatus.Pending);
+        // DB-11a: "users" is a membership fact — live memberships under the caller's workspace,
+        // never users.owner_id.
+        int usersCount;
+        int pendingUsersCount;
+        if (Common.TenantStamp.TryRequireOwner(_currentUser, out var statsOwner))
+        {
+            usersCount = await _memberships.InWorkspace(statsOwner).CountAsync(m => m.LeftAt == null);
+            pendingUsersCount = await _memberships
+                .InWorkspace(statsOwner)
+                .CountAsync(m => m.LeftAt == null && m.ApprovalStatus == ApprovalStatus.Pending);
+        }
+        else if (_currentUser.IsSuperAdmin)
+        {
+            usersCount = await _unitOfWork
+                .Repository<WorkspaceMembership>()
+                .Query()
+                .IgnoreQueryFilters()
+                .AsNoTracking()
+                .CountAsync(m => m.LeftAt == null && m.DeletedAt == null);
+            pendingUsersCount = await _unitOfWork
+                .Repository<WorkspaceMembership>()
+                .Query()
+                .IgnoreQueryFilters()
+                .AsNoTracking()
+                .CountAsync(m => m.LeftAt == null && m.DeletedAt == null && m.ApprovalStatus == ApprovalStatus.Pending);
+        }
+        else
+        {
+            usersCount = 0;
+            pendingUsersCount = 0;
+        }
 
         // One grouped query: comment counts per (project, status).
         var grouped = await _unitOfWork.Repository<Comment>()

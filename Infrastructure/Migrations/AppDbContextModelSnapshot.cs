@@ -184,9 +184,14 @@ namespace Pointer.Infrastructure.Migrations
                     b.HasIndex("OwnerId");
 
                     b.HasIndex("UserId")
+                        .HasDatabaseName("ix_api_keys_user_id");
+
+                    b.HasIndex("UserId", "OwnerId")
                         .IsUnique()
-                        .HasDatabaseName("ux_api_keys_active_per_user")
+                        .HasDatabaseName("ux_api_keys_active_per_membership")
                         .HasFilter("revoked_at IS NULL AND deleted_at IS NULL");
+
+                    NpgsqlIndexBuilderExtensions.AreNullsDistinct(b.HasIndex("UserId", "OwnerId"), false);
 
                     b.ToTable("api_keys", (string)null);
                 });
@@ -1973,6 +1978,10 @@ namespace Pointer.Infrastructure.Migrations
                         .HasColumnType("character varying(8)")
                         .HasColumnName("language");
 
+                    b.Property<int?>("MergedIntoUserId")
+                        .HasColumnType("integer")
+                        .HasColumnName("merged_into_user_id");
+
                     b.Property<Guid?>("OwnerId")
                         .HasColumnType("uuid")
                         .HasColumnName("owner_id");
@@ -2022,6 +2031,8 @@ namespace Pointer.Infrastructure.Migrations
 
                     b.HasIndex("ExpiresAt");
 
+                    b.HasIndex("MergedIntoUserId");
+
                     b.HasIndex("OwnerId");
 
                     b.HasIndex("PublicId")
@@ -2037,6 +2048,31 @@ namespace Pointer.Infrastructure.Migrations
                     NpgsqlIndexBuilderExtensions.AreNullsDistinct(b.HasIndex("Email", "OwnerId"), false);
 
                     b.ToTable("users", (string)null);
+                });
+
+            modelBuilder.Entity("Pointer.Domain.Entity.UserAlias", b =>
+                {
+                    b.Property<Guid>("AliasPublicId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("alias_public_id");
+
+                    b.Property<DateTime>("MergedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("merged_at");
+
+                    b.Property<Guid?>("SourceWorkspaceId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("source_workspace_id");
+
+                    b.Property<int>("UserId")
+                        .HasColumnType("integer")
+                        .HasColumnName("user_id");
+
+                    b.HasKey("AliasPublicId");
+
+                    b.HasIndex("UserId");
+
+                    b.ToTable("user_aliases", (string)null);
                 });
 
             modelBuilder.Entity("Pointer.Domain.Entity.Workspace", b =>
@@ -2081,6 +2117,98 @@ namespace Pointer.Infrastructure.Migrations
                         {
                             t.HasCheckConstraint("ck_workspaces_name_not_blank", "length(btrim(name)) > 0");
                         });
+                });
+
+            modelBuilder.Entity("Pointer.Domain.Entity.WorkspaceMembership", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer")
+                        .HasColumnName("id");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<int>("ApprovalStatus")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer")
+                        .HasDefaultValue(1)
+                        .HasColumnName("approval_status");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<Guid>("CreatedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("created_by");
+
+                    b.Property<DateTime?>("DeletedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("deleted_at");
+
+                    b.Property<Guid?>("DeletedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("deleted_by");
+
+                    b.Property<int?>("InviteId")
+                        .HasColumnType("integer")
+                        .HasColumnName("invite_id");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("boolean")
+                        .HasColumnName("is_active");
+
+                    b.Property<DateTime>("JoinedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("joined_at");
+
+                    b.Property<DateTime?>("LeftAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("left_at");
+
+                    b.Property<int?>("LeftReason")
+                        .HasColumnType("integer")
+                        .HasColumnName("left_reason");
+
+                    b.Property<Guid>("OwnerId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("owner_id");
+
+                    b.Property<int>("RoleId")
+                        .HasColumnType("integer")
+                        .HasColumnName("role_id");
+
+                    b.Property<Guid>("SecurityStamp")
+                        .HasColumnType("uuid")
+                        .HasColumnName("security_stamp");
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.Property<Guid?>("UpdatedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("updated_by");
+
+                    b.Property<int>("UserId")
+                        .HasColumnType("integer")
+                        .HasColumnName("user_id");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("InviteId");
+
+                    b.HasIndex("RoleId");
+
+                    b.HasIndex("OwnerId", "RoleId")
+                        .HasDatabaseName("ix_workspace_memberships_owner_role");
+
+                    b.HasIndex("UserId", "OwnerId")
+                        .IsUnique()
+                        .HasDatabaseName("ux_workspace_memberships_user_workspace_live")
+                        .HasFilter("left_at IS NULL AND deleted_at IS NULL");
+
+                    b.ToTable("workspace_memberships", (string)null);
                 });
 
             modelBuilder.Entity("Pointer.Domain.Entity.WorkspaceSetting", b =>
@@ -2745,6 +2873,12 @@ namespace Pointer.Infrastructure.Migrations
 
             modelBuilder.Entity("Pointer.Domain.Entity.User", b =>
                 {
+                    b.HasOne("Pointer.Domain.Entity.User", null)
+                        .WithMany()
+                        .HasForeignKey("MergedIntoUserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .HasConstraintName("fk_users_merged_into_user");
+
                     b.HasOne("Pointer.Domain.Entity.Workspace", null)
                         .WithMany()
                         .HasForeignKey("OwnerId")
@@ -2758,6 +2892,48 @@ namespace Pointer.Infrastructure.Migrations
                         .IsRequired();
 
                     b.Navigation("Role");
+                });
+
+            modelBuilder.Entity("Pointer.Domain.Entity.UserAlias", b =>
+                {
+                    b.HasOne("Pointer.Domain.Entity.User", "User")
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("User");
+                });
+
+            modelBuilder.Entity("Pointer.Domain.Entity.WorkspaceMembership", b =>
+                {
+                    b.HasOne("Pointer.Domain.Entity.Invite", null)
+                        .WithMany()
+                        .HasForeignKey("InviteId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.HasOne("Pointer.Domain.Entity.Workspace", null)
+                        .WithMany()
+                        .HasForeignKey("OwnerId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_workspace_memberships_workspaces_owner_id");
+
+                    b.HasOne("Pointer.Domain.Entity.Role", "Role")
+                        .WithMany()
+                        .HasForeignKey("RoleId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Pointer.Domain.Entity.User", "User")
+                        .WithMany("Memberships")
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Role");
+
+                    b.Navigation("User");
                 });
 
             modelBuilder.Entity("Pointer.Domain.Entity.WorkspaceSetting", b =>
@@ -2794,6 +2970,11 @@ namespace Pointer.Infrastructure.Migrations
             modelBuilder.Entity("Pointer.Domain.Entity.Role", b =>
                 {
                     b.Navigation("Users");
+                });
+
+            modelBuilder.Entity("Pointer.Domain.Entity.User", b =>
+                {
+                    b.Navigation("Memberships");
                 });
 #pragma warning restore 612, 618
         }

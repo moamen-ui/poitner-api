@@ -41,7 +41,7 @@ public class InviteJoinUrlBaseTests
 
     private sealed class FakeTokenService : ITokenService
     {
-        public string Issue(User user, int? keyScopes = null) => "token-for-" + user.PublicId.ToString("N");
+        public string Issue(User user, WorkspaceMembership? membership, int? keyScopes = null) => "token-for-" + user.PublicId.ToString("N");
     }
 
     /// <summary>Settings backed by a dictionary, so the fallback chain is actually exercised.</summary>
@@ -125,7 +125,7 @@ public class InviteJoinUrlBaseTests
 
         using var db = BuildContext(admin, dbName);
         var service = new InviteService(new UnitOfWork(db), admin, new FakePasswordHasher(), new FakeTokenService(),
-            settings, new PassThroughEntitlements(), new SpyEmailService(), new FakeBrandingService());
+            settings, new PassThroughEntitlements(), new SpyEmailService(), new FakeBrandingService(), new MembershipService(new UnitOfWork(db)));
 
         var result = await service.CreateAsync(new CreateInviteRequest { RoleId = roleId, Email = "invitee@acme.test" });
 

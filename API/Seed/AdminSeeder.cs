@@ -125,7 +125,7 @@ public static class AdminSeeder
         var adminPassword = config["ADMIN:PASSWORD"];
         if (string.IsNullOrEmpty(adminEmail) || string.IsNullOrEmpty(adminPassword))
             return;
-        adminEmail = adminEmail.Trim().ToLower();
+        adminEmail = EmailNormalizer.NormalizeRequired(adminEmail);
 
         try
         {
@@ -251,14 +251,12 @@ public static class AdminSeeder
         if (await settings.GetBoolAsync(ISettingsService.LegacyBackfillCompleted, fallback: false))
             return;
 
-        var tenantPublicIds = await db.Users
+        // DB-11a: a tenant is a workspaces row, not a self-owned (OwnerId == PublicId) admin user —
+        // that scheme no longer holds once workspace ids are minted independently of any identity.
+        var tenantPublicIds = await db.Workspaces
             .IgnoreQueryFilters()
-            .Include(u => u.Role)
-            .Where(u => u.DeletedAt == null
-                        && u.Role.GrantsAdmin
-                        && !u.Role.IsSuperAdmin
-                        && u.OwnerId == u.PublicId)
-            .Select(u => u.PublicId)
+            .Where(w => w.DeletedAt == null)
+            .Select(w => w.Id)
             .ToListAsync();
 
         if (tenantPublicIds.Count == 0)

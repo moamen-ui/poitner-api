@@ -69,6 +69,8 @@ public class AppDbContext(
     public DbSet<Notification> Notifications => Set<Notification>();
     public DbSet<DeviceLogin> DeviceLogins => Set<DeviceLogin>();
     public DbSet<Workspace> Workspaces => Set<Workspace>();
+    public DbSet<WorkspaceMembership> WorkspaceMemberships => Set<WorkspaceMembership>();
+    public DbSet<UserAlias> UserAliases => Set<UserAlias>();
 
     protected override void OnModelCreating(ModelBuilder b)
     {
@@ -88,10 +90,17 @@ public class AppDbContext(
                 || (currentUser.TenantId != null && e.OwnerId == currentUser.TenantId)
                 || (currentUser.TenantId == null && !strict && e.OwnerId == null)
             );
+        // DB-11a: a person's presence in a workspace is a workspace_memberships row, never
+        // users.owner_id. Any membership counts, INCLUDING ended ones — a person who left still
+        // authored comments the workspace can see, and their name must resolve. Listing "current
+        // members" always filters LeftAt == null explicitly at the call site (DB-RULES R8.7).
         b.Entity<User>()
             .HasQueryFilter(e =>
                 currentUser.IsSuperAdmin
-                || (currentUser.TenantId != null && e.OwnerId == currentUser.TenantId)
+                || (
+                    currentUser.TenantId != null
+                    && e.Memberships.Any(m => m.OwnerId == currentUser.TenantId)
+                )
                 || (currentUser.TenantId == null && !strict && e.OwnerId == null)
             );
         // Strict-own like its owning User. Login and the backfill deliberately IgnoreQueryFilters —
@@ -290,6 +299,16 @@ public class AppDbContext(
                 currentUser.IsSuperAdmin
                 || (currentUser.TenantId != null && e.Id == currentUser.TenantId)
             );
+
+        // WorkspaceMembership: strict-own on OwnerId (the workspace), like Project. DB-11a.
+        b.Entity<WorkspaceMembership>()
+            .HasQueryFilter(e =>
+                currentUser.IsSuperAdmin
+                || (currentUser.TenantId != null && e.OwnerId == currentUser.TenantId)
+            );
+
+        // UserAlias: no query filter. It is a lookup table keyed by a uuid the caller already
+        // holds, joined to `users`, which is filtered — same reasoning as Workspace. DB-11a.
     }
 
     // Entities whose CreatedAt must survive the SaveChangesAsync stamping loop (the comment-import

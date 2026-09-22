@@ -40,7 +40,7 @@ public class InviteServiceTests
 
     private sealed class FakeTokenService : ITokenService
     {
-        public string Issue(User user, int? keyScopes = null) =>
+        public string Issue(User user, WorkspaceMembership? membership, int? keyScopes = null) =>
             "token-for-" + user.PublicId.ToString("N");
     }
 
@@ -125,7 +125,8 @@ public class InviteServiceTests
             settings ?? new FakeSettings(),
             new PassThroughEntitlements(),
             email ?? new SpyEmailService(),
-            branding ?? new FakeBrandingService()
+            branding ?? new FakeBrandingService(),
+            new MembershipService(uow)
         );
     }
 
@@ -190,20 +191,20 @@ public class InviteServiceTests
         seed.Roles.Add(memberRole);
         seed.SaveChanges();
 
-        seed.Users.Add(
-            new User
-            {
-                Email = "admin@a.com",
-                PasswordHash = "x",
-                DisplayName = "Acme Inc",
-                RoleId = adminRole.Id,
-                PublicId = Guid.NewGuid(),
-                ApprovalStatus = ApprovalStatus.Approved,
-                IsActive = true,
-                OwnerId = tenant,
-            }
-        );
+        var adminUser = new User
+        {
+            Email = "admin@a.com",
+            PasswordHash = "x",
+            DisplayName = "Acme Inc",
+            RoleId = adminRole.Id,
+            PublicId = Guid.NewGuid(),
+            ApprovalStatus = ApprovalStatus.Approved,
+            IsActive = true,
+            OwnerId = tenant,
+        };
+        seed.Users.Add(adminUser);
         seed.SaveChanges();
+        TestSeed.Join(seed, adminUser, tenant, adminRole);
 
         return (tenant, memberRole.Id);
     }
@@ -686,10 +687,12 @@ public class InviteServiceTests
     }
 
     [Fact]
-    public async Task SuperAdmin_Create_NewWorkspaceInvite_RefusesAnAddressThatAlreadyOwnsOne()
+    public async Task SuperAdmin_Create_NewWorkspaceInvite_AllowsAnAddressThatAlreadyOwnsOne()
     {
-        // Otherwise the invite is created and emailed, then fails at acceptance, leaving a pending
-        // row that can never clear.
+        // DB-11a (D13): one identity may administer several workspaces — the old
+        // "an address that already owns a workspace cannot accept a new-workspace invite" refusal
+        // is removed. Creating the invite always succeeds; join-or-create resolves the identity
+        // at ACCEPT time.
         var dbName = Guid.NewGuid().ToString();
         SeedTenant(dbName);
 
@@ -717,8 +720,8 @@ public class InviteServiceTests
                 new CreateInviteRequest { CreateNewWorkspace = true, Email = "taken@owner.test" }
             );
 
-        Assert.True(result.IsConflict);
-        Assert.Empty(db.Invites.IgnoreQueryFilters().ToList());
+        Assert.True(result.IsSuccess, result.Message);
+        Assert.Single(db.Invites.IgnoreQueryFilters().ToList());
     }
 
     [Fact]
@@ -792,9 +795,19 @@ public class InviteServiceTests
         );
 
         Assert.True(result.IsSuccess);
-        var created = db.Users.IgnoreQueryFilters().Single(u => u.Email == "founder@newco.com");
+        var created = db.Users.IgnoreQueryFilters().Include(u => u.Role)
+            .Single(u => u.Email == "founder@newco.com");
         Assert.Equal("Workspace Admin", created.Role.Name);
-        Assert.Equal(created.PublicId, created.OwnerId); // self-owned: a brand-new tenant
+        // DB-11a: workspaces.id no longer equals anyone's public_id — a fresh id every time. The
+        // identity's presence is a live, Approved, active Workspace Admin membership in it instead.
+        Assert.NotEqual(Guid.Empty, created.OwnerId ?? Guid.Empty);
+        var membership = db.Set<WorkspaceMembership>().IgnoreQueryFilters()
+            .Include(m => m.Role)
+            .Single(m => m.UserId == created.Id && m.LeftAt == null);
+        Assert.Equal(created.OwnerId, membership.OwnerId);
+        Assert.Equal("Workspace Admin", membership.Role.Name);
+        Assert.Equal(ApprovalStatus.Approved, membership.ApprovalStatus);
+        Assert.True(membership.IsActive);
         Assert.Equal(ApprovalStatus.Approved, created.ApprovalStatus);
         Assert.True(created.IsActive);
     }
@@ -1376,31 +1389,34 @@ public class InviteServiceTests
     // ── M1: same-email under a different tenant is allowed ───────────────────────
 
     [Fact]
-    public async Task Accept_SameEmail_DifferentTenant_IsAllowed_NotAccountExists()
+    public async Task Accept_SameEmail_DifferentTenant_IsOneIdentity_TwoMemberships()
     {
-        // A user already exists in tenantA with email "shared@email.com". A completely separate
-        // tenantB invite should allow the same email to register as a tenantB user (separate row
-        // with the same email but different OwnerId). Cross-tenant existence must NOT leak as 409.
+        // DB-11a: one identity per e-mail, globally. A user already exists in tenantA with email
+        // "shared@email.com" (with a password so the join-or-create password check succeeds); a
+        // completely separate tenantB invite for the same email JOINS that same identity — adding a
+        // second membership, never a second `users` row. Cross-tenant existence must NOT leak as 409.
         var dbName = Guid.NewGuid().ToString();
         var (tenantA, roleIdA) = SeedTenant(dbName);
+        Guid tenantAAdminRoleId;
 
-        // Register a user in tenantA with the shared email.
+        // Register a user in tenantA with the shared email — same password the accept will submit.
         using (var seed = BuildContext(new FakeCurrentUser { IsSuperAdmin = true }, dbName))
         {
-            seed.Users.Add(
-                new User
-                {
-                    Email = "shared@email.com",
-                    PasswordHash = "x",
-                    DisplayName = "TenantA User",
-                    RoleId = roleIdA,
-                    PublicId = Guid.NewGuid(),
-                    ApprovalStatus = ApprovalStatus.Approved,
-                    IsActive = true,
-                    OwnerId = tenantA,
-                }
-            );
+            var roleA = seed.Roles.Single(r => r.Id == roleIdA);
+            var sharedUser = new User
+            {
+                Email = "shared@email.com",
+                PasswordHash = "hashed:password123",
+                DisplayName = "TenantA User",
+                RoleId = roleIdA,
+                PublicId = Guid.NewGuid(),
+                ApprovalStatus = ApprovalStatus.Approved,
+                IsActive = true,
+                OwnerId = tenantA,
+            };
+            seed.Users.Add(sharedUser);
             seed.SaveChanges();
+            TestSeed.Join(seed, sharedUser, tenantA, roleA);
         }
 
         // Set up tenantB with its own role and invite.
@@ -1462,11 +1478,15 @@ public class InviteServiceTests
         );
 
         Assert.True(result.IsSuccess);
-        // Two rows exist: one per tenant, same email.
+        // ONE identity row, TWO memberships (one per tenant) — DB-11a.
         var rows = db.Users.IgnoreQueryFilters().Where(u => u.Email == "shared@email.com").ToList();
-        Assert.Equal(2, rows.Count);
-        Assert.Contains(rows, u => u.OwnerId == tenantA);
-        Assert.Contains(rows, u => u.OwnerId == tenantB);
+        Assert.Single(rows);
+        var memberships = db.Set<WorkspaceMembership>().IgnoreQueryFilters()
+            .Where(m => m.UserId == rows[0].Id && m.LeftAt == null)
+            .ToList();
+        Assert.Equal(2, memberships.Count);
+        Assert.Contains(memberships, m => m.OwnerId == tenantA);
+        Assert.Contains(memberships, m => m.OwnerId == tenantB);
     }
 
     // ── M3: super-admin can revoke any invite ─────────────────────────────────────

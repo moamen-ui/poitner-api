@@ -25,8 +25,17 @@ public class UserService : IUserService
     private readonly IEmailService _emailService;
     private readonly IEntitlementService _entitlements;
     private readonly IBrandingService _branding;
+    private readonly IMembershipService _memberships;
 
-    public UserService(IUnitOfWork unitOfWork, IPasswordHasher passwordHasher, ICurrentUser currentUser, IEmailService emailService, IEntitlementService entitlements, IBrandingService branding)
+    public UserService(
+        IUnitOfWork unitOfWork,
+        IPasswordHasher passwordHasher,
+        ICurrentUser currentUser,
+        IEmailService emailService,
+        IEntitlementService entitlements,
+        IBrandingService branding,
+        IMembershipService memberships
+    )
     {
         _unitOfWork = unitOfWork;
         _passwordHasher = passwordHasher;
@@ -34,21 +43,8 @@ public class UserService : IUserService
         _emailService = emailService;
         _entitlements = entitlements;
         _branding = branding;
+        _memberships = memberships;
     }
-
-    /// <summary>
-    /// Resolves the CURRENT canonical Workspace Admin for a tenant (by role, not by
-    /// OwnerId == PublicId — that only ever holds for the founding admin and breaks once ownership
-    /// can change hands via TransferOwnershipAsync). Bypasses query filters since this is called by
-    /// super-admin-eligible flows and by a caller checking their OWN tenant.
-    /// </summary>
-    private async Task<User?> GetCurrentAdminAsync(Guid ownerId) =>
-        await _unitOfWork.Repository<User>()
-            .Query()
-            .IgnoreQueryFilters()
-            .AsNoTracking()
-            .Include(u => u.Role)
-            .FirstOrDefaultAsync(u => u.OwnerId == ownerId && u.DeletedAt == null && u.Role.Name == WorkspaceAdminRoleName);
 
     // Best-effort notification: a send failure must never fail the admin action.
     private async Task SafeSendAsync(string to, string subject, string html)
@@ -59,19 +55,10 @@ public class UserService : IUserService
 
     public async Task<Result<UserResponse>> CreateAsync(CreateUserRequest request)
     {
-        var emailNormalized = request.Email.Trim().ToLower();
-
-        var exists = await _unitOfWork.Repository<User>()
-            .Query()
-            .AsNoTracking()
-            .Where(u => u.DeletedAt == null && u.Email == emailNormalized)
-            .AnyAsync();
-
-        if (exists)
-            return Result<UserResponse>.Conflict(MessageKeys.User.EmailTaken);
+        var emailNormalized = EmailNormalizer.NormalizeRequired(request.Email);
 
         Role role;
-        Guid? ownerId;
+        Guid ownerId;
 
         if (_currentUser.IsSuperAdmin)
         {
@@ -83,7 +70,7 @@ public class UserService : IUserService
             // TenantService.CreateAsync / the Tenants page, never duplicated here.
             if (request.TargetOwnerId is not Guid targetOwnerId)
                 return Result<UserResponse>.Failure(MessageKeys.User.TargetWorkspaceRequired);
-            if (await GetCurrentAdminAsync(targetOwnerId) == null)
+            if (await _memberships.CurrentAdminAsync(targetOwnerId) == null)
                 return Result<UserResponse>.Failure(MessageKeys.User.WorkspaceNotFound);
 
             var deputyRole = await _unitOfWork.Repository<Role>()
@@ -108,67 +95,104 @@ public class UserService : IUserService
                 return Result<UserResponse>.Failure(MessageKeys.Role.EscalationNotAllowed);
 
             role = resolvedRole;
-            // The new user joins the CALLER's tenant — `?? _currentUser.Id` is defensive (a real,
-            // non-super-admin caller should always have a TenantId; this guards a malformed-claim
-            // edge case rather than silently producing a null-owner row).
-            ownerId = TenantStamp.OwnerFor(_currentUser) ?? _currentUser.Id;
+            // The new user joins the CALLER's tenant. S-14: a non-super-admin without a tenant claim
+            // is Forbidden, never minted a tenant from its own id.
+            if (!TenantStamp.TryRequireOwner(_currentUser, out var o))
+                return Result<UserResponse>.Forbidden(MessageKeys.Common.Forbidden);
+            ownerId = o;
         }
 
-        var publicId = Guid.NewGuid();
-
-        // MaxSeats: count active users owned by this tenant (direct-add path). Grandfather-safe.
-        if (ownerId is Guid seatOwner)
+        // DB-11a join-or-create: admin-driven, so no password check — an existing identity is just
+        // joined. "email taken" is scoped to THIS workspace (a live membership already here), never
+        // global.
+        var identity = await _memberships.FindIdentityByEmailAsync(emailNormalized);
+        if (identity != null)
         {
-            var seatCount = await _unitOfWork.Repository<User>()
-                .Query()
-                .IgnoreQueryFilters()
-                .CountAsync(u => u.OwnerId == seatOwner && u.DeletedAt == null);
-            var seatCheck = await _entitlements.CheckCountAsync(seatOwner, EntitlementCatalog.MaxSeats, seatCount);
-            if (!seatCheck.IsSuccess)
-                return Result<UserResponse>.LimitReached(seatCheck.Message ?? MessageKeys.Plan.LimitReached, seatCheck.Limit!);
+            var already = await _memberships.GetMembershipAsync(identity.Id, ownerId);
+            if (already != null)
+                return Result<UserResponse>.Conflict(MessageKeys.User.AlreadyMember);
         }
 
-        var user = new User
-        {
-            Email = emailNormalized,
-            PasswordHash = _passwordHasher.Hash(request.Password),
-            DisplayName = request.DisplayName,
-            RoleId = role.Id,
-            PublicId = publicId,
-            IsActive = true,
-            OwnerId = ownerId
-        };
+        // MaxSeats: count LIVE memberships of this workspace. Grandfather-safe.
+        var seatCount = await _memberships.InWorkspace(ownerId).CountAsync(m => m.LeftAt == null);
+        var seatCheck = await _entitlements.CheckCountAsync(ownerId, EntitlementCatalog.MaxSeats, seatCount);
+        if (!seatCheck.IsSuccess)
+            return Result<UserResponse>.LimitReached(seatCheck.Message ?? MessageKeys.Plan.LimitReached, seatCheck.Limit!);
 
-        await _unitOfWork.Repository<User>().AddAsync(user);
+        var isNewIdentity = identity == null;
+        if (isNewIdentity)
+        {
+            identity = _memberships.NewIdentity(
+                emailNormalized,
+                _passwordHasher.Hash(request.Password),
+                request.DisplayName,
+                role,
+                ownerId
+            );
+            await _unitOfWork.Repository<User>().AddAsync(identity);
+            await _unitOfWork.SaveChangesAsync();
+        }
+
+        var membership = await _memberships.JoinAsync(
+            identity!,
+            ownerId,
+            role,
+            ApprovalStatus.Approved,
+            isActive: true,
+            inviteId: null
+        );
         await _unitOfWork.SaveChangesAsync();
+        // Populated AFTER the save above so EF never tries to re-insert the already-existing role row.
+        membership.Role = role;
 
-        return Result<UserResponse>.Success(MapToResponse(user, role));
+        return Result<UserResponse>.Success(MapToResponse(membership));
     }
 
     public async Task<Result<List<UserResponse>>> ListAsync(ApprovalStatus? status = null)
     {
-        var query = _unitOfWork.Repository<User>()
-            .Query()
-            .AsNoTracking()
-            .Include(u => u.Role)
-            .Where(u => u.DeletedAt == null);
+        if (!TenantStamp.TryRequireOwner(_currentUser, out var ownerId))
+            return Result<List<UserResponse>>.Forbidden(MessageKeys.Common.Forbidden);
+
+        var query = _memberships.InWorkspace(ownerId).Where(m => m.LeftAt == null);
 
         if (status.HasValue)
-            query = query.Where(u => u.ApprovalStatus == status.Value);
+            query = query.Where(m => m.ApprovalStatus == status.Value);
 
-        var users = await query
-            .OrderBy(u => u.Id)
-            .ToListAsync();
+        var memberships = await query.OrderBy(m => m.User.Id).ToListAsync();
 
-        return Result<List<UserResponse>>.Success(
-            users.Select(u => MapToResponse(u, u.Role)).ToList());
+        return Result<List<UserResponse>>.Success(memberships.Select(MapToResponse).ToList());
+    }
+
+    /// <summary>
+    /// Resolves the identity (users.id == id, live) and, when there is a single unambiguous
+    /// workspace scope for the call, its membership: the caller's own tenant for a scoped admin, or
+    /// (DB-11a leaves this a narrow case) the identity's sole live membership for a super admin.
+    /// </summary>
+    private async Task<(User? Identity, WorkspaceMembership? Membership)> ResolveTargetAsync(int id)
+    {
+        var identity = await _unitOfWork.Repository<User>()
+            .Query()
+            .IgnoreQueryFilters()
+            .FirstOrDefaultAsync(u => u.Id == id && u.DeletedAt == null);
+        if (identity == null)
+            return (null, null);
+
+        if (TenantStamp.TryRequireOwner(_currentUser, out var ownerId))
+        {
+            var membership = await _memberships.GetMembershipAsync(identity.Id, ownerId);
+            return (identity, membership);
+        }
+
+        // Super admin, no explicit workspace on this endpoint: only unambiguous when the identity
+        // has exactly one live membership.
+        var live = await _memberships.ListForIdentityAsync(identity.Id);
+        return (identity, live.Count == 1 ? live[0] : null);
     }
 
     public async Task<Result<UserResponse>> ApproveAsync(int id, ApproveUserRequest request)
     {
-        var user = await _unitOfWork.Repository<User>().GetByIdAsync(id);
-
-        if (user == null || user.DeletedAt != null)
+        var (identity, membership) = await ResolveTargetAsync(id);
+        if (identity == null || membership == null)
             return Result<UserResponse>.NotFound(MessageKeys.User.NotFound);
 
         // Only super admin may grant an admin-tier role at approval time.
@@ -181,76 +205,75 @@ public class UserService : IUserService
         if (!_currentUser.IsSuperAdmin && (role.GrantsAdmin || role.IsSuperAdmin) && role.Name != DeputyRoleName)
             return Result<UserResponse>.Failure(MessageKeys.Role.EscalationNotAllowed);
 
-        user.ApprovalStatus = ApprovalStatus.Approved;
-        user.IsActive = true;
-        user.RoleId = role.Id;
+        membership.ApprovalStatus = ApprovalStatus.Approved;
+        membership.IsActive = true;
+        membership.RoleId = role.Id;
 
-        _unitOfWork.Repository<User>().Update(user);
+        _unitOfWork.Repository<WorkspaceMembership>().Update(membership);
         await _unitOfWork.SaveChangesAsync();
+        membership.Role = role;
 
         var approveBrand = await _branding.BuildResponseAsync("", new HashSet<string>());
         var approveProductName = approveBrand.ProductName;
         var approveAppUrl = approveBrand.Urls.App.TrimEnd('/');
         // One lookup per send; null (missing row or still the DB-03 placeholder) falls back to the
         // pre-existing, workspace-agnostic wording.
-        var approveWorkspaceName = await WorkspaceNameResolver.ResolveForEmailAsync(_unitOfWork, user.OwnerId);
+        var approveWorkspaceName = await WorkspaceNameResolver.ResolveForEmailAsync(_unitOfWork, membership.OwnerId);
         var approveSubject = approveWorkspaceName != null
             ? $"Your {approveProductName} account for {approveWorkspaceName} is approved"
             : $"Your {approveProductName} account is approved";
         var approveWorkspaceLine = approveWorkspaceName != null
             ? $@"<p>You now have access to the <b>{System.Net.WebUtility.HtmlEncode(approveWorkspaceName)}</b> workspace.</p>"
             : string.Empty;
-        await SafeSendAsync(user.Email, approveSubject,
+        await SafeSendAsync(identity.Email, approveSubject,
             $@"<div style=""font-family:system-ui,sans-serif;color:#0f172a;line-height:1.6"">
   <h2 style=""margin:0 0 8px"">You're in ✅</h2>
-  <p>Your {approveProductName} account (<b>{user.Email}</b>) has been approved and is now active.</p>
+  <p>Your {approveProductName} account (<b>{identity.Email}</b>) has been approved and is now active.</p>
   {approveWorkspaceLine}
   <p><a href=""{approveAppUrl}"" style=""color:#2563eb"">Sign in to {approveProductName} →</a></p>
 </div>");
 
-        return Result<UserResponse>.Success(MapToResponse(user, role));
+        return Result<UserResponse>.Success(MapToResponse(membership));
     }
 
     public async Task<Result<UserResponse>> RejectAsync(int id)
     {
-        var user = await _unitOfWork.Repository<User>().GetByIdAsync(id);
-
-        if (user == null || user.DeletedAt != null)
+        var (identity, membership) = await ResolveTargetAsync(id);
+        if (identity == null || membership == null)
             return Result<UserResponse>.NotFound(MessageKeys.User.NotFound);
 
-        user.ApprovalStatus = ApprovalStatus.Rejected;
-        user.IsActive = false;
-        // H1: revoke any live access token for this now-rejected user.
-        user.SecurityStamp = Guid.NewGuid();
+        membership.ApprovalStatus = ApprovalStatus.Rejected;
+        membership.IsActive = false;
+        // H1/R16: revoke this WORKSPACE's live access tokens — the identity's other memberships (and
+        // any other workspace's sessions) are untouched.
+        membership.SecurityStamp = Guid.NewGuid();
 
-        _unitOfWork.Repository<User>().Update(user);
+        _unitOfWork.Repository<WorkspaceMembership>().Update(membership);
         await _unitOfWork.SaveChangesAsync();
 
         var rejectBrand = await _branding.BuildResponseAsync("", new HashSet<string>());
         var rejectProductName = rejectBrand.ProductName;
-        var rejectWorkspaceName = await WorkspaceNameResolver.ResolveForEmailAsync(_unitOfWork, user.OwnerId);
+        var rejectWorkspaceName = await WorkspaceNameResolver.ResolveForEmailAsync(_unitOfWork, membership.OwnerId);
         var rejectSubject = rejectWorkspaceName != null
             ? $"Your {rejectProductName} account request for {rejectWorkspaceName}"
             : $"Your {rejectProductName} account request";
         var rejectWorkspaceLine = rejectWorkspaceName != null
             ? $@"<p>This was for the <b>{System.Net.WebUtility.HtmlEncode(rejectWorkspaceName)}</b> workspace.</p>"
             : string.Empty;
-        await SafeSendAsync(user.Email, rejectSubject,
+        await SafeSendAsync(identity.Email, rejectSubject,
             $@"<div style=""font-family:system-ui,sans-serif;color:#0f172a;line-height:1.6"">
   <p>Thanks for your interest in {rejectProductName}. Unfortunately your account request for
-  <b>{user.Email}</b> was not approved at this time.</p>
+  <b>{identity.Email}</b> was not approved at this time.</p>
   {rejectWorkspaceLine}
 </div>");
 
-        var role = await GetActiveRoleAsync(user.RoleId);
-        return Result<UserResponse>.Success(MapToResponse(user, role));
+        return Result<UserResponse>.Success(MapToResponse(membership));
     }
 
     public async Task<Result<UserResponse>> UpdateAsync(int id, UpdateUserRequest request)
     {
-        var user = await _unitOfWork.Repository<User>().GetByIdAsync(id);
-
-        if (user == null || user.DeletedAt != null)
+        var (identity, membership) = await ResolveTargetAsync(id);
+        if (identity == null || membership == null)
             return Result<UserResponse>.NotFound(MessageKeys.User.NotFound);
 
         if (request.RoleId.HasValue)
@@ -268,80 +291,88 @@ public class UserService : IUserService
             // Workspace Admin via this endpoint — that would leave the tenant with no admin and no
             // recovery path (mirrors DeleteAsync's CannotDeleteAdmin: promote a deputy first, then
             // that new admin can change the old one's role).
-            if (role.Id != user.RoleId && user.PublicId == _currentUser.Id)
+            if (role.Id != membership.RoleId && identity.PublicId == _currentUser.Id)
             {
-                var currentRole = await GetActiveRoleAsync(user.RoleId);
+                var currentRole = await GetActiveRoleAsync(membership.RoleId);
                 if (currentRole?.Name == WorkspaceAdminRoleName)
                     return Result<UserResponse>.Failure(MessageKeys.User.CannotChangeSelfFromAdmin);
             }
 
             // A role change alters is_admin/is_super_admin/is_quick_access baked into the JWT at
-            // issue time — rotate the stamp so a live session can't keep acting under the old role
-            // for the rest of the token's lifetime.
-            if (role.Id != user.RoleId)
-                user.SecurityStamp = Guid.NewGuid();
+            // issue time — rotate the MEMBERSHIP stamp (R16: workspace-scoped event) so a live
+            // session can't keep acting under the old role for the rest of the token's lifetime.
+            if (role.Id != membership.RoleId)
+                membership.SecurityStamp = Guid.NewGuid();
 
-            user.RoleId = role.Id;
+            membership.RoleId = role.Id;
         }
 
         if (request.IsActive.HasValue)
-            user.IsActive = request.IsActive.Value;
+            membership.IsActive = request.IsActive.Value;
 
         if (!string.IsNullOrEmpty(request.Password))
-            user.PasswordHash = _passwordHasher.Hash(request.Password);
+        {
+            // D6: an admin may only set another member's password when that identity has exactly
+            // one live membership — otherwise the password is shared with workspaces this admin
+            // cannot see into, so the member must change it themselves.
+            var liveCount = (await _memberships.ListForIdentityAsync(identity.Id)).Count;
+            if (liveCount != 1)
+                return Result<UserResponse>.Failure(MessageKeys.User.PasswordManagedElsewhere);
 
-        // H1: disabling the user or changing their password must revoke existing access tokens.
-        if (request.IsActive == false || !string.IsNullOrEmpty(request.Password))
-            user.SecurityStamp = Guid.NewGuid();
+            identity.PasswordHash = _passwordHasher.Hash(request.Password);
+            // Identity-wide event (R16): rotates the IDENTITY stamp — every workspace's sessions end.
+            identity.SecurityStamp = Guid.NewGuid();
+            _unitOfWork.Repository<User>().Update(identity);
+        }
 
-        _unitOfWork.Repository<User>().Update(user);
+        // H1/R16: disabling the membership must revoke THIS workspace's existing access tokens.
+        if (request.IsActive == false)
+            membership.SecurityStamp = Guid.NewGuid();
+
+        _unitOfWork.Repository<WorkspaceMembership>().Update(membership);
         await _unitOfWork.SaveChangesAsync();
 
-        var current = await GetActiveRoleAsync(user.RoleId);
-        return Result<UserResponse>.Success(MapToResponse(user, current));
+        var current = await GetActiveRoleAsync(membership.RoleId);
+        membership.Role = current;
+        return Result<UserResponse>.Success(MapToResponse(membership));
     }
 
     /// <summary>
-    /// Soft-deletes a user. Authorization matrix: super admin → anyone EXCEPT whoever currently
-    /// holds "Workspace Admin" (promote a deputy first, or use TenantService.HardDeleteAsync for a
-    /// full teardown — this is an intentional limitation, not a gap). Workspace Admin → anyone in
-    /// their own tenant except themselves. Deputy → anyone in their own tenant except themselves,
-    /// the admin, or another deputy. Tenant scoping for non-super-admin callers comes for free from
-    /// the standard EF query filter — `target` below can never resolve outside their own tenant.
+    /// Ends a membership (never hard-deletes the identity — DB-11a). Authorization matrix: super
+    /// admin → anyone EXCEPT whoever currently holds "Workspace Admin" (promote a deputy first, or
+    /// use TenantService.HardDeleteAsync for a full teardown — this is an intentional limitation,
+    /// not a gap). Workspace Admin → anyone in their own tenant except themselves. Deputy → anyone
+    /// in their own tenant except themselves, the admin, or another deputy. Key/link revocation and
+    /// the sole-admin guard are DB-11c.
     /// </summary>
     public async Task<Result> DeleteAsync(int id)
     {
-        var target = await _unitOfWork.Repository<User>()
-            .Query()
-            .Include(u => u.Role)
-            .FirstOrDefaultAsync(u => u.Id == id && u.DeletedAt == null);
-
-        if (target == null)
+        var (identity, membership) = await ResolveTargetAsync(id);
+        if (identity == null || membership == null)
             return Result.NotFound(MessageKeys.User.NotFound);
 
-        if (target.PublicId == _currentUser.Id)
+        if (identity.PublicId == _currentUser.Id)
             return Result.Failure(MessageKeys.User.CannotDeleteSelf);
 
-        if (target.Role.Name == WorkspaceAdminRoleName)
+        if (membership.Role.Name == WorkspaceAdminRoleName)
             return Result.Failure(MessageKeys.User.CannotDeleteAdmin);
 
-        if (!_currentUser.IsSuperAdmin && target.Role.Name == DeputyRoleName)
+        if (!_currentUser.IsSuperAdmin && membership.Role.Name == DeputyRoleName && _currentUser.Id is Guid callerPublicId)
         {
-            var caller = await _unitOfWork.Repository<User>()
-                .Query()
-                .AsNoTracking()
-                .Include(u => u.Role)
-                .FirstOrDefaultAsync(u => u.PublicId == _currentUser.Id && u.DeletedAt == null);
-
-            if (caller?.Role.Name == DeputyRoleName)
+            var callerIdentity = await _memberships.FindIdentityByPublicIdAsync(callerPublicId);
+            var callerMembership = callerIdentity != null
+                ? await _memberships.GetMembershipAsync(callerIdentity.Id, membership.OwnerId)
+                : null;
+            if (callerMembership?.Role.Name == DeputyRoleName)
                 return Result.Failure(MessageKeys.User.CannotDeleteDeputy);
         }
 
-        target.DeletedAt = DateTime.UtcNow;
-        target.IsActive = false;
-        target.SecurityStamp = Guid.NewGuid();
+        membership.LeftAt = DateTime.UtcNow;
+        membership.LeftReason = MembershipEndReason.Removed;
+        membership.IsActive = false;
+        membership.SecurityStamp = Guid.NewGuid();
 
-        _unitOfWork.Repository<User>().Update(target);
+        _unitOfWork.Repository<WorkspaceMembership>().Update(membership);
         await _unitOfWork.SaveChangesAsync();
 
         return Result.Success();
@@ -350,27 +381,26 @@ public class UserService : IUserService
     /// <summary>
     /// Promotes an existing Deputy to become the tenant's new Workspace Admin, demoting the current
     /// admin to Deputy. Callable by the current admin themselves (self-service handoff) or a super
-    /// admin (administrative override). No OwnerId writes anywhere — OwnerId is a stable, opaque
-    /// tenant identifier; "who's the current admin" is Role.Name == "Workspace Admin" for that
-    /// OwnerId, not OwnerId == PublicId (which only ever holds for the founding admin).
+    /// admin (administrative override). Swaps RoleId on the two MEMBERSHIPS in the deputy's
+    /// workspace and rotates both membership stamps (R16) — no identity-level write.
     /// </summary>
     public async Task<Result> TransferOwnershipAsync(Guid deputyPublicId)
     {
-        var target = await _unitOfWork.Repository<User>()
-            .Query()
-            .IgnoreQueryFilters()
-            .AsNoTracking()
-            .Include(u => u.Role)
-            .FirstOrDefaultAsync(u => u.PublicId == deputyPublicId && u.DeletedAt == null);
-
-        if (target == null || target.Role.Name != DeputyRoleName || target.OwnerId is not Guid tenantOwnerId)
+        var target = await _memberships.FindIdentityByPublicIdAsync(deputyPublicId);
+        if (target == null)
             return Result.Failure(MessageKeys.User.NotADeputy);
 
-        var currentAdmin = await GetCurrentAdminAsync(tenantOwnerId);
-        if (currentAdmin == null)
+        var deputyMemberships = await _memberships.ListForIdentityAsync(target.Id);
+        var deputyMembership = deputyMemberships.FirstOrDefault(m => m.Role.Name == DeputyRoleName);
+        if (deputyMembership == null)
+            return Result.Failure(MessageKeys.User.NotADeputy);
+
+        var tenantOwnerId = deputyMembership.OwnerId;
+        var currentAdminMembership = await _memberships.CurrentAdminAsync(tenantOwnerId);
+        if (currentAdminMembership == null)
             return Result.Failure(MessageKeys.User.WorkspaceNotFound);
 
-        if (!_currentUser.IsSuperAdmin && _currentUser.Id != currentAdmin.PublicId)
+        if (!_currentUser.IsSuperAdmin && _currentUser.Id != currentAdminMembership.User.PublicId)
             return Result.Failure(MessageKeys.User.TransferNotAuthorized);
 
         var adminRole = await _unitOfWork.Repository<Role>()
@@ -386,22 +416,22 @@ public class UserService : IUserService
 
         await _unitOfWork.ExecuteInTransactionAsync(async () =>
         {
-            var trackedAdmin = await _unitOfWork.Repository<User>()
+            var trackedAdminM = await _unitOfWork.Repository<WorkspaceMembership>()
                 .Query()
                 .IgnoreQueryFilters()
-                .FirstAsync(u => u.Id == currentAdmin.Id);
-            var trackedTarget = await _unitOfWork.Repository<User>()
+                .FirstAsync(m => m.Id == currentAdminMembership.Id);
+            var trackedDeputyM = await _unitOfWork.Repository<WorkspaceMembership>()
                 .Query()
                 .IgnoreQueryFilters()
-                .FirstAsync(u => u.Id == target.Id);
+                .FirstAsync(m => m.Id == deputyMembership.Id);
 
-            trackedAdmin.RoleId = deputyRole.Id;
-            trackedAdmin.SecurityStamp = Guid.NewGuid();
-            trackedTarget.RoleId = adminRole.Id;
-            trackedTarget.SecurityStamp = Guid.NewGuid();
+            trackedAdminM.RoleId = deputyRole.Id;
+            trackedAdminM.SecurityStamp = Guid.NewGuid();
+            trackedDeputyM.RoleId = adminRole.Id;
+            trackedDeputyM.SecurityStamp = Guid.NewGuid();
 
-            _unitOfWork.Repository<User>().Update(trackedAdmin);
-            _unitOfWork.Repository<User>().Update(trackedTarget);
+            _unitOfWork.Repository<WorkspaceMembership>().Update(trackedAdminM);
+            _unitOfWork.Repository<WorkspaceMembership>().Update(trackedDeputyM);
             await _unitOfWork.SaveChangesAsync();
         });
 
@@ -414,17 +444,17 @@ public class UserService : IUserService
             .AsNoTracking()
             .FirstOrDefaultAsync(r => r.Id == roleId && r.DeletedAt == null && r.IsActive);
 
-    private static UserResponse MapToResponse(User user, Role? role) => new()
+    private static UserResponse MapToResponse(WorkspaceMembership m) => new()
     {
-        Id = user.Id,
-        PublicId = user.PublicId,
-        Email = user.Email,
-        DisplayName = user.DisplayName,
-        RoleId = user.RoleId,
-        RoleName = role?.Name ?? string.Empty,
-        IsAdmin = role?.GrantsAdmin ?? false,
-        IsActive = user.IsActive,
-        CreatedAt = user.CreatedAt,
-        ApprovalStatus = user.ApprovalStatus
+        Id = m.User.Id,
+        PublicId = m.User.PublicId,
+        Email = m.User.Email,
+        DisplayName = m.User.DisplayName,
+        RoleId = m.RoleId,
+        RoleName = m.Role?.Name ?? string.Empty,
+        IsAdmin = m.Role?.GrantsAdmin ?? false,
+        IsActive = m.IsActive,
+        CreatedAt = m.JoinedAt,
+        ApprovalStatus = m.ApprovalStatus
     };
 }

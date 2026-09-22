@@ -14,6 +14,15 @@ public static class MessageKeys
         public const string AccountExists = "An account with this email already exists.";
         public const string TokenRequired = "Reset token is required.";
         public const string TooManyAttempts = "Too many failed login attempts. Please try again later.";
+
+        /// <summary>DB-11b: no live workspace membership at all. Harmless until DB-11b's login picker ships.</summary>
+        public const string NoWorkspace = "Your account is not a member of any workspace.";
+
+        /// <summary>
+        /// GLM A8: a wrong password against an identity that absorbed another (merged, DB-11a) row —
+        /// points the person at "Forgot password" rather than the generic InvalidCredentials.
+        /// </summary>
+        public const string InvalidCredentialsAfterMerge = "Invalid email or password. Accounts that shared this e-mail were combined into one — if your previous password no longer works, use \"Forgot password\".";
     }
 
     public static class DeviceLogin
@@ -42,6 +51,12 @@ public static class MessageKeys
         public const string TransferNotAuthorized = "Only the current workspace admin or a super admin can transfer ownership.";
         public const string CurrentPasswordIncorrect = "Current password is incorrect.";
         public const string PasswordChanged = "Password changed.";
+
+        /// <summary>DB-11a D6: an admin cannot set another member's password once that identity has more than one live membership.</summary>
+        public const string PasswordManagedElsewhere = "This user also belongs to other workspaces — they must change their password themselves.";
+
+        /// <summary>DB-11a: the target already has a live membership in this workspace.</summary>
+        public const string AlreadyMember = "This person is already a member of this workspace.";
     }
 
     public static class Workspace

@@ -32,7 +32,7 @@ public class ChangePasswordTests
         public bool Verify(string p, string h) => h == "h:" + p;
     }
 
-    private sealed class FakeToken : ITokenService { public string Issue(User u, int? keyScopes = null) => "t"; }
+    private sealed class FakeToken : ITokenService { public string Issue(User u, WorkspaceMembership? membership, int? keyScopes = null) => "t"; }
     private sealed class FakeReset : IResetTokenService
     {
         public string Create(Guid id, Guid stamp) => "r";
@@ -83,7 +83,7 @@ public class ChangePasswordTests
 
     private static AuthService Auth(AppDbContext db, ICurrentUser user, SpyEmailService? email = null) =>
         new(new UnitOfWork(db), new IdentityHasher(), new FakeToken(), user, new FakeSettings(),
-            new FakeReset(), email ?? new SpyEmailService(), new NoopBrandingService(), new ApiKeyService(new UnitOfWork(db), new TestApiKeyProtector()), new FakeLoginAttemptLimiter());
+            new FakeReset(), email ?? new SpyEmailService(), new NoopBrandingService(), new ApiKeyService(new UnitOfWork(db), new TestApiKeyProtector()), new FakeLoginAttemptLimiter(), new MembershipService(new UnitOfWork(db)));
 
     // Seeds one active user with password "OldPass123" and returns (publicId, ownerId, originalStamp).
     // workspaceName, when given, also seeds a Workspace row for ownerId (used by the reset/changed
@@ -114,6 +114,7 @@ public class ChangePasswordTests
         };
         seed.Users.Add(user);
         seed.SaveChanges();
+        TestSeed.Join(seed, user, ownerId, role);
         return (publicId, ownerId, user.SecurityStamp);
     }
 

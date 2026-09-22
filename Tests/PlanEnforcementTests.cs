@@ -151,14 +151,16 @@ public class PlanEnforcementTests
             var adminRole = new Role { Name = "WA", GrantsAdmin = true, IsActive = true, OwnerId = tenant };
             seed.Roles.Add(adminRole);
             seed.SaveChanges();
-            seed.Users.Add(new User { Email = "wa@a.com", PasswordHash = "x", DisplayName = "WA", RoleId = adminRole.Id, PublicId = tenant, OwnerId = tenant, IsActive = true, ApprovalStatus = ApprovalStatus.Approved });
+            var waUser = new User { Email = "wa@a.com", PasswordHash = "x", DisplayName = "WA", RoleId = adminRole.Id, PublicId = tenant, OwnerId = tenant, IsActive = true, ApprovalStatus = ApprovalStatus.Approved };
+            seed.Users.Add(waUser);
             seed.SaveChanges();
+            TestSeed.Join(seed, waUser, tenant, adminRole);
         }
 
         var user = new FakeCurrentUser { Id = tenant, TenantId = tenant, IsAdmin = true };
         var ctx = Ctx(user, db);
         var uow = new UnitOfWork(ctx);
-        var svc = new UserService(uow, new IdentityHasher(), user, new NoopEmail(), new EntitlementService(uow, user, new FakeSettings()), new NoopBrandingService());
+        var svc = new UserService(uow, new IdentityHasher(), user, new NoopEmail(), new EntitlementService(uow, user, new FakeSettings()), new NoopBrandingService(), new MembershipService(uow));
 
         // Seat 1 already used by the WA user → limit 1 reached → next add blocked.
         var res = await svc.CreateAsync(new Application.DTOs.User.CreateUserRequest

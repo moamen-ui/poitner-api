@@ -82,7 +82,7 @@ public class SuggestionChangesRequestedTests
             seed.Roles.Add(adminRole);
             seed.SaveChanges();
 
-            seed.Users.Add(new User
+            var adminUser = new User
             {
                 Email = "admin@tenant.com",
                 PasswordHash = "x",
@@ -92,8 +92,10 @@ public class SuggestionChangesRequestedTests
                 ApprovalStatus = ApprovalStatus.Approved,
                 IsActive = true,
                 OwnerId = tenant
-            });
+            };
+            seed.Users.Add(adminUser);
             seed.SaveChanges();
+            TestSeed.Join(seed, adminUser, tenant, adminRole);
         }
 
         return (tenant, projectId, creator, adminId);
@@ -129,7 +131,21 @@ public class SuggestionChangesRequestedTests
         var dbName = Guid.NewGuid().ToString();
         var (tenant, pid, _, adminId) = SeedProjectWithAdmin(dbName, "s2");
 
-        var suggester = new FakeCurrentUser { Id = Guid.NewGuid(), TenantId = tenant };
+        var suggesterId = Guid.NewGuid();
+        using (var seed = BuildContext(new FakeCurrentUser { IsSuperAdmin = true }, dbName))
+        {
+            var role = new Role { Name = "Member", OwnerId = tenant, IsActive = true };
+            seed.Roles.Add(role);
+            seed.SaveChanges();
+            // DB-11a: EnqueueAsync only queues a notification for a recipient with a live, active,
+            // Approved membership — the submitter needs a real identity + membership to receive one.
+            var suggesterUser = new User { PublicId = suggesterId, Email = "suggester@x.com", PasswordHash = "x", DisplayName = "Suggester", RoleId = role.Id, OwnerId = tenant, IsActive = true };
+            seed.Users.Add(suggesterUser);
+            seed.SaveChanges();
+            TestSeed.Join(seed, suggesterUser, tenant, role);
+        }
+
+        var suggester = new FakeCurrentUser { Id = suggesterId, TenantId = tenant };
         var (sugSvc, _, _) = WireSuggestion(suggester, dbName);
         var create = await sugSvc.SuggestAsync(pid, new CreateSuggestionRequest { Text = "Idea", Prompt = "P" });
         Assert.True(create.IsSuccess);
@@ -312,13 +328,19 @@ public class SuggestionChangesRequestedTests
     {
         var (tenant, projectId, creator, adminId) = SeedProjectWithAdmin(dbName, key);
         using var seed = BuildContext(new FakeCurrentUser { IsSuperAdmin = true }, dbName);
-        seed.Workspaces.Add(new Workspace
-        {
-            Id = tenant,
-            Name = workspaceName,
-            CreatedAt = DateTime.UtcNow,
-            CreatedBy = tenant,
-        });
+        // DB-11a: SeedProjectWithAdmin's TestSeed.Join already created a placeholder Workspace row
+        // for `tenant` — rename it rather than inserting a duplicate.
+        var existing = seed.Workspaces.IgnoreQueryFilters().SingleOrDefault(w => w.Id == tenant);
+        if (existing != null)
+            existing.Name = workspaceName;
+        else
+            seed.Workspaces.Add(new Workspace
+            {
+                Id = tenant,
+                Name = workspaceName,
+                CreatedAt = DateTime.UtcNow,
+                CreatedBy = tenant,
+            });
         seed.SaveChanges();
         return (tenant, projectId, creator, adminId);
     }

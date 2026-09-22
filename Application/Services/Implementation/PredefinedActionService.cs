@@ -50,7 +50,7 @@ public class PredefinedActionService : IPredefinedActionService
         // ISOLATION-LOAD-BEARING: this MUST stamp a non-null owner. A null-owner tenant-wide row
         // (OwnerId == null, ProjectId == null) would become visible/editable by EVERY tenant under
         // the own-plus-global query filter. Never relax this to allow a null owner here.
-        var ownerId = TenantStamp.OwnerFor(_currentUser) ?? _currentUser.Id;
+        var ownerId = TenantStamp.OwnerFor(_currentUser);
         if (ownerId is not Guid owner)
             return Result<PredefinedActionResponse>.Forbidden(MessageKeys.PredefinedAction.NotFound);
 
@@ -90,7 +90,7 @@ public class PredefinedActionService : IPredefinedActionService
     // read of the LLM prompt + write). These endpoints are tenant-wide-only by contract.
     private async Task<PredefinedAction?> LoadOwnTenantWideAsync(int id)
     {
-        var ownerId = TenantStamp.OwnerFor(_currentUser) ?? _currentUser.Id;
+        var ownerId = TenantStamp.OwnerFor(_currentUser);
         if (ownerId is not Guid owner) return null;
 
         return await _unitOfWork.Repository<PredefinedAction>()

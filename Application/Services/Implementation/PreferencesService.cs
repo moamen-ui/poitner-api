@@ -14,11 +14,13 @@ public class PreferencesService : IPreferencesService
 {
     private readonly IUnitOfWork _unitOfWork;
     private readonly ICurrentUser _currentUser;
+    private readonly IMembershipService _memberships;
 
-    public PreferencesService(IUnitOfWork unitOfWork, ICurrentUser currentUser)
+    public PreferencesService(IUnitOfWork unitOfWork, ICurrentUser currentUser, IMembershipService memberships)
     {
         _unitOfWork = unitOfWork;
         _currentUser = currentUser;
+        _memberships = memberships;
     }
 
     public async Task<Result<MeResponse>> UpdateAsync(UpdatePreferencesRequest request)
@@ -53,6 +55,13 @@ public class PreferencesService : IPreferencesService
         _unitOfWork.Repository<User>().Update(user);
         await _unitOfWork.SaveChangesAsync();
 
-        return Result<MeResponse>.Success(UserMapper.ToMeResponse(user));
+        var role = user.Role;
+        if (_currentUser.TenantId is Guid tenant)
+        {
+            var membership = await _memberships.GetMembershipAsync(user.Id, tenant);
+            role = membership?.Role ?? user.Role;
+        }
+
+        return Result<MeResponse>.Success(UserMapper.ToMeResponse(user, role));
     }
 }

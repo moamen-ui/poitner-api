@@ -116,9 +116,13 @@ public class TenantQueryFilterTests
 
         using (var seed = SuperAdminContext(db))
         {
-            seed.Users.Add(new User { Email = "a@x", PasswordHash = "h", DisplayName = "a", PublicId = Guid.NewGuid(), OwnerId = tenantA, RoleId = 1 });
+            var tenantAUser = new User { Email = "a@x", PasswordHash = "h", DisplayName = "a", PublicId = Guid.NewGuid(), OwnerId = tenantA, RoleId = 1 };
+            seed.Users.Add(tenantAUser);
             seed.Users.Add(new User { Email = "super@x", PasswordHash = "h", DisplayName = "super", PublicId = Guid.NewGuid(), OwnerId = null, RoleId = 1 });
             seed.SaveChanges();
+            // DB-11a: the User filter is membership-based — a live membership in tenantA is what
+            // makes this row visible now, not owner_id alone.
+            TestSeed.Join(seed, tenantAUser, tenantA, new Role { Id = 1 });
         }
 
         using var ctx = BuildContext(new FakeCurrentUser { TenantId = tenantA, IsSuperAdmin = false }, db);

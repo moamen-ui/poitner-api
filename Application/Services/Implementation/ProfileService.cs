@@ -40,11 +40,11 @@ public class ProfileService : IProfileService
             : await BuildAsync(user);
     }
 
-    public async Task<Result<ApiKeyResponse>> GetOrCreateApiKeyAsync(Guid publicId) =>
-        ToResponse(await _apiKeys.GetOrCreateAsync(publicId));
+    public async Task<Result<ApiKeyResponse>> GetOrCreateApiKeyAsync(Guid publicId, Guid? workspaceId) =>
+        ToResponse(await _apiKeys.GetOrCreateAsync(publicId, workspaceId));
 
-    public async Task<Result<ApiKeyResponse>> RegenerateApiKeyAsync(Guid publicId) =>
-        ToResponse(await _apiKeys.RegenerateAsync(publicId));
+    public async Task<Result<ApiKeyResponse>> RegenerateApiKeyAsync(Guid publicId, Guid? workspaceId) =>
+        ToResponse(await _apiKeys.RegenerateAsync(publicId, workspaceId));
 
     /// <summary>
     /// A key that exists but cannot be decrypted (the encryption key was rotated, or the blob was

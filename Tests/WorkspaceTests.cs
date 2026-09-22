@@ -40,7 +40,7 @@ public class WorkspaceTests
 
     private sealed class FakeTokenService : ITokenService
     {
-        public string Issue(User user, int? keyScopes = null) =>
+        public string Issue(User user, WorkspaceMembership? membership, int? keyScopes = null) =>
             "token-for-" + user.PublicId.ToString("N");
     }
 
@@ -218,7 +218,8 @@ public class WorkspaceTests
             new FakePasswordHasher(),
             new NoopFileStorage(),
             new FakeSettings(),
-            new NoopBillingProvider()
+            new NoopBillingProvider(),
+            new MembershipService(new UnitOfWork(db))
         );
 
         var result = await svc.CreateAsync(
@@ -278,7 +279,8 @@ public class WorkspaceTests
             new FakeSettings(),
             new PassThroughEntitlements(),
             new NoopEmail(),
-            new FakeBrandingService()
+            new FakeBrandingService(),
+            new MembershipService(new UnitOfWork(db))
         );
 
         var result = await svc.AcceptAsync(
@@ -320,7 +322,7 @@ public class WorkspaceTests
                 + string.Join(", ", missing.Select(t => t.Name))
         );
 
-        Assert.Equal(22, TenantService.HardDeleteOrder.Length);
+        Assert.Equal(23, TenantService.HardDeleteOrder.Length);
     }
 
     // ── 5. HardDelete_RemovesEverything_EvenWithSuggestionNotification ──────────────────
@@ -436,7 +438,8 @@ public class WorkspaceTests
             new FakePasswordHasher(),
             new NoopFileStorage(),
             new FakeSettings(),
-            new NoopBillingProvider()
+            new NoopBillingProvider(),
+            new MembershipService(new UnitOfWork(ctx))
         );
 
         var result = await svc.HardDeleteAsync(ownerPublicId);
@@ -564,7 +567,8 @@ public class WorkspaceTests
             new NoopEmail(),
             new FakeBrandingService(),
             new ApiKeyService(new UnitOfWork(db), new TestApiKeyProtector()),
-            new FakeLoginAttemptLimiter()
+            new FakeLoginAttemptLimiter(),
+            new MembershipService(new UnitOfWork(db))
         );
 
         var result = await svc.MeAsync();

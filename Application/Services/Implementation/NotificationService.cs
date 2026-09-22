@@ -9,10 +9,15 @@ using Pointer.Domain.Entity;
 
 namespace Pointer.Application.Services.Implementation;
 
-public class NotificationService(IUnitOfWork unitOfWork, ICurrentUser currentUser) : INotificationService
+public class NotificationService(
+    IUnitOfWork unitOfWork,
+    ICurrentUser currentUser,
+    IMembershipService? memberships = null
+) : INotificationService
 {
     private readonly IUnitOfWork _unitOfWork = unitOfWork;
     private readonly ICurrentUser _currentUser = currentUser;
+    private readonly IMembershipService _memberships = memberships ?? new MembershipService(unitOfWork);
 
     private IQueryable<Notification> MyNotifications()
     {
@@ -28,6 +33,20 @@ public class NotificationService(IUnitOfWork unitOfWork, ICurrentUser currentUse
         {
             notification.OwnerId = TenantStamp.OwnerFor(_currentUser);
         }
+
+        // DB-11a: a notification is only worth queuing for a recipient who can still see it — a
+        // live, active, Approved membership in this workspace. Ended/disabled/pending memberships
+        // (or no membership at all) silently skip rather than piling up unreadable notifications.
+        if (notification.OwnerId is Guid owner)
+        {
+            var recipient = await _memberships.FindIdentityByPublicIdAsync(notification.UserId);
+            var membership = recipient != null
+                ? await _memberships.GetMembershipAsync(recipient.Id, owner)
+                : null;
+            if (membership == null || !membership.IsActive || membership.ApprovalStatus != Domain.Enums.ApprovalStatus.Approved)
+                return;
+        }
+
         await _unitOfWork.Repository<Notification>().AddAsync(notification);
     }
 

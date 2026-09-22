@@ -80,7 +80,16 @@ public class NotificationServiceTests
         {
             var project = new Project { Key = "test-proj", Name = "Test Project", OwnerId = tenant, IsActiveLocal = true, IsActiveStaging = true, IsActiveProduction = true };
             seed.Projects.Add(project);
+            var role = new Role { Name = "Member", OwnerId = tenant, IsActive = true };
+            seed.Roles.Add(role);
             seed.SaveChanges();
+
+            // DB-11a: EnqueueAsync only queues a notification for a recipient with a live, active,
+            // Approved membership — the author needs a real identity + membership to receive one.
+            var authorUser = new User { PublicId = authorId, Email = "author@x.com", PasswordHash = "x", DisplayName = "Author", RoleId = role.Id, OwnerId = tenant, IsActive = true };
+            seed.Users.Add(authorUser);
+            seed.SaveChanges();
+            TestSeed.Join(seed, authorUser, tenant, role);
 
             var comment = new Comment
             {

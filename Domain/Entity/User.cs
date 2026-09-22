@@ -8,9 +8,26 @@ public class User : BaseEntity
     public string Email { get; set; } = string.Empty;
     public string PasswordHash { get; set; } = string.Empty;
     public string DisplayName { get; set; } = string.Empty;
+
+    /// <summary>
+    /// <b>Legacy (DB-11a).</b> Written once at identity creation (first workspace / super-admin
+    /// role); never read by application code after DB-11a. Dropped by DB-11e.
+    /// </summary>
     public int RoleId { get; set; }
+
+    /// <summary>See <see cref="RoleId"/> — legacy, DB-11a.</summary>
     public Role Role { get; set; } = null!;
+
+    /// <summary>
+    /// Identity-level switch (false only after erase/merge). Per-workspace enable/disable is
+    /// <see cref="WorkspaceMembership.IsActive"/>.
+    /// </summary>
     public bool IsActive { get; set; } = true;
+
+    /// <summary>
+    /// Legacy for non-super-admins; per-workspace approval is
+    /// <see cref="WorkspaceMembership.ApprovalStatus"/>.
+    /// </summary>
     public ApprovalStatus ApprovalStatus { get; set; } = ApprovalStatus.Approved;
     public string? Language { get; set; }
     public string? Theme { get; set; }
@@ -55,4 +72,13 @@ public class User : BaseEntity
     /// "set your password" path must not silently turn a link-only client into a password account.
     /// </remarks>
     public bool PasswordlessOnly { get; set; }
+
+    /// <summary>
+    /// Non-null ⇔ this row was merged into another identity by the DB-11a same-e-mail merge and is
+    /// soft-deleted. Points at the canonical row's <see cref="Id"/>.
+    /// </summary>
+    public int? MergedIntoUserId { get; set; }
+
+    /// <summary>Every workspace this identity has ever joined (live and ended). DB-11a.</summary>
+    public ICollection<WorkspaceMembership> Memberships { get; set; } = new List<WorkspaceMembership>();
 }

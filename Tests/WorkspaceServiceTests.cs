@@ -40,7 +40,7 @@ public class WorkspaceServiceTests
 
     private sealed class FakeTokenService : ITokenService
     {
-        public string Issue(User user, int? keyScopes = null) =>
+        public string Issue(User user, WorkspaceMembership? membership, int? keyScopes = null) =>
             "token-for-" + user.PublicId.ToString("N");
     }
 
@@ -393,20 +393,20 @@ public class WorkspaceServiceTests
             };
             seed.Roles.Add(role);
             seed.SaveChanges();
-            seed.Users.Add(
-                new User
-                {
-                    PublicId = adminPublicId,
-                    Email = "admin@acme.com",
-                    PasswordHash = "hash",
-                    DisplayName = "Jane Doe",
-                    RoleId = role.Id,
-                    OwnerId = tenant,
-                    ApprovalStatus = ApprovalStatus.Approved,
-                    IsActive = true,
-                }
-            );
+            var adminUser = new User
+            {
+                PublicId = adminPublicId,
+                Email = "admin@acme.com",
+                PasswordHash = "hash",
+                DisplayName = "Jane Doe",
+                RoleId = role.Id,
+                OwnerId = tenant,
+                ApprovalStatus = ApprovalStatus.Approved,
+                IsActive = true,
+            };
+            seed.Users.Add(adminUser);
             seed.SaveChanges();
+            TestSeed.Join(seed, adminUser, tenant, role);
         }
 
         var caller = new FakeCurrentUser { Id = adminPublicId, TenantId = tenant };
@@ -432,7 +432,8 @@ public class WorkspaceServiceTests
                 new NoopEmail(),
                 new FakeBrandingService(),
                 new ApiKeyService(new UnitOfWork(db), new TestApiKeyProtector()),
-                new FakeLoginAttemptLimiter()
+                new FakeLoginAttemptLimiter(),
+                new MembershipService(new UnitOfWork(db))
             );
 
             var me = await authSvc.MeAsync();
@@ -471,20 +472,20 @@ public class WorkspaceServiceTests
             };
             seed.Roles.Add(role);
             seed.SaveChanges();
-            seed.Users.Add(
-                new User
-                {
-                    PublicId = adminPublicId,
-                    Email = "admin@acme.com",
-                    PasswordHash = "hash",
-                    DisplayName = "Jane Doe",
-                    RoleId = role.Id,
-                    OwnerId = tenant,
-                    ApprovalStatus = ApprovalStatus.Approved,
-                    IsActive = true,
-                }
-            );
+            var adminUser = new User
+            {
+                PublicId = adminPublicId,
+                Email = "admin@acme.com",
+                PasswordHash = "hash",
+                DisplayName = "Jane Doe",
+                RoleId = role.Id,
+                OwnerId = tenant,
+                ApprovalStatus = ApprovalStatus.Approved,
+                IsActive = true,
+            };
+            seed.Users.Add(adminUser);
             seed.SaveChanges();
+            TestSeed.Join(seed, adminUser, tenant, role);
         }
 
         var superAdmin = new FakeCurrentUser { IsSuperAdmin = true };
@@ -494,7 +495,8 @@ public class WorkspaceServiceTests
             new FakePasswordHasher(),
             new NoopFileStorage(),
             new FakeSettings(),
-            new NoopBillingProvider()
+            new NoopBillingProvider(),
+            new MembershipService(new UnitOfWork(db))
         );
 
         var result = await svc.ListAsync();

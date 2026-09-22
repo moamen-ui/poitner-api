@@ -46,7 +46,7 @@ public class RoleServiceCanManageTests
     private static async Task<Dictionary<string, bool>> ListCanManageAsync(ICurrentUser user, string dbName)
     {
         using var db = BuildContext(user, dbName);
-        var result = await new RoleService(new UnitOfWork(db), user).ListAsync();
+        var result = await new RoleService(new UnitOfWork(db), user, new MembershipService(new UnitOfWork(db))).ListAsync();
         Assert.True(result.IsSuccess);
         return result.Data!.ToDictionary(r => r.Name, r => r.CanManage);
     }
@@ -90,7 +90,7 @@ public class RoleServiceCanManageTests
         var user = new FakeCurrentUser { IsAdmin = true, TenantId = Tenant };
 
         using var db = BuildContext(user, dbName);
-        var service = new RoleService(new UnitOfWork(db), user);
+        var service = new RoleService(new UnitOfWork(db), user, new MembershipService(new UnitOfWork(db)));
         var roles = (await service.ListAsync()).Data!;
 
         foreach (var role in roles)

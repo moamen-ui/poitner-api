@@ -14,10 +14,10 @@ public interface IApiKeyService
     /// decrypted counts as existing: returning null there would silently regenerate every key after
     /// an encryption-key rotation.
     /// </summary>
-    Task<ApiKeyResult> GetOrCreateAsync(Guid publicId);
+    Task<ApiKeyResult> GetOrCreateAsync(Guid publicId, Guid? workspaceId);
 
     /// <summary>Revokes the active key and mints a replacement. The only path that rotates a key.</summary>
-    Task<ApiKeyResult> RegenerateAsync(Guid publicId);
+    Task<ApiKeyResult> RegenerateAsync(Guid publicId, Guid? workspaceId);
 
     /// <summary>Resolves a raw key to its user for login, or null if unknown/revoked.</summary>
     Task<ApiKey?> ResolveAsync(string rawKey);

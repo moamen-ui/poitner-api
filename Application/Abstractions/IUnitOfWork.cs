@@ -9,6 +9,7 @@ public interface IUnitOfWork
         where T : BaseEntity;
     DbSet<UsageEvent> UsageEvents { get; }
     DbSet<Workspace> Workspaces { get; }
+    DbSet<UserAlias> UserAliases { get; }
     Task<int> SaveChangesAsync();
 
     /// <summary>

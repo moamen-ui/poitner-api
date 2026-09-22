@@ -41,7 +41,7 @@ public class QuickAccessRotateTests
 
     private sealed class FakeTokenService : ITokenService
     {
-        public string Issue(User user, int? keyScopes = null) => "token-for-" + user.PublicId.ToString("N");
+        public string Issue(User user, WorkspaceMembership? membership, int? keyScopes = null) => "token-for-" + user.PublicId.ToString("N");
     }
 
     private sealed class FakeSettings : ISettingsService
@@ -78,7 +78,7 @@ public class QuickAccessRotateTests
 
     private static InviteService Svc(ICurrentUser user, AppDbContext db) =>
         new(new UnitOfWork(db), user, new FakePasswordHasher(), new FakeTokenService(), new FakeSettings(),
-            new PassThroughEntitlements(), new NullEmail(), new FakeBranding());
+            new PassThroughEntitlements(), new NullEmail(), new FakeBranding(), new MembershipService(new UnitOfWork(db)));
 
     /// <summary>
     /// Seeds a tenant with a quick-access ("Client") invite that has already issued one link, and

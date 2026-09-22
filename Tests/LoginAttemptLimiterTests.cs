@@ -51,7 +51,8 @@ public class LoginAttemptLimiterTests
 
     private sealed class FakeToken : ITokenService
     {
-        public string Issue(User u, int? keyScopes = null) => "jwt-for-" + u.Email;
+        public string Issue(User u, WorkspaceMembership? membership, int? keyScopes = null) =>
+            "jwt-for-" + u.Email;
     }
 
     private sealed class FakeReset : IResetTokenService
@@ -355,7 +356,8 @@ public class LoginAttemptLimiterTests
             new NoopEmail(),
             new NoopBrandingService(),
             new ApiKeyService(new UnitOfWork(db), new TestApiKeyProtector()),
-            limiter
+            limiter,
+            new MembershipService(new UnitOfWork(db))
         );
 
         // Attempts 1 to 10 with wrong password return 400 InvalidCredentials
@@ -429,7 +431,8 @@ public class LoginAttemptLimiterTests
             new NoopEmail(),
             new NoopBrandingService(),
             new ApiKeyService(new UnitOfWork(db), new TestApiKeyProtector()),
-            limiter
+            limiter,
+            new MembershipService(new UnitOfWork(db))
         );
 
         // 9 wrong passwords
@@ -477,7 +480,8 @@ public class LoginAttemptLimiterTests
             new NoopEmail(),
             new NoopBrandingService(),
             new ApiKeyService(new UnitOfWork(db), new TestApiKeyProtector()),
-            limiter
+            limiter,
+            new MembershipService(new UnitOfWork(db))
         );
 
         // 10 attempts on an unknown email

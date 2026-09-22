@@ -45,11 +45,14 @@ public class ApiKeyMapping : IEntityTypeConfiguration<ApiKey>
 
         b.HasIndex(x => x.UserId).HasDatabaseName("ix_api_keys_user_id");
 
-        // One live key per user, enforced by the database rather than only by the service: a race
-        // between two "regenerate" clicks would otherwise leave two usable keys.
-        b.HasIndex(x => x.UserId)
+        // One live key per membership (identity, workspace) — DB-11a. Enforced by the database
+        // rather than only by the service: a race between two "regenerate" clicks would otherwise
+        // leave two usable keys for the same (user, workspace) pair. AreNullsDistinct(false) so a
+        // super admin's null-owner key is also unique.
+        b.HasIndex(x => new { x.UserId, x.OwnerId })
             .IsUnique()
             .HasFilter("revoked_at IS NULL AND deleted_at IS NULL")
-            .HasDatabaseName("ux_api_keys_active_per_user");
+            .AreNullsDistinct(false)
+            .HasDatabaseName("ux_api_keys_active_per_membership");
     }
 }

@@ -18,17 +18,20 @@ public class SuggestionService : ISuggestionService
     private readonly ICurrentUser _currentUser;
     private readonly IEmailService _emailService;
     private readonly INotificationService _notificationService;
+    private readonly IMembershipService _memberships;
 
     public SuggestionService(
         IUnitOfWork unitOfWork,
         ICurrentUser currentUser,
         IEmailService emailService,
-        INotificationService? notificationService = null)
+        INotificationService? notificationService = null,
+        IMembershipService? memberships = null)
     {
         _unitOfWork = unitOfWork;
         _currentUser = currentUser;
         _emailService = emailService;
         _notificationService = notificationService ?? new NotificationService(unitOfWork, currentUser);
+        _memberships = memberships ?? new MembershipService(unitOfWork);
     }
 
     public async Task<Result<SuggestionResponse>> SuggestAsync(int projectId, CreateSuggestionRequest request)
@@ -339,18 +342,15 @@ public class SuggestionService : ISuggestionService
     {
         try
         {
-            var admins = await _unitOfWork.Repository<User>()
-                .Query()
-                .IgnoreQueryFilters()
+            // DB-11a: "admins of the tenant" is a membership fact — never users.owner_id.
+            var admins = await _memberships.InWorkspace(project.OwnerId ?? Guid.Empty)
                 .AsNoTracking()
-                .Include(u => u.Role)
-                .Where(u => u.DeletedAt == null
-                            && u.IsActive
-                            && u.OwnerId == project.OwnerId
-                            && u.Role.GrantsAdmin
-                            && !u.Role.IsSuperAdmin
-                            && u.PublicId != _currentUser.Id)
-                .Select(u => new { u.PublicId, u.Email, u.RecipientEmail })
+                .Where(m => m.LeftAt == null
+                            && m.IsActive
+                            && m.Role.GrantsAdmin
+                            && !m.Role.IsSuperAdmin
+                            && m.User.PublicId != _currentUser.Id)
+                .Select(m => new { m.User.PublicId, m.User.Email, m.User.RecipientEmail })
                 .ToListAsync();
 
             if (type == NotificationType.SuggestionSubmitted)
@@ -400,19 +400,8 @@ public class SuggestionService : ISuggestionService
         catch { /* notification is best-effort — never block the suggestion */ }
     }
 
-    private async Task<Dictionary<Guid, string>> ResolveNamesAsync(IEnumerable<Guid> ids)
-    {
-        var distinct = ids.Where(g => g != Guid.Empty).Distinct().ToList();
-        if (distinct.Count == 0)
-            return new Dictionary<Guid, string>();
-
-        return await _unitOfWork.Repository<User>()
-            .Query()
-            .IgnoreQueryFilters()
-            .AsNoTracking()
-            .Where(u => distinct.Contains(u.PublicId))
-            .ToDictionaryAsync(u => u.PublicId, u => u.DisplayName);
-    }
+    private Task<Dictionary<Guid, string>> ResolveNamesAsync(IEnumerable<Guid> ids) =>
+        UserNameResolver.ResolveAsync(_unitOfWork, ids, ignoreQueryFilters: true);
 
     private async Task<string?> ResolveNameAsync(Guid id) =>
         (await ResolveNamesAsync(new[] { id })).GetValueOrDefault(id);
