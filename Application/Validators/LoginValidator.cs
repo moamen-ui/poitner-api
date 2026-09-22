@@ -9,7 +9,8 @@ public class LoginValidator : AbstractValidator<LoginRequest>
     {
         RuleFor(x => x.Email)
             .NotEmpty()
-            .EmailAddress();
+            .EmailAddress()
+            .MaximumLength(254);
 
         RuleFor(x => x.Password)
             .NotEmpty();

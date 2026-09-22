@@ -367,7 +367,8 @@ static bool IsDashboardOnly(HttpContext ctx)
         return true;
     // Dashboard-only auth endpoints — NOT login/register/register-admin/register-invite/
     // signup-enabled, which the widget calls in-page from arbitrary host origins and must stay
-    // open-origin (login is guarded by the per-IP "signup" rate limit instead).
+    // open-origin (login is guarded by the per-IP "login-ip" rate limit and the per-e-mail
+    // lockout instead — see R5-59 §12).
     return path.Equals("/api/auth/me", StringComparison.OrdinalIgnoreCase)
         || path.Equals("/api/auth/forgot-password", StringComparison.OrdinalIgnoreCase)
         || path.Equals("/api/auth/reset-password", StringComparison.OrdinalIgnoreCase);

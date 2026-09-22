@@ -1,5 +1,6 @@
 using System.Collections;
 using System.Security.Claims;
+using System.Text.RegularExpressions;
 
 namespace Pointer.API.Middleware;
 
@@ -23,11 +24,19 @@ public class RequestIdMiddleware(RequestDelegate next)
 {
     public const string HeaderName = "X-Request-Id";
 
+    // GLM review F6 — only accept a client-supplied id that is a short, plain token; anything
+    // else (empty, oversized, or carrying characters a JSON-log consumer wouldn't expect) is
+    // replaced with a freshly generated one rather than echoed/logged verbatim.
+    private static readonly Regex ValidRequestId = new(
+        "^[A-Za-z0-9._-]{8,64}$",
+        RegexOptions.Compiled
+    );
+
     public async Task InvokeAsync(HttpContext context, ILogger<RequestIdMiddleware> logger)
     {
         var requestId =
             context.Request.Headers.TryGetValue(HeaderName, out var incoming)
-            && !string.IsNullOrWhiteSpace(incoming)
+            && ValidRequestId.IsMatch(incoming.ToString())
                 ? incoming.ToString()
                 : Guid.NewGuid().ToString("N");
 

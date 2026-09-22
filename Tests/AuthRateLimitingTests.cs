@@ -1,6 +1,8 @@
 using System.Reflection;
 using System.Threading.RateLimiting;
 using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Http.Metadata;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
 using Pointer.API.Controllers;
 using Pointer.API.Extensions;
@@ -27,6 +29,22 @@ public class AuthRateLimitingTests
 
         var rateLimits = method!.GetCustomAttributes<EnableRateLimitingAttribute>(inherit: true).ToList();
         Assert.Contains(rateLimits, a => a.PolicyName == "login-ip");
+    }
+
+    /// <summary>
+    /// GLM review M1/F2 — a body-size cap on top of the e-mail-length validator: the login body
+    /// is two short strings, so 64 KiB is generous headroom while still ruling out the
+    /// multi-megabyte bodies the review used to model the cache-memory attack.
+    /// </summary>
+    [Fact]
+    public void Login_HasRequestSizeLimit()
+    {
+        var method = typeof(AuthController).GetMethod("Login");
+        Assert.NotNull(method);
+
+        var limit = method!.GetCustomAttribute<RequestSizeLimitAttribute>(inherit: true);
+        Assert.NotNull(limit);
+        Assert.Equal(64L * 1024, ((IRequestSizeLimitMetadata)limit!).MaxRequestBodySize);
     }
 
     [Fact]

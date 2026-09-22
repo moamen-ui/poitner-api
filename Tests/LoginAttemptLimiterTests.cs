@@ -232,6 +232,48 @@ public class LoginAttemptLimiterTests
         Assert.True(await limiter.IsLockedAsync(" user@example.com "));
     }
 
+    /// <summary>
+    /// GLM review M1/F2 — the cache key must be a fixed-size SHA-256 hex digest of the normalised
+    /// e-mail, both so two normalisation-equivalent inputs collide onto the same entry (this was
+    /// already true via string equality, and must remain true after hashing) and so the entry's
+    /// key size can no longer grow with an attacker-supplied e-mail's length.
+    /// </summary>
+    private static string InvokeCacheKey(string? email)
+    {
+        var method = typeof(LoginAttemptLimiter).GetMethod(
+            "CacheKey",
+            System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static
+        );
+        Assert.NotNull(method);
+        return (string)method!.Invoke(null, new object?[] { email })!;
+    }
+
+    [Fact]
+    public void CacheKey_NormalisationVariants_MapToSameKey()
+    {
+        var canonical = InvokeCacheKey("user@example.com");
+        var upperWithWhitespace = InvokeCacheKey("  User@Example.Com ");
+
+        Assert.Equal(canonical, upperWithWhitespace);
+    }
+
+    [Theory]
+    [InlineData("a@b.com")]
+    [InlineData("user@example.com")]
+    [InlineData("ghost-account-does-not-exist@pointer.work")]
+    public void CacheKey_LengthIsConstant_RegardlessOfInputLength(string shortEmail)
+    {
+        var longEmail = new string('a', 10_000) + "@example.com";
+
+        var shortKey = InvokeCacheKey(shortEmail);
+        var longKey = InvokeCacheKey(longEmail);
+
+        // "login-fail:" prefix + 64 hex chars (SHA-256 digest) regardless of input length.
+        Assert.Equal("login-fail:".Length + 64, shortKey.Length);
+        Assert.Equal(shortKey.Length, longKey.Length);
+        Assert.NotEqual(shortKey, longKey);
+    }
+
     [Fact]
     public async Task UnknownEmail_CountsFailuresAndLocks()
     {

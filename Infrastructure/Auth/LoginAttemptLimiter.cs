@@ -1,3 +1,5 @@
+using System.Security.Cryptography;
+using System.Text;
 using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Options;
 using Pointer.Application.Abstractions;
@@ -117,7 +119,16 @@ public class LoginAttemptLimiter : ILoginAttemptLimiter
     private static string NormalizeEmail(string? email) =>
         (email ?? string.Empty).Trim().ToLowerInvariant();
 
-    private static string CacheKey(string? email) => $"login-fail:{NormalizeEmail(email)}";
+    /// <summary>
+    /// Fixed-size (SHA-256 hex, 64 chars) cache key so per-entry memory cannot grow with the
+    /// length of an attacker-supplied e-mail (GLM review M1 — see LoginValidator.MaximumLength
+    /// for the companion input-size cap).
+    /// </summary>
+    private static string CacheKey(string? email)
+    {
+        var hash = SHA256.HashData(Encoding.UTF8.GetBytes(NormalizeEmail(email)));
+        return $"login-fail:{Convert.ToHexString(hash)}";
+    }
 
     private sealed class LockoutEntry
     {

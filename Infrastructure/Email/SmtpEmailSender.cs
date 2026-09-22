@@ -51,7 +51,7 @@ public class SmtpEmailSender : IEmailSender
         }
         catch (Exception ex)
         {
-            _log.LogWarning(ex, "SMTP send failed for {To} via {Host}:{Port}.", to, host, port);
+            _log.LogWarning(ex, "SMTP send failed for {To} via {Host}:{Port}.", EmailLogRedaction.Pseudonymize(to), host, port);
             return false;
         }
     }

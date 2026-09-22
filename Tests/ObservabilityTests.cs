@@ -29,6 +29,42 @@ public class ObservabilityTests
         Assert.Equal("test-123", context.Response.Headers["X-Request-Id"].ToString());
     }
 
+    /// <summary>GLM review F6 — a value that doesn't match the allowed charset/length is
+    /// replaced with a generated id rather than echoed/logged verbatim.</summary>
+    [Theory]
+    [InlineData("short")] // below the 8-char floor
+    [InlineData("has a space")]
+    [InlineData("has/slash")]
+    [InlineData("<script>alert(1)</script>")]
+    public async Task RequestIdMiddleware_RejectsInvalidIncomingId_GeneratesInstead(string hostile)
+    {
+        var middleware = new RequestIdMiddleware(_ => Task.CompletedTask);
+        var context = new DefaultHttpContext();
+        context.Request.Headers["X-Request-Id"] = hostile;
+
+        await middleware.InvokeAsync(context, new RecordingLogger());
+
+        var id = context.Response.Headers["X-Request-Id"].ToString();
+        Assert.NotEqual(hostile, id);
+        Assert.Matches(new Regex("^[0-9a-f]{32}$"), id);
+    }
+
+    /// <summary>A valid, plain client-supplied id (within the charset/length rule) is still
+    /// echoed as-is — the validation must not reject legitimate correlation ids.</summary>
+    [Theory]
+    [InlineData("abcd1234")]
+    [InlineData("Req.Id_09-ABC")]
+    public async Task RequestIdMiddleware_EchoesValidIncomingId(string valid)
+    {
+        var middleware = new RequestIdMiddleware(_ => Task.CompletedTask);
+        var context = new DefaultHttpContext();
+        context.Request.Headers["X-Request-Id"] = valid;
+
+        await middleware.InvokeAsync(context, new RecordingLogger());
+
+        Assert.Equal(valid, context.Response.Headers["X-Request-Id"].ToString());
+    }
+
     [Fact]
     public async Task RequestIdMiddleware_GeneratesIdWhenMissing()
     {

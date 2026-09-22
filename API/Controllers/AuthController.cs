@@ -19,6 +19,7 @@ public class AuthController(
     [AllowAnonymous]
     [HttpPost("login")]
     [EnableRateLimiting("login-ip")]
+    [RequestSizeLimit(64 * 1024)]
     [ProducesResponseType(typeof(LoginResponse), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(Result), StatusCodes.Status400BadRequest)]
     [ProducesResponseType(typeof(Result<LoginResponse>), StatusCodes.Status429TooManyRequests)]

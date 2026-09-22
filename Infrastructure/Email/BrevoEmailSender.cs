@@ -35,7 +35,7 @@ public class BrevoEmailSender : IEmailSender
 
         if (string.IsNullOrWhiteSpace(apiKey) || string.IsNullOrWhiteSpace(fromEmail))
         {
-            _log.LogInformation("Email unconfigured (no API key / from-address); skipping send to {To} (subject: {Subject}).", to, subject);
+            _log.LogInformation("Email unconfigured (no API key / from-address); skipping send to {To} (subject: {Subject}).", EmailLogRedaction.Pseudonymize(to), subject);
             return false;
         }
 
@@ -55,12 +55,12 @@ public class BrevoEmailSender : IEmailSender
             if (res.IsSuccessStatusCode) return true;
 
             var body = await res.Content.ReadAsStringAsync(ct);
-            _log.LogWarning("Brevo send failed ({Status}) to {To}: {Body}", (int)res.StatusCode, to, body);
+            _log.LogWarning("Brevo send failed ({Status}) to {To}: {Body}", (int)res.StatusCode, EmailLogRedaction.Pseudonymize(to), body);
             return false;
         }
         catch (Exception ex)
         {
-            _log.LogWarning(ex, "Brevo send threw for {To}.", to);
+            _log.LogWarning(ex, "Brevo send threw for {To}.", EmailLogRedaction.Pseudonymize(to));
             return false;
         }
     }
