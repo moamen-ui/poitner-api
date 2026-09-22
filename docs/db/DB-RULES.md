@@ -154,8 +154,15 @@ The batch is a *deploy* decision; it never relaxes how each doc is reviewed.
    script as it executes, so the run that pulls a new script must not also be the first to rely on
    it.
 
-Verdict for the current plan: DB-03 → DB-03b → DB-06 → DB-07 → DB-08 satisfy 1–7 and ship as
-**one** run, `POINTER_APPLY_CONTRACT=1 POINTER_CONTRACT_LABEL=pre-db03-08 bash scripts/deploy-api.sh`.
+Verdict for the current plan: **DB-03a ships alone first** (`pre-db03a` — it deletes a real
+person's account and its post-census deserves a human look before 23 FKs are built on it; it is
+also the cheapest production proof of DB-09). Then DB-03 → DB-03b → DB-06 → DB-07 → DB-08 satisfy
+1–7 and ship as **one** run, `POINTER_APPLY_CONTRACT=1 POINTER_CONTRACT_LABEL=pre-db03-08 bash
+scripts/deploy-api.sh`.
+
+8. *(added after DB-03a)* **A cleanup that changes or deletes production rows never rides in the
+   same run as the structural migration that depends on it.** The structural migration's own
+   pre-check must be re-run on prod *after* the cleanup and *before* its deploy (DB-03 §9 step 0–1).
 
 ## R8. Tenancy invariant
 

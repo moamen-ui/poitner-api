@@ -58,6 +58,12 @@ Drive rate-limits parallel uploads, so keep `--transfers 2`. Versioning/lifecycl
 exist on Drive — the `rclone delete --min-age` line is the only remote retention. Everything else in
 this doc (freshness gate, healthcheck ping, uploads tar, acceptance criteria) is unchanged.
 
+Known stray paths on the volume (DB-03a §3.6): `uploads/95b7f3ee1dfe4e76a8ecb6c113a04d42/…`
+(the super admin's retired owner id; its one screenshot belongs to a comment now owned by
+`98699076…`) and a pre-tenancy `uploads/pointer-api/…` with no owner folder. Both are inside the
+volume and therefore inside every `uploads-*.tgz`; no exclusion, no move. They are listed here so a
+restore operator does not treat them as junk.
+
 Uploads archive caveat (GLM B8): `tar` over a live volume is **best-effort** — an upload written
 during the run may be torn or missing from that night's archive (it is in the next one). No size
 guard: the volume is expected to stay small until §33 blob deletion ships; if `du -sh` of the

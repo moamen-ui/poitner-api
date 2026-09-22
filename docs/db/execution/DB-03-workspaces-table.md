@@ -3,8 +3,13 @@
 Review findings: S-1, S-2, I-1 (deferred), M-1. Rules: R1, R2, R3, R7, R8, R10, R11, R13.
 **Class: Expand** (new table + abort-guarded backfill into it + 23 FK constraints + code). Two
 migrations, one release. **Status 2026-09-22 (evening): owner decisions Q2 and Q3 answered —
-ready to implement.** Requires [DB-09](DB-09-migration-apply-gate.md) (merged `ff25a8d`): Migration
-1 carries `[ContractMigration("DB-03")]` and ships through the explicit `deploy-api.sh` path.
+ready to implement — but only after [DB-03a](DB-03a-orphan-owner-cleanup.md) is applied in
+production.** The caller ran this doc's orphan diagnostic on a same-day prod dump (2026-09-22): 16
+of 17 owner ids would trip the Q2 abort (15 dead demo fragments, the super admin's retired owner id
+on 40 replies, and one live admin-less tenant). DB-03a removes/reassigns them; DB-03 must not be
+scaffolded until DB-03a's migration exists (its timestamp must be the smaller one). Requires
+[DB-09](DB-09-migration-apply-gate.md) (merged `ff25a8d`): Migration 1 carries
+`[ContractMigration("DB-03")]` and ships through the explicit `deploy-api.sh` path.
 **Amended 2026-09-22 (evening)** for the owner decisions: §3.3 backfill now **aborts** on a true
 orphan (Q2 = b) and names the ids; `workspaces.name` is the workspace's **own attribute** seeded with
 a placeholder, never the admin's display name (Q3); §3.5 switches every read of "workspace name"
@@ -351,11 +356,12 @@ Both migrations have full `Down()`s: drop 23 FKs (+ indexes), then drop `workspa
 
 ## 9. Release steps
 
-1. **Mandatory prod pre-check (Q2).** On the VM, before anything else — the output must be exactly `0 orphans`:
+0. **DB-03a is applied in production**: `docker compose --env-file .env.prod -f docker-compose.prod.yml exec -T db psql -U pointer -d pointer -tAc "SELECT count(*) FROM \"__EFMigrationsHistory\" WHERE \"MigrationId\" LIKE '%_CleanupOrphanOwnerIds';"` → `1`. If `0`, stop: run DB-03a first (its own `pre-db03a` deploy).
+1. **Mandatory prod pre-check (Q2).** On the VM, before anything else — the output must be exactly `0 orphans` (it is the same predicate DB-03a's post-check enforced, so after DB-03a it can only fail if new data arrived):
    ```bash
    docker compose --env-file .env.prod -f docker-compose.prod.yml exec -T db psql -U pointer -d pointer -tAc "SELECT coalesce(string_agg(o.owner_id::text, ', ' ORDER BY o.owner_id::text), '0 orphans') FROM (SELECT owner_id FROM ai_rules UNION SELECT owner_id FROM api_keys UNION SELECT owner_id FROM app_environments UNION SELECT owner_id FROM comments UNION SELECT owner_id FROM device_logins UNION SELECT owner_id FROM extension_sites UNION SELECT owner_id FROM invites UNION SELECT owner_id FROM notifications UNION SELECT owner_id FROM page_context_snapshots UNION SELECT owner_id FROM predefined_action_suggestions UNION SELECT owner_id FROM predefined_actions UNION SELECT owner_id FROM project_app_urls UNION SELECT owner_id FROM project_builds UNION SELECT owner_id FROM projects UNION SELECT owner_id FROM quick_access_links UNION SELECT owner_id FROM replies UNION SELECT owner_id FROM role_tenant_overrides UNION SELECT owner_id FROM roles UNION SELECT owner_id FROM status_presentations UNION SELECT owner_id FROM subscriptions UNION SELECT owner_id FROM usage_events UNION SELECT owner_id FROM users UNION SELECT owner_id FROM workspace_settings) o WHERE o.owner_id IS NOT NULL AND NOT EXISTS (SELECT 1 FROM users u JOIN roles r ON r.id = u.role_id WHERE r.name = 'Workspace Admin' AND u.owner_id = o.owner_id);"
    ```
-   Any other output is a list of orphan uuids: **do not deploy**; paste the list to the owner (it is the S-2 orphan class the review predicted; a decision to attach or delete those rows is a new execution doc). This is the same predicate as 3b, so a passing pre-check means the migration cannot abort.
+   Any other output is a list of orphan uuids: **do not deploy**; paste the list to the owner — a new orphan after DB-03a means a live code path is still minting admin-less tenants (review S-13/S-14); it needs its own DB-03a-style cleanup (same recipe, new ids). This is the same predicate as 3b, so a passing pre-check means the migration cannot abort.
 2. Merge; on the VM: `POINTER_APPLY_CONTRACT=1 POINTER_CONTRACT_LABEL=pre-db03 bash scripts/deploy-api.sh` (DB-09 path: pulls, pre-flight lists `…_AddWorkspaces`, stops the API, dumps `pre-db03`, rebuilds with `DBApplyContractMigrations=true`). **In the batch release (R7.1) the label is `pre-db03-08` and steps 1–2 of every batched doc run first; see the review §7.**
 3. The script prints the log grep; expect two `Applying migration` lines, one `DB-09: applying 1 contract migration(s)` line, and no error.
 4. Verify: `docker compose -f docker-compose.prod.yml exec -T db psql -U pointer -d pointer -c "SELECT id, name, created_at FROM workspaces;"` → one row per workspace, all named `Workspace`. `GET /api/auth/me` (dashboard login) → `tenantName: "Workspace"` and the header shows it.
@@ -372,4 +378,6 @@ requests (DB-03b §10 follow-up); moving demo/workspace fields off `users` (S-8,
 doc); tightening nullable `owner_id` columns to NOT NULL (I-1 — separate doc after a rehearsal
 shows zero NULLs); `ListAsync` enumeration by role name (stage B); `workspace_settings` merge (not
 endorsed); integer logical FKs (DB-06); `users.api_key` (DB-07); `ON-DISK-CONTRACT.md` (no
-customer-visible *identifier* changes — the header label is a value, not a name).
+customer-visible *identifier* changes — the header label is a value, not a name). Upload files
+under the retired owner folder `uploads/95b7f3ee…/` and the pre-tenancy `uploads/pointer-api/`
+(DB-03a §3.6): they keep serving via the stored relative path; not moved, not renamed here.
