@@ -1,8 +1,11 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import * as fs from 'fs';
+import * as path from 'path';
 import { ICON } from './icons';
 import { t, setLang } from './i18n';
 import { TPL } from './templates';
 import type { Comment } from './types';
+import { PointerFeedback } from './element';
 
 describe('widget improvements', () => {
   beforeEach(() => {
@@ -126,6 +129,64 @@ describe('widget improvements', () => {
       expect(html).toContain('<div class="fbk-popover-toggle-row"><button type="button" class="fbk-toggle-switch fbk-toggle-switch-sm" id="fbk-comment-bug"');
       expect(html).toContain(ICON.camera);
       expect(html).toContain(ICON.bug);
+    });
+
+    it('renders card page URL with small font style classes (fbk-caption and fbk-card-page)', () => {
+      const c: Comment = {
+        id: 104,
+        status: 'open',
+        body: 'Page URL test',
+        element: { pageUrl: 'https://example.com/settings/profile' },
+      };
+      const html = TPL.card(c, 0);
+      expect(html).toContain('class="fbk-caption fbk-card-page"');
+      expect(html).toContain('title="https://example.com/settings/profile"');
+      expect(html).toContain('/settings/profile');
+    });
+  });
+
+  describe('card styles', () => {
+    it('defines small font-size token for .fbk-card-page in _card.scss', () => {
+      const scss = fs.readFileSync(path.resolve(__dirname, 'styles/_card.scss'), 'utf-8');
+      expect(scss).toMatch(/\.fbk-card-page\s*\{[^}]*font-size:\s*v\.token\('size-xs'\)/);
+    });
+
+    it('defines center alignment and expanded flex-start for .fbk-reply in _card.scss', () => {
+      const scss = fs.readFileSync(path.resolve(__dirname, 'styles/_card.scss'), 'utf-8');
+      expect(scss).toMatch(/\.fbk-reply\s*\{[^}]*align-items:\s*center/);
+      expect(scss).toMatch(/&\.expanded\s*\{[^}]*align-items:\s*flex-start/);
+    });
+  });
+
+  describe('location change and pin rendering', () => {
+    let el: PointerFeedback;
+
+    beforeEach(() => {
+      if (!customElements.get('pointer-feedback')) {
+        customElements.define('pointer-feedback', PointerFeedback);
+      }
+      el = document.createElement('pointer-feedback') as PointerFeedback;
+      el.setAttribute('project', 'test-proj');
+      document.body.appendChild(el);
+    });
+
+    afterEach(() => {
+      el.remove();
+      vi.restoreAllMocks();
+    });
+
+    it('triggers renderPins() when pointer:locationchange is dispatched', () => {
+      const renderPinsSpy = vi.spyOn(el, 'renderPins');
+      (el as any)._lastUrl = 'http://localhost/previous-url';
+      window.dispatchEvent(new Event('pointer:locationchange'));
+      expect(renderPinsSpy).toHaveBeenCalled();
+    });
+
+    it('triggers renderPins() when popstate is dispatched', () => {
+      const renderPinsSpy = vi.spyOn(el, 'renderPins');
+      (el as any)._lastUrl = 'http://localhost/previous-url';
+      window.dispatchEvent(new Event('popstate'));
+      expect(renderPinsSpy).toHaveBeenCalled();
     });
   });
 });

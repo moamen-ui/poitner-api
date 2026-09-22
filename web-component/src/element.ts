@@ -163,6 +163,10 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
   private _backdropObserver: MutationObserver | null = null;
   private _backdropRaf = 0;
   private _scheduleBackdropUpdate!: () => void;
+  private _pinsRetryTimers: number[] = [];
+  private _lastUrl = typeof window !== 'undefined' ? window.location.href : '';
+  private _urlPollTimer: number | null = null;
+  private _onLocChange: (() => void) | null = null;
 
   connectedCallback(): void {
     try { performance.mark('pf:boot:start'); } catch { /* ignore */ }
@@ -299,6 +303,20 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
     this._reposition = () => { this.renderPins(); this.updateMenuSide(); };
     window.addEventListener('scroll', this._reposition, true);
     window.addEventListener('resize', this._reposition);
+
+    this._onLocChange = () => this.handleLocationChange();
+    ['popstate', 'hashchange', 'pointer:locationchange'].forEach((ev) => window.addEventListener(ev, this._onLocChange!));
+    if (typeof window !== 'undefined' && !(window as any).__pf_hist__) {
+      (window as any).__pf_hist__ = true;
+      ['pushState', 'replaceState'].forEach((fn) => {
+        const orig = (history as any)[fn];
+        (history as any)[fn] = function (...args: any[]) {
+          const res = orig.apply(this, args);
+          window.dispatchEvent(new Event('pointer:locationchange'));
+          return res;
+        };
+      });
+    }
 
     // A max z-index only wins the browser's PAINT order — verified independently that Chromium's
     // native hit-testing (elementFromPoint / real click dispatch) can still award a full-viewport
@@ -535,6 +553,16 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
     this.stopNotificationPolling();
     this.closeUpdatesMenu();
     stopPageContextCapture();
+    this.clearPinsRetries();
+    if (this._onLocChange) {
+      ['popstate', 'hashchange', 'pointer:locationchange'].forEach((ev) => window.removeEventListener(ev, this._onLocChange!));
+      this._onLocChange = null;
+    }
+    if (this._urlPollTimer) {
+      clearInterval(this._urlPollTimer);
+      this._urlPollTimer = null;
+    }
+    this._mounted = false;
   }
 
   // --- "Add comment" keyboard shortcut --------------------------------------
@@ -729,11 +757,30 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
     // filter chips and status labels reflect server-configured values.
     // Falls back to STATUS_FALLBACK silently if the fetch fails.
     await loadStatusCatalog(this.server);
+    if (!this.isConnected) return;
     this.renderChrome();
     await Promise.all([this.fetchComments(), this.fetchPredefinedActions(), this.fetchCaptureConfig()]);
+    if (!this.isConnected) return;
     if (this.token) this.startNotificationPolling();
     this.renderSidebar();
     this.renderPins();
+    this.schedulePinsRetries();
+    if (!this._urlPollTimer) {
+      this._urlPollTimer = window.setInterval(() => {
+        if (!this.isConnected) {
+          if (this._urlPollTimer) { clearInterval(this._urlPollTimer); this._urlPollTimer = null; }
+          return;
+        }
+        if (window.location.href !== this._lastUrl) {
+          this.handleLocationChange();
+        } else {
+          const wrap = this.root?.querySelector('#fbk-pins-layer');
+          if (wrap && wrap.children.length === 0 && this.comments.some((c) => isCurrentPage(c) && c.status !== 'archived' && c.status !== 'applied')) {
+            this.renderPins();
+          }
+        }
+      }, 2500);
+    }
     // When collapsed, re-render so the launcher badge reflects the loaded count.
     if (this._collapsed) this.renderChrome();
   }
@@ -2863,6 +2910,31 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
         this.apiVerify(id, false, note);
       }
     }));
+  }
+
+  private schedulePinsRetries(): void {
+    this.clearPinsRetries();
+    [300, 1000, 2500].forEach((ms) => {
+      const id = window.setTimeout(() => {
+        if (!this.isConnected) return;
+        this.renderPins();
+      }, ms);
+      this._pinsRetryTimers.push(id);
+    });
+  }
+
+  private clearPinsRetries(): void {
+    this._pinsRetryTimers.forEach((id) => clearTimeout(id));
+    this._pinsRetryTimers = [];
+  }
+
+  private handleLocationChange(): void {
+    if (typeof window === 'undefined') return;
+    const cur = window.location.href;
+    if (cur === this._lastUrl) return;
+    this._lastUrl = cur;
+    this.renderPins();
+    this.schedulePinsRetries();
   }
 
   // --- Pins ----------------------------------------------------------------

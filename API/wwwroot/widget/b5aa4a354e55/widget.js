@@ -2001,7 +2001,6 @@
       this._shortcutRecordingCleanup = null;
       this._backdropObserver = null;
       this._backdropRaf = 0;
-      this._pinsRetryTimers = [];
       this._lastUrl = typeof window != "undefined" ? window.location.href : "";
       this._urlPollTimer = null;
       this._onLocChange = null;
@@ -2179,7 +2178,7 @@
     }
     disconnectedCallback() {
       var _a2, _b;
-      window.removeEventListener("scroll", this._reposition, !0), window.removeEventListener("resize", this._reposition), window.removeEventListener("resize", this._scheduleBackdropUpdate), window.removeEventListener("scroll", this._scheduleBackdropUpdate, !0), (_a2 = this.root) == null || _a2.removeEventListener("transitionend", this._scheduleBackdropUpdate), (_b = this._backdropObserver) == null || _b.disconnect(), this._backdropRaf && cancelAnimationFrame(this._backdropRaf), document.removeEventListener("keydown", this._onShortcutKeydown), this._shortcutRecordingCleanup && this._shortcutRecordingCleanup(), this.stopPicking(), this.stopNotificationPolling(), this.closeUpdatesMenu(), stopPageContextCapture(), this.clearPinsRetries(), this._onLocChange && (["popstate", "hashchange", "pointer:locationchange"].forEach((ev) => window.removeEventListener(ev, this._onLocChange)), this._onLocChange = null), this._urlPollTimer && (clearInterval(this._urlPollTimer), this._urlPollTimer = null), this._mounted = !1;
+      window.removeEventListener("scroll", this._reposition, !0), window.removeEventListener("resize", this._reposition), window.removeEventListener("resize", this._scheduleBackdropUpdate), window.removeEventListener("scroll", this._scheduleBackdropUpdate, !0), (_a2 = this.root) == null || _a2.removeEventListener("transitionend", this._scheduleBackdropUpdate), (_b = this._backdropObserver) == null || _b.disconnect(), this._backdropRaf && cancelAnimationFrame(this._backdropRaf), document.removeEventListener("keydown", this._onShortcutKeydown), this._shortcutRecordingCleanup && this._shortcutRecordingCleanup(), this.stopPicking(), this.stopNotificationPolling(), this.closeUpdatesMenu(), stopPageContextCapture(), this._onLocChange && (["popstate", "hashchange", "pointer:locationchange"].forEach((ev) => window.removeEventListener(ev, this._onLocChange)), this._onLocChange = null), this._urlPollTimer && (clearInterval(this._urlPollTimer), this._urlPollTimer = null);
     }
     // --- "Add comment" keyboard shortcut --------------------------------------
     isEditableTarget(e) {
@@ -2334,19 +2333,15 @@
       setLang(lang);
     }
     async init() {
-      await loadStatusCatalog(this.server), this.isConnected && (this.renderChrome(), await Promise.all([this.fetchComments(), this.fetchPredefinedActions(), this.fetchCaptureConfig()]), this.isConnected && (this.token && this.startNotificationPolling(), this.renderSidebar(), this.renderPins(), this.schedulePinsRetries(), this._urlPollTimer || (this._urlPollTimer = window.setInterval(() => {
+      await loadStatusCatalog(this.server), this.renderChrome(), await Promise.all([this.fetchComments(), this.fetchPredefinedActions(), this.fetchCaptureConfig()]), this.token && this.startNotificationPolling(), this.renderSidebar(), this.renderPins(), this.schedulePinsRetries(), this._urlPollTimer || (this._urlPollTimer = window.setInterval(() => {
         var _a2;
-        if (!this.isConnected) {
-          this._urlPollTimer && (clearInterval(this._urlPollTimer), this._urlPollTimer = null);
-          return;
-        }
         if (window.location.href !== this._lastUrl)
           this.handleLocationChange();
         else {
           let wrap = (_a2 = this.root) == null ? void 0 : _a2.querySelector("#fbk-pins-layer");
           wrap && wrap.children.length === 0 && this.comments.some((c) => isCurrentPage(c) && c.status !== "archived" && c.status !== "applied") && this.renderPins();
         }
-      }, 2500)), this._collapsed && this.renderChrome()));
+      }, 2500)), this._collapsed && this.renderChrome();
     }
     // Fetch the project's predefined-action options for the comment popover picker.
     // Silently no-ops on failure — the picker simply won't appear.
@@ -3731,15 +3726,7 @@
       }));
     }
     schedulePinsRetries() {
-      this.clearPinsRetries(), [300, 1e3, 2500].forEach((ms) => {
-        let id = window.setTimeout(() => {
-          this.isConnected && this.renderPins();
-        }, ms);
-        this._pinsRetryTimers.push(id);
-      });
-    }
-    clearPinsRetries() {
-      this._pinsRetryTimers.forEach((id) => clearTimeout(id)), this._pinsRetryTimers = [];
+      [300, 1e3, 2500].forEach((ms) => setTimeout(() => this.renderPins(), ms));
     }
     handleLocationChange() {
       if (typeof window == "undefined") return;

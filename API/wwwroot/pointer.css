@@ -937,6 +937,7 @@
 }
 
 .fbk-card-page {
+  font-size: var(--fbk-size-xs, 11px);
   display: block;
   overflow: hidden;
   white-space: nowrap;
@@ -1277,7 +1278,7 @@
 .fbk-reply {
   position: relative;
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   justify-content: space-between;
   gap: 6px;
   font-size: 13px;
@@ -1287,6 +1288,9 @@
   padding-block: 6px;
   padding-inline: 8px;
   margin-block-end: 4px;
+}
+.fbk-reply.expanded {
+  align-items: flex-start;
 }
 
 .fbk-reply-main {

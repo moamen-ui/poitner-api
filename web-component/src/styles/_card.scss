@@ -62,6 +62,7 @@
 // The page path this comment was left on (see templates.ts's card()) — a single line, ellipsized
 // rather than wrapped, since a long query string shouldn't push the card's height around.
 .fbk-card-page {
+  font-size: v.token('size-xs');
   display: block;
   overflow: hidden;
   white-space: nowrap;
@@ -390,7 +391,7 @@
 .fbk-reply {
   position: relative; // anchors .fbk-card-delete-confirm to this bubble, not the ancestor .fbk-card
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   justify-content: space-between;
   gap: 6px;
   font-size: 13px;
@@ -400,6 +401,10 @@
   padding-block: 6px;
   padding-inline: 8px;
   margin-block-end: 4px;
+
+  &.expanded {
+    align-items: flex-start;
+  }
 }
 .fbk-reply-main {
   flex: 1;

@@ -61,6 +61,7 @@ async function runBuild() {
     banner: { js: BANNER },
     // Kept unminified on purpose: the served file stays debuggable in the browser.
     minify: false,
+    minifySyntax: true,
     define: {
       __CSS_INTEGRITY__: JSON.stringify(css.integrity),
     },
@@ -196,6 +197,7 @@ if (watch) {
     legalComments: 'none',
     banner: { js: BANNER },
     minify: false,
+    minifySyntax: true,
     define: {
       __CSS_INTEGRITY__: JSON.stringify(css.integrity),
     },
