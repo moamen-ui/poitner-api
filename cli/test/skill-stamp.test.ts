@@ -42,7 +42,7 @@ test('locates the stamp by scanning, not by line number', async () => {
   assert.equal(await readStamp(path), '9.9.9');
 });
 
-test('REJECTS a stamp on line 1 of a markdown file', async () => {
+test('REJECTS a stamp on line 1 of a markdown file when frontmatter follows', async () => {
   // This is the rule worth guarding. AI tools parse the YAML frontmatter block; anything before
   // it breaks that parse. Accepting such a file would bless an install the tool cannot read.
   const path = await write('SKILL.md', [
@@ -50,6 +50,53 @@ test('REJECTS a stamp on line 1 of a markdown file', async () => {
     '---',
     'name: pointer-feedback',
     '---',
+  ].join('\n'));
+
+  assert.equal(await readStamp(path), null);
+});
+
+test('reads the stamp on line 1 of a markdown file without frontmatter (sub-skill shape)', async () => {
+  // Served sub-skills like apply.md, translate.md, advanced.md have no frontmatter block.
+  // Their first line carries the stamp comment directly.
+  const path = await write('apply.md', [
+    '<!-- pointer-skill-version: 2026.09.16 -->',
+    '',
+    '# Apply workflow (apply.md)',
+    '',
+    'Body text here.',
+  ].join('\n'));
+
+  assert.equal(await readStamp(path), '2026.09.16');
+});
+
+test('reads the stamp within the first 3 non-empty lines without frontmatter', async () => {
+  const path = await write('sub.md', [
+    '',
+    '# Sub skill',
+    '<!-- pointer-skill-version: 2026.09.16 -->',
+    '',
+    'Body text here.',
+  ].join('\n'));
+
+  assert.equal(await readStamp(path), '2026.09.16');
+});
+
+test('returns null when the stamp is beyond the first 3 non-empty lines without frontmatter', async () => {
+  const path = await write('late-stamp.md', [
+    '# Sub skill',
+    'Line 1',
+    'Line 2',
+    '<!-- pointer-skill-version: 2026.09.16 -->',
+  ].join('\n'));
+
+  assert.equal(await readStamp(path), null);
+});
+
+test('returns null for an unstamped markdown file without frontmatter', async () => {
+  const path = await write('unstamped-sub.md', [
+    '# Sub skill without stamp',
+    '',
+    'Some prose here.',
   ].join('\n'));
 
   assert.equal(await readStamp(path), null);

@@ -15,7 +15,7 @@ var init_build_constants = __esm({
   "src/build-constants.ts"() {
     "use strict";
     BUILD_DEFAULT_SERVER = true ? "https://api.pointer.moamen.work" : "https://api.pointer.moamen.work";
-    BUILD_CLI_VERSION = true ? "0.6.0" : "0.0.0-dev";
+    BUILD_CLI_VERSION = true ? "0.6.1" : "0.0.0-dev";
   }
 });
 
@@ -1973,23 +1973,49 @@ async function readStamp(path) {
   }
   const lines = content.split("\n");
   if (path.endsWith(".md")) {
-    if (lines[0]?.trim() !== "---")
-      return null;
-    let close = -1;
-    for (let i = 1; i < lines.length; i++) {
-      if (lines[i].trim() === "---") {
-        close = i;
-        break;
+    if (lines[0]?.trim() === "---") {
+      let close = -1;
+      for (let i = 1; i < lines.length; i++) {
+        if (lines[i].trim() === "---") {
+          close = i;
+          break;
+        }
       }
-    }
-    if (close === -1)
+      if (close === -1)
+        return null;
+      for (let i = close + 1; i < lines.length; i++) {
+        const match = lines[i].match(/pointer-skill-version:\s*([^\s>-][^>]*?)\s*(?:-->)?\s*$/);
+        if (match)
+          return match[1].trim();
+        if (lines[i].trim() !== "" && !lines[i].trim().startsWith("<!--"))
+          break;
+      }
       return null;
-    for (let i = close + 1; i < lines.length; i++) {
-      const match = lines[i].match(/pointer-skill-version:\s*([^\s>-][^>]*?)\s*(?:-->)?\s*$/);
-      if (match)
-        return match[1].trim();
-      if (lines[i].trim() !== "" && !lines[i].trim().startsWith("<!--"))
+    }
+    let nonEmptyCount = 0;
+    for (let i = 0; i < lines.length; i++) {
+      const trimmed = lines[i].trim();
+      if (trimmed === "")
+        continue;
+      nonEmptyCount++;
+      if (nonEmptyCount > 3)
         break;
+      if (trimmed.startsWith("<!--")) {
+        const match = lines[i].match(/pointer-skill-version:\s*([^\s>-][^>]*?)\s*(?:-->)?\s*$/);
+        if (match) {
+          for (let j = i + 1; j < lines.length; j++) {
+            const nextTrimmed = lines[j].trim();
+            if (nextTrimmed === "")
+              continue;
+            if (nextTrimmed.startsWith("<!--"))
+              continue;
+            if (nextTrimmed === "---")
+              return null;
+            break;
+          }
+          return match[1].trim();
+        }
+      }
     }
     return null;
   }
