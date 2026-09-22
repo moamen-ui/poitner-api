@@ -128,7 +128,7 @@ mail client with no session (same reasoning as `reset-password`); the token is t
    (idempotent re-click after success is impossible because the stamp rotated, but be explicit).
 4. **D14 again:** `FindIdentityByEmailAsync(newEmail) is not null` → `Conflict(User.EmailTaken)` (someone
    registered that address in the 30-minute window).
-5. `oldEmail = identity.Email; identity.Email = newEmail; identity.SecurityStamp = Guid.NewGuid();`
+5. `oldEmail = identity.Email; identity.Email = newEmail; identity.SecurityStamp = Guid.NewGuid();` *(DB-14 forward reference: once `users.email_verified_at` exists, also `identity.EmailVerifiedAt = DateTime.UtcNow;` — the link went to the new address, so it is proven; whichever of DB-11d/DB-14 lands second adds the line.)*
    `Repository<User>().Update(identity); await SaveChangesAsync();` wrapped in
    `try { … } catch (DbUpdateException e) when (e.InnerException is PostgresException { SqlState: "23505" })
    { return Result.Conflict(MessageKeys.User.EmailTaken); }` — the database (`ux_users_email_live`) is the

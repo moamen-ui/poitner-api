@@ -4,7 +4,7 @@ Standing rules for every schema change in this repository. Created 2026-09-22 by
 review ([`DB-REVIEW-2026-09-22.md`](DB-REVIEW-2026-09-22.md)); amended the same day after the
 cross-reviews (R4, R6, R7, R13 — marked *(amended)*) and again the same evening after the owner
 decisions (R7 marker form, **R7.1 batching**, R8 point 6), and again the same night after the DB-11
-cross-review (R9 expression indexes, R14 normaliser + erase inventory, R16 exact fence + scoped tokens);
+cross-review (R9 expression indexes, R14 normaliser + erase inventory, R16 exact fence + scoped tokens), and again the same night (late) after DB-12–15 (R8 point 8 operator/analytics tables, **R17 append-only tables and the audit obligation**);
 amend, do not fork. Every execution
 doc under [`execution/`](execution/) cites the rule numbers it relies on. `scripts/deploy-api.sh`
 already points here.
@@ -196,6 +196,12 @@ Every new entity that holds customer data:
    erase goes through `SoleAdminWorkspacesAsync` (DB-11c §3.2; super admins included; tenant
    suspension exempt by D10).
 
+8. *(added 2026-09-22 late night, DB-12/13/15)* **Operator and analytics tables are exempt from point 5 by name.** `usage_events`, `audit_events`,
+   `impersonation_sessions` and `usage_daily` carry `owner_id` for the filter shape (points 1–4 hold) but are **not** deleted with the workspace: their FK is
+   `ON DELETE SET NULL`, the row survives as an operator/analytics record with `owner_id = NULL`, and the type is excluded **by name with a comment** in
+   `Tests/WorkspaceTests.cs` `HardDeleteOrder_CoversEveryOwnerCarryingEntity`. Such a table never holds content (comment text, prompts, names, addresses) —
+   only ids, hashes, counts and whitelisted keys. A new table of this kind cites this point in its mapping comment.
+
 ## R9. Soft delete and uniqueness
 
 `BaseEntity.DeletedAt` (`Domain/Entity/BaseEntity.cs:10`) is a soft delete with **no global query
@@ -353,3 +359,25 @@ membership's workspace), `stamp` (identity `users.security_stamp`) and `mstamp` 
   (every workspace's sessions end); it never changes `public_id` or `users.id`.
 - `TenantStamp.TryRequireOwner` (S-14) is the only way to obtain "the caller's workspace" for a
   write; a non-super-admin without a `tenant` claim is Forbidden. `?? _currentUser.Id` never returns.
+
+## R17. Append-only tables and the audit obligation *(added 2026-09-22 late night, DB-12)*
+
+- **`audit_events` is append-only at three layers:** properties are `init`-only (no C# update path), `AppDbContext.SaveChangesAsync` throws on a
+  Modified/Deleted `AuditEvent` entry, and the Postgres triggers `trg_audit_events_append_only` / `trg_audit_events_no_truncate` raise on UPDATE, DELETE and
+  TRUNCATE — the single permitted UPDATE is the FK's `ON DELETE SET NULL` detaching a hard-deleted workspace (byte-identical otherwise). **DB-08 never sweeps it**;
+  a retention policy for audit rows is its own execution doc with an owner decision (D12.2 default: forever). A table that must be immutable follows the same
+  three layers; the trigger migration carries the **`R4 constraint`** marker (`Tests/MigrationSafetyTests.cs` accepts only the four marker kinds; a trigger that
+  enforces immutability is a constraint) and `[ContractMigration]`, and contains nothing else.
+- **Every security-relevant mutation writes exactly one audit row** through `IAuditWriter.WriteAsync`, **after** its own `SaveChangesAsync` (or inside the same
+  `ExecuteInTransactionAsync` block after the save), using an `AuditActions` constant — never a literal. Security-relevant = every non-GET action on a controller
+  under `Pointer.API.Controllers.Admin`, every `AuthController`/`MeController`/`DemoController`/`ExportImportController` action, and every hosted job that changes
+  tenant state (`ActorKindOverride: System`). The action carries `[Audited(AuditActions.X)]` or `[NoAudit("reason")]`; `Tests/AuditCoverageTests.cs` fails the
+  build otherwise and `AuditCoverageFilter` logs `AUDIT GAP` at runtime (500 under `Audit:StrictCoverage`). A new endpoint that changes state and lacks the
+  attribute does not merge.
+- **Audit rows hold no personal data beyond identifiers:** `actor_user_id`/`target_id` are `public_id` uuids (resolve to "Deleted user" after erase — R14 content
+  reference), an unknown e-mail is `PseudonymHasher.EmailHash` (16 hex), the IP is a keyed HMAC, `before`/`after` accept only `AuditFields.Allowed` keys (no
+  `email`, `display_name`, `password`, `token`, `body`, `prompt`, `text`). Because the table cannot be scrubbed, this is the only way R14's erase inventory can say
+  "kept by design". Adding a whitelist key is a PR that names the reviewer; adding a personal field is refused.
+- **Reserved action strings** (DB-12 §3.6) are the vocabulary for later docs: DB-11b `auth.workspace_switched`, DB-11c `member.left`, `identity.erase_requested`,
+  `identity.erased`, DB-11d `auth.email.change_requested`, `auth.email.changed`, DB-14 `auth.email.verified`, DB-13 `impersonation.started`, `impersonation.ended`.
+  Whichever doc lands second writes the row; the spelling never changes (R10).
