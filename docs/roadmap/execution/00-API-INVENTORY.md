@@ -59,10 +59,14 @@ Enums: `CommentStatus` 1=Open 2=ReadyToApply 3=Applied 4=Archived · `Environmen
 
 | Endpoint | File | Notes |
 |---|---|---|
-| `GET /api/admin/workspace/comment-fields` **[Authorize(Policy="Admin")]** | `API/Controllers/Admin/WorkspaceController.cs` | `CommentFieldDefinitionsResponse { Fields: List<CommentFieldDefinitionDto> }` — all definitions incl. disabled, sorted (R4-01). 403 for super admins and quick-access users (service-level refusal) |
-| `PUT /api/admin/workspace/comment-fields` **[Authorize(Policy="Admin")]** | `:34-42` | `UpdateCommentFieldDefinitionsRequest { Fields }` — replaces the whole list (≤ 10, distinct keys); upserts the workspace's one `workspace_settings` row |
+| `GET /api/admin/workspace` **[Authorize(Policy="Admin")]** | `API/Controllers/Admin/WorkspaceController.cs` | `WorkspaceResponse { Id, Name, IsPlaceholderName, CreatedAt, UpdatedAt? }` — the caller's own workspace row (DB-03b). 403 for super admins and quick-access users (service-level refusal); reads through the tenant query filter |
+| `PUT /api/admin/workspace/name` **[Authorize(Policy="Admin")]** | `:22-32` | `UpdateWorkspaceNameRequest { Name }` → `WorkspaceResponse` — renames the caller's workspace (trimmed, 1-120 chars, no control characters); same 403s as GET |
+| `GET /api/admin/workspace/comment-fields` **[Authorize(Policy="Admin")]** | `:44-52` | `CommentFieldDefinitionsResponse { Fields: List<CommentFieldDefinitionDto> }` — all definitions incl. disabled, sorted (R4-01). 403 for super admins and quick-access users (service-level refusal) |
+| `PUT /api/admin/workspace/comment-fields` **[Authorize(Policy="Admin")]** | `:54-62` | `UpdateCommentFieldDefinitionsRequest { Fields }` — replaces the whole list (≤ 10, distinct keys); upserts the workspace's one `workspace_settings` row |
 
 `CommentFieldDefinitionDto { Key, Label, Type, Options[], AllowedHosts[], SuggestedTool?, Hint?, Enabled, SortOrder }`; comment read DTOs (`CommentListItemDto`, `CommentResponse`, `CommentApplyItemDto`) carry `CustomFields: List<CommentFieldValueDto { Key, Label, Type, Value, SuggestedTool? }>`; `CaptureConfigResponse.CommentFields` lists **enabled** definitions for the widget (R4-01).
+
+`TenantResponse` (super-admin `GET /api/admin/tenants`, `Application/DTOs/Tenant/TenantResponse.cs`) gained `WorkspaceName` (DB-03b) — the workspace's own name (`workspaces.name`), next to the existing `DisplayName` (the admin's).
 
 ## 4. Public / branding / plans
 

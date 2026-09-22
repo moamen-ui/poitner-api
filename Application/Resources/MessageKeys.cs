@@ -43,6 +43,14 @@ public static class MessageKeys
         public const string PasswordChanged = "Password changed.";
     }
 
+    public static class Workspace
+    {
+        public const string NotFound = "Workspace not found.";
+        public const string NameRequired = "Workspace name is required.";
+        public const string NameTooLong = "Workspace name must be 120 characters or fewer.";
+        public const string NameInvalid = "Workspace name contains unsupported characters.";
+    }
+
     public static class Project
     {
         public const string NotFound = "Project not found.";

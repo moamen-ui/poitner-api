@@ -114,6 +114,14 @@ public class TenantService : ITenantService
             .ToListAsync();
         var subMap = subs.ToDictionary(x => x.OwnerId, x => (x.PlanName, x.Status));
 
+        // Workspace names (DB-03b) — IgnoreQueryFilters, same super-admin operator path as the
+        // other batch loads above; every tenant has exactly one Workspace row (Id == OwnerId).
+        var wsNames = await _unitOfWork
+            .Workspaces.IgnoreQueryFilters()
+            .AsNoTracking()
+            .Where(w => nonNullTenantIds.Contains(w.Id))
+            .ToDictionaryAsync(w => w.Id, w => w.Name);
+
         var responses = tenants
             .Select(t =>
             {
@@ -131,6 +139,10 @@ public class TenantService : ITenantService
                     OwnerId = t.OwnerId!.Value,
                     Email = t.Email,
                     DisplayName = t.DisplayName,
+                    WorkspaceName = wsNames.GetValueOrDefault(
+                        t.OwnerId!.Value,
+                        Workspace.PlaceholderName
+                    ),
                     ApprovalStatus = t.ApprovalStatus.ToString(),
                     IsActive = t.IsActive,
                     Projects = projectMap.GetValueOrDefault(t.OwnerId ?? Guid.Empty, 0),
@@ -231,6 +243,7 @@ public class TenantService : ITenantService
                 OwnerId = publicId, // a freshly created tenant always owns itself
                 Email = user.Email,
                 DisplayName = user.DisplayName,
+                WorkspaceName = Workspace.PlaceholderName,
                 ApprovalStatus = user.ApprovalStatus.ToString(),
                 IsActive = user.IsActive,
                 Projects = 0,

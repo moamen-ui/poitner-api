@@ -17,8 +17,30 @@ namespace Pointer.API.Controllers.Admin;
 [Produces("application/json")]
 [Tags("Workspace")]
 [Authorize(Policy = Policies.Admin)]
-public class WorkspaceController(ICommentFieldService commentFields) : ControllerBase
+public class WorkspaceController(ICommentFieldService commentFields, IWorkspaceService workspaces) : ControllerBase
 {
+    /// <summary>The caller's workspace: id, own name, placeholder flag.</summary>
+    [HttpGet]
+    [ProducesResponseType(typeof(WorkspaceResponse), StatusCodes.Status200OK)]
+    public async Task<IActionResult> Get()
+    {
+        var result = await workspaces.GetAsync();
+        if (result.IsForbidden) return StatusCode(StatusCodes.Status403Forbidden, result);
+        if (result.IsNotFound) return NotFound(result);
+        return result.IsSuccess ? Ok(result) : BadRequest(result);
+    }
+
+    /// <summary>Renames the caller's workspace (1–120 chars). Header label and invite preview follow.</summary>
+    [HttpPut("name")]
+    [ProducesResponseType(typeof(WorkspaceResponse), StatusCodes.Status200OK)]
+    public async Task<IActionResult> Rename([FromBody] UpdateWorkspaceNameRequest request)
+    {
+        var result = await workspaces.RenameAsync(request);
+        if (result.IsForbidden) return StatusCode(StatusCodes.Status403Forbidden, result);
+        if (result.IsNotFound) return NotFound(result);
+        return result.IsSuccess ? Ok(result) : BadRequest(result);
+    }
+
     /// <summary>All comment-field definitions of the caller's workspace, including disabled ones, sorted.</summary>
     [HttpGet("comment-fields")]
     [ProducesResponseType(typeof(CommentFieldDefinitionsResponse), StatusCodes.Status200OK)]

@@ -13,6 +13,9 @@ public class TenantResponse
 
     public string Email { get; set; } = string.Empty;
     public string DisplayName { get; set; } = string.Empty;
+
+    // The workspace's own name (workspaces.name); DisplayName above is the admin's.
+    public string WorkspaceName { get; set; } = string.Empty;
     public string ApprovalStatus { get; set; } = string.Empty;
     public bool IsActive { get; set; }
     public int Projects { get; set; }
