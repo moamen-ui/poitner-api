@@ -182,6 +182,17 @@ Every new entity that holds customer data:
 6. *(added 2026-09-22 evening)* **A workspace's name is `workspaces.name`** (owner decision Q3).
    No code derives a workspace label from a `users` row (display name or e-mail); DB-03 §3.5 lists
    the four sites that used to. `Workspace.PlaceholderName` (`"Workspace"`) is the only fallback.
+7. *(added 2026-09-22 night, DB-11a)* **Membership invariants** — after DB-11a a person's presence
+   in a workspace is a `workspace_memberships` row, never `users.owner_id`. Every code path that
+   lists, counts, authorises or notifies "the users of workspace W" queries memberships with an
+   **explicit** `OwnerId == W` predicate (`IMembershipService.InWorkspace(W)`), filters
+   `LeftAt == null` for "current members", and never joins `users` by `owner_id`. Two tests are
+   mandatory for any change in this area (copy `Tests/WorkspaceMembershipTests.cs`): tenant B's
+   context sees **no** identity or membership of A (the `User` filter is membership-based), and a
+   membership-ending action in A leaves the same identity's membership in B untouched. A workspace
+   must never lose its last live `Workspace Admin` membership — every demote/remove/disable/leave/
+   erase goes through `SoleAdminWorkspacesAsync` (DB-11c §3.2; super admins included; tenant
+   suspension exempt by D10).
 
 ## R9. Soft delete and uniqueness
 
@@ -257,14 +268,49 @@ empty `postgres:15`, fails on `dotnet ef migrations has-pending-model-changes`, 
 the newest `Down()`/`Up()` — so a mapping edit without a migration, or a `Down()` that does not
 undo its `Up()`, fails the PR before the R11 rehearsal.
 
-## R14. Identity of users
+## R14. Identity of users *(amended 2026-09-22 night, DB-11a)*
 
+**One `users` row per e-mail** (`ux_users_email_live (email) WHERE deleted_at IS NULL`, DB-11a).
 `users.id int` is the PK; `users.public_id uuid` is the identity everything else refers to
-(`comments.author_id`, JWT `sub`, `created_by/updated_by/deleted_by`). New references to a user
-use `public_id` and say so in the mapping comment. `api_keys.user_id → users.id` is the historical
-exception; do not add another.
+(`comments.author_id`, JWT `sub`, `created_by/updated_by/deleted_by`). Two kinds of reference:
+
+- **Content references** (`author_id`, `actor_id`, `applied_by`, `user_id` on comments, replies,
+  notifications, AI rules, links, device logins, usage events, audit columns) use `public_id`, have
+  no FK (Q5 open), and say so in the mapping comment. A `public_id` is **never rewritten or
+  reused** after DB-11a; the one historical rewrite (DB-11a §3.2 2.5, the same-e-mail merge) is
+  recorded in `user_aliases`, and `UserNameResolver` falls back to that table — new code that
+  resolves a user from a uuid uses the resolver, not a bare `users` lookup.
+- **Structural children** of the identity (`api_keys`, `workspace_memberships`, `user_aliases`,
+  `users.merged_into_user_id`) FK `users.id` — they are rows *about* the identity, not content
+  attributed to it. Do not add a third kind.
+
+Erasing a person (DB-11c) keeps the `users` row as a tombstone with the same `public_id` (e-mail →
+`erased+<id>@tombstone.invalid`, name → `Deleted user`, `erased_at` + `deleted_at` set) precisely so
+content references stay resolvable. Hard-deleting a `users` row is allowed only inside a workspace
+hard delete and only when the identity has no membership elsewhere (DB-11a §3.5).
 
 ## R15. Never edit `clients/`, never hand-edit `*.Designer.cs` or the snapshot
 
 Generated files are regenerated. If the snapshot is wrong, fix the mapping and re-run the
 migration tooling.
+
+## R16. Sessions and per-workspace revocation *(added 2026-09-22 night, DB-11a/b/c)*
+
+A session is (identity, workspace): the JWT carries `sub` (identity `public_id`), `tenant` (the
+membership's workspace), `stamp` (identity `users.security_stamp`) and `mstamp` (that membership's
+`workspace_memberships.security_stamp`). Consequences every change must respect:
+
+- **Identity-wide events** (password change/reset, erase, merge) rotate `users.security_stamp` —
+  every workspace's sessions die.
+- **Workspace-scoped events** (role change, disable, removal, leave) rotate **that membership's**
+  stamp only; other workspaces' sessions of the same person keep working. Never rotate the identity
+  stamp for a workspace-scoped event.
+- The validator (`API/Extensions/AuthenticationExtensions.cs`) rejects a token whose membership is
+  ended, inactive or not approved, within the 60 s cache window; API keys, magic links and device
+  codes are **per membership** (`owner_id` = the workspace) and are checked against the same
+  membership state at login. Removing a person from a workspace revokes that workspace's keys and
+  links; disabling leaves them in place but inert.
+- A `scope=select_workspace` token (DB-11b) is accepted **only** by `POST /api/auth/switch-workspace`;
+  the fence runs in `OnTokenValidated` regardless of `Auth:ValidateSecurityStamp`.
+- `TenantStamp.TryRequireOwner` (S-14) is the only way to obtain "the caller's workspace" for a
+  write; a non-super-admin without a `tenant` claim is Forbidden. `?? _currentUser.Id` never returns.
