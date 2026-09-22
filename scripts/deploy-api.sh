@@ -18,6 +18,16 @@ set -euo pipefail
 REPO="${POINTER_REPO:-$HOME/pointer-api}"
 cd "$REPO"
 
+# DB-01 freshness gate: the nightly cron must have produced a dump in the last 26 h. If it has not,
+# the backup system is silently broken and the pre-deploy dump below would be the only recent copy.
+BACKUP_DIR="${BACKUP_DIR:-$HOME/backups}"
+if [ "${POINTER_SKIP_BACKUP_FRESHNESS:-0}" != "1" ] \
+   && [ -z "$(find "$BACKUP_DIR" -maxdepth 1 -name 'pointer-*.dump' -mmin -1560 2>/dev/null | head -1)" ]; then
+  echo "deploy REFUSED: no pointer-*.dump newer than 26 h in $BACKUP_DIR — check 'crontab -l' and $BACKUP_DIR/backup.log," >&2
+  echo "fix the nightly backup, or export POINTER_SKIP_BACKUP_FRESHNESS=1 to override this once." >&2
+  exit 2
+fi
+
 # DB-09 (DB-RULES R7): a migration whose class carries [ContractMigration] — every migration with a
 # DB-RULES approval marker — never auto-applies on an ordinary deploy. It ships through this script as
 #   POINTER_APPLY_CONTRACT=1 POINTER_CONTRACT_LABEL=pre-<slug> bash scripts/deploy-api.sh

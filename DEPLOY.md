@@ -91,13 +91,17 @@ curl -sI https://demo.pointer.moamen.work/                        # 200 (same bu
 ## Backups
 
 [`scripts/backup-db.sh`](scripts/backup-db.sh) runs **on the VM** and writes a compressed
-`pg_dump` custom-format archive to `~/backups/pointer-<UTC ts>[-<label>].dump` (mode 600, dir 700).
-It refuses to keep a file that is not a valid archive, and prunes dumps older than 14 days while
-always keeping the newest three.
+`pg_dump` custom-format archive to `~/backups/pointer-<UTC ts>[-<label>].dump` (mode 600, dir 700),
+plus a best-effort `uploads-<UTC ts>[-<label>].tgz` archive of the compose `uploads` volume (comment
+screenshots — not in Postgres). It refuses to keep a dump that is not a valid archive, and prunes
+both patterns older than 14 days while always keeping the newest three of each.
 
 Two callers:
 
-- **Before every API deploy** — `scripts/deploy-api.sh` calls it with the label `pre-deploy`.
+- **Before every API deploy** — `scripts/deploy-api.sh` calls it with the label `pre-deploy`. That
+  same script also **refuses to deploy** when the newest `pointer-*.dump` in `~/backups` is older
+  than 26 hours (the nightly cron should always have produced one), overridable once with
+  `POINTER_SKIP_BACKUP_FRESHNESS=1`.
 - **Nightly** — a cron entry on the VM (installed 2026-09-22):
 
   ```
@@ -105,8 +109,36 @@ Two callers:
   ```
 
 Dumps live on the same VM disk as the database. That protects against a bad migration or a bad
-deploy, **not** against losing the VM. Copying the newest dump off-box (object storage, or an
-`rsync` from your machine) is the next step and is tracked in `docs/db/`.
+deploy, **not** against losing the VM — see "Off-box copy" below.
+
+### Off-box copy
+
+Nightly (and pre-deploy) backups are also copied off the VM to an Oracle Object Storage bucket
+(`pointer-backups`) via [`scripts/offsite-backup.sh`](scripts/offsite-backup.sh), which runs
+`rclone` under an rclone remote named `offsite`. Setup on a fresh VM:
+
+```bash
+curl https://rclone.org/install.sh | sudo bash
+rclone config   # add a remote named `offsite`: type s3, provider chosen to match the bucket
+                # (Oracle Object Storage today; Cloudflare R2 / Backblaze B2 work identically —
+                # all are rclone's `s3` backend with the matching `provider`), fill in the
+                # endpoint/access key/secret from the storage console. Config lands in
+                # ~/.config/rclone/rclone.conf (mode 600) — credentials live ONLY there, never in
+                # this repo or in .env.prod.
+```
+
+Then set `OFFSITE_REMOTE=offsite:pointer-backups` (and optionally `OFFSITE_HEALTHCHECK_URL`, a
+dead-man's-switch URL such as healthchecks.io/UptimeRobot/Cronitor) in `.env.prod`
+(`.env.prod.example` documents both keys). The nightly cron then copies both the dump and the
+uploads tarball to `offsite:pointer-backups/pointer/` and prunes remote objects older than 30 days
+(`rclone delete --min-age 30d`); verify with `rclone ls offsite:pointer-backups/pointer`.
+
+Uploads archive caveat: `tar` over a live volume is best-effort — a file written mid-run may be
+torn or missing from that night's archive (it is in the next one).
+
+Monitoring: with `OFFSITE_HEALTHCHECK_URL` set, the monitoring service alerts when pings stop.
+Until then, run `rclone ls offsite:pointer-backups/pointer | tail -3` weekly and check the newest
+timestamps are yesterday's.
 
 ### Restore
 
@@ -122,6 +154,7 @@ docker compose --env-file .env.prod -f docker-compose.prod.yml exec -T db \
   psql -U pointer -d postgres -c "DROP DATABASE pointer;" -c "CREATE DATABASE pointer OWNER pointer;"
 docker compose --env-file .env.prod -f docker-compose.prod.yml exec -T db \
   pg_restore -U pointer -d pointer --no-owner --no-privileges < "$DUMP"
+docker run --rm -v pointer-api_uploads:/u -v ~/backups:/b alpine:3 sh -c 'cd /u && tar -xzf /b/uploads-<ts>.tgz'
 docker compose --env-file .env.prod -f docker-compose.prod.yml up -d api
 ```
 
@@ -129,6 +162,14 @@ docker compose --env-file .env.prod -f docker-compose.prod.yml up -d api
 scratch `pointer_rehearsal` database on the dev container with exactly the `pg_restore` line above
 (26 tables, all 58 migration rows, row counts matched). The rehearsal recipe is `docs/db/DB-RULES.md`
 §R11; repeat it whenever `backup-db.sh` or the restore steps change.
+
+Uploads archive: best-effort snapshot of a live volume (a file written during the run may be torn);
+restore it **before** starting the API.
+
+If the VM itself is gone, fetch the newest dump and uploads tarball from the off-box bucket first
+(`rclone copy offsite:pointer-backups/pointer/pointer-<ts>.dump .` and the matching
+`uploads-<ts>.tgz`, from any machine with `rclone` configured against the same remote), then follow
+the same steps above against the fresh VM.
 
 If the restore is undoing a migration, check out the matching commit **before** starting the API
 again (`git checkout <commit>` then `up -d --build api`), otherwise boot re-applies the migration you
