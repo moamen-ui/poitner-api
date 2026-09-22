@@ -45,6 +45,12 @@ jobs:
           filters: |
             cli:
               - 'cli/**'
+      - name: Create dev .env for the compose stack
+        # docker-compose.yaml declares `env_file: .env` (gitignored). Without it every e2e run died in
+        # the reset phase with "env file … .env not found" — the suite had never been green on main.
+        # .env.example carries the local-only DBApplyContractMigrations=true so a fresh CI database
+        # may apply contract migrations (DB-09).
+        run: test -f .env || cp .env.example .env
       - name: Run E2E PR
         if: github.event_name == 'pull_request'
         env:

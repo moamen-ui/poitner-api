@@ -387,3 +387,12 @@ runs for unmarked migrations); `AdminSeeder`/`ApiKeyBackfill` (DB-07 removes the
 `backup-db.sh` and the DB-01 freshness block; CI YAML (DB-10); `Caddyfile`; the dashboard repo;
 `clients/`; e2e. Do **not** make the gate environment-aware (`IsProduction()`) — the flag is the
 only switch, so behaviour is identical everywhere.
+
+## 12. Amendment 2026-09-23 — fresh-database exemption
+
+`MigrationGate.AllowMigrateAsync` returns `true` without consulting `DBApplyContractMigrations` when
+`GetAppliedMigrationsAsync()` is empty (no `__EFMigrationsHistory` rows). Rationale: R7 protects
+existing rows; a fresh database (first boot of a self-hosted install, CI, a scratch rehearsal) has
+none, and refusing there made every e2e run and every first install fail once the first marked
+migration existed. Logged at Information as `DB-09: fresh database …`. The behaviour matrix in §3.3
+gains a row: *no applied migrations* → migrate everything, seed, boot.

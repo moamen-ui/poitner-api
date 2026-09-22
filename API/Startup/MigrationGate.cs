@@ -43,6 +43,19 @@ public static class MigrationGate
         if (pending.Count == 0)
             return true;
 
+        // A database with no applied migrations holds no data to protect: first boot of a fresh
+        // install, CI, or a scratch rehearsal database. The R7 gate exists for existing rows, so a
+        // fresh database may apply the whole chain (including marked migrations) unattended.
+        var applied = (await db.Database.GetAppliedMigrationsAsync(ct)).ToList();
+        if (applied.Count == 0)
+        {
+            logger.LogInformation(
+                "DB-09: fresh database (no applied migrations) — applying all {Count} pending migration(s) without the contract gate",
+                pending.Count
+            );
+            return true;
+        }
+
         var marked = FindContractMigrations(
             pending,
             db.GetService<IMigrationsAssembly>().Migrations
