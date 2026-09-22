@@ -2,7 +2,8 @@
 
 Standing rules for every schema change in this repository. Created 2026-09-22 by the db-architect
 review ([`DB-REVIEW-2026-09-22.md`](DB-REVIEW-2026-09-22.md)); amended the same day after the
-cross-reviews (R4, R6, R7, R13 — marked *(amended)*); amend, do not fork. Every execution
+cross-reviews (R4, R6, R7, R13 — marked *(amended)*) and again the same evening after the owner
+decisions (R7 marker form, **R7.1 batching**, R8 point 6); amend, do not fork. Every execution
 doc under [`execution/`](execution/) cites the rule numbers it relies on. `scripts/deploy-api.sh`
 already points here.
 
@@ -117,8 +118,44 @@ marker and attribute to agree. Until DB-09 ships, the reviewer of the PR is the 
 
 **Who signs a marker.** `by <name>` names the human owner, or names the agent **and** the standing
 owner instruction it acts under, in parentheses — precedent
-`20260922080137_DropShadowProjectAppUrlProjectId1.cs:11` ("by orchestrator (owner instruction
-"proceed"; …)"). A marker that names only an agent is not an approval.
+`20260922080137_DropShadowProjectAppUrlProjectId1.cs:12` ("by orchestrator (owner instruction
+"proceed"; …)"). A marker that names only an agent is not an approval. *(amended 2026-09-22
+evening)* When the owner decided a specific question that the marker encodes, the marker names the
+owner and the relayed instruction: `by Moamen (owner; instruction "…", relayed by the orchestrator;
+docs/db/execution/DB-NN-….md)` — DB-03/06/07 use this form.
+
+### R7.1 Batching several contract docs into one deploy *(added 2026-09-22 evening)*
+
+Several execution docs whose migrations all carry `[ContractMigration]` **may ship in one
+`POINTER_APPLY_CONTRACT=1` run** — one stop, one dump, one boot — when **all** of the following hold.
+The batch is a *deploy* decision; it never relaxes how each doc is reviewed.
+
+1. **Small blast radius.** The production database restores in well under a minute from the
+   labelled dump (rehearsed: 26 tables, seconds). Today that is true — one real workspace. Once
+   real tenants exist (say > 10 workspaces or a dump > 1 GB), batching stops: one contract doc per
+   deploy, so a failure is attributable and a restore is cheap to explain.
+2. **Each doc is its own PR/commit(s)**, merged in the docs' order, each green in CI (DB-10 applies
+   the whole chain from empty, DB-02 checks markers/attributes) and each read against its own §3
+   (R13). Never squash two docs' migrations into one file.
+3. **Every batched doc's prod pre-checks run immediately before the deploy and all pass** (DB-03
+   §9 step 1 `0 orphans`; DB-06 §3 ten zeros; DB-07 §2 zero). If any fails, **nothing ships** — do
+   not revert one doc on the VM to let the others through; fix, re-merge, re-check.
+4. **One R11 rehearsal of the combined pending chain** on a fresh prod dump taken the same day,
+   running every batched doc's verification queries; the rehearsal output is pasted into the last
+   doc's PR.
+5. **One dump labelled `pre-<first>-<last>`** (e.g. `pre-db03-08`), written into every batched doc's
+   §9. Code-only docs (DB-03b, DB-08) may ride along; ops-only docs (DB-01) are unrelated.
+6. **Rollback is all-or-nothing:** restore that dump (`DEPLOY.md` § Restore) and `git checkout` the
+   commit *before the first* batched doc, then `up -d --build api`. EF applies each migration in its
+   own transaction, so a failure mid-chain leaves the earlier ones applied — the answer is still the
+   restore, never a hand-fix of `__EFMigrationsHistory` or of the schema.
+7. **`deploy-api.sh` itself must already be the DB-09 version on the VM** before the batch run
+   (deploy the DB-09 commit with an ordinary run first while nothing is pending): bash reads the
+   script as it executes, so the run that pulls a new script must not also be the first to rely on
+   it.
+
+Verdict for the current plan: DB-03 → DB-03b → DB-06 → DB-07 → DB-08 satisfy 1–7 and ship as
+**one** run, `POINTER_APPLY_CONTRACT=1 POINTER_CONTRACT_LABEL=pre-db03-08 bash scripts/deploy-api.sh`.
 
 ## R8. Tenancy invariant
 
@@ -135,6 +172,9 @@ Every new entity that holds customer data:
 5. has a test in the shape of `Tests/TenantQueryFilterTests.cs` proving tenant B reads **nothing**
    of tenant A; and, after DB-03, appears in `TenantService.HardDeleteOrder` (the reflection test
    in DB-03 fails the build otherwise).
+6. *(added 2026-09-22 evening)* **A workspace's name is `workspaces.name`** (owner decision Q3).
+   No code derives a workspace label from a `users` row (display name or e-mail); DB-03 §3.5 lists
+   the four sites that used to. `Workspace.PlaceholderName` (`"Workspace"`) is the only fallback.
 
 ## R9. Soft delete and uniqueness
 

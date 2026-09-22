@@ -5,6 +5,12 @@ Review finding: P0-4 residual (cross-review GLM B2 / AGY 1.4). Rules: R2, R3, R5
 one script edit, one attribute added to an already-applied migration file. No migration.**
 Must ship **before DB-07** (first Destructive migration) and before DB-03/DB-06 (they carry
 markers and rely on the enforced path). Recommended slot: right after DB-10.
+**Status: merged** `ff25a8d` (`ContractMigrationAttribute`, `API/Startup/MigrationGate.cs`,
+`Program.cs` gate with `return 3`, `deploy-api.sh` pre-flight + `POINTER_APPLY_CONTRACT=1` path,
+retroactive attributes on the DB-04/DB-05 migrations, `Tests/MigrationGateTests.cs`; 711 tests).
+**Production deploy pending** — it is code only; ship it with an **ordinary** `bash
+scripts/deploy-api.sh` *before* the DB-03..08 batch so the VM runs the new script (R7.1 point 7).
+The batch run is then the production proof of the gate (§9 step 4).
 
 ## 1. Goal
 

@@ -28,7 +28,7 @@ lost VM today loses every comment, screenshot and backup at once, and nobody rea
 - Restore procedure: `DEPLOY.md` § Restore (stop api → `backup-db.sh pre-restore` → `DROP/CREATE DATABASE` → `pg_restore --no-owner --no-privileges` → `up -d api`). **Rehearsed locally 2026-09-22** (`DEPLOY.md` "Last rehearsed": `pointer-20260922T071358Z-initial.dump` → `pointer_rehearsal`, 26 tables, 58 history rows, counts matched). Production-side restore still unexercised (review P0-1, now P2).
 - `scripts/deploy-api.sh:16-17` sets `REPO` and `cd`s into it; `:19-24` pull + `backup-db.sh pre-deploy`. DB-09 also edits this script (a separate block after the pull); the freshness block below goes **before** `== 1/4 pull ==` and does not overlap.
 - Local dev Postgres: `docker compose up -d db` → `localhost:5433`, user/db/password `pointer` (`docker-compose.yaml:3-9`). `just db-update` = `dotnet ef database update -p Infrastructure -s API` (`justfile:7`).
-- `rclone` is not installed on the VM (nothing in `DEPLOY.md` mentions it). Owner decision Q1 (review §8) picks the remote; this doc assumes **an S3-compatible bucket configured as rclone remote `offsite`**.
+- `rclone` is not installed on the VM (nothing in `DEPLOY.md` mentions it). Owner decision Q1 (review §8) picks the remote; this doc assumes **an rclone remote named `offsite`**. The owner is choosing between Cloudflare R2, Backblaze B2, Oracle Object Storage (all S3-compatible: rclone `s3` backend with the matching `provider`) and Google Drive (rclone `drive` backend) — every script line below is identical for all four; only the one-time `rclone config` differs (see §3 "If Google Drive").
 
 ## 3. Design
 
@@ -43,6 +43,20 @@ with `POINTER_SKIP_BACKUP_FRESHNESS=1`. Success signal: when `OFFSITE_HEALTHCHEC
 `.env.prod`, `offsite-backup.sh` GETs it after a successful copy (any dead-man's-switch service:
 healthchecks.io, UptimeRobot heartbeat, Cronitor); the service alerts when the ping stops. Until
 one is configured, `DEPLOY.md` schedules a weekly `rclone ls` eyeball.
+
+**If Google Drive (Q1 variant).** Same scripts, same `OFFSITE_REMOTE=offsite:<folder>` (a folder
+name instead of a bucket). One-time setup differs: `rclone config` → backend `drive`, scope `drive`
+(or `drive.file` — the remote then only sees files it created, which is enough and safer). The VM
+has no browser, so authenticate **headless**: either run `rclone authorize "drive"` on a laptop and
+paste the printed token into the VM's config prompt, or use a **service account** (`service_account_file
+= /home/ubuntu/.config/rclone/sa.json`, mode 600) and share the target folder with the service
+account's e-mail — note a service account has its own quota and cannot own files inside a personal
+"My Drive" unless the folder is shared to it or lives in a Shared Drive (`team_drive` in the config).
+Set `--drive-use-trash=false` on the `rclone delete` line in `offsite-backup.sh` (otherwise remote
+retention only moves dumps to Trash, which still counts against quota); no other line changes.
+Drive rate-limits parallel uploads, so keep `--transfers 2`. Versioning/lifecycle rules do not
+exist on Drive — the `rclone delete --min-age` line is the only remote retention. Everything else in
+this doc (freshness gate, healthcheck ping, uploads tar, acceptance criteria) is unchanged.
 
 Uploads archive caveat (GLM B8): `tar` over a live volume is **best-effort** — an upload written
 during the run may be torn or missing from that night's archive (it is in the next one). No size
@@ -127,8 +141,10 @@ Ops-only. Rules R5 (n/a), R6 (this doc *is* R6's completion), R11 (the rehearsal
    Nothing else in the script changes (DB-09 owns the other edits).
 4. **`DEPLOY.md`** § Backups (after line 109, before `### Restore`): add a paragraph "Off-box copy" —
    install `rclone` (`curl https://rclone.org/install.sh | sudo bash`), `rclone config` → remote named
-   `offsite`, S3-compatible provider chosen by the owner, bucket with versioning off and a lifecycle
-   rule of 30 days as belt-and-braces; set `OFFSITE_REMOTE=offsite:<bucket>` in `.env.prod`; the
+   `offsite`: S3-compatible provider chosen by the owner (R2 / B2 / Oracle — bucket with versioning
+   off and a lifecycle rule of 30 days as belt-and-braces) **or** Google Drive per §3 "If Google
+   Drive" (headless token or service account; `--drive-use-trash=false`); set
+   `OFFSITE_REMOTE=offsite:<bucket-or-folder>` in `.env.prod`; the
    nightly cron then copies both files; verify with `rclone ls offsite:<bucket>/pointer`. Note that
    credentials live only in `~/.config/rclone/rclone.conf` (mode 600), never in the repo.
    In § Restore, add after the `pg_restore` line:

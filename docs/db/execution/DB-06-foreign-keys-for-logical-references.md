@@ -1,9 +1,12 @@
 # DB-06 — Real foreign keys for integer logical references; cascade fixes; two redundant indexes
 
 Review findings: S-6, I-2, I-3, S-2 (root cause). Rules: R1, R4, R7, R11, R13. **Class: Additive
-(constraints) + two `DropIndex`.** One migration. Owner decision **Q4** (`usage_events`) before
-task 1; the default below applies if unanswered. Recommended after DB-03 (so orphan pre-checks have
-a single root), but has no code dependency on it.
+(constraints) + two `DropIndex`.** One migration. **Status 2026-09-22 (evening): Q4 answered —
+`usage_events.project_id` gets a real FK with `ON DELETE SET NULL`; ready to implement.** No owner
+approval line is needed (additive constraints); the migration carries the R4 marker and
+`[ContractMigration("DB-06")]` (DB-09, merged `ff25a8d`) because its `Up()` contains `DropIndex`/
+`DropForeignKey`. Recommended after DB-03 (so orphan pre-checks have a single root), but has no
+code dependency on it. May ship in the DB-03..08 batch deploy (DB-RULES R7.1).
 
 ## 1. Goal
 
@@ -28,7 +31,7 @@ Columns without an FK (mapping line of the property):
 | `invites.role_id` | `InviteMapping.cs:27` | `roles(id)` | yes | `SetNull` (invitee picks a role on accept; `Invite.cs:27`) |
 | `invites.plan_id` | `InviteMapping.cs:34` | `plans(id)` | yes | `Restrict` (plans are never hard-deleted) |
 | `role_tenant_overrides.role_id` | `RoleTenantOverrideMapping.cs:21` (NOT NULL) | `roles(id)` | no | `Cascade` |
-| `usage_events.project_id` | `UsageEventMapping.cs:17` | `projects(id)` | yes | **Q4 default: `SetNull`** |
+| `usage_events.project_id` | `UsageEventMapping.cs:17` | `projects(id)` | yes | **`SetNull`** (Q4 answered 2026-09-22: platform-wide counts survive a project's hard delete; matches DB-03's `owner_id` behaviour on the same table) |
 | `notifications.project_id` | `NotificationMapping.cs:34` — exists as `Restrict` | `projects(id)` | no | change to `Cascade` (I-2; a notification never outlives its project; `comment_id` is already `Cascade` at `:33`) |
 
 Not touched — and deliberately left as is: `project_app_urls.app_environment_id` is `Cascade`
@@ -86,14 +89,17 @@ predicted). Do not add a `DELETE` to the migration without a written owner decis
 
 ## 4. Safety classification
 
-Additive constraints (R1) with two index drops and one FK behaviour change. Marker:
-`// DB-RULES: R4 constraint approved <date> by <owner>`. Dump `pre-db06`; R7 explicit step (a
-pre-check miss fails the boot).
+Additive constraints (R1) with two index drops and one FK behaviour change. Marker, **verbatim**,
+on the line above `Up(`:
+`// DB-RULES: R4 constraint approved 2026-09-22 by Moamen (owner; instruction "choose the best for clean db", relayed by the orchestrator; docs/db/execution/DB-06-foreign-keys-for-logical-references.md)`
+and `[ContractMigration("DB-06")]` on the class (DB-02's guard requires both to be present together,
+`Tests/MigrationSafetyTests.cs:158-172`). Dump `pre-db06` alone, or `pre-db03-08` in the batch;
+R7 explicit path either way (a pre-check miss fails the boot).
 
 ## 5. File-level tasks
 
 1. Eight mapping edits per §3 (`AiRuleMapping`, `PredefinedActionMapping`, `PredefinedActionSuggestionMapping`, `QuickAccessLinkMapping`, `InviteMapping`, `RoleTenantOverrideMapping`, `UsageEventMapping`, `NotificationMapping`), plus the two index deletions.
-2. `just migrate name="AddForeignKeysForLogicalReferences"`; compare `Up()` to §3 (counts: 1 DropForeignKey, 2 DropIndex, ≤10 CreateIndex, 11 AddForeignKey); add marker; anything else → stop and report.
+2. `just migrate name="AddForeignKeysForLogicalReferences"`; compare `Up()` to §3 (counts: 1 DropForeignKey, 2 DropIndex, ≤10 CreateIndex, 11 AddForeignKey); add the §4 marker and `[ContractMigration("DB-06")]`; anything else → stop and report.
 3. `Tests/LogicalForeignKeyTests.cs` (§6). 4. `just fmt`, `just test`. 5. Rehearsal with the ten pre-checks.
 
 ## 6. Tests
@@ -122,7 +128,10 @@ re-adds the two single-column indexes. No data change either way. Dump `pre-db06
 
 ## 9. Release steps
 
-`git pull` → `stop api` → `backup-db.sh pre-db06` → ten pre-checks on prod (all 0) → `up -d --build api` → log grep → smoke: create + delete a predefined action on a project; trigger nothing else. Watch `DemoCleanupService` at the next hour tick: previously failing demo deletions should now log `hard-deleted`.
+1. Ten pre-checks (§3) on prod, all `0` — before the deploy, not after.
+2. Alone: `POINTER_APPLY_CONTRACT=1 POINTER_CONTRACT_LABEL=pre-db06 bash scripts/deploy-api.sh`. In the batch (R7.1): the single `pre-db03-08` run covers it.
+3. Log grep shows `Applying migration '…_AddForeignKeysForLogicalReferences'`; then `SELECT conname FROM pg_constraint WHERE NOT convalidated;` → no rows.
+4. Smoke: create + delete a predefined action on a project; trigger nothing else. Watch `DemoCleanupService` at the next hour tick: previously failing demo deletions should now log `hard-deleted`.
 
 ## 10. Out of scope
 

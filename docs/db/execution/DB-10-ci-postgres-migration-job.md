@@ -4,6 +4,8 @@ Review finding: P0-5 (open question **Q7 — answered yes** by the caller 2026-0
 GLM D1). Rules: R5, R11, R13 ([`DB-RULES.md`](../DB-RULES.md)). **Class: CI only — one new
 workflow file. No code, no migration, no production change.** Recommended slot: immediately after
 DB-05 (before DB-09/03/06, which all rely on hand-verified scaffolding).
+**Status: merged** `827cfd8` (`.github/workflows/db-migrations.yml`); **first CI run green**
+(run 35706559115: 60 migrations applied from empty, snapshot clean, Down/Up round-trip clean).
 
 ## 1. Goal
 

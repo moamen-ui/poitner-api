@@ -5,6 +5,10 @@ Review findings: S-4, S-5, M-2; cross-review AGY 1.3 / GLM (`plans`, `app_settin
 **Class: index Expand/Contract in one migration** (each old unique index is replaced by a new one
 that is at least as strict on live rows). One migration; **10** unique indexes replaced; no table
 data changes.
+**Status: shipped** `b35cf0c` (`20260922082557_SoftDeleteAwareUniqueIndexes`); **deployed to
+production 2026-09-22 08:42 UTC** (R7 explicit step, dump `pre-db05`, 10 `ux_*_live` indexes present,
+0 raw `_global` indexes remain — per the orchestrator's deploy report). Retroactively carries
+`[ContractMigration("DB-05")]` since DB-09 (`ff25a8d`).
 
 ## 1. Goal
 

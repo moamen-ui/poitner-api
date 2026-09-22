@@ -8,7 +8,7 @@ the first Destructive migration and it has to go through the enforced explicit p
 the written-only R7 procedure. The migration class also carries `[ContractMigration("DB-07")]`
 next to the marker (DB-09 §3).
 
-**Owner approval (required before task 1):** `Approved to drop users.api_key on ____-__-__ by ________` — fill in and paste into the PR description.
+**Owner approval:** `Approved to drop users.api_key — approved 2026-09-22 by Moamen (owner; instruction "choose the best for clean db", relayed by the orchestrator)`. Paste this line into the PR description verbatim. **Status 2026-09-22 (evening): approved; DB-09 merged (`ff25a8d`) — ready to implement.** May ship in the DB-03..08 batch deploy (DB-RULES R7.1, label `pre-db03-08`) or alone with `pre-db07`.
 
 ## 1. Goal
 
@@ -41,17 +41,19 @@ Existing rows: lose a column that is NULL in every row (pre-check). No other cha
 
 ## 4. Safety classification
 
-**Destructive** (R2 contract, R5). Marker: `// DB-RULES: R2 contract approved <date> by <owner>`.
-Dump `pre-db07` immediately before; R7 explicit step. Owner approval line above must be filled.
+**Destructive** (R2 contract, R5). Marker, **verbatim**, on the line above `Up(`:
+`// DB-RULES: R2 contract approved 2026-09-22 by Moamen (owner; instruction "choose the best for clean db", relayed by the orchestrator; docs/db/execution/DB-07-drop-users-api-key.md)`
+and `[ContractMigration("DB-07")]` on the class (both required together, `Tests/MigrationSafetyTests.cs:158-172`).
+Dump `pre-db07` (or the batch's `pre-db03-08`) immediately before; R7 explicit path only.
 
 ## 5. File-level tasks
 
-1. Delete `API/Startup/ApiKeyBackfillService.cs`; remove the comment and the `await ApiKeyBackfill.RunAsync(app.Services);` line from `API/Program.cs` (at `:171-173` as of `03093ad`; DB-09 inserts the gate above `MigrateAsync`, so re-locate by text, not line number) — `MigrateAsync`, the DB-09 gate and `SeedAsync` stay.
+1. Delete `API/Startup/ApiKeyBackfillService.cs`; remove the two comment lines and the `await ApiKeyBackfill.RunAsync(app.Services);` line from `API/Program.cs` (`:175-177` as of `ff25a8d`, directly after `AdminSeeder.SeedAsync`; re-locate by text if moved) — `MigrationGate.AllowMigrateAsync` (`:172-173`), `MigrateAsync` and `SeedAsync` stay.
 2. `Domain/Entity/User.cs:33-40` — delete the property and its doc-comment.
 3. `Infrastructure/Mappings/UserMapping.cs:37-38` — delete both lines.
 4. `Domain/Entity/ApiKey.cs:10-12` — replace the sentence "Replaces the plaintext `User.ApiKey` column, which is kept for one release … dropped in R2." with "Replaces the plaintext `User.ApiKey` column (dropped by DB-07)." `Application/Services/Interfaces/IAuthService.cs:10` — replace "(User.ApiKey)" with "(an `api_keys` row)".
 5. `dotnet build` — fix any compile error **only** by deleting code that referenced `User.ApiKey` (backfill tests); if a non-test, non-backfill file references it, stop and report.
-6. `just migrate name="DropUsersLegacyApiKey"`; verify `Up()` is exactly the two operations in §3; add marker; anything else → stop.
+6. `just migrate name="DropUsersLegacyApiKey"`; verify `Up()` is exactly the two operations in §3; add the §4 marker and `[ContractMigration("DB-07")]`; anything else → stop.
 7. `docs/roadmap/execution/00-API-INVENTORY.md` §1 — change the "API key storage today" bullet to point at `api_keys` (one line). 8. `just fmt`, `just test`. 9. Rehearsal with the pre-check.
 
 ## 6. Tests
@@ -74,11 +76,10 @@ already nulled by the backfill on the first boot after R1-06; nothing depends on
 
 ## 9. Release steps
 
-Owner approval line filled → merge → on the VM `git pull` → `stop api` → `backup-db.sh pre-db07` →
-prod pre-check `SELECT count(*) FROM users WHERE api_key IS NOT NULL;` = 0 (else abort: some user
-row was written with a plaintext key by a path this review did not find — report) → `up -d --build
-api` → log grep → smoke: `POST /api/auth/login-with-key` with the owner's key returns a token;
-profile page shows the key.
+1. Prod pre-check **before** the deploy: `docker compose --env-file .env.prod -f docker-compose.prod.yml exec -T db psql -U pointer -d pointer -tAc "SELECT count(*) FROM users WHERE api_key IS NOT NULL;"` → `0` (else abort: some user row was written with a plaintext key by a path this review did not find — report).
+2. Merge (approval line in the PR) → `POINTER_APPLY_CONTRACT=1 POINTER_CONTRACT_LABEL=pre-db07 bash scripts/deploy-api.sh` alone, or the batch's single `pre-db03-08` run (R7.1). The script stops the API, dumps, rebuilds; the pre-flight lists `…_DropUsersLegacyApiKey`.
+3. Log grep → `Applying migration '…_DropUsersLegacyApiKey'`; `\d users` shows no `api_key`.
+4. Smoke: `POST /api/auth/login-with-key` with the owner's key returns a token; profile page shows the key.
 
 ## 10. Out of scope
 

@@ -2,6 +2,9 @@
 
 Review finding: S-3, M-2. Rules: R2 (contract), R5, R7, R11, R13. **Class: Contract** — drops a
 column that is always NULL. One small migration; the ideal first exercise of the rehearsal loop.
+**Status: shipped** `7a015cb`; **deployed to production 2026-09-22 08:18 UTC** (R7 explicit step,
+dump `pre-db04`, pre-check 0, 15 rows unchanged, smoke 200). Retroactively carries
+`[ContractMigration("DB-04")]` since DB-09 (`ff25a8d`).
 
 ## 1. Goal
 
