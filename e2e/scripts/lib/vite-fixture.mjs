@@ -80,8 +80,12 @@ export function buildFixture({ dir, buildSha, enabled = true } = {}) {
       cpSync(cachedNodeModules, targetNodeModules, { recursive: true });
     } else {
       mkdirSync(CACHE_DIR, { recursive: true });
-      execFileSync('npm', ['ci'], { cwd: targetDir, stdio: 'pipe' });
-      cpSync(targetNodeModules, cachedNodeModules, { recursive: true });
+      const fixtureNodeModules = join(VITE_FIXTURE_DIR, 'node_modules');
+      if (!existsSync(fixtureNodeModules)) {
+        execFileSync('npm', ['ci', '--no-audit', '--no-fund'], { cwd: VITE_FIXTURE_DIR, stdio: 'pipe' });
+      }
+      cpSync(fixtureNodeModules, cachedNodeModules, { recursive: true });
+      cpSync(cachedNodeModules, targetNodeModules, { recursive: true });
     }
   }
 

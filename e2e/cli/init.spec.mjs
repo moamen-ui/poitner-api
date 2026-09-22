@@ -52,10 +52,13 @@ test('R1-02-04 — init-yes-ci', async () => {
     const repo1 = await tempRepo(VITE_FIXTURE);
     cleanups.push(repo1.cleanup);
 
+    // Commit d54f0cf made --scope global default; specify --scope repo so .pointer/credentials.env is written
     const sub1 = await spawnCli({
       cwd: repo1.dir,
       args: [
         'init',
+        '--scope',
+        'repo',
         '--server',
         SERVER,
         '--key',
@@ -138,6 +141,8 @@ test('R1-02-04 — init-yes-ci', async () => {
       cwd: repo1.dir,
       args: [
         'init',
+        '--scope',
+        'repo',
         '--server',
         SERVER,
         '--key',

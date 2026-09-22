@@ -115,13 +115,15 @@ test('R1-04-02 — doctor-green-after-init', async () => {
       // R2-03 added the staleness check: it compares each installed skill copy's version stamp
       // against /api/meta.skillVersion, so `doctor` can say a skill file is older than the server.
       'stale',
+      // Commit 2353fa0 added the source-map check with --fix to doctor (see docs/roadmap/execution/R5-00-INDEX.md)
+      'source-map',
     ];
     const checks = docJsonRes.json.checks || [];
     const checkIds = checks.map((c) => c.id);
 
     expect(
       checkIds.slice().sort(),
-      'checks ids must be exactly config, server, meta, clock, key, project, widget, widget-served, skills, gitignore, stack, stale'
+      'checks ids must be exactly config, server, meta, clock, key, project, widget, widget-served, skills, gitignore, stack, stale, source-map'
     ).toEqual(expectedChecks.slice().sort());
 
     for (const c of checks) {
@@ -182,10 +184,13 @@ test('R1-04-03 ⛓ — doctor-detects-tracked-credentials', async () => {
     const key = await getDeveloperApiKey();
 
     // 1. Initialize repo
+    // Commit d54f0cf made --scope global default; specify --scope repo so .pointer/credentials.env is written
     const initRes = await spawnCli({
       cwd,
       args: [
         'init',
+        '--scope',
+        'repo',
         '--server',
         BASE_URL,
         '--key',

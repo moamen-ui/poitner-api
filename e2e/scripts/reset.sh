@@ -36,3 +36,12 @@ until curl -sf http://localhost:8090/swagger/v1/swagger.json > /dev/null 2>&1; d
 done
 
 echo "==> API ready."
+
+if docker compose ps --services 2>/dev/null | grep -q '^verdaccio$'; then
+  echo "==> Waiting for Verdaccio on :4873 ..."
+  until curl -sf http://localhost:4873/-/ping > /dev/null 2>&1; do
+    sleep 1
+  done
+  echo "==> Verdaccio ready."
+fi
+

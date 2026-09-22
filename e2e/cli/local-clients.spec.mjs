@@ -58,11 +58,17 @@ test('R1-10-01 — local generate → build → publish', async () => {
 
   // 1. Preflight: curl -fsS http://localhost:4873/-/ping and curl -fsS http://localhost:8090/swagger/v1/swagger.json | jq -e '.paths["/api/meta"]'
   let regPingOk = false;
-  try {
-    const pingRes = await fetch(`${REGISTRY_URL}/-/ping`);
-    regPingOk = pingRes.ok;
-  } catch {
-    regPingOk = false;
+  for (let attempt = 0; attempt < 30; attempt++) {
+    try {
+      const pingRes = await fetch(`${REGISTRY_URL}/-/ping`);
+      if (pingRes.ok) {
+        regPingOk = true;
+        break;
+      }
+    } catch {
+      // Verdaccio may still be starting up
+    }
+    await new Promise((r) => setTimeout(r, 1000));
   }
   expect(regPingOk, `Verdaccio registry must be running on ${REGISTRY_URL}`).toBe(true);
 

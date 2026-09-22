@@ -38,6 +38,10 @@ jobs:
         with:
           node-version: '20.x'
           cache: 'npm'
+      - name: Configure Git identity
+        run: |
+          git config --global user.email "e2e@pointer.local"
+          git config --global user.name "e2e"
       - name: Path filters
         id: filter
         uses: dorny/paths-filter@v3
@@ -45,6 +49,10 @@ jobs:
           filters: |
             cli:
               - 'cli/**'
+      - name: Install root dependencies
+        run: npm ci --no-audit --no-fund
+      - name: Build CLI
+        run: cd cli && npm ci --no-audit --no-fund && npm run build
       - name: Install e2e dependencies and the Playwright browser
         # The api/widget/cli phases run `npx playwright test`; without `npm ci` in e2e/ the run died
         # with ERR_MODULE_NOT_FOUND '@playwright/test' right after the seed phase.
@@ -66,18 +74,30 @@ jobs:
           Email__Smtp__Port=1025
           Email__FromEmail=dev@pointer.local
           Email__FromName=Pointer (e2e)
+          COMPOSE_PROFILES=e2e-nightly
           EOF
+      - name: Wait for Verdaccio registry
+        run: |
+          for i in $(seq 1 30); do
+            if curl -sf http://localhost:4873/-/ping > /dev/null 2>&1; then
+              echo "Verdaccio ready on :4873"
+              break
+            fi
+            sleep 1
+          done
       - name: Run E2E PR
         if: github.event_name == 'pull_request'
         env:
           run_cli: ${{ steps.filter.outputs.cli }}
         run: |
           cd e2e
+          unset NODE_AUTH_TOKEN GITHUB_TOKEN || true
           bash run-e2e.sh --pr --ci
       - name: Run E2E Nightly
         if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || github.event_name == 'push'
         run: |
           cd e2e
+          unset NODE_AUTH_TOKEN GITHUB_TOKEN || true
           bash run-e2e.sh --nightly --ci
       - name: Upload Report
         if: always()
