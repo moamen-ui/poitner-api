@@ -125,6 +125,11 @@ docker compose --env-file .env.prod -f docker-compose.prod.yml exec -T db \
 docker compose --env-file .env.prod -f docker-compose.prod.yml up -d api
 ```
 
+**Last rehearsed:** 2026-09-22, locally — the `pointer-20260922T071358Z-initial.dump` restored into a
+scratch `pointer_rehearsal` database on the dev container with exactly the `pg_restore` line above
+(26 tables, all 58 migration rows, row counts matched). The rehearsal recipe is `docs/db/DB-RULES.md`
+§R11; repeat it whenever `backup-db.sh` or the restore steps change.
+
 If the restore is undoing a migration, check out the matching commit **before** starting the API
 again (`git checkout <commit>` then `up -d --build api`), otherwise boot re-applies the migration you
 just rolled back. Rehearse this once on a scratch database (`just up` locally, restore into it) so the
