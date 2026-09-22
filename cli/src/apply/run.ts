@@ -91,6 +91,21 @@ function copyToClipboard(text: string): boolean {
   return proc.status === 0;
 }
 
+/**
+ * Determines whether the source manifest should be rebuilt before building the apply prompt.
+ *
+ * An auto-rebuild is only triggered when at least one stamped hash is completely `unknown`
+ * (not found in either `.pointer/manifest.json` or `.pointer/manifest.prev.json`).
+ * Hashes resolving to `stale` already carry the rename/fallback search hint from
+ * `manifest.prev.json` and must be left alone — rebuilding would risk clobbering history.
+ */
+export function needsManifestRebuild(kinds: Iterable<string>): boolean {
+  for (const kind of kinds) {
+    if (kind === 'unknown') return true;
+  }
+  return false;
+}
+
 export async function runApply(
   options: ApplyRunOptions,
   ctx: ApplyClientContext,
@@ -110,17 +125,17 @@ export async function runApply(
 
   const items = await fetchQueue(ctx, filter);
 
-  // Rebuild the manifest before resolving, when the queue contains stamped hashes and the manifest
-  // cannot answer for them.
+  // Rebuild the manifest before resolving only when the queue contains stamped hashes that are
+  // completely unknown (not found in either the current manifest or manifest.prev.json).
   //
-  // Previously the prompt just told the agent the hash was unresolved and suggested the developer
-  // run `pointer map --from-source` — advice delivered to the wrong party, at the wrong moment, by
-  // a process that could simply do it. Regeneration is local and offline, so the cost of being
-  // wrong is a few hundred milliseconds.
+  // If a hash is already known as 'stale', manifest.prev.json has the component's previous
+  // name and location, which provides the rename/fallback search hint in the prompt. Rebuilding
+  // on stale hashes would be counterproductive and risk clobbering manifest history.
   const hashes = items
     .map((i) => i.element?.sourcePath)
     .filter((p): p is string => typeof p === 'string' && /^[0-9a-f]{8}$/.test(p));
-  if (hashes.length > 0 && hashes.some((h) => resolveSource(ctx.cwd, h).kind !== 'manifest')) {
+  const kinds = hashes.map((h) => resolveSource(ctx.cwd, h).kind);
+  if (needsManifestRebuild(kinds)) {
     const { buildManifest } = await import('../commands/map.js');
     await buildManifest(ctx.cwd, { quiet: true }).catch(() => null);
   }

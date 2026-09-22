@@ -1,5 +1,4 @@
 import { promises as fs } from 'node:fs';
-import { existsSync } from 'node:fs';
 import { join, relative, resolve } from 'node:path';
 import { execFileSync } from 'node:child_process';
 
@@ -53,12 +52,46 @@ async function walk(dir: string, out: string[] = []): Promise<string[]> {
  * It reads sources only. Nothing is stamped on disk; the output is the map, not the markup.
  */
 /**
+ * Compares an existing manifest JSON string with the newly generated manifest content.
+ * Returns true if both represent the same manifest entries, ignoring formatting
+ * or key order differences.
+ */
+export function isSameManifest(currentRaw: string, nextRaw: string): boolean {
+  if (currentRaw === nextRaw) return true;
+  if (currentRaw.trim() === nextRaw.trim()) return true;
+  try {
+    const curr = JSON.parse(currentRaw);
+    const next = JSON.parse(nextRaw);
+    const currEntries = curr.entries ?? curr.components ?? curr;
+    const nextEntries = next.entries ?? next.components ?? next;
+    const currKeys = Object.keys(currEntries);
+    const nextKeys = Object.keys(nextEntries);
+    if (currKeys.length !== nextKeys.length) return false;
+    for (const key of nextKeys) {
+      const c = currEntries[key];
+      const n = nextEntries[key];
+      if (!c) return false;
+      const cComp = c.component ?? c.componentName ?? c.export ?? null;
+      const nComp = n.component ?? n.componentName ?? n.export ?? null;
+      if (c.path !== n.path || cComp !== nComp) return false;
+    }
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
  * Rebuilds `.pointer/manifest.json` from the source tree, without a build.
  *
  * Split out of `mapCommand` so `doctor` and `apply` can regenerate a missing or stale manifest
  * themselves instead of printing "run pointer map --from-source" at a developer who then has to run
  * it — which was the plan's whole point and the part that never got wired up. It returns a result
  * rather than exiting, because a command that calls process.exit cannot be reused by anything.
+ *
+ * Rotation: when `.pointer/manifest.json` already exists and the newly built manifest differs from
+ * it, the existing manifest is rotated to `.pointer/manifest.prev.json`. An unchanged rebuild
+ * preserves `.pointer/manifest.prev.json` so that stale hash history is not clobbered.
  */
 export async function buildManifest(
   cwd: string,
@@ -104,22 +137,34 @@ export async function buildManifest(
   const target = resolve(root, '.pointer/manifest.json');
   await fs.mkdir(join(root, '.pointer'), { recursive: true });
 
-  // Rotate first: manifest.prev.json is what resolves a stale hash to the name it used to have,
-  // which is the whole value of this command after a rename. Never merge the two — a merged file
-  // would answer for a component that no longer exists as though it still did.
-  const prev = target.replace(/\.json$/, '.prev.json');
-  if (existsSync(target)) {
-    await fs.copyFile(target, prev);
-  }
-
   const entries = Object.fromEntries(
     Object.entries(manifest)
       .sort(([a], [b]) => a.localeCompare(b))
       .map(([hash, entry]) => [hash, { path: entry.path, component: entry.export }]),
   );
 
+  const nextContent = JSON.stringify({ version: 1, entries }, null, 2) + '\n';
+
+  let currentContent: string | null = null;
+  try {
+    currentContent = await fs.readFile(target, 'utf8');
+  } catch {
+    currentContent = null;
+  }
+
+  // Rotate only when the manifest actually changes: manifest.prev.json is what resolves a stale
+  // hash to the name it used to have (the whole value of this command after a rename). If the
+  // manifest did not change, rotating would copy manifest.json over manifest.prev.json and
+  // clobber history, turning stale hashes into unknown ones on subsequent runs.
+  // Never merge the two — a merged file would answer for a component that no longer exists as
+  // though it still did.
+  const prev = target.replace(/\.json$/, '.prev.json');
+  if (currentContent !== null && !isSameManifest(currentContent, nextContent)) {
+    await fs.copyFile(target, prev);
+  }
+
   const tmp = `${target}.tmp`;
-  await fs.writeFile(tmp, JSON.stringify({ version: 1, entries }, null, 2) + '\n', 'utf8');
+  await fs.writeFile(tmp, nextContent, 'utf8');
   await fs.rename(tmp, target);
 
   const count = Object.keys(entries).length;

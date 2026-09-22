@@ -15,7 +15,7 @@ var init_build_constants = __esm({
   "src/build-constants.ts"() {
     "use strict";
     BUILD_DEFAULT_SERVER = true ? "https://api.pointer.moamen.work" : "https://api.pointer.moamen.work";
-    BUILD_CLI_VERSION = true ? "0.6.1" : "0.0.0-dev";
+    BUILD_CLI_VERSION = true ? "0.6.2" : "0.0.0-dev";
   }
 });
 
@@ -546,10 +546,10 @@ var init_transform = __esm({
 var map_exports = {};
 __export(map_exports, {
   buildManifest: () => buildManifest,
+  isSameManifest: () => isSameManifest,
   mapCommand: () => mapCommand
 });
 import { promises as fs14 } from "node:fs";
-import { existsSync as existsSync3 } from "node:fs";
 import { join as join14, relative as relative4, resolve as resolve3 } from "node:path";
 import { execFileSync } from "node:child_process";
 function gitRoot(cwd2) {
@@ -581,6 +581,35 @@ async function walk(dir, out = []) {
     }
   }
   return out;
+}
+function isSameManifest(currentRaw, nextRaw) {
+  if (currentRaw === nextRaw)
+    return true;
+  if (currentRaw.trim() === nextRaw.trim())
+    return true;
+  try {
+    const curr = JSON.parse(currentRaw);
+    const next = JSON.parse(nextRaw);
+    const currEntries = curr.entries ?? curr.components ?? curr;
+    const nextEntries = next.entries ?? next.components ?? next;
+    const currKeys = Object.keys(currEntries);
+    const nextKeys = Object.keys(nextEntries);
+    if (currKeys.length !== nextKeys.length)
+      return false;
+    for (const key of nextKeys) {
+      const c = currEntries[key];
+      const n = nextEntries[key];
+      if (!c)
+        return false;
+      const cComp = c.component ?? c.componentName ?? c.export ?? null;
+      const nComp = n.component ?? n.componentName ?? n.export ?? null;
+      if (c.path !== n.path || cComp !== nComp)
+        return false;
+    }
+    return true;
+  } catch {
+    return false;
+  }
 }
 async function buildManifest(cwd2, opts = {}) {
   const root = gitRoot(cwd2);
@@ -615,15 +644,22 @@ async function buildManifest(cwd2, opts = {}) {
   }
   const target = resolve3(root, ".pointer/manifest.json");
   await fs14.mkdir(join14(root, ".pointer"), { recursive: true });
-  const prev = target.replace(/\.json$/, ".prev.json");
-  if (existsSync3(target)) {
-    await fs14.copyFile(target, prev);
-  }
   const entries = Object.fromEntries(
     Object.entries(manifest).sort(([a], [b]) => a.localeCompare(b)).map(([hash, entry]) => [hash, { path: entry.path, component: entry.export }])
   );
+  const nextContent = JSON.stringify({ version: 1, entries }, null, 2) + "\n";
+  let currentContent = null;
+  try {
+    currentContent = await fs14.readFile(target, "utf8");
+  } catch {
+    currentContent = null;
+  }
+  const prev = target.replace(/\.json$/, ".prev.json");
+  if (currentContent !== null && !isSameManifest(currentContent, nextContent)) {
+    await fs14.copyFile(target, prev);
+  }
   const tmp = `${target}.tmp`;
-  await fs14.writeFile(tmp, JSON.stringify({ version: 1, entries }, null, 2) + "\n", "utf8");
+  await fs14.writeFile(tmp, nextContent, "utf8");
   await fs14.rename(tmp, target);
   const count = Object.keys(entries).length;
   if (!opts.quiet) {
@@ -720,7 +756,7 @@ var init_auth = __esm({
 });
 
 // src/vite/resolve.ts
-import { existsSync as existsSync4, readFileSync } from "node:fs";
+import { existsSync as existsSync3, readFileSync } from "node:fs";
 import { join as join17 } from "node:path";
 function entryOf(json, hash) {
   if (!json || typeof json !== "object")
@@ -738,7 +774,7 @@ function normalise(entry) {
   };
 }
 function readJson2(path) {
-  if (!existsSync4(path))
+  if (!existsSync3(path))
     return null;
   try {
     return JSON.parse(readFileSync(path, "utf8"));
@@ -5241,6 +5277,13 @@ function copyToClipboard(text) {
   proc = spawnSync("xsel", ["--clipboard", "--input"], { input: text, encoding: "utf8" });
   return proc.status === 0;
 }
+function needsManifestRebuild(kinds) {
+  for (const kind of kinds) {
+    if (kind === "unknown")
+      return true;
+  }
+  return false;
+}
 async function runApply(options, ctx) {
   await postEvent(ctx.server, ctx.token, {
     type: "apply_started",
@@ -5256,7 +5299,8 @@ async function runApply(options, ctx) {
     filter.environment = options.environment;
   const items = await fetchQueue(ctx, filter);
   const hashes = items.map((i) => i.element?.sourcePath).filter((p) => typeof p === "string" && /^[0-9a-f]{8}$/.test(p));
-  if (hashes.length > 0 && hashes.some((h) => resolveSource(ctx.cwd, h).kind !== "manifest")) {
+  const kinds = hashes.map((h) => resolveSource(ctx.cwd, h).kind);
+  if (needsManifestRebuild(kinds)) {
     const { buildManifest: buildManifest2 } = await Promise.resolve().then(() => (init_map(), map_exports));
     await buildManifest2(ctx.cwd, { quiet: true }).catch(() => null);
   }
@@ -11279,7 +11323,7 @@ var ALL_TOOLS = [
 
 // src/mcp/tools.ts
 init_api();
-import { existsSync as existsSync5, readFileSync as readFileSync2 } from "node:fs";
+import { existsSync as existsSync4, readFileSync as readFileSync2 } from "node:fs";
 import { isAbsolute as isAbsolute3, join as join20, relative as relative5, resolve as resolve4 } from "node:path";
 import { spawnSync as spawnSync3 } from "node:child_process";
 init_build_constants();
@@ -11593,7 +11637,7 @@ async function handleCommitAndMark(args, ctx) {
       if (rel.startsWith("..") || isAbsolute3(rel)) {
         throw mcpError("git", `Path escapes repository root: ${cleanPath}`);
       }
-      if (!existsSync5(resolved)) {
+      if (!existsSync4(resolved)) {
         throw mcpError("git", `File does not exist: ${cleanPath}`);
       }
     }
@@ -11808,7 +11852,7 @@ async function handleResolveSource(args, ctx) {
     throw mcpError("forbidden", "hash is required");
   }
   const manifestPath = join20(ctx.cwd, ".pointer/manifest.json");
-  if (!existsSync5(manifestPath)) {
+  if (!existsSync4(manifestPath)) {
     return { path: null, reason: "no-manifest" };
   }
   try {
