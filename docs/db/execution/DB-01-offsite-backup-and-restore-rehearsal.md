@@ -10,6 +10,13 @@ backup-freshness gate in `deploy-api.sh`, a success ping for the off-box copy, a
 caveat. **Two halves:** part A (uploads tar, freshness gate, ping variable) needs no owner decision
 and may ship any time; part B (rclone off-box copy) waits for Q1.
 
+**Status 2026-09-22 (deployed ~10:15 UTC): both parts shipped.** Q1 answered — **Oracle Object
+Storage**, bucket `pointer-backups`, rclone remote `offsite`. Production now runs the nightly cron
+and pre-deploy dumps with the uploads tarball, uploads both to the offsite bucket, has the
+freshness gate live in `deploy-api.sh`, and pings the configured healthcheck URL on a successful
+copy. Restore has been rehearsed **locally** only (§2); a production-side restore is still
+unexercised. Nothing left in this doc otherwise.
+
 ## 1. Goal
 
 Every nightly and pre-deploy backup ends up (a) also containing the comment screenshots and (b)

@@ -10,6 +10,12 @@ next to the marker (DB-09 §3).
 
 **Owner approval:** `Approved to drop users.api_key — approved 2026-09-22 by Moamen (owner; instruction "choose the best for clean db", relayed by the orchestrator)`. Paste this line into the PR description verbatim. **Status 2026-09-22 (evening): approved; DB-09 merged (`ff25a8d`) — ready to implement.** May ship in the DB-03..08 batch deploy (DB-RULES R7.1, label `pre-db03-08`) or alone with `pre-db07`.
 
+**Deployed 2026-09-22 12:05 UTC**, batched with DB-03/DB-06/DB-03b(API)/DB-08 in one contract
+deploy per R7.1 (dump `pre-db03-08`), after the pre-check (non-null `api_key` count `0`) and a
+combined rehearsal on a same-day dump (`pre-batch-rehearsal`). After: `users.api_key` is gone.
+Implementation note: the §7.1 snapshot grep can never read `0` because of the unrelated
+`api_keys` table name — intent was verified manually instead.
+
 ## 1. Goal
 
 Finish R1-06 (`docs/roadmap/execution/R1-06-api-key-hardening.md`): keys have lived hashed +

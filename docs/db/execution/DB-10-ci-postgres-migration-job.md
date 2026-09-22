@@ -6,6 +6,7 @@ workflow file. No code, no migration, no production change.** Recommended slot: 
 DB-05 (before DB-09/03/06, which all rely on hand-verified scaffolding).
 **Status: merged** `827cfd8` (`.github/workflows/db-migrations.yml`); **first CI run green**
 (run 35706559115: 60 migrations applied from empty, snapshot clean, Down/Up round-trip clean).
+**Green on every push on 2026-09-22** (runs 35706559115, 35717887752, 35721695261, 35724951372).
 
 ## 1. Goal
 

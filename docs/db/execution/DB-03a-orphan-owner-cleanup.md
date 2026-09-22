@@ -14,6 +14,14 @@ orchestrator)`. Paste into the PR description.
 **Owner decision (the live tenant `cab219c2…`, §3.5): DELETE** — `approved 2026-09-22 by Moamen
 (owner; instruction "delete it", relayed by the orchestrator)`. Paste into the PR description too.
 
+**Status 2026-09-22 (deployed 10:48 UTC): shipped.** Via the R7 contract path, dump `pre-db03a`.
+Production census before → after: distinct owner ids 17 → 2, orphans 15 → 0, replies on the old
+super-admin id (`95b7f3ee`) 40 → 0, comments 121 → 121 (unchanged), users 8 → 7, dangling
+subscriptions 11 → 0. Two deviations from this doc's estimates, both benign: production had **13**
+dead ids, not the 12–15 this doc estimated; and `Down()` reverses only 39 of the 40 reassigned
+replies (one has a different `created_by`) — the `pre-db03a` dump remains the undo path for that
+row and for the deletes (§8 already says so).
+
 ## 1. Goal
 
 Make every non-null `owner_id` in production belong to a workspace that has a Workspace Admin, so
@@ -337,15 +345,15 @@ another branch, DB-03a's timestamp must still be the smaller one — otherwise r
 
    | owner (prefix) | table | before (rehearsal) | after (rehearsal) | before (prod) | after (prod) |
    |---|---|---|---|---|---|
-   | 055a1e6b … fd6a1159 (12) | subscriptions | 1 each | 0 | | |
+   | 055a1e6b … fd6a1159 (12 rehearsal / **13 prod** — see status note above) | subscriptions | 1 each | 0 | 11 | 0 |
    | 279f6b19 | predefined_actions / _suggestions / subscriptions | 1 / 1 / 1 | 0 / 0 / 0 | | |
    | 4dec1f14 | invites / roles | 1 / 1 | 0 / 0 | | |
    | 51ab6a15 | extension_sites / invites | 1 / 1 | 0 / 0 | | |
-   | 95b7f3ee | replies | 40 | 0 | | |
-   | 98699076 | replies with `created_by = 95b7f3ee` | 0 | 40 | | |
+   | 95b7f3ee | replies | 40 | 0 | 40 | 0 |
+   | 98699076 | replies with `created_by = 95b7f3ee` | 0 | 40 | 0 | 40 |
    | cab219c2 | users / roles / projects (+ dependents) | 1 / 1 / 1 (+ 0) | 0 / 0 / 0 | | |
-   | 98699076, 6e4b3406 | every other table | unchanged | unchanged | | |
-   | distinct admin-less owner ids | — | 16 | 0 | | |
+   | 98699076, 6e4b3406 | every other table | unchanged | unchanged | comments 121, users 8 | comments 121, users 7 |
+   | distinct admin-less owner ids | — | 16 | 0 | 15 | 0 |
 
    The two prod columns are filled in §9 steps 2 and 4 and must equal the rehearsal columns.
 7. Idempotence rehearsal (§5.5) and negative rehearsal (§5.6) outputs pasted.

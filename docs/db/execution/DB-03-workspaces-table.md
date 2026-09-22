@@ -17,6 +17,14 @@ from the admin user to `workspaces.name`; §9 step 1 is a mandatory prod pre-che
 rename surface is [DB-03b](DB-03b-workspace-name-surface.md). Earlier amendments (GLM B1/B4/B5,
 AGY 3.1) stand.
 
+**Status 2026-09-22 (deployed 12:05 UTC): shipped**, batched with DB-06/DB-07/DB-03b(API)/DB-08 in
+one contract deploy per R7.1 (dump `pre-db03-08`), after pre-checks (DB-03 orphans `0`) and a
+combined rehearsal on a same-day dump (`pre-batch-rehearsal`). After: 65 migrations, 2 `workspaces`
+rows both still named `Workspace` (the placeholder — renaming needs the DB-03b dashboard card, held
+on client regen + `dashboard-agent`), 23 FKs to `workspaces`, comments 121 / users 7 / projects 27 /
+replies 131 unchanged. Implementation note: the test doubles needed a SQLite `btrim` shim, since the
+`workspaces.name` check constraint uses `btrim`.
+
 ## 1. Goal
 
 Give the workspace a row of its own. Today a workspace is a uuid copied into `owner_id` on 23

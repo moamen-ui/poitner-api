@@ -9,6 +9,10 @@ because it has no migration.
 **Owner decision (Q8, answered 2026-09-22 by Moamen — "your defaults stand", relayed by the
 orchestrator):** `Retention__UsageEventsDays=180 Retention__NotificationsReadDays=90 Retention__PageContextSnapshotDays=30 Retention__InvitesDays=90`, `Retention__Enabled=true`.
 
+**Deployed 2026-09-22 12:05 UTC, enabled**, batched with DB-03/DB-06/DB-07/DB-03b(API) in one
+contract deploy per R7.1 (dump `pre-db03-08`). Implementation note: `API/AssemblyInfo.cs` gained
+an `InternalsVisibleTo` entry for the retention tests.
+
 ## 1. Goal
 
 Four tables grow without bound and nothing prunes them: `usage_events` (append-only analytics),

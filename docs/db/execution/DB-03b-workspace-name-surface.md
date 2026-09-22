@@ -7,6 +7,11 @@ service). **Class: code only — no migration, no schema change.** Requires DB-0
 or any later ordinary deploy; the dashboard half follows the once-per-phase client regeneration
 (CLAUDE.md rules 1–5, `dashboard-agent`).
 
+**Status 2026-09-22 (deployed 12:05 UTC): API half shipped**, batched with DB-03/DB-06/DB-07/DB-08
+in one contract deploy per R7.1 (dump `pre-db03-08`). Both production `workspaces` rows are still
+named with the `Workspace` placeholder — renaming from the dashboard needs the DB-03b dashboard
+card, which is **pending** on the client regen + `dashboard-agent` sync.
+
 ## 1. Goal
 
 After DB-03 every workspace is named `Workspace` (the placeholder). This doc gives the workspace

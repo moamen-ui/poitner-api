@@ -8,6 +8,12 @@ approval line is needed (additive constraints); the migration carries the R4 mar
 `DropForeignKey`. Recommended after DB-03 (so orphan pre-checks have a single root), but has no
 code dependency on it. May ship in the DB-03..08 batch deploy (DB-RULES R7.1).
 
+**Status 2026-09-22 (deployed 12:05 UTC): shipped**, batched with DB-03/DB-07/DB-03b(API)/DB-08 in
+one contract deploy per R7.1 (dump `pre-db03-08`), after the pre-check (DB-06 dangling refs `0`)
+and a combined rehearsal on a same-day dump (`pre-batch-rehearsal`). One implementation note: this
+migration created **8** indexes, not the 10 this doc estimated — two were absorbed by existing
+prefix indexes, as the doc allowed.
+
 ## 1. Goal
 
 Every `*_id` integer column that names a row in another table is enforced by the database, with a
