@@ -168,6 +168,35 @@ scratch `pointer_rehearsal` database on the dev container with exactly the `pg_r
 (26 tables, all 58 migration rows, row counts matched). The rehearsal recipe is `docs/db/DB-RULES.md`
 §R11; repeat it whenever `backup-db.sh` or the restore steps change.
 
+**Last drilled:** <date> on the prod VM — `bash scripts/restore-drill.sh` restored the newest
+off-site dump into `pointer_drill`, verified row counts matched, and dropped the scratch DB in
+<N>s. Repeat monthly or after any change to `backup-db.sh`, `offsite-backup.sh`, or the restore
+procedure above.
+
+### Restore drill
+
+[`scripts/restore-drill.sh`](scripts/restore-drill.sh) rehearses the restore above against real
+production data without touching the live `pointer` database. It runs **on the prod VM**: fetches
+the newest `pointer-*.dump` and `uploads-*.tgz` from `offsite:pointer-backups/pointer/`, restores
+the dump into a scratch database `pointer_drill` on the same Postgres container, compares row
+counts against the live `pointer` DB (`users`, `comments`, `projects`, `replies`,
+`__EFMigrationsHistory`), verifies the uploads tarball extracts, times the whole run, prints one
+result line, and drops `pointer_drill` (via a `trap`, so it is dropped even on failure). The API is
+never stopped and `pointer` is only ever read, never written.
+
+```bash
+# on the VM
+bash ~/pointer-api/scripts/restore-drill.sh
+```
+
+Suggested monthly cron (not installed by default — add it on the VM if you want the drill to run
+unattended):
+
+```
+# Monthly restore drill (1st of each month at 04:00 UTC). Review ~/drill.log periodically.
+0 4 1 * * /home/ubuntu/pointer-api/scripts/restore-drill.sh >> /home/ubuntu/drill.log 2>&1
+```
+
 Uploads archive: best-effort snapshot of a live volume (a file written during the run may be torn);
 restore it **before** starting the API.
 
