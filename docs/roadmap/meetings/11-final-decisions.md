@@ -1,5 +1,8 @@
 # Roadmap review meeting — final decisions (2026-09-11)
 
+> Superseded/extended on 2026-09-22 by `2026-09-22-foundations/07-final-report.md` (foundations
+> before launch).
+
 Participants: Claude (plan author, chair), GLM-5.2 via opencode, Gemini 3.1 Pro via agy.
 Rounds: 01–03 GLM review + debate · 04 Claude position · 05 agy review · 06 GLM r4 · 07 agy r2 ·
 08 chair synthesis · 09/10 last-call votes. **All S1–S14, D1–D3 and C1–C15 accepted by both reviewers.**

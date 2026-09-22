@@ -35,6 +35,14 @@ Two things this table deliberately does not hide:
 Per-item status lives with each spec in [`execution/`](execution/); per-scenario status is in
 [`testing/`](testing/) and is regenerated on every suite run.
 
+**2026-09-22.** The schema-hardening batch DB-01…DB-10 shipped — see
+[`docs/db/DB-REVIEW-2026-09-22.md`](../db/DB-REVIEW-2026-09-22.md). The same day, a three-model
+foundations meeting (Fable chair · Gemini 3.1 Pro via agy · GLM-5.3 via opencode) was held and
+signed — see
+[`meetings/2026-09-22-foundations/07-final-report.md`](meetings/2026-09-22-foundations/07-final-report.md) —
+ranking 15 pre-launch DO NOW items and approving the user-identity/deletion design **DB-11** with ten
+amendments. DB-11 is designed; execution begins with DB-11a (see Release 5 below).
+
 ## Context
 
 The core loop works (comment on a running app → AI applies the queue → commit + commit URL), but the
@@ -56,6 +64,11 @@ the whole team lives in — not just the developer.
 | Source-path manifest | **Never committed** — deterministic, regenerated locally (Phase 4). |
 | API keys | Hash for lookup + encrypt for display at rest **now** (NEW-5; keeps the served "always re-viewable" promise); full scoped-key UI (§25) later. |
 | AI and git | AI commits per project `CommitStyle`; **AI never pushes** — the human's CLI does. |
+| Target market (F1, 2026-09-22) | **KSA/GCC first, global-ready.** All data stays in the Oracle Riyadh region; privacy and terms are written to PDPL with a GDPR section; no EU-residency promise yet. |
+| Operator access to comment content (F2, 2026-09-22) | **Metadata only by default** for the super admin (counts, statuses, tenants, billing, health). Reading a workspace's comments requires an audited, time-boxed impersonation session visible to that workspace's admin — depends on the audit log (§16, un-held). |
+| Pricing unit (F3, 2026-09-22) | **Flat per-workspace tiers with a comments-per-month cap.** "Applied comments" is the reported value metric on invoices, not the price; no per-seat pricing. Payment provider deferred to the first paying customer. |
+| Demo as a product path (F4, 2026-09-22) | **Kept as first-class.** A demo is a real workspace with a 24 h TTL, a visible "convert to your workspace" action that keeps its data, and cleanup by the retention job. Activation funnel = demo → converted → widget installed → first comment → first apply (§64). |
+| Founder defaults F5–F11 (2026-09-22) | Screenshots kept on erase (with the comment) · legal text self-written now, counsel at first paying customer · second operator named before first paying customer · `GET /api/public/stacks-summary` kept, per-workspace opt-out before launch · hard stop + in-dashboard upgrade prompt at `MaxCommentsPerMonth` · session model unchanged (12 h JWT, no refresh/session list) · VM disk encryption verify-on, enable at next maintenance window if not — full detail in [foundations report §4](meetings/2026-09-22-foundations/07-final-report.md). |
 
 ## What the code already has (corrections found in review)
 
@@ -130,7 +143,7 @@ Read before estimating anything — several items are *wiring*, not features.
 | R3.2 | **§45** design tokens (Tailwind config / CSS vars / `_variables.scss`) → `stack.json`; AI told "use existing tokens" | 1–2 d |
 | R3.3 | **NEW-3** widget release engineering — immutable `pointer.js?v=<sha>`, short-TTL `stable`, SRI snippet, deploy smoke, **≤ 60 KB gz** budget in CI (raised to **64 KB** on 2026-09-22 by R4.1 — the bundle sat at 61.3 KB with 156 B headroom), CSP note (constructed `CSSStyleSheet` for nonce-strict hosts) | 3–4 d |
 | R3.4 | **§33-lite** DOM-snapshot privacy — drop `value` of `input/textarea/select` in `shallowSnapshot`; `data-snapshot-mask` → `•••`; per-project "no text content" toggle | 2–3 d |
-| R3.5 | **NEW-6** public privacy / self-host page (what is captured, retention, deletion, self-host = your Postgres) | ½ d |
+| R3.5 | **NEW-6** public privacy / self-host page (what is captured, retention, deletion, self-host = your Postgres) — **pulled forward 2026-09-22: due before demo-public**, not gated on the rest of Release 3 (foundations report row 10; ties to §63 privacy + ToS) | ½ d |
 | R3.6 | **§53 landing-page refresh** — rebuild the page's *argument* around the real thesis (an AI tool is only as good as the feedback it receives): the structured brief a comment carries as the second-screen proof, the loop ending at a commit URL, objection handling, and a token claim with **no invented figure**. Plan: [`LANDING-PLAN.md`](LANDING-PLAN.md). Also retires `landing/v2/`. | 3–4 d |
 
 ### Release 4 — context for the AI (opened 2026-09-22)
@@ -139,11 +152,31 @@ Read before estimating anything — several items are *wiring*, not features.
 |---|---|---|
 | R4.1 | **§54 admin-defined comment fields** — **SHIPPED 2026-09-22** (API + widget + CLI 0.6.0 + dashboard live; stage 3 `pointer mcp suggest` held) — workspace admins define up to ten optional extra fields a comment can carry (text / url / select, allowed-host pattern, *suggested tool* hint); the widget offers them behind **"Add more fields"** in the composer and **"Edit fields"** in the card ⋯ menu; values in one `comments.custom_fields` jsonb, schema in one jsonb on a new one-row-per-workspace `workspace_settings` table (also the future home of the §32 webhook URL); apply prompt hands them to the AI with the hint ("Jira link → read the ticket if you have an Atlassian tool, else ask"); dashboard Settings → *Comment fields*. First instance: Jira ticket URL. Execution: [`execution/R4-01-comment-fields.md`](execution/R4-01-comment-fields.md). | 4–6 d |
 
+### Release 5 — Foundations (pre-launch, opened 2026-09-22)
+
+Sequence per the [foundations report §3](meetings/2026-09-22-foundations/07-final-report.md): DB-11
+first (contract deploy), then DB-12/13/14, then the ops and writing packs in parallel. Un-holds §16;
+pulls NEW-6 forward (before demo-public).
+
+| # | Item | Est. |
+|---|---|---|
+| R5.1 | **§55** DB-11a→b→c→d identity, memberships, deletion, change-e-mail — [`docs/db/execution/DB-11a-identity-and-workspace-memberships.md`](../db/execution/DB-11a-identity-and-workspace-memberships.md), [`DB-11b-login-workspace-picker-and-switch.md`](../db/execution/DB-11b-login-workspace-picker-and-switch.md), [`DB-11c-deletion-semantics-remove-disable-erase.md`](../db/execution/DB-11c-deletion-semantics-remove-disable-erase.md), DB-11d change-e-mail (not yet written); DB-11a alone via contract deploy | 5–7 d |
+| R5.2 | **§16** audit log (un-held) — `docs/db/execution/DB-12-*.md` (not yet written; schema in parallel with DB-11b/c) | 3–4 d |
+| R5.3 | **§56** impersonation — `docs/db/execution/DB-13-*.md` (not yet written; after DB-12) | 2–3 d |
+| R5.4 | **§57** e-mail verification / password policy — `docs/db/execution/DB-14-*.md` (not yet written) | 3–4 d |
+| R5.5 | Ops pack, parallel: **§58** observability · **§59** security headers + login limiter · **§60** restore drill · **§61** operator MFA · **§62** JWT `kid` rotation · **§67** tenant-isolation CI probe · **§68** versioning policy + `/api/v1` alias | 0.5–3 d each |
+| R5.6 | Writing pack: **§63** privacy + ToS (pulls **NEW-6** forward alongside it) · **§64** activation funnel · **§65** RTL audit · **§66** export verification + DSAR runbook | 1–5 d each |
+| R5.7 | Demo as a product path (F4): convert-to-workspace + 24 h TTL via the retention job, after DB-11 | — |
+
 ### Hold list (item → un-hold trigger)
 
-§9 `apply --pr` → §42 done + a PR-based team · §11 batch-by-file → manifest live in prod · §14 @mentions → multiple repliers per thread · §15 template chips → widget polish sprint · §16 audit log → before first non-founder apply · §18 scoping rules → first Client-role commenter on prod · §19/§44 workspace fields + clients → first external workspace · §20 → **dissolved** into feature-attached wiring (email→`EmailsPerMonth`, retention job→`RetentionDays`, §35→`MaxEnvironments`) · §25 full scoped keys UI → first key in CI / committed config · §26 editor ext → Phase 4 stable + demand · §27 dedupe → queue noise reported · §28 before/after → **redesigned as manual attach**; stakeholders demand proof · §29 multi-element → hashes stable in prod · §30 changelog → §31 live · §32 webhooks → first "notify my tool" (**before email**) · §33 full (retention job, blur toggle, image delete UI) → first privacy-question customer · **project purge job** (physical delete of soft-deleted projects' rows + screenshot files, `RetentionDays`-driven; today delete is soft-only, `ProjectService.DeleteAsync`) → before NEW-6 can promise deletion · §35 preview environments (**days**, `ProjectAppUrl` rows) → §42 + §9 live · §36 board → ownership requested · §37 AI triage → comment volume · §38 QR / §39 bookmarklet → §13 adopted; CSP kills bookmarklets · §40 kill switch (flag → `disableSilently`) → first leaked key · §42 repo mapping → day before §9/§35/§43 · §43 cloud apply → CLI apply proven on 3+ repos (**a quarter**) · §46 nudge → vague-comment rate measured · §47 seeded demo (absorbs §23) → first signup without hand-holding · **full-app dashboard UX audit** (the React app (Angular/Vue retired 2026-09-15, branch `legacy/angular-vue`), every screen, `impeccable`-driven, incl. dark mode and RTL parity) → first external workspace, or the first user-reported usability complaint — until then each phase's dashboard-agent run does a UX pass scoped to the screens it touched · §49 badge → paid plans · email channel → trigger above.
+§9 `apply --pr` → §42 done + a PR-based team · §11 batch-by-file → manifest live in prod · §14 @mentions → multiple repliers per thread · §15 template chips → widget polish sprint · **§16 audit log → un-held 2026-09-22: NOW (pre-launch), precondition for F2; see [foundations report §2 row 2](meetings/2026-09-22-foundations/07-final-report.md)** · §18 scoping rules → first Client-role commenter on prod · §19/§44 workspace fields + clients → first external workspace · §20 → **dissolved** into feature-attached wiring (email→`EmailsPerMonth`, retention job→`RetentionDays`, §35→`MaxEnvironments`) · §25 full scoped keys UI → first key in CI / committed config · §26 editor ext → Phase 4 stable + demand · §27 dedupe → queue noise reported · §28 before/after → **redesigned as manual attach**; stakeholders demand proof · §29 multi-element → hashes stable in prod · §30 changelog → §31 live · §32 webhooks → first "notify my tool" (**before email**) · §33 full (retention job, blur toggle, image delete UI) → first privacy-question customer · **project purge job** (physical delete of soft-deleted projects' rows + screenshot files, `RetentionDays`-driven; today delete is soft-only, `ProjectService.DeleteAsync`) → before NEW-6 can promise deletion · §35 preview environments (**days**, `ProjectAppUrl` rows) → §42 + §9 live · §36 board → ownership requested · §37 AI triage → comment volume · §38 QR / §39 bookmarklet → §13 adopted; CSP kills bookmarklets · §40 kill switch (flag → `disableSilently`) → first leaked key · §42 repo mapping → day before §9/§35/§43 · §43 cloud apply → CLI apply proven on 3+ repos (**a quarter**) · §46 nudge → vague-comment rate measured · §47 seeded demo (absorbs §23) → first signup without hand-holding · **full-app dashboard UX audit** (the React app (Angular/Vue retired 2026-09-15, branch `legacy/angular-vue`), every screen, `impeccable`-driven, incl. dark mode and RTL parity) → first external workspace, or the first user-reported usability complaint — until then each phase's dashboard-agent run does a UX pass scoped to the screens it touched · §49 badge → paid plans · email channel → trigger above.
 
 **Cut:** §17 injection regex (→ S6) · §23 fake-output terminal demo (→ §47).
+
+**Pulled forward, 2026-09-22:** **NEW-6** public privacy/self-host page → **before demo-public**
+(foundations report row 10), ties to §63 privacy + ToS. §32 webhooks stays held on its unchanged
+trigger (first "notify my tool", before email).
 
 ### Effort flags — weeks, not days
 Full §1 init (even with Next/monorepo on the skill path) · §24 MCP · Phase 4 **Angular builder** and **Next RSC** plugins (2–4 w each, no DOM roots to stamp in RSC) · §9 `--pr` · §28 · §43 (a quarter).
@@ -199,7 +232,11 @@ Today: tier 1 `data-component-source` attr → tier 2 dev-mode fiber/Vue interna
 
 ### Phase 5 — Trust, safety, business
 
-16. Apply audit log. *(held)* · 17. **Cut** → S6 secrets/payload flag. · 18. Per-project scoping rules. *(held)* · 19. Workspace fields (billing owner, member roles, notification budget, integrations) on existing Tenant. *(held)* · 20. **Dissolved** into feature-attached entitlement wiring. · 21. **Usage events** `installed`, `first_comment`, `first_apply`, `apply_failed` — in R1.2. · 22. → NEW-3. · 23. **Cut** → §47.
+16. **Append-only audit log** (actor identity+membership, action, target, before/after, request id,
+    impersonation flag). *Un-held 2026-09-22 — NOW (pre-launch), precondition for F2*; see
+    [foundations report §2 row 2](meetings/2026-09-22-foundations/07-final-report.md). Schema: DB-12
+    (`docs/db/execution/DB-12-*.md`, not yet written), in parallel with DB-11b/c. Effort 3–4 d.
+    · 17. **Cut** → S6 secrets/payload flag. · 18. Per-project scoping rules. *(held)* · 19. Workspace fields (billing owner, member roles, notification budget, integrations) on existing Tenant. *(held)* · 20. **Dissolved** into feature-attached entitlement wiring. · 21. **Usage events** `installed`, `first_comment`, `first_apply`, `apply_failed` — in R1.2. · 22. → NEW-3. · 23. **Cut** → §47.
 
 ### Phase 6 — AI-tool interface & editor
 
@@ -341,9 +378,54 @@ Today: tier 1 `data-component-source` attr → tier 2 dev-mode fiber/Vue interna
     the page changes with the feature rather than drifting into fiction.
     Plan (PRD + execution + tests, consolidated): [`LANDING-PLAN.md`](LANDING-PLAN.md).
 
+### Phase 15 — Foundations (2026-09-22 meeting)
+
+Ranked and signed off in the foundations meeting
+([`meetings/2026-09-22-foundations/07-final-report.md`](meetings/2026-09-22-foundations/07-final-report.md)
+§2); un-holds §16 and pulls NEW-6 forward (see Hold list). Stable numbers continue after §54.
+
+55. **DB-11a→d identity, memberships, deletion, change-e-mail** — one identity per e-mail;
+    per-workspace memberships (role, active flag, approval, security stamp); API keys per membership;
+    widget auto-routed by project key; CLI lands in one workspace; comments survive erase, authored by
+    a tombstone; `POST /api/me/change-email` verifies the new address and rotates the security stamp
+    (DB-11d). Ships first; DB-11a alone via contract deploy. Report row 1, 5–7 d. Execution:
+    [`docs/db/execution/DB-11a-identity-and-workspace-memberships.md`](../db/execution/DB-11a-identity-and-workspace-memberships.md),
+    [`DB-11b-login-workspace-picker-and-switch.md`](../db/execution/DB-11b-login-workspace-picker-and-switch.md),
+    [`DB-11c-deletion-semantics-remove-disable-erase.md`](../db/execution/DB-11c-deletion-semantics-remove-disable-erase.md),
+    DB-11d change-e-mail (not yet written).
+56. **Audited, time-boxed super-admin impersonation**, metadata-only by default (F2) — after §16;
+    reuses DB-11b's scoped tokens. Report row 3, 2–3 d. Execution: `docs/db/execution/DB-13-*.md`
+    (not yet written).
+57. **E-mail verification, change-e-mail, password policy** (DB-14) — one nullable column + token
+    table; verification after launch splits users into cohorts. Report row 4, 3–4 d. Execution:
+    `docs/db/execution/DB-14-*.md` (not yet written).
+58. **Observability baseline** — JSON logs + request id, error tracker, `/health` (DB ping), uptime
+    monitor, alert; no Serilog/Sentry/OTel exists today. Report row 5, 2–3 d.
+59. **Security headers + login rate limit + `security.txt`** — limit keyed per e-mail; password login
+    is unlimited today (comments and register are already limited). Report row 6, 1 d.
+60. **Production-side restore drill** from the bucket copy, timed, written into `DEPLOY.md`. Report
+    row 7, 0.5 d.
+61. **Operator MFA** (TOTP on the super-admin account) — one env-seeded account reads every tenant.
+    Report row 8, 1–2 d.
+62. **JWT `kid` + two-key rotation window** — rotation today means a global logout. Report row 9, 1 d.
+63. **Privacy policy + ToS** (PDPL-first, GDPR section, Riyadh residency) before demo-public; DPA +
+    subprocessor list follow at first paying customer. Report row 10, 3–5 d writing. Pulls **NEW-6**
+    forward alongside it (see Hold list).
+64. **Activation funnel** — demo → converted → widget installed → first comment → first apply; weekly
+    number; pre-retention rollup view ahead of the 180 d sweep. Report row 11, 1–2 d.
+65. **Arabic/RTL completeness audit** (widget, dashboard, e-mails) — audit only; Arabic is already
+    first-class, this finds the gaps. Report row 12, 1 d.
+66. **Workspace export round-trip verified + DSAR runbook** — export, erase, what survives, invites
+    scrub, timeline. Report row 13, 1 d.
+67. **Tenant-isolation CI probe** — every GET in the API inventory hit with the wrong tenant's token,
+    while endpoints are ≈ 100. Report row 14, 1 d.
+68. **Versioning & deprecation policy page + `/api/v1/*` route alias** — unversioned paths keep
+    working; resolves agy's hold: a stable canonical URL from day one, zero client churn. Report
+    row 15, 1 d.
+
 ### NEW items from review
 
-NEW-1 on-disk contract freeze · NEW-2 served-file version stamp + `pointer update` · NEW-3 widget release engineering · NEW-4a/b/c continuous verification · NEW-4d fully-local client loop (c = local npm registry, harness §6 level 3) · NEW-5 API-key hardening · NEW-6 public privacy/self-host page · S6 secrets/payload advisory flag.
+NEW-1 on-disk contract freeze · NEW-2 served-file version stamp + `pointer update` · NEW-3 widget release engineering · NEW-4a/b/c continuous verification · NEW-4d fully-local client loop (c = local npm registry, harness §6 level 3) · NEW-5 API-key hardening · NEW-6 public privacy/self-host page (pulled forward 2026-09-22: before demo-public, see Hold list) · S6 secrets/payload advisory flag.
 
 ---
 
@@ -356,7 +438,11 @@ NEW-1 on-disk contract freeze · NEW-2 served-file version stamp + `pointer upda
 ## Related
 
 - [`meetings/`](meetings/) — review transcripts; [`meetings/11-final-decisions.md`](meetings/11-final-decisions.md) is the authoritative outcome.
+- [`meetings/2026-09-22-foundations/`](meetings/2026-09-22-foundations/) — the foundations meeting;
+  `07-final-report.md` is the signed outcome that extends `11-final-decisions.md`.
 - [`execution/`](execution/) — per-item implementer specs.
+- [`../db/`](../db/) — `DB-RULES.md`, `SCHEMA.md`, `DB-REVIEW-2026-09-22.md`, and per-change execution
+  specs in `../db/execution/` (DB-01…DB-11, DB-12–14 pending) for every schema change.
 - `docs/rebranding-plan` branch — `docs/rebranding/REBRANDING-PLAN.md` (§3.1 branding is data; CLI gets one `NAME_LOWER` row).
 - `API/wwwroot/install.sh`, `pointer-init.md`, `skill.md`, `pointer.sh` — the current flow this plan replaces.
 - `docs/AI_AGENT_TOKEN_OPTIMIZATION.md` — token-cost rationale behind Phase 4.
