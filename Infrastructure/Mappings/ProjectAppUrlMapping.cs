@@ -19,10 +19,17 @@ public class ProjectAppUrlMapping : IEntityTypeConfiguration<ProjectAppUrl>
         b.Property(x => x.DeletedBy).HasColumnName("deleted_by");
 
         b.Property(x => x.ProjectId).HasColumnName("project_id").IsRequired();
-        b.HasOne(x => x.Project).WithMany().HasForeignKey(x => x.ProjectId).OnDelete(DeleteBehavior.Cascade);
+        // Inverse named explicitly: leaving WithMany() empty made EF add a second, shadow FK "ProjectId1" (DB-04).
+        b.HasOne(x => x.Project)
+            .WithMany(p => p.ProjectAppUrls)
+            .HasForeignKey(x => x.ProjectId)
+            .OnDelete(DeleteBehavior.Cascade);
 
         b.Property(x => x.AppEnvironmentId).HasColumnName("app_environment_id").IsRequired();
-        b.HasOne(x => x.AppEnvironment).WithMany(e => e.ProjectAppUrls).HasForeignKey(x => x.AppEnvironmentId).OnDelete(DeleteBehavior.Cascade);
+        b.HasOne(x => x.AppEnvironment)
+            .WithMany(e => e.ProjectAppUrls)
+            .HasForeignKey(x => x.AppEnvironmentId)
+            .OnDelete(DeleteBehavior.Cascade);
 
         b.Property(x => x.Url).HasColumnName("url").IsRequired().HasMaxLength(2048);
         b.Property(x => x.IsActive).HasColumnName("is_active").HasDefaultValue(true);
@@ -30,7 +37,9 @@ public class ProjectAppUrlMapping : IEntityTypeConfiguration<ProjectAppUrl>
         // Partial: soft-deleted rows must not block re-adding the same environment's URL. The
         // service revives the deleted row anyway (see ProjectService.SetAppUrlAsync); this keeps the
         // database from turning any future miss into a duplicate-key 500.
-        b.HasIndex(x => new { x.ProjectId, x.AppEnvironmentId }).IsUnique().HasFilter("deleted_at IS NULL");
+        b.HasIndex(x => new { x.ProjectId, x.AppEnvironmentId })
+            .IsUnique()
+            .HasFilter("deleted_at IS NULL");
         b.HasIndex(x => x.OwnerId);
     }
 }
