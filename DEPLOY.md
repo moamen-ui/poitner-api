@@ -88,19 +88,68 @@ curl -sI https://app.pointer.moamen.work/                         # 200 (React d
 curl -sI https://demo.pointer.moamen.work/                        # 200 (same build, demo entry)
 ```
 
+## Backups
+
+[`scripts/backup-db.sh`](scripts/backup-db.sh) runs **on the VM** and writes a compressed
+`pg_dump` custom-format archive to `~/backups/pointer-<UTC ts>[-<label>].dump` (mode 600, dir 700).
+It refuses to keep a file that is not a valid archive, and prunes dumps older than 14 days while
+always keeping the newest three.
+
+Two callers:
+
+- **Before every API deploy** — `scripts/deploy-api.sh` calls it with the label `pre-deploy`.
+- **Nightly** — a cron entry on the VM (installed 2026-09-22):
+
+  ```
+  0 3 * * * /home/ubuntu/pointer-api/scripts/backup-db.sh >> /home/ubuntu/backups/backup.log 2>&1
+  ```
+
+Dumps live on the same VM disk as the database. That protects against a bad migration or a bad
+deploy, **not** against losing the VM. Copying the newest dump off-box (object storage, or an
+`rsync` from your machine) is the next step and is tracked in `docs/db/`.
+
+### Restore
+
+Restoring replaces the live database. Stop the API first so no request runs against a half-restored
+schema, and take one more dump of the current state before you overwrite it.
+
+```bash
+cd ~/pointer-api
+docker compose -f docker-compose.prod.yml stop api
+bash scripts/backup-db.sh pre-restore                       # keep what is there now
+DUMP=~/backups/pointer-<ts>-pre-deploy.dump                 # the one you want back
+docker compose --env-file .env.prod -f docker-compose.prod.yml exec -T db \
+  psql -U pointer -d postgres -c "DROP DATABASE pointer;" -c "CREATE DATABASE pointer OWNER pointer;"
+docker compose --env-file .env.prod -f docker-compose.prod.yml exec -T db \
+  pg_restore -U pointer -d pointer --no-owner --no-privileges < "$DUMP"
+docker compose --env-file .env.prod -f docker-compose.prod.yml up -d api
+```
+
+If the restore is undoing a migration, check out the matching commit **before** starting the API
+again (`git checkout <commit>` then `up -d --build api`), otherwise boot re-applies the migration you
+just rolled back. Rehearse this once on a scratch database (`just up` locally, restore into it) so the
+first real restore is not the first attempt.
+
 ## Updating
 
 The VM has both repos checked out as git clones (`~/pointer-api`, `~/pointer-dashboard`), so shipping
 a local change is push-then-pull.
 
-**API change** — from your machine `git push origin main`, then on the VM:
+**API change** — from your machine `git push origin main`, then run
+[`scripts/deploy-api.sh`](scripts/deploy-api.sh) **on the VM**. It pulls `main`, **dumps the database
+first** (`scripts/backup-db.sh pre-deploy`, see § Backups), rebuilds only the `api` container, waits for
+`Now listening`, and smoke-checks `/api/branding` and the Swagger spec:
 
 ```bash
-cd ~/pointer-api
-git pull --ff-only
-docker compose --env-file .env.prod -f docker-compose.prod.yml up -d --build api
-# EF migrations auto-apply on boot; db + caddy stay up.
+# one-liner from your machine
+ssh -i <key> ubuntu@<vm> 'bash -s' < scripts/deploy-api.sh
+# or, on the VM
+bash ~/pointer-api/scripts/deploy-api.sh
 ```
+
+EF migrations auto-apply on boot; db + caddy stay up. Because of that auto-apply, **never deploy a
+migration without the dump** — the script is the only supported path. Schema changes themselves are
+planned by the `db-architect` agent and follow [`docs/db/DB-RULES.md`](docs/db/DB-RULES.md).
 
 If endpoints/DTOs changed, **republish the typed clients** once the new API is live (the workflow
 reads the live spec and auto-bumps the patch version). From your machine (gh authed):

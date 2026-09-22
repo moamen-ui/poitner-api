@@ -47,6 +47,11 @@ via Docker, API on `:8090`).
 2. EF migrations: `just migrate name="..."`. Tests: `just test`. Format: `just fmt` (CSharpier).
 3. Behind the production TLS proxy (Caddy) the API honors `X-Forwarded-Proto/For` so `/embed.js`
    and the served skills emit `https` URLs.
+4. **Schema changes go through the `db-architect` agent first** (global agent, plan-only). Entities,
+   mappings, migrations and json column shapes are implemented from its execution doc under
+   `docs/db/execution/` and must follow [`docs/db/DB-RULES.md`](docs/db/DB-RULES.md). Every deploy that
+   carries a migration is preceded by `scripts/backup-db.sh` on the VM (`scripts/deploy-api.sh` does
+   both) — see [`DEPLOY.md`](DEPLOY.md) § Backups.
 
 ## Web component (`<pointer-feedback>`)
 

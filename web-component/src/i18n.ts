@@ -265,6 +265,8 @@ const STRINGS: Record<Lang, Record<string, string>> = {
     'card.deleteThisComment': 'Delete this comment?',
     'card.deleteThisReply': 'Delete this reply?',
     'card.confirmDelete': 'Confirm delete',
+    'card.readMore': 'Read more',
+    'card.readLess': 'Read less',
 
     // --- comment popover ---
     'popover.selectParentElement': 'Select parent element',
@@ -343,7 +345,8 @@ const STRINGS: Record<Lang, Record<string, string>> = {
     'toast.notifications': 'Notifications',
     'fields.more': 'Add more fields',
     'fields.fewer': 'Fewer fields',
-    'fields.edit': 'Edit fields',
+    'fields.extra': 'Extra fields',
+    'fields.edit': 'Extra fields',
     'fields.save': 'Save fields',
     'fields.cancel': 'Cancel',
     'fields.none': 'None',

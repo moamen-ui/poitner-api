@@ -1,17 +1,17 @@
 {
   "version": "0.1.0",
   "hash": "bc7323366631",
-  "commit": "bb582b8",
-  "committedAt": "2026-09-22T01:11:21+03:00",
+  "commit": "361abf4",
+  "committedAt": "2026-09-22T01:45:33+03:00",
   "files": {
     "widget.js": {
       "bytes": 262362,
-      "gzipBytes": 64500,
+      "gzipBytes": 64651,
       "integrity": "sha384-JE9oA8t1XXXDnQIWTHZKT3SH4NASzMLHQ4an41568C5Dk3tSy54vUTQqUbJjUFle"
     },
     "widget.css": {
       "bytes": 56297,
-      "gzipBytes": 9021,
+      "gzipBytes": 9016,
       "integrity": "sha384-WMg6ThjxOgP+BW2uLSApzSmvPBZ6W4XLTbeQqpnNdvMduV1ulTw8NUAF4EhUGqwD"
     }
   },

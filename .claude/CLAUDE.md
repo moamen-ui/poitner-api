@@ -49,3 +49,10 @@ See [../AGENTS.md](../AGENTS.md) for project overview, commands, and directory s
 6. If a change touches a brand-carrying surface (table, column, entity, migration, endpoint, config
    key, served file, storage key, package/bin, domain, or any new customer-visible name), invoke the
    [`rebranding-agent`](agents/rebranding-agent.md) **as soon as it lands** — eagerly, not batched
+7. If a change touches the **data layer** — anything under `Domain/Entity/`, `Infrastructure/Mappings/`,
+   `Infrastructure/Migrations/`, `AppDbContext.cs`, a jsonb/json column shape, or a DB-stored enum —
+   invoke the global [`db-architect`](~/.claude/agents/db-architect.md) agent **first**, before writing
+   code. It is plan-only: it writes the execution doc under `docs/db/execution/`, a cheaper model
+   implements it, and the change must cite the rule(s) in [`docs/db/DB-RULES.md`](../docs/db/DB-RULES.md)
+   it follows. Its schema review lives in `docs/db/DB-REVIEW-<date>.md`. Never hand-write a migration
+   without an execution doc behind it
