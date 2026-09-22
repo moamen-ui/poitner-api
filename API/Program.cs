@@ -174,9 +174,6 @@ if (builder.Configuration.GetValue<bool>("DBMigrationEnabled"))
         return 3;
     await db.Database.MigrateAsync();
     await AdminSeeder.SeedAsync(app.Services);
-    // Moves any pre-hardening plaintext User.ApiKey into the hashed+encrypted api_keys table.
-    // Idempotent and inline (not a hosted service) so it is guaranteed to follow the migration.
-    await ApiKeyBackfill.RunAsync(app.Services);
 }
 
 // Behind a TLS-terminating reverse proxy (Caddy): honor X-Forwarded-Proto/For so

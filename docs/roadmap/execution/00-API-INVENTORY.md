@@ -16,7 +16,7 @@
 | `GET /api/me/api-key` | `MeController.cs:42-50` | — | `ApiKeyResponse { ApiKey }` |
 | `POST /api/me/api-key/regenerate` | `MeController.cs:52-60` | — | `ApiKeyResponse` |
 
-- **API key storage today**: `User.ApiKey` plaintext (`Domain/Entity/User.cs:40`); lookup by SQL equality `u.ApiKey == key` (`Application/Services/Implementation/AuthService.cs:213`). Prefix `ptr_` (`API/wwwroot/install.sh:56`).
+- **API key storage today**: hashed + AES-256-GCM encrypted rows in `api_keys` (`Domain/Entity/ApiKey.cs`); lookup by SHA-256 hash via `IApiKeyService`/`_apiKeys.ResolveAsync` (`Application/Services/Implementation/AuthService.cs:258-264`). Prefix `ptr_` (`API/wwwroot/install.sh:56`). The legacy plaintext `users.api_key` column was dropped by DB-07.
 - **JWT** (`Infrastructure/Auth/JwtTokenService.cs:11-39`): lifetime 12 h default (`JwtOptions.LifetimeHours`); claims `sub` (User.PublicId), `email`, `name`, `role_id`, `role`, `is_admin`, `is_super_admin`, `is_quick_access`, `stamp` (SecurityStamp), `tenant` (User.OwnerId when set).
 - All responses are wrapped: `{ isSuccess, isNotFound, isConflict, message, data }` (`Application/Response/Result.cs`).
 

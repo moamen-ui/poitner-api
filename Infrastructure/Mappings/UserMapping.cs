@@ -44,8 +44,6 @@ public class UserMapping : IEntityTypeConfiguration<User>
             .HasColumnName("add_comment_shortcut")
             .HasMaxLength(40);
         b.Property(x => x.SecurityStamp).HasColumnName("security_stamp");
-        b.Property(x => x.ApiKey).HasColumnName("api_key").HasMaxLength(64);
-        b.HasIndex(x => x.ApiKey).IsUnique();
         b.Property(x => x.OwnerId).HasColumnName("owner_id");
         b.HasOne<Workspace>()
             .WithMany()

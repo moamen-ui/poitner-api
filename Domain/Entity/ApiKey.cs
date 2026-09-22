@@ -7,8 +7,7 @@ namespace Pointer.Domain.Entity;
 /// open. It exists because the profile page and the dashboard quick-start promise the key stays
 /// re-viewable (pointer-init.md) — a hash alone could not honour that.
 ///
-/// Replaces the plaintext <c>User.ApiKey</c> column, which is kept for one release (backfilled and
-/// nulled by ApiKeyBackfillService) and dropped in R2. See
+/// Replaces the plaintext <c>User.ApiKey</c> column (dropped by DB-07). See
 /// docs/roadmap/execution/R1-06-api-key-hardening.md.
 /// </summary>
 public class ApiKey : BaseEntity

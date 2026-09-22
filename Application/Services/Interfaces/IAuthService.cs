@@ -7,7 +7,7 @@ public interface IAuthService
 {
     Task<Result<LoginResponse>> LoginAsync(LoginRequest request);
 
-    /// <summary>Exchanges a long-lived personal API key (User.ApiKey) for a normal JWT — same
+    /// <summary>Exchanges a long-lived personal API key (an `api_keys` row) for a normal JWT — same
     /// response shape and claims as LoginAsync, just a different credential.</summary>
     Task<Result<LoginResponse>> LoginWithApiKeyAsync(LoginWithApiKeyRequest request);
     Task<Result> RegisterAsync(RegisterRequest request);
