@@ -41,35 +41,48 @@ public class CommentMapping : IEntityTypeConfiguration<Comment>
         // (CommentService.CreateAsync), and a project can no longer have a null owner — enforced
         // here too so a future bug can't silently reintroduce the recurring "owner_id" bug class.
         b.Property(x => x.OwnerId).HasColumnName("owner_id").IsRequired();
+        b.HasOne<Workspace>()
+            .WithMany()
+            .HasForeignKey(x => x.OwnerId)
+            .OnDelete(DeleteBehavior.Restrict)
+            .HasConstraintName("fk_comments_workspaces_owner_id");
         b.HasIndex(x => x.OwnerId);
         b.Property(x => x.IsBugReport).HasColumnName("is_bug_report").HasDefaultValue(false);
         b.Property(x => x.PageContextSnapshotId).HasColumnName("page_context_snapshot_id");
         // SetNull (not Restrict/Cascade): pruning a snapshot later must never cascade-delete comments.
-        b.HasOne(x => x.PageContextSnapshot).WithMany(s => s.Comments)
-            .HasForeignKey(x => x.PageContextSnapshotId).OnDelete(DeleteBehavior.SetNull);
-        b.OwnsOne(x => x.Element, e =>
-        {
-            e.ToJson("element");
-            // Belt-and-suspenders bounds on the (untrusted, browser-captured) element snapshot so a
-            // malicious client cannot post a multi-megabyte JSON blob. Snapshots/styles/rules can be
-            // large but are still capped; the short descriptor fields get tighter bounds.
-            e.Property(x => x.Selector).HasMaxLength(2000);
-            e.Property(x => x.Snapshot).HasMaxLength(8000);
-            e.Property(x => x.Classes).HasMaxLength(4000);
-            e.Property(x => x.ComputedStyles).HasMaxLength(8000);
-            e.Property(x => x.AppliedCssRules).HasMaxLength(8000);
-            e.Property(x => x.SourcePath).HasMaxLength(2000);
-            e.Property(x => x.ParentInfo).HasMaxLength(4000);
-            e.Property(x => x.ScreenshotUrl).HasMaxLength(2000);
-            e.Property(x => x.PageUrl).HasMaxLength(2000);
-            e.Property(x => x.Route).HasMaxLength(2000);
-            e.Property(x => x.PageTitle).HasMaxLength(2000);
-            e.Property(x => x.DeviceType).HasMaxLength(32);
-            e.Property(x => x.UserAgent).HasMaxLength(512);
-        });
+        b.HasOne(x => x.PageContextSnapshot)
+            .WithMany(s => s.Comments)
+            .HasForeignKey(x => x.PageContextSnapshotId)
+            .OnDelete(DeleteBehavior.SetNull);
+        b.OwnsOne(
+            x => x.Element,
+            e =>
+            {
+                e.ToJson("element");
+                // Belt-and-suspenders bounds on the (untrusted, browser-captured) element snapshot so a
+                // malicious client cannot post a multi-megabyte JSON blob. Snapshots/styles/rules can be
+                // large but are still capped; the short descriptor fields get tighter bounds.
+                e.Property(x => x.Selector).HasMaxLength(2000);
+                e.Property(x => x.Snapshot).HasMaxLength(8000);
+                e.Property(x => x.Classes).HasMaxLength(4000);
+                e.Property(x => x.ComputedStyles).HasMaxLength(8000);
+                e.Property(x => x.AppliedCssRules).HasMaxLength(8000);
+                e.Property(x => x.SourcePath).HasMaxLength(2000);
+                e.Property(x => x.ParentInfo).HasMaxLength(4000);
+                e.Property(x => x.ScreenshotUrl).HasMaxLength(2000);
+                e.Property(x => x.PageUrl).HasMaxLength(2000);
+                e.Property(x => x.Route).HasMaxLength(2000);
+                e.Property(x => x.PageTitle).HasMaxLength(2000);
+                e.Property(x => x.DeviceType).HasMaxLength(32);
+                e.Property(x => x.UserAgent).HasMaxLength(512);
+            }
+        );
         // Predefined-action snapshots (multi-select) stored as a JSON collection column.
         b.OwnsMany(x => x.PickedActions, a => a.ToJson("picked_actions"));
-        b.HasOne(x => x.Project).WithMany(p => p.Comments).HasForeignKey(x => x.ProjectId).OnDelete(DeleteBehavior.Restrict);
+        b.HasOne(x => x.Project)
+            .WithMany(p => p.Comments)
+            .HasForeignKey(x => x.ProjectId)
+            .OnDelete(DeleteBehavior.Restrict);
         b.HasIndex(x => new { x.ProjectId, x.Status });
         // M6: serves the hot list query `WHERE project_id = @p AND deleted_at IS NULL ORDER BY created_at DESC`
         // (Postgres back-scans the index for DESC). Partial on the live-rows predicate to stay small.
@@ -80,7 +93,9 @@ public class CommentMapping : IEntityTypeConfiguration<Comment>
 
         // Advisory payload/secret flags, computed on write (R2-06). The jsonb list mirrors
         // PlanMapping.FeatureBullets: a value-comparer so EF tracks element-level mutations.
-        b.Property(x => x.HasPayloadFlag).HasColumnName("has_payload_flag").HasDefaultValue(false);
+        b.Property(x => x.HasPayloadFlag)
+            .HasColumnName("has_payload_flag")
+            .HasDefaultValue(false);
         b.Property(x => x.PayloadFlags).ConfigureJsonStringList("payload_flags");
 
         // Admin-defined extra fields (R4-01): key → stakeholder value, one canonical jsonb value.
@@ -88,6 +103,5 @@ public class CommentMapping : IEntityTypeConfiguration<Comment>
         b.Property(x => x.CustomFields).ConfigureJsonColumn("custom_fields", "'{}'");
 
         b.Property(x => x.Language).HasColumnName("language").HasMaxLength(16);
-
     }
 }

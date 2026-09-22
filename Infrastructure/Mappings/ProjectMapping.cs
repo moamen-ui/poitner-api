@@ -29,19 +29,36 @@ public class ProjectMapping : IEntityTypeConfiguration<Project>
         b.Property(x => x.Name).HasColumnName("name").IsRequired().HasMaxLength(128);
         b.Property(x => x.IsActiveLocal).HasColumnName("is_active_local").HasDefaultValue(true);
         b.Property(x => x.IsActiveStaging).HasColumnName("is_active_staging").HasDefaultValue(true);
-        b.Property(x => x.IsActiveProduction).HasColumnName("is_active_production").HasDefaultValue(true);
-        b.Property(x => x.PageContextCaptureEnabled).HasColumnName("page_context_capture_enabled").HasDefaultValue(false);
+        b.Property(x => x.IsActiveProduction)
+            .HasColumnName("is_active_production")
+            .HasDefaultValue(true);
+        b.Property(x => x.PageContextCaptureEnabled)
+            .HasColumnName("page_context_capture_enabled")
+            .HasDefaultValue(false);
         b.Property(x => x.AppUrl).HasColumnName("app_url").HasMaxLength(2048);
         b.Property(x => x.TechStack).HasColumnName("tech_stack").HasMaxLength(2048);
         b.Property(x => x.AiToolsUsed).HasColumnName("ai_tools_used").HasMaxLength(1024);
-        b.Property(x => x.EnvironmentSelectorRoleIds).HasColumnName("environment_selector_role_ids").HasMaxLength(1024);
-        b.Property(x => x.CommitStyle).HasColumnName("commit_style").HasDefaultValue(CommitStyle.Single);
-        b.Property(x => x.EnforceAllowedOrigins).HasColumnName("enforce_allowed_origins").HasDefaultValue(false);
-        b.Property(x => x.CaptureTextContent).HasColumnName("capture_text_content").HasDefaultValue(true);
+        b.Property(x => x.EnvironmentSelectorRoleIds)
+            .HasColumnName("environment_selector_role_ids")
+            .HasMaxLength(1024);
+        b.Property(x => x.CommitStyle)
+            .HasColumnName("commit_style")
+            .HasDefaultValue(CommitStyle.Single);
+        b.Property(x => x.EnforceAllowedOrigins)
+            .HasColumnName("enforce_allowed_origins")
+            .HasDefaultValue(false);
+        b.Property(x => x.CaptureTextContent)
+            .HasColumnName("capture_text_content")
+            .HasDefaultValue(true);
         // NOT NULL at the DB level: ProjectService.CreateAsync forbids a null-owner project (super
         // admins can no longer create/own one at all) — enforced here too so a future bug can't
         // silently reintroduce the recurring "owner_id" bug class by producing one anyway.
         b.Property(x => x.OwnerId).HasColumnName("owner_id").IsRequired();
+        b.HasOne<Workspace>()
+            .WithMany()
+            .HasForeignKey(x => x.OwnerId)
+            .OnDelete(DeleteBehavior.Restrict)
+            .HasConstraintName("fk_projects_workspaces_owner_id");
         b.HasIndex(x => x.OwnerId);
     }
 }

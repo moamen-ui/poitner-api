@@ -21,6 +21,11 @@ public class SubscriptionMapping : IEntityTypeConfiguration<Subscription>
 
         // Subscription-specific columns
         b.Property(x => x.OwnerId).HasColumnName("owner_id").IsRequired(); // tenant boundary — never null
+        b.HasOne<Workspace>()
+            .WithMany()
+            .HasForeignKey(x => x.OwnerId)
+            .OnDelete(DeleteBehavior.Restrict)
+            .HasConstraintName("fk_subscriptions_workspaces_owner_id");
         b.HasIndex(x => x.OwnerId)
             .IsUnique()
             .HasFilter("deleted_at IS NULL")

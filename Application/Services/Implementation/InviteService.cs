@@ -47,7 +47,8 @@ public class InviteService : IInviteService
         ISettingsService settings,
         IEntitlementService entitlements,
         IEmailService emailService,
-        IBrandingService branding)
+        IBrandingService branding
+    )
     {
         _unitOfWork = unitOfWork;
         _currentUser = currentUser;
@@ -85,18 +86,26 @@ public class InviteService : IInviteService
                 if (request.TargetOwnerId is not Guid targetOwnerId)
                     return Result<InviteResponse>.Failure(MessageKeys.User.TargetWorkspaceRequired);
 
-                var targetAdminExists = await _unitOfWork.Repository<User>()
+                var targetAdminExists = await _unitOfWork
+                    .Repository<User>()
                     .Query()
                     .IgnoreQueryFilters()
                     .AsNoTracking()
-                    .AnyAsync(u => u.OwnerId == targetOwnerId && u.DeletedAt == null && u.Role.Name == WorkspaceAdminRoleName);
+                    .AnyAsync(u =>
+                        u.OwnerId == targetOwnerId
+                        && u.DeletedAt == null
+                        && u.Role.Name == WorkspaceAdminRoleName
+                    );
                 if (!targetAdminExists)
                     return Result<InviteResponse>.Failure(MessageKeys.User.WorkspaceNotFound);
 
-                role = await _unitOfWork.Repository<Role>()
+                role = await _unitOfWork
+                    .Repository<Role>()
                     .Query()
                     .AsNoTracking()
-                    .FirstOrDefaultAsync(r => r.Name == DeputyRoleName && r.DeletedAt == null && r.IsActive);
+                    .FirstOrDefaultAsync(r =>
+                        r.Name == DeputyRoleName && r.DeletedAt == null && r.IsActive
+                    );
                 if (role == null)
                     return Result<InviteResponse>.Failure(MessageKeys.Role.Invalid);
 
@@ -164,11 +173,14 @@ public class InviteService : IInviteService
             // An address that already owns a workspace cannot accept, and the failure would happen
             // only after the invite was created and emailed — leaving a pending row that can never
             // clear. Refuse up front instead.
-            var alreadyOwns = await _unitOfWork.Repository<User>()
+            var alreadyOwns = await _unitOfWork
+                .Repository<User>()
                 .Query()
                 .IgnoreQueryFilters()
                 .AsNoTracking()
-                .AnyAsync(u => u.DeletedAt == null && u.Email == emailNormalized && u.OwnerId == u.PublicId);
+                .AnyAsync(u =>
+                    u.DeletedAt == null && u.Email == emailNormalized && u.OwnerId == u.PublicId
+                );
 
             if (alreadyOwns)
                 return Result<InviteResponse>.Conflict(MessageKeys.Auth.AccountExists);
@@ -185,7 +197,7 @@ public class InviteService : IInviteService
             Uses = 0,
             RevokedAt = null,
             PlanId = request.CreateNewWorkspace ? request.PlanId : null,
-            DisplayName = request.CreateNewWorkspace ? request.DisplayName?.Trim() : null
+            DisplayName = request.CreateNewWorkspace ? request.DisplayName?.Trim() : null,
         };
 
         await _unitOfWork.Repository<Invite>().AddAsync(invite);
@@ -202,11 +214,21 @@ public class InviteService : IInviteService
             var brand = await _branding.BuildResponseAsync("", new HashSet<string>());
             try
             {
-                emailSent = await _emailService.SendAsync(emailNormalized,
+                emailSent = await _emailService.SendAsync(
+                    emailNormalized,
                     $"You're invited to {brand.ProductName}",
-                    BuildInviteEmailHtml(url, role?.Name, brand.ProductName, invite.ExpiresAt, invite.OwnerId is null));
+                    BuildInviteEmailHtml(
+                        url,
+                        role?.Name,
+                        brand.ProductName,
+                        invite.ExpiresAt,
+                        invite.OwnerId is null
+                    )
+                );
             }
-            catch { /* logged inside the sender; ignore here */ }
+            catch
+            { /* logged inside the sender; ignore here */
+            }
         }
 
         var response = MapToResponse(invite, role?.Name, url);
@@ -223,31 +245,43 @@ public class InviteService : IInviteService
         // at creation — see CreateQuickAccessInviteAsync) would show up here forever even though the
         // real, already-approved user it created is already visible in the Users list — the exact
         // same row appearing twice, once as a real user and once as a stale "pending" invite.
-        var rows = await _unitOfWork.Repository<Invite>()
+        var rows = await _unitOfWork
+            .Repository<Invite>()
             .Query()
             .AsNoTracking()
-            .Where(i => i.DeletedAt == null && i.RevokedAt == null && i.ExpiresAt > now
-                        && (i.MaxUses == null || i.Uses < i.MaxUses))
+            .Where(i =>
+                i.DeletedAt == null
+                && i.RevokedAt == null
+                && i.ExpiresAt > now
+                && (i.MaxUses == null || i.Uses < i.MaxUses)
+            )
             .OrderByDescending(i => i.CreatedAt)
             .ToListAsync();
 
         // Resolve role names for any pinned roles (single round-trip). Own-plus-global filter is fine
         // for reads here — we only surface the name of a role the admin already pinned.
-        var roleIds = rows.Where(i => i.RoleId != null).Select(i => i.RoleId!.Value).Distinct().ToList();
-        var roleNames = roleIds.Count == 0
-            ? new Dictionary<int, string>()
-            : await _unitOfWork.Repository<Role>()
-                .Query()
-                .AsNoTracking()
-                .Where(r => roleIds.Contains(r.Id))
-                .ToDictionaryAsync(r => r.Id, r => r.Name);
+        var roleIds = rows.Where(i => i.RoleId != null)
+            .Select(i => i.RoleId!.Value)
+            .Distinct()
+            .ToList();
+        var roleNames =
+            roleIds.Count == 0
+                ? new Dictionary<int, string>()
+                : await _unitOfWork
+                    .Repository<Role>()
+                    .Query()
+                    .AsNoTracking()
+                    .Where(r => roleIds.Contains(r.Id))
+                    .ToDictionaryAsync(r => r.Id, r => r.Name);
 
         var appBaseUrl = await GetAppBaseUrlAsync();
-        var list = rows
-            .Select(i => MapToResponse(
-                i,
-                i.RoleId != null && roleNames.TryGetValue(i.RoleId.Value, out var n) ? n : null,
-                BuildJoinUrl(appBaseUrl, i.Code)))
+        var list = rows.Select(i =>
+                MapToResponse(
+                    i,
+                    i.RoleId != null && roleNames.TryGetValue(i.RoleId.Value, out var n) ? n : null,
+                    BuildJoinUrl(appBaseUrl, i.Code)
+                )
+            )
             .ToList();
 
         return Result<List<InviteResponse>>.Success(list);
@@ -289,7 +323,8 @@ public class InviteService : IInviteService
 
         // The link carries the user and project, so an invite that never issued one has nothing to
         // rotate — that is a normal invite, and saying so beats minting a link with no account.
-        var current = await _unitOfWork.Repository<QuickAccessLink>()
+        var current = await _unitOfWork
+            .Repository<QuickAccessLink>()
             .Query()
             .IgnoreQueryFilters()
             .Where(l => l.InviteId == invite.Id && l.DeletedAt == null)
@@ -299,7 +334,8 @@ public class InviteService : IInviteService
         if (current == null)
             return Result<InviteResponse>.Failure(MessageKeys.Invite.NotQuickAccess);
 
-        var project = await _unitOfWork.Repository<Project>()
+        var project = await _unitOfWork
+            .Repository<Project>()
             .Query()
             .IgnoreQueryFilters()
             .AsNoTracking()
@@ -317,22 +353,30 @@ public class InviteService : IInviteService
         // rotation's token behind.
         await RevokeLinksForInviteAsync(invite.Id, now);
 
-        await _unitOfWork.Repository<QuickAccessLink>().AddAsync(new QuickAccessLink
-        {
-            OwnerId = current.OwnerId,
-            UserId = current.UserId,
-            ProjectId = current.ProjectId,
-            InviteId = invite.Id,
-            TokenHash = QuickAccessTokenGenerator.Hash(rawToken),
-            ExpiresAt = now.AddDays(ttlDays),
-            // Same as issue: 0 = unlimited within the TTL, or the client could not come back after
-            // their 12h JWT expires.
-            MaxUses = 0,
-        });
+        await _unitOfWork
+            .Repository<QuickAccessLink>()
+            .AddAsync(
+                new QuickAccessLink
+                {
+                    OwnerId = current.OwnerId,
+                    UserId = current.UserId,
+                    ProjectId = current.ProjectId,
+                    InviteId = invite.Id,
+                    TokenHash = QuickAccessTokenGenerator.Hash(rawToken),
+                    ExpiresAt = now.AddDays(ttlDays),
+                    // Same as issue: 0 = unlimited within the TTL, or the client could not come back after
+                    // their 12h JWT expires.
+                    MaxUses = 0,
+                }
+            );
         await _unitOfWork.SaveChangesAsync();
 
         var role = invite.RoleId is int roleId
-            ? await _unitOfWork.Repository<Role>().Query().AsNoTracking().FirstOrDefaultAsync(r => r.Id == roleId)
+            ? await _unitOfWork
+                .Repository<Role>()
+                .Query()
+                .AsNoTracking()
+                .FirstOrDefaultAsync(r => r.Id == roleId)
             : null;
 
         var magicLink = QuickAccessTokenGenerator.BuildMagicLink(project.AppUrl!, rawToken);
@@ -348,7 +392,8 @@ public class InviteService : IInviteService
     /// </summary>
     private async Task RevokeLinksForInviteAsync(int inviteId, DateTime now)
     {
-        var links = await _unitOfWork.Repository<QuickAccessLink>()
+        var links = await _unitOfWork
+            .Repository<QuickAccessLink>()
             .Query()
             .IgnoreQueryFilters()
             .Where(l => l.InviteId == inviteId && l.DeletedAt == null && l.RevokedAt == null)
@@ -370,7 +415,8 @@ public class InviteService : IInviteService
         if (_currentUser.IsSuperAdmin)
         {
             // Super-admin: bypass tenant scoping — can revoke any invite (consistent with ListAsync).
-            return await _unitOfWork.Repository<Invite>()
+            return await _unitOfWork
+                .Repository<Invite>()
                 .Query()
                 .IgnoreQueryFilters()
                 .Where(i => i.Id == id && i.DeletedAt == null)
@@ -378,9 +424,11 @@ public class InviteService : IInviteService
         }
 
         var ownerId = TenantStamp.OwnerFor(_currentUser) ?? _currentUser.Id;
-        if (ownerId is not Guid owner) return null;
+        if (ownerId is not Guid owner)
+            return null;
 
-        return await _unitOfWork.Repository<Invite>()
+        return await _unitOfWork
+            .Repository<Invite>()
             .Query()
             .IgnoreQueryFilters()
             .Where(i => i.Id == id && i.DeletedAt == null && i.OwnerId == owner)
@@ -398,31 +446,30 @@ public class InviteService : IInviteService
         if (invite.OwnerId == null)
         {
             // New-workspace invite — no existing tenant to preview.
-            return Result<InvitePreviewResponse>.Success(new InvitePreviewResponse
-            {
-                IsNewWorkspace = true,
-                EmailLocked = invite.Email != null
-            });
+            return Result<InvitePreviewResponse>.Success(
+                new InvitePreviewResponse
+                {
+                    IsNewWorkspace = true,
+                    EmailLocked = invite.Email != null,
+                }
+            );
         }
 
-        // SAFE preview only: the owning admin's DisplayName + the pinned role's name. NEVER the
-        // tenant GUID, the invite id, or any secret. Anonymous path → bypass filters and scope
-        // explicitly to the invite's own OwnerId.
-        var workspaceName = await _unitOfWork.Repository<User>()
-            .Query()
-            .IgnoreQueryFilters()
+        // SAFE preview only: the workspace's own name + the pinned role's name. NEVER the tenant
+        // GUID, the invite id, or any secret. Anonymous path → bypass filters and scope explicitly
+        // to the invite's own OwnerId.
+        var workspaceName = await _unitOfWork
+            .Workspaces.IgnoreQueryFilters()
             .AsNoTracking()
-            .Where(u => u.DeletedAt == null
-                        && u.OwnerId == invite.OwnerId
-                        && (u.Role.GrantsAdmin || u.Role.IsSuperAdmin))
-            .OrderBy(u => u.CreatedAt)
-            .Select(u => u.DisplayName)
+            .Where(w => w.Id == invite.OwnerId)
+            .Select(w => w.Name)
             .FirstOrDefaultAsync();
 
         string? roleName = null;
         if (invite.RoleId is int rid)
         {
-            roleName = await _unitOfWork.Repository<Role>()
+            roleName = await _unitOfWork
+                .Repository<Role>()
                 .Query()
                 .IgnoreQueryFilters()
                 .AsNoTracking()
@@ -434,12 +481,14 @@ public class InviteService : IInviteService
         // L1: do NOT return the raw locked email to anonymous callers — return only the bool flag.
         // The server still enforces the lock on accept; the client renders a masked hint from
         // EmailLocked=true without knowing the actual address.
-        return Result<InvitePreviewResponse>.Success(new InvitePreviewResponse
-        {
-            WorkspaceName = workspaceName ?? "Workspace",
-            RoleName = roleName,
-            EmailLocked = invite.Email != null
-        });
+        return Result<InvitePreviewResponse>.Success(
+            new InvitePreviewResponse
+            {
+                WorkspaceName = workspaceName ?? Workspace.PlaceholderName,
+                RoleName = roleName,
+                EmailLocked = invite.Email != null,
+            }
+        );
     }
 
     public async Task<Result<LoginResponse>> AcceptAsync(AcceptInviteRequest request)
@@ -467,13 +516,22 @@ public class InviteService : IInviteService
             return Result<LoginResponse>.Failure(MessageKeys.Invite.EmailMismatch);
 
         return invite.OwnerId is Guid existingOwnerId
-            ? await AcceptJoinExistingWorkspaceAsync(invite, existingOwnerId, emailNormalized, request)
+            ? await AcceptJoinExistingWorkspaceAsync(
+                invite,
+                existingOwnerId,
+                emailNormalized,
+                request
+            )
             : await AcceptCreateNewWorkspaceAsync(invite, emailNormalized, request);
     }
 
     // Joins an EXISTING tenant — the original accept flow (invite.OwnerId non-null).
     private async Task<Result<LoginResponse>> AcceptJoinExistingWorkspaceAsync(
-        Invite invite, Guid ownerId, string emailNormalized, AcceptInviteRequest request)
+        Invite invite,
+        Guid ownerId,
+        string emailNormalized,
+        AcceptInviteRequest request
+    )
     {
         // 2. Resolve the role: the invite's pinned RoleId if present (the admin already chose it at
         //    creation time — may be Deputy), else validate the anonymous acceptor's OWN submitted
@@ -497,13 +555,12 @@ public class InviteService : IInviteService
         // 3. M1: scope the duplicate-email check to THIS invite's tenant only — a same-email user
         //    under a different tenant is not a conflict (the (email, owner_id) unique index allows it,
         //    and cross-tenant existence must not be revealed via 409 vs 400 distinction).
-        var existing = await _unitOfWork.Repository<User>()
+        var existing = await _unitOfWork
+            .Repository<User>()
             .Query()
             .IgnoreQueryFilters()
             .AsNoTracking()
-            .Where(u => u.DeletedAt == null
-                        && u.Email == emailNormalized
-                        && u.OwnerId == ownerId)
+            .Where(u => u.DeletedAt == null && u.Email == emailNormalized && u.OwnerId == ownerId)
             .FirstOrDefaultAsync();
 
         if (existing != null)
@@ -511,13 +568,21 @@ public class InviteService : IInviteService
 
         // MaxSeats: count active users owned by the invite's tenant. Checked BEFORE claiming a slot so
         // an over-limit accept never consumes a use. Grandfather-safe (counts DeletedAt == null, on add).
-        var seatCount = await _unitOfWork.Repository<User>()
+        var seatCount = await _unitOfWork
+            .Repository<User>()
             .Query()
             .IgnoreQueryFilters()
             .CountAsync(u => u.OwnerId == ownerId && u.DeletedAt == null);
-        var seatCheck = await _entitlements.CheckCountAsync(ownerId, EntitlementCatalog.MaxSeats, seatCount);
+        var seatCheck = await _entitlements.CheckCountAsync(
+            ownerId,
+            EntitlementCatalog.MaxSeats,
+            seatCount
+        );
         if (!seatCheck.IsSuccess)
-            return Result<LoginResponse>.LimitReached(seatCheck.Message ?? MessageKeys.Plan.LimitReached, seatCheck.Limit!);
+            return Result<LoginResponse>.LimitReached(
+                seatCheck.Message ?? MessageKeys.Plan.LimitReached,
+                seatCheck.Limit!
+            );
 
         // 4. H1: atomically claim a usage slot BEFORE creating the user. The UnitOfWork issues a
         //    single UPDATE … WHERE (not deleted/revoked/expired AND uses < maxUses) … SET uses+=1
@@ -544,7 +609,7 @@ public class InviteService : IInviteService
             PublicId = Guid.NewGuid(),
             ApprovalStatus = ApprovalStatus.Approved,
             IsActive = true,
-            OwnerId = ownerId
+            OwnerId = ownerId,
         };
 
         try
@@ -562,12 +627,14 @@ public class InviteService : IInviteService
         // 6. Auto-signin: return a login token + user (reuse the login response builder).
         newUser.Role = role;
         var token = _tokenService.Issue(newUser);
-        return Result<LoginResponse>.Success(new LoginResponse
-        {
-            Status = "ok",
-            Token = token,
-            User = UserMapper.ToMeResponse(newUser)
-        });
+        return Result<LoginResponse>.Success(
+            new LoginResponse
+            {
+                Status = "ok",
+                Token = token,
+                User = UserMapper.ToMeResponse(newUser),
+            }
+        );
     }
 
     // Mints a brand-new self-owned tenant (invite.OwnerId is null) — the invitee becomes its
@@ -575,23 +642,34 @@ public class InviteService : IInviteService
     // direct-create path (including the OwnerId==u.PublicId duplicate-email scoping and the
     // absence of a seat-limit check — there is no existing tenant to check limits against yet).
     private async Task<Result<LoginResponse>> AcceptCreateNewWorkspaceAsync(
-        Invite invite, string emailNormalized, AcceptInviteRequest request)
+        Invite invite,
+        string emailNormalized,
+        AcceptInviteRequest request
+    )
     {
-        var exists = await _unitOfWork.Repository<User>()
+        var exists = await _unitOfWork
+            .Repository<User>()
             .Query()
             .IgnoreQueryFilters()
             .AsNoTracking()
-            .AnyAsync(u => u.DeletedAt == null && u.Email == emailNormalized && u.OwnerId == u.PublicId);
+            .AnyAsync(u =>
+                u.DeletedAt == null && u.Email == emailNormalized && u.OwnerId == u.PublicId
+            );
 
         if (exists)
             return Result<LoginResponse>.Conflict(MessageKeys.Auth.AccountExists);
 
-        var workspaceAdminRole = await _unitOfWork.Repository<Role>()
+        var workspaceAdminRole = await _unitOfWork
+            .Repository<Role>()
             .Query()
             .IgnoreQueryFilters()
             .AsNoTracking()
-            .FirstOrDefaultAsync(r => r.DeletedAt == null && r.IsActive
-                                      && r.Name == WorkspaceAdminRoleName && r.OwnerId == null);
+            .FirstOrDefaultAsync(r =>
+                r.DeletedAt == null
+                && r.IsActive
+                && r.Name == WorkspaceAdminRoleName
+                && r.OwnerId == null
+            );
         if (workspaceAdminRole == null)
             return Result<LoginResponse>.Failure(MessageKeys.Role.Invalid);
 
@@ -609,11 +687,26 @@ public class InviteService : IInviteService
             PublicId = publicId,
             ApprovalStatus = ApprovalStatus.Approved,
             IsActive = true,
-            OwnerId = publicId // a brand-new tenant owns itself
+            OwnerId = publicId, // a brand-new tenant owns itself
         };
 
         try
         {
+            // A brand-new tenant: the workspace's own name (Q3) comes from what the super admin
+            // typed on the invite, never from the invitee's DisplayName.
+            var trimmedInviteName = invite.DisplayName?.Trim();
+            var workspaceName = string.IsNullOrWhiteSpace(trimmedInviteName)
+                ? Workspace.PlaceholderName
+                : trimmedInviteName[..Math.Min(120, trimmedInviteName.Length)];
+            await _unitOfWork.Workspaces.AddAsync(
+                new Workspace
+                {
+                    Id = publicId,
+                    Name = workspaceName,
+                    CreatedAt = DateTime.UtcNow,
+                    CreatedBy = publicId,
+                }
+            );
             await _unitOfWork.Repository<User>().AddAsync(newUser);
             await _unitOfWork.SaveChangesAsync();
         }
@@ -636,45 +729,58 @@ public class InviteService : IInviteService
         // an anonymous request.
         if (invite.PlanId is int invitedPlanId)
         {
-            var plan = await _unitOfWork.Repository<Plan>()
+            var plan = await _unitOfWork
+                .Repository<Plan>()
                 .Query()
                 .IgnoreQueryFilters()
                 .AsNoTracking()
-                .FirstOrDefaultAsync(p => p.Id == invitedPlanId
-                                          && p.DeletedAt == null
-                                          && p.IsActive
-                                          && p.DisplayState != PlanDisplayState.Hidden);
+                .FirstOrDefaultAsync(p =>
+                    p.Id == invitedPlanId
+                    && p.DeletedAt == null
+                    && p.IsActive
+                    && p.DisplayState != PlanDisplayState.Hidden
+                );
 
             // Free is the zero-write default (a missing subscription already means Free).
             if (plan != null && plan.Slug != "free")
             {
-                await _unitOfWork.Repository<Subscription>().AddAsync(new Subscription
-                {
-                    // Set explicitly: accept runs with no tenant context, so TenantStamp would
-                    // produce null and violate this entity's non-null OwnerId.
-                    OwnerId = publicId,
-                    PlanId = plan.Id,
-                    Status = SubscriptionStatus.Active
-                });
+                await _unitOfWork
+                    .Repository<Subscription>()
+                    .AddAsync(
+                        new Subscription
+                        {
+                            // Set explicitly: accept runs with no tenant context, so TenantStamp would
+                            // produce null and violate this entity's non-null OwnerId.
+                            OwnerId = publicId,
+                            PlanId = plan.Id,
+                            Status = SubscriptionStatus.Active,
+                        }
+                    );
                 await _unitOfWork.SaveChangesAsync();
             }
         }
 
         newUser.Role = workspaceAdminRole;
         var token = _tokenService.Issue(newUser);
-        return Result<LoginResponse>.Success(new LoginResponse
-        {
-            Status = "ok",
-            Token = token,
-            User = UserMapper.ToMeResponse(newUser)
-        });
+        return Result<LoginResponse>.Success(
+            new LoginResponse
+            {
+                Status = "ok",
+                Token = token,
+                User = UserMapper.ToMeResponse(newUser),
+            }
+        );
     }
 
     // Eagerly provisions a User for a Role.QuickAccess invite (e.g. "Client") instead of deferring
     // creation to a click-through accept step: the invitee gets emailed a direct link to the
     // project's AppUrl plus a generated password, and logs into the widget's existing login UI
     // as-is — no accept page, no signup form.
-    private async Task<Result<InviteResponse>> CreateQuickAccessInviteAsync(Guid ownerId, Role role, CreateInviteRequest request)
+    private async Task<Result<InviteResponse>> CreateQuickAccessInviteAsync(
+        Guid ownerId,
+        Role role,
+        CreateInviteRequest request
+    )
     {
         var emailNormalized = string.IsNullOrWhiteSpace(request.Email)
             ? null
@@ -685,32 +791,46 @@ public class InviteService : IInviteService
         if (request.ProjectId is not int projectId)
             return Result<InviteResponse>.Failure(MessageKeys.Invite.QuickAccessProjectRequired);
 
-        var project = await _unitOfWork.Repository<Project>()
+        var project = await _unitOfWork
+            .Repository<Project>()
             .Query()
             .IgnoreQueryFilters()
             .AsNoTracking()
-            .FirstOrDefaultAsync(p => p.Id == projectId && p.DeletedAt == null && p.OwnerId == ownerId);
+            .FirstOrDefaultAsync(p =>
+                p.Id == projectId && p.DeletedAt == null && p.OwnerId == ownerId
+            );
         if (project == null)
             return Result<InviteResponse>.Failure(MessageKeys.Project.NotFound);
         if (string.IsNullOrWhiteSpace(project.AppUrl))
             return Result<InviteResponse>.Failure(MessageKeys.Invite.QuickAccessAppUrlRequired);
 
         // Tenant-scoped duplicate-email guard (mirrors AcceptJoinExistingWorkspaceAsync).
-        var existing = await _unitOfWork.Repository<User>()
+        var existing = await _unitOfWork
+            .Repository<User>()
             .Query()
             .IgnoreQueryFilters()
             .AsNoTracking()
-            .AnyAsync(u => u.DeletedAt == null && u.Email == emailNormalized && u.OwnerId == ownerId);
+            .AnyAsync(u =>
+                u.DeletedAt == null && u.Email == emailNormalized && u.OwnerId == ownerId
+            );
         if (existing)
             return Result<InviteResponse>.Conflict(MessageKeys.Auth.AccountExists);
 
-        var seatCount = await _unitOfWork.Repository<User>()
+        var seatCount = await _unitOfWork
+            .Repository<User>()
             .Query()
             .IgnoreQueryFilters()
             .CountAsync(u => u.OwnerId == ownerId && u.DeletedAt == null);
-        var seatCheck = await _entitlements.CheckCountAsync(ownerId, EntitlementCatalog.MaxSeats, seatCount);
+        var seatCheck = await _entitlements.CheckCountAsync(
+            ownerId,
+            EntitlementCatalog.MaxSeats,
+            seatCount
+        );
         if (!seatCheck.IsSuccess)
-            return Result<InviteResponse>.LimitReached(seatCheck.Message ?? MessageKeys.Plan.LimitReached, seatCheck.Limit!);
+            return Result<InviteResponse>.LimitReached(
+                seatCheck.Message ?? MessageKeys.Plan.LimitReached,
+                seatCheck.Limit!
+            );
 
         // Deliberately UNUSABLE. The account has no password anyone knows, types, or receives —
         // a random hash input that is never revealed, plus PasswordlessOnly so LoginAsync refuses
@@ -730,7 +850,7 @@ public class InviteService : IInviteService
             PublicId = Guid.NewGuid(),
             ApprovalStatus = ApprovalStatus.Approved,
             IsActive = true,
-            OwnerId = ownerId
+            OwnerId = ownerId,
         };
 
         // Already "used": there is no accept step left to consume — the Invite row exists purely for
@@ -745,7 +865,7 @@ public class InviteService : IInviteService
             ExpiresAt = DateTime.UtcNow.AddDays(ttlDays),
             MaxUses = 1,
             Uses = 1,
-            RevokedAt = null
+            RevokedAt = null,
         };
 
         var rawToken = QuickAccessTokenGenerator.NewToken();
@@ -756,18 +876,22 @@ public class InviteService : IInviteService
             await _unitOfWork.Repository<Invite>().AddAsync(invite);
             await _unitOfWork.SaveChangesAsync();
 
-            await _unitOfWork.Repository<QuickAccessLink>().AddAsync(new QuickAccessLink
-            {
-                OwnerId = ownerId,
-                UserId = newUser.PublicId,
-                ProjectId = projectId,
-                InviteId = invite.Id,
-                TokenHash = QuickAccessTokenGenerator.Hash(rawToken),
-                ExpiresAt = DateTime.UtcNow.AddDays(ttlDays),
-                // 0 = unlimited within the TTL. Single-use would break the silent re-sign-in after
-                // the 12h JWT expires, which is the entire point of the link.
-                MaxUses = 0,
-            });
+            await _unitOfWork
+                .Repository<QuickAccessLink>()
+                .AddAsync(
+                    new QuickAccessLink
+                    {
+                        OwnerId = ownerId,
+                        UserId = newUser.PublicId,
+                        ProjectId = projectId,
+                        InviteId = invite.Id,
+                        TokenHash = QuickAccessTokenGenerator.Hash(rawToken),
+                        ExpiresAt = DateTime.UtcNow.AddDays(ttlDays),
+                        // 0 = unlimited within the TTL. Single-use would break the silent re-sign-in after
+                        // the 12h JWT expires, which is the entire point of the link.
+                        MaxUses = 0,
+                    }
+                );
             await _unitOfWork.SaveChangesAsync();
         }
         catch (Microsoft.EntityFrameworkCore.DbUpdateException)
@@ -777,7 +901,10 @@ public class InviteService : IInviteService
         }
 
         var brand = await _branding.BuildResponseAsync("", new HashSet<string>());
-        var extensionStoreUrl = await _settings.GetStringAsync(ISettingsService.ExtensionStoreUrl, string.Empty);
+        var extensionStoreUrl = await _settings.GetStringAsync(
+            ISettingsService.ExtensionStoreUrl,
+            string.Empty
+        );
         var magicLink = QuickAccessTokenGenerator.BuildMagicLink(project.AppUrl!, rawToken);
 
         // Delivery is link-copy by default: the admin pastes the link wherever they already talk to
@@ -787,11 +914,21 @@ public class InviteService : IInviteService
         {
             try
             {
-                emailSent = await _emailService.SendAsync(emailNormalized,
+                emailSent = await _emailService.SendAsync(
+                    emailNormalized,
                     $"You're invited to review {project.Name}",
-                    BuildQuickAccessInviteEmailHtml(magicLink, emailNormalized, brand.ProductName, project.Name!, extensionStoreUrl));
+                    BuildQuickAccessInviteEmailHtml(
+                        magicLink,
+                        emailNormalized,
+                        brand.ProductName,
+                        project.Name!,
+                        extensionStoreUrl
+                    )
+                );
             }
-            catch { /* logged inside the sender; ignore here */ }
+            catch
+            { /* logged inside the sender; ignore here */
+            }
         }
 
         var response = MapToResponse(invite, role.Name, magicLink);
@@ -807,24 +944,27 @@ public class InviteService : IInviteService
     // not expired, and uses remaining. Anonymous path → IgnoreQueryFilters (no tenant claim yet).
     private async Task<Invite?> ResolveValidInviteAsync(string code)
     {
-        if (string.IsNullOrWhiteSpace(code)) return null;
+        if (string.IsNullOrWhiteSpace(code))
+            return null;
         var trimmed = code.Trim();
         var now = DateTime.UtcNow;
 
-        var invite = await _unitOfWork.Repository<Invite>()
+        var invite = await _unitOfWork
+            .Repository<Invite>()
             .Query()
             .IgnoreQueryFilters()
             .AsNoTracking()
-            .Where(i => i.Code == trimmed
-                        && i.DeletedAt == null
-                        && i.RevokedAt == null
-                        && i.ExpiresAt > now)
+            .Where(i =>
+                i.Code == trimmed && i.DeletedAt == null && i.RevokedAt == null && i.ExpiresAt > now
+            )
             .FirstOrDefaultAsync();
 
-        if (invite == null) return null;
+        if (invite == null)
+            return null;
 
         // Usage cap (evaluated in-memory: null MaxUses = unlimited within TTL).
-        if (invite.MaxUses is int max && invite.Uses >= max) return null;
+        if (invite.MaxUses is int max && invite.Uses >= max)
+            return null;
 
         return invite;
     }
@@ -836,16 +976,19 @@ public class InviteService : IInviteService
     // include Deputy, or anyone could self-escalate to admin-tier by guessing/enumerating its id.
     private async Task<Role?> ResolveAssignableRoleAsync(int roleId, Guid ownerId)
     {
-        return await _unitOfWork.Repository<Role>()
+        return await _unitOfWork
+            .Repository<Role>()
             .Query()
             .IgnoreQueryFilters()
             .AsNoTracking()
-            .FirstOrDefaultAsync(r => r.Id == roleId
-                                      && r.DeletedAt == null
-                                      && r.IsActive
-                                      && !r.GrantsAdmin
-                                      && !r.IsSuperAdmin
-                                      && (r.OwnerId == ownerId || r.OwnerId == null));
+            .FirstOrDefaultAsync(r =>
+                r.Id == roleId
+                && r.DeletedAt == null
+                && r.IsActive
+                && !r.GrantsAdmin
+                && !r.IsSuperAdmin
+                && (r.OwnerId == ownerId || r.OwnerId == null)
+            );
     }
 
     // Same as ResolveAssignableRoleAsync but also allows "Workspace Admin Deputy". Used only where
@@ -854,15 +997,18 @@ public class InviteService : IInviteService
     // invite.RoleId (the admin made that choice at creation time, not the anonymous acceptor now).
     private async Task<Role?> ResolvePinnableRoleAsync(int roleId, Guid ownerId)
     {
-        return await _unitOfWork.Repository<Role>()
+        return await _unitOfWork
+            .Repository<Role>()
             .Query()
             .IgnoreQueryFilters()
             .AsNoTracking()
-            .FirstOrDefaultAsync(r => r.Id == roleId
-                                      && r.DeletedAt == null
-                                      && r.IsActive
-                                      && (!r.GrantsAdmin && !r.IsSuperAdmin || r.Name == DeputyRoleName)
-                                      && (r.OwnerId == ownerId || r.OwnerId == null));
+            .FirstOrDefaultAsync(r =>
+                r.Id == roleId
+                && r.DeletedAt == null
+                && r.IsActive
+                && (!r.GrantsAdmin && !r.IsSuperAdmin || r.Name == DeputyRoleName)
+                && (r.OwnerId == ownerId || r.OwnerId == null)
+            );
     }
 
     // 128-bit crypto-random, URL-safe (base64url, no padding) — same encoding style as
@@ -902,16 +1048,18 @@ public class InviteService : IInviteService
         string? roleName,
         string productName,
         DateTime expiresAtUtc,
-        bool isNewWorkspace = false)
+        bool isNewWorkspace = false
+    )
     {
         // A workspace invite has no role — without this branch the body was a bare heading and a
         // button, which reads like a mis-sent email for the one invitation that matters most.
-        var roleLine = isNewWorkspace
-            ? "<p style=\"margin:0 0 16px\">You've been invited to create a workspace. Open the link "
-                + "below and choose your own password — nobody else ever sees it.</p>"
+        var roleLine =
+            isNewWorkspace
+                ? "<p style=\"margin:0 0 16px\">You've been invited to create a workspace. Open the link "
+                    + "below and choose your own password — nobody else ever sees it.</p>"
             : roleName != null
                 ? $"<p style=\"margin:0 0 16px\">You've been invited to join as <b>{roleName}</b>.</p>"
-                : string.Empty;
+            : string.Empty;
         return $@"<div style=""font-family:system-ui,sans-serif;color:#0f172a;line-height:1.6"">
   <h2 style=""margin:0 0 8px"">You're invited to {productName} 🐕</h2>
   {roleLine}
@@ -926,7 +1074,12 @@ public class InviteService : IInviteService
     /// now passwordless entirely.
     /// </summary>
     private static string BuildQuickAccessInviteEmailHtml(
-        string magicLink, string email, string productName, string projectName, string? extensionStoreUrl)
+        string magicLink,
+        string email,
+        string productName,
+        string projectName,
+        string? extensionStoreUrl
+    )
     {
         // Omitted (not just disabled) until a super admin sets ExtensionStoreUrl in Settings —
         // no point linking a reader to a store page that doesn't exist yet.
@@ -944,19 +1097,20 @@ public class InviteService : IInviteService
 </div>";
     }
 
-    private static InviteResponse MapToResponse(Invite i, string? roleName, string url) => new()
-    {
-        Id = i.Id,
-        Code = i.Code,
-        Url = url,
-        RoleId = i.RoleId,
-        RoleName = roleName,
-        Email = i.Email,
-        ExpiresAt = i.ExpiresAt,
-        MaxUses = i.MaxUses,
-        Uses = i.Uses,
-        ProjectId = i.ProjectId
-    };
+    private static InviteResponse MapToResponse(Invite i, string? roleName, string url) =>
+        new()
+        {
+            Id = i.Id,
+            Code = i.Code,
+            Url = url,
+            RoleId = i.RoleId,
+            RoleName = roleName,
+            Email = i.Email,
+            ExpiresAt = i.ExpiresAt,
+            MaxUses = i.MaxUses,
+            Uses = i.Uses,
+            ProjectId = i.ProjectId,
+        };
 
     public async Task<Result<InviteResponse>> ResendAsync(int id, bool rotate = false)
     {
@@ -977,7 +1131,8 @@ public class InviteService : IInviteService
         // Extend from now, using the invite's original lifetime where it can be recovered, so a
         // resend does not quietly shorten a 30-day link to the 7-day default.
         var originalTtl = invite.ExpiresAt - invite.CreatedAt;
-        var ttlDays = originalTtl.TotalDays >= 1 ? (int)Math.Round(originalTtl.TotalDays) : DefaultTtlDays;
+        var ttlDays =
+            originalTtl.TotalDays >= 1 ? (int)Math.Round(originalTtl.TotalDays) : DefaultTtlDays;
         if (invite.OwnerId is null)
             ttlDays = Math.Clamp(ttlDays, 1, 30);
 
@@ -995,7 +1150,8 @@ public class InviteService : IInviteService
             string? roleName = null;
             if (invite.RoleId is int roleId)
             {
-                roleName = await _unitOfWork.Repository<Role>()
+                roleName = await _unitOfWork
+                    .Repository<Role>()
                     .Query()
                     .IgnoreQueryFilters()
                     .AsNoTracking()
@@ -1006,11 +1162,21 @@ public class InviteService : IInviteService
 
             try
             {
-                emailSent = await _emailService.SendAsync(invite.Email!,
+                emailSent = await _emailService.SendAsync(
+                    invite.Email!,
                     $"You're invited to {brand.ProductName}",
-                    BuildInviteEmailHtml(url, roleName, brand.ProductName, invite.ExpiresAt, invite.OwnerId is null));
+                    BuildInviteEmailHtml(
+                        url,
+                        roleName,
+                        brand.ProductName,
+                        invite.ExpiresAt,
+                        invite.OwnerId is null
+                    )
+                );
             }
-            catch { /* logged inside the sender; a failed send still returns the copyable link */ }
+            catch
+            { /* logged inside the sender; a failed send still returns the copyable link */
+            }
         }
 
         var response = MapToResponse(invite, null, url);

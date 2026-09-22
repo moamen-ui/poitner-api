@@ -25,6 +25,11 @@ public class AppEnvironmentMapping : IEntityTypeConfiguration<AppEnvironment>
             .AreNullsDistinct(false)
             .HasDatabaseName("ux_app_environments_name_owner_live");
         b.Property(x => x.OwnerId).HasColumnName("owner_id");
+        b.HasOne<Workspace>()
+            .WithMany()
+            .HasForeignKey(x => x.OwnerId)
+            .OnDelete(DeleteBehavior.Restrict)
+            .HasConstraintName("fk_app_environments_workspaces_owner_id");
         b.HasIndex(x => x.OwnerId);
 
         b.Property(x => x.IsEnabled).HasColumnName("is_enabled").HasDefaultValue(true);

@@ -21,6 +21,11 @@ public class ExtensionSiteMapping : IEntityTypeConfiguration<ExtensionSite>
 
         // ExtensionSite-specific columns
         b.Property(x => x.OwnerId).HasColumnName("owner_id").IsRequired(); // tenant boundary — never null
+        b.HasOne<Workspace>()
+            .WithMany()
+            .HasForeignKey(x => x.OwnerId)
+            .OnDelete(DeleteBehavior.Restrict)
+            .HasConstraintName("fk_extension_sites_workspaces_owner_id");
         b.Property(x => x.Origin).HasColumnName("origin").IsRequired().HasMaxLength(256);
         b.Property(x => x.FirstSeenAt).HasColumnName("first_seen_at");
         b.HasIndex(x => new { x.OwnerId, x.Origin })

@@ -31,7 +31,8 @@ public class AuthService : IAuthService
         IResetTokenService resetTokens,
         IEmailService emailService,
         IBrandingService branding,
-        IApiKeyService apiKeys)
+        IApiKeyService apiKeys
+    )
     {
         _unitOfWork = unitOfWork;
         _apiKeys = apiKeys;
@@ -50,11 +51,14 @@ public class AuthService : IAuthService
         if (emailNormalized.Length > 0)
         {
             // Anonymous path → bypass the tenant query filter; only real (non-demo) active accounts.
-            var user = await _unitOfWork.Repository<User>()
+            var user = await _unitOfWork
+                .Repository<User>()
                 .Query()
                 .IgnoreQueryFilters()
                 .AsNoTracking()
-                .Where(u => u.DeletedAt == null && u.IsActive && !u.IsDemo && u.Email == emailNormalized)
+                .Where(u =>
+                    u.DeletedAt == null && u.IsActive && !u.IsDemo && u.Email == emailNormalized
+                )
                 .FirstOrDefaultAsync();
 
             if (user != null)
@@ -66,15 +70,20 @@ public class AuthService : IAuthService
                 var link = $"{resetAppUrl}/reset?token={Uri.EscapeDataString(token)}";
                 try
                 {
-                    await _emailService.SendAsync(user.Email, $"Reset your {resetProductName} password",
+                    await _emailService.SendAsync(
+                        user.Email,
+                        $"Reset your {resetProductName} password",
                         $@"<div style=""font-family:system-ui,sans-serif;color:#0f172a;line-height:1.6"">
   <h2 style=""margin:0 0 8px"">Reset your password</h2>
   <p>Click the link below to choose a new password. It expires in 30 minutes.</p>
   <p><a href=""{link}"" style=""color:#2563eb"">Reset my password &rarr;</a></p>
   <p style=""color:#94a3b8;font-size:12px"">If you didn't request this, you can safely ignore this email.</p>
-</div>");
+</div>"
+                    );
                 }
-                catch { /* best-effort; sender logs failures */ }
+                catch
+                { /* best-effort; sender logs failures */
+                }
             }
         }
 
@@ -87,10 +96,17 @@ public class AuthService : IAuthService
         if (string.IsNullOrWhiteSpace(request.NewPassword) || request.NewPassword.Length < 8)
             return Result.Failure("Password must be at least 8 characters.");
 
-        if (!_resetTokens.TryValidate(request.Token ?? string.Empty, out var publicId, out var tokenStamp))
+        if (
+            !_resetTokens.TryValidate(
+                request.Token ?? string.Empty,
+                out var publicId,
+                out var tokenStamp
+            )
+        )
             return Result.Failure("This reset link is invalid or has expired.");
 
-        var user = await _unitOfWork.Repository<User>()
+        var user = await _unitOfWork
+            .Repository<User>()
             .Query()
             .IgnoreQueryFilters()
             .Where(u => u.DeletedAt == null && u.PublicId == publicId)
@@ -122,7 +138,8 @@ public class AuthService : IAuthService
 
         // Own row, any tenant — the standard query filter already scopes this correctly (a caller's
         // own row is always visible to themselves), so no IgnoreQueryFilters needed here.
-        var user = await _unitOfWork.Repository<User>()
+        var user = await _unitOfWork
+            .Repository<User>()
             .Query()
             .Where(u => u.DeletedAt == null && u.PublicId == publicId)
             .FirstOrDefaultAsync();
@@ -143,30 +160,32 @@ public class AuthService : IAuthService
         var brand = await _branding.BuildResponseAsync("", new HashSet<string>());
         try
         {
-            await _emailService.SendAsync(user.Email, $"Your {brand.ProductName} password was changed",
-                BuildPasswordChangedEmailHtml(user.DisplayName, brand.ProductName));
+            await _emailService.SendAsync(
+                user.Email,
+                $"Your {brand.ProductName} password was changed",
+                BuildPasswordChangedEmailHtml(user.DisplayName, brand.ProductName)
+            );
         }
-        catch { /* best-effort; sender logs failures */ }
+        catch
+        { /* best-effort; sender logs failures */
+        }
 
         return Result.Success(MessageKeys.User.PasswordChanged);
     }
 
-    // Resolves the tenant "display name" = the tenant owner user's DisplayName. A tenant is a
-    // self-owned User (OwnerId == PublicId), so this lookup is uniform for both the owner itself
-    // and any of its stakeholders. Null ownerId (super-admin) → null.
+    // Resolves the workspace's own name from workspaces.name (DB-03). Null ownerId (super admin) →
+    // null; a missing row → null.
     private async Task<string?> ResolveTenantNameAsync(Guid? ownerId)
     {
         if (ownerId == null)
             return null;
 
-        var owner = await _unitOfWork.Repository<User>()
-            .Query()
-            .IgnoreQueryFilters()
+        return await _unitOfWork
+            .Workspaces.IgnoreQueryFilters()
             .AsNoTracking()
-            .Where(u => u.PublicId == ownerId.Value && u.DeletedAt == null)
+            .Where(w => w.Id == ownerId.Value)
+            .Select(w => w.Name)
             .FirstOrDefaultAsync();
-
-        return owner?.DisplayName;
     }
 
     private static string BuildPasswordChangedEmailHtml(string displayName, string productName) =>
@@ -182,7 +201,8 @@ public class AuthService : IAuthService
 
         // Login is anonymous (no tenant claim yet), so the User global query filter would
         // only see OwnerId==null users — bypass it to authenticate any tenant's user by email.
-        var user = await _unitOfWork.Repository<User>()
+        var user = await _unitOfWork
+            .Repository<User>()
             .Query()
             .IgnoreQueryFilters()
             .AsNoTracking()
@@ -204,16 +224,22 @@ public class AuthService : IAuthService
             return Result<LoginResponse>.Failure(MessageKeys.Auth.InvalidCredentials);
 
         if (user.ApprovalStatus == ApprovalStatus.Pending)
-            return Result<LoginResponse>.Failure(MessageKeys.Auth.PendingApproval,
-                new LoginResponse { Status = "pending" });
+            return Result<LoginResponse>.Failure(
+                MessageKeys.Auth.PendingApproval,
+                new LoginResponse { Status = "pending" }
+            );
 
         if (user.ApprovalStatus == ApprovalStatus.Rejected)
-            return Result<LoginResponse>.Failure(MessageKeys.Auth.Rejected,
-                new LoginResponse { Status = "rejected" });
+            return Result<LoginResponse>.Failure(
+                MessageKeys.Auth.Rejected,
+                new LoginResponse { Status = "rejected" }
+            );
 
         if (!user.IsActive)
-            return Result<LoginResponse>.Failure(MessageKeys.Auth.Disabled,
-                new LoginResponse { Status = "disabled" });
+            return Result<LoginResponse>.Failure(
+                MessageKeys.Auth.Disabled,
+                new LoginResponse { Status = "disabled" }
+            );
 
         var token = _tokenService.Issue(user);
 
@@ -221,7 +247,7 @@ public class AuthService : IAuthService
         {
             Status = "ok",
             Token = token,
-            User = UserMapper.ToMeResponse(user, await ResolveTenantNameAsync(user.OwnerId))
+            User = UserMapper.ToMeResponse(user, await ResolveTenantNameAsync(user.OwnerId)),
         };
 
         return Result<LoginResponse>.Success(response);
@@ -245,28 +271,36 @@ public class AuthService : IAuthService
             return Result<LoginResponse>.Failure(MessageKeys.Auth.InvalidApiKey);
 
         if (user.ApprovalStatus == ApprovalStatus.Pending)
-            return Result<LoginResponse>.Failure(MessageKeys.Auth.PendingApproval,
-                new LoginResponse { Status = "pending" });
+            return Result<LoginResponse>.Failure(
+                MessageKeys.Auth.PendingApproval,
+                new LoginResponse { Status = "pending" }
+            );
 
         if (user.ApprovalStatus == ApprovalStatus.Rejected)
-            return Result<LoginResponse>.Failure(MessageKeys.Auth.Rejected,
-                new LoginResponse { Status = "rejected" });
+            return Result<LoginResponse>.Failure(
+                MessageKeys.Auth.Rejected,
+                new LoginResponse { Status = "rejected" }
+            );
 
         if (!user.IsActive)
-            return Result<LoginResponse>.Failure(MessageKeys.Auth.Disabled,
-                new LoginResponse { Status = "disabled" });
+            return Result<LoginResponse>.Failure(
+                MessageKeys.Auth.Disabled,
+                new LoginResponse { Status = "disabled" }
+            );
 
         var token = _tokenService.Issue(user, apiKey.Scopes);
 
         // Best-effort usage stamp; throttled to once a minute inside the service.
         await _apiKeys.TouchLastUsedAsync(apiKey.Id);
 
-        return Result<LoginResponse>.Success(new LoginResponse
-        {
-            Status = "ok",
-            Token = token,
-            User = UserMapper.ToMeResponse(user, await ResolveTenantNameAsync(user.OwnerId))
-        });
+        return Result<LoginResponse>.Success(
+            new LoginResponse
+            {
+                Status = "ok",
+                Token = token,
+                User = UserMapper.ToMeResponse(user, await ResolveTenantNameAsync(user.OwnerId)),
+            }
+        );
     }
 
     public async Task<Result> RegisterAsync(RegisterRequest request)
@@ -281,7 +315,8 @@ public class AuthService : IAuthService
         // than one tenant. A bare FirstOrDefault would bind the new account to an ARBITRARY tenant
         // (cross-tenant mis-routing). Fetch up to two matches and REFUSE when the key is ambiguous
         // rather than silently guessing — a deterministic, non-leaky failure.
-        var projectMatches = await _unitOfWork.Repository<Project>()
+        var projectMatches = await _unitOfWork
+            .Repository<Project>()
             .Query()
             .IgnoreQueryFilters()
             .AsNoTracking()
@@ -299,16 +334,19 @@ public class AuthService : IAuthService
 
         // 2. Role must exist, be active, NON-admin, and belong to this tenant (or be a global role).
         //    IgnoreQueryFilters() required for the same anonymous-path reason above.
-        var role = await _unitOfWork.Repository<Role>()
+        var role = await _unitOfWork
+            .Repository<Role>()
             .Query()
             .IgnoreQueryFilters()
             .AsNoTracking()
-            .FirstOrDefaultAsync(r => r.Id == request.RoleId
-                                      && r.DeletedAt == null
-                                      && r.IsActive
-                                      && !r.GrantsAdmin
-                                      && !r.IsSuperAdmin
-                                      && (r.OwnerId == projectOwnerId || r.OwnerId == null));
+            .FirstOrDefaultAsync(r =>
+                r.Id == request.RoleId
+                && r.DeletedAt == null
+                && r.IsActive
+                && !r.GrantsAdmin
+                && !r.IsSuperAdmin
+                && (r.OwnerId == projectOwnerId || r.OwnerId == null)
+            );
 
         if (role == null)
             return Result.Failure(MessageKeys.Role.Invalid);
@@ -317,12 +355,13 @@ public class AuthService : IAuthService
         //    A same-email user under a different tenant is not a conflict — the (email, owner_id)
         //    unique index allows it, and cross-tenant existence must not be revealed. Anonymous path
         //    → bypass the User global query filter (it would only see OwnerId==null users otherwise).
-        var user = await _unitOfWork.Repository<User>()
+        var user = await _unitOfWork
+            .Repository<User>()
             .Query()
             .IgnoreQueryFilters()
-            .Where(u => u.DeletedAt == null
-                        && u.Email == emailNormalized
-                        && u.OwnerId == projectOwnerId)
+            .Where(u =>
+                u.DeletedAt == null && u.Email == emailNormalized && u.OwnerId == projectOwnerId
+            )
             .FirstOrDefaultAsync();
 
         if (user == null)
@@ -337,7 +376,7 @@ public class AuthService : IAuthService
                 PublicId = Guid.NewGuid(),
                 ApprovalStatus = ApprovalStatus.Pending,
                 IsActive = false,
-                OwnerId = projectOwnerId
+                OwnerId = projectOwnerId,
             };
 
             await _unitOfWork.Repository<User>().AddAsync(newUser);
@@ -369,7 +408,10 @@ public class AuthService : IAuthService
     public async Task<Result> RegisterAdminAsync(RegisterAdminRequest request)
     {
         // Check the global toggle — if disabled, self-signup is forbidden.
-        var enabled = await _settings.GetBoolAsync(ISettingsService.ScopedAdminSignupEnabled, fallback: false);
+        var enabled = await _settings.GetBoolAsync(
+            ISettingsService.ScopedAdminSignupEnabled,
+            fallback: false
+        );
         if (!enabled)
             return Result.Forbidden("Self-signup is disabled.");
 
@@ -379,26 +421,28 @@ public class AuthService : IAuthService
         // tenant boundary for a new workspace. A same email existing only as a stakeholder under some
         // OTHER tenant is not a conflict here (each workspace is its own tenant; the (email, owner_id)
         // unique index permits the same address across tenants). Anonymous path → IgnoreQueryFilters().
-        var existing = await _unitOfWork.Repository<User>()
+        var existing = await _unitOfWork
+            .Repository<User>()
             .Query()
             .IgnoreQueryFilters()
             .AsNoTracking()
-            .Where(u => u.DeletedAt == null
-                        && u.Email == emailNormalized
-                        && u.OwnerId == u.PublicId)
+            .Where(u =>
+                u.DeletedAt == null && u.Email == emailNormalized && u.OwnerId == u.PublicId
+            )
             .FirstOrDefaultAsync();
 
         if (existing != null)
             return Result.Conflict("An account with that email already exists.");
 
         // Resolve the global "Workspace Admin" role — anonymous path, must bypass query filter.
-        var role = await _unitOfWork.Repository<Role>()
+        var role = await _unitOfWork
+            .Repository<Role>()
             .Query()
             .IgnoreQueryFilters()
             .AsNoTracking()
-            .FirstOrDefaultAsync(r => r.DeletedAt == null
-                                      && r.Name == "Workspace Admin"
-                                      && r.OwnerId == null);
+            .FirstOrDefaultAsync(r =>
+                r.DeletedAt == null && r.Name == "Workspace Admin" && r.OwnerId == null
+            );
 
         if (role == null)
             return Result.Failure("Workspace Admin role not found.");
@@ -414,9 +458,18 @@ public class AuthService : IAuthService
             ApprovalStatus = ApprovalStatus.Pending,
             IsActive = false,
             // Tenant owns itself while pending; super-admin activates later.
-            OwnerId = publicId
+            OwnerId = publicId,
         };
 
+        await _unitOfWork.Workspaces.AddAsync(
+            new Workspace
+            {
+                Id = publicId,
+                Name = Workspace.PlaceholderName,
+                CreatedAt = DateTime.UtcNow,
+                CreatedBy = publicId,
+            }
+        );
         await _unitOfWork.Repository<User>().AddAsync(newUser);
         await _unitOfWork.SaveChangesAsync();
 
@@ -425,24 +478,31 @@ public class AuthService : IAuthService
         // PendingActivation; a super-admin activates it later (approval flip + IBillingProvider.Activate).
         if (request.PlanId is int planId)
         {
-            var plan = await _unitOfWork.Repository<Plan>()
+            var plan = await _unitOfWork
+                .Repository<Plan>()
                 .Query()
                 .AsNoTracking()
-                .FirstOrDefaultAsync(p => p.Id == planId
-                                          && p.DeletedAt == null
-                                          && p.IsActive
-                                          && p.DisplayState != PlanDisplayState.Hidden);
+                .FirstOrDefaultAsync(p =>
+                    p.Id == planId
+                    && p.DeletedAt == null
+                    && p.IsActive
+                    && p.DisplayState != PlanDisplayState.Hidden
+                );
 
             // Only create a subscription for a real paid plan; Free (or an unknown/invalid id) keeps
             // the zero-write path (missing subscription ⇒ Free).
             if (plan != null && plan.Slug != "free")
             {
-                await _unitOfWork.Repository<Subscription>().AddAsync(new Subscription
-                {
-                    OwnerId = publicId,
-                    PlanId = plan.Id,
-                    Status = SubscriptionStatus.PendingActivation
-                });
+                await _unitOfWork
+                    .Repository<Subscription>()
+                    .AddAsync(
+                        new Subscription
+                        {
+                            OwnerId = publicId,
+                            PlanId = plan.Id,
+                            Status = SubscriptionStatus.PendingActivation,
+                        }
+                    );
                 await _unitOfWork.SaveChangesAsync();
             }
         }
@@ -457,7 +517,8 @@ public class AuthService : IAuthService
         if (publicId == null)
             return Result<MeResponse>.Failure(MessageKeys.Auth.InvalidCredentials);
 
-        var user = await _unitOfWork.Repository<User>()
+        var user = await _unitOfWork
+            .Repository<User>()
             .Query()
             .AsNoTracking()
             .Include(u => u.Role)
@@ -470,6 +531,7 @@ public class AuthService : IAuthService
         var tenantName = await ResolveTenantNameAsync(_currentUser.TenantId);
         return Result<MeResponse>.Success(UserMapper.ToMeResponse(user, tenantName));
     }
+
     public async Task<Result<LoginResponse>> LoginWithInviteAsync(string token)
     {
         // Every failure below returns the SAME message. An anonymous caller holding a guessed token
@@ -482,7 +544,8 @@ public class AuthService : IAuthService
 
         // Anonymous: there is no tenant claim to scope by, so the filter is bypassed deliberately.
         // The token hash IS the authorisation.
-        var link = await _unitOfWork.Repository<QuickAccessLink>()
+        var link = await _unitOfWork
+            .Repository<QuickAccessLink>()
             .Query()
             .IgnoreQueryFilters()
             .Where(l => l.TokenHash == hash && l.DeletedAt == null)
@@ -496,7 +559,8 @@ public class AuthService : IAuthService
         if (link.MaxUses > 0 && link.Uses >= link.MaxUses)
             return Result<LoginResponse>.Failure(MessageKeys.Invite.LinkInvalid);
 
-        var user = await _unitOfWork.Repository<User>()
+        var user = await _unitOfWork
+            .Repository<User>()
             .Query()
             .IgnoreQueryFilters()
             .Include(u => u.Role)
@@ -505,19 +569,25 @@ public class AuthService : IAuthService
 
         // The account must still be the low-privilege one this link was minted for. A link whose
         // user was disabled, or somehow promoted out of QuickAccess, is not honoured.
-        if (user is null || !user.IsActive || user.ApprovalStatus != ApprovalStatus.Approved || user.Role is not { QuickAccess: true })
+        if (
+            user is null
+            || !user.IsActive
+            || user.ApprovalStatus != ApprovalStatus.Approved
+            || user.Role is not { QuickAccess: true }
+        )
             return Result<LoginResponse>.Failure(MessageKeys.Invite.LinkInvalid);
 
         link.Uses += 1;
         link.LastUsedAt = now;
         await _unitOfWork.SaveChangesAsync();
 
-        return Result<LoginResponse>.Success(new LoginResponse
-        {
-            Status = "ok",
-            Token = _tokenService.Issue(user),
-            User = UserMapper.ToMeResponse(user, await ResolveTenantNameAsync(user.OwnerId)),
-        });
+        return Result<LoginResponse>.Success(
+            new LoginResponse
+            {
+                Status = "ok",
+                Token = _tokenService.Issue(user),
+                User = UserMapper.ToMeResponse(user, await ResolveTenantNameAsync(user.OwnerId)),
+            }
+        );
     }
-
 }

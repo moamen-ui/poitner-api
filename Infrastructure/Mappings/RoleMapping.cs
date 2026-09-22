@@ -32,6 +32,11 @@ public class RoleMapping : IEntityTypeConfiguration<Role>
         b.Property(x => x.IsSuperAdmin).HasColumnName("is_super_admin");
         b.Property(x => x.QuickAccess).HasColumnName("quick_access").HasDefaultValue(false);
         b.Property(x => x.OwnerId).HasColumnName("owner_id");
+        b.HasOne<Workspace>()
+            .WithMany()
+            .HasForeignKey(x => x.OwnerId)
+            .OnDelete(DeleteBehavior.Restrict)
+            .HasConstraintName("fk_roles_workspaces_owner_id");
         b.HasIndex(x => x.OwnerId);
     }
 }

@@ -25,12 +25,22 @@ public class ReplyMapping : IEntityTypeConfiguration<Reply>
         b.Property(x => x.AuthorId).HasColumnName("author_id");
         b.Property(x => x.Body).HasColumnName("body").IsRequired();
         b.Property(x => x.OwnerId).HasColumnName("owner_id");
+        b.HasOne<Workspace>()
+            .WithMany()
+            .HasForeignKey(x => x.OwnerId)
+            .OnDelete(DeleteBehavior.Restrict)
+            .HasConstraintName("fk_replies_workspaces_owner_id");
         b.HasIndex(x => x.OwnerId);
-        b.HasOne(x => x.Comment).WithMany(c => c.Replies).HasForeignKey(x => x.CommentId).OnDelete(DeleteBehavior.Cascade);
+        b.HasOne(x => x.Comment)
+            .WithMany(c => c.Replies)
+            .HasForeignKey(x => x.CommentId)
+            .OnDelete(DeleteBehavior.Cascade);
 
         // Advisory payload/secret flags, computed on write (R2-06). The jsonb list mirrors
         // PlanMapping.FeatureBullets: a value-comparer so EF tracks element-level mutations.
-        b.Property(x => x.HasPayloadFlag).HasColumnName("has_payload_flag").HasDefaultValue(false);
+        b.Property(x => x.HasPayloadFlag)
+            .HasColumnName("has_payload_flag")
+            .HasDefaultValue(false);
         b.Property(x => x.PayloadFlags).ConfigureJsonStringList("payload_flags");
 
         // Structured AI attribution — see Reply.AiTool/AiModel doc comments.

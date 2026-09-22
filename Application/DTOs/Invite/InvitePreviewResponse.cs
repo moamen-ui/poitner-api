@@ -13,7 +13,7 @@ public class InvitePreviewResponse
     /// </summary>
     public bool IsNewWorkspace { get; set; }
 
-    /// <summary>The owning admin's display name (used as the workspace/tenant label).</summary>
+    /// <summary>The workspace's own name (never a person's name).</summary>
     public string WorkspaceName { get; set; } = string.Empty;
 
     /// <summary>The pinned role's name, if the invite pins one. Null = invitee picks a role.</summary>

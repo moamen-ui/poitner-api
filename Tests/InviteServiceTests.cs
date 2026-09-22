@@ -34,21 +34,30 @@ public class InviteServiceTests
     private sealed class FakePasswordHasher : IPasswordHasher
     {
         public string Hash(string password) => "hashed:" + password;
+
         public bool Verify(string password, string hash) => hash == "hashed:" + password;
     }
 
     private sealed class FakeTokenService : ITokenService
     {
-        public string Issue(User user, int? keyScopes = null) => "token-for-" + user.PublicId.ToString("N");
+        public string Issue(User user, int? keyScopes = null) =>
+            "token-for-" + user.PublicId.ToString("N");
     }
 
     private sealed class FakeSettings : ISettingsService
     {
-        public Task<bool> GetBoolAsync(string key, bool fallback = false) => Task.FromResult(fallback);
+        public Task<bool> GetBoolAsync(string key, bool fallback = false) =>
+            Task.FromResult(fallback);
+
         public Task SetBoolAsync(string key, bool value) => Task.CompletedTask;
-        public Task<string> GetStringAsync(string key, string fallback = "") => Task.FromResult(fallback);
+
+        public Task<string> GetStringAsync(string key, string fallback = "") =>
+            Task.FromResult(fallback);
+
         public Task SetStringAsync(string key, string value) => Task.CompletedTask;
+
         public Task<int> GetIntAsync(string key, int fallback = 0) => Task.FromResult(fallback);
+
         public Task SetIntAsync(string key, int value) => Task.CompletedTask;
     }
 
@@ -56,7 +65,13 @@ public class InviteServiceTests
     {
         public List<(string To, string Subject, string Html)> Sent { get; } = new();
         public bool ShouldSucceed { get; set; } = true;
-        public Task<bool> SendAsync(string to, string subject, string htmlBody, CancellationToken ct = default)
+
+        public Task<bool> SendAsync(
+            string to,
+            string subject,
+            string htmlBody,
+            CancellationToken ct = default
+        )
         {
             Sent.Add((to, subject, htmlBody));
             return Task.FromResult(ShouldSucceed);
@@ -66,23 +81,51 @@ public class InviteServiceTests
     private sealed class FakeBrandingService : IBrandingService
     {
         private static BrandingResponse Response() => new() { ProductName = "Pointer" };
-        public Task<Result<BrandingResponse>> GetAsync(string publicBase, IReadOnlySet<string> existingKinds) =>
-            Task.FromResult(Result<BrandingResponse>.Success(Response()));
-        public Task<Result<BrandingResponse>> UpdateAsync(BrandingWriteDto dto, string publicBase, IReadOnlySet<string> existingKinds) =>
-            Task.FromResult(Result<BrandingResponse>.Success(Response()));
+
+        public Task<Result<BrandingResponse>> GetAsync(
+            string publicBase,
+            IReadOnlySet<string> existingKinds
+        ) => Task.FromResult(Result<BrandingResponse>.Success(Response()));
+
+        public Task<Result<BrandingResponse>> UpdateAsync(
+            BrandingWriteDto dto,
+            string publicBase,
+            IReadOnlySet<string> existingKinds
+        ) => Task.FromResult(Result<BrandingResponse>.Success(Response()));
+
         public Task<int> BumpVersionAsync() => Task.FromResult(0);
-        public Task<BrandingResponse> BuildResponseAsync(string publicBase, IReadOnlySet<string> existingKinds) =>
-            Task.FromResult(Response());
+
+        public Task<BrandingResponse> BuildResponseAsync(
+            string publicBase,
+            IReadOnlySet<string> existingKinds
+        ) => Task.FromResult(Response());
     }
 
     private static AppDbContext BuildContext(ICurrentUser user, string dbName) =>
-        new(new DbContextOptionsBuilder<AppDbContext>().UseInMemoryDatabase(dbName).Options, user, new Microsoft.Extensions.Configuration.ConfigurationBuilder().Build());
+        new(
+            new DbContextOptionsBuilder<AppDbContext>().UseInMemoryDatabase(dbName).Options,
+            user,
+            new Microsoft.Extensions.Configuration.ConfigurationBuilder().Build()
+        );
 
-    private static InviteService BuildService(ICurrentUser user, AppDbContext db, IEmailService? email = null, IBrandingService? branding = null)
+    private static InviteService BuildService(
+        ICurrentUser user,
+        AppDbContext db,
+        IEmailService? email = null,
+        IBrandingService? branding = null
+    )
     {
         var uow = new UnitOfWork(db);
-        return new InviteService(uow, user, new FakePasswordHasher(), new FakeTokenService(), new FakeSettings(),
-            new PassThroughEntitlements(), email ?? new SpyEmailService(), branding ?? new FakeBrandingService());
+        return new InviteService(
+            uow,
+            user,
+            new FakePasswordHasher(),
+            new FakeTokenService(),
+            new FakeSettings(),
+            new PassThroughEntitlements(),
+            email ?? new SpyEmailService(),
+            branding ?? new FakeBrandingService()
+        );
     }
 
     // Seeds a tenant with an admin user (for the workspace-name preview) and a non-admin role,
@@ -92,23 +135,49 @@ public class InviteServiceTests
         var tenant = Guid.NewGuid();
         using var seed = BuildContext(new FakeCurrentUser { IsSuperAdmin = true }, dbName);
 
-        var adminRole = new Role { Name = "Workspace Admin", GrantsAdmin = true, IsActive = true, OwnerId = tenant };
-        var memberRole = new Role { Name = "Developer", GrantsAdmin = false, IsActive = true, OwnerId = tenant };
+        // DB-03: the workspace preview name is now its own attribute (workspaces.name), never the
+        // admin's DisplayName — seed it so the ":738" assertion still holds, now from the workspace row.
+        seed.Workspaces.Add(
+            new Workspace
+            {
+                Id = tenant,
+                Name = "Acme Inc",
+                CreatedAt = DateTime.UtcNow,
+                CreatedBy = tenant,
+            }
+        );
+
+        var adminRole = new Role
+        {
+            Name = "Workspace Admin",
+            GrantsAdmin = true,
+            IsActive = true,
+            OwnerId = tenant,
+        };
+        var memberRole = new Role
+        {
+            Name = "Developer",
+            GrantsAdmin = false,
+            IsActive = true,
+            OwnerId = tenant,
+        };
         seed.Roles.Add(adminRole);
         seed.Roles.Add(memberRole);
         seed.SaveChanges();
 
-        seed.Users.Add(new User
-        {
-            Email = "admin@a.com",
-            PasswordHash = "x",
-            DisplayName = "Acme Inc",
-            RoleId = adminRole.Id,
-            PublicId = Guid.NewGuid(),
-            ApprovalStatus = ApprovalStatus.Approved,
-            IsActive = true,
-            OwnerId = tenant
-        });
+        seed.Users.Add(
+            new User
+            {
+                Email = "admin@a.com",
+                PasswordHash = "x",
+                DisplayName = "Acme Inc",
+                RoleId = adminRole.Id,
+                PublicId = Guid.NewGuid(),
+                ApprovalStatus = ApprovalStatus.Approved,
+                IsActive = true,
+                OwnerId = tenant,
+            }
+        );
         seed.SaveChanges();
 
         return (tenant, memberRole.Id);
@@ -123,7 +192,7 @@ public class InviteServiceTests
             OwnerId = owner,
             Code = "code-" + Guid.NewGuid().ToString("N"),
             ExpiresAt = DateTime.UtcNow.AddDays(7),
-            Uses = 0
+            Uses = 0,
         };
         tweak?.Invoke(invite);
         seed.Invites.Add(invite);
@@ -144,7 +213,12 @@ public class InviteServiceTests
     {
         var dbName = Guid.NewGuid().ToString();
         var (tenant, roleId) = SeedTenant(dbName);
-        var admin = new FakeCurrentUser { Id = Guid.NewGuid(), TenantId = tenant, IsAdmin = true };
+        var admin = new FakeCurrentUser
+        {
+            Id = Guid.NewGuid(),
+            TenantId = tenant,
+            IsAdmin = true,
+        };
         using var db = BuildContext(admin, dbName);
         var svc = BuildService(admin, db);
 
@@ -164,12 +238,19 @@ public class InviteServiceTests
     {
         var dbName = Guid.NewGuid().ToString();
         var (tenant, roleId) = SeedTenant(dbName);
-        var admin = new FakeCurrentUser { Id = Guid.NewGuid(), TenantId = tenant, IsAdmin = true };
+        var admin = new FakeCurrentUser
+        {
+            Id = Guid.NewGuid(),
+            TenantId = tenant,
+            IsAdmin = true,
+        };
         using var db = BuildContext(admin, dbName);
         var spy = new SpyEmailService();
         var svc = BuildService(admin, db, spy);
 
-        var result = await svc.CreateAsync(new CreateInviteRequest { RoleId = roleId, Email = "New@Invitee.com" });
+        var result = await svc.CreateAsync(
+            new CreateInviteRequest { RoleId = roleId, Email = "New@Invitee.com" }
+        );
 
         Assert.True(result.IsSuccess);
         Assert.True(result.Data!.EmailSent);
@@ -183,7 +264,12 @@ public class InviteServiceTests
     {
         var dbName = Guid.NewGuid().ToString();
         var (tenant, roleId) = SeedTenant(dbName);
-        var admin = new FakeCurrentUser { Id = Guid.NewGuid(), TenantId = tenant, IsAdmin = true };
+        var admin = new FakeCurrentUser
+        {
+            Id = Guid.NewGuid(),
+            TenantId = tenant,
+            IsAdmin = true,
+        };
         using var db = BuildContext(admin, dbName);
         var spy = new SpyEmailService();
         var svc = BuildService(admin, db, spy);
@@ -202,12 +288,19 @@ public class InviteServiceTests
         // (mirrors UserService.SafeSendAsync's "best-effort" contract).
         var dbName = Guid.NewGuid().ToString();
         var (tenant, roleId) = SeedTenant(dbName);
-        var admin = new FakeCurrentUser { Id = Guid.NewGuid(), TenantId = tenant, IsAdmin = true };
+        var admin = new FakeCurrentUser
+        {
+            Id = Guid.NewGuid(),
+            TenantId = tenant,
+            IsAdmin = true,
+        };
         using var db = BuildContext(admin, dbName);
         var spy = new SpyEmailService { ShouldSucceed = false };
         var svc = BuildService(admin, db, spy);
 
-        var result = await svc.CreateAsync(new CreateInviteRequest { RoleId = roleId, Email = "fails@x.com" });
+        var result = await svc.CreateAsync(
+            new CreateInviteRequest { RoleId = roleId, Email = "fails@x.com" }
+        );
 
         Assert.True(result.IsSuccess);
         Assert.False(result.Data!.EmailSent);
@@ -221,9 +314,17 @@ public class InviteServiceTests
         var (tenant, _) = SeedTenant(dbName);
         var adminRoleId = 0;
         using (var s = BuildContext(new FakeCurrentUser { IsSuperAdmin = true }, dbName))
-            adminRoleId = s.Roles.IgnoreQueryFilters().Single(r => r.GrantsAdmin && r.OwnerId == tenant).Id;
+            adminRoleId = s
+                .Roles.IgnoreQueryFilters()
+                .Single(r => r.GrantsAdmin && r.OwnerId == tenant)
+                .Id;
 
-        var admin = new FakeCurrentUser { Id = Guid.NewGuid(), TenantId = tenant, IsAdmin = true };
+        var admin = new FakeCurrentUser
+        {
+            Id = Guid.NewGuid(),
+            TenantId = tenant,
+            IsAdmin = true,
+        };
         using var db = BuildContext(admin, dbName);
         var svc = BuildService(admin, db);
 
@@ -237,7 +338,15 @@ public class InviteServiceTests
     private static void SeedDeputyRole(string dbName)
     {
         using var seed = BuildContext(new FakeCurrentUser { IsSuperAdmin = true }, dbName);
-        seed.Roles.Add(new Role { Name = "Workspace Admin Deputy", GrantsAdmin = true, IsActive = true, IsSystem = true });
+        seed.Roles.Add(
+            new Role
+            {
+                Name = "Workspace Admin Deputy",
+                GrantsAdmin = true,
+                IsActive = true,
+                IsSystem = true,
+            }
+        );
         seed.SaveChanges();
     }
 
@@ -267,7 +376,9 @@ public class InviteServiceTests
         using var db = BuildContext(superAdmin, dbName);
         var svc = BuildService(superAdmin, db);
 
-        var result = await svc.CreateAsync(new CreateInviteRequest { TargetOwnerId = Guid.NewGuid() });
+        var result = await svc.CreateAsync(
+            new CreateInviteRequest { TargetOwnerId = Guid.NewGuid() }
+        );
         Assert.False(result.IsSuccess);
     }
 
@@ -283,7 +394,9 @@ public class InviteServiceTests
         var svc = BuildService(superAdmin, db);
 
         // Requests the tenant's non-admin role explicitly — must be ignored, forced to Deputy.
-        var result = await svc.CreateAsync(new CreateInviteRequest { RoleId = memberRoleId, TargetOwnerId = tenant });
+        var result = await svc.CreateAsync(
+            new CreateInviteRequest { RoleId = memberRoleId, TargetOwnerId = tenant }
+        );
 
         Assert.True(result.IsSuccess);
         Assert.Equal("Workspace Admin Deputy", result.Data!.RoleName);
@@ -298,11 +411,19 @@ public class InviteServiceTests
         var (tenant, _) = SeedTenant(dbName);
         SeedDeputyRole(dbName);
 
-        var admin = new FakeCurrentUser { Id = Guid.NewGuid(), TenantId = tenant, IsAdmin = true };
+        var admin = new FakeCurrentUser
+        {
+            Id = Guid.NewGuid(),
+            TenantId = tenant,
+            IsAdmin = true,
+        };
         using var db = BuildContext(admin, dbName);
         int deputyRoleId;
         using (var s = BuildContext(new FakeCurrentUser { IsSuperAdmin = true }, dbName))
-            deputyRoleId = s.Roles.IgnoreQueryFilters().Single(r => r.Name == "Workspace Admin Deputy").Id;
+            deputyRoleId = s
+                .Roles.IgnoreQueryFilters()
+                .Single(r => r.Name == "Workspace Admin Deputy")
+                .Id;
         var svc = BuildService(admin, db);
 
         // Previously blocked by the blanket admin-role rejection — now explicitly carved out.
@@ -321,7 +442,10 @@ public class InviteServiceTests
         SeedDeputyRole(dbName);
         int deputyRoleId;
         using (var s = BuildContext(new FakeCurrentUser { IsSuperAdmin = true }, dbName))
-            deputyRoleId = s.Roles.IgnoreQueryFilters().Single(r => r.Name == "Workspace Admin Deputy").Id;
+            deputyRoleId = s
+                .Roles.IgnoreQueryFilters()
+                .Single(r => r.Name == "Workspace Admin Deputy")
+                .Id;
 
         var inviteId = SeedInvite(dbName, tenant); // no pinned role — open invite
         var code = CodeOf(dbName, inviteId);
@@ -330,11 +454,16 @@ public class InviteServiceTests
         using var db = BuildContext(anon, dbName);
         var svc = BuildService(anon, db);
 
-        var result = await svc.AcceptAsync(new AcceptInviteRequest
-        {
-            Code = code, Email = "escalate@attacker.com", Password = "password123",
-            DisplayName = "Attacker", RoleId = deputyRoleId
-        });
+        var result = await svc.AcceptAsync(
+            new AcceptInviteRequest
+            {
+                Code = code,
+                Email = "escalate@attacker.com",
+                Password = "password123",
+                DisplayName = "Attacker",
+                RoleId = deputyRoleId,
+            }
+        );
 
         Assert.False(result.IsSuccess);
         Assert.Empty(db.Users.IgnoreQueryFilters().Where(u => u.Email == "escalate@attacker.com"));
@@ -350,7 +479,10 @@ public class InviteServiceTests
         SeedDeputyRole(dbName);
         int deputyRoleId;
         using (var s = BuildContext(new FakeCurrentUser { IsSuperAdmin = true }, dbName))
-            deputyRoleId = s.Roles.IgnoreQueryFilters().Single(r => r.Name == "Workspace Admin Deputy").Id;
+            deputyRoleId = s
+                .Roles.IgnoreQueryFilters()
+                .Single(r => r.Name == "Workspace Admin Deputy")
+                .Id;
 
         var inviteId = SeedInvite(dbName, tenant, i => i.RoleId = deputyRoleId);
         var code = CodeOf(dbName, inviteId);
@@ -359,8 +491,15 @@ public class InviteServiceTests
         using var db = BuildContext(anon, dbName);
         var svc = BuildService(anon, db);
 
-        var result = await svc.AcceptAsync(new AcceptInviteRequest
-        { Code = code, Email = "deputy@invited.com", Password = "password123", DisplayName = "Deputy" });
+        var result = await svc.AcceptAsync(
+            new AcceptInviteRequest
+            {
+                Code = code,
+                Email = "deputy@invited.com",
+                Password = "password123",
+                DisplayName = "Deputy",
+            }
+        );
 
         Assert.True(result.IsSuccess);
         var created = db.Users.IgnoreQueryFilters().Single(u => u.Email == "deputy@invited.com");
@@ -382,8 +521,15 @@ public class InviteServiceTests
 
         // Email is now required for a workspace invite (R1-08) — an unlocked link is a workspace
         // anyone who sees it can claim.
-        var result = await svc.CreateAsync(new CreateInviteRequest
-        { CreateNewWorkspace = true, TargetOwnerId = tenant, RoleId = roleId, Email = "owner@new.test" });
+        var result = await svc.CreateAsync(
+            new CreateInviteRequest
+            {
+                CreateNewWorkspace = true,
+                TargetOwnerId = tenant,
+                RoleId = roleId,
+                Email = "owner@new.test",
+            }
+        );
 
         Assert.True(result.IsSuccess);
         Assert.Null(result.Data!.RoleId);
@@ -420,13 +566,15 @@ public class InviteServiceTests
         using var db = BuildContext(superAdmin, dbName);
 
         var result = await BuildService(superAdmin, db)
-            .CreateAsync(new CreateInviteRequest
-            {
-                CreateNewWorkspace = true,
-                Email = "owner@bounded.test",
-                MaxUses = 99,
-                ExpiresInDays = 365,
-            });
+            .CreateAsync(
+                new CreateInviteRequest
+                {
+                    CreateNewWorkspace = true,
+                    Email = "owner@bounded.test",
+                    MaxUses = 99,
+                    ExpiresInDays = 365,
+                }
+            );
 
         Assert.True(result.IsSuccess);
         var stored = db.Invites.IgnoreQueryFilters().Single();
@@ -445,22 +593,26 @@ public class InviteServiceTests
         var superAdmin = new FakeCurrentUser { Id = Guid.NewGuid(), IsSuperAdmin = true };
         using var seed = BuildContext(superAdmin, dbName);
         var ownerId = Guid.NewGuid();
-        seed.Users.Add(new Pointer.Domain.Entity.User
-        {
-            Email = "taken@owner.test",
-            PasswordHash = "x",
-            DisplayName = "Existing Owner",
-            RoleId = seed.Roles.First().Id,
-            PublicId = ownerId,
-            ApprovalStatus = Pointer.Domain.Enums.ApprovalStatus.Approved,
-            IsActive = true,
-            OwnerId = ownerId,
-        });
+        seed.Users.Add(
+            new Pointer.Domain.Entity.User
+            {
+                Email = "taken@owner.test",
+                PasswordHash = "x",
+                DisplayName = "Existing Owner",
+                RoleId = seed.Roles.First().Id,
+                PublicId = ownerId,
+                ApprovalStatus = Pointer.Domain.Enums.ApprovalStatus.Approved,
+                IsActive = true,
+                OwnerId = ownerId,
+            }
+        );
         seed.SaveChanges();
 
         using var db = BuildContext(superAdmin, dbName);
         var result = await BuildService(superAdmin, db)
-            .CreateAsync(new CreateInviteRequest { CreateNewWorkspace = true, Email = "taken@owner.test" });
+            .CreateAsync(
+                new CreateInviteRequest { CreateNewWorkspace = true, Email = "taken@owner.test" }
+            );
 
         Assert.True(result.IsConflict);
         Assert.Empty(db.Invites.IgnoreQueryFilters().ToList());
@@ -472,7 +624,12 @@ public class InviteServiceTests
         var dbName = Guid.NewGuid().ToString();
         var (tenant, _) = SeedTenant(dbName);
 
-        var admin = new FakeCurrentUser { Id = Guid.NewGuid(), TenantId = tenant, IsAdmin = true };
+        var admin = new FakeCurrentUser
+        {
+            Id = Guid.NewGuid(),
+            TenantId = tenant,
+            IsAdmin = true,
+        };
         using var db = BuildContext(admin, dbName);
         var svc = BuildService(admin, db);
 
@@ -503,7 +660,15 @@ public class InviteServiceTests
         var dbName = Guid.NewGuid().ToString();
         using (var seed = BuildContext(new FakeCurrentUser { IsSuperAdmin = true }, dbName))
         {
-            seed.Roles.Add(new Role { Name = "Workspace Admin", GrantsAdmin = true, IsActive = true, IsSystem = true });
+            seed.Roles.Add(
+                new Role
+                {
+                    Name = "Workspace Admin",
+                    GrantsAdmin = true,
+                    IsActive = true,
+                    IsSystem = true,
+                }
+            );
             seed.SaveChanges();
         }
         var inviteId = SeedInvite(dbName, Guid.Empty, i => i.OwnerId = null);
@@ -513,8 +678,15 @@ public class InviteServiceTests
         using var db = BuildContext(anon, dbName);
         var svc = BuildService(anon, db);
 
-        var result = await svc.AcceptAsync(new AcceptInviteRequest
-        { Code = code, Email = "founder@newco.com", Password = "password123", DisplayName = "Founder" });
+        var result = await svc.AcceptAsync(
+            new AcceptInviteRequest
+            {
+                Code = code,
+                Email = "founder@newco.com",
+                Password = "password123",
+                DisplayName = "Founder",
+            }
+        );
 
         Assert.True(result.IsSuccess);
         var created = db.Users.IgnoreQueryFilters().Single(u => u.Email == "founder@newco.com");
@@ -531,18 +703,31 @@ public class InviteServiceTests
         int adminRoleId;
         using (var seed = BuildContext(new FakeCurrentUser { IsSuperAdmin = true }, dbName))
         {
-            var role = new Role { Name = "Workspace Admin", GrantsAdmin = true, IsActive = true, IsSystem = true };
+            var role = new Role
+            {
+                Name = "Workspace Admin",
+                GrantsAdmin = true,
+                IsActive = true,
+                IsSystem = true,
+            };
             seed.Roles.Add(role);
             seed.SaveChanges();
             adminRoleId = role.Id;
 
             var existingPublicId = Guid.NewGuid();
-            seed.Users.Add(new User
-            {
-                Email = "founder@newco.com", PasswordHash = "x", DisplayName = "Existing Founder",
-                RoleId = adminRoleId, PublicId = existingPublicId, OwnerId = existingPublicId,
-                ApprovalStatus = ApprovalStatus.Approved, IsActive = true
-            });
+            seed.Users.Add(
+                new User
+                {
+                    Email = "founder@newco.com",
+                    PasswordHash = "x",
+                    DisplayName = "Existing Founder",
+                    RoleId = adminRoleId,
+                    PublicId = existingPublicId,
+                    OwnerId = existingPublicId,
+                    ApprovalStatus = ApprovalStatus.Approved,
+                    IsActive = true,
+                }
+            );
             seed.SaveChanges();
         }
         var inviteId = SeedInvite(dbName, Guid.Empty, i => i.OwnerId = null);
@@ -552,8 +737,15 @@ public class InviteServiceTests
         using var db = BuildContext(anon, dbName);
         var svc = BuildService(anon, db);
 
-        var result = await svc.AcceptAsync(new AcceptInviteRequest
-        { Code = code, Email = "founder@newco.com", Password = "password123", DisplayName = "Impersonator" });
+        var result = await svc.AcceptAsync(
+            new AcceptInviteRequest
+            {
+                Code = code,
+                Email = "founder@newco.com",
+                Password = "password123",
+                DisplayName = "Impersonator",
+            }
+        );
 
         Assert.False(result.IsSuccess);
         Assert.True(result.IsConflict);
@@ -574,10 +766,15 @@ public class InviteServiceTests
         using var db = BuildContext(anon, dbName);
         var svc = BuildService(anon, db);
 
-        var result = await svc.AcceptAsync(new AcceptInviteRequest
-        {
-            Code = code, Email = "New@User.com", Password = "password123", DisplayName = "New User"
-        });
+        var result = await svc.AcceptAsync(
+            new AcceptInviteRequest
+            {
+                Code = code,
+                Email = "New@User.com",
+                Password = "password123",
+                DisplayName = "New User",
+            }
+        );
 
         Assert.True(result.IsSuccess);
         Assert.Equal("ok", result.Data!.Status);
@@ -586,11 +783,11 @@ public class InviteServiceTests
         var created = db.Users.IgnoreQueryFilters().Single(u => u.Email == "new@user.com");
         Assert.Equal(ApprovalStatus.Approved, created.ApprovalStatus); // skips the pending queue
         Assert.True(created.IsActive);
-        Assert.Equal(tenant, created.OwnerId);                          // pre-scoped to the tenant
+        Assert.Equal(tenant, created.OwnerId); // pre-scoped to the tenant
         Assert.Equal(roleId, created.RoleId);
 
         var invite = db.Invites.IgnoreQueryFilters().Single(i => i.Id == inviteId);
-        Assert.Equal(1, invite.Uses);                                   // incremented
+        Assert.Equal(1, invite.Uses); // incremented
     }
 
     [Fact]
@@ -605,13 +802,22 @@ public class InviteServiceTests
         using var db = BuildContext(anon, dbName);
         var svc = BuildService(anon, db);
 
-        var result = await svc.AcceptAsync(new AcceptInviteRequest
-        {
-            Code = code, Email = "pick@role.com", Password = "password123", DisplayName = "Picker", RoleId = roleId
-        });
+        var result = await svc.AcceptAsync(
+            new AcceptInviteRequest
+            {
+                Code = code,
+                Email = "pick@role.com",
+                Password = "password123",
+                DisplayName = "Picker",
+                RoleId = roleId,
+            }
+        );
 
         Assert.True(result.IsSuccess);
-        Assert.Equal(roleId, db.Users.IgnoreQueryFilters().Single(u => u.Email == "pick@role.com").RoleId);
+        Assert.Equal(
+            roleId,
+            db.Users.IgnoreQueryFilters().Single(u => u.Email == "pick@role.com").RoleId
+        );
     }
 
     // ── Accept (negative paths) ─────────────────────────────────────────────────
@@ -621,15 +827,30 @@ public class InviteServiceTests
     {
         var dbName = Guid.NewGuid().ToString();
         var (tenant, roleId) = SeedTenant(dbName);
-        var inviteId = SeedInvite(dbName, tenant, i => { i.RoleId = roleId; i.ExpiresAt = DateTime.UtcNow.AddDays(-1); });
+        var inviteId = SeedInvite(
+            dbName,
+            tenant,
+            i =>
+            {
+                i.RoleId = roleId;
+                i.ExpiresAt = DateTime.UtcNow.AddDays(-1);
+            }
+        );
         var code = CodeOf(dbName, inviteId);
 
         var anon = new FakeCurrentUser { };
         using var db = BuildContext(anon, dbName);
         var svc = BuildService(anon, db);
 
-        var result = await svc.AcceptAsync(new AcceptInviteRequest
-        { Code = code, Email = "x@x.com", Password = "password123", DisplayName = "X" });
+        var result = await svc.AcceptAsync(
+            new AcceptInviteRequest
+            {
+                Code = code,
+                Email = "x@x.com",
+                Password = "password123",
+                DisplayName = "X",
+            }
+        );
 
         Assert.False(result.IsSuccess);
         Assert.True(result.IsNotFound);
@@ -641,15 +862,30 @@ public class InviteServiceTests
     {
         var dbName = Guid.NewGuid().ToString();
         var (tenant, roleId) = SeedTenant(dbName);
-        var inviteId = SeedInvite(dbName, tenant, i => { i.RoleId = roleId; i.RevokedAt = DateTime.UtcNow; });
+        var inviteId = SeedInvite(
+            dbName,
+            tenant,
+            i =>
+            {
+                i.RoleId = roleId;
+                i.RevokedAt = DateTime.UtcNow;
+            }
+        );
         var code = CodeOf(dbName, inviteId);
 
         var anon = new FakeCurrentUser { };
         using var db = BuildContext(anon, dbName);
         var svc = BuildService(anon, db);
 
-        var result = await svc.AcceptAsync(new AcceptInviteRequest
-        { Code = code, Email = "y@y.com", Password = "password123", DisplayName = "Y" });
+        var result = await svc.AcceptAsync(
+            new AcceptInviteRequest
+            {
+                Code = code,
+                Email = "y@y.com",
+                Password = "password123",
+                DisplayName = "Y",
+            }
+        );
 
         Assert.False(result.IsSuccess);
         Assert.Empty(db.Users.IgnoreQueryFilters().Where(u => u.Email == "y@y.com"));
@@ -660,15 +896,31 @@ public class InviteServiceTests
     {
         var dbName = Guid.NewGuid().ToString();
         var (tenant, roleId) = SeedTenant(dbName);
-        var inviteId = SeedInvite(dbName, tenant, i => { i.RoleId = roleId; i.MaxUses = 1; i.Uses = 1; });
+        var inviteId = SeedInvite(
+            dbName,
+            tenant,
+            i =>
+            {
+                i.RoleId = roleId;
+                i.MaxUses = 1;
+                i.Uses = 1;
+            }
+        );
         var code = CodeOf(dbName, inviteId);
 
         var anon = new FakeCurrentUser { };
         using var db = BuildContext(anon, dbName);
         var svc = BuildService(anon, db);
 
-        var result = await svc.AcceptAsync(new AcceptInviteRequest
-        { Code = code, Email = "z@z.com", Password = "password123", DisplayName = "Z" });
+        var result = await svc.AcceptAsync(
+            new AcceptInviteRequest
+            {
+                Code = code,
+                Email = "z@z.com",
+                Password = "password123",
+                DisplayName = "Z",
+            }
+        );
 
         Assert.False(result.IsSuccess);
         Assert.Empty(db.Users.IgnoreQueryFilters().Where(u => u.Email == "z@z.com"));
@@ -679,22 +931,44 @@ public class InviteServiceTests
     {
         var dbName = Guid.NewGuid().ToString();
         var (tenant, roleId) = SeedTenant(dbName);
-        var inviteId = SeedInvite(dbName, tenant, i => { i.RoleId = roleId; i.Email = "locked@a.com"; });
+        var inviteId = SeedInvite(
+            dbName,
+            tenant,
+            i =>
+            {
+                i.RoleId = roleId;
+                i.Email = "locked@a.com";
+            }
+        );
         var code = CodeOf(dbName, inviteId);
 
         var anon = new FakeCurrentUser { };
         using var db = BuildContext(anon, dbName);
         var svc = BuildService(anon, db);
 
-        var result = await svc.AcceptAsync(new AcceptInviteRequest
-        { Code = code, Email = "someone@else.com", Password = "password123", DisplayName = "Other" });
+        var result = await svc.AcceptAsync(
+            new AcceptInviteRequest
+            {
+                Code = code,
+                Email = "someone@else.com",
+                Password = "password123",
+                DisplayName = "Other",
+            }
+        );
 
         Assert.False(result.IsSuccess);
         Assert.Empty(db.Users.IgnoreQueryFilters().Where(u => u.Email == "someone@else.com"));
 
         // The matching email is accepted (case-insensitive).
-        var ok = await svc.AcceptAsync(new AcceptInviteRequest
-        { Code = code, Email = "Locked@A.com", Password = "password123", DisplayName = "Owner" });
+        var ok = await svc.AcceptAsync(
+            new AcceptInviteRequest
+            {
+                Code = code,
+                Email = "Locked@A.com",
+                Password = "password123",
+                DisplayName = "Owner",
+            }
+        );
         Assert.True(ok.IsSuccess);
     }
 
@@ -711,8 +985,15 @@ public class InviteServiceTests
         var svc = BuildService(anon, db);
 
         // admin@a.com already exists from SeedTenant.
-        var result = await svc.AcceptAsync(new AcceptInviteRequest
-        { Code = code, Email = "admin@a.com", Password = "password123", DisplayName = "Dup" });
+        var result = await svc.AcceptAsync(
+            new AcceptInviteRequest
+            {
+                Code = code,
+                Email = "admin@a.com",
+                Password = "password123",
+                DisplayName = "Dup",
+            }
+        );
 
         Assert.False(result.IsSuccess);
         Assert.True(result.IsConflict);
@@ -765,7 +1046,12 @@ public class InviteServiceTests
 
         // A DIFFERENT tenant's admin attempts to revoke tenant A's invite by id.
         var tenantB = Guid.NewGuid();
-        var attacker = new FakeCurrentUser { Id = Guid.NewGuid(), TenantId = tenantB, IsAdmin = true };
+        var attacker = new FakeCurrentUser
+        {
+            Id = Guid.NewGuid(),
+            TenantId = tenantB,
+            IsAdmin = true,
+        };
         using var db = BuildContext(attacker, dbName);
         var svc = BuildService(attacker, db);
 
@@ -785,7 +1071,12 @@ public class InviteServiceTests
         SeedInvite(dbName, tenantA, i => i.RoleId = roleId);
 
         var tenantB = Guid.NewGuid();
-        var other = new FakeCurrentUser { Id = Guid.NewGuid(), TenantId = tenantB, IsAdmin = true };
+        var other = new FakeCurrentUser
+        {
+            Id = Guid.NewGuid(),
+            TenantId = tenantB,
+            IsAdmin = true,
+        };
         using var db = BuildContext(other, dbName);
         var svc = BuildService(other, db);
 
@@ -801,7 +1092,12 @@ public class InviteServiceTests
         var (tenant, roleId) = SeedTenant(dbName);
         var inviteId = SeedInvite(dbName, tenant, i => i.RoleId = roleId);
 
-        var admin = new FakeCurrentUser { Id = Guid.NewGuid(), TenantId = tenant, IsAdmin = true };
+        var admin = new FakeCurrentUser
+        {
+            Id = Guid.NewGuid(),
+            TenantId = tenant,
+            IsAdmin = true,
+        };
         using var db = BuildContext(admin, dbName);
         var svc = BuildService(admin, db);
 
@@ -824,7 +1120,15 @@ public class InviteServiceTests
         // (the atomic increment sees Uses=1 >= MaxUses=1 and returns claimed=0).
         var dbName = Guid.NewGuid().ToString();
         var (tenant, roleId) = SeedTenant(dbName);
-        var inviteId = SeedInvite(dbName, tenant, i => { i.RoleId = roleId; i.MaxUses = 1; });
+        var inviteId = SeedInvite(
+            dbName,
+            tenant,
+            i =>
+            {
+                i.RoleId = roleId;
+                i.MaxUses = 1;
+            }
+        );
         var code = CodeOf(dbName, inviteId);
 
         var anon = new FakeCurrentUser { };
@@ -832,16 +1136,30 @@ public class InviteServiceTests
         var svc = BuildService(anon, db);
 
         // First accept succeeds.
-        var first = await svc.AcceptAsync(new AcceptInviteRequest
-        { Code = code, Email = "first@user.com", Password = "password123", DisplayName = "First" });
+        var first = await svc.AcceptAsync(
+            new AcceptInviteRequest
+            {
+                Code = code,
+                Email = "first@user.com",
+                Password = "password123",
+                DisplayName = "First",
+            }
+        );
         Assert.True(first.IsSuccess);
 
         var invite = db.Invites.IgnoreQueryFilters().Single(i => i.Id == inviteId);
         Assert.Equal(1, invite.Uses); // slot consumed
 
         // Second accept (different email, same code) must be rejected — slot exhausted.
-        var second = await svc.AcceptAsync(new AcceptInviteRequest
-        { Code = code, Email = "second@user.com", Password = "password123", DisplayName = "Second" });
+        var second = await svc.AcceptAsync(
+            new AcceptInviteRequest
+            {
+                Code = code,
+                Email = "second@user.com",
+                Password = "password123",
+                DisplayName = "Second",
+            }
+        );
         Assert.False(second.IsSuccess);
         Assert.True(second.IsNotFound); // exhausted → same NotFound as invalid code
         Assert.Empty(db.Users.IgnoreQueryFilters().Where(u => u.Email == "second@user.com"));
@@ -862,7 +1180,12 @@ public class InviteServiceTests
         var svc = BuildService(anon, db);
 
         // Simulates a JSON body with "password": null overriding the default string.Empty.
-        var req = new AcceptInviteRequest { Code = code, Email = "x@x.com", DisplayName = "X" };
+        var req = new AcceptInviteRequest
+        {
+            Code = code,
+            Email = "x@x.com",
+            DisplayName = "X",
+        };
         req.GetType().GetProperty(nameof(AcceptInviteRequest.Password))!.SetValue(req, null!);
 
         var result = await svc.AcceptAsync(req);
@@ -882,8 +1205,15 @@ public class InviteServiceTests
         using var db = BuildContext(anon, dbName);
         var svc = BuildService(anon, db);
 
-        var result = await svc.AcceptAsync(new AcceptInviteRequest
-        { Code = code, Email = "x@x.com", Password = "short", DisplayName = "X" });
+        var result = await svc.AcceptAsync(
+            new AcceptInviteRequest
+            {
+                Code = code,
+                Email = "x@x.com",
+                Password = "short",
+                DisplayName = "X",
+            }
+        );
 
         Assert.False(result.IsSuccess);
         Assert.False(result.IsNotFound);
@@ -902,7 +1232,12 @@ public class InviteServiceTests
         using var db = BuildContext(anon, dbName);
         var svc = BuildService(anon, db);
 
-        var req = new AcceptInviteRequest { Code = code, Password = "password123", DisplayName = "X" };
+        var req = new AcceptInviteRequest
+        {
+            Code = code,
+            Password = "password123",
+            DisplayName = "X",
+        };
         req.GetType().GetProperty(nameof(AcceptInviteRequest.Email))!.SetValue(req, null!);
 
         var result = await svc.AcceptAsync(req);
@@ -922,7 +1257,12 @@ public class InviteServiceTests
         using var db = BuildContext(anon, dbName);
         var svc = BuildService(anon, db);
 
-        var req = new AcceptInviteRequest { Code = code, Email = "x@x.com", Password = "password123" };
+        var req = new AcceptInviteRequest
+        {
+            Code = code,
+            Email = "x@x.com",
+            Password = "password123",
+        };
         req.GetType().GetProperty(nameof(AcceptInviteRequest.DisplayName))!.SetValue(req, null!);
 
         var result = await svc.AcceptAsync(req);
@@ -944,17 +1284,19 @@ public class InviteServiceTests
         // Register a user in tenantA with the shared email.
         using (var seed = BuildContext(new FakeCurrentUser { IsSuperAdmin = true }, dbName))
         {
-            seed.Users.Add(new User
-            {
-                Email = "shared@email.com",
-                PasswordHash = "x",
-                DisplayName = "TenantA User",
-                RoleId = roleIdA,
-                PublicId = Guid.NewGuid(),
-                ApprovalStatus = ApprovalStatus.Approved,
-                IsActive = true,
-                OwnerId = tenantA
-            });
+            seed.Users.Add(
+                new User
+                {
+                    Email = "shared@email.com",
+                    PasswordHash = "x",
+                    DisplayName = "TenantA User",
+                    RoleId = roleIdA,
+                    PublicId = Guid.NewGuid(),
+                    ApprovalStatus = ApprovalStatus.Approved,
+                    IsActive = true,
+                    OwnerId = tenantA,
+                }
+            );
             seed.SaveChanges();
         }
 
@@ -963,19 +1305,38 @@ public class InviteServiceTests
         int roleIdB;
         using (var seed = BuildContext(new FakeCurrentUser { IsSuperAdmin = true }, dbName))
         {
-            var roleB = new Role { Name = "Member-B", GrantsAdmin = false, IsActive = true, OwnerId = tenantB };
+            var roleB = new Role
+            {
+                Name = "Member-B",
+                GrantsAdmin = false,
+                IsActive = true,
+                OwnerId = tenantB,
+            };
             seed.Roles.Add(roleB);
             // Also add a tenantB admin user so workspace name lookup works.
-            var adminRoleB = new Role { Name = "Admin-B", GrantsAdmin = true, IsActive = true, OwnerId = tenantB };
+            var adminRoleB = new Role
+            {
+                Name = "Admin-B",
+                GrantsAdmin = true,
+                IsActive = true,
+                OwnerId = tenantB,
+            };
             seed.Roles.Add(adminRoleB);
             seed.SaveChanges();
             roleIdB = roleB.Id;
-            seed.Users.Add(new User
-            {
-                Email = "adminb@b.com", PasswordHash = "x", DisplayName = "TenantB Workspace",
-                RoleId = adminRoleB.Id, PublicId = Guid.NewGuid(),
-                ApprovalStatus = ApprovalStatus.Approved, IsActive = true, OwnerId = tenantB
-            });
+            seed.Users.Add(
+                new User
+                {
+                    Email = "adminb@b.com",
+                    PasswordHash = "x",
+                    DisplayName = "TenantB Workspace",
+                    RoleId = adminRoleB.Id,
+                    PublicId = Guid.NewGuid(),
+                    ApprovalStatus = ApprovalStatus.Approved,
+                    IsActive = true,
+                    OwnerId = tenantB,
+                }
+            );
             seed.SaveChanges();
         }
 
@@ -987,8 +1348,15 @@ public class InviteServiceTests
         var svc = BuildService(anon, db);
 
         // Must succeed — same email, different tenant → not a conflict.
-        var result = await svc.AcceptAsync(new AcceptInviteRequest
-        { Code = code, Email = "shared@email.com", Password = "password123", DisplayName = "TenantB User" });
+        var result = await svc.AcceptAsync(
+            new AcceptInviteRequest
+            {
+                Code = code,
+                Email = "shared@email.com",
+                Password = "password123",
+                DisplayName = "TenantB User",
+            }
+        );
 
         Assert.True(result.IsSuccess);
         // Two rows exist: one per tenant, same email.
@@ -1022,7 +1390,14 @@ public class InviteServiceTests
     private static int SeedQuickAccessRole(string dbName, Guid tenant)
     {
         using var seed = BuildContext(new FakeCurrentUser { IsSuperAdmin = true }, dbName);
-        var role = new Role { Name = "Client", GrantsAdmin = false, IsActive = true, QuickAccess = true, OwnerId = tenant };
+        var role = new Role
+        {
+            Name = "Client",
+            GrantsAdmin = false,
+            IsActive = true,
+            QuickAccess = true,
+            OwnerId = tenant,
+        };
         seed.Roles.Add(role);
         seed.SaveChanges();
         return role.Id;
@@ -1031,7 +1406,16 @@ public class InviteServiceTests
     private static int SeedProject(string dbName, Guid tenant, string? appUrl)
     {
         using var seed = BuildContext(new FakeCurrentUser { IsSuperAdmin = true }, dbName);
-        var project = new Project { Key = "acme-app", Name = "Acme App", IsActiveLocal = true, IsActiveStaging = true, IsActiveProduction = true, AppUrl = appUrl, OwnerId = tenant };
+        var project = new Project
+        {
+            Key = "acme-app",
+            Name = "Acme App",
+            IsActiveLocal = true,
+            IsActiveStaging = true,
+            IsActiveProduction = true,
+            AppUrl = appUrl,
+            OwnerId = tenant,
+        };
         seed.Projects.Add(project);
         seed.SaveChanges();
         return project.Id;
@@ -1045,11 +1429,18 @@ public class InviteServiceTests
         var clientRoleId = SeedQuickAccessRole(dbName, tenant);
         var projectId = SeedProject(dbName, tenant, "https://client.example.com");
 
-        var admin = new FakeCurrentUser { Id = Guid.NewGuid(), TenantId = tenant, IsAdmin = true };
+        var admin = new FakeCurrentUser
+        {
+            Id = Guid.NewGuid(),
+            TenantId = tenant,
+            IsAdmin = true,
+        };
         using var db = BuildContext(admin, dbName);
         var svc = BuildService(admin, db);
 
-        var result = await svc.CreateAsync(new CreateInviteRequest { RoleId = clientRoleId, ProjectId = projectId });
+        var result = await svc.CreateAsync(
+            new CreateInviteRequest { RoleId = clientRoleId, ProjectId = projectId }
+        );
 
         Assert.False(result.IsSuccess);
         Assert.Empty(db.Users.IgnoreQueryFilters().Where(u => u.RoleId == clientRoleId));
@@ -1063,11 +1454,18 @@ public class InviteServiceTests
         var clientRoleId = SeedQuickAccessRole(dbName, tenant);
         SeedProject(dbName, tenant, "https://client.example.com");
 
-        var admin = new FakeCurrentUser { Id = Guid.NewGuid(), TenantId = tenant, IsAdmin = true };
+        var admin = new FakeCurrentUser
+        {
+            Id = Guid.NewGuid(),
+            TenantId = tenant,
+            IsAdmin = true,
+        };
         using var db = BuildContext(admin, dbName);
         var svc = BuildService(admin, db);
 
-        var result = await svc.CreateAsync(new CreateInviteRequest { RoleId = clientRoleId, Email = "client@acme.com" });
+        var result = await svc.CreateAsync(
+            new CreateInviteRequest { RoleId = clientRoleId, Email = "client@acme.com" }
+        );
 
         Assert.False(result.IsSuccess);
     }
@@ -1080,12 +1478,23 @@ public class InviteServiceTests
         var clientRoleId = SeedQuickAccessRole(dbName, tenant);
         var projectId = SeedProject(dbName, tenant, appUrl: null); // no App URL set yet
 
-        var admin = new FakeCurrentUser { Id = Guid.NewGuid(), TenantId = tenant, IsAdmin = true };
+        var admin = new FakeCurrentUser
+        {
+            Id = Guid.NewGuid(),
+            TenantId = tenant,
+            IsAdmin = true,
+        };
         using var db = BuildContext(admin, dbName);
         var svc = BuildService(admin, db);
 
-        var result = await svc.CreateAsync(new CreateInviteRequest
-        { RoleId = clientRoleId, Email = "client@acme.com", ProjectId = projectId });
+        var result = await svc.CreateAsync(
+            new CreateInviteRequest
+            {
+                RoleId = clientRoleId,
+                Email = "client@acme.com",
+                ProjectId = projectId,
+            }
+        );
 
         Assert.False(result.IsSuccess);
         Assert.Empty(db.Users.IgnoreQueryFilters().Where(u => u.RoleId == clientRoleId));
@@ -1099,13 +1508,24 @@ public class InviteServiceTests
         var clientRoleId = SeedQuickAccessRole(dbName, tenant);
         var projectId = SeedProject(dbName, tenant, "https://client.example.com");
 
-        var admin = new FakeCurrentUser { Id = Guid.NewGuid(), TenantId = tenant, IsAdmin = true };
+        var admin = new FakeCurrentUser
+        {
+            Id = Guid.NewGuid(),
+            TenantId = tenant,
+            IsAdmin = true,
+        };
         using var db = BuildContext(admin, dbName);
         var spy = new SpyEmailService();
         var svc = BuildService(admin, db, spy);
 
-        var result = await svc.CreateAsync(new CreateInviteRequest
-        { RoleId = clientRoleId, Email = "Client@Acme.com", ProjectId = projectId });
+        var result = await svc.CreateAsync(
+            new CreateInviteRequest
+            {
+                RoleId = clientRoleId,
+                Email = "Client@Acme.com",
+                ProjectId = projectId,
+            }
+        );
 
         Assert.True(result.IsSuccess);
         // Link-copy delivery: the admin pastes the link themselves. E-mail is opt-in and off by
@@ -1141,7 +1561,9 @@ public class InviteServiceTests
 
         // Exactly one live link, stored only as a hash — the raw token exists solely in the URL we
         // just handed back.
-        var link = db.QuickAccessLinks.IgnoreQueryFilters().Single(l => l.UserId == created.PublicId);
+        var link = db
+            .QuickAccessLinks.IgnoreQueryFilters()
+            .Single(l => l.UserId == created.PublicId);
         Assert.Equal(64, link.TokenHash.Length);
         Assert.Null(link.RevokedAt);
         Assert.Equal(0, link.Uses);
@@ -1149,7 +1571,10 @@ public class InviteServiceTests
 
         var rawToken = result.Data.Url!.Split("pointer_invite=")[1];
         Assert.DoesNotContain(rawToken, link.TokenHash);
-        Assert.Equal(Pointer.Application.Common.QuickAccessTokenGenerator.Hash(rawToken), link.TokenHash);
+        Assert.Equal(
+            Pointer.Application.Common.QuickAccessTokenGenerator.Hash(rawToken),
+            link.TokenHash
+        );
     }
 
     [Fact]
@@ -1164,12 +1589,23 @@ public class InviteServiceTests
         var clientRoleId = SeedQuickAccessRole(dbName, tenant);
         var projectId = SeedProject(dbName, tenant, "https://client.example.com");
 
-        var admin = new FakeCurrentUser { Id = Guid.NewGuid(), TenantId = tenant, IsAdmin = true };
+        var admin = new FakeCurrentUser
+        {
+            Id = Guid.NewGuid(),
+            TenantId = tenant,
+            IsAdmin = true,
+        };
         using var db = BuildContext(admin, dbName);
         var svc = BuildService(admin, db);
 
-        var create = await svc.CreateAsync(new CreateInviteRequest
-        { RoleId = clientRoleId, Email = "listed@acme.com", ProjectId = projectId });
+        var create = await svc.CreateAsync(
+            new CreateInviteRequest
+            {
+                RoleId = clientRoleId,
+                Email = "listed@acme.com",
+                ProjectId = projectId,
+            }
+        );
         Assert.True(create.IsSuccess);
 
         var list = await svc.ListAsync();
@@ -1185,13 +1621,24 @@ public class InviteServiceTests
         var clientRoleId = SeedQuickAccessRole(dbName, tenant);
         var projectId = SeedProject(dbName, tenant, "https://client.example.com");
 
-        var admin = new FakeCurrentUser { Id = Guid.NewGuid(), TenantId = tenant, IsAdmin = true };
+        var admin = new FakeCurrentUser
+        {
+            Id = Guid.NewGuid(),
+            TenantId = tenant,
+            IsAdmin = true,
+        };
         using var db = BuildContext(admin, dbName);
         var svc = BuildService(admin, db);
 
         // admin@a.com already exists from SeedTenant.
-        var result = await svc.CreateAsync(new CreateInviteRequest
-        { RoleId = clientRoleId, Email = "admin@a.com", ProjectId = projectId });
+        var result = await svc.CreateAsync(
+            new CreateInviteRequest
+            {
+                RoleId = clientRoleId,
+                Email = "admin@a.com",
+                ProjectId = projectId,
+            }
+        );
 
         Assert.False(result.IsSuccess);
         Assert.True(result.IsConflict);
@@ -1204,7 +1651,15 @@ public class InviteServiceTests
     {
         var dbName = Guid.NewGuid().ToString();
         var (tenant, roleId) = SeedTenant(dbName);
-        var inviteId = SeedInvite(dbName, tenant, i => { i.RoleId = roleId; i.Email = "secret@locked.com"; });
+        var inviteId = SeedInvite(
+            dbName,
+            tenant,
+            i =>
+            {
+                i.RoleId = roleId;
+                i.Email = "secret@locked.com";
+            }
+        );
         var code = CodeOf(dbName, inviteId);
 
         var anon = new FakeCurrentUser { };

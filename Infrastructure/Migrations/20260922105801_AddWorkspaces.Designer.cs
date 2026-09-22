@@ -2,6 +2,7 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 using Pointer.Infrastructure;
@@ -11,9 +12,11 @@ using Pointer.Infrastructure;
 namespace Pointer.Infrastructure.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    partial class AppDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260922105801_AddWorkspaces")]
+    partial class AddWorkspaces
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -180,8 +183,6 @@ namespace Pointer.Infrastructure.Migrations
                     b.HasIndex("Hash")
                         .IsUnique()
                         .HasDatabaseName("ux_api_keys_hash");
-
-                    b.HasIndex("OwnerId");
 
                     b.HasIndex("UserId")
                         .IsUnique()
@@ -555,8 +556,6 @@ namespace Pointer.Infrastructure.Migrations
                     b.HasIndex("DeviceCodeHash")
                         .IsUnique()
                         .HasDatabaseName("ux_device_logins_device_code_hash");
-
-                    b.HasIndex("OwnerId");
 
                     b.HasIndex("UserCode")
                         .HasDatabaseName("ix_device_logins_user_code");
@@ -1365,8 +1364,6 @@ namespace Pointer.Infrastructure.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("OwnerId");
-
                     b.HasIndex("ProjectId", "Sha")
                         .IsUnique()
                         .HasFilter("deleted_at IS NULL");
@@ -1454,8 +1451,6 @@ namespace Pointer.Infrastructure.Migrations
                         .HasColumnName("uses");
 
                     b.HasKey("Id");
-
-                    b.HasIndex("OwnerId");
 
                     b.HasIndex("TokenHash")
                         .IsUnique();
@@ -1673,8 +1668,6 @@ namespace Pointer.Infrastructure.Migrations
                         .HasColumnName("updated_by");
 
                     b.HasKey("Id");
-
-                    b.HasIndex("OwnerId");
 
                     b.HasIndex("RoleId", "OwnerId")
                         .IsUnique()
@@ -2134,24 +2127,8 @@ namespace Pointer.Infrastructure.Migrations
                     b.ToTable("workspace_settings", (string)null);
                 });
 
-            modelBuilder.Entity("Pointer.Domain.Entity.AiRule", b =>
-                {
-                    b.HasOne("Pointer.Domain.Entity.Workspace", null)
-                        .WithMany()
-                        .HasForeignKey("OwnerId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired()
-                        .HasConstraintName("fk_ai_rules_workspaces_owner_id");
-                });
-
             modelBuilder.Entity("Pointer.Domain.Entity.ApiKey", b =>
                 {
-                    b.HasOne("Pointer.Domain.Entity.Workspace", null)
-                        .WithMany()
-                        .HasForeignKey("OwnerId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .HasConstraintName("fk_api_keys_workspaces_owner_id");
-
                     b.HasOne("Pointer.Domain.Entity.User", "User")
                         .WithMany()
                         .HasForeignKey("UserId")
@@ -2161,24 +2138,8 @@ namespace Pointer.Infrastructure.Migrations
                     b.Navigation("User");
                 });
 
-            modelBuilder.Entity("Pointer.Domain.Entity.AppEnvironment", b =>
-                {
-                    b.HasOne("Pointer.Domain.Entity.Workspace", null)
-                        .WithMany()
-                        .HasForeignKey("OwnerId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .HasConstraintName("fk_app_environments_workspaces_owner_id");
-                });
-
             modelBuilder.Entity("Pointer.Domain.Entity.Comment", b =>
                 {
-                    b.HasOne("Pointer.Domain.Entity.Workspace", null)
-                        .WithMany()
-                        .HasForeignKey("OwnerId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired()
-                        .HasConstraintName("fk_comments_workspaces_owner_id");
-
                     b.HasOne("Pointer.Domain.Entity.PageContextSnapshot", "PageContextSnapshot")
                         .WithMany("Comments")
                         .HasForeignKey("PageContextSnapshotId")
@@ -2303,46 +2264,12 @@ namespace Pointer.Infrastructure.Migrations
                     b.Navigation("Project");
                 });
 
-            modelBuilder.Entity("Pointer.Domain.Entity.DeviceLogin", b =>
-                {
-                    b.HasOne("Pointer.Domain.Entity.Workspace", null)
-                        .WithMany()
-                        .HasForeignKey("OwnerId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .HasConstraintName("fk_device_logins_workspaces_owner_id");
-                });
-
-            modelBuilder.Entity("Pointer.Domain.Entity.ExtensionSite", b =>
-                {
-                    b.HasOne("Pointer.Domain.Entity.Workspace", null)
-                        .WithMany()
-                        .HasForeignKey("OwnerId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired()
-                        .HasConstraintName("fk_extension_sites_workspaces_owner_id");
-                });
-
-            modelBuilder.Entity("Pointer.Domain.Entity.Invite", b =>
-                {
-                    b.HasOne("Pointer.Domain.Entity.Workspace", null)
-                        .WithMany()
-                        .HasForeignKey("OwnerId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .HasConstraintName("fk_invites_workspaces_owner_id");
-                });
-
             modelBuilder.Entity("Pointer.Domain.Entity.Notification", b =>
                 {
                     b.HasOne("Pointer.Domain.Entity.Comment", "Comment")
                         .WithMany()
                         .HasForeignKey("CommentId")
                         .OnDelete(DeleteBehavior.Cascade);
-
-                    b.HasOne("Pointer.Domain.Entity.Workspace", null)
-                        .WithMany()
-                        .HasForeignKey("OwnerId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .HasConstraintName("fk_notifications_workspaces_owner_id");
 
                     b.HasOne("Pointer.Domain.Entity.Project", "Project")
                         .WithMany()
@@ -2364,12 +2291,6 @@ namespace Pointer.Infrastructure.Migrations
 
             modelBuilder.Entity("Pointer.Domain.Entity.PageContextSnapshot", b =>
                 {
-                    b.HasOne("Pointer.Domain.Entity.Workspace", null)
-                        .WithMany()
-                        .HasForeignKey("OwnerId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .HasConstraintName("fk_page_context_snapshots_workspaces_owner_id");
-
                     b.HasOne("Pointer.Domain.Entity.Project", "Project")
                         .WithMany()
                         .HasForeignKey("ProjectId")
@@ -2532,35 +2453,6 @@ namespace Pointer.Infrastructure.Migrations
                         .IsRequired();
                 });
 
-            modelBuilder.Entity("Pointer.Domain.Entity.PredefinedAction", b =>
-                {
-                    b.HasOne("Pointer.Domain.Entity.Workspace", null)
-                        .WithMany()
-                        .HasForeignKey("OwnerId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired()
-                        .HasConstraintName("fk_predefined_actions_workspaces_owner_id");
-                });
-
-            modelBuilder.Entity("Pointer.Domain.Entity.PredefinedActionSuggestion", b =>
-                {
-                    b.HasOne("Pointer.Domain.Entity.Workspace", null)
-                        .WithMany()
-                        .HasForeignKey("OwnerId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .HasConstraintName("fk_predefined_action_suggestions_workspaces_owner_id");
-                });
-
-            modelBuilder.Entity("Pointer.Domain.Entity.Project", b =>
-                {
-                    b.HasOne("Pointer.Domain.Entity.Workspace", null)
-                        .WithMany()
-                        .HasForeignKey("OwnerId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired()
-                        .HasConstraintName("fk_projects_workspaces_owner_id");
-                });
-
             modelBuilder.Entity("Pointer.Domain.Entity.ProjectAppUrl", b =>
                 {
                     b.HasOne("Pointer.Domain.Entity.AppEnvironment", "AppEnvironment")
@@ -2568,13 +2460,6 @@ namespace Pointer.Infrastructure.Migrations
                         .HasForeignKey("AppEnvironmentId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
-
-                    b.HasOne("Pointer.Domain.Entity.Workspace", null)
-                        .WithMany()
-                        .HasForeignKey("OwnerId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired()
-                        .HasConstraintName("fk_project_app_urls_workspaces_owner_id");
 
                     b.HasOne("Pointer.Domain.Entity.Project", "Project")
                         .WithMany("ProjectAppUrls")
@@ -2589,12 +2474,6 @@ namespace Pointer.Infrastructure.Migrations
 
             modelBuilder.Entity("Pointer.Domain.Entity.ProjectBuild", b =>
                 {
-                    b.HasOne("Pointer.Domain.Entity.Workspace", null)
-                        .WithMany()
-                        .HasForeignKey("OwnerId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .HasConstraintName("fk_project_builds_workspaces_owner_id");
-
                     b.HasOne("Pointer.Domain.Entity.Project", "Project")
                         .WithMany()
                         .HasForeignKey("ProjectId")
@@ -2602,15 +2481,6 @@ namespace Pointer.Infrastructure.Migrations
                         .IsRequired();
 
                     b.Navigation("Project");
-                });
-
-            modelBuilder.Entity("Pointer.Domain.Entity.QuickAccessLink", b =>
-                {
-                    b.HasOne("Pointer.Domain.Entity.Workspace", null)
-                        .WithMany()
-                        .HasForeignKey("OwnerId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .HasConstraintName("fk_quick_access_links_workspaces_owner_id");
                 });
 
             modelBuilder.Entity("Pointer.Domain.Entity.Reply", b =>
@@ -2621,52 +2491,11 @@ namespace Pointer.Infrastructure.Migrations
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
-                    b.HasOne("Pointer.Domain.Entity.Workspace", null)
-                        .WithMany()
-                        .HasForeignKey("OwnerId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .HasConstraintName("fk_replies_workspaces_owner_id");
-
                     b.Navigation("Comment");
-                });
-
-            modelBuilder.Entity("Pointer.Domain.Entity.Role", b =>
-                {
-                    b.HasOne("Pointer.Domain.Entity.Workspace", null)
-                        .WithMany()
-                        .HasForeignKey("OwnerId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .HasConstraintName("fk_roles_workspaces_owner_id");
-                });
-
-            modelBuilder.Entity("Pointer.Domain.Entity.RoleTenantOverride", b =>
-                {
-                    b.HasOne("Pointer.Domain.Entity.Workspace", null)
-                        .WithMany()
-                        .HasForeignKey("OwnerId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired()
-                        .HasConstraintName("fk_role_tenant_overrides_workspaces_owner_id");
-                });
-
-            modelBuilder.Entity("Pointer.Domain.Entity.StatusPresentation", b =>
-                {
-                    b.HasOne("Pointer.Domain.Entity.Workspace", null)
-                        .WithMany()
-                        .HasForeignKey("OwnerId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .HasConstraintName("fk_status_presentations_workspaces_owner_id");
                 });
 
             modelBuilder.Entity("Pointer.Domain.Entity.Subscription", b =>
                 {
-                    b.HasOne("Pointer.Domain.Entity.Workspace", null)
-                        .WithMany()
-                        .HasForeignKey("OwnerId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired()
-                        .HasConstraintName("fk_subscriptions_workspaces_owner_id");
-
                     b.HasOne("Pointer.Domain.Entity.Plan", "Plan")
                         .WithMany()
                         .HasForeignKey("PlanId")
@@ -2676,23 +2505,8 @@ namespace Pointer.Infrastructure.Migrations
                     b.Navigation("Plan");
                 });
 
-            modelBuilder.Entity("Pointer.Domain.Entity.UsageEvent", b =>
-                {
-                    b.HasOne("Pointer.Domain.Entity.Workspace", null)
-                        .WithMany()
-                        .HasForeignKey("OwnerId")
-                        .OnDelete(DeleteBehavior.SetNull)
-                        .HasConstraintName("fk_usage_events_workspaces_owner_id");
-                });
-
             modelBuilder.Entity("Pointer.Domain.Entity.User", b =>
                 {
-                    b.HasOne("Pointer.Domain.Entity.Workspace", null)
-                        .WithMany()
-                        .HasForeignKey("OwnerId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .HasConstraintName("fk_users_workspaces_owner_id");
-
                     b.HasOne("Pointer.Domain.Entity.Role", "Role")
                         .WithMany("Users")
                         .HasForeignKey("RoleId")
@@ -2700,15 +2514,6 @@ namespace Pointer.Infrastructure.Migrations
                         .IsRequired();
 
                     b.Navigation("Role");
-                });
-
-            modelBuilder.Entity("Pointer.Domain.Entity.WorkspaceSetting", b =>
-                {
-                    b.HasOne("Pointer.Domain.Entity.Workspace", null)
-                        .WithMany()
-                        .HasForeignKey("OwnerId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .HasConstraintName("fk_workspace_settings_workspaces_owner_id");
                 });
 
             modelBuilder.Entity("Pointer.Domain.Entity.AppEnvironment", b =>

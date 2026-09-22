@@ -21,12 +21,21 @@ public class WorkspaceSettingMapping : IEntityTypeConfiguration<WorkspaceSetting
         // Nullable only for strict-own filter compatibility; the service never writes null
         // (super admins are refused before the write — see CommentFieldService).
         b.Property(x => x.OwnerId).HasColumnName("owner_id");
+        b.HasOne<Workspace>()
+            .WithMany()
+            .HasForeignKey(x => x.OwnerId)
+            .OnDelete(DeleteBehavior.Restrict)
+            .HasConstraintName("fk_workspace_settings_workspaces_owner_id");
         // One opaque jsonb value (converter, deliberately NOT OwnsMany().ToJson(): owned JSON
         // collections need a key and make whole-list replacement awkward).
-        b.Property(x => x.CommentFieldDefinitions).ConfigureJsonColumn("comment_field_definitions", "'[]'");
+        b.Property(x => x.CommentFieldDefinitions)
+            .ConfigureJsonColumn("comment_field_definitions", "'[]'");
 
         // One live row per workspace: unique among non-deleted rows; NULLS NOT DISTINCT so even a
         // hypothetical null-owner row could only ever exist once (belt-and-braces, Postgres 15).
-        b.HasIndex(x => x.OwnerId).IsUnique().HasFilter("deleted_at IS NULL").AreNullsDistinct(false);
+        b.HasIndex(x => x.OwnerId)
+            .IsUnique()
+            .HasFilter("deleted_at IS NULL")
+            .AreNullsDistinct(false);
     }
 }

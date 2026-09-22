@@ -19,6 +19,11 @@ public class AiRuleMapping : IEntityTypeConfiguration<AiRule>
         b.Property(x => x.DeletedBy).HasColumnName("deleted_by");
 
         b.Property(x => x.OwnerId).HasColumnName("owner_id").IsRequired();
+        b.HasOne<Workspace>()
+            .WithMany()
+            .HasForeignKey(x => x.OwnerId)
+            .OnDelete(DeleteBehavior.Restrict)
+            .HasConstraintName("fk_ai_rules_workspaces_owner_id");
         b.Property(x => x.ProjectId).HasColumnName("project_id");
         b.Property(x => x.UserId).HasColumnName("user_id");
         b.Property(x => x.Title).HasColumnName("title").IsRequired().HasMaxLength(256);

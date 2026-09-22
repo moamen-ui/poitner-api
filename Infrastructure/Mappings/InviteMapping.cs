@@ -22,6 +22,11 @@ public class InviteMapping : IEntityTypeConfiguration<Invite>
         // Invite-specific columns
         // Null only for a super-admin "new workspace" invite (accept mints a brand-new tenant).
         b.Property(x => x.OwnerId).HasColumnName("owner_id");
+        b.HasOne<Workspace>()
+            .WithMany()
+            .HasForeignKey(x => x.OwnerId)
+            .OnDelete(DeleteBehavior.Restrict)
+            .HasConstraintName("fk_invites_workspaces_owner_id");
         b.Property(x => x.Code).HasColumnName("code").IsRequired().HasMaxLength(64);
         b.HasIndex(x => x.Code).IsUnique();
         b.Property(x => x.RoleId).HasColumnName("role_id");

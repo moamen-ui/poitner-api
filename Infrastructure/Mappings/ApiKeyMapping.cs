@@ -22,6 +22,11 @@ public class ApiKeyMapping : IEntityTypeConfiguration<ApiKey>
         // ApiKey-specific columns
         b.Property(x => x.UserId).HasColumnName("user_id").IsRequired();
         b.Property(x => x.OwnerId).HasColumnName("owner_id");
+        b.HasOne<Workspace>()
+            .WithMany()
+            .HasForeignKey(x => x.OwnerId)
+            .OnDelete(DeleteBehavior.Restrict)
+            .HasConstraintName("fk_api_keys_workspaces_owner_id");
         b.Property(x => x.Prefix).HasColumnName("prefix").IsRequired().HasMaxLength(16);
         b.Property(x => x.Hash).HasColumnName("hash").IsRequired().HasMaxLength(64);
         b.Property(x => x.Encrypted).HasColumnName("encrypted").IsRequired();

@@ -28,8 +28,11 @@ public class PlatformInsightsServiceTests
     }
 
     private static AppDbContext BuildContext(ICurrentUser user, string dbName) =>
-        new(new DbContextOptionsBuilder<AppDbContext>().UseInMemoryDatabase(dbName).Options, user,
-            new Microsoft.Extensions.Configuration.ConfigurationBuilder().Build());
+        new(
+            new DbContextOptionsBuilder<AppDbContext>().UseInMemoryDatabase(dbName).Options,
+            user,
+            new Microsoft.Extensions.Configuration.ConfigurationBuilder().Build()
+        );
 
     private static PlatformInsightsService BuildService(ICurrentUser user, string dbName) =>
         new(new UnitOfWork(BuildContext(user, dbName)), user);
@@ -53,21 +56,98 @@ public class PlatformInsightsServiceTests
     {
         using var seed = BuildContext(new FakeCurrentUser { IsSuperAdmin = true }, dbName);
 
-        var waRole = new Role { Name = "Workspace Admin", GrantsAdmin = true, IsSystem = true };
+        // DB-03: tenant names now come from workspaces.name, not the admin's DisplayName.
+        seed.Workspaces.Add(
+            new Workspace
+            {
+                Id = TenantA,
+                Name = "Workspace A",
+                CreatedAt = DateTime.UtcNow,
+                CreatedBy = TenantA,
+            }
+        );
+        seed.Workspaces.Add(
+            new Workspace
+            {
+                Id = TenantB,
+                Name = "Workspace B",
+                CreatedAt = DateTime.UtcNow,
+                CreatedBy = TenantB,
+            }
+        );
+
+        var waRole = new Role
+        {
+            Name = "Workspace Admin",
+            GrantsAdmin = true,
+            IsSystem = true,
+        };
         var memberRole = new Role { Name = "Member", GrantsAdmin = false };
         seed.Roles.AddRange(waRole, memberRole);
         seed.SaveChanges();
 
         seed.Users.AddRange(
-            new User { Email = "wa-a@x.com", DisplayName = "Admin A", RoleId = waRole.Id, OwnerId = TenantA, Language = null },
-            new User { Email = "wa-b@x.com", DisplayName = "Admin B", RoleId = waRole.Id, OwnerId = TenantB, Language = null },
-            new User { Email = "u1@x.com", DisplayName = "U1", RoleId = memberRole.Id, OwnerId = TenantA, Language = "en" },
-            new User { Email = "u2@x.com", DisplayName = "U2", RoleId = memberRole.Id, OwnerId = TenantA, Language = null },
-            new User { Email = "u3@x.com", DisplayName = "U3", RoleId = memberRole.Id, OwnerId = TenantB, Language = "ar" });
+            new User
+            {
+                Email = "wa-a@x.com",
+                DisplayName = "Admin A",
+                RoleId = waRole.Id,
+                OwnerId = TenantA,
+                Language = null,
+            },
+            new User
+            {
+                Email = "wa-b@x.com",
+                DisplayName = "Admin B",
+                RoleId = waRole.Id,
+                OwnerId = TenantB,
+                Language = null,
+            },
+            new User
+            {
+                Email = "u1@x.com",
+                DisplayName = "U1",
+                RoleId = memberRole.Id,
+                OwnerId = TenantA,
+                Language = "en",
+            },
+            new User
+            {
+                Email = "u2@x.com",
+                DisplayName = "U2",
+                RoleId = memberRole.Id,
+                OwnerId = TenantA,
+                Language = null,
+            },
+            new User
+            {
+                Email = "u3@x.com",
+                DisplayName = "U3",
+                RoleId = memberRole.Id,
+                OwnerId = TenantB,
+                Language = "ar",
+            }
+        );
         seed.SaveChanges();
 
-        var projA = new Project { Key = "proj-a", Name = "Project A", OwnerId = TenantA, IsActiveLocal = true, IsActiveStaging = true, IsActiveProduction = true };
-        var projB = new Project { Key = "proj-b", Name = "Project B", OwnerId = TenantB, IsActiveLocal = true, IsActiveStaging = true, IsActiveProduction = true };
+        var projA = new Project
+        {
+            Key = "proj-a",
+            Name = "Project A",
+            OwnerId = TenantA,
+            IsActiveLocal = true,
+            IsActiveStaging = true,
+            IsActiveProduction = true,
+        };
+        var projB = new Project
+        {
+            Key = "proj-b",
+            Name = "Project B",
+            OwnerId = TenantB,
+            IsActiveLocal = true,
+            IsActiveStaging = true,
+            IsActiveProduction = true,
+        };
         seed.Projects.AddRange(projA, projB);
         seed.SaveChanges();
 
@@ -75,45 +155,100 @@ public class PlatformInsightsServiceTests
 
         var c1 = new Comment // tenant A, Open, ar, mobile/Chrome
         {
-            ProjectId = projA.Id, OwnerId = TenantA, AuthorId = Guid.NewGuid(), Body = "c1",
-            Status = CommentStatus.Open, Language = "ar", CreatedAt = now.AddHours(-10),
-            Element = new ElementCapture { DeviceType = "mobile", UserAgent = "Mozilla/5.0 Chrome/120.0" }
+            ProjectId = projA.Id,
+            OwnerId = TenantA,
+            AuthorId = Guid.NewGuid(),
+            Body = "c1",
+            Status = CommentStatus.Open,
+            Language = "ar",
+            CreatedAt = now.AddHours(-10),
+            Element = new ElementCapture
+            {
+                DeviceType = "mobile",
+                UserAgent = "Mozilla/5.0 Chrome/120.0",
+            },
         };
         var c2 = new Comment // tenant A, ReadyToApply, en, desktop/Firefox
         {
-            ProjectId = projA.Id, OwnerId = TenantA, AuthorId = Guid.NewGuid(), Body = "c2",
-            Status = CommentStatus.ReadyToApply, Language = "en", CreatedAt = now.AddHours(-9),
-            Element = new ElementCapture { DeviceType = "desktop", UserAgent = "Mozilla/5.0 Firefox/120.0" }
+            ProjectId = projA.Id,
+            OwnerId = TenantA,
+            AuthorId = Guid.NewGuid(),
+            Body = "c2",
+            Status = CommentStatus.ReadyToApply,
+            Language = "en",
+            CreatedAt = now.AddHours(-9),
+            Element = new ElementCapture
+            {
+                DeviceType = "desktop",
+                UserAgent = "Mozilla/5.0 Firefox/120.0",
+            },
         };
         var c3 = new Comment // tenant A, Applied (awaiting verification), en, desktop/Chrome, feature flags
         {
-            ProjectId = projA.Id, OwnerId = TenantA, AuthorId = Guid.NewGuid(), Body = "c3",
-            Status = CommentStatus.Applied, Language = "en",
-            CreatedAt = now.AddHours(-8), AppliedAt = now.AddHours(-6), // 2h created->applied
-            IsBugReport = true, IsPrivate = true,
-            Element = new ElementCapture { DeviceType = "desktop", UserAgent = "Mozilla/5.0 Chrome/120.0", ScreenshotUrl = "uploads/shot.png" },
-            PickedActions = new List<CommentPickedAction> { new() { Text = "Fix it", Prompt = "fix" } }
+            ProjectId = projA.Id,
+            OwnerId = TenantA,
+            AuthorId = Guid.NewGuid(),
+            Body = "c3",
+            Status = CommentStatus.Applied,
+            Language = "en",
+            CreatedAt = now.AddHours(-8),
+            AppliedAt = now.AddHours(-6), // 2h created->applied
+            IsBugReport = true,
+            IsPrivate = true,
+            Element = new ElementCapture
+            {
+                DeviceType = "desktop",
+                UserAgent = "Mozilla/5.0 Chrome/120.0",
+                ScreenshotUrl = "uploads/shot.png",
+            },
+            PickedActions = new List<CommentPickedAction>
+            {
+                new() { Text = "Fix it", Prompt = "fix" },
+            },
         };
         var c4 = new Comment // tenant A, Applied + Verified, unknown language, mobile/Safari
         {
-            ProjectId = projA.Id, OwnerId = TenantA, AuthorId = Guid.NewGuid(), Body = "c4",
-            Status = CommentStatus.Applied, Language = null,
-            CreatedAt = now.AddHours(-7), AppliedAt = now.AddHours(-3), // 4h created->applied
+            ProjectId = projA.Id,
+            OwnerId = TenantA,
+            AuthorId = Guid.NewGuid(),
+            Body = "c4",
+            Status = CommentStatus.Applied,
+            Language = null,
+            CreatedAt = now.AddHours(-7),
+            AppliedAt = now.AddHours(-3), // 4h created->applied
             VerifiedAt = now, // 3h applied->verified
-            Element = new ElementCapture { DeviceType = "mobile", UserAgent = "Mozilla/5.0 Safari/605.1" }
+            Element = new ElementCapture
+            {
+                DeviceType = "mobile",
+                UserAgent = "Mozilla/5.0 Safari/605.1",
+            },
         };
         var c5 = new Comment // tenant B, Archived, ar, tablet/Edge
         {
-            ProjectId = projB.Id, OwnerId = TenantB, AuthorId = Guid.NewGuid(), Body = "c5",
-            Status = CommentStatus.Archived, Language = "ar", CreatedAt = now,
-            Element = new ElementCapture { DeviceType = "tablet", UserAgent = "Mozilla/5.0 Edg/120.0" }
+            ProjectId = projB.Id,
+            OwnerId = TenantB,
+            AuthorId = Guid.NewGuid(),
+            Body = "c5",
+            Status = CommentStatus.Archived,
+            Language = "ar",
+            CreatedAt = now,
+            Element = new ElementCapture
+            {
+                DeviceType = "tablet",
+                UserAgent = "Mozilla/5.0 Edg/120.0",
+            },
         };
         var c6 = new Comment // tenant B, applied-then-reopened (NotFixed proxy), en, no device/UA
         {
-            ProjectId = projB.Id, OwnerId = TenantB, AuthorId = Guid.NewGuid(), Body = "c6",
-            Status = CommentStatus.Open, Language = "en",
-            CreatedAt = now, AppliedAt = now.AddHours(1), // 1h created->applied
-            Element = new ElementCapture()
+            ProjectId = projB.Id,
+            OwnerId = TenantB,
+            AuthorId = Guid.NewGuid(),
+            Body = "c6",
+            Status = CommentStatus.Open,
+            Language = "en",
+            CreatedAt = now,
+            AppliedAt = now.AddHours(1), // 1h created->applied
+            Element = new ElementCapture(),
         };
 
         seed.Comments.AddRange(c1, c2, c3, c4, c5, c6);
@@ -122,11 +257,44 @@ public class PlatformInsightsServiceTests
         // Two events on the SAME project for the "en" page bucket (must count as 1 distinct project),
         // one event on the other project for "ar".
         seed.UsageEvents.AddRange(
-            new UsageEvent { Type = "widget_language", Source = "web-component", ProjectId = projA.Id, OwnerId = TenantA, CreatedAt = now, Meta = "{\"ui\":\"en\",\"browser\":\"en-US\",\"page\":\"en\"}" },
-            new UsageEvent { Type = "widget_language", Source = "web-component", ProjectId = projA.Id, OwnerId = TenantA, CreatedAt = now, Meta = "{\"ui\":\"en\",\"browser\":\"en-US\",\"page\":\"en\"}" },
-            new UsageEvent { Type = "widget_language", Source = "web-component", ProjectId = projB.Id, OwnerId = TenantB, CreatedAt = now, Meta = "{\"ui\":\"ar\",\"browser\":\"ar-SA\",\"page\":\"ar\"}" },
+            new UsageEvent
+            {
+                Type = "widget_language",
+                Source = "web-component",
+                ProjectId = projA.Id,
+                OwnerId = TenantA,
+                CreatedAt = now,
+                Meta = "{\"ui\":\"en\",\"browser\":\"en-US\",\"page\":\"en\"}",
+            },
+            new UsageEvent
+            {
+                Type = "widget_language",
+                Source = "web-component",
+                ProjectId = projA.Id,
+                OwnerId = TenantA,
+                CreatedAt = now,
+                Meta = "{\"ui\":\"en\",\"browser\":\"en-US\",\"page\":\"en\"}",
+            },
+            new UsageEvent
+            {
+                Type = "widget_language",
+                Source = "web-component",
+                ProjectId = projB.Id,
+                OwnerId = TenantB,
+                CreatedAt = now,
+                Meta = "{\"ui\":\"ar\",\"browser\":\"ar-SA\",\"page\":\"ar\"}",
+            },
             // Malformed meta must be skipped without throwing.
-            new UsageEvent { Type = "widget_language", Source = "web-component", ProjectId = projB.Id, OwnerId = TenantB, CreatedAt = now, Meta = "not-json" });
+            new UsageEvent
+            {
+                Type = "widget_language",
+                Source = "web-component",
+                ProjectId = projB.Id,
+                OwnerId = TenantB,
+                CreatedAt = now,
+                Meta = "not-json",
+            }
+        );
         seed.SaveChanges();
 
         return (projA.Id, projB.Id);
@@ -180,13 +348,13 @@ public class PlatformInsightsServiceTests
 
         var byWorkspace = data.Funnel.ByWorkspace;
         var a = byWorkspace.Single(w => w.TenantId == TenantA);
-        Assert.Equal("Admin A", a.TenantName);
+        Assert.Equal("Workspace A", a.TenantName);
         Assert.Equal(1, a.Open);
         Assert.Equal(1, a.Ready);
         Assert.Equal(2, a.Applied);
         Assert.Equal(1, a.Verified);
         var b = byWorkspace.Single(w => w.TenantId == TenantB);
-        Assert.Equal("Admin B", b.TenantName);
+        Assert.Equal("Workspace B", b.TenantName);
         Assert.Equal(1, b.Open);
         Assert.Equal(0, b.Applied);
 
@@ -223,14 +391,29 @@ public class PlatformInsightsServiceTests
         var db = Guid.NewGuid().ToString();
         using (var seed = BuildContext(new FakeCurrentUser { IsSuperAdmin = true }, db))
         {
-            var proj = new Project { Key = "p", Name = "P", OwnerId = TenantA, IsActiveLocal = true, IsActiveStaging = true, IsActiveProduction = true };
+            var proj = new Project
+            {
+                Key = "p",
+                Name = "P",
+                OwnerId = TenantA,
+                IsActiveLocal = true,
+                IsActiveStaging = true,
+                IsActiveProduction = true,
+            };
             seed.Projects.Add(proj);
             seed.SaveChanges();
-            seed.Comments.Add(new Comment
-            {
-                ProjectId = proj.Id, OwnerId = TenantA, AuthorId = Guid.NewGuid(), Body = "x",
-                Status = CommentStatus.Open, CreatedAt = DateTime.UtcNow, Element = new ElementCapture()
-            });
+            seed.Comments.Add(
+                new Comment
+                {
+                    ProjectId = proj.Id,
+                    OwnerId = TenantA,
+                    AuthorId = Guid.NewGuid(),
+                    Body = "x",
+                    Status = CommentStatus.Open,
+                    CreatedAt = DateTime.UtcNow,
+                    Element = new ElementCapture(),
+                }
+            );
             seed.SaveChanges();
         }
 

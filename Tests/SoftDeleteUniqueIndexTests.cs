@@ -47,7 +47,10 @@ public class SoftDeleteUniqueIndexTests
 
         public AppDbContext MakeContext(ICurrentUser user) =>
             new AppDbContext(
-                new DbContextOptionsBuilder<AppDbContext>().UseSqlite(_connectionString).Options,
+                new DbContextOptionsBuilder<AppDbContext>()
+                    .UseSqlite(_connectionString)
+                    .AddInterceptors(new SqliteBtrimFunctionInterceptor())
+                    .Options,
                 user,
                 new Microsoft.Extensions.Configuration.ConfigurationBuilder().Build()
             );
@@ -57,11 +60,29 @@ public class SoftDeleteUniqueIndexTests
 
     private static readonly FakeCurrentUser SuperAdmin = new() { IsSuperAdmin = true };
 
+    // DB-03: every owner_id now FKs to workspaces(id) — Sqlite enforces this FK (unlike InMemory),
+    // so every ownerId these tests mint needs a workspace row first.
+    private static async Task SeedWorkspaceAsync(TestDb db, Guid ownerId)
+    {
+        using var ctx = db.MakeContext(SuperAdmin);
+        ctx.Workspaces.Add(
+            new Workspace
+            {
+                Id = ownerId,
+                Name = "Workspace",
+                CreatedAt = DateTime.UtcNow,
+                CreatedBy = ownerId,
+            }
+        );
+        await ctx.SaveChangesAsync();
+    }
+
     [Fact]
     public async Task User_SameEmail_AfterSoftDelete_IsAllowed()
     {
         using var db = new TestDb();
         var ownerId = Guid.NewGuid();
+        await SeedWorkspaceAsync(db, ownerId);
 
         Role role;
         using (var ctx = db.MakeContext(SuperAdmin))
@@ -115,6 +136,7 @@ public class SoftDeleteUniqueIndexTests
     {
         using var db = new TestDb();
         var ownerId = Guid.NewGuid();
+        await SeedWorkspaceAsync(db, ownerId);
 
         Role role;
         using (var ctx = db.MakeContext(SuperAdmin))
@@ -160,6 +182,7 @@ public class SoftDeleteUniqueIndexTests
     {
         using var db = new TestDb();
         var ownerId = Guid.NewGuid();
+        await SeedWorkspaceAsync(db, ownerId);
 
         Role roleA;
         using (var ctx = db.MakeContext(SuperAdmin))
@@ -189,6 +212,7 @@ public class SoftDeleteUniqueIndexTests
     {
         using var db = new TestDb();
         var ownerId = Guid.NewGuid();
+        await SeedWorkspaceAsync(db, ownerId);
 
         Plan plan;
         using (var ctx = db.MakeContext(SuperAdmin))

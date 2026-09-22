@@ -24,6 +24,11 @@ public class PredefinedActionMapping : IEntityTypeConfiguration<PredefinedAction
         // (CreateTenantAsync's ISOLATION-LOAD-BEARING check), and project-scoped ones inherit the
         // project's owner, which can no longer be null either — enforced here too.
         b.Property(x => x.OwnerId).HasColumnName("owner_id").IsRequired();
+        b.HasOne<Workspace>()
+            .WithMany()
+            .HasForeignKey(x => x.OwnerId)
+            .OnDelete(DeleteBehavior.Restrict)
+            .HasConstraintName("fk_predefined_actions_workspaces_owner_id");
         b.Property(x => x.ProjectId).HasColumnName("project_id");
         b.Property(x => x.UserId).HasColumnName("user_id");
         // Text bounded ≤256; Prompt is Postgres `text` (multi-paragraph — no length cap).

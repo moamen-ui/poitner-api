@@ -77,6 +77,9 @@ public class ProjectAppUrlNavigationTests
         var entityType = db.Model.FindEntityType(typeof(ProjectAppUrl))!;
 
         Assert.DoesNotContain("ProjectId1", entityType.GetProperties().Select(p => p.Name));
-        Assert.Equal(2, entityType.GetForeignKeys().Count());
+        // 3, not the historical 2: DB-03 added fk_project_app_urls_workspaces_owner_id alongside the
+        // existing Project and AppEnvironment FKs. The DoesNotContain assertion above is this test's
+        // actual DB-04 regression guard (no shadow ProjectId1 reappears).
+        Assert.Equal(3, entityType.GetForeignKeys().Count());
     }
 }

@@ -33,11 +33,18 @@ public class ExportImportServiceTests
 
     private sealed class FakeSettingsService : ISettingsService
     {
-        public Task<bool> GetBoolAsync(string key, bool fallback = false) => Task.FromResult(fallback);
+        public Task<bool> GetBoolAsync(string key, bool fallback = false) =>
+            Task.FromResult(fallback);
+
         public Task SetBoolAsync(string key, bool value) => Task.CompletedTask;
-        public Task<string> GetStringAsync(string key, string fallback = "") => Task.FromResult(fallback);
+
+        public Task<string> GetStringAsync(string key, string fallback = "") =>
+            Task.FromResult(fallback);
+
         public Task SetStringAsync(string key, string value) => Task.CompletedTask;
+
         public Task<int> GetIntAsync(string key, int fallback = 0) => Task.FromResult(fallback);
+
         public Task SetIntAsync(string key, int value) => Task.CompletedTask;
     }
 
@@ -50,6 +57,9 @@ public class ExportImportServiceTests
         {
             _connection = new SqliteConnection("DataSource=:memory:");
             _connection.Open();
+            // DB-03's ck_workspaces_name_not_blank check constraint uses Postgres' btrim; register
+            // the SQLite equivalent on this one persistent connection (see SqliteBtrimFunctionInterceptor).
+            _connection.CreateFunction<string?, string?>("btrim", s => s?.Trim());
             // Create the schema once; subsequent contexts reuse the connection.
             using (var bootstrap = MakeContext(new FakeCurrentUser { IsSuperAdmin = true }))
             {
@@ -67,11 +77,20 @@ public class ExportImportServiceTests
         public void Dispose() => _connection.Dispose();
     }
 
-    private static (IUnitOfWork unitOfWork, IProjectService projectService, IExportImportService service)
-        BuildServices(AppDbContext db, FakeCurrentUser user)
+    private static (
+        IUnitOfWork unitOfWork,
+        IProjectService projectService,
+        IExportImportService service
+    ) BuildServices(AppDbContext db, FakeCurrentUser user)
     {
         var uow = new UnitOfWork(db);
-        var projects = new ProjectService(uow, user, new PassThroughEntitlements(), TestProjectServiceDeps.Settings(), TestProjectServiceDeps.Configuration());
+        var projects = new ProjectService(
+            uow,
+            user,
+            new PassThroughEntitlements(),
+            TestProjectServiceDeps.Settings(),
+            TestProjectServiceDeps.Configuration()
+        );
         var service = new ExportImportService(uow, projects, user, new FakeSettingsService());
         return (uow, projects, service);
     }
@@ -88,6 +107,15 @@ public class ExportImportServiceTests
         // Seed project + two comments (each with one reply) under the tenant.
         using (var seed = db.MakeContext(seedUser))
         {
+            seed.Workspaces.Add(
+                new Workspace
+                {
+                    Id = tenant,
+                    Name = "Workspace",
+                    CreatedAt = DateTime.UtcNow,
+                    CreatedBy = tenant,
+                }
+            );
             var role = new Role { Name = "Member", OwnerId = tenant };
             seed.Roles.Add(role);
             await seed.SaveChangesAsync();
@@ -99,7 +127,7 @@ public class ExportImportServiceTests
                     Email = "alice@x",
                     DisplayName = "Alice",
                     OwnerId = tenant,
-                    RoleId = role.Id
+                    RoleId = role.Id,
                 }
             );
             seed.Users.Add(
@@ -109,10 +137,15 @@ public class ExportImportServiceTests
                     Email = "bob@x",
                     DisplayName = "Bob",
                     OwnerId = tenant,
-                    RoleId = role.Id
+                    RoleId = role.Id,
                 }
             );
-            var project = new Project { Key = "alpha", Name = "Alpha", OwnerId = tenant };
+            var project = new Project
+            {
+                Key = "alpha",
+                Name = "Alpha",
+                OwnerId = tenant,
+            };
             seed.Projects.Add(project);
             await seed.SaveChangesAsync();
 
@@ -129,8 +162,8 @@ public class ExportImportServiceTests
                     Element = new ElementCapture
                     {
                         Selector = "#a",
-                        ScreenshotUrl = "uploads/tenant/alpha/shot1.png"
-                    }
+                        ScreenshotUrl = "uploads/tenant/alpha/shot1.png",
+                    },
                 }
             );
             seed.Comments.Add(
@@ -143,7 +176,7 @@ public class ExportImportServiceTests
                     Body = "Second",
                     OwnerId = tenant,
                     CreatedAt = new DateTime(2026, 6, 2, 10, 0, 0, DateTimeKind.Utc),
-                    Element = new ElementCapture { Selector = "#b" }
+                    Element = new ElementCapture { Selector = "#b" },
                 }
             );
             await seed.SaveChangesAsync();
@@ -157,7 +190,7 @@ public class ExportImportServiceTests
                     CommentId = c1.Id,
                     AuthorId = bob,
                     Body = "r1",
-                    OwnerId = tenant
+                    OwnerId = tenant,
                 }
             );
             seed.Replies.Add(
@@ -166,7 +199,7 @@ public class ExportImportServiceTests
                     CommentId = c2.Id,
                     AuthorId = alice,
                     Body = "r2",
-                    OwnerId = tenant
+                    OwnerId = tenant,
                 }
             );
             await seed.SaveChangesAsync();
@@ -208,6 +241,15 @@ public class ExportImportServiceTests
         // Seed one project "beta" under the tenant, and the importing user row (for name resolution only).
         using (var seed = db.MakeContext(new FakeCurrentUser { IsSuperAdmin = true }))
         {
+            seed.Workspaces.Add(
+                new Workspace
+                {
+                    Id = tenant,
+                    Name = "Workspace",
+                    CreatedAt = DateTime.UtcNow,
+                    CreatedBy = tenant,
+                }
+            );
             var role = new Role { Name = "Member", OwnerId = tenant };
             seed.Roles.Add(role);
             await seed.SaveChangesAsync();
@@ -218,10 +260,15 @@ public class ExportImportServiceTests
                     Email = "i@x",
                     DisplayName = "Importer",
                     OwnerId = tenant,
-                    RoleId = role.Id
+                    RoleId = role.Id,
                 }
             );
-            var beta = new Project { Key = "beta", Name = "Beta", OwnerId = tenant };
+            var beta = new Project
+            {
+                Key = "beta",
+                Name = "Beta",
+                OwnerId = tenant,
+            };
             seed.Projects.Add(beta);
             await seed.SaveChangesAsync();
         }
@@ -256,11 +303,11 @@ public class ExportImportServiceTests
                             ExportId = "r-1",
                             Body = "Reply body",
                             AuthorDisplayName = "Bob",
-                            CreatedAt = originalDate.AddHours(1)
-                        }
-                    }
-                }
-            }
+                            CreatedAt = originalDate.AddHours(1),
+                        },
+                    },
+                },
+            },
         };
 
         var result = await service.ImportProjectAsync("beta", file);
@@ -272,8 +319,7 @@ public class ExportImportServiceTests
         Assert.NotEmpty(result.Data.Warnings); // screenshot omission warning
 
         // Verify DB rows.
-        var inserted = await uow
-            .Repository<Comment>()
+        var inserted = await uow.Repository<Comment>()
             .Query()
             .Include(c => c.Replies)
             .Where(c => c.ProjectId != 0 && c.Body.Contains("Imported body"))
@@ -301,7 +347,23 @@ public class ExportImportServiceTests
         var importer = Guid.NewGuid();
         using (var seed = db.MakeContext(new FakeCurrentUser { IsSuperAdmin = true }))
         {
-            seed.Projects.Add(new Project { Key = "gamma", Name = "Gamma", OwnerId = tenant });
+            seed.Workspaces.Add(
+                new Workspace
+                {
+                    Id = tenant,
+                    Name = "Workspace",
+                    CreatedAt = DateTime.UtcNow,
+                    CreatedBy = tenant,
+                }
+            );
+            seed.Projects.Add(
+                new Project
+                {
+                    Key = "gamma",
+                    Name = "Gamma",
+                    OwnerId = tenant,
+                }
+            );
             await seed.SaveChangesAsync();
         }
 
@@ -312,7 +374,7 @@ public class ExportImportServiceTests
         var file = new ExportFileDto
         {
             SchemaVersion = "2.0",
-            Comments = new List<CommentExportDto>()
+            Comments = new List<CommentExportDto>(),
         };
 
         var result = await service.ImportProjectAsync("gamma", file);
@@ -329,6 +391,15 @@ public class ExportImportServiceTests
         var alice = Guid.NewGuid();
         using (var seed = db.MakeContext(new FakeCurrentUser { IsSuperAdmin = true }))
         {
+            seed.Workspaces.Add(
+                new Workspace
+                {
+                    Id = tenant,
+                    Name = "Workspace",
+                    CreatedAt = DateTime.UtcNow,
+                    CreatedBy = tenant,
+                }
+            );
             var role = new Role { Name = "Member", OwnerId = tenant };
             seed.Roles.Add(role);
             await seed.SaveChangesAsync();
@@ -339,11 +410,21 @@ public class ExportImportServiceTests
                     Email = "a@x",
                     DisplayName = "Alice",
                     OwnerId = tenant,
-                    RoleId = role.Id
+                    RoleId = role.Id,
                 }
             );
-            var p1 = new Project { Key = "p1", Name = "P1", OwnerId = tenant };
-            var p2 = new Project { Key = "p2", Name = "P2", OwnerId = tenant };
+            var p1 = new Project
+            {
+                Key = "p1",
+                Name = "P1",
+                OwnerId = tenant,
+            };
+            var p2 = new Project
+            {
+                Key = "p2",
+                Name = "P2",
+                OwnerId = tenant,
+            };
             seed.Projects.AddRange(p1, p2);
             await seed.SaveChangesAsync();
 
@@ -355,7 +436,7 @@ public class ExportImportServiceTests
                     Status = CommentStatus.Open,
                     AuthorId = alice,
                     Body = "on p1",
-                    OwnerId = tenant
+                    OwnerId = tenant,
                 }
             );
             seed.Comments.Add(
@@ -366,7 +447,7 @@ public class ExportImportServiceTests
                     Status = CommentStatus.Open,
                     AuthorId = alice,
                     Body = "on p2",
-                    OwnerId = tenant
+                    OwnerId = tenant,
                 }
             );
             await seed.SaveChangesAsync();

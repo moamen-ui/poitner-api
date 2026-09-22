@@ -13,6 +13,11 @@ public class QuickAccessLinkMapping : IEntityTypeConfiguration<QuickAccessLink>
 
         b.Property(x => x.Id).HasColumnName("id");
         b.Property(x => x.OwnerId).HasColumnName("owner_id");
+        b.HasOne<Workspace>()
+            .WithMany()
+            .HasForeignKey(x => x.OwnerId)
+            .OnDelete(DeleteBehavior.Restrict)
+            .HasConstraintName("fk_quick_access_links_workspaces_owner_id");
         b.Property(x => x.UserId).HasColumnName("user_id").IsRequired();
         b.Property(x => x.ProjectId).HasColumnName("project_id").IsRequired();
         b.Property(x => x.InviteId).HasColumnName("invite_id").IsRequired();

@@ -34,6 +34,11 @@ public class ProjectAppUrlMapping : IEntityTypeConfiguration<ProjectAppUrl>
         b.Property(x => x.Url).HasColumnName("url").IsRequired().HasMaxLength(2048);
         b.Property(x => x.IsActive).HasColumnName("is_active").HasDefaultValue(true);
         b.Property(x => x.OwnerId).HasColumnName("owner_id").IsRequired();
+        b.HasOne<Workspace>()
+            .WithMany()
+            .HasForeignKey(x => x.OwnerId)
+            .OnDelete(DeleteBehavior.Restrict)
+            .HasConstraintName("fk_project_app_urls_workspaces_owner_id");
         // Partial: soft-deleted rows must not block re-adding the same environment's URL. The
         // service revives the deleted row anyway (see ProjectService.SetAppUrlAsync); this keeps the
         // database from turning any future miss into a duplicate-key 500.

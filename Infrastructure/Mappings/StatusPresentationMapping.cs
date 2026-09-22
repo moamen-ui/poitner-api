@@ -26,6 +26,11 @@ public class StatusPresentationMapping : IEntityTypeConfiguration<StatusPresenta
         b.Property(x => x.Color).HasColumnName("color").HasMaxLength(9);
         b.Property(x => x.DisplayOrder).HasColumnName("display_order");
         b.Property(x => x.OwnerId).HasColumnName("owner_id");
+        b.HasOne<Workspace>()
+            .WithMany()
+            .HasForeignKey(x => x.OwnerId)
+            .OnDelete(DeleteBehavior.Restrict)
+            .HasConstraintName("fk_status_presentations_workspaces_owner_id");
         b.HasIndex(x => x.OwnerId);
     }
 }

@@ -39,7 +39,8 @@ public class PlatformInsightsService : IPlatformInsightsService
         // Super admin bypasses the tenant query filters already (see AppDbContext), so this is a
         // cross-tenant read with no extra scoping needed.
         var comments = await LoadCommentsAsync(ignoreFilters: false);
-        var users = await _unitOfWork.Repository<User>()
+        var users = await _unitOfWork
+            .Repository<User>()
             .Query()
             .AsNoTracking()
             .Where(u => u.DeletedAt == null)
@@ -49,14 +50,20 @@ public class PlatformInsightsService : IPlatformInsightsService
 
         var tenantNames = await BuildTenantNameMapAsync(comments.Select(c => c.OwnerId));
 
-        return Result<PlatformInsightsResponse>.Success(new PlatformInsightsResponse
-        {
-            Languages = BuildLanguageInsights(comments, users.Select(u => u.Language), langEvents),
-            Funnel = BuildFunnel(comments, includeByWorkspace: true, tenantNames),
-            Verification = BuildVerification(comments),
-            Devices = BuildDevices(comments),
-            Features = BuildFeatures(comments)
-        });
+        return Result<PlatformInsightsResponse>.Success(
+            new PlatformInsightsResponse
+            {
+                Languages = BuildLanguageInsights(
+                    comments,
+                    users.Select(u => u.Language),
+                    langEvents
+                ),
+                Funnel = BuildFunnel(comments, includeByWorkspace: true, tenantNames),
+                Verification = BuildVerification(comments),
+                Devices = BuildDevices(comments),
+                Features = BuildFeatures(comments),
+            }
+        );
     }
 
     public async Task<Result<WorkspaceInsightsResponse>> GetWorkspaceInsightsAsync()
@@ -69,15 +76,24 @@ public class PlatformInsightsService : IPlatformInsightsService
         // block to workspace admins).
         var comments = await LoadCommentsAsync(ignoreFilters: false);
 
-        return Result<WorkspaceInsightsResponse>.Success(new WorkspaceInsightsResponse
-        {
-            Funnel = BuildFunnel(comments, includeByWorkspace: false, tenantNames: new Dictionary<Guid, string>()),
-            ByProject = BuildByProject(comments),
-            Verification = BuildVerification(comments),
-            CommentLanguages = GroupCount(comments.Select(c => c.Language), unsetLabel: "unknown"),
-            Devices = BuildDevices(comments),
-            Activity = BuildActivity(comments)
-        });
+        return Result<WorkspaceInsightsResponse>.Success(
+            new WorkspaceInsightsResponse
+            {
+                Funnel = BuildFunnel(
+                    comments,
+                    includeByWorkspace: false,
+                    tenantNames: new Dictionary<Guid, string>()
+                ),
+                ByProject = BuildByProject(comments),
+                Verification = BuildVerification(comments),
+                CommentLanguages = GroupCount(
+                    comments.Select(c => c.Language),
+                    unsetLabel: "unknown"
+                ),
+                Devices = BuildDevices(comments),
+                Activity = BuildActivity(comments),
+            }
+        );
     }
 
     public async Task<Result<PublicStatsResponse>> GetPublicStatsAsync()
@@ -87,50 +103,75 @@ public class PlatformInsightsService : IPlatformInsightsService
         // explicitly re-applying the soft-delete check IgnoreQueryFilters() also lifts.
         var comments = await LoadCommentsAsync(ignoreFilters: true);
 
-        var projects = await _unitOfWork.Repository<Project>()
+        var projects = await _unitOfWork
+            .Repository<Project>()
             .Query()
             .IgnoreQueryFilters()
             .AsNoTracking()
             .Where(p => p.DeletedAt == null)
-            .Select(p => new { p.Id, p.OwnerId, p.AiToolsUsed })
+            .Select(p => new
+            {
+                p.Id,
+                p.OwnerId,
+                p.AiToolsUsed,
+            })
             .ToListAsync();
 
         var response = new PublicStatsResponse();
 
         var appliedCount = comments.Count(c => c.AppliedAt != null);
-        response.AppliedComments = appliedCount >= PlatformInsightsConstants.MinAppliedComments
-            ? PlatformInsightsConstants.RoundDown(appliedCount)
-            : null;
+        response.AppliedComments =
+            appliedCount >= PlatformInsightsConstants.MinAppliedComments
+                ? PlatformInsightsConstants.RoundDown(appliedCount)
+                : null;
 
         var projectCount = projects.Count;
-        response.Projects = projectCount >= PlatformInsightsConstants.MinProjects
-            ? PlatformInsightsConstants.RoundDown(projectCount)
-            : null;
+        response.Projects =
+            projectCount >= PlatformInsightsConstants.MinProjects
+                ? PlatformInsightsConstants.RoundDown(projectCount)
+                : null;
 
-        var workspaceCount = projects.Where(p => p.OwnerId.HasValue).Select(p => p.OwnerId!.Value).Distinct().Count();
-        response.Workspaces = workspaceCount >= PlatformInsightsConstants.MinWorkspaces
-            ? PlatformInsightsConstants.RoundDown(workspaceCount)
-            : null;
+        var workspaceCount = projects
+            .Where(p => p.OwnerId.HasValue)
+            .Select(p => p.OwnerId!.Value)
+            .Distinct()
+            .Count();
+        response.Workspaces =
+            workspaceCount >= PlatformInsightsConstants.MinWorkspaces
+                ? PlatformInsightsConstants.RoundDown(workspaceCount)
+                : null;
 
-        response.MedianHoursToApply = appliedCount >= PlatformInsightsConstants.MinAppliedForMedian
-            ? Median(comments.Where(c => c.AppliedAt != null).Select(c => (c.AppliedAt!.Value - c.CreatedAt).TotalHours))
-            : null;
+        response.MedianHoursToApply =
+            appliedCount >= PlatformInsightsConstants.MinAppliedForMedian
+                ? Median(
+                    comments
+                        .Where(c => c.AppliedAt != null)
+                        .Select(c => (c.AppliedAt!.Value - c.CreatedAt).TotalHours)
+                )
+                : null;
 
         // Languages: distinct comment languages seen in >= N distinct projects.
         var langByProjectCount = comments
             .Where(c => !string.IsNullOrWhiteSpace(c.Language))
             .GroupBy(c => c.Language!)
-            .Select(g => new { Lang = g.Key, Projects = g.Select(c => c.ProjectId).Distinct().Count() })
+            .Select(g => new
+            {
+                Lang = g.Key,
+                Projects = g.Select(c => c.ProjectId).Distinct().Count(),
+            })
             .Where(g => g.Projects >= PlatformInsightsConstants.MinDistinctProjectsForListEntry)
             .Select(g => g.Lang)
             .OrderBy(l => l, StringComparer.Ordinal)
             .ToList();
-        response.Languages = langByProjectCount.Count >= PlatformInsightsConstants.MinListEntriesToPublish
-            ? langByProjectCount
-            : new List<string>();
+        response.Languages =
+            langByProjectCount.Count >= PlatformInsightsConstants.MinListEntriesToPublish
+                ? langByProjectCount
+                : new List<string>();
 
         // AI tools: distinct tool names seen in >= N distinct projects (a project can list several).
-        var toolProjectCounts = new Dictionary<string, HashSet<int>>(StringComparer.OrdinalIgnoreCase);
+        var toolProjectCounts = new Dictionary<string, HashSet<int>>(
+            StringComparer.OrdinalIgnoreCase
+        );
         foreach (var p in projects)
         {
             foreach (var tool in ParseStringList(p.AiToolsUsed))
@@ -141,13 +182,16 @@ public class PlatformInsightsService : IPlatformInsightsService
             }
         }
         var tools = toolProjectCounts
-            .Where(kv => kv.Value.Count >= PlatformInsightsConstants.MinDistinctProjectsForListEntry)
+            .Where(kv =>
+                kv.Value.Count >= PlatformInsightsConstants.MinDistinctProjectsForListEntry
+            )
             .Select(kv => kv.Key)
             .OrderBy(t => t, StringComparer.Ordinal)
             .ToList();
-        response.AiTools = tools.Count >= PlatformInsightsConstants.MinListEntriesToPublish
-            ? tools
-            : new List<string>();
+        response.AiTools =
+            tools.Count >= PlatformInsightsConstants.MinListEntriesToPublish
+                ? tools
+                : new List<string>();
 
         return Result<PublicStatsResponse>.Success(response);
     }
@@ -171,7 +215,8 @@ public class PlatformInsightsService : IPlatformInsightsService
         bool HasScreenshot,
         bool IsBugReport,
         bool HasPredefinedActions,
-        bool IsPrivate);
+        bool IsPrivate
+    );
 
     private async Task<List<CommentRow>> LoadCommentsAsync(bool ignoreFilters)
     {
@@ -180,28 +225,35 @@ public class PlatformInsightsService : IPlatformInsightsService
         // doesn't project into those owned collections anywhere else, and Postgres/JSON-column
         // translation for a nested collection Count() is not something to gamble on. Mapping down
         // to the lean CommentRow happens after materialization, entirely in memory.
-        IQueryable<Comment> query = _unitOfWork.Repository<Comment>().Query().AsNoTracking().Include(c => c.Project);
+        IQueryable<Comment> query = _unitOfWork
+            .Repository<Comment>()
+            .Query()
+            .AsNoTracking()
+            .Include(c => c.Project);
         if (ignoreFilters)
             query = query.IgnoreQueryFilters();
 
         var entities = await query.Where(c => c.DeletedAt == null).ToListAsync();
 
-        return entities.Select(c => new CommentRow(
-            c.ProjectId,
-            c.Project.Key,
-            c.Project.Name,
-            c.OwnerId,
-            c.Status,
-            c.CreatedAt,
-            c.AppliedAt,
-            c.VerifiedAt,
-            c.Language,
-            c.Element.DeviceType,
-            c.Element.UserAgent,
-            c.Element.ScreenshotUrl != null,
-            c.IsBugReport,
-            c.PickedActions.Count > 0,
-            c.IsPrivate)).ToList();
+        return entities
+            .Select(c => new CommentRow(
+                c.ProjectId,
+                c.Project.Key,
+                c.Project.Name,
+                c.OwnerId,
+                c.Status,
+                c.CreatedAt,
+                c.AppliedAt,
+                c.VerifiedAt,
+                c.Language,
+                c.Element.DeviceType,
+                c.Element.UserAgent,
+                c.Element.ScreenshotUrl != null,
+                c.IsBugReport,
+                c.PickedActions.Count > 0,
+                c.IsPrivate
+            ))
+            .ToList();
     }
 
     private async Task<List<UsageEvent>> LoadWidgetLanguageEventsAsync(bool ignoreFilters)
@@ -212,26 +264,19 @@ public class PlatformInsightsService : IPlatformInsightsService
         return await query.ToListAsync();
     }
 
-    private async Task<Dictionary<Guid, string>> BuildTenantNameMapAsync(IEnumerable<Guid?> ownerIds)
+    private async Task<Dictionary<Guid, string>> BuildTenantNameMapAsync(
+        IEnumerable<Guid?> ownerIds
+    )
     {
         var ids = ownerIds.Where(id => id.HasValue).Select(id => id!.Value).Distinct().ToList();
-        var map = new Dictionary<Guid, string>();
-        if (ids.Count == 0) return map;
+        if (ids.Count == 0)
+            return new Dictionary<Guid, string>();
 
-        var admins = await _unitOfWork.Repository<User>()
-            .Query()
-            .IgnoreQueryFilters()
+        return await _unitOfWork
+            .Workspaces.IgnoreQueryFilters()
             .AsNoTracking()
-            .Include(u => u.Role)
-            .Where(u => u.DeletedAt == null && u.OwnerId != null && ids.Contains(u.OwnerId!.Value) && u.Role.Name == "Workspace Admin")
-            .ToListAsync();
-
-        foreach (var admin in admins)
-        {
-            if (admin.OwnerId.HasValue)
-                map[admin.OwnerId.Value] = !string.IsNullOrWhiteSpace(admin.DisplayName) ? admin.DisplayName : admin.Email;
-        }
-        return map;
+            .Where(w => ids.Contains(w.Id))
+            .ToDictionaryAsync(w => w.Id, w => w.Name);
     }
 
     private sealed class WidgetLanguageMeta
@@ -246,25 +291,37 @@ public class PlatformInsightsService : IPlatformInsightsService
         public string? Page { get; set; }
     }
 
-    private static LanguageInsights BuildLanguageInsights(List<CommentRow> comments, IEnumerable<string?> userLanguages, List<UsageEvent> langEvents)
+    private static LanguageInsights BuildLanguageInsights(
+        List<CommentRow> comments,
+        IEnumerable<string?> userLanguages,
+        List<UsageEvent> langEvents
+    )
     {
         var parsed = new List<(int? ProjectId, WidgetLanguageMeta Meta)>();
         foreach (var e in langEvents)
         {
-            if (string.IsNullOrWhiteSpace(e.Meta)) continue;
+            if (string.IsNullOrWhiteSpace(e.Meta))
+                continue;
             try
             {
                 var meta = JsonSerializer.Deserialize<WidgetLanguageMeta>(e.Meta);
-                if (meta != null) parsed.Add((e.ProjectId, meta));
+                if (meta != null)
+                    parsed.Add((e.ProjectId, meta));
             }
-            catch { /* malformed meta — skip, never fail the whole insights call over one bad row */ }
+            catch
+            { /* malformed meta — skip, never fail the whole insights call over one bad row */
+            }
         }
 
         List<CountStat> DistinctProjectsByLang(Func<WidgetLanguageMeta, string?> pick) =>
             parsed
                 .Where(p => p.ProjectId.HasValue && !string.IsNullOrWhiteSpace(pick(p.Meta)))
                 .GroupBy(p => pick(p.Meta)!)
-                .Select(g => new CountStat { Key = g.Key, Count = g.Select(p => p.ProjectId!.Value).Distinct().Count() })
+                .Select(g => new CountStat
+                {
+                    Key = g.Key,
+                    Count = g.Select(p => p.ProjectId!.Value).Distinct().Count(),
+                })
                 .OrderByDescending(s => s.Count)
                 .ToList();
 
@@ -273,7 +330,7 @@ public class PlatformInsightsService : IPlatformInsightsService
             UserLanguages = GroupCount(userLanguages, unsetLabel: "unset"),
             CommentLanguages = GroupCount(comments.Select(c => c.Language), unsetLabel: "unknown"),
             AppLanguages = DistinctProjectsByLang(m => m.Page),
-            BrowserLanguages = DistinctProjectsByLang(m => m.Browser)
+            BrowserLanguages = DistinctProjectsByLang(m => m.Browser),
         };
     }
 
@@ -281,15 +338,27 @@ public class PlatformInsightsService : IPlatformInsightsService
     /// cases the value first — right for freeform language tags (a stored "EN" and "en" are the same
     /// bucket), wrong for the already-canonical device-type/browser-family labels this same helper
     /// also builds, so those callers pass false.</summary>
-    private static List<CountStat> GroupCount(IEnumerable<string?> values, string unsetLabel, bool normalizeCase = true) =>
+    private static List<CountStat> GroupCount(
+        IEnumerable<string?> values,
+        string unsetLabel,
+        bool normalizeCase = true
+    ) =>
         values
-            .Select(v => string.IsNullOrWhiteSpace(v) ? unsetLabel : (normalizeCase ? v!.Trim().ToLowerInvariant() : v!.Trim()))
+            .Select(v =>
+                string.IsNullOrWhiteSpace(v)
+                    ? unsetLabel
+                    : (normalizeCase ? v!.Trim().ToLowerInvariant() : v!.Trim())
+            )
             .GroupBy(v => v)
             .Select(g => new CountStat { Key = g.Key, Count = g.Count() })
             .OrderByDescending(s => s.Count)
             .ToList();
 
-    private static FunnelInsights BuildFunnel(List<CommentRow> comments, bool includeByWorkspace, Dictionary<Guid, string> tenantNames)
+    private static FunnelInsights BuildFunnel(
+        List<CommentRow> comments,
+        bool includeByWorkspace,
+        Dictionary<Guid, string> tenantNames
+    )
     {
         var funnel = new FunnelInsights
         {
@@ -298,8 +367,16 @@ public class PlatformInsightsService : IPlatformInsightsService
             Applied = comments.Count(c => c.Status == CommentStatus.Applied),
             Archived = comments.Count(c => c.Status == CommentStatus.Archived),
             Verified = comments.Count(c => c.VerifiedAt != null),
-            MedianHoursCreatedToApplied = Median(comments.Where(c => c.AppliedAt != null).Select(c => (c.AppliedAt!.Value - c.CreatedAt).TotalHours)),
-            MedianHoursAppliedToVerified = Median(comments.Where(c => c.AppliedAt != null && c.VerifiedAt != null).Select(c => (c.VerifiedAt!.Value - c.AppliedAt!.Value).TotalHours))
+            MedianHoursCreatedToApplied = Median(
+                comments
+                    .Where(c => c.AppliedAt != null)
+                    .Select(c => (c.AppliedAt!.Value - c.CreatedAt).TotalHours)
+            ),
+            MedianHoursAppliedToVerified = Median(
+                comments
+                    .Where(c => c.AppliedAt != null && c.VerifiedAt != null)
+                    .Select(c => (c.VerifiedAt!.Value - c.AppliedAt!.Value).TotalHours)
+            ),
         };
 
         if (includeByWorkspace)
@@ -310,11 +387,13 @@ public class PlatformInsightsService : IPlatformInsightsService
                 .Select(g => new WorkspaceFunnelStat
                 {
                     TenantId = g.Key,
-                    TenantName = tenantNames.TryGetValue(g.Key, out var name) ? name : "Workspace " + g.Key.ToString()[..8],
+                    TenantName = tenantNames.TryGetValue(g.Key, out var name)
+                        ? name
+                        : "Workspace " + g.Key.ToString()[..8],
                     Open = g.Count(c => c.Status == CommentStatus.Open),
                     Ready = g.Count(c => c.Status == CommentStatus.ReadyToApply),
                     Applied = g.Count(c => c.Status == CommentStatus.Applied),
-                    Verified = g.Count(c => c.VerifiedAt != null)
+                    Verified = g.Count(c => c.VerifiedAt != null),
                 })
                 .OrderByDescending(w => w.Applied)
                 .ToList();
@@ -325,7 +404,12 @@ public class PlatformInsightsService : IPlatformInsightsService
 
     private static List<ProjectFunnelStat> BuildByProject(List<CommentRow> comments) =>
         comments
-            .GroupBy(c => new { c.ProjectId, c.ProjectKey, c.ProjectName })
+            .GroupBy(c => new
+            {
+                c.ProjectId,
+                c.ProjectKey,
+                c.ProjectName,
+            })
             .Select(g => new ProjectFunnelStat
             {
                 ProjectKey = g.Key.ProjectKey,
@@ -334,7 +418,10 @@ public class PlatformInsightsService : IPlatformInsightsService
                 Ready = g.Count(c => c.Status == CommentStatus.ReadyToApply),
                 Applied = g.Count(c => c.Status == CommentStatus.Applied),
                 Verified = g.Count(c => c.VerifiedAt != null),
-                MedianHoursCreatedToApplied = Median(g.Where(c => c.AppliedAt != null).Select(c => (c.AppliedAt!.Value - c.CreatedAt).TotalHours))
+                MedianHoursCreatedToApplied = Median(
+                    g.Where(c => c.AppliedAt != null)
+                        .Select(c => (c.AppliedAt!.Value - c.CreatedAt).TotalHours)
+                ),
             })
             .OrderByDescending(p => p.Open + p.Ready + p.Applied)
             .ToList();
@@ -349,7 +436,9 @@ public class PlatformInsightsService : IPlatformInsightsService
     {
         var verified = comments.Count(c => c.VerifiedAt != null);
         var notFixed = comments.Count(c => c.AppliedAt != null && c.Status == CommentStatus.Open);
-        var awaiting = comments.Count(c => c.Status == CommentStatus.Applied && c.VerifiedAt == null);
+        var awaiting = comments.Count(c =>
+            c.Status == CommentStatus.Applied && c.VerifiedAt == null
+        );
         var denom = verified + notFixed;
 
         return new VerificationInsights
@@ -357,34 +446,52 @@ public class PlatformInsightsService : IPlatformInsightsService
             Verified = verified,
             NotFixed = notFixed,
             AwaitingVerification = awaiting,
-            NotFixedRate = denom > 0 ? (double)notFixed / denom : null
+            NotFixedRate = denom > 0 ? (double)notFixed / denom : null,
         };
     }
 
-    private static DeviceInsights BuildDevices(List<CommentRow> comments) => new()
-    {
-        DeviceTypes = GroupCount(comments.Select(c => c.DeviceType), unsetLabel: "unknown", normalizeCase: false),
-        Browsers = GroupCount(comments.Select(c => BrowserFamily(c.UserAgent)), unsetLabel: "Other", normalizeCase: false)
-    };
+    private static DeviceInsights BuildDevices(List<CommentRow> comments) =>
+        new()
+        {
+            DeviceTypes = GroupCount(
+                comments.Select(c => c.DeviceType),
+                unsetLabel: "unknown",
+                normalizeCase: false
+            ),
+            Browsers = GroupCount(
+                comments.Select(c => BrowserFamily(c.UserAgent)),
+                unsetLabel: "Other",
+                normalizeCase: false
+            ),
+        };
 
     private static string BrowserFamily(string? userAgent)
     {
-        if (string.IsNullOrWhiteSpace(userAgent)) return "Other";
-        if (userAgent.Contains("Edg/", StringComparison.OrdinalIgnoreCase) || userAgent.Contains("Edge/", StringComparison.OrdinalIgnoreCase)) return "Edge";
-        if (userAgent.Contains("Chrome/", StringComparison.OrdinalIgnoreCase)) return "Chrome";
-        if (userAgent.Contains("Firefox/", StringComparison.OrdinalIgnoreCase)) return "Firefox";
-        if (userAgent.Contains("Safari/", StringComparison.OrdinalIgnoreCase)) return "Safari";
+        if (string.IsNullOrWhiteSpace(userAgent))
+            return "Other";
+        if (
+            userAgent.Contains("Edg/", StringComparison.OrdinalIgnoreCase)
+            || userAgent.Contains("Edge/", StringComparison.OrdinalIgnoreCase)
+        )
+            return "Edge";
+        if (userAgent.Contains("Chrome/", StringComparison.OrdinalIgnoreCase))
+            return "Chrome";
+        if (userAgent.Contains("Firefox/", StringComparison.OrdinalIgnoreCase))
+            return "Firefox";
+        if (userAgent.Contains("Safari/", StringComparison.OrdinalIgnoreCase))
+            return "Safari";
         return "Other";
     }
 
-    private static FeatureInsights BuildFeatures(List<CommentRow> comments) => new()
-    {
-        Total = comments.Count,
-        WithScreenshot = comments.Count(c => c.HasScreenshot),
-        BugReports = comments.Count(c => c.IsBugReport),
-        WithPredefinedActions = comments.Count(c => c.HasPredefinedActions),
-        Private = comments.Count(c => c.IsPrivate)
-    };
+    private static FeatureInsights BuildFeatures(List<CommentRow> comments) =>
+        new()
+        {
+            Total = comments.Count,
+            WithScreenshot = comments.Count(c => c.HasScreenshot),
+            BugReports = comments.Count(c => c.IsBugReport),
+            WithPredefinedActions = comments.Count(c => c.HasPredefinedActions),
+            Private = comments.Count(c => c.IsPrivate),
+        };
 
     private static DateOnly MondayOf(DateTime utc)
     {
@@ -396,42 +503,54 @@ public class PlatformInsightsService : IPlatformInsightsService
     private static List<WeekStat> BuildActivity(List<CommentRow> comments)
     {
         var currentMonday = MondayOf(DateTime.UtcNow);
-        var weekStarts = Enumerable.Range(0, 8).Select(i => currentMonday.AddDays(-7 * (7 - i))).ToList();
+        var weekStarts = Enumerable
+            .Range(0, 8)
+            .Select(i => currentMonday.AddDays(-7 * (7 - i)))
+            .ToList();
 
-        return weekStarts.Select(weekStart =>
-        {
-            var weekEnd = weekStart.AddDays(7);
-            bool InWeek(DateTime dt)
+        return weekStarts
+            .Select(weekStart =>
             {
-                var d = DateOnly.FromDateTime(dt);
-                return d >= weekStart && d < weekEnd;
-            }
+                var weekEnd = weekStart.AddDays(7);
+                bool InWeek(DateTime dt)
+                {
+                    var d = DateOnly.FromDateTime(dt);
+                    return d >= weekStart && d < weekEnd;
+                }
 
-            return new WeekStat
-            {
-                WeekStart = weekStart,
-                Created = comments.Count(c => InWeek(c.CreatedAt)),
-                Applied = comments.Count(c => c.AppliedAt.HasValue && InWeek(c.AppliedAt.Value)),
-                Verified = comments.Count(c => c.VerifiedAt.HasValue && InWeek(c.VerifiedAt.Value))
-            };
-        }).ToList();
+                return new WeekStat
+                {
+                    WeekStart = weekStart,
+                    Created = comments.Count(c => InWeek(c.CreatedAt)),
+                    Applied = comments.Count(c =>
+                        c.AppliedAt.HasValue && InWeek(c.AppliedAt.Value)
+                    ),
+                    Verified = comments.Count(c =>
+                        c.VerifiedAt.HasValue && InWeek(c.VerifiedAt.Value)
+                    ),
+                };
+            })
+            .ToList();
     }
 
     private static double? Median(IEnumerable<double> values)
     {
         var list = values.OrderBy(v => v).ToList();
-        if (list.Count == 0) return null;
+        if (list.Count == 0)
+            return null;
         var mid = list.Count / 2;
         return list.Count % 2 == 0 ? (list[mid - 1] + list[mid]) / 2.0 : list[mid];
     }
 
     private static List<string> ParseStringList(string? json)
     {
-        if (string.IsNullOrWhiteSpace(json)) return new List<string>();
+        if (string.IsNullOrWhiteSpace(json))
+            return new List<string>();
         try
         {
             var list = JsonSerializer.Deserialize<List<string>>(json);
-            return list?.Select(s => s.Trim()).Where(s => s.Length > 0).ToList() ?? new List<string>();
+            return list?.Select(s => s.Trim()).Where(s => s.Length > 0).ToList()
+                ?? new List<string>();
         }
         catch
         {

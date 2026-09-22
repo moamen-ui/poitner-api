@@ -47,6 +47,11 @@ public class UserMapping : IEntityTypeConfiguration<User>
         b.Property(x => x.ApiKey).HasColumnName("api_key").HasMaxLength(64);
         b.HasIndex(x => x.ApiKey).IsUnique();
         b.Property(x => x.OwnerId).HasColumnName("owner_id");
+        b.HasOne<Workspace>()
+            .WithMany()
+            .HasForeignKey(x => x.OwnerId)
+            .OnDelete(DeleteBehavior.Restrict)
+            .HasConstraintName("fk_users_workspaces_owner_id");
         b.HasIndex(x => x.OwnerId);
         b.Property(x => x.IsDemo).HasColumnName("is_demo");
         b.Property(x => x.ExpiresAt).HasColumnName("expires_at");

@@ -1,13 +1,16 @@
-using Pointer.Domain.Entity;
 using Microsoft.EntityFrameworkCore;
+using Pointer.Domain.Entity;
 
 namespace Pointer.Application.Abstractions;
 
 public interface IUnitOfWork
 {
-    IRepository<T> Repository<T>() where T : BaseEntity;
+    IRepository<T> Repository<T>()
+        where T : BaseEntity;
     DbSet<UsageEvent> UsageEvents { get; }
+    DbSet<Workspace> Workspaces { get; }
     Task<int> SaveChangesAsync();
+
     /// <summary>
     /// Executes the supplied action inside a DB transaction using the configured execution strategy
     /// (compatible with Npgsql retry strategies). Commits on success; rolls back on exception.

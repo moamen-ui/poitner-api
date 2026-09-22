@@ -62,9 +62,13 @@ public class UsageEventFirstCommentTests
             new AppDbContext(
                 // Passing the connection STRING (not a connection object) makes each context own
                 // and dispose its own connection — which is what keeps the writers independent.
-                new DbContextOptionsBuilder<AppDbContext>().UseSqlite(_connectionString).Options,
+                new DbContextOptionsBuilder<AppDbContext>()
+                    .UseSqlite(_connectionString)
+                    .AddInterceptors(new SqliteBtrimFunctionInterceptor())
+                    .Options,
                 user,
-                new Microsoft.Extensions.Configuration.ConfigurationBuilder().Build());
+                new Microsoft.Extensions.Configuration.ConfigurationBuilder().Build()
+            );
 
         public void Dispose() => _keepAlive.Dispose();
     }
@@ -74,52 +78,103 @@ public class UsageEventFirstCommentTests
     {
         using var db = new TestDb();
         var user = new FakeCurrentUser { Id = Guid.NewGuid(), TenantId = Guid.NewGuid() };
-        var project = new Project { Id = 1, Key = "my-project", OwnerId = user.TenantId.Value, CreatedBy = user.Id.Value };
-        
+        var project = new Project
+        {
+            Id = 1,
+            Key = "my-project",
+            OwnerId = user.TenantId.Value,
+            CreatedBy = user.Id.Value,
+        };
+
         using (var ctx = db.MakeContext(user))
         {
+            ctx.Workspaces.Add(
+                new Workspace
+                {
+                    Id = user.TenantId.Value,
+                    Name = "Workspace",
+                    CreatedAt = DateTime.UtcNow,
+                    CreatedBy = user.Id.Value,
+                }
+            );
             ctx.Projects.Add(project);
             await ctx.SaveChangesAsync();
         }
 
         var projectService = Substitute.For<IProjectService>();
-        projectService.EnsureAsync("my-project").Returns(Task.FromResult(Result<int>.Success(project.Id)));
-        projectService.EnsureAsync("my-project", Arg.Any<EnvironmentTag>()).Returns(Task.FromResult(Result<int>.Success(project.Id)));
+        projectService
+            .EnsureAsync("my-project")
+            .Returns(Task.FromResult(Result<int>.Success(project.Id)));
+        projectService
+            .EnsureAsync("my-project", Arg.Any<EnvironmentTag>())
+            .Returns(Task.FromResult(Result<int>.Success(project.Id)));
         // Origin enforcement (R1-05) is off for this project; an unconfigured substitute returns
         // false, which would silently deny every create and make this test look like an event bug.
         projectService
-            .IsOriginAllowedAsync(Arg.Any<int>(), Arg.Any<string?>(), Arg.Any<EnvironmentTag>(), Arg.Any<bool>())
+            .IsOriginAllowedAsync(
+                Arg.Any<int>(),
+                Arg.Any<string?>(),
+                Arg.Any<EnvironmentTag>(),
+                Arg.Any<bool>()
+            )
             .Returns(Task.FromResult(true));
 
         var entitlements = Substitute.For<IEntitlementService>();
-        entitlements.CheckCountAsync(Arg.Any<Guid>(), Arg.Any<string>(), Arg.Any<int>())
+        entitlements
+            .CheckCountAsync(Arg.Any<Guid>(), Arg.Any<string>(), Arg.Any<int>())
             .Returns(Task.FromResult(Result.Success()));
 
         var settings = Substitute.For<ISettingsService>();
         var predefinedActions = Substitute.For<IPredefinedActionService>();
-        
+
         var task1 = Task.Run(async () =>
         {
             using var ctx = db.MakeContext(user);
             var uow = new UnitOfWork(ctx);
-            var service = new CommentService(uow, projectService, predefinedActions, null!, user, null!, settings, entitlements);
-            await service.CreateAsync("my-project", new CreateCommentRequest { Body = "First", Environment = EnvironmentTag.Local }, user.Id.Value);
+            var service = new CommentService(
+                uow,
+                projectService,
+                predefinedActions,
+                null!,
+                user,
+                null!,
+                settings,
+                entitlements
+            );
+            await service.CreateAsync(
+                "my-project",
+                new CreateCommentRequest { Body = "First", Environment = EnvironmentTag.Local },
+                user.Id.Value
+            );
         });
 
         var task2 = Task.Run(async () =>
         {
             using var ctx = db.MakeContext(user);
             var uow = new UnitOfWork(ctx);
-            var service = new CommentService(uow, projectService, predefinedActions, null!, user, null!, settings, entitlements);
-            await service.CreateAsync("my-project", new CreateCommentRequest { Body = "Second", Environment = EnvironmentTag.Local }, user.Id.Value);
+            var service = new CommentService(
+                uow,
+                projectService,
+                predefinedActions,
+                null!,
+                user,
+                null!,
+                settings,
+                entitlements
+            );
+            await service.CreateAsync(
+                "my-project",
+                new CreateCommentRequest { Body = "Second", Environment = EnvironmentTag.Local },
+                user.Id.Value
+            );
         });
 
         await Task.WhenAll(task1, task2);
 
         using (var ctx = db.MakeContext(user))
         {
-            var firstCommentEvents = await ctx.UsageEvents
-                .Where(e => e.ProjectId == 1 && e.Type == "first_comment")
+            var firstCommentEvents = await ctx
+                .UsageEvents.Where(e => e.ProjectId == 1 && e.Type == "first_comment")
                 .ToListAsync();
 
             Assert.Single(firstCommentEvents);

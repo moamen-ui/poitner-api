@@ -1,3 +1,4 @@
+using System.Linq.Expressions;
 using Microsoft.EntityFrameworkCore;
 using Pointer.Application.Abstractions;
 using Pointer.Application.DTOs.Tenant;
@@ -12,6 +13,7 @@ namespace Pointer.Application.Services.Implementation;
 public class TenantService : ITenantService
 {
     private const int DefaultDemoTtlHours = 24;
+
     // "Workspace Admin" identifies the CURRENT canonical tenant owner by role name — see
     // UserService's identical constant/comment for the full rationale (OwnerId==PublicId only ever
     // held for the founding admin; TransferOwnershipAsync can change who holds this role without
@@ -24,7 +26,13 @@ public class TenantService : ITenantService
     private readonly ISettingsService _settings;
     private readonly IBillingProvider _billing;
 
-    public TenantService(IUnitOfWork unitOfWork, IPasswordHasher passwordHasher, IFileStorage fileStorage, ISettingsService settings, IBillingProvider billing)
+    public TenantService(
+        IUnitOfWork unitOfWork,
+        IPasswordHasher passwordHasher,
+        IFileStorage fileStorage,
+        ISettingsService settings,
+        IBillingProvider billing
+    )
     {
         _unitOfWork = unitOfWork;
         _passwordHasher = passwordHasher;
@@ -39,7 +47,8 @@ public class TenantService : ITenantService
         // per tenant by role name, not the broad GrantsAdmin flag — a Deputy also has GrantsAdmin
         // but must never be listed as its own separate "tenant" (it would double/triple-count a
         // workspace with N deputies as N+1 rows).
-        var tenants = await _unitOfWork.Repository<User>()
+        var tenants = await _unitOfWork
+            .Repository<User>()
             .Query()
             .IgnoreQueryFilters()
             .AsNoTracking()
@@ -57,7 +66,8 @@ public class TenantService : ITenantService
         var tenantIds = tenants.Select(t => t.OwnerId).ToList();
 
         // Count projects per tenant (IgnoreQueryFilters — super-admin operator path).
-        var projectCounts = await _unitOfWork.Repository<Project>()
+        var projectCounts = await _unitOfWork
+            .Repository<Project>()
             .Query()
             .IgnoreQueryFilters()
             .AsNoTracking()
@@ -67,7 +77,8 @@ public class TenantService : ITenantService
             .ToListAsync();
 
         // Count comments per tenant (IgnoreQueryFilters — super-admin operator path).
-        var commentCounts = await _unitOfWork.Repository<Comment>()
+        var commentCounts = await _unitOfWork
+            .Repository<Comment>()
             .Query()
             .IgnoreQueryFilters()
             .AsNoTracking()
@@ -84,44 +95,56 @@ public class TenantService : ITenantService
             .ToDictionary(x => x.OwnerId!.Value, x => x.Count);
 
         // Batch-load each tenant's subscription (+ plan name). A missing subscription ⇒ Free.
-        var nonNullTenantIds = tenants.Where(t => t.OwnerId.HasValue).Select(t => t.OwnerId!.Value).ToList();
-        var subs = await _unitOfWork.Repository<Subscription>()
+        var nonNullTenantIds = tenants
+            .Where(t => t.OwnerId.HasValue)
+            .Select(t => t.OwnerId!.Value)
+            .ToList();
+        var subs = await _unitOfWork
+            .Repository<Subscription>()
             .Query()
             .IgnoreQueryFilters()
             .AsNoTracking()
             .Where(s => s.DeletedAt == null && nonNullTenantIds.Contains(s.OwnerId))
-            .Select(s => new { s.OwnerId, s.Status, PlanName = s.Plan.Name })
+            .Select(s => new
+            {
+                s.OwnerId,
+                s.Status,
+                PlanName = s.Plan.Name,
+            })
             .ToListAsync();
         var subMap = subs.ToDictionary(x => x.OwnerId, x => (x.PlanName, x.Status));
 
-        var responses = tenants.Select(t =>
-        {
-            var (planName, status) = t.OwnerId is Guid tOwner && subMap.TryGetValue(tOwner, out var s)
-                ? (s.PlanName, s.Status.ToString())
-                : ("Free", (string?)null); // missing subscription ⇒ Free
-            return new TenantResponse
+        var responses = tenants
+            .Select(t =>
             {
-                Id = t.Id,
-                PublicId = t.PublicId,
-                // Every row returned here matched Role.Name == WorkspaceAdminRoleName above, and a
-                // Workspace Admin always carries a non-null OwnerId (their own tenant) — safe to
-                // assert. See TenantResponse.OwnerId's doc comment for why PublicId is NOT enough.
-                OwnerId = t.OwnerId!.Value,
-                Email = t.Email,
-                DisplayName = t.DisplayName,
-                ApprovalStatus = t.ApprovalStatus.ToString(),
-                IsActive = t.IsActive,
-                Projects = projectMap.GetValueOrDefault(t.OwnerId ?? Guid.Empty, 0),
-                Comments = commentMap.GetValueOrDefault(t.OwnerId ?? Guid.Empty, 0),
-                PlanName = planName,
-                SubscriptionStatus = status,
-                IsDemo = t.IsDemo,
-                ExpiresAt = t.ExpiresAt,
-                DemoExtended = t.DemoExtended,
-                DemoCommentCapOverride = t.DemoCommentCapOverride,
-                DemoTtlHoursOverride = t.DemoTtlHoursOverride
-            };
-        }).ToList();
+                var (planName, status) =
+                    t.OwnerId is Guid tOwner && subMap.TryGetValue(tOwner, out var s)
+                        ? (s.PlanName, s.Status.ToString())
+                        : ("Free", (string?)null); // missing subscription ⇒ Free
+                return new TenantResponse
+                {
+                    Id = t.Id,
+                    PublicId = t.PublicId,
+                    // Every row returned here matched Role.Name == WorkspaceAdminRoleName above, and a
+                    // Workspace Admin always carries a non-null OwnerId (their own tenant) — safe to
+                    // assert. See TenantResponse.OwnerId's doc comment for why PublicId is NOT enough.
+                    OwnerId = t.OwnerId!.Value,
+                    Email = t.Email,
+                    DisplayName = t.DisplayName,
+                    ApprovalStatus = t.ApprovalStatus.ToString(),
+                    IsActive = t.IsActive,
+                    Projects = projectMap.GetValueOrDefault(t.OwnerId ?? Guid.Empty, 0),
+                    Comments = commentMap.GetValueOrDefault(t.OwnerId ?? Guid.Empty, 0),
+                    PlanName = planName,
+                    SubscriptionStatus = status,
+                    IsDemo = t.IsDemo,
+                    ExpiresAt = t.ExpiresAt,
+                    DemoExtended = t.DemoExtended,
+                    DemoCommentCapOverride = t.DemoCommentCapOverride,
+                    DemoTtlHoursOverride = t.DemoTtlHoursOverride,
+                };
+            })
+            .ToList();
 
         return Result<List<TenantResponse>>.Success(responses);
     }
@@ -141,30 +164,37 @@ public class TenantService : ITenantService
         // ((email, owner_id) index). A new tenant is a self-owned workspace (OwnerId == PublicId), so
         // only conflict with an existing self-owned WORKSPACE account of the same email — the same
         // address may already exist as a stakeholder under a different tenant, which is not a conflict.
-        var exists = await _unitOfWork.Repository<User>()
+        var exists = await _unitOfWork
+            .Repository<User>()
             .Query()
             .IgnoreQueryFilters()
             .AsNoTracking()
-            .AnyAsync(u => u.DeletedAt == null
-                           && u.Email == emailNormalized
-                           && u.OwnerId == u.PublicId);
+            .AnyAsync(u =>
+                u.DeletedAt == null && u.Email == emailNormalized && u.OwnerId == u.PublicId
+            );
 
         if (exists)
             return Result<TenantResponse>.Conflict("Email already in use.");
 
         // Find the global "Workspace Admin" role (GrantsAdmin=true, IsSuperAdmin=false, OwnerId=null).
-        var workspaceAdminRole = await _unitOfWork.Repository<Role>()
+        var workspaceAdminRole = await _unitOfWork
+            .Repository<Role>()
             .Query()
             .IgnoreQueryFilters()
             .AsNoTracking()
             .FirstOrDefaultAsync(r =>
-                r.DeletedAt == null && r.IsActive &&
-                r.GrantsAdmin && !r.IsSuperAdmin &&
-                r.OwnerId == null &&
-                r.Name == "Workspace Admin");
+                r.DeletedAt == null
+                && r.IsActive
+                && r.GrantsAdmin
+                && !r.IsSuperAdmin
+                && r.OwnerId == null
+                && r.Name == "Workspace Admin"
+            );
 
         if (workspaceAdminRole == null)
-            return Result<TenantResponse>.Failure("System role 'Workspace Admin' not found. Ensure the database is seeded.");
+            return Result<TenantResponse>.Failure(
+                "System role 'Workspace Admin' not found. Ensure the database is seeded."
+            );
 
         var publicId = Guid.NewGuid();
 
@@ -178,24 +208,35 @@ public class TenantService : ITenantService
             IsActive = true,
             ApprovalStatus = ApprovalStatus.Approved,
             // A tenant owns itself: OwnerId == its own PublicId.
-            OwnerId = publicId
+            OwnerId = publicId,
         };
 
+        await _unitOfWork.Workspaces.AddAsync(
+            new Workspace
+            {
+                Id = publicId,
+                Name = Workspace.PlaceholderName,
+                CreatedAt = DateTime.UtcNow,
+                CreatedBy = publicId,
+            }
+        );
         await _unitOfWork.Repository<User>().AddAsync(user);
         await _unitOfWork.SaveChangesAsync();
 
-        return Result<TenantResponse>.Success(new TenantResponse
-        {
-            Id = user.Id,
-            PublicId = user.PublicId,
-            OwnerId = publicId, // a freshly created tenant always owns itself
-            Email = user.Email,
-            DisplayName = user.DisplayName,
-            ApprovalStatus = user.ApprovalStatus.ToString(),
-            IsActive = user.IsActive,
-            Projects = 0,
-            Comments = 0
-        });
+        return Result<TenantResponse>.Success(
+            new TenantResponse
+            {
+                Id = user.Id,
+                PublicId = user.PublicId,
+                OwnerId = publicId, // a freshly created tenant always owns itself
+                Email = user.Email,
+                DisplayName = user.DisplayName,
+                ApprovalStatus = user.ApprovalStatus.ToString(),
+                IsActive = user.IsActive,
+                Projects = 0,
+                Comments = 0,
+            }
+        );
     }
 
     public async Task<Result> SetStatusAsync(int id, string action)
@@ -204,7 +245,8 @@ public class TenantService : ITenantService
             return Result.Failure("Action is required. Valid values: approve, enable, disable.");
 
         // Load the user bypassing query filters (super-admin operator path).
-        var user = await _unitOfWork.Repository<User>()
+        var user = await _unitOfWork
+            .Repository<User>()
             .Query()
             .IgnoreQueryFilters()
             .Include(u => u.Role)
@@ -244,7 +286,8 @@ public class TenantService : ITenantService
     public async Task<Result> ExtendDemoAsync(int id)
     {
         // One-time super-admin extension of a demo workspace by one more configured demo period.
-        var user = await _unitOfWork.Repository<User>()
+        var user = await _unitOfWork
+            .Repository<User>()
             .Query()
             .IgnoreQueryFilters()
             .FirstOrDefaultAsync(u => u.Id == id && u.DeletedAt == null);
@@ -256,12 +299,14 @@ public class TenantService : ITenantService
             return Result.Failure("This demo has already been extended once.");
 
         // Per-tenant TTL override wins; otherwise the global setting.
-        var ttlHours = user.DemoTtlHoursOverride
+        var ttlHours =
+            user.DemoTtlHoursOverride
             ?? await _settings.GetIntAsync(ISettingsService.DemoTtlHours, DefaultDemoTtlHours);
 
         // Extend from whichever is later — now or the current (possibly future) expiry — so an
         // already-expired demo gets a full fresh period rather than one anchored in the past.
-        var anchor = user.ExpiresAt is DateTime exp && exp > DateTime.UtcNow ? exp : DateTime.UtcNow;
+        var anchor =
+            user.ExpiresAt is DateTime exp && exp > DateTime.UtcNow ? exp : DateTime.UtcNow;
         user.ExpiresAt = anchor.AddHours(ttlHours);
         user.DemoExtended = true;
 
@@ -271,16 +316,25 @@ public class TenantService : ITenantService
         return Result.Success();
     }
 
-    public async Task<Result> SetDemoConfigAsync(int id, int? commentCapOverride, int? ttlHoursOverride)
+    public async Task<Result> SetDemoConfigAsync(
+        int id,
+        int? commentCapOverride,
+        int? ttlHoursOverride
+    )
     {
         // Per-tenant demo overrides. Null clears an override (revert to the global default);
         // any positive value sets it. Non-positive values are rejected as invalid.
         if (commentCapOverride is <= 0)
-            return Result.Failure("Comment cap must be a positive number, or empty to use the global default.");
+            return Result.Failure(
+                "Comment cap must be a positive number, or empty to use the global default."
+            );
         if (ttlHoursOverride is <= 0)
-            return Result.Failure("TTL (hours) must be a positive number, or empty to use the global default.");
+            return Result.Failure(
+                "TTL (hours) must be a positive number, or empty to use the global default."
+            );
 
-        var user = await _unitOfWork.Repository<User>()
+        var user = await _unitOfWork
+            .Repository<User>()
             .Query()
             .IgnoreQueryFilters()
             .FirstOrDefaultAsync(u => u.Id == id && u.DeletedAt == null);
@@ -303,18 +357,24 @@ public class TenantService : ITenantService
         // Must hold the role by NAME, not the broad GrantsAdmin flag (a Deputy also has it) — and
         // must have a real OwnerId (the tenant's stable identifier, used below for the subscription,
         // NOT tenant.PublicId — those only coincide pre-succession).
-        var tenant = await _unitOfWork.Repository<User>()
+        var tenant = await _unitOfWork
+            .Repository<User>()
             .Query()
             .IgnoreQueryFilters()
             .Include(u => u.Role)
             .AsNoTracking()
             .FirstOrDefaultAsync(u => u.Id == tenantId && u.DeletedAt == null);
 
-        if (tenant == null || tenant.Role.Name != WorkspaceAdminRoleName || tenant.OwnerId is not Guid tenantOwnerId)
+        if (
+            tenant == null
+            || tenant.Role.Name != WorkspaceAdminRoleName
+            || tenant.OwnerId is not Guid tenantOwnerId
+        )
             return Result.NotFound("Tenant not found.");
 
         // Plan is global (no filter) — plain query. Must exist, be active, not deleted.
-        var plan = await _unitOfWork.Repository<Plan>()
+        var plan = await _unitOfWork
+            .Repository<Plan>()
             .Query()
             .AsNoTracking()
             .FirstOrDefaultAsync(p => p.Id == planId && p.DeletedAt == null && p.IsActive);
@@ -323,7 +383,8 @@ public class TenantService : ITenantService
             return Result.NotFound(MessageKeys.Plan.NotFound);
 
         // Upsert the tenant's subscription (one per tenant). Bypass the filter + match OwnerId.
-        var sub = await _unitOfWork.Repository<Subscription>()
+        var sub = await _unitOfWork
+            .Repository<Subscription>()
             .Query()
             .IgnoreQueryFilters()
             .FirstOrDefaultAsync(s => s.OwnerId == tenantOwnerId && s.DeletedAt == null);
@@ -334,7 +395,7 @@ public class TenantService : ITenantService
             {
                 OwnerId = tenantOwnerId,
                 PlanId = plan.Id,
-                Status = SubscriptionStatus.Active
+                Status = SubscriptionStatus.Active,
             };
             await _unitOfWork.Repository<Subscription>().AddAsync(sub);
         }
@@ -356,7 +417,8 @@ public class TenantService : ITenantService
     public async Task<Result> HardDeleteAsync(Guid tenantId)
     {
         // Verify the tenant exists before starting the transaction.
-        var tenantUser = await _unitOfWork.Repository<User>()
+        var tenantUser = await _unitOfWork
+            .Repository<User>()
             .Query()
             .IgnoreQueryFilters()
             .Include(u => u.Role)
@@ -371,7 +433,10 @@ public class TenantService : ITenantService
         // against `realOwnerId` (the tenant's actual, stable OwnerId) instead — those only coincide
         // for a tenant that has never changed hands via TransferOwnershipAsync. Using the raw param
         // here would silently no-op (or worse) for any promoted admin.
-        if (tenantUser.Role.Name != WorkspaceAdminRoleName || tenantUser.OwnerId is not Guid realOwnerId)
+        if (
+            tenantUser.Role.Name != WorkspaceAdminRoleName
+            || tenantUser.OwnerId is not Guid realOwnerId
+        )
             return Result.NotFound("Tenant not found.");
 
         // Delete owner files first (outside transaction — filesystem side effect).
@@ -381,64 +446,85 @@ public class TenantService : ITenantService
         // (required by Npgsql's NpgsqlRetryingExecutionStrategy).
         await _unitOfWork.ExecuteInTransactionAsync(async () =>
         {
-            // Hard-delete in FK-safe order:
-            // 1. Replies (reference Comments via FK)
-            var replies = await _unitOfWork.Repository<Reply>()
-                .Query()
-                .IgnoreQueryFilters()
-                .Where(r => r.OwnerId == realOwnerId)
-                .ToListAsync();
-            if (replies.Count > 0)
-                _unitOfWork.Repository<Reply>().RemoveRange(replies);
+            // Hard-delete in FK-safe order (children before parents; DB-03).
+            await DeleteOwnedAsync<Notification>(x => x.OwnerId == realOwnerId);
+            await DeleteOwnedAsync<Reply>(x => x.OwnerId == realOwnerId);
+            await DeleteOwnedAsync<Comment>(x => x.OwnerId == realOwnerId);
+            await DeleteOwnedAsync<PageContextSnapshot>(x => x.OwnerId == realOwnerId);
+            await DeleteOwnedAsync<ProjectBuild>(x => x.OwnerId == realOwnerId);
+            await DeleteOwnedAsync<ProjectAppUrl>(x => x.OwnerId == realOwnerId);
+            await DeleteOwnedAsync<PredefinedActionSuggestion>(x => x.OwnerId == realOwnerId);
+            await DeleteOwnedAsync<PredefinedAction>(x => x.OwnerId == realOwnerId);
+            await DeleteOwnedAsync<AiRule>(x => x.OwnerId == realOwnerId);
+            await DeleteOwnedAsync<QuickAccessLink>(x => x.OwnerId == realOwnerId);
+            await DeleteOwnedAsync<Project>(x => x.OwnerId == realOwnerId);
+            await DeleteOwnedAsync<ExtensionSite>(x => x.OwnerId == realOwnerId);
+            await DeleteOwnedAsync<Invite>(x => x.OwnerId == realOwnerId);
+            await DeleteOwnedAsync<StatusPresentation>(x => x.OwnerId == realOwnerId);
+            await DeleteOwnedAsync<RoleTenantOverride>(x => x.OwnerId == realOwnerId);
+            await DeleteOwnedAsync<WorkspaceSetting>(x => x.OwnerId == realOwnerId);
+            await DeleteOwnedAsync<Subscription>(x => x.OwnerId == realOwnerId);
+            await DeleteOwnedAsync<ApiKey>(x => x.OwnerId == realOwnerId);
+            await DeleteOwnedAsync<DeviceLogin>(x => x.OwnerId == realOwnerId);
+            await DeleteOwnedAsync<User>(x => x.OwnerId == realOwnerId);
+            await DeleteOwnedAsync<Role>(x => x.OwnerId == realOwnerId);
+            await DeleteOwnedAsync<AppEnvironment>(x => x.OwnerId == realOwnerId);
 
-            // 2. Comments (reference Projects via FK)
-            var comments = await _unitOfWork.Repository<Comment>()
-                .Query()
-                .IgnoreQueryFilters()
-                .Where(c => c.OwnerId == realOwnerId)
-                .ToListAsync();
-            if (comments.Count > 0)
-                _unitOfWork.Repository<Comment>().RemoveRange(comments);
-
-            // 3. Projects
-            var projects = await _unitOfWork.Repository<Project>()
-                .Query()
-                .IgnoreQueryFilters()
-                .Where(p => p.OwnerId == realOwnerId)
-                .ToListAsync();
-            if (projects.Count > 0)
-                _unitOfWork.Repository<Project>().RemoveRange(projects);
-
-            // 4. StatusPresentations
-            var statuses = await _unitOfWork.Repository<StatusPresentation>()
-                .Query()
-                .IgnoreQueryFilters()
-                .Where(s => s.OwnerId == realOwnerId)
-                .ToListAsync();
-            if (statuses.Count > 0)
-                _unitOfWork.Repository<StatusPresentation>().RemoveRange(statuses);
-
-            // 5. Users (stakeholders + every admin/deputy the tenant ever had)
-            var users = await _unitOfWork.Repository<User>()
-                .Query()
-                .IgnoreQueryFilters()
-                .Where(u => u.OwnerId == realOwnerId)
-                .ToListAsync();
-            if (users.Count > 0)
-                _unitOfWork.Repository<User>().RemoveRange(users);
-
-            // 6. Roles owned by this tenant
-            var roles = await _unitOfWork.Repository<Role>()
-                .Query()
-                .IgnoreQueryFilters()
-                .Where(r => r.OwnerId == realOwnerId)
-                .ToListAsync();
-            if (roles.Count > 0)
-                _unitOfWork.Repository<Role>().RemoveRange(roles);
+            // Finally, the workspace row itself.
+            var workspace = await _unitOfWork
+                .Workspaces.IgnoreQueryFilters()
+                .FirstOrDefaultAsync(w => w.Id == realOwnerId);
+            if (workspace != null)
+                _unitOfWork.Workspaces.Remove(workspace);
 
             await _unitOfWork.SaveChangesAsync();
         });
 
         return Result.Success();
     }
+
+    /// <summary>
+    /// Loads every <typeparamref name="T"/> row matching <paramref name="ownedBy"/> (bypassing query
+    /// filters — this runs during tenant deletion, with no tenant context to filter by) and marks
+    /// them for removal. One generic helper compiles for both the three entities whose
+    /// <c>OwnerId</c> is <see cref="Guid"/> and the nineteen whose is <see cref="Guid?"/> — no
+    /// <c>EF.Property</c>, no reflection.
+    /// </summary>
+    private async Task DeleteOwnedAsync<T>(Expression<Func<T, bool>> ownedBy)
+        where T : BaseEntity
+    {
+        var repo = _unitOfWork.Repository<T>();
+        var rows = await repo.Query().IgnoreQueryFilters().Where(ownedBy).ToListAsync();
+        if (rows.Count > 0)
+            repo.RemoveRange(rows);
+    }
+
+    // The same 22 types, in the same order as the DeleteOwnedAsync<T> calls above. Documentation +
+    // test input for the reflection test (WorkspaceTests.HardDeleteOrder_CoversEveryOwnerCarryingEntity)
+    // that every OwnerId-carrying entity is accounted for here. Never loop over this in production code.
+    public static readonly Type[] HardDeleteOrder =
+    {
+        typeof(Notification),
+        typeof(Reply),
+        typeof(Comment),
+        typeof(PageContextSnapshot),
+        typeof(ProjectBuild),
+        typeof(ProjectAppUrl),
+        typeof(PredefinedActionSuggestion),
+        typeof(PredefinedAction),
+        typeof(AiRule),
+        typeof(QuickAccessLink),
+        typeof(Project),
+        typeof(ExtensionSite),
+        typeof(Invite),
+        typeof(StatusPresentation),
+        typeof(RoleTenantOverride),
+        typeof(WorkspaceSetting),
+        typeof(Subscription),
+        typeof(ApiKey),
+        typeof(DeviceLogin),
+        typeof(User),
+        typeof(Role),
+        typeof(AppEnvironment),
+    };
 }

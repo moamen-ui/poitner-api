@@ -20,6 +20,11 @@ public class RoleTenantOverrideMapping : IEntityTypeConfiguration<RoleTenantOver
 
         b.Property(x => x.RoleId).HasColumnName("role_id").IsRequired();
         b.Property(x => x.OwnerId).HasColumnName("owner_id").IsRequired();
+        b.HasOne<Workspace>()
+            .WithMany()
+            .HasForeignKey(x => x.OwnerId)
+            .OnDelete(DeleteBehavior.Restrict)
+            .HasConstraintName("fk_role_tenant_overrides_workspaces_owner_id");
         b.Property(x => x.IsActive).HasColumnName("is_active");
         b.HasIndex(x => new { x.RoleId, x.OwnerId })
             .IsUnique()
