@@ -1,0 +1,60 @@
+name: DB migrations
+
+on:
+  pull_request:
+    paths:
+      - 'Infrastructure/**'
+      - 'Domain/**'
+      - 'API/Program.cs'
+      - 'API/Startup/**'
+      - 'Tests/Migration*.cs'
+      - '.github/workflows/db-migrations.yml'
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  migrate-from-empty:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:15            # same major as production (docker-compose.prod.yml:6)
+        env:
+          POSTGRES_USER: pointer
+          POSTGRES_PASSWORD: pointer
+          POSTGRES_DB: pointer
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U pointer"
+          --health-interval 5s --health-timeout 5s --health-retries 12
+    env:
+      # dotnet ef builds the API host (no IDesignTimeDbContextFactory): these two are required.
+      ConnectionStrings__Default: "Host=localhost;Port=5432;Database=pointer;Username=pointer;Password=pointer"
+      JWT__SigningKey: "ci-only-signing-key-not-a-secret-0123456789abcdef"   # >= 32 bytes or AddJwtAuth throws
+      DBMigrationEnabled: "false"
+      EF_ARGS: "-p Infrastructure -s API --no-build --configuration Release"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+      - run: dotnet tool install --global dotnet-ef --version 8.0.11
+      - run: dotnet build -c Release
+      - name: Snapshot matches the model (no forgotten migration — DB-RULES R13)
+        run: dotnet ef migrations has-pending-model-changes $EF_ARGS
+      - name: Apply every migration to an empty PostgreSQL 15
+        run: dotnet ef database update $EF_ARGS
+      - name: History row count equals migration file count
+        run: |
+          files=$(ls Infrastructure/Migrations/[0-9]*_*.cs | grep -vc '\.Designer\.cs$')
+          rows=$(PGPASSWORD=pointer psql -h localhost -U pointer -d pointer -tAc 'SELECT count(*) FROM "__EFMigrationsHistory"')
+          echo "migration files=$files history rows=$rows"
+          [ "$files" = "$rows" ]
+      - name: Newest migration Down/Up round-trip (DB-RULES R5)
+        run: |
+          prev=$(ls Infrastructure/Migrations/[0-9]*_*.cs | grep -v '\.Designer\.cs$' | xargs -n1 basename | sed 's/\.cs$//' | sort | tail -2 | head -1)
+          echo "down to $prev"; dotnet ef database update "$prev" $EF_ARGS
+          echo "up again";      dotnet ef database update $EF_ARGS
+      - name: Migration guard tests (DB-02)
+        run: dotnet test --no-build --configuration Release --filter "FullyQualifiedName~MigrationSafetyTests"
