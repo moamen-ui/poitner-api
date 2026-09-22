@@ -17,8 +17,8 @@ namespace Pointer.Infrastructure.Migrations
         // same dedicated tenant pointer-landing was migrated to, so nothing is left orphaned.
         // Guarded on the OLD owner id — a no-op anywhere that owner id has nothing left (e.g. after
         // this runs once, or in dev/test/CI where none of this data exists).
-        private const string OldOwnerId = "95b7f3ee-1dfe-4e76-a8ec-b6c113a04d42"; // super admin (moamen.ui@gmail.com)
-        private const string NewOwnerId = "98699076-e7cb-4392-a271-8db09430fcd6"; // dedicated tenant (moamen.ui2@gmail.com, Workspace Admin)
+        private const string OldOwnerId = "95b7f3ee-1dfe-4e76-a8ec-b6c113a04d42"; // super-admin (operator) account
+        private const string NewOwnerId = "98699076-e7cb-4392-a271-8db09430fcd6"; // dedicated tenant (Workspace Admin)
 
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)

@@ -13,8 +13,8 @@ namespace Pointer.Infrastructure.Migrations
         // ProjectService.CreateAsync/CommentService.CreateAsync. Reassigns it to a real dedicated
         // tenant instead of leaving it as a special case. Guarded on the OLD owner id so this is a
         // no-op anywhere that row doesn't exist in this exact state (dev/test/CI, or if already run).
-        private const string OldOwnerId = "95b7f3ee-1dfe-4e76-a8ec-b6c113a04d42"; // super admin (moamen.ui@gmail.com)
-        private const string NewOwnerId = "98699076-e7cb-4392-a271-8db09430fcd6"; // dedicated tenant (moamen.ui2@gmail.com, Workspace Admin)
+        private const string OldOwnerId = "95b7f3ee-1dfe-4e76-a8ec-b6c113a04d42"; // super-admin (operator) account
+        private const string NewOwnerId = "98699076-e7cb-4392-a271-8db09430fcd6"; // dedicated tenant (Workspace Admin)
 
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
