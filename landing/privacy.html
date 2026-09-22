@@ -232,11 +232,13 @@
     <h2><span class="num">6.</span>Screenshots</h2>
     <p>
       A screenshot may be captured alongside a comment when the screenshot option is enabled for
-      the project. It is stored server-side, attached to that comment, and is <strong>deleted when
-      the comment or the workspace it belongs to is deleted</strong> — there is no separate
-      screenshot retention window. A screenshot depicts the customer's application UI at the moment
-      of the comment, not the commenter's personal data. On a data-subject access/erasure request,
-      the operator can delete individual screenshots on a targeted basis.
+      the project. It is stored server-side in the same region as the database, attached to that
+      comment, and is <strong>deleted when the workspace it belongs to is deleted</strong>. Deleting
+      a single comment hides it and its screenshot from every screen; the file itself is removed by
+      a scheduled clean-up of deleted comments (see the retention table) rather than immediately.
+      A screenshot depicts the customer's application UI at the moment of the comment, not the
+      commenter's personal data. On a data-subject access/erasure request, the operator can delete
+      individual screenshots on a targeted basis.
     </p>
 
     <h2><span class="num">7.</span>Data retention</h2>

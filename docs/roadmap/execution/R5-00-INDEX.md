@@ -64,3 +64,14 @@ Per the final report's Sequence (§3, step 5–6) and this review's dependency f
 - R5-61 is the only doc introducing a new API surface (`MfaController`); it now explicitly calls out
   the `[Tags("Me")]` requirement so orval doesn't silently drop it, and the `[ProducesResponseType]`
   convention for its new endpoints.
+
+## Follow-ups surfaced during implementation (2026-09-23)
+
+- **Screenshots of soft-deleted comments are never purged.** `CommentService.DeleteAsync` only sets
+  `DeletedAt`; the file stays until the workspace is hard-deleted (`docs/runbooks/DSAR.md`, "Follow-up
+  code items" #1). Decision needed: either DB-08's retention job purges `comments.deleted_at < now-N`
+  rows and their screenshot files (proposed default N = 30 d, additive to the retention table), or the
+  operator accepts indefinite retention of hidden screenshots. The privacy page now describes the
+  scheduled-clean-up behaviour; implement it as **DB-16** before demo-public.
+- Export DTO drops custom fields, page-context snapshots and predefined-action links
+  (`Application/DTOs/Export/CommentExportDto.cs`) — portability gap, track with DB-16 or a small R5 item.
