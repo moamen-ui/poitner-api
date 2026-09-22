@@ -59,13 +59,15 @@ test('R2-07-06 — dark mode, RTL and logical properties', async ({ page }) => {
     document.documentElement.scrollWidth - document.documentElement.clientWidth);
   expect(overflow, 'the page must not scroll horizontally in RTL').toBeLessThanOrEqual(1);
 
+  // The docs shell was rebuilt (sidebar + .brand with `padding-inline`); `.nav .wrap` never existed
+  // in it, so this probe uses `.sidebar .brand` (landing/docs/assets/docs.css:120-125).
   // Logical properties, not physical ones: padding-inline-start resolves on BOTH sides, which
   // padding-left cannot do. This is what makes one stylesheet serve both directions.
   const rtlPad = await page.evaluate(() =>
-    getComputedStyle(document.querySelector('.nav .wrap')!).paddingInlineStart);
+    getComputedStyle(document.querySelector('.sidebar .brand')!).paddingInlineStart);
   await page.evaluate(() => document.documentElement.setAttribute('dir', 'ltr'));
   const ltrPad = await page.evaluate(() =>
-    getComputedStyle(document.querySelector('.nav .wrap')!).paddingInlineStart);
+    getComputedStyle(document.querySelector('.sidebar .brand')!).paddingInlineStart);
 
   expect(parseFloat(rtlPad)).toBeGreaterThan(0);
   expect(parseFloat(ltrPad)).toBeGreaterThan(0);
