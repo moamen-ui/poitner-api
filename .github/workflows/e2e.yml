@@ -56,7 +56,17 @@ jobs:
         # the reset phase with "env file … .env not found" — the suite had never been green on main.
         # .env.example carries the local-only DBApplyContractMigrations=true so a fresh CI database
         # may apply contract migrations (DB-09).
-        run: test -f .env || cp .env.example .env
+        run: |
+          test -f .env || cp .env.example .env
+          # Route outbound mail to the compose stack's Mailpit so `emailSent` is real and the mail
+          # phase can assert on delivered messages (the API reaches the service by its compose name).
+          cat >> .env <<'EOF'
+          Email__Provider=smtp
+          Email__Smtp__Host=mailpit
+          Email__Smtp__Port=1025
+          Email__FromEmail=dev@pointer.local
+          Email__FromName=Pointer (e2e)
+          EOF
       - name: Run E2E PR
         if: github.event_name == 'pull_request'
         env:
