@@ -28,6 +28,8 @@ public class AuditQueryFilterTests
         public bool IsQuickAccess { get; set; }
         public Guid? TenantId { get; set; }
         public int? RoleId { get; set; }
+        public string? KeyScopes { get; set; }
+        public string? Scope { get; set; }
     }
 
     private static AppDbContext BuildContext(FakeCurrentUser user, string dbName) =>
@@ -149,6 +151,44 @@ public class AuditQueryFilterTests
 
         Assert.False(result.IsSuccess);
         Assert.Equal(MessageKeys.Audit.PageSizeTooLarge, result.Message);
+    }
+
+    /// <summary>Review finding #9 (LOW): q.Action feeds an unescaped LIKE-prefix — reject anything
+    /// that isn't a plain dotted lower-case action prefix before it reaches the query.</summary>
+    [Theory]
+    [InlineData("member.%")] // SQL LIKE multi-char wildcard — the exact injection this closes
+    [InlineData("Member.")] // upper-case — every real action string is lower-case
+    [InlineData("member.created; drop table")]
+    [InlineData("member.created'")]
+    public async Task ListForWorkspace_InvalidActionPrefix_Fails(string action)
+    {
+        var tenantA = Guid.NewGuid();
+        var callerA = new FakeCurrentUser { TenantId = tenantA, IsSuperAdmin = false };
+        using var ctx = BuildContext(callerA, Guid.NewGuid().ToString());
+        var svc = new AuditQueryService(new UnitOfWork(ctx), callerA);
+
+        var result = await svc.ListForWorkspaceAsync(new AuditQuery { Action = action });
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(MessageKeys.Audit.InvalidActionPrefix, result.Message);
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("member.")]
+    [InlineData("member")]
+    [InlineData("member._")] // underscore IS in the mandated charset ^[a-z_.]{1,64}$ (e.g. with_password)
+    public async Task ListForWorkspace_ValidOrAbsentActionPrefix_Succeeds(string? action)
+    {
+        var tenantA = Guid.NewGuid();
+        var callerA = new FakeCurrentUser { TenantId = tenantA, IsSuperAdmin = false };
+        using var ctx = BuildContext(callerA, Guid.NewGuid().ToString());
+        var svc = new AuditQueryService(new UnitOfWork(ctx), callerA);
+
+        var result = await svc.ListForWorkspaceAsync(new AuditQuery { Action = action });
+
+        Assert.True(result.IsSuccess);
     }
 
     [Fact]

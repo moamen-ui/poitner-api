@@ -3,6 +3,7 @@ using System.Text.RegularExpressions;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Diagnostics;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging.Abstractions;
 using Pointer.Application.Abstractions;
@@ -30,6 +31,8 @@ public class AuditWriterTests
         public bool IsQuickAccess { get; set; }
         public Guid? TenantId { get; set; }
         public int? RoleId { get; set; }
+        public string? KeyScopes { get; set; }
+        public string? Scope { get; set; }
     }
 
     private sealed class FakeHttpContextAccessor : IHttpContextAccessor
@@ -52,17 +55,60 @@ public class AuditWriterTests
             bootstrap.Database.EnsureCreated();
         }
 
-        public AppDbContext MakeContext(ICurrentUser? user = null) =>
-            new(
-                new DbContextOptionsBuilder<AppDbContext>()
-                    .UseSqlite(_connectionString)
-                    .AddInterceptors(new SqliteBtrimFunctionInterceptor())
-                    .Options,
+        public AppDbContext MakeContext(
+            ICurrentUser? user = null,
+            IInterceptor? extraInterceptor = null
+        )
+        {
+            var builder = new DbContextOptionsBuilder<AppDbContext>()
+                .UseSqlite(_connectionString)
+                .AddInterceptors(new SqliteBtrimFunctionInterceptor());
+            if (extraInterceptor is not null)
+                builder.AddInterceptors(extraInterceptor);
+            return new(
+                builder.Options,
                 user ?? new FakeCurrentUser { IsSuperAdmin = true },
                 new ConfigurationBuilder().Build()
             );
+        }
 
         public void Dispose() => _keepAlive.Dispose();
+    }
+
+    /// <summary>
+    /// Deterministically fails any <c>SaveChanges(Async)</c> that would insert an <see
+    /// cref="AuditEvent"/> — simulating finding #1's "audit insert fails" without depending on a
+    /// provider actually enforcing a column max length (SQLite does not).
+    /// </summary>
+    private sealed class FailOnAuditEventInsertInterceptor : SaveChangesInterceptor
+    {
+        private static void ThrowIfAuditEventPending(DbContext? context)
+        {
+            if (
+                context?.ChangeTracker.Entries<AuditEvent>().Any(e => e.State == EntityState.Added)
+                == true
+            )
+                throw new InvalidOperationException("simulated audit write failure (test)");
+        }
+
+        public override InterceptionResult<int> SavingChanges(
+            DbContextEventData eventData,
+            InterceptionResult<int> result
+        )
+        {
+            ThrowIfAuditEventPending(eventData.Context);
+            return result;
+        }
+
+        public override ValueTask<InterceptionResult<int>> SavingChangesAsync(
+            DbContextEventData eventData,
+            InterceptionResult<int> result,
+            CancellationToken cancellationToken = default
+        )
+        {
+            ThrowIfAuditEventPending(eventData.Context);
+            return ValueTask.FromResult(result);
+        }
     }
 
     private static IConfiguration Config(params (string Key, string Value)[] pairs)
@@ -79,7 +125,7 @@ public class AuditWriterTests
     )
     {
         var http = new DefaultHttpContext();
-        http.Items["RequestId"] = requestId; // RequestIdMiddleware.ItemKey
+        http.Items[AuditWriter.RequestIdItemKey] = requestId; // == RequestIdMiddleware.ItemKey (Tests/RequestIdMiddlewareTests.cs)
         http.Connection.RemoteIpAddress = IPAddress.Parse("203.0.113.7");
         http.Request.Headers.UserAgent = userAgent;
         return http;
@@ -321,6 +367,106 @@ public class AuditWriterTests
                 new AuditEntry(AuditActions.SettingsUpdated, AuditTargets.Settings, "global", null)
             )
         );
+    }
+
+    /// <summary>
+    /// Review finding #1 (HIGH): a failed audit insert must not poison the rest of the request's
+    /// DbContext. Uses a SHARED, NOT DISPOSED context with an interceptor that deterministically
+    /// fails any save carrying a pending <see cref="AuditEvent"/> — before the fix, the still-Added
+    /// row would be resubmitted (and fail again) on the very next, otherwise-unrelated save.
+    /// </summary>
+    [Fact]
+    public async Task WriteAsync_SaveFails_DetachesFailedRow_DoesNotPoisonSharedContext()
+    {
+        using var db = new TestDb();
+        var accessor = new FakeHttpContextAccessor { HttpContext = HttpContextWith() };
+
+        using var ctx = db.MakeContext(extraInterceptor: new FailOnAuditEventInsertInterceptor());
+        var writer = new AuditWriter(
+            ctx,
+            new FakeCurrentUser { IsSuperAdmin = true },
+            accessor,
+            Config(),
+            NullLogger<AuditWriter>.Instance
+        );
+
+        // D12.1 best-effort: the write fails (interceptor throws), is logged, and swallowed.
+        await writer.WriteAsync(
+            new AuditEntry(AuditActions.SettingsUpdated, AuditTargets.Settings, "global", null)
+        );
+
+        // The failed row must be detached, never left tracked as Added.
+        Assert.Empty(ctx.ChangeTracker.Entries<AuditEvent>());
+
+        // A later, UNRELATED SaveChangesAsync on the SAME context must succeed. Before the fix,
+        // the still-Added AuditEvent would be resubmitted alongside this change and the
+        // interceptor (which fails any save carrying a pending AuditEvent) would fail it again.
+        ctx.Roles.Add(new Role { Name = "Unrelated", IsActive = true });
+        await ctx.SaveChangesAsync();
+    }
+
+    /// <summary>Review finding #7 (LOW): blank/whitespace counts as "not configured" for both
+    /// Audit:HashKey and its JWT:SigningKey fallback — with neither set, ip_hash is stored NULL
+    /// rather than HMAC'd with an empty key.</summary>
+    [Fact]
+    public async Task WriteAsync_BlankHashKeyAndSigningKey_StoresNullIpHash()
+    {
+        using var db = new TestDb();
+        var accessor = new FakeHttpContextAccessor { HttpContext = HttpContextWith() };
+
+        using (var ctx = db.MakeContext())
+        {
+            var writer = new AuditWriter(
+                ctx,
+                new FakeCurrentUser { IsSuperAdmin = true },
+                accessor,
+                Config(("Audit:HashKey", "   "), ("JWT:SigningKey", "")),
+                NullLogger<AuditWriter>.Instance
+            );
+
+            await writer.WriteAsync(
+                new AuditEntry(AuditActions.SettingsUpdated, AuditTargets.Settings, "global", null)
+            );
+        }
+
+        using var verify = db.MakeContext();
+        var row = verify.AuditEvents.IgnoreQueryFilters().Single();
+        Assert.Null(row.IpHash);
+    }
+
+    /// <summary>Review finding #8 (LOW): TargetId/TargetType are clamped to the mapped column
+    /// lengths (128/64) by the writer itself — the same Truncate helper used for UserAgent — so an
+    /// oversized value never depends on the provider enforcing HasMaxLength.</summary>
+    [Fact]
+    public async Task WriteAsync_ClampsTargetTypeAndTargetIdToMappedLengths()
+    {
+        using var db = new TestDb();
+        var accessor = new FakeHttpContextAccessor { HttpContext = HttpContextWith() };
+
+        using (var ctx = db.MakeContext())
+        {
+            var writer = new AuditWriter(
+                ctx,
+                new FakeCurrentUser { IsSuperAdmin = true },
+                accessor,
+                Config(),
+                NullLogger<AuditWriter>.Instance
+            );
+
+            await writer.WriteAsync(
+                new AuditEntry(
+                    Action: AuditActions.SettingsUpdated,
+                    TargetType: new string('t', 100), // mapped max is 64
+                    TargetId: new string('i', 200), // mapped max is 128
+                    OwnerId: null
+                )
+            );
+        }
+
+        using var verify = db.MakeContext();
+        var row = verify.AuditEvents.IgnoreQueryFilters().Single();
+        Assert.Equal(64, row.TargetType.Length);
+        Assert.Equal(128, row.TargetId?.Length);
     }
 
     [Fact]

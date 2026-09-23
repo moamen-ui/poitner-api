@@ -18,8 +18,8 @@ namespace Pointer.API.Auth;
 /// never from the response, whose StatusCode is still the default 200 here. An
 /// <c>[Audited]</c> action that completed successfully without writing an audit row (the writer
 /// sets <c>Items[AuditWriter.WrittenItemKey]</c>) logs <c>AUDIT GAP</c>; with
-/// <c>Audit:Strict=true</c> the result is replaced with a 500 (legal — the result has not executed
-/// yet). Strict defaults OFF until DB-12 part 2 lands the call sites.
+/// <c>Audit:StrictCoverage=true</c> the result is replaced with a 500 (legal — the result has not
+/// executed yet). Strict defaults OFF until DB-12 part 2 lands the call sites.
 /// </summary>
 public class AuditCoverageFilter(ILogger<AuditCoverageFilter> logger, IConfiguration config)
     : IAsyncActionFilter
@@ -48,7 +48,7 @@ public class AuditCoverageFilter(ILogger<AuditCoverageFilter> logger, IConfigura
             ctx.HttpContext.Request.Method,
             ctx.HttpContext.Request.Path
         );
-        if (config.GetValue("Audit:Strict", false))
+        if (config.GetValue("Audit:StrictCoverage", false))
             executed.Result = new ObjectResult(Result.Failure("Audit gap")) // legal: the result is replaced before it executes
             {
                 StatusCode = StatusCodes.Status500InternalServerError,

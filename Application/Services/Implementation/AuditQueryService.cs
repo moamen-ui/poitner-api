@@ -1,3 +1,4 @@
+using System.Text.RegularExpressions;
 using Microsoft.EntityFrameworkCore;
 using Pointer.Application.Abstractions;
 using Pointer.Application.Common;
@@ -23,10 +24,24 @@ public class AuditQueryService(IUnitOfWork unitOfWork, ICurrentUser currentUser)
 {
     private const int MaxPageSize = 200;
 
+    // Review finding #9 (LOW): q.Action feeds a raw `StartsWith` (LIKE-prefix) query — an
+    // unescaped `%`/`_` would otherwise be interpreted as a SQL LIKE wildcard by the provider.
+    // Action strings are always dotted lower-case (AuditActions.*), so this also rejects anything
+    // that couldn't be a real prefix.
+    private static readonly Regex ActionPrefixPattern = new(
+        "^[a-z_.]{1,64}$",
+        RegexOptions.Compiled
+    );
+
+    private static bool IsValidActionPrefix(string? action) =>
+        string.IsNullOrWhiteSpace(action) || ActionPrefixPattern.IsMatch(action);
+
     public async Task<Result<PagedData<AuditEventDto>>> ListForWorkspaceAsync(AuditQuery q)
     {
         if (q.PageSize > MaxPageSize)
             return Result<PagedData<AuditEventDto>>.Failure(MessageKeys.Audit.PageSizeTooLarge);
+        if (!IsValidActionPrefix(q.Action))
+            return Result<PagedData<AuditEventDto>>.Failure(MessageKeys.Audit.InvalidActionPrefix);
 
         // DB-13: impersonating operator → owner = TenantId
         if (!TenantStamp.TryRequireOwner(currentUser, out var owner))
@@ -45,6 +60,8 @@ public class AuditQueryService(IUnitOfWork unitOfWork, ICurrentUser currentUser)
     {
         if (q.PageSize > MaxPageSize)
             return Result<PagedData<AuditEventDto>>.Failure(MessageKeys.Audit.PageSizeTooLarge);
+        if (!IsValidActionPrefix(q.Action))
+            return Result<PagedData<AuditEventDto>>.Failure(MessageKeys.Audit.InvalidActionPrefix);
 
         // No IgnoreQueryFilters() needed: the super-admin branch of the AuditEvent filter admits
         // everything (audit rows are metadata).

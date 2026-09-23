@@ -2,6 +2,7 @@ using System.Text.RegularExpressions;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Logging.Abstractions;
 using Pointer.API.Middleware;
+using Pointer.Infrastructure.Audit;
 using Xunit;
 
 namespace Pointer.Tests;
@@ -76,4 +77,14 @@ public class RequestIdMiddlewareTests
 
     private static void AssertGenerated(string value) =>
         Assert.Matches(new Regex("^[0-9a-f]{32}$"), value); // Guid N — never the rejected client value
+
+    /// <summary>
+    /// DB-12 review finding #5: <c>AuditWriter</c> (Infrastructure) cannot reference the API
+    /// assembly, so it repeats this middleware's <c>ItemKey</c> string as its own
+    /// <c>RequestIdItemKey</c> constant — the two MUST stay equal or the writer silently stamps
+    /// every audit row's request id as null.
+    /// </summary>
+    [Fact]
+    public void ItemKey_MatchesAuditWriterRequestIdItemKey() =>
+        Assert.Equal(RequestIdMiddleware.ItemKey, AuditWriter.RequestIdItemKey);
 }

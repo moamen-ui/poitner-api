@@ -330,11 +330,57 @@ public class AppDbContext(
     /// <summary>Opts <paramref name="entity"/> out of the UtcNow-Now CreatedAt stamp on its next insert.</summary>
     public void PreserveCreatedAtOnInsert(BaseEntity entity) => _preserveCreatedAt.Add(entity);
 
+    /// <summary>DB-12: audit_events is append-only. The Postgres trigger is the authority; this is
+    /// the early, provider-agnostic error — shared by every SaveChanges(Async) overload (review
+    /// finding #12) so an update/delete of an AuditEvent can't slip through by using a different
+    /// overload than SaveChangesAsync(CancellationToken).</summary>
+    private void EnforceAuditEventsAppendOnly()
+    {
+        if (
+            ChangeTracker
+                .Entries<AuditEvent>()
+                .Any(e => e.State is EntityState.Modified or EntityState.Deleted)
+        )
+            throw new InvalidOperationException(
+                "audit_events is append-only (DB-12): update/delete is not allowed."
+            );
+    }
+
+    // Review finding #12 (NIT): the append-only guard above used to run ONLY on
+    // SaveChangesAsync(CancellationToken) — SaveChanges() and SaveChangesAsync(bool,
+    // CancellationToken) are separate virtual entry points on DbContext (the sync path does not go
+    // through the async override at all) and could bypass the guard entirely. Grepped: no
+    // production caller uses any overload but the plain SaveChangesAsync() (only
+    // Infrastructure/Repository/UnitOfWork.cs calls db.SaveChangesAsync()); throwing
+    // NotSupportedException on the others is NOT the safe option here, because ~200 Tests/ call
+    // sites seed data with the synchronous SaveChanges() and would break at RUNTIME. Routing those
+    // two overloads through the CreatedAt/UpdatedAt STAMPING as well is *also* not safe — several
+    // existing tests deliberately backdate CreatedAt on an entity and then seed it via the
+    // synchronous SaveChanges() specifically because that path historically left an explicit
+    // CreatedAt untouched (proven by re-running the suite: routing sync SaveChanges through the
+    // stamping loop silently overwrote those backdated values with DateTime.UtcNow and broke
+    // PublicStatsTests/PlatformInsightsServiceTests' hour-delta assertions). So: every overload gets
+    // the guard; stamping stays exactly where it always was, on SaveChangesAsync(CancellationToken).
+    public override int SaveChanges() => SaveChanges(acceptAllChangesOnSuccess: true);
+
+    public override int SaveChanges(bool acceptAllChangesOnSuccess)
+    {
+        EnforceAuditEventsAppendOnly();
+        return base.SaveChanges(acceptAllChangesOnSuccess);
+    }
+
+    public override Task<int> SaveChangesAsync(
+        bool acceptAllChangesOnSuccess,
+        CancellationToken ct = default
+    )
+    {
+        EnforceAuditEventsAppendOnly();
+        return base.SaveChangesAsync(acceptAllChangesOnSuccess, ct);
+    }
+
     public override Task<int> SaveChangesAsync(CancellationToken ct = default)
     {
-        // DB-12: audit_events is append-only. The Postgres trigger is the authority; this is the early, provider-agnostic error.
-        if (ChangeTracker.Entries<AuditEvent>().Any(e => e.State is EntityState.Modified or EntityState.Deleted))
-            throw new InvalidOperationException("audit_events is append-only (DB-12): update/delete is not allowed.");
+        EnforceAuditEventsAppendOnly();
 
         var now = DateTime.UtcNow;
         var uid = currentUser.Id ?? Guid.Empty;

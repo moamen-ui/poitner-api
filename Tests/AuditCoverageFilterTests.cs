@@ -120,7 +120,7 @@ public class AuditCoverageFilterTests
         var ctx = ExecutingContext(nameof(NoAuditAction));
         var executed = Executed(ctx, new OkObjectResult(Result.Success()));
 
-        await Filter(("Audit:Strict", "true")).OnActionExecutionAsync(ctx, Next(executed));
+        await Filter(("Audit:StrictCoverage", "true")).OnActionExecutionAsync(ctx, Next(executed));
 
         Assert.False(ctx.HttpContext.Items.ContainsKey("audit.gap"));
         Assert.IsType<OkObjectResult>(executed.Result);
@@ -132,7 +132,7 @@ public class AuditCoverageFilterTests
         var ctx = ExecutingContext(nameof(PlainAction));
         var executed = Executed(ctx, new OkObjectResult(Result.Success()));
 
-        await Filter(("Audit:Strict", "true")).OnActionExecutionAsync(ctx, Next(executed));
+        await Filter(("Audit:StrictCoverage", "true")).OnActionExecutionAsync(ctx, Next(executed));
 
         Assert.False(ctx.HttpContext.Items.ContainsKey("audit.gap"));
         Assert.IsType<OkObjectResult>(executed.Result);
@@ -148,7 +148,7 @@ public class AuditCoverageFilterTests
             new InvalidOperationException("the action itself failed")
         );
 
-        await Filter(("Audit:Strict", "true")).OnActionExecutionAsync(ctx, Next(executed));
+        await Filter(("Audit:StrictCoverage", "true")).OnActionExecutionAsync(ctx, Next(executed));
 
         Assert.False(ctx.HttpContext.Items.ContainsKey("audit.gap"));
     }
@@ -159,7 +159,7 @@ public class AuditCoverageFilterTests
         var ctx = ExecutingContext(nameof(AuditedAction));
         var executed = Executed(ctx, new OkObjectResult(Result.Success()));
 
-        await Filter(("Audit:Strict", "true")).OnActionExecutionAsync(ctx, Next(executed));
+        await Filter(("Audit:StrictCoverage", "true")).OnActionExecutionAsync(ctx, Next(executed));
 
         var replacement = Assert.IsType<ObjectResult>(executed.Result);
         Assert.Equal(StatusCodes.Status500InternalServerError, replacement.StatusCode);
@@ -174,7 +174,7 @@ public class AuditCoverageFilterTests
         var ctx = ExecutingContext(nameof(AuditedAction));
         var executed = Executed(ctx, new OkObjectResult(Result.Success()));
 
-        // No Audit:Strict anywhere — default OFF (DB-12 PART 1: no action is [Audited] yet).
+        // No Audit:StrictCoverage anywhere — default OFF (DB-12 PART 1: no action is [Audited] yet).
         await Filter().OnActionExecutionAsync(ctx, Next(executed));
 
         Assert.Equal(TestAction, ctx.HttpContext.Items["audit.gap"]);

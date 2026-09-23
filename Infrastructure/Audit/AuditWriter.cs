@@ -28,10 +28,13 @@ public class AuditWriter(
     public const string WrittenItemKey = "audit.written";
 
     // RequestIdMiddleware.ItemKey (API layer). Infrastructure cannot reference the API assembly,
-    // so the key string is repeated here — the two constants MUST stay equal.
-    private const string RequestIdItemKey = "RequestId";
+    // so the key string is repeated here — the two constants MUST stay equal (asserted by
+    // Tests/RequestIdMiddlewareTests.cs). Public so the test can reference it instead of a literal.
+    public const string RequestIdItemKey = "RequestId";
 
     private const int MaxUserAgentLength = 256;
+    private const int MaxTargetTypeLength = 64;
+    private const int MaxTargetIdLength = 128;
 
     public async Task WriteAsync(AuditEntry entry, CancellationToken ct = default)
     {
@@ -43,6 +46,11 @@ public class AuditWriter(
                 nameof(entry)
             );
 
+        // Declared outside the try so a failed insert can be detached from the ChangeTracker in
+        // the catch below — otherwise the still-Added entity is resubmitted (and fails again) on
+        // every subsequent SaveChangesAsync on this (request-scoped) DbContext, poisoning the rest
+        // of the request.
+        AuditEvent? ev = null;
         try
         {
             // DB-13: an impersonating super admin becomes Impersonation here (and
@@ -77,7 +85,7 @@ public class AuditWriter(
             }
 
             var ctx = http.HttpContext;
-            var ev = new AuditEvent
+            ev = new AuditEvent
             {
                 OccurredAt = DateTime.UtcNow,
                 OwnerId = entry.OwnerId,
@@ -85,8 +93,8 @@ public class AuditWriter(
                 ActorMembershipId = actorMembershipId,
                 ActorKind = actorKind,
                 Action = entry.Action,
-                TargetType = entry.TargetType,
-                TargetId = entry.TargetId,
+                TargetType = Truncate(entry.TargetType, MaxTargetTypeLength) ?? entry.TargetType,
+                TargetId = Truncate(entry.TargetId, MaxTargetIdLength),
                 Before = AuditFields.Sanitize(entry.Before),
                 After = AuditFields.Sanitize(entry.After),
                 RequestId = ctx?.Items[RequestIdItemKey] as string,
@@ -106,6 +114,24 @@ public class AuditWriter(
         }
         catch (Exception ex)
         {
+            // The failed row must not stay tracked as Added — detach it before anything else so a
+            // later, unrelated SaveChangesAsync on this DbContext isn't dragged down resubmitting
+            // (and re-failing on) the same broken insert. Best-effort itself: if the context is
+            // entirely unusable (e.g. already disposed — the cause of the original failure in that
+            // case), there is nothing left to detach from, and that must not escape and override
+            // the swallow below.
+            if (ev is not null)
+            {
+                try
+                {
+                    db.Entry(ev).State = EntityState.Detached;
+                }
+                catch
+                {
+                    // Nothing left to clean up on an unusable context.
+                }
+            }
+
             // D12.1: best-effort by default — the mutation already happened, the audit write is
             // logged at Error and swallowed; Audit:FailClosed=true rethrows instead.
             log.LogError(
@@ -120,12 +146,24 @@ public class AuditWriter(
         }
     }
 
-    /// <summary>Keyed HMAC-SHA256 of the remote IP (hex) — pseudonymous, not reversible without the key. Key: Audit:HashKey, falling back to the JWT signing key.</summary>
+    /// <summary>Keyed HMAC-SHA256 of the remote IP (hex) — pseudonymous, not reversible without the
+    /// key. Key: Audit:HashKey, falling back to the JWT signing key; when NEITHER is configured
+    /// (blank/whitespace counts as unconfigured) there is no unkeyed hash — ip_hash is stored NULL
+    /// rather than HMAC'd with an empty key.</summary>
     private string? Hash(string? ip)
     {
         if (string.IsNullOrEmpty(ip))
             return null;
-        var key = config["Audit:HashKey"] ?? config["JWT:SigningKey"] ?? string.Empty;
+
+        var configuredKey = config["Audit:HashKey"];
+        var signingKeyFallback = config["JWT:SigningKey"];
+        var key =
+            !string.IsNullOrWhiteSpace(configuredKey) ? configuredKey
+            : !string.IsNullOrWhiteSpace(signingKeyFallback) ? signingKeyFallback
+            : null;
+        if (key is null)
+            return null;
+
         using var hmac = new HMACSHA256(Encoding.UTF8.GetBytes(key));
         return Convert.ToHexString(hmac.ComputeHash(Encoding.UTF8.GetBytes(ip))).ToLowerInvariant();
     }

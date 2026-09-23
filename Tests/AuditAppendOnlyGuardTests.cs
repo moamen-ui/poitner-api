@@ -28,6 +28,8 @@ public class AuditAppendOnlyGuardTests
         public bool IsQuickAccess { get; set; }
         public Guid? TenantId { get; set; }
         public int? RoleId { get; set; }
+        public string? KeyScopes { get; set; }
+        public string? Scope { get; set; }
     }
 
     private sealed class FakePasswordHasher : IPasswordHasher
@@ -111,6 +113,26 @@ public class AuditAppendOnlyGuardTests
         db.AuditEvents.Remove(ev);
 
         await Assert.ThrowsAsync<InvalidOperationException>(() => db.SaveChangesAsync());
+    }
+
+    /// <summary>
+    /// Review finding #12 (NIT): the append-only guard lived only on the async
+    /// <c>SaveChangesAsync(CancellationToken)</c> override — DbContext's SYNCHRONOUS
+    /// <c>SaveChanges()</c> does not route through it, so it silently bypassed the guard entirely.
+    /// All four overloads now share one guarded+stamped path.
+    /// </summary>
+    [Fact]
+    public void ModifiedAuditEvent_SyncSaveChanges_Throws()
+    {
+        var dbName = Guid.NewGuid().ToString();
+        using var db = InMemory(dbName);
+        var ev = Row();
+        db.AuditEvents.Add(ev);
+        db.SaveChanges();
+
+        db.Entry(ev).State = EntityState.Modified;
+
+        Assert.Throws<InvalidOperationException>(() => db.SaveChanges());
     }
 
     [Fact]

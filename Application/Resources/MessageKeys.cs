@@ -260,6 +260,8 @@ public static class MessageKeys
     public static class Audit
     {
         public const string PageSizeTooLarge = "Page size must be 200 or fewer.";
+        public const string InvalidActionPrefix =
+            "Action must be lower-case letters, underscores, and dots only (^[a-z_.]{1,64}$).";
     }
 
     public static class AiRule

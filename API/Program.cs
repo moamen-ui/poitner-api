@@ -56,7 +56,7 @@ builder.Services.AddControllers(options =>
 {
     options.Filters.Add(new Microsoft.AspNetCore.Mvc.ProducesAttribute("application/json"));
     // DB-12: audit coverage enforcement — logs AUDIT GAP when an [Audited] action completed
-    // without writing an audit row (500 under Audit:Strict=true; type-registered so MVC activates
+    // without writing an audit row (500 under Audit:StrictCoverage=true; type-registered so MVC activates
     // it through DI).
     options.Filters.Add<Pointer.API.Auth.AuditCoverageFilter>();
 });

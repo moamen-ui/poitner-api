@@ -1,5 +1,6 @@
 using System.Reflection;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Mvc.Routing;
 using Pointer.API.Auth;
 using Pointer.API.Controllers;
 using Pointer.Application.Common;
@@ -40,17 +41,70 @@ public class AuditCoverageTests
                 )
             );
 
-    private static readonly string[] MutatingVerbs =
-    [
-        "HttpPost",
-        "HttpPut",
-        "HttpPatch",
-        "HttpDelete",
-    ];
+    private static readonly string[] MutatingVerbs = ["POST", "PUT", "PATCH", "DELETE"];
 
+    /// <summary>
+    /// Real mutating-verb detection via the HTTP-method-provider attributes' <c>HttpMethods</c>
+    /// (e.g. <c>[HttpPost]</c> implements <see cref="IActionHttpMethodProvider"/> and reports
+    /// <c>"POST"</c>) — NOT the attribute's CLR type name, which for <c>[HttpPost]</c> is
+    /// <c>"HttpPostAttribute"</c> and can never equal a bare verb string.
+    /// </summary>
     private static bool IsMutatingAction(MethodInfo m) =>
         m.GetCustomAttributes(inherit: false)
-            .Any(a => a.GetType().Name is not null && MutatingVerbs.Contains(a.GetType().Name));
+            .OfType<IActionHttpMethodProvider>()
+            .SelectMany(a => a.HttpMethods)
+            .Any(v => MutatingVerbs.Contains(v, StringComparer.OrdinalIgnoreCase));
+
+    /// <summary>
+    /// §3.8 / review finding #10: EVERY action (any verb — GETs included) of the
+    /// <see cref="ExtraAuditedControllers"/> set (Auth, Me, Demo, ExportImport) carries the
+    /// attribute, not just its mutating ones (this also subsumes the old ExportImportController
+    /// GET special-case); every OTHER audited surface (the <c>Pointer.API.Controllers.Admin</c>
+    /// namespace) only requires it on mutating actions.
+    /// </summary>
+    private static bool RequiresAttribute(MethodInfo m) =>
+        (m.DeclaringType is not null && ExtraAuditedControllers.Contains(m.DeclaringType.Name))
+        || IsMutatingAction(m);
+
+    [Fact]
+    public void IsMutatingAction_DetectsRealHttpVerbAttributes()
+    {
+        // AuthController.Login is [HttpPost] — HttpMethods = ["POST"]. Before the fix,
+        // IsMutatingAction compared the attribute's CLR TYPE NAME ("HttpPostAttribute") against
+        // the verb list ("HttpPost", …) and was always false.
+        var login =
+            typeof(AuthController).GetMethod(nameof(AuthController.Login))
+            ?? throw new InvalidOperationException("AuthController.Login not found");
+        var me =
+            typeof(AuthController).GetMethod(nameof(AuthController.Me))
+            ?? throw new InvalidOperationException("AuthController.Me not found");
+
+        Assert.True(IsMutatingAction(login), "[HttpPost] Login must be detected as mutating.");
+        Assert.False(IsMutatingAction(me), "[HttpGet] Me must NOT be detected as mutating.");
+    }
+
+    /// <summary>
+    /// Proves the enumeration behind the (still-skipped) exhaustive fact below actually finds a
+    /// realistic number of candidates. Before the fix, <c>IsMutatingAction</c> was always false and
+    /// this count would have collapsed to (at most) the two ExportImportController GET exports.
+    /// </summary>
+    [Fact]
+    public void MutatingActionEnumeration_FindsOverFortyCandidates()
+    {
+        var candidates = AuditedSurfaces()
+            .SelectMany(t =>
+                t.GetMethods(
+                    BindingFlags.Public | BindingFlags.Instance | BindingFlags.DeclaredOnly
+                )
+            )
+            .Where(RequiresAttribute)
+            .ToList();
+
+        Assert.True(
+            candidates.Count > 40,
+            $"Expected more than 40 mutating-action candidates across the audited surfaces, found {candidates.Count}."
+        );
+    }
 
     [Fact]
     public void AuditedActionStrings_AreInTheCatalogue()
@@ -140,10 +194,10 @@ public class AuditCoverageTests
     }
 
     /// <summary>
-    /// The full §6 test 1 contract. Every mutating action (HttpPost/Put/Patch/Delete) on a
-    /// controller under Pointer.API.Controllers.Admin, plus every action of AuthController /
-    /// MeController / DemoController / ExportImportController (including the two export GETs),
-    /// carries exactly one of the two attributes. Enable when DB-12 PART 2 lands (§5 tasks 10–11).
+    /// The full §6 test 1 contract, widened per review finding #10: every action (any verb) of
+    /// AuthController / MeController / DemoController / ExportImportController, plus every
+    /// mutating action on a controller under Pointer.API.Controllers.Admin, carries exactly one of
+    /// the two attributes. Enable when DB-12 PART 2 lands (§5 tasks 10–11).
     /// </summary>
     [Fact(
         Skip = "DB-12 PART 2: enable when [Audited]/[NoAudit] ship on all ~70 actions (§5 tasks 10–11)."
@@ -156,13 +210,7 @@ public class AuditCoverageTests
                     BindingFlags.Public | BindingFlags.Instance | BindingFlags.DeclaredOnly
                 )
             )
-            .Where(m =>
-                IsMutatingAction(m)
-                || (
-                    m.DeclaringType?.Name == "ExportImportController"
-                    && m.GetCustomAttribute<HttpGetAttribute>(inherit: false) is not null
-                )
-            )
+            .Where(RequiresAttribute)
             .Where(m =>
                 m.GetCustomAttribute<AuditedAttribute>(inherit: false) is null
                 && m.GetCustomAttribute<NoAuditAttribute>(inherit: false) is null

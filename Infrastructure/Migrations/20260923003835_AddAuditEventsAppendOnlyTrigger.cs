@@ -9,7 +9,7 @@ namespace Pointer.Infrastructure.Migrations
     public partial class AddAuditEventsAppendOnlyTrigger : Migration
     {
         /// <inheritdoc />
-        // DB-RULES: R4 constraint approved 2026-09-23 by db-architect
+        // DB-RULES: R4 constraint approved 2026-09-22 by Moamen (owner; foundations report §2 row 2 "append-only audit log", relayed by the orchestrator; docs/db/execution/DB-12-audit-log.md)
         protected override void Up(MigrationBuilder migrationBuilder)
         {
             migrationBuilder.Sql(

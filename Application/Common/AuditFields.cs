@@ -57,7 +57,10 @@ public static class AuditFields
         {
             if (!Allowed.Contains(key))
                 continue;
-            result[key] = value.Length <= MaxValueLength ? value : value[..MaxValueLength];
+            // A null value (the static type is non-nullable, but nothing stops a caller from
+            // passing one at runtime) is treated as empty rather than throwing.
+            var v = value ?? string.Empty;
+            result[key] = v.Length <= MaxValueLength ? v : v[..MaxValueLength];
         }
         return result;
     }

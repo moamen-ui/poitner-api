@@ -4,7 +4,7 @@ namespace Pointer.API.Auth;
 /// DB-12 §3.8 — marks a controller action as security-relevant: it must write exactly one audit
 /// row through <see cref="Pointer.Application.Abstractions.IAuditWriter"/>. <c>AuditCoverageFilter</c>
 /// watches every <c>[Audited]</c> action and logs <c>AUDIT GAP</c> (and 500s under
-/// <c>Audit:Strict=true</c>) when the action completed without a row. The action string must be an
+/// <c>Audit:StrictCoverage=true</c>) when the action completed without a row. The action string must be an
 /// <c>AuditActions</c> constant — <c>Tests/AuditCoverageTests</c> fails the build otherwise.
 /// </summary>
 [AttributeUsage(AttributeTargets.Method, Inherited = false, AllowMultiple = false)]

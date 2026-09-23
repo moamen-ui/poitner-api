@@ -24,6 +24,8 @@ public class AuditController(IAuditQueryService audit) : ControllerBase
     [HttpGet]
     [NoAudit("read of the audit log itself")]
     [ProducesResponseType(typeof(PagedData<AuditEventDto>), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(Result), StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(typeof(Result), StatusCodes.Status400BadRequest)]
     public async Task<IActionResult> List([FromQuery] AuditQuery q)
     {
         var result = await audit.ListForWorkspaceAsync(q);
