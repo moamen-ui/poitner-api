@@ -44,4 +44,16 @@ public interface IUnitOfWork
     /// The caller must NOT create the user when the return value is 0.
     /// </summary>
     Task<int> AtomicClaimInviteSlotAsync(int inviteId, DateTime now);
+
+    /// <summary>
+    /// DB-11c review finding #5: runs a raw, parameterised SQL statement against the underlying
+    /// connection (no result rows expected) — used to <c>SELECT … FOR UPDATE</c>-lock a workspace's
+    /// membership rows inside the caller's transaction, closing the race between two concurrent
+    /// sole-admin-guard checks (S-13) over the same workspace. <c>{0}</c>-style placeholders are
+    /// parameterised the same way as <c>ExecuteSqlRawAsync</c> everywhere else in EF Core. No-ops on
+    /// a non-relational provider (<c>Database.IsRelational() == false</c> — e.g. the EF Core
+    /// InMemory provider used by the test suite): callers must not depend on it for correctness
+    /// there (those tests are single-threaded, so the race it closes cannot occur).
+    /// </summary>
+    Task ExecuteSqlRawAsync(string sql, params object[] parameters);
 }

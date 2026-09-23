@@ -222,6 +222,18 @@ public class AuditWrittenByServicesTests
             audit
         );
 
+    private static IdentityEraseService EraseSvc(AppDbContext db, ICurrentUser user, FakeAuditWriter audit) =>
+        new(
+            new UnitOfWork(db),
+            new MembershipService(new UnitOfWork(db)),
+            user,
+            new FakePasswordHasher(),
+            new FakeReset(),
+            new NoopEmail(),
+            new NoopBrandingService(),
+            audit
+        );
+
     // ── auth.login.succeeded / auth.login.failed ───────────────────────────────────────────
 
     [Fact]
@@ -839,5 +851,127 @@ public class AuditWrittenByServicesTests
         var entry = Assert.Single(audit.Entries);
         Assert.Equal(AuditActions.TenantInviteCreated, entry.Action);
         Assert.Equal(AuditTargets.TenantInvite, entry.TargetType);
+    }
+
+    // ── member.left / identity.erase_requested / identity.erased (DB-11c review finding #12) ─
+
+    [Fact]
+    public async Task UserService_LeaveWorkspaceAsync_WritesMemberLeft()
+    {
+        var db = Guid.NewGuid().ToString();
+        var tenant = Guid.NewGuid();
+        var publicId = Guid.NewGuid();
+
+        using (var seed = Ctx(new FakeCurrentUser { IsSuperAdmin = true }, db))
+        {
+            var adminRole = new Role { Name = "Workspace Admin", GrantsAdmin = true, IsSystem = true, IsActive = true };
+            var memberRole = new Role { Name = "Engineer", GrantsAdmin = false, IsActive = true };
+            seed.Roles.AddRange(adminRole, memberRole);
+            seed.SaveChanges();
+
+            var admin = new User { PublicId = Guid.NewGuid(), Email = "admin@example.com", PasswordHash = "h:x", DisplayName = "Admin", RoleId = adminRole.Id, OwnerId = tenant, ApprovalStatus = ApprovalStatus.Approved, IsActive = true };
+            var member = new User { PublicId = publicId, Email = "leaver@example.com", PasswordHash = "h:x", DisplayName = "Leaver", RoleId = memberRole.Id, OwnerId = tenant, ApprovalStatus = ApprovalStatus.Approved, IsActive = true };
+            seed.Users.AddRange(admin, member);
+            seed.SaveChanges();
+            TestSeed.Join(seed, admin, tenant, adminRole);
+            TestSeed.Join(seed, member, tenant, memberRole);
+        }
+
+        var caller = new FakeCurrentUser { Id = publicId, TenantId = tenant };
+        var audit = new FakeAuditWriter();
+        using var ctx = Ctx(caller, db);
+        var svc = UserSvc(ctx, caller, audit);
+
+        var result = await svc.LeaveWorkspaceAsync();
+
+        Assert.True(result.IsSuccess, result.Message);
+        var entry = Assert.Single(audit.Entries);
+        Assert.Equal(AuditActions.MemberLeft, entry.Action);
+        Assert.Equal(AuditTargets.Membership, entry.TargetType);
+        Assert.Equal(tenant, entry.OwnerId);
+        Assert.Equal(publicId, entry.ActorUserIdOverride);
+        Assert.Equal(AuditActorKind.User, entry.ActorKindOverride);
+    }
+
+    [Fact]
+    public async Task IdentityEraseService_RequestEraseLinkAsync_WritesIdentityEraseRequested()
+    {
+        var db = Guid.NewGuid().ToString();
+        var tenant = Guid.NewGuid();
+        var publicId = Guid.NewGuid();
+
+        using (var seed = Ctx(new FakeCurrentUser { IsSuperAdmin = true }, db))
+        {
+            var role = new Role { Name = "Engineer", GrantsAdmin = false, IsActive = true };
+            seed.Roles.Add(role);
+            seed.SaveChanges();
+
+            var user = new User { PublicId = publicId, Email = "linkonly@example.com", PasswordHash = "h:x", DisplayName = "Link Only", RoleId = role.Id, OwnerId = tenant, ApprovalStatus = ApprovalStatus.Approved, IsActive = true, PasswordlessOnly = true };
+            seed.Users.Add(user);
+            seed.SaveChanges();
+            TestSeed.Join(seed, user, tenant, role);
+        }
+
+        var caller = new FakeCurrentUser { Id = publicId, TenantId = tenant };
+        var audit = new FakeAuditWriter();
+        using var ctx = Ctx(caller, db);
+        var svc = EraseSvc(ctx, caller, audit);
+
+        var result = await svc.RequestEraseLinkAsync();
+
+        Assert.True(result.IsSuccess, result.Message);
+        var entry = Assert.Single(audit.Entries);
+        Assert.Equal(AuditActions.IdentityEraseRequested, entry.Action);
+        Assert.Equal(AuditTargets.User, entry.TargetType);
+        Assert.Equal(publicId.ToString(), entry.TargetId);
+        Assert.Equal(publicId, entry.ActorUserIdOverride);
+        // Review finding #8: null here (authenticated self path) — AuditWriter's normal actor-kind
+        // resolution runs instead of a hard-coded User override.
+        Assert.Null(entry.ActorKindOverride);
+    }
+
+    [Fact]
+    public async Task IdentityEraseService_EraseSelfAsync_WritesIdentityErased_PerMembershipAndOperatorRow()
+    {
+        var db = Guid.NewGuid().ToString();
+        var tenantA = Guid.NewGuid();
+        var tenantB = Guid.NewGuid();
+        var publicId = Guid.NewGuid();
+
+        using (var seed = Ctx(new FakeCurrentUser { IsSuperAdmin = true }, db))
+        {
+            var roleA = new Role { Name = "Engineer", GrantsAdmin = false, IsActive = true };
+            var roleB = new Role { Name = "Engineer", GrantsAdmin = false, IsActive = true };
+            seed.Roles.AddRange(roleA, roleB);
+            seed.SaveChanges();
+
+            var user = new User { PublicId = publicId, Email = "multi@example.com", PasswordHash = "h:Passw0rd!", DisplayName = "Multi", RoleId = roleA.Id, OwnerId = tenantA, ApprovalStatus = ApprovalStatus.Approved, IsActive = true };
+            seed.Users.Add(user);
+            seed.SaveChanges();
+            TestSeed.Join(seed, user, tenantA, roleA);
+            TestSeed.Join(seed, user, tenantB, roleB);
+        }
+
+        var caller = new FakeCurrentUser { Id = publicId, TenantId = tenantA };
+        var audit = new FakeAuditWriter();
+        using var ctx = Ctx(caller, db);
+        var svc = EraseSvc(ctx, caller, audit);
+
+        var result = await svc.EraseSelfAsync(new DeleteMyAccountRequest { Password = "Passw0rd!" });
+
+        Assert.True(result.IsSuccess, result.Message);
+
+        // Review finding #9: one identity.erased row PER ended membership (workspace-scoped —
+        // visible to a workspace-scoped audit query) plus the operator-level row (OwnerId=null).
+        var erasedEntries = audit.Entries.Where(e => e.Action == AuditActions.IdentityErased).ToList();
+        Assert.Equal(3, erasedEntries.Count);
+        Assert.Single(erasedEntries, e => e.TargetType == AuditTargets.Membership && e.OwnerId == tenantA);
+        Assert.Single(erasedEntries, e => e.TargetType == AuditTargets.Membership && e.OwnerId == tenantB);
+        Assert.Single(erasedEntries, e => e.TargetType == AuditTargets.User && e.OwnerId == null && e.TargetId == publicId.ToString());
+
+        // Review finding #8: self-erase resolves as User through normal AuditWriter inference — the
+        // service must not force-override it.
+        Assert.All(erasedEntries, e => Assert.Null(e.ActorKindOverride));
+        Assert.All(erasedEntries, e => Assert.Equal(publicId, e.ActorUserIdOverride));
     }
 }

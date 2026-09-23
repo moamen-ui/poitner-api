@@ -56,6 +56,18 @@ public class UserService : IUserService
         catch { /* logged inside the sender; ignore here */ }
     }
 
+    /// <summary>
+    /// DB-11c review finding #5: locks <paramref name="workspaceId"/>'s membership rows
+    /// (<c>SELECT … FOR UPDATE</c>) so the sole-admin re-check that follows, inside the same
+    /// transaction, can't race a concurrent remove/demote/disable/erase on the same workspace.
+    /// No-ops on a non-relational provider (see <see cref="IUnitOfWork.ExecuteSqlRawAsync"/>).
+    /// </summary>
+    private Task LockWorkspaceMembershipsAsync(Guid workspaceId) =>
+        _unitOfWork.ExecuteSqlRawAsync(
+            "SELECT id FROM workspace_memberships WHERE owner_id = {0} FOR UPDATE",
+            workspaceId
+        );
+
     public async Task<Result<UserResponse>> CreateAsync(CreateUserRequest request)
     {
         var emailNormalized = EmailNormalizer.NormalizeRequired(request.Email);
@@ -223,8 +235,24 @@ public class UserService : IUserService
         if (!_currentUser.IsSuperAdmin && (role.GrantsAdmin || role.IsSuperAdmin) && role.Name != DeputyRoleName)
             return Result<UserResponse>.Failure(MessageKeys.Role.EscalationNotAllowed);
 
+        // S-13 (DB-11c review finding #2): approve can also change the role away from Workspace
+        // Admin (e.g. re-approving with a different pinned role) — same guard as UpdateAsync's role
+        // change, applied BEFORE the mutation below.
+        var wasWorkspaceAdmin = membership.Role.Name == WorkspaceAdminRoleName;
+        if (role.Id != membership.RoleId && wasWorkspaceAdmin)
+        {
+            var soleAdmin = await _memberships.SoleAdminWorkspacesAsync(new[] { membership.Id });
+            if (soleAdmin.Count > 0)
+                return Result<UserResponse>.Conflict(_memberships.SoleAdminConflict(soleAdmin).Message!);
+        }
+
         var approveBeforeStatus = membership.ApprovalStatus;
         var approveBeforeRoleId = membership.RoleId;
+
+        // A role change alters is_admin/is_super_admin/is_quick_access baked into the JWT at issue
+        // time — rotate the MEMBERSHIP stamp (R16) on any role change, same as UpdateAsync.
+        if (role.Id != membership.RoleId)
+            membership.SecurityStamp = Guid.NewGuid();
 
         membership.ApprovalStatus = ApprovalStatus.Approved;
         membership.IsActive = true;
@@ -281,6 +309,19 @@ public class UserService : IUserService
         var (identity, membership) = await ResolveTargetAsync(id);
         if (identity == null || membership == null)
             return Result<UserResponse>.NotFound(MessageKeys.User.NotFound);
+
+        // S-13 (DB-11c review finding #1): reject flips ApprovalStatus=Rejected AND IsActive=false —
+        // exactly the shape the sole-admin guard exists to block elsewhere. Without this, rejecting a
+        // workspace's only live Workspace Admin bypassed the guard entirely.
+        var soleAdmin = await _memberships.SoleAdminWorkspacesAsync(new[] { membership.Id });
+        if (soleAdmin.Count > 0)
+            return Result<UserResponse>.Conflict(_memberships.SoleAdminConflict(soleAdmin).Message!);
+
+        if (identity.PublicId == _currentUser.Id)
+            return Result<UserResponse>.Failure(MessageKeys.User.CannotRejectSelf);
+
+        if (membership.ApprovalStatus != ApprovalStatus.Pending)
+            return Result<UserResponse>.Conflict(MessageKeys.User.NotPending);
 
         var rejectBeforeStatus = membership.ApprovalStatus;
         var rejectBeforeRoleId = membership.RoleId;
@@ -346,9 +387,10 @@ public class UserService : IUserService
         // tracked (but not yet saved) membership.
         var wasWorkspaceAdmin = membership.Role.Name == WorkspaceAdminRoleName;
 
+        Role? role = null;
         if (request.RoleId.HasValue)
         {
-            var role = await GetActiveRoleAsync(request.RoleId.Value);
+            role = await GetActiveRoleAsync(request.RoleId.Value);
             if (role == null)
                 return Result<UserResponse>.Failure(MessageKeys.Role.Invalid);
 
@@ -356,86 +398,127 @@ public class UserService : IUserService
             // Deputy, which the current Workspace Admin may delegate to their own team.
             if (!_currentUser.IsSuperAdmin && (role.GrantsAdmin || role.IsSuperAdmin) && role.Name != DeputyRoleName)
                 return Result<UserResponse>.Failure(MessageKeys.Role.EscalationNotAllowed);
+        }
+
+        // D6: an admin may only set another member's password when that identity has exactly one
+        // live membership — otherwise the password is shared with workspaces this admin cannot see
+        // into, so the member must change it themselves. Read-only, so it stays outside the
+        // transaction below.
+        if (!string.IsNullOrEmpty(request.Password))
+        {
+            var liveCount = (await _memberships.ListForIdentityAsync(identity.Id)).Count;
+            if (liveCount != 1)
+                return Result<UserResponse>.Failure(MessageKeys.User.PasswordManagedElsewhere);
+        }
+
+        var roleChangedAwayFromAdmin = role != null && role.Id != membership.RoleId && wasWorkspaceAdmin;
+        var disablingAdmin = request.IsActive == false && wasWorkspaceAdmin;
+        var adminSensitive = roleChangedAwayFromAdmin || disablingAdmin;
+
+        Result<UserResponse>? earlyResult = null;
+
+        await _unitOfWork.ExecuteInTransactionAsync(async () =>
+        {
+            earlyResult = null;
+
+            // S-13 (DB-11c review finding #5): lock the workspace's memberships and re-verify the
+            // guard inside the transaction, immediately before the write — closes the race between
+            // two concurrent admin-removing actions on the same workspace.
+            if (adminSensitive)
+                await LockWorkspaceMembershipsAsync(membership.OwnerId);
 
             // S-13 (DB-11c): a role change away from Workspace Admin must never leave a workspace
             // with no admin — applies to EVERY caller, super admins included (replaces the old
             // self-only CannotChangeSelfFromAdmin guard, whose message is kept for the self case).
-            if (role.Id != membership.RoleId && wasWorkspaceAdmin)
+            if (roleChangedAwayFromAdmin)
             {
                 var soleAdmin = await _memberships.SoleAdminWorkspacesAsync(new[] { membership.Id });
                 if (soleAdmin.Count > 0)
                 {
-                    if (identity.PublicId == _currentUser.Id)
-                        return Result<UserResponse>.Failure(MessageKeys.User.CannotChangeSelfFromAdmin);
-                    return Result<UserResponse>.Conflict(_memberships.SoleAdminConflict(soleAdmin).Message!);
+                    earlyResult = identity.PublicId == _currentUser.Id
+                        ? Result<UserResponse>.Failure(MessageKeys.User.CannotChangeSelfFromAdmin)
+                        : Result<UserResponse>.Conflict(_memberships.SoleAdminConflict(soleAdmin).Message!);
+                    return;
                 }
             }
 
-            // A role change alters is_admin/is_super_admin/is_quick_access baked into the JWT at
-            // issue time — rotate the MEMBERSHIP stamp (R16: workspace-scoped event) so a live
-            // session can't keep acting under the old role for the rest of the token's lifetime.
-            if (role.Id != membership.RoleId)
+            // S-13 (DB-11c): disabling a workspace's only Workspace Admin membership is blocked the
+            // same way removal/demotion is — a disabled sole admin is not recoverable by anyone left
+            // active.
+            if (disablingAdmin)
+            {
+                var soleAdmin = await _memberships.SoleAdminWorkspacesAsync(new[] { membership.Id });
+                if (soleAdmin.Count > 0)
+                {
+                    earlyResult = Result<UserResponse>.Conflict(_memberships.SoleAdminConflict(soleAdmin).Message!);
+                    return;
+                }
+            }
+
+            if (role != null)
+            {
+                // A role change alters is_admin/is_super_admin/is_quick_access baked into the JWT at
+                // issue time — rotate the MEMBERSHIP stamp (R16: workspace-scoped event) so a live
+                // session can't keep acting under the old role for the rest of the token's lifetime.
+                if (role.Id != membership.RoleId)
+                    membership.SecurityStamp = Guid.NewGuid();
+
+                membership.RoleId = role.Id;
+            }
+
+            if (request.IsActive.HasValue)
+                membership.IsActive = request.IsActive.Value;
+
+            if (!string.IsNullOrEmpty(request.Password))
+            {
+                identity.PasswordHash = _passwordHasher.Hash(request.Password);
+                // Identity-wide event (R16): rotates the IDENTITY stamp — every workspace's sessions end.
+                identity.SecurityStamp = Guid.NewGuid();
+                _unitOfWork.Repository<User>().Update(identity);
+            }
+
+            // H1/R16: disabling the membership must revoke THIS workspace's existing access tokens.
+            if (request.IsActive == false)
                 membership.SecurityStamp = Guid.NewGuid();
 
-            membership.RoleId = role.Id;
-        }
+            _unitOfWork.Repository<WorkspaceMembership>().Update(membership);
+            await _unitOfWork.SaveChangesAsync();
 
-        // S-13 (DB-11c): disabling a workspace's only Workspace Admin membership is blocked the same
-        // way removal/demotion is — a disabled sole admin is not recoverable by anyone left active.
-        if (request.IsActive == false && wasWorkspaceAdmin)
-        {
-            var soleAdmin = await _memberships.SoleAdminWorkspacesAsync(new[] { membership.Id });
-            if (soleAdmin.Count > 0)
-                return Result<UserResponse>.Conflict(_memberships.SoleAdminConflict(soleAdmin).Message!);
-        }
+            if (adminSensitive)
+            {
+                var remaining = await _memberships.CountLiveAdminsAsync(membership.OwnerId);
+                if (remaining == 0)
+                    throw new InvalidOperationException(
+                        "S-13 invariant violated: a workspace was left with no live Workspace Admin (UpdateAsync race)."
+                    );
+            }
 
-        if (request.IsActive.HasValue)
-            membership.IsActive = request.IsActive.Value;
+            var updateAfter = new Dictionary<string, string>
+            {
+                ["role_id"] = membership.RoleId.ToString(),
+                ["is_active"] = membership.IsActive.ToString(),
+            };
+            if (passwordWasSet)
+                updateAfter["with_password"] = "true";
 
-        if (!string.IsNullOrEmpty(request.Password))
-        {
-            // D6: an admin may only set another member's password when that identity has exactly
-            // one live membership — otherwise the password is shared with workspaces this admin
-            // cannot see into, so the member must change it themselves.
-            var liveCount = (await _memberships.ListForIdentityAsync(identity.Id)).Count;
-            if (liveCount != 1)
-                return Result<UserResponse>.Failure(MessageKeys.User.PasswordManagedElsewhere);
+            await _audit.WriteAsync(
+                new AuditEntry(
+                    AuditActions.MemberUpdated,
+                    AuditTargets.Membership,
+                    membership.Id.ToString(),
+                    membership.OwnerId,
+                    Before: new Dictionary<string, string>
+                    {
+                        ["role_id"] = updateBeforeRoleId.ToString(),
+                        ["is_active"] = updateBeforeIsActive.ToString(),
+                    },
+                    After: updateAfter
+                )
+            );
+        });
 
-            identity.PasswordHash = _passwordHasher.Hash(request.Password);
-            // Identity-wide event (R16): rotates the IDENTITY stamp — every workspace's sessions end.
-            identity.SecurityStamp = Guid.NewGuid();
-            _unitOfWork.Repository<User>().Update(identity);
-        }
-
-        // H1/R16: disabling the membership must revoke THIS workspace's existing access tokens.
-        if (request.IsActive == false)
-            membership.SecurityStamp = Guid.NewGuid();
-
-        _unitOfWork.Repository<WorkspaceMembership>().Update(membership);
-        await _unitOfWork.SaveChangesAsync();
-
-        var updateAfter = new Dictionary<string, string>
-        {
-            ["role_id"] = membership.RoleId.ToString(),
-            ["is_active"] = membership.IsActive.ToString(),
-        };
-        if (passwordWasSet)
-            updateAfter["with_password"] = "true";
-
-        await _audit.WriteAsync(
-            new AuditEntry(
-                AuditActions.MemberUpdated,
-                AuditTargets.Membership,
-                membership.Id.ToString(),
-                membership.OwnerId,
-                Before: new Dictionary<string, string>
-                {
-                    ["role_id"] = updateBeforeRoleId.ToString(),
-                    ["is_active"] = updateBeforeIsActive.ToString(),
-                },
-                After: updateAfter
-            )
-        );
+        if (earlyResult != null)
+            return earlyResult;
 
         var current = await GetActiveRoleAsync(membership.RoleId);
         membership.Role = current;
@@ -459,43 +542,88 @@ public class UserService : IUserService
         if (identity.PublicId == _currentUser.Id)
             return Result.Failure(MessageKeys.User.CannotRemoveSelf);
 
-        // S-13 (DB-11c): nobody — including a super admin — may remove a workspace's only live
-        // Workspace Admin membership (replaces the old flat "sole admin can't be removed" check).
-        var soleAdmin = await _memberships.SoleAdminWorkspacesAsync(new[] { membership.Id });
-        if (soleAdmin.Count > 0)
-            return _memberships.SoleAdminConflict(soleAdmin);
+        // Fast pre-check (message ordering / early exit for the common case) — the authoritative,
+        // race-safe recheck runs inside the transaction, under lock, immediately before the write
+        // (review finding #5).
+        var soleAdminPreCheck = await _memberships.SoleAdminWorkspacesAsync(new[] { membership.Id });
+        if (soleAdminPreCheck.Count > 0)
+            return _memberships.SoleAdminConflict(soleAdminPreCheck);
 
-        if (!_currentUser.IsSuperAdmin && membership.Role.Name == DeputyRoleName && _currentUser.Id is Guid callerPublicId)
+        // DB-11c review finding #7: a Deputy (non-super-admin) may not remove a Workspace Admin OR
+        // another Deputy — only the workspace's own Workspace Admin (or a super admin) may. Before
+        // this fix, only Deputy-removes-Deputy was blocked, so a Deputy could remove any
+        // non-sole Workspace Admin.
+        if (
+            !_currentUser.IsSuperAdmin
+            && (membership.Role.Name == DeputyRoleName || membership.Role.Name == WorkspaceAdminRoleName)
+            && _currentUser.Id is Guid callerPublicId
+        )
         {
             var callerIdentity = await _memberships.FindIdentityByPublicIdAsync(callerPublicId);
             var callerMembership = callerIdentity != null
                 ? await _memberships.GetMembershipAsync(callerIdentity.Id, membership.OwnerId)
                 : null;
-            if (callerMembership?.Role.Name == DeputyRoleName)
-                return Result.Failure(MessageKeys.User.CannotDeleteDeputy);
+            if (callerMembership?.Role.Name != WorkspaceAdminRoleName)
+            {
+                return Result.Failure(
+                    membership.Role.Name == DeputyRoleName
+                        ? MessageKeys.User.CannotDeleteDeputy
+                        : MessageKeys.User.CannotRemoveAdmin
+                );
+            }
         }
 
         var deleteBeforeRoleId = membership.RoleId;
         var deleteBeforeIsActive = membership.IsActive;
+        var isWorkspaceAdmin = membership.Role.Name == WorkspaceAdminRoleName;
+        var actor = _currentUser.Id ?? Guid.Empty;
 
-        await _memberships.EndAsync(membership, MembershipEndReason.Removed, _currentUser.Id ?? Guid.Empty);
-        await _unitOfWork.SaveChangesAsync();
+        Result? earlyResult = null;
 
-        await _audit.WriteAsync(
-            new AuditEntry(
-                AuditActions.MemberRemoved,
-                AuditTargets.Membership,
-                membership.Id.ToString(),
-                membership.OwnerId,
-                Before: new Dictionary<string, string>
+        await _unitOfWork.ExecuteInTransactionAsync(async () =>
+        {
+            earlyResult = null;
+
+            if (isWorkspaceAdmin)
+            {
+                await LockWorkspaceMembershipsAsync(membership.OwnerId);
+
+                var soleAdmin = await _memberships.SoleAdminWorkspacesAsync(new[] { membership.Id });
+                if (soleAdmin.Count > 0)
                 {
-                    ["role_id"] = deleteBeforeRoleId.ToString(),
-                    ["is_active"] = deleteBeforeIsActive.ToString(),
+                    earlyResult = _memberships.SoleAdminConflict(soleAdmin);
+                    return;
                 }
-            )
-        );
+            }
 
-        return Result.Success();
+            await _memberships.EndAsync(membership, MembershipEndReason.Removed, actor);
+            await _unitOfWork.SaveChangesAsync();
+
+            if (isWorkspaceAdmin)
+            {
+                var remaining = await _memberships.CountLiveAdminsAsync(membership.OwnerId);
+                if (remaining == 0)
+                    throw new InvalidOperationException(
+                        "S-13 invariant violated: a workspace was left with no live Workspace Admin (DeleteAsync race)."
+                    );
+            }
+
+            await _audit.WriteAsync(
+                new AuditEntry(
+                    AuditActions.MemberRemoved,
+                    AuditTargets.Membership,
+                    membership.Id.ToString(),
+                    membership.OwnerId,
+                    Before: new Dictionary<string, string>
+                    {
+                        ["role_id"] = deleteBeforeRoleId.ToString(),
+                        ["is_active"] = deleteBeforeIsActive.ToString(),
+                    }
+                )
+            );
+        });
+
+        return earlyResult ?? Result.Success();
     }
 
     /// <summary>
@@ -517,31 +645,65 @@ public class UserService : IUserService
         if (membership == null)
             return Result.NotFound(MessageKeys.User.NotFound);
 
-        var soleAdmin = await _memberships.SoleAdminWorkspacesAsync(new[] { membership.Id });
-        if (soleAdmin.Count > 0)
-            return _memberships.SoleAdminConflict(soleAdmin);
+        // Fast pre-check; the authoritative, race-safe recheck runs inside the transaction, under
+        // lock, immediately before the write (review finding #5).
+        var soleAdminPreCheck = await _memberships.SoleAdminWorkspacesAsync(new[] { membership.Id });
+        if (soleAdminPreCheck.Count > 0)
+            return _memberships.SoleAdminConflict(soleAdminPreCheck);
 
         var leaveBeforeRoleId = membership.RoleId;
         var leaveBeforeIsActive = membership.IsActive;
+        var isWorkspaceAdmin = membership.Role.Name == WorkspaceAdminRoleName;
 
-        await _memberships.EndAsync(membership, MembershipEndReason.Left, publicId);
-        await _unitOfWork.SaveChangesAsync();
+        Result? earlyResult = null;
 
-        await _audit.WriteAsync(
-            new AuditEntry(
-                AuditActions.MemberLeft,
-                AuditTargets.Membership,
-                membership.Id.ToString(),
-                ownerId,
-                Before: new Dictionary<string, string>
+        await _unitOfWork.ExecuteInTransactionAsync(async () =>
+        {
+            earlyResult = null;
+
+            if (isWorkspaceAdmin)
+            {
+                await LockWorkspaceMembershipsAsync(membership.OwnerId);
+
+                var soleAdmin = await _memberships.SoleAdminWorkspacesAsync(new[] { membership.Id });
+                if (soleAdmin.Count > 0)
                 {
-                    ["role_id"] = leaveBeforeRoleId.ToString(),
-                    ["is_active"] = leaveBeforeIsActive.ToString(),
-                },
-                ActorUserIdOverride: publicId,
-                ActorKindOverride: AuditActorKind.User
-            )
-        );
+                    earlyResult = _memberships.SoleAdminConflict(soleAdmin);
+                    return;
+                }
+            }
+
+            await _memberships.EndAsync(membership, MembershipEndReason.Left, publicId);
+            await _unitOfWork.SaveChangesAsync();
+
+            if (isWorkspaceAdmin)
+            {
+                var remaining = await _memberships.CountLiveAdminsAsync(membership.OwnerId);
+                if (remaining == 0)
+                    throw new InvalidOperationException(
+                        "S-13 invariant violated: a workspace was left with no live Workspace Admin (LeaveWorkspaceAsync race)."
+                    );
+            }
+
+            await _audit.WriteAsync(
+                new AuditEntry(
+                    AuditActions.MemberLeft,
+                    AuditTargets.Membership,
+                    membership.Id.ToString(),
+                    ownerId,
+                    Before: new Dictionary<string, string>
+                    {
+                        ["role_id"] = leaveBeforeRoleId.ToString(),
+                        ["is_active"] = leaveBeforeIsActive.ToString(),
+                    },
+                    ActorUserIdOverride: publicId,
+                    ActorKindOverride: AuditActorKind.User
+                )
+            );
+        });
+
+        if (earlyResult != null)
+            return earlyResult;
 
         return Result.Success(MessageKeys.User.LeftWorkspace);
     }

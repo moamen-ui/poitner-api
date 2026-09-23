@@ -13,6 +13,10 @@ namespace Pointer.Application.Services.Implementation;
 /// <inheritdoc cref="IIdentityEraseService"/>
 public class IdentityEraseService : IIdentityEraseService
 {
+    // See UserService's identical constant — Role has no dedicated "is the canonical admin" flag
+    // beyond the literal system role name.
+    private const string WorkspaceAdminRoleName = "Workspace Admin";
+
     private readonly IUnitOfWork _unitOfWork;
     private readonly IMembershipService _memberships;
     private readonly ICurrentUser _currentUser;
@@ -128,7 +132,11 @@ public class IdentityEraseService : IIdentityEraseService
                 identity.PublicId.ToString(),
                 _currentUser.TenantId,
                 ActorUserIdOverride: identity.PublicId,
-                ActorKindOverride: AuditActorKind.User
+                // Review finding #8: only force User on the anonymous path (no ICurrentUser.Id) —
+                // this call site is always authenticated-as-self, so leaving it null lets AuditWriter's
+                // normal actor-kind resolution run (User here; it would be SuperAdmin if this rail were
+                // ever reachable by one, which RequestEraseLinkAsync's own guard above prevents).
+                ActorKindOverride: _currentUser.Id is null ? AuditActorKind.User : null
             )
         );
 
@@ -156,22 +164,61 @@ public class IdentityEraseService : IIdentityEraseService
     }
 
     /// <summary>
-    /// §3.4 — the single erase routine. Precondition (sole-admin, S-13) checked before the
-    /// transaction opens; everything else runs inside one transaction.
+    /// DB-11c review finding #5: locks <paramref name="workspaceId"/>'s membership rows
+    /// (<c>SELECT … FOR UPDATE</c>) — same helper as <c>UserService</c>. No-ops on a non-relational
+    /// provider (see <see cref="IUnitOfWork.ExecuteSqlRawAsync"/>).
+    /// </summary>
+    private Task LockWorkspaceMembershipsAsync(Guid workspaceId) =>
+        _unitOfWork.ExecuteSqlRawAsync(
+            "SELECT id FROM workspace_memberships WHERE owner_id = {0} FOR UPDATE",
+            workspaceId
+        );
+
+    /// <summary>
+    /// §3.4 — the single erase routine. Fast pre-check (sole-admin, S-13) before the transaction
+    /// opens (message ordering); the authoritative, race-safe recheck runs inside the transaction,
+    /// under lock, immediately before the writes (review finding #5).
     /// </summary>
     private async Task<Result> EraseAsync(User identity, Guid actor)
     {
         var liveMemberships = await _memberships.ListForIdentityAsync(identity.Id);
-        var soleAdmin = await _memberships.SoleAdminWorkspacesAsync(liveMemberships.Select(m => m.Id));
-        if (soleAdmin.Count > 0)
-            return _memberships.SoleAdminConflict(soleAdmin);
+        var soleAdminPreCheck = await _memberships.SoleAdminWorkspacesAsync(liveMemberships.Select(m => m.Id));
+        if (soleAdminPreCheck.Count > 0)
+            return _memberships.SoleAdminConflict(soleAdminPreCheck);
 
         var pid = identity.PublicId;
         var originalEmail = identity.Email;
         var tombstoneEmail = $"erased+{pid:N}@tombstone.invalid";
+        // Workspaces where this identity is (was) the live Workspace Admin — the only ones the
+        // post-write invariant recheck (below) needs to look at.
+        var adminWorkspaceIds = liveMemberships
+            .Where(m => m.Role.Name == WorkspaceAdminRoleName)
+            .Select(m => m.OwnerId)
+            .Distinct()
+            .ToList();
+        // Review finding #8: force User only on the anonymous confirm-erase path (no
+        // ICurrentUser.Id) — self-erase and the super-admin path resolve correctly (User /
+        // SuperAdmin, respectively) through AuditWriter's normal actor-kind inference when left null.
+        var actorKindOverride = _currentUser.Id is null ? AuditActorKind.User : (AuditActorKind?)null;
+
+        Result? conflict = null;
 
         await _unitOfWork.ExecuteInTransactionAsync(async () =>
         {
+            conflict = null;
+
+            // Lock every workspace this identity administers before rechecking — closes the race
+            // between two concurrent guards (remove/demote/disable/erase) over the same workspace(s).
+            foreach (var workspaceId in adminWorkspaceIds)
+                await LockWorkspaceMembershipsAsync(workspaceId);
+
+            var soleAdmin = await _memberships.SoleAdminWorkspacesAsync(liveMemberships.Select(m => m.Id));
+            if (soleAdmin.Count > 0)
+            {
+                conflict = _memberships.SoleAdminConflict(soleAdmin);
+                return;
+            }
+
             // 1. End every live membership (kept for audit; never deletes the identity).
             foreach (var m in liveMemberships)
                 await _memberships.EndAsync(m, MembershipEndReason.AccountErased, actor);
@@ -220,14 +267,17 @@ public class IdentityEraseService : IIdentityEraseService
 
             // 2b. Invites (GLM A2): tombstone every row locked to this address — accepted, open,
             //     expired or revoked. OVERWRITE, never null: Invite.Email == null means "anyone with
-            //     the link may accept", so nulling would unlock a still-open invite.
-            if (!string.IsNullOrEmpty(originalEmail))
+            //     the link may accept", so nulling would unlock a still-open invite. Review finding
+            //     #6: compare case-insensitively — invites.email is not guaranteed to already be
+            //     lower-cased everywhere it's written, unlike users.email.
+            var normalizedEmail = EmailNormalizer.NormalizeRequired(originalEmail);
+            if (normalizedEmail.Length > 0)
             {
                 var invites = await _unitOfWork
                     .Repository<Invite>()
                     .Query()
                     .IgnoreQueryFilters()
-                    .Where(i => i.Email == originalEmail)
+                    .Where(i => i.Email != null && i.Email.ToLower() == normalizedEmail)
                     .ToListAsync();
                 foreach (var invite in invites)
                 {
@@ -254,7 +304,63 @@ public class IdentityEraseService : IIdentityEraseService
             identity.DeletedAt = now;
             _unitOfWork.Repository<User>().Update(identity);
 
+            // 3b. Review finding #3: tombstone every predecessor row this identity absorbed via the
+            //     DB-11a same-e-mail merge — otherwise their original e-mail/name survived even
+            //     though the canonical identity was erased (they are already soft-deleted and
+            //     membership-less, so there is nothing else to end/scrub for them).
+            var mergedPredecessors = await _unitOfWork
+                .Repository<User>()
+                .Query()
+                .IgnoreQueryFilters()
+                .Where(u => u.MergedIntoUserId == identity.Id)
+                .ToListAsync();
+            foreach (var predecessor in mergedPredecessors)
+            {
+                predecessor.Email = $"erased+{predecessor.PublicId:N}@tombstone.invalid";
+                predecessor.DisplayName = "Deleted user";
+                predecessor.PasswordHash = _passwordHasher.Hash(
+                    Guid.NewGuid().ToString("N") + Guid.NewGuid().ToString("N")
+                );
+                predecessor.RecipientEmail = null;
+                predecessor.SecurityStamp = Guid.NewGuid();
+                predecessor.ErasedAt = now;
+                _unitOfWork.Repository<User>().Update(predecessor);
+            }
+
             await _unitOfWork.SaveChangesAsync();
+
+            // Review finding #5: re-run the sole-admin count, inside the same transaction, right
+            // after the write — an invariant-violation guard against a race the lock above should
+            // already have made impossible.
+            foreach (var workspaceId in adminWorkspaceIds)
+            {
+                var remaining = await _memberships.CountLiveAdminsAsync(workspaceId);
+                if (remaining == 0)
+                    throw new InvalidOperationException(
+                        "S-13 invariant violated: a workspace was left with no live Workspace Admin (erase race)."
+                    );
+            }
+
+            // Review finding #9: identity.erased is written with OwnerId=null (this row is
+            // operator-level: PublicId is not a workspace-scoped thing), which makes it invisible to
+            // a workspace-scoped audit query even though the erase ended that workspace's membership.
+            // Fix: also write one identity.erased row PER ended membership, target=membership,
+            // OwnerId=that membership's workspace — the same "one row per membership" shape
+            // ownership.transferred already uses (§3.6), and exactly what DB-12 §3.6's catalogue row
+            // for identity.erased lists both targets for ("membership/id; user/public_id").
+            foreach (var m in liveMemberships)
+            {
+                await _audit.WriteAsync(
+                    new AuditEntry(
+                        AuditActions.IdentityErased,
+                        AuditTargets.Membership,
+                        m.Id.ToString(),
+                        m.OwnerId,
+                        ActorUserIdOverride: actor,
+                        ActorKindOverride: actorKindOverride
+                    )
+                );
+            }
 
             await _audit.WriteAsync(
                 new AuditEntry(
@@ -263,10 +369,13 @@ public class IdentityEraseService : IIdentityEraseService
                     pid.ToString(),
                     null,
                     ActorUserIdOverride: actor,
-                    ActorKindOverride: AuditActorKind.User
+                    ActorKindOverride: actorKindOverride
                 )
             );
         });
+
+        if (conflict != null)
+            return conflict;
 
         return Result.Success(MessageKeys.User.Erased);
     }

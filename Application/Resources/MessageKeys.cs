@@ -77,6 +77,18 @@ public static class MessageKeys
         public const string EraseUsePassword = "Your account has a password — confirm deletion with it instead.";
         public const string EraseLinkSent = "We've e-mailed you a link to confirm deleting your account. It expires in 30 minutes.";
         public const string EraseLinkInvalid = "This deletion link is invalid or has expired — request a new one.";
+
+        /// <summary>DB-11c review finding #1: a pending member cannot reject their own request.</summary>
+        public const string CannotRejectSelf = "You cannot reject yourself.";
+
+        /// <summary>DB-11c review finding #1: reject is only meaningful for a still-pending request.</summary>
+        public const string NotPending = "This member is not pending approval.";
+
+        /// <summary>
+        /// DB-11c review finding #7: a Deputy (non-super-admin) may not remove a Workspace Admin —
+        /// only the workspace's own Workspace Admin or a super admin can.
+        /// </summary>
+        public const string CannotRemoveAdmin = "Only the workspace admin or a super admin can remove a Workspace Admin.";
     }
 
     public static class Workspace

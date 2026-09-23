@@ -65,6 +65,17 @@ public sealed class UnitOfWork(AppDbContext db) : IUnitOfWork
         return await db.SaveChangesAsync();
     }
 
+    /// <inheritdoc />
+    public async Task ExecuteSqlRawAsync(string sql, params object[] parameters)
+    {
+        // InMemory (and any other non-relational provider) has no connection/locking semantics to
+        // speak of, and does not support raw SQL — skip rather than throw (DB-11c review finding #5).
+        if (!db.Database.IsRelational())
+            return;
+
+        await db.Database.ExecuteSqlRawAsync(sql, parameters);
+    }
+
     public void PreserveCreatedAtOnInsert(BaseEntity entity) =>
         db.PreserveCreatedAtOnInsert(entity);
 

@@ -130,6 +130,7 @@ public class MeController(
     /// <summary>Deletes the caller's account everywhere (GDPR erase). Password required. Comments stay, attributed to "Deleted user".</summary>
     [Audited(AuditActions.IdentityErased)]
     [HttpDelete]
+    [EnableRateLimiting("signup")]
     [ProducesResponseType(typeof(Result), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(Result), StatusCodes.Status403Forbidden)]
     [ProducesResponseType(typeof(Result), StatusCodes.Status409Conflict)]

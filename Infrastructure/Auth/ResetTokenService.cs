@@ -92,9 +92,13 @@ public class ResetTokenService : IResetTokenService
         if (!long.TryParse(parts[2], out var exp)) return false;
         if (exp <= DateTimeOffset.UtcNow.ToUnixTimeSeconds()) return false;
 
-        var expected = Encoding.UTF8.GetBytes(SignScoped(parts[0], parts[1], exp, parts[3], parts[4]));
-        var actual = Encoding.UTF8.GetBytes(parts[5]);
-        if (expected.Length != actual.Length || !CryptographicOperations.FixedTimeEquals(expected, actual))
+        // NIT (review finding #13): fold the length check into the fixed-time compare path instead
+        // of a separate early-return branch on `.Length` — hash both sides to a fixed 32-byte digest
+        // first so FixedTimeEquals always runs over equal-length buffers regardless of what length
+        // the caller-supplied signature happens to be.
+        var expected = SHA256.HashData(Encoding.UTF8.GetBytes(SignScoped(parts[0], parts[1], exp, parts[3], parts[4])));
+        var actual = SHA256.HashData(Encoding.UTF8.GetBytes(parts[5]));
+        if (!CryptographicOperations.FixedTimeEquals(expected, actual))
             return false;
 
         if (!Guid.TryParseExact(parts[0], "N", out userPublicId)) return false;

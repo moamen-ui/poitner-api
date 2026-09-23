@@ -70,6 +70,16 @@ public interface IMembershipService
     Result SoleAdminConflict(IEnumerable<(Guid WorkspaceId, string Name)> workspaces);
 
     /// <summary>
+    /// DB-11c review finding #4: the count <see cref="SoleAdminWorkspacesAsync"/> is built on — live
+    /// (<c>LeftAt == null</c>), ACTIVE (<c>IsActive</c>) and APPROVED (<c>ApprovalStatus ==
+    /// Approved</c>) Workspace Admin memberships of <paramref name="workspaceId"/>. A disabled or
+    /// rejected admin membership does not count as a live admin: it cannot recover the workspace by
+    /// itself, so it must not "cover" for the last one that can. Exposed so callers can re-run it as
+    /// a post-write invariant check inside the same transaction (review finding #5).
+    /// </summary>
+    Task<int> CountLiveAdminsAsync(Guid workspaceId);
+
+    /// <summary>
     /// Ends a membership (DB-11c §3.3): stamps <c>LeftAt</c>/<c>LeftReason</c>, flips <c>IsActive</c>
     /// false, rotates the membership stamp (kills live JWTs for this workspace), and revokes this
     /// workspace's API keys / quick-access links / pending device-login approvals for the identity.

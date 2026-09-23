@@ -137,6 +137,21 @@ public class MembershipService(IUnitOfWork unitOfWork) : IMembershipService
             SecurityStamp = Guid.NewGuid(),
         };
 
+    /// <inheritdoc />
+    public async Task<int> CountLiveAdminsAsync(Guid workspaceId) =>
+        await unitOfWork
+            .Repository<WorkspaceMembership>()
+            .Query()
+            .IgnoreQueryFilters()
+            .Include(m => m.Role)
+            .CountAsync(m =>
+                m.OwnerId == workspaceId
+                && m.LeftAt == null
+                && m.IsActive
+                && m.ApprovalStatus == ApprovalStatus.Approved
+                && m.Role.Name == WorkspaceAdminRoleName
+            );
+
     public async Task<List<(Guid WorkspaceId, string Name)>> SoleAdminWorkspacesAsync(
         IEnumerable<int> membershipIds
     )
@@ -146,27 +161,28 @@ public class MembershipService(IUnitOfWork unitOfWork) : IMembershipService
         if (ids.Count == 0)
             return result;
 
-        // Only the candidates that are themselves a LIVE Workspace Admin membership can possibly be
-        // "the sole admin" — anything else (a regular member, an already-ended membership) is safe.
+        // Only the candidates that are themselves a LIVE, ACTIVE, APPROVED Workspace Admin
+        // membership can possibly be "the sole admin" — anything else (a regular member, an
+        // already-ended membership, or one disabled/rejected — review finding #4, a disabled or
+        // rejected admin cannot act, so it must not count as covering for the last one that can) is
+        // safe.
         var candidates = await unitOfWork
             .Repository<WorkspaceMembership>()
             .Query()
             .IgnoreQueryFilters()
             .Include(m => m.Role)
-            .Where(m => ids.Contains(m.Id) && m.LeftAt == null && m.Role.Name == WorkspaceAdminRoleName)
+            .Where(m =>
+                ids.Contains(m.Id)
+                && m.LeftAt == null
+                && m.IsActive
+                && m.ApprovalStatus == ApprovalStatus.Approved
+                && m.Role.Name == WorkspaceAdminRoleName
+            )
             .ToListAsync();
 
         foreach (var m in candidates)
         {
-            var liveAdminCount = await unitOfWork
-                .Repository<WorkspaceMembership>()
-                .Query()
-                .IgnoreQueryFilters()
-                .Include(x => x.Role)
-                .CountAsync(x =>
-                    x.OwnerId == m.OwnerId && x.LeftAt == null && x.Role.Name == WorkspaceAdminRoleName
-                );
-
+            var liveAdminCount = await CountLiveAdminsAsync(m.OwnerId);
             if (liveAdminCount != 1)
                 continue;
 

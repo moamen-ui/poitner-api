@@ -390,6 +390,203 @@ public class DeletionSemanticsTests
         Assert.True(result.IsSuccess);
     }
 
+    [Fact]
+    public async Task Remove_LastActiveAdmin_WhenOtherAdminDisabled_Conflict()
+    {
+        // Review finding #4: a disabled admin membership must not count as covering for the last
+        // live one — before the fix, SoleAdminWorkspacesAsync's predicate ignored IsActive/
+        // ApprovalStatus, so this disabled admin2 made the count 2 and let the only ACTIVE admin be
+        // removed, leaving the workspace with no one who could act.
+        var db = Guid.NewGuid().ToString();
+        var superAdmin = new FakeCurrentUser { IsSuperAdmin = true };
+        SeededWorkspace ws;
+        using (var seed = Ctx(superAdmin, db))
+        {
+            ws = SeedWorkspace(seed);
+            var adminRole = seed.Roles.Single(r => r.Id == ws.AdminRoleId);
+            var admin2 = new User { Email = "admin2@t.com", PasswordHash = "h:pw2", DisplayName = "Admin2", PublicId = Guid.NewGuid(), OwnerId = ws.OwnerId, RoleId = adminRole.Id, IsActive = false };
+            seed.Users.Add(admin2);
+            seed.SaveChanges();
+            TestSeed.Join(seed, admin2, ws.OwnerId, adminRole, isActive: false);
+        }
+
+        using var ctx = Ctx(superAdmin, db);
+        var result = await BuildUserService(superAdmin, ctx).DeleteAsync(ws.Admin.Id);
+
+        Assert.True(result.IsConflict);
+        Assert.Equal(string.Format(MessageKeys.User.SoleAdminBlocked, "Test Workspace"), result.Message);
+    }
+
+    [Fact]
+    public async Task Remove_LastApprovedAdmin_WhenOtherAdminRejected_Conflict()
+    {
+        // Same as above but the "other admin" is Rejected rather than disabled — also must not count.
+        var db = Guid.NewGuid().ToString();
+        var superAdmin = new FakeCurrentUser { IsSuperAdmin = true };
+        SeededWorkspace ws;
+        using (var seed = Ctx(superAdmin, db))
+        {
+            ws = SeedWorkspace(seed);
+            var adminRole = seed.Roles.Single(r => r.Id == ws.AdminRoleId);
+            var admin2 = new User { Email = "admin2@t.com", PasswordHash = "h:pw2", DisplayName = "Admin2", PublicId = Guid.NewGuid(), OwnerId = ws.OwnerId, RoleId = adminRole.Id, IsActive = false };
+            seed.Users.Add(admin2);
+            seed.SaveChanges();
+            TestSeed.Join(seed, admin2, ws.OwnerId, adminRole, isActive: false, status: ApprovalStatus.Rejected);
+        }
+
+        using var ctx = Ctx(superAdmin, db);
+        var result = await BuildUserService(superAdmin, ctx).DeleteAsync(ws.Admin.Id);
+
+        Assert.True(result.IsConflict);
+        Assert.Equal(string.Format(MessageKeys.User.SoleAdminBlocked, "Test Workspace"), result.Message);
+    }
+
+    // ── 2b. Deputy cannot remove a non-sole Workspace Admin (review finding #7) ─────────────
+
+    [Fact]
+    public async Task Deputy_CannotDelete_NonSoleWorkspaceAdmin()
+    {
+        var db = Guid.NewGuid().ToString();
+        var superAdmin = new FakeCurrentUser { IsSuperAdmin = true };
+        SeededWorkspace ws;
+        User admin2 = null!;
+        using (var seed = Ctx(superAdmin, db))
+        {
+            ws = SeedWorkspace(seed);
+            var adminRole = seed.Roles.Single(r => r.Id == ws.AdminRoleId);
+            admin2 = new User { Email = "admin2@t.com", PasswordHash = "h:pw2", DisplayName = "Admin2", PublicId = Guid.NewGuid(), OwnerId = ws.OwnerId, RoleId = adminRole.Id, IsActive = true };
+            seed.Users.Add(admin2);
+            seed.SaveChanges();
+            TestSeed.Join(seed, admin2, ws.OwnerId, adminRole);
+        }
+
+        // Before the fix, only Deputy-removes-Deputy was blocked — a Deputy could remove any
+        // Workspace Admin as long as that admin wasn't the workspace's ONLY one.
+        var deputy = new FakeCurrentUser { Id = ws.Deputy.PublicId, TenantId = ws.OwnerId, IsAdmin = true };
+        using var ctx = Ctx(deputy, db);
+        var result = await BuildUserService(deputy, ctx).DeleteAsync(admin2.Id);
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(MessageKeys.User.CannotRemoveAdmin, result.Message);
+
+        using var check = Ctx(superAdmin, db);
+        var membership = check.WorkspaceMemberships.IgnoreQueryFilters().Single(m => m.UserId == admin2.Id && m.OwnerId == ws.OwnerId);
+        Assert.Null(membership.LeftAt);
+    }
+
+    // ── 2c. Reject / Approve S-13 guards (review findings #1, #2) ───────────────────────────
+
+    [Fact]
+    public async Task Reject_SoleAdmin_Conflict()
+    {
+        var db = Guid.NewGuid().ToString();
+        var superAdmin = new FakeCurrentUser { IsSuperAdmin = true };
+        SeededWorkspace ws;
+        using (var seed = Ctx(superAdmin, db))
+            ws = SeedWorkspace(seed);
+
+        using var ctx = Ctx(superAdmin, db);
+        var result = await BuildUserService(superAdmin, ctx).RejectAsync(ws.Admin.Id);
+
+        Assert.True(result.IsConflict);
+        Assert.Equal(string.Format(MessageKeys.User.SoleAdminBlocked, "Test Workspace"), result.Message);
+
+        using var check = Ctx(superAdmin, db);
+        var membership = check.WorkspaceMemberships.IgnoreQueryFilters().Single(m => m.UserId == ws.Admin.Id && m.OwnerId == ws.OwnerId);
+        Assert.Equal(ApprovalStatus.Approved, membership.ApprovalStatus);
+        Assert.True(membership.IsActive);
+    }
+
+    [Fact]
+    public async Task Reject_Self_Fails()
+    {
+        var db = Guid.NewGuid().ToString();
+        var superAdmin = new FakeCurrentUser { IsSuperAdmin = true };
+        SeededWorkspace ws;
+        User pending = null!;
+        using (var seed = Ctx(superAdmin, db))
+        {
+            ws = SeedWorkspace(seed);
+            var role = seed.Roles.Single(r => r.Id == ws.MemberRoleId);
+            pending = new User { Email = "pending@t.com", PasswordHash = "h:pw", DisplayName = "Pending", PublicId = Guid.NewGuid(), OwnerId = ws.OwnerId, RoleId = role.Id, IsActive = false, ApprovalStatus = ApprovalStatus.Pending };
+            seed.Users.Add(pending);
+            seed.SaveChanges();
+            TestSeed.Join(seed, pending, ws.OwnerId, role, isActive: false, status: ApprovalStatus.Pending);
+        }
+
+        var caller = new FakeCurrentUser { Id = pending.PublicId, TenantId = ws.OwnerId };
+        using var ctx = Ctx(caller, db);
+        var result = await BuildUserService(caller, ctx).RejectAsync(pending.Id);
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(MessageKeys.User.CannotRejectSelf, result.Message);
+    }
+
+    [Fact]
+    public async Task Reject_NotPending_Conflict()
+    {
+        var db = Guid.NewGuid().ToString();
+        var superAdmin = new FakeCurrentUser { IsSuperAdmin = true };
+        SeededWorkspace ws;
+        using (var seed = Ctx(superAdmin, db))
+            ws = SeedWorkspace(seed);
+
+        using var ctx = Ctx(superAdmin, db);
+        // ws.Member is already Approved (TestSeed.Join's default) — reject is only meaningful for a
+        // still-pending request.
+        var result = await BuildUserService(superAdmin, ctx).RejectAsync(ws.Member.Id);
+
+        Assert.True(result.IsConflict);
+        Assert.Equal(MessageKeys.User.NotPending, result.Message);
+    }
+
+    [Fact]
+    public async Task Approve_SoleAdmin_RoleChangeAway_Conflict()
+    {
+        var db = Guid.NewGuid().ToString();
+        var superAdmin = new FakeCurrentUser { IsSuperAdmin = true };
+        SeededWorkspace ws;
+        using (var seed = Ctx(superAdmin, db))
+            ws = SeedWorkspace(seed);
+
+        using var ctx = Ctx(superAdmin, db);
+        var result = await BuildUserService(superAdmin, ctx)
+            .ApproveAsync(ws.Admin.Id, new ApproveUserRequest { RoleId = ws.DeputyRoleId });
+
+        Assert.True(result.IsConflict);
+        Assert.Equal(string.Format(MessageKeys.User.SoleAdminBlocked, "Test Workspace"), result.Message);
+
+        using var check = Ctx(superAdmin, db);
+        var membership = check.WorkspaceMemberships.IgnoreQueryFilters().Single(m => m.UserId == ws.Admin.Id && m.OwnerId == ws.OwnerId);
+        Assert.Equal(ws.AdminRoleId, membership.RoleId);
+    }
+
+    [Fact]
+    public async Task Approve_RoleChange_RotatesMembershipStamp()
+    {
+        var db = Guid.NewGuid().ToString();
+        var superAdmin = new FakeCurrentUser { IsSuperAdmin = true };
+        SeededWorkspace ws;
+        Guid beforeStamp;
+        using (var seed = Ctx(superAdmin, db))
+        {
+            ws = SeedWorkspace(seed);
+            beforeStamp = seed.WorkspaceMemberships.IgnoreQueryFilters()
+                .Single(m => m.UserId == ws.Member.Id && m.OwnerId == ws.OwnerId).SecurityStamp;
+        }
+
+        using var ctx = Ctx(superAdmin, db);
+        var result = await BuildUserService(superAdmin, ctx)
+            .ApproveAsync(ws.Member.Id, new ApproveUserRequest { RoleId = ws.DeputyRoleId });
+
+        Assert.True(result.IsSuccess, result.Message);
+
+        using var check = Ctx(superAdmin, db);
+        var membership = check.WorkspaceMemberships.IgnoreQueryFilters()
+            .Single(m => m.UserId == ws.Member.Id && m.OwnerId == ws.OwnerId);
+        Assert.NotEqual(beforeStamp, membership.SecurityStamp);
+    }
+
     // ── 3. Disable keeps keys ────────────────────────────────────────────────────────────────
 
     [Fact]
@@ -875,18 +1072,70 @@ public class DeletionSemanticsTests
     }
 
     [Fact]
+    public async Task Erase_ScrubsInviteEmail_CaseInsensitive()
+    {
+        // Review finding #6: the scrub compared invites.email to the identity's e-mail with an
+        // ordinal (case-sensitive) equality — a mixed-case invite row (e.g. entered by an admin
+        // as "Member@T.com") survived erase untouched.
+        var db = Guid.NewGuid().ToString();
+        var superAdmin = new FakeCurrentUser { IsSuperAdmin = true };
+        SeededWorkspace ws;
+        int inviteId;
+        using (var seed = Ctx(superAdmin, db))
+        {
+            ws = SeedWorkspace(seed);
+            var invite = new Invite { OwnerId = ws.OwnerId, Code = "code-mixed-case", Email = "Member@T.com", ExpiresAt = DateTime.UtcNow.AddDays(7), CreatedAt = DateTime.UtcNow };
+            seed.Invites.Add(invite);
+            seed.SaveChanges();
+            inviteId = invite.Id;
+        }
+
+        var member = new FakeCurrentUser { Id = ws.Member.PublicId, TenantId = ws.OwnerId };
+        using (var ctx = Ctx(member, db))
+        {
+            var result = await BuildEraseService(member, ctx).EraseSelfAsync(new DeleteMyAccountRequest { Password = "pw-member" });
+            Assert.True(result.IsSuccess, result.Message);
+        }
+
+        using var check = Ctx(superAdmin, db);
+        var inviteRow = check.Invites.IgnoreQueryFilters().Single(i => i.Id == inviteId);
+        Assert.StartsWith("erased+", inviteRow.Email);
+    }
+
+    [Fact]
     public async Task Erase_LeavesNoEmailBehind()
     {
         var db = Guid.NewGuid().ToString();
         var superAdmin = new FakeCurrentUser { IsSuperAdmin = true };
         SeededWorkspace ws;
+        int mergedPredecessorId;
         using (var seed = Ctx(superAdmin, db))
         {
             ws = SeedWorkspace(seed);
             var m = seed.Users.IgnoreQueryFilters().Single(u => u.Id == ws.Member.Id);
             m.RecipientEmail = "member@t.com";
             seed.Invites.Add(new Invite { OwnerId = ws.OwnerId, Code = "code-x", Email = "member@t.com", ExpiresAt = DateTime.UtcNow.AddDays(7), CreatedAt = DateTime.UtcNow });
+
+            // Review finding #3: a row the DB-11a same-e-mail merge folded into ws.Member — soft-deleted,
+            // MergedIntoUserId pointing at the canonical row, but (before the fix) still carrying the
+            // original e-mail/name forever even after the canonical identity was erased.
+            var mergedPredecessor = new User
+            {
+                Email = "member@t.com",
+                PasswordHash = "h:oldpw12345",
+                DisplayName = "Old Duplicate",
+                RecipientEmail = "member@t.com",
+                PublicId = Guid.NewGuid(),
+                RoleId = ws.MemberRoleId,
+                OwnerId = ws.OwnerId,
+                IsActive = false,
+                ApprovalStatus = ApprovalStatus.Approved,
+                DeletedAt = DateTime.UtcNow,
+                MergedIntoUserId = ws.Member.Id,
+            };
+            seed.Users.Add(mergedPredecessor);
             seed.SaveChanges();
+            mergedPredecessorId = mergedPredecessor.Id;
         }
 
         var member = new FakeCurrentUser { Id = ws.Member.PublicId, TenantId = ws.OwnerId };
@@ -900,6 +1149,13 @@ public class DeletionSemanticsTests
         const string original = "member@t.com";
         Assert.False(check.Users.IgnoreQueryFilters().Any(u => u.Email == original || u.RecipientEmail == original));
         Assert.False(check.Invites.IgnoreQueryFilters().Any(i => i.Email == original));
+
+        var predecessorRow = check.Users.IgnoreQueryFilters().Single(u => u.Id == mergedPredecessorId);
+        Assert.NotEqual(original, predecessorRow.Email);
+        Assert.StartsWith("erased+", predecessorRow.Email);
+        Assert.Equal("Deleted user", predecessorRow.DisplayName);
+        Assert.Null(predecessorRow.RecipientEmail);
+        Assert.NotNull(predecessorRow.ErasedAt);
     }
 
     // ── 12. Screenshots kept (F5) ────────────────────────────────────────────────────────────
