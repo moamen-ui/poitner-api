@@ -7,6 +7,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { get, post, patch, put, login } from './lib/api.mjs';
 import { Environment, Status, SUPER_ADMIN, TENANT_OWNER, TENANT_B_OWNER, USERS, CLIENT, FLOOD, PROJECTS } from './lib/constants.mjs';
+import { verifyPersonaEmail } from './lib/verify-email.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const STATE_DIR = join(here, '..', 'state');
@@ -101,6 +102,22 @@ async function main() {
   console.log('==> Logging in as seeded super-admin');
   const superAdmin = await login(SUPER_ADMIN.email, SUPER_ADMIN.password);
 
+  // Moved ahead of every user-creation step below (this used to run near the very end, right
+  // before minting API keys). DB-14's verification mail is best-effort through IEmailService,
+  // which silently no-ops while emailEnabled is false (EmailService.cs:22) — so with the old
+  // ordering, every admin-tier persona created below (Deputy/Developer/PM/Tester/Flood, via
+  // POST /api/admin/users) got created before email delivery was ever turned on and no
+  // verification mail was sent for verifyPersonaEmail() to find. Turning it on here means those
+  // mails are real and Mailpit-visible from the first user this seed creates.
+  //
+  // emailApiKeyConfigured is response-only — echoing it back is rejected. PUT /api/admin/settings
+  // is a REPLACE-ALL writer, so this is a read-modify-write: sending a partial body would blank
+  // the demo and extension settings (there are none yet this early, but the shape stays the same).
+  console.log('==> Enabling email delivery');
+  const currentSettings = await get('/api/admin/settings', { token: superAdmin.token });
+  delete currentSettings.emailApiKeyConfigured;
+  await put('/api/admin/settings', { ...currentSettings, emailEnabled: true }, { token: superAdmin.token });
+
   console.log('==> Creating tenant (this also creates the Workspace Admin owner user)');
   await post('/api/admin/tenants', {
     email: TENANT_OWNER.email,
@@ -169,6 +186,14 @@ async function main() {
       roleId: roleId(u.roleName),
     }, { token: staffToken });
     staffUsers[key] = await login(u.email, u.password);
+    // DB-14: UserService.CreateAsync (an admin adding a member) leaves EmailVerifiedAt null and
+    // mails a verification link (§3.2). Only Deputy (Workspace Admin Deputy, GrantsAdmin=true) is
+    // actually admin-tier and hits §3.4's gate today — see snapshot-sanitizer.spec.mjs R3-04-03 —
+    // but every persona here is verified for the same reason the gate exists on the namespace, not
+    // the role: a future admin-tier reassignment or a new admin-tier spec must not silently regain
+    // this failure.
+    const outcome = await verifyPersonaEmail(u.email, staffUsers[key].token);
+    console.log(`    ...${key} (${u.email}) email verification: ${outcome.via}`);
   }
 
   console.log('==> Creating Flood user (429 rate-limiting persona)');
@@ -179,6 +204,8 @@ async function main() {
     roleId: roleId(FLOOD.roleName || 'Tester'),
   }, { token: staffToken });
   const flood = await login(FLOOD.email, FLOOD.password);
+  const floodVerify = await verifyPersonaEmail(FLOOD.email, flood.token);
+  console.log(`    ...flood (${FLOOD.email}) email verification: ${floodVerify.via}`);
 
   console.log('==> Inviting the Client (QuickAccess) user, scoped to e2e-alpha');
   const clientInvite = await post('/api/admin/invites', {
@@ -365,16 +392,8 @@ async function main() {
   // and gives the key-store scenario a known population to assert against.
   //
   // GET /api/me/api-key mints on first read, so a plain read is also the creation step.
-  // Email must be on or EmailService.SendAsync returns false silently (EmailService.cs:22) and
-  // every mail scenario asserts against an inbox that was never written to. PUT /api/admin/settings
-  // is a REPLACE-ALL writer, so this is a read-modify-write: sending a partial body would blank the
-  // demo and extension settings.
-  console.log('==> Enabling email delivery');
-  const currentSettings = await get('/api/admin/settings', { token: superAdmin.token });
-  // emailApiKeyConfigured is response-only — echoing it back is rejected.
-  delete currentSettings.emailApiKeyConfigured;
-  await put('/api/admin/settings', { ...currentSettings, emailEnabled: true }, { token: superAdmin.token });
-
+  // (Email delivery was already enabled near the top of main() — see the comment there — so it is
+  // real by the time any persona below was created, not just from here on.)
   console.log('==> Minting an API key per persona');
   const keys = {};
   for (const [name, who] of Object.entries(credentials)) {
