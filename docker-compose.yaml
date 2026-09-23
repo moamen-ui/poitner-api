@@ -16,9 +16,25 @@ services:
       # address in minutes. Raised here rather than in the code so production keeps the real limit.
       Security__RateLimits__SignupPerHour: "1000"
       Pointer__SkillVersion: "${POINTER_SKILL_VERSION:-}"
+      # The `dev` Docker target (see Dockerfile) never restores at image-build time — it's the bare
+      # SDK image plus `dotnet watch`, which restores from the bind-mounted source on every container
+      # start. Without this, that restore's package cache lived at the default ~/.nuget/packages,
+      # which is part of the CONTAINER's (not the bind mount's) filesystem — every
+      # `docker compose ... up -d --force-recreate api` (e2e/scripts/restart-api.mjs, used by the
+      # `registry`/`upgrade` e2e phases to rotate config/env without a full stack reset) threw that
+      # cache away and re-restored the whole solution from nuget.org from scratch. That restore is
+      # network-bound and its duration is NOT bounded by anything in this repo — observed 1.9-2min
+      # PER PROJECT here once, comfortably blowing past restart-api.mjs's fixed 120s readiness
+      # timeout (R1-06-04 key-rotation, local e2e gate, 2026-09-23). Pinning the global packages
+      # folder onto the `nuget-cache` volume below survives `--force-recreate` (only `down -v`
+      # removes it), so every restart after the run's first container start reuses already-restored
+      # packages instead of hitting the network again.
+      NUGET_PACKAGES: /nuget-cache
     ports: ["8090:8080"]
     depends_on: [db, mailpit]
-    volumes: ["./:/src"]
+    volumes:
+      - "./:/src"
+      - "nuget-cache:/nuget-cache"
   mailpit:
     image: axllent/mailpit:latest
     ports: ["8025:8025", "1025:1025"]
@@ -33,4 +49,5 @@ services:
 volumes:
   pgdata: {}
   verdaccio-storage: {}
+  nuget-cache: {}
 
