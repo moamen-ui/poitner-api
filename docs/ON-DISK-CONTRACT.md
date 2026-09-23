@@ -46,7 +46,8 @@ host-facing contract:
 `data-id`, `data-act`, `data-menu-act`, `data-comment-id`, `data-reply-id`, `data-toggle`, `data-placement`,
 `data-private`, `data-c`, `data-i`, `data-path`, `data-testid`, `data-theme`, `data-step`,
 `data-brand-logo`, `data-brand-name`, `data-fbk-left`, `data-fbk-top`, `data-fbk-act`,
-`data-fbk-drag`, `data-fbk-count`, `data-fbk-unread`, `data-fbk-tip-side`, `data-fbk-tip-align`, `data-ids`
+`data-fbk-drag`, `data-fbk-count`, `data-fbk-unread`, `data-fbk-tip-side`, `data-fbk-tip-align`, `data-ids`,
+`data-workspace-id` (DB-11b workspace-picker entries in the auth panel)
 
 `data-menu-act` is the kebab-menu item selector (comment card + reply), kept separate from
 `data-act` so a menu item's own click handler never collides with a plain inline button sharing

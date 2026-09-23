@@ -115,6 +115,8 @@ public class OnDiskContractTests
         "data-menu-act",
         "data-toggle",
         "data-placement",
+        // DB-11b workspace-picker entries in the auth panel (auth-ui.ts / templates.ts).
+        "data-workspace-id",
         "data-private",
         "data-c",
         "data-i",
