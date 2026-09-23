@@ -256,7 +256,7 @@ super-admin actions; `project.OwnerId` for project-scoped ones).
 | action | where | target | before → after |
 |---|---|---|---|
 | `auth.login.succeeded` | `LoginAsync` after `Issue(...)`; `LoginWithApiKeyAsync` (`after: {source: "api_key"}`); `LoginWithInviteAsync` (`source: "magic_link"`) | `user` / `public_id`; `owner` = the membership's workspace (super admin: NULL) | `after: {source}` |
-| `auth.login.failed` | every non-success return of `LoginAsync` **and** `LoginWithApiKeyAsync`, `LoginWithInviteAsync` | identity found → `user`/`public_id` (override); else `email_hash`/hash (key login: `api_key`/prefix if resolvable, else `email_hash` = hash of the literal `"api_key"`) | `after: {reason: invalid_credentials \| passwordless \| pending \| rejected \| disabled \| no_workspace \| revoked_key}` |
+| `auth.login.failed` | every non-success return of `LoginAsync` **and** `LoginWithApiKeyAsync`, `LoginWithInviteAsync` | identity found → `user`/`public_id` (override); else `email_hash`/hash (key login: `api_key`/id if resolvable, else `email_hash` = hash of the literal `"api_key"`) | `after: {reason: invalid_credentials \| passwordless \| pending \| rejected \| disabled \| locked \| no_workspace \| revoked_key}` — a correct password landing on the workspace picker is NOT a failure and writes no row (the response is a 400 "choose one") |
 | `auth.workspace_switched` | DB-11b `SwitchWorkspaceAsync` (reserved; DB-11b's implementer adds it if DB-12 is merged first, else DB-12 adds it) | `workspace`/id | — |
 | `auth.password.reset_requested` | `RequestPasswordResetAsync` — always, identity found or not | `user`/`public_id` or `email_hash` | — |
 | `auth.password.reset` | `ResetPasswordAsync` success | `user`/`public_id` | — |

@@ -43,16 +43,24 @@ public class TenantInviteServiceTests
         public List<int> Revoked { get; } = new();
         public List<(int Id, bool Rotate)> Resent { get; } = new();
 
+        public List<bool> CreateWriteAudit { get; } = new();
+        public List<bool> RevokeWriteAudit { get; } = new();
+        public List<bool> ResendWriteAudit { get; } = new();
+
         public Task<Pointer.Application.Response.Result<Pointer.Application.DTOs.Invite.InviteResponse>> CreateAsync(
-            Pointer.Application.DTOs.Invite.CreateInviteRequest request) =>
+            Pointer.Application.DTOs.Invite.CreateInviteRequest request, bool writeAudit = true)
+        {
+            CreateWriteAudit.Add(writeAudit);
             throw new NotSupportedException("not exercised here");
+        }
 
         public Task<Pointer.Application.Response.Result<List<Pointer.Application.DTOs.Invite.InviteResponse>>> ListAsync() =>
             throw new NotSupportedException();
 
-        public Task<Pointer.Application.Response.Result> RevokeAsync(int id)
+        public Task<Pointer.Application.Response.Result> RevokeAsync(int id, bool writeAudit = true)
         {
             Revoked.Add(id);
+            RevokeWriteAudit.Add(writeAudit);
             return Task.FromResult(Pointer.Application.Response.Result.Success());
         }
 
@@ -62,9 +70,10 @@ public class TenantInviteServiceTests
         public Task<Pointer.Application.Response.Result<Pointer.Application.DTOs.Invite.InviteResponse>> RotateQuickLinkAsync(int id) =>
             throw new NotSupportedException();
 
-        public Task<Pointer.Application.Response.Result<Pointer.Application.DTOs.Invite.InviteResponse>> ResendAsync(int id, bool rotate = false)
+        public Task<Pointer.Application.Response.Result<Pointer.Application.DTOs.Invite.InviteResponse>> ResendAsync(int id, bool rotate = false, bool writeAudit = true)
         {
             Resent.Add((id, rotate));
+            ResendWriteAudit.Add(writeAudit);
             return Task.FromResult(
                 Pointer.Application.Response.Result<Pointer.Application.DTOs.Invite.InviteResponse>.Success(
                     new Pointer.Application.DTOs.Invite.InviteResponse { Id = id, Url = "https://app.test/join?code=x" }));
@@ -144,6 +153,9 @@ public class TenantInviteServiceTests
 
         Assert.True(result.IsSuccess);
         Assert.Equal(new[] { workspaceInviteId }, spy.Revoked);
+        // Review finding #3: the underlying InviteService must not write its own invite.revoked row
+        // — TenantInviteService writes tenant_invite.revoked itself, once.
+        Assert.Equal(new[] { false }, spy.RevokeWriteAudit);
     }
 
     [Fact]

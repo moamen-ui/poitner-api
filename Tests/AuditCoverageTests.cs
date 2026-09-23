@@ -9,11 +9,10 @@ using Xunit;
 namespace Pointer.Tests;
 
 /// <summary>
-/// DB-12 §6 test 1 — the coverage reflection enforcer. The exhaustive fact (every mutating
-/// action on an admin controller + Auth/Me/Demo/ExportImport carries exactly one of
-/// <c>[Audited]</c>/<c>[NoAudit]</c>) ships DISABLED until DB-12 PART 2 lands the attributes on
-/// the ~70 actions (§5 tasks 10–11); the facts that already hold today are active: any attribute
-/// that DOES exist must be well-formed.
+/// DB-12 §6 test 1 — the coverage reflection enforcer. The exhaustive fact: every mutating action
+/// on a controller under <c>Pointer.API.Controllers</c> or <c>Pointer.API.Controllers.Admin</c>,
+/// plus every action (any verb) of Auth/Me/Demo/ExportImport, carries EXACTLY one of
+/// <c>[Audited]</c>/<c>[NoAudit]</c> — never both, never neither (review finding #8).
 /// </summary>
 public class AuditCoverageTests
 {
@@ -37,6 +36,10 @@ public class AuditCoverageTests
                         "Pointer.API.Controllers.Admin",
                         StringComparison.Ordinal
                     ) == true
+                    // Review finding #8: the plain (non-Admin) controller namespace — mutating
+                    // actions only (RequiresAttribute below still exempts its GETs unless the
+                    // controller is also named in ExtraAuditedControllers).
+                    || t.Namespace == "Pointer.API.Controllers"
                     || ExtraAuditedControllers.Contains(t.Name)
                 )
             );
@@ -194,32 +197,40 @@ public class AuditCoverageTests
     }
 
     /// <summary>
-    /// The full §6 test 1 contract, widened per review finding #10: every action (any verb) of
-    /// AuthController / MeController / DemoController / ExportImportController, plus every
-    /// mutating action on a controller under Pointer.API.Controllers.Admin, carries exactly one of
-    /// the two attributes. Enable when DB-12 PART 2 lands (§5 tasks 10–11).
+    /// The full §6 test 1 contract, widened per review findings #8 and #10: every action (any
+    /// verb) of AuthController / MeController / DemoController / ExportImportController, plus
+    /// every mutating action on a controller under Pointer.API.Controllers or
+    /// Pointer.API.Controllers.Admin, carries EXACTLY one of the two attributes.
     /// </summary>
     [Fact]
     public void EveryMutatingAction_CarriesExactlyOneAttribute()
     {
-        var missing = AuditedSurfaces()
+        var offenders = AuditedSurfaces()
             .SelectMany(t =>
                 t.GetMethods(
                     BindingFlags.Public | BindingFlags.Instance | BindingFlags.DeclaredOnly
                 )
             )
             .Where(RequiresAttribute)
-            .Where(m =>
-                m.GetCustomAttribute<AuditedAttribute>(inherit: false) is null
-                && m.GetCustomAttribute<NoAuditAttribute>(inherit: false) is null
+            .Select(m =>
+            {
+                var hasAudited = m.GetCustomAttribute<AuditedAttribute>(inherit: false) is not null;
+                var hasNoAudit = m.GetCustomAttribute<NoAuditAttribute>(inherit: false) is not null;
+                return (Method: m, HasAudited: hasAudited, HasNoAudit: hasNoAudit);
+            })
+            // Real "exactly one": flag both-absent (an oversight) AND both-present (a copy/paste
+            // that leaves two contradictory decisions on the same action) — review finding #8.
+            .Where(x => x.HasAudited == x.HasNoAudit)
+            .Select(x =>
+                $"{x.Method.DeclaringType?.Name}.{x.Method.Name}"
+                + (x.HasAudited ? " (BOTH [Audited] and [NoAudit])" : " (NEITHER)")
             )
-            .Select(m => $"{m.DeclaringType?.Name}.{m.Name}")
             .ToList();
 
         Assert.True(
-            missing.Count == 0,
-            "Mutating action(s) without [Audited] or [NoAudit] (DB-RULES R17 — a new endpoint that changes state and lacks the attribute does not merge):\n"
-                + string.Join("\n", missing)
+            offenders.Count == 0,
+            "Mutating action(s) without exactly one of [Audited]/[NoAudit] (DB-RULES R17 — a new endpoint that changes state must carry exactly one, never both, never neither):\n"
+                + string.Join("\n", offenders)
         );
     }
 }

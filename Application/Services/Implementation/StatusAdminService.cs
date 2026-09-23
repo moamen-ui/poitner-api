@@ -97,7 +97,21 @@ public class StatusAdminService(IUnitOfWork unitOfWork, ICurrentUser currentUser
             .FirstOrDefaultAsync(s => s.StatusValue == value && s.OwnerId == owner && s.DeletedAt == null);
 
         if (row == null)
+        {
+            // Never overridden (or already reset) — still write the row. Matches the always-written
+            // convention (ProjectService.UpdateAsync / BrandingService): a 200 without a row would trip
+            // the coverage filter and, worse, silently make "reset" a no-op nobody can see happened.
+            await _audit.WriteAsync(
+                new AuditEntry(
+                    AuditActions.StatusReset,
+                    AuditTargets.Status,
+                    value.ToString(),
+                    owner,
+                    After: new Dictionary<string, string> { ["label"] = string.Empty }
+                )
+            );
             return Result.Success();
+        }
 
         row.DeletedAt = DateTime.UtcNow;
         _unitOfWork.Repository<StatusPresentation>().Update(row);

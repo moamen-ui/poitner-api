@@ -93,7 +93,7 @@ public class AuthService : IAuthService
             new AuditEntry(
                 AuditActions.AuthLoginFailed,
                 apiKey != null ? AuditTargets.ApiKey : AuditTargets.EmailHash,
-                apiKey != null ? apiKey.Prefix : PseudonymHasher.EmailHash("api_key"),
+                apiKey != null ? apiKey.Id.ToString() : PseudonymHasher.EmailHash("api_key"),
                 null,
                 After: new Dictionary<string, string> { ["reason"] = reason },
                 ActorUserIdOverride: apiKey?.User?.PublicId,
@@ -196,19 +196,24 @@ public class AuthService : IAuthService
             }
         }
 
-        // Always audited — identity found or not (D12.3: hash only when not).
-        await _audit.WriteAsync(
-            new AuditEntry(
-                AuditActions.AuthPasswordResetRequested,
-                initialUser != null ? AuditTargets.User : AuditTargets.EmailHash,
-                initialUser != null
-                    ? initialUser.PublicId.ToString()
-                    : PseudonymHasher.EmailHash(emailNormalized),
-                null,
-                ActorUserIdOverride: initialUser?.PublicId,
-                ActorKindOverride: initialUser != null ? AuditActorKind.User : null
-            )
-        );
+        // Always audited when there is something to hash — identity found or not (D12.3: hash only
+        // when not). A blank/normalized-empty address has no identity and nothing to hash: skip the
+        // write rather than record EmailHash("") (review finding #10).
+        if (initialUser != null || emailNormalized.Length > 0)
+        {
+            await _audit.WriteAsync(
+                new AuditEntry(
+                    AuditActions.AuthPasswordResetRequested,
+                    initialUser != null ? AuditTargets.User : AuditTargets.EmailHash,
+                    initialUser != null
+                        ? initialUser.PublicId.ToString()
+                        : PseudonymHasher.EmailHash(emailNormalized),
+                    null,
+                    ActorUserIdOverride: initialUser?.PublicId,
+                    ActorKindOverride: initialUser != null ? AuditActorKind.User : null
+                )
+            );
+        }
 
         // Always succeed — never reveal whether an email is registered.
         return Result.Success();
@@ -535,6 +540,8 @@ public class AuthService : IAuthService
                     // same as the pending/rejected/disabled returns above, it only resets once a full
                     // session token is actually issued (below, or in SwitchWorkspaceAsync once a
                     // workspace is chosen).
+                    // Landing on the picker with a CORRECT password is not a login failure (the
+                    // response is 400 only because the client must choose; review finding #5).
                     var choices = await BuildWorkspaceChoicesAsync(candidates, user.OwnerId);
                     // DB-11b §3.1: returned as a SUCCESS envelope (HTTP 200), not a failure — the
                     // credentials were verified and a selection token was issued. The dashboard's

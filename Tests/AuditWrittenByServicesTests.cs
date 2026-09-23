@@ -4,6 +4,7 @@ using Pointer.Application.Common;
 using Pointer.Application.DTOs.Auth;
 using Pointer.Application.DTOs.Invite;
 using Pointer.Application.DTOs.Project;
+using Pointer.Application.DTOs.Tenant;
 using Pointer.Application.DTOs.User;
 using Pointer.Application.DTOs.Workspace;
 using Pointer.Application.Services.Implementation;
@@ -300,10 +301,14 @@ public class AuditWrittenByServicesTests
         Assert.Equal(AuditTargets.User, entry.TargetType);
 
         // Never the raw e-mail anywhere in the entry (D12.3) — only the pseudonym or the identity's
-        // own public id ever appear.
+        // own public id ever appear. Widened per review finding #12: also serialise Before/After
+        // KEYS (a raw address could leak as a dictionary KEY, not just a value) and
+        // ActorUserIdOverride (a raw address could be mistakenly passed as the override itself).
         var serialized =
-            $"{entry.Action}|{entry.TargetType}|{entry.TargetId}|{entry.OwnerId}|"
+            $"{entry.Action}|{entry.TargetType}|{entry.TargetId}|{entry.OwnerId}|{entry.ActorUserIdOverride}|"
+            + string.Join(',', (entry.Before ?? new Dictionary<string, string>()).Keys)
             + string.Join(',', (entry.Before ?? new Dictionary<string, string>()).Values)
+            + string.Join(',', (entry.After ?? new Dictionary<string, string>()).Keys)
             + string.Join(',', (entry.After ?? new Dictionary<string, string>()).Values);
         Assert.DoesNotContain(email, serialized, StringComparison.OrdinalIgnoreCase);
     }
@@ -743,6 +748,9 @@ public class AuditWrittenByServicesTests
         Assert.Null(entry.OwnerId); // deliberately null — the row must outlive the workspace it is about
         Assert.Equal(workspaceId.ToString(), entry.TargetId);
         Assert.Equal("demo_expired", entry.After!["reason"]);
+        // Review finding #11: explicit, not left to the (also-correct) fallback of ICurrentUser.Id
+        // being null in the hosted job's scope.
+        Assert.Equal(AuditActorKind.System, entry.ActorKindOverride);
     }
 
     [Fact]
@@ -776,5 +784,50 @@ public class AuditWrittenByServicesTests
         Assert.True(result.IsSuccess, result.Message);
         var entry = Assert.Single(audit.Entries);
         Assert.Equal("admin", entry.After!["reason"]);
+    }
+
+    // ── status.reset — always written, even when nothing was ever overridden ────────────────
+
+    [Fact]
+    public async Task StatusAdminService_ResetAsync_NeverOverridden_WritesExactlyOneRow()
+    {
+        var db = Guid.NewGuid().ToString();
+        var tenant = Guid.NewGuid();
+        var admin = new FakeCurrentUser { Id = Guid.NewGuid(), IsAdmin = true, TenantId = tenant };
+        var audit = new FakeAuditWriter();
+        using var ctx = Ctx(admin, db);
+        var svc = new StatusAdminService(new UnitOfWork(ctx), admin, audit);
+
+        // No StatusPresentation row exists for this (value, owner) at all — review finding #1.
+        var result = await svc.ResetAsync((int)CommentStatus.Open);
+
+        Assert.True(result.IsSuccess, result.Message);
+        var entry = Assert.Single(audit.Entries);
+        Assert.Equal(AuditActions.StatusReset, entry.Action);
+        Assert.Equal(AuditTargets.Status, entry.TargetType);
+        Assert.Equal(((int)CommentStatus.Open).ToString(), entry.TargetId);
+        Assert.Equal(string.Empty, entry.After!["label"]);
+    }
+
+    // ── tenant_invite.created — no duplicate invite.created row from the delegated path ─────
+
+    [Fact]
+    public async Task TenantInviteService_CreateAsync_WritesExactlyOneRow_ActionTenantInviteCreated()
+    {
+        var db = Guid.NewGuid().ToString();
+        var superAdmin = new FakeCurrentUser { Id = Guid.NewGuid(), IsSuperAdmin = true };
+        var audit = new FakeAuditWriter();
+        using var ctx = Ctx(superAdmin, db);
+        var invites = InviteSvc(ctx, superAdmin, audit);
+        var tenantInvites = new TenantInviteService(new UnitOfWork(ctx), invites, superAdmin, audit);
+
+        var result = await tenantInvites.CreateAsync(new CreateTenantInviteRequest { Email = "owner@new.test" });
+
+        Assert.True(result.IsSuccess, result.Message);
+        // Exactly one row total: InviteService.CreateAsync must have been called with
+        // writeAudit: false (review finding #3) so only TenantInviteService's own write lands.
+        var entry = Assert.Single(audit.Entries);
+        Assert.Equal(AuditActions.TenantInviteCreated, entry.Action);
+        Assert.Equal(AuditTargets.TenantInvite, entry.TargetType);
     }
 }

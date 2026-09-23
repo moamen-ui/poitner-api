@@ -8,8 +8,14 @@ public interface IInviteService
 {
     // ── Admin (auth, tenant-scoped) ────────────────────────────────────────────
 
-    /// <summary>Create an invite for the caller's tenant. Owner is non-null or the call is Forbidden.</summary>
-    Task<Result<InviteResponse>> CreateAsync(CreateInviteRequest request);
+    /// <summary>
+    /// Create an invite for the caller's tenant. Owner is non-null or the call is Forbidden.
+    /// <paramref name="writeAudit"/> = false lets a caller that writes its own row for the same
+    /// action (e.g. <c>TenantInviteService</c>, which writes <c>tenant_invite.created</c>)
+    /// suppress this method's own <c>invite.created</c> row so one user action doesn't produce two
+    /// audit rows.
+    /// </summary>
+    Task<Result<InviteResponse>> CreateAsync(CreateInviteRequest request, bool writeAudit = true);
 
     /// <summary>List this tenant's active (not revoked/expired) invites. Never returns another tenant's.</summary>
     Task<Result<List<InviteResponse>>> ListAsync();
@@ -18,8 +24,9 @@ public interface IInviteService
     /// Revoke an invite by id — explicit own-owner scope; unreachable cross-tenant.
     /// For a quick-access invite this also revokes the magic link it issued: the link is the
     /// credential, and revoking the audit row alone would leave it working.
+    /// <paramref name="writeAudit"/> = false — see <see cref="CreateAsync"/>.
     /// </summary>
-    Task<Result> RevokeAsync(int id);
+    Task<Result> RevokeAsync(int id, bool writeAudit = true);
 
     /// <summary>
     /// Issue a fresh magic link for a quick-access invite and invalidate the previous one.
@@ -34,8 +41,9 @@ public interface IInviteService
     /// Re-sends an invitation. By default the same code is kept and only the expiry is extended, so
     /// a link already sitting in someone's inbox keeps working. <paramref name="rotate"/> mints a
     /// new code instead — the answer to a leaked link, which also invalidates the old one.
+    /// <paramref name="writeAudit"/> = false — see <see cref="CreateAsync"/>.
     /// </summary>
-    Task<Result<InviteResponse>> ResendAsync(int id, bool rotate = false);
+    Task<Result<InviteResponse>> ResendAsync(int id, bool rotate = false, bool writeAudit = true);
 
     // ── Anonymous accept flow ──────────────────────────────────────────────────
 

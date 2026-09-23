@@ -209,7 +209,7 @@ public class ExportImportService : IExportImportService
         await _audit.WriteAsync(
             new AuditEntry(
                 AuditActions.ExportDownloaded,
-                projectId.HasValue ? AuditTargets.Project : AuditTargets.Workspace,
+                AuditTargets.Export,
                 projectId?.ToString() ?? "workspace",
                 TenantStamp.OwnerFor(_currentUser),
                 After: new Dictionary<string, string> { ["count"] = ordered.Count.ToString() }
@@ -356,7 +356,7 @@ public class ExportImportService : IExportImportService
         await _audit.WriteAsync(
             new AuditEntry(
                 AuditActions.ImportCompleted,
-                AuditTargets.Workspace,
+                AuditTargets.Import,
                 "workspace",
                 TenantStamp.OwnerFor(_currentUser),
                 After: new Dictionary<string, string> { ["count"] = totalComments.ToString() }

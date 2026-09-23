@@ -28,6 +28,7 @@ public class CommentService : ICommentService
     private readonly INotificationService _notificationService;
     private readonly ICommentFieldService _commentFields;
     private readonly IMembershipService _memberships;
+    private readonly IAuditWriter _audit;
 
     private readonly ICurrentClient? _currentClient;
 
@@ -43,7 +44,8 @@ public class CommentService : ICommentService
         ICurrentClient? currentClient = null,
         INotificationService? notificationService = null,
         ICommentFieldService? commentFields = null,
-        IMembershipService? memberships = null)
+        IMembershipService? memberships = null,
+        IAuditWriter? audit = null)
     {
         _unitOfWork = unitOfWork;
         _projectService = projectService;
@@ -54,8 +56,12 @@ public class CommentService : ICommentService
         _settings = settings;
         _entitlements = entitlements;
         _currentClient = currentClient;
+        _audit = audit ?? NoopAuditWriter.Instance;
         _notificationService = notificationService ?? new NotificationService(unitOfWork, currentUser);
-        _commentFields = commentFields ?? new CommentFieldService(unitOfWork, currentUser);
+        // Mirrors ProjectService: forward the (possibly real) writer instead of letting
+        // CommentFieldService silently fall back to Noop when this constructs its own instance
+        // (review finding #9).
+        _commentFields = commentFields ?? new CommentFieldService(unitOfWork, currentUser, _audit);
         _memberships = memberships ?? new MembershipService(unitOfWork);
     }
 

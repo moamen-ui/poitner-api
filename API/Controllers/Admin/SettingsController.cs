@@ -13,9 +13,18 @@ namespace Pointer.API.Controllers.Admin;
 [Route("api/admin/settings")]
 [Authorize(Policy = Policies.SuperAdmin)]
 [Tags("Settings")]
-public class SettingsController(ISettingsService settingsService, IConfiguration configuration, IAuditWriter audit)
+public class SettingsController(
+    ISettingsService settingsService,
+    IConfiguration configuration,
+    IAuditWriter audit,
+    IUnitOfWork unitOfWork)
     : ControllerBase
 {
+    // AuditFields.Sanitize truncates any single value to 200 chars — beyond that a joined "keys"
+    // list would be silently cut off mid-key rather than switching to the "<n> keys" summary form
+    // (review finding #2).
+    private const int MaxKeysValueLength = 200;
+
     private const int DefaultDailyCap = 250;
     private const int DefaultDemoMaxActive = 100;
     private const int DefaultDemoTtlHours = 24;
@@ -40,55 +49,124 @@ public class SettingsController(ISettingsService settingsService, IConfiguration
     [ProducesResponseType(typeof(Result<SettingsResponse>), StatusCodes.Status200OK)]
     public async Task<IActionResult> Update([FromBody] UpdateSettingsRequest request)
     {
-        await settingsService.SetBoolAsync(ISettingsService.ScopedAdminSignupEnabled, request.ScopedAdminSignupEnabled);
+        // Normalized target values — computed up front so they can both be written AND compared
+        // against the current stored value to learn which keys actually change.
+        var newAppBaseUrl = request.AppBaseUrl?.Trim().TrimEnd('/') ?? string.Empty;
+        var newEmailFromEmail = request.EmailFromEmail?.Trim() ?? string.Empty;
+        var newEmailFromName = request.EmailFromName?.Trim() ?? string.Empty;
+        var newEmailDailyCap = request.EmailDailyCap > 0 ? request.EmailDailyCap : DefaultDailyCap;
+        var newDemoMaxActive = request.DemoMaxActive > 0 ? request.DemoMaxActive : DefaultDemoMaxActive;
+        var newDemoTtlHours = request.DemoTtlHours > 0 ? request.DemoTtlHours : DefaultDemoTtlHours;
+        var newDemoPerEmailPerDay = request.DemoPerEmailPerDay > 0 ? request.DemoPerEmailPerDay : DefaultDemoPerEmailPerDay;
+        var newDemoCommentCap = request.DemoCommentCap > 0 ? request.DemoCommentCap : DefaultDemoCommentCap;
+        var newExtensionStoreUrl = request.ExtensionStoreUrl?.Trim() ?? string.Empty;
+        var newExtensionZipUrl = request.ExtensionZipUrl?.Trim() ?? string.Empty;
 
-        // Invitation join-link base. Optional override; empty means "use branding's urls.app".
-        await settingsService.SetStringAsync(ISettingsService.AppBaseUrl, request.AppBaseUrl?.Trim().TrimEnd('/') ?? string.Empty);
+        // Read the CURRENT value of every key before touching any of them (review finding #2): the
+        // audit row must name only the keys that actually changed, never the full list on a no-op
+        // save. Fallbacks mirror BuildResponseAsync's so "effectively unset" compares equal to the
+        // default the UI already shows.
+        var changedKeys = new List<string>();
+        void TrackChange(string key, bool changed)
+        {
+            if (changed)
+                changedKeys.Add(key);
+        }
 
-        // Email
-        await settingsService.SetBoolAsync(ISettingsService.EmailEnabled, request.EmailEnabled);
-        await settingsService.SetStringAsync(ISettingsService.EmailFromEmail, request.EmailFromEmail?.Trim() ?? string.Empty);
-        await settingsService.SetStringAsync(ISettingsService.EmailFromName, request.EmailFromName?.Trim() ?? string.Empty);
-        await settingsService.SetIntAsync(ISettingsService.EmailDailyCap, request.EmailDailyCap > 0 ? request.EmailDailyCap : DefaultDailyCap);
-
-        // Demo (clamp to sane minimums so a bad value can't disable the demo entirely).
-        await settingsService.SetIntAsync(ISettingsService.DemoMaxActive, request.DemoMaxActive > 0 ? request.DemoMaxActive : DefaultDemoMaxActive);
-        await settingsService.SetIntAsync(ISettingsService.DemoTtlHours, request.DemoTtlHours > 0 ? request.DemoTtlHours : DefaultDemoTtlHours);
-        await settingsService.SetIntAsync(ISettingsService.DemoPerEmailPerDay, request.DemoPerEmailPerDay > 0 ? request.DemoPerEmailPerDay : DefaultDemoPerEmailPerDay);
-        await settingsService.SetIntAsync(ISettingsService.DemoCommentCap, request.DemoCommentCap > 0 ? request.DemoCommentCap : DefaultDemoCommentCap);
-
-        // Extension
-        await settingsService.SetStringAsync(ISettingsService.ExtensionStoreUrl, request.ExtensionStoreUrl?.Trim() ?? string.Empty);
-        await settingsService.SetStringAsync(ISettingsService.ExtensionZipUrl, request.ExtensionZipUrl?.Trim() ?? string.Empty);
-
-        // DB-12: one row per batch update, naming the setting KEYS touched — never the values (some
-        // of which are effectively secrets-adjacent, e.g. from-email).
-        await audit.WriteAsync(
-            new AuditEntry(
-                AuditActions.SettingsUpdated,
-                AuditTargets.Settings,
-                "global",
-                null,
-                After: new Dictionary<string, string>
-                {
-                    ["keys"] = string.Join(
-                        ',',
-                        ISettingsService.ScopedAdminSignupEnabled,
-                        ISettingsService.AppBaseUrl,
-                        ISettingsService.EmailEnabled,
-                        ISettingsService.EmailFromEmail,
-                        ISettingsService.EmailFromName,
-                        ISettingsService.EmailDailyCap,
-                        ISettingsService.DemoMaxActive,
-                        ISettingsService.DemoTtlHours,
-                        ISettingsService.DemoPerEmailPerDay,
-                        ISettingsService.DemoCommentCap,
-                        ISettingsService.ExtensionStoreUrl,
-                        ISettingsService.ExtensionZipUrl
-                    ),
-                }
-            )
+        TrackChange(
+            ISettingsService.ScopedAdminSignupEnabled,
+            await settingsService.GetBoolAsync(ISettingsService.ScopedAdminSignupEnabled) != request.ScopedAdminSignupEnabled
         );
+        TrackChange(
+            ISettingsService.AppBaseUrl,
+            (await settingsService.GetStringAsync(ISettingsService.AppBaseUrl)).Trim() != newAppBaseUrl
+        );
+        TrackChange(
+            ISettingsService.EmailEnabled,
+            await settingsService.GetBoolAsync(ISettingsService.EmailEnabled) != request.EmailEnabled
+        );
+        TrackChange(
+            ISettingsService.EmailFromEmail,
+            (await settingsService.GetStringAsync(ISettingsService.EmailFromEmail)).Trim() != newEmailFromEmail
+        );
+        TrackChange(
+            ISettingsService.EmailFromName,
+            (await settingsService.GetStringAsync(ISettingsService.EmailFromName)).Trim() != newEmailFromName
+        );
+        TrackChange(
+            ISettingsService.EmailDailyCap,
+            await settingsService.GetIntAsync(ISettingsService.EmailDailyCap, DefaultDailyCap) != newEmailDailyCap
+        );
+        TrackChange(
+            ISettingsService.DemoMaxActive,
+            await settingsService.GetIntAsync(ISettingsService.DemoMaxActive, DefaultDemoMaxActive) != newDemoMaxActive
+        );
+        TrackChange(
+            ISettingsService.DemoTtlHours,
+            await settingsService.GetIntAsync(ISettingsService.DemoTtlHours, DefaultDemoTtlHours) != newDemoTtlHours
+        );
+        TrackChange(
+            ISettingsService.DemoPerEmailPerDay,
+            await settingsService.GetIntAsync(ISettingsService.DemoPerEmailPerDay, DefaultDemoPerEmailPerDay) != newDemoPerEmailPerDay
+        );
+        TrackChange(
+            ISettingsService.DemoCommentCap,
+            await settingsService.GetIntAsync(ISettingsService.DemoCommentCap, DefaultDemoCommentCap) != newDemoCommentCap
+        );
+        TrackChange(
+            ISettingsService.ExtensionStoreUrl,
+            (await settingsService.GetStringAsync(ISettingsService.ExtensionStoreUrl)).Trim() != newExtensionStoreUrl
+        );
+        TrackChange(
+            ISettingsService.ExtensionZipUrl,
+            (await settingsService.GetStringAsync(ISettingsService.ExtensionZipUrl)).Trim() != newExtensionZipUrl
+        );
+
+        // The whole batch of writes + the audit row are one atomic unit (review finding #2): a
+        // mid-batch failure must roll back every Set*Async already applied rather than leave a
+        // partially-applied, un-audited change.
+        await unitOfWork.ExecuteInTransactionAsync(async () =>
+        {
+            await settingsService.SetBoolAsync(ISettingsService.ScopedAdminSignupEnabled, request.ScopedAdminSignupEnabled);
+
+            // Invitation join-link base. Optional override; empty means "use branding's urls.app".
+            await settingsService.SetStringAsync(ISettingsService.AppBaseUrl, newAppBaseUrl);
+
+            // Email
+            await settingsService.SetBoolAsync(ISettingsService.EmailEnabled, request.EmailEnabled);
+            await settingsService.SetStringAsync(ISettingsService.EmailFromEmail, newEmailFromEmail);
+            await settingsService.SetStringAsync(ISettingsService.EmailFromName, newEmailFromName);
+            await settingsService.SetIntAsync(ISettingsService.EmailDailyCap, newEmailDailyCap);
+
+            // Demo (clamp to sane minimums so a bad value can't disable the demo entirely).
+            await settingsService.SetIntAsync(ISettingsService.DemoMaxActive, newDemoMaxActive);
+            await settingsService.SetIntAsync(ISettingsService.DemoTtlHours, newDemoTtlHours);
+            await settingsService.SetIntAsync(ISettingsService.DemoPerEmailPerDay, newDemoPerEmailPerDay);
+            await settingsService.SetIntAsync(ISettingsService.DemoCommentCap, newDemoCommentCap);
+
+            // Extension
+            await settingsService.SetStringAsync(ISettingsService.ExtensionStoreUrl, newExtensionStoreUrl);
+            await settingsService.SetStringAsync(ISettingsService.ExtensionZipUrl, newExtensionZipUrl);
+
+            // DB-12: one row per batch update, naming the setting KEYS that actually changed — never
+            // the values (some of which are effectively secrets-adjacent, e.g. from-email) — and
+            // written even when nothing changed (`keys` = "").
+            var joinedKeys = string.Join(',', changedKeys);
+            var after = new Dictionary<string, string>();
+            if (joinedKeys.Length > MaxKeysValueLength)
+            {
+                after["keys"] = $"{changedKeys.Count} keys";
+                after["count"] = changedKeys.Count.ToString();
+            }
+            else
+            {
+                after["keys"] = joinedKeys;
+            }
+
+            await audit.WriteAsync(
+                new AuditEntry(AuditActions.SettingsUpdated, AuditTargets.Settings, "global", null, After: after)
+            );
+        });
 
         return Ok(Result<SettingsResponse>.Success(await BuildResponseAsync()));
     }

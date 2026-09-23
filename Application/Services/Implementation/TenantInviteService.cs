@@ -40,7 +40,10 @@ public class TenantInviteService(
                 DisplayName = request.DisplayName,
                 PlanId = request.PlanId,
                 ExpiresInDays = request.ExpiresInDays,
-            });
+            },
+            // This service writes its own tenant_invite.created row below — invite.created would
+            // otherwise duplicate it for the same user action (review finding #3).
+            writeAudit: false);
 
         if (!created.IsSuccess || created.Data is null)
             return created.IsConflict
@@ -111,7 +114,7 @@ public class TenantInviteService(
         if (invite is null)
             return Result<TenantInviteResponse>.NotFound(MessageKeys.Invite.NotFound);
 
-        var resent = await invites.ResendAsync(id, rotate);
+        var resent = await invites.ResendAsync(id, rotate, writeAudit: false);
         if (!resent.IsSuccess || resent.Data is null)
             return Result<TenantInviteResponse>.Failure(resent.Message ?? MessageKeys.Invite.NotFound);
 
@@ -147,7 +150,7 @@ public class TenantInviteService(
         if (invite is null)
             return Result.NotFound(MessageKeys.Invite.NotFound);
 
-        var result = await invites.RevokeAsync(id);
+        var result = await invites.RevokeAsync(id, writeAudit: false);
         if (!result.IsSuccess)
             return result;
 

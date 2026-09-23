@@ -535,7 +535,10 @@ public class TenantService : ITenantService
                 {
                     ["reason"] = reason,
                     ["count"] = commentCount.ToString(),
-                }
+                },
+                // §3.3: the demo-cleanup hosted job is a System actor, explicitly — not left to the
+                // (correct, but implicit) fallback of ICurrentUser.Id being null in that scope.
+                ActorKindOverride: reason == "demo_expired" ? AuditActorKind.System : null
             )
         );
 

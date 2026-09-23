@@ -68,7 +68,7 @@ public class InviteService : IInviteService
 
     // ── Admin (auth, tenant-scoped) ────────────────────────────────────────────
 
-    public async Task<Result<InviteResponse>> CreateAsync(CreateInviteRequest request)
+    public async Task<Result<InviteResponse>> CreateAsync(CreateInviteRequest request, bool writeAudit = true)
     {
         Guid? owner;
         Role? role = null;
@@ -237,9 +237,12 @@ public class InviteService : IInviteService
             createAfter["role_id"] = inviteRoleId.ToString();
         if (emailNormalized != null)
             createAfter["email_hash"] = PseudonymHasher.EmailHash(emailNormalized);
-        await _audit.WriteAsync(
-            new AuditEntry(AuditActions.InviteCreated, AuditTargets.Invite, invite.Id.ToString(), owner, After: createAfter)
-        );
+        if (writeAudit)
+        {
+            await _audit.WriteAsync(
+                new AuditEntry(AuditActions.InviteCreated, AuditTargets.Invite, invite.Id.ToString(), owner, After: createAfter)
+            );
+        }
 
         var response = MapToResponse(invite, role?.Name, url);
         response.EmailSent = emailSent;
@@ -297,7 +300,7 @@ public class InviteService : IInviteService
         return Result<List<InviteResponse>>.Success(list);
     }
 
-    public async Task<Result> RevokeAsync(int id)
+    public async Task<Result> RevokeAsync(int id, bool writeAudit = true)
     {
         var invite = await LoadOwnAsync(id);
         if (invite == null)
@@ -318,15 +321,18 @@ public class InviteService : IInviteService
         // after.count = invitee memberships this revoke returned (ended) — DB-11c wires the actual
         // return-count once member.left exists; until then it is always 0 (revoking today only
         // stops future use, it does not retroactively end an already-accepted membership).
-        await _audit.WriteAsync(
-            new AuditEntry(
-                AuditActions.InviteRevoked,
-                AuditTargets.Invite,
-                invite.Id.ToString(),
-                invite.OwnerId,
-                After: new Dictionary<string, string> { ["count"] = "0" }
-            )
-        );
+        if (writeAudit)
+        {
+            await _audit.WriteAsync(
+                new AuditEntry(
+                    AuditActions.InviteRevoked,
+                    AuditTargets.Invite,
+                    invite.Id.ToString(),
+                    invite.OwnerId,
+                    After: new Dictionary<string, string> { ["count"] = "0" }
+                )
+            );
+        }
 
         return Result.Success(MessageKeys.Invite.Revoked_Ok);
     }
@@ -1265,7 +1271,7 @@ public class InviteService : IInviteService
             ProjectId = i.ProjectId,
         };
 
-    public async Task<Result<InviteResponse>> ResendAsync(int id, bool rotate = false)
+    public async Task<Result<InviteResponse>> ResendAsync(int id, bool rotate = false, bool writeAudit = true)
     {
         var invite = await LoadOwnAsync(id);
         if (invite is null)
@@ -1342,9 +1348,12 @@ public class InviteService : IInviteService
             }
         }
 
-        await _audit.WriteAsync(
-            new AuditEntry(AuditActions.InviteResent, AuditTargets.Invite, invite.Id.ToString(), invite.OwnerId)
-        );
+        if (writeAudit)
+        {
+            await _audit.WriteAsync(
+                new AuditEntry(AuditActions.InviteResent, AuditTargets.Invite, invite.Id.ToString(), invite.OwnerId)
+            );
+        }
 
         var response = MapToResponse(invite, null, url);
         response.EmailSent = emailSent;

@@ -4,6 +4,7 @@ using Pointer.Application.Abstractions;
 using Pointer.Application.Common;
 using Pointer.Application.Services.Interfaces;
 using Pointer.Domain.Entity;
+using Pointer.Domain.Enums;
 
 namespace Pointer.Application.Services.Implementation;
 
@@ -127,7 +128,11 @@ public class ApiKeyService(IUnitOfWork unitOfWork, IApiKeyProtector protector, I
                 key.Id.ToString(),
                 workspaceId,
                 After: new Dictionary<string, string> { ["scopes"] = key.Scopes.ToString() },
-                ActorUserIdOverride: user.PublicId
+                ActorUserIdOverride: user.PublicId,
+                // The anonymous device-poll path has no HttpContext (ICurrentUser.Id is null), which
+                // would otherwise default actor_kind to System even though a real identity is named
+                // above via ActorUserIdOverride — keep the two consistent (review finding #6).
+                ActorKindOverride: AuditActorKind.User
             )
         );
 
