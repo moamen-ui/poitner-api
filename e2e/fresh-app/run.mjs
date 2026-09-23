@@ -24,10 +24,20 @@ const PREVIEW_PORT = PORTS.freshPreview || PORTS.fresh || 4174;
  *
  * @param {string} url
  * @param {number} [timeoutMs=15000]
+ * @param {import('node:child_process').ChildProcess} [child] Fail fast (rather than waiting out
+ *   the full timeout) if the server process we just spawned has already exited — otherwise a
+ *   bind failure on a shared port (see stopServer below) can silently "succeed" against whatever
+ *   unrelated process still answers there.
  */
-export async function waitForServer(url, timeoutMs = 15000) {
+export async function waitForServer(url, timeoutMs = 15000, child) {
   const start = Date.now();
   while (Date.now() - start < timeoutMs) {
+    if (child && child.exitCode !== null) {
+      throw new Error(
+        `Server process for ${url} exited early with code ${child.exitCode} before answering — ` +
+          `refusing to trust another process that may be listening on the same port`,
+      );
+    }
     try {
       const res = await fetch(url);
       if (res.ok || res.status === 404 || res.status === 200) {
@@ -37,6 +47,87 @@ export async function waitForServer(url, timeoutMs = 15000) {
     await new Promise((r) => setTimeout(r, 200));
   }
   throw new Error(`Server at ${url} failed to respond within ${timeoutMs}ms`);
+}
+
+/**
+ * Polls a TCP port until nothing answers on it (connection refused/reset).
+ *
+ * All fresh-app scenarios share one hardcoded PREVIEW_PORT (constants.mjs), so a server left
+ * over from the PRECEDING scenario — e.g. R2-00-01's `vite preview` still bound to 4174 when
+ * R2-00-02's static server tries to `listen()` on it — makes the NEXT scenario's `waitForServer`
+ * poll succeed against the wrong process (`waitForServer` treats any response, even a stale
+ * app's, as "ready"). That serves the previous scenario's page to the next scenario's browser
+ * flow, which is exactly the "Vite + TypeScript" content fresh.spec.ts's static/whitelabel
+ * scenarios were observed hitting instead of their own fixture. `stopServer()` below calls this
+ * BEFORE returning so the port is provably free before the next scaffold starts its own server.
+ *
+ * @param {number} port
+ * @param {number} [timeoutMs=10000]
+ */
+async function waitForPortFree(port, timeoutMs = 10000) {
+  const { createConnection } = await import('node:net');
+  const start = Date.now();
+  while (Date.now() - start < timeoutMs) {
+    const free = await new Promise((resolvePromise) => {
+      const sock = createConnection({ port, host: '127.0.0.1' });
+      sock.once('connect', () => {
+        sock.destroy();
+        resolvePromise(false); // something is still listening
+      });
+      sock.once('error', () => resolvePromise(true)); // ECONNREFUSED etc. — nobody home
+    });
+    if (free) return true;
+    await new Promise((r) => setTimeout(r, 100));
+  }
+  throw new Error(`Port ${port} still has a listener after ${timeoutMs}ms`);
+}
+
+/**
+ * Kills a server child process AND anything it spawned (e.g. `npx vite preview` forks the real
+ * vite/esbuild server as its own child; SIGTERM to the npx wrapper alone does not reliably reach
+ * that grandchild), then confirms the port it was bound to is actually free.
+ *
+ * The child must have been spawned with `detached: true` so it is its own process-group leader —
+ * that lets a single signal to `-pid` reach the whole tree instead of just the immediate child.
+ *
+ * @param {import('node:child_process').ChildProcess} child
+ * @param {number} port
+ */
+async function stopServer(child, port) {
+  const exited = new Promise((r) => {
+    if (child.exitCode !== null || child.signalCode !== null) return r();
+    child.once('exit', r);
+  });
+
+  try {
+    process.kill(-child.pid, 'SIGTERM');
+  } catch {
+    try {
+      child.kill('SIGTERM');
+    } catch {}
+  }
+
+  const timedOut = await Promise.race([
+    exited.then(() => false),
+    new Promise((r) => setTimeout(() => r(true), 5000)),
+  ]);
+
+  if (timedOut) {
+    try {
+      process.kill(-child.pid, 'SIGKILL');
+    } catch {
+      try {
+        child.kill('SIGKILL');
+      } catch {}
+    }
+  }
+
+  await waitForPortFree(port).catch((err) => {
+    // Surface loudly rather than silently letting the next scaffold's server collide with this
+    // one — that silent collision is the exact failure mode this helper exists to prevent.
+    console.error(`[fresh-app/run.mjs] ${err.message}`);
+    throw err;
+  });
 }
 
 /**
@@ -226,16 +317,12 @@ export async function startStaticServer(dir, port = PREVIEW_PORT) {
   const serveScript = resolve(here, '../scripts/serve-dir.mjs');
   const child = spawn(process.execPath, [serveScript, dir, String(port)], {
     stdio: 'ignore',
-    detached: false,
+    detached: true,
   });
 
-  const stop = async () => {
-    try {
-      child.kill('SIGTERM');
-    } catch {}
-  };
+  const stop = () => stopServer(child, port);
 
-  await waitForServer(`http://localhost:${port}/`);
+  await waitForServer(`http://localhost:${port}/`, 15000, child);
   return { child, stop };
 }
 
@@ -256,16 +343,13 @@ export async function startVitePreview(dir, port = PREVIEW_PORT) {
     {
       cwd: dir,
       stdio: 'ignore',
+      detached: true,
     },
   );
 
-  const stop = async () => {
-    try {
-      child.kill('SIGTERM');
-    } catch {}
-  };
+  const stop = () => stopServer(child, port);
 
-  await waitForServer(`http://localhost:${port}/`);
+  await waitForServer(`http://localhost:${port}/`, 15000, child);
   return { child, stop };
 }
 

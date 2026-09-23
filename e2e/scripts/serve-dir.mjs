@@ -59,6 +59,16 @@ const server = createServer(async (req, res) => {
   }
 });
 
+// Without this handler, a bind failure (e.g. EADDRINUSE because a previous fresh-app scenario's
+// server hasn't released this same shared port yet) throws an unhandled 'error' event and kills
+// this process silently (spawned with stdio: 'ignore'). The caller's waitForServer() then keeps
+// polling the port and happily finds the STALE server still answering — serving the wrong
+// scenario's page with no indication anything went wrong. Fail loudly instead.
+server.on('error', (err) => {
+  console.error(`serve-dir.mjs: failed to listen on port ${PORT}: ${err.message}`);
+  process.exit(1);
+});
+
 server.listen(PORT, () => {
   console.log(`Serving ${ROOT} on http://localhost:${PORT}`);
 });
