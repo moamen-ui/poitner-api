@@ -201,25 +201,46 @@ if [[ " ${FLAGS[*]:-} " =~ " registry " ]] || [[ " ${FLAGS[*]:-} " =~ " all " ]]
   echo "=== phase: registry ==="
   start=$(node -e "process.stdout.write(Date.now().toString())")
   set +e
-  # `up -d` can fail — most usefully when another compose project already holds :4873 — and the
-  # error was being swallowed. The phase then ran against WHATEVER was serving that port: a
-  # verdaccio belonging to a different project, left over for a day, which published and resolved
-  # happily. The scenario passed while testing a registry this repo does not control.
-  if ! docker compose up -d verdaccio; then
-    echo "verdaccio failed to start — is another compose project holding :4873? (docker ps --filter publish=4873)" >&2
+  # scripts/local-e2e-gate.sh sets these to target an isolated compose project on an alternate
+  # port; unset (every CI run today) both default to exactly what this phase always did.
+  REG_COMPOSE_ARGS=()
+  [ -n "${E2E_COMPOSE_PROJECT:-}" ] && REG_COMPOSE_ARGS+=(-p "${E2E_COMPOSE_PROJECT}")
+  if [ -n "${E2E_COMPOSE_FILES:-}" ]; then
+    IFS=':' read -r -a _reg_compose_files <<< "${E2E_COMPOSE_FILES}"
+    for _f in "${_reg_compose_files[@]}"; do REG_COMPOSE_ARGS+=(-f "$_f"); done
+  fi
+  # Never hardcode the project name: with no `-p`/`COMPOSE_PROJECT_NAME`, Compose derives it from
+  # the checkout directory's basename — which on CI is "poitner-api" (the GitHub repo name is
+  # misspelled there), not "pointer-api". Asking Compose itself for its own resolved name is what
+  # actually matches the verdaccio container's `com.docker.compose.project` label below.
+  if [ -n "${E2E_COMPOSE_PROJECT:-}" ]; then
+    REG_PROJECT_NAME="${E2E_COMPOSE_PROJECT}"
+  else
+    REG_PROJECT_NAME=$(docker compose "${REG_COMPOSE_ARGS[@]}" config --format json 2>/dev/null \
+      | node -e "try{process.stdout.write(JSON.parse(require('fs').readFileSync(0,'utf8')).name||'')}catch{}" 2>/dev/null || true)
+    [ -z "$REG_PROJECT_NAME" ] && REG_PROJECT_NAME="${COMPOSE_PROJECT_NAME:-}"
+    [ -z "$REG_PROJECT_NAME" ] && REG_PROJECT_NAME=$(basename "$(cd .. && pwd)" | tr '[:upper:]' '[:lower:]' | sed -E 's/[^a-z0-9_-]+/-/g')
+  fi
+  # `up -d` can fail — most usefully when another compose project already holds the registry port
+  # — and the error was being swallowed. The phase then ran against WHATEVER was serving that
+  # port: a verdaccio belonging to a different project, left over for a day, which published and
+  # resolved happily. The scenario passed while testing a registry this repo does not control.
+  if ! docker compose "${REG_COMPOSE_ARGS[@]}" up -d verdaccio; then
+    echo "verdaccio failed to start — is another compose project holding the registry port? (docker ps --filter publish=4873)" >&2
     code=1
   else
-    # Confirm it is OURS, not merely that something answers.
-    owner=$(docker inspect pointer-api-verdaccio-1 --format '{{index .Config.Labels "com.docker.compose.project"}}' 2>/dev/null)
-    if [ "$owner" != "pointer-api" ]; then
-      echo "the container on :4873 belongs to '$owner', not pointer-api — refusing to test against it" >&2
+    # Confirm it is OURS, not merely that something answers — matched by compose labels rather
+    # than an assumed "<project>-verdaccio-1" container name string.
+    owner_id=$(docker ps --filter "label=com.docker.compose.project=${REG_PROJECT_NAME}" --filter "label=com.docker.compose.service=verdaccio" -q)
+    if [ -z "$owner_id" ]; then
+      echo "no verdaccio container found labeled com.docker.compose.project=${REG_PROJECT_NAME} — refusing to test against whatever is on the registry port" >&2
       code=1
     else
       E2E_REGISTRY=1 bash scripts/pw.sh cli 'registry\.spec\.mjs'
       code=$?
     fi
   fi
-  docker compose stop verdaccio
+  docker compose "${REG_COMPOSE_ARGS[@]}" stop verdaccio
   set -e
   end=$(node -e "process.stdout.write(Date.now().toString())")
   dur=$(node -e "process.stdout.write(Math.round(($end - $start) / 1000).toString())")

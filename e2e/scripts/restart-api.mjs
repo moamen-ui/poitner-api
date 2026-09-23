@@ -28,10 +28,23 @@ export async function waitForApi(timeoutMs = 120_000, intervalMs = 1_000) {
   throw new Error(`API failed to become ready at ${swaggerUrl} within ${timeoutMs}ms`);
 }
 
+// scripts/local-e2e-gate.sh sets these to run against an isolated compose project (alternate
+// ports, so the force-recreated `api` container keeps publishing the GATE's port rather than
+// reverting to the base file's 8090) instead of the shared dev stack. Unset — every CI run
+// today — both default to exactly the single `-f docker-compose.yaml`, no `-p`, this always used.
+function composeArgs() {
+  const projectArgs = process.env.E2E_COMPOSE_PROJECT ? ['-p', process.env.E2E_COMPOSE_PROJECT] : [];
+  const files = process.env.E2E_COMPOSE_FILES
+    ? process.env.E2E_COMPOSE_FILES.split(':').filter(Boolean)
+    : ['docker-compose.yaml'];
+  return [...projectArgs, ...files.flatMap((f) => ['-f', f])];
+}
+
 export async function restartApi({ env = {}, timeoutMs = 120_000 } = {}) {
   if (!existsSync(STATE_DIR)) mkdirSync(STATE_DIR, { recursive: true });
 
   const envEntries = Object.entries(env).filter(([_, v]) => v !== undefined && v !== null);
+  const baseArgs = composeArgs();
 
   if (envEntries.length > 0) {
     const lines = [
@@ -45,7 +58,7 @@ export async function restartApi({ env = {}, timeoutMs = 120_000 } = {}) {
 
     execFileSync(
       'docker',
-      ['compose', '-f', 'docker-compose.yaml', '-f', OVERRIDE_COMPOSE_PATH, 'up', '-d', '--force-recreate', 'api'],
+      ['compose', ...baseArgs, '-f', OVERRIDE_COMPOSE_PATH, 'up', '-d', '--force-recreate', 'api'],
       { cwd: repoRoot, stdio: 'inherit' }
     );
   } else {
@@ -55,7 +68,7 @@ export async function restartApi({ env = {}, timeoutMs = 120_000 } = {}) {
 
     execFileSync(
       'docker',
-      ['compose', '-f', 'docker-compose.yaml', 'up', '-d', '--force-recreate', 'api'],
+      ['compose', ...baseArgs, 'up', '-d', '--force-recreate', 'api'],
       { cwd: repoRoot, stdio: 'inherit' }
     );
   }

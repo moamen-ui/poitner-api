@@ -11,7 +11,7 @@ import { createServer } from 'node:http';
 export function pinnedPage({
   v,
   integrity,
-  server = 'http://localhost:8090',
+  server = process.env.E2E_API_URL || 'http://localhost:8090',
   project = 'e2e-widget-smoke',
   environment = 'local',
 } = {}) {

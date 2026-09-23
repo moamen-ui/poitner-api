@@ -14,6 +14,15 @@ if (!dirArg) {
 const ROOT = resolve(dirArg);
 const PORT = Number(portArg) || 4174;
 
+// Some served fixtures hardcode the widget/API origin as http://localhost:8090 (the shared dev
+// stack's port) — e.g. fixture-app/privacy/index.html (widget/privacy-snapshot.spec.ts).
+// scripts/local-e2e-gate.sh runs an isolated stack on a different port and sets E2E_API_URL
+// accordingly; when it differs from the default, rewrite that origin on the fly in served .html so
+// the fixture points at whichever server is actually under test. Unset — every CI run today — this
+// is a no-op and .html is served byte-for-byte as before.
+const FIXTURE_API_URL = process.env.E2E_API_URL || '';
+const DEFAULT_API_ORIGIN = 'http://localhost:8090';
+
 const MIME = {
   '.html': 'text/html; charset=utf-8',
   '.css': 'text/css; charset=utf-8',
@@ -47,6 +56,9 @@ const server = createServer(async (req, res) => {
       } else {
         throw err;
       }
+    }
+    if (extname(filePath) === '.html' && FIXTURE_API_URL && FIXTURE_API_URL !== DEFAULT_API_ORIGIN) {
+      body = Buffer.from(body.toString('utf8').split(DEFAULT_API_ORIGIN).join(FIXTURE_API_URL), 'utf8');
     }
     res.writeHead(200, {
       'Content-Type': MIME[extname(filePath)] || 'application/octet-stream',

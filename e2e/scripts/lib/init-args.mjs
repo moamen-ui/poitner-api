@@ -6,7 +6,14 @@
 // flag that no longer exists.
 import { keys } from './state.mjs';
 
-export const SERVER = process.env.POINTER_SERVER || 'http://localhost:8090';
+// E2E_API_URL (the convention every other lib/*.mjs honours, e.g. lib/api.mjs's BASE_URL) wins
+// over POINTER_SERVER here deliberately: scripts/local-e2e-gate.sh exports E2E_API_URL for its
+// isolated stack but must NOT export POINTER_SERVER ambiently — cli/init.spec.mjs's own
+// "no --server/--key given" scenario relies on POINTER_SERVER being genuinely unset so its
+// resolution falls through to the CLI's baked-in production default, which the previous run has
+// never touched, rather than colliding with a *different* spec's already-cached global credential
+// for whatever server this run happens to reuse.
+export const SERVER = process.env.E2E_API_URL || process.env.POINTER_SERVER || 'http://localhost:8090';
 
 /** The shared fixture project. Only for scenarios whose stack detection matches it — see below. */
 export const DEFAULT_PROJECT = 'e2e-alpha';

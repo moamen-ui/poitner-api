@@ -153,7 +153,7 @@ test('R3-01-01 — source-stamp-prod-build (widget: steps 5–12)', async ({ pag
     mkdirSync(join(repo.dir, '.pointer'), { recursive: true });
     writeFileSync(
       join(repo.dir, '.pointer', 'config.json'),
-      JSON.stringify({ server: 'http://localhost:8090', project: PROJECT_KEY }, null, 2),
+      JSON.stringify({ server: process.env.E2E_API_URL || 'http://localhost:8090', project: PROJECT_KEY }, null, 2),
       'utf8',
     );
     writeFileSync(

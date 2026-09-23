@@ -30,7 +30,7 @@ export async function init(flags) {
     const meta = await get('/api/meta', { token: dev.token });
     let messages = '0';
     try {
-      const mailRes = await fetch('http://localhost:8025/api/v1/messages');
+      const mailRes = await fetch(`${process.env.E2E_MAILPIT_URL || 'http://localhost:8025'}/api/v1/messages`);
       if (mailRes.ok) {
         const mailData = await mailRes.json();
         messages = mailData.total || mailData.messages?.length || 0;

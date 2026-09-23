@@ -57,7 +57,11 @@ export function assertNpmConfigUnchanged(baseline) {
  * Sets up scratch isolation env vars (userconfig and cache) per harness §6.1.
  */
 export function createScratchEnv(scratchDir) {
-  const npmrcContent = `registry=${REGISTRY_URL}/\n//localhost:${PORTS.registry || 4873}/:_authToken=e2e-local-only\n`;
+  // The auth-token line's host:port must match REGISTRY_URL's own — hardcoding PORTS.registry
+  // here silently pointed the auth token at :4873 even when VERDACCIO_URL (and so REGISTRY_URL)
+  // had been overridden to a different port, e.g. by scripts/local-e2e-gate.sh's isolated stack.
+  const registryHostPort = new URL(REGISTRY_URL).host;
+  const npmrcContent = `registry=${REGISTRY_URL}/\n//${registryHostPort}/:_authToken=e2e-local-only\n`;
   const npmrcPath = join(scratchDir, '.npmrc');
   writeFileSync(npmrcPath, npmrcContent, 'utf8');
   const cacheDir = join(scratchDir, 'npm-cache');

@@ -24,6 +24,9 @@ const here = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(here, '..', '..', '..');
 
 function psql(sql) {
+  // Bare `docker compose exec` — relies on COMPOSE_PROJECT_NAME/COMPOSE_FILE (native Docker
+  // Compose env vars) when scripts/local-e2e-gate.sh has exported them to target its isolated
+  // project instead of the shared dev stack; unset, this is exactly the call CI has always made.
   return execFileSync(
     'docker',
     ['compose', 'exec', '-T', 'db', 'psql', '-U', 'pointer', '-d', 'pointer', '-tAc', sql],

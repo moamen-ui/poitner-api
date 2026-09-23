@@ -90,7 +90,8 @@ test('R2-07-05 ⛓ — the footer Docs link follows /api/branding', async ({ bro
     const p = await ctx.newPage();
     // Point the page at THIS server. The landing page defaults to the hosted API, so without this
     // the test would assert against production branding and could never observe a local change.
-    await p.addInitScript(() => { (window as any).__POINTER_API__ = 'http://localhost:8090'; });
+    const apiUrl = process.env.E2E_API_URL || 'http://localhost:8090';
+    await p.addInitScript((url) => { (window as any).__POINTER_API__ = url; }, apiUrl);
     if (block) await block(p);
     await p.goto(`${BASE}/`);
 
