@@ -165,6 +165,15 @@ test('R2-00-01 — fresh-app: vite', async ({ page }) => {
     // 2. & 3. CLI init with --yes --json
     // Commit d54f0cf made --scope global default; specify --scope repo so .pointer/credentials.env
     // is written (same fix already applied to e2e/cli/init.spec.ts and doctor.spec.ts).
+    //
+    // No `--environment`: this scenario asserts the *default*, unpinned install below (no
+    // VITE_POINTER_ENV in .env — the server resolves the environment from the page origin). A new
+    // project is active for local by default (ProjectService: IsActiveLocal defaults true), so
+    // nothing needs `--environment` to activate it; passing it would pin the install and make
+    // injectVite write VITE_POINTER_ENV, contradicting the assertion a few lines down
+    // (cli/src/inject/vite.ts, cli/test/inject-vite.test.ts). R2-00-02 (static) is the sibling
+    // scenario that pins `--environment local` and asserts the opposite — the `environment="local"`
+    // attribute present in the injected markup.
     const initRes = await spawnCli({
       cwd: appDir,
       args: [
@@ -177,8 +186,6 @@ test('R2-00-01 — fresh-app: vite', async ({ page }) => {
         'repo',
         '--create',
         `Fresh vite ${runId}`,
-        '--environment',
-        'local',
         '--tool',
         'other',
         '--yes',
@@ -792,16 +799,12 @@ test('R2-00-06 ⛓ — whitelabel: widget text has no brand leak', async ({ page
   // browser context — the 30s default is a budget for a normal test, not for this.
   test.setTimeout(120_000);
 
-  // KNOWN FAILING (nightly only) — times out in its second browser context.
-  //
-  // Ruled out: the app IS instrumented (init writes .pointer/config.json and injects the widget —
-  // verified on disk after a run), and the brand-leak guarantee this scenario exists to prove is
-  // covered by R2-00-08, which passes: the launcher's title and aria-label carry the configured
-  // product name and no "Pointer" literal. What remains is this scenario's own sequencing across
-  // two contexts and a mid-test re-brand.
-  //
-  // Left running and red rather than skipped: the white-label promise is load-bearing for this
-  // product, and a scenario nobody can see is how the suite got into the state it was found in.
+  // Was KNOWN FAILING (nightly only) — timed out in its second browser context waiting to click
+  // #fbk-hide. Root cause found (R2, round 2): showLoginModal() replaces the shadow root's
+  // innerHTML with the modal shell, so the toolbar (and #fbk-hide) isn't merely covered by the
+  // modal, it doesn't exist in the DOM until "Skip for now" is clicked to dismiss it — this
+  // scenario's own sequencing bug, not a widget/CLI regression. Fixed below by clicking
+  // #fbk-login-skip between the modal-title assertion and the hide/toast assertions.
 
   const start = Date.now();
   const creds = getCredentials();
@@ -870,9 +873,17 @@ test('R2-00-06 ⛓ — whitelabel: widget text has no brand leak', async ({ page
     const modalTitle = (await modalH2.innerText()).trim();
     expect(modalTitle).toBe('Acme Review');
 
+    // showLoginModal() replaces the shadow root's innerHTML with the modal shell (auth-ui.ts) — the
+    // toolbar, and #fbk-hide with it, isn't just covered, it's gone from the DOM until the modal is
+    // dismissed. "Skip for now" is the deferred-login path back to it (auth-ui.ts: "Skip → dismiss
+    // without logging in; restore the toolbar"); previously this went straight to clicking
+    // `#fbk-hide`, which could never appear and hung until the test timeout.
+    await widget2.locator('#fbk-login-skip').click();
+
     // 4. Toasts carry the brand too. Trigger the REAL one — clicking hide emits
     // `${brand} hidden — click the button to reopen` (element.ts) — rather than poking a method to
     // produce a synthetic toast, which would assert only that the test can write the brand itself.
+    await expect(widget2.locator('#fbk-hide')).toBeVisible({ timeout: 10_000 });
     await widget2.locator('#fbk-hide').click();
     const toastLocator = widget2.locator('.fbk-toast');
     await expect(toastLocator).toHaveText(/Acme Review/, { timeout: 5000 });
