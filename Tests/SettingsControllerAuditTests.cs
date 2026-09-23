@@ -75,6 +75,7 @@ public class SettingsControllerAuditTests
             DemoCommentCap = 0,
             ExtensionStoreUrl = string.Empty,
             ExtensionZipUrl = string.Empty,
+            QuickAccessInviteEmailEnabled = false,
         };
 
     [Fact]
@@ -119,5 +120,40 @@ public class SettingsControllerAuditTests
         var entry = Assert.Single(audit.Entries);
         Assert.Equal(AuditActions.SettingsUpdated, entry.Action);
         Assert.Equal(string.Empty, entry.After!["keys"]);
+    }
+
+    /// <summary>
+    /// Regression for the R2-05-07 e2e failure: QuickAccessInviteEmailEnabled was added to
+    /// ISettingsService (e072d55) and read by InviteService, but was never wired into
+    /// UpdateSettingsRequest/SettingsResponse/SettingsController, so PUT silently dropped it and
+    /// GET never returned it (property absent from the JSON, not just false).
+    /// </summary>
+    [Fact]
+    public async Task Update_QuickAccessInviteEmailEnabled_PersistsAndIsReturnedByGet()
+    {
+        var db = Guid.NewGuid().ToString();
+        using var ctx = Ctx(db);
+        var audit = new FakeAuditWriter();
+        var controller = BuildController(ctx, audit);
+
+        var request = DefaultRequest();
+        request.QuickAccessInviteEmailEnabled = true;
+        var updateResult = await controller.Update(request);
+
+        var updateOk = Assert.IsType<Microsoft.AspNetCore.Mvc.OkObjectResult>(updateResult);
+        var updateBody = Assert.IsType<Result<SettingsResponse>>(updateOk.Value);
+        Assert.True(updateBody.Data!.QuickAccessInviteEmailEnabled);
+
+        var entry = Assert.Single(audit.Entries);
+        var keys = entry.After!["keys"].Split(',', StringSplitOptions.RemoveEmptyEntries);
+        Assert.Contains(ISettingsService.QuickAccessInviteEmailEnabled, keys);
+
+        // A fresh controller instance (new cache) proves the value was actually persisted, not just
+        // echoed back from the in-request DTO.
+        var getController = BuildController(ctx, new FakeAuditWriter());
+        var getResult = await getController.Get();
+        var getOk = Assert.IsType<Microsoft.AspNetCore.Mvc.OkObjectResult>(getResult);
+        var getBody = Assert.IsType<Result<SettingsResponse>>(getOk.Value);
+        Assert.True(getBody.Data!.QuickAccessInviteEmailEnabled);
     }
 }

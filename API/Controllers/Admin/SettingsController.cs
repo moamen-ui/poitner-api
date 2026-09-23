@@ -121,6 +121,10 @@ public class SettingsController(
             ISettingsService.ExtensionZipUrl,
             (await settingsService.GetStringAsync(ISettingsService.ExtensionZipUrl)).Trim() != newExtensionZipUrl
         );
+        TrackChange(
+            ISettingsService.QuickAccessInviteEmailEnabled,
+            await settingsService.GetBoolAsync(ISettingsService.QuickAccessInviteEmailEnabled) != request.QuickAccessInviteEmailEnabled
+        );
 
         // The whole batch of writes + the audit row are one atomic unit (review finding #2): a
         // mid-batch failure must roll back every Set*Async already applied rather than leave a
@@ -147,6 +151,9 @@ public class SettingsController(
             // Extension
             await settingsService.SetStringAsync(ISettingsService.ExtensionStoreUrl, newExtensionStoreUrl);
             await settingsService.SetStringAsync(ISettingsService.ExtensionZipUrl, newExtensionZipUrl);
+
+            // Quick-access invites
+            await settingsService.SetBoolAsync(ISettingsService.QuickAccessInviteEmailEnabled, request.QuickAccessInviteEmailEnabled);
 
             // DB-12: one row per batch update, naming the setting KEYS that actually changed — never
             // the values (some of which are effectively secrets-adjacent, e.g. from-email) — and
@@ -196,6 +203,7 @@ public class SettingsController(
             DemoCommentCap = await settingsService.GetIntAsync(ISettingsService.DemoCommentCap, DefaultDemoCommentCap),
             ExtensionStoreUrl = await settingsService.GetStringAsync(ISettingsService.ExtensionStoreUrl, string.Empty),
             ExtensionZipUrl = await settingsService.GetStringAsync(ISettingsService.ExtensionZipUrl, DefaultExtensionZipUrl),
+            QuickAccessInviteEmailEnabled = await settingsService.GetBoolAsync(ISettingsService.QuickAccessInviteEmailEnabled),
         };
     }
 }

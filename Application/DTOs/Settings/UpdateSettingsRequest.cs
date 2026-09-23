@@ -25,4 +25,8 @@ public class UpdateSettingsRequest
     // ZipUrl stays available for the sideload/manual-install path.
     public string ExtensionStoreUrl { get; set; } = string.Empty;
     public string ExtensionZipUrl { get; set; } = string.Empty;
+
+    // Quick-access invites (editable). Opt-in: e-mail the magic link instead of link-copy only.
+    // See ISettingsService.QuickAccessInviteEmailEnabled / InviteService.
+    public bool QuickAccessInviteEmailEnabled { get; set; }
 }

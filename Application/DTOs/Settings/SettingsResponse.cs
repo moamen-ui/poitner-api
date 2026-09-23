@@ -27,4 +27,8 @@ public class SettingsResponse
     // Browser extension (super-admin editable).
     public string ExtensionStoreUrl { get; set; } = string.Empty;
     public string ExtensionZipUrl { get; set; } = string.Empty;
+
+    // Quick-access invites (super-admin editable). Opt-in: e-mail the magic link instead of
+    // link-copy only. See ISettingsService.QuickAccessInviteEmailEnabled.
+    public bool QuickAccessInviteEmailEnabled { get; set; }
 }

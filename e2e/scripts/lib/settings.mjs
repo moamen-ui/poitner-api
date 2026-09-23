@@ -16,6 +16,7 @@ function toUpdateRequest(settings) {
     demoCommentCap: settings.demoCommentCap ?? 10,
     extensionStoreUrl: settings.extensionStoreUrl ?? '',
     extensionZipUrl: settings.extensionZipUrl ?? '',
+    quickAccessInviteEmailEnabled: settings.quickAccessInviteEmailEnabled ?? false,
   };
 }
 
