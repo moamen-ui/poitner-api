@@ -6,7 +6,7 @@
 // - R1-08-07 — email lock — another address cannot accept
 // - R1-08-09 — only a super admin can invite workspaces
 // - R1-08-11 — the direct path still works (seed depends on it)
-// - R1-08-12 — invitee address already owns a workspace
+// - R1-08-12 — invitee address already owns a workspace: join-or-create (DB-11a), not a 409
 // - R1-08-13 — create without an email is rejected
 // - R1-08-14 — the legacy invite route obeys the same rules
 // - R1-08-15 — swagger contract guard
@@ -359,39 +359,81 @@ test('R1-08-11 — the direct path still works (seed depends on it)', async () =
   }
 });
 
-test('R1-08-12 ⛓ — invitee address already owns a workspace', async () => {
+test('R1-08-12 ⛓ — invitee address already owns a workspace: invite joins it into a second workspace', async () => {
+  // DB-11a (docs/db/execution/DB-11a-identity-and-workspace-memberships.md §1, §3) made one
+  // identity per e-mail with several workspace memberships. A super-admin workspace invite to an
+  // address that already owns a workspace no longer 409s at either step: InviteService.CreateAsync
+  // dropped the pre-check entirely, and AcceptCreateNewWorkspaceAsync join-or-creates the identity
+  // (same password required — a mismatched password is still a 409, that path is untouched). The
+  // observable new contract, per DB-11b (docs/db/execution/DB-11b-login-workspace-picker-and-switch.md
+  // §3.1): after accepting a second invite, logging in returns status "choose-workspace" (HTTP 200,
+  // a success envelope) with two entries in `workspaces`.
   const superAdmin = await login(credentials.superAdmin.email, credentials.superAdmin.password);
   const email = `owner-${RUN_ID}@example.com`;
+  const password = 'SharedPass1!';
+  const workspaceIds = [];
 
   try {
-    // 1. Direct path creates existing self-owned workspace
+    // 1. Direct path creates an existing self-owned workspace for this address.
     const directRes = await postRaw(
       '/api/admin/tenants',
-      { email, password: 'DirectPass1!', displayName: 'Existing Co' },
+      { email, password, displayName: 'Existing Co' },
       { token: superAdmin.token },
     );
     expect(directRes.status).toBe(200);
+    expect(directRes.data?.workspaceId).toBeTruthy();
+    workspaceIds.push(directRes.data.workspaceId);
 
-    // 2. Super admin tries to invite the same address: 409 (pre-check)
+    // 2. Super admin invites the SAME address into a brand-new workspace: 200, not 409 — the
+    // "address already owns a workspace" pre-check was removed by DB-11a.
     const inviteRes = await postRaw(
       '/api/admin/tenants/invites',
-      { email, displayName: 'Duplicate Co' },
+      { email, displayName: 'Second Co' },
       { token: superAdmin.token },
     );
-    expect(inviteRes.status).toBe(409);
+    expect(inviteRes.status).toBe(200);
+    expect(inviteRes.data?.url).toMatch(/\/join\?code=/);
+    const code = new URL(inviteRes.data.url).searchParams.get('code');
 
-    // 3. If pre-check was absent and returned 200, accept would 409
-    if (inviteRes.status === 200 && inviteRes.data?.url) {
-      const code = new URL(inviteRes.data.url).searchParams.get('code');
-      const acceptRes = await postRaw('/api/auth/register-invite', {
-        code,
-        email,
-        password: 'OtherPass123!',
-        displayName: 'Duplicate Co',
-      });
-      expect(acceptRes.status).toBe(409);
+    // 3. Accepting with the SAME password joins the existing identity into the new workspace
+    // instead of refusing — 200 with an auto-signin token, not 409 (a mismatched password would
+    // still 409 here; that guard is unchanged and out of scope for this scenario).
+    const acceptRes = await postRaw('/api/auth/register-invite', {
+      code,
+      email,
+      password,
+      displayName: 'Second Co',
+    });
+    expect(acceptRes.status).toBe(200);
+    expect(acceptRes.data?.status).toBe('ok');
+    expect(acceptRes.data?.token).toBeTruthy();
+
+    // 4. The identity now administers two workspaces: logging in can no longer resolve a single
+    // membership, so it returns the picker — status "choose-workspace" as a 200 success envelope,
+    // with both workspaces listed.
+    const loginRes = await postRaw('/api/auth/login', { email, password });
+    expect(loginRes.status).toBe(200);
+    expect(loginRes.data?.status).toBe('choose-workspace');
+    expect(loginRes.data?.token).toBeTruthy();
+    expect(loginRes.data?.user).toBeNull();
+    expect(Array.isArray(loginRes.data?.workspaces)).toBe(true);
+    expect(loginRes.data.workspaces.length).toBe(2);
+
+    const seenWorkspaceIds = loginRes.data.workspaces.map((w) => w.workspaceId);
+    expect(new Set(seenWorkspaceIds).size).toBe(2);
+    for (const id of seenWorkspaceIds) {
+      if (!workspaceIds.includes(id)) workspaceIds.push(id);
     }
+    expect(loginRes.data.workspaces.every((w) => w.isAdmin)).toBe(true);
   } finally {
+    // Both workspaces now share this email (DB-11a: one identity, several memberships), so
+    // deleteTenantByEmail's single-match lookup is not enough — delete every workspace id
+    // collected above directly.
+    for (const workspaceId of workspaceIds) {
+      try {
+        await delRaw(`/api/admin/tenants/${workspaceId}`, { token: superAdmin.token });
+      } catch {}
+    }
     await deleteTenantByEmail(email, superAdmin.token);
   }
 });

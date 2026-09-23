@@ -8,6 +8,7 @@ import { raw } from '../scripts/lib/api.mjs';
 import { USERS } from '../scripts/lib/constants.mjs';
 import { record } from '../scripts/lib/report.mjs';
 import { restartApi } from '../scripts/restart-api.mjs';
+import { getComposeLogs } from '../scripts/lib/docker.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const e2eRoot = resolve(here, '..');
@@ -136,10 +137,7 @@ test('R1-06-04 — reveal round-trip + encryption-key rotation', async () => {
   } catch (err) {
     // Print container logs on failure as specified in contract
     try {
-      const logs = execFileSync('docker', ['compose', 'logs', 'api', '--tail', '50'], {
-        cwd: repoRoot,
-        encoding: 'utf8',
-      });
+      const logs = getComposeLogs(repoRoot, 'api', { tail: 50 });
       console.error('API logs after failure:\n', logs);
     } catch {}
     throw err;

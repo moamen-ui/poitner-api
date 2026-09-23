@@ -5,6 +5,7 @@ import { fileURLToPath } from 'node:url';
 import { execFileSync } from 'node:child_process';
 import crypto from 'node:crypto';
 import { record } from '../scripts/lib/report.mjs';
+import { getComposeLogs } from '../scripts/lib/docker.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const e2eRoot = resolve(here, '..');
@@ -19,11 +20,11 @@ function psql(sql) {
   ).trim();
 }
 
+// Since R5-58 the API logs structured JSON, so an unbounded `docker compose logs api` can exceed
+// Node's default 1 MB maxBuffer (ENOBUFS). getComposeLogs bounds the read (--tail) and raises
+// maxBuffer well past anything that bounded read can produce.
 function getApiLogs() {
-  return execFileSync('docker', ['compose', 'logs', 'api'], {
-    cwd: repoRoot,
-    encoding: 'utf8',
-  });
+  return getComposeLogs(repoRoot, 'api');
 }
 
 function getKeys() {

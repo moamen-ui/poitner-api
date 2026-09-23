@@ -15,6 +15,7 @@ import { record } from '../scripts/lib/report.mjs';
 import { spawnCli } from '../scripts/lib/cli.mjs';
 import { tempRepo } from '../scripts/lib/git.mjs';
 import { restartApi } from '../scripts/restart-api.mjs';
+import { getComposeLogs } from '../scripts/lib/docker.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const e2eRoot = resolve(here, '..');
@@ -370,10 +371,7 @@ test('R1-04-04 ⛓ — min-version gate (Cli__MinVersion=99.0.0)', async () => {
     });
   } catch (err) {
     try {
-      const logs = execFileSync('docker', ['compose', 'logs', 'api', '--tail', '50'], {
-        cwd: repoRoot,
-        encoding: 'utf8',
-      });
+      const logs = getComposeLogs(repoRoot, 'api', { tail: 50 });
       console.error('API logs after failure:\n', logs);
     } catch {}
     throw err;
