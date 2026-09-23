@@ -159,6 +159,10 @@ public class TenantService : ITenantService
                     DemoExtended = w.DemoExtendedAt != null,
                     DemoCommentCapOverride = w.DemoCommentCapOverride,
                     DemoTtlHoursOverride = w.DemoTtlHoursOverride,
+                    // DB-18: operator view of the self-service lifecycle.
+                    PausedAt = w.PausedAt,
+                    PausedByOperator = w.PausedByOperator,
+                    DeletionScheduledFor = w.DeletionScheduledFor,
                 };
             })
             .ToList();
@@ -530,23 +534,46 @@ public class TenantService : ITenantService
         if (!workspaceExists)
             return Result.NotFound("Tenant not found.");
 
-        var isDemoExpiredReason = reason == "demo_expired";
+        // DB-18: "owner_requested" (self-service scheduled delete) joins "demo_expired" as a guarded
+        // reason — both have a locked re-check inside the transaction (below) and write their audit
+        // row only once every row is actually gone.
+        var isGuardedReason = reason is "demo_expired" or "owner_requested";
 
-        // DB-17 §3.3 (Gemini Pro #2): the sweep materialises expired-demo ids then deletes them one
-        // by one — a conversion or extension landing in that gap must not destroy the user's data.
-        // Re-check right here, before anything observable happens (and again under FOR UPDATE
-        // inside the transaction, below).
-        if (isDemoExpiredReason)
+        // DB-17 §3.3 (Gemini Pro #2) / DB-18: re-check the reason's own precondition right here,
+        // before anything observable happens (and again under FOR UPDATE inside the transaction,
+        // below) — a conversion/extension (demo) or a cancel/operator-pause (owner_requested) landing
+        // in that gap must not destroy the workspace's data.
+        Task<bool> StillDueAsync() =>
+            reason switch
+            {
+                "demo_expired" => _unitOfWork
+                    .Workspaces.IgnoreQueryFilters()
+                    .AnyAsync(w =>
+                        w.Id == workspaceId
+                        && w.DemoExpiresAt != null
+                        && w.DemoExpiresAt < DateTime.UtcNow
+                    ),
+                // Opus HIGH 3: an operator pause during the grace period holds the delete.
+                "owner_requested" => _unitOfWork
+                    .Workspaces.IgnoreQueryFilters()
+                    .AnyAsync(w =>
+                        w.Id == workspaceId
+                        && w.DeletionScheduledFor != null
+                        && w.DeletionScheduledFor <= DateTime.UtcNow
+                        && !w.PausedByOperator
+                    ),
+                _ => Task.FromResult(true),
+            };
+
+        if (isGuardedReason)
         {
-            var stillExpiredDemo = await _unitOfWork
-                .Workspaces.IgnoreQueryFilters()
-                .AnyAsync(w =>
-                    w.Id == workspaceId
-                    && w.DemoExpiresAt != null
-                    && w.DemoExpiresAt < DateTime.UtcNow
+            var stillDue = await StillDueAsync();
+            if (!stillDue)
+                return Result.Failure(
+                    reason == "demo_expired"
+                        ? "Not an expired demo (converted or extended meanwhile)."
+                        : "Not a due scheduled deletion (cancelled meanwhile)."
                 );
-            if (!stillExpiredDemo)
-                return Result.Failure("Not an expired demo (converted or extended meanwhile).");
         }
 
         // Snapshot the comment count before anything is deleted — the audit row (below) records how
@@ -568,12 +595,13 @@ public class TenantService : ITenantService
                     ["reason"] = reason,
                     ["count"] = commentCount.ToString(),
                 },
-                // §3.3: the demo-cleanup hosted job is a System actor, explicitly — not left to the
-                // (correct, but implicit) fallback of ICurrentUser.Id being null in that scope.
-                ActorKindOverride: isDemoExpiredReason ? AuditActorKind.System : null
+                // §3.3: the demo-cleanup / workspace-deletion hosted jobs are a System actor,
+                // explicitly — not left to the (correct, but implicit) fallback of ICurrentUser.Id
+                // being null in that scope.
+                ActorKindOverride: isGuardedReason ? AuditActorKind.System : null
             );
 
-        if (!isDemoExpiredReason)
+        if (!isGuardedReason)
         {
             // Every reason OTHER than demo_expired keeps today's order (DB-17 review finding #2
             // narrows the reorder below to demo_expired only — an ordinary admin-initiated delete
@@ -591,24 +619,23 @@ public class TenantService : ITenantService
         // (required by Npgsql's NpgsqlRetryingExecutionStrategy).
         await _unitOfWork.ExecuteInTransactionAsync(async () =>
         {
-            // DB-17 §3.3: FOR UPDATE-lock the workspace row and re-check inside the transaction — a
-            // conversion that committed between the pre-check above and this point must abort the
-            // delete entirely (the transaction rolls back; the hosted loop logs it and moves on).
-            if (isDemoExpiredReason)
+            // DB-17 §3.3 / DB-18: FOR UPDATE-lock the workspace row and re-check inside the
+            // transaction — a conversion (demo) or a cancel/operator-pause (owner_requested) that
+            // committed between the pre-check above and this point must abort the delete entirely
+            // (the transaction rolls back; the hosted loop logs it and moves on).
+            if (isGuardedReason)
             {
                 await _unitOfWork.ExecuteSqlRawAsync(
                     "SELECT id FROM workspaces WHERE id = {0} FOR UPDATE",
                     workspaceId
                 );
-                var stillExpiredDemoLocked = await _unitOfWork
-                    .Workspaces.IgnoreQueryFilters()
-                    .AnyAsync(w =>
-                        w.Id == workspaceId
-                        && w.DemoExpiresAt != null
-                        && w.DemoExpiresAt < DateTime.UtcNow
+                var stillDueLocked = await StillDueAsync();
+                if (!stillDueLocked)
+                    throw new InvalidOperationException(
+                        reason == "demo_expired"
+                            ? "demo converted during delete"
+                            : "scheduled deletion cancelled during delete"
                     );
-                if (!stillExpiredDemoLocked)
-                    throw new InvalidOperationException("demo converted during delete");
             }
 
             // Hard-delete in FK-safe order (children before parents; DB-03).
@@ -645,8 +672,23 @@ public class TenantService : ITenantService
                 .Where(u => u.OwnerId == workspaceId && u.DeletedAt == null)
                 .ToListAsync();
 
+            // DB-18 (Opus HIGH 1): the delete set is the ONE shared query (also used by the deletion
+            // preview) — created here, no membership row of any state (ended/soft-deleted included)
+            // survives in another workspace. The re-home set is everything else in usersCreatedHere.
+            var deleteIds = await IdentitiesDeletedWithWorkspace(_unitOfWork, workspaceId)
+                .Select(u => u.Id)
+                .ToListAsync();
+            var deleteIdSet = deleteIds.ToHashSet();
+
             foreach (var u in usersCreatedHere)
             {
+                if (deleteIdSet.Contains(u.Id))
+                {
+                    // No membership survives anywhere — hard-delete (api_keys cascade; aliases cascade).
+                    _unitOfWork.Repository<User>().Remove(u);
+                    continue;
+                }
+
                 var otherWorkspaceId = await _unitOfWork
                     .Repository<WorkspaceMembership>()
                     .Query()
@@ -662,11 +704,6 @@ public class TenantService : ITenantService
                     u.OwnerId = otherOwner;
                     _unitOfWork.Repository<User>().Update(u);
                 }
-                else
-                {
-                    // No membership survives anywhere — hard-delete (api_keys cascade; aliases cascade).
-                    _unitOfWork.Repository<User>().Remove(u);
-                }
             }
 
             await DeleteOwnedAsync<Role>(x => x.OwnerId == workspaceId);
@@ -681,7 +718,7 @@ public class TenantService : ITenantService
 
             await _unitOfWork.SaveChangesAsync();
 
-            if (isDemoExpiredReason)
+            if (isGuardedReason)
             {
                 // DB-17 review finding #2 (Opus/Gemini): the audit row is written HERE — inside the
                 // same transaction, after the locked re-check above passed and every row is gone —
@@ -691,7 +728,7 @@ public class TenantService : ITenantService
             }
         });
 
-        if (isDemoExpiredReason)
+        if (isGuardedReason)
         {
             // DB-17 review finding #2 (Opus/Gemini): files are deleted only AFTER the transaction
             // commits — this used to run before the transaction, so a delete the locked re-check
@@ -705,6 +742,31 @@ public class TenantService : ITenantService
 
         return Result.Success();
     }
+
+    /// <summary>
+    /// DB-18 (Opus HIGH 1). The exact "which accounts are deleted WITH this workspace" rule — a
+    /// legacy <c>users.owner_id</c> read (R8.7 exemption, same as <see cref="HardDeleteAsync"/>'s
+    /// own use of it above): created in this workspace (<c>OwnerId == ws</c>, live) and no
+    /// membership row of ANY state (ended/soft-deleted included, <c>IgnoreQueryFilters</c>) survives
+    /// in another workspace. Shared by <see cref="HardDeleteAsync"/> (the delete set) and
+    /// <c>WorkspaceLifecycleService</c>'s deletion preview (a count only, §3.4/§3.10 D18.10) — the
+    /// two must never diverge (§6 test 9a <c>Preview_AccountsCount_EqualsRowsActuallyDeleted</c>).
+    /// </summary>
+    public static IQueryable<User> IdentitiesDeletedWithWorkspace(
+        IUnitOfWork uow,
+        Guid workspaceId
+    ) =>
+        uow.Repository<User>()
+            .Query()
+            .IgnoreQueryFilters()
+            .Where(u =>
+                u.OwnerId == workspaceId
+                && u.DeletedAt == null
+                && !uow.Repository<WorkspaceMembership>()
+                    .Query()
+                    .IgnoreQueryFilters()
+                    .Any(m => m.UserId == u.Id && m.OwnerId != workspaceId)
+            );
 
     /// <summary>
     /// Loads every <typeparamref name="T"/> row matching <paramref name="ownedBy"/> (bypassing query

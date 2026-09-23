@@ -38,6 +38,7 @@ public class InviteService : IInviteService
     private readonly IEmailVerificationService _emailVerification;
     private readonly IDemoService? _demo;
     private readonly ILogger<InviteService>? _logger;
+    private readonly IWorkspaceStateService? _workspaceState;
 
     private const int DefaultTtlDays = 7;
 
@@ -61,7 +62,9 @@ public class InviteService : IInviteService
         // construction compiles unchanged and simply skips the demo-TTL-clearing side effect (with
         // a logged warning, never a silent no-op — Gemini's ask).
         IDemoService? demo = null,
-        ILogger<InviteService>? logger = null
+        ILogger<InviteService>? logger = null,
+        // DB-18: nullable-with-default, same seam as the others above.
+        IWorkspaceStateService? workspaceState = null
     )
     {
         _unitOfWork = unitOfWork;
@@ -75,6 +78,7 @@ public class InviteService : IInviteService
         _memberships = memberships;
         _audit = audit ?? NoopAuditWriter.Instance;
         _emailVerification = emailVerification ?? NoopEmailVerification.Instance;
+        _workspaceState = workspaceState;
         _demo = demo;
         _logger = logger;
     }
@@ -653,6 +657,10 @@ public class InviteService : IInviteService
             );
         if (demoExpired)
             return Result<LoginResponse>.Failure(MessageKeys.Demo.DemoExpired);
+
+        // DB-18 (D18.11): a frozen workspace refuses new members (invite accept, stakeholder register).
+        if (_workspaceState != null && (await _workspaceState.GetAsync(ownerId)).IsFrozen)
+            return Result<LoginResponse>.Failure(MessageKeys.Workspace.FrozenNoNewMembers);
 
         // 2. Resolve the role: the invite's pinned RoleId if present (the admin already chose it at
         //    creation time — may be Deputy), else validate the anonymous acceptor's OWN submitted

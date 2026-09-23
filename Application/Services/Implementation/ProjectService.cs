@@ -25,6 +25,7 @@ public class ProjectService : IProjectService
     private readonly ICommentFieldService _commentFields;
     private readonly IAuditWriter _audit;
     private readonly IMemoryCache _cache;
+    private readonly IWorkspaceStateService? _workspaceState;
 
     public ProjectService(
         IUnitOfWork unitOfWork,
@@ -34,7 +35,10 @@ public class ProjectService : IProjectService
         IConfiguration configuration,
         IAuditWriter? audit = null,
         ICommentFieldService? commentFields = null,
-        IMemoryCache? cache = null
+        IMemoryCache? cache = null,
+        // DB-18: nullable-with-default, same seam as the others above — a null value (every existing
+        // hand-rolled test construction) simply means CheckWidgetActiveAsync always reports Paused=false.
+        IWorkspaceStateService? workspaceState = null
     )
     {
         _unitOfWork = unitOfWork;
@@ -45,6 +49,7 @@ public class ProjectService : IProjectService
         _audit = audit ?? NoopAuditWriter.Instance;
         _commentFields = commentFields ?? new CommentFieldService(unitOfWork, currentUser, _audit);
         _cache = cache ?? new MemoryCache(new MemoryCacheOptions());
+        _workspaceState = workspaceState;
     }
 
     private readonly ISettingsService _settings;
@@ -1445,9 +1450,16 @@ public class ProjectService : IProjectService
                 new WidgetActivationResponse { Active = false }
             );
 
+        // DB-18 §3.6: computed once, set on every response below that can be Active = true — Active
+        // semantics are unchanged (D18.3: reads stay available even while the workspace is frozen).
+        var paused =
+            project.OwnerId is Guid pausedOwnerId
+            && _workspaceState != null
+            && (await _workspaceState.GetAsync(pausedOwnerId)).IsFrozen;
+
         if (string.IsNullOrWhiteSpace(origin))
             return Result<WidgetActivationResponse>.Success(
-                new WidgetActivationResponse { Active = true }
+                new WidgetActivationResponse { Active = true, Paused = paused }
             );
 
         var normalized = OriginNormalizer.Normalize(origin);
@@ -1558,7 +1570,7 @@ public class ProjectService : IProjectService
         var match = urls.FirstOrDefault(u => OriginNormalizer.Normalize(u.Url) == normalized);
         var active = match == null || (match.IsActive && match.EnvironmentEnabled);
         return Result<WidgetActivationResponse>.Success(
-            new WidgetActivationResponse { Active = active }
+            new WidgetActivationResponse { Active = active, Paused = paused }
         );
     }
 

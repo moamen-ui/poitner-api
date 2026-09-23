@@ -28,6 +28,7 @@ public class UserService : IUserService
     private readonly IMembershipService _memberships;
     private readonly IAuditWriter _audit;
     private readonly IEmailVerificationService _emailVerification;
+    private readonly IWorkspaceStateService? _workspaceState;
 
     public UserService(
         IUnitOfWork unitOfWork,
@@ -38,7 +39,11 @@ public class UserService : IUserService
         IBrandingService branding,
         IMembershipService memberships,
         IAuditWriter? audit = null,
-        IEmailVerificationService? emailVerification = null
+        IEmailVerificationService? emailVerification = null,
+        // DB-18: nullable-with-default, same seam as the others above — a null value (every
+        // existing hand-rolled test construction) simply means UpdateAsync never sees a frozen
+        // workspace, so it behaves exactly as before DB-18.
+        IWorkspaceStateService? workspaceState = null
     )
     {
         _unitOfWork = unitOfWork;
@@ -50,6 +55,7 @@ public class UserService : IUserService
         _memberships = memberships;
         _audit = audit ?? NoopAuditWriter.Instance;
         _emailVerification = emailVerification ?? NoopEmailVerification.Instance;
+        _workspaceState = workspaceState;
     }
 
     // Best-effort notification: a send failure must never fail the admin action.
@@ -404,6 +410,18 @@ public class UserService : IUserService
             // Deputy, which the current Workspace Admin may delegate to their own team.
             if (!_currentUser.IsSuperAdmin && (role.GrantsAdmin || role.IsSuperAdmin) && role.Name != DeputyRoleName)
                 return Result<UserResponse>.Failure(MessageKeys.Role.EscalationNotAllowed);
+        }
+
+        // DB-18 §3.5 (Opus HIGH 2): this route can also GRANT access — while the workspace is frozen,
+        // refuse any request that sets a password, activates the membership, or assigns an
+        // admin-tier role. Disabling, demoting to a non-admin role, and everything else pass
+        // (the freeze must never stop an admin from locking someone out).
+        if (request.Password != null || request.IsActive == true || role?.GrantsAdmin == true)
+        {
+            var frozen =
+                _workspaceState != null && (await _workspaceState.GetAsync(membership.OwnerId)).IsFrozen;
+            if (frozen)
+                return Result<UserResponse>.Forbidden(MessageKeys.Workspace.FrozenNoAccessGrant);
         }
 
         // D6: an admin may only set another member's password when that identity has exactly one

@@ -31,6 +31,7 @@ public class AuthService : IAuthService
     private readonly IMfaService? _mfa;
     private readonly IDemoService? _demo;
     private readonly ILogger<AuthService>? _logger;
+    private readonly IWorkspaceStateService? _workspaceState;
 
     public AuthService(
         IUnitOfWork unitOfWork,
@@ -58,7 +59,10 @@ public class AuthService : IAuthService
         IDemoService? demo = null,
         // DB-17 review finding #7: nullable-with-default, same seam as the others above — only
         // used to log a failed/skipped OnEmailVerifiedAsync call, never to change behaviour.
-        ILogger<AuthService>? logger = null
+        ILogger<AuthService>? logger = null,
+        // DB-18: nullable-with-default, same seam as the others above — a null value (every existing
+        // hand-rolled test construction) simply means RegisterAsync never sees a frozen workspace.
+        IWorkspaceStateService? workspaceState = null
     )
     {
         _unitOfWork = unitOfWork;
@@ -77,6 +81,7 @@ public class AuthService : IAuthService
         _mfa = mfa;
         _demo = demo;
         _logger = logger;
+        _workspaceState = workspaceState;
     }
 
     /// <summary>
@@ -1315,6 +1320,14 @@ public class AuthService : IAuthService
         var tenantName =
             membership != null ? await ResolveTenantNameAsync(membership.OwnerId) : null;
 
+        // DB-18 (Opus LOW): pass the loaded workspace so the freeze fields reach a key/CLI login
+        // response too — same precedent as BuildMeAsync (login/me/switch).
+        var currentWorkspace = membership?.OwnerId is Guid keyWorkspaceId
+            ? await _unitOfWork
+                .Workspaces.IgnoreQueryFilters()
+                .FirstOrDefaultAsync(w => w.Id == keyWorkspaceId)
+            : null;
+
         await AuditLoginSucceededAsync(user, membership?.OwnerId, "api_key");
 
         return Result<LoginResponse>.Success(
@@ -1322,7 +1335,7 @@ public class AuthService : IAuthService
             {
                 Status = "ok",
                 Token = token,
-                User = UserMapper.ToMeResponse(user, role, tenantName),
+                User = UserMapper.ToMeResponse(user, role, tenantName, currentWorkspace),
             }
         );
     }
@@ -1358,6 +1371,10 @@ public class AuthService : IAuthService
         // NULL) — a null-owner (global) project has no workspace to join a stakeholder into.
         if (projectMatches[0].OwnerId is not Guid projectOwnerId)
             return Result.Failure(MessageKeys.Project.NotFound);
+
+        // DB-18 (D18.11): a frozen workspace refuses new members (invite accept, stakeholder register).
+        if (_workspaceState != null && (await _workspaceState.GetAsync(projectOwnerId)).IsFrozen)
+            return Result.Failure(MessageKeys.Workspace.FrozenNoNewMembers);
 
         // 2. Role must exist, be active, NON-admin, and belong to this tenant (or be a global role).
         //    IgnoreQueryFilters() required for the same anonymous-path reason above.
