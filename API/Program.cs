@@ -89,6 +89,11 @@ builder.Services.AddJwtAuth(builder.Configuration);
 builder.Services.AddAuthorization();
 builder.Services.AddHostedService<DemoCleanupService>();
 builder.Services.AddHostedService<RetentionService>();
+// UptimePingService needs IHttpClientFactory. Infrastructure only registers a typed HttpClient for the
+// Brevo sender, so with Email:Provider=smtp (the e2e compose stack) the factory was missing and the
+// API crashed at startup ("Unable to resolve service for type IHttpClientFactory") — three e2e runs
+// hung on 2026-09-23 waiting for an API that never came up. Register the factory unconditionally.
+builder.Services.AddHttpClient();
 builder.Services.AddHostedService<UptimePingService>();
 
 builder.Services.AddApiRateLimiting(builder.Configuration);
