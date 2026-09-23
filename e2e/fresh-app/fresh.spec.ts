@@ -95,40 +95,52 @@ async function performDeferredLoginCommentFlow(
   await expect(widget).toBeAttached({ timeout: 15_000 });
 
   // Fresh context is collapsed by default (element.ts:161-163, 649-655). Reveal toolbar first.
-  const launcher = widget.locator('#pf-launcher');
-  if (await launcher.isVisible()) {
+  //
+  // IDs are `fbk-*`, not `pf-*` — the widget was renamed post-scaffold (0e87a8b) and this spec
+  // was never updated, so every one of these locators used to match nothing and hang until the
+  // test timeout. Wait for EITHER the collapsed launcher or the already-expanded toggle to appear
+  // — `isVisible()` alone is a point-in-time read that does not wait, so called before the widget
+  // has rendered it always returns false and the reveal click is silently skipped (same race
+  // documented in source-stamp.spec.ts / release-eng.spec.ts).
+  const launcher = widget.locator('#fbk-launcher');
+  const toggle = widget.locator('#fbk-toggle');
+  await expect(launcher.or(toggle).first()).toBeVisible({ timeout: 15_000 });
+  if (await launcher.isVisible().catch(() => false)) {
     await launcher.click();
   }
 
-  // Click #pf-toggle to open login modal
-  await widget.locator('#pf-toggle').click();
-  const modalOverlay = widget.locator('.pf-modal-overlay');
+  // Click #fbk-toggle to open login modal
+  await widget.locator('#fbk-toggle').click();
+  const modalOverlay = widget.locator('.fbk-modal-overlay');
   await expect(modalOverlay).toBeVisible({ timeout: 10_000 });
 
   // Register capture-config response waiter BEFORE submitting login (element.ts:673)
   const cfg = page.waitForResponse((r) => r.url().includes('/capture-config'));
 
-  const emailInput = widget.locator('#pf-email');
-  const passwordInput = widget.locator('#pf-password');
+  const emailInput = widget.locator('#fbk-email');
+  const passwordInput = widget.locator('#fbk-password');
   await emailInput.fill(email);
   await passwordInput.fill(pass);
 
   // Submit login
-  await widget.locator('#pf-login-submit').click();
+  await widget.locator('#fbk-login-submit').click();
   await cfg;
 
   // Modal closes
   await expect(modalOverlay).not.toBeVisible({ timeout: 10_000 });
 
-  // Click #pf-add to enter pick mode
-  await widget.locator('#pf-add').click();
+  // Click #fbk-add to enter pick mode. Wait for aria-pressed="true" before clicking the target —
+  // that attribute and the document-level click listener are installed by the same startPicking()
+  // call, so clicking earlier lands on the page as an ordinary click and no pick happens.
+  await widget.locator('#fbk-add').click();
+  await expect(widget.locator('#fbk-add')).toHaveAttribute('aria-pressed', 'true');
   await page.locator('h1').first().click({ force: true });
 
   // Fill comment text and submit
-  const popover = page.locator('#pf-popover-host');
-  await expect(popover.locator('#pf-comment-text')).toBeVisible({ timeout: 10_000 });
-  await popover.locator('#pf-comment-text').fill(commentText);
-  await popover.locator('#pf-submit').click();
+  const popover = page.locator('#fbk-popover-host');
+  await expect(popover.locator('#fbk-comment-text')).toBeVisible({ timeout: 10_000 });
+  await popover.locator('#fbk-comment-text').fill(commentText);
+  await popover.locator('#fbk-submit').click();
   await expect(popover).toBeEmpty({ timeout: 10_000 });
 }
 
@@ -151,6 +163,8 @@ test('R2-00-01 — fresh-app: vite', async ({ page }) => {
     const appDir = await scaffoldVite();
 
     // 2. & 3. CLI init with --yes --json
+    // Commit d54f0cf made --scope global default; specify --scope repo so .pointer/credentials.env
+    // is written (same fix already applied to e2e/cli/init.spec.ts and doctor.spec.ts).
     const initRes = await spawnCli({
       cwd: appDir,
       args: [
@@ -159,6 +173,8 @@ test('R2-00-01 — fresh-app: vite', async ({ page }) => {
         SERVER,
         '--key',
         devKey || '',
+        '--scope',
+        'repo',
         '--create',
         `Fresh vite ${runId}`,
         '--environment',
@@ -444,7 +460,15 @@ test('R2-00-03 — fresh-app: angular (skill-routed)', async () => {
     expect(docRes.code).toBe(0);
     expect(docRes.json?.ok).toBe(true);
 
-    // Check stdout verbatim handoff message via non-json init re-run
+    // Check stdout verbatim handoff message via non-json init re-run.
+    //
+    // This re-run is a JOIN (`.pointer/config.json` already names server+project from the call
+    // above), and a join never re-detects or re-injects (init.ts: "A join never injects ... there
+    // is nothing to say here"), so the original "ℹ angular detected ..." message this used to
+    // assert only ever printed on the FIRST (non-join) run — it is gone from every re-run since the
+    // join feature landed (68679f9). What a join DOES say, correctly, is whether the widget still
+    // needs the skill: this install never mounted anything (routedToSkill, no htmlPath recorded),
+    // so the join summary must say so instead of falsely claiming it is "already embedded".
     const humanRes = await spawnCli({
       cwd: appDir,
       args: [
@@ -463,9 +487,11 @@ test('R2-00-03 — fresh-app: angular (skill-routed)', async () => {
       ],
     });
 
-    // Assert verbatim: /^ℹ angular detected — automatic injection isn't supported for this stack yet\.$/m
-    expect(humanRes.stdout).toMatch(/^ℹ angular detected — automatic injection isn't supported for this stack yet\.$/m);
-    expect(humanRes.stdout).toContain('.agents/pointer-init');
+    expect(humanRes.code).toBe(0);
+    expect(humanRes.stdout).toContain('angular has no single entry point to inject into.');
+    expect(humanRes.stdout).toContain('/pointer-init');
+    expect(humanRes.stdout).not.toContain('already embedded');
+    expect(humanRes.stdout).toContain('.agents/skills/pointer-init');
 
     // 5. Diff file snapshot; src/index.html byte-identical
     const indexAfter = existsSync(indexPath) ? await readFile(indexPath, 'utf8') : '';
@@ -571,7 +597,14 @@ test('R2-00-04 — fresh-app: next (handoff)', async () => {
     expect(sha256(layoutAfter)).toBe(layoutHashBefore);
     expect(sha256(pageAfter)).toBe(pageHashBefore);
 
-    // Human mode init: verify verbatim message
+    // Human mode init: verify the join's hand-off message.
+    //
+    // This re-run is a JOIN, and a join never re-detects or re-injects (init.ts: "A join never
+    // injects ... there is nothing to say here"), so the original "ℹ next detected ..." message
+    // only ever printed on the FIRST (non-join) run above — gone from every re-run since the join
+    // feature landed (68679f9). What the join summary DOES say, correctly, is that the widget still
+    // isn't mounted (routedToSkill, no htmlPath recorded) rather than falsely claiming it is
+    // "already embedded".
     const humanRes = await spawnCli({
       cwd: appDir,
       args: [
@@ -590,7 +623,10 @@ test('R2-00-04 — fresh-app: next (handoff)', async () => {
       ],
     });
 
-    expect(humanRes.stdout).toMatch(/^ℹ next detected — automatic injection isn't supported for this stack yet\.$/m);
+    expect(humanRes.code).toBe(0);
+    expect(humanRes.stdout).toContain('next has no single entry point to inject into.');
+    expect(humanRes.stdout).toContain('/pointer-init');
+    expect(humanRes.stdout).not.toContain('already embedded');
 
     const durationMs = Date.now() - start;
     record({
@@ -819,12 +855,17 @@ test('R2-00-06 ⛓ — whitelabel: widget text has no brand leak', async ({ page
 
     const widget2 = page2.locator('pointer-feedback');
     await expect(widget2).toBeAttached({ timeout: 10_000 });
-    const launcher2 = widget2.locator('#pf-launcher');
-    if (await launcher2.isVisible()) {
+    // IDs are `fbk-*`, not `pf-*` (see performDeferredLoginCommentFlow above). Wait for either the
+    // collapsed launcher or the already-expanded toggle before deciding whether to reveal — a bare
+    // isVisible() does not wait and races the widget's own boot.
+    const launcher2 = widget2.locator('#fbk-launcher');
+    const toggle2 = widget2.locator('#fbk-toggle');
+    await expect(launcher2.or(toggle2).first()).toBeVisible({ timeout: 10_000 });
+    if (await launcher2.isVisible().catch(() => false)) {
       await launcher2.click();
     }
-    await widget2.locator('#pf-toggle').click();
-    const modalH2 = widget2.locator('.pf-modal h2');
+    await widget2.locator('#fbk-toggle').click();
+    const modalH2 = widget2.locator('.fbk-modal h2');
     await expect(modalH2).toBeVisible({ timeout: 10_000 });
     const modalTitle = (await modalH2.innerText()).trim();
     expect(modalTitle).toBe('Acme Review');
@@ -832,8 +873,8 @@ test('R2-00-06 ⛓ — whitelabel: widget text has no brand leak', async ({ page
     // 4. Toasts carry the brand too. Trigger the REAL one — clicking hide emits
     // `${brand} hidden — click the button to reopen` (element.ts) — rather than poking a method to
     // produce a synthetic toast, which would assert only that the test can write the brand itself.
-    await widget2.locator('#pf-hide').click();
-    const toastLocator = widget2.locator('.pf-toast');
+    await widget2.locator('#fbk-hide').click();
+    const toastLocator = widget2.locator('.fbk-toast');
     await expect(toastLocator).toHaveText(/Acme Review/, { timeout: 5000 });
     await expect(toastLocator).not.toHaveText(/Pointer/);
 
@@ -899,7 +940,7 @@ test('R2-00-08 ⛓ — whitelabel: widget title/aria-label have no brand leak', 
     await page.goto(PREVIEW_URL);
     const widget = page.locator('pointer-feedback');
     await expect(widget).toBeAttached({ timeout: 10_000 });
-    const launcher = widget.locator('#pf-launcher');
+    const launcher = widget.locator('#fbk-launcher');
     await expect(launcher).toBeVisible({ timeout: 10_000 });
 
     const titleAttr = await launcher.getAttribute('title');
@@ -1062,10 +1103,12 @@ test('R1-02-01 — init-vite-no-ai', async () => {
   try {
     const appDir = await scaffoldVite();
 
+    // Commit d54f0cf made --scope global default; specify --scope repo so .pointer/credentials.env
+    // is written (same fix already applied to e2e/cli/init.spec.ts and doctor.spec.ts).
     const initRes = await spawnCli({
       cwd: appDir,
       args: [
-        'init', '--server', SERVER, '--key', devKey || '',
+        'init', '--server', SERVER, '--key', devKey || '', '--scope', 'repo',
         '--create', `Fresh vite ${runId}`,
         '--environment', 'local', '--tool', 'other', '--yes', '--json',
       ],
@@ -1090,7 +1133,9 @@ test('R1-02-01 — init-vite-no-ai', async () => {
     )![1];
     expect(block).toContain("'%VITE_POINTER_SERVER%'.indexOf('http') === 0");
     expect(block).toContain("document.createElement('pointer-feedback')");
-    expect(block).toContain('data-component-source');
+    // No `source-attr`/`data-component-source` in the snippet: `data-component-source` is already
+    // the widget's default (pointer-init.md: "Do NOT write a source-attr attribute"), so init never
+    // writes it. This used to assert the opposite — stale since the pre-source-attr-default days.
 
     // .env: exactly ONE of each key. A second occurrence is the failure mode that matters here —
     // re-running init must not append a duplicate the bundler then resolves unpredictably.
@@ -1113,9 +1158,11 @@ test('R1-02-01 — init-vite-no-ai', async () => {
     const shStat = await stat(join(appDir, '.pointer', 'pointer.sh'));
     expect(shStat.mode & 0o777, '.pointer/pointer.sh must be 0755').toBe(0o755);
 
-    // --tool other writes both skills for the agent to find.
-    expect(existsSync(join(appDir, '.agents', 'pointer-init', 'SKILL.md'))).toBe(true);
-    expect(existsSync(join(appDir, '.agents', 'pointer-feedback', 'SKILL.md'))).toBe(true);
+    // --tool other writes both skills for the agent to find. `.agents/pointer-*/` (no `/skills/`
+    // segment) is the pre-2026-09-16 layout `removeLegacyRepoFiles` now deletes on sight — current
+    // layout nests every tool's skills a level deeper, `.agents/skills/pointer-*/SKILL.md`.
+    expect(existsSync(join(appDir, '.agents', 'skills', 'pointer-init', 'SKILL.md'))).toBe(true);
+    expect(existsSync(join(appDir, '.agents', 'skills', 'pointer-feedback', 'SKILL.md'))).toBe(true);
     expect(existsSync(join(appDir, '.pointer', 'stack.json'))).toBe(true);
 
     // The frozen .gitignore block: the negations are what keep the shareable config in the repo
@@ -1191,6 +1238,13 @@ test('R1-02-03 — init-next-handoff', async () => {
     // --project, not --create. Re-running with --create asks the server to make the same project a
     // second time and exits 3 ("Key already exists, choose another") — which is correct behaviour,
     // just not what re-running init looks like for a developer who already has one.
+    //
+    // This re-run is a JOIN, and a join never re-detects or re-injects (init.ts: "A join never
+    // injects ... there is nothing to say here"), so the original "next detected ..." message only
+    // ever printed on the FIRST (non-join) run above — gone from every re-run since the join
+    // feature landed (68679f9). What the join summary DOES say, correctly, is that the widget still
+    // isn't mounted (routedToSkill, no htmlPath recorded) rather than falsely claiming it is
+    // "already embedded".
     const rerun = [
       'init', '--server', SERVER, '--key', devKey || '',
       '--project', createdProjectKey,
@@ -1199,8 +1253,9 @@ test('R1-02-03 — init-next-handoff', async () => {
     const plain = await spawnCli({ cwd: appDir, args: rerun });
     expect(plain.code, plain.stderr).toBe(0);
     const out = `${plain.stdout || ''}${plain.stderr || ''}`;
-    expect(out).toContain("next detected — automatic injection isn't supported for this stack yet.");
-    expect(out).toContain('pointer-init');
+    expect(out).toContain('next has no single entry point to inject into.');
+    expect(out).toContain('/pointer-init');
+    expect(out).not.toContain('already embedded');
 
     const ms = Date.now() - start;
     record({
