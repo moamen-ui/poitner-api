@@ -9,9 +9,9 @@ membership queries for "the admins of W"), R10 (new audit actions, the `owner_re
 shipped), R11, R13, **R14** (`paused_by`/`deletion_requested_by` are `public_id` content references, no FK, no PII), **R16** (stateless scoped e-mail
 token, new purpose constant, **no table**; workspace-scoped event → no identity-stamp rotation), **R17** (every new mutation `[Audited]`, anonymous
 token actions attribute the identity, no PII in `before/after`; one whitelist key added), R18 (operator surfaces get metadata only).
-**Class: Additive** (no backfill, nothing dropped/renamed/narrowed). **Status: written 2026-09-24, not implemented.** Owner decisions D18.1–D18.11 (§3.10)
-have defaults; none blocks implementation, but **D18.1 (grace period), D18.2 (recipient), D18.8 (export scope) and D18.10 (accounts deleted with the
-workspace)** deserve a conscious answer before the deploy.
+**Class: Additive** (no backfill, nothing dropped/renamed/narrowed). **Status: written 2026-09-24, not implemented; owner answered D18.1/.2/.8/.10
+(§3.10); cross-reviewed 2026-09-24 (Gemini 3.1 Pro: 2 LOW + NITs; Opus: 3 HIGH, 8 MEDIUM, LOW/NITs — `docs/db/reviews/REVIEW-DB18-2026-09-24.md`),
+every claim re-checked against `main` @ `9aaf1d3` and folded the same day (§12).** Remaining D18.x use the recommended defaults.
 
 **Dependencies.** DB-11a/c/d (memberships, scoped tokens, sole-admin guard), DB-12 (`IAuditWriter`), DB-14 (verification gate), DB-17 (`HardDeleteAsync`
 guarded-reason pattern), **DB-11e (deployed; this doc is planned against the post-DB-11e tree: 80 migrations, newest `20260923205702_DropUsersLegacyDemoColumns`,
@@ -47,9 +47,12 @@ reversible option.
 - `DELETE {workspaceId:guid}` `:166-175` → `HardDeleteAsync(workspaceId)` (reason `"admin"`).
 - `TenantService.HardDeleteAsync(Guid, string reason = "admin")` `:524-713` (`ITenantService.cs:27`): `isDemoExpiredReason` `:533`; pre-check `:539-549`;
   audit builder `:559-574` (`ActorKindOverride: isDemoExpiredReason ? System : null` `:573`); **non-guarded reasons write audit + delete files BEFORE the
-  transaction** `:576-588`; transaction `:592`; `FOR UPDATE` + locked re-check `:597-611`; FK-ordered deletes of 23 types; memberships deleted, then every
-  `users` row **created here with no other membership is hard-deleted** (`:620-650` — i.e. the requesting admin's own account disappears if this is their only
-  workspace); guarded reason: audit inside the tx `:684-691`, files after commit `:694-704`. `HardDeleteOrder` `:728-753`.
+  transaction** `:576-588`; transaction `:592`; `FOR UPDATE` + locked re-check `:597-611`; FK-ordered deletes of 23 types; memberships of this workspace deleted, then
+  **`usersCreatedHere` = `users.owner_id == ws && DeletedAt == null` (`:641-646`, a legacy `owner_id` read — R8.7 exemption); each is re-homed if it has
+  a membership row of *any* state (ended/soft-deleted included, `IgnoreQueryFilters`) in another workspace (`:650-656`, predicate `:654`), else hard-deleted
+  (`:668`)** — so an identity *created elsewhere* is never deleted, and the requester's own account disappears only if it was created here and never
+  joined another workspace (Opus HIGH 1 — the first draft cited `:620-650` and "only live membership"); guarded reason: audit inside the tx `:684-691`,
+  files after commit `:694-704`. `HardDeleteOrder` `:728-753`.
 - Dashboard `TenantsPage.tsx:256-267,529-535` (approve / enable / disable via `usePatchApiAdminTenantsWorkspaceIdStatus`).
 
 **Export (the owner's "currently able to be exported")**
@@ -131,6 +134,24 @@ reversible option.
 - `DEPLOY.md:96-97` local dumps pruned after **14 days**; `:159` off-box copies pruned after **30 days**. `landing/privacy.html:253-260` retention table, `:265-267`
   "hard-delete … only when the whole workspace is deleted".
 
+**Added by the cross-review (verified 2026-09-24 @ `9aaf1d3`)**
+- Access-removing admin actions that a freeze must **not** block: `API/Controllers/Admin/UsersController.cs:68-69` (`PATCH {id}` — `UpdateUserRequest { RoleId?, IsActive?, Password? }`,
+  `Application/DTOs/User/UpdateUserRequest.cs:3-7`, so the same route also *grants*), `:88-89` (`DELETE {id}`, member removed); `API/Controllers/Admin/InvitesController.cs:41-42`
+  (`DELETE {id}` revoke, incl. quick-access links), `:56-57` (`POST {id}/quick-link/rotate`). No admin "revoke API key" route exists (keys die with the membership; `MeController` `api-key/regenerate` `:101`).
+- `EventsController.cs:17-19` `POST api/events` **and** `:36-37` `GET api/admin/events/summary` (Admin) share the class — a class-level exemption would cover both.
+- Per-identity lockout: `Application/Abstractions/ILoginAttemptLimiter.cs:8-14` (`IsLockedAsync/RecordFailureAsync/ResetAsync(email)`), `Infrastructure/Auth/LoginAttemptLimiter.cs` (R5-59).
+- `IUnitOfWork.ExecuteSqlRawAsync` returns `Task` (no affected-row count) — conditional `UPDATE … WHERE` cannot report whether it claimed a row; use lock + server-side re-check instead.
+- Query filters hide every workspace row from a context without a tenant (`AppDbContext.cs:88-90` comment, `:328-332`); jobs and anonymous paths must `IgnoreQueryFilters()` + explicit `Id`/`OwnerId` predicate (precedent `DemoCleanupService.cs:115-119`).
+- CORS split: `API/Program.cs:434-447` `IsDashboardOnly` (open CORS for everything else, incl. every `/api/auth/*` not listed).
+- Rate-limit config precedent: `RateLimitingExtensions.cs:32-35` reads `Security:RateLimits:SignupPerHour`.
+- CI-facing CLI: `cli/src/commands/deployed.ts:57` (`GET …/comments?status=3`), `:74-80` (`POST …/builds`), `:113-140` (exit codes); `cli/src/mcp/tools.ts:4,300,358` (ApiError handling, no `process.exit`);
+  `ProjectBuildsController.cs:22-23`.
+- Widget: every JWT call goes through `api()` `element.ts:967`; the screenshot upload uses `pfFetch` directly `:1786-1792` **before** the comment POST (`!r.ok → throw`).
+- `AuditCoverageFilter.cs:51` (`Audit:StrictCoverage` → 500 when an `[Audited]` action writes no row).
+- `UserNameResolver` is a **static** class taking `IUnitOfWork` (`UserNameResolver.cs:14-29`) — no constructor dependency.
+- `AuthService.LoginWithApiKeyAsync` builds `ToMeResponse(user, role, tenantName)` without the workspace (`:1325`); `LoginWithInviteAsync` likewise (`~:1716-1720`).
+- `RetentionService.cs:167-183` keeps sweeping (usage events, read notifications, snapshots, invites, screenshot purge) regardless of workspace state.
+
 **Tooling**: `just migrate name="…"` (`justfile:6` = `dotnet ef migrations add {{name}} -p Infrastructure -s API`), `just test`, `just fmt`;
 `dotnet ef migrations list -p Infrastructure -s API --no-connect`; local gate `scripts/local-e2e-gate.sh`; Mailpit helpers `e2e/scripts/lib/mail.mjs`
 (`clear`, `awaitMessage({to, subjectIncludes})`, `extractLink(html, pathPrefix)`), precedent spec `e2e/mail/tenant-invite-mail.spec.mjs`.
@@ -196,8 +217,8 @@ New `Application/Services/Interfaces/IWorkspaceStateService.cs` + `Implementatio
 public sealed record WorkspaceFreeze(bool IsFrozen, bool IsPaused, bool PausedByOperator, DateTime? DeletionScheduledFor);
 public interface IWorkspaceStateService
 {
-    /// <summary>DB-18 §3.3. Cached 30 s per workspace (IMemoryCache key "wsfrozen:{id:N}"); IgnoreQueryFilters + AsNoTracking;
-    /// a missing row → not frozen.</summary>
+    /// <summary>DB-18 §3.3. Cached 30 s per workspace (IMemoryCache key "wsfrozen:{id:N}"); IgnoreQueryFilters + AsNoTracking +
+    /// explicit `w.Id == workspaceId && w.DeletedAt == null` (Gemini LOW #2); a missing or soft-deleted row → not frozen.</summary>
     Task<WorkspaceFreeze> GetAsync(Guid workspaceId);
     /// <summary>Called by every write in §3.4 right after its SaveChangesAsync.</summary>
     void Invalidate(Guid workspaceId);
@@ -209,32 +230,54 @@ Single API instance on one VM → in-process cache invalidation is sufficient; w
 ### 3.4 Service — `IWorkspaceLifecycleService` / `WorkspaceLifecycleService` (new, Application)
 
 Constructor: `IUnitOfWork, ICurrentUser, IMembershipService, IPasswordHasher, IResetTokenService, IEmailService, IBrandingService, IWorkspaceStateService,
-IWorkspaceService, IConfiguration? config = null, IAuditWriter? audit = null` (optional last two keep test harnesses simple — DB-17 precedent).
-Config: `WorkspaceDeletion:GraceDays` (int, default **7**, clamp 0..30) and `WorkspaceDeletion:SweepMinutes` (int, default 15, clamp 1..60; e2e sets 1).
+IWorkspaceService, ITenantService, ILoginAttemptLimiter, IConfiguration? config = null, IAuditWriter? audit = null` (optional last two keep test harnesses simple —
+DB-17 precedent; `UserNameResolver` is static, no injection).
+Config: `WorkspaceDeletion:GraceDays` (int, default **7**, **clamp 0..14** — Opus NIT: keeps "grace + 30 d backups" ≤ 44 d and the privacy text is derived from
+the configured value) and `WorkspaceDeletion:SweepMinutes` (int, default 15, clamp 1..60; e2e sets 1).
+
+**Query rule for every non-session path (Opus MEDIUM):** the job methods (`SendDueRemindersAsync`, due-id query, `ExecuteDueDeletionAsync`), the anonymous
+token methods (`ValidateTokenAsync` workspace load, preview counts) and the operator methods run without a usable tenant claim, so every `Workspaces`,
+`Comments`, `Projects`, `WorkspaceMemberships` and `Users` read in them is `IgnoreQueryFilters()` **with an explicit `Id == ws` / `OwnerId == ws` predicate**
+(precedent `DemoCleanupService.cs:115-119`); §6 tests 9 and 4 run them with a no-tenant `FakeCurrentUser`.
+
+**Concurrency rule (Opus MEDIUM ×2, Gemini LOW #1):** every state transition that can race another (confirm, pause-instead, cancel, operator cancel, reminder
+claim) runs inside `_unitOfWork.ExecuteInTransactionAsync`, starts with `ExecuteSqlRawAsync("SELECT id FROM workspaces WHERE id = {0} FOR UPDATE", ws)`,
+**then loads the row it will modify for the first time** (never reuse an entity tracked before the lock — EF identity resolution would hand back the stale
+instance) or, if one is already tracked, `await _unitOfWork.Entry(w).ReloadAsync()` (add a thin `ReloadAsync(object)` to `IUnitOfWork` if absent — verify
+during implementation); re-evaluates its preconditions on that fresh row; if the row is gone → `Conflict(Workspace.AlreadyDeleted)`. `DbUpdateConcurrencyException`
+from the save is caught and mapped to `Conflict(Workspace.StateChanged)` — never a 500.
 
 **Common guard `RequireLifecycleAdminAsync()`** (used by every session method): `KeyScopes != null → Forbidden(Workspace.KeySessionCannotManage)`;
 `IsQuickAccess || IsSuperAdmin || IsImpersonating → Forbidden(Common.Forbidden)`; `TenantStamp.TryRequireOwner(_currentUser, out ws)` else Forbidden (R16);
 identity = `FindIdentityByPublicIdAsync(_currentUser.Id)`; membership = `GetMembershipAsync(identity.Id, ws)` must be live, `IsActive`, `ApprovalStatus == Approved`,
 `Role.Name == "Workspace Admin"` (**Deputy excluded** — owner wording "workspace admin") else `Forbidden(Workspace.AdminOnly)`; workspace tracked load
-`Workspaces.IgnoreQueryFilters().FirstOrDefaultAsync(w => w.Id == ws && w.DeletedAt == null)` else NotFound; **live demo** (`DemoExpiresAt != null`) →
-`Failure(Workspace.DemoCannotPauseOrDelete)` (D18.9).
+`Workspaces.IgnoreQueryFilters().FirstOrDefaultAsync(w => w.Id == ws && w.DeletedAt == null)` else NotFound; **live, unconverted demo**
+(`DemoExpiresAt != null && DemoConvertedAt == null` — Opus LOW: a converted workspace in the `Demo:ConvertRequiresVerification` 72 h window still has a TTL,
+`Workspace.cs:26-28`, and is a real workspace) → `Failure(Workspace.DemoCannotPauseOrDelete)` (D18.9).
 
 | Method | Preconditions (after the guard) | Writes (one `SaveChangesAsync`, then `_state.Invalidate(ws)`) | Audit (after save, R17) | E-mail |
 |---|---|---|---|---|
 | `PauseAsync()` | not already paused → else `Conflict(Workspace.AlreadyPaused)`; not scheduled → else `Conflict(Workspace.DeletionAlreadyScheduled)` | `PausedAt = now, PausedBy = caller, PausedByOperator = false, UpdatedAt/By` | `workspace.paused`, target Workspace, `After { source = "admin" }` | none |
 | `ResumeAsync()` | paused → else `Conflict(Workspace.NotPaused)`; `!PausedByOperator` → else `Forbidden(Workspace.PausedByOperator)`; not scheduled → else `Conflict(Workspace.CancelDeletionFirst)` | pause columns → `NULL/NULL/false` | `workspace.resumed`, `After { source = "admin" }` | none |
-| `RequestDeletionAsync()` | not scheduled → else Conflict; `!PausedByOperator` → else `Forbidden(Workspace.PausedByOperator)`; cooldown: `DeletionRequestedAt > now - 60 s` → `Failure(Workspace.DeletionEmailJustSent)` | `DeletionRequestedAt = TruncateToMs(now)`, `DeletionRequestedBy = caller` | `workspace.deletion_requested`, `After { expires_at = now+30min:O }` | **E1 to the requester only** (D18.2) |
-| `CancelDeletionAsync()` | scheduled → else `Conflict(Workspace.NoDeletionScheduled)` | the four deletion columns + reminder → NULL (pause columns untouched) | `workspace.deletion_cancelled`, `After { source = "admin" }` | **E5 to all live admins** |
+| `RequestDeletionAsync()` | not scheduled → else Conflict; `!PausedByOperator` → else `Forbidden(Workspace.PausedByOperator)`; cooldown: `DeletionRequestedAt > now - 5 min` → `Failure(Workspace.DeletionEmailJustSent)`; **per-workspace daily cap** (Opus MEDIUM — the global cap is 250/day, `EmailService.cs:17,26-33`): `AuditEvents.IgnoreQueryFilters().Count(e => e.OwnerId == ws && e.Action == "workspace.deletion_requested" && e.CreatedAt > now - 24h) >= 5` → `Failure(Workspace.DeletionDailyLimit)` (column names of `AuditEvent` — verify during implementation) | `DeletionRequestedAt = TruncateToMs(now)`, `DeletionRequestedBy = caller` | `workspace.deletion_requested`, `After { expires_at = now+30min:O }` | **E1 to the requester only** (D18.2) |
+| `CancelDeletionAsync()` | locked tx (concurrency rule); scheduled **or** a pending request (`DeletionRequestedAt != null`) → else `Conflict(Workspace.NoDeletionScheduled)`; row gone → `Conflict(Workspace.AlreadyDeleted)` | the four deletion columns + reminder → NULL (pause columns untouched). Clearing a *pending* request voids the outstanding link (Opus LOW "no way to void a link") | `workspace.deletion_cancelled`, `After { source = "admin" }` (scheduled) or `{ source = "admin_pending" }` (pending only) | **E5 to all live admins** only when a schedule was cancelled |
 | `PreviewDeletionAsync(token)` *(anonymous)* | `ValidateTokenAsync` (below) | none | `[NoAudit]` | none |
-| `ConfirmDeletionAsync(req)` *(anonymous)* | `ValidateTokenAsync`; `!PausedByOperator` else `Forbidden(Workspace.PausedByOperator)`; `req.WorkspaceName.Trim() == w.Name.Trim()` (ordinal) else `Failure(Workspace.DeletionNameMismatch)`; if `!identity.PasswordlessOnly`: `_passwordHasher.Verify(req.Password, identity.PasswordHash)` else `Failure(User.CurrentPasswordIncorrect)` (D18.5) | inside `ExecuteInTransactionAsync`: `SELECT id FROM workspaces WHERE id = {0} FOR UPDATE`, re-run the token state checks, then `DeletionConfirmedAt = now`, `DeletionScheduledFor = now + GraceDays`, `DeletionReminderSentAt = null` | `workspace.deletion_confirmed`, `ActorUserIdOverride = identity.PublicId`, `ActorKindOverride = User`, `After { scheduled_for = …:O, with_password = "true"/"false" }` | **E2 to all live admins** (incl. requester) |
-| `PauseInsteadAsync(token)` *(anonymous)* | `ValidateTokenAsync` | if not paused: pause columns (`PausedBy = identity.PublicId`, `PausedByOperator = false`); **always** `DeletionRequestedAt/By = NULL` (spends the link) | `workspace.paused`, `After { source = "delete_link" }`, actor override as above | none |
-| `OperatorPauseAsync(ws)` / `OperatorResumeAsync(ws)` / `OperatorCancelDeletionAsync(ws)` | `_currentUser.IsSuperAdmin && !IsImpersonating` else Forbidden; workspace live else NotFound | pause: `PausedAt = now, PausedBy = operator, PausedByOperator = true` (overrides a self-pause); resume: clear pause columns; cancel: as `CancelDeletionAsync` | same actions, `After { source = "operator" }` (actor kind SuperAdmin is automatic; R17 redaction applies in the workspace audit view) | cancel: E5 (sender name shown as "the platform operator") |
-| `SendDueRemindersAsync(now)` *(job)* | `DeletionScheduledFor > now && <= now + 24h && DeletionReminderSentAt == null` | stamp `DeletionReminderSentAt = now` per row whether or not the send succeeded | none (D17.9 precedent) | **E3 to all live admins** |
-| `ExecuteDueDeletionAsync(ws)` *(job, per item)* | re-check `DeletionScheduledFor != null && <= now` | capture admin recipients (address, language, name) **before** the delete, then `ITenantService.HardDeleteAsync(ws, "owner_requested")` | `tenant.hard_deleted` (existing; System actor, `reason = owner_requested`) | **E4 to the captured admins** after success |
+| `ConfirmDeletionAsync(req)` *(anonymous)* | validator first (`ConfirmWorkspaceDeletionRequestValidator`: `Token` required, `WorkspaceName` required ≤ 120, `Password` ≤ 128); `ValidateTokenAsync`; `!PausedByOperator` else `Forbidden(Workspace.PausedByOperator)`; name: `NormalizeName(req.WorkspaceName) == NormalizeName(w.Name)` where `NormalizeName = s.Normalize(FormC)` with U+200E, U+200F, U+061C, U+200B removed, then `Trim()`, ordinal compare, else `Failure(Workspace.DeletionNameMismatch)`; if `!identity.PasswordlessOnly`: **lockout** (Opus MEDIUM, R5-59) `await _lockout.IsLockedAsync(identity.Email)` → `Failure(Auth lockout message)`; `string.IsNullOrEmpty(req.Password) \|\| !_passwordHasher.Verify(req.Password, identity.PasswordHash)` → `_lockout.RecordFailureAsync(identity.Email)` and `Failure(User.CurrentPasswordIncorrect)`; after the **5th** failure on this link the link is spent (`DeletionRequestedAt/By = NULL`, locked tx) (D18.5) | locked tx (concurrency rule): lock, **fresh** load, re-run the token *state* checks on the fresh row (a concurrent confirm/pause-instead/cancel makes this one fail with `DeletionLinkInvalid`), then `DeletionConfirmedAt = now`, `DeletionScheduledFor = now + GraceDays`, `DeletionReminderSentAt = null`; success → `_lockout.ResetAsync(identity.Email)` | `workspace.deletion_confirmed`, `ActorUserIdOverride = identity.PublicId`, `ActorKindOverride = User`, `After { scheduled_for = …:O, with_password = "true"/"false" }` | **E2 to all live admins** (incl. requester) |
+| `PauseInsteadAsync(token)` *(anonymous)* | `ValidateTokenAsync`; locked tx with fresh load (a racing confirm wins or loses cleanly — no check-constraint 500) | if not paused: pause columns (`PausedBy = identity.PublicId`, `PausedByOperator = false`); **always** `DeletionRequestedAt/By = NULL` (spends the link) | **exactly one row** (Opus LOW, `AuditCoverageFilter.cs:51`): `workspace.paused { source = "delete_link" }` if it paused, else `workspace.deletion_cancelled { source = "delete_link" }`; actor override as above | none |
+| `OperatorPauseAsync(ws)` / `OperatorResumeAsync(ws)` / `OperatorCancelDeletionAsync(ws)` | `_currentUser.IsSuperAdmin && !IsImpersonating` else Forbidden; workspace live else NotFound; cancel uses the locked tx | pause: `PausedAt = now, PausedBy = operator, PausedByOperator = true` (overrides a self-pause; **an operator pause during the grace period holds the deletion** — §3.4 job rows); resume: clear pause columns — **documented behaviour: operator resume also clears an earlier admin self-pause** (the admin can pause again; Opus NIT); cancel: as `CancelDeletionAsync` | same actions, `After { source = "operator" }` (actor kind SuperAdmin is automatic; R17 redaction applies in the workspace audit view) | cancel: E5 (sender name shown as "the platform operator") |
+| `SendDueRemindersAsync(now)` *(job)* | candidates (no-tenant query rule): `DeletedAt == null && DeletionScheduledFor != null && DeletionScheduledFor <= now + 24h && DeletionReminderSentAt == null && DeletionScheduledFor - DeletionConfirmedAt >= 48h` (**grace < 2 d: no reminder** — E2 is the notice; Opus NIT). Per row, locked tx + fresh load + same predicate (Opus LOW: a racing cancel would otherwise leave `reminder_sent_at` on an unscheduled row and violate `ck_workspaces_deletion_schedule_consistent`) | stamp `DeletionReminderSentAt = now` (whether or not the send succeeds); **missed reminder** (Opus LOW, downtime across T-24 h): if the fresh row is already due (`DeletionScheduledFor <= now + 1 h`), also set `DeletionScheduledFor = now + 24h` | missed-reminder reschedule only: `workspace.deletion_rescheduled`, System, `After { scheduled_for, reason = "reminder_missed" }` | **E3 to all live admins** (after commit) |
+| `ExecuteDueDeletionAsync(ws)` *(job, per item)* | re-check `DeletionScheduledFor != null && <= now && !PausedByOperator && (DeletionReminderSentAt != null \|\| DeletionScheduledFor - DeletionConfirmedAt < 48h)` (**operator pause holds the delete** — Opus HIGH 3; log `WorkspaceDeletionService: {Id} held by operator pause`) | capture admin recipients as an **`AsNoTracking` projection** `(Email, Language, DisplayName)` before the delete (Opus NIT — nothing tracked in the context `HardDeleteAsync` uses), then `ITenantService.HardDeleteAsync(ws, "owner_requested")` | `tenant.hard_deleted` (existing; System actor, `reason = owner_requested`) | **E4 to the captured admins** after success |
 
 "All live admins of W" = `_memberships.InWorkspace(W).Where(m => m.LeftAt == null && m.IsActive && m.ApprovalStatus == ApprovalStatus.Approved && m.Role.Name == "Workspace Admin" && m.User.DeletedAt == null && !m.User.IsDemo)` (R8.7 — never `users.owner_id`).
-All e-mails are best-effort (`try { … } catch { }` like `IdentityEraseService.cs:115-128`); a failed send never rolls back state. Operator methods also
-write `UpdatedAt/UpdatedBy`.
+All e-mails are best-effort (`try { … } catch { }` like `IdentityEraseService.cs:115-128`) and are sent **after** the commit; a failed send never rolls back state.
+Operator methods also write `UpdatedAt/UpdatedBy`.
+
+**Who is deleted with the workspace — one query (Opus HIGH 1).** New `public static IQueryable<User> IdentitiesDeletedWithWorkspace(IUnitOfWork uow, Guid ws)` on
+`TenantService` (a legacy `users.owner_id` read, R8.7 exemption documented in its doc-comment exactly as `HardDeleteAsync :636-640` does):
+`uow.Repository<User>().Query().IgnoreQueryFilters().Where(u => u.OwnerId == ws && u.DeletedAt == null && !uow.Repository<WorkspaceMembership>().Query().IgnoreQueryFilters().Any(m => m.UserId == u.Id && m.OwnerId != ws))`.
+`HardDeleteAsync :641-670` is refactored to use it for the delete set (the re-home set stays `usersCreatedHere` minus that set) — behaviour-preserving; the
+preview's `AccountsDeletedWithWorkspace` (**an `int` count only** — no names, no e-mails) and `RequesterAccountDeleted` (`Any(u => u.Id == identity.Id)`) use the
+same query; §6 test 9 asserts preview count == rows actually deleted.
 
 **Token (R16 reuse, purpose `TokenPurposes.DeleteWorkspace = "delete-workspace"`)** —
 `_resetTokens.CreateScoped(identity.PublicId, identity.SecurityStamp, TokenPurposes.DeleteWorkspace, payload)` with
@@ -257,8 +300,8 @@ period). At execution every membership is deleted → sessions die within the 60
 other admin has already received E2 and can cancel. (Leave/erase are still blocked when the requester is the sole admin — S-13.)
 
 `WorkspaceDeletionPreviewResponse` (new, `Application/DTOs/Workspace/`): `WorkspaceId`, `WorkspaceName`, `ProjectCount`, `CommentCount` (live), `MemberCount`
-(live memberships), `AccountsDeletedWithWorkspace` (identities whose only live membership is this workspace — the `HardDeleteAsync :620-650` rule, same
-query shape), `RequesterAccountDeleted` (bool, same rule for the token's identity), `RequiresPassword` (= `!identity.PasswordlessOnly`), `GraceDays`,
+(live memberships), `AccountsDeletedWithWorkspace` (int — `IdentitiesDeletedWithWorkspace(ws).Count()`, the exact `HardDeleteAsync :641-670` rule),
+`RequesterAccountDeleted` (bool, same query for the token's identity), `RequiresPassword` (= `!identity.PasswordlessOnly`), `GraceDays`,
 `WouldBeDeletedOn` (= now + grace), `IsPaused`. Counts only — no content (R18).
 `ConfirmWorkspaceDeletionRequest { Token, Password?, WorkspaceName }`; `WorkspaceDeletionTokenRequest { Token }`;
 `WorkspaceDeletionRequestResponse { ExpiresAt }`; confirm returns `WorkspaceDeletionScheduledResponse { WorkspaceId, DeletionScheduledFor }`.
@@ -288,11 +331,19 @@ Copy the shape of `RequireVerifiedEmailFilter.cs:28-116`. Decision order:
 `[AllowWhenWorkspacePaused]` placements (and **only** these — the coverage test in §6 pins the list):
 - class level: `AuthController` (login, MFA verify, switch workspace, device approve/deny, …), `MeController` (password, e-mail, preferences, notification
   read-state, leave, erase, api-key regenerate — personal, not workspace content), `MfaController`;
-- class level **with `AllowKeySessions = true`**: `EventsController` (telemetry; avoids CLI noise);
+- method level **with `AllowKeySessions = true`**: `EventsController.RecordEvent` (`POST api/events`, `:17-19` — telemetry; **not** class level, which would also
+  open `GET api/admin/events/summary` to key sessions — Opus LOW);
+- method level, **access-removing actions only** (Opus HIGH 2 — a freeze must never stop an admin from locking someone out): `UsersController` `PATCH {id}` (`:68`)
+  and `DELETE {id}` (`:88`), `InvitesController` `DELETE {id}` (`:41`) and `POST {id}/quick-link/rotate` (`:56`). Because `PATCH users/{id}` can also *grant*,
+  `UserService`'s update method (verify name during implementation) refuses while frozen any request with `Password != null`, `IsActive == true`, or a `RoleId`
+  whose role has `IsAdmin == true` → `Forbidden(Workspace.FrozenNoAccessGrant)`; disabling, demoting to a non-admin role, removing, revoking and rotating pass.
+  D18.11 still refuses every *addition* (`POST users`, `POST invites`, approvals stay blocked by the filter);
 - method level **with `AllowKeySessions = true`**: `AuthController.Me` (`GET api/auth/me`, so `pointer whoami`/`apply` can read the state and explain it);
 - method level: `WorkspaceController.Resume`, `.RequestDeletion` (allowed while *self*-paused; the service refuses the other cases), `.CancelDeletion`.
 - `ExportImportController` needs nothing: exports are GET (allowed for non-key sessions); imports are refused while frozen, intentionally.
-CORS: add `"X-Workspace-Paused"` to both `WithExposedHeaders(...)` calls (`Program.cs:155,163`) as a second argument.
+CORS: add `"X-Workspace-Paused"` to both `WithExposedHeaders(...)` calls (`Program.cs:155,163`) as a second argument; add
+`path.StartsWithSegments("/api/auth/workspace-deletion", StringComparison.OrdinalIgnoreCase)` to `IsDashboardOnly` (`Program.cs:434-447`) — the anonymous token
+endpoints are dashboard-only and must not be callable cross-origin from arbitrary sites (Opus LOW).
 
 **Paths that do not go through MVC filters or are anonymous, handled in services:**
 - `InviteService.AcceptJoinExistingWorkspaceAsync` — right after the DB-17 demo check (`:644-654`): `if ((await _workspaceState.GetAsync(ownerId)).IsFrozen) return Result<LoginResponse>.Failure(MessageKeys.Workspace.FrozenNoNewMembers);`
@@ -311,7 +362,13 @@ CORS: add `"X-Workspace-Paused"` to both `WithExposedHeaders(...)` calls (`Progr
   `IWorkspaceStateService? workspaceState = null` (optional, last).
 - Widget reads (`GET …/comments`, capture-config) keep working for JWT sessions; every write gets 423 (§3.5).
 - CLI/MCP (key sessions): everything but `GET /api/auth/me` and `POST /api/events` gets 423 while frozen — so even an **old** CLI stops at the queue fetch,
-  before any file is edited.
+  before any file is edited. **`pointer deployed` runs in customers' CI** (`deployed.ts:57,74,113-140`): a 423 there must print a warning and **exit 0** (a paused
+  Pointer workspace must never fail someone's deploy pipeline — Opus MEDIUM); exit 2 is reserved for `apply` / `apply --plan` / `apply --mark`. MCP tools
+  (`cli/src/mcp/tools.ts`) return a tool error carrying the server message and never `process.exit`.
+- `LoginWithApiKeyAsync :1325` and `LoginWithInviteAsync ~:1718` pass the loaded workspace to `UserMapper.ToMeResponse` so their `LoginResponse.User` carries the
+  freeze fields too (Opus LOW).
+- Hosted retention/purge jobs keep running for frozen workspaces (policy, not user action); therefore the UI copy says pause **keeps your projects, comments and
+  settings**, not "keeps everything" (Opus NIT).
 
 ### 3.7 E-mail templates (en + ar, branding-aware)
 
@@ -324,15 +381,18 @@ Texts (verbatim; `**x**` = `<strong>`, `[x]` = the link):
 | # | Subject en / ar | Body en | Body ar |
 |---|---|---|---|
 | E1 | Confirm deleting the {workspace} workspace / تأكيد حذف مساحة العمل {workspace} | You asked to delete the workspace **{workspace}** on {productName}. To confirm, open the link below and enter your password. The link expires in 30 minutes and works once. [Review and confirm deletion →] Before you delete: you can export your comments from Settings → Danger zone → Export data, or pause the workspace instead — pausing keeps everything and stops new feedback until you resume. After you confirm, the workspace is deleted after {graceDays} days; until then any workspace admin can cancel. If you did not ask for this, ignore this e-mail — nothing happens — and consider changing your password. | طلبتَ حذف مساحة العمل **{workspace}** على {productName}. للتأكيد، افتح الرابط أدناه وأدخل كلمة المرور. تنتهي صلاحية الرابط خلال 30 دقيقة ويعمل مرة واحدة فقط. [مراجعة الحذف وتأكيده ←] قبل الحذف: يمكنك تصدير التعليقات من الإعدادات ← منطقة الخطر ← تصدير البيانات، أو إيقاف مساحة العمل مؤقتًا بدلًا من حذفها — الإيقاف المؤقت يحتفظ بكل شيء ويوقف استقبال الملاحظات الجديدة حتى تستأنفها. بعد التأكيد تُحذف مساحة العمل بعد {graceDays} أيام، ويمكن لأي مسؤول في مساحة العمل إلغاء الحذف قبل ذلك. إذا لم تطلب ذلك فتجاهل هذه الرسالة ولن يحدث شيء، وننصحك بتغيير كلمة المرور. |
-| E2 | {workspace} will be deleted on {date} / ستُحذف مساحة العمل {workspace} في {date} | {name} confirmed deleting the workspace **{workspace}**. It will be permanently deleted on {date} UTC — projects, comments, replies, screenshots, settings, API keys, and the accounts of members who belong to no other workspace. Until then the workspace is read-only. To keep it, open {app}/settings and choose **Cancel deletion**. To keep a copy, choose **Export data**. | أكّد {name} حذف مساحة العمل **{workspace}**. ستُحذف نهائيًا في {date} (UTC)، بما في ذلك المشاريع والتعليقات والردود ولقطات الشاشة والإعدادات ومفاتيح API وحسابات الأعضاء الذين لا ينتمون إلى مساحة عمل أخرى. حتى ذلك الحين تكون مساحة العمل للقراءة فقط. للاحتفاظ بها افتح {app}/settings واختر **إلغاء الحذف**، وللاحتفاظ بنسخة اختر **تصدير البيانات**. |
+| E2 | {workspace} will be deleted on {date} / ستُحذف مساحة العمل {workspace} في {date} | {name} confirmed deleting the workspace **{workspace}**. It will be permanently deleted on {date} UTC — projects, comments, replies, screenshots, settings, API keys, and the accounts that were created in this workspace and belong to no other workspace. Until then the workspace is read-only. To keep it, open {app}/settings and choose **Cancel deletion**. To keep a copy, choose **Export data**. | أكّد {name} حذف مساحة العمل **{workspace}**. ستُحذف نهائيًا في {date} (UTC)، بما في ذلك المشاريع والتعليقات والردود ولقطات الشاشة والإعدادات ومفاتيح API والحسابات التي أُنشئت في مساحة العمل هذه ولا تنتمي إلى أي مساحة عمل أخرى. حتى ذلك الحين تكون مساحة العمل للقراءة فقط. للاحتفاظ بها افتح {app}/settings واختر **إلغاء الحذف**، وللاحتفاظ بنسخة اختر **تصدير البيانات**. |
 | E3 | {workspace} will be deleted in 24 hours / ستُحذف مساحة العمل {workspace} خلال 24 ساعة | Reminder: the workspace **{workspace}** will be permanently deleted on {date} UTC. To keep it, open {app}/settings and choose **Cancel deletion**. Export your data before then if you want a copy. | تذكير: ستُحذف مساحة العمل **{workspace}** نهائيًا في {date} (UTC). للاحتفاظ بها افتح {app}/settings واختر **إلغاء الحذف**. صدّر بياناتك قبل ذلك إذا أردت الاحتفاظ بنسخة. |
 | E4 | The {workspace} workspace has been deleted / حُذفت مساحة العمل {workspace} | The workspace **{workspace}** was permanently deleted on {date} UTC at the request of one of its admins. Remaining copies in our backups expire within {backupDays} days. This cannot be undone. | حُذفت مساحة العمل **{workspace}** نهائيًا في {date} (UTC) بناءً على طلب أحد مسؤوليها. تنتهي صلاحية النسخ المتبقية في نسخنا الاحتياطية خلال {backupDays} يومًا. لا يمكن التراجع عن هذا الإجراء. |
 | E5 | Deletion of {workspace} was cancelled / أُلغي حذف مساحة العمل {workspace} | {name} cancelled the scheduled deletion of **{workspace}**. Nothing was deleted. *(if still paused:)* The workspace is still paused; an admin can resume it from Settings. | ألغى {name} الحذف المجدول لمساحة العمل **{workspace}**. لم يُحذف أي شيء. *(إن كانت لا تزال موقوفة:)* ما زالت مساحة العمل موقوفة مؤقتًا، ويمكن لأي مسؤول استئنافها من الإعدادات. |
 
 `{name}` for an operator action = "the platform operator" / "مشغّل المنصة" (R17 spirit: the workspace never learns which operator). No e-mail for pause/resume (D18.7).
 
-**Rate limits and expiry:** new policy `"danger"` in `RateLimitingExtensions.cs` (copy the `"device-start"` block `:85-93`): fixed window **10 per 10 min per IP**,
-on `deletion/request` and the three anonymous `workspace-deletion/*` endpoints; plus the 60 s service cooldown on request; plus the global e-mail cap. Link TTL
+**Rate limits and expiry:** new policy `"danger"` in `RateLimitingExtensions.cs` (copy the `"device-start"` block `:85-93`): fixed window **10 per 10 min**,
+limit read from `Security:RateLimits:DangerPer10Min` (default 10; the e2e compose raises it — Opus LOW, precedent `:32-35`), **partitioned by
+`sub` claim + IP when authenticated, IP otherwise** (Opus MEDIUM), on `deletion/request` and the three anonymous `workspace-deletion/*` endpoints. This is a
+**documented R16 departure** (R16 names `"signup"` for anonymous token endpoints; its 5/h/IP budget is shared with signup/reset and too small for
+preview + confirm + retries) — R16 amendment text in task 19. Plus the 5-min cooldown and 5/day per-workspace cap on request (§3.4); plus the global e-mail cap. Link TTL
 30 min (shared `ResetTokenService` const — unchanged); single-use per §3.4.
 
 ### 3.8 Endpoints
@@ -358,7 +418,8 @@ Tags already in `orval.config.ts:6` (`Workspace`, `Auth`, `Tenants`). Status map
 Immediate hard delete is irreversible except by a full-database restore that would also roll back every other tenant — unacceptable once a second real tenant
 exists. A grace period protects against (a) accidental confirmation, (b) a hijacked admin mailbox + password, (c) one admin deleting a multi-admin workspace
 over colleagues' heads (E2 + cancel). GDPR Art. 17 / Art. 12(3) and PDPL require erasure "without undue delay", generally within one month; 7 days + the
-existing backup expiry (14 d local, **30 d off-box** — `DEPLOY.md:96-97,159`) keeps total residual retention ≤ ~37 days, which the privacy page must state
+existing backup expiry (14 d local, **30 d off-box** — `DEPLOY.md:96-97,159`) keeps total residual retention ≤ grace + 30 days (≤ 44 d with the 14-day clamp),
+which the privacy page must state from the configured value
 (task 12). Export remains available throughout the grace period. `GraceDays = 0` is supported by config (job deletes within one sweep) if the owner prefers
 near-immediate.
 
@@ -375,11 +436,11 @@ belong only to this workspace are deleted with it, listed in the preview. D18.3�
 | D18.3 | Does pause block widget **reads**? | **No** — widget shows existing comments read-only with a "Feedback is paused" notice; members can sign in, read and export |
 | D18.4 | API keys / CLI while frozen | **Refused entirely (reads too)** except `GET /api/auth/me` and telemetry; `pointer apply` exits before touching files |
 | D18.5 | Confirmation factor | **Password** (password accounts) **+ typed workspace name** (everyone); passwordless admins: link + typed name. No MFA step-up (MFA is operator-only today) |
-| D18.6 | Operator suspend | **Keep** the membership `approve/enable/disable` action unchanged (it is person-scoped); **add** operator workspace pause (`paused_by_operator`) that admins cannot lift; self-service delete refused while operator-paused |
+| D18.6 | Operator suspend | **Keep** the membership `approve/enable/disable` action unchanged (it is person-scoped); **add** operator workspace pause (`paused_by_operator`) that admins cannot lift; self-service delete refused while operator-paused; **an operator pause during the grace period holds the scheduled delete** (job skips it until resumed or cancelled); operator resume clears an admin self-pause too |
 | D18.7 | E-mail non-admin members about a scheduled deletion; e-mail on pause/resume | **No** — dashboard banner for every member; e-mails only to admins, only for deletion events |
 | D18.8 | Export scope | **Ship with the existing `GET /api/export`** (comments + replies + element metadata, ≤ 5 000 comments, no screenshots/config/members), labelled "Export comments (JSON)" with a line saying what is not included; a full workspace archive (screenshots zip, projects, settings) is a separate doc if wanted |
 | D18.9 | Demo workspaces | Self-service pause/delete **refused** for live demos (they expire; "Keep this workspace" exists); operator may pause |
-| D18.10 | Accounts that belong only to this workspace | **Deleted with it** (existing `HardDeleteAsync :620-650` rule), shown explicitly in the preview and E2; alternative (keep membership-less identities) is a `HardDeleteAsync` change → separate decision |
+| D18.10 | Accounts that belong only to this workspace | **Deleted with it** (existing `HardDeleteAsync :641-670` rule: created in this workspace and no membership row of any state elsewhere; shared query §3.4), shown as a count in the preview and worded exactly so in E2; alternative (keep membership-less identities) is a `HardDeleteAsync` change → separate decision |
 | D18.11 | New members while frozen | **Refused** (invite accept, stakeholder register); existing members keep signing in |
 
 ## 4. Safety classification
@@ -388,7 +449,7 @@ belong only to this workspace are deleted with it, listed in the preview. D18.3�
 backfill (R3 not engaged — the server default fills `paused_by_operator`). Ordinary deploy through `scripts/deploy-api.sh` (pre-deploy dump, R6); the DB-09 gate
 does not trigger (no `[ContractMigration]`, R7). **Code that deletes data:** only the new job, and only through the existing `HardDeleteAsync` with the new guarded
 reason `owner_requested` (pre-check + `FOR UPDATE` locked re-check + audit inside the transaction + files after commit — the DB-17 `demo_expired` treatment),
-so a cancel racing the job never loses data. Tenancy (R8): no new entity; every session action resolves the workspace from the session (`TryRequireOwner`),
+so a cancel racing the job never loses data, and an operator pause holds the delete (both checks include `!paused_by_operator`). Tenancy (R8): no new entity; every session action resolves the workspace from the session (`TryRequireOwner`),
 every anonymous action from a signed token bound to one workspace + membership; §6 tests 8 prove A/B isolation. **No owner approval line is required** (not
 Destructive); the owner decisions in §3.10 are product defaults.
 
@@ -404,7 +465,8 @@ Destructive); the owner decisions in §3.10 are product defaults.
    1 `CreateIndex` with filter, 3 `AddCheckConstraint`, all on `workspaces`); diff `AppDbContextModelSnapshot.cs` — only the `Workspace` entity may change. **Differs → stop and report** (R13).
 4. `Application/Common/TokenPurposes.cs` — `public const string DeleteWorkspace = "delete-workspace";` with doc "DB-18: workspace deletion confirmation (payload = workspaceId|membershipStamp|requestedAtUnixMs)".
 5. `Application/Common/AuditActions.cs` — in the block `:88-98` add `WorkspacePaused = "workspace.paused"`, `WorkspaceResumed = "workspace.resumed"`,
-   `WorkspaceDeletionRequested = "workspace.deletion_requested"`, `WorkspaceDeletionConfirmed = "workspace.deletion_confirmed"`, `WorkspaceDeletionCancelled = "workspace.deletion_cancelled"`.
+   `WorkspaceDeletionRequested = "workspace.deletion_requested"`, `WorkspaceDeletionConfirmed = "workspace.deletion_confirmed"`, `WorkspaceDeletionCancelled = "workspace.deletion_cancelled"`,
+   `WorkspaceDeletionRescheduled = "workspace.deletion_rescheduled"` (System; missed-reminder push, §3.4).
    `Application/Common/AuditFields.cs` — add `"scheduled_for"` to `Allowed` (a timestamp; no personal data — R17 whitelist addition, reviewer named in the PR).
 6. `Application/Resources/MessageKeys.cs` `Workspace` (`:215-221`) — add: `Paused = "This workspace is paused. It is read-only until an admin resumes it."`,
    `PausedByOperator = "This workspace was paused by the platform operator. Contact support to resume it."`,
@@ -415,39 +477,59 @@ Destructive); the owner decisions in §3.10 are product defaults.
    `DeletionLinkInvalid = "This link is invalid, expired or already used. Request a new one from Settings."`, `DeletionNameMismatch = "Type the workspace name exactly as shown."`,
    `DeletionScheduled = "The workspace will be deleted on {0} UTC."`, `DeletionCancelled = "Deletion cancelled."`, `AdminOnly = "Only a Workspace Admin can do this."`,
    `KeySessionCannotManage = "API-key sessions cannot pause or delete a workspace."`, `DemoCannotPauseOrDelete = "Demo workspaces expire on their own — keep it or let it expire."`,
-   `FrozenNoNewMembers = "This workspace is not accepting new members right now."`.
+   `FrozenNoNewMembers = "This workspace is not accepting new members right now."`,
+   `FrozenNoAccessGrant = "While the workspace is paused you can only remove or reduce access."`, `AlreadyDeleted = "This workspace has already been deleted."`,
+   `StateChanged = "The workspace changed while you were acting on it. Reload and try again."`, `DeletionDailyLimit = "Too many deletion requests for this workspace today. Try again tomorrow."`.
 7. `Application/Services/Interfaces/IWorkspaceStateService.cs` + `Implementation/WorkspaceStateService.cs` (§3.3 verbatim).
 8. `Application/Services/Interfaces/IWorkspaceLifecycleService.cs` + `Implementation/WorkspaceLifecycleService.cs` (§3.4 table row by row; token §3.4; e-mails §3.7).
    `Application/Common/WorkspaceLifecycleEmails.cs` (§3.7). DTOs in `Application/DTOs/Workspace/`: `WorkspaceDeletionPreviewResponse`, `ConfirmWorkspaceDeletionRequest`,
    `WorkspaceDeletionTokenRequest`, `WorkspaceDeletionRequestResponse`, `WorkspaceDeletionScheduledResponse`; extend `WorkspaceResponse.cs` (§3.4).
+   Validators in `Application/Validators/`: `ConfirmWorkspaceDeletionRequestValidator`, `WorkspaceDeletionTokenRequestValidator` (Token required). The name normaliser is a private
+   static `NormalizeName` in the service (§3.4 confirm row). Follow the §3.4 **query rule** and **concurrency rule** in every method they name.
 9. `Application/Services/Implementation/WorkspaceService.cs` — `GetAsync` (`:37-62`) fills the new `WorkspaceResponse` fields (constructor gains `IMembershipService? memberships = null, IConfiguration? config = null`); `ToResponse` (`:110-118`) maps the columns.
 10. `Application/Services/Implementation/TenantService.cs` `HardDeleteAsync` (`:524-713`) — replace `isDemoExpiredReason` (`:533`) with `var isGuardedReason = reason is "demo_expired" or "owner_requested";`
     and a local `Task<bool> StillDueAsync()` that runs the DB-17 predicate for `demo_expired` and `w.Id == workspaceId && w.DeletionScheduledFor != null && w.DeletionScheduledFor <= DateTime.UtcNow`
     for `owner_requested`; use it at `:539-549` (failure text for owner_requested: `"Not a due scheduled deletion (cancelled meanwhile)."`) and `:603-611` (throw `"scheduled deletion cancelled during delete"`);
-    `:573` → `ActorKindOverride: isGuardedReason ? AuditActorKind.System : null`; `:576`, `:684`, `:694` → `isGuardedReason`. `ListAsync` mapping (`:51-160`) — three `TenantResponse` fields; `TenantResponse.cs` — three properties.
+    `:573` → `ActorKindOverride: isGuardedReason ? AuditActorKind.System : null`; `:576`, `:684`, `:694` → `isGuardedReason`. The `owner_requested` predicate in **both** the pre-check and
+    the locked re-check includes `&& !w.PausedByOperator` (Opus HIGH 3). Add `public static IQueryable<User> IdentitiesDeletedWithWorkspace(IUnitOfWork, Guid)` (§3.4) and make `:641-670`
+    use it for the delete set (re-home the rest exactly as today); a Sqlite parity test (§6 test 9) guards the refactor. `ListAsync` mapping (`:51-160`) — three `TenantResponse` fields; `TenantResponse.cs` — three properties.
 11. `API/Auth/AllowWhenWorkspacePausedAttribute.cs`, `API/Auth/WorkspaceFrozenFilter.cs` (§3.5). `API/Program.cs` — `options.Filters.Add<Pointer.API.Auth.WorkspaceFrozenFilter>();` after `:73` with a two-line DB-18 comment;
     `"X-Workspace-Paused"` in both `WithExposedHeaders` (`:155`, `:163`); `builder.Services.AddHostedService<WorkspaceDeletionService>();` beside `:106-107`.
-12. Attributes per §3.5 on `AuthController` (class + `Me` method), `MeController`, `MfaController`, `EventsController`.
+12. Attributes per §3.5 on `AuthController` (class + `Me` method), `MeController`, `MfaController`, `EventsController.RecordEvent` (method), `Admin/UsersController` (`PATCH {id}`, `DELETE {id}`),
+    `Admin/InvitesController` (`DELETE {id}`, `POST {id}/quick-link/rotate`); the frozen-state refusal of access *grants* inside `UserService`'s update method (§3.5).
+    `Program.cs` `IsDashboardOnly` (`:434-447`) gains the `/api/auth/workspace-deletion` segment.
 13. `API/Controllers/Admin/WorkspaceController.cs` — four actions (§3.8; constructor gains `IWorkspaceLifecycleService lifecycle`). `API/Controllers/AuthController.cs` — three anonymous actions (§3.8; copy `:182-209`).
-    `API/Controllers/Admin/TenantsController.cs` — three operator actions after `SetStatus` (`:116`). `API/Extensions/RateLimitingExtensions.cs` — `"danger"` policy.
+    `API/Controllers/Admin/TenantsController.cs` — three operator actions after `SetStatus` (`:116`). `API/Extensions/RateLimitingExtensions.cs` — `"danger"` policy (§3.7: config key
+    `Security:RateLimits:DangerPer10Min`, partition `sub`+IP / IP). `AuthService.cs:1325` and `~:1718` pass the workspace to `ToMeResponse` (§3.6).
 14. `API/Hosted/WorkspaceDeletionService.cs` — copy `DemoCleanupService.cs` structure: 30 s initial delay; `PeriodicTimer(TimeSpan.FromMinutes(SweepMinutes))`; step 1 `SendDueRemindersAsync` (own scope + try/catch);
     step 2 `internal static SweepOnceAsync(IServiceScopeFactory, ILogger, ct)`: query due ids (`DeletionScheduledFor != null && <= now && DeletedAt == null`), then **per id, fresh scope**:
-    re-check still due → `IWorkspaceLifecycleService.ExecuteDueDeletionAsync(id)`; log `WorkspaceDeletionService: hard-deleted {Id} (owner_requested)` / `… skipped (cancelled)`.
+    re-check still due → `IWorkspaceLifecycleService.ExecuteDueDeletionAsync(id)`; log `WorkspaceDeletionService: hard-deleted {Id} (owner_requested)` / `… skipped (cancelled)` /
+    `… held by operator pause`. The due-id query is `Workspaces.IgnoreQueryFilters().AsNoTracking().Where(w => w.DeletedAt == null && w.DeletionScheduledFor != null && w.DeletionScheduledFor <= now && !w.PausedByOperator)`.
+    Failure handling (Opus LOW): `Result.Failure` from the pre-check or the `InvalidOperationException` thrown by the locked re-check = **skip** (Information); any other exception = `LogError`
+    `WorkspaceDeletionService: FAILED {Id}` and an in-memory per-id counter — at 3 consecutive failures log **Critical** `WorkspaceDeletionService: {Id} failing repeatedly` (§9 step 5 watches for it).
 15. `ProjectService.CheckWidgetActiveAsync` + `WidgetActivationResponse` (§3.6). `InviteService.cs:644-654` and `AuthService.cs:1359-1360` frozen checks (§3.5).
     `MeResponse.cs` three properties after `:46`; `UserMapper.cs:53-57` three assignments from `workspace`.
-16. Config: `API/appsettings.json` → `"WorkspaceDeletion": { "GraceDays": 7, "SweepMinutes": 15 }`; `docker-compose.prod.yml` after `:90` →
+16. Config (GraceDays clamp 0..14): `API/appsettings.json` → `"WorkspaceDeletion": { "GraceDays": 7, "SweepMinutes": 15 }` and `"Security:RateLimits:DangerPer10Min": 10` (inside the existing `Security:RateLimits` block — verify its location); e2e compose sets it to 100; `docker-compose.prod.yml` after `:90` →
     `WorkspaceDeletion__GraceDays: "${WORKSPACE_DELETION_GRACE_DAYS:-7}"`, `WorkspaceDeletion__SweepMinutes: "${WORKSPACE_DELETION_SWEEP_MINUTES:-15}"`; `.env.prod.example` after `:70` the two commented lines.
 17. Widget `web-component/src/` — `element.ts` `_checkWidgetActive` (`:474-487`) also stores `this._paused = data?.paused === true`; when `_paused`: hide the add-comment control,
-    reply box and status/menu mutations, show one line `t('paused.notice')` in the panel header; comment/reply POST handler (`:2182-2225`): `if (r.status === 423) { this._paused = true; this.toast(t('paused.notice'), 'error'); return false; }`
-    **before** the generic `!r.ok` branch. `i18n.ts`: `paused.notice` en "Feedback is paused for this workspace." / ar "تم إيقاف استقبال الملاحظات مؤقتًا في مساحة العمل هذه.". `npm run build` + `node scripts/check-budget.mjs`
+    reply box and status/menu mutations, show one line `t('paused.notice')` in the panel header. **423 is handled once, in `api()` (`:967`)** (Opus LOW — covers the comment POST
+    `:2182`, PATCH/PUT/DELETE of comments and replies, verify, fields, visibility): on `r.status === 423` set `this._paused = true`, re-render read-only, toast `t('paused.notice')` once per
+    page, and return the response so callers' `!r.ok` branches exit without their generic "failed" toast (add `if (r.status === 423) return false;` at the top of those branches — verify each site).
+    The screenshot upload (`:1786`, `pfFetch` direct) is **skipped when `_paused`**, and a 423 from it is treated like the above. `i18n.ts`: `paused.notice` en "Feedback is paused for this workspace." / ar "تم إيقاف استقبال الملاحظات مؤقتًا في مساحة العمل هذه.". `npm run build` + `node scripts/check-budget.mjs`
     (must stay within budget — if over, drop the header line and keep only the toast + hidden controls); commit `API/wwwroot/pointer.*`.
 18. CLI `cli/src/` — `api.ts`: nothing (ApiError carries 423 + server message); `commands/apply.ts`: after authentication, `GET /api/auth/me`; if `workspaceDeletionScheduledFor` →
     print `Workspace "<tenantName>" is scheduled for deletion on <date> — apply is disabled.`; else if `workspacePausedAt` → print `Workspace "<tenantName>" is paused — apply is disabled until a workspace admin resumes it.`;
-    exit code **2**, before any git/AI work; `--plan` prints the same warning and exits 2 too (the queue GET is 423 for key sessions). Any other 423 anywhere → print the server message, exit 2. No publish (memory: publish only on request).
-19. Docs: `landing/privacy.html:253-260` add `<tr><td>Workspaces deleted by their admin</td><td>Deleted {7} days after the admin confirms (cancellable until then); remaining backup copies expire within 30 days</td></tr>` and adjust `:265-267` to mention admin-requested deletion;
+    exit code **2**, before any git/AI work; `--plan` and `--mark` print the same warning and exit 2 too (the queue GET is 423 for key sessions). **`commands/deployed.ts`** (`:57-80,113-140`): a
+    423 from either call → `console.warn("Pointer workspace is paused — build not reported.")` and **exit 0** (never fail a customer's CI). **`mcp/tools.ts`**: a 423 → return a tool error with the
+    server message (no `process.exit`). No publish (memory: publish only on request).
+19. Docs: `landing/privacy.html:253-260` add `<tr><td>Workspaces deleted by their admin</td><td>Deleted {GraceDays} days after the admin confirms (cancellable until then); remaining backup copies expire within 30 days</td></tr>` (write the configured value, 7 — Opus NIT) and adjust `:265-267` to mention admin-requested deletion;
     `DEPLOY.md` § Backups one sentence ("Admin-requested workspace deletions run from `WorkspaceDeletionService` after `WORKSPACE_DELETION_GRACE_DAYS` (7); restoring one means restoring a dump — see Restore");
     `docs/db/SCHEMA.md` `workspaces` row (eight columns, index, three constraints). **DB-RULES R19** (the db-architect adds it when this merges): "Every new mutating action is either gated by
-    `WorkspaceFrozenFilter` or carries `[AllowWhenWorkspacePaused]` with a reason; `WorkspaceFreezeCoverageTests` pins the list; a new anonymous path that creates a membership checks `IWorkspaceStateService`."
+    `WorkspaceFrozenFilter` or carries `[AllowWhenWorkspacePaused]` with a reason; `WorkspaceFreezeCoverageTests` pins the list; a new anonymous path that creates a membership checks `IWorkspaceStateService`; access-*removing* admin actions are always exempt."
+    **R16 amendment** (same commit, Opus LOW — the two documented departures): "Anonymous endpoints that redeem a scoped token may use a dedicated fixed-window
+    policy instead of `signup` when the flow needs several calls per link (DB-18 `danger`: 10/10 min, `sub`+IP); single-use may come from **state** bound into
+    the payload (DB-18: `deletion_requested_at` + `deletion_scheduled_for`) instead of an identity-stamp rotation when the event is workspace-scoped and the
+    session must survive."
 20. `just fmt`; `just test`.
 
 ## 6. Tests
@@ -456,7 +538,7 @@ InMemory harness: copy `Tests/ChangeEmailTests.cs:27-230` (`FakeCurrentUser`, `I
 `Tests/Db18WorkspaceLifecycleTests.cs`:
 1. `Pause_ByWorkspaceAdmin_SetsColumns_AuditsWorkspacePaused`; `Pause_ByDeputy_Forbidden`; `Pause_KeySession_Forbidden`; `Pause_QuickAccess_Forbidden`; `Pause_LiveDemo_Refused`; `Pause_Twice_Conflict`.
 2. `Resume_AfterSelfPause_Clears`; `Resume_OperatorPaused_ForbiddenForAdmin`; `OperatorResume_ClearsOperatorPause`; `Resume_WhileScheduled_Conflict`.
-3. `RequestDeletion_OneMail_ToRequesterOnly_LinkHasPurposeDeleteWorkspace`; `RequestDeletion_Cooldown60s`; `RequestDeletion_WhenScheduled_Conflict`; `RequestDeletion_WhenOperatorPaused_Forbidden`; `RequestDeletion_ArabicUser_GetsArabicMail` (`Language = "ar"` → subject contains "تأكيد" and `dir="rtl"`).
+3. `RequestDeletion_OneMail_ToRequesterOnly_LinkHasPurposeDeleteWorkspace`; `RequestDeletion_Cooldown5Min`; `RequestDeletion_SixthIn24h_DailyLimit`; `RequestDeletion_WhenScheduled_Conflict`; `RequestDeletion_WhenOperatorPaused_Forbidden`; `RequestDeletion_ArabicUser_GetsArabicMail` (`Language = "ar"` → subject contains "تأكيد" and `dir="rtl"`).
 4. `Confirm_ValidTokenPasswordName_SchedulesGraceDays_MailsEveryLiveAdmin` (3 admins → 3 E2 mails; a Deputy and a left admin get none); `Confirm_WrongPassword_NoStateChange`; `Confirm_NameMismatch`;
    `Confirm_Passwordless_NameOnly_Ok`; `Confirm_Twice_SecondIsLinkInvalid`; `Confirm_AfterPasswordChange_LinkInvalid` (rotate `users.security_stamp`); `Confirm_AfterDemotion_LinkInvalid` (rotate membership stamp + role Deputy);
    `Confirm_AfterLeave_LinkInvalid`; `Confirm_AfterNewerRequest_OldLinkInvalid`; `Confirm_AfterCancel_OldLinkInvalid`; `Confirm_EraseTokenOfSameIdentity_Invalid` (purpose); `Confirm_TimestampRoundTrip_MsTruncation` (reload the row from a fresh context before validating).
@@ -474,6 +556,17 @@ InMemory harness: copy `Tests/ChangeEmailTests.cs:27-230` (`FakeCurrentUser`, `I
     `WidgetStatus_FrozenWorkspace_ActiveTrue_PausedTrue`.
 11. `Tests/AuditCoverageTests.cs` passes with the ten new actions; `Tests/MigrationSafetyTests.cs` passes (no marker expected); `Tests/WorkspaceTests.cs` `HardDeleteOrder_CoversEveryOwnerCarryingEntity` unchanged.
 12. **Existing data survives** — R11 rehearsal (§7 criterion 7): every production `workspaces` row keeps its values, new columns NULL/false; `comments`/`projects` counts identical before/after.
+9a. **Cross-review additions (2026-09-24)** — `Preview_AccountsCount_EqualsRowsActuallyDeleted` (Sqlite, Opus HIGH 1: seed an identity created here with an *ended* membership in B → not counted and re-homed;
+    one created elsewhere and joined here → not counted; one created here only → counted and deleted; run preview, then `HardDeleteAsync`, assert equal);
+    `Freeze_AllowsRevocations_RefusesGrants` (PATCH `isActive:false` / role→non-admin / DELETE member / DELETE invite / rotate → pass; PATCH `isActive:true`, admin role, password, POST users/invites → refused; Opus HIGH 2);
+    `Job_OperatorPausedDuringGrace_NotDeleted` + `HardDelete_OwnerRequested_OperatorPaused_Refused` (Opus HIGH 3); `Confirm_Concurrent_OnlyOneSchedules` and `PauseInstead_RacingConfirm_NoConstraintViolation`
+    (Sqlite, two contexts; second call → `DeletionLinkInvalid`, no 500); `Cancel_WhileJobHoldsLock_Conflict` and `Cancel_AfterRowDeleted_ConflictAlreadyDeleted` (Gemini LOW #1);
+    `Reminder_RacingCancel_NoConstraintViolation`; `Reminder_Missed_ReschedulesPlus24h_Audited`; `Reminder_GraceUnder2Days_NotSent`; `Confirm_FiveWrongPasswords_LockoutAndLinkSpent`;
+    `Confirm_NullPassword_400NotServerError`; `Confirm_ArabicNameWithRlmMarks_Matches`; `CancelPending_VoidsLink`; `PauseInstead_AlreadyPaused_WritesExactlyOneAuditRow`;
+    `Job_And_Reminder_RunWithNoTenantCurrentUser` (Opus MEDIUM query rule); `StateService_SoftDeletedWorkspace_NotFrozen` (Gemini LOW #2);
+    `KeySession_EventsSummary_Returns423` (method-level Events exemption); `Register_ReapplyAfterRejection_RefusedWhileFrozen`; `ConvertedDemoInVerifyWindow_CanPause`;
+    `LoginWithKey_ResponseCarriesFreezeFields`; `DangerLimiter_PartitionsByIdentity` (two identities, one IP → independent budgets). CLI (`cli/test`): `deployed_423_WarnsExitsZero`,
+    `mcp_423_ReturnsToolError`. Coverage test (§6 test 7) pins the four revocation actions and `EventsController.RecordEvent` in the exemption list.
 13. e2e (isolated stack, memory note "Isolated e2e stack recipe"; `WORKSPACE_DELETION_SWEEP_MINUTES=1`, `WORKSPACE_DELETION_GRACE_DAYS=0` for the last case): new `e2e/mail/workspace-lifecycle-mail.spec.mjs` using `e2e/scripts/lib/mail.mjs`:
     (a) admin pauses → widget `POST …/comments` → 423 + `x-workspace-paused`; `GET …/widget-status` → `paused: true`; `GET …/comments` (JWT) → 200; key session `GET …/comments` → 423; `GET /api/auth/me` (key) → 200 with `workspacePausedAt`; resume → POST 200;
     (b) `POST deletion/request` → `awaitMessage({ to: admin, subjectIncludes: 'Confirm deleting' })` → `extractLink(html, '/confirm-workspace-deletion')` → preview 200 → confirm wrong password 400 → confirm 200 (`deletionScheduledFor` ≈ now + grace) → confirm again 400 →
@@ -482,11 +575,15 @@ InMemory harness: copy `Tests/ChangeEmailTests.cs:27-230` (`FakeCurrentUser`, `I
 
 ## 7. Acceptance criteria
 
-1. `dotnet ef migrations list -p Infrastructure -s API --no-connect` → 81 entries, the last `_AddWorkspacesPauseAndDeletionState`; in that file `grep -c "AddColumn"` → 8, `grep -c "AddCheckConstraint"` → 3, `grep -c "CreateIndex"` → 1,
-   `grep -c "\.Sql(\|ContractMigration\|DropColumn"` → 0; `grep -c 'table: "workspaces"'` equals the number of operations.
+1. `dotnet ef migrations list -p Infrastructure -s API --no-connect` → 81 entries, the last `_AddWorkspacesPauseAndDeletionState`. Counts are taken on the **`Up()` slice only**
+   (`Down()` legitimately contains `DropColumn`/`DropIndex`/`DropCheckConstraint` — Opus MEDIUM; same slicing as `Tests/MigrationSafetyTests.cs:85-87`):
+   `F=$(ls Infrastructure/Migrations/*_AddWorkspacesPauseAndDeletionState.cs | grep -v Designer); UP=$(awk '/void Up\(/,/void Down\(/' "$F")`;
+   `echo "$UP" | grep -c "AddColumn"` → 8, `grep -c "AddCheckConstraint"` → 3, `grep -c "CreateIndex"` → 1, `grep -c '\.Sql(\|ContractMigration\|DropColumn\|AlterColumn'` → 0;
+   every `table:` argument in the slice is `"workspaces"` (`echo "$UP" | grep -o 'table: "[a-z_]*"' | sort -u` → one line).
 2. `grep -c "DeleteWorkspace = \"delete-workspace\"" Application/Common/TokenPurposes.cs` → 1; `grep -rn "class .*Token.*Mapping\|workspace_deletion_tokens" Infrastructure` → nothing (no token table).
 3. `grep -c "owner_requested" Application/Services/Implementation/TenantService.cs` → ≥ 2; `grep -c "isDemoExpiredReason" Application/Services/Implementation/TenantService.cs` → 0.
-4. `grep -c "WorkspaceFrozenFilter" API/Program.cs` → 1; `grep -c "X-Workspace-Paused" API/Program.cs` → 2; `grep -rln "AllowWhenWorkspacePaused" API/Controllers` lists exactly `AuthController.cs, MeController.cs, MfaController.cs, EventsController.cs, Admin/WorkspaceController.cs`.
+4. `grep -c "WorkspaceFrozenFilter" API/Program.cs` → 1; `grep -c "X-Workspace-Paused" API/Program.cs` → 2; `grep -rln "AllowWhenWorkspacePaused" API/Controllers` lists exactly `AuthController.cs, MeController.cs, MfaController.cs, EventsController.cs, Admin/WorkspaceController.cs, Admin/UsersController.cs, Admin/InvitesController.cs`;
+   `grep -c "workspace-deletion" API/Program.cs` → 1 (`IsDashboardOnly`); `grep -c "PausedByOperator" Application/Services/Implementation/TenantService.cs` → ≥ 2; `grep -c "IdentitiesDeletedWithWorkspace" Application/Services/Implementation/TenantService.cs Application/Services/Implementation/WorkspaceLifecycleService.cs` → ≥ 2 and ≥ 1.
 5. `curl -s …/swagger/v1/swagger.json | jq '.paths | keys[]' | grep -c "workspace/pause\|workspace/resume\|workspace/deletion\|workspace-deletion\|tenants/{workspaceId}/pause\|tenants/{workspaceId}/resume\|tenants/{workspaceId}/deletion"` → 10;
    `jq '.components.schemas.MeResponse.properties | has("workspacePausedAt") and has("workspaceDeletionScheduledFor")'` → true; `jq '.components.schemas.WidgetActivationResponse.properties | has("paused")'` → true.
 6. `just test` green (≈ 60 new facts); DB-10 green (apply from empty + newest `Down()`/`Up()` round-trip).
@@ -517,7 +614,8 @@ decision) — that is exactly why the grace period exists. The pre-deploy dump i
 4. Verify: `docker compose -f docker-compose.prod.yml logs --since 5m api | grep -iE "migrat|WorkspaceDeletionService|error"` → one `Applying migration '…_AddWorkspacesPauseAndDeletionState'`, then
    `WorkspaceDeletionService` start lines, no errors; `GET /api/auth/me` as the production admin → `workspacePausedAt: null`; `GET /api/admin/workspace` → `canManageLifecycle: true`;
    `GET /api/public/projects/<key>/widget-status` → `paused: false`. Optionally on a throwaway workspace: pause → widget POST 423 → resume.
-5. Watch: `423` counts in the access log (a burst on an unpaused workspace = cache/invalidation bug), `WorkspaceDeletionService: … failed`, e-mail cap exhaustion.
+5. Watch: `423` counts in the access log (a burst on an unpaused workspace = cache/invalidation bug), `WorkspaceDeletionService: FAILED` and any **Critical** `… failing repeatedly`
+   (a stuck scheduled deletion — investigate, never hand-delete rows), `held by operator pause` (expected only while an operator pause is on), `429` bursts on `danger`, e-mail cap exhaustion.
 6. `dashboard-agent`: regenerate the client from production once, then §11. `rebranding-agent`: new customer-visible strings, the `/confirm-workspace-deletion` route and five e-mail templates (CLAUDE.md rule 6).
 7. Landing deploy for the privacy row (task 19). CLI: build and test; publish only when the owner asks.
 
@@ -536,8 +634,9 @@ table; `clients/` (generated); Angular/Vue (retired).
    on the 5 000-comment refusal show the server message + link "Export per project" → `/projects`); caption "Comments and replies as JSON. Screenshots, project settings and members are not included."
    **Pause workspace / Resume** → `postApiAdminWorkspacePause` / `…Resume` (confirm via `ConfirmDialog`); **Delete workspace** → dialog.
 2. Delete dialog, two steps: step 1 "Before you delete" — buttons **Export data** (same handler) and **Pause instead** (pauses, closes), and a secondary **Continue to delete**; step 2 — what happens
-   (grace days, frozen meanwhile, admins notified, accounts only in this workspace are deleted) and **Send confirmation e-mail** → `postApiAdminWorkspaceDeletionRequest` → toast `envelope.message`,
-   card shows "Confirmation e-mail sent at hh:mm — valid 30 minutes" from `deletionRequestedAt`. When `deletionScheduledFor` is set the card shows the date + **Cancel deletion** (`postApiAdminWorkspaceDeletionCancel`).
+   (grace days, frozen meanwhile, admins notified, accounts created here that belong to no other workspace are deleted) and **Send confirmation e-mail** → `postApiAdminWorkspaceDeletionRequest` → toast `envelope.message`,
+   card shows "Confirmation e-mail sent at hh:mm — valid 30 minutes" from `deletionRequestedAt` with a **Cancel request** button (`postApiAdminWorkspaceDeletionCancel` — voids the link, Opus LOW).
+   A `429` (limiter) or the cooldown/daily-limit `400` shows `envelope.message` inline in the dialog, never a generic error (Gemini NIT; verify the global interceptor does not swallow 429). When `deletionScheduledFor` is set the card shows the date + **Cancel deletion** (`postApiAdminWorkspaceDeletionCancel`).
    When `pausedByOperator`: Resume and Delete disabled with the operator text.
 3. `src/features/auth/ConfirmWorkspaceDeletionPage.tsx` (new, anonymous route `/confirm-workspace-deletion` in `App.tsx` beside `:58`; copy `DeleteAccountPage.tsx`): reads `?token=`; `postApiAuthWorkspaceDeletionPreview({ token })`
    → shows name, counts, `accountsDeletedWithWorkspace` (bold when `requesterAccountDeleted`), `wouldBeDeletedOn`; **Export first**: if the stored session's `workspaceId` equals the preview's → export button, else "Sign in to export" → `/login`;
@@ -545,23 +644,70 @@ table; `clients/` (generated); Angular/Vue (retired).
    **Delete workspace** (destructive) → `postApiAuthWorkspaceDeletionConfirm` → done state with the scheduled date and "Any admin can cancel in Settings until then". Invalid token → the server message + link to `/login`.
 4. `src/components/WorkspaceStateBanner.tsx` (new) in `Shell.tsx` after `VerificationBanner` (`:200`): shown when `me.workspacePausedAt || me.workspaceDeletionScheduledFor`; text per state; admins (`canManageLifecycle`) get **Resume** / **Cancel deletion** buttons.
    `src/lib/api.ts` (`:209-221` pattern): on `423` with `x-workspace-paused: true` → dispatch `workspace-frozen` event → invalidate `/me` query + toast the server message.
+   Expose `isFrozen = !!(me.workspacePausedAt || me.workspaceDeletionScheduledFor)` from the auth context; while frozen **hide** Invite, Add member, Import and New project, and disable
+   create/edit buttons in the shared table/row-action components (Opus LOW); keep remove/disable/revoke enabled (they are allowed, §3.5).
 5. `features/tenants/TenantsPage.tsx`: row items **Pause workspace** / **Resume workspace** / **Cancel scheduled deletion** (new hooks), a state badge from `pausedAt`/`pausedByOperator`/`deletionScheduledFor`;
    relabel the existing `disable` item "Disable admin login" (behaviour unchanged).
 6. i18n `public/assets/i18n/{en,ar}.json`, namespace `workspaceLifecycle` (en / ar):
    `dangerZone` Danger zone / منطقة الخطر · `export` Export data / تصدير البيانات · `exportCaption` Comments and replies as JSON. Screenshots, project settings and members are not included. / التعليقات والردود بصيغة JSON. لا تشمل لقطات الشاشة وإعدادات المشاريع والأعضاء. ·
-   `pause` Pause workspace / إيقاف مساحة العمل مؤقتًا · `pauseHint` Stops new feedback, CLI apply and changes. Everyone can still sign in, read and export. / يوقف استقبال الملاحظات الجديدة وتطبيقها عبر CLI وأي تعديلات. يظل بإمكان الجميع تسجيل الدخول والقراءة والتصدير. ·
+   `pause` Pause workspace / إيقاف مساحة العمل مؤقتًا · `pauseHint` Stops new feedback, CLI apply and changes. Keeps your projects, comments and settings; everyone can still sign in, read and export. / يوقف استقبال الملاحظات الجديدة وتطبيقها عبر CLI وأي تعديلات، ويحتفظ بمشاريعك وتعليقاتك وإعداداتك؛ ويظل بإمكان الجميع تسجيل الدخول والقراءة والتصدير. ·
    `resume` Resume workspace / استئناف مساحة العمل · `delete` Delete workspace / حذف مساحة العمل · `beforeDelete` Before you delete / قبل الحذف ·
-   `pauseInstead` Pause instead / إيقاف مؤقت بدلًا من الحذف · `pauseInsteadHint` Pausing keeps all your data and can be undone at any time. / الإيقاف المؤقت يحتفظ بجميع بياناتك ويمكن التراجع عنه في أي وقت. ·
-   `continueDelete` Continue to delete / متابعة الحذف · `whatHappens` After you confirm from the e-mail, the workspace becomes read-only and is deleted after {{days}} days. Every admin is notified and can cancel. Accounts that belong only to this workspace are deleted too. / بعد التأكيد من البريد الإلكتروني تصبح مساحة العمل للقراءة فقط وتُحذف بعد {{days}} أيام. يُبلَّغ جميع المسؤولين ويمكنهم الإلغاء. تُحذف أيضًا الحسابات التي لا تنتمي إلا إلى مساحة العمل هذه. ·
+   `pauseInstead` Pause instead / إيقاف مؤقت بدلًا من الحذف · `pauseInsteadHint` Pausing keeps your projects, comments and settings and can be undone at any time. / الإيقاف المؤقت يحتفظ بمشاريعك وتعليقاتك وإعداداتك ويمكن التراجع عنه في أي وقت. · `cancelRequest` Cancel request / إلغاء الطلب ·
+   `continueDelete` Continue to delete / متابعة الحذف · `whatHappens` After you confirm from the e-mail, the workspace becomes read-only and is deleted after {{days}} days. Every admin is notified and can cancel. Accounts created in this workspace that belong to no other workspace are deleted too. / بعد التأكيد من البريد الإلكتروني تصبح مساحة العمل للقراءة فقط وتُحذف بعد {{days}} أيام. يُبلَّغ جميع المسؤولين ويمكنهم الإلغاء. تُحذف أيضًا الحسابات التي أُنشئت في مساحة العمل هذه ولا تنتمي إلى أي مساحة عمل أخرى. ·
    `sendEmail` Send confirmation e-mail / إرسال رسالة التأكيد · `emailSent` Confirmation e-mail sent at {{time}} — valid for 30 minutes. / أُرسلت رسالة التأكيد عند {{time}} — صالحة لمدة 30 دقيقة. ·
    `scheduled` This workspace will be deleted on {{date}}. / ستُحذف مساحة العمل هذه في {{date}}. · `cancelDeletion` Cancel deletion / إلغاء الحذف ·
    `bannerPaused` This workspace is paused — it is read-only. / مساحة العمل هذه موقوفة مؤقتًا — وهي للقراءة فقط. · `bannerPausedOperator` This workspace was paused by the platform operator. Contact support. / أوقف مشغّل المنصة مساحة العمل هذه مؤقتًا. تواصل مع الدعم. ·
    `bannerScheduled` This workspace is scheduled for deletion on {{date}} and is read-only. / مساحة العمل هذه مجدولة للحذف في {{date}} وهي للقراءة فقط. · `byOperator` the platform operator / مشغّل المنصة ·
    `confirmTitle` Delete workspace / حذف مساحة العمل · `confirmCounts` {{projects}} projects, {{comments}} comments, {{members}} members / {{projects}} مشاريع، {{comments}} تعليقات، {{members}} أعضاء ·
-   `confirmAccounts` {{count}} accounts that belong only to this workspace will be deleted. / سيُحذف {{count}} من الحسابات التي لا تنتمي إلا إلى مساحة العمل هذه. · `confirmYourAccount` Your own account belongs only to this workspace and will be deleted too. / حسابك لا ينتمي إلا إلى مساحة العمل هذه وسيُحذف أيضًا. ·
+   `confirmAccounts` {{count}} accounts created in this workspace and belonging to no other workspace will be deleted. / سيُحذف {{count}} من الحسابات التي أُنشئت في مساحة العمل هذه ولا تنتمي إلى أي مساحة عمل أخرى. · `confirmYourAccount` Your own account was created in this workspace and belongs to no other, so it will be deleted too. / أُنشئ حسابك في مساحة العمل هذه ولا ينتمي إلى غيرها، لذا سيُحذف أيضًا. ·
    `typeName` Type the workspace name to confirm / اكتب اسم مساحة العمل للتأكيد · `password` Your password / كلمة المرور · `confirmButton` Delete workspace / حذف مساحة العمل ·
    `confirmDone` Deletion scheduled for {{date}}. Any admin can cancel it in Settings until then. / جُدول الحذف في {{date}}. يمكن لأي مسؤول إلغاؤه من الإعدادات حتى ذلك الحين. · `signInToExport` Sign in to export / سجّل الدخول للتصدير ·
    `pausedDone` The workspace is paused. Nothing was deleted. / أُوقفت مساحة العمل مؤقتًا. لم يُحذف أي شيء. · `tenantsDisableAdmin` Disable admin login / تعطيل دخول المسؤول.
 
-**Widget:** task 17 (paused read-only mode + 423 toast; en/ar `paused.notice`). **CLI:** task 18 (exit 2 before touching files; server message on any 423).
+**Widget:** task 17 (paused read-only mode; 423 handled once in `api()`; upload skipped when paused; en/ar `paused.notice`). **CLI:** task 18 (`apply` exits 2 before touching files;
+`deployed` warns and exits 0; MCP returns a tool error).
 **Apply skill** (`API/wwwroot/skill.md`): one line in the error section — "If the CLI reports the workspace is paused or scheduled for deletion, stop and tell the user; do not retry."
+
+## 12. Cross-review adjudication (2026-09-24)
+
+Reports: `docs/db/reviews/REVIEW-DB18-2026-09-24.md` (Gemini 3.1 Pro via agy; Opus code-reviewer relayed by the orchestrator). Every claim re-checked against
+`main` @ `9aaf1d3` before its verdict; owner answers D18.1/.2/.8/.10 unchanged.
+
+| Finding | Verdict (why) | Where changed |
+|---|---|---|
+| **Opus HIGH 1** — preview/E2 use the wrong "deleted accounts" predicate; real rule `owner_id == ws && DeletedAt == null` and no membership of **any** state elsewhere (`TenantService.cs:641-670`, `:654`) | **Accepted** — verified: `IgnoreQueryFilters`, no `LeftAt` filter; doc cited stale `:620-650`. One shared `IdentitiesDeletedWithWorkspace` query for delete + preview, count only (no names/e-mails), E2/i18n reworded, parity test | §2, §3.4 (shared query, preview DTO), §3.7 E2, §3.10 D18.10, §5 task 10, §6 9a, §7.4, §11 |
+| **Opus HIGH 2** — freeze blocks security revocations | **Accepted** — verified `UsersController.cs:68,88`, `InvitesController.cs:41,56`; no admin key-revoke route exists (keys die with the membership). Method-level exemptions; `PATCH users/{id}` also grants, so the service refuses grants while frozen | §2, §3.5, §5 task 12, §6 9a + test 7, §7.4, §11 |
+| **Opus HIGH 3** — operator pause during grace does not stop the delete | **Accepted** — the draft's due query and `StillDueAsync` ignored `PausedByOperator`. Added to due-ids, pre-check and locked re-check; "held" log | §3.4 job row, §3.10 D18.6, §4, §5 tasks 10/14, §6 9a, §7.4, §9.5 |
+| Opus MEDIUM — confirm re-check reads the tracked (stale) entity | **Accepted** — EF identity resolution returns the tracked instance unchanged. Concurrency rule: lock, then first load / `ReloadAsync`, re-check on the fresh row | §3.4 concurrency rule + confirm/pause-instead rows, §6 9a |
+| Opus MEDIUM + **Gemini LOW #1** — cancel races the job (`DbUpdateConcurrencyException` 500) | **Accepted** — cancel/operator cancel in the locked tx; gone → `Conflict(AlreadyDeleted)`; concurrency exception → `Conflict(StateChanged)` | §3.4, §5 task 6, §6 9a |
+| Opus MEDIUM — one workspace can drain the 250/day global e-mail cap | **Accepted** — verified `EmailService.cs:17,26-33`. 5-min cooldown + ≤ 5 requests/24 h per workspace (audit count); limiter partitioned by `sub`+IP | §3.4 request row, §3.7, §5 tasks 6/13, §6 9a |
+| Opus MEDIUM — job/anonymous queries need `IgnoreQueryFilters` + explicit predicate | **Accepted** — verified `AppDbContext.cs:88-90,328-332` (no tenant → no rows). Query rule stated once, tests with a no-tenant user | §2, §3.4 query rule, §5 tasks 8/14, §6 9a |
+| Opus MEDIUM — 423 would break `pointer deployed` in customer CI | **Accepted** — verified `deployed.ts:57,74,113-140`. `deployed` warns + exit 0; exit 2 only for `apply`; MCP returns a tool error | §2, §3.6, §5 task 18, §6 9a, §11 |
+| Opus MEDIUM — confirm password guessing bypasses the R5-59 per-identity lockout | **Accepted** — `ILoginAttemptLimiter` reused keyed by the identity e-mail; 5th failure spends the link | §2, §3.4 confirm row + ctor, §6 9a |
+| Opus MEDIUM — §7.1 greps fail on `Down()` drops | **Accepted** — counts on the `Up()` slice (MigrationSafetyTests slicing) | §7.1 |
+| Opus LOW — Events class-level exemption also opens `GET api/admin/events/summary` to key sessions | **Accepted** — verified `EventsController.cs:17-19,36-37`; method-level on `RecordEvent` | §2, §3.5, §5 task 12, §6 9a |
+| Opus LOW — widget upload before POST; no 423 branch on other writes | **Accepted** — verified `element.ts:967` (`api()`), `:1786-1792` (upload via `pfFetch`). 423 handled once in `api()`, upload skipped when paused | §2, §5 task 17, §11 |
+| Opus LOW — undocumented R16 departures (policy, state-based single-use) | **Accepted** — R16 amendment text added beside R19 | §3.7, §5 task 19 |
+| Opus LOW — hard-coded `danger` limit → e2e 429s | **Accepted** — `Security:RateLimits:DangerPer10Min` (precedent `:32-35`), e2e override | §3.7, §5 tasks 13/16 |
+| Opus LOW — key/invite login responses lack freeze fields (`AuthService.cs:1325,~1718`) | **Accepted** — verified `:1325` passes no workspace; both pass it | §2, §3.6, §5 task 13, §6 9a |
+| Opus LOW — reminder racing cancel violates the schedule constraint | **Accepted, different mechanism** — `ExecuteSqlRawAsync` returns no row count, so a conditional UPDATE cannot tell whether it claimed; lock + fresh re-check instead | §2, §3.4 reminder row, §6 9a |
+| Opus LOW — downtime across T-24 h deletes without a reminder | **Accepted** — missed reminder → E3 + reschedule `now + 24h`, audited `workspace.deletion_rescheduled` (System); the job only deletes rows whose reminder was sent (or grace < 2 d) | §3.4, §5 tasks 5/14, §6 9a |
+| Opus LOW — non-race job failures retry forever silently | **Accepted** — skip vs error split, Critical after 3 consecutive failures, watched in §9.5 | §5 task 14, §9.5 |
+| Opus LOW — no way to void a pending link | **Accepted** — cancel also clears a pending request; "Cancel request" button | §3.4 cancel row, §11 |
+| Opus LOW — demo guard refuses a converted workspace in the 72 h re-verify window | **Accepted** — verified `Workspace.cs:26-28`; guard is `DemoExpiresAt != null && DemoConvertedAt == null` | §3.4 guard, §6 9a |
+| Opus LOW — anonymous `api/auth/workspace-deletion/*` under open CORS | **Accepted** — verified `Program.cs:434-447`; added to `IsDashboardOnly` | §3.5, §5 task 12, §7.4 |
+| Opus LOW — dashboard mutation controls stay enabled while frozen | **Accepted** — `isFrozen` from `/me`; hide Invite/Add member/Import/New project, disable create/edit | §11 task 4 |
+| Opus LOW — listed test gaps | **Accepted** — all covered in §6 9a | §6 9a |
+| Opus LOW — pause-instead on an already-paused workspace writes no audit row (StrictCoverage 500) | **Accepted** — verified `AuditCoverageFilter.cs:51`; exactly one row in both branches | §3.4 |
+| Opus NIT — ctor lacks `ITenantService` and `UserNameResolver` | **Accepted in part** — `ITenantService` (and `ILoginAttemptLimiter`) added; **`UserNameResolver` rejected**: it is a static class (`UserNameResolver.cs:14`) | §2, §3.4 |
+| Opus NIT — null password → 500; validator | **Accepted** | §3.4, §5 task 8, §6 9a |
+| Opus NIT — typed-name compare (FormC, bidi marks) | **Accepted** | §3.4, §6 9a |
+| Opus NIT — grace ≤ 1 d sends E3 right after E2 | **Accepted** — no reminder when grace < 2 d | §3.4 |
+| Opus NIT — E4 recipients tracked in the delete context | **Accepted** — `AsNoTracking` projection | §3.4 |
+| Opus NIT — retention keeps deleting while paused vs. "keeps everything" copy | **Accepted (reword)** — verified `RetentionService.cs:167-183`; jobs unchanged, copy says "keeps your projects, comments and settings" | §2, §3.6, §11 |
+| Opus NIT — clamp 0..30 vs. "≤ ~37 d" | **Accepted** — clamp 0..14; privacy text from config | §3.4, §3.9, §5 tasks 16/19 |
+| Opus NIT — operator resume clears the admin self-pause | **Accepted (documented, not changed)** — one pause slot keeps the constraint simple; the admin can pause again | §3.4, §3.10 D18.6 |
+| **Gemini LOW #2** — state service reads soft-deleted rows | **Accepted** | §3.3, §6 9a |
+| Gemini NIT — dashboard 429 handling on request | **Accepted** | §11 task 2 |
+| Gemini NITs — key-session reads blocked, confirm vs operator pause, anonymous upload GET, erase-token cross-use | **Confirmations, no change** | — |
+
