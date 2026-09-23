@@ -42,18 +42,30 @@ public class WorkspaceBeforeIdentityOrderingTests
         public int? RoleId { get; set; }
         public string? KeyScopes { get; set; }
         public string? Scope { get; set; }
+        public long? ImpersonationSessionId { get; set; }
+        public bool IsImpersonating => ImpersonationSessionId != null;
     }
 
     private sealed class IdentityHasher : IPasswordHasher
     {
         public string Hash(string password) => "h:" + password;
+
         public bool Verify(string password, string hash) => hash == "h:" + password;
     }
 
     private sealed class FakeToken : ITokenService
     {
-        public string Issue(User user, WorkspaceMembership? membership, int? keyScopes = null) => "t";
+        public string Issue(User user, WorkspaceMembership? membership, int? keyScopes = null) =>
+            "t";
+
         public string IssueSelection(User user) => "sel";
+
+        public string IssueImpersonation(
+            User user,
+            Guid workspaceId,
+            long sessionId,
+            DateTime expiresAt
+        ) => "imp-for-" + user.PublicId.ToString("N");
     }
 
     private sealed class FakeReset : IResetTokenService
@@ -80,15 +92,25 @@ public class WorkspaceBeforeIdentityOrderingTests
 
     private sealed class NoopEmail : IEmailService
     {
-        public Task<bool> SendAsync(string to, string subject, string html, CancellationToken ct = default) =>
-            Task.FromResult(true);
+        public Task<bool> SendAsync(
+            string to,
+            string subject,
+            string html,
+            CancellationToken ct = default
+        ) => Task.FromResult(true);
     }
 
     private sealed class NoopFileStorage : IFileStorage
     {
-        public Task<string> SaveAsync(string ownerSegment, string project, Stream content, string extension) =>
-            Task.FromResult("");
+        public Task<string> SaveAsync(
+            string ownerSegment,
+            string project,
+            Stream content,
+            string extension
+        ) => Task.FromResult("");
+
         public Task DeleteAsync(string relativePathOrUrl) => Task.CompletedTask;
+
         public Task DeleteOwnerFilesAsync(string ownerSegment) => Task.CompletedTask;
     }
 
@@ -102,7 +124,9 @@ public class WorkspaceBeforeIdentityOrderingTests
             IReadOnlySet<string> existingKinds
         ) =>
             Task.FromResult(
-                Pointer.Application.Response.Result<Pointer.Application.DTOs.Branding.BrandingResponse>.Success(Response())
+                Pointer.Application.Response.Result<Pointer.Application.DTOs.Branding.BrandingResponse>.Success(
+                    Response()
+                )
             );
 
         public Task<Pointer.Application.Response.Result<Pointer.Application.DTOs.Branding.BrandingResponse>> UpdateAsync(
@@ -111,7 +135,9 @@ public class WorkspaceBeforeIdentityOrderingTests
             IReadOnlySet<string> existingKinds
         ) =>
             Task.FromResult(
-                Pointer.Application.Response.Result<Pointer.Application.DTOs.Branding.BrandingResponse>.Success(Response())
+                Pointer.Application.Response.Result<Pointer.Application.DTOs.Branding.BrandingResponse>.Success(
+                    Response()
+                )
             );
 
         public Task<int> BumpVersionAsync() => Task.FromResult(0);
@@ -126,10 +152,16 @@ public class WorkspaceBeforeIdentityOrderingTests
     {
         public Task<bool> GetBoolAsync(string key, bool fallback = false) =>
             Task.FromResult(key == ISettingsService.ScopedAdminSignupEnabled ? true : fallback);
+
         public Task SetBoolAsync(string key, bool value) => Task.CompletedTask;
-        public Task<string> GetStringAsync(string key, string fallback = "") => Task.FromResult(fallback);
+
+        public Task<string> GetStringAsync(string key, string fallback = "") =>
+            Task.FromResult(fallback);
+
         public Task SetStringAsync(string key, string value) => Task.CompletedTask;
+
         public Task<int> GetIntAsync(string key, int fallback = 0) => Task.FromResult(fallback);
+
         public Task SetIntAsync(string key, int value) => Task.CompletedTask;
     }
 
@@ -214,7 +246,9 @@ public class WorkspaceBeforeIdentityOrderingTests
 
         Assert.True(result.IsSuccess, result.Message);
 
-        var workspace = ctx.Workspaces.IgnoreQueryFilters().Single(w => w.Id == result.Data!.OwnerId);
+        var workspace = ctx
+            .Workspaces.IgnoreQueryFilters()
+            .Single(w => w.Id == result.Data!.OwnerId);
         var user = ctx.Users.IgnoreQueryFilters().Single(u => u.Email == "new-tenant@example.com");
         Assert.Equal(workspace.Id, user.OwnerId);
     }

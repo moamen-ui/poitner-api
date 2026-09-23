@@ -31,6 +31,8 @@ public class WorkspaceServiceTests
         public int? RoleId { get; set; }
         public string? KeyScopes { get; set; }
         public string? Scope { get; set; }
+        public long? ImpersonationSessionId { get; set; }
+        public bool IsImpersonating => ImpersonationSessionId != null;
     }
 
     private sealed class FakePasswordHasher : IPasswordHasher
@@ -44,7 +46,15 @@ public class WorkspaceServiceTests
     {
         public string Issue(User user, WorkspaceMembership? membership, int? keyScopes = null) =>
             "token-for-" + user.PublicId.ToString("N");
+
         public string IssueSelection(User user) => "selection-for-" + user.PublicId.ToString("N");
+
+        public string IssueImpersonation(
+            User user,
+            Guid workspaceId,
+            long sessionId,
+            DateTime expiresAt
+        ) => "imp-for-" + user.PublicId.ToString("N");
     }
 
     private sealed class FakeSettings : ISettingsService

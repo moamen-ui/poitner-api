@@ -29,21 +29,40 @@ public class ProjectPerEnvironmentActivationTests
         public int? RoleId { get; set; }
         public string? KeyScopes { get; set; }
         public string? Scope { get; set; }
+        public long? ImpersonationSessionId { get; set; }
+        public bool IsImpersonating => ImpersonationSessionId != null;
     }
 
     private static AppDbContext BuildContext(ICurrentUser user, string dbName) =>
-        new(new DbContextOptionsBuilder<AppDbContext>().UseInMemoryDatabase(dbName).Options, user,
-            new Microsoft.Extensions.Configuration.ConfigurationBuilder().Build());
+        new(
+            new DbContextOptionsBuilder<AppDbContext>().UseInMemoryDatabase(dbName).Options,
+            user,
+            new Microsoft.Extensions.Configuration.ConfigurationBuilder().Build()
+        );
 
     [Fact]
     public async Task CreateAsync_WithoutActivationFields_ProjectIsActiveInAllEnvironments()
     {
         var dbName = Guid.NewGuid().ToString();
         var tenant = Guid.NewGuid();
-        var admin = new FakeCurrentUser { Id = Guid.NewGuid(), IsAdmin = true, TenantId = tenant };
-        var svc = new ProjectService(new UnitOfWork(BuildContext(admin, dbName)), admin, new PassThroughEntitlements(), TestProjectServiceDeps.Settings(), TestProjectServiceDeps.Configuration(), new FakeAuditWriter());
+        var admin = new FakeCurrentUser
+        {
+            Id = Guid.NewGuid(),
+            IsAdmin = true,
+            TenantId = tenant,
+        };
+        var svc = new ProjectService(
+            new UnitOfWork(BuildContext(admin, dbName)),
+            admin,
+            new PassThroughEntitlements(),
+            TestProjectServiceDeps.Settings(),
+            TestProjectServiceDeps.Configuration(),
+            new FakeAuditWriter()
+        );
 
-        var created = await svc.CreateAsync(new CreateProjectRequest { Key = "site", Name = "Site" });
+        var created = await svc.CreateAsync(
+            new CreateProjectRequest { Key = "site", Name = "Site" }
+        );
         Assert.True(created.IsSuccess);
 
         using var check = BuildContext(admin, dbName);
@@ -54,7 +73,10 @@ public class ProjectPerEnvironmentActivationTests
 
         var listed = await svc.ListAsync();
         Assert.True(listed.IsSuccess);
-        Assert.Equal(ProjectActivationState.Active, listed.Data!.Single(p => p.Key == "site").ActivationState);
+        Assert.Equal(
+            ProjectActivationState.Active,
+            listed.Data!.Single(p => p.Key == "site").ActivationState
+        );
     }
 
     [Fact]
@@ -62,11 +84,28 @@ public class ProjectPerEnvironmentActivationTests
     {
         var dbName = Guid.NewGuid().ToString();
         var tenant = Guid.NewGuid();
-        var admin = new FakeCurrentUser { Id = Guid.NewGuid(), IsAdmin = true, TenantId = tenant };
-        var svc = new ProjectService(new UnitOfWork(BuildContext(admin, dbName)), admin, new PassThroughEntitlements(), TestProjectServiceDeps.Settings(), TestProjectServiceDeps.Configuration(), new FakeAuditWriter());
-        var created = (await svc.CreateAsync(new CreateProjectRequest { Key = "site", Name = "Site" })).Data!;
+        var admin = new FakeCurrentUser
+        {
+            Id = Guid.NewGuid(),
+            IsAdmin = true,
+            TenantId = tenant,
+        };
+        var svc = new ProjectService(
+            new UnitOfWork(BuildContext(admin, dbName)),
+            admin,
+            new PassThroughEntitlements(),
+            TestProjectServiceDeps.Settings(),
+            TestProjectServiceDeps.Configuration(),
+            new FakeAuditWriter()
+        );
+        var created = (
+            await svc.CreateAsync(new CreateProjectRequest { Key = "site", Name = "Site" })
+        ).Data!;
 
-        var updated = await svc.UpdateAsync(created.Id, new UpdateProjectRequest { IsActiveStaging = false });
+        var updated = await svc.UpdateAsync(
+            created.Id,
+            new UpdateProjectRequest { IsActiveStaging = false }
+        );
         Assert.True(updated.IsSuccess);
 
         // Local + Production still active → not fully inactive → base overload still resolves.
@@ -89,16 +128,33 @@ public class ProjectPerEnvironmentActivationTests
     {
         var dbName = Guid.NewGuid().ToString();
         var tenant = Guid.NewGuid();
-        var admin = new FakeCurrentUser { Id = Guid.NewGuid(), IsAdmin = true, TenantId = tenant };
-        var svc = new ProjectService(new UnitOfWork(BuildContext(admin, dbName)), admin, new PassThroughEntitlements(), TestProjectServiceDeps.Settings(), TestProjectServiceDeps.Configuration(), new FakeAuditWriter());
-        var created = (await svc.CreateAsync(new CreateProjectRequest { Key = "site", Name = "Site" })).Data!;
-
-        var updated = await svc.UpdateAsync(created.Id, new UpdateProjectRequest
+        var admin = new FakeCurrentUser
         {
-            IsActiveLocal = false,
-            IsActiveStaging = false,
-            IsActiveProduction = false
-        });
+            Id = Guid.NewGuid(),
+            IsAdmin = true,
+            TenantId = tenant,
+        };
+        var svc = new ProjectService(
+            new UnitOfWork(BuildContext(admin, dbName)),
+            admin,
+            new PassThroughEntitlements(),
+            TestProjectServiceDeps.Settings(),
+            TestProjectServiceDeps.Configuration(),
+            new FakeAuditWriter()
+        );
+        var created = (
+            await svc.CreateAsync(new CreateProjectRequest { Key = "site", Name = "Site" })
+        ).Data!;
+
+        var updated = await svc.UpdateAsync(
+            created.Id,
+            new UpdateProjectRequest
+            {
+                IsActiveLocal = false,
+                IsActiveStaging = false,
+                IsActiveProduction = false,
+            }
+        );
         Assert.True(updated.IsSuccess);
 
         // All 3 flags false = fully inactive → the base overload conflicts (old IsActive=false parity).
@@ -111,16 +167,33 @@ public class ProjectPerEnvironmentActivationTests
     {
         var dbName = Guid.NewGuid().ToString();
         var tenant = Guid.NewGuid();
-        var admin = new FakeCurrentUser { Id = Guid.NewGuid(), IsAdmin = true, TenantId = tenant };
-        var svc = new ProjectService(new UnitOfWork(BuildContext(admin, dbName)), admin, new PassThroughEntitlements(), TestProjectServiceDeps.Settings(), TestProjectServiceDeps.Configuration(), new FakeAuditWriter());
-        var created = (await svc.CreateAsync(new CreateProjectRequest { Key = "site", Name = "Site" })).Data!;
-
-        var updated = await svc.UpdateAsync(created.Id, new UpdateProjectRequest
+        var admin = new FakeCurrentUser
         {
-            IsActiveLocal = true,
-            IsActiveStaging = true,
-            IsActiveProduction = true
-        });
+            Id = Guid.NewGuid(),
+            IsAdmin = true,
+            TenantId = tenant,
+        };
+        var svc = new ProjectService(
+            new UnitOfWork(BuildContext(admin, dbName)),
+            admin,
+            new PassThroughEntitlements(),
+            TestProjectServiceDeps.Settings(),
+            TestProjectServiceDeps.Configuration(),
+            new FakeAuditWriter()
+        );
+        var created = (
+            await svc.CreateAsync(new CreateProjectRequest { Key = "site", Name = "Site" })
+        ).Data!;
+
+        var updated = await svc.UpdateAsync(
+            created.Id,
+            new UpdateProjectRequest
+            {
+                IsActiveLocal = true,
+                IsActiveStaging = true,
+                IsActiveProduction = true,
+            }
+        );
         Assert.True(updated.IsSuccess);
         Assert.Equal(ProjectActivationState.Active, updated.Data!.ActivationState);
     }
@@ -130,16 +203,33 @@ public class ProjectPerEnvironmentActivationTests
     {
         var dbName = Guid.NewGuid().ToString();
         var tenant = Guid.NewGuid();
-        var admin = new FakeCurrentUser { Id = Guid.NewGuid(), IsAdmin = true, TenantId = tenant };
-        var svc = new ProjectService(new UnitOfWork(BuildContext(admin, dbName)), admin, new PassThroughEntitlements(), TestProjectServiceDeps.Settings(), TestProjectServiceDeps.Configuration(), new FakeAuditWriter());
-        var created = (await svc.CreateAsync(new CreateProjectRequest { Key = "site", Name = "Site" })).Data!;
-
-        var updated = await svc.UpdateAsync(created.Id, new UpdateProjectRequest
+        var admin = new FakeCurrentUser
         {
-            IsActiveLocal = true,
-            IsActiveStaging = false,
-            IsActiveProduction = true
-        });
+            Id = Guid.NewGuid(),
+            IsAdmin = true,
+            TenantId = tenant,
+        };
+        var svc = new ProjectService(
+            new UnitOfWork(BuildContext(admin, dbName)),
+            admin,
+            new PassThroughEntitlements(),
+            TestProjectServiceDeps.Settings(),
+            TestProjectServiceDeps.Configuration(),
+            new FakeAuditWriter()
+        );
+        var created = (
+            await svc.CreateAsync(new CreateProjectRequest { Key = "site", Name = "Site" })
+        ).Data!;
+
+        var updated = await svc.UpdateAsync(
+            created.Id,
+            new UpdateProjectRequest
+            {
+                IsActiveLocal = true,
+                IsActiveStaging = false,
+                IsActiveProduction = true,
+            }
+        );
         Assert.True(updated.IsSuccess);
         Assert.Equal(ProjectActivationState.Partial, updated.Data!.ActivationState);
     }
@@ -149,16 +239,33 @@ public class ProjectPerEnvironmentActivationTests
     {
         var dbName = Guid.NewGuid().ToString();
         var tenant = Guid.NewGuid();
-        var admin = new FakeCurrentUser { Id = Guid.NewGuid(), IsAdmin = true, TenantId = tenant };
-        var svc = new ProjectService(new UnitOfWork(BuildContext(admin, dbName)), admin, new PassThroughEntitlements(), TestProjectServiceDeps.Settings(), TestProjectServiceDeps.Configuration(), new FakeAuditWriter());
-        var created = (await svc.CreateAsync(new CreateProjectRequest { Key = "site", Name = "Site" })).Data!;
-
-        var updated = await svc.UpdateAsync(created.Id, new UpdateProjectRequest
+        var admin = new FakeCurrentUser
         {
-            IsActiveLocal = false,
-            IsActiveStaging = false,
-            IsActiveProduction = false
-        });
+            Id = Guid.NewGuid(),
+            IsAdmin = true,
+            TenantId = tenant,
+        };
+        var svc = new ProjectService(
+            new UnitOfWork(BuildContext(admin, dbName)),
+            admin,
+            new PassThroughEntitlements(),
+            TestProjectServiceDeps.Settings(),
+            TestProjectServiceDeps.Configuration(),
+            new FakeAuditWriter()
+        );
+        var created = (
+            await svc.CreateAsync(new CreateProjectRequest { Key = "site", Name = "Site" })
+        ).Data!;
+
+        var updated = await svc.UpdateAsync(
+            created.Id,
+            new UpdateProjectRequest
+            {
+                IsActiveLocal = false,
+                IsActiveStaging = false,
+                IsActiveProduction = false,
+            }
+        );
         Assert.True(updated.IsSuccess);
         Assert.Equal(ProjectActivationState.Inactive, updated.Data!.ActivationState);
     }

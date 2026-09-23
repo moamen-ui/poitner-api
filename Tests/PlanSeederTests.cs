@@ -26,21 +26,31 @@ public class PlanSeederTests
         public int? RoleId { get; set; }
         public string? KeyScopes { get; set; }
         public string? Scope { get; set; }
+        public long? ImpersonationSessionId { get; set; }
+        public bool IsImpersonating => ImpersonationSessionId != null;
     }
 
     private sealed class IdentityHasher : IPasswordHasher
     {
         public string Hash(string p) => "h:" + p;
+
         public bool Verify(string p, string h) => h == "h:" + p;
     }
 
     private sealed class FakeSettings : ISettingsService
     {
-        public Task<bool> GetBoolAsync(string key, bool fallback = false) => Task.FromResult(fallback);
+        public Task<bool> GetBoolAsync(string key, bool fallback = false) =>
+            Task.FromResult(fallback);
+
         public Task SetBoolAsync(string key, bool value) => Task.CompletedTask;
-        public Task<string> GetStringAsync(string key, string fallback = "") => Task.FromResult(fallback);
+
+        public Task<string> GetStringAsync(string key, string fallback = "") =>
+            Task.FromResult(fallback);
+
         public Task SetStringAsync(string key, string value) => Task.CompletedTask;
+
         public Task<int> GetIntAsync(string key, int fallback = 0) => Task.FromResult(fallback);
+
         public Task SetIntAsync(string key, int value) => Task.CompletedTask;
     }
 
@@ -52,35 +62,69 @@ public class PlanSeederTests
         services.AddScoped(sp => new AppDbContext(
             new DbContextOptionsBuilder<AppDbContext>().UseInMemoryDatabase(dbName).Options,
             sp.GetRequiredService<ICurrentUser>(),
-            new ConfigurationBuilder().Build()));
+            new ConfigurationBuilder().Build()
+        ));
         services.AddScoped<IPasswordHasher>(_ => new IdentityHasher());
         services.AddScoped<ISettingsService>(_ => new FakeSettings());
         // Provide operator creds so the seeder proceeds past the super-admin reconcile to the plan step.
         var config = new ConfigurationBuilder()
-            .AddInMemoryCollection(new Dictionary<string, string?>
-            {
-                ["ADMIN:EMAIL"] = "op@a.com",
-                ["ADMIN:PASSWORD"] = "operator-password"
-            })
+            .AddInMemoryCollection(
+                new Dictionary<string, string?>
+                {
+                    ["ADMIN:EMAIL"] = "op@a.com",
+                    ["ADMIN:PASSWORD"] = "operator-password",
+                }
+            )
             .Build();
         services.AddSingleton<IConfiguration>(config);
         return services.BuildServiceProvider();
     }
 
     private static AppDbContext Raw(string dbName) =>
-        new(new DbContextOptionsBuilder<AppDbContext>().UseInMemoryDatabase(dbName).Options, new FakeCurrentUser(), new Microsoft.Extensions.Configuration.ConfigurationBuilder().Build());
+        new(
+            new DbContextOptionsBuilder<AppDbContext>().UseInMemoryDatabase(dbName).Options,
+            new FakeCurrentUser(),
+            new Microsoft.Extensions.Configuration.ConfigurationBuilder().Build()
+        );
 
     private static Guid SeedExistingTenant(string dbName)
     {
         using var seed = Raw(dbName);
-        var role = new Role { Name = "Workspace Admin", GrantsAdmin = true, IsSuperAdmin = false, IsActive = true, OwnerId = null };
+        var role = new Role
+        {
+            Name = "Workspace Admin",
+            GrantsAdmin = true,
+            IsSuperAdmin = false,
+            IsActive = true,
+            OwnerId = null,
+        };
         seed.Roles.Add(role);
         seed.SaveChanges();
         var pid = Guid.NewGuid();
-        seed.Users.Add(new User { Email = "old@a.com", PasswordHash = "x", DisplayName = "Old", RoleId = role.Id, PublicId = pid, OwnerId = pid, IsActive = true, ApprovalStatus = ApprovalStatus.Approved });
+        seed.Users.Add(
+            new User
+            {
+                Email = "old@a.com",
+                PasswordHash = "x",
+                DisplayName = "Old",
+                RoleId = role.Id,
+                PublicId = pid,
+                OwnerId = pid,
+                IsActive = true,
+                ApprovalStatus = ApprovalStatus.Approved,
+            }
+        );
         // DB-11a: a tenant is a workspaces row (AdminSeeder's legacy backfill now enumerates
         // db.Workspaces, not self-owned admin users).
-        seed.Workspaces.Add(new Workspace { Id = pid, Name = "Old Co", CreatedAt = DateTime.UtcNow, CreatedBy = pid });
+        seed.Workspaces.Add(
+            new Workspace
+            {
+                Id = pid,
+                Name = "Old Co",
+                CreatedAt = DateTime.UtcNow,
+                CreatedBy = pid,
+            }
+        );
         seed.SaveChanges();
         return pid;
     }

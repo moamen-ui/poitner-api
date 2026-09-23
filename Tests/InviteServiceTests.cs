@@ -30,6 +30,8 @@ public class InviteServiceTests
         public int? RoleId { get; set; }
         public string? KeyScopes { get; set; }
         public string? Scope { get; set; }
+        public long? ImpersonationSessionId { get; set; }
+        public bool IsImpersonating => ImpersonationSessionId != null;
     }
 
     // Identity hasher/verifier — good enough for service-level assertions.
@@ -44,7 +46,15 @@ public class InviteServiceTests
     {
         public string Issue(User user, WorkspaceMembership? membership, int? keyScopes = null) =>
             "token-for-" + user.PublicId.ToString("N");
+
         public string IssueSelection(User user) => "selection-for-" + user.PublicId.ToString("N");
+
+        public string IssueImpersonation(
+            User user,
+            Guid workspaceId,
+            long sessionId,
+            DateTime expiresAt
+        ) => "imp-for-" + user.PublicId.ToString("N");
     }
 
     private sealed class FakeSettings : ISettingsService
@@ -798,13 +808,16 @@ public class InviteServiceTests
         );
 
         Assert.True(result.IsSuccess);
-        var created = db.Users.IgnoreQueryFilters().Include(u => u.Role)
+        var created = db
+            .Users.IgnoreQueryFilters()
+            .Include(u => u.Role)
             .Single(u => u.Email == "founder@newco.com");
         Assert.Equal("Workspace Admin", created.Role.Name);
         // DB-11a: workspaces.id no longer equals anyone's public_id — a fresh id every time. The
         // identity's presence is a live, Approved, active Workspace Admin membership in it instead.
         Assert.NotEqual(Guid.Empty, created.OwnerId ?? Guid.Empty);
-        var membership = db.Set<WorkspaceMembership>().IgnoreQueryFilters()
+        var membership = db.Set<WorkspaceMembership>()
+            .IgnoreQueryFilters()
             .Include(m => m.Role)
             .Single(m => m.UserId == created.Id && m.LeftAt == null);
         Assert.Equal(created.OwnerId, membership.OwnerId);
@@ -1301,8 +1314,21 @@ public class InviteServiceTests
         int existingUserId;
         using (var seed = BuildContext(new FakeCurrentUser { IsSuperAdmin = true }, dbName))
         {
-            seed.Workspaces.Add(new Workspace { Id = otherTenant, Name = "Other", CreatedAt = DateTime.UtcNow, CreatedBy = otherTenant });
-            var otherRole = new Role { Name = "Developer", OwnerId = otherTenant, IsActive = true };
+            seed.Workspaces.Add(
+                new Workspace
+                {
+                    Id = otherTenant,
+                    Name = "Other",
+                    CreatedAt = DateTime.UtcNow,
+                    CreatedBy = otherTenant,
+                }
+            );
+            var otherRole = new Role
+            {
+                Name = "Developer",
+                OwnerId = otherTenant,
+                IsActive = true,
+            };
             seed.Roles.Add(otherRole);
             seed.SaveChanges();
             var existing = new User
@@ -1362,8 +1388,21 @@ public class InviteServiceTests
         int existingUserId;
         using (var seed = BuildContext(new FakeCurrentUser { IsSuperAdmin = true }, dbName))
         {
-            seed.Workspaces.Add(new Workspace { Id = otherTenant, Name = "Other", CreatedAt = DateTime.UtcNow, CreatedBy = otherTenant });
-            var otherRole = new Role { Name = "Developer", OwnerId = otherTenant, IsActive = true };
+            seed.Workspaces.Add(
+                new Workspace
+                {
+                    Id = otherTenant,
+                    Name = "Other",
+                    CreatedAt = DateTime.UtcNow,
+                    CreatedBy = otherTenant,
+                }
+            );
+            var otherRole = new Role
+            {
+                Name = "Developer",
+                OwnerId = otherTenant,
+                IsActive = true,
+            };
             seed.Roles.Add(otherRole);
             seed.SaveChanges();
             var existing = new User
@@ -1413,7 +1452,9 @@ public class InviteServiceTests
         Assert.NotNull(
             db.Set<WorkspaceMembership>()
                 .IgnoreQueryFilters()
-                .SingleOrDefault(m => m.UserId == existingUserId && m.OwnerId == otherTenant && m.LeftAt == null)
+                .SingleOrDefault(m =>
+                    m.UserId == existingUserId && m.OwnerId == otherTenant && m.LeftAt == null
+                )
         );
     }
 
@@ -1617,7 +1658,8 @@ public class InviteServiceTests
         // ONE identity row, TWO memberships (one per tenant) — DB-11a.
         var rows = db.Users.IgnoreQueryFilters().Where(u => u.Email == "shared@email.com").ToList();
         Assert.Single(rows);
-        var memberships = db.Set<WorkspaceMembership>().IgnoreQueryFilters()
+        var memberships = db.Set<WorkspaceMembership>()
+            .IgnoreQueryFilters()
             .Where(m => m.UserId == rows[0].Id && m.LeftAt == null)
             .ToList();
         Assert.Equal(2, memberships.Count);

@@ -31,29 +31,47 @@ public class ReplyAiAttributionTests
         public int? RoleId { get; set; }
         public string? KeyScopes { get; set; }
         public string? Scope { get; set; }
+        public long? ImpersonationSessionId { get; set; }
+        public bool IsImpersonating => ImpersonationSessionId != null;
     }
 
     private sealed class FakeFileStorage : IFileStorage
     {
-        public Task<string> SaveAsync(string ownerSegment, string project, Stream content, string extension) => Task.FromResult("uploads/x");
+        public Task<string> SaveAsync(
+            string ownerSegment,
+            string project,
+            Stream content,
+            string extension
+        ) => Task.FromResult("uploads/x");
+
         public Task DeleteAsync(string relativePathOrUrl) => Task.CompletedTask;
+
         public Task DeleteOwnerFilesAsync(string ownerSegment) => Task.CompletedTask;
     }
 
     private sealed class FakeUploadSigner : IUploadSigner
     {
         public string SignedUrl(string relPath) => relPath;
+
         public bool Validate(string relPath, long exp, string sig) => true;
+
         public string ExtractRelPath(string stored) => stored;
     }
 
     private sealed class FakeSettings : ISettingsService
     {
-        public Task<bool> GetBoolAsync(string key, bool fallback = false) => Task.FromResult(fallback);
+        public Task<bool> GetBoolAsync(string key, bool fallback = false) =>
+            Task.FromResult(fallback);
+
         public Task SetBoolAsync(string key, bool value) => Task.CompletedTask;
-        public Task<string> GetStringAsync(string key, string fallback = "") => Task.FromResult(fallback);
+
+        public Task<string> GetStringAsync(string key, string fallback = "") =>
+            Task.FromResult(fallback);
+
         public Task SetStringAsync(string key, string value) => Task.CompletedTask;
+
         public Task<int> GetIntAsync(string key, int fallback = 0) => Task.FromResult(fallback);
+
         public Task SetIntAsync(string key, int value) => Task.CompletedTask;
     }
 
@@ -63,29 +81,70 @@ public class ReplyAiAttributionTests
     }
 
     private static AppDbContext BuildContext(ICurrentUser user, string dbName) =>
-        new(new DbContextOptionsBuilder<AppDbContext>().UseInMemoryDatabase(dbName).Options, user,
-            new Microsoft.Extensions.Configuration.ConfigurationBuilder().Build());
+        new(
+            new DbContextOptionsBuilder<AppDbContext>().UseInMemoryDatabase(dbName).Options,
+            user,
+            new Microsoft.Extensions.Configuration.ConfigurationBuilder().Build()
+        );
 
-    private CommentService BuildService(ICurrentUser user, string dbName, ICurrentClient? currentClient = null)
+    private CommentService BuildService(
+        ICurrentUser user,
+        string dbName,
+        ICurrentClient? currentClient = null
+    )
     {
         var uow = new UnitOfWork(BuildContext(user, dbName));
-        var projectService = new ProjectService(uow, user, new PassThroughEntitlements(), TestProjectServiceDeps.Settings(), TestProjectServiceDeps.Configuration(), new FakeAuditWriter());
-        var actionService = new PredefinedActionService(uow, projectService, user, new PassThroughEntitlements());
-        return new CommentService(uow, projectService, actionService, new FakeFileStorage(), user,
-            new FakeUploadSigner(), new FakeSettings(), new PassThroughEntitlements(), currentClient);
+        var projectService = new ProjectService(
+            uow,
+            user,
+            new PassThroughEntitlements(),
+            TestProjectServiceDeps.Settings(),
+            TestProjectServiceDeps.Configuration(),
+            new FakeAuditWriter()
+        );
+        var actionService = new PredefinedActionService(
+            uow,
+            projectService,
+            user,
+            new PassThroughEntitlements()
+        );
+        return new CommentService(
+            uow,
+            projectService,
+            actionService,
+            new FakeFileStorage(),
+            user,
+            new FakeUploadSigner(),
+            new FakeSettings(),
+            new PassThroughEntitlements(),
+            currentClient
+        );
     }
 
     private static int SeedComment(string dbName, Guid tenant, Guid authorId)
     {
         using var seed = BuildContext(new FakeCurrentUser { IsSuperAdmin = true }, dbName);
-        var project = new Project { Key = "proj", Name = "Proj", IsActiveLocal = true, IsActiveStaging = true, IsActiveProduction = true, OwnerId = tenant };
+        var project = new Project
+        {
+            Key = "proj",
+            Name = "Proj",
+            IsActiveLocal = true,
+            IsActiveStaging = true,
+            IsActiveProduction = true,
+            OwnerId = tenant,
+        };
         seed.Projects.Add(project);
         seed.SaveChanges();
 
         var comment = new Comment
         {
-            ProjectId = project.Id, OwnerId = tenant, AuthorId = authorId, Body = "the comment",
-            Status = CommentStatus.Open, Environment = EnvironmentTag.Local, Element = new ElementCapture()
+            ProjectId = project.Id,
+            OwnerId = tenant,
+            AuthorId = authorId,
+            Body = "the comment",
+            Status = CommentStatus.Open,
+            Environment = EnvironmentTag.Local,
+            Element = new ElementCapture(),
         };
         seed.Comments.Add(comment);
         seed.SaveChanges();
@@ -102,13 +161,21 @@ public class ReplyAiAttributionTests
         var authorId = Guid.NewGuid();
         var commentId = SeedComment(db, tenant, authorId);
 
-        var svc = BuildService(new FakeCurrentUser { Id = authorId, TenantId = tenant }, db, new FakeCurrentClient(false));
-        var result = await svc.AddReplyAsync(commentId, new AddReplyRequest
-        {
-            Body = "Applied ✓",
-            AiTool = "Claude-Code",
-            AiModel = "claude-sonnet-5"
-        }, authorId);
+        var svc = BuildService(
+            new FakeCurrentUser { Id = authorId, TenantId = tenant },
+            db,
+            new FakeCurrentClient(false)
+        );
+        var result = await svc.AddReplyAsync(
+            commentId,
+            new AddReplyRequest
+            {
+                Body = "Applied ✓",
+                AiTool = "Claude-Code",
+                AiModel = "claude-sonnet-5",
+            },
+            authorId
+        );
 
         Assert.True(result.IsSuccess);
         Assert.True(result.Data!.IsAi);
@@ -134,13 +201,21 @@ public class ReplyAiAttributionTests
 
         // Widget/dashboard send X-Pointer-Client — IsHumanSurface true. A human can't claim to be
         // an AI even if the request body carries tool/model.
-        var svc = BuildService(new FakeCurrentUser { Id = authorId, TenantId = tenant }, db, new FakeCurrentClient(true));
-        var result = await svc.AddReplyAsync(commentId, new AddReplyRequest
-        {
-            Body = "a human reply",
-            AiTool = "claude-code",
-            AiModel = "claude-sonnet-5"
-        }, authorId);
+        var svc = BuildService(
+            new FakeCurrentUser { Id = authorId, TenantId = tenant },
+            db,
+            new FakeCurrentClient(true)
+        );
+        var result = await svc.AddReplyAsync(
+            commentId,
+            new AddReplyRequest
+            {
+                Body = "a human reply",
+                AiTool = "claude-code",
+                AiModel = "claude-sonnet-5",
+            },
+            authorId
+        );
 
         Assert.True(result.IsSuccess);
         Assert.False(result.Data!.IsAi);
@@ -159,14 +234,22 @@ public class ReplyAiAttributionTests
         var commentId = SeedComment(db, tenant, authorId);
 
         // No X-Pointer-Client header — the CLI's `apply --mark` path.
-        var svc = BuildService(new FakeCurrentUser { Id = authorId, TenantId = tenant }, db, new FakeCurrentClient(false));
-        var result = await svc.UpdateStatusAsync(commentId, new UpdateCommentStatusRequest
-        {
-            Status = CommentStatus.Applied,
-            Reply = "Applied ✓ — fixed the button",
-            AiTool = "claude-code",
-            AiModel = "gpt-5.2"
-        }, authorId);
+        var svc = BuildService(
+            new FakeCurrentUser { Id = authorId, TenantId = tenant },
+            db,
+            new FakeCurrentClient(false)
+        );
+        var result = await svc.UpdateStatusAsync(
+            commentId,
+            new UpdateCommentStatusRequest
+            {
+                Status = CommentStatus.Applied,
+                Reply = "Applied ✓ — fixed the button",
+                AiTool = "claude-code",
+                AiModel = "gpt-5.2",
+            },
+            authorId
+        );
 
         Assert.True(result.IsSuccess);
         var reply = Assert.Single(result.Data!.Replies!);
@@ -183,14 +266,22 @@ public class ReplyAiAttributionTests
         var authorId = Guid.NewGuid();
         var commentId = SeedComment(db, tenant, authorId);
 
-        var svc = BuildService(new FakeCurrentUser { Id = authorId, TenantId = tenant }, db, new FakeCurrentClient(true));
-        var result = await svc.UpdateStatusAsync(commentId, new UpdateCommentStatusRequest
-        {
-            Status = CommentStatus.Applied,
-            Reply = "Applied by hand",
-            AiTool = "claude-code",
-            AiModel = "claude-sonnet-5"
-        }, authorId);
+        var svc = BuildService(
+            new FakeCurrentUser { Id = authorId, TenantId = tenant },
+            db,
+            new FakeCurrentClient(true)
+        );
+        var result = await svc.UpdateStatusAsync(
+            commentId,
+            new UpdateCommentStatusRequest
+            {
+                Status = CommentStatus.Applied,
+                Reply = "Applied by hand",
+                AiTool = "claude-code",
+                AiModel = "claude-sonnet-5",
+            },
+            authorId
+        );
 
         Assert.True(result.IsSuccess);
         var reply = Assert.Single(result.Data!.Replies!);
@@ -209,17 +300,29 @@ public class ReplyAiAttributionTests
         var authorId = Guid.NewGuid();
         var commentId = SeedComment(db, tenant, authorId);
 
-        var svc = BuildService(new FakeCurrentUser { Id = authorId, TenantId = tenant }, db, new FakeCurrentClient(false));
-        var added = await svc.AddReplyAsync(commentId, new AddReplyRequest
-        {
-            Body = "Applied ✓",
-            AiTool = "claude-code",
-            AiModel = "claude-sonnet-5"
-        }, authorId);
+        var svc = BuildService(
+            new FakeCurrentUser { Id = authorId, TenantId = tenant },
+            db,
+            new FakeCurrentClient(false)
+        );
+        var added = await svc.AddReplyAsync(
+            commentId,
+            new AddReplyRequest
+            {
+                Body = "Applied ✓",
+                AiTool = "claude-code",
+                AiModel = "claude-sonnet-5",
+            },
+            authorId
+        );
         Assert.True(added.IsSuccess);
         var replyId = added.Data!.Id;
 
-        var editResult = await svc.EditReplyAsync(replyId, new UpdateReplyRequest { Body = "hijacked" }, authorId);
+        var editResult = await svc.EditReplyAsync(
+            replyId,
+            new UpdateReplyRequest { Body = "hijacked" },
+            authorId
+        );
         Assert.False(editResult.IsSuccess);
 
         var deleteResult = await svc.DeleteReplyAsync(replyId, authorId, isAdmin: true);
@@ -236,13 +339,21 @@ public class ReplyAiAttributionTests
         var authorId = Guid.NewGuid();
         var commentId = SeedComment(db, tenant, authorId);
 
-        var aiSvc = BuildService(new FakeCurrentUser { Id = authorId, TenantId = tenant }, db, new FakeCurrentClient(false));
-        var added = await aiSvc.AddReplyAsync(commentId, new AddReplyRequest
-        {
-            Body = "Applied ✓",
-            AiTool = "claude-code",
-            AiModel = "claude-sonnet-5"
-        }, authorId);
+        var aiSvc = BuildService(
+            new FakeCurrentUser { Id = authorId, TenantId = tenant },
+            db,
+            new FakeCurrentClient(false)
+        );
+        var added = await aiSvc.AddReplyAsync(
+            commentId,
+            new AddReplyRequest
+            {
+                Body = "Applied ✓",
+                AiTool = "claude-code",
+                AiModel = "claude-sonnet-5",
+            },
+            authorId
+        );
         Assert.True(added.IsSuccess);
 
         // Sanity: visible before delete.
@@ -250,7 +361,11 @@ public class ReplyAiAttributionTests
         Assert.True(before.IsSuccess);
         Assert.Single(before.Data!.Replies!);
 
-        var humanSvc = BuildService(new FakeCurrentUser { Id = authorId, TenantId = tenant }, db, new FakeCurrentClient(true));
+        var humanSvc = BuildService(
+            new FakeCurrentUser { Id = authorId, TenantId = tenant },
+            db,
+            new FakeCurrentClient(true)
+        );
         var deleteResult = await humanSvc.DeleteAsync(commentId, authorId, isAdmin: false);
         Assert.True(deleteResult.IsSuccess);
 
@@ -268,7 +383,14 @@ public class ReplyAiAttributionTests
     [InlineData("gemini-3.8-flash-high")]
     public void AddReplyValidator_accepts_wellFormed_toolAndModel(string value)
     {
-        var r = new AddReplyValidator().TestValidate(new AddReplyRequest { Body = "x", AiTool = value, AiModel = value });
+        var r = new AddReplyValidator().TestValidate(
+            new AddReplyRequest
+            {
+                Body = "x",
+                AiTool = value,
+                AiModel = value,
+            }
+        );
         r.ShouldNotHaveValidationErrorFor(x => x.AiTool);
         r.ShouldNotHaveValidationErrorFor(x => x.AiModel);
     }
@@ -277,7 +399,14 @@ public class ReplyAiAttributionTests
     public void AddReplyValidator_rejects_tooLong_toolAndModel()
     {
         var tooLong = new string('a', 65);
-        var r = new AddReplyValidator().TestValidate(new AddReplyRequest { Body = "x", AiTool = tooLong, AiModel = tooLong });
+        var r = new AddReplyValidator().TestValidate(
+            new AddReplyRequest
+            {
+                Body = "x",
+                AiTool = tooLong,
+                AiModel = tooLong,
+            }
+        );
         r.ShouldHaveValidationErrorFor(x => x.AiTool);
         r.ShouldHaveValidationErrorFor(x => x.AiModel);
     }
@@ -285,7 +414,14 @@ public class ReplyAiAttributionTests
     [Fact]
     public void AddReplyValidator_rejects_spaceInToolAndModel()
     {
-        var r = new AddReplyValidator().TestValidate(new AddReplyRequest { Body = "x", AiTool = "claude code", AiModel = "claude code" });
+        var r = new AddReplyValidator().TestValidate(
+            new AddReplyRequest
+            {
+                Body = "x",
+                AiTool = "claude code",
+                AiModel = "claude code",
+            }
+        );
         r.ShouldHaveValidationErrorFor(x => x.AiTool);
         r.ShouldHaveValidationErrorFor(x => x.AiModel);
     }
@@ -293,12 +429,14 @@ public class ReplyAiAttributionTests
     [Fact]
     public void UpdateCommentStatusValidator_accepts_wellFormed_toolAndModel()
     {
-        var r = new UpdateCommentStatusValidator().TestValidate(new UpdateCommentStatusRequest
-        {
-            Status = CommentStatus.Applied,
-            AiTool = "claude-code",
-            AiModel = "gpt-5.2"
-        });
+        var r = new UpdateCommentStatusValidator().TestValidate(
+            new UpdateCommentStatusRequest
+            {
+                Status = CommentStatus.Applied,
+                AiTool = "claude-code",
+                AiModel = "gpt-5.2",
+            }
+        );
         r.ShouldNotHaveValidationErrorFor(x => x.AiTool);
         r.ShouldNotHaveValidationErrorFor(x => x.AiModel);
     }
@@ -307,12 +445,14 @@ public class ReplyAiAttributionTests
     public void UpdateCommentStatusValidator_rejects_tooLong_and_space()
     {
         var tooLong = new string('a', 65);
-        var r = new UpdateCommentStatusValidator().TestValidate(new UpdateCommentStatusRequest
-        {
-            Status = CommentStatus.Applied,
-            AiTool = tooLong,
-            AiModel = "claude code"
-        });
+        var r = new UpdateCommentStatusValidator().TestValidate(
+            new UpdateCommentStatusRequest
+            {
+                Status = CommentStatus.Applied,
+                AiTool = tooLong,
+                AiModel = "claude code",
+            }
+        );
         r.ShouldHaveValidationErrorFor(x => x.AiTool);
         r.ShouldHaveValidationErrorFor(x => x.AiModel);
     }

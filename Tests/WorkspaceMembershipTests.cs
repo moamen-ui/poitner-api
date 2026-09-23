@@ -35,18 +35,28 @@ public class WorkspaceMembershipTests
         public int? RoleId { get; set; }
         public string? KeyScopes { get; set; }
         public string? Scope { get; set; }
+        public long? ImpersonationSessionId { get; set; }
+        public bool IsImpersonating => ImpersonationSessionId != null;
     }
 
     private sealed class FakePasswordHasher : IPasswordHasher
     {
         public string Hash(string password) => "hashed:" + password;
+
         public bool Verify(string password, string hash) => hash == "hashed:" + password;
     }
 
     private sealed class NoopFileStorage : IFileStorage
     {
-        public Task<string> SaveAsync(string ownerSegment, string project, Stream content, string extension) => Task.FromResult("");
+        public Task<string> SaveAsync(
+            string ownerSegment,
+            string project,
+            Stream content,
+            string extension
+        ) => Task.FromResult("");
+
         public Task DeleteAsync(string relativePathOrUrl) => Task.CompletedTask;
+
         public Task DeleteOwnerFilesAsync(string ownerSegment) => Task.CompletedTask;
     }
 
@@ -54,12 +64,21 @@ public class WorkspaceMembershipTests
     {
         public string Issue(User user, WorkspaceMembership? membership, int? keyScopes = null) =>
             "token-for-" + user.PublicId.ToString("N");
+
         public string IssueSelection(User user) => "selection-for-" + user.PublicId.ToString("N");
+
+        public string IssueImpersonation(
+            User user,
+            Guid workspaceId,
+            long sessionId,
+            DateTime expiresAt
+        ) => "imp-for-" + user.PublicId.ToString("N");
     }
 
     private sealed class FakeResetTokenService : IResetTokenService
     {
         public string Create(Guid id, Guid stamp) => "r";
+
         public bool TryValidate(string token, out Guid id, out Guid stamp)
         {
             id = Guid.Empty;
@@ -80,11 +99,18 @@ public class WorkspaceMembershipTests
 
     private sealed class FakeSettings : ISettingsService
     {
-        public Task<bool> GetBoolAsync(string key, bool fallback = false) => Task.FromResult(fallback);
+        public Task<bool> GetBoolAsync(string key, bool fallback = false) =>
+            Task.FromResult(fallback);
+
         public Task SetBoolAsync(string key, bool value) => Task.CompletedTask;
-        public Task<string> GetStringAsync(string key, string fallback = "") => Task.FromResult(fallback);
+
+        public Task<string> GetStringAsync(string key, string fallback = "") =>
+            Task.FromResult(fallback);
+
         public Task SetStringAsync(string key, string value) => Task.CompletedTask;
+
         public Task<int> GetIntAsync(string key, int fallback = 0) => Task.FromResult(fallback);
+
         public Task SetIntAsync(string key, int value) => Task.CompletedTask;
     }
 
@@ -586,31 +612,43 @@ public class WorkspaceMembershipTests
         using var verify = db.MakeContext(superAdmin);
 
         // Identity X survives and is re-homed to workspace B
-        var survivingX = await verify.Users.IgnoreQueryFilters()
+        var survivingX = await verify
+            .Users.IgnoreQueryFilters()
             .FirstOrDefaultAsync(u => u.Email == "userx@example.com");
         Assert.NotNull(survivingX);
         Assert.Equal(workspaceB, survivingX!.OwnerId);
 
         // Membership in B is untouched
-        var xMembershipB = await verify.WorkspaceMemberships.IgnoreQueryFilters()
+        var xMembershipB = await verify
+            .WorkspaceMemberships.IgnoreQueryFilters()
             .FirstOrDefaultAsync(m => m.UserId == survivingX.Id && m.OwnerId == workspaceB);
         Assert.NotNull(xMembershipB);
         Assert.Null(xMembershipB!.LeftAt);
         Assert.True(xMembershipB.IsActive);
 
         // Membership in A is gone
-        var xMembershipA = await verify.WorkspaceMemberships.IgnoreQueryFilters()
+        var xMembershipA = await verify
+            .WorkspaceMemberships.IgnoreQueryFilters()
             .FirstOrDefaultAsync(m => m.UserId == survivingX.Id && m.OwnerId == workspaceA);
         Assert.Null(xMembershipA);
 
         // Identity Y only belonged to A, so it is hard-deleted
-        var deletedY = await verify.Users.IgnoreQueryFilters()
+        var deletedY = await verify
+            .Users.IgnoreQueryFilters()
             .FirstOrDefaultAsync(u => u.Email == "usery@example.com");
         Assert.Null(deletedY);
 
         // Workspace A is deleted; Workspace B remains
-        Assert.Null(await verify.Workspaces.IgnoreQueryFilters().FirstOrDefaultAsync(w => w.Id == workspaceA));
-        Assert.NotNull(await verify.Workspaces.IgnoreQueryFilters().FirstOrDefaultAsync(w => w.Id == workspaceB));
+        Assert.Null(
+            await verify
+                .Workspaces.IgnoreQueryFilters()
+                .FirstOrDefaultAsync(w => w.Id == workspaceA)
+        );
+        Assert.NotNull(
+            await verify
+                .Workspaces.IgnoreQueryFilters()
+                .FirstOrDefaultAsync(w => w.Id == workspaceB)
+        );
 
         // R8.7: Under tenant B context, identity X is visible
         using var tenantBContext = db.MakeContext(new FakeCurrentUser { TenantId = workspaceB });
@@ -634,10 +672,31 @@ public class WorkspaceMembershipTests
 
         using (var seed = db.MakeContext(superAdmin))
         {
-            seed.Workspaces.Add(new Workspace { Id = workspaceA, Name = "Workspace A", CreatedAt = DateTime.UtcNow, CreatedBy = workspaceA });
-            seed.Workspaces.Add(new Workspace { Id = workspaceB, Name = "Workspace B", CreatedAt = DateTime.UtcNow, CreatedBy = workspaceB });
+            seed.Workspaces.Add(
+                new Workspace
+                {
+                    Id = workspaceA,
+                    Name = "Workspace A",
+                    CreatedAt = DateTime.UtcNow,
+                    CreatedBy = workspaceA,
+                }
+            );
+            seed.Workspaces.Add(
+                new Workspace
+                {
+                    Id = workspaceB,
+                    Name = "Workspace B",
+                    CreatedAt = DateTime.UtcNow,
+                    CreatedBy = workspaceB,
+                }
+            );
 
-            var adminRole = new Role { Name = "Workspace Admin", GrantsAdmin = true, IsActive = true };
+            var adminRole = new Role
+            {
+                Name = "Workspace Admin",
+                GrantsAdmin = true,
+                IsActive = true,
+            };
             seed.Roles.Add(adminRole);
             var proPlan = new Plan
             {
@@ -692,17 +751,25 @@ public class WorkspaceMembershipTests
             var membershipA = await verify
                 .WorkspaceMemberships.IgnoreQueryFilters()
                 .Include(m => m.User)
-                .FirstAsync(m => m.OwnerId == workspaceA && m.User.Email == "multiadmin@example.com");
+                .FirstAsync(m =>
+                    m.OwnerId == workspaceA && m.User.Email == "multiadmin@example.com"
+                );
             var membershipB = await verify
                 .WorkspaceMemberships.IgnoreQueryFilters()
                 .Include(m => m.User)
-                .FirstAsync(m => m.OwnerId == workspaceB && m.User.Email == "multiadmin@example.com");
+                .FirstAsync(m =>
+                    m.OwnerId == workspaceB && m.User.Email == "multiadmin@example.com"
+                );
 
             Assert.False(membershipA.IsActive); // disabled by SetStatusAsync(workspaceA, ...)
             Assert.True(membershipB.IsActive); // untouched
 
-            var subA = await verify.Subscriptions.IgnoreQueryFilters().FirstOrDefaultAsync(s => s.OwnerId == workspaceA);
-            var subB = await verify.Subscriptions.IgnoreQueryFilters().FirstOrDefaultAsync(s => s.OwnerId == workspaceB);
+            var subA = await verify
+                .Subscriptions.IgnoreQueryFilters()
+                .FirstOrDefaultAsync(s => s.OwnerId == workspaceA);
+            var subB = await verify
+                .Subscriptions.IgnoreQueryFilters()
+                .FirstOrDefaultAsync(s => s.OwnerId == workspaceB);
             Assert.Null(subA);
             Assert.NotNull(subB);
             Assert.Equal(proId, subB!.PlanId);
@@ -714,8 +781,14 @@ public class WorkspaceMembershipTests
         Assert.True(deleteA.IsSuccess, deleteA.Message);
 
         using var verify2 = db.MakeContext(superAdmin);
-        Assert.Null(await verify2.Workspaces.IgnoreQueryFilters().FirstOrDefaultAsync(w => w.Id == workspaceA));
-        var survivor = await verify2.Users.IgnoreQueryFilters().FirstOrDefaultAsync(u => u.Email == "multiadmin@example.com");
+        Assert.Null(
+            await verify2
+                .Workspaces.IgnoreQueryFilters()
+                .FirstOrDefaultAsync(w => w.Id == workspaceA)
+        );
+        var survivor = await verify2
+            .Users.IgnoreQueryFilters()
+            .FirstOrDefaultAsync(u => u.Email == "multiadmin@example.com");
         Assert.NotNull(survivor);
         Assert.Equal(workspaceB, survivor!.OwnerId);
     }
@@ -933,7 +1006,8 @@ public class WorkspaceMembershipTests
         using var verify = Ctx(new FakeCurrentUser { IsSuperAdmin = true }, db);
 
         // Membership in workspace A is ended
-        var memA = await verify.WorkspaceMemberships.IgnoreQueryFilters()
+        var memA = await verify
+            .WorkspaceMemberships.IgnoreQueryFilters()
             .FirstOrDefaultAsync(m => m.UserId == targetUserId && m.OwnerId == workspaceA);
         Assert.NotNull(memA);
         Assert.NotNull(memA!.LeftAt);
@@ -941,14 +1015,17 @@ public class WorkspaceMembershipTests
         Assert.False(memA.IsActive);
 
         // Membership in workspace B is untouched
-        var memB = await verify.WorkspaceMemberships.IgnoreQueryFilters()
+        var memB = await verify
+            .WorkspaceMemberships.IgnoreQueryFilters()
             .FirstOrDefaultAsync(m => m.UserId == targetUserId && m.OwnerId == workspaceB);
         Assert.NotNull(memB);
         Assert.Null(memB!.LeftAt);
         Assert.True(memB.IsActive);
 
         // Identity row is intact (never soft-deleted by membership delete)
-        var identity = await verify.Users.IgnoreQueryFilters().FirstOrDefaultAsync(u => u.Id == targetUserId);
+        var identity = await verify
+            .Users.IgnoreQueryFilters()
+            .FirstOrDefaultAsync(u => u.Id == targetUserId);
         Assert.NotNull(identity);
         Assert.Null(identity!.DeletedAt);
     }
@@ -1046,7 +1123,9 @@ public class WorkspaceMembershipTests
 
         using (var verify = Ctx(new FakeCurrentUser { IsSuperAdmin = true }, db))
         {
-            var multi = await verify.Users.IgnoreQueryFilters().SingleAsync(u => u.Id == multiMemberUserId);
+            var multi = await verify
+                .Users.IgnoreQueryFilters()
+                .SingleAsync(u => u.Id == multiMemberUserId);
             Assert.Equal(initialHash, multi.PasswordHash);
         }
 
@@ -1059,7 +1138,9 @@ public class WorkspaceMembershipTests
 
         using (var verify = Ctx(new FakeCurrentUser { IsSuperAdmin = true }, db))
         {
-            var single = await verify.Users.IgnoreQueryFilters().SingleAsync(u => u.Id == singleMemberUserId);
+            var single = await verify
+                .Users.IgnoreQueryFilters()
+                .SingleAsync(u => u.Id == singleMemberUserId);
             Assert.Equal("hashed:new-password", single.PasswordHash);
         }
     }

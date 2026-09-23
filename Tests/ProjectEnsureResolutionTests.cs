@@ -27,15 +27,26 @@ public class ProjectEnsureResolutionTests
         public int? RoleId { get; set; }
         public string? KeyScopes { get; set; }
         public string? Scope { get; set; }
+        public long? ImpersonationSessionId { get; set; }
+        public bool IsImpersonating => ImpersonationSessionId != null;
     }
 
     private static AppDbContext BuildContext(ICurrentUser user, string dbName) =>
-        new(new DbContextOptionsBuilder<AppDbContext>()
-            .UseInMemoryDatabase(dbName)
-            .Options, user, new Microsoft.Extensions.Configuration.ConfigurationBuilder().Build());
+        new(
+            new DbContextOptionsBuilder<AppDbContext>().UseInMemoryDatabase(dbName).Options,
+            user,
+            new Microsoft.Extensions.Configuration.ConfigurationBuilder().Build()
+        );
 
     private static ProjectService Wire(ICurrentUser user, string dbName) =>
-        new(new UnitOfWork(BuildContext(user, dbName)), user, new PassThroughEntitlements(), TestProjectServiceDeps.Settings(), TestProjectServiceDeps.Configuration(), new FakeAuditWriter());
+        new(
+            new UnitOfWork(BuildContext(user, dbName)),
+            user,
+            new PassThroughEntitlements(),
+            TestProjectServiceDeps.Settings(),
+            TestProjectServiceDeps.Configuration(),
+            new FakeAuditWriter()
+        );
 
     private static void Seed(string dbName, params Project[] projects)
     {
@@ -52,9 +63,25 @@ public class ProjectEnsureResolutionTests
         // legacy row to prove the removed self-id branch is really gone, not just untriggered.
         var db = Guid.NewGuid().ToString();
         var superId = Guid.NewGuid();
-        Seed(db, new Project { Key = "clubs", Name = "clubs", OwnerId = superId });
+        Seed(
+            db,
+            new Project
+            {
+                Key = "clubs",
+                Name = "clubs",
+                OwnerId = superId,
+            }
+        );
 
-        var svc = Wire(new FakeCurrentUser { Id = superId, IsAdmin = true, IsSuperAdmin = true }, db);
+        var svc = Wire(
+            new FakeCurrentUser
+            {
+                Id = superId,
+                IsAdmin = true,
+                IsSuperAdmin = true,
+            },
+            db
+        );
         var result = await svc.EnsureAsync("clubs");
 
         Assert.True(result.IsNotFound);
@@ -64,9 +91,25 @@ public class ProjectEnsureResolutionTests
     public async Task SuperAdmin_DoesNotResolve_OtherTenantsProjectByKey()
     {
         var db = Guid.NewGuid().ToString();
-        Seed(db, new Project { Key = "clubs", Name = "clubs", OwnerId = Guid.NewGuid() });
+        Seed(
+            db,
+            new Project
+            {
+                Key = "clubs",
+                Name = "clubs",
+                OwnerId = Guid.NewGuid(),
+            }
+        );
 
-        var svc = Wire(new FakeCurrentUser { Id = Guid.NewGuid(), IsAdmin = true, IsSuperAdmin = true }, db);
+        var svc = Wire(
+            new FakeCurrentUser
+            {
+                Id = Guid.NewGuid(),
+                IsAdmin = true,
+                IsSuperAdmin = true,
+            },
+            db
+        );
         var result = await svc.EnsureAsync("clubs");
 
         Assert.True(result.IsNotFound);
@@ -77,7 +120,15 @@ public class ProjectEnsureResolutionTests
     {
         var db = Guid.NewGuid().ToString();
         var tenant = Guid.NewGuid();
-        Seed(db, new Project { Key = "clubs", Name = "clubs", OwnerId = tenant });
+        Seed(
+            db,
+            new Project
+            {
+                Key = "clubs",
+                Name = "clubs",
+                OwnerId = tenant,
+            }
+        );
 
         var svc = Wire(new FakeCurrentUser { Id = Guid.NewGuid(), TenantId = tenant }, db);
         var result = await svc.EnsureAsync("clubs");
@@ -89,7 +140,15 @@ public class ProjectEnsureResolutionTests
     public async Task TenantStakeholder_DoesNotResolve_OtherTenantsProject()
     {
         var db = Guid.NewGuid().ToString();
-        Seed(db, new Project { Key = "clubs", Name = "clubs", OwnerId = Guid.NewGuid() });
+        Seed(
+            db,
+            new Project
+            {
+                Key = "clubs",
+                Name = "clubs",
+                OwnerId = Guid.NewGuid(),
+            }
+        );
 
         var svc = Wire(new FakeCurrentUser { Id = Guid.NewGuid(), TenantId = Guid.NewGuid() }, db);
         var result = await svc.EnsureAsync("clubs");

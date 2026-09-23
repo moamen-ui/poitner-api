@@ -43,8 +43,13 @@ public class AuditQueryService(IUnitOfWork unitOfWork, ICurrentUser currentUser)
         if (!IsValidActionPrefix(q.Action))
             return Result<PagedData<AuditEventDto>>.Failure(MessageKeys.Audit.InvalidActionPrefix);
 
-        // DB-13: impersonating operator → owner = TenantId
-        if (!TenantStamp.TryRequireOwner(currentUser, out var owner))
+        // DB-13: an impersonating operator's `tenant` claim IS the target workspace's Security log —
+        // they see it exactly like the target's own admin would, with actor identity NOT redacted
+        // (callerIsSuperAdmin below is true for them).
+        Guid owner;
+        if (currentUser.IsImpersonating && currentUser.TenantId is Guid t)
+            owner = t;
+        else if (!TenantStamp.TryRequireOwner(currentUser, out owner))
             return Result<PagedData<AuditEventDto>>.Forbidden(MessageKeys.Common.Forbidden);
 
         var query = unitOfWork.AuditEvents.AsNoTracking().Where(e => e.OwnerId == owner); // explicit, on top of the query filter (R8)
@@ -53,7 +58,10 @@ public class AuditQueryService(IUnitOfWork unitOfWork, ICurrentUser currentUser)
         // workspace; a caller-supplied WorkspaceId is ignored here.
         query = ApplyFilters(query, q, includeWorkspaceFilter: false);
 
-        return await PageAsync(query, q, callerIsSuperAdmin: false);
+        // DB-13: the redaction (D12.5) is keyed on IsSuperAdmin — an impersonating operator IS a
+        // super admin (their token carries is_super_admin=true), so they see full actor identity
+        // here exactly as the /all view would, even though this is the workspace-scoped query.
+        return await PageAsync(query, q, callerIsSuperAdmin: currentUser.IsSuperAdmin);
     }
 
     public async Task<Result<PagedData<AuditEventDto>>> ListAllAsync(AuditQuery q)

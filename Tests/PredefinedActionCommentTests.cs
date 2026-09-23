@@ -29,34 +29,56 @@ public class PredefinedActionCommentTests
         public int? RoleId { get; set; }
         public string? KeyScopes { get; set; }
         public string? Scope { get; set; }
+        public long? ImpersonationSessionId { get; set; }
+        public bool IsImpersonating => ImpersonationSessionId != null;
     }
 
     private sealed class FakeFileStorage : IFileStorage
     {
-        public Task<string> SaveAsync(string ownerSegment, string project, Stream content, string extension) => Task.FromResult("uploads/x");
+        public Task<string> SaveAsync(
+            string ownerSegment,
+            string project,
+            Stream content,
+            string extension
+        ) => Task.FromResult("uploads/x");
+
         public Task DeleteAsync(string relativePathOrUrl) => Task.CompletedTask;
+
         public Task DeleteOwnerFilesAsync(string ownerSegment) => Task.CompletedTask;
     }
 
     private sealed class FakeUploadSigner : IUploadSigner
     {
         public string SignedUrl(string relPath) => relPath;
+
         public bool Validate(string relPath, long exp, string sig) => true;
+
         public string ExtractRelPath(string stored) => stored;
     }
 
     private sealed class FakeSettings : ISettingsService
     {
-        public Task<bool> GetBoolAsync(string key, bool fallback = false) => Task.FromResult(fallback);
+        public Task<bool> GetBoolAsync(string key, bool fallback = false) =>
+            Task.FromResult(fallback);
+
         public Task SetBoolAsync(string key, bool value) => Task.CompletedTask;
-        public Task<string> GetStringAsync(string key, string fallback = "") => Task.FromResult(fallback);
+
+        public Task<string> GetStringAsync(string key, string fallback = "") =>
+            Task.FromResult(fallback);
+
         public Task SetStringAsync(string key, string value) => Task.CompletedTask;
+
         public Task<int> GetIntAsync(string key, int fallback = 0) => Task.FromResult(fallback);
+
         public Task SetIntAsync(string key, int value) => Task.CompletedTask;
     }
 
     private static AppDbContext BuildContext(ICurrentUser user, string dbName) =>
-        new(new DbContextOptionsBuilder<AppDbContext>().UseInMemoryDatabase(dbName).Options, user, new Microsoft.Extensions.Configuration.ConfigurationBuilder().Build());
+        new(
+            new DbContextOptionsBuilder<AppDbContext>().UseInMemoryDatabase(dbName).Options,
+            user,
+            new Microsoft.Extensions.Configuration.ConfigurationBuilder().Build()
+        );
 
     private sealed class Harness
     {
@@ -75,27 +97,70 @@ public class PredefinedActionCommentTests
         // Seed the project via a super-admin context (bypasses filters cleanly on insert).
         using (var seed = BuildContext(new FakeCurrentUser { IsSuperAdmin = true }, dbName))
         {
-            seed.Projects.Add(new Project { Key = "proj", Name = "Proj", IsActiveLocal = true, IsActiveStaging = true, IsActiveProduction = true, OwnerId = tenant });
+            seed.Projects.Add(
+                new Project
+                {
+                    Key = "proj",
+                    Name = "Proj",
+                    IsActiveLocal = true,
+                    IsActiveStaging = true,
+                    IsActiveProduction = true,
+                    OwnerId = tenant,
+                }
+            );
             seed.SaveChanges();
         }
 
-        var user = new FakeCurrentUser { Id = author, TenantId = tenant, IsSuperAdmin = false };
+        var user = new FakeCurrentUser
+        {
+            Id = author,
+            TenantId = tenant,
+            IsSuperAdmin = false,
+        };
         var db = BuildContext(user, dbName);
         var uow = new UnitOfWork(db);
-        var projectService = new ProjectService(uow, user, new PassThroughEntitlements(), TestProjectServiceDeps.Settings(), TestProjectServiceDeps.Configuration(), new FakeAuditWriter());
-        var actionService = new PredefinedActionService(uow, projectService, user, new PassThroughEntitlements());
-        var commentService = new CommentService(uow, projectService, actionService, new FakeFileStorage(), user, new FakeUploadSigner(), new FakeSettings(), new PassThroughEntitlements());
+        var projectService = new ProjectService(
+            uow,
+            user,
+            new PassThroughEntitlements(),
+            TestProjectServiceDeps.Settings(),
+            TestProjectServiceDeps.Configuration(),
+            new FakeAuditWriter()
+        );
+        var actionService = new PredefinedActionService(
+            uow,
+            projectService,
+            user,
+            new PassThroughEntitlements()
+        );
+        var commentService = new CommentService(
+            uow,
+            projectService,
+            actionService,
+            new FakeFileStorage(),
+            user,
+            new FakeUploadSigner(),
+            new FakeSettings(),
+            new PassThroughEntitlements()
+        );
 
-        return new Harness { Db = db, CommentService = commentService, TenantId = tenant, AuthorId = author };
+        return new Harness
+        {
+            Db = db,
+            CommentService = commentService,
+            TenantId = tenant,
+            AuthorId = author,
+        };
     }
 
-    private static CreateCommentRequest Req(params int[] actionIds) => new()
-    {
-        Body = "hello",
-        Environment = EnvironmentTag.Local,
-        PredefinedActionIds = actionIds.Length > 0 ? actionIds.ToList() : null,
-        Element = new ElementCaptureDto()
-    };
+    private static CreateCommentRequest Req(params int[] actionIds) =>
+        new()
+        {
+            Body = "hello",
+            Environment = EnvironmentTag.Local,
+            PredefinedActionIds = actionIds.Length > 0 ? actionIds.ToList() : null,
+            Element = new ElementCaptureDto(),
+        };
 
     // ── (b) prompt never serializes ────────────────────────────────────────────
 
@@ -105,10 +170,15 @@ public class PredefinedActionCommentTests
         var h = BuildHarness(Guid.NewGuid().ToString());
 
         // Seed an active, in-scope tenant-wide action and pick it.
-        h.Db.PredefinedActions.Add(new PredefinedAction
-        {
-            OwnerId = h.TenantId, Text = "Make it pop", Prompt = "SECRET-LLM-PROMPT", IsActive = true
-        });
+        h.Db.PredefinedActions.Add(
+            new PredefinedAction
+            {
+                OwnerId = h.TenantId,
+                Text = "Make it pop",
+                Prompt = "SECRET-LLM-PROMPT",
+                IsActive = true,
+            }
+        );
         await h.Db.SaveChangesAsync();
         var actionId = h.Db.PredefinedActions.Single().Id;
 
@@ -132,10 +202,15 @@ public class PredefinedActionCommentTests
     public async Task CommentCreate_RejectsInactiveAction()
     {
         var h = BuildHarness(Guid.NewGuid().ToString());
-        h.Db.PredefinedActions.Add(new PredefinedAction
-        {
-            OwnerId = h.TenantId, Text = "Disabled", Prompt = "p", IsActive = false
-        });
+        h.Db.PredefinedActions.Add(
+            new PredefinedAction
+            {
+                OwnerId = h.TenantId,
+                Text = "Disabled",
+                Prompt = "p",
+                IsActive = false,
+            }
+        );
         await h.Db.SaveChangesAsync();
         var id = h.Db.PredefinedActions.Single().Id;
 
@@ -158,10 +233,16 @@ public class PredefinedActionCommentTests
         var h = BuildHarness(dbName);
 
         // A project-scoped action bound to a DIFFERENT project id (999) — out of scope for "proj".
-        h.Db.PredefinedActions.Add(new PredefinedAction
-        {
-            OwnerId = h.TenantId, ProjectId = 999, Text = "Other", Prompt = "p", IsActive = true
-        });
+        h.Db.PredefinedActions.Add(
+            new PredefinedAction
+            {
+                OwnerId = h.TenantId,
+                ProjectId = 999,
+                Text = "Other",
+                Prompt = "p",
+                IsActive = true,
+            }
+        );
         await h.Db.SaveChangesAsync();
         var id = h.Db.PredefinedActions.Single().Id;
 
@@ -176,12 +257,20 @@ public class PredefinedActionCommentTests
         var h = BuildHarness(dbName);
         var otherTenant = Guid.NewGuid();
 
-        h.Db.PredefinedActions.Add(new PredefinedAction
-        {
-            OwnerId = otherTenant, Text = "Foreign", Prompt = "p", IsActive = true
-        });
+        h.Db.PredefinedActions.Add(
+            new PredefinedAction
+            {
+                OwnerId = otherTenant,
+                Text = "Foreign",
+                Prompt = "p",
+                IsActive = true,
+            }
+        );
         await h.Db.SaveChangesAsync();
-        var id = h.Db.PredefinedActions.IgnoreQueryFilters().Single(a => a.OwnerId == otherTenant).Id;
+        var id = h
+            .Db.PredefinedActions.IgnoreQueryFilters()
+            .Single(a => a.OwnerId == otherTenant)
+            .Id;
 
         var result = await h.CommentService.CreateAsync("proj", Req(id), h.AuthorId);
         Assert.False(result.IsSuccess);
@@ -191,10 +280,15 @@ public class PredefinedActionCommentTests
     public async Task CommentCreate_AllowsValidInScopeAction()
     {
         var h = BuildHarness(Guid.NewGuid().ToString());
-        h.Db.PredefinedActions.Add(new PredefinedAction
-        {
-            OwnerId = h.TenantId, Text = "Valid", Prompt = "p", IsActive = true
-        });
+        h.Db.PredefinedActions.Add(
+            new PredefinedAction
+            {
+                OwnerId = h.TenantId,
+                Text = "Valid",
+                Prompt = "p",
+                IsActive = true,
+            }
+        );
         await h.Db.SaveChangesAsync();
         var id = h.Db.PredefinedActions.Single().Id;
 
@@ -215,9 +309,36 @@ public class PredefinedActionCommentTests
 
         // 2. Add AI rules in reverse order
         h.Db.AiRules.AddRange(
-            new AiRule { OwnerId = h.TenantId, ProjectId = proj.Id, UserId = h.AuthorId, Title = "Dev Personal", Prompt = "p-dev", IsActive = true, SortOrder = 1 },
-            new AiRule { OwnerId = h.TenantId, ProjectId = proj.Id, UserId = null, Title = "Project Rule", Prompt = "p-proj", IsActive = true, SortOrder = 2 },
-            new AiRule { OwnerId = h.TenantId, ProjectId = null, UserId = null, Title = "Workspace Rule", Prompt = "p-ws", IsActive = true, SortOrder = 3 }
+            new AiRule
+            {
+                OwnerId = h.TenantId,
+                ProjectId = proj.Id,
+                UserId = h.AuthorId,
+                Title = "Dev Personal",
+                Prompt = "p-dev",
+                IsActive = true,
+                SortOrder = 1,
+            },
+            new AiRule
+            {
+                OwnerId = h.TenantId,
+                ProjectId = proj.Id,
+                UserId = null,
+                Title = "Project Rule",
+                Prompt = "p-proj",
+                IsActive = true,
+                SortOrder = 2,
+            },
+            new AiRule
+            {
+                OwnerId = h.TenantId,
+                ProjectId = null,
+                UserId = null,
+                Title = "Workspace Rule",
+                Prompt = "p-ws",
+                IsActive = true,
+                SortOrder = 3,
+            }
         );
         await h.Db.SaveChangesAsync();
 

@@ -27,7 +27,7 @@ public static class AuditTargets
     public const string Export = "export";
     public const string Import = "import";
 
-    /// <summary>Reserved: DB-13's impersonation sessions.</summary>
+    /// <summary>DB-13: impersonation_sessions rows.</summary>
     public const string ImpersonationSession = "impersonation_session";
 
     /// <summary>An anonymous path with no resolved identity (login failure, reset requested).</summary>

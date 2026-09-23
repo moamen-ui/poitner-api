@@ -21,16 +21,26 @@ public class AppEnvironmentEnabledFlagTests
         public int? RoleId { get; set; }
         public string? KeyScopes { get; set; }
         public string? Scope { get; set; }
+        public long? ImpersonationSessionId { get; set; }
+        public bool IsImpersonating => ImpersonationSessionId != null;
     }
 
     private static AppDbContext BuildContext(ICurrentUser user, string dbName) =>
-        new(new DbContextOptionsBuilder<AppDbContext>().UseInMemoryDatabase(dbName).Options, user,
-            new Microsoft.Extensions.Configuration.ConfigurationBuilder().Build());
+        new(
+            new DbContextOptionsBuilder<AppDbContext>().UseInMemoryDatabase(dbName).Options,
+            user,
+            new Microsoft.Extensions.Configuration.ConfigurationBuilder().Build()
+        );
 
     private static int SeedGlobalEnvironment(string dbName, string name = "prod")
     {
         using var db = BuildContext(new FakeCurrentUser { IsSuperAdmin = true }, dbName);
-        var env = new AppEnvironment { Name = name, OwnerId = null, IsEnabled = true };
+        var env = new AppEnvironment
+        {
+            Name = name,
+            OwnerId = null,
+            IsEnabled = true,
+        };
         db.AppEnvironments.Add(env);
         db.SaveChanges();
         return env.Id;
@@ -59,7 +69,10 @@ public class AppEnvironmentEnabledFlagTests
 
         var created = await svc.CreateAsync(new CreateAppEnvironmentRequest { Name = "my-env" });
 
-        var update = await svc.UpdateAsync(created.Data!.Id, new UpdateAppEnvironmentRequest { IsEnabled = false });
+        var update = await svc.UpdateAsync(
+            created.Data!.Id,
+            new UpdateAppEnvironmentRequest { IsEnabled = false }
+        );
         Assert.True(update.IsSuccess);
         Assert.False(update.Data!.IsEnabled);
     }
@@ -73,7 +86,10 @@ public class AppEnvironmentEnabledFlagTests
         var admin = new FakeCurrentUser { IsAdmin = true, TenantId = tenant };
         var svc = new AppEnvironmentService(new UnitOfWork(BuildContext(admin, dbName)), admin);
 
-        var update = await svc.UpdateAsync(globalId, new UpdateAppEnvironmentRequest { IsEnabled = false });
+        var update = await svc.UpdateAsync(
+            globalId,
+            new UpdateAppEnvironmentRequest { IsEnabled = false }
+        );
         Assert.True(update.IsForbidden);
     }
 
@@ -83,21 +99,69 @@ public class AppEnvironmentEnabledFlagTests
         var dbName = Guid.NewGuid().ToString();
         var globalId = SeedGlobalEnvironment(dbName, "global");
         var tenant = Guid.NewGuid();
-        var admin = new FakeCurrentUser { Id = Guid.NewGuid(), IsAdmin = true, TenantId = tenant };
-        
+        var admin = new FakeCurrentUser
+        {
+            Id = Guid.NewGuid(),
+            IsAdmin = true,
+            TenantId = tenant,
+        };
+
         using (var db = BuildContext(admin, dbName))
         {
-            var project = new Project { Key = "p", Name = "P", IsActiveLocal = true, IsActiveStaging = true, IsActiveProduction = true, OwnerId = tenant };
+            var project = new Project
+            {
+                Key = "p",
+                Name = "P",
+                IsActiveLocal = true,
+                IsActiveStaging = true,
+                IsActiveProduction = true,
+                OwnerId = tenant,
+            };
             db.Projects.Add(project);
             db.SaveChanges();
 
-            db.AppEnvironments.Add(new AppEnvironment { Name = "a-tenant", OwnerId = tenant, IsEnabled = true });
-            db.AppEnvironments.Add(new AppEnvironment { Name = "z-tenant", OwnerId = tenant, IsEnabled = true });
+            db.AppEnvironments.Add(
+                new AppEnvironment
+                {
+                    Name = "a-tenant",
+                    OwnerId = tenant,
+                    IsEnabled = true,
+                }
+            );
+            db.AppEnvironments.Add(
+                new AppEnvironment
+                {
+                    Name = "z-tenant",
+                    OwnerId = tenant,
+                    IsEnabled = true,
+                }
+            );
             db.SaveChanges();
 
-            var aEnvId = await db.AppEnvironments.Where(e => e.Name == "a-tenant").Select(e => e.Id).FirstAsync();
-            db.ProjectAppUrls.Add(new ProjectAppUrl { ProjectId = project.Id, AppEnvironmentId = aEnvId, Url = "u", OwnerId = tenant, IsActive = true });
-            db.ProjectAppUrls.Add(new ProjectAppUrl { ProjectId = project.Id, AppEnvironmentId = globalId, Url = "u2", OwnerId = tenant, IsActive = true });
+            var aEnvId = await db
+                .AppEnvironments.Where(e => e.Name == "a-tenant")
+                .Select(e => e.Id)
+                .FirstAsync();
+            db.ProjectAppUrls.Add(
+                new ProjectAppUrl
+                {
+                    ProjectId = project.Id,
+                    AppEnvironmentId = aEnvId,
+                    Url = "u",
+                    OwnerId = tenant,
+                    IsActive = true,
+                }
+            );
+            db.ProjectAppUrls.Add(
+                new ProjectAppUrl
+                {
+                    ProjectId = project.Id,
+                    AppEnvironmentId = globalId,
+                    Url = "u2",
+                    OwnerId = tenant,
+                    IsActive = true,
+                }
+            );
             db.SaveChanges();
         }
 

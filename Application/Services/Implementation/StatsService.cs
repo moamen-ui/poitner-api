@@ -14,7 +14,11 @@ public class StatsService : IStatsService
     private readonly ICurrentUser _currentUser;
     private readonly IMembershipService _memberships;
 
-    public StatsService(IUnitOfWork unitOfWork, ICurrentUser currentUser, IMembershipService memberships)
+    public StatsService(
+        IUnitOfWork unitOfWork,
+        ICurrentUser currentUser,
+        IMembershipService memberships
+    )
     {
         _unitOfWork = unitOfWork;
         _currentUser = currentUser;
@@ -23,11 +27,20 @@ public class StatsService : IStatsService
 
     public async Task<Result<StatsResponse>> GetAsync()
     {
-        var projects = await _unitOfWork.Repository<Project>()
+        var projects = await _unitOfWork
+            .Repository<Project>()
             .Query()
             .AsNoTracking()
             .Where(p => p.DeletedAt == null)
-            .Select(p => new { p.Id, p.Key, p.Name, p.IsActiveLocal, p.IsActiveStaging, p.IsActiveProduction })
+            .Select(p => new
+            {
+                p.Id,
+                p.Key,
+                p.Name,
+                p.IsActiveLocal,
+                p.IsActiveStaging,
+                p.IsActiveProduction,
+            })
             .ToListAsync();
 
         // DB-11a: "users" is a membership fact — live memberships under the caller's workspace,
@@ -36,7 +49,9 @@ public class StatsService : IStatsService
         int pendingUsersCount;
         if (Common.TenantStamp.TryRequireOwner(_currentUser, out var statsOwner))
         {
-            usersCount = await _memberships.InWorkspace(statsOwner).CountAsync(m => m.LeftAt == null);
+            usersCount = await _memberships
+                .InWorkspace(statsOwner)
+                .CountAsync(m => m.LeftAt == null);
             pendingUsersCount = await _memberships
                 .InWorkspace(statsOwner)
                 .CountAsync(m => m.LeftAt == null && m.ApprovalStatus == ApprovalStatus.Pending);
@@ -54,7 +69,11 @@ public class StatsService : IStatsService
                 .Query()
                 .IgnoreQueryFilters()
                 .AsNoTracking()
-                .CountAsync(m => m.LeftAt == null && m.DeletedAt == null && m.ApprovalStatus == ApprovalStatus.Pending);
+                .CountAsync(m =>
+                    m.LeftAt == null
+                    && m.DeletedAt == null
+                    && m.ApprovalStatus == ApprovalStatus.Pending
+                );
         }
         else
         {
@@ -62,13 +81,28 @@ public class StatsService : IStatsService
             pendingUsersCount = 0;
         }
 
-        // One grouped query: comment counts per (project, status).
-        var grouped = await _unitOfWork.Repository<Comment>()
-            .Query()
-            .AsNoTracking()
+        // One grouped query: comment counts per (project, status). DB-13 (F2): Comment lost its
+        // unconditional super-admin filter branch — counts only (no body), so a plain operator
+        // still sees them across every workspace; an impersonating operator is pinned by the filter
+        // itself (TenantId == the target workspace) and needs no IgnoreQueryFilters().
+        var commentsQuery = _unitOfWork.Repository<Comment>().Query().AsNoTracking();
+        if (_currentUser.IsSuperAdmin && !_currentUser.IsImpersonating)
+            commentsQuery = commentsQuery.IgnoreQueryFilters();
+        var grouped = await commentsQuery
             .Where(c => c.DeletedAt == null)
-            .GroupBy(c => new { c.ProjectId, c.Status, c.IsPrivate })
-            .Select(g => new { g.Key.ProjectId, g.Key.Status, g.Key.IsPrivate, Count = g.Count() })
+            .GroupBy(c => new
+            {
+                c.ProjectId,
+                c.Status,
+                c.IsPrivate,
+            })
+            .Select(g => new
+            {
+                g.Key.ProjectId,
+                g.Key.Status,
+                g.Key.IsPrivate,
+                Count = g.Count(),
+            })
             .ToListAsync();
 
         var perProject = projects
@@ -76,9 +110,12 @@ public class StatsService : IStatsService
             {
                 var rows = grouped.Where(g => g.ProjectId == p.Id).ToList();
                 var open = rows.Where(r => r.Status == CommentStatus.Open).Sum(r => r.Count);
-                var pending = rows.Where(r => r.Status == CommentStatus.ReadyToApply).Sum(r => r.Count);
-                var completed = rows.Where(r => r.Status == CommentStatus.Applied).Sum(r => r.Count);
-                var archived = rows.Where(r => r.Status == CommentStatus.Archived).Sum(r => r.Count);
+                var pending = rows.Where(r => r.Status == CommentStatus.ReadyToApply)
+                    .Sum(r => r.Count);
+                var completed = rows.Where(r => r.Status == CommentStatus.Applied)
+                    .Sum(r => r.Count);
+                var archived = rows.Where(r => r.Status == CommentStatus.Archived)
+                    .Sum(r => r.Count);
                 var privateComments = rows.Where(r => r.IsPrivate).Sum(r => r.Count);
                 return new ProjectStats
                 {
@@ -110,6 +147,8 @@ public class StatsService : IStatsService
         };
         totals.Comments = totals.Open + totals.Pending + totals.Completed + totals.Archived;
 
-        return Result<StatsResponse>.Success(new StatsResponse { Totals = totals, Projects = perProject });
+        return Result<StatsResponse>.Success(
+            new StatsResponse { Totals = totals, Projects = perProject }
+        );
     }
 }

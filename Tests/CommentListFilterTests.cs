@@ -29,58 +29,117 @@ public class CommentListFilterTests
         public int? RoleId { get; set; }
         public string? KeyScopes { get; set; }
         public string? Scope { get; set; }
+        public long? ImpersonationSessionId { get; set; }
+        public bool IsImpersonating => ImpersonationSessionId != null;
     }
 
     private sealed class FakeFileStorage : IFileStorage
     {
-        public Task<string> SaveAsync(string ownerSegment, string project, Stream content, string extension) => Task.FromResult("uploads/x");
+        public Task<string> SaveAsync(
+            string ownerSegment,
+            string project,
+            Stream content,
+            string extension
+        ) => Task.FromResult("uploads/x");
+
         public Task DeleteAsync(string relativePathOrUrl) => Task.CompletedTask;
+
         public Task DeleteOwnerFilesAsync(string ownerSegment) => Task.CompletedTask;
     }
 
     private sealed class FakeUploadSigner : IUploadSigner
     {
         public string SignedUrl(string relPath) => relPath;
+
         public bool Validate(string relPath, long exp, string sig) => true;
+
         public string ExtractRelPath(string stored) => stored;
     }
 
     private sealed class FakeSettings : ISettingsService
     {
-        public Task<bool> GetBoolAsync(string key, bool fallback = false) => Task.FromResult(fallback);
+        public Task<bool> GetBoolAsync(string key, bool fallback = false) =>
+            Task.FromResult(fallback);
+
         public Task SetBoolAsync(string key, bool value) => Task.CompletedTask;
-        public Task<string> GetStringAsync(string key, string fallback = "") => Task.FromResult(fallback);
+
+        public Task<string> GetStringAsync(string key, string fallback = "") =>
+            Task.FromResult(fallback);
+
         public Task SetStringAsync(string key, string value) => Task.CompletedTask;
+
         public Task<int> GetIntAsync(string key, int fallback = 0) => Task.FromResult(fallback);
+
         public Task SetIntAsync(string key, int value) => Task.CompletedTask;
     }
 
     private static AppDbContext BuildContext(ICurrentUser user, string dbName) =>
-        new(new DbContextOptionsBuilder<AppDbContext>().UseInMemoryDatabase(dbName).Options, user,
-            new Microsoft.Extensions.Configuration.ConfigurationBuilder().Build());
+        new(
+            new DbContextOptionsBuilder<AppDbContext>().UseInMemoryDatabase(dbName).Options,
+            user,
+            new Microsoft.Extensions.Configuration.ConfigurationBuilder().Build()
+        );
 
     private static CommentService BuildService(ICurrentUser user, string dbName)
     {
         var uow = new UnitOfWork(BuildContext(user, dbName));
-        var projectService = new ProjectService(uow, user, new PassThroughEntitlements(), TestProjectServiceDeps.Settings(), TestProjectServiceDeps.Configuration(), new FakeAuditWriter());
-        var actionService = new PredefinedActionService(uow, projectService, user, new PassThroughEntitlements());
-        return new CommentService(uow, projectService, actionService, new FakeFileStorage(), user,
-            new FakeUploadSigner(), new FakeSettings(), new PassThroughEntitlements());
+        var projectService = new ProjectService(
+            uow,
+            user,
+            new PassThroughEntitlements(),
+            TestProjectServiceDeps.Settings(),
+            TestProjectServiceDeps.Configuration(),
+            new FakeAuditWriter()
+        );
+        var actionService = new PredefinedActionService(
+            uow,
+            projectService,
+            user,
+            new PassThroughEntitlements()
+        );
+        return new CommentService(
+            uow,
+            projectService,
+            actionService,
+            new FakeFileStorage(),
+            user,
+            new FakeUploadSigner(),
+            new FakeSettings(),
+            new PassThroughEntitlements()
+        );
     }
 
     // Four comments: open+flagged, applied-not-live, applied+live, plain open.
-    private static (string key, int flagged, int appliedNotLive, int live, int plain) Seed(string dbName, Guid tenant, Guid author)
+    private static (string key, int flagged, int appliedNotLive, int live, int plain) Seed(
+        string dbName,
+        Guid tenant,
+        Guid author
+    )
     {
         using var seed = BuildContext(new FakeCurrentUser { IsSuperAdmin = true }, dbName);
-        var project = new Project { Key = "proj", Name = "Proj", IsActiveLocal = true, IsActiveStaging = true, IsActiveProduction = true, OwnerId = tenant };
+        var project = new Project
+        {
+            Key = "proj",
+            Name = "Proj",
+            IsActiveLocal = true,
+            IsActiveStaging = true,
+            IsActiveProduction = true,
+            OwnerId = tenant,
+        };
         seed.Projects.Add(project);
         seed.SaveChanges();
 
-        Comment Make(string body) => new()
-        {
-            ProjectId = project.Id, OwnerId = tenant, AuthorId = author, Body = body,
-            Status = CommentStatus.Open, Environment = EnvironmentTag.Local, Element = new ElementCapture()
-        };
+        Comment Make(string body) =>
+            new()
+            {
+                ProjectId = project.Id,
+                OwnerId = tenant,
+                AuthorId = author,
+                Body = body,
+                Status = CommentStatus.Open,
+                Environment = EnvironmentTag.Local,
+                Element = new ElementCapture(),
+            };
 
         var flagged = Make("token leaked here");
         flagged.HasPayloadFlag = true;
@@ -105,7 +164,12 @@ public class CommentListFilterTests
         return ("proj", flagged.Id, appliedNotLive.Id, live.Id, plain.Id);
     }
 
-    private static async Task<List<int>> Ids(CommentService svc, string key, CommentFilter filter, Guid caller)
+    private static async Task<List<int>> Ids(
+        CommentService svc,
+        string key,
+        CommentFilter filter,
+        Guid caller
+    )
     {
         var result = await svc.ListAsync(key, filter, caller);
         Assert.True(result.IsSuccess);
@@ -119,7 +183,15 @@ public class CommentListFilterTests
         var tenant = Guid.NewGuid();
         var staff = Guid.NewGuid();
         var (key, a, b, c, d) = Seed(db, tenant, staff);
-        var svc = BuildService(new FakeCurrentUser { Id = staff, IsAdmin = true, TenantId = tenant }, db);
+        var svc = BuildService(
+            new FakeCurrentUser
+            {
+                Id = staff,
+                IsAdmin = true,
+                TenantId = tenant,
+            },
+            db
+        );
 
         var ids = await Ids(svc, key, new CommentFilter(), staff);
 
@@ -133,7 +205,15 @@ public class CommentListFilterTests
         var tenant = Guid.NewGuid();
         var staff = Guid.NewGuid();
         var (key, flagged, _, _, _) = Seed(db, tenant, staff);
-        var svc = BuildService(new FakeCurrentUser { Id = staff, IsAdmin = true, TenantId = tenant }, db);
+        var svc = BuildService(
+            new FakeCurrentUser
+            {
+                Id = staff,
+                IsAdmin = true,
+                TenantId = tenant,
+            },
+            db
+        );
 
         var ids = await Ids(svc, key, new CommentFilter { Flagged = true }, staff);
 
@@ -147,7 +227,15 @@ public class CommentListFilterTests
         var tenant = Guid.NewGuid();
         var staff = Guid.NewGuid();
         var (key, _, _, live, _) = Seed(db, tenant, staff);
-        var svc = BuildService(new FakeCurrentUser { Id = staff, IsAdmin = true, TenantId = tenant }, db);
+        var svc = BuildService(
+            new FakeCurrentUser
+            {
+                Id = staff,
+                IsAdmin = true,
+                TenantId = tenant,
+            },
+            db
+        );
 
         var ids = await Ids(svc, key, new CommentFilter { Live = true }, staff);
 
@@ -161,7 +249,15 @@ public class CommentListFilterTests
         var tenant = Guid.NewGuid();
         var staff = Guid.NewGuid();
         var (key, _, appliedNotLive, _, _) = Seed(db, tenant, staff);
-        var svc = BuildService(new FakeCurrentUser { Id = staff, IsAdmin = true, TenantId = tenant }, db);
+        var svc = BuildService(
+            new FakeCurrentUser
+            {
+                Id = staff,
+                IsAdmin = true,
+                TenantId = tenant,
+            },
+            db
+        );
 
         var ids = await Ids(svc, key, new CommentFilter { Live = false }, staff);
 
@@ -175,7 +271,15 @@ public class CommentListFilterTests
         var tenant = Guid.NewGuid();
         var staff = Guid.NewGuid();
         var (key, _, header, footer, _) = Seed(db, tenant, staff);
-        var svc = BuildService(new FakeCurrentUser { Id = staff, IsAdmin = true, TenantId = tenant }, db);
+        var svc = BuildService(
+            new FakeCurrentUser
+            {
+                Id = staff,
+                IsAdmin = true,
+                TenantId = tenant,
+            },
+            db
+        );
 
         var ids = await Ids(svc, key, new CommentFilter { Search = "  FIX the " }, staff);
 

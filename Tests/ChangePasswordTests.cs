@@ -26,19 +26,37 @@ public class ChangePasswordTests
         public int? RoleId { get; set; }
         public string? KeyScopes { get; set; }
         public string? Scope { get; set; }
+        public long? ImpersonationSessionId { get; set; }
+        public bool IsImpersonating => ImpersonationSessionId != null;
     }
 
     private sealed class IdentityHasher : IPasswordHasher
     {
         public string Hash(string p) => "h:" + p;
+
         public bool Verify(string p, string h) => h == "h:" + p;
     }
 
-    private sealed class FakeToken : ITokenService { public string Issue(User u, WorkspaceMembership? membership, int? keyScopes = null) => "t"; public string IssueSelection(User u) => "sel"; }
+    private sealed class FakeToken : ITokenService
+    {
+        public string Issue(User u, WorkspaceMembership? membership, int? keyScopes = null) => "t";
+
+        public string IssueSelection(User u) => "sel";
+
+        public string IssueImpersonation(User u, Guid w, long s, DateTime e) =>
+            "imp-for-" + u.Email;
+    }
+
     private sealed class FakeReset : IResetTokenService
     {
         public string Create(Guid id, Guid stamp) => "r";
-        public bool TryValidate(string token, out Guid id, out Guid stamp) { id = Guid.Empty; stamp = Guid.Empty; return false; }
+
+        public bool TryValidate(string token, out Guid id, out Guid stamp)
+        {
+            id = Guid.Empty;
+            stamp = Guid.Empty;
+            return false;
+        }
 
         public string CreateScoped(Guid id, Guid stamp, string purpose, string? payload = null) => "r";
 
@@ -50,20 +68,34 @@ public class ChangePasswordTests
             return false;
         }
     }
+
     private sealed class FakeSettings : ISettingsService
     {
-        public Task<bool> GetBoolAsync(string key, bool fallback = false) => Task.FromResult(fallback);
+        public Task<bool> GetBoolAsync(string key, bool fallback = false) =>
+            Task.FromResult(fallback);
+
         public Task SetBoolAsync(string key, bool value) => Task.CompletedTask;
-        public Task<string> GetStringAsync(string key, string fallback = "") => Task.FromResult(fallback);
+
+        public Task<string> GetStringAsync(string key, string fallback = "") =>
+            Task.FromResult(fallback);
+
         public Task SetStringAsync(string key, string value) => Task.CompletedTask;
+
         public Task<int> GetIntAsync(string key, int fallback = 0) => Task.FromResult(fallback);
+
         public Task SetIntAsync(string key, int value) => Task.CompletedTask;
     }
 
     private sealed class SpyEmailService : IEmailService
     {
         public List<(string To, string Subject, string Html)> Sent { get; } = new();
-        public Task<bool> SendAsync(string to, string subject, string htmlBody, CancellationToken ct = default)
+
+        public Task<bool> SendAsync(
+            string to,
+            string subject,
+            string htmlBody,
+            CancellationToken ct = default
+        )
         {
             Sent.Add((to, subject, htmlBody));
             return Task.FromResult(true);
@@ -72,38 +104,89 @@ public class ChangePasswordTests
 
     private sealed class NoopBrandingService : IBrandingService
     {
-        private static Pointer.Application.DTOs.Branding.BrandingResponse DefaultBranding() => new()
-        {
-            ProductName = "Pointer",
-            Tagline = string.Empty,
-            PrimaryColor = "#2563eb",
-            Urls = new Pointer.Application.DTOs.Branding.BrandingUrlsResponse { App = "https://app.pointer.moamen.work" },
-            Assets = new Pointer.Application.DTOs.Branding.BrandingAssetsResponse(),
-        };
-        public Task<Pointer.Application.Response.Result<Pointer.Application.DTOs.Branding.BrandingResponse>> GetAsync(string publicBase, IReadOnlySet<string> existingKinds) =>
-            Task.FromResult(Pointer.Application.Response.Result<Pointer.Application.DTOs.Branding.BrandingResponse>.Success(DefaultBranding()));
-        public Task<Pointer.Application.Response.Result<Pointer.Application.DTOs.Branding.BrandingResponse>> UpdateAsync(Pointer.Application.DTOs.Branding.BrandingWriteDto dto, string publicBase, IReadOnlySet<string> existingKinds) =>
-            Task.FromResult(Pointer.Application.Response.Result<Pointer.Application.DTOs.Branding.BrandingResponse>.Success(DefaultBranding()));
+        private static Pointer.Application.DTOs.Branding.BrandingResponse DefaultBranding() =>
+            new()
+            {
+                ProductName = "Pointer",
+                Tagline = string.Empty,
+                PrimaryColor = "#2563eb",
+                Urls = new Pointer.Application.DTOs.Branding.BrandingUrlsResponse
+                {
+                    App = "https://app.pointer.moamen.work",
+                },
+                Assets = new Pointer.Application.DTOs.Branding.BrandingAssetsResponse(),
+            };
+
+        public Task<Pointer.Application.Response.Result<Pointer.Application.DTOs.Branding.BrandingResponse>> GetAsync(
+            string publicBase,
+            IReadOnlySet<string> existingKinds
+        ) =>
+            Task.FromResult(
+                Pointer.Application.Response.Result<Pointer.Application.DTOs.Branding.BrandingResponse>.Success(
+                    DefaultBranding()
+                )
+            );
+
+        public Task<Pointer.Application.Response.Result<Pointer.Application.DTOs.Branding.BrandingResponse>> UpdateAsync(
+            Pointer.Application.DTOs.Branding.BrandingWriteDto dto,
+            string publicBase,
+            IReadOnlySet<string> existingKinds
+        ) =>
+            Task.FromResult(
+                Pointer.Application.Response.Result<Pointer.Application.DTOs.Branding.BrandingResponse>.Success(
+                    DefaultBranding()
+                )
+            );
+
         public Task<int> BumpVersionAsync() => Task.FromResult(0);
-        public Task<Pointer.Application.DTOs.Branding.BrandingResponse> BuildResponseAsync(string publicBase, IReadOnlySet<string> existingKinds) =>
-            Task.FromResult(DefaultBranding());
+
+        public Task<Pointer.Application.DTOs.Branding.BrandingResponse> BuildResponseAsync(
+            string publicBase,
+            IReadOnlySet<string> existingKinds
+        ) => Task.FromResult(DefaultBranding());
     }
 
     private static AppDbContext Ctx(ICurrentUser u, string db) =>
-        new(new DbContextOptionsBuilder<AppDbContext>().UseInMemoryDatabase(db).Options, u,
-            new Microsoft.Extensions.Configuration.ConfigurationBuilder().Build());
+        new(
+            new DbContextOptionsBuilder<AppDbContext>().UseInMemoryDatabase(db).Options,
+            u,
+            new Microsoft.Extensions.Configuration.ConfigurationBuilder().Build()
+        );
 
-    private static AuthService Auth(AppDbContext db, ICurrentUser user, SpyEmailService? email = null) =>
-        new(new UnitOfWork(db), new IdentityHasher(), new FakeToken(), user, new FakeSettings(),
-            new FakeReset(), email ?? new SpyEmailService(), new NoopBrandingService(), new ApiKeyService(new UnitOfWork(db), new TestApiKeyProtector()), new FakeLoginAttemptLimiter(), new MembershipService(new UnitOfWork(db)));
+    private static AuthService Auth(
+        AppDbContext db,
+        ICurrentUser user,
+        SpyEmailService? email = null
+    ) =>
+        new(
+            new UnitOfWork(db),
+            new IdentityHasher(),
+            new FakeToken(),
+            user,
+            new FakeSettings(),
+            new FakeReset(),
+            email ?? new SpyEmailService(),
+            new NoopBrandingService(),
+            new ApiKeyService(new UnitOfWork(db), new TestApiKeyProtector()),
+            new FakeLoginAttemptLimiter(),
+            new MembershipService(new UnitOfWork(db))
+        );
 
     // Seeds one active user with password "OldPass123" and returns (publicId, ownerId, originalStamp).
     // workspaceName, when given, also seeds a Workspace row for ownerId (used by the reset/changed
     // email tests below to exercise the workspace-naming/placeholder-fallback behavior).
-    private static (Guid publicId, Guid ownerId, Guid stamp) SeedUser(string db, string? workspaceName = null)
+    private static (Guid publicId, Guid ownerId, Guid stamp) SeedUser(
+        string db,
+        string? workspaceName = null
+    )
     {
         using var seed = Ctx(new FakeCurrentUser { IsSuperAdmin = true }, db);
-        var role = new Role { Name = "Engineer", GrantsAdmin = false, IsActive = true };
+        var role = new Role
+        {
+            Name = "Engineer",
+            GrantsAdmin = false,
+            IsActive = true,
+        };
         seed.Roles.Add(role);
         seed.SaveChanges();
 
@@ -111,18 +194,25 @@ public class ChangePasswordTests
         var ownerId = Guid.NewGuid();
         if (workspaceName != null)
         {
-            seed.Workspaces.Add(new Workspace
-            {
-                Id = ownerId,
-                Name = workspaceName,
-                CreatedAt = DateTime.UtcNow,
-                CreatedBy = ownerId,
-            });
+            seed.Workspaces.Add(
+                new Workspace
+                {
+                    Id = ownerId,
+                    Name = workspaceName,
+                    CreatedAt = DateTime.UtcNow,
+                    CreatedBy = ownerId,
+                }
+            );
         }
         var user = new User
         {
-            Email = "user@t.com", PasswordHash = "h:OldPass123", DisplayName = "User",
-            PublicId = publicId, OwnerId = ownerId, RoleId = role.Id, IsActive = true
+            Email = "user@t.com",
+            PasswordHash = "h:OldPass123",
+            DisplayName = "User",
+            PublicId = publicId,
+            OwnerId = ownerId,
+            RoleId = role.Id,
+            IsActive = true,
         };
         seed.Users.Add(user);
         seed.SaveChanges();
@@ -138,8 +228,14 @@ public class ChangePasswordTests
         var caller = new FakeCurrentUser { Id = publicId, TenantId = ownerId };
         var ctx = Ctx(caller, db);
 
-        var result = await Auth(ctx, caller).ChangePasswordAsync(new ChangePasswordRequest
-        { CurrentPassword = "WrongPass", NewPassword = "NewPass123" });
+        var result = await Auth(ctx, caller)
+            .ChangePasswordAsync(
+                new ChangePasswordRequest
+                {
+                    CurrentPassword = "WrongPass",
+                    NewPassword = "NewPass123",
+                }
+            );
 
         Assert.False(result.IsSuccess);
         var user = ctx.Users.IgnoreQueryFilters().Single(u => u.PublicId == publicId);
@@ -156,8 +252,14 @@ public class ChangePasswordTests
         var ctx = Ctx(caller, db);
         var spy = new SpyEmailService();
 
-        var result = await Auth(ctx, caller, spy).ChangePasswordAsync(new ChangePasswordRequest
-        { CurrentPassword = "OldPass123", NewPassword = "NewPass123" });
+        var result = await Auth(ctx, caller, spy)
+            .ChangePasswordAsync(
+                new ChangePasswordRequest
+                {
+                    CurrentPassword = "OldPass123",
+                    NewPassword = "NewPass123",
+                }
+            );
 
         Assert.True(result.IsSuccess);
         var user = ctx.Users.IgnoreQueryFilters().Single(u => u.PublicId == publicId);
@@ -176,8 +278,14 @@ public class ChangePasswordTests
         var anon = new FakeCurrentUser { };
         var ctx = Ctx(anon, db);
 
-        var result = await Auth(ctx, anon).ChangePasswordAsync(new ChangePasswordRequest
-        { CurrentPassword = "OldPass123", NewPassword = "NewPass123" });
+        var result = await Auth(ctx, anon)
+            .ChangePasswordAsync(
+                new ChangePasswordRequest
+                {
+                    CurrentPassword = "OldPass123",
+                    NewPassword = "NewPass123",
+                }
+            );
 
         Assert.False(result.IsSuccess);
     }
@@ -193,8 +301,14 @@ public class ChangePasswordTests
         var ctx = Ctx(caller, db);
         var spy = new SpyEmailService();
 
-        var result = await Auth(ctx, caller, spy).ChangePasswordAsync(new ChangePasswordRequest
-        { CurrentPassword = "OldPass123", NewPassword = "NewPass123" });
+        var result = await Auth(ctx, caller, spy)
+            .ChangePasswordAsync(
+                new ChangePasswordRequest
+                {
+                    CurrentPassword = "OldPass123",
+                    NewPassword = "NewPass123",
+                }
+            );
 
         Assert.True(result.IsSuccess);
         Assert.Single(spy.Sent);
@@ -211,8 +325,14 @@ public class ChangePasswordTests
         var ctx = Ctx(caller, db);
         var spy = new SpyEmailService();
 
-        var result = await Auth(ctx, caller, spy).ChangePasswordAsync(new ChangePasswordRequest
-        { CurrentPassword = "OldPass123", NewPassword = "NewPass123" });
+        var result = await Auth(ctx, caller, spy)
+            .ChangePasswordAsync(
+                new ChangePasswordRequest
+                {
+                    CurrentPassword = "OldPass123",
+                    NewPassword = "NewPass123",
+                }
+            );
 
         Assert.True(result.IsSuccess);
         // Exactly the old wording — no "in the Workspace workspace".
@@ -228,8 +348,8 @@ public class ChangePasswordTests
         var ctx = Ctx(anon, db);
         var spy = new SpyEmailService();
 
-        var result = await Auth(ctx, anon, spy).RequestPasswordResetAsync(
-            new ForgotPasswordRequest { Email = "user@t.com" });
+        var result = await Auth(ctx, anon, spy)
+            .RequestPasswordResetAsync(new ForgotPasswordRequest { Email = "user@t.com" });
 
         Assert.True(result.IsSuccess);
         Assert.Single(spy.Sent);
@@ -246,8 +366,8 @@ public class ChangePasswordTests
         var ctx = Ctx(anon, db);
         var spy = new SpyEmailService();
 
-        var result = await Auth(ctx, anon, spy).RequestPasswordResetAsync(
-            new ForgotPasswordRequest { Email = "user@t.com" });
+        var result = await Auth(ctx, anon, spy)
+            .RequestPasswordResetAsync(new ForgotPasswordRequest { Email = "user@t.com" });
 
         Assert.True(result.IsSuccess);
         Assert.Single(spy.Sent);

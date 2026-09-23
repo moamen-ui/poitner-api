@@ -24,4 +24,19 @@ public interface ITokenService
     /// several live memberships to pick one via <c>POST /api/auth/switch-workspace</c>.
     /// </summary>
     string IssueSelection(User user);
+
+    /// <summary>
+    /// DB-13: issues a read-only, time-boxed impersonation token for a super admin operator viewing
+    /// <paramref name="workspaceId"/> under the live <paramref name="sessionId"/>. Claims: <c>sub</c>,
+    /// <c>email</c>, <c>name</c>, <c>role_id</c>, <c>role</c>, <c>is_admin = "true"</c>,
+    /// <c>is_super_admin = "true"</c>, <c>stamp</c>, <c>tenant = workspaceId</c>,
+    /// <c>scope = "impersonate"</c>, <c>imp = sessionId</c> — no <c>mstamp</c>, no
+    /// <c>is_quick_access</c>. Hard-expires at <paramref name="expiresAt"/> (≤ 60 min).
+    /// </summary>
+    string IssueImpersonation(
+        User operatorUser,
+        Guid workspaceId,
+        long sessionId,
+        DateTime expiresAt
+    );
 }

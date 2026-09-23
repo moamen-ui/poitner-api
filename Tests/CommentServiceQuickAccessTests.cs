@@ -30,64 +30,127 @@ public class CommentServiceQuickAccessTests
         public int? RoleId { get; set; }
         public string? KeyScopes { get; set; }
         public string? Scope { get; set; }
+        public long? ImpersonationSessionId { get; set; }
+        public bool IsImpersonating => ImpersonationSessionId != null;
     }
 
     private sealed class FakeFileStorage : IFileStorage
     {
-        public Task<string> SaveAsync(string ownerSegment, string project, Stream content, string extension) => Task.FromResult("uploads/x");
+        public Task<string> SaveAsync(
+            string ownerSegment,
+            string project,
+            Stream content,
+            string extension
+        ) => Task.FromResult("uploads/x");
+
         public Task DeleteAsync(string relativePathOrUrl) => Task.CompletedTask;
+
         public Task DeleteOwnerFilesAsync(string ownerSegment) => Task.CompletedTask;
     }
 
     private sealed class FakeUploadSigner : IUploadSigner
     {
         public string SignedUrl(string relPath) => relPath;
+
         public bool Validate(string relPath, long exp, string sig) => true;
+
         public string ExtractRelPath(string stored) => stored;
     }
 
     private sealed class FakeSettings : ISettingsService
     {
-        public Task<bool> GetBoolAsync(string key, bool fallback = false) => Task.FromResult(fallback);
+        public Task<bool> GetBoolAsync(string key, bool fallback = false) =>
+            Task.FromResult(fallback);
+
         public Task SetBoolAsync(string key, bool value) => Task.CompletedTask;
-        public Task<string> GetStringAsync(string key, string fallback = "") => Task.FromResult(fallback);
+
+        public Task<string> GetStringAsync(string key, string fallback = "") =>
+            Task.FromResult(fallback);
+
         public Task SetStringAsync(string key, string value) => Task.CompletedTask;
+
         public Task<int> GetIntAsync(string key, int fallback = 0) => Task.FromResult(fallback);
+
         public Task SetIntAsync(string key, int value) => Task.CompletedTask;
     }
 
     private static AppDbContext BuildContext(ICurrentUser user, string dbName) =>
-        new(new DbContextOptionsBuilder<AppDbContext>().UseInMemoryDatabase(dbName).Options, user,
-            new Microsoft.Extensions.Configuration.ConfigurationBuilder().Build());
+        new(
+            new DbContextOptionsBuilder<AppDbContext>().UseInMemoryDatabase(dbName).Options,
+            user,
+            new Microsoft.Extensions.Configuration.ConfigurationBuilder().Build()
+        );
 
     private CommentService BuildService(ICurrentUser user, string dbName)
     {
         var uow = new UnitOfWork(BuildContext(user, dbName));
-        var projectService = new ProjectService(uow, user, new PassThroughEntitlements(), TestProjectServiceDeps.Settings(), TestProjectServiceDeps.Configuration(), new FakeAuditWriter());
-        var actionService = new PredefinedActionService(uow, projectService, user, new PassThroughEntitlements());
-        return new CommentService(uow, projectService, actionService, new FakeFileStorage(), user,
-            new FakeUploadSigner(), new FakeSettings(), new PassThroughEntitlements());
+        var projectService = new ProjectService(
+            uow,
+            user,
+            new PassThroughEntitlements(),
+            TestProjectServiceDeps.Settings(),
+            TestProjectServiceDeps.Configuration(),
+            new FakeAuditWriter()
+        );
+        var actionService = new PredefinedActionService(
+            uow,
+            projectService,
+            user,
+            new PassThroughEntitlements()
+        );
+        return new CommentService(
+            uow,
+            projectService,
+            actionService,
+            new FakeFileStorage(),
+            user,
+            new FakeUploadSigner(),
+            new FakeSettings(),
+            new PassThroughEntitlements()
+        );
     }
 
     // Seeds one project owned by `tenant` with two comments: one by `clientId`, one by `otherId`.
     // Returns (projectKey, clientCommentId, otherCommentId).
     private static (string key, int clientCommentId, int otherCommentId) SeedProjectWithTwoComments(
-        string dbName, Guid tenant, Guid clientId, Guid otherId)
+        string dbName,
+        Guid tenant,
+        Guid clientId,
+        Guid otherId
+    )
     {
         using var seed = BuildContext(new FakeCurrentUser { IsSuperAdmin = true }, dbName);
-        var project = new Project { Key = "proj", Name = "Proj", IsActiveLocal = true, IsActiveStaging = true, IsActiveProduction = true, OwnerId = tenant };
+        var project = new Project
+        {
+            Key = "proj",
+            Name = "Proj",
+            IsActiveLocal = true,
+            IsActiveStaging = true,
+            IsActiveProduction = true,
+            OwnerId = tenant,
+        };
         seed.Projects.Add(project);
         seed.SaveChanges();
 
         var mine = new Comment
         {
-            ProjectId = project.Id, OwnerId = tenant, AuthorId = clientId, Body = "mine",
-            Status = CommentStatus.Open, Environment = EnvironmentTag.Local, Element = new ElementCapture()
+            ProjectId = project.Id,
+            OwnerId = tenant,
+            AuthorId = clientId,
+            Body = "mine",
+            Status = CommentStatus.Open,
+            Environment = EnvironmentTag.Local,
+            Element = new ElementCapture(),
         };
         var theirs = new Comment
         {
-            ProjectId = project.Id, OwnerId = tenant, AuthorId = otherId, Body = "theirs",
-            Status = CommentStatus.Open, Environment = EnvironmentTag.Local, Element = new ElementCapture()
+            ProjectId = project.Id,
+            OwnerId = tenant,
+            AuthorId = otherId,
+            Body = "theirs",
+            Status = CommentStatus.Open,
+            Environment = EnvironmentTag.Local,
+            Element = new ElementCapture(),
         };
         seed.Comments.AddRange(mine, theirs);
         seed.SaveChanges();
@@ -102,7 +165,12 @@ public class CommentServiceQuickAccessTests
         var clientId = Guid.NewGuid();
         var (key, mineId, _) = SeedProjectWithTwoComments(db, tenant, clientId, Guid.NewGuid());
 
-        var client = new FakeCurrentUser { Id = clientId, IsQuickAccess = true, TenantId = tenant };
+        var client = new FakeCurrentUser
+        {
+            Id = clientId,
+            IsQuickAccess = true,
+            TenantId = tenant,
+        };
         var svc = BuildService(client, db);
 
         var result = await svc.ListAsync(key, new CommentFilter(), clientId);
@@ -121,7 +189,12 @@ public class CommentServiceQuickAccessTests
         var staffId = Guid.NewGuid();
         var (key, _, _) = SeedProjectWithTwoComments(db, tenant, Guid.NewGuid(), Guid.NewGuid());
 
-        var staff = new FakeCurrentUser { Id = staffId, IsAdmin = true, TenantId = tenant };
+        var staff = new FakeCurrentUser
+        {
+            Id = staffId,
+            IsAdmin = true,
+            TenantId = tenant,
+        };
         var svc = BuildService(staff, db);
 
         var result = await svc.ListAsync(key, new CommentFilter(), staffId);
@@ -138,7 +211,12 @@ public class CommentServiceQuickAccessTests
         var clientId = Guid.NewGuid();
         var (_, _, theirsId) = SeedProjectWithTwoComments(db, tenant, clientId, Guid.NewGuid());
 
-        var client = new FakeCurrentUser { Id = clientId, IsQuickAccess = true, TenantId = tenant };
+        var client = new FakeCurrentUser
+        {
+            Id = clientId,
+            IsQuickAccess = true,
+            TenantId = tenant,
+        };
         var svc = BuildService(client, db);
 
         var result = await svc.GetByIdAsync(theirsId, clientId);
@@ -154,7 +232,12 @@ public class CommentServiceQuickAccessTests
         var clientId = Guid.NewGuid();
         var (_, mineId, _) = SeedProjectWithTwoComments(db, tenant, clientId, Guid.NewGuid());
 
-        var client = new FakeCurrentUser { Id = clientId, IsQuickAccess = true, TenantId = tenant };
+        var client = new FakeCurrentUser
+        {
+            Id = clientId,
+            IsQuickAccess = true,
+            TenantId = tenant,
+        };
         var svc = BuildService(client, db);
 
         var result = await svc.GetByIdAsync(mineId, clientId);
@@ -170,10 +253,19 @@ public class CommentServiceQuickAccessTests
         var clientId = Guid.NewGuid();
         var (_, mineId, _) = SeedProjectWithTwoComments(db, tenant, clientId, Guid.NewGuid());
 
-        var client = new FakeCurrentUser { Id = clientId, IsQuickAccess = true, TenantId = tenant };
+        var client = new FakeCurrentUser
+        {
+            Id = clientId,
+            IsQuickAccess = true,
+            TenantId = tenant,
+        };
         var svc = BuildService(client, db);
 
-        var result = await svc.UpdateStatusAsync(mineId, new UpdateCommentStatusRequest { Status = CommentStatus.Applied }, clientId);
+        var result = await svc.UpdateStatusAsync(
+            mineId,
+            new UpdateCommentStatusRequest { Status = CommentStatus.Applied },
+            clientId
+        );
 
         Assert.True(result.IsForbidden);
     }
@@ -186,10 +278,19 @@ public class CommentServiceQuickAccessTests
         var clientId = Guid.NewGuid();
         var (_, _, theirsId) = SeedProjectWithTwoComments(db, tenant, clientId, Guid.NewGuid());
 
-        var client = new FakeCurrentUser { Id = clientId, IsQuickAccess = true, TenantId = tenant };
+        var client = new FakeCurrentUser
+        {
+            Id = clientId,
+            IsQuickAccess = true,
+            TenantId = tenant,
+        };
         var svc = BuildService(client, db);
 
-        var result = await svc.AddReplyAsync(theirsId, new AddReplyRequest { Body = "hi" }, clientId);
+        var result = await svc.AddReplyAsync(
+            theirsId,
+            new AddReplyRequest { Body = "hi" },
+            clientId
+        );
 
         Assert.True(result.IsNotFound);
     }
@@ -202,7 +303,12 @@ public class CommentServiceQuickAccessTests
         var clientId = Guid.NewGuid();
         var (_, mineId, _) = SeedProjectWithTwoComments(db, tenant, clientId, Guid.NewGuid());
 
-        var client = new FakeCurrentUser { Id = clientId, IsQuickAccess = true, TenantId = tenant };
+        var client = new FakeCurrentUser
+        {
+            Id = clientId,
+            IsQuickAccess = true,
+            TenantId = tenant,
+        };
         var svc = BuildService(client, db);
 
         var result = await svc.AddReplyAsync(mineId, new AddReplyRequest { Body = "hi" }, clientId);
@@ -219,27 +325,51 @@ public class CommentServiceQuickAccessTests
 
         using (var seed = BuildContext(new FakeCurrentUser { IsSuperAdmin = true }, db))
         {
-            var project = new Project { Key = "proj", Name = "Proj", IsActiveLocal = true, IsActiveStaging = true, IsActiveProduction = true, OwnerId = tenant };
+            var project = new Project
+            {
+                Key = "proj",
+                Name = "Proj",
+                IsActiveLocal = true,
+                IsActiveStaging = true,
+                IsActiveProduction = true,
+                OwnerId = tenant,
+            };
             seed.Projects.Add(project);
             seed.SaveChanges();
 
             seed.Comments.AddRange(
                 new Comment
                 {
-                    ProjectId = project.Id, OwnerId = tenant, AuthorId = authorId, Body = "private note",
-                    Status = CommentStatus.ReadyToApply, Environment = EnvironmentTag.Local,
-                    Element = new ElementCapture(), IsPrivate = true
+                    ProjectId = project.Id,
+                    OwnerId = tenant,
+                    AuthorId = authorId,
+                    Body = "private note",
+                    Status = CommentStatus.ReadyToApply,
+                    Environment = EnvironmentTag.Local,
+                    Element = new ElementCapture(),
+                    IsPrivate = true,
                 },
                 new Comment
                 {
-                    ProjectId = project.Id, OwnerId = tenant, AuthorId = authorId, Body = "public fix",
-                    Status = CommentStatus.ReadyToApply, Environment = EnvironmentTag.Local,
-                    Element = new ElementCapture(), IsPrivate = false
-                });
+                    ProjectId = project.Id,
+                    OwnerId = tenant,
+                    AuthorId = authorId,
+                    Body = "public fix",
+                    Status = CommentStatus.ReadyToApply,
+                    Environment = EnvironmentTag.Local,
+                    Element = new ElementCapture(),
+                    IsPrivate = false,
+                }
+            );
             seed.SaveChanges();
         }
 
-        var admin = new FakeCurrentUser { Id = Guid.NewGuid(), IsAdmin = true, TenantId = tenant };
+        var admin = new FakeCurrentUser
+        {
+            Id = Guid.NewGuid(),
+            IsAdmin = true,
+            TenantId = tenant,
+        };
         var svc = BuildService(admin, db);
 
         var result = await svc.ListApplyQueueAsync("proj", new CommentFilter());

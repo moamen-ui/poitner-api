@@ -117,10 +117,10 @@ public static class AuditActions
     public const string BrandingAssetUploaded = "branding.asset_uploaded";
     public const string BrandingAssetDeleted = "branding.asset_deleted";
 
-    /// <summary>Reserved: DB-13.</summary>
+    /// <summary>DB-13: a super admin opened a read-only "View as…" session on a workspace.</summary>
     public const string ImpersonationStarted = "impersonation.started";
 
-    /// <summary>Reserved: DB-13.</summary>
+    /// <summary>DB-13: an impersonation session ended (manually or via the expiry sweep).</summary>
     public const string ImpersonationEnded = "impersonation.ended";
 
     /// <summary>

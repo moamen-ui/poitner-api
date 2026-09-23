@@ -25,11 +25,16 @@ public class RoleServiceCanManageTests
         public int? RoleId { get; set; }
         public string? KeyScopes { get; set; }
         public string? Scope { get; set; }
+        public long? ImpersonationSessionId { get; set; }
+        public bool IsImpersonating => ImpersonationSessionId != null;
     }
 
     private static AppDbContext BuildContext(ICurrentUser user, string dbName) =>
-        new(new DbContextOptionsBuilder<AppDbContext>().UseInMemoryDatabase(dbName).Options, user,
-            new Microsoft.Extensions.Configuration.ConfigurationBuilder().Build());
+        new(
+            new DbContextOptionsBuilder<AppDbContext>().UseInMemoryDatabase(dbName).Options,
+            user,
+            new Microsoft.Extensions.Configuration.ConfigurationBuilder().Build()
+        );
 
     private static readonly Guid Tenant = Guid.NewGuid();
     private static readonly Guid OtherTenant = Guid.NewGuid();
@@ -38,17 +43,45 @@ public class RoleServiceCanManageTests
     {
         using var db = BuildContext(new FakeCurrentUser { IsSuperAdmin = true }, dbName);
         db.AddRange(
-            new Role { Name = "Admin", IsSystem = true, IsActive = true },                 // platform, immutable
-            new Role { Name = "Developer", OwnerId = null, IsActive = true },              // global
-            new Role { Name = "OwnPM", OwnerId = Tenant, IsActive = true },                // this tenant's
-            new Role { Name = "TheirPM", OwnerId = OtherTenant, IsActive = true });        // someone else's
+            new Role
+            {
+                Name = "Admin",
+                IsSystem = true,
+                IsActive = true,
+            }, // platform, immutable
+            new Role
+            {
+                Name = "Developer",
+                OwnerId = null,
+                IsActive = true,
+            }, // global
+            new Role
+            {
+                Name = "OwnPM",
+                OwnerId = Tenant,
+                IsActive = true,
+            }, // this tenant's
+            new Role
+            {
+                Name = "TheirPM",
+                OwnerId = OtherTenant,
+                IsActive = true,
+            }
+        ); // someone else's
         db.SaveChanges();
     }
 
-    private static async Task<Dictionary<string, bool>> ListCanManageAsync(ICurrentUser user, string dbName)
+    private static async Task<Dictionary<string, bool>> ListCanManageAsync(
+        ICurrentUser user,
+        string dbName
+    )
     {
         using var db = BuildContext(user, dbName);
-        var result = await new RoleService(new UnitOfWork(db), user, new MembershipService(new UnitOfWork(db))).ListAsync();
+        var result = await new RoleService(
+            new UnitOfWork(db),
+            user,
+            new MembershipService(new UnitOfWork(db))
+        ).ListAsync();
         Assert.True(result.IsSuccess);
         return result.Data!.ToDictionary(r => r.Name, r => r.CanManage);
     }
@@ -60,7 +93,9 @@ public class RoleServiceCanManageTests
         Seed(dbName);
 
         var canManage = await ListCanManageAsync(
-            new FakeCurrentUser { IsAdmin = true, TenantId = Tenant }, dbName);
+            new FakeCurrentUser { IsAdmin = true, TenantId = Tenant },
+            dbName
+        );
 
         Assert.True(canManage["OwnPM"]);
         // Visible but untouchable — these are the rows whose actions menu used to 404.
@@ -75,7 +110,9 @@ public class RoleServiceCanManageTests
         Seed(dbName);
 
         var canManage = await ListCanManageAsync(
-            new FakeCurrentUser { IsAdmin = true, IsSuperAdmin = true }, dbName);
+            new FakeCurrentUser { IsAdmin = true, IsSuperAdmin = true },
+            dbName
+        );
 
         Assert.True(canManage["Developer"]);
         Assert.True(canManage["OwnPM"]);
@@ -92,15 +129,19 @@ public class RoleServiceCanManageTests
         var user = new FakeCurrentUser { IsAdmin = true, TenantId = Tenant };
 
         using var db = BuildContext(user, dbName);
-        var service = new RoleService(new UnitOfWork(db), user, new MembershipService(new UnitOfWork(db)));
+        var service = new RoleService(
+            new UnitOfWork(db),
+            user,
+            new MembershipService(new UnitOfWork(db))
+        );
         var roles = (await service.ListAsync()).Data!;
 
         foreach (var role in roles)
         {
-            var rename = await service.UpdateAsync(role.Id, new Application.DTOs.Role.UpdateRoleRequest
-            {
-                Name = role.Name + "-renamed",
-            });
+            var rename = await service.UpdateAsync(
+                role.Id,
+                new Application.DTOs.Role.UpdateRoleRequest { Name = role.Name + "-renamed" }
+            );
             Assert.Equal(role.CanManage, rename.IsSuccess);
         }
     }

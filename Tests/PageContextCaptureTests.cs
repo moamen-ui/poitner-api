@@ -30,34 +30,56 @@ public class PageContextCaptureTests
         public int? RoleId { get; set; }
         public string? KeyScopes { get; set; }
         public string? Scope { get; set; }
+        public long? ImpersonationSessionId { get; set; }
+        public bool IsImpersonating => ImpersonationSessionId != null;
     }
 
     private sealed class FakeFileStorage : IFileStorage
     {
-        public Task<string> SaveAsync(string ownerSegment, string project, Stream content, string extension) => Task.FromResult("uploads/x");
+        public Task<string> SaveAsync(
+            string ownerSegment,
+            string project,
+            Stream content,
+            string extension
+        ) => Task.FromResult("uploads/x");
+
         public Task DeleteAsync(string relativePathOrUrl) => Task.CompletedTask;
+
         public Task DeleteOwnerFilesAsync(string ownerSegment) => Task.CompletedTask;
     }
 
     private sealed class FakeUploadSigner : IUploadSigner
     {
         public string SignedUrl(string relPath) => relPath;
+
         public bool Validate(string relPath, long exp, string sig) => true;
+
         public string ExtractRelPath(string stored) => stored;
     }
 
     private sealed class FakeSettings : ISettingsService
     {
-        public Task<bool> GetBoolAsync(string key, bool fallback = false) => Task.FromResult(fallback);
+        public Task<bool> GetBoolAsync(string key, bool fallback = false) =>
+            Task.FromResult(fallback);
+
         public Task SetBoolAsync(string key, bool value) => Task.CompletedTask;
-        public Task<string> GetStringAsync(string key, string fallback = "") => Task.FromResult(fallback);
+
+        public Task<string> GetStringAsync(string key, string fallback = "") =>
+            Task.FromResult(fallback);
+
         public Task SetStringAsync(string key, string value) => Task.CompletedTask;
+
         public Task<int> GetIntAsync(string key, int fallback = 0) => Task.FromResult(fallback);
+
         public Task SetIntAsync(string key, int value) => Task.CompletedTask;
     }
 
     private static AppDbContext BuildContext(ICurrentUser user, string dbName) =>
-        new(new DbContextOptionsBuilder<AppDbContext>().UseInMemoryDatabase(dbName).Options, user, new Microsoft.Extensions.Configuration.ConfigurationBuilder().Build());
+        new(
+            new DbContextOptionsBuilder<AppDbContext>().UseInMemoryDatabase(dbName).Options,
+            user,
+            new Microsoft.Extensions.Configuration.ConfigurationBuilder().Build()
+        );
 
     private sealed class Harness
     {
@@ -76,52 +98,112 @@ public class PageContextCaptureTests
 
         using (var seed = BuildContext(new FakeCurrentUser { IsSuperAdmin = true }, dbName))
         {
-            seed.Projects.Add(new Project
-            {
-                Key = "proj", Name = "Proj", IsActiveLocal = true, IsActiveStaging = true, IsActiveProduction = true, OwnerId = tenant,
-                PageContextCaptureEnabled = captureEnabled
-            });
+            seed.Projects.Add(
+                new Project
+                {
+                    Key = "proj",
+                    Name = "Proj",
+                    IsActiveLocal = true,
+                    IsActiveStaging = true,
+                    IsActiveProduction = true,
+                    OwnerId = tenant,
+                    PageContextCaptureEnabled = captureEnabled,
+                }
+            );
             seed.SaveChanges();
         }
 
-        var user = new FakeCurrentUser { Id = author, TenantId = tenant, IsSuperAdmin = false };
+        var user = new FakeCurrentUser
+        {
+            Id = author,
+            TenantId = tenant,
+            IsSuperAdmin = false,
+        };
         var db = BuildContext(user, dbName);
         var uow = new UnitOfWork(db);
-        var projectService = new ProjectService(uow, user, new PassThroughEntitlements(), TestProjectServiceDeps.Settings(), TestProjectServiceDeps.Configuration(), new FakeAuditWriter());
-        var actionService = new PredefinedActionService(uow, projectService, user, new PassThroughEntitlements());
-        var commentService = new CommentService(uow, projectService, actionService, new FakeFileStorage(), user, new FakeUploadSigner(), new FakeSettings(), new PassThroughEntitlements());
+        var projectService = new ProjectService(
+            uow,
+            user,
+            new PassThroughEntitlements(),
+            TestProjectServiceDeps.Settings(),
+            TestProjectServiceDeps.Configuration(),
+            new FakeAuditWriter()
+        );
+        var actionService = new PredefinedActionService(
+            uow,
+            projectService,
+            user,
+            new PassThroughEntitlements()
+        );
+        var commentService = new CommentService(
+            uow,
+            projectService,
+            actionService,
+            new FakeFileStorage(),
+            user,
+            new FakeUploadSigner(),
+            new FakeSettings(),
+            new PassThroughEntitlements()
+        );
 
-        return new Harness { Db = db, CommentService = commentService, TenantId = tenant, AuthorId = author };
+        return new Harness
+        {
+            Db = db,
+            CommentService = commentService,
+            TenantId = tenant,
+            AuthorId = author,
+        };
     }
 
-    private static PageContextCaptureDto SampleCapture(string sessionId = "sess-1") => new()
-    {
-        SessionId = sessionId,
-        ConsoleEntries = new List<ConsoleEntryInputDto>
+    private static PageContextCaptureDto SampleCapture(string sessionId = "sess-1") =>
+        new()
         {
-            new() { Level = "error", Message = "TypeError: x is undefined", Count = 1 }
-        },
-        NetworkEntries = new List<NetworkEntryInputDto>
-        {
-            new() { Method = "POST", Url = "https://api.example.com/checkout", StatusCode = 500, DurationMs = 800 }
-        }
-    };
+            SessionId = sessionId,
+            ConsoleEntries = new List<ConsoleEntryInputDto>
+            {
+                new()
+                {
+                    Level = "error",
+                    Message = "TypeError: x is undefined",
+                    Count = 1,
+                },
+            },
+            NetworkEntries = new List<NetworkEntryInputDto>
+            {
+                new()
+                {
+                    Method = "POST",
+                    Url = "https://api.example.com/checkout",
+                    StatusCode = 500,
+                    DurationMs = 800,
+                },
+            },
+        };
 
-    private static CreateCommentRequest Req(bool isBugReport, PageContextCaptureDto? pageContext, string route = "/checkout") => new()
-    {
-        Body = "It crashed",
-        Environment = EnvironmentTag.Production,
-        IsBugReport = isBugReport,
-        PageContext = pageContext,
-        Element = new ElementCaptureDto { Route = route }
-    };
+    private static CreateCommentRequest Req(
+        bool isBugReport,
+        PageContextCaptureDto? pageContext,
+        string route = "/checkout"
+    ) =>
+        new()
+        {
+            Body = "It crashed",
+            Environment = EnvironmentTag.Production,
+            IsBugReport = isBugReport,
+            PageContext = pageContext,
+            Element = new ElementCaptureDto { Route = route },
+        };
 
     [Fact]
     public async Task Create_BugReportWithCaptureEnabled_CreatesSnapshot_AndReturnsItEmbedded()
     {
         var h = BuildHarness(Guid.NewGuid().ToString(), captureEnabled: true);
 
-        var result = await h.CommentService.CreateAsync("proj", Req(true, SampleCapture()), h.AuthorId);
+        var result = await h.CommentService.CreateAsync(
+            "proj",
+            Req(true, SampleCapture()),
+            h.AuthorId
+        );
 
         Assert.True(result.IsSuccess);
         Assert.True(result.Data!.IsBugReport);
@@ -137,7 +219,11 @@ public class PageContextCaptureTests
     {
         var h = BuildHarness(Guid.NewGuid().ToString(), captureEnabled: false);
 
-        var result = await h.CommentService.CreateAsync("proj", Req(true, SampleCapture()), h.AuthorId);
+        var result = await h.CommentService.CreateAsync(
+            "proj",
+            Req(true, SampleCapture()),
+            h.AuthorId
+        );
 
         Assert.True(result.IsSuccess);
         // IsBugReport is still stamped (cheap triage signal on its own)...
@@ -153,7 +239,11 @@ public class PageContextCaptureTests
     {
         var h = BuildHarness(Guid.NewGuid().ToString(), captureEnabled: true);
 
-        var result = await h.CommentService.CreateAsync("proj", Req(false, SampleCapture()), h.AuthorId);
+        var result = await h.CommentService.CreateAsync(
+            "proj",
+            Req(false, SampleCapture()),
+            h.AuthorId
+        );
 
         Assert.True(result.IsSuccess);
         Assert.False(result.Data!.IsBugReport);
@@ -168,8 +258,16 @@ public class PageContextCaptureTests
 
         // Two comments, different query strings on the same path, same session — should dedup to
         // ONE PageContextSnapshot (route is normalized to path-only).
-        var first = await h.CommentService.CreateAsync("proj", Req(true, SampleCapture(), "/checkout?step=1"), h.AuthorId);
-        var second = await h.CommentService.CreateAsync("proj", Req(true, SampleCapture(), "/checkout?step=2"), h.AuthorId);
+        var first = await h.CommentService.CreateAsync(
+            "proj",
+            Req(true, SampleCapture(), "/checkout?step=1"),
+            h.AuthorId
+        );
+        var second = await h.CommentService.CreateAsync(
+            "proj",
+            Req(true, SampleCapture(), "/checkout?step=2"),
+            h.AuthorId
+        );
 
         Assert.True(first.IsSuccess);
         Assert.True(second.IsSuccess);
@@ -196,8 +294,16 @@ public class PageContextCaptureTests
     {
         var h = BuildHarness(Guid.NewGuid().ToString(), captureEnabled: true);
 
-        var first = await h.CommentService.CreateAsync("proj", Req(true, SampleCapture("sess-a")), h.AuthorId);
-        var second = await h.CommentService.CreateAsync("proj", Req(true, SampleCapture("sess-b")), h.AuthorId);
+        var first = await h.CommentService.CreateAsync(
+            "proj",
+            Req(true, SampleCapture("sess-a")),
+            h.AuthorId
+        );
+        var second = await h.CommentService.CreateAsync(
+            "proj",
+            Req(true, SampleCapture("sess-b")),
+            h.AuthorId
+        );
 
         Assert.True(first.IsSuccess);
         Assert.True(second.IsSuccess);

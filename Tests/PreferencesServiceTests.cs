@@ -27,23 +27,45 @@ public class PreferencesServiceTests
         public int? RoleId { get; set; }
         public string? KeyScopes { get; set; }
         public string? Scope { get; set; }
+        public long? ImpersonationSessionId { get; set; }
+        public bool IsImpersonating => ImpersonationSessionId != null;
     }
 
     private static AppDbContext BuildContext(ICurrentUser user, string dbName) =>
-        new(new DbContextOptionsBuilder<AppDbContext>().UseInMemoryDatabase(dbName).Options, user, new Microsoft.Extensions.Configuration.ConfigurationBuilder().Build());
+        new(
+            new DbContextOptionsBuilder<AppDbContext>().UseInMemoryDatabase(dbName).Options,
+            user,
+            new Microsoft.Extensions.Configuration.ConfigurationBuilder().Build()
+        );
 
-    private static (AppDbContext Db, PreferencesService Service, Guid UserId) BuildHarness(string dbName)
+    private static (AppDbContext Db, PreferencesService Service, Guid UserId) BuildHarness(
+        string dbName
+    )
     {
         var tenant = Guid.NewGuid();
         var userId = Guid.NewGuid();
-        var user = new FakeCurrentUser { Id = userId, TenantId = tenant, IsSuperAdmin = false };
+        var user = new FakeCurrentUser
+        {
+            Id = userId,
+            TenantId = tenant,
+            IsSuperAdmin = false,
+        };
         var db = BuildContext(user, dbName);
-        var role = new Role { Id = 1, Name = "Member", OwnerId = tenant };
+        var role = new Role
+        {
+            Id = 1,
+            Name = "Member",
+            OwnerId = tenant,
+        };
         db.Roles.Add(role);
         var dbUser = new User
         {
-            PublicId = userId, Email = "u@test.com", PasswordHash = "x",
-            DisplayName = "U", RoleId = 1, OwnerId = tenant,
+            PublicId = userId,
+            Email = "u@test.com",
+            PasswordHash = "x",
+            DisplayName = "U",
+            RoleId = 1,
+            OwnerId = tenant,
         };
         db.Users.Add(dbUser);
         db.SaveChanges();
@@ -58,11 +80,16 @@ public class PreferencesServiceTests
     {
         var (db, svc, userId) = BuildHarness(Guid.NewGuid().ToString());
 
-        var result = await svc.UpdateAsync(new UpdatePreferencesRequest { AddCommentShortcut = "alt+shift+c" });
+        var result = await svc.UpdateAsync(
+            new UpdatePreferencesRequest { AddCommentShortcut = "alt+shift+c" }
+        );
 
         Assert.True(result.IsSuccess);
         Assert.Equal("alt+shift+c", result.Data!.AddCommentShortcut);
-        var stored = db.Users.IgnoreQueryFilters().Single(u => u.PublicId == userId).AddCommentShortcut;
+        var stored = db
+            .Users.IgnoreQueryFilters()
+            .Single(u => u.PublicId == userId)
+            .AddCommentShortcut;
         Assert.Equal("alt+shift+c", stored);
     }
 
@@ -72,11 +99,16 @@ public class PreferencesServiceTests
         var (db, svc, userId) = BuildHarness(Guid.NewGuid().ToString());
         await svc.UpdateAsync(new UpdatePreferencesRequest { AddCommentShortcut = "ctrl+alt+m" });
 
-        var result = await svc.UpdateAsync(new UpdatePreferencesRequest { AddCommentShortcut = "" });
+        var result = await svc.UpdateAsync(
+            new UpdatePreferencesRequest { AddCommentShortcut = "" }
+        );
 
         Assert.True(result.IsSuccess);
         Assert.Null(result.Data!.AddCommentShortcut);
-        var stored = db.Users.IgnoreQueryFilters().Single(u => u.PublicId == userId).AddCommentShortcut;
+        var stored = db
+            .Users.IgnoreQueryFilters()
+            .Single(u => u.PublicId == userId)
+            .AddCommentShortcut;
         Assert.Null(stored);
     }
 
@@ -91,7 +123,10 @@ public class PreferencesServiceTests
 
         Assert.True(result.IsSuccess);
         Assert.Equal("alt+shift+c", result.Data!.AddCommentShortcut);
-        var stored = db.Users.IgnoreQueryFilters().Single(u => u.PublicId == userId).AddCommentShortcut;
+        var stored = db
+            .Users.IgnoreQueryFilters()
+            .Single(u => u.PublicId == userId)
+            .AddCommentShortcut;
         Assert.Equal("alt+shift+c", stored);
     }
 
@@ -100,7 +135,9 @@ public class PreferencesServiceTests
     {
         var (_, svc, _) = BuildHarness(Guid.NewGuid().ToString());
 
-        var result = await svc.UpdateAsync(new UpdatePreferencesRequest { AddCommentShortcut = new string('x', 41) });
+        var result = await svc.UpdateAsync(
+            new UpdatePreferencesRequest { AddCommentShortcut = new string('x', 41) }
+        );
 
         Assert.False(result.IsSuccess);
     }

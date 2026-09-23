@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Pointer.API.Auth;
 using Pointer.Application.Common;
+using Pointer.Application.DTOs.Impersonation;
 using Pointer.Application.DTOs.Tenant;
 using Pointer.Application.Response;
 using Pointer.Application.Services.Interfaces;
@@ -13,7 +14,11 @@ namespace Pointer.API.Controllers.Admin;
 [Authorize(Policy = Policies.SuperAdmin)]
 [Tags("Tenants")]
 [Produces("application/json")]
-public class TenantsController(ITenantService tenantService, ITenantInviteService tenantInvites) : ControllerBase
+public class TenantsController(
+    ITenantService tenantService,
+    ITenantInviteService tenantInvites,
+    IImpersonationService impersonationService
+) : ControllerBase
 {
     // ── Workspace invitations — the primary way to onboard a tenant ──────────────────────────────
     // The invitee sets their own password from the emailed link, so nobody ever chooses or
@@ -26,9 +31,12 @@ public class TenantsController(ITenantService tenantService, ITenantInviteServic
     public async Task<IActionResult> CreateInvite([FromBody] CreateTenantInviteRequest request)
     {
         var result = await tenantInvites.CreateAsync(request);
-        if (result.IsForbidden) return StatusCode(StatusCodes.Status403Forbidden, result);
-        if (result.IsNotFound) return NotFound(result);
-        if (result.IsConflict) return Conflict(result);
+        if (result.IsForbidden)
+            return StatusCode(StatusCodes.Status403Forbidden, result);
+        if (result.IsNotFound)
+            return NotFound(result);
+        if (result.IsConflict)
+            return Conflict(result);
         return result.IsSuccess ? Ok(result) : BadRequest(result);
     }
 
@@ -37,7 +45,8 @@ public class TenantsController(ITenantService tenantService, ITenantInviteServic
     public async Task<IActionResult> ListInvites()
     {
         var result = await tenantInvites.ListAsync();
-        if (result.IsForbidden) return StatusCode(StatusCodes.Status403Forbidden, result);
+        if (result.IsForbidden)
+            return StatusCode(StatusCodes.Status403Forbidden, result);
         return result.IsSuccess ? Ok(result) : BadRequest(result);
     }
 
@@ -47,8 +56,10 @@ public class TenantsController(ITenantService tenantService, ITenantInviteServic
     public async Task<IActionResult> ResendInvite(int id, [FromQuery] bool rotate = false)
     {
         var result = await tenantInvites.ResendAsync(id, rotate);
-        if (result.IsForbidden) return StatusCode(StatusCodes.Status403Forbidden, result);
-        if (result.IsNotFound) return NotFound(result);
+        if (result.IsForbidden)
+            return StatusCode(StatusCodes.Status403Forbidden, result);
+        if (result.IsNotFound)
+            return NotFound(result);
         return result.IsSuccess ? Ok(result) : BadRequest(result);
     }
 
@@ -60,8 +71,10 @@ public class TenantsController(ITenantService tenantService, ITenantInviteServic
     public async Task<IActionResult> RevokeInvite(int id)
     {
         var result = await tenantInvites.RevokeAsync(id);
-        if (result.IsForbidden) return StatusCode(StatusCodes.Status403Forbidden, result);
-        if (result.IsNotFound) return NotFound(result);
+        if (result.IsForbidden)
+            return StatusCode(StatusCodes.Status403Forbidden, result);
+        if (result.IsNotFound)
+            return NotFound(result);
         return result.IsSuccess ? Ok(result) : BadRequest(result);
     }
 
@@ -79,7 +92,8 @@ public class TenantsController(ITenantService tenantService, ITenantInviteServic
     public async Task<IActionResult> Create([FromBody] CreateTenantRequest request)
     {
         var result = await tenantService.CreateAsync(request);
-        if (result.IsConflict) return Conflict(result);
+        if (result.IsConflict)
+            return Conflict(result);
         return result.IsSuccess ? Ok(result) : BadRequest(result);
     }
 
@@ -90,10 +104,14 @@ public class TenantsController(ITenantService tenantService, ITenantInviteServic
     [HttpPatch("{workspaceId:guid}/status")]
     [Audited(AuditActions.TenantStatusChanged)]
     [ProducesResponseType(typeof(Result), StatusCodes.Status200OK)]
-    public async Task<IActionResult> SetStatus(Guid workspaceId, [FromBody] SetTenantStatusRequest request)
+    public async Task<IActionResult> SetStatus(
+        Guid workspaceId,
+        [FromBody] SetTenantStatusRequest request
+    )
     {
         var result = await tenantService.SetStatusAsync(workspaceId, request.Action);
-        if (result.IsNotFound) return NotFound(result);
+        if (result.IsNotFound)
+            return NotFound(result);
         return result.IsSuccess ? Ok(result) : BadRequest(result);
     }
 
@@ -103,7 +121,8 @@ public class TenantsController(ITenantService tenantService, ITenantInviteServic
     public async Task<IActionResult> ExtendDemo(int id)
     {
         var result = await tenantService.ExtendDemoAsync(id);
-        if (result.IsNotFound) return NotFound(result);
+        if (result.IsNotFound)
+            return NotFound(result);
         return result.IsSuccess ? Ok(result) : BadRequest(result);
     }
 
@@ -112,8 +131,13 @@ public class TenantsController(ITenantService tenantService, ITenantInviteServic
     [ProducesResponseType(typeof(Result), StatusCodes.Status200OK)]
     public async Task<IActionResult> SetDemoConfig(int id, [FromBody] SetDemoConfigRequest request)
     {
-        var result = await tenantService.SetDemoConfigAsync(id, request.CommentCapOverride, request.TtlHoursOverride);
-        if (result.IsNotFound) return NotFound(result);
+        var result = await tenantService.SetDemoConfigAsync(
+            id,
+            request.CommentCapOverride,
+            request.TtlHoursOverride
+        );
+        if (result.IsNotFound)
+            return NotFound(result);
         return result.IsSuccess ? Ok(result) : BadRequest(result);
     }
 
@@ -121,10 +145,14 @@ public class TenantsController(ITenantService tenantService, ITenantInviteServic
     [HttpPatch("{workspaceId:guid}/plan")]
     [Audited(AuditActions.TenantPlanChanged)]
     [ProducesResponseType(typeof(Result), StatusCodes.Status200OK)]
-    public async Task<IActionResult> ChangePlan(Guid workspaceId, [FromBody] ChangeTenantPlanRequest request)
+    public async Task<IActionResult> ChangePlan(
+        Guid workspaceId,
+        [FromBody] ChangeTenantPlanRequest request
+    )
     {
         var result = await tenantService.ChangePlanAsync(workspaceId, request.PlanId);
-        if (result.IsNotFound) return NotFound(result);
+        if (result.IsNotFound)
+            return NotFound(result);
         return result.IsSuccess ? Ok(result) : BadRequest(result);
     }
 
@@ -137,7 +165,28 @@ public class TenantsController(ITenantService tenantService, ITenantInviteServic
     public async Task<IActionResult> Delete(Guid workspaceId)
     {
         var result = await tenantService.HardDeleteAsync(workspaceId);
-        if (result.IsNotFound) return NotFound(result);
+        if (result.IsNotFound)
+            return NotFound(result);
+        return result.IsSuccess ? Ok(result) : BadRequest(result);
+    }
+
+    // DB-13 (F2): the metadata-only operator's one way to reach content — an audited, time-boxed,
+    // read-only "View as…" session (§3.6).
+    [HttpPost("{workspaceId:guid}/impersonate")]
+    [Audited(AuditActions.ImpersonationStarted)]
+    [ProducesResponseType(typeof(ImpersonationStartResponse), StatusCodes.Status200OK)]
+    public async Task<IActionResult> Impersonate(
+        Guid workspaceId,
+        [FromBody] StartImpersonationRequest request
+    )
+    {
+        var result = await impersonationService.StartAsync(workspaceId, request);
+        if (result.IsForbidden)
+            return StatusCode(StatusCodes.Status403Forbidden, result);
+        if (result.IsNotFound)
+            return NotFound(result);
+        if (result.IsConflict)
+            return Conflict(result);
         return result.IsSuccess ? Ok(result) : BadRequest(result);
     }
 }

@@ -49,6 +49,7 @@ public class AuditEvent
     /// <summary>Truncated to 256 chars.</summary>
     public string? UserAgent { get; init; }
 
-    /// <summary>Logical reference to DB-13's impersonation_sessions.id (no FK; NULL until DB-13 ships).</summary>
+    /// <summary>DB-13: logical reference to impersonation_sessions.id (no FK). Non-null only for
+    /// rows written while ICurrentUser.IsImpersonating is true.</summary>
     public long? ImpersonationSessionId { get; init; }
 }

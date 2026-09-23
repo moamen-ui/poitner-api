@@ -26,11 +26,16 @@ public class AppEnvironmentServiceTests
         public int? RoleId { get; set; }
         public string? KeyScopes { get; set; }
         public string? Scope { get; set; }
+        public long? ImpersonationSessionId { get; set; }
+        public bool IsImpersonating => ImpersonationSessionId != null;
     }
 
     private static AppDbContext BuildContext(ICurrentUser user, string dbName) =>
-        new(new DbContextOptionsBuilder<AppDbContext>().UseInMemoryDatabase(dbName).Options, user,
-            new Microsoft.Extensions.Configuration.ConfigurationBuilder().Build());
+        new(
+            new DbContextOptionsBuilder<AppDbContext>().UseInMemoryDatabase(dbName).Options,
+            user,
+            new Microsoft.Extensions.Configuration.ConfigurationBuilder().Build()
+        );
 
     private static int SeedGlobalEnvironment(string dbName, string name = "prod")
     {
@@ -64,12 +69,18 @@ public class AppEnvironmentServiceTests
         var tenantA = Guid.NewGuid();
         var tenantB = Guid.NewGuid();
         var adminA = new FakeCurrentUser { IsAdmin = true, TenantId = tenantA };
-        await new AppEnvironmentService(new UnitOfWork(BuildContext(adminA, dbName)), adminA)
-            .CreateAsync(new CreateAppEnvironmentRequest { Name = "tenant-a-only" });
+        await new AppEnvironmentService(
+            new UnitOfWork(BuildContext(adminA, dbName)),
+            adminA
+        ).CreateAsync(new CreateAppEnvironmentRequest { Name = "tenant-a-only" });
 
         var adminB = new FakeCurrentUser { IsAdmin = true, TenantId = tenantB };
-        var listB = (await new AppEnvironmentService(new UnitOfWork(BuildContext(adminB, dbName)), adminB)
-            .ListAsync()).Data!;
+        var listB = (
+            await new AppEnvironmentService(
+                new UnitOfWork(BuildContext(adminB, dbName)),
+                adminB
+            ).ListAsync()
+        ).Data!;
 
         Assert.DoesNotContain(listB, e => e.Name == "tenant-a-only");
     }
@@ -87,7 +98,10 @@ public class AppEnvironmentServiceTests
         var result = await svc.CreateAsync(new CreateAppEnvironmentRequest { Name = " Local " });
 
         Assert.True(result.IsConflict);
-        Assert.Single((await svc.ListAsync()).Data!, e => e.Name.Equals("local", StringComparison.OrdinalIgnoreCase));
+        Assert.Single(
+            (await svc.ListAsync()).Data!,
+            e => e.Name.Equals("local", StringComparison.OrdinalIgnoreCase)
+        );
     }
 
     [Fact]
@@ -99,7 +113,10 @@ public class AppEnvironmentServiceTests
         var svc = new AppEnvironmentService(new UnitOfWork(BuildContext(admin, dbName)), admin);
         var own = (await svc.CreateAsync(new CreateAppEnvironmentRequest { Name = "qa" })).Data!;
 
-        var result = await svc.UpdateAsync(own.Id, new UpdateAppEnvironmentRequest { Name = "STAGING" });
+        var result = await svc.UpdateAsync(
+            own.Id,
+            new UpdateAppEnvironmentRequest { Name = "STAGING" }
+        );
 
         Assert.True(result.IsConflict);
     }
@@ -109,10 +126,15 @@ public class AppEnvironmentServiceTests
     {
         var dbName = Guid.NewGuid().ToString();
         var tenantAdmin = new FakeCurrentUser { IsAdmin = true, TenantId = Guid.NewGuid() };
-        await new AppEnvironmentService(new UnitOfWork(BuildContext(tenantAdmin, dbName)), tenantAdmin)
-            .CreateAsync(new CreateAppEnvironmentRequest { Name = "preview" });
+        await new AppEnvironmentService(
+            new UnitOfWork(BuildContext(tenantAdmin, dbName)),
+            tenantAdmin
+        ).CreateAsync(new CreateAppEnvironmentRequest { Name = "preview" });
         var superAdmin = new FakeCurrentUser { IsSuperAdmin = true };
-        var svc = new AppEnvironmentService(new UnitOfWork(BuildContext(superAdmin, dbName)), superAdmin);
+        var svc = new AppEnvironmentService(
+            new UnitOfWork(BuildContext(superAdmin, dbName)),
+            superAdmin
+        );
 
         var result = await svc.CreateAsync(new CreateAppEnvironmentRequest { Name = "Preview" });
 
@@ -127,7 +149,10 @@ public class AppEnvironmentServiceTests
         var admin = new FakeCurrentUser { IsAdmin = true, TenantId = Guid.NewGuid() };
         var svc = new AppEnvironmentService(new UnitOfWork(BuildContext(admin, dbName)), admin);
 
-        var result = await svc.UpdateAsync(envId, new UpdateAppEnvironmentRequest { Name = "renamed" });
+        var result = await svc.UpdateAsync(
+            envId,
+            new UpdateAppEnvironmentRequest { Name = "renamed" }
+        );
 
         Assert.True(result.IsForbidden);
     }
@@ -139,9 +164,14 @@ public class AppEnvironmentServiceTests
         var tenant = Guid.NewGuid();
         var admin = new FakeCurrentUser { IsAdmin = true, TenantId = tenant };
         var svc = new AppEnvironmentService(new UnitOfWork(BuildContext(admin, dbName)), admin);
-        var created = (await svc.CreateAsync(new CreateAppEnvironmentRequest { Name = "old-name" })).Data!;
+        var created = (
+            await svc.CreateAsync(new CreateAppEnvironmentRequest { Name = "old-name" })
+        ).Data!;
 
-        var result = await svc.UpdateAsync(created.Id, new UpdateAppEnvironmentRequest { Name = "new-name" });
+        var result = await svc.UpdateAsync(
+            created.Id,
+            new UpdateAppEnvironmentRequest { Name = "new-name" }
+        );
 
         Assert.True(result.IsSuccess);
         Assert.Equal("new-name", result.Data!.Name);
@@ -153,9 +183,15 @@ public class AppEnvironmentServiceTests
         var dbName = Guid.NewGuid().ToString();
         var envId = SeedGlobalEnvironment(dbName);
         var superAdmin = new FakeCurrentUser { IsSuperAdmin = true };
-        var svc = new AppEnvironmentService(new UnitOfWork(BuildContext(superAdmin, dbName)), superAdmin);
+        var svc = new AppEnvironmentService(
+            new UnitOfWork(BuildContext(superAdmin, dbName)),
+            superAdmin
+        );
 
-        var result = await svc.UpdateAsync(envId, new UpdateAppEnvironmentRequest { Name = "renamed" });
+        var result = await svc.UpdateAsync(
+            envId,
+            new UpdateAppEnvironmentRequest { Name = "renamed" }
+        );
 
         Assert.True(result.IsSuccess);
     }
@@ -179,19 +215,39 @@ public class AppEnvironmentServiceTests
     {
         var dbName = Guid.NewGuid().ToString();
         var tenant = Guid.NewGuid();
-        var admin = new FakeCurrentUser { Id = Guid.NewGuid(), IsAdmin = true, TenantId = tenant };
+        var admin = new FakeCurrentUser
+        {
+            Id = Guid.NewGuid(),
+            IsAdmin = true,
+            TenantId = tenant,
+        };
         var svc = new AppEnvironmentService(new UnitOfWork(BuildContext(admin, dbName)), admin);
-        var env = (await svc.CreateAsync(new CreateAppEnvironmentRequest { Name = "used-env" })).Data!;
+        var env = (
+            await svc.CreateAsync(new CreateAppEnvironmentRequest { Name = "used-env" })
+        ).Data!;
 
         using (var seed = BuildContext(admin, dbName))
         {
-            var project = new Project { Key = "p", Name = "P", IsActiveLocal = true, IsActiveStaging = true, IsActiveProduction = true, OwnerId = tenant };
+            var project = new Project
+            {
+                Key = "p",
+                Name = "P",
+                IsActiveLocal = true,
+                IsActiveStaging = true,
+                IsActiveProduction = true,
+                OwnerId = tenant,
+            };
             seed.Projects.Add(project);
             seed.SaveChanges();
-            seed.ProjectAppUrls.Add(new ProjectAppUrl
-            {
-                ProjectId = project.Id, AppEnvironmentId = env.Id, Url = "https://x.test", OwnerId = tenant
-            });
+            seed.ProjectAppUrls.Add(
+                new ProjectAppUrl
+                {
+                    ProjectId = project.Id,
+                    AppEnvironmentId = env.Id,
+                    Url = "https://x.test",
+                    OwnerId = tenant,
+                }
+            );
             seed.SaveChanges();
         }
 

@@ -27,29 +27,51 @@ public class PublicStatsTests
         public int? RoleId => null;
         public string? KeyScopes => null;
         public string? Scope => null;
+        public long? ImpersonationSessionId => null;
+        public bool IsImpersonating => false;
     }
 
     private static AppDbContext BuildContext(string dbName) =>
-        new(new DbContextOptionsBuilder<AppDbContext>().UseInMemoryDatabase(dbName).Options, new FakeCurrentUser(),
-            new Microsoft.Extensions.Configuration.ConfigurationBuilder().Build());
+        new(
+            new DbContextOptionsBuilder<AppDbContext>().UseInMemoryDatabase(dbName).Options,
+            new FakeCurrentUser(),
+            new Microsoft.Extensions.Configuration.ConfigurationBuilder().Build()
+        );
 
     private static PlatformInsightsService BuildService(string dbName) =>
         new(new UnitOfWork(BuildContext(dbName)), new FakeCurrentUser());
 
-    private static Project MakeProject(string key, Guid? owner, string? aiTools = null) => new()
-    {
-        Key = key, Name = key, OwnerId = owner ?? Guid.NewGuid(),
-        IsActiveLocal = true, IsActiveStaging = true, IsActiveProduction = true,
-        AiToolsUsed = aiTools
-    };
+    private static Project MakeProject(string key, Guid? owner, string? aiTools = null) =>
+        new()
+        {
+            Key = key,
+            Name = key,
+            OwnerId = owner ?? Guid.NewGuid(),
+            IsActiveLocal = true,
+            IsActiveStaging = true,
+            IsActiveProduction = true,
+            AiToolsUsed = aiTools,
+        };
 
-    private static Comment MakeComment(int projectId, Guid owner, DateTime createdAt, DateTime? appliedAt, string? language = null) => new()
-    {
-        ProjectId = projectId, OwnerId = owner, AuthorId = Guid.NewGuid(), Body = "x",
-        Status = appliedAt != null ? CommentStatus.Applied : CommentStatus.Open,
-        CreatedAt = createdAt, AppliedAt = appliedAt, Language = language,
-        Element = new ElementCapture()
-    };
+    private static Comment MakeComment(
+        int projectId,
+        Guid owner,
+        DateTime createdAt,
+        DateTime? appliedAt,
+        string? language = null
+    ) =>
+        new()
+        {
+            ProjectId = projectId,
+            OwnerId = owner,
+            AuthorId = Guid.NewGuid(),
+            Body = "x",
+            Status = appliedAt != null ? CommentStatus.Applied : CommentStatus.Open,
+            CreatedAt = createdAt,
+            AppliedAt = appliedAt,
+            Language = language,
+            Element = new ElementCapture(),
+        };
 
     [Fact]
     public async Task BelowEveryThreshold_EverythingIsNullOrEmpty()
@@ -102,7 +124,9 @@ public class PublicStatsTests
             for (var i = 0; i < 67; i++) // raw AppliedComments = 67 -> 60
             {
                 var p = projects[i % projects.Count];
-                seed.Comments.Add(MakeComment(p.Id, p.OwnerId!.Value, now.AddHours(-(i + 3)), now.AddHours(-i)));
+                seed.Comments.Add(
+                    MakeComment(p.Id, p.OwnerId!.Value, now.AddHours(-(i + 3)), now.AddHours(-i))
+                );
             }
             seed.SaveChanges();
         }
@@ -150,7 +174,11 @@ public class PublicStatsTests
         var db = Guid.NewGuid().ToString();
         using (var seed = BuildContext(db))
         {
-            var p1 = MakeProject("p1", null, aiTools: "[\"claude-code\",\"cursor\",\"opencode\",\"windsurf\"]");
+            var p1 = MakeProject(
+                "p1",
+                null,
+                aiTools: "[\"claude-code\",\"cursor\",\"opencode\",\"windsurf\"]"
+            );
             var p2 = MakeProject("p2", null, aiTools: "[\"claude-code\",\"cursor\",\"windsurf\"]");
             var p3 = MakeProject("p3", null, aiTools: "[\"claude-code\",\"cursor\",\"opencode\"]");
             var p4 = MakeProject("p4", null, aiTools: "[\"claude-code\"]");
@@ -159,16 +187,25 @@ public class PublicStatsTests
             seed.SaveChanges();
 
             var now = DateTime.UtcNow;
-            void Comment(Project proj, string lang) => seed.Comments.Add(MakeComment(proj.Id, proj.OwnerId!.Value, now, null, lang));
+            void Comment(Project proj, string lang) =>
+                seed.Comments.Add(MakeComment(proj.Id, proj.OwnerId!.Value, now, null, lang));
 
             // ar: p1,p2,p3,p4 (4 projects) -> qualifies
-            Comment(p1, "ar"); Comment(p2, "ar"); Comment(p3, "ar"); Comment(p4, "ar");
+            Comment(p1, "ar");
+            Comment(p2, "ar");
+            Comment(p3, "ar");
+            Comment(p4, "ar");
             // en: p1,p2,p3 (3 projects) -> qualifies
-            Comment(p1, "en"); Comment(p2, "en"); Comment(p3, "en");
+            Comment(p1, "en");
+            Comment(p2, "en");
+            Comment(p3, "en");
             // de: p1,p2,p5 (3 projects) -> qualifies
-            Comment(p1, "de"); Comment(p2, "de"); Comment(p5, "de");
+            Comment(p1, "de");
+            Comment(p2, "de");
+            Comment(p5, "de");
             // fr: p1,p2 (2 projects) -> does NOT qualify
-            Comment(p1, "fr"); Comment(p2, "fr");
+            Comment(p1, "fr");
+            Comment(p2, "fr");
             seed.SaveChanges();
         }
 
@@ -216,9 +253,22 @@ public class PublicStatsTests
     [Fact]
     public void ResponseShape_CarriesNoTenantIdentifyingFields()
     {
-        var props = typeof(PublicStatsResponse).GetProperties().Select(p => p.Name).OrderBy(n => n).ToList();
+        var props = typeof(PublicStatsResponse)
+            .GetProperties()
+            .Select(p => p.Name)
+            .OrderBy(n => n)
+            .ToList();
         Assert.Equal(
-            new[] { "AiTools", "AppliedComments", "Languages", "MedianHoursToApply", "Projects", "Workspaces" },
-            props);
+            new[]
+            {
+                "AiTools",
+                "AppliedComments",
+                "Languages",
+                "MedianHoursToApply",
+                "Projects",
+                "Workspaces",
+            },
+            props
+        );
     }
 }

@@ -20,4 +20,10 @@ public interface ICurrentUser
     /// <summary>Raw <c>scope</c> claim value (DB-11b). <c>"select_workspace"</c> for a 5-minute
     /// selection token; null for an ordinary full token.</summary>
     string? Scope { get; }
+
+    /// <summary>DB-13: the impersonation_sessions.id from the JWT "imp" claim; null for every ordinary token.</summary>
+    long? ImpersonationSessionId { get; }
+
+    /// <summary>True only for a super admin acting under a live impersonation session (scope=impersonate).</summary>
+    bool IsImpersonating { get; }
 }

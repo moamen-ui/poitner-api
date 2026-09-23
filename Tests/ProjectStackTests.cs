@@ -28,26 +28,49 @@ public class ProjectStackTests
         public int? RoleId { get; set; }
         public string? KeyScopes { get; set; }
         public string? Scope { get; set; }
+        public long? ImpersonationSessionId { get; set; }
+        public bool IsImpersonating => ImpersonationSessionId != null;
     }
 
     private static AppDbContext BuildContext(ICurrentUser user, string dbName) =>
-        new(new DbContextOptionsBuilder<AppDbContext>().UseInMemoryDatabase(dbName).Options, user,
-            new Microsoft.Extensions.Configuration.ConfigurationBuilder().Build());
+        new(
+            new DbContextOptionsBuilder<AppDbContext>().UseInMemoryDatabase(dbName).Options,
+            user,
+            new Microsoft.Extensions.Configuration.ConfigurationBuilder().Build()
+        );
 
     private static ProjectService BuildService(ICurrentUser user, string dbName) =>
-        new(new UnitOfWork(BuildContext(user, dbName)), user, new PassThroughEntitlements(), TestProjectServiceDeps.Settings(), TestProjectServiceDeps.Configuration(), new FakeAuditWriter());
+        new(
+            new UnitOfWork(BuildContext(user, dbName)),
+            user,
+            new PassThroughEntitlements(),
+            TestProjectServiceDeps.Settings(),
+            TestProjectServiceDeps.Configuration(),
+            new FakeAuditWriter()
+        );
 
     private static (string dbName, Guid tenant) SeedProject(string key)
     {
         var db = Guid.NewGuid().ToString();
         var tenant = Guid.NewGuid();
         using var seed = BuildContext(new FakeCurrentUser { IsSuperAdmin = true }, db);
-        seed.Projects.Add(new Project { Key = key, Name = "Proj", IsActiveLocal = true, IsActiveStaging = true, IsActiveProduction = true, OwnerId = tenant });
+        seed.Projects.Add(
+            new Project
+            {
+                Key = key,
+                Name = "Proj",
+                IsActiveLocal = true,
+                IsActiveStaging = true,
+                IsActiveProduction = true,
+                OwnerId = tenant,
+            }
+        );
         seed.SaveChanges();
         return (db, tenant);
     }
 
-    private static FakeCurrentUser MemberOf(Guid tenant) => new() { Id = Guid.NewGuid(), TenantId = tenant };
+    private static FakeCurrentUser MemberOf(Guid tenant) =>
+        new() { Id = Guid.NewGuid(), TenantId = tenant };
 
     [Fact]
     public async Task SetStack_FirstCall_SetsFrontendAndBackend()
@@ -55,11 +78,14 @@ public class ProjectStackTests
         var (db, tenant) = SeedProject("proj");
         var svc = BuildService(MemberOf(tenant), db);
 
-        var result = await svc.SetStackAsync("proj", new SetProjectStackRequest
-        {
-            Frontend = new List<string> { "react", "tailwind" },
-            Backend = new List<string> { "dotnet", "postgres" }
-        });
+        var result = await svc.SetStackAsync(
+            "proj",
+            new SetProjectStackRequest
+            {
+                Frontend = new List<string> { "react", "tailwind" },
+                Backend = new List<string> { "dotnet", "postgres" },
+            }
+        );
 
         Assert.True(result.IsSuccess);
         Assert.Equal(new[] { "react", "tailwind" }, result.Data!.Frontend);
@@ -73,8 +99,22 @@ public class ProjectStackTests
         var (db, tenant) = SeedProject("proj");
         var svc = BuildService(MemberOf(tenant), db);
 
-        await svc.SetStackAsync("proj", new SetProjectStackRequest { Frontend = new() { "angular", "tailwind" }, Backend = new() { "dotnet" } });
-        var second = await svc.SetStackAsync("proj", new SetProjectStackRequest { Frontend = new() { "react", "vite", "tailwind" }, Backend = new() { "dotnet" } });
+        await svc.SetStackAsync(
+            "proj",
+            new SetProjectStackRequest
+            {
+                Frontend = new() { "angular", "tailwind" },
+                Backend = new() { "dotnet" },
+            }
+        );
+        var second = await svc.SetStackAsync(
+            "proj",
+            new SetProjectStackRequest
+            {
+                Frontend = new() { "react", "vite", "tailwind" },
+                Backend = new() { "dotnet" },
+            }
+        );
 
         Assert.True(second.IsSuccess);
         Assert.Equal(new[] { "react", "vite", "tailwind" }, second.Data!.Frontend);
@@ -89,8 +129,23 @@ public class ProjectStackTests
         var (db, tenant) = SeedProject("proj");
         var svc = BuildService(MemberOf(tenant), db);
 
-        await svc.SetStackAsync("proj", new SetProjectStackRequest { Frontend = new() { "react" }, Backend = new() { "dotnet" } });
-        var second = await svc.SetStackAsync("proj", new SetProjectStackRequest { Frontend = new(), Backend = new(), AiTool = "cursor" });
+        await svc.SetStackAsync(
+            "proj",
+            new SetProjectStackRequest
+            {
+                Frontend = new() { "react" },
+                Backend = new() { "dotnet" },
+            }
+        );
+        var second = await svc.SetStackAsync(
+            "proj",
+            new SetProjectStackRequest
+            {
+                Frontend = new(),
+                Backend = new(),
+                AiTool = "cursor",
+            }
+        );
 
         Assert.True(second.IsSuccess);
         Assert.Equal(new[] { "react" }, second.Data!.Frontend);
@@ -105,7 +160,10 @@ public class ProjectStackTests
         var svc = BuildService(MemberOf(tenant), db);
 
         await svc.SetStackAsync("proj", new SetProjectStackRequest { AiTool = "claude-code" });
-        var second = await svc.SetStackAsync("proj", new SetProjectStackRequest { AiTool = "opencode-glm" });
+        var second = await svc.SetStackAsync(
+            "proj",
+            new SetProjectStackRequest { AiTool = "opencode-glm" }
+        );
 
         Assert.True(second.IsSuccess);
         Assert.Equal(new[] { "claude-code", "opencode-glm" }, second.Data!.AiTools);
@@ -118,8 +176,14 @@ public class ProjectStackTests
         var svc = BuildService(MemberOf(tenant), db);
 
         await svc.SetStackAsync("proj", new SetProjectStackRequest { AiTool = "claude-code" });
-        var second = await svc.SetStackAsync("proj", new SetProjectStackRequest { AiTool = "claude-code" });
-        var third = await svc.SetStackAsync("proj", new SetProjectStackRequest { AiTool = "Claude-Code" }); // case-insensitive dedup
+        var second = await svc.SetStackAsync(
+            "proj",
+            new SetProjectStackRequest { AiTool = "claude-code" }
+        );
+        var third = await svc.SetStackAsync(
+            "proj",
+            new SetProjectStackRequest { AiTool = "Claude-Code" }
+        ); // case-insensitive dedup
 
         Assert.Single(third.Data!.AiTools);
     }
@@ -133,7 +197,10 @@ public class ProjectStackTests
         var (db, tenant) = SeedProject("proj");
         var svc = BuildService(MemberOf(tenant), db);
 
-        var result = await svc.SetStackAsync("proj", new SetProjectStackRequest { AiTool = "cursor" });
+        var result = await svc.SetStackAsync(
+            "proj",
+            new SetProjectStackRequest { AiTool = "cursor" }
+        );
 
         Assert.True(result.IsSuccess);
         Assert.Null(result.Data!.Frontend);
@@ -146,7 +213,14 @@ public class ProjectStackTests
     {
         var (db, tenant) = SeedProject("proj");
         var setter = BuildService(MemberOf(tenant), db);
-        await setter.SetStackAsync("proj", new SetProjectStackRequest { Frontend = new() { "angular" }, AiTool = "windsurf" });
+        await setter.SetStackAsync(
+            "proj",
+            new SetProjectStackRequest
+            {
+                Frontend = new() { "angular" },
+                AiTool = "windsurf",
+            }
+        );
 
         var reader = BuildService(MemberOf(tenant), db);
         var result = await reader.GetStackAsync("proj");
@@ -175,10 +249,18 @@ public class ProjectStackTests
     {
         // Confirms not admin-gated — matches comment-creation's precedent.
         var (db, tenant) = SeedProject("proj");
-        var nonAdmin = new FakeCurrentUser { Id = Guid.NewGuid(), TenantId = tenant, IsAdmin = false };
+        var nonAdmin = new FakeCurrentUser
+        {
+            Id = Guid.NewGuid(),
+            TenantId = tenant,
+            IsAdmin = false,
+        };
         var svc = BuildService(nonAdmin, db);
 
-        var result = await svc.SetStackAsync("proj", new SetProjectStackRequest { AiTool = "opencode-glm" });
+        var result = await svc.SetStackAsync(
+            "proj",
+            new SetProjectStackRequest { AiTool = "opencode-glm" }
+        );
 
         Assert.True(result.IsSuccess);
     }
@@ -193,9 +275,38 @@ public class ProjectStackTests
         using (var seed = BuildContext(new FakeCurrentUser { IsSuperAdmin = true }, db))
         {
             seed.Projects.AddRange(
-                new Project { Key = "a", Name = "A", IsActiveLocal = true, IsActiveStaging = true, IsActiveProduction = true, OwnerId = tenantA, TechStack = "{\"frontend\":[\"react\"],\"backend\":[\"dotnet\"]}", AiToolsUsed = "[\"claude-code\"]" },
-                new Project { Key = "b", Name = "B", IsActiveLocal = true, IsActiveStaging = true, IsActiveProduction = true, OwnerId = tenantB, TechStack = "{\"frontend\":[\"react\",\"tailwind\"],\"backend\":null}", AiToolsUsed = "[\"claude-code\",\"opencode-glm\"]" },
-                new Project { Key = "c", Name = "C (no stack)", IsActiveLocal = true, IsActiveStaging = true, IsActiveProduction = true, OwnerId = tenantB });
+                new Project
+                {
+                    Key = "a",
+                    Name = "A",
+                    IsActiveLocal = true,
+                    IsActiveStaging = true,
+                    IsActiveProduction = true,
+                    OwnerId = tenantA,
+                    TechStack = "{\"frontend\":[\"react\"],\"backend\":[\"dotnet\"]}",
+                    AiToolsUsed = "[\"claude-code\"]",
+                },
+                new Project
+                {
+                    Key = "b",
+                    Name = "B",
+                    IsActiveLocal = true,
+                    IsActiveStaging = true,
+                    IsActiveProduction = true,
+                    OwnerId = tenantB,
+                    TechStack = "{\"frontend\":[\"react\",\"tailwind\"],\"backend\":null}",
+                    AiToolsUsed = "[\"claude-code\",\"opencode-glm\"]",
+                },
+                new Project
+                {
+                    Key = "c",
+                    Name = "C (no stack)",
+                    IsActiveLocal = true,
+                    IsActiveStaging = true,
+                    IsActiveProduction = true,
+                    OwnerId = tenantB,
+                }
+            );
             await seed.SaveChangesAsync();
         }
 
@@ -220,9 +331,38 @@ public class ProjectStackTests
         using (var seed = BuildContext(new FakeCurrentUser { IsSuperAdmin = true }, db))
         {
             seed.Projects.AddRange(
-                new Project { Key = "active", Name = "Active", IsActiveLocal = true, IsActiveStaging = true, IsActiveProduction = true, OwnerId = tenant, TechStack = "{\"frontend\":[\"vue\"]}" },
-                new Project { Key = "inactive", Name = "Inactive", IsActiveLocal = false, IsActiveStaging = false, IsActiveProduction = false, OwnerId = tenant, TechStack = "{\"frontend\":[\"vue\"]}" },
-                new Project { Key = "deleted", Name = "Deleted", IsActiveLocal = true, IsActiveStaging = true, IsActiveProduction = true, OwnerId = tenant, DeletedAt = DateTime.UtcNow, TechStack = "{\"frontend\":[\"vue\"]}" });
+                new Project
+                {
+                    Key = "active",
+                    Name = "Active",
+                    IsActiveLocal = true,
+                    IsActiveStaging = true,
+                    IsActiveProduction = true,
+                    OwnerId = tenant,
+                    TechStack = "{\"frontend\":[\"vue\"]}",
+                },
+                new Project
+                {
+                    Key = "inactive",
+                    Name = "Inactive",
+                    IsActiveLocal = false,
+                    IsActiveStaging = false,
+                    IsActiveProduction = false,
+                    OwnerId = tenant,
+                    TechStack = "{\"frontend\":[\"vue\"]}",
+                },
+                new Project
+                {
+                    Key = "deleted",
+                    Name = "Deleted",
+                    IsActiveLocal = true,
+                    IsActiveStaging = true,
+                    IsActiveProduction = true,
+                    OwnerId = tenant,
+                    DeletedAt = DateTime.UtcNow,
+                    TechStack = "{\"frontend\":[\"vue\"]}",
+                }
+            );
             await seed.SaveChangesAsync();
         }
 

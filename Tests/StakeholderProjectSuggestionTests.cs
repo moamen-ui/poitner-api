@@ -34,36 +34,60 @@ public class StakeholderProjectSuggestionTests
         public int? RoleId { get; set; }
         public string? KeyScopes { get; set; }
         public string? Scope { get; set; }
+        public long? ImpersonationSessionId { get; set; }
+        public bool IsImpersonating => ImpersonationSessionId != null;
     }
 
     private sealed class FakeFileStorage : IFileStorage
     {
-        public Task<string> SaveAsync(string ownerSegment, string project, Stream content, string extension) => Task.FromResult("uploads/x");
+        public Task<string> SaveAsync(
+            string ownerSegment,
+            string project,
+            Stream content,
+            string extension
+        ) => Task.FromResult("uploads/x");
+
         public Task DeleteAsync(string relativePathOrUrl) => Task.CompletedTask;
+
         public Task DeleteOwnerFilesAsync(string ownerSegment) => Task.CompletedTask;
     }
 
     private sealed class FakeUploadSigner : IUploadSigner
     {
         public string SignedUrl(string relPath) => relPath;
+
         public bool Validate(string relPath, long exp, string sig) => true;
+
         public string ExtractRelPath(string stored) => stored;
     }
 
     private sealed class FakeSettings : ISettingsService
     {
-        public Task<bool> GetBoolAsync(string key, bool fallback = false) => Task.FromResult(fallback);
+        public Task<bool> GetBoolAsync(string key, bool fallback = false) =>
+            Task.FromResult(fallback);
+
         public Task SetBoolAsync(string key, bool value) => Task.CompletedTask;
-        public Task<string> GetStringAsync(string key, string fallback = "") => Task.FromResult(fallback);
+
+        public Task<string> GetStringAsync(string key, string fallback = "") =>
+            Task.FromResult(fallback);
+
         public Task SetStringAsync(string key, string value) => Task.CompletedTask;
+
         public Task<int> GetIntAsync(string key, int fallback = 0) => Task.FromResult(fallback);
+
         public Task SetIntAsync(string key, int value) => Task.CompletedTask;
     }
 
     private sealed class FakeEmail : IEmailService
     {
         public int Sent { get; private set; }
-        public Task<bool> SendAsync(string to, string subject, string htmlBody, CancellationToken ct = default)
+
+        public Task<bool> SendAsync(
+            string to,
+            string subject,
+            string htmlBody,
+            CancellationToken ct = default
+        )
         {
             Sent++;
             return Task.FromResult(true);
@@ -73,27 +97,56 @@ public class StakeholderProjectSuggestionTests
     // InMemory provider throws on BeginTransactionAsync unless the transaction warning is ignored —
     // required because the admin delete cascade runs inside ExecuteInTransactionAsync.
     private static AppDbContext BuildContext(ICurrentUser user, string dbName) =>
-        new(new DbContextOptionsBuilder<AppDbContext>()
-            .UseInMemoryDatabase(dbName)
-            .ConfigureWarnings(w => w.Ignore(InMemoryEventId.TransactionIgnoredWarning))
-            .Options, user, new Microsoft.Extensions.Configuration.ConfigurationBuilder().Build());
+        new(
+            new DbContextOptionsBuilder<AppDbContext>()
+                .UseInMemoryDatabase(dbName)
+                .ConfigureWarnings(w => w.Ignore(InMemoryEventId.TransactionIgnoredWarning))
+                .Options,
+            user,
+            new Microsoft.Extensions.Configuration.ConfigurationBuilder().Build()
+        );
 
-    private static (ProjectService project, UnitOfWork uow, AppDbContext db) Wire(ICurrentUser user, string dbName)
+    private static (ProjectService project, UnitOfWork uow, AppDbContext db) Wire(
+        ICurrentUser user,
+        string dbName
+    )
     {
         var db = BuildContext(user, dbName);
         var uow = new UnitOfWork(db);
-        return (new ProjectService(uow, user, new PassThroughEntitlements(), TestProjectServiceDeps.Settings(), TestProjectServiceDeps.Configuration(), new FakeAuditWriter()), uow, db);
+        return (
+            new ProjectService(
+                uow,
+                user,
+                new PassThroughEntitlements(),
+                TestProjectServiceDeps.Settings(),
+                TestProjectServiceDeps.Configuration(),
+                new FakeAuditWriter()
+            ),
+            uow,
+            db
+        );
     }
 
     // Seed a tenant with one active project. Returns (tenantId, projectId, creatorId).
-    private static (Guid tenant, int projectId, Guid creator) SeedProject(string dbName, string key = "proj", Guid? creatorOverride = null)
+    private static (Guid tenant, int projectId, Guid creator) SeedProject(
+        string dbName,
+        string key = "proj",
+        Guid? creatorOverride = null
+    )
     {
         var tenant = Guid.NewGuid();
         var creator = creatorOverride ?? Guid.NewGuid();
         // Create the project under the creator's identity so CreatedBy is stamped.
-        var user = new FakeCurrentUser { Id = creator, TenantId = tenant, IsSuperAdmin = false };
+        var user = new FakeCurrentUser
+        {
+            Id = creator,
+            TenantId = tenant,
+            IsSuperAdmin = false,
+        };
         var (svc, _, db) = Wire(user, dbName);
-        var res = svc.CreateAsync(new CreateProjectRequest { Key = key, Name = key }).GetAwaiter().GetResult();
+        var res = svc.CreateAsync(new CreateProjectRequest { Key = key, Name = key })
+            .GetAwaiter()
+            .GetResult();
         Assert.True(res.IsSuccess);
         db.Dispose();
         return (tenant, res.Data!.Id, creator);
@@ -149,7 +202,12 @@ public class StakeholderProjectSuggestionTests
         var dbName = Guid.NewGuid().ToString();
         var (tenant, pid, _) = SeedProject(dbName);
 
-        var admin = new FakeCurrentUser { Id = Guid.NewGuid(), TenantId = tenant, IsAdmin = true };
+        var admin = new FakeCurrentUser
+        {
+            Id = Guid.NewGuid(),
+            TenantId = tenant,
+            IsAdmin = true,
+        };
         var (svc, _, _) = Wire(admin, dbName);
         var res = await svc.UpdateAsync(pid, new UpdateProjectRequest { Name = "AdminRename" });
         Assert.True(res.IsSuccess);
@@ -180,7 +238,15 @@ public class StakeholderProjectSuggestionTests
         // Add a comment to the project (as a stakeholder).
         using (var seed = BuildContext(new FakeCurrentUser { IsSuperAdmin = true }, dbName))
         {
-            seed.Comments.Add(new Comment { ProjectId = pid, OwnerId = tenant, Body = "hi", Element = new() });
+            seed.Comments.Add(
+                new Comment
+                {
+                    ProjectId = pid,
+                    OwnerId = tenant,
+                    Body = "hi",
+                    Element = new(),
+                }
+            );
             await seed.SaveChangesAsync();
         }
 
@@ -210,7 +276,8 @@ public class StakeholderProjectSuggestionTests
         var creator = Guid.NewGuid();
 
         // Two projects in the SAME tenant, each with comments/replies/actions.
-        int pidA, pidB;
+        int pidA,
+            pidB;
         var stakeholder = new FakeCurrentUser { Id = creator, TenantId = tenant };
         {
             var (svc, _, db) = Wire(stakeholder, dbName);
@@ -222,35 +289,98 @@ public class StakeholderProjectSuggestionTests
         using (var seed = BuildContext(new FakeCurrentUser { IsSuperAdmin = true }, dbName))
         {
             // Project A: 2 comments (one with a reply) + a predefined action + a suggestion.
-            var cA1 = new Comment { ProjectId = pidA, OwnerId = tenant, Body = "a1", Element = new() };
-            var cA2 = new Comment { ProjectId = pidA, OwnerId = tenant, Body = "a2", Element = new() };
+            var cA1 = new Comment
+            {
+                ProjectId = pidA,
+                OwnerId = tenant,
+                Body = "a1",
+                Element = new(),
+            };
+            var cA2 = new Comment
+            {
+                ProjectId = pidA,
+                OwnerId = tenant,
+                Body = "a2",
+                Element = new(),
+            };
             seed.Comments.AddRange(cA1, cA2);
             await seed.SaveChangesAsync();
-            seed.Replies.Add(new Reply { CommentId = cA1.Id, OwnerId = tenant, Body = "reply", AuthorId = creator });
-            seed.PredefinedActions.Add(new PredefinedAction { OwnerId = tenant, ProjectId = pidA, Text = "A act", Prompt = "p", IsActive = true });
-            seed.PredefinedActionSuggestions.Add(new PredefinedActionSuggestion { OwnerId = tenant, ProjectId = pidA, Text = "A sug", Prompt = "p", Status = SuggestionStatus.Pending });
+            seed.Replies.Add(
+                new Reply
+                {
+                    CommentId = cA1.Id,
+                    OwnerId = tenant,
+                    Body = "reply",
+                    AuthorId = creator,
+                }
+            );
+            seed.PredefinedActions.Add(
+                new PredefinedAction
+                {
+                    OwnerId = tenant,
+                    ProjectId = pidA,
+                    Text = "A act",
+                    Prompt = "p",
+                    IsActive = true,
+                }
+            );
+            seed.PredefinedActionSuggestions.Add(
+                new PredefinedActionSuggestion
+                {
+                    OwnerId = tenant,
+                    ProjectId = pidA,
+                    Text = "A sug",
+                    Prompt = "p",
+                    Status = SuggestionStatus.Pending,
+                }
+            );
 
             // Project B (sibling): 1 comment that MUST survive.
-            seed.Comments.Add(new Comment { ProjectId = pidB, OwnerId = tenant, Body = "b1", Element = new() });
+            seed.Comments.Add(
+                new Comment
+                {
+                    ProjectId = pidB,
+                    OwnerId = tenant,
+                    Body = "b1",
+                    Element = new(),
+                }
+            );
             await seed.SaveChangesAsync();
         }
 
         // Admin deletes project A (cascade).
-        var admin = new FakeCurrentUser { Id = Guid.NewGuid(), TenantId = tenant, IsAdmin = true };
+        var admin = new FakeCurrentUser
+        {
+            Id = Guid.NewGuid(),
+            TenantId = tenant,
+            IsAdmin = true,
+        };
         var (delSvc, _, adb) = Wire(admin, dbName);
         var res = await delSvc.DeleteAsync(pidA);
         Assert.True(res.IsSuccess);
 
         // Project A + all its children soft-deleted.
         Assert.NotNull(adb.Projects.IgnoreQueryFilters().Single(p => p.Id == pidA).DeletedAt);
-        Assert.All(adb.Comments.IgnoreQueryFilters().Where(c => c.ProjectId == pidA), c => Assert.NotNull(c.DeletedAt));
+        Assert.All(
+            adb.Comments.IgnoreQueryFilters().Where(c => c.ProjectId == pidA),
+            c => Assert.NotNull(c.DeletedAt)
+        );
         Assert.All(adb.Replies.IgnoreQueryFilters(), r => Assert.NotNull(r.DeletedAt));
-        Assert.All(adb.PredefinedActions.IgnoreQueryFilters().Where(a => a.ProjectId == pidA), a => Assert.NotNull(a.DeletedAt));
-        Assert.All(adb.PredefinedActionSuggestions.IgnoreQueryFilters().Where(s => s.ProjectId == pidA), s => Assert.NotNull(s.DeletedAt));
+        Assert.All(
+            adb.PredefinedActions.IgnoreQueryFilters().Where(a => a.ProjectId == pidA),
+            a => Assert.NotNull(a.DeletedAt)
+        );
+        Assert.All(
+            adb.PredefinedActionSuggestions.IgnoreQueryFilters().Where(s => s.ProjectId == pidA),
+            s => Assert.NotNull(s.DeletedAt)
+        );
 
         // BINDING #2: the sibling project B and its comment are UNTOUCHED.
         Assert.Null(adb.Projects.IgnoreQueryFilters().Single(p => p.Id == pidB).DeletedAt);
-        Assert.All(adb.Comments.IgnoreQueryFilters().Where(c => c.ProjectId == pidB), c => Assert.Null(c.DeletedAt));
+        Assert.All(
+            adb.Comments.IgnoreQueryFilters().Where(c => c.ProjectId == pidB),
+            c => Assert.Null(c.DeletedAt)
+        );
     }
 
     // ── ProjectResponse hints ────────────────────────────────────────────────────
@@ -262,7 +392,15 @@ public class StakeholderProjectSuggestionTests
         var (tenant, pid, creator) = SeedProject(dbName);
         using (var seed = BuildContext(new FakeCurrentUser { IsSuperAdmin = true }, dbName))
         {
-            seed.Comments.Add(new Comment { ProjectId = pid, OwnerId = tenant, Body = "c", Element = new() });
+            seed.Comments.Add(
+                new Comment
+                {
+                    ProjectId = pid,
+                    OwnerId = tenant,
+                    Body = "c",
+                    Element = new(),
+                }
+            );
             await seed.SaveChangesAsync();
         }
 
@@ -283,7 +421,12 @@ public class StakeholderProjectSuggestionTests
         Assert.False(otherRow.CanDelete);
 
         // Admin: both.
-        var admin = new FakeCurrentUser { Id = Guid.NewGuid(), TenantId = tenant, IsAdmin = true };
+        var admin = new FakeCurrentUser
+        {
+            Id = Guid.NewGuid(),
+            TenantId = tenant,
+            IsAdmin = true,
+        };
         var (adminSvc, _, _) = Wire(admin, dbName);
         var adminRow = (await adminSvc.ListAsync()).Data!.Single(p => p.Id == pid);
         Assert.True(adminRow.CanEdit);
@@ -299,15 +442,36 @@ public class StakeholderProjectSuggestionTests
         var (tenant, pid, creator) = SeedProject(dbName, "wproj");
         using (var seed = BuildContext(new FakeCurrentUser { IsSuperAdmin = true }, dbName))
         {
-            seed.PredefinedActions.Add(new PredefinedAction { OwnerId = tenant, ProjectId = pid, Text = "Widget label", Prompt = "SECRET-PROMPT", IsActive = true });
+            seed.PredefinedActions.Add(
+                new PredefinedAction
+                {
+                    OwnerId = tenant,
+                    ProjectId = pid,
+                    Text = "Widget label",
+                    Prompt = "SECRET-PROMPT",
+                    IsActive = true,
+                }
+            );
             await seed.SaveChangesAsync();
         }
 
         var user = new FakeCurrentUser { Id = creator, TenantId = tenant };
         var db = BuildContext(user, dbName);
         var uow = new UnitOfWork(db);
-        var projectSvc = new ProjectService(uow, user, new PassThroughEntitlements(), TestProjectServiceDeps.Settings(), TestProjectServiceDeps.Configuration(), new FakeAuditWriter());
-        var actionSvc = new PredefinedActionService(uow, projectSvc, user, new PassThroughEntitlements());
+        var projectSvc = new ProjectService(
+            uow,
+            user,
+            new PassThroughEntitlements(),
+            TestProjectServiceDeps.Settings(),
+            TestProjectServiceDeps.Configuration(),
+            new FakeAuditWriter()
+        );
+        var actionSvc = new PredefinedActionService(
+            uow,
+            projectSvc,
+            user,
+            new PassThroughEntitlements()
+        );
 
         var res = await actionSvc.GetEffectiveForProjectAsync("wproj", creator);
         Assert.True(res.IsSuccess);
@@ -318,17 +482,28 @@ public class StakeholderProjectSuggestionTests
         var json = System.Text.Json.JsonSerializer.Serialize(res.Data);
         Assert.DoesNotContain("SECRET-PROMPT", json);
         Assert.DoesNotContain("prompt", json, StringComparison.OrdinalIgnoreCase);
-        Assert.False(typeof(PredefinedActionOption).GetProperties().Any(p => p.Name.Equals("Prompt", StringComparison.OrdinalIgnoreCase)));
+        Assert.False(
+            typeof(PredefinedActionOption)
+                .GetProperties()
+                .Any(p => p.Name.Equals("Prompt", StringComparison.OrdinalIgnoreCase))
+        );
     }
 
     // ── Suggestions ───────────────────────────────────────────────────────────────
 
-    private static (SuggestionService svc, AppDbContext db, FakeEmail email) WireSuggestion(ICurrentUser user, string dbName)
+    private static (SuggestionService svc, AppDbContext db, FakeEmail email) WireSuggestion(
+        ICurrentUser user,
+        string dbName
+    )
     {
         var db = BuildContext(user, dbName);
         var uow = new UnitOfWork(db);
         var email = new FakeEmail();
-        return (new SuggestionService(uow, user, email, new NotificationService(uow, user)), db, email);
+        return (
+            new SuggestionService(uow, user, email, new NotificationService(uow, user)),
+            db,
+            email
+        );
     }
 
     [Fact]
@@ -340,7 +515,10 @@ public class StakeholderProjectSuggestionTests
         // A stakeholder who is NOT the owner suggests.
         var suggester = new FakeCurrentUser { Id = Guid.NewGuid(), TenantId = tenant };
         var (sugSvc, _, email) = WireSuggestion(suggester, dbName);
-        var create = await sugSvc.SuggestAsync(pid, new CreateSuggestionRequest { Text = "New idea", Prompt = "LLM-PROMPT" });
+        var create = await sugSvc.SuggestAsync(
+            pid,
+            new CreateSuggestionRequest { Text = "New idea", Prompt = "LLM-PROMPT" }
+        );
         Assert.True(create.IsSuccess);
         Assert.Equal(SuggestionStatus.Pending, create.Data!.Status);
 
@@ -349,7 +527,12 @@ public class StakeholderProjectSuggestionTests
             suggestionId = db2.PredefinedActionSuggestions.IgnoreQueryFilters().Single().Id;
 
         // Admin lists pending → sees it.
-        var admin = new FakeCurrentUser { Id = Guid.NewGuid(), TenantId = tenant, IsAdmin = true };
+        var admin = new FakeCurrentUser
+        {
+            Id = Guid.NewGuid(),
+            TenantId = tenant,
+            IsAdmin = true,
+        };
         var (adminSvc, adb, _) = WireSuggestion(admin, dbName);
         var pending = await adminSvc.ListPendingAsync();
         Assert.Single(pending.Data!);
@@ -359,7 +542,9 @@ public class StakeholderProjectSuggestionTests
         Assert.True(approve.IsSuccess);
         Assert.Equal(SuggestionStatus.Approved, approve.Data!.Status);
 
-        var action = adb.PredefinedActions.IgnoreQueryFilters().Single(a => a.ProjectId == pid && a.Text == "New idea");
+        var action = adb
+            .PredefinedActions.IgnoreQueryFilters()
+            .Single(a => a.ProjectId == pid && a.Text == "New idea");
         Assert.Equal(tenant, action.OwnerId);
         Assert.Equal("LLM-PROMPT", action.Prompt);
         Assert.True(action.IsActive);
@@ -392,7 +577,12 @@ public class StakeholderProjectSuggestionTests
         using (var db2 = BuildContext(new FakeCurrentUser { IsSuperAdmin = true }, dbName))
             sid = db2.PredefinedActionSuggestions.IgnoreQueryFilters().Single().Id;
 
-        var admin = new FakeCurrentUser { Id = Guid.NewGuid(), TenantId = tenant, IsAdmin = true };
+        var admin = new FakeCurrentUser
+        {
+            Id = Guid.NewGuid(),
+            TenantId = tenant,
+            IsAdmin = true,
+        };
         var (adminSvc, _, _) = WireSuggestion(admin, dbName);
         var res = await adminSvc.ApproveAsync(sid);
         Assert.True(res.IsConflict);
@@ -412,12 +602,23 @@ public class StakeholderProjectSuggestionTests
         using (var db2 = BuildContext(new FakeCurrentUser { IsSuperAdmin = true }, dbName))
             sid = db2.PredefinedActionSuggestions.IgnoreQueryFilters().Single().Id;
 
-        var admin = new FakeCurrentUser { Id = Guid.NewGuid(), TenantId = tenant, IsAdmin = true };
+        var admin = new FakeCurrentUser
+        {
+            Id = Guid.NewGuid(),
+            TenantId = tenant,
+            IsAdmin = true,
+        };
         var (adminSvc, adb, _) = WireSuggestion(admin, dbName);
         var res = await adminSvc.RejectAsync(sid);
         Assert.True(res.IsSuccess);
-        Assert.Equal(SuggestionStatus.Rejected, adb.PredefinedActionSuggestions.IgnoreQueryFilters().Single().Status);
-        Assert.DoesNotContain(adb.PredefinedActions.IgnoreQueryFilters().ToList(), a => a.ProjectId == pid);
+        Assert.Equal(
+            SuggestionStatus.Rejected,
+            adb.PredefinedActionSuggestions.IgnoreQueryFilters().Single().Status
+        );
+        Assert.DoesNotContain(
+            adb.PredefinedActions.IgnoreQueryFilters().ToList(),
+            a => a.ProjectId == pid
+        );
     }
 
     [Fact]
@@ -429,13 +630,24 @@ public class StakeholderProjectSuggestionTests
         // The OWNER tries to suggest — should be told to add directly.
         var owner = new FakeCurrentUser { Id = creator, TenantId = tenant };
         var (sugSvc, _, _) = WireSuggestion(owner, dbName);
-        var res = await sugSvc.SuggestAsync(pid, new CreateSuggestionRequest { Text = "t", Prompt = "p" });
+        var res = await sugSvc.SuggestAsync(
+            pid,
+            new CreateSuggestionRequest { Text = "t", Prompt = "p" }
+        );
         Assert.False(res.IsSuccess);
 
         // Admin too.
-        var admin = new FakeCurrentUser { Id = Guid.NewGuid(), TenantId = tenant, IsAdmin = true };
+        var admin = new FakeCurrentUser
+        {
+            Id = Guid.NewGuid(),
+            TenantId = tenant,
+            IsAdmin = true,
+        };
         var (adminSug, _, _) = WireSuggestion(admin, dbName);
-        var res2 = await adminSug.SuggestAsync(pid, new CreateSuggestionRequest { Text = "t", Prompt = "p" });
+        var res2 = await adminSug.SuggestAsync(
+            pid,
+            new CreateSuggestionRequest { Text = "t", Prompt = "p" }
+        );
         Assert.False(res2.IsSuccess);
     }
 
@@ -448,7 +660,10 @@ public class StakeholderProjectSuggestionTests
         // A user from a DIFFERENT tenant cannot even see the project → NotFound.
         var alien = new FakeCurrentUser { Id = Guid.NewGuid(), TenantId = Guid.NewGuid() };
         var (sugSvc, _, _) = WireSuggestion(alien, dbName);
-        var res = await sugSvc.SuggestAsync(pid, new CreateSuggestionRequest { Text = "t", Prompt = "p" });
+        var res = await sugSvc.SuggestAsync(
+            pid,
+            new CreateSuggestionRequest { Text = "t", Prompt = "p" }
+        );
         Assert.True(res.IsNotFound);
     }
 
@@ -467,7 +682,12 @@ public class StakeholderProjectSuggestionTests
             sid = db2.PredefinedActionSuggestions.IgnoreQueryFilters().Single().Id;
 
         // Admin of ANOTHER tenant: pending list empty + cannot approve/reject by id.
-        var alienAdmin = new FakeCurrentUser { Id = Guid.NewGuid(), TenantId = Guid.NewGuid(), IsAdmin = true };
+        var alienAdmin = new FakeCurrentUser
+        {
+            Id = Guid.NewGuid(),
+            TenantId = Guid.NewGuid(),
+            IsAdmin = true,
+        };
         var (alienSvc, _, _) = WireSuggestion(alienAdmin, dbName);
         Assert.Empty((await alienSvc.ListPendingAsync()).Data!);
         Assert.True((await alienSvc.ApproveAsync(sid)).IsNotFound);

@@ -72,6 +72,7 @@ public class AppDbContext(
     public DbSet<WorkspaceMembership> WorkspaceMemberships => Set<WorkspaceMembership>();
     public DbSet<UserAlias> UserAliases => Set<UserAlias>();
     public DbSet<AuditEvent> AuditEvents => Set<AuditEvent>();
+    public DbSet<ImpersonationSession> ImpersonationSessions => Set<ImpersonationSession>();
 
     protected override void OnModelCreating(ModelBuilder b)
     {
@@ -112,10 +113,10 @@ public class AppDbContext(
                 || (currentUser.TenantId != null && e.OwnerId == currentUser.TenantId)
                 || (currentUser.TenantId == null && !strict && e.OwnerId == null)
             );
+        // DB-13 (F2): content — no unconditional super-admin branch; an operator reads this only under an impersonation token, whose tenant claim is the target workspace.
         b.Entity<Comment>()
             .HasQueryFilter(e =>
-                currentUser.IsSuperAdmin
-                || (currentUser.TenantId != null && e.OwnerId == currentUser.TenantId)
+                (currentUser.TenantId != null && e.OwnerId == currentUser.TenantId)
                 || (currentUser.TenantId == null && !strict && e.OwnerId == null)
             );
         // Strict-own, like QuickAccessLink: a build row says which of a tenant's shas are live, and
@@ -125,18 +126,18 @@ public class AppDbContext(
                 currentUser.IsSuperAdmin
                 || (currentUser.TenantId != null && e.OwnerId == currentUser.TenantId)
             );
+        // DB-13 (F2): content — no unconditional super-admin branch; an operator reads this only under an impersonation token, whose tenant claim is the target workspace.
         b.Entity<Reply>()
             .HasQueryFilter(e =>
-                currentUser.IsSuperAdmin
-                || (currentUser.TenantId != null && e.OwnerId == currentUser.TenantId)
+                (currentUser.TenantId != null && e.OwnerId == currentUser.TenantId)
                 || (currentUser.TenantId == null && !strict && e.OwnerId == null)
             );
         // PageContextSnapshot carries browser-captured console/network data for a tenant's project —
         // strict-own like Comment, so it can never leak across tenants through a future admin listing.
+        // DB-13 (F2): content — no unconditional super-admin branch; an operator reads this only under an impersonation token, whose tenant claim is the target workspace.
         b.Entity<PageContextSnapshot>()
             .HasQueryFilter(e =>
-                currentUser.IsSuperAdmin
-                || (currentUser.TenantId != null && e.OwnerId == currentUser.TenantId)
+                (currentUser.TenantId != null && e.OwnerId == currentUser.TenantId)
                 || (currentUser.TenantId == null && !strict && e.OwnerId == null)
             );
         // Invites are strict-own (no "sees the global bucket" branch). OwnerId is non-null for
@@ -165,9 +166,12 @@ public class AppDbContext(
         // reusing `e.OwnerId == currentUser.TenantId` for the "own" branch would silently collapse to
         // `e.OwnerId == null` for a null-tenant caller too, defeating the strict gate below — hence
         // the explicit `TenantId != null` guard on the own branch.)
+        // DB-13 (F2): tenant rows are content (D13.2); a plain operator keeps managing the global
+        // (null-owner) bucket only — the first branch is rewritten, not removed, from an
+        // unconditional super-admin match to a global-only super-admin match.
         b.Entity<PredefinedAction>()
             .HasQueryFilter(e =>
-                currentUser.IsSuperAdmin
+                (currentUser.IsSuperAdmin && currentUser.TenantId == null && e.OwnerId == null)
                 || (
                     currentUser.TenantId != null
                     && (e.OwnerId == currentUser.TenantId || e.OwnerId == null)
@@ -177,10 +181,10 @@ public class AppDbContext(
         // STRICT-OWN (BINDING #5): suggestions are visible only to the owning tenant or super-admin —
         // NEVER own-plus-global. A null-owner suggestion is never written, and the strict filter keeps
         // one tenant from ever loading another tenant's (or a null-owner) pending suggestion by id.
+        // DB-13 (F2): content — no unconditional super-admin branch; an operator reads this only under an impersonation token, whose tenant claim is the target workspace.
         b.Entity<PredefinedActionSuggestion>()
             .HasQueryFilter(e =>
-                currentUser.IsSuperAdmin
-                || (currentUser.TenantId != null && e.OwnerId == currentUser.TenantId)
+                (currentUser.TenantId != null && e.OwnerId == currentUser.TenantId)
                 || (currentUser.TenantId == null && !strict && e.OwnerId == null)
             );
 
@@ -254,10 +258,10 @@ public class AppDbContext(
                 || (currentUser.TenantId != null && e.OwnerId == currentUser.TenantId)
                 || (currentUser.TenantId == null && !strict && e.OwnerId == null)
             );
+        // DB-13 (F2): content — no unconditional super-admin branch; an operator reads this only under an impersonation token, whose tenant claim is the target workspace.
         b.Entity<AiRule>()
             .HasQueryFilter(e =>
-                currentUser.IsSuperAdmin
-                || (currentUser.TenantId != null && e.OwnerId == currentUser.TenantId)
+                (currentUser.TenantId != null && e.OwnerId == currentUser.TenantId)
                 || (currentUser.TenantId == null && !strict && e.OwnerId == null)
             );
         // WorkspaceSetting: strict-own, Project-filter shape (R4-01) — one row per workspace. The
@@ -315,6 +319,16 @@ public class AppDbContext(
             .HasQueryFilter(e =>
                 currentUser.IsSuperAdmin
                 || (currentUser.TenantId != null && e.OwnerId == currentUser.TenantId)
+            );
+
+        // ImpersonationSession: metadata (§3.1) — strict-own copy of UsageEvent (:273-278 above). A
+        // workspace admin may list the sessions that targeted THEIR workspace; the super admin sees
+        // all (unchanged — this table is never narrowed, only the six content filters above are).
+        b.Entity<ImpersonationSession>()
+            .HasQueryFilter(e =>
+                currentUser.IsSuperAdmin
+                || (currentUser.TenantId != null && e.OwnerId == currentUser.TenantId)
+                || (currentUser.TenantId == null && !strict && e.OwnerId == null)
             );
 
         // UserAlias: no query filter. It is a lookup table keyed by a uuid the caller already

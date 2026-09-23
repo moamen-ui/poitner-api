@@ -34,11 +34,14 @@ public class DemoUpgradeTests
         public int? RoleId { get; set; }
         public string? KeyScopes { get; set; }
         public string? Scope { get; set; }
+        public long? ImpersonationSessionId { get; set; }
+        public bool IsImpersonating => ImpersonationSessionId != null;
     }
 
     private sealed class FakePasswordHasher : IPasswordHasher
     {
         public string Hash(string password) => "hash:" + password;
+
         public bool Verify(string password, string hash) => hash == "hash:" + password;
     }
 
@@ -46,7 +49,16 @@ public class DemoUpgradeTests
     private sealed class RecordingTokenService : ITokenService
     {
         public User? IssuedFor { get; private set; }
+
         public string IssueSelection(User user) => "selection-for-" + user.Email;
+
+        public string IssueImpersonation(
+            User user,
+            Guid workspaceId,
+            long sessionId,
+            DateTime expiresAt
+        ) => "imp-for-" + user.Email;
+
         public string Issue(User user, WorkspaceMembership? membership, int? keyScopes = null)
         {
             IssuedFor = user;
@@ -58,11 +70,11 @@ public class DemoUpgradeTests
     // Harness
     // -----------------------------------------------------------------
 
-    private static (DemoService svc, AppDbContext db, RecordingTokenService tokens) Build(string dbName)
+    private static (DemoService svc, AppDbContext db, RecordingTokenService tokens) Build(
+        string dbName
+    )
     {
-        var opts = new DbContextOptionsBuilder<AppDbContext>()
-            .UseInMemoryDatabase(dbName)
-            .Options;
+        var opts = new DbContextOptionsBuilder<AppDbContext>().UseInMemoryDatabase(dbName).Options;
         var db = new AppDbContext(opts, new FakeCurrentUser(), new ConfigurationBuilder().Build());
         var uow = new UnitOfWork(db);
         var tokens = new RecordingTokenService();
@@ -70,49 +82,102 @@ public class DemoUpgradeTests
         var email = new NoopEmailService();
         var settings = new NoopSettingsService();
         var branding = new NoopBrandingService();
-        var svc = new DemoService(uow, new FakePasswordHasher(), tokens, email, settings, branding, new MembershipService(uow));
+        var svc = new DemoService(
+            uow,
+            new FakePasswordHasher(),
+            tokens,
+            email,
+            settings,
+            branding,
+            new MembershipService(uow)
+        );
         return (svc, db, tokens);
     }
 
     private sealed class NoopEmailService : IEmailService
     {
-        public Task<bool> SendAsync(string to, string subject, string htmlBody, CancellationToken ct = default) =>
-            Task.FromResult(true);
+        public Task<bool> SendAsync(
+            string to,
+            string subject,
+            string htmlBody,
+            CancellationToken ct = default
+        ) => Task.FromResult(true);
     }
 
     private sealed class NoopSettingsService : ISettingsService
     {
-        public Task<bool> GetBoolAsync(string key, bool fallback = false) => Task.FromResult(fallback);
+        public Task<bool> GetBoolAsync(string key, bool fallback = false) =>
+            Task.FromResult(fallback);
+
         public Task SetBoolAsync(string key, bool value) => Task.CompletedTask;
-        public Task<string> GetStringAsync(string key, string fallback = "") => Task.FromResult(fallback);
+
+        public Task<string> GetStringAsync(string key, string fallback = "") =>
+            Task.FromResult(fallback);
+
         public Task SetStringAsync(string key, string value) => Task.CompletedTask;
+
         public Task<int> GetIntAsync(string key, int fallback = 0) => Task.FromResult(fallback);
+
         public Task SetIntAsync(string key, int value) => Task.CompletedTask;
     }
 
     private sealed class NoopBrandingService : IBrandingService
     {
-        private static Pointer.Application.DTOs.Branding.BrandingResponse DefaultBranding() => new()
-        {
-            ProductName = "Pointer",
-            Tagline = string.Empty,
-            PrimaryColor = "#2563eb",
-            Urls = new Pointer.Application.DTOs.Branding.BrandingUrlsResponse { App = "https://app.pointer.moamen.work" },
-            Assets = new Pointer.Application.DTOs.Branding.BrandingAssetsResponse(),
-        };
-        public Task<Pointer.Application.Response.Result<Pointer.Application.DTOs.Branding.BrandingResponse>> GetAsync(string publicBase, IReadOnlySet<string> existingKinds) =>
-            Task.FromResult(Pointer.Application.Response.Result<Pointer.Application.DTOs.Branding.BrandingResponse>.Success(DefaultBranding()));
-        public Task<Pointer.Application.Response.Result<Pointer.Application.DTOs.Branding.BrandingResponse>> UpdateAsync(Pointer.Application.DTOs.Branding.BrandingWriteDto dto, string publicBase, IReadOnlySet<string> existingKinds) =>
-            Task.FromResult(Pointer.Application.Response.Result<Pointer.Application.DTOs.Branding.BrandingResponse>.Success(DefaultBranding()));
+        private static Pointer.Application.DTOs.Branding.BrandingResponse DefaultBranding() =>
+            new()
+            {
+                ProductName = "Pointer",
+                Tagline = string.Empty,
+                PrimaryColor = "#2563eb",
+                Urls = new Pointer.Application.DTOs.Branding.BrandingUrlsResponse
+                {
+                    App = "https://app.pointer.moamen.work",
+                },
+                Assets = new Pointer.Application.DTOs.Branding.BrandingAssetsResponse(),
+            };
+
+        public Task<Pointer.Application.Response.Result<Pointer.Application.DTOs.Branding.BrandingResponse>> GetAsync(
+            string publicBase,
+            IReadOnlySet<string> existingKinds
+        ) =>
+            Task.FromResult(
+                Pointer.Application.Response.Result<Pointer.Application.DTOs.Branding.BrandingResponse>.Success(
+                    DefaultBranding()
+                )
+            );
+
+        public Task<Pointer.Application.Response.Result<Pointer.Application.DTOs.Branding.BrandingResponse>> UpdateAsync(
+            Pointer.Application.DTOs.Branding.BrandingWriteDto dto,
+            string publicBase,
+            IReadOnlySet<string> existingKinds
+        ) =>
+            Task.FromResult(
+                Pointer.Application.Response.Result<Pointer.Application.DTOs.Branding.BrandingResponse>.Success(
+                    DefaultBranding()
+                )
+            );
+
         public Task<int> BumpVersionAsync() => Task.FromResult(0);
-        public Task<Pointer.Application.DTOs.Branding.BrandingResponse> BuildResponseAsync(string publicBase, IReadOnlySet<string> existingKinds) =>
-            Task.FromResult(DefaultBranding());
+
+        public Task<Pointer.Application.DTOs.Branding.BrandingResponse> BuildResponseAsync(
+            string publicBase,
+            IReadOnlySet<string> existingKinds
+        ) => Task.FromResult(DefaultBranding());
     }
 
-    private static User SeedDemoUser(AppDbContext db, Guid? publicId = null, DateTime? expiresAt = null)
+    private static User SeedDemoUser(
+        AppDbContext db,
+        Guid? publicId = null,
+        DateTime? expiresAt = null
+    )
     {
         var pid = publicId ?? Guid.NewGuid();
-        var role = new Role { Id = 2, Name = "Workspace Admin", OwnerId = null };
+        var role = new Role
+        {
+            Id = 2,
+            Name = "Workspace Admin",
+            OwnerId = null,
+        };
         db.Roles.Add(role);
         var user = new User
         {
@@ -134,12 +199,13 @@ public class DemoUpgradeTests
         return user;
     }
 
-    private static UpgradeDemoRequest ValidRequest(string? email = null) => new()
-    {
-        Email = email ?? "newperm@user.com",
-        Password = "supersecret",
-        DisplayName = "Real Name",
-    };
+    private static UpgradeDemoRequest ValidRequest(string? email = null) =>
+        new()
+        {
+            Email = email ?? "newperm@user.com",
+            Password = "supersecret",
+            DisplayName = "Real Name",
+        };
 
     // -----------------------------------------------------------------
     // 1. Happy path
@@ -148,7 +214,9 @@ public class DemoUpgradeTests
     [Fact]
     public async Task Upgrade_demo_user_with_valid_request_succeeds_and_flips_isDemo()
     {
-        var (svc, db, tokens) = Build(nameof(Upgrade_demo_user_with_valid_request_succeeds_and_flips_isDemo));
+        var (svc, db, tokens) = Build(
+            nameof(Upgrade_demo_user_with_valid_request_succeeds_and_flips_isDemo)
+        );
         var demo = SeedDemoUser(db);
 
         var result = await svc.UpgradeAsync(demo.PublicId, ValidRequest("permanent@user.com"));
@@ -186,21 +254,28 @@ public class DemoUpgradeTests
     {
         var (svc, db, _) = Build(nameof(Upgrade_non_demo_user_returns_forbidden));
         var pid = Guid.NewGuid();
-        var role = new Role { Id = 1, Name = "Workspace Admin", OwnerId = null };
-        db.Roles.Add(role);
-        db.Users.Add(new User
+        var role = new Role
         {
-            PublicId = pid,
-            Email = "normal@user.com",
-            PasswordHash = "x",
-            DisplayName = "Normal",
-            RoleId = role.Id,
-            Role = role,
-            OwnerId = pid,
-            IsDemo = false,
-            IsActive = true,
-            ApprovalStatus = ApprovalStatus.Approved,
-        });
+            Id = 1,
+            Name = "Workspace Admin",
+            OwnerId = null,
+        };
+        db.Roles.Add(role);
+        db.Users.Add(
+            new User
+            {
+                PublicId = pid,
+                Email = "normal@user.com",
+                PasswordHash = "x",
+                DisplayName = "Normal",
+                RoleId = role.Id,
+                Role = role,
+                OwnerId = pid,
+                IsDemo = false,
+                IsActive = true,
+                ApprovalStatus = ApprovalStatus.Approved,
+            }
+        );
         db.SaveChanges();
 
         var result = await svc.UpgradeAsync(pid, ValidRequest());
@@ -236,22 +311,26 @@ public class DemoUpgradeTests
     {
         // Another user under the SAME tenant (OwnerId == demo's PublicId) already holds the email.
         // Per-tenant uniqueness must reject the upgrade.
-        var (svc, db, _) = Build(nameof(Upgrade_with_email_taken_within_same_tenant_returns_conflict));
+        var (svc, db, _) = Build(
+            nameof(Upgrade_with_email_taken_within_same_tenant_returns_conflict)
+        );
         var demo = SeedDemoUser(db);
         var role = db.Roles.First();
-        db.Users.Add(new User
-        {
-            PublicId = Guid.NewGuid(),
-            Email = "shared@user.com",
-            PasswordHash = "x",
-            DisplayName = "Other-SameTenant",
-            RoleId = role.Id,
-            Role = role,
-            OwnerId = demo.PublicId, // same tenant as the demo user
-            IsDemo = false,
-            IsActive = true,
-            ApprovalStatus = ApprovalStatus.Approved,
-        });
+        db.Users.Add(
+            new User
+            {
+                PublicId = Guid.NewGuid(),
+                Email = "shared@user.com",
+                PasswordHash = "x",
+                DisplayName = "Other-SameTenant",
+                RoleId = role.Id,
+                Role = role,
+                OwnerId = demo.PublicId, // same tenant as the demo user
+                IsDemo = false,
+                IsActive = true,
+                ApprovalStatus = ApprovalStatus.Approved,
+            }
+        );
         db.SaveChanges();
 
         var result = await svc.UpgradeAsync(demo.PublicId, ValidRequest("shared@user.com"));
@@ -271,23 +350,27 @@ public class DemoUpgradeTests
         // DB-11a (D7): e-mail uniqueness for demo upgrade is now GLOBAL — one identity per e-mail.
         // A different tenant's identity already holding this address blocks the upgrade (Conflict,
         // no automatic merge), where it used to be allowed (emails were unique per tenant only).
-        var (svc, db, _) = Build(nameof(Upgrade_with_email_used_by_a_different_tenant_is_a_conflict));
+        var (svc, db, _) = Build(
+            nameof(Upgrade_with_email_used_by_a_different_tenant_is_a_conflict)
+        );
         var demo = SeedDemoUser(db);
         var otherOwner = Guid.NewGuid();
         var role = db.Roles.First();
-        db.Users.Add(new User
-        {
-            PublicId = otherOwner,
-            Email = "shared@user.com",
-            PasswordHash = "x",
-            DisplayName = "Other-DifferentTenant",
-            RoleId = role.Id,
-            Role = role,
-            OwnerId = otherOwner, // a DIFFERENT tenant
-            IsDemo = false,
-            IsActive = true,
-            ApprovalStatus = ApprovalStatus.Approved,
-        });
+        db.Users.Add(
+            new User
+            {
+                PublicId = otherOwner,
+                Email = "shared@user.com",
+                PasswordHash = "x",
+                DisplayName = "Other-DifferentTenant",
+                RoleId = role.Id,
+                Role = role,
+                OwnerId = otherOwner, // a DIFFERENT tenant
+                IsDemo = false,
+                IsActive = true,
+                ApprovalStatus = ApprovalStatus.Approved,
+            }
+        );
         db.SaveChanges();
 
         var result = await svc.UpgradeAsync(demo.PublicId, ValidRequest("shared@user.com"));

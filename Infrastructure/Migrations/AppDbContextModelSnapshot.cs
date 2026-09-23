@@ -721,6 +721,69 @@ namespace Pointer.Infrastructure.Migrations
                     b.ToTable("extension_sites", (string)null);
                 });
 
+            modelBuilder.Entity("Pointer.Domain.Entity.ImpersonationSession", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint")
+                        .HasColumnName("id");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
+
+                    b.Property<int?>("EndReason")
+                        .HasColumnType("integer")
+                        .HasColumnName("end_reason");
+
+                    b.Property<DateTime?>("EndedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("ended_at");
+
+                    b.Property<DateTime>("ExpiresAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("expires_at");
+
+                    b.Property<DateTime?>("LastRequestAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("last_request_at");
+
+                    b.Property<Guid>("OperatorUserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("operator_user_id");
+
+                    b.Property<Guid?>("OwnerId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("owner_id");
+
+                    b.Property<string>("Reason")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)")
+                        .HasColumnName("reason");
+
+                    b.Property<int>("RequestCount")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer")
+                        .HasDefaultValue(0)
+                        .HasColumnName("request_count");
+
+                    b.Property<DateTime>("StartedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("started_at");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("OperatorUserId")
+                        .IsUnique()
+                        .HasDatabaseName("ux_impersonation_sessions_operator_live")
+                        .HasFilter("ended_at IS NULL");
+
+                    b.HasIndex("OwnerId", "StartedAt")
+                        .IsDescending(false, true)
+                        .HasDatabaseName("ix_impersonation_sessions_owner_started");
+
+                    b.ToTable("impersonation_sessions", (string)null);
+                });
+
             modelBuilder.Entity("Pointer.Domain.Entity.Invite", b =>
                 {
                     b.Property<int>("Id")
@@ -2565,6 +2628,15 @@ namespace Pointer.Infrastructure.Migrations
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired()
                         .HasConstraintName("fk_extension_sites_workspaces_owner_id");
+                });
+
+            modelBuilder.Entity("Pointer.Domain.Entity.ImpersonationSession", b =>
+                {
+                    b.HasOne("Pointer.Domain.Entity.Workspace", null)
+                        .WithMany()
+                        .HasForeignKey("OwnerId")
+                        .OnDelete(DeleteBehavior.SetNull)
+                        .HasConstraintName("fk_impersonation_sessions_workspaces_owner_id");
                 });
 
             modelBuilder.Entity("Pointer.Domain.Entity.Invite", b =>

@@ -1,6 +1,6 @@
-using Microsoft.Extensions.Configuration;
 using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
 using Pointer.Application.Abstractions;
 using Pointer.Application.Common;
 using Pointer.Application.DTOs.PredefinedAction;
@@ -29,7 +29,8 @@ public class ProjectService : IProjectService
         ISettingsService settings,
         IConfiguration configuration,
         IAuditWriter? audit = null,
-        ICommentFieldService? commentFields = null)
+        ICommentFieldService? commentFields = null
+    )
     {
         _unitOfWork = unitOfWork;
         _currentUser = currentUser;
@@ -55,13 +56,18 @@ public class ProjectService : IProjectService
         // Defaulted, not bare. Reading the raw setting returns null until an operator saves
         // branding, and then the dashboard's own origin is not in this set — so turning
         // enforcement on would 403 the admin out of the UI they turned it on from.
-        var brandApp = await _settings.GetStringAsync(ISettingsService.BrandUrlApp, BrandingDefaults.UrlApp);
+        var brandApp = await _settings.GetStringAsync(
+            ISettingsService.BrandUrlApp,
+            BrandingDefaults.UrlApp
+        );
         if (!string.IsNullOrWhiteSpace(brandApp))
             trusted.Add(OriginNormalizer.Normalize(brandApp));
 
         // GetChildren rather than Get<string[]>(): the Application project references only
         // Configuration.Abstractions, and the binder extension lives in Configuration.Binder.
-        foreach (var extra in _configuration.GetSection("Security:TrustedDashboardOrigins").GetChildren())
+        foreach (
+            var extra in _configuration.GetSection("Security:TrustedDashboardOrigins").GetChildren()
+        )
         {
             if (!string.IsNullOrWhiteSpace(extra.Value))
                 trusted.Add(OriginNormalizer.Normalize(extra.Value));
@@ -77,7 +83,8 @@ public class ProjectService : IProjectService
             return false;
 
         var host = uri.Host.ToLowerInvariant().Trim('[', ']');
-        return host is "localhost" or "127.0.0.1" or "::1" || host.EndsWith(".localhost", StringComparison.Ordinal);
+        return host is "localhost" or "127.0.0.1" or "::1"
+            || host.EndsWith(".localhost", StringComparison.Ordinal);
     }
 
     /// <summary>
@@ -108,12 +115,18 @@ public class ProjectService : IProjectService
         // Only rows whose project mapping AND whose workspace environment are both enabled take
         // part — the same pair of switches ProjectAppUrl.IsActive and AppEnvironment.IsEnabled
         // document themselves as controlling.
-        var rows = await _unitOfWork.Repository<ProjectAppUrl>()
+        var rows = await _unitOfWork
+            .Repository<ProjectAppUrl>()
             .Query()
             .AsNoTracking()
             .Include(u => u.AppEnvironment)
-            .Where(u => u.ProjectId == projectId && u.IsActive && u.DeletedAt == null
-                        && u.AppEnvironment.IsEnabled && u.AppEnvironment.DeletedAt == null)
+            .Where(u =>
+                u.ProjectId == projectId
+                && u.IsActive
+                && u.DeletedAt == null
+                && u.AppEnvironment.IsEnabled
+                && u.AppEnvironment.DeletedAt == null
+            )
             .Select(u => new { u.Url, EnvName = u.AppEnvironment.Name })
             .ToListAsync();
 
@@ -152,9 +165,11 @@ public class ProjectService : IProjectService
         int projectId,
         string? origin,
         EnvironmentTag environment,
-        bool isQuickAccess)
+        bool isQuickAccess
+    )
     {
-        var project = await _unitOfWork.Repository<Project>()
+        var project = await _unitOfWork
+            .Repository<Project>()
             .Query()
             .AsNoTracking()
             .FirstOrDefaultAsync(p => p.Id == projectId && p.DeletedAt == null);
@@ -180,7 +195,8 @@ public class ProjectService : IProjectService
         if ((await TrustedOriginsAsync()).Contains(normalised))
             return true;
 
-        var urls = await _unitOfWork.Repository<ProjectAppUrl>()
+        var urls = await _unitOfWork
+            .Repository<ProjectAppUrl>()
             .Query()
             .AsNoTracking()
             .Where(u => u.ProjectId == projectId && u.IsActive && u.DeletedAt == null)
@@ -190,14 +206,14 @@ public class ProjectService : IProjectService
         return urls.Any(u => OriginNormalizer.Matches(u, normalised));
     }
 
-
     public async Task<Result<ProjectResponse>> CreateAsync(CreateProjectRequest request)
     {
         var keyNormalized = request.Key.Trim().ToLower();
 
         // EF query filter already scopes this to the caller's tenant;
         // the check is still correct — a scoped admin cannot key-conflict with another tenant.
-        var exists = await _unitOfWork.Repository<Project>()
+        var exists = await _unitOfWork
+            .Repository<Project>()
             .Query()
             .AsNoTracking()
             .Where(p => p.DeletedAt == null && p.Key == keyNormalized)
@@ -228,13 +244,21 @@ public class ProjectService : IProjectService
         // count is the tenant's real total regardless of the caller.
         if (ownerId is Guid projectOwner)
         {
-            var activeProjects = await _unitOfWork.Repository<Project>()
+            var activeProjects = await _unitOfWork
+                .Repository<Project>()
                 .Query()
                 .IgnoreQueryFilters()
                 .CountAsync(p => p.OwnerId == projectOwner && p.DeletedAt == null);
-            var check = await _entitlements.CheckCountAsync(projectOwner, EntitlementCatalog.MaxProjects, activeProjects);
+            var check = await _entitlements.CheckCountAsync(
+                projectOwner,
+                EntitlementCatalog.MaxProjects,
+                activeProjects
+            );
             if (!check.IsSuccess)
-                return Result<ProjectResponse>.LimitReached(check.Message ?? MessageKeys.Plan.LimitReached, check.Limit!);
+                return Result<ProjectResponse>.LimitReached(
+                    check.Message ?? MessageKeys.Plan.LimitReached,
+                    check.Limit!
+                );
         }
 
         // Same URL rules as SetAppUrlAsync. The create path accepted anything at all — a project
@@ -250,7 +274,9 @@ public class ProjectService : IProjectService
         Domain.Entity.AppEnvironment? environment = null;
         if (!string.IsNullOrWhiteSpace(request.AppUrl) && request.AppEnvironmentId.HasValue)
         {
-            environment = await _unitOfWork.Repository<Domain.Entity.AppEnvironment>().GetByIdAsync(request.AppEnvironmentId.Value);
+            environment = await _unitOfWork
+                .Repository<Domain.Entity.AppEnvironment>()
+                .GetByIdAsync(request.AppEnvironmentId.Value);
             if (environment == null || environment.DeletedAt != null)
                 return Result<ProjectResponse>.NotFound(MessageKeys.AppEnvironment.NotFound);
 
@@ -265,7 +291,7 @@ public class ProjectService : IProjectService
             // IsActiveLocal/Staging/Production default true on the entity — a new project starts
             // fully active in every environment.
             AppUrl = string.IsNullOrWhiteSpace(request.AppUrl) ? null : request.AppUrl.Trim(),
-            OwnerId = ownerId
+            OwnerId = ownerId,
         };
 
         await _unitOfWork.Repository<Project>().AddAsync(project);
@@ -278,14 +304,18 @@ public class ProjectService : IProjectService
         {
             if (environment != null)
             {
-                await _unitOfWork.Repository<ProjectAppUrl>().AddAsync(new ProjectAppUrl
-                {
-                    ProjectId = project.Id,
-                    AppEnvironmentId = environment.Id,
-                    Url = project.AppUrl,
-                    OwnerId = project.OwnerId ?? Guid.Empty,
-                    IsActive = true
-                });
+                await _unitOfWork
+                    .Repository<ProjectAppUrl>()
+                    .AddAsync(
+                        new ProjectAppUrl
+                        {
+                            ProjectId = project.Id,
+                            AppEnvironmentId = environment.Id,
+                            Url = project.AppUrl,
+                            OwnerId = project.OwnerId ?? Guid.Empty,
+                            IsActive = true,
+                        }
+                    );
                 await _unitOfWork.SaveChangesAsync();
             }
             else
@@ -299,27 +329,37 @@ public class ProjectService : IProjectService
             // MaxPredefinedActionsPerProject: a freshly-created project starts at 0 actions, so the
             // running count is just how many we've added so far this loop. Owner tenant = the project's
             // owner (fall back to the caller for a null-owner project so the check still resolves).
-            var actionTenant = project.OwnerId ?? throw new InvalidOperationException("project without owner");
+            var actionTenant =
+                project.OwnerId ?? throw new InvalidOperationException("project without owner");
             var sort = 0;
             var addedSoFar = 0;
             foreach (var input in request.PredefinedActions)
             {
                 var actionCheck = await _entitlements.CheckCountAsync(
-                    actionTenant, EntitlementCatalog.MaxPredefinedActionsPerProject, addedSoFar);
+                    actionTenant,
+                    EntitlementCatalog.MaxPredefinedActionsPerProject,
+                    addedSoFar
+                );
                 if (!actionCheck.IsSuccess)
                     return Result<ProjectResponse>.LimitReached(
-                        actionCheck.Message ?? MessageKeys.Plan.LimitReached, actionCheck.Limit!);
+                        actionCheck.Message ?? MessageKeys.Plan.LimitReached,
+                        actionCheck.Limit!
+                    );
 
-                await _unitOfWork.Repository<PredefinedAction>().AddAsync(new PredefinedAction
-                {
-                    OwnerId = project.OwnerId, // inherit the project's owner (may be null = global)
-                    ProjectId = project.Id,
-                    UserId = null,
-                    Text = input.Text.Trim(),
-                    Prompt = input.Prompt,
-                    IsActive = input.IsActive,
-                    SortOrder = input.SortOrder != 0 ? input.SortOrder : sort++
-                });
+                await _unitOfWork
+                    .Repository<PredefinedAction>()
+                    .AddAsync(
+                        new PredefinedAction
+                        {
+                            OwnerId = project.OwnerId, // inherit the project's owner (may be null = global)
+                            ProjectId = project.Id,
+                            UserId = null,
+                            Text = input.Text.Trim(),
+                            Prompt = input.Prompt,
+                            IsActive = input.IsActive,
+                            SortOrder = input.SortOrder != 0 ? input.SortOrder : sort++,
+                        }
+                    );
                 addedSoFar++;
             }
             await _unitOfWork.SaveChangesAsync();
@@ -334,13 +374,24 @@ public class ProjectService : IProjectService
                 AuditTargets.Project,
                 project.Id.ToString(),
                 project.OwnerId,
-                After: new Dictionary<string, string> { ["key"] = project.Key, ["name"] = project.Name }
+                After: new Dictionary<string, string>
+                {
+                    ["key"] = project.Key,
+                    ["name"] = project.Name,
+                }
             )
         );
 
         // Freshly-created project: no comments; creator is the caller.
-        return Result<ProjectResponse>.Success(MapToResponse(project, actions, appUrls, 0,
-            await ResolveCreatorNameAsync(project.CreatedBy)));
+        return Result<ProjectResponse>.Success(
+            MapToResponse(
+                project,
+                actions,
+                appUrls,
+                0,
+                await ResolveCreatorNameAsync(project.CreatedBy)
+            )
+        );
     }
 
     public async Task<Result<List<ProjectResponse>>> ListAsync()
@@ -350,9 +401,12 @@ public class ProjectService : IProjectService
         // is gated behind an admin-tier login on the dashboard, and the widget's own runtime uses
         // EnsureAsync/the comments endpoints instead, not this one.)
         if (_currentUser.IsQuickAccess)
-            return Result<List<ProjectResponse>>.Forbidden(MessageKeys.Project.QuickAccessNotAllowed);
+            return Result<List<ProjectResponse>>.Forbidden(
+                MessageKeys.Project.QuickAccessNotAllowed
+            );
 
-        var projects = await _unitOfWork.Repository<Project>()
+        var projects = await _unitOfWork
+            .Repository<Project>()
             .Query()
             .AsNoTracking()
             .Where(p => p.DeletedAt == null)
@@ -363,18 +417,23 @@ public class ProjectService : IProjectService
         var projectIds = projects.Select(p => p.Id).ToList();
 
         // One batched query for all project-scoped actions; group in memory.
-        var actions = await _unitOfWork.Repository<PredefinedAction>()
+        var actions = await _unitOfWork
+            .Repository<PredefinedAction>()
             .Query()
             .AsNoTracking()
-            .Where(a => a.DeletedAt == null && a.ProjectId != null && projectIds.Contains(a.ProjectId.Value))
+            .Where(a =>
+                a.DeletedAt == null && a.ProjectId != null && projectIds.Contains(a.ProjectId.Value)
+            )
             .OrderBy(a => a.SortOrder)
             .ToListAsync();
 
-        var byProject = actions.GroupBy(a => a.ProjectId!.Value)
+        var byProject = actions
+            .GroupBy(a => a.ProjectId!.Value)
             .ToDictionary(g => g.Key, g => g.ToList());
 
         // BINDING #6: batch comment counts in ONE GroupBy query (no N+1).
-        var commentCounts = await _unitOfWork.Repository<Comment>()
+        var commentCounts = await _unitOfWork
+            .Repository<Comment>()
             .Query()
             .AsNoTracking()
             .Where(c => c.DeletedAt == null && projectIds.Contains(c.ProjectId))
@@ -384,25 +443,30 @@ public class ProjectService : IProjectService
         var countByProject = commentCounts.ToDictionary(x => x.ProjectId, x => x.Count);
 
         // Fetch app urls in batch
-        var appUrls = await _unitOfWork.Repository<ProjectAppUrl>()
+        var appUrls = await _unitOfWork
+            .Repository<ProjectAppUrl>()
             .Query()
             .AsNoTracking()
             .Include(u => u.AppEnvironment)
             .Where(u => u.DeletedAt == null && projectIds.Contains(u.ProjectId))
             .ToListAsync();
-        var appUrlsByProject = appUrls.GroupBy(u => u.ProjectId)
+        var appUrlsByProject = appUrls
+            .GroupBy(u => u.ProjectId)
             .ToDictionary(g => g.Key, g => g.ToList());
 
         // Batch-resolve creator display names.
         var creatorNames = await ResolveCreatorNamesAsync(projects.Select(p => p.CreatedBy));
 
         var responses = projects
-            .Select(p => MapToResponse(
-                p,
-                byProject.GetValueOrDefault(p.Id) ?? new List<PredefinedAction>(),
-                appUrlsByProject.GetValueOrDefault(p.Id) ?? new List<ProjectAppUrl>(),
-                countByProject.GetValueOrDefault(p.Id, 0),
-                creatorNames.GetValueOrDefault(p.CreatedBy)))
+            .Select(p =>
+                MapToResponse(
+                    p,
+                    byProject.GetValueOrDefault(p.Id) ?? new List<PredefinedAction>(),
+                    appUrlsByProject.GetValueOrDefault(p.Id) ?? new List<ProjectAppUrl>(),
+                    countByProject.GetValueOrDefault(p.Id, 0),
+                    creatorNames.GetValueOrDefault(p.CreatedBy)
+                )
+            )
             .ToList();
 
         return Result<List<ProjectResponse>>.Success(responses);
@@ -426,11 +490,20 @@ public class ProjectService : IProjectService
             changedKeys.Add("name");
         if (request.IsActiveLocal.HasValue && request.IsActiveLocal.Value != project.IsActiveLocal)
             changedKeys.Add("is_active_local");
-        if (request.IsActiveStaging.HasValue && request.IsActiveStaging.Value != project.IsActiveStaging)
+        if (
+            request.IsActiveStaging.HasValue
+            && request.IsActiveStaging.Value != project.IsActiveStaging
+        )
             changedKeys.Add("is_active_staging");
-        if (request.IsActiveProduction.HasValue && request.IsActiveProduction.Value != project.IsActiveProduction)
+        if (
+            request.IsActiveProduction.HasValue
+            && request.IsActiveProduction.Value != project.IsActiveProduction
+        )
             changedKeys.Add("is_active_production");
-        if (request.EnforceAllowedOrigins.HasValue && request.EnforceAllowedOrigins.Value != project.EnforceAllowedOrigins)
+        if (
+            request.EnforceAllowedOrigins.HasValue
+            && request.EnforceAllowedOrigins.Value != project.EnforceAllowedOrigins
+        )
             changedKeys.Add("enforce_allowed_origins");
         if (request.CommitStyle.HasValue && request.CommitStyle.Value != project.CommitStyle)
             changedKeys.Add("commit_style");
@@ -464,9 +537,10 @@ public class ProjectService : IProjectService
         // forever (which would otherwise mean "no role at all may see it").
         if (request.EnvironmentSelectorRoleIds != null)
         {
-            project.EnvironmentSelectorRoleIds = request.EnvironmentSelectorRoleIds.Count == 0
-                ? null
-                : JsonSerializer.Serialize(request.EnvironmentSelectorRoleIds);
+            project.EnvironmentSelectorRoleIds =
+                request.EnvironmentSelectorRoleIds.Count == 0
+                    ? null
+                    : JsonSerializer.Serialize(request.EnvironmentSelectorRoleIds);
         }
 
         if (request.AppUrl != null)
@@ -486,18 +560,26 @@ public class ProjectService : IProjectService
         // (which may be null for a global/null-owner project).
         if (request.PredefinedActions != null)
         {
-            var reconcile = await ReconcileActionsAsync(project.Id, project.OwnerId, request.PredefinedActions);
+            var reconcile = await ReconcileActionsAsync(
+                project.Id,
+                project.OwnerId,
+                request.PredefinedActions
+            );
             if (!reconcile.IsSuccess)
                 return Result<ProjectResponse>.LimitReached(
-                    reconcile.Message ?? MessageKeys.Plan.LimitReached, reconcile.Limit!);
+                    reconcile.Message ?? MessageKeys.Plan.LimitReached,
+                    reconcile.Limit!
+                );
         }
 
         await _unitOfWork.SaveChangesAsync();
 
         var actions = await LoadProjectActionsAsync(project.Id);
         var appUrls = await LoadProjectAppUrlsAsync(project.Id);
-        var commentsCount = await _unitOfWork.Repository<Comment>()
-            .Query().AsNoTracking()
+        var commentsCount = await _unitOfWork
+            .Repository<Comment>()
+            .Query()
+            .AsNoTracking()
             .CountAsync(c => c.ProjectId == project.Id && c.DeletedAt == null);
 
         // Always written (even a no-op update) — [Audited] on the controller action requires a row
@@ -512,8 +594,15 @@ public class ProjectService : IProjectService
             )
         );
 
-        return Result<ProjectResponse>.Success(MapToResponse(project, actions, appUrls, commentsCount,
-            await ResolveCreatorNameAsync(project.CreatedBy)));
+        return Result<ProjectResponse>.Success(
+            MapToResponse(
+                project,
+                actions,
+                appUrls,
+                commentsCount,
+                await ResolveCreatorNameAsync(project.CreatedBy)
+            )
+        );
     }
 
     public async Task<Result<List<ProjectAppUrlResponse>>> ListAppUrlsAsync(int projectId)
@@ -522,7 +611,8 @@ public class ProjectService : IProjectService
         if (project == null || project.DeletedAt != null)
             return Result<List<ProjectAppUrlResponse>>.NotFound(MessageKeys.Project.NotFound);
 
-        var urls = await _unitOfWork.Repository<ProjectAppUrl>()
+        var urls = await _unitOfWork
+            .Repository<ProjectAppUrl>()
             .Query()
             .AsNoTracking()
             .Include(u => u.AppEnvironment)
@@ -530,17 +620,24 @@ public class ProjectService : IProjectService
             .OrderBy(u => u.AppEnvironment.Name)
             .ToListAsync();
 
-        return Result<List<ProjectAppUrlResponse>>.Success(urls.Select(u => new ProjectAppUrlResponse
-        {
-            AppEnvironmentId = u.AppEnvironmentId,
-            EnvironmentName = u.AppEnvironment.Name,
-            Url = u.Url,
-            IsActive = u.IsActive,
-            EnvironmentIsEnabled = u.AppEnvironment.IsEnabled
-        }).ToList());
+        return Result<List<ProjectAppUrlResponse>>.Success(
+            urls.Select(u => new ProjectAppUrlResponse
+                {
+                    AppEnvironmentId = u.AppEnvironmentId,
+                    EnvironmentName = u.AppEnvironment.Name,
+                    Url = u.Url,
+                    IsActive = u.IsActive,
+                    EnvironmentIsEnabled = u.AppEnvironment.IsEnabled,
+                })
+                .ToList()
+        );
     }
 
-    public async Task<Result<ProjectAppUrlResponse>> SetAppUrlAsync(int projectId, int environmentId, SetProjectAppUrlRequest request)
+    public async Task<Result<ProjectAppUrlResponse>> SetAppUrlAsync(
+        int projectId,
+        int environmentId,
+        SetProjectAppUrlRequest request
+    )
     {
         var project = await _unitOfWork.Repository<Project>().GetByIdAsync(projectId);
         if (project == null || project.DeletedAt != null)
@@ -563,7 +660,9 @@ public class ProjectService : IProjectService
 
         // The environment must be visible to this tenant (own or global) — the query filter already
         // enforces that; a foreign/other-tenant environment id simply won't be found.
-        var environment = await _unitOfWork.Repository<Domain.Entity.AppEnvironment>().GetByIdAsync(environmentId);
+        var environment = await _unitOfWork
+            .Repository<Domain.Entity.AppEnvironment>()
+            .GetByIdAsync(environmentId);
         if (environment == null || environment.DeletedAt != null)
             return Result<ProjectAppUrlResponse>.NotFound(MessageKeys.AppEnvironment.NotFound);
 
@@ -578,25 +677,34 @@ public class ProjectService : IProjectService
         // only place this can be settled — by read time the information needed to disambiguate is
         // already gone.
         var normalisedNew = OriginNormalizer.Normalize(url);
-        var others = await _unitOfWork.Repository<ProjectAppUrl>()
+        var others = await _unitOfWork
+            .Repository<ProjectAppUrl>()
             .Query()
             .AsNoTracking()
             .Include(u => u.AppEnvironment)
-            .Where(u => u.ProjectId == projectId && u.AppEnvironmentId != environmentId && u.DeletedAt == null)
+            .Where(u =>
+                u.ProjectId == projectId
+                && u.AppEnvironmentId != environmentId
+                && u.DeletedAt == null
+            )
             .Select(u => new { u.Url, EnvName = u.AppEnvironment.Name })
             .ToListAsync();
 
-        var conflicting = others.FirstOrDefault(o => OriginNormalizer.Normalize(o.Url) == normalisedNew);
+        var conflicting = others.FirstOrDefault(o =>
+            OriginNormalizer.Normalize(o.Url) == normalisedNew
+        );
         if (conflicting != null)
             return Result<ProjectAppUrlResponse>.Failure(
-                $"That URL is already registered for the \"{conflicting.EnvName}\" environment of this project. " +
-                "Each environment needs its own URL, otherwise a comment cannot be attributed to one of them.");
+                $"That URL is already registered for the \"{conflicting.EnvName}\" environment of this project. "
+                    + "Each environment needs its own URL, otherwise a comment cannot be attributed to one of them."
+            );
 
         // Including soft-deleted rows on purpose. Delete is a soft delete, and (ProjectId,
         // AppEnvironmentId) is unique, so "remove the local URL, then add it again" must revive the
         // old row — inserting a second one threw a duplicate-key error the user saw as a bare 500
         // (prod, project 70, 2026-09-16). Live row → update; soft-deleted row → undelete + update.
-        var existing = await _unitOfWork.Repository<ProjectAppUrl>()
+        var existing = await _unitOfWork
+            .Repository<ProjectAppUrl>()
             .Query()
             .Where(u => u.ProjectId == projectId && u.AppEnvironmentId == environmentId)
             .OrderBy(u => u.DeletedAt == null ? 0 : 1)
@@ -618,7 +726,7 @@ public class ProjectService : IProjectService
                 AppEnvironmentId = environmentId,
                 Url = url,
                 IsActive = request.IsActive,
-                OwnerId = project.OwnerId
+                OwnerId = project.OwnerId,
             };
             await _unitOfWork.Repository<ProjectAppUrl>().AddAsync(existing);
         }
@@ -639,17 +747,23 @@ public class ProjectService : IProjectService
                 AuditTargets.ProjectAppUrl,
                 $"{projectId}:{environmentId}",
                 project.OwnerId,
-                After: new Dictionary<string, string> { ["url"] = url, ["environment_id"] = environmentId.ToString() }
+                After: new Dictionary<string, string>
+                {
+                    ["url"] = url,
+                    ["environment_id"] = environmentId.ToString(),
+                }
             )
         );
 
-        return Result<ProjectAppUrlResponse>.Success(new ProjectAppUrlResponse
-        {
-            AppEnvironmentId = environmentId,
-            EnvironmentName = environment.Name,
-            Url = url,
-            IsActive = existing.IsActive
-        });
+        return Result<ProjectAppUrlResponse>.Success(
+            new ProjectAppUrlResponse
+            {
+                AppEnvironmentId = environmentId,
+                EnvironmentName = environment.Name,
+                Url = url,
+                IsActive = existing.IsActive,
+            }
+        );
     }
 
     public async Task<Result> DeleteAppUrlAsync(int projectId, int environmentId)
@@ -661,9 +775,14 @@ public class ProjectService : IProjectService
         if (!(_currentUser.IsAdmin || project.CreatedBy == _currentUser.Id))
             return Result.Forbidden(MessageKeys.Project.NotFound);
 
-        var existing = await _unitOfWork.Repository<ProjectAppUrl>()
+        var existing = await _unitOfWork
+            .Repository<ProjectAppUrl>()
             .Query()
-            .Where(u => u.ProjectId == projectId && u.AppEnvironmentId == environmentId && u.DeletedAt == null)
+            .Where(u =>
+                u.ProjectId == projectId
+                && u.AppEnvironmentId == environmentId
+                && u.DeletedAt == null
+            )
             .FirstOrDefaultAsync();
         if (existing == null)
             return Result.NotFound(MessageKeys.Project.NotFound);
@@ -678,7 +797,10 @@ public class ProjectService : IProjectService
                 AuditTargets.ProjectAppUrl,
                 $"{projectId}:{environmentId}",
                 project.OwnerId,
-                After: new Dictionary<string, string> { ["environment_id"] = environmentId.ToString() }
+                After: new Dictionary<string, string>
+                {
+                    ["environment_id"] = environmentId.ToString(),
+                }
             )
         );
 
@@ -694,8 +816,10 @@ public class ProjectService : IProjectService
             return Result.NotFound(MessageKeys.Project.NotFound);
 
         // BINDING #6: re-check comment count + ownership server-side regardless of any client hint.
-        var commentsCount = await _unitOfWork.Repository<Comment>()
-            .Query().AsNoTracking()
+        var commentsCount = await _unitOfWork
+            .Repository<Comment>()
+            .Query()
+            .AsNoTracking()
             .CountAsync(c => c.ProjectId == id && c.DeletedAt == null);
 
         if (_currentUser.IsAdmin)
@@ -707,7 +831,8 @@ public class ProjectService : IProjectService
                 var now = DateTime.UtcNow;
                 var actorId = _currentUser.Id;
 
-                var comments = await _unitOfWork.Repository<Comment>()
+                var comments = await _unitOfWork
+                    .Repository<Comment>()
                     .Query()
                     .IgnoreQueryFilters()
                     .Where(c => c.ProjectId == id && c.DeletedAt == null)
@@ -716,47 +841,55 @@ public class ProjectService : IProjectService
 
                 foreach (var c in comments)
                 {
-                    c.DeletedAt = now; c.DeletedBy = actorId;
+                    c.DeletedAt = now;
+                    c.DeletedBy = actorId;
                     _unitOfWork.Repository<Comment>().Update(c);
                 }
 
                 if (commentIds.Count > 0)
                 {
-                    var replies = await _unitOfWork.Repository<Reply>()
+                    var replies = await _unitOfWork
+                        .Repository<Reply>()
                         .Query()
                         .IgnoreQueryFilters()
                         .Where(r => commentIds.Contains(r.CommentId) && r.DeletedAt == null)
                         .ToListAsync();
                     foreach (var r in replies)
                     {
-                        r.DeletedAt = now; r.DeletedBy = actorId;
+                        r.DeletedAt = now;
+                        r.DeletedBy = actorId;
                         _unitOfWork.Repository<Reply>().Update(r);
                     }
                 }
 
-                var actions = await _unitOfWork.Repository<PredefinedAction>()
+                var actions = await _unitOfWork
+                    .Repository<PredefinedAction>()
                     .Query()
                     .IgnoreQueryFilters()
                     .Where(a => a.ProjectId == id && a.DeletedAt == null)
                     .ToListAsync();
                 foreach (var a in actions)
                 {
-                    a.DeletedAt = now; a.DeletedBy = actorId;
+                    a.DeletedAt = now;
+                    a.DeletedBy = actorId;
                     _unitOfWork.Repository<PredefinedAction>().Update(a);
                 }
 
-                var suggestions = await _unitOfWork.Repository<PredefinedActionSuggestion>()
+                var suggestions = await _unitOfWork
+                    .Repository<PredefinedActionSuggestion>()
                     .Query()
                     .IgnoreQueryFilters()
                     .Where(s => s.ProjectId == id && s.DeletedAt == null)
                     .ToListAsync();
                 foreach (var s in suggestions)
                 {
-                    s.DeletedAt = now; s.DeletedBy = actorId;
+                    s.DeletedAt = now;
+                    s.DeletedBy = actorId;
                     _unitOfWork.Repository<PredefinedActionSuggestion>().Update(s);
                 }
 
-                project.DeletedAt = now; project.DeletedBy = actorId;
+                project.DeletedAt = now;
+                project.DeletedBy = actorId;
                 _unitOfWork.Repository<Project>().Update(project);
 
                 await _unitOfWork.SaveChangesAsync();
@@ -768,7 +901,11 @@ public class ProjectService : IProjectService
                     AuditTargets.Project,
                     project.Id.ToString(),
                     project.OwnerId,
-                    After: new Dictionary<string, string> { ["key"] = project.Key, ["name"] = project.Name }
+                    After: new Dictionary<string, string>
+                    {
+                        ["key"] = project.Key,
+                        ["name"] = project.Name,
+                    }
                 )
             );
 
@@ -784,7 +921,8 @@ public class ProjectService : IProjectService
 
         // Owner + 0 comments: soft-delete the project + its predefined actions + suggestions
         // (no comments/replies exist by definition).
-        var ownActions = await _unitOfWork.Repository<PredefinedAction>()
+        var ownActions = await _unitOfWork
+            .Repository<PredefinedAction>()
             .Query()
             .Where(a => a.ProjectId == id && a.DeletedAt == null)
             .ToListAsync();
@@ -794,7 +932,8 @@ public class ProjectService : IProjectService
             _unitOfWork.Repository<PredefinedAction>().Update(a);
         }
 
-        var ownSuggestions = await _unitOfWork.Repository<PredefinedActionSuggestion>()
+        var ownSuggestions = await _unitOfWork
+            .Repository<PredefinedActionSuggestion>()
             .Query()
             .Where(s => s.ProjectId == id && s.DeletedAt == null)
             .ToListAsync();
@@ -814,7 +953,11 @@ public class ProjectService : IProjectService
                 AuditTargets.Project,
                 project.Id.ToString(),
                 project.OwnerId,
-                After: new Dictionary<string, string> { ["key"] = project.Key, ["name"] = project.Name }
+                After: new Dictionary<string, string>
+                {
+                    ["key"] = project.Key,
+                    ["name"] = project.Name,
+                }
             )
         );
 
@@ -828,9 +971,14 @@ public class ProjectService : IProjectService
     ///   existing row absent from the payload → soft-delete
     /// All queries add DeletedAt == null so soft-deleted rows never resurface or double-delete.
     /// </summary>
-    private async Task<Result> ReconcileActionsAsync(int projectId, Guid? owner, List<PredefinedActionInput> desired)
+    private async Task<Result> ReconcileActionsAsync(
+        int projectId,
+        Guid? owner,
+        List<PredefinedActionInput> desired
+    )
     {
-        var existing = await _unitOfWork.Repository<PredefinedAction>()
+        var existing = await _unitOfWork
+            .Repository<PredefinedAction>()
             .Query()
             .Where(a => a.DeletedAt == null && a.ProjectId == projectId)
             .ToListAsync();
@@ -842,10 +990,14 @@ public class ProjectService : IProjectService
         var resultingCount = desired.Count(d => d.Id is not int did || existingIds.Contains(did));
         if (resultingCount > 0)
         {
-            var actionTenant = owner ?? throw new InvalidOperationException("project without owner");
+            var actionTenant =
+                owner ?? throw new InvalidOperationException("project without owner");
             // resultingCount-1 >= limit  ⇔  resultingCount > limit (block when the final count exceeds it).
             var check = await _entitlements.CheckCountAsync(
-                actionTenant, EntitlementCatalog.MaxPredefinedActionsPerProject, resultingCount - 1);
+                actionTenant,
+                EntitlementCatalog.MaxPredefinedActionsPerProject,
+                resultingCount - 1
+            );
             if (!check.IsSuccess)
                 return check;
         }
@@ -869,16 +1021,20 @@ public class ProjectService : IProjectService
             }
             else
             {
-                await _unitOfWork.Repository<PredefinedAction>().AddAsync(new PredefinedAction
-                {
-                    OwnerId = owner,
-                    ProjectId = projectId,
-                    UserId = null,
-                    Text = input.Text.Trim(),
-                    Prompt = input.Prompt,
-                    IsActive = input.IsActive,
-                    SortOrder = input.SortOrder
-                });
+                await _unitOfWork
+                    .Repository<PredefinedAction>()
+                    .AddAsync(
+                        new PredefinedAction
+                        {
+                            OwnerId = owner,
+                            ProjectId = projectId,
+                            UserId = null,
+                            Text = input.Text.Trim(),
+                            Prompt = input.Prompt,
+                            IsActive = input.IsActive,
+                            SortOrder = input.SortOrder,
+                        }
+                    );
             }
         }
 
@@ -900,17 +1056,27 @@ public class ProjectService : IProjectService
     private async Task<Result> SyncPrimaryAppUrlAsync(Project project, string appUrl)
     {
         var owner = project.OwnerId;
-        var defaultEnv = await _unitOfWork.Repository<Domain.Entity.AppEnvironment>()
+        var defaultEnv = await _unitOfWork
+            .Repository<Domain.Entity.AppEnvironment>()
             .Query()
-            .Where(e => e.DeletedAt == null && e.Name == "local" && (e.OwnerId == owner || e.OwnerId == null))
+            .Where(e =>
+                e.DeletedAt == null
+                && e.Name == "local"
+                && (e.OwnerId == owner || e.OwnerId == null)
+            )
             .OrderByDescending(e => e.OwnerId != null) // tenant's own "local" wins over the global one
             .FirstOrDefaultAsync();
         if (defaultEnv == null)
             return Result.Success(); // no "local" environment exists (e.g. it was deleted) — nothing to sync
 
-        var existing = await _unitOfWork.Repository<ProjectAppUrl>()
+        var existing = await _unitOfWork
+            .Repository<ProjectAppUrl>()
             .Query()
-            .Where(u => u.ProjectId == project.Id && u.AppEnvironmentId == defaultEnv.Id && u.DeletedAt == null)
+            .Where(u =>
+                u.ProjectId == project.Id
+                && u.AppEnvironmentId == defaultEnv.Id
+                && u.DeletedAt == null
+            )
             .FirstOrDefaultAsync();
 
         if (existing != null)
@@ -920,13 +1086,17 @@ public class ProjectService : IProjectService
         }
         else
         {
-            await _unitOfWork.Repository<ProjectAppUrl>().AddAsync(new ProjectAppUrl
-            {
-                ProjectId = project.Id,
-                AppEnvironmentId = defaultEnv.Id,
-                Url = appUrl,
-                OwnerId = owner
-            });
+            await _unitOfWork
+                .Repository<ProjectAppUrl>()
+                .AddAsync(
+                    new ProjectAppUrl
+                    {
+                        ProjectId = project.Id,
+                        AppEnvironmentId = defaultEnv.Id,
+                        Url = appUrl,
+                        OwnerId = owner,
+                    }
+                );
         }
 
         await _unitOfWork.SaveChangesAsync();
@@ -934,7 +1104,8 @@ public class ProjectService : IProjectService
     }
 
     private async Task<List<PredefinedAction>> LoadProjectActionsAsync(int projectId) =>
-        await _unitOfWork.Repository<PredefinedAction>()
+        await _unitOfWork
+            .Repository<PredefinedAction>()
             .Query()
             .AsNoTracking()
             .Where(a => a.DeletedAt == null && a.ProjectId == projectId)
@@ -942,7 +1113,8 @@ public class ProjectService : IProjectService
             .ToListAsync();
 
     private async Task<List<ProjectAppUrl>> LoadProjectAppUrlsAsync(int projectId) =>
-        await _unitOfWork.Repository<ProjectAppUrl>()
+        await _unitOfWork
+            .Repository<ProjectAppUrl>()
             .Query()
             .AsNoTracking()
             .Include(u => u.AppEnvironment)
@@ -960,19 +1132,31 @@ public class ProjectService : IProjectService
         // (see NullOwnerProject_ActionResolvesOnCommentCreate) that must keep resolving null-owner
         // rows below — conflating the two by relying on the same null sentinel would be exactly the
         // kind of fragile special-casing this method used to get wrong.
-        if (_currentUser.IsSuperAdmin)
+        // DB-13 (F2): an impersonating operator DOES resolve a project — the target workspace's,
+        // via the `tenant` claim below — so only a non-impersonating super admin is refused here.
+        if (_currentUser.IsSuperAdmin && !_currentUser.IsImpersonating)
             return Result<int>.NotFound(MessageKeys.Project.NotFound);
 
         // Resolve by the caller's own scope. Widget stakeholders are registered UNDER the project's
         // owner, so their OwnerFor (= tenant) equals the project's owner. Never key-only: that would
         // resolve other tenants' projects (the explicit OwnerId match is belt-and-suspenders alongside
         // the EF query filter, which is the primary tenant boundary).
-        var ownerId = TenantStamp.OwnerFor(_currentUser);
-        var project = await _unitOfWork.Repository<Project>()
+        // DB-13: this is a READ scope (the impersonation token's `tenant` claim), not the write
+        // stamp TenantStamp.OwnerFor(_currentUser) computes (which is null for every super admin,
+        // impersonating or not) — TenantId is identical to OwnerFor for every non-super caller.
+        var ownerId = _currentUser.TenantId;
+        var project = await _unitOfWork
+            .Repository<Project>()
             .Query()
             .AsNoTracking()
             .Where(p => p.DeletedAt == null && p.Key == keyNormalized && p.OwnerId == ownerId)
-            .Select(p => new { p.Id, p.IsActiveLocal, p.IsActiveStaging, p.IsActiveProduction })
+            .Select(p => new
+            {
+                p.Id,
+                p.IsActiveLocal,
+                p.IsActiveStaging,
+                p.IsActiveProduction,
+            })
             .FirstOrDefaultAsync();
 
         // STRICT: projects must be pre-defined in the dashboard. No lazy self-create.
@@ -1001,11 +1185,17 @@ public class ProjectService : IProjectService
         // known to exist and be resolvable to this tenant from the base call above.
         var keyNormalized = key.Trim().ToLower();
         var ownerId = TenantStamp.OwnerFor(_currentUser);
-        var flags = await _unitOfWork.Repository<Project>()
+        var flags = await _unitOfWork
+            .Repository<Project>()
             .Query()
             .AsNoTracking()
             .Where(p => p.DeletedAt == null && p.Key == keyNormalized && p.OwnerId == ownerId)
-            .Select(p => new { p.IsActiveLocal, p.IsActiveStaging, p.IsActiveProduction })
+            .Select(p => new
+            {
+                p.IsActiveLocal,
+                p.IsActiveStaging,
+                p.IsActiveProduction,
+            })
             .FirstOrDefaultAsync();
 
         var activeForEnvironment = environment switch
@@ -1022,53 +1212,87 @@ public class ProjectService : IProjectService
         return baseResult;
     }
 
-    public async Task<Result<CaptureConfigResponse>> GetCaptureConfigAsync(string key, string? origin = null)
+    public async Task<Result<CaptureConfigResponse>> GetCaptureConfigAsync(
+        string key,
+        string? origin = null
+    )
     {
         var projectResult = await EnsureAsync(key);
         if (!projectResult.IsSuccess)
             return projectResult.IsConflict
-                ? Result<CaptureConfigResponse>.Conflict(projectResult.Message ?? MessageKeys.Project.Disabled)
-                : Result<CaptureConfigResponse>.NotFound(projectResult.Message ?? MessageKeys.Project.NotFound);
+                ? Result<CaptureConfigResponse>.Conflict(
+                    projectResult.Message ?? MessageKeys.Project.Disabled
+                )
+                : Result<CaptureConfigResponse>.NotFound(
+                    projectResult.Message ?? MessageKeys.Project.NotFound
+                );
 
-        var info = await _unitOfWork.Repository<Project>()
+        var info = await _unitOfWork
+            .Repository<Project>()
             .Query()
             .AsNoTracking()
             .Where(p => p.Id == projectResult.Data)
-            .Select(p => new { p.PageContextCaptureEnabled, p.CaptureTextContent, p.Name, p.EnvironmentSelectorRoleIds, p.CommitStyle, p.CreatedBy, p.OwnerId })
+            .Select(p => new
+            {
+                p.PageContextCaptureEnabled,
+                p.CaptureTextContent,
+                p.Name,
+                p.EnvironmentSelectorRoleIds,
+                p.CommitStyle,
+                p.CreatedBy,
+                p.OwnerId,
+            })
             .FirstAsync();
 
         // R4-01: the widget's "Add more fields" panel is driven by the PROJECT's workspace
         // definitions — enabled only, resolved server-side from the owner.
-        var commentFieldDefs = await _commentFields.GetDefinitionsForOwnerAsync(info.OwnerId, enabledOnly: true);
+        var commentFieldDefs = await _commentFields.GetDefinitionsForOwnerAsync(
+            info.OwnerId,
+            enabledOnly: true
+        );
 
-        return Result<CaptureConfigResponse>.Success(new CaptureConfigResponse
-        {
-            Id = projectResult.Data,
-            // Resolved from THIS request's origin, so the same built file reports `staging` on
-            // staging and `production` on production without being rebuilt.
-            ResolvedEnvironment = await ResolveEnvironmentAsync(projectResult.Data, origin),
-            PageContextCaptureEnabled = info.PageContextCaptureEnabled,
-            CaptureTextContent = info.CaptureTextContent,
-            Name = info.Name,
-            ShowEnvironmentSelector = ShowEnvironmentSelectorFor(info.EnvironmentSelectorRoleIds),
-            CommitStyle = info.CommitStyle,
-            // Same gate as UpdateAsync (line ~192) — the widget hides/disables the commit-style
-            // control entirely for a caller who couldn't actually save a change to it.
-            CanEditSettings = _currentUser.IsAdmin || info.CreatedBy == _currentUser.Id,
-            CommentFields = commentFieldDefs.Select(CommentFieldDefinitionDto.FromDomain).ToList(),
-        });
+        return Result<CaptureConfigResponse>.Success(
+            new CaptureConfigResponse
+            {
+                Id = projectResult.Data,
+                // Resolved from THIS request's origin, so the same built file reports `staging` on
+                // staging and `production` on production without being rebuilt.
+                ResolvedEnvironment = await ResolveEnvironmentAsync(projectResult.Data, origin),
+                PageContextCaptureEnabled = info.PageContextCaptureEnabled,
+                CaptureTextContent = info.CaptureTextContent,
+                Name = info.Name,
+                ShowEnvironmentSelector = ShowEnvironmentSelectorFor(
+                    info.EnvironmentSelectorRoleIds
+                ),
+                CommitStyle = info.CommitStyle,
+                // Same gate as UpdateAsync (line ~192) — the widget hides/disables the commit-style
+                // control entirely for a caller who couldn't actually save a change to it.
+                CanEditSettings = _currentUser.IsAdmin || info.CreatedBy == _currentUser.Id,
+                CommentFields = commentFieldDefs
+                    .Select(CommentFieldDefinitionDto.FromDomain)
+                    .ToList(),
+            }
+        );
     }
 
-    public async Task<Result<ProjectStackResponse>> SetStackAsync(string key, SetProjectStackRequest request)
+    public async Task<Result<ProjectStackResponse>> SetStackAsync(
+        string key,
+        SetProjectStackRequest request
+    )
     {
         var projectResult = await EnsureAsync(key);
         if (!projectResult.IsSuccess)
             return projectResult.IsConflict
-                ? Result<ProjectStackResponse>.Conflict(projectResult.Message ?? MessageKeys.Project.Disabled)
-                : Result<ProjectStackResponse>.NotFound(projectResult.Message ?? MessageKeys.Project.NotFound);
+                ? Result<ProjectStackResponse>.Conflict(
+                    projectResult.Message ?? MessageKeys.Project.Disabled
+                )
+                : Result<ProjectStackResponse>.NotFound(
+                    projectResult.Message ?? MessageKeys.Project.NotFound
+                );
 
         var project = await _unitOfWork.Repository<Project>().GetByIdAsync(projectResult.Data);
-        if (project == null) return Result<ProjectStackResponse>.NotFound(MessageKeys.Project.NotFound);
+        if (project == null)
+            return Result<ProjectStackResponse>.NotFound(MessageKeys.Project.NotFound);
 
         var changed = false;
 
@@ -1081,7 +1305,9 @@ public class ProjectService : IProjectService
         var hasBackend = request.Backend is { Count: > 0 };
         if (hasFrontend || hasBackend)
         {
-            var next = JsonSerializer.Serialize(new { frontend = request.Frontend ?? new List<string>(), backend = request.Backend });
+            var next = JsonSerializer.Serialize(
+                new { frontend = request.Frontend ?? new List<string>(), backend = request.Backend }
+            );
             if (!string.Equals(project.TechStack, next, StringComparison.Ordinal))
             {
                 project.TechStack = next;
@@ -1109,7 +1335,9 @@ public class ProjectService : IProjectService
             await _unitOfWork.SaveChangesAsync();
         }
 
-        return Result<ProjectStackResponse>.Success(BuildStackResponse(project.TechStack, project.AiToolsUsed));
+        return Result<ProjectStackResponse>.Success(
+            BuildStackResponse(project.TechStack, project.AiToolsUsed)
+        );
     }
 
     public async Task<Result<ProjectStackResponse>> GetStackAsync(string key)
@@ -1117,29 +1345,40 @@ public class ProjectService : IProjectService
         var projectResult = await EnsureAsync(key);
         if (!projectResult.IsSuccess)
             return projectResult.IsConflict
-                ? Result<ProjectStackResponse>.Conflict(projectResult.Message ?? MessageKeys.Project.Disabled)
-                : Result<ProjectStackResponse>.NotFound(projectResult.Message ?? MessageKeys.Project.NotFound);
+                ? Result<ProjectStackResponse>.Conflict(
+                    projectResult.Message ?? MessageKeys.Project.Disabled
+                )
+                : Result<ProjectStackResponse>.NotFound(
+                    projectResult.Message ?? MessageKeys.Project.NotFound
+                );
 
-        var info = await _unitOfWork.Repository<Project>()
+        var info = await _unitOfWork
+            .Repository<Project>()
             .Query()
             .AsNoTracking()
             .Where(p => p.Id == projectResult.Data)
             .Select(p => new { p.TechStack, p.AiToolsUsed })
             .FirstAsync();
 
-        return Result<ProjectStackResponse>.Success(BuildStackResponse(info.TechStack, info.AiToolsUsed));
+        return Result<ProjectStackResponse>.Success(
+            BuildStackResponse(info.TechStack, info.AiToolsUsed)
+        );
     }
 
     // Anonymous, cross-tenant aggregate — the only method on this service that bypasses the tenant
     // query filter. Returns anonymized counts only; never project names, tenant IDs, or emails.
     public async Task<Result<StacksSummaryResponse>> GetStacksSummaryAsync()
     {
-        var projects = await _unitOfWork.Repository<Project>()
+        var projects = await _unitOfWork
+            .Repository<Project>()
             .Query()
             .IgnoreQueryFilters()
             .AsNoTracking()
-            .Where(p => p.DeletedAt == null && (p.IsActiveLocal || p.IsActiveStaging || p.IsActiveProduction)
-                && (p.TechStack != null || p.AiToolsUsed != null))
+            .Where(p =>
+                p.DeletedAt == null
+                && (p.IsActiveLocal || p.IsActiveStaging || p.IsActiveProduction)
+                && (p.TechStack != null || p.AiToolsUsed != null)
+            )
             .Select(p => new { p.TechStack, p.AiToolsUsed })
             .ToListAsync();
 
@@ -1159,7 +1398,10 @@ public class ProjectService : IProjectService
         return Result<StacksSummaryResponse>.Success(summary);
     }
 
-    public async Task<Result<WidgetActivationResponse>> CheckWidgetActiveAsync(string key, string? origin)
+    public async Task<Result<WidgetActivationResponse>> CheckWidgetActiveAsync(
+        string key,
+        string? origin
+    )
     {
         var keyNormalized = key.Trim().ToLower();
 
@@ -1168,35 +1410,54 @@ public class ProjectService : IProjectService
         // anonymous registration lookup. Project keys are unique only per (key, owner_id): fetch up
         // to two matches and treat an ambiguous key the same as "not active" — a bare FirstOrDefault
         // would arbitrarily bind this check to the WRONG tenant's project on a key collision.
-        var projectMatches = await _unitOfWork.Repository<Project>()
+        var projectMatches = await _unitOfWork
+            .Repository<Project>()
             .Query()
             .IgnoreQueryFilters()
             .AsNoTracking()
             .Where(p => p.DeletedAt == null && p.Key == keyNormalized)
-            .Select(p => new { p.Id, p.IsActiveLocal, p.IsActiveStaging, p.IsActiveProduction })
+            .Select(p => new
+            {
+                p.Id,
+                p.IsActiveLocal,
+                p.IsActiveStaging,
+                p.IsActiveProduction,
+            })
             .Take(2)
             .ToListAsync();
 
         if (projectMatches.Count != 1)
-            return Result<WidgetActivationResponse>.Success(new WidgetActivationResponse { Active = false });
+            return Result<WidgetActivationResponse>.Success(
+                new WidgetActivationResponse { Active = false }
+            );
 
         var project = projectMatches[0];
         if (!(project.IsActiveLocal || project.IsActiveStaging || project.IsActiveProduction))
-            return Result<WidgetActivationResponse>.Success(new WidgetActivationResponse { Active = false });
+            return Result<WidgetActivationResponse>.Success(
+                new WidgetActivationResponse { Active = false }
+            );
 
         if (string.IsNullOrWhiteSpace(origin))
-            return Result<WidgetActivationResponse>.Success(new WidgetActivationResponse { Active = true });
+            return Result<WidgetActivationResponse>.Success(
+                new WidgetActivationResponse { Active = true }
+            );
 
         var normalized = OriginNormalizer.Normalize(origin);
-        
+
         // Rows on DISABLED environments are included deliberately — see the block below.
-        var urls = await _unitOfWork.Repository<ProjectAppUrl>()
+        var urls = await _unitOfWork
+            .Repository<ProjectAppUrl>()
             .Query()
             .IgnoreQueryFilters()
             .AsNoTracking()
             .Include(u => u.AppEnvironment)
             .Where(u => u.ProjectId == project.Id && u.DeletedAt == null)
-            .Select(u => new { u.Url, u.IsActive, EnvironmentEnabled = u.AppEnvironment.IsEnabled })
+            .Select(u => new
+            {
+                u.Url,
+                u.IsActive,
+                EnvironmentEnabled = u.AppEnvironment.IsEnabled,
+            })
             .ToListAsync();
 
         // No configured mapping for this origin → not blocked. Most projects never configure "other
@@ -1212,7 +1473,9 @@ public class ProjectService : IProjectService
         // widget stops appearing there, not that the setting is quietly ignored.
         var match = urls.FirstOrDefault(u => OriginNormalizer.Normalize(u.Url) == normalized);
         var active = match == null || (match.IsActive && match.EnvironmentEnabled);
-        return Result<WidgetActivationResponse>.Success(new WidgetActivationResponse { Active = active });
+        return Result<WidgetActivationResponse>.Success(
+            new WidgetActivationResponse { Active = active }
+        );
     }
 
     private static ProjectStackResponse BuildStackResponse(string? techStack, string? aiToolsUsed)
@@ -1225,10 +1488,20 @@ public class ProjectService : IProjectService
             try
             {
                 using var doc = JsonDocument.Parse(techStack);
-                if (doc.RootElement.TryGetProperty("frontend", out var f) && f.ValueKind == JsonValueKind.Array)
-                    frontend = f.EnumerateArray().Select(e => e.GetString() ?? string.Empty).ToList();
-                if (doc.RootElement.TryGetProperty("backend", out var b) && b.ValueKind == JsonValueKind.Array)
-                    backend = b.EnumerateArray().Select(e => e.GetString() ?? string.Empty).ToList();
+                if (
+                    doc.RootElement.TryGetProperty("frontend", out var f)
+                    && f.ValueKind == JsonValueKind.Array
+                )
+                    frontend = f.EnumerateArray()
+                        .Select(e => e.GetString() ?? string.Empty)
+                        .ToList();
+                if (
+                    doc.RootElement.TryGetProperty("backend", out var b)
+                    && b.ValueKind == JsonValueKind.Array
+                )
+                    backend = b.EnumerateArray()
+                        .Select(e => e.GetString() ?? string.Empty)
+                        .ToList();
             }
             catch (JsonException)
             {
@@ -1237,12 +1510,18 @@ public class ProjectService : IProjectService
             }
         }
 
-        return new ProjectStackResponse { Frontend = frontend, Backend = backend, AiTools = ParseStringList(aiToolsUsed) };
+        return new ProjectStackResponse
+        {
+            Frontend = frontend,
+            Backend = backend,
+            AiTools = ParseStringList(aiToolsUsed),
+        };
     }
 
     private static List<string> ParseStringList(string? raw)
     {
-        if (string.IsNullOrEmpty(raw)) return new List<string>();
+        if (string.IsNullOrEmpty(raw))
+            return new List<string>();
         try
         {
             return JsonSerializer.Deserialize<List<string>>(raw) ?? new List<string>();
@@ -1260,16 +1539,23 @@ public class ProjectService : IProjectService
     private async Task<string?> ResolveCreatorNameAsync(Guid id) =>
         (await ResolveCreatorNamesAsync(new[] { id })).GetValueOrDefault(id);
 
-    private static ProjectActivationState ComputeActivationState(bool local, bool staging, bool production)
+    private static ProjectActivationState ComputeActivationState(
+        bool local,
+        bool staging,
+        bool production
+    )
     {
-        if (local && staging && production) return ProjectActivationState.Active;
-        if (!local && !staging && !production) return ProjectActivationState.Inactive;
+        if (local && staging && production)
+            return ProjectActivationState.Active;
+        if (!local && !staging && !production)
+            return ProjectActivationState.Inactive;
         return ProjectActivationState.Partial;
     }
 
     private static List<int>? ParseRoleIds(string? raw)
     {
-        if (string.IsNullOrEmpty(raw)) return null;
+        if (string.IsNullOrEmpty(raw))
+            return null;
         try
         {
             var list = JsonSerializer.Deserialize<List<int>>(raw);
@@ -1295,10 +1581,17 @@ public class ProjectService : IProjectService
         return _currentUser.RoleId.HasValue && roleIds.Contains(_currentUser.RoleId.Value);
     }
 
-    private ProjectResponse MapToResponse(Project project, List<PredefinedAction> actions, List<ProjectAppUrl> appUrls, int commentsCount, string? createdByName)
+    private ProjectResponse MapToResponse(
+        Project project,
+        List<PredefinedAction> actions,
+        List<ProjectAppUrl> appUrls,
+        int commentsCount,
+        string? createdByName
+    )
     {
         var canEdit = _currentUser.IsAdmin || project.CreatedBy == _currentUser.Id;
-        var canDelete = _currentUser.IsAdmin || (project.CreatedBy == _currentUser.Id && commentsCount == 0);
+        var canDelete =
+            _currentUser.IsAdmin || (project.CreatedBy == _currentUser.Id && commentsCount == 0);
 
         return new ProjectResponse
         {
@@ -1308,16 +1601,23 @@ public class ProjectService : IProjectService
             IsActiveLocal = project.IsActiveLocal,
             IsActiveStaging = project.IsActiveStaging,
             IsActiveProduction = project.IsActiveProduction,
-            ActivationState = ComputeActivationState(project.IsActiveLocal, project.IsActiveStaging, project.IsActiveProduction),
+            ActivationState = ComputeActivationState(
+                project.IsActiveLocal,
+                project.IsActiveStaging,
+                project.IsActiveProduction
+            ),
             AppUrl = project.AppUrl,
-            AppUrls = appUrls.OrderBy(u => u.AppEnvironment?.Name).Select(u => new ProjectAppUrlResponse
-            {
-                AppEnvironmentId = u.AppEnvironmentId,
-                EnvironmentName = u.AppEnvironment?.Name ?? "",
-                Url = u.Url,
-                IsActive = u.IsActive,
-                EnvironmentIsEnabled = u.AppEnvironment?.IsEnabled ?? true
-            }).ToList(),
+            AppUrls = appUrls
+                .OrderBy(u => u.AppEnvironment?.Name)
+                .Select(u => new ProjectAppUrlResponse
+                {
+                    AppEnvironmentId = u.AppEnvironmentId,
+                    EnvironmentName = u.AppEnvironment?.Name ?? "",
+                    Url = u.Url,
+                    IsActive = u.IsActive,
+                    EnvironmentIsEnabled = u.AppEnvironment?.IsEnabled ?? true,
+                })
+                .ToList(),
             PageContextCaptureEnabled = project.PageContextCaptureEnabled,
             EnforceAllowedOrigins = project.EnforceAllowedOrigins,
             CaptureTextContent = project.CaptureTextContent,
@@ -1332,13 +1632,13 @@ public class ProjectService : IProjectService
                     Text = a.Text,
                     Prompt = a.Prompt,
                     IsActive = a.IsActive,
-                    SortOrder = a.SortOrder
+                    SortOrder = a.SortOrder,
                 })
                 .ToList(),
             CreatedByName = createdByName,
             CommentsCount = commentsCount,
             CanEdit = canEdit,
-            CanDelete = canDelete
+            CanDelete = canDelete,
         };
     }
 }

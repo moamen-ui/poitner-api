@@ -36,9 +36,10 @@ public class PlatformInsightsService : IPlatformInsightsService
         if (!_currentUser.IsSuperAdmin)
             return Result<PlatformInsightsResponse>.Forbidden(MessageKeys.Common.Forbidden);
 
-        // Super admin bypasses the tenant query filters already (see AppDbContext), so this is a
-        // cross-tenant read with no extra scoping needed.
-        var comments = await LoadCommentsAsync(ignoreFilters: false);
+        // DB-13 (F2): the six-filter narrowing means a plain operator's query filter no longer
+        // bypasses Comment/UsageEvent — IgnoreQueryFilters() explicitly for this cross-tenant view.
+        // Still metadata-only: CommentRow below carries no body/element/custom_fields.
+        var comments = await LoadCommentsAsync(ignoreFilters: true);
         var users = await _unitOfWork
             .Repository<User>()
             .Query()
@@ -46,7 +47,7 @@ public class PlatformInsightsService : IPlatformInsightsService
             .Where(u => u.DeletedAt == null)
             .Select(u => new { u.Language })
             .ToListAsync();
-        var langEvents = await LoadWidgetLanguageEventsAsync(ignoreFilters: false);
+        var langEvents = await LoadWidgetLanguageEventsAsync(ignoreFilters: true);
 
         var tenantNames = await BuildTenantNameMapAsync(comments.Select(c => c.OwnerId));
 

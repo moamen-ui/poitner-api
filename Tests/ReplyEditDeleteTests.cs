@@ -29,29 +29,47 @@ public class ReplyEditDeleteTests
         public int? RoleId { get; set; }
         public string? KeyScopes { get; set; }
         public string? Scope { get; set; }
+        public long? ImpersonationSessionId { get; set; }
+        public bool IsImpersonating => ImpersonationSessionId != null;
     }
 
     private sealed class FakeFileStorage : IFileStorage
     {
-        public Task<string> SaveAsync(string ownerSegment, string project, Stream content, string extension) => Task.FromResult("uploads/x");
+        public Task<string> SaveAsync(
+            string ownerSegment,
+            string project,
+            Stream content,
+            string extension
+        ) => Task.FromResult("uploads/x");
+
         public Task DeleteAsync(string relativePathOrUrl) => Task.CompletedTask;
+
         public Task DeleteOwnerFilesAsync(string ownerSegment) => Task.CompletedTask;
     }
 
     private sealed class FakeUploadSigner : IUploadSigner
     {
         public string SignedUrl(string relPath) => relPath;
+
         public bool Validate(string relPath, long exp, string sig) => true;
+
         public string ExtractRelPath(string stored) => stored;
     }
 
     private sealed class FakeSettings : ISettingsService
     {
-        public Task<bool> GetBoolAsync(string key, bool fallback = false) => Task.FromResult(fallback);
+        public Task<bool> GetBoolAsync(string key, bool fallback = false) =>
+            Task.FromResult(fallback);
+
         public Task SetBoolAsync(string key, bool value) => Task.CompletedTask;
-        public Task<string> GetStringAsync(string key, string fallback = "") => Task.FromResult(fallback);
+
+        public Task<string> GetStringAsync(string key, string fallback = "") =>
+            Task.FromResult(fallback);
+
         public Task SetStringAsync(string key, string value) => Task.CompletedTask;
+
         public Task<int> GetIntAsync(string key, int fallback = 0) => Task.FromResult(fallback);
+
         public Task SetIntAsync(string key, int value) => Task.CompletedTask;
     }
 
@@ -61,36 +79,89 @@ public class ReplyEditDeleteTests
     }
 
     private static AppDbContext BuildContext(ICurrentUser user, string dbName) =>
-        new(new DbContextOptionsBuilder<AppDbContext>().UseInMemoryDatabase(dbName).Options, user,
-            new Microsoft.Extensions.Configuration.ConfigurationBuilder().Build());
+        new(
+            new DbContextOptionsBuilder<AppDbContext>().UseInMemoryDatabase(dbName).Options,
+            user,
+            new Microsoft.Extensions.Configuration.ConfigurationBuilder().Build()
+        );
 
-    private CommentService BuildService(ICurrentUser user, string dbName, ICurrentClient? currentClient = null)
+    private CommentService BuildService(
+        ICurrentUser user,
+        string dbName,
+        ICurrentClient? currentClient = null
+    )
     {
         var uow = new UnitOfWork(BuildContext(user, dbName));
-        var projectService = new ProjectService(uow, user, new PassThroughEntitlements(), TestProjectServiceDeps.Settings(), TestProjectServiceDeps.Configuration(), new FakeAuditWriter());
-        var actionService = new PredefinedActionService(uow, projectService, user, new PassThroughEntitlements());
-        return new CommentService(uow, projectService, actionService, new FakeFileStorage(), user,
-            new FakeUploadSigner(), new FakeSettings(), new PassThroughEntitlements(), currentClient);
+        var projectService = new ProjectService(
+            uow,
+            user,
+            new PassThroughEntitlements(),
+            TestProjectServiceDeps.Settings(),
+            TestProjectServiceDeps.Configuration(),
+            new FakeAuditWriter()
+        );
+        var actionService = new PredefinedActionService(
+            uow,
+            projectService,
+            user,
+            new PassThroughEntitlements()
+        );
+        return new CommentService(
+            uow,
+            projectService,
+            actionService,
+            new FakeFileStorage(),
+            user,
+            new FakeUploadSigner(),
+            new FakeSettings(),
+            new PassThroughEntitlements(),
+            currentClient
+        );
     }
 
     // Seeds one project + one comment (by `authorId`) with one reply (by `replyAuthorId`).
     private static (int commentId, int replyId) SeedCommentWithReply(
-        string dbName, Guid tenant, Guid authorId, Guid replyAuthorId, bool isAi = false)
+        string dbName,
+        Guid tenant,
+        Guid authorId,
+        Guid replyAuthorId,
+        bool isAi = false
+    )
     {
         using var seed = BuildContext(new FakeCurrentUser { IsSuperAdmin = true }, dbName);
-        var project = new Project { Key = "proj", Name = "Proj", IsActiveLocal = true, IsActiveStaging = true, IsActiveProduction = true, OwnerId = tenant };
+        var project = new Project
+        {
+            Key = "proj",
+            Name = "Proj",
+            IsActiveLocal = true,
+            IsActiveStaging = true,
+            IsActiveProduction = true,
+            OwnerId = tenant,
+        };
         seed.Projects.Add(project);
         seed.SaveChanges();
 
         var comment = new Comment
         {
-            ProjectId = project.Id, OwnerId = tenant, AuthorId = authorId, Body = "the comment",
-            Status = CommentStatus.Open, Environment = EnvironmentTag.Local, Element = new ElementCapture()
+            ProjectId = project.Id,
+            OwnerId = tenant,
+            AuthorId = authorId,
+            Body = "the comment",
+            Status = CommentStatus.Open,
+            Environment = EnvironmentTag.Local,
+            Element = new ElementCapture(),
         };
         seed.Comments.Add(comment);
         seed.SaveChanges();
 
-        var reply = new Reply { CommentId = comment.Id, OwnerId = tenant, AuthorId = replyAuthorId, Body = "original reply", IsAi = isAi };
+        var reply = new Reply
+        {
+            CommentId = comment.Id,
+            OwnerId = tenant,
+            AuthorId = replyAuthorId,
+            Body = "original reply",
+            IsAi = isAi,
+        };
         seed.Replies.Add(reply);
         seed.SaveChanges();
 
@@ -106,7 +177,11 @@ public class ReplyEditDeleteTests
         var (_, replyId) = SeedCommentWithReply(db, tenant, Guid.NewGuid(), authorId);
 
         var svc = BuildService(new FakeCurrentUser { Id = authorId, TenantId = tenant }, db);
-        var result = await svc.EditReplyAsync(replyId, new UpdateReplyRequest { Body = "edited reply" }, authorId);
+        var result = await svc.EditReplyAsync(
+            replyId,
+            new UpdateReplyRequest { Body = "edited reply" },
+            authorId
+        );
 
         Assert.True(result.IsSuccess);
         Assert.Equal("edited reply", result.Data!.Body);
@@ -122,8 +197,20 @@ public class ReplyEditDeleteTests
         var (_, replyId) = SeedCommentWithReply(db, tenant, Guid.NewGuid(), authorId);
 
         // Even a workspace admin cannot edit someone else's reply — same rule as comments.
-        var svc = BuildService(new FakeCurrentUser { Id = otherId, IsAdmin = true, TenantId = tenant }, db);
-        var result = await svc.EditReplyAsync(replyId, new UpdateReplyRequest { Body = "hijacked" }, otherId);
+        var svc = BuildService(
+            new FakeCurrentUser
+            {
+                Id = otherId,
+                IsAdmin = true,
+                TenantId = tenant,
+            },
+            db
+        );
+        var result = await svc.EditReplyAsync(
+            replyId,
+            new UpdateReplyRequest { Body = "hijacked" },
+            otherId
+        );
 
         Assert.False(result.IsSuccess);
     }
@@ -132,9 +219,16 @@ public class ReplyEditDeleteTests
     public async Task EditReply_NotFound_ReturnsNotFound()
     {
         var db = Guid.NewGuid().ToString();
-        var svc = BuildService(new FakeCurrentUser { Id = Guid.NewGuid(), TenantId = Guid.NewGuid() }, db);
+        var svc = BuildService(
+            new FakeCurrentUser { Id = Guid.NewGuid(), TenantId = Guid.NewGuid() },
+            db
+        );
 
-        var result = await svc.EditReplyAsync(999_999, new UpdateReplyRequest { Body = "x" }, Guid.NewGuid());
+        var result = await svc.EditReplyAsync(
+            999_999,
+            new UpdateReplyRequest { Body = "x" },
+            Guid.NewGuid()
+        );
 
         Assert.True(result.IsNotFound);
     }
@@ -162,7 +256,15 @@ public class ReplyEditDeleteTests
         var adminId = Guid.NewGuid();
         var (_, replyId) = SeedCommentWithReply(db, tenant, Guid.NewGuid(), authorId);
 
-        var svc = BuildService(new FakeCurrentUser { Id = adminId, IsAdmin = true, TenantId = tenant }, db);
+        var svc = BuildService(
+            new FakeCurrentUser
+            {
+                Id = adminId,
+                IsAdmin = true,
+                TenantId = tenant,
+            },
+            db
+        );
         var result = await svc.DeleteReplyAsync(replyId, adminId, isAdmin: true);
 
         Assert.True(result.IsSuccess);
@@ -192,13 +294,26 @@ public class ReplyEditDeleteTests
         int commentId;
         using (var seed = BuildContext(new FakeCurrentUser { IsSuperAdmin = true }, db))
         {
-            var project = new Project { Key = "proj", Name = "Proj", IsActiveLocal = true, IsActiveStaging = true, IsActiveProduction = true, OwnerId = tenant };
+            var project = new Project
+            {
+                Key = "proj",
+                Name = "Proj",
+                IsActiveLocal = true,
+                IsActiveStaging = true,
+                IsActiveProduction = true,
+                OwnerId = tenant,
+            };
             seed.Projects.Add(project);
             seed.SaveChanges();
             var comment = new Comment
             {
-                ProjectId = project.Id, OwnerId = tenant, AuthorId = authorId, Body = "the comment",
-                Status = CommentStatus.Open, Environment = EnvironmentTag.Local, Element = new ElementCapture()
+                ProjectId = project.Id,
+                OwnerId = tenant,
+                AuthorId = authorId,
+                Body = "the comment",
+                Status = CommentStatus.Open,
+                Environment = EnvironmentTag.Local,
+                Element = new ElementCapture(),
             };
             seed.Comments.Add(comment);
             seed.SaveChanges();
@@ -206,8 +321,16 @@ public class ReplyEditDeleteTests
         }
 
         // Widget/dashboard send X-Pointer-Client — IsHumanSurface true.
-        var svc = BuildService(new FakeCurrentUser { Id = authorId, TenantId = tenant }, db, new FakeCurrentClient(true));
-        var result = await svc.AddReplyAsync(commentId, new AddReplyRequest { Body = "a human reply" }, authorId);
+        var svc = BuildService(
+            new FakeCurrentUser { Id = authorId, TenantId = tenant },
+            db,
+            new FakeCurrentClient(true)
+        );
+        var result = await svc.AddReplyAsync(
+            commentId,
+            new AddReplyRequest { Body = "a human reply" },
+            authorId
+        );
 
         Assert.True(result.IsSuccess);
         Assert.False(result.Data!.IsAi);
@@ -222,13 +345,26 @@ public class ReplyEditDeleteTests
         int commentId;
         using (var seed = BuildContext(new FakeCurrentUser { IsSuperAdmin = true }, db))
         {
-            var project = new Project { Key = "proj", Name = "Proj", IsActiveLocal = true, IsActiveStaging = true, IsActiveProduction = true, OwnerId = tenant };
+            var project = new Project
+            {
+                Key = "proj",
+                Name = "Proj",
+                IsActiveLocal = true,
+                IsActiveStaging = true,
+                IsActiveProduction = true,
+                OwnerId = tenant,
+            };
             seed.Projects.Add(project);
             seed.SaveChanges();
             var comment = new Comment
             {
-                ProjectId = project.Id, OwnerId = tenant, AuthorId = authorId, Body = "the comment",
-                Status = CommentStatus.Open, Environment = EnvironmentTag.Local, Element = new ElementCapture()
+                ProjectId = project.Id,
+                OwnerId = tenant,
+                AuthorId = authorId,
+                Body = "the comment",
+                Status = CommentStatus.Open,
+                Environment = EnvironmentTag.Local,
+                Element = new ElementCapture(),
             };
             seed.Comments.Add(comment);
             seed.SaveChanges();
@@ -236,8 +372,16 @@ public class ReplyEditDeleteTests
         }
 
         // The CLI/pointer.sh/skill.md path — no X-Pointer-Client header, IsHumanSurface false.
-        var svc = BuildService(new FakeCurrentUser { Id = authorId, TenantId = tenant }, db, new FakeCurrentClient(false));
-        var result = await svc.AddReplyAsync(commentId, new AddReplyRequest { Body = "an automated reply" }, authorId);
+        var svc = BuildService(
+            new FakeCurrentUser { Id = authorId, TenantId = tenant },
+            db,
+            new FakeCurrentClient(false)
+        );
+        var result = await svc.AddReplyAsync(
+            commentId,
+            new AddReplyRequest { Body = "an automated reply" },
+            authorId
+        );
 
         Assert.True(result.IsSuccess);
         Assert.True(result.Data!.IsAi);
@@ -249,10 +393,20 @@ public class ReplyEditDeleteTests
         var db = Guid.NewGuid().ToString();
         var tenant = Guid.NewGuid();
         var replyAuthorId = Guid.NewGuid();
-        var (_, replyId) = SeedCommentWithReply(db, tenant, Guid.NewGuid(), replyAuthorId, isAi: true);
+        var (_, replyId) = SeedCommentWithReply(
+            db,
+            tenant,
+            Guid.NewGuid(),
+            replyAuthorId,
+            isAi: true
+        );
 
         var svc = BuildService(new FakeCurrentUser { Id = replyAuthorId, TenantId = tenant }, db);
-        var result = await svc.EditReplyAsync(replyId, new UpdateReplyRequest { Body = "hijacked" }, replyAuthorId);
+        var result = await svc.EditReplyAsync(
+            replyId,
+            new UpdateReplyRequest { Body = "hijacked" },
+            replyAuthorId
+        );
 
         Assert.False(result.IsSuccess);
     }
@@ -264,9 +418,23 @@ public class ReplyEditDeleteTests
         var tenant = Guid.NewGuid();
         var replyAuthorId = Guid.NewGuid();
         var adminId = Guid.NewGuid();
-        var (_, replyId) = SeedCommentWithReply(db, tenant, Guid.NewGuid(), replyAuthorId, isAi: true);
+        var (_, replyId) = SeedCommentWithReply(
+            db,
+            tenant,
+            Guid.NewGuid(),
+            replyAuthorId,
+            isAi: true
+        );
 
-        var svc = BuildService(new FakeCurrentUser { Id = adminId, IsAdmin = true, TenantId = tenant }, db);
+        var svc = BuildService(
+            new FakeCurrentUser
+            {
+                Id = adminId,
+                IsAdmin = true,
+                TenantId = tenant,
+            },
+            db
+        );
         var result = await svc.DeleteReplyAsync(replyId, adminId, isAdmin: true);
 
         Assert.False(result.IsSuccess);
@@ -276,7 +444,10 @@ public class ReplyEditDeleteTests
     public async Task DeleteReply_NotFound_ReturnsNotFound()
     {
         var db = Guid.NewGuid().ToString();
-        var svc = BuildService(new FakeCurrentUser { Id = Guid.NewGuid(), TenantId = Guid.NewGuid() }, db);
+        var svc = BuildService(
+            new FakeCurrentUser { Id = Guid.NewGuid(), TenantId = Guid.NewGuid() },
+            db
+        );
 
         var result = await svc.DeleteReplyAsync(999_999, Guid.NewGuid(), isAdmin: false);
 

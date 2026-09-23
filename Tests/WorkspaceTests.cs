@@ -31,6 +31,8 @@ public class WorkspaceTests
         public int? RoleId { get; set; }
         public string? KeyScopes { get; set; }
         public string? Scope { get; set; }
+        public long? ImpersonationSessionId { get; set; }
+        public bool IsImpersonating => ImpersonationSessionId != null;
     }
 
     private sealed class FakePasswordHasher : IPasswordHasher
@@ -44,7 +46,15 @@ public class WorkspaceTests
     {
         public string Issue(User user, WorkspaceMembership? membership, int? keyScopes = null) =>
             "token-for-" + user.PublicId.ToString("N");
+
         public string IssueSelection(User user) => "selection-for-" + user.PublicId.ToString("N");
+
+        public string IssueImpersonation(
+            User user,
+            Guid workspaceId,
+            long sessionId,
+            DateTime expiresAt
+        ) => "imp-for-" + user.PublicId.ToString("N");
     }
 
     private sealed class FakeSettings : ISettingsService
@@ -322,13 +332,20 @@ public class WorkspaceTests
         typeof(Workspace),
         typeof(UsageEvent),
         typeof(AuditEvent), // operator record: FK SET NULL, survives the workspace (DB-12, R8.8)
+        typeof(ImpersonationSession), // operator record: FK SET NULL, survives the workspace (DB-13)
     };
 
     [Fact]
     public void HardDeleteOrder_Exclusions_AreExactlyTheNamedOperatorTables()
     {
         Assert.Equal(
-            new[] { typeof(Workspace), typeof(UsageEvent), typeof(AuditEvent) },
+            new[]
+            {
+                typeof(Workspace),
+                typeof(UsageEvent),
+                typeof(AuditEvent),
+                typeof(ImpersonationSession),
+            },
             OperatorTableExclusions
         );
     }

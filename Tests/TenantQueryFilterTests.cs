@@ -27,22 +27,28 @@ public class TenantQueryFilterTests
         public int? RoleId { get; set; }
         public string? KeyScopes { get; set; }
         public string? Scope { get; set; }
+        public long? ImpersonationSessionId { get; set; }
+        public bool IsImpersonating => ImpersonationSessionId != null;
     }
 
     // ---------------------------------------------------------------------------
     // Helpers
     // ---------------------------------------------------------------------------
 
-    private static AppDbContext BuildContext(FakeCurrentUser user, string dbName, bool strictNullTenant = false)
+    private static AppDbContext BuildContext(
+        FakeCurrentUser user,
+        string dbName,
+        bool strictNullTenant = false
+    )
     {
-        var opts = new DbContextOptionsBuilder<AppDbContext>()
-            .UseInMemoryDatabase(dbName)
-            .Options;
+        var opts = new DbContextOptionsBuilder<AppDbContext>().UseInMemoryDatabase(dbName).Options;
         var config = new ConfigurationBuilder()
-            .AddInMemoryCollection(new Dictionary<string, string?>
-            {
-                ["Tenancy:StrictNullTenantIsolation"] = strictNullTenant ? "true" : "false"
-            })
+            .AddInMemoryCollection(
+                new Dictionary<string, string?>
+                {
+                    ["Tenancy:StrictNullTenantIsolation"] = strictNullTenant ? "true" : "false",
+                }
+            )
             .Build();
         return new AppDbContext(opts, user, config);
     }
@@ -69,15 +75,33 @@ public class TenantQueryFilterTests
         using (var seed = SuperAdminContext(db))
         {
             seed.Projects.AddRange(
-                new Project { Key = "A1", Name = "A1", OwnerId = tenantA },
-                new Project { Key = "A2", Name = "A2", OwnerId = tenantA },
-                new Project { Key = "B1", Name = "B1", OwnerId = tenantB }
+                new Project
+                {
+                    Key = "A1",
+                    Name = "A1",
+                    OwnerId = tenantA,
+                },
+                new Project
+                {
+                    Key = "A2",
+                    Name = "A2",
+                    OwnerId = tenantA,
+                },
+                new Project
+                {
+                    Key = "B1",
+                    Name = "B1",
+                    OwnerId = tenantB,
+                }
             );
             seed.SaveChanges();
         }
 
         // Tenant A scoped context.
-        using var ctx = BuildContext(new FakeCurrentUser { TenantId = tenantA, IsSuperAdmin = false }, db);
+        using var ctx = BuildContext(
+            new FakeCurrentUser { TenantId = tenantA, IsSuperAdmin = false },
+            db
+        );
         var results = ctx.Set<Project>().ToList();
 
         Assert.Equal(2, results.Count);
@@ -95,8 +119,18 @@ public class TenantQueryFilterTests
         using (var seed = SuperAdminContext(db))
         {
             seed.Projects.AddRange(
-                new Project { Key = "A1", Name = "A1", OwnerId = tenantA },
-                new Project { Key = "B1", Name = "B1", OwnerId = tenantB }
+                new Project
+                {
+                    Key = "A1",
+                    Name = "A1",
+                    OwnerId = tenantA,
+                },
+                new Project
+                {
+                    Key = "B1",
+                    Name = "B1",
+                    OwnerId = tenantB,
+                }
             );
             seed.SaveChanges();
         }
@@ -118,16 +152,37 @@ public class TenantQueryFilterTests
 
         using (var seed = SuperAdminContext(db))
         {
-            var tenantAUser = new User { Email = "a@x", PasswordHash = "h", DisplayName = "a", PublicId = Guid.NewGuid(), OwnerId = tenantA, RoleId = 1 };
+            var tenantAUser = new User
+            {
+                Email = "a@x",
+                PasswordHash = "h",
+                DisplayName = "a",
+                PublicId = Guid.NewGuid(),
+                OwnerId = tenantA,
+                RoleId = 1,
+            };
             seed.Users.Add(tenantAUser);
-            seed.Users.Add(new User { Email = "super@x", PasswordHash = "h", DisplayName = "super", PublicId = Guid.NewGuid(), OwnerId = null, RoleId = 1 });
+            seed.Users.Add(
+                new User
+                {
+                    Email = "super@x",
+                    PasswordHash = "h",
+                    DisplayName = "super",
+                    PublicId = Guid.NewGuid(),
+                    OwnerId = null,
+                    RoleId = 1,
+                }
+            );
             seed.SaveChanges();
             // DB-11a: the User filter is membership-based — a live membership in tenantA is what
             // makes this row visible now, not owner_id alone.
             TestSeed.Join(seed, tenantAUser, tenantA, new Role { Id = 1 });
         }
 
-        using var ctx = BuildContext(new FakeCurrentUser { TenantId = tenantA, IsSuperAdmin = false }, db);
+        using var ctx = BuildContext(
+            new FakeCurrentUser { TenantId = tenantA, IsSuperAdmin = false },
+            db
+        );
         var results = ctx.Set<User>().ToList();
 
         Assert.Single(results);
@@ -153,19 +208,52 @@ public class TenantQueryFilterTests
 
         using (var seed = SuperAdminContext(db))
         {
-            seed.Users.Add(new User { Email = "a@x", PasswordHash = "h", DisplayName = "a", PublicId = Guid.NewGuid(), OwnerId = tenantA, RoleId = 1 });
-            seed.Users.Add(new User { Email = "n1@x", PasswordHash = "h", DisplayName = "n1", PublicId = Guid.NewGuid(), OwnerId = null, RoleId = 1 });
-            seed.Users.Add(new User { Email = "n2@x", PasswordHash = "h", DisplayName = "n2", PublicId = Guid.NewGuid(), OwnerId = null, RoleId = 1 });
+            seed.Users.Add(
+                new User
+                {
+                    Email = "a@x",
+                    PasswordHash = "h",
+                    DisplayName = "a",
+                    PublicId = Guid.NewGuid(),
+                    OwnerId = tenantA,
+                    RoleId = 1,
+                }
+            );
+            seed.Users.Add(
+                new User
+                {
+                    Email = "n1@x",
+                    PasswordHash = "h",
+                    DisplayName = "n1",
+                    PublicId = Guid.NewGuid(),
+                    OwnerId = null,
+                    RoleId = 1,
+                }
+            );
+            seed.Users.Add(
+                new User
+                {
+                    Email = "n2@x",
+                    PasswordHash = "h",
+                    DisplayName = "n2",
+                    PublicId = Guid.NewGuid(),
+                    OwnerId = null,
+                    RoleId = 1,
+                }
+            );
             seed.SaveChanges();
         }
 
         using var ctx = BuildContext(
-            new FakeCurrentUser { TenantId = null, IsSuperAdmin = false }, db, strictNullTenant: false);
+            new FakeCurrentUser { TenantId = null, IsSuperAdmin = false },
+            db,
+            strictNullTenant: false
+        );
         var results = ctx.Set<User>().ToList();
 
-        Assert.Equal(2, results.Count);                              // both null-owner rows
+        Assert.Equal(2, results.Count); // both null-owner rows
         Assert.All(results, u => Assert.Null(u.OwnerId));
-        Assert.DoesNotContain(results, u => u.OwnerId == tenantA);   // never another tenant's row
+        Assert.DoesNotContain(results, u => u.OwnerId == tenantA); // never another tenant's row
     }
 
     [Fact]
@@ -179,12 +267,25 @@ public class TenantQueryFilterTests
 
         using (var seed = SuperAdminContext(db))
         {
-            seed.Users.Add(new User { Email = "n@x", PasswordHash = "h", DisplayName = "n", PublicId = Guid.NewGuid(), OwnerId = null, RoleId = 1 });
+            seed.Users.Add(
+                new User
+                {
+                    Email = "n@x",
+                    PasswordHash = "h",
+                    DisplayName = "n",
+                    PublicId = Guid.NewGuid(),
+                    OwnerId = null,
+                    RoleId = 1,
+                }
+            );
             seed.SaveChanges();
         }
 
         using var ctx = BuildContext(
-            new FakeCurrentUser { TenantId = null, IsSuperAdmin = false }, db, strictNullTenant: true);
+            new FakeCurrentUser { TenantId = null, IsSuperAdmin = false },
+            db,
+            strictNullTenant: true
+        );
 
         Assert.Empty(ctx.Set<User>().ToList());
     }
@@ -206,7 +307,10 @@ public class TenantQueryFilterTests
         }
 
         using var ctx = BuildContext(
-            new FakeCurrentUser { TenantId = null, IsSuperAdmin = false }, db, strictNullTenant: true);
+            new FakeCurrentUser { TenantId = null, IsSuperAdmin = false },
+            db,
+            strictNullTenant: true
+        );
 
         Assert.Empty(ctx.Set<Role>().ToList());
     }
@@ -233,7 +337,10 @@ public class TenantQueryFilterTests
             seed.SaveChanges();
         }
 
-        using var ctx = BuildContext(new FakeCurrentUser { TenantId = tenantA, IsSuperAdmin = false }, db);
+        using var ctx = BuildContext(
+            new FakeCurrentUser { TenantId = tenantA, IsSuperAdmin = false },
+            db
+        );
         var results = ctx.Set<Role>().ToList();
 
         // Should see tenantA rows + global (null) row — 3 total.
@@ -280,14 +387,32 @@ public class TenantQueryFilterTests
         using (var seed = SuperAdminContext(db))
         {
             seed.StatusPresentations.AddRange(
-                new StatusPresentation { StatusValue = 1, Label = "A-Open", OwnerId = tenantA },
-                new StatusPresentation { StatusValue = 2, Label = "B-Open", OwnerId = tenantB },
-                new StatusPresentation { StatusValue = 3, Label = "Global-Closed", OwnerId = null }
+                new StatusPresentation
+                {
+                    StatusValue = 1,
+                    Label = "A-Open",
+                    OwnerId = tenantA,
+                },
+                new StatusPresentation
+                {
+                    StatusValue = 2,
+                    Label = "B-Open",
+                    OwnerId = tenantB,
+                },
+                new StatusPresentation
+                {
+                    StatusValue = 3,
+                    Label = "Global-Closed",
+                    OwnerId = null,
+                }
             );
             seed.SaveChanges();
         }
 
-        using var ctx = BuildContext(new FakeCurrentUser { TenantId = tenantA, IsSuperAdmin = false }, db);
+        using var ctx = BuildContext(
+            new FakeCurrentUser { TenantId = tenantA, IsSuperAdmin = false },
+            db
+        );
         var results = ctx.Set<StatusPresentation>().ToList();
 
         Assert.Equal(2, results.Count);
@@ -310,14 +435,33 @@ public class TenantQueryFilterTests
         using (var seed = SuperAdminContext(db))
         {
             seed.PredefinedActions.AddRange(
-                new PredefinedAction { OwnerId = tenantA, Text = "A-tenant", Prompt = "pa" },
-                new PredefinedAction { OwnerId = tenantA, Text = "A-project", Prompt = "pa", ProjectId = 1 },
-                new PredefinedAction { OwnerId = tenantB, Text = "B-tenant", Prompt = "pb" }
+                new PredefinedAction
+                {
+                    OwnerId = tenantA,
+                    Text = "A-tenant",
+                    Prompt = "pa",
+                },
+                new PredefinedAction
+                {
+                    OwnerId = tenantA,
+                    Text = "A-project",
+                    Prompt = "pa",
+                    ProjectId = 1,
+                },
+                new PredefinedAction
+                {
+                    OwnerId = tenantB,
+                    Text = "B-tenant",
+                    Prompt = "pb",
+                }
             );
             seed.SaveChanges();
         }
 
-        using var ctx = BuildContext(new FakeCurrentUser { TenantId = tenantA, IsSuperAdmin = false }, db);
+        using var ctx = BuildContext(
+            new FakeCurrentUser { TenantId = tenantA, IsSuperAdmin = false },
+            db
+        );
         var results = ctx.Set<PredefinedAction>().ToList();
 
         Assert.Equal(2, results.Count);
@@ -325,8 +469,12 @@ public class TenantQueryFilterTests
         Assert.DoesNotContain(results, a => a.OwnerId == tenantB);
     }
 
+    // DB-13 (F2): PredefinedAction's rewritten first branch keeps the operator managing only the
+    // GLOBAL (null-owner) bucket — tenant rows are content (D13.2), invisible to a plain super
+    // admin, visible only to the impersonated tenant. (OwnerId is DB-enforced NOT NULL — a real
+    // null-owner row can no longer occur; only the rewritten branch's SHAPE is asserted here.)
     [Fact]
-    public void PredefinedAction_SuperAdmin_SeesAllRows()
+    public void PredefinedAction_SuperAdmin_SeesNoTenantRows_Impersonating_SeesTarget()
     {
         var db = Guid.NewGuid().ToString();
         var tenantA = Guid.NewGuid();
@@ -335,14 +483,38 @@ public class TenantQueryFilterTests
         using (var seed = SuperAdminContext(db))
         {
             seed.PredefinedActions.AddRange(
-                new PredefinedAction { OwnerId = tenantA, Text = "A", Prompt = "pa" },
-                new PredefinedAction { OwnerId = tenantB, Text = "B", Prompt = "pb" }
+                new PredefinedAction
+                {
+                    OwnerId = tenantA,
+                    Text = "A",
+                    Prompt = "pa",
+                },
+                new PredefinedAction
+                {
+                    OwnerId = tenantB,
+                    Text = "B",
+                    Prompt = "pb",
+                }
             );
             seed.SaveChanges();
         }
 
         using var ctx = SuperAdminContext(db);
-        Assert.Equal(2, ctx.Set<PredefinedAction>().Count());
+        Assert.Empty(ctx.Set<PredefinedAction>().ToList());
+
+        // Impersonating tenantA: sees exactly tenantA's tenant-wide action, never tenantB's.
+        using var impCtx = BuildContext(
+            new FakeCurrentUser
+            {
+                IsSuperAdmin = true,
+                TenantId = tenantA,
+                ImpersonationSessionId = 1,
+            },
+            db
+        );
+        var impRows = impCtx.Set<PredefinedAction>().ToList();
+        Assert.Single(impRows);
+        Assert.Equal("A", impRows[0].Text);
     }
 
     // ---------------------------------------------------------------------------
@@ -359,13 +531,26 @@ public class TenantQueryFilterTests
         using (var seed = SuperAdminContext(db))
         {
             seed.Projects.AddRange(
-                new Project { Key = "A1", Name = "A1", OwnerId = tenantA },
-                new Project { Key = "B1", Name = "B1", OwnerId = tenantB }
+                new Project
+                {
+                    Key = "A1",
+                    Name = "A1",
+                    OwnerId = tenantA,
+                },
+                new Project
+                {
+                    Key = "B1",
+                    Name = "B1",
+                    OwnerId = tenantB,
+                }
             );
             seed.SaveChanges();
         }
 
-        using var ctx = BuildContext(new FakeCurrentUser { TenantId = tenantA, IsSuperAdmin = false }, db);
+        using var ctx = BuildContext(
+            new FakeCurrentUser { TenantId = tenantA, IsSuperAdmin = false },
+            db
+        );
 
         // Without IgnoreQueryFilters: only tenant A's rows.
         var filtered = ctx.Set<Project>().ToList();

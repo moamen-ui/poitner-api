@@ -95,13 +95,81 @@ public static class AuthenticationExtensions
 
                         // DB-11b (GLM A6): a scope=select_workspace token is honoured ONLY on the
                         // exact switch-workspace path — never a prefix/sub-route match.
+                        var scope = principal?.FindFirst("scope")?.Value;
+
                         if (
-                            principal?.FindFirst("scope")?.Value == "select_workspace"
+                            scope == "select_workspace"
                             && !SelectionScopeFence.Allows(ctx.HttpContext.Request.Path)
                         )
                         {
                             ctx.Fail("Selection token.");
                             return;
+                        }
+
+                        // DB-13: the impersonation fence + liveness check must run for EVERY
+                        // request, independent of Auth:ValidateSecurityStamp — same reasoning as
+                        // the selection fence above. Placed after it, before the stamp/membership
+                        // block below (§3.5).
+                        if (scope == "impersonate")
+                        {
+                            if (
+                                !ImpersonationScopeFence.Allows(
+                                    ctx.HttpContext.Request.Method,
+                                    ctx.HttpContext.Request.Path
+                                )
+                            )
+                            {
+                                ctx.Fail("Impersonation tokens are read-only.");
+                                return;
+                            }
+
+                            var operatorSub =
+                                principal?.FindFirst(JwtRegisteredClaimNames.Sub)?.Value
+                                ?? principal?.FindFirst("sub")?.Value;
+                            if (
+                                !long.TryParse(principal?.FindFirst("imp")?.Value, out var imp)
+                                || !Guid.TryParse(
+                                    principal?.FindFirst("tenant")?.Value,
+                                    out var target
+                                )
+                                || !Guid.TryParse(operatorSub, out var operatorPublicId)
+                                || principal?.FindFirst("is_super_admin")?.Value != "true"
+                            )
+                            {
+                                ctx.Fail("Invalid impersonation token.");
+                                return;
+                            }
+
+                            // Fails CLOSED (unlike the stamp lookup below, which fails open) — the
+                            // whole point is that the session is provably live. No cache: one PK
+                            // read per request from a single operator; `end` therefore takes effect
+                            // on the next request.
+                            bool live;
+                            try
+                            {
+                                var impDb =
+                                    ctx.HttpContext.RequestServices.GetRequiredService<AppDbContext>();
+                                live = await ImpersonationLiveness.IsLiveAsync(
+                                    impDb,
+                                    imp,
+                                    target,
+                                    operatorPublicId
+                                );
+                            }
+                            catch (Exception)
+                            {
+                                ctx.Fail("Impersonation session has ended.");
+                                return;
+                            }
+
+                            if (!live)
+                            {
+                                ctx.Fail("Impersonation session has ended.");
+                                return;
+                            }
+                            // fall through to the identity-stamp check below; the membership/mstamp
+                            // check is skipped there for scope == "impersonate" (operators have no
+                            // membership).
                         }
 
                         if (!validateStamp)
@@ -167,8 +235,12 @@ public static class AuthenticationExtensions
                                     if (user is null)
                                         return new StampValidationState(null, null, false);
 
-                                    // Super-admin tokens (no tenant) skip membership check (DB-RULES R16).
-                                    if (tenantId is null)
+                                    // Super-admin tokens (no tenant) skip membership check
+                                    // (DB-RULES R16). DB-13: an impersonation token's `tenant` is
+                                    // the target workspace, not a membership — operators have none,
+                                    // so it skips the membership check too (already proven live by
+                                    // the ImpersonationLiveness check above).
+                                    if (tenantId is null || scope == "impersonate")
                                         return new StampValidationState(
                                             user.SecurityStamp,
                                             null,
@@ -216,11 +288,14 @@ public static class AuthenticationExtensions
 
                         // DB-RULES R16: reject when identity stamp mismatches, or when a tenant token's
                         // membership is missing, inactive, unapproved, or membership stamp mismatches.
+                        // DB-13: an impersonation token has a `tenant` claim but no `mstamp`/membership
+                        // — its liveness was already proven above, so it is validated as hasTenant=false
+                        // here (identity stamp only).
                         if (
                             !StampValidator.Validate(
                                 tokenStamp,
                                 tokenMstamp,
-                                tenantId is not null,
+                                tenantId is not null && scope != "impersonate",
                                 state
                             )
                         )
@@ -269,8 +344,7 @@ public static class AuthenticationExtensions
                 "A JWT:Keys entry has a Secret configured but no Id (or a blank Id)."
             );
 
-        var duplicateIds = keys
-            .GroupBy(k => k.Id, StringComparer.Ordinal)
+        var duplicateIds = keys.GroupBy(k => k.Id, StringComparer.Ordinal)
             .Where(g => g.Count() > 1)
             .Select(g => g.Key)
             .ToList();

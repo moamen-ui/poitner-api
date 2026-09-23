@@ -38,18 +38,30 @@ public class AuditWrittenByServicesTests
         public int? RoleId { get; set; }
         public string? KeyScopes { get; set; }
         public string? Scope { get; set; }
+        public long? ImpersonationSessionId { get; set; }
+        public bool IsImpersonating => ImpersonationSessionId != null;
     }
 
     private sealed class FakePasswordHasher : IPasswordHasher
     {
         public string Hash(string password) => "h:" + password;
+
         public bool Verify(string password, string hash) => hash == "h:" + password;
     }
 
     private sealed class FakeTokenService : ITokenService
     {
-        public string Issue(User user, WorkspaceMembership? membership, int? keyScopes = null) => "token";
+        public string Issue(User user, WorkspaceMembership? membership, int? keyScopes = null) =>
+            "token";
+
         public string IssueSelection(User user) => "selection";
+
+        public string IssueImpersonation(
+            User user,
+            Guid workspaceId,
+            long sessionId,
+            DateTime expiresAt
+        ) => "imp-for-" + user.PublicId.ToString("N");
     }
 
     private sealed class FakeReset : IResetTokenService
@@ -76,18 +88,29 @@ public class AuditWrittenByServicesTests
 
     private sealed class FakeSettings : ISettingsService
     {
-        public Task<bool> GetBoolAsync(string key, bool fallback = false) => Task.FromResult(fallback);
+        public Task<bool> GetBoolAsync(string key, bool fallback = false) =>
+            Task.FromResult(fallback);
+
         public Task SetBoolAsync(string key, bool value) => Task.CompletedTask;
-        public Task<string> GetStringAsync(string key, string fallback = "") => Task.FromResult(fallback);
+
+        public Task<string> GetStringAsync(string key, string fallback = "") =>
+            Task.FromResult(fallback);
+
         public Task SetStringAsync(string key, string value) => Task.CompletedTask;
+
         public Task<int> GetIntAsync(string key, int fallback = 0) => Task.FromResult(fallback);
+
         public Task SetIntAsync(string key, int value) => Task.CompletedTask;
     }
 
     private sealed class NoopEmail : IEmailService
     {
-        public Task<bool> SendAsync(string to, string subject, string htmlBody, CancellationToken ct = default) =>
-            Task.FromResult(true);
+        public Task<bool> SendAsync(
+            string to,
+            string subject,
+            string htmlBody,
+            CancellationToken ct = default
+        ) => Task.FromResult(true);
     }
 
     private sealed class NoopBrandingService : IBrandingService
@@ -136,8 +159,12 @@ public class AuditWrittenByServicesTests
 
     private sealed class NoopFileStorage : IFileStorage
     {
-        public Task<string> SaveAsync(string ownerSegment, string project, Stream content, string extension) =>
-            Task.FromResult("");
+        public Task<string> SaveAsync(
+            string ownerSegment,
+            string project,
+            Stream content,
+            string extension
+        ) => Task.FromResult("");
 
         public Task DeleteAsync(string relativePathOrUrl) => Task.CompletedTask;
 
@@ -149,7 +176,13 @@ public class AuditWrittenByServicesTests
             new DbContextOptionsBuilder<AppDbContext>()
                 .UseInMemoryDatabase(db)
                 .ConfigureWarnings(w =>
-                    w.Ignore(Microsoft.EntityFrameworkCore.Diagnostics.InMemoryEventId.TransactionIgnoredWarning)
+                    w.Ignore(
+                        Microsoft
+                            .EntityFrameworkCore
+                            .Diagnostics
+                            .InMemoryEventId
+                            .TransactionIgnoredWarning
+                    )
                 )
                 .Options,
             u,
@@ -184,7 +217,11 @@ public class AuditWrittenByServicesTests
             audit
         );
 
-    private static InviteService InviteSvc(AppDbContext db, ICurrentUser user, FakeAuditWriter audit) =>
+    private static InviteService InviteSvc(
+        AppDbContext db,
+        ICurrentUser user,
+        FakeAuditWriter audit
+    ) =>
         new(
             new UnitOfWork(db),
             user,
@@ -198,10 +235,17 @@ public class AuditWrittenByServicesTests
             audit
         );
 
-    private static WorkspaceService WorkspaceSvc(AppDbContext db, ICurrentUser user, FakeAuditWriter audit) =>
-        new(new UnitOfWork(db), user, audit);
+    private static WorkspaceService WorkspaceSvc(
+        AppDbContext db,
+        ICurrentUser user,
+        FakeAuditWriter audit
+    ) => new(new UnitOfWork(db), user, audit);
 
-    private static ProjectService ProjectSvc(AppDbContext db, ICurrentUser user, FakeAuditWriter audit) =>
+    private static ProjectService ProjectSvc(
+        AppDbContext db,
+        ICurrentUser user,
+        FakeAuditWriter audit
+    ) =>
         new(
             new UnitOfWork(db),
             user,
@@ -211,7 +255,11 @@ public class AuditWrittenByServicesTests
             audit
         );
 
-    private static TenantService TenantSvc(AppDbContext db, ICurrentUser user, FakeAuditWriter audit) =>
+    private static TenantService TenantSvc(
+        AppDbContext db,
+        ICurrentUser user,
+        FakeAuditWriter audit
+    ) =>
         new(
             new UnitOfWork(db),
             new FakePasswordHasher(),
@@ -246,7 +294,12 @@ public class AuditWrittenByServicesTests
         int roleId;
         using (var seed = Ctx(new FakeCurrentUser { IsSuperAdmin = true }, db))
         {
-            var role = new Role { Name = "Engineer", GrantsAdmin = false, IsActive = true };
+            var role = new Role
+            {
+                Name = "Engineer",
+                GrantsAdmin = false,
+                IsActive = true,
+            };
             seed.Roles.Add(role);
             seed.SaveChanges();
             roleId = role.Id;
@@ -291,7 +344,12 @@ public class AuditWrittenByServicesTests
 
         using (var seed = Ctx(new FakeCurrentUser { IsSuperAdmin = true }, db))
         {
-            var role = new Role { Name = "Engineer", GrantsAdmin = false, IsActive = true };
+            var role = new Role
+            {
+                Name = "Engineer",
+                GrantsAdmin = false,
+                IsActive = true,
+            };
             seed.Roles.Add(role);
             seed.SaveChanges();
 
@@ -315,7 +373,9 @@ public class AuditWrittenByServicesTests
         using var ctx = Ctx(anon, db);
         var svc = AuthSvc(ctx, anon, audit);
 
-        var result = await svc.LoginAsync(new LoginRequest { Email = email, Password = "WrongPassword!" });
+        var result = await svc.LoginAsync(
+            new LoginRequest { Email = email, Password = "WrongPassword!" }
+        );
 
         Assert.False(result.IsSuccess);
         var entry = Assert.Single(audit.Entries);
@@ -353,7 +413,11 @@ public class AuditWrittenByServicesTests
         Assert.Equal(AuditActions.AuthLoginFailed, entry.Action);
         Assert.Equal(AuditTargets.EmailHash, entry.TargetType);
         Assert.Equal(PseudonymHasher.EmailHash("nobody@example.com"), entry.TargetId);
-        Assert.DoesNotContain("nobody@example.com", entry.TargetId, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain(
+            "nobody@example.com",
+            entry.TargetId,
+            StringComparison.OrdinalIgnoreCase
+        );
     }
 
     // ── auth.password.changed ──────────────────────────────────────────────────────────────
@@ -367,7 +431,12 @@ public class AuditWrittenByServicesTests
 
         using (var seed = Ctx(new FakeCurrentUser { IsSuperAdmin = true }, db))
         {
-            var role = new Role { Name = "Engineer", GrantsAdmin = false, IsActive = true };
+            var role = new Role
+            {
+                Name = "Engineer",
+                GrantsAdmin = false,
+                IsActive = true,
+            };
             seed.Roles.Add(role);
             seed.SaveChanges();
 
@@ -415,8 +484,18 @@ public class AuditWrittenByServicesTests
 
         using (var seed = Ctx(new FakeCurrentUser { IsSuperAdmin = true }, db))
         {
-            var oldRole = new Role { Name = "Engineer", GrantsAdmin = false, IsActive = true };
-            var newRole = new Role { Name = "Reviewer", GrantsAdmin = false, IsActive = true };
+            var oldRole = new Role
+            {
+                Name = "Engineer",
+                GrantsAdmin = false,
+                IsActive = true,
+            };
+            var newRole = new Role
+            {
+                Name = "Reviewer",
+                GrantsAdmin = false,
+                IsActive = true,
+            };
             seed.Roles.AddRange(oldRole, newRole);
             seed.SaveChanges();
             oldRoleId = oldRole.Id;
@@ -439,7 +518,12 @@ public class AuditWrittenByServicesTests
             TestSeed.Join(seed, user, tenant, oldRole);
         }
 
-        var admin = new FakeCurrentUser { Id = Guid.NewGuid(), IsAdmin = true, TenantId = tenant };
+        var admin = new FakeCurrentUser
+        {
+            Id = Guid.NewGuid(),
+            IsAdmin = true,
+            TenantId = tenant,
+        };
         var audit = new FakeAuditWriter();
         using var ctx = Ctx(admin, db);
         var svc = UserSvc(ctx, admin, audit);
@@ -463,7 +547,12 @@ public class AuditWrittenByServicesTests
 
         using (var seed = Ctx(new FakeCurrentUser { IsSuperAdmin = true }, db))
         {
-            var memberRole = new Role { Name = "Engineer", GrantsAdmin = false, IsActive = true };
+            var memberRole = new Role
+            {
+                Name = "Engineer",
+                GrantsAdmin = false,
+                IsActive = true,
+            };
             seed.Roles.Add(memberRole);
             seed.SaveChanges();
 
@@ -484,7 +573,12 @@ public class AuditWrittenByServicesTests
             TestSeed.Join(seed, member, tenant, memberRole);
         }
 
-        var admin = new FakeCurrentUser { Id = Guid.NewGuid(), IsAdmin = true, TenantId = tenant };
+        var admin = new FakeCurrentUser
+        {
+            Id = Guid.NewGuid(),
+            IsAdmin = true,
+            TenantId = tenant,
+        };
         var audit = new FakeAuditWriter();
         using var ctx = Ctx(admin, db);
         var svc = UserSvc(ctx, admin, audit);
@@ -503,7 +597,12 @@ public class AuditWrittenByServicesTests
     {
         var db = Guid.NewGuid().ToString();
         var tenant = Guid.NewGuid();
-        var admin = new FakeCurrentUser { Id = Guid.NewGuid(), IsAdmin = true, TenantId = tenant };
+        var admin = new FakeCurrentUser
+        {
+            Id = Guid.NewGuid(),
+            IsAdmin = true,
+            TenantId = tenant,
+        };
         var audit = new FakeAuditWriter();
         using var ctx = Ctx(admin, db);
         var svc = InviteSvc(ctx, admin, audit);
@@ -522,14 +621,21 @@ public class AuditWrittenByServicesTests
     {
         var db = Guid.NewGuid().ToString();
         var tenant = Guid.NewGuid();
-        var admin = new FakeCurrentUser { Id = Guid.NewGuid(), IsAdmin = true, TenantId = tenant };
+        var admin = new FakeCurrentUser
+        {
+            Id = Guid.NewGuid(),
+            IsAdmin = true,
+            TenantId = tenant,
+        };
 
         int inviteId;
         using (var ctx0 = Ctx(admin, db))
         {
             var createAudit = new FakeAuditWriter();
             var createSvc = InviteSvc(ctx0, admin, createAudit);
-            var created = await createSvc.CreateAsync(new CreateInviteRequest { ExpiresInDays = 7 });
+            var created = await createSvc.CreateAsync(
+                new CreateInviteRequest { ExpiresInDays = 7 }
+            );
             inviteId = created.Data!.Id;
         }
 
@@ -568,7 +674,12 @@ public class AuditWrittenByServicesTests
             seed.SaveChanges();
         }
 
-        var admin = new FakeCurrentUser { Id = Guid.NewGuid(), IsAdmin = true, TenantId = tenant };
+        var admin = new FakeCurrentUser
+        {
+            Id = Guid.NewGuid(),
+            IsAdmin = true,
+            TenantId = tenant,
+        };
         var audit = new FakeAuditWriter();
         using var ctx = Ctx(admin, db);
         var svc = WorkspaceSvc(ctx, admin, audit);
@@ -589,12 +700,19 @@ public class AuditWrittenByServicesTests
     {
         var db = Guid.NewGuid().ToString();
         var tenant = Guid.NewGuid();
-        var admin = new FakeCurrentUser { Id = Guid.NewGuid(), IsAdmin = true, TenantId = tenant };
+        var admin = new FakeCurrentUser
+        {
+            Id = Guid.NewGuid(),
+            IsAdmin = true,
+            TenantId = tenant,
+        };
         var audit = new FakeAuditWriter();
         using var ctx = Ctx(admin, db);
         var svc = ProjectSvc(ctx, admin, audit);
 
-        var result = await svc.CreateAsync(new CreateProjectRequest { Key = "proj-1", Name = "Proj 1" });
+        var result = await svc.CreateAsync(
+            new CreateProjectRequest { Key = "proj-1", Name = "Proj 1" }
+        );
 
         Assert.True(result.IsSuccess, result.Message);
         var entry = Assert.Single(audit.Entries);
@@ -613,7 +731,12 @@ public class AuditWrittenByServicesTests
 
         using (var seed = Ctx(new FakeCurrentUser { IsSuperAdmin = true }, db))
         {
-            var adminRole = new Role { Name = "Workspace Admin", GrantsAdmin = true, IsActive = true };
+            var adminRole = new Role
+            {
+                Name = "Workspace Admin",
+                GrantsAdmin = true,
+                IsActive = true,
+            };
             seed.Roles.Add(adminRole);
             seed.SaveChanges();
 
@@ -642,7 +765,14 @@ public class AuditWrittenByServicesTests
             };
             seed.Users.Add(adminUser);
             seed.SaveChanges();
-            TestSeed.Join(seed, adminUser, workspaceId, adminRole, isActive: false, status: ApprovalStatus.Pending);
+            TestSeed.Join(
+                seed,
+                adminUser,
+                workspaceId,
+                adminRole,
+                isActive: false,
+                status: ApprovalStatus.Pending
+            );
         }
 
         var superAdmin = new FakeCurrentUser { IsSuperAdmin = true, Id = Guid.NewGuid() };
@@ -720,7 +850,12 @@ public class AuditWrittenByServicesTests
             TestSeed.Join(seed, deputy, tenant, deputyRole);
         }
 
-        var caller = new FakeCurrentUser { Id = adminPublicId, IsAdmin = true, TenantId = tenant };
+        var caller = new FakeCurrentUser
+        {
+            Id = adminPublicId,
+            IsAdmin = true,
+            TenantId = tenant,
+        };
         var audit = new FakeAuditWriter();
         using var ctx = Ctx(caller, db);
         var svc = UserSvc(ctx, caller, audit);
@@ -815,7 +950,12 @@ public class AuditWrittenByServicesTests
     {
         var db = Guid.NewGuid().ToString();
         var tenant = Guid.NewGuid();
-        var admin = new FakeCurrentUser { Id = Guid.NewGuid(), IsAdmin = true, TenantId = tenant };
+        var admin = new FakeCurrentUser
+        {
+            Id = Guid.NewGuid(),
+            IsAdmin = true,
+            TenantId = tenant,
+        };
         var audit = new FakeAuditWriter();
         using var ctx = Ctx(admin, db);
         var svc = new StatusAdminService(new UnitOfWork(ctx), admin, audit);
@@ -841,9 +981,16 @@ public class AuditWrittenByServicesTests
         var audit = new FakeAuditWriter();
         using var ctx = Ctx(superAdmin, db);
         var invites = InviteSvc(ctx, superAdmin, audit);
-        var tenantInvites = new TenantInviteService(new UnitOfWork(ctx), invites, superAdmin, audit);
+        var tenantInvites = new TenantInviteService(
+            new UnitOfWork(ctx),
+            invites,
+            superAdmin,
+            audit
+        );
 
-        var result = await tenantInvites.CreateAsync(new CreateTenantInviteRequest { Email = "owner@new.test" });
+        var result = await tenantInvites.CreateAsync(
+            new CreateTenantInviteRequest { Email = "owner@new.test" }
+        );
 
         Assert.True(result.IsSuccess, result.Message);
         // Exactly one row total: InviteService.CreateAsync must have been called with

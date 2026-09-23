@@ -23,7 +23,11 @@ public class WorkspaceService : IWorkspaceService
     private readonly ICurrentUser _currentUser;
     private readonly IAuditWriter _audit;
 
-    public WorkspaceService(IUnitOfWork unitOfWork, ICurrentUser currentUser, IAuditWriter? audit = null)
+    public WorkspaceService(
+        IUnitOfWork unitOfWork,
+        ICurrentUser currentUser,
+        IAuditWriter? audit = null
+    )
     {
         _unitOfWork = unitOfWork;
         _currentUser = currentUser;
@@ -32,12 +36,16 @@ public class WorkspaceService : IWorkspaceService
 
     public async Task<Result<WorkspaceResponse>> GetAsync()
     {
-        if (_currentUser.IsSuperAdmin)
+        // DB-13 (F2): the impersonating operator sees the target's workspace card; a plain super
+        // admin still does not (RenameAsync below is a write and stays unchanged either way).
+        if (_currentUser.IsSuperAdmin && !_currentUser.IsImpersonating)
             return Result<WorkspaceResponse>.Forbidden(MessageKeys.Common.Forbidden);
         if (_currentUser.IsQuickAccess)
             return Result<WorkspaceResponse>.Forbidden(MessageKeys.Common.Forbidden);
 
-        var ownerId = TenantStamp.OwnerFor(_currentUser);
+        // DB-13: a read scope — TenantId (the impersonation token's `tenant` claim when
+        // impersonating), not TenantStamp.OwnerFor (which is null for every super admin).
+        var ownerId = _currentUser.TenantId;
         if (ownerId is not Guid owner)
             return Result<WorkspaceResponse>.Forbidden(MessageKeys.Common.Forbidden);
 

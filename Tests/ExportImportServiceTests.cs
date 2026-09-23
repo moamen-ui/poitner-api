@@ -31,6 +31,8 @@ public class ExportImportServiceTests
         public int? RoleId { get; set; }
         public string? KeyScopes { get; set; }
         public string? Scope { get; set; }
+        public long? ImpersonationSessionId { get; set; }
+        public bool IsImpersonating => ImpersonationSessionId != null;
     }
 
     private sealed class FakeSettingsService : ISettingsService
@@ -91,7 +93,8 @@ public class ExportImportServiceTests
             user,
             new PassThroughEntitlements(),
             TestProjectServiceDeps.Settings(),
-            TestProjectServiceDeps.Configuration(), new FakeAuditWriter()
+            TestProjectServiceDeps.Configuration(),
+            new FakeAuditWriter()
         );
         var service = new ExportImportService(uow, projects, user, new FakeSettingsService());
         return (uow, projects, service);
@@ -184,9 +187,17 @@ public class ExportImportServiceTests
             );
             await seed.SaveChangesAsync();
 
-            // Add replies (need comment ids).
-            var c1 = seed.Comments.AsEnumerable().First(c => c.Body == "First");
-            var c2 = seed.Comments.AsEnumerable().First(c => c.Body == "Second");
+            // Add replies (need comment ids). DB-13: Comment lost its unconditional super-admin
+            // filter branch — the seed context (a plain super admin) needs IgnoreQueryFilters() to
+            // read its own just-inserted rows back.
+            var c1 = seed
+                .Comments.IgnoreQueryFilters()
+                .AsEnumerable()
+                .First(c => c.Body == "First");
+            var c2 = seed
+                .Comments.IgnoreQueryFilters()
+                .AsEnumerable()
+                .First(c => c.Body == "Second");
             seed.Replies.Add(
                 new Reply
                 {
@@ -467,5 +478,118 @@ public class ExportImportServiceTests
         Assert.Equal(2, result.Data.Comments.Count);
         Assert.Contains(result.Data.Comments, c => c.ProjectKey == "p1");
         Assert.Contains(result.Data.Comments, c => c.ProjectKey == "p2");
+    }
+
+    // DB-13 (GLM DB-13 #3): ExportWorkspaceAsync resolves no project (no EnsureAsync) — a plain
+    // operator must be refused outright rather than getting a misleading 200 with zero comments.
+    [Fact]
+    public async Task ExportWorkspace_PlainOperator_Forbidden()
+    {
+        using var db = new TestDb();
+        var plainOperator = new FakeCurrentUser
+        {
+            Id = Guid.NewGuid(),
+            IsAdmin = true,
+            IsSuperAdmin = true,
+        };
+        using var ctx = db.MakeContext(plainOperator);
+        var (_, _, service) = BuildServices(ctx, plainOperator);
+
+        var result = await service.ExportWorkspaceAsync(new ExportOptions());
+
+        Assert.True(result.IsForbidden);
+        Assert.Equal(
+            Pointer.Application.Resources.MessageKeys.Impersonation.Required,
+            result.Message
+        );
+    }
+
+    // DB-13 / D13.7: an impersonating operator's export includes the target workspace's comments,
+    // but NEVER a private one — the IncludePrivate clamp is unconditional for any super admin,
+    // impersonating or not.
+    [Fact]
+    public async Task ExportWorkspace_Impersonating_ReturnsTargetComments_NoPrivate()
+    {
+        using var db = new TestDb();
+        var tenant = Guid.NewGuid();
+        var alice = Guid.NewGuid();
+        using (var seed = db.MakeContext(new FakeCurrentUser { IsSuperAdmin = true }))
+        {
+            seed.Workspaces.Add(
+                new Workspace
+                {
+                    Id = tenant,
+                    Name = "Workspace",
+                    CreatedAt = DateTime.UtcNow,
+                    CreatedBy = tenant,
+                }
+            );
+            var role = new Role { Name = "Member", OwnerId = tenant };
+            seed.Roles.Add(role);
+            await seed.SaveChangesAsync();
+            seed.Users.Add(
+                new User
+                {
+                    PublicId = alice,
+                    Email = "a@x",
+                    DisplayName = "Alice",
+                    OwnerId = tenant,
+                    RoleId = role.Id,
+                }
+            );
+            var p1 = new Project
+            {
+                Key = "p1",
+                Name = "P1",
+                OwnerId = tenant,
+            };
+            seed.Projects.Add(p1);
+            await seed.SaveChangesAsync();
+
+            seed.Comments.Add(
+                new Comment
+                {
+                    ProjectId = p1.Id,
+                    Environment = EnvironmentTag.Staging,
+                    Status = CommentStatus.Open,
+                    AuthorId = alice,
+                    Body = "public one",
+                    OwnerId = tenant,
+                    IsPrivate = false,
+                }
+            );
+            seed.Comments.Add(
+                new Comment
+                {
+                    ProjectId = p1.Id,
+                    Environment = EnvironmentTag.Staging,
+                    Status = CommentStatus.Open,
+                    AuthorId = alice,
+                    Body = "private one",
+                    OwnerId = tenant,
+                    IsPrivate = true,
+                }
+            );
+            await seed.SaveChangesAsync();
+        }
+
+        var impersonating = new FakeCurrentUser
+        {
+            Id = Guid.NewGuid(),
+            IsAdmin = true,
+            IsSuperAdmin = true,
+            TenantId = tenant,
+            ImpersonationSessionId = 1,
+        };
+        using var ctx = db.MakeContext(impersonating);
+        var (_, _, service) = BuildServices(ctx, impersonating);
+
+        var result = await service.ExportWorkspaceAsync(
+            new ExportOptions { IncludePrivate = true }
+        );
+
+        Assert.True(result.IsSuccess);
+        Assert.Single(result.Data!.Comments);
+        Assert.Equal("public one", result.Data.Comments[0].Body);
     }
 }

@@ -53,12 +53,13 @@ public class AuditWriter(
         AuditEvent? ev = null;
         try
         {
-            // DB-13: an impersonating super admin becomes Impersonation here (and
-            // ImpersonationSessionId is set from ICurrentUser) when DB-13 lands.
+            // DB-13: an impersonating super admin becomes Impersonation here, and
+            // ImpersonationSessionId is set from ICurrentUser below.
             var actorKind =
                 entry.ActorKindOverride
                 ?? (
                     currentUser.Id is null ? AuditActorKind.System
+                    : currentUser.IsImpersonating ? AuditActorKind.Impersonation
                     : currentUser.IsSuperAdmin ? AuditActorKind.SuperAdmin
                     : AuditActorKind.User
                 );
@@ -100,8 +101,7 @@ public class AuditWriter(
                 RequestId = ctx?.Items[RequestIdItemKey] as string,
                 IpHash = Hash(ctx?.Connection.RemoteIpAddress?.ToString()),
                 UserAgent = Truncate(ctx?.Request.Headers.UserAgent.ToString(), MaxUserAgentLength),
-                // DB-13: written from ICurrentUser.ImpersonationSessionId once DB-13 exists.
-                ImpersonationSessionId = null,
+                ImpersonationSessionId = currentUser.ImpersonationSessionId,
             };
 
             db.AuditEvents.Add(ev);

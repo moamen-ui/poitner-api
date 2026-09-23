@@ -27,15 +27,26 @@ public class ProjectServiceQuickAccessTests
         public int? RoleId { get; set; }
         public string? KeyScopes { get; set; }
         public string? Scope { get; set; }
+        public long? ImpersonationSessionId { get; set; }
+        public bool IsImpersonating => ImpersonationSessionId != null;
     }
 
     private static AppDbContext BuildContext(ICurrentUser user, string dbName) =>
-        new(new DbContextOptionsBuilder<AppDbContext>()
-            .UseInMemoryDatabase(dbName)
-            .Options, user, new Microsoft.Extensions.Configuration.ConfigurationBuilder().Build());
+        new(
+            new DbContextOptionsBuilder<AppDbContext>().UseInMemoryDatabase(dbName).Options,
+            user,
+            new Microsoft.Extensions.Configuration.ConfigurationBuilder().Build()
+        );
 
     private static ProjectService Wire(ICurrentUser user, AppDbContext ctx) =>
-        new(new UnitOfWork(ctx), user, new PassThroughEntitlements(), TestProjectServiceDeps.Settings(), TestProjectServiceDeps.Configuration(), new FakeAuditWriter());
+        new(
+            new UnitOfWork(ctx),
+            user,
+            new PassThroughEntitlements(),
+            TestProjectServiceDeps.Settings(),
+            TestProjectServiceDeps.Configuration(),
+            new FakeAuditWriter()
+        );
 
     [Fact]
     public async Task QuickAccessUser_Cannot_ListProjects()
@@ -44,11 +55,26 @@ public class ProjectServiceQuickAccessTests
         var tenant = Guid.NewGuid();
         using (var seed = BuildContext(new FakeCurrentUser { IsSuperAdmin = true }, db))
         {
-            seed.Projects.Add(new Project { Key = "acme-app", Name = "Acme App", IsActiveLocal = true, IsActiveStaging = true, IsActiveProduction = true, OwnerId = tenant });
+            seed.Projects.Add(
+                new Project
+                {
+                    Key = "acme-app",
+                    Name = "Acme App",
+                    IsActiveLocal = true,
+                    IsActiveStaging = true,
+                    IsActiveProduction = true,
+                    OwnerId = tenant,
+                }
+            );
             seed.SaveChanges();
         }
 
-        var client = new FakeCurrentUser { Id = Guid.NewGuid(), TenantId = tenant, IsQuickAccess = true };
+        var client = new FakeCurrentUser
+        {
+            Id = Guid.NewGuid(),
+            TenantId = tenant,
+            IsQuickAccess = true,
+        };
         var result = await Wire(client, BuildContext(client, db)).ListAsync();
 
         Assert.False(result.IsSuccess);
@@ -60,14 +86,23 @@ public class ProjectServiceQuickAccessTests
     {
         var db = Guid.NewGuid().ToString();
         var tenant = Guid.NewGuid();
-        var client = new FakeCurrentUser { Id = Guid.NewGuid(), TenantId = tenant, IsQuickAccess = true };
+        var client = new FakeCurrentUser
+        {
+            Id = Guid.NewGuid(),
+            TenantId = tenant,
+            IsQuickAccess = true,
+        };
 
         var result = await Wire(client, BuildContext(client, db))
             .CreateAsync(new CreateProjectRequest { Key = "new-project", Name = "New Project" });
 
         Assert.False(result.IsSuccess);
         Assert.True(result.IsForbidden);
-        Assert.Empty(BuildContext(client, db).Projects.IgnoreQueryFilters().Where(p => p.Key == "new-project"));
+        Assert.Empty(
+            BuildContext(client, db)
+                .Projects.IgnoreQueryFilters()
+                .Where(p => p.Key == "new-project")
+        );
     }
 
     [Fact]
@@ -77,10 +112,22 @@ public class ProjectServiceQuickAccessTests
         // ordinary (non-admin, non-quick-access) stakeholders like Developer/PM/Tester.
         var db = Guid.NewGuid().ToString();
         var tenant = Guid.NewGuid();
-        var stakeholder = new FakeCurrentUser { Id = Guid.NewGuid(), TenantId = tenant, IsAdmin = false, IsQuickAccess = false };
+        var stakeholder = new FakeCurrentUser
+        {
+            Id = Guid.NewGuid(),
+            TenantId = tenant,
+            IsAdmin = false,
+            IsQuickAccess = false,
+        };
 
         var create = await Wire(stakeholder, BuildContext(stakeholder, db))
-            .CreateAsync(new CreateProjectRequest { Key = "stakeholder-project", Name = "Stakeholder Project" });
+            .CreateAsync(
+                new CreateProjectRequest
+                {
+                    Key = "stakeholder-project",
+                    Name = "Stakeholder Project",
+                }
+            );
         Assert.True(create.IsSuccess);
 
         var list = await Wire(stakeholder, BuildContext(stakeholder, db)).ListAsync();

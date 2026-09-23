@@ -27,18 +27,29 @@ public class ProjectOriginEnforcementTests
         public int? RoleId { get; set; }
         public string? KeyScopes { get; set; }
         public string? Scope { get; set; }
+        public long? ImpersonationSessionId { get; set; }
+        public bool IsImpersonating => ImpersonationSessionId != null;
     }
 
-    private sealed class BrandSettings(string? appUrl) : Pointer.Application.Services.Interfaces.ISettingsService
+    private sealed class BrandSettings(string? appUrl)
+        : Pointer.Application.Services.Interfaces.ISettingsService
     {
-        public Task<bool> GetBoolAsync(string key, bool fallback = false) => Task.FromResult(fallback);
+        public Task<bool> GetBoolAsync(string key, bool fallback = false) =>
+            Task.FromResult(fallback);
+
         public Task SetBoolAsync(string key, bool value) => Task.CompletedTask;
+
         public Task<string> GetStringAsync(string key, string fallback = "") =>
-            Task.FromResult(key == Pointer.Application.Services.Interfaces.ISettingsService.BrandUrlApp
-                ? appUrl ?? fallback
-                : fallback);
+            Task.FromResult(
+                key == Pointer.Application.Services.Interfaces.ISettingsService.BrandUrlApp
+                    ? appUrl ?? fallback
+                    : fallback
+            );
+
         public Task SetStringAsync(string key, string value) => Task.CompletedTask;
+
         public Task<int> GetIntAsync(string key, int fallback = 0) => Task.FromResult(fallback);
+
         public Task SetIntAsync(string key, int value) => Task.CompletedTask;
     }
 
@@ -46,7 +57,8 @@ public class ProjectOriginEnforcementTests
         new(
             new DbContextOptionsBuilder<AppDbContext>().UseInMemoryDatabase(dbName).Options,
             user,
-            new ConfigurationBuilder().Build());
+            new ConfigurationBuilder().Build()
+        );
 
     /// <summary>Seeds a project with enforcement on and one active app-URL row, returns its id.</summary>
     private static int SeedProject(string dbName, Guid tenant, bool enforce, params string[] urls)
@@ -70,30 +82,50 @@ public class ProjectOriginEnforcementTests
         foreach (var url in urls)
         {
             db.Set<ProjectAppUrl>()
-                .Add(new ProjectAppUrl
-                {
-                    ProjectId = project.Id,
-                    AppEnvironmentId = env.Id,
-                    Url = url,
-                    IsActive = true,
-                    OwnerId = tenant,
-                });
+                .Add(
+                    new ProjectAppUrl
+                    {
+                        ProjectId = project.Id,
+                        AppEnvironmentId = env.Id,
+                        Url = url,
+                        IsActive = true,
+                        OwnerId = tenant,
+                    }
+                );
         }
         db.SaveChanges();
 
         return project.Id;
     }
 
-    private static ProjectService Service(AppDbContext db, ICurrentUser user, string? brandAppUrl = null, string[]? trusted = null)
+    private static ProjectService Service(
+        AppDbContext db,
+        ICurrentUser user,
+        string? brandAppUrl = null,
+        string[]? trusted = null
+    )
     {
         var config = new ConfigurationBuilder()
             .AddInMemoryCollection(
                 (trusted ?? [])
-                    .Select((o, i) => new KeyValuePair<string, string?>($"Security:TrustedDashboardOrigins:{i}", o))
-                    .ToList())
+                    .Select(
+                        (o, i) =>
+                            new KeyValuePair<string, string?>(
+                                $"Security:TrustedDashboardOrigins:{i}",
+                                o
+                            )
+                    )
+                    .ToList()
+            )
             .Build();
 
-        return new ProjectService(new UnitOfWork(db), user, new PassThroughEntitlements(), new BrandSettings(brandAppUrl), config);
+        return new ProjectService(
+            new UnitOfWork(db),
+            user,
+            new PassThroughEntitlements(),
+            new BrandSettings(brandAppUrl),
+            config
+        );
     }
 
     [Fact]
@@ -104,8 +136,10 @@ public class ProjectOriginEnforcementTests
         var id = SeedProject(name, tenant, enforce: false, "https://app.example.com");
         using var db = Ctx(new FakeCurrentUser { TenantId = tenant }, name);
 
-        Assert.True(await Service(db, new FakeCurrentUser { TenantId = tenant })
-            .IsOriginAllowedAsync(id, "https://anywhere.evil", EnvironmentTag.Production, false));
+        Assert.True(
+            await Service(db, new FakeCurrentUser { TenantId = tenant })
+                .IsOriginAllowedAsync(id, "https://anywhere.evil", EnvironmentTag.Production, false)
+        );
     }
 
     [Fact]
@@ -117,8 +151,22 @@ public class ProjectOriginEnforcementTests
         using var db = Ctx(new FakeCurrentUser { TenantId = tenant }, name);
         var svc = Service(db, new FakeCurrentUser { TenantId = tenant });
 
-        Assert.True(await svc.IsOriginAllowedAsync(id, "https://app.example.com", EnvironmentTag.Production, false));
-        Assert.False(await svc.IsOriginAllowedAsync(id, "https://evil.example", EnvironmentTag.Production, false));
+        Assert.True(
+            await svc.IsOriginAllowedAsync(
+                id,
+                "https://app.example.com",
+                EnvironmentTag.Production,
+                false
+            )
+        );
+        Assert.False(
+            await svc.IsOriginAllowedAsync(
+                id,
+                "https://evil.example",
+                EnvironmentTag.Production,
+                false
+            )
+        );
     }
 
     [Fact]
@@ -130,9 +178,23 @@ public class ProjectOriginEnforcementTests
         using var db = Ctx(new FakeCurrentUser { TenantId = tenant }, name);
         var svc = Service(db, new FakeCurrentUser { TenantId = tenant });
 
-        Assert.True(await svc.IsOriginAllowedAsync(id, "https://myapp-pr-12.vercel.app", EnvironmentTag.Staging, false));
+        Assert.True(
+            await svc.IsOriginAllowedAsync(
+                id,
+                "https://myapp-pr-12.vercel.app",
+                EnvironmentTag.Staging,
+                false
+            )
+        );
         // Another tenant on the same shared host must not inherit the allowance.
-        Assert.False(await svc.IsOriginAllowedAsync(id, "https://someoneelse.vercel.app", EnvironmentTag.Staging, false));
+        Assert.False(
+            await svc.IsOriginAllowedAsync(
+                id,
+                "https://someoneelse.vercel.app",
+                EnvironmentTag.Staging,
+                false
+            )
+        );
     }
 
     [Theory]
@@ -167,10 +229,25 @@ public class ProjectOriginEnforcementTests
             db,
             new FakeCurrentUser { TenantId = tenant },
             brandAppUrl: "https://dash.example.com",
-            trusted: ["https://app-angular.example.com"]);
+            trusted: ["https://app-angular.example.com"]
+        );
 
-        Assert.True(await svc.IsOriginAllowedAsync(id, "https://dash.example.com", EnvironmentTag.Production, false));
-        Assert.True(await svc.IsOriginAllowedAsync(id, "https://app-angular.example.com", EnvironmentTag.Production, false));
+        Assert.True(
+            await svc.IsOriginAllowedAsync(
+                id,
+                "https://dash.example.com",
+                EnvironmentTag.Production,
+                false
+            )
+        );
+        Assert.True(
+            await svc.IsOriginAllowedAsync(
+                id,
+                "https://app-angular.example.com",
+                EnvironmentTag.Production,
+                false
+            )
+        );
     }
 
     [Fact]
@@ -184,9 +261,25 @@ public class ProjectOriginEnforcementTests
         using var db = Ctx(new FakeCurrentUser { TenantId = tenant }, name);
         var svc = Service(db, new FakeCurrentUser { TenantId = tenant });
 
-        Assert.True(await svc.IsOriginAllowedAsync(id, null, EnvironmentTag.Production, isQuickAccess: false));
-        Assert.True(await svc.IsOriginAllowedAsync(id, "  ", EnvironmentTag.Production, isQuickAccess: false));
-        Assert.False(await svc.IsOriginAllowedAsync(id, null, EnvironmentTag.Production, isQuickAccess: true));
+        Assert.True(
+            await svc.IsOriginAllowedAsync(
+                id,
+                null,
+                EnvironmentTag.Production,
+                isQuickAccess: false
+            )
+        );
+        Assert.True(
+            await svc.IsOriginAllowedAsync(
+                id,
+                "  ",
+                EnvironmentTag.Production,
+                isQuickAccess: false
+            )
+        );
+        Assert.False(
+            await svc.IsOriginAllowedAsync(id, null, EnvironmentTag.Production, isQuickAccess: true)
+        );
     }
 
     [Fact]
@@ -205,8 +298,15 @@ public class ProjectOriginEnforcementTests
 
         using var db = Ctx(new FakeCurrentUser { TenantId = tenant }, name);
 
-        Assert.False(await Service(db, new FakeCurrentUser { TenantId = tenant })
-            .IsOriginAllowedAsync(id, "https://app.example.com", EnvironmentTag.Production, false));
+        Assert.False(
+            await Service(db, new FakeCurrentUser { TenantId = tenant })
+                .IsOriginAllowedAsync(
+                    id,
+                    "https://app.example.com",
+                    EnvironmentTag.Production,
+                    false
+                )
+        );
     }
 
     [Fact]
@@ -219,7 +319,14 @@ public class ProjectOriginEnforcementTests
         var id = SeedProject(name, tenant, enforce: true);
         using var db = Ctx(new FakeCurrentUser { TenantId = tenant }, name);
 
-        Assert.False(await Service(db, new FakeCurrentUser { TenantId = tenant })
-            .IsOriginAllowedAsync(id, "https://app.example.com", EnvironmentTag.Production, false));
+        Assert.False(
+            await Service(db, new FakeCurrentUser { TenantId = tenant })
+                .IsOriginAllowedAsync(
+                    id,
+                    "https://app.example.com",
+                    EnvironmentTag.Production,
+                    false
+                )
+        );
     }
 }

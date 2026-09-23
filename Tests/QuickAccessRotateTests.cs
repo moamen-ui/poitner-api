@@ -33,55 +33,101 @@ public class QuickAccessRotateTests
         public int? RoleId { get; set; }
         public string? KeyScopes { get; set; }
         public string? Scope { get; set; }
+        public long? ImpersonationSessionId { get; set; }
+        public bool IsImpersonating => ImpersonationSessionId != null;
     }
 
     private sealed class FakePasswordHasher : IPasswordHasher
     {
         public string Hash(string password) => "hashed:" + password;
+
         public bool Verify(string password, string hash) => hash == "hashed:" + password;
     }
 
     private sealed class FakeTokenService : ITokenService
     {
-        public string Issue(User user, WorkspaceMembership? membership, int? keyScopes = null) => "token-for-" + user.PublicId.ToString("N");
+        public string Issue(User user, WorkspaceMembership? membership, int? keyScopes = null) =>
+            "token-for-" + user.PublicId.ToString("N");
+
         public string IssueSelection(User user) => "selection-for-" + user.PublicId.ToString("N");
+
+        public string IssueImpersonation(
+            User user,
+            Guid workspaceId,
+            long sessionId,
+            DateTime expiresAt
+        ) => "imp-for-" + user.PublicId.ToString("N");
     }
 
     private sealed class FakeSettings : ISettingsService
     {
-        public Task<bool> GetBoolAsync(string key, bool fallback = false) => Task.FromResult(fallback);
+        public Task<bool> GetBoolAsync(string key, bool fallback = false) =>
+            Task.FromResult(fallback);
+
         public Task SetBoolAsync(string key, bool value) => Task.CompletedTask;
-        public Task<string> GetStringAsync(string key, string fallback = "") => Task.FromResult(fallback);
+
+        public Task<string> GetStringAsync(string key, string fallback = "") =>
+            Task.FromResult(fallback);
+
         public Task SetStringAsync(string key, string value) => Task.CompletedTask;
+
         public Task<int> GetIntAsync(string key, int fallback = 0) => Task.FromResult(fallback);
+
         public Task SetIntAsync(string key, int value) => Task.CompletedTask;
     }
 
     private sealed class NullEmail : IEmailService
     {
-        public Task<bool> SendAsync(string to, string subject, string htmlBody, CancellationToken ct = default) =>
-            Task.FromResult(true);
+        public Task<bool> SendAsync(
+            string to,
+            string subject,
+            string htmlBody,
+            CancellationToken ct = default
+        ) => Task.FromResult(true);
     }
 
     private sealed class FakeBranding : IBrandingService
     {
         private static BrandingResponse R() => new() { ProductName = "Pointer" };
-        public Task<Result<BrandingResponse>> GetAsync(string publicBase, IReadOnlySet<string> existingKinds) =>
-            Task.FromResult(Result<BrandingResponse>.Success(R()));
-        public Task<Result<BrandingResponse>> UpdateAsync(BrandingWriteDto dto, string publicBase, IReadOnlySet<string> existingKinds) =>
-            Task.FromResult(Result<BrandingResponse>.Success(R()));
+
+        public Task<Result<BrandingResponse>> GetAsync(
+            string publicBase,
+            IReadOnlySet<string> existingKinds
+        ) => Task.FromResult(Result<BrandingResponse>.Success(R()));
+
+        public Task<Result<BrandingResponse>> UpdateAsync(
+            BrandingWriteDto dto,
+            string publicBase,
+            IReadOnlySet<string> existingKinds
+        ) => Task.FromResult(Result<BrandingResponse>.Success(R()));
+
         public Task<int> BumpVersionAsync() => Task.FromResult(0);
-        public Task<BrandingResponse> BuildResponseAsync(string publicBase, IReadOnlySet<string> existingKinds) =>
-            Task.FromResult(R());
+
+        public Task<BrandingResponse> BuildResponseAsync(
+            string publicBase,
+            IReadOnlySet<string> existingKinds
+        ) => Task.FromResult(R());
     }
 
     private static AppDbContext Ctx(ICurrentUser user, string dbName) =>
-        new(new DbContextOptionsBuilder<AppDbContext>().UseInMemoryDatabase(dbName).Options, user,
-            new Microsoft.Extensions.Configuration.ConfigurationBuilder().Build());
+        new(
+            new DbContextOptionsBuilder<AppDbContext>().UseInMemoryDatabase(dbName).Options,
+            user,
+            new Microsoft.Extensions.Configuration.ConfigurationBuilder().Build()
+        );
 
     private static InviteService Svc(ICurrentUser user, AppDbContext db) =>
-        new(new UnitOfWork(db), user, new FakePasswordHasher(), new FakeTokenService(), new FakeSettings(),
-            new PassThroughEntitlements(), new NullEmail(), new FakeBranding(), new MembershipService(new UnitOfWork(db)));
+        new(
+            new UnitOfWork(db),
+            user,
+            new FakePasswordHasher(),
+            new FakeTokenService(),
+            new FakeSettings(),
+            new PassThroughEntitlements(),
+            new NullEmail(),
+            new FakeBranding(),
+            new MembershipService(new UnitOfWork(db))
+        );
 
     /// <summary>
     /// Seeds a tenant with a quick-access ("Client") invite that has already issued one link, and
@@ -92,13 +138,23 @@ public class QuickAccessRotateTests
         var tenant = Guid.NewGuid();
         using var db = Ctx(new FakeCurrentUser { IsSuperAdmin = true }, dbName);
 
-        var clientRole = new Role { Name = "Client", GrantsAdmin = false, IsActive = true, QuickAccess = true, OwnerId = tenant };
+        var clientRole = new Role
+        {
+            Name = "Client",
+            GrantsAdmin = false,
+            IsActive = true,
+            QuickAccess = true,
+            OwnerId = tenant,
+        };
         db.Roles.Add(clientRole);
         db.SaveChanges();
 
         var project = new Project
         {
-            Key = "acme", Name = "Acme", OwnerId = tenant, AppUrl = "https://acme.example.com",
+            Key = "acme",
+            Name = "Acme",
+            OwnerId = tenant,
+            AppUrl = "https://acme.example.com",
         };
         db.Projects.Add(project);
         db.SaveChanges();
@@ -132,16 +188,19 @@ public class QuickAccessRotateTests
         db.SaveChanges();
 
         var raw = QuickAccessTokenGenerator.NewToken();
-        db.Set<QuickAccessLink>().Add(new QuickAccessLink
-        {
-            OwnerId = tenant,
-            UserId = user.PublicId,
-            ProjectId = project.Id,
-            InviteId = invite.Id,
-            TokenHash = QuickAccessTokenGenerator.Hash(raw),
-            ExpiresAt = DateTime.UtcNow.AddDays(14),
-            MaxUses = 0,
-        });
+        db.Set<QuickAccessLink>()
+            .Add(
+                new QuickAccessLink
+                {
+                    OwnerId = tenant,
+                    UserId = user.PublicId,
+                    ProjectId = project.Id,
+                    InviteId = invite.Id,
+                    TokenHash = QuickAccessTokenGenerator.Hash(raw),
+                    ExpiresAt = DateTime.UtcNow.AddDays(14),
+                    MaxUses = 0,
+                }
+            );
         db.SaveChanges();
 
         return (tenant, invite.Id, raw);
@@ -150,7 +209,8 @@ public class QuickAccessRotateTests
     private static bool LinkUsable(AppDbContext db, string rawToken)
     {
         var hash = QuickAccessTokenGenerator.Hash(rawToken);
-        var link = db.Set<QuickAccessLink>().IgnoreQueryFilters()
+        var link = db.Set<QuickAccessLink>()
+            .IgnoreQueryFilters()
             .FirstOrDefault(l => l.TokenHash == hash && l.DeletedAt == null);
         // The same three conditions LoginWithInviteAsync applies before it will issue a JWT.
         return link is not null && link.RevokedAt is null && link.ExpiresAt > DateTime.UtcNow;
@@ -161,7 +221,12 @@ public class QuickAccessRotateTests
     {
         var dbName = Guid.NewGuid().ToString();
         var (tenant, inviteId, raw) = Seed(dbName);
-        var admin = new FakeCurrentUser { Id = Guid.NewGuid(), IsAdmin = true, TenantId = tenant };
+        var admin = new FakeCurrentUser
+        {
+            Id = Guid.NewGuid(),
+            IsAdmin = true,
+            TenantId = tenant,
+        };
 
         using var db = Ctx(admin, dbName);
         Assert.True(LinkUsable(db, raw)); // precondition: the link works
@@ -178,7 +243,12 @@ public class QuickAccessRotateTests
     {
         var dbName = Guid.NewGuid().ToString();
         var (tenant, inviteId, oldRaw) = Seed(dbName);
-        var admin = new FakeCurrentUser { Id = Guid.NewGuid(), IsAdmin = true, TenantId = tenant };
+        var admin = new FakeCurrentUser
+        {
+            Id = Guid.NewGuid(),
+            IsAdmin = true,
+            TenantId = tenant,
+        };
 
         using var db = Ctx(admin, dbName);
         var result = await Svc(admin, db).RotateQuickLinkAsync(inviteId);
@@ -199,7 +269,12 @@ public class QuickAccessRotateTests
     {
         var dbName = Guid.NewGuid().ToString();
         var (tenant, inviteId, original) = Seed(dbName);
-        var admin = new FakeCurrentUser { Id = Guid.NewGuid(), IsAdmin = true, TenantId = tenant };
+        var admin = new FakeCurrentUser
+        {
+            Id = Guid.NewGuid(),
+            IsAdmin = true,
+            TenantId = tenant,
+        };
 
         using var db = Ctx(admin, dbName);
         var svc = Svc(admin, db);
@@ -221,7 +296,12 @@ public class QuickAccessRotateTests
     {
         var dbName = Guid.NewGuid().ToString();
         var (tenant, inviteId, _) = Seed(dbName);
-        var admin = new FakeCurrentUser { Id = Guid.NewGuid(), IsAdmin = true, TenantId = tenant };
+        var admin = new FakeCurrentUser
+        {
+            Id = Guid.NewGuid(),
+            IsAdmin = true,
+            TenantId = tenant,
+        };
 
         using var db = Ctx(admin, dbName);
         var svc = Svc(admin, db);
@@ -239,13 +319,21 @@ public class QuickAccessRotateTests
     {
         var dbName = Guid.NewGuid().ToString();
         var (_, inviteId, raw) = Seed(dbName);
-        var intruder = new FakeCurrentUser { Id = Guid.NewGuid(), IsAdmin = true, TenantId = Guid.NewGuid() };
+        var intruder = new FakeCurrentUser
+        {
+            Id = Guid.NewGuid(),
+            IsAdmin = true,
+            TenantId = Guid.NewGuid(),
+        };
 
         using var db = Ctx(intruder, dbName);
         var result = await Svc(intruder, db).RotateQuickLinkAsync(inviteId);
 
         Assert.True(result.IsNotFound);
-        Assert.True(LinkUsable(db, raw), "a foreign admin must not be able to disturb the link either");
+        Assert.True(
+            LinkUsable(db, raw),
+            "a foreign admin must not be able to disturb the link either"
+        );
     }
 
     [Fact]
@@ -256,20 +344,33 @@ public class QuickAccessRotateTests
         int plainInviteId;
         using (var seed = Ctx(new FakeCurrentUser { IsSuperAdmin = true }, dbName))
         {
-            var role = new Role { Name = "Developer", IsActive = true, OwnerId = tenant };
+            var role = new Role
+            {
+                Name = "Developer",
+                IsActive = true,
+                OwnerId = tenant,
+            };
             seed.Roles.Add(role);
             seed.SaveChanges();
             var invite = new Invite
             {
-                OwnerId = tenant, Code = "PLAIN1", RoleId = role.Id,
-                ExpiresAt = DateTime.UtcNow.AddDays(7), Uses = 0,
+                OwnerId = tenant,
+                Code = "PLAIN1",
+                RoleId = role.Id,
+                ExpiresAt = DateTime.UtcNow.AddDays(7),
+                Uses = 0,
             };
             seed.Invites.Add(invite);
             seed.SaveChanges();
             plainInviteId = invite.Id;
         }
 
-        var admin = new FakeCurrentUser { Id = Guid.NewGuid(), IsAdmin = true, TenantId = tenant };
+        var admin = new FakeCurrentUser
+        {
+            Id = Guid.NewGuid(),
+            IsAdmin = true,
+            TenantId = tenant,
+        };
         using var db = Ctx(admin, dbName);
         var result = await Svc(admin, db).RotateQuickLinkAsync(plainInviteId);
 

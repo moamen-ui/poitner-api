@@ -28,40 +28,82 @@ public class DeviceLoginServiceTests
         public int? RoleId { get; set; }
         public string? KeyScopes { get; set; }
         public string? Scope { get; set; }
+        public long? ImpersonationSessionId { get; set; }
+        public bool IsImpersonating => ImpersonationSessionId != null;
     }
 
     private sealed class NoopBrandingService : IBrandingService
     {
-        private static Pointer.Application.DTOs.Branding.BrandingResponse DefaultBranding() => new()
-        {
-            ProductName = "Pointer",
-            Tagline = string.Empty,
-            PrimaryColor = "#2563eb",
-            Urls = new Pointer.Application.DTOs.Branding.BrandingUrlsResponse { App = "https://app.pointer.moamen.work" },
-            Assets = new Pointer.Application.DTOs.Branding.BrandingAssetsResponse(),
-        };
-        public Task<Pointer.Application.Response.Result<Pointer.Application.DTOs.Branding.BrandingResponse>> GetAsync(string publicBase, IReadOnlySet<string> existingKinds) =>
-            Task.FromResult(Pointer.Application.Response.Result<Pointer.Application.DTOs.Branding.BrandingResponse>.Success(DefaultBranding()));
-        public Task<Pointer.Application.Response.Result<Pointer.Application.DTOs.Branding.BrandingResponse>> UpdateAsync(Pointer.Application.DTOs.Branding.BrandingWriteDto dto, string publicBase, IReadOnlySet<string> existingKinds) =>
-            Task.FromResult(Pointer.Application.Response.Result<Pointer.Application.DTOs.Branding.BrandingResponse>.Success(DefaultBranding()));
+        private static Pointer.Application.DTOs.Branding.BrandingResponse DefaultBranding() =>
+            new()
+            {
+                ProductName = "Pointer",
+                Tagline = string.Empty,
+                PrimaryColor = "#2563eb",
+                Urls = new Pointer.Application.DTOs.Branding.BrandingUrlsResponse
+                {
+                    App = "https://app.pointer.moamen.work",
+                },
+                Assets = new Pointer.Application.DTOs.Branding.BrandingAssetsResponse(),
+            };
+
+        public Task<Pointer.Application.Response.Result<Pointer.Application.DTOs.Branding.BrandingResponse>> GetAsync(
+            string publicBase,
+            IReadOnlySet<string> existingKinds
+        ) =>
+            Task.FromResult(
+                Pointer.Application.Response.Result<Pointer.Application.DTOs.Branding.BrandingResponse>.Success(
+                    DefaultBranding()
+                )
+            );
+
+        public Task<Pointer.Application.Response.Result<Pointer.Application.DTOs.Branding.BrandingResponse>> UpdateAsync(
+            Pointer.Application.DTOs.Branding.BrandingWriteDto dto,
+            string publicBase,
+            IReadOnlySet<string> existingKinds
+        ) =>
+            Task.FromResult(
+                Pointer.Application.Response.Result<Pointer.Application.DTOs.Branding.BrandingResponse>.Success(
+                    DefaultBranding()
+                )
+            );
+
         public Task<int> BumpVersionAsync() => Task.FromResult(0);
-        public Task<Pointer.Application.DTOs.Branding.BrandingResponse> BuildResponseAsync(string publicBase, IReadOnlySet<string> existingKinds) =>
-            Task.FromResult(DefaultBranding());
+
+        public Task<Pointer.Application.DTOs.Branding.BrandingResponse> BuildResponseAsync(
+            string publicBase,
+            IReadOnlySet<string> existingKinds
+        ) => Task.FromResult(DefaultBranding());
     }
 
     private static AppDbContext BuildContext(ICurrentUser user, string dbName) =>
-        new(new DbContextOptionsBuilder<AppDbContext>().UseInMemoryDatabase(dbName).Options, user,
-            new Microsoft.Extensions.Configuration.ConfigurationBuilder().Build());
+        new(
+            new DbContextOptionsBuilder<AppDbContext>().UseInMemoryDatabase(dbName).Options,
+            user,
+            new Microsoft.Extensions.Configuration.ConfigurationBuilder().Build()
+        );
 
     private static DeviceLoginService BuildService(AppDbContext db, ICurrentUser user) =>
-        new(new UnitOfWork(db), user, new ApiKeyService(new UnitOfWork(db), new TestApiKeyProtector()), new NoopBrandingService(), new MembershipService(new UnitOfWork(db)));
+        new(
+            new UnitOfWork(db),
+            user,
+            new ApiKeyService(new UnitOfWork(db), new TestApiKeyProtector()),
+            new NoopBrandingService(),
+            new MembershipService(new UnitOfWork(db))
+        );
 
     private static Guid SeedUser(string dbName, out Guid tenant, bool superAdmin = false)
     {
         tenant = Guid.NewGuid();
         var publicId = Guid.NewGuid();
         using var seed = BuildContext(new FakeCurrentUser { IsSuperAdmin = true }, dbName);
-        var role = new Role { Name = superAdmin ? "Super Admin" : "Developer", IsActive = true, OwnerId = null, IsSuperAdmin = superAdmin };
+        var role = new Role
+        {
+            Name = superAdmin ? "Super Admin" : "Developer",
+            IsActive = true,
+            OwnerId = null,
+            IsSuperAdmin = superAdmin,
+        };
         seed.Roles.Add(role);
         seed.SaveChanges();
         var user = new User
@@ -88,7 +130,9 @@ public class DeviceLoginServiceTests
         var db = Guid.NewGuid().ToString();
         var svc = BuildService(BuildContext(new FakeCurrentUser(), db), new FakeCurrentUser());
 
-        var result = await svc.StartAsync(new DeviceLoginStartRequest { ClientName = "pointer-feedback CLI on Test" });
+        var result = await svc.StartAsync(
+            new DeviceLoginStartRequest { ClientName = "pointer-feedback CLI on Test" }
+        );
 
         Assert.True(result.IsSuccess);
         Assert.Equal(43, result.Data!.DeviceCode.Length);
@@ -97,7 +141,10 @@ public class DeviceLoginServiceTests
         Assert.DoesNotContain('O', result.Data.UserCode);
         Assert.DoesNotContain('1', result.Data.UserCode);
         Assert.DoesNotContain('I', result.Data.UserCode);
-        Assert.Equal("https://app.pointer.moamen.work/cli-login?code=" + result.Data.UserCode, result.Data.VerificationUrl);
+        Assert.Equal(
+            "https://app.pointer.moamen.work/cli-login?code=" + result.Data.UserCode,
+            result.Data.VerificationUrl
+        );
         Assert.Equal(600, result.Data.ExpiresInSeconds);
         Assert.Equal(3, result.Data.IntervalSeconds);
     }
@@ -108,12 +155,18 @@ public class DeviceLoginServiceTests
         var db = Guid.NewGuid().ToString();
         var publicId = SeedUser(db, out var tenant);
 
-        var start = await BuildService(BuildContext(new FakeCurrentUser(), db), new FakeCurrentUser())
+        var start = await BuildService(
+                BuildContext(new FakeCurrentUser(), db),
+                new FakeCurrentUser()
+            )
             .StartAsync(new DeviceLoginStartRequest { ClientName = "CLI" });
         Assert.True(start.IsSuccess);
 
         // Poll before approval → pending.
-        var pending = await BuildService(BuildContext(new FakeCurrentUser(), db), new FakeCurrentUser())
+        var pending = await BuildService(
+                BuildContext(new FakeCurrentUser(), db),
+                new FakeCurrentUser()
+            )
             .PollAsync(new DeviceLoginPollRequest { DeviceCode = start.Data!.DeviceCode });
         Assert.Equal("pending", pending.Data!.Status);
         Assert.Null(pending.Data.ApiKey);
@@ -126,7 +179,10 @@ public class DeviceLoginServiceTests
         Assert.Equal("approved", approve.Data!.Status);
 
         // First poll after approval → the key, exactly once.
-        var firstPoll = await BuildService(BuildContext(new FakeCurrentUser(), db), new FakeCurrentUser())
+        var firstPoll = await BuildService(
+                BuildContext(new FakeCurrentUser(), db),
+                new FakeCurrentUser()
+            )
             .PollAsync(new DeviceLoginPollRequest { DeviceCode = start.Data.DeviceCode });
         Assert.Equal("approved", firstPoll.Data!.Status);
         Assert.False(string.IsNullOrEmpty(firstPoll.Data.ApiKey));
@@ -135,7 +191,10 @@ public class DeviceLoginServiceTests
         Assert.Equal("Dev", firstPoll.Data.DisplayName);
 
         // Second poll → the row is consumed; must never hand out the key twice.
-        var secondPoll = await BuildService(BuildContext(new FakeCurrentUser(), db), new FakeCurrentUser())
+        var secondPoll = await BuildService(
+                BuildContext(new FakeCurrentUser(), db),
+                new FakeCurrentUser()
+            )
             .PollAsync(new DeviceLoginPollRequest { DeviceCode = start.Data.DeviceCode });
         Assert.Equal("expired", secondPoll.Data!.Status);
         Assert.Null(secondPoll.Data.ApiKey);
@@ -147,15 +206,22 @@ public class DeviceLoginServiceTests
         var db = Guid.NewGuid().ToString();
         var publicId = SeedUser(db, out var tenant);
 
-        var start = await BuildService(BuildContext(new FakeCurrentUser(), db), new FakeCurrentUser())
+        var start = await BuildService(
+                BuildContext(new FakeCurrentUser(), db),
+                new FakeCurrentUser()
+            )
             .StartAsync(new DeviceLoginStartRequest());
 
         var denier = new FakeCurrentUser { Id = publicId, TenantId = tenant };
-        var deny = await BuildService(BuildContext(denier, db), denier).DenyAsync(start.Data!.UserCode);
+        var deny = await BuildService(BuildContext(denier, db), denier)
+            .DenyAsync(start.Data!.UserCode);
         Assert.True(deny.IsSuccess);
         Assert.Equal("denied", deny.Data!.Status);
 
-        var poll = await BuildService(BuildContext(new FakeCurrentUser(), db), new FakeCurrentUser())
+        var poll = await BuildService(
+                BuildContext(new FakeCurrentUser(), db),
+                new FakeCurrentUser()
+            )
             .PollAsync(new DeviceLoginPollRequest { DeviceCode = start.Data.DeviceCode });
         Assert.Equal("denied", poll.Data!.Status);
     }
@@ -164,7 +230,10 @@ public class DeviceLoginServiceTests
     public async Task Poll_UnknownDeviceCode_ReturnsUnknown()
     {
         var db = Guid.NewGuid().ToString();
-        var result = await BuildService(BuildContext(new FakeCurrentUser(), db), new FakeCurrentUser())
+        var result = await BuildService(
+                BuildContext(new FakeCurrentUser(), db),
+                new FakeCurrentUser()
+            )
             .PollAsync(new DeviceLoginPollRequest { DeviceCode = "not-a-real-code" });
 
         Assert.Equal("unknown", result.Data!.Status);
@@ -177,18 +246,25 @@ public class DeviceLoginServiceTests
         var rawDeviceCode = Pointer.Application.Common.QuickAccessTokenGenerator.NewToken();
         using (var seed = BuildContext(new FakeCurrentUser { IsSuperAdmin = true }, db))
         {
-            seed.DeviceLogins.Add(new DeviceLogin
-            {
-                DeviceCodeHash = Pointer.Application.Common.QuickAccessTokenGenerator.Hash(rawDeviceCode),
-                UserCode = "ABCD-EFGH",
-                ClientName = "CLI",
-                Status = DeviceLoginStatus.Pending,
-                ExpiresAt = DateTime.UtcNow.AddSeconds(-1),
-            });
+            seed.DeviceLogins.Add(
+                new DeviceLogin
+                {
+                    DeviceCodeHash = Pointer.Application.Common.QuickAccessTokenGenerator.Hash(
+                        rawDeviceCode
+                    ),
+                    UserCode = "ABCD-EFGH",
+                    ClientName = "CLI",
+                    Status = DeviceLoginStatus.Pending,
+                    ExpiresAt = DateTime.UtcNow.AddSeconds(-1),
+                }
+            );
             seed.SaveChanges();
         }
 
-        var result = await BuildService(BuildContext(new FakeCurrentUser(), db), new FakeCurrentUser())
+        var result = await BuildService(
+                BuildContext(new FakeCurrentUser(), db),
+                new FakeCurrentUser()
+            )
             .PollAsync(new DeviceLoginPollRequest { DeviceCode = rawDeviceCode });
 
         Assert.Equal("expired", result.Data!.Status);
@@ -201,7 +277,8 @@ public class DeviceLoginServiceTests
         var publicId = SeedUser(db, out var tenant);
         var approver = new FakeCurrentUser { Id = publicId, TenantId = tenant };
 
-        var result = await BuildService(BuildContext(approver, db), approver).ApproveAsync("ZZZZ-ZZZZ");
+        var result = await BuildService(BuildContext(approver, db), approver)
+            .ApproveAsync("ZZZZ-ZZZZ");
 
         Assert.True(result.IsNotFound);
     }
@@ -213,12 +290,17 @@ public class DeviceLoginServiceTests
         var publicId = SeedUser(db, out var tenant);
         var approver = new FakeCurrentUser { Id = publicId, TenantId = tenant };
 
-        var start = await BuildService(BuildContext(new FakeCurrentUser(), db), new FakeCurrentUser())
+        var start = await BuildService(
+                BuildContext(new FakeCurrentUser(), db),
+                new FakeCurrentUser()
+            )
             .StartAsync(new DeviceLoginStartRequest());
-        var first = await BuildService(BuildContext(approver, db), approver).ApproveAsync(start.Data!.UserCode);
+        var first = await BuildService(BuildContext(approver, db), approver)
+            .ApproveAsync(start.Data!.UserCode);
         Assert.True(first.IsSuccess);
 
-        var second = await BuildService(BuildContext(approver, db), approver).ApproveAsync(start.Data.UserCode);
+        var second = await BuildService(BuildContext(approver, db), approver)
+            .ApproveAsync(start.Data.UserCode);
         Assert.True(second.IsConflict);
     }
 
@@ -253,11 +335,15 @@ public class DeviceLoginServiceTests
             publicId = user.PublicId;
         }
 
-        var start = await BuildService(BuildContext(new FakeCurrentUser(), db), new FakeCurrentUser())
+        var start = await BuildService(
+                BuildContext(new FakeCurrentUser(), db),
+                new FakeCurrentUser()
+            )
             .StartAsync(new DeviceLoginStartRequest());
 
         var approver = new FakeCurrentUser { Id = publicId, TenantId = tenant };
-        var result = await BuildService(BuildContext(approver, db), approver).ApproveAsync(start.Data!.UserCode);
+        var result = await BuildService(BuildContext(approver, db), approver)
+            .ApproveAsync(start.Data!.UserCode);
 
         Assert.True(result.IsForbidden);
     }
@@ -271,12 +357,16 @@ public class DeviceLoginServiceTests
         var publicId = SeedUser(db, out _);
         var otherTenant = Guid.NewGuid();
 
-        var start = await BuildService(BuildContext(new FakeCurrentUser(), db), new FakeCurrentUser())
+        var start = await BuildService(
+                BuildContext(new FakeCurrentUser(), db),
+                new FakeCurrentUser()
+            )
             .StartAsync(new DeviceLoginStartRequest());
 
         // Claims a DIFFERENT workspace than the one it actually has a membership in.
         var approver = new FakeCurrentUser { Id = publicId, TenantId = otherTenant };
-        var result = await BuildService(BuildContext(approver, db), approver).ApproveAsync(start.Data!.UserCode);
+        var result = await BuildService(BuildContext(approver, db), approver)
+            .ApproveAsync(start.Data!.UserCode);
 
         Assert.True(result.IsForbidden);
     }
@@ -286,12 +376,21 @@ public class DeviceLoginServiceTests
     {
         var db = Guid.NewGuid().ToString();
         var superAdminId = SeedUser(db, out var tenant, superAdmin: true);
-        var superAdmin = new FakeCurrentUser { Id = superAdminId, TenantId = tenant, IsSuperAdmin = true };
+        var superAdmin = new FakeCurrentUser
+        {
+            Id = superAdminId,
+            TenantId = tenant,
+            IsSuperAdmin = true,
+        };
 
-        var start = await BuildService(BuildContext(new FakeCurrentUser(), db), new FakeCurrentUser())
+        var start = await BuildService(
+                BuildContext(new FakeCurrentUser(), db),
+                new FakeCurrentUser()
+            )
             .StartAsync(new DeviceLoginStartRequest());
 
-        var result = await BuildService(BuildContext(superAdmin, db), superAdmin).ApproveAsync(start.Data!.UserCode);
+        var result = await BuildService(BuildContext(superAdmin, db), superAdmin)
+            .ApproveAsync(start.Data!.UserCode);
 
         Assert.True(result.IsForbidden);
     }
@@ -301,12 +400,21 @@ public class DeviceLoginServiceTests
     {
         var db = Guid.NewGuid().ToString();
         var superAdminId = SeedUser(db, out var tenant, superAdmin: true);
-        var superAdmin = new FakeCurrentUser { Id = superAdminId, TenantId = tenant, IsSuperAdmin = true };
+        var superAdmin = new FakeCurrentUser
+        {
+            Id = superAdminId,
+            TenantId = tenant,
+            IsSuperAdmin = true,
+        };
 
-        var start = await BuildService(BuildContext(new FakeCurrentUser(), db), new FakeCurrentUser())
+        var start = await BuildService(
+                BuildContext(new FakeCurrentUser(), db),
+                new FakeCurrentUser()
+            )
             .StartAsync(new DeviceLoginStartRequest());
 
-        var result = await BuildService(BuildContext(superAdmin, db), superAdmin).GetInfoAsync(start.Data!.UserCode);
+        var result = await BuildService(BuildContext(superAdmin, db), superAdmin)
+            .GetInfoAsync(start.Data!.UserCode);
 
         Assert.True(result.IsForbidden);
     }
@@ -330,10 +438,16 @@ public class DeviceLoginServiceTests
         var publicId = SeedUser(db, out var tenant);
         var user = new FakeCurrentUser { Id = publicId, TenantId = tenant };
 
-        var start = await BuildService(BuildContext(new FakeCurrentUser(), db), new FakeCurrentUser())
-            .StartAsync(new DeviceLoginStartRequest { ClientName = "pointer-feedback CLI on Test" });
+        var start = await BuildService(
+                BuildContext(new FakeCurrentUser(), db),
+                new FakeCurrentUser()
+            )
+            .StartAsync(
+                new DeviceLoginStartRequest { ClientName = "pointer-feedback CLI on Test" }
+            );
 
-        var info = await BuildService(BuildContext(user, db), user).GetInfoAsync(start.Data!.UserCode);
+        var info = await BuildService(BuildContext(user, db), user)
+            .GetInfoAsync(start.Data!.UserCode);
 
         Assert.True(info.IsSuccess);
         Assert.Equal("pending", info.Data!.Status);

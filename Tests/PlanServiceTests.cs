@@ -24,26 +24,33 @@ public class PlanServiceTests
         public int? RoleId { get; set; }
         public string? KeyScopes { get; set; }
         public string? Scope { get; set; }
+        public long? ImpersonationSessionId { get; set; }
+        public bool IsImpersonating => ImpersonationSessionId != null;
     }
 
     private static AppDbContext Ctx(string db) =>
-        new(new DbContextOptionsBuilder<AppDbContext>().UseInMemoryDatabase(db).Options, new FakeCurrentUser(), new Microsoft.Extensions.Configuration.ConfigurationBuilder().Build());
+        new(
+            new DbContextOptionsBuilder<AppDbContext>().UseInMemoryDatabase(db).Options,
+            new FakeCurrentUser(),
+            new Microsoft.Extensions.Configuration.ConfigurationBuilder().Build()
+        );
 
     private static PlanService Svc(AppDbContext db) => new(new UnitOfWork(db));
 
-    private static PlanWriteDto Write(string slug, string name) => new()
-    {
-        Name = name,
-        Slug = slug,
-        PriceMonthly = 9.99m,
-        Currency = "USD",
-        Interval = BillingInterval.Monthly,
-        SortOrder = 1,
-        IsActive = true,
-        DisplayState = PlanDisplayState.Visible,
-        FeatureBullets = new() { "bullet" },
-        Entitlements = new PlanEntitlementsDto { MaxProjects = 10 }
-    };
+    private static PlanWriteDto Write(string slug, string name) =>
+        new()
+        {
+            Name = name,
+            Slug = slug,
+            PriceMonthly = 9.99m,
+            Currency = "USD",
+            Interval = BillingInterval.Monthly,
+            SortOrder = 1,
+            IsActive = true,
+            DisplayState = PlanDisplayState.Visible,
+            FeatureBullets = new() { "bullet" },
+            Entitlements = new PlanEntitlementsDto { MaxProjects = 10 },
+        };
 
     [Fact]
     public async Task Create_Then_List_RoundTrips_Entitlements()
@@ -64,7 +71,14 @@ public class PlanServiceTests
         var db = Guid.NewGuid().ToString();
         using (var seed = Ctx(db))
         {
-            seed.Plans.Add(new Plan { Name = "Free", Slug = "free", Entitlements = new PlanEntitlements() });
+            seed.Plans.Add(
+                new Plan
+                {
+                    Name = "Free",
+                    Slug = "free",
+                    Entitlements = new PlanEntitlements(),
+                }
+            );
             seed.SaveChanges();
         }
         var freeId = Ctx(db).Plans.Single(p => p.Slug == "free").Id;
@@ -79,11 +93,23 @@ public class PlanServiceTests
         int proId;
         using (var seed = Ctx(db))
         {
-            var pro = new Plan { Name = "Pro", Slug = "pro", Entitlements = new PlanEntitlements() };
+            var pro = new Plan
+            {
+                Name = "Pro",
+                Slug = "pro",
+                Entitlements = new PlanEntitlements(),
+            };
             seed.Plans.Add(pro);
             seed.SaveChanges();
             proId = pro.Id;
-            seed.Subscriptions.Add(new Subscription { OwnerId = Guid.NewGuid(), PlanId = proId, Status = SubscriptionStatus.Active });
+            seed.Subscriptions.Add(
+                new Subscription
+                {
+                    OwnerId = Guid.NewGuid(),
+                    PlanId = proId,
+                    Status = SubscriptionStatus.Active,
+                }
+            );
             seed.SaveChanges();
         }
 
@@ -98,7 +124,12 @@ public class PlanServiceTests
         int proId;
         using (var seed = Ctx(db))
         {
-            var pro = new Plan { Name = "Pro", Slug = "pro", Entitlements = new PlanEntitlements() };
+            var pro = new Plan
+            {
+                Name = "Pro",
+                Slug = "pro",
+                Entitlements = new PlanEntitlements(),
+            };
             seed.Plans.Add(pro);
             seed.SaveChanges();
             proId = pro.Id;
@@ -115,10 +146,47 @@ public class PlanServiceTests
         var db = Guid.NewGuid().ToString();
         using (var seed = Ctx(db))
         {
-            seed.Plans.Add(new Plan { Name = "Free", Slug = "free", SortOrder = 0, DisplayState = PlanDisplayState.Visible, Entitlements = new PlanEntitlements() });
-            seed.Plans.Add(new Plan { Name = "Coming", Slug = "coming", SortOrder = 1, DisplayState = PlanDisplayState.ComingSoon, Entitlements = new PlanEntitlements() });
-            seed.Plans.Add(new Plan { Name = "Secret", Slug = "secret", SortOrder = 2, DisplayState = PlanDisplayState.Hidden, Entitlements = new PlanEntitlements() });
-            seed.Plans.Add(new Plan { Name = "Gone", Slug = "gone", SortOrder = 3, DisplayState = PlanDisplayState.Visible, DeletedAt = DateTime.UtcNow, Entitlements = new PlanEntitlements() });
+            seed.Plans.Add(
+                new Plan
+                {
+                    Name = "Free",
+                    Slug = "free",
+                    SortOrder = 0,
+                    DisplayState = PlanDisplayState.Visible,
+                    Entitlements = new PlanEntitlements(),
+                }
+            );
+            seed.Plans.Add(
+                new Plan
+                {
+                    Name = "Coming",
+                    Slug = "coming",
+                    SortOrder = 1,
+                    DisplayState = PlanDisplayState.ComingSoon,
+                    Entitlements = new PlanEntitlements(),
+                }
+            );
+            seed.Plans.Add(
+                new Plan
+                {
+                    Name = "Secret",
+                    Slug = "secret",
+                    SortOrder = 2,
+                    DisplayState = PlanDisplayState.Hidden,
+                    Entitlements = new PlanEntitlements(),
+                }
+            );
+            seed.Plans.Add(
+                new Plan
+                {
+                    Name = "Gone",
+                    Slug = "gone",
+                    SortOrder = 3,
+                    DisplayState = PlanDisplayState.Visible,
+                    DeletedAt = DateTime.UtcNow,
+                    Entitlements = new PlanEntitlements(),
+                }
+            );
             seed.SaveChanges();
         }
 

@@ -13,7 +13,8 @@ public static class MessageKeys
         public const string RegistrationSubmitted = "Request submitted for approval.";
         public const string AccountExists = "An account with this email already exists.";
         public const string TokenRequired = "Reset token is required.";
-        public const string TooManyAttempts = "Too many failed login attempts. Please try again later.";
+        public const string TooManyAttempts =
+            "Too many failed login attempts. Please try again later.";
 
         /// <summary>DB-11b: no live workspace membership at all.</summary>
         public const string NoWorkspace = "Your account is not a member of any workspace.";
@@ -28,14 +29,16 @@ public static class MessageKeys
         /// GLM A8: a wrong password against an identity that absorbed another (merged, DB-11a) row —
         /// points the person at "Forgot password" rather than the generic InvalidCredentials.
         /// </summary>
-        public const string InvalidCredentialsAfterMerge = "Invalid email or password. Accounts that shared this e-mail were combined into one — if your previous password no longer works, use \"Forgot password\".";
+        public const string InvalidCredentialsAfterMerge =
+            "Invalid email or password. Accounts that shared this e-mail were combined into one — if your previous password no longer works, use \"Forgot password\".";
     }
 
     public static class DeviceLogin
     {
         public const string NotFound = "This code is invalid or has expired.";
         public const string AlreadyDecided = "This code has already been approved or denied.";
-        public const string SuperAdminNotAllowed = "Super admins cannot sign in the CLI. Sign in with a tenant account instead.";
+        public const string SuperAdminNotAllowed =
+            "Super admins cannot sign in the CLI. Sign in with a tenant account instead.";
     }
 
     public static class User
@@ -46,20 +49,31 @@ public static class MessageKeys
         public const string PasswordRequired = "Password is required.";
         public const string PasswordWeak = "Password must be at least 8 characters.";
         public const string DisplayNameRequired = "Display name is required.";
-        public const string TargetWorkspaceRequired = "Select which workspace to add this deputy to.";
+        public const string TargetWorkspaceRequired =
+            "Select which workspace to add this deputy to.";
         public const string WorkspaceNotFound = "The selected workspace does not exist.";
         /// <summary>DB-11c: renamed from CannotDeleteSelf — removal is now membership-scoped, not a delete.</summary>
         public const string CannotRemoveSelf = "You cannot remove yourself — use Leave workspace instead.";
-        public const string CannotDeleteDeputy = "Deputies cannot remove other deputies — only the workspace admin or a super admin can.";
-        public const string CannotChangeSelfFromAdmin = "You cannot change your own role away from Workspace Admin — promote a deputy to replace you first.";
+
+        /// <summary>Pre-DB-11c name, kept for source compatibility with callers that still reference it.</summary>
+        public const string CannotDeleteSelf = "You cannot delete your own account.";
+        public const string CannotDeleteAdmin =
+            "The workspace admin cannot be deleted directly — promote a deputy to replace them first, or remove the whole workspace instead.";
+        public const string CannotDeleteDeputy =
+            "Deputies cannot remove other deputies — only the workspace admin or a super admin can.";
+        public const string CannotChangeSelfFromAdmin =
+            "You cannot change your own role away from Workspace Admin — promote a deputy to replace you first.";
         public const string DeleteNotAuthorized = "You are not authorized to delete this user.";
-        public const string NotADeputy = "Only an existing deputy can be promoted to workspace admin.";
-        public const string TransferNotAuthorized = "Only the current workspace admin or a super admin can transfer ownership.";
+        public const string NotADeputy =
+            "Only an existing deputy can be promoted to workspace admin.";
+        public const string TransferNotAuthorized =
+            "Only the current workspace admin or a super admin can transfer ownership.";
         public const string CurrentPasswordIncorrect = "Current password is incorrect.";
         public const string PasswordChanged = "Password changed.";
 
         /// <summary>DB-11a D6: an admin cannot set another member's password once that identity has more than one live membership.</summary>
-        public const string PasswordManagedElsewhere = "This user also belongs to other workspaces — they must change their password themselves.";
+        public const string PasswordManagedElsewhere =
+            "This user also belongs to other workspaces — they must change their password themselves.";
 
         /// <summary>DB-11a: the target already has a live membership in this workspace.</summary>
         public const string AlreadyMember = "This person is already a member of this workspace.";
@@ -122,12 +136,16 @@ public static class MessageKeys
         public const string NotFound = "Project not found.";
         public const string KeyTaken = "Project key already exists.";
         public const string KeyRequired = "Project key is required.";
-        public const string KeyInvalidFormat = "Project key must contain only lowercase letters, numbers and dashes (-).";
+        public const string KeyInvalidFormat =
+            "Project key must contain only lowercase letters, numbers and dashes (-).";
         public const string Disabled = "This project has been disabled.";
-        public const string KeyAmbiguous = "This project key matches more than one workspace. Please contact your workspace administrator.";
-        public const string SuperAdminNotAllowed = "Super admins cannot create projects. Sign in with a tenant account to use Pointer.";
+        public const string KeyAmbiguous =
+            "This project key matches more than one workspace. Please contact your workspace administrator.";
+        public const string SuperAdminNotAllowed =
+            "Super admins cannot create projects. Sign in with a tenant account to use Pointer.";
         public const string QuickAccessNotAllowed = "Client accounts cannot manage projects.";
-        public const string NoneForOrigin = "No project is set up for this site yet. Ask your workspace admin to set the project's App URL.";
+        public const string NoneForOrigin =
+            "No project is set up for this site yet. Ask your workspace admin to set the project's App URL.";
         public const string OriginNotAllowed = "Comments are not allowed from this address.";
     }
 
@@ -138,10 +156,14 @@ public static class MessageKeys
         public const string NameRequired = "Role name is required.";
         public const string SystemImmutable = "System roles cannot be modified or disabled.";
         public const string Invalid = "The selected role does not exist or is inactive.";
-        public const string HasUsers = "This role has assigned users — choose another role to move them to.";
-        public const string ReassignSame = "The reassignment role must be different from the role being deleted.";
-        public const string EscalationNotAllowed = "Only a super admin may assign or approve users with an admin-tier role.";
-        public const string GlobalRoleToggleOnly = "You can only enable or disable a shared role for your workspace — renaming or reconfiguring it is managed by the platform.";
+        public const string HasUsers =
+            "This role has assigned users — choose another role to move them to.";
+        public const string ReassignSame =
+            "The reassignment role must be different from the role being deleted.";
+        public const string EscalationNotAllowed =
+            "Only a super admin may assign or approve users with an admin-tier role.";
+        public const string GlobalRoleToggleOnly =
+            "You can only enable or disable a shared role for your workspace — renaming or reconfiguring it is managed by the platform.";
     }
 
     public static class AppEnvironment
@@ -149,8 +171,10 @@ public static class MessageKeys
         public const string NotFound = "Environment not found.";
         public const string NameTaken = "An environment with this name already exists.";
         public const string NameRequired = "Environment name is required.";
-        public const string NotManageable = "You can only rename or delete your own environments — the global catalog is managed by the platform.";
-        public const string InUse = "This environment has project URLs assigned to it — remove those first.";
+        public const string NotManageable =
+            "You can only rename or delete your own environments — the global catalog is managed by the platform.";
+        public const string InUse =
+            "This environment has project URLs assigned to it — remove those first.";
         public const string NotEnabled = "This environment is currently disabled.";
     }
 
@@ -169,7 +193,8 @@ public static class MessageKeys
 
     public static class Branding
     {
-        public const string PrimaryColorInvalidFormat = "Primary color must be a valid hex color (e.g. #2563eb or #fff).";
+        public const string PrimaryColorInvalidFormat =
+            "Primary color must be a valid hex color (e.g. #2563eb or #fff).";
         public const string UrlAppInvalidFormat = "App URL must be an http(s) URL.";
         public const string UrlDemoInvalidFormat = "Demo URL must be an http(s) URL.";
         public const string UrlDocsInvalidFormat = "Docs URL must be an http(s) URL.";
@@ -182,15 +207,19 @@ public static class MessageKeys
         public const string BodyRequired = "Comment body is required.";
         public const string Created = "Comment created.";
         public const string Applied = "Comment marked applied.";
-        public const string InvalidPredefinedAction = "The selected action is unavailable. Please refresh and try again.";
+        public const string InvalidPredefinedAction =
+            "The selected action is unavailable. Please refresh and try again.";
         public const string StatusInvalid = "Invalid comment status.";
-        public const string SuperAdminNotAllowed = "Super admins cannot leave comments. Sign in with a tenant account to use Pointer.";
-        public const string QuickAccessCannotChangeStatus = "Client accounts can leave feedback but can't change its status.";
+        public const string SuperAdminNotAllowed =
+            "Super admins cannot leave comments. Sign in with a tenant account to use Pointer.";
+        public const string QuickAccessCannotChangeStatus =
+            "Client accounts can leave feedback but can't change its status.";
         public const string VerifyRequiresApplied = "Only applied comments can be verified.";
         public const string VerifyNoteRequired = "A note is required when reporting an issue.";
         public const string Verified = "Comment marked as verified.";
         public const string Reopened = "Comment reopened.";
-        public const string AiAttributionInvalid = "AI tool/model must be plain identifiers (letters, digits, ., _, :, /, +, -) with no spaces, up to 64 characters.";
+        public const string AiAttributionInvalid =
+            "AI tool/model must be plain identifiers (letters, digits, ., _, :, /, +, -) with no spaces, up to 64 characters.";
     }
 
     public static class PredefinedAction
@@ -198,7 +227,8 @@ public static class MessageKeys
         public const string NotFound = "Action not found.";
         public const string TextRequired = "Action text is required.";
         public const string PromptRequired = "Action prompt is required.";
-        public const string SuperAdminNotAllowed = "Super admins cannot create predefined actions. Sign in with a tenant account to use Pointer.";
+        public const string SuperAdminNotAllowed =
+            "Super admins cannot create predefined actions. Sign in with a tenant account to use Pointer.";
     }
 
     public static class Suggestion
@@ -206,9 +236,11 @@ public static class MessageKeys
         public const string NotFound = "Suggestion not found.";
         public const string TextRequired = "Suggestion text is required.";
         public const string PromptRequired = "Suggestion prompt is required.";
-        public const string CanEditDirectly = "You can edit this project — add the predefined action directly instead of suggesting it.";
+        public const string CanEditDirectly =
+            "You can edit this project — add the predefined action directly instead of suggesting it.";
         public const string ProjectUnavailable = "The target project is no longer available.";
-        public const string NotAvailableForProject = "Suggestions are not available for this project.";
+        public const string NotAvailableForProject =
+            "Suggestions are not available for this project.";
         public const string Created = "Suggestion sent for admin review.";
         public const string Approved = "Suggestion approved.";
         public const string Rejected = "Suggestion rejected.";
@@ -220,7 +252,8 @@ public static class MessageKeys
 
     public static class Project_Delete
     {
-        public const string HasComments = "This project has comments — only an admin can delete it.";
+        public const string HasComments =
+            "This project has comments — only an admin can delete it.";
         public const string NotOwner = "You can only delete your own projects.";
     }
 
@@ -233,7 +266,8 @@ public static class MessageKeys
         /// disabled user, wrong role. Distinguishing them would tell an anonymous caller holding a
         /// guessed token which part of their guess was right.
         /// </summary>
-        public const string LinkInvalid = "This invite link is invalid or expired — ask for a new one.";
+        public const string LinkInvalid =
+            "This invite link is invalid or expired — ask for a new one.";
         public const string Invalid = "This invite link is invalid or has expired.";
         public const string Expired = "This invite link has expired.";
         public const string Revoked = "This invite link has been revoked.";
@@ -242,11 +276,14 @@ public static class MessageKeys
         public const string Forbidden = "You are not allowed to create invites.";
         public const string Created = "Invite created.";
         public const string Revoked_Ok = "Invite revoked.";
-        public const string QuickAccessEmailRequired = "An email is required for a client invite so the account can be provisioned.";
+        public const string QuickAccessEmailRequired =
+            "An email is required for a client invite so the account can be provisioned.";
         public const string QuickAccessProjectRequired = "Select a project for this client invite.";
-        public const string QuickAccessAppUrlRequired = "Set this project's App URL before sending a client invite.";
+        public const string QuickAccessAppUrlRequired =
+            "Set this project's App URL before sending a client invite.";
         public const string NotQuickAccess = "This invite has no magic link to rotate.";
-        public const string LinkRotated = "A new link was issued; the previous one no longer works.";
+        public const string LinkRotated =
+            "A new link was issued; the previous one no longer works.";
     }
 
     public static class Build
@@ -265,10 +302,13 @@ public static class MessageKeys
         public const string SlugRequired = "Plan slug is required.";
         public const string UnknownEntitlement = "Unknown entitlement key.";
         public const string InvalidEntitlementValue = "Invalid value for an entitlement key.";
-        public const string CannotDeleteFree = "The Free plan is the fallback and cannot be deleted.";
-        public const string InUse = "This plan has active subscriptions — move those tenants to another plan first.";
+        public const string CannotDeleteFree =
+            "The Free plan is the fallback and cannot be deleted.";
+        public const string InUse =
+            "This plan has active subscriptions — move those tenants to another plan first.";
         public const string LimitReached = "You've reached your plan's limit. Upgrade to add more.";
-        public const string ExtensionDisabled = "The browser extension is not enabled on your plan.";
+        public const string ExtensionDisabled =
+            "The browser extension is not enabled on your plan.";
         public const string Created = "Plan created.";
         public const string Updated = "Plan updated.";
         public const string Deleted = "Plan deleted.";
@@ -278,10 +318,12 @@ public static class MessageKeys
     public static class Demo
     {
         public const string NotDemoUser = "This account is not a demo account.";
-        public const string AlreadyUpgraded = "This demo has already been upgraded to a permanent account.";
+        public const string AlreadyUpgraded =
+            "This demo has already been upgraded to a permanent account.";
         public const string DemoExpired = "This demo session has expired. Please start a new demo.";
         public const string EmailTaken = "That email is already registered.";
-        public const string UpgradeSuccess = "Your workspace has been upgraded. Welcome to Pointer!";
+        public const string UpgradeSuccess =
+            "Your workspace has been upgraded. Welcome to Pointer!";
     }
 
     public static class ExportImport
@@ -314,5 +356,17 @@ public static class MessageKeys
         public const string TitleRequired = "Title is required.";
         public const string PromptRequired = "Prompt instruction is required.";
         public const string Forbidden = "You are not authorized to manage this AI rule.";
+    }
+
+    /// <summary>DB-13 (F2): metadata-only operator + audited, time-boxed impersonation.</summary>
+    public static class Impersonation
+    {
+        public const string Required =
+            "This content is only available inside an impersonation session (View as…).";
+        public const string AlreadyActive =
+            "You already have a live impersonation session — end it first.";
+        public const string NoSession = "No impersonation session to end.";
+        public const string Ended = "Impersonation session ended.";
+        public const string ReadOnly = "Impersonation sessions are read-only.";
     }
 }

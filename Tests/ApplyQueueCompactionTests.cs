@@ -31,64 +31,131 @@ public class ApplyQueueCompactionTests
         public int? RoleId { get; set; }
         public string? KeyScopes { get; set; }
         public string? Scope { get; set; }
+        public long? ImpersonationSessionId { get; set; }
+        public bool IsImpersonating => ImpersonationSessionId != null;
     }
 
     private sealed class FakeFileStorage : IFileStorage
     {
-        public Task<string> SaveAsync(string ownerSegment, string project, Stream content, string extension) => Task.FromResult("uploads/x");
+        public Task<string> SaveAsync(
+            string ownerSegment,
+            string project,
+            Stream content,
+            string extension
+        ) => Task.FromResult("uploads/x");
+
         public Task DeleteAsync(string relativePathOrUrl) => Task.CompletedTask;
+
         public Task DeleteOwnerFilesAsync(string ownerSegment) => Task.CompletedTask;
     }
 
     private sealed class FakeUploadSigner : IUploadSigner
     {
         public string SignedUrl(string relPath) => relPath;
+
         public bool Validate(string relPath, long exp, string sig) => true;
+
         public string ExtractRelPath(string stored) => stored;
     }
 
     private sealed class FakeSettings : ISettingsService
     {
-        public Task<bool> GetBoolAsync(string key, bool fallback = false) => Task.FromResult(fallback);
+        public Task<bool> GetBoolAsync(string key, bool fallback = false) =>
+            Task.FromResult(fallback);
+
         public Task SetBoolAsync(string key, bool value) => Task.CompletedTask;
-        public Task<string> GetStringAsync(string key, string fallback = "") => Task.FromResult(fallback);
+
+        public Task<string> GetStringAsync(string key, string fallback = "") =>
+            Task.FromResult(fallback);
+
         public Task SetStringAsync(string key, string value) => Task.CompletedTask;
+
         public Task<int> GetIntAsync(string key, int fallback = 0) => Task.FromResult(fallback);
+
         public Task SetIntAsync(string key, int value) => Task.CompletedTask;
     }
 
     private static AppDbContext BuildContext(ICurrentUser user, string dbName) =>
-        new(new DbContextOptionsBuilder<AppDbContext>().UseInMemoryDatabase(dbName).Options, user,
-            new Microsoft.Extensions.Configuration.ConfigurationBuilder().Build());
+        new(
+            new DbContextOptionsBuilder<AppDbContext>().UseInMemoryDatabase(dbName).Options,
+            user,
+            new Microsoft.Extensions.Configuration.ConfigurationBuilder().Build()
+        );
 
     private CommentService BuildService(ICurrentUser user, string dbName)
     {
         var uow = new UnitOfWork(BuildContext(user, dbName));
-        var projectService = new ProjectService(uow, user, new PassThroughEntitlements(), TestProjectServiceDeps.Settings(), TestProjectServiceDeps.Configuration(), new FakeAuditWriter());
-        var actionService = new PredefinedActionService(uow, projectService, user, new PassThroughEntitlements());
-        return new CommentService(uow, projectService, actionService, new FakeFileStorage(), user,
-            new FakeUploadSigner(), new FakeSettings(), new PassThroughEntitlements());
+        var projectService = new ProjectService(
+            uow,
+            user,
+            new PassThroughEntitlements(),
+            TestProjectServiceDeps.Settings(),
+            TestProjectServiceDeps.Configuration(),
+            new FakeAuditWriter()
+        );
+        var actionService = new PredefinedActionService(
+            uow,
+            projectService,
+            user,
+            new PassThroughEntitlements()
+        );
+        return new CommentService(
+            uow,
+            projectService,
+            actionService,
+            new FakeFileStorage(),
+            user,
+            new FakeUploadSigner(),
+            new FakeSettings(),
+            new PassThroughEntitlements()
+        );
     }
 
     private static (string dbName, string projectKey, Guid tenant) SeedProject(string dbName)
     {
         var tenant = Guid.NewGuid();
         using var seed = BuildContext(new FakeCurrentUser { IsSuperAdmin = true }, dbName);
-        seed.Projects.Add(new Project { Key = "proj", Name = "Proj", IsActiveLocal = true, IsActiveStaging = true, IsActiveProduction = true, OwnerId = tenant });
+        seed.Projects.Add(
+            new Project
+            {
+                Key = "proj",
+                Name = "Proj",
+                IsActiveLocal = true,
+                IsActiveStaging = true,
+                IsActiveProduction = true,
+                OwnerId = tenant,
+            }
+        );
         seed.SaveChanges();
         return (dbName, "proj", tenant);
     }
 
-    private static Comment MakeComment(int projectId, Guid tenant, Guid author, string route, string device, string? ua, CommentStatus status = CommentStatus.ReadyToApply) => new()
-    {
-        ProjectId = projectId,
-        OwnerId = tenant,
-        AuthorId = author,
-        Body = "body",
-        Status = status,
-        Environment = EnvironmentTag.Local,
-        Element = new ElementCapture { Route = route, DeviceType = device, UserAgent = ua, PageUrl = $"https://x.test{route}", PageTitle = "t" }
-    };
+    private static Comment MakeComment(
+        int projectId,
+        Guid tenant,
+        Guid author,
+        string route,
+        string device,
+        string? ua,
+        CommentStatus status = CommentStatus.ReadyToApply
+    ) =>
+        new()
+        {
+            ProjectId = projectId,
+            OwnerId = tenant,
+            AuthorId = author,
+            Body = "body",
+            Status = status,
+            Environment = EnvironmentTag.Local,
+            Element = new ElementCapture
+            {
+                Route = route,
+                DeviceType = device,
+                UserAgent = ua,
+                PageUrl = $"https://x.test{route}",
+                PageTitle = "t",
+            },
+        };
 
     [Fact]
     public async Task ApplyQueue_DedupesPagesByRoutePlusDevice_NotRouteAlone()
@@ -103,14 +170,23 @@ public class ApplyQueueCompactionTests
             seed.Comments.AddRange(
                 MakeComment(project.Id, tenant, author, "/checkout", "mobile", "UA-mobile"),
                 MakeComment(project.Id, tenant, author, "/checkout", "mobile", "UA-mobile"), // same route+device → same page entry
-                MakeComment(project.Id, tenant, author, "/checkout", "desktop", "UA-desktop")); // same route, different device → separate entry
+                MakeComment(project.Id, tenant, author, "/checkout", "desktop", "UA-desktop")
+            ); // same route, different device → separate entry
             await seed.SaveChangesAsync();
         }
 
-        var admin = new FakeCurrentUser { Id = Guid.NewGuid(), IsAdmin = true, TenantId = tenant };
+        var admin = new FakeCurrentUser
+        {
+            Id = Guid.NewGuid(),
+            IsAdmin = true,
+            TenantId = tenant,
+        };
         var svc = BuildService(admin, dbName);
 
-        var result = await svc.ListApplyQueueAsync(key, new Application.DTOs.Comment.CommentFilter());
+        var result = await svc.ListApplyQueueAsync(
+            key,
+            new Application.DTOs.Comment.CommentFilter()
+        );
 
         Assert.True(result.IsSuccess);
         Assert.NotNull(result.Data!.Pages);
@@ -118,7 +194,14 @@ public class ApplyQueueCompactionTests
 
         var items = result.Data!.Items;
         Assert.Equal(3, items.Count);
-        var mobileRefs = items.Where(i => i.Element.PageRef != null && result.Data!.Pages![i.Element.PageRef!].Device == "mobile").Select(i => i.Element.PageRef).Distinct().ToList();
+        var mobileRefs = items
+            .Where(i =>
+                i.Element.PageRef != null
+                && result.Data!.Pages![i.Element.PageRef!].Device == "mobile"
+            )
+            .Select(i => i.Element.PageRef)
+            .Distinct()
+            .ToList();
         Assert.Single(mobileRefs); // both mobile comments share one PageRef
     }
 
@@ -134,14 +217,23 @@ public class ApplyQueueCompactionTests
             var project = await seed.Projects.FirstAsync();
             seed.Comments.AddRange(
                 MakeComment(project.Id, tenant, author, "/a", "mobile", "same-ua"),
-                MakeComment(project.Id, tenant, author, "/b", "mobile", "same-ua")); // different route, same UA → one UserAgents entry
+                MakeComment(project.Id, tenant, author, "/b", "mobile", "same-ua")
+            ); // different route, same UA → one UserAgents entry
             await seed.SaveChangesAsync();
         }
 
-        var admin = new FakeCurrentUser { Id = Guid.NewGuid(), IsAdmin = true, TenantId = tenant };
+        var admin = new FakeCurrentUser
+        {
+            Id = Guid.NewGuid(),
+            IsAdmin = true,
+            TenantId = tenant,
+        };
         var svc = BuildService(admin, dbName);
 
-        var result = await svc.ListApplyQueueAsync(key, new Application.DTOs.Comment.CommentFilter());
+        var result = await svc.ListApplyQueueAsync(
+            key,
+            new Application.DTOs.Comment.CommentFilter()
+        );
 
         Assert.True(result.IsSuccess);
         Assert.Equal(2, result.Data!.Pages!.Count); // two distinct routes
@@ -168,10 +260,18 @@ public class ApplyQueueCompactionTests
             await seed.SaveChangesAsync();
         }
 
-        var admin = new FakeCurrentUser { Id = Guid.NewGuid(), IsAdmin = true, TenantId = tenant };
+        var admin = new FakeCurrentUser
+        {
+            Id = Guid.NewGuid(),
+            IsAdmin = true,
+            TenantId = tenant,
+        };
         var svc = BuildService(admin, dbName);
 
-        var result = await svc.ListApplyQueueAsync(key, new Application.DTOs.Comment.CommentFilter());
+        var result = await svc.ListApplyQueueAsync(
+            key,
+            new Application.DTOs.Comment.CommentFilter()
+        );
         var element = result.Data!.Items.Single().Element;
 
         Assert.Equal(JsonValueKind.Array, element.Classes!.Value.ValueKind);
@@ -198,10 +298,18 @@ public class ApplyQueueCompactionTests
             await seed.SaveChangesAsync();
         }
 
-        var admin = new FakeCurrentUser { Id = Guid.NewGuid(), IsAdmin = true, TenantId = tenant };
+        var admin = new FakeCurrentUser
+        {
+            Id = Guid.NewGuid(),
+            IsAdmin = true,
+            TenantId = tenant,
+        };
         var svc = BuildService(admin, dbName);
 
-        var result = await svc.ListApplyQueueAsync(key, new Application.DTOs.Comment.CommentFilter());
+        var result = await svc.ListApplyQueueAsync(
+            key,
+            new Application.DTOs.Comment.CommentFilter()
+        );
 
         Assert.True(result.IsSuccess); // never a 500/failure on malformed legacy data
         var element = result.Data!.Items.Single().Element;

@@ -28,20 +28,38 @@ public class ApiKeyAuthTests
         public int? RoleId { get; set; }
         public string? KeyScopes { get; set; }
         public string? Scope { get; set; }
+        public long? ImpersonationSessionId { get; set; }
+        public bool IsImpersonating => ImpersonationSessionId != null;
     }
 
     private sealed class IdentityHasher : IPasswordHasher
     {
         public string Hash(string p) => "h:" + p;
+
         public bool Verify(string p, string h) => h == "h:" + p;
     }
 
-    private sealed class FakeToken : ITokenService { public string Issue(User u, WorkspaceMembership? membership, int? keyScopes = null) => "jwt-for-" + u.Email; public string IssueSelection(User u) => "sel-for-" + u.Email; }
+    private sealed class FakeToken : ITokenService
+    {
+        public string Issue(User u, WorkspaceMembership? membership, int? keyScopes = null) =>
+            "jwt-for-" + u.Email;
+
+        public string IssueSelection(User u) => "sel-for-" + u.Email;
+
+        public string IssueImpersonation(User u, Guid w, long s, DateTime e) =>
+            "imp-for-" + u.Email;
+    }
 
     private sealed class FakeReset : IResetTokenService
     {
         public string Create(Guid id, Guid stamp) => "r";
-        public bool TryValidate(string token, out Guid id, out Guid stamp) { id = Guid.Empty; stamp = Guid.Empty; return false; }
+
+        public bool TryValidate(string token, out Guid id, out Guid stamp)
+        {
+            id = Guid.Empty;
+            stamp = Guid.Empty;
+            return false;
+        }
 
         public string CreateScoped(Guid id, Guid stamp, string purpose, string? payload = null) => "r";
 
@@ -56,53 +74,115 @@ public class ApiKeyAuthTests
 
     private sealed class NoopSettings : ISettingsService
     {
-        public Task<bool> GetBoolAsync(string key, bool fallback = false) => Task.FromResult(fallback);
+        public Task<bool> GetBoolAsync(string key, bool fallback = false) =>
+            Task.FromResult(fallback);
+
         public Task SetBoolAsync(string key, bool value) => Task.CompletedTask;
-        public Task<string> GetStringAsync(string key, string fallback = "") => Task.FromResult(fallback);
+
+        public Task<string> GetStringAsync(string key, string fallback = "") =>
+            Task.FromResult(fallback);
+
         public Task SetStringAsync(string key, string value) => Task.CompletedTask;
+
         public Task<int> GetIntAsync(string key, int fallback = 0) => Task.FromResult(fallback);
+
         public Task SetIntAsync(string key, int value) => Task.CompletedTask;
     }
 
     private sealed class NoopEmail : IEmailService
     {
-        public Task<bool> SendAsync(string to, string subject, string html, CancellationToken ct = default) => Task.FromResult(true);
+        public Task<bool> SendAsync(
+            string to,
+            string subject,
+            string html,
+            CancellationToken ct = default
+        ) => Task.FromResult(true);
     }
 
     private sealed class NoopBrandingService : IBrandingService
     {
-        private static Pointer.Application.DTOs.Branding.BrandingResponse DefaultBranding() => new()
-        {
-            ProductName = "Pointer",
-            Tagline = string.Empty,
-            PrimaryColor = "#2563eb",
-            Urls = new Pointer.Application.DTOs.Branding.BrandingUrlsResponse { App = "https://app.pointer.moamen.work" },
-            Assets = new Pointer.Application.DTOs.Branding.BrandingAssetsResponse(),
-        };
-        public Task<Pointer.Application.Response.Result<Pointer.Application.DTOs.Branding.BrandingResponse>> GetAsync(string publicBase, IReadOnlySet<string> existingKinds) =>
-            Task.FromResult(Pointer.Application.Response.Result<Pointer.Application.DTOs.Branding.BrandingResponse>.Success(DefaultBranding()));
-        public Task<Pointer.Application.Response.Result<Pointer.Application.DTOs.Branding.BrandingResponse>> UpdateAsync(Pointer.Application.DTOs.Branding.BrandingWriteDto dto, string publicBase, IReadOnlySet<string> existingKinds) =>
-            Task.FromResult(Pointer.Application.Response.Result<Pointer.Application.DTOs.Branding.BrandingResponse>.Success(DefaultBranding()));
+        private static Pointer.Application.DTOs.Branding.BrandingResponse DefaultBranding() =>
+            new()
+            {
+                ProductName = "Pointer",
+                Tagline = string.Empty,
+                PrimaryColor = "#2563eb",
+                Urls = new Pointer.Application.DTOs.Branding.BrandingUrlsResponse
+                {
+                    App = "https://app.pointer.moamen.work",
+                },
+                Assets = new Pointer.Application.DTOs.Branding.BrandingAssetsResponse(),
+            };
+
+        public Task<Pointer.Application.Response.Result<Pointer.Application.DTOs.Branding.BrandingResponse>> GetAsync(
+            string publicBase,
+            IReadOnlySet<string> existingKinds
+        ) =>
+            Task.FromResult(
+                Pointer.Application.Response.Result<Pointer.Application.DTOs.Branding.BrandingResponse>.Success(
+                    DefaultBranding()
+                )
+            );
+
+        public Task<Pointer.Application.Response.Result<Pointer.Application.DTOs.Branding.BrandingResponse>> UpdateAsync(
+            Pointer.Application.DTOs.Branding.BrandingWriteDto dto,
+            string publicBase,
+            IReadOnlySet<string> existingKinds
+        ) =>
+            Task.FromResult(
+                Pointer.Application.Response.Result<Pointer.Application.DTOs.Branding.BrandingResponse>.Success(
+                    DefaultBranding()
+                )
+            );
+
         public Task<int> BumpVersionAsync() => Task.FromResult(0);
-        public Task<Pointer.Application.DTOs.Branding.BrandingResponse> BuildResponseAsync(string publicBase, IReadOnlySet<string> existingKinds) =>
-            Task.FromResult(DefaultBranding());
+
+        public Task<Pointer.Application.DTOs.Branding.BrandingResponse> BuildResponseAsync(
+            string publicBase,
+            IReadOnlySet<string> existingKinds
+        ) => Task.FromResult(DefaultBranding());
     }
 
     private static AppDbContext BuildContext(ICurrentUser user, string dbName) =>
-        new(new DbContextOptionsBuilder<AppDbContext>().UseInMemoryDatabase(dbName).Options, user,
-            new Microsoft.Extensions.Configuration.ConfigurationBuilder().Build());
+        new(
+            new DbContextOptionsBuilder<AppDbContext>().UseInMemoryDatabase(dbName).Options,
+            user,
+            new Microsoft.Extensions.Configuration.ConfigurationBuilder().Build()
+        );
 
     private static AuthService BuildAuthService(AppDbContext db, ICurrentUser user) =>
-        new(new UnitOfWork(db), new IdentityHasher(), new FakeToken(), user, new NoopSettings(), new FakeReset(), new NoopEmail(), new NoopBrandingService(), new ApiKeyService(new UnitOfWork(db), new TestApiKeyProtector()), new FakeLoginAttemptLimiter(), new MembershipService(new UnitOfWork(db)));
+        new(
+            new UnitOfWork(db),
+            new IdentityHasher(),
+            new FakeToken(),
+            user,
+            new NoopSettings(),
+            new FakeReset(),
+            new NoopEmail(),
+            new NoopBrandingService(),
+            new ApiKeyService(new UnitOfWork(db), new TestApiKeyProtector()),
+            new FakeLoginAttemptLimiter(),
+            new MembershipService(new UnitOfWork(db))
+        );
 
-    private static ProfileService BuildProfileService(AppDbContext db) => new(new UnitOfWork(db), new ApiKeyService(new UnitOfWork(db), new TestApiKeyProtector()));
+    private static ProfileService BuildProfileService(AppDbContext db, ICurrentUser? user = null) =>
+        new(
+            new UnitOfWork(db),
+            new ApiKeyService(new UnitOfWork(db), new TestApiKeyProtector()),
+            user ?? new FakeCurrentUser()
+        );
 
     private static Guid SeedUser(string dbName, out Guid tenant)
     {
         tenant = Guid.NewGuid();
         var publicId = Guid.NewGuid();
         using var seed = BuildContext(new FakeCurrentUser { IsSuperAdmin = true }, dbName);
-        var role = new Role { Name = "Developer", IsActive = true, OwnerId = null };
+        var role = new Role
+        {
+            Name = "Developer",
+            IsActive = true,
+            OwnerId = null,
+        };
         seed.Roles.Add(role);
         seed.SaveChanges();
         var user = new User
@@ -127,7 +207,9 @@ public class ApiKeyAuthTests
     {
         var db = Guid.NewGuid().ToString();
         var publicId = SeedUser(db, out var tenant);
-        var svc = BuildProfileService(BuildContext(new FakeCurrentUser { Id = publicId, TenantId = tenant }, db));
+        var svc = BuildProfileService(
+            BuildContext(new FakeCurrentUser { Id = publicId, TenantId = tenant }, db)
+        );
 
         var result = await svc.GetOrCreateApiKeyAsync(publicId, tenant);
 
@@ -140,10 +222,14 @@ public class ApiKeyAuthTests
     {
         var db = Guid.NewGuid().ToString();
         var publicId = SeedUser(db, out var tenant);
-        var svc1 = BuildProfileService(BuildContext(new FakeCurrentUser { Id = publicId, TenantId = tenant }, db));
+        var svc1 = BuildProfileService(
+            BuildContext(new FakeCurrentUser { Id = publicId, TenantId = tenant }, db)
+        );
         var first = await svc1.GetOrCreateApiKeyAsync(publicId, tenant);
 
-        var svc2 = BuildProfileService(BuildContext(new FakeCurrentUser { Id = publicId, TenantId = tenant }, db));
+        var svc2 = BuildProfileService(
+            BuildContext(new FakeCurrentUser { Id = publicId, TenantId = tenant }, db)
+        );
         var second = await svc2.GetOrCreateApiKeyAsync(publicId, tenant);
 
         Assert.Equal(first.Data!.ApiKey, second.Data!.ApiKey);
@@ -156,13 +242,18 @@ public class ApiKeyAuthTests
         var publicId = SeedUser(db, out var tenant);
         var user = new FakeCurrentUser { Id = publicId, TenantId = tenant };
 
-        var first = await BuildProfileService(BuildContext(user, db)).GetOrCreateApiKeyAsync(publicId, tenant);
-        var regenerated = await BuildProfileService(BuildContext(user, db)).RegenerateApiKeyAsync(publicId, tenant);
+        var first = await BuildProfileService(BuildContext(user, db))
+            .GetOrCreateApiKeyAsync(publicId, tenant);
+        var regenerated = await BuildProfileService(BuildContext(user, db))
+            .RegenerateApiKeyAsync(publicId, tenant);
 
         Assert.NotEqual(first.Data!.ApiKey, regenerated.Data!.ApiKey);
 
         // The old key must no longer authenticate.
-        var loginWithOld = await BuildAuthService(BuildContext(new FakeCurrentUser(), db), new FakeCurrentUser())
+        var loginWithOld = await BuildAuthService(
+                BuildContext(new FakeCurrentUser(), db),
+                new FakeCurrentUser()
+            )
             .LoginWithApiKeyAsync(new LoginWithApiKeyRequest { ApiKey = first.Data!.ApiKey });
         Assert.False(loginWithOld.IsSuccess);
     }
@@ -172,10 +263,15 @@ public class ApiKeyAuthTests
     {
         var db = Guid.NewGuid().ToString();
         var publicId = SeedUser(db, out var tenant);
-        var key = await BuildProfileService(BuildContext(new FakeCurrentUser { Id = publicId, TenantId = tenant }, db))
+        var key = await BuildProfileService(
+                BuildContext(new FakeCurrentUser { Id = publicId, TenantId = tenant }, db)
+            )
             .GetOrCreateApiKeyAsync(publicId, tenant);
 
-        var result = await BuildAuthService(BuildContext(new FakeCurrentUser(), db), new FakeCurrentUser())
+        var result = await BuildAuthService(
+                BuildContext(new FakeCurrentUser(), db),
+                new FakeCurrentUser()
+            )
             .LoginWithApiKeyAsync(new LoginWithApiKeyRequest { ApiKey = key.Data!.ApiKey });
 
         Assert.True(result.IsSuccess);
@@ -190,7 +286,10 @@ public class ApiKeyAuthTests
         var db = Guid.NewGuid().ToString();
         SeedUser(db, out _);
 
-        var result = await BuildAuthService(BuildContext(new FakeCurrentUser(), db), new FakeCurrentUser())
+        var result = await BuildAuthService(
+                BuildContext(new FakeCurrentUser(), db),
+                new FakeCurrentUser()
+            )
             .LoginWithApiKeyAsync(new LoginWithApiKeyRequest { ApiKey = "ptr_does_not_exist" });
 
         Assert.False(result.IsSuccess);
@@ -201,7 +300,9 @@ public class ApiKeyAuthTests
     {
         var db = Guid.NewGuid().ToString();
         var publicId = SeedUser(db, out var tenant);
-        var key = await BuildProfileService(BuildContext(new FakeCurrentUser { Id = publicId, TenantId = tenant }, db))
+        var key = await BuildProfileService(
+                BuildContext(new FakeCurrentUser { Id = publicId, TenantId = tenant }, db)
+            )
             .GetOrCreateApiKeyAsync(publicId, tenant);
 
         using (var ctx = BuildContext(new FakeCurrentUser { IsSuperAdmin = true }, db))
@@ -216,7 +317,10 @@ public class ApiKeyAuthTests
             ctx.SaveChanges();
         }
 
-        var result = await BuildAuthService(BuildContext(new FakeCurrentUser(), db), new FakeCurrentUser())
+        var result = await BuildAuthService(
+                BuildContext(new FakeCurrentUser(), db),
+                new FakeCurrentUser()
+            )
             .LoginWithApiKeyAsync(new LoginWithApiKeyRequest { ApiKey = key.Data!.ApiKey });
 
         Assert.False(result.IsSuccess);

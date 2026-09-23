@@ -202,6 +202,8 @@ public class ObservabilityTests
         public int? RoleId => null;
         public string? KeyScopes => null;
         public string? Scope => null;
+        public long? ImpersonationSessionId => null;
+        public bool IsImpersonating => false;
     }
 
     private sealed class RecordingLogger : ILogger<RequestIdMiddleware>

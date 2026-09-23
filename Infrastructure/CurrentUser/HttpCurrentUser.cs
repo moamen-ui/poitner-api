@@ -17,14 +17,14 @@ public class HttpCurrentUser(IHttpContextAccessor accessor) : ICurrentUser
 
     public bool IsAdmin => accessor.HttpContext?.User.FindFirst("is_admin")?.Value == "true";
 
-    public bool IsSuperAdmin => accessor.HttpContext?.User.FindFirst("is_super_admin")?.Value == "true";
+    public bool IsSuperAdmin =>
+        accessor.HttpContext?.User.FindFirst("is_super_admin")?.Value == "true";
 
-    public bool IsQuickAccess => accessor.HttpContext?.User.FindFirst("is_quick_access")?.Value == "true";
+    public bool IsQuickAccess =>
+        accessor.HttpContext?.User.FindFirst("is_quick_access")?.Value == "true";
 
     public Guid? TenantId =>
-        Guid.TryParse(accessor.HttpContext?.User.FindFirst("tenant")?.Value, out var g)
-            ? g
-            : null;
+        Guid.TryParse(accessor.HttpContext?.User.FindFirst("tenant")?.Value, out var g) ? g : null;
 
     public int? RoleId =>
         int.TryParse(accessor.HttpContext?.User.FindFirst("role_id")?.Value, out var id)
@@ -34,4 +34,9 @@ public class HttpCurrentUser(IHttpContextAccessor accessor) : ICurrentUser
     public string? KeyScopes => accessor.HttpContext?.User.FindFirst("key_scopes")?.Value;
 
     public string? Scope => accessor.HttpContext?.User.FindFirst("scope")?.Value;
+
+    public long? ImpersonationSessionId =>
+        long.TryParse(accessor.HttpContext?.User.FindFirst("imp")?.Value, out var imp) ? imp : null;
+
+    public bool IsImpersonating => ImpersonationSessionId != null;
 }

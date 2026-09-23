@@ -56,19 +56,36 @@ public class ExportImportService : IExportImportService
     // EXPORT
     // ===========================================================================
 
-    public async Task<Result<ExportFileDto>> ExportProjectAsync(string projectKey, ExportOptions options)
+    public async Task<Result<ExportFileDto>> ExportProjectAsync(
+        string projectKey,
+        ExportOptions options
+    )
     {
         var projectResult = await _projectService.EnsureAsync(projectKey);
         if (!projectResult.IsSuccess)
             return projectResult.IsConflict
-                ? Result<ExportFileDto>.Conflict(projectResult.Message ?? MessageKeys.Project.Disabled)
-                : Result<ExportFileDto>.NotFound(projectResult.Message ?? MessageKeys.Project.NotFound);
+                ? Result<ExportFileDto>.Conflict(
+                    projectResult.Message ?? MessageKeys.Project.Disabled
+                )
+                : Result<ExportFileDto>.NotFound(
+                    projectResult.Message ?? MessageKeys.Project.NotFound
+                );
 
-        return await BuildExportFileAsync(options, projectId: projectResult.Data, sourceProject: projectKey);
+        return await BuildExportFileAsync(
+            options,
+            projectId: projectResult.Data,
+            sourceProject: projectKey
+        );
     }
 
     public async Task<Result<ExportFileDto>> ExportWorkspaceAsync(ExportOptions options)
     {
+        // DB-13 (F2): unlike ExportProjectAsync, this path resolves no project (no EnsureAsync) —
+        // a plain operator would otherwise get a misleading 200 with every workspace's project
+        // metadata and zero comments (GLM DB-13 #3). Mirrors ListAllRulesAsync's refusal shape.
+        if (_currentUser.IsSuperAdmin && !_currentUser.IsImpersonating)
+            return Result<ExportFileDto>.Forbidden(MessageKeys.Impersonation.Required);
+
         return await BuildExportFileAsync(options, projectId: null, sourceProject: null);
     }
 
@@ -80,14 +97,13 @@ public class ExportImportService : IExportImportService
     private IQueryable<Comment> FilteredCommentQuery(ExportOptions options, int? projectId)
     {
         // IncludePrivate / IncludeDeleted require admin — clamped server-side regardless of input.
-        var includePrivate = options.IncludePrivate && _currentUser.IsAdmin;
+        // D13.7: the operator never exports private notes, impersonating or not.
+        var includePrivate =
+            options.IncludePrivate && _currentUser.IsAdmin && !_currentUser.IsSuperAdmin;
         var includeDeleted = options.IncludeDeleted && _currentUser.IsAdmin;
         var callerId = _currentUser.Id ?? Guid.Empty;
 
-        IQueryable<Comment> query = _unitOfWork
-            .Repository<Comment>()
-            .Query()
-            .AsNoTracking();
+        IQueryable<Comment> query = _unitOfWork.Repository<Comment>().Query().AsNoTracking();
 
         if (projectId.HasValue)
             query = query.Where(c => c.ProjectId == projectId.Value);
@@ -187,9 +203,9 @@ public class ExportImportService : IExportImportService
                             {
                                 Body = r.Body,
                                 AuthorDisplayName = names.GetValueOrDefault(r.AuthorId),
-                                CreatedAt = r.CreatedAt
+                                CreatedAt = r.CreatedAt,
                             })
-                            .ToList()
+                            .ToList(),
                     }
                 );
             }
@@ -223,7 +239,7 @@ public class ExportImportService : IExportImportService
                 ExportedAt = DateTime.UtcNow,
                 SourceProject = sourceProject,
                 SourceServer = null, // informational; left null (controller sets Content-Disposition)
-                Comments = ordered
+                Comments = ordered,
             },
             MessageKeys.ExportImport.Exported
         );
@@ -248,14 +264,17 @@ public class ExportImportService : IExportImportService
             ViewportWidth = e.ViewportWidth,
             ViewportHeight = e.ViewportHeight,
             DeviceType = e.DeviceType,
-            DevicePixelRatio = e.DevicePixelRatio
+            DevicePixelRatio = e.DevicePixelRatio,
         };
 
     // ===========================================================================
     // IMPORT
     // ===========================================================================
 
-    public async Task<Result<ImportResultDto>> ImportProjectAsync(string projectKey, ExportFileDto file)
+    public async Task<Result<ImportResultDto>> ImportProjectAsync(
+        string projectKey,
+        ExportFileDto file
+    )
     {
         var validation = ValidateFile(file);
         if (validation != null)
@@ -264,8 +283,12 @@ public class ExportImportService : IExportImportService
         var projectResult = await _projectService.EnsureAsync(projectKey);
         if (!projectResult.IsSuccess)
             return projectResult.IsConflict
-                ? Result<ImportResultDto>.Conflict(projectResult.Message ?? MessageKeys.Project.Disabled)
-                : Result<ImportResultDto>.NotFound(projectResult.Message ?? MessageKeys.Project.NotFound);
+                ? Result<ImportResultDto>.Conflict(
+                    projectResult.Message ?? MessageKeys.Project.Disabled
+                )
+                : Result<ImportResultDto>.NotFound(
+                    projectResult.Message ?? MessageKeys.Project.NotFound
+                );
 
         var (projectId, projectOwnerId) = await ResolveProjectAsync(projectResult.Data);
         var capError = await CheckDemoCapAsync(projectOwnerId, file.Comments.Count);
@@ -280,7 +303,12 @@ public class ExportImportService : IExportImportService
         // while ClearChangeTracker between batches still bounds change-tracker memory.
         await _unitOfWork.ExecuteInTransactionAsync(async () =>
         {
-            (comments, replies) = await InsertCommentsAsync(file.Comments, projectId, projectOwnerId, warnings);
+            (comments, replies) = await InsertCommentsAsync(
+                file.Comments,
+                projectId,
+                projectOwnerId,
+                warnings
+            );
             await _unitOfWork.SaveChangesAsync();
         });
 
@@ -419,7 +447,7 @@ public class ExportImportService : IExportImportService
                 AppliedAt = dto.AppliedAt,
                 AppliedByLabel = dto.AppliedByLabel,
                 // EditedAt/EditedBy are intentionally NOT carried over (import is not an edit).
-                Element = MapElementForImport(dto.Element)
+                Element = MapElementForImport(dto.Element),
             };
 
             if (dto.CreatedAt != default)
@@ -436,7 +464,7 @@ public class ExportImportService : IExportImportService
                     {
                         AuthorId = importerId, // re-attributed
                         Body = AppendAttribution(r.Body, r.AuthorDisplayName),
-                        OwnerId = projectOwnerId
+                        OwnerId = projectOwnerId,
                     };
                     if (r.CreatedAt != default)
                     {
@@ -500,7 +528,7 @@ public class ExportImportService : IExportImportService
             ViewportWidth = dto.ViewportWidth,
             ViewportHeight = dto.ViewportHeight,
             DeviceType = dto.DeviceType,
-            DevicePixelRatio = dto.DevicePixelRatio
+            DevicePixelRatio = dto.DevicePixelRatio,
         };
     }
 
@@ -510,7 +538,7 @@ public class ExportImportService : IExportImportService
             ImportedComments = comments,
             ImportedReplies = replies,
             SkippedDuplicates = 0, // dedup skipped for v1 (Open Decision #1)
-            Warnings = warnings
+            Warnings = warnings,
         };
 
     // ---------------------------------------------------------------------------
@@ -526,10 +554,7 @@ public class ExportImportService : IExportImportService
         if (string.IsNullOrWhiteSpace(file.SchemaVersion))
             return MessageKeys.ExportImport.UnsupportedSchemaVersion;
         var majorText = file.SchemaVersion.Split('.')[0];
-        if (
-            !int.TryParse(majorText, out var major)
-            || !SupportedMajorVersions.Contains(major)
-        )
+        if (!int.TryParse(majorText, out var major) || !SupportedMajorVersions.Contains(major))
             return $"{MessageKeys.ExportImport.UnsupportedSchemaVersion} Supported: {string.Join(", ", SupportedMajorVersions.Select(v => v + ".x"))}.";
 
         if (file.Comments == null)
@@ -606,7 +631,10 @@ public class ExportImportService : IExportImportService
     /// Resolves project keys for any project ids not already in <paramref name="keys"/> and merges
     /// them in (workspace export only). Called per export batch so only newly-seen projects are queried.
     /// </summary>
-    private async Task MergeProjectKeysAsync(Dictionary<int, string> keys, IEnumerable<int> projectIds)
+    private async Task MergeProjectKeysAsync(
+        Dictionary<int, string> keys,
+        IEnumerable<int> projectIds
+    )
     {
         var missing = projectIds.Where(id => !keys.ContainsKey(id)).Distinct().ToList();
         if (missing.Count == 0)

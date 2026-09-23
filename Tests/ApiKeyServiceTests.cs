@@ -27,13 +27,16 @@ public class ApiKeyServiceTests
         public int? RoleId { get; set; }
         public string? KeyScopes { get; set; }
         public string? Scope { get; set; }
+        public long? ImpersonationSessionId { get; set; }
+        public bool IsImpersonating => ImpersonationSessionId != null;
     }
 
     private static AppDbContext Ctx(string dbName) =>
         new(
             new DbContextOptionsBuilder<AppDbContext>().UseInMemoryDatabase(dbName).Options,
             new FakeCurrentUser { IsSuperAdmin = true },
-            new Microsoft.Extensions.Configuration.ConfigurationBuilder().Build());
+            new Microsoft.Extensions.Configuration.ConfigurationBuilder().Build()
+        );
 
     private static (Guid publicId, Guid tenant) SeedUser(string dbName)
     {
@@ -41,7 +44,12 @@ public class ApiKeyServiceTests
         var tenant = Guid.NewGuid();
         using var db = Ctx(dbName);
 
-        var role = new Role { Name = "Developer", IsActive = true, OwnerId = tenant };
+        var role = new Role
+        {
+            Name = "Developer",
+            IsActive = true,
+            OwnerId = tenant,
+        };
         db.Roles.Add(role);
         db.SaveChanges();
 
@@ -56,7 +64,8 @@ public class ApiKeyServiceTests
                 ApprovalStatus = ApprovalStatus.Approved,
                 IsActive = true,
                 OwnerId = tenant,
-            });
+            }
+        );
         db.SaveChanges();
 
         return (publicId, tenant);

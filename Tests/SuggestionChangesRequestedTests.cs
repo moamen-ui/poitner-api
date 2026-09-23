@@ -30,12 +30,20 @@ public class SuggestionChangesRequestedTests
         public int? RoleId { get; set; }
         public string? KeyScopes { get; set; }
         public string? Scope { get; set; }
+        public long? ImpersonationSessionId { get; set; }
+        public bool IsImpersonating => ImpersonationSessionId != null;
     }
 
     private sealed class FakeEmail : IEmailService
     {
         public int Sent { get; private set; }
-        public Task<bool> SendAsync(string to, string subject, string htmlBody, CancellationToken ct = default)
+
+        public Task<bool> SendAsync(
+            string to,
+            string subject,
+            string htmlBody,
+            CancellationToken ct = default
+        )
         {
             Sent++;
             return Task.FromResult(true);
@@ -43,44 +51,86 @@ public class SuggestionChangesRequestedTests
     }
 
     private static AppDbContext BuildContext(ICurrentUser user, string dbName) =>
-        new(new DbContextOptionsBuilder<AppDbContext>()
-            .UseInMemoryDatabase(dbName)
-            .ConfigureWarnings(w => w.Ignore(InMemoryEventId.TransactionIgnoredWarning))
-            .Options, user, new Microsoft.Extensions.Configuration.ConfigurationBuilder().Build());
+        new(
+            new DbContextOptionsBuilder<AppDbContext>()
+                .UseInMemoryDatabase(dbName)
+                .ConfigureWarnings(w => w.Ignore(InMemoryEventId.TransactionIgnoredWarning))
+                .Options,
+            user,
+            new Microsoft.Extensions.Configuration.ConfigurationBuilder().Build()
+        );
 
-    private static (ProjectService project, UnitOfWork uow, AppDbContext db) WireProject(ICurrentUser user, string dbName)
+    private static (ProjectService project, UnitOfWork uow, AppDbContext db) WireProject(
+        ICurrentUser user,
+        string dbName
+    )
     {
         var db = BuildContext(user, dbName);
         var uow = new UnitOfWork(db);
-        return (new ProjectService(uow, user, new PassThroughEntitlements(), TestProjectServiceDeps.Settings(), TestProjectServiceDeps.Configuration(), new FakeAuditWriter()), uow, db);
+        return (
+            new ProjectService(
+                uow,
+                user,
+                new PassThroughEntitlements(),
+                TestProjectServiceDeps.Settings(),
+                TestProjectServiceDeps.Configuration(),
+                new FakeAuditWriter()
+            ),
+            uow,
+            db
+        );
     }
 
-    private static (SuggestionService svc, AppDbContext db, NotificationService notifications) WireSuggestion(ICurrentUser user, string dbName)
+    private static (
+        SuggestionService svc,
+        AppDbContext db,
+        NotificationService notifications
+    ) WireSuggestion(ICurrentUser user, string dbName)
     {
         var db = BuildContext(user, dbName);
         var uow = new UnitOfWork(db);
         var notifications = new NotificationService(uow, user);
-        return (new SuggestionService(uow, user, new FakeEmail(), notifications), db, notifications);
+        return (
+            new SuggestionService(uow, user, new FakeEmail(), notifications),
+            db,
+            notifications
+        );
     }
 
     // Seeds a tenant with one active project + one admin user (GrantsAdmin role) in that tenant.
     // Returns (tenantId, projectId, creatorId, adminId).
-    private static (Guid tenant, int projectId, Guid creator, Guid adminId) SeedProjectWithAdmin(string dbName, string key = "proj")
+    private static (Guid tenant, int projectId, Guid creator, Guid adminId) SeedProjectWithAdmin(
+        string dbName,
+        string key = "proj"
+    )
     {
         var tenant = Guid.NewGuid();
         var creator = Guid.NewGuid();
         var adminId = Guid.NewGuid();
 
-        var user = new FakeCurrentUser { Id = creator, TenantId = tenant, IsSuperAdmin = false };
+        var user = new FakeCurrentUser
+        {
+            Id = creator,
+            TenantId = tenant,
+            IsSuperAdmin = false,
+        };
         var (svc, _, db) = WireProject(user, dbName);
-        var res = svc.CreateAsync(new CreateProjectRequest { Key = key, Name = key }).GetAwaiter().GetResult();
+        var res = svc.CreateAsync(new CreateProjectRequest { Key = key, Name = key })
+            .GetAwaiter()
+            .GetResult();
         Assert.True(res.IsSuccess);
         var projectId = res.Data!.Id;
         db.Dispose();
 
         using (var seed = BuildContext(new FakeCurrentUser { IsSuperAdmin = true }, dbName))
         {
-            var adminRole = new Role { Name = "Workspace Admin", GrantsAdmin = true, IsActive = true, OwnerId = tenant };
+            var adminRole = new Role
+            {
+                Name = "Workspace Admin",
+                GrantsAdmin = true,
+                IsActive = true,
+                OwnerId = tenant,
+            };
             seed.Roles.Add(adminRole);
             seed.SaveChanges();
 
@@ -93,7 +143,7 @@ public class SuggestionChangesRequestedTests
                 PublicId = adminId,
                 ApprovalStatus = ApprovalStatus.Approved,
                 IsActive = true,
-                OwnerId = tenant
+                OwnerId = tenant,
             };
             seed.Users.Add(adminUser);
             seed.SaveChanges();
@@ -111,10 +161,18 @@ public class SuggestionChangesRequestedTests
 
         var suggester = new FakeCurrentUser { Id = Guid.NewGuid(), TenantId = tenant };
         var (sugSvc, _, _) = WireSuggestion(suggester, dbName);
-        var create = await sugSvc.SuggestAsync(pid, new CreateSuggestionRequest { Text = "Idea", Prompt = "P" });
+        var create = await sugSvc.SuggestAsync(
+            pid,
+            new CreateSuggestionRequest { Text = "Idea", Prompt = "P" }
+        );
         Assert.True(create.IsSuccess);
 
-        var adminCtx = new FakeCurrentUser { Id = adminId, TenantId = tenant, IsAdmin = true };
+        var adminCtx = new FakeCurrentUser
+        {
+            Id = adminId,
+            TenantId = tenant,
+            IsAdmin = true,
+        };
         var db = BuildContext(adminCtx, dbName);
         var notifSvc = new NotificationService(new UnitOfWork(db), adminCtx);
 
@@ -136,12 +194,26 @@ public class SuggestionChangesRequestedTests
         var suggesterId = Guid.NewGuid();
         using (var seed = BuildContext(new FakeCurrentUser { IsSuperAdmin = true }, dbName))
         {
-            var role = new Role { Name = "Member", OwnerId = tenant, IsActive = true };
+            var role = new Role
+            {
+                Name = "Member",
+                OwnerId = tenant,
+                IsActive = true,
+            };
             seed.Roles.Add(role);
             seed.SaveChanges();
             // DB-11a: EnqueueAsync only queues a notification for a recipient with a live, active,
             // Approved membership — the submitter needs a real identity + membership to receive one.
-            var suggesterUser = new User { PublicId = suggesterId, Email = "suggester@x.com", PasswordHash = "x", DisplayName = "Suggester", RoleId = role.Id, OwnerId = tenant, IsActive = true };
+            var suggesterUser = new User
+            {
+                PublicId = suggesterId,
+                Email = "suggester@x.com",
+                PasswordHash = "x",
+                DisplayName = "Suggester",
+                RoleId = role.Id,
+                OwnerId = tenant,
+                IsActive = true,
+            };
             seed.Users.Add(suggesterUser);
             seed.SaveChanges();
             TestSeed.Join(seed, suggesterUser, tenant, role);
@@ -149,18 +221,31 @@ public class SuggestionChangesRequestedTests
 
         var suggester = new FakeCurrentUser { Id = suggesterId, TenantId = tenant };
         var (sugSvc, _, _) = WireSuggestion(suggester, dbName);
-        var create = await sugSvc.SuggestAsync(pid, new CreateSuggestionRequest { Text = "Idea", Prompt = "P" });
+        var create = await sugSvc.SuggestAsync(
+            pid,
+            new CreateSuggestionRequest { Text = "Idea", Prompt = "P" }
+        );
         Assert.True(create.IsSuccess);
         var suggestionId = create.Data!.Id;
 
-        var admin = new FakeCurrentUser { Id = adminId, TenantId = tenant, IsAdmin = true };
+        var admin = new FakeCurrentUser
+        {
+            Id = adminId,
+            TenantId = tenant,
+            IsAdmin = true,
+        };
         var (adminSvc, adb, _) = WireSuggestion(admin, dbName);
-        var rc = await adminSvc.RequestChangesAsync(suggestionId, new RequestChangesRequest { Feedback = "Please clarify the wording." });
+        var rc = await adminSvc.RequestChangesAsync(
+            suggestionId,
+            new RequestChangesRequest { Feedback = "Please clarify the wording." }
+        );
         Assert.True(rc.IsSuccess);
         Assert.Equal(SuggestionStatus.ChangesRequested, rc.Data!.Status);
         Assert.Equal("Please clarify the wording.", rc.Data.AdminFeedback);
 
-        var stored = adb.PredefinedActionSuggestions.IgnoreQueryFilters().Single(s => s.Id == suggestionId);
+        var stored = adb
+            .PredefinedActionSuggestions.IgnoreQueryFilters()
+            .Single(s => s.Id == suggestionId);
         Assert.Equal(SuggestionStatus.ChangesRequested, stored.Status);
         Assert.Equal("Please clarify the wording.", stored.AdminFeedback);
 
@@ -183,11 +268,22 @@ public class SuggestionChangesRequestedTests
 
         var suggester = new FakeCurrentUser { Id = Guid.NewGuid(), TenantId = tenant };
         var (sugSvc, _, _) = WireSuggestion(suggester, dbName);
-        var create = await sugSvc.SuggestAsync(pid, new CreateSuggestionRequest { Text = "Idea", Prompt = "P" });
+        var create = await sugSvc.SuggestAsync(
+            pid,
+            new CreateSuggestionRequest { Text = "Idea", Prompt = "P" }
+        );
 
-        var admin = new FakeCurrentUser { Id = adminId, TenantId = tenant, IsAdmin = true };
+        var admin = new FakeCurrentUser
+        {
+            Id = adminId,
+            TenantId = tenant,
+            IsAdmin = true,
+        };
         var (adminSvc, _, _) = WireSuggestion(admin, dbName);
-        var rc = await adminSvc.RequestChangesAsync(create.Data!.Id, new RequestChangesRequest { Feedback = "   " });
+        var rc = await adminSvc.RequestChangesAsync(
+            create.Data!.Id,
+            new RequestChangesRequest { Feedback = "   " }
+        );
         Assert.False(rc.IsSuccess);
         Assert.False(rc.IsConflict);
         Assert.False(rc.IsNotFound);
@@ -201,14 +297,25 @@ public class SuggestionChangesRequestedTests
 
         var suggester = new FakeCurrentUser { Id = Guid.NewGuid(), TenantId = tenant };
         var (sugSvc, _, _) = WireSuggestion(suggester, dbName);
-        var create = await sugSvc.SuggestAsync(pid, new CreateSuggestionRequest { Text = "Idea", Prompt = "P" });
+        var create = await sugSvc.SuggestAsync(
+            pid,
+            new CreateSuggestionRequest { Text = "Idea", Prompt = "P" }
+        );
 
-        var admin = new FakeCurrentUser { Id = adminId, TenantId = tenant, IsAdmin = true };
+        var admin = new FakeCurrentUser
+        {
+            Id = adminId,
+            TenantId = tenant,
+            IsAdmin = true,
+        };
         var (adminSvc, _, _) = WireSuggestion(admin, dbName);
         var reject = await adminSvc.RejectAsync(create.Data!.Id);
         Assert.True(reject.IsSuccess);
 
-        var rc = await adminSvc.RequestChangesAsync(create.Data!.Id, new RequestChangesRequest { Feedback = "fix" });
+        var rc = await adminSvc.RequestChangesAsync(
+            create.Data!.Id,
+            new RequestChangesRequest { Feedback = "fix" }
+        );
         Assert.True(rc.IsConflict);
     }
 
@@ -220,22 +327,38 @@ public class SuggestionChangesRequestedTests
 
         var suggester = new FakeCurrentUser { Id = Guid.NewGuid(), TenantId = tenant };
         var (sugSvc, _, _) = WireSuggestion(suggester, dbName);
-        var create = await sugSvc.SuggestAsync(pid, new CreateSuggestionRequest { Text = "Old text", Prompt = "Old prompt" });
+        var create = await sugSvc.SuggestAsync(
+            pid,
+            new CreateSuggestionRequest { Text = "Old text", Prompt = "Old prompt" }
+        );
         var suggestionId = create.Data!.Id;
 
-        var admin = new FakeCurrentUser { Id = adminId, TenantId = tenant, IsAdmin = true };
+        var admin = new FakeCurrentUser
+        {
+            Id = adminId,
+            TenantId = tenant,
+            IsAdmin = true,
+        };
         var (adminSvc, _, _) = WireSuggestion(admin, dbName);
-        await adminSvc.RequestChangesAsync(suggestionId, new RequestChangesRequest { Feedback = "Tweak it" });
+        await adminSvc.RequestChangesAsync(
+            suggestionId,
+            new RequestChangesRequest { Feedback = "Tweak it" }
+        );
 
         var (sugSvc2, sdb, _) = WireSuggestion(suggester, dbName);
-        var update = await sugSvc2.UpdateAsync(suggestionId, new UpdateSuggestionRequest { Text = "New text", Prompt = "New prompt" });
+        var update = await sugSvc2.UpdateAsync(
+            suggestionId,
+            new UpdateSuggestionRequest { Text = "New text", Prompt = "New prompt" }
+        );
         Assert.True(update.IsSuccess);
         Assert.Equal(SuggestionStatus.Pending, update.Data!.Status);
         Assert.Null(update.Data.AdminFeedback);
         Assert.Equal("New text", update.Data.Text);
         Assert.Equal("New prompt", update.Data.Prompt);
 
-        var stored = sdb.PredefinedActionSuggestions.IgnoreQueryFilters().Single(s => s.Id == suggestionId);
+        var stored = sdb
+            .PredefinedActionSuggestions.IgnoreQueryFilters()
+            .Single(s => s.Id == suggestionId);
         Assert.Equal(SuggestionStatus.Pending, stored.Status);
         Assert.Null(stored.AdminFeedback);
         Assert.Null(stored.ReviewedAt);
@@ -244,7 +367,10 @@ public class SuggestionChangesRequestedTests
         var adminDb = BuildContext(admin, dbName);
         var adminNotif = new NotificationService(new UnitOfWork(adminDb), admin);
         var listRes = await adminNotif.ListAsync();
-        Assert.Contains(listRes.Data!.Items, n => n.Type == NotificationType.SuggestionResubmitted && n.SuggestionId == suggestionId);
+        Assert.Contains(
+            listRes.Data!.Items,
+            n => n.Type == NotificationType.SuggestionResubmitted && n.SuggestionId == suggestionId
+        );
     }
 
     [Fact]
@@ -255,9 +381,15 @@ public class SuggestionChangesRequestedTests
 
         var suggester = new FakeCurrentUser { Id = Guid.NewGuid(), TenantId = tenant };
         var (sugSvc, _, _) = WireSuggestion(suggester, dbName);
-        var create = await sugSvc.SuggestAsync(pid, new CreateSuggestionRequest { Text = "Idea", Prompt = "P" });
+        var create = await sugSvc.SuggestAsync(
+            pid,
+            new CreateSuggestionRequest { Text = "Idea", Prompt = "P" }
+        );
 
-        var update = await sugSvc.UpdateAsync(create.Data!.Id, new UpdateSuggestionRequest { Text = "x", Prompt = "y" });
+        var update = await sugSvc.UpdateAsync(
+            create.Data!.Id,
+            new UpdateSuggestionRequest { Text = "x", Prompt = "y" }
+        );
         Assert.True(update.IsConflict);
     }
 
@@ -269,15 +401,29 @@ public class SuggestionChangesRequestedTests
 
         var suggester = new FakeCurrentUser { Id = Guid.NewGuid(), TenantId = tenant };
         var (sugSvc, _, _) = WireSuggestion(suggester, dbName);
-        var create = await sugSvc.SuggestAsync(pid, new CreateSuggestionRequest { Text = "Idea", Prompt = "P" });
+        var create = await sugSvc.SuggestAsync(
+            pid,
+            new CreateSuggestionRequest { Text = "Idea", Prompt = "P" }
+        );
 
-        var admin = new FakeCurrentUser { Id = adminId, TenantId = tenant, IsAdmin = true };
+        var admin = new FakeCurrentUser
+        {
+            Id = adminId,
+            TenantId = tenant,
+            IsAdmin = true,
+        };
         var (adminSvc, _, _) = WireSuggestion(admin, dbName);
-        await adminSvc.RequestChangesAsync(create.Data!.Id, new RequestChangesRequest { Feedback = "fix" });
+        await adminSvc.RequestChangesAsync(
+            create.Data!.Id,
+            new RequestChangesRequest { Feedback = "fix" }
+        );
 
         var other = new FakeCurrentUser { Id = Guid.NewGuid(), TenantId = tenant };
         var (otherSvc, _, _) = WireSuggestion(other, dbName);
-        var update = await otherSvc.UpdateAsync(create.Data!.Id, new UpdateSuggestionRequest { Text = "x", Prompt = "y" });
+        var update = await otherSvc.UpdateAsync(
+            create.Data!.Id,
+            new UpdateSuggestionRequest { Text = "x", Prompt = "y" }
+        );
         Assert.True(update.IsNotFound);
     }
 
@@ -289,16 +435,27 @@ public class SuggestionChangesRequestedTests
 
         var suggesterA = new FakeCurrentUser { Id = Guid.NewGuid(), TenantId = tenant };
         var (svcA, _, _) = WireSuggestion(suggesterA, dbName);
-        var createA1 = await svcA.SuggestAsync(pid, new CreateSuggestionRequest { Text = "A1", Prompt = "p" });
+        var createA1 = await svcA.SuggestAsync(
+            pid,
+            new CreateSuggestionRequest { Text = "A1", Prompt = "p" }
+        );
         Assert.True(createA1.IsSuccess);
 
         var suggesterB = new FakeCurrentUser { Id = Guid.NewGuid(), TenantId = tenant };
         var (svcB, _, _) = WireSuggestion(suggesterB, dbName);
-        var createB1 = await svcB.SuggestAsync(pid, new CreateSuggestionRequest { Text = "B1", Prompt = "p" });
+        var createB1 = await svcB.SuggestAsync(
+            pid,
+            new CreateSuggestionRequest { Text = "B1", Prompt = "p" }
+        );
         Assert.True(createB1.IsSuccess);
 
         // Admin rejects A's suggestion — should still show up in A's ListMine (all statuses).
-        var admin = new FakeCurrentUser { Id = adminId, TenantId = tenant, IsAdmin = true };
+        var admin = new FakeCurrentUser
+        {
+            Id = adminId,
+            TenantId = tenant,
+            IsAdmin = true,
+        };
         var (adminSvc, _, _) = WireSuggestion(admin, dbName);
         await adminSvc.RejectAsync(createA1.Data!.Id);
 
@@ -316,7 +473,12 @@ public class SuggestionChangesRequestedTests
     {
         public List<(string To, string Subject, string Html)> Sent { get; } = new();
 
-        public Task<bool> SendAsync(string to, string subject, string htmlBody, CancellationToken ct = default)
+        public Task<bool> SendAsync(
+            string to,
+            string subject,
+            string htmlBody,
+            CancellationToken ct = default
+        )
         {
             Sent.Add((to, subject, htmlBody));
             return Task.FromResult(true);
@@ -325,8 +487,12 @@ public class SuggestionChangesRequestedTests
 
     // Same as SeedProjectWithAdmin, but also names the tenant's workspace so the "New predefined-
     // prompt suggestion" admin email can be asserted against it.
-    private static (Guid tenant, int projectId, Guid creator, Guid adminId) SeedProjectWithAdminAndWorkspace(
-        string dbName, string workspaceName, string key = "wsproj")
+    private static (
+        Guid tenant,
+        int projectId,
+        Guid creator,
+        Guid adminId
+    ) SeedProjectWithAdminAndWorkspace(string dbName, string workspaceName, string key = "wsproj")
     {
         var (tenant, projectId, creator, adminId) = SeedProjectWithAdmin(dbName, key);
         using var seed = BuildContext(new FakeCurrentUser { IsSuperAdmin = true }, dbName);
@@ -336,13 +502,15 @@ public class SuggestionChangesRequestedTests
         if (existing != null)
             existing.Name = workspaceName;
         else
-            seed.Workspaces.Add(new Workspace
-            {
-                Id = tenant,
-                Name = workspaceName,
-                CreatedAt = DateTime.UtcNow,
-                CreatedBy = tenant,
-            });
+            seed.Workspaces.Add(
+                new Workspace
+                {
+                    Id = tenant,
+                    Name = workspaceName,
+                    CreatedAt = DateTime.UtcNow,
+                    CreatedBy = tenant,
+                }
+            );
         seed.SaveChanges();
         return (tenant, projectId, creator, adminId);
     }
@@ -357,9 +525,17 @@ public class SuggestionChangesRequestedTests
         var db = BuildContext(suggester, dbName);
         var uow = new UnitOfWork(db);
         var email = new CapturingEmail();
-        var svc = new SuggestionService(uow, suggester, email, new NotificationService(uow, suggester));
+        var svc = new SuggestionService(
+            uow,
+            suggester,
+            email,
+            new NotificationService(uow, suggester)
+        );
 
-        var create = await svc.SuggestAsync(pid, new CreateSuggestionRequest { Text = "Idea", Prompt = "P" });
+        var create = await svc.SuggestAsync(
+            pid,
+            new CreateSuggestionRequest { Text = "Idea", Prompt = "P" }
+        );
         Assert.True(create.IsSuccess);
 
         var sent = Assert.Single(email.Sent);
@@ -371,15 +547,26 @@ public class SuggestionChangesRequestedTests
     public async Task Suggest_PlaceholderWorkspace_AdminEmail_FallsBackToOldWording()
     {
         var dbName = Guid.NewGuid().ToString();
-        var (tenant, pid, _, _) = SeedProjectWithAdminAndWorkspace(dbName, Workspace.PlaceholderName);
+        var (tenant, pid, _, _) = SeedProjectWithAdminAndWorkspace(
+            dbName,
+            Workspace.PlaceholderName
+        );
 
         var suggester = new FakeCurrentUser { Id = Guid.NewGuid(), TenantId = tenant };
         var db = BuildContext(suggester, dbName);
         var uow = new UnitOfWork(db);
         var email = new CapturingEmail();
-        var svc = new SuggestionService(uow, suggester, email, new NotificationService(uow, suggester));
+        var svc = new SuggestionService(
+            uow,
+            suggester,
+            email,
+            new NotificationService(uow, suggester)
+        );
 
-        var create = await svc.SuggestAsync(pid, new CreateSuggestionRequest { Text = "Idea", Prompt = "P" });
+        var create = await svc.SuggestAsync(
+            pid,
+            new CreateSuggestionRequest { Text = "Idea", Prompt = "P" }
+        );
         Assert.True(create.IsSuccess);
 
         var sent = Assert.Single(email.Sent);

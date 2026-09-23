@@ -23,6 +23,7 @@ public sealed class UnitOfWork(AppDbContext db) : IUnitOfWork
     public DbSet<Workspace> Workspaces => db.Workspaces;
     public DbSet<UserAlias> UserAliases => db.UserAliases;
     public DbSet<AuditEvent> AuditEvents => db.AuditEvents;
+    public DbSet<ImpersonationSession> ImpersonationSessions => db.ImpersonationSessions;
 
     public Task<int> SaveChangesAsync() => db.SaveChangesAsync();
 

@@ -28,62 +28,120 @@ public class UserGovernanceTests
         public int? RoleId { get; set; }
         public string? KeyScopes { get; set; }
         public string? Scope { get; set; }
+        public long? ImpersonationSessionId { get; set; }
+        public bool IsImpersonating => ImpersonationSessionId != null;
     }
 
     private sealed class FakeSettings : ISettingsService
     {
-        public Task<bool> GetBoolAsync(string key, bool fallback = false) => Task.FromResult(fallback);
+        public Task<bool> GetBoolAsync(string key, bool fallback = false) =>
+            Task.FromResult(fallback);
+
         public Task SetBoolAsync(string key, bool value) => Task.CompletedTask;
-        public Task<string> GetStringAsync(string key, string fallback = "") => Task.FromResult(fallback);
+
+        public Task<string> GetStringAsync(string key, string fallback = "") =>
+            Task.FromResult(fallback);
+
         public Task SetStringAsync(string key, string value) => Task.CompletedTask;
+
         public Task<int> GetIntAsync(string key, int fallback = 0) => Task.FromResult(fallback);
+
         public Task SetIntAsync(string key, int value) => Task.CompletedTask;
     }
 
     private sealed class IdentityHasher : IPasswordHasher
     {
         public string Hash(string password) => "h:" + password;
+
         public bool Verify(string password, string hash) => hash == "h:" + password;
     }
 
     private sealed class NoopEmail : IEmailService
     {
-        public Task<bool> SendAsync(string to, string subject, string htmlBody, CancellationToken ct = default) =>
-            Task.FromResult(true);
+        public Task<bool> SendAsync(
+            string to,
+            string subject,
+            string htmlBody,
+            CancellationToken ct = default
+        ) => Task.FromResult(true);
     }
 
     private sealed class NoopBrandingService : IBrandingService
     {
-        private static Pointer.Application.DTOs.Branding.BrandingResponse DefaultBranding() => new()
-        {
-            ProductName = "Pointer",
-            Tagline = string.Empty,
-            PrimaryColor = "#2563eb",
-            Urls = new Pointer.Application.DTOs.Branding.BrandingUrlsResponse { App = "https://app.pointer.moamen.work" },
-            Assets = new Pointer.Application.DTOs.Branding.BrandingAssetsResponse(),
-        };
-        public Task<Pointer.Application.Response.Result<Pointer.Application.DTOs.Branding.BrandingResponse>> GetAsync(string publicBase, IReadOnlySet<string> existingKinds) =>
-            Task.FromResult(Pointer.Application.Response.Result<Pointer.Application.DTOs.Branding.BrandingResponse>.Success(DefaultBranding()));
-        public Task<Pointer.Application.Response.Result<Pointer.Application.DTOs.Branding.BrandingResponse>> UpdateAsync(Pointer.Application.DTOs.Branding.BrandingWriteDto dto, string publicBase, IReadOnlySet<string> existingKinds) =>
-            Task.FromResult(Pointer.Application.Response.Result<Pointer.Application.DTOs.Branding.BrandingResponse>.Success(DefaultBranding()));
+        private static Pointer.Application.DTOs.Branding.BrandingResponse DefaultBranding() =>
+            new()
+            {
+                ProductName = "Pointer",
+                Tagline = string.Empty,
+                PrimaryColor = "#2563eb",
+                Urls = new Pointer.Application.DTOs.Branding.BrandingUrlsResponse
+                {
+                    App = "https://app.pointer.moamen.work",
+                },
+                Assets = new Pointer.Application.DTOs.Branding.BrandingAssetsResponse(),
+            };
+
+        public Task<Pointer.Application.Response.Result<Pointer.Application.DTOs.Branding.BrandingResponse>> GetAsync(
+            string publicBase,
+            IReadOnlySet<string> existingKinds
+        ) =>
+            Task.FromResult(
+                Pointer.Application.Response.Result<Pointer.Application.DTOs.Branding.BrandingResponse>.Success(
+                    DefaultBranding()
+                )
+            );
+
+        public Task<Pointer.Application.Response.Result<Pointer.Application.DTOs.Branding.BrandingResponse>> UpdateAsync(
+            Pointer.Application.DTOs.Branding.BrandingWriteDto dto,
+            string publicBase,
+            IReadOnlySet<string> existingKinds
+        ) =>
+            Task.FromResult(
+                Pointer.Application.Response.Result<Pointer.Application.DTOs.Branding.BrandingResponse>.Success(
+                    DefaultBranding()
+                )
+            );
+
         public Task<int> BumpVersionAsync() => Task.FromResult(0);
-        public Task<Pointer.Application.DTOs.Branding.BrandingResponse> BuildResponseAsync(string publicBase, IReadOnlySet<string> existingKinds) =>
-            Task.FromResult(DefaultBranding());
+
+        public Task<Pointer.Application.DTOs.Branding.BrandingResponse> BuildResponseAsync(
+            string publicBase,
+            IReadOnlySet<string> existingKinds
+        ) => Task.FromResult(DefaultBranding());
     }
 
     // InMemory provider throws on BeginTransactionAsync unless the transaction warning is ignored —
     // required because TransferOwnershipAsync's role swap runs inside ExecuteInTransactionAsync.
     private static AppDbContext Ctx(ICurrentUser u, string db) =>
-        new(new DbContextOptionsBuilder<AppDbContext>()
-            .UseInMemoryDatabase(db)
-            .ConfigureWarnings(w => w.Ignore(Microsoft.EntityFrameworkCore.Diagnostics.InMemoryEventId.TransactionIgnoredWarning))
-            .Options, u, new Microsoft.Extensions.Configuration.ConfigurationBuilder().Build());
+        new(
+            new DbContextOptionsBuilder<AppDbContext>()
+                .UseInMemoryDatabase(db)
+                .ConfigureWarnings(w =>
+                    w.Ignore(
+                        Microsoft
+                            .EntityFrameworkCore
+                            .Diagnostics
+                            .InMemoryEventId
+                            .TransactionIgnoredWarning
+                    )
+                )
+                .Options,
+            u,
+            new Microsoft.Extensions.Configuration.ConfigurationBuilder().Build()
+        );
 
     private static UserService Svc(ICurrentUser user, AppDbContext ctx)
     {
         var uow = new UnitOfWork(ctx);
-        return new UserService(uow, new IdentityHasher(), user, new NoopEmail(),
-            new EntitlementService(uow, user, new FakeSettings()), new NoopBrandingService(), new MembershipService(uow));
+        return new UserService(
+            uow,
+            new IdentityHasher(),
+            user,
+            new NoopEmail(),
+            new EntitlementService(uow, user, new FakeSettings()),
+            new NoopBrandingService(),
+            new MembershipService(uow)
+        );
     }
 
     private sealed class Workspace
@@ -105,17 +163,71 @@ public class UserGovernanceTests
     private static Workspace SeedWorkspace(string db)
     {
         using var seed = Ctx(new FakeCurrentUser { IsSuperAdmin = true }, db);
-        var adminRole = new Role { Name = "Workspace Admin", GrantsAdmin = true, IsSystem = true, IsActive = true };
-        var deputyRole = new Role { Name = "Workspace Admin Deputy", GrantsAdmin = true, IsSystem = true, IsActive = true };
-        var memberRole = new Role { Name = "Engineer", GrantsAdmin = false, IsSystem = false, IsActive = true };
+        var adminRole = new Role
+        {
+            Name = "Workspace Admin",
+            GrantsAdmin = true,
+            IsSystem = true,
+            IsActive = true,
+        };
+        var deputyRole = new Role
+        {
+            Name = "Workspace Admin Deputy",
+            GrantsAdmin = true,
+            IsSystem = true,
+            IsActive = true,
+        };
+        var memberRole = new Role
+        {
+            Name = "Engineer",
+            GrantsAdmin = false,
+            IsSystem = false,
+            IsActive = true,
+        };
         seed.Roles.AddRange(adminRole, deputyRole, memberRole);
         seed.SaveChanges();
 
         var ownerId = Guid.NewGuid();
-        var admin = new User { Email = "admin@t.com", PasswordHash = "h", DisplayName = "Admin", PublicId = ownerId, OwnerId = ownerId, RoleId = adminRole.Id, IsActive = true };
-        var deputy = new User { Email = "deputy@t.com", PasswordHash = "h", DisplayName = "Deputy", PublicId = Guid.NewGuid(), OwnerId = ownerId, RoleId = deputyRole.Id, IsActive = true };
-        var deputy2 = new User { Email = "deputy2@t.com", PasswordHash = "h", DisplayName = "Deputy2", PublicId = Guid.NewGuid(), OwnerId = ownerId, RoleId = deputyRole.Id, IsActive = true };
-        var member = new User { Email = "member@t.com", PasswordHash = "h", DisplayName = "Member", PublicId = Guid.NewGuid(), OwnerId = ownerId, RoleId = memberRole.Id, IsActive = true };
+        var admin = new User
+        {
+            Email = "admin@t.com",
+            PasswordHash = "h",
+            DisplayName = "Admin",
+            PublicId = ownerId,
+            OwnerId = ownerId,
+            RoleId = adminRole.Id,
+            IsActive = true,
+        };
+        var deputy = new User
+        {
+            Email = "deputy@t.com",
+            PasswordHash = "h",
+            DisplayName = "Deputy",
+            PublicId = Guid.NewGuid(),
+            OwnerId = ownerId,
+            RoleId = deputyRole.Id,
+            IsActive = true,
+        };
+        var deputy2 = new User
+        {
+            Email = "deputy2@t.com",
+            PasswordHash = "h",
+            DisplayName = "Deputy2",
+            PublicId = Guid.NewGuid(),
+            OwnerId = ownerId,
+            RoleId = deputyRole.Id,
+            IsActive = true,
+        };
+        var member = new User
+        {
+            Email = "member@t.com",
+            PasswordHash = "h",
+            DisplayName = "Member",
+            PublicId = Guid.NewGuid(),
+            OwnerId = ownerId,
+            RoleId = memberRole.Id,
+            IsActive = true,
+        };
         seed.Users.AddRange(admin, deputy, deputy2, member);
         seed.SaveChanges();
 
@@ -126,10 +238,17 @@ public class UserGovernanceTests
 
         return new Workspace
         {
-            AdminRoleId = adminRole.Id, DeputyRoleId = deputyRole.Id, MemberRoleId = memberRole.Id,
-            OwnerId = ownerId, AdminPublicId = admin.PublicId, DeputyPublicId = deputy.PublicId,
-            Deputy2PublicId = deputy2.PublicId, MemberPublicId = member.PublicId,
-            MemberRowId = member.Id, DeputyRowId = deputy.Id, Deputy2RowId = deputy2.Id,
+            AdminRoleId = adminRole.Id,
+            DeputyRoleId = deputyRole.Id,
+            MemberRoleId = memberRole.Id,
+            OwnerId = ownerId,
+            AdminPublicId = admin.PublicId,
+            DeputyPublicId = deputy.PublicId,
+            Deputy2PublicId = deputy2.PublicId,
+            MemberPublicId = member.PublicId,
+            MemberRowId = member.Id,
+            DeputyRowId = deputy.Id,
+            Deputy2RowId = deputy2.Id,
         };
     }
 
@@ -162,7 +281,10 @@ public class UserGovernanceTests
         var ws = SeedWorkspace(db);
         var superAdmin = new FakeCurrentUser { Id = Guid.NewGuid(), IsSuperAdmin = true };
         var ctx = Ctx(superAdmin, db);
-        var adminRowId = ctx.Users.IgnoreQueryFilters().Single(u => u.PublicId == ws.AdminPublicId).Id;
+        var adminRowId = ctx
+            .Users.IgnoreQueryFilters()
+            .Single(u => u.PublicId == ws.AdminPublicId)
+            .Id;
 
         var result = await Svc(superAdmin, ctx).DeleteAsync(adminRowId);
         Assert.True(result.IsConflict);
@@ -184,7 +306,12 @@ public class UserGovernanceTests
     {
         var db = Guid.NewGuid().ToString();
         var ws = SeedWorkspace(db);
-        var admin = new FakeCurrentUser { Id = ws.AdminPublicId, TenantId = ws.OwnerId, IsAdmin = true };
+        var admin = new FakeCurrentUser
+        {
+            Id = ws.AdminPublicId,
+            TenantId = ws.OwnerId,
+            IsAdmin = true,
+        };
         var result = await Svc(admin, Ctx(admin, db)).DeleteAsync(ws.MemberRowId);
         Assert.True(result.IsSuccess);
     }
@@ -194,7 +321,12 @@ public class UserGovernanceTests
     {
         var db = Guid.NewGuid().ToString();
         var ws = SeedWorkspace(db);
-        var admin = new FakeCurrentUser { Id = ws.AdminPublicId, TenantId = ws.OwnerId, IsAdmin = true };
+        var admin = new FakeCurrentUser
+        {
+            Id = ws.AdminPublicId,
+            TenantId = ws.OwnerId,
+            IsAdmin = true,
+        };
         var result = await Svc(admin, Ctx(admin, db)).DeleteAsync(ws.DeputyRowId);
         Assert.True(result.IsSuccess);
     }
@@ -204,9 +336,17 @@ public class UserGovernanceTests
     {
         var db = Guid.NewGuid().ToString();
         var ws = SeedWorkspace(db);
-        var admin = new FakeCurrentUser { Id = ws.AdminPublicId, TenantId = ws.OwnerId, IsAdmin = true };
+        var admin = new FakeCurrentUser
+        {
+            Id = ws.AdminPublicId,
+            TenantId = ws.OwnerId,
+            IsAdmin = true,
+        };
         var ctx = Ctx(admin, db);
-        var adminRowId = ctx.Users.IgnoreQueryFilters().Single(u => u.PublicId == ws.AdminPublicId).Id;
+        var adminRowId = ctx
+            .Users.IgnoreQueryFilters()
+            .Single(u => u.PublicId == ws.AdminPublicId)
+            .Id;
 
         var result = await Svc(admin, ctx).DeleteAsync(adminRowId);
         Assert.False(result.IsSuccess);
@@ -218,7 +358,12 @@ public class UserGovernanceTests
         var db = Guid.NewGuid().ToString();
         var ws = SeedWorkspace(db);
         // A different tenant entirely — the standard EF query filter must make this row unreachable.
-        var otherAdmin = new FakeCurrentUser { Id = Guid.NewGuid(), TenantId = Guid.NewGuid(), IsAdmin = true };
+        var otherAdmin = new FakeCurrentUser
+        {
+            Id = Guid.NewGuid(),
+            TenantId = Guid.NewGuid(),
+            IsAdmin = true,
+        };
         var result = await Svc(otherAdmin, Ctx(otherAdmin, db)).DeleteAsync(ws.MemberRowId);
         Assert.True(result.IsNotFound);
     }
@@ -228,7 +373,12 @@ public class UserGovernanceTests
     {
         var db = Guid.NewGuid().ToString();
         var ws = SeedWorkspace(db);
-        var deputy = new FakeCurrentUser { Id = ws.DeputyPublicId, TenantId = ws.OwnerId, IsAdmin = true };
+        var deputy = new FakeCurrentUser
+        {
+            Id = ws.DeputyPublicId,
+            TenantId = ws.OwnerId,
+            IsAdmin = true,
+        };
         var result = await Svc(deputy, Ctx(deputy, db)).DeleteAsync(ws.MemberRowId);
         Assert.True(result.IsSuccess);
     }
@@ -238,7 +388,12 @@ public class UserGovernanceTests
     {
         var db = Guid.NewGuid().ToString();
         var ws = SeedWorkspace(db);
-        var deputy = new FakeCurrentUser { Id = ws.DeputyPublicId, TenantId = ws.OwnerId, IsAdmin = true };
+        var deputy = new FakeCurrentUser
+        {
+            Id = ws.DeputyPublicId,
+            TenantId = ws.OwnerId,
+            IsAdmin = true,
+        };
         var result = await Svc(deputy, Ctx(deputy, db)).DeleteAsync(ws.Deputy2RowId);
         Assert.False(result.IsSuccess);
     }
@@ -248,9 +403,17 @@ public class UserGovernanceTests
     {
         var db = Guid.NewGuid().ToString();
         var ws = SeedWorkspace(db);
-        var deputy = new FakeCurrentUser { Id = ws.DeputyPublicId, TenantId = ws.OwnerId, IsAdmin = true };
+        var deputy = new FakeCurrentUser
+        {
+            Id = ws.DeputyPublicId,
+            TenantId = ws.OwnerId,
+            IsAdmin = true,
+        };
         var ctx = Ctx(deputy, db);
-        var adminRowId = ctx.Users.IgnoreQueryFilters().Single(u => u.PublicId == ws.AdminPublicId).Id;
+        var adminRowId = ctx
+            .Users.IgnoreQueryFilters()
+            .Single(u => u.PublicId == ws.AdminPublicId)
+            .Id;
 
         var result = await Svc(deputy, ctx).DeleteAsync(adminRowId);
         Assert.True(result.IsConflict);
@@ -262,7 +425,12 @@ public class UserGovernanceTests
     {
         var db = Guid.NewGuid().ToString();
         var ws = SeedWorkspace(db);
-        var deputy = new FakeCurrentUser { Id = ws.DeputyPublicId, TenantId = ws.OwnerId, IsAdmin = true };
+        var deputy = new FakeCurrentUser
+        {
+            Id = ws.DeputyPublicId,
+            TenantId = ws.OwnerId,
+            IsAdmin = true,
+        };
         var result = await Svc(deputy, Ctx(deputy, db)).DeleteAsync(ws.DeputyRowId);
         Assert.False(result.IsSuccess);
     }
@@ -274,17 +442,30 @@ public class UserGovernanceTests
     {
         var db = Guid.NewGuid().ToString();
         var ws = SeedWorkspace(db);
-        var admin = new FakeCurrentUser { Id = ws.AdminPublicId, TenantId = ws.OwnerId, IsAdmin = true };
+        var admin = new FakeCurrentUser
+        {
+            Id = ws.AdminPublicId,
+            TenantId = ws.OwnerId,
+            IsAdmin = true,
+        };
         var ctx = Ctx(admin, db);
 
         var result = await Svc(admin, ctx).TransferOwnershipAsync(ws.DeputyPublicId);
         Assert.True(result.IsSuccess);
 
         // DB-11a: the swap is on the MEMBERSHIPS, not users.role_id (which is legacy/never re-read).
-        var newAdminMembership = ctx.Set<WorkspaceMembership>().IgnoreQueryFilters()
-            .Include(m => m.User).Single(m => m.User.PublicId == ws.DeputyPublicId && m.OwnerId == ws.OwnerId && m.LeftAt == null);
-        var oldAdminMembership = ctx.Set<WorkspaceMembership>().IgnoreQueryFilters()
-            .Include(m => m.User).Single(m => m.User.PublicId == ws.AdminPublicId && m.OwnerId == ws.OwnerId && m.LeftAt == null);
+        var newAdminMembership = ctx.Set<WorkspaceMembership>()
+            .IgnoreQueryFilters()
+            .Include(m => m.User)
+            .Single(m =>
+                m.User.PublicId == ws.DeputyPublicId && m.OwnerId == ws.OwnerId && m.LeftAt == null
+            );
+        var oldAdminMembership = ctx.Set<WorkspaceMembership>()
+            .IgnoreQueryFilters()
+            .Include(m => m.User)
+            .Single(m =>
+                m.User.PublicId == ws.AdminPublicId && m.OwnerId == ws.OwnerId && m.LeftAt == null
+            );
         Assert.Equal(ws.AdminRoleId, newAdminMembership.RoleId);
         Assert.Equal(ws.DeputyRoleId, oldAdminMembership.RoleId);
         // OwnerId is untouched for both — the tenant identifier never moves.
@@ -298,7 +479,8 @@ public class UserGovernanceTests
         var db = Guid.NewGuid().ToString();
         var ws = SeedWorkspace(db);
         var superAdmin = new FakeCurrentUser { Id = Guid.NewGuid(), IsSuperAdmin = true };
-        var result = await Svc(superAdmin, Ctx(superAdmin, db)).TransferOwnershipAsync(ws.DeputyPublicId);
+        var result = await Svc(superAdmin, Ctx(superAdmin, db))
+            .TransferOwnershipAsync(ws.DeputyPublicId);
         Assert.True(result.IsSuccess);
     }
 
@@ -307,7 +489,12 @@ public class UserGovernanceTests
     {
         var db = Guid.NewGuid().ToString();
         var ws = SeedWorkspace(db);
-        var deputy = new FakeCurrentUser { Id = ws.DeputyPublicId, TenantId = ws.OwnerId, IsAdmin = true };
+        var deputy = new FakeCurrentUser
+        {
+            Id = ws.DeputyPublicId,
+            TenantId = ws.OwnerId,
+            IsAdmin = true,
+        };
         var result = await Svc(deputy, Ctx(deputy, db)).TransferOwnershipAsync(ws.Deputy2PublicId);
         Assert.False(result.IsSuccess);
     }
@@ -317,7 +504,12 @@ public class UserGovernanceTests
     {
         var db = Guid.NewGuid().ToString();
         var ws = SeedWorkspace(db);
-        var admin = new FakeCurrentUser { Id = ws.AdminPublicId, TenantId = ws.OwnerId, IsAdmin = true };
+        var admin = new FakeCurrentUser
+        {
+            Id = ws.AdminPublicId,
+            TenantId = ws.OwnerId,
+            IsAdmin = true,
+        };
         var result = await Svc(admin, Ctx(admin, db)).TransferOwnershipAsync(ws.MemberPublicId);
         Assert.False(result.IsSuccess);
     }
@@ -337,8 +529,26 @@ public class UserGovernanceTests
             var adminRoleId = seed.Roles.Single(r => r.Name == "Workspace Admin").Id;
             var adminRoleForOther = seed.Roles.Single(r => r.Id == adminRoleId);
             var deputyRoleForOther = seed.Roles.Single(r => r.Id == deputyRoleId);
-            var otherAdmin = new User { Email = "other-admin@t.com", PasswordHash = "h", DisplayName = "OtherAdmin", PublicId = otherOwnerId, OwnerId = otherOwnerId, RoleId = adminRoleId, IsActive = true };
-            var otherDeputy = new User { Email = "other-deputy@t.com", PasswordHash = "h", DisplayName = "OtherDeputy", PublicId = Guid.NewGuid(), OwnerId = otherOwnerId, RoleId = deputyRoleId, IsActive = true };
+            var otherAdmin = new User
+            {
+                Email = "other-admin@t.com",
+                PasswordHash = "h",
+                DisplayName = "OtherAdmin",
+                PublicId = otherOwnerId,
+                OwnerId = otherOwnerId,
+                RoleId = adminRoleId,
+                IsActive = true,
+            };
+            var otherDeputy = new User
+            {
+                Email = "other-deputy@t.com",
+                PasswordHash = "h",
+                DisplayName = "OtherDeputy",
+                PublicId = Guid.NewGuid(),
+                OwnerId = otherOwnerId,
+                RoleId = deputyRoleId,
+                IsActive = true,
+            };
             seed.Users.AddRange(otherAdmin, otherDeputy);
             seed.SaveChanges();
             TestSeed.Join(seed, otherAdmin, otherOwnerId, adminRoleForOther);
@@ -346,7 +556,12 @@ public class UserGovernanceTests
             otherDeputyPublicId = otherDeputy.PublicId;
         }
 
-        var admin = new FakeCurrentUser { Id = ws.AdminPublicId, TenantId = ws.OwnerId, IsAdmin = true };
+        var admin = new FakeCurrentUser
+        {
+            Id = ws.AdminPublicId,
+            TenantId = ws.OwnerId,
+            IsAdmin = true,
+        };
         var result = await Svc(admin, Ctx(admin, db)).TransferOwnershipAsync(otherDeputyPublicId);
         Assert.False(result.IsSuccess);
     }
@@ -355,8 +570,11 @@ public class UserGovernanceTests
 
     private sealed class NoopFileStorage : IFileStorage
     {
-        public Task<string> SaveAsync(string o, string p, Stream c, string e) => Task.FromResult("");
+        public Task<string> SaveAsync(string o, string p, Stream c, string e) =>
+            Task.FromResult("");
+
         public Task DeleteAsync(string x) => Task.CompletedTask;
+
         public Task DeleteOwnerFilesAsync(string o) => Task.CompletedTask;
     }
 
@@ -369,14 +587,25 @@ public class UserGovernanceTests
         // those two diverge, so a picker built on PublicId would silently target the wrong tenant.
         var db = Guid.NewGuid().ToString();
         var ws = SeedWorkspace(db);
-        var admin = new FakeCurrentUser { Id = ws.AdminPublicId, TenantId = ws.OwnerId, IsAdmin = true };
+        var admin = new FakeCurrentUser
+        {
+            Id = ws.AdminPublicId,
+            TenantId = ws.OwnerId,
+            IsAdmin = true,
+        };
         var transfer = await Svc(admin, Ctx(admin, db)).TransferOwnershipAsync(ws.DeputyPublicId);
         Assert.True(transfer.IsSuccess);
 
         var superAdmin = new FakeCurrentUser { Id = Guid.NewGuid(), IsSuperAdmin = true };
         var tenantUow = new UnitOfWork(Ctx(superAdmin, db));
-        var tenantSvc = new TenantService(tenantUow, new IdentityHasher(),
-            new NoopFileStorage(), new FakeSettings(), new NoopBillingProvider(), new MembershipService(tenantUow));
+        var tenantSvc = new TenantService(
+            tenantUow,
+            new IdentityHasher(),
+            new NoopFileStorage(),
+            new FakeSettings(),
+            new NoopBillingProvider(),
+            new MembershipService(tenantUow)
+        );
 
         var list = await tenantSvc.ListAsync();
         Assert.True(list.IsSuccess);
@@ -395,11 +624,17 @@ public class UserGovernanceTests
     {
         var db = Guid.NewGuid().ToString();
         var ws = SeedWorkspace(db);
-        var admin = new FakeCurrentUser { Id = ws.AdminPublicId, TenantId = ws.OwnerId, IsAdmin = true };
+        var admin = new FakeCurrentUser
+        {
+            Id = ws.AdminPublicId,
+            TenantId = ws.OwnerId,
+            IsAdmin = true,
+        };
         var ctx = Ctx(admin, db);
         var adminRowId = ctx.Users.Single(u => u.PublicId == ws.AdminPublicId).Id;
 
-        var result = await Svc(admin, ctx).UpdateAsync(adminRowId, new UpdateUserRequest { RoleId = ws.MemberRoleId });
+        var result = await Svc(admin, ctx)
+            .UpdateAsync(adminRowId, new UpdateUserRequest { RoleId = ws.MemberRoleId });
 
         Assert.False(result.IsSuccess);
         var stillAdmin = ctx.Users.IgnoreQueryFilters().Single(u => u.PublicId == ws.AdminPublicId);
@@ -411,11 +646,17 @@ public class UserGovernanceTests
     {
         var db = Guid.NewGuid().ToString();
         var ws = SeedWorkspace(db);
-        var admin = new FakeCurrentUser { Id = ws.AdminPublicId, TenantId = ws.OwnerId, IsAdmin = true };
+        var admin = new FakeCurrentUser
+        {
+            Id = ws.AdminPublicId,
+            TenantId = ws.OwnerId,
+            IsAdmin = true,
+        };
         var ctx = Ctx(admin, db);
         var adminRowId = ctx.Users.Single(u => u.PublicId == ws.AdminPublicId).Id;
 
-        var result = await Svc(admin, ctx).UpdateAsync(adminRowId, new UpdateUserRequest { RoleId = ws.DeputyRoleId });
+        var result = await Svc(admin, ctx)
+            .UpdateAsync(adminRowId, new UpdateUserRequest { RoleId = ws.DeputyRoleId });
 
         Assert.False(result.IsSuccess);
     }
@@ -425,10 +666,16 @@ public class UserGovernanceTests
     {
         var db = Guid.NewGuid().ToString();
         var ws = SeedWorkspace(db);
-        var admin = new FakeCurrentUser { Id = ws.AdminPublicId, TenantId = ws.OwnerId, IsAdmin = true };
+        var admin = new FakeCurrentUser
+        {
+            Id = ws.AdminPublicId,
+            TenantId = ws.OwnerId,
+            IsAdmin = true,
+        };
         var ctx = Ctx(admin, db);
 
-        var result = await Svc(admin, ctx).UpdateAsync(ws.MemberRowId, new UpdateUserRequest { RoleId = ws.DeputyRoleId });
+        var result = await Svc(admin, ctx)
+            .UpdateAsync(ws.MemberRowId, new UpdateUserRequest { RoleId = ws.DeputyRoleId });
 
         Assert.True(result.IsSuccess);
     }
@@ -440,18 +687,28 @@ public class UserGovernanceTests
         // stamp must rotate so a live session can't keep acting under the old role.
         var db = Guid.NewGuid().ToString();
         var ws = SeedWorkspace(db);
-        var admin = new FakeCurrentUser { Id = ws.AdminPublicId, TenantId = ws.OwnerId, IsAdmin = true };
+        var admin = new FakeCurrentUser
+        {
+            Id = ws.AdminPublicId,
+            TenantId = ws.OwnerId,
+            IsAdmin = true,
+        };
         var ctx = Ctx(admin, db);
         // DB-11a/R16: a role change is workspace-scoped — it rotates the MEMBERSHIP stamp, never the
         // identity's own stamp (that would revoke every OTHER workspace's sessions too).
-        var before = ctx.Set<WorkspaceMembership>().IgnoreQueryFilters()
-            .Single(m => m.UserId == ws.MemberRowId && m.OwnerId == ws.OwnerId && m.LeftAt == null).SecurityStamp;
+        var before = ctx.Set<WorkspaceMembership>()
+            .IgnoreQueryFilters()
+            .Single(m => m.UserId == ws.MemberRowId && m.OwnerId == ws.OwnerId && m.LeftAt == null)
+            .SecurityStamp;
 
-        var result = await Svc(admin, ctx).UpdateAsync(ws.MemberRowId, new UpdateUserRequest { RoleId = ws.DeputyRoleId });
+        var result = await Svc(admin, ctx)
+            .UpdateAsync(ws.MemberRowId, new UpdateUserRequest { RoleId = ws.DeputyRoleId });
 
         Assert.True(result.IsSuccess);
-        var after = ctx.Set<WorkspaceMembership>().IgnoreQueryFilters()
-            .Single(m => m.UserId == ws.MemberRowId && m.OwnerId == ws.OwnerId && m.LeftAt == null).SecurityStamp;
+        var after = ctx.Set<WorkspaceMembership>()
+            .IgnoreQueryFilters()
+            .Single(m => m.UserId == ws.MemberRowId && m.OwnerId == ws.OwnerId && m.LeftAt == null)
+            .SecurityStamp;
         Assert.NotEqual(before, after);
     }
 
@@ -460,15 +717,27 @@ public class UserGovernanceTests
     {
         var db = Guid.NewGuid().ToString();
         var ws = SeedWorkspace(db);
-        var admin = new FakeCurrentUser { Id = ws.AdminPublicId, TenantId = ws.OwnerId, IsAdmin = true };
+        var admin = new FakeCurrentUser
+        {
+            Id = ws.AdminPublicId,
+            TenantId = ws.OwnerId,
+            IsAdmin = true,
+        };
         var ctx = Ctx(admin, db);
-        var before = ctx.Users.IgnoreQueryFilters().Single(u => u.Id == ws.MemberRowId).SecurityStamp;
+        var before = ctx
+            .Users.IgnoreQueryFilters()
+            .Single(u => u.Id == ws.MemberRowId)
+            .SecurityStamp;
 
         // Same role the member already has — no-op role assignment, nothing else in the request.
-        var result = await Svc(admin, ctx).UpdateAsync(ws.MemberRowId, new UpdateUserRequest { RoleId = ws.MemberRoleId });
+        var result = await Svc(admin, ctx)
+            .UpdateAsync(ws.MemberRowId, new UpdateUserRequest { RoleId = ws.MemberRoleId });
 
         Assert.True(result.IsSuccess);
-        var after = ctx.Users.IgnoreQueryFilters().Single(u => u.Id == ws.MemberRowId).SecurityStamp;
+        var after = ctx
+            .Users.IgnoreQueryFilters()
+            .Single(u => u.Id == ws.MemberRowId)
+            .SecurityStamp;
         Assert.Equal(before, after);
     }
 }

@@ -27,10 +27,16 @@ public class RoleServiceDeleteTests
         public int? RoleId { get; set; }
         public string? KeyScopes { get; set; }
         public string? Scope { get; set; }
+        public long? ImpersonationSessionId { get; set; }
+        public bool IsImpersonating => ImpersonationSessionId != null;
     }
 
     private static AppDbContext BuildContext(ICurrentUser user, string dbName) =>
-        new(new DbContextOptionsBuilder<AppDbContext>().UseInMemoryDatabase(dbName).Options, user, new Microsoft.Extensions.Configuration.ConfigurationBuilder().Build());
+        new(
+            new DbContextOptionsBuilder<AppDbContext>().UseInMemoryDatabase(dbName).Options,
+            user,
+            new Microsoft.Extensions.Configuration.ConfigurationBuilder().Build()
+        );
 
     private static RoleService BuildService(ICurrentUser user, AppDbContext db)
     {
@@ -40,7 +46,14 @@ public class RoleServiceDeleteTests
 
     // Seeds: a tenant-owned role to delete (with one assigned user), plus a set of candidate
     // reassignment targets (own non-admin, own admin, global non-admin, other-tenant non-admin).
-    private sealed record Seeded(Guid Tenant, int DeleteRoleId, int OwnNonAdmin, int OwnAdmin, int Global, int OtherTenant);
+    private sealed record Seeded(
+        Guid Tenant,
+        int DeleteRoleId,
+        int OwnNonAdmin,
+        int OwnAdmin,
+        int Global,
+        int OtherTenant
+    );
 
     private static Seeded Seed(string dbName)
     {
@@ -48,11 +61,40 @@ public class RoleServiceDeleteTests
         var otherTenant = Guid.NewGuid();
         using var seed = BuildContext(new FakeCurrentUser { IsSuperAdmin = true }, dbName);
 
-        var deleteRole = new Role { Name = "ToDelete", OwnerId = tenant, IsActive = true };
-        var ownNonAdmin = new Role { Name = "OwnDev", OwnerId = tenant, IsActive = true, GrantsAdmin = false };
-        var ownAdmin = new Role { Name = "OwnAdmin", OwnerId = tenant, IsActive = true, GrantsAdmin = true };
-        var global = new Role { Name = "GlobalViewer", OwnerId = null, IsActive = true, GrantsAdmin = false };
-        var otherTenantRole = new Role { Name = "OtherDev", OwnerId = otherTenant, IsActive = true, GrantsAdmin = false };
+        var deleteRole = new Role
+        {
+            Name = "ToDelete",
+            OwnerId = tenant,
+            IsActive = true,
+        };
+        var ownNonAdmin = new Role
+        {
+            Name = "OwnDev",
+            OwnerId = tenant,
+            IsActive = true,
+            GrantsAdmin = false,
+        };
+        var ownAdmin = new Role
+        {
+            Name = "OwnAdmin",
+            OwnerId = tenant,
+            IsActive = true,
+            GrantsAdmin = true,
+        };
+        var global = new Role
+        {
+            Name = "GlobalViewer",
+            OwnerId = null,
+            IsActive = true,
+            GrantsAdmin = false,
+        };
+        var otherTenantRole = new Role
+        {
+            Name = "OtherDev",
+            OwnerId = otherTenant,
+            IsActive = true,
+            GrantsAdmin = false,
+        };
         seed.Roles.AddRange(deleteRole, ownNonAdmin, ownAdmin, global, otherTenantRole);
         seed.SaveChanges();
 
@@ -66,13 +108,20 @@ public class RoleServiceDeleteTests
             PublicId = Guid.NewGuid(),
             ApprovalStatus = ApprovalStatus.Approved,
             IsActive = true,
-            OwnerId = tenant
+            OwnerId = tenant,
         };
         seed.Users.Add(member);
         seed.SaveChanges();
         TestSeed.Join(seed, member, tenant, deleteRole);
 
-        return new Seeded(tenant, deleteRole.Id, ownNonAdmin.Id, ownAdmin.Id, global.Id, otherTenantRole.Id);
+        return new Seeded(
+            tenant,
+            deleteRole.Id,
+            ownNonAdmin.Id,
+            ownAdmin.Id,
+            global.Id,
+            otherTenantRole.Id
+        );
     }
 
     [Fact]
@@ -80,7 +129,12 @@ public class RoleServiceDeleteTests
     {
         var dbName = Guid.NewGuid().ToString();
         var s = Seed(dbName);
-        var admin = new FakeCurrentUser { Id = Guid.NewGuid(), TenantId = s.Tenant, IsAdmin = true };
+        var admin = new FakeCurrentUser
+        {
+            Id = Guid.NewGuid(),
+            TenantId = s.Tenant,
+            IsAdmin = true,
+        };
         using var db = BuildContext(admin, dbName);
         var svc = BuildService(admin, db);
 
@@ -90,7 +144,10 @@ public class RoleServiceDeleteTests
         Assert.Equal(MessageKeys.Role.EscalationNotAllowed, result.Message);
         // The role was NOT deleted and the user was NOT reassigned.
         Assert.Null(db.Roles.IgnoreQueryFilters().Single(r => r.Id == s.DeleteRoleId).DeletedAt);
-        Assert.Equal(s.DeleteRoleId, db.Users.IgnoreQueryFilters().Single(u => u.Email == "member@a.com").RoleId);
+        Assert.Equal(
+            s.DeleteRoleId,
+            db.Users.IgnoreQueryFilters().Single(u => u.Email == "member@a.com").RoleId
+        );
     }
 
     [Fact]
@@ -98,7 +155,12 @@ public class RoleServiceDeleteTests
     {
         var dbName = Guid.NewGuid().ToString();
         var s = Seed(dbName);
-        var admin = new FakeCurrentUser { Id = Guid.NewGuid(), TenantId = s.Tenant, IsAdmin = true };
+        var admin = new FakeCurrentUser
+        {
+            Id = Guid.NewGuid(),
+            TenantId = s.Tenant,
+            IsAdmin = true,
+        };
         using var db = BuildContext(admin, dbName);
         var svc = BuildService(admin, db);
 
@@ -114,7 +176,12 @@ public class RoleServiceDeleteTests
     {
         var dbName = Guid.NewGuid().ToString();
         var s = Seed(dbName);
-        var admin = new FakeCurrentUser { Id = Guid.NewGuid(), TenantId = s.Tenant, IsAdmin = true };
+        var admin = new FakeCurrentUser
+        {
+            Id = Guid.NewGuid(),
+            TenantId = s.Tenant,
+            IsAdmin = true,
+        };
         using var db = BuildContext(admin, dbName);
         var svc = BuildService(admin, db);
 
@@ -130,7 +197,12 @@ public class RoleServiceDeleteTests
     {
         var dbName = Guid.NewGuid().ToString();
         var s = Seed(dbName);
-        var admin = new FakeCurrentUser { Id = Guid.NewGuid(), TenantId = s.Tenant, IsAdmin = true };
+        var admin = new FakeCurrentUser
+        {
+            Id = Guid.NewGuid(),
+            TenantId = s.Tenant,
+            IsAdmin = true,
+        };
         using var db = BuildContext(admin, dbName);
         var svc = BuildService(admin, db);
 
@@ -141,8 +213,13 @@ public class RoleServiceDeleteTests
         Assert.NotNull(db.Roles.IgnoreQueryFilters().Single(r => r.Id == s.DeleteRoleId).DeletedAt);
         // DB-11a: reassignment happens on the MEMBERSHIP, not users.role_id.
         var memberUserId = db.Users.IgnoreQueryFilters().Single(u => u.Email == "member@a.com").Id;
-        Assert.Equal(s.OwnNonAdmin, db.Set<Pointer.Domain.Entity.WorkspaceMembership>().IgnoreQueryFilters()
-            .Single(m => m.UserId == memberUserId && m.LeftAt == null).RoleId);
+        Assert.Equal(
+            s.OwnNonAdmin,
+            db.Set<Pointer.Domain.Entity.WorkspaceMembership>()
+                .IgnoreQueryFilters()
+                .Single(m => m.UserId == memberUserId && m.LeftAt == null)
+                .RoleId
+        );
     }
 
     [Fact]
@@ -159,7 +236,12 @@ public class RoleServiceDeleteTests
 
         Assert.True(result.IsSuccess);
         var memberUserId = db.Users.IgnoreQueryFilters().Single(u => u.Email == "member@a.com").Id;
-        Assert.Equal(s.OwnAdmin, db.Set<Pointer.Domain.Entity.WorkspaceMembership>().IgnoreQueryFilters()
-            .Single(m => m.UserId == memberUserId && m.LeftAt == null).RoleId);
+        Assert.Equal(
+            s.OwnAdmin,
+            db.Set<Pointer.Domain.Entity.WorkspaceMembership>()
+                .IgnoreQueryFilters()
+                .Single(m => m.UserId == memberUserId && m.LeftAt == null)
+                .RoleId
+        );
     }
 }

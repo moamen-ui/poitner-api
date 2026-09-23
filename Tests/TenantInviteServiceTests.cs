@@ -29,13 +29,16 @@ public class TenantInviteServiceTests
         public int? RoleId { get; set; }
         public string? KeyScopes { get; set; }
         public string? Scope { get; set; }
+        public long? ImpersonationSessionId { get; set; }
+        public bool IsImpersonating => ImpersonationSessionId != null;
     }
 
     private static AppDbContext Ctx(ICurrentUser user, string dbName) =>
         new(
             new DbContextOptionsBuilder<AppDbContext>().UseInMemoryDatabase(dbName).Options,
             user,
-            new Microsoft.Extensions.Configuration.ConfigurationBuilder().Build());
+            new Microsoft.Extensions.Configuration.ConfigurationBuilder().Build()
+        );
 
     /// <summary>Stands in for IInviteService: records calls, never actually mutates.</summary>
     private sealed class SpyInviteService : IInviteService
@@ -48,14 +51,17 @@ public class TenantInviteServiceTests
         public List<bool> ResendWriteAudit { get; } = new();
 
         public Task<Pointer.Application.Response.Result<Pointer.Application.DTOs.Invite.InviteResponse>> CreateAsync(
-            Pointer.Application.DTOs.Invite.CreateInviteRequest request, bool writeAudit = true)
+            Pointer.Application.DTOs.Invite.CreateInviteRequest request,
+            bool writeAudit = true
+        )
         {
             CreateWriteAudit.Add(writeAudit);
             throw new NotSupportedException("not exercised here");
         }
 
-        public Task<Pointer.Application.Response.Result<List<Pointer.Application.DTOs.Invite.InviteResponse>>> ListAsync() =>
-            throw new NotSupportedException();
+        public Task<Pointer.Application.Response.Result<
+            List<Pointer.Application.DTOs.Invite.InviteResponse>
+        >> ListAsync() => throw new NotSupportedException();
 
         public Task<Pointer.Application.Response.Result<Pointer.Application.DTOs.Invite.InviteRevokeResponse>> RevokeAsync(int id, bool writeAudit = true)
         {
@@ -69,23 +75,36 @@ public class TenantInviteServiceTests
         // Not part of what this spy exercises: these tests cover the tenant-scoping decorator, and
         // rotation has no separate scoping path — it resolves the invite through the same
         // LoadOwnAsync the decorator already guards.
-        public Task<Pointer.Application.Response.Result<Pointer.Application.DTOs.Invite.InviteResponse>> RotateQuickLinkAsync(int id) =>
-            throw new NotSupportedException();
+        public Task<Pointer.Application.Response.Result<Pointer.Application.DTOs.Invite.InviteResponse>> RotateQuickLinkAsync(
+            int id
+        ) => throw new NotSupportedException();
 
-        public Task<Pointer.Application.Response.Result<Pointer.Application.DTOs.Invite.InviteResponse>> ResendAsync(int id, bool rotate = false, bool writeAudit = true)
+        public Task<Pointer.Application.Response.Result<Pointer.Application.DTOs.Invite.InviteResponse>> ResendAsync(
+            int id,
+            bool rotate = false,
+            bool writeAudit = true
+        )
         {
             Resent.Add((id, rotate));
             ResendWriteAudit.Add(writeAudit);
             return Task.FromResult(
                 Pointer.Application.Response.Result<Pointer.Application.DTOs.Invite.InviteResponse>.Success(
-                    new Pointer.Application.DTOs.Invite.InviteResponse { Id = id, Url = "https://app.test/join?code=x" }));
+                    new Pointer.Application.DTOs.Invite.InviteResponse
+                    {
+                        Id = id,
+                        Url = "https://app.test/join?code=x",
+                    }
+                )
+            );
         }
 
-        public Task<Pointer.Application.Response.Result<Pointer.Application.DTOs.Invite.InvitePreviewResponse>> GetPreviewAsync(string code) =>
-            throw new NotSupportedException();
+        public Task<Pointer.Application.Response.Result<Pointer.Application.DTOs.Invite.InvitePreviewResponse>> GetPreviewAsync(
+            string code
+        ) => throw new NotSupportedException();
 
         public Task<Pointer.Application.Response.Result<Pointer.Application.DTOs.Auth.LoginResponse>> AcceptAsync(
-            Pointer.Application.DTOs.Invite.AcceptInviteRequest request) => throw new NotSupportedException();
+            Pointer.Application.DTOs.Invite.AcceptInviteRequest request
+        ) => throw new NotSupportedException();
     }
 
     /// <summary>Seeds one workspace invite (null owner) and one tenant-owned invite.</summary>
@@ -121,7 +140,10 @@ public class TenantInviteServiceTests
         return (workspace.Id, tenantOwned.Id);
     }
 
-    private static (TenantInviteService Service, SpyInviteService Spy) Build(AppDbContext db, ICurrentUser user)
+    private static (TenantInviteService Service, SpyInviteService Spy) Build(
+        AppDbContext db,
+        ICurrentUser user
+    )
     {
         var spy = new SpyInviteService();
         return (new TenantInviteService(new UnitOfWork(db), spy, user, new FakeAuditWriter()), spy);
@@ -207,16 +229,18 @@ public class TenantInviteServiceTests
 
         using (var seed = Ctx(new FakeCurrentUser { IsSuperAdmin = true }, name))
         {
-            seed.Invites.Add(new Invite
-            {
-                OwnerId = null,
-                Code = "legacy",
-                Email = "legacy@old.test",
-                ExpiresAt = DateTime.UtcNow.AddDays(3),
-                MaxUses = null,
-                Uses = 0,
-                CreatedAt = DateTime.UtcNow.AddDays(-1),
-            });
+            seed.Invites.Add(
+                new Invite
+                {
+                    OwnerId = null,
+                    Code = "legacy",
+                    Email = "legacy@old.test",
+                    ExpiresAt = DateTime.UtcNow.AddDays(3),
+                    MaxUses = null,
+                    Uses = 0,
+                    CreatedAt = DateTime.UtcNow.AddDays(-1),
+                }
+            );
             seed.SaveChanges();
         }
 
@@ -234,14 +258,23 @@ public class TenantInviteServiceTests
     {
         var name = nameof(A_Tenant_Admin_Cannot_Reach_The_Surface);
         var (workspaceInviteId, _) = Seed(name);
-        var tenantAdmin = new FakeCurrentUser { Id = Guid.NewGuid(), IsAdmin = true, TenantId = Guid.NewGuid() };
+        var tenantAdmin = new FakeCurrentUser
+        {
+            Id = Guid.NewGuid(),
+            IsAdmin = true,
+            TenantId = Guid.NewGuid(),
+        };
         using var db = Ctx(tenantAdmin, name);
         var (svc, spy) = Build(db, tenantAdmin);
 
         Assert.True((await svc.ListAsync()).IsForbidden);
         Assert.True((await svc.RevokeAsync(workspaceInviteId)).IsForbidden);
         Assert.True((await svc.ResendAsync(workspaceInviteId, false)).IsForbidden);
-        Assert.True((await svc.CreateAsync(new CreateTenantInviteRequest { Email = "x@y.test" })).IsForbidden);
+        Assert.True(
+            (
+                await svc.CreateAsync(new CreateTenantInviteRequest { Email = "x@y.test" })
+            ).IsForbidden
+        );
         Assert.Empty(spy.Revoked);
         Assert.Empty(spy.Resent);
     }

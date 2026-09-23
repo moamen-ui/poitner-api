@@ -30,43 +30,84 @@ public class CommitStyleAndCommitUrlTests
         public int? RoleId { get; set; }
         public string? KeyScopes { get; set; }
         public string? Scope { get; set; }
+        public long? ImpersonationSessionId { get; set; }
+        public bool IsImpersonating => ImpersonationSessionId != null;
     }
 
     private sealed class FakeFileStorage : IFileStorage
     {
-        public Task<string> SaveAsync(string ownerSegment, string project, Stream content, string extension) => Task.FromResult("uploads/x");
+        public Task<string> SaveAsync(
+            string ownerSegment,
+            string project,
+            Stream content,
+            string extension
+        ) => Task.FromResult("uploads/x");
+
         public Task DeleteAsync(string relativePathOrUrl) => Task.CompletedTask;
+
         public Task DeleteOwnerFilesAsync(string ownerSegment) => Task.CompletedTask;
     }
 
     private sealed class FakeUploadSigner : IUploadSigner
     {
         public string SignedUrl(string relPath) => relPath;
+
         public bool Validate(string relPath, long exp, string sig) => true;
+
         public string ExtractRelPath(string stored) => stored;
     }
 
     private sealed class FakeSettings : ISettingsService
     {
-        public Task<bool> GetBoolAsync(string key, bool fallback = false) => Task.FromResult(fallback);
+        public Task<bool> GetBoolAsync(string key, bool fallback = false) =>
+            Task.FromResult(fallback);
+
         public Task SetBoolAsync(string key, bool value) => Task.CompletedTask;
-        public Task<string> GetStringAsync(string key, string fallback = "") => Task.FromResult(fallback);
+
+        public Task<string> GetStringAsync(string key, string fallback = "") =>
+            Task.FromResult(fallback);
+
         public Task SetStringAsync(string key, string value) => Task.CompletedTask;
+
         public Task<int> GetIntAsync(string key, int fallback = 0) => Task.FromResult(fallback);
+
         public Task SetIntAsync(string key, int value) => Task.CompletedTask;
     }
 
     private static AppDbContext BuildContext(ICurrentUser user, string dbName) =>
-        new(new DbContextOptionsBuilder<AppDbContext>().UseInMemoryDatabase(dbName).Options, user,
-            new Microsoft.Extensions.Configuration.ConfigurationBuilder().Build());
+        new(
+            new DbContextOptionsBuilder<AppDbContext>().UseInMemoryDatabase(dbName).Options,
+            user,
+            new Microsoft.Extensions.Configuration.ConfigurationBuilder().Build()
+        );
 
     private static CommentService BuildCommentService(ICurrentUser user, string dbName)
     {
         var uow = new UnitOfWork(BuildContext(user, dbName));
-        var projectService = new ProjectService(uow, user, new PassThroughEntitlements(), TestProjectServiceDeps.Settings(), TestProjectServiceDeps.Configuration(), new FakeAuditWriter());
-        var actionService = new PredefinedActionService(uow, projectService, user, new PassThroughEntitlements());
-        return new CommentService(uow, projectService, actionService, new FakeFileStorage(), user,
-            new FakeUploadSigner(), new FakeSettings(), new PassThroughEntitlements());
+        var projectService = new ProjectService(
+            uow,
+            user,
+            new PassThroughEntitlements(),
+            TestProjectServiceDeps.Settings(),
+            TestProjectServiceDeps.Configuration(),
+            new FakeAuditWriter()
+        );
+        var actionService = new PredefinedActionService(
+            uow,
+            projectService,
+            user,
+            new PassThroughEntitlements()
+        );
+        return new CommentService(
+            uow,
+            projectService,
+            actionService,
+            new FakeFileStorage(),
+            user,
+            new FakeUploadSigner(),
+            new FakeSettings(),
+            new PassThroughEntitlements()
+        );
     }
 
     [Fact]
@@ -78,28 +119,50 @@ public class CommitStyleAndCommitUrlTests
         int commentId;
         using (var seed = BuildContext(new FakeCurrentUser { IsSuperAdmin = true }, dbName))
         {
-            var project = new Project { Key = "proj", Name = "Proj", IsActiveLocal = true, IsActiveStaging = true, IsActiveProduction = true, OwnerId = tenant };
+            var project = new Project
+            {
+                Key = "proj",
+                Name = "Proj",
+                IsActiveLocal = true,
+                IsActiveStaging = true,
+                IsActiveProduction = true,
+                OwnerId = tenant,
+            };
             seed.Projects.Add(project);
             seed.SaveChanges();
             var comment = new Comment
             {
-                ProjectId = project.Id, OwnerId = tenant, AuthorId = authorId, Body = "fix this",
-                Status = CommentStatus.ReadyToApply, Environment = EnvironmentTag.Local, Element = new ElementCapture(),
+                ProjectId = project.Id,
+                OwnerId = tenant,
+                AuthorId = authorId,
+                Body = "fix this",
+                Status = CommentStatus.ReadyToApply,
+                Environment = EnvironmentTag.Local,
+                Element = new ElementCapture(),
             };
             seed.Comments.Add(comment);
             seed.SaveChanges();
             commentId = comment.Id;
         }
 
-        var admin = new FakeCurrentUser { Id = Guid.NewGuid(), IsAdmin = true, TenantId = tenant };
+        var admin = new FakeCurrentUser
+        {
+            Id = Guid.NewGuid(),
+            IsAdmin = true,
+            TenantId = tenant,
+        };
         var svc = BuildCommentService(admin, dbName);
 
-        var result = await svc.UpdateStatusAsync(commentId, new UpdateCommentStatusRequest
-        {
-            Status = CommentStatus.Applied,
-            AppliedByLabel = "dev@example.com",
-            CommitUrl = "https://github.com/acme/app/commit/abc123",
-        }, admin.Id!.Value);
+        var result = await svc.UpdateStatusAsync(
+            commentId,
+            new UpdateCommentStatusRequest
+            {
+                Status = CommentStatus.Applied,
+                AppliedByLabel = "dev@example.com",
+                CommitUrl = "https://github.com/acme/app/commit/abc123",
+            },
+            admin.Id!.Value
+        );
 
         Assert.True(result.IsSuccess);
         Assert.Equal("https://github.com/acme/app/commit/abc123", result.Data!.CommitUrl);
@@ -117,27 +180,49 @@ public class CommitStyleAndCommitUrlTests
         int commentId;
         using (var seed = BuildContext(new FakeCurrentUser { IsSuperAdmin = true }, dbName))
         {
-            var project = new Project { Key = "proj", Name = "Proj", IsActiveLocal = true, IsActiveStaging = true, IsActiveProduction = true, OwnerId = tenant };
+            var project = new Project
+            {
+                Key = "proj",
+                Name = "Proj",
+                IsActiveLocal = true,
+                IsActiveStaging = true,
+                IsActiveProduction = true,
+                OwnerId = tenant,
+            };
             seed.Projects.Add(project);
             seed.SaveChanges();
             var comment = new Comment
             {
-                ProjectId = project.Id, OwnerId = tenant, AuthorId = authorId, Body = "fix this",
-                Status = CommentStatus.Open, Environment = EnvironmentTag.Local, Element = new ElementCapture(),
+                ProjectId = project.Id,
+                OwnerId = tenant,
+                AuthorId = authorId,
+                Body = "fix this",
+                Status = CommentStatus.Open,
+                Environment = EnvironmentTag.Local,
+                Element = new ElementCapture(),
             };
             seed.Comments.Add(comment);
             seed.SaveChanges();
             commentId = comment.Id;
         }
 
-        var admin = new FakeCurrentUser { Id = Guid.NewGuid(), IsAdmin = true, TenantId = tenant };
+        var admin = new FakeCurrentUser
+        {
+            Id = Guid.NewGuid(),
+            IsAdmin = true,
+            TenantId = tenant,
+        };
         var svc = BuildCommentService(admin, dbName);
 
-        var result = await svc.UpdateStatusAsync(commentId, new UpdateCommentStatusRequest
-        {
-            Status = CommentStatus.ReadyToApply,
-            CommitUrl = "https://github.com/acme/app/commit/abc123",
-        }, admin.Id!.Value);
+        var result = await svc.UpdateStatusAsync(
+            commentId,
+            new UpdateCommentStatusRequest
+            {
+                Status = CommentStatus.ReadyToApply,
+                CommitUrl = "https://github.com/acme/app/commit/abc123",
+            },
+            admin.Id!.Value
+        );
 
         Assert.True(result.IsSuccess);
         Assert.Null(result.Data!.CommitUrl);
@@ -148,10 +233,24 @@ public class CommitStyleAndCommitUrlTests
     {
         var dbName = Guid.NewGuid().ToString();
         var tenant = Guid.NewGuid();
-        var admin = new FakeCurrentUser { Id = Guid.NewGuid(), IsAdmin = true, TenantId = tenant };
-        var svc = new ProjectService(new UnitOfWork(BuildContext(admin, dbName)), admin, new PassThroughEntitlements(), TestProjectServiceDeps.Settings(), TestProjectServiceDeps.Configuration(), new FakeAuditWriter());
+        var admin = new FakeCurrentUser
+        {
+            Id = Guid.NewGuid(),
+            IsAdmin = true,
+            TenantId = tenant,
+        };
+        var svc = new ProjectService(
+            new UnitOfWork(BuildContext(admin, dbName)),
+            admin,
+            new PassThroughEntitlements(),
+            TestProjectServiceDeps.Settings(),
+            TestProjectServiceDeps.Configuration(),
+            new FakeAuditWriter()
+        );
 
-        var created = (await svc.CreateAsync(new CreateProjectRequest { Key = "site", Name = "Site" })).Data!;
+        var created = (
+            await svc.CreateAsync(new CreateProjectRequest { Key = "site", Name = "Site" })
+        ).Data!;
 
         Assert.Equal(CommitStyle.Single, created.CommitStyle);
     }
@@ -161,11 +260,28 @@ public class CommitStyleAndCommitUrlTests
     {
         var dbName = Guid.NewGuid().ToString();
         var tenant = Guid.NewGuid();
-        var admin = new FakeCurrentUser { Id = Guid.NewGuid(), IsAdmin = true, TenantId = tenant };
-        var svc = new ProjectService(new UnitOfWork(BuildContext(admin, dbName)), admin, new PassThroughEntitlements(), TestProjectServiceDeps.Settings(), TestProjectServiceDeps.Configuration(), new FakeAuditWriter());
-        var created = (await svc.CreateAsync(new CreateProjectRequest { Key = "site", Name = "Site" })).Data!;
+        var admin = new FakeCurrentUser
+        {
+            Id = Guid.NewGuid(),
+            IsAdmin = true,
+            TenantId = tenant,
+        };
+        var svc = new ProjectService(
+            new UnitOfWork(BuildContext(admin, dbName)),
+            admin,
+            new PassThroughEntitlements(),
+            TestProjectServiceDeps.Settings(),
+            TestProjectServiceDeps.Configuration(),
+            new FakeAuditWriter()
+        );
+        var created = (
+            await svc.CreateAsync(new CreateProjectRequest { Key = "site", Name = "Site" })
+        ).Data!;
 
-        var updated = await svc.UpdateAsync(created.Id, new UpdateProjectRequest { CommitStyle = Domain.Enums.CommitStyle.Separate });
+        var updated = await svc.UpdateAsync(
+            created.Id,
+            new UpdateProjectRequest { CommitStyle = Domain.Enums.CommitStyle.Separate }
+        );
         Assert.True(updated.IsSuccess);
         Assert.Equal(CommitStyle.Separate, updated.Data!.CommitStyle);
 
@@ -179,12 +295,32 @@ public class CommitStyleAndCommitUrlTests
     {
         var dbName = Guid.NewGuid().ToString();
         var tenant = Guid.NewGuid();
-        var admin = new FakeCurrentUser { Id = Guid.NewGuid(), IsAdmin = true, TenantId = tenant };
-        var svc = new ProjectService(new UnitOfWork(BuildContext(admin, dbName)), admin, new PassThroughEntitlements(), TestProjectServiceDeps.Settings(), TestProjectServiceDeps.Configuration(), new FakeAuditWriter());
-        var created = (await svc.CreateAsync(new CreateProjectRequest { Key = "site", Name = "Site" })).Data!;
+        var admin = new FakeCurrentUser
+        {
+            Id = Guid.NewGuid(),
+            IsAdmin = true,
+            TenantId = tenant,
+        };
+        var svc = new ProjectService(
+            new UnitOfWork(BuildContext(admin, dbName)),
+            admin,
+            new PassThroughEntitlements(),
+            TestProjectServiceDeps.Settings(),
+            TestProjectServiceDeps.Configuration(),
+            new FakeAuditWriter()
+        );
+        var created = (
+            await svc.CreateAsync(new CreateProjectRequest { Key = "site", Name = "Site" })
+        ).Data!;
 
-        await svc.UpdateAsync(created.Id, new UpdateProjectRequest { CommitStyle = CommitStyle.Separate });
-        var afterUnrelatedPatch = await svc.UpdateAsync(created.Id, new UpdateProjectRequest { Name = "Renamed" });
+        await svc.UpdateAsync(
+            created.Id,
+            new UpdateProjectRequest { CommitStyle = CommitStyle.Separate }
+        );
+        var afterUnrelatedPatch = await svc.UpdateAsync(
+            created.Id,
+            new UpdateProjectRequest { Name = "Renamed" }
+        );
 
         Assert.True(afterUnrelatedPatch.IsSuccess);
         Assert.Equal(CommitStyle.Separate, afterUnrelatedPatch.Data!.CommitStyle);
@@ -195,8 +331,20 @@ public class CommitStyleAndCommitUrlTests
     {
         var dbName = Guid.NewGuid().ToString();
         var tenant = Guid.NewGuid();
-        var admin = new FakeCurrentUser { Id = Guid.NewGuid(), IsAdmin = true, TenantId = tenant };
-        var svc = new ProjectService(new UnitOfWork(BuildContext(admin, dbName)), admin, new PassThroughEntitlements(), TestProjectServiceDeps.Settings(), TestProjectServiceDeps.Configuration(), new FakeAuditWriter());
+        var admin = new FakeCurrentUser
+        {
+            Id = Guid.NewGuid(),
+            IsAdmin = true,
+            TenantId = tenant,
+        };
+        var svc = new ProjectService(
+            new UnitOfWork(BuildContext(admin, dbName)),
+            admin,
+            new PassThroughEntitlements(),
+            TestProjectServiceDeps.Settings(),
+            TestProjectServiceDeps.Configuration(),
+            new FakeAuditWriter()
+        );
         await svc.CreateAsync(new CreateProjectRequest { Key = "site", Name = "Site" });
 
         var adminConfig = await svc.GetCaptureConfigAsync("site");
@@ -205,7 +353,14 @@ public class CommitStyleAndCommitUrlTests
         // A different, non-admin, non-creator stakeholder in the same tenant must not be able to
         // edit — same gate as ProjectService.UpdateAsync's Forbidden check.
         var developer = new FakeCurrentUser { Id = Guid.NewGuid(), TenantId = tenant };
-        var developerSvc = new ProjectService(new UnitOfWork(BuildContext(developer, dbName)), developer, new PassThroughEntitlements(), TestProjectServiceDeps.Settings(), TestProjectServiceDeps.Configuration(), new FakeAuditWriter());
+        var developerSvc = new ProjectService(
+            new UnitOfWork(BuildContext(developer, dbName)),
+            developer,
+            new PassThroughEntitlements(),
+            TestProjectServiceDeps.Settings(),
+            TestProjectServiceDeps.Configuration(),
+            new FakeAuditWriter()
+        );
         var developerConfig = await developerSvc.GetCaptureConfigAsync("site");
         Assert.False(developerConfig.Data!.CanEditSettings);
     }
@@ -217,7 +372,14 @@ public class CommitStyleAndCommitUrlTests
         var tenant = Guid.NewGuid();
         var creatorId = Guid.NewGuid();
         var creator = new FakeCurrentUser { Id = creatorId, TenantId = tenant };
-        var svc = new ProjectService(new UnitOfWork(BuildContext(creator, dbName)), creator, new PassThroughEntitlements(), TestProjectServiceDeps.Settings(), TestProjectServiceDeps.Configuration(), new FakeAuditWriter());
+        var svc = new ProjectService(
+            new UnitOfWork(BuildContext(creator, dbName)),
+            creator,
+            new PassThroughEntitlements(),
+            TestProjectServiceDeps.Settings(),
+            TestProjectServiceDeps.Configuration(),
+            new FakeAuditWriter()
+        );
         await svc.CreateAsync(new CreateProjectRequest { Key = "site", Name = "Site" });
 
         var config = await svc.GetCaptureConfigAsync("site");

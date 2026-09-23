@@ -17,7 +17,11 @@ public class AiRuleService : IAiRuleService
     private readonly ICurrentUser _currentUser;
     private readonly IAuditWriter _audit;
 
-    public AiRuleService(IUnitOfWork unitOfWork, ICurrentUser currentUser, IAuditWriter? audit = null)
+    public AiRuleService(
+        IUnitOfWork unitOfWork,
+        ICurrentUser currentUser,
+        IAuditWriter? audit = null
+    )
     {
         _unitOfWork = unitOfWork;
         _currentUser = currentUser;
@@ -353,7 +357,12 @@ public class AiRuleService : IAiRuleService
         )
             return Result<AiInsightsResponse>.Forbidden(MessageKeys.Common.Forbidden);
 
-        var effectiveTenantId = _currentUser.IsSuperAdmin ? tenantId : _currentUser.TenantId;
+        // DB-13 (F2): an impersonating operator is pinned to the session's workspace, not the
+        // arbitrary `tenantId` query param.
+        var effectiveTenantId =
+            _currentUser.IsSuperAdmin && !_currentUser.IsImpersonating
+                ? tenantId
+                : _currentUser.TenantId;
 
         var rulesQuery = _unitOfWork
             .Repository<AiRule>()
@@ -492,9 +501,14 @@ public class AiRuleService : IAiRuleService
                 r.OwnerId.HasValue ? tenantMap.GetValueOrDefault(r.OwnerId.Value) : null
             );
 
-        var recent = allRules.Take(10).Select(MapRule).ToList();
+        // DB-13 (F2): rule title/prompt is content — a plain operator gets counts/tool-usage/tenant
+        // summaries (metadata) but no rule text; an impersonating operator (pinned above) still does.
+        var canReadRules = !_currentUser.IsSuperAdmin || _currentUser.IsImpersonating;
+        var recent = canReadRules
+            ? allRules.Take(10).Select(MapRule).ToList()
+            : new List<AiRuleResponse>();
         var detailed =
-            (includeDetails || _currentUser.IsSuperAdmin)
+            canReadRules && (includeDetails || _currentUser.IsSuperAdmin)
                 ? allRules.Select(MapRule).ToList()
                 : null;
 
@@ -528,6 +542,11 @@ public class AiRuleService : IAiRuleService
         if (!_currentUser.IsAdmin && !_currentUser.IsSuperAdmin)
             return Result<List<AiRuleResponse>>.Forbidden(MessageKeys.Common.Forbidden);
 
+        // DB-13 (F2): rule title/prompt is content — a plain operator listing "all rules" across
+        // every workspace is refused; an impersonating operator is pinned to the session's workspace.
+        if (_currentUser.IsSuperAdmin && !_currentUser.IsImpersonating)
+            return Result<List<AiRuleResponse>>.Forbidden(MessageKeys.Impersonation.Required);
+
         if (
             !_currentUser.IsSuperAdmin
             && tenantId.HasValue
@@ -535,7 +554,7 @@ public class AiRuleService : IAiRuleService
         )
             return Result<List<AiRuleResponse>>.Forbidden(MessageKeys.Common.Forbidden);
 
-        var effectiveTenantId = _currentUser.IsSuperAdmin ? tenantId : _currentUser.TenantId;
+        var effectiveTenantId = _currentUser.TenantId;
 
         var query = _unitOfWork
             .Repository<AiRule>()

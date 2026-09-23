@@ -27,61 +27,128 @@ public class CommentVerifyTests
         public int? RoleId { get; set; }
         public string? KeyScopes { get; set; }
         public string? Scope { get; set; }
+        public long? ImpersonationSessionId { get; set; }
+        public bool IsImpersonating => ImpersonationSessionId != null;
     }
 
     private sealed class FakeFileStorage : IFileStorage
     {
-        public Task<string> SaveAsync(string ownerSegment, string project, Stream content, string extension) => Task.FromResult("uploads/x");
+        public Task<string> SaveAsync(
+            string ownerSegment,
+            string project,
+            Stream content,
+            string extension
+        ) => Task.FromResult("uploads/x");
+
         public Task DeleteAsync(string relativePathOrUrl) => Task.CompletedTask;
+
         public Task DeleteOwnerFilesAsync(string ownerSegment) => Task.CompletedTask;
     }
 
     private sealed class FakeUploadSigner : IUploadSigner
     {
         public string SignedUrl(string relPath) => relPath;
+
         public bool Validate(string relPath, long exp, string sig) => true;
+
         public string ExtractRelPath(string stored) => stored;
     }
 
     private sealed class FakeSettings : ISettingsService
     {
-        public Task<bool> GetBoolAsync(string key, bool fallback = false) => Task.FromResult(fallback);
+        public Task<bool> GetBoolAsync(string key, bool fallback = false) =>
+            Task.FromResult(fallback);
+
         public Task SetBoolAsync(string key, bool value) => Task.CompletedTask;
-        public Task<string> GetStringAsync(string key, string fallback = "") => Task.FromResult(fallback);
+
+        public Task<string> GetStringAsync(string key, string fallback = "") =>
+            Task.FromResult(fallback);
+
         public Task SetStringAsync(string key, string value) => Task.CompletedTask;
+
         public Task<int> GetIntAsync(string key, int fallback = 0) => Task.FromResult(fallback);
+
         public Task SetIntAsync(string key, int value) => Task.CompletedTask;
     }
 
     private static AppDbContext BuildContext(ICurrentUser user, string dbName) =>
-        new(new DbContextOptionsBuilder<AppDbContext>().UseInMemoryDatabase(dbName).Options, user,
-            new Microsoft.Extensions.Configuration.ConfigurationBuilder().Build());
+        new(
+            new DbContextOptionsBuilder<AppDbContext>().UseInMemoryDatabase(dbName).Options,
+            user,
+            new Microsoft.Extensions.Configuration.ConfigurationBuilder().Build()
+        );
 
-    private static (CommentService commentService, NotificationService notificationService, UnitOfWork uow) BuildServices(ICurrentUser user, string dbName)
+    private static (
+        CommentService commentService,
+        NotificationService notificationService,
+        UnitOfWork uow
+    ) BuildServices(ICurrentUser user, string dbName)
     {
         var uow = new UnitOfWork(BuildContext(user, dbName));
         var notificationService = new NotificationService(uow, user);
-        var projectService = new ProjectService(uow, user, new PassThroughEntitlements(), TestProjectServiceDeps.Settings(), TestProjectServiceDeps.Configuration(), new FakeAuditWriter());
-        var actionService = new PredefinedActionService(uow, projectService, user, new PassThroughEntitlements());
+        var projectService = new ProjectService(
+            uow,
+            user,
+            new PassThroughEntitlements(),
+            TestProjectServiceDeps.Settings(),
+            TestProjectServiceDeps.Configuration(),
+            new FakeAuditWriter()
+        );
+        var actionService = new PredefinedActionService(
+            uow,
+            projectService,
+            user,
+            new PassThroughEntitlements()
+        );
         var commentService = new CommentService(
-            uow, projectService, actionService, new FakeFileStorage(), user,
-            new FakeUploadSigner(), new FakeSettings(), new PassThroughEntitlements(),
-            null, notificationService);
+            uow,
+            projectService,
+            actionService,
+            new FakeFileStorage(),
+            user,
+            new FakeUploadSigner(),
+            new FakeSettings(),
+            new PassThroughEntitlements(),
+            null,
+            notificationService
+        );
         return (commentService, notificationService, uow);
     }
 
     private static int SeedAppliedComment(string dbName, Guid tenant, Guid authorId, Guid appliedBy)
     {
         using var seed = BuildContext(new FakeCurrentUser { IsSuperAdmin = true }, dbName);
-        var project = new Project { Key = "proj", Name = "Proj", OwnerId = tenant, IsActiveLocal = true, IsActiveStaging = true, IsActiveProduction = true };
+        var project = new Project
+        {
+            Key = "proj",
+            Name = "Proj",
+            OwnerId = tenant,
+            IsActiveLocal = true,
+            IsActiveStaging = true,
+            IsActiveProduction = true,
+        };
         seed.Projects.Add(project);
-        var role = new Role { Name = "Member", OwnerId = tenant, IsActive = true };
+        var role = new Role
+        {
+            Name = "Member",
+            OwnerId = tenant,
+            IsActive = true,
+        };
         seed.Roles.Add(role);
         seed.SaveChanges();
 
         // DB-11a: EnqueueAsync only queues a notification for a recipient with a live, active,
         // Approved membership — appliedBy needs a real identity + membership to receive one.
-        var appliedByUser = new User { PublicId = appliedBy, Email = "dev@x.com", PasswordHash = "x", DisplayName = "Dev", RoleId = role.Id, OwnerId = tenant, IsActive = true };
+        var appliedByUser = new User
+        {
+            PublicId = appliedBy,
+            Email = "dev@x.com",
+            PasswordHash = "x",
+            DisplayName = "Dev",
+            RoleId = role.Id,
+            OwnerId = tenant,
+            IsActive = true,
+        };
         seed.Users.Add(appliedByUser);
         seed.SaveChanges();
         TestSeed.Join(seed, appliedByUser, tenant, role);
@@ -98,7 +165,7 @@ public class CommentVerifyTests
             AppliedByLabel = "Dev Dave",
             CommitUrl = "https://github.com/repo/commit/123",
             Environment = EnvironmentTag.Local,
-            Element = new ElementCapture()
+            Element = new ElementCapture(),
         };
         seed.Comments.Add(comment);
         seed.SaveChanges();
@@ -156,7 +223,10 @@ public class CommentVerifyTests
         var validationResult = validator.Validate(req);
 
         Assert.False(validationResult.IsValid);
-        Assert.Contains(validationResult.Errors, e => e.ErrorMessage == MessageKeys.Comment.VerifyNoteRequired);
+        Assert.Contains(
+            validationResult.Errors,
+            e => e.ErrorMessage == MessageKeys.Comment.VerifyNoteRequired
+        );
     }
 
     [Fact]
@@ -204,7 +274,12 @@ public class CommentVerifyTests
         var bystanderId = Guid.NewGuid();
         var commentId = SeedAppliedComment(db, tenant, authorId, devId);
 
-        var bystander = new FakeCurrentUser { Id = bystanderId, TenantId = tenant, IsAdmin = false };
+        var bystander = new FakeCurrentUser
+        {
+            Id = bystanderId,
+            TenantId = tenant,
+            IsAdmin = false,
+        };
         var (commentSvc, _, _) = BuildServices(bystander, db);
 
         var req = new VerifyCommentRequest { Ok = true };
@@ -223,7 +298,12 @@ public class CommentVerifyTests
         var commentId = SeedAppliedComment(db, tenant, authorId, devId);
 
         // Quick-access client who IS the author
-        var clientAuthor = new FakeCurrentUser { Id = authorId, TenantId = tenant, IsQuickAccess = true };
+        var clientAuthor = new FakeCurrentUser
+        {
+            Id = authorId,
+            TenantId = tenant,
+            IsQuickAccess = true,
+        };
         var (commentSvc, _, _) = BuildServices(clientAuthor, db);
 
         var req = new VerifyCommentRequest { Ok = true };
@@ -243,7 +323,15 @@ public class CommentVerifyTests
         int openCommentId;
         using (var seed = BuildContext(new FakeCurrentUser { IsSuperAdmin = true }, db))
         {
-            var project = new Project { Key = "proj", Name = "Proj", OwnerId = tenant, IsActiveLocal = true, IsActiveStaging = true, IsActiveProduction = true };
+            var project = new Project
+            {
+                Key = "proj",
+                Name = "Proj",
+                OwnerId = tenant,
+                IsActiveLocal = true,
+                IsActiveStaging = true,
+                IsActiveProduction = true,
+            };
             seed.Projects.Add(project);
             seed.SaveChanges();
 
@@ -255,7 +343,7 @@ public class CommentVerifyTests
                 Body = "Open comment",
                 Status = CommentStatus.Open,
                 Environment = EnvironmentTag.Local,
-                Element = new ElementCapture()
+                Element = new ElementCapture(),
             };
             seed.Comments.Add(comment);
             seed.SaveChanges();

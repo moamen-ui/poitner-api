@@ -35,34 +35,56 @@ public class CommentFieldsTests
         public int? RoleId { get; set; }
         public string? KeyScopes { get; set; }
         public string? Scope { get; set; }
+        public long? ImpersonationSessionId { get; set; }
+        public bool IsImpersonating => ImpersonationSessionId != null;
     }
 
     private sealed class FakeFileStorage : IFileStorage
     {
-        public Task<string> SaveAsync(string ownerSegment, string project, Stream content, string extension) => Task.FromResult("uploads/x");
+        public Task<string> SaveAsync(
+            string ownerSegment,
+            string project,
+            Stream content,
+            string extension
+        ) => Task.FromResult("uploads/x");
+
         public Task DeleteAsync(string relativePathOrUrl) => Task.CompletedTask;
+
         public Task DeleteOwnerFilesAsync(string ownerSegment) => Task.CompletedTask;
     }
 
     private sealed class FakeUploadSigner : IUploadSigner
     {
         public string SignedUrl(string relPath) => relPath;
+
         public bool Validate(string relPath, long exp, string sig) => true;
+
         public string ExtractRelPath(string stored) => stored;
     }
 
     private sealed class FakeSettings : ISettingsService
     {
-        public Task<bool> GetBoolAsync(string key, bool fallback = false) => Task.FromResult(fallback);
+        public Task<bool> GetBoolAsync(string key, bool fallback = false) =>
+            Task.FromResult(fallback);
+
         public Task SetBoolAsync(string key, bool value) => Task.CompletedTask;
-        public Task<string> GetStringAsync(string key, string fallback = "") => Task.FromResult(fallback);
+
+        public Task<string> GetStringAsync(string key, string fallback = "") =>
+            Task.FromResult(fallback);
+
         public Task SetStringAsync(string key, string value) => Task.CompletedTask;
+
         public Task<int> GetIntAsync(string key, int fallback = 0) => Task.FromResult(fallback);
+
         public Task SetIntAsync(string key, int value) => Task.CompletedTask;
     }
 
     private static AppDbContext BuildContext(ICurrentUser user, string dbName) =>
-        new(new DbContextOptionsBuilder<AppDbContext>().UseInMemoryDatabase(dbName).Options, user, new Microsoft.Extensions.Configuration.ConfigurationBuilder().Build());
+        new(
+            new DbContextOptionsBuilder<AppDbContext>().UseInMemoryDatabase(dbName).Options,
+            user,
+            new Microsoft.Extensions.Configuration.ConfigurationBuilder().Build()
+        );
 
     private sealed class Harness
     {
@@ -82,19 +104,65 @@ public class CommentFieldsTests
 
         using (var seed = BuildContext(new FakeCurrentUser { IsSuperAdmin = true }, dbName))
         {
-            seed.Projects.Add(new Project { Key = "proj", Name = "Proj", IsActiveLocal = true, IsActiveStaging = true, IsActiveProduction = true, OwnerId = tenant });
+            seed.Projects.Add(
+                new Project
+                {
+                    Key = "proj",
+                    Name = "Proj",
+                    IsActiveLocal = true,
+                    IsActiveStaging = true,
+                    IsActiveProduction = true,
+                    OwnerId = tenant,
+                }
+            );
             seed.SaveChanges();
         }
 
-        var user = new FakeCurrentUser { Id = author, TenantId = tenant, IsSuperAdmin = false };
+        var user = new FakeCurrentUser
+        {
+            Id = author,
+            TenantId = tenant,
+            IsSuperAdmin = false,
+        };
         var db = BuildContext(user, dbName);
         var uow = new UnitOfWork(db);
-        var projectService = new ProjectService(uow, user, new PassThroughEntitlements(), TestProjectServiceDeps.Settings(), TestProjectServiceDeps.Configuration(), new FakeAuditWriter());
-        var actionService = new PredefinedActionService(uow, projectService, user, new PassThroughEntitlements());
+        var projectService = new ProjectService(
+            uow,
+            user,
+            new PassThroughEntitlements(),
+            TestProjectServiceDeps.Settings(),
+            TestProjectServiceDeps.Configuration(),
+            new FakeAuditWriter()
+        );
+        var actionService = new PredefinedActionService(
+            uow,
+            projectService,
+            user,
+            new PassThroughEntitlements()
+        );
         var fieldService = new CommentFieldService(uow, user, new FakeAuditWriter());
-        var commentService = new CommentService(uow, projectService, actionService, new FakeFileStorage(), user, new FakeUploadSigner(), new FakeSettings(), new PassThroughEntitlements(), commentFields: fieldService);
+        var commentService = new CommentService(
+            uow,
+            projectService,
+            actionService,
+            new FakeFileStorage(),
+            user,
+            new FakeUploadSigner(),
+            new FakeSettings(),
+            new PassThroughEntitlements(),
+            commentFields: fieldService
+        );
 
-        return new Harness { DbName = dbName, Db = db, CommentService = commentService, FieldService = fieldService, ProjectSvc = projectService, TenantId = tenant, AuthorId = author };
+        return new Harness
+        {
+            DbName = dbName,
+            Db = db,
+            CommentService = commentService,
+            FieldService = fieldService,
+            ProjectSvc = projectService,
+            TenantId = tenant,
+            AuthorId = author,
+        };
     }
 
     // Secondary-actor services over the SAME in-memory database (query filters key off each
@@ -106,77 +174,141 @@ public class CommentFieldsTests
     {
         var db = BuildContext(user, dbName);
         var uow = new UnitOfWork(db);
-        var projectService = new ProjectService(uow, user, new PassThroughEntitlements(), TestProjectServiceDeps.Settings(), TestProjectServiceDeps.Configuration(), new FakeAuditWriter());
-        var actionService = new PredefinedActionService(uow, projectService, user, new PassThroughEntitlements());
-        return new CommentService(uow, projectService, actionService, new FakeFileStorage(), user, new FakeUploadSigner(), new FakeSettings(), new PassThroughEntitlements());
+        var projectService = new ProjectService(
+            uow,
+            user,
+            new PassThroughEntitlements(),
+            TestProjectServiceDeps.Settings(),
+            TestProjectServiceDeps.Configuration(),
+            new FakeAuditWriter()
+        );
+        var actionService = new PredefinedActionService(
+            uow,
+            projectService,
+            user,
+            new PassThroughEntitlements()
+        );
+        return new CommentService(
+            uow,
+            projectService,
+            actionService,
+            new FakeFileStorage(),
+            user,
+            new FakeUploadSigner(),
+            new FakeSettings(),
+            new PassThroughEntitlements()
+        );
     }
 
-    private static CreateCommentRequest Req(Dictionary<string, string>? fields = null) => new()
-    {
-        Body = "hello there",
-        Environment = EnvironmentTag.Local,
-        Element = new ElementCaptureDto(),
-        CustomFields = fields
-    };
+    private static CreateCommentRequest Req(Dictionary<string, string>? fields = null) =>
+        new()
+        {
+            Body = "hello there",
+            Environment = EnvironmentTag.Local,
+            Element = new ElementCaptureDto(),
+            CustomFields = fields,
+        };
 
-    private static CommentFieldDefinitionDto Field(string key, string label, CommentFieldType type = CommentFieldType.Text,
-        string[]? options = null, string[]? hosts = null, string? tool = null, bool enabled = true, int sort = 0) => new()
-    {
-        Key = key,
-        Label = label,
-        Type = type,
-        Options = options?.ToList() ?? new List<string>(),
-        AllowedHosts = hosts?.ToList() ?? new List<string>(),
-        SuggestedTool = tool,
-        Hint = null,
-        Enabled = enabled,
-        SortOrder = sort
-    };
+    private static CommentFieldDefinitionDto Field(
+        string key,
+        string label,
+        CommentFieldType type = CommentFieldType.Text,
+        string[]? options = null,
+        string[]? hosts = null,
+        string? tool = null,
+        bool enabled = true,
+        int sort = 0
+    ) =>
+        new()
+        {
+            Key = key,
+            Label = label,
+            Type = type,
+            Options = options?.ToList() ?? new List<string>(),
+            AllowedHosts = hosts?.ToList() ?? new List<string>(),
+            SuggestedTool = tool,
+            Hint = null,
+            Enabled = enabled,
+            SortOrder = sort,
+        };
 
-    private static CommentFieldDefinition Def(string key, string label, CommentFieldType type = CommentFieldType.Text,
-        string[]? options = null, string[]? hosts = null, string? tool = null, bool enabled = true) => new()
-    {
-        Key = key,
-        Label = label,
-        Type = type,
-        Options = options?.ToList() ?? new List<string>(),
-        AllowedHosts = hosts?.ToList() ?? new List<string>(),
-        SuggestedTool = tool,
-        Enabled = enabled
-    };
+    private static CommentFieldDefinition Def(
+        string key,
+        string label,
+        CommentFieldType type = CommentFieldType.Text,
+        string[]? options = null,
+        string[]? hosts = null,
+        string? tool = null,
+        bool enabled = true
+    ) =>
+        new()
+        {
+            Key = key,
+            Label = label,
+            Type = type,
+            Options = options?.ToList() ?? new List<string>(),
+            AllowedHosts = hosts?.ToList() ?? new List<string>(),
+            SuggestedTool = tool,
+            Enabled = enabled,
+        };
 
     // The canonical Jira example from the doc: jira_url, *.atlassian.net, suggested tool atlassian.
-    private static UpdateCommentFieldDefinitionsRequest JiraDefs() => new()
-    {
-        Fields = new List<CommentFieldDefinitionDto>
+    private static UpdateCommentFieldDefinitionsRequest JiraDefs() =>
+        new()
         {
-            Field("jira_url", "Jira ticket", CommentFieldType.Url, hosts: new[] { "*.atlassian.net" }, tool: "atlassian")
-        }
-    };
+            Fields = new List<CommentFieldDefinitionDto>
+            {
+                Field(
+                    "jira_url",
+                    "Jira ticket",
+                    CommentFieldType.Url,
+                    hosts: new[] { "*.atlassian.net" },
+                    tool: "atlassian"
+                ),
+            },
+        };
 
     [Fact]
     public async Task PutDefinitions_RejectsDuplicateKeys_BadKey_TooMany()
     {
         var h = BuildHarness(Guid.NewGuid().ToString());
 
-        var duplicate = await h.FieldService.UpdateDefinitionsAsync(new UpdateCommentFieldDefinitionsRequest
-        {
-            Fields = new List<CommentFieldDefinitionDto> { Field("first_key", "First"), Field("first_key", "Second") }
-        });
+        var duplicate = await h.FieldService.UpdateDefinitionsAsync(
+            new UpdateCommentFieldDefinitionsRequest
+            {
+                Fields = new List<CommentFieldDefinitionDto>
+                {
+                    Field("first_key", "First"),
+                    Field("first_key", "Second"),
+                },
+            }
+        );
         Assert.False(duplicate.IsSuccess);
         Assert.Contains("Duplicate comment field key", duplicate.Message);
 
-        var badKey = await h.FieldService.UpdateDefinitionsAsync(new UpdateCommentFieldDefinitionsRequest
-        {
-            Fields = new List<CommentFieldDefinitionDto> { Field("BadKey", "Bad"), Field("9starts", "Bad"), Field("x", "Bad") }
-        });
+        var badKey = await h.FieldService.UpdateDefinitionsAsync(
+            new UpdateCommentFieldDefinitionsRequest
+            {
+                Fields = new List<CommentFieldDefinitionDto>
+                {
+                    Field("BadKey", "Bad"),
+                    Field("9starts", "Bad"),
+                    Field("x", "Bad"),
+                },
+            }
+        );
         Assert.False(badKey.IsSuccess);
         Assert.Contains("Invalid comment field key", badKey.Message);
 
-        var tooMany = await h.FieldService.UpdateDefinitionsAsync(new UpdateCommentFieldDefinitionsRequest
-        {
-            Fields = Enumerable.Range(0, 11).Select(i => Field($"field_{i}", $"Field {i}")).ToList()
-        });
+        var tooMany = await h.FieldService.UpdateDefinitionsAsync(
+            new UpdateCommentFieldDefinitionsRequest
+            {
+                Fields = Enumerable
+                    .Range(0, 11)
+                    .Select(i => Field($"field_{i}", $"Field {i}"))
+                    .ToList(),
+            }
+        );
         Assert.False(tooMany.IsSuccess);
         Assert.Contains("at most 10", tooMany.Message);
     }
@@ -186,24 +318,32 @@ public class CommentFieldsTests
     {
         var h = BuildHarness(Guid.NewGuid().ToString());
 
-        var put = await h.FieldService.UpdateDefinitionsAsync(new UpdateCommentFieldDefinitionsRequest
-        {
-            Fields = new List<CommentFieldDefinitionDto>
+        var put = await h.FieldService.UpdateDefinitionsAsync(
+            new UpdateCommentFieldDefinitionsRequest
             {
-                Field("c_third", "C", sort: 99),
-                Field("a_first", "A", sort: 7),
-                Field("b_second", "B", sort: 2)
+                Fields = new List<CommentFieldDefinitionDto>
+                {
+                    Field("c_third", "C", sort: 99),
+                    Field("a_first", "A", sort: 7),
+                    Field("b_second", "B", sort: 2),
+                },
             }
-        });
+        );
         Assert.True(put.IsSuccess);
         // SortOrder re-normalised to 0..n-1 in the GIVEN order — incoming values are ignored.
         Assert.Equal(new[] { 0, 1, 2 }, put.Data!.Fields.Select(f => f.SortOrder).ToArray());
-        Assert.Equal(new[] { "c_third", "a_first", "b_second" }, put.Data!.Fields.Select(f => f.Key).ToArray());
+        Assert.Equal(
+            new[] { "c_third", "a_first", "b_second" },
+            put.Data!.Fields.Select(f => f.Key).ToArray()
+        );
 
         // GET sorts by the normalised SortOrder.
         var get = await h.FieldService.GetDefinitionsAsync();
         Assert.True(get.IsSuccess);
-        Assert.Equal(new[] { "c_third", "a_first", "b_second" }, get.Data!.Fields.Select(f => f.Key).ToArray());
+        Assert.Equal(
+            new[] { "c_third", "a_first", "b_second" },
+            get.Data!.Fields.Select(f => f.Key).ToArray()
+        );
     }
 
     [Fact]
@@ -212,11 +352,17 @@ public class CommentFieldsTests
         var h = BuildHarness(Guid.NewGuid().ToString());
         Assert.True((await h.FieldService.UpdateDefinitionsAsync(JiraDefs())).IsSuccess);
 
-        var created = await h.CommentService.CreateAsync("proj", Req(new Dictionary<string, string>
-        {
-            ["jira_url"] = "  https://acme.atlassian.net/browse/APP-42  ",
-            ["jira_url_note"] = "   "
-        }), h.AuthorId);
+        var created = await h.CommentService.CreateAsync(
+            "proj",
+            Req(
+                new Dictionary<string, string>
+                {
+                    ["jira_url"] = "  https://acme.atlassian.net/browse/APP-42  ",
+                    ["jira_url_note"] = "   ",
+                }
+            ),
+            h.AuthorId
+        );
         Assert.True(created.IsSuccess);
 
         // Stored trimmed; a value that trims to empty is removed (unset), never stored.
@@ -235,7 +381,11 @@ public class CommentFieldsTests
         var h = BuildHarness(Guid.NewGuid().ToString());
         Assert.True((await h.FieldService.UpdateDefinitionsAsync(JiraDefs())).IsSuccess);
 
-        var result = await h.CommentService.CreateAsync("proj", Req(new Dictionary<string, string> { ["nope"] = "x" }), h.AuthorId);
+        var result = await h.CommentService.CreateAsync(
+            "proj",
+            Req(new Dictionary<string, string> { ["nope"] = "x" }),
+            h.AuthorId
+        );
         Assert.False(result.IsSuccess);
         Assert.Contains("Unknown comment field 'nope'", result.Message);
     }
@@ -244,13 +394,26 @@ public class CommentFieldsTests
     public async Task Create_RejectsDisabledKey()
     {
         var h = BuildHarness(Guid.NewGuid().ToString());
-        Assert.True((await h.FieldService.UpdateDefinitionsAsync(new UpdateCommentFieldDefinitionsRequest
-        {
-            Fields = new List<CommentFieldDefinitionDto> { Field("jira_url", "Jira ticket", CommentFieldType.Url, enabled: false) }
-        })).IsSuccess);
+        Assert.True(
+            (
+                await h.FieldService.UpdateDefinitionsAsync(
+                    new UpdateCommentFieldDefinitionsRequest
+                    {
+                        Fields = new List<CommentFieldDefinitionDto>
+                        {
+                            Field("jira_url", "Jira ticket", CommentFieldType.Url, enabled: false),
+                        },
+                    }
+                )
+            ).IsSuccess
+        );
 
         // Create loads ENABLED definitions only — a disabled key behaves like an unknown one there.
-        var result = await h.CommentService.CreateAsync("proj", Req(new Dictionary<string, string> { ["jira_url"] = "https://x.example/" }), h.AuthorId);
+        var result = await h.CommentService.CreateAsync(
+            "proj",
+            Req(new Dictionary<string, string> { ["jira_url"] = "https://x.example/" }),
+            h.AuthorId
+        );
         Assert.False(result.IsSuccess);
     }
 
@@ -260,10 +423,16 @@ public class CommentFieldsTests
         var h = BuildHarness(Guid.NewGuid().ToString());
         Assert.True((await h.FieldService.UpdateDefinitionsAsync(JiraDefs())).IsSuccess);
 
-        var result = await h.CommentService.CreateAsync("proj", Req(new Dictionary<string, string>
-        {
-            ["jira_url"] = "https://evil.example/browse/APP-42"
-        }), h.AuthorId);
+        var result = await h.CommentService.CreateAsync(
+            "proj",
+            Req(
+                new Dictionary<string, string>
+                {
+                    ["jira_url"] = "https://evil.example/browse/APP-42",
+                }
+            ),
+            h.AuthorId
+        );
         Assert.False(result.IsSuccess);
         // The failure names the LABEL (acceptance criterion 3).
         Assert.Contains("Jira ticket", result.Message);
@@ -277,10 +446,16 @@ public class CommentFieldsTests
         Assert.True((await h.FieldService.UpdateDefinitionsAsync(JiraDefs())).IsSuccess);
 
         // *.atlassian.net also admits the bare domain itself, not just subdomains.
-        var result = await h.CommentService.CreateAsync("proj", Req(new Dictionary<string, string>
-        {
-            ["jira_url"] = "https://atlassian.net/browse/APP-1"
-        }), h.AuthorId);
+        var result = await h.CommentService.CreateAsync(
+            "proj",
+            Req(
+                new Dictionary<string, string>
+                {
+                    ["jira_url"] = "https://atlassian.net/browse/APP-1",
+                }
+            ),
+            h.AuthorId
+        );
         Assert.True(result.IsSuccess);
     }
 
@@ -288,12 +463,30 @@ public class CommentFieldsTests
     public async Task Create_SelectOutsideOptions_Rejected()
     {
         var h = BuildHarness(Guid.NewGuid().ToString());
-        Assert.True((await h.FieldService.UpdateDefinitionsAsync(new UpdateCommentFieldDefinitionsRequest
-        {
-            Fields = new List<CommentFieldDefinitionDto> { Field("severity", "Severity", CommentFieldType.Select, options: new[] { "Low", "High" }) }
-        })).IsSuccess);
+        Assert.True(
+            (
+                await h.FieldService.UpdateDefinitionsAsync(
+                    new UpdateCommentFieldDefinitionsRequest
+                    {
+                        Fields = new List<CommentFieldDefinitionDto>
+                        {
+                            Field(
+                                "severity",
+                                "Severity",
+                                CommentFieldType.Select,
+                                options: new[] { "Low", "High" }
+                            ),
+                        },
+                    }
+                )
+            ).IsSuccess
+        );
 
-        var result = await h.CommentService.CreateAsync("proj", Req(new Dictionary<string, string> { ["severity"] = "Medium" }), h.AuthorId);
+        var result = await h.CommentService.CreateAsync(
+            "proj",
+            Req(new Dictionary<string, string> { ["severity"] = "Medium" }),
+            h.AuthorId
+        );
         Assert.False(result.IsSuccess);
         Assert.Contains("Severity", result.Message);
     }
@@ -302,12 +495,22 @@ public class CommentFieldsTests
     public async Task Create_TextTooLong_Rejected()
     {
         var h = BuildHarness(Guid.NewGuid().ToString());
-        Assert.True((await h.FieldService.UpdateDefinitionsAsync(new UpdateCommentFieldDefinitionsRequest
-        {
-            Fields = new List<CommentFieldDefinitionDto> { Field("note", "Note") }
-        })).IsSuccess);
+        Assert.True(
+            (
+                await h.FieldService.UpdateDefinitionsAsync(
+                    new UpdateCommentFieldDefinitionsRequest
+                    {
+                        Fields = new List<CommentFieldDefinitionDto> { Field("note", "Note") },
+                    }
+                )
+            ).IsSuccess
+        );
 
-        var result = await h.CommentService.CreateAsync("proj", Req(new Dictionary<string, string> { ["note"] = new string('a', 501) }), h.AuthorId);
+        var result = await h.CommentService.CreateAsync(
+            "proj",
+            Req(new Dictionary<string, string> { ["note"] = new string('a', 501) }),
+            h.AuthorId
+        );
         Assert.False(result.IsSuccess);
         Assert.Contains("Note", result.Message);
     }
@@ -318,10 +521,16 @@ public class CommentFieldsTests
         var h = BuildHarness(Guid.NewGuid().ToString());
         Assert.True((await h.FieldService.UpdateDefinitionsAsync(JiraDefs())).IsSuccess);
 
-        var created = await h.CommentService.CreateAsync("proj", Req(new Dictionary<string, string>
-        {
-            ["jira_url"] = "https://acme.atlassian.net/browse/APP-42"
-        }), h.AuthorId);
+        var created = await h.CommentService.CreateAsync(
+            "proj",
+            Req(
+                new Dictionary<string, string>
+                {
+                    ["jira_url"] = "https://acme.atlassian.net/browse/APP-42",
+                }
+            ),
+            h.AuthorId
+        );
         Assert.True(created.IsSuccess);
 
         var read = await h.CommentService.GetByIdAsync(created.Data!.Id, h.AuthorId);
@@ -340,14 +549,26 @@ public class CommentFieldsTests
         var h = BuildHarness(Guid.NewGuid().ToString());
         Assert.True((await h.FieldService.UpdateDefinitionsAsync(JiraDefs())).IsSuccess);
 
-        var created = await h.CommentService.CreateAsync("proj", Req(new Dictionary<string, string>
-        {
-            ["jira_url"] = "https://acme.atlassian.net/browse/APP-42"
-        }), h.AuthorId);
+        var created = await h.CommentService.CreateAsync(
+            "proj",
+            Req(
+                new Dictionary<string, string>
+                {
+                    ["jira_url"] = "https://acme.atlassian.net/browse/APP-42",
+                }
+            ),
+            h.AuthorId
+        );
         Assert.True(created.IsSuccess);
 
         // The workspace deletes every definition: the stored value must still come back.
-        Assert.True((await h.FieldService.UpdateDefinitionsAsync(new UpdateCommentFieldDefinitionsRequest())).IsSuccess);
+        Assert.True(
+            (
+                await h.FieldService.UpdateDefinitionsAsync(
+                    new UpdateCommentFieldDefinitionsRequest()
+                )
+            ).IsSuccess
+        );
 
         var read = await h.CommentService.GetByIdAsync(created.Data!.Id, h.AuthorId);
         Assert.True(read.IsSuccess);
@@ -369,7 +590,13 @@ public class CommentFieldsTests
         Assert.True(created.IsSuccess);
         var id = created.Data!.Id;
 
-        var patch = new UpdateCommentFieldsRequest { CustomFields = new Dictionary<string, string> { ["jira_url"] = "https://acme.atlassian.net/browse/APP-7" } };
+        var patch = new UpdateCommentFieldsRequest
+        {
+            CustomFields = new Dictionary<string, string>
+            {
+                ["jira_url"] = "https://acme.atlassian.net/browse/APP-7",
+            },
+        };
 
         // Author (plain stakeholder) is allowed.
         var byAuthor = await h.CommentService.UpdateFieldsAsync(id, patch, h.AuthorId);
@@ -379,20 +606,33 @@ public class CommentFieldsTests
         Assert.NotNull(byAuthor.Data.EditedAt);
 
         // Author who is a quick-access user is still allowed (they own the comment).
-        var quickAuthor = new FakeCurrentUser { Id = h.AuthorId, TenantId = h.TenantId, IsQuickAccess = true };
-        var byQuick = await CommentServiceFor(quickAuthor, h.DbName).UpdateFieldsAsync(id, patch, quickAuthor.Id!.Value);
+        var quickAuthor = new FakeCurrentUser
+        {
+            Id = h.AuthorId,
+            TenantId = h.TenantId,
+            IsQuickAccess = true,
+        };
+        var byQuick = await CommentServiceFor(quickAuthor, h.DbName)
+            .UpdateFieldsAsync(id, patch, quickAuthor.Id!.Value);
         Assert.True(byQuick.IsSuccess);
 
         // A workspace admin is allowed.
         var adminId = Guid.NewGuid();
-        var admin = new FakeCurrentUser { Id = adminId, TenantId = h.TenantId, IsAdmin = true };
-        var byAdmin = await CommentServiceFor(admin, h.DbName).UpdateFieldsAsync(id, patch, adminId);
+        var admin = new FakeCurrentUser
+        {
+            Id = adminId,
+            TenantId = h.TenantId,
+            IsAdmin = true,
+        };
+        var byAdmin = await CommentServiceFor(admin, h.DbName)
+            .UpdateFieldsAsync(id, patch, adminId);
         Assert.True(byAdmin.IsSuccess);
 
         // Another non-admin in the SAME workspace: 403, deliberately unlike EditAsync's 400.
         var otherId = Guid.NewGuid();
         var other = new FakeCurrentUser { Id = otherId, TenantId = h.TenantId };
-        var byOther = await CommentServiceFor(other, h.DbName).UpdateFieldsAsync(id, patch, otherId);
+        var byOther = await CommentServiceFor(other, h.DbName)
+            .UpdateFieldsAsync(id, patch, otherId);
         Assert.False(byOther.IsSuccess);
         Assert.True(byOther.IsForbidden);
     }
@@ -401,14 +641,26 @@ public class CommentFieldsTests
     public async Task CaptureConfig_ListsEnabledOnly()
     {
         var h = BuildHarness(Guid.NewGuid().ToString());
-        Assert.True((await h.FieldService.UpdateDefinitionsAsync(new UpdateCommentFieldDefinitionsRequest
-        {
-            Fields = new List<CommentFieldDefinitionDto>
-            {
-                Field("jira_url", "Jira ticket", CommentFieldType.Url, hosts: new[] { "*.atlassian.net" }, tool: "atlassian"),
-                Field("hidden", "Hidden", enabled: false)
-            }
-        })).IsSuccess);
+        Assert.True(
+            (
+                await h.FieldService.UpdateDefinitionsAsync(
+                    new UpdateCommentFieldDefinitionsRequest
+                    {
+                        Fields = new List<CommentFieldDefinitionDto>
+                        {
+                            Field(
+                                "jira_url",
+                                "Jira ticket",
+                                CommentFieldType.Url,
+                                hosts: new[] { "*.atlassian.net" },
+                                tool: "atlassian"
+                            ),
+                            Field("hidden", "Hidden", enabled: false),
+                        },
+                    }
+                )
+            ).IsSuccess
+        );
 
         var cfg = await h.ProjectSvc.GetCaptureConfigAsync("proj");
         Assert.True(cfg.IsSuccess);
@@ -426,20 +678,36 @@ public class CommentFieldsTests
         var tenantB = Guid.NewGuid();
         using (var seedB = BuildContext(new FakeCurrentUser { IsSuperAdmin = true }, dbName))
         {
-            seedB.WorkspaceSettings.Add(new WorkspaceSetting
-            {
-                OwnerId = tenantB,
-                CommentFieldDefinitions = new List<CommentFieldDefinition> { Def("jira_url", "Jira ticket", CommentFieldType.Url, hosts: new[] { "*.b.com" }) }
-            });
+            seedB.WorkspaceSettings.Add(
+                new WorkspaceSetting
+                {
+                    OwnerId = tenantB,
+                    CommentFieldDefinitions = new List<CommentFieldDefinition>
+                    {
+                        Def(
+                            "jira_url",
+                            "Jira ticket",
+                            CommentFieldType.Url,
+                            hosts: new[] { "*.b.com" }
+                        ),
+                    },
+                }
+            );
             seedB.SaveChanges();
         }
 
         // A workspace-A comment must be validated against A's (empty) definitions — B's row for
         // the same key must not silently apply.
-        var result = await h.CommentService.CreateAsync("proj", Req(new Dictionary<string, string>
-        {
-            ["jira_url"] = "https://acme.atlassian.net/browse/APP-42"
-        }), h.AuthorId);
+        var result = await h.CommentService.CreateAsync(
+            "proj",
+            Req(
+                new Dictionary<string, string>
+                {
+                    ["jira_url"] = "https://acme.atlassian.net/browse/APP-42",
+                }
+            ),
+            h.AuthorId
+        );
         Assert.False(result.IsSuccess);
         Assert.Contains("Unknown comment field 'jira_url'", result.Message);
     }
@@ -461,7 +729,12 @@ public class CommentFieldsTests
         var superPut = await FieldServiceFor(superAdmin, dbName).UpdateDefinitionsAsync(JiraDefs());
         Assert.True(superPut.IsForbidden);
 
-        var quick = new FakeCurrentUser { Id = Guid.NewGuid(), TenantId = h.TenantId, IsQuickAccess = true };
+        var quick = new FakeCurrentUser
+        {
+            Id = Guid.NewGuid(),
+            TenantId = h.TenantId,
+            IsQuickAccess = true,
+        };
         var quickGet = await FieldServiceFor(quick, dbName).GetDefinitionsAsync();
         Assert.True(quickGet.IsForbidden);
         var quickPut = await FieldServiceFor(quick, dbName).UpdateDefinitionsAsync(JiraDefs());
@@ -481,9 +754,18 @@ public class CommentFieldsTests
         // Workspace B's admin: the strict-own comment filter hides workspace A's comment → 404,
         // not 403 and never a successful write.
         var tenantB = Guid.NewGuid();
-        var adminB = new FakeCurrentUser { Id = Guid.NewGuid(), TenantId = tenantB, IsAdmin = true };
-        var byAdminB = await CommentServiceFor(adminB, dbName).UpdateFieldsAsync(created.Data!.Id,
-            new UpdateCommentFieldsRequest { CustomFields = new Dictionary<string, string>() }, adminB.Id!.Value);
+        var adminB = new FakeCurrentUser
+        {
+            Id = Guid.NewGuid(),
+            TenantId = tenantB,
+            IsAdmin = true,
+        };
+        var byAdminB = await CommentServiceFor(adminB, dbName)
+            .UpdateFieldsAsync(
+                created.Data!.Id,
+                new UpdateCommentFieldsRequest { CustomFields = new Dictionary<string, string>() },
+                adminB.Id!.Value
+            );
         Assert.False(byAdminB.IsSuccess);
         Assert.True(byAdminB.IsNotFound);
     }
@@ -494,17 +776,39 @@ public class CommentFieldsTests
         var h = BuildHarness(Guid.NewGuid().ToString());
         Assert.True((await h.FieldService.UpdateDefinitionsAsync(JiraDefs())).IsSuccess);
 
-        var created = await h.CommentService.CreateAsync("proj", Req(new Dictionary<string, string>
-        {
-            ["jira_url"] = "https://acme.atlassian.net/browse/APP-42"
-        }), h.AuthorId);
+        var created = await h.CommentService.CreateAsync(
+            "proj",
+            Req(
+                new Dictionary<string, string>
+                {
+                    ["jira_url"] = "https://acme.atlassian.net/browse/APP-42",
+                }
+            ),
+            h.AuthorId
+        );
         Assert.True(created.IsSuccess);
 
         // Disable the definition: the stored value stays visible (with its resolved label).
-        Assert.True((await h.FieldService.UpdateDefinitionsAsync(new UpdateCommentFieldDefinitionsRequest
-        {
-            Fields = new List<CommentFieldDefinitionDto> { Field("jira_url", "Jira ticket", CommentFieldType.Url, hosts: new[] { "*.atlassian.net" }, tool: "atlassian", enabled: false) }
-        })).IsSuccess);
+        Assert.True(
+            (
+                await h.FieldService.UpdateDefinitionsAsync(
+                    new UpdateCommentFieldDefinitionsRequest
+                    {
+                        Fields = new List<CommentFieldDefinitionDto>
+                        {
+                            Field(
+                                "jira_url",
+                                "Jira ticket",
+                                CommentFieldType.Url,
+                                hosts: new[] { "*.atlassian.net" },
+                                tool: "atlassian",
+                                enabled: false
+                            ),
+                        },
+                    }
+                )
+            ).IsSuccess
+        );
 
         var read = await h.CommentService.GetByIdAsync(created.Data!.Id, h.AuthorId);
         Assert.True(read.IsSuccess);
@@ -518,17 +822,27 @@ public class CommentFieldsTests
     {
         var h = BuildHarness(Guid.NewGuid().ToString());
 
-        var optionsOnNonSelect = await h.FieldService.UpdateDefinitionsAsync(new UpdateCommentFieldDefinitionsRequest
-        {
-            Fields = new List<CommentFieldDefinitionDto> { Field("link", "Link", CommentFieldType.Url, options: new[] { "Nope" }) }
-        });
+        var optionsOnNonSelect = await h.FieldService.UpdateDefinitionsAsync(
+            new UpdateCommentFieldDefinitionsRequest
+            {
+                Fields = new List<CommentFieldDefinitionDto>
+                {
+                    Field("link", "Link", CommentFieldType.Url, options: new[] { "Nope" }),
+                },
+            }
+        );
         Assert.False(optionsOnNonSelect.IsSuccess);
         Assert.Contains("only allowed on select fields", optionsOnNonSelect.Message);
 
-        var hostsOnNonUrl = await h.FieldService.UpdateDefinitionsAsync(new UpdateCommentFieldDefinitionsRequest
-        {
-            Fields = new List<CommentFieldDefinitionDto> { Field("note", "Note", CommentFieldType.Text, hosts: new[] { "example.com" }) }
-        });
+        var hostsOnNonUrl = await h.FieldService.UpdateDefinitionsAsync(
+            new UpdateCommentFieldDefinitionsRequest
+            {
+                Fields = new List<CommentFieldDefinitionDto>
+                {
+                    Field("note", "Note", CommentFieldType.Text, hosts: new[] { "example.com" }),
+                },
+            }
+        );
         Assert.False(hostsOnNonUrl.IsSuccess);
         Assert.Contains("only allowed on link fields", hostsOnNonUrl.Message);
     }
@@ -538,10 +852,15 @@ public class CommentFieldsTests
     {
         var h = BuildHarness(Guid.NewGuid().ToString());
 
-        var result = await h.FieldService.UpdateDefinitionsAsync(new UpdateCommentFieldDefinitionsRequest
-        {
-            Fields = new List<CommentFieldDefinitionDto> { Field("note", "Line one\nLine two") }
-        });
+        var result = await h.FieldService.UpdateDefinitionsAsync(
+            new UpdateCommentFieldDefinitionsRequest
+            {
+                Fields = new List<CommentFieldDefinitionDto>
+                {
+                    Field("note", "Line one\nLine two"),
+                },
+            }
+        );
         Assert.False(result.IsSuccess);
         Assert.Contains("Invalid label", result.Message);
     }
@@ -551,19 +870,35 @@ public class CommentFieldsTests
     {
         // Pure validation — no database needed.
         var defs = new List<CommentFieldDefinition> { Def("link", "Link", CommentFieldType.Url) };
-        var svc = new CommentFieldService(new UnitOfWork(BuildContext(new FakeCurrentUser(), Guid.NewGuid().ToString())), new FakeCurrentUser(), new FakeAuditWriter());
+        var svc = new CommentFieldService(
+            new UnitOfWork(BuildContext(new FakeCurrentUser(), Guid.NewGuid().ToString())),
+            new FakeCurrentUser(),
+            new FakeAuditWriter()
+        );
 
-        var ok = svc.ValidateValues(defs, new Dictionary<string, string> { ["link"] = "https://atlassian.net/browse/X" });
+        var ok = svc.ValidateValues(
+            defs,
+            new Dictionary<string, string> { ["link"] = "https://atlassian.net/browse/X" }
+        );
         Assert.True(ok.IsSuccess);
 
-        var withUserInfo = svc.ValidateValues(defs, new Dictionary<string, string> { ["link"] = "https://user@atlassian.net/browse/X" });
+        var withUserInfo = svc.ValidateValues(
+            defs,
+            new Dictionary<string, string> { ["link"] = "https://user@atlassian.net/browse/X" }
+        );
         Assert.False(withUserInfo.IsSuccess);
         Assert.Contains("must be a valid http(s) link", withUserInfo.Message);
 
-        var ftp = svc.ValidateValues(defs, new Dictionary<string, string> { ["link"] = "ftp://atlassian.net/x" });
+        var ftp = svc.ValidateValues(
+            defs,
+            new Dictionary<string, string> { ["link"] = "ftp://atlassian.net/x" }
+        );
         Assert.False(ftp.IsSuccess);
 
-        var relative = svc.ValidateValues(defs, new Dictionary<string, string> { ["link"] = "/browse/X" });
+        var relative = svc.ValidateValues(
+            defs,
+            new Dictionary<string, string> { ["link"] = "/browse/X" }
+        );
         Assert.False(relative.IsSuccess);
     }
 
@@ -600,7 +935,7 @@ public class CommentFieldsTests
             AuthorId = h.AuthorId,
             Body = "x",
             OwnerId = h.TenantId,
-            CustomFields = a
+            CustomFields = a,
         };
         h.Db.Comments.Add(comment);
         h.Db.SaveChanges();

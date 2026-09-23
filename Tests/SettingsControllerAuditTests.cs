@@ -30,6 +30,8 @@ public class SettingsControllerAuditTests
         public int? RoleId { get; set; }
         public string? KeyScopes { get; set; }
         public string? Scope { get; set; }
+        public long? ImpersonationSessionId { get; set; }
+        public bool IsImpersonating => ImpersonationSessionId != null;
     }
 
     private static AppDbContext Ctx(string db) =>
@@ -37,7 +39,13 @@ public class SettingsControllerAuditTests
             new DbContextOptionsBuilder<AppDbContext>()
                 .UseInMemoryDatabase(db)
                 .ConfigureWarnings(w =>
-                    w.Ignore(Microsoft.EntityFrameworkCore.Diagnostics.InMemoryEventId.TransactionIgnoredWarning)
+                    w.Ignore(
+                        Microsoft
+                            .EntityFrameworkCore
+                            .Diagnostics
+                            .InMemoryEventId
+                            .TransactionIgnoredWarning
+                    )
                 )
                 .Options,
             new FakeCurrentUser(),

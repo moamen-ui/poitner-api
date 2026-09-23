@@ -30,63 +30,124 @@ public class CommentSummaryProjectionTests
         public int? RoleId { get; set; }
         public string? KeyScopes { get; set; }
         public string? Scope { get; set; }
+        public long? ImpersonationSessionId { get; set; }
+        public bool IsImpersonating => ImpersonationSessionId != null;
     }
 
     private sealed class FakeFileStorage : IFileStorage
     {
-        public Task<string> SaveAsync(string ownerSegment, string project, Stream content, string extension) => Task.FromResult("uploads/x");
+        public Task<string> SaveAsync(
+            string ownerSegment,
+            string project,
+            Stream content,
+            string extension
+        ) => Task.FromResult("uploads/x");
+
         public Task DeleteAsync(string relativePathOrUrl) => Task.CompletedTask;
+
         public Task DeleteOwnerFilesAsync(string ownerSegment) => Task.CompletedTask;
     }
 
     private sealed class FakeUploadSigner : IUploadSigner
     {
         public string SignedUrl(string relPath) => relPath;
+
         public bool Validate(string relPath, long exp, string sig) => true;
+
         public string ExtractRelPath(string stored) => stored;
     }
 
     private sealed class FakeSettings : ISettingsService
     {
-        public Task<bool> GetBoolAsync(string key, bool fallback = false) => Task.FromResult(fallback);
+        public Task<bool> GetBoolAsync(string key, bool fallback = false) =>
+            Task.FromResult(fallback);
+
         public Task SetBoolAsync(string key, bool value) => Task.CompletedTask;
-        public Task<string> GetStringAsync(string key, string fallback = "") => Task.FromResult(fallback);
+
+        public Task<string> GetStringAsync(string key, string fallback = "") =>
+            Task.FromResult(fallback);
+
         public Task SetStringAsync(string key, string value) => Task.CompletedTask;
+
         public Task<int> GetIntAsync(string key, int fallback = 0) => Task.FromResult(fallback);
+
         public Task SetIntAsync(string key, int value) => Task.CompletedTask;
     }
 
     private static AppDbContext BuildContext(ICurrentUser user, string dbName) =>
-        new(new DbContextOptionsBuilder<AppDbContext>().UseInMemoryDatabase(dbName).Options, user,
-            new Microsoft.Extensions.Configuration.ConfigurationBuilder().Build());
+        new(
+            new DbContextOptionsBuilder<AppDbContext>().UseInMemoryDatabase(dbName).Options,
+            user,
+            new Microsoft.Extensions.Configuration.ConfigurationBuilder().Build()
+        );
 
     private CommentService BuildService(ICurrentUser user, string dbName)
     {
         var uow = new UnitOfWork(BuildContext(user, dbName));
-        var projectService = new ProjectService(uow, user, new PassThroughEntitlements(), TestProjectServiceDeps.Settings(), TestProjectServiceDeps.Configuration(), new FakeAuditWriter());
-        var actionService = new PredefinedActionService(uow, projectService, user, new PassThroughEntitlements());
-        return new CommentService(uow, projectService, actionService, new FakeFileStorage(), user,
-            new FakeUploadSigner(), new FakeSettings(), new PassThroughEntitlements());
+        var projectService = new ProjectService(
+            uow,
+            user,
+            new PassThroughEntitlements(),
+            TestProjectServiceDeps.Settings(),
+            TestProjectServiceDeps.Configuration(),
+            new FakeAuditWriter()
+        );
+        var actionService = new PredefinedActionService(
+            uow,
+            projectService,
+            user,
+            new PassThroughEntitlements()
+        );
+        return new CommentService(
+            uow,
+            projectService,
+            actionService,
+            new FakeFileStorage(),
+            user,
+            new FakeUploadSigner(),
+            new FakeSettings(),
+            new PassThroughEntitlements()
+        );
     }
 
     private static (string key, int clientCommentId, int otherCommentId) SeedProjectWithTwoComments(
-        string dbName, Guid tenant, Guid clientId, Guid otherId)
+        string dbName,
+        Guid tenant,
+        Guid clientId,
+        Guid otherId
+    )
     {
         using var seed = BuildContext(new FakeCurrentUser { IsSuperAdmin = true }, dbName);
-        var project = new Project { Key = "proj", Name = "Proj", IsActiveLocal = true, IsActiveStaging = true, IsActiveProduction = true, OwnerId = tenant };
+        var project = new Project
+        {
+            Key = "proj",
+            Name = "Proj",
+            IsActiveLocal = true,
+            IsActiveStaging = true,
+            IsActiveProduction = true,
+            OwnerId = tenant,
+        };
         seed.Projects.Add(project);
         seed.SaveChanges();
 
         var mine = new Comment
         {
-            ProjectId = project.Id, OwnerId = tenant, AuthorId = clientId, Body = "mine",
-            Status = CommentStatus.Open, Environment = EnvironmentTag.Staging,
+            ProjectId = project.Id,
+            OwnerId = tenant,
+            AuthorId = clientId,
+            Body = "mine",
+            Status = CommentStatus.Open,
+            Environment = EnvironmentTag.Staging,
             Element = new ElementCapture { Route = "/mine", SourcePath = "src/Mine.tsx" },
         };
         var theirs = new Comment
         {
-            ProjectId = project.Id, OwnerId = tenant, AuthorId = otherId, Body = "theirs",
-            Status = CommentStatus.Open, Environment = EnvironmentTag.Local,
+            ProjectId = project.Id,
+            OwnerId = tenant,
+            AuthorId = otherId,
+            Body = "theirs",
+            Status = CommentStatus.Open,
+            Environment = EnvironmentTag.Local,
             Element = new ElementCapture { Route = "/theirs", SourcePath = "src/Theirs.tsx" },
         };
         seed.Comments.AddRange(mine, theirs);
@@ -102,7 +163,12 @@ public class CommentSummaryProjectionTests
         var clientId = Guid.NewGuid();
         var (key, mineId, _) = SeedProjectWithTwoComments(db, tenant, clientId, Guid.NewGuid());
 
-        var client = new FakeCurrentUser { Id = clientId, IsQuickAccess = true, TenantId = tenant };
+        var client = new FakeCurrentUser
+        {
+            Id = clientId,
+            IsQuickAccess = true,
+            TenantId = tenant,
+        };
         var svc = BuildService(client, db);
 
         var result = await svc.ListSummaryAsync(key, new CommentFilter(), clientId);
@@ -121,7 +187,12 @@ public class CommentSummaryProjectionTests
         var staffId = Guid.NewGuid();
         var (key, _, _) = SeedProjectWithTwoComments(db, tenant, Guid.NewGuid(), Guid.NewGuid());
 
-        var staff = new FakeCurrentUser { Id = staffId, IsAdmin = true, TenantId = tenant };
+        var staff = new FakeCurrentUser
+        {
+            Id = staffId,
+            IsAdmin = true,
+            TenantId = tenant,
+        };
         var svc = BuildService(staff, db);
 
         var result = await svc.ListSummaryAsync(key, new CommentFilter(), staffId);
@@ -140,19 +211,39 @@ public class CommentSummaryProjectionTests
 
         using (var seed = BuildContext(new FakeCurrentUser { IsSuperAdmin = true }, db))
         {
-            var project = new Project { Key = "proj", Name = "Proj", IsActiveLocal = true, IsActiveStaging = true, IsActiveProduction = true, OwnerId = tenant };
+            var project = new Project
+            {
+                Key = "proj",
+                Name = "Proj",
+                IsActiveLocal = true,
+                IsActiveStaging = true,
+                IsActiveProduction = true,
+                OwnerId = tenant,
+            };
             seed.Projects.Add(project);
             seed.SaveChanges();
-            seed.Comments.Add(new Comment
-            {
-                ProjectId = project.Id, OwnerId = tenant, AuthorId = authorId, Body = "secret",
-                Status = CommentStatus.Open, Environment = EnvironmentTag.Local, IsPrivate = true,
-                Element = new ElementCapture(),
-            });
+            seed.Comments.Add(
+                new Comment
+                {
+                    ProjectId = project.Id,
+                    OwnerId = tenant,
+                    AuthorId = authorId,
+                    Body = "secret",
+                    Status = CommentStatus.Open,
+                    Environment = EnvironmentTag.Local,
+                    IsPrivate = true,
+                    Element = new ElementCapture(),
+                }
+            );
             seed.SaveChanges();
         }
 
-        var other = new FakeCurrentUser { Id = otherId, IsAdmin = true, TenantId = tenant };
+        var other = new FakeCurrentUser
+        {
+            Id = otherId,
+            IsAdmin = true,
+            TenantId = tenant,
+        };
         var svc = BuildService(other, db);
 
         var result = await svc.ListSummaryAsync("proj", new CommentFilter(), otherId);
@@ -171,29 +262,58 @@ public class CommentSummaryProjectionTests
 
         using (var seed = BuildContext(new FakeCurrentUser { IsSuperAdmin = true }, db))
         {
-            var project = new Project { Key = "proj", Name = "Proj", IsActiveLocal = true, IsActiveStaging = true, IsActiveProduction = true, OwnerId = tenant };
+            var project = new Project
+            {
+                Key = "proj",
+                Name = "Proj",
+                IsActiveLocal = true,
+                IsActiveStaging = true,
+                IsActiveProduction = true,
+                OwnerId = tenant,
+            };
             seed.Projects.Add(project);
             var role = new Role { Name = "Developer", OwnerId = null };
             seed.Roles.Add(role);
             seed.SaveChanges();
             var author = new User
             {
-                PublicId = authorId, Email = "dev@example.com", PasswordHash = "x",
-                DisplayName = "Dev Person", RoleId = role.Id, OwnerId = tenant, IsActive = true,
+                PublicId = authorId,
+                Email = "dev@example.com",
+                PasswordHash = "x",
+                DisplayName = "Dev Person",
+                RoleId = role.Id,
+                OwnerId = tenant,
+                IsActive = true,
             };
             seed.Users.Add(author);
             seed.SaveChanges();
             TestSeed.Join(seed, author, tenant, role);
-            seed.Comments.Add(new Comment
-            {
-                ProjectId = project.Id, OwnerId = tenant, AuthorId = authorId, Body = "fix this",
-                Status = CommentStatus.ReadyToApply, Environment = EnvironmentTag.Production,
-                Element = new ElementCapture { Route = "/checkout", SourcePath = "src/Checkout.tsx", Snapshot = "<div>huge</div>" },
-            });
+            seed.Comments.Add(
+                new Comment
+                {
+                    ProjectId = project.Id,
+                    OwnerId = tenant,
+                    AuthorId = authorId,
+                    Body = "fix this",
+                    Status = CommentStatus.ReadyToApply,
+                    Environment = EnvironmentTag.Production,
+                    Element = new ElementCapture
+                    {
+                        Route = "/checkout",
+                        SourcePath = "src/Checkout.tsx",
+                        Snapshot = "<div>huge</div>",
+                    },
+                }
+            );
             seed.SaveChanges();
         }
 
-        var admin = new FakeCurrentUser { Id = Guid.NewGuid(), IsAdmin = true, TenantId = tenant };
+        var admin = new FakeCurrentUser
+        {
+            Id = Guid.NewGuid(),
+            IsAdmin = true,
+            TenantId = tenant,
+        };
         var svc = BuildService(admin, db);
 
         var result = await svc.ListSummaryAsync("proj", new CommentFilter(), admin.Id!.Value);
@@ -213,13 +333,27 @@ public class CommentSummaryProjectionTests
     {
         var db = Guid.NewGuid().ToString();
         var tenant = Guid.NewGuid();
-        var (key, mineId, _) = SeedProjectWithTwoComments(db, tenant, Guid.NewGuid(), Guid.NewGuid());
+        var (key, mineId, _) = SeedProjectWithTwoComments(
+            db,
+            tenant,
+            Guid.NewGuid(),
+            Guid.NewGuid()
+        );
         _ = mineId;
 
-        var admin = new FakeCurrentUser { Id = Guid.NewGuid(), IsAdmin = true, TenantId = tenant };
+        var admin = new FakeCurrentUser
+        {
+            Id = Guid.NewGuid(),
+            IsAdmin = true,
+            TenantId = tenant,
+        };
         var svc = BuildService(admin, db);
 
-        var result = await svc.ListSummaryAsync(key, new CommentFilter { Environment = EnvironmentTag.Local }, admin.Id!.Value);
+        var result = await svc.ListSummaryAsync(
+            key,
+            new CommentFilter { Environment = EnvironmentTag.Local },
+            admin.Id!.Value
+        );
 
         Assert.True(result.IsSuccess);
         var item = Assert.Single(result.Data!.Items);

@@ -26,46 +26,91 @@ public class NotificationServiceTests
         public int? RoleId { get; set; }
         public string? KeyScopes { get; set; }
         public string? Scope { get; set; }
+        public long? ImpersonationSessionId { get; set; }
+        public bool IsImpersonating => ImpersonationSessionId != null;
     }
 
     private sealed class FakeFileStorage : IFileStorage
     {
-        public Task<string> SaveAsync(string ownerSegment, string project, Stream content, string extension) => Task.FromResult("uploads/x");
+        public Task<string> SaveAsync(
+            string ownerSegment,
+            string project,
+            Stream content,
+            string extension
+        ) => Task.FromResult("uploads/x");
+
         public Task DeleteAsync(string relativePathOrUrl) => Task.CompletedTask;
+
         public Task DeleteOwnerFilesAsync(string ownerSegment) => Task.CompletedTask;
     }
 
     private sealed class FakeUploadSigner : IUploadSigner
     {
         public string SignedUrl(string relPath) => relPath;
+
         public bool Validate(string relPath, long exp, string sig) => true;
+
         public string ExtractRelPath(string stored) => stored;
     }
 
     private sealed class FakeSettings : ISettingsService
     {
-        public Task<bool> GetBoolAsync(string key, bool fallback = false) => Task.FromResult(fallback);
+        public Task<bool> GetBoolAsync(string key, bool fallback = false) =>
+            Task.FromResult(fallback);
+
         public Task SetBoolAsync(string key, bool value) => Task.CompletedTask;
-        public Task<string> GetStringAsync(string key, string fallback = "") => Task.FromResult(fallback);
+
+        public Task<string> GetStringAsync(string key, string fallback = "") =>
+            Task.FromResult(fallback);
+
         public Task SetStringAsync(string key, string value) => Task.CompletedTask;
+
         public Task<int> GetIntAsync(string key, int fallback = 0) => Task.FromResult(fallback);
+
         public Task SetIntAsync(string key, int value) => Task.CompletedTask;
     }
 
     private static AppDbContext BuildContext(ICurrentUser user, string dbName) =>
-        new(new DbContextOptionsBuilder<AppDbContext>().UseInMemoryDatabase(dbName).Options, user,
-            new Microsoft.Extensions.Configuration.ConfigurationBuilder().Build());
+        new(
+            new DbContextOptionsBuilder<AppDbContext>().UseInMemoryDatabase(dbName).Options,
+            user,
+            new Microsoft.Extensions.Configuration.ConfigurationBuilder().Build()
+        );
 
-    private static (CommentService commentService, NotificationService notificationService, UnitOfWork uow) BuildServices(ICurrentUser user, string dbName)
+    private static (
+        CommentService commentService,
+        NotificationService notificationService,
+        UnitOfWork uow
+    ) BuildServices(ICurrentUser user, string dbName)
     {
         var uow = new UnitOfWork(BuildContext(user, dbName));
         var notificationService = new NotificationService(uow, user);
-        var projectService = new ProjectService(uow, user, new PassThroughEntitlements(), TestProjectServiceDeps.Settings(), TestProjectServiceDeps.Configuration(), new FakeAuditWriter());
-        var actionService = new PredefinedActionService(uow, projectService, user, new PassThroughEntitlements());
+        var projectService = new ProjectService(
+            uow,
+            user,
+            new PassThroughEntitlements(),
+            TestProjectServiceDeps.Settings(),
+            TestProjectServiceDeps.Configuration(),
+            new FakeAuditWriter()
+        );
+        var actionService = new PredefinedActionService(
+            uow,
+            projectService,
+            user,
+            new PassThroughEntitlements()
+        );
         var commentService = new CommentService(
-            uow, projectService, actionService, new FakeFileStorage(), user,
-            new FakeUploadSigner(), new FakeSettings(), new PassThroughEntitlements(),
-            null, notificationService);
+            uow,
+            projectService,
+            actionService,
+            new FakeFileStorage(),
+            user,
+            new FakeUploadSigner(),
+            new FakeSettings(),
+            new PassThroughEntitlements(),
+            null,
+            notificationService
+        );
         return (commentService, notificationService, uow);
     }
 
@@ -80,15 +125,37 @@ public class NotificationServiceTests
         // Seed project and comment
         using (var seed = BuildContext(new FakeCurrentUser { IsSuperAdmin = true }, db))
         {
-            var project = new Project { Key = "test-proj", Name = "Test Project", OwnerId = tenant, IsActiveLocal = true, IsActiveStaging = true, IsActiveProduction = true };
+            var project = new Project
+            {
+                Key = "test-proj",
+                Name = "Test Project",
+                OwnerId = tenant,
+                IsActiveLocal = true,
+                IsActiveStaging = true,
+                IsActiveProduction = true,
+            };
             seed.Projects.Add(project);
-            var role = new Role { Name = "Member", OwnerId = tenant, IsActive = true };
+            var role = new Role
+            {
+                Name = "Member",
+                OwnerId = tenant,
+                IsActive = true,
+            };
             seed.Roles.Add(role);
             seed.SaveChanges();
 
             // DB-11a: EnqueueAsync only queues a notification for a recipient with a live, active,
             // Approved membership — the author needs a real identity + membership to receive one.
-            var authorUser = new User { PublicId = authorId, Email = "author@x.com", PasswordHash = "x", DisplayName = "Author", RoleId = role.Id, OwnerId = tenant, IsActive = true };
+            var authorUser = new User
+            {
+                PublicId = authorId,
+                Email = "author@x.com",
+                PasswordHash = "x",
+                DisplayName = "Author",
+                RoleId = role.Id,
+                OwnerId = tenant,
+                IsActive = true,
+            };
             seed.Users.Add(authorUser);
             seed.SaveChanges();
             TestSeed.Join(seed, authorUser, tenant, role);
@@ -101,21 +168,26 @@ public class NotificationServiceTests
                 Body = "Fix header style",
                 Status = CommentStatus.Open,
                 Environment = EnvironmentTag.Local,
-                Element = new ElementCapture()
+                Element = new ElementCapture(),
             };
             seed.Comments.Add(comment);
             seed.SaveChanges();
         }
 
         // Developer marks comment applied
-        var dev = new FakeCurrentUser { Id = devId, TenantId = tenant, IsAdmin = true };
+        var dev = new FakeCurrentUser
+        {
+            Id = devId,
+            TenantId = tenant,
+            IsAdmin = true,
+        };
         var (commentSvc, _, _) = BuildServices(dev, db);
 
         var updateReq = new UpdateCommentStatusRequest
         {
             Status = CommentStatus.Applied,
             CommitUrl = "https://github.com/repo/commit/abc1234",
-            AppliedByLabel = "Dev Dave"
+            AppliedByLabel = "Dev Dave",
         };
         var updateRes = await commentSvc.UpdateStatusAsync(1, updateReq, devId);
         Assert.True(updateRes.IsSuccess);
@@ -151,7 +223,15 @@ public class NotificationServiceTests
         // Seed project and comment
         using (var seed = BuildContext(new FakeCurrentUser { IsSuperAdmin = true }, db))
         {
-            var project = new Project { Key = "test-proj", Name = "Test Project", OwnerId = tenant, IsActiveLocal = true, IsActiveStaging = true, IsActiveProduction = true };
+            var project = new Project
+            {
+                Key = "test-proj",
+                Name = "Test Project",
+                OwnerId = tenant,
+                IsActiveLocal = true,
+                IsActiveStaging = true,
+                IsActiveProduction = true,
+            };
             seed.Projects.Add(project);
             seed.SaveChanges();
 
@@ -163,21 +243,26 @@ public class NotificationServiceTests
                 Body = "Self comment",
                 Status = CommentStatus.Open,
                 Environment = EnvironmentTag.Local,
-                Element = new ElementCapture()
+                Element = new ElementCapture(),
             };
             seed.Comments.Add(comment);
             seed.SaveChanges();
         }
 
         // Author marks comment applied
-        var author = new FakeCurrentUser { Id = authorId, TenantId = tenant, IsAdmin = true };
+        var author = new FakeCurrentUser
+        {
+            Id = authorId,
+            TenantId = tenant,
+            IsAdmin = true,
+        };
         var (commentSvc, notifSvc, _) = BuildServices(author, db);
 
         var updateReq = new UpdateCommentStatusRequest
         {
             Status = CommentStatus.Applied,
             CommitUrl = "https://github.com/repo/commit/abc1234",
-            AppliedByLabel = "Self"
+            AppliedByLabel = "Self",
         };
         var updateRes = await commentSvc.UpdateStatusAsync(1, updateReq, authorId);
         Assert.True(updateRes.IsSuccess);
@@ -203,7 +288,15 @@ public class NotificationServiceTests
         // Seed notification in tenant A
         using (var seed = BuildContext(new FakeCurrentUser { IsSuperAdmin = true }, db))
         {
-            var projectA = new Project { Key = "proj-a", Name = "Project A", OwnerId = tenantA, IsActiveLocal = true, IsActiveStaging = true, IsActiveProduction = true };
+            var projectA = new Project
+            {
+                Key = "proj-a",
+                Name = "Project A",
+                OwnerId = tenantA,
+                IsActiveLocal = true,
+                IsActiveStaging = true,
+                IsActiveProduction = true,
+            };
             seed.Projects.Add(projectA);
             seed.SaveChanges();
 
@@ -215,7 +308,7 @@ public class NotificationServiceTests
                 Body = "Comment A",
                 Status = CommentStatus.Applied,
                 Environment = EnvironmentTag.Local,
-                Element = new ElementCapture()
+                Element = new ElementCapture(),
             };
             seed.Comments.Add(commentA);
             seed.SaveChanges();
@@ -227,8 +320,10 @@ public class NotificationServiceTests
                 Type = NotificationType.CommentApplied,
                 CommentId = commentA.Id,
                 ProjectId = projectA.Id,
-                Payload = JsonSerializer.Serialize(new NotificationPayloadDto { CommitUrl = "https://commit" }),
-                CreatedAt = DateTime.UtcNow
+                Payload = JsonSerializer.Serialize(
+                    new NotificationPayloadDto { CommitUrl = "https://commit" }
+                ),
+                CreatedAt = DateTime.UtcNow,
             };
             seed.Notifications.Add(notifA);
             seed.SaveChanges();
@@ -257,7 +352,15 @@ public class NotificationServiceTests
         int notifBId;
         using (var seed = BuildContext(new FakeCurrentUser { IsSuperAdmin = true }, db))
         {
-            var project = new Project { Key = "proj", Name = "Project", OwnerId = tenant, IsActiveLocal = true, IsActiveStaging = true, IsActiveProduction = true };
+            var project = new Project
+            {
+                Key = "proj",
+                Name = "Project",
+                OwnerId = tenant,
+                IsActiveLocal = true,
+                IsActiveStaging = true,
+                IsActiveProduction = true,
+            };
             seed.Projects.Add(project);
             seed.SaveChanges();
 
@@ -269,7 +372,7 @@ public class NotificationServiceTests
                 Body = "Comment A",
                 Status = CommentStatus.Applied,
                 Environment = EnvironmentTag.Local,
-                Element = new ElementCapture()
+                Element = new ElementCapture(),
             };
             var commentB = new Comment
             {
@@ -279,7 +382,7 @@ public class NotificationServiceTests
                 Body = "Comment B",
                 Status = CommentStatus.Applied,
                 Environment = EnvironmentTag.Local,
-                Element = new ElementCapture()
+                Element = new ElementCapture(),
             };
             seed.Comments.AddRange(commentA, commentB);
             seed.SaveChanges();
@@ -291,7 +394,7 @@ public class NotificationServiceTests
                 Type = NotificationType.CommentApplied,
                 CommentId = commentA.Id,
                 ProjectId = project.Id,
-                CreatedAt = DateTime.UtcNow
+                CreatedAt = DateTime.UtcNow,
             };
             var notifB = new Notification
             {
@@ -300,7 +403,7 @@ public class NotificationServiceTests
                 Type = NotificationType.CommentApplied,
                 CommentId = commentB.Id,
                 ProjectId = project.Id,
-                CreatedAt = DateTime.UtcNow
+                CreatedAt = DateTime.UtcNow,
             };
             seed.Notifications.AddRange(notifA, notifB);
             seed.SaveChanges();
@@ -353,14 +456,55 @@ public class NotificationServiceTests
 
         using (var seed = BuildContext(new FakeCurrentUser { IsSuperAdmin = true }, db))
         {
-            var role = new Role { Name = "Member", OwnerId = tenant, IsActive = true };
+            var role = new Role
+            {
+                Name = "Member",
+                OwnerId = tenant,
+                IsActive = true,
+            };
             seed.Roles.Add(role);
             seed.SaveChanges();
 
-            var ended = new User { PublicId = Guid.NewGuid(), Email = "ended@x.com", PasswordHash = "x", DisplayName = "Ended", RoleId = role.Id, OwnerId = tenant, IsActive = true };
-            var disabled = new User { PublicId = Guid.NewGuid(), Email = "disabled@x.com", PasswordHash = "x", DisplayName = "Disabled", RoleId = role.Id, OwnerId = tenant, IsActive = true };
-            var pending = new User { PublicId = Guid.NewGuid(), Email = "pending@x.com", PasswordHash = "x", DisplayName = "Pending", RoleId = role.Id, OwnerId = tenant, IsActive = true };
-            var live = new User { PublicId = Guid.NewGuid(), Email = "live@x.com", PasswordHash = "x", DisplayName = "Live", RoleId = role.Id, OwnerId = tenant, IsActive = true };
+            var ended = new User
+            {
+                PublicId = Guid.NewGuid(),
+                Email = "ended@x.com",
+                PasswordHash = "x",
+                DisplayName = "Ended",
+                RoleId = role.Id,
+                OwnerId = tenant,
+                IsActive = true,
+            };
+            var disabled = new User
+            {
+                PublicId = Guid.NewGuid(),
+                Email = "disabled@x.com",
+                PasswordHash = "x",
+                DisplayName = "Disabled",
+                RoleId = role.Id,
+                OwnerId = tenant,
+                IsActive = true,
+            };
+            var pending = new User
+            {
+                PublicId = Guid.NewGuid(),
+                Email = "pending@x.com",
+                PasswordHash = "x",
+                DisplayName = "Pending",
+                RoleId = role.Id,
+                OwnerId = tenant,
+                IsActive = true,
+            };
+            var live = new User
+            {
+                PublicId = Guid.NewGuid(),
+                Email = "live@x.com",
+                PasswordHash = "x",
+                DisplayName = "Live",
+                RoleId = role.Id,
+                OwnerId = tenant,
+                IsActive = true,
+            };
             seed.Users.AddRange(ended, disabled, pending, live);
             seed.SaveChanges();
 
@@ -385,15 +529,19 @@ public class NotificationServiceTests
 
         async Task<int> EnqueueAndCountAsync(Guid recipient)
         {
-            await notifSvc.EnqueueAsync(new Notification
-            {
-                OwnerId = tenant,
-                UserId = recipient,
-                Type = NotificationType.CommentApplied,
-                CreatedAt = DateTime.UtcNow,
-            });
+            await notifSvc.EnqueueAsync(
+                new Notification
+                {
+                    OwnerId = tenant,
+                    UserId = recipient,
+                    Type = NotificationType.CommentApplied,
+                    CreatedAt = DateTime.UtcNow,
+                }
+            );
             await uow.SaveChangesAsync();
-            return await uow.Repository<Notification>().Query().CountAsync(n => n.UserId == recipient);
+            return await uow.Repository<Notification>()
+                .Query()
+                .CountAsync(n => n.UserId == recipient);
         }
 
         Assert.Equal(0, await EnqueueAndCountAsync(recipientNoMembershipId));
@@ -410,10 +558,19 @@ public class NotificationServiceTests
         var tenant = Guid.NewGuid();
         var user = Guid.NewGuid();
 
-        int n1Id, n2Id;
+        int n1Id,
+            n2Id;
         using (var seed = BuildContext(new FakeCurrentUser { IsSuperAdmin = true }, db))
         {
-            var project = new Project { Key = "proj", Name = "Project", OwnerId = tenant, IsActiveLocal = true, IsActiveStaging = true, IsActiveProduction = true };
+            var project = new Project
+            {
+                Key = "proj",
+                Name = "Project",
+                OwnerId = tenant,
+                IsActiveLocal = true,
+                IsActiveStaging = true,
+                IsActiveProduction = true,
+            };
             seed.Projects.Add(project);
             seed.SaveChanges();
 
@@ -425,13 +582,29 @@ public class NotificationServiceTests
                 Body = "Comment",
                 Status = CommentStatus.Applied,
                 Environment = EnvironmentTag.Local,
-                Element = new ElementCapture()
+                Element = new ElementCapture(),
             };
             seed.Comments.Add(comment);
             seed.SaveChanges();
 
-            var n1 = new Notification { OwnerId = tenant, UserId = user, Type = NotificationType.CommentApplied, CommentId = comment.Id, ProjectId = project.Id, CreatedAt = DateTime.UtcNow.AddMinutes(-2) };
-            var n2 = new Notification { OwnerId = tenant, UserId = user, Type = NotificationType.ReplyAdded, CommentId = comment.Id, ProjectId = project.Id, CreatedAt = DateTime.UtcNow.AddMinutes(-1) };
+            var n1 = new Notification
+            {
+                OwnerId = tenant,
+                UserId = user,
+                Type = NotificationType.CommentApplied,
+                CommentId = comment.Id,
+                ProjectId = project.Id,
+                CreatedAt = DateTime.UtcNow.AddMinutes(-2),
+            };
+            var n2 = new Notification
+            {
+                OwnerId = tenant,
+                UserId = user,
+                Type = NotificationType.ReplyAdded,
+                CommentId = comment.Id,
+                ProjectId = project.Id,
+                CreatedAt = DateTime.UtcNow.AddMinutes(-1),
+            };
             seed.Notifications.AddRange(n1, n2);
             seed.SaveChanges();
             n1Id = n1.Id;

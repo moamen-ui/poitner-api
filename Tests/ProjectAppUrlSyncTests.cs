@@ -28,16 +28,28 @@ public class ProjectAppUrlSyncTests
         public int? RoleId { get; set; }
         public string? KeyScopes { get; set; }
         public string? Scope { get; set; }
+        public long? ImpersonationSessionId { get; set; }
+        public bool IsImpersonating => ImpersonationSessionId != null;
     }
 
     private static AppDbContext BuildContext(ICurrentUser user, string dbName) =>
-        new(new DbContextOptionsBuilder<AppDbContext>().UseInMemoryDatabase(dbName).Options, user,
-            new Microsoft.Extensions.Configuration.ConfigurationBuilder().Build());
+        new(
+            new DbContextOptionsBuilder<AppDbContext>().UseInMemoryDatabase(dbName).Options,
+            user,
+            new Microsoft.Extensions.Configuration.ConfigurationBuilder().Build()
+        );
 
     private static void SeedGlobalLocalEnvironment(string dbName)
     {
         using var db = BuildContext(new FakeCurrentUser { IsSuperAdmin = true }, dbName);
-        db.AppEnvironments.Add(new AppEnvironment { Name = "local", OwnerId = null, IsEnabled = true });
+        db.AppEnvironments.Add(
+            new AppEnvironment
+            {
+                Name = "local",
+                OwnerId = null,
+                IsEnabled = true,
+            }
+        );
         db.SaveChanges();
     }
 
@@ -47,10 +59,29 @@ public class ProjectAppUrlSyncTests
         var dbName = Guid.NewGuid().ToString();
         SeedGlobalLocalEnvironment(dbName);
         var tenant = Guid.NewGuid();
-        var admin = new FakeCurrentUser { Id = Guid.NewGuid(), IsAdmin = true, TenantId = tenant };
-        var svc = new ProjectService(new UnitOfWork(BuildContext(admin, dbName)), admin, new PassThroughEntitlements(), TestProjectServiceDeps.Settings(), TestProjectServiceDeps.Configuration(), new FakeAuditWriter());
+        var admin = new FakeCurrentUser
+        {
+            Id = Guid.NewGuid(),
+            IsAdmin = true,
+            TenantId = tenant,
+        };
+        var svc = new ProjectService(
+            new UnitOfWork(BuildContext(admin, dbName)),
+            admin,
+            new PassThroughEntitlements(),
+            TestProjectServiceDeps.Settings(),
+            TestProjectServiceDeps.Configuration(),
+            new FakeAuditWriter()
+        );
 
-        var created = await svc.CreateAsync(new CreateProjectRequest { Key = "site", Name = "Site", AppUrl = "https://site.example.com" });
+        var created = await svc.CreateAsync(
+            new CreateProjectRequest
+            {
+                Key = "site",
+                Name = "Site",
+                AppUrl = "https://site.example.com",
+            }
+        );
         Assert.True(created.IsSuccess);
 
         using var check = BuildContext(admin, dbName);
@@ -65,11 +96,34 @@ public class ProjectAppUrlSyncTests
         var dbName = Guid.NewGuid().ToString();
         SeedGlobalLocalEnvironment(dbName);
         var tenant = Guid.NewGuid();
-        var admin = new FakeCurrentUser { Id = Guid.NewGuid(), IsAdmin = true, TenantId = tenant };
-        var projectSvc = new ProjectService(new UnitOfWork(BuildContext(admin, dbName)), admin, new PassThroughEntitlements(), TestProjectServiceDeps.Settings(), TestProjectServiceDeps.Configuration(), new FakeAuditWriter());
-        await projectSvc.CreateAsync(new CreateProjectRequest { Key = "site", Name = "Site", AppUrl = "https://site.example.com" });
+        var admin = new FakeCurrentUser
+        {
+            Id = Guid.NewGuid(),
+            IsAdmin = true,
+            TenantId = tenant,
+        };
+        var projectSvc = new ProjectService(
+            new UnitOfWork(BuildContext(admin, dbName)),
+            admin,
+            new PassThroughEntitlements(),
+            TestProjectServiceDeps.Settings(),
+            TestProjectServiceDeps.Configuration(),
+            new FakeAuditWriter()
+        );
+        await projectSvc.CreateAsync(
+            new CreateProjectRequest
+            {
+                Key = "site",
+                Name = "Site",
+                AppUrl = "https://site.example.com",
+            }
+        );
 
-        var extSvc = new ExtensionService(new UnitOfWork(BuildContext(admin, dbName)), projectSvc, new PassThroughEntitlements());
+        var extSvc = new ExtensionService(
+            new UnitOfWork(BuildContext(admin, dbName)),
+            projectSvc,
+            new PassThroughEntitlements()
+        );
         var result = await extSvc.FindProjectForOriginAsync("https://site.example.com");
 
         Assert.True(result.IsSuccess);
@@ -82,10 +136,26 @@ public class ProjectAppUrlSyncTests
         var dbName = Guid.NewGuid().ToString();
         SeedGlobalLocalEnvironment(dbName);
         var tenant = Guid.NewGuid();
-        var admin = new FakeCurrentUser { Id = Guid.NewGuid(), IsAdmin = true, TenantId = tenant };
-        var projectSvc = new ProjectService(new UnitOfWork(BuildContext(admin, dbName)), admin, new PassThroughEntitlements(), TestProjectServiceDeps.Settings(), TestProjectServiceDeps.Configuration(), new FakeAuditWriter());
+        var admin = new FakeCurrentUser
+        {
+            Id = Guid.NewGuid(),
+            IsAdmin = true,
+            TenantId = tenant,
+        };
+        var projectSvc = new ProjectService(
+            new UnitOfWork(BuildContext(admin, dbName)),
+            admin,
+            new PassThroughEntitlements(),
+            TestProjectServiceDeps.Settings(),
+            TestProjectServiceDeps.Configuration(),
+            new FakeAuditWriter()
+        );
 
-        var extSvc = new ExtensionService(new UnitOfWork(BuildContext(admin, dbName)), projectSvc, new PassThroughEntitlements());
+        var extSvc = new ExtensionService(
+            new UnitOfWork(BuildContext(admin, dbName)),
+            projectSvc,
+            new PassThroughEntitlements()
+        );
         var result = await extSvc.FindProjectForOriginAsync("https://nowhere.example.com");
 
         Assert.True(result.IsNotFound);
@@ -97,20 +167,43 @@ public class ProjectAppUrlSyncTests
         var dbName = Guid.NewGuid().ToString();
         SeedGlobalLocalEnvironment(dbName);
         var tenant = Guid.NewGuid();
-        var admin = new FakeCurrentUser { Id = Guid.NewGuid(), IsAdmin = true, TenantId = tenant };
-        var svc = new ProjectService(new UnitOfWork(BuildContext(admin, dbName)), admin, new PassThroughEntitlements(), TestProjectServiceDeps.Settings(), TestProjectServiceDeps.Configuration(), new FakeAuditWriter());
-        var created = (await svc.CreateAsync(new CreateProjectRequest { Key = "site", Name = "Site" })).Data!;
+        var admin = new FakeCurrentUser
+        {
+            Id = Guid.NewGuid(),
+            IsAdmin = true,
+            TenantId = tenant,
+        };
+        var svc = new ProjectService(
+            new UnitOfWork(BuildContext(admin, dbName)),
+            admin,
+            new PassThroughEntitlements(),
+            TestProjectServiceDeps.Settings(),
+            TestProjectServiceDeps.Configuration(),
+            new FakeAuditWriter()
+        );
+        var created = (
+            await svc.CreateAsync(new CreateProjectRequest { Key = "site", Name = "Site" })
+        ).Data!;
 
         int stagingEnvId;
         using (var db = BuildContext(new FakeCurrentUser { IsSuperAdmin = true }, dbName))
         {
-            var staging = new AppEnvironment { Name = "staging", OwnerId = null, IsEnabled = true };
+            var staging = new AppEnvironment
+            {
+                Name = "staging",
+                OwnerId = null,
+                IsEnabled = true,
+            };
             db.AppEnvironments.Add(staging);
             db.SaveChanges();
             stagingEnvId = staging.Id;
         }
 
-        var setResult = await svc.SetAppUrlAsync(created.Id, stagingEnvId, new SetProjectAppUrlRequest { Url = "https://staging.example.com", IsActive = true });
+        var setResult = await svc.SetAppUrlAsync(
+            created.Id,
+            stagingEnvId,
+            new SetProjectAppUrlRequest { Url = "https://staging.example.com", IsActive = true }
+        );
         Assert.True(setResult.IsSuccess);
 
         using var check = BuildContext(admin, dbName);

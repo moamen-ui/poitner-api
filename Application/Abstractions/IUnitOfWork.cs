@@ -11,6 +11,7 @@ public interface IUnitOfWork
     DbSet<Workspace> Workspaces { get; }
     DbSet<UserAlias> UserAliases { get; }
     DbSet<AuditEvent> AuditEvents { get; }
+    DbSet<ImpersonationSession> ImpersonationSessions { get; }
     Task<int> SaveChangesAsync();
 
     /// <summary>

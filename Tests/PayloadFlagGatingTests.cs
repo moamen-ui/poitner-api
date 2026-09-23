@@ -32,6 +32,8 @@ public class PayloadFlagGatingTests
         public int? RoleId { get; set; }
         public string? KeyScopes { get; set; }
         public string? Scope { get; set; }
+        public long? ImpersonationSessionId { get; set; }
+        public bool IsImpersonating => ImpersonationSessionId != null;
     }
 
     private sealed class FakeClient(bool human) : ICurrentClient
@@ -41,39 +43,79 @@ public class PayloadFlagGatingTests
 
     private sealed class FakeFileStorage : IFileStorage
     {
-        public Task<string> SaveAsync(string ownerSegment, string project, Stream content, string extension) => Task.FromResult("uploads/x");
+        public Task<string> SaveAsync(
+            string ownerSegment,
+            string project,
+            Stream content,
+            string extension
+        ) => Task.FromResult("uploads/x");
+
         public Task DeleteAsync(string relativePathOrUrl) => Task.CompletedTask;
+
         public Task DeleteOwnerFilesAsync(string ownerSegment) => Task.CompletedTask;
     }
 
     private sealed class FakeUploadSigner : IUploadSigner
     {
         public string SignedUrl(string relPath) => relPath;
+
         public bool Validate(string relPath, long exp, string sig) => true;
+
         public string ExtractRelPath(string stored) => stored;
     }
 
     private sealed class FakeSettings : ISettingsService
     {
-        public Task<bool> GetBoolAsync(string key, bool fallback = false) => Task.FromResult(fallback);
+        public Task<bool> GetBoolAsync(string key, bool fallback = false) =>
+            Task.FromResult(fallback);
+
         public Task SetBoolAsync(string key, bool value) => Task.CompletedTask;
-        public Task<string> GetStringAsync(string key, string fallback = "") => Task.FromResult(fallback);
+
+        public Task<string> GetStringAsync(string key, string fallback = "") =>
+            Task.FromResult(fallback);
+
         public Task SetStringAsync(string key, string value) => Task.CompletedTask;
+
         public Task<int> GetIntAsync(string key, int fallback = 0) => Task.FromResult(fallback);
+
         public Task SetIntAsync(string key, int value) => Task.CompletedTask;
     }
 
     private static AppDbContext Ctx(ICurrentUser user, string dbName) =>
-        new(new DbContextOptionsBuilder<AppDbContext>().UseInMemoryDatabase(dbName).Options, user,
-            new Microsoft.Extensions.Configuration.ConfigurationBuilder().Build());
+        new(
+            new DbContextOptionsBuilder<AppDbContext>().UseInMemoryDatabase(dbName).Options,
+            user,
+            new Microsoft.Extensions.Configuration.ConfigurationBuilder().Build()
+        );
 
     private static CommentService Service(ICurrentUser user, string dbName, ICurrentClient? client)
     {
         var uow = new UnitOfWork(Ctx(user, dbName));
-        var projects = new ProjectService(uow, user, new PassThroughEntitlements(), TestProjectServiceDeps.Settings(), TestProjectServiceDeps.Configuration(), new FakeAuditWriter());
-        var actions = new PredefinedActionService(uow, projects, user, new PassThroughEntitlements());
-        return new CommentService(uow, projects, actions, new FakeFileStorage(), user,
-            new FakeUploadSigner(), new FakeSettings(), new PassThroughEntitlements(), client);
+        var projects = new ProjectService(
+            uow,
+            user,
+            new PassThroughEntitlements(),
+            TestProjectServiceDeps.Settings(),
+            TestProjectServiceDeps.Configuration(),
+            new FakeAuditWriter()
+        );
+        var actions = new PredefinedActionService(
+            uow,
+            projects,
+            user,
+            new PassThroughEntitlements()
+        );
+        return new CommentService(
+            uow,
+            projects,
+            actions,
+            new FakeFileStorage(),
+            user,
+            new FakeUploadSigner(),
+            new FakeSettings(),
+            new PassThroughEntitlements(),
+            client
+        );
     }
 
     private const string SecretBody = "the key is sk-abcdefghijklmnopqrstuvwxyz012345";
@@ -84,22 +126,30 @@ public class PayloadFlagGatingTests
         var author = Guid.NewGuid();
 
         using var db = Ctx(new FakeCurrentUser { IsSuperAdmin = true }, dbName);
-        var project = new Project { Key = "proj", Name = "Proj", IsActiveLocal = true, OwnerId = tenant };
+        var project = new Project
+        {
+            Key = "proj",
+            Name = "Proj",
+            IsActiveLocal = true,
+            OwnerId = tenant,
+        };
         db.Projects.Add(project);
         db.SaveChanges();
 
-        db.Comments.Add(new Comment
-        {
-            ProjectId = project.Id,
-            OwnerId = tenant,
-            AuthorId = author,
-            Body = SecretBody,
-            Status = CommentStatus.Open,
-            Environment = EnvironmentTag.Local,
-            HasPayloadFlag = true,
-            PayloadFlags = new List<string> { "openai_key" },
-            Element = new ElementCapture { Selector = "#x", Route = "/" },
-        });
+        db.Comments.Add(
+            new Comment
+            {
+                ProjectId = project.Id,
+                OwnerId = tenant,
+                AuthorId = author,
+                Body = SecretBody,
+                Status = CommentStatus.Open,
+                Environment = EnvironmentTag.Local,
+                HasPayloadFlag = true,
+                PayloadFlags = new List<string> { "openai_key" },
+                Element = new ElementCapture { Selector = "#x", Route = "/" },
+            }
+        );
         db.SaveChanges();
 
         return (tenant, author, project.Key);
@@ -110,7 +160,12 @@ public class PayloadFlagGatingTests
     {
         var name = nameof(AHumanSurface_SeesTheAdvisoryFlags);
         var (tenant, author, key) = Seed(name);
-        var user = new FakeCurrentUser { Id = author, TenantId = tenant, IsAdmin = true };
+        var user = new FakeCurrentUser
+        {
+            Id = author,
+            TenantId = tenant,
+            IsAdmin = true,
+        };
 
         var result = await Service(user, name, new FakeClient(human: true))
             .ListAsync(key, new CommentFilter { PageSize = 50 }, author);
@@ -127,7 +182,12 @@ public class PayloadFlagGatingTests
         // it deliberately withholds the answer from.
         var name = nameof(EveryOtherCaller_GetsTheKeysAbsent_NotFalse);
         var (tenant, author, key) = Seed(name);
-        var user = new FakeCurrentUser { Id = author, TenantId = tenant, IsAdmin = true };
+        var user = new FakeCurrentUser
+        {
+            Id = author,
+            TenantId = tenant,
+            IsAdmin = true,
+        };
 
         var result = await Service(user, name, new FakeClient(human: false))
             .ListAsync(key, new CommentFilter { PageSize = 50 }, author);
@@ -144,7 +204,12 @@ public class PayloadFlagGatingTests
         // badge is cosmetic; leaking one into an AI payload is an injection surface.
         var name = nameof(NoClientAccessorAtAll_FailsClosed);
         var (tenant, author, key) = Seed(name);
-        var user = new FakeCurrentUser { Id = author, TenantId = tenant, IsAdmin = true };
+        var user = new FakeCurrentUser
+        {
+            Id = author,
+            TenantId = tenant,
+            IsAdmin = true,
+        };
 
         var result = await Service(user, name, client: null)
             .ListAsync(key, new CommentFilter { PageSize = 50 }, author);
@@ -159,7 +224,12 @@ public class PayloadFlagGatingTests
         // gets a payload with no flags on it, because the DTO has nowhere to put them.
         var name = nameof(TheApplyQueue_NeverCarriesTheFlags_EvenForAHumanSurface);
         var (tenant, author, key) = Seed(name);
-        var user = new FakeCurrentUser { Id = author, TenantId = tenant, IsAdmin = true };
+        var user = new FakeCurrentUser
+        {
+            Id = author,
+            TenantId = tenant,
+            IsAdmin = true,
+        };
 
         using (var db = Ctx(user, name))
         {

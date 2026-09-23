@@ -143,4 +143,48 @@ public class JwtTokenService(IOptions<JwtOptions> opts) : ITokenService
         );
         return new JwtSecurityTokenHandler().WriteToken(token);
     }
+
+    // DB-13: read-only, time-boxed impersonation token. Signed with the same active key (kid) as
+    // every other token; `tenant` is the ONLY way this super-admin token reaches content (§3.3) —
+    // the validator's impersonation branch (AuthenticationExtensions.OnTokenValidated) proves the
+    // session is still live on every request. No `mstamp` (operators have no membership), no
+    // `is_quick_access`.
+    public string IssueImpersonation(
+        User operatorUser,
+        Guid workspaceId,
+        long sessionId,
+        DateTime expiresAt
+    )
+    {
+        var o = opts.Value;
+        var activeKey = ResolveActiveKey(o);
+        var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(activeKey.Secret))
+        {
+            KeyId = activeKey.Id,
+        };
+        var creds = new SigningCredentials(key, SecurityAlgorithms.HmacSha256);
+        var role = operatorUser.Role;
+        var claims = new List<Claim>
+        {
+            new Claim(JwtRegisteredClaimNames.Sub, operatorUser.PublicId.ToString()),
+            new Claim("email", operatorUser.Email),
+            new Claim("name", operatorUser.DisplayName),
+            new Claim("role_id", operatorUser.RoleId.ToString()),
+            new Claim("role", role?.Name ?? string.Empty),
+            new Claim("is_admin", "true"),
+            new Claim("is_super_admin", "true"),
+            new Claim("stamp", operatorUser.SecurityStamp.ToString()),
+            new Claim("tenant", workspaceId.ToString()),
+            new Claim("scope", "impersonate"),
+            new Claim("imp", sessionId.ToString()),
+        };
+        var token = new JwtSecurityToken(
+            o.Issuer,
+            o.Issuer,
+            claims,
+            expires: expiresAt,
+            signingCredentials: creds
+        );
+        return new JwtSecurityTokenHandler().WriteToken(token);
+    }
 }

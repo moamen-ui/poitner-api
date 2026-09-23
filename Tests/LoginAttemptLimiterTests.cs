@@ -42,6 +42,8 @@ public class LoginAttemptLimiterTests
         public int? RoleId { get; set; }
         public string? KeyScopes { get; set; }
         public string? Scope { get; set; }
+        public long? ImpersonationSessionId { get; set; }
+        public bool IsImpersonating => ImpersonationSessionId != null;
     }
 
     private sealed class IdentityHasher : IPasswordHasher
@@ -55,7 +57,15 @@ public class LoginAttemptLimiterTests
     {
         public string Issue(User u, WorkspaceMembership? membership, int? keyScopes = null) =>
             "jwt-for-" + u.Email;
+
         public string IssueSelection(User u) => "sel-for-" + u.Email;
+
+        public string IssueImpersonation(
+            User user,
+            Guid workspaceId,
+            long sessionId,
+            DateTime expiresAt
+        ) => "imp-for-" + user.PublicId.ToString("N");
     }
 
     private sealed class FakeReset : IResetTokenService
