@@ -131,8 +131,10 @@ test('R1-04-06 ⛓ — upgrade hint against a genuinely old published CLI', asyn
     expect(packedFiles.length, 'Packed tarball must exist in scratch dir').toBeGreaterThan(0);
     const baseTgz = join(scratch, packedFiles[0]);
 
-    // Publish 0.1.0 to Verdaccio
-    publishTarball(baseTgz, { scratchDir: scratch });
+    // Publish a genuinely OLD CLI as 0.1.0. Publishing the base tarball as-is used to work while
+    // cli/package.json was still 0.1.0; it is 0.6.x now, so `npx pointer-feedback@0.1.0` found no
+    // such version (npm ETARGET, exit 1) instead of reaching the CLI's own upgrade refusal (exit 5).
+    publishTarball(baseTgz, { version: '0.1.0', scratchDir: scratch });
 
     // 2. Extract that same tarball into <scratch>/v2, npm version 99.1.0 --no-git-tag-version there, re-pack, publish
     publishTarball(baseTgz, { version: '99.1.0', scratchDir: scratch });
