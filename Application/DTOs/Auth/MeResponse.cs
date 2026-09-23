@@ -44,4 +44,13 @@ public class MeResponse
 
     /// <summary>DB-17: true when the current workspace is a live, unconverted, not-yet-extended demo.</summary>
     public bool DemoCanExtend { get; set; }
+
+    /// <summary>DB-18: non-null = the current workspace is paused (self or operator).</summary>
+    public DateTime? WorkspacePausedAt { get; set; }
+
+    /// <summary>DB-18: true when only the operator can resume the current workspace.</summary>
+    public bool WorkspacePausedByOperator { get; set; }
+
+    /// <summary>DB-18: non-null = the current workspace has a scheduled deletion.</summary>
+    public DateTime? WorkspaceDeletionScheduledFor { get; set; }
 }

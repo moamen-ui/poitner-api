@@ -15,4 +15,7 @@ public static class TokenPurposes
 
     /// <summary>DB-14: e-mail verification confirmation.</summary>
     public const string VerifyEmail = "verify-email";
+
+    /// <summary>DB-18: workspace deletion confirmation (payload = workspaceId|membershipStamp|requestedAtUnixMs).</summary>
+    public const string DeleteWorkspace = "delete-workspace";
 }

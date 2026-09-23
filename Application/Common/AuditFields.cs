@@ -40,6 +40,8 @@ public static class AuditFields
         "source",
         "project_id",
         "with_password",
+        // DB-18 (R17 whitelist addition — timestamp only, no personal data).
+        "scheduled_for",
     };
 
     /// <summary>

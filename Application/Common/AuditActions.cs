@@ -97,6 +97,16 @@ public static class AuditActions
     public const string TenantPlanChanged = "tenant.plan_changed";
     public const string TenantHardDeleted = "tenant.hard_deleted";
 
+    /// <summary>DB-18: workspace self-service pause/resume/delete lifecycle.</summary>
+    public const string WorkspacePaused = "workspace.paused";
+    public const string WorkspaceResumed = "workspace.resumed";
+    public const string WorkspaceDeletionRequested = "workspace.deletion_requested";
+    public const string WorkspaceDeletionConfirmed = "workspace.deletion_confirmed";
+    public const string WorkspaceDeletionCancelled = "workspace.deletion_cancelled";
+
+    /// <summary>DB-18: WorkspaceDeletionService rescheduled a missed T-24h reminder (System actor).</summary>
+    public const string WorkspaceDeletionRescheduled = "workspace.deletion_rescheduled";
+
     // ── Projects, roles, environments, statuses, actions, suggestions, AI rules ─────────────
 
     public const string ProjectCreated = "project.created";

@@ -44,4 +44,9 @@ public class TenantResponse
     public bool DemoExtended { get; set; }
     public int? DemoCommentCapOverride { get; set; }
     public int? DemoTtlHoursOverride { get; set; }
+
+    // DB-18 — self-service pause/delete lifecycle, operator view.
+    public DateTime? PausedAt { get; set; }
+    public bool PausedByOperator { get; set; }
+    public DateTime? DeletionScheduledFor { get; set; }
 }

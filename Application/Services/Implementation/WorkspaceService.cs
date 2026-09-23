@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
 using Pointer.Application.Abstractions;
 using Pointer.Application.Common;
 using Pointer.Application.DTOs.Workspace;
@@ -22,16 +23,24 @@ public class WorkspaceService : IWorkspaceService
     private readonly IUnitOfWork _unitOfWork;
     private readonly ICurrentUser _currentUser;
     private readonly IAuditWriter _audit;
+    private readonly IMembershipService? _memberships;
+    private readonly IConfiguration? _config;
 
     public WorkspaceService(
         IUnitOfWork unitOfWork,
         ICurrentUser currentUser,
-        IAuditWriter? audit = null
+        IAuditWriter? audit = null,
+        // DB-18: nullable-with-default, same seam as `audit` — a null value (every existing
+        // hand-rolled test construction) simply reports CanManageLifecycle = false.
+        IMembershipService? memberships = null,
+        IConfiguration? config = null
     )
     {
         _unitOfWork = unitOfWork;
         _currentUser = currentUser;
         _audit = audit ?? NoopAuditWriter.Instance;
+        _memberships = memberships;
+        _config = config;
     }
 
     public async Task<Result<WorkspaceResponse>> GetAsync()
@@ -58,7 +67,7 @@ public class WorkspaceService : IWorkspaceService
         if (row == null)
             return Result<WorkspaceResponse>.NotFound(MessageKeys.Workspace.NotFound);
 
-        return Result<WorkspaceResponse>.Success(ToResponse(row));
+        return Result<WorkspaceResponse>.Success(await BuildResponseAsync(row));
     }
 
     public async Task<Result<WorkspaceResponse>> RenameAsync(UpdateWorkspaceNameRequest request)
@@ -104,7 +113,41 @@ public class WorkspaceService : IWorkspaceService
             )
         );
 
-        return Result<WorkspaceResponse>.Success(ToResponse(row));
+        return Result<WorkspaceResponse>.Success(await BuildResponseAsync(row));
+    }
+
+    /// <summary>DB-18 §3.4 — adds the lifecycle fields to the base mapping. Name resolution and the
+    /// lifecycle guard are both read-only, best-effort (missing DI in a hand-rolled test simply
+    /// yields null names / CanManageLifecycle = false).</summary>
+    private async Task<WorkspaceResponse> BuildResponseAsync(Workspace row)
+    {
+        var response = ToResponse(row);
+
+        var ids = new List<Guid>();
+        if (row.PausedAt != null && !row.PausedByOperator && row.PausedBy is Guid pausedBy)
+            ids.Add(pausedBy);
+        if (row.DeletionRequestedBy is Guid requestedBy)
+            ids.Add(requestedBy);
+
+        if (ids.Count > 0)
+        {
+            var names = await UserNameResolver.ResolveAsync(
+                _unitOfWork,
+                ids,
+                ignoreQueryFilters: true
+            );
+            if (row.PausedAt != null && !row.PausedByOperator && row.PausedBy is Guid pb)
+                response.PausedByName = names.GetValueOrDefault(pb);
+            if (row.DeletionRequestedBy is Guid rb)
+                response.DeletionRequestedByName = names.GetValueOrDefault(rb);
+        }
+
+        response.CanManageLifecycle =
+            _memberships != null
+            && await WorkspaceLifecycleGuard.CanManageAsync(_currentUser, _memberships, row);
+        response.GraceDays = WorkspaceDeletionConfig.GraceDays(_config);
+
+        return response;
     }
 
     private static WorkspaceResponse ToResponse(Workspace row) =>
@@ -115,5 +158,9 @@ public class WorkspaceService : IWorkspaceService
             IsPlaceholderName = row.Name == Workspace.PlaceholderName,
             CreatedAt = row.CreatedAt,
             UpdatedAt = row.UpdatedAt,
+            PausedAt = row.PausedAt,
+            PausedByOperator = row.PausedByOperator,
+            DeletionRequestedAt = row.DeletionRequestedAt,
+            DeletionScheduledFor = row.DeletionScheduledFor,
         };
 }

@@ -218,6 +218,43 @@ public static class MessageKeys
         public const string NameRequired = "Workspace name is required.";
         public const string NameTooLong = "Workspace name must be 120 characters or fewer.";
         public const string NameInvalid = "Workspace name contains unsupported characters.";
+
+        // DB-18 — self-service pause and delete.
+        public const string Paused =
+            "This workspace is paused. It is read-only until an admin resumes it.";
+        public const string PausedByOperator =
+            "This workspace was paused by the platform operator. Contact support to resume it.";
+        public const string DeletionScheduledReadOnly =
+            "This workspace is scheduled for deletion and is read-only. An admin can cancel the deletion in Settings.";
+        public const string AlreadyPaused = "The workspace is already paused.";
+        public const string NotPaused = "The workspace is not paused.";
+        public const string CancelDeletionFirst = "Cancel the scheduled deletion first.";
+        public const string DeletionAlreadyScheduled =
+            "Deletion is already scheduled for this workspace.";
+        public const string NoDeletionScheduled = "No deletion is scheduled for this workspace.";
+        public const string DeletionEmailJustSent =
+            "A confirmation e-mail was just sent. Check your inbox.";
+        public const string DeletionEmailSent =
+            "We sent a confirmation link to your e-mail address. It expires in 30 minutes.";
+        public const string DeletionLinkInvalid =
+            "This link is invalid, expired or already used. Request a new one from Settings.";
+        public const string DeletionNameMismatch = "Type the workspace name exactly as shown.";
+        public const string DeletionScheduled = "The workspace will be deleted on {0} UTC.";
+        public const string DeletionCancelled = "Deletion cancelled.";
+        public const string AdminOnly = "Only a Workspace Admin can do this.";
+        public const string KeySessionCannotManage =
+            "API-key sessions cannot pause or delete a workspace.";
+        public const string DemoCannotPauseOrDelete =
+            "Demo workspaces expire on their own — keep it or let it expire.";
+        public const string FrozenNoNewMembers =
+            "This workspace is not accepting new members right now.";
+        public const string FrozenNoAccessGrant =
+            "While the workspace is paused you can only remove or reduce access.";
+        public const string AlreadyDeleted = "This workspace has already been deleted.";
+        public const string StateChanged =
+            "The workspace changed while you were acting on it. Reload and try again.";
+        public const string DeletionDailyLimit =
+            "Too many deletion requests for this workspace today. Try again tomorrow.";
     }
 
     public static class Project

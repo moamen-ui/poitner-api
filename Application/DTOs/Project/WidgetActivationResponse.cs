@@ -8,4 +8,7 @@ namespace Pointer.Application.DTOs.Project;
 public class WidgetActivationResponse
 {
     public bool Active { get; set; }
+
+    /// <summary>DB-18: the project's workspace is frozen — render read-only.</summary>
+    public bool Paused { get; set; }
 }

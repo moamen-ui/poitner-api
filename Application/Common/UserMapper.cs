@@ -55,6 +55,10 @@ public static class UserMapper
                 workspace?.DemoExpiresAt != null
                 && workspace.DemoExtendedAt == null
                 && workspace.DemoConvertedAt == null,
+            // DB-18: the current workspace's freeze state (null/false for super admins — no workspace).
+            WorkspacePausedAt = workspace?.PausedAt,
+            WorkspacePausedByOperator = workspace?.PausedByOperator ?? false,
+            WorkspaceDeletionScheduledFor = workspace?.DeletionScheduledFor,
         };
     }
 }
