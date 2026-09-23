@@ -295,3 +295,27 @@
   padding-inline: 6px;
   font-size: 12px;
 }
+
+// DB-18: one-line notice patched into the sidebar head by renderPausedNotice() while the
+// workspace is paused / scheduled for deletion — starts hidden, same pattern as .fbk-commit-style.
+.fbk-paused-notice {
+  margin-block-start: 6px;
+  padding: 6px 8px;
+  border-radius: 6px;
+  font-size: 12px;
+  line-height: 1.4;
+  background: var(--fbk-warning-bg, #fef3c7);
+  color: var(--fbk-warning-text, #92400e);
+}
+
+// DB-18: while paused/scheduled for deletion the widget is read-only — hide every control that
+// would only 423 anyway (the server enforces this regardless; this is UX, not the guarantee).
+.fbk-paused #fbk-add,
+.fbk-paused .fbk-card .fbk-reply-row,
+.fbk-paused .fbk-card .fbk-actions,
+.fbk-paused .fbk-card-kebab,
+.fbk-paused .fbk-reply-kebab,
+.fbk-paused .fbk-verify-group,
+.fbk-paused .fbk-verify-box {
+  display: none !important;
+}

@@ -1163,6 +1163,10 @@ async function reportBuildFor(server, token, cwd2, project, sha) {
     const res = await api(server, `/api/projects/${project}/comments?status=3&pageSize=200`, { token });
     applied = res?.items ?? res ?? [];
   } catch (err) {
+    if (err instanceof ApiError && err.code === 423) {
+      console.warn("Pointer workspace is paused \u2014 build not reported.");
+      return 0;
+    }
     console.error(`[${project}] Could not read applied comments: ${err?.message ?? err}`);
     return 0;
   }
@@ -1177,6 +1181,10 @@ async function reportBuildFor(server, token, cwd2, project, sha) {
     });
     return result?.deployedCommentIds?.length ?? 0;
   } catch (err) {
+    if (err instanceof ApiError && err.code === 423) {
+      console.warn("Pointer workspace is paused \u2014 build not reported.");
+      return 0;
+    }
     console.error(`[${project}] Could not report the build: ${err?.message ?? err}`);
     return 0;
   }
@@ -5561,6 +5569,25 @@ async function markFailed(id, reason, ctx, tool, model) {
 
 // src/commands/apply.ts
 init_projection();
+async function exitIfWorkspaceFrozen(server, token) {
+  if (!token)
+    return;
+  try {
+    const me = await api(server, "/api/auth/me", { token });
+    if (me?.workspaceDeletionScheduledFor) {
+      const date = new Date(me.workspaceDeletionScheduledFor).toISOString().slice(0, 10);
+      console.error(`Workspace "${me.tenantName}" is scheduled for deletion on ${date} \u2014 apply is disabled.`);
+      process.exit(2);
+    }
+    if (me?.workspacePausedAt) {
+      console.error(
+        `Workspace "${me.tenantName}" is paused \u2014 apply is disabled until a workspace admin resumes it.`
+      );
+      process.exit(2);
+    }
+  } catch {
+  }
+}
 async function applyCommand(cwd2, parsed, positionals = []) {
   const root = await findRepoRoot(cwd2);
   const config = await readConfig(root);
@@ -5610,6 +5637,7 @@ async function applyCommand(cwd2, parsed, positionals = []) {
     );
     process.exit(3);
   }
+  await exitIfWorkspaceFrozen(server, token);
   const clientCtx = {
     server,
     project,
@@ -5740,6 +5768,7 @@ async function applyAllProjects(root, cwd2, config, server, parsed) {
     );
     process.exit(3);
   }
+  await exitIfWorkspaceFrozen(server, token);
   const projects = listProjects(config);
   const plan = parsed["plan"] === true;
   const status = typeof parsed["status"] === "string" ? parsed["status"] : void 0;
@@ -12002,6 +12031,8 @@ function createMcpServer(ctx) {
           code = "forbidden";
         else if (err.code === 404)
           code = "not_found";
+        else if (err.code === 423)
+          code = "paused";
         else
           code = "network";
       }

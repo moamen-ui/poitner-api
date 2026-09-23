@@ -380,6 +380,8 @@ const STRINGS: Record<Lang, Record<string, string>> = {
     'fields.serverRejected': 'Server rejected:',
     'fields.seeMore': 'See more',
     'fields.seeLess': 'See less',
+    // --- DB-18: workspace paused/frozen ---
+    'paused.notice': 'Feedback is paused for this workspace.',
 
   },
   ar: {
@@ -632,6 +634,8 @@ const STRINGS: Record<Lang, Record<string, string>> = {
     'fields.serverRejected': 'رفض الخادم:',
     'fields.seeMore': 'عرض المزيد',
     'fields.seeLess': 'عرض أقل',
+    // --- DB-18: workspace paused/frozen ---
+    'paused.notice': 'تم إيقاف استقبال الملاحظات مؤقتًا في مساحة العمل هذه.',
 
   },
 };

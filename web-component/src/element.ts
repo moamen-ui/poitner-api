@@ -78,6 +78,9 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
   hiddenPrivateCount = 0;
   private _collapsed = true;
   private _disabled = false;
+  // DB-18: the widget's workspace is paused or scheduled for deletion — read-only. Set from the
+  // widget-status check at boot and from any write hitting 423 mid-session (see api()).
+  private _paused = false;
   picking = false;
   /** A magic-link token stripped from the URL, awaiting redemption in _boot(). */
   private _pendingInviteToken: string | null = null;
@@ -480,6 +483,7 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
       if (!res.ok) return false;
       const body = await res.json();
       const data = body?.data ?? body;
+      this._paused = data?.paused === true; // DB-18: render read-only once we're allowed to render at all
       return data?.active === true;
     } catch {
       return false;
@@ -496,6 +500,18 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
     try { this.stopPicking(); } catch { /* ignore */ }
     this.comments = [];
     if (this.root) this.root.innerHTML = ''; // removes toolbar, launcher, and pins (#fbk-pins-layer lives here)
+  }
+
+  // DB-18: the workspace is paused or scheduled for deletion. Called once, from api()/uploadToServer
+  // on a 423, flips to read-only and shows a single toast — subsequent 423s are no-ops here because
+  // `_paused` is already true (that's the "once per page" gate).
+  private _handlePaused(): void {
+    if (this._paused) return;
+    this._paused = true;
+    this.renderChrome();
+    this.renderSidebar();
+    this.renderPins();
+    this.toast(t('paused.notice'), 'error');
   }
 
   private _stylesPromise: Promise<void> | null = null;
@@ -917,6 +933,7 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
         method: 'PATCH',
         body: JSON.stringify({ commitStyle: value }),
       });
+      if (r.status === 423) { this.commitStyle = previous; return; }
       if (!r.ok) throw new Error('HTTP ' + r.status);
       this.toast(t('toast.commitStyleUpdated'));
     } catch (e) {
@@ -980,6 +997,11 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
         this.handle401();
         throw new Error('HTTP 401 Unauthorized');
       }
+      // DB-18: the workspace is paused/scheduled for deletion — every write gets 423. Handled here
+      // once for every caller; return the response so callers' `!r.ok` branches can bail out early
+      // (see the `if (r.status === 423) return …` guards at the top of those branches) instead of
+      // also showing their own generic "failed" toast.
+      if (r.status === 423) this._handlePaused();
       return r;
     });
   }
@@ -1076,6 +1098,9 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
   // --- Chrome (toolbar + sidebar shell) -----------------------------------
   renderChrome(): void {
     if (this._disabled) return; // project disabled — stay torn down
+    // DB-18: CSS hides the add-comment control, reply boxes and status/menu mutations under this
+    // class (see styles/_widget.scss); toggled here so it survives every chrome/sidebar re-render.
+    this.root.classList.toggle('fbk-paused', this._paused);
     // Collapsed: show only a small launcher that re-opens the overlay.
     if (this._collapsed) {
       const n = (this.comments || []).filter((c) => c.status !== 'archived' && c.status !== 'applied').length;
@@ -1128,6 +1153,16 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
     this.restoreToolbarPos();
     this.enableToolbarDrag();
     this.updateMenuSide();
+    this.renderPausedNotice();
+  }
+
+  // DB-18: patches the one-line paused/scheduled-for-deletion notice into the sidebar head — same
+  // in-place-patch pattern as renderCommitStyleControl.
+  private renderPausedNotice(): void {
+    const el = this.root && this.root.querySelector('#fbk-paused-notice');
+    if (!el) return;
+    el.classList.toggle('fbk-hidden', !this._paused);
+    if (this._paused) el.textContent = t('paused.notice');
   }
 
   // Switch the active environment from the toolbar. Comments are environment-scoped, so this
@@ -1530,6 +1565,7 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
         method: 'POST',
         body: JSON.stringify({ ok, note: note || null }),
       });
+      if (r.status === 423) return false;
       if (!r.ok) {
         let errMessage = t('toast.failedToVerifyComment');
         try {
@@ -1775,6 +1811,9 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
   // absolute URL on success, or null on failure. Deliberately NOT using api() —
   // for FormData we must let the browser set the multipart boundary itself.
   async uploadToServer(blob: Blob): Promise<string | null> {
+    // DB-18: workspace paused/scheduled for deletion — skip the upload outright (the comment POST
+    // would 423 anyway); this.api() isn't used here (multipart), so handle the same 423 ourselves.
+    if (this._paused) return null;
     try {
       const ext = blob.type === 'image/jpeg' ? 'jpg' : 'webp';
       const fd = new FormData();
@@ -1789,6 +1828,7 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
         body: fd,
       });
       if (r.status === 401) { this.handle401(); return null; }
+      if (r.status === 423) { this._handlePaused(); return null; }
       if (!r.ok) throw new Error('HTTP ' + r.status);
       const envelope = await r.json();
       if (!envelope || !envelope.isSuccess || !envelope.data || !envelope.data.url) {
@@ -2186,6 +2226,7 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
       // Project disabled by an admin mid-session → tear down silently, no consumer error.
       // 404 = unknown/undefined project → also hide silently.
       if (r.status === 409 || r.status === 404) { this.disableSilently(); return true; }
+      if (r.status === 423) return false; // DB-18: api() already handled the read-only switch + toast
       if (!r.ok) {
         const errEnv = await r.json().catch(() => null);
         const msg: string = (errEnv && errEnv.message) || '';
@@ -2249,6 +2290,7 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
         method: 'POST',
         body: JSON.stringify({ body: text }),
       });
+      if (r.status === 423) return;
       if (!r.ok) throw new Error();
       await this.fetchComments(); this.renderSidebar(); this.renderPins();
     } catch (e) {
@@ -2265,6 +2307,7 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
         method: 'PATCH',
         body: JSON.stringify({ status: nextInt }),
       });
+      if (r.status === 423) return;
       if (!r.ok) throw new Error();
       comment.status = nextStr;
       this.renderSidebar(); this.renderPins();
@@ -2282,6 +2325,7 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
         method: 'PATCH',
         body: JSON.stringify({ status: nextInt }),
       });
+      if (r.status === 423) return;
       if (!r.ok) throw new Error();
       comment.status = nextStr;
       this.renderSidebar(); this.renderPins();
@@ -2298,6 +2342,7 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
         method: 'PATCH',
         body: JSON.stringify({ isPrivate }),
       });
+      if (r.status === 423) return;
       if (!r.ok) throw new Error('HTTP ' + r.status);
       comment.isPrivate = isPrivate;
       this.renderSidebar(); this.renderPins();
@@ -2315,6 +2360,7 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
         method: 'PATCH',
         body: JSON.stringify({ status: STATUS_INT['applied'], appliedByLabel: label }),
       });
+      if (r.status === 423) return;
       if (!r.ok) throw new Error('HTTP ' + r.status);
       comment.status = 'applied';
       if (label) comment.appliedByLabel = label;
@@ -2360,6 +2406,7 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
     // DELETE /api/comments/{id} — soft-deletes on the server (JWT-scoped).
     try {
       const r = await this.api(`/api/comments/${id}`, { method: 'DELETE' });
+      if (r.status === 423) return;
       if (!r.ok) {
         const body = await r.json().catch(() => null);
         throw new Error((body && body.message) || ('HTTP ' + r.status));
@@ -2413,6 +2460,7 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
         method: 'PUT',
         body: JSON.stringify({ body, removeScreenshot }),
       });
+      if (r.status === 423) return;
       if (!r.ok) {
         const b = await r.json().catch(() => null);
         throw new Error((b && b.message) || ('HTTP ' + r.status));
@@ -2479,6 +2527,7 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
         method: 'PATCH',
         body: JSON.stringify({ customFields: fieldsOut }),
       });
+      if (r.status === 423) return; // api() already re-rendered the (now read-only) card
       if (!r.ok) {
         const b = await r.json().catch(() => null);
         throw new Error((b && b.message) || ('HTTP ' + r.status));
@@ -2540,6 +2589,7 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
         method: 'PUT',
         body: JSON.stringify({ body }),
       });
+      if (r.status === 423) return;
       if (!r.ok) {
         const b = await r.json().catch(() => null);
         throw new Error((b && b.message) || ('HTTP ' + r.status));
@@ -2583,6 +2633,7 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
     // DELETE /api/replies/{id} — author or workspace admin (enforced server-side).
     try {
       const r = await this.api(`/api/replies/${replyId}`, { method: 'DELETE' });
+      if (r.status === 423) return;
       if (!r.ok) {
         const b = await r.json().catch(() => null);
         throw new Error((b && b.message) || ('HTTP ' + r.status));

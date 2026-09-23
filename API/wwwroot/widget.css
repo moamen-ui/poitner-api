@@ -890,6 +890,26 @@
   font-size: 12px;
 }
 
+.fbk-paused-notice {
+  margin-block-start: 6px;
+  padding: 6px 8px;
+  border-radius: 6px;
+  font-size: 12px;
+  line-height: 1.4;
+  background: var(--fbk-warning-bg, #fef3c7);
+  color: var(--fbk-warning-text, #92400e);
+}
+
+.fbk-paused #fbk-add,
+.fbk-paused .fbk-card .fbk-reply-row,
+.fbk-paused .fbk-card .fbk-actions,
+.fbk-paused .fbk-card-kebab,
+.fbk-paused .fbk-reply-kebab,
+.fbk-paused .fbk-verify-group,
+.fbk-paused .fbk-verify-box {
+  display: none !important;
+}
+
 .fbk-card {
   position: relative;
   border: 1px solid var(--fbk-border-soft, #eef2f7);

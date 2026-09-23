@@ -1,5 +1,5 @@
 import { execFileSync } from 'node:child_process';
-import { api } from '../api.js';
+import { api, ApiError } from '../api.js';
 import { getClient } from './comments.js';
 import { findRepoRoot, readConfig, resolveProject, listProjects } from '../config.js';
 
@@ -57,6 +57,13 @@ async function reportBuildFor(
     const res = await api<any>(server, `/api/projects/${project}/comments?status=3&pageSize=200`, { token });
     applied = res?.items ?? res ?? [];
   } catch (err: any) {
+    // DB-18: `deployed` runs unattended in customers' CI — a paused/scheduled-for-deletion
+    // workspace must never fail their build, so this is a warning, not an error (exit 2 is
+    // reserved for `apply`/`apply --plan`/`apply --mark`; the caller still exits 0).
+    if (err instanceof ApiError && err.code === 423) {
+      console.warn('Pointer workspace is paused — build not reported.');
+      return 0;
+    }
     console.error(`[${project}] Could not read applied comments: ${err?.message ?? err}`);
     return 0;
   }
@@ -78,6 +85,10 @@ async function reportBuildFor(
     });
     return result?.deployedCommentIds?.length ?? 0;
   } catch (err: any) {
+    if (err instanceof ApiError && err.code === 423) {
+      console.warn('Pointer workspace is paused — build not reported.');
+      return 0;
+    }
     console.error(`[${project}] Could not report the build: ${err?.message ?? err}`);
     return 0;
   }

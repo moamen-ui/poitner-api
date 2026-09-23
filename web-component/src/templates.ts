@@ -114,6 +114,7 @@ export const TPL = {
   </span>
   </div>
   <div class="fbk-commit-style fbk-hidden" id="fbk-commit-style"></div>
+  <div class="fbk-paused-notice fbk-hidden" id="fbk-paused-notice" role="status"></div>
   </div>
   <div class="fbk-filters${filtersOpen ? '' : ' fbk-hidden'}" id="fbk-filters"></div>
   <div class="fbk-sidebar-body" id="fbk-list"></div>

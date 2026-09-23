@@ -9,6 +9,35 @@ import { fetchQueue } from '../apply/queue.js';
 import { toAiCommentView } from '../apply/projection.js';
 import type { ApplyClientContext } from '../apply/types.js';
 
+/**
+ * DB-18: a workspace that is paused or scheduled for deletion refuses every write with 423 — for a
+ * key session (this CLI) that means the queue GET itself would 423 too, so checking here first
+ * keeps `apply`/`--plan`/`--mark`/`--fail` out of any git/AI work entirely instead of failing
+ * confusingly deep into a run. `GET /api/auth/me` is the one endpoint that stays open for a key
+ * session regardless (`AuthController.Me` carries `[AllowWhenWorkspacePaused(AllowKeySessions:
+ * true)]`) precisely so this can read the state and explain it before anything else happens.
+ */
+async function exitIfWorkspaceFrozen(server: string, token: string | undefined): Promise<void> {
+  if (!token) return; // no session to ask — the calls that follow will fail on their own terms
+  try {
+    const me = await api<any>(server, '/api/auth/me', { token });
+    if (me?.workspaceDeletionScheduledFor) {
+      const date = new Date(me.workspaceDeletionScheduledFor).toISOString().slice(0, 10);
+      console.error(`Workspace "${me.tenantName}" is scheduled for deletion on ${date} — apply is disabled.`);
+      process.exit(2);
+    }
+    if (me?.workspacePausedAt) {
+      console.error(
+        `Workspace "${me.tenantName}" is paused — apply is disabled until a workspace admin resumes it.`,
+      );
+      process.exit(2);
+    }
+  } catch {
+    // Best-effort: a network hiccup reading /me must not block apply on its own — if the workspace
+    // really is frozen, every subsequent write still 423s downstream.
+  }
+}
+
 export async function applyCommand(
   cwd: string,
   parsed: Record<string, string | boolean>,
@@ -81,6 +110,10 @@ export async function applyCommand(
     );
     process.exit(3);
   }
+
+  // DB-18: before any git/AI work — covers the default run, --plan, --mark and --fail alike (they
+  // all fall through to this one point after auth resolves).
+  await exitIfWorkspaceFrozen(server, token);
 
   // `root`, not the original `cwd`: git operations, the stack file and the manifest all resolve
   // relative to the repo root, whichever app directory the command was actually run from.
@@ -258,6 +291,10 @@ async function applyAllProjects(
     );
     process.exit(3);
   }
+
+  // DB-18: same check as the single-project path — the multi-project default/`--plan`/`--json`
+  // run reaches here without ever going through applyCommand's own check.
+  await exitIfWorkspaceFrozen(server, token);
 
   const projects = listProjects(config);
   const plan = parsed['plan'] === true;
