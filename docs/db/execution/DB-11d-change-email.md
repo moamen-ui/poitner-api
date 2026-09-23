@@ -8,7 +8,8 @@ DB-11b. Origin: cross-review 2026-09-22, GLM A4 / chair synthesis §1 row D4 ("n
 exists and DB-11 makes e-mail the identity key"). Rules: R13 (no migration), R14 (one identity per
 `lower(email)`; the normaliser), R16 (identity-wide event rotates `users.security_stamp`).
 **Class: Code only.** No migration, no schema. Ships as an ordinary `bash scripts/deploy-api.sh`.
-**Status 2026-09-22: written; not implemented.** Owner decision D14 has a default (§3.6). The number
+**Status: implemented 2026-09-23 (feat/db-11d-change-email); reviewed (Gemini Pro MERGE, Opus MERGE
+WITH FIXES → applied).** Owner decision D14 has a default (§3.6). The number
 DB-11d was previously pencilled in for the legacy-column contract; that contract is now **DB-11e**
 (DB-11a §10, DB-11c §10, DB-REVIEW §7).
 
@@ -108,7 +109,9 @@ budget as `forgot-password`), body `ChangeEmailRequest { string CurrentPassword;
    body: "Someone signed in to your account and asked to change its e-mail address to `{newEmail}`. If that was
    you, confirm it from the e-mail we sent there. If it was not you, change your password now — that cancels
    the request." (Changing the password rotates `SecurityStamp`, which invalidates the pending token — that is
-   the whole cancellation mechanism; nothing is stored.) Both sends in one best-effort `try/catch` as `:181-195`.
+   the whole cancellation mechanism; nothing is stored.) **Review fix:** sent FIRST (before step 8's
+   new-address link), and each of the two sends gets its own best-effort `try/catch` — a delivery
+   failure on one address must not suppress the other.
 10. Nothing is written to the database. Return `Success(User.EmailChangeLinkSent)`.
 
 ### 3.3 Step 2 — `POST /api/auth/confirm-email-change`
@@ -149,10 +152,13 @@ approval, comments: untouched (the identity's `public_id` and `users.id` do not 
 - `invites.email` rows locked to the **old** address stay as they are: an open invite addressed to the old
   address was addressed to *that* address; the inviter re-invites the new one. (DB-11c's erase scrub is
   different — there the address must disappear.)
-- `users.recipient_email` (demo) — unrelated to the identity key.
+- `users.recipient_email` (demo) — unrelated to the identity key, but **review fix:** the confirm step
+  clears it when set, so a demo identity's old human-entered override address stops receiving mail
+  once the account's real sign-in address has moved on.
 - `users.owner_id`/`role_id` legacy columns — untouched (DB-11e drops them).
-- No audit row: the DB-12 audit log (foundations #2) records `email_changed {from, to}` when it exists;
-  until then the two e-mails (old and new address) are the trail. Say so in the PR.
+- **Review fix:** two DB-12 audit rows are written (hashes only, `email_hash` before/after via
+  `PseudonymHasher`, never the raw address) — `auth.email_change_requested` on step 1, `auth.email_changed`
+  on step 2 — instead of the "no audit row" this doc originally shipped with.
 
 ### 3.5 Message keys (add to `Application/Resources/MessageKeys.cs`, class `User`)
 
@@ -234,19 +240,22 @@ app-level checks only improve the message.
 
 `Tests/ChangeEmailTests.cs` (InMemory fixture from `Tests/UserGovernanceTests.cs:20-60`; `CapturingEmail`
 double from DB-11c test 14; `ResetTokenService` built as in `Tests/ResetTokenServiceTests.cs`; identities and
-memberships via `TestSeed.Join`):
+memberships via `TestSeed.Join`; `FakeAuditWriter` captures the DB-12 audit rows §3.4 now writes — tests
+1 and 5 assert the `email_hash` before/after on each).
 
 1. `RequestChange_HappyPath_SendsTwoEmails_WritesNothing` — one e-mail to the new address containing
    `confirm-email?token=`, one to the old address; `users.Email` unchanged; `SecurityStamp` unchanged;
    `TryValidateScoped(token, "change-email")` true with payload = normalised new address;
-   `TryValidateScoped(token, "erase")` false; `TryValidate(token)` false.
+   `TryValidateScoped(token, "erase")` false; `TryValidate(token)` false; one
+   `AuditActions.AuthEmailChangeRequested` audit row with the before/after `email_hash`.
 2. `RequestChange_WrongPassword_Fails_NoEmail`; `RequestChange_SameAddress_DifferentCase_EmailUnchanged`
    (`"USER@x.com"` for an identity `user@x.com` → `EmailUnchanged`, zero e-mails).
 3. `RequestChange_AddressOwnedByOtherIdentity_Conflict_NoEmail` (D14) — also with a case variant (`"Other@X.com"`).
 4. `RequestChange_Passwordless_Fails`; `RequestChange_SuperAdmin_Forbidden`.
 5. `Confirm_ValidToken_ChangesEmail_RotatesStamp_NotifiesOld` — `Email == new` (lower-case), stamp differs,
    one e-mail to the old address; `PublicId`, `users.id`, memberships, api keys unchanged; a comment authored by
-   the identity still resolves to its `DisplayName`.
+   the identity still resolves to its `DisplayName`; one `AuditActions.AuthEmailChanged` audit row with the
+   before/after `email_hash`.
 6. `Confirm_TokenReuse_Fails` (stamp rotated → `EmailChangeLinkInvalid`); `Confirm_AfterPasswordChange_Fails`
    (request change, then `ChangePasswordAsync`, then confirm → invalid — the cancellation path).
 7. `Confirm_AddressTakenMeanwhile_Conflict` — request for `new@x.com`, then create another identity `new@x.com`,
@@ -256,6 +265,15 @@ memberships via `TestSeed.Join`):
 10. `Tests/AuthRateLimitingTests.cs`: `[InlineData("ConfirmEmailChange")]` on `SignupSurface_KeepsSignupRateLimit`;
     new `ChangeEmail_HasSignupRateLimit` on `typeof(MeController).GetMethod("ChangeEmail")`.
 11. `ChangeEmailRequestValidator_RejectsBadEmail_AndOver256` (copy `Tests/LoginValidatorTests.cs`).
+12. **Review finding #10:** `Confirm_TamperedPayloadSwappedToAnotherAddress_Fails` — a token minted for
+    address A has its payload segment swapped for a well-formed encoding of address B (not garbage); the
+    HMAC covers `id|stamp|exp|purpose|payload`, so signature validation fails just as it does for garbage,
+    and the identity's e-mail is unchanged.
+13. **Review finding #2:** `Confirm_DuplicateKeyOnSave_RevertsInMemoryAndDetaches_Conflict` — a `IUnitOfWork`
+    decorator makes `SaveChangesAsync` throw a `DbUpdateException` wrapping a `PostgresException` with
+    `SqlState "23505"` / `ConstraintName "ux_users_email_live"` (InMemory never produces this itself); asserts
+    `Conflict(EmailTaken)` and that the `User` entity is no longer tracked (`ChangeTracker.Entries<User>()`
+    empty) instead of left `Modified` with the reverted change.
 
 Tenancy invariant: this doc reads no workspace data, so the R8 test is the existing DB-11a
 `InWorkspace_TenantB_SeesNothingOfTenantA`; test 5's "memberships unchanged" is the relevant assertion.

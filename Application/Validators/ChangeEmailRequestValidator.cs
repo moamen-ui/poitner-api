@@ -13,7 +13,7 @@ public class ChangeEmailRequestValidator : AbstractValidator<ChangeEmailRequest>
 
         RuleFor(x => x.NewEmail)
             .NotEmpty().WithMessage(MessageKeys.User.EmailRequired)
-            .EmailAddress().WithMessage(MessageKeys.User.EmailRequired)
-            .MaximumLength(256).WithMessage(MessageKeys.User.EmailRequired);
+            .EmailAddress()
+            .MaximumLength(254);
     }
 }

@@ -40,7 +40,9 @@ public class MeController(
     [HttpPost("change-email")]
     [EnableRateLimiting("signup")]
     [ProducesResponseType(typeof(Result), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(Result), StatusCodes.Status400BadRequest)]
     [ProducesResponseType(typeof(Result), StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(typeof(Result), StatusCodes.Status404NotFound)]
     [ProducesResponseType(typeof(Result), StatusCodes.Status409Conflict)]
     public async Task<IActionResult> ChangeEmail([FromBody] ChangeEmailRequest request)
     {

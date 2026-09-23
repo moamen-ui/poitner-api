@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
+using Npgsql;
 using Pointer.Application.Abstractions;
 using Pointer.Application.Common;
 using Pointer.Application.DTOs.Auth;
@@ -101,6 +102,44 @@ public class ChangeEmailTests
         public string Issue(User user, WorkspaceMembership? membership, int? keyScopes = null) =>
             "token-for-" + user.PublicId.ToString("N");
         public string IssueSelection(User user) => "sel-for-" + user.PublicId.ToString("N");
+    }
+
+    /// <summary>
+    /// Review finding #2: the EF Core InMemory provider never throws a 23505 duplicate-key
+    /// violation on its own (no unique constraints are enforced), so this decorator wraps a real
+    /// <see cref="UnitOfWork"/> and makes <see cref="SaveChangesAsync"/> throw the same
+    /// <see cref="DbUpdateException"/>/<see cref="PostgresException"/> shape Npgsql produces for
+    /// <c>ux_users_email_live</c> — everything else forwards to the inner instance unchanged.
+    /// </summary>
+    private sealed class ThrowDuplicateKeyUnitOfWork(IUnitOfWork inner) : IUnitOfWork
+    {
+        public IRepository<T> Repository<T>() where T : BaseEntity => inner.Repository<T>();
+        public DbSet<UsageEvent> UsageEvents => inner.UsageEvents;
+        public DbSet<Workspace> Workspaces => inner.Workspaces;
+        public DbSet<UserAlias> UserAliases => inner.UserAliases;
+        public DbSet<AuditEvent> AuditEvents => inner.AuditEvents;
+
+        public Task<int> SaveChangesAsync() =>
+            throw new DbUpdateException(
+                "simulated 23505",
+                new PostgresException(
+                    "duplicate key value violates unique constraint \"ux_users_email_live\"",
+                    "ERROR",
+                    "ERROR",
+                    "23505",
+                    constraintName: "ux_users_email_live"
+                )
+            );
+
+        public Task ExecuteInTransactionAsync(Func<Task> action) => inner.ExecuteInTransactionAsync(action);
+        public void PreserveCreatedAtOnInsert(BaseEntity entity) => inner.PreserveCreatedAtOnInsert(entity);
+        public void ClearChangeTracker() => inner.ClearChangeTracker();
+
+        public Task<int> AtomicClaimInviteSlotAsync(int inviteId, DateTime now) =>
+            inner.AtomicClaimInviteSlotAsync(inviteId, now);
+
+        public Task ExecuteSqlRawAsync(string sql, params object[] parameters) =>
+            inner.ExecuteSqlRawAsync(sql, parameters);
     }
 
     private static AppDbContext Ctx(ICurrentUser u, string db) =>
@@ -571,6 +610,99 @@ public class ChangeEmailTests
         var newLogin = await BuildAuthService(new FakeCurrentUser(), newLoginCtx)
             .LoginAsync(new LoginRequest { Email = "new@t.com", Password = "pw-member" });
         Assert.Equal("ok", newLogin.Data?.Status);
+    }
+
+    // ── 2b. Review-finding regressions ──────────────────────────────────────────────────────────
+
+    /// <summary>Review finding #10 — a token minted for one address must not validate for another
+    /// after its payload segment is swapped for a well-formed (not garbage) alternative: the HMAC
+    /// signs `id|stamp|exp|purpose|payload`, so the old signature no longer matches.</summary>
+    [Fact]
+    public async Task Confirm_TamperedPayloadSwappedToAnotherAddress_Fails()
+    {
+        var db = Guid.NewGuid().ToString();
+        var superAdmin = new FakeCurrentUser { IsSuperAdmin = true };
+        SeededWorkspace ws;
+        using (var seed = Ctx(superAdmin, db))
+            ws = SeedWorkspace(seed);
+
+        var caller = new FakeCurrentUser { Id = ws.Member.PublicId, TenantId = ws.OwnerId };
+        var requestEmail = new CapturingEmail();
+        using (var ctx = Ctx(caller, db))
+        {
+            await BuildAuthService(caller, ctx, requestEmail)
+                .RequestEmailChangeAsync(new ChangeEmailRequest { CurrentPassword = "pw-member", NewEmail = "a@t.com" });
+        }
+        var token = CapturingEmail.ExtractToken(requestEmail.Sent.Single(s => s.To == "a@t.com").Html);
+
+        var parts = token.Split('.');
+        var swappedPayload = Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes("b@t.com"))
+            .TrimEnd('=')
+            .Replace('+', '-')
+            .Replace('/', '_');
+        parts[4] = swappedPayload;
+        var tampered = string.Join('.', parts);
+
+        var anon = new FakeCurrentUser();
+        using var ctx2 = Ctx(anon, db);
+        var result = await BuildAuthService(anon, ctx2).ConfirmEmailChangeAsync(tampered);
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(MessageKeys.User.EmailChangeLinkInvalid, result.Message);
+
+        using var check = Ctx(superAdmin, db);
+        Assert.Equal("member@t.com", check.Users.IgnoreQueryFilters().Single(u => u.Id == ws.Member.Id).Email);
+    }
+
+    /// <summary>Review finding #2 — a database-level 23505 on <c>ux_users_email_live</c> (the app-level
+    /// D14 check missed a race) must revert the in-memory <c>Email</c>/<c>SecurityStamp</c> mutation and
+    /// leave the <see cref="User"/> entity untracked rather than stuck <c>Modified</c> with a change that
+    /// was never persisted.</summary>
+    [Fact]
+    public async Task Confirm_DuplicateKeyOnSave_RevertsInMemoryAndDetaches_Conflict()
+    {
+        var db = Guid.NewGuid().ToString();
+        var superAdmin = new FakeCurrentUser { IsSuperAdmin = true };
+        SeededWorkspace ws;
+        using (var seed = Ctx(superAdmin, db))
+            ws = SeedWorkspace(seed);
+
+        var caller = new FakeCurrentUser { Id = ws.Member.PublicId, TenantId = ws.OwnerId };
+        var requestEmail = new CapturingEmail();
+        using (var ctx = Ctx(caller, db))
+        {
+            await BuildAuthService(caller, ctx, requestEmail)
+                .RequestEmailChangeAsync(new ChangeEmailRequest { CurrentPassword = "pw-member", NewEmail = "new@t.com" });
+        }
+        var token = CapturingEmail.ExtractToken(requestEmail.Sent.Single(s => s.To == "new@t.com").Html);
+
+        var anon = new FakeCurrentUser();
+        using var ctx2 = Ctx(anon, db);
+        var real = new UnitOfWork(ctx2);
+        var throwing = new ThrowDuplicateKeyUnitOfWork(real);
+        var service = new AuthService(
+            throwing,
+            new IdentityHasher(),
+            new FakeTokenService(),
+            anon,
+            new NoopSettings(),
+            RealResetTokens(),
+            new CapturingEmail(),
+            new NoopBrandingService(),
+            new ApiKeyService(throwing, new TestApiKeyProtector()),
+            new FakeLoginAttemptLimiter(),
+            new MembershipService(throwing),
+            null
+        );
+
+        var result = await service.ConfirmEmailChangeAsync(token);
+
+        Assert.True(result.IsConflict);
+        Assert.Equal(MessageKeys.User.EmailTaken, result.Message);
+        Assert.Empty(ctx2.ChangeTracker.Entries<User>());
+
+        using var check = Ctx(superAdmin, db);
+        Assert.Equal("member@t.com", check.Users.IgnoreQueryFilters().Single(u => u.Id == ws.Member.Id).Email);
     }
 
     // ── 3. Validator ─────────────────────────────────────────────────────────────────────────

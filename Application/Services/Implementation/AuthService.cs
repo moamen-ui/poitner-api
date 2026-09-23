@@ -383,6 +383,26 @@ public class AuthService : IAuthService
                 ? $@"<p style=""color:#475569;font-size:13px"">This is for your account in the <b>{System.Net.WebUtility.HtmlEncode(workspaceName)}</b> workspace.</p>"
                 : null;
 
+        // Review finding #1: the OLD-address security notice goes FIRST, and each send gets its
+        // own best-effort try/catch — a failure delivering one address's e-mail (e.g. a bounce or
+        // provider hiccup) must not suppress the other's.
+        try
+        {
+            await _emailService.SendAsync(
+                identity.Email,
+                $"Your {brand.ProductName} e-mail address is being changed",
+                BuildEmailChangeHtml(
+                    "Your e-mail address is being changed",
+                    $"Someone signed in to your account and asked to change its e-mail address to {System.Net.WebUtility.HtmlEncode(newEmail)}. If that was you, confirm it from the e-mail we sent there. If it was not you, change your password now — that cancels the request.",
+                    null,
+                    null
+                )
+            );
+        }
+        catch
+        { /* best-effort; sender logs failures */
+        }
+
         try
         {
             await _emailService.SendAsync(
@@ -393,16 +413,6 @@ public class AuthService : IAuthService
                     "You asked to use this address for your account. Click the link below to confirm — it expires in 30 minutes. After confirming you will be signed out everywhere and sign in again with this address. If you did not ask for this, ignore this e-mail; nothing changes.",
                     link,
                     workspaceLine
-                )
-            );
-            await _emailService.SendAsync(
-                identity.Email,
-                $"Your {brand.ProductName} e-mail address is being changed",
-                BuildEmailChangeHtml(
-                    "Your e-mail address is being changed",
-                    $"Someone signed in to your account and asked to change its e-mail address to {System.Net.WebUtility.HtmlEncode(newEmail)}. If that was you, confirm it from the e-mail we sent there. If it was not you, change your password now — that cancels the request.",
-                    null,
-                    null
                 )
             );
         }
@@ -454,32 +464,49 @@ public class AuthService : IAuthService
             || identity.SecurityStamp != stamp
             || identity.PasswordlessOnly
             || identity.Role?.IsSuperAdmin == true
+            || !identity.IsActive
         )
             return Result.Failure(MessageKeys.User.EmailChangeLinkInvalid);
 
         var newEmail = EmailNormalizer.NormalizeRequired(payload);
         if (newEmail == identity.Email)
             // Stamp rotation makes a genuine re-click impossible (the token no longer validates);
-            // be explicit anyway rather than relying on that alone.
-            return Result.Success(MessageKeys.User.EmailChanged);
+            // this branch is unreachable in practice. Review finding #3: it must not return a bare
+            // 200 with no audit row (strict-coverage would turn that into a 500) — treat it as the
+            // same invalid-link failure as every other unreachable/tampered case.
+            return Result.Failure(MessageKeys.User.EmailChangeLinkInvalid);
 
         // D14 again: someone may have registered the address during the 30-minute window.
         if (await _memberships.FindIdentityByEmailAsync(newEmail) is not null)
             return Result.Conflict(MessageKeys.User.EmailTaken);
 
         var oldEmail = identity.Email;
+        var oldStamp = identity.SecurityStamp;
+        var oldRecipientEmail = identity.RecipientEmail;
         identity.Email = newEmail;
         identity.SecurityStamp = Guid.NewGuid();
+        // Review finding #6: a demo identity's recipient_email override must not keep receiving
+        // mail addressed to an account whose sign-in address has moved on.
+        if (identity.RecipientEmail != null)
+            identity.RecipientEmail = null;
         _unitOfWork.Repository<User>().Update(identity);
 
         try
         {
             await _unitOfWork.SaveChangesAsync();
         }
-        catch (DbUpdateException e) when (e.InnerException is PostgresException { SqlState: "23505" })
+        catch (DbUpdateException e)
+            when (e.InnerException is PostgresException { SqlState: "23505", ConstraintName: "ux_users_email_live" })
         {
             // ux_users_email_live (R14) is the authority for case variants the check above might
             // miss (InMemory tests never hit this branch — the rehearsal/production DB does).
+            // Review finding #2: the constraint name is checked explicitly (never swallow an
+            // unrelated 23505), and the in-memory mutation is reverted and detached so the tracked
+            // entity is not left Modified with a change that was never persisted.
+            identity.Email = oldEmail;
+            identity.SecurityStamp = oldStamp;
+            identity.RecipientEmail = oldRecipientEmail;
+            _unitOfWork.ClearChangeTracker();
             return Result.Conflict(MessageKeys.User.EmailTaken);
         }
 
@@ -528,9 +555,12 @@ public class AuthService : IAuthService
         string? workspaceLine
     )
     {
+        // Review finding #8: the token itself is already Uri.EscapeDataString-encoded, but the
+        // link as a whole (scheme/host from branding config) is still untrusted enough to encode
+        // before it lands inside an href attribute.
         var linkHtml =
             link != null
-                ? $@"<p><a href=""{link}"" style=""color:#2563eb"">Confirm my new e-mail &rarr;</a></p>"
+                ? $@"<p><a href=""{System.Net.WebUtility.HtmlEncode(link)}"" style=""color:#2563eb"">Confirm my new e-mail &rarr;</a></p>"
                 : string.Empty;
         return $@"<div style=""font-family:system-ui,sans-serif;color:#0f172a;line-height:1.6"">
   <h2 style=""margin:0 0 8px"">{heading}</h2>
