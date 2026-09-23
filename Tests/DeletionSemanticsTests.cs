@@ -36,6 +36,8 @@ public class DeletionSemanticsTests
         public int? RoleId { get; set; }
         public string? KeyScopes { get; set; }
         public string? Scope { get; set; }
+        public long? ImpersonationSessionId { get; set; }
+        public bool IsImpersonating => ImpersonationSessionId != null;
     }
 
     private sealed class IdentityHasher : IPasswordHasher
@@ -102,6 +104,8 @@ public class DeletionSemanticsTests
         public string Issue(User user, WorkspaceMembership? membership, int? keyScopes = null) =>
             "token-for-" + user.PublicId.ToString("N");
         public string IssueSelection(User user) => "sel-for-" + user.PublicId.ToString("N");
+        public string IssueImpersonation(User user, Guid workspace, long sessionId, DateTime expiresAt) =>
+            "imp-for-" + user.PublicId.ToString("N");
     }
 
     private sealed class RecordingFileStorage : IFileStorage
