@@ -71,6 +71,10 @@ builder.Services.AddControllers(options =>
     // DB-14: admin-write gate — 403s a non-GET action under Pointer.API.Controllers.Admin when the
     // caller's identity is unverified (super admin, IsDemo, and [AllowUnverified] are exempt).
     options.Filters.Add<Pointer.API.Auth.RequireVerifiedEmailFilter>();
+    // DB-18: workspace-freeze gate — 423s a non-GET action (and every key-session call, reads
+    // included) while the caller's workspace is paused or has a scheduled deletion, unless the
+    // action carries [AllowWhenWorkspacePaused].
+    options.Filters.Add<Pointer.API.Auth.WorkspaceFrozenFilter>();
 });
 builder.Services.AddEndpointsApiExplorer();
 
@@ -105,6 +109,9 @@ builder.Services.AddJwtAuth(builder.Configuration);
 builder.Services.AddAuthorization();
 builder.Services.AddHostedService<DemoCleanupService>();
 builder.Services.AddHostedService<RetentionService>();
+
+// DB-18: self-service workspace deletion — T-24h reminders + the grace-period sweep.
+builder.Services.AddHostedService<WorkspaceDeletionService>();
 
 // UptimePingService needs IHttpClientFactory. Infrastructure only registers a typed HttpClient for the
 // Brevo sender, so with Email:Provider=smtp (the e2e compose stack) the factory was missing and the
@@ -152,7 +159,8 @@ builder.Services.AddCors(o =>
         p.AllowAnyOrigin()
             .AllowAnyHeader()
             .AllowAnyMethod()
-            .WithExposedHeaders("X-Email-Verification-Required")
+            // DB-18: exposes the freeze header a 423 carries, to the widget/dashboard.
+            .WithExposedHeaders("X-Email-Verification-Required", "X-Workspace-Paused")
     );
     o.AddPolicy(
         DashboardCorsPolicy,
@@ -160,7 +168,7 @@ builder.Services.AddCors(o =>
             p.WithOrigins(dashboardOrigins)
                 .AllowAnyHeader()
                 .AllowAnyMethod()
-                .WithExposedHeaders("X-Email-Verification-Required")
+                .WithExposedHeaders("X-Email-Verification-Required", "X-Workspace-Paused")
     );
 });
 
@@ -435,6 +443,10 @@ static bool IsDashboardOnly(HttpContext ctx)
 {
     var path = ctx.Request.Path;
     if (path.StartsWithSegments("/api/admin", StringComparison.OrdinalIgnoreCase))
+        return true;
+    // DB-18 (Opus LOW): the anonymous deletion-confirmation token endpoints redeem a scoped
+    // e-mail link and must not be callable cross-origin from arbitrary sites — dashboard-only, like /me.
+    if (path.StartsWithSegments("/api/auth/workspace-deletion", StringComparison.OrdinalIgnoreCase))
         return true;
     // Dashboard-only auth endpoints — NOT login/register/register-admin/register-invite/
     // signup-enabled, which the widget calls in-page from arbitrary host origins and must stay

@@ -88,6 +88,9 @@ services:
       # Flip the env var below to true on first abuse; no code change needed.
       Demo__ConvertRequiresVerification: "${DEMO_CONVERT_REQUIRES_VERIFICATION:-false}"
       Demo__ConvertVerifyHours: "${DEMO_CONVERT_VERIFY_HOURS:-72}"
+      # DB-18: self-service workspace deletion — grace period + sweep cadence.
+      WorkspaceDeletion__GraceDays: "${WORKSPACE_DELETION_GRACE_DAYS:-7}"
+      WorkspaceDeletion__SweepMinutes: "${WORKSPACE_DELETION_SWEEP_MINUTES:-15}"
     volumes: ["uploads:/app/wwwroot/uploads"]
     # Not published to the host — Caddy is the only public entrypoint.
 

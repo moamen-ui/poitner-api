@@ -6,6 +6,7 @@ using Pointer.Application.Common;
 using Pointer.Application.DTOs.Auth;
 using Pointer.Application.DTOs.Invite;
 using Pointer.Application.DTOs.Mfa;
+using Pointer.Application.DTOs.Workspace;
 using Pointer.Application.Response;
 using Pointer.Application.Services.Interfaces;
 
@@ -13,13 +14,19 @@ namespace Pointer.API.Controllers;
 
 [ApiController]
 [Route("api/auth")]
+// DB-18 §3.5: personal/identity actions (login, MFA verify, switch workspace, device approve/deny,
+// …) stay reachable while the workspace is frozen — a freeze is a workspace-content lock, not an
+// account lock. Me additionally needs AllowKeySessions (below) so `pointer whoami`/`apply` can read
+// and explain the frozen state.
+[AllowWhenWorkspacePaused]
 public class AuthController(
     IAuthService authService,
     ISettingsService settingsService,
     IInviteService inviteService,
     IDeviceLoginService deviceLoginService,
     IIdentityEraseService eraseService,
-    IEmailVerificationService emailVerification) : ControllerBase
+    IEmailVerificationService emailVerification,
+    IWorkspaceLifecycleService workspaceLifecycle) : ControllerBase
 {
     [AllowAnonymous]
     [Audited(AuditActions.AuthLoginSucceeded)]
@@ -132,6 +139,9 @@ public class AuthController(
     [Authorize]
     [NoAudit("read of the caller's own profile")]
     [HttpGet("me")]
+    // DB-18: key sessions get 423 on everything else while frozen, but `pointer whoami`/`apply`
+    // must still be able to read and explain the frozen state.
+    [AllowWhenWorkspacePaused(AllowKeySessions = true)]
     [ProducesResponseType(typeof(MeResponse), StatusCodes.Status200OK)]
     public async Task<IActionResult> Me()
     {
@@ -205,6 +215,53 @@ public class AuthController(
     {
         var result = await eraseService.EraseByTokenAsync(request.Token);
         if (result.IsConflict) return Conflict(result);
+        return result.IsSuccess ? Ok(result) : BadRequest(result);
+    }
+
+    // ── DB-18: anonymous workspace-deletion token redemption (dashboard-only CORS — Program.cs
+    // IsDashboardOnly) ────────────────────────────────────────────────────────────────────────
+
+    /// <summary>What the confirm-deletion link is about to delete — read of a deletion preview; the
+    /// token is the credential, so no separate authentication is required or possible.</summary>
+    [AllowAnonymous]
+    [NoAudit("read of a deletion preview; the token is the credential")]
+    [HttpPost("workspace-deletion/preview")]
+    [EnableRateLimiting("danger")]
+    [ProducesResponseType(typeof(WorkspaceDeletionPreviewResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(Result), StatusCodes.Status400BadRequest)]
+    public async Task<IActionResult> WorkspaceDeletionPreview([FromBody] WorkspaceDeletionTokenRequest request)
+    {
+        var result = await workspaceLifecycle.PreviewDeletionAsync(request.Token);
+        return result.IsSuccess ? Ok(result) : BadRequest(result);
+    }
+
+    /// <summary>Confirms the scheduled deletion with the link + password (+ typed workspace name).
+    /// Anonymous by necessity — the token is the credential.</summary>
+    [AllowAnonymous]
+    [Audited(AuditActions.WorkspaceDeletionConfirmed)]
+    [HttpPost("workspace-deletion/confirm")]
+    [EnableRateLimiting("danger")]
+    [ProducesResponseType(typeof(WorkspaceDeletionScheduledResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(Result), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(Result), StatusCodes.Status403Forbidden)]
+    public async Task<IActionResult> WorkspaceDeletionConfirm([FromBody] ConfirmWorkspaceDeletionRequest request)
+    {
+        var result = await workspaceLifecycle.ConfirmDeletionAsync(request);
+        if (result.IsForbidden) return StatusCode(StatusCodes.Status403Forbidden, result);
+        return result.IsSuccess ? Ok(result) : BadRequest(result);
+    }
+
+    /// <summary>Pauses the workspace instead of deleting it, from the confirm-deletion link; always
+    /// spends the link. Anonymous by necessity — the token is the credential.</summary>
+    [AllowAnonymous]
+    [Audited(AuditActions.WorkspacePaused)]
+    [HttpPost("workspace-deletion/pause-instead")]
+    [EnableRateLimiting("danger")]
+    [ProducesResponseType(typeof(Result), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(Result), StatusCodes.Status400BadRequest)]
+    public async Task<IActionResult> WorkspaceDeletionPauseInstead([FromBody] WorkspaceDeletionTokenRequest request)
+    {
+        var result = await workspaceLifecycle.PauseInsteadAsync(request.Token);
         return result.IsSuccess ? Ok(result) : BadRequest(result);
     }
 

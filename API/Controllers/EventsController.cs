@@ -16,6 +16,9 @@ public class EventsController(IUsageEventService usageEventService) : Controller
     [NoAudit("analytics beacon")]
     [HttpPost("api/events")]
     [Authorize]
+    // DB-18: telemetry — method level only (class level would also open GetSummary, an Admin-only
+    // read, to key sessions — Opus LOW). AllowKeySessions so CLI/MCP telemetry keeps working while frozen.
+    [AllowWhenWorkspacePaused(AllowKeySessions = true)]
     [EnableRateLimiting("events")]
     [ProducesResponseType(204)]
     [ProducesResponseType(typeof(Result<bool>), 400)]
@@ -24,10 +27,16 @@ public class EventsController(IUsageEventService usageEventService) : Controller
     public async Task<IActionResult> RecordEvent([FromBody] RecordEventRequest request)
     {
         var source = string.IsNullOrWhiteSpace(request.Source) ? "cli" : request.Source;
-        var result = await usageEventService.RecordEventAsync(request.Type, source, request.ProjectKey, request.Meta);
+        var result = await usageEventService.RecordEventAsync(
+            request.Type,
+            source,
+            request.ProjectKey,
+            request.Meta
+        );
         if (!result.IsSuccess)
         {
-            if (result.IsNotFound) return NotFound(result);
+            if (result.IsNotFound)
+                return NotFound(result);
             return BadRequest(result);
         }
         return NoContent();

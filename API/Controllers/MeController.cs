@@ -16,6 +16,9 @@ namespace Pointer.API.Controllers;
 [Route("api/me")]
 [Authorize]
 [Produces("application/json")]
+// DB-18 §3.5: personal (not workspace-content) actions — password, e-mail, preferences,
+// notification read-state, leave, erase, api-key regenerate — stay reachable while frozen.
+[AllowWhenWorkspacePaused]
 public class MeController(
     IPreferencesService preferencesService,
     IProfileService profileService,

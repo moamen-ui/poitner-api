@@ -78,6 +78,28 @@ public static class RateLimitingExtensions
                     QueueLimit = 0
                 }));
 
+        // DB-18 §3.7 — a documented R16 departure (DB-RULES R16 amendment): the anonymous
+        // workspace-deletion token endpoints (preview/confirm/pause-instead) redeem a scoped token
+        // several times per link (unlike the single-shot "signup" flows), so they get their own
+        // fixed-window budget instead of sharing "signup"'s 5/h/IP (too small once preview + confirm
+        // + a retry or two are counted, and shared with unrelated signup/reset traffic). Partitioned
+        // by identity (sub claim) + IP when authenticated (the session-side request/cancel actions),
+        // IP alone otherwise (the anonymous token redemptions) — Opus MEDIUM.
+        var dangerPermitLimit = 10;
+        var configuredDanger = configuration?["Security:RateLimits:DangerPer10Min"];
+        if (int.TryParse(configuredDanger, out var parsedDanger) && parsedDanger > 0)
+            dangerPermitLimit = parsedDanger;
+
+        o.AddPolicy("danger", ctx =>
+            RateLimitPartition.GetFixedWindowLimiter(
+                DangerPartitionKey(ctx),
+                _ => new FixedWindowRateLimiterOptions
+                {
+                    PermitLimit = dangerPermitLimit,
+                    Window = TimeSpan.FromMinutes(10),
+                    QueueLimit = 0
+                }));
+
         // Device-code sign-in (`pointer login`). `start` mints a code — a handful per network is
         // plenty. `poll` is the CLI asking "approved yet?" every ~3s for up to 10 minutes; sharing the
         // 5-per-hour "signup" budget with it (the original wiring) exhausted the budget 15 seconds
@@ -235,5 +257,20 @@ public static class RateLimitingExtensions
         return !string.IsNullOrEmpty(userId)
             ? $"user:{userId}"
             : $"ip:{ctx.Connection.RemoteIpAddress?.ToString() ?? "unknown"}";
+    }
+
+    /// <summary>
+    /// DB-18: "danger" partitions by identity (sub claim) + IP when authenticated (so one identity
+    /// behind a shared NAT does not share a budget with everyone else on it), IP alone otherwise
+    /// (the anonymous token-redemption endpoints have no identity yet).
+    /// </summary>
+    public static string DangerPartitionKey(HttpContext ctx)
+    {
+        var userId = ctx.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value
+                     ?? ctx.User.FindFirst(Microsoft.IdentityModel.JsonWebTokens.JwtRegisteredClaimNames.Sub)?.Value
+                     ?? ctx.User.FindFirst("sub")?.Value;
+        var ip = ctx.Connection.RemoteIpAddress?.ToString() ?? "unknown";
+
+        return !string.IsNullOrEmpty(userId) ? $"user:{userId}:ip:{ip}" : $"ip:{ip}";
     }
 }

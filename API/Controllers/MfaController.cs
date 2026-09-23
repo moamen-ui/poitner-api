@@ -20,6 +20,9 @@ namespace Pointer.API.Controllers;
 [Route("api/me/mfa")]
 [Authorize]
 [Tags("Me")]
+// DB-18 §3.5: MFA is super-admin-only (no workspace of its own), but listed explicitly — the
+// coverage test (WorkspaceFreezeCoverageTests) pins this class as one of the always-allowed ones.
+[AllowWhenWorkspacePaused]
 public class MfaController(IMfaService mfaService) : ControllerBase
 {
     /// <summary>Generates and stores a fresh (unverified) TOTP secret. Requires the caller's current

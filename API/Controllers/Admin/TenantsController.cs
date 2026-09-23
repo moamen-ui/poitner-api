@@ -17,7 +17,8 @@ namespace Pointer.API.Controllers.Admin;
 public class TenantsController(
     ITenantService tenantService,
     ITenantInviteService tenantInvites,
-    IImpersonationService impersonationService
+    IImpersonationService impersonationService,
+    IWorkspaceLifecycleService lifecycle
 ) : ControllerBase
 {
     // ── Workspace invitations — the primary way to onboard a tenant ──────────────────────────────
@@ -112,6 +113,50 @@ public class TenantsController(
         var result = await tenantService.SetStatusAsync(workspaceId, request.Action);
         if (result.IsNotFound)
             return NotFound(result);
+        return result.IsSuccess ? Ok(result) : BadRequest(result);
+    }
+
+    // DB-18 (D18.6): the membership approve/enable/disable action above is unchanged (person-scoped)
+    // — these three are the new WORKSPACE-scoped operator lifecycle actions.
+
+    [HttpPost("{workspaceId:guid}/pause")]
+    [Audited(AuditActions.WorkspacePaused)]
+    [ProducesResponseType(typeof(Result), StatusCodes.Status200OK)]
+    public async Task<IActionResult> OperatorPause(Guid workspaceId)
+    {
+        var result = await lifecycle.OperatorPauseAsync(workspaceId);
+        if (result.IsForbidden)
+            return StatusCode(StatusCodes.Status403Forbidden, result);
+        if (result.IsNotFound)
+            return NotFound(result);
+        return result.IsSuccess ? Ok(result) : BadRequest(result);
+    }
+
+    [HttpPost("{workspaceId:guid}/resume")]
+    [Audited(AuditActions.WorkspaceResumed)]
+    [ProducesResponseType(typeof(Result), StatusCodes.Status200OK)]
+    public async Task<IActionResult> OperatorResume(Guid workspaceId)
+    {
+        var result = await lifecycle.OperatorResumeAsync(workspaceId);
+        if (result.IsForbidden)
+            return StatusCode(StatusCodes.Status403Forbidden, result);
+        if (result.IsNotFound)
+            return NotFound(result);
+        return result.IsSuccess ? Ok(result) : BadRequest(result);
+    }
+
+    [HttpPost("{workspaceId:guid}/deletion/cancel")]
+    [Audited(AuditActions.WorkspaceDeletionCancelled)]
+    [ProducesResponseType(typeof(Result), StatusCodes.Status200OK)]
+    public async Task<IActionResult> OperatorCancelDeletion(Guid workspaceId)
+    {
+        var result = await lifecycle.OperatorCancelDeletionAsync(workspaceId);
+        if (result.IsForbidden)
+            return StatusCode(StatusCodes.Status403Forbidden, result);
+        if (result.IsNotFound)
+            return NotFound(result);
+        if (result.IsConflict)
+            return Conflict(result);
         return result.IsSuccess ? Ok(result) : BadRequest(result);
     }
 

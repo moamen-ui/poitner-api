@@ -34,17 +34,21 @@ public class InvitesController(IInviteService service) : ControllerBase
     public async Task<IActionResult> Create([FromBody] CreateInviteRequest request)
     {
         var result = await service.CreateAsync(request);
-        if (result.IsForbidden) return StatusCode(StatusCodes.Status403Forbidden, result);
+        if (result.IsForbidden)
+            return StatusCode(StatusCodes.Status403Forbidden, result);
         return result.IsSuccess ? Ok(result) : BadRequest(result);
     }
 
     [HttpDelete("{id:int}")]
     [Audited(AuditActions.InviteRevoked)]
+    // DB-18: revoking an invite (incl. a quick-access link) is access-removing — always allowed while frozen.
+    [AllowWhenWorkspacePaused]
     [ProducesResponseType(typeof(InviteRevokeResponse), StatusCodes.Status200OK)]
     public async Task<IActionResult> Revoke(int id)
     {
         var result = await service.RevokeAsync(id);
-        if (result.IsNotFound) return NotFound(result);
+        if (result.IsNotFound)
+            return NotFound(result);
         return result.IsSuccess ? Ok(result) : BadRequest(result);
     }
 
@@ -55,12 +59,15 @@ public class InvitesController(IInviteService service) : ControllerBase
     /// </summary>
     [HttpPost("{id:int}/quick-link/rotate")]
     [Audited(AuditActions.InviteQuickLinkRotated)]
+    // DB-18: rotating a leaked link revokes the old one — access-removing, allowed while frozen.
+    [AllowWhenWorkspacePaused]
     [ProducesResponseType(typeof(InviteResponse), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(Result), StatusCodes.Status404NotFound)]
     public async Task<IActionResult> RotateQuickLink(int id)
     {
         var result = await service.RotateQuickLinkAsync(id);
-        if (result.IsNotFound) return NotFound(result);
+        if (result.IsNotFound)
+            return NotFound(result);
         return result.IsSuccess ? Ok(result) : BadRequest(result);
     }
 }

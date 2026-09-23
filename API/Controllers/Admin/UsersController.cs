@@ -67,6 +67,10 @@ public class UsersController(IUserService userService, IProfileService profileSe
 
     [HttpPatch("{id:int}")]
     [Audited(AuditActions.MemberUpdated)]
+    // DB-18 (Opus HIGH 2): a freeze must never stop an admin from locking someone out — this route
+    // can also GRANT (Password/IsActive=true/an admin-tier RoleId), so UserService.UpdateAsync
+    // itself refuses those specific fields while frozen (§3.5).
+    [AllowWhenWorkspacePaused]
     [ProducesResponseType(typeof(UserResponse), StatusCodes.Status200OK)]
     public async Task<IActionResult> Update(int id, [FromBody] UpdateUserRequest request)
     {
@@ -87,6 +91,8 @@ public class UsersController(IUserService userService, IProfileService profileSe
 
     [HttpDelete("{id:int}")]
     [Audited(AuditActions.MemberRemoved)]
+    // DB-18: member removal is access-removing — always allowed while frozen.
+    [AllowWhenWorkspacePaused]
     [ProducesResponseType(StatusCodes.Status200OK)]
     public async Task<IActionResult> Delete(int id)
     {
