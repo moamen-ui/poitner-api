@@ -109,6 +109,9 @@ It also purges screenshot files of comments soft-deleted > 30 d and orphan files
 `uploads/` (never `uploads/branding/`), logging a per-pass volume line; `RETENTION_SCREENSHOT_PURGE_DRY_RUN`
 (default true) makes it log-only.
 
+Admin-requested workspace deletions run from `WorkspaceDeletionService` after `WORKSPACE_DELETION_GRACE_DAYS`
+(default 7, cancellable until then); restoring one means restoring a dump — see "Restore" below.
+
 Two callers:
 
 - **Before every API deploy** — `scripts/deploy-api.sh` calls it with the label `pre-deploy`. That

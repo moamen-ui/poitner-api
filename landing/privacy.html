@@ -258,13 +258,16 @@
           <tr><td>Dead (unaccepted/expired) invites</td><td>90 days</td></tr>
           <tr><td>Screenshots of deleted comments</td><td>30 days after the comment is deleted</td></tr>
           <tr><td>Demo workspaces (not converted) and the e-mail used to request them</td><td>24 hours after the demo starts (one 24-hour extension possible); deleted with the workspace</td></tr>
+          <tr><td>Workspaces deleted by their admin</td><td>Deleted 7 days after the admin confirms (cancellable until then); remaining backup copies expire within 30 days</td></tr>
         </tbody>
       </table>
     </div>
     <p>
       A full account deletion tombstones your account: your comments and replies are kept but
       re-attributed to the tombstone rather than your name. A full, unrecoverable hard-delete of a
-      workspace's comment rows happens only when the whole workspace is deleted.
+      workspace's comment rows happens only when the whole workspace is deleted — including when a
+      workspace admin requests it themselves (Settings → Danger zone), after the cancellable grace
+      period above.
     </p>
 
     <h2 id="residency"><span class="num">8.</span>Data residency</h2>
