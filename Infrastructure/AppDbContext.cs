@@ -249,7 +249,9 @@ public class AppDbContext(
 
         // UserRecoveryCode: no filter — R5-61, belongs only to the one env-seeded super-admin
         // account (no tenant/OwnerId concept at all); every read/write is a direct UserId lookup
-        // inside MfaService, gated on Role.IsSuperAdmin, never listed across tenants.
+        // inside MfaService, gated on Role.IsSuperAdmin, never listed across tenants. DB-RULES R8
+        // point 3: an identity-level table is a documented exemption from the strict-own filter,
+        // same shape as the DeviceLogin exemption above.
 
         // Subscription + ExtensionSite: strict-own (OwnerId non-null) — like Invite.
         b.Entity<Subscription>()

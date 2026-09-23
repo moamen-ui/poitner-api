@@ -12,8 +12,10 @@ namespace Pointer.Application.Services.Interfaces;
 public interface IMfaService
 {
     /// <summary>POST /api/me/mfa/enrol — generates and stores a fresh (unverified) TOTP secret.
-    /// 403 if not super admin; 409 if MFA is already enabled.</summary>
-    Task<Result<MfaEnrolResponse>> EnrolAsync();
+    /// 403 if not super admin, if the caller holds an API-key-scoped session, or if the current
+    /// password is wrong; 409 if MFA is already enabled; a plain failure for a passwordless
+    /// account (review fixes #4/#5).</summary>
+    Task<Result<MfaEnrolResponse>> EnrolAsync(MfaEnrolRequest request);
 
     /// <summary>POST /api/me/mfa/verify — validates the code against the pending secret; on success,
     /// enables MFA and mints 8 recovery codes (returned once). 403 not super admin; 409 already

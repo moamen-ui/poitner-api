@@ -45,21 +45,24 @@ public class ApiKeyProtector : IApiKeyProtector
         var signingKey = config[JwtSigningKeyPath];
         if (string.IsNullOrWhiteSpace(signingKey))
             throw new InvalidOperationException(
-                $"Neither {ConfiguredKeyPath} nor {JwtSigningKeyPath} is configured — cannot protect API keys.");
+                $"Neither {ConfiguredKeyPath} nor {JwtSigningKeyPath} is configured — cannot protect API keys."
+            );
 
         log.LogWarning(
             "{Path} is not set; deriving the API-key encryption key from {Fallback}. Set a dedicated "
                 + "32-byte base64 key in production (openssl rand -base64 32). Rotating either value makes "
                 + "existing keys undisplayable — logins keep working, since they match on the hash.",
             ConfiguredKeyPath,
-            JwtSigningKeyPath);
+            JwtSigningKeyPath
+        );
 
         _key = HKDF.DeriveKey(
             HashAlgorithmName.SHA256,
             Encoding.UTF8.GetBytes(signingKey),
             KeyBytes,
             salt: null,
-            info: DerivationInfo);
+            info: DerivationInfo
+        );
     }
 
     private static byte[] DecodeConfiguredKey(string configured)
@@ -72,12 +75,14 @@ public class ApiKeyProtector : IApiKeyProtector
         catch (FormatException)
         {
             throw new InvalidOperationException(
-                $"{ConfiguredKeyPath} must be base64 (openssl rand -base64 32).");
+                $"{ConfiguredKeyPath} must be base64 (openssl rand -base64 32)."
+            );
         }
 
         if (decoded.Length != KeyBytes)
             throw new InvalidOperationException(
-                $"{ConfiguredKeyPath} must decode to exactly {KeyBytes} bytes, got {decoded.Length}.");
+                $"{ConfiguredKeyPath} must decode to exactly {KeyBytes} bytes, got {decoded.Length}."
+            );
 
         return decoded;
     }
@@ -85,6 +90,16 @@ public class ApiKeyProtector : IApiKeyProtector
     public string Hash(string key)
     {
         var bytes = SHA256.HashData(Encoding.UTF8.GetBytes(key));
+        return Convert.ToHexString(bytes).ToLowerInvariant();
+    }
+
+    /// <summary>R5-61 review fix #2 — HMAC-SHA256 keyed with the same <see cref="_key"/> the AES-GCM
+    /// encryption uses (never the raw plaintext of anything else). Peppers a low-entropy value (a
+    /// recovery code) so a database-only leak cannot be brute-forced offline the way a bare SHA-256
+    /// hash could.</summary>
+    public string HmacHex(string value)
+    {
+        var bytes = HMACSHA256.HashData(_key, Encoding.UTF8.GetBytes(value));
         return Convert.ToHexString(bytes).ToLowerInvariant();
     }
 

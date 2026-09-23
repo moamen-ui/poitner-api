@@ -17,6 +17,17 @@ public interface ITotpService
     /// (3 windows total) for clock skew. <paramref name="secret"/> is the base32 secret.</summary>
     bool ValidateCode(string secret, string code);
 
+    /// <summary>
+    /// R5-61 review fix #1 (replay protection) — same validation as <see cref="ValidateCode"/>, but
+    /// also returns the RFC 6238 time-step counter (<paramref name="step"/>) the code matched, so the
+    /// caller can refuse a code whose step is <c>&lt;= (User.TotpLastStep ?? -1)</c> and persist the
+    /// new watermark. On success <paramref name="step"/> is the matched (highest, if more than one
+    /// window somehow matches) counter; on failure it is a fixed non-matching sentinel (<c>-1</c>) —
+    /// never a real counter for a false return, so a caller cannot accidentally treat a failed match
+    /// as "step -1 accepted".
+    /// </summary>
+    bool TryValidateCode(string secret, string code, out long step);
+
     /// <summary>The otpauth:// URL a QR-code generator renders.</summary>
     string GenerateOtpAuthUrl(string email, string secret, string issuer = "Pointer");
 }

@@ -53,6 +53,7 @@ On the `users` table (not a new table — super-admin is a User row):
 |---|---|---|
 | `totp_secret` | `text NULL` | AES-256-GCM encrypted via `ApiKeyProtector.Encrypt()`. NULL = MFA not enrolled. |
 | `totp_enabled_at` | `timestamptz NULL` | Set when TOTP is verified and enabled. NULL = not enabled. |
+| `totp_last_step` | `bigint NULL` | *(review fix #1, replay protection)* RFC 6238 time-step counter of the last code accepted (enrol-verify, login-complete, or disable). A code whose step is `<= (totp_last_step ?? -1)` is refused even if otherwise valid for the current ±1 window — stops the same 6-digit code being replayed inside the ~30s window it was issued for. Nulled again on disable (clean slate for a future re-enrol). |
 
 New table `user_recovery_codes`:
 
@@ -60,11 +61,31 @@ New table `user_recovery_codes`:
 |---|---|---|
 | `id` | `int` (PK, identity) | |
 | `user_id` | `int` (FK → users.id) | |
-| `code_hash` | `text NOT NULL` | SHA-256 hash of the recovery code (same `IApiKeyProtector.Hash()`). |
+| `code_hash` | `text NOT NULL` | *(review fix #2)* Lowercase hex HMAC-SHA256 of the 16-char (80-bit) recovery code, keyed from `IApiKeyProtector`'s own key material (`HmacHex()`) — not a bare SHA-256 hash, so a database-only leak cannot be brute-forced offline the way the original 8-char/bare-hash design could. |
 | `used_at` | `timestamptz NULL` | Set when consumed; row kept for audit. |
 
-Migration name: `AddOperatorMfa`. Additive only (R1): new nullable columns on `users`, new table.
-No existing column modified. The DB-02 guard applies normally (no approval marker needed for R1).
+Migration name: `AddOperatorMfa`. Additive only (**DB-RULES R1**): new nullable columns on `users`
+(`totp_secret`, `totp_enabled_at`, `totp_last_step`), new table (`user_recovery_codes`). No existing
+column modified. The DB-02 guard applies normally (no approval marker needed for R1).
+
+**DB rules cited (review fix #6):**
+- **R1 (additive)** — every column here is a new nullable column or a new table; nothing existing is
+  touched, so no `[ContractMigration]`/approval marker is needed.
+- **R8 point 3 (query-filter exemption)** — `user_recovery_codes` carries no `owner_id` and gets no
+  tenant/strict-own query filter (`AppDbContext.OnModelCreating`): it is an identity-level table
+  (rows belong to the one env-seeded super-admin identity, not a workspace), the same documented
+  exemption shape as `DeviceLogin`. `MfaService` gates every read/write on `Role.IsSuperAdmin`
+  instead (§3.4).
+- **R14 (no PII beyond user id)** — `user_recovery_codes.user_id` is a structural-child FK to
+  `users.id` (R14's second reference kind); `code_hash` is a one-way (peppered) hash of a
+  server-generated code, never an e-mail, name, or other personal field.
+- **R17 (audit obligation)** — every `auth.mfa.*` action (`auth.mfa.enrolled`, `auth.mfa.disabled`,
+  `auth.mfa.challenge_failed`) is a security-relevant mutation on the one super-admin account and
+  writes exactly one audit row via `IAuditWriter`, after its own `SaveChangesAsync`, using an
+  `AuditActions` constant.
+
+These citations are mirrored in the `UserRecoveryCodeMapping.cs` and `AppDbContext.cs` mapping
+comments.
 
 ### 3.2 Enrol flow
 
@@ -128,6 +149,17 @@ because there is exactly one super-admin account, not a general MFA-for-all-user
 
 Non-super-admin users are completely unaffected. The `totp_secret` and `totp_enabled_at` columns
 are on the `users` table but only read/written by MFA-specific code paths that gate on `IsSuperAdmin`.
+
+**Review fix #3 — `login-with-key` cannot bypass MFA.** `POST /api/auth/login-with-key`
+(`AuthService.LoginWithApiKeyAsync`) is a *different* credential from the password login above, and
+was not gated at all in the original design: an API key for a super-admin identity with
+`totp_enabled_at != null` would otherwise mint a full 12h token straight away, with no code ever
+checked. Decision: a super-admin identity with MFA enabled is refused on this path
+(`Failure(MessageKeys.Mfa.ApiKeyCannotSatisfyMfa)`), full stop — API keys cannot bypass MFA. The
+practical consequence (also in §10): **before enabling MFA on the super-admin account, revoke any
+existing operator API keys** (or accept that they simply stop working for `login-with-key`; they
+still work for whatever they were originally minted for, if anything, since the key itself is
+unaffected — only this specific login exchange refuses).
 
 ### 3.5 TOTP implementation
 
@@ -244,6 +276,21 @@ rehearsal DB first.
 MFA for non-super-admin users, WebAuthn/FIDO2, SMS-based 2FA, email-based 2FA, remember-device,
 trusted-device list, session list, MFA enforcement policy (e.g. "require MFA for all admins"),
 backup phone number, MFA for API-key login (`login-with-key`), MFA for device-code login.
+
+**Review fix #3, clarified:** "MFA for API-key login" above is not merely unimplemented — a
+super-admin identity with MFA enabled is **actively refused** on `POST /api/auth/login-with-key`
+(`MessageKeys.Mfa.ApiKeyCannotSatisfyMfa`), never silently issued a full token. Operational
+consequence: **API keys cannot bypass MFA — revoke operator keys before enabling MFA** on that
+account (an unrevoked key stops being usable for this one exchange the moment MFA turns on; it was
+never a working bypass, but any automation that relied on `login-with-key` for this account needs a
+different auth path once MFA is on).
+
+**Review fix #8, clock skew note:** `AddJwtAuth`'s `TokenValidationParameters.ClockSkew` is set to
+30 seconds (down from the JWT-bearer default of 5 minutes). The default would have let a 5-minute
+`scope=mfa_pending` token (and the similarly short-lived workspace-selection token) remain
+acceptable for up to ~10 minutes past mint — nearly doubling the real window an intercepted pending
+token works in. 30s is generous for genuine clock drift (server-to-server, same process even) without
+materially loosening the 12h full-session token's own expiry check.
 
 ## 11. Dashboard tasks
 

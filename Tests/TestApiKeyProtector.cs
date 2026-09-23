@@ -17,8 +17,20 @@ public sealed class TestApiKeyProtector : IApiKeyProtector
     public string Hash(string key) =>
         Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(key))).ToLowerInvariant();
 
+    // Fixed test-only pepper key — real behavior (keyed, deterministic, distinct from Hash) without
+    // needing any configuration.
+    private static readonly byte[] PepperKey = Encoding.UTF8.GetBytes(
+        "test-hmac-pepper-key-0123456789"
+    );
+
+    public string HmacHex(string value) =>
+        Convert
+            .ToHexString(HMACSHA256.HashData(PepperKey, Encoding.UTF8.GetBytes(value)))
+            .ToLowerInvariant();
+
     // Reversible and plaintext-free: enough for round-trip assertions without real crypto.
-    public string Encrypt(string key) => Convert.ToBase64String(Encoding.UTF8.GetBytes("v1:" + key));
+    public string Encrypt(string key) =>
+        Convert.ToBase64String(Encoding.UTF8.GetBytes("v1:" + key));
 
     public string? Decrypt(string blob)
     {

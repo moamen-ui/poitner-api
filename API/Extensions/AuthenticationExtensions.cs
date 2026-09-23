@@ -82,6 +82,14 @@ public static class AuthenticationExtensions
                     ValidateIssuerSigningKey = true,
                     NameClaimType = JwtRegisteredClaimNames.Sub,
                     RoleClaimType = "role",
+                    // R5-61 review fix #8: the default 5-minute ClockSkew tolerance is fine for a
+                    // 12h session token, but it lets a 5-minute scope=mfa_pending token (or the
+                    // similarly short-lived selection token) actually stay valid for up to ~10
+                    // minutes past mint — nearly doubling the window an intercepted pending token
+                    // works in. 30s is generous for real clock drift between this process and the
+                    // token's own `exp` (both computed from the same server's clock — the same
+                    // process, in fact) without materially weakening the 12h token either.
+                    ClockSkew = TimeSpan.FromSeconds(30),
                 };
 
                 // DB-11b / DB-RULES R16: the scope fence must run for EVERY request, independent of

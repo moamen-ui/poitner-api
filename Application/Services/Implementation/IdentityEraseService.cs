@@ -104,8 +104,13 @@ public class IdentityEraseService : IIdentityEraseService
             return Result.Failure(MessageKeys.User.EraseUsePassword);
 
         var brand = await _branding.BuildResponseAsync("", new HashSet<string>());
-        var token = _resetTokens.CreateScoped(identity.PublicId, identity.SecurityStamp, TokenPurposes.Erase);
-        var link = $"{brand.Urls.App.TrimEnd('/')}/delete-account?token={Uri.EscapeDataString(token)}";
+        var token = _resetTokens.CreateScoped(
+            identity.PublicId,
+            identity.SecurityStamp,
+            TokenPurposes.Erase
+        );
+        var link =
+            $"{brand.Urls.App.TrimEnd('/')}/delete-account?token={Uri.EscapeDataString(token)}";
 
         try
         {
@@ -147,7 +152,15 @@ public class IdentityEraseService : IIdentityEraseService
     {
         // One message for every failure (as LoginWithInviteAsync): a guessed/tampered/reused token
         // must not learn which check failed.
-        if (!_resetTokens.TryValidateScoped(token, TokenPurposes.Erase, out var publicId, out var stamp, out _))
+        if (
+            !_resetTokens.TryValidateScoped(
+                token,
+                TokenPurposes.Erase,
+                out var publicId,
+                out var stamp,
+                out _
+            )
+        )
             return Result.Failure(MessageKeys.User.EraseLinkInvalid);
 
         var identity = await _memberships.FindIdentityByPublicIdAsync(publicId);
@@ -182,7 +195,9 @@ public class IdentityEraseService : IIdentityEraseService
     private async Task<Result> EraseAsync(User identity, Guid actor)
     {
         var liveMemberships = await _memberships.ListForIdentityAsync(identity.Id);
-        var soleAdminPreCheck = await _memberships.SoleAdminWorkspacesAsync(liveMemberships.Select(m => m.Id));
+        var soleAdminPreCheck = await _memberships.SoleAdminWorkspacesAsync(
+            liveMemberships.Select(m => m.Id)
+        );
         if (soleAdminPreCheck.Count > 0)
             return _memberships.SoleAdminConflict(soleAdminPreCheck);
 
@@ -199,7 +214,9 @@ public class IdentityEraseService : IIdentityEraseService
         // Review finding #8: force User only on the anonymous confirm-erase path (no
         // ICurrentUser.Id) — self-erase and the super-admin path resolve correctly (User /
         // SuperAdmin, respectively) through AuditWriter's normal actor-kind inference when left null.
-        var actorKindOverride = _currentUser.Id is null ? AuditActorKind.User : (AuditActorKind?)null;
+        var actorKindOverride = _currentUser.Id is null
+            ? AuditActorKind.User
+            : (AuditActorKind?)null;
 
         Result? conflict = null;
 
@@ -212,7 +229,9 @@ public class IdentityEraseService : IIdentityEraseService
             foreach (var workspaceId in adminWorkspaceIds)
                 await LockWorkspaceMembershipsAsync(workspaceId);
 
-            var soleAdmin = await _memberships.SoleAdminWorkspacesAsync(liveMemberships.Select(m => m.Id));
+            var soleAdmin = await _memberships.SoleAdminWorkspacesAsync(
+                liveMemberships.Select(m => m.Id)
+            );
             if (soleAdmin.Count > 0)
             {
                 conflict = _memberships.SoleAdminConflict(soleAdmin);
@@ -240,6 +259,21 @@ public class IdentityEraseService : IIdentityEraseService
                 .Where(d => d.UserId == pid)
                 .ToListAsync();
             _unitOfWork.Repository<DeviceLogin>().RemoveRange(deviceLogins);
+
+            // R5-61 review fix #9: MFA is identity-level (operator only in practice, but the code
+            // path is generic) — erase clears the secret/enablement/replay-watermark and hard-deletes
+            // every recovery-code row for this identity, same treatment as the DeviceLogin purge above.
+            identity.TotpSecret = null;
+            identity.TotpEnabledAt = null;
+            identity.TotpLastStep = null;
+
+            var recoveryCodes = await _unitOfWork
+                .Repository<UserRecoveryCode>()
+                .Query()
+                .IgnoreQueryFilters()
+                .Where(c => c.UserId == identity.Id)
+                .ToListAsync();
+            _unitOfWork.Repository<UserRecoveryCode>().RemoveRange(recoveryCodes);
 
             var quickAccessLinks = await _unitOfWork
                 .Repository<QuickAccessLink>()

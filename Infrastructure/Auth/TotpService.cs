@@ -25,7 +25,8 @@ public class TotpService(TimeProvider? timeProvider = null) : ITotpService
 
     private readonly TimeProvider _time = timeProvider ?? TimeProvider.System;
 
-    private static readonly char[] Base32Alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567".ToCharArray();
+    private static readonly char[] Base32Alphabet =
+        "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567".ToCharArray();
 
     /// <summary>Generates a fresh 20-byte random secret, base32-encoded (no padding) — the value
     /// stored (AES-GCM encrypted) in <c>users.totp_secret</c> and embedded in the QR/otpauth URL.</summary>
@@ -41,8 +42,18 @@ public class TotpService(TimeProvider? timeProvider = null) : ITotpService
     /// caller). Constant-time-ish: every candidate window is computed and compared regardless of
     /// where a match is found, so early-exit timing does not leak which window matched.
     /// </summary>
-    public bool ValidateCode(string secret, string code)
+    public bool ValidateCode(string secret, string code) => TryValidateCode(secret, code, out _);
+
+    /// <summary>
+    /// R5-61 review fix #1 (replay protection) — same validation as <see cref="ValidateCode"/>, plus
+    /// the matched time-step counter so the caller can enforce "this step was already used".
+    /// <paramref name="step"/> is the sentinel <c>-1</c> on any failure (bad input, bad secret, no
+    /// window matched) so a caller can never mistake a failed call for "step -1 was accepted".
+    /// </summary>
+    public bool TryValidateCode(string secret, string code, out long step)
     {
+        step = -1;
+
         if (string.IsNullOrWhiteSpace(secret) || string.IsNullOrWhiteSpace(code))
             return false;
 
@@ -62,33 +73,53 @@ public class TotpService(TimeProvider? timeProvider = null) : ITotpService
 
         var currentCounter = CurrentCounter();
         var matched = false;
+        var matchedStep = -1L;
         for (var delta = -WindowTolerance; delta <= WindowTolerance; delta++)
         {
-            var candidate = ComputeCode(key, currentCounter + delta);
+            var candidateCounter = currentCounter + delta;
+            // Nit (§12): a negative counter is not a valid RFC 6238 time step at all (it would only
+            // arise this close to the Unix epoch) — skip it rather than clamping to 0, which would
+            // otherwise let a candidate counter of -1 quietly compute and potentially match the
+            // legitimate code for counter 0.
+            if (candidateCounter < 0)
+                continue;
+
+            var candidate = ComputeCode(key, candidateCounter);
             if (FixedTimeEquals(candidate, normalizedCode))
+            {
                 matched = true;
+                if (candidateCounter > matchedStep)
+                    matchedStep = candidateCounter;
+            }
         }
+
+        if (matched)
+            step = matchedStep;
 
         return matched;
     }
 
-    /// <summary>The otpauth:// URL a QR-code generator renders (§3.2) — issuer/label per §3.2.</summary>
+    /// <summary>The otpauth:// URL a QR-code generator renders (§3.2) — issuer/label per §3.2.
+    /// Nit (§12): only the account (email) and issuer parts are percent-encoded; the "Issuer:account"
+    /// separator colon is kept literal, per the otpauth label convention (RFC-ish, Google
+    /// Authenticator/most TOTP apps parse "Issuer:account" on an un-encoded colon — escaping it too
+    /// would turn the label into an unparseable single token for some authenticator apps).</summary>
     public string GenerateOtpAuthUrl(string email, string secret, string issuer = "Pointer")
     {
-        var label = Uri.EscapeDataString($"{issuer}:{email}");
         var encodedIssuer = Uri.EscapeDataString(issuer);
+        var encodedAccount = Uri.EscapeDataString(email);
+        var label = $"{encodedIssuer}:{encodedAccount}";
         return $"otpauth://totp/{label}?secret={secret}&issuer={encodedIssuer}&algorithm=SHA1&digits={Digits}&period={StepSeconds}";
     }
 
-    private long CurrentCounter() =>
-        _time.GetUtcNow().ToUnixTimeSeconds() / StepSeconds;
+    private long CurrentCounter() => _time.GetUtcNow().ToUnixTimeSeconds() / StepSeconds;
 
-    /// <summary>RFC 6238 / RFC 4226 dynamic truncation over HMAC-SHA1(secret, counter).</summary>
+    /// <summary>RFC 6238 / RFC 4226 dynamic truncation over HMAC-SHA1(secret, counter). Callers
+    /// never pass a negative counter (see the skip in <see cref="TryValidateCode"/>), so this no
+    /// longer clamps one to 0 (§12 nit — clamping would have silently validated against counter 0's
+    /// code for an out-of-range candidate).</summary>
     private static string ComputeCode(byte[] key, long counter)
     {
-        if (counter < 0)
-            counter = 0;
-
         var counterBytes = BitConverter.GetBytes(counter);
         if (BitConverter.IsLittleEndian)
             Array.Reverse(counterBytes);
@@ -121,7 +152,8 @@ public class TotpService(TimeProvider? timeProvider = null) : ITotpService
     public static string Base32Encode(byte[] data)
     {
         var sb = new StringBuilder((data.Length * 8 + 4) / 5);
-        int bitBuffer = 0, bitsInBuffer = 0;
+        int bitBuffer = 0,
+            bitsInBuffer = 0;
         foreach (var b in data)
         {
             bitBuffer = (bitBuffer << 8) | b;
@@ -143,7 +175,8 @@ public class TotpService(TimeProvider? timeProvider = null) : ITotpService
     {
         var input = base32.Trim().TrimEnd('=').ToUpperInvariant();
         var output = new List<byte>((input.Length * 5) / 8);
-        int bitBuffer = 0, bitsInBuffer = 0;
+        int bitBuffer = 0,
+            bitsInBuffer = 0;
         foreach (var c in input)
         {
             var idx = Array.IndexOf(Base32Alphabet, c);

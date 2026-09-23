@@ -14,4 +14,15 @@ public interface IApiKeyProtector
 
     /// <summary>The raw key, or null when the blob cannot be opened (rotated key, tampering).</summary>
     string? Decrypt(string blob);
+
+    /// <summary>
+    /// R5-61 review fix #2 — lowercase hex HMAC-SHA256 of <paramref name="value"/>, keyed from the
+    /// same key material <see cref="Encrypt"/>/<see cref="Decrypt"/> use. Unlike <see cref="Hash"/>
+    /// (bare SHA-256, no secret — appropriate for API keys, which already carry ≥ 128 bits of
+    /// randomness), this is used where the input's own entropy is comparatively low and must be
+    /// "peppered" so an offline attacker who obtains only the database (not the app's configuration)
+    /// cannot brute-force it — recovery codes (R5-61 finding #2). Deterministic (same input ⇒ same
+    /// output), so it remains usable as an equality-lookup column, exactly like <see cref="Hash"/>.
+    /// </summary>
+    string HmacHex(string value);
 }

@@ -33,29 +33,35 @@ public static class MessageKeys
             "Invalid email or password. Accounts that shared this e-mail were combined into one — if your previous password no longer works, use \"Forgot password\".";
 
         /// <summary>DB-14: an unverified identity hit an admin-only (non-GET, /api/admin/*) action.</summary>
-        public const string EmailNotVerified = "Verify your e-mail address to do this — check your inbox or resend the link from your profile.";
+        public const string EmailNotVerified =
+            "Verify your e-mail address to do this — check your inbox or resend the link from your profile.";
 
         /// <summary>DB-14: POST /api/me/verification/resend succeeded.</summary>
-        public const string VerificationSent = "We've e-mailed you a verification link. It expires in 30 minutes.";
+        public const string VerificationSent =
+            "We've e-mailed you a verification link. It expires in 30 minutes.";
 
         /// <summary>DB-14: a resend was requested within 5 minutes of the last one.</summary>
-        public const string VerificationRecentlySent = "A verification link was sent a moment ago — check your inbox (and spam) before requesting another.";
+        public const string VerificationRecentlySent =
+            "A verification link was sent a moment ago — check your inbox (and spam) before requesting another.";
 
         /// <summary>DB-14: resend requested for an already-verified identity.</summary>
         public const string AlreadyVerified = "Your e-mail address is already verified.";
 
         /// <summary>DB-14: resend requested for a demo/passwordless/super-admin identity.</summary>
-        public const string VerificationNotApplicable = "This account does not need e-mail verification.";
+        public const string VerificationNotApplicable =
+            "This account does not need e-mail verification.";
 
         /// <summary>DB-14: POST /api/auth/verify-email failed — one message for every failure (enumeration resistance).</summary>
-        public const string VerificationLinkInvalid = "This verification link is invalid or has expired — request a new one from your profile.";
+        public const string VerificationLinkInvalid =
+            "This verification link is invalid or has expired — request a new one from your profile.";
 
         /// <summary>DB-14: POST /api/auth/verify-email succeeded.</summary>
         public const string EmailVerified = "Your e-mail address is verified.";
 
         /// <summary>R5-61: password verified, but the super-admin account has TOTP MFA enabled — a
         /// second factor is needed before a full session token is issued.</summary>
-        public const string MfaRequired = "Enter your two-factor authentication code to finish signing in.";
+        public const string MfaRequired =
+            "Enter your two-factor authentication code to finish signing in.";
     }
 
     public static class Mfa
@@ -70,7 +76,27 @@ public static class MessageKeys
         public const string InvalidCode = "That code is incorrect or has expired.";
 
         /// <summary>POST /api/auth/mfa/verify without a valid scope=mfa_pending token.</summary>
-        public const string InvalidPendingToken = "This sign-in session has expired. Please log in again.";
+        public const string InvalidPendingToken =
+            "This sign-in session has expired. Please log in again.";
+
+        /// <summary>R5-61 review fix #3 — POST /api/auth/login-with-key for a super admin who has
+        /// TOTP MFA enabled: an API key cannot satisfy a second factor, so no token is issued.</summary>
+        public const string ApiKeyCannotSatisfyMfa =
+            "API keys cannot bypass two-factor authentication. Sign in with a password and your authenticator code instead.";
+
+        /// <summary>R5-61 review fix #5 (Gemini) — POST /api/me/mfa/enrol or /disable with a wrong
+        /// (or missing) current password.</summary>
+        public const string InvalidPassword = "Your current password is incorrect.";
+
+        /// <summary>R5-61 review fix #5 (Gemini) — POST /api/me/mfa/enrol for a passwordless
+        /// (magic-link only) super admin: there is no password to confirm enrollment with.</summary>
+        public const string PasswordlessCannotEnrol =
+            "This account has no password set, so two-factor authentication cannot be enabled.";
+
+        /// <summary>R5-61 review fix #4 — an API-key-scoped session (login-with-key) attempted to
+        /// enrol/verify/disable MFA; only a full password/TOTP session may mutate MFA state.</summary>
+        public const string KeySessionCannotMutateMfa =
+            "API-key sessions cannot change two-factor authentication settings. Sign in normally instead.";
     }
 
     public static class DeviceLogin
@@ -93,7 +119,8 @@ public static class MessageKeys
         public const string PasswordTooLong = "Password must be 128 characters or fewer.";
 
         /// <summary>DB-14 D14.4: an exact (case-insensitive) match against the embedded top-1000 list.</summary>
-        public const string PasswordCommon = "That password is too common — choose something less guessable.";
+        public const string PasswordCommon =
+            "That password is too common — choose something less guessable.";
 
         /// <summary>DB-14 D14.4: the password equals the e-mail address or its local part (case-insensitive).</summary>
         public const string PasswordIsEmail = "Your password must not be your e-mail address.";

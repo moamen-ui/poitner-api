@@ -60,9 +60,13 @@ public class UserMapping : IEntityTypeConfiguration<User>
         b.Property(x => x.RecipientEmail).HasColumnName("recipient_email").HasMaxLength(256);
         b.Property(x => x.ErasedAt).HasColumnName("erased_at");
         b.Property(x => x.EmailVerifiedAt).HasColumnName("email_verified_at");
-        // R5-61: operator TOTP MFA — additive, nullable (AddOperatorMfa migration).
+        // R5-61: operator TOTP MFA — additive (DB-RULES R1), nullable columns only, no existing
+        // column touched (AddOperatorMfa migration).
         b.Property(x => x.TotpSecret).HasColumnName("totp_secret");
         b.Property(x => x.TotpEnabledAt).HasColumnName("totp_enabled_at");
+        // R5-61 review fix #1: replay-protection watermark (DB-RULES R1 — additive nullable bigint,
+        // no existing column touched). See User.TotpLastStep doc comment.
+        b.Property(x => x.TotpLastStep).HasColumnName("totp_last_step");
 
         b.HasOne(x => x.Role)
             .WithMany(r => r.Users)

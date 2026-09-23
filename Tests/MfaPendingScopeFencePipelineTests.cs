@@ -102,4 +102,19 @@ public class MfaPendingScopeFencePipelineTests
 
         Assert.Null(result);
     }
+
+    /// <summary>Finding #13: "mfa_pending token cannot reach /api/me/mfa/*" — the scoped token is
+    /// fenced to exactly POST /api/auth/mfa/verify, so none of the MfaController routes (a
+    /// different controller entirely, under api/me/mfa) ever accept it.</summary>
+    [Theory]
+    [InlineData("/api/me/mfa/enrol")]
+    [InlineData("/api/me/mfa/verify")]
+    [InlineData("/api/me/mfa/disable")]
+    public async Task MfaPendingToken_OnMeMfaRoutes_FailsAuthentication(string path)
+    {
+        var result = await InvokeOnTokenValidated(path);
+
+        Assert.NotNull(result);
+        Assert.NotNull(result!.Failure);
+    }
 }

@@ -70,15 +70,26 @@ public class AuthService : IAuthService
     // ── DB-12 audit helpers ─────────────────────────────────────────────────────────────────
 
     /// <summary>auth.login.succeeded — identity found, session issued. `owner` = the membership's
-    /// workspace (null for a super admin).</summary>
-    private Task AuditLoginSucceededAsync(User user, Guid? ownerId, string source) =>
+    /// workspace (null for a super admin). R5-61 review fix #7: the MFA-completion caller passes
+    /// explicit actor overrides — its `ICurrentUser` at that moment is resolved from the reduced-claim
+    /// scope=mfa_pending token (no `is_super_admin` claim, per IssueMfaPending), so the writer's
+    /// ordinary actor-kind inference from `ICurrentUser` would otherwise mis-attribute this row.</summary>
+    private Task AuditLoginSucceededAsync(
+        User user,
+        Guid? ownerId,
+        string source,
+        Guid? actorUserIdOverride = null,
+        AuditActorKind? actorKindOverride = null
+    ) =>
         _audit.WriteAsync(
             new AuditEntry(
                 AuditActions.AuthLoginSucceeded,
                 AuditTargets.User,
                 user.PublicId.ToString(),
                 ownerId,
-                After: new Dictionary<string, string> { ["source"] = source }
+                After: new Dictionary<string, string> { ["source"] = source },
+                ActorUserIdOverride: actorUserIdOverride,
+                ActorKindOverride: actorKindOverride
             )
         );
 
@@ -90,7 +101,9 @@ public class AuthService : IAuthService
             new AuditEntry(
                 AuditActions.AuthLoginFailed,
                 user != null ? AuditTargets.User : AuditTargets.EmailHash,
-                user != null ? user.PublicId.ToString() : PseudonymHasher.EmailHash(emailNormalized),
+                user != null
+                    ? user.PublicId.ToString()
+                    : PseudonymHasher.EmailHash(emailNormalized),
                 null,
                 After: new Dictionary<string, string> { ["reason"] = reason },
                 ActorUserIdOverride: user?.PublicId,
@@ -136,7 +149,11 @@ public class AuthService : IAuthService
                 AuditTargets.User,
                 identity.PublicId.ToString(),
                 ownerId,
-                After: new Dictionary<string, string> { ["role_id"] = roleId.ToString(), ["status"] = "pending" },
+                After: new Dictionary<string, string>
+                {
+                    ["role_id"] = roleId.ToString(),
+                    ["status"] = "pending",
+                },
                 ActorUserIdOverride: identity.PublicId,
                 ActorKindOverride: AuditActorKind.User
             )
@@ -394,8 +411,12 @@ public class AuthService : IAuthService
             TokenPurposes.ChangeEmail,
             newEmail
         );
-        var link = $"{brand.Urls.App.TrimEnd('/')}/confirm-email?token={Uri.EscapeDataString(token)}";
-        var workspaceName = await WorkspaceNameResolver.ResolveForEmailAsync(_unitOfWork, identity.OwnerId);
+        var link =
+            $"{brand.Urls.App.TrimEnd('/')}/confirm-email?token={Uri.EscapeDataString(token)}";
+        var workspaceName = await WorkspaceNameResolver.ResolveForEmailAsync(
+            _unitOfWork,
+            identity.OwnerId
+        );
         var workspaceLine =
             workspaceName != null
                 ? $@"<p style=""color:#475569;font-size:13px"">This is for your account in the <b>{System.Net.WebUtility.HtmlEncode(workspaceName)}</b> workspace.</p>"
@@ -447,8 +468,14 @@ public class AuthService : IAuthService
                 AuditTargets.User,
                 identity.PublicId.ToString(),
                 null,
-                Before: new Dictionary<string, string> { ["email_hash"] = PseudonymHasher.EmailHash(identity.Email) },
-                After: new Dictionary<string, string> { ["email_hash"] = PseudonymHasher.EmailHash(newEmail) }
+                Before: new Dictionary<string, string>
+                {
+                    ["email_hash"] = PseudonymHasher.EmailHash(identity.Email),
+                },
+                After: new Dictionary<string, string>
+                {
+                    ["email_hash"] = PseudonymHasher.EmailHash(newEmail),
+                }
             )
         );
 
@@ -471,8 +498,7 @@ public class AuthService : IAuthService
                 out var publicId,
                 out var stamp,
                 out var payload
-            )
-            || string.IsNullOrEmpty(payload)
+            ) || string.IsNullOrEmpty(payload)
         )
             return Result.Failure(MessageKeys.User.EmailChangeLinkInvalid);
 
@@ -518,7 +544,13 @@ public class AuthService : IAuthService
             await _unitOfWork.SaveChangesAsync();
         }
         catch (DbUpdateException e)
-            when (e.InnerException is PostgresException { SqlState: "23505", ConstraintName: "ux_users_email_live" })
+            when (e.InnerException
+                    is PostgresException
+                    {
+                        SqlState: "23505",
+                        ConstraintName: "ux_users_email_live"
+                    }
+            )
         {
             // ux_users_email_live (R14) is the authority for case variants the check above might
             // miss (InMemory tests never hit this branch — the rehearsal/production DB does).
@@ -562,8 +594,14 @@ public class AuthService : IAuthService
                 AuditTargets.User,
                 identity.PublicId.ToString(),
                 null,
-                Before: new Dictionary<string, string> { ["email_hash"] = PseudonymHasher.EmailHash(oldEmail) },
-                After: new Dictionary<string, string> { ["email_hash"] = PseudonymHasher.EmailHash(newEmail) },
+                Before: new Dictionary<string, string>
+                {
+                    ["email_hash"] = PseudonymHasher.EmailHash(oldEmail),
+                },
+                After: new Dictionary<string, string>
+                {
+                    ["email_hash"] = PseudonymHasher.EmailHash(newEmail),
+                },
                 // Anonymous path — no ICurrentUser.Id — so the actor is forced explicitly (same
                 // review-finding-#8 convention as IdentityEraseService's confirm-erase path).
                 ActorUserIdOverride: identity.PublicId,
@@ -795,7 +833,9 @@ public class AuthService : IAuthService
                         .Select(p => p.OwnerId)
                         .ToListAsync();
 
-                    var routed = candidates.Where(c => projectOwnerIds.Contains(c.OwnerId)).ToList();
+                    var routed = candidates
+                        .Where(c => projectOwnerIds.Contains(c.OwnerId))
+                        .ToList();
                     if (routed.Count == 1)
                         membership = routed[0];
                 }
@@ -933,7 +973,13 @@ public class AuthService : IAuthService
             User = await BuildMeAsync(user, null, null),
         };
 
-        await AuditLoginSucceededAsync(user, null, "mfa");
+        await AuditLoginSucceededAsync(
+            user,
+            null,
+            "mfa",
+            actorUserIdOverride: user.PublicId,
+            actorKindOverride: AuditActorKind.SuperAdmin
+        );
 
         return Result<LoginResponse>.Success(response);
     }
@@ -1014,7 +1060,11 @@ public class AuthService : IAuthService
     /// DB-11b: shared by LoginAsync ("ok") and SwitchWorkspaceAsync — the MeResponse plus the current
     /// workspace id and the full list of live, approved, active memberships (empty for super admins).
     /// </summary>
-    private async Task<MeResponse> BuildMeAsync(User identity, WorkspaceMembership? membership, string? tenantName)
+    private async Task<MeResponse> BuildMeAsync(
+        User identity,
+        WorkspaceMembership? membership,
+        string? tenantName
+    )
     {
         var role = membership?.Role ?? identity.Role;
         var response = UserMapper.ToMeResponse(identity, role, tenantName);
@@ -1147,6 +1197,16 @@ public class AuthService : IAuthService
                     new LoginResponse { Status = "disabled" }
                 );
             }
+
+            // R5-61 review fix #3: an API key cannot satisfy a second factor. A super admin with
+            // TOTP MFA enabled must sign in with a password + code (POST /api/auth/login →
+            // /api/auth/mfa/verify) — login-with-key refuses instead of handing out a full token
+            // that never went through the MFA challenge at all.
+            if (user.Role?.IsSuperAdmin == true && user.TotpEnabledAt != null)
+            {
+                await AuditApiKeyLoginFailedAsync(apiKey, "mfa_required");
+                return Result<LoginResponse>.Failure(MessageKeys.Mfa.ApiKeyCannotSatisfyMfa);
+            }
         }
 
         var token = _tokenService.Issue(user, membership, apiKey.Scopes);
@@ -1154,7 +1214,8 @@ public class AuthService : IAuthService
         // Best-effort usage stamp; throttled to once a minute inside the service.
         await _apiKeys.TouchLastUsedAsync(apiKey.Id);
 
-        var tenantName = membership != null ? await ResolveTenantNameAsync(membership.OwnerId) : null;
+        var tenantName =
+            membership != null ? await ResolveTenantNameAsync(membership.OwnerId) : null;
 
         await AuditLoginSucceededAsync(user, membership?.OwnerId, "api_key");
 
@@ -1279,7 +1340,10 @@ public class AuthService : IAuthService
         // Identity exists (in some other workspace) but has no membership here yet — the
         // join-or-create generic rule: the request's password must verify against the existing
         // identity, or a PasswordlessOnly identity, before a membership is added (D4).
-        if (identity.PasswordlessOnly || !_passwordHasher.Verify(request.Password, identity.PasswordHash))
+        if (
+            identity.PasswordlessOnly
+            || !_passwordHasher.Verify(request.Password, identity.PasswordHash)
+        )
             return Result.Conflict(MessageKeys.Auth.AccountExists);
 
         await _memberships.JoinAsync(
@@ -1331,7 +1395,10 @@ public class AuthService : IAuthService
         if (identity != null)
         {
             // D5: same as D4 — the existing account's password must verify.
-            if (identity.PasswordlessOnly || !_passwordHasher.Verify(request.Password, identity.PasswordHash))
+            if (
+                identity.PasswordlessOnly
+                || !_passwordHasher.Verify(request.Password, identity.PasswordHash)
+            )
                 return Result.Conflict("An account with that email already exists.");
         }
 
@@ -1483,7 +1550,12 @@ public class AuthService : IAuthService
             .Where(l => l.TokenHash == hash && l.DeletedAt == null)
             .FirstOrDefaultAsync();
 
-        if (link is null || link.RevokedAt != null || link.ExpiresAt <= now || link.OwnerId is not Guid ownerId)
+        if (
+            link is null
+            || link.RevokedAt != null
+            || link.ExpiresAt <= now
+            || link.OwnerId is not Guid ownerId
+        )
         {
             await AuditMagicLinkFailedAsync("invalid_credentials");
             return Result<LoginResponse>.Failure(MessageKeys.Invite.LinkInvalid);
@@ -1498,7 +1570,8 @@ public class AuthService : IAuthService
         }
 
         var user = await _memberships.FindIdentityByPublicIdAsync(link.UserId);
-        var membership = user == null ? null : await _memberships.GetMembershipAsync(user.Id, ownerId);
+        var membership =
+            user == null ? null : await _memberships.GetMembershipAsync(user.Id, ownerId);
 
         // The account must still be the low-privilege one this link was minted for, live and
         // approved IN THIS WORKSPACE. A link whose membership was disabled, ended, or somehow
@@ -1529,7 +1602,11 @@ public class AuthService : IAuthService
             {
                 Status = "ok",
                 Token = _tokenService.Issue(user, membership),
-                User = UserMapper.ToMeResponse(user, membership.Role, await ResolveTenantNameAsync(membership.OwnerId)),
+                User = UserMapper.ToMeResponse(
+                    user,
+                    membership.Role,
+                    await ResolveTenantNameAsync(membership.OwnerId)
+                ),
             }
         );
     }

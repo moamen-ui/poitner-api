@@ -47,42 +47,79 @@ public class MfaServiceTests
     private sealed class IdentityHasher : IPasswordHasher
     {
         public string Hash(string password) => "h:" + password;
+
         public bool Verify(string password, string hash) => hash == "h:" + password;
     }
 
     private sealed class NoopSettings : ISettingsService
     {
-        public Task<bool> GetBoolAsync(string key, bool fallback = false) => Task.FromResult(fallback);
+        public Task<bool> GetBoolAsync(string key, bool fallback = false) =>
+            Task.FromResult(fallback);
+
         public Task SetBoolAsync(string key, bool value) => Task.CompletedTask;
-        public Task<string> GetStringAsync(string key, string fallback = "") => Task.FromResult(fallback);
+
+        public Task<string> GetStringAsync(string key, string fallback = "") =>
+            Task.FromResult(fallback);
+
         public Task SetStringAsync(string key, string value) => Task.CompletedTask;
+
         public Task<int> GetIntAsync(string key, int fallback = 0) => Task.FromResult(fallback);
+
         public Task SetIntAsync(string key, int value) => Task.CompletedTask;
     }
 
     private sealed class NoopBrandingService : IBrandingService
     {
-        private static Pointer.Application.DTOs.Branding.BrandingResponse DefaultBranding() => new()
-        {
-            ProductName = "Pointer",
-            Tagline = string.Empty,
-            PrimaryColor = "#2563eb",
-            Urls = new Pointer.Application.DTOs.Branding.BrandingUrlsResponse { App = "https://app.pointer.test" },
-            Assets = new Pointer.Application.DTOs.Branding.BrandingAssetsResponse(),
-        };
-        public Task<Pointer.Application.Response.Result<Pointer.Application.DTOs.Branding.BrandingResponse>> GetAsync(string publicBase, IReadOnlySet<string> existingKinds) =>
-            Task.FromResult(Pointer.Application.Response.Result<Pointer.Application.DTOs.Branding.BrandingResponse>.Success(DefaultBranding()));
-        public Task<Pointer.Application.Response.Result<Pointer.Application.DTOs.Branding.BrandingResponse>> UpdateAsync(Pointer.Application.DTOs.Branding.BrandingWriteDto dto, string publicBase, IReadOnlySet<string> existingKinds) =>
-            Task.FromResult(Pointer.Application.Response.Result<Pointer.Application.DTOs.Branding.BrandingResponse>.Success(DefaultBranding()));
+        private static Pointer.Application.DTOs.Branding.BrandingResponse DefaultBranding() =>
+            new()
+            {
+                ProductName = "Pointer",
+                Tagline = string.Empty,
+                PrimaryColor = "#2563eb",
+                Urls = new Pointer.Application.DTOs.Branding.BrandingUrlsResponse
+                {
+                    App = "https://app.pointer.test",
+                },
+                Assets = new Pointer.Application.DTOs.Branding.BrandingAssetsResponse(),
+            };
+
+        public Task<Pointer.Application.Response.Result<Pointer.Application.DTOs.Branding.BrandingResponse>> GetAsync(
+            string publicBase,
+            IReadOnlySet<string> existingKinds
+        ) =>
+            Task.FromResult(
+                Pointer.Application.Response.Result<Pointer.Application.DTOs.Branding.BrandingResponse>.Success(
+                    DefaultBranding()
+                )
+            );
+
+        public Task<Pointer.Application.Response.Result<Pointer.Application.DTOs.Branding.BrandingResponse>> UpdateAsync(
+            Pointer.Application.DTOs.Branding.BrandingWriteDto dto,
+            string publicBase,
+            IReadOnlySet<string> existingKinds
+        ) =>
+            Task.FromResult(
+                Pointer.Application.Response.Result<Pointer.Application.DTOs.Branding.BrandingResponse>.Success(
+                    DefaultBranding()
+                )
+            );
+
         public Task<int> BumpVersionAsync() => Task.FromResult(0);
-        public Task<Pointer.Application.DTOs.Branding.BrandingResponse> BuildResponseAsync(string publicBase, IReadOnlySet<string> existingKinds) =>
-            Task.FromResult(DefaultBranding());
+
+        public Task<Pointer.Application.DTOs.Branding.BrandingResponse> BuildResponseAsync(
+            string publicBase,
+            IReadOnlySet<string> existingKinds
+        ) => Task.FromResult(DefaultBranding());
     }
 
     private sealed class NoopEmail : IEmailService
     {
-        public Task<bool> SendAsync(string to, string subject, string htmlBody, CancellationToken ct = default) =>
-            Task.FromResult(true);
+        public Task<bool> SendAsync(
+            string to,
+            string subject,
+            string htmlBody,
+            CancellationToken ct = default
+        ) => Task.FromResult(true);
     }
 
     /// <summary>Records RecordFailureAsync/ResetAsync calls so lockout-on-failed-code behavior is
@@ -92,11 +129,25 @@ public class MfaServiceTests
         public int Failures;
         public int Resets;
         private bool _locked;
+
         public void SetLocked(bool locked) => _locked = locked;
+
         public Task<bool> IsLockedAsync(string email) => Task.FromResult(_locked);
-        public Task<int> GetRetryAfterSecondsAsync(string email) => Task.FromResult(_locked ? 60 : 0);
-        public Task RecordFailureAsync(string email) { Failures++; return Task.CompletedTask; }
-        public Task ResetAsync(string email) { Resets++; return Task.CompletedTask; }
+
+        public Task<int> GetRetryAfterSecondsAsync(string email) =>
+            Task.FromResult(_locked ? 60 : 0);
+
+        public Task RecordFailureAsync(string email)
+        {
+            Failures++;
+            return Task.CompletedTask;
+        }
+
+        public Task ResetAsync(string email)
+        {
+            Resets++;
+            return Task.CompletedTask;
+        }
     }
 
     /// <summary>A TimeProvider frozen at a fixed instant, for deterministic TOTP windows.</summary>
@@ -109,15 +160,34 @@ public class MfaServiceTests
         new(
             new DbContextOptionsBuilder<AppDbContext>()
                 .UseInMemoryDatabase(db)
-                .ConfigureWarnings(w => w.Ignore(Microsoft.EntityFrameworkCore.Diagnostics.InMemoryEventId.TransactionIgnoredWarning))
+                .ConfigureWarnings(w =>
+                    w.Ignore(
+                        Microsoft
+                            .EntityFrameworkCore
+                            .Diagnostics
+                            .InMemoryEventId
+                            .TransactionIgnoredWarning
+                    )
+                )
                 .Options,
             u,
-            new Microsoft.Extensions.Configuration.ConfigurationBuilder().Build());
+            new Microsoft.Extensions.Configuration.ConfigurationBuilder().Build()
+        );
 
     private const string SigningKey = "test-mfa-key-0123456789abcdef0123456789";
 
     private static JwtTokenService RealTokenService() =>
-        new(Options.Create(new JwtOptions { SigningKey = SigningKey, Issuer = "pointer-api", LifetimeHours = 12, SelectionLifetimeMinutes = 5 }));
+        new(
+            Options.Create(
+                new JwtOptions
+                {
+                    SigningKey = SigningKey,
+                    Issuer = "pointer-api",
+                    LifetimeHours = 12,
+                    SelectionLifetimeMinutes = 5,
+                }
+            )
+        );
 
     private static AuthService BuildAuthService(
         ICurrentUser user,
@@ -135,8 +205,11 @@ public class MfaServiceTests
             new NoopSettings(),
             new ResetTokenService(
                 new Microsoft.Extensions.Configuration.ConfigurationBuilder()
-                    .AddInMemoryCollection(new Dictionary<string, string?> { ["JWT:SigningKey"] = SigningKey })
-                    .Build()),
+                    .AddInMemoryCollection(
+                        new Dictionary<string, string?> { ["JWT:SigningKey"] = SigningKey }
+                    )
+                    .Build()
+            ),
             new NoopEmail(),
             new NoopBrandingService(),
             new ApiKeyService(new UnitOfWork(ctx), new TestApiKeyProtector()),
@@ -147,8 +220,27 @@ public class MfaServiceTests
         );
     }
 
-    private static MfaService BuildMfaService(ICurrentUser user, AppDbContext ctx, ITotpService totp, IAuditWriter? audit = null) =>
-        new(new UnitOfWork(ctx), user, new TestApiKeyProtector(), totp, audit);
+    // Review fixes #4/#5: MfaService now also depends on ILoginAttemptLimiter (verify/disable rate
+    // limiting) and IPasswordHasher (enrol/disable password confirmation) — defaults mirror
+    // BuildAuthService's ("always allowed" limiter; the same "h:" + password IdentityHasher every
+    // other fixture in this file uses, so SeedSuperAdmin's plain-text password parameter is what
+    // every EnrolAsync/DisableAsync call below passes as CurrentPassword).
+    private static MfaService BuildMfaService(
+        ICurrentUser user,
+        AppDbContext ctx,
+        ITotpService totp,
+        ILoginAttemptLimiter? limiter = null,
+        IAuditWriter? audit = null
+    ) =>
+        new(
+            new UnitOfWork(ctx),
+            user,
+            new TestApiKeyProtector(),
+            totp,
+            limiter ?? new FakeLoginAttemptLimiter(),
+            new IdentityHasher(),
+            audit
+        );
 
     // ── Seeding ──────────────────────────────────────────────────────────────────────────────
 
@@ -160,7 +252,14 @@ public class MfaServiceTests
         string? totpSecretEncrypted = null
     )
     {
-        var role = new Role { Name = "Super Admin", IsSystem = true, IsSuperAdmin = true, GrantsAdmin = true, IsActive = true };
+        var role = new Role
+        {
+            Name = "Super Admin",
+            IsSystem = true,
+            IsSuperAdmin = true,
+            GrantsAdmin = true,
+            IsActive = true,
+        };
         seed.Roles.Add(role);
         seed.SaveChanges();
 
@@ -206,7 +305,9 @@ public class MfaServiceTests
         // RFC 6238 Appendix B, SHA-1 row: secret = ASCII "12345678901234567890", Time = 59s ⇒
         // T = 0000000000000001 ⇒ the published (8-digit) TOTP is "94287082"; mod 1,000,000 (our
         // 6-digit truncation) that is "287082".
-        var secretBase32 = TotpService.Base32Encode(Encoding.ASCII.GetBytes("12345678901234567890"));
+        var secretBase32 = TotpService.Base32Encode(
+            Encoding.ASCII.GetBytes("12345678901234567890")
+        );
         var svc = new TotpService(new FixedTimeProvider(DateTimeOffset.FromUnixTimeSeconds(59)));
 
         Assert.True(svc.ValidateCode(secretBase32, "287082"));
@@ -286,7 +387,15 @@ public class MfaServiceTests
             var role = new Role { Name = "Engineer", IsActive = true };
             seed.Roles.Add(role);
             seed.SaveChanges();
-            var u = new User { Email = "dev@t.com", PasswordHash = "h:pw", DisplayName = "Dev", PublicId = Guid.NewGuid(), RoleId = role.Id, IsActive = true };
+            var u = new User
+            {
+                Email = "dev@t.com",
+                PasswordHash = "h:pw",
+                DisplayName = "Dev",
+                PublicId = Guid.NewGuid(),
+                RoleId = role.Id,
+                IsActive = true,
+            };
             seed.Users.Add(u);
             seed.SaveChanges();
             publicId = u.PublicId;
@@ -294,7 +403,8 @@ public class MfaServiceTests
 
         var caller = new FakeCurrentUser { Id = publicId, IsSuperAdmin = false };
         using var ctx = Ctx(caller, db);
-        var result = await BuildMfaService(caller, ctx, new TotpService()).EnrolAsync();
+        var result = await BuildMfaService(caller, ctx, new TotpService())
+            .EnrolAsync(new MfaEnrolRequest());
 
         Assert.True(result.IsForbidden);
         Assert.Equal(MessageKeys.Common.Forbidden, result.Message);
@@ -308,13 +418,18 @@ public class MfaServiceTests
         Guid publicId;
         using (var seed = Ctx(superAdmin, db))
         {
-            var (_, u) = SeedSuperAdmin(seed, totpEnabledAt: DateTime.UtcNow, totpSecretEncrypted: "blob");
+            var (_, u) = SeedSuperAdmin(
+                seed,
+                totpEnabledAt: DateTime.UtcNow,
+                totpSecretEncrypted: "blob"
+            );
             publicId = u.PublicId;
         }
 
         var caller = new FakeCurrentUser { Id = publicId, IsSuperAdmin = true };
         using var ctx = Ctx(caller, db);
-        var result = await BuildMfaService(caller, ctx, new TotpService()).EnrolAsync();
+        var result = await BuildMfaService(caller, ctx, new TotpService())
+            .EnrolAsync(new MfaEnrolRequest());
 
         Assert.True(result.IsConflict);
         Assert.Equal(MessageKeys.Mfa.AlreadyEnabled, result.Message);
@@ -340,16 +455,21 @@ public class MfaServiceTests
         string secret;
         using (var ctx = Ctx(caller, db))
         {
-            var enrol = await BuildMfaService(caller, ctx, totp, audit).EnrolAsync();
+            var enrol = await BuildMfaService(caller, ctx, totp, audit: audit)
+                .EnrolAsync(new MfaEnrolRequest { CurrentPassword = "pw-root" });
             Assert.True(enrol.IsSuccess, enrol.Message);
             secret = enrol.Data!.Secret;
         }
 
-        var code = ComputeExpectedCode(TotpService.Base32Decode(secret), now.ToUnixTimeSeconds() / 30);
+        var code = ComputeExpectedCode(
+            TotpService.Base32Decode(secret),
+            now.ToUnixTimeSeconds() / 30
+        );
 
         using (var ctx = Ctx(caller, db))
         {
-            var verify = await BuildMfaService(caller, ctx, totp, audit).VerifyAsync(new MfaCodeRequest { Code = code });
+            var verify = await BuildMfaService(caller, ctx, totp, audit: audit)
+                .VerifyAsync(new MfaCodeRequest { Code = code });
             Assert.True(verify.IsSuccess, verify.Message);
             Assert.Equal(8, verify.Data!.RecoveryCodes.Count);
             Assert.Equal(8, verify.Data.RecoveryCodes.Distinct().Count());
@@ -358,7 +478,10 @@ public class MfaServiceTests
         using var check = Ctx(superAdmin, db);
         var row = check.Users.IgnoreQueryFilters().Single(u => u.PublicId == publicId);
         Assert.NotNull(row.TotpEnabledAt);
-        Assert.Equal(8, check.UserRecoveryCodes.IgnoreQueryFilters().Count(c => c.UserId == row.Id));
+        Assert.Equal(
+            8,
+            check.UserRecoveryCodes.IgnoreQueryFilters().Count(c => c.UserId == row.Id)
+        );
         Assert.Single(audit.Entries, e => e.Action == AuditActions.AuthMfaEnrolled);
     }
 
@@ -379,17 +502,21 @@ public class MfaServiceTests
         var audit = new FakeAuditWriter();
 
         using (var ctx = Ctx(caller, db))
-            await BuildMfaService(caller, ctx, totp, audit).EnrolAsync();
+            await BuildMfaService(caller, ctx, totp, audit: audit)
+                .EnrolAsync(new MfaEnrolRequest { CurrentPassword = "pw-root" });
 
         using var verifyCtx = Ctx(caller, db);
-        var result = await BuildMfaService(caller, verifyCtx, totp, audit).VerifyAsync(new MfaCodeRequest { Code = "000000" });
+        var result = await BuildMfaService(caller, verifyCtx, totp, audit: audit)
+            .VerifyAsync(new MfaCodeRequest { Code = "000000" });
 
         Assert.False(result.IsSuccess);
         Assert.Equal(MessageKeys.Mfa.InvalidCode, result.Message);
         Assert.Single(audit.Entries, e => e.Action == AuditActions.AuthMfaChallengeFailed);
 
         using var check = Ctx(superAdmin, db);
-        Assert.Null(check.Users.IgnoreQueryFilters().Single(u => u.PublicId == publicId).TotpEnabledAt);
+        Assert.Null(
+            check.Users.IgnoreQueryFilters().Single(u => u.PublicId == publicId).TotpEnabledAt
+        );
     }
 
     [Fact]
@@ -403,16 +530,27 @@ public class MfaServiceTests
         int userId;
         using (var seed = Ctx(superAdmin, db))
         {
-            var (_, u) = SeedSuperAdmin(seed, totpEnabledAt: DateTime.UtcNow, totpSecretEncrypted: protector.Encrypt("IRRELEVANTSECRET"));
+            var (_, u) = SeedSuperAdmin(
+                seed,
+                totpEnabledAt: DateTime.UtcNow,
+                totpSecretEncrypted: protector.Encrypt("IRRELEVANTSECRET")
+            );
             publicId = u.PublicId;
             userId = u.Id;
-            seed.UserRecoveryCodes.Add(new UserRecoveryCode { UserId = userId, CodeHash = protector.Hash(plainRecoveryCode) });
+            seed.UserRecoveryCodes.Add(
+                new UserRecoveryCode
+                {
+                    UserId = userId,
+                    CodeHash = protector.HmacHex(plainRecoveryCode),
+                }
+            );
             seed.SaveChanges();
         }
 
         var caller = new FakeCurrentUser { Id = publicId, IsSuperAdmin = true };
 
-        User FetchUser(AppDbContext c) => c.Users.IgnoreQueryFilters().Single(u => u.PublicId == publicId);
+        User FetchUser(AppDbContext c) =>
+            c.Users.IgnoreQueryFilters().Single(u => u.PublicId == publicId);
 
         using (var ctx = Ctx(caller, db))
         {
@@ -446,20 +584,30 @@ public class MfaServiceTests
         int userId;
         using (var seed = Ctx(superAdmin, db))
         {
-            var (_, u) = SeedSuperAdmin(seed, totpEnabledAt: DateTime.UtcNow, totpSecretEncrypted: protector.Encrypt(secret));
+            var (_, u) = SeedSuperAdmin(
+                seed,
+                totpEnabledAt: DateTime.UtcNow,
+                totpSecretEncrypted: protector.Encrypt(secret)
+            );
             publicId = u.PublicId;
             userId = u.Id;
-            seed.UserRecoveryCodes.Add(new UserRecoveryCode { UserId = userId, CodeHash = protector.Hash("SOMECODE1") });
+            seed.UserRecoveryCodes.Add(
+                new UserRecoveryCode { UserId = userId, CodeHash = protector.HmacHex("SOMECODE1") }
+            );
             seed.SaveChanges();
         }
 
         var caller = new FakeCurrentUser { Id = publicId, IsSuperAdmin = true };
-        var code = ComputeExpectedCode(TotpService.Base32Decode(secret), now.ToUnixTimeSeconds() / 30);
+        var code = ComputeExpectedCode(
+            TotpService.Base32Decode(secret),
+            now.ToUnixTimeSeconds() / 30
+        );
         var audit = new FakeAuditWriter();
 
         using (var ctx = Ctx(caller, db))
         {
-            var result = await BuildMfaService(caller, ctx, totp, audit).DisableAsync(new MfaCodeRequest { Code = code });
+            var result = await BuildMfaService(caller, ctx, totp, audit: audit)
+                .DisableAsync(new MfaCodeRequest { Code = code, CurrentPassword = "pw-root" });
             Assert.True(result.IsSuccess, result.Message);
         }
 
@@ -483,7 +631,8 @@ public class MfaServiceTests
 
         var anon = new FakeCurrentUser();
         using var ctx = Ctx(anon, db);
-        var result = await BuildAuthService(anon, ctx).LoginAsync(new LoginRequest { Email = "root2@t.com", Password = "pw-root2" });
+        var result = await BuildAuthService(anon, ctx)
+            .LoginAsync(new LoginRequest { Email = "root2@t.com", Password = "pw-root2" });
 
         Assert.True(result.IsSuccess, result.Message);
         Assert.Equal("ok", result.Data!.Status);
@@ -498,11 +647,18 @@ public class MfaServiceTests
         var db = Guid.NewGuid().ToString();
         var superAdmin = new FakeCurrentUser { IsSuperAdmin = true };
         using (var seed = Ctx(superAdmin, db))
-            SeedSuperAdmin(seed, email: "root3@t.com", password: "pw-root3", totpEnabledAt: DateTime.UtcNow, totpSecretEncrypted: "blob");
+            SeedSuperAdmin(
+                seed,
+                email: "root3@t.com",
+                password: "pw-root3",
+                totpEnabledAt: DateTime.UtcNow,
+                totpSecretEncrypted: "blob"
+            );
 
         var anon = new FakeCurrentUser();
         using var ctx = Ctx(anon, db);
-        var result = await BuildAuthService(anon, ctx).LoginAsync(new LoginRequest { Email = "root3@t.com", Password = "pw-root3" });
+        var result = await BuildAuthService(anon, ctx)
+            .LoginAsync(new LoginRequest { Email = "root3@t.com", Password = "pw-root3" });
 
         Assert.True(result.IsSuccess, result.Message);
         Assert.Equal("mfa_required", result.Data!.Status);
@@ -528,7 +684,16 @@ public class MfaServiceTests
             seed.Roles.Add(role);
             seed.SaveChanges();
             ownerId = Guid.NewGuid();
-            var u = new User { Email = "member@t.com", PasswordHash = "h:pw-member", DisplayName = "Member", PublicId = Guid.NewGuid(), OwnerId = ownerId, RoleId = role.Id, IsActive = true };
+            var u = new User
+            {
+                Email = "member@t.com",
+                PasswordHash = "h:pw-member",
+                DisplayName = "Member",
+                PublicId = Guid.NewGuid(),
+                OwnerId = ownerId,
+                RoleId = role.Id,
+                IsActive = true,
+            };
             seed.Users.Add(u);
             seed.SaveChanges();
             TestSeed.Join(seed, u, ownerId, role);
@@ -536,7 +701,8 @@ public class MfaServiceTests
 
         var anon = new FakeCurrentUser();
         using var ctx = Ctx(anon, db);
-        var result = await BuildAuthService(anon, ctx).LoginAsync(new LoginRequest { Email = "member@t.com", Password = "pw-member" });
+        var result = await BuildAuthService(anon, ctx)
+            .LoginAsync(new LoginRequest { Email = "member@t.com", Password = "pw-member" });
 
         Assert.True(result.IsSuccess, result.Message);
         Assert.Equal("ok", result.Data!.Status);
@@ -552,23 +718,38 @@ public class MfaServiceTests
         var protector = new TestApiKeyProtector();
         var secret = totp.GenerateSecret();
         using (var seed = Ctx(superAdmin, db))
-            SeedSuperAdmin(seed, email: "root4@t.com", password: "pw-root4", totpEnabledAt: DateTime.UtcNow, totpSecretEncrypted: protector.Encrypt(secret));
+            SeedSuperAdmin(
+                seed,
+                email: "root4@t.com",
+                password: "pw-root4",
+                totpEnabledAt: DateTime.UtcNow,
+                totpSecretEncrypted: protector.Encrypt(secret)
+            );
 
         // Step 1: password login → mfa_required + scoped token.
         string scopedToken;
         using (var ctx = Ctx(new FakeCurrentUser(), db))
         {
-            var login = await BuildAuthService(new FakeCurrentUser(), ctx).LoginAsync(new LoginRequest { Email = "root4@t.com", Password = "pw-root4" });
+            var login = await BuildAuthService(new FakeCurrentUser(), ctx)
+                .LoginAsync(new LoginRequest { Email = "root4@t.com", Password = "pw-root4" });
             Assert.Equal("mfa_required", login.Data!.Status);
             scopedToken = login.Data.Token!;
         }
 
-        var sub = Guid.Parse(new JwtSecurityTokenHandler().ReadJwtToken(scopedToken).Claims.Single(c => c.Type == "sub").Value);
+        var sub = Guid.Parse(
+            new JwtSecurityTokenHandler()
+                .ReadJwtToken(scopedToken)
+                .Claims.Single(c => c.Type == "sub")
+                .Value
+        );
 
         // Step 2: caller now presents the scoped token — simulated by a current-user whose claims
         // are exactly what HttpCurrentUser would extract from it (sub, scope=mfa_pending).
         var mfaCaller = new FakeCurrentUser { Id = sub, Scope = "mfa_pending" };
-        var code = ComputeExpectedCode(TotpService.Base32Decode(secret), now.ToUnixTimeSeconds() / 30);
+        var code = ComputeExpectedCode(
+            TotpService.Base32Decode(secret),
+            now.ToUnixTimeSeconds() / 30
+        );
         var limiter = new CountingLoginAttemptLimiter();
 
         using var verifyCtx = Ctx(mfaCaller, db);
@@ -599,7 +780,13 @@ public class MfaServiceTests
         Guid publicId;
         using (var seed = Ctx(superAdmin, db))
         {
-            var (_, u) = SeedSuperAdmin(seed, email: "root5@t.com", password: "pw-root5", totpEnabledAt: DateTime.UtcNow, totpSecretEncrypted: protector.Encrypt(totp.GenerateSecret()));
+            var (_, u) = SeedSuperAdmin(
+                seed,
+                email: "root5@t.com",
+                password: "pw-root5",
+                totpEnabledAt: DateTime.UtcNow,
+                totpSecretEncrypted: protector.Encrypt(totp.GenerateSecret())
+            );
             publicId = u.PublicId;
         }
 
@@ -625,14 +812,22 @@ public class MfaServiceTests
         Guid publicId;
         using (var seed = Ctx(superAdmin, db))
         {
-            var (_, u) = SeedSuperAdmin(seed, totpEnabledAt: DateTime.UtcNow, totpSecretEncrypted: "blob");
+            var (_, u) = SeedSuperAdmin(
+                seed,
+                totpEnabledAt: DateTime.UtcNow,
+                totpSecretEncrypted: "blob"
+            );
             publicId = u.PublicId;
         }
 
         // Holds a full/ordinary session (no scope claim at all) — must not be treated as mid-MFA.
         var ordinaryCaller = new FakeCurrentUser { Id = publicId, IsSuperAdmin = true };
         using var ctx = Ctx(ordinaryCaller, db);
-        var result = await BuildAuthService(ordinaryCaller, ctx, BuildMfaService(ordinaryCaller, ctx, new TotpService()))
+        var result = await BuildAuthService(
+                ordinaryCaller,
+                ctx,
+                BuildMfaService(ordinaryCaller, ctx, new TotpService())
+            )
             .VerifyMfaLoginAsync(new MfaCodeRequest { Code = "123456" });
 
         Assert.False(result.IsSuccess);
@@ -645,11 +840,22 @@ public class MfaServiceTests
     [Fact]
     public void MfaEndpoint_RejectsExpiredScopedToken()
     {
-        var key = new Microsoft.IdentityModel.Tokens.SymmetricSecurityKey(Encoding.UTF8.GetBytes(SigningKey)) { KeyId = "k0" };
-        var creds = new Microsoft.IdentityModel.Tokens.SigningCredentials(key, Microsoft.IdentityModel.Tokens.SecurityAlgorithms.HmacSha256);
+        var key = new Microsoft.IdentityModel.Tokens.SymmetricSecurityKey(
+            Encoding.UTF8.GetBytes(SigningKey)
+        )
+        {
+            KeyId = "k0",
+        };
+        var creds = new Microsoft.IdentityModel.Tokens.SigningCredentials(
+            key,
+            Microsoft.IdentityModel.Tokens.SecurityAlgorithms.HmacSha256
+        );
         var claims = new[]
         {
-            new System.Security.Claims.Claim(JwtRegisteredClaimNames.Sub, Guid.NewGuid().ToString()),
+            new System.Security.Claims.Claim(
+                JwtRegisteredClaimNames.Sub,
+                Guid.NewGuid().ToString()
+            ),
             new System.Security.Claims.Claim("stamp", Guid.NewGuid().ToString()),
             new System.Security.Claims.Claim("scope", "mfa_pending"),
         };
@@ -674,13 +880,245 @@ public class MfaServiceTests
             // (mirrors the exact TokenValidationParameters shape AuthenticationExtensions.AddJwtAuth
             // configures, plus this one override).
             ClockSkew = TimeSpan.Zero,
-            ValidAlgorithms = new[] { Microsoft.IdentityModel.Tokens.SecurityAlgorithms.HmacSha256 },
+            ValidAlgorithms = new[]
+            {
+                Microsoft.IdentityModel.Tokens.SecurityAlgorithms.HmacSha256,
+            },
             IssuerSigningKeys = new[] { key },
             ValidateIssuerSigningKey = true,
         };
 
-        Assert.Throws<Microsoft.IdentityModel.Tokens.SecurityTokenExpiredException>(
-            () => new JwtSecurityTokenHandler().ValidateToken(token, tvp, out _)
+        Assert.Throws<Microsoft.IdentityModel.Tokens.SecurityTokenExpiredException>(() =>
+            new JwtSecurityTokenHandler().ValidateToken(token, tvp, out _)
         );
+    }
+
+    // ── Review fixes: replay, recovery-code lifetime, API-key bypass/mutation, password gate ────
+
+    /// <summary>Review fix #1 acceptance test: "the same code twice in one window → second attempt
+    /// refused". Same login-completion path as <see cref="MfaEndpoint_CompletesLogin_WithValidCode"/>,
+    /// but the exact same code is presented a second time (same fixed clock ⇒ same time-step) and
+    /// must now fail even though it remains cryptographically valid for the window.</summary>
+    [Fact]
+    public async Task MfaEndpoint_ReplayedCode_SecondAttemptRefused()
+    {
+        var db = Guid.NewGuid().ToString();
+        var superAdmin = new FakeCurrentUser { IsSuperAdmin = true };
+        var now = DateTimeOffset.FromUnixTimeSeconds(1_700_000_000);
+        var totp = new TotpService(new FixedTimeProvider(now));
+        var protector = new TestApiKeyProtector();
+        var secret = totp.GenerateSecret();
+        Guid publicId;
+        using (var seed = Ctx(superAdmin, db))
+        {
+            var (_, u) = SeedSuperAdmin(
+                seed,
+                email: "root10@t.com",
+                password: "pw-root10",
+                totpEnabledAt: DateTime.UtcNow,
+                totpSecretEncrypted: protector.Encrypt(secret)
+            );
+            publicId = u.PublicId;
+        }
+
+        var mfaCaller = new FakeCurrentUser { Id = publicId, Scope = "mfa_pending" };
+        var code = ComputeExpectedCode(
+            TotpService.Base32Decode(secret),
+            now.ToUnixTimeSeconds() / 30
+        );
+
+        using (var ctx = Ctx(mfaCaller, db))
+        {
+            var mfaService = BuildMfaService(mfaCaller, ctx, totp);
+            var authService = BuildAuthService(mfaCaller, ctx, mfaService);
+            var first = await authService.VerifyMfaLoginAsync(new MfaCodeRequest { Code = code });
+            Assert.True(first.IsSuccess, first.Message);
+        }
+
+        using (var ctx = Ctx(mfaCaller, db))
+        {
+            var mfaService = BuildMfaService(mfaCaller, ctx, totp);
+            var authService = BuildAuthService(mfaCaller, ctx, mfaService);
+            var second = await authService.VerifyMfaLoginAsync(new MfaCodeRequest { Code = code });
+
+            Assert.False(second.IsSuccess);
+            Assert.Equal(MessageKeys.Mfa.InvalidCode, second.Message);
+        }
+    }
+
+    /// <summary>Finding #13: "recovery code does not survive disable → re-enrol". A recovery code
+    /// minted before <c>DisableAsync</c> must not validate after a fresh enrol/verify cycle — the
+    /// rows are hard-deleted on disable, not merely superseded.</summary>
+    [Fact]
+    public async Task RecoveryCode_DoesNotSurviveDisableThenReEnrol()
+    {
+        var db = Guid.NewGuid().ToString();
+        var superAdmin = new FakeCurrentUser { IsSuperAdmin = true };
+        var protector = new TestApiKeyProtector();
+        var now = DateTimeOffset.FromUnixTimeSeconds(1_700_000_000);
+        var totp = new TotpService(new FixedTimeProvider(now));
+        var oldSecret = totp.GenerateSecret();
+        const string plainRecoveryCode = "OLDRECOVERYCODE1";
+        Guid publicId;
+        int userId;
+        using (var seed = Ctx(superAdmin, db))
+        {
+            var (_, u) = SeedSuperAdmin(
+                seed,
+                email: "root9@t.com",
+                password: "pw-root9",
+                totpEnabledAt: DateTime.UtcNow,
+                totpSecretEncrypted: protector.Encrypt(oldSecret)
+            );
+            publicId = u.PublicId;
+            userId = u.Id;
+            seed.UserRecoveryCodes.Add(
+                new UserRecoveryCode
+                {
+                    UserId = userId,
+                    CodeHash = protector.HmacHex(plainRecoveryCode),
+                }
+            );
+            seed.SaveChanges();
+        }
+
+        var caller = new FakeCurrentUser { Id = publicId, IsSuperAdmin = true };
+        var oldCode = ComputeExpectedCode(
+            TotpService.Base32Decode(oldSecret),
+            now.ToUnixTimeSeconds() / 30
+        );
+
+        using (var ctx = Ctx(caller, db))
+        {
+            var disable = await BuildMfaService(caller, ctx, totp)
+                .DisableAsync(new MfaCodeRequest { Code = oldCode, CurrentPassword = "pw-root9" });
+            Assert.True(disable.IsSuccess, disable.Message);
+        }
+
+        string newSecret;
+        using (var ctx = Ctx(caller, db))
+        {
+            var enrol = await BuildMfaService(caller, ctx, totp)
+                .EnrolAsync(new MfaEnrolRequest { CurrentPassword = "pw-root9" });
+            Assert.True(enrol.IsSuccess, enrol.Message);
+            newSecret = enrol.Data!.Secret;
+        }
+
+        var newCode = ComputeExpectedCode(
+            TotpService.Base32Decode(newSecret),
+            now.ToUnixTimeSeconds() / 30
+        );
+        using (var ctx = Ctx(caller, db))
+        {
+            var verify = await BuildMfaService(caller, ctx, totp)
+                .VerifyAsync(new MfaCodeRequest { Code = newCode });
+            Assert.True(verify.IsSuccess, verify.Message);
+        }
+
+        using var check = Ctx(caller, db);
+        var user = check.Users.IgnoreQueryFilters().Single(u => u.PublicId == publicId);
+        var stillWorks = await BuildMfaService(caller, check, totp)
+            .ValidateCodeOrRecoveryAsync(user, plainRecoveryCode);
+        Assert.False(stillWorks);
+    }
+
+    /// <summary>Review fix #3 acceptance test: "login-with-key refused for an MFA-enabled operator".</summary>
+    [Fact]
+    public async Task LoginWithApiKey_RefusedForMfaEnabledSuperAdmin()
+    {
+        var db = Guid.NewGuid().ToString();
+        var superAdmin = new FakeCurrentUser { IsSuperAdmin = true };
+        var protector = new TestApiKeyProtector();
+        const string rawKey = "ptr_test_super_admin_key_0001";
+        using (var seed = Ctx(superAdmin, db))
+        {
+            var (_, u) = SeedSuperAdmin(
+                seed,
+                email: "root6@t.com",
+                password: "pw-root6",
+                totpEnabledAt: DateTime.UtcNow,
+                totpSecretEncrypted: "blob"
+            );
+            seed.ApiKeys.Add(
+                new ApiKey
+                {
+                    UserId = u.Id,
+                    OwnerId = null,
+                    Prefix = rawKey[..8],
+                    Hash = protector.Hash(rawKey),
+                    Encrypted = protector.Encrypt(rawKey),
+                    Scopes = (int)ApiKeyScopes.Full,
+                }
+            );
+            seed.SaveChanges();
+        }
+
+        using var ctx = Ctx(new FakeCurrentUser(), db);
+        var result = await BuildAuthService(new FakeCurrentUser(), ctx)
+            .LoginWithApiKeyAsync(new LoginWithApiKeyRequest { ApiKey = rawKey });
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(MessageKeys.Mfa.ApiKeyCannotSatisfyMfa, result.Message);
+    }
+
+    /// <summary>Review fix #4 acceptance test: "key-scoped session refused on MFA mutations" — an
+    /// API-key-scoped session (non-null <see cref="ICurrentUser.KeyScopes"/>) is forbidden from
+    /// enrol/verify/disable, checked before anything else.</summary>
+    [Fact]
+    public async Task MfaMutations_RefusedForKeyScopedSession()
+    {
+        var db = Guid.NewGuid().ToString();
+        var superAdmin = new FakeCurrentUser { IsSuperAdmin = true };
+        Guid publicId;
+        using (var seed = Ctx(superAdmin, db))
+        {
+            var (_, u) = SeedSuperAdmin(seed, email: "root7@t.com", password: "pw-root7");
+            publicId = u.PublicId;
+        }
+
+        var keyCaller = new FakeCurrentUser
+        {
+            Id = publicId,
+            IsSuperAdmin = true,
+            KeyScopes = "full",
+        };
+        using var ctx = Ctx(keyCaller, db);
+        var mfa = BuildMfaService(keyCaller, ctx, new TotpService());
+
+        var enrol = await mfa.EnrolAsync(new MfaEnrolRequest { CurrentPassword = "pw-root7" });
+        Assert.True(enrol.IsForbidden);
+        Assert.Equal(MessageKeys.Mfa.KeySessionCannotMutateMfa, enrol.Message);
+
+        var verify = await mfa.VerifyAsync(new MfaCodeRequest { Code = "123456" });
+        Assert.True(verify.IsForbidden);
+        Assert.Equal(MessageKeys.Mfa.KeySessionCannotMutateMfa, verify.Message);
+
+        var disable = await mfa.DisableAsync(
+            new MfaCodeRequest { Code = "123456", CurrentPassword = "pw-root7" }
+        );
+        Assert.True(disable.IsForbidden);
+        Assert.Equal(MessageKeys.Mfa.KeySessionCannotMutateMfa, disable.Message);
+    }
+
+    /// <summary>Review fix #5 (Gemini) acceptance test: "enrol without password refused".</summary>
+    [Fact]
+    public async Task Enrol_WrongPassword_Refused()
+    {
+        var db = Guid.NewGuid().ToString();
+        var superAdmin = new FakeCurrentUser { IsSuperAdmin = true };
+        Guid publicId;
+        using (var seed = Ctx(superAdmin, db))
+        {
+            var (_, u) = SeedSuperAdmin(seed, email: "root8@t.com", password: "pw-root8");
+            publicId = u.PublicId;
+        }
+
+        var caller = new FakeCurrentUser { Id = publicId, IsSuperAdmin = true };
+        using var ctx = Ctx(caller, db);
+        var result = await BuildMfaService(caller, ctx, new TotpService())
+            .EnrolAsync(new MfaEnrolRequest { CurrentPassword = "definitely-wrong" });
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(MessageKeys.Mfa.InvalidPassword, result.Message);
     }
 }

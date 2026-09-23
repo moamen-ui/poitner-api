@@ -11,6 +11,9 @@ public static class MfaPendingScopeFence
 {
     public static readonly PathString VerifyPath = new("/api/auth/mfa/verify");
 
+    // Nit (§12): `PathString.Equals` is an exact match, so "/api/auth/mfa/verify/" (trailing slash)
+    // is refused by design — same exact-path precedent as SelectionScopeFence, deliberately not
+    // normalizing a trailing slash into a match.
     public static bool Allows(PathString path) =>
         path.HasValue && path.Equals(VerifyPath, StringComparison.OrdinalIgnoreCase);
 }

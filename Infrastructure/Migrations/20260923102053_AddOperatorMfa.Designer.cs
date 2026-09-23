@@ -2188,6 +2188,10 @@ namespace Pointer.Infrastructure.Migrations
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("totp_enabled_at");
 
+                    b.Property<long?>("TotpLastStep")
+                        .HasColumnType("bigint")
+                        .HasColumnName("totp_last_step");
+
                     b.Property<string>("TotpSecret")
                         .HasColumnType("text")
                         .HasColumnName("totp_secret");

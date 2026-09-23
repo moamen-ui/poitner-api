@@ -16,29 +16,58 @@ namespace Pointer.Infrastructure.Migrations
                 name: "totp_enabled_at",
                 table: "users",
                 type: "timestamp with time zone",
-                nullable: true);
+                nullable: true
+            );
+
+            migrationBuilder.AddColumn<long>(
+                name: "totp_last_step",
+                table: "users",
+                type: "bigint",
+                nullable: true
+            );
 
             migrationBuilder.AddColumn<string>(
                 name: "totp_secret",
                 table: "users",
                 type: "text",
-                nullable: true);
+                nullable: true
+            );
 
             migrationBuilder.CreateTable(
                 name: "user_recovery_codes",
                 columns: table => new
                 {
-                    id = table.Column<int>(type: "integer", nullable: false)
-                        .Annotation("Npgsql:ValueGenerationStrategy", NpgsqlValueGenerationStrategy.IdentityByDefaultColumn),
+                    id = table
+                        .Column<int>(type: "integer", nullable: false)
+                        .Annotation(
+                            "Npgsql:ValueGenerationStrategy",
+                            NpgsqlValueGenerationStrategy.IdentityByDefaultColumn
+                        ),
                     user_id = table.Column<int>(type: "integer", nullable: false),
-                    code_hash = table.Column<string>(type: "character varying(64)", maxLength: 64, nullable: false),
-                    used_at = table.Column<DateTime>(type: "timestamp with time zone", nullable: true),
-                    created_at = table.Column<DateTime>(type: "timestamp with time zone", nullable: false),
+                    code_hash = table.Column<string>(
+                        type: "character varying(64)",
+                        maxLength: 64,
+                        nullable: false
+                    ),
+                    used_at = table.Column<DateTime>(
+                        type: "timestamp with time zone",
+                        nullable: true
+                    ),
+                    created_at = table.Column<DateTime>(
+                        type: "timestamp with time zone",
+                        nullable: false
+                    ),
                     created_by = table.Column<Guid>(type: "uuid", nullable: false),
-                    updated_at = table.Column<DateTime>(type: "timestamp with time zone", nullable: true),
+                    updated_at = table.Column<DateTime>(
+                        type: "timestamp with time zone",
+                        nullable: true
+                    ),
                     updated_by = table.Column<Guid>(type: "uuid", nullable: true),
-                    deleted_at = table.Column<DateTime>(type: "timestamp with time zone", nullable: true),
-                    deleted_by = table.Column<Guid>(type: "uuid", nullable: true)
+                    deleted_at = table.Column<DateTime>(
+                        type: "timestamp with time zone",
+                        nullable: true
+                    ),
+                    deleted_by = table.Column<Guid>(type: "uuid", nullable: true),
                 },
                 constraints: table =>
                 {
@@ -48,28 +77,28 @@ namespace Pointer.Infrastructure.Migrations
                         column: x => x.user_id,
                         principalTable: "users",
                         principalColumn: "id",
-                        onDelete: ReferentialAction.Cascade);
-                });
+                        onDelete: ReferentialAction.Cascade
+                    );
+                }
+            );
 
             migrationBuilder.CreateIndex(
                 name: "ix_user_recovery_codes_user_id",
                 table: "user_recovery_codes",
-                column: "user_id");
+                column: "user_id"
+            );
         }
 
         /// <inheritdoc />
         protected override void Down(MigrationBuilder migrationBuilder)
         {
-            migrationBuilder.DropTable(
-                name: "user_recovery_codes");
+            migrationBuilder.DropTable(name: "user_recovery_codes");
 
-            migrationBuilder.DropColumn(
-                name: "totp_enabled_at",
-                table: "users");
+            migrationBuilder.DropColumn(name: "totp_enabled_at", table: "users");
 
-            migrationBuilder.DropColumn(
-                name: "totp_secret",
-                table: "users");
+            migrationBuilder.DropColumn(name: "totp_last_step", table: "users");
+
+            migrationBuilder.DropColumn(name: "totp_secret", table: "users");
         }
     }
 }
