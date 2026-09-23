@@ -52,6 +52,25 @@ public static class MessageKeys
 
         /// <summary>DB-14: POST /api/auth/verify-email succeeded.</summary>
         public const string EmailVerified = "Your e-mail address is verified.";
+
+        /// <summary>R5-61: password verified, but the super-admin account has TOTP MFA enabled — a
+        /// second factor is needed before a full session token is issued.</summary>
+        public const string MfaRequired = "Enter your two-factor authentication code to finish signing in.";
+    }
+
+    public static class Mfa
+    {
+        /// <summary>POST /api/me/mfa/enrol when TotpEnabledAt is already set.</summary>
+        public const string AlreadyEnabled = "Two-factor authentication is already enabled.";
+
+        /// <summary>POST /api/me/mfa/verify or /disable with no secret on file yet (enrol was never called).</summary>
+        public const string NotEnrolled = "Two-factor authentication has not been set up yet.";
+
+        /// <summary>A wrong TOTP code or an already-used/unknown recovery code.</summary>
+        public const string InvalidCode = "That code is incorrect or has expired.";
+
+        /// <summary>POST /api/auth/mfa/verify without a valid scope=mfa_pending token.</summary>
+        public const string InvalidPendingToken = "This sign-in session has expired. Please log in again.";
     }
 
     public static class DeviceLogin

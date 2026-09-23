@@ -1,6 +1,9 @@
 # R5-61 — Operator MFA (§61 · Release 5 · 1–2 d)
 
-**Status (2026-09-23):** queued behind DB-11a (shared auth files) — not started.
+**Status (2026-09-23):** implemented on `feat/r5-61-operator-mfa` (rebased onto main = DB-11a/b/c/d,
+DB-12, DB-13, R5-62 in production) — build green, full suite green (1070/1070, +22 new), migration
+`AddOperatorMfa` proven on a rehearsal Postgres. Not yet merged/deployed; see AGENT-REPORT.md in the
+worktree for the full verification record.
 
 ## 1. Goal
 
@@ -254,6 +257,23 @@ In `pointer-dashboard/react` (after API merge + client regen):
   button. Remind to save them.
 - If enrolled: "Disable MFA" button → prompts for current code → calls `POST /api/me/mfa/disable`.
 - Login page: when `status === "mfa_required"`, store the scoped token, show a 6-digit input,
-  submit to `POST /api/auth/mfa` → on success, store the normal token and redirect.
+  submit to `POST /api/auth/mfa/verify` → on success, store the normal token and redirect.
 - i18n: `mfa.setup`, `mfa.disable`, `mfa.enterCode`, `mfa.recoveryCodes`, `mfa.saved`, etc. in
   both `en.json` and `ar.json`.
+
+**Implementation consequences (as built, AGENT-TASK.md deltas over the design above):**
+
+- The login-completion route is `POST /api/auth/mfa/verify`, not the bare `POST /api/auth/mfa`
+  this section originally named — the scoped token's fence
+  (`API/Extensions/MfaPendingScopeFence.cs`) is an EXACT path match, so the dashboard must call
+  `/api/auth/mfa/verify` precisely (no trailing slash).
+- The scoped token uses claim `scope: "mfa_pending"` (not a separate `mfa_pending: "true"` claim),
+  matching the existing `select_workspace`/`impersonate` scope-claim convention so the same
+  `OnTokenValidated` dispatch mechanism fences it — irrelevant to the dashboard (it only ever
+  forwards the opaque token string) but noted for anyone reading the JWT payload while debugging.
+- `MeResponse` gains `mfaEnabled: boolean` (true once TOTP is enabled) for the Settings page to
+  decide "Set up" vs "Disable".
+- Audit actions actually used: `auth.mfa.enrolled` (POST verify, once enabled),
+  `auth.mfa.disabled` (POST disable), `auth.mfa.challenge_failed` (any wrong TOTP/recovery code,
+  including at login) — `POST /api/me/mfa/enrol` itself is deliberately unaudited (secret
+  generated, not yet enabled).

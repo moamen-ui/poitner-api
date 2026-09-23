@@ -34,6 +34,20 @@ public static class AuditActions
 
     public const string AuthRegisterStakeholder = "auth.register.stakeholder";
     public const string AuthRegisterAdmin = "auth.register.admin";
+
+    /// <summary>R5-61: POST /api/me/mfa/verify completed enrollment (TotpEnabledAt set, recovery
+    /// codes minted). The initial POST /api/me/mfa/enrol (secret generated, not yet enabled) is
+    /// deliberately [NoAudit] — nothing security-relevant is enforced until this row exists.</summary>
+    public const string AuthMfaEnrolled = "auth.mfa.enrolled";
+
+    /// <summary>R5-61: POST /api/me/mfa/disable — MFA turned back off (secret + recovery codes cleared).</summary>
+    public const string AuthMfaDisabled = "auth.mfa.disabled";
+
+    /// <summary>R5-61: a TOTP/recovery code was rejected — either mid-enrollment (POST
+    /// /api/me/mfa/verify), on disable (POST /api/me/mfa/disable), or completing a login (POST
+    /// /api/auth/mfa/verify). Counts toward the same per-e-mail lockout as a wrong password.</summary>
+    public const string AuthMfaChallengeFailed = "auth.mfa.challenge_failed";
+
     public const string AuthDemoProvisioned = "auth.demo.provisioned";
     public const string AuthDemoUpgraded = "auth.demo.upgraded";
     public const string DeviceApproved = "device.approved";

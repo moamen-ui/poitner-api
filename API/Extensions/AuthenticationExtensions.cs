@@ -106,6 +106,18 @@ public static class AuthenticationExtensions
                             return;
                         }
 
+                        // R5-61: a scope=mfa_pending token is honoured ONLY on the exact
+                        // POST /api/auth/mfa/verify path — never a prefix/sub-route match (same
+                        // exact-path fence as the selection token above).
+                        if (
+                            scope == "mfa_pending"
+                            && !MfaPendingScopeFence.Allows(ctx.HttpContext.Request.Path)
+                        )
+                        {
+                            ctx.Fail("MFA-pending token.");
+                            return;
+                        }
+
                         // DB-13: the impersonation fence + liveness check must run for EVERY
                         // request, independent of Auth:ValidateSecurityStamp — same reasoning as
                         // the selection fence above. Placed after it, before the stamp/membership

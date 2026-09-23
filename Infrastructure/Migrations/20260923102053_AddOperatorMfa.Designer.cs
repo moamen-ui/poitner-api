@@ -2,6 +2,7 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 using Pointer.Infrastructure;
@@ -11,9 +12,11 @@ using Pointer.Infrastructure;
 namespace Pointer.Infrastructure.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    partial class AppDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260923102053_AddOperatorMfa")]
+    partial class AddOperatorMfa
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -2008,51 +2011,6 @@ namespace Pointer.Infrastructure.Migrations
                     b.ToTable("subscriptions", (string)null);
                 });
 
-            modelBuilder.Entity("Pointer.Domain.Entity.UsageDaily", b =>
-                {
-                    b.Property<long>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("bigint")
-                        .HasColumnName("id");
-
-                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
-
-                    b.Property<DateTime>("ComputedAt")
-                        .HasColumnType("timestamp with time zone")
-                        .HasColumnName("computed_at");
-
-                    b.Property<int>("Count")
-                        .HasColumnType("integer")
-                        .HasColumnName("count");
-
-                    b.Property<DateOnly>("Day")
-                        .HasColumnType("date")
-                        .HasColumnName("day");
-
-                    b.Property<Guid?>("OwnerId")
-                        .HasColumnType("uuid")
-                        .HasColumnName("owner_id");
-
-                    b.Property<string>("Type")
-                        .IsRequired()
-                        .HasMaxLength(40)
-                        .HasColumnType("character varying(40)")
-                        .HasColumnName("type");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("OwnerId", "Day")
-                        .HasDatabaseName("ix_usage_daily_owner_day");
-
-                    b.HasIndex("Day", "OwnerId", "Type")
-                        .IsUnique()
-                        .HasDatabaseName("ux_usage_daily_day_owner_type");
-
-                    NpgsqlIndexBuilderExtensions.AreNullsDistinct(b.HasIndex("Day", "OwnerId", "Type"), false);
-
-                    b.ToTable("usage_daily", (string)null);
-                });
-
             modelBuilder.Entity("Pointer.Domain.Entity.UsageEvent", b =>
                 {
                     b.Property<int>("Id")
@@ -2101,11 +2059,6 @@ namespace Pointer.Infrastructure.Migrations
                         .IsUnique()
                         .HasDatabaseName("ux_usage_events_first_per_project")
                         .HasFilter("type IN ('first_comment', 'first_apply')");
-
-                    b.HasIndex("Type", "ProjectId")
-                        .IsUnique()
-                        .HasDatabaseName("ux_usage_events_widget_installed_per_project")
-                        .HasFilter("type = 'widget_installed'");
 
                     b.HasIndex("OwnerId", "ProjectId", "Type", "CreatedAt");
 
@@ -2168,10 +2121,6 @@ namespace Pointer.Infrastructure.Migrations
                         .HasMaxLength(256)
                         .HasColumnType("character varying(256)")
                         .HasColumnName("email");
-
-                    b.Property<DateTime?>("EmailVerifiedAt")
-                        .HasColumnType("timestamp with time zone")
-                        .HasColumnName("email_verified_at");
 
                     b.Property<DateTime?>("ErasedAt")
                         .HasColumnType("timestamp with time zone")
@@ -3152,15 +3101,6 @@ namespace Pointer.Infrastructure.Migrations
                         .IsRequired();
 
                     b.Navigation("Plan");
-                });
-
-            modelBuilder.Entity("Pointer.Domain.Entity.UsageDaily", b =>
-                {
-                    b.HasOne("Pointer.Domain.Entity.Workspace", null)
-                        .WithMany()
-                        .HasForeignKey("OwnerId")
-                        .OnDelete(DeleteBehavior.SetNull)
-                        .HasConstraintName("fk_usage_daily_workspaces_owner_id");
                 });
 
             modelBuilder.Entity("Pointer.Domain.Entity.UsageEvent", b =>

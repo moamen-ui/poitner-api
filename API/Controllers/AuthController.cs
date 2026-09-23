@@ -5,6 +5,7 @@ using Pointer.API.Auth;
 using Pointer.Application.Common;
 using Pointer.Application.DTOs.Auth;
 using Pointer.Application.DTOs.Invite;
+using Pointer.Application.DTOs.Mfa;
 using Pointer.Application.Response;
 using Pointer.Application.Services.Interfaces;
 
@@ -41,6 +42,33 @@ public class AuthController(
         }
         if (result.IsNotFound) return NotFound(result);
         if (result.IsConflict) return Conflict(result);
+        return result.IsSuccess ? Ok(result) : BadRequest(result);
+    }
+
+    /// <summary>
+    /// R5-61 §3.3 — completes a login that returned <c>status: "mfa_required"</c>. The caller holds
+    /// the scoped <c>mfa_pending</c> token returned by POST /api/auth/login, not a full session;
+    /// <c>AuthenticationExtensions</c>' exact-path fence (<c>MfaPendingScopeFence</c>) refuses that
+    /// token anywhere else. On success returns a normal 12h JWT, same shape as a plain "ok" login.
+    /// </summary>
+    [Authorize]
+    [Audited(AuditActions.AuthLoginSucceeded)]
+    [HttpPost("mfa/verify")]
+    [EnableRateLimiting("login")]
+    [ProducesResponseType(typeof(LoginResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(Result), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(Result<LoginResponse>), StatusCodes.Status429TooManyRequests)]
+    public async Task<IActionResult> VerifyMfa([FromBody] MfaCodeRequest request)
+    {
+        var result = await authService.VerifyMfaLoginAsync(request);
+        if (result.IsLocked || result.Data?.Status == "locked")
+        {
+            if (result.RetryAfterSeconds.HasValue)
+            {
+                Response.Headers.RetryAfter = result.RetryAfterSeconds.Value.ToString();
+            }
+            return StatusCode(StatusCodes.Status429TooManyRequests, result);
+        }
         return result.IsSuccess ? Ok(result) : BadRequest(result);
     }
 

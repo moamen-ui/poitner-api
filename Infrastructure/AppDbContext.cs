@@ -74,6 +74,7 @@ public class AppDbContext(
     public DbSet<UserAlias> UserAliases => Set<UserAlias>();
     public DbSet<AuditEvent> AuditEvents => Set<AuditEvent>();
     public DbSet<ImpersonationSession> ImpersonationSessions => Set<ImpersonationSession>();
+    public DbSet<UserRecoveryCode> UserRecoveryCodes => Set<UserRecoveryCode>();
 
     protected override void OnModelCreating(ModelBuilder b)
     {
@@ -245,6 +246,10 @@ public class AppDbContext(
 
         // Plan: no filter — GLOBAL catalog, not tenant data; guarded by endpoint authorization
         // (super-admin CRUD; anonymous marketing read). Exactly like AppSetting.
+
+        // UserRecoveryCode: no filter — R5-61, belongs only to the one env-seeded super-admin
+        // account (no tenant/OwnerId concept at all); every read/write is a direct UserId lookup
+        // inside MfaService, gated on Role.IsSuperAdmin, never listed across tenants.
 
         // Subscription + ExtensionSite: strict-own (OwnerId non-null) — like Invite.
         b.Entity<Subscription>()

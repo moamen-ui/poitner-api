@@ -3,6 +3,7 @@ using Npgsql;
 using Pointer.Application.Abstractions;
 using Pointer.Application.Common;
 using Pointer.Application.DTOs.Auth;
+using Pointer.Application.DTOs.Mfa;
 using Pointer.Application.Resources;
 using Pointer.Application.Response;
 using Pointer.Application.Services.Interfaces;
@@ -26,6 +27,7 @@ public class AuthService : IAuthService
     private readonly IMembershipService _memberships;
     private readonly IAuditWriter _audit;
     private readonly IEmailVerificationService _emailVerification;
+    private readonly IMfaService? _mfa;
 
     public AuthService(
         IUnitOfWork unitOfWork,
@@ -40,7 +42,13 @@ public class AuthService : IAuthService
         ILoginAttemptLimiter loginLimiter,
         IMembershipService memberships,
         IAuditWriter? audit = null,
-        IEmailVerificationService? emailVerification = null
+        IEmailVerificationService? emailVerification = null,
+        // R5-61: nullable-with-default, same seam as `audit` above — real request traffic always
+        // goes through DI (Scrutor auto-registers MfaService against IMfaService), which resolves
+        // and injects the real instance regardless of this default. Only reached by
+        // VerifyMfaLoginAsync, which none of the many hand-rolled `new AuthService(...)` test
+        // constructions across the suite call, so this stays null-safe for all of them.
+        IMfaService? mfa = null
     )
     {
         _unitOfWork = unitOfWork;
@@ -56,6 +64,7 @@ public class AuthService : IAuthService
         _memberships = memberships;
         _audit = audit ?? NoopAuditWriter.Instance;
         _emailVerification = emailVerification ?? NoopEmailVerification.Instance;
+        _mfa = mfa;
     }
 
     // ── DB-12 audit helpers ─────────────────────────────────────────────────────────────────
@@ -822,6 +831,27 @@ public class AuthService : IAuthService
             tenantName = await ResolveTenantNameAsync(membership.OwnerId);
         }
 
+        // R5-61 §3.3/§3.4: enforcement is scoped to the one super-admin identity that has actually
+        // completed enrollment (TotpEnabledAt != null) — every other identity's login is completely
+        // unchanged, and a super admin who hasn't enrolled yet still gets an "ok" login below (grace).
+        // Same success-envelope precedent as "choose-workspace" above (200, credentials verified,
+        // no full session yet): the eventual auth.login.succeeded row is written by
+        // VerifyMfaLoginAsync (POST /api/auth/mfa/verify) once the code checks out, not here — the
+        // lockout counter is likewise NOT reset yet (a wrong TOTP code still counts against the
+        // same per-e-mail budget as a wrong password).
+        if (user.Role?.IsSuperAdmin == true && user.TotpEnabledAt != null)
+        {
+            return Result<LoginResponse>.Success(
+                new LoginResponse
+                {
+                    Status = "mfa_required",
+                    Token = _tokenService.IssueMfaPending(user),
+                    User = null,
+                },
+                MessageKeys.Auth.MfaRequired
+            );
+        }
+
         // Password verified and every status gate passed: reset the lockout counter.
         await _loginLimiter.ResetAsync(emailNormalized);
 
@@ -835,6 +865,75 @@ public class AuthService : IAuthService
         };
 
         await AuditLoginSucceededAsync(user, membership?.OwnerId, "password");
+
+        return Result<LoginResponse>.Success(response);
+    }
+
+    /// <summary>
+    /// R5-61 §3.3 — POST /api/auth/mfa/verify: the caller holds a scope=mfa_pending token (fenced to
+    /// this exact path). Resolves the identity from its `sub`, validates the code (TOTP or a
+    /// recovery code) via <see cref="IMfaService.ValidateCodeOrRecoveryAsync"/>, and on success
+    /// issues a normal full JWT — same shape LoginAsync's "ok" branch returns.
+    /// </summary>
+    public async Task<Result<LoginResponse>> VerifyMfaLoginAsync(MfaCodeRequest request)
+    {
+        // Belt-and-braces: the JWT-bearer fence (MfaPendingScopeFence) already restricts this
+        // token to this exact path, but the token itself carries no path information — a caller
+        // presenting an ordinary full-session token here must not be treated as "mid-MFA".
+        if (_currentUser.Scope != "mfa_pending" || _currentUser.Id is not Guid publicId)
+            return Result<LoginResponse>.Failure(MessageKeys.Mfa.InvalidPendingToken);
+
+        var user = await _memberships.FindIdentityByPublicIdAsync(publicId);
+        if (user == null || user.Role?.IsSuperAdmin != true || user.TotpEnabledAt == null)
+            return Result<LoginResponse>.Failure(MessageKeys.Mfa.InvalidPendingToken);
+
+        var emailNormalized = EmailNormalizer.NormalizeRequired(user.Email);
+
+        // Same per-e-mail lockout budget as a wrong password (AGENT-TASK deltas) — checked before
+        // touching the code so a locked-out caller cannot keep burning guesses.
+        if (await _loginLimiter.IsLockedAsync(emailNormalized))
+        {
+            var retryAfter = await _loginLimiter.GetRetryAfterSecondsAsync(emailNormalized);
+            return Result<LoginResponse>.Locked(
+                MessageKeys.Auth.TooManyAttempts,
+                new LoginResponse { Status = "locked" },
+                retryAfter
+            );
+        }
+
+        var mfa =
+            _mfa
+            ?? throw new InvalidOperationException(
+                "IMfaService is required to complete a super-admin MFA login."
+            );
+
+        if (!await mfa.ValidateCodeOrRecoveryAsync(user, request.Code ?? string.Empty))
+        {
+            await _loginLimiter.RecordFailureAsync(emailNormalized);
+            await _audit.WriteAsync(
+                new AuditEntry(
+                    AuditActions.AuthMfaChallengeFailed,
+                    AuditTargets.User,
+                    user.PublicId.ToString(),
+                    null,
+                    ActorUserIdOverride: user.PublicId,
+                    ActorKindOverride: AuditActorKind.SuperAdmin
+                )
+            );
+            return Result<LoginResponse>.Failure(MessageKeys.Mfa.InvalidCode);
+        }
+
+        await _loginLimiter.ResetAsync(emailNormalized);
+
+        var token = _tokenService.Issue(user, null);
+        var response = new LoginResponse
+        {
+            Status = "ok",
+            Token = token,
+            User = await BuildMeAsync(user, null, null),
+        };
+
+        await AuditLoginSucceededAsync(user, null, "mfa");
 
         return Result<LoginResponse>.Success(response);
     }

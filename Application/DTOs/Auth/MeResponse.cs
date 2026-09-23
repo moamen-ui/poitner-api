@@ -33,4 +33,8 @@ public class MeResponse
     /// <summary>DB-14: <c>!EmailVerified &amp;&amp; IsAdmin</c> — the banner is loud only for people the
     /// gate actually blocks; a stakeholder gets a soft hint instead.</summary>
     public bool EmailVerificationRequired { get; set; }
+
+    /// <summary>R5-61: true once TOTP MFA is enabled (<c>users.totp_enabled_at IS NOT NULL</c>).
+    /// Always false for a non-super-admin — MFA is scoped to the super-admin account only (§3.4).</summary>
+    public bool MfaEnabled { get; set; }
 }

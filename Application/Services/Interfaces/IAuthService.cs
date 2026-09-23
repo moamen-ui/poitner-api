@@ -1,4 +1,5 @@
 using Pointer.Application.DTOs.Auth;
+using Pointer.Application.DTOs.Mfa;
 using Pointer.Application.Response;
 
 namespace Pointer.Application.Services.Interfaces;
@@ -6,6 +7,16 @@ namespace Pointer.Application.Services.Interfaces;
 public interface IAuthService
 {
     Task<Result<LoginResponse>> LoginAsync(LoginRequest request);
+
+    /// <summary>
+    /// R5-61 §3.3 — POST /api/auth/mfa/verify: completes a login that returned
+    /// <c>status: "mfa_required"</c>. Reads the caller from the scoped <c>mfa_pending</c> token
+    /// (<c>ICurrentUser.Scope == "mfa_pending"</c> — fenced to this exact path by
+    /// <c>AuthenticationExtensions</c>/<c>MfaPendingScopeFence</c>), validates the TOTP/recovery
+    /// code, and on success issues a normal full session JWT. Counts a wrong code against the same
+    /// per-e-mail <c>ILoginAttemptLimiter</c> budget as a wrong password.
+    /// </summary>
+    Task<Result<LoginResponse>> VerifyMfaLoginAsync(MfaCodeRequest request);
 
     /// <summary>Exchanges a long-lived personal API key (an `api_keys` row) for a normal JWT — same
     /// response shape and claims as LoginAsync, just a different credential.</summary>

@@ -39,6 +39,7 @@ public static class UserMapper
             // The banner is loud only for people the gate actually blocks (an admin-tier role);
             // stakeholders get a soft hint instead (MeResponse's own doc-comment, §3.5).
             EmailVerificationRequired = !emailVerified && isAdmin,
+            MfaEnabled = user.TotpEnabledAt != null,
         };
     }
 }

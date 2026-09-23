@@ -39,4 +39,23 @@ public interface ITokenService
         long sessionId,
         DateTime expiresAt
     );
+
+    /// <summary>
+    /// R5-61 §3.3: issues a short-lived (5-minute) scoped JWT for a super admin who verified their
+    /// password but still owes a TOTP code — claims <c>sub</c>, <c>email</c>, <c>name</c>,
+    /// <c>stamp</c>, <c>scope = "mfa_pending"</c> only (no <c>tenant</c>/<c>role_id</c>/<c>role</c>/
+    /// <c>is_admin</c>/<c>is_super_admin</c>/<c>mstamp</c> — same reduced shape as
+    /// <see cref="IssueSelection"/>). <c>AuthenticationExtensions.OnTokenValidated</c> fences it to
+    /// exactly <c>POST /api/auth/mfa/verify</c> (<c>MfaPendingScopeFence</c>, same exact-path
+    /// convention as <c>SelectionScopeFence</c>) regardless of <c>Auth:ValidateSecurityStamp</c>.
+    /// <para>
+    /// Default-implemented (throws) so the many hand-written <c>ITokenService</c> test doubles across
+    /// the suite that predate R5-61 keep compiling unchanged — none of their scenarios reach the MFA
+    /// branch in <c>AuthService.LoginAsync</c>, so the default is never actually invoked by them.
+    /// </para>
+    /// </summary>
+    string IssueMfaPending(User user) =>
+        throw new NotSupportedException(
+            "This ITokenService does not implement IssueMfaPending (pre-R5-61 test double)."
+        );
 }

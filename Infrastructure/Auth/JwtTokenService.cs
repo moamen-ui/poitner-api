@@ -187,4 +187,35 @@ public class JwtTokenService(IOptions<JwtOptions> opts) : ITokenService
         );
         return new JwtSecurityTokenHandler().WriteToken(token);
     }
+
+    // R5-61: same reduced-claims shape as IssueSelection, same 5-minute lifetime (reusing
+    // JwtOptions.SelectionLifetimeMinutes rather than adding a second short-TTL config knob — both
+    // are pre-full-auth scoped tokens with the same intended lifetime). AuthenticationExtensions
+    // fences scope="mfa_pending" to POST /api/auth/mfa/verify exactly, mirroring SelectionScopeFence.
+    public string IssueMfaPending(User u)
+    {
+        var o = opts.Value;
+        var activeKey = ResolveActiveKey(o);
+        var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(activeKey.Secret))
+        {
+            KeyId = activeKey.Id,
+        };
+        var creds = new SigningCredentials(key, SecurityAlgorithms.HmacSha256);
+        var claims = new List<Claim>
+        {
+            new Claim(JwtRegisteredClaimNames.Sub, u.PublicId.ToString()),
+            new Claim("email", u.Email),
+            new Claim("name", u.DisplayName),
+            new Claim("stamp", u.SecurityStamp.ToString()),
+            new Claim("scope", "mfa_pending"),
+        };
+        var token = new JwtSecurityToken(
+            o.Issuer,
+            o.Issuer,
+            claims,
+            expires: DateTime.UtcNow.AddMinutes(o.SelectionLifetimeMinutes),
+            signingCredentials: creds
+        );
+        return new JwtSecurityTokenHandler().WriteToken(token);
+    }
 }

@@ -43,6 +43,8 @@ public static class DependencyInjection
         s.AddScoped<IFileStorage, LocalFileStorage>();
         s.AddSingleton<IUploadSigner, UploadSigner>();
         s.AddSingleton<IResetTokenService, ResetTokenService>();
+        // R5-61: RFC 6238 TOTP — stateless, singleton, same manual-DI seam as ResetTokenService above.
+        s.AddSingleton<ITotpService, TotpService>();
         // DB-12: the append-only audit writer — manual DI (single instance seam), like ResetTokenService above.
         s.AddScoped<IAuditWriter, Audit.AuditWriter>();
         s.Configure<LoginLockoutOptions>(c.GetSection("Auth:LoginLockout"));

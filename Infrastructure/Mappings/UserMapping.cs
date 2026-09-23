@@ -60,6 +60,9 @@ public class UserMapping : IEntityTypeConfiguration<User>
         b.Property(x => x.RecipientEmail).HasColumnName("recipient_email").HasMaxLength(256);
         b.Property(x => x.ErasedAt).HasColumnName("erased_at");
         b.Property(x => x.EmailVerifiedAt).HasColumnName("email_verified_at");
+        // R5-61: operator TOTP MFA — additive, nullable (AddOperatorMfa migration).
+        b.Property(x => x.TotpSecret).HasColumnName("totp_secret");
+        b.Property(x => x.TotpEnabledAt).HasColumnName("totp_enabled_at");
 
         b.HasOne(x => x.Role)
             .WithMany(r => r.Users)
