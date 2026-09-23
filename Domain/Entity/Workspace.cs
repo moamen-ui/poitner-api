@@ -36,4 +36,21 @@ public class Workspace
     public DateTime? DemoExpiryWarnedAt { get; set; }
     public int? DemoCommentCapOverride { get; set; }
     public int? DemoTtlHoursOverride { get; set; }
+
+    /// <summary>
+    /// DB-18. Workspace lifecycle. Frozen (read-only for members, widget and CLI) ⇔ PausedAt != null || DeletionScheduledFor != null
+    /// (enforced by API/Auth/WorkspaceFrozenFilter via IWorkspaceStateService). PausedByOperator = only the operator may resume.
+    /// DeletionRequestedAt = newest e-mailed request (the scoped token binds it; a newer request or a cancel voids older links);
+    /// DeletionScheduledFor = confirmed with password, deleted by WorkspaceDeletionService via TenantService.HardDeleteAsync(id, "owner_requested").
+    /// DeletedAt is NOT used for the grace period (members must still sign in to export or cancel). PausedBy/DeletionRequestedBy are
+    /// users.public_id content references (R14, no FK). Check constraints: DB-18 §3.2.
+    /// </summary>
+    public DateTime? PausedAt { get; set; }
+    public Guid? PausedBy { get; set; }
+    public bool PausedByOperator { get; set; }
+    public DateTime? DeletionRequestedAt { get; set; }
+    public Guid? DeletionRequestedBy { get; set; }
+    public DateTime? DeletionConfirmedAt { get; set; }
+    public DateTime? DeletionScheduledFor { get; set; }
+    public DateTime? DeletionReminderSentAt { get; set; }
 }

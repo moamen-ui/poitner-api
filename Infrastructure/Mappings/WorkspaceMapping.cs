@@ -10,7 +10,24 @@ public class WorkspaceMapping : IEntityTypeConfiguration<Workspace>
     {
         b.ToTable(
             "workspaces",
-            t => t.HasCheckConstraint("ck_workspaces_name_not_blank", "length(btrim(name)) > 0")
+            t =>
+            {
+                t.HasCheckConstraint("ck_workspaces_name_not_blank", "length(btrim(name)) > 0");
+                // DB-18 §3.2 — every state transition in WorkspaceLifecycleService sets/clears these
+                // columns in the exact groups the three constraints require.
+                t.HasCheckConstraint(
+                    "ck_workspaces_pause_consistent",
+                    "(paused_at IS NULL) = (paused_by IS NULL) AND (paused_at IS NOT NULL OR NOT paused_by_operator)"
+                );
+                t.HasCheckConstraint(
+                    "ck_workspaces_deletion_request_consistent",
+                    "(deletion_requested_at IS NULL) = (deletion_requested_by IS NULL)"
+                );
+                t.HasCheckConstraint(
+                    "ck_workspaces_deletion_schedule_consistent",
+                    "(deletion_confirmed_at IS NULL) = (deletion_scheduled_for IS NULL) AND (deletion_confirmed_at IS NULL OR deletion_requested_at IS NOT NULL) AND (deletion_reminder_sent_at IS NULL OR deletion_scheduled_for IS NOT NULL)"
+                );
+            }
         );
 
         b.HasKey(x => x.Id);
@@ -42,5 +59,22 @@ public class WorkspaceMapping : IEntityTypeConfiguration<Workspace>
         b.HasIndex(x => x.DemoExpiresAt)
             .HasFilter("demo_expires_at IS NOT NULL")
             .HasDatabaseName("ix_workspaces_demo_expires_at");
+
+        // DB-18: PausedBy/DeletionRequestedBy are users.public_id content references (R14) — no FK by design.
+        b.Property(x => x.PausedAt).HasColumnName("paused_at");
+        b.Property(x => x.PausedBy).HasColumnName("paused_by");
+        b.Property(x => x.PausedByOperator)
+            .HasColumnName("paused_by_operator")
+            .HasDefaultValue(false);
+        b.Property(x => x.DeletionRequestedAt).HasColumnName("deletion_requested_at");
+        b.Property(x => x.DeletionRequestedBy).HasColumnName("deletion_requested_by");
+        b.Property(x => x.DeletionConfirmedAt).HasColumnName("deletion_confirmed_at");
+        b.Property(x => x.DeletionScheduledFor).HasColumnName("deletion_scheduled_for");
+        b.Property(x => x.DeletionReminderSentAt).HasColumnName("deletion_reminder_sent_at");
+
+        // The job's own predicate (DB-18 §3.4) — partial index over scheduled deletions only (R4: a handful of rows).
+        b.HasIndex(x => x.DeletionScheduledFor)
+            .HasFilter("deletion_scheduled_for IS NOT NULL")
+            .HasDatabaseName("ix_workspaces_deletion_scheduled_for");
     }
 }
