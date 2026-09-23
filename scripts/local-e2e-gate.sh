@@ -75,12 +75,31 @@ pkill -f "${SCRATCH}/e2e/fixture-app/csp-nonce/serve.mjs" 2>/dev/null || true
 
 echo "==> rsync ${SRC_DIR}/ -> ${SCRATCH}/"
 mkdir -p "${SCRATCH}"
+# Excludes beyond .git/node_modules/bin/obj: e2e/state, e2e/test-results, e2e/playwright-report and
+# .pointer are e2e's OWN gitignored generated output (e2e/.gitignore, .gitignore) — a genuine CI
+# checkout (actions/checkout@v4) never has any of it, but SRC_DIR here is a developer's real working
+# copy, which can (2026-09-23: did, on this machine — a `state/upgrade.json` left by an unrelated
+# manual `upgrade-job.mjs` run against the SHARED dev stack days earlier). Copying that over made
+# api/upgrade.spec.mjs's R1-06-02/R1-09-02 read stale evidence of an upgrade this run never
+# performed and fail against a database that doesn't hold that legacy key, instead of the clean-slate
+# behavior CI always gets. Excluding them here (scratch regenerates its own, phase by phase) is what
+# keeps this rsync-a-working-copy approach equivalent to CI's real fresh clone.
 rsync -a --delete \
   --exclude='.git' \
   --exclude='node_modules' \
   --exclude='bin' \
   --exclude='obj' \
+  --exclude='e2e/state' \
+  --exclude='e2e/test-results' \
+  --exclude='e2e/playwright-report' \
+  --exclude='.pointer' \
   "${SRC_DIR}/" "${SCRATCH}/"
+# rsync --delete does not touch --exclude'd paths at all (that is exactly why it leaves the
+# scratch copy's .git alone across runs, per the comment below) — so a scratch dir reused from a
+# PRIOR gate run keeps whatever it last generated under these paths unless removed explicitly here.
+rm -rf "${SCRATCH}/e2e/state" "${SCRATCH}/e2e/test-results" "${SCRATCH}/e2e/playwright-report" "${SCRATCH}/.pointer"
+mkdir -p "${SCRATCH}/e2e/state"
+touch "${SCRATCH}/e2e/state/.gitkeep"
 
 # `.git` was excluded above (rsync's own default `--exclude` protects an existing destination
 # path from `--delete` too, so this only runs once — the scratch copy keeps this same baseline
