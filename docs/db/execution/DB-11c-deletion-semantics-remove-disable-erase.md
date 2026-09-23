@@ -13,13 +13,21 @@ personal AI rules, and scrubs the person's address from `invites.email` — by d
 holder's explicit action (password, or a one-time e-mailed link for magic-link accounts) or a super
 admin's explicit call, never by a schema step). No approval line needed: the migration is additive; the destructive behaviour is a
 product feature the owner asked for.
-**Status 2026-09-22: written; not implemented.** Owner decisions D8, D9, D10, D12 and F5 have defaults (§3.8).
+**Status 2026-09-23: implemented and deployed ~04:55 UTC** (merged `af4f98b` + fixes `21cb7ee`; 71 migrations in production, newest `20260923040830_AddUsersErasedAt`). Endpoints `POST /api/me/leave-workspace`, `DELETE /api/me`, `POST /api/me/request-erase`, `POST /api/auth/confirm-erase`, `DELETE /api/admin/identities/{publicId}`; S-13 sole-admin guard enforced across all paths; `users.erased_at` live; audit rows `member.left`, `identity.erase_requested`, `identity.erased` emitted. Dashboard half pending (client `@moamen-ui/pointer-react` 1.0.43 publishing now). Owner decisions D8, D9, D10, D12 and F5 have defaults (§3.8).
 **Amended 2026-09-22 (evening)** after the cross-review (`docs/roadmap/meetings/2026-09-22-foundations/04-chair-synthesis.md`
 §1 rows D2/D3/D9/D10 = GLM A2, GLM A3, agy A1, agy A3; cited below by finding id because D8–D12 here are
 owner decisions): **GLM A2** erase tombstones `invites.email` for the person's address inside the
 transaction (§3.4 step 2b, inventory table); **GLM A3** magic-link identities erase themselves through a
 one-time e-mailed link (§3.4a/§3.4b, two endpoints); **agy A1** screenshots — founder default **F5 = keep**
 (§3.4 step 4, §3.8, privacy sentence in §11); **agy A3** legal hold — one forward-reference sentence (§3.4).
+
+**Review outcome (2026-09-23):** Gemini Pro had no findings. Opus raised 3 HIGH and 5 MEDIUM findings — all applied before deploy in `21cb7ee`:
+- **S-13 sole-admin bypasses closed (HIGH):** The sole-admin guard was missing on reject/approve (`TenantService.SetStatusAsync`); active-admin counting and in-transaction locking were hardened so concurrent updates cannot leave a workspace without an active admin.
+- **Tombstone scrub completeness (HIGH):** Merged-predecessor rows (`merged_into_user_id IS NOT NULL`) retained personal e-mails; scrub logic now scrubs merged predecessors alongside the primary identity row.
+- **Invite scrub (MEDIUM):** Invite scrubbing now uses case-insensitive matching (`lower(email)`).
+- **Deputy permissions (MEDIUM):** Deputies prevented from removing workspace admins.
+- **Audit accuracy (MEDIUM):** Enforced correct actor kinds and recorded per-workspace erased rows.
+
 
 ## 1. Goal
 

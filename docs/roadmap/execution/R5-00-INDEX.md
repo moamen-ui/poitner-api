@@ -17,7 +17,7 @@ section for the verified facts; this index only summarizes.
 | [R5-59](R5-59-security-headers-and-login-limit.md) | Security headers + login rate limit + `security.txt` | 1 d | No | None — independent of DB-11/12/13 | No (Caddy config only) | **Shipped** `5a37117`+`c55dc46`; **§12 amendment shipped** `6ca148b` (per-e-mail lockout); **hardening shipped** `bc5e9b4` (GLM review M1/F5/F6/F7); verified live; F3/F4 open |
 | [R5-60](R5-60-production-restore-drill.md) | Production-side restore drill | 0.5 d | No | None | No | **Shipped** `58f0fe7`; **drilled on production 2026-09-23** (4 s, counts matched, scratch dropped) |
 | [R5-61](R5-61-operator-mfa.md) | Operator MFA (TOTP on the super-admin account) | 1–2 d | **Yes** — `users.totp_secret`/`totp_enabled_at` (nullable), new `user_recovery_codes` table | None hard — designed independent of DB-11c/DB-12 (soft follow-up: audit MFA enroll/disable once DB-12 ships) | Yes — MFA settings card + login-flow MFA step | DB-11a and DB-11b deployed 2026-09-23; queued behind remaining auth work — not started |
-| [R5-62](R5-62-jwt-key-rotation.md) | JWT `kid` + two-key rotation window | 1 d | No | Coordinate with DB-11a/b (`ITokenService.Issue` signature changes) — not blocking; independent of DB-12/13 | No | DB-11a and DB-11b deployed 2026-09-23; queued behind remaining auth work — not started |
+| [R5-62](R5-62-jwt-key-rotation.md) | JWT `kid` + two-key rotation window | 1 d | No | Coordinate with DB-11a/b (`ITokenService.Issue` signature changes) — not blocking; independent of DB-12/13 | No | **Shipped** `ea436b0`+`4d48bbe`; deployed 2026-09-23 04:33 UTC; production logs `[JWT] active kid=k0; configured kids=[k0]`; `JWT_SIGNING_KEY` frozen |
 | [R5-63](R5-63-privacy-and-terms.md) | Privacy policy + Terms of Service | 3–5 d (writing) | No | Text describes the DB-11c/DB-12/DB-13 posture (operator access, erasure) — must be revised once those ship; not blocked from publishing now | No (landing pages, not the dashboard app) | **Shipped** `3afe171`+`ab0cc98`; live; `[LEGAL-REVIEW]` placeholders remain |
 | [R5-65](R5-65-arabic-rtl-audit.md) | Arabic/RTL completeness audit (checklist only, no fixes) | 1 d | No | None (one audit row, D9, covers the R5-61 MFA card *if* merged first — optional, not required) | Audit only — dashboard is the subject, not modified | **In progress** — static pass (GLM, `docs/runbooks/RTL-AUDIT-2026-09-23.md`); fix-now 1/3/4 shipped `db0dcb7` (widget `dir` follows language, localised `timeAgo`, four strings to i18n); fix-now 2 (e-mail RTL) and 5 (Arabic privacy/terms) and the browser pass still pending |
 | [R5-66](R5-66-export-and-dsar-runbook.md) | Export verification + DSAR runbook | 1 d | No | DB-11c (identity-erase outcome), DB-12 (audit logging) — both soft/non-blocking; usable against current schema today | No | **Shipped**; `docs/runbooks/DSAR.md` + `EXPORT-VERIFICATION-2026-09-23.md` live; follow-ups filed as DB-16 |
@@ -25,8 +25,8 @@ section for the verified facts; this index only summarizes.
 | [R5-68](R5-68-versioning-policy-and-v1-alias.md) | Versioning policy + `/api/v1/*` alias | 1 d | No | None | No (explicitly none — policy doc + a routing alias) | **Shipped** `435f688`; live, parity verified in production |
 
 All ten depend on nothing outside this list except the soft/non-blocking notes above. DB-11a, DB-11b,
-and DB-12 part 1 are deployed to production (2026-09-23); DB-12 part 2 is in review on `feat/db-12-audit-call-sites`;
-DB-11c/d and DB-13 are written and awaiting implementation.
+DB-11c, DB-12 (parts 1 + 2), and R5-62 are deployed to production (2026-09-23); DB-13 is in progress on `feat/db-13-impersonation`;
+DB-11d is starting.
 
 ## Recommended implementation order
 
@@ -74,6 +74,7 @@ Per the final report's Sequence (§3, step 5–6) and this review's dependency f
   scheduled-clean-up behaviour; implement it as **DB-16** before demo-public.
 - Export DTO drops custom fields, page-context snapshots and predefined-action links
   (`Application/DTOs/Export/CommentExportDto.cs`) — portability gap, track with DB-16 or a small R5 item.
+- **Widget Updates button hidden (open item):** `61004ac` intentionally hid the Updates button in the widget, leaving notifications unreachable in the widget UI (R2-04 notification e2e specs set to `fixme`). Founder decision pending on whether / when to un-hide or redesign the notification surface.
 
 ## Shipped 2026-09-23
 
@@ -89,15 +90,19 @@ Per the final report's Sequence (§3, step 5–6) and this review's dependency f
 | R5-65 RTL audit | (in progress); fix-now 1/3/4 `db0dcb7` | Static pass by GLM (`docs/runbooks/RTL-AUDIT-2026-09-23.md`); fix-now 1/3/4 (widget RTL shadow root, localised `timeAgo`, four strings to i18n) live in `pointer.js`; fix-now 2/5 and the browser pass pending |
 | DB-11a identity + memberships | `8140695` (code), deployed `pre-db11a` | **Deployed to production 2026-09-23 00:08 UTC**; migrations 65→68; 0 duplicate e-mails, 5 live memberships; client `@moamen-ui/pointer-react` 1.0.41 published; dashboard TenantsPage update in progress |
 | R5.1b (DB-11b login workspace picker + switch) | (API + widget) | **Deployed to production 2026-09-23** (API + widget; dashboard pending deploy). Follow-up fix: `choose-workspace` 200 envelope; widget RTL follow-ups in `650dc50` |
-| R5.2 part 1 (DB-12 audit log) | deployed `pre-db12` (`30d1b46`) | **Deployed to production 2026-09-23** (`pre-db12` contract deploy, 70 migrations, newest `20260923003835_AddAuditEventsAppendOnlyTrigger`). Part 2 (attributes on 103 actions, writer calls in 20 services) in review on `feat/db-12-audit-call-sites` |
-| R5-61 / R5-62 | — | DB-11a/b deployed; queued behind remaining auth work — not started |
+| R5.2 (DB-12 audit log) | Part 1 `30d1b46`, Part 2 `fda2717` | **Complete** — Part 1 deployed (`pre-db12`, 70 migrations); Part 2 (attributes on 103 actions — 71 `[Audited]`, 32 `[NoAudit]` — and writer calls in 20 services, `Audit:StrictCoverage=true` in Development) deployed 2026-09-23 03:42 UTC. First production row verified (`auth.login.failed`, hashed e-mail, request id, ip hash). Dashboard Security log page (`/security-log`, workspace + super-admin /all views) shipped in pointer-dashboard `60bbd0d` and deployed; client `@moamen-ui/pointer-react` 1.0.42 |
+| DB-11c deletion semantics | `af4f98b` + fixes `21cb7ee` | **Deployed to production 2026-09-23 ~04:55 UTC** (71 migrations, newest `20260923040830_AddUsersErasedAt`). Remove/disable/leave/erase, S-13 sole-admin guard for every actor incl. super admin, `users.erased_at`, scoped one-time erase tokens, invite scrub, audit rows. Reviews: Gemini Pro no findings, Opus 3 HIGH + 5 MEDIUM applied. Dashboard half pending (client `@moamen-ui/pointer-react` 1.0.43 publishing now) |
+| R5-62 JWT key rotation | `ea436b0` + fixes `4d48bbe` | **Deployed to production 2026-09-23 04:33 UTC**; production logs `[JWT] active kid=k0; configured kids=[k0]`. Review outcome applied: `JWT_SIGNING_KEY` frozen (root secret for keys/tokens/URLs/IP hash); rotation via `JWT_KEY_0_*` / `JWT_KEY_1_*` / `JWT_ACTIVE_KEY_ID` only (runbook in `DEPLOY.md`) |
+| R5-61 operator MFA | — | DB-11a/b/c deployed; queued behind remaining auth work — not started |
 
 ## CI and CLI status (2026-09-23)
 
 - **CI**: the e2e workflow had never passed on `main`. Fixes `f50db0e`/`ac08a20`/`cc2de72`/`75ba7ff`/
-  `8551188`/`cb779b7`/`c90a90b` made the `reset`/`seed`/`probe`/`api`/`docs`/`cli` phases green; the
-  `widget` phase is under triage. `f50db0e` also gave DB-09's migration-apply gate a fresh-database
-  exemption (see `docs/db/DB-REVIEW-2026-09-22.md` §7, DB-09 row).
+  `8551188`/`cb779b7`/`c90a90b` made the `reset`/`seed`/`probe`/`api`/`docs`/`cli` phases green (green in CI
+  for the first time tonight). The `widget` phase specs are being repaired; R2-04 notification specs are `fixme`
+  because the widget Updates button is intentionally hidden since `61004ac` (founder decision pending).
+  `f50db0e` also gave DB-09's migration-apply gate a fresh-database exemption (see `docs/db/DB-REVIEW-2026-09-22.md`
+  §7, DB-09 row).
 - **CLI**: two regressions found by the e2e suite were fixed on `main` — `694a8ea` (stamp reader
   accepts stamp-first sub-skills → 0.6.1) and `decbbb6` (apply no longer clobbers
   `manifest.prev.json` → 0.6.2). **Not yet published to npm** — owner decision to hold publish.

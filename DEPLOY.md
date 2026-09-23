@@ -118,7 +118,10 @@ deploy, **not** against losing the VM — see "Off-box copy" below.
 
 ### Deploy history
 
-- **2026-09-23**: `pre-db12` contract deploy (`POINTER_APPLY_CONTRACT=1 POINTER_CONTRACT_LABEL=pre-db12 bash scripts/deploy-api.sh`, commit `30d1b46`), 70 migrations now in production (newest `20260923003835_AddAuditEventsAppendOnlyTrigger`).
+- **2026-09-23 (03:42 UTC)**: DB-12 part 2 (`scripts/deploy-api.sh`, commit `fda2717`), attributes on 103 actions (71 `[Audited]`, 32 `[NoAudit]`) and `IAuditWriter` calls across 20 services; `Audit:StrictCoverage=true` in Development. First production audit row verified (`auth.login.failed`, hashed e-mail, request id, ip hash). Dashboard Security log page shipped in `60bbd0d` and deployed (client `@moamen-ui/pointer-react` 1.0.42).
+- **2026-09-23 (04:33 UTC)**: R5-62 JWT `kid` + two-key rotation (`scripts/deploy-api.sh`, commit `ea436b0` + fixes `4d48bbe`); production logs `[JWT] active kid=k0; configured kids=[k0]`. `JWT_SIGNING_KEY` frozen (root secret for keys/tokens/URLs/IP hash); rotation through `JWT_KEY_0_*` / `JWT_KEY_1_*` / `JWT_ACTIVE_KEY_ID` only (see § JWT key rotation).
+- **2026-09-23 (~04:55 UTC)**: DB-11c deletion semantics (`scripts/deploy-api.sh`, commit `af4f98b` + fixes `21cb7ee`), 71 migrations now in production (newest `20260923040830_AddUsersErasedAt`). Remove/disable/leave/erase, S-13 sole-admin guard for every actor incl. super admin, `users.erased_at`, scoped one-time erase tokens, invite scrub, audit rows.
+- **2026-09-23 (earlier)**: `pre-db12` contract deploy (`POINTER_APPLY_CONTRACT=1 POINTER_CONTRACT_LABEL=pre-db12 bash scripts/deploy-api.sh`, commit `30d1b46`), 70 migrations now in production (newest `20260923003835_AddAuditEventsAppendOnlyTrigger`).
 
 ### Off-box copy
 

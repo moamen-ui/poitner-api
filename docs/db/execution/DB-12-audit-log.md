@@ -7,7 +7,7 @@ address), **R17 (new — append-only tables and the audit obligation; written by
 **Class: Additive** (one new table, three indexes, one FK) **+ one raw-SQL migration** (the append-only
 trigger; `.Sql(` ⇒ DB-02 marker + `[ContractMigration("DB-12")]` ⇒ ships through `POINTER_APPLY_CONTRACT=1`,
 alone as `pre-db12` or batched with DB-14 as `pre-db12-14` under R7.1).
-**Status 2026-09-23: part 1 deployed to production 2026-09-23 (contract label `pre-db12`); part 2 (call sites, 103 attributed actions, 20 services) merged to main 2026-09-23 after Opus + Gemini Pro reviews — ordinary deploy pending.**
+**Status 2026-09-23: Complete.** Part 1 deployed to production 2026-09-23 (contract label `pre-db12`, commit `30d1b46`); **part 2 deployed to production 2026-09-23 03:42 UTC** (merged `fda2717`; attributes on 103 actions — 71 `[Audited]`, 32 `[NoAudit]` — and `IAuditWriter` calls in 20 services; `Audit:StrictCoverage=true` in Development). First production row verified (`auth.login.failed`, hashed e-mail, request id, ip hash). Reviews: Opus 11 findings + Gemini Pro 4, all applied. Dashboard **Security log page** (`/security-log`, workspace + super-admin /all views) shipped in pointer-dashboard `60bbd0d` and deployed; client `@moamen-ui/pointer-react` 1.0.42.
 Owner decisions D12.1–D12.5 have defaults (§3.9); none blocks.
 
 **Dependencies.** Independent of DB-11a for the *schema*. The *writer call sites* (§3.6) are written against

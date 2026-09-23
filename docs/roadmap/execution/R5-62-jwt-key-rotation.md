@@ -1,6 +1,6 @@
 # R5-62 — JWT `kid` + two-key rotation window (§62 · Release 5 · 1 d)
 
-**Status (2026-09-23):** queued behind DB-11a (shared auth files) — not started.
+**Status (2026-09-23):** Implemented (merged `ea436b0` + review fixes `4d48bbe`) and deployed to production 2026-09-23 04:33 UTC; production logs `[JWT] active kid=k0; configured kids=[k0]`. Review outcome (Opus HIGH, applied): `JWT_SIGNING_KEY` is also the root secret for API-key encryption, password-reset tokens, signed upload URLs and audit IP hashing — it is now frozen; rotation goes through `JWT_KEY_0_*` / `JWT_KEY_1_*` / `JWT_ACTIVE_KEY_ID` only (runbook in `DEPLOY.md` § JWT key rotation).
 
 ## 1. Goal
 
