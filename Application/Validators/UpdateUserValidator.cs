@@ -11,7 +11,8 @@ public class UpdateUserValidator : AbstractValidator<UpdateUserRequest>
         RuleFor(x => x.RoleId)
             .GreaterThan(0);
 
-        RuleFor(x => x.Password)
-            .MinimumLength(8).WithMessage(MessageKeys.User.PasswordWeak);
+        RuleFor(x => x.Password!)
+            .StrongPassword(_ => null)
+            .When(x => x.Password != null);
     }
 }

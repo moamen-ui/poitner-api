@@ -12,4 +12,7 @@ public static class TokenPurposes
 
     /// <summary>Reserved: DB-11d change-email confirmation.</summary>
     public const string ChangeEmail = "change-email";
+
+    /// <summary>DB-14: e-mail verification confirmation.</summary>
+    public const string VerifyEmail = "verify-email";
 }

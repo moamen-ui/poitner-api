@@ -12,7 +12,6 @@ public class ResetPasswordValidator : AbstractValidator<ResetPasswordRequest>
             .NotEmpty().WithMessage(MessageKeys.Auth.TokenRequired);
 
         RuleFor(x => x.NewPassword)
-            .NotEmpty().WithMessage(MessageKeys.User.PasswordRequired)
-            .MinimumLength(8).WithMessage(MessageKeys.User.PasswordWeak);
+            .StrongPassword(_ => null);
     }
 }

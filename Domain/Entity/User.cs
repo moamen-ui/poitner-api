@@ -87,4 +87,13 @@ public class User : BaseEntity
     /// set; <see cref="PublicId"/> is kept so authored content still resolves to "Deleted user".
     /// </summary>
     public DateTime? ErasedAt { get; set; }
+
+    /// <summary>
+    /// DB-14. Non-null = the identity proved control of <see cref="Email"/> (verification link,
+    /// addressed invite, operator-created, or grandfathered by the DB-14 backfill). Null =
+    /// unverified: may read and comment, may not act as an admin (<c>RequireVerifiedEmailFilter</c>).
+    /// Reset to null by <c>DemoService.UpgradeAsync</c> (new address) and never by anything else —
+    /// DB-11d's confirm step sets it (the new address was just proven).
+    /// </summary>
+    public DateTime? EmailVerifiedAt { get; set; }
 }

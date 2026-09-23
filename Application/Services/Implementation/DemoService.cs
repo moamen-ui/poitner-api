@@ -26,6 +26,7 @@ public class DemoService : IDemoService
     private readonly IBrandingService _branding;
     private readonly IMembershipService _memberships;
     private readonly IAuditWriter _audit;
+    private readonly IEmailVerificationService _emailVerification;
 
     public DemoService(
         IUnitOfWork unitOfWork,
@@ -35,7 +36,8 @@ public class DemoService : IDemoService
         ISettingsService settings,
         IBrandingService branding,
         IMembershipService memberships,
-        IAuditWriter? audit = null
+        IAuditWriter? audit = null,
+        IEmailVerificationService? emailVerification = null
     )
     {
         _unitOfWork = unitOfWork;
@@ -46,6 +48,7 @@ public class DemoService : IDemoService
         _branding = branding;
         _memberships = memberships;
         _audit = audit ?? NoopAuditWriter.Instance;
+        _emailVerification = emailVerification ?? NoopEmailVerification.Instance;
     }
 
     public async Task<Result<DemoSessionResponse>> ProvisionAsync(
@@ -343,6 +346,9 @@ public class DemoService : IDemoService
         user.DemoCommentCapOverride = null;
         user.DemoTtlHoursOverride = null;
         user.Email = emailNormalized;
+        // DB-14 §3.2: this is exactly where the address becomes real (F4) — reset to null (never
+        // by anything else) so the convert step re-earns verification.
+        user.EmailVerifiedAt = null;
         user.PasswordHash = _passwordHasher.Hash(request.Password);
         user.DisplayName = string.IsNullOrWhiteSpace(request.DisplayName)
             ? user.DisplayName
@@ -362,6 +368,9 @@ public class DemoService : IDemoService
         {
             return Result<UpgradeDemoResponse>.Conflict(MessageKeys.Demo.EmailTaken);
         }
+
+        // DB-14 §3.2: the address just became real — send the verification link.
+        await _emailVerification.SendAsync(user);
 
         // 9-10. Role navigation is already loaded above; issue a fresh token with the real email.
         // DB-11a: the demo admin's own membership (in its own workspace) carries the role/tenant now.

@@ -27,6 +27,7 @@ public class UserService : IUserService
     private readonly IBrandingService _branding;
     private readonly IMembershipService _memberships;
     private readonly IAuditWriter _audit;
+    private readonly IEmailVerificationService _emailVerification;
 
     public UserService(
         IUnitOfWork unitOfWork,
@@ -36,7 +37,8 @@ public class UserService : IUserService
         IEntitlementService entitlements,
         IBrandingService branding,
         IMembershipService memberships,
-        IAuditWriter? audit = null
+        IAuditWriter? audit = null,
+        IEmailVerificationService? emailVerification = null
     )
     {
         _unitOfWork = unitOfWork;
@@ -47,6 +49,7 @@ public class UserService : IUserService
         _branding = branding;
         _memberships = memberships;
         _audit = audit ?? NoopAuditWriter.Instance;
+        _emailVerification = emailVerification ?? NoopEmailVerification.Instance;
     }
 
     // Best-effort notification: a send failure must never fail the admin action.
@@ -146,6 +149,9 @@ public class UserService : IUserService
             );
             await _unitOfWork.Repository<User>().AddAsync(identity);
             await _unitOfWork.SaveChangesAsync();
+
+            // DB-14 §3.2: the admin typed this address — the member proves it.
+            await _emailVerification.SendAsync(identity);
         }
 
         var membership = await _memberships.JoinAsync(
@@ -406,6 +412,10 @@ public class UserService : IUserService
         // transaction below.
         if (!string.IsNullOrEmpty(request.Password))
         {
+            // DB-14 §3.6: before hashing, only when a password is actually being set.
+            if (PasswordPolicy.Validate(request.Password, identity.Email) is string pwErr)
+                return Result<UserResponse>.Failure(pwErr);
+
             var liveCount = (await _memberships.ListForIdentityAsync(identity.Id)).Count;
             if (liveCount != 1)
                 return Result<UserResponse>.Failure(MessageKeys.User.PasswordManagedElsewhere);

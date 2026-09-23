@@ -34,6 +34,7 @@ public class InviteService : IInviteService
     private readonly IBrandingService _branding;
     private readonly IMembershipService _memberships;
     private readonly IAuditWriter _audit;
+    private readonly IEmailVerificationService _emailVerification;
 
     private const int DefaultTtlDays = 7;
 
@@ -51,7 +52,8 @@ public class InviteService : IInviteService
         IEmailService emailService,
         IBrandingService branding,
         IMembershipService memberships,
-        IAuditWriter? audit = null
+        IAuditWriter? audit = null,
+        IEmailVerificationService? emailVerification = null
     )
     {
         _unitOfWork = unitOfWork;
@@ -64,6 +66,7 @@ public class InviteService : IInviteService
         _branding = branding;
         _memberships = memberships;
         _audit = audit ?? NoopAuditWriter.Instance;
+        _emailVerification = emailVerification ?? NoopEmailVerification.Instance;
     }
 
     // ── Admin (auth, tenant-scoped) ────────────────────────────────────────────
@@ -558,8 +561,9 @@ public class InviteService : IInviteService
             return Result<LoginResponse>.Failure(MessageKeys.Invite.NotFound);
         if (string.IsNullOrWhiteSpace(request.Email))
             return Result<LoginResponse>.Failure(MessageKeys.User.EmailRequired);
-        if (string.IsNullOrWhiteSpace(request.Password) || request.Password.Length < 8)
-            return Result<LoginResponse>.Failure(MessageKeys.User.PasswordWeak);
+        // DB-14 §3.6: replaces the old short-password check.
+        if (PasswordPolicy.Validate(request.Password, request.Email) is string pwErr)
+            return Result<LoginResponse>.Failure(pwErr);
         if (string.IsNullOrWhiteSpace(request.DisplayName))
             return Result<LoginResponse>.Failure(MessageKeys.User.DisplayNameRequired);
 
@@ -632,6 +636,19 @@ public class InviteService : IInviteService
             var already = await _memberships.GetMembershipAsync(identity.Id, ownerId);
             if (already != null)
                 return Result<LoginResponse>.Conflict(MessageKeys.Auth.AccountExists);
+
+            // DB-14 §3.2 row 12 (agy #2): an addressed invite proves possession of THIS identity's
+            // own address exactly as it would for a new one — never gate a person who just proved
+            // it twice (password + addressed link).
+            if (
+                invite.Email != null
+                && EmailNormalizer.Normalize(invite.Email) == identity.Email
+                && identity.EmailVerifiedAt == null
+            )
+            {
+                identity.EmailVerifiedAt = DateTime.UtcNow;
+                _unitOfWork.Repository<User>().Update(identity);
+            }
         }
 
         // MaxSeats: count LIVE memberships of the invite's tenant. Checked BEFORE claiming a slot so
@@ -676,6 +693,11 @@ public class InviteService : IInviteService
                 role,
                 ownerId
             );
+            // DB-14 §3.2 row 3/5: an addressed invite (matched at the top of AcceptAsync) proves
+            // possession by delivery — verified at creation, no mail. An open invite proves nothing
+            // about the typed address — unverified, mail sent below once persisted.
+            if (invite.Email != null)
+                identity.EmailVerifiedAt = DateTime.UtcNow;
 
             try
             {
@@ -688,6 +710,9 @@ public class InviteService : IInviteService
                 // pass the check above; the second violates ux_users_email_live).
                 return Result<LoginResponse>.Conflict(MessageKeys.Auth.AccountExists);
             }
+
+            if (invite.Email == null)
+                await _emailVerification.SendAsync(identity);
         }
 
         var membership = await _memberships.JoinAsync(
@@ -764,6 +789,17 @@ public class InviteService : IInviteService
                 || !_passwordHasher.Verify(request.Password, identity.PasswordHash)
             )
                 return Result<LoginResponse>.Conflict(MessageKeys.Auth.AccountExists);
+
+            // DB-14 §3.2 row 12 (agy #2) — see AcceptJoinExistingWorkspaceAsync's twin comment.
+            if (
+                invite.Email != null
+                && EmailNormalizer.Normalize(invite.Email) == identity.Email
+                && identity.EmailVerifiedAt == null
+            )
+            {
+                identity.EmailVerifiedAt = DateTime.UtcNow;
+                _unitOfWork.Repository<User>().Update(identity);
+            }
         }
 
         var claimed = await _unitOfWork.AtomicClaimInviteSlotAsync(invite.Id, DateTime.UtcNow);
@@ -784,6 +820,9 @@ public class InviteService : IInviteService
                     workspaceAdminRole,
                     workspaceId
                 );
+                // DB-14 §3.2 — see AcceptJoinExistingWorkspaceAsync's twin comment.
+                if (invite.Email != null)
+                    identity.EmailVerifiedAt = DateTime.UtcNow;
                 await _unitOfWork.Repository<User>().AddAsync(identity);
             }
 
@@ -808,6 +847,9 @@ public class InviteService : IInviteService
         {
             return Result<LoginResponse>.Conflict(MessageKeys.Auth.AccountExists);
         }
+
+        if (isNewIdentity && invite.Email == null)
+            await _emailVerification.SendAsync(identity!);
 
         var membership = await _memberships.JoinAsync(
             identity!,
@@ -979,6 +1021,10 @@ public class InviteService : IInviteService
                 ownerId,
                 passwordlessOnly: true
             );
+            // DB-14 §3.2: the magic link is e-mailed to this exact address — verified at creation,
+            // no mail (a Client never acts as an admin anyway, and PasswordlessOnly already exempts
+            // it from the resend/verify surface).
+            identity.EmailVerifiedAt = DateTime.UtcNow;
         }
 
         // Already "used": there is no accept step left to consume — the Invite row exists purely for

@@ -83,6 +83,7 @@ public class AuthRateLimitingTests
     [InlineData("ResetPassword")]
     [InlineData("ConfirmErase")]
     [InlineData("ConfirmEmailChange")]
+    [InlineData("VerifyEmail")]
     public void SignupSurface_KeepsSignupRateLimit(string action)
     {
         var method = typeof(AuthController).GetMethod(action);
@@ -108,6 +109,18 @@ public class AuthRateLimitingTests
     public void ChangeEmail_HasSignupRateLimit()
     {
         var method = typeof(MeController).GetMethod("ChangeEmail");
+        Assert.NotNull(method);
+
+        var rateLimits = method!.GetCustomAttributes<EnableRateLimitingAttribute>(inherit: true).ToList();
+        Assert.Contains(rateLimits, a => a.PolicyName == "signup");
+    }
+
+    /// <summary>DB-14: resend shares the 5/h-per-IP "signup" budget on top of its own 1-per-5-min
+    /// per-identity cache check inside EmailVerificationService.ResendAsync.</summary>
+    [Fact]
+    public void ResendVerification_HasSignupRateLimit()
+    {
+        var method = typeof(MeController).GetMethod("ResendVerification");
         Assert.NotNull(method);
 
         var rateLimits = method!.GetCustomAttributes<EnableRateLimitingAttribute>(inherit: true).ToList();

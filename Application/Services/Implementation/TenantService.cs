@@ -165,8 +165,9 @@ public class TenantService : ITenantService
     {
         if (string.IsNullOrWhiteSpace(request.Email))
             return Result<TenantResponse>.Failure("Email is required.");
-        if (string.IsNullOrWhiteSpace(request.Password) || request.Password.Length < 8)
-            return Result<TenantResponse>.Failure("Password must be at least 8 characters.");
+        // DB-14 §3.6: replaces the old short-password check + literal message.
+        if (PasswordPolicy.Validate(request.Password, request.Email) is string pwErr)
+            return Result<TenantResponse>.Failure(pwErr);
         if (string.IsNullOrWhiteSpace(request.DisplayName))
             return Result<TenantResponse>.Failure("Display name is required.");
 
@@ -221,6 +222,8 @@ public class TenantService : ITenantService
                 workspaceAdminRole,
                 workspaceId
             );
+            // DB-14 §3.2 D14.3: the operator vouches for the address.
+            identity.EmailVerifiedAt = DateTime.UtcNow;
             await _unitOfWork.Repository<User>().AddAsync(identity);
             await _unitOfWork.SaveChangesAsync();
         }

@@ -17,7 +17,8 @@ public class AuthController(
     ISettingsService settingsService,
     IInviteService inviteService,
     IDeviceLoginService deviceLoginService,
-    IIdentityEraseService eraseService) : ControllerBase
+    IIdentityEraseService eraseService,
+    IEmailVerificationService emailVerification) : ControllerBase
 {
     [AllowAnonymous]
     [Audited(AuditActions.AuthLoginSucceeded)]
@@ -133,6 +134,19 @@ public class AuthController(
     public async Task<IActionResult> ResetPassword([FromBody] ResetPasswordRequest request)
     {
         var result = await authService.ResetPasswordAsync(request);
+        return result.IsSuccess ? Ok(result) : BadRequest(result);
+    }
+
+    /// <summary>Confirms an e-mail address with the token from the verification mail (DB-14). Anonymous — the token is the credential.</summary>
+    [AllowAnonymous]
+    [Audited(AuditActions.AuthEmailVerified)]
+    [HttpPost("verify-email")]
+    [EnableRateLimiting("signup")]
+    [ProducesResponseType(typeof(Result), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(Result), StatusCodes.Status400BadRequest)]
+    public async Task<IActionResult> VerifyEmail([FromBody] VerifyEmailRequest request)
+    {
+        var result = await emailVerification.ConfirmAsync(request.Token);
         return result.IsSuccess ? Ok(result) : BadRequest(result);
     }
 

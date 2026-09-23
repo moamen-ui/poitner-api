@@ -13,8 +13,6 @@ public class UpgradeDemoValidator : AbstractValidator<UpgradeDemoRequest>
             .EmailAddress();
 
         RuleFor(x => x.Password)
-            .NotEmpty()
-            .MinimumLength(8)
-            .WithMessage(MessageKeys.User.PasswordWeak);
+            .StrongPassword(x => x.Email);
     }
 }

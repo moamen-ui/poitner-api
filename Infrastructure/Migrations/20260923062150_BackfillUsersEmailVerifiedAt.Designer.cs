@@ -2,6 +2,7 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 using Pointer.Infrastructure;
@@ -11,9 +12,11 @@ using Pointer.Infrastructure;
 namespace Pointer.Infrastructure.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    partial class AppDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260923062150_BackfillUsersEmailVerifiedAt")]
+    partial class BackfillUsersEmailVerifiedAt
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -719,69 +722,6 @@ namespace Pointer.Infrastructure.Migrations
                         .HasFilter("deleted_at IS NULL");
 
                     b.ToTable("extension_sites", (string)null);
-                });
-
-            modelBuilder.Entity("Pointer.Domain.Entity.ImpersonationSession", b =>
-                {
-                    b.Property<long>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("bigint")
-                        .HasColumnName("id");
-
-                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
-
-                    b.Property<int?>("EndReason")
-                        .HasColumnType("integer")
-                        .HasColumnName("end_reason");
-
-                    b.Property<DateTime?>("EndedAt")
-                        .HasColumnType("timestamp with time zone")
-                        .HasColumnName("ended_at");
-
-                    b.Property<DateTime>("ExpiresAt")
-                        .HasColumnType("timestamp with time zone")
-                        .HasColumnName("expires_at");
-
-                    b.Property<DateTime?>("LastRequestAt")
-                        .HasColumnType("timestamp with time zone")
-                        .HasColumnName("last_request_at");
-
-                    b.Property<Guid>("OperatorUserId")
-                        .HasColumnType("uuid")
-                        .HasColumnName("operator_user_id");
-
-                    b.Property<Guid?>("OwnerId")
-                        .HasColumnType("uuid")
-                        .HasColumnName("owner_id");
-
-                    b.Property<string>("Reason")
-                        .IsRequired()
-                        .HasMaxLength(500)
-                        .HasColumnType("character varying(500)")
-                        .HasColumnName("reason");
-
-                    b.Property<int>("RequestCount")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("integer")
-                        .HasDefaultValue(0)
-                        .HasColumnName("request_count");
-
-                    b.Property<DateTime>("StartedAt")
-                        .HasColumnType("timestamp with time zone")
-                        .HasColumnName("started_at");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("OperatorUserId")
-                        .IsUnique()
-                        .HasDatabaseName("ux_impersonation_sessions_operator_live")
-                        .HasFilter("ended_at IS NULL");
-
-                    b.HasIndex("OwnerId", "StartedAt")
-                        .IsDescending(false, true)
-                        .HasDatabaseName("ix_impersonation_sessions_owner_started");
-
-                    b.ToTable("impersonation_sessions", (string)null);
                 });
 
             modelBuilder.Entity("Pointer.Domain.Entity.Invite", b =>
@@ -2632,15 +2572,6 @@ namespace Pointer.Infrastructure.Migrations
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired()
                         .HasConstraintName("fk_extension_sites_workspaces_owner_id");
-                });
-
-            modelBuilder.Entity("Pointer.Domain.Entity.ImpersonationSession", b =>
-                {
-                    b.HasOne("Pointer.Domain.Entity.Workspace", null)
-                        .WithMany()
-                        .HasForeignKey("OwnerId")
-                        .OnDelete(DeleteBehavior.SetNull)
-                        .HasConstraintName("fk_impersonation_sessions_workspaces_owner_id");
                 });
 
             modelBuilder.Entity("Pointer.Domain.Entity.Invite", b =>

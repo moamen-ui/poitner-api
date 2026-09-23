@@ -31,6 +31,27 @@ public static class MessageKeys
         /// </summary>
         public const string InvalidCredentialsAfterMerge =
             "Invalid email or password. Accounts that shared this e-mail were combined into one — if your previous password no longer works, use \"Forgot password\".";
+
+        /// <summary>DB-14: an unverified identity hit an admin-only (non-GET, /api/admin/*) action.</summary>
+        public const string EmailNotVerified = "Verify your e-mail address to do this — check your inbox or resend the link from your profile.";
+
+        /// <summary>DB-14: POST /api/me/verification/resend succeeded.</summary>
+        public const string VerificationSent = "We've e-mailed you a verification link. It expires in 30 minutes.";
+
+        /// <summary>DB-14: a resend was requested within 5 minutes of the last one.</summary>
+        public const string VerificationRecentlySent = "A verification link was sent a moment ago — check your inbox (and spam) before requesting another.";
+
+        /// <summary>DB-14: resend requested for an already-verified identity.</summary>
+        public const string AlreadyVerified = "Your e-mail address is already verified.";
+
+        /// <summary>DB-14: resend requested for a demo/passwordless/super-admin identity.</summary>
+        public const string VerificationNotApplicable = "This account does not need e-mail verification.";
+
+        /// <summary>DB-14: POST /api/auth/verify-email failed — one message for every failure (enumeration resistance).</summary>
+        public const string VerificationLinkInvalid = "This verification link is invalid or has expired — request a new one from your profile.";
+
+        /// <summary>DB-14: POST /api/auth/verify-email succeeded.</summary>
+        public const string EmailVerified = "Your e-mail address is verified.";
     }
 
     public static class DeviceLogin
@@ -47,7 +68,16 @@ public static class MessageKeys
         public const string EmailTaken = "Email already in use.";
         public const string EmailRequired = "Email is required.";
         public const string PasswordRequired = "Password is required.";
-        public const string PasswordWeak = "Password must be at least 8 characters.";
+        public const string PasswordWeak = "Password must be at least 10 characters.";
+
+        /// <summary>DB-14 D14.4: the password policy's upper bound (128 chars).</summary>
+        public const string PasswordTooLong = "Password must be 128 characters or fewer.";
+
+        /// <summary>DB-14 D14.4: an exact (case-insensitive) match against the embedded top-1000 list.</summary>
+        public const string PasswordCommon = "That password is too common — choose something less guessable.";
+
+        /// <summary>DB-14 D14.4: the password equals the e-mail address or its local part (case-insensitive).</summary>
+        public const string PasswordIsEmail = "Your password must not be your e-mail address.";
         public const string DisplayNameRequired = "Display name is required.";
         public const string TargetWorkspaceRequired =
             "Select which workspace to add this deputy to.";

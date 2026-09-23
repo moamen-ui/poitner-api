@@ -23,6 +23,7 @@ public class MeController(
     INotificationService notificationService,
     IUserService users,
     IIdentityEraseService erase,
+    IEmailVerificationService emailVerification,
     Pointer.Application.Abstractions.ICurrentUser currentUser) : ControllerBase
 {
     [Audited(AuditActions.AuthPasswordChanged)]
@@ -32,6 +33,17 @@ public class MeController(
     {
         var result = await authService.ChangePasswordAsync(request);
         if (result.IsNotFound) return NotFound(result);
+        return result.IsSuccess ? Ok(result) : BadRequest(result);
+    }
+
+    /// <summary>Re-sends the e-mail verification link (DB-14). One per 5 minutes per account; 5/h per IP.</summary>
+    [NoAudit("mail send, no state change")]
+    [HttpPost("verification/resend")]
+    [EnableRateLimiting("signup")]
+    [ProducesResponseType(typeof(Result), StatusCodes.Status200OK)]
+    public async Task<IActionResult> ResendVerification()
+    {
+        var result = await emailVerification.ResendAsync();
         return result.IsSuccess ? Ok(result) : BadRequest(result);
     }
 

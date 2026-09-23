@@ -462,7 +462,7 @@ public class AuditWrittenByServicesTests
         var svc = AuthSvc(ctx, caller, audit);
 
         var result = await svc.ChangePasswordAsync(
-            new ChangePasswordRequest { CurrentPassword = "OldPass1!", NewPassword = "NewPass1!" }
+            new ChangePasswordRequest { CurrentPassword = "OldPass1!", NewPassword = "NewPassword1!" }
         );
 
         Assert.True(result.IsSuccess, result.Message);

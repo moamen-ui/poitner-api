@@ -149,6 +149,8 @@ public static class AdminSeeder
                     IsActive = true,
                     ApprovalStatus = ApprovalStatus.Approved,
                     PublicId = Guid.NewGuid(),
+                    // DB-14: configured on the server — the operator vouches for it.
+                    EmailVerifiedAt = DateTime.UtcNow,
                 });
             }
             else
@@ -157,8 +159,15 @@ public static class AdminSeeder
                 if (!user.IsActive) user.IsActive = true;
                 if (user.ApprovalStatus != ApprovalStatus.Approved) user.ApprovalStatus = ApprovalStatus.Approved;
                 if (!hasher.Verify(adminPassword, user.PasswordHash)) user.PasswordHash = hasher.Hash(adminPassword);
+                // DB-14: an operator account seeded before this column existed reconciles to verified.
+                if (user.EmailVerifiedAt == null) user.EmailVerifiedAt = DateTime.UtcNow;
                 db.Users.Update(user);
             }
+
+            // DB-14 §3.6: the seeded super-admin password is config-owned and never blocks startup —
+            // just a Warning so an operator notices a weak ADMIN__PASSWORD.
+            if (Pointer.Application.Common.PasswordPolicy.Validate(adminPassword, adminEmail) is string pwWarning)
+                Console.Error.WriteLine($"[AdminSeeder] ADMIN__PASSWORD is weak: {pwWarning}");
 
             await db.SaveChangesAsync();
         }

@@ -25,6 +25,7 @@ public class AuthService : IAuthService
     private readonly ILoginAttemptLimiter _loginLimiter;
     private readonly IMembershipService _memberships;
     private readonly IAuditWriter _audit;
+    private readonly IEmailVerificationService _emailVerification;
 
     public AuthService(
         IUnitOfWork unitOfWork,
@@ -38,7 +39,8 @@ public class AuthService : IAuthService
         IApiKeyService apiKeys,
         ILoginAttemptLimiter loginLimiter,
         IMembershipService memberships,
-        IAuditWriter? audit = null
+        IAuditWriter? audit = null,
+        IEmailVerificationService? emailVerification = null
     )
     {
         _unitOfWork = unitOfWork;
@@ -53,6 +55,7 @@ public class AuthService : IAuthService
         _loginLimiter = loginLimiter;
         _memberships = memberships;
         _audit = audit ?? NoopAuditWriter.Instance;
+        _emailVerification = emailVerification ?? NoopEmailVerification.Instance;
     }
 
     // ── DB-12 audit helpers ─────────────────────────────────────────────────────────────────
@@ -222,9 +225,6 @@ public class AuthService : IAuthService
 
     public async Task<Result> ResetPasswordAsync(ResetPasswordRequest request)
     {
-        if (string.IsNullOrWhiteSpace(request.NewPassword) || request.NewPassword.Length < 8)
-            return Result.Failure("Password must be at least 8 characters.");
-
         if (
             !_resetTokens.TryValidate(
                 request.Token ?? string.Empty,
@@ -249,6 +249,11 @@ public class AuthService : IAuthService
         // and no longer matches — reject it without revealing why.
         if (user.SecurityStamp != tokenStamp)
             return Result.Failure("This reset link is invalid or has expired.");
+
+        // DB-14 §3.6: replaces the old short-password literal-message check — the identity is already
+        // loaded here, so the policy can compare the new password against its own e-mail.
+        if (PasswordPolicy.Validate(request.NewPassword, user.Email) is string pwErr)
+            return Result.Failure(pwErr);
 
         user.PasswordHash = _passwordHasher.Hash(request.NewPassword);
         // Bump the stamp: invalidates this reset link (single-use) AND every existing access token
@@ -289,6 +294,10 @@ public class AuthService : IAuthService
 
         if (!_passwordHasher.Verify(request.CurrentPassword, user.PasswordHash))
             return Result.Failure(MessageKeys.User.CurrentPasswordIncorrect);
+
+        // DB-14 §3.6: new re-validation (the validator has no address to compare against).
+        if (PasswordPolicy.Validate(request.NewPassword, user.Email) is string pwErr)
+            return Result.Failure(pwErr);
 
         user.PasswordHash = _passwordHasher.Hash(request.NewPassword);
         // Bump the stamp: invalidates every existing access token for this user (H1), same as
@@ -483,8 +492,12 @@ public class AuthService : IAuthService
         var oldEmail = identity.Email;
         var oldStamp = identity.SecurityStamp;
         var oldRecipientEmail = identity.RecipientEmail;
+        var oldEmailVerifiedAt = identity.EmailVerifiedAt;
         identity.Email = newEmail;
         identity.SecurityStamp = Guid.NewGuid();
+        // DB-14 §3.2 row 11: the link went to the new address, so possession of it is proven —
+        // same as an addressed invite (D14.2).
+        identity.EmailVerifiedAt = DateTime.UtcNow;
         // Review finding #6: a demo identity's recipient_email override must not keep receiving
         // mail addressed to an account whose sign-in address has moved on.
         if (identity.RecipientEmail != null)
@@ -506,6 +519,7 @@ public class AuthService : IAuthService
             identity.Email = oldEmail;
             identity.SecurityStamp = oldStamp;
             identity.RecipientEmail = oldRecipientEmail;
+            identity.EmailVerifiedAt = oldEmailVerifiedAt;
             _unitOfWork.ClearChangeTracker();
             return Result.Conflict(MessageKeys.User.EmailTaken);
         }
@@ -1126,6 +1140,10 @@ public class AuthService : IAuthService
             );
             await _unitOfWork.SaveChangesAsync();
 
+            // DB-14 §3.2: nobody vouched for this address — send the verification link (in addition
+            // to the approval flow); best-effort, after the identity is persisted.
+            await _emailVerification.SendAsync(identity);
+
             await AuditRegisterStakeholderAsync(identity, projectOwnerId, role.Id);
             return Result.Success(MessageKeys.Auth.RegistrationSubmitted);
         }
@@ -1240,6 +1258,9 @@ public class AuthService : IAuthService
             identity.IsActive = false;
             await _unitOfWork.Repository<User>().AddAsync(identity);
             await _unitOfWork.SaveChangesAsync();
+
+            // DB-14 §3.2: nobody vouched for this address — send the verification link.
+            await _emailVerification.SendAsync(identity);
         }
 
         await _memberships.JoinAsync(

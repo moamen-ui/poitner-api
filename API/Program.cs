@@ -68,6 +68,9 @@ builder.Services.AddControllers(options =>
     options.Filters.Add<Pointer.API.Auth.AuditCoverageFilter>();
     // DB-13: request counting for a live impersonation session (§3.5).
     options.Filters.Add<Pointer.API.Auth.ImpersonationRequestCounter>();
+    // DB-14: admin-write gate — 403s a non-GET action under Pointer.API.Controllers.Admin when the
+    // caller's identity is unverified (super admin, IsDemo, and [AllowUnverified] are exempt).
+    options.Filters.Add<Pointer.API.Auth.RequireVerifiedEmailFilter>();
 });
 builder.Services.AddEndpointsApiExplorer();
 

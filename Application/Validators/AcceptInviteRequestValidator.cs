@@ -22,9 +22,7 @@ public class AcceptInviteRequestValidator : AbstractValidator<AcceptInviteReques
             .EmailAddress();
 
         RuleFor(x => x.Password)
-            .NotEmpty()
-            .MinimumLength(8)
-            .WithMessage(MessageKeys.User.PasswordWeak);
+            .StrongPassword(x => x.Email);
 
         RuleFor(x => x.DisplayName)
             .NotEmpty();

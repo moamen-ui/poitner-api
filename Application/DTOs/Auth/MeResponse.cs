@@ -25,4 +25,12 @@ public class MeResponse
 
     /// <summary>Every live, approved, active membership of this identity (DB-11b). Empty for super admins.</summary>
     public List<WorkspaceChoice> Workspaces { get; set; } = new();
+
+    /// <summary>DB-14: <c>EmailVerifiedAt != null || IsDemo || IsSuperAdmin || PasswordlessOnly</c> —
+    /// true for every identity the admin-write gate does not block.</summary>
+    public bool EmailVerified { get; set; }
+
+    /// <summary>DB-14: <c>!EmailVerified &amp;&amp; IsAdmin</c> — the banner is loud only for people the
+    /// gate actually blocks; a stakeholder gets a soft hint instead.</summary>
+    public bool EmailVerificationRequired { get; set; }
 }

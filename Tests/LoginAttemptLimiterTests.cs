@@ -552,7 +552,8 @@ public class LoginAttemptLimiterTests
             new NoopSettings(),
             Substitute.For<IInviteService>(),
             Substitute.For<IDeviceLoginService>(),
-            Substitute.For<IIdentityEraseService>()
+            Substitute.For<IIdentityEraseService>(),
+            Substitute.For<IEmailVerificationService>()
         )
         {
             ControllerContext = new ControllerContext { HttpContext = new DefaultHttpContext() },

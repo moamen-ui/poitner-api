@@ -12,7 +12,6 @@ public class ChangePasswordRequestValidator : AbstractValidator<ChangePasswordRe
             .NotEmpty().WithMessage(MessageKeys.User.PasswordRequired);
 
         RuleFor(x => x.NewPassword)
-            .NotEmpty().WithMessage(MessageKeys.User.PasswordRequired)
-            .MinimumLength(8).WithMessage(MessageKeys.User.PasswordWeak);
+            .StrongPassword(_ => null);
     }
 }

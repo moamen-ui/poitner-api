@@ -13,8 +13,7 @@ public class RegisterValidator : AbstractValidator<RegisterRequest>
             .EmailAddress();
 
         RuleFor(x => x.Password)
-            .NotEmpty().WithMessage(MessageKeys.User.PasswordRequired)
-            .MinimumLength(8).WithMessage(MessageKeys.User.PasswordWeak);
+            .StrongPassword(x => x.Email);
 
         RuleFor(x => x.DisplayName)
             .NotEmpty().WithMessage(MessageKeys.User.DisplayNameRequired);
