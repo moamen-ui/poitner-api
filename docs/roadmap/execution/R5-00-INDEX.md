@@ -23,6 +23,8 @@ section for the verified facts; this index only summarizes.
 | [R5-66](R5-66-export-and-dsar-runbook.md) | Export verification + DSAR runbook | 1 d | No | DB-11c (identity-erase outcome), DB-12 (audit logging) — both soft/non-blocking; usable against current schema today | No | **Shipped**; `docs/runbooks/DSAR.md` + `EXPORT-VERIFICATION-2026-09-23.md` live; follow-ups filed as DB-16 |
 | [R5-67](R5-67-tenant-isolation-ci-probe.md) | Tenant-isolation CI probe (e2e) | 1 d | No | None — independent of DB-11a (re-run recommended after DB-11a merges) | No | **Shipped** `86656df`; green in CI (23 tests) since run 35789122040 |
 | [R5-68](R5-68-versioning-policy-and-v1-alias.md) | Versioning policy + `/api/v1/*` alias | 1 d | No | None | No (explicitly none — policy doc + a routing alias) | **Shipped** `435f688`; live, parity verified in production |
+| [DB-16](../../db/execution/DB-16-screenshot-purge.md) *(added 2026-09-23)* | Screenshot purge: files of comments soft-deleted > 30 d, orphan sweep (> 48 h, never `uploads/branding/`), fix for the signed-URL delete bug B1, uploads-volume log line, privacy retention row | 1–2 d | **Yes** — `comments.screenshot_purged_at` (nullable; additive) | None (DB-16 and DB-17 independent; DB-16 first) | No (privacy page row only) | **Written by the db-architect, not implemented.** Ordinary deploy |
+| [DB-17](../../db/execution/DB-17-demo-as-product.md) *(added 2026-09-23 — R5.7, F4)* | Demo as a product: TTL/extension/conversion on `workspaces`, convert-in-place with optional workspace name, one-time self-service extension (`POST /api/demo/extend`), 15-min expiry sweep + T-2 h reminder, login refused after expiry, hashed demo throttle key (PII fix) | 2–3 d | **Yes** — six nullable `workspaces.demo_*` columns + partial index + check constraint, plus one R3 backfill (`[ContractMigration("DB-17")]` → `pre-db17`); `users` demo columns dual-written until DB-11e | DB-11a, DB-12, DB-14, DB-15 (all live) | Yes — DemoPanel countdown from `/me`, Extend button, workspace-name field, PDPL notice on the demo form, TenantsPage routes re-keyed to `workspaceId` | **Written by the db-architect, not implemented.** Contract deploy; R7 marker line to fill |
 
 All ten depend on nothing outside this list except the soft/non-blocking notes above. DB-11a, DB-11b,
 DB-11c, DB-11d, DB-12 (parts 1 + 2), DB-13, DB-14 (pre-db14), DB-15, and R5-62 are deployed to production
@@ -43,6 +45,10 @@ Per the final report's Sequence (§3, step 5–6) and this review's dependency f
 **Wave 2 — designed independent, but touch identity/audit-adjacent surfaces (kept after Wave 1 as a conservative ordering; this review found neither is actually blocked):**
 7. R5-61 (operator MFA) — self-contained by design; revisit to wire `IAuditWriter` calls once DB-12 ships (non-blocking follow-up).
 8. R5-66 (export + DSAR runbook) — usable today; the "erase my identity" outcome documented in it will gain an automated endpoint once DB-11c ships, and its manual logging table can be replaced once DB-12 ships.
+
+**Wave 4 — Release 5 tail (added 2026-09-23; docs written, not implemented):**
+11. DB-16 (screenshot purge) — ordinary deploy, first; its orphan sweep is the safety net for DB-17's expiry deletes.
+12. DB-17 (demo as a product, F4) — contract deploy `pre-db17`; do not batch with DB-16 (both jobs run minutes after boot; keep the deploys attributable). Then DB-11e contracts the `users` demo columns one release later.
 
 **Wave 3 — writing pack, parallel with each other and with Waves 1–2:**
 9. R5-63 (privacy + ToS) — flag the erasure/operator-access wording as provisional; revise once DB-11c/DB-12/DB-13 land (already called out in the doc's Release steps).
@@ -66,7 +72,7 @@ Per the final report's Sequence (§3, step 5–6) and this review's dependency f
 
 ## Follow-ups surfaced during implementation (2026-09-23)
 
-- **Screenshots of soft-deleted comments are never purged.** `CommentService.DeleteAsync` only sets
+- **Screenshots of soft-deleted comments are never purged** → **now specified as [DB-16](../../db/execution/DB-16-screenshot-purge.md)** (written 2026-09-23; default N = 30 d, plus an orphan sweep and the fix for the signed-URL delete bug). Original note: `CommentService.DeleteAsync` only sets
   `DeletedAt`; the file stays until the workspace is hard-deleted (`docs/runbooks/DSAR.md`, "Follow-up
   code items" #1). Decision needed: either DB-08's retention job purges `comments.deleted_at < now-N`
   rows and their screenshot files (proposed default N = 30 d, additive to the retention table), or the
