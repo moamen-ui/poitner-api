@@ -553,7 +553,8 @@ public class LoginAttemptLimiterTests
             Substitute.For<IInviteService>(),
             Substitute.For<IDeviceLoginService>(),
             Substitute.For<IIdentityEraseService>(),
-            Substitute.For<IEmailVerificationService>()
+            Substitute.For<IEmailVerificationService>(),
+            Substitute.For<IWorkspaceLifecycleService>()
         )
         {
             ControllerContext = new ControllerContext { HttpContext = new DefaultHttpContext() },
