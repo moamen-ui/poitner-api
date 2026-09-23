@@ -9,10 +9,12 @@ import { readFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { expect, test, type Page } from '@playwright/test';
-import { BASE_URL } from '../scripts/lib/api.mjs';
+import { BASE_URL, login } from '../scripts/lib/api.mjs';
 import { PORTS } from '../scripts/lib/constants.mjs';
 import { record } from '../scripts/lib/report.mjs';
 import { servePinnedPage } from './lib/pinned-page.mjs';
+import { ensureProject } from './lib/ensure-project';
+import { credentials as loadCredentials } from '../scripts/lib/state.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const e2eRoot = resolve(here, '..');
@@ -120,10 +122,27 @@ interface Manifest {
 
 let manifest: Manifest;
 
+// R3-03-01/02/03/04/07 all boot the widget against project `e2e-widget-smoke` (pinned pages via
+// pinned-page.mjs and the smoke fixture on :4173 both hardcode it — see R3-03-tests.md's
+// Preconditions and Flake notes). This file used to have no beforeAll that created it: the project
+// only existed because some OTHER spec file (widget.spec.ts / notifications.spec.ts) happened to
+// run first in the same `npx playwright test` invocation and created it via its own ad-hoc
+// post-or-409 beforeAll — an undocumented, file-order-dependent coupling. Whenever these scenarios
+// run without that sibling (e.g. a single-scenario `--only <id>` dispatch, per run-e2e.sh, which
+// selects just this file), `e2e-widget-smoke` never gets created: `/widget-status` then reports
+// `active: false` (CheckWidgetActiveAsync — zero project rows match the key), and the widget's own
+// `_boot()` correctly stays hidden forever — `_checkWidgetActive()` is the ONLY gate on rendering,
+// by design (element.ts) — which looks exactly like a hung anonymous boot (marks stop at
+// `pf:boot:start`, shadow root never grows past the bare `<link>` + empty `<div>`). Ensuring the
+// project here — idempotent, 409-tolerant, same helper privacy-snapshot.spec.ts already uses — is
+// the fix: it removes the dependency on any other file having run first.
 test.beforeAll(async () => {
   const res = await fetch(`${BASE_URL}/pointer.version.json`);
   expect(res.status, '/pointer.version.json must be served').toBe(200);
   manifest = (await res.json()) as Manifest;
+
+  const wsAdmin = await login(loadCredentials().wsAdmin.email, loadCredentials().wsAdmin.password);
+  await ensureProject(wsAdmin.token, 'e2e-widget-smoke', 'E2E Widget Smoke');
 });
 
 test('R3-03-01 — widget-pinned-sri-loads', async ({ page }) => {
