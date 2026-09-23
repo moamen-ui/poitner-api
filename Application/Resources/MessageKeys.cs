@@ -419,6 +419,12 @@ public static class MessageKeys
         public const string EmailTaken = "That email is already registered.";
         public const string UpgradeSuccess =
             "Your workspace has been upgraded. Welcome to Pointer!";
+
+        /// <summary>DB-17 §3.6: POST /api/demo/extend, second call for the same workspace.</summary>
+        public const string AlreadyExtended = "This demo has already been extended once.";
+
+        /// <summary>DB-17 §3.6: POST /api/demo/extend success (formatted with the new expiry).</summary>
+        public const string Extended = "Your demo now expires on {0} UTC.";
     }
 
     public static class ExportImport

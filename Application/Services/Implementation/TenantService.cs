@@ -74,12 +74,12 @@ public class TenantService : ITenantService
             .Include(m => m.User)
             .Include(m => m.Role)
             .Where(m =>
-                workspaceIds.Contains(m.OwnerId) && m.LeftAt == null && m.Role.Name == WorkspaceAdminRoleName
+                workspaceIds.Contains(m.OwnerId)
+                && m.LeftAt == null
+                && m.Role.Name == WorkspaceAdminRoleName
             )
             .ToListAsync();
-        var adminMap = admins
-            .GroupBy(m => m.OwnerId)
-            .ToDictionary(g => g.Key, g => g.First());
+        var adminMap = admins.GroupBy(m => m.OwnerId).ToDictionary(g => g.Key, g => g.First());
 
         // Count projects per tenant (IgnoreQueryFilters — super-admin operator path).
         var projectCounts = await _unitOfWork
@@ -87,7 +87,9 @@ public class TenantService : ITenantService
             .Query()
             .IgnoreQueryFilters()
             .AsNoTracking()
-            .Where(p => p.DeletedAt == null && p.OwnerId != null && workspaceIds.Contains(p.OwnerId!.Value))
+            .Where(p =>
+                p.DeletedAt == null && p.OwnerId != null && workspaceIds.Contains(p.OwnerId!.Value)
+            )
             .GroupBy(p => p.OwnerId)
             .Select(g => new { OwnerId = g.Key, Count = g.Count() })
             .ToListAsync();
@@ -98,7 +100,9 @@ public class TenantService : ITenantService
             .Query()
             .IgnoreQueryFilters()
             .AsNoTracking()
-            .Where(c => c.DeletedAt == null && c.OwnerId != null && workspaceIds.Contains(c.OwnerId!.Value))
+            .Where(c =>
+                c.DeletedAt == null && c.OwnerId != null && workspaceIds.Contains(c.OwnerId!.Value)
+            )
             .GroupBy(c => c.OwnerId)
             .Select(g => new { OwnerId = g.Key, Count = g.Count() })
             .ToListAsync();
@@ -130,10 +134,9 @@ public class TenantService : ITenantService
             .Select(w =>
             {
                 adminMap.TryGetValue(w.Id, out var admin);
-                var (planName, status) =
-                    subMap.TryGetValue(w.Id, out var s)
-                        ? (s.PlanName, s.Status.ToString())
-                        : ("Free", (string?)null); // missing subscription ⇒ Free
+                var (planName, status) = subMap.TryGetValue(w.Id, out var s)
+                    ? (s.PlanName, s.Status.ToString())
+                    : ("Free", (string?)null); // missing subscription ⇒ Free
                 return new TenantResponse
                 {
                     Id = admin?.User.Id ?? 0,
@@ -149,11 +152,13 @@ public class TenantService : ITenantService
                     Comments = commentMap.GetValueOrDefault(w.Id, 0),
                     PlanName = planName,
                     SubscriptionStatus = status,
-                    IsDemo = admin?.User.IsDemo ?? false,
-                    ExpiresAt = admin?.User.ExpiresAt,
-                    DemoExtended = admin?.User.DemoExtended ?? false,
-                    DemoCommentCapOverride = admin?.User.DemoCommentCapOverride,
-                    DemoTtlHoursOverride = admin?.User.DemoTtlHoursOverride,
+                    // DB-17 §3.3: the WORKSPACE is the demo authority now (DTO names unchanged — no
+                    // dashboard churn).
+                    IsDemo = w.DemoExpiresAt != null,
+                    ExpiresAt = w.DemoExpiresAt,
+                    DemoExtended = w.DemoExtendedAt != null,
+                    DemoCommentCapOverride = w.DemoCommentCapOverride,
+                    DemoTtlHoursOverride = w.DemoTtlHoursOverride,
                 };
             })
             .ToList();
@@ -283,9 +288,10 @@ public class TenantService : ITenantService
     /// ternary: a workspace has at most one row satisfying "current admin" and this asks for it by
     /// the one identifier that can never collide.
     /// </summary>
-    private async Task<(bool WorkspaceExists, WorkspaceMembership? AdminMembership)> ResolveWorkspaceAdminAsync(
-        Guid workspaceId
-    )
+    private async Task<(
+        bool WorkspaceExists,
+        WorkspaceMembership? AdminMembership
+    )> ResolveWorkspaceAdminAsync(Guid workspaceId)
     {
         var workspaceExists = await _unitOfWork
             .Workspaces.IgnoreQueryFilters()
@@ -340,43 +346,56 @@ public class TenantService : ITenantService
         return Result.Success();
     }
 
-    public async Task<Result> ExtendDemoAsync(int id)
+    public async Task<Result> ExtendDemoAsync(Guid workspaceId)
     {
-        // Demo fields (IsDemo/ExpiresAt/DemoExtended/…) stay on `users` (S-8 later) — unchanged.
-        var user = await _unitOfWork
-            .Repository<User>()
-            .Query()
-            .IgnoreQueryFilters()
-            .FirstOrDefaultAsync(u => u.Id == id && u.DeletedAt == null);
+        // DB-17 §3.3: the WORKSPACE is the demo authority now; the admin identity is dual-written
+        // (kept for one release, DB-11e drops it).
+        var workspace = await _unitOfWork
+            .Workspaces.IgnoreQueryFilters()
+            .FirstOrDefaultAsync(w => w.Id == workspaceId && w.DeletedAt == null);
 
-        if (user == null || !user.IsDemo)
+        if (workspace?.DemoExpiresAt == null)
             return Result.NotFound("Demo tenant not found.");
 
-        if (user.DemoExtended)
+        if (workspace.DemoExtendedAt != null)
             return Result.Failure("This demo has already been extended once.");
 
         // Per-tenant TTL override wins; otherwise the global setting.
         var ttlHours =
-            user.DemoTtlHoursOverride
+            workspace.DemoTtlHoursOverride
             ?? await _settings.GetIntAsync(ISettingsService.DemoTtlHours, DefaultDemoTtlHours);
 
         // Extend from whichever is later — now or the current (possibly future) expiry — so an
         // already-expired demo gets a full fresh period rather than one anchored in the past.
         var anchor =
-            user.ExpiresAt is DateTime exp && exp > DateTime.UtcNow ? exp : DateTime.UtcNow;
-        user.ExpiresAt = anchor.AddHours(ttlHours);
-        user.DemoExtended = true;
+            workspace.DemoExpiresAt is DateTime exp && exp > DateTime.UtcNow
+                ? exp
+                : DateTime.UtcNow;
+        workspace.DemoExpiresAt = anchor.AddHours(ttlHours);
+        workspace.DemoExtendedAt = DateTime.UtcNow;
+        _unitOfWork.Workspaces.Update(workspace);
 
-        _unitOfWork.Repository<User>().Update(user);
+        var admin = await _memberships.CurrentAdminAsync(workspaceId);
+        if (admin != null)
+        {
+            var adminIdentity = admin.User;
+            adminIdentity.ExpiresAt = workspace.DemoExpiresAt;
+            adminIdentity.DemoExtended = true;
+            _unitOfWork.Repository<User>().Update(adminIdentity);
+        }
+
         await _unitOfWork.SaveChangesAsync();
 
         await _audit.WriteAsync(
             new AuditEntry(
                 AuditActions.TenantDemoExtended,
                 AuditTargets.Workspace,
-                user.OwnerId?.ToString(),
-                user.OwnerId,
-                After: new Dictionary<string, string> { ["expires_at"] = user.ExpiresAt.Value.ToString("O") }
+                workspaceId.ToString(),
+                workspaceId,
+                After: new Dictionary<string, string>
+                {
+                    ["expires_at"] = workspace.DemoExpiresAt.Value.ToString("O"),
+                }
             )
         );
 
@@ -384,7 +403,7 @@ public class TenantService : ITenantService
     }
 
     public async Task<Result> SetDemoConfigAsync(
-        int id,
+        Guid workspaceId,
         int? commentCapOverride,
         int? ttlHoursOverride
     )
@@ -400,33 +419,40 @@ public class TenantService : ITenantService
                 "TTL (hours) must be a positive number, or empty to use the global default."
             );
 
-        var user = await _unitOfWork
-            .Repository<User>()
-            .Query()
-            .IgnoreQueryFilters()
-            .FirstOrDefaultAsync(u => u.Id == id && u.DeletedAt == null);
+        var workspace = await _unitOfWork
+            .Workspaces.IgnoreQueryFilters()
+            .FirstOrDefaultAsync(w => w.Id == workspaceId && w.DeletedAt == null);
 
-        if (user == null || !user.IsDemo)
+        if (workspace?.DemoExpiresAt == null)
             return Result.NotFound("Demo tenant not found.");
 
         var before = new Dictionary<string, string>
         {
-            ["count"] = user.DemoCommentCapOverride?.ToString() ?? string.Empty,
-            ["minutes"] = user.DemoTtlHoursOverride?.ToString() ?? string.Empty,
+            ["count"] = workspace.DemoCommentCapOverride?.ToString() ?? string.Empty,
+            ["minutes"] = workspace.DemoTtlHoursOverride?.ToString() ?? string.Empty,
         };
 
-        user.DemoCommentCapOverride = commentCapOverride;
-        user.DemoTtlHoursOverride = ttlHoursOverride;
+        workspace.DemoCommentCapOverride = commentCapOverride;
+        workspace.DemoTtlHoursOverride = ttlHoursOverride;
+        _unitOfWork.Workspaces.Update(workspace);
 
-        _unitOfWork.Repository<User>().Update(user);
+        var admin = await _memberships.CurrentAdminAsync(workspaceId);
+        if (admin != null)
+        {
+            var adminIdentity = admin.User;
+            adminIdentity.DemoCommentCapOverride = commentCapOverride;
+            adminIdentity.DemoTtlHoursOverride = ttlHoursOverride;
+            _unitOfWork.Repository<User>().Update(adminIdentity);
+        }
+
         await _unitOfWork.SaveChangesAsync();
 
         await _audit.WriteAsync(
             new AuditEntry(
                 AuditActions.TenantDemoConfigChanged,
                 AuditTargets.Workspace,
-                user.OwnerId?.ToString(),
-                user.OwnerId,
+                workspaceId.ToString(),
+                workspaceId,
                 Before: before,
                 After: new Dictionary<string, string>
                 {
@@ -517,6 +543,23 @@ public class TenantService : ITenantService
         if (!workspaceExists)
             return Result.NotFound("Tenant not found.");
 
+        // DB-17 §3.3 (Gemini Pro #2): the sweep materialises expired-demo ids then deletes them one
+        // by one — a conversion or extension landing in that gap must not destroy the user's data.
+        // Re-check right here, before the folder delete (and again under FOR UPDATE inside the
+        // transaction, below).
+        if (reason == "demo_expired")
+        {
+            var stillExpiredDemo = await _unitOfWork
+                .Workspaces.IgnoreQueryFilters()
+                .AnyAsync(w =>
+                    w.Id == workspaceId
+                    && w.DemoExpiresAt != null
+                    && w.DemoExpiresAt < DateTime.UtcNow
+                );
+            if (!stillExpiredDemo)
+                return Result.Failure("Not an expired demo (converted or extended meanwhile).");
+        }
+
         // Snapshot the comment count before anything is deleted — the audit row (below) records how
         // much content this deletion removed.
         var commentCount = await _unitOfWork
@@ -527,7 +570,8 @@ public class TenantService : ITenantService
 
         // Written BEFORE the delete, with OwnerId = null deliberately — the row must not be detached
         // mid-transaction, and it must survive the workspace it is about (DB-12 §3.6). Best-effort: a
-        // failed audit write never blocks the deletion itself.
+        // failed audit write never blocks the deletion itself. Written AFTER the demo_expired
+        // pre-check above (DB-17) so a refused delete never writes a tenant.hard_deleted row.
         await _audit.WriteAsync(
             new AuditEntry(
                 AuditActions.TenantHardDeleted,
@@ -552,6 +596,26 @@ public class TenantService : ITenantService
         // (required by Npgsql's NpgsqlRetryingExecutionStrategy).
         await _unitOfWork.ExecuteInTransactionAsync(async () =>
         {
+            // DB-17 §3.3: FOR UPDATE-lock the workspace row and re-check inside the transaction — a
+            // conversion that committed between the pre-check above and this point must abort the
+            // delete entirely (the transaction rolls back; the hosted loop logs it and moves on).
+            if (reason == "demo_expired")
+            {
+                await _unitOfWork.ExecuteSqlRawAsync(
+                    "SELECT id FROM workspaces WHERE id = {0} FOR UPDATE",
+                    workspaceId
+                );
+                var stillExpiredDemoLocked = await _unitOfWork
+                    .Workspaces.IgnoreQueryFilters()
+                    .AnyAsync(w =>
+                        w.Id == workspaceId
+                        && w.DemoExpiresAt != null
+                        && w.DemoExpiresAt < DateTime.UtcNow
+                    );
+                if (!stillExpiredDemoLocked)
+                    throw new InvalidOperationException("demo converted during delete");
+            }
+
             // Hard-delete in FK-safe order (children before parents; DB-03).
             await DeleteOwnedAsync<Notification>(x => x.OwnerId == workspaceId);
             await DeleteOwnedAsync<Reply>(x => x.OwnerId == workspaceId);

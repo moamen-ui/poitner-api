@@ -14,13 +14,22 @@ public static class UserMapper
     /// identity's own (legacy) Role for a super admin with no membership. Callers resolve this once
     /// (membership?.Role ?? user.Role) rather than this mapper reading user.Role directly.
     /// </param>
-    public static MeResponse ToMeResponse(User user, Role? role, string? tenantName = null)
+    /// <param name="workspace">DB-17: the caller's CURRENT workspace (loaded IgnoreQueryFilters by
+    /// the tenant id already in hand), when the caller holds one — login "ok", /me, switch, upgrade.
+    /// Null for super admins and any other caller that has no current workspace in hand.</param>
+    public static MeResponse ToMeResponse(
+        User user,
+        Role? role,
+        string? tenantName = null,
+        Workspace? workspace = null
+    )
     {
         var isAdmin = role?.GrantsAdmin ?? false;
         var isSuperAdmin = role?.IsSuperAdmin ?? false;
         // DB-14 §3.5: an identity is treated as verified when it either proved control of its
         // address, or is exempt from the gate entirely (demo, passwordless, super admin).
-        var emailVerified = user.EmailVerifiedAt != null || user.IsDemo || isSuperAdmin || user.PasswordlessOnly;
+        var emailVerified =
+            user.EmailVerifiedAt != null || user.IsDemo || isSuperAdmin || user.PasswordlessOnly;
         return new MeResponse
         {
             Id = user.PublicId,
@@ -40,6 +49,12 @@ public static class UserMapper
             // stakeholders get a soft hint instead (MeResponse's own doc-comment, §3.5).
             EmailVerificationRequired = !emailVerified && isAdmin,
             MfaEnabled = user.TotpEnabledAt != null,
+            // DB-17 §3.6: non-null = a live demo; CanExtend requires it not yet extended or converted.
+            DemoExpiresAt = workspace?.DemoExpiresAt,
+            DemoCanExtend =
+                workspace?.DemoExpiresAt != null
+                && workspace.DemoExtendedAt == null
+                && workspace.DemoConvertedAt == null,
         };
     }
 }

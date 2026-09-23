@@ -37,4 +37,11 @@ public class MeResponse
     /// <summary>R5-61: true once TOTP MFA is enabled (<c>users.totp_enabled_at IS NOT NULL</c>).
     /// Always false for a non-super-admin — MFA is scoped to the super-admin account only (§3.4).</summary>
     public bool MfaEnabled { get; set; }
+
+    /// <summary>DB-17: non-null = the current workspace is a live demo; the dashboard's countdown
+    /// reads this, not sessionStorage.</summary>
+    public DateTime? DemoExpiresAt { get; set; }
+
+    /// <summary>DB-17: true when the current workspace is a live, unconverted, not-yet-extended demo.</summary>
+    public bool DemoCanExtend { get; set; }
 }

@@ -102,7 +102,8 @@ expired/revoked `invites` > 90 d, in batches of 5000, daily from 5 min after boo
 exists in at least the last 14 nightly dumps. Pause with `RETENTION_ENABLED=false` + `up -d api`.
 Before each sweep the job rolls `usage_events` up into `usage_daily` (per day/workspace/type, kept
 forever); the five funnel facts (`demo_started`, `workspace_converted`, `widget_installed`,
-`first_comment`, `first_apply`) are never deleted.
+`first_comment`, `first_apply`) are never deleted. Expired demo workspaces are hard-deleted every
+15 min (`DemoCleanupService`), two hours after a reminder e-mail.
 
 It also purges screenshot files of comments soft-deleted > 30 d and orphan files > 48 h old under
 `uploads/` (never `uploads/branding/`), logging a per-pass volume line; `RETENTION_SCREENSHOT_PURGE_DRY_RUN`

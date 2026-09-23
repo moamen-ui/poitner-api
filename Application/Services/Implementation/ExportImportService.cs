@@ -587,14 +587,17 @@ public class ExportImportService : IExportImportService
         if (projectOwnerId is not Guid owner)
             return null;
 
-        // DB-11a: the founding admin's public_id no longer equals the workspace id — resolve via
-        // the workspace's current admin membership instead of users.public_id == owner.
-        var currentAdmin = await _memberships.CurrentAdminAsync(owner);
-        if (currentAdmin?.User.IsDemo != true)
+        // DB-17 §3.3: the WORKSPACE is the demo authority now (never the demo-flag/override fields on the identity).
+        var demoWs = await _unitOfWork
+            .Workspaces.IgnoreQueryFilters()
+            .Where(w => w.Id == owner && w.DemoExpiresAt != null)
+            .Select(w => new { w.DemoCommentCapOverride })
+            .FirstOrDefaultAsync();
+        if (demoWs == null)
             return null;
 
         var cap =
-            currentAdmin.User.DemoCommentCapOverride
+            demoWs.DemoCommentCapOverride
             ?? await _settings.GetIntAsync(ISettingsService.DemoCommentCap, 10);
         var existing = await _unitOfWork
             .Repository<Comment>()

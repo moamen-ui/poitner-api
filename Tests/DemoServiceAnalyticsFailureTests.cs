@@ -215,12 +215,14 @@ public class DemoServiceAnalyticsFailureTests
         return (svc, db);
     }
 
-    private static User SeedDemoUser(AppDbContext db)
+    private static (User User, Guid WorkspaceId) SeedDemoUser(AppDbContext db)
     {
         // Build() already seeded Role Id=2 ("Workspace Admin") — reuse it rather than re-adding
         // (would conflict: the same key already tracked).
         var role = db.Roles.Single(r => r.Id == 2);
         var pid = Guid.NewGuid();
+        var workspaceId = pid;
+        var expiresAt = DateTime.UtcNow.AddHours(24);
         var user = new User
         {
             PublicId = pid,
@@ -229,16 +231,41 @@ public class DemoServiceAnalyticsFailureTests
             DisplayName = "Demo User",
             RoleId = role.Id,
             Role = role,
-            OwnerId = pid,
+            OwnerId = workspaceId,
             ApprovalStatus = ApprovalStatus.Approved,
             IsActive = true,
             IsDemo = true,
-            ExpiresAt = DateTime.UtcNow.AddHours(24),
+            ExpiresAt = expiresAt,
             RecipientEmail = "real@user.com",
         };
         db.Users.Add(user);
         db.SaveChanges();
-        return user;
+
+        db.Workspaces.Add(
+            new Workspace
+            {
+                Id = workspaceId,
+                Name = "Demo Workspace",
+                CreatedAt = DateTime.UtcNow,
+                CreatedBy = workspaceId,
+                DemoExpiresAt = expiresAt,
+            }
+        );
+        db.WorkspaceMemberships.Add(
+            new WorkspaceMembership
+            {
+                UserId = user.Id,
+                OwnerId = workspaceId,
+                RoleId = role.Id,
+                Role = role,
+                IsActive = true,
+                ApprovalStatus = ApprovalStatus.Approved,
+                JoinedAt = DateTime.UtcNow,
+            }
+        );
+        db.SaveChanges();
+
+        return (user, workspaceId);
     }
 
     [Fact]
@@ -267,10 +294,11 @@ public class DemoServiceAnalyticsFailureTests
     public async Task Upgrade_UsageEventInsertFails_StillWritesAuditRow()
     {
         var (svc, db) = Build(nameof(Upgrade_UsageEventInsertFails_StillWritesAuditRow));
-        var demo = SeedDemoUser(db);
+        var (demo, demoWorkspaceId) = SeedDemoUser(db);
 
         var result = await svc.UpgradeAsync(
             demo.PublicId,
+            demoWorkspaceId,
             new UpgradeDemoRequest
             {
                 Email = "permanent@user.com",

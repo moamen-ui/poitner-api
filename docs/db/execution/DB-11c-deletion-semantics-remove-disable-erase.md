@@ -200,6 +200,7 @@ A new column that carries a person's e-mail or name is added here **and** to `Er
 | screenshots (`comments.element.screenshot_url` → files) | images of the customer's app | kept (F5) |
 | `usage_events.meta` (jsonb) | today nothing personal — no production writer passes `meta` (`UsageEventService.cs:40-44`; GLM E4) | kept; a future writer that stores PII must add a scrub line here |
 | `user_aliases` | old uuids → identity | kept (audit of the merge) |
+| `app_settings.key` demo throttle (`demo_email_<16-hex hash>_<yyyyMMdd>`, DB-17) | a hashed pseudonym of the e-mail, never the raw address (R14) | hashed since DB-17; rows deleted after 2 days by `IDemoService.SweepThrottleRowsAsync` (part of the 15-min demo sweep) |
 
 **Legal hold (forward reference — agy A3, chair D10).** A later doc adds a per-workspace flag in
 `workspace_settings` that makes `EraseAsync` refuse with `Conflict` for any identity holding a live

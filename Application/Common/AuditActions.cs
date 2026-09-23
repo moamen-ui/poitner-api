@@ -50,6 +50,9 @@ public static class AuditActions
 
     public const string AuthDemoProvisioned = "auth.demo.provisioned";
     public const string AuthDemoUpgraded = "auth.demo.upgraded";
+
+    /// <summary>DB-17: POST /api/demo/extend — the demo admin's own one-time extension (the operator's is tenant.demo_extended).</summary>
+    public const string DemoExtended = "demo.extended";
     public const string DeviceApproved = "device.approved";
     public const string DeviceDenied = "device.denied";
     public const string ApikeyCreated = "apikey.created";

@@ -190,13 +190,21 @@ public class DemoUpgradeTests
         ) => Task.FromResult(DefaultBranding());
     }
 
-    private static User SeedDemoUser(
+    /// <summary>DB-17: seeds the demo identity AND its own Workspace (DemoExpiresAt = the same
+    /// instant as the legacy `users.expires_at`, dual-write shape) + a live Workspace Admin
+    /// membership, since UpgradeAsync now resolves the session's workspace via the membership and
+    /// reads the TTL from the workspace, not the user row. `workspaceId == PublicId` here purely as
+    /// this fixture's convention (a fresh Guid either way) — the production mint point uses a
+    /// separate Guid; nothing under test depends on them coinciding.</summary>
+    private static (User User, Guid WorkspaceId) SeedDemoUser(
         AppDbContext db,
         Guid? publicId = null,
         DateTime? expiresAt = null
     )
     {
         var pid = publicId ?? Guid.NewGuid();
+        var workspaceId = pid;
+        var expires = expiresAt ?? DateTime.UtcNow.AddHours(24);
         var role = new Role
         {
             Id = 2,
@@ -212,16 +220,41 @@ public class DemoUpgradeTests
             DisplayName = "Demo User",
             RoleId = role.Id,
             Role = role,
-            OwnerId = pid,
+            OwnerId = workspaceId,
             ApprovalStatus = ApprovalStatus.Approved,
             IsActive = true,
             IsDemo = true,
-            ExpiresAt = expiresAt ?? DateTime.UtcNow.AddHours(24),
+            ExpiresAt = expires,
             RecipientEmail = "real@user.com",
         };
         db.Users.Add(user);
         db.SaveChanges();
-        return user;
+
+        db.Workspaces.Add(
+            new Workspace
+            {
+                Id = workspaceId,
+                Name = "Demo Workspace",
+                CreatedAt = DateTime.UtcNow,
+                CreatedBy = workspaceId,
+                DemoExpiresAt = expires,
+            }
+        );
+        db.WorkspaceMemberships.Add(
+            new WorkspaceMembership
+            {
+                UserId = user.Id,
+                OwnerId = workspaceId,
+                RoleId = role.Id,
+                Role = role,
+                IsActive = true,
+                ApprovalStatus = ApprovalStatus.Approved,
+                JoinedAt = DateTime.UtcNow,
+            }
+        );
+        db.SaveChanges();
+
+        return (user, workspaceId);
     }
 
     private static UpgradeDemoRequest ValidRequest(string? email = null) =>
@@ -240,13 +273,21 @@ public class DemoUpgradeTests
     public async Task Upgrade_EmitsWorkspaceConverted_Once()
     {
         var (svc, db, _, _) = Build(nameof(Upgrade_EmitsWorkspaceConverted_Once));
-        var demo = SeedDemoUser(db);
+        var (demo, demoWorkspaceId) = SeedDemoUser(db);
 
-        var first = await svc.UpgradeAsync(demo.PublicId, ValidRequest("permanent@user.com"));
+        var first = await svc.UpgradeAsync(
+            demo.PublicId,
+            demoWorkspaceId,
+            ValidRequest("permanent@user.com")
+        );
         Assert.True(first.IsSuccess);
 
         // A converted workspace is no longer a demo — the guard makes a second emission impossible.
-        var second = await svc.UpgradeAsync(demo.PublicId, ValidRequest("other@user.com"));
+        var second = await svc.UpgradeAsync(
+            demo.PublicId,
+            demoWorkspaceId,
+            ValidRequest("other@user.com")
+        );
         Assert.True(second.IsForbidden);
 
         var row = Assert.Single(
@@ -268,9 +309,13 @@ public class DemoUpgradeTests
         var (svc, db, tokens, emailVerification) = Build(
             nameof(Upgrade_demo_user_with_valid_request_succeeds_and_flips_isDemo)
         );
-        var demo = SeedDemoUser(db);
+        var (demo, demoWorkspaceId) = SeedDemoUser(db);
 
-        var result = await svc.UpgradeAsync(demo.PublicId, ValidRequest("permanent@user.com"));
+        var result = await svc.UpgradeAsync(
+            demo.PublicId,
+            demoWorkspaceId,
+            ValidRequest("permanent@user.com")
+        );
 
         Assert.True(result.IsSuccess);
         Assert.Equal(MessageKeys.Demo.UpgradeSuccess, result.Message);
@@ -336,7 +381,7 @@ public class DemoUpgradeTests
         );
         db.SaveChanges();
 
-        var result = await svc.UpgradeAsync(pid, ValidRequest());
+        var result = await svc.UpgradeAsync(pid, Guid.NewGuid(), ValidRequest());
 
         Assert.False(result.IsSuccess);
         Assert.True(result.IsForbidden);
@@ -351,9 +396,9 @@ public class DemoUpgradeTests
     public async Task Upgrade_expired_demo_returns_failure_demo_expired()
     {
         var (svc, db, _, _) = Build(nameof(Upgrade_expired_demo_returns_failure_demo_expired));
-        var demo = SeedDemoUser(db, expiresAt: DateTime.UtcNow.AddHours(-1));
+        var (demo, demoWorkspaceId) = SeedDemoUser(db, expiresAt: DateTime.UtcNow.AddHours(-1));
 
-        var result = await svc.UpgradeAsync(demo.PublicId, ValidRequest());
+        var result = await svc.UpgradeAsync(demo.PublicId, demoWorkspaceId, ValidRequest());
 
         Assert.False(result.IsSuccess);
         Assert.False(result.IsForbidden);
@@ -372,7 +417,7 @@ public class DemoUpgradeTests
         var (svc, db, _, _) = Build(
             nameof(Upgrade_with_email_taken_within_same_tenant_returns_conflict)
         );
-        var demo = SeedDemoUser(db);
+        var (demo, demoWorkspaceId) = SeedDemoUser(db);
         var role = db.Roles.First();
         db.Users.Add(
             new User
@@ -391,7 +436,11 @@ public class DemoUpgradeTests
         );
         db.SaveChanges();
 
-        var result = await svc.UpgradeAsync(demo.PublicId, ValidRequest("shared@user.com"));
+        var result = await svc.UpgradeAsync(
+            demo.PublicId,
+            demoWorkspaceId,
+            ValidRequest("shared@user.com")
+        );
 
         Assert.False(result.IsSuccess);
         Assert.True(result.IsConflict);
@@ -411,7 +460,7 @@ public class DemoUpgradeTests
         var (svc, db, _, _) = Build(
             nameof(Upgrade_with_email_used_by_a_different_tenant_is_a_conflict)
         );
-        var demo = SeedDemoUser(db);
+        var (demo, demoWorkspaceId) = SeedDemoUser(db);
         var otherOwner = Guid.NewGuid();
         var role = db.Roles.First();
         db.Users.Add(
@@ -431,7 +480,11 @@ public class DemoUpgradeTests
         );
         db.SaveChanges();
 
-        var result = await svc.UpgradeAsync(demo.PublicId, ValidRequest("shared@user.com"));
+        var result = await svc.UpgradeAsync(
+            demo.PublicId,
+            demoWorkspaceId,
+            ValidRequest("shared@user.com")
+        );
 
         Assert.True(result.IsConflict);
         // The demo user's own row is untouched.
@@ -446,12 +499,12 @@ public class DemoUpgradeTests
     public async Task Upgrade_with_short_password_returns_validator_failure()
     {
         var (svc, db, _, _) = Build(nameof(Upgrade_with_short_password_returns_validator_failure));
-        var demo = SeedDemoUser(db);
+        var (demo, demoWorkspaceId) = SeedDemoUser(db);
 
         var request = ValidRequest();
         request.Password = "short";
 
-        var result = await svc.UpgradeAsync(demo.PublicId, request);
+        var result = await svc.UpgradeAsync(demo.PublicId, demoWorkspaceId, request);
 
         Assert.False(result.IsSuccess);
         Assert.False(result.IsForbidden);
@@ -467,12 +520,12 @@ public class DemoUpgradeTests
     public async Task Upgrade_with_empty_email_returns_validator_failure()
     {
         var (svc, db, _, _) = Build(nameof(Upgrade_with_empty_email_returns_validator_failure));
-        var demo = SeedDemoUser(db);
+        var (demo, demoWorkspaceId) = SeedDemoUser(db);
 
         var request = ValidRequest();
         request.Email = "";
 
-        var result = await svc.UpgradeAsync(demo.PublicId, request);
+        var result = await svc.UpgradeAsync(demo.PublicId, demoWorkspaceId, request);
 
         Assert.False(result.IsSuccess);
         Assert.False(result.IsForbidden);
@@ -488,7 +541,7 @@ public class DemoUpgradeTests
     {
         var (svc, _, _, _) = Build(nameof(Upgrade_with_unknown_caller_returns_not_found));
 
-        var result = await svc.UpgradeAsync(Guid.NewGuid(), ValidRequest());
+        var result = await svc.UpgradeAsync(Guid.NewGuid(), Guid.NewGuid(), ValidRequest());
 
         Assert.False(result.IsSuccess);
         Assert.True(result.IsNotFound);

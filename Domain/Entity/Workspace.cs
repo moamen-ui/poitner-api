@@ -22,4 +22,18 @@ public class Workspace
     public Guid? UpdatedBy { get; set; }
     public DateTime? DeletedAt { get; set; }
     public Guid? DeletedBy { get; set; }
+
+    /// <summary>
+    /// DB-17 (F4). Demo state lives on the WORKSPACE: non-null DemoExpiresAt = a live demo that the sweep hard-deletes at expiry;
+    /// DemoConvertedAt = it was kept ("convert to your workspace"); with Demo:ConvertRequiresVerification off the TTL is cleared at the same time, with it on the TTL runs until the new address is verified (no check constraint — DB-17 §3.1 lists the code-enforced invariants).
+    /// The admin identity's users.is_demo remains the separate fact "synthetic demo login without a real address" (exempt from e-mail
+    /// verification, excluded from password reset). users.expires_at / "DemoExtended" / "DemoCommentCapOverride" / "DemoTtlHoursOverride"
+    /// are dual-written until DB-11e drops them (DB-RULES R2).
+    /// </summary>
+    public DateTime? DemoExpiresAt { get; set; }
+    public DateTime? DemoExtendedAt { get; set; }
+    public DateTime? DemoConvertedAt { get; set; }
+    public DateTime? DemoExpiryWarnedAt { get; set; }
+    public int? DemoCommentCapOverride { get; set; }
+    public int? DemoTtlHoursOverride { get; set; }
 }

@@ -84,6 +84,10 @@ services:
       # uptime dead-man's-switch does nothing until an operator sets them.
       SENTRY_DSN: "${SENTRY_DSN:-}"
       UPTIME_PING_URL: "${UPTIME_PING_URL:-}"
+      # DB-17 (Opus #4): pre-wired, off by default (D17.5) — convert clears the TTL immediately.
+      # Flip the env var below to true on first abuse; no code change needed.
+      Demo__ConvertRequiresVerification: "${DEMO_CONVERT_REQUIRES_VERIFICATION:-false}"
+      Demo__ConvertVerifyHours: "${DEMO_CONVERT_VERIFY_HOURS:-72}"
     volumes: ["uploads:/app/wwwroot/uploads"]
     # Not published to the host — Caddy is the only public entrypoint.
 

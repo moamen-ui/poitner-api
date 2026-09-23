@@ -25,6 +25,7 @@ public class EmailVerificationService : IEmailVerificationService
     private readonly IMemoryCache _cache;
     private readonly ILogger<EmailVerificationService> _logger;
     private readonly IAuditWriter _audit;
+    private readonly IServiceProvider? _serviceProvider;
 
     public EmailVerificationService(
         IUnitOfWork unitOfWork,
@@ -35,7 +36,14 @@ public class EmailVerificationService : IEmailVerificationService
         IBrandingService branding,
         IMemoryCache cache,
         ILogger<EmailVerificationService> logger,
-        IAuditWriter? audit = null
+        IAuditWriter? audit = null,
+        // DB-17: NOT a constructor-injected IDemoService — DemoService itself takes an
+        // IEmailVerificationService (optional), so a direct reference here would be a real
+        // constructor-time circular dependency (DemoService -> IEmailVerificationService ->
+        // EmailVerificationService -> IDemoService -> DemoService). IServiceProvider is always
+        // resolvable with no such cycle; IDemoService is resolved lazily, only when ConfirmAsync
+        // actually needs it.
+        IServiceProvider? serviceProvider = null
     )
     {
         _unitOfWork = unitOfWork;
@@ -47,6 +55,7 @@ public class EmailVerificationService : IEmailVerificationService
         _cache = cache;
         _logger = logger;
         _audit = audit ?? NoopAuditWriter.Instance;
+        _serviceProvider = serviceProvider;
     }
 
     private static string ResendKey(Guid publicId) => $"verify_sent:{publicId}";
@@ -100,7 +109,12 @@ public class EmailVerificationService : IEmailVerificationService
             // §9 step 5 watches this exact line at Warning (not Information): IEmailService is
             // capped per day, so a signup burst can leave identities unverified with a throttled
             // resend (GLM DB-14 #4). Logged with the public id only — never the address.
-            _logger.LogWarning(ex, "Verification mail to {PublicId} failed: {Reason}", identity.PublicId, ex.Message);
+            _logger.LogWarning(
+                ex,
+                "Verification mail to {PublicId} failed: {Reason}",
+                identity.PublicId,
+                ex.Message
+            );
         }
 
         // Still arm the resend throttle even on failure: a token/branding/send outage must not let
@@ -141,8 +155,7 @@ public class EmailVerificationService : IEmailVerificationService
                 out var publicId,
                 out var stamp,
                 out var payload
-            )
-            || string.IsNullOrEmpty(payload)
+            ) || string.IsNullOrEmpty(payload)
         )
             return Result.Failure(MessageKeys.Auth.VerificationLinkInvalid);
 
@@ -165,6 +178,12 @@ public class EmailVerificationService : IEmailVerificationService
             _unitOfWork.Repository<User>().Update(identity);
             await _unitOfWork.SaveChangesAsync();
             InvalidateGate(publicId);
+
+            // DB-17 §3.4: clears the TTL of any converted-but-unverified workspace this identity
+            // administers (Demo:ConvertRequiresVerification mode; a no-op with the flag off, and
+            // when no service provider was wired — every hand-rolled test construction).
+            if (_serviceProvider?.GetService(typeof(IDemoService)) is IDemoService demo)
+                await demo.OnEmailVerifiedAsync(identity);
         }
 
         await _audit.WriteAsync(

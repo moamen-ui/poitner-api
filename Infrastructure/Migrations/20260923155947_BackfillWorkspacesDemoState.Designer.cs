@@ -2,6 +2,7 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 using Pointer.Infrastructure;
@@ -11,9 +12,11 @@ using Pointer.Infrastructure;
 namespace Pointer.Infrastructure.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    partial class AppDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260923155947_BackfillWorkspacesDemoState")]
+    partial class BackfillWorkspacesDemoState
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -541,10 +544,6 @@ namespace Pointer.Infrastructure.Migrations
                     b.Property<int>("ProjectId")
                         .HasColumnType("integer")
                         .HasColumnName("project_id");
-
-                    b.Property<DateTime?>("ScreenshotPurgedAt")
-                        .HasColumnType("timestamp with time zone")
-                        .HasColumnName("screenshot_purged_at");
 
                     b.Property<int>("Status")
                         .HasColumnType("integer")

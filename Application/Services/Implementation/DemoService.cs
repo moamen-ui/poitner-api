@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
 using Pointer.Application.Abstractions;
 using Pointer.Application.Common;
 using Pointer.Application.DTOs.Demo;
@@ -17,6 +18,9 @@ public class DemoService : IDemoService
     private const int DefaultMaxActive = 100;
     private const int DefaultTtlHours = 24;
     private const int DefaultPerEmailPerDay = 3;
+    private const bool DefaultConvertRequiresVerification = false;
+    private const int DefaultConvertVerifyHours = 72;
+    private const string WorkspaceAdminRoleName = "Workspace Admin";
 
     private readonly IUnitOfWork _unitOfWork;
     private readonly IPasswordHasher _passwordHasher;
@@ -27,6 +31,7 @@ public class DemoService : IDemoService
     private readonly IMembershipService _memberships;
     private readonly IAuditWriter _audit;
     private readonly IEmailVerificationService _emailVerification;
+    private readonly IConfiguration? _config;
 
     public DemoService(
         IUnitOfWork unitOfWork,
@@ -37,7 +42,10 @@ public class DemoService : IDemoService
         IBrandingService branding,
         IMembershipService memberships,
         IAuditWriter? audit = null,
-        IEmailVerificationService? emailVerification = null
+        IEmailVerificationService? emailVerification = null,
+        // DB-17 §3.4: nullable-with-default, last — every existing hand-rolled test construction
+        // compiles unchanged and gets the flag OFF (D17.5 default) since no configuration is wired.
+        IConfiguration? config = null
     )
     {
         _unitOfWork = unitOfWork;
@@ -49,6 +57,7 @@ public class DemoService : IDemoService
         _memberships = memberships;
         _audit = audit ?? NoopAuditWriter.Instance;
         _emailVerification = emailVerification ?? NoopEmailVerification.Instance;
+        _config = config;
     }
 
     public async Task<Result<DemoSessionResponse>> ProvisionAsync(
@@ -75,8 +84,14 @@ public class DemoService : IDemoService
             );
 
         // Per-email daily limit (in addition to the per-IP rate limit + global active cap).
+        // DB-17 §3.6/R14: the throttle key is a hashed pseudonym of the NORMALISED address, never
+        // the raw address — lower-casing an e-mail by hand is the one thing this must never do
+        // again (EmailNormalizer is the only normaliser; the audit-row pseudonym hasher is reused
+        // here for the same reason: never write a raw address where it cannot be erased with the
+        // row that carries it).
+        var emailNormalized = EmailNormalizer.NormalizeRequired(recipientEmail);
         var throttleKey =
-            $"demo_email_{recipientEmail.ToLowerInvariant()}_{DateTime.UtcNow:yyyyMMdd}";
+            $"demo_email_{PseudonymHasher.EmailHash(emailNormalized)}_{DateTime.UtcNow:yyyyMMdd}";
         var throttle = await _unitOfWork
             .Repository<AppSetting>()
             .Query()
@@ -87,12 +102,14 @@ public class DemoService : IDemoService
                 "You've reached today's demo limit for this email. Please try again tomorrow."
             );
 
-        // a. Active cap check
+        // a. Active cap check — DB-17 §3.6: counted on WORKSPACES now (the workspace is the TTL
+        // authority), never `users`.
+        var now0 = DateTime.UtcNow;
         var active = await _unitOfWork
-            .Repository<User>()
-            .Query()
-            .IgnoreQueryFilters()
-            .CountAsync(u => u.IsDemo && u.DeletedAt == null && u.ExpiresAt > DateTime.UtcNow);
+            .Workspaces.IgnoreQueryFilters()
+            .CountAsync(w =>
+                w.DeletedAt == null && w.DemoExpiresAt != null && w.DemoExpiresAt > now0
+            );
 
         if (active >= maxActive)
             return Result<DemoSessionResponse>.Failure(
@@ -104,7 +121,7 @@ public class DemoService : IDemoService
             .Repository<Role>()
             .Query()
             .IgnoreQueryFilters()
-            .FirstOrDefaultAsync(r => r.Name == "Workspace Admin" && r.DeletedAt == null);
+            .FirstOrDefaultAsync(r => r.Name == WorkspaceAdminRoleName && r.DeletedAt == null);
 
         if (role == null)
             return Result<DemoSessionResponse>.Failure(
@@ -121,6 +138,8 @@ public class DemoService : IDemoService
         // Minted fresh right below — not the DB-03 placeholder, so it always names the workspace in
         // the ready-email (no extra lookup needed: we already hold the name we just chose for it).
         const string demoWorkspaceName = "Demo Workspace";
+        // DB-17 §3.3: one instant, used for the user, the workspace and the response.
+        var expiresAt = DateTime.UtcNow.AddHours(ttlHours);
 
         var demoUser = new User
         {
@@ -129,11 +148,16 @@ public class DemoService : IDemoService
             PasswordHash = _passwordHasher.Hash(password),
             DisplayName = "Demo User",
             RoleId = role.Id,
+            // Legacy (DB-11a/DB-17) — written once at creation, never read after DB-17; the
+            // pre-DB-17 cleanup and a rollback still depend on it (Opus DB-17 #5), and the R3
+            // backfill keys on it.
             OwnerId = workspaceId,
             ApprovalStatus = ApprovalStatus.Approved,
             IsActive = true,
             IsDemo = true,
-            ExpiresAt = DateTime.UtcNow.AddHours(ttlHours),
+            // Dual-written for one release (DB-RULES R2) — DemoExpiresAt on the Workspace below is
+            // the new authority; this stays written until DB-11e drops it.
+            ExpiresAt = expiresAt,
             RecipientEmail = recipientEmail,
         };
 
@@ -144,6 +168,7 @@ public class DemoService : IDemoService
                 Name = demoWorkspaceName,
                 CreatedAt = DateTime.UtcNow,
                 CreatedBy = workspaceId,
+                DemoExpiresAt = expiresAt,
             }
         );
         await _unitOfWork.Repository<User>().AddAsync(demoUser);
@@ -273,7 +298,6 @@ public class DemoService : IDemoService
         // f. Email the credentials to the requester. On success we blank the password in the
         //    response (they read it from their inbox); on failure/cap we fall back to inline creds
         //    so the demo is never blocked.
-        var expiresAt = demoUser.ExpiresAt!.Value;
         var demoBrand = await _branding.BuildResponseAsync("", new HashSet<string>());
         var demoProductName = demoBrand.ProductName;
         var emailSent = await _emailService.SendAsync(
@@ -326,6 +350,7 @@ public class DemoService : IDemoService
 
     public async Task<Result<UpgradeDemoResponse>> UpgradeAsync(
         Guid callerPublicId,
+        Guid workspaceId,
         UpgradeDemoRequest request
     )
     {
@@ -348,12 +373,32 @@ public class DemoService : IDemoService
         if (user == null)
             return Result<UpgradeDemoResponse>.NotFound(MessageKeys.User.NotFound);
 
-        // 3. Guard: only demo accounts may upgrade.
+        // 3. Guard: only demo identities may upgrade (identity-level fact, unchanged).
         if (!user.IsDemo)
             return Result<UpgradeDemoResponse>.Forbidden(MessageKeys.Demo.NotDemoUser);
 
-        // 4. Guard: an already-expired demo cannot be salvaged.
-        if (user.ExpiresAt != null && user.ExpiresAt < DateTime.UtcNow)
+        // 3a. DB-17 §3.3 (Gemini Pro #3): the SESSION's workspace, never "the one demo the identity
+        // belongs to" — an identity may administer more than one demo. The caller must hold a live
+        // Workspace Admin membership in exactly this workspace.
+        var membership = await _memberships.GetMembershipAsync(user.Id, workspaceId);
+        if (
+            membership == null
+            || !membership.IsActive
+            || membership.ApprovalStatus != ApprovalStatus.Approved
+            || membership.Role?.Name != WorkspaceAdminRoleName
+        )
+            return Result<UpgradeDemoResponse>.Forbidden(MessageKeys.Demo.NotDemoUser);
+
+        var workspace = await _unitOfWork
+            .Workspaces.IgnoreQueryFilters()
+            .FirstOrDefaultAsync(w => w.Id == workspaceId && w.DeletedAt == null);
+        if (workspace?.DemoExpiresAt == null)
+            return Result<UpgradeDemoResponse>.Forbidden(MessageKeys.Demo.NotDemoUser);
+
+        // 4. Guard: an already-expired demo cannot be salvaged. The WORKSPACE is the authority now
+        // (a workspace whose TTL lapsed while the user row's legacy ExpiresAt is still null/future
+        // must still be refused).
+        if (workspace.DemoExpiresAt < DateTime.UtcNow)
             return Result<UpgradeDemoResponse>.Failure(MessageKeys.Demo.DemoExpired);
 
         // 5. DB-11a (D7): e-mail uniqueness is now GLOBAL — one identity per e-mail. A demo
@@ -385,6 +430,40 @@ public class DemoService : IDemoService
 
         _unitOfWork.Repository<User>().Update(user);
 
+        // DB-17 §3.3/§3.4: the workspace mutation, in the SAME SaveChangesAsync as the user above.
+        // Read via the indexer + manual parse (no Configuration.Binder package reference) so a
+        // missing/unparsable value falls back to the D17.5 default (flag off).
+        var convertRequiresVerification = bool.TryParse(
+            _config?["Demo:ConvertRequiresVerification"],
+            out var crv
+        )
+            ? crv
+            : DefaultConvertRequiresVerification;
+        var convertVerifyHours = int.TryParse(_config?["Demo:ConvertVerifyHours"], out var cvh)
+            ? cvh
+            : DefaultConvertVerifyHours;
+
+        var convertedAt = DateTime.UtcNow;
+        workspace.DemoConvertedAt = convertedAt;
+        if (!convertRequiresVerification)
+        {
+            workspace.DemoExpiresAt = null;
+        }
+        else
+        {
+            workspace.DemoExpiresAt = convertedAt.AddHours(convertVerifyHours);
+            workspace.DemoExpiryWarnedAt = null; // a fresh warning window for the extended TTL
+        }
+        // DemoExtendedAt is kept (history — §3.1). The caps are reset: nobody is a demo any more.
+        workspace.DemoCommentCapOverride = null;
+        workspace.DemoTtlHoursOverride = null;
+        workspace.Name = string.IsNullOrWhiteSpace(request.WorkspaceName)
+            ? Workspace.PlaceholderName
+            : request.WorkspaceName!.Trim();
+        workspace.UpdatedAt = convertedAt;
+        workspace.UpdatedBy = callerPublicId;
+        _unitOfWork.Workspaces.Update(workspace);
+
         try
         {
             await _unitOfWork.SaveChangesAsync();
@@ -413,7 +492,7 @@ public class DemoService : IDemoService
                 {
                     Type = UsageEventTypes.WorkspaceConverted,
                     Source = "api",
-                    OwnerId = user.OwnerId,
+                    OwnerId = workspaceId,
                     UserId = callerPublicId,
                     CreatedAt = DateTime.UtcNow,
                 }
@@ -429,18 +508,15 @@ public class DemoService : IDemoService
         }
 
         // 9-10. Role navigation is already loaded above; issue a fresh token with the real email.
-        // DB-11a: the demo admin's own membership (in its own workspace) carries the role/tenant now.
-        var upgradeMembership = user.OwnerId is Guid demoOwnerId
-            ? await _memberships.GetMembershipAsync(user.Id, demoOwnerId)
-            : null;
-        var token = _tokenService.Issue(user, upgradeMembership);
+        var token = _tokenService.Issue(user, membership);
 
         await _audit.WriteAsync(
             new AuditEntry(
                 AuditActions.AuthDemoUpgraded,
                 AuditTargets.Workspace,
-                user.OwnerId?.ToString(),
-                user.OwnerId
+                workspaceId.ToString(),
+                workspaceId,
+                After: new Dictionary<string, string> { ["source"] = "demo" }
             )
         );
 
@@ -449,10 +525,198 @@ public class DemoService : IDemoService
             new UpgradeDemoResponse
             {
                 Token = token,
-                User = UserMapper.ToMeResponse(user, upgradeMembership?.Role ?? user.Role),
+                User = UserMapper.ToMeResponse(user, membership.Role, workspace: workspace),
             },
             MessageKeys.Demo.UpgradeSuccess
         );
+    }
+
+    public async Task<int> WarnExpiringAsync(DateTime nowUtc, TimeSpan warnWindow)
+    {
+        var horizon = nowUtc + warnWindow;
+        var expiring = await _unitOfWork
+            .Workspaces.IgnoreQueryFilters()
+            .Where(w =>
+                w.DeletedAt == null
+                && w.DemoExpiresAt != null
+                && w.DemoExpiresAt > nowUtc
+                && w.DemoExpiresAt <= horizon
+                && w.DemoExpiryWarnedAt == null
+            )
+            .ToListAsync();
+
+        if (expiring.Count == 0)
+            return 0;
+
+        var demoBrand = await _branding.BuildResponseAsync("", new HashSet<string>());
+        var productName = demoBrand.ProductName;
+        var appUrl = demoBrand.Urls.App;
+        var ttlHours = await _settings.GetIntAsync(ISettingsService.DemoTtlHours, DefaultTtlHours);
+
+        var stamped = 0;
+        foreach (var w in expiring)
+        {
+            var admin = await _memberships.CurrentAdminAsync(w.Id);
+            // A converted-but-unverified workspace (Demo:ConvertRequiresVerification mode) has no
+            // RecipientEmail any more (cleared on convert) — the reminder then goes to the new
+            // (unverified) address instead.
+            var to =
+                admin?.User.RecipientEmail
+                ?? (w.DemoConvertedAt != null ? admin?.User.Email : null);
+
+            if (!string.IsNullOrWhiteSpace(to))
+            {
+                try
+                {
+                    await _emailService.SendAsync(
+                        to,
+                        $"Your {productName} demo expires in about two hours",
+                        BuildExpiryWarningHtml(
+                            w.Name,
+                            w.DemoExpiresAt!.Value,
+                            productName,
+                            appUrl,
+                            ttlHours
+                        )
+                    );
+                }
+                catch (Exception)
+                {
+                    // Best-effort — the stamp below still records the one attempt (D17.6) whether or
+                    // not the send actually succeeded.
+                }
+            }
+
+            w.DemoExpiryWarnedAt = nowUtc;
+            _unitOfWork.Workspaces.Update(w);
+            await _unitOfWork.SaveChangesAsync();
+            stamped++;
+        }
+
+        return stamped;
+    }
+
+    public async Task<Result<DemoStatusResponse>> ExtendAsync(Guid callerPublicId, Guid workspaceId)
+    {
+        var user = await _memberships.FindIdentityByPublicIdAsync(callerPublicId);
+        if (user == null)
+            return Result<DemoStatusResponse>.NotFound(MessageKeys.User.NotFound);
+
+        // DB-17 §3.6 (Gemini Pro #3): the SESSION's workspace only, never a search across the
+        // identity's memberships.
+        var membership = await _memberships.GetMembershipAsync(user.Id, workspaceId);
+        if (
+            membership == null
+            || !membership.IsActive
+            || membership.ApprovalStatus != ApprovalStatus.Approved
+            || membership.Role?.Name != WorkspaceAdminRoleName
+        )
+            return Result<DemoStatusResponse>.Forbidden(MessageKeys.Demo.NotDemoUser);
+
+        var workspace = await _unitOfWork
+            .Workspaces.IgnoreQueryFilters()
+            .FirstOrDefaultAsync(w => w.Id == workspaceId && w.DeletedAt == null);
+        if (workspace?.DemoExpiresAt == null)
+            return Result<DemoStatusResponse>.Forbidden(MessageKeys.Demo.NotDemoUser);
+
+        if (workspace.DemoExpiresAt < DateTime.UtcNow)
+            return Result<DemoStatusResponse>.Failure(MessageKeys.Demo.DemoExpired);
+
+        if (workspace.DemoExtendedAt != null)
+            return Result<DemoStatusResponse>.Failure(MessageKeys.Demo.AlreadyExtended);
+
+        var ttlHours =
+            workspace.DemoTtlHoursOverride
+            ?? await _settings.GetIntAsync(ISettingsService.DemoTtlHours, DefaultTtlHours);
+
+        var now = DateTime.UtcNow;
+        var anchor = workspace.DemoExpiresAt > now ? workspace.DemoExpiresAt.Value : now;
+        workspace.DemoExpiresAt = anchor.AddHours(ttlHours);
+        workspace.DemoExtendedAt = now;
+        _unitOfWork.Workspaces.Update(workspace);
+
+        // Dual-write the admin identity (D17.1: one extension total, shared with the operator path).
+        user.ExpiresAt = workspace.DemoExpiresAt;
+        user.DemoExtended = true;
+        _unitOfWork.Repository<User>().Update(user);
+
+        await _unitOfWork.SaveChangesAsync();
+
+        await _audit.WriteAsync(
+            new AuditEntry(
+                AuditActions.DemoExtended,
+                AuditTargets.Workspace,
+                workspaceId.ToString(),
+                workspaceId,
+                After: new Dictionary<string, string>
+                {
+                    ["expires_at"] = workspace.DemoExpiresAt.Value.ToString("O"),
+                }
+            )
+        );
+
+        return Result<DemoStatusResponse>.Success(
+            new DemoStatusResponse
+            {
+                ExpiresAt = workspace.DemoExpiresAt.Value,
+                ExtendedAt = workspace.DemoExtendedAt,
+                CanExtend = false,
+            },
+            string.Format(MessageKeys.Demo.Extended, workspace.DemoExpiresAt.Value.ToString("u"))
+        );
+    }
+
+    public async Task OnEmailVerifiedAsync(User identity)
+    {
+        // DB-17 §3.4 (Opus #4): pre-wired for Demo:ConvertRequiresVerification — a no-op with the
+        // flag off (a converted workspace has no TTL by then, so this query finds nothing).
+        var adminWorkspaceIds = (await _memberships.ListForIdentityAsync(identity.Id))
+            .Where(m =>
+                m.IsActive
+                && m.ApprovalStatus == ApprovalStatus.Approved
+                && m.Role?.Name == WorkspaceAdminRoleName
+            )
+            .Select(m => m.OwnerId)
+            .Distinct()
+            .ToList();
+
+        if (adminWorkspaceIds.Count == 0)
+            return;
+
+        var workspaces = await _unitOfWork
+            .Workspaces.IgnoreQueryFilters()
+            .Where(w =>
+                w.DemoConvertedAt != null
+                && w.DemoExpiresAt != null
+                && adminWorkspaceIds.Contains(w.Id)
+            )
+            .ToListAsync();
+
+        if (workspaces.Count == 0)
+            return;
+
+        foreach (var w in workspaces)
+            w.DemoExpiresAt = null;
+
+        await _unitOfWork.SaveChangesAsync();
+    }
+
+    public async Task<int> SweepThrottleRowsAsync(DateTime nowUtc)
+    {
+        var cutoff = nowUtc.AddDays(-2);
+        var stale = await _unitOfWork
+            .Repository<AppSetting>()
+            .Query()
+            .IgnoreQueryFilters()
+            .Where(s => s.Key.StartsWith("demo_email_") && s.CreatedAt < cutoff)
+            .ToListAsync();
+
+        if (stale.Count == 0)
+            return 0;
+
+        _unitOfWork.Repository<AppSetting>().RemoveRange(stale);
+        await _unitOfWork.SaveChangesAsync();
+        return stale.Count;
     }
 
     private static bool IsValidEmail(string email)
@@ -497,6 +761,26 @@ public class DemoService : IDemoService
   <p style=""color:#475569;margin:16px 0 6px"">Embed snippet (paste into your app's index.html):</p>
   <pre style=""background:#f1f5f9;padding:12px;border-radius:8px;font-size:13px;white-space:pre-wrap"">{snippet}</pre>
   <p style=""color:#94a3b8;font-size:12px;margin-top:16px"">If you didn't request this, you can ignore this email.</p>
+</div>";
+    }
+
+    /// <summary>DB-17 §3.5 (verbatim body).</summary>
+    private static string BuildExpiryWarningHtml(
+        string workspaceName,
+        DateTime expiresUtc,
+        string productName,
+        string appUrl,
+        int ttlHours
+    )
+    {
+        var encodedName = System.Net.WebUtility.HtmlEncode(workspaceName);
+        return $@"<div style=""font-family:system-ui,Segoe UI,Roboto,sans-serif;color:#0f172a;line-height:1.6"">
+  <h2 style=""margin:0 0 8px"">Your {productName} demo expires soon</h2>
+  <p style=""margin:0 0 16px"">Your demo workspace, <b>{encodedName}</b>, expires on {expiresUtc:yyyy-MM-dd HH:mm} UTC.
+  Everything in it — the project, its comments and screenshots — is deleted then. To keep it, open
+  <a href=""{appUrl}"">{appUrl}</a> and choose <b>Keep this workspace</b> (you pick your e-mail and a password;
+  nothing is lost). Need a little more time? <b>Extend once</b> adds {ttlHours} hours. If you did not start
+  this demo, ignore this e-mail.</p>
 </div>";
     }
 }

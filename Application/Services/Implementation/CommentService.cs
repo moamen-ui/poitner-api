@@ -165,18 +165,17 @@ public class CommentService : ICommentService
         // the global super-admin-tunable setting (default 10) applies.
         if (projectOwnerId is Guid owner)
         {
-            // DB-11a: the founding admin's public_id no longer equals the workspace id — resolve
-            // via the workspace's current admin membership instead of users.public_id == owner.
-            var currentAdmin = await _memberships.CurrentAdminAsync(owner);
-            var demoOwner =
-                currentAdmin?.User.IsDemo == true
-                    ? new { currentAdmin.User.DemoCommentCapOverride }
-                    : null;
+            // DB-17 §3.3: the WORKSPACE is the demo authority now (never the demo-flag/override fields on the identity).
+            var demoWs = await _unitOfWork
+                .Workspaces.IgnoreQueryFilters()
+                .Where(w => w.Id == owner && w.DemoExpiresAt != null)
+                .Select(w => new { w.DemoCommentCapOverride })
+                .FirstOrDefaultAsync();
 
-            if (demoOwner != null)
+            if (demoWs != null)
             {
                 var cap =
-                    demoOwner.DemoCommentCapOverride
+                    demoWs.DemoCommentCapOverride
                     ?? await _settings.GetIntAsync(ISettingsService.DemoCommentCap, 10);
                 var count = await _unitOfWork
                     .Repository<Comment>()

@@ -48,6 +48,7 @@ public class EmailVerificationTests
     private sealed class IdentityHasher : IPasswordHasher
     {
         public string Hash(string password) => "h:" + password;
+
         public bool Verify(string password, string hash) => hash == "h:" + password;
     }
 
@@ -56,37 +57,74 @@ public class EmailVerificationTests
     {
         public Task<bool> GetBoolAsync(string key, bool fallback = false) =>
             Task.FromResult(key == ISettingsService.ScopedAdminSignupEnabled || fallback);
+
         public Task SetBoolAsync(string key, bool value) => Task.CompletedTask;
-        public Task<string> GetStringAsync(string key, string fallback = "") => Task.FromResult(fallback);
+
+        public Task<string> GetStringAsync(string key, string fallback = "") =>
+            Task.FromResult(fallback);
+
         public Task SetStringAsync(string key, string value) => Task.CompletedTask;
+
         public Task<int> GetIntAsync(string key, int fallback = 0) => Task.FromResult(fallback);
+
         public Task SetIntAsync(string key, int value) => Task.CompletedTask;
     }
 
     private sealed class NoopBrandingService : IBrandingService
     {
-        private static Pointer.Application.DTOs.Branding.BrandingResponse DefaultBranding() => new()
-        {
-            ProductName = "Pointer",
-            Tagline = string.Empty,
-            PrimaryColor = "#2563eb",
-            Urls = new Pointer.Application.DTOs.Branding.BrandingUrlsResponse { App = "https://app.pointer.test" },
-            Assets = new Pointer.Application.DTOs.Branding.BrandingAssetsResponse(),
-        };
-        public Task<Pointer.Application.Response.Result<Pointer.Application.DTOs.Branding.BrandingResponse>> GetAsync(string publicBase, IReadOnlySet<string> existingKinds) =>
-            Task.FromResult(Pointer.Application.Response.Result<Pointer.Application.DTOs.Branding.BrandingResponse>.Success(DefaultBranding()));
-        public Task<Pointer.Application.Response.Result<Pointer.Application.DTOs.Branding.BrandingResponse>> UpdateAsync(Pointer.Application.DTOs.Branding.BrandingWriteDto dto, string publicBase, IReadOnlySet<string> existingKinds) =>
-            Task.FromResult(Pointer.Application.Response.Result<Pointer.Application.DTOs.Branding.BrandingResponse>.Success(DefaultBranding()));
+        private static Pointer.Application.DTOs.Branding.BrandingResponse DefaultBranding() =>
+            new()
+            {
+                ProductName = "Pointer",
+                Tagline = string.Empty,
+                PrimaryColor = "#2563eb",
+                Urls = new Pointer.Application.DTOs.Branding.BrandingUrlsResponse
+                {
+                    App = "https://app.pointer.test",
+                },
+                Assets = new Pointer.Application.DTOs.Branding.BrandingAssetsResponse(),
+            };
+
+        public Task<Pointer.Application.Response.Result<Pointer.Application.DTOs.Branding.BrandingResponse>> GetAsync(
+            string publicBase,
+            IReadOnlySet<string> existingKinds
+        ) =>
+            Task.FromResult(
+                Pointer.Application.Response.Result<Pointer.Application.DTOs.Branding.BrandingResponse>.Success(
+                    DefaultBranding()
+                )
+            );
+
+        public Task<Pointer.Application.Response.Result<Pointer.Application.DTOs.Branding.BrandingResponse>> UpdateAsync(
+            Pointer.Application.DTOs.Branding.BrandingWriteDto dto,
+            string publicBase,
+            IReadOnlySet<string> existingKinds
+        ) =>
+            Task.FromResult(
+                Pointer.Application.Response.Result<Pointer.Application.DTOs.Branding.BrandingResponse>.Success(
+                    DefaultBranding()
+                )
+            );
+
         public Task<int> BumpVersionAsync() => Task.FromResult(0);
-        public Task<Pointer.Application.DTOs.Branding.BrandingResponse> BuildResponseAsync(string publicBase, IReadOnlySet<string> existingKinds) =>
-            Task.FromResult(DefaultBranding());
+
+        public Task<Pointer.Application.DTOs.Branding.BrandingResponse> BuildResponseAsync(
+            string publicBase,
+            IReadOnlySet<string> existingKinds
+        ) => Task.FromResult(DefaultBranding());
     }
 
     private sealed class NoopFileStorage : IFileStorage
     {
-        public Task<string> SaveAsync(string ownerSegment, string project, Stream content, string extension) =>
-            Task.FromResult("");
+        public Task<string> SaveAsync(
+            string ownerSegment,
+            string project,
+            Stream content,
+            string extension
+        ) => Task.FromResult("");
+
         public Task DeleteAsync(string relativePathOrUrl) => Task.CompletedTask;
+
         public Task DeleteOwnerFilesAsync(string ownerSegment) => Task.CompletedTask;
     }
 
@@ -94,6 +132,7 @@ public class EmailVerificationTests
     {
         public string Issue(User user, WorkspaceMembership? membership, int? keyScopes = null) =>
             "token-for-" + user.PublicId.ToString("N");
+
         public string IssueSelection(User user) => "sel-for-" + user.PublicId.ToString("N");
 
         public string IssueImpersonation(
@@ -109,7 +148,12 @@ public class EmailVerificationTests
     {
         public List<(string To, string Subject, string Html)> Sent { get; } = new();
 
-        public Task<bool> SendAsync(string to, string subject, string htmlBody, CancellationToken ct = default)
+        public Task<bool> SendAsync(
+            string to,
+            string subject,
+            string htmlBody,
+            CancellationToken ct = default
+        )
         {
             Sent.Add((to, subject, htmlBody));
             return Task.FromResult(true);
@@ -132,7 +176,15 @@ public class EmailVerificationTests
         new(
             new DbContextOptionsBuilder<AppDbContext>()
                 .UseInMemoryDatabase(db)
-                .ConfigureWarnings(w => w.Ignore(Microsoft.EntityFrameworkCore.Diagnostics.InMemoryEventId.TransactionIgnoredWarning))
+                .ConfigureWarnings(w =>
+                    w.Ignore(
+                        Microsoft
+                            .EntityFrameworkCore
+                            .Diagnostics
+                            .InMemoryEventId
+                            .TransactionIgnoredWarning
+                    )
+                )
                 .Options,
             u,
             new ConfigurationBuilder().Build()
@@ -141,7 +193,12 @@ public class EmailVerificationTests
     private static IResetTokenService RealResetTokens() =>
         new ResetTokenService(
             new ConfigurationBuilder()
-                .AddInMemoryCollection(new Dictionary<string, string?> { ["JWT:SigningKey"] = "test-key-0123456789abcdef0123456789" })
+                .AddInMemoryCollection(
+                    new Dictionary<string, string?>
+                    {
+                        ["JWT:SigningKey"] = "test-key-0123456789abcdef0123456789",
+                    }
+                )
                 .Build()
         );
 
@@ -262,7 +319,15 @@ public class EmailVerificationTests
         var db = Guid.NewGuid().ToString();
         using (var seed = Ctx(new FakeCurrentUser { IsSuperAdmin = true }, db))
         {
-            seed.Roles.Add(new Role { Name = "Workspace Admin", GrantsAdmin = true, IsActive = true, OwnerId = null });
+            seed.Roles.Add(
+                new Role
+                {
+                    Name = "Workspace Admin",
+                    GrantsAdmin = true,
+                    IsActive = true,
+                    OwnerId = null,
+                }
+            );
             seed.SaveChanges();
         }
 
@@ -275,7 +340,12 @@ public class EmailVerificationTests
         var auth = BuildAuthService(anon, ctx, email, resetTokens, emailVerification);
 
         var result = await auth.RegisterAdminAsync(
-            new RegisterAdminRequest { Email = "New@Admin.com", Password = StrongPw, DisplayName = "New Admin" }
+            new RegisterAdminRequest
+            {
+                Email = "New@Admin.com",
+                Password = StrongPw,
+                DisplayName = "New Admin",
+            }
         );
         Assert.True(result.IsSuccess, result.Message);
 
@@ -286,10 +356,20 @@ public class EmailVerificationTests
         Assert.Contains("verify-email?token=", sent.Html);
 
         var token = CapturingEmail.ExtractToken(sent.Html);
-        Assert.True(resetTokens.TryValidateScoped(token, TokenPurposes.VerifyEmail, out var pid, out _, out var payload));
+        Assert.True(
+            resetTokens.TryValidateScoped(
+                token,
+                TokenPurposes.VerifyEmail,
+                out var pid,
+                out _,
+                out var payload
+            )
+        );
         Assert.Equal(identity.PublicId, pid);
         Assert.Equal("new@admin.com", payload);
-        Assert.False(resetTokens.TryValidateScoped(token, TokenPurposes.ChangeEmail, out _, out _, out _));
+        Assert.False(
+            resetTokens.TryValidateScoped(token, TokenPurposes.ChangeEmail, out _, out _, out _)
+        );
         Assert.False(resetTokens.TryValidate(token, out _, out _));
     }
 
@@ -298,9 +378,21 @@ public class EmailVerificationTests
     private static (Guid OwnerId, int MemberRoleId) SeedTenant(string db)
     {
         using var seed = Ctx(new FakeCurrentUser { IsSuperAdmin = true }, db);
-        var role = new Role { Name = "Engineer", GrantsAdmin = false, IsSystem = false, IsActive = true };
+        var role = new Role
+        {
+            Name = "Engineer",
+            GrantsAdmin = false,
+            IsSystem = false,
+            IsActive = true,
+        };
         seed.Roles.Add(role);
-        var adminRole = new Role { Name = "Workspace Admin", GrantsAdmin = true, IsSystem = true, IsActive = true };
+        var adminRole = new Role
+        {
+            Name = "Workspace Admin",
+            GrantsAdmin = true,
+            IsSystem = true,
+            IsActive = true,
+        };
         seed.Roles.Add(adminRole);
         seed.SaveChanges();
 
@@ -361,11 +453,23 @@ public class EmailVerificationTests
         var anon = new FakeCurrentUser();
         using var ctx = Ctx(anon, db);
         var capturing = new CapturingEmail();
-        var emailVerification = BuildEmailVerification(anon, ctx, RealResetTokens(), capturing, new MemoryCache(new MemoryCacheOptions()));
+        var emailVerification = BuildEmailVerification(
+            anon,
+            ctx,
+            RealResetTokens(),
+            capturing,
+            new MemoryCache(new MemoryCacheOptions())
+        );
         var invites = BuildInviteService(anon, ctx, capturing, emailVerification);
 
         var result = await invites.AcceptAsync(
-            new AcceptInviteRequest { Code = code, Email = "a@x.com", Password = StrongPw, DisplayName = "Joiner" }
+            new AcceptInviteRequest
+            {
+                Code = code,
+                Email = "a@x.com",
+                Password = StrongPw,
+                DisplayName = "Joiner",
+            }
         );
         Assert.True(result.IsSuccess, result.Message);
 
@@ -408,11 +512,23 @@ public class EmailVerificationTests
         var anon = new FakeCurrentUser();
         using var ctx = Ctx(anon, db);
         var capturing = new CapturingEmail();
-        var emailVerification = BuildEmailVerification(anon, ctx, RealResetTokens(), capturing, new MemoryCache(new MemoryCacheOptions()));
+        var emailVerification = BuildEmailVerification(
+            anon,
+            ctx,
+            RealResetTokens(),
+            capturing,
+            new MemoryCache(new MemoryCacheOptions())
+        );
         var invites = BuildInviteService(anon, ctx, capturing, emailVerification);
 
         var result = await invites.AcceptAsync(
-            new AcceptInviteRequest { Code = code, Email = "a@x.com", Password = StrongPw, DisplayName = "Existing" }
+            new AcceptInviteRequest
+            {
+                Code = code,
+                Email = "a@x.com",
+                Password = StrongPw,
+                DisplayName = "Existing",
+            }
         );
         Assert.True(result.IsSuccess, result.Message);
 
@@ -454,11 +570,23 @@ public class EmailVerificationTests
         var anon = new FakeCurrentUser();
         using var ctx = Ctx(anon, db);
         var capturing = new CapturingEmail();
-        var emailVerification = BuildEmailVerification(anon, ctx, RealResetTokens(), capturing, new MemoryCache(new MemoryCacheOptions()));
+        var emailVerification = BuildEmailVerification(
+            anon,
+            ctx,
+            RealResetTokens(),
+            capturing,
+            new MemoryCache(new MemoryCacheOptions())
+        );
         var invites = BuildInviteService(anon, ctx, capturing, emailVerification);
 
         var result = await invites.AcceptAsync(
-            new AcceptInviteRequest { Code = code, Email = "open@x.com", Password = StrongPw, DisplayName = "Existing" }
+            new AcceptInviteRequest
+            {
+                Code = code,
+                Email = "open@x.com",
+                Password = StrongPw,
+                DisplayName = "Existing",
+            }
         );
         Assert.True(result.IsSuccess, result.Message);
 
@@ -478,11 +606,23 @@ public class EmailVerificationTests
         var anon = new FakeCurrentUser();
         using var ctx = Ctx(anon, db);
         var capturing = new CapturingEmail();
-        var emailVerification = BuildEmailVerification(anon, ctx, RealResetTokens(), capturing, new MemoryCache(new MemoryCacheOptions()));
+        var emailVerification = BuildEmailVerification(
+            anon,
+            ctx,
+            RealResetTokens(),
+            capturing,
+            new MemoryCache(new MemoryCacheOptions())
+        );
         var invites = BuildInviteService(anon, ctx, capturing, emailVerification);
 
         var result = await invites.AcceptAsync(
-            new AcceptInviteRequest { Code = code, Email = "brandnew@x.com", Password = StrongPw, DisplayName = "New" }
+            new AcceptInviteRequest
+            {
+                Code = code,
+                Email = "brandnew@x.com",
+                Password = StrongPw,
+                DisplayName = "New",
+            }
         );
         Assert.True(result.IsSuccess, result.Message);
 
@@ -502,10 +642,33 @@ public class EmailVerificationTests
         int quickAccessRoleId;
         using (var seed = Ctx(new FakeCurrentUser { IsSuperAdmin = true }, db))
         {
-            var role = new Role { Name = "Client", GrantsAdmin = false, IsSystem = false, IsActive = true, QuickAccess = true, OwnerId = null };
+            var role = new Role
+            {
+                Name = "Client",
+                GrantsAdmin = false,
+                IsSystem = false,
+                IsActive = true,
+                QuickAccess = true,
+                OwnerId = null,
+            };
             seed.Roles.Add(role);
-            seed.Set<Workspace>().Add(new Workspace { Id = owner, Name = "T", CreatedAt = DateTime.UtcNow, CreatedBy = owner });
-            var project = new Project { Key = "proj", Name = "Proj", OwnerId = owner, AppUrl = "https://app.example.com" };
+            seed.Set<Workspace>()
+                .Add(
+                    new Workspace
+                    {
+                        Id = owner,
+                        Name = "T",
+                        CreatedAt = DateTime.UtcNow,
+                        CreatedBy = owner,
+                    }
+                );
+            var project = new Project
+            {
+                Key = "proj",
+                Name = "Proj",
+                OwnerId = owner,
+                AppUrl = "https://app.example.com",
+            };
             seed.Projects.Add(project);
             seed.SaveChanges();
             projectId = project.Id;
@@ -515,11 +678,22 @@ public class EmailVerificationTests
         var admin = new FakeCurrentUser { TenantId = owner };
         using var ctx = Ctx(admin, db);
         var capturing = new CapturingEmail();
-        var emailVerification = BuildEmailVerification(admin, ctx, RealResetTokens(), capturing, new MemoryCache(new MemoryCacheOptions()));
+        var emailVerification = BuildEmailVerification(
+            admin,
+            ctx,
+            RealResetTokens(),
+            capturing,
+            new MemoryCache(new MemoryCacheOptions())
+        );
         var invites = BuildInviteService(admin, ctx, capturing, emailVerification);
 
         var result = await invites.CreateAsync(
-            new CreateInviteRequest { Email = "client@x.com", ProjectId = projectId, RoleId = quickAccessRoleId }
+            new CreateInviteRequest
+            {
+                Email = "client@x.com",
+                ProjectId = projectId,
+                RoleId = quickAccessRoleId,
+            }
         );
         Assert.True(result.IsSuccess, result.Message);
 
@@ -535,7 +709,16 @@ public class EmailVerificationTests
         var db = Guid.NewGuid().ToString();
         using (var seed = Ctx(new FakeCurrentUser { IsSuperAdmin = true }, db))
         {
-            seed.Roles.Add(new Role { Name = "Workspace Admin", GrantsAdmin = true, IsSystem = true, IsActive = true, OwnerId = null });
+            seed.Roles.Add(
+                new Role
+                {
+                    Name = "Workspace Admin",
+                    GrantsAdmin = true,
+                    IsSystem = true,
+                    IsActive = true,
+                    OwnerId = null,
+                }
+            );
             seed.SaveChanges();
         }
 
@@ -544,7 +727,12 @@ public class EmailVerificationTests
         var svc = BuildTenantService(superAdmin, ctx);
 
         var result = await svc.CreateAsync(
-            new CreateTenantRequest { Email = "operator-made@x.com", Password = StrongPw, DisplayName = "New" }
+            new CreateTenantRequest
+            {
+                Email = "operator-made@x.com",
+                Password = StrongPw,
+                DisplayName = "New",
+            }
         );
         Assert.True(result.IsSuccess, result.Message);
 
@@ -563,11 +751,23 @@ public class EmailVerificationTests
         var admin = new FakeCurrentUser { TenantId = owner };
         using var ctx = Ctx(admin, db);
         var capturing = new CapturingEmail();
-        var emailVerification = BuildEmailVerification(admin, ctx, RealResetTokens(), capturing, new MemoryCache(new MemoryCacheOptions()));
+        var emailVerification = BuildEmailVerification(
+            admin,
+            ctx,
+            RealResetTokens(),
+            capturing,
+            new MemoryCache(new MemoryCacheOptions())
+        );
         var users = BuildUserService(admin, ctx, capturing, emailVerification);
 
         var result = await users.CreateAsync(
-            new CreateUserRequest { Email = "member@x.com", Password = StrongPw, DisplayName = "Member", RoleId = roleId }
+            new CreateUserRequest
+            {
+                Email = "member@x.com",
+                Password = StrongPw,
+                DisplayName = "Member",
+                RoleId = roleId,
+            }
         );
         Assert.True(result.IsSuccess, result.Message);
 
@@ -586,7 +786,13 @@ public class EmailVerificationTests
         var publicId = Guid.NewGuid();
         using (var seed = Ctx(new FakeCurrentUser { IsSuperAdmin = true }, db))
         {
-            var role = new Role { Name = "Workspace Admin", GrantsAdmin = true, IsSystem = true, IsActive = true };
+            var role = new Role
+            {
+                Name = "Workspace Admin",
+                GrantsAdmin = true,
+                IsSystem = true,
+                IsActive = true,
+            };
             seed.Roles.Add(role);
             seed.SaveChanges();
             // Simulates a demo row the DB-14 backfill happened to touch (created before the cutoff) —
@@ -608,17 +814,34 @@ public class EmailVerificationTests
             seed.Users.Add(demo);
             seed.SaveChanges();
             TestSeed.Join(seed, demo, owner, role);
+            // DB-17: the workspace is the demo authority now — TestSeed.Join's Workspace row has no
+            // demo state by default (it is shared by every non-demo test), so stamp it here.
+            var workspace = seed.Workspaces.Single(w => w.Id == owner);
+            workspace.DemoExpiresAt = demo.ExpiresAt;
+            seed.SaveChanges();
         }
 
         var caller = new FakeCurrentUser { Id = publicId, TenantId = owner };
         using var ctx = Ctx(caller, db);
         var capturing = new CapturingEmail();
-        var emailVerification = BuildEmailVerification(caller, ctx, RealResetTokens(), capturing, new MemoryCache(new MemoryCacheOptions()));
+        var emailVerification = BuildEmailVerification(
+            caller,
+            ctx,
+            RealResetTokens(),
+            capturing,
+            new MemoryCache(new MemoryCacheOptions())
+        );
         var demoSvc = BuildDemoService(caller, ctx, capturing, emailVerification);
 
         var result = await demoSvc.UpgradeAsync(
             publicId,
-            new UpgradeDemoRequest { Email = "real@x.com", Password = StrongPw, DisplayName = "Real Person" }
+            owner,
+            new UpgradeDemoRequest
+            {
+                Email = "real@x.com",
+                Password = StrongPw,
+                DisplayName = "Real Person",
+            }
         );
         Assert.True(result.IsSuccess, result.Message);
 
@@ -636,7 +859,16 @@ public class EmailVerificationTests
         var existingEmail = "founder@x.com";
         using (var seed = Ctx(new FakeCurrentUser { IsSuperAdmin = true }, db))
         {
-            seed.Roles.Add(new Role { Name = "Workspace Admin", GrantsAdmin = true, IsSystem = true, IsActive = true, OwnerId = null });
+            seed.Roles.Add(
+                new Role
+                {
+                    Name = "Workspace Admin",
+                    GrantsAdmin = true,
+                    IsSystem = true,
+                    IsActive = true,
+                    OwnerId = null,
+                }
+            );
             seed.SaveChanges();
         }
         var superAdmin = new FakeCurrentUser { IsSuperAdmin = true };
@@ -644,7 +876,12 @@ public class EmailVerificationTests
         {
             var svc0 = BuildTenantService(superAdmin, ctx0);
             var first = await svc0.CreateAsync(
-                new CreateTenantRequest { Email = existingEmail, Password = StrongPw, DisplayName = "Founder" }
+                new CreateTenantRequest
+                {
+                    Email = existingEmail,
+                    Password = StrongPw,
+                    DisplayName = "Founder",
+                }
             );
             Assert.True(first.IsSuccess, first.Message);
         }
@@ -661,7 +898,12 @@ public class EmailVerificationTests
         using var ctx = Ctx(superAdmin, db);
         var svc = BuildTenantService(superAdmin, ctx);
         var second = await svc.CreateAsync(
-            new CreateTenantRequest { Email = existingEmail, Password = StrongPw, DisplayName = "Founder" }
+            new CreateTenantRequest
+            {
+                Email = existingEmail,
+                Password = StrongPw,
+                DisplayName = "Founder",
+            }
         );
         Assert.True(second.IsSuccess, second.Message);
 
@@ -673,7 +915,13 @@ public class EmailVerificationTests
 
     private static Guid SeedUnverified(AppDbContext seed, out Guid stamp, bool deleted = false)
     {
-        var role = new Role { Name = "Engineer", GrantsAdmin = false, IsSystem = false, IsActive = true };
+        var role = new Role
+        {
+            Name = "Engineer",
+            GrantsAdmin = false,
+            IsSystem = false,
+            IsActive = true,
+        };
         seed.Roles.Add(role);
         seed.SaveChanges();
         var publicId = Guid.NewGuid();
@@ -699,25 +947,43 @@ public class EmailVerificationTests
     {
         var db = Guid.NewGuid().ToString();
         var superAdmin = new FakeCurrentUser { IsSuperAdmin = true };
-        Guid publicId, stamp;
+        Guid publicId,
+            stamp;
         using (var seed = Ctx(superAdmin, db))
             publicId = SeedUnverified(seed, out stamp);
 
         var resetTokens = RealResetTokens();
-        var token = resetTokens.CreateScoped(publicId, stamp, TokenPurposes.VerifyEmail, "confirm@t.com");
+        var token = resetTokens.CreateScoped(
+            publicId,
+            stamp,
+            TokenPurposes.VerifyEmail,
+            "confirm@t.com"
+        );
 
         using var ctx = Ctx(superAdmin, db);
         var capturing = new CapturingEmail();
-        var svc = BuildEmailVerification(superAdmin, ctx, resetTokens, capturing, new MemoryCache(new MemoryCacheOptions()));
+        var svc = BuildEmailVerification(
+            superAdmin,
+            ctx,
+            resetTokens,
+            capturing,
+            new MemoryCache(new MemoryCacheOptions())
+        );
 
         var first = await svc.ConfirmAsync(token);
         Assert.True(first.IsSuccess, first.Message);
-        var verifiedAt = ctx.Users.IgnoreQueryFilters().Single(u => u.PublicId == publicId).EmailVerifiedAt;
+        var verifiedAt = ctx
+            .Users.IgnoreQueryFilters()
+            .Single(u => u.PublicId == publicId)
+            .EmailVerifiedAt;
         Assert.NotNull(verifiedAt);
 
         var second = await svc.ConfirmAsync(token); // idempotent re-click
         Assert.True(second.IsSuccess, second.Message);
-        var stillVerifiedAt = ctx.Users.IgnoreQueryFilters().Single(u => u.PublicId == publicId).EmailVerifiedAt;
+        var stillVerifiedAt = ctx
+            .Users.IgnoreQueryFilters()
+            .Single(u => u.PublicId == publicId)
+            .EmailVerifiedAt;
         Assert.Equal(verifiedAt, stillVerifiedAt);
     }
 
@@ -726,16 +992,28 @@ public class EmailVerificationTests
     {
         var db = Guid.NewGuid().ToString();
         var superAdmin = new FakeCurrentUser { IsSuperAdmin = true };
-        Guid publicId, stamp;
+        Guid publicId,
+            stamp;
         using (var seed = Ctx(superAdmin, db))
             publicId = SeedUnverified(seed, out stamp);
 
         var resetTokens = RealResetTokens();
         // Minted for the OLD address; the identity's e-mail has since changed.
-        var token = resetTokens.CreateScoped(publicId, stamp, TokenPurposes.VerifyEmail, "old@t.com");
+        var token = resetTokens.CreateScoped(
+            publicId,
+            stamp,
+            TokenPurposes.VerifyEmail,
+            "old@t.com"
+        );
 
         using var ctx = Ctx(superAdmin, db);
-        var svc = BuildEmailVerification(superAdmin, ctx, resetTokens, new CapturingEmail(), new MemoryCache(new MemoryCacheOptions()));
+        var svc = BuildEmailVerification(
+            superAdmin,
+            ctx,
+            resetTokens,
+            new CapturingEmail(),
+            new MemoryCache(new MemoryCacheOptions())
+        );
 
         var result = await svc.ConfirmAsync(token);
         Assert.False(result.IsSuccess);
@@ -747,15 +1025,27 @@ public class EmailVerificationTests
     {
         var db = Guid.NewGuid().ToString();
         var superAdmin = new FakeCurrentUser { IsSuperAdmin = true };
-        Guid publicId, stamp;
+        Guid publicId,
+            stamp;
         using (var seed = Ctx(superAdmin, db))
             publicId = SeedUnverified(seed, out stamp);
 
         var resetTokens = RealResetTokens();
-        var eraseToken = resetTokens.CreateScoped(publicId, stamp, TokenPurposes.Erase, "confirm@t.com");
+        var eraseToken = resetTokens.CreateScoped(
+            publicId,
+            stamp,
+            TokenPurposes.Erase,
+            "confirm@t.com"
+        );
 
         using var ctx = Ctx(superAdmin, db);
-        var svc = BuildEmailVerification(superAdmin, ctx, resetTokens, new CapturingEmail(), new MemoryCache(new MemoryCacheOptions()));
+        var svc = BuildEmailVerification(
+            superAdmin,
+            ctx,
+            resetTokens,
+            new CapturingEmail(),
+            new MemoryCache(new MemoryCacheOptions())
+        );
 
         var result = await svc.ConfirmAsync(eraseToken);
         Assert.False(result.IsSuccess);
@@ -767,12 +1057,18 @@ public class EmailVerificationTests
     {
         var db = Guid.NewGuid().ToString();
         var superAdmin = new FakeCurrentUser { IsSuperAdmin = true };
-        Guid publicId, stamp;
+        Guid publicId,
+            stamp;
         using (var seed = Ctx(superAdmin, db))
             publicId = SeedUnverified(seed, out stamp);
 
         var resetTokens = RealResetTokens();
-        var token = resetTokens.CreateScoped(publicId, stamp, TokenPurposes.VerifyEmail, "confirm@t.com");
+        var token = resetTokens.CreateScoped(
+            publicId,
+            stamp,
+            TokenPurposes.VerifyEmail,
+            "confirm@t.com"
+        );
 
         // Rotate the stamp after minting (e.g. a password change) — the link should die with it.
         using (var mutate = Ctx(superAdmin, db))
@@ -783,7 +1079,13 @@ public class EmailVerificationTests
         }
 
         using var ctx = Ctx(superAdmin, db);
-        var svc = BuildEmailVerification(superAdmin, ctx, resetTokens, new CapturingEmail(), new MemoryCache(new MemoryCacheOptions()));
+        var svc = BuildEmailVerification(
+            superAdmin,
+            ctx,
+            resetTokens,
+            new CapturingEmail(),
+            new MemoryCache(new MemoryCacheOptions())
+        );
 
         var result = await svc.ConfirmAsync(token);
         Assert.False(result.IsSuccess);
@@ -795,15 +1097,27 @@ public class EmailVerificationTests
     {
         var db = Guid.NewGuid().ToString();
         var superAdmin = new FakeCurrentUser { IsSuperAdmin = true };
-        Guid publicId, stamp;
+        Guid publicId,
+            stamp;
         using (var seed = Ctx(superAdmin, db))
             publicId = SeedUnverified(seed, out stamp, deleted: true);
 
         var resetTokens = RealResetTokens();
-        var token = resetTokens.CreateScoped(publicId, stamp, TokenPurposes.VerifyEmail, "confirm@t.com");
+        var token = resetTokens.CreateScoped(
+            publicId,
+            stamp,
+            TokenPurposes.VerifyEmail,
+            "confirm@t.com"
+        );
 
         using var ctx = Ctx(superAdmin, db);
-        var svc = BuildEmailVerification(superAdmin, ctx, resetTokens, new CapturingEmail(), new MemoryCache(new MemoryCacheOptions()));
+        var svc = BuildEmailVerification(
+            superAdmin,
+            ctx,
+            resetTokens,
+            new CapturingEmail(),
+            new MemoryCache(new MemoryCacheOptions())
+        );
 
         var result = await svc.ConfirmAsync(token);
         Assert.False(result.IsSuccess);
@@ -817,7 +1131,8 @@ public class EmailVerificationTests
     {
         var db = Guid.NewGuid().ToString();
         var superAdmin = new FakeCurrentUser { IsSuperAdmin = true };
-        Guid publicId, stamp;
+        Guid publicId,
+            stamp;
         using (var seed = Ctx(superAdmin, db))
             publicId = SeedUnverified(seed, out stamp);
 
@@ -855,7 +1170,13 @@ public class EmailVerificationTests
         var caller = new FakeCurrentUser { Id = publicId };
         using var ctx = Ctx(caller, db);
         var capturing = new CapturingEmail();
-        var svc = BuildEmailVerification(caller, ctx, RealResetTokens(), capturing, new MemoryCache(new MemoryCacheOptions()));
+        var svc = BuildEmailVerification(
+            caller,
+            ctx,
+            RealResetTokens(),
+            capturing,
+            new MemoryCache(new MemoryCacheOptions())
+        );
 
         var result = await svc.ResendAsync();
         Assert.True(result.IsSuccess);
@@ -871,27 +1192,41 @@ public class EmailVerificationTests
         Guid publicId;
         using (var seed = Ctx(superAdmin, db))
         {
-            var role = new Role { Name = "Workspace Admin", GrantsAdmin = true, IsSystem = true, IsActive = true };
+            var role = new Role
+            {
+                Name = "Workspace Admin",
+                GrantsAdmin = true,
+                IsSystem = true,
+                IsActive = true,
+            };
             seed.Roles.Add(role);
             seed.SaveChanges();
             publicId = Guid.NewGuid();
-            seed.Users.Add(new User
-            {
-                PublicId = publicId,
-                Email = "demo-x@demo.pointer",
-                PasswordHash = "h:demo",
-                DisplayName = "Demo",
-                RoleId = role.Id,
-                IsActive = true,
-                IsDemo = true,
-            });
+            seed.Users.Add(
+                new User
+                {
+                    PublicId = publicId,
+                    Email = "demo-x@demo.pointer",
+                    PasswordHash = "h:demo",
+                    DisplayName = "Demo",
+                    RoleId = role.Id,
+                    IsActive = true,
+                    IsDemo = true,
+                }
+            );
             seed.SaveChanges();
         }
 
         var caller = new FakeCurrentUser { Id = publicId };
         using var ctx = Ctx(caller, db);
         var capturing = new CapturingEmail();
-        var svc = BuildEmailVerification(caller, ctx, RealResetTokens(), capturing, new MemoryCache(new MemoryCacheOptions()));
+        var svc = BuildEmailVerification(
+            caller,
+            ctx,
+            RealResetTokens(),
+            capturing,
+            new MemoryCache(new MemoryCacheOptions())
+        );
 
         var result = await svc.ResendAsync();
         Assert.False(result.IsSuccess);
@@ -904,25 +1239,60 @@ public class EmailVerificationTests
     [Fact]
     public void Me_EmailVerifiedFlags()
     {
-        var adminRole = new Role { Id = 1, Name = "Workspace Admin", GrantsAdmin = true };
-        var stakeholderRole = new Role { Id = 2, Name = "Developer", GrantsAdmin = false };
+        var adminRole = new Role
+        {
+            Id = 1,
+            Name = "Workspace Admin",
+            GrantsAdmin = true,
+        };
+        var stakeholderRole = new Role
+        {
+            Id = 2,
+            Name = "Developer",
+            GrantsAdmin = false,
+        };
 
-        var unverifiedAdmin = new User { PublicId = Guid.NewGuid(), Email = "a@x.com", RoleId = adminRole.Id };
+        var unverifiedAdmin = new User
+        {
+            PublicId = Guid.NewGuid(),
+            Email = "a@x.com",
+            RoleId = adminRole.Id,
+        };
         var unverifiedAdminMe = UserMapper.ToMeResponse(unverifiedAdmin, adminRole);
         Assert.False(unverifiedAdminMe.EmailVerified);
         Assert.True(unverifiedAdminMe.EmailVerificationRequired);
 
-        var unverifiedStakeholder = new User { PublicId = Guid.NewGuid(), Email = "b@x.com", RoleId = stakeholderRole.Id };
-        var unverifiedStakeholderMe = UserMapper.ToMeResponse(unverifiedStakeholder, stakeholderRole);
+        var unverifiedStakeholder = new User
+        {
+            PublicId = Guid.NewGuid(),
+            Email = "b@x.com",
+            RoleId = stakeholderRole.Id,
+        };
+        var unverifiedStakeholderMe = UserMapper.ToMeResponse(
+            unverifiedStakeholder,
+            stakeholderRole
+        );
         Assert.False(unverifiedStakeholderMe.EmailVerified);
         Assert.False(unverifiedStakeholderMe.EmailVerificationRequired);
 
-        var verifiedAdmin = new User { PublicId = Guid.NewGuid(), Email = "c@x.com", RoleId = adminRole.Id, EmailVerifiedAt = DateTime.UtcNow };
+        var verifiedAdmin = new User
+        {
+            PublicId = Guid.NewGuid(),
+            Email = "c@x.com",
+            RoleId = adminRole.Id,
+            EmailVerifiedAt = DateTime.UtcNow,
+        };
         var verifiedAdminMe = UserMapper.ToMeResponse(verifiedAdmin, adminRole);
         Assert.True(verifiedAdminMe.EmailVerified);
         Assert.False(verifiedAdminMe.EmailVerificationRequired);
 
-        var demoAdmin = new User { PublicId = Guid.NewGuid(), Email = "d@x.com", RoleId = adminRole.Id, IsDemo = true };
+        var demoAdmin = new User
+        {
+            PublicId = Guid.NewGuid(),
+            Email = "d@x.com",
+            RoleId = adminRole.Id,
+            IsDemo = true,
+        };
         var demoAdminMe = UserMapper.ToMeResponse(demoAdmin, adminRole);
         Assert.True(demoAdminMe.EmailVerified);
     }

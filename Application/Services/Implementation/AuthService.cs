@@ -28,6 +28,7 @@ public class AuthService : IAuthService
     private readonly IAuditWriter _audit;
     private readonly IEmailVerificationService _emailVerification;
     private readonly IMfaService? _mfa;
+    private readonly IDemoService? _demo;
 
     public AuthService(
         IUnitOfWork unitOfWork,
@@ -48,7 +49,11 @@ public class AuthService : IAuthService
         // and injects the real instance regardless of this default. Only reached by
         // VerifyMfaLoginAsync, which none of the many hand-rolled `new AuthService(...)` test
         // constructions across the suite call, so this stays null-safe for all of them.
-        IMfaService? mfa = null
+        IMfaService? mfa = null,
+        // DB-17: nullable-with-default, same seam as `audit`/`mfa` above. Only reached by
+        // ConfirmEmailChangeAsync's demo-TTL-clearing hook (Demo:ConvertRequiresVerification
+        // mode) — a no-op with the flag off, which is every existing hand-rolled test construction.
+        IDemoService? demo = null
     )
     {
         _unitOfWork = unitOfWork;
@@ -65,6 +70,29 @@ public class AuthService : IAuthService
         _audit = audit ?? NoopAuditWriter.Instance;
         _emailVerification = emailVerification ?? NoopEmailVerification.Instance;
         _mfa = mfa;
+        _demo = demo;
+    }
+
+    /// <summary>
+    /// DB-17 §3.3: the workspaces among <paramref name="workspaceIds"/> that are currently expired,
+    /// live demos (<c>DemoExpiresAt IS NOT NULL AND DemoExpiresAt &lt; now</c>). Applied at every
+    /// token-mint call site (acceptance crit. 7) so an expired demo never mints a fresh token —
+    /// login, switch-workspace, quick-access, key login. Materialises the candidate ids first so
+    /// `Contains` translates.
+    /// </summary>
+    private async Task<HashSet<Guid>> ExpiredDemoWorkspaceIdsAsync(IEnumerable<Guid> workspaceIds)
+    {
+        var ids = workspaceIds.Distinct().ToList();
+        if (ids.Count == 0)
+            return new HashSet<Guid>();
+
+        var now = DateTime.UtcNow;
+        var expired = await _unitOfWork
+            .Workspaces.IgnoreQueryFilters()
+            .Where(w => ids.Contains(w.Id) && w.DemoExpiresAt != null && w.DemoExpiresAt < now)
+            .Select(w => w.Id)
+            .ToListAsync();
+        return expired.ToHashSet();
     }
 
     // ── DB-12 audit helpers ─────────────────────────────────────────────────────────────────
@@ -570,6 +598,12 @@ public class AuthService : IAuthService
         // reflects it immediately.
         _emailVerification.InvalidateGate(identity.PublicId);
 
+        // DB-17 §3.4: the address just became real via THIS route too (change-email, not only
+        // verify-email) — clear the TTL of any converted-but-unverified workspace this identity
+        // administers (Demo:ConvertRequiresVerification mode; a no-op with the flag off).
+        if (_demo != null)
+            await _demo.OnEmailVerifiedAsync(identity);
+
         var brand = await _branding.BuildResponseAsync("", new HashSet<string>());
         try
         {
@@ -772,8 +806,25 @@ public class AuthService : IAuthService
             // that are merely pending/rejected/disabled.
             var memberships = await _memberships.ListForIdentityAsync(user.Id);
 
+            // DB-17 §3.3: drop any membership whose workspace is an expired demo BEFORE deciding
+            // what to do next — for any identity, not only IsDemo (an invited real stakeholder of an
+            // expired demo gets the same answer). If that was the identity's only membership, the
+            // login is refused with DemoExpired rather than the generic NoWorkspace.
+            var hadMembershipsBeforeExpiry = memberships.Count > 0;
+            var expiredDemoIds = await ExpiredDemoWorkspaceIdsAsync(
+                memberships.Select(m => m.OwnerId)
+            );
+            if (expiredDemoIds.Count > 0)
+                memberships = memberships.Where(m => !expiredDemoIds.Contains(m.OwnerId)).ToList();
+
             if (memberships.Count == 0)
             {
+                if (hadMembershipsBeforeExpiry && expiredDemoIds.Count > 0)
+                {
+                    await AuditLoginFailedAsync(user, emailNormalized, "demo_expired");
+                    return Result<LoginResponse>.Failure(MessageKeys.Demo.DemoExpired);
+                }
+
                 await AuditLoginFailedAsync(user, emailNormalized, "no_workspace");
                 return Result<LoginResponse>.Failure(
                     MessageKeys.Auth.NoWorkspace,
@@ -965,6 +1016,10 @@ public class AuthService : IAuthService
 
         await _loginLimiter.ResetAsync(emailNormalized);
 
+        // DB-17: this path is super-admin-only MFA completion — no workspace to check (super admins
+        // own none). Call with an empty set anyway so every token-mint call site references the
+        // guard uniformly (acceptance crit. 7).
+        await ExpiredDemoWorkspaceIdsAsync(Array.Empty<Guid>());
         var token = _tokenService.Issue(user, null);
         var response = new LoginResponse
         {
@@ -1026,6 +1081,12 @@ public class AuthService : IAuthService
         if (!workspaceLive)
             return Result<LoginResponse>.Forbidden(MessageKeys.Auth.NotAMember);
 
+        // DB-17 §3.3 (Opus #2): today this mints a fresh 12h token even for an expired demo — refuse
+        // instead, same message as login.
+        var expiredDemoIds = await ExpiredDemoWorkspaceIdsAsync(new[] { workspaceId });
+        if (expiredDemoIds.Contains(workspaceId))
+            return Result<LoginResponse>.Failure(MessageKeys.Demo.DemoExpired);
+
         var tenantName = await ResolveTenantNameAsync(membership.OwnerId);
         var token = _tokenService.Issue(identity, membership);
 
@@ -1067,7 +1128,14 @@ public class AuthService : IAuthService
     )
     {
         var role = membership?.Role ?? identity.Role;
-        var response = UserMapper.ToMeResponse(identity, role, tenantName);
+        // DB-17: the current workspace, loaded IgnoreQueryFilters by the tenant id already in hand —
+        // carries DemoExpiresAt/DemoCanExtend into the response (null for super admins, who own none).
+        var currentWorkspace = membership?.OwnerId is Guid currentWorkspaceId
+            ? await _unitOfWork
+                .Workspaces.IgnoreQueryFilters()
+                .FirstOrDefaultAsync(w => w.Id == currentWorkspaceId)
+            : null;
+        var response = UserMapper.ToMeResponse(identity, role, tenantName, currentWorkspace);
         // F6 (DB-11b review): prefer the resolved membership's own workspace (the authoritative
         // answer right after a login/switch, when it names the JUST-CHOSEN workspace); fall back to
         // the caller's JWT `tenant` claim so a tenant-scoped token never reports a null WorkspaceId
@@ -1167,6 +1235,16 @@ public class AuthService : IAuthService
                 );
             }
             role = membership.Role;
+
+            // DB-17 §3.3 (d): a demo admin can mint quick-access invites and API keys — "an agent
+            // cannot reach a demo" is not a fact this codebase relies on, so guard it like every
+            // other token mint.
+            var expiredDemoIds = await ExpiredDemoWorkspaceIdsAsync(new[] { ownerId });
+            if (expiredDemoIds.Contains(ownerId))
+            {
+                await AuditApiKeyLoginFailedAsync(apiKey, "demo_expired");
+                return Result<LoginResponse>.Failure(MessageKeys.Demo.DemoExpired);
+            }
         }
         else
         {
@@ -1589,6 +1667,15 @@ public class AuthService : IAuthService
         {
             await AuditMagicLinkFailedAsync("disabled");
             return Result<LoginResponse>.Failure(MessageKeys.Invite.LinkInvalid);
+        }
+
+        // DB-17 §3.3 (c): a demo admin can mint quick-access invites — guard the same way as an
+        // ordinary login/switch.
+        var expiredDemoIds = await ExpiredDemoWorkspaceIdsAsync(new[] { ownerId });
+        if (expiredDemoIds.Contains(ownerId))
+        {
+            await AuditMagicLinkFailedAsync("demo_expired");
+            return Result<LoginResponse>.Failure(MessageKeys.Demo.DemoExpired);
         }
 
         link.Uses += 1;
