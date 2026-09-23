@@ -937,11 +937,11 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
   }
 
   // --- API ----------------------------------------------------------------
-  async apiLogin(email: string, password: string): Promise<Response> {
+  async apiLogin(email: string, password: string, projectKey: string = this.project): Promise<Response> {
     return pfFetch(`${this.server}/api/auth/login`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email, password }),
+      body: JSON.stringify(projectKey ? { email, password, projectKey } : { email, password }),
     });
   }
 

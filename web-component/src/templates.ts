@@ -2,7 +2,7 @@ import { escapeHtml, timeAgo } from './dom';
 import { ICON } from './icons';
 import { getBrandName } from './constants';
 import { t, unreadSuffix } from './i18n';
-import type { AuthorOption, Comment, Meta, NotificationItem, PredefinedActionOption, Reply, CommentFieldDefinition } from './types';
+import type { AuthorOption, Comment, Meta, NotificationItem, PredefinedActionOption, Reply, CommentFieldDefinition, WorkspaceChoice } from './types';
 import { renderFieldInputs } from './fields';
 
 // All component markup lives here (pure string builders). Event wiring stays in
@@ -55,6 +55,24 @@ export const TPL = {
   <button class="fbk-btn primary fbk-btn-block" id="fbk-signup-submit">${t('auth.createAccount')}</button>
   <div class="fbk-auth-foot">
   ${t('auth.alreadyHaveAccount')} <button class="fbk-btn fbk-link fbk-link-inline" id="fbk-show-login">${t('auth.backToSignIn')}</button>
+  </div>`,
+
+  // Workspace picker body (DB-11b)
+  workspacePicker: (workspaces: WorkspaceChoice[]) => `
+  <div class="fbk-field-label">${t('auth.chooseWorkspace')}</div>
+  <div class="fbk-modal-error" id="fbk-login-error"></div>
+  <div class="fbk-workspace-list" id="fbk-workspace-list">
+  ${workspaces.map((w) => `
+  <button type="button" class="fbk-btn fbk-btn-block fbk-workspace-item" data-workspace-id="${escapeHtml(w.workspaceId)}">
+  <span class="fbk-workspace-item-info">
+  <span class="fbk-workspace-name">${escapeHtml(w.name === 'Workspace' ? t('auth.unnamedWorkspace') : w.name)}</span>
+  <span class="fbk-workspace-role">${escapeHtml(w.roleName)}</span>
+  </span>
+  ${w.isHome ? `<span class="fbk-badge">${t('auth.homeWorkspaceBadge')}</span>` : ''}
+  </button>`).join('')}
+  </div>
+  <div class="fbk-auth-foot">
+  <button type="button" class="fbk-btn fbk-link fbk-link-inline" id="fbk-show-login">${t('auth.backToSignIn')}</button>
   </div>`,
 
   // `projectName`: embedded in the "{project}" heading so a visitor can immediately tell

@@ -193,6 +193,14 @@ export interface Envelope<T = unknown> {
   data?: T;
 }
 
+export type WorkspaceChoice = {
+  workspaceId: string;
+  name: string;
+  roleName: string;
+  isAdmin: boolean;
+  isHome: boolean;
+};
+
 /**
  * The subset of the custom element that the extracted UI modules (auth-ui) rely
  * on. The element class satisfies this structurally, so modules depend on this
@@ -200,8 +208,9 @@ export interface Envelope<T = unknown> {
  */
 export interface PointerHost {
   project: string;
+  server: string;
   root: HTMLElement;
-  apiLogin(email: string, password: string): Promise<Response>;
+  apiLogin(email: string, password: string, projectKey?: string): Promise<Response>;
   apiRoles(): Promise<RoleOption[]>;
   apiRegister(body: Record<string, unknown>): Promise<Response>;
   saveAuth(token: string, user: User | null): void;

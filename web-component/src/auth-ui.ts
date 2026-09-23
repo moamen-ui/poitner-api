@@ -1,7 +1,59 @@
 import { TPL } from './templates';
 import { escapeHtml } from './dom';
 import { t } from './i18n';
-import type { PointerHost, User } from './types';
+import { pfFetch } from './constants';
+import type { PointerHost, User, WorkspaceChoice } from './types';
+
+export async function apiSwitchWorkspace(server: string, workspaceId: string, selectionToken: string): Promise<Response> {
+  return pfFetch(`${server}/api/auth/switch-workspace`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${selectionToken}`,
+    },
+    body: JSON.stringify({ workspaceId }),
+  });
+}
+
+export function renderWorkspacePicker(
+  host: PointerHost,
+  workspaces: WorkspaceChoice[],
+  selectionToken: string
+): void {
+  const body = host.root.querySelector('#fbk-auth-body') as HTMLElement | null;
+  if (!body) return;
+  body.innerHTML = TPL.workspacePicker(workspaces);
+
+  const errEl = body.querySelector('#fbk-login-error') as HTMLElement;
+  const backBtn = body.querySelector('#fbk-show-login') as HTMLElement | null;
+  if (backBtn) {
+    backBtn.addEventListener('click', () => renderLoginView(host));
+  }
+
+  const items = body.querySelectorAll<HTMLButtonElement>('.fbk-workspace-item');
+  items.forEach((item) => {
+    item.addEventListener('click', async () => {
+      const workspaceId = item.getAttribute('data-workspace-id');
+      if (!workspaceId) return;
+      items.forEach((btn) => { btn.disabled = true; });
+      errEl.textContent = t('auth.switchingWorkspace');
+      try {
+        const r = await apiSwitchWorkspace(host.server, workspaceId, selectionToken);
+        const envelope = await r.json();
+        const data = envelope.data || null;
+        if (r.ok && data && data.token) {
+          afterAuthOk(host, data.token, data.user);
+          return;
+        }
+        errEl.textContent = envelope.message || t('auth.invalidCredentials');
+        items.forEach((btn) => { btn.disabled = false; });
+      } catch {
+        errEl.textContent = t('auth.networkError');
+        items.forEach((btn) => { btn.disabled = false; });
+      }
+    });
+  });
+}
 
 // One modal shell, two swappable bodies (sign-in / sign-up). The shell owns the
 // Skip control (deferred-login dismissal); the views fill #fbk-auth-body and wire
@@ -75,7 +127,7 @@ export function renderLoginView(host: PointerHost, opts: { rejected?: boolean } 
     submitBtn.textContent = t('auth.signingIn');
     const restore = () => { submitBtn.disabled = false; submitBtn.textContent = t('auth.signIn'); };
     try {
-      const r = await host.apiLogin(email, password);
+      const r = await host.apiLogin(email, password, host.project);
       const envelope = await r.json();
       const data = envelope.data || null;
       const status = data && data.status;
@@ -101,6 +153,18 @@ export function renderLoginView(host: PointerHost, opts: { rejected?: boolean } 
         (re.querySelector('#fbk-password') as HTMLInputElement).value = password;
         (re.querySelector('#fbk-login-error') as HTMLElement).textContent =
           envelope.message || t('auth.requestRejected');
+        return;
+      }
+      // With projectKey auto-routing the widget normally never sees choose-workspace;
+      // this is the rare fallback when the person is a member elsewhere but not of the embedding project's
+      // workspace (doc §3.5).
+      if (status === 'choose-workspace' && data && Array.isArray(data.workspaces) && data.token) {
+        renderWorkspacePicker(host, data.workspaces, data.token);
+        return;
+      }
+      if (status === 'no-workspace') {
+        errEl.textContent = envelope.message || t('auth.noWorkspace');
+        restore();
         return;
       }
       // Missing/unknown status with failure → generic message.

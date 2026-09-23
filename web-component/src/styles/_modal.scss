@@ -96,3 +96,38 @@ select.fbk-input:disabled {
 .fbk-auth-skip {
   margin-block-start: 8px;
 }
+
+// Workspace picker list (DB-11b)
+.fbk-workspace-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-block: 8px;
+  max-height: 220px;
+  overflow-y: auto;
+}
+.fbk-workspace-item {
+  justify-content: space-between;
+  text-align: start;
+}
+.fbk-workspace-item-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.fbk-workspace-name {
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.fbk-workspace-role {
+  font-size: 11px;
+  color: v.token('text-muted');
+}
+.fbk-workspace-item .fbk-badge {
+  flex-shrink: 0;
+  cursor: inherit;
+}
+

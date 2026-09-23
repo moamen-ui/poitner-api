@@ -162,6 +162,11 @@ const STRINGS: Record<Lang, Record<string, string>> = {
     'auth.pleaseChoosePassword': 'Please choose a password.',
     'auth.couldNotCreateAccount': 'Could not create your account.',
     'auth.requestSubmittedBtn': 'Request submitted',
+    'auth.chooseWorkspace': 'Choose which workspace to open.',
+    'auth.unnamedWorkspace': 'Unnamed workspace',
+    'auth.homeWorkspaceBadge': 'Home',
+    'auth.noWorkspace': 'Your account is not a member of any workspace.',
+    'auth.switchingWorkspace': 'Opening workspace…',
 
     // --- toolbar ---
     'toolbar.dragToReposition': 'Drag to reposition',
@@ -412,6 +417,11 @@ const STRINGS: Record<Lang, Record<string, string>> = {
     'auth.pleaseChoosePassword': 'يرجى اختيار كلمة مرور.',
     'auth.couldNotCreateAccount': 'تعذّر إنشاء حسابك.',
     'auth.requestSubmittedBtn': 'تم إرسال الطلب',
+    'auth.chooseWorkspace': 'اختر مساحة العمل التي تريد فتحها.',
+    'auth.unnamedWorkspace': 'مساحة عمل بدون اسم',
+    'auth.homeWorkspaceBadge': 'الرئيسية',
+    'auth.noWorkspace': 'حسابك ليس عضوًا في أي مساحة عمل.',
+    'auth.switchingWorkspace': 'جارٍ فتح مساحة العمل…',
 
     // --- toolbar ---
     'toolbar.dragToReposition': 'اسحب لتغيير الموضع',
