@@ -590,3 +590,17 @@ several MEDIUM/LOW issues in the commit as written. All applied in a follow-up c
 | LOW | The legacy `{id:int}` route's `ResolveWorkspaceIdFromUserIdAsync` picks the FIRST Workspace Admin membership, which is ambiguous once D13 lets one identity administer several workspaces | **Accepted** — when more than one admin workspace exists, prefers whichever has `DemoExpiresAt != null` (the route only exists to reach a demo) over an arbitrary first pick | `API/Controllers/Admin/TenantsController.cs` |
 | NIT | `MeResponse` builders in `PreferencesService`, the magic-link path, and two `InviteService` sites never passed the current workspace, so `demoExpiresAt`/`demoCanExtend` came back null even when the caller's workspace was a live demo | **Accepted** — all four load the relevant workspace and pass it to `UserMapper.ToMeResponse` | `PreferencesService.cs`, `AuthService.cs`, `InviteService.cs` |
 | NIT | The backfill's `Down()` didn't null `demo_expiry_warned_at`, and its "reversible" claim needed the one-migration-at-a-time caveat spelled out | **Accepted** — `Down()` nulls it too; comment added | `Infrastructure/Migrations/20260923155947_BackfillWorkspacesDemoState.cs` |
+
+## 13. Release record (2026-09-23)
+
+- **Rebased** onto `main` @ `a3b5826` (DB-16); conflicts only in `appsettings.json` / `landing/privacy.html` (both sides kept). `has-pending-model-changes` → none. `dotnet test Tests` → 1313 passed.
+- **Local gate** (`scripts/local-e2e-gate.sh`, isolated `pointer-e2e-gate`): **PASS**, all 17 phases (1 flaky-on-retry: `cli/design-tokens.spec.mjs` R3-02-04).
+- **§9 step 1 pre-checks** — on the same-day prod dump `pointer-20260923T184606Z-pre-deploy.dump` (76 migrations), restored into a throwaway Postgres 15: **Q1 0 rows, Q2 0, Q3 0, Q4 0** (no live demos at dump time); `demo_email_%` rows = **13** (all deleted by the first sweep).
+- **R11 rehearsal** (same dump + seeded over-reach case: demo A with its own `Demo Workspace` **and** a `Developer` membership in the real workspace `98699076…`, plus a clean demo B):
+  - `database update` applied DB-16 + both DB-17 migrations; real workspaces all `demo_expires_at` NULL (incl. `98699076…`), both seeded demos populated; `ix_workspaces_demo_expires_at … WHERE demo_expires_at IS NOT NULL` present, no `ck_workspaces_demo_*`.
+  - Round-trip: `database update 20260923153132_…` reverted both (0 `demo*` columns) → re-apply re-tagged both demos.
+  - Rehearsal API: `POST /api/demo` → `/me.demoExpiresAt` set, `demoCanExtend: true`; `POST /api/demo/extend` → 200, 400, 400 (+24 h, `demoCanExtend: false`); `POST /api/demo/upgrade {…, workspaceName}` → 200, workspace renamed, `demo_expires_at` NULL, `demo_converted_at` set; login + `/me` show the workspace.
+  - Expired demo B (`demo_expires_at = now() - 1 min`) → first sweep: `hard-deleted demo tenant bbbbbbbb…`, `tenant.hard_deleted` audit `reason = demo_expired`; demo A untouched; the 13 plain-e-mail throttle rows gone, new rows hashed (36 chars, no `@`).
+  - Login to an expired (not yet swept) demo → 400 "This demo session has expired…".
+  - Not rehearsed (covered by unit tests): the `[Obsolete]` int operator route (needs a super admin on the rehearsal).
+- Follow-up (pre-existing, not DB-17): the `UpgradeDemoResponse.User` lacks `workspaceId`/`workspaces`/`tenantName` (only `AuthService` fills them); harmless — the dashboard refetches `/me` after upgrade.
