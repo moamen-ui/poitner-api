@@ -56,5 +56,18 @@ public class UsageEventMapping : IEntityTypeConfiguration<UsageEvent>
             .IsUnique()
             .HasFilter("type IN ('first_comment', 'first_apply')")
             .HasDatabaseName("ux_usage_events_first_per_project");
+
+        // DB-15: widget_installed is one-shot per project — its own partial unique index rather than
+        // a widened filter on the one above (widening would be DropIndex+CreateIndex, an index
+        // change marker under R7; a separate index is plain CreateIndex, additive R1). Declared
+        // with the columns REVERSED (type, project_id): EF identifies an index by its property
+        // list, so a second HasIndex on (ProjectId, Type) would silently RECONFIGURE the one above
+        // instead of adding a second index. Within the filter every row has type =
+        // 'widget_installed', so uniqueness/project-lookup semantics are identical.
+        builder
+            .HasIndex(e => new { e.Type, e.ProjectId })
+            .IsUnique()
+            .HasFilter("type = 'widget_installed'")
+            .HasDatabaseName("ux_usage_events_widget_installed_per_project");
     }
 }

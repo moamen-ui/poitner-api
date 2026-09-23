@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Configuration;
 using Pointer.Application.Services.Interfaces;
 
@@ -12,15 +13,26 @@ public static class TestProjectServiceDeps
 {
     public sealed class EmptySettings : ISettingsService
     {
-        public Task<bool> GetBoolAsync(string key, bool fallback = false) => Task.FromResult(fallback);
+        public Task<bool> GetBoolAsync(string key, bool fallback = false) =>
+            Task.FromResult(fallback);
+
         public Task SetBoolAsync(string key, bool value) => Task.CompletedTask;
-        public Task<string> GetStringAsync(string key, string fallback = "") => Task.FromResult(fallback);
+
+        public Task<string> GetStringAsync(string key, string fallback = "") =>
+            Task.FromResult(fallback);
+
         public Task SetStringAsync(string key, string value) => Task.CompletedTask;
+
         public Task<int> GetIntAsync(string key, int fallback = 0) => Task.FromResult(fallback);
+
         public Task SetIntAsync(string key, int value) => Task.CompletedTask;
     }
 
     public static ISettingsService Settings() => new EmptySettings();
 
     public static IConfiguration Configuration() => new ConfigurationBuilder().Build();
+
+    /// <summary>DB-15: a real cache the widget_installed tests can hold a reference to (each call
+    /// gets a FRESH instance, so tests never share emission guards with each other).</summary>
+    public static MemoryCache Cache() => new(new MemoryCacheOptions());
 }

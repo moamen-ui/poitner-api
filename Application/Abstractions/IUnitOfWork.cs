@@ -8,6 +8,7 @@ public interface IUnitOfWork
     IRepository<T> Repository<T>()
         where T : BaseEntity;
     DbSet<UsageEvent> UsageEvents { get; }
+    DbSet<UsageDaily> UsageDaily { get; }
     DbSet<Workspace> Workspaces { get; }
     DbSet<UserAlias> UserAliases { get; }
     DbSet<AuditEvent> AuditEvents { get; }

@@ -20,6 +20,7 @@ public sealed class UnitOfWork(AppDbContext db) : IUnitOfWork
     }
 
     public DbSet<UsageEvent> UsageEvents => db.UsageEvents;
+    public DbSet<UsageDaily> UsageDaily => db.UsageDaily;
     public DbSet<Workspace> Workspaces => db.Workspaces;
     public DbSet<UserAlias> UserAliases => db.UserAliases;
     public DbSet<AuditEvent> AuditEvents => db.AuditEvents;

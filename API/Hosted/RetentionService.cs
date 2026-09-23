@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using Pointer.Application.Common;
 using Pointer.Domain.Entity;
 using Pointer.Infrastructure;
 
@@ -13,6 +14,11 @@ public sealed record RetentionOptions
 {
     public bool Enabled { get; init; } = true;
     public int UsageEventsDays { get; init; } = 180;
+
+    /// <summary>DB-15: how many recent UTC days the usage_daily rollup recomputes each pass. The
+    /// whole retention window is backfilled on the first run; 0 = backfill-only.</summary>
+    public int RollupDays { get; init; } = 3;
+
     public int NotificationsReadDays { get; init; } = 90;
     public int PageContextSnapshotDays { get; init; } = 30;
     public int InvitesDays { get; init; } = 90;
@@ -63,11 +69,17 @@ public class RetentionService(
         }
     }
 
-    private RetentionOptions BindOptions() =>
+    /// <summary>
+    /// Field-by-field bind (NOT IOptionsPattern-bind on the record): every option must have a line
+    /// here or its env/config override is silently ignored (GLM DB-15 #1). Internal + static so
+    /// tests can drive it directly with a ConfigurationBuilder.
+    /// </summary>
+    internal static RetentionOptions BindOptions(IConfiguration config) =>
         new()
         {
             Enabled = config.GetValue("Retention:Enabled", true),
             UsageEventsDays = config.GetValue("Retention:UsageEventsDays", 180),
+            RollupDays = config.GetValue("Retention:RollupDays", 3),
             NotificationsReadDays = config.GetValue("Retention:NotificationsReadDays", 90),
             PageContextSnapshotDays = config.GetValue("Retention:PageContextSnapshotDays", 30),
             InvitesDays = config.GetValue("Retention:InvitesDays", 90),
@@ -78,7 +90,7 @@ public class RetentionService(
 
     private async Task SweepAsync(CancellationToken stoppingToken)
     {
-        var options = BindOptions();
+        var options = BindOptions(config);
         try
         {
             using var scope = scopeFactory.CreateScope();
@@ -110,7 +122,25 @@ public class RetentionService(
         }
 
         var now = DateTime.UtcNow;
-        var usageEvents = await SweepUsageEventsAsync(db, o, now, log, ct);
+
+        // DB-15: roll usage_events up into usage_daily BEFORE the sweep, so volume counts survive
+        // the delete. If the rollup fails, skip the usage_events delete this pass (an un-rolled row
+        // is never lost); the other three sweeps run regardless.
+        var rollupOk = true;
+        try
+        {
+            await UsageRollup.RollupAsync(db, o, now, log, ct);
+        }
+        catch (Exception ex)
+        {
+            rollupOk = false;
+            log.LogError(
+                ex,
+                "Retention: usage rollup failed; skipping usage_events sweep this pass"
+            );
+        }
+
+        var usageEvents = rollupOk ? await SweepUsageEventsAsync(db, o, now, log, ct) : 0;
         var notifications = await SweepNotificationsAsync(db, o, now, log, ct);
         var snapshots = await SweepSnapshotsAsync(db, o, now, log, ct);
         var invites = await SweepInvitesAsync(db, o, now, log, ct);
@@ -138,9 +168,7 @@ public class RetentionService(
         {
             var ids = await db
                 .UsageEvents.IgnoreQueryFilters()
-                .Where(e =>
-                    e.CreatedAt < cutoff && e.Type != "first_comment" && e.Type != "first_apply"
-                )
+                .Where(e => e.CreatedAt < cutoff && !UsageEventTypes.OneShotFacts.Contains(e.Type))
                 .OrderBy(e => e.Id)
                 .Select(e => e.Id)
                 .Take(o.BatchSize)

@@ -107,7 +107,7 @@ public class RetentionServiceTests
         };
 
     [Fact]
-    public async Task UsageEvents_OlderThanCutoff_AreDeleted_ExceptFirstFacts()
+    public async Task Sweep_KeepsAllFiveOneShotFacts()
     {
         using var testDb = new TestDb();
         using var db = testDb.MakeContext();
@@ -116,28 +116,33 @@ public class RetentionServiceTests
         var recent = DateTime.UtcNow.AddDays(-1);
         // ProjectId left null — DB-06 made it a real (nullable) FK to projects, and this test only
         // exercises the age/type predicate, not project association.
-        db.UsageEvents.AddRange(
+        var oneShotFacts = new[]
+        {
+            "demo_started",
+            "workspace_converted",
+            "widget_installed",
+            "first_comment",
+            "first_apply",
+        };
+        var events = oneShotFacts
+            .Select(t => new UsageEvent
+            {
+                ProjectId = null,
+                Type = t,
+                Source = "test",
+                CreatedAt = old,
+            })
+            .ToList();
+        events.Add(
             new UsageEvent
             {
                 ProjectId = null,
                 Type = "x",
                 Source = "test",
                 CreatedAt = old,
-            },
-            new UsageEvent
-            {
-                ProjectId = null,
-                Type = "first_comment",
-                Source = "test",
-                CreatedAt = old,
-            },
-            new UsageEvent
-            {
-                ProjectId = null,
-                Type = "first_apply",
-                Source = "test",
-                CreatedAt = old,
-            },
+            }
+        );
+        events.Add(
             new UsageEvent
             {
                 ProjectId = null,
@@ -146,6 +151,7 @@ public class RetentionServiceTests
                 CreatedAt = recent,
             }
         );
+        db.UsageEvents.AddRange(events);
         await db.SaveChangesAsync();
 
         var result = await RetentionService.SweepOnceAsync(
@@ -154,6 +160,7 @@ public class RetentionServiceTests
             NullLogger.Instance,
             CancellationToken.None
         );
+        // Only the old volume row was deleted; all five funnel facts survive the sweep forever.
         Assert.Equal(1, result.UsageEventsDeleted);
 
         using var verify = testDb.MakeContext();
@@ -162,7 +169,117 @@ public class RetentionServiceTests
             .Select(e => e.Type)
             .OrderBy(t => t)
             .ToListAsync();
-        Assert.Equal(new[] { "first_apply", "first_comment", "x" }, remainingTypes);
+        Assert.Equal(
+            new[]
+            {
+                "demo_started",
+                "first_apply",
+                "first_comment",
+                "widget_installed",
+                "workspace_converted",
+                "x",
+            },
+            remainingTypes
+        );
+    }
+
+    [Fact]
+    public async Task Sweep_RollsUpBeforeDeleting()
+    {
+        using var testDb = new TestDb();
+        using var db = testDb.MakeContext();
+        var (workspaceId, _) = await SeedTenantAsync(db);
+
+        // A volume event old enough to be swept, inside the rollup window: the rollup must run
+        // FIRST, so its count survives in usage_daily after the raw row is deleted.
+        var day = DateTime.UtcNow.AddDays(-2);
+        db.UsageEvents.AddRange(
+            new UsageEvent
+            {
+                ProjectId = null,
+                Type = "installed",
+                Source = "test",
+                OwnerId = workspaceId,
+                CreatedAt = day,
+            },
+            new UsageEvent
+            {
+                ProjectId = null,
+                Type = "installed",
+                Source = "test",
+                OwnerId = workspaceId,
+                CreatedAt = day,
+            }
+        );
+        await db.SaveChangesAsync();
+
+        var options = DefaultOptions() with { UsageEventsDays = 1 };
+        var result = await RetentionService.SweepOnceAsync(
+            db,
+            options,
+            NullLogger.Instance,
+            CancellationToken.None
+        );
+        Assert.Equal(2, result.UsageEventsDeleted);
+
+        using var verify = testDb.MakeContext();
+        Assert.Equal(0, await verify.UsageEvents.IgnoreQueryFilters().CountAsync());
+        var row = Assert.Single(await verify.UsageDaily.IgnoreQueryFilters().ToListAsync());
+        Assert.Equal(DateOnly.FromDateTime(day), row.Day);
+        Assert.Equal(workspaceId, row.OwnerId);
+        Assert.Equal("installed", row.Type);
+        Assert.Equal(2, row.Count);
+    }
+
+    [Fact]
+    public async Task Sweep_SkipsUsageDeleteWhenRollupFails()
+    {
+        using var testDb = new TestDb();
+        using var db = testDb.MakeContext();
+        var (workspaceId, projectId) = await SeedTenantAsync(db);
+
+        var old = DateTime.UtcNow.AddDays(-200);
+        db.UsageEvents.Add(
+            new UsageEvent
+            {
+                ProjectId = projectId,
+                Type = "x",
+                Source = "test",
+                OwnerId = workspaceId,
+                CreatedAt = old,
+            }
+        );
+        db.Notifications.Add(
+            new Notification
+            {
+                OwnerId = workspaceId,
+                UserId = Guid.NewGuid(),
+                Type = NotificationType.CommentApplied,
+                ProjectId = projectId,
+                ReadAt = old,
+            }
+        );
+        await db.SaveChangesAsync();
+
+        // RollupDays = -1 makes the rollup throw before any query — the usage_events sweep must be
+        // skipped (no un-rolled row lost) while the other three sweeps still run.
+        var options = DefaultOptions() with
+        {
+            RollupDays = -1,
+        };
+        var result = await RetentionService.SweepOnceAsync(
+            db,
+            options,
+            NullLogger.Instance,
+            CancellationToken.None
+        );
+
+        Assert.Equal(0, result.UsageEventsDeleted);
+        Assert.Equal(1, result.NotificationsDeleted);
+
+        using var verify = testDb.MakeContext();
+        Assert.Equal(1, await verify.UsageEvents.IgnoreQueryFilters().CountAsync());
+        Assert.Equal(0, await verify.Notifications.IgnoreQueryFilters().CountAsync());
     }
 
     [Fact]

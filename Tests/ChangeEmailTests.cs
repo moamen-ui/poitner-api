@@ -43,36 +43,69 @@ public class ChangeEmailTests
     private sealed class IdentityHasher : IPasswordHasher
     {
         public string Hash(string password) => "h:" + password;
+
         public bool Verify(string password, string hash) => hash == "h:" + password;
     }
 
     private sealed class NoopSettings : ISettingsService
     {
-        public Task<bool> GetBoolAsync(string key, bool fallback = false) => Task.FromResult(fallback);
+        public Task<bool> GetBoolAsync(string key, bool fallback = false) =>
+            Task.FromResult(fallback);
+
         public Task SetBoolAsync(string key, bool value) => Task.CompletedTask;
-        public Task<string> GetStringAsync(string key, string fallback = "") => Task.FromResult(fallback);
+
+        public Task<string> GetStringAsync(string key, string fallback = "") =>
+            Task.FromResult(fallback);
+
         public Task SetStringAsync(string key, string value) => Task.CompletedTask;
+
         public Task<int> GetIntAsync(string key, int fallback = 0) => Task.FromResult(fallback);
+
         public Task SetIntAsync(string key, int value) => Task.CompletedTask;
     }
 
     private sealed class NoopBrandingService : IBrandingService
     {
-        private static Pointer.Application.DTOs.Branding.BrandingResponse DefaultBranding() => new()
-        {
-            ProductName = "Pointer",
-            Tagline = string.Empty,
-            PrimaryColor = "#2563eb",
-            Urls = new Pointer.Application.DTOs.Branding.BrandingUrlsResponse { App = "https://app.pointer.test" },
-            Assets = new Pointer.Application.DTOs.Branding.BrandingAssetsResponse(),
-        };
-        public Task<Pointer.Application.Response.Result<Pointer.Application.DTOs.Branding.BrandingResponse>> GetAsync(string publicBase, IReadOnlySet<string> existingKinds) =>
-            Task.FromResult(Pointer.Application.Response.Result<Pointer.Application.DTOs.Branding.BrandingResponse>.Success(DefaultBranding()));
-        public Task<Pointer.Application.Response.Result<Pointer.Application.DTOs.Branding.BrandingResponse>> UpdateAsync(Pointer.Application.DTOs.Branding.BrandingWriteDto dto, string publicBase, IReadOnlySet<string> existingKinds) =>
-            Task.FromResult(Pointer.Application.Response.Result<Pointer.Application.DTOs.Branding.BrandingResponse>.Success(DefaultBranding()));
+        private static Pointer.Application.DTOs.Branding.BrandingResponse DefaultBranding() =>
+            new()
+            {
+                ProductName = "Pointer",
+                Tagline = string.Empty,
+                PrimaryColor = "#2563eb",
+                Urls = new Pointer.Application.DTOs.Branding.BrandingUrlsResponse
+                {
+                    App = "https://app.pointer.test",
+                },
+                Assets = new Pointer.Application.DTOs.Branding.BrandingAssetsResponse(),
+            };
+
+        public Task<Pointer.Application.Response.Result<Pointer.Application.DTOs.Branding.BrandingResponse>> GetAsync(
+            string publicBase,
+            IReadOnlySet<string> existingKinds
+        ) =>
+            Task.FromResult(
+                Pointer.Application.Response.Result<Pointer.Application.DTOs.Branding.BrandingResponse>.Success(
+                    DefaultBranding()
+                )
+            );
+
+        public Task<Pointer.Application.Response.Result<Pointer.Application.DTOs.Branding.BrandingResponse>> UpdateAsync(
+            Pointer.Application.DTOs.Branding.BrandingWriteDto dto,
+            string publicBase,
+            IReadOnlySet<string> existingKinds
+        ) =>
+            Task.FromResult(
+                Pointer.Application.Response.Result<Pointer.Application.DTOs.Branding.BrandingResponse>.Success(
+                    DefaultBranding()
+                )
+            );
+
         public Task<int> BumpVersionAsync() => Task.FromResult(0);
-        public Task<Pointer.Application.DTOs.Branding.BrandingResponse> BuildResponseAsync(string publicBase, IReadOnlySet<string> existingKinds) =>
-            Task.FromResult(DefaultBranding());
+
+        public Task<Pointer.Application.DTOs.Branding.BrandingResponse> BuildResponseAsync(
+            string publicBase,
+            IReadOnlySet<string> existingKinds
+        ) => Task.FromResult(DefaultBranding());
     }
 
     /// <summary>Records every send; extracts the token= query param from the first link in the body.</summary>
@@ -80,7 +113,12 @@ public class ChangeEmailTests
     {
         public List<(string To, string Subject, string Html)> Sent { get; } = new();
 
-        public Task<bool> SendAsync(string to, string subject, string htmlBody, CancellationToken ct = default)
+        public Task<bool> SendAsync(
+            string to,
+            string subject,
+            string htmlBody,
+            CancellationToken ct = default
+        )
         {
             Sent.Add((to, subject, htmlBody));
             return Task.FromResult(true);
@@ -103,9 +141,15 @@ public class ChangeEmailTests
     {
         public string Issue(User user, WorkspaceMembership? membership, int? keyScopes = null) =>
             "token-for-" + user.PublicId.ToString("N");
+
         public string IssueSelection(User user) => "sel-for-" + user.PublicId.ToString("N");
-        public string IssueImpersonation(User operatorUser, Guid workspaceId, long sessionId, DateTime expiresAt) =>
-            "imp-token-for-" + operatorUser.PublicId.ToString("N");
+
+        public string IssueImpersonation(
+            User operatorUser,
+            Guid workspaceId,
+            long sessionId,
+            DateTime expiresAt
+        ) => "imp-token-for-" + operatorUser.PublicId.ToString("N");
     }
 
     /// <summary>
@@ -117,8 +161,11 @@ public class ChangeEmailTests
     /// </summary>
     private sealed class ThrowDuplicateKeyUnitOfWork(IUnitOfWork inner) : IUnitOfWork
     {
-        public IRepository<T> Repository<T>() where T : BaseEntity => inner.Repository<T>();
+        public IRepository<T> Repository<T>()
+            where T : BaseEntity => inner.Repository<T>();
+
         public DbSet<UsageEvent> UsageEvents => inner.UsageEvents;
+        public DbSet<UsageDaily> UsageDaily => inner.UsageDaily;
         public DbSet<Workspace> Workspaces => inner.Workspaces;
         public DbSet<UserAlias> UserAliases => inner.UserAliases;
         public DbSet<AuditEvent> AuditEvents => inner.AuditEvents;
@@ -136,8 +183,12 @@ public class ChangeEmailTests
                 )
             );
 
-        public Task ExecuteInTransactionAsync(Func<Task> action) => inner.ExecuteInTransactionAsync(action);
-        public void PreserveCreatedAtOnInsert(BaseEntity entity) => inner.PreserveCreatedAtOnInsert(entity);
+        public Task ExecuteInTransactionAsync(Func<Task> action) =>
+            inner.ExecuteInTransactionAsync(action);
+
+        public void PreserveCreatedAtOnInsert(BaseEntity entity) =>
+            inner.PreserveCreatedAtOnInsert(entity);
+
         public void ClearChangeTracker() => inner.ClearChangeTracker();
 
         public Task<int> AtomicClaimInviteSlotAsync(int inviteId, DateTime now) =>
@@ -151,16 +202,31 @@ public class ChangeEmailTests
         new(
             new DbContextOptionsBuilder<AppDbContext>()
                 .UseInMemoryDatabase(db)
-                .ConfigureWarnings(w => w.Ignore(Microsoft.EntityFrameworkCore.Diagnostics.InMemoryEventId.TransactionIgnoredWarning))
+                .ConfigureWarnings(w =>
+                    w.Ignore(
+                        Microsoft
+                            .EntityFrameworkCore
+                            .Diagnostics
+                            .InMemoryEventId
+                            .TransactionIgnoredWarning
+                    )
+                )
                 .Options,
             u,
-            new Microsoft.Extensions.Configuration.ConfigurationBuilder().Build());
+            new Microsoft.Extensions.Configuration.ConfigurationBuilder().Build()
+        );
 
     private static IResetTokenService RealResetTokens() =>
         new ResetTokenService(
             new Microsoft.Extensions.Configuration.ConfigurationBuilder()
-                .AddInMemoryCollection(new Dictionary<string, string?> { ["JWT:SigningKey"] = "test-key-0123456789abcdef0123456789" })
-                .Build());
+                .AddInMemoryCollection(
+                    new Dictionary<string, string?>
+                    {
+                        ["JWT:SigningKey"] = "test-key-0123456789abcdef0123456789",
+                    }
+                )
+                .Build()
+        );
 
     private static AuthService BuildAuthService(
         ICurrentUser user,
@@ -200,13 +266,37 @@ public class ChangeEmailTests
     /// live address to collide with).</summary>
     private static SeededWorkspace SeedWorkspace(AppDbContext seed)
     {
-        var memberRole = new Role { Name = "Engineer", GrantsAdmin = false, IsSystem = false, IsActive = true };
+        var memberRole = new Role
+        {
+            Name = "Engineer",
+            GrantsAdmin = false,
+            IsSystem = false,
+            IsActive = true,
+        };
         seed.Roles.Add(memberRole);
         seed.SaveChanges();
 
         var ownerId = Guid.NewGuid();
-        var member = new User { Email = "member@t.com", PasswordHash = "h:pw-member", DisplayName = "Member", PublicId = Guid.NewGuid(), OwnerId = ownerId, RoleId = memberRole.Id, IsActive = true };
-        var other = new User { Email = "other@t.com", PasswordHash = "h:pw-other", DisplayName = "Other", PublicId = Guid.NewGuid(), OwnerId = ownerId, RoleId = memberRole.Id, IsActive = true };
+        var member = new User
+        {
+            Email = "member@t.com",
+            PasswordHash = "h:pw-member",
+            DisplayName = "Member",
+            PublicId = Guid.NewGuid(),
+            OwnerId = ownerId,
+            RoleId = memberRole.Id,
+            IsActive = true,
+        };
+        var other = new User
+        {
+            Email = "other@t.com",
+            PasswordHash = "h:pw-other",
+            DisplayName = "Other",
+            PublicId = Guid.NewGuid(),
+            OwnerId = ownerId,
+            RoleId = memberRole.Id,
+            IsActive = true,
+        };
         seed.Users.AddRange(member, other);
         seed.SaveChanges();
 
@@ -239,9 +329,14 @@ public class ChangeEmailTests
         Guid beforeStamp;
         using (var ctx = Ctx(caller, db))
         {
-            beforeStamp = ctx.Users.IgnoreQueryFilters().Single(u => u.Id == ws.Member.Id).SecurityStamp;
+            beforeStamp = ctx
+                .Users.IgnoreQueryFilters()
+                .Single(u => u.Id == ws.Member.Id)
+                .SecurityStamp;
             var result = await BuildAuthService(caller, ctx, email, audit)
-                .RequestEmailChangeAsync(new ChangeEmailRequest { CurrentPassword = "pw-member", NewEmail = "new@t.com" });
+                .RequestEmailChangeAsync(
+                    new ChangeEmailRequest { CurrentPassword = "pw-member", NewEmail = "new@t.com" }
+                );
             Assert.True(result.IsSuccess, result.Message);
             Assert.Equal(MessageKeys.User.EmailChangeLinkSent, result.Message);
         }
@@ -259,10 +354,20 @@ public class ChangeEmailTests
 
         var token = CapturingEmail.ExtractToken(toNew.Html);
         var resetTokens = RealResetTokens();
-        Assert.True(resetTokens.TryValidateScoped(token, TokenPurposes.ChangeEmail, out var pid, out var stamp, out var payload));
+        Assert.True(
+            resetTokens.TryValidateScoped(
+                token,
+                TokenPurposes.ChangeEmail,
+                out var pid,
+                out var stamp,
+                out var payload
+            )
+        );
         Assert.Equal(ws.Member.PublicId, pid);
         Assert.Equal("new@t.com", payload);
-        Assert.False(resetTokens.TryValidateScoped(token, TokenPurposes.Erase, out _, out _, out _));
+        Assert.False(
+            resetTokens.TryValidateScoped(token, TokenPurposes.Erase, out _, out _, out _)
+        );
         Assert.False(resetTokens.TryValidate(token, out _, out _));
 
         Assert.Single(audit.Entries, e => e.Action == AuditActions.AuthEmailChangeRequested);
@@ -284,7 +389,9 @@ public class ChangeEmailTests
         var email = new CapturingEmail();
         using var ctx = Ctx(caller, db);
         var result = await BuildAuthService(caller, ctx, email)
-            .RequestEmailChangeAsync(new ChangeEmailRequest { CurrentPassword = "wrong", NewEmail = "new@t.com" });
+            .RequestEmailChangeAsync(
+                new ChangeEmailRequest { CurrentPassword = "wrong", NewEmail = "new@t.com" }
+            );
 
         Assert.False(result.IsSuccess);
         Assert.Equal(MessageKeys.User.CurrentPasswordIncorrect, result.Message);
@@ -304,7 +411,9 @@ public class ChangeEmailTests
         var email = new CapturingEmail();
         using var ctx = Ctx(caller, db);
         var result = await BuildAuthService(caller, ctx, email)
-            .RequestEmailChangeAsync(new ChangeEmailRequest { CurrentPassword = "pw-member", NewEmail = "MEMBER@T.com" });
+            .RequestEmailChangeAsync(
+                new ChangeEmailRequest { CurrentPassword = "pw-member", NewEmail = "MEMBER@T.com" }
+            );
 
         Assert.False(result.IsSuccess);
         Assert.Equal(MessageKeys.User.EmailUnchanged, result.Message);
@@ -325,7 +434,9 @@ public class ChangeEmailTests
         using var ctx = Ctx(caller, db);
         // Case-variant of the other identity's address — the app-level D14 check must catch it too.
         var result = await BuildAuthService(caller, ctx, email)
-            .RequestEmailChangeAsync(new ChangeEmailRequest { CurrentPassword = "pw-member", NewEmail = "Other@T.com" });
+            .RequestEmailChangeAsync(
+                new ChangeEmailRequest { CurrentPassword = "pw-member", NewEmail = "Other@T.com" }
+            );
 
         Assert.True(result.IsConflict);
         Assert.Equal(MessageKeys.User.EmailTaken, result.Message);
@@ -349,7 +460,9 @@ public class ChangeEmailTests
         var caller = new FakeCurrentUser { Id = ws.Member.PublicId, TenantId = ws.OwnerId };
         using var ctx = Ctx(caller, db);
         var result = await BuildAuthService(caller, ctx)
-            .RequestEmailChangeAsync(new ChangeEmailRequest { CurrentPassword = "pw-member", NewEmail = "new@t.com" });
+            .RequestEmailChangeAsync(
+                new ChangeEmailRequest { CurrentPassword = "pw-member", NewEmail = "new@t.com" }
+            );
 
         Assert.False(result.IsSuccess);
         Assert.Equal(MessageKeys.User.ChangeEmailNeedsPassword, result.Message);
@@ -363,10 +476,24 @@ public class ChangeEmailTests
         Guid targetPublicId;
         using (var seed = Ctx(superAdmin, db))
         {
-            var role = new Role { Name = "Super Admin", IsSystem = true, IsSuperAdmin = true, IsActive = true };
+            var role = new Role
+            {
+                Name = "Super Admin",
+                IsSystem = true,
+                IsSuperAdmin = true,
+                IsActive = true,
+            };
             seed.Roles.Add(role);
             seed.SaveChanges();
-            var target = new User { Email = "root@t.com", PasswordHash = "h:pw", DisplayName = "Root", PublicId = Guid.NewGuid(), RoleId = role.Id, IsActive = true };
+            var target = new User
+            {
+                Email = "root@t.com",
+                PasswordHash = "h:pw",
+                DisplayName = "Root",
+                PublicId = Guid.NewGuid(),
+                RoleId = role.Id,
+                IsActive = true,
+            };
             seed.Users.Add(target);
             seed.SaveChanges();
             targetPublicId = target.PublicId;
@@ -375,7 +502,9 @@ public class ChangeEmailTests
         var caller = new FakeCurrentUser { Id = targetPublicId };
         using var ctx = Ctx(caller, db);
         var result = await BuildAuthService(caller, ctx)
-            .RequestEmailChangeAsync(new ChangeEmailRequest { CurrentPassword = "pw", NewEmail = "new@t.com" });
+            .RequestEmailChangeAsync(
+                new ChangeEmailRequest { CurrentPassword = "pw", NewEmail = "new@t.com" }
+            );
 
         Assert.True(result.IsForbidden);
         Assert.Equal(MessageKeys.User.ChangeEmailSuperAdmin, result.Message);
@@ -397,17 +526,22 @@ public class ChangeEmailTests
         using (var ctx = Ctx(caller, db))
         {
             var result = await BuildAuthService(caller, ctx, requestEmail)
-                .RequestEmailChangeAsync(new ChangeEmailRequest { CurrentPassword = "pw-member", NewEmail = "new@t.com" });
+                .RequestEmailChangeAsync(
+                    new ChangeEmailRequest { CurrentPassword = "pw-member", NewEmail = "new@t.com" }
+                );
             Assert.True(result.IsSuccess);
         }
-        var token = CapturingEmail.ExtractToken(requestEmail.Sent.Single(s => s.To == "new@t.com").Html);
+        var token = CapturingEmail.ExtractToken(
+            requestEmail.Sent.Single(s => s.To == "new@t.com").Html
+        );
 
         var anon = new FakeCurrentUser();
         var confirmEmail = new CapturingEmail();
         var audit = new FakeAuditWriter();
         using (var ctx = Ctx(anon, db))
         {
-            var result = await BuildAuthService(anon, ctx, confirmEmail, audit).ConfirmEmailChangeAsync(token);
+            var result = await BuildAuthService(anon, ctx, confirmEmail, audit)
+                .ConfirmEmailChangeAsync(token);
             Assert.True(result.IsSuccess, result.Message);
             Assert.Equal(MessageKeys.User.EmailChanged, result.Message);
         }
@@ -417,10 +551,16 @@ public class ChangeEmailTests
         Assert.Equal("new@t.com", row.Email);
         Assert.Equal(ws.Member.PublicId, row.PublicId);
 
-        var membership = check.WorkspaceMemberships.IgnoreQueryFilters().Single(m => m.UserId == ws.Member.Id && m.OwnerId == ws.OwnerId);
+        var membership = check
+            .WorkspaceMemberships.IgnoreQueryFilters()
+            .Single(m => m.UserId == ws.Member.Id && m.OwnerId == ws.OwnerId);
         Assert.Null(membership.LeftAt);
 
-        var names = await UserNameResolver.ResolveAsync(new UnitOfWork(check), new[] { ws.Member.PublicId }, ignoreQueryFilters: true);
+        var names = await UserNameResolver.ResolveAsync(
+            new UnitOfWork(check),
+            new[] { ws.Member.PublicId },
+            ignoreQueryFilters: true
+        );
         Assert.Equal("Member", names[ws.Member.PublicId]);
 
         Assert.Single(confirmEmail.Sent);
@@ -445,9 +585,13 @@ public class ChangeEmailTests
         using (var ctx = Ctx(caller, db))
         {
             await BuildAuthService(caller, ctx, requestEmail)
-                .RequestEmailChangeAsync(new ChangeEmailRequest { CurrentPassword = "pw-member", NewEmail = "new@t.com" });
+                .RequestEmailChangeAsync(
+                    new ChangeEmailRequest { CurrentPassword = "pw-member", NewEmail = "new@t.com" }
+                );
         }
-        var token = CapturingEmail.ExtractToken(requestEmail.Sent.Single(s => s.To == "new@t.com").Html);
+        var token = CapturingEmail.ExtractToken(
+            requestEmail.Sent.Single(s => s.To == "new@t.com").Html
+        );
 
         var anon = new FakeCurrentUser();
         using (var ctx = Ctx(anon, db))
@@ -476,15 +620,25 @@ public class ChangeEmailTests
         using (var ctx = Ctx(caller, db))
         {
             await BuildAuthService(caller, ctx, requestEmail)
-                .RequestEmailChangeAsync(new ChangeEmailRequest { CurrentPassword = "pw-member", NewEmail = "new@t.com" });
+                .RequestEmailChangeAsync(
+                    new ChangeEmailRequest { CurrentPassword = "pw-member", NewEmail = "new@t.com" }
+                );
         }
-        var token = CapturingEmail.ExtractToken(requestEmail.Sent.Single(s => s.To == "new@t.com").Html);
+        var token = CapturingEmail.ExtractToken(
+            requestEmail.Sent.Single(s => s.To == "new@t.com").Html
+        );
 
         // Cancellation path: changing the password rotates SecurityStamp, invalidating the pending token.
         using (var ctx = Ctx(caller, db))
         {
             var changed = await BuildAuthService(caller, ctx)
-                .ChangePasswordAsync(new ChangePasswordRequest { CurrentPassword = "pw-member", NewPassword = "newpassword1" });
+                .ChangePasswordAsync(
+                    new ChangePasswordRequest
+                    {
+                        CurrentPassword = "pw-member",
+                        NewPassword = "newpassword1",
+                    }
+                );
             Assert.True(changed.IsSuccess);
         }
 
@@ -496,7 +650,10 @@ public class ChangeEmailTests
         Assert.Equal(MessageKeys.User.EmailChangeLinkInvalid, result.Message);
 
         using var check = Ctx(superAdmin, db);
-        Assert.Equal("member@t.com", check.Users.IgnoreQueryFilters().Single(u => u.Id == ws.Member.Id).Email);
+        Assert.Equal(
+            "member@t.com",
+            check.Users.IgnoreQueryFilters().Single(u => u.Id == ws.Member.Id).Email
+        );
     }
 
     [Fact]
@@ -513,15 +670,32 @@ public class ChangeEmailTests
         using (var ctx = Ctx(caller, db))
         {
             await BuildAuthService(caller, ctx, requestEmail)
-                .RequestEmailChangeAsync(new ChangeEmailRequest { CurrentPassword = "pw-member", NewEmail = "taken-meanwhile@t.com" });
+                .RequestEmailChangeAsync(
+                    new ChangeEmailRequest
+                    {
+                        CurrentPassword = "pw-member",
+                        NewEmail = "taken-meanwhile@t.com",
+                    }
+                );
         }
-        var token = CapturingEmail.ExtractToken(requestEmail.Sent.Single(s => s.To == "taken-meanwhile@t.com").Html);
+        var token = CapturingEmail.ExtractToken(
+            requestEmail.Sent.Single(s => s.To == "taken-meanwhile@t.com").Html
+        );
 
         // Someone else registers the address during the 30-minute window.
         using (var seed = Ctx(superAdmin, db))
         {
             var role = seed.Roles.First();
-            var interloper = new User { Email = "taken-meanwhile@t.com", PasswordHash = "h:pw", DisplayName = "Interloper", PublicId = Guid.NewGuid(), OwnerId = ws.OwnerId, RoleId = role.Id, IsActive = true };
+            var interloper = new User
+            {
+                Email = "taken-meanwhile@t.com",
+                PasswordHash = "h:pw",
+                DisplayName = "Interloper",
+                PublicId = Guid.NewGuid(),
+                OwnerId = ws.OwnerId,
+                RoleId = role.Id,
+                IsActive = true,
+            };
             seed.Users.Add(interloper);
             seed.SaveChanges();
             TestSeed.Join(seed, interloper, ws.OwnerId, role);
@@ -535,7 +709,10 @@ public class ChangeEmailTests
         Assert.Equal(MessageKeys.User.EmailTaken, result.Message);
 
         using var check = Ctx(superAdmin, db);
-        Assert.Equal("member@t.com", check.Users.IgnoreQueryFilters().Single(u => u.Id == ws.Member.Id).Email);
+        Assert.Equal(
+            "member@t.com",
+            check.Users.IgnoreQueryFilters().Single(u => u.Id == ws.Member.Id).Email
+        );
     }
 
     [Fact]
@@ -548,7 +725,11 @@ public class ChangeEmailTests
             ws = SeedWorkspace(seed);
 
         var resetTokens = RealResetTokens();
-        var token = resetTokens.CreateScoped(ws.Member.PublicId, ws.Member.SecurityStamp, TokenPurposes.Erase);
+        var token = resetTokens.CreateScoped(
+            ws.Member.PublicId,
+            ws.Member.SecurityStamp,
+            TokenPurposes.Erase
+        );
 
         var anon = new FakeCurrentUser();
         using var ctx = Ctx(anon, db);
@@ -592,9 +773,13 @@ public class ChangeEmailTests
         using (var ctx = Ctx(caller, db))
         {
             await BuildAuthService(caller, ctx, requestEmail)
-                .RequestEmailChangeAsync(new ChangeEmailRequest { CurrentPassword = "pw-member", NewEmail = "new@t.com" });
+                .RequestEmailChangeAsync(
+                    new ChangeEmailRequest { CurrentPassword = "pw-member", NewEmail = "new@t.com" }
+                );
         }
-        var token = CapturingEmail.ExtractToken(requestEmail.Sent.Single(s => s.To == "new@t.com").Html);
+        var token = CapturingEmail.ExtractToken(
+            requestEmail.Sent.Single(s => s.To == "new@t.com").Html
+        );
 
         var anon = new FakeCurrentUser();
         using (var ctx = Ctx(anon, db))
@@ -636,12 +821,17 @@ public class ChangeEmailTests
         using (var ctx = Ctx(caller, db))
         {
             await BuildAuthService(caller, ctx, requestEmail)
-                .RequestEmailChangeAsync(new ChangeEmailRequest { CurrentPassword = "pw-member", NewEmail = "a@t.com" });
+                .RequestEmailChangeAsync(
+                    new ChangeEmailRequest { CurrentPassword = "pw-member", NewEmail = "a@t.com" }
+                );
         }
-        var token = CapturingEmail.ExtractToken(requestEmail.Sent.Single(s => s.To == "a@t.com").Html);
+        var token = CapturingEmail.ExtractToken(
+            requestEmail.Sent.Single(s => s.To == "a@t.com").Html
+        );
 
         var parts = token.Split('.');
-        var swappedPayload = Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes("b@t.com"))
+        var swappedPayload = Convert
+            .ToBase64String(System.Text.Encoding.UTF8.GetBytes("b@t.com"))
             .TrimEnd('=')
             .Replace('+', '-')
             .Replace('/', '_');
@@ -656,7 +846,10 @@ public class ChangeEmailTests
         Assert.Equal(MessageKeys.User.EmailChangeLinkInvalid, result.Message);
 
         using var check = Ctx(superAdmin, db);
-        Assert.Equal("member@t.com", check.Users.IgnoreQueryFilters().Single(u => u.Id == ws.Member.Id).Email);
+        Assert.Equal(
+            "member@t.com",
+            check.Users.IgnoreQueryFilters().Single(u => u.Id == ws.Member.Id).Email
+        );
     }
 
     /// <summary>Review finding #2 — a database-level 23505 on <c>ux_users_email_live</c> (the app-level
@@ -677,9 +870,13 @@ public class ChangeEmailTests
         using (var ctx = Ctx(caller, db))
         {
             await BuildAuthService(caller, ctx, requestEmail)
-                .RequestEmailChangeAsync(new ChangeEmailRequest { CurrentPassword = "pw-member", NewEmail = "new@t.com" });
+                .RequestEmailChangeAsync(
+                    new ChangeEmailRequest { CurrentPassword = "pw-member", NewEmail = "new@t.com" }
+                );
         }
-        var token = CapturingEmail.ExtractToken(requestEmail.Sent.Single(s => s.To == "new@t.com").Html);
+        var token = CapturingEmail.ExtractToken(
+            requestEmail.Sent.Single(s => s.To == "new@t.com").Html
+        );
 
         var anon = new FakeCurrentUser();
         using var ctx2 = Ctx(anon, db);
@@ -707,7 +904,10 @@ public class ChangeEmailTests
         Assert.Empty(ctx2.ChangeTracker.Entries<User>());
 
         using var check = Ctx(superAdmin, db);
-        Assert.Equal("member@t.com", check.Users.IgnoreQueryFilters().Single(u => u.Id == ws.Member.Id).Email);
+        Assert.Equal(
+            "member@t.com",
+            check.Users.IgnoreQueryFilters().Single(u => u.Id == ws.Member.Id).Email
+        );
     }
 
     // ── 3. Validator ─────────────────────────────────────────────────────────────────────────
@@ -717,17 +917,23 @@ public class ChangeEmailTests
     {
         var validator = new ChangeEmailRequestValidator();
 
-        var badEmail = validator.Validate(new ChangeEmailRequest { CurrentPassword = "pw", NewEmail = "not-an-email" });
+        var badEmail = validator.Validate(
+            new ChangeEmailRequest { CurrentPassword = "pw", NewEmail = "not-an-email" }
+        );
         Assert.False(badEmail.IsValid);
 
-        var tooLong = validator.Validate(new ChangeEmailRequest
-        {
-            CurrentPassword = "pw",
-            NewEmail = new string('a', 251) + "@t.com",
-        });
+        var tooLong = validator.Validate(
+            new ChangeEmailRequest
+            {
+                CurrentPassword = "pw",
+                NewEmail = new string('a', 251) + "@t.com",
+            }
+        );
         Assert.False(tooLong.IsValid);
 
-        var ok = validator.Validate(new ChangeEmailRequest { CurrentPassword = "pw", NewEmail = "ok@t.com" });
+        var ok = validator.Validate(
+            new ChangeEmailRequest { CurrentPassword = "pw", NewEmail = "ok@t.com" }
+        );
         Assert.True(ok.IsValid);
     }
 }

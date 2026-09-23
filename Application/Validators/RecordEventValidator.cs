@@ -1,4 +1,5 @@
 using FluentValidation;
+using Pointer.Application.Common;
 using Pointer.Application.DTOs.Event;
 
 namespace Pointer.Application.Validators;
@@ -7,8 +8,10 @@ public class RecordEventValidator : AbstractValidator<RecordEventRequest>
 {
     public RecordEventValidator()
     {
+        // DB-15: the accepted list lives in UsageEventTypes.ClientPostable — server-only funnel
+        // types (demo_started, …) stay unpostable, so a client cannot forge a funnel step.
         RuleFor(x => x.Type)
-            .Must(t => t is "installed" or "doctor_run" or "apply_started" or "apply_failed" or "widget_language")
+            .Must(t => UsageEventTypes.ClientPostable.Contains(t))
             .WithMessage("Invalid event type.");
 
         // usage_events.source is a real varchar(32); without this an oversized value is a 500, not a 400.

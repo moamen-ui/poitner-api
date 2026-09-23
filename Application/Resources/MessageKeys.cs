@@ -82,8 +82,10 @@ public static class MessageKeys
         public const string TargetWorkspaceRequired =
             "Select which workspace to add this deputy to.";
         public const string WorkspaceNotFound = "The selected workspace does not exist.";
+
         /// <summary>DB-11c: renamed from CannotDeleteSelf — removal is now membership-scoped, not a delete.</summary>
-        public const string CannotRemoveSelf = "You cannot remove yourself — use Leave workspace instead.";
+        public const string CannotRemoveSelf =
+            "You cannot remove yourself — use Leave workspace instead.";
 
         /// <summary>Pre-DB-11c name, kept for source compatibility with callers that still reference it.</summary>
         public const string CannotDeleteSelf = "You cannot delete your own account.";
@@ -112,15 +114,20 @@ public static class MessageKeys
         /// DB-11c (S-13). Applies to every actor, super admins included — the way out is
         /// TransferOwnershipAsync. {0} = comma-joined workspace names.
         /// </summary>
-        public const string SoleAdminBlocked = "Blocked: this person is the only Workspace Admin of {0}. Promote a deputy there first.";
+        public const string SoleAdminBlocked =
+            "Blocked: this person is the only Workspace Admin of {0}. Promote a deputy there first.";
 
         public const string LeftWorkspace = "You have left the workspace.";
         public const string Erased = "Your account has been deleted.";
         public const string CannotEraseSuperAdmin = "Super-admin accounts cannot be erased here.";
-        public const string EraseNeedsEmailConfirmation = "Magic-link accounts confirm deletion by e-mail — request a deletion link first.";
-        public const string EraseUsePassword = "Your account has a password — confirm deletion with it instead.";
-        public const string EraseLinkSent = "We've e-mailed you a link to confirm deleting your account. It expires in 30 minutes.";
-        public const string EraseLinkInvalid = "This deletion link is invalid or has expired — request a new one.";
+        public const string EraseNeedsEmailConfirmation =
+            "Magic-link accounts confirm deletion by e-mail — request a deletion link first.";
+        public const string EraseUsePassword =
+            "Your account has a password — confirm deletion with it instead.";
+        public const string EraseLinkSent =
+            "We've e-mailed you a link to confirm deleting your account. It expires in 30 minutes.";
+        public const string EraseLinkInvalid =
+            "This deletion link is invalid or has expired — request a new one.";
 
         /// <summary>DB-11c review finding #1: a pending member cannot reject their own request.</summary>
         public const string CannotRejectSelf = "You cannot reject yourself.";
@@ -132,25 +139,31 @@ public static class MessageKeys
         /// DB-11c review finding #7: a Deputy (non-super-admin) may not remove a Workspace Admin —
         /// only the workspace's own Workspace Admin or a super admin can.
         /// </summary>
-        public const string CannotRemoveAdmin = "Only the workspace admin or a super admin can remove a Workspace Admin.";
+        public const string CannotRemoveAdmin =
+            "Only the workspace admin or a super admin can remove a Workspace Admin.";
 
         /// <summary>DB-11d: magic-link (passwordless) identities have no password to confirm a change with.</summary>
-        public const string ChangeEmailNeedsPassword = "Magic-link accounts cannot change their e-mail — ask your workspace admin for a new invite.";
+        public const string ChangeEmailNeedsPassword =
+            "Magic-link accounts cannot change their e-mail — ask your workspace admin for a new invite.";
 
         /// <summary>DB-11d: the operator account's address is configured server-side (ADMIN__EMAIL).</summary>
-        public const string ChangeEmailSuperAdmin = "The operator account's e-mail is configured on the server (ADMIN__EMAIL).";
+        public const string ChangeEmailSuperAdmin =
+            "The operator account's e-mail is configured on the server (ADMIN__EMAIL).";
 
         /// <summary>DB-11d: the requested new address normalises to the caller's current one.</summary>
         public const string EmailUnchanged = "That is already your e-mail address.";
 
         /// <summary>DB-11d: POST /api/me/change-email succeeded — nothing changes until the link is confirmed.</summary>
-        public const string EmailChangeLinkSent = "We've sent a confirmation link to the new address. It expires in 30 minutes; until you confirm, nothing changes.";
+        public const string EmailChangeLinkSent =
+            "We've sent a confirmation link to the new address. It expires in 30 minutes; until you confirm, nothing changes.";
 
         /// <summary>DB-11d: the confirm-email-change token was missing/expired/reused/cancelled — one message for every failure (enumeration resistance).</summary>
-        public const string EmailChangeLinkInvalid = "This confirmation link is invalid or has expired — request the change again.";
+        public const string EmailChangeLinkInvalid =
+            "This confirmation link is invalid or has expired — request the change again.";
 
         /// <summary>DB-11d: POST /api/auth/confirm-email-change succeeded.</summary>
-        public const string EmailChanged = "Your e-mail address has been changed. Please sign in again.";
+        public const string EmailChanged =
+            "Your e-mail address has been changed. Please sign in again.";
     }
 
     public static class Workspace
@@ -219,6 +232,12 @@ public static class MessageKeys
         public const string LabelRequired = "Label must not be empty.";
         public const string ColorInvalidFormat = "Color must be a valid hex color (e.g. #0ea5e9).";
         public const string OrderInvalid = "Order must be 0 or greater.";
+    }
+
+    /// <summary>DB-15 activation-funnel endpoints.</summary>
+    public static class Stats
+    {
+        public const string WeeksOutOfRange = "weeks must be between 1 and 52.";
     }
 
     public static class Branding

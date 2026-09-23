@@ -66,6 +66,7 @@ public class AppDbContext(
     public DbSet<AiRule> AiRules => Set<AiRule>();
     public DbSet<WorkspaceSetting> WorkspaceSettings => Set<WorkspaceSetting>();
     public DbSet<UsageEvent> UsageEvents => Set<UsageEvent>();
+    public DbSet<UsageDaily> UsageDaily => Set<UsageDaily>();
     public DbSet<Notification> Notifications => Set<Notification>();
     public DbSet<DeviceLogin> DeviceLogins => Set<DeviceLogin>();
     public DbSet<Workspace> Workspaces => Set<Workspace>();
@@ -275,6 +276,15 @@ public class AppDbContext(
                 || (currentUser.TenantId == null && !strict && e.OwnerId == null)
             );
         b.Entity<UsageEvent>()
+            .HasQueryFilter(e =>
+                currentUser.IsSuperAdmin
+                || (currentUser.TenantId != null && e.OwnerId == currentUser.TenantId)
+                || (currentUser.TenantId == null && !strict && e.OwnerId == null)
+            );
+        // DB-15 usage_daily: strict-own copy of the UsageEvent filter — an analytics rollup row is
+        // visible to its workspace and to super admins; NULL-owner rows (no/deleted workspace) are
+        // operator-level, super-admin-only in production (strict=true), exactly like usage_events.
+        b.Entity<UsageDaily>()
             .HasQueryFilter(e =>
                 currentUser.IsSuperAdmin
                 || (currentUser.TenantId != null && e.OwnerId == currentUser.TenantId)

@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using Pointer.Application.Abstractions;
+using Pointer.Application.Common;
 using Pointer.Application.Services.Implementation;
 using Pointer.Application.Services.Interfaces;
 using Pointer.Domain.Entity;
@@ -172,5 +173,25 @@ public class DemoSessionEmailTests
         Assert.True(result.IsSuccess);
         Assert.Single(email.Sent);
         Assert.Contains("Demo Workspace", email.Sent[0].Html);
+    }
+
+    [Fact]
+    public async Task Provision_EmitsDemoStarted_WithWorkspaceOwner()
+    {
+        var dbName = Guid.NewGuid().ToString();
+        var (svc, db, _) = Build(dbName);
+
+        var result = await svc.ProvisionAsync("https://demo.pointer.example", "person@real.com");
+
+        Assert.True(result.IsSuccess, result.Message);
+        var row = db
+            .UsageEvents.IgnoreQueryFilters()
+            .Single(e => e.Type == UsageEventTypes.DemoStarted);
+        // DB-11a: OwnerId is the freshly-minted workspace id — NOT the demo admin's public_id.
+        Assert.True(db.Workspaces.IgnoreQueryFilters().Any(w => w.Id == row.OwnerId));
+        // The row carries the seeded demo project and the demo identity's public_id.
+        Assert.True(db.Projects.IgnoreQueryFilters().Any(p => p.Id == row.ProjectId));
+        Assert.True(db.Users.IgnoreQueryFilters().Any(u => u.PublicId == row.UserId));
+        Assert.Equal("api", row.Source);
     }
 }

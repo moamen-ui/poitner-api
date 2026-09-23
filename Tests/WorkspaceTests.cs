@@ -143,9 +143,16 @@ public class WorkspaceTests
             return false;
         }
 
-        public string CreateScoped(Guid id, Guid stamp, string purpose, string? payload = null) => "r";
+        public string CreateScoped(Guid id, Guid stamp, string purpose, string? payload = null) =>
+            "r";
 
-        public bool TryValidateScoped(string token, string purpose, out Guid id, out Guid stamp, out string? payload)
+        public bool TryValidateScoped(
+            string token,
+            string purpose,
+            out Guid id,
+            out Guid stamp,
+            out string? payload
+        )
         {
             id = Guid.Empty;
             stamp = Guid.Empty;
@@ -333,6 +340,7 @@ public class WorkspaceTests
         typeof(UsageEvent),
         typeof(AuditEvent), // operator record: FK SET NULL, survives the workspace (DB-12, R8.8)
         typeof(ImpersonationSession), // operator record: FK SET NULL, survives the workspace (DB-13)
+        typeof(UsageDaily), // analytics rollup: FK SET NULL, survives the workspace (DB-15)
     };
 
     [Fact]
@@ -345,6 +353,7 @@ public class WorkspaceTests
                 typeof(UsageEvent),
                 typeof(AuditEvent),
                 typeof(ImpersonationSession),
+                typeof(UsageDaily),
             },
             OperatorTableExclusions
         );

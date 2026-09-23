@@ -1,5 +1,7 @@
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Caching.Memory;
 using Pointer.Application.Abstractions;
+using Pointer.Application.Common;
 using Pointer.Application.DTOs.Project;
 using Pointer.Application.Services.Implementation;
 using Pointer.Domain.Entity;
@@ -377,5 +379,169 @@ public class WidgetActivationTests
         var result = await svcA.CheckWidgetActiveAsync("site", null);
         Assert.True(result.IsSuccess);
         Assert.False(result.Data!.Active);
+    }
+
+    // ── DB-15: the widget_installed one-shot fact (first non-localhost widget-status hit) ──
+
+    private static async Task<ProjectService> ActiveSiteServiceAsync(
+        string dbName,
+        ICurrentUser user,
+        IMemoryCache cache,
+        string key = "site"
+    )
+    {
+        SeedGlobalLocalEnvironment(dbName);
+        var svc = new ProjectService(
+            new UnitOfWork(BuildContext((FakeCurrentUser)user, dbName)),
+            user,
+            new PassThroughEntitlements(),
+            TestProjectServiceDeps.Settings(),
+            TestProjectServiceDeps.Configuration(),
+            new FakeAuditWriter(),
+            cache: cache
+        );
+        await svc.CreateAsync(new CreateProjectRequest { Key = key, Name = "Site" });
+        return svc;
+    }
+
+    [Fact]
+    public async Task WidgetStatus_NonLocalhostOrigin_EmitsWidgetInstalledOnce()
+    {
+        var dbName = Guid.NewGuid().ToString();
+        var tenant = Guid.NewGuid();
+        var admin = new FakeCurrentUser
+        {
+            Id = Guid.NewGuid(),
+            IsAdmin = true,
+            TenantId = tenant,
+        };
+        using var cache = TestProjectServiceDeps.Cache();
+        var svc = await ActiveSiteServiceAsync(dbName, admin, cache);
+
+        var first = await svc.CheckWidgetActiveAsync("site", "https://app.example.com");
+        var second = await svc.CheckWidgetActiveAsync("site", "https://app.example.com");
+        Assert.True(first.IsSuccess && second.IsSuccess);
+
+        var row = Assert.Single(
+            BuildContext(admin, dbName).UsageEvents.IgnoreQueryFilters().ToList()
+        );
+        Assert.Equal(UsageEventTypes.WidgetInstalled, row.Type);
+        Assert.Equal(tenant, row.OwnerId);
+        Assert.Equal("api", row.Source);
+        Assert.Contains("app.example.com", row.Meta);
+    }
+
+    [Theory]
+    [InlineData("http://localhost:5173")]
+    [InlineData("http://127.0.0.1:3000")]
+    [InlineData("http://app.localhost:8080")]
+    public async Task WidgetStatus_LocalhostOrigin_EmitsNothing(string origin)
+    {
+        var dbName = Guid.NewGuid().ToString();
+        var admin = new FakeCurrentUser
+        {
+            Id = Guid.NewGuid(),
+            IsAdmin = true,
+            TenantId = Guid.NewGuid(),
+        };
+        using var cache = TestProjectServiceDeps.Cache();
+        var svc = await ActiveSiteServiceAsync(dbName, admin, cache);
+
+        var result = await svc.CheckWidgetActiveAsync("site", origin);
+        Assert.True(result.IsSuccess);
+
+        Assert.Empty(BuildContext(admin, dbName).UsageEvents.IgnoreQueryFilters().ToList());
+    }
+
+    [Fact]
+    public async Task WidgetStatus_NoOrigin_EmitsNothing()
+    {
+        var dbName = Guid.NewGuid().ToString();
+        var admin = new FakeCurrentUser
+        {
+            Id = Guid.NewGuid(),
+            IsAdmin = true,
+            TenantId = Guid.NewGuid(),
+        };
+        using var cache = TestProjectServiceDeps.Cache();
+        var svc = await ActiveSiteServiceAsync(dbName, admin, cache);
+
+        var result = await svc.CheckWidgetActiveAsync("site", null);
+        Assert.True(result.IsSuccess);
+
+        Assert.Empty(BuildContext(admin, dbName).UsageEvents.IgnoreQueryFilters().ToList());
+    }
+
+    [Fact]
+    public async Task WidgetStatus_AmbiguousKey_EmitsNothing()
+    {
+        var dbName = Guid.NewGuid().ToString();
+        var tenantA = new FakeCurrentUser
+        {
+            Id = Guid.NewGuid(),
+            IsAdmin = true,
+            TenantId = Guid.NewGuid(),
+        };
+        var tenantB = new FakeCurrentUser
+        {
+            Id = Guid.NewGuid(),
+            IsAdmin = true,
+            TenantId = Guid.NewGuid(),
+        };
+        using var cacheA = TestProjectServiceDeps.Cache();
+        using var cacheB = TestProjectServiceDeps.Cache();
+        var svcA = await ActiveSiteServiceAsync(dbName, tenantA, cacheA);
+        var svcB = await ActiveSiteServiceAsync(dbName, tenantB, cacheB);
+
+        // Same key under two tenants — the check refuses rather than picking one; no fact is minted.
+        var result = await svcA.CheckWidgetActiveAsync("site", "https://app.example.com");
+        Assert.True(result.IsSuccess);
+        Assert.False(result.Data!.Active);
+
+        Assert.Empty(BuildContext(tenantA, dbName).UsageEvents.IgnoreQueryFilters().ToList());
+    }
+
+    /// <summary>
+    /// The guarded insert's duplicate path: the row already exists and the cache holds nothing
+    /// (e.g. a restart) — the AnyAsync pre-check sees it, no second row is written, no exception.
+    /// The unique index itself is exercised on Sqlite by UsageEventFirstCommentTests' shape; the
+    /// InMemory provider does not model partial index filters, so the catch's 23505/19 path is
+    /// only reachable in a true concurrent race.
+    /// </summary>
+    [Fact]
+    public async Task WidgetInstalled_RaceOnUniqueIndex_Swallowed()
+    {
+        var dbName = Guid.NewGuid().ToString();
+        var tenant = Guid.NewGuid();
+        var admin = new FakeCurrentUser
+        {
+            Id = Guid.NewGuid(),
+            IsAdmin = true,
+            TenantId = tenant,
+        };
+
+        using (var cache = TestProjectServiceDeps.Cache())
+        {
+            var svc = await ActiveSiteServiceAsync(dbName, admin, cache);
+            await svc.CheckWidgetActiveAsync("site", "https://app.example.com");
+        }
+
+        // Cache dropped (process restart shape) — call again: pre-check sees the row, no throw.
+        using var freshCache = TestProjectServiceDeps.Cache();
+        var svcAfterRestart = new ProjectService(
+            new UnitOfWork(BuildContext(admin, dbName)),
+            admin,
+            new PassThroughEntitlements(),
+            TestProjectServiceDeps.Settings(),
+            TestProjectServiceDeps.Configuration(),
+            new FakeAuditWriter(),
+            cache: freshCache
+        );
+        var again = await svcAfterRestart.CheckWidgetActiveAsync("site", "https://app.example.com");
+        Assert.True(again.IsSuccess);
+
+        var rows = BuildContext(admin, dbName).UsageEvents.IgnoreQueryFilters().ToList();
+        var row = Assert.Single(rows);
+        Assert.Equal(UsageEventTypes.WidgetInstalled, row.Type);
     }
 }

@@ -1,5 +1,6 @@
 using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Configuration;
 using Pointer.Application.Abstractions;
 using Pointer.Application.Common;
@@ -16,11 +17,14 @@ namespace Pointer.Application.Services.Implementation;
 
 public class ProjectService : IProjectService
 {
+    private const string WidgetInstalledCacheKeyPrefix = "widget_installed:";
+
     private readonly IUnitOfWork _unitOfWork;
     private readonly ICurrentUser _currentUser;
     private readonly IEntitlementService _entitlements;
     private readonly ICommentFieldService _commentFields;
     private readonly IAuditWriter _audit;
+    private readonly IMemoryCache _cache;
 
     public ProjectService(
         IUnitOfWork unitOfWork,
@@ -29,7 +33,8 @@ public class ProjectService : IProjectService
         ISettingsService settings,
         IConfiguration configuration,
         IAuditWriter? audit = null,
-        ICommentFieldService? commentFields = null
+        ICommentFieldService? commentFields = null,
+        IMemoryCache? cache = null
     )
     {
         _unitOfWork = unitOfWork;
@@ -39,6 +44,7 @@ public class ProjectService : IProjectService
         _configuration = configuration;
         _audit = audit ?? NoopAuditWriter.Instance;
         _commentFields = commentFields ?? new CommentFieldService(unitOfWork, currentUser, _audit);
+        _cache = cache ?? new MemoryCache(new MemoryCacheOptions());
     }
 
     private readonly ISettingsService _settings;
@@ -76,8 +82,9 @@ public class ProjectService : IProjectService
         return trusted;
     }
 
-    /// <summary>Loopback names a browser can actually send as an Origin. 0.0.0.0 is not one of them.</summary>
-    private static bool IsLocalhostOrigin(string normalisedOrigin)
+    /// <summary>Loopback names a browser can actually send as an Origin. 0.0.0.0 is not one of them.
+    /// Internal (DB-15): the activation funnel's widget_installed step reuses the same rule.</summary>
+    internal static bool IsLocalhostOrigin(string normalisedOrigin)
     {
         if (!Uri.TryCreate(normalisedOrigin, UriKind.Absolute, out var uri))
             return false;
@@ -1419,6 +1426,7 @@ public class ProjectService : IProjectService
             .Select(p => new
             {
                 p.Id,
+                p.OwnerId,
                 p.IsActiveLocal,
                 p.IsActiveStaging,
                 p.IsActiveProduction,
@@ -1443,6 +1451,68 @@ public class ProjectService : IProjectService
             );
 
         var normalized = OriginNormalizer.Normalize(origin);
+
+        // DB-15 (D15.2): a widget-status hit from a NON-localhost origin means the widget is live
+        // on a deployed site — the funnel's third step. One-shot per project: guarded by this
+        // cache, then by an AnyAsync pre-check, then by the partial unique index
+        // ux_usage_events_widget_installed_per_project (race-safe, like first_comment/first_apply).
+        // Forgeable by design (widget-status is anonymous — DB-15 §3.2, accepted under D15.2).
+        if (
+            !IsLocalhostOrigin(normalized)
+            && !_cache.TryGetValue($"{WidgetInstalledCacheKeyPrefix}{project.Id}", out _)
+        )
+        {
+            try
+            {
+                if (
+                    !await _unitOfWork
+                        .UsageEvents.IgnoreQueryFilters()
+                        .AnyAsync(e =>
+                            e.ProjectId == project.Id && e.Type == UsageEventTypes.WidgetInstalled
+                        )
+                )
+                {
+                    _unitOfWork.UsageEvents.Add(
+                        new UsageEvent
+                        {
+                            Type = UsageEventTypes.WidgetInstalled,
+                            Source = "api",
+                            OwnerId = project.OwnerId,
+                            ProjectId = project.Id,
+                            Meta = JsonSerializer.Serialize(new { origin = normalized }),
+                            CreatedAt = DateTime.UtcNow,
+                        }
+                    );
+                    await _unitOfWork.SaveChangesAsync();
+                }
+                _cache.Set(
+                    $"{WidgetInstalledCacheKeyPrefix}{project.Id}",
+                    true,
+                    TimeSpan.FromHours(24)
+                );
+            }
+            catch (DbUpdateException ex)
+                when (ex.InnerException is Npgsql.PostgresException { SqlState: "23505" }
+                    || (
+                        ex.InnerException != null
+                        && ex.InnerException.GetType().Name == "SqliteException"
+                        && (int)
+                            ex
+                                .InnerException.GetType()
+                                .GetProperty("SqliteErrorCode")!
+                                .GetValue(ex.InnerException)! == 19
+                    )
+                )
+            {
+                // Unique violation on the partial index -> another concurrent boot was first. Swallow.
+                _unitOfWork.ClearChangeTracker();
+                _cache.Set(
+                    $"{WidgetInstalledCacheKeyPrefix}{project.Id}",
+                    true,
+                    TimeSpan.FromHours(24)
+                );
+            }
+        }
 
         // Rows on DISABLED environments are included deliberately — see the block below.
         var urls = await _unitOfWork

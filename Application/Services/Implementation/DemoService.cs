@@ -239,6 +239,28 @@ public class DemoService : IDemoService
         }
         await _unitOfWork.SaveChangesAsync();
 
+        // DB-15: the funnel's first step. One demo_started row per provision — a fresh workspace is
+        // minted above, so no uniqueness guard is needed. Analytics must never fail a demo.
+        try
+        {
+            _unitOfWork.UsageEvents.Add(
+                new UsageEvent
+                {
+                    Type = UsageEventTypes.DemoStarted,
+                    Source = "api",
+                    OwnerId = workspaceId,
+                    ProjectId = project.Id,
+                    UserId = publicId,
+                    CreatedAt = DateTime.UtcNow,
+                }
+            );
+            await _unitOfWork.SaveChangesAsync();
+        }
+        catch (Exception)
+        {
+            /* analytics must never fail a demo */
+        }
+
         // e. Issue token. Role populated AFTER every SaveChangesAsync above has run, so EF never
         // tries to re-insert the already-existing role row.
         demoUser.Role = role;
@@ -378,12 +400,33 @@ public class DemoService : IDemoService
         // DB-14 §3.2: the address just became real — send the verification link.
         await _emailVerification.SendAsync(user);
 
+        // DB-15: the funnel's second step. The !IsDemo guard above makes a second emission
+        // impossible — a converted workspace is no longer a demo. Analytics must never fail the
+        // upgrade it records.
+        try
+        {
+            _unitOfWork.UsageEvents.Add(
+                new UsageEvent
+                {
+                    Type = UsageEventTypes.WorkspaceConverted,
+                    Source = "api",
+                    OwnerId = user.OwnerId,
+                    UserId = callerPublicId,
+                    CreatedAt = DateTime.UtcNow,
+                }
+            );
+            await _unitOfWork.SaveChangesAsync();
+        }
+        catch (Exception)
+        {
+            /* analytics must never fail the upgrade */
+        }
+
         // 9-10. Role navigation is already loaded above; issue a fresh token with the real email.
         // DB-11a: the demo admin's own membership (in its own workspace) carries the role/tenant now.
-        var upgradeMembership =
-            user.OwnerId is Guid demoOwnerId
-                ? await _memberships.GetMembershipAsync(user.Id, demoOwnerId)
-                : null;
+        var upgradeMembership = user.OwnerId is Guid demoOwnerId
+            ? await _memberships.GetMembershipAsync(user.Id, demoOwnerId)
+            : null;
         var token = _tokenService.Issue(user, upgradeMembership);
 
         await _audit.WriteAsync(

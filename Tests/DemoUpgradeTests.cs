@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Pointer.Application.Abstractions;
+using Pointer.Application.Common;
 using Pointer.Application.DTOs.Demo;
 using Pointer.Application.Resources;
 using Pointer.Application.Response;
@@ -230,6 +231,32 @@ public class DemoUpgradeTests
             Password = "supersecret",
             DisplayName = "Real Name",
         };
+
+    // -----------------------------------------------------------------
+    // DB-15: the workspace_converted emission
+    // -----------------------------------------------------------------
+
+    [Fact]
+    public async Task Upgrade_EmitsWorkspaceConverted_Once()
+    {
+        var (svc, db, _) = Build(nameof(Upgrade_EmitsWorkspaceConverted_Once));
+        var demo = SeedDemoUser(db);
+
+        var first = await svc.UpgradeAsync(demo.PublicId, ValidRequest("permanent@user.com"));
+        Assert.True(first.IsSuccess);
+
+        // A converted workspace is no longer a demo — the guard makes a second emission impossible.
+        var second = await svc.UpgradeAsync(demo.PublicId, ValidRequest("other@user.com"));
+        Assert.True(second.IsForbidden);
+
+        var row = Assert.Single(
+            db.UsageEvents.IgnoreQueryFilters()
+                .Where(e => e.Type == UsageEventTypes.WorkspaceConverted)
+        );
+        Assert.Equal(demo.OwnerId, row.OwnerId);
+        Assert.Equal(demo.PublicId, row.UserId);
+        Assert.Equal("api", row.Source);
+    }
 
     // -----------------------------------------------------------------
     // 1. Happy path

@@ -36,8 +36,11 @@ services:
       # DB-08: daily row retention (usage_events / read notifications / orphaned page context
       # snapshots / dead invites). RETENTION_ENABLED=false pauses the whole job; each period is
       # independently overridable and 0 disables retention for that table only.
+      # DB-15: Retention__RollupDays — how many recent days the usage_daily rollup recomputes each
+      # pass (the whole retention window is backfilled on the first run).
       Retention__Enabled: "${RETENTION_ENABLED:-true}"
       Retention__UsageEventsDays: "${RETENTION_USAGE_EVENTS_DAYS:-180}"
+      Retention__RollupDays: "${RETENTION_ROLLUP_DAYS:-3}"
       Retention__NotificationsReadDays: "${RETENTION_NOTIFICATIONS_READ_DAYS:-90}"
       Retention__PageContextSnapshotDays: "${RETENTION_SNAPSHOT_DAYS:-30}"
       Retention__InvitesDays: "${RETENTION_INVITES_DAYS:-90}"

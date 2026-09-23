@@ -100,6 +100,9 @@ Row retention (DB-08, on by default) deletes `usage_events` > 180 d (never the `
 read `notifications` > 90 d, `page_context_snapshots` > 30 d with no live comment, and never-used
 expired/revoked `invites` > 90 d, in batches of 5000, daily from 5 min after boot. Every such row
 exists in at least the last 14 nightly dumps. Pause with `RETENTION_ENABLED=false` + `up -d api`.
+Before each sweep the job rolls `usage_events` up into `usage_daily` (per day/workspace/type, kept
+forever); the five funnel facts (`demo_started`, `workspace_converted`, `widget_installed`,
+`first_comment`, `first_apply`) are never deleted.
 
 Two callers:
 
