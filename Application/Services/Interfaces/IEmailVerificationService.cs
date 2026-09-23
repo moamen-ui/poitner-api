@@ -23,4 +23,10 @@ public interface IEmailVerificationService
     /// <summary>POST /api/auth/verify-email — anonymous; redeems the token minted by
     /// <see cref="SendAsync"/>.</summary>
     Task<Result> ConfirmAsync(string token);
+
+    /// <summary>DB-14 §3.4 review fix: clears the gate's 60s cache key (<c>emailverified:{pid}</c>)
+    /// for <paramref name="publicId"/>. Must be called right after every write that flips
+    /// <c>User.EmailVerifiedAt</c> (to a value or to null) so a just-flipped identity's next admin
+    /// write reflects the change immediately instead of waiting out the TTL.</summary>
+    void InvalidateGate(Guid publicId);
 }

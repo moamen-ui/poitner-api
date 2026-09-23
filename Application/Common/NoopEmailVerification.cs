@@ -31,4 +31,6 @@ public sealed class NoopEmailVerification : IEmailVerificationService
 
     public Task<Result> ConfirmAsync(string token) =>
         Task.FromResult(Result.Failure("Email verification is not configured."));
+
+    public void InvalidateGate(Guid publicId) { }
 }

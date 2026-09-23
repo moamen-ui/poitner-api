@@ -74,19 +74,22 @@ public class PasswordPolicyTests
     {
         Assert.True(PasswordPolicy.IsCommon("123456"));
 
+        // Review finding #5: the resource holds exactly 1000 DISTINCT case-insensitive entries and
+        // no blank line — assert the SET size, not the raw line count (a raw count would silently
+        // pass even with a blank line or a case-variant duplicate inflating it back to 1000).
         var assembly = typeof(PasswordPolicy).Assembly;
         var resourceName = assembly.GetManifestResourceNames()
             .Single(n => n.EndsWith("common-passwords.txt", StringComparison.Ordinal));
         using var stream = assembly.GetManifestResourceStream(resourceName)!;
         using var reader = new StreamReader(stream);
-        var count = 0;
+        var set = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         string? line;
         while ((line = reader.ReadLine()) != null)
         {
-            if (line.StartsWith('#'))
+            if (line.StartsWith('#') || line.Length == 0)
                 continue;
-            count++;
+            set.Add(line);
         }
-        Assert.Equal(1000, count);
+        Assert.Equal(1000, set.Count);
     }
 }

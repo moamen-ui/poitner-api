@@ -16,13 +16,22 @@ public static class PasswordRules
         this IRuleBuilder<T, string> rule,
         Func<T, string?> email
     ) =>
-        rule.NotEmpty()
-            .WithMessage(MessageKeys.User.PasswordRequired)
-            .Custom(
-                (pw, ctx) =>
+        // Review finding #6 (nit): early-return on an empty password inside the single Custom rule
+        // so it yields exactly one failure. The previous NotEmpty().WithMessage().Custom() chain ran
+        // BOTH rules for an empty string — NotEmpty's PasswordRequired AND PasswordPolicy.Validate's
+        // MinLength check (PasswordWeak) — because IRuleBuilder<T, string> (as opposed to
+        // IRuleBuilderInitial<T, TProperty>, obtained only from RuleFor) has no Cascade(Stop) to stop
+        // that. Folding both checks into one Custom rule is the equivalent single-failure behavior.
+        rule.Custom(
+            (pw, ctx) =>
+            {
+                if (string.IsNullOrEmpty(pw))
                 {
-                    if (PasswordPolicy.Validate(pw, email(ctx.InstanceToValidate)) is string err)
-                        ctx.AddFailure(err);
+                    ctx.AddFailure(MessageKeys.User.PasswordRequired);
+                    return;
                 }
-            );
+                if (PasswordPolicy.Validate(pw, email(ctx.InstanceToValidate)) is string err)
+                    ctx.AddFailure(err);
+            }
+        );
 }

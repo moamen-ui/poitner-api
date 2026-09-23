@@ -5,8 +5,8 @@ using Microsoft.EntityFrameworkCore.Migrations;
 namespace Pointer.Infrastructure.Migrations
 {
     /// <inheritdoc />
-    // DB-RULES: R3 backfill approved 2026-09-23 by Moamen (owner; foundations report §2 row 4 "e-mail
-    // verification", relayed by the orchestrator; docs/db/execution/DB-14-email-verification-and-password-policy.md)
+    // DB-RULES: R3 backfill approved 2026-09-22 by Moamen (owner; D14.1 "existing identities are
+    // grandfathered as verified", relayed by the orchestrator; docs/db/execution/DB-14-email-verification-and-password-policy.md)
     [ContractMigration("DB-14")]
     public partial class BackfillUsersEmailVerifiedAt : Migration
     {
@@ -17,6 +17,8 @@ namespace Pointer.Infrastructure.Migrations
             // literal is the cut-off written by the implementer on the day the migration is authored
             // (UTC midnight of that day); rows created after it are never touched, so a second run is
             // a no-op (R3 idempotent).
+            // Must be deployed before 2026-09-24T00:00Z; otherwise ship BackfillUsersEmailVerifiedAt2
+            // with a later literal — never edit this file after merge (R10).
             migrationBuilder.Sql(
                 """
                 UPDATE users SET email_verified_at = created_at

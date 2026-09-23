@@ -619,6 +619,7 @@ public class InviteService : IInviteService
         // DB-11a join-or-create (§3.3): one identity per e-mail; a membership per workspace.
         var identity = await _memberships.FindIdentityByEmailAsync(emailNormalized);
         var isNewIdentity = identity == null;
+        var existingIdentityJustVerified = false;
 
         if (identity != null)
         {
@@ -648,6 +649,7 @@ public class InviteService : IInviteService
             {
                 identity.EmailVerifiedAt = DateTime.UtcNow;
                 _unitOfWork.Repository<User>().Update(identity);
+                existingIdentityJustVerified = true;
             }
         }
 
@@ -727,6 +729,12 @@ public class InviteService : IInviteService
         // Populated AFTER the save above so EF never tries to re-insert the already-existing role row.
         membership.Role = role;
 
+        // Review finding #3: invalidate the gate's cache only now that the flip above is actually
+        // persisted (a claim failure or seat-limit refusal earlier would have returned before this
+        // save ever ran, so invalidating any sooner could race an unpersisted change).
+        if (existingIdentityJustVerified)
+            _emailVerification.InvalidateGate(identity!.PublicId);
+
         // 6. Auto-signin: return a login token + user (reuse the login response builder).
         var token = _tokenService.Issue(identity!, membership);
 
@@ -780,6 +788,7 @@ public class InviteService : IInviteService
 
         var identity = await _memberships.FindIdentityByEmailAsync(emailNormalized);
         var isNewIdentity = identity == null;
+        var existingIdentityJustVerified = false;
 
         if (identity != null)
         {
@@ -799,6 +808,7 @@ public class InviteService : IInviteService
             {
                 identity.EmailVerifiedAt = DateTime.UtcNow;
                 _unitOfWork.Repository<User>().Update(identity);
+                existingIdentityJustVerified = true;
             }
         }
 
@@ -847,6 +857,11 @@ public class InviteService : IInviteService
         {
             return Result<LoginResponse>.Conflict(MessageKeys.Auth.AccountExists);
         }
+
+        // Review finding #3: invalidate the gate's cache only now that the flip above is actually
+        // persisted (the save just above is the first one that could have persisted it).
+        if (existingIdentityJustVerified)
+            _emailVerification.InvalidateGate(identity!.PublicId);
 
         if (isNewIdentity && invite.Email == null)
             await _emailVerification.SendAsync(identity!);

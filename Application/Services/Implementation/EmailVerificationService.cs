@@ -55,6 +55,8 @@ public class EmailVerificationService : IEmailVerificationService
     /// identity's next admin write is unlocked immediately rather than waiting out the TTL.</summary>
     private static string GateKey(Guid publicId) => $"emailverified:{publicId}";
 
+    public void InvalidateGate(Guid publicId) => _cache.Remove(GateKey(publicId));
+
     private static bool IsExempt(User identity) =>
         identity.EmailVerifiedAt != null
         || identity.IsDemo
@@ -66,17 +68,22 @@ public class EmailVerificationService : IEmailVerificationService
         if (IsExempt(identity))
             return;
 
-        var token = _resetTokens.CreateScoped(
-            identity.PublicId,
-            identity.SecurityStamp,
-            TokenPurposes.VerifyEmail,
-            identity.Email
-        );
-        var brand = await _branding.BuildResponseAsync("", new HashSet<string>());
-        var link = $"{brand.Urls.App.TrimEnd('/')}/verify-email?token={Uri.EscapeDataString(token)}";
-
+        // Review finding #4: best-effort means the WHOLE body — minting the token, resolving
+        // branding, building the link, and sending — is one try/catch. `CreateScoped` and
+        // `BuildResponseAsync` were previously unguarded, so a token-service or branding outage
+        // would throw out of SendAsync instead of degrading like a send failure does.
         try
         {
+            var token = _resetTokens.CreateScoped(
+                identity.PublicId,
+                identity.SecurityStamp,
+                TokenPurposes.VerifyEmail,
+                identity.Email
+            );
+            var brand = await _branding.BuildResponseAsync("", new HashSet<string>());
+            var link =
+                $"{brand.Urls.App.TrimEnd('/')}/verify-email?token={Uri.EscapeDataString(token)}";
+
             var sent = await _emailService.SendAsync(
                 identity.Email,
                 $"Verify your {brand.ProductName} e-mail address",
@@ -92,10 +99,12 @@ public class EmailVerificationService : IEmailVerificationService
         {
             // §9 step 5 watches this exact line at Warning (not Information): IEmailService is
             // capped per day, so a signup burst can leave identities unverified with a throttled
-            // resend (GLM DB-14 #4). Never the address.
+            // resend (GLM DB-14 #4). Logged with the public id only — never the address.
             _logger.LogWarning(ex, "Verification mail to {PublicId} failed: {Reason}", identity.PublicId, ex.Message);
         }
 
+        // Still arm the resend throttle even on failure: a token/branding/send outage must not let
+        // a caller hammer SendAsync in a tight loop for the same identity.
         _cache.Set(ResendKey(identity.PublicId), true, TimeSpan.FromMinutes(5));
     }
 
@@ -155,7 +164,7 @@ public class EmailVerificationService : IEmailVerificationService
             identity.EmailVerifiedAt = DateTime.UtcNow;
             _unitOfWork.Repository<User>().Update(identity);
             await _unitOfWork.SaveChangesAsync();
-            _cache.Remove(GateKey(publicId));
+            InvalidateGate(publicId);
         }
 
         await _audit.WriteAsync(

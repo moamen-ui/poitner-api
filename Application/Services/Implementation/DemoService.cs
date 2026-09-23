@@ -369,6 +369,12 @@ public class DemoService : IDemoService
             return Result<UpgradeDemoResponse>.Conflict(MessageKeys.Demo.EmailTaken);
         }
 
+        // Review finding #3 (security-direction — must): the gate's cache may still hold "verified"
+        // from when this identity was IsDemo (exempt from the gate outright); now that IsDemo is
+        // false and EmailVerifiedAt is null, that stale cache entry would let an unverified upgrade
+        // act as an admin for up to the 60s TTL. Invalidate right after the flip is persisted.
+        _emailVerification.InvalidateGate(user.PublicId);
+
         // DB-14 §3.2: the address just became real — send the verification link.
         await _emailVerification.SendAsync(user);
 

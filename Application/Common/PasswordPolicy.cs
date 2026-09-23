@@ -56,10 +56,11 @@ public static class PasswordPolicy
         string? line;
         while ((line = reader.ReadLine()) != null)
         {
-            // Only the two header lines are skipped (both start with '#') — the source list itself
-            // contains one genuine blank-line entry (an empty-string password used in the wild),
-            // which must count toward the 1000 (Tests/PasswordPolicyTests.cs asserts the exact count).
-            if (line.StartsWith('#'))
+            // Only the two header lines are skipped (both start with '#'). The resource holds
+            // exactly 1000 distinct case-insensitive entries and no blank line (the source list's
+            // one blank-line entry and its 2 case-variant duplicates of "password" were dropped;
+            // Tests/PasswordPolicyTests.cs asserts the set size is exactly 1000).
+            if (line.StartsWith('#') || line.Length == 0)
                 continue;
             set.Add(line);
         }

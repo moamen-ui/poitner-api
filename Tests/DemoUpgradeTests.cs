@@ -3,6 +3,7 @@ using Microsoft.Extensions.Configuration;
 using Pointer.Application.Abstractions;
 using Pointer.Application.DTOs.Demo;
 using Pointer.Application.Resources;
+using Pointer.Application.Response;
 using Pointer.Application.Services.Implementation;
 using Pointer.Application.Services.Interfaces;
 using Pointer.Domain.Entity;
@@ -70,9 +71,12 @@ public class DemoUpgradeTests
     // Harness
     // -----------------------------------------------------------------
 
-    private static (DemoService svc, AppDbContext db, RecordingTokenService tokens) Build(
-        string dbName
-    )
+    private static (
+        DemoService svc,
+        AppDbContext db,
+        RecordingTokenService tokens,
+        RecordingEmailVerification emailVerification
+    ) Build(string dbName)
     {
         var opts = new DbContextOptionsBuilder<AppDbContext>().UseInMemoryDatabase(dbName).Options;
         var db = new AppDbContext(opts, new FakeCurrentUser(), new ConfigurationBuilder().Build());
@@ -82,6 +86,7 @@ public class DemoUpgradeTests
         var email = new NoopEmailService();
         var settings = new NoopSettingsService();
         var branding = new NoopBrandingService();
+        var emailVerification = new RecordingEmailVerification();
         var svc = new DemoService(
             uow,
             new FakePasswordHasher(),
@@ -89,9 +94,28 @@ public class DemoUpgradeTests
             email,
             settings,
             branding,
-            new MembershipService(uow)
+            new MembershipService(uow),
+            emailVerification: emailVerification
         );
-        return (svc, db, tokens);
+        return (svc, db, tokens, emailVerification);
+    }
+
+    /// <summary>Records every publicId passed to <see cref="IEmailVerificationService.InvalidateGate"/>
+    /// (review finding #3) so tests can assert the gate cache is invalidated right after the upgrade
+    /// flips <c>EmailVerifiedAt</c> — regardless of whether the verification e-mail itself sends.</summary>
+    private sealed class RecordingEmailVerification : IEmailVerificationService
+    {
+        public List<Guid> InvalidatedGates { get; } = [];
+
+        public Task SendAsync(User identity) => Task.CompletedTask;
+
+        public Task<Result> ResendAsync() =>
+            Task.FromResult(Result.Success(MessageKeys.Auth.VerificationSent));
+
+        public Task<Result> ConfirmAsync(string token) =>
+            Task.FromResult(Result.Success(MessageKeys.Auth.EmailVerified));
+
+        public void InvalidateGate(Guid publicId) => InvalidatedGates.Add(publicId);
     }
 
     private sealed class NoopEmailService : IEmailService
@@ -214,7 +238,7 @@ public class DemoUpgradeTests
     [Fact]
     public async Task Upgrade_demo_user_with_valid_request_succeeds_and_flips_isDemo()
     {
-        var (svc, db, tokens) = Build(
+        var (svc, db, tokens, emailVerification) = Build(
             nameof(Upgrade_demo_user_with_valid_request_succeeds_and_flips_isDemo)
         );
         var demo = SeedDemoUser(db);
@@ -243,6 +267,13 @@ public class DemoUpgradeTests
         Assert.NotNull(tokens.IssuedFor);
         Assert.Equal("permanent@user.com", tokens.IssuedFor!.Email);
         Assert.False(tokens.IssuedFor.IsDemo);
+
+        // Review finding #3 (security-direction — must): the gate's cache may still hold "verified"
+        // from when this identity was IsDemo (exempt from the gate outright). Now that IsDemo is
+        // false and EmailVerifiedAt is null, the stale cache entry must be invalidated right after
+        // the flip is persisted — otherwise the upgraded, unverified identity could act as an admin
+        // until the 60s TTL expires.
+        Assert.Contains(demo.PublicId, emailVerification.InvalidatedGates);
     }
 
     // -----------------------------------------------------------------
@@ -252,7 +283,7 @@ public class DemoUpgradeTests
     [Fact]
     public async Task Upgrade_non_demo_user_returns_forbidden()
     {
-        var (svc, db, _) = Build(nameof(Upgrade_non_demo_user_returns_forbidden));
+        var (svc, db, _, _) = Build(nameof(Upgrade_non_demo_user_returns_forbidden));
         var pid = Guid.NewGuid();
         var role = new Role
         {
@@ -292,7 +323,7 @@ public class DemoUpgradeTests
     [Fact]
     public async Task Upgrade_expired_demo_returns_failure_demo_expired()
     {
-        var (svc, db, _) = Build(nameof(Upgrade_expired_demo_returns_failure_demo_expired));
+        var (svc, db, _, _) = Build(nameof(Upgrade_expired_demo_returns_failure_demo_expired));
         var demo = SeedDemoUser(db, expiresAt: DateTime.UtcNow.AddHours(-1));
 
         var result = await svc.UpgradeAsync(demo.PublicId, ValidRequest());
@@ -311,7 +342,7 @@ public class DemoUpgradeTests
     {
         // Another user under the SAME tenant (OwnerId == demo's PublicId) already holds the email.
         // Per-tenant uniqueness must reject the upgrade.
-        var (svc, db, _) = Build(
+        var (svc, db, _, _) = Build(
             nameof(Upgrade_with_email_taken_within_same_tenant_returns_conflict)
         );
         var demo = SeedDemoUser(db);
@@ -350,7 +381,7 @@ public class DemoUpgradeTests
         // DB-11a (D7): e-mail uniqueness for demo upgrade is now GLOBAL — one identity per e-mail.
         // A different tenant's identity already holding this address blocks the upgrade (Conflict,
         // no automatic merge), where it used to be allowed (emails were unique per tenant only).
-        var (svc, db, _) = Build(
+        var (svc, db, _, _) = Build(
             nameof(Upgrade_with_email_used_by_a_different_tenant_is_a_conflict)
         );
         var demo = SeedDemoUser(db);
@@ -387,7 +418,7 @@ public class DemoUpgradeTests
     [Fact]
     public async Task Upgrade_with_short_password_returns_validator_failure()
     {
-        var (svc, db, _) = Build(nameof(Upgrade_with_short_password_returns_validator_failure));
+        var (svc, db, _, _) = Build(nameof(Upgrade_with_short_password_returns_validator_failure));
         var demo = SeedDemoUser(db);
 
         var request = ValidRequest();
@@ -408,7 +439,7 @@ public class DemoUpgradeTests
     [Fact]
     public async Task Upgrade_with_empty_email_returns_validator_failure()
     {
-        var (svc, db, _) = Build(nameof(Upgrade_with_empty_email_returns_validator_failure));
+        var (svc, db, _, _) = Build(nameof(Upgrade_with_empty_email_returns_validator_failure));
         var demo = SeedDemoUser(db);
 
         var request = ValidRequest();
@@ -428,7 +459,7 @@ public class DemoUpgradeTests
     [Fact]
     public async Task Upgrade_with_unknown_caller_returns_not_found()
     {
-        var (svc, _, _) = Build(nameof(Upgrade_with_unknown_caller_returns_not_found));
+        var (svc, _, _, _) = Build(nameof(Upgrade_with_unknown_caller_returns_not_found));
 
         var result = await svc.UpgradeAsync(Guid.NewGuid(), ValidRequest());
 

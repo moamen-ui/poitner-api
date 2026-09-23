@@ -149,10 +149,19 @@ if (extraDashboardOrigins is { Length: > 0 })
     dashboardOrigins = [.. dashboardOrigins, .. extraDashboardOrigins];
 builder.Services.AddCors(o =>
 {
-    o.AddDefaultPolicy(p => p.AllowAnyOrigin().AllowAnyHeader().AllowAnyMethod());
+    o.AddDefaultPolicy(p =>
+        p.AllowAnyOrigin()
+            .AllowAnyHeader()
+            .AllowAnyMethod()
+            .WithExposedHeaders("X-Email-Verification-Required")
+    );
     o.AddPolicy(
         DashboardCorsPolicy,
-        p => p.WithOrigins(dashboardOrigins).AllowAnyHeader().AllowAnyMethod()
+        p =>
+            p.WithOrigins(dashboardOrigins)
+                .AllowAnyHeader()
+                .AllowAnyMethod()
+                .WithExposedHeaders("X-Email-Verification-Required")
     );
 });
 

@@ -214,9 +214,13 @@ public static class PasswordPolicy
     public static bool IsCommon(string password);   // HashSet<string> loaded once from the embedded resource
 }
 ```
-Embedded resource `Application/Resources/common-passwords.txt` — **exactly** the first 1 000 lines of SecLists
-`Passwords/Common-Credentials/10-million-password-list-top-1000.txt` (MIT; commit the file with a two-line header comment naming source, commit hash and licence — the
-loader skips lines starting with `#`). `<EmbeddedResource Include="Resources/common-passwords.txt" />` in `Application/Pointer.Application.csproj`. Test asserts 1 000 entries.
+Embedded resource `Application/Resources/common-passwords.txt` — SecLists's
+`Passwords/Common-Credentials/xato-net-10-million-passwords-1000.txt` (the file named in the first draft, `10-million-password-list-top-1000.txt`, has since been
+renamed upstream to this; MIT, commit the file with a two-line header comment naming source, commit hash and licence — the loader skips lines starting with
+`#`), holding **exactly 1 000 distinct case-insensitive entries and no blank line** (the source list's one blank-line entry and its 2 case-variant duplicates
+of `password` were dropped; 3 well-known weak passwords not already present — `qwerty12345`, `letmein123`, `iloveyou1` — were appended to restore the count).
+`<EmbeddedResource Include="Resources/common-passwords.txt" />` in `Application/Pointer.Application.csproj`. Test asserts the loaded **set**'s size is 1 000
+(not the raw line count, which a stray blank line or duplicate could inflate back to 1 000 while masking a real gap).
 
 FluentValidation extension `Application/Validators/PasswordRules.cs`:
 ```csharp
@@ -320,8 +324,11 @@ and is rate-limited (R16).
 3. `Confirm_ValidToken_SetsVerifiedAt_Idempotent` (second click → success, timestamp unchanged); `Confirm_PayloadMismatch_AfterEmailChange_Invalid`; `Confirm_WrongPurpose_Invalid` (an `erase` token); `Confirm_StampRotated_Invalid`; `Confirm_Deleted_Invalid` — all failures return `Auth.VerificationLinkInvalid`.
 4. `Resend_Throttled_5Minutes` (second call → `VerificationRecentlySent`, one mail); `Resend_AlreadyVerified`; `Resend_Demo_NotApplicable`.
 5. `Tests/RequireVerifiedEmailFilterTests.cs` — build `ActionExecutingContext` (controller type `Pointer.API.Controllers.Admin.ProjectsController`, method POST, `RequestServices` providing a `FakeCurrentUser { Id = <guid> }`, an InMemory `AppDbContext`, a `MemoryCache`): unverified → result is `ObjectResult` 403 with header `X-Email-Verification-Required`; verified → `next` called; `IsDemo` → next; `FakeCurrentUser { IsSuperAdmin = true }` → next without a lookup; **`FakeCurrentUser { Id = null }` (unparsable/missing sub) → next, no lookup, one Warning logged** (agy DB-14 #1); missing `users` row → next; GET → next without a lookup; controller in `Pointer.API.Controllers` (non-admin) → next; `[AllowUnverified]` → next; cache: two calls, one query (count via a `DbCommandInterceptor` or assert the cache key `emailverified:{guid}` exists); after `ConfirmAsync` the key is gone and the next call passes.
-6. `Tests/PasswordPolicyTests.cs` — `"short1"` → `PasswordWeak`; 129 chars → `PasswordTooLong`; `"password123"`, `"Password123"` → `PasswordCommon`; `"a@x.com"` and `"A"` (local part) with e-mail `a@x.com` → `PasswordIsEmail`; `"correct-horse-battery"` → null; embedded list has exactly 1 000 entries and contains `"123456"`.
-7. `Tests/PasswordValidatorsTests.cs` — `[Theory]` over the nine validators with `"password1"` → invalid with `PasswordCommon`; `"long-enough-pw-1"` → valid; `UpdateUserValidator` with `Password = null` → valid. `ResetPassword_ServiceRejectsEmailAsPassword` (through `AuthService.ResetPasswordAsync` with a valid token); `ChangePassword_ServiceRejectsCommon`; `TenantCreate_ServiceRejectsCommon` and `AcceptInvite_ServiceRejectsCommon` (call the service directly with `"password1"` — bypassing the validator — → `Failure` with `PasswordCommon`; proves the two re-validations speak the new policy, GLM DB-14 #1); `UserUpdate_ServiceRejectsEmailAsPassword`.
+6. `Tests/PasswordPolicyTests.cs` — `"short1"` → `PasswordWeak`; 129 chars → `PasswordTooLong`; `"qwertyuiop"`, `"QWERTYUIOP"` (10 chars, in the embedded list —
+   see §3.6's note on the renamed SecLists file) → `PasswordCommon`; `"alexandra12@example.com"` (full address) and `"alexandra12"`/`"ALEXANDRA12"` (local part,
+   case-insensitive) with e-mail `alexandra12@example.com` → `PasswordIsEmail`; `"correct-horse-battery"` → null; the embedded list's loaded **set** has exactly
+   1 000 entries and contains `"123456"`.
+7. `Tests/PasswordValidatorsTests.cs` — `[Theory]` over the nine validators with `"qwertyuiop"` → invalid with `PasswordCommon`; `"long-enough-pw-1"` → valid; `UpdateUserValidator` with `Password = null` → valid. `ResetPassword_ServiceRejectsEmailAsPassword` (through `AuthService.ResetPasswordAsync` with a valid token); `ChangePassword_ServiceRejectsCommon`; `TenantCreate_ServiceRejectsCommon` and `AcceptInvite_ServiceRejectsCommon` (call the service directly with `"qwertyuiop"` — bypassing the validator — → `Failure` with `PasswordCommon`; proves the two re-validations speak the new policy, GLM DB-14 #1); `UserUpdate_ServiceRejectsEmailAsPassword`.
 8. `Tests/AuthRateLimitingTests.cs` — `[InlineData("VerifyEmail")]` on `SignupSurface_KeepsSignupRateLimit`; new `ResendVerification_HasSignupRateLimit` on `typeof(MeController).GetMethod("ResendVerification")`.
 9. `Me_EmailVerifiedFlags` — unverified admin → `EmailVerified false, EmailVerificationRequired true`; unverified stakeholder → `false, false`; verified → `true, false`; demo → `true`.
 10. Existing data survives: the rehearsal query (§3.1) prints 0 unverified live identities after Migration 2; the seeded super admin logs in and `POST /api/admin/projects` is not blocked. Tenancy: this doc adds no workspace-scoped rows; the R8 test is DB-11a's `InWorkspace_TenantB_SeesNothingOfTenantA` (unchanged).
@@ -336,7 +343,7 @@ and is rate-limited (R16).
 5. `curl -s …/swagger.json | jq '.paths["/api/me/verification/resend"].post.tags, .paths["/api/auth/verify-email"].post.tags, .components.schemas.MeResponse.properties.emailVerified'` → `["Me"]`, `["Auth"]`, non-null.
 6. `grep -c 'EnableRateLimiting("signup")' API/Controllers/MeController.cs` → 3 after DB-11c+DB-11d+this (1 if this lands first).
 7. `just test` green with the 30+ new facts; DB-10 green (the backfill is a no-op on the empty CI database).
-8. Manual on the rehearsal API with the local mail server: register a new workspace (self-serve) with `"password1"` → 400 `PasswordCommon`; with a strong password → 200, mail received; `POST /api/admin/projects` with that session → 403 + `X-Email-Verification-Required`; `POST /api/projects/{key}/comments` (as a stakeholder in a project) → 201; click the link (`POST /api/auth/verify-email`) → 200; `POST /api/admin/projects` → 200 within 60 s; re-click → 200 idempotent; `SELECT email_verified_at FROM users WHERE email = '<new>'` non-null; every pre-existing live identity has `email_verified_at = created_at`.
+8. Manual on the rehearsal API with the local mail server: register a new workspace (self-serve) with `"qwertyuiop"` (10 chars, in the embedded list) → 400 `PasswordCommon`; with a strong password → 200, mail received; `POST /api/admin/projects` with that session → 403 + `X-Email-Verification-Required`; `POST /api/projects/{key}/comments` (as a stakeholder in a project) → 201; click the link (`POST /api/auth/verify-email`) → 200; `POST /api/admin/projects` → 200 within 60 s; re-click → 200 idempotent; `SELECT email_verified_at FROM users WHERE email = '<new>'` non-null; every pre-existing live identity has `email_verified_at = created_at`.
 
 ## 8. Rollback
 

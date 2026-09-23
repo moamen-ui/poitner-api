@@ -524,6 +524,11 @@ public class AuthService : IAuthService
             return Result.Conflict(MessageKeys.User.EmailTaken);
         }
 
+        // Review finding #3: the gate's cache may still hold the pre-change verification state —
+        // invalidate right after the flip is persisted so the confirmed identity's next admin write
+        // reflects it immediately.
+        _emailVerification.InvalidateGate(identity.PublicId);
+
         var brand = await _branding.BuildResponseAsync("", new HashSet<string>());
         try
         {
