@@ -71,6 +71,7 @@ internal static class ScreenshotPurge
         var failures = 0;
         var skipped = 0;
         var wouldDelete = 0;
+        var wouldDeleteFiles = 0;
         long wouldBytes = 0;
         var skippedIds = new List<int>();
 
@@ -109,6 +110,21 @@ internal static class ScreenshotPurge
             foreach (var row in rows)
             {
                 var rel = signer.ExtractRelPath(row.ScreenshotUrl!);
+
+                // DB-16 review fix #1 (BLOCKER): canonical-shape check FIRST, before the
+                // ownership-prefix check below. A crafted path (dot-dot, encoded dot-dot,
+                // backslash, a nested/double-decoded signed URL, "../branding/...") can make
+                // `rel.StartsWith("uploads/{ownerGuid:N}/")` true by literal string prefix while
+                // still resolving outside that owner's folder once it reaches the filesystem. A
+                // non-canonical path is never owned by anyone — skip it here, before it is ever
+                // handed to storage.
+                if (!UploadPaths.IsCanonical(rel))
+                {
+                    skipped++;
+                    skippedIds.Add(row.Id);
+                    continue;
+                }
+
                 var isOwned =
                     row.OwnerId is Guid ownerGuid
                     && rel.StartsWith($"uploads/{ownerGuid:N}/", StringComparison.Ordinal);
@@ -132,12 +148,18 @@ internal static class ScreenshotPurge
                     {
                         wouldDelete++;
                         wouldBytes += size;
+                        // DB-16 review fix #10 (nit): count files with size > 0 separately from
+                        // rows, matching the real (non-dry-run) branch's filesDeleted semantics.
+                        if (size > 0)
+                            wouldDeleteFiles++;
                         continue;
                     }
 
                     await storage.DeleteAsync(rel);
-                    var gone = !await storage.ExistsAsync(rel);
-                    if (gone)
+                    // DB-16 review fix #2: stamp only on a CONFIRMED false — null (unresolvable)
+                    // must never be treated as "gone".
+                    var exists = await storage.ExistsAsync(rel);
+                    if (exists == false)
                     {
                         stampIds.Add(row.Id);
                         if (size > 0)
@@ -185,7 +207,7 @@ internal static class ScreenshotPurge
 
         var mode = dryRun ? "DRY RUN (nothing deleted)" : "purged";
         var loggedComments = dryRun ? wouldDelete : commentsPurged;
-        var loggedFiles = dryRun ? wouldDelete : filesDeleted;
+        var loggedFiles = dryRun ? wouldDeleteFiles : filesDeleted;
         var loggedBytes = dryRun ? wouldBytes : bytesDeleted;
         log.LogInformation(
             "Retention: deleted-comment screenshots {Mode} — {Comments} comment(s), {Files} file(s), {Bytes} bytes, {Failures} failure(s), {Skipped} skipped (foreign/unknown path), cutoff {Cutoff:u}",
@@ -239,14 +261,23 @@ internal static class ScreenshotPurge
         var failures = 0;
         var skippedSegments = 0;
 
-        // The "global" segment's reference set cannot be built with an OwnerId predicate (legacy
-        // uploads have no owning workspace) — stream every comment with a screenshot in id batches
-        // and decode each URL IN MEMORY (Opus DB-16 #3). A SQL Contains("uploads/global/") is wrong:
-        // stored signed URLs are percent-encoded (p=uploads%2Fglobal%2F…), so the substring never matches.
-        HashSet<string>? globalReferenced = null;
-        if (segments.Contains("global"))
+        // DB-16 review fix #3 (MEDIUM — orchestrator 2026-09-23: protect by path across owners).
+        // A single GLOBAL protected set of canonical decoded paths, built from every live-or-unpurged
+        // comment's screenshot regardless of that row's OwnerId — streamed by id batches (bounded
+        // memory), same technique the old "global"-only special case used (Opus DB-16 #3). The
+        // safer rule: a path is protected as long as ANY row still names it, even a row whose
+        // OwnerId doesn't match the path's own owner segment (a forged/foreign reference must never
+        // make the sweep MORE aggressive against the real owner's file). Cross-owner mismatches are
+        // counted and logged once (Warning) — they indicate a row worth investigating, not a
+        // deletion to make.
+        //
+        // DB-16 review fix #7 (LOW): a referenced path that is not UploadPaths.IsCanonical can never
+        // match a real disk path (LocalFileStorage.ListOwnerFilesAsync only ever yields canonical
+        // relative paths) — drop it here rather than carry it in the set, and count it (Warning).
+        var protectedPaths = new HashSet<string>(StringComparer.Ordinal);
+        var crossOwnerMismatches = 0;
+        var nonCanonicalReferenced = 0;
         {
-            globalReferenced = new HashSet<string>(StringComparer.Ordinal);
             var lastId = 0;
             while (true)
             {
@@ -261,7 +292,12 @@ internal static class ScreenshotPurge
                     )
                     .OrderBy(c => c.Id)
                     .Take(o.BatchSize)
-                    .Select(c => new { c.Id, c.Element.ScreenshotUrl })
+                    .Select(c => new
+                    {
+                        c.Id,
+                        c.OwnerId,
+                        c.Element.ScreenshotUrl,
+                    })
                     .ToListAsync(ct);
 
                 if (batch.Count == 0)
@@ -271,8 +307,18 @@ internal static class ScreenshotPurge
                 foreach (var b in batch)
                 {
                     var rel = signer.ExtractRelPath(b.ScreenshotUrl!);
-                    if (rel.StartsWith("uploads/global/", StringComparison.Ordinal))
-                        globalReferenced.Add(rel);
+                    if (!UploadPaths.IsCanonical(rel))
+                    {
+                        nonCanonicalReferenced++;
+                        continue;
+                    }
+
+                    var ownerSeg = rel.Split('/')[1];
+                    var expectedSeg = b.OwnerId is Guid g ? g.ToString("N") : "global";
+                    if (!string.Equals(ownerSeg, expectedSeg, StringComparison.Ordinal))
+                        crossOwnerMismatches++;
+
+                    protectedPaths.Add(rel);
                 }
 
                 if (batch.Count < o.BatchSize)
@@ -280,33 +326,35 @@ internal static class ScreenshotPurge
             }
         }
 
+        if (crossOwnerMismatches > 0)
+        {
+            log.LogWarning(
+                "Retention: {Count} referenced screenshot(s) name a path outside their own row's OwnerId folder; protected anyway (path-based protection, orchestrator 2026-09-23)",
+                crossOwnerMismatches
+            );
+        }
+        if (nonCanonicalReferenced > 0)
+        {
+            log.LogWarning(
+                "Retention: {Count} referenced screenshot(s) have a non-canonical path shape; ignored (can never match a disk path)",
+                nonCanonicalReferenced
+            );
+        }
+
         foreach (var seg in segments)
         {
             ct.ThrowIfCancellationRequested();
 
-            HashSet<string> referenced;
-            if (Guid.TryParseExact(seg, "N", out var ownerId))
-            {
-                referenced = (
-                    await db
-                        .Comments.IgnoreQueryFilters()
-                        .Where(c =>
-                            c.OwnerId == ownerId
-                            && c.Element.ScreenshotUrl != null
-                            && c.Element.ScreenshotUrl != ""
-                            && (c.DeletedAt == null || c.ScreenshotPurgedAt == null)
-                        )
-                        .Select(c => c.Element.ScreenshotUrl!)
-                        .ToListAsync(ct)
-                )
-                    .Select(signer.ExtractRelPath)
-                    .ToHashSet(StringComparer.Ordinal);
-            }
-            else if (seg == "global" && globalReferenced != null)
-            {
-                referenced = globalReferenced;
-            }
-            else
+            // DB-16 review fix #5 (LOW): Guid.TryParseExact("N") accepts upper-case hex too, but the
+            // real folder name LocalFileStorage.SaveAsync writes is always the lower-case
+            // Guid.ToString("N") form. Require the segment string to round-trip exactly — an
+            // upper-case (or otherwise non-canonical) Guid-looking folder name is never treated as
+            // a workspace folder.
+            var isWorkspaceSegment =
+                (Guid.TryParseExact(seg, "N", out var ownerId) && seg == ownerId.ToString("N"))
+                || seg == "global";
+
+            if (!isWorkspaceSegment)
             {
                 skippedSegments++;
                 log.LogDebug(
@@ -319,51 +367,75 @@ internal static class ScreenshotPurge
             segmentsProcessed++;
             var filesInSegment = 0;
 
-            await foreach (var f in storage.ListOwnerFilesAsync(seg))
+            // DB-16 review fix #4 (MEDIUM): isolate one owner folder's enumeration failure from the
+            // rest of the sweep. Directory.EnumerateFiles/ListOwnerFilesAsync is lazy — a failure
+            // deep in the tree (permissions, a broken symlink) surfaces on a MoveNext during THIS
+            // loop, not when the sequence was created, so the try/catch has to wrap the consumption,
+            // not just the call that produced it.
+            try
             {
-                scannedFiles++;
-                scannedBytes += f.Bytes;
-                filesInSegment++;
-                if (filesInSegment % 100 == 0)
-                    ct.ThrowIfCancellationRequested();
-
-                if (referenced.Contains(f.RelativePath))
-                    continue;
-
-                if (f.LastWriteUtc > graceCutoff)
+                await foreach (var f in storage.ListOwnerFilesAsync(seg))
                 {
-                    young++;
-                    continue;
-                }
+                    scannedFiles++;
+                    scannedBytes += f.Bytes;
+                    filesInSegment++;
+                    if (filesInSegment % 100 == 0)
+                        ct.ThrowIfCancellationRequested();
 
-                if (dryRun)
-                {
-                    orphans++;
-                    orphanBytes += f.Bytes;
-                    continue;
-                }
+                    if (protectedPaths.Contains(f.RelativePath))
+                        continue;
 
-                try
-                {
-                    await storage.DeleteAsync(f.RelativePath);
-                    if (!await storage.ExistsAsync(f.RelativePath))
+                    if (f.LastWriteUtc > graceCutoff)
+                    {
+                        young++;
+                        continue;
+                    }
+
+                    if (dryRun)
                     {
                         orphans++;
                         orphanBytes += f.Bytes;
+                        continue;
                     }
-                    else
+
+                    try
+                    {
+                        await storage.DeleteAsync(f.RelativePath);
+                        // DB-16 review fix #2: only a confirmed `false` counts as deleted.
+                        var exists = await storage.ExistsAsync(f.RelativePath);
+                        if (exists == false)
+                        {
+                            orphans++;
+                            orphanBytes += f.Bytes;
+                        }
+                        else
+                        {
+                            failures++;
+                        }
+                    }
+                    catch (OperationCanceledException)
+                    {
+                        throw;
+                    }
+                    catch
                     {
                         failures++;
                     }
                 }
-                catch (OperationCanceledException)
-                {
-                    throw;
-                }
-                catch
-                {
-                    failures++;
-                }
+            }
+            catch (OperationCanceledException)
+            {
+                throw;
+            }
+            catch (Exception ex)
+            {
+                failures++;
+                log.LogWarning(
+                    ex,
+                    "Retention: enumerating uploads segment {Seg} failed; folder skipped this pass",
+                    seg
+                );
+                continue;
             }
 
             // Empty-folder cleanup lives here (not inside LocalFileStorage.DeleteAsync — a delete

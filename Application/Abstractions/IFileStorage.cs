@@ -27,8 +27,14 @@ public interface IFileStorage
     /// </summary>
     Task DeleteOwnerFilesAsync(string ownerSegment);
 
-    /// <summary>DB-16. True when the relative path ("uploads/…") names an existing file. Default: false (test doubles).</summary>
-    Task<bool> ExistsAsync(string relativePath) => Task.FromResult(false);
+    /// <summary>
+    /// DB-16. True/false when the relative path ("uploads/…") could be resolved and is confirmed
+    /// present/absent; null when it could not be resolved at all (unrecognised shape, traversal
+    /// attempt, non-canonical — DB-16 review fix #2: a caller must stamp/count a row as "purged"
+    /// only on a confirmed `false`, never on null — an unresolved path is not evidence the file is
+    /// gone). Default: null (test doubles that don't override this member).
+    /// </summary>
+    Task<bool?> ExistsAsync(string relativePath) => Task.FromResult<bool?>(null);
 
     /// <summary>DB-16. Size in bytes of the file, 0 when missing. Default: 0.</summary>
     Task<long> SizeAsync(string relativePath) => Task.FromResult(0L);

@@ -90,6 +90,12 @@ public class ScreenshotPurgeTests
         /// a storage failure — PurgeDeleted_StorageStillHasFile_LeavesUnstamped).</summary>
         public bool FailDelete { get; set; }
 
+        /// <summary>DB-16 review fix #4: when set, ListOwnerFilesAsync throws partway through
+        /// enumerating THIS segment (simulating a folder that throws on enumeration — a broken
+        /// symlink, a permissions error deep in the tree) so OrphanSweepAsync's per-folder isolation
+        /// can be exercised without touching real disk permissions.</summary>
+        public string? ThrowForSegment { get; set; }
+
         public Task<string> SaveAsync(
             string ownerSegment,
             string project,
@@ -111,8 +117,8 @@ public class ScreenshotPurgeTests
             return Task.CompletedTask;
         }
 
-        public Task<bool> ExistsAsync(string relativePath) =>
-            Task.FromResult(Files.ContainsKey(relativePath));
+        public Task<bool?> ExistsAsync(string relativePath) =>
+            Task.FromResult<bool?>(Files.ContainsKey(relativePath));
 
         public Task<long> SizeAsync(string relativePath) =>
             Task.FromResult(Files.TryGetValue(relativePath, out var e) ? e.Bytes : 0L);
@@ -120,6 +126,10 @@ public class ScreenshotPurgeTests
         public async IAsyncEnumerable<StoredFile> ListOwnerFilesAsync(string ownerSegment)
         {
             ListedSegments.Add(ownerSegment);
+            await Task.Yield();
+            if (ownerSegment == ThrowForSegment)
+                throw new IOException("simulated enumeration failure");
+
             var prefix = $"uploads/{ownerSegment}/";
             foreach (
                 var kv in Files.Where(kv => kv.Key.StartsWith(prefix, StringComparison.Ordinal)).ToList()
@@ -255,7 +265,7 @@ public class ScreenshotPurgeTests
         using var db = testDb.MakeContext();
         var (ownerId, projectId) = await SeedTenantAsync(db);
         var signer = RealSigner();
-        var rel = $"uploads/{ownerId:N}/proj/a.webp";
+        var rel = $"uploads/{ownerId:N}/proj/{Guid.NewGuid():N}.webp";
         var url = signer.SignedUrl(rel);
         var recorder = new RecordingFileStorage();
         recorder.Files[rel] = new RecordingFileStorage.Entry(12345, DateTime.UtcNow.AddDays(-40));
@@ -296,7 +306,7 @@ public class ScreenshotPurgeTests
         using var db = testDb.MakeContext();
         var (ownerId, projectId) = await SeedTenantAsync(db);
         var signer = RealSigner();
-        var rel = $"uploads/{ownerId:N}/proj/a.webp";
+        var rel = $"uploads/{ownerId:N}/proj/{Guid.NewGuid():N}.webp";
         var recorder = new RecordingFileStorage();
         recorder.Files[rel] = new RecordingFileStorage.Entry(10, DateTime.UtcNow);
 
@@ -333,7 +343,7 @@ public class ScreenshotPurgeTests
         using var db = testDb.MakeContext();
         var (ownerId, projectId) = await SeedTenantAsync(db);
         var signer = RealSigner();
-        var rel = $"uploads/{ownerId:N}/proj/a.webp";
+        var rel = $"uploads/{ownerId:N}/proj/{Guid.NewGuid():N}.webp";
         var recorder = new RecordingFileStorage();
         recorder.Files[rel] = new RecordingFileStorage.Entry(10, DateTime.UtcNow.AddDays(-400));
 
@@ -371,7 +381,7 @@ public class ScreenshotPurgeTests
         using var db = testDb.MakeContext();
         var (ownerId, projectId) = await SeedTenantAsync(db);
         var signer = RealSigner();
-        var rel = $"uploads/{ownerId:N}/proj/missing.webp";
+        var rel = $"uploads/{ownerId:N}/proj/{Guid.NewGuid():N}.webp";
         var recorder = new RecordingFileStorage(); // no entry — file already absent
 
         var commentId = await AddCommentAsync(
@@ -407,7 +417,7 @@ public class ScreenshotPurgeTests
         using var db = testDb.MakeContext();
         var (ownerId, projectId) = await SeedTenantAsync(db);
         var signer = RealSigner();
-        var rel = $"uploads/{ownerId:N}/proj/a.webp";
+        var rel = $"uploads/{ownerId:N}/proj/{Guid.NewGuid():N}.webp";
         var recorder = new RecordingFileStorage();
         recorder.Files[rel] = new RecordingFileStorage.Entry(10, DateTime.UtcNow.AddDays(-40));
 
@@ -454,7 +464,7 @@ public class ScreenshotPurgeTests
         using var db = testDb.MakeContext();
         var (ownerId, projectId) = await SeedTenantAsync(db);
         var signer = RealSigner();
-        var rel = $"uploads/{ownerId:N}/proj/a.webp";
+        var rel = $"uploads/{ownerId:N}/proj/{Guid.NewGuid():N}.webp";
         var recorder = new RecordingFileStorage { FailDelete = true };
         recorder.Files[rel] = new RecordingFileStorage.Entry(10, DateTime.UtcNow.AddDays(-40));
 
@@ -527,7 +537,7 @@ public class ScreenshotPurgeTests
         var (ownerA, projectA) = await SeedTenantAsync(db);
         var (ownerB, projectB) = await SeedTenantAsync(db);
         var signer = RealSigner();
-        var relA = $"uploads/{ownerA:N}/proj/a.png";
+        var relA = $"uploads/{ownerA:N}/proj/{Guid.NewGuid():N}.png";
         var recorder = new RecordingFileStorage();
         recorder.Files[relA] = new RecordingFileStorage.Entry(99, DateTime.UtcNow.AddDays(-40));
 
@@ -571,8 +581,8 @@ public class ScreenshotPurgeTests
         using var db = testDb.MakeContext();
         var (ownerId, projectId) = await SeedTenantAsync(db);
         var signer = RealSigner();
-        var relLegacy = "uploads/global/p/x.png";
-        var relNew = "uploads/global/p/y.png";
+        var relLegacy = $"uploads/global/p/{Guid.NewGuid():N}.png";
+        var relNew = $"uploads/global/p/{Guid.NewGuid():N}.png";
         var recorder = new RecordingFileStorage();
         recorder.Files[relLegacy] = new RecordingFileStorage.Entry(5, DateTime.UtcNow.AddDays(-60));
         recorder.Files[relNew] = new RecordingFileStorage.Entry(5, DateTime.UtcNow.AddDays(-60));
@@ -625,7 +635,7 @@ public class ScreenshotPurgeTests
         using var db = testDb.MakeContext();
         var (ownerId, projectId) = await SeedTenantAsync(db);
         var signer = RealSigner();
-        var rel = $"uploads/{ownerId:N}/proj/a.png";
+        var rel = $"uploads/{ownerId:N}/proj/{Guid.NewGuid():N}.png";
         var recorder = new RecordingFileStorage();
         recorder.Files[rel] = new RecordingFileStorage.Entry(42, DateTime.UtcNow.AddDays(-40));
 
@@ -658,6 +668,60 @@ public class ScreenshotPurgeTests
         Assert.Null(row.ScreenshotPurgedAt);
     }
 
+    /// <summary>DB-16 review fix #10 (NIT): the dry-run log's file(s) count must reflect only rows
+    /// whose file actually has bytes (size &gt; 0) — a row whose file is already missing (size 0)
+    /// would-purge as a COMMENT but is not a FILE, matching the real (non-dry-run) branch's
+    /// filesDeleted semantics, which only increments on size &gt; 0.</summary>
+    [Fact]
+    public async Task PurgeDeleted_DryRun_LogsFileCountSeparatelyFromRowCount()
+    {
+        using var testDb = new TestDb();
+        using var db = testDb.MakeContext();
+        var (ownerId, projectId) = await SeedTenantAsync(db);
+        var signer = RealSigner();
+
+        var relWithBytes = $"uploads/{ownerId:N}/proj/{Guid.NewGuid():N}.png";
+        var relMissing = $"uploads/{ownerId:N}/proj/{Guid.NewGuid():N}.png"; // never added to recorder.Files
+        var recorder = new RecordingFileStorage();
+        recorder.Files[relWithBytes] = new RecordingFileStorage.Entry(42, DateTime.UtcNow.AddDays(-40));
+
+        await AddCommentAsync(
+            db,
+            projectId,
+            ownerId,
+            signer.SignedUrl(relWithBytes),
+            deletedAt: DateTime.UtcNow.AddDays(-31)
+        );
+        await AddCommentAsync(
+            db,
+            projectId,
+            ownerId,
+            signer.SignedUrl(relMissing),
+            deletedAt: DateTime.UtcNow.AddDays(-31)
+        );
+
+        var logger = new ListLogger();
+        var options = DefaultOptions() with { ScreenshotPurgeDryRun = true };
+        var result = await ScreenshotPurge.PurgeDeletedAsync(
+            db,
+            recorder,
+            signer,
+            options,
+            DateTime.UtcNow,
+            logger,
+            CancellationToken.None
+        );
+
+        // Both rows "would purge" (WouldDelete counts rows), but only one names a file with bytes.
+        Assert.Equal(2, result.WouldDelete);
+        var infoEntry = Assert.Single(
+            logger.Entries,
+            e => e.Level == LogLevel.Information && e.Message.Contains("DRY RUN")
+        );
+        Assert.Contains("2 comment(s)", infoEntry.Message);
+        Assert.Contains("1 file(s)", infoEntry.Message);
+    }
+
     [Fact]
     public async Task PurgeDeleted_DoesNotTouchUpdatedBy()
     {
@@ -665,7 +729,7 @@ public class ScreenshotPurgeTests
         using var db = testDb.MakeContext();
         var (ownerId, projectId) = await SeedTenantAsync(db);
         var signer = RealSigner();
-        var rel = $"uploads/{ownerId:N}/proj/a.png";
+        var rel = $"uploads/{ownerId:N}/proj/{Guid.NewGuid():N}.png";
         var recorder = new RecordingFileStorage();
         recorder.Files[rel] = new RecordingFileStorage.Entry(10, DateTime.UtcNow.AddDays(-40));
 
@@ -759,9 +823,9 @@ public class ScreenshotPurgeTests
         var (ownerId, projectId) = await SeedTenantAsync(db);
         var signer = RealSigner();
 
-        var relA = $"uploads/{ownerId:N}/proj/a.png";
-        var relB = $"uploads/{ownerId:N}/proj/b.png";
-        var relC = $"uploads/{ownerId:N}/proj/c.png";
+        var relA = $"uploads/{ownerId:N}/proj/{Guid.NewGuid():N}.png";
+        var relB = $"uploads/{ownerId:N}/proj/{Guid.NewGuid():N}.png";
+        var relC = $"uploads/{ownerId:N}/proj/{Guid.NewGuid():N}.png";
 
         var recorder = new RecordingFileStorage();
         recorder.Segments.Add(ownerId.ToString("N"));
@@ -796,7 +860,7 @@ public class ScreenshotPurgeTests
         using var db = testDb.MakeContext();
         var (ownerId, projectId) = await SeedTenantAsync(db);
         var signer = RealSigner();
-        var rel = $"uploads/{ownerId:N}/proj/a.png";
+        var rel = $"uploads/{ownerId:N}/proj/{Guid.NewGuid():N}.png";
         var recorder = new RecordingFileStorage();
         recorder.Segments.Add(ownerId.ToString("N"));
         recorder.Files[rel] = new RecordingFileStorage.Entry(1, DateTime.UtcNow.AddDays(-10));
@@ -830,7 +894,7 @@ public class ScreenshotPurgeTests
         using var db = testDb.MakeContext();
         var (ownerId, projectId) = await SeedTenantAsync(db);
         var signer = RealSigner();
-        var rel = $"uploads/{ownerId:N}/proj/a.png";
+        var rel = $"uploads/{ownerId:N}/proj/{Guid.NewGuid():N}.png";
         var recorder = new RecordingFileStorage();
         recorder.Segments.Add(ownerId.ToString("N"));
         recorder.Files[rel] = new RecordingFileStorage.Entry(1, DateTime.UtcNow.AddDays(-10));
@@ -867,8 +931,8 @@ public class ScreenshotPurgeTests
         var (ownerB, _) = await SeedTenantAsync(db);
         var signer = RealSigner();
 
-        var relAx = $"uploads/{ownerA:N}/p/x.png";
-        var relBOld = $"uploads/{ownerB:N}/p/old.png";
+        var relAx = $"uploads/{ownerA:N}/p/{Guid.NewGuid():N}.png";
+        var relBOld = $"uploads/{ownerB:N}/p/{Guid.NewGuid():N}.png";
 
         var recorder = new RecordingFileStorage();
         recorder.Segments.Add(ownerA.ToString("N"));
@@ -897,8 +961,16 @@ public class ScreenshotPurgeTests
         Assert.Equal(2, result.Segments);
     }
 
+    /// <summary>
+    /// DB-16 review fix #3 (MEDIUM — orchestrator 2026-09-23: protect by path across owners). The
+    /// OLD per-folder design built each owner's reference set from `WHERE OwnerId == ownerA` only,
+    /// so B's forged reference to A's file was invisible to A's set and the file was deleted as an
+    /// "orphan" — exactly backwards: a forged/foreign reference must never make the sweep MORE
+    /// aggressive against the real owner's file. The safer rule protects the path regardless of
+    /// which row's OwnerId names it, and logs the mismatch instead of silently deleting.
+    /// </summary>
     [Fact]
-    public async Task OrphanSweep_ForgedForeignUrl_DoesNotProtectOrDelete()
+    public async Task OrphanSweep_ForgedForeignUrl_ProtectsAcrossOwners_LogsMismatch()
     {
         using var testDb = new TestDb();
         using var db = testDb.MakeContext();
@@ -906,7 +978,7 @@ public class ScreenshotPurgeTests
         var (ownerB, projectB) = await SeedTenantAsync(db);
         var signer = RealSigner();
 
-        var relAOld = $"uploads/{ownerA:N}/p/old.png";
+        var relAOld = $"uploads/{ownerA:N}/p/{Guid.NewGuid():N}.png";
         var recorder = new RecordingFileStorage();
         recorder.Segments.Add(ownerA.ToString("N"));
         recorder.Segments.Add(ownerB.ToString("N"));
@@ -915,19 +987,24 @@ public class ScreenshotPurgeTests
         // B's live comment forges a URL under A's folder.
         await AddCommentAsync(db, projectB, ownerB, signer.SignedUrl(relAOld), deletedAt: null);
 
+        var logger = new ListLogger();
         var result = await ScreenshotPurge.OrphanSweepAsync(
             db,
             recorder,
             signer,
             DefaultOptions(),
             DateTime.UtcNow,
-            NullLogger.Instance,
+            logger,
             CancellationToken.None
         );
 
-        // A's own reference set (OwnerId == A) never sees B's row, so the file is A's orphan.
-        Assert.Contains(relAOld, recorder.Deleted);
-        Assert.Equal(1, result.Orphans);
+        // The path is protected (by any row, regardless of OwnerId) — never deleted.
+        Assert.DoesNotContain(relAOld, recorder.Deleted);
+        Assert.Equal(0, result.Orphans);
+        Assert.Contains(
+            logger.Entries,
+            e => e.Level == LogLevel.Warning && e.Message.Contains("outside their own row's OwnerId folder")
+        );
     }
 
     [Fact]
@@ -937,7 +1014,7 @@ public class ScreenshotPurgeTests
         using var db = testDb.MakeContext();
         var (ownerId, _) = await SeedTenantAsync(db);
         var signer = RealSigner();
-        var rel = $"uploads/{ownerId:N}/p/old.png";
+        var rel = $"uploads/{ownerId:N}/p/{Guid.NewGuid():N}.png";
         var recorder = new RecordingFileStorage();
         recorder.Segments.Add(ownerId.ToString("N"));
         recorder.Files[rel] = new RecordingFileStorage.Entry(1, DateTime.UtcNow.AddDays(-10));
@@ -989,7 +1066,7 @@ public class ScreenshotPurgeTests
         using var db = testDb.MakeContext();
         var (ownerId, projectId) = await SeedTenantAsync(db);
         var signer = RealSigner();
-        var relGlobal = "uploads/global/p/x.png";
+        var relGlobal = $"uploads/global/p/{Guid.NewGuid():N}.png";
         var recorder = new RecordingFileStorage();
         recorder.Segments.Add("global");
         recorder.Files[relGlobal] = new RecordingFileStorage.Entry(7, DateTime.UtcNow.AddDays(-10));
@@ -1055,8 +1132,8 @@ public class ScreenshotPurgeTests
         using var db = testDb.MakeContext();
         var (ownerId, projectId) = await SeedTenantAsync(db);
         var signer = RealSigner();
-        var relProtected = "uploads/global/p/x.png";
-        var relOrphan = "uploads/global/p/y.png";
+        var relProtected = $"uploads/global/p/{Guid.NewGuid():N}.png";
+        var relOrphan = $"uploads/global/p/{Guid.NewGuid():N}.png";
         var recorder = new RecordingFileStorage();
         recorder.Segments.Add("global");
         recorder.Files[relProtected] = new RecordingFileStorage.Entry(1, DateTime.UtcNow.AddDays(-10));
@@ -1119,5 +1196,52 @@ public class ScreenshotPurgeTests
             CancellationToken.None
         );
         Assert.Empty(recorder.EmptyFolderCalls);
+    }
+
+    /// <summary>
+    /// DB-16 review fix #4 (MEDIUM): one owner folder that fails mid-enumeration (a broken symlink,
+    /// a permissions error) must not abort the whole sweep — the OTHER owner's folder is still
+    /// processed, and the broken one is counted as a failure rather than crashing the pass.
+    /// </summary>
+    [Fact]
+    public async Task OrphanSweep_OneFolderThrowsMidEnumeration_OtherFolderStillProcessed()
+    {
+        using var testDb = new TestDb();
+        using var db = testDb.MakeContext();
+        var (ownerA, _) = await SeedTenantAsync(db);
+        var (ownerB, projectB) = await SeedTenantAsync(db);
+        var signer = RealSigner();
+
+        var relABroken1 = $"uploads/{ownerA:N}/proj/{Guid.NewGuid():N}.png";
+        var relABroken2 = $"uploads/{ownerA:N}/proj/{Guid.NewGuid():N}.png";
+        var relBOrphan = $"uploads/{ownerB:N}/proj/{Guid.NewGuid():N}.png";
+
+        var recorder = new RecordingFileStorage { ThrowForSegment = ownerA.ToString("N") };
+        recorder.Segments.Add(ownerA.ToString("N"));
+        recorder.Segments.Add(ownerB.ToString("N"));
+        recorder.Files[relABroken1] = new RecordingFileStorage.Entry(1, DateTime.UtcNow.AddDays(-10));
+        recorder.Files[relABroken2] = new RecordingFileStorage.Entry(1, DateTime.UtcNow.AddDays(-10));
+        recorder.Files[relBOrphan] = new RecordingFileStorage.Entry(1, DateTime.UtcNow.AddDays(-10));
+
+        // ownerB's file is a genuine orphan (nothing references it) and must still be swept even
+        // though ownerA's folder blew up.
+        _ = projectB;
+
+        var result = await ScreenshotPurge.OrphanSweepAsync(
+            db,
+            recorder,
+            signer,
+            DefaultOptions(),
+            DateTime.UtcNow,
+            NullLogger.Instance,
+            CancellationToken.None
+        );
+
+        Assert.Contains(relBOrphan, recorder.Deleted);
+        Assert.Equal(1, result.Orphans);
+        Assert.True(result.Failures >= 1);
+        // Both segments were attempted (segmentsProcessed counts entry into the loop body, not
+        // successful completion).
+        Assert.Equal(2, result.Segments);
     }
 }

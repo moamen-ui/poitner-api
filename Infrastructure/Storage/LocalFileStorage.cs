@@ -20,6 +20,20 @@ public class LocalFileStorage(IWebHostEnvironment env, IUploadSigner signer) : I
     /// the same guard <c>DeleteAsync</c> always had, now shared by every single-file member.
     /// Returns false (with <paramref name="resolved"/> = "") when the path is empty, unparsable, or
     /// escapes wwwroot/uploads.
+    ///
+    /// DB-16 review fix #1 (BLOCKER): three independent guards, all required —
+    ///   (1) <see cref="IUploadSigner.ExtractRelPath"/> applied to the already-decoded value must be
+    ///       a no-op. A value that decodes differently a second time (a nested/double-encoded signed
+    ///       URL) is refused outright rather than silently decoded again.
+    ///   (2) The once-decoded value must be <see cref="UploadPaths.IsCanonical"/> — the exact
+    ///       uploads/&lt;owner&gt;/&lt;project&gt;/&lt;file&gt; shape, with no dot-dot segment,
+    ///       backslash, or leftover percent-encoding. This alone rejects every "escape the owner
+    ///       prefix via traversal" vector, because a path a naive prefix check would call "owned"
+    ///       can never also be canonical once it contains "..".
+    ///   (3) Belt-and-braces: after <c>Path.GetFullPath</c> normalizes the combined path, re-express
+    ///       the result relative to web root with forward slashes and require it be byte-for-byte
+    ///       the canonical value we started with — so no OS-specific normalization quirk could have
+    ///       taken us somewhere <see cref="UploadPaths.IsCanonical"/> didn't examine.
     /// </summary>
     private bool TryResolve(string relativePathOrUrl, out string resolved)
     {
@@ -28,17 +42,27 @@ public class LocalFileStorage(IWebHostEnvironment env, IUploadSigner signer) : I
             return false;
 
         var decoded = signer.ExtractRelPath(relativePathOrUrl);
-        var idx = decoded.IndexOf("uploads/", StringComparison.OrdinalIgnoreCase);
-        if (idx < 0)
+
+        // Guard (1): no second decode.
+        if (signer.ExtractRelPath(decoded) != decoded)
             return false;
-        var rel = decoded[idx..].Replace('\\', '/').TrimStart('/');
+
+        // Guard (2): exact canonical shape.
+        if (!UploadPaths.IsCanonical(decoded))
+            return false;
 
         var webRoot = WebRoot();
-        var fullPath = Path.Combine(webRoot, rel.Replace('/', Path.DirectorySeparatorChar));
+        var fullPath = Path.Combine(webRoot, decoded.Replace('/', Path.DirectorySeparatorChar));
         var uploadsRoot = UploadsRoot();
         var candidate = Path.GetFullPath(fullPath);
 
         if (!candidate.StartsWith(uploadsRoot + Path.DirectorySeparatorChar, StringComparison.Ordinal))
+            return false;
+
+        // Guard (3): the normalized absolute path, re-expressed relative to web root, must be
+        // exactly the canonical value — never a different path that merely stayed inside uploads/.
+        var relFromRoot = Path.GetRelativePath(webRoot, candidate).Replace(Path.DirectorySeparatorChar, '/');
+        if (!string.Equals(relFromRoot, decoded, StringComparison.Ordinal))
             return false;
 
         resolved = candidate;
@@ -55,7 +79,27 @@ public class LocalFileStorage(IWebHostEnvironment env, IUploadSigner signer) : I
         var fileName = $"{Guid.NewGuid():N}{extension}";
         var fullPath = Path.Combine(folder, fileName);
 
-        await using (var stream = new FileStream(fullPath, FileMode.Create, FileAccess.Write))
+        // DB-16 review fix #8: the orphan sweep's DeleteEmptyProjectFoldersAsync can race this call
+        // — it may see this exact folder empty and remove it in the window between the
+        // CreateDirectory above and the FileStream open below, since nothing has been written into
+        // it yet. Retry the create-and-open once on IOException (the parent folder vanishing
+        // mid-open surfaces as DirectoryNotFoundException on Windows but as a plain IOException,
+        // e.g. errno EINVAL/ENOENT wrapped generically, on Linux/macOS — DirectoryNotFoundException
+        // IS an IOException, so catching the base type is the portable choice; production runs in
+        // Docker on Linux, DEPLOY.md). The FileStream constructor is what actually touches disk;
+        // content is never read before it succeeds, so a retry from scratch is safe.
+        FileStream stream;
+        try
+        {
+            stream = new FileStream(fullPath, FileMode.Create, FileAccess.Write);
+        }
+        catch (IOException)
+        {
+            Directory.CreateDirectory(folder);
+            stream = new FileStream(fullPath, FileMode.Create, FileAccess.Write);
+        }
+
+        await using (stream)
         {
             await content.CopyToAsync(stream);
         }
@@ -99,10 +143,11 @@ public class LocalFileStorage(IWebHostEnvironment env, IUploadSigner signer) : I
         return Task.CompletedTask;
     }
 
-    public Task<bool> ExistsAsync(string relativePath)
+    public Task<bool?> ExistsAsync(string relativePath)
     {
-        var exists = TryResolve(relativePath, out var resolved) && File.Exists(resolved);
-        return Task.FromResult(exists);
+        if (!TryResolve(relativePath, out var resolved))
+            return Task.FromResult<bool?>(null);
+        return Task.FromResult<bool?>(File.Exists(resolved));
     }
 
     public Task<long> SizeAsync(string relativePath)
@@ -134,10 +179,15 @@ public class LocalFileStorage(IWebHostEnvironment env, IUploadSigner signer) : I
 
         await Task.CompletedTask;
 
+        // DB-16 review fix #4: IgnoreInaccessible so one unreadable sub-entry doesn't blow up the
+        // whole enumeration; the caller (OrphanSweepAsync) additionally wraps its consumption of
+        // this sequence in a try/catch per owner folder, since Directory.EnumerateFiles is lazy —
+        // an error deeper in the tree surfaces on a later MoveNext, not on this call.
+        var options = new EnumerationOptions { RecurseSubdirectories = true, IgnoreInaccessible = true };
         IEnumerable<string> files;
         try
         {
-            files = Directory.EnumerateFiles(ownerDir, "*", SearchOption.AllDirectories);
+            files = Directory.EnumerateFiles(ownerDir, "*", options);
         }
         catch
         {

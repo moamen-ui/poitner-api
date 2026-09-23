@@ -69,7 +69,8 @@ public class LocalFileStorageTests : IDisposable
     public async Task DeleteAsync_AcceptsSignedUrl()
     {
         var owner = Guid.NewGuid().ToString("N");
-        var rel = WriteFile(owner, "proj", "a.webp");
+        var fileName = $"{Guid.NewGuid():N}.webp";
+        var rel = WriteFile(owner, "proj", fileName);
 
         var signer = new UploadSigner(
             new ConfigurationBuilder()
@@ -83,22 +84,23 @@ public class LocalFileStorageTests : IDisposable
         );
         var signedUrl = signer.SignedUrl(rel);
 
-        Assert.True(File.Exists(Path.Combine(_tempRoot, "uploads", owner, "proj", "a.webp")));
+        Assert.True(File.Exists(Path.Combine(_tempRoot, "uploads", owner, "proj", fileName)));
 
         await _storage.DeleteAsync(signedUrl);
 
-        Assert.False(File.Exists(Path.Combine(_tempRoot, "uploads", owner, "proj", "a.webp")));
+        Assert.False(File.Exists(Path.Combine(_tempRoot, "uploads", owner, "proj", fileName)));
     }
 
     [Fact]
     public async Task DeleteAsync_AcceptsRawRelPath()
     {
         var owner = Guid.NewGuid().ToString("N");
-        var rel = WriteFile(owner, "proj", "b.webp");
+        var fileName = $"{Guid.NewGuid():N}.webp";
+        var rel = WriteFile(owner, "proj", fileName);
 
         await _storage.DeleteAsync(rel);
 
-        Assert.False(File.Exists(Path.Combine(_tempRoot, "uploads", owner, "proj", "b.webp")));
+        Assert.False(File.Exists(Path.Combine(_tempRoot, "uploads", owner, "proj", fileName)));
     }
 
     [Fact]
@@ -110,6 +112,95 @@ public class LocalFileStorageTests : IDisposable
         await _storage.DeleteAsync("uploads/../appsettings.json");
 
         Assert.True(File.Exists(appSettingsPath));
+    }
+
+    // ── DB-16 review fix #1 (BLOCKER): ownership-check-bypass vectors, at the storage layer ──
+    // A crafted path can make a naive `StartsWith("uploads/{owner}/")` ownership check pass while
+    // still resolving (via Path.GetFullPath) to a file outside that owner's folder. Each vector here
+    // targets ownerA's own folder in its literal prefix but tries to escape into ownerB's folder (or
+    // branding/) once resolved. All five must leave the victim file untouched.
+
+    [Fact]
+    public async Task DeleteAsync_RejectsDotDot_AcrossOwners()
+    {
+        var ownerA = Guid.NewGuid().ToString("N");
+        var ownerB = Guid.NewGuid().ToString("N");
+        var victimFile = $"{Guid.NewGuid():N}.png";
+        var victim = WriteFile(ownerB, "proj", victimFile);
+
+        var crafted = $"uploads/{ownerA}/../{ownerB}/proj/{victimFile}";
+        Assert.StartsWith($"uploads/{ownerA}/", crafted, StringComparison.Ordinal);
+
+        await _storage.DeleteAsync(crafted);
+
+        Assert.True(File.Exists(Path.Combine(_tempRoot, "uploads", ownerB, "proj", victimFile)));
+        Assert.Equal(victim, $"uploads/{ownerB}/proj/{victimFile}");
+    }
+
+    [Fact]
+    public async Task DeleteAsync_RejectsEncodedDotDot_AcrossOwners()
+    {
+        var ownerA = Guid.NewGuid().ToString("N");
+        var ownerB = Guid.NewGuid().ToString("N");
+        var victimFile = $"{Guid.NewGuid():N}.png";
+        WriteFile(ownerB, "proj", victimFile);
+
+        var innerRel = $"uploads/{ownerA}/../{ownerB}/proj/{victimFile}";
+        var crafted = "/api/uploads/file?p=" + Uri.EscapeDataString(innerRel) + "&exp=99999999999&sig=x";
+
+        await _storage.DeleteAsync(crafted);
+
+        Assert.True(File.Exists(Path.Combine(_tempRoot, "uploads", ownerB, "proj", victimFile)));
+    }
+
+    [Fact]
+    public async Task DeleteAsync_RejectsBackslash_AcrossOwners()
+    {
+        var ownerA = Guid.NewGuid().ToString("N");
+        var ownerB = Guid.NewGuid().ToString("N");
+        var victimFile = $"{Guid.NewGuid():N}.png";
+        WriteFile(ownerB, "proj", victimFile);
+
+        var crafted = $"uploads/{ownerA}/..\\{ownerB}\\proj\\{victimFile}";
+        Assert.StartsWith($"uploads/{ownerA}/", crafted, StringComparison.Ordinal);
+
+        await _storage.DeleteAsync(crafted);
+
+        Assert.True(File.Exists(Path.Combine(_tempRoot, "uploads", ownerB, "proj", victimFile)));
+    }
+
+    [Fact]
+    public async Task DeleteAsync_RejectsNestedSignedUrl_DoubleDecode()
+    {
+        var ownerB = Guid.NewGuid().ToString("N");
+        var victimFile = $"{Guid.NewGuid():N}.png";
+        WriteFile(ownerB, "proj", victimFile);
+
+        var innerRel = $"uploads/{ownerB}/proj/{victimFile}";
+        var nestedSignedUrl = "/api/uploads/file?p=" + Uri.EscapeDataString(innerRel) + "&exp=99999999999&sig=x";
+        var crafted =
+            "/api/uploads/file?p=" + Uri.EscapeDataString(nestedSignedUrl) + "&exp=99999999999&sig=y";
+
+        await _storage.DeleteAsync(crafted);
+
+        Assert.True(File.Exists(Path.Combine(_tempRoot, "uploads", ownerB, "proj", victimFile)));
+    }
+
+    [Fact]
+    public async Task DeleteAsync_RejectsTraversalIntoBranding()
+    {
+        var ownerA = Guid.NewGuid().ToString("N");
+        var brandingDir = Path.Combine(_tempRoot, "uploads", "branding");
+        Directory.CreateDirectory(brandingDir);
+        var logoPath = Path.Combine(brandingDir, "logo.png");
+        File.WriteAllText(logoPath, "logo-bytes");
+
+        var crafted = $"uploads/{ownerA}/../branding/logo.png";
+        Assert.StartsWith($"uploads/{ownerA}/", crafted, StringComparison.Ordinal);
+
+        await _storage.DeleteAsync(crafted);
+
+        Assert.True(File.Exists(logoPath));
     }
 
     [Fact]
@@ -146,15 +237,25 @@ public class LocalFileStorageTests : IDisposable
     public async Task ExistsAsync_SizeAsync_RoundTrip()
     {
         var owner = Guid.NewGuid().ToString("N");
-        var rel = WriteFile(owner, "proj", "c.webp", "abcde");
+        var rel = WriteFile(owner, "proj", $"{Guid.NewGuid():N}.webp", "abcde");
 
-        Assert.True(await _storage.ExistsAsync(rel));
+        Assert.Equal(true, await _storage.ExistsAsync(rel));
         Assert.Equal(5, await _storage.SizeAsync(rel));
 
         await _storage.DeleteAsync(rel);
 
-        Assert.False(await _storage.ExistsAsync(rel));
+        // DB-16 review fix #2: a resolved-but-missing file is a confirmed `false`, never null.
+        Assert.Equal(false, await _storage.ExistsAsync(rel));
         Assert.Equal(0, await _storage.SizeAsync(rel));
+    }
+
+    [Fact]
+    public async Task ExistsAsync_NonCanonicalPath_ReturnsNull()
+    {
+        // DB-16 review fix #2: an unresolvable/non-canonical path is neither confirmed present nor
+        // absent — null, not false — so a caller never mistakes "couldn't check" for "gone".
+        Assert.Null(await _storage.ExistsAsync("uploads/../appsettings.json"));
+        Assert.Null(await _storage.ExistsAsync("not-even-an-uploads-path"));
     }
 
     [Fact]
@@ -182,5 +283,58 @@ public class LocalFileStorageTests : IDisposable
         Assert.True(Directory.Exists(nonEmptyDir));
         // Never the owner folder itself.
         Assert.True(Directory.Exists(Path.Combine(_tempRoot, "uploads", owner)));
+    }
+
+    /// <summary>
+    /// DB-16 review fix #8 (LOW): the orphan sweep's DeleteEmptyProjectFoldersAsync can race
+    /// SaveAsync — it may see the destination project folder empty and remove it in the window
+    /// between SaveAsync's own Directory.CreateDirectory and its FileStream open, since nothing has
+    /// been written into it yet. Drives genuine concurrent contention (a background task
+    /// aggressively deleting the empty project folder while the foreground repeatedly calls
+    /// SaveAsync into it) — without the retry-once-on-DirectoryNotFoundException fix, this
+    /// reliably throws within a few hundred iterations; with it, every call succeeds.
+    /// </summary>
+    [Fact]
+    public async Task SaveAsync_SurvivesConcurrentEmptyFolderDeletion()
+    {
+        var owner = Guid.NewGuid().ToString("N");
+        const string project = "proj";
+        var projectDir = Path.Combine(_tempRoot, "uploads", owner, project);
+        Directory.CreateDirectory(projectDir);
+
+        using var cts = new CancellationTokenSource();
+        var deleterTask = Task.Run(() =>
+        {
+            while (!cts.IsCancellationRequested)
+            {
+                try
+                {
+                    // Only remove it when empty — mirrors DeleteEmptyProjectFoldersAsync's own
+                    // EnumerateFileSystemEntries().Any() guard; a real SaveAsync in flight (file
+                    // partially written) must not be clobbered, only the empty-folder race matters.
+                    if (Directory.Exists(projectDir) && !Directory.EnumerateFileSystemEntries(projectDir).Any())
+                        Directory.Delete(projectDir);
+                }
+                catch { /* lost the race against a concurrent CreateDirectory/write — fine, retry */ }
+            }
+        });
+
+        try
+        {
+            for (var i = 0; i < 300; i++)
+            {
+                using var content = new MemoryStream(new byte[] { 1, 2, 3, 4 });
+                var rel = await _storage.SaveAsync(owner, project, content, ".png");
+                Assert.True(
+                    File.Exists(Path.Combine(_tempRoot, rel.Replace('/', Path.DirectorySeparatorChar))),
+                    $"iteration {i}: SaveAsync returned a path that does not exist on disk"
+                );
+            }
+        }
+        finally
+        {
+            cts.Cancel();
+            await deleterTask;
+        }
     }
 }

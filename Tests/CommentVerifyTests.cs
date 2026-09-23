@@ -205,7 +205,7 @@ public class CommentVerifyTests
         var db = Guid.NewGuid().ToString();
         var tenant = Guid.NewGuid();
         var authorId = Guid.NewGuid();
-        var rel = $"uploads/{tenant:N}/proj/a.png";
+        var rel = $"uploads/{tenant:N}/proj/{Guid.NewGuid():N}.png";
         var commentId = SeedCommentWithScreenshot(db, tenant, authorId, rel);
 
         var author = new FakeCurrentUser { Id = authorId, TenantId = tenant };
@@ -226,7 +226,7 @@ public class CommentVerifyTests
         var tenant = Guid.NewGuid();
         var foreignOwner = Guid.NewGuid();
         var authorId = Guid.NewGuid();
-        var rel = $"uploads/{foreignOwner:N}/proj/a.png";
+        var rel = $"uploads/{foreignOwner:N}/proj/{Guid.NewGuid():N}.png";
         var commentId = SeedCommentWithScreenshot(db, tenant, authorId, rel);
 
         var author = new FakeCurrentUser { Id = authorId, TenantId = tenant };
@@ -246,7 +246,7 @@ public class CommentVerifyTests
         var db = Guid.NewGuid().ToString();
         var tenant = Guid.NewGuid();
         var authorId = Guid.NewGuid();
-        var rel = $"uploads/{tenant:N}/proj/a.png";
+        var rel = $"uploads/{tenant:N}/proj/{Guid.NewGuid():N}.png";
         var commentId = SeedCommentWithScreenshot(db, tenant, authorId, rel);
 
         var author = new FakeCurrentUser { Id = authorId, TenantId = tenant };

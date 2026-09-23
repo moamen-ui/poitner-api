@@ -1029,12 +1029,23 @@ public class CommentService : ICommentService
         // Optionally remove the uploaded screenshot (clear the reference + delete the file).
         // DB-16 (Opus #1): ScreenshotUrl is author-supplied at create time (CommentService.cs:1326)
         // — without this check an author could delete another workspace's file by editing their own
-        // comment to name it. The URL is nulled either way; a foreign path is simply not deleted.
+        // comment to name it. The URL is nulled either way; a foreign OR non-canonical path
+        // (review fix #1, BLOCKER: dot-dot, encoded dot-dot, backslash, a nested/double-decoded
+        // signed URL, "../branding/..." can all make a plain StartsWith prefix check pass while
+        // still resolving outside the owner's folder) is simply not deleted.
+        // DB-16 review fix #6 (LOW): compute the delete decision now, but don't touch the
+        // filesystem until AFTER SaveChangesAsync below succeeds — a failed save must never leave
+        // a file deleted while the row still names it.
+        string? screenshotRelToDelete = null;
         if (request.RemoveScreenshot && !string.IsNullOrEmpty(comment.Element.ScreenshotUrl))
         {
             var rel = _uploadSigner.ExtractRelPath(comment.Element.ScreenshotUrl!);
-            if (comment.OwnerId is Guid o && rel.StartsWith($"uploads/{o:N}/", StringComparison.Ordinal))
-                await _fileStorage.DeleteAsync(rel);
+            if (
+                UploadPaths.IsCanonical(rel)
+                && comment.OwnerId is Guid o
+                && rel.StartsWith($"uploads/{o:N}/", StringComparison.Ordinal)
+            )
+                screenshotRelToDelete = rel;
             comment.Element.ScreenshotUrl = null;
         }
 
@@ -1043,6 +1054,9 @@ public class CommentService : ICommentService
 
         _unitOfWork.Repository<Comment>().Update(comment);
         await _unitOfWork.SaveChangesAsync();
+
+        if (screenshotRelToDelete != null)
+            await _fileStorage.DeleteAsync(screenshotRelToDelete);
 
         var editNames = await ResolveNamesAsync(AuthorIds(comment));
         var editFieldDefs = await _commentFields.GetDefinitionsForOwnerAsync(

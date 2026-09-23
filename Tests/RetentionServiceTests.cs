@@ -717,4 +717,32 @@ public class RetentionServiceTests
         Assert.Equal(7, options.DeletedCommentScreenshotDays);
         Assert.Equal(12, options.UploadOrphanGraceHours);
     }
+
+    /// <summary>DB-16 review fix #9 (LOW): unset defaults to true (D16.6 — first release ships in
+    /// dry-run) — must not accidentally default to false or start deleting on a fresh deploy.</summary>
+    [Fact]
+    public void BindOptions_ScreenshotPurgeDryRun_UnsetDefaultsTrue()
+    {
+        var config = new ConfigurationBuilder().AddInMemoryCollection(
+            new Dictionary<string, string?>()
+        ).Build();
+
+        var options = RetentionService.BindOptions(config);
+
+        Assert.True(options.ScreenshotPurgeDryRun);
+    }
+
+    [Fact]
+    public void BindOptions_ScreenshotPurgeDryRun_ExplicitFalse_IsHonored()
+    {
+        var config = new ConfigurationBuilder()
+            .AddInMemoryCollection(
+                new Dictionary<string, string?> { ["Retention:ScreenshotPurgeDryRun"] = "false" }
+            )
+            .Build();
+
+        var options = RetentionService.BindOptions(config);
+
+        Assert.False(options.ScreenshotPurgeDryRun);
+    }
 }

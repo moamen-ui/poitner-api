@@ -201,6 +201,11 @@ enumerates `Directory.EnumerateFiles(ownerDir, "*", SearchOption.AllDirectories)
 Purpose: files on disk that no comment references — failed comment posts after a successful upload, rows hard-deleted by paths that never called
 `DeleteAsync` (B1 for every "remove screenshot" ever clicked), workspaces deleted before `DeleteOwnerFilesAsync` existed, and any future miss.
 
+**Orchestrator 2026-09-23 (review fix #3):** protect by path across owners — the per-owner reference set below (built from `WHERE OwnerId ==
+ownerId`) is superseded by a single global protected set of canonical decoded paths built from every live-or-unpurged comment regardless of that
+row's OwnerId; a foreign/forged reference now protects the path instead of leaving it invisible to the real owner's set. Cross-owner mismatches and
+non-canonical referenced paths are counted and logged (Warning) rather than silently allowed to delete. See `API/Hosted/ScreenshotPurge.cs`.
+
 1. `if (o.UploadOrphanGraceHours <= 0) skip (log)`. `graceCutoff = nowUtc.AddHours(-o.UploadOrphanGraceHours)`. Default **48 h** (D16.2): an upload
    precedes its comment POST by seconds, but a widget left open with a captured screenshot, a browser crash, or a retry can stretch that; 48 h is
    generous and still bounds the leak.
@@ -468,3 +473,5 @@ was written — 76 migrations, newest `20260923102053_AddOperatorMfa`; none of t
 | Opus DB-16 #9 (LOW) | `SCHEMA.md` has no row counts | **Accepted** — §9 step 1 is the source of numbers | §3.1 |
 | Opus DB-16 #10 (NIT) | `Erase_KeepsScreenshotFile` is at `DeletionSemanticsTests.cs:1168`; DSAR's own citations stale | **Accepted** — citation fixed; task 9 refreshes DSAR's internal `CommentService` line numbers | §6 test 12, §5 task 9 |
 | Gemini Pro DB-16 #1 (NIT) | Use `Directory.EnumerateFileSystemEntries(dir).Any()` before deleting an empty directory | **Accepted** (folded into the Opus #6 relocation) | §3.3 step 6 |
+| **Cross-review 2026-09-23 (BLOCKER)** | A crafted screenshot path (dot-dot, encoded dot-dot, backslash, a nested/double-decoded signed URL, `../branding/...`) escapes the `StartsWith("uploads/{ownerId:N}/")` ownership check by literal string prefix while `Path.GetFullPath` resolves it outside that owner's folder | **Accepted** — `Application/Abstractions/UploadPaths.IsCanonical` (exact `uploads/<owner>/<project>/<file>` shape) gates every delete site BEFORE the ownership check, plus a no-second-decode + post-resolve exact-match guard in `LocalFileStorage.TryResolve` | §3.2 step 2, §3.4, `Tests/UploadTraversalBlockerTests.cs`, `Tests/LocalFileStorageTests.cs` |
+| Orchestrator 2026-09-23 (MEDIUM) | Orphan sweep trusted `owner_id == folder`, so a forged/foreign reference to a path didn't protect it | **Accepted** — protect by path across owners: one global protected set from every live-or-unpurged row's canonical path regardless of `OwnerId`; cross-owner mismatches logged (Warning) | §3.3 (orchestrator note above), `Tests/ScreenshotPurgeTests.cs OrphanSweep_ForgedForeignUrl_ProtectsAcrossOwners_LogsMismatch` |
