@@ -63,13 +63,9 @@ async function createClientComment(clientToken: string, body: string): Promise<n
   return created.id;
 }
 
-// Widget Updates button intentionally hidden since 61004ac (toolbar polish, 2026-09-22);
-// notifications have no widget entry point until the founder decides (see
-// docs/roadmap/execution/R5-00-INDEX.md follow-ups). Re-enable when #fbk-updates is visible
-// again.
 test.describe('R2-04: In-app notifications and author verify loop', () => {
 
-  test.fixme('R2-04-01 — notify: applied shows badge to author', async ({ page }) => {
+  test('R2-04-01 — notify: applied shows badge to author', async ({ page }) => {
     const client = await loginClient({ post, login });
     const dev = await login(credentials().developer.email, credentials().developer.password);
 
@@ -121,7 +117,7 @@ test.describe('R2-04: In-app notifications and author verify loop', () => {
       .toBeGreaterThan(0);
   });
 
-  test.fixme('R2-04-02 ⛓ — notify: thumbs-down reopens with note', async ({ page }) => {
+  test('R2-04-02 ⛓ — notify: thumbs-down reopens with note', async ({ page }) => {
     const client = await loginClient({ post, login });
     const dev = await login(credentials().developer.email, credentials().developer.password);
 
@@ -172,7 +168,7 @@ test.describe('R2-04: In-app notifications and author verify loop', () => {
     await expect(card.locator('.fbk-replies')).toContainText('Not fixed: Still broken on mobile viewport');
   });
 
-  test.fixme('R2-04-03 ⛓ — notify: read-all clears badge', async ({ page }) => {
+  test('R2-04-03 ⛓ — notify: read-all clears badge', async ({ page }) => {
     const client = await loginClient({ post, login });
     const dev = await login(credentials().developer.email, credentials().developer.password);
 

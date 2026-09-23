@@ -80,12 +80,16 @@ Per the final report's Sequence (§3, step 5–6) and this review's dependency f
   scheduled-clean-up behaviour; implement it as **DB-16** before demo-public.
 - Export DTO drops custom fields, page-context snapshots and predefined-action links
   (`Application/DTOs/Export/CommentExportDto.cs`) — portability gap, track with DB-16 or a small R5 item.
-- **Widget Updates button hidden (open item):** `61004ac` intentionally hid the Updates button in the widget, leaving notifications unreachable in the widget UI (R2-04 notification e2e specs set to `fixme`). Founder decision pending on whether / when to un-hide or redesign the notification surface.
+- ~~**Widget Updates button hidden (open item):** `61004ac` intentionally hid the Updates button in the widget, leaving notifications unreachable in the widget UI (R2-04 notification e2e specs set to `fixme`). Founder decision pending on whether / when to un-hide or redesign the notification surface.~~
+  **Resolved 2026-09-23** — founder decision: show the bell again. `#fbk-updates` un-hidden (now
+  conditionally rendered alongside `#fbk-user`, signed-in only, matching the anonymous-visitor
+  pattern); R2-04-01/02/03 e2e specs restored from `fixme` to `test`. See Shipped table below.
 
 ## Shipped 2026-09-23
 
 | Item | Commit | Live / verified |
 |---|---|---|
+| Widget Updates bell re-enabled (R2-04) | (this commit) | `#fbk-updates` un-hidden for signed-in users; widget rebuilt (gzip within 67,584 B budget); R2-04-01/02/03 e2e specs re-enabled |
 | R5-67 tenant-isolation CI probe | `86656df` | Green in CI (23 tests) since run 35789122040 |
 | R5-60 restore drill | `58f0fe7` | **Drilled on production 2026-09-23** — 4 s, users/comments/projects/replies/migrations matched live, scratch dropped |
 | R5-59 headers + login limit | `5a37117`, `c55dc46`, **§12 amendment** `6ca148b`, **hardening** `bc5e9b4` | Verified live: 10×400 → 429 with `Retry-After: 900`; other e-mail unaffected. `bc5e9b4` (GLM review M1/F5/F6/F7): 254-char e-mail cap, SHA-256 cache key, 64 KB login body limit, validated `X-Request-Id`, pseudonymous mail-log recipients. CSP report-only (enforcement and F3/F4 are follow-ups) |

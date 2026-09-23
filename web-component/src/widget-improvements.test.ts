@@ -101,10 +101,24 @@ describe('widget improvements', () => {
   });
 
   describe('templates', () => {
-    it('renders chrome with fbk-hidden on #fbk-updates', () => {
+    it('renders chrome with #fbk-updates visible (not fbk-hidden) for a signed-in user', () => {
       const html = TPL.chrome('User', 'Admin');
       expect(html).toContain('id="fbk-updates"');
-      expect(html).toMatch(/class="[^"]*fbk-toolbar-btn--icon[^"]*fbk-hidden[^"]*"[^>]*id="fbk-updates"/);
+      expect(html).not.toMatch(/class="[^"]*fbk-hidden[^"]*"[^>]*id="fbk-updates"/);
+    });
+
+    it('does not render #fbk-updates for a signed-out visitor (no displayName)', () => {
+      const html = TPL.chrome('', '');
+      expect(html).not.toContain('id="fbk-updates"');
+    });
+
+    it('toggles the unread dot on #fbk-notify-count with the unread count', () => {
+      const withUnread = TPL.chrome('User', 'Admin', '', '', 3);
+      expect(withUnread).toMatch(/id="fbk-notify-count"/);
+      expect(withUnread).not.toMatch(/class="fbk-toolbar-dot fbk-hidden"[^>]*id="fbk-notify-count"/);
+
+      const withoutUnread = TPL.chrome('User', 'Admin', '', '', 0);
+      expect(withoutUnread).toMatch(/class="fbk-toolbar-dot fbk-hidden"[^>]*id="fbk-notify-count"/);
     });
 
     it('renders card with fbk-text-clamped and toggle-read-more button inside fbk-text', () => {
