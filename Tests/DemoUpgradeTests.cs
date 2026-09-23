@@ -239,7 +239,7 @@ public class DemoUpgradeTests
     [Fact]
     public async Task Upgrade_EmitsWorkspaceConverted_Once()
     {
-        var (svc, db, _) = Build(nameof(Upgrade_EmitsWorkspaceConverted_Once));
+        var (svc, db, _, _) = Build(nameof(Upgrade_EmitsWorkspaceConverted_Once));
         var demo = SeedDemoUser(db);
 
         var first = await svc.UpgradeAsync(demo.PublicId, ValidRequest("permanent@user.com"));
