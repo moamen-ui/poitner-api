@@ -397,15 +397,21 @@ public class AuthService : IAuthService
                     // session token is actually issued (below, or in SwitchWorkspaceAsync once a
                     // workspace is chosen).
                     var choices = await BuildWorkspaceChoicesAsync(candidates, user.OwnerId);
-                    return Result<LoginResponse>.Failure(
-                        MessageKeys.Auth.ChooseWorkspace,
+                    // DB-11b §3.1: returned as a SUCCESS envelope (HTTP 200), not a failure — the
+                    // credentials were verified and a selection token was issued. The dashboard's
+                    // generated client rejects any envelope with isSuccess==false before its caller
+                    // ever sees `status`, and a bearer token has no business living in a 4xx body
+                    // that proxies/error loggers may capture. The widget and CLI already branch on
+                    // `status` (not HTTP status), so this changes nothing for them.
+                    return Result<LoginResponse>.Success(
                         new LoginResponse
                         {
                             Status = "choose-workspace",
                             Token = _tokenService.IssueSelection(user),
                             Workspaces = choices,
                             User = null,
-                        }
+                        },
+                        MessageKeys.Auth.ChooseWorkspace
                     );
                 }
             }

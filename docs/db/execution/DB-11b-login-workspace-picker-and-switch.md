@@ -81,6 +81,12 @@ Decision table in `AuthService.LoginAsync`, after password/`PasswordlessOnly`/su
 | none active/approved, some `Rejected`, no Pending | `"rejected"` |
 | otherwise (all inactive) | `"disabled"` |
 
+`"choose-workspace"` is returned as a success envelope (HTTP 200), not a failure — the credentials
+were verified and a (selection) token was issued; the widget and CLI already branch on `status`, and
+the dashboard's generated client rejects any envelope with `isSuccess == false` before its caller
+ever sees `status`. `"pending"`/`"rejected"`/`"disabled"`/`"no-workspace"` are unaffected and remain
+failure envelopes.
+
 `LoginRequest` gains `public string? ProjectKey { get; set; }` (validator: `MaximumLength(64)` when
 not null; nothing else — an unknown key is simply ignored). Resolution:
 `Projects.IgnoreQueryFilters().Where(p => p.DeletedAt == null && p.Key == key.Trim().ToLower()).Select(p => p.OwnerId)`,

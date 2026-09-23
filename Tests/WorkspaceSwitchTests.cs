@@ -270,7 +270,9 @@ public class WorkspaceSwitchTests
             new LoginRequest { Email = "picker@x.com", Password = "pw12345" }
         );
 
-        Assert.False(result.IsSuccess);
+        // DB-11b §3.1: choose-workspace is a SUCCESS envelope (HTTP 200) — credentials were verified
+        // and a selection token was issued; the dashboard's client rejects non-success envelopes.
+        Assert.True(result.IsSuccess, result.Message);
         Assert.Equal(MessageKeys.Auth.ChooseWorkspace, result.Message);
         Assert.NotNull(result.Data);
         Assert.Equal("choose-workspace", result.Data!.Status);
@@ -363,7 +365,7 @@ public class WorkspaceSwitchTests
                 }
             );
 
-        Assert.False(pickerResult.IsSuccess);
+        Assert.True(pickerResult.IsSuccess, pickerResult.Message);
         Assert.Equal("choose-workspace", pickerResult.Data!.Status);
     }
 
