@@ -118,6 +118,13 @@ export function t(key: string, vars?: Record<string, string | number>): string {
   return raw.replace(/\{(\w+)\}/g, (_, k) => (k in vars ? String(vars[k]) : `{${k}}`));
 }
 
+// Shared aria-label suffix for a button carrying an unread count — one definition instead of
+// duplicating the count-cap ternary at each of its two call sites (templates.ts's chrome() and
+// element.ts's updateNotifyBadges(), both building the Updates button's own label).
+export function unreadSuffix(count: number): string {
+  return count > 0 ? t('toolbar.unreadSuffix', { count: count > 99 ? t('toolbar.countCap') : count }) : '';
+}
+
 const STRINGS: Record<Lang, Record<string, string>> = {
   en: {
     // --- auth (login/signup modal) ---
@@ -165,6 +172,11 @@ const STRINGS: Record<Lang, Record<string, string>> = {
     'toolbar.projectHeading': '{project}',
     'toolbar.recentActivityUpdates': 'Recent activity &amp; updates',
     'toolbar.updates': 'Updates',
+    // Suffix appended to the Updates button's aria-label ("Updates, 5 unread") and to
+    // updateNotifyBadges()'s own rebuild of the same label — {count} is either a plain number or
+    // toolbar.countCap once it passes 99.
+    'toolbar.unreadSuffix': ', {count} unread',
+    'toolbar.countCap': '99+',
     'toolbar.signedInAs': 'Signed in as',
     'toolbar.account': 'Account',
     'toolbar.hideBrand': 'Hide {brand}',
@@ -267,6 +279,8 @@ const STRINGS: Record<Lang, Record<string, string>> = {
     'card.confirmDelete': 'Confirm delete',
     'card.readMore': 'Read more',
     'card.readLess': 'Read less',
+    'card.openFullScreenshot': 'Open full screenshot',
+    'card.elementScreenshot': 'Element screenshot',
 
     // --- comment popover ---
     'popover.selectParentElement': 'Select parent element',
@@ -318,6 +332,7 @@ const STRINGS: Record<Lang, Record<string, string>> = {
     'toast.pinElementNotFound': 'This comment\'s element isn\'t visible right now (hidden, removed, or temporary)',
     'toast.applyPromptCopied': 'Apply prompt copied — paste it into your AI tool',
     'toast.copyFailed': 'Could not copy to clipboard',
+    'toast.dismissNotification': 'Dismiss notification',
     'toast.commitStyleUpdated': 'Commit style updated',
     'toast.updateFailed': 'Update failed',
     'toast.updated': 'Updated',
@@ -406,6 +421,8 @@ const STRINGS: Record<Lang, Record<string, string>> = {
     'toolbar.projectHeading': '{project}',
     'toolbar.recentActivityUpdates': 'النشاط الأخير والتحديثات',
     'toolbar.updates': 'التحديثات',
+    'toolbar.unreadSuffix': '، {count} غير مقروءة',
+    'toolbar.countCap': '99+',
     'toolbar.signedInAs': 'مسجّل الدخول باسم',
     'toolbar.account': 'الحساب',
     'toolbar.hideBrand': 'إخفاء {brand}',
@@ -508,6 +525,8 @@ const STRINGS: Record<Lang, Record<string, string>> = {
     'card.confirmDelete': 'تأكيد الحذف',
     'card.readMore': 'قراءة المزيد',
     'card.readLess': 'قراءة أقل',
+    'card.openFullScreenshot': 'فتح لقطة الشاشة كاملة',
+    'card.elementScreenshot': 'لقطة شاشة العنصر',
 
     // --- comment popover ---
     'popover.selectParentElement': 'اختر العنصر الأصل',
@@ -559,6 +578,7 @@ const STRINGS: Record<Lang, Record<string, string>> = {
     'toast.pinElementNotFound': 'عنصر هذا التعليق غير ظاهر حاليًا (مخفي أو محذوف أو مؤقت)',
     'toast.applyPromptCopied': 'تم نسخ تعليمة التطبيق — الصقها في أداة الذكاء الاصطناعي',
     'toast.copyFailed': 'تعذر النسخ إلى الحافظة',
+    'toast.dismissNotification': 'إغلاق الإشعار',
     'toast.commitStyleUpdated': 'تم تحديث أسلوب الالتزام',
     'toast.updateFailed': 'فشل التحديث',
     'toast.updated': 'تم التحديث',

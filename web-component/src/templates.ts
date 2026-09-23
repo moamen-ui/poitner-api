@@ -1,7 +1,7 @@
 import { escapeHtml, timeAgo } from './dom';
 import { ICON } from './icons';
 import { getBrandName } from './constants';
-import { t } from './i18n';
+import { t, unreadSuffix } from './i18n';
 import type { AuthorOption, Comment, Meta, NotificationItem, PredefinedActionOption, Reply, CommentFieldDefinition } from './types';
 import { renderFieldInputs } from './fields';
 
@@ -77,7 +77,7 @@ export const TPL = {
   <span class="fbk-toolbar__divider" aria-hidden="true"></span>
   <button type="button" class="fbk-toolbar-btn fbk-toolbar-btn--primary fbk-toolbar-btn--icon fbk-toolbar-btn--brand" id="fbk-add" data-fbk-act="inspect" aria-pressed="false" data-toggle="tooltip" data-placement="top" title="${t('toolbar.commentOnElement')}${shortcutLabel ? ` (${escapeHtml(shortcutLabel)})` : ''}" aria-label="${t('toolbar.commentOnElement')}"${ariaShortcut ? ` aria-keyshortcuts="${escapeHtml(ariaShortcut)}"` : ''}><span class="fbk-toolbar-btn__icon">${ICON.crosshair}</span></button>
   <button type="button" class="fbk-toolbar-btn fbk-toolbar-btn--comments" id="fbk-toggle" data-fbk-act="comments" aria-expanded="false" aria-haspopup="dialog" data-toggle="tooltip" data-placement="top" title="${t('toolbar.viewCommentsList')}" aria-label="${t('toolbar.comments')}"><span class="fbk-toolbar-btn__icon">${ICON.bubble}</span> <span class="fbk-toolbar-count" id="fbk-count" data-fbk-count>0</span></button>
-  <button type="button" class="fbk-toolbar-btn fbk-toolbar-btn--icon fbk-hidden" id="fbk-updates" data-fbk-act="updates" aria-expanded="false" aria-haspopup="dialog" data-toggle="tooltip" data-placement="top" title="${t('toolbar.recentActivityUpdates')}" aria-label="${t('toolbar.updates')}${unreadNotifyCount > 0 ? `, ${unreadNotifyCount > 99 ? '99+' : unreadNotifyCount} unread` : ''}"><span class="fbk-toolbar-btn__icon">${ICON.bell}</span><span class="fbk-toolbar-dot${unreadNotifyCount > 0 ? '' : ' fbk-hidden'}" id="fbk-notify-count" data-fbk-unread aria-hidden="true"></span></button>
+  <button type="button" class="fbk-toolbar-btn fbk-toolbar-btn--icon fbk-hidden" id="fbk-updates" data-fbk-act="updates" aria-expanded="false" aria-haspopup="dialog" data-toggle="tooltip" data-placement="top" title="${t('toolbar.recentActivityUpdates')}" aria-label="${t('toolbar.updates')}${unreadSuffix(unreadNotifyCount)}"><span class="fbk-toolbar-btn__icon">${ICON.bell}</span><span class="fbk-toolbar-dot${unreadNotifyCount > 0 ? '' : ' fbk-hidden'}" id="fbk-notify-count" data-fbk-unread aria-hidden="true"></span></button>
   ${displayName ? `
   <span class="fbk-toolbar__divider" aria-hidden="true"></span>
   <button type="button" class="fbk-toolbar-btn fbk-toolbar-btn--avatar" id="fbk-user" data-fbk-act="account" aria-expanded="false" aria-haspopup="dialog" data-toggle="tooltip" data-placement="top" title="${t('toolbar.signedInAs')} ${displayName}${roleLabel ? ' · ' + roleLabel : ''}" aria-label="${t('toolbar.account')}, ${displayName}">${avatarInitials}</button>` : ''}
@@ -162,7 +162,7 @@ export const TPL = {
   <button class="fbk-launcher fbk-pos-${position || 'bottom-end'}${rtl ? ' fbk-rtl' : ''}" id="fbk-launcher" title="${openLabel}" aria-label="${openLabel}">
   <span class="fbk-launcher-ring" aria-hidden="true"></span>
   ${ICON.bubbleLg}
-  ${badgeCount ? `<span class="fbk-launcher-badge${hasUnread ? ' fbk-notify-badge' : ''}">${badgeCount > 99 ? '99+' : badgeCount}</span>` : ''}
+  ${badgeCount ? `<span class="fbk-launcher-badge${hasUnread ? ' fbk-notify-badge' : ''}">${badgeCount > 99 ? t('toolbar.countCap') : badgeCount}</span>` : ''}
   </button>`;
   },
 
@@ -182,7 +182,7 @@ export const TPL = {
   <div class="fbk-toast-icon" aria-hidden="true">${icon}</div>
   <div class="fbk-toast-content"><span class="fbk-toast-message">${escapeHtml(message)}</span></div>
   ${actionLabel ? `<button type="button" class="fbk-toast-action">${escapeHtml(actionLabel)}</button>` : ''}
-  <button type="button" class="fbk-toast-close" aria-label="Dismiss notification">${ICON.close}</button>
+  <button type="button" class="fbk-toast-close" aria-label="${t('toast.dismissNotification')}">${ICON.close}</button>
   </div>`;
   },
 
@@ -360,8 +360,8 @@ export const TPL = {
   })();
   const shotUrl = c.element && c.element.screenshotUrl;
   const shot = shotUrl
-  ? `<a class="fbk-shot-link" href="${escapeHtml(shotUrl)}" target="_blank" rel="noopener noreferrer" title="Open full screenshot">
-  <img class="fbk-shot" src="${escapeHtml(shotUrl)}" alt="Element screenshot" loading="lazy" />
+  ? `<a class="fbk-shot-link" href="${escapeHtml(shotUrl)}" target="_blank" rel="noopener noreferrer" title="${t('card.openFullScreenshot')}">
+  <img class="fbk-shot" src="${escapeHtml(shotUrl)}" alt="${t('card.elementScreenshot')}" loading="lazy" />
   </a>`
   : '';
   return `

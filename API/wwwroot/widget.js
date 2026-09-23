@@ -222,7 +222,7 @@
     } catch {
     }
   }
-  var POSITIONS = ["top-start", "top-end", "bottom-start", "bottom-end"], SHOT_MAX_WIDTH = 1280, SHOT_HIGHLIGHT = "#2563eb", _a, SCRIPT_SRC = ((_a = document.currentScript) == null ? void 0 : _a.src) || "", CSS_INTEGRITY = "sha384-K/k9EDsSIYtdeVgnekz/b38eh0OVgLAakcd1bVxybMmuTjf04PaKdESugnDnxGKH";
+  var POSITIONS = ["top-start", "top-end", "bottom-start", "bottom-end"], SHOT_MAX_WIDTH = 1280, SHOT_HIGHLIGHT = "#2563eb", _a, SCRIPT_SRC = ((_a = document.currentScript) == null ? void 0 : _a.src) || "", CSS_INTEGRITY = "sha384-wQPcjChiCOE2txqnQTzaZCbPBBHFeFrCkuual6f895fMJlaRqM6RkT3f2/9Vg3J2";
   function resolveCssUrl(scriptSrc) {
     var _a2;
     if (!scriptSrc) return "widget.css";
@@ -235,6 +235,552 @@
   }
   var CSS_URL = resolveCssUrl(SCRIPT_SRC), SNAPDOM_URL = SCRIPT_SRC ? new URL("vendor/snapdom.js", SCRIPT_SRC).href : "vendor/snapdom.js";
 
+  // src/i18n.ts
+  var currentLang = "en";
+  function setLang(lang) {
+    let next = lang === "ar" ? "ar" : "en";
+    return next === currentLang ? !1 : (currentLang = next, !0);
+  }
+  function getLang() {
+    return currentLang;
+  }
+  var ARABIC_URDU_ONLY = /[ٹڈڑںےھ]/, ARABIC_PASHTO_ONLY = /[ټډړږښڼ]/, ARABIC_PERSIAN_ONLY = /[پچژگ]/, ARABIC_PERSIAN_KEYBOARD = /[کی]/, ARABIC_SCRIPT = /[؀-ۿݐ-ݿࢠ-ࣿﭐ-﷿ﹰ-﻿]/, HEBREW_SCRIPT = /[֐-׿]/, HANGUL_SCRIPT = /[가-힯ᄀ-ᇿ]/, KANA_SCRIPT = /[぀-ヿ]/, HAN_SCRIPT = /[一-鿿]/, CYRILLIC_SCRIPT = /[Ѐ-ӿ]/, CYRILLIC_UKRAINIAN_ONLY = /[їєґ]/, LETTER_RE = /\p{L}/gu, NON_ASCII_LETTER_RE = /(?![\x00-\x7F])\p{L}/u, ENGLISH_STOPWORDS = /* @__PURE__ */ new Set([
+    "the",
+    "and",
+    "this",
+    "that",
+    "should",
+    "with",
+    "when",
+    "please",
+    "button",
+    "click",
+    "text",
+    "page",
+    "not",
+    "but",
+    "from",
+    "are",
+    "was",
+    "have",
+    "has",
+    "will",
+    "can"
+  ]);
+  function detectTextLanguage(text) {
+    let stripped = (text || "").replace(/`[^`]*`/g, " ").replace(/```[\s\S]*?```/g, " ").replace(/https?:\/\/\S+/gi, " ").replace(/\d+/g, " ");
+    if ((stripped.match(LETTER_RE) || []).length < 20) return "unknown";
+    if (ARABIC_SCRIPT.test(stripped))
+      return ARABIC_URDU_ONLY.test(stripped) ? "ur" : ARABIC_PASHTO_ONLY.test(stripped) ? "ps" : ARABIC_PERSIAN_ONLY.test(stripped) ? "fa" : ARABIC_PERSIAN_KEYBOARD.test(stripped) ? "unknown" : "ar";
+    if (HEBREW_SCRIPT.test(stripped)) return "he";
+    if (HANGUL_SCRIPT.test(stripped)) return "ko";
+    if (KANA_SCRIPT.test(stripped)) return "ja";
+    if (HAN_SCRIPT.test(stripped)) return "zh";
+    if (CYRILLIC_SCRIPT.test(stripped))
+      return CYRILLIC_UKRAINIAN_ONLY.test(stripped) ? "uk" : "unknown";
+    if (NON_ASCII_LETTER_RE.test(stripped)) return "unknown";
+    let words = stripped.toLowerCase().match(/[a-z]+/g) || [];
+    return new Set(words.filter((w) => ENGLISH_STOPWORDS.has(w))).size >= 3 ? "en" : "unknown";
+  }
+  async function detectTextLanguageAsync(text) {
+    let fallback = detectTextLanguage(text);
+    try {
+      let ctor = self.LanguageDetector;
+      if (!ctor || await ctor.availability() !== "available") return fallback;
+      let detector = await ctor.create(), timeout = new Promise((resolve) => setTimeout(() => resolve(null), 300)), results = await Promise.race([detector.detect(text), timeout]);
+      if (!results || !results.length) return fallback;
+      let best = results[0];
+      return best.confidence >= 0.8 && best.detectedLanguage ? best.detectedLanguage : fallback;
+    } catch {
+      return fallback;
+    }
+  }
+  function t(key, vars) {
+    var _a2, _b;
+    let raw = (_b = (_a2 = STRINGS[currentLang][key]) != null ? _a2 : STRINGS.en[key]) != null ? _b : key;
+    return vars ? raw.replace(/\{(\w+)\}/g, (_, k) => k in vars ? String(vars[k]) : `{${k}}`) : raw;
+  }
+  function unreadSuffix(count) {
+    return count > 0 ? t("toolbar.unreadSuffix", { count: count > 99 ? t("toolbar.countCap") : count }) : "";
+  }
+  var STRINGS = {
+    en: {
+      // --- auth (login/signup modal) ---
+      "auth.leaveFeedbackOn": "Leave feedback on",
+      "auth.skipForNow": "Skip for now",
+      "auth.email": "Email",
+      "auth.password": "Password",
+      "auth.signIn": "Sign in",
+      "auth.chooseRoleToRequestAgain": "Choose a role to request again",
+      "auth.requestAgain": "Request again",
+      "auth.noAccount": "No account?",
+      "auth.createAccount": "Create account",
+      "auth.name": "Name",
+      "auth.role": "Role",
+      "auth.alreadyHaveAccount": "Already have an account?",
+      "auth.backToSignIn": "Back to sign in",
+      "auth.loadingRoles": "Loading roles…",
+      "auth.noRolesAvailable": "No roles available",
+      "auth.couldNotLoadRoles": "Could not load roles.",
+      "auth.pleaseEnterEmail": "Please enter your email.",
+      "auth.pleaseEnterPassword": "Please enter your password.",
+      "auth.pendingApproval": "Your request is awaiting admin approval.",
+      "auth.accountDisabled": "Your account is disabled.",
+      "auth.requestRejected": "Your request was rejected.",
+      "auth.invalidCredentials": "Invalid email or password.",
+      "auth.networkError": "Network error. Please try again.",
+      "auth.signingIn": "Signing in…",
+      "auth.pleaseChooseRole": "Please choose a role.",
+      "auth.enterEmailPasswordToRequestAgain": "Enter your email and password to request again.",
+      "auth.submitting": "Submitting…",
+      "auth.couldNotSubmitRequest": "Could not submit your request.",
+      "auth.requestSubmittedMsg": "Request submitted — an admin will review it.",
+      "auth.pleaseEnterName": "Please enter your name.",
+      "auth.pleaseChoosePassword": "Please choose a password.",
+      "auth.couldNotCreateAccount": "Could not create your account.",
+      "auth.requestSubmittedBtn": "Request submitted",
+      // --- toolbar ---
+      "toolbar.dragToReposition": "Drag to reposition",
+      "toolbar.commentOnElement": "Comment on an element",
+      "toolbar.commentOnElementShortcut": "Comment on an element, shortcut {label}",
+      "toolbar.cancel": "Cancel",
+      "toolbar.viewCommentsList": "View comments list",
+      "toolbar.comments": "Comments",
+      "toolbar.projectHeading": "{project}",
+      "toolbar.recentActivityUpdates": "Recent activity &amp; updates",
+      "toolbar.updates": "Updates",
+      // Suffix appended to the Updates button's aria-label ("Updates, 5 unread") and to
+      // updateNotifyBadges()'s own rebuild of the same label — {count} is either a plain number or
+      // toolbar.countCap once it passes 99.
+      "toolbar.unreadSuffix": ", {count} unread",
+      "toolbar.countCap": "99+",
+      "toolbar.signedInAs": "Signed in as",
+      "toolbar.account": "Account",
+      "toolbar.hideBrand": "Hide {brand}",
+      "toolbar.resetToolbarPosition": "Reset toolbar position",
+      "toolbar.refreshComments": "Refresh comments",
+      "toolbar.close": "Close",
+      "toolbar.envFixedTitle": "Environment — fixed for this install",
+      "toolbar.envSwitchTitle": "Environment — comments are scoped per environment",
+      "toolbar.envAll": "All",
+      "toolbar.envLocal": "local",
+      "toolbar.envStaging": "staging",
+      "toolbar.envProduction": "production",
+      "toolbar.environment": "Environment",
+      "toolbar.commitStyle": "Commit style",
+      "toolbar.commitStyleTitle": "How the AI apply flow commits applied comments",
+      "toolbar.oneCommit": "One commit",
+      "toolbar.separateCommits": "Separate commits",
+      // --- user menu ---
+      "menu.addComment": "Add comment",
+      "menu.clickThenPressKeyCombo": "Click, then press a new key combo",
+      "menu.resetToDefault": "Reset to default",
+      "menu.theme": "Theme",
+      "menu.light": "Light",
+      "menu.lightTheme": "Light theme",
+      "menu.dark": "Dark",
+      "menu.darkTheme": "Dark theme",
+      "menu.language": "Language",
+      "menu.extensionSignedInNote": "Signed in via the browser extension — sign out from its popup.",
+      "menu.signOut": "Sign out",
+      "menu.pressKeysToCancel": "Press keys… (Esc to cancel)",
+      "menu.addModifierKey": "Add a modifier key (Alt/Shift/Ctrl/⌘)…",
+      "menu.saving": "Saving…",
+      "menu.resetting": "Resetting…",
+      "menu.shortcutUpdated": "Shortcut updated",
+      "menu.failedToSaveTryAgain": "Failed to save — try again",
+      "menu.shortcutResetToDefault": "Shortcut reset to default",
+      "menu.failedToResetTryAgain": "Failed to reset — try again",
+      // --- launcher ---
+      "launcher.openFeedbackFor": "Open {brand} feedback",
+      // --- sidebar / filters ---
+      "sidebar.mineOnly": "Mine only",
+      "sidebar.showOnlyMyComments": "Show only my comments",
+      "sidebar.status": "Status",
+      "sidebar.filterByStatus": "Filter by status",
+      "sidebar.filterByUser": "Filter by user",
+      "sidebar.user": "User",
+      "sidebar.showFilters": "Show filters",
+      "sidebar.hideFilters": "Hide filters",
+      "sidebar.allUsers": "All users",
+      "sidebar.noCommentsYet": "No comments on this project yet.<br/>Click the inspect icon, then click an element.",
+      "sidebar.noOwnComments": "You haven't left any comments yet.",
+      "sidebar.noFilteredComments": 'No comments in "{label}"{suffix}.',
+      "sidebar.ofYours": " of yours",
+      // --- comment card ---
+      "card.deployedIn": "Deployed in {sha}",
+      "card.live": "live",
+      "card.completed": "completed",
+      "card.pending": "pending",
+      "card.archived": "archived",
+      "card.verified": "Verified",
+      "card.looksRight": "Looks right",
+      "card.notFixed": "Not fixed",
+      "card.explainNotFixed": "Explain what is still not fixed…",
+      "card.submit": "Submit",
+      "card.viewCommit": "View commit",
+      "card.commit": "commit",
+      "card.containsSecretPayload": "contains a secret/payload?",
+      "card.defaultReplyAuthor": "User",
+      "card.automatedReply": "Automated reply",
+      "card.aiVia": "via {name}",
+      "card.edited": "edited",
+      "card.jumpToPin": "Flash this comment's pin on the page",
+      "card.reply": "Reply",
+      "card.replyPlaceholder": "Reply…",
+      "card.markedReadyClickToUnmark": "Marked ready — click to unmark",
+      "card.markReadyToApply": "Mark ready to apply",
+      "card.ready": "Ready",
+      "card.reopen": "Re-open",
+      "card.archive": "Archive",
+      "card.edit": "Edit",
+      "card.delete": "Delete",
+      "card.moreActions": "More actions",
+      "card.copyApplyPrompt": "Copy apply prompt",
+      "card.complete": "Complete",
+      "card.envLocal": "Local",
+      "card.envStaging": "Staging",
+      "card.envProduction": "Production",
+      "card.privateClickToMakePublic": "Private — click to make public",
+      "card.makePrivateOnlyYou": "Make private (only you)",
+      "card.makePublic": "Make public",
+      "card.makePrivate": "Make private",
+      "card.removeImage": "Remove image",
+      "card.save": "Save",
+      "card.deleteThisComment": "Delete this comment?",
+      "card.deleteThisReply": "Delete this reply?",
+      "card.confirmDelete": "Confirm delete",
+      "card.readMore": "Read more",
+      "card.readLess": "Read less",
+      "card.openFullScreenshot": "Open full screenshot",
+      "card.elementScreenshot": "Element screenshot",
+      // --- comment popover ---
+      "popover.selectParentElement": "Select parent element",
+      "popover.selectFirstChildElement": "Select first child element",
+      "popover.commentOn": "Comment on",
+      "popover.whatShouldChange": "What should change here?",
+      "popover.predefinedPrompts": "Predefined prompts",
+      "popover.searchPrompts": "Search prompts…",
+      "popover.searchPredefinedPrompts": "Search predefined prompts",
+      "popover.noMatches": "No matches",
+      "popover.remove": "Remove",
+      "popover.attachScreenshot": "Attach screenshot",
+      "popover.reportBugTitle": "Attaches any console errors/warnings and failed or slow network requests seen on this page",
+      "popover.reportAsABug": "Report as a bug",
+      "popover.add": "Add",
+      "popover.commentCannotBeEmpty": "Comment cannot be empty",
+      "popover.clickAnyElementToComment": "Click any element to comment on it — or press Esc to cancel",
+      "popover.cancelled": "Cancelled",
+      // --- pins ---
+      "pin.ready": "Ready",
+      "pin.applied": "Applied",
+      "pin.archived": "Archived",
+      "pin.open": "Open",
+      "pin.commentHash": "Comment #{n}",
+      "pin.byAuthor": " by {author}",
+      "pin.reply": "reply",
+      "pin.replies": "replies",
+      "pin.overlappingComments": "{n} overlapping comments at this location",
+      // --- notifications ---
+      "notifications.updates": "Updates",
+      "notifications.noUpdatesYet": "No updates yet",
+      "notifications.update": "Update",
+      "notifications.applied": "Applied",
+      "notifications.reopened": "Reopened",
+      "notifications.newReply": "New reply",
+      "notifications.commit": "Commit",
+      // --- toasts ---
+      "toast.failedToVerifyComment": "Failed to verify comment",
+      "toast.commentVerified": "Comment verified",
+      "toast.commentReopened": "Comment re-opened",
+      "toast.signedOut": "Signed out",
+      "toast.hiddenClickToReopen": "{brand} hidden — click the button to reopen",
+      "toast.couldNotReachServer": "Could not reach {brand} server",
+      "toast.retry": "Retry",
+      "toast.refreshed": "Refreshed",
+      "toast.pinElementNotFound": "This comment's element isn't visible right now (hidden, removed, or temporary)",
+      "toast.applyPromptCopied": "Apply prompt copied — paste it into your AI tool",
+      "toast.copyFailed": "Could not copy to clipboard",
+      "toast.dismissNotification": "Dismiss notification",
+      "toast.commitStyleUpdated": "Commit style updated",
+      "toast.updateFailed": "Update failed",
+      "toast.updated": "Updated",
+      "toast.actionNoLongerAvailable": "That action is no longer available — please choose another and try again.",
+      "toast.commentsNotAllowedFromAddress": "Comments are not allowed from this address",
+      "toast.tooManyCommentsRetryIn": "Too many comments — try again in {n} second{s}.",
+      "toast.tooManyCommentsWait": "Too many comments — please wait a moment and try again.",
+      "toast.screenshotUploadFailed": "Screenshot upload failed — saving without it",
+      "toast.commentAdded": "Comment added",
+      "toast.undo": "Undo",
+      "toast.failedToSaveComment": "Failed to save comment",
+      "toast.failedToReply": "Failed to reply",
+      "toast.markedForApply": "Marked for apply",
+      "toast.unmarked": "Unmarked",
+      "toast.markedPrivate": "Marked private",
+      "toast.madePublic": "Made public",
+      "toast.markedCompleted": "Marked completed",
+      "toast.deleted": "Deleted",
+      "toast.deleteFailed": "Delete failed",
+      "toast.commentUpdated": "Comment updated",
+      "toast.failedToUpdateComment": "Failed to update comment",
+      "toast.reopenedMsg": "Re-opened",
+      "toast.archivedMsg": "Archived",
+      "toast.pleaseProvideNoteNotFixed": "Please provide a note explaining what is not fixed",
+      "toast.notifications": "Notifications",
+      "fields.more": "Add more fields",
+      "fields.fewer": "Fewer fields",
+      "fields.extra": "Extra fields",
+      "fields.edit": "Extra fields",
+      "fields.save": "Save fields",
+      "fields.cancel": "Cancel",
+      "fields.none": "None",
+      "fields.invalidUrl": "Must be a valid URL",
+      "fields.invalidOption": "Pick one of the listed options",
+      "fields.hostNotAllowed": "Must be a link on {hosts}",
+      "fields.tooLong": "Value is too long",
+      "fields.saved": "Fields saved",
+      "fields.serverRejected": "Server rejected:",
+      "fields.seeMore": "See more",
+      "fields.seeLess": "See less"
+    },
+    ar: {
+      // --- auth (login/signup modal) ---
+      "auth.leaveFeedbackOn": "قدّم ملاحظاتك على",
+      "auth.skipForNow": "تخطَّ هذا الآن",
+      "auth.email": "البريد الإلكتروني",
+      "auth.password": "كلمة المرور",
+      "auth.signIn": "تسجيل الدخول",
+      "auth.chooseRoleToRequestAgain": "اختر دورًا لإعادة الطلب",
+      "auth.requestAgain": "إعادة الطلب",
+      "auth.noAccount": "ليس لديك حساب؟",
+      "auth.createAccount": "إنشاء حساب",
+      "auth.name": "الاسم",
+      "auth.role": "الدور",
+      "auth.alreadyHaveAccount": "لديك حساب بالفعل؟",
+      "auth.backToSignIn": "العودة لتسجيل الدخول",
+      "auth.loadingRoles": "جارٍ تحميل الأدوار…",
+      "auth.noRolesAvailable": "لا توجد أدوار متاحة",
+      "auth.couldNotLoadRoles": "تعذّر تحميل الأدوار.",
+      "auth.pleaseEnterEmail": "يرجى إدخال بريدك الإلكتروني.",
+      "auth.pleaseEnterPassword": "يرجى إدخال كلمة المرور.",
+      "auth.pendingApproval": "طلبك بانتظار موافقة المسؤول.",
+      "auth.accountDisabled": "حسابك معطّل.",
+      "auth.requestRejected": "تم رفض طلبك.",
+      "auth.invalidCredentials": "البريد الإلكتروني أو كلمة المرور غير صحيحة.",
+      "auth.networkError": "خطأ في الشبكة. يرجى المحاولة مرة أخرى.",
+      "auth.signingIn": "جارٍ تسجيل الدخول…",
+      "auth.pleaseChooseRole": "يرجى اختيار دور.",
+      "auth.enterEmailPasswordToRequestAgain": "أدخل بريدك الإلكتروني وكلمة المرور لإعادة الطلب.",
+      "auth.submitting": "جارٍ الإرسال…",
+      "auth.couldNotSubmitRequest": "تعذّر إرسال طلبك.",
+      "auth.requestSubmittedMsg": "تم إرسال الطلب — سيراجعه أحد المسؤولين.",
+      "auth.pleaseEnterName": "يرجى إدخال اسمك.",
+      "auth.pleaseChoosePassword": "يرجى اختيار كلمة مرور.",
+      "auth.couldNotCreateAccount": "تعذّر إنشاء حسابك.",
+      "auth.requestSubmittedBtn": "تم إرسال الطلب",
+      // --- toolbar ---
+      "toolbar.dragToReposition": "اسحب لتغيير الموضع",
+      "toolbar.commentOnElement": "أضف تعليقًا على عنصر",
+      "toolbar.commentOnElementShortcut": "أضف تعليقًا على عنصر، الاختصار {label}",
+      "toolbar.cancel": "إلغاء",
+      "toolbar.viewCommentsList": "عرض قائمة التعليقات",
+      "toolbar.comments": "التعليقات",
+      "toolbar.projectHeading": "{project}",
+      "toolbar.recentActivityUpdates": "النشاط الأخير والتحديثات",
+      "toolbar.updates": "التحديثات",
+      "toolbar.unreadSuffix": "، {count} غير مقروءة",
+      "toolbar.countCap": "99+",
+      "toolbar.signedInAs": "مسجّل الدخول باسم",
+      "toolbar.account": "الحساب",
+      "toolbar.hideBrand": "إخفاء {brand}",
+      "toolbar.resetToolbarPosition": "إعادة ضبط موضع شريط الأدوات",
+      "toolbar.refreshComments": "تحديث التعليقات",
+      "toolbar.close": "إغلاق",
+      "toolbar.envFixedTitle": "البيئة — ثابتة لهذا التثبيت",
+      "toolbar.envSwitchTitle": "البيئة — التعليقات مرتبطة بكل بيئة على حدة",
+      "toolbar.envAll": "الكل",
+      "toolbar.envLocal": "محلي",
+      "toolbar.envStaging": "الاختبار",
+      "toolbar.envProduction": "الإنتاج",
+      "toolbar.environment": "البيئة",
+      "toolbar.commitStyle": "أسلوب الالتزام",
+      "toolbar.commitStyleTitle": "كيفية التزام التعليقات المطبَّقة عبر مسار تطبيق الذكاء الاصطناعي",
+      "toolbar.oneCommit": "التزام واحد",
+      "toolbar.separateCommits": "التزامات منفصلة",
+      // --- user menu ---
+      "menu.addComment": "إضافة تعليق",
+      "menu.clickThenPressKeyCombo": "انقر، ثم اضغط تركيبة مفاتيح جديدة",
+      "menu.resetToDefault": "إعادة إلى الافتراضي",
+      "menu.theme": "المظهر",
+      "menu.light": "فاتح",
+      "menu.lightTheme": "المظهر الفاتح",
+      "menu.dark": "داكن",
+      "menu.darkTheme": "المظهر الداكن",
+      "menu.language": "اللغة",
+      "menu.extensionSignedInNote": "تم تسجيل الدخول عبر إضافة المتصفح — سجّل الخروج من نافذتها المنبثقة.",
+      "menu.signOut": "تسجيل الخروج",
+      "menu.pressKeysToCancel": "اضغط المفاتيح… (Esc للإلغاء)",
+      "menu.addModifierKey": "أضف مفتاح تعديل (Alt/Shift/Ctrl/⌘)…",
+      "menu.saving": "جارٍ الحفظ…",
+      "menu.resetting": "جارٍ إعادة الضبط…",
+      "menu.shortcutUpdated": "تم تحديث الاختصار",
+      "menu.failedToSaveTryAgain": "فشل الحفظ — حاول مرة أخرى",
+      "menu.shortcutResetToDefault": "تمت إعادة الاختصار إلى الافتراضي",
+      "menu.failedToResetTryAgain": "فشلت إعادة الضبط — حاول مرة أخرى",
+      // --- launcher ---
+      "launcher.openFeedbackFor": "فتح ملاحظات {brand}",
+      // --- sidebar / filters ---
+      "sidebar.mineOnly": "تعليقاتي فقط",
+      "sidebar.showOnlyMyComments": "عرض تعليقاتي فقط",
+      "sidebar.status": "الحالة",
+      "sidebar.filterByStatus": "تصفية حسب الحالة",
+      "sidebar.filterByUser": "تصفية حسب المستخدم",
+      "sidebar.user": "المستخدم",
+      "sidebar.showFilters": "إظهار الفلاتر",
+      "sidebar.hideFilters": "إخفاء الفلاتر",
+      "sidebar.allUsers": "جميع المستخدمين",
+      "sidebar.noCommentsYet": "لا توجد تعليقات على هذا المشروع بعد.<br/>انقر على أيقونة الفحص، ثم انقر على عنصر.",
+      "sidebar.noOwnComments": "لم تترك أي تعليقات بعد.",
+      "sidebar.noFilteredComments": 'لا توجد تعليقات ضمن "{label}"{suffix}.',
+      "sidebar.ofYours": " الخاصة بك",
+      // --- comment card ---
+      "card.deployedIn": "تم النشر في {sha}",
+      "card.live": "مباشر",
+      "card.completed": "مكتمل",
+      "card.pending": "قيد الانتظار",
+      "card.archived": "مؤرشف",
+      "card.verified": "تم التحقق",
+      "card.looksRight": "يبدو صحيحًا",
+      "card.notFixed": "لم يُصلح",
+      "card.explainNotFixed": "اشرح ما لم يتم إصلاحه بعد…",
+      "card.submit": "إرسال",
+      "card.viewCommit": "عرض الالتزام",
+      "card.commit": "التزام",
+      "card.containsSecretPayload": "قد يحتوي على بيانات سرية؟",
+      "card.defaultReplyAuthor": "مستخدم",
+      "card.automatedReply": "رد آلي",
+      "card.aiVia": "بواسطة {name}",
+      "card.edited": "مُعدَّل",
+      "card.jumpToPin": "إظهار دبوس هذا التعليق على الصفحة",
+      "card.reply": "رد",
+      "card.replyPlaceholder": "رد…",
+      "card.markedReadyClickToUnmark": "وُضع علامة جاهز — انقر لإلغائها",
+      "card.markReadyToApply": "وضع علامة جاهز للتطبيق",
+      "card.ready": "جاهز",
+      "card.reopen": "إعادة الفتح",
+      "card.archive": "أرشفة",
+      "card.edit": "تعديل",
+      "card.delete": "حذف",
+      "card.moreActions": "المزيد من الإجراءات",
+      "card.copyApplyPrompt": "نسخ تعليمة التطبيق",
+      "card.complete": "إكمال",
+      "card.envLocal": "محلي",
+      "card.envStaging": "الاختبار",
+      "card.envProduction": "الإنتاج",
+      "card.privateClickToMakePublic": "خاص — انقر لجعله عامًا",
+      "card.makePrivateOnlyYou": "اجعله خاصًا (أنت فقط)",
+      "card.makePublic": "اجعله عامًا",
+      "card.makePrivate": "اجعله خاصًا",
+      "card.removeImage": "إزالة الصورة",
+      "card.save": "حفظ",
+      "card.deleteThisComment": "هل تريد حذف هذا التعليق؟",
+      "card.deleteThisReply": "هل تريد حذف هذا الرد؟",
+      "card.confirmDelete": "تأكيد الحذف",
+      "card.readMore": "قراءة المزيد",
+      "card.readLess": "قراءة أقل",
+      "card.openFullScreenshot": "فتح لقطة الشاشة كاملة",
+      "card.elementScreenshot": "لقطة شاشة العنصر",
+      // --- comment popover ---
+      "popover.selectParentElement": "اختر العنصر الأصل",
+      "popover.selectFirstChildElement": "اختر العنصر الفرعي الأول",
+      "popover.commentOn": "تعليق على",
+      "popover.whatShouldChange": "ما الذي يجب تغييره هنا؟",
+      "popover.predefinedPrompts": "اقتراحات جاهزة",
+      "popover.searchPrompts": "ابحث في الاقتراحات…",
+      "popover.searchPredefinedPrompts": "البحث في الاقتراحات الجاهزة",
+      "popover.noMatches": "لا توجد نتائج",
+      "popover.remove": "إزالة",
+      "popover.attachScreenshot": "إرفاق لقطة شاشة",
+      "popover.reportBugTitle": "يُرفق أي أخطاء/تحذيرات في وحدة التحكم وطلبات الشبكة الفاشلة أو البطيئة في هذه الصفحة",
+      "popover.reportAsABug": "الإبلاغ كخلل",
+      "popover.add": "إضافة",
+      "popover.commentCannotBeEmpty": "لا يمكن أن يكون التعليق فارغًا",
+      "popover.clickAnyElementToComment": "انقر على أي عنصر للتعليق عليه — أو اضغط Esc للإلغاء",
+      "popover.cancelled": "تم الإلغاء",
+      // --- pins ---
+      "pin.ready": "جاهز",
+      "pin.applied": "مطبَّق",
+      "pin.archived": "مؤرشف",
+      "pin.open": "مفتوح",
+      "pin.commentHash": "تعليق رقم {n}",
+      "pin.byAuthor": " بواسطة {author}",
+      "pin.reply": "رد واحد",
+      "pin.replies": "{n} ردود",
+      "pin.overlappingComments": "{n} تعليقات متداخلة في هذا الموضع",
+      // --- notifications ---
+      "notifications.updates": "التحديثات",
+      "notifications.noUpdatesYet": "لا توجد تحديثات بعد",
+      "notifications.update": "تحديث",
+      "notifications.applied": "تم التطبيق",
+      "notifications.reopened": "أُعيد فتحه",
+      "notifications.newReply": "رد جديد",
+      "notifications.commit": "الالتزام",
+      // --- toasts ---
+      "toast.failedToVerifyComment": "فشل التحقق من التعليق",
+      "toast.commentVerified": "تم التحقق من التعليق",
+      "toast.commentReopened": "أُعيد فتح التعليق",
+      "toast.signedOut": "تم تسجيل الخروج",
+      "toast.hiddenClickToReopen": "تم إخفاء {brand} — انقر على الزر لإعادة فتحه",
+      "toast.couldNotReachServer": "تعذّر الوصول إلى خادم {brand}",
+      "toast.retry": "إعادة المحاولة",
+      "toast.refreshed": "تم التحديث",
+      "toast.pinElementNotFound": "عنصر هذا التعليق غير ظاهر حاليًا (مخفي أو محذوف أو مؤقت)",
+      "toast.applyPromptCopied": "تم نسخ تعليمة التطبيق — الصقها في أداة الذكاء الاصطناعي",
+      "toast.copyFailed": "تعذر النسخ إلى الحافظة",
+      "toast.dismissNotification": "إغلاق الإشعار",
+      "toast.commitStyleUpdated": "تم تحديث أسلوب الالتزام",
+      "toast.updateFailed": "فشل التحديث",
+      "toast.updated": "تم التحديث",
+      "toast.actionNoLongerAvailable": "لم يعد هذا الإجراء متاحًا — يرجى اختيار إجراء آخر والمحاولة مرة أخرى.",
+      "toast.commentsNotAllowedFromAddress": "التعليقات غير مسموح بها من هذا العنوان",
+      "toast.tooManyCommentsRetryIn": "عدد كبير جدًا من التعليقات — حاول مرة أخرى بعد {n} ثانية.",
+      "toast.tooManyCommentsWait": "عدد كبير جدًا من التعليقات — يرجى الانتظار قليلًا والمحاولة مرة أخرى.",
+      "toast.screenshotUploadFailed": "فشل رفع لقطة الشاشة — سيُحفظ التعليق دونها",
+      "toast.commentAdded": "تمت إضافة التعليق",
+      "toast.undo": "تراجع",
+      "toast.failedToSaveComment": "فشل حفظ التعليق",
+      "toast.failedToReply": "فشل إرسال الرد",
+      "toast.markedForApply": "وُضعت علامة للتطبيق",
+      "toast.unmarked": "تم إلغاء العلامة",
+      "toast.markedPrivate": "وُضعت علامة خاص",
+      "toast.madePublic": "أصبح عامًا",
+      "toast.markedCompleted": "وُضعت علامة مكتمل",
+      "toast.deleted": "تم الحذف",
+      "toast.deleteFailed": "فشل الحذف",
+      "toast.commentUpdated": "تم تحديث التعليق",
+      "toast.failedToUpdateComment": "فشل تحديث التعليق",
+      "toast.reopenedMsg": "أُعيد فتحه",
+      "toast.archivedMsg": "تمت الأرشفة",
+      "toast.pleaseProvideNoteNotFixed": "يرجى كتابة ملاحظة تشرح ما لم يتم إصلاحه",
+      "toast.notifications": "الإشعارات",
+      "fields.more": "إضافة المزيد من الحقول",
+      "fields.fewer": "حقول أقل",
+      "fields.extra": "حقول إضافية",
+      "fields.edit": "حقول إضافية",
+      "fields.save": "حفظ الحقول",
+      "fields.cancel": "إلغاء",
+      "fields.none": "لا شيء",
+      "fields.invalidUrl": "يجب أن يكون رابطاً صالحاً",
+      "fields.invalidOption": "اختر أحد الخيارات المدرجة",
+      "fields.hostNotAllowed": "يجب أن يكون الرابط من {hosts}",
+      "fields.tooLong": "القيمة طويلة جداً",
+      "fields.saved": "تم حفظ الحقول",
+      "fields.serverRejected": "رفض الخادم:",
+      "fields.seeMore": "عرض المزيد",
+      "fields.seeLess": "عرض أقل"
+    }
+  };
+
   // src/dom.ts
   var escapeHtml = (s) => String(s == null ? "" : s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;"), initials = (name) => {
     let parts = (name || "").trim().split(/\s+/).filter(Boolean);
@@ -243,14 +789,14 @@
     if (!iso) return "";
     let then = new Date(iso).getTime();
     if (Number.isNaN(then)) return "";
-    let seconds = Math.round((Date.now() - then) / 1e3);
-    if (seconds < 45) return "just now";
+    let seconds = Math.round((Date.now() - then) / 1e3), rtf = new Intl.RelativeTimeFormat(getLang(), { numeric: "auto" });
+    if (seconds < 45) return rtf.format(0, "second");
     let minutes = Math.round(seconds / 60);
-    if (minutes < 60) return `${minutes}m ago`;
+    if (minutes < 60) return rtf.format(-minutes, "minute");
     let hours = Math.round(minutes / 60);
-    if (hours < 24) return `${hours}h ago`;
+    if (hours < 24) return rtf.format(-hours, "hour");
     let days = Math.round(hours / 24);
-    return days < 30 ? `${days}d ago` : new Date(iso).toLocaleDateString();
+    return days < 30 ? rtf.format(-days, "day") : new Date(iso).toLocaleDateString();
   }, buildClipPathWithHoles = (rects, refBox) => {
     let w = refBox.width, h = refBox.height, d = `M0 0H${w}V${h}H0Z`;
     for (let r of rects) {
@@ -408,533 +954,6 @@
     bug: '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m8 2 1.88 1.88"/><path d="M14.12 3.88 16 2"/><path d="M9 7.13v-1a3.003 3.003 0 1 1 6 0v1"/><path d="M12 20c-3.3 0-6-2.7-6-6v-3a4 4 0 0 1 4-4h4a4 4 0 0 1 4 4v3c0 3.3-2.7 6-6 6"/><path d="M12 20v-9"/><path d="M6.53 9C4.6 8.8 3 7.1 3 5"/><path d="M6 13H2"/><path d="M3 21c0-2.1 1.7-3.9 3.8-4"/><path d="M20.97 5c0 2.1-1.6 3.8-3.5 4"/><path d="M22 13h-4"/><path d="M17.2 17c2.1.1 3.8 1.9 3.8 4"/></svg>'
   };
 
-  // src/i18n.ts
-  var currentLang = "en";
-  function setLang(lang) {
-    let next = lang === "ar" ? "ar" : "en";
-    return next === currentLang ? !1 : (currentLang = next, !0);
-  }
-  var ARABIC_URDU_ONLY = /[ٹڈڑںےھ]/, ARABIC_PASHTO_ONLY = /[ټډړږښڼ]/, ARABIC_PERSIAN_ONLY = /[پچژگ]/, ARABIC_PERSIAN_KEYBOARD = /[کی]/, ARABIC_SCRIPT = /[؀-ۿݐ-ݿࢠ-ࣿﭐ-﷿ﹰ-﻿]/, HEBREW_SCRIPT = /[֐-׿]/, HANGUL_SCRIPT = /[가-힯ᄀ-ᇿ]/, KANA_SCRIPT = /[぀-ヿ]/, HAN_SCRIPT = /[一-鿿]/, CYRILLIC_SCRIPT = /[Ѐ-ӿ]/, CYRILLIC_UKRAINIAN_ONLY = /[їєґ]/, LETTER_RE = /\p{L}/gu, NON_ASCII_LETTER_RE = /(?![\x00-\x7F])\p{L}/u, ENGLISH_STOPWORDS = /* @__PURE__ */ new Set([
-    "the",
-    "and",
-    "this",
-    "that",
-    "should",
-    "with",
-    "when",
-    "please",
-    "button",
-    "click",
-    "text",
-    "page",
-    "not",
-    "but",
-    "from",
-    "are",
-    "was",
-    "have",
-    "has",
-    "will",
-    "can"
-  ]);
-  function detectTextLanguage(text) {
-    let stripped = (text || "").replace(/`[^`]*`/g, " ").replace(/```[\s\S]*?```/g, " ").replace(/https?:\/\/\S+/gi, " ").replace(/\d+/g, " ");
-    if ((stripped.match(LETTER_RE) || []).length < 20) return "unknown";
-    if (ARABIC_SCRIPT.test(stripped))
-      return ARABIC_URDU_ONLY.test(stripped) ? "ur" : ARABIC_PASHTO_ONLY.test(stripped) ? "ps" : ARABIC_PERSIAN_ONLY.test(stripped) ? "fa" : ARABIC_PERSIAN_KEYBOARD.test(stripped) ? "unknown" : "ar";
-    if (HEBREW_SCRIPT.test(stripped)) return "he";
-    if (HANGUL_SCRIPT.test(stripped)) return "ko";
-    if (KANA_SCRIPT.test(stripped)) return "ja";
-    if (HAN_SCRIPT.test(stripped)) return "zh";
-    if (CYRILLIC_SCRIPT.test(stripped))
-      return CYRILLIC_UKRAINIAN_ONLY.test(stripped) ? "uk" : "unknown";
-    if (NON_ASCII_LETTER_RE.test(stripped)) return "unknown";
-    let words = stripped.toLowerCase().match(/[a-z]+/g) || [];
-    return new Set(words.filter((w) => ENGLISH_STOPWORDS.has(w))).size >= 3 ? "en" : "unknown";
-  }
-  async function detectTextLanguageAsync(text) {
-    let fallback = detectTextLanguage(text);
-    try {
-      let ctor = self.LanguageDetector;
-      if (!ctor || await ctor.availability() !== "available") return fallback;
-      let detector = await ctor.create(), timeout = new Promise((resolve) => setTimeout(() => resolve(null), 300)), results = await Promise.race([detector.detect(text), timeout]);
-      if (!results || !results.length) return fallback;
-      let best = results[0];
-      return best.confidence >= 0.8 && best.detectedLanguage ? best.detectedLanguage : fallback;
-    } catch {
-      return fallback;
-    }
-  }
-  function t(key, vars) {
-    var _a2, _b;
-    let raw = (_b = (_a2 = STRINGS[currentLang][key]) != null ? _a2 : STRINGS.en[key]) != null ? _b : key;
-    return vars ? raw.replace(/\{(\w+)\}/g, (_, k) => k in vars ? String(vars[k]) : `{${k}}`) : raw;
-  }
-  var STRINGS = {
-    en: {
-      // --- auth (login/signup modal) ---
-      "auth.leaveFeedbackOn": "Leave feedback on",
-      "auth.skipForNow": "Skip for now",
-      "auth.email": "Email",
-      "auth.password": "Password",
-      "auth.signIn": "Sign in",
-      "auth.chooseRoleToRequestAgain": "Choose a role to request again",
-      "auth.requestAgain": "Request again",
-      "auth.noAccount": "No account?",
-      "auth.createAccount": "Create account",
-      "auth.name": "Name",
-      "auth.role": "Role",
-      "auth.alreadyHaveAccount": "Already have an account?",
-      "auth.backToSignIn": "Back to sign in",
-      "auth.loadingRoles": "Loading roles…",
-      "auth.noRolesAvailable": "No roles available",
-      "auth.couldNotLoadRoles": "Could not load roles.",
-      "auth.pleaseEnterEmail": "Please enter your email.",
-      "auth.pleaseEnterPassword": "Please enter your password.",
-      "auth.pendingApproval": "Your request is awaiting admin approval.",
-      "auth.accountDisabled": "Your account is disabled.",
-      "auth.requestRejected": "Your request was rejected.",
-      "auth.invalidCredentials": "Invalid email or password.",
-      "auth.networkError": "Network error. Please try again.",
-      "auth.signingIn": "Signing in…",
-      "auth.pleaseChooseRole": "Please choose a role.",
-      "auth.enterEmailPasswordToRequestAgain": "Enter your email and password to request again.",
-      "auth.submitting": "Submitting…",
-      "auth.couldNotSubmitRequest": "Could not submit your request.",
-      "auth.requestSubmittedMsg": "Request submitted — an admin will review it.",
-      "auth.pleaseEnterName": "Please enter your name.",
-      "auth.pleaseChoosePassword": "Please choose a password.",
-      "auth.couldNotCreateAccount": "Could not create your account.",
-      "auth.requestSubmittedBtn": "Request submitted",
-      // --- toolbar ---
-      "toolbar.dragToReposition": "Drag to reposition",
-      "toolbar.commentOnElement": "Comment on an element",
-      "toolbar.commentOnElementShortcut": "Comment on an element, shortcut {label}",
-      "toolbar.cancel": "Cancel",
-      "toolbar.viewCommentsList": "View comments list",
-      "toolbar.comments": "Comments",
-      "toolbar.projectHeading": "{project}",
-      "toolbar.recentActivityUpdates": "Recent activity &amp; updates",
-      "toolbar.updates": "Updates",
-      "toolbar.signedInAs": "Signed in as",
-      "toolbar.account": "Account",
-      "toolbar.hideBrand": "Hide {brand}",
-      "toolbar.resetToolbarPosition": "Reset toolbar position",
-      "toolbar.refreshComments": "Refresh comments",
-      "toolbar.close": "Close",
-      "toolbar.envFixedTitle": "Environment — fixed for this install",
-      "toolbar.envSwitchTitle": "Environment — comments are scoped per environment",
-      "toolbar.envAll": "All",
-      "toolbar.envLocal": "local",
-      "toolbar.envStaging": "staging",
-      "toolbar.envProduction": "production",
-      "toolbar.environment": "Environment",
-      "toolbar.commitStyle": "Commit style",
-      "toolbar.commitStyleTitle": "How the AI apply flow commits applied comments",
-      "toolbar.oneCommit": "One commit",
-      "toolbar.separateCommits": "Separate commits",
-      // --- user menu ---
-      "menu.addComment": "Add comment",
-      "menu.clickThenPressKeyCombo": "Click, then press a new key combo",
-      "menu.resetToDefault": "Reset to default",
-      "menu.theme": "Theme",
-      "menu.light": "Light",
-      "menu.lightTheme": "Light theme",
-      "menu.dark": "Dark",
-      "menu.darkTheme": "Dark theme",
-      "menu.language": "Language",
-      "menu.extensionSignedInNote": "Signed in via the browser extension — sign out from its popup.",
-      "menu.signOut": "Sign out",
-      "menu.pressKeysToCancel": "Press keys… (Esc to cancel)",
-      "menu.addModifierKey": "Add a modifier key (Alt/Shift/Ctrl/⌘)…",
-      "menu.saving": "Saving…",
-      "menu.resetting": "Resetting…",
-      "menu.shortcutUpdated": "Shortcut updated",
-      "menu.failedToSaveTryAgain": "Failed to save — try again",
-      "menu.shortcutResetToDefault": "Shortcut reset to default",
-      "menu.failedToResetTryAgain": "Failed to reset — try again",
-      // --- launcher ---
-      "launcher.openFeedbackFor": "Open {brand} feedback",
-      // --- sidebar / filters ---
-      "sidebar.mineOnly": "Mine only",
-      "sidebar.showOnlyMyComments": "Show only my comments",
-      "sidebar.status": "Status",
-      "sidebar.filterByStatus": "Filter by status",
-      "sidebar.filterByUser": "Filter by user",
-      "sidebar.user": "User",
-      "sidebar.showFilters": "Show filters",
-      "sidebar.hideFilters": "Hide filters",
-      "sidebar.allUsers": "All users",
-      "sidebar.noCommentsYet": "No comments on this project yet.<br/>Click the inspect icon, then click an element.",
-      "sidebar.noOwnComments": "You haven't left any comments yet.",
-      "sidebar.noFilteredComments": 'No comments in "{label}"{suffix}.',
-      "sidebar.ofYours": " of yours",
-      // --- comment card ---
-      "card.deployedIn": "Deployed in {sha}",
-      "card.live": "live",
-      "card.completed": "completed",
-      "card.pending": "pending",
-      "card.archived": "archived",
-      "card.verified": "Verified",
-      "card.looksRight": "Looks right",
-      "card.notFixed": "Not fixed",
-      "card.explainNotFixed": "Explain what is still not fixed…",
-      "card.submit": "Submit",
-      "card.viewCommit": "View commit",
-      "card.commit": "commit",
-      "card.containsSecretPayload": "contains a secret/payload?",
-      "card.defaultReplyAuthor": "User",
-      "card.automatedReply": "Automated reply",
-      "card.aiVia": "via {name}",
-      "card.edited": "edited",
-      "card.jumpToPin": "Flash this comment's pin on the page",
-      "card.reply": "Reply",
-      "card.replyPlaceholder": "Reply…",
-      "card.markedReadyClickToUnmark": "Marked ready — click to unmark",
-      "card.markReadyToApply": "Mark ready to apply",
-      "card.ready": "Ready",
-      "card.reopen": "Re-open",
-      "card.archive": "Archive",
-      "card.edit": "Edit",
-      "card.delete": "Delete",
-      "card.moreActions": "More actions",
-      "card.copyApplyPrompt": "Copy apply prompt",
-      "card.complete": "Complete",
-      "card.envLocal": "Local",
-      "card.envStaging": "Staging",
-      "card.envProduction": "Production",
-      "card.privateClickToMakePublic": "Private — click to make public",
-      "card.makePrivateOnlyYou": "Make private (only you)",
-      "card.makePublic": "Make public",
-      "card.makePrivate": "Make private",
-      "card.removeImage": "Remove image",
-      "card.save": "Save",
-      "card.deleteThisComment": "Delete this comment?",
-      "card.deleteThisReply": "Delete this reply?",
-      "card.confirmDelete": "Confirm delete",
-      "card.readMore": "Read more",
-      "card.readLess": "Read less",
-      // --- comment popover ---
-      "popover.selectParentElement": "Select parent element",
-      "popover.selectFirstChildElement": "Select first child element",
-      "popover.commentOn": "Comment on",
-      "popover.whatShouldChange": "What should change here?",
-      "popover.predefinedPrompts": "Predefined prompts",
-      "popover.searchPrompts": "Search prompts…",
-      "popover.searchPredefinedPrompts": "Search predefined prompts",
-      "popover.noMatches": "No matches",
-      "popover.remove": "Remove",
-      "popover.attachScreenshot": "Attach screenshot",
-      "popover.reportBugTitle": "Attaches any console errors/warnings and failed or slow network requests seen on this page",
-      "popover.reportAsABug": "Report as a bug",
-      "popover.add": "Add",
-      "popover.commentCannotBeEmpty": "Comment cannot be empty",
-      "popover.clickAnyElementToComment": "Click any element to comment on it — or press Esc to cancel",
-      "popover.cancelled": "Cancelled",
-      // --- pins ---
-      "pin.ready": "Ready",
-      "pin.applied": "Applied",
-      "pin.archived": "Archived",
-      "pin.open": "Open",
-      "pin.commentHash": "Comment #{n}",
-      "pin.byAuthor": " by {author}",
-      "pin.reply": "reply",
-      "pin.replies": "replies",
-      "pin.overlappingComments": "{n} overlapping comments at this location",
-      // --- notifications ---
-      "notifications.updates": "Updates",
-      "notifications.noUpdatesYet": "No updates yet",
-      "notifications.update": "Update",
-      "notifications.applied": "Applied",
-      "notifications.reopened": "Reopened",
-      "notifications.newReply": "New reply",
-      "notifications.commit": "Commit",
-      // --- toasts ---
-      "toast.failedToVerifyComment": "Failed to verify comment",
-      "toast.commentVerified": "Comment verified",
-      "toast.commentReopened": "Comment re-opened",
-      "toast.signedOut": "Signed out",
-      "toast.hiddenClickToReopen": "{brand} hidden — click the button to reopen",
-      "toast.couldNotReachServer": "Could not reach {brand} server",
-      "toast.retry": "Retry",
-      "toast.refreshed": "Refreshed",
-      "toast.pinElementNotFound": "This comment's element isn't visible right now (hidden, removed, or temporary)",
-      "toast.applyPromptCopied": "Apply prompt copied — paste it into your AI tool",
-      "toast.copyFailed": "Could not copy to clipboard",
-      "toast.commitStyleUpdated": "Commit style updated",
-      "toast.updateFailed": "Update failed",
-      "toast.updated": "Updated",
-      "toast.actionNoLongerAvailable": "That action is no longer available — please choose another and try again.",
-      "toast.commentsNotAllowedFromAddress": "Comments are not allowed from this address",
-      "toast.tooManyCommentsRetryIn": "Too many comments — try again in {n} second{s}.",
-      "toast.tooManyCommentsWait": "Too many comments — please wait a moment and try again.",
-      "toast.screenshotUploadFailed": "Screenshot upload failed — saving without it",
-      "toast.commentAdded": "Comment added",
-      "toast.undo": "Undo",
-      "toast.failedToSaveComment": "Failed to save comment",
-      "toast.failedToReply": "Failed to reply",
-      "toast.markedForApply": "Marked for apply",
-      "toast.unmarked": "Unmarked",
-      "toast.markedPrivate": "Marked private",
-      "toast.madePublic": "Made public",
-      "toast.markedCompleted": "Marked completed",
-      "toast.deleted": "Deleted",
-      "toast.deleteFailed": "Delete failed",
-      "toast.commentUpdated": "Comment updated",
-      "toast.failedToUpdateComment": "Failed to update comment",
-      "toast.reopenedMsg": "Re-opened",
-      "toast.archivedMsg": "Archived",
-      "toast.pleaseProvideNoteNotFixed": "Please provide a note explaining what is not fixed",
-      "toast.notifications": "Notifications",
-      "fields.more": "Add more fields",
-      "fields.fewer": "Fewer fields",
-      "fields.extra": "Extra fields",
-      "fields.edit": "Extra fields",
-      "fields.save": "Save fields",
-      "fields.cancel": "Cancel",
-      "fields.none": "None",
-      "fields.invalidUrl": "Must be a valid URL",
-      "fields.invalidOption": "Pick one of the listed options",
-      "fields.hostNotAllowed": "Must be a link on {hosts}",
-      "fields.tooLong": "Value is too long",
-      "fields.saved": "Fields saved",
-      "fields.serverRejected": "Server rejected:",
-      "fields.seeMore": "See more",
-      "fields.seeLess": "See less"
-    },
-    ar: {
-      // --- auth (login/signup modal) ---
-      "auth.leaveFeedbackOn": "قدّم ملاحظاتك على",
-      "auth.skipForNow": "تخطَّ هذا الآن",
-      "auth.email": "البريد الإلكتروني",
-      "auth.password": "كلمة المرور",
-      "auth.signIn": "تسجيل الدخول",
-      "auth.chooseRoleToRequestAgain": "اختر دورًا لإعادة الطلب",
-      "auth.requestAgain": "إعادة الطلب",
-      "auth.noAccount": "ليس لديك حساب؟",
-      "auth.createAccount": "إنشاء حساب",
-      "auth.name": "الاسم",
-      "auth.role": "الدور",
-      "auth.alreadyHaveAccount": "لديك حساب بالفعل؟",
-      "auth.backToSignIn": "العودة لتسجيل الدخول",
-      "auth.loadingRoles": "جارٍ تحميل الأدوار…",
-      "auth.noRolesAvailable": "لا توجد أدوار متاحة",
-      "auth.couldNotLoadRoles": "تعذّر تحميل الأدوار.",
-      "auth.pleaseEnterEmail": "يرجى إدخال بريدك الإلكتروني.",
-      "auth.pleaseEnterPassword": "يرجى إدخال كلمة المرور.",
-      "auth.pendingApproval": "طلبك بانتظار موافقة المسؤول.",
-      "auth.accountDisabled": "حسابك معطّل.",
-      "auth.requestRejected": "تم رفض طلبك.",
-      "auth.invalidCredentials": "البريد الإلكتروني أو كلمة المرور غير صحيحة.",
-      "auth.networkError": "خطأ في الشبكة. يرجى المحاولة مرة أخرى.",
-      "auth.signingIn": "جارٍ تسجيل الدخول…",
-      "auth.pleaseChooseRole": "يرجى اختيار دور.",
-      "auth.enterEmailPasswordToRequestAgain": "أدخل بريدك الإلكتروني وكلمة المرور لإعادة الطلب.",
-      "auth.submitting": "جارٍ الإرسال…",
-      "auth.couldNotSubmitRequest": "تعذّر إرسال طلبك.",
-      "auth.requestSubmittedMsg": "تم إرسال الطلب — سيراجعه أحد المسؤولين.",
-      "auth.pleaseEnterName": "يرجى إدخال اسمك.",
-      "auth.pleaseChoosePassword": "يرجى اختيار كلمة مرور.",
-      "auth.couldNotCreateAccount": "تعذّر إنشاء حسابك.",
-      "auth.requestSubmittedBtn": "تم إرسال الطلب",
-      // --- toolbar ---
-      "toolbar.dragToReposition": "اسحب لتغيير الموضع",
-      "toolbar.commentOnElement": "أضف تعليقًا على عنصر",
-      "toolbar.commentOnElementShortcut": "أضف تعليقًا على عنصر، الاختصار {label}",
-      "toolbar.cancel": "إلغاء",
-      "toolbar.viewCommentsList": "عرض قائمة التعليقات",
-      "toolbar.comments": "التعليقات",
-      "toolbar.projectHeading": "{project}",
-      "toolbar.recentActivityUpdates": "النشاط الأخير والتحديثات",
-      "toolbar.updates": "التحديثات",
-      "toolbar.signedInAs": "مسجّل الدخول باسم",
-      "toolbar.account": "الحساب",
-      "toolbar.hideBrand": "إخفاء {brand}",
-      "toolbar.resetToolbarPosition": "إعادة ضبط موضع شريط الأدوات",
-      "toolbar.refreshComments": "تحديث التعليقات",
-      "toolbar.close": "إغلاق",
-      "toolbar.envFixedTitle": "البيئة — ثابتة لهذا التثبيت",
-      "toolbar.envSwitchTitle": "البيئة — التعليقات مرتبطة بكل بيئة على حدة",
-      "toolbar.envAll": "الكل",
-      "toolbar.envLocal": "محلي",
-      "toolbar.envStaging": "الاختبار",
-      "toolbar.envProduction": "الإنتاج",
-      "toolbar.environment": "البيئة",
-      "toolbar.commitStyle": "أسلوب الالتزام",
-      "toolbar.commitStyleTitle": "كيفية التزام التعليقات المطبَّقة عبر مسار تطبيق الذكاء الاصطناعي",
-      "toolbar.oneCommit": "التزام واحد",
-      "toolbar.separateCommits": "التزامات منفصلة",
-      // --- user menu ---
-      "menu.addComment": "إضافة تعليق",
-      "menu.clickThenPressKeyCombo": "انقر، ثم اضغط تركيبة مفاتيح جديدة",
-      "menu.resetToDefault": "إعادة إلى الافتراضي",
-      "menu.theme": "المظهر",
-      "menu.light": "فاتح",
-      "menu.lightTheme": "المظهر الفاتح",
-      "menu.dark": "داكن",
-      "menu.darkTheme": "المظهر الداكن",
-      "menu.language": "اللغة",
-      "menu.extensionSignedInNote": "تم تسجيل الدخول عبر إضافة المتصفح — سجّل الخروج من نافذتها المنبثقة.",
-      "menu.signOut": "تسجيل الخروج",
-      "menu.pressKeysToCancel": "اضغط المفاتيح… (Esc للإلغاء)",
-      "menu.addModifierKey": "أضف مفتاح تعديل (Alt/Shift/Ctrl/⌘)…",
-      "menu.saving": "جارٍ الحفظ…",
-      "menu.resetting": "جارٍ إعادة الضبط…",
-      "menu.shortcutUpdated": "تم تحديث الاختصار",
-      "menu.failedToSaveTryAgain": "فشل الحفظ — حاول مرة أخرى",
-      "menu.shortcutResetToDefault": "تمت إعادة الاختصار إلى الافتراضي",
-      "menu.failedToResetTryAgain": "فشلت إعادة الضبط — حاول مرة أخرى",
-      // --- launcher ---
-      "launcher.openFeedbackFor": "فتح ملاحظات {brand}",
-      // --- sidebar / filters ---
-      "sidebar.mineOnly": "تعليقاتي فقط",
-      "sidebar.showOnlyMyComments": "عرض تعليقاتي فقط",
-      "sidebar.status": "الحالة",
-      "sidebar.filterByStatus": "تصفية حسب الحالة",
-      "sidebar.filterByUser": "تصفية حسب المستخدم",
-      "sidebar.user": "المستخدم",
-      "sidebar.showFilters": "إظهار الفلاتر",
-      "sidebar.hideFilters": "إخفاء الفلاتر",
-      "sidebar.allUsers": "جميع المستخدمين",
-      "sidebar.noCommentsYet": "لا توجد تعليقات على هذا المشروع بعد.<br/>انقر على أيقونة الفحص، ثم انقر على عنصر.",
-      "sidebar.noOwnComments": "لم تترك أي تعليقات بعد.",
-      "sidebar.noFilteredComments": 'لا توجد تعليقات ضمن "{label}"{suffix}.',
-      "sidebar.ofYours": " الخاصة بك",
-      // --- comment card ---
-      "card.deployedIn": "تم النشر في {sha}",
-      "card.live": "مباشر",
-      "card.completed": "مكتمل",
-      "card.pending": "قيد الانتظار",
-      "card.archived": "مؤرشف",
-      "card.verified": "تم التحقق",
-      "card.looksRight": "يبدو صحيحًا",
-      "card.notFixed": "لم يُصلح",
-      "card.explainNotFixed": "اشرح ما لم يتم إصلاحه بعد…",
-      "card.submit": "إرسال",
-      "card.viewCommit": "عرض الالتزام",
-      "card.commit": "التزام",
-      "card.containsSecretPayload": "قد يحتوي على بيانات سرية؟",
-      "card.defaultReplyAuthor": "مستخدم",
-      "card.automatedReply": "رد آلي",
-      "card.aiVia": "بواسطة {name}",
-      "card.edited": "مُعدَّل",
-      "card.jumpToPin": "إظهار دبوس هذا التعليق على الصفحة",
-      "card.reply": "رد",
-      "card.replyPlaceholder": "رد…",
-      "card.markedReadyClickToUnmark": "وُضع علامة جاهز — انقر لإلغائها",
-      "card.markReadyToApply": "وضع علامة جاهز للتطبيق",
-      "card.ready": "جاهز",
-      "card.reopen": "إعادة الفتح",
-      "card.archive": "أرشفة",
-      "card.edit": "تعديل",
-      "card.delete": "حذف",
-      "card.moreActions": "المزيد من الإجراءات",
-      "card.copyApplyPrompt": "نسخ تعليمة التطبيق",
-      "card.complete": "إكمال",
-      "card.envLocal": "محلي",
-      "card.envStaging": "الاختبار",
-      "card.envProduction": "الإنتاج",
-      "card.privateClickToMakePublic": "خاص — انقر لجعله عامًا",
-      "card.makePrivateOnlyYou": "اجعله خاصًا (أنت فقط)",
-      "card.makePublic": "اجعله عامًا",
-      "card.makePrivate": "اجعله خاصًا",
-      "card.removeImage": "إزالة الصورة",
-      "card.save": "حفظ",
-      "card.deleteThisComment": "هل تريد حذف هذا التعليق؟",
-      "card.deleteThisReply": "هل تريد حذف هذا الرد؟",
-      "card.confirmDelete": "تأكيد الحذف",
-      "card.readMore": "قراءة المزيد",
-      "card.readLess": "قراءة أقل",
-      // --- comment popover ---
-      "popover.selectParentElement": "اختر العنصر الأصل",
-      "popover.selectFirstChildElement": "اختر العنصر الفرعي الأول",
-      "popover.commentOn": "تعليق على",
-      "popover.whatShouldChange": "ما الذي يجب تغييره هنا؟",
-      "popover.predefinedPrompts": "اقتراحات جاهزة",
-      "popover.searchPrompts": "ابحث في الاقتراحات…",
-      "popover.searchPredefinedPrompts": "البحث في الاقتراحات الجاهزة",
-      "popover.noMatches": "لا توجد نتائج",
-      "popover.remove": "إزالة",
-      "popover.attachScreenshot": "إرفاق لقطة شاشة",
-      "popover.reportBugTitle": "يُرفق أي أخطاء/تحذيرات في وحدة التحكم وطلبات الشبكة الفاشلة أو البطيئة في هذه الصفحة",
-      "popover.reportAsABug": "الإبلاغ كخلل",
-      "popover.add": "إضافة",
-      "popover.commentCannotBeEmpty": "لا يمكن أن يكون التعليق فارغًا",
-      "popover.clickAnyElementToComment": "انقر على أي عنصر للتعليق عليه — أو اضغط Esc للإلغاء",
-      "popover.cancelled": "تم الإلغاء",
-      // --- pins ---
-      "pin.ready": "جاهز",
-      "pin.applied": "مطبَّق",
-      "pin.archived": "مؤرشف",
-      "pin.open": "مفتوح",
-      "pin.commentHash": "تعليق رقم {n}",
-      "pin.byAuthor": " بواسطة {author}",
-      "pin.reply": "رد واحد",
-      "pin.replies": "{n} ردود",
-      "pin.overlappingComments": "{n} تعليقات متداخلة في هذا الموضع",
-      // --- notifications ---
-      "notifications.updates": "التحديثات",
-      "notifications.noUpdatesYet": "لا توجد تحديثات بعد",
-      "notifications.update": "تحديث",
-      "notifications.applied": "تم التطبيق",
-      "notifications.reopened": "أُعيد فتحه",
-      "notifications.newReply": "رد جديد",
-      "notifications.commit": "الالتزام",
-      // --- toasts ---
-      "toast.failedToVerifyComment": "فشل التحقق من التعليق",
-      "toast.commentVerified": "تم التحقق من التعليق",
-      "toast.commentReopened": "أُعيد فتح التعليق",
-      "toast.signedOut": "تم تسجيل الخروج",
-      "toast.hiddenClickToReopen": "تم إخفاء {brand} — انقر على الزر لإعادة فتحه",
-      "toast.couldNotReachServer": "تعذّر الوصول إلى خادم {brand}",
-      "toast.retry": "إعادة المحاولة",
-      "toast.refreshed": "تم التحديث",
-      "toast.pinElementNotFound": "عنصر هذا التعليق غير ظاهر حاليًا (مخفي أو محذوف أو مؤقت)",
-      "toast.applyPromptCopied": "تم نسخ تعليمة التطبيق — الصقها في أداة الذكاء الاصطناعي",
-      "toast.copyFailed": "تعذر النسخ إلى الحافظة",
-      "toast.commitStyleUpdated": "تم تحديث أسلوب الالتزام",
-      "toast.updateFailed": "فشل التحديث",
-      "toast.updated": "تم التحديث",
-      "toast.actionNoLongerAvailable": "لم يعد هذا الإجراء متاحًا — يرجى اختيار إجراء آخر والمحاولة مرة أخرى.",
-      "toast.commentsNotAllowedFromAddress": "التعليقات غير مسموح بها من هذا العنوان",
-      "toast.tooManyCommentsRetryIn": "عدد كبير جدًا من التعليقات — حاول مرة أخرى بعد {n} ثانية.",
-      "toast.tooManyCommentsWait": "عدد كبير جدًا من التعليقات — يرجى الانتظار قليلًا والمحاولة مرة أخرى.",
-      "toast.screenshotUploadFailed": "فشل رفع لقطة الشاشة — سيُحفظ التعليق دونها",
-      "toast.commentAdded": "تمت إضافة التعليق",
-      "toast.undo": "تراجع",
-      "toast.failedToSaveComment": "فشل حفظ التعليق",
-      "toast.failedToReply": "فشل إرسال الرد",
-      "toast.markedForApply": "وُضعت علامة للتطبيق",
-      "toast.unmarked": "تم إلغاء العلامة",
-      "toast.markedPrivate": "وُضعت علامة خاص",
-      "toast.madePublic": "أصبح عامًا",
-      "toast.markedCompleted": "وُضعت علامة مكتمل",
-      "toast.deleted": "تم الحذف",
-      "toast.deleteFailed": "فشل الحذف",
-      "toast.commentUpdated": "تم تحديث التعليق",
-      "toast.failedToUpdateComment": "فشل تحديث التعليق",
-      "toast.reopenedMsg": "أُعيد فتحه",
-      "toast.archivedMsg": "تمت الأرشفة",
-      "toast.pleaseProvideNoteNotFixed": "يرجى كتابة ملاحظة تشرح ما لم يتم إصلاحه",
-      "toast.notifications": "الإشعارات",
-      "fields.more": "إضافة المزيد من الحقول",
-      "fields.fewer": "حقول أقل",
-      "fields.extra": "حقول إضافية",
-      "fields.edit": "حقول إضافية",
-      "fields.save": "حفظ الحقول",
-      "fields.cancel": "إلغاء",
-      "fields.none": "لا شيء",
-      "fields.invalidUrl": "يجب أن يكون رابطاً صالحاً",
-      "fields.invalidOption": "اختر أحد الخيارات المدرجة",
-      "fields.hostNotAllowed": "يجب أن يكون الرابط من {hosts}",
-      "fields.tooLong": "القيمة طويلة جداً",
-      "fields.saved": "تم حفظ الحقول",
-      "fields.serverRejected": "رفض الخادم:",
-      "fields.seeMore": "عرض المزيد",
-      "fields.seeLess": "عرض أقل"
-    }
-  };
-
   // src/fields.ts
   function hostMatches(host, pattern) {
     if (host = host.toLowerCase(), pattern = pattern.toLowerCase(), host === pattern) return !0;
@@ -1043,7 +1062,7 @@
   <span class="fbk-toolbar__divider" aria-hidden="true"></span>
   <button type="button" class="fbk-toolbar-btn fbk-toolbar-btn--primary fbk-toolbar-btn--icon fbk-toolbar-btn--brand" id="fbk-add" data-fbk-act="inspect" aria-pressed="false" data-toggle="tooltip" data-placement="top" title="${t("toolbar.commentOnElement")}${shortcutLabel ? ` (${escapeHtml(shortcutLabel)})` : ""}" aria-label="${t("toolbar.commentOnElement")}"${ariaShortcut ? ` aria-keyshortcuts="${escapeHtml(ariaShortcut)}"` : ""}><span class="fbk-toolbar-btn__icon">${ICON.crosshair}</span></button>
   <button type="button" class="fbk-toolbar-btn fbk-toolbar-btn--comments" id="fbk-toggle" data-fbk-act="comments" aria-expanded="false" aria-haspopup="dialog" data-toggle="tooltip" data-placement="top" title="${t("toolbar.viewCommentsList")}" aria-label="${t("toolbar.comments")}"><span class="fbk-toolbar-btn__icon">${ICON.bubble}</span> <span class="fbk-toolbar-count" id="fbk-count" data-fbk-count>0</span></button>
-  <button type="button" class="fbk-toolbar-btn fbk-toolbar-btn--icon fbk-hidden" id="fbk-updates" data-fbk-act="updates" aria-expanded="false" aria-haspopup="dialog" data-toggle="tooltip" data-placement="top" title="${t("toolbar.recentActivityUpdates")}" aria-label="${t("toolbar.updates")}${unreadNotifyCount > 0 ? `, ${unreadNotifyCount > 99 ? "99+" : unreadNotifyCount} unread` : ""}"><span class="fbk-toolbar-btn__icon">${ICON.bell}</span><span class="fbk-toolbar-dot${unreadNotifyCount > 0 ? "" : " fbk-hidden"}" id="fbk-notify-count" data-fbk-unread aria-hidden="true"></span></button>
+  <button type="button" class="fbk-toolbar-btn fbk-toolbar-btn--icon fbk-hidden" id="fbk-updates" data-fbk-act="updates" aria-expanded="false" aria-haspopup="dialog" data-toggle="tooltip" data-placement="top" title="${t("toolbar.recentActivityUpdates")}" aria-label="${t("toolbar.updates")}${unreadSuffix(unreadNotifyCount)}"><span class="fbk-toolbar-btn__icon">${ICON.bell}</span><span class="fbk-toolbar-dot${unreadNotifyCount > 0 ? "" : " fbk-hidden"}" id="fbk-notify-count" data-fbk-unread aria-hidden="true"></span></button>
   ${displayName ? `
   <span class="fbk-toolbar__divider" aria-hidden="true"></span>
   <button type="button" class="fbk-toolbar-btn fbk-toolbar-btn--avatar" id="fbk-user" data-fbk-act="account" aria-expanded="false" aria-haspopup="dialog" data-toggle="tooltip" data-placement="top" title="${t("toolbar.signedInAs")} ${displayName}${roleLabel ? " · " + roleLabel : ""}" aria-label="${t("toolbar.account")}, ${displayName}">${avatarInitials}</button>` : ""}
@@ -1114,7 +1133,7 @@
   <button class="fbk-launcher fbk-pos-${position || "bottom-end"}${rtl ? " fbk-rtl" : ""}" id="fbk-launcher" title="${openLabel}" aria-label="${openLabel}">
   <span class="fbk-launcher-ring" aria-hidden="true"></span>
   ${ICON.bubbleLg}
-  ${badgeCount ? `<span class="fbk-launcher-badge${hasUnread ? " fbk-notify-badge" : ""}">${badgeCount > 99 ? "99+" : badgeCount}</span>` : ""}
+  ${badgeCount ? `<span class="fbk-launcher-badge${hasUnread ? " fbk-notify-badge" : ""}">${badgeCount > 99 ? t("toolbar.countCap") : badgeCount}</span>` : ""}
   </button>`;
     },
     empty: (msg) => `<div class="fbk-empty">${msg}</div>`,
@@ -1131,7 +1150,7 @@
   <div class="fbk-toast-icon" aria-hidden="true">${icon}</div>
   <div class="fbk-toast-content"><span class="fbk-toast-message">${escapeHtml(message)}</span></div>
   ${actionLabel ? `<button type="button" class="fbk-toast-action">${escapeHtml(actionLabel)}</button>` : ""}
-  <button type="button" class="fbk-toast-close" aria-label="Dismiss notification">${ICON.close}</button>
+  <button type="button" class="fbk-toast-close" aria-label="${t("toast.dismissNotification")}">${ICON.close}</button>
   </div>`;
     },
     // Status filter as a dropdown (rather than a row of chip buttons) — keeps the filter bar compact.
@@ -1247,8 +1266,8 @@
         } catch {
           return pageUrl;
         }
-      })(), shotUrl = c.element && c.element.screenshotUrl, shot = shotUrl ? `<a class="fbk-shot-link" href="${escapeHtml(shotUrl)}" target="_blank" rel="noopener noreferrer" title="Open full screenshot">
-  <img class="fbk-shot" src="${escapeHtml(shotUrl)}" alt="Element screenshot" loading="lazy" />
+      })(), shotUrl = c.element && c.element.screenshotUrl, shot = shotUrl ? `<a class="fbk-shot-link" href="${escapeHtml(shotUrl)}" target="_blank" rel="noopener noreferrer" title="${t("card.openFullScreenshot")}">
+  <img class="fbk-shot" src="${escapeHtml(shotUrl)}" alt="${t("card.elementScreenshot")}" loading="lazy" />
   </a>` : "";
       return `
   <div class="fbk-card ${cls}" data-id="${c.id}">
@@ -2030,7 +2049,7 @@
         } catch {
           return !0;
         }
-      })(), this._pendingInviteToken = this.stripInviteTokenFromUrl(), this.loadAuth(), injected != null && injected.token && (this.token = injected.token, injected.user !== void 0 && (this.user = injected.user), this.shortcut = parseShortcut((_b = this.user) == null ? void 0 : _b.addCommentShortcut), this.authOwnedByHost = !0), this.applyTheme(), setLang(this.resolveLang()), this.style.position = "fixed", this.style.zIndex = "2147483647", this.style.top = "0", this.style.left = "0", this.style.pointerEvents = "none", this.attachShadow({ mode: "open" }), this._styleLink = document.createElement("link"), this._styleLink.rel = "stylesheet", CSS_INTEGRITY && (this._styleLink.integrity = CSS_INTEGRITY, this._styleLink.crossOrigin = "anonymous"), this._styleLink.href = (injected == null ? void 0 : injected.cssUrl) || CSS_URL || `${this.server}/widget.css`, this.shadowRoot.appendChild(this._styleLink), this.root = document.createElement("div"), this.shadowRoot.appendChild(this.root), this._stylesPromise = this._stylesReady(), ensureHighlightStyle(), !this.project) {
+      })(), this._pendingInviteToken = this.stripInviteTokenFromUrl(), this.loadAuth(), injected != null && injected.token && (this.token = injected.token, injected.user !== void 0 && (this.user = injected.user), this.shortcut = parseShortcut((_b = this.user) == null ? void 0 : _b.addCommentShortcut), this.authOwnedByHost = !0), this.applyTheme(), setLang(this.resolveLang()), this.applyDir(), this.style.position = "fixed", this.style.zIndex = "2147483647", this.style.top = "0", this.style.left = "0", this.style.pointerEvents = "none", this.attachShadow({ mode: "open" }), this._styleLink = document.createElement("link"), this._styleLink.rel = "stylesheet", CSS_INTEGRITY && (this._styleLink.integrity = CSS_INTEGRITY, this._styleLink.crossOrigin = "anonymous"), this._styleLink.href = (injected == null ? void 0 : injected.cssUrl) || CSS_URL || `${this.server}/widget.css`, this.shadowRoot.appendChild(this._styleLink), this.root = document.createElement("div"), this.shadowRoot.appendChild(this.root), this._stylesPromise = this._stylesReady(), ensureHighlightStyle(), !this.project) {
         console.error("[pointer-feedback] Missing required `project` attribute. Component disabled.");
         return;
       }
@@ -2057,7 +2076,7 @@
       if (!await this._checkWidgetActive()) return;
       await Promise.all([this._stylesReady(), loadBranding(this.server)]);
       let inviteFailed = !1;
-      this._pendingInviteToken && (inviteFailed = !await this.redeemInviteToken(this._pendingInviteToken), this._pendingInviteToken = null), this.token && await this.hydrateIdentity(), setLang(this.resolveLang()), this.token ? this.init() : this.renderChrome();
+      this._pendingInviteToken && (inviteFailed = !await this.redeemInviteToken(this._pendingInviteToken), this._pendingInviteToken = null), this.token && await this.hydrateIdentity(), setLang(this.resolveLang()), this.applyDir(), this.token ? this.init() : this.renderChrome();
       try {
         performance.mark("pf:boot:end");
       } catch {
@@ -2331,7 +2350,17 @@
         localStorage.setItem("pointer_widget_language", lang);
       } catch {
       }
-      setLang(lang);
+      setLang(lang), this.applyDir();
+    }
+    // Reflects the resolved language's writing direction onto the host element (light DOM), same
+    // mechanism as applyTheme() above — _base.scss's `:host([dir="rtl"])` block flips the shadow
+    // UI's own layout direction (popover/sidebar/toolbar/toasts/composer) to follow the WIDGET's
+    // language, independent of the host page's own dir (which only ever drives the collapsed
+    // launcher's corner — see pageIsRtl() in dom.ts). Plain `dir`, unlike this class's other
+    // internal attributes, is deliberate: it is the standard HTML attribute assistive tech already
+    // understands, not a widget-private hook.
+    applyDir() {
+      this.setAttribute("dir", getLang() === "ar" ? "rtl" : "ltr");
     }
     async init() {
       await loadStatusCatalog(this.server), this.isConnected && (this.renderChrome(), await Promise.all([this.fetchComments(), this.fetchPredefinedActions(), this.fetchCaptureConfig()]), this.isConnected && (this.token && this.startNotificationPolling(), this.renderSidebar(), this.renderPins(), this.schedulePinsRetries(), this._urlPollTimer || (this._urlPollTimer = window.setInterval(() => {
@@ -2834,10 +2863,7 @@
       let dot = this.root.querySelector("#fbk-notify-count");
       dot && dot.classList.toggle("fbk-hidden", this.unreadNotifyCount <= 0);
       let updatesBtn = this.root.querySelector("#fbk-updates");
-      if (updatesBtn) {
-        let n = this.unreadNotifyCount;
-        updatesBtn.setAttribute("aria-label", `Updates${n > 0 ? `, ${n > 99 ? "99+" : n} unread` : ""}`);
-      }
+      updatesBtn && updatesBtn.setAttribute("aria-label", `${t("toolbar.updates")}${unreadSuffix(this.unreadNotifyCount)}`);
     }
     async apiNotifications(unread = !1) {
       var _a2;

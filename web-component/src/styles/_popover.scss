@@ -216,6 +216,10 @@
     transform: translateX(12px);
   }
 }
+// Same physical/logical mismatch as the full-size switch in _sidebar.scss — see its comment.
+:host([dir='rtl']) .fbk-toggle-switch.fbk-toggle-switch-sm.active .fbk-toggle-switch-thumb {
+  transform: translateX(-12px);
+}
 
 .fbk-popover-toggle-label {
   display: inline-flex;

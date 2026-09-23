@@ -12,11 +12,19 @@
   background: v.token('surface');
   border-inline-start: 1px solid v.token('border');
   box-shadow: -8px 0 24px rgba(0, 0, 0, 0.08);
+  // `inset-inline-end: 0` above means the sidebar sits at the screen's PHYSICAL LEFT edge once
+  // the shadow root goes RTL (Arabic — see _base.scss/element.ts's applyDir()), not just its
+  // usual physical right — so the closed-state slide must go the opposite physical way too
+  // (translateX is always physical, direction never flips it on its own). `[dir='rtl']` below
+  // is this file's own direction (inherited from :host), not the host page's.
   transform: translateX(100%);
   transition: transform 0.2s ease;
   display: flex;
   flex-direction: column;
   pointer-events: auto;
+}
+:host([dir='rtl']) .fbk-sidebar {
+  transform: translateX(-100%);
 }
 .fbk-sidebar.open {
   transform: translateX(0);
@@ -28,13 +36,18 @@
 .fbk-sidebar.open.fbk-peek-hide {
   transform: translateX(100%);
 }
+:host([dir='rtl']) .fbk-sidebar.open.fbk-peek-hide {
+  transform: translateX(-100%);
+}
 // Floating close tab sitting mostly outside the sidebar's own border (facing the page, opposite
 // the screen edge it slides in from) — a drawer "collapse" handle rather than a button inside the
 // header. Its own opacity/visibility is toggled off explicitly when the sidebar isn't `.open`
 // (below) rather than relying only on it riding the sidebar's translateX off-screen: pushed this
 // far outside the sidebar's box, the closed-state transform alone could leave it resting back
-// inside the viewport instead of off-screen with the rest of the drawer. translate (not a logical
-// inset) is deliberate: the shadow UI stays LTR regardless of language (see templates.ts).
+// inside the viewport instead of off-screen with the rest of the drawer. `inset-inline-start: 0`
+// already anchors this to whichever physical edge of the sidebar faces the page in either
+// direction; only the outward-peek `transform` (always physical) needs the `[dir='rtl']` flip
+// below, same reasoning as the sidebar's own slide transform above.
 .fbk-sidebar-close-arrow {
   position: absolute;
   inset-block-start: 20px;
@@ -55,6 +68,9 @@
   opacity: 1;
   visibility: visible;
   transition: opacity 0.15s ease, visibility 0.15s ease, background-color v.token('transition-fast');
+}
+:host([dir='rtl']) .fbk-sidebar-close-arrow {
+  transform: translateX(85%);
 }
 .fbk-sidebar-close-arrow:hover {
   background: v.token('surface-hover');
@@ -196,11 +212,14 @@
   background: v.token('primary-contrast');
   transition: transform v.token('transition-fast');
 }
-// translateX (not a logical inset) is deliberate: the shadow UI itself always stays LTR
-// regardless of language (see templates.ts's header comment) — this is a text-only translation,
-// not a layout mirror.
+// The thumb starts at the switch's logical start edge (inset-inline-start: 2px above) and slides
+// toward the logical end when active — translateX is always physical, so which way that actually
+// is has to be flipped explicitly once the shadow root can be RTL (see _base.scss).
 .fbk-toggle-switch.active .fbk-toggle-switch-thumb {
   transform: translateX(16px);
+}
+:host([dir='rtl']) .fbk-toggle-switch.active .fbk-toggle-switch-thumb {
+  transform: translateX(-16px);
 }
 // Status filter dropdown + user (author) filter — the author filter is shown only when the
 // list spans more than one author.

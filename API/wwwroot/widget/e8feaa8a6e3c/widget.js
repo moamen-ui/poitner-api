@@ -300,9 +300,6 @@
     let raw = (_b = (_a2 = STRINGS[currentLang][key]) != null ? _a2 : STRINGS.en[key]) != null ? _b : key;
     return vars ? raw.replace(/\{(\w+)\}/g, (_, k) => k in vars ? String(vars[k]) : `{${k}}`) : raw;
   }
-  function unreadSuffix(count) {
-    return count > 0 ? t("toolbar.unreadSuffix", { count: count > 99 ? t("toolbar.countCap") : count }) : "";
-  }
   var STRINGS = {
     en: {
       // --- auth (login/signup modal) ---
@@ -785,11 +782,11 @@
   var escapeHtml = (s) => String(s == null ? "" : s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;"), initials = (name) => {
     let parts = (name || "").trim().split(/\s+/).filter(Boolean);
     return parts.length === 0 ? "?" : parts.length === 1 ? parts[0].slice(0, 2).toUpperCase() : (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
-  }, timeAgo = (iso) => {
+  }, _rtf = {}, relativeTimeFormat = (lang) => _rtf[lang] || (_rtf[lang] = new Intl.RelativeTimeFormat(lang, { numeric: "auto" })), timeAgo = (iso) => {
     if (!iso) return "";
     let then = new Date(iso).getTime();
     if (Number.isNaN(then)) return "";
-    let seconds = Math.round((Date.now() - then) / 1e3), rtf = new Intl.RelativeTimeFormat(getLang(), { numeric: "auto" });
+    let seconds = Math.round((Date.now() - then) / 1e3), rtf = relativeTimeFormat(getLang());
     if (seconds < 45) return rtf.format(0, "second");
     let minutes = Math.round(seconds / 60);
     if (minutes < 60) return rtf.format(-minutes, "minute");
@@ -1062,7 +1059,7 @@
   <span class="fbk-toolbar__divider" aria-hidden="true"></span>
   <button type="button" class="fbk-toolbar-btn fbk-toolbar-btn--primary fbk-toolbar-btn--icon fbk-toolbar-btn--brand" id="fbk-add" data-fbk-act="inspect" aria-pressed="false" data-toggle="tooltip" data-placement="top" title="${t("toolbar.commentOnElement")}${shortcutLabel ? ` (${escapeHtml(shortcutLabel)})` : ""}" aria-label="${t("toolbar.commentOnElement")}"${ariaShortcut ? ` aria-keyshortcuts="${escapeHtml(ariaShortcut)}"` : ""}><span class="fbk-toolbar-btn__icon">${ICON.crosshair}</span></button>
   <button type="button" class="fbk-toolbar-btn fbk-toolbar-btn--comments" id="fbk-toggle" data-fbk-act="comments" aria-expanded="false" aria-haspopup="dialog" data-toggle="tooltip" data-placement="top" title="${t("toolbar.viewCommentsList")}" aria-label="${t("toolbar.comments")}"><span class="fbk-toolbar-btn__icon">${ICON.bubble}</span> <span class="fbk-toolbar-count" id="fbk-count" data-fbk-count>0</span></button>
-  <button type="button" class="fbk-toolbar-btn fbk-toolbar-btn--icon fbk-hidden" id="fbk-updates" data-fbk-act="updates" aria-expanded="false" aria-haspopup="dialog" data-toggle="tooltip" data-placement="top" title="${t("toolbar.recentActivityUpdates")}" aria-label="${t("toolbar.updates")}${unreadSuffix(unreadNotifyCount)}"><span class="fbk-toolbar-btn__icon">${ICON.bell}</span><span class="fbk-toolbar-dot${unreadNotifyCount > 0 ? "" : " fbk-hidden"}" id="fbk-notify-count" data-fbk-unread aria-hidden="true"></span></button>
+  <button type="button" class="fbk-toolbar-btn fbk-toolbar-btn--icon fbk-hidden" id="fbk-updates" data-fbk-act="updates" aria-expanded="false" aria-haspopup="dialog" data-toggle="tooltip" data-placement="top" title="${t("toolbar.recentActivityUpdates")}" aria-label="${t("toolbar.updates")}${unreadNotifyCount > 0 ? t("toolbar.unreadSuffix", { count: unreadNotifyCount > 99 ? t("toolbar.countCap") : unreadNotifyCount }) : ""}"><span class="fbk-toolbar-btn__icon">${ICON.bell}</span><span class="fbk-toolbar-dot${unreadNotifyCount > 0 ? "" : " fbk-hidden"}" id="fbk-notify-count" data-fbk-unread aria-hidden="true"></span></button>
   ${displayName ? `
   <span class="fbk-toolbar__divider" aria-hidden="true"></span>
   <button type="button" class="fbk-toolbar-btn fbk-toolbar-btn--avatar" id="fbk-user" data-fbk-act="account" aria-expanded="false" aria-haspopup="dialog" data-toggle="tooltip" data-placement="top" title="${t("toolbar.signedInAs")} ${displayName}${roleLabel ? " · " + roleLabel : ""}" aria-label="${t("toolbar.account")}, ${displayName}">${avatarInitials}</button>` : ""}
@@ -2356,9 +2353,8 @@
     // mechanism as applyTheme() above — _base.scss's `:host([dir="rtl"])` block flips the shadow
     // UI's own layout direction (popover/sidebar/toolbar/toasts/composer) to follow the WIDGET's
     // language, independent of the host page's own dir (which only ever drives the collapsed
-    // launcher's corner — see pageIsRtl() in dom.ts). Plain `dir`, unlike this class's other
-    // internal attributes, is deliberate: it is the standard HTML attribute assistive tech already
-    // understands, not a widget-private hook.
+    // launcher's corner — see pageIsRtl() in dom.ts). The plain `dir` attribute (not a data-fbk-*
+    // one) is deliberate: it is the standard HTML attribute assistive tech already understands.
     applyDir() {
       this.setAttribute("dir", getLang() === "ar" ? "rtl" : "ltr");
     }
@@ -2863,7 +2859,10 @@
       let dot = this.root.querySelector("#fbk-notify-count");
       dot && dot.classList.toggle("fbk-hidden", this.unreadNotifyCount <= 0);
       let updatesBtn = this.root.querySelector("#fbk-updates");
-      updatesBtn && updatesBtn.setAttribute("aria-label", `${t("toolbar.updates")}${unreadSuffix(this.unreadNotifyCount)}`);
+      if (updatesBtn) {
+        let n = this.unreadNotifyCount;
+        updatesBtn.setAttribute("aria-label", `${t("toolbar.updates")}${n > 0 ? t("toolbar.unreadSuffix", { count: n > 99 ? t("toolbar.countCap") : n }) : ""}`);
+      }
     }
     async apiNotifications(unread = !1) {
       var _a2;

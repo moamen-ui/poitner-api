@@ -1,10 +1,14 @@
 @use 'variables' as v;
 
-// Collapsed launcher (floating button that re-opens the overlay). Corner is set
-// by a fbk-pos-* class; logical insets follow the shadow UI's writing direction.
+// Collapsed launcher (floating button that re-opens the overlay). Corner is set by a fbk-pos-*
+// class; logical insets follow THIS ELEMENT'S OWN `direction` — deliberately pinned to `ltr` here
+// (not inherited from `:host`, which now follows the widget's language — see _base.scss) so the
+// corner keeps mirroring only the HOST PAGE's own dir via the `.fbk-rtl` class below (dom.ts's
+// pageIsRtl(), set in templates.ts), same as before this file's forced-LTR shadow root existed.
 .fbk-launcher {
   position: fixed;
   z-index: 2147483647;
+  direction: ltr;
   width: 52px;
   height: 52px;
   border-radius: v.token('radius-full');

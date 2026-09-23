@@ -6,15 +6,19 @@
   text-align: start;
 }
 
+:host([dir=rtl]) {
+  direction: rtl;
+}
+
 :host > div {
-  direction: ltr;
+  direction: inherit;
   text-align: start;
 }
 
 * {
   box-sizing: border-box;
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-  direction: ltr;
+  direction: inherit;
 }
 
 .fbk-hidden {
@@ -29,6 +33,7 @@
 .fbk-launcher {
   position: fixed;
   z-index: 2147483647;
+  direction: ltr;
   width: 52px;
   height: 52px;
   border-radius: var(--fbk-radius-full, 9999px);
@@ -536,14 +541,14 @@
 
 [data-toggle=tooltip][data-placement=top]::before, [data-toggle=tooltip][data-placement=top]::after {
   inset-block-end: 101%;
-  inset-inline-start: 50%;
+  left: 50%;
   transform: translateX(-50%);
   margin-block-end: 14px;
 }
 
 [data-toggle=tooltip][data-placement=bottom]::before, [data-toggle=tooltip][data-placement=bottom]::after {
   inset-block-start: 101%;
-  inset-inline-start: 50%;
+  left: 50%;
   transform: translateX(-50%);
   margin-block-start: 14px;
 }
@@ -632,12 +637,20 @@
   pointer-events: auto;
 }
 
+:host([dir=rtl]) .fbk-sidebar {
+  transform: translateX(-100%);
+}
+
 .fbk-sidebar.open {
   transform: translateX(0);
 }
 
 .fbk-sidebar.open.fbk-peek-hide {
   transform: translateX(100%);
+}
+
+:host([dir=rtl]) .fbk-sidebar.open.fbk-peek-hide {
+  transform: translateX(-100%);
 }
 
 .fbk-sidebar-close-arrow {
@@ -660,6 +673,10 @@
   opacity: 1;
   visibility: visible;
   transition: opacity 0.15s ease, visibility 0.15s ease, background-color var(--fbk-transition-fast, 120ms cubic-bezier(0.16, 1, 0.3, 1));
+}
+
+:host([dir=rtl]) .fbk-sidebar-close-arrow {
+  transform: translateX(85%);
 }
 
 .fbk-sidebar-close-arrow:hover {
@@ -807,6 +824,10 @@
 
 .fbk-toggle-switch.active .fbk-toggle-switch-thumb {
   transform: translateX(16px);
+}
+
+:host([dir=rtl]) .fbk-toggle-switch.active .fbk-toggle-switch-thumb {
+  transform: translateX(-16px);
 }
 
 .fbk-status-select,
@@ -2077,6 +2098,10 @@
   transform: translateX(12px);
 }
 
+:host([dir=rtl]) .fbk-toggle-switch.fbk-toggle-switch-sm.active .fbk-toggle-switch-thumb {
+  transform: translateX(-12px);
+}
+
 .fbk-popover-toggle-label {
   display: inline-flex;
   align-items: center;
@@ -2241,7 +2266,7 @@ select.fbk-input:disabled {
 .fbk-toast-container {
   position: fixed;
   inset-block-end: 84px;
-  inset-inline-start: 50%;
+  left: 50%;
   transform: translateX(-50%);
   display: flex;
   flex-direction: column-reverse;

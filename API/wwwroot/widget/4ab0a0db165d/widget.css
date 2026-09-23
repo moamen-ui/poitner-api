@@ -6,15 +6,19 @@
   text-align: start;
 }
 
+:host([dir=rtl]) {
+  direction: rtl;
+}
+
 :host > div {
-  direction: ltr;
+  direction: inherit;
   text-align: start;
 }
 
 * {
   box-sizing: border-box;
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-  direction: ltr;
+  direction: inherit;
 }
 
 .fbk-hidden {
@@ -29,6 +33,7 @@
 .fbk-launcher {
   position: fixed;
   z-index: 2147483647;
+  direction: ltr;
   width: 52px;
   height: 52px;
   border-radius: var(--fbk-radius-full, 9999px);
@@ -536,14 +541,14 @@
 
 [data-toggle=tooltip][data-placement=top]::before, [data-toggle=tooltip][data-placement=top]::after {
   inset-block-end: 101%;
-  inset-inline-start: 50%;
+  left: 50%;
   transform: translateX(-50%);
   margin-block-end: 14px;
 }
 
 [data-toggle=tooltip][data-placement=bottom]::before, [data-toggle=tooltip][data-placement=bottom]::after {
   inset-block-start: 101%;
-  inset-inline-start: 50%;
+  left: 50%;
   transform: translateX(-50%);
   margin-block-start: 14px;
 }
@@ -632,12 +637,20 @@
   pointer-events: auto;
 }
 
+:host([dir=rtl]) .fbk-sidebar {
+  transform: translateX(-100%);
+}
+
 .fbk-sidebar.open {
   transform: translateX(0);
 }
 
 .fbk-sidebar.open.fbk-peek-hide {
   transform: translateX(100%);
+}
+
+:host([dir=rtl]) .fbk-sidebar.open.fbk-peek-hide {
+  transform: translateX(-100%);
 }
 
 .fbk-sidebar-close-arrow {
@@ -660,6 +673,10 @@
   opacity: 1;
   visibility: visible;
   transition: opacity 0.15s ease, visibility 0.15s ease, background-color var(--fbk-transition-fast, 120ms cubic-bezier(0.16, 1, 0.3, 1));
+}
+
+:host([dir=rtl]) .fbk-sidebar-close-arrow {
+  transform: translateX(85%);
 }
 
 .fbk-sidebar-close-arrow:hover {
@@ -809,6 +826,10 @@
   transform: translateX(16px);
 }
 
+:host([dir=rtl]) .fbk-toggle-switch.active .fbk-toggle-switch-thumb {
+  transform: translateX(-16px);
+}
+
 .fbk-status-select,
 .fbk-userfilter {
   border: 1px solid var(--fbk-border, #d0d7de);
@@ -937,6 +958,7 @@
 }
 
 .fbk-card-page {
+  font-size: var(--fbk-size-xs, 11px);
   display: block;
   overflow: hidden;
   white-space: nowrap;
@@ -945,18 +967,34 @@
 }
 
 .fbk-text {
-  font-size: 14px;
+  font-size: var(--fbk-size-base, 14px);
+  line-height: 1.45;
   color: var(--fbk-text, #1f2328);
-  margin-block: 4px 8px;
-  margin-inline: 0;
+  word-break: break-word;
   white-space: pre-wrap;
+  margin: 0 0 10px 0;
+  position: relative;
 }
-
-.fbk-text-clamped {
-  display: -webkit-box;
-  -webkit-line-clamp: 4;
-  -webkit-box-orient: vertical;
+.fbk-text.fbk-text-clamped {
+  max-height: 4.35em;
   overflow: hidden;
+}
+.fbk-text.fbk-text-clamped::before {
+  content: "";
+  float: inline-end;
+  height: 2.9em;
+  width: 0;
+}
+.fbk-text.fbk-text-clamped .fbk-read-more-btn {
+  float: inline-end;
+  clear: inline-end;
+  background: var(--fbk-surface-card, #fff);
+  padding-inline-start: 4px;
+}
+.fbk-text:not(.fbk-text-clamped) .fbk-read-more-btn {
+  float: none;
+  display: inline-block;
+  margin-inline-start: 6px;
 }
 
 .fbk-read-more-btn {
@@ -968,8 +1006,6 @@
   font-weight: 500;
   cursor: pointer;
   text-decoration: underline;
-  margin-block: -4px 8px;
-  display: inline-block;
 }
 
 .fbk-sub {
@@ -1263,7 +1299,7 @@
 .fbk-reply {
   position: relative;
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   justify-content: space-between;
   gap: 6px;
   font-size: 13px;
@@ -1273,6 +1309,9 @@
   padding-block: 6px;
   padding-inline: 8px;
   margin-block-end: 4px;
+}
+.fbk-reply.expanded {
+  align-items: flex-start;
 }
 
 .fbk-reply-main {
@@ -1414,6 +1453,43 @@
   color: var(--fbk-text, #1f2328);
   word-break: break-word;
 }
+.fbk-card-fields .fbk-card-field-val {
+  display: flex;
+  align-items: baseline;
+  min-width: 0;
+  gap: 4px;
+  margin: 0;
+  color: var(--fbk-text, #1f2328);
+}
+.fbk-card-fields .fbk-card-field-val .fbk-card-field-val-text {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+  flex: 1 1 auto;
+}
+.fbk-card-fields .fbk-card-field-val .fbk-field-more-btn {
+  flex: 0 0 auto;
+  background: none;
+  border: none;
+  padding: 0;
+  color: var(--fbk-primary, #0969da);
+  font-size: 11px;
+  font-weight: 500;
+  cursor: pointer;
+  text-decoration: underline;
+}
+.fbk-card-fields .fbk-card-field-val.is-expanded {
+  display: block;
+}
+.fbk-card-fields .fbk-card-field-val.is-expanded .fbk-card-field-val-text {
+  white-space: normal;
+  word-break: break-word;
+}
+.fbk-card-fields .fbk-card-field-val.is-expanded .fbk-field-more-btn {
+  display: inline-block;
+  margin-inline-start: 4px;
+}
 .fbk-card-fields a {
   color: var(--fbk-primary, #0969da);
   text-decoration: none;
@@ -1434,11 +1510,15 @@
   }
 }
 
+.fbk-card-fields-edit,
 .fbk-card-fields-editor {
   margin: 12px 0;
   padding: 12px;
   background: var(--fbk-surface-alt, #f8fafc);
   border-radius: var(--fbk-radius-md, 10px);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
 }
 
 .fbk-pins-layer {
@@ -2000,8 +2080,26 @@
 .fbk-popover-toggle-row {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: flex-start;
   gap: 8px;
+}
+
+.fbk-toggle-switch.fbk-toggle-switch-sm {
+  inline-size: 28px;
+  block-size: 16px;
+}
+.fbk-toggle-switch.fbk-toggle-switch-sm .fbk-toggle-switch-thumb {
+  inline-size: 12px;
+  block-size: 12px;
+  inset-block-start: 2px;
+  inset-inline-start: 2px;
+}
+.fbk-toggle-switch.fbk-toggle-switch-sm.active .fbk-toggle-switch-thumb {
+  transform: translateX(12px);
+}
+
+:host([dir=rtl]) .fbk-toggle-switch.fbk-toggle-switch-sm.active .fbk-toggle-switch-thumb {
+  transform: translateX(-12px);
 }
 
 .fbk-popover-toggle-label {
@@ -2168,7 +2266,7 @@ select.fbk-input:disabled {
 .fbk-toast-container {
   position: fixed;
   inset-block-end: 84px;
-  inset-inline-start: 50%;
+  left: 50%;
   transform: translateX(-50%);
   display: flex;
   flex-direction: column-reverse;
@@ -2502,6 +2600,7 @@ select.fbk-input:disabled {
   --fbk-primary-contrast: #0d1117;
   --fbk-focus-ring: rgba(68, 147, 248, 0.4);
   --fbk-surface: #0d1117;
+  --fbk-surface-card: #0d1117;
   --fbk-surface-alt: #161b22;
   --fbk-surface-muted: #21262d;
   --fbk-surface-hover: #30363d;

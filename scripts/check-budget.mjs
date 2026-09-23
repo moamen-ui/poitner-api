@@ -16,7 +16,7 @@ try {
   const content = readFileSync(versionFilePath, 'utf8');
   const data = JSON.parse(content);
   const jsGzip = data.files?.['widget.js']?.gzipBytes;
-  const maxGzip = data.budget?.widgetJsGzipMax ?? 65536;
+  const maxGzip = data.budget?.widgetJsGzipMax ?? 67584; // 66 KB fallback; raised 2026-09-23 by R5-65 fix-now 1/3/4, see build.mjs's GZIP_BUDGET comment
 
   if (typeof jsGzip !== 'number') {
     console.error(`check-budget: widget.js gzipBytes missing or invalid in ${versionFilePath}`);

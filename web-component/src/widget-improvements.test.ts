@@ -3,6 +3,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { ICON } from './icons';
 import { t, setLang } from './i18n';
+import { timeAgo } from './dom';
 import { TPL } from './templates';
 import type { Comment } from './types';
 import { PointerFeedback } from './element';
@@ -31,6 +32,52 @@ describe('widget improvements', () => {
       expect(t('fields.edit')).toBe('حقول إضافية');
       expect(t('fields.seeMore')).toBe('عرض المزيد');
       expect(t('fields.seeLess')).toBe('عرض أقل');
+    });
+
+    // R5-65 fix-now #4: unread/99+, Dismiss notification, Open full screenshot, Element
+    // screenshot — verify both catalogs actually carry these keys (previously hardcoded English
+    // baked straight into templates.ts/element.ts).
+    it('resolves the RTL-audit hardcoded strings in English', () => {
+      setLang('en');
+      expect(t('toolbar.unreadSuffix', { count: 5 })).toBe(', 5 unread');
+      expect(t('toolbar.countCap')).toBe('99+');
+      expect(t('toast.dismissNotification')).toBe('Dismiss notification');
+      expect(t('card.openFullScreenshot')).toBe('Open full screenshot');
+      expect(t('card.elementScreenshot')).toBe('Element screenshot');
+    });
+
+    it('resolves the RTL-audit hardcoded strings in Arabic', () => {
+      setLang('ar');
+      expect(t('toolbar.unreadSuffix', { count: 5 })).toBe('، 5 غير مقروءة');
+      expect(t('toolbar.countCap')).toBe('99+');
+      expect(t('toast.dismissNotification')).toBe('إغلاق الإشعار');
+      expect(t('card.openFullScreenshot')).toBe('فتح لقطة الشاشة كاملة');
+      expect(t('card.elementScreenshot')).toBe('لقطة شاشة العنصر');
+    });
+  });
+
+  // R5-65 fix-now #3: timeAgo() previously always returned hardcoded English ("2m ago"). Now
+  // routed through Intl.RelativeTimeFormat(getLang()) so Arabic gets correct native plural forms.
+  describe('timeAgo', () => {
+    afterEach(() => setLang('en'));
+
+    it('returns "" for a missing or unparseable timestamp', () => {
+      expect(timeAgo(null)).toBe('');
+      expect(timeAgo(undefined)).toBe('');
+      expect(timeAgo('not-a-date')).toBe('');
+    });
+
+    it('formats English relative time', () => {
+      setLang('en');
+      expect(timeAgo(new Date(Date.now() - 5 * 60 * 1000).toISOString())).toBe('5 minutes ago');
+      expect(timeAgo(new Date(Date.now() - 3 * 60 * 60 * 1000).toISOString())).toBe('3 hours ago');
+    });
+
+    it('formats Arabic relative time with correct native plural forms (2, 3-10, 11+)', () => {
+      setLang('ar');
+      expect(timeAgo(new Date(Date.now() - 2 * 60 * 1000).toISOString())).toBe('قبل دقيقتين');
+      expect(timeAgo(new Date(Date.now() - 5 * 60 * 1000).toISOString())).toBe('قبل 5 دقائق');
+      expect(timeAgo(new Date(Date.now() - 11 * 60 * 1000).toISOString())).toBe('قبل 11 دقيقة');
     });
   });
 
@@ -187,6 +234,48 @@ describe('widget improvements', () => {
       (el as any)._lastUrl = 'http://localhost/previous-url';
       window.dispatchEvent(new Event('popstate'));
       expect(renderPinsSpy).toHaveBeenCalled();
+    });
+  });
+
+  // R5-65 fix-now #1 (X8): the shadow root's own `dir` now follows the WIDGET's language (set on
+  // the host element, same mechanism as data-fbk-theme) instead of being forced ltr always.
+  describe('RTL direction', () => {
+    let dirEl: PointerFeedback;
+
+    beforeEach(() => {
+      try { localStorage.removeItem('pointer_widget_language'); } catch { /* ignore */ }
+      if (!customElements.get('pointer-feedback')) {
+        customElements.define('pointer-feedback', PointerFeedback);
+      }
+      dirEl = document.createElement('pointer-feedback') as PointerFeedback;
+      dirEl.setAttribute('project', 'test-proj');
+    });
+
+    afterEach(() => {
+      dirEl.remove();
+      try { localStorage.removeItem('pointer_widget_language'); } catch { /* ignore */ }
+      setLang('en');
+    });
+
+    it('defaults to dir="ltr" for English', () => {
+      document.body.appendChild(dirEl);
+      expect(dirEl.getAttribute('dir')).toBe('ltr');
+    });
+
+    it('sets dir="rtl" when resolveLang() falls back to an Arabic navigator.language', () => {
+      const nav = vi.spyOn(window.navigator, 'language', 'get').mockReturnValue('ar-SA');
+      document.body.appendChild(dirEl);
+      expect(dirEl.getAttribute('dir')).toBe('rtl');
+      nav.mockRestore();
+    });
+
+    it('flips dir when the language override changes at runtime (setLanguageOverride)', () => {
+      document.body.appendChild(dirEl);
+      expect(dirEl.getAttribute('dir')).toBe('ltr');
+      (dirEl as any).setLanguageOverride('ar');
+      expect(dirEl.getAttribute('dir')).toBe('rtl');
+      (dirEl as any).setLanguageOverride('en');
+      expect(dirEl.getAttribute('dir')).toBe('ltr');
     });
   });
 });

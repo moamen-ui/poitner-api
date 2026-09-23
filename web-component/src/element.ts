@@ -11,7 +11,7 @@ import {
   type ShortcutBinding, parseShortcut, serializeShortcut, matchesShortcut, formatShortcut, ariaKeyshortcuts,
 } from './shortcut';
 import { type ThemeMode, detectSiteTheme } from './theme';
-import { type Lang, t, setLang, detectTextLanguageAsync } from './i18n';
+import { type Lang, t, setLang, getLang, unreadSuffix, detectTextLanguageAsync } from './i18n';
 import { showLoginModal } from './auth-ui';
 import type { AuthorOption, Comment, Meta, NotificationItem, PointerHost, PredefinedActionOption, Reply, RoleOption, StatusStr, User, CommentFieldDefinition } from './types';
 import { validateFieldValue, collectFieldValues, renderFieldInputs } from './fields';
@@ -263,6 +263,7 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
     }
     this.applyTheme();
     setLang(this.resolveLang());
+    this.applyDir();
 
     // Host element must not block page clicks; only inner panels are interactive.
     this.style.position = 'fixed';
@@ -387,6 +388,7 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
     // Fill in id/isAdmin from the server before the first comment list renders.
     if (this.token) await this.hydrateIdentity();
     setLang(this.resolveLang());
+    this.applyDir();
     if (this.token) this.init();
     else this.renderChrome();
 
@@ -750,6 +752,18 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
   private setLanguageOverride(lang: Lang): void {
     try { localStorage.setItem('pointer_widget_language', lang); } catch { /* ignore */ }
     setLang(lang);
+    this.applyDir();
+  }
+
+  // Reflects the resolved language's writing direction onto the host element (light DOM), same
+  // mechanism as applyTheme() above — _base.scss's `:host([dir="rtl"])` block flips the shadow
+  // UI's own layout direction (popover/sidebar/toolbar/toasts/composer) to follow the WIDGET's
+  // language, independent of the host page's own dir (which only ever drives the collapsed
+  // launcher's corner — see pageIsRtl() in dom.ts). Plain `dir`, unlike this class's other
+  // internal attributes, is deliberate: it is the standard HTML attribute assistive tech already
+  // understands, not a widget-private hook.
+  private applyDir(): void {
+    this.setAttribute('dir', getLang() === 'ar' ? 'rtl' : 'ltr');
   }
 
   async init(): Promise<void> {
@@ -1480,8 +1494,7 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
     if (dot) dot.classList.toggle('fbk-hidden', this.unreadNotifyCount <= 0);
     const updatesBtn = this.root.querySelector('#fbk-updates') as HTMLElement | null;
     if (updatesBtn) {
-      const n = this.unreadNotifyCount;
-      updatesBtn.setAttribute('aria-label', `Updates${n > 0 ? `, ${n > 99 ? '99+' : n} unread` : ''}`);
+      updatesBtn.setAttribute('aria-label', `${t('toolbar.updates')}${unreadSuffix(this.unreadNotifyCount)}`);
     }
   }
 

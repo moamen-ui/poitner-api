@@ -2356,9 +2356,8 @@
     // mechanism as applyTheme() above — _base.scss's `:host([dir="rtl"])` block flips the shadow
     // UI's own layout direction (popover/sidebar/toolbar/toasts/composer) to follow the WIDGET's
     // language, independent of the host page's own dir (which only ever drives the collapsed
-    // launcher's corner — see pageIsRtl() in dom.ts). Plain `dir`, unlike this class's other
-    // internal attributes, is deliberate: it is the standard HTML attribute assistive tech already
-    // understands, not a widget-private hook.
+    // launcher's corner — see pageIsRtl() in dom.ts). The plain `dir` attribute (not a data-fbk-*
+    // one) is deliberate: it is the standard HTML attribute assistive tech already understands.
     applyDir() {
       this.setAttribute("dir", getLang() === "ar" ? "rtl" : "ltr");
     }

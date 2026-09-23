@@ -1,20 +1,29 @@
 @use 'variables' as v;
 
-// Force LTR throughout the shadow UI so an RTL host page (dir="rtl") never flips
-// the toolbar, sidebar, popover, inputs, or cards.
+// Direction follows the WIDGET's own language (element.ts's applyDir(), reflecting `dir` onto the
+// host element the same way applyTheme() reflects data-fbk-theme) — NOT the host page's own dir,
+// which only ever drives the collapsed launcher's corner (dom.ts's pageIsRtl(), independently,
+// via .fbk-rtl — see _launcher.scss). Defaults to ltr (no `dir` attribute yet, or an explicit
+// dir="ltr"); :host([dir='rtl']) flips it for Arabic. `* { direction: inherit }` (not a hardcoded
+// ltr) lets every descendant pick up whichever one is actually set, so the SCSS's existing logical
+// properties (inset-inline-*, padding-inline, float: inline-end) resolve per that direction
+// everywhere in the shadow tree — toolbar, sidebar, popover, cards, composer, toasts.
 :host {
   all: initial;
   direction: ltr;
   text-align: start;
 }
+:host([dir='rtl']) {
+  direction: rtl;
+}
 :host > div {
-  direction: ltr;
+  direction: inherit;
   text-align: start;
 }
 * {
   box-sizing: border-box;
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-  direction: ltr;
+  direction: inherit;
 }
 
 // Hidden until JS reveals it (reset-position button, notify badge, commit-style host,

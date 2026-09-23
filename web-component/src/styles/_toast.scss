@@ -8,7 +8,11 @@
 .fbk-toast-container {
   position: fixed;
   inset-block-end: 84px; // sits above the 52px floating launcher/toolbar
-  inset-inline-start: 50%;
+  // Physical `left` (not inset-inline-start) is deliberate: the container should always be dead
+  // center of the viewport regardless of direction, never mirrored to a side. At exactly 50% a
+  // logical inset-inline-start WOULD flip which physical edge the box is anchored from once the
+  // shadow root can be RTL (see _base.scss), which the fixed translateX(-50%) below can't follow.
+  left: 50%;
   transform: translateX(-50%);
   display: flex;
   flex-direction: column-reverse;

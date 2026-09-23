@@ -13,8 +13,12 @@
   pointer-events: none;
   z-index: 1;
 }
-%fbk-tooltip-top { inset-block-end: 101%; inset-inline-start: 50%; transform: translateX(-50%); margin-block-end: 14px; }
-%fbk-tooltip-bottom { inset-block-start: 101%; inset-inline-start: 50%; transform: translateX(-50%); margin-block-start: 14px; }
+// `left` (not inset-inline-start) at the top/bottom placements is deliberate — same reason as
+// _toast.scss's container: centered-over-the-trigger should never mirror by direction, and a
+// logical 50% inset would flip which physical edge anchors the box once the shadow root can be
+// RTL (see _base.scss), which the fixed translateX(-50%) can't follow.
+%fbk-tooltip-top { inset-block-end: 101%; left: 50%; transform: translateX(-50%); margin-block-end: 14px; }
+%fbk-tooltip-bottom { inset-block-start: 101%; left: 50%; transform: translateX(-50%); margin-block-start: 14px; }
 %fbk-tooltip-right { inset-block-start: 50%; inset-inline-start: 101%; transform: translateY(-50%); margin-inline-start: 14px; }
 %fbk-tooltip-left { inset-block-start: 50%; inset-inline-end: 101%; transform: translateY(-50%); margin-inline-end: 14px; }
 

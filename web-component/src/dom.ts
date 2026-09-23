@@ -1,5 +1,6 @@
 import { HL_CLASS } from './constants';
 import type { Comment } from './types';
+import { getLang } from './i18n';
 
 export const escapeHtml = (s: unknown): string =>
   String(s == null ? '' : s)
@@ -18,21 +19,27 @@ export const initials = (name: string): string => {
   return (parts[0]![0] + parts[parts.length - 1]![0]).toUpperCase();
 };
 
-// Compact relative time for the pin hover preview ("2m ago", "3h ago", "5d ago"). Falls back to
-// a plain locale date past 30 days, and to '' for a missing/unparseable timestamp rather than
-// showing something misleading like "NaNm ago".
+// Localized via the platform's own Intl.RelativeTimeFormat rather than new i18n.ts catalog keys —
+// Arabic's plural rules for "minute(s)/hour(s)/day(s)" need several forms (1, 2, 3-10, 11+ — the
+// exact gap the RTL audit flagged for i18n.ts's own hand-rolled `pin.reply`/`pin.replies` pair)
+// that Intl already gets right natively, at zero bundle cost, instead of hand-rolling
+// `_one/_few/_many` keys x2 languages here too. `numeric: 'auto'` additionally picks up correct
+// idioms where CLDR has them (verified: en "now"/"yesterday", ar "الآن"/"أمس"), falling back to a
+// plain count otherwise. Rebuilt per call rather than cached per language: this only ever renders
+// one pin tooltip at a time, so the extra allocation isn't worth the code to memoize it.
 export const timeAgo = (iso?: string | null): string => {
   if (!iso) return '';
   const then = new Date(iso).getTime();
   if (Number.isNaN(then)) return '';
   const seconds = Math.round((Date.now() - then) / 1000);
-  if (seconds < 45) return 'just now';
+  const rtf = new Intl.RelativeTimeFormat(getLang(), { numeric: 'auto' });
+  if (seconds < 45) return rtf.format(0, 'second');
   const minutes = Math.round(seconds / 60);
-  if (minutes < 60) return `${minutes}m ago`;
+  if (minutes < 60) return rtf.format(-minutes, 'minute');
   const hours = Math.round(minutes / 60);
-  if (hours < 24) return `${hours}h ago`;
+  if (hours < 24) return rtf.format(-hours, 'hour');
   const days = Math.round(hours / 24);
-  if (days < 30) return `${days}d ago`;
+  if (days < 30) return rtf.format(-days, 'day');
   return new Date(iso).toLocaleDateString();
 };
 
