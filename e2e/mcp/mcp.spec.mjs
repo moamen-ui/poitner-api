@@ -62,32 +62,38 @@ const SECRET_CANARY = `ghp_${'e2eMcpSecretCanaryProbe'.padEnd(36, '0')}`;
 const GITHUB_ORIGIN = 'https://github.com/e2e/mcp-fixture.git';
 const COMMIT_URL_RE = /^https:\/\/github\.com\/e2e\/mcp-fixture\/commit\/[0-9a-f]{40}$/;
 
-// The nine frozen names (R2-02-01 step 2: sorted deep-equal — exactly 9, no extras).
+// The ten frozen names (R2-02-01 step 2: sorted deep-equal — exactly 10, no extras).
+// `pointer_list_projects` joined the catalogue in 4544e52 (multi-project repos); the original
+// nine names are unchanged (frozen means no renames/removals, not "never grows").
 const EXPECTED_TOOL_NAMES = [
   'pointer_commit_and_mark',
   'pointer_doctor',
   'pointer_get_comment',
   'pointer_get_queue',
   'pointer_list_comments',
+  'pointer_list_projects',
   'pointer_mark_applied',
   'pointer_reply',
   'pointer_resolve_source',
   'pointer_set_status',
 ];
 
-// Property key sets per tool, transcribed from the execution doc's tool table
-// (docs/roadmap/execution/R2-02-mcp-server.md §Design — R2-02-01 step 3b compares
-// Object.keys(inputSchema.properties).sort() against exactly these lists).
+// Property key sets per tool, transcribed from cli/src/mcp/schemas.ts (R2-02-01 step 3b compares
+// Object.keys(inputSchema.properties).sort() against exactly these lists). `project` (4544e52,
+// multi-project repos) and `tool`/`model` (2b828aa, structured AI attribution) landed on several
+// tools after the execution doc's original table was written; transcribed from the schemas
+// themselves, which are the current source of truth.
 const TOOL_PROPERTIES = {
-  pointer_list_comments: ['environment', 'page', 'pageSize', 'status'],
-  pointer_get_queue: ['environment'],
+  pointer_list_comments: ['environment', 'page', 'pageSize', 'project', 'status'],
+  pointer_get_queue: ['environment', 'project'],
   pointer_get_comment: ['id'],
-  pointer_mark_applied: ['commitUrl', 'id', 'reply'],
-  pointer_commit_and_mark: ['files', 'ids', 'reply'],
-  pointer_reply: ['body', 'id'],
+  pointer_mark_applied: ['commitUrl', 'id', 'model', 'reply', 'tool'],
+  pointer_commit_and_mark: ['files', 'ids', 'model', 'project', 'reply', 'tool'],
+  pointer_reply: ['body', 'id', 'model', 'tool'],
   pointer_set_status: ['id', 'status'],
   pointer_resolve_source: ['hash'],
-  pointer_doctor: [],
+  pointer_doctor: ['project'],
+  pointer_list_projects: [],
 };
 
 // R2-02-01 step 3: per-tool `required` SUPERsets (⊇ — extra required fields would also be legal
@@ -309,7 +315,7 @@ test('R2-02-01 — mcp: tools/list matches catalogue', async () => {
   };
 
   try {
-    // 2. Names: sorted deep-equal — exactly the 9 frozen names, no extras.
+    // 2. Names: sorted deep-equal — exactly the 10 frozen names, no extras.
     const tools = await mcp.listTools();
     expect(tools.map((t) => t.name).sort()).toEqual(EXPECTED_TOOL_NAMES);
     const byName = Object.fromEntries(tools.map((t) => [t.name, t]));
@@ -364,7 +370,7 @@ test('R2-02-01 — mcp: tools/list matches catalogue', async () => {
     saveEvidence('tools-list.json', JSON.stringify(tools, null, 2));
     record({
       id: 'R2-02-01', tier: 'PR', layer: 'cli', role: 'WA', result: 'PASS', ms: Date.now() - start,
-      detail: '9 tools, exact names + property key sets + documented enums/bounds; descriptions carry the untrusted notice; prompt + resource present; resolve_source no-manifest; child exited within 5s of close()',
+      detail: '10 tools, exact names + property key sets + documented enums/bounds; descriptions carry the untrusted notice; prompt + resource present; resolve_source no-manifest; child exited within 5s of close()',
     });
   } finally {
     await closeOnce();
@@ -574,13 +580,22 @@ test('R2-02-06 — mcp: no key fails fast', async () => {
   const repoNoKey = tempRepo();
 
   try {
-    // 1. config.json but NO credentials.env. The env copy deletes POINTER_API_KEY outright:
-    // readApiKey checks process.env FIRST (cli/src/auth.ts:6-8), so an inherited variable from
-    // the surrounding run would turn this into a server that starts fine and hangs.
+    // 1. config.json but NO credentials.env, and an ISOLATED global-credential-store directory.
+    // resolveApiKey (cli/src/credentials.ts) falls through env -> repo -> the global store; the
+    // `cli` phase (design-tokens.spec.mjs, stack-post.spec.mjs et al.) runs `pointer init` with
+    // no `--scope` earlier in the same run-e2e.sh job, which defaults to `--scope global` since
+    // d54f0cf and really does save a key to this machine's actual ~/.config/pointer/credentials.json
+    // for this exact server origin — without POINTER_CONFIG_DIR pointing elsewhere, this test
+    // would inherit that leftover key, skip the exit(3) branch entirely, and (stdin 'ignore' =
+    // instant EOF on the stdio transport) exit 0 quickly instead of timing out, which is exactly
+    // what made this look like a hang-avoidance non-issue rather than a failure. The env copy also
+    // deletes POINTER_API_KEY outright: resolveApiKey checks process.env FIRST, so an inherited
+    // variable from the surrounding run would turn this into a server that starts fine and hangs.
     const pointerDir = join(repoNoKey.dir, '.pointer');
     mkdirSync(pointerDir, { recursive: true });
     writeFileSync(join(pointerDir, 'config.json'), `${JSON.stringify({ server: BASE_URL, project: projectKey }, null, 2)}\n`, 'utf8');
-    const env = { ...process.env };
+    const globalConfigDir = `${repoNoKey.dir}-global`;
+    const env = { ...process.env, POINTER_CONFIG_DIR: globalConfigDir };
     delete env.POINTER_API_KEY;
 
     // 2. Spawn RAW, not via connectMcp — the SDK client would wait for an initialize handshake
@@ -622,6 +637,7 @@ test('R2-02-06 — mcp: no key fails fast', async () => {
     });
   } finally {
     repoNoKey.cleanup();
+    rmSync(`${repoNoKey.dir}-global`, { recursive: true, force: true });
   }
 });
 
