@@ -99,8 +99,13 @@ public class LoginAttemptLimiter : ILoginAttemptLimiter
                 entry.LockedUntil = now.Add(_window);
             }
 
+            // Relative, not absolute: MemoryCache evaluates expiry against the real system clock, while
+            // `now` comes from the injectable TimeProvider. An absolute DateTimeOffset from a test clock set
+            // in the past evicted the entry immediately (the WindowExpiry test broke on 2026-09-23 after
+            // 12:15 UTC). The lockout decision itself still uses LockedUntil against TimeProvider.
             var expiresAt = entry.LockedUntil ?? now.Add(_window);
-            _cache.Set(key, entry, expiresAt);
+            var ttl = expiresAt - now;
+            _cache.Set(key, entry, ttl > TimeSpan.Zero ? ttl : TimeSpan.FromSeconds(1));
         }
 
         return Task.CompletedTask;
