@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Pointer.Application.Abstractions;
 using Pointer.Application.Common;
+using Pointer.Application.Common.Email;
 using Pointer.Application.DTOs.User;
 using Pointer.Application.Resources;
 using Pointer.Application.Response;
@@ -296,16 +297,14 @@ public class UserService : IUserService
         var approveSubject = approveWorkspaceName != null
             ? $"Your {approveProductName} account for {approveWorkspaceName} is approved"
             : $"Your {approveProductName} account is approved";
-        var approveWorkspaceLine = approveWorkspaceName != null
-            ? $@"<p>You now have access to the <b>{System.Net.WebUtility.HtmlEncode(approveWorkspaceName)}</b> workspace.</p>"
-            : string.Empty;
         await SafeSendAsync(identity.Email, approveSubject,
-            $@"<div style=""font-family:system-ui,sans-serif;color:#0f172a;line-height:1.6"">
-  <h2 style=""margin:0 0 8px"">You're in ✅</h2>
-  <p>Your {approveProductName} account (<b>{identity.Email}</b>) has been approved and is now active.</p>
-  {approveWorkspaceLine}
-  <p><a href=""{approveAppUrl}"" style=""color:#2563eb"">Sign in to {approveProductName} →</a></p>
-</div>");
+            EmailTemplateBuilder.UserApproved(
+                identity.Email,
+                approveProductName,
+                approveAppUrl,
+                approveWorkspaceName,
+                approveBrand.PrimaryColor
+            ));
 
         return Result<UserResponse>.Success(MapToResponse(membership));
     }
@@ -366,15 +365,14 @@ public class UserService : IUserService
         var rejectSubject = rejectWorkspaceName != null
             ? $"Your {rejectProductName} account request for {rejectWorkspaceName}"
             : $"Your {rejectProductName} account request";
-        var rejectWorkspaceLine = rejectWorkspaceName != null
-            ? $@"<p>This was for the <b>{System.Net.WebUtility.HtmlEncode(rejectWorkspaceName)}</b> workspace.</p>"
-            : string.Empty;
         await SafeSendAsync(identity.Email, rejectSubject,
-            $@"<div style=""font-family:system-ui,sans-serif;color:#0f172a;line-height:1.6"">
-  <p>Thanks for your interest in {rejectProductName}. Unfortunately your account request for
-  <b>{identity.Email}</b> was not approved at this time.</p>
-  {rejectWorkspaceLine}
-</div>");
+            EmailTemplateBuilder.UserRejected(
+                identity.Email,
+                rejectProductName,
+                rejectWorkspaceName,
+                rejectBrand.PrimaryColor,
+                rejectBrand.Urls.App.TrimEnd('/')
+            ));
 
         return Result<UserResponse>.Success(MapToResponse(membership));
     }

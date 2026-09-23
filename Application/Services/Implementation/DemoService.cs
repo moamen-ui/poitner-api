@@ -2,6 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Pointer.Application.Abstractions;
 using Pointer.Application.Common;
+using Pointer.Application.Common.Email;
 using Pointer.Application.DTOs.Demo;
 using Pointer.Application.Resources;
 using Pointer.Application.Response;
@@ -300,14 +301,16 @@ public class DemoService : IDemoService
         var emailSent = await _emailService.SendAsync(
             recipientEmail,
             $"Your {demoProductName} demo is ready",
-            BuildDemoEmailHtml(
+            EmailTemplateBuilder.DemoReady(
                 email,
                 password,
                 project.Key,
                 serverUrl,
                 expiresAt,
                 demoProductName,
-                demoWorkspaceName
+                demoWorkspaceName,
+                demoBrand.PrimaryColor,
+                demoBrand.Urls.App.TrimEnd('/')
             )
         );
 
@@ -567,7 +570,7 @@ public class DemoService : IDemoService
                         await _emailService.SendAsync(
                             to,
                             $"Your {productName} demo expires in about two hours",
-                            BuildExpiryWarningHtml(
+                            EmailTemplateBuilder.DemoExpiryWarning(
                                 w.Name,
                                 w.DemoExpiresAt!.Value,
                                 productName,
@@ -575,7 +578,8 @@ public class DemoService : IDemoService
                                 workspaceTtlHours,
                                 // DB-17 review finding #8 (LOW): the one extension was already used
                                 // — don't dangle an action that will just fail.
-                                canExtend: w.DemoExtendedAt == null
+                                canExtend: w.DemoExtendedAt == null,
+                                primaryColor: demoBrand.PrimaryColor
                             )
                         );
                     }
@@ -737,62 +741,5 @@ public class DemoService : IDemoService
         {
             return false;
         }
-    }
-
-    private static string BuildDemoEmailHtml(
-        string login,
-        string password,
-        string projectKey,
-        string serverUrl,
-        DateTime expiresUtc,
-        string productName,
-        string? workspaceName = null
-    )
-    {
-        var snippet =
-            $"&lt;script src=\"{serverUrl}/widget.js\" defer&gt;&lt;/script&gt;<br/>"
-            + $"&lt;pointer-feedback project=\"{projectKey}\" server=\"{serverUrl}\"&gt;&lt;/pointer-feedback&gt;";
-        // workspaceName is RAW (not yet encoded) — null (never the case for the current mint point,
-        // which always names it "Demo Workspace") falls back to the pre-existing wording.
-        var workspaceClause =
-            workspaceName != null
-                ? $", <b>{System.Net.WebUtility.HtmlEncode(workspaceName)}</b>,"
-                : string.Empty;
-        return $@"<div style=""font-family:system-ui,Segoe UI,Roboto,sans-serif;color:#0f172a;line-height:1.6"">
-  <h2 style=""margin:0 0 8px"">Your {productName} demo is ready 🐕</h2>
-  <p style=""color:#475569;margin:0 0 16px"">This demo workspace{workspaceClause} expires on {expiresUtc:yyyy-MM-dd HH:mm} UTC.</p>
-  <table style=""border-collapse:collapse;font-size:14px"">
-    <tr><td style=""padding:4px 12px 4px 0;color:#475569"">Project key</td><td><code>{projectKey}</code></td></tr>
-    <tr><td style=""padding:4px 12px 4px 0;color:#475569"">Widget login</td><td><code>{login}</code></td></tr>
-    <tr><td style=""padding:4px 12px 4px 0;color:#475569"">Password</td><td><code>{password}</code></td></tr>
-  </table>
-  <p style=""color:#475569;margin:16px 0 6px"">Embed snippet (paste into your app's index.html):</p>
-  <pre style=""background:#f1f5f9;padding:12px;border-radius:8px;font-size:13px;white-space:pre-wrap"">{snippet}</pre>
-  <p style=""color:#94a3b8;font-size:12px;margin-top:16px"">If you didn't request this, you can ignore this email.</p>
-</div>";
-    }
-
-    /// <summary>DB-17 §3.5 (verbatim body).</summary>
-    private static string BuildExpiryWarningHtml(
-        string workspaceName,
-        DateTime expiresUtc,
-        string productName,
-        string appUrl,
-        int ttlHours,
-        bool canExtend
-    )
-    {
-        var encodedName = System.Net.WebUtility.HtmlEncode(workspaceName);
-        // DB-17 review finding #8 (LOW): only offer "Extend once" when it would actually work.
-        var extendSentence = canExtend
-            ? $" Need a little more time? <b>Extend once</b> adds {ttlHours} hours."
-            : string.Empty;
-        return $@"<div style=""font-family:system-ui,Segoe UI,Roboto,sans-serif;color:#0f172a;line-height:1.6"">
-  <h2 style=""margin:0 0 8px"">Your {productName} demo expires soon</h2>
-  <p style=""margin:0 0 16px"">Your demo workspace, <b>{encodedName}</b>, expires on {expiresUtc:yyyy-MM-dd HH:mm} UTC.
-  Everything in it — the project, its comments and screenshots — is deleted then. To keep it, open
-  <a href=""{appUrl}"">{appUrl}</a> and choose <b>Keep this workspace</b> (you pick your e-mail and a password;
-  nothing is lost).{extendSentence} If you did not start this demo, ignore this e-mail.</p>
-</div>";
     }
 }

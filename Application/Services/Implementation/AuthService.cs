@@ -3,6 +3,7 @@ using Microsoft.Extensions.Logging;
 using Npgsql;
 using Pointer.Application.Abstractions;
 using Pointer.Application.Common;
+using Pointer.Application.Common.Email;
 using Pointer.Application.DTOs.Auth;
 using Pointer.Application.DTOs.Mfa;
 using Pointer.Application.Resources;
@@ -236,22 +237,18 @@ public class AuthService : IAuthService
                     _unitOfWork,
                     user.OwnerId
                 );
-                var resetWorkspaceLine =
-                    resetWorkspaceName != null
-                        ? $@"<p style=""color:#475569;font-size:13px"">This is for your account in the <b>{System.Net.WebUtility.HtmlEncode(resetWorkspaceName)}</b> workspace.</p>"
-                        : string.Empty;
                 try
                 {
                     await _emailService.SendAsync(
                         user.Email,
                         $"Reset your {resetProductName} password",
-                        $@"<div style=""font-family:system-ui,sans-serif;color:#0f172a;line-height:1.6"">
-  <h2 style=""margin:0 0 8px"">Reset your password</h2>
-  <p>Click the link below to choose a new password. It expires in 30 minutes.</p>
-  <p><a href=""{link}"" style=""color:#2563eb"">Reset my password &rarr;</a></p>
-  {resetWorkspaceLine}
-  <p style=""color:#94a3b8;font-size:12px"">If you didn't request this, you can safely ignore this email.</p>
-</div>"
+                        EmailTemplateBuilder.PasswordReset(
+                            link,
+                            resetProductName,
+                            resetWorkspaceName,
+                            resetBrand.PrimaryColor,
+                            resetAppUrl
+                        )
                     );
                 }
                 catch
@@ -388,10 +385,12 @@ public class AuthService : IAuthService
             await _emailService.SendAsync(
                 user.Email,
                 $"Your {brand.ProductName} password was changed",
-                BuildPasswordChangedEmailHtml(
+                EmailTemplateBuilder.PasswordChanged(
                     user.DisplayName,
                     brand.ProductName,
-                    changeWorkspaceName
+                    changeWorkspaceName,
+                    brand.PrimaryColor,
+                    brand.Urls.App.TrimEnd('/')
                 )
             );
         }
@@ -451,10 +450,6 @@ public class AuthService : IAuthService
             _unitOfWork,
             identity.OwnerId
         );
-        var workspaceLine =
-            workspaceName != null
-                ? $@"<p style=""color:#475569;font-size:13px"">This is for your account in the <b>{System.Net.WebUtility.HtmlEncode(workspaceName)}</b> workspace.</p>"
-                : null;
 
         // Review finding #1: the OLD-address security notice goes FIRST, and each send gets its
         // own best-effort try/catch — a failure delivering one address's e-mail (e.g. a bounce or
@@ -464,11 +459,11 @@ public class AuthService : IAuthService
             await _emailService.SendAsync(
                 identity.Email,
                 $"Your {brand.ProductName} e-mail address is being changed",
-                BuildEmailChangeHtml(
-                    "Your e-mail address is being changed",
-                    $"Someone signed in to your account and asked to change its e-mail address to {System.Net.WebUtility.HtmlEncode(newEmail)}. If that was you, confirm it from the e-mail we sent there. If it was not you, change your password now — that cancels the request.",
-                    null,
-                    null
+                EmailTemplateBuilder.EmailChangeNoticeOld(
+                    newEmail,
+                    brand.ProductName,
+                    brand.PrimaryColor,
+                    brand.Urls.App.TrimEnd('/')
                 )
             );
         }
@@ -481,11 +476,12 @@ public class AuthService : IAuthService
             await _emailService.SendAsync(
                 newEmail,
                 $"Confirm your new {brand.ProductName} e-mail address",
-                BuildEmailChangeHtml(
-                    "Confirm your new e-mail address",
-                    "You asked to use this address for your account. Click the link below to confirm — it expires in 30 minutes. After confirming you will be signed out everywhere and sign in again with this address. If you did not ask for this, ignore this e-mail; nothing changes.",
+                EmailTemplateBuilder.EmailChangeConfirmNew(
                     link,
-                    workspaceLine
+                    brand.ProductName,
+                    workspaceName,
+                    brand.PrimaryColor,
+                    brand.Urls.App.TrimEnd('/')
                 )
             );
         }
@@ -630,11 +626,11 @@ public class AuthService : IAuthService
             await _emailService.SendAsync(
                 oldEmail,
                 $"Your {brand.ProductName} e-mail address was changed",
-                BuildEmailChangeHtml(
-                    "Your e-mail address was changed",
-                    $"Your account's e-mail address is now {System.Net.WebUtility.HtmlEncode(newEmail)}. If you did not do this, contact your workspace admin immediately.",
-                    null,
-                    null
+                EmailTemplateBuilder.EmailChangeCompletedOld(
+                    newEmail,
+                    brand.ProductName,
+                    brand.PrimaryColor,
+                    brand.Urls.App.TrimEnd('/')
                 )
             );
         }
@@ -666,30 +662,6 @@ public class AuthService : IAuthService
         return Result.Success(MessageKeys.User.EmailChanged);
     }
 
-    // workspaceLine is raw HTML (already encoded internally) or null to omit it; link null omits
-    // the call-to-action paragraph (the two notice-only e-mails have nothing to click).
-    private static string BuildEmailChangeHtml(
-        string heading,
-        string paragraph,
-        string? link,
-        string? workspaceLine
-    )
-    {
-        // Review finding #8: the token itself is already Uri.EscapeDataString-encoded, but the
-        // link as a whole (scheme/host from branding config) is still untrusted enough to encode
-        // before it lands inside an href attribute.
-        var linkHtml =
-            link != null
-                ? $@"<p><a href=""{System.Net.WebUtility.HtmlEncode(link)}"" style=""color:#2563eb"">Confirm my new e-mail &rarr;</a></p>"
-                : string.Empty;
-        return $@"<div style=""font-family:system-ui,sans-serif;color:#0f172a;line-height:1.6"">
-  <h2 style=""margin:0 0 8px"">{heading}</h2>
-  <p style=""margin:0 0 16px"">{paragraph}</p>
-  {linkHtml}
-  {workspaceLine ?? string.Empty}
-</div>";
-    }
-
     // Resolves the workspace's own name from workspaces.name (DB-03). Null ownerId (super admin) →
     // null; a missing row → null.
     private async Task<string?> ResolveTenantNameAsync(Guid? ownerId)
@@ -703,25 +675,6 @@ public class AuthService : IAuthService
             .Where(w => w.Id == ownerId.Value)
             .Select(w => w.Name)
             .FirstOrDefaultAsync();
-    }
-
-    // workspaceName is RAW (not yet encoded) — null means omit (missing row, super-admin/global user,
-    // or still the DB-03 placeholder).
-    private static string BuildPasswordChangedEmailHtml(
-        string displayName,
-        string productName,
-        string? workspaceName = null
-    )
-    {
-        var workspaceClause =
-            workspaceName != null
-                ? $" in the <b>{System.Net.WebUtility.HtmlEncode(workspaceName)}</b> workspace"
-                : string.Empty;
-        return $@"<div style=""font-family:system-ui,sans-serif;color:#0f172a;line-height:1.6"">
-  <h2 style=""margin:0 0 8px"">Your password was changed</h2>
-  <p style=""margin:0 0 16px"">Hi {displayName}, this confirms your {productName} account password{workspaceClause} was just changed. You've been signed out of all devices.</p>
-  <p style=""color:#94a3b8;font-size:12px"">If you didn't make this change, reset your password immediately and contact your workspace admin.</p>
-</div>";
     }
 
     public async Task<Result<LoginResponse>> LoginAsync(LoginRequest request)
