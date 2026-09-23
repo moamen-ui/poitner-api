@@ -37,7 +37,7 @@ public class TenantResponse
     public string? PlanName { get; set; }
     public string? SubscriptionStatus { get; set; }
 
-    // Demo tenants: surfaced so the super-admin UI can offer a one-time "Extend demo" action
+    // Demo tenants (sourced from workspaces.demo_* — DB-17; the users copies were dropped by DB-11e): surfaced so the super-admin UI can offer a one-time "Extend demo" action
     // and per-tenant overrides of the demo comment cap / TTL (null = use the global default).
     public bool IsDemo { get; set; }
     public DateTime? ExpiresAt { get; set; }

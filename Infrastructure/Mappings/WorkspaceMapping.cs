@@ -28,7 +28,7 @@ public class WorkspaceMapping : IEntityTypeConfiguration<Workspace>
         b.Property(x => x.DeletedAt).HasColumnName("deleted_at");
         b.Property(x => x.DeletedBy).HasColumnName("deleted_by");
 
-        // DB-17 (F4): demo state moved here from `users` (dual-written for one release — R2).
+        // DB-17 (F4): demo state moved here from `users` (the users copies were dropped by DB-11e — R2 contract).
         // No check constraint (Opus DB-17 #4/#7) — see the doc-comment on Workspace and DB-17 §3.1
         // for the code-enforced invariants that replace it.
         b.Property(x => x.DemoExpiresAt).HasColumnName("demo_expires_at");

@@ -221,8 +221,6 @@ public class Db17DemoServiceTests
             ApprovalStatus = ApprovalStatus.Approved,
             IsActive = true,
             IsDemo = true,
-            ExpiresAt = expires,
-            DemoTtlHoursOverride = ttlOverride,
             RecipientEmail = recipientEmail,
         };
         db.Users.Add(admin);
@@ -279,10 +277,6 @@ public class Db17DemoServiceTests
         var workspace = db.Workspaces.Single(w => w.Id == workspaceId);
         Assert.NotNull(workspace.DemoExtendedAt);
         Assert.True(workspace.DemoExpiresAt > DateTime.UtcNow.AddHours(23));
-
-        // Dual-write onto the admin identity (D17.1).
-        var reloadedAdmin = db.Users.Single(u => u.PublicId == admin.PublicId);
-        Assert.True(reloadedAdmin.DemoExtended);
     }
 
     [Fact]
@@ -546,16 +540,12 @@ public class Db17DemoServiceTests
     [Fact]
     public async Task Upgrade_ExpiredWorkspace_Fails_DemoExpired()
     {
-        // The workspace's own TTL lapsed, but the legacy users.expires_at happens to be null — the
-        // workspace is the authority, not the user row.
+        // The workspace's own TTL lapsed — the workspace is the only authority (DB-11e).
         var db = Ctx(nameof(Upgrade_ExpiredWorkspace_Fails_DemoExpired));
         var (admin, workspaceId) = SeedDemoWorkspace(
             db,
             demoExpiresAt: DateTime.UtcNow.AddHours(-1)
         );
-        var user = db.Users.Single(u => u.PublicId == admin.PublicId);
-        user.ExpiresAt = null;
-        db.SaveChanges();
 
         var svc = BuildService(db);
         var result = await svc.UpgradeAsync(
@@ -945,7 +935,7 @@ public class Db17DemoServiceTests
         Assert.Contains(today.Key, remaining);
     }
 
-    // ── Provision (§3.3/§3.6 dual-write + hashed throttle) ──────────────────────────────────
+    // ── Provision (§3.3/§3.6 workspace TTL + hashed throttle) ──────────────────────────────────
 
     private static void SeedWorkspaceAdminRole(AppDbContext db)
     {
@@ -957,9 +947,9 @@ public class Db17DemoServiceTests
     }
 
     [Fact]
-    public async Task Provision_SetsWorkspaceDemoExpiresAt_AndUserExpiresAt_SameInstant()
+    public async Task Provision_SetsWorkspaceDemoExpiresAt_SameInstantAsResponse()
     {
-        var db = Ctx(nameof(Provision_SetsWorkspaceDemoExpiresAt_AndUserExpiresAt_SameInstant));
+        var db = Ctx(nameof(Provision_SetsWorkspaceDemoExpiresAt_SameInstantAsResponse));
         SeedWorkspaceAdminRole(db);
         var svc = BuildService(db);
 
@@ -968,7 +958,7 @@ public class Db17DemoServiceTests
         Assert.True(result.IsSuccess, result.Message);
         var user = db.Users.IgnoreQueryFilters().Single(u => u.IsDemo);
         var workspace = db.Workspaces.IgnoreQueryFilters().Single(w => w.Id == user.OwnerId);
-        Assert.Equal(user.ExpiresAt, workspace.DemoExpiresAt);
+        Assert.Equal(result.Data!.ExpiresAt, workspace.DemoExpiresAt);
         Assert.Null(workspace.DemoConvertedAt);
         Assert.Null(workspace.DemoExtendedAt);
     }

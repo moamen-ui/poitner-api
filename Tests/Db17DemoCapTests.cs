@@ -15,11 +15,8 @@ using Xunit;
 namespace Pointer.Tests;
 
 /// <summary>
-/// DB-17 review finding #6 (LOW): the demo comment cap (create + import) reads the WORKSPACE'S
-/// <c>DemoCommentCapOverride</c> (DB-17 §3.3) — never the legacy per-USER column of the same name,
-/// which the workspace-mapping migration replaced. Each test seeds a demo admin identity with a
-/// deliberately LARGER legacy user-level override than the workspace's, so a regression that read
-/// the wrong column would let the create/import through instead of refusing it.
+/// DB-17 review finding #6: the demo comment cap (create + import) reads the WORKSPACE'S
+/// <c>DemoCommentCapOverride</c> — the only copy since DB-11e dropped the users column.
 /// </summary>
 public class Db17DemoCapTests
 {
@@ -111,8 +108,6 @@ public class Db17DemoCapTests
             seed.Roles.Add(role);
             await seed.SaveChangesAsync();
 
-            // The legacy per-USER column, deliberately much LARGER — a regression that reads this
-            // instead of the workspace's override would let the create below through.
             seed.Users.Add(
                 new User
                 {
@@ -124,7 +119,6 @@ public class Db17DemoCapTests
                     OwnerId = tenant,
                     IsActive = true,
                     IsDemo = true,
-                    DemoCommentCapOverride = 1000,
                     ApprovalStatus = ApprovalStatus.Approved,
                 }
             );
@@ -366,8 +360,6 @@ public class Db17DemoCapTests
             seed.Roles.Add(role);
             await seed.SaveChangesAsync();
 
-            // The legacy per-USER column, deliberately much LARGER — proves the import path reads
-            // the workspace's override, not this one.
             seed.Users.Add(
                 new User
                 {
@@ -379,7 +371,6 @@ public class Db17DemoCapTests
                     RoleId = role.Id,
                     IsActive = true,
                     IsDemo = true,
-                    DemoCommentCapOverride = 1000,
                     ApprovalStatus = ApprovalStatus.Approved,
                 }
             );

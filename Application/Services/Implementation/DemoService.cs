@@ -155,9 +155,6 @@ public class DemoService : IDemoService
             ApprovalStatus = ApprovalStatus.Approved,
             IsActive = true,
             IsDemo = true,
-            // Dual-written for one release (DB-RULES R2) — DemoExpiresAt on the Workspace below is
-            // the new authority; this stays written until DB-11e drops it.
-            ExpiresAt = expiresAt,
             RecipientEmail = recipientEmail,
         };
 
@@ -395,9 +392,7 @@ public class DemoService : IDemoService
         if (workspace?.DemoExpiresAt == null)
             return Result<UpgradeDemoResponse>.Forbidden(MessageKeys.Demo.NotDemoUser);
 
-        // 4. Guard: an already-expired demo cannot be salvaged. The WORKSPACE is the authority now
-        // (a workspace whose TTL lapsed while the user row's legacy ExpiresAt is still null/future
-        // must still be refused).
+        // 4. Guard: an already-expired demo cannot be salvaged. The WORKSPACE is the only authority (DB-17; the users columns were dropped by DB-11e).
         if (workspace.DemoExpiresAt < DateTime.UtcNow)
             return Result<UpgradeDemoResponse>.Failure(MessageKeys.Demo.DemoExpired);
 
@@ -411,10 +406,6 @@ public class DemoService : IDemoService
         // 6-8. Mutate the user entity in place, then persist. A concurrent upgrade racing past
         //      the uniqueness check will trip the DB unique index here → treat as EmailTaken.
         user.IsDemo = false;
-        user.ExpiresAt = null;
-        user.DemoExtended = false;
-        user.DemoCommentCapOverride = null;
-        user.DemoTtlHoursOverride = null;
         user.Email = emailNormalized;
         // DB-14 §3.2: this is exactly where the address becomes real (F4) — reset to null (never
         // by anything else) so the convert step re-earns verification.
@@ -656,11 +647,6 @@ public class DemoService : IDemoService
         workspace.DemoExpiresAt = anchor.AddHours(ttlHours);
         workspace.DemoExtendedAt = now;
         _unitOfWork.Workspaces.Update(workspace);
-
-        // Dual-write the admin identity (D17.1: one extension total, shared with the operator path).
-        user.ExpiresAt = workspace.DemoExpiresAt;
-        user.DemoExtended = true;
-        _unitOfWork.Repository<User>().Update(user);
 
         await _unitOfWork.SaveChangesAsync();
 

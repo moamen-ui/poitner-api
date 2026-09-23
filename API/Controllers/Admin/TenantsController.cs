@@ -1,8 +1,6 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.EntityFrameworkCore;
 using Pointer.API.Auth;
-using Pointer.Application.Abstractions;
 using Pointer.Application.Common;
 using Pointer.Application.DTOs.Impersonation;
 using Pointer.Application.DTOs.Tenant;
@@ -19,9 +17,7 @@ namespace Pointer.API.Controllers.Admin;
 public class TenantsController(
     ITenantService tenantService,
     ITenantInviteService tenantInvites,
-    IImpersonationService impersonationService,
-    IMembershipService memberships,
-    IUnitOfWork unitOfWork
+    IImpersonationService impersonationService
 ) : ControllerBase
 {
     // ── Workspace invitations — the primary way to onboard a tenant ──────────────────────────────
@@ -119,45 +115,7 @@ public class TenantsController(
         return result.IsSuccess ? Ok(result) : BadRequest(result);
     }
 
-    // DB-17 §3.3 (Opus #3): kept for one release — the deployed dashboard calls these until its own
-    // deploy — delegating via the identity's live Workspace Admin membership. Removed by DB-11e.
-    [Obsolete("DB-17: use the {workspaceId:guid} route; removed by DB-11e")]
-    [HttpPost("{id:int}/extend")]
-    [Audited(AuditActions.TenantDemoExtended)]
-    [ProducesResponseType(typeof(Result), StatusCodes.Status200OK)]
-    public async Task<IActionResult> ExtendDemo(int id)
-    {
-        var workspaceId = await ResolveWorkspaceIdFromUserIdAsync(id);
-        if (workspaceId == null)
-            return NotFound(Result.NotFound("Demo tenant not found."));
-
-        var result = await tenantService.ExtendDemoAsync(workspaceId.Value);
-        if (result.IsNotFound)
-            return NotFound(result);
-        return result.IsSuccess ? Ok(result) : BadRequest(result);
-    }
-
-    [Obsolete("DB-17: use the {workspaceId:guid} route; removed by DB-11e")]
-    [HttpPatch("{id:int}/demo-config")]
-    [Audited(AuditActions.TenantDemoConfigChanged)]
-    [ProducesResponseType(typeof(Result), StatusCodes.Status200OK)]
-    public async Task<IActionResult> SetDemoConfig(int id, [FromBody] SetDemoConfigRequest request)
-    {
-        var workspaceId = await ResolveWorkspaceIdFromUserIdAsync(id);
-        if (workspaceId == null)
-            return NotFound(Result.NotFound("Demo tenant not found."));
-
-        var result = await tenantService.SetDemoConfigAsync(
-            workspaceId.Value,
-            request.CommentCapOverride,
-            request.TtlHoursOverride
-        );
-        if (result.IsNotFound)
-            return NotFound(result);
-        return result.IsSuccess ? Ok(result) : BadRequest(result);
-    }
-
-    // DB-17 §3.3 (F9 precedent): the new workspace-keyed routes, added beside the int ones above.
+    // DB-17 §3.3 (F9 precedent): workspace-keyed demo routes (the {id:int} pair was removed by DB-11e).
     [HttpPost("{workspaceId:guid}/extend")]
     [Audited(AuditActions.TenantDemoExtended)]
     [ProducesResponseType(typeof(Result), StatusCodes.Status200OK)]
@@ -185,39 +143,6 @@ public class TenantsController(
         if (result.IsNotFound)
             return NotFound(result);
         return result.IsSuccess ? Ok(result) : BadRequest(result);
-    }
-
-    /// <summary>DB-17 §3.3: resolves a legacy `users.id` to its live Workspace Admin membership's
-    /// workspace. Since D13, one identity can administer several workspaces, so "this admin's
-    /// tenant" is no longer necessarily unique — DB-17 review finding #9 (LOW): this legacy route
-    /// exists only to reach a demo's extend/demo-config, so prefer whichever admin membership's
-    /// workspace is actually a live demo over an arbitrary "first" pick when there is more than
-    /// one.</summary>
-    private async Task<Guid?> ResolveWorkspaceIdFromUserIdAsync(int id)
-    {
-        var live = await memberships.ListForIdentityAsync(id);
-        var adminWorkspaceIds = live
-            .Where(m =>
-                m.Role?.Name == "Workspace Admin"
-                && m.IsActive
-                && m.ApprovalStatus == Pointer.Domain.Enums.ApprovalStatus.Approved
-            )
-            .Select(m => m.OwnerId)
-            .Distinct()
-            .ToList();
-
-        if (adminWorkspaceIds.Count == 0)
-            return null;
-        if (adminWorkspaceIds.Count == 1)
-            return adminWorkspaceIds[0];
-
-        var demoWorkspaceId = await unitOfWork
-            .Workspaces.IgnoreQueryFilters()
-            .Where(w => adminWorkspaceIds.Contains(w.Id) && w.DemoExpiresAt != null)
-            .Select(w => (Guid?)w.Id)
-            .FirstOrDefaultAsync();
-
-        return demoWorkspaceId ?? adminWorkspaceIds[0];
     }
 
     // F9 (DB-11a cross-review): keyed on the workspace id, not an admin's `users.id` (see SetStatus).

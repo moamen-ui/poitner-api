@@ -19,8 +19,8 @@ namespace Pointer.Tests;
 /// this review. Also finding #6 (LOW): both refuse a CONVERTED workspace (<c>DemoConvertedAt !=
 /// null</c>) with <c>Demo.AlreadyUpgraded</c>, even when <c>DemoExpiresAt</c> is still non-null for
 /// the <c>Demo:ConvertRequiresVerification</c> re-verification grace. And the operator/self-service
-/// extension interplay: both dual-write the SAME one-extension-total flag (D17.1), proven end to
-/// end with the real <see cref="TenantService"/> and <see cref="DemoService"/> sharing one
+/// extension interplay: both share the SAME one-extension-total flag (workspaces.demo_extended_at),
+/// proven end to end with the real <see cref="TenantService"/> and <see cref="DemoService"/> sharing one
 /// workspace.
 /// </summary>
 public class Db17TenantServiceDemoOperatorTests
@@ -309,8 +309,8 @@ public class Db17TenantServiceDemoOperatorTests
         Assert.Equal(MessageKeys.Demo.AlreadyUpgraded, result.Message);
     }
 
-    /// <summary>DB-17 review finding #5: proves the operator and self-service extend paths dual-write
-    /// the SAME one-extension-total flag (D17.1) end to end with the real services.</summary>
+    /// <summary>DB-17 review finding #5: proves the operator and self-service extend paths share
+    /// the SAME one-extension-total flag (workspaces.demo_extended_at) end to end with the real services.</summary>
     [Fact]
     public async Task OperatorExtend_ThenSelfExtend_Fails()
     {

@@ -348,8 +348,7 @@ public class TenantService : ITenantService
 
     public async Task<Result> ExtendDemoAsync(Guid workspaceId)
     {
-        // DB-17 §3.3: the WORKSPACE is the demo authority now; the admin identity is dual-written
-        // (kept for one release, DB-11e drops it).
+        // DB-17 §3.3 / DB-11e: the WORKSPACE is the only demo authority.
         var workspace = await _unitOfWork
             .Workspaces.IgnoreQueryFilters()
             .FirstOrDefaultAsync(w => w.Id == workspaceId && w.DeletedAt == null);
@@ -380,15 +379,6 @@ public class TenantService : ITenantService
         workspace.DemoExpiresAt = anchor.AddHours(ttlHours);
         workspace.DemoExtendedAt = DateTime.UtcNow;
         _unitOfWork.Workspaces.Update(workspace);
-
-        var admin = await _memberships.CurrentAdminAsync(workspaceId);
-        if (admin != null)
-        {
-            var adminIdentity = admin.User;
-            adminIdentity.ExpiresAt = workspace.DemoExpiresAt;
-            adminIdentity.DemoExtended = true;
-            _unitOfWork.Repository<User>().Update(adminIdentity);
-        }
 
         await _unitOfWork.SaveChangesAsync();
 
@@ -441,15 +431,6 @@ public class TenantService : ITenantService
         workspace.DemoCommentCapOverride = commentCapOverride;
         workspace.DemoTtlHoursOverride = ttlHoursOverride;
         _unitOfWork.Workspaces.Update(workspace);
-
-        var admin = await _memberships.CurrentAdminAsync(workspaceId);
-        if (admin != null)
-        {
-            var adminIdentity = admin.User;
-            adminIdentity.DemoCommentCapOverride = commentCapOverride;
-            adminIdentity.DemoTtlHoursOverride = ttlHoursOverride;
-            _unitOfWork.Repository<User>().Update(adminIdentity);
-        }
 
         await _unitOfWork.SaveChangesAsync();
 

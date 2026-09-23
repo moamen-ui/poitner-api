@@ -235,7 +235,6 @@ public class DemoServiceAnalyticsFailureTests
             ApprovalStatus = ApprovalStatus.Approved,
             IsActive = true,
             IsDemo = true,
-            ExpiresAt = expiresAt,
             RecipientEmail = "real@user.com",
         };
         db.Users.Add(user);

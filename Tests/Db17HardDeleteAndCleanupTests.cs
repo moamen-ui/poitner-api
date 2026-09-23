@@ -324,8 +324,7 @@ public class Db17HardDeleteAndCleanupTests
         var dbName = nameof(DemoCleanup_DeletesExpiredWorkspace_ByWorkspaceColumn_NotUsers);
         var db = Ctx(dbName);
         var workspaceId = SeedWorkspace(db, demoExpiresAt: DateTime.UtcNow.AddHours(-1));
-        // Proves the read-switch: the legacy users.expires_at is null, yet the workspace column
-        // alone is enough to select and delete it.
+        // The workspace column alone selects and deletes it (there is no users column any more — DB-11e).
         var role = new Role { Name = "Workspace Admin", OwnerId = null };
         db.Roles.Add(role);
         var admin = new User
@@ -339,7 +338,6 @@ public class Db17HardDeleteAndCleanupTests
             OwnerId = workspaceId,
             IsActive = true,
             IsDemo = true,
-            ExpiresAt = null,
             ApprovalStatus = ApprovalStatus.Approved,
         };
         db.Users.Add(admin);

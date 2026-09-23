@@ -11,7 +11,8 @@ public class User : BaseEntity
 
     /// <summary>
     /// <b>Legacy (DB-11a).</b> Written once at identity creation (first workspace / super-admin
-    /// role); never read by application code after DB-11a. Dropped by DB-11e.
+    /// role); never read by application code after DB-11a. Dropped by DB-11f (the DB-11a legacy-column
+    /// contract; DB-11e dropped the demo columns instead).
     /// </summary>
     public int RoleId { get; set; }
 
@@ -49,16 +50,6 @@ public class User : BaseEntity
 
     public Guid? OwnerId { get; set; }
     public bool IsDemo { get; set; }
-    public DateTime? ExpiresAt { get; set; }
-
-    /// <summary>Whether a super-admin has already used their one-time demo extension for this user.</summary>
-    public bool DemoExtended { get; set; }
-
-    /// <summary>Per-tenant override of the demo comment cap. Null = use the global setting.</summary>
-    public int? DemoCommentCapOverride { get; set; }
-
-    /// <summary>Per-tenant override of the demo TTL (hours), used when extending. Null = use the global setting.</summary>
-    public int? DemoTtlHoursOverride { get; set; }
 
     /// <summary>The real human email entered at demo provisioning time. Null for non-demo users. Cleared on upgrade.</summary>
     public string? RecipientEmail { get; set; }

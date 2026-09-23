@@ -12,12 +12,10 @@ public interface ITenantService
     /// an identity administering several workspaces (D13) must be able to act on each one.</summary>
     Task<Result> SetStatusAsync(Guid workspaceId, string action);
 
-    /// <summary>DB-17 §3.3: keyed on the workspace id (the demo authority now); dual-writes the
-    /// current admin identity for one release.</summary>
+    /// <summary>DB-17 §3.3: keyed on the workspace id (the only demo authority since DB-11e).</summary>
     Task<Result> ExtendDemoAsync(Guid workspaceId);
 
-    /// <summary>DB-17 §3.3: keyed on the workspace id; dual-writes the current admin identity for
-    /// one release.</summary>
+    /// <summary>DB-17 §3.3: keyed on the workspace id (the only demo authority since DB-11e).</summary>
     Task<Result> SetDemoConfigAsync(
         Guid workspaceId,
         int? commentCapOverride,

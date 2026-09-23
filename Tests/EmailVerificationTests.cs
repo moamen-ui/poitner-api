@@ -808,7 +808,6 @@ public class EmailVerificationTests
                 OwnerId = owner,
                 IsActive = true,
                 IsDemo = true,
-                ExpiresAt = DateTime.UtcNow.AddHours(1),
                 EmailVerifiedAt = DateTime.UtcNow.AddDays(-1),
             };
             seed.Users.Add(demo);
@@ -817,7 +816,7 @@ public class EmailVerificationTests
             // DB-17: the workspace is the demo authority now — TestSeed.Join's Workspace row has no
             // demo state by default (it is shared by every non-demo test), so stamp it here.
             var workspace = seed.Workspaces.Single(w => w.Id == owner);
-            workspace.DemoExpiresAt = demo.ExpiresAt;
+            workspace.DemoExpiresAt = DateTime.UtcNow.AddHours(1);
             seed.SaveChanges();
         }
 

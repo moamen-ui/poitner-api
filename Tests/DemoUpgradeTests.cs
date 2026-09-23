@@ -190,8 +190,7 @@ public class DemoUpgradeTests
         ) => Task.FromResult(DefaultBranding());
     }
 
-    /// <summary>DB-17: seeds the demo identity AND its own Workspace (DemoExpiresAt = the same
-    /// instant as the legacy `users.expires_at`, dual-write shape) + a live Workspace Admin
+    /// <summary>DB-17: seeds the demo identity AND its own Workspace + a live Workspace Admin
     /// membership, since UpgradeAsync now resolves the session's workspace via the membership and
     /// reads the TTL from the workspace, not the user row. `workspaceId == PublicId` here purely as
     /// this fixture's convention (a fresh Guid either way) — the production mint point uses a
@@ -224,7 +223,6 @@ public class DemoUpgradeTests
             ApprovalStatus = ApprovalStatus.Approved,
             IsActive = true,
             IsDemo = true,
-            ExpiresAt = expires,
             RecipientEmail = "real@user.com",
         };
         db.Users.Add(user);
@@ -326,10 +324,11 @@ public class DemoUpgradeTests
         // Entity mutated in place.
         var updated = db.Users.Single(u => u.PublicId == demo.PublicId);
         Assert.False(updated.IsDemo);
-        Assert.Null(updated.ExpiresAt);
-        Assert.False(updated.DemoExtended);
-        Assert.Null(updated.DemoCommentCapOverride);
-        Assert.Null(updated.DemoTtlHoursOverride);
+        var ws = db.Workspaces.IgnoreQueryFilters().Single(w => w.Id == demoWorkspaceId);
+        Assert.Null(ws.DemoExpiresAt);
+        Assert.NotNull(ws.DemoConvertedAt);
+        Assert.Null(ws.DemoCommentCapOverride);
+        Assert.Null(ws.DemoTtlHoursOverride);
         Assert.Equal("permanent@user.com", updated.Email);
         Assert.Equal("hash:supersecret", updated.PasswordHash);
         Assert.Equal("Real Name", updated.DisplayName);

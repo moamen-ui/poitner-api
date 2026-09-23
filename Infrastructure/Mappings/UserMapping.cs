@@ -55,8 +55,6 @@ public class UserMapping : IEntityTypeConfiguration<User>
             .HasConstraintName("fk_users_workspaces_owner_id");
         b.HasIndex(x => x.OwnerId);
         b.Property(x => x.IsDemo).HasColumnName("is_demo");
-        b.Property(x => x.ExpiresAt).HasColumnName("expires_at");
-        b.HasIndex(x => x.ExpiresAt);
         b.Property(x => x.RecipientEmail).HasColumnName("recipient_email").HasMaxLength(256);
         b.Property(x => x.ErasedAt).HasColumnName("erased_at");
         b.Property(x => x.EmailVerifiedAt).HasColumnName("email_verified_at");

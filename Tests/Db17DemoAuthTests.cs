@@ -228,7 +228,6 @@ public class Db17DemoAuthTests
             IsActive = true,
             IsDemo = true,
             ApprovalStatus = ApprovalStatus.Approved,
-            ExpiresAt = demoExpiresAt,
         };
         db.Users.Add(user);
         db.SaveChanges();
