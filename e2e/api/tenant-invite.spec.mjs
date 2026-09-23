@@ -315,7 +315,7 @@ test('R1-08-11 — the direct path still works (seed depends on it)', async () =
   const superAdmin = await login(credentials.superAdmin.email, credentials.superAdmin.password);
   const email = `direct-${RUN_ID}@example.com`;
   const password = 'DirectPass1!';
-  let createdId = null;
+  let createdWorkspaceId = null;
 
   try {
     // 1. Direct path: POST /api/admin/tenants
@@ -326,12 +326,16 @@ test('R1-08-11 — the direct path still works (seed depends on it)', async () =
     );
     expect(directRes.status).toBe(200);
     const data = directRes.data;
-    createdId = data.id;
+    // F9 (DB-11a cross-review): DELETE /api/admin/tenants is keyed on WorkspaceId (a GUID), never
+    // the legacy int Id — that field can now repeat across rows and was never a valid :guid route
+    // segment anyway.
+    createdWorkspaceId = data.workspaceId;
 
     // Assert superset fields
     expect(data.id).toBeTruthy();
     expect(data.publicId).toBeTruthy();
     expect(data.ownerId).toBeTruthy();
+    expect(data.workspaceId).toBeTruthy();
     expect(data.email.toLowerCase()).toBe(email.toLowerCase());
     expect(data.displayName).toBe('Direct Co');
     expect(data.approvalStatus).toBe('Approved');
@@ -351,8 +355,8 @@ test('R1-08-11 — the direct path still works (seed depends on it)', async () =
       : null;
     expect(listed).toBeTruthy();
   } finally {
-    if (createdId) {
-      await delRaw(`/api/admin/tenants/${createdId}`, { token: superAdmin.token });
+    if (createdWorkspaceId) {
+      await delRaw(`/api/admin/tenants/${createdWorkspaceId}`, { token: superAdmin.token });
     } else {
       await deleteTenantByEmail(email, superAdmin.token);
     }
