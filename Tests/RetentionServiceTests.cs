@@ -4,6 +4,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging.Abstractions;
 using Pointer.API.Hosted;
 using Pointer.Application.Abstractions;
@@ -634,5 +635,86 @@ public class RetentionServiceTests
 
         using var verify = testDb.MakeContext();
         Assert.Equal(0, await verify.UsageEvents.IgnoreQueryFilters().CountAsync());
+    }
+
+    // ── DB-16: screenshot purge wiring ───────────────────────────────────────────────────────
+
+    private sealed class FakeUploadSigner : IUploadSigner
+    {
+        public string SignedUrl(string relPath) => relPath;
+
+        public bool Validate(string relPath, long exp, string sig) => true;
+
+        public string ExtractRelPath(string stored) => stored;
+    }
+
+    /// <summary>Simulates a storage failure inside the screenshot-purge steps (DB-16 §3.5/§3.6:
+    /// a storage error must never fail the four row sweeps).</summary>
+    private sealed class ThrowingFileStorage : IFileStorage
+    {
+        public Task<string> SaveAsync(
+            string ownerSegment,
+            string project,
+            Stream content,
+            string extension
+        ) => Task.FromResult("uploads/x");
+
+        public Task DeleteAsync(string relativePathOrUrl) => Task.CompletedTask;
+
+        public Task DeleteOwnerFilesAsync(string ownerSegment) => Task.CompletedTask;
+
+        public Task<IReadOnlyList<string>> ListOwnerSegmentsAsync() =>
+            throw new InvalidOperationException("boom");
+    }
+
+    [Fact]
+    public async Task Sweep_RunsPurge_AfterRowSweeps_AndStorageFailureDoesNotFailRows()
+    {
+        using var testDb = new TestDb();
+        using var db = testDb.MakeContext();
+
+        var old = DateTime.UtcNow.AddDays(-200);
+        db.UsageEvents.Add(
+            new UsageEvent
+            {
+                ProjectId = null,
+                Type = "x",
+                Source = "test",
+                CreatedAt = old,
+            }
+        );
+        await db.SaveChangesAsync();
+
+        var result = await RetentionService.SweepOnceAsync(
+            db,
+            DefaultOptions(),
+            NullLogger.Instance,
+            CancellationToken.None,
+            new ThrowingFileStorage(),
+            new FakeUploadSigner()
+        );
+
+        // The row sweeps still ran and returned their normal counts — a storage exception in the
+        // screenshot-purge steps is caught and logged, never rethrown, never loses the row results.
+        Assert.Equal(1, result.UsageEventsDeleted);
+    }
+
+    [Fact]
+    public void BindOptions_ReadsDeletedCommentScreenshotDays_AndOrphanGrace()
+    {
+        var config = new ConfigurationBuilder()
+            .AddInMemoryCollection(
+                new Dictionary<string, string?>
+                {
+                    ["Retention:DeletedCommentScreenshotDays"] = "7",
+                    ["Retention:UploadOrphanGraceHours"] = "12",
+                }
+            )
+            .Build();
+
+        var options = RetentionService.BindOptions(config);
+
+        Assert.Equal(7, options.DeletedCommentScreenshotDays);
+        Assert.Equal(12, options.UploadOrphanGraceHours);
     }
 }

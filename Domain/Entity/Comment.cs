@@ -43,6 +43,13 @@ public class Comment : BaseEntity
     public Guid? EditedBy { get; set; }
     public Guid? OwnerId { get; set; }
 
+    /// <summary>
+    /// DB-16. Non-null = the screenshot file that <see cref="Element"/>.ScreenshotUrl names was removed from the uploads volume
+    /// (or confirmed missing) by the retention purge, after the comment had been soft-deleted for Retention:DeletedCommentScreenshotDays.
+    /// ScreenshotUrl is kept so exports still report screenshot_omitted = true. Never set on a live (DeletedAt == null) comment.
+    /// </summary>
+    public DateTime? ScreenshotPurgedAt { get; set; }
+
     // "Report as a bug" checkbox state, stamped regardless of whether PageContextSnapshot ended up
     // non-empty — a cheap triage signal on its own. See docs/superpowers/specs/2026-08-25-page-context-capture-design.md.
     public bool IsBugReport { get; set; }

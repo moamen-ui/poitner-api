@@ -44,6 +44,13 @@ services:
       Retention__NotificationsReadDays: "${RETENTION_NOTIFICATIONS_READ_DAYS:-90}"
       Retention__PageContextSnapshotDays: "${RETENTION_SNAPSHOT_DAYS:-30}"
       Retention__InvitesDays: "${RETENTION_INVITES_DAYS:-90}"
+      # DB-16: screenshot files of comments soft-deleted > N days, and orphan uploads unreferenced
+      # for > M hours. The dry-run flag below defaults to true (logs would-delete counts, deletes
+      # and stamps nothing); flip it to false after reading the first log lines and after a nightly
+      # uploads-<ts>.tgz has been taken since the deploy.
+      Retention__DeletedCommentScreenshotDays: "${RETENTION_DELETED_SCREENSHOT_DAYS:-30}"
+      Retention__UploadOrphanGraceHours: "${RETENTION_UPLOAD_ORPHAN_GRACE_HOURS:-48}"
+      Retention__ScreenshotPurgeDryRun: "${RETENTION_SCREENSHOT_PURGE_DRY_RUN:-true}"
       JWT__SigningKey: "${JWT_SIGNING_KEY}"
       JWT__Issuer: "pointer-api"
       JWT__LifetimeHours: "12"

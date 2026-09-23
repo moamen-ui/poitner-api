@@ -175,19 +175,18 @@ comment content — see D.1):
    UPDATE comments SET deleted_at = NOW() WHERE author_id = '<user_public_id>' AND deleted_at IS NULL;
    ```
 2. **Replies** — same pattern on `replies.author_id`.
-3. **Screenshots — read this carefully, it does not happen automatically.** Soft-deleting a comment
-   does **not** delete its screenshot file. Confirmed by reading
-   `Application/Services/Implementation/CommentService.cs:1040-1057` (`DeleteAsync`): it sets
-   `comment.DeletedAt` and saves — it never calls `IFileStorage.DeleteAsync`. (The only place this
-   codebase calls `_fileStorage.DeleteAsync` on a comment's screenshot is `EditAsync`,
-   `CommentService.cs:816-824`, when the author explicitly ticks "remove screenshot" on an edit —
-   an unrelated code path.) If the request includes screenshot removal, delete the files by hand:
+3. **Screenshots.** Soft-deleting a comment does not delete its screenshot file immediately: the
+   retention job purges the file 30 days after the comment is soft-deleted (once
+   `RETENTION_SCREENSHOT_PURGE_DRY_RUN=false`; DB-16, `API/Hosted/ScreenshotPurge.cs`). To act
+   sooner, decode the `p=` parameter of `SELECT element->>'ScreenshotUrl' FROM comments WHERE id =
+   <id>` — it is `uploads/<ownerN>/<projectKey>/<guid>.<ext>` — and run
    ```bash
-   docker compose exec api find /app/wwwroot/uploads -name '<comment_public_id>*' -delete
+   docker compose exec api rm -f /app/wwwroot/<decoded path>
    ```
-   This manual step is required **today, regardless of DB-11c/DB-12 status** — see the **Follow-up
-   code items** section below; the public privacy policy's wording assumes this already happens
-   automatically, which it does not for a soft-delete.
+   The author can also edit their own comment with *remove screenshot* — this now actually deletes
+   the file (DB-16 fixed `LocalFileStorage.DeleteAsync` not resolving the stored signed-URL shape);
+   admins cannot use it (`CommentService.cs:1019`, `EditAsync` is author-only: "not even admins edit
+   someone else's content").
 4. **User account**: soft-delete the row (`DeletedAt`) and rotate `security_stamp` so outstanding
    JWTs stop working. Production runs with `Auth:ValidateSecurityStamp = true`, so this takes
    effect on the next request rather than waiting out the token's 12-hour lifetime.
@@ -261,25 +260,15 @@ Cross-checked against `landing/privacy.html` on 2026-09-23:
 Per this task's scope, no C# was changed (`Application/`, `Infrastructure/`, `Domain/` are owned by
 DB-11a work in progress). These are handed off for a future PR:
 
-1. **Screenshot files are never deleted when a comment is soft-deleted**, contradicting
-   `landing/privacy.html` §6's public promise ("deleted when the comment … is deleted").
-   - File: `Application/Services/Implementation/CommentService.cs:1040-1057` (`DeleteAsync`).
-   - Current behavior: sets `comment.DeletedAt = DateTime.UtcNow;` and saves — never touches
-     `comment.Element.ScreenshotUrl` or calls `IFileStorage.DeleteAsync`.
-   - Precedent for the fix already exists in the same file: `EditAsync`,
-     `CommentService.cs:816-824`, calls `await _fileStorage.DeleteAsync(comment.Element.ScreenshotUrl!);`
-     then nulls the field, when `request.RemoveScreenshot` is set.
-   - Intended change: in `DeleteAsync`, before/after setting `DeletedAt`, if
-     `!string.IsNullOrEmpty(comment.Element.ScreenshotUrl)`, call
-     `await _fileStorage.DeleteAsync(comment.Element.ScreenshotUrl!);` (mirroring `EditAsync`).
-     Needs a product decision first: F5 (DB-11c) says screenshots survive *identity erase*
-     specifically because they're the workspace's asset — deleting the screenshot on ordinary
-     comment soft-delete is a separate question the founder should confirm before implementing,
-     since it's irreversible (soft-delete is recoverable; deleting the file is not). Alternative:
-     correct `landing/privacy.html` §6 instead, to describe today's actual behavior (screenshot
-     survives a soft-deleted comment; only a hard-delete — i.e. workspace deletion — removes it).
-   - Owner: whoever picks up DB-11c/DB-11 follow-on work, or a dedicated privacy-copy fix; flag to
-     the founder for the policy-vs-code decision either way.
+1. **Screenshot files are never deleted when a comment is soft-deleted** — **resolved by DB-16**
+   (`docs/db/execution/DB-16-screenshot-purge.md`). The retention job now purges the file 30 days
+   after the comment is soft-deleted (`API/Hosted/ScreenshotPurge.cs`, wired into
+   `API/Hosted/RetentionService.cs`), an orphan sweep catches anything that misses (failed uploads,
+   pre-DB-16 hard deletes), and the single-file delete (`EditAsync` "remove screenshot",
+   `CommentService.cs:1030-1033`) actually works now (it previously passed the stored **signed
+   URL** straight to `LocalFileStorage.DeleteAsync`, which could not resolve it — bug B1). F5
+   (DB-11c) is unchanged: identity erase still keeps every screenshot. First release ships in
+   dry-run (`Retention:ScreenshotPurgeDryRun`, default true) — see the doc's §9 release steps.
 
 2. **Export/import fidelity gaps** (already documented in
    `docs/roadmap/execution/R5-66-export-and-dsar-runbook.md` §3.1, restated here since a DSAR access

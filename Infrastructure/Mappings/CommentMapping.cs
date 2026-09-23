@@ -47,6 +47,8 @@ public class CommentMapping : IEntityTypeConfiguration<Comment>
             .OnDelete(DeleteBehavior.Restrict)
             .HasConstraintName("fk_comments_workspaces_owner_id");
         b.HasIndex(x => x.OwnerId);
+        // DB-16: nullable marker, no index (see the doc's §3.1 note on when to add one).
+        b.Property(x => x.ScreenshotPurgedAt).HasColumnName("screenshot_purged_at");
         b.Property(x => x.IsBugReport).HasColumnName("is_bug_report").HasDefaultValue(false);
         b.Property(x => x.PageContextSnapshotId).HasColumnName("page_context_snapshot_id");
         // SetNull (not Restrict/Cascade): pruning a snapshot later must never cascade-delete comments.

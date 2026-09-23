@@ -33,6 +33,10 @@ public class CommentVerifyTests
 
     private sealed class FakeFileStorage : IFileStorage
     {
+        /// <summary>DB-16: recorded so Edit_RemoveScreenshot_* tests can assert what (if anything)
+        /// was actually deleted.</summary>
+        public List<string> Deleted { get; } = new();
+
         public Task<string> SaveAsync(
             string ownerSegment,
             string project,
@@ -40,7 +44,11 @@ public class CommentVerifyTests
             string extension
         ) => Task.FromResult("uploads/x");
 
-        public Task DeleteAsync(string relativePathOrUrl) => Task.CompletedTask;
+        public Task DeleteAsync(string relativePathOrUrl)
+        {
+            Deleted.Add(relativePathOrUrl);
+            return Task.CompletedTask;
+        }
 
         public Task DeleteOwnerFilesAsync(string ownerSegment) => Task.CompletedTask;
     }
@@ -113,6 +121,141 @@ public class CommentVerifyTests
             notificationService
         );
         return (commentService, notificationService, uow);
+    }
+
+    /// <summary>DB-16: same wiring as <see cref="BuildServices"/> but also hands back the
+    /// FakeFileStorage instance so a test can assert what got deleted (or didn't).</summary>
+    private static (CommentService commentService, FakeFileStorage fileStorage) BuildServicesWithStorage(
+        ICurrentUser user,
+        string dbName
+    )
+    {
+        var uow = new UnitOfWork(BuildContext(user, dbName));
+        var notificationService = new NotificationService(uow, user);
+        var projectService = new ProjectService(
+            uow,
+            user,
+            new PassThroughEntitlements(),
+            TestProjectServiceDeps.Settings(),
+            TestProjectServiceDeps.Configuration(),
+            new FakeAuditWriter()
+        );
+        var actionService = new PredefinedActionService(
+            uow,
+            projectService,
+            user,
+            new PassThroughEntitlements()
+        );
+        var fileStorage = new FakeFileStorage();
+        var commentService = new CommentService(
+            uow,
+            projectService,
+            actionService,
+            fileStorage,
+            user,
+            new FakeUploadSigner(),
+            new FakeSettings(),
+            new PassThroughEntitlements(),
+            null,
+            notificationService
+        );
+        return (commentService, fileStorage);
+    }
+
+    private static int SeedCommentWithScreenshot(
+        string dbName,
+        Guid tenant,
+        Guid authorId,
+        string? screenshotUrl
+    )
+    {
+        using var seed = BuildContext(new FakeCurrentUser { IsSuperAdmin = true }, dbName);
+        var project = new Project
+        {
+            Key = "proj",
+            Name = "Proj",
+            OwnerId = tenant,
+            IsActiveLocal = true,
+            IsActiveStaging = true,
+            IsActiveProduction = true,
+        };
+        seed.Projects.Add(project);
+        seed.SaveChanges();
+
+        var comment = new Comment
+        {
+            ProjectId = project.Id,
+            OwnerId = tenant,
+            AuthorId = authorId,
+            Body = "hi",
+            Status = CommentStatus.Open,
+            Environment = EnvironmentTag.Local,
+            Element = new ElementCapture { ScreenshotUrl = screenshotUrl },
+        };
+        seed.Comments.Add(comment);
+        seed.SaveChanges();
+        return comment.Id;
+    }
+
+    // ── DB-16: ownership-checked single-file delete (EditAsync "remove screenshot") ─────────
+
+    [Fact]
+    public async Task Edit_RemoveScreenshot_PassesOwnedRelPathToStorage()
+    {
+        var db = Guid.NewGuid().ToString();
+        var tenant = Guid.NewGuid();
+        var authorId = Guid.NewGuid();
+        var rel = $"uploads/{tenant:N}/proj/a.png";
+        var commentId = SeedCommentWithScreenshot(db, tenant, authorId, rel);
+
+        var author = new FakeCurrentUser { Id = authorId, TenantId = tenant };
+        var (commentSvc, fileStorage) = BuildServicesWithStorage(author, db);
+
+        var req = new EditCommentRequest { Body = "hi", RemoveScreenshot = true };
+        var res = await commentSvc.EditAsync(commentId, req, authorId);
+
+        Assert.True(res.IsSuccess, res.Message);
+        Assert.Equal(new[] { rel }, fileStorage.Deleted);
+        Assert.Null(res.Data!.Element.ScreenshotUrl);
+    }
+
+    [Fact]
+    public async Task Edit_RemoveScreenshot_ForeignPath_NullsUrl_DeletesNothing()
+    {
+        var db = Guid.NewGuid().ToString();
+        var tenant = Guid.NewGuid();
+        var foreignOwner = Guid.NewGuid();
+        var authorId = Guid.NewGuid();
+        var rel = $"uploads/{foreignOwner:N}/proj/a.png";
+        var commentId = SeedCommentWithScreenshot(db, tenant, authorId, rel);
+
+        var author = new FakeCurrentUser { Id = authorId, TenantId = tenant };
+        var (commentSvc, fileStorage) = BuildServicesWithStorage(author, db);
+
+        var req = new EditCommentRequest { Body = "hi", RemoveScreenshot = true };
+        var res = await commentSvc.EditAsync(commentId, req, authorId);
+
+        Assert.True(res.IsSuccess, res.Message);
+        Assert.Empty(fileStorage.Deleted);
+        Assert.Null(res.Data!.Element.ScreenshotUrl);
+    }
+
+    [Fact]
+    public async Task Delete_SoftDeletes_TouchesNoFile()
+    {
+        var db = Guid.NewGuid().ToString();
+        var tenant = Guid.NewGuid();
+        var authorId = Guid.NewGuid();
+        var rel = $"uploads/{tenant:N}/proj/a.png";
+        var commentId = SeedCommentWithScreenshot(db, tenant, authorId, rel);
+
+        var author = new FakeCurrentUser { Id = authorId, TenantId = tenant };
+        var (commentSvc, fileStorage) = BuildServicesWithStorage(author, db);
+
+        var res = await commentSvc.DeleteAsync(commentId, authorId, isAdmin: false);
+
+        Assert.True(res.IsSuccess, res.Message);
+        Assert.Empty(fileStorage.Deleted);
     }
 
     private static int SeedAppliedComment(string dbName, Guid tenant, Guid authorId, Guid appliedBy)

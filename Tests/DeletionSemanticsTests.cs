@@ -1206,6 +1206,9 @@ public class DeletionSemanticsTests
         using var check = Ctx(superAdmin, db);
         var commentRow = check.Comments.IgnoreQueryFilters().Single(c => c.Id == commentId);
         Assert.Equal("uploads/x/y/z.png", commentRow.Element.ScreenshotUrl);
+        // DB-16: erase must not touch the DB-16 marker either — the comment isn't even soft-deleted
+        // by erase (F5), so screenshot_purged_at stays null regardless of grace period.
+        Assert.Null(commentRow.ScreenshotPurgedAt);
     }
 
     // ── 14. Scoped erase tokens end-to-end (GLM A3) ──────────────────────────────────────────

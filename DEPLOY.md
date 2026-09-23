@@ -104,6 +104,10 @@ Before each sweep the job rolls `usage_events` up into `usage_daily` (per day/wo
 forever); the five funnel facts (`demo_started`, `workspace_converted`, `widget_installed`,
 `first_comment`, `first_apply`) are never deleted.
 
+It also purges screenshot files of comments soft-deleted > 30 d and orphan files > 48 h old under
+`uploads/` (never `uploads/branding/`), logging a per-pass volume line; `RETENTION_SCREENSHOT_PURGE_DRY_RUN`
+(default true) makes it log-only.
+
 Two callers:
 
 - **Before every API deploy** — `scripts/deploy-api.sh` calls it with the label `pre-deploy`. That

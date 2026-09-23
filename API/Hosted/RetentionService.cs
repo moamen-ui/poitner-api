@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using Pointer.Application.Abstractions;
 using Pointer.Application.Common;
 using Pointer.Domain.Entity;
 using Pointer.Infrastructure;
@@ -25,6 +26,19 @@ public sealed record RetentionOptions
     public int BatchSize { get; init; } = 5000;
     public int IntervalHours { get; init; } = 24;
     public int InitialDelayMinutes { get; init; } = 5;
+
+    /// <summary>DB-16: days a comment must have been soft-deleted before its screenshot file is
+    /// purged. 0 disables the purge (files then leave only with the workspace).</summary>
+    public int DeletedCommentScreenshotDays { get; init; } = 30;
+
+    /// <summary>DB-16: age (by file mtime) before an unreferenced upload is treated as an orphan
+    /// and deleted. 0 disables the orphan sweep.</summary>
+    public int UploadOrphanGraceHours { get; init; } = 48;
+
+    /// <summary>DB-16 (D16.6): true = both screenshot-purge steps only log what they would delete.
+    /// Ships true; flip to false after reading the first production log lines and after at least one
+    /// nightly uploads-&lt;ts&gt;.tgz has been taken since the deploy.</summary>
+    public bool ScreenshotPurgeDryRun { get; init; } = true;
 }
 
 /// <summary>Row counts deleted by one <see cref="RetentionService.SweepOnceAsync"/> pass.</summary>
@@ -86,6 +100,12 @@ public class RetentionService(
             BatchSize = config.GetValue("Retention:BatchSize", 5000),
             IntervalHours = config.GetValue("Retention:IntervalHours", 24),
             InitialDelayMinutes = config.GetValue("Retention:InitialDelayMinutes", 5),
+            DeletedCommentScreenshotDays = config.GetValue(
+                "Retention:DeletedCommentScreenshotDays",
+                30
+            ),
+            UploadOrphanGraceHours = config.GetValue("Retention:UploadOrphanGraceHours", 48),
+            ScreenshotPurgeDryRun = config.GetValue("Retention:ScreenshotPurgeDryRun", true),
         };
 
     private async Task SweepAsync(CancellationToken stoppingToken)
@@ -95,7 +115,9 @@ public class RetentionService(
         {
             using var scope = scopeFactory.CreateScope();
             var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-            await SweepOnceAsync(db, options, logger, stoppingToken);
+            var storage = scope.ServiceProvider.GetRequiredService<IFileStorage>();
+            var signer = scope.ServiceProvider.GetRequiredService<IUploadSigner>();
+            await SweepOnceAsync(db, options, logger, stoppingToken, storage, signer);
         }
         catch (Exception ex)
         {
@@ -112,7 +134,9 @@ public class RetentionService(
         AppDbContext db,
         RetentionOptions o,
         ILogger log,
-        CancellationToken ct
+        CancellationToken ct,
+        IFileStorage? storage = null,
+        IUploadSigner? signer = null
     )
     {
         if (!o.Enabled)
@@ -144,6 +168,29 @@ public class RetentionService(
         var notifications = await SweepNotificationsAsync(db, o, now, log, ct);
         var snapshots = await SweepSnapshotsAsync(db, o, now, log, ct);
         var invites = await SweepInvitesAsync(db, o, now, log, ct);
+
+        // DB-16: file purge runs LAST and is isolated — a storage failure never fails the row sweeps,
+        // and vice versa.
+        if (storage is null || signer is null)
+        {
+            log.LogWarning("Retention: screenshot purge skipped — storage/signer not supplied");
+        }
+        else
+        {
+            try
+            {
+                await ScreenshotPurge.PurgeDeletedAsync(db, storage, signer, o, now, log, ct);
+                await ScreenshotPurge.OrphanSweepAsync(db, storage, signer, o, now, log, ct);
+            }
+            catch (OperationCanceledException)
+            {
+                throw;
+            }
+            catch (Exception ex)
+            {
+                log.LogError(ex, "Retention: screenshot purge failed; rows were swept normally");
+            }
+        }
 
         return new RetentionSweepResult(usageEvents, notifications, snapshots, invites);
     }

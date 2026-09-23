@@ -1027,9 +1027,14 @@ public class CommentService : ICommentService
         comment.HasPayloadFlag = comment.PayloadFlags.Count > 0;
 
         // Optionally remove the uploaded screenshot (clear the reference + delete the file).
+        // DB-16 (Opus #1): ScreenshotUrl is author-supplied at create time (CommentService.cs:1326)
+        // — without this check an author could delete another workspace's file by editing their own
+        // comment to name it. The URL is nulled either way; a foreign path is simply not deleted.
         if (request.RemoveScreenshot && !string.IsNullOrEmpty(comment.Element.ScreenshotUrl))
         {
-            await _fileStorage.DeleteAsync(comment.Element.ScreenshotUrl!);
+            var rel = _uploadSigner.ExtractRelPath(comment.Element.ScreenshotUrl!);
+            if (comment.OwnerId is Guid o && rel.StartsWith($"uploads/{o:N}/", StringComparison.Ordinal))
+                await _fileStorage.DeleteAsync(rel);
             comment.Element.ScreenshotUrl = null;
         }
 
