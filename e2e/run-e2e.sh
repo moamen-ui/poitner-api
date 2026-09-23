@@ -58,6 +58,18 @@ done
 # run — the tier existed in the runner's own bookkeeping and nowhere a test could read it.
 export TIER
 
+# Every CLI the suite spawns (`pointer init`, apply, mcp…) caches the developer API key per server in
+# its global credentials file. Without this, a local run wrote seeded e2e keys into the developer's
+# real ~/.config/pointer/credentials.json. One run-scoped dir, wiped per run, shared by all phases so
+# a key cached by init is still found by a later phase; a spec that needs its own dir (mcp R2-02-06)
+# still overrides it per process.
+if [ -z "${POINTER_CONFIG_DIR:-}" ]; then
+  POINTER_CONFIG_DIR="$(cd "$(dirname "$0")" && pwd)/state/pointer-config"
+  rm -rf "$POINTER_CONFIG_DIR" # only ever the run-owned default, never a caller-supplied dir
+fi
+mkdir -p "$POINTER_CONFIG_DIR"
+export POINTER_CONFIG_DIR
+
 # Resolve tier to phases
 RUN_CLI=0
 if [ "${run_cli:-}" = "true" ]; then RUN_CLI=1; fi
