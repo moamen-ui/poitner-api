@@ -288,6 +288,24 @@ Change it and EF sees an **unapplied migration** and re-runs it against producti
 |---|---|---|
 | `20260827124245_ReassignPointerLandingOwnership` | pre-2026-09-08 | yes |
 | `20260921215630_AddCommentFieldsAndWorkspaceSettings` (R4-01, `main` a1880b1..2554104; adds `workspace_settings` table and `comments.custom_fields`) | 2026-09-22 | **imminent tonight — treat as deployed as of the next prod deploy; once applied, its ID is frozen by the same rule as the row above** |
+| `20260922105801_AddWorkspaces` (DB-11a; `workspaces` table) | 2026-09-22 | deployed, `pre-db11a` contract |
+| `20260922105922_AddWorkspaceForeignKeys` (DB-11a) | 2026-09-22 | deployed |
+| `20260922204541_AddWorkspaceMembershipsAndUserAliases` (DB-11a; `workspace_memberships`, `user_aliases`, `users.merged_into_user_id`) | 2026-09-22 | deployed |
+| `20260922204809_MergeSameEmailIdentitiesAndBackfillMemberships` (DB-11a, data migration) | 2026-09-22 | deployed |
+| `20260922205015_AddUsersEmailLiveUniqueIndex` (DB-11a; `ux_users_email_live`) | 2026-09-22 | deployed |
+| `20260923003750_AddAuditEvents` (DB-12 part 1; `audit_events` table) | 2026-09-23 | deployed, `pre-db12` contract |
+| `20260923003835_AddAuditEventsAppendOnlyTrigger` (DB-12 part 1; functions/triggers `audit_events_append_only`, `trg_audit_events_append_only`, `trg_audit_events_no_truncate`) | 2026-09-23 | deployed — newest migration named in the `pre-db12` contract deploy per `DEPLOY.md` |
+| `20260923040830_AddUsersErasedAt` (DB-11c; `users.erased_at`) | 2026-09-23 | deployed |
+| `20260923045038_AddImpersonationSessions` (DB-13; `impersonation_sessions`, `ux_impersonation_sessions_operator_live`) | 2026-09-23 | deployed |
+| `20260923062123_AddUsersEmailVerifiedAt` (DB-14; `users.email_verified_at`) | 2026-09-23 | deployed, `pre-db14` contract |
+| `20260923062150_BackfillUsersEmailVerifiedAt` (DB-14, data migration/grandfathering) | 2026-09-23 | deployed |
+| `20260923073100_AddUsageDailyAndWidgetInstalledIndex` (DB-15; `usage_daily`, `ux_usage_events_widget_installed_per_project`, `ux_usage_daily_day_owner_type`) | 2026-09-23 | just landed on `main` (`2eabe72`/`b2da554`/`a0363c6`) — verify deploy status before treating it as applied |
+| `20260923102053_AddOperatorMfa` (R5-61; `user_recovery_codes` table, `users.totp_secret`, `users.totp_enabled_at`) | 2026-09-23, **branch `feat/r5-61-operator-mfa` only — not on `main`, not deployed** | not deployed — freeze the id on merge; do not rename the class/file pre-emptively while still on a feature branch |
+
+None of the migration ids added above spell "pointer" — they are candidates for the "leave alone,
+allowlist" branch of the procedure below, not the "rename" branch, unless the whole
+`Infrastructure.Migrations` namespace token is renamed (§4.2), in which case the **class namespace**
+changes but the **`[Migration("…")]` id string must not**.
 
 Same correction procedure applies to any row in this table: rename file + class + attribute together,
 and `UPDATE "__EFMigrationsHistory"` in the same deploy, or leave the ID alone and allowlist it.
@@ -332,6 +350,7 @@ allowlist. A historical migration name is not customer-visible.
 | Angular — **removed 2026-09-15**, same reason | `src/app/features/shell/demo-panel.component.ts` | `pointer_demo`, `pointer_demo_dismissed` |
 | Angular — **removed 2026-09-15**, same reason | `src/app/shared/install-guide/install-guide.service.ts` | `pointer_install_seen`, `pointer_install_suppressed`, `pointer_install_shown_session` |
 | React | `src/lib/storage.ts` | `pointer_token`, `pointer_user`, `pointer_lang`, `pointer_theme` |
+| React (DB-13, impersonation banner) | `pointer-dashboard` repo, not this checkout — **caller-reported, not independently verified against source here; re-check on next dashboard-agent pass** | `pointer_impersonation` — brand-carrying, same read/write hazard as the four rows above; add it to the migrate-on-read helper when the rename touches `react/src/lib/storage.ts` |
 | Vue — **removed 2026-09-15**, retired; frozen at tag `last-three-apps` / branch `legacy/angular-vue`; only relevant if that branch is revived or an old deployed instance still holds these keys in a browser | `src/lib/storage.ts`, `src/lib/demoSession.ts` | same four + `pointer_demo`, `pointer_demo_dismissed` |
 | Widget | `API/wwwroot/pointer.js` (built) / `web-component/src/*` | `pointer_token`, `pointer_user`, `pointer_visible`, `pointer_toolbar_pos`, `pointer_page_session_id`, `pointer_env_*` |
 | Static admin | `API/wwwroot/admin/app.js` | `pointer_admin_token`, `pointer_admin_user` |
@@ -364,6 +383,15 @@ Never `npm unpublish` `@moamen-ui/pointer-{angular,react,vue}` — anything pinn
 though `angular` and `vue` are no longer built (retired 2026-09-15, frozen at tag `last-three-apps` /
 branch `legacy/angular-vue` in `pointer-dashboard`). `npm deprecate '<pkg>@*' 'Renamed to <new pkg>'`
 applies to all three; deprecating `angular`/`vue` does not require reviving them.
+
+**Versions published today (2026-09-23), caller-reported — not independently verified against a
+`.github/workflows/publish-clients.yml` run log or npm registry from this checkout (the workflow
+publishes from production, and the CLI is a separate repo not present in this worktree):**
+`@moamen-ui/pointer-react` **1.0.42–1.0.45** (regenerated client covering the Workspace/Audit/
+Identities/Impersonation/Me tags added this phase — §5.7) and `pointer-feedback` CLI **0.6.2/0.6.3**
+(**unpublished** as of this sync). All of these carry the brand token in the **package name**, not
+just the version — they fall under the same "never unpublish" rule above once/if actually published;
+flag `0.6.2`/`0.6.3` for confirmation of publish status before the rename freezes package names.
 
 ### 4.5 Customer-side artifacts (only if `LIVE_INSTALLS=yes`)
 
@@ -434,17 +462,21 @@ Note `Pointer__Project: "pointer-api"` is a **project key** (data, §11), not ju
 Counts are files containing a case-insensitive `pointer`, measured 2026-09-08. **R4-01 (2026-09-22,
 `main` a1880b1..2554104) added files under `Application/`, `Infrastructure/`, `API/` and `Domain/`
 after that measurement — counts below are now stale for those four rows; not re-measured here, see
-notes appended to each row instead.**
+notes appended to each row instead.** **DB-11a/11c/11d, DB-12, DB-13, DB-14, DB-15 (2026-09-23, `main`
+up to `a0363c6`) added further files under the same four rows, plus new tables/columns/migrations,
+endpoints and config keys tracked throughout §4/§5/§11 below — not re-measured either; see the
+"+DB-11..15 (2026-09-23)" notes. `feat/r5-61-operator-mfa` (operator MFA) is a separate, unmerged
+branch — flagged distinctly wherever it appears, not counted as landed.**
 
 ### 5.1 `poitner-api` (.NET 8 API + widget + extension + landing + e2e)
 
 | Area | Files | What carries the brand |
 |---|---|---|
-| `Application/` | 191 (stale, R4-01 added ≥3 more) | Namespaces `Pointer.Application.*` (DTOs, Services, Validators, Resources). **+R4-01:** `DTOs/Workspace/*` (workspace comment-field DTOs), `DTOs/Comment/UpdateCommentFieldsRequest.cs`, additive `customFields`/`commentFields` properties on `CommentListItemDto`, `CommentResponse`, `CommentApplyItemDto`, `CaptureConfigResponse`, `CreateCommentRequest` — brand-neutral names, namespace only |
-| `Infrastructure/` | 107 (stale, R4-01 added ≥4 more) | Namespaces + **migration snapshot strings** (§4.2). **+R4-01:** `Migrations/20260921215630_AddCommentFieldsAndWorkspaceSettings.{cs,Designer.cs}` (frozen, §4.1), `Mappings/WorkspaceSettingMapping.cs` (new table `workspace_settings`: `id`, `owner_id`, `comment_field_definitions` jsonb, audit columns; unique filtered index `IX_workspace_settings_owner_id`), `Mappings/CommentMapping.cs` amended for new column `comments.custom_fields` jsonb, new `Mappings/JsonColumn.cs` converter |
-| `API/` | 57 (stale, R4-01 added ≥1 more) | Namespaces `Pointer.API.*`, `Pointer.API.csproj`, `Pointer.API.http`, `Extensions/PointerUrlResolver.cs`, `wwwroot/` assets, `Program.cs` (`POINTER_SERVER`). **+R4-01:** `Controllers/Admin/WorkspaceController.cs`, route prefix `api/admin/workspace` (`GET`/`PUT` `api/admin/workspace/comment-fields`), new endpoint `PATCH api/comments/{id}/fields` on `CommentsController`, new Swagger/orval tag `Workspace` — added to `orval.config.ts` `filters.tags` (§5.7); none of this is brand-carrying by name, but it is a new API/DTO surface the dashboard-agent syncs from, and the tag-gating note in §5.7 now covers it too |
+| `Application/` | 191 (stale, R4-01 added ≥3 more; DB-11..15 add more still — not re-measured, see 2026-09-23 note below) | Namespaces `Pointer.Application.*` (DTOs, Services, Validators, Resources). **+R4-01:** `DTOs/Workspace/*` (workspace comment-field DTOs), `DTOs/Comment/UpdateCommentFieldsRequest.cs`, additive `customFields`/`commentFields` properties on `CommentListItemDto`, `CommentResponse`, `CommentApplyItemDto`, `CaptureConfigResponse`, `CreateCommentRequest` — brand-neutral names, namespace only. **+DB-11..15 (2026-09-23):** `Common/AuditActions.cs` (action-string constants, e.g. `auth.login.succeeded`, `member.created`, `identity.*`, `impersonation.*`, `tenant.*` — §5.3), `Common/UsageEventTypes.cs` (activation/usage funnel event identifiers, DB-15), `Resources/MessageKeys.cs` (194 constants as of today) — all namespace-only, no brand token in the constants themselves |
+| `Infrastructure/` | 107 (stale, R4-01 added ≥4 more; DB-11..15 add more still) | Namespaces + **migration snapshot strings** (§4.2). **+R4-01:** `Migrations/20260921215630_AddCommentFieldsAndWorkspaceSettings.{cs,Designer.cs}` (frozen, §4.1), `Mappings/WorkspaceSettingMapping.cs` (new table `workspace_settings`: `id`, `owner_id`, `comment_field_definitions` jsonb, audit columns; unique filtered index `IX_workspace_settings_owner_id`), `Mappings/CommentMapping.cs` amended for new column `comments.custom_fields` jsonb, new `Mappings/JsonColumn.cs` converter. **+DB-11..15 (2026-09-23):** ten new migrations §4.1 (`workspaces`, `workspace_memberships`, `user_aliases`, `users.merged_into_user_id`, `audit_events` + append-only trigger, `users.erased_at`, `impersonation_sessions`, `users.email_verified_at`, `usage_daily`), `Mappings/{Workspace,WorkspaceMembership,UserAlias,AuditEvent,ImpersonationSession,UsageDaily}Mapping.cs` (none brand-carrying by name), `Audit/AuditWriter.cs` (reads `Audit:HashKey`/`Audit:FailClosed` — §5.3), `Auth/JwtTokenService.cs` two-key rotation (`JWT:ActiveKeyId`, `JWT:Keys` — §5.3, distinct from the frozen `JWT:Issuer` in §4.6) |
+| `API/` | 57 (stale, R4-01 added ≥1 more; DB-11..15 add more still) | Namespaces `Pointer.API.*`, `Pointer.API.csproj`, `Pointer.API.http`, `Extensions/PointerUrlResolver.cs`, `wwwroot/` assets, `Program.cs` (`POINTER_SERVER`). **+R4-01:** `Controllers/Admin/WorkspaceController.cs`, route prefix `api/admin/workspace` (`GET`/`PUT` `api/admin/workspace/comment-fields`), new endpoint `PATCH api/comments/{id}/fields` on `CommentsController`, new Swagger/orval tag `Workspace` — added to `orval.config.ts` `filters.tags` (§5.7); none of this is brand-carrying by name, but it is a new API/DTO surface the dashboard-agent syncs from, and the tag-gating note in §5.7 now covers it too. **+DB-11..15 (2026-09-23):** new endpoints and controllers under `Controllers/Admin/{Audit,Identities,Impersonation}Controller.cs` and additions to `AuthController.cs`/`MeController.cs`/`Admin/StatsController.cs`/`Admin/TenantsController.cs`/`Admin/WorkspaceController.cs` — full endpoint list in §5.1 "New endpoints (DB-11..15)" below; `[Tags("Workspace"\|"Audit"\|"Identities"\|"Impersonation"\|"Me")]` are **already present** in `orval.config.ts` `filters.tags` as verified 2026-09-23 (no gate gap found). **On branch `feat/r5-61-operator-mfa` (not merged):** `Controllers/MfaController.cs` (`api/me/mfa/{enrol,verify,disable}`, tag `Me`, already gated) and `AuthController.cs` `POST api/auth/mfa/verify` |
 | `Tests/` | 48 | Namespaces + `Pointer.Tests.csproj` + hardcoded `*.pointer.moamen.work` URLs in 7 test files |
-| `Domain/` | 32 (stale, R4-01 added ≥2 more) | Namespaces `Pointer.Domain.*`. **+R4-01:** `ValueObjects/CommentFieldDefinition.cs`, `Enums/CommentFieldType.cs` — brand-neutral names, namespace only |
+| `Domain/` | 32 (stale, R4-01 added ≥2 more; DB-11..15 add more still) | Namespaces `Pointer.Domain.*`. **+R4-01:** `ValueObjects/CommentFieldDefinition.cs`, `Enums/CommentFieldType.cs` — brand-neutral names, namespace only. **+DB-11..15 (2026-09-23):** `Entity/{Workspace,WorkspaceMembership,UserAlias,AuditEvent,ImpersonationSession,UsageDaily}.cs` — brand-neutral names, namespace only |
 | `web-component/` | 25 | **Widget source** — `define('pointer-feedback')`, `pointer-feedback-hl` class, `pointer-feedback-hl-style` id, storage keys, `__POINTER_*` globals |
 | `extension/` | 19 | `manifest.json` (name "Pointer Feedback", description), `src/shared.ts`, `src/popup.ts`, README, E2E checklist, store assets, `pointer-ext-v0.1.0.zip` |
 | `e2e/` | 35 | **A working replica of the customer contract** — and therefore a real gate. `fixture-app/beta/index.html:16-21` and `fixture-app/smoke/index.html:40` embed `<pointer-feedback>` + `http://localhost:8090/pointer.js`; `fixture-app/*/.env` carry `*_POINTER_*` keys; `widget/widget.spec.ts` asserts on the tag; `ai/cases/tc*.txt` are natural-language prompts naming the skills; `ai/harness.mjs` + `scripts/lib/api.mjs` drive the API; `state/scratch/*/` holds generated `.pointer/` and `.claude/skills/pointer-*` fixtures (regenerable — delete rather than edit) |
@@ -454,6 +486,32 @@ notes appended to each row instead.**
 | `scripts/` | 2 | `generate-clients.mjs`, `build-clients.mjs` |
 | `.github/` | 1 | `workflows/publish-clients.yml` |
 | Root | — | `Pointer.sln`, `Caddyfile`, `docker-compose.prod.yml`, `justfile`, `.env.prod.example`, `.gitignore` (`.pointer/*`), `AGENTS.md`, `CLAUDE.md`, `DEPLOY.md`, `README.md`, `.pointer/` |
+
+**New endpoints landed 2026-09-23 (DB-11a/c/d, DB-12, DB-13, DB-14, DB-15) — none carry the brand in
+the route itself; listed here because they are new API/DTO surface the dashboard-agent syncs from
+(§5.7), and because §11.2 needs the full endpoint census when it re-audits row values:**
+
+- `POST api/auth/switch-workspace`, `POST api/auth/confirm-erase`, `POST api/auth/confirm-email-change`,
+  `POST api/auth/verify-email` (`AuthController.cs`, tag `Auth`)
+- `POST api/me/leave-workspace`, `DELETE api/me`, `POST api/me/request-erase`,
+  `POST api/me/change-email`, `POST api/me/verification/resend` (`MeController.cs`, tag `Me`)
+- `GET api/admin/audit`, `GET api/admin/audit/all` (`AuditController.cs`, tag `Audit`)
+- `DELETE api/admin/identities/{publicId}` (`IdentitiesController.cs`, tag `Identities`)
+- `POST api/admin/tenants/{workspaceId}/impersonate` (`TenantsController.cs`, tag `Tenants`)
+- `GET api/admin/impersonation`, `POST api/admin/impersonation/end` (`ImpersonationController.cs`,
+  tag `Impersonation`)
+- `GET api/admin/stats/funnel`, `GET api/admin/stats/activation` (`StatsController.cs`, tag `Stats`)
+- `GET api/admin/workspace`, `PUT api/admin/workspace/name` (`WorkspaceController.cs`, tag
+  `Workspace` — additive to the `comment-fields` pair already tracked under R4-01 above)
+
+**On branch `feat/r5-61-operator-mfa` (not merged, not deployed) — flagged separately, do not treat
+as shipped:** `POST api/auth/mfa/verify` (`AuthController.cs`) and `POST api/me/mfa/{enrol,verify,
+disable}` (new `MfaController.cs`, tag `Me`).
+
+Verified 2026-09-23: `orval.config.ts` `filters.tags` already lists `Audit`, `Identities`,
+`Impersonation`, `Workspace` and `Me` — no gating gap for any endpoint above. The dashboard-agent's
+next once-per-phase sync is what actually regenerates the client against these; this plan only
+records that the gate is open.
 
 ### 5.2 `pointer-dashboard` (one app today — React; Angular and Vue retired)
 
@@ -494,6 +552,29 @@ measured 2026-09-08, i.e. **before** the retirement; not recomputed here.
 | `.pointer/config.json` key (added 2026-09-19) | `delegation` (`auto`\|`off`, absent = `auto`) — opt-out for the apply skill's cost-aware delegation (Step 3b: orchestrator hands mechanical edits to a cheaper worker model). **Key name is brand-neutral, not itself renamed**, but it is echoed as literal text `delegation=auto`/`delegation=off` in the `apply` prompt header next to `commitStyle=` — grep that format string when renaming anything nearby so the literal isn't mangled | `cli/src/config.ts` (`PointerConfig.delegation`), `cli/src/apply/context.ts`, `cli/src/apply/prompt.ts`, `docs/ON-DISK-CONTRACT.md` (`config.json` keys row), `Tests/OnDiskContractTests.cs` |
 | Upload dir | `API/wwwroot/uploads/pointer-api` | per-project, keyed by project key — **data**, see §11 |
 
+**Added 2026-09-23 (DB-11a/c/d, DB-12, DB-13, DB-14, DB-15, R5-62) — none of the rows below spell
+"pointer"; listed because they are new customer-visible or config-section identifiers per §0's
+"surface it, don't improvise" rule, not because they need renaming:**
+
+| Kind | Value | Defined in |
+|---|---|---|
+| Config keys (not under the `Pointer` section, §4.7 does not apply) | `Audit:StrictCoverage`, `Audit:HashKey`, `Audit:FailClosed` | `API/Auth/AuditCoverageFilter.cs:51`, `Infrastructure/Audit/AuditWriter.cs:148,162` |
+| Config keys | `JWT:ActiveKeyId`, `JWT:Keys:{0,1}:{Id,Secret}` (env `JWT_ACTIVE_KEY_ID`, `JWT_KEY_0_ID`, `JWT_KEY_0_SECRET`, `JWT_KEY_1_ID`, `JWT_KEY_1_SECRET`) — R5-62 two-key rotation window. **Distinct from the frozen `JWT:Issuer`/`JWT__Issuer` in §4.6** — these key-id/secret slots rotate by design and are not brand-carrying, but `JWT_SIGNING_KEY` itself must never be repointed (only the `JWT_KEY_0_SECRET` slot) per the review-fix note in `docker-compose.prod.yml:50-58` | `API/Extensions/AuthenticationExtensions.cs:38`, `Infrastructure/Auth/JwtTokenService.cs`, `docker-compose.prod.yml:47-62`, `.env.prod.example:16-30` |
+| Config key | `OFFSITE_HEALTHCHECK_URL` | `.env.prod.example:65`, `scripts/offsite-backup.sh` |
+| Config key | `Retention:RollupDays` (env `RETENTION_ROLLUP_DAYS`, default 3) | `API/appsettings.json:32`, `docker-compose.prod.yml:43` |
+| App-setting row key | `usage_rollup_high_water` (DB-15 rollup high-water mark, stored in `app_settings`, not env/appsettings.json) | `API/Hosted/UsageRollup.cs:29` |
+| Config key (DB-settings, `ISettingsService`) | `quick_access_invite_email_enabled` | `API/Controllers/Admin/SettingsController.cs`, `Application/DTOs/Settings/{SettingsResponse,UpdateSettingsRequest}.cs`, `Application/Services/Implementation/InviteService.cs:1114` |
+| Widget attribute | `data-workspace-id` — internal, on the widget's workspace-picker list items | `web-component/src/auth-ui.ts:36` |
+| JWT claims | `mstamp` (membership security stamp), `scope` values `select_workspace`/`impersonate`/`mfa_pending` (branch), `imp` (impersonation session id) | `Infrastructure/Auth/JwtTokenService.cs`, `API/Extensions/AuthenticationExtensions.cs`, `API/Auth/StampValidator.cs` |
+| Response header | `X-Email-Verification-Required` | `API/Auth/RequireVerifiedEmailFilter.cs:111`, exposed via CORS `API/Program.cs:156,164` |
+| Audit action-string namespace | `Common/AuditActions.cs` constants — `auth.*`, `member.*`, `identity.*`, `impersonation.*`, `tenant.*`, … (dotted, lower-snake segments) | `Application/Common/AuditActions.cs` — brand-neutral, no rename needed |
+| Usage event-type namespace | `Common/UsageEventTypes.cs` — activation/funnel event identifiers (DB-15) | `Application/Common/UsageEventTypes.cs` — brand-neutral, no rename needed |
+| Message-key namespace | `Resources/MessageKeys.cs` — 194 constants as of 2026-09-23 | `Application/Resources/MessageKeys.cs` — brand-neutral, no rename needed |
+
+**On branch `feat/r5-61-operator-mfa` (not merged):** new tables `user_recovery_codes`,
+`users.totp_secret`, `users.totp_enabled_at` — none brand-carrying (verified by grep against the
+migration `20260923102053_AddOperatorMfa`, §4.1).
+
 ### 5.4 Skills (served + installed)
 
 | Artifact | Today | Notes |
@@ -514,6 +595,8 @@ measured 2026-09-08, i.e. **before** the retirement; not recomputed here.
 | `justfile` | `psql: docker compose exec db psql -U pointer -d pointer`, `bash -n API/wwwroot/pointer.sh`, widget build → `API/wwwroot/pointer.{js,css}`, `cd ../pointer-dashboard` |
 | `DEPLOY.md` | VM paths `~/pointer-api`, `~/pointer-dashboard`, container names, all hostnames |
 | VM (not in git) | `~/pointer-api`, `~/pointer-dashboard`, containers `pointer-api-{api,db,caddy}-1`, git remotes, DNS records, Brevo sender |
+| Offsite backups (added, contract predates today but confirmed live 2026-09-23 per the restore drill in `DEPLOY.md`) | rclone remote name `offsite`, bucket/prefix `pointer-backups` (`OFFSITE_REMOTE=offsite:pointer-backups` in `.env.prod`), object name pattern `pointer-*.dump` / `uploads-*.tgz` — **brand-carrying** (the bucket name spells "pointer") | `scripts/offsite-backup.sh`, `scripts/backup-db.sh`, `scripts/restore-drill.sh`, `DEPLOY.md` §Backups |
+| Contract deploy labels (`POINTER_CONTRACT_LABEL`) | `pre-db11a`, `pre-db12`, `pre-db14` — free-text labels stamped into `DEPLOY.md`'s deploy log and backup filenames (e.g. `pointer-20260922T201244Z-pre-db11a-rehearsal.dump`) | `DEPLOY.md`, `scripts/deploy-api.sh` (env var itself, `POINTER_CONTRACT_LABEL`/`POINTER_APPLY_CONTRACT`, is also brand-carrying by name) |
 
 ### 5.6 Code identifiers containing the brand
 
@@ -1262,6 +1345,19 @@ Constraints and indexes follow EF's generated convention (`PK_comments`,
 
 **Audit result — zero brand occurrences in:** table names, column names, index names, constraint
 names, sequence names, enum types, schemas (the app uses `public`; no `HasDefaultSchema`).
+
+**Not re-measured, tables/columns/indexes added since (grep-checked individually 2026-09-23, not a
+full re-run of the count above — the "18 physical tables" figure is now stale):** `workspaces`,
+`workspace_memberships`, `user_aliases`, `audit_events`, `impersonation_sessions`, `usage_daily`
+(deployed, DB-11a/12/13/15); on branch `feat/r5-61-operator-mfa` (not merged) `user_recovery_codes`.
+New columns `users.merged_into_user_id`, `users.erased_at`, `users.email_verified_at` (and, on the
+same unmerged branch, `users.totp_secret`, `users.totp_enabled_at`). New indexes `ux_users_email_live`,
+`ux_api_keys_active_per_membership`, `ux_impersonation_sessions_operator_live`,
+`ux_usage_events_widget_installed_per_project`, `ux_usage_daily_day_owner_type`. New trigger functions
+`audit_events_append_only()` / `trg_audit_events_append_only` / `trg_audit_events_no_truncate`. **None
+of the above contain the brand token** — the "do not rename schema objects" conclusion below still
+holds for them; re-run the SQL audit query at the end of this section before cutover to confirm, since
+it is what actually re-verifies rather than a partial grep.
 
 > **Therefore: do not rename any table, column, index, or constraint.** There is nothing to gain —
 > no user, customer, or API consumer ever sees these identifiers — and everything to lose: each
