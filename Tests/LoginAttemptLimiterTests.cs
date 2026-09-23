@@ -403,19 +403,22 @@ public class LoginAttemptLimiterTests
             seed.Roles.Add(role);
             seed.SaveChanges();
 
-            seed.Users.Add(
-                new User
-                {
-                    PublicId = Guid.NewGuid(),
-                    Email = "alice@example.com",
-                    PasswordHash = "h:CorrectPassword",
-                    ApprovalStatus = ApprovalStatus.Approved,
-                    IsActive = true,
-                    SecurityStamp = Guid.NewGuid(),
-                    RoleId = role.Id,
-                }
-            );
+            var alice = new User
+            {
+                PublicId = Guid.NewGuid(),
+                Email = "alice@example.com",
+                PasswordHash = "h:CorrectPassword",
+                ApprovalStatus = ApprovalStatus.Approved,
+                IsActive = true,
+                SecurityStamp = Guid.NewGuid(),
+                RoleId = role.Id,
+            };
+            seed.Users.Add(alice);
             seed.SaveChanges();
+
+            // DB-11a: login now resolves the workspace via a live WorkspaceMembership row — a bare
+            // identity with no membership has "no workspace" and can never succeed.
+            TestSeed.Join(seed, alice, Guid.NewGuid(), role);
         }
 
         using var db = BuildContext(new FakeCurrentUser(), dbName);

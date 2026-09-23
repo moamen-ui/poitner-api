@@ -184,6 +184,7 @@ public class WorkspaceMembershipTests
             new NoopEmail(),
             new NoopBrandingService(),
             new ApiKeyService(new UnitOfWork(ctx), new TestApiKeyProtector()),
+            new FakeLoginAttemptLimiter(),
             new MembershipService(uow)
         );
     }
