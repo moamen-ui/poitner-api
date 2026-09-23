@@ -8,8 +8,7 @@ DB-11b. Origin: cross-review 2026-09-22, GLM A4 / chair synthesis §1 row D4 ("n
 exists and DB-11 makes e-mail the identity key"). Rules: R13 (no migration), R14 (one identity per
 `lower(email)`; the normaliser), R16 (identity-wide event rotates `users.security_stamp`).
 **Class: Code only.** No migration, no schema. Ships as an ordinary `bash scripts/deploy-api.sh`.
-**Status: implemented 2026-09-23 (feat/db-11d-change-email); reviewed (Gemini Pro MERGE, Opus MERGE
-WITH FIXES → applied).** Owner decision D14 has a default (§3.6). The number
+**Status: deployed 2026-09-23 (~05:50 UTC, merged `f9d21de` + fixes `c0fbad8`; no migration); reviewed (Gemini Pro MERGE, Opus MERGE WITH FIXES → applied).** Owner decision D14 has a default (§3.6). The number
 DB-11d was previously pencilled in for the legacy-column contract; that contract is now **DB-11e**
 (DB-11a §10, DB-11c §10, DB-REVIEW §7).
 

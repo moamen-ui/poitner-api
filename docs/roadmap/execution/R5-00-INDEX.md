@@ -25,8 +25,8 @@ section for the verified facts; this index only summarizes.
 | [R5-68](R5-68-versioning-policy-and-v1-alias.md) | Versioning policy + `/api/v1/*` alias | 1 d | No | None | No (explicitly none — policy doc + a routing alias) | **Shipped** `435f688`; live, parity verified in production |
 
 All ten depend on nothing outside this list except the soft/non-blocking notes above. DB-11a, DB-11b,
-DB-11c, DB-12 (parts 1 + 2), and R5-62 are deployed to production (2026-09-23); DB-13 is in progress on `feat/db-13-impersonation`;
-DB-11d is starting.
+DB-11c, DB-11d, DB-12 (parts 1 + 2), DB-13, and R5-62 are deployed to production (2026-09-23);
+DB-14 is in progress on `feat/db-14-email-verification`.
 
 ## Recommended implementation order
 
@@ -92,17 +92,14 @@ Per the final report's Sequence (§3, step 5–6) and this review's dependency f
 | R5.1b (DB-11b login workspace picker + switch) | (API + widget) | **Deployed to production 2026-09-23** (API + widget; dashboard pending deploy). Follow-up fix: `choose-workspace` 200 envelope; widget RTL follow-ups in `650dc50` |
 | R5.2 (DB-12 audit log) | Part 1 `30d1b46`, Part 2 `fda2717` | **Complete** — Part 1 deployed (`pre-db12`, 70 migrations); Part 2 (attributes on 103 actions — 71 `[Audited]`, 32 `[NoAudit]` — and writer calls in 20 services, `Audit:StrictCoverage=true` in Development) deployed 2026-09-23 03:42 UTC. First production row verified (`auth.login.failed`, hashed e-mail, request id, ip hash). Dashboard Security log page (`/security-log`, workspace + super-admin /all views) shipped in pointer-dashboard `60bbd0d` and deployed; client `@moamen-ui/pointer-react` 1.0.42 |
 | DB-11c deletion semantics | `af4f98b` + fixes `21cb7ee` | **Deployed to production 2026-09-23 ~04:55 UTC** (71 migrations, newest `20260923040830_AddUsersErasedAt`). Remove/disable/leave/erase, S-13 sole-admin guard for every actor incl. super admin, `users.erased_at`, scoped one-time erase tokens, invite scrub, audit rows. Reviews: Gemini Pro no findings, Opus 3 HIGH + 5 MEDIUM applied. Dashboard half pending (client `@moamen-ui/pointer-react` 1.0.43 publishing now) |
+| DB-11d change e-mail | `f9d21de` + fixes `c0fbad8` | **Deployed to production 2026-09-23 ~05:50 UTC** (no migration). Endpoints `POST /api/me/change-email` (password-confirmed; verification mail to new address, notice to old) and anonymous `POST /api/auth/confirm-email-change` (scoped token; sets normalised address, rotates identity stamp, clears `recipient_email`; D14 conflict-never-merge, 23505 catch scoped to `ux_users_email_live`). Reviews: Gemini Pro MERGE (1 nit), Opus MERGE WITH FIXES (2 medium + 8) applied. Dashboard change-e-mail UI being built (client 1.0.44 publishing) |
+| R5.3 (DB-13 operator impersonation) | `441a462` + `5f1fbc8` + fixes `790b9b8` | **Deployed to production 2026-09-23 ~06:15 UTC** (72 migrations, newest `20260923045038_AddImpersonationSessions`). **Founder decision F2 is live**: super admin sees metadata only since 2026-09-23; impersonation UI pending in the dashboard (until shipped founder's dashboard shows no comment content as super admin). Content only under an audited, time-boxed (≤ 60 min), read-only impersonation session (`POST /api/admin/tenants/{workspaceId}/impersonate`, `POST /api/admin/impersonation/end`, `GET /api/admin/impersonation`); workspace admins e-mailed on start and see sessions in Security log without operator identity; private comments never visible; signed screenshot URLs clamped to the session. Reviews: Gemini Pro MERGE; Opus MERGE WITH FIXES (1 HIGH + 10) applied. Dashboard impersonation UI being built (client 1.0.44 publishing) |
 | R5-62 JWT key rotation | `ea436b0` + fixes `4d48bbe` | **Deployed to production 2026-09-23 04:33 UTC**; production logs `[JWT] active kid=k0; configured kids=[k0]`. Review outcome applied: `JWT_SIGNING_KEY` frozen (root secret for keys/tokens/URLs/IP hash); rotation via `JWT_KEY_0_*` / `JWT_KEY_1_*` / `JWT_ACTIVE_KEY_ID` only (runbook in `DEPLOY.md`) |
 | R5-61 operator MFA | — | DB-11a/b/c deployed; queued behind remaining auth work — not started |
 
 ## CI and CLI status (2026-09-23)
 
-- **CI**: the e2e workflow had never passed on `main`. Fixes `f50db0e`/`ac08a20`/`cc2de72`/`75ba7ff`/
-  `8551188`/`cb779b7`/`c90a90b` made the `reset`/`seed`/`probe`/`api`/`docs`/`cli` phases green (green in CI
-  for the first time tonight). The `widget` phase specs are being repaired; R2-04 notification specs are `fixme`
-  because the widget Updates button is intentionally hidden since `61004ac` (founder decision pending).
-  `f50db0e` also gave DB-09's migration-apply gate a fresh-database exemption (see `docs/db/DB-REVIEW-2026-09-22.md`
-  §7, DB-09 row).
+- **CI**: reset/seed/probe/api/docs/cli phases green in CI; widget phase down to two release-eng specs (R3-03-04 nonce-CSP, R3-03-07 perf-init) that fail only in CI — diagnostics added (`ce68016`); R2-04 notification specs `fixme` (Updates button hidden since `61004ac`, founder decision pending). `f50db0e` also gave DB-09's migration-apply gate a fresh-database exemption (see `docs/db/DB-REVIEW-2026-09-22.md` §7, DB-09 row).
 - **CLI**: two regressions found by the e2e suite were fixed on `main` — `694a8ea` (stamp reader
   accepts stamp-first sub-skills → 0.6.1) and `decbbb6` (apply no longer clobbers
   `manifest.prev.json` → 0.6.2). **Not yet published to npm** — owner decision to hold publish.

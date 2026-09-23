@@ -6,7 +6,7 @@ metadata only by default … requires an audited, time-boxed impersonation sessi
 `SelectionScopeFence` precedent), R17 (every start/end is an audit row).
 **Class: Additive** (one new table) **+ a permission narrowing in code** (six query filters lose their unconditional super-admin branch).
 Ships as an ordinary `bash scripts/deploy-api.sh`.
-**Status: implemented 2026-09-23 (feat/db-13-impersonation); reviewed (Gemini Pro MERGE, Opus MERGE WITH FIXES → applied).**
+**Status: deployed 2026-09-23 (~06:15 UTC, merged `441a462` + `5f1fbc8` + fixes `790b9b8`; 72 migrations); reviewed (Gemini Pro MERGE, Opus MERGE WITH FIXES → applied).**
 Owner decisions D13.1–D13.7 have defaults (§3.8); none blocks.
 
 **Dependencies.** Requires **DB-12 merged** (`IAuditWriter`, `AuditActions.ImpersonationStarted/Ended`, `audit_events.impersonation_session_id`)
