@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using Npgsql;
 using Pointer.Application.Abstractions;
 using Pointer.Application.Common;
 using Pointer.Application.DTOs.Auth;
@@ -330,6 +331,213 @@ public class AuthService : IAuthService
         }
 
         return Result.Success(MessageKeys.User.PasswordChanged);
+    }
+
+    /// <summary>
+    /// DB-11d §3.2 — step 1: password-confirmed request to change the caller's e-mail. Sends a
+    /// scoped confirmation link to the NEW address and a notice to the OLD one; nothing is written
+    /// to the database until POST /api/auth/confirm-email-change redeems the token.
+    /// </summary>
+    public async Task<Result> RequestEmailChangeAsync(ChangeEmailRequest request)
+    {
+        if (_currentUser.Id is not Guid publicId)
+            return Result.Failure(MessageKeys.Auth.InvalidCredentials);
+
+        var identity = await _memberships.FindIdentityByPublicIdAsync(publicId);
+        if (identity == null)
+            return Result.NotFound(MessageKeys.User.NotFound);
+
+        // §3.1 exclusions, super admin first: the seeder would re-create the old address on boot
+        // (AdminSeeder re-finds the super admin by ADMIN__EMAIL every boot).
+        if (identity.Role?.IsSuperAdmin == true)
+            return Result.Forbidden(MessageKeys.User.ChangeEmailSuperAdmin);
+
+        // Magic-link (passwordless) identities have no password to confirm a change with — D14b
+        // defers this to an admin re-invite.
+        if (identity.PasswordlessOnly)
+            return Result.Failure(MessageKeys.User.ChangeEmailNeedsPassword);
+
+        if (!_passwordHasher.Verify(request.CurrentPassword, identity.PasswordHash))
+            return Result.Failure(MessageKeys.User.CurrentPasswordIncorrect);
+
+        var newEmail = EmailNormalizer.NormalizeRequired(request.NewEmail);
+        if (newEmail == identity.Email)
+            return Result.Failure(MessageKeys.User.EmailUnchanged);
+
+        // D14 — never merge: a courtesy check for the message; ux_users_email_live (R14) is the
+        // authority for case variants this app-level check might miss.
+        if (await _memberships.FindIdentityByEmailAsync(newEmail) is not null)
+            return Result.Conflict(MessageKeys.User.EmailTaken);
+
+        var brand = await _branding.BuildResponseAsync("", new HashSet<string>());
+        var token = _resetTokens.CreateScoped(
+            identity.PublicId,
+            identity.SecurityStamp,
+            TokenPurposes.ChangeEmail,
+            newEmail
+        );
+        var link = $"{brand.Urls.App.TrimEnd('/')}/confirm-email?token={Uri.EscapeDataString(token)}";
+        var workspaceName = await WorkspaceNameResolver.ResolveForEmailAsync(_unitOfWork, identity.OwnerId);
+        var workspaceLine =
+            workspaceName != null
+                ? $@"<p style=""color:#475569;font-size:13px"">This is for your account in the <b>{System.Net.WebUtility.HtmlEncode(workspaceName)}</b> workspace.</p>"
+                : null;
+
+        try
+        {
+            await _emailService.SendAsync(
+                newEmail,
+                $"Confirm your new {brand.ProductName} e-mail address",
+                BuildEmailChangeHtml(
+                    "Confirm your new e-mail address",
+                    "You asked to use this address for your account. Click the link below to confirm — it expires in 30 minutes. After confirming you will be signed out everywhere and sign in again with this address. If you did not ask for this, ignore this e-mail; nothing changes.",
+                    link,
+                    workspaceLine
+                )
+            );
+            await _emailService.SendAsync(
+                identity.Email,
+                $"Your {brand.ProductName} e-mail address is being changed",
+                BuildEmailChangeHtml(
+                    "Your e-mail address is being changed",
+                    $"Someone signed in to your account and asked to change its e-mail address to {System.Net.WebUtility.HtmlEncode(newEmail)}. If that was you, confirm it from the e-mail we sent there. If it was not you, change your password now — that cancels the request.",
+                    null,
+                    null
+                )
+            );
+        }
+        catch
+        { /* best-effort; sender logs failures */
+        }
+
+        // DB-12 §3.6: reserved rows AuthEmailChangeRequested/AuthEmailChanged — hashes only, never
+        // the raw address (D12.3). Identity-wide, not workspace-scoped (same convention as
+        // IdentityErased's user-target row): OwnerId null.
+        await _audit.WriteAsync(
+            new AuditEntry(
+                AuditActions.AuthEmailChangeRequested,
+                AuditTargets.User,
+                identity.PublicId.ToString(),
+                null,
+                Before: new Dictionary<string, string> { ["email_hash"] = PseudonymHasher.EmailHash(identity.Email) },
+                After: new Dictionary<string, string> { ["email_hash"] = PseudonymHasher.EmailHash(newEmail) }
+            )
+        );
+
+        return Result.Success(MessageKeys.User.EmailChangeLinkSent);
+    }
+
+    /// <summary>
+    /// DB-11d §3.3 — step 2: redeems the scoped token from RequestEmailChangeAsync. Anonymous; the
+    /// token is the credential. Applies the change, rotates the identity's security stamp (every
+    /// session ends), and notifies the OLD address.
+    /// </summary>
+    public async Task<Result> ConfirmEmailChangeAsync(string token)
+    {
+        // One message for every failure (as EraseByTokenAsync/LoginWithInviteAsync): a guessed/
+        // tampered/reused token must not learn which check failed.
+        if (
+            !_resetTokens.TryValidateScoped(
+                token,
+                TokenPurposes.ChangeEmail,
+                out var publicId,
+                out var stamp,
+                out var payload
+            )
+            || string.IsNullOrEmpty(payload)
+        )
+            return Result.Failure(MessageKeys.User.EmailChangeLinkInvalid);
+
+        var identity = await _memberships.FindIdentityByPublicIdAsync(publicId);
+        if (
+            identity == null
+            || identity.SecurityStamp != stamp
+            || identity.PasswordlessOnly
+            || identity.Role?.IsSuperAdmin == true
+        )
+            return Result.Failure(MessageKeys.User.EmailChangeLinkInvalid);
+
+        var newEmail = EmailNormalizer.NormalizeRequired(payload);
+        if (newEmail == identity.Email)
+            // Stamp rotation makes a genuine re-click impossible (the token no longer validates);
+            // be explicit anyway rather than relying on that alone.
+            return Result.Success(MessageKeys.User.EmailChanged);
+
+        // D14 again: someone may have registered the address during the 30-minute window.
+        if (await _memberships.FindIdentityByEmailAsync(newEmail) is not null)
+            return Result.Conflict(MessageKeys.User.EmailTaken);
+
+        var oldEmail = identity.Email;
+        identity.Email = newEmail;
+        identity.SecurityStamp = Guid.NewGuid();
+        _unitOfWork.Repository<User>().Update(identity);
+
+        try
+        {
+            await _unitOfWork.SaveChangesAsync();
+        }
+        catch (DbUpdateException e) when (e.InnerException is PostgresException { SqlState: "23505" })
+        {
+            // ux_users_email_live (R14) is the authority for case variants the check above might
+            // miss (InMemory tests never hit this branch — the rehearsal/production DB does).
+            return Result.Conflict(MessageKeys.User.EmailTaken);
+        }
+
+        var brand = await _branding.BuildResponseAsync("", new HashSet<string>());
+        try
+        {
+            await _emailService.SendAsync(
+                oldEmail,
+                $"Your {brand.ProductName} e-mail address was changed",
+                BuildEmailChangeHtml(
+                    "Your e-mail address was changed",
+                    $"Your account's e-mail address is now {System.Net.WebUtility.HtmlEncode(newEmail)}. If you did not do this, contact your workspace admin immediately.",
+                    null,
+                    null
+                )
+            );
+        }
+        catch
+        { /* best-effort; sender logs failures */
+        }
+
+        await _audit.WriteAsync(
+            new AuditEntry(
+                AuditActions.AuthEmailChanged,
+                AuditTargets.User,
+                identity.PublicId.ToString(),
+                null,
+                Before: new Dictionary<string, string> { ["email_hash"] = PseudonymHasher.EmailHash(oldEmail) },
+                After: new Dictionary<string, string> { ["email_hash"] = PseudonymHasher.EmailHash(newEmail) },
+                // Anonymous path — no ICurrentUser.Id — so the actor is forced explicitly (same
+                // review-finding-#8 convention as IdentityEraseService's confirm-erase path).
+                ActorUserIdOverride: identity.PublicId,
+                ActorKindOverride: AuditActorKind.User
+            )
+        );
+
+        return Result.Success(MessageKeys.User.EmailChanged);
+    }
+
+    // workspaceLine is raw HTML (already encoded internally) or null to omit it; link null omits
+    // the call-to-action paragraph (the two notice-only e-mails have nothing to click).
+    private static string BuildEmailChangeHtml(
+        string heading,
+        string paragraph,
+        string? link,
+        string? workspaceLine
+    )
+    {
+        var linkHtml =
+            link != null
+                ? $@"<p><a href=""{link}"" style=""color:#2563eb"">Confirm my new e-mail &rarr;</a></p>"
+                : string.Empty;
+        return $@"<div style=""font-family:system-ui,sans-serif;color:#0f172a;line-height:1.6"">
+  <h2 style=""margin:0 0 8px"">{heading}</h2>
+  <p style=""margin:0 0 16px"">{paragraph}</p>
+  {linkHtml}
+  {workspaceLine ?? string.Empty}
+</div>";
     }
 
     // Resolves the workspace's own name from workspaces.name (DB-03). Null ownerId (super admin) →

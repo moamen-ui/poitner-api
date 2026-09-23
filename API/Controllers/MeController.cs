@@ -35,6 +35,22 @@ public class MeController(
         return result.IsSuccess ? Ok(result) : BadRequest(result);
     }
 
+    /// <summary>Starts changing the caller's e-mail: password check, confirmation link to the new address, notice to the old one. Nothing changes until the link is confirmed.</summary>
+    [Audited(AuditActions.AuthEmailChangeRequested)]
+    [HttpPost("change-email")]
+    [EnableRateLimiting("signup")]
+    [ProducesResponseType(typeof(Result), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(Result), StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(typeof(Result), StatusCodes.Status409Conflict)]
+    public async Task<IActionResult> ChangeEmail([FromBody] ChangeEmailRequest request)
+    {
+        var result = await authService.RequestEmailChangeAsync(request);
+        if (result.IsNotFound) return NotFound(result);
+        if (result.IsForbidden) return StatusCode(StatusCodes.Status403Forbidden, result);
+        if (result.IsConflict) return Conflict(result);
+        return result.IsSuccess ? Ok(result) : BadRequest(result);
+    }
+
     [NoAudit("personal UI preference")]
     [HttpPatch("preferences")]
     [ProducesResponseType(typeof(MeResponse), StatusCodes.Status200OK)]

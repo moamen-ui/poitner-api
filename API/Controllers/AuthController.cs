@@ -136,6 +136,21 @@ public class AuthController(
         return result.IsSuccess ? Ok(result) : BadRequest(result);
     }
 
+    /// <summary>Applies an e-mail change with the token sent to the new address by POST /api/me/change-email. Anonymous — the token is the credential; signs the person out everywhere.</summary>
+    [AllowAnonymous]
+    [Audited(AuditActions.AuthEmailChanged)]
+    [HttpPost("confirm-email-change")]
+    [EnableRateLimiting("signup")]
+    [ProducesResponseType(typeof(Result), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(Result), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(Result), StatusCodes.Status409Conflict)]
+    public async Task<IActionResult> ConfirmEmailChange([FromBody] ConfirmEmailChangeRequest request)
+    {
+        var result = await authService.ConfirmEmailChangeAsync(request.Token);
+        if (result.IsConflict) return Conflict(result);
+        return result.IsSuccess ? Ok(result) : BadRequest(result);
+    }
+
     /// <summary>Confirms deleting a magic-link account with the token e-mailed by POST /api/me/request-erase. Anonymous by necessity — the token is the credential.</summary>
     [AllowAnonymous]
     [Audited(AuditActions.IdentityErased)]

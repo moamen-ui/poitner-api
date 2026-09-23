@@ -23,6 +23,20 @@ public interface IAuthService
     /// <summary>Self-service password change for the current user. Emails a notification on success.</summary>
     Task<Result> ChangePasswordAsync(ChangePasswordRequest request);
 
+    /// <summary>
+    /// DB-11d: password-confirmed request to change the caller's e-mail. Sends a confirmation link
+    /// to the new address and a notice to the old one; nothing is written until the link is
+    /// confirmed. Passwordless and super-admin identities are refused (§3.1).
+    /// </summary>
+    Task<Result> RequestEmailChangeAsync(ChangeEmailRequest request);
+
+    /// <summary>
+    /// DB-11d: redeems the scoped token from POST /api/me/change-email — sets the (normalised) new
+    /// e-mail, rotates the identity's security stamp (every session ends), and notifies the old
+    /// address. Anonymous; the token is the credential.
+    /// </summary>
+    Task<Result> ConfirmEmailChangeAsync(string token);
+
     /// <summary>Redeems a quick-access magic-link token for a normal session JWT.</summary>
     Task<Result<LoginResponse>> LoginWithInviteAsync(string token);
 

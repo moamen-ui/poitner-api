@@ -82,6 +82,7 @@ public class AuthRateLimitingTests
     [InlineData("ForgotPassword")]
     [InlineData("ResetPassword")]
     [InlineData("ConfirmErase")]
+    [InlineData("ConfirmEmailChange")]
     public void SignupSurface_KeepsSignupRateLimit(string action)
     {
         var method = typeof(AuthController).GetMethod(action);
@@ -96,6 +97,17 @@ public class AuthRateLimitingTests
     public void RequestErase_HasSignupRateLimit()
     {
         var method = typeof(MeController).GetMethod("RequestErase");
+        Assert.NotNull(method);
+
+        var rateLimits = method!.GetCustomAttributes<EnableRateLimitingAttribute>(inherit: true).ToList();
+        Assert.Contains(rateLimits, a => a.PolicyName == "signup");
+    }
+
+    /// <summary>DB-11d: change-email sends two e-mails, same 5/h-per-IP budget as forgot-password/request-erase.</summary>
+    [Fact]
+    public void ChangeEmail_HasSignupRateLimit()
+    {
+        var method = typeof(MeController).GetMethod("ChangeEmail");
         Assert.NotNull(method);
 
         var rateLimits = method!.GetCustomAttributes<EnableRateLimitingAttribute>(inherit: true).ToList();

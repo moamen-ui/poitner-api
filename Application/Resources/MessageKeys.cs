@@ -89,6 +89,24 @@ public static class MessageKeys
         /// only the workspace's own Workspace Admin or a super admin can.
         /// </summary>
         public const string CannotRemoveAdmin = "Only the workspace admin or a super admin can remove a Workspace Admin.";
+
+        /// <summary>DB-11d: magic-link (passwordless) identities have no password to confirm a change with.</summary>
+        public const string ChangeEmailNeedsPassword = "Magic-link accounts cannot change their e-mail — ask your workspace admin for a new invite.";
+
+        /// <summary>DB-11d: the operator account's address is configured server-side (ADMIN__EMAIL).</summary>
+        public const string ChangeEmailSuperAdmin = "The operator account's e-mail is configured on the server (ADMIN__EMAIL).";
+
+        /// <summary>DB-11d: the requested new address normalises to the caller's current one.</summary>
+        public const string EmailUnchanged = "That is already your e-mail address.";
+
+        /// <summary>DB-11d: POST /api/me/change-email succeeded — nothing changes until the link is confirmed.</summary>
+        public const string EmailChangeLinkSent = "We've sent a confirmation link to the new address. It expires in 30 minutes; until you confirm, nothing changes.";
+
+        /// <summary>DB-11d: the confirm-email-change token was missing/expired/reused/cancelled — one message for every failure (enumeration resistance).</summary>
+        public const string EmailChangeLinkInvalid = "This confirmation link is invalid or has expired — request the change again.";
+
+        /// <summary>DB-11d: POST /api/auth/confirm-email-change succeeded.</summary>
+        public const string EmailChanged = "Your e-mail address has been changed. Please sign in again.";
     }
 
     public static class Workspace
