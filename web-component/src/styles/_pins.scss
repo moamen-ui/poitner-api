@@ -179,7 +179,12 @@
   // Horizontal position/offset are CSS custom properties (not hardcoded here) so the
   // data-fbk-tip-align override below only needs to change the variable, not re-declare the
   // whole transform (which also carries the hover-state's Y/scale animation).
-  inset-inline-start: var(--fbk-tip-x, 50%);
+  // Physical `left` (not inset-inline-start) is deliberate: element.ts's renderPins() computes
+  // --fbk-tip-x from PHYSICAL viewport geometry (clamped getBoundingClientRect coordinates), and
+  // the translateX below is always physical too — a logical inset would anchor from the opposite
+  // edge once the shadow root goes RTL. Same treatment as _toast.scss's container and
+  // _tooltip.scss's top/bottom placements.
+  left: var(--fbk-tip-x, 50%);
   transform: translateX(var(--fbk-tip-tx, -50%)) translateY(4px) scale(0.96);
   background: v.token('surface');
   color: v.token('text');
@@ -205,6 +210,8 @@
 // A pin close enough to the left/right viewport edge that a centered 220px-wide tooltip would
 // spill off-screen (half hidden, unreachable) anchors it to whichever edge of the pin still has
 // room instead — element.ts's renderPins() decides this per pin from the real viewport width.
+// Both overrides feed the PHYSICAL `left`/translateX pair above (start = physical left edge,
+// end = physical right), matching that physical JS geometry under RTL too.
 .fbk-pin-wrapper[data-fbk-tip-align='start'] .fbk-pin-tooltip {
   --fbk-tip-x: 0%;
   --fbk-tip-tx: 0%;

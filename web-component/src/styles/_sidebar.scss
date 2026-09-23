@@ -25,6 +25,10 @@
 }
 :host([dir='rtl']) .fbk-sidebar {
   transform: translateX(-100%);
+  // ...and the shadow flips with it: box-shadow offsets are always physical, so the RTL drawer
+  // (now sitting at the physical LEFT edge) must cast toward the page on its physical RIGHT
+  // or its shadow falls off-screen while the page-facing side gets none.
+  box-shadow: 8px 0 24px rgba(0, 0, 0, 0.08);
 }
 .fbk-sidebar.open {
   transform: translateX(0);
@@ -71,6 +75,14 @@
 }
 :host([dir='rtl']) .fbk-sidebar-close-arrow {
   transform: translateX(85%);
+  // Same physical-shadow flip as the sidebar's own RTL block above.
+  box-shadow: 2px 0 6px rgba(0, 0, 0, 0.15);
+}
+// The chevron glyph is ICON.chevronRight — a literal SVG path, not one direction-aware CSS
+// handles — so under RTL the handle slides out on the correct side but its arrow still points
+// the wrong way. Mirror the glyph itself.
+:host([dir='rtl']) .fbk-sidebar-close-arrow svg {
+  transform: scaleX(-1);
 }
 .fbk-sidebar-close-arrow:hover {
   background: v.token('surface-hover');

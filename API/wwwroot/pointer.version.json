@@ -1,21 +1,33 @@
 {
   "version": "0.1.0",
-  "hash": "4ab0a0db165d",
-  "commit": "6f9320a",
-  "committedAt": "2026-09-22T12:57:45+03:00",
+  "hash": "9c26b8c0e2d0",
+  "commit": "db0dcb7",
+  "committedAt": "2026-09-23T03:11:05+03:00",
   "files": {
     "widget.js": {
-      "bytes": 254838,
-      "gzipBytes": 65590,
-      "integrity": "sha384-3GhyVgbDvkcEtn+RMTqLToSe+hto+PbZ6ylIc+NRwca/osqJmMqlTfz2Ycuo1E/e"
+      "bytes": 255214,
+      "gzipBytes": 65677,
+      "integrity": "sha384-sfBeoywn0MHSvRNXXsVVUgQ5Be2huHNGaivi9GBkGfr94C4/0CqVSDqobzOyCvZu"
     },
     "widget.css": {
-      "bytes": 60855,
-      "gzipBytes": 9642,
-      "integrity": "sha384-wQPcjChiCOE2txqnQTzaZCbPBBHFeFrCkuual6f895fMJlaRqM6RkT3f2/9Vg3J2"
+      "bytes": 61008,
+      "gzipBytes": 9662,
+      "integrity": "sha384-BsBdp0Hg2I1wOjjTY5JdNtVmybK9YL2jUo+qumbkGQIVrJHI7Ujxj9zcjV0qRhOE"
     }
   },
   "retained": [
+    {
+      "hash": "9c26b8c0e2d0",
+      "version": "0.1.0",
+      "files": {
+        "widget.js": {
+          "integrity": "sha384-sfBeoywn0MHSvRNXXsVVUgQ5Be2huHNGaivi9GBkGfr94C4/0CqVSDqobzOyCvZu"
+        },
+        "widget.css": {
+          "integrity": "sha384-BsBdp0Hg2I1wOjjTY5JdNtVmybK9YL2jUo+qumbkGQIVrJHI7Ujxj9zcjV0qRhOE"
+        }
+      }
+    },
     {
       "hash": "4ab0a0db165d",
       "version": "0.1.0",
@@ -118,18 +130,6 @@
       "files": {
         "widget.js": {
           "integrity": "sha384-X6Ro+uTdRnFbklsToEqpA4EsibrpABOQXCQeAJpxO4xj3YVf+O9Z357S58yNJ6Dy"
-        },
-        "widget.css": {
-          "integrity": "sha384-pJqtX6Yawe0BHH+5z+5pXqP7bTuSg7Pl9wu7iKVptNXZjTbcvl0uNjN3g+MKoQMJ"
-        }
-      }
-    },
-    {
-      "hash": "f91d710d7250",
-      "version": "0.1.0",
-      "files": {
-        "widget.js": {
-          "integrity": "sha384-Ttmnb8ioMGd00olIhs8v8Eb23g3Hod9MjVFr49OpYDEE2xxmialChSH0KMs3/RPe"
         },
         "widget.css": {
           "integrity": "sha384-pJqtX6Yawe0BHH+5z+5pXqP7bTuSg7Pl9wu7iKVptNXZjTbcvl0uNjN3g+MKoQMJ"

@@ -277,5 +277,31 @@ describe('widget improvements', () => {
       (dirEl as any).setLanguageOverride('en');
       expect(dirEl.getAttribute('dir')).toBe('ltr');
     });
+
+    // R5-65 follow-up: older Safari (<14) has no Intl.RelativeTimeFormat, and CONSTRUCTING it
+    // there throws — unguarded, timeAgo would kill renderPins() for the whole page. Verify the
+    // feature guard falls back to the plain localized date string instead of throwing.
+    it('timeAgo returns a non-throwing date string when Intl.RelativeTimeFormat is undefined', () => {
+      const desc = Object.getOwnPropertyDescriptor(Intl, 'RelativeTimeFormat');
+      expect(desc).toBeDefined();
+      Object.defineProperty(Intl, 'RelativeTimeFormat', { value: undefined, configurable: true });
+      try {
+        const iso = new Date(Date.now() - 5 * 60 * 1000).toISOString();
+        const out = timeAgo(iso);
+        expect(typeof out).toBe('string');
+        expect(out).toBe(new Date(iso).toLocaleDateString());
+      } finally {
+        Object.defineProperty(Intl, 'RelativeTimeFormat', desc!);
+      }
+    });
+
+    // R5-65 follow-up: the boot-time invite-redemption failure toast was the last hard-coded
+    // English user-visible string in element.ts — pin the key in BOTH catalogs.
+    it('resolves toast.inviteLinkInvalid in English and Arabic', () => {
+      setLang('en');
+      expect(t('toast.inviteLinkInvalid')).toBe('This invite link is invalid or expired — ask for a new one.');
+      setLang('ar');
+      expect(t('toast.inviteLinkInvalid')).toBe('رابط الدعوة هذا غير صالح أو منتهي الصلاحية — اطلب رابطًا جديدًا.');
+    });
   });
 });

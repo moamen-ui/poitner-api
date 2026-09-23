@@ -1,10 +1,11 @@
-// Static-UI-text translation (English/Arabic). Deliberately text-only — the shadow UI stays
-// LTR regardless of language (see _base.scss's `:host { direction: ltr }`); this only swaps the
-// strings baked into TPL.* templates and the handful of dynamically-set title/aria-label/toast
-// strings in element.ts. Never translates: comment/reply body text, author/display names, project
-// names, the brand name, predefined-prompt text, server-provided status-catalog labels (an admin
-// can rename these per project, so the widget cannot know their language), payload-flag names,
-// commit SHAs/URLs, keyboard-shortcut key labels, file paths.
+// Static-UI-text translation (English/Arabic). Deliberately text-only — direction follows the
+// widget's resolved language separately (element.ts's applyDir() reflects it as `dir` on the
+// host element, and _base.scss's `:host([dir='rtl'])` flips the shadow UI to RTL); this only
+// swaps the strings baked into TPL.* templates and the handful of dynamically-set
+// title/aria-label/toast strings in element.ts. Never translates: comment/reply body text,
+// author/display names, project names, the brand name, predefined-prompt text, server-provided
+// status-catalog labels (an admin can rename these per project, so the widget cannot know their
+// language), payload-flag names, commit SHAs/URLs, keyboard-shortcut key labels, file paths.
 
 export type Lang = 'en' | 'ar';
 
@@ -358,6 +359,7 @@ const STRINGS: Record<Lang, Record<string, string>> = {
     'toast.archivedMsg': 'Archived',
     'toast.pleaseProvideNoteNotFixed': 'Please provide a note explaining what is not fixed',
     'toast.notifications': 'Notifications',
+    'toast.inviteLinkInvalid': 'This invite link is invalid or expired — ask for a new one.',
     'fields.more': 'Add more fields',
     'fields.fewer': 'Fewer fields',
     'fields.extra': 'Extra fields',
@@ -604,6 +606,7 @@ const STRINGS: Record<Lang, Record<string, string>> = {
     'toast.archivedMsg': 'تمت الأرشفة',
     'toast.pleaseProvideNoteNotFixed': 'يرجى كتابة ملاحظة تشرح ما لم يتم إصلاحه',
     'toast.notifications': 'الإشعارات',
+    'toast.inviteLinkInvalid': 'رابط الدعوة هذا غير صالح أو منتهي الصلاحية — اطلب رابطًا جديدًا.',
     'fields.more': 'إضافة المزيد من الحقول',
     'fields.fewer': 'حقول أقل',
     'fields.extra': 'حقول إضافية',

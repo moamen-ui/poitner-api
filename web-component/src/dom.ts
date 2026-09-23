@@ -27,12 +27,18 @@ export const initials = (name: string): string => {
 // idioms where CLDR has them (verified: en "now"/"yesterday", ar "الآن"/"أمس"), falling back to a
 // plain count otherwise. Rebuilt per call rather than cached per language: this only ever renders
 // one pin tooltip at a time, so the extra allocation isn't worth the code to memoize it.
+// Feature-guarded, not assumed: older Safari (<14) lacks Intl.RelativeTimeFormat and CONSTRUCTING
+// it there throws — inside timeAgo that would kill renderPins() for the whole page, not just one
+// tooltip — so when it's missing every branch falls back to the plain localized date below.
 export const timeAgo = (iso?: string | null): string => {
   if (!iso) return '';
   const then = new Date(iso).getTime();
   if (Number.isNaN(then)) return '';
   const seconds = Math.round((Date.now() - then) / 1000);
-  const rtf = new Intl.RelativeTimeFormat(getLang(), { numeric: 'auto' });
+  const rtf = typeof Intl.RelativeTimeFormat === 'function'
+    ? new Intl.RelativeTimeFormat(getLang(), { numeric: 'auto' })
+    : null;
+  if (!rtf) return new Date(iso).toLocaleDateString();
   if (seconds < 45) return rtf.format(0, 'second');
   const minutes = Math.round(seconds / 60);
   if (minutes < 60) return rtf.format(-minutes, 'minute');

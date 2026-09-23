@@ -404,7 +404,7 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
     // build-sha beacon above: an anonymous visitor has no token to post an event with.
     if (this.token) void this._reportWidgetLanguage();
 
-    if (inviteFailed) this.toast('This invite link is invalid or expired — ask for a new one.', 'error');
+    if (inviteFailed) this.toast(t('toast.inviteLinkInvalid'), 'error');
   }
 
   /**
@@ -678,6 +678,12 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
     this.token = token;
     this.user = user;
     this.shortcut = parseShortcut(user?.addCommentShortcut);
+    // The account's own language can differ from the one boot resolved (an 'ar' account logging
+    // in from an 'en' browser with no local override would otherwise stay English/LTR until
+    // reload) — re-resolve here so the caller's init() renders text AND dir from the right
+    // language. setLang() reports whether it actually changed; the dir attribute only needs
+    // flipping in that case.
+    if (setLang(this.resolveLang())) this.applyDir();
     localStorage.setItem('pointer_token', token);
     localStorage.setItem('pointer_user', JSON.stringify(user));
     this.startNotificationPolling();
