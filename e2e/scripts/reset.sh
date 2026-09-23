@@ -31,16 +31,32 @@ echo "==> Starting stack (docker compose up -d)"
 docker compose up -d
 
 echo "==> Waiting for API on :8090 ..."
+api_waited=0
 until curl -sf http://localhost:8090/swagger/v1/swagger.json > /dev/null 2>&1; do
+  if [ "$api_waited" -ge 180 ]; then
+    echo "==> API did not come up in 180 s — container status and last 200 log lines:"
+    docker compose ps
+    docker compose logs --no-color --tail 200 api
+    docker compose logs --no-color --tail 200 db
+    exit 1
+  fi
   sleep 2
+  api_waited=$((api_waited + 2))
 done
 
 echo "==> API ready."
 
 if docker compose ps --services 2>/dev/null | grep -q '^verdaccio$'; then
   echo "==> Waiting for Verdaccio on :4873 ..."
+  verdaccio_waited=0
   until curl -sf http://localhost:4873/-/ping > /dev/null 2>&1; do
+    if [ "$verdaccio_waited" -ge 120 ]; then
+      echo "==> Verdaccio did not come up in 120 s — last 100 log lines:"
+      docker compose logs --tail 100 verdaccio
+      exit 1
+    fi
     sleep 1
+    verdaccio_waited=$((verdaccio_waited + 1))
   done
   echo "==> Verdaccio ready."
 fi
