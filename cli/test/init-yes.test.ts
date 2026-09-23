@@ -255,6 +255,67 @@ test('init --json in join mode reports mode: join and does not ask for --project
   assert.strictEqual(json.injected, false);
 }));
 
+/**
+ * A join whose config carries `htmlPath` (a previous run really did inject) still gets the
+ * "already embedded, nothing to inject" summary.
+ */
+test('a join with a recorded htmlPath says the widget is already embedded', () => withTempDir(async (dir) => {
+  await fs.mkdir(path.join(dir, '.pointer'), { recursive: true });
+  await fs.writeFile(
+    path.join(dir, '.pointer/config.json'),
+    JSON.stringify({
+      server: serverUrl,
+      project: 'existing',
+      aiTool: 'claude-code',
+      delivery: 'embed',
+      htmlPath: 'index.html',
+    }),
+    'utf8',
+  );
+  await fs.writeFile(path.join(dir, 'index.html'), '<html><head></head><body></body></html>', 'utf8');
+
+  const { stdout } = await execAsync(
+    `node ${cliPath} init --yes --key ptr_good --server ${serverUrl} --local-credentials`,
+    { cwd: dir, env: envFor(dir) },
+  );
+  assert.match(stdout, /already embedded in this app's committed source/);
+}));
+
+/**
+ * A join whose FIRST install was skill-routed (an angular/next/etc. stack with no single entry
+ * point) never recorded `htmlPath` — nothing was ever mounted. Before this fix, `init` told every
+ * join "the widget is already embedded ... the button should appear", which is false here: the
+ * pointer-init skill still has to run. Regression test for that bug.
+ */
+test('a join whose first install was skill-routed points at /pointer-init instead of claiming the widget is embedded', () => withTempDir(async (dir) => {
+  await fs.mkdir(path.join(dir, '.pointer'), { recursive: true });
+  await fs.writeFile(
+    path.join(dir, '.pointer/config.json'),
+    JSON.stringify({
+      server: serverUrl,
+      project: 'existing',
+      aiTool: 'claude-code',
+      delivery: 'embed',
+    }),
+    'utf8',
+  );
+  // No index.html, no vite config — a next-like package.json so detectStack routes to the skill,
+  // exactly as the first (non-join) install here would have.
+  await fs.writeFile(
+    path.join(dir, 'package.json'),
+    JSON.stringify({ dependencies: { next: '14.0.0' } }),
+    'utf8',
+  );
+
+  const { stdout } = await execAsync(
+    `node ${cliPath} init --yes --key ptr_good --server ${serverUrl} --local-credentials`,
+    { cwd: dir, env: envFor(dir) },
+  );
+  assert.doesNotMatch(stdout, /already embedded in this app's committed source/);
+  assert.match(stdout, /widget is not mounted yet/);
+  assert.match(stdout, /\/pointer-init/);
+}));
+
 test('--delivery bogus exits 2', () => withTempDir(async (dir) => {
   try {
     await execAsync(`node ${cliPath} init --yes --key ptr_good --create "My App" --server ${serverUrl} --delivery bogus`, { cwd: dir, env: envFor(dir) });

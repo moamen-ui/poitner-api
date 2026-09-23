@@ -3879,11 +3879,18 @@ ${installLine}
   3. Open your app, click the extension icon, choose project ${dim(finalProjectKey)}, Activate.
   4. Then ${bold("npx pointer-feedback list")} / ${bold("apply")} as usual.
       ${dim(`Dashboard: ${branding.urls?.app || server}`)}`);
-  } else if (isJoin) {
+  } else if (isJoin && config.htmlPath) {
     console.log(`
 ${bold("Next")}  ${product} is already embedded in this app's committed source \u2014 nothing to inject.
       Start your dev server, open the app, and the ${product} button should appear.
       Then ${bold("npx pointer-feedback list")} / ${bold("apply")} as usual.
+      ${dim(`Dashboard: ${branding.urls?.app || server}`)}`);
+  } else if (isJoin) {
+    console.log(`
+${bold("Next")}  ${cyan(`The widget is not mounted yet \u2014 ${appInfo.kind} has no single entry point to inject into.`)}
+
+      Run this in ${tool}:   ${bold("/pointer-init")}
+      ${dim("It reads .pointer/config.json, so it will not ask for your key or project again.")}
       ${dim(`Dashboard: ${branding.urls?.app || server}`)}`);
   } else if (injected) {
     console.log(`
