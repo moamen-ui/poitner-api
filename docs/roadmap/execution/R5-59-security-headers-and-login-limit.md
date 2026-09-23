@@ -6,6 +6,11 @@ attempts per e-mail for 15 min (success resets), 429 + `Retry-After`; per-IP flo
 60/min; verified live (10×400 → 429, Retry-After 900, other e-mail unaffected). CSP is
 report-only; enforcement is this doc's follow-up (§10).
 
+**Hardening `bc5e9b4` shipped** (GLM review findings M1/F5/F6/F7): e-mail max length capped at 254,
+cache key hashed with SHA-256, login request body limited to 64 KB, `X-Request-Id` validated,
+recipients pseudonymised in mail logs; live-verified. Follow-ups F3 (dummy-hash timing) and F4
+(`KnownProxies`) remain open.
+
 ## 1. Goal
 
 Harden the public-facing surface before any customer data arrives: add security headers to every

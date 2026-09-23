@@ -8,6 +8,11 @@
 > `workspace_memberships` and `user_aliases` (27 tables) and `users.merged_into_user_id`; one
 > identity per e-mail (`ux_users_email_live`); `api_keys` keys are now per membership. DB-11c
 > (`users.erased_at`) is still planned; its row below stays marked *(planned)*.
+
+> **DB-11a deployed to production 2026-09-23 00:08 UTC** (`POINTER_APPLY_CONTRACT=1
+> POINTER_CONTRACT_LABEL=pre-db11a`, migrations 65→68); census 0 duplicate e-mails → 0 merges, 0
+> aliases; 5 live memberships (6e4b3406:1, 98699076:4); `ux_users_email_live` and
+> `ux_api_keys_active_per_membership` confirmed present. Schema below now matches production.
 > Still planned (2026-09-22 night): DB-11c adds `users.erased_at`; DB-12 adds `audit_events` (append-only,
 > trigger), DB-13 `impersonation_sessions`, DB-14 `users.email_verified_at`, DB-15 `usage_daily` + three
 > server-emitted `usage_events.type` values and a second partial unique index (30 tables when all ship).

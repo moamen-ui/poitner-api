@@ -3,6 +3,13 @@
 **Status (2026-09-23):** in progress — static pass under way (GLM), writing
 `docs/runbooks/RTL-AUDIT-2026-09-23.md`; the browser/screenshot pass (§3.2 Option A/B) is pending.
 
+**Fix-now 1/3/4 shipped `db0dcb7`**: the shadow root's `dir` now follows the widget's resolved
+language (`applyDir()`, `element.ts`) instead of being forced `ltr`; `timeAgo()` (`dom.ts`) now
+formats through `Intl.RelativeTimeFormat(getLang())` instead of hardcoded English; four hardcoded
+strings (unread/99+, dismiss notification, open full screenshot, element screenshot) now route
+through `i18n.ts` with new `en`/`ar` keys. Live in `pointer.js` (gzip 65,590 B, hash `4ab0a0db165d`).
+Fix-now 2 (e-mail RTL) and fix-now 5 (Arabic privacy/terms) remain, as does the browser pass.
+
 ## 1. Goal
 
 Produce an **audit checklist** (not fixes) that covers every dashboard route, widget state, and

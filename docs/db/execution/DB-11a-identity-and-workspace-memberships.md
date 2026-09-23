@@ -13,6 +13,18 @@ their removal is a later contract doc (DB-11e, not yet written; DB-11d is the ch
 **Status 2026-09-22: written; not implemented.** Owner decisions D1–D7 and D13 have defaults (§3.9);
 none blocks implementation, but the **production census (§9 step 1) must be pasted to the owner
 before the deploy** because D1/D2 only matter if it shows duplicates.
+
+**Status 2026-09-23: ✔ deployed to production 00:08 UTC** (`POINTER_APPLY_CONTRACT=1
+POINTER_CONTRACT_LABEL=pre-db11a`, migrations 65→68), after a same-day fresh-dump rehearsal. Census
+before the deploy: 0 duplicate e-mails → 0 merges, 0 aliases; 5 live memberships (6e4b3406:1,
+98699076:4); comments 122 with 0 orphan authors; super admin untouched; both new unique indexes
+present; active API keys 2→2. Reviewed by Gemini Pro and Opus 5 (both MERGE WITH FIXES); fixes
+folded before merge — tenant admin routes now `/api/admin/tenants/{workspaceId:guid}` (+
+`TenantResponse.WorkspaceId`), `api_keys` merge revokes losing duplicates first, super admins
+excluded from the merge, identity `IsActive` guards restored on key/invite logins, membership
+`mstamp` validated (`API/Auth/StampValidator.cs`). All pre-deploy sessions invalidated by design.
+817 tests at merge. Client `@moamen-ui/pointer-react` 1.0.41 published from production; dashboard
+TenantsPage update in progress.
 **Amended 2026-09-22 (evening)** after the cross-review (`docs/roadmap/meetings/2026-09-22-foundations/04-chair-synthesis.md`
 §1 rows D1/D7/D8 = GLM A1/A7/A8). Inside this doc the amendments are cited by the reviewer's finding id, because
 D1–D13 here are **owner decisions** (§3.9): **GLM A1** the unique identity is enforced by the database on
