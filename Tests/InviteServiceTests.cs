@@ -28,6 +28,8 @@ public class InviteServiceTests
         public bool IsQuickAccess { get; set; }
         public Guid? TenantId { get; set; }
         public int? RoleId { get; set; }
+        public string? KeyScopes { get; set; }
+        public string? Scope { get; set; }
     }
 
     // Identity hasher/verifier — good enough for service-level assertions.

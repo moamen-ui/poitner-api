@@ -30,4 +30,8 @@ public class HttpCurrentUser(IHttpContextAccessor accessor) : ICurrentUser
         int.TryParse(accessor.HttpContext?.User.FindFirst("role_id")?.Value, out var id)
             ? id
             : null;
+
+    public string? KeyScopes => accessor.HttpContext?.User.FindFirst("key_scopes")?.Value;
+
+    public string? Scope => accessor.HttpContext?.User.FindFirst("scope")?.Value;
 }

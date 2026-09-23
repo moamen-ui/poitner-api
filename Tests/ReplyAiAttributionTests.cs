@@ -29,6 +29,8 @@ public class ReplyAiAttributionTests
         public bool IsQuickAccess { get; set; }
         public Guid? TenantId { get; set; }
         public int? RoleId { get; set; }
+        public string? KeyScopes { get; set; }
+        public string? Scope { get; set; }
     }
 
     private sealed class FakeFileStorage : IFileStorage

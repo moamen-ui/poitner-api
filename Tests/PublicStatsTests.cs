@@ -25,6 +25,8 @@ public class PublicStatsTests
         public bool IsQuickAccess => false;
         public Guid? TenantId => null; // anonymous caller — matches the real [AllowAnonymous] request
         public int? RoleId => null;
+        public string? KeyScopes => null;
+        public string? Scope => null;
     }
 
     private static AppDbContext BuildContext(string dbName) =>

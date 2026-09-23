@@ -200,6 +200,8 @@ public class ObservabilityTests
         public bool IsQuickAccess => false;
         public Guid? TenantId => null;
         public int? RoleId => null;
+        public string? KeyScopes => null;
+        public string? Scope => null;
     }
 
     private sealed class RecordingLogger : ILogger<RequestIdMiddleware>

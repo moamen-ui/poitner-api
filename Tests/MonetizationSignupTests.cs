@@ -24,6 +24,8 @@ public class MonetizationSignupTests
         public bool IsQuickAccess { get; set; }
         public Guid? TenantId { get; set; }
         public int? RoleId { get; set; }
+        public string? KeyScopes { get; set; }
+        public string? Scope { get; set; }
     }
 
     // Signup requires the ScopedAdminSignupEnabled flag on.

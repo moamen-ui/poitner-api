@@ -438,6 +438,13 @@ public class AuthService : IAuthService
         if (_currentUser.Id is not Guid publicId)
             return Result<LoginResponse>.Failure(MessageKeys.Auth.InvalidCredentials);
 
+        // F2 (DB-11b review): a session opened with an API key carries a `key_scopes` claim and is
+        // scoped to exactly the membership that key was minted for (DB-11a). Letting it switch would
+        // launder a scoped agent session into an unscoped human one — refuse it outright, regardless
+        // of which workspace is requested.
+        if (_currentUser.KeyScopes is not null)
+            return Result<LoginResponse>.Forbidden(MessageKeys.Common.Forbidden);
+
         var identity = await _memberships.FindIdentityByPublicIdAsync(publicId);
         if (identity == null || !identity.IsActive)
             return Result<LoginResponse>.Forbidden(MessageKeys.Auth.NotAMember);
@@ -454,13 +461,25 @@ public class AuthService : IAuthService
         )
             return Result<LoginResponse>.Forbidden(MessageKeys.Auth.NotAMember);
 
+        // F1 (DB-11b review): a membership row can outlive the workspace's own soft-delete — the
+        // workspace itself must still be live, or a member of an already-deleted workspace could
+        // switch into it and mint a token for a tenant that no longer really exists.
+        var workspaceLive = await _unitOfWork
+            .Workspaces.IgnoreQueryFilters()
+            .AnyAsync(w => w.Id == workspaceId && w.DeletedAt == null);
+        if (!workspaceLive)
+            return Result<LoginResponse>.Forbidden(MessageKeys.Auth.NotAMember);
+
         var tenantName = await ResolveTenantNameAsync(membership.OwnerId);
         var token = _tokenService.Issue(identity, membership);
 
-        // The lockout counter (per e-mail, R5-59 §12) is only reset once a full session token is
-        // actually issued for this identity — an earlier "choose-workspace" response did not reset
-        // it (see LoginAsync). Switching closes that loop for a login that started as a picker.
-        await _loginLimiter.ResetAsync(EmailNormalizer.NormalizeRequired(identity.Email));
+        // F5 (DB-11b review): only a selection-token session resets the per-e-mail lockout counter
+        // here — that is the one case where LoginAsync deliberately did NOT reset it yet (the picker
+        // response). A caller that already holds a full token (switching mid-session) had its lockout
+        // reset at that earlier login already; letting ANY valid token reset it again would let a
+        // signed-in session quietly clear another concurrent lockout window for the same e-mail.
+        if (_currentUser.Scope == "select_workspace")
+            await _loginLimiter.ResetAsync(EmailNormalizer.NormalizeRequired(identity.Email));
 
         return Result<LoginResponse>.Success(
             new LoginResponse
@@ -480,7 +499,12 @@ public class AuthService : IAuthService
     {
         var role = membership?.Role ?? identity.Role;
         var response = UserMapper.ToMeResponse(identity, role, tenantName);
-        response.WorkspaceId = membership?.OwnerId;
+        // F6 (DB-11b review): prefer the resolved membership's own workspace (the authoritative
+        // answer right after a login/switch, when it names the JUST-CHOSEN workspace); fall back to
+        // the caller's JWT `tenant` claim so a tenant-scoped token never reports a null WorkspaceId
+        // merely because the membership lookup came back empty (e.g. MeAsync racing a membership
+        // change) — the doc's §3.3 "Current workspace id (JWT tenant)" still holds either way.
+        response.WorkspaceId = membership?.OwnerId ?? _currentUser.TenantId;
 
         if (identity.Role?.IsSuperAdmin != true)
         {

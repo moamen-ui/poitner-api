@@ -45,6 +45,7 @@ public class AuthController(
     [HttpPost("switch-workspace")]
     [EnableRateLimiting("login")]
     [ProducesResponseType(typeof(LoginResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(Result<LoginResponse>), StatusCodes.Status400BadRequest)]
     [ProducesResponseType(typeof(Result), StatusCodes.Status403Forbidden)]
     public async Task<IActionResult> SwitchWorkspace([FromBody] SwitchWorkspaceRequest request)
     {

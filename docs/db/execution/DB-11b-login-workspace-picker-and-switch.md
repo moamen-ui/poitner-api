@@ -48,7 +48,10 @@ that project (D11), so a stakeholder never sees a picker inside someone's app. T
   `Tests/AuthRateLimitingTests.cs:21-29 Login_IsNotRateLimited` pins that. The `"login"` policy exists
   (`RateLimitingExtensions.cs:124-132`: per IP, 60/min, `QueueLimit = 0`) and is applied today only to
   `login-with-invite` (`AuthController.cs:38-39`). The new endpoint uses **that** policy by name; this doc
-  does not touch `Login` (the foundations "login limiter" item is a separate ops doc).
+  does not touch `Login` (the foundations "login limiter" item is a separate ops doc). Note: password
+  `Login` carries the separate `"login-ip"` per-IP floor (R5-59) — it does **not** carry the `"login"`
+  policy; those are two different named policies and `Login` staying off `"login"` is deliberate (GLM A5
+  above), not an oversight.
 
 ## 3. Design
 
@@ -121,6 +124,9 @@ identity = `FindIdentityByPublicIdAsync(_currentUser.Id)` (live, `IsActive`); if
 `UserMapper.ToMeResponse(identity, membership.Role, workspaceName)`. Works with a full token **or** a
 selection token (the same identity check applies). No state is written — switching is stateless;
 the old token keeps working until it expires (both are valid sessions of the same person).
+`switch-workspace` is deliberately left on the open CORS default policy rather than folded into
+`IsDashboardOnly` (`API/Program.cs`) — the widget calls it directly with a bearer header and no
+cookies, so it is not CSRF-exploitable, and the same reasoning as `Login`/`login-with-invite` applies.
 
 ### 3.3 `/api/auth/me`
 
@@ -214,7 +220,7 @@ and no token. The selection token is fenced by the path check in §3.2 (test 5).
 
 1. `curl -s http://localhost:8090/swagger/v1/swagger.json | jq '.paths["/api/auth/switch-workspace"].post.tags'` → `["Auth"]`; `jq '.components.schemas.LoginResponse.properties.workspaces, .components.schemas.MeResponse.properties.workspaces, .components.schemas.LoginRequest.properties.projectKey'` → all non-null.
 2. `grep -c "select_workspace" Infrastructure/Auth/JwtTokenService.cs API/Extensions/AuthenticationExtensions.cs` → ≥1 each.
-3. `grep -n "if (validateStamp)" API/Extensions/AuthenticationExtensions.cs` → the block no longer wraps the `new JwtBearerEvents` construction (reviewer reads it). `grep -c "StartsWithSegments" API/Extensions/SelectionScopeFence.cs API/Extensions/AuthenticationExtensions.cs` → 0 each (GLM A6). `grep -c 'EnableRateLimiting("login")' API/Controllers/AuthController.cs` → 2 (`login-with-invite` + `switch-workspace`; GLM A5), and `Login` still has none.
+3. `grep -n "if (validateStamp)" API/Extensions/AuthenticationExtensions.cs` → the block no longer wraps the `new JwtBearerEvents` construction (reviewer reads it). `grep -c "StartsWithSegments" API/Extensions/SelectionScopeFence.cs API/Extensions/AuthenticationExtensions.cs` → 0 each (GLM A6). `grep -c 'EnableRateLimiting("login")' API/Controllers/AuthController.cs` → 3 (`login-with-invite`, `login-with-key`, `switch-workspace`; GLM A5), and `Login` still has none.
 4. `just test` green with the 7+ new facts.
 5. Manual on the rehearsal API: seed a second membership for the production admin's identity (via an invite accept) → login returns `choose-workspace`; `switch-workspace` with the selection token → full token; the selection token on `GET /api/comments/...` → 401; widget login with `projectKey` → `ok` without a picker.
 6. Widget bundle within budget; `web-component` typecheck passes.

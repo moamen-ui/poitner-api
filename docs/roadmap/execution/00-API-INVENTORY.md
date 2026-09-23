@@ -15,12 +15,12 @@
 | `POST /api/auth/login-with-key` | `AuthController.cs:29-37` | `LoginWithApiKeyRequest { ApiKey }` | `LoginResponse` |
 | `POST /api/auth/register` (rate-limited `signup`) | `AuthController.cs:39-48` | `RegisterRequest { Email, Password, DisplayName, RoleId, ProjectKey }` | `LoginResponse` |
 | `GET /api/auth/me` [Authorize] | `AuthController.cs:50-59` | — | `MeResponse { Id: Guid, Email, DisplayName, RoleId, RoleName, IsAdmin, IsSuperAdmin, IsQuickAccess, Language?, Theme?, AddCommentShortcut?, TenantName?, WorkspaceId?: Guid (DB-11b, null for super admins), Workspaces: WorkspaceChoice[] (DB-11b, every live/approved/active membership, empty for super admins) }` |
-
-`WorkspaceChoice` (DB-11b, `Application/DTOs/Auth/WorkspaceChoice.cs`): `{ WorkspaceId: Guid, Name, RoleName, IsAdmin: bool, IsHome: bool }`.
 | `POST /api/auth/forgot-password`, `reset-password` | `AuthController.cs:61-81` | `{ Email }` / `{ Token, NewPassword }` | always 200 |
 | `POST /api/me/change-password` | `API/Controllers/MeController.cs:14-21` | `{ CurrentPassword, NewPassword }` | — |
 | `GET /api/me/api-key` | `MeController.cs:42-50` | — | `ApiKeyResponse { ApiKey }` |
 | `POST /api/me/api-key/regenerate` | `MeController.cs:52-60` | — | `ApiKeyResponse` |
+
+`WorkspaceChoice` (DB-11b, `Application/DTOs/Auth/WorkspaceChoice.cs`): `{ WorkspaceId: Guid, Name, RoleName, IsAdmin: bool, IsHome: bool }`.
 
 - **API key storage today**: hashed + AES-256-GCM encrypted rows in `api_keys` (`Domain/Entity/ApiKey.cs`); lookup by SHA-256 hash via `IApiKeyService`/`_apiKeys.ResolveAsync` (`Application/Services/Implementation/AuthService.cs:258-264`). Prefix `ptr_` (`API/wwwroot/install.sh:56`). The legacy plaintext `users.api_key` column was dropped by DB-07.
 - **JWT** (`Infrastructure/Auth/JwtTokenService.cs:11-39`): lifetime 12 h default (`JwtOptions.LifetimeHours`); claims `sub` (User.PublicId), `email`, `name`, `role_id`, `role`, `is_admin`, `is_super_admin`, `is_quick_access`, `stamp` (SecurityStamp), `tenant` (User.OwnerId when set).

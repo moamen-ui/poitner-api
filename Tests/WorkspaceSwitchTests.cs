@@ -33,6 +33,8 @@ public class WorkspaceSwitchTests
         public bool IsQuickAccess { get; set; }
         public Guid? TenantId { get; set; }
         public int? RoleId { get; set; }
+        public string? KeyScopes { get; set; }
+        public string? Scope { get; set; }
     }
 
     private sealed class FakePasswordHasher : IPasswordHasher
@@ -530,6 +532,99 @@ public class WorkspaceSwitchTests
         Assert.Equal(MessageKeys.Common.Forbidden, result.Message);
     }
 
+    // ── F1 (DB-11b review): membership row outliving the workspace's own soft-delete ────────────
+
+    [Fact]
+    public async Task Switch_DeletedWorkspace_Forbidden_NoToken()
+    {
+        var db = Guid.NewGuid().ToString();
+        var (workspaceA, workspaceB, roleId) = SeedTwoWorkspaces(db);
+        Guid identityPublicId;
+
+        using (var seed = Ctx(new FakeCurrentUser { IsSuperAdmin = true }, db))
+        {
+            var role = seed.Roles.Single(r => r.Id == roleId);
+            var identity = new User
+            {
+                Email = "deletedws@x.com",
+                PasswordHash = "hashed:pw",
+                DisplayName = "Deleted Workspace Member",
+                PublicId = Guid.NewGuid(),
+                RoleId = role.Id,
+                OwnerId = workspaceA,
+                IsActive = true,
+                ApprovalStatus = ApprovalStatus.Approved,
+            };
+            seed.Users.Add(identity);
+            seed.SaveChanges();
+            TestSeed.Join(seed, identity, workspaceA, role);
+            // The membership row itself is still live (LeftAt == null, IsActive, Approved) — only
+            // the WORKSPACE was soft-deleted (e.g. by DB-11c's workspace removal), independently.
+            TestSeed.Join(seed, identity, workspaceB, role);
+            identityPublicId = identity.PublicId;
+
+            var workspace = seed.Workspaces.Single(w => w.Id == workspaceB);
+            workspace.DeletedAt = DateTime.UtcNow;
+            seed.SaveChanges();
+        }
+
+        var caller = new FakeCurrentUser { Id = identityPublicId, TenantId = workspaceA };
+        var auth = BuildAuthService(caller, Ctx(caller, db));
+
+        var result = await auth.SwitchWorkspaceAsync(workspaceB);
+
+        Assert.True(result.IsForbidden);
+        Assert.Equal(MessageKeys.Auth.NotAMember, result.Message);
+        Assert.Null(result.Data);
+    }
+
+    // ── F2 (DB-11b review): a scoped API-key session must not be laundered into a full token ────
+
+    [Fact]
+    public async Task Switch_KeyScopedSession_Forbidden()
+    {
+        var db = Guid.NewGuid().ToString();
+        var (workspaceA, workspaceB, roleId) = SeedTwoWorkspaces(db);
+        Guid identityPublicId;
+
+        using (var seed = Ctx(new FakeCurrentUser { IsSuperAdmin = true }, db))
+        {
+            var role = seed.Roles.Single(r => r.Id == roleId);
+            var identity = new User
+            {
+                Email = "keyscoped@x.com",
+                PasswordHash = "hashed:pw",
+                DisplayName = "Key Scoped",
+                PublicId = Guid.NewGuid(),
+                RoleId = role.Id,
+                OwnerId = workspaceA,
+                IsActive = true,
+                ApprovalStatus = ApprovalStatus.Approved,
+            };
+            seed.Users.Add(identity);
+            seed.SaveChanges();
+            TestSeed.Join(seed, identity, workspaceA, role);
+            TestSeed.Join(seed, identity, workspaceB, role);
+            identityPublicId = identity.PublicId;
+        }
+
+        // A session opened via login-with-key carries a non-null key_scopes claim (JwtTokenService.Issue's
+        // keyScopes parameter) — CLI keys are per-membership by design (doc §1) and must never switch.
+        var caller = new FakeCurrentUser
+        {
+            Id = identityPublicId,
+            TenantId = workspaceA,
+            KeyScopes = "1",
+        };
+        var auth = BuildAuthService(caller, Ctx(caller, db));
+
+        var result = await auth.SwitchWorkspaceAsync(workspaceB);
+
+        Assert.True(result.IsForbidden);
+        Assert.Equal(MessageKeys.Common.Forbidden, result.Message);
+        Assert.Null(result.Data);
+    }
+
     // ── 4. No live memberships at all ───────────────────────────────────────────────────────────
 
     [Fact]
@@ -677,6 +772,50 @@ public class WorkspaceSwitchTests
         Assert.Empty(result.Data.Workspaces);
     }
 
+    // ── F6 (DB-11b review): WorkspaceId must reflect the JWT tenant claim even when the membership
+    // lookup itself comes back empty — a tenant-scoped token must never report a null WorkspaceId. ─
+
+    [Fact]
+    public async Task Me_MembershipLookupMisses_FallsBackToTenantClaimForWorkspaceId()
+    {
+        var db = Guid.NewGuid().ToString();
+        var (workspaceA, workspaceB, roleId) = SeedTwoWorkspaces(db);
+        Guid identityPublicId;
+
+        using (var seed = Ctx(new FakeCurrentUser { IsSuperAdmin = true }, db))
+        {
+            var role = seed.Roles.Single(r => r.Id == roleId);
+            var identity = new User
+            {
+                Email = "tenantfallback@x.com",
+                PasswordHash = "hashed:pw",
+                DisplayName = "Tenant Fallback",
+                PublicId = Guid.NewGuid(),
+                RoleId = role.Id,
+                OwnerId = workspaceA,
+                IsActive = true,
+                ApprovalStatus = ApprovalStatus.Approved,
+            };
+            seed.Users.Add(identity);
+            seed.SaveChanges();
+            // Only a membership in A — the caller's token below carries workspace B's tenant claim,
+            // for which GetMembershipAsync will find NO row (simulates a stale/edge-case token whose
+            // membership lookup misses, e.g. a race with membership removal).
+            TestSeed.Join(seed, identity, workspaceA, role);
+            identityPublicId = identity.PublicId;
+        }
+
+        var caller = new FakeCurrentUser { Id = identityPublicId, TenantId = workspaceB };
+        var auth = BuildAuthService(caller, Ctx(caller, db));
+
+        var result = await auth.MeAsync();
+
+        Assert.True(result.IsSuccess, result.Message);
+        // membership is null (no row for (identity, workspaceB)), so WorkspaceId must still fall
+        // back to the JWT's own tenant claim rather than going null.
+        Assert.Equal(workspaceB, result.Data!.WorkspaceId);
+    }
+
     // ── 7. Validators ────────────────────────────────────────────────────────────────────────────
 
     [Fact]
@@ -737,11 +876,57 @@ public class WorkspaceSwitchTests
         Assert.Equal("choose-workspace", loginResult.Data!.Status);
         Assert.Equal(0, spy.ResetCalls);
 
-        var caller = new FakeCurrentUser { Id = identityPublicId, TenantId = workspaceA };
+        // F5 (DB-11b review): the switch that resets the counter is the one made with the
+        // SELECTION token the picker actually returned — no `tenant` claim, `scope=select_workspace`
+        // (§3.2) — never a caller that already carries a full, tenant-scoped session.
+        var caller = new FakeCurrentUser { Id = identityPublicId, Scope = "select_workspace" };
         var switchResult = await BuildAuthService(caller, Ctx(caller, db), limiter: spy)
             .SwitchWorkspaceAsync(workspaceB);
 
         Assert.True(switchResult.IsSuccess, switchResult.Message);
         Assert.Equal(1, spy.ResetCalls);
+    }
+
+    // ── F5 (DB-11b review): a full-token switch must NOT reset the lockout counter — any valid
+    // token could otherwise clear another concurrent lockout window for the same e-mail. ─────────
+
+    [Fact]
+    public async Task Switch_WithFullToken_DoesNotResetLockout()
+    {
+        var db = Guid.NewGuid().ToString();
+        var (workspaceA, workspaceB, roleId) = SeedTwoWorkspaces(db);
+        Guid identityPublicId;
+
+        using (var seed = Ctx(new FakeCurrentUser { IsSuperAdmin = true }, db))
+        {
+            var role = seed.Roles.Single(r => r.Id == roleId);
+            var identity = new User
+            {
+                Email = "fulltokenswitch@x.com",
+                PasswordHash = "hashed:pw",
+                DisplayName = "Full Token Switch",
+                PublicId = Guid.NewGuid(),
+                RoleId = role.Id,
+                OwnerId = workspaceA,
+                IsActive = true,
+                ApprovalStatus = ApprovalStatus.Approved,
+            };
+            seed.Users.Add(identity);
+            seed.SaveChanges();
+            TestSeed.Join(seed, identity, workspaceA, role);
+            TestSeed.Join(seed, identity, workspaceB, role);
+            identityPublicId = identity.PublicId;
+        }
+
+        var spy = new SpyLoginAttemptLimiter();
+
+        // A caller already holding a full, tenant-scoped token (Scope == null) — e.g. the dashboard
+        // header switcher mid-session — must not reset the lockout counter on switch.
+        var caller = new FakeCurrentUser { Id = identityPublicId, TenantId = workspaceA };
+        var switchResult = await BuildAuthService(caller, Ctx(caller, db), limiter: spy)
+            .SwitchWorkspaceAsync(workspaceB);
+
+        Assert.True(switchResult.IsSuccess, switchResult.Message);
+        Assert.Equal(0, spy.ResetCalls);
     }
 }
