@@ -16,6 +16,12 @@ on:
     - cron: '0 3 * * *'
   workflow_dispatch:
 
+# One run per branch: a newer push cancels the older in-progress run (the full suite takes ~15 min and
+# every push to main used to start another parallel run).
+concurrency:
+  group: e2e-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   unit:
     runs-on: ubuntu-latest
