@@ -15,6 +15,14 @@ services:
       # suite legitimately blows through — it registers and accepts dozens of invitations from one
       # address in minutes. Raised here rather than in the code so production keeps the real limit.
       Security__RateLimits__SignupPerHour: "1000"
+      # DB-18 §12 adjudication (Opus LOW "hard-coded `danger` limit → e2e 429s"): the shipped default
+      # is 10 per 10 minutes per identity+IP (RateLimitingExtensions.cs "danger" policy), shared by
+      # deletion/request, and the anonymous preview/confirm/pause-instead endpoints — the mail-phase
+      # lifecycle spec (workspace-lifecycle-mail.spec.mjs) exercises several of those per test plus
+      # a deliberate wrong-password retry, which a shared IP partition (CI runners, repeated local
+      # runs) can otherwise exhaust. Raised here, same precedent as SignupPerHour above; production
+      # keeps the real 10/10min budget (API/appsettings.json).
+      Security__RateLimits__DangerPer10Min: "100"
       Pointer__SkillVersion: "${POINTER_SKILL_VERSION:-}"
       # The `dev` Docker target (see Dockerfile) never restores at image-build time — it's the bare
       # SDK image plus `dotnet watch`, which restores from the bind-mounted source on every container
