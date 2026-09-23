@@ -93,16 +93,28 @@ test('R1-06-01 — DB is hash-only + indexes + boot warning', async () => {
   const plaintextScanCount = parseInt(plaintextScanStr, 10);
   expect(plaintextScanCount, 'no full key plaintext must appear in hash or encrypted columns').toBe(0);
 
-  // 6. Indexes check: unique hash index and partial unique active-per-user index
+  // 6. Indexes check: unique hash index and the per-membership partial unique active-key index.
+  // DB-11a moved API keys from per-user to per-membership (docs/db/SCHEMA.md: "api_keys keys are
+  // now per membership"): ux_api_keys_active_per_user was dropped and replaced by
+  // ux_api_keys_active_per_membership (user_id, owner_id) WHERE revoked_at IS NULL AND deleted_at
+  // IS NULL NULLS NOT DISTINCT — see Infrastructure/Migrations/20260922204541_
+  // AddWorkspaceMembershipsAndUserAliases.cs. A key is now scoped to (identity, workspace), so the
+  // uniqueness guard must cover both columns, not user_id alone.
   const indexes = psql("SELECT indexdef FROM pg_indexes WHERE tablename = 'api_keys'");
   const hasUniqueHashIndex = /UNIQUE.*\(hash\)/i.test(indexes);
-  const hasPartialUniqueActivePerUser = /UNIQUE.*\(user_id\).*WHERE.*revoked_at IS NULL/i.test(indexes);
+  const hasPartialUniqueActivePerMembership =
+    /UNIQUE.*ux_api_keys_active_per_membership.*\(user_id,\s*owner_id\).*WHERE.*revoked_at IS NULL.*deleted_at IS NULL/i.test(
+      indexes,
+    );
 
   expect(hasUniqueHashIndex, 'must have UNIQUE index on (hash)').toBe(true);
-  expect(hasPartialUniqueActivePerUser, 'must have partial UNIQUE index on (user_id) WHERE revoked_at IS NULL').toBe(true);
+  expect(
+    hasPartialUniqueActivePerMembership,
+    'must have partial UNIQUE index ux_api_keys_active_per_membership on (user_id, owner_id) WHERE revoked_at IS NULL AND deleted_at IS NULL',
+  ).toBe(true);
 
   const durationMs = Date.now() - start;
-  const detail = `logsWarningCount=${matchCount}, legacyUserApiKeyColumnCount=${legacyColumnCount}, apiKeysCount=${apiKeysCount}, row=[${row}], plaintextScanCount=${plaintextScanCount}, uniqueHash=${hasUniqueHashIndex}, partialUniqueUser=${hasPartialUniqueActivePerUser}`;
+  const detail = `logsWarningCount=${matchCount}, legacyUserApiKeyColumnCount=${legacyColumnCount}, apiKeysCount=${apiKeysCount}, row=[${row}], plaintextScanCount=${plaintextScanCount}, uniqueHash=${hasUniqueHashIndex}, partialUniqueMembership=${hasPartialUniqueActivePerMembership}`;
 
   record({
     id: 'R1-06-01',
