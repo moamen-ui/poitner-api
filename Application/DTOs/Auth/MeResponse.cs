@@ -19,4 +19,10 @@ public class MeResponse
     /// <summary>The workspace's own name (<c>workspaces.name</c>, DB-03). Null for super admins, who
     /// have no workspace.</summary>
     public string? TenantName { get; set; }
+
+    /// <summary>Current workspace id (JWT <c>tenant</c> claim). Null for super admins.</summary>
+    public Guid? WorkspaceId { get; set; }
+
+    /// <summary>Every live, approved, active membership of this identity (DB-11b). Empty for super admins.</summary>
+    public List<WorkspaceChoice> Workspaces { get; set; } = new();
 }

@@ -25,4 +25,10 @@ public interface IAuthService
 
     /// <summary>Redeems a quick-access magic-link token for a normal session JWT.</summary>
     Task<Result<LoginResponse>> LoginWithInviteAsync(string token);
+
+    /// <summary>
+    /// DB-11b: exchanges a selection token (status "choose-workspace") — or an ordinary full token,
+    /// for a signed-in user switching workspaces — for a full JWT of the chosen membership.
+    /// </summary>
+    Task<Result<LoginResponse>> SwitchWorkspaceAsync(Guid workspaceId);
 }

@@ -7,7 +7,7 @@ using Microsoft.IdentityModel.Tokens;
 using Pointer.Application.Abstractions;
 using Pointer.Domain.Entity;
 namespace Pointer.Infrastructure.Auth;
-public class JwtOptions { public string SigningKey { get; set; } = ""; public string Issuer { get; set; } = "pointer-api"; public int LifetimeHours { get; set; } = 12; }
+public class JwtOptions { public string SigningKey { get; set; } = ""; public string Issuer { get; set; } = "pointer-api"; public int LifetimeHours { get; set; } = 12; public int SelectionLifetimeMinutes { get; set; } = 5; }
 public class JwtTokenService(IOptions<JwtOptions> opts) : ITokenService
 {
     public string Issue(User u, WorkspaceMembership? membership, int? keyScopes = null)
@@ -45,6 +45,28 @@ public class JwtTokenService(IOptions<JwtOptions> opts) : ITokenService
             claims.Add(new Claim("key_scopes", keyScopes.Value.ToString()));
         var token = new JwtSecurityToken(o.Issuer, o.Issuer, claims,
             expires: DateTime.UtcNow.AddHours(o.LifetimeHours), signingCredentials: creds);
+        return new JwtSecurityTokenHandler().WriteToken(token);
+    }
+
+    // DB-11b: a selection token carries only enough to identify the caller and prove they hold
+    // valid credentials — no tenant/role claims, so it cannot pass Policies.Admin/SuperAdmin, and
+    // AuthenticationExtensions fences it to POST /api/auth/switch-workspace by exact path
+    // (SelectionScopeFence, GLM A6) regardless of Auth:ValidateSecurityStamp.
+    public string IssueSelection(User u)
+    {
+        var o = opts.Value;
+        var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(o.SigningKey));
+        var creds = new SigningCredentials(key, SecurityAlgorithms.HmacSha256);
+        var claims = new List<Claim>
+        {
+            new Claim(JwtRegisteredClaimNames.Sub, u.PublicId.ToString()),
+            new Claim("email", u.Email),
+            new Claim("name", u.DisplayName),
+            new Claim("stamp", u.SecurityStamp.ToString()),
+            new Claim("scope", "select_workspace"),
+        };
+        var token = new JwtSecurityToken(o.Issuer, o.Issuer, claims,
+            expires: DateTime.UtcNow.AddMinutes(o.SelectionLifetimeMinutes), signingCredentials: creds);
         return new JwtSecurityTokenHandler().WriteToken(token);
     }
 }

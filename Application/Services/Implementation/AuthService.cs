@@ -303,7 +303,6 @@ public class AuthService : IAuthService
         }
 
         WorkspaceMembership? membership = null;
-        Role? role = user.Role;
         string? tenantName = null;
 
         if (user.Role?.IsSuperAdmin == true)
@@ -329,7 +328,18 @@ public class AuthService : IAuthService
         }
         else
         {
+            // DB-11b: "live" here means LeftAt == null (ListForIdentityAsync's own filter) — a
+            // strictly wider set than "candidates" below. An identity with zero rows in this list
+            // has never had (or has had entirely removed) a workspace, distinct from having some
+            // that are merely pending/rejected/disabled.
             var memberships = await _memberships.ListForIdentityAsync(user.Id);
+
+            if (memberships.Count == 0)
+                return Result<LoginResponse>.Failure(
+                    MessageKeys.Auth.NoWorkspace,
+                    new LoginResponse { Status = "no-workspace" }
+                );
+
             var candidates = memberships
                 .Where(m =>
                     m.IsActive && m.ApprovalStatus == ApprovalStatus.Approved && user.IsActive
@@ -348,19 +358,58 @@ public class AuthService : IAuthService
                         MessageKeys.Auth.Rejected,
                         new LoginResponse { Status = "rejected" }
                     );
-                // No workspace at all, or every membership disabled — DB-11b distinguishes
-                // "no-workspace"; for now both surface as "disabled".
                 return Result<LoginResponse>.Failure(
                     MessageKeys.Auth.Disabled,
                     new LoginResponse { Status = "disabled" }
                 );
             }
 
-            // Home wins (the workspace recorded at identity creation); else the earliest joined.
-            membership =
-                candidates.FirstOrDefault(m => m.OwnerId == user.OwnerId)
-                ?? candidates.OrderBy(m => m.JoinedAt).First();
-            role = membership.Role;
+            if (candidates.Count == 1)
+            {
+                membership = candidates[0];
+            }
+            else
+            {
+                // Several live candidates. D11: the widget's projectKey auto-routes to the workspace
+                // that owns that project, so a stakeholder never sees a picker inside a customer's
+                // app. Ambiguous (0 or >1 candidate workspaces match the key) falls through to the
+                // picker below, same as an unknown/absent key.
+                if (!string.IsNullOrWhiteSpace(request.ProjectKey))
+                {
+                    var keyNormalized = request.ProjectKey.Trim().ToLower();
+                    var projectOwnerIds = await _unitOfWork
+                        .Repository<Project>()
+                        .Query()
+                        .IgnoreQueryFilters()
+                        .Where(p => p.DeletedAt == null && p.Key == keyNormalized)
+                        .Select(p => p.OwnerId)
+                        .ToListAsync();
+
+                    var routed = candidates.Where(c => projectOwnerIds.Contains(c.OwnerId)).ToList();
+                    if (routed.Count == 1)
+                        membership = routed[0];
+                }
+
+                if (membership == null)
+                {
+                    // DB-11b §3.1: the picker. The lockout counter is deliberately NOT reset here —
+                    // same as the pending/rejected/disabled returns above, it only resets once a full
+                    // session token is actually issued (below, or in SwitchWorkspaceAsync once a
+                    // workspace is chosen).
+                    var choices = await BuildWorkspaceChoicesAsync(candidates, user.OwnerId);
+                    return Result<LoginResponse>.Failure(
+                        MessageKeys.Auth.ChooseWorkspace,
+                        new LoginResponse
+                        {
+                            Status = "choose-workspace",
+                            Token = _tokenService.IssueSelection(user),
+                            Workspaces = choices,
+                            User = null,
+                        }
+                    );
+                }
+            }
+
             tenantName = await ResolveTenantNameAsync(membership.OwnerId);
         }
 
@@ -373,10 +422,105 @@ public class AuthService : IAuthService
         {
             Status = "ok",
             Token = token,
-            User = UserMapper.ToMeResponse(user, role, tenantName),
+            User = await BuildMeAsync(user, membership, tenantName),
         };
 
         return Result<LoginResponse>.Success(response);
+    }
+
+    /// <summary>
+    /// DB-11b: exchanges a selection token (or an ordinary full token — switching mid-session works
+    /// too) for a full JWT of the chosen membership. Stateless: the old token, if any, keeps working
+    /// until it expires.
+    /// </summary>
+    public async Task<Result<LoginResponse>> SwitchWorkspaceAsync(Guid workspaceId)
+    {
+        if (_currentUser.Id is not Guid publicId)
+            return Result<LoginResponse>.Failure(MessageKeys.Auth.InvalidCredentials);
+
+        var identity = await _memberships.FindIdentityByPublicIdAsync(publicId);
+        if (identity == null || !identity.IsActive)
+            return Result<LoginResponse>.Forbidden(MessageKeys.Auth.NotAMember);
+
+        // Super admins own no workspace (§3.2).
+        if (identity.Role?.IsSuperAdmin == true)
+            return Result<LoginResponse>.Forbidden(MessageKeys.Common.Forbidden);
+
+        var membership = await _memberships.GetMembershipAsync(identity.Id, workspaceId);
+        if (
+            membership == null
+            || !membership.IsActive
+            || membership.ApprovalStatus != ApprovalStatus.Approved
+        )
+            return Result<LoginResponse>.Forbidden(MessageKeys.Auth.NotAMember);
+
+        var tenantName = await ResolveTenantNameAsync(membership.OwnerId);
+        var token = _tokenService.Issue(identity, membership);
+
+        // The lockout counter (per e-mail, R5-59 §12) is only reset once a full session token is
+        // actually issued for this identity — an earlier "choose-workspace" response did not reset
+        // it (see LoginAsync). Switching closes that loop for a login that started as a picker.
+        await _loginLimiter.ResetAsync(EmailNormalizer.NormalizeRequired(identity.Email));
+
+        return Result<LoginResponse>.Success(
+            new LoginResponse
+            {
+                Status = "ok",
+                Token = token,
+                User = await BuildMeAsync(identity, membership, tenantName),
+            }
+        );
+    }
+
+    /// <summary>
+    /// DB-11b: shared by LoginAsync ("ok") and SwitchWorkspaceAsync — the MeResponse plus the current
+    /// workspace id and the full list of live, approved, active memberships (empty for super admins).
+    /// </summary>
+    private async Task<MeResponse> BuildMeAsync(User identity, WorkspaceMembership? membership, string? tenantName)
+    {
+        var role = membership?.Role ?? identity.Role;
+        var response = UserMapper.ToMeResponse(identity, role, tenantName);
+        response.WorkspaceId = membership?.OwnerId;
+
+        if (identity.Role?.IsSuperAdmin != true)
+        {
+            var memberships = await _memberships.ListForIdentityAsync(identity.Id);
+            var candidates = memberships
+                .Where(m => m.IsActive && m.ApprovalStatus == ApprovalStatus.Approved)
+                .ToList();
+            response.Workspaces = await BuildWorkspaceChoicesAsync(candidates, identity.OwnerId);
+        }
+
+        return response;
+    }
+
+    /// <summary>Resolves workspace names in one batch query — same shape as TenantService.ListAsync's
+    /// wsNames.</summary>
+    private async Task<List<WorkspaceChoice>> BuildWorkspaceChoicesAsync(
+        IReadOnlyCollection<WorkspaceMembership> memberships,
+        Guid? homeOwnerId
+    )
+    {
+        if (memberships.Count == 0)
+            return new List<WorkspaceChoice>();
+
+        var workspaceIds = memberships.Select(m => m.OwnerId).Distinct().ToList();
+        var names = await _unitOfWork
+            .Workspaces.IgnoreQueryFilters()
+            .Where(w => workspaceIds.Contains(w.Id))
+            .Select(w => new { w.Id, w.Name })
+            .ToDictionaryAsync(w => w.Id, w => w.Name);
+
+        return memberships
+            .Select(m => new WorkspaceChoice
+            {
+                WorkspaceId = m.OwnerId,
+                Name = names.TryGetValue(m.OwnerId, out var n) ? n : Workspace.PlaceholderName,
+                RoleName = m.Role?.Name ?? string.Empty,
+                IsAdmin = m.Role?.GrantsAdmin ?? false,
+                IsHome = m.OwnerId == homeOwnerId,
+            })
+            .ToList();
     }
 
     public async Task<Result<LoginResponse>> LoginWithApiKeyAsync(LoginWithApiKeyRequest request)
@@ -701,16 +845,15 @@ public class AuthService : IAuthService
         if (user == null)
             return Result<MeResponse>.NotFound(MessageKeys.User.NotFound);
 
-        var role = user.Role;
+        WorkspaceMembership? membership = null;
         string? tenantName = null;
         if (_currentUser.TenantId is Guid tenant)
         {
-            var membership = await _memberships.GetMembershipAsync(user.Id, tenant);
-            role = membership?.Role ?? user.Role;
+            membership = await _memberships.GetMembershipAsync(user.Id, tenant);
             tenantName = await ResolveTenantNameAsync(tenant);
         }
 
-        return Result<MeResponse>.Success(UserMapper.ToMeResponse(user, role, tenantName));
+        return Result<MeResponse>.Success(await BuildMeAsync(user, membership, tenantName));
     }
 
     public async Task<Result<LoginResponse>> LoginWithInviteAsync(string token)

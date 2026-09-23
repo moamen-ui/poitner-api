@@ -32,7 +32,7 @@ public class ChangePasswordTests
         public bool Verify(string p, string h) => h == "h:" + p;
     }
 
-    private sealed class FakeToken : ITokenService { public string Issue(User u, WorkspaceMembership? membership, int? keyScopes = null) => "t"; }
+    private sealed class FakeToken : ITokenService { public string Issue(User u, WorkspaceMembership? membership, int? keyScopes = null) => "t"; public string IssueSelection(User u) => "sel"; }
     private sealed class FakeReset : IResetTokenService
     {
         public string Create(Guid id, Guid stamp) => "r";

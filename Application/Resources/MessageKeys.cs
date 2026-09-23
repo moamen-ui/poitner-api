@@ -15,8 +15,14 @@ public static class MessageKeys
         public const string TokenRequired = "Reset token is required.";
         public const string TooManyAttempts = "Too many failed login attempts. Please try again later.";
 
-        /// <summary>DB-11b: no live workspace membership at all. Harmless until DB-11b's login picker ships.</summary>
+        /// <summary>DB-11b: no live workspace membership at all.</summary>
         public const string NoWorkspace = "Your account is not a member of any workspace.";
+
+        /// <summary>DB-11b: several approved, active memberships and no (or ambiguous) projectKey routing — the client must show the picker.</summary>
+        public const string ChooseWorkspace = "Choose which workspace to open.";
+
+        /// <summary>DB-11b: switch-workspace target is not a live, approved, active membership of the caller.</summary>
+        public const string NotAMember = "You are not an active member of that workspace.";
 
         /// <summary>
         /// GLM A8: a wrong password against an identity that absorbed another (merged, DB-11a) row —

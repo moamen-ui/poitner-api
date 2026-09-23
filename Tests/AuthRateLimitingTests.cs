@@ -57,6 +57,24 @@ public class AuthRateLimitingTests
         Assert.Contains(rateLimits, a => a.PolicyName == "login");
     }
 
+    /// <summary>DB-11b / GLM A5: switch-workspace is the second consumer of the "login" policy (the
+    /// first is login-with-invite). Login itself must stay untouched.</summary>
+    [Fact]
+    public void SwitchWorkspace_HasLoginRateLimit()
+    {
+        var method = typeof(AuthController).GetMethod("SwitchWorkspace");
+        Assert.NotNull(method);
+
+        var rateLimits = method!.GetCustomAttributes<EnableRateLimitingAttribute>(inherit: true).ToList();
+        Assert.Contains(rateLimits, a => a.PolicyName == "login");
+
+        var loginRateLimits = typeof(AuthController)
+            .GetMethod("Login")!
+            .GetCustomAttributes<EnableRateLimitingAttribute>(inherit: true)
+            .ToList();
+        Assert.DoesNotContain(loginRateLimits, a => a.PolicyName == "login");
+    }
+
     [Theory]
     [InlineData("Register")]
     [InlineData("RegisterAdmin")]

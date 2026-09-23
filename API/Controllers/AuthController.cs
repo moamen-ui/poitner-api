@@ -39,6 +39,20 @@ public class AuthController(
         return result.IsSuccess ? Ok(result) : BadRequest(result);
     }
 
+    /// <summary>Opens a session in one of the caller's workspaces. Accepts a full token or the
+    /// 5-minute selection token returned with status "choose-workspace".</summary>
+    [Authorize]
+    [HttpPost("switch-workspace")]
+    [EnableRateLimiting("login")]
+    [ProducesResponseType(typeof(LoginResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(Result), StatusCodes.Status403Forbidden)]
+    public async Task<IActionResult> SwitchWorkspace([FromBody] SwitchWorkspaceRequest request)
+    {
+        var result = await authService.SwitchWorkspaceAsync(request.WorkspaceId);
+        if (result.IsForbidden) return StatusCode(StatusCodes.Status403Forbidden, result);
+        return result.IsSuccess ? Ok(result) : BadRequest(result);
+    }
+
     /// <summary>Exchanges a long-lived personal API key for a normal JWT — an alternative to
     /// POST /login for AI/automation tooling (e.g. skill.md), same response shape.</summary>
     [AllowAnonymous]

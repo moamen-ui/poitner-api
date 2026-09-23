@@ -53,6 +53,7 @@ public class LoginAttemptLimiterTests
     {
         public string Issue(User u, WorkspaceMembership? membership, int? keyScopes = null) =>
             "jwt-for-" + u.Email;
+        public string IssueSelection(User u) => "sel-for-" + u.Email;
     }
 
     private sealed class FakeReset : IResetTokenService

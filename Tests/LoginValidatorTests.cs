@@ -50,4 +50,40 @@ public class LoginValidatorTests
 
         result.ShouldNotHaveValidationErrorFor(x => x.Email);
     }
+
+    /// <summary>DB-11b: ProjectKey is optional (widget-only, D11 auto-routing), but capped at 64
+    /// chars when present — an unknown key is simply ignored, not a length attack surface.</summary>
+    [Fact]
+    public void ProjectKey_Null_ShouldNotHaveValidationError()
+    {
+        var request = new LoginRequest { Email = "a@b.com", Password = "x", ProjectKey = null };
+        var result = _validator.TestValidate(request);
+        result.ShouldNotHaveValidationErrorFor(x => x.ProjectKey);
+    }
+
+    [Fact]
+    public void ProjectKey_OverLength_ShouldHaveValidationError()
+    {
+        var request = new LoginRequest
+        {
+            Email = "a@b.com",
+            Password = "x",
+            ProjectKey = new string('k', 65),
+        };
+        var result = _validator.TestValidate(request);
+        result.ShouldHaveValidationErrorFor(x => x.ProjectKey);
+    }
+
+    [Fact]
+    public void ProjectKey_MaxLength_ShouldNotHaveValidationError()
+    {
+        var request = new LoginRequest
+        {
+            Email = "a@b.com",
+            Password = "x",
+            ProjectKey = new string('k', 64),
+        };
+        var result = _validator.TestValidate(request);
+        result.ShouldNotHaveValidationErrorFor(x => x.ProjectKey);
+    }
 }

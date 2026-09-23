@@ -42,6 +42,7 @@ public class InviteJoinUrlBaseTests
     private sealed class FakeTokenService : ITokenService
     {
         public string Issue(User user, WorkspaceMembership? membership, int? keyScopes = null) => "token-for-" + user.PublicId.ToString("N");
+        public string IssueSelection(User user) => "selection-for-" + user.PublicId.ToString("N");
     }
 
     /// <summary>Settings backed by a dictionary, so the fallback chain is actually exercised.</summary>

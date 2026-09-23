@@ -36,6 +36,7 @@ public class DemoSessionEmailTests
     private sealed class FakeTokenService : ITokenService
     {
         public string Issue(User user, WorkspaceMembership? membership, int? keyScopes = null) => "token-for-" + user.Email;
+        public string IssueSelection(User user) => "selection-for-" + user.Email;
     }
 
     private sealed class FakeSettings : ISettingsService

@@ -10,10 +10,13 @@
 
 | Endpoint | File | Request | Response |
 |---|---|---|---|
-| `POST /api/auth/login` | `API/Controllers/AuthController.cs:16-25` | `LoginRequest { Email, Password }` | `LoginResponse { Status: "ok"\|"pending"\|"rejected"\|"disabled", Token?, User?: MeResponse }` |
+| `POST /api/auth/login` | `API/Controllers/AuthController.cs:16-25` | `LoginRequest { Email, Password, ProjectKey? }` (DB-11b: `ProjectKey` optional, ≤64 chars, widget-only, auto-routes per D11) | `LoginResponse { Status: "ok"\|"choose-workspace"\|"pending"\|"rejected"\|"disabled"\|"no-workspace"\|"locked", Token?, User?: MeResponse, Workspaces?: WorkspaceChoice[] }` (DB-11b: `Workspaces` present only on `"choose-workspace"`, whose `Token` is a 5-minute selection token) |
+| `POST /api/auth/switch-workspace` [Authorize, rate-limited `login`] (DB-11b) | `AuthController.cs` | `SwitchWorkspaceRequest { WorkspaceId: Guid }` | `LoginResponse` (same shape as login `"ok"`); 403 `Result` if not a live/approved/active member of that workspace, or a super admin |
 | `POST /api/auth/login-with-key` | `AuthController.cs:29-37` | `LoginWithApiKeyRequest { ApiKey }` | `LoginResponse` |
 | `POST /api/auth/register` (rate-limited `signup`) | `AuthController.cs:39-48` | `RegisterRequest { Email, Password, DisplayName, RoleId, ProjectKey }` | `LoginResponse` |
-| `GET /api/auth/me` [Authorize] | `AuthController.cs:50-59` | — | `MeResponse { Id: Guid, Email, DisplayName, RoleId, RoleName, IsAdmin, IsSuperAdmin, IsQuickAccess, Language?, Theme?, AddCommentShortcut? }` |
+| `GET /api/auth/me` [Authorize] | `AuthController.cs:50-59` | — | `MeResponse { Id: Guid, Email, DisplayName, RoleId, RoleName, IsAdmin, IsSuperAdmin, IsQuickAccess, Language?, Theme?, AddCommentShortcut?, TenantName?, WorkspaceId?: Guid (DB-11b, null for super admins), Workspaces: WorkspaceChoice[] (DB-11b, every live/approved/active membership, empty for super admins) }` |
+
+`WorkspaceChoice` (DB-11b, `Application/DTOs/Auth/WorkspaceChoice.cs`): `{ WorkspaceId: Guid, Name, RoleName, IsAdmin: bool, IsHome: bool }`.
 | `POST /api/auth/forgot-password`, `reset-password` | `AuthController.cs:61-81` | `{ Email }` / `{ Token, NewPassword }` | always 200 |
 | `POST /api/me/change-password` | `API/Controllers/MeController.cs:14-21` | `{ CurrentPassword, NewPassword }` | — |
 | `GET /api/me/api-key` | `MeController.cs:42-50` | — | `ApiKeyResponse { ApiKey }` |

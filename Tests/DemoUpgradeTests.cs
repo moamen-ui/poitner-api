@@ -44,6 +44,7 @@ public class DemoUpgradeTests
     private sealed class RecordingTokenService : ITokenService
     {
         public User? IssuedFor { get; private set; }
+        public string IssueSelection(User user) => "selection-for-" + user.Email;
         public string Issue(User user, WorkspaceMembership? membership, int? keyScopes = null)
         {
             IssuedFor = user;

@@ -14,5 +14,9 @@ public class LoginValidator : AbstractValidator<LoginRequest>
 
         RuleFor(x => x.Password)
             .NotEmpty();
+
+        RuleFor(x => x.ProjectKey)
+            .MaximumLength(64)
+            .When(x => x.ProjectKey != null);
     }
 }

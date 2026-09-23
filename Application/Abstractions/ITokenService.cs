@@ -16,4 +16,12 @@ public interface ITokenService
     /// logins, and then the claim is omitted entirely.
     /// </param>
     string Issue(User user, WorkspaceMembership? membership, int? keyScopes = null);
+
+    /// <summary>
+    /// DB-11b: issues a 5-minute selection token (claims: <c>sub</c>, <c>email</c>, <c>name</c>,
+    /// <c>stamp</c>, <c>scope = "select_workspace"</c> — no <c>tenant</c>/<c>role_id</c>/<c>role</c>/
+    /// <c>is_admin</c>/<c>is_super_admin</c>/<c>is_quick_access</c>/<c>mstamp</c>) for a caller with
+    /// several live memberships to pick one via <c>POST /api/auth/switch-workspace</c>.
+    /// </summary>
+    string IssueSelection(User user);
 }

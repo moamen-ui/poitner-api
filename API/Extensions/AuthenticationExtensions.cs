@@ -53,102 +53,115 @@ public static class AuthenticationExtensions
                     RoleClaimType = "role",
                 };
 
-                if (validateStamp)
+                // DB-11b / DB-RULES R16: the scope fence must run for EVERY request, independent of
+                // Auth:ValidateSecurityStamp — a bare [Authorize] endpoint would otherwise accept a
+                // 5-minute selection token anywhere. Only the stamp lookup below stays gated.
+                options.Events = new JwtBearerEvents
                 {
-                    options.Events = new JwtBearerEvents
+                    OnTokenValidated = async ctx =>
                     {
-                        OnTokenValidated = async ctx =>
+                        var principal = ctx.Principal;
+
+                        // DB-11b (GLM A6): a scope=select_workspace token is honoured ONLY on the
+                        // exact switch-workspace path — never a prefix/sub-route match.
+                        if (principal?.FindFirst("scope")?.Value == "select_workspace"
+                            && !SelectionScopeFence.Allows(ctx.HttpContext.Request.Path))
                         {
-                            var principal = ctx.Principal;
-                            var sub = principal?.FindFirst(JwtRegisteredClaimNames.Sub)?.Value
-                                      ?? principal?.FindFirst("sub")?.Value;
-                            var stampClaim = principal?.FindFirst("stamp")?.Value;
-                            if (!Guid.TryParse(sub, out var publicId) || !Guid.TryParse(stampClaim, out var tokenStamp))
+                            ctx.Fail("Selection token.");
+                            return;
+                        }
+
+                        if (!validateStamp)
+                            return;
+
+                        var sub = principal?.FindFirst(JwtRegisteredClaimNames.Sub)?.Value
+                                  ?? principal?.FindFirst("sub")?.Value;
+                        var stampClaim = principal?.FindFirst("stamp")?.Value;
+                        if (!Guid.TryParse(sub, out var publicId) || !Guid.TryParse(stampClaim, out var tokenStamp))
+                        {
+                            ctx.Fail("Invalid token.");
+                            return;
+                        }
+
+                        var tenantClaim = principal?.FindFirst("tenant")?.Value;
+                        Guid? tenantId = null;
+                        if (tenantClaim is not null)
+                        {
+                            if (!Guid.TryParse(tenantClaim, out var parsedTenant))
                             {
                                 ctx.Fail("Invalid token.");
                                 return;
                             }
+                            tenantId = parsedTenant;
+                        }
 
-                            var tenantClaim = principal?.FindFirst("tenant")?.Value;
-                            Guid? tenantId = null;
-                            if (tenantClaim is not null)
+                        var mstampClaim = principal?.FindFirst("mstamp")?.Value;
+                        Guid? tokenMstamp = null;
+                        if (mstampClaim is not null && Guid.TryParse(mstampClaim, out var parsedMstamp))
+                        {
+                            tokenMstamp = parsedMstamp;
+                        }
+
+                        var sp = ctx.HttpContext.RequestServices;
+                        var cache = sp.GetRequiredService<IMemoryCache>();
+                        StampValidationState? state;
+                        try
+                        {
+                            // DB-11a / DB-RULES R16: cache key includes tenant (or "-" for super admin).
+                            state = await cache.GetOrCreateAsync($"secstamp:{publicId}:{tenantClaim ?? "-"}", async entry =>
                             {
-                                if (!Guid.TryParse(tenantClaim, out var parsedTenant))
-                                {
-                                    ctx.Fail("Invalid token.");
-                                    return;
-                                }
-                                tenantId = parsedTenant;
-                            }
+                                entry.AbsoluteExpirationRelativeToNow = TimeSpan.FromSeconds(60);
+                                var db = sp.GetRequiredService<AppDbContext>();
 
-                            var mstampClaim = principal?.FindFirst("mstamp")?.Value;
-                            Guid? tokenMstamp = null;
-                            if (mstampClaim is not null && Guid.TryParse(mstampClaim, out var parsedMstamp))
-                            {
-                                tokenMstamp = parsedMstamp;
-                            }
+                                var user = await db.Users
+                                    .IgnoreQueryFilters()
+                                    .AsNoTracking()
+                                    .Where(u => u.PublicId == publicId && u.DeletedAt == null)
+                                    .Select(u => new { u.Id, u.SecurityStamp })
+                                    .FirstOrDefaultAsync();
 
-                            var sp = ctx.HttpContext.RequestServices;
-                            var cache = sp.GetRequiredService<IMemoryCache>();
-                            StampValidationState? state;
-                            try
-                            {
-                                // DB-11a / DB-RULES R16: cache key includes tenant (or "-" for super admin).
-                                state = await cache.GetOrCreateAsync($"secstamp:{publicId}:{tenantClaim ?? "-"}", async entry =>
-                                {
-                                    entry.AbsoluteExpirationRelativeToNow = TimeSpan.FromSeconds(60);
-                                    var db = sp.GetRequiredService<AppDbContext>();
+                                if (user is null)
+                                    return new StampValidationState(null, null, false);
 
-                                    var user = await db.Users
-                                        .IgnoreQueryFilters()
-                                        .AsNoTracking()
-                                        .Where(u => u.PublicId == publicId && u.DeletedAt == null)
-                                        .Select(u => new { u.Id, u.SecurityStamp })
-                                        .FirstOrDefaultAsync();
+                                // Super-admin tokens (no tenant) skip membership check (DB-RULES R16).
+                                if (tenantId is null)
+                                    return new StampValidationState(user.SecurityStamp, null, false);
 
-                                    if (user is null)
-                                        return new StampValidationState(null, null, false);
+                                var membership = await db.WorkspaceMemberships
+                                    .IgnoreQueryFilters()
+                                    .AsNoTracking()
+                                    .Where(m => m.UserId == user.Id && m.OwnerId == tenantId.Value && m.DeletedAt == null && m.LeftAt == null)
+                                    .Select(m => new
+                                    {
+                                        m.SecurityStamp,
+                                        Live = m.IsActive && m.ApprovalStatus == ApprovalStatus.Approved
+                                    })
+                                    .FirstOrDefaultAsync();
 
-                                    // Super-admin tokens (no tenant) skip membership check (DB-RULES R16).
-                                    if (tenantId is null)
-                                        return new StampValidationState(user.SecurityStamp, null, false);
+                                return new StampValidationState(
+                                    user.SecurityStamp,
+                                    membership?.SecurityStamp,
+                                    membership?.Live ?? false
+                                );
+                            });
+                        }
+                        catch (Exception ex)
+                        {
+                            // Fail OPEN on a transient lookup error: the JWT signature+expiry already
+                            // authenticated the caller, so a DB blip must not 500 every authenticated
+                            // request. Revocation is best-effort (≤60s window); allow + log this one.
+                            sp.GetService<ILoggerFactory>()?
+                                .CreateLogger("SecurityStampValidation")
+                                .LogWarning(ex, "Security-stamp lookup failed; allowing request (fail-open).");
+                            return;
+                        }
 
-                                    var membership = await db.WorkspaceMemberships
-                                        .IgnoreQueryFilters()
-                                        .AsNoTracking()
-                                        .Where(m => m.UserId == user.Id && m.OwnerId == tenantId.Value && m.DeletedAt == null && m.LeftAt == null)
-                                        .Select(m => new
-                                        {
-                                            m.SecurityStamp,
-                                            Live = m.IsActive && m.ApprovalStatus == ApprovalStatus.Approved
-                                        })
-                                        .FirstOrDefaultAsync();
-
-                                    return new StampValidationState(
-                                        user.SecurityStamp,
-                                        membership?.SecurityStamp,
-                                        membership?.Live ?? false
-                                    );
-                                });
-                            }
-                            catch (Exception ex)
-                            {
-                                // Fail OPEN on a transient lookup error: the JWT signature+expiry already
-                                // authenticated the caller, so a DB blip must not 500 every authenticated
-                                // request. Revocation is best-effort (≤60s window); allow + log this one.
-                                sp.GetService<ILoggerFactory>()?
-                                    .CreateLogger("SecurityStampValidation")
-                                    .LogWarning(ex, "Security-stamp lookup failed; allowing request (fail-open).");
-                                return;
-                            }
-
-                            // DB-RULES R16: reject when identity stamp mismatches, or when a tenant token's
-                            // membership is missing, inactive, unapproved, or membership stamp mismatches.
-                            if (!StampValidator.Validate(tokenStamp, tokenMstamp, tenantId is not null, state))
-                                ctx.Fail("Token has been revoked.");
-                        },
-                    };
-                }
+                        // DB-RULES R16: reject when identity stamp mismatches, or when a tenant token's
+                        // membership is missing, inactive, unapproved, or membership stamp mismatches.
+                        if (!StampValidator.Validate(tokenStamp, tokenMstamp, tenantId is not null, state))
+                            ctx.Fail("Token has been revoked.");
+                    },
+                };
             });
 
         // Admin access is capability-based (the user's role grants admin), not tied to a role

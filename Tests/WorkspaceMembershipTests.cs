@@ -52,6 +52,7 @@ public class WorkspaceMembershipTests
     {
         public string Issue(User user, WorkspaceMembership? membership, int? keyScopes = null) =>
             "token-for-" + user.PublicId.ToString("N");
+        public string IssueSelection(User user) => "selection-for-" + user.PublicId.ToString("N");
     }
 
     private sealed class FakeResetTokenService : IResetTokenService
