@@ -24,6 +24,14 @@ public class RequestIdMiddleware(RequestDelegate next)
 {
     public const string HeaderName = "X-Request-Id";
 
+    /// <summary>
+    /// DB-12: the resolved request id on <c>HttpContext.Items</c>, so downstream components in
+    /// this request (the audit writer, which stamps it on every audit row) can read it without
+    /// re-parsing headers. Infrastructure's AuditWriter repeats the key string ("RequestId") — the
+    /// two must stay equal (Infrastructure cannot reference the API assembly).
+    /// </summary>
+    public const string ItemKey = "RequestId";
+
     // GLM review F6 — only accept a client-supplied id that is a short, plain token; anything
     // else (empty, oversized, or carrying characters a JSON-log consumer wouldn't expect) is
     // replaced with a freshly generated one rather than echoed/logged verbatim.
@@ -41,6 +49,7 @@ public class RequestIdMiddleware(RequestDelegate next)
                 : Guid.NewGuid().ToString("N");
 
         context.Response.Headers[HeaderName] = requestId;
+        context.Items[ItemKey] = requestId;
 
         using (logger.BeginScope(new RequestLogScope(context, requestId)))
         {

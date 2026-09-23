@@ -304,6 +304,25 @@ public class WorkspaceTests
 
     // ── 4. HardDeleteOrder_CoversEveryOwnerCarryingEntity (R8.5 reflection enforcer) ────
 
+    // DB-RULES R8.8: operator/analytics tables exempt from HardDeleteOrder BY NAME — their rows
+    // survive the workspace (FK SET NULL). DB-12 appends AuditEvent; DB-13 appends
+    // ImpersonationSession, DB-15 UsageDaily. The fact below pins the list.
+    internal static readonly Type[] OperatorTableExclusions =
+    {
+        typeof(Workspace),
+        typeof(UsageEvent),
+        typeof(AuditEvent), // operator record: FK SET NULL, survives the workspace (DB-12, R8.8)
+    };
+
+    [Fact]
+    public void HardDeleteOrder_Exclusions_AreExactlyTheNamedOperatorTables()
+    {
+        Assert.Equal(
+            new[] { typeof(Workspace), typeof(UsageEvent), typeof(AuditEvent) },
+            OperatorTableExclusions
+        );
+    }
+
     [Fact]
     public void HardDeleteOrder_CoversEveryOwnerCarryingEntity()
     {
@@ -313,8 +332,7 @@ public class WorkspaceTests
                 t.IsClass
                 && !t.IsAbstract
                 && t.GetProperty("OwnerId") != null
-                && t != typeof(Workspace)
-                && t != typeof(UsageEvent)
+                && !OperatorTableExclusions.Contains(t)
             )
             .ToList();
 

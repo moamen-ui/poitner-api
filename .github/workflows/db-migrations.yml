@@ -63,5 +63,15 @@ jobs:
           PGPASSWORD=pointer psql -h localhost -U pointer -d pointer -c "INSERT INTO users (public_id, email, password_hash, display_name, role_id, is_active, approval_status, security_stamp, is_demo, \"DemoExtended\", created_at, created_by) VALUES (gen_random_uuid(), 'ci-dup@example.com', 'x', 'a', $rid, true, 1, gen_random_uuid(), false, false, now(), '00000000-0000-0000-0000-000000000000');"
           err=$(PGPASSWORD=pointer psql -h localhost -U pointer -d pointer -v ON_ERROR_STOP=0 -c "INSERT INTO users (public_id, email, password_hash, display_name, role_id, is_active, approval_status, security_stamp, is_demo, \"DemoExtended\", created_at, created_by) VALUES (gen_random_uuid(), 'CI-Dup@Example.com', 'x', 'b', $rid, true, 1, gen_random_uuid(), false, false, now(), '00000000-0000-0000-0000-000000000000');" 2>&1)
           echo "$err" | grep -q "ux_users_email_live"
+      - name: audit_events is append-only (DB-12 trigger)
+        run: |
+          PGPASSWORD=pointer psql -h localhost -U pointer -d pointer -v ON_ERROR_STOP=1 -c "INSERT INTO audit_events (occurred_at, actor_kind, action, target_type, \"before\", \"after\") VALUES (now(), 3, 'ci.probe', 'settings', '{}', '{}');"
+          if PGPASSWORD=pointer psql -h localhost -U pointer -d pointer -v ON_ERROR_STOP=0 -c "UPDATE audit_events SET action = 'x' WHERE action = 'ci.probe'" 2>/tmp/db12-upd.err; then echo "UPDATE succeeded — append-only trigger missing"; exit 1; fi
+          grep -q "append-only" /tmp/db12-upd.err
+          if PGPASSWORD=pointer psql -h localhost -U pointer -d pointer -v ON_ERROR_STOP=0 -c "DELETE FROM audit_events WHERE action = 'ci.probe'" 2>/tmp/db12-del.err; then echo "DELETE succeeded — append-only trigger missing"; exit 1; fi
+          grep -q "append-only" /tmp/db12-del.err
+          if PGPASSWORD=pointer psql -h localhost -U pointer -d pointer -v ON_ERROR_STOP=0 -c "TRUNCATE audit_events" 2>/tmp/db12-trc.err; then echo "TRUNCATE succeeded — append-only trigger missing"; exit 1; fi
+          grep -q "append-only" /tmp/db12-trc.err
+          echo "append-only trigger rejects UPDATE, DELETE and TRUNCATE"
       - name: Migration guard tests (DB-02)
         run: dotnet test --no-build --configuration Release --filter "FullyQualifiedName~MigrationSafetyTests"

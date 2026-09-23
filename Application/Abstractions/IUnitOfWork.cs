@@ -10,6 +10,7 @@ public interface IUnitOfWork
     DbSet<UsageEvent> UsageEvents { get; }
     DbSet<Workspace> Workspaces { get; }
     DbSet<UserAlias> UserAliases { get; }
+    DbSet<AuditEvent> AuditEvents { get; }
     Task<int> SaveChangesAsync();
 
     /// <summary>

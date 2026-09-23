@@ -71,6 +71,7 @@ public class AppDbContext(
     public DbSet<Workspace> Workspaces => Set<Workspace>();
     public DbSet<WorkspaceMembership> WorkspaceMemberships => Set<WorkspaceMembership>();
     public DbSet<UserAlias> UserAliases => Set<UserAlias>();
+    public DbSet<AuditEvent> AuditEvents => Set<AuditEvent>();
 
     protected override void OnModelCreating(ModelBuilder b)
     {
@@ -275,6 +276,15 @@ public class AppDbContext(
                 || (currentUser.TenantId != null && e.OwnerId == currentUser.TenantId)
                 || (currentUser.TenantId == null && !strict && e.OwnerId == null)
             );
+        // DB-12: audit rows are metadata; super admin sees all (DB-13 does not narrow this).
+        // Strict-own like UsageEvent — rows with owner_id IS NULL (operator-level, detached
+        // workspaces) are visible only to super admins in production (strict=true).
+        b.Entity<AuditEvent>()
+            .HasQueryFilter(e =>
+                currentUser.IsSuperAdmin
+                || (currentUser.TenantId != null && e.OwnerId == currentUser.TenantId)
+                || (currentUser.TenantId == null && !strict && e.OwnerId == null)
+            );
         b.Entity<Notification>()
             .HasQueryFilter(e =>
                 currentUser.IsSuperAdmin
@@ -322,6 +332,10 @@ public class AppDbContext(
 
     public override Task<int> SaveChangesAsync(CancellationToken ct = default)
     {
+        // DB-12: audit_events is append-only. The Postgres trigger is the authority; this is the early, provider-agnostic error.
+        if (ChangeTracker.Entries<AuditEvent>().Any(e => e.State is EntityState.Modified or EntityState.Deleted))
+            throw new InvalidOperationException("audit_events is append-only (DB-12): update/delete is not allowed.");
+
         var now = DateTime.UtcNow;
         var uid = currentUser.Id ?? Guid.Empty;
         foreach (var e in ChangeTracker.Entries<BaseEntity>())

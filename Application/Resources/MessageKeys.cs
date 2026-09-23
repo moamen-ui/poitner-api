@@ -257,6 +257,11 @@ public static class MessageKeys
         public const string NotFound = "Resource not found.";
     }
 
+    public static class Audit
+    {
+        public const string PageSizeTooLarge = "Page size must be 200 or fewer.";
+    }
+
     public static class AiRule
     {
         public const string NotFound = "AI rule not found.";

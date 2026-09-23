@@ -43,6 +43,8 @@ public static class DependencyInjection
         s.AddScoped<IFileStorage, LocalFileStorage>();
         s.AddSingleton<IUploadSigner, UploadSigner>();
         s.AddSingleton<IResetTokenService, ResetTokenService>();
+        // DB-12: the append-only audit writer — manual DI (single instance seam), like ResetTokenService above.
+        s.AddScoped<IAuditWriter, Audit.AuditWriter>();
         s.Configure<LoginLockoutOptions>(c.GetSection("Auth:LoginLockout"));
         s.AddSingleton<ILoginAttemptLimiter, LoginAttemptLimiter>();
         // Email:Provider=smtp (local dev only — see local-mail-server/) swaps in a plain-SMTP
