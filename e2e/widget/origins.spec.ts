@@ -111,10 +111,19 @@ test('R1-05-06 — origin-403 widget toast', async ({ page }) => {
 
   // Expected 4: Allowed under localhost exemption for Local env -> success toast "Comment added",
   // and popover closes (host is emptied).
+  //
+  // Read `.fbk-toast-message`, NOT the whole `.fbk-toast` (unlike the danger toast above): a
+  // successful add now renders an "Undo" action button in the same toast (element.ts's toast()
+  // call at the comment-create success path passes an actionLabel/onAction so the new comment can
+  // be undone), so the toast's own textContent is "Comment addedUndo" — the message span is what
+  // element.ts/templates.ts's toast() actually reserves for the message text.
   await expect
     .poll(
       async () => {
-        const text = await widget.locator('.fbk-toast.fbk-toast-success').textContent().catch(() => null);
+        const text = await widget
+          .locator('.fbk-toast.fbk-toast-success .fbk-toast-message')
+          .textContent()
+          .catch(() => null);
         return text?.trim() ?? null;
       },
       {

@@ -96,5 +96,15 @@ export async function switchEnvironment(page: Page, value: string): Promise<void
   await widget.locator('#fbk-env').selectOption(value);
 
   if (!filtersWereOpen) await widget.locator('#fbk-filters-toggle').click();
-  if (!sidebarWasOpen) await widget.locator('#fbk-toggle').click();
+  // Close via #fbk-close, NOT by re-clicking #fbk-toggle. The sidebar is `position: fixed` over
+  // the same bottom-right corner as the toolbar, at z-index 2147483646 — deliberately above the
+  // toolbar's own z-toolbar layer (2147483000; see _toolbar.scss's "sits BELOW every overlay"
+  // comment) — so once `.open`, the sidebar's own body (#fbk-list) visually and interactively
+  // covers #fbk-toggle. A second click on that locator then hangs for the full test timeout with
+  // Playwright reporting "<#fbk-list> ... subtree intercepts pointer events", which is exactly why
+  // the template gives the sidebar its own always-reachable close control (the chevron arrow,
+  // #fbk-close, peeking out to the side via `translateX(-85%)`) instead of relying on the toggle
+  // being clickable through its own overlay. This was reproduced for real on an isolated stack —
+  // it hit every one of R1-05-06 / R2-06-01 / R2-06-04 / both widget.spec.ts flows the same way.
+  if (!sidebarWasOpen) await widget.locator('#fbk-close').click();
 }
