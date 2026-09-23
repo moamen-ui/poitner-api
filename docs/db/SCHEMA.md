@@ -40,8 +40,13 @@
 > `usage_events.type` values (`demo_started`, `workspace_converted`, `widget_installed`) and
 > `ux_usage_events_widget_installed_per_project` partial unique index live.
 >
-> Still planned: all of DB-11a…DB-15 are now shipped and live in production (75 migrations). R5-61
-> operator MFA is implemented on branch `feat/r5-61-operator-mfa` (rebased) with reviews in progress.
+> **DB-16 deployed 2026-09-23 ~18:50 UTC** (ordinary): `comments.screenshot_purged_at` (nullable), purge in dry-run.
+> **DB-17 deployed 2026-09-23 19:18 UTC** (contract `pre-db17`): `workspaces.demo_expires_at`, `demo_extended_at`,
+> `demo_converted_at`, `demo_expiry_warned_at`, `demo_ttl_hours_override`, `demo_comment_cap_override` + partial index
+> `ix_workspaces_demo_expires_at`; backfill tagged live demos only. `users.expires_at` / `DemoExtended` / overrides are
+> still dual-written and are dropped by DB-11e after one release.
+>
+> All of DB-11a…DB-17, R5-61 and R5-62 are shipped and live in production (79 migrations).
 >
 > **R5-61 implemented on branch `feat/r5-61-operator-mfa`, not yet merged/deployed** (`users.totp_secret`,
 > `totp_enabled_at`, `totp_last_step` + new table `user_recovery_codes`; migration `AddOperatorMfa`,
