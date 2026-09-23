@@ -27,8 +27,8 @@ export const TENANT_OWNER = {
 // see seed.mjs for where this substitution is made.
 export const USERS = {
   deputy: { email: 'deputy@example.com', password: 'DeputyPass1!', displayName: 'E2E Admin Deputy', roleName: 'Workspace Admin Deputy' },
-  developer: { email: 'dev@example.com', password: 'DevPass1!', displayName: 'E2E Developer', roleName: 'Developer' },
-  pm: { email: 'pm@example.com', password: 'PmPass1!', displayName: 'E2E PM', roleName: 'PM' },
+  developer: { email: 'dev@example.com', password: 'DevPass1!e2e', displayName: 'E2E Developer', roleName: 'Developer' },
+  pm: { email: 'pm@example.com', password: 'PmPass1!e2e', displayName: 'E2E PM', roleName: 'PM' },
   tester: { email: 'tester@example.com', password: 'TesterPass1!', displayName: 'E2E Tester', roleName: 'Tester' },
 };
 
