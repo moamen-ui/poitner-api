@@ -5,6 +5,14 @@ namespace Pointer.API.Extensions;
 
 public static class RateLimitingExtensions
 {
+    /// <summary>
+    /// Segment length (seconds) shared by every sliding-window policy ("comments", "builds"):
+    /// both are Window = 60s / SegmentsPerWindow = 6. Used only as the OnRejected Retry-After
+    /// fallback for those two policies — see the comment there for why a fallback is needed at
+    /// all (the BCL sliding-window limiter's own metadata is not usable at QueueLimit=0).
+    /// </summary>
+    private const int SlidingWindowSegmentSeconds = 10;
+
     public static IServiceCollection AddApiRateLimiting(this IServiceCollection services, IConfiguration? configuration = null) =>
         services.AddRateLimiter(o => Configure(o, configuration));
 
@@ -32,8 +40,26 @@ public static class RateLimitingExtensions
         o.OnRejected = (ctx, _) =>
         {
             if (ctx.Lease.TryGetMetadata(MetadataName.RetryAfter, out var retryAfter))
+            {
                 ctx.HttpContext.Response.Headers.RetryAfter =
                     ((int)Math.Ceiling(retryAfter.TotalSeconds)).ToString();
+            }
+            else
+            {
+                // System.Threading.RateLimiting's SlidingWindowRateLimiter never attaches
+                // RetryAfter metadata to a rejected lease when QueueLimit is 0 (verified directly:
+                // FixedWindowRateLimiter DOES supply it under the identical QueueLimit=0
+                // configuration our other policies use — this is specific to the sliding-window
+                // limiter, not to "any limiter with no queue"). "comments"/"builds" are the only
+                // policies built on GetSlidingWindowLimiter, so without this fallback their 429s
+                // ship with no Retry-After header at all, silently, while every other policy's
+                // works. Fall back to the segment length — the shortest time after which at least
+                // one permit can free up, and a safe (if slightly conservative) lower bound.
+                var policyName = ctx.HttpContext.GetEndpoint()?.Metadata
+                    .GetMetadata<EnableRateLimitingAttribute>()?.PolicyName;
+                if (policyName is "comments" or "builds")
+                    ctx.HttpContext.Response.Headers.RetryAfter = SlidingWindowSegmentSeconds.ToString();
+            }
             return ValueTask.CompletedTask;
         };
 

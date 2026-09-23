@@ -1,6 +1,8 @@
 using System.Reflection;
 using System.Threading.RateLimiting;
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.RateLimiting;
+using Microsoft.AspNetCore.Routing;
 using Pointer.API.Controllers;
 using Pointer.API.Extensions;
 using Xunit;
@@ -121,5 +123,57 @@ public class CommentRateLimitingTests
         var b = RateLimitingExtensions.CommentsPartition(CtxFor("user-b")).PartitionKey;
 
         Assert.NotEqual(a, b);
+    }
+
+    /// <summary>
+    /// R1-05-05 (e2e "comment-burst-429") failed on the isolated local gate 2026-09-23 the first
+    /// time it was ever actually exercised in a full run: the 31st comment correctly returned 429,
+    /// but with no Retry-After header at all — a `null` where the spec expects a numeric string.
+    /// AuthRateLimitingTests.RateLimiter_OnRejected_SetsRetryAfterSeconds only proves OnRejected
+    /// forwards metadata a lease HAS; it hand-builds a fake lease that always supplies it, so it
+    /// never caught that a REAL rejected lease from System.Threading.RateLimiting's
+    /// SlidingWindowRateLimiter (used by both "comments" and "builds") carries no usable
+    /// RetryAfter metadata at QueueLimit=0 — verified directly: FixedWindowRateLimiter (every other
+    /// policy) DOES supply it under the identical QueueLimit=0 configuration; this is specific to
+    /// the sliding-window limiter. This test exhausts a REAL comments-policy limiter (not a mock)
+    /// and drives it through the actual OnRejected callback with endpoint metadata identifying the
+    /// "comments" policy, the same information the middleware gives it in production.
+    /// </summary>
+    [Fact]
+    public async Task CommentsPolicy_OnRejected_SetsRetryAfter_EvenThoughTheRealLeaseHasNoMetadata()
+    {
+        var o = new RateLimiterOptions();
+        RateLimitingExtensions.Configure(o);
+        Assert.NotNull(o.OnRejected);
+
+        var ctx = new DefaultHttpContext();
+        ctx.User = new System.Security.Claims.ClaimsPrincipal(
+            new System.Security.Claims.ClaimsIdentity(
+                new[] { new System.Security.Claims.Claim("sub", "burst-user") }, "test"));
+        ctx.SetEndpoint(new Endpoint(
+            requestDelegate: null,
+            metadata: new EndpointMetadataCollection(new EnableRateLimitingAttribute("comments")),
+            displayName: "test"));
+
+        var partition = RateLimitingExtensions.CommentsPartition(ctx);
+        var limiter = partition.Factory(partition.PartitionKey);
+
+        RateLimitLease? rejected = null;
+        for (var i = 0; i < 31; i++)
+        {
+            var lease = await limiter.AcquireAsync(1);
+            if (!lease.IsAcquired) { rejected = lease; break; }
+        }
+        Assert.NotNull(rejected);
+
+        // The gap this regression guards: a real sliding-window rejection carries no RetryAfter
+        // metadata at all under this configuration.
+        Assert.False(rejected!.TryGetMetadata(MetadataName.RetryAfter, out _));
+
+        await o.OnRejected!(new OnRejectedContext { HttpContext = ctx, Lease = rejected }, CancellationToken.None);
+
+        var retryAfter = ctx.Response.Headers.RetryAfter.ToString();
+        Assert.Matches("^\\d+$", retryAfter);
+        Assert.True(int.Parse(retryAfter) >= 1);
     }
 }
