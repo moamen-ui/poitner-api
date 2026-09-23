@@ -34,17 +34,15 @@ public static class AuthenticationExtensions
 
         // R5-62: current + previous signing keys, each validated (>= 32 bytes) and selected by `kid`.
         var allKeys = ResolveAllKeys(config);
-        var activeKeyId = config["JWT:ActiveKeyId"];
-        if (string.IsNullOrEmpty(activeKeyId))
-            activeKeyId = "k0";
+        // Review fix (finding 3): normalisation lives in ONE shared helper — see ActiveKeyIdResolver.
+        var activeKeyId = ActiveKeyIdResolver.Normalize(config["JWT:ActiveKeyId"]);
         if (!allKeys.Any(k => k.Id == activeKeyId))
             throw new InvalidOperationException(
                 $"JWT:ActiveKeyId '{activeKeyId}' is not present in JWT:Keys."
             );
-        // Log only the key ids on boot (never the secrets) so an operator can confirm a rotation took effect.
-        Console.WriteLine(
-            $"[JWT] active kid={activeKeyId}; configured kids=[{string.Join(", ", allKeys.Select(k => k.Id))}]"
-        );
+        // Review fix (finding 6): the boot line is logged via ILogger from Program.cs, after the host
+        // is built (DescribeKeyRing below) — no ILoggerFactory exists yet at this ConfigureServices
+        // stage, and Console.WriteLine bypasses the app's structured logging/log level entirely.
 
         // H1 / DB-11a / DB-RULES R16: session-invalidation stamp check. Default OFF → behavior identical
         // to before (stateless JWT). When on, checks the token's identity stamp and, when tenant is present,
@@ -65,6 +63,11 @@ public static class AuthenticationExtensions
                     ValidateAudience = true,
                     ValidAudience = config["JWT:Issuer"],
                     ValidateLifetime = true,
+                    // Review fix (finding 4): pin the accepted algorithm. Without this, a
+                    // `SymmetricSecurityKey` accepts whatever HMAC variant the token header claims
+                    // (or, combined with a misconfigured signer, an algorithm-confusion attack) —
+                    // this API only ever signs with HS256, so only HS256 is ever valid.
+                    ValidAlgorithms = new[] { SecurityAlgorithms.HmacSha256 },
                     // R5-62: current + previous key(s), selected by `kid`. When the incoming token
                     // has no `kid` (pre-rotation tokens issued before this deploy), the token library
                     // falls back to trying every key in this list until one validates the signature.
@@ -256,6 +259,26 @@ public static class AuthenticationExtensions
             };
         }
 
+        // Review fix (finding 5): ResolveAllKeys previously validated only Secret length — an entry
+        // with a Secret but a blank Id (or two entries sharing an Id) silently produced a broken or
+        // ambiguous key ring (an unselectable key, or `kid`-based lookup picking whichever duplicate
+        // happens to match first). Fail fast at startup instead.
+        var blankId = keys.FirstOrDefault(k => string.IsNullOrWhiteSpace(k.Id));
+        if (blankId is not null)
+            throw new InvalidOperationException(
+                "A JWT:Keys entry has a Secret configured but no Id (or a blank Id)."
+            );
+
+        var duplicateIds = keys
+            .GroupBy(k => k.Id, StringComparer.Ordinal)
+            .Where(g => g.Count() > 1)
+            .Select(g => g.Key)
+            .ToList();
+        if (duplicateIds.Count > 0)
+            throw new InvalidOperationException(
+                $"JWT:Keys has duplicate id(s): {string.Join(", ", duplicateIds)}."
+            );
+
         foreach (var k in keys)
         {
             var bytes = System.Text.Encoding.UTF8.GetBytes(k.Secret);
@@ -266,5 +289,14 @@ public static class AuthenticationExtensions
         }
 
         return keys;
+    }
+
+    // Review fix (finding 6): the boot-time key-ring summary, logged from Program.cs via ILogger
+    // after the host is built (never Console.WriteLine, never the secrets — ids only).
+    public static string DescribeKeyRing(IConfiguration config)
+    {
+        var allKeys = ResolveAllKeys(config);
+        var activeKeyId = ActiveKeyIdResolver.Normalize(config["JWT:ActiveKeyId"]);
+        return $"active kid={activeKeyId}; configured kids=[{string.Join(", ", allKeys.Select(k => k.Id))}]";
     }
 }

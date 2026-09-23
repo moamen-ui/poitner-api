@@ -44,13 +44,17 @@ services:
       JWT__SigningKey: "${JWT_SIGNING_KEY}"
       JWT__Issuer: "pointer-api"
       JWT__LifetimeHours: "12"
-      # R5-62: two-key rotation window (kid header). k0's secret is always JWT_SIGNING_KEY above —
-      # no new var needed for it. k1 is the new key being rotated in; unset (empty) by default, which
+      # R5-62 (review fix): two-key rotation window (kid header). JWT_SIGNING_KEY is ALSO the root
+      # secret for API-key encryption, password-reset tokens, signed upload URLs and audit IP hashing
+      # (ApiKeyProtector/ResetTokenService/UploadSigner/AuditWriter all read JWT:SigningKey directly)
+      # — it must NEVER be repointed. Slot 0's secret defaults to JWT_SIGNING_KEY but can now be
+      # rotated independently via JWT_KEY_0_ID/JWT_KEY_0_SECRET, without ever touching
+      # JWT_SIGNING_KEY. k1 is the new key being rotated in; unset (empty) by default, which
       # ResolveAllKeys skips so it never trips the >= 32-byte startup check. See DEPLOY.md § JWT key
       # rotation for the runbook.
       JWT__ActiveKeyId: "${JWT_ACTIVE_KEY_ID:-k0}"
-      JWT__Keys__0__Id: "k0"
-      JWT__Keys__0__Secret: "${JWT_SIGNING_KEY}"
+      JWT__Keys__0__Id: "${JWT_KEY_0_ID:-k0}"
+      JWT__Keys__0__Secret: "${JWT_KEY_0_SECRET:-${JWT_SIGNING_KEY}}"
       JWT__Keys__1__Id: "${JWT_KEY_1_ID:-}"
       JWT__Keys__1__Secret: "${JWT_KEY_1_SECRET:-}"
       ADMIN__EMAIL: "${ADMIN_EMAIL}"

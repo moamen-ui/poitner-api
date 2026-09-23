@@ -30,6 +30,18 @@ public class JwtKeyEntry
     public string Secret { get; set; } = "";
 }
 
+// R5-62 (review fix, finding 3): the "" → "k0" normalisation for JWT:ActiveKeyId must happen in
+// exactly one place, used by both the signing path (JwtTokenService.ResolveActiveKey below) and the
+// validation path (AuthenticationExtensions.AddJwtAuth) — they had drifted, so an empty ActiveKeyId
+// worked at startup (which normalised it) but 500'd on every login (ResolveActiveKey did not).
+public static class ActiveKeyIdResolver
+{
+    public const string DefaultKeyId = "k0";
+
+    public static string Normalize(string? activeKeyId) =>
+        string.IsNullOrEmpty(activeKeyId) ? DefaultKeyId : activeKeyId;
+}
+
 public class JwtTokenService(IOptions<JwtOptions> opts) : ITokenService
 {
     // R5-62: resolves the key new tokens are signed with. Legacy config (no JWT:Keys) always
@@ -39,12 +51,13 @@ public class JwtTokenService(IOptions<JwtOptions> opts) : ITokenService
     {
         if (o.Keys is { Count: > 0 })
         {
+            var activeKeyId = ActiveKeyIdResolver.Normalize(o.ActiveKeyId);
             var entry = o.Keys.FirstOrDefault(k =>
-                k.Id == o.ActiveKeyId && !string.IsNullOrEmpty(k.Secret)
+                k.Id == activeKeyId && !string.IsNullOrEmpty(k.Secret)
             );
             if (entry is null)
                 throw new InvalidOperationException(
-                    $"JWT:ActiveKeyId '{o.ActiveKeyId}' is not present in JWT:Keys."
+                    $"JWT:ActiveKeyId '{activeKeyId}' is not present in JWT:Keys."
                 );
             return entry;
         }

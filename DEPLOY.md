@@ -264,12 +264,23 @@ Then bump `@moamen-ui/pointer-react` in each consumer (e.g. the dashboard) to th
 
 ### JWT key rotation (R5-62)
 
-Rotating `JWT_SIGNING_KEY` used to invalidate every outstanding token — a global logout for every
+> **`JWT_SIGNING_KEY` is also the root secret for API-key encryption, password-reset tokens, signed
+> upload URLs and audit IP hashing** (`ApiKeyProtector`, `ResetTokenService`, `UploadSigner`,
+> `AuditWriter` all read `JWT:SigningKey` directly when their own dedicated key is unset — production
+> never sets `Auth:ApiKeyEncryptionKey`, so it always falls into this case). **Never change
+> `JWT_SIGNING_KEY`.** Rotate JWT signing keys through the `JWT_KEY_0_*` / `JWT_KEY_1_*` slots and
+> `JWT_ACTIVE_KEY_ID` only — never by repointing `JWT_SIGNING_KEY` itself. (Setting a dedicated
+> `Auth__ApiKeyEncryptionKey` later, to fully decouple API-key encryption from the JWT secret,
+> requires a re-encryption migration for existing stored API keys — out of scope here.)
+
+Rotating a JWT signing key used to invalidate every outstanding token — a global logout for every
 user and every CLI session. Tokens now carry a `kid` (key id) header and the API validates against
-every configured key, so a rotation is a config change + redeploy with zero user impact:
+every configured key, so a rotation is a config change + redeploy with zero user impact. A rotation
+only ever edits `JWT_KEY_0_*`, `JWT_KEY_1_*` and `JWT_ACTIVE_KEY_ID` in `.env.prod` — `JWT_SIGNING_KEY`
+is never touched:
 
 1. Generate a new key: `openssl rand -hex 32`
-2. Add it to `.env.prod` (`JWT_SIGNING_KEY` — k0's secret — stays as-is):
+2. Add it to `.env.prod` as the new key-in-waiting (slot 1):
    ```
    JWT_KEY_1_ID=k1
    JWT_KEY_1_SECRET=<new key>
@@ -279,12 +290,19 @@ every configured key, so a rotation is a config change + redeploy with zero user
 4. Switch the active key: set `JWT_ACTIVE_KEY_ID=k1` in `.env.prod`. Deploy again. New tokens now
    carry `kid: k1`; existing k0 tokens still validate (k0 is still in the list).
 5. Wait 12 hours (max token lifetime, `JWT__LifetimeHours`). All k0 tokens have expired.
-6. Retire k0: set `JWT_SIGNING_KEY` to the same value as `JWT_KEY_1_SECRET` (k0's secret becomes the
-   new key), then clear `JWT_KEY_1_ID`/`JWT_KEY_1_SECRET` and reset `JWT_ACTIVE_KEY_ID=` (empty, or
-   delete the line — `k0` is the default) in `.env.prod`. Deploy. The config is back to a single
-   active key — ready for the next rotation — and any token still carrying `kid: k1` is now rejected
-   (that key id is no longer in the list). `JWT_SIGNING_KEY` itself is never unset, only repointed —
-   the API refuses to boot without it.
+6. Fold k1 into slot 0: set `JWT_KEY_0_SECRET` to the same value as `JWT_KEY_1_SECRET` (slot 0's
+   secret becomes the new key — `JWT_KEY_0_ID` stays `k0`; ids are just labels, not secrets), then
+   clear `JWT_KEY_1_ID`/`JWT_KEY_1_SECRET` and reset `JWT_ACTIVE_KEY_ID=` (empty, or delete the
+   line — `k0` is the default) in `.env.prod`. Deploy. The config is back to a single active key —
+   ready for the next rotation. `JWT_SIGNING_KEY` itself was never touched by any of these steps.
+
+A token's `kid` is a hint, not a filter: when an incoming token's `kid` names a key that is no
+longer configured, the validator does not reject it outright for that reason — it falls back to
+trying every configured key (`TryAllIssuerSigningKeys`, the .NET default) and rejects the token
+only if none of them match its signature. So actually retiring a key depends on its *secret* no
+longer being present in the ring, not on its id being removed. Always wait a further 12 h (one JWT
+lifetime) after a key id stops being used to sign new tokens before removing its secret from the
+ring — step 5 above already covers this for the normal rotation flow.
 
 Verify a rotation step took effect from `docker compose logs api` (only key **ids** are logged, never
 secrets): `[JWT] active kid=k1; configured kids=[k0, k1]`. Decode a fresh token's header to confirm

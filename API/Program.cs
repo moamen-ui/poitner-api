@@ -180,6 +180,15 @@ builder.Services.AddSingleton<WidgetVersionInfo>(sp =>
 
 var app = builder.Build();
 
+// R5-62 (review fix, finding 6): boot line moved from Console.WriteLine (in AddJwtAuth, which runs
+// before the host — and therefore any ILoggerFactory — exists) to a proper ILogger here, after
+// Build(). Ids only, never secrets, so an operator can confirm a rotation took effect from normal
+// log aggregation.
+app.Logger.LogInformation(
+    "[JWT] {KeyRing}",
+    AuthenticationExtensions.DescribeKeyRing(app.Configuration)
+);
+
 if (builder.Configuration.GetValue<bool>("DBMigrationEnabled"))
 {
     using var scope = app.Services.CreateScope();
