@@ -12,7 +12,7 @@ import { spawn, type ChildProcess } from 'node:child_process';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { raw, post, login } from '../scripts/lib/api.mjs';
-import { preAuthWidget } from './lib/auth';
+import { preAuthWidget, switchEnvironment } from './lib/auth';
 import { credentials as loadCredentials } from '../scripts/lib/state.mjs';
 import {
   CLEAN_BODY,
@@ -79,8 +79,11 @@ async function openWidgetOnLocal(page: import('@playwright/test').Page, token: s
   await captureConfigLoaded;
 
   // F lives on environment 1 (Local) while the fixture mounts environment="staging" — switch
-  // first, or the list never contains F.
-  await widget.locator('#fbk-env').selectOption('local');
+  // first, or the list never contains F. #fbk-env lives inside the sidebar's collapsible filter
+  // row (see widget/lib/auth.ts's switchEnvironment doc), not the toolbar, so switch via the
+  // helper (which opens/closes the sidebar + filter row around the switch) and then open the
+  // sidebar for the rest of the test.
+  await switchEnvironment(page, 'local');
   await widget.locator('#fbk-toggle').click();
   return widget;
 }

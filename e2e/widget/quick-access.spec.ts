@@ -263,8 +263,14 @@ test('R2-05-03 — quick-access: url param stripped on failure', async ({ browse
 
     // 4. The invalid/expired notice (a 2.2 s toast — poll before it self-removes) and the normal
     // login still offered: reveal the chrome, act on #fbk-add with no token, get the login modal.
+    // .fbk-toast's textContent includes whitespace text nodes from the template's own
+    // indentation (templates.ts's toast()) around the icon/close buttons — trim() is safe since
+    // everything else in there is genuinely empty (icon/close are SVG-only).
     await expect
-      .poll(async () => widget.locator('.fbk-toast.fbk-toast-danger').textContent().catch(() => null), {
+      .poll(async () => {
+        const text = await widget.locator('.fbk-toast.fbk-toast-danger').textContent().catch(() => null);
+        return text?.trim() ?? null;
+      }, {
         message: `Expected the invalid-link notice "${LINK_INVALID_NOTICE}"`,
         intervals: [250],
         timeout: 10_000,
@@ -338,8 +344,13 @@ test('R2-05-04 — quick-access: rotated link works', async ({ browser }) => {
     await inviteCall;
 
     const widget = page2.locator('pointer-feedback');
+    // trim() strips the toast's own template-indentation whitespace text nodes — see the R2-05-03
+    // fix above for detail.
     await expect
-      .poll(async () => widget.locator('.fbk-toast.fbk-toast-danger').textContent().catch(() => null), {
+      .poll(async () => {
+        const text = await widget.locator('.fbk-toast.fbk-toast-danger').textContent().catch(() => null);
+        return text?.trim() ?? null;
+      }, {
         message: `Expected the invalid-link notice after revoke: "${LINK_INVALID_NOTICE}"`,
         intervals: [250],
         timeout: 10_000,

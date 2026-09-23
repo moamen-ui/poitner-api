@@ -63,3 +63,38 @@ export async function pickElement(page: Page, targetSelector: string): Promise<v
   await page.locator(targetSelector).click({ force: true });
   await page.locator('#fbk-popover-host').locator('#fbk-comment-text').waitFor({ timeout: 10_000 });
 }
+
+/**
+ * Switches the widget's environment via `#fbk-env`.
+ *
+ * `#fbk-env` has NOT lived in the toolbar for a while: eb2220f ("environment filter moved beside
+ * status") moved it into the sidebar's own filter row, and 26b4364 ("collapsible filter bar")
+ * then made that row start collapsed behind `#fbk-filters-toggle`. So the select is present in
+ * the DOM as soon as the widget mounts (renderSidebar() runs once at init regardless of whether
+ * anything is open) but stays invisible — off-screen inside the closed `.fbk-sidebar`, and then
+ * behind `.fbk-hidden` on `#fbk-filters` — until both are opened. Several specs were still
+ * driving it as if it were a toolbar-level control, which made `selectOption` hang for the full
+ * test timeout waiting on an element that was never going to become visible/enabled.
+ *
+ * Opens whichever of the sidebar / filter row was closed, switches the environment, then closes
+ * back only what it opened — so this is a drop-in replacement for the old bare
+ * `widget.locator('#fbk-env').selectOption(value)` regardless of what state the caller left the
+ * sidebar in.
+ */
+export async function switchEnvironment(page: Page, value: string): Promise<void> {
+  const widget = page.locator('pointer-feedback');
+  const sidebar = widget.locator('#fbk-sidebar');
+  const sidebarWasOpen = await sidebar.evaluate((el) => el.classList.contains('open')).catch(() => false);
+  if (!sidebarWasOpen) await widget.locator('#fbk-toggle').click();
+
+  const filters = widget.locator('#fbk-filters');
+  const filtersWereOpen = await filters
+    .evaluate((el) => !el.classList.contains('fbk-hidden'))
+    .catch(() => false);
+  if (!filtersWereOpen) await widget.locator('#fbk-filters-toggle').click();
+
+  await widget.locator('#fbk-env').selectOption(value);
+
+  if (!filtersWereOpen) await widget.locator('#fbk-filters-toggle').click();
+  if (!sidebarWasOpen) await widget.locator('#fbk-toggle').click();
+}

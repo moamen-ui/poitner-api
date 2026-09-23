@@ -11,7 +11,7 @@ import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { get, login } from '../scripts/lib/api.mjs';
-import { preAuthWidget } from './lib/auth';
+import { preAuthWidget, switchEnvironment } from './lib/auth';
 import { credentials as loadCredentials } from '../scripts/lib/state.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -82,10 +82,14 @@ test('R1-05-06 — origin-403 widget toast', async ({ page }) => {
   // the page origin is http://localhost:4182, environment is Production, and no matching row exists.
   // The widget displays the shadow-root toast: "Comments are not allowed from this address".
   // The toast removes itself after 2200ms, so polling interval must be <= 250ms.
+  // .fbk-toast's own textContent includes the whitespace text nodes between its icon/content/
+  // close-button children from the template's own indentation (templates.ts's toast()) — trim()
+  // is safe because everything else in there is genuinely empty (icon/close are SVG-only).
   await expect
     .poll(
       async () => {
-        return await widget.locator('.fbk-toast.fbk-toast-danger').textContent().catch(() => null);
+        const text = await widget.locator('.fbk-toast.fbk-toast-danger').textContent().catch(() => null);
+        return text?.trim() ?? null;
       },
       {
         message: 'Expected 403 error toast "Comments are not allowed from this address"',
@@ -99,8 +103,9 @@ test('R1-05-06 — origin-403 widget toast', async ({ page }) => {
   await expect(popover.locator('#fbk-comment-text')).toBeVisible();
 
   // 4. Positive control: switch environment dropdown to 'local' (#fbk-env is rendered because
-  // the beta fixture sets environment="production", not fixed-environment).
-  await widget.locator('#fbk-env').selectOption('local');
+  // the beta fixture sets environment="production", not fixed-environment; it lives inside the
+  // sidebar's collapsible filter row — see widget/lib/auth.ts's switchEnvironment()).
+  await switchEnvironment(page, 'local');
   await popover.locator('#fbk-comment-text').fill('origin toast probe local allowed');
   await popover.locator('#fbk-submit').click();
 
@@ -109,7 +114,8 @@ test('R1-05-06 — origin-403 widget toast', async ({ page }) => {
   await expect
     .poll(
       async () => {
-        return await widget.locator('.fbk-toast.fbk-toast-success').textContent().catch(() => null);
+        const text = await widget.locator('.fbk-toast.fbk-toast-success').textContent().catch(() => null);
+        return text?.trim() ?? null;
       },
       {
         message: 'Expected success toast "Comment added"',

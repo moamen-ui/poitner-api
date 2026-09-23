@@ -292,6 +292,13 @@ test('R3-01-03 ⛓ — deploy-awareness-widget', async ({ page }) => {
       await expect(toggle).toBeVisible({ timeout: 10_000 });
     }
 
+    // Open the sidebar, then its collapsible filter row — #fbk-env and #fbk-status-filter both
+    // live inside #fbk-filters (behind #fbk-filters-toggle), not the toolbar (eb2220f moved the
+    // environment select there; 26b4364 then made the row start collapsed) — opening the sidebar
+    // alone leaves both off-screen/hidden.
+    await widget.locator('#fbk-toggle').click();
+    await widget.locator('#fbk-filters-toggle').click();
+
     // The list is filtered by the selected environment, and these comments are staging (2). A
     // widget showing another environment renders no card at all, which looks identical to "the
     // deployed pill is missing" at the assertion below.
@@ -299,8 +306,6 @@ test('R3-01-03 ⛓ — deploy-awareness-widget', async ({ page }) => {
     if (await envSelect.count()) {
       await envSelect.selectOption('staging').catch(() => {});
     }
-
-    await widget.locator('#fbk-toggle').click();
 
     // Switch to the completed list. The default "all" filter deliberately means ACTIVE comments —
     // completed and archived ones move out to their own chips — so an applied comment renders no

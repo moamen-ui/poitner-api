@@ -7,7 +7,7 @@ import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { get, post, patch, login, ApiError } from '../scripts/lib/api.mjs';
-import { preAuthWidget } from './lib/auth';
+import { preAuthWidget, switchEnvironment } from './lib/auth';
 import { credentials as loadCredentials, loginClient } from '../scripts/lib/state.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -64,7 +64,9 @@ test('Tester creates a staging bug report by clicking the real broken checkout b
   await page.locator('#checkout-btn').click();
 
   // Switch environment to Staging before picking (env select only renders when not fixed).
-  await widget.locator('#fbk-env').selectOption('staging');
+  // #fbk-env lives inside the sidebar's collapsible filter row, not the toolbar — see
+  // widget/lib/auth.ts's switchEnvironment() doc.
+  await switchEnvironment(page, 'staging');
   await widget.locator('#fbk-add').click();
   await page.locator('#checkout-btn').click({ force: true }); // now just identifies the target element
 
