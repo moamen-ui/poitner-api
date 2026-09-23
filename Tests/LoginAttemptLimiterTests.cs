@@ -68,6 +68,16 @@ public class LoginAttemptLimiterTests
             stamp = Guid.Empty;
             return false;
         }
+
+        public string CreateScoped(Guid id, Guid stamp, string purpose, string? payload = null) => "r";
+
+        public bool TryValidateScoped(string token, string purpose, out Guid id, out Guid stamp, out string? payload)
+        {
+            id = Guid.Empty;
+            stamp = Guid.Empty;
+            payload = null;
+            return false;
+        }
     }
 
     private sealed class NoopSettings : ISettingsService
@@ -531,7 +541,8 @@ public class LoginAttemptLimiterTests
             stubAuth,
             new NoopSettings(),
             Substitute.For<IInviteService>(),
-            Substitute.For<IDeviceLoginService>()
+            Substitute.For<IDeviceLoginService>(),
+            Substitute.For<IIdentityEraseService>()
         )
         {
             ControllerContext = new ControllerContext { HttpContext = new DefaultHttpContext() },

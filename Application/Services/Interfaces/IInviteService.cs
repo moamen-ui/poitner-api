@@ -25,8 +25,10 @@ public interface IInviteService
     /// For a quick-access invite this also revokes the magic link it issued: the link is the
     /// credential, and revoking the audit row alone would leave it working.
     /// <paramref name="writeAudit"/> = false — see <see cref="CreateAsync"/>.
+    /// DB-11c §3.6: the response's <c>Invitees</c> lists the invite's own live memberships (empty
+    /// when the invite was never accepted), so the dashboard can offer "also disable these members".
     /// </summary>
-    Task<Result> RevokeAsync(int id, bool writeAudit = true);
+    Task<Result<InviteRevokeResponse>> RevokeAsync(int id, bool writeAudit = true);
 
     /// <summary>
     /// Issue a fresh magic link for a quick-access invite and invalidate the previous one.

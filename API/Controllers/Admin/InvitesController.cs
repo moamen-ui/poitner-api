@@ -40,7 +40,7 @@ public class InvitesController(IInviteService service) : ControllerBase
 
     [HttpDelete("{id:int}")]
     [Audited(AuditActions.InviteRevoked)]
-    [ProducesResponseType(typeof(Result), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(InviteRevokeResponse), StatusCodes.Status200OK)]
     public async Task<IActionResult> Revoke(int id)
     {
         var result = await service.RevokeAsync(id);

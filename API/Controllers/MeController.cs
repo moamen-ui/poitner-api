@@ -1,10 +1,13 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 using Pointer.API.Auth;
 using Pointer.Application.Common;
 using Pointer.Application.DTOs.Auth;
 using Pointer.Application.DTOs.Notification;
 using Pointer.Application.DTOs.Preferences;
+using Pointer.Application.DTOs.User;
+using Pointer.Application.Response;
 using Pointer.Application.Services.Interfaces;
 
 namespace Pointer.API.Controllers;
@@ -18,6 +21,8 @@ public class MeController(
     IProfileService profileService,
     IAuthService authService,
     INotificationService notificationService,
+    IUserService users,
+    IIdentityEraseService erase,
     Pointer.Application.Abstractions.ICurrentUser currentUser) : ControllerBase
 {
     [Audited(AuditActions.AuthPasswordChanged)]
@@ -108,5 +113,44 @@ public class MeController(
     {
         var result = await notificationService.MarkAllReadAsync();
         return result.IsSuccess ? Ok(result) : BadRequest(result);
+    }
+
+    /// <summary>Leaves the current workspace. Blocked while the caller is its only Workspace Admin.</summary>
+    [Audited(AuditActions.MemberLeft)]
+    [HttpPost("leave-workspace")]
+    [ProducesResponseType(typeof(Result), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(Result), StatusCodes.Status409Conflict)]
+    public async Task<IActionResult> LeaveWorkspace()
+    {
+        var r = await users.LeaveWorkspaceAsync();
+        if (r.IsConflict) return Conflict(r);
+        return r.IsSuccess ? Ok(r) : BadRequest(r);
+    }
+
+    /// <summary>Deletes the caller's account everywhere (GDPR erase). Password required. Comments stay, attributed to "Deleted user".</summary>
+    [Audited(AuditActions.IdentityErased)]
+    [HttpDelete]
+    [ProducesResponseType(typeof(Result), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(Result), StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(typeof(Result), StatusCodes.Status409Conflict)]
+    public async Task<IActionResult> DeleteMyAccount([FromBody] DeleteMyAccountRequest request)
+    {
+        var r = await erase.EraseSelfAsync(request);
+        if (r.IsForbidden) return StatusCode(StatusCodes.Status403Forbidden, r);
+        if (r.IsConflict) return Conflict(r);
+        return r.IsSuccess ? Ok(r) : BadRequest(r);
+    }
+
+    /// <summary>Magic-link accounts only: e-mails a one-time link that confirms deleting the account (30 min). Password accounts use DELETE /api/me.</summary>
+    [Audited(AuditActions.IdentityEraseRequested)]
+    [HttpPost("request-erase")]
+    [EnableRateLimiting("signup")]
+    [ProducesResponseType(typeof(Result), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(Result), StatusCodes.Status403Forbidden)]
+    public async Task<IActionResult> RequestErase()
+    {
+        var r = await erase.RequestEraseLinkAsync();
+        if (r.IsForbidden) return StatusCode(StatusCodes.Status403Forbidden, r);
+        return r.IsSuccess ? Ok(r) : BadRequest(r);
     }
 }

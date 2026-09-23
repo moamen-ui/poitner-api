@@ -81,9 +81,21 @@ public class AuthRateLimitingTests
     [InlineData("RegisterInvite")]
     [InlineData("ForgotPassword")]
     [InlineData("ResetPassword")]
+    [InlineData("ConfirmErase")]
     public void SignupSurface_KeepsSignupRateLimit(string action)
     {
         var method = typeof(AuthController).GetMethod(action);
+        Assert.NotNull(method);
+
+        var rateLimits = method!.GetCustomAttributes<EnableRateLimitingAttribute>(inherit: true).ToList();
+        Assert.Contains(rateLimits, a => a.PolicyName == "signup");
+    }
+
+    /// <summary>DB-11c GLM A3: request-erase e-mails a link, same 5/h-per-IP budget as forgot-password.</summary>
+    [Fact]
+    public void RequestErase_HasSignupRateLimit()
+    {
+        var method = typeof(MeController).GetMethod("RequestErase");
         Assert.NotNull(method);
 
         var rateLimits = method!.GetCustomAttributes<EnableRateLimitingAttribute>(inherit: true).ToList();

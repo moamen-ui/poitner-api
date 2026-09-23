@@ -81,4 +81,10 @@ public class User : BaseEntity
 
     /// <summary>Every workspace this identity has ever joined (live and ended). DB-11a.</summary>
     public ICollection<WorkspaceMembership> Memberships { get; set; } = new List<WorkspaceMembership>();
+
+    /// <summary>
+    /// Non-null = tombstone (DB-11c): e-mail/name/secrets replaced, memberships ended, <c>DeletedAt</c>
+    /// set; <see cref="PublicId"/> is kept so authored content still resolves to "Deleted user".
+    /// </summary>
+    public DateTime? ErasedAt { get; set; }
 }

@@ -16,7 +16,8 @@ public class AuthController(
     IAuthService authService,
     ISettingsService settingsService,
     IInviteService inviteService,
-    IDeviceLoginService deviceLoginService) : ControllerBase
+    IDeviceLoginService deviceLoginService,
+    IIdentityEraseService eraseService) : ControllerBase
 {
     [AllowAnonymous]
     [Audited(AuditActions.AuthLoginSucceeded)]
@@ -132,6 +133,21 @@ public class AuthController(
     public async Task<IActionResult> ResetPassword([FromBody] ResetPasswordRequest request)
     {
         var result = await authService.ResetPasswordAsync(request);
+        return result.IsSuccess ? Ok(result) : BadRequest(result);
+    }
+
+    /// <summary>Confirms deleting a magic-link account with the token e-mailed by POST /api/me/request-erase. Anonymous by necessity — the token is the credential.</summary>
+    [AllowAnonymous]
+    [Audited(AuditActions.IdentityErased)]
+    [HttpPost("confirm-erase")]
+    [EnableRateLimiting("signup")]
+    [ProducesResponseType(typeof(Result), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(Result), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(Result), StatusCodes.Status409Conflict)]
+    public async Task<IActionResult> ConfirmErase([FromBody] ConfirmEraseRequest request)
+    {
+        var result = await eraseService.EraseByTokenAsync(request.Token);
+        if (result.IsConflict) return Conflict(result);
         return result.IsSuccess ? Ok(result) : BadRequest(result);
     }
 

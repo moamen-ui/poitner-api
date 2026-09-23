@@ -48,8 +48,8 @@ public static class MessageKeys
         public const string DisplayNameRequired = "Display name is required.";
         public const string TargetWorkspaceRequired = "Select which workspace to add this deputy to.";
         public const string WorkspaceNotFound = "The selected workspace does not exist.";
-        public const string CannotDeleteSelf = "You cannot delete your own account.";
-        public const string CannotDeleteAdmin = "The workspace admin cannot be deleted directly — promote a deputy to replace them first, or remove the whole workspace instead.";
+        /// <summary>DB-11c: renamed from CannotDeleteSelf — removal is now membership-scoped, not a delete.</summary>
+        public const string CannotRemoveSelf = "You cannot remove yourself — use Leave workspace instead.";
         public const string CannotDeleteDeputy = "Deputies cannot remove other deputies — only the workspace admin or a super admin can.";
         public const string CannotChangeSelfFromAdmin = "You cannot change your own role away from Workspace Admin — promote a deputy to replace you first.";
         public const string DeleteNotAuthorized = "You are not authorized to delete this user.";
@@ -63,6 +63,20 @@ public static class MessageKeys
 
         /// <summary>DB-11a: the target already has a live membership in this workspace.</summary>
         public const string AlreadyMember = "This person is already a member of this workspace.";
+
+        /// <summary>
+        /// DB-11c (S-13). Applies to every actor, super admins included — the way out is
+        /// TransferOwnershipAsync. {0} = comma-joined workspace names.
+        /// </summary>
+        public const string SoleAdminBlocked = "Blocked: this person is the only Workspace Admin of {0}. Promote a deputy there first.";
+
+        public const string LeftWorkspace = "You have left the workspace.";
+        public const string Erased = "Your account has been deleted.";
+        public const string CannotEraseSuperAdmin = "Super-admin accounts cannot be erased here.";
+        public const string EraseNeedsEmailConfirmation = "Magic-link accounts confirm deletion by e-mail — request a deletion link first.";
+        public const string EraseUsePassword = "Your account has a password — confirm deletion with it instead.";
+        public const string EraseLinkSent = "We've e-mailed you a link to confirm deleting your account. It expires in 30 minutes.";
+        public const string EraseLinkInvalid = "This deletion link is invalid or has expired — request a new one.";
     }
 
     public static class Workspace

@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Pointer.Application.Abstractions;
 using Pointer.Application.DTOs.User;
+using Pointer.Application.Resources;
 using Pointer.Application.Services.Implementation;
 using Pointer.Application.Services.Interfaces;
 using Pointer.Domain.Entity;
@@ -164,7 +165,8 @@ public class UserGovernanceTests
         var adminRowId = ctx.Users.IgnoreQueryFilters().Single(u => u.PublicId == ws.AdminPublicId).Id;
 
         var result = await Svc(superAdmin, ctx).DeleteAsync(adminRowId);
-        Assert.False(result.IsSuccess);
+        Assert.True(result.IsConflict);
+        Assert.Equal(string.Format(MessageKeys.User.SoleAdminBlocked, "Test Workspace"), result.Message);
     }
 
     [Fact]
@@ -251,7 +253,8 @@ public class UserGovernanceTests
         var adminRowId = ctx.Users.IgnoreQueryFilters().Single(u => u.PublicId == ws.AdminPublicId).Id;
 
         var result = await Svc(deputy, ctx).DeleteAsync(adminRowId);
-        Assert.False(result.IsSuccess);
+        Assert.True(result.IsConflict);
+        Assert.Equal(string.Format(MessageKeys.User.SoleAdminBlocked, "Test Workspace"), result.Message);
     }
 
     [Fact]

@@ -13,4 +13,8 @@ public interface IUserService
     Task<Result<UserResponse>> RejectAsync(int id);
     Task<Result> DeleteAsync(int id);
     Task<Result> TransferOwnershipAsync(Guid deputyPublicId);
+
+    /// <summary>DB-11c D12: the caller ends their own membership in their current workspace. Same
+    /// sole-admin guard (S-13) as removal.</summary>
+    Task<Result> LeaveWorkspaceAsync();
 }

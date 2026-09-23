@@ -341,6 +341,10 @@ public class UserService : IUserService
         var updateBeforeRoleId = membership.RoleId;
         var updateBeforeIsActive = membership.IsActive;
         var passwordWasSet = !string.IsNullOrEmpty(request.Password);
+        // Captured BEFORE any mutation below — used by both the role-change and the isActive=false
+        // sole-admin checks so neither is fooled by an in-request role change already applied to the
+        // tracked (but not yet saved) membership.
+        var wasWorkspaceAdmin = membership.Role.Name == WorkspaceAdminRoleName;
 
         if (request.RoleId.HasValue)
         {
@@ -353,15 +357,18 @@ public class UserService : IUserService
             if (!_currentUser.IsSuperAdmin && (role.GrantsAdmin || role.IsSuperAdmin) && role.Name != DeputyRoleName)
                 return Result<UserResponse>.Failure(MessageKeys.Role.EscalationNotAllowed);
 
-            // Self-demotion guard: the current Workspace Admin can't change their OWN role away from
-            // Workspace Admin via this endpoint — that would leave the tenant with no admin and no
-            // recovery path (mirrors DeleteAsync's CannotDeleteAdmin: promote a deputy first, then
-            // that new admin can change the old one's role).
-            if (role.Id != membership.RoleId && identity.PublicId == _currentUser.Id)
+            // S-13 (DB-11c): a role change away from Workspace Admin must never leave a workspace
+            // with no admin — applies to EVERY caller, super admins included (replaces the old
+            // self-only CannotChangeSelfFromAdmin guard, whose message is kept for the self case).
+            if (role.Id != membership.RoleId && wasWorkspaceAdmin)
             {
-                var currentRole = await GetActiveRoleAsync(membership.RoleId);
-                if (currentRole?.Name == WorkspaceAdminRoleName)
-                    return Result<UserResponse>.Failure(MessageKeys.User.CannotChangeSelfFromAdmin);
+                var soleAdmin = await _memberships.SoleAdminWorkspacesAsync(new[] { membership.Id });
+                if (soleAdmin.Count > 0)
+                {
+                    if (identity.PublicId == _currentUser.Id)
+                        return Result<UserResponse>.Failure(MessageKeys.User.CannotChangeSelfFromAdmin);
+                    return Result<UserResponse>.Conflict(_memberships.SoleAdminConflict(soleAdmin).Message!);
+                }
             }
 
             // A role change alters is_admin/is_super_admin/is_quick_access baked into the JWT at
@@ -371,6 +378,15 @@ public class UserService : IUserService
                 membership.SecurityStamp = Guid.NewGuid();
 
             membership.RoleId = role.Id;
+        }
+
+        // S-13 (DB-11c): disabling a workspace's only Workspace Admin membership is blocked the same
+        // way removal/demotion is — a disabled sole admin is not recoverable by anyone left active.
+        if (request.IsActive == false && wasWorkspaceAdmin)
+        {
+            var soleAdmin = await _memberships.SoleAdminWorkspacesAsync(new[] { membership.Id });
+            if (soleAdmin.Count > 0)
+                return Result<UserResponse>.Conflict(_memberships.SoleAdminConflict(soleAdmin).Message!);
         }
 
         if (request.IsActive.HasValue)
@@ -428,11 +444,11 @@ public class UserService : IUserService
 
     /// <summary>
     /// Ends a membership (never hard-deletes the identity — DB-11a). Authorization matrix: super
-    /// admin → anyone EXCEPT whoever currently holds "Workspace Admin" (promote a deputy first, or
-    /// use TenantService.HardDeleteAsync for a full teardown — this is an intentional limitation,
-    /// not a gap). Workspace Admin → anyone in their own tenant except themselves. Deputy → anyone
-    /// in their own tenant except themselves, the admin, or another deputy. Key/link revocation and
-    /// the sole-admin guard are DB-11c.
+    /// admin → anyone EXCEPT whoever is the workspace's only live Workspace Admin (promote a deputy
+    /// first, or use TenantService.HardDeleteAsync for a full teardown — this is an intentional
+    /// limitation, not a gap). Workspace Admin → anyone in their own tenant except themselves.
+    /// Deputy → anyone in their own tenant except themselves, another deputy, or (via the sole-admin
+    /// guard below, which applies to every caller) the workspace's only live admin.
     /// </summary>
     public async Task<Result> DeleteAsync(int id)
     {
@@ -441,10 +457,13 @@ public class UserService : IUserService
             return Result.NotFound(MessageKeys.User.NotFound);
 
         if (identity.PublicId == _currentUser.Id)
-            return Result.Failure(MessageKeys.User.CannotDeleteSelf);
+            return Result.Failure(MessageKeys.User.CannotRemoveSelf);
 
-        if (membership.Role.Name == WorkspaceAdminRoleName)
-            return Result.Failure(MessageKeys.User.CannotDeleteAdmin);
+        // S-13 (DB-11c): nobody — including a super admin — may remove a workspace's only live
+        // Workspace Admin membership (replaces the old flat "sole admin can't be removed" check).
+        var soleAdmin = await _memberships.SoleAdminWorkspacesAsync(new[] { membership.Id });
+        if (soleAdmin.Count > 0)
+            return _memberships.SoleAdminConflict(soleAdmin);
 
         if (!_currentUser.IsSuperAdmin && membership.Role.Name == DeputyRoleName && _currentUser.Id is Guid callerPublicId)
         {
@@ -459,12 +478,7 @@ public class UserService : IUserService
         var deleteBeforeRoleId = membership.RoleId;
         var deleteBeforeIsActive = membership.IsActive;
 
-        membership.LeftAt = DateTime.UtcNow;
-        membership.LeftReason = MembershipEndReason.Removed;
-        membership.IsActive = false;
-        membership.SecurityStamp = Guid.NewGuid();
-
-        _unitOfWork.Repository<WorkspaceMembership>().Update(membership);
+        await _memberships.EndAsync(membership, MembershipEndReason.Removed, _currentUser.Id ?? Guid.Empty);
         await _unitOfWork.SaveChangesAsync();
 
         await _audit.WriteAsync(
@@ -482,6 +496,54 @@ public class UserService : IUserService
         );
 
         return Result.Success();
+    }
+
+    /// <summary>
+    /// DB-11c D12: the caller ends their own membership in their current tenant. Same routine and
+    /// sole-admin guard (S-13) as an admin's removal, actor = self.
+    /// </summary>
+    public async Task<Result> LeaveWorkspaceAsync()
+    {
+        if (_currentUser.Id is not Guid publicId)
+            return Result.Failure(MessageKeys.Common.Forbidden);
+        if (!TenantStamp.TryRequireOwner(_currentUser, out var ownerId))
+            return Result.Failure(MessageKeys.Common.Forbidden);
+
+        var identity = await _memberships.FindIdentityByPublicIdAsync(publicId);
+        if (identity == null)
+            return Result.NotFound(MessageKeys.User.NotFound);
+
+        var membership = await _memberships.GetMembershipAsync(identity.Id, ownerId);
+        if (membership == null)
+            return Result.NotFound(MessageKeys.User.NotFound);
+
+        var soleAdmin = await _memberships.SoleAdminWorkspacesAsync(new[] { membership.Id });
+        if (soleAdmin.Count > 0)
+            return _memberships.SoleAdminConflict(soleAdmin);
+
+        var leaveBeforeRoleId = membership.RoleId;
+        var leaveBeforeIsActive = membership.IsActive;
+
+        await _memberships.EndAsync(membership, MembershipEndReason.Left, publicId);
+        await _unitOfWork.SaveChangesAsync();
+
+        await _audit.WriteAsync(
+            new AuditEntry(
+                AuditActions.MemberLeft,
+                AuditTargets.Membership,
+                membership.Id.ToString(),
+                ownerId,
+                Before: new Dictionary<string, string>
+                {
+                    ["role_id"] = leaveBeforeRoleId.ToString(),
+                    ["is_active"] = leaveBeforeIsActive.ToString(),
+                },
+                ActorUserIdOverride: publicId,
+                ActorKindOverride: AuditActorKind.User
+            )
+        );
+
+        return Result.Success(MessageKeys.User.LeftWorkspace);
     }
 
     /// <summary>

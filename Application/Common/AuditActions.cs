@@ -50,13 +50,13 @@ public static class AuditActions
     public const string MemberRemoved = "member.removed";
     public const string OwnershipTransferred = "ownership.transferred";
 
-    /// <summary>Reserved: DB-11c.</summary>
+    /// <summary>DB-11c: POST /api/me/leave-workspace — the member's own action.</summary>
     public const string MemberLeft = "member.left";
 
-    /// <summary>Reserved: DB-11c.</summary>
+    /// <summary>DB-11c: POST /api/me/request-erase — a passwordless identity requests its scoped e-mailed erase link.</summary>
     public const string IdentityEraseRequested = "identity.erase_requested";
 
-    /// <summary>Reserved: DB-11c.</summary>
+    /// <summary>DB-11c: DELETE /api/me, DELETE /api/admin/identities/{publicId} and POST /api/auth/confirm-erase — the identity was tombstoned.</summary>
     public const string IdentityErased = "identity.erased";
 
     public const string InviteCreated = "invite.created";

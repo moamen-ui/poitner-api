@@ -1,3 +1,4 @@
+using Pointer.Application.Response;
 using Pointer.Domain.Entity;
 using Pointer.Domain.Enums;
 
@@ -55,4 +56,24 @@ public interface IMembershipService
         Guid firstWorkspaceId,
         bool passwordlessOnly = false
     );
+
+    /// <summary>
+    /// S-13 (DB-11c). Returns the workspaces (id, name) in which any of <paramref name="membershipIds"/>
+    /// is the ONLY live Workspace Admin membership. Empty = safe. Applies to every actor, super admins
+    /// included; the way out is TransferOwnershipAsync. Tenant suspension by a super admin
+    /// (<c>TenantService.SetStatusAsync</c>) is exempt by design (D10): a disabled admin is
+    /// recoverable, an admin-less workspace is not.
+    /// </summary>
+    Task<List<(Guid WorkspaceId, string Name)>> SoleAdminWorkspacesAsync(IEnumerable<int> membershipIds);
+
+    /// <summary>The one Conflict shape for the S-13 guard, everywhere it's enforced.</summary>
+    Result SoleAdminConflict(IEnumerable<(Guid WorkspaceId, string Name)> workspaces);
+
+    /// <summary>
+    /// Ends a membership (DB-11c §3.3): stamps <c>LeftAt</c>/<c>LeftReason</c>, flips <c>IsActive</c>
+    /// false, rotates the membership stamp (kills live JWTs for this workspace), and revokes this
+    /// workspace's API keys / quick-access links / pending device-login approvals for the identity.
+    /// Does NOT call SaveChangesAsync — the caller's unit of work / transaction does.
+    /// </summary>
+    Task EndAsync(WorkspaceMembership m, MembershipEndReason reason, Guid actor);
 }

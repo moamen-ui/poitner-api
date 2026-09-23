@@ -300,11 +300,11 @@ public class InviteService : IInviteService
         return Result<List<InviteResponse>>.Success(list);
     }
 
-    public async Task<Result> RevokeAsync(int id, bool writeAudit = true)
+    public async Task<Result<InviteRevokeResponse>> RevokeAsync(int id, bool writeAudit = true)
     {
         var invite = await LoadOwnAsync(id);
         if (invite == null)
-            return Result.NotFound(MessageKeys.Invite.NotFound);
+            return Result<InviteRevokeResponse>.NotFound(MessageKeys.Invite.NotFound);
 
         var now = DateTime.UtcNow;
         invite.RevokedAt = now;
@@ -318,9 +318,29 @@ public class InviteService : IInviteService
 
         await _unitOfWork.SaveChangesAsync();
 
-        // after.count = invitee memberships this revoke returned (ended) — DB-11c wires the actual
-        // return-count once member.left exists; until then it is always 0 (revoking today only
-        // stops future use, it does not retroactively end an already-accepted membership).
+        // DB-11c §3.6: this invite's own live memberships — empty when it was never accepted.
+        // Memberships created before DB-11a have invite_id == NULL except quick-access ones, so an
+        // older invite returns an empty list; that is expected. Not scoped by owner: a super-admin
+        // "new workspace" invite's OwnerId is null, but its accept mints a brand-new workspace, so
+        // searching by InviteId directly is the only correct lookup either way.
+        var invitees = await _unitOfWork
+            .Repository<WorkspaceMembership>()
+            .Query()
+            .IgnoreQueryFilters()
+            .Include(m => m.User)
+            .Include(m => m.Role)
+            .Where(m => m.InviteId == invite.Id && m.LeftAt == null)
+            .Select(m => new InviteeMembership
+            {
+                UserId = m.User.Id,
+                PublicId = m.User.PublicId,
+                Email = m.User.Email,
+                DisplayName = m.User.DisplayName,
+                RoleName = m.Role.Name,
+                IsActive = m.IsActive,
+            })
+            .ToListAsync();
+
         if (writeAudit)
         {
             await _audit.WriteAsync(
@@ -329,12 +349,15 @@ public class InviteService : IInviteService
                     AuditTargets.Invite,
                     invite.Id.ToString(),
                     invite.OwnerId,
-                    After: new Dictionary<string, string> { ["count"] = "0" }
+                    After: new Dictionary<string, string> { ["count"] = invitees.Count.ToString() }
                 )
             );
         }
 
-        return Result.Success(MessageKeys.Invite.Revoked_Ok);
+        return Result<InviteRevokeResponse>.Success(
+            new InviteRevokeResponse { InviteId = invite.Id, Invitees = invitees },
+            MessageKeys.Invite.Revoked_Ok
+        );
     }
 
     public async Task<Result<InviteResponse>> RotateQuickLinkAsync(int id)

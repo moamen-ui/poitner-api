@@ -51,6 +51,16 @@ public class MonetizationSignupTests
     {
         public string Create(Guid id, Guid stamp) => "r";
         public bool TryValidate(string token, out Guid id, out Guid stamp) { id = Guid.Empty; stamp = Guid.Empty; return false; }
+
+        public string CreateScoped(Guid id, Guid stamp, string purpose, string? payload = null) => "r";
+
+        public bool TryValidateScoped(string token, string purpose, out Guid id, out Guid stamp, out string? payload)
+        {
+            id = Guid.Empty;
+            stamp = Guid.Empty;
+            payload = null;
+            return false;
+        }
     }
     private sealed class NoopEmail : IEmailService
     {

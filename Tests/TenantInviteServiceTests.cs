@@ -57,11 +57,13 @@ public class TenantInviteServiceTests
         public Task<Pointer.Application.Response.Result<List<Pointer.Application.DTOs.Invite.InviteResponse>>> ListAsync() =>
             throw new NotSupportedException();
 
-        public Task<Pointer.Application.Response.Result> RevokeAsync(int id, bool writeAudit = true)
+        public Task<Pointer.Application.Response.Result<Pointer.Application.DTOs.Invite.InviteRevokeResponse>> RevokeAsync(int id, bool writeAudit = true)
         {
             Revoked.Add(id);
             RevokeWriteAudit.Add(writeAudit);
-            return Task.FromResult(Pointer.Application.Response.Result.Success());
+            return Task.FromResult(
+                Pointer.Application.Response.Result<Pointer.Application.DTOs.Invite.InviteRevokeResponse>.Success(
+                    new Pointer.Application.DTOs.Invite.InviteRevokeResponse { InviteId = id }));
         }
 
         // Not part of what this spy exercises: these tests cover the tenant-scoping decorator, and

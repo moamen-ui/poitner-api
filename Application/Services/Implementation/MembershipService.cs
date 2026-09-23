@@ -1,6 +1,8 @@
 using Microsoft.EntityFrameworkCore;
 using Pointer.Application.Abstractions;
 using Pointer.Application.Common;
+using Pointer.Application.Resources;
+using Pointer.Application.Response;
 using Pointer.Application.Services.Interfaces;
 using Pointer.Domain.Entity;
 using Pointer.Domain.Enums;
@@ -40,6 +42,7 @@ public class MembershipService(IUnitOfWork unitOfWork) : IMembershipService
             .Query()
             .IgnoreQueryFilters()
             .Include(m => m.Role)
+            .Include(m => m.User)
             .FirstOrDefaultAsync(m =>
                 m.UserId == userId
                 && m.OwnerId == workspaceId
@@ -133,4 +136,117 @@ public class MembershipService(IUnitOfWork unitOfWork) : IMembershipService
             ApprovalStatus = ApprovalStatus.Approved,
             SecurityStamp = Guid.NewGuid(),
         };
+
+    public async Task<List<(Guid WorkspaceId, string Name)>> SoleAdminWorkspacesAsync(
+        IEnumerable<int> membershipIds
+    )
+    {
+        var ids = membershipIds.Distinct().ToList();
+        var result = new List<(Guid WorkspaceId, string Name)>();
+        if (ids.Count == 0)
+            return result;
+
+        // Only the candidates that are themselves a LIVE Workspace Admin membership can possibly be
+        // "the sole admin" — anything else (a regular member, an already-ended membership) is safe.
+        var candidates = await unitOfWork
+            .Repository<WorkspaceMembership>()
+            .Query()
+            .IgnoreQueryFilters()
+            .Include(m => m.Role)
+            .Where(m => ids.Contains(m.Id) && m.LeftAt == null && m.Role.Name == WorkspaceAdminRoleName)
+            .ToListAsync();
+
+        foreach (var m in candidates)
+        {
+            var liveAdminCount = await unitOfWork
+                .Repository<WorkspaceMembership>()
+                .Query()
+                .IgnoreQueryFilters()
+                .Include(x => x.Role)
+                .CountAsync(x =>
+                    x.OwnerId == m.OwnerId && x.LeftAt == null && x.Role.Name == WorkspaceAdminRoleName
+                );
+
+            if (liveAdminCount != 1)
+                continue;
+
+            var name = await unitOfWork
+                .Workspaces.IgnoreQueryFilters()
+                .Where(w => w.Id == m.OwnerId)
+                .Select(w => w.Name)
+                .FirstOrDefaultAsync();
+
+            result.Add((m.OwnerId, name ?? Workspace.PlaceholderName));
+        }
+
+        return result;
+    }
+
+    public Result SoleAdminConflict(IEnumerable<(Guid WorkspaceId, string Name)> workspaces) =>
+        Result.Conflict(
+            string.Format(MessageKeys.User.SoleAdminBlocked, string.Join(", ", workspaces.Select(w => w.Name)))
+        );
+
+    public async Task EndAsync(WorkspaceMembership m, MembershipEndReason reason, Guid actor)
+    {
+        m.LeftAt = DateTime.UtcNow;
+        m.LeftReason = reason;
+        m.IsActive = false;
+        m.SecurityStamp = Guid.NewGuid();
+        unitOfWork.Repository<WorkspaceMembership>().Update(m);
+
+        var userPublicId =
+            m.User?.PublicId
+            ?? await unitOfWork
+                .Repository<User>()
+                .Query()
+                .IgnoreQueryFilters()
+                .Where(u => u.Id == m.UserId)
+                .Select(u => u.PublicId)
+                .FirstAsync();
+
+        var now = DateTime.UtcNow;
+
+        var apiKeys = await unitOfWork
+            .Repository<ApiKey>()
+            .Query()
+            .IgnoreQueryFilters()
+            .Where(k => k.UserId == m.UserId && k.OwnerId == m.OwnerId && k.RevokedAt == null)
+            .ToListAsync();
+        foreach (var k in apiKeys)
+        {
+            k.RevokedAt = now;
+            unitOfWork.Repository<ApiKey>().Update(k);
+        }
+
+        var links = await unitOfWork
+            .Repository<QuickAccessLink>()
+            .Query()
+            .IgnoreQueryFilters()
+            .Where(l => l.UserId == userPublicId && l.OwnerId == m.OwnerId && l.RevokedAt == null)
+            .ToListAsync();
+        foreach (var l in links)
+        {
+            l.RevokedAt = now;
+            unitOfWork.Repository<QuickAccessLink>().Update(l);
+        }
+
+        // An approved-not-yet-consumed device code must not hand out a key later for a workspace the
+        // identity no longer belongs to (or is disabled in).
+        var devices = await unitOfWork
+            .Repository<DeviceLogin>()
+            .Query()
+            .IgnoreQueryFilters()
+            .Where(d =>
+                d.UserId == userPublicId
+                && d.OwnerId == m.OwnerId
+                && d.Status == DeviceLoginStatus.Approved
+            )
+            .ToListAsync();
+        foreach (var d in devices)
+        {
+            d.Status = DeviceLoginStatus.Denied;
+            unitOfWork.Repository<DeviceLogin>().Update(d);
+        }
+    }
 }
