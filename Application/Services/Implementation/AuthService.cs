@@ -785,7 +785,21 @@ public class AuthService : IAuthService
             if (identity.PasswordlessOnly || !_passwordHasher.Verify(request.Password, identity.PasswordHash))
                 return Result.Conflict("An account with that email already exists.");
         }
-        else
+
+        // The Workspace row must exist before any row that references it via a workspace-id FK
+        // (users.owner_id ⇒ fk_users_workspaces_owner_id, memberships, etc.) — save it first.
+        await _unitOfWork.Workspaces.AddAsync(
+            new Workspace
+            {
+                Id = workspaceId,
+                Name = Workspace.PlaceholderName,
+                CreatedAt = DateTime.UtcNow,
+                CreatedBy = workspaceId,
+            }
+        );
+        await _unitOfWork.SaveChangesAsync();
+
+        if (identity == null)
         {
             identity = _memberships.NewIdentity(
                 emailNormalized,
@@ -801,15 +815,6 @@ public class AuthService : IAuthService
             await _unitOfWork.SaveChangesAsync();
         }
 
-        await _unitOfWork.Workspaces.AddAsync(
-            new Workspace
-            {
-                Id = workspaceId,
-                Name = Workspace.PlaceholderName,
-                CreatedAt = DateTime.UtcNow,
-                CreatedBy = workspaceId,
-            }
-        );
         await _memberships.JoinAsync(
             identity,
             workspaceId,

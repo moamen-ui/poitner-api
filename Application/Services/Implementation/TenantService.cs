@@ -196,6 +196,19 @@ public class TenantService : ITenantService
         var identity = await _memberships.FindIdentityByEmailAsync(emailNormalized);
         var isNewIdentity = identity == null;
 
+        // The Workspace row must exist before any row that references it via a workspace-id FK
+        // (users.owner_id ⇒ fk_users_workspaces_owner_id, memberships, etc.) — save it first.
+        await _unitOfWork.Workspaces.AddAsync(
+            new Workspace
+            {
+                Id = workspaceId,
+                Name = Workspace.PlaceholderName,
+                CreatedAt = DateTime.UtcNow,
+                CreatedBy = workspaceId,
+            }
+        );
+        await _unitOfWork.SaveChangesAsync();
+
         if (isNewIdentity)
         {
             identity = _memberships.NewIdentity(
@@ -208,17 +221,6 @@ public class TenantService : ITenantService
             await _unitOfWork.Repository<User>().AddAsync(identity);
             await _unitOfWork.SaveChangesAsync();
         }
-
-        await _unitOfWork.Workspaces.AddAsync(
-            new Workspace
-            {
-                Id = workspaceId,
-                Name = Workspace.PlaceholderName,
-                CreatedAt = DateTime.UtcNow,
-                CreatedBy = workspaceId,
-            }
-        );
-        await _unitOfWork.SaveChangesAsync();
 
         var membership = await _memberships.JoinAsync(
             identity!,
