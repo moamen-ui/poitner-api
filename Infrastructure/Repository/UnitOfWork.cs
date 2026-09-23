@@ -91,9 +91,26 @@ public sealed class UnitOfWork(AppDbContext db) : IUnitOfWork
             operation: async (_, state, ct) =>
             {
                 await using var tx = await db.Database.BeginTransactionAsync(ct);
-                await state();
-                await tx.CommitAsync(ct);
-                return true;
+                try
+                {
+                    await state();
+                    await tx.CommitAsync(ct);
+                    return true;
+                }
+                catch
+                {
+                    // DB-17 review (Opus HIGH): the rollback itself does NOT clear the ChangeTracker
+                    // — entities the failed action queued for delete/update stay tracked with their
+                    // pending state on this (often request/loop-scoped) DbContext, and the NEXT
+                    // ExecuteInTransactionAsync call on the same context would resubmit them inside
+                    // its own transaction, corrupting an unrelated caller's work (e.g. the demo
+                    // cleanup sweep looping over several workspaces on one shared context). Clear it
+                    // here so a rolled-back transaction always leaves the tracker exactly as it found
+                    // it. (DemoCleanupService also now takes a fresh DI scope per item — belt and
+                    // braces, since some callers still share a context across multiple calls.)
+                    db.ChangeTracker.Clear();
+                    throw;
+                }
             },
             verifySucceeded: null
         );

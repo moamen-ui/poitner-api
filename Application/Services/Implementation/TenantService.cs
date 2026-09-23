@@ -357,6 +357,12 @@ public class TenantService : ITenantService
         if (workspace?.DemoExpiresAt == null)
             return Result.NotFound("Demo tenant not found.");
 
+        // DB-17 review finding #6 (LOW): with Demo:ConvertRequiresVerification on, a converted
+        // workspace can still have a non-null DemoExpiresAt (the 72h re-verification grace) — that
+        // is not "still a demo" for extension purposes, it is already upgraded.
+        if (workspace.DemoConvertedAt != null)
+            return Result.Failure(MessageKeys.Demo.AlreadyUpgraded);
+
         if (workspace.DemoExtendedAt != null)
             return Result.Failure("This demo has already been extended once.");
 
@@ -543,11 +549,13 @@ public class TenantService : ITenantService
         if (!workspaceExists)
             return Result.NotFound("Tenant not found.");
 
+        var isDemoExpiredReason = reason == "demo_expired";
+
         // DB-17 §3.3 (Gemini Pro #2): the sweep materialises expired-demo ids then deletes them one
         // by one — a conversion or extension landing in that gap must not destroy the user's data.
-        // Re-check right here, before the folder delete (and again under FOR UPDATE inside the
-        // transaction, below).
-        if (reason == "demo_expired")
+        // Re-check right here, before anything observable happens (and again under FOR UPDATE
+        // inside the transaction, below).
+        if (isDemoExpiredReason)
         {
             var stillExpiredDemo = await _unitOfWork
                 .Workspaces.IgnoreQueryFilters()
@@ -568,12 +576,8 @@ public class TenantService : ITenantService
             .IgnoreQueryFilters()
             .CountAsync(c => c.OwnerId == workspaceId);
 
-        // Written BEFORE the delete, with OwnerId = null deliberately — the row must not be detached
-        // mid-transaction, and it must survive the workspace it is about (DB-12 §3.6). Best-effort: a
-        // failed audit write never blocks the deletion itself. Written AFTER the demo_expired
-        // pre-check above (DB-17) so a refused delete never writes a tenant.hard_deleted row.
-        await _audit.WriteAsync(
-            new AuditEntry(
+        AuditEntry BuildHardDeletedAuditEntry() =>
+            new(
                 AuditActions.TenantHardDeleted,
                 AuditTargets.Workspace,
                 workspaceId.ToString(),
@@ -585,12 +589,22 @@ public class TenantService : ITenantService
                 },
                 // §3.3: the demo-cleanup hosted job is a System actor, explicitly — not left to the
                 // (correct, but implicit) fallback of ICurrentUser.Id being null in that scope.
-                ActorKindOverride: reason == "demo_expired" ? AuditActorKind.System : null
-            )
-        );
+                ActorKindOverride: isDemoExpiredReason ? AuditActorKind.System : null
+            );
 
-        // Delete owner files first (outside transaction — filesystem side effect).
-        await _fileStorage.DeleteOwnerFilesAsync(workspaceId.ToString("N"));
+        if (!isDemoExpiredReason)
+        {
+            // Every reason OTHER than demo_expired keeps today's order (DB-17 review finding #2
+            // narrows the reorder below to demo_expired only — an ordinary admin-initiated delete
+            // has no locked re-check to race against). Written BEFORE the delete, with OwnerId =
+            // null deliberately — the row must not be detached mid-transaction, and it must survive
+            // the workspace it is about (DB-12 §3.6). Best-effort: a failed audit write never
+            // blocks the deletion itself.
+            await _audit.WriteAsync(BuildHardDeletedAuditEntry());
+
+            // Delete owner files first (outside transaction — filesystem side effect).
+            await _fileStorage.DeleteOwnerFilesAsync(workspaceId.ToString("N"));
+        }
 
         // Hard-delete inside a transaction using the execution strategy wrapper
         // (required by Npgsql's NpgsqlRetryingExecutionStrategy).
@@ -599,7 +613,7 @@ public class TenantService : ITenantService
             // DB-17 §3.3: FOR UPDATE-lock the workspace row and re-check inside the transaction — a
             // conversion that committed between the pre-check above and this point must abort the
             // delete entirely (the transaction rolls back; the hosted loop logs it and moves on).
-            if (reason == "demo_expired")
+            if (isDemoExpiredReason)
             {
                 await _unitOfWork.ExecuteSqlRawAsync(
                     "SELECT id FROM workspaces WHERE id = {0} FOR UPDATE",
@@ -685,7 +699,28 @@ public class TenantService : ITenantService
                 _unitOfWork.Workspaces.Remove(workspace);
 
             await _unitOfWork.SaveChangesAsync();
+
+            if (isDemoExpiredReason)
+            {
+                // DB-17 review finding #2 (Opus/Gemini): the audit row is written HERE — inside the
+                // same transaction, after the locked re-check above passed and every row is gone —
+                // never before it, so a delete the locked re-check aborts (the throw above) leaves
+                // no tenant.hard_deleted row at all.
+                await _audit.WriteAsync(BuildHardDeletedAuditEntry());
+            }
         });
+
+        if (isDemoExpiredReason)
+        {
+            // DB-17 review finding #2 (Opus/Gemini): files are deleted only AFTER the transaction
+            // commits — this used to run before the transaction, so a delete the locked re-check
+            // aborted (workspace/rows survive) had already destroyed the screenshots. If this
+            // post-commit delete itself fails (e.g. a transient filesystem error), the rows are
+            // already gone but the files are left orphaned — DB-16's orphan sweep reclaims exactly
+            // that leftover on its own schedule (verified there), so nothing is silently lost by
+            // moving this here.
+            await _fileStorage.DeleteOwnerFilesAsync(workspaceId.ToString("N"));
+        }
 
         return Result.Success();
     }

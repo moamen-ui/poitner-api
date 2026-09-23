@@ -56,12 +56,18 @@ public class PreferencesService : IPreferencesService
         await _unitOfWork.SaveChangesAsync();
 
         var role = user.Role;
+        Workspace? workspace = null;
         if (_currentUser.TenantId is Guid tenant)
         {
             var membership = await _memberships.GetMembershipAsync(user.Id, tenant);
             role = membership?.Role ?? user.Role;
+            // DB-17 review finding #11 (NIT): pass the workspace so MeResponse.DemoExpiresAt/
+            // DemoCanExtend are populated here too.
+            workspace = await _unitOfWork
+                .Workspaces.IgnoreQueryFilters()
+                .FirstOrDefaultAsync(w => w.Id == tenant);
         }
 
-        return Result<MeResponse>.Success(UserMapper.ToMeResponse(user, role));
+        return Result<MeResponse>.Success(UserMapper.ToMeResponse(user, role, workspace: workspace));
     }
 }

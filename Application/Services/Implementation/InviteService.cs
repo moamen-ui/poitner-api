@@ -1,5 +1,6 @@
 using System.Security.Cryptography;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
 using Pointer.Application.Abstractions;
 using Pointer.Application.Common;
 using Pointer.Application.DTOs.Auth;
@@ -35,6 +36,8 @@ public class InviteService : IInviteService
     private readonly IMembershipService _memberships;
     private readonly IAuditWriter _audit;
     private readonly IEmailVerificationService _emailVerification;
+    private readonly IDemoService? _demo;
+    private readonly ILogger<InviteService>? _logger;
 
     private const int DefaultTtlDays = 7;
 
@@ -53,7 +56,12 @@ public class InviteService : IInviteService
         IBrandingService branding,
         IMembershipService memberships,
         IAuditWriter? audit = null,
-        IEmailVerificationService? emailVerification = null
+        IEmailVerificationService? emailVerification = null,
+        // DB-17 review finding #7: nullable-with-default, last — every existing hand-rolled test
+        // construction compiles unchanged and simply skips the demo-TTL-clearing side effect (with
+        // a logged warning, never a silent no-op — Gemini's ask).
+        IDemoService? demo = null,
+        ILogger<InviteService>? logger = null
     )
     {
         _unitOfWork = unitOfWork;
@@ -67,6 +75,43 @@ public class InviteService : IInviteService
         _memberships = memberships;
         _audit = audit ?? NoopAuditWriter.Instance;
         _emailVerification = emailVerification ?? NoopEmailVerification.Instance;
+        _demo = demo;
+        _logger = logger;
+    }
+
+    /// <summary>
+    /// DB-17 review finding #7: every site that flips <c>identity.EmailVerifiedAt</c> in this
+    /// service (an addressed invite proves the address by delivery) also clears the TTL of any
+    /// converted-but-unverified workspace this identity administers elsewhere
+    /// (<c>Demo:ConvertRequiresVerification</c> mode; a no-op with the flag off — mirrors
+    /// AuthService's ConfirmEmailChangeAsync and EmailVerificationService's ConfirmAsync call
+    /// sites). Best-effort: never fails the invite accept/create it is called from. Gemini: if
+    /// <see cref="IDemoService"/> was never wired in (no DI container — a hand-rolled test double),
+    /// that is logged as a Warning, not silently skipped.
+    /// </summary>
+    private async Task NotifyDemoEmailVerifiedAsync(User identity)
+    {
+        if (_demo == null)
+        {
+            _logger?.LogWarning(
+                "InviteService: IDemoService not available — skipped OnEmailVerifiedAsync for {PublicId}",
+                identity.PublicId
+            );
+            return;
+        }
+
+        try
+        {
+            await _demo.OnEmailVerifiedAsync(identity);
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogError(
+                ex,
+                "InviteService: OnEmailVerifiedAsync failed for {PublicId}",
+                identity.PublicId
+            );
+        }
     }
 
     // ── Admin (auth, tenant-scoped) ────────────────────────────────────────────
@@ -597,6 +642,18 @@ public class InviteService : IInviteService
         AcceptInviteRequest request
     )
     {
+        // DB-17 review finding #4 (Opus/Gemini): a demo admin can mint an addressed invite into
+        // their own workspace — accepting it must not mint a full token into a workspace whose TTL
+        // has already passed (the sweep may hard-delete it within the next 15 minutes regardless of
+        // what this invite just created).
+        var demoExpired = await _unitOfWork
+            .Workspaces.IgnoreQueryFilters()
+            .AnyAsync(w =>
+                w.Id == ownerId && w.DemoExpiresAt != null && w.DemoExpiresAt < DateTime.UtcNow
+            );
+        if (demoExpired)
+            return Result<LoginResponse>.Failure(MessageKeys.Demo.DemoExpired);
+
         // 2. Resolve the role: the invite's pinned RoleId if present (the admin already chose it at
         //    creation time — may be Deputy), else validate the anonymous acceptor's OWN submitted
         //    roleId as a non-admin role of the invite's tenant or global (never Deputy — an
@@ -650,6 +707,7 @@ public class InviteService : IInviteService
                 identity.EmailVerifiedAt = DateTime.UtcNow;
                 _unitOfWork.Repository<User>().Update(identity);
                 existingIdentityJustVerified = true;
+                await NotifyDemoEmailVerifiedAsync(identity);
             }
         }
 
@@ -713,6 +771,12 @@ public class InviteService : IInviteService
                 return Result<LoginResponse>.Conflict(MessageKeys.Auth.AccountExists);
             }
 
+            // DB-17 review finding #7: after the save (so identity.Id is valid) — a brand-new
+            // identity has no other memberships yet, so this is a no-op in practice, but the site is
+            // still wired for consistency with every other EmailVerifiedAt flip in this service.
+            if (invite.Email != null)
+                await NotifyDemoEmailVerifiedAsync(identity);
+
             if (invite.Email == null)
                 await _emailVerification.SendAsync(identity);
         }
@@ -750,12 +814,19 @@ public class InviteService : IInviteService
             )
         );
 
+        // DB-17 review finding #11 (NIT): pass the workspace so MeResponse.DemoExpiresAt/DemoCanExtend
+        // are populated (this is an EXISTING workspace being joined — it may itself be a demo, e.g.
+        // via a quick-access/addressed invite the demo admin minted).
+        var currentWorkspace = await _unitOfWork
+            .Workspaces.IgnoreQueryFilters()
+            .FirstOrDefaultAsync(w => w.Id == ownerId);
+
         return Result<LoginResponse>.Success(
             new LoginResponse
             {
                 Status = "ok",
                 Token = token,
-                User = UserMapper.ToMeResponse(identity!, membership.Role),
+                User = UserMapper.ToMeResponse(identity!, membership.Role, workspace: currentWorkspace),
             }
         );
     }
@@ -809,6 +880,7 @@ public class InviteService : IInviteService
                 identity.EmailVerifiedAt = DateTime.UtcNow;
                 _unitOfWork.Repository<User>().Update(identity);
                 existingIdentityJustVerified = true;
+                await NotifyDemoEmailVerifiedAsync(identity);
             }
         }
 
@@ -818,7 +890,9 @@ public class InviteService : IInviteService
 
         // workspaces.id no longer needs to equal anyone's public_id — a fresh id every time.
         var workspaceId = Guid.NewGuid();
+        var isNewIdentityJustVerified = false;
 
+        Workspace newWorkspace;
         try
         {
             if (isNewIdentity)
@@ -832,7 +906,10 @@ public class InviteService : IInviteService
                 );
                 // DB-14 §3.2 — see AcceptJoinExistingWorkspaceAsync's twin comment.
                 if (invite.Email != null)
+                {
                     identity.EmailVerifiedAt = DateTime.UtcNow;
+                    isNewIdentityJustVerified = true;
+                }
                 await _unitOfWork.Repository<User>().AddAsync(identity);
             }
 
@@ -842,15 +919,14 @@ public class InviteService : IInviteService
             var workspaceName = string.IsNullOrWhiteSpace(trimmedInviteName)
                 ? Workspace.PlaceholderName
                 : trimmedInviteName[..Math.Min(120, trimmedInviteName.Length)];
-            await _unitOfWork.Workspaces.AddAsync(
-                new Workspace
-                {
-                    Id = workspaceId,
-                    Name = workspaceName,
-                    CreatedAt = DateTime.UtcNow,
-                    CreatedBy = workspaceId,
-                }
-            );
+            newWorkspace = new Workspace
+            {
+                Id = workspaceId,
+                Name = workspaceName,
+                CreatedAt = DateTime.UtcNow,
+                CreatedBy = workspaceId,
+            };
+            await _unitOfWork.Workspaces.AddAsync(newWorkspace);
             await _unitOfWork.SaveChangesAsync();
         }
         catch (Microsoft.EntityFrameworkCore.DbUpdateException)
@@ -862,6 +938,12 @@ public class InviteService : IInviteService
         // persisted (the save just above is the first one that could have persisted it).
         if (existingIdentityJustVerified)
             _emailVerification.InvalidateGate(identity!.PublicId);
+
+        // DB-17 review finding #7: after the save (so identity.Id is valid) — a brand-new identity
+        // has no other memberships yet, so this is a no-op in practice, but the site is still wired
+        // for consistency with every other EmailVerifiedAt flip in this service.
+        if (isNewIdentityJustVerified)
+            await NotifyDemoEmailVerifiedAsync(identity!);
 
         if (isNewIdentity && invite.Email == null)
             await _emailVerification.SendAsync(identity!);
@@ -958,7 +1040,10 @@ public class InviteService : IInviteService
             {
                 Status = "ok",
                 Token = token,
-                User = UserMapper.ToMeResponse(identity!, membership.Role),
+                // DB-17 review finding #11 (NIT): the workspace was just minted above (a plain
+                // brand-new workspace, never a demo) — pass it so MeResponse's demo fields resolve
+                // to their correct all-null values instead of the ToMeResponse default.
+                User = UserMapper.ToMeResponse(identity!, membership.Role, workspace: newWorkspace),
             }
         );
     }
@@ -1066,6 +1151,12 @@ public class InviteService : IInviteService
                 await _unitOfWork.Repository<User>().AddAsync(identity!);
             await _unitOfWork.Repository<Invite>().AddAsync(invite);
             await _unitOfWork.SaveChangesAsync();
+
+            // DB-17 review finding #7: after the save (so identity.Id is valid) — a brand-new
+            // identity has no other memberships yet, so this is a no-op in practice, but the site is
+            // still wired for consistency with every other EmailVerifiedAt flip in this service.
+            if (isNewIdentity)
+                await NotifyDemoEmailVerifiedAsync(identity!);
 
             membership = await _memberships.JoinAsync(
                 identity!,

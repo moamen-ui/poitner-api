@@ -556,41 +556,57 @@ public class DemoService : IDemoService
         var stamped = 0;
         foreach (var w in expiring)
         {
-            var admin = await _memberships.CurrentAdminAsync(w.Id);
-            // A converted-but-unverified workspace (Demo:ConvertRequiresVerification mode) has no
-            // RecipientEmail any more (cleared on convert) — the reminder then goes to the new
-            // (unverified) address instead.
-            var to =
-                admin?.User.RecipientEmail
-                ?? (w.DemoConvertedAt != null ? admin?.User.Email : null);
-
-            if (!string.IsNullOrWhiteSpace(to))
+            try
             {
-                try
-                {
-                    await _emailService.SendAsync(
-                        to,
-                        $"Your {productName} demo expires in about two hours",
-                        BuildExpiryWarningHtml(
-                            w.Name,
-                            w.DemoExpiresAt!.Value,
-                            productName,
-                            appUrl,
-                            ttlHours
-                        )
-                    );
-                }
-                catch (Exception)
-                {
-                    // Best-effort — the stamp below still records the one attempt (D17.6) whether or
-                    // not the send actually succeeded.
-                }
-            }
+                var admin = await _memberships.CurrentAdminAsync(w.Id);
+                // A converted-but-unverified workspace (Demo:ConvertRequiresVerification mode) has no
+                // RecipientEmail any more (cleared on convert) — the reminder then goes to the new
+                // (unverified) address instead.
+                var to =
+                    admin?.User.RecipientEmail
+                    ?? (w.DemoConvertedAt != null ? admin?.User.Email : null);
 
-            w.DemoExpiryWarnedAt = nowUtc;
-            _unitOfWork.Workspaces.Update(w);
-            await _unitOfWork.SaveChangesAsync();
-            stamped++;
+                if (!string.IsNullOrWhiteSpace(to))
+                {
+                    try
+                    {
+                        // DB-17 review finding #8 (LOW): per-workspace TTL override, not the global
+                        // default, since that is what an actual "Extend once" on THIS workspace adds.
+                        var workspaceTtlHours = w.DemoTtlHoursOverride ?? ttlHours;
+                        await _emailService.SendAsync(
+                            to,
+                            $"Your {productName} demo expires in about two hours",
+                            BuildExpiryWarningHtml(
+                                w.Name,
+                                w.DemoExpiresAt!.Value,
+                                productName,
+                                appUrl,
+                                workspaceTtlHours,
+                                // DB-17 review finding #8 (LOW): the one extension was already used
+                                // — don't dangle an action that will just fail.
+                                canExtend: w.DemoExtendedAt == null
+                            )
+                        );
+                    }
+                    catch (Exception)
+                    {
+                        // Best-effort — the stamp below still records the one attempt (D17.6) whether or
+                        // not the send actually succeeded.
+                    }
+                }
+
+                w.DemoExpiryWarnedAt = nowUtc;
+                _unitOfWork.Workspaces.Update(w);
+                await _unitOfWork.SaveChangesAsync();
+                stamped++;
+            }
+            catch (Exception)
+            {
+                // DB-17 review finding #8 (LOW): one workspace's failure (membership lookup, the
+                // stamp's SaveChangesAsync, …) must not stop the T-2h warning from reaching every
+                // OTHER expiring demo in this pass — mirrors the per-item isolation in the expiry
+                // sweep (§3.5).
+            }
         }
 
         return stamped;
@@ -618,6 +634,12 @@ public class DemoService : IDemoService
             .FirstOrDefaultAsync(w => w.Id == workspaceId && w.DeletedAt == null);
         if (workspace?.DemoExpiresAt == null)
             return Result<DemoStatusResponse>.Forbidden(MessageKeys.Demo.NotDemoUser);
+
+        // DB-17 review finding #6 (LOW): with Demo:ConvertRequiresVerification on, a converted
+        // workspace can still have a non-null DemoExpiresAt (the 72h re-verification grace) — that
+        // is not "still a demo" for extension purposes, it is already upgraded.
+        if (workspace.DemoConvertedAt != null)
+            return Result<DemoStatusResponse>.Failure(MessageKeys.Demo.AlreadyUpgraded);
 
         if (workspace.DemoExpiresAt < DateTime.UtcNow)
             return Result<DemoStatusResponse>.Failure(MessageKeys.Demo.DemoExpired);
@@ -770,17 +792,21 @@ public class DemoService : IDemoService
         DateTime expiresUtc,
         string productName,
         string appUrl,
-        int ttlHours
+        int ttlHours,
+        bool canExtend
     )
     {
         var encodedName = System.Net.WebUtility.HtmlEncode(workspaceName);
+        // DB-17 review finding #8 (LOW): only offer "Extend once" when it would actually work.
+        var extendSentence = canExtend
+            ? $" Need a little more time? <b>Extend once</b> adds {ttlHours} hours."
+            : string.Empty;
         return $@"<div style=""font-family:system-ui,Segoe UI,Roboto,sans-serif;color:#0f172a;line-height:1.6"">
   <h2 style=""margin:0 0 8px"">Your {productName} demo expires soon</h2>
   <p style=""margin:0 0 16px"">Your demo workspace, <b>{encodedName}</b>, expires on {expiresUtc:yyyy-MM-dd HH:mm} UTC.
   Everything in it — the project, its comments and screenshots — is deleted then. To keep it, open
   <a href=""{appUrl}"">{appUrl}</a> and choose <b>Keep this workspace</b> (you pick your e-mail and a password;
-  nothing is lost). Need a little more time? <b>Extend once</b> adds {ttlHours} hours. If you did not start
-  this demo, ignore this e-mail.</p>
+  nothing is lost).{extendSentence} If you did not start this demo, ignore this e-mail.</p>
 </div>";
     }
 }

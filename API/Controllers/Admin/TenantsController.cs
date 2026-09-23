@@ -1,6 +1,8 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
 using Pointer.API.Auth;
+using Pointer.Application.Abstractions;
 using Pointer.Application.Common;
 using Pointer.Application.DTOs.Impersonation;
 using Pointer.Application.DTOs.Tenant;
@@ -18,7 +20,8 @@ public class TenantsController(
     ITenantService tenantService,
     ITenantInviteService tenantInvites,
     IImpersonationService impersonationService,
-    IMembershipService memberships
+    IMembershipService memberships,
+    IUnitOfWork unitOfWork
 ) : ControllerBase
 {
     // ── Workspace invitations — the primary way to onboard a tenant ──────────────────────────────
@@ -185,17 +188,36 @@ public class TenantsController(
     }
 
     /// <summary>DB-17 §3.3: resolves a legacy `users.id` to its live Workspace Admin membership's
-    /// workspace — the one ambiguity-free meaning of "this admin's tenant" (a workspace has at most
-    /// one live Workspace Admin membership per identity).</summary>
+    /// workspace. Since D13, one identity can administer several workspaces, so "this admin's
+    /// tenant" is no longer necessarily unique — DB-17 review finding #9 (LOW): this legacy route
+    /// exists only to reach a demo's extend/demo-config, so prefer whichever admin membership's
+    /// workspace is actually a live demo over an arbitrary "first" pick when there is more than
+    /// one.</summary>
     private async Task<Guid?> ResolveWorkspaceIdFromUserIdAsync(int id)
     {
         var live = await memberships.ListForIdentityAsync(id);
-        var admin = live.FirstOrDefault(m =>
-            m.Role?.Name == "Workspace Admin"
-            && m.IsActive
-            && m.ApprovalStatus == Pointer.Domain.Enums.ApprovalStatus.Approved
-        );
-        return admin?.OwnerId;
+        var adminWorkspaceIds = live
+            .Where(m =>
+                m.Role?.Name == "Workspace Admin"
+                && m.IsActive
+                && m.ApprovalStatus == Pointer.Domain.Enums.ApprovalStatus.Approved
+            )
+            .Select(m => m.OwnerId)
+            .Distinct()
+            .ToList();
+
+        if (adminWorkspaceIds.Count == 0)
+            return null;
+        if (adminWorkspaceIds.Count == 1)
+            return adminWorkspaceIds[0];
+
+        var demoWorkspaceId = await unitOfWork
+            .Workspaces.IgnoreQueryFilters()
+            .Where(w => adminWorkspaceIds.Contains(w.Id) && w.DemoExpiresAt != null)
+            .Select(w => (Guid?)w.Id)
+            .FirstOrDefaultAsync();
+
+        return demoWorkspaceId ?? adminWorkspaceIds[0];
     }
 
     // F9 (DB-11a cross-review): keyed on the workspace id, not an admin's `users.id` (see SetStatus).

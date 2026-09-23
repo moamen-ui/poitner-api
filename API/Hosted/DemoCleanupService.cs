@@ -56,20 +56,11 @@ public class DemoCleanupService(
             logger.LogError(ex, "DemoCleanupService: warn-expiring step failed");
         }
 
-        // Step 2: expire + hard-delete — its own scope, its own try/catch.
+        // Step 2: expire + hard-delete. SweepOnceAsync takes its own fresh DI scope PER ITEM
+        // (DB-17 review, Opus HIGH) — never a single scope/DbContext shared across the whole loop.
         try
         {
-            using var scope = scopeFactory.CreateScope();
-            var uow = scope.ServiceProvider.GetRequiredService<IUnitOfWork>();
-            var tenantService = scope.ServiceProvider.GetRequiredService<ITenantService>();
-            var demoService = scope.ServiceProvider.GetRequiredService<IDemoService>();
-            var deleted = await SweepOnceAsync(
-                uow,
-                tenantService,
-                demoService,
-                logger,
-                stoppingToken
-            );
+            var deleted = await SweepOnceAsync(scopeFactory, logger, stoppingToken);
             logger.LogInformation(
                 "DemoCleanupService: sweep complete — {Deleted} demo tenant(s) hard-deleted",
                 deleted
@@ -96,24 +87,33 @@ public class DemoCleanupService(
 
     /// <summary>
     /// One expiry-delete pass (step 2 of <see cref="SweepAsync"/>). Internal + static so tests can
-    /// drive it directly (ImpersonationSweepService precedent). <paramref name="demoService"/> is
-    /// part of the signature for parity with the hosted job's dependencies even though this
-    /// particular step does not call it. Returns the number of workspaces hard-deleted.
+    /// drive it directly (ImpersonationSweepService precedent). Returns the number of workspaces
+    /// hard-deleted.
     /// </summary>
+    /// <remarks>
+    /// DB-17 review (Opus HIGH): each item in the loop resolves its OWN <see cref="IUnitOfWork"/>/
+    /// <see cref="ITenantService"/> from a fresh <paramref name="scopeFactory"/> scope — restoring
+    /// the pre-DB-17 behaviour. Sharing one <c>DbContext</c> across the whole loop (as the DB-17
+    /// commit did, passing a single already-resolved <c>uow</c>/<c>tenantService</c> in) meant a
+    /// failed item's queued-but-uncommitted tracked deletes could replay into the NEXT workspace's
+    /// transaction: <c>UnitOfWork.ExecuteInTransactionAsync</c>'s rollback path did not clear the
+    /// change tracker either (fixed separately), so an aborted delete for workspace A left its
+    /// tracked "Removed" entities sitting on the shared context, ready to be resubmitted by
+    /// workspace B's own <c>SaveChangesAsync</c> a few lines later.
+    /// </remarks>
     internal static async Task<int> SweepOnceAsync(
-        IUnitOfWork uow,
-        ITenantService tenantService,
-        IDemoService demoService,
+        IServiceScopeFactory scopeFactory,
         ILogger log,
         CancellationToken ct
     )
     {
-        _ = demoService;
         var now = DateTime.UtcNow;
 
         List<Guid> expiredIds;
         try
         {
+            using var scope = scopeFactory.CreateScope();
+            var uow = scope.ServiceProvider.GetRequiredService<IUnitOfWork>();
             // DB-17 §3.3: the WORKSPACE is the demo authority now, never `users.owner_id`.
             expiredIds = await uow
                 .Workspaces.IgnoreQueryFilters()
@@ -145,6 +145,12 @@ public class DemoCleanupService(
             ct.ThrowIfCancellationRequested();
             try
             {
+                // A fresh scope PER ITEM (see the remarks above) — never the scope/context used for
+                // any other workspace in this loop.
+                using var scope = scopeFactory.CreateScope();
+                var uow = scope.ServiceProvider.GetRequiredService<IUnitOfWork>();
+                var tenantService = scope.ServiceProvider.GetRequiredService<ITenantService>();
+
                 // DB-17 §3.5 (Gemini Pro #2): a conversion/extension that commits between the id
                 // query above and this delete must not destroy the user's data — re-check
                 // immediately before calling HardDeleteAsync (which re-checks again, under FOR

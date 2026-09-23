@@ -2,6 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using Pointer.Application.Abstractions;
 using Pointer.Application.DTOs.Branding;
 using Pointer.Application.DTOs.Invite;
+using Pointer.Application.Resources;
 using Pointer.Application.Response;
 using Pointer.Application.Services.Implementation;
 using Pointer.Application.Services.Interfaces;
@@ -920,6 +921,45 @@ public class InviteServiceTests
 
         var invite = db.Invites.IgnoreQueryFilters().Single(i => i.Id == inviteId);
         Assert.Equal(1, invite.Uses); // incremented
+    }
+
+    /// <summary>DB-17 review finding #4 (MEDIUM): an addressed/open invite into a workspace whose
+    /// demo TTL has already expired must not mint a full token — the sweep may hard-delete that
+    /// workspace within the next 15 minutes regardless of what this invite just created. Nothing is
+    /// created (no user row, no membership, no invite use consumed).</summary>
+    [Fact]
+    public async Task Accept_Rejects_ExpiredDemoWorkspace()
+    {
+        var dbName = Guid.NewGuid().ToString();
+        var (tenant, roleId) = SeedTenant(dbName);
+        using (var seed = BuildContext(new FakeCurrentUser { IsSuperAdmin = true }, dbName))
+        {
+            var ws = seed.Workspaces.Single(w => w.Id == tenant);
+            ws.DemoExpiresAt = DateTime.UtcNow.AddHours(-1);
+            seed.SaveChanges();
+        }
+        var inviteId = SeedInvite(dbName, tenant, i => i.RoleId = roleId);
+        var code = CodeOf(dbName, inviteId);
+
+        var anon = new FakeCurrentUser { };
+        using var db = BuildContext(anon, dbName);
+        var svc = BuildService(anon, db);
+
+        var result = await svc.AcceptAsync(
+            new AcceptInviteRequest
+            {
+                Code = code,
+                Email = "new@user.com",
+                Password = "password123",
+                DisplayName = "New User",
+            }
+        );
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(MessageKeys.Demo.DemoExpired, result.Message);
+        Assert.Empty(db.Users.IgnoreQueryFilters().Where(u => u.Email == "new@user.com"));
+        var invite = db.Invites.IgnoreQueryFilters().Single(i => i.Id == inviteId);
+        Assert.Equal(0, invite.Uses); // never claimed
     }
 
     [Fact]

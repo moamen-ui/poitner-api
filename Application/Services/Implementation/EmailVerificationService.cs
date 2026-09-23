@@ -182,8 +182,35 @@ public class EmailVerificationService : IEmailVerificationService
             // DB-17 §3.4: clears the TTL of any converted-but-unverified workspace this identity
             // administers (Demo:ConvertRequiresVerification mode; a no-op with the flag off, and
             // when no service provider was wired — every hand-rolled test construction).
-            if (_serviceProvider?.GetService(typeof(IDemoService)) is IDemoService demo)
-                await demo.OnEmailVerifiedAsync(identity);
+            // DB-17 review finding #7: best-effort — never fail a confirmed verification over this;
+            // Gemini's ask — an IDemoService that a REAL service provider fails to resolve is a
+            // Warning, not a silent skip (distinct from the test-double case, where there is no
+            // service provider at all).
+            if (_serviceProvider != null)
+            {
+                if (_serviceProvider.GetService(typeof(IDemoService)) is IDemoService demo)
+                {
+                    try
+                    {
+                        await demo.OnEmailVerifiedAsync(identity);
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogError(
+                            ex,
+                            "EmailVerificationService: OnEmailVerifiedAsync failed for {PublicId}",
+                            identity.PublicId
+                        );
+                    }
+                }
+                else
+                {
+                    _logger.LogWarning(
+                        "EmailVerificationService: IDemoService could not be resolved — skipped OnEmailVerifiedAsync for {PublicId}",
+                        identity.PublicId
+                    );
+                }
+            }
         }
 
         await _audit.WriteAsync(

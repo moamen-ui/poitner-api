@@ -165,10 +165,13 @@ public class CommentService : ICommentService
         // the global super-admin-tunable setting (default 10) applies.
         if (projectOwnerId is Guid owner)
         {
-            // DB-17 §3.3: the WORKSPACE is the demo authority now (never the demo-flag/override fields on the identity).
+            // DB-17 §3.3: the WORKSPACE is the demo authority now (never the demo-flag/override
+            // fields on the identity). DB-17 review finding #6: a converted workspace is not a
+            // demo for the cap even while Demo:ConvertRequiresVerification keeps DemoExpiresAt
+            // non-null for the re-verification grace.
             var demoWs = await _unitOfWork
                 .Workspaces.IgnoreQueryFilters()
-                .Where(w => w.Id == owner && w.DemoExpiresAt != null)
+                .Where(w => w.Id == owner && w.DemoExpiresAt != null && w.DemoConvertedAt == null)
                 .Select(w => new { w.DemoCommentCapOverride })
                 .FirstOrDefaultAsync();
 

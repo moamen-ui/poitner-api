@@ -194,7 +194,8 @@ public class Db17DemoServiceTests
         DateTime? demoExpiresAt = null,
         DateTime? demoExtendedAt = null,
         int? ttlOverride = null,
-        string? recipientEmail = "real@user.com"
+        string? recipientEmail = "real@user.com",
+        DateTime? demoConvertedAt = null
     )
     {
         var workspaceId = Guid.NewGuid();
@@ -236,6 +237,7 @@ public class Db17DemoServiceTests
                 CreatedBy = workspaceId,
                 DemoExpiresAt = expires,
                 DemoExtendedAt = demoExtendedAt,
+                DemoConvertedAt = demoConvertedAt,
                 DemoTtlHoursOverride = ttlOverride,
             }
         );
@@ -310,6 +312,26 @@ public class Db17DemoServiceTests
 
         Assert.False(result.IsSuccess);
         Assert.Equal(MessageKeys.Demo.DemoExpired, result.Message);
+    }
+
+    /// <summary>DB-17 review finding #6 (LOW): with Demo:ConvertRequiresVerification on, a converted
+    /// workspace can still carry a non-null DemoExpiresAt (the 72h re-verification grace) — that is
+    /// not "still a demo" for extension purposes, it is already upgraded.</summary>
+    [Fact]
+    public async Task Extend_ConvertedWorkspace_Fails_AlreadyUpgraded()
+    {
+        var db = Ctx(nameof(Extend_ConvertedWorkspace_Fails_AlreadyUpgraded));
+        var (admin, workspaceId) = SeedDemoWorkspace(
+            db,
+            demoExpiresAt: DateTime.UtcNow.AddHours(48),
+            demoConvertedAt: DateTime.UtcNow
+        );
+        var svc = BuildService(db);
+
+        var result = await svc.ExtendAsync(admin.PublicId, workspaceId);
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(MessageKeys.Demo.AlreadyUpgraded, result.Message);
     }
 
     [Fact]
@@ -697,6 +719,190 @@ public class Db17DemoServiceTests
         Assert.Equal(1, warned);
         Assert.Empty(email.Sent);
         Assert.NotNull(db.Workspaces.Single(w => w.Id == workspaceId).DemoExpiryWarnedAt);
+    }
+
+    /// <summary>DB-17 review finding #8 (LOW): don't offer "Extend once" when it would just fail.</summary>
+    [Fact]
+    public async Task WarnExpiring_AlreadyExtended_OmitsExtendOnceFromEmail()
+    {
+        var db = Ctx(nameof(WarnExpiring_AlreadyExtended_OmitsExtendOnceFromEmail));
+        SeedDemoWorkspace(
+            db,
+            demoExpiresAt: DateTime.UtcNow.AddHours(1),
+            demoExtendedAt: DateTime.UtcNow.AddHours(-1)
+        );
+        var email = new SpyEmailService();
+        var svc = BuildService(db, email: email);
+
+        var warned = await svc.WarnExpiringAsync(DateTime.UtcNow, TimeSpan.FromHours(2));
+
+        Assert.Equal(1, warned);
+        var body = Assert.Single(email.Sent).Body;
+        Assert.DoesNotContain("Extend once", body);
+    }
+
+    /// <summary>DB-17 review finding #8 (LOW): the workspace's OWN TTL override, not the global
+    /// default, is what "Extend once" would actually add.</summary>
+    [Fact]
+    public async Task WarnExpiring_UsesWorkspaceTtlOverride_InEmailBody()
+    {
+        var db = Ctx(nameof(WarnExpiring_UsesWorkspaceTtlOverride_InEmailBody));
+        SeedDemoWorkspace(db, demoExpiresAt: DateTime.UtcNow.AddHours(1), ttlOverride: 6);
+        var settings = new FakeSettings();
+        settings.Ints[ISettingsService.DemoTtlHours] = 24; // the global default — must NOT be used
+        var email = new SpyEmailService();
+        var svc = BuildService(db, settings: settings, email: email);
+
+        var warned = await svc.WarnExpiringAsync(DateTime.UtcNow, TimeSpan.FromHours(2));
+
+        Assert.Equal(1, warned);
+        var body = Assert.Single(email.Sent).Body;
+        Assert.Contains("adds 6 hours", body);
+        Assert.DoesNotContain("adds 24 hours", body);
+    }
+
+    /// <summary>DB-17 review finding #8 (LOW): one workspace failing must not stop the T-2h warning
+    /// from reaching every other expiring demo in the same pass.</summary>
+    [Fact]
+    public async Task WarnExpiring_OneWorkspaceFails_OthersStillWarned()
+    {
+        var db = Ctx(nameof(WarnExpiring_OneWorkspaceFails_OthersStillWarned));
+        var (_, okWorkspaceId) = SeedDemoWorkspace(db, demoExpiresAt: DateTime.UtcNow.AddHours(1));
+        // A second, deliberately-broken workspace whose admin's SendAsync throws — proving the OK
+        // workspace's own warning still goes out and gets stamped despite this one throwing.
+        var brokenWorkspaceId = Guid.NewGuid();
+        var brokenAdminPid = Guid.NewGuid();
+        var role = db.Roles.Single(r => r.Name == "Workspace Admin");
+        db.Workspaces.Add(
+            new Workspace
+            {
+                Id = brokenWorkspaceId,
+                Name = "Demo Workspace",
+                CreatedAt = DateTime.UtcNow,
+                CreatedBy = brokenWorkspaceId,
+                DemoExpiresAt = DateTime.UtcNow.AddHours(1),
+            }
+        );
+        var brokenAdmin = new User
+        {
+            PublicId = brokenAdminPid,
+            Email = "broken@demo.pointer",
+            PasswordHash = "x",
+            DisplayName = "Broken",
+            RoleId = role.Id,
+            Role = role,
+            OwnerId = brokenWorkspaceId,
+            ApprovalStatus = ApprovalStatus.Approved,
+            IsActive = true,
+            IsDemo = true,
+        };
+        db.Users.Add(brokenAdmin);
+        db.SaveChanges();
+        db.WorkspaceMemberships.Add(
+            new WorkspaceMembership
+            {
+                UserId = brokenAdmin.Id,
+                OwnerId = brokenWorkspaceId,
+                RoleId = role.Id,
+                Role = role,
+                IsActive = true,
+                ApprovalStatus = ApprovalStatus.Approved,
+                JoinedAt = DateTime.UtcNow,
+            }
+        );
+        db.SaveChanges();
+
+        var email = new SpyEmailService();
+        var uow = new UnitOfWork(db);
+        var throwingMemberships = new ThrowingCurrentAdminMembershipService(
+            new MembershipService(uow),
+            throwFor: brokenWorkspaceId
+        );
+        var svc = new DemoService(
+            uow,
+            new FakePasswordHasher(),
+            new FakeTokenService(),
+            email,
+            new FakeSettings(),
+            new NoopBrandingService(),
+            throwingMemberships
+        );
+
+        var warned = await svc.WarnExpiringAsync(DateTime.UtcNow, TimeSpan.FromHours(2));
+
+        // Only the ok workspace — the broken one's CurrentAdminAsync throw aborts before its own
+        // stamp, but must not stop the OK workspace (seeded first, iterated first) from being
+        // warned and stamped.
+        Assert.Equal(1, warned);
+        Assert.NotNull(db.Workspaces.Single(w => w.Id == okWorkspaceId).DemoExpiryWarnedAt);
+        Assert.Null(db.Workspaces.Single(w => w.Id == brokenWorkspaceId).DemoExpiryWarnedAt);
+        Assert.Single(email.Sent);
+    }
+
+    /// <summary>Throws from <see cref="CurrentAdminAsync"/> for one specific workspace — models a
+    /// per-workspace failure mid-loop (DB-17 review finding #8) without needing the send path,
+    /// which already tolerates its own failures independently (D17.6).</summary>
+    private sealed class ThrowingCurrentAdminMembershipService(IMembershipService inner, Guid throwFor)
+        : IMembershipService
+    {
+        public Task<User?> FindIdentityByEmailAsync(string? email) =>
+            inner.FindIdentityByEmailAsync(email);
+
+        public Task<User?> FindIdentityByPublicIdAsync(Guid publicId) =>
+            inner.FindIdentityByPublicIdAsync(publicId);
+
+        public Task<WorkspaceMembership?> GetMembershipAsync(int userId, Guid workspaceId) =>
+            inner.GetMembershipAsync(userId, workspaceId);
+
+        public Task<List<WorkspaceMembership>> ListForIdentityAsync(int userId) =>
+            inner.ListForIdentityAsync(userId);
+
+        public IQueryable<WorkspaceMembership> InWorkspace(Guid workspaceId) =>
+            inner.InWorkspace(workspaceId);
+
+        public Task<WorkspaceMembership?> CurrentAdminAsync(Guid workspaceId) =>
+            workspaceId == throwFor
+                ? throw new InvalidOperationException("simulated per-workspace failure")
+                : inner.CurrentAdminAsync(workspaceId);
+
+        public Task<WorkspaceMembership> JoinAsync(
+            User identity,
+            Guid workspaceId,
+            Role role,
+            ApprovalStatus status,
+            bool isActive,
+            int? inviteId
+        ) => inner.JoinAsync(identity, workspaceId, role, status, isActive, inviteId);
+
+        public User NewIdentity(
+            string email,
+            string passwordHash,
+            string displayName,
+            Role firstRole,
+            Guid firstWorkspaceId,
+            bool passwordlessOnly = false
+        ) =>
+            inner.NewIdentity(
+                email,
+                passwordHash,
+                displayName,
+                firstRole,
+                firstWorkspaceId,
+                passwordlessOnly
+            );
+
+        public Task<List<(Guid WorkspaceId, string Name)>> SoleAdminWorkspacesAsync(
+            IEnumerable<int> membershipIds
+        ) => inner.SoleAdminWorkspacesAsync(membershipIds);
+
+        public Result SoleAdminConflict(IEnumerable<(Guid WorkspaceId, string Name)> workspaces) =>
+            inner.SoleAdminConflict(workspaces);
+
+        public Task<int> CountLiveAdminsAsync(Guid workspaceId) =>
+            inner.CountLiveAdminsAsync(workspaceId);
+
+        public Task EndAsync(WorkspaceMembership m, MembershipEndReason reason, Guid actor) =>
+            inner.EndAsync(m, reason, actor);
     }
 
     // ── SweepThrottleRowsAsync (§3.7, R14) ───────────────────────────────────────────────────

@@ -18,8 +18,11 @@ namespace Pointer.Infrastructure.Migrations
             // it at creation; R8.7 is suspended for this one statement, exactly as
             // TenantService.HardDeleteAsync reads the same column for the same one-shot "created
             // here" question), requires a live Workspace Admin membership, and refuses any
-            // workspace with another live member (a demo workspace has exactly one). Guarded so a
-            // second run is a no-op (R3).
+            // workspace with another live member whose OWN home is elsewhere (a demo has exactly
+            // one member unless the demo admin minted a quick-access/addressed invite of their own —
+            // review finding #3: those members' `owner_id` IS this same workspace, so they do not
+            // block tagging; only a member whose `owner_id` is DISTINCT FROM this workspace — i.e.
+            // genuinely at home somewhere else — does). Guarded so a second run is a no-op (R3).
             // Implementer's note (deviation from the doc's literal §3.2 SQL, proven on Postgres
             // 15 during R11): the membership-to-workspace join predicate cannot sit in the JOIN's
             // own ON clause — Postgres resolves an UPDATE ... FROM's join list before the UPDATE
@@ -47,7 +50,9 @@ namespace Pointer.Infrastructure.Migrations
                   AND w.demo_expires_at IS NULL
                   AND w.demo_converted_at IS NULL
                   AND NOT EXISTS (SELECT 1 FROM workspace_memberships o
-                                  WHERE o.owner_id = w.id AND o.user_id <> u.id AND o.left_at IS NULL AND o.deleted_at IS NULL);  -- a demo has exactly one member
+                                  JOIN users ou ON ou.id = o.user_id
+                                  WHERE o.owner_id = w.id AND o.user_id <> u.id AND o.left_at IS NULL AND o.deleted_at IS NULL
+                                    AND ou.owner_id IS DISTINCT FROM w.id);  -- reject only a member whose home is elsewhere; a demo-own member (quick-access/invited by the demo admin, home = this workspace) does not block tagging
                 """
             );
         }
@@ -56,10 +61,16 @@ namespace Pointer.Infrastructure.Migrations
         protected override void Down(MigrationBuilder migrationBuilder)
         {
             // Reversible: the `users` columns still hold the source (dual-write) — this just nulls
-            // the copy on unconverted workspaces.
+            // the copy on unconverted workspaces. Caveat (DB-17 review finding #12): this only
+            // reverses what Migration 2 (THIS migration) wrote — `demo_expiry_warned_at` is written
+            // later by DemoService.WarnExpiringAsync (§3.5), never by this backfill, but a rollback
+            // that stops here (Migration 2 rolled back, Migration 1 — the columns themselves — kept)
+            // would otherwise leave a stale warned-at timestamp sitting next to a freshly-renulled
+            // demo_expires_at; nulled here too so the two columns cannot disagree after only this
+            // migration is undone.
             migrationBuilder.Sql(
                 """
-                UPDATE workspaces SET demo_expires_at = NULL, demo_extended_at = NULL, demo_comment_cap_override = NULL, demo_ttl_hours_override = NULL WHERE demo_converted_at IS NULL;
+                UPDATE workspaces SET demo_expires_at = NULL, demo_extended_at = NULL, demo_comment_cap_override = NULL, demo_ttl_hours_override = NULL, demo_expiry_warned_at = NULL WHERE demo_converted_at IS NULL;
                 """
             );
         }

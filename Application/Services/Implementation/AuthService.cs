@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
 using Npgsql;
 using Pointer.Application.Abstractions;
 using Pointer.Application.Common;
@@ -29,6 +30,7 @@ public class AuthService : IAuthService
     private readonly IEmailVerificationService _emailVerification;
     private readonly IMfaService? _mfa;
     private readonly IDemoService? _demo;
+    private readonly ILogger<AuthService>? _logger;
 
     public AuthService(
         IUnitOfWork unitOfWork,
@@ -53,7 +55,10 @@ public class AuthService : IAuthService
         // DB-17: nullable-with-default, same seam as `audit`/`mfa` above. Only reached by
         // ConfirmEmailChangeAsync's demo-TTL-clearing hook (Demo:ConvertRequiresVerification
         // mode) — a no-op with the flag off, which is every existing hand-rolled test construction.
-        IDemoService? demo = null
+        IDemoService? demo = null,
+        // DB-17 review finding #7: nullable-with-default, same seam as the others above — only
+        // used to log a failed/skipped OnEmailVerifiedAsync call, never to change behaviour.
+        ILogger<AuthService>? logger = null
     )
     {
         _unitOfWork = unitOfWork;
@@ -71,6 +76,7 @@ public class AuthService : IAuthService
         _emailVerification = emailVerification ?? NoopEmailVerification.Instance;
         _mfa = mfa;
         _demo = demo;
+        _logger = logger;
     }
 
     /// <summary>
@@ -601,8 +607,22 @@ public class AuthService : IAuthService
         // DB-17 §3.4: the address just became real via THIS route too (change-email, not only
         // verify-email) — clear the TTL of any converted-but-unverified workspace this identity
         // administers (Demo:ConvertRequiresVerification mode; a no-op with the flag off).
+        // DB-17 review finding #7: best-effort — never fail a confirmed email change over this.
         if (_demo != null)
-            await _demo.OnEmailVerifiedAsync(identity);
+        {
+            try
+            {
+                await _demo.OnEmailVerifiedAsync(identity);
+            }
+            catch (Exception ex)
+            {
+                _logger?.LogError(
+                    ex,
+                    "AuthService: OnEmailVerifiedAsync failed for {PublicId}",
+                    identity.PublicId
+                );
+            }
+        }
 
         var brand = await _branding.BuildResponseAsync("", new HashSet<string>());
         try
@@ -1016,10 +1036,10 @@ public class AuthService : IAuthService
 
         await _loginLimiter.ResetAsync(emailNormalized);
 
-        // DB-17: this path is super-admin-only MFA completion — no workspace to check (super admins
-        // own none). Call with an empty set anyway so every token-mint call site references the
-        // guard uniformly (acceptance crit. 7).
-        await ExpiredDemoWorkspaceIdsAsync(Array.Empty<Guid>());
+        // DB-17 review finding #4/#10: this path is super-admin-only MFA completion — no workspace
+        // to check at all (super admins own none), so it is exempt from the guard rather than
+        // calling it with a permanently-empty set that can never find anything (acceptance
+        // criterion 7 amended to say so explicitly).
         var token = _tokenService.Issue(user, null);
         var response = new LoginResponse
         {
@@ -1684,6 +1704,12 @@ public class AuthService : IAuthService
 
         await AuditLoginSucceededAsync(user, membership.OwnerId, "magic_link");
 
+        // DB-17 review finding #11 (NIT): pass the workspace so MeResponse.DemoExpiresAt/DemoCanExtend
+        // are populated here too (a demo admin can mint a quick-access magic link — §3.3 (c)).
+        var currentWorkspace = await _unitOfWork
+            .Workspaces.IgnoreQueryFilters()
+            .FirstOrDefaultAsync(w => w.Id == membership.OwnerId);
+
         return Result<LoginResponse>.Success(
             new LoginResponse
             {
@@ -1692,7 +1718,8 @@ public class AuthService : IAuthService
                 User = UserMapper.ToMeResponse(
                     user,
                     membership.Role,
-                    await ResolveTenantNameAsync(membership.OwnerId)
+                    await ResolveTenantNameAsync(membership.OwnerId),
+                    currentWorkspace
                 ),
             }
         );

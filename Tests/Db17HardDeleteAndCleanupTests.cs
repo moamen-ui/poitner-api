@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
 using Pointer.API.Hosted;
 using Pointer.Application.Abstractions;
@@ -20,6 +21,12 @@ namespace Pointer.Tests;
 /// <c>DemoCleanupService.SweepOnceAsync</c>'s own expiry query + per-item re-check. InMemory
 /// provider throughout — <see cref="IUnitOfWork.ExecuteSqlRawAsync"/>'s `FOR UPDATE` no-ops there
 /// (it is Postgres-only syntax; the real re-check under lock is proven in the R11 rehearsal, §9).
+///
+/// DB-17 review (post-`cb2180a`) findings #1 (HIGH) and #2 (MEDIUM) added: <c>SweepOnceAsync</c>
+/// now takes an <see cref="IServiceScopeFactory"/> and resolves a fresh <see cref="IUnitOfWork"/>/
+/// <see cref="ITenantService"/> PER ITEM (never one shared across the whole sweep), and
+/// <c>HardDeleteAsync</c>'s <c>demo_expired</c> path writes its audit row / deletes files only
+/// after the locked re-check passes.
 /// </summary>
 public class Db17HardDeleteAndCleanupTests
 {
@@ -102,13 +109,11 @@ public class Db17HardDeleteAndCleanupTests
         );
 
     private static TenantService BuildTenantService(
-        AppDbContext ctx,
+        IUnitOfWork uow,
         RecordingFileStorage files,
         FakeAuditWriter audit
-    )
-    {
-        var uow = new UnitOfWork(ctx);
-        return new TenantService(
+    ) =>
+        new(
             uow,
             new FakePasswordHasher(),
             files,
@@ -117,7 +122,6 @@ public class Db17HardDeleteAndCleanupTests
             new MembershipService(uow),
             audit
         );
-    }
 
     private static Guid SeedWorkspace(
         AppDbContext db,
@@ -151,7 +155,7 @@ public class Db17HardDeleteAndCleanupTests
         var workspaceId = SeedWorkspace(db, demoExpiresAt: null, demoConvertedAt: DateTime.UtcNow);
         var files = new RecordingFileStorage();
         var audit = new FakeAuditWriter();
-        var svc = BuildTenantService(db, files, audit);
+        var svc = BuildTenantService(new UnitOfWork(db), files, audit);
 
         var result = await svc.HardDeleteAsync(workspaceId, reason: "demo_expired");
 
@@ -171,7 +175,7 @@ public class Db17HardDeleteAndCleanupTests
         var workspaceId = SeedWorkspace(db, demoExpiresAt: null, demoConvertedAt: DateTime.UtcNow);
         var files = new RecordingFileStorage();
         var audit = new FakeAuditWriter();
-        var svc = BuildTenantService(db, files, audit);
+        var svc = BuildTenantService(new UnitOfWork(db), files, audit);
 
         var result = await svc.HardDeleteAsync(workspaceId);
 
@@ -187,7 +191,7 @@ public class Db17HardDeleteAndCleanupTests
         var workspaceId = SeedWorkspace(db, demoExpiresAt: DateTime.UtcNow.AddHours(-1));
         var files = new RecordingFileStorage();
         var audit = new FakeAuditWriter();
-        var svc = BuildTenantService(db, files, audit);
+        var svc = BuildTenantService(new UnitOfWork(db), files, audit);
 
         var result = await svc.HardDeleteAsync(workspaceId, reason: "demo_expired");
 
@@ -197,12 +201,128 @@ public class Db17HardDeleteAndCleanupTests
         Assert.Null(entry.OwnerId);
     }
 
+    /// <summary>
+    /// DB-17 review finding #2 (MEDIUM): an extension committing between the pre-check (before the
+    /// transaction) and the `FOR UPDATE` lock (the transaction's first statement) must abort the
+    /// delete — and, since the review, must leave no audit row and no filesystem delete either
+    /// (both moved to fire only after the locked re-check passes). Models the race with a decorator
+    /// around a real <see cref="UnitOfWork"/> that mutates the workspace — via its OWN separate
+    /// <see cref="AppDbContext"/>, exactly as a concurrent request would — the instant
+    /// <see cref="IUnitOfWork.ExecuteSqlRawAsync"/> (the `FOR UPDATE` call) fires.
+    /// </summary>
+    [Fact]
+    public async Task HardDelete_DemoExpiredReason_ExtensionCommitsBetweenPrecheckAndLock_NoFilesNoAudit()
+    {
+        var dbName = nameof(
+            HardDelete_DemoExpiredReason_ExtensionCommitsBetweenPrecheckAndLock_NoFilesNoAudit
+        );
+        var db = Ctx(dbName);
+        var workspaceId = SeedWorkspace(db, demoExpiresAt: DateTime.UtcNow.AddHours(-1));
+        var files = new RecordingFileStorage();
+        var audit = new FakeAuditWriter();
+        var racyUow = new ExtendingOnLockUnitOfWork(new UnitOfWork(db), dbName, workspaceId);
+        var svc = BuildTenantService(racyUow, files, audit);
+
+        // HardDeleteAsync's locked re-check throwing propagates OUT of ExecuteInTransactionAsync
+        // uncaught (by design — the hosted sweep loop's own try/catch is what's meant to catch it,
+        // §3.5) — never converted into a Result.Failure here.
+        await Assert.ThrowsAsync<InvalidOperationException>(
+            () => svc.HardDeleteAsync(workspaceId, reason: "demo_expired")
+        );
+
+        Assert.Empty(files.DeletedOwners);
+        Assert.DoesNotContain(audit.Entries, e => e.Action == AuditActions.TenantHardDeleted);
+        Assert.NotNull(
+            db.Workspaces.IgnoreQueryFilters().SingleOrDefault(w => w.Id == workspaceId)
+        );
+    }
+
+    /// <summary>Decorates a real <see cref="UnitOfWork"/>, mutating the workspace (via a brand-new
+    /// <see cref="AppDbContext"/> against the SAME named InMemory database — modelling a genuinely
+    /// separate concurrent connection) the instant <see cref="ExecuteSqlRawAsync"/> — the `FOR
+    /// UPDATE` lock statement — is called, i.e. between the pre-check and the locked re-check.</summary>
+    private sealed class ExtendingOnLockUnitOfWork(UnitOfWork inner, string dbName, Guid workspaceId)
+        : IUnitOfWork
+    {
+        public IRepository<T> Repository<T>()
+            where T : BaseEntity => inner.Repository<T>();
+
+        public DbSet<UsageEvent> UsageEvents => inner.UsageEvents;
+        public DbSet<UsageDaily> UsageDaily => inner.UsageDaily;
+        public DbSet<Workspace> Workspaces => inner.Workspaces;
+        public DbSet<UserAlias> UserAliases => inner.UserAliases;
+        public DbSet<AuditEvent> AuditEvents => inner.AuditEvents;
+        public DbSet<ImpersonationSession> ImpersonationSessions => inner.ImpersonationSessions;
+
+        public Task<int> SaveChangesAsync() => inner.SaveChangesAsync();
+
+        public Task ExecuteInTransactionAsync(Func<Task> action) =>
+            inner.ExecuteInTransactionAsync(action);
+
+        public void PreserveCreatedAtOnInsert(BaseEntity entity) =>
+            inner.PreserveCreatedAtOnInsert(entity);
+
+        public void ClearChangeTracker() => inner.ClearChangeTracker();
+
+        public Task<int> AtomicClaimInviteSlotAsync(int inviteId, DateTime now) =>
+            inner.AtomicClaimInviteSlotAsync(inviteId, now);
+
+        public async Task ExecuteSqlRawAsync(string sql, params object[] parameters)
+        {
+            using (var concurrent = Ctx(dbName))
+            {
+                var ws = concurrent.Workspaces.IgnoreQueryFilters().Single(w => w.Id == workspaceId);
+                ws.DemoExpiresAt = null;
+                ws.DemoExtendedAt = DateTime.UtcNow;
+                await concurrent.SaveChangesAsync();
+            }
+            await inner.ExecuteSqlRawAsync(sql, parameters);
+        }
+    }
+
     // ── DemoCleanupService.SweepOnceAsync (§3.5) ────────────────────────────────────────────
+
+    /// <summary>DB-17 review finding #1 (HIGH): builds a real DI container so <c>SweepOnceAsync</c>
+    /// can take a fresh <see cref="IUnitOfWork"/>/<see cref="ITenantService"/> scope PER ITEM,
+    /// exactly as it does against the real API host — every scope's <see cref="AppDbContext"/>
+    /// targets the SAME named InMemory database, so they all see each other's committed writes.
+    /// </summary>
+    private static ServiceProvider BuildSweepContainer(
+        string dbName,
+        RecordingFileStorage files,
+        FakeAuditWriter audit
+    )
+    {
+        var services = new ServiceCollection();
+        services.AddSingleton<IFileStorage>(files);
+        services.AddSingleton<IAuditWriter>(audit);
+        services.AddSingleton<ISettingsService>(new FakeSettings());
+        services.AddSingleton<IPasswordHasher>(new FakePasswordHasher());
+        services.AddSingleton<IBillingProvider, NoopBillingProvider>();
+        services.AddScoped(_ => Ctx(dbName));
+        services.AddScoped<IUnitOfWork>(sp => new UnitOfWork(sp.GetRequiredService<AppDbContext>()));
+        services.AddScoped<IMembershipService>(
+            sp => new MembershipService(sp.GetRequiredService<IUnitOfWork>())
+        );
+        services.AddScoped<ITenantService>(sp =>
+            new TenantService(
+                sp.GetRequiredService<IUnitOfWork>(),
+                sp.GetRequiredService<IPasswordHasher>(),
+                sp.GetRequiredService<IFileStorage>(),
+                sp.GetRequiredService<ISettingsService>(),
+                sp.GetRequiredService<IBillingProvider>(),
+                sp.GetRequiredService<IMembershipService>(),
+                sp.GetRequiredService<IAuditWriter>()
+            )
+        );
+        return services.BuildServiceProvider();
+    }
 
     [Fact]
     public async Task DemoCleanup_DeletesExpiredWorkspace_ByWorkspaceColumn_NotUsers()
     {
-        var db = Ctx(nameof(DemoCleanup_DeletesExpiredWorkspace_ByWorkspaceColumn_NotUsers));
+        var dbName = nameof(DemoCleanup_DeletesExpiredWorkspace_ByWorkspaceColumn_NotUsers);
+        var db = Ctx(dbName);
         var workspaceId = SeedWorkspace(db, demoExpiresAt: DateTime.UtcNow.AddHours(-1));
         // Proves the read-switch: the legacy users.expires_at is null, yet the workspace column
         // alone is enough to select and delete it.
@@ -238,24 +358,12 @@ public class Db17HardDeleteAndCleanupTests
         );
         db.SaveChanges();
 
-        var uow = new UnitOfWork(db);
         var files = new RecordingFileStorage();
         var audit = new FakeAuditWriter();
-        var tenantService = BuildTenantService(db, files, audit);
-        var demoService = new DemoService(
-            uow,
-            new FakePasswordHasher(),
-            new FakeTokenServiceForCleanup(),
-            new NoopEmailForCleanup(),
-            new FakeSettings(),
-            new NoopBrandingForCleanup(),
-            new MembershipService(uow)
-        );
+        await using var container = BuildSweepContainer(dbName, files, audit);
 
         var deleted = await DemoCleanupService.SweepOnceAsync(
-            uow,
-            tenantService,
-            demoService,
+            container.GetRequiredService<IServiceScopeFactory>(),
             NullLogger.Instance,
             CancellationToken.None
         );
@@ -267,27 +375,16 @@ public class Db17HardDeleteAndCleanupTests
     [Fact]
     public async Task DemoCleanup_LeavesLiveDemo()
     {
-        var db = Ctx(nameof(DemoCleanup_LeavesLiveDemo));
+        var dbName = nameof(DemoCleanup_LeavesLiveDemo);
+        var db = Ctx(dbName);
         var workspaceId = SeedWorkspace(db, demoExpiresAt: DateTime.UtcNow.AddHours(1));
 
-        var uow = new UnitOfWork(db);
         var files = new RecordingFileStorage();
         var audit = new FakeAuditWriter();
-        var tenantService = BuildTenantService(db, files, audit);
-        var demoService = new DemoService(
-            uow,
-            new FakePasswordHasher(),
-            new FakeTokenServiceForCleanup(),
-            new NoopEmailForCleanup(),
-            new FakeSettings(),
-            new NoopBrandingForCleanup(),
-            new MembershipService(uow)
-        );
+        await using var container = BuildSweepContainer(dbName, files, audit);
 
         var deleted = await DemoCleanupService.SweepOnceAsync(
-            uow,
-            tenantService,
-            demoService,
+            container.GetRequiredService<IServiceScopeFactory>(),
             NullLogger.Instance,
             CancellationToken.None
         );
@@ -298,164 +395,78 @@ public class Db17HardDeleteAndCleanupTests
         );
     }
 
+    /// <summary>
+    /// DB-17 review finding #5 (test debt): rewritten to exercise the REAL <see cref="TenantService"/>
+    /// (the original version modelled the race with a fake <see cref="ITenantService"/> that never
+    /// called it). The conversion now lands between the sweep's initial id query and the per-item
+    /// loop's own re-check by hooking the SECOND <see cref="IServiceScopeFactory.CreateScope"/> call
+    /// (the first is the id query's own scope; the second is the one expired item's scope, about to
+    /// run the per-item re-check) — mutating the workspace through a brand-new
+    /// <see cref="AppDbContext"/>, exactly as a concurrent <c>UpgradeAsync</c> request would.
+    /// </summary>
     [Fact]
     public async Task DemoCleanup_SkipsWorkspaceConvertedBetweenQueryAndDelete()
     {
-        // Simulates the race (Gemini Pro #2): the workspace was expired when SweepOnceAsync would
-        // have queried it, but is converted (DemoExpiresAt cleared) by the time the per-item
-        // re-check runs — modelled here by converting it right before invoking SweepOnceAsync and
-        // asserting the (still expired-looking, if the re-check were skipped) workspace survives
-        // because the fresh re-check inside SweepOnceAsync sees the converted state.
-        var db = Ctx(nameof(DemoCleanup_SkipsWorkspaceConvertedBetweenQueryAndDelete));
+        var dbName = nameof(DemoCleanup_SkipsWorkspaceConvertedBetweenQueryAndDelete);
+        var db = Ctx(dbName);
         var workspaceId = SeedWorkspace(db, demoExpiresAt: DateTime.UtcNow.AddHours(-1));
 
-        // A fake ITenantService that, on its first call, converts the workspace (as a concurrent
-        // UpgradeAsync would) before ever reaching the real HardDeleteAsync — proving the loop
-        // itself does not blindly trust its own initial query.
-        var converting = new ConvertingTenantService(db, workspaceId);
-        var uow = new UnitOfWork(db);
-        var demoService = new DemoService(
-            uow,
-            new FakePasswordHasher(),
-            new FakeTokenServiceForCleanup(),
-            new NoopEmailForCleanup(),
-            new FakeSettings(),
-            new NoopBrandingForCleanup(),
-            new MembershipService(uow)
+        var files = new RecordingFileStorage();
+        var audit = new FakeAuditWriter();
+        await using var container = BuildSweepContainer(dbName, files, audit);
+        var racingFactory = new ConvertOnSecondScopeFactory(
+            container.GetRequiredService<IServiceScopeFactory>(),
+            dbName,
+            workspaceId
         );
 
-        // First loop iteration: stillExpired is true (nothing converted it yet) — HardDeleteAsync
-        // itself (the real one, invoked via the fake) performs the conversion and returns failure.
         var deleted = await DemoCleanupService.SweepOnceAsync(
-            uow,
-            converting,
-            demoService,
+            racingFactory,
             NullLogger.Instance,
             CancellationToken.None
         );
 
         Assert.Equal(0, deleted);
+        // A fresh context for verification — `db` above still has the ORIGINAL workspace tracked
+        // from seeding it, and a tracking query on the SAME context instance returns that tracked
+        // reference (not the store's current values) rather than re-fetching what the mutation
+        // (through its own, separate context) actually wrote.
+        using var verify = Ctx(dbName);
         Assert.NotNull(
-            db.Workspaces.IgnoreQueryFilters().SingleOrDefault(w => w.Id == workspaceId)
+            verify.Workspaces.IgnoreQueryFilters().SingleOrDefault(w => w.Id == workspaceId)
         );
         Assert.Null(
-            db.Workspaces.IgnoreQueryFilters().Single(w => w.Id == workspaceId).DemoExpiresAt
+            verify.Workspaces.IgnoreQueryFilters().Single(w => w.Id == workspaceId).DemoExpiresAt
         );
+        // Never reached HardDeleteAsync at all — the per-item re-check alone skipped it.
+        Assert.Empty(files.DeletedOwners);
+        Assert.DoesNotContain(audit.Entries, e => e.Action == AuditActions.TenantHardDeleted);
     }
 
-    private sealed class ConvertingTenantService(AppDbContext db, Guid workspaceId) : ITenantService
+    private sealed class ConvertOnSecondScopeFactory(
+        IServiceScopeFactory inner,
+        string dbName,
+        Guid workspaceId
+    ) : IServiceScopeFactory
     {
-        public Task<Pointer.Application.Response.Result<
-            List<Pointer.Application.DTOs.Tenant.TenantResponse>
-        >> ListAsync() => throw new NotSupportedException();
+        private int _scopeCount;
 
-        public Task<Pointer.Application.Response.Result<Pointer.Application.DTOs.Tenant.TenantResponse>> CreateAsync(
-            Pointer.Application.DTOs.Tenant.CreateTenantRequest request
-        ) => throw new NotSupportedException();
-
-        public Task<Pointer.Application.Response.Result> SetStatusAsync(
-            Guid workspaceIdArg,
-            string action
-        ) => throw new NotSupportedException();
-
-        public Task<Pointer.Application.Response.Result> ExtendDemoAsync(Guid workspaceIdArg) =>
-            throw new NotSupportedException();
-
-        public Task<Pointer.Application.Response.Result> SetDemoConfigAsync(
-            Guid workspaceIdArg,
-            int? c,
-            int? t
-        ) => throw new NotSupportedException();
-
-        public Task<Pointer.Application.Response.Result> ChangePlanAsync(
-            Guid workspaceIdArg,
-            int planId
-        ) => throw new NotSupportedException();
-
-        public Task<Pointer.Application.Response.Result> HardDeleteAsync(
-            Guid workspaceIdArg,
-            string reason = "admin"
-        )
+        public IServiceScope CreateScope()
         {
-            // Simulates a conversion that lands between the sweep's id query and this call.
-            var ws = db.Workspaces.Single(w => w.Id == workspaceId);
-            ws.DemoExpiresAt = null;
-            ws.DemoConvertedAt = DateTime.UtcNow;
-            db.SaveChanges();
-            return Task.FromResult(
-                Pointer.Application.Response.Result.Failure(
-                    "Not an expired demo (converted or extended meanwhile)."
-                )
-            );
-        }
-    }
-
-    private sealed class FakeTokenServiceForCleanup : ITokenService
-    {
-        public string Issue(User user, WorkspaceMembership? membership, int? keyScopes = null) =>
-            "t";
-
-        public string IssueSelection(User user) => "s";
-
-        public string IssueImpersonation(
-            User user,
-            Guid workspaceId,
-            long sessionId,
-            DateTime expiresAt
-        ) => "i";
-    }
-
-    private sealed class NoopEmailForCleanup : IEmailService
-    {
-        public Task<bool> SendAsync(
-            string to,
-            string subject,
-            string htmlBody,
-            CancellationToken ct = default
-        ) => Task.FromResult(true);
-    }
-
-    private sealed class NoopBrandingForCleanup : IBrandingService
-    {
-        private static Pointer.Application.DTOs.Branding.BrandingResponse DefaultBranding() =>
-            new()
+            _scopeCount++;
+            if (_scopeCount == 2)
             {
-                ProductName = "Pointer",
-                Tagline = string.Empty,
-                PrimaryColor = "#2563eb",
-                Urls = new Pointer.Application.DTOs.Branding.BrandingUrlsResponse
-                {
-                    App = "https://app.pointer.moamen.work",
-                },
-                Assets = new Pointer.Application.DTOs.Branding.BrandingAssetsResponse(),
-            };
-
-        public Task<Pointer.Application.Response.Result<Pointer.Application.DTOs.Branding.BrandingResponse>> GetAsync(
-            string publicBase,
-            IReadOnlySet<string> existingKinds
-        ) =>
-            Task.FromResult(
-                Pointer.Application.Response.Result<Pointer.Application.DTOs.Branding.BrandingResponse>.Success(
-                    DefaultBranding()
-                )
-            );
-
-        public Task<Pointer.Application.Response.Result<Pointer.Application.DTOs.Branding.BrandingResponse>> UpdateAsync(
-            Pointer.Application.DTOs.Branding.BrandingWriteDto dto,
-            string publicBase,
-            IReadOnlySet<string> existingKinds
-        ) =>
-            Task.FromResult(
-                Pointer.Application.Response.Result<Pointer.Application.DTOs.Branding.BrandingResponse>.Success(
-                    DefaultBranding()
-                )
-            );
-
-        public Task<int> BumpVersionAsync() => Task.FromResult(0);
-
-        public Task<Pointer.Application.DTOs.Branding.BrandingResponse> BuildResponseAsync(
-            string publicBase,
-            IReadOnlySet<string> existingKinds
-        ) => Task.FromResult(DefaultBranding());
+                // Scope #1 was the sweep's own initial id query (already returned/disposed); scope
+                // #2 is the one expired item's own fresh scope (DB-17 review finding #1), about to
+                // run its per-item re-check — convert right before handing it over, modelling a
+                // concurrent UpgradeAsync that committed in exactly that gap.
+                using var concurrent = Ctx(dbName);
+                var ws = concurrent.Workspaces.IgnoreQueryFilters().Single(w => w.Id == workspaceId);
+                ws.DemoExpiresAt = null;
+                ws.DemoConvertedAt = DateTime.UtcNow;
+                concurrent.SaveChanges();
+            }
+            return inner.CreateScope();
+        }
     }
 }
