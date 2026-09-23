@@ -26,6 +26,7 @@ public class UserService : IUserService
     private readonly IEntitlementService _entitlements;
     private readonly IBrandingService _branding;
     private readonly IMembershipService _memberships;
+    private readonly IAuditWriter _audit;
 
     public UserService(
         IUnitOfWork unitOfWork,
@@ -34,7 +35,8 @@ public class UserService : IUserService
         IEmailService emailService,
         IEntitlementService entitlements,
         IBrandingService branding,
-        IMembershipService memberships
+        IMembershipService memberships,
+        IAuditWriter? audit = null
     )
     {
         _unitOfWork = unitOfWork;
@@ -44,6 +46,7 @@ public class UserService : IUserService
         _entitlements = entitlements;
         _branding = branding;
         _memberships = memberships;
+        _audit = audit ?? NoopAuditWriter.Instance;
     }
 
     // Best-effort notification: a send failure must never fail the admin action.
@@ -145,6 +148,21 @@ public class UserService : IUserService
         // Populated AFTER the save above so EF never tries to re-insert the already-existing role row.
         membership.Role = role;
 
+        await _audit.WriteAsync(
+            new AuditEntry(
+                AuditActions.MemberCreated,
+                AuditTargets.Membership,
+                membership.Id.ToString(),
+                ownerId,
+                After: new Dictionary<string, string>
+                {
+                    ["role_id"] = membership.RoleId.ToString(),
+                    ["is_active"] = membership.IsActive.ToString(),
+                    ["approval_status"] = membership.ApprovalStatus.ToString(),
+                }
+            )
+        );
+
         return Result<UserResponse>.Success(MapToResponse(membership));
     }
 
@@ -205,6 +223,9 @@ public class UserService : IUserService
         if (!_currentUser.IsSuperAdmin && (role.GrantsAdmin || role.IsSuperAdmin) && role.Name != DeputyRoleName)
             return Result<UserResponse>.Failure(MessageKeys.Role.EscalationNotAllowed);
 
+        var approveBeforeStatus = membership.ApprovalStatus;
+        var approveBeforeRoleId = membership.RoleId;
+
         membership.ApprovalStatus = ApprovalStatus.Approved;
         membership.IsActive = true;
         membership.RoleId = role.Id;
@@ -212,6 +233,25 @@ public class UserService : IUserService
         _unitOfWork.Repository<WorkspaceMembership>().Update(membership);
         await _unitOfWork.SaveChangesAsync();
         membership.Role = role;
+
+        await _audit.WriteAsync(
+            new AuditEntry(
+                AuditActions.MemberApproved,
+                AuditTargets.Membership,
+                membership.Id.ToString(),
+                membership.OwnerId,
+                Before: new Dictionary<string, string>
+                {
+                    ["approval_status"] = approveBeforeStatus.ToString(),
+                    ["role_id"] = approveBeforeRoleId.ToString(),
+                },
+                After: new Dictionary<string, string>
+                {
+                    ["approval_status"] = membership.ApprovalStatus.ToString(),
+                    ["role_id"] = membership.RoleId.ToString(),
+                }
+            )
+        );
 
         var approveBrand = await _branding.BuildResponseAsync("", new HashSet<string>());
         var approveProductName = approveBrand.ProductName;
@@ -242,6 +282,9 @@ public class UserService : IUserService
         if (identity == null || membership == null)
             return Result<UserResponse>.NotFound(MessageKeys.User.NotFound);
 
+        var rejectBeforeStatus = membership.ApprovalStatus;
+        var rejectBeforeRoleId = membership.RoleId;
+
         membership.ApprovalStatus = ApprovalStatus.Rejected;
         membership.IsActive = false;
         // H1/R16: revoke this WORKSPACE's live access tokens — the identity's other memberships (and
@@ -250,6 +293,25 @@ public class UserService : IUserService
 
         _unitOfWork.Repository<WorkspaceMembership>().Update(membership);
         await _unitOfWork.SaveChangesAsync();
+
+        await _audit.WriteAsync(
+            new AuditEntry(
+                AuditActions.MemberRejected,
+                AuditTargets.Membership,
+                membership.Id.ToString(),
+                membership.OwnerId,
+                Before: new Dictionary<string, string>
+                {
+                    ["approval_status"] = rejectBeforeStatus.ToString(),
+                    ["role_id"] = rejectBeforeRoleId.ToString(),
+                },
+                After: new Dictionary<string, string>
+                {
+                    ["approval_status"] = membership.ApprovalStatus.ToString(),
+                    ["role_id"] = membership.RoleId.ToString(),
+                }
+            )
+        );
 
         var rejectBrand = await _branding.BuildResponseAsync("", new HashSet<string>());
         var rejectProductName = rejectBrand.ProductName;
@@ -275,6 +337,10 @@ public class UserService : IUserService
         var (identity, membership) = await ResolveTargetAsync(id);
         if (identity == null || membership == null)
             return Result<UserResponse>.NotFound(MessageKeys.User.NotFound);
+
+        var updateBeforeRoleId = membership.RoleId;
+        var updateBeforeIsActive = membership.IsActive;
+        var passwordWasSet = !string.IsNullOrEmpty(request.Password);
 
         if (request.RoleId.HasValue)
         {
@@ -332,6 +398,29 @@ public class UserService : IUserService
         _unitOfWork.Repository<WorkspaceMembership>().Update(membership);
         await _unitOfWork.SaveChangesAsync();
 
+        var updateAfter = new Dictionary<string, string>
+        {
+            ["role_id"] = membership.RoleId.ToString(),
+            ["is_active"] = membership.IsActive.ToString(),
+        };
+        if (passwordWasSet)
+            updateAfter["with_password"] = "true";
+
+        await _audit.WriteAsync(
+            new AuditEntry(
+                AuditActions.MemberUpdated,
+                AuditTargets.Membership,
+                membership.Id.ToString(),
+                membership.OwnerId,
+                Before: new Dictionary<string, string>
+                {
+                    ["role_id"] = updateBeforeRoleId.ToString(),
+                    ["is_active"] = updateBeforeIsActive.ToString(),
+                },
+                After: updateAfter
+            )
+        );
+
         var current = await GetActiveRoleAsync(membership.RoleId);
         membership.Role = current;
         return Result<UserResponse>.Success(MapToResponse(membership));
@@ -367,6 +456,9 @@ public class UserService : IUserService
                 return Result.Failure(MessageKeys.User.CannotDeleteDeputy);
         }
 
+        var deleteBeforeRoleId = membership.RoleId;
+        var deleteBeforeIsActive = membership.IsActive;
+
         membership.LeftAt = DateTime.UtcNow;
         membership.LeftReason = MembershipEndReason.Removed;
         membership.IsActive = false;
@@ -374,6 +466,20 @@ public class UserService : IUserService
 
         _unitOfWork.Repository<WorkspaceMembership>().Update(membership);
         await _unitOfWork.SaveChangesAsync();
+
+        await _audit.WriteAsync(
+            new AuditEntry(
+                AuditActions.MemberRemoved,
+                AuditTargets.Membership,
+                membership.Id.ToString(),
+                membership.OwnerId,
+                Before: new Dictionary<string, string>
+                {
+                    ["role_id"] = deleteBeforeRoleId.ToString(),
+                    ["is_active"] = deleteBeforeIsActive.ToString(),
+                }
+            )
+        );
 
         return Result.Success();
     }
@@ -425,6 +531,9 @@ public class UserService : IUserService
                 .IgnoreQueryFilters()
                 .FirstAsync(m => m.Id == deputyMembership.Id);
 
+            var previousAdminRoleId = trackedAdminM.RoleId;
+            var previousDeputyRoleId = trackedDeputyM.RoleId;
+
             trackedAdminM.RoleId = deputyRole.Id;
             trackedAdminM.SecurityStamp = Guid.NewGuid();
             trackedDeputyM.RoleId = adminRole.Id;
@@ -433,6 +542,28 @@ public class UserService : IUserService
             _unitOfWork.Repository<WorkspaceMembership>().Update(trackedAdminM);
             _unitOfWork.Repository<WorkspaceMembership>().Update(trackedDeputyM);
             await _unitOfWork.SaveChangesAsync();
+
+            // Two rows — one per membership (§3.6).
+            await _audit.WriteAsync(
+                new AuditEntry(
+                    AuditActions.OwnershipTransferred,
+                    AuditTargets.Membership,
+                    trackedAdminM.Id.ToString(),
+                    tenantOwnerId,
+                    Before: new Dictionary<string, string> { ["role_id"] = previousAdminRoleId.ToString() },
+                    After: new Dictionary<string, string> { ["role_id"] = trackedAdminM.RoleId.ToString() }
+                )
+            );
+            await _audit.WriteAsync(
+                new AuditEntry(
+                    AuditActions.OwnershipTransferred,
+                    AuditTargets.Membership,
+                    trackedDeputyM.Id.ToString(),
+                    tenantOwnerId,
+                    Before: new Dictionary<string, string> { ["role_id"] = previousDeputyRoleId.ToString() },
+                    After: new Dictionary<string, string> { ["role_id"] = trackedDeputyM.RoleId.ToString() }
+                )
+            );
         });
 
         return Result.Success();

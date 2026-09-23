@@ -27,6 +27,7 @@ public class TenantService : ITenantService
     private readonly ISettingsService _settings;
     private readonly IBillingProvider _billing;
     private readonly IMembershipService _memberships;
+    private readonly IAuditWriter _audit;
 
     public TenantService(
         IUnitOfWork unitOfWork,
@@ -34,7 +35,8 @@ public class TenantService : ITenantService
         IFileStorage fileStorage,
         ISettingsService settings,
         IBillingProvider billing,
-        IMembershipService memberships
+        IMembershipService memberships,
+        IAuditWriter? audit = null
     )
     {
         _unitOfWork = unitOfWork;
@@ -43,6 +45,7 @@ public class TenantService : ITenantService
         _settings = settings;
         _billing = billing;
         _memberships = memberships;
+        _audit = audit ?? NoopAuditWriter.Instance;
     }
 
     public async Task<Result<List<TenantResponse>>> ListAsync()
@@ -232,6 +235,24 @@ public class TenantService : ITenantService
         );
         await _unitOfWork.SaveChangesAsync();
 
+        await _audit.WriteAsync(
+            new AuditEntry(
+                AuditActions.TenantCreated,
+                AuditTargets.Workspace,
+                workspaceId.ToString(),
+                workspaceId
+            )
+        );
+        await _audit.WriteAsync(
+            new AuditEntry(
+                AuditActions.WorkspaceCreated,
+                AuditTargets.Workspace,
+                workspaceId.ToString(),
+                workspaceId,
+                After: new Dictionary<string, string> { ["source"] = "super_admin" }
+            )
+        );
+
         return Result<TenantResponse>.Success(
             new TenantResponse
             {
@@ -303,6 +324,16 @@ public class TenantService : ITenantService
         _unitOfWork.Repository<WorkspaceMembership>().Update(membership);
         await _unitOfWork.SaveChangesAsync();
 
+        await _audit.WriteAsync(
+            new AuditEntry(
+                AuditActions.TenantStatusChanged,
+                AuditTargets.Membership,
+                membership.Id.ToString(),
+                workspaceId,
+                After: new Dictionary<string, string> { ["action"] = action.Trim().ToLower() }
+            )
+        );
+
         return Result.Success();
     }
 
@@ -336,6 +367,16 @@ public class TenantService : ITenantService
         _unitOfWork.Repository<User>().Update(user);
         await _unitOfWork.SaveChangesAsync();
 
+        await _audit.WriteAsync(
+            new AuditEntry(
+                AuditActions.TenantDemoExtended,
+                AuditTargets.Workspace,
+                user.OwnerId?.ToString(),
+                user.OwnerId,
+                After: new Dictionary<string, string> { ["expires_at"] = user.ExpiresAt.Value.ToString("O") }
+            )
+        );
+
         return Result.Success();
     }
 
@@ -365,11 +406,32 @@ public class TenantService : ITenantService
         if (user == null || !user.IsDemo)
             return Result.NotFound("Demo tenant not found.");
 
+        var before = new Dictionary<string, string>
+        {
+            ["count"] = user.DemoCommentCapOverride?.ToString() ?? string.Empty,
+            ["minutes"] = user.DemoTtlHoursOverride?.ToString() ?? string.Empty,
+        };
+
         user.DemoCommentCapOverride = commentCapOverride;
         user.DemoTtlHoursOverride = ttlHoursOverride;
 
         _unitOfWork.Repository<User>().Update(user);
         await _unitOfWork.SaveChangesAsync();
+
+        await _audit.WriteAsync(
+            new AuditEntry(
+                AuditActions.TenantDemoConfigChanged,
+                AuditTargets.Workspace,
+                user.OwnerId?.ToString(),
+                user.OwnerId,
+                Before: before,
+                After: new Dictionary<string, string>
+                {
+                    ["count"] = commentCapOverride?.ToString() ?? string.Empty,
+                    ["minutes"] = ttlHoursOverride?.ToString() ?? string.Empty,
+                }
+            )
+        );
 
         return Result.Success();
     }
@@ -403,6 +465,7 @@ public class TenantService : ITenantService
             .IgnoreQueryFilters()
             .FirstOrDefaultAsync(s => s.OwnerId == tenantOwnerId && s.DeletedAt == null);
 
+        var previousPlanId = sub?.PlanId;
         if (sub == null)
         {
             sub = new Subscription
@@ -425,10 +488,24 @@ public class TenantService : ITenantService
         await _billing.ChangePlanAsync(sub, plan.Id);
 
         await _unitOfWork.SaveChangesAsync();
+
+        await _audit.WriteAsync(
+            new AuditEntry(
+                AuditActions.TenantPlanChanged,
+                AuditTargets.Workspace,
+                workspaceId.ToString(),
+                workspaceId,
+                Before: previousPlanId is int prev
+                    ? new Dictionary<string, string> { ["plan_id"] = prev.ToString() }
+                    : null,
+                After: new Dictionary<string, string> { ["plan_id"] = plan.Id.ToString() }
+            )
+        );
+
         return Result.Success(MessageKeys.Plan.SubscriptionUpdated);
     }
 
-    public async Task<Result> HardDeleteAsync(Guid workspaceId)
+    public async Task<Result> HardDeleteAsync(Guid workspaceId, string reason = "admin")
     {
         var workspaceExists = await _unitOfWork
             .Workspaces.IgnoreQueryFilters()
@@ -436,6 +513,31 @@ public class TenantService : ITenantService
 
         if (!workspaceExists)
             return Result.NotFound("Tenant not found.");
+
+        // Snapshot the comment count before anything is deleted — the audit row (below) records how
+        // much content this deletion removed.
+        var commentCount = await _unitOfWork
+            .Repository<Comment>()
+            .Query()
+            .IgnoreQueryFilters()
+            .CountAsync(c => c.OwnerId == workspaceId);
+
+        // Written BEFORE the delete, with OwnerId = null deliberately — the row must not be detached
+        // mid-transaction, and it must survive the workspace it is about (DB-12 §3.6). Best-effort: a
+        // failed audit write never blocks the deletion itself.
+        await _audit.WriteAsync(
+            new AuditEntry(
+                AuditActions.TenantHardDeleted,
+                AuditTargets.Workspace,
+                workspaceId.ToString(),
+                null,
+                After: new Dictionary<string, string>
+                {
+                    ["reason"] = reason,
+                    ["count"] = commentCount.ToString(),
+                }
+            )
+        );
 
         // Delete owner files first (outside transaction — filesystem side effect).
         await _fileStorage.DeleteOwnerFilesAsync(workspaceId.ToString("N"));

@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Pointer.API.Auth;
+using Pointer.Application.Common;
 using Pointer.Application.DTOs.Status;
 using Pointer.Application.Response;
 using Pointer.Application.Services.Interfaces;
@@ -22,6 +23,7 @@ public class StatusesController(IStatusAdminService service) : ControllerBase
     }
 
     [HttpPatch("{value:int}")]
+    [Audited(AuditActions.StatusUpdated)]
     [ProducesResponseType(typeof(StatusAdminItem), StatusCodes.Status200OK)]
     public async Task<IActionResult> Update(int value, [FromBody] UpdateStatusPresentationRequest request)
     {
@@ -31,6 +33,7 @@ public class StatusesController(IStatusAdminService service) : ControllerBase
     }
 
     [HttpDelete("{value:int}")]
+    [Audited(AuditActions.StatusReset)]
     [ProducesResponseType(typeof(Result), StatusCodes.Status200OK)]
     public async Task<IActionResult> Reset(int value)
     {

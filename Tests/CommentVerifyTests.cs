@@ -61,7 +61,7 @@ public class CommentVerifyTests
     {
         var uow = new UnitOfWork(BuildContext(user, dbName));
         var notificationService = new NotificationService(uow, user);
-        var projectService = new ProjectService(uow, user, new PassThroughEntitlements(), TestProjectServiceDeps.Settings(), TestProjectServiceDeps.Configuration());
+        var projectService = new ProjectService(uow, user, new PassThroughEntitlements(), TestProjectServiceDeps.Settings(), TestProjectServiceDeps.Configuration(), new FakeAuditWriter());
         var actionService = new PredefinedActionService(uow, projectService, user, new PassThroughEntitlements());
         var commentService = new CommentService(
             uow, projectService, actionService, new FakeFileStorage(), user,

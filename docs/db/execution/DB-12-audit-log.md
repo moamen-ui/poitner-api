@@ -7,7 +7,7 @@ address), **R17 (new — append-only tables and the audit obligation; written by
 **Class: Additive** (one new table, three indexes, one FK) **+ one raw-SQL migration** (the append-only
 trigger; `.Sql(` ⇒ DB-02 marker + `[ContractMigration("DB-12")]` ⇒ ships through `POINTER_APPLY_CONTRACT=1`,
 alone as `pre-db12` or batched with DB-14 as `pre-db12-14` under R7.1).
-**Status 2026-09-22: written; not implemented. Cross-reviewed 2026-09-22 (GLM, agy — `docs/db/reviews/`); amendments folded 2026-09-23 (§12).**
+**Status 2026-09-22: written; not implemented. Cross-reviewed 2026-09-22 (GLM, agy — `docs/db/reviews/`); amendments folded 2026-09-23 (§12). Implemented (part 2, 2026-09-23): call sites wired, coverage test un-skipped, StrictCoverage on in Development.**
 Owner decisions D12.1–D12.5 have defaults (§3.9); none blocks.
 
 **Dependencies.** Independent of DB-11a for the *schema*. The *writer call sites* (§3.6) are written against

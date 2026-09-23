@@ -48,7 +48,7 @@ public class WidgetActivationTests
         SeedGlobalLocalEnvironment(dbName);
         var tenant = Guid.NewGuid();
         var admin = new FakeCurrentUser { Id = Guid.NewGuid(), IsAdmin = true, TenantId = tenant };
-        var svc = new ProjectService(new UnitOfWork(BuildContext(admin, dbName)), admin, new PassThroughEntitlements(), TestProjectServiceDeps.Settings(), TestProjectServiceDeps.Configuration());
+        var svc = new ProjectService(new UnitOfWork(BuildContext(admin, dbName)), admin, new PassThroughEntitlements(), TestProjectServiceDeps.Settings(), TestProjectServiceDeps.Configuration(), new FakeAuditWriter());
         var created = (await svc.CreateAsync(new CreateProjectRequest { Key = "site", Name = "Site" })).Data!;
         await svc.UpdateAsync(created.Id, new UpdateProjectRequest
         {
@@ -69,7 +69,7 @@ public class WidgetActivationTests
         SeedGlobalLocalEnvironment(dbName);
         var tenant = Guid.NewGuid();
         var admin = new FakeCurrentUser { Id = Guid.NewGuid(), IsAdmin = true, TenantId = tenant };
-        var svc = new ProjectService(new UnitOfWork(BuildContext(admin, dbName)), admin, new PassThroughEntitlements(), TestProjectServiceDeps.Settings(), TestProjectServiceDeps.Configuration());
+        var svc = new ProjectService(new UnitOfWork(BuildContext(admin, dbName)), admin, new PassThroughEntitlements(), TestProjectServiceDeps.Settings(), TestProjectServiceDeps.Configuration(), new FakeAuditWriter());
         await svc.CreateAsync(new CreateProjectRequest { Key = "site", Name = "Site" });
 
         var result = await svc.CheckWidgetActiveAsync("site", null);
@@ -84,7 +84,7 @@ public class WidgetActivationTests
         SeedGlobalLocalEnvironment(dbName);
         var tenant = Guid.NewGuid();
         var admin = new FakeCurrentUser { Id = Guid.NewGuid(), IsAdmin = true, TenantId = tenant };
-        var svc = new ProjectService(new UnitOfWork(BuildContext(admin, dbName)), admin, new PassThroughEntitlements(), TestProjectServiceDeps.Settings(), TestProjectServiceDeps.Configuration());
+        var svc = new ProjectService(new UnitOfWork(BuildContext(admin, dbName)), admin, new PassThroughEntitlements(), TestProjectServiceDeps.Settings(), TestProjectServiceDeps.Configuration(), new FakeAuditWriter());
         await svc.CreateAsync(new CreateProjectRequest { Key = "site", Name = "Site" });
 
         // No ProjectAppUrl row configured for this origin at all — must not be blocked.
@@ -100,7 +100,7 @@ public class WidgetActivationTests
         SeedGlobalLocalEnvironment(dbName);
         var tenant = Guid.NewGuid();
         var admin = new FakeCurrentUser { Id = Guid.NewGuid(), IsAdmin = true, TenantId = tenant };
-        var svc = new ProjectService(new UnitOfWork(BuildContext(admin, dbName)), admin, new PassThroughEntitlements(), TestProjectServiceDeps.Settings(), TestProjectServiceDeps.Configuration());
+        var svc = new ProjectService(new UnitOfWork(BuildContext(admin, dbName)), admin, new PassThroughEntitlements(), TestProjectServiceDeps.Settings(), TestProjectServiceDeps.Configuration(), new FakeAuditWriter());
         var created = (await svc.CreateAsync(new CreateProjectRequest { Key = "site", Name = "Site" })).Data!;
 
         int localEnvId;
@@ -127,7 +127,7 @@ public class WidgetActivationTests
         SeedGlobalLocalEnvironment(dbName);
         var tenant = Guid.NewGuid();
         var admin = new FakeCurrentUser { Id = Guid.NewGuid(), IsAdmin = true, TenantId = tenant };
-        var svc = new ProjectService(new UnitOfWork(BuildContext(admin, dbName)), admin, new PassThroughEntitlements(), TestProjectServiceDeps.Settings(), TestProjectServiceDeps.Configuration());
+        var svc = new ProjectService(new UnitOfWork(BuildContext(admin, dbName)), admin, new PassThroughEntitlements(), TestProjectServiceDeps.Settings(), TestProjectServiceDeps.Configuration(), new FakeAuditWriter());
         var created = (await svc.CreateAsync(new CreateProjectRequest { Key = "site", Name = "Site" })).Data!;
 
         int localEnvId;
@@ -154,7 +154,7 @@ public class WidgetActivationTests
         SeedGlobalLocalEnvironment(dbName);
         var tenant = Guid.NewGuid();
         var admin = new FakeCurrentUser { Id = Guid.NewGuid(), IsAdmin = true, TenantId = tenant };
-        var svc = new ProjectService(new UnitOfWork(BuildContext(admin, dbName)), admin, new PassThroughEntitlements(), TestProjectServiceDeps.Settings(), TestProjectServiceDeps.Configuration());
+        var svc = new ProjectService(new UnitOfWork(BuildContext(admin, dbName)), admin, new PassThroughEntitlements(), TestProjectServiceDeps.Settings(), TestProjectServiceDeps.Configuration(), new FakeAuditWriter());
         var created = (await svc.CreateAsync(new CreateProjectRequest { Key = "site", Name = "Site" })).Data!;
 
         int localEnvId;
@@ -193,7 +193,7 @@ public class WidgetActivationTests
         var dbName = Guid.NewGuid().ToString();
         SeedGlobalLocalEnvironment(dbName);
         var admin = new FakeCurrentUser { Id = Guid.NewGuid(), IsAdmin = true, TenantId = Guid.NewGuid() };
-        var svc = new ProjectService(new UnitOfWork(BuildContext(admin, dbName)), admin, new PassThroughEntitlements(), TestProjectServiceDeps.Settings(), TestProjectServiceDeps.Configuration());
+        var svc = new ProjectService(new UnitOfWork(BuildContext(admin, dbName)), admin, new PassThroughEntitlements(), TestProjectServiceDeps.Settings(), TestProjectServiceDeps.Configuration(), new FakeAuditWriter());
 
         var result = await svc.CheckWidgetActiveAsync("does-not-exist", null);
         Assert.True(result.IsSuccess);
@@ -207,8 +207,8 @@ public class WidgetActivationTests
         SeedGlobalLocalEnvironment(dbName);
         var tenantA = new FakeCurrentUser { Id = Guid.NewGuid(), IsAdmin = true, TenantId = Guid.NewGuid() };
         var tenantB = new FakeCurrentUser { Id = Guid.NewGuid(), IsAdmin = true, TenantId = Guid.NewGuid() };
-        var svcA = new ProjectService(new UnitOfWork(BuildContext(tenantA, dbName)), tenantA, new PassThroughEntitlements(), TestProjectServiceDeps.Settings(), TestProjectServiceDeps.Configuration());
-        var svcB = new ProjectService(new UnitOfWork(BuildContext(tenantB, dbName)), tenantB, new PassThroughEntitlements(), TestProjectServiceDeps.Settings(), TestProjectServiceDeps.Configuration());
+        var svcA = new ProjectService(new UnitOfWork(BuildContext(tenantA, dbName)), tenantA, new PassThroughEntitlements(), TestProjectServiceDeps.Settings(), TestProjectServiceDeps.Configuration(), new FakeAuditWriter());
+        var svcB = new ProjectService(new UnitOfWork(BuildContext(tenantB, dbName)), tenantB, new PassThroughEntitlements(), TestProjectServiceDeps.Settings(), TestProjectServiceDeps.Configuration(), new FakeAuditWriter());
         await svcA.CreateAsync(new CreateProjectRequest { Key = "site", Name = "Tenant A Site" });
         await svcB.CreateAsync(new CreateProjectRequest { Key = "site", Name = "Tenant B Site" });
 

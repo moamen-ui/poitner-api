@@ -13,7 +13,9 @@ public interface ITenantService
     Task<Result> SetStatusAsync(Guid workspaceId, string action);
     Task<Result> ExtendDemoAsync(int id);
     Task<Result> SetDemoConfigAsync(int id, int? commentCapOverride, int? ttlHoursOverride);
-    Task<Result> HardDeleteAsync(Guid workspaceId);
+    /// <summary>DB-12: `reason` names who/why for the `tenant.hard_deleted` audit row — "admin" (the
+    /// default, `TenantsController.Delete`) or "demo_expired" (`DemoCleanupService`'s sweep).</summary>
+    Task<Result> HardDeleteAsync(Guid workspaceId, string reason = "admin");
 
     /// <summary>Upsert the tenant's subscription to the given plan (super-admin), via the billing
     /// seam. F9 (DB-11a cross-review): keyed on the workspace id, never an admin's `users.id`.</summary>

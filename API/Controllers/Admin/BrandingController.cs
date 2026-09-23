@@ -1,6 +1,8 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Pointer.API.Auth;
+using Pointer.Application.Abstractions;
+using Pointer.Application.Common;
 using Pointer.Application.DTOs.Branding;
 using Pointer.Application.Response;
 using Pointer.Application.Services.Interfaces;
@@ -18,7 +20,8 @@ namespace Pointer.API.Controllers.Admin;
 [Route("api/admin/branding")]
 [Authorize(Policy = Policies.SuperAdmin)]
 [Tags("Branding")]
-public class BrandingController(IBrandingService brandingService, IWebHostEnvironment env) : ControllerBase
+public class BrandingController(IBrandingService brandingService, IWebHostEnvironment env, IAuditWriter audit)
+    : ControllerBase
 {
     private const long MaxBytes = 1_048_576; // 1 MB
 
@@ -50,6 +53,7 @@ public class BrandingController(IBrandingService brandingService, IWebHostEnviro
     }
 
     [HttpPut]
+    [Audited(AuditActions.BrandingUpdated)]
     [ProducesResponseType(typeof(Result<BrandingResponse>), StatusCodes.Status200OK)]
     public async Task<IActionResult> Update([FromBody] BrandingWriteDto dto)
     {
@@ -59,6 +63,7 @@ public class BrandingController(IBrandingService brandingService, IWebHostEnviro
         return result.IsSuccess ? Ok(result) : BadRequest(result);
     }
 
+    [Audited(AuditActions.BrandingAssetUploaded)]
     [HttpPost("asset/{kind}")]
     [RequestSizeLimit(MaxBytes)]
     [ProducesResponseType(typeof(Result<BrandingResponse>), StatusCodes.Status200OK)]
@@ -94,12 +99,23 @@ public class BrandingController(IBrandingService brandingService, IWebHostEnviro
 
         await brandingService.BumpVersionAsync();
 
+        await audit.WriteAsync(
+            new AuditEntry(
+                AuditActions.BrandingAssetUploaded,
+                AuditTargets.Branding,
+                kind,
+                null,
+                After: new Dictionary<string, string> { ["kind"] = kind }
+            )
+        );
+
         var publicBase    = $"{Request.Scheme}://{Request.Host}";
         var existingKinds = GetExistingKinds();
         var response      = await brandingService.BuildResponseAsync(publicBase, existingKinds);
         return Ok(Result<BrandingResponse>.Success(response));
     }
 
+    [Audited(AuditActions.BrandingAssetDeleted)]
     [HttpDelete("asset/{kind}")]
     [ProducesResponseType(typeof(Result<BrandingResponse>), StatusCodes.Status200OK)]
     public async Task<IActionResult> DeleteAsset(string kind)
@@ -111,6 +127,16 @@ public class BrandingController(IBrandingService brandingService, IWebHostEnviro
         DeleteExistingKindFile(kind, brandingDir);
 
         await brandingService.BumpVersionAsync();
+
+        await audit.WriteAsync(
+            new AuditEntry(
+                AuditActions.BrandingAssetDeleted,
+                AuditTargets.Branding,
+                kind,
+                null,
+                After: new Dictionary<string, string> { ["kind"] = kind }
+            )
+        );
 
         var publicBase    = $"{Request.Scheme}://{Request.Host}";
         var existingKinds = GetExistingKinds();

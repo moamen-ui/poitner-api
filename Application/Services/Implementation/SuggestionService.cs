@@ -19,19 +19,22 @@ public class SuggestionService : ISuggestionService
     private readonly IEmailService _emailService;
     private readonly INotificationService _notificationService;
     private readonly IMembershipService _memberships;
+    private readonly IAuditWriter _audit;
 
     public SuggestionService(
         IUnitOfWork unitOfWork,
         ICurrentUser currentUser,
         IEmailService emailService,
         INotificationService? notificationService = null,
-        IMembershipService? memberships = null)
+        IMembershipService? memberships = null,
+        IAuditWriter? audit = null)
     {
         _unitOfWork = unitOfWork;
         _currentUser = currentUser;
         _emailService = emailService;
         _notificationService = notificationService ?? new NotificationService(unitOfWork, currentUser);
         _memberships = memberships ?? new MembershipService(unitOfWork);
+        _audit = audit ?? NoopAuditWriter.Instance;
     }
 
     public async Task<Result<SuggestionResponse>> SuggestAsync(int projectId, CreateSuggestionRequest request)
@@ -165,6 +168,16 @@ public class SuggestionService : ISuggestionService
 
         await _unitOfWork.SaveChangesAsync();
 
+        await _audit.WriteAsync(
+            new AuditEntry(
+                AuditActions.SuggestionApproved,
+                AuditTargets.Suggestion,
+                suggestion.Id.ToString(),
+                suggestion.OwnerId,
+                After: new Dictionary<string, string> { ["status"] = suggestion.Status.ToString() }
+            )
+        );
+
         var name = await ResolveNameAsync(suggestion.CreatedBy);
         return Result<SuggestionResponse>.Success(MapToResponse(suggestion, project, name), MessageKeys.Suggestion.Approved);
     }
@@ -183,6 +196,16 @@ public class SuggestionService : ISuggestionService
         suggestion.ReviewedAt = DateTime.UtcNow;
         _unitOfWork.Repository<PredefinedActionSuggestion>().Update(suggestion);
         await _unitOfWork.SaveChangesAsync();
+
+        await _audit.WriteAsync(
+            new AuditEntry(
+                AuditActions.SuggestionRejected,
+                AuditTargets.Suggestion,
+                suggestion.Id.ToString(),
+                suggestion.OwnerId,
+                After: new Dictionary<string, string> { ["status"] = suggestion.Status.ToString() }
+            )
+        );
 
         var project = await _unitOfWork.Repository<Project>()
             .Query().IgnoreQueryFilters().AsNoTracking()
@@ -233,6 +256,16 @@ public class SuggestionService : ISuggestionService
             await _unitOfWork.SaveChangesAsync();
         }
         catch { /* notification is best-effort — never block the request */ }
+
+        await _audit.WriteAsync(
+            new AuditEntry(
+                AuditActions.SuggestionChangesRequested,
+                AuditTargets.Suggestion,
+                suggestion.Id.ToString(),
+                suggestion.OwnerId,
+                After: new Dictionary<string, string> { ["status"] = suggestion.Status.ToString() }
+            )
+        );
 
         var project = await _unitOfWork.Repository<Project>()
             .Query().IgnoreQueryFilters().AsNoTracking()

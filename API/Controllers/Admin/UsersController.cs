@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Pointer.API.Auth;
+using Pointer.Application.Common;
 using Pointer.Application.DTOs.User;
 using Pointer.Application.DTOs.Profile;
 using Pointer.Application.Services.Interfaces;
@@ -32,6 +33,7 @@ public class UsersController(IUserService userService, IProfileService profileSe
     }
 
     [HttpPost("{id:int}/approve")]
+    [Audited(AuditActions.MemberApproved)]
     [ProducesResponseType(typeof(UserResponse), StatusCodes.Status200OK)]
     public async Task<IActionResult> Approve(int id, [FromBody] ApproveUserRequest request)
     {
@@ -42,6 +44,7 @@ public class UsersController(IUserService userService, IProfileService profileSe
     }
 
     [HttpPost("{id:int}/reject")]
+    [Audited(AuditActions.MemberRejected)]
     [ProducesResponseType(typeof(UserResponse), StatusCodes.Status200OK)]
     public async Task<IActionResult> Reject(int id)
     {
@@ -52,6 +55,7 @@ public class UsersController(IUserService userService, IProfileService profileSe
     }
 
     [HttpPost]
+    [Audited(AuditActions.MemberCreated)]
     [ProducesResponseType(typeof(UserResponse), StatusCodes.Status200OK)]
     public async Task<IActionResult> Create([FromBody] CreateUserRequest request)
     {
@@ -62,6 +66,7 @@ public class UsersController(IUserService userService, IProfileService profileSe
     }
 
     [HttpPatch("{id:int}")]
+    [Audited(AuditActions.MemberUpdated)]
     [ProducesResponseType(typeof(UserResponse), StatusCodes.Status200OK)]
     public async Task<IActionResult> Update(int id, [FromBody] UpdateUserRequest request)
     {
@@ -81,6 +86,7 @@ public class UsersController(IUserService userService, IProfileService profileSe
     }
 
     [HttpDelete("{id:int}")]
+    [Audited(AuditActions.MemberRemoved)]
     [ProducesResponseType(StatusCodes.Status200OK)]
     public async Task<IActionResult> Delete(int id)
     {
@@ -91,6 +97,7 @@ public class UsersController(IUserService userService, IProfileService profileSe
     }
 
     [HttpPost("{deputyPublicId:guid}/promote")]
+    [Audited(AuditActions.OwnershipTransferred)]
     [ProducesResponseType(StatusCodes.Status200OK)]
     public async Task<IActionResult> Promote(Guid deputyPublicId)
     {

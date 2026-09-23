@@ -43,7 +43,7 @@ public class ProjectAppUrlEnvironmentGuardTests
             envId = env.Id;
         }
 
-        var svc = new ProjectService(new UnitOfWork(BuildContext(admin, dbName)), admin, new PassThroughEntitlements(), TestProjectServiceDeps.Settings(), TestProjectServiceDeps.Configuration());
+        var svc = new ProjectService(new UnitOfWork(BuildContext(admin, dbName)), admin, new PassThroughEntitlements(), TestProjectServiceDeps.Settings(), TestProjectServiceDeps.Configuration(), new FakeAuditWriter());
         var created = await svc.CreateAsync(new CreateProjectRequest
         {
             Key = "p",
@@ -80,7 +80,7 @@ public class ProjectAppUrlEnvironmentGuardTests
             envId = env.Id;
         }
 
-        var svc = new ProjectService(new UnitOfWork(BuildContext(admin, dbName)), admin, new PassThroughEntitlements(), TestProjectServiceDeps.Settings(), TestProjectServiceDeps.Configuration());
+        var svc = new ProjectService(new UnitOfWork(BuildContext(admin, dbName)), admin, new PassThroughEntitlements(), TestProjectServiceDeps.Settings(), TestProjectServiceDeps.Configuration(), new FakeAuditWriter());
         var created = await svc.CreateAsync(new CreateProjectRequest { Key = "p", Name = "P", AppUrl = "http://localhost:4205", AppEnvironmentId = envId });
         Assert.True(created.IsSuccess);
         var projectId = created.Data!.Id;
@@ -106,7 +106,7 @@ public class ProjectAppUrlEnvironmentGuardTests
         var tenant = Guid.NewGuid();
         var admin = new FakeCurrentUser { Id = Guid.NewGuid(), IsAdmin = true, TenantId = tenant };
 
-        var svc = new ProjectService(new UnitOfWork(BuildContext(admin, dbName)), admin, new PassThroughEntitlements(), TestProjectServiceDeps.Settings(), TestProjectServiceDeps.Configuration());
+        var svc = new ProjectService(new UnitOfWork(BuildContext(admin, dbName)), admin, new PassThroughEntitlements(), TestProjectServiceDeps.Settings(), TestProjectServiceDeps.Configuration(), new FakeAuditWriter());
         var created = await svc.CreateAsync(new CreateProjectRequest
         {
             Key = "p",
@@ -134,7 +134,7 @@ public class ProjectAppUrlEnvironmentGuardTests
             envId = env.Id;
         }
 
-        var svc = new ProjectService(new UnitOfWork(BuildContext(admin, dbName)), admin, new PassThroughEntitlements(), TestProjectServiceDeps.Settings(), TestProjectServiceDeps.Configuration());
+        var svc = new ProjectService(new UnitOfWork(BuildContext(admin, dbName)), admin, new PassThroughEntitlements(), TestProjectServiceDeps.Settings(), TestProjectServiceDeps.Configuration(), new FakeAuditWriter());
         var created = await svc.CreateAsync(new CreateProjectRequest
         {
             Key = "p",
@@ -163,7 +163,7 @@ public class ProjectAppUrlEnvironmentGuardTests
             envId = env.Id;
         }
 
-        var svc = new ProjectService(new UnitOfWork(BuildContext(admin, dbName)), admin, new PassThroughEntitlements(), TestProjectServiceDeps.Settings(), TestProjectServiceDeps.Configuration());
+        var svc = new ProjectService(new UnitOfWork(BuildContext(admin, dbName)), admin, new PassThroughEntitlements(), TestProjectServiceDeps.Settings(), TestProjectServiceDeps.Configuration(), new FakeAuditWriter());
         var created = await svc.CreateAsync(new CreateProjectRequest
         {
             Key = "p",
@@ -194,7 +194,7 @@ public class ProjectAppUrlEnvironmentGuardTests
             envId = env.Id;
         }
 
-        var svc = new ProjectService(new UnitOfWork(BuildContext(admin, dbName)), admin, new PassThroughEntitlements(), TestProjectServiceDeps.Settings(), TestProjectServiceDeps.Configuration());
+        var svc = new ProjectService(new UnitOfWork(BuildContext(admin, dbName)), admin, new PassThroughEntitlements(), TestProjectServiceDeps.Settings(), TestProjectServiceDeps.Configuration(), new FakeAuditWriter());
         var created = await svc.CreateAsync(new CreateProjectRequest
         {
             Key = "p",
@@ -225,7 +225,7 @@ public class ProjectAppUrlEnvironmentGuardTests
             envId = env.Id;
         }
 
-        var svc = new ProjectService(new UnitOfWork(BuildContext(admin, dbName)), admin, new PassThroughEntitlements(), TestProjectServiceDeps.Settings(), TestProjectServiceDeps.Configuration());
+        var svc = new ProjectService(new UnitOfWork(BuildContext(admin, dbName)), admin, new PassThroughEntitlements(), TestProjectServiceDeps.Settings(), TestProjectServiceDeps.Configuration(), new FakeAuditWriter());
         var result = await svc.SetAppUrlAsync(projectId, envId, new SetProjectAppUrlRequest { Url = "u" });
 
         Assert.False(result.IsSuccess);
@@ -253,7 +253,7 @@ public class ProjectAppUrlEnvironmentGuardTests
             envId = env.Id;
         }
 
-        var svc = new ProjectService(new UnitOfWork(BuildContext(admin, dbName)), admin, new PassThroughEntitlements(), TestProjectServiceDeps.Settings(), TestProjectServiceDeps.Configuration());
+        var svc = new ProjectService(new UnitOfWork(BuildContext(admin, dbName)), admin, new PassThroughEntitlements(), TestProjectServiceDeps.Settings(), TestProjectServiceDeps.Configuration(), new FakeAuditWriter());
         return await svc.SetAppUrlAsync(projectId, envId, new SetProjectAppUrlRequest { Url = url });
     }
 
@@ -281,7 +281,7 @@ public class ProjectAppUrlEnvironmentGuardTests
             projectId = project.Id;
         }
 
-        var svc = new ProjectService(new UnitOfWork(BuildContext(admin, dbName)), admin, new PassThroughEntitlements(), TestProjectServiceDeps.Settings(), TestProjectServiceDeps.Configuration());
+        var svc = new ProjectService(new UnitOfWork(BuildContext(admin, dbName)), admin, new PassThroughEntitlements(), TestProjectServiceDeps.Settings(), TestProjectServiceDeps.Configuration(), new FakeAuditWriter());
 
         // Off by default, and the response must actually carry the value — a write nobody can read
         // back is just as unusable as one nobody can make.
@@ -365,7 +365,7 @@ public class ProjectAppUrlEnvironmentGuardTests
             envId = env.Id;
         }
 
-        var svc = new ProjectService(new UnitOfWork(BuildContext(admin, dbName)), admin, new PassThroughEntitlements(), TestProjectServiceDeps.Settings(), TestProjectServiceDeps.Configuration());
+        var svc = new ProjectService(new UnitOfWork(BuildContext(admin, dbName)), admin, new PassThroughEntitlements(), TestProjectServiceDeps.Settings(), TestProjectServiceDeps.Configuration(), new FakeAuditWriter());
         await svc.SetAppUrlAsync(projectId, envId, new SetProjectAppUrlRequest { Url = "https://preview.example.com" });
 
         // Enabled: the widget renders there.
@@ -378,7 +378,7 @@ public class ProjectAppUrlEnvironmentGuardTests
             db.SaveChanges();
         }
 
-        var after = new ProjectService(new UnitOfWork(BuildContext(admin, dbName)), admin, new PassThroughEntitlements(), TestProjectServiceDeps.Settings(), TestProjectServiceDeps.Configuration());
+        var after = new ProjectService(new UnitOfWork(BuildContext(admin, dbName)), admin, new PassThroughEntitlements(), TestProjectServiceDeps.Settings(), TestProjectServiceDeps.Configuration(), new FakeAuditWriter());
 
         // Disabled: it does not.
         Assert.False((await after.CheckWidgetActiveAsync("wg", "https://preview.example.com")).Data!.Active);
@@ -408,7 +408,7 @@ public class ProjectAppUrlEnvironmentGuardTests
             projectId = project.Id; stagingId = staging.Id; prodId = prod.Id;
         }
 
-        var svc = new ProjectService(new UnitOfWork(BuildContext(admin, dbName)), admin, new PassThroughEntitlements(), TestProjectServiceDeps.Settings(), TestProjectServiceDeps.Configuration());
+        var svc = new ProjectService(new UnitOfWork(BuildContext(admin, dbName)), admin, new PassThroughEntitlements(), TestProjectServiceDeps.Settings(), TestProjectServiceDeps.Configuration(), new FakeAuditWriter());
         await svc.SetAppUrlAsync(projectId, stagingId, new SetProjectAppUrlRequest { Url = "https://staging.example.com" });
         await svc.SetAppUrlAsync(projectId, prodId, new SetProjectAppUrlRequest { Url = "https://app.example.com" });
 
@@ -419,7 +419,7 @@ public class ProjectAppUrlEnvironmentGuardTests
             db.SaveChanges();
         }
 
-        var after = new ProjectService(new UnitOfWork(BuildContext(admin, dbName)), admin, new PassThroughEntitlements(), TestProjectServiceDeps.Settings(), TestProjectServiceDeps.Configuration());
+        var after = new ProjectService(new UnitOfWork(BuildContext(admin, dbName)), admin, new PassThroughEntitlements(), TestProjectServiceDeps.Settings(), TestProjectServiceDeps.Configuration(), new FakeAuditWriter());
 
         Assert.False((await after.CheckWidgetActiveAsync("wg2", "https://staging.example.com")).Data!.Active);
         Assert.True((await after.CheckWidgetActiveAsync("wg2", "https://app.example.com")).Data!.Active);

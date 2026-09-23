@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Pointer.API.Auth;
 using Pointer.Application.DTOs.Suggestion;
 using Pointer.Application.Services.Interfaces;
 
@@ -15,6 +16,7 @@ namespace Pointer.API.Controllers;
 [Tags("Suggestions")]
 public class SuggestionsController(ISuggestionService service) : ControllerBase
 {
+    [NoAudit("stakeholder content")]
     [HttpPost("api/projects/{id:int}/predefined-action-suggestions")]
     [ProducesResponseType(typeof(SuggestionResponse), StatusCodes.Status200OK)]
     public async Task<IActionResult> Suggest(int id, [FromBody] CreateSuggestionRequest request)
@@ -34,6 +36,7 @@ public class SuggestionsController(ISuggestionService service) : ControllerBase
         return result.IsSuccess ? Ok(result) : BadRequest(result);
     }
 
+    [NoAudit("stakeholder content")]
     [HttpPut("api/predefined-action-suggestions/{id:int}")]
     [ProducesResponseType(typeof(SuggestionResponse), StatusCodes.Status200OK)]
     public async Task<IActionResult> Update(int id, [FromBody] UpdateSuggestionRequest request)

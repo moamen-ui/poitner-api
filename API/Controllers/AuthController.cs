@@ -1,6 +1,8 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
+using Pointer.API.Auth;
+using Pointer.Application.Common;
 using Pointer.Application.DTOs.Auth;
 using Pointer.Application.DTOs.Invite;
 using Pointer.Application.Response;
@@ -17,6 +19,7 @@ public class AuthController(
     IDeviceLoginService deviceLoginService) : ControllerBase
 {
     [AllowAnonymous]
+    [Audited(AuditActions.AuthLoginSucceeded)]
     [HttpPost("login")]
     [EnableRateLimiting("login-ip")]
     [RequestSizeLimit(64 * 1024)]
@@ -42,6 +45,7 @@ public class AuthController(
     /// <summary>Opens a session in one of the caller's workspaces. Accepts a full token or the
     /// 5-minute selection token returned with status "choose-workspace".</summary>
     [Authorize]
+    [Audited(AuditActions.AuthWorkspaceSwitched)]
     [HttpPost("switch-workspace")]
     [EnableRateLimiting("login")]
     [ProducesResponseType(typeof(LoginResponse), StatusCodes.Status200OK)]
@@ -61,6 +65,7 @@ public class AuthController(
     /// Redeems a quick-access magic link. Anonymous by necessity — the caller has no session yet,
     /// the token IS the credential.
     /// </summary>
+    [Audited(AuditActions.AuthLoginSucceeded)]
     [HttpPost("login-with-invite")]
     [EnableRateLimiting("login")]
     [ProducesResponseType(typeof(LoginResponse), StatusCodes.Status200OK)]
@@ -71,6 +76,7 @@ public class AuthController(
         return result.IsSuccess ? Ok(result) : BadRequest(result);
     }
 
+    [Audited(AuditActions.AuthLoginSucceeded)]
     [HttpPost("login-with-key")]
     [EnableRateLimiting("login")]
     [ProducesResponseType(typeof(LoginResponse), StatusCodes.Status200OK)]
@@ -82,6 +88,7 @@ public class AuthController(
     }
 
     [AllowAnonymous]
+    [Audited(AuditActions.AuthRegisterStakeholder)]
     [HttpPost("register")]
     [EnableRateLimiting("signup")]
     public async Task<IActionResult> Register([FromBody] RegisterRequest request)
@@ -93,6 +100,7 @@ public class AuthController(
     }
 
     [Authorize]
+    [NoAudit("read of the caller's own profile")]
     [HttpGet("me")]
     [ProducesResponseType(typeof(MeResponse), StatusCodes.Status200OK)]
     public async Task<IActionResult> Me()
@@ -104,6 +112,7 @@ public class AuthController(
     }
 
     [AllowAnonymous]
+    [Audited(AuditActions.AuthPasswordResetRequested)]
     [HttpPost("forgot-password")]
     [EnableRateLimiting("signup")]
     [ProducesResponseType(typeof(Result), StatusCodes.Status200OK)]
@@ -115,6 +124,7 @@ public class AuthController(
     }
 
     [AllowAnonymous]
+    [Audited(AuditActions.AuthPasswordReset)]
     [HttpPost("reset-password")]
     [EnableRateLimiting("signup")]
     [ProducesResponseType(typeof(Result), StatusCodes.Status200OK)]
@@ -126,6 +136,7 @@ public class AuthController(
     }
 
     [AllowAnonymous]
+    [NoAudit("public config read")]
     [HttpGet("signup-enabled")]
     [ProducesResponseType(typeof(SignupEnabledResponse), StatusCodes.Status200OK)]
     public async Task<IActionResult> SignupEnabled()
@@ -135,6 +146,7 @@ public class AuthController(
     }
 
     [AllowAnonymous]
+    [Audited(AuditActions.AuthRegisterAdmin)]
     [HttpPost("register-admin")]
     [EnableRateLimiting("signup")]
     [ProducesResponseType(typeof(Result), StatusCodes.Status200OK)]
@@ -154,6 +166,7 @@ public class AuthController(
     /// queue — the invite is the authorization) and returns a login token (auto-signin).
     /// </summary>
     [AllowAnonymous]
+    [Audited(AuditActions.InviteAccepted)]
     [HttpPost("register-invite")]
     [EnableRateLimiting("signup")]
     [Tags("Invites")]
@@ -175,6 +188,7 @@ public class AuthController(
     /// <summary>Mints a fresh device/user code pair for `pointer login`. Anonymous — there is no
     /// session yet.</summary>
     [AllowAnonymous]
+    [NoAudit("anonymous polling; the decision is audited by device.approved/denied")]
     [HttpPost("device/start")]
     [EnableRateLimiting("device-start")]
     [ProducesResponseType(typeof(DeviceLoginStartResponse), StatusCodes.Status200OK)]
@@ -187,6 +201,7 @@ public class AuthController(
     /// <summary>Polled by the CLI every `intervalSeconds` until the code is approved/denied/expired.
     /// Anonymous by necessity — the CLI has no session until this returns the key.</summary>
     [AllowAnonymous]
+    [NoAudit("anonymous polling; the decision is audited by device.approved/denied")]
     [HttpPost("device/poll")]
     [EnableRateLimiting("device-poll")]
     [ProducesResponseType(typeof(DeviceLoginPollResponse), StatusCodes.Status200OK)]
@@ -199,6 +214,7 @@ public class AuthController(
     /// <summary>For the dashboard's /cli-login page: what a user code is asking for, before the
     /// user decides. Super admins are refused — they have no personal API key to hand out.</summary>
     [Authorize]
+    [NoAudit("read of a pending device-code request")]
     [HttpGet("device/{userCode}")]
     [ProducesResponseType(typeof(DeviceLoginInfoResponse), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(Result), StatusCodes.Status403Forbidden)]
@@ -212,6 +228,7 @@ public class AuthController(
     }
 
     [Authorize]
+    [Audited(AuditActions.DeviceApproved)]
     [HttpPost("device/approve")]
     [ProducesResponseType(typeof(DeviceLoginInfoResponse), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(Result), StatusCodes.Status403Forbidden)]
@@ -227,6 +244,7 @@ public class AuthController(
     }
 
     [Authorize]
+    [Audited(AuditActions.DeviceDenied)]
     [HttpPost("device/deny")]
     [ProducesResponseType(typeof(DeviceLoginInfoResponse), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(Result), StatusCodes.Status403Forbidden)]

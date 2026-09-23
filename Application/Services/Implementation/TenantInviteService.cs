@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using Pointer.Application.Abstractions;
+using Pointer.Application.Common;
 using Pointer.Application.DTOs.Invite;
 using Pointer.Application.DTOs.Tenant;
 using Pointer.Application.Resources;
@@ -21,7 +22,8 @@ namespace Pointer.Application.Services.Implementation;
 public class TenantInviteService(
     IUnitOfWork unitOfWork,
     IInviteService invites,
-    ICurrentUser currentUser) : ITenantInviteService
+    ICurrentUser currentUser,
+    IAuditWriter audit) : ITenantInviteService
 {
     public async Task<Result<TenantInviteResponse>> CreateAsync(CreateTenantInviteRequest request)
     {
@@ -46,9 +48,24 @@ public class TenantInviteService(
                 : Result<TenantInviteResponse>.Failure(created.Message ?? MessageKeys.Invite.NotFound);
 
         var row = await LoadWorkspaceInviteAsync(created.Data.Id);
-        return row is null
-            ? Result<TenantInviteResponse>.NotFound(MessageKeys.Invite.NotFound)
-            : Result<TenantInviteResponse>.Success(await MapAsync(row, created.Data.Url, created.Data.EmailSent));
+        if (row is null)
+            return Result<TenantInviteResponse>.NotFound(MessageKeys.Invite.NotFound);
+
+        await audit.WriteAsync(
+            new AuditEntry(
+                AuditActions.TenantInviteCreated,
+                AuditTargets.TenantInvite,
+                row.Id.ToString(),
+                null,
+                After: new Dictionary<string, string>
+                {
+                    ["plan_id"] = row.PlanId?.ToString() ?? string.Empty,
+                    ["expires_at"] = row.ExpiresAt.ToString("O"),
+                }
+            )
+        );
+
+        return Result<TenantInviteResponse>.Success(await MapAsync(row, created.Data.Url, created.Data.EmailSent));
     }
 
     public async Task<Result<List<TenantInviteResponse>>> ListAsync()
@@ -99,9 +116,24 @@ public class TenantInviteService(
             return Result<TenantInviteResponse>.Failure(resent.Message ?? MessageKeys.Invite.NotFound);
 
         var refreshed = await LoadWorkspaceInviteAsync(id);
-        return refreshed is null
-            ? Result<TenantInviteResponse>.NotFound(MessageKeys.Invite.NotFound)
-            : Result<TenantInviteResponse>.Success(await MapAsync(refreshed, resent.Data.Url, resent.Data.EmailSent));
+        if (refreshed is null)
+            return Result<TenantInviteResponse>.NotFound(MessageKeys.Invite.NotFound);
+
+        await audit.WriteAsync(
+            new AuditEntry(
+                AuditActions.TenantInviteResent,
+                AuditTargets.TenantInvite,
+                refreshed.Id.ToString(),
+                null,
+                After: new Dictionary<string, string>
+                {
+                    ["plan_id"] = refreshed.PlanId?.ToString() ?? string.Empty,
+                    ["expires_at"] = refreshed.ExpiresAt.ToString("O"),
+                }
+            )
+        );
+
+        return Result<TenantInviteResponse>.Success(await MapAsync(refreshed, resent.Data.Url, resent.Data.EmailSent));
     }
 
     public async Task<Result> RevokeAsync(int id)
@@ -115,7 +147,15 @@ public class TenantInviteService(
         if (invite is null)
             return Result.NotFound(MessageKeys.Invite.NotFound);
 
-        return await invites.RevokeAsync(id);
+        var result = await invites.RevokeAsync(id);
+        if (!result.IsSuccess)
+            return result;
+
+        await audit.WriteAsync(
+            new AuditEntry(AuditActions.TenantInviteRevoked, AuditTargets.TenantInvite, invite.Id.ToString(), null)
+        );
+
+        return result;
     }
 
     /// <summary>Loads an invite only if it is a workspace invite (null owner) and still live.</summary>

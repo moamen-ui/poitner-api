@@ -1,3 +1,4 @@
+using Pointer.Application.Abstractions;
 using Pointer.Application.DTOs.Branding;
 using Pointer.Application.Response;
 using Pointer.Application.Services.Interfaces;
@@ -6,8 +7,10 @@ using Pointer.Application.Common;
 
 namespace Pointer.Application.Services.Implementation;
 
-public class BrandingService(ISettingsService settings) : IBrandingService
+public class BrandingService(ISettingsService settings, IAuditWriter? audit = null) : IBrandingService
 {
+    private readonly IAuditWriter _audit = audit ?? NoopAuditWriter.Instance;
+
     // Default values from spec
     private const string DefaultProductName = BrandingDefaults.ProductName;
     private const string DefaultTagline = BrandingDefaults.Tagline;
@@ -33,26 +36,61 @@ public class BrandingService(ISettingsService settings) : IBrandingService
         // (FluentValidation auto-validation) — not re-checked here.
 
         // Persist only non-null fields (patch semantics)
+        var changedKeys = new List<string>();
+
         if (dto.ProductName != null)
+        {
             await settings.SetStringAsync(ISettingsService.BrandProductName, dto.ProductName.Trim());
+            changedKeys.Add("product_name");
+        }
 
         if (dto.Tagline != null)
+        {
             await settings.SetStringAsync(ISettingsService.BrandTagline, dto.Tagline.Trim());
+            changedKeys.Add("tagline");
+        }
 
         if (!string.IsNullOrWhiteSpace(dto.PrimaryColor))
+        {
             await settings.SetStringAsync(ISettingsService.BrandPrimaryColor, dto.PrimaryColor.Trim());
+            changedKeys.Add("primary_color");
+        }
 
         if (dto.Urls != null)
         {
             if (dto.Urls.App     != null)
+            {
                 await settings.SetStringAsync(ISettingsService.BrandUrlApp,     dto.Urls.App.Trim());
+                changedKeys.Add("url_app");
+            }
             if (dto.Urls.Demo    != null)
+            {
                 await settings.SetStringAsync(ISettingsService.BrandUrlDemo,    dto.Urls.Demo.Trim());
+                changedKeys.Add("url_demo");
+            }
             if (dto.Urls.Docs    != null)
+            {
                 await settings.SetStringAsync(ISettingsService.BrandUrlDocs,    dto.Urls.Docs.Trim());
+                changedKeys.Add("url_docs");
+            }
             if (dto.Urls.Landing != null)
+            {
                 await settings.SetStringAsync(ISettingsService.BrandUrlLanding, dto.Urls.Landing.Trim());
+                changedKeys.Add("url_landing");
+            }
         }
+
+        // Always written (even an empty patch) — [Audited] on the controller action requires a row
+        // for every successful call, not just ones that actually changed a key.
+        await _audit.WriteAsync(
+            new AuditEntry(
+                AuditActions.BrandingUpdated,
+                AuditTargets.Branding,
+                "global",
+                null,
+                After: new Dictionary<string, string> { ["keys"] = string.Join(',', changedKeys) }
+            )
+        );
 
         var response = await BuildResponseAsync(publicBase, existingKinds);
         return Result<BrandingResponse>.Success(response);

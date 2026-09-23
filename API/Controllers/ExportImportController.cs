@@ -3,6 +3,7 @@ using System.Text.Json.Serialization;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Pointer.API.Auth;
+using Pointer.Application.Common;
 using Pointer.Application.DTOs.Export;
 using Pointer.Application.Resources;
 using Pointer.Application.Response;
@@ -35,6 +36,7 @@ public class ExportImportController(IExportImportService exportImportService) : 
     // -------------------------------------------------------------------------
 
     /// <summary>Download a portable snapshot of one project's comments.</summary>
+    [Audited(AuditActions.ExportDownloaded)]
     [HttpGet("api/projects/{key}/export")]
     [ProducesResponseType(typeof(ExportFileDto), StatusCodes.Status200OK)]
     public async Task<IActionResult> ExportProject(string key, [FromQuery] ExportQueryParams query)
@@ -50,6 +52,7 @@ public class ExportImportController(IExportImportService exportImportService) : 
     }
 
     /// <summary>Download a portable snapshot of every comment in the caller's workspace.</summary>
+    [Audited(AuditActions.ExportDownloaded)]
     [HttpGet("api/export")]
     [ProducesResponseType(typeof(ExportFileDto), StatusCodes.Status200OK)]
     public async Task<IActionResult> ExportWorkspace([FromQuery] ExportQueryParams query)
@@ -75,6 +78,7 @@ public class ExportImportController(IExportImportService exportImportService) : 
     /// Import an export file into a specific project. Accepts the schema JSON directly
     /// (Content-Type: application/json) or a multipart upload with a "file" field.
     /// </summary>
+    [Audited(AuditActions.ImportCompleted)]
     [HttpPost("api/projects/{key}/import")]
     [Authorize(Policy = Policies.Admin)]
     [Consumes("application/json")]
@@ -96,6 +100,7 @@ public class ExportImportController(IExportImportService exportImportService) : 
     /// <summary>
     /// Bulk import: routes each comment to the project named by its project_key field.
     /// </summary>
+    [Audited(AuditActions.ImportCompleted)]
     [HttpPost("api/import")]
     [Authorize(Policy = Policies.Admin)]
     [Consumes("application/json")]

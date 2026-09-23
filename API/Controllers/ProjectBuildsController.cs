@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
+using Pointer.API.Auth;
 using Pointer.Application.DTOs.Build;
 using Pointer.Application.Response;
 using Pointer.Application.Services.Interfaces;
@@ -17,6 +18,7 @@ namespace Pointer.API.Controllers;
 [Tags("Builds")]
 public class ProjectBuildsController(IProjectBuildService buildService) : ControllerBase
 {
+    [NoAudit("CLI telemetry")]
     [HttpPost("api/projects/{key}/builds")]
     [EnableRateLimiting("builds")]
     [ProducesResponseType(typeof(ReportBuildResponse), StatusCodes.Status200OK)]

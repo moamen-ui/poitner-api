@@ -23,6 +23,7 @@ public class AuthService : IAuthService
     private readonly IApiKeyService _apiKeys;
     private readonly ILoginAttemptLimiter _loginLimiter;
     private readonly IMembershipService _memberships;
+    private readonly IAuditWriter _audit;
 
     public AuthService(
         IUnitOfWork unitOfWork,
@@ -35,7 +36,8 @@ public class AuthService : IAuthService
         IBrandingService branding,
         IApiKeyService apiKeys,
         ILoginAttemptLimiter loginLimiter,
-        IMembershipService memberships
+        IMembershipService memberships,
+        IAuditWriter? audit = null
     )
     {
         _unitOfWork = unitOfWork;
@@ -49,11 +51,88 @@ public class AuthService : IAuthService
         _branding = branding;
         _loginLimiter = loginLimiter;
         _memberships = memberships;
+        _audit = audit ?? NoopAuditWriter.Instance;
     }
+
+    // ── DB-12 audit helpers ─────────────────────────────────────────────────────────────────
+
+    /// <summary>auth.login.succeeded — identity found, session issued. `owner` = the membership's
+    /// workspace (null for a super admin).</summary>
+    private Task AuditLoginSucceededAsync(User user, Guid? ownerId, string source) =>
+        _audit.WriteAsync(
+            new AuditEntry(
+                AuditActions.AuthLoginSucceeded,
+                AuditTargets.User,
+                user.PublicId.ToString(),
+                ownerId,
+                After: new Dictionary<string, string> { ["source"] = source }
+            )
+        );
+
+    /// <summary>auth.login.failed — password path. Identity resolved (even with the wrong password)
+    /// → target user/public_id (actor override); unknown e-mail → email_hash (D12.3: never the raw
+    /// address).</summary>
+    private Task AuditLoginFailedAsync(User? user, string emailNormalized, string reason) =>
+        _audit.WriteAsync(
+            new AuditEntry(
+                AuditActions.AuthLoginFailed,
+                user != null ? AuditTargets.User : AuditTargets.EmailHash,
+                user != null ? user.PublicId.ToString() : PseudonymHasher.EmailHash(emailNormalized),
+                null,
+                After: new Dictionary<string, string> { ["reason"] = reason },
+                ActorUserIdOverride: user?.PublicId,
+                ActorKindOverride: user != null ? AuditActorKind.User : null
+            )
+        );
+
+    /// <summary>auth.login.failed — API-key path. A resolvable key names itself (prefix, never the
+    /// key); an unresolvable one hashes the literal "api_key" (there is no e-mail on this path at
+    /// all).</summary>
+    private Task AuditApiKeyLoginFailedAsync(ApiKey? apiKey, string reason) =>
+        _audit.WriteAsync(
+            new AuditEntry(
+                AuditActions.AuthLoginFailed,
+                apiKey != null ? AuditTargets.ApiKey : AuditTargets.EmailHash,
+                apiKey != null ? apiKey.Prefix : PseudonymHasher.EmailHash("api_key"),
+                null,
+                After: new Dictionary<string, string> { ["reason"] = reason },
+                ActorUserIdOverride: apiKey?.User?.PublicId,
+                ActorKindOverride: apiKey?.User != null ? AuditActorKind.User : null
+            )
+        );
+
+    /// <summary>auth.login.failed — magic-link path. No identity is trustworthy until the very last
+    /// check succeeds, so every failure hashes the literal "magic_link" rather than naming anyone.</summary>
+    private Task AuditMagicLinkFailedAsync(string reason) =>
+        _audit.WriteAsync(
+            new AuditEntry(
+                AuditActions.AuthLoginFailed,
+                AuditTargets.EmailHash,
+                PseudonymHasher.EmailHash("magic_link"),
+                null,
+                After: new Dictionary<string, string> { ["reason"] = reason }
+            )
+        );
+
+    /// <summary>auth.register.stakeholder — new identity or re-apply; `owner` = the project's
+    /// workspace.</summary>
+    private Task AuditRegisterStakeholderAsync(User identity, Guid ownerId, int roleId) =>
+        _audit.WriteAsync(
+            new AuditEntry(
+                AuditActions.AuthRegisterStakeholder,
+                AuditTargets.User,
+                identity.PublicId.ToString(),
+                ownerId,
+                After: new Dictionary<string, string> { ["role_id"] = roleId.ToString(), ["status"] = "pending" },
+                ActorUserIdOverride: identity.PublicId,
+                ActorKindOverride: AuditActorKind.User
+            )
+        );
 
     public async Task<Result> RequestPasswordResetAsync(ForgotPasswordRequest request)
     {
         var emailNormalized = EmailNormalizer.NormalizeRequired(request.Email);
+        User? initialUser = null;
         if (emailNormalized.Length > 0)
         {
             // Anonymous path → bypass the tenant query filter; only real (non-demo) active accounts.
@@ -67,6 +146,7 @@ public class AuthService : IAuthService
                     u.DeletedAt == null && u.IsActive && !u.IsDemo && u.Email == emailNormalized
                 )
                 .FirstOrDefaultAsync();
+            initialUser = user;
 
             // DB-11a: a non-super-admin identity with no live membership anywhere has nothing to
             // reset into — treat the same as "no such account" (still silent to the caller).
@@ -116,6 +196,20 @@ public class AuthService : IAuthService
             }
         }
 
+        // Always audited — identity found or not (D12.3: hash only when not).
+        await _audit.WriteAsync(
+            new AuditEntry(
+                AuditActions.AuthPasswordResetRequested,
+                initialUser != null ? AuditTargets.User : AuditTargets.EmailHash,
+                initialUser != null
+                    ? initialUser.PublicId.ToString()
+                    : PseudonymHasher.EmailHash(emailNormalized),
+                null,
+                ActorUserIdOverride: initialUser?.PublicId,
+                ActorKindOverride: initialUser != null ? AuditActorKind.User : null
+            )
+        );
+
         // Always succeed — never reveal whether an email is registered.
         return Result.Success();
     }
@@ -157,6 +251,17 @@ public class AuthService : IAuthService
         _unitOfWork.Repository<User>().Update(user);
         await _unitOfWork.SaveChangesAsync();
 
+        await _audit.WriteAsync(
+            new AuditEntry(
+                AuditActions.AuthPasswordReset,
+                AuditTargets.User,
+                user.PublicId.ToString(),
+                null,
+                ActorUserIdOverride: user.PublicId,
+                ActorKindOverride: AuditActorKind.User
+            )
+        );
+
         return Result.Success();
     }
 
@@ -185,6 +290,15 @@ public class AuthService : IAuthService
         user.SecurityStamp = Guid.NewGuid();
         _unitOfWork.Repository<User>().Update(user);
         await _unitOfWork.SaveChangesAsync();
+
+        await _audit.WriteAsync(
+            new AuditEntry(
+                AuditActions.AuthPasswordChanged,
+                AuditTargets.User,
+                user.PublicId.ToString(),
+                _currentUser.TenantId
+            )
+        );
 
         var brand = await _branding.BuildResponseAsync("", new HashSet<string>());
         // Subject stays product-only; the workspace name (when there is one to name) only appears in
@@ -255,6 +369,7 @@ public class AuthService : IAuthService
         if (await _loginLimiter.IsLockedAsync(emailNormalized))
         {
             var retryAfter = await _loginLimiter.GetRetryAfterSecondsAsync(emailNormalized);
+            await AuditLoginFailedAsync(null, emailNormalized, "locked");
             return Result<LoginResponse>.Locked(
                 MessageKeys.Auth.TooManyAttempts,
                 new LoginResponse { Status = "locked" },
@@ -286,8 +401,12 @@ public class AuthService : IAuthService
                     .IgnoreQueryFilters()
                     .AnyAsync(u => u.MergedIntoUserId == user.Id)
             )
+            {
+                await AuditLoginFailedAsync(user, emailNormalized, "invalid_credentials");
                 return Result<LoginResponse>.Failure(MessageKeys.Auth.InvalidCredentialsAfterMerge);
+            }
 
+            await AuditLoginFailedAsync(user, emailNormalized, "invalid_credentials");
             return Result<LoginResponse>.Failure(MessageKeys.Auth.InvalidCredentials);
         }
 
@@ -299,6 +418,7 @@ public class AuthService : IAuthService
         if (user.PasswordlessOnly)
         {
             await _loginLimiter.RecordFailureAsync(emailNormalized);
+            await AuditLoginFailedAsync(user, emailNormalized, "passwordless");
             return Result<LoginResponse>.Failure(MessageKeys.Auth.InvalidCredentials);
         }
 
@@ -309,22 +429,31 @@ public class AuthService : IAuthService
         {
             // Super admins own no workspace — unchanged, identity-level status.
             if (user.ApprovalStatus == ApprovalStatus.Pending)
+            {
+                await AuditLoginFailedAsync(user, emailNormalized, "pending");
                 return Result<LoginResponse>.Failure(
                     MessageKeys.Auth.PendingApproval,
                     new LoginResponse { Status = "pending" }
                 );
+            }
 
             if (user.ApprovalStatus == ApprovalStatus.Rejected)
+            {
+                await AuditLoginFailedAsync(user, emailNormalized, "rejected");
                 return Result<LoginResponse>.Failure(
                     MessageKeys.Auth.Rejected,
                     new LoginResponse { Status = "rejected" }
                 );
+            }
 
             if (!user.IsActive)
+            {
+                await AuditLoginFailedAsync(user, emailNormalized, "disabled");
                 return Result<LoginResponse>.Failure(
                     MessageKeys.Auth.Disabled,
                     new LoginResponse { Status = "disabled" }
                 );
+            }
         }
         else
         {
@@ -335,10 +464,13 @@ public class AuthService : IAuthService
             var memberships = await _memberships.ListForIdentityAsync(user.Id);
 
             if (memberships.Count == 0)
+            {
+                await AuditLoginFailedAsync(user, emailNormalized, "no_workspace");
                 return Result<LoginResponse>.Failure(
                     MessageKeys.Auth.NoWorkspace,
                     new LoginResponse { Status = "no-workspace" }
                 );
+            }
 
             var candidates = memberships
                 .Where(m =>
@@ -349,15 +481,22 @@ public class AuthService : IAuthService
             if (candidates.Count == 0)
             {
                 if (memberships.Any(m => m.ApprovalStatus == ApprovalStatus.Pending))
+                {
+                    await AuditLoginFailedAsync(user, emailNormalized, "pending");
                     return Result<LoginResponse>.Failure(
                         MessageKeys.Auth.PendingApproval,
                         new LoginResponse { Status = "pending" }
                     );
+                }
                 if (memberships.Any(m => m.ApprovalStatus == ApprovalStatus.Rejected))
+                {
+                    await AuditLoginFailedAsync(user, emailNormalized, "rejected");
                     return Result<LoginResponse>.Failure(
                         MessageKeys.Auth.Rejected,
                         new LoginResponse { Status = "rejected" }
                     );
+                }
+                await AuditLoginFailedAsync(user, emailNormalized, "disabled");
                 return Result<LoginResponse>.Failure(
                     MessageKeys.Auth.Disabled,
                     new LoginResponse { Status = "disabled" }
@@ -431,6 +570,8 @@ public class AuthService : IAuthService
             User = await BuildMeAsync(user, membership, tenantName),
         };
 
+        await AuditLoginSucceededAsync(user, membership?.OwnerId, "password");
+
         return Result<LoginResponse>.Success(response);
     }
 
@@ -486,6 +627,15 @@ public class AuthService : IAuthService
         // signed-in session quietly clear another concurrent lockout window for the same e-mail.
         if (_currentUser.Scope == "select_workspace")
             await _loginLimiter.ResetAsync(EmailNormalizer.NormalizeRequired(identity.Email));
+
+        await _audit.WriteAsync(
+            new AuditEntry(
+                AuditActions.AuthWorkspaceSwitched,
+                AuditTargets.Workspace,
+                workspaceId.ToString(),
+                workspaceId
+            )
+        );
 
         return Result<LoginResponse>.Success(
             new LoginResponse
@@ -557,18 +707,27 @@ public class AuthService : IAuthService
     {
         var key = request.ApiKey.Trim();
         if (string.IsNullOrEmpty(key))
+        {
+            await AuditApiKeyLoginFailedAsync(null, "invalid_credentials");
             return Result<LoginResponse>.Failure(MessageKeys.Auth.InvalidApiKey);
+        }
 
         // Matched on the SHA-256 hash, never on stored plaintext. ResolveAsync ignores query filters
         // because this runs pre-authentication, with no tenant claim to filter by.
         var apiKey = await _apiKeys.ResolveAsync(key);
         if (apiKey?.User == null)
+        {
+            await AuditApiKeyLoginFailedAsync(null, "invalid_credentials");
             return Result<LoginResponse>.Failure(MessageKeys.Auth.InvalidApiKey);
+        }
 
         var user = apiKey.User;
 
         if (user.DeletedAt != null)
+        {
+            await AuditApiKeyLoginFailedAsync(apiKey, "invalid_credentials");
             return Result<LoginResponse>.Failure(MessageKeys.Auth.InvalidApiKey);
+        }
 
         WorkspaceMembership? membership = null;
         Role? role = user.Role;
@@ -587,32 +746,44 @@ public class AuthService : IAuthService
                 || membership.ApprovalStatus != ApprovalStatus.Approved
                 || !user.IsActive
             )
+            {
+                await AuditApiKeyLoginFailedAsync(apiKey, "disabled");
                 return Result<LoginResponse>.Failure(
                     MessageKeys.Auth.Disabled,
                     new LoginResponse { Status = "disabled" }
                 );
+            }
             role = membership.Role;
         }
         else
         {
             // Null-owner key = super admin path — identity-level status, unchanged.
             if (user.ApprovalStatus == ApprovalStatus.Pending)
+            {
+                await AuditApiKeyLoginFailedAsync(apiKey, "pending");
                 return Result<LoginResponse>.Failure(
                     MessageKeys.Auth.PendingApproval,
                     new LoginResponse { Status = "pending" }
                 );
+            }
 
             if (user.ApprovalStatus == ApprovalStatus.Rejected)
+            {
+                await AuditApiKeyLoginFailedAsync(apiKey, "rejected");
                 return Result<LoginResponse>.Failure(
                     MessageKeys.Auth.Rejected,
                     new LoginResponse { Status = "rejected" }
                 );
+            }
 
             if (!user.IsActive)
+            {
+                await AuditApiKeyLoginFailedAsync(apiKey, "disabled");
                 return Result<LoginResponse>.Failure(
                     MessageKeys.Auth.Disabled,
                     new LoginResponse { Status = "disabled" }
                 );
+            }
         }
 
         var token = _tokenService.Issue(user, membership, apiKey.Scopes);
@@ -621,6 +792,8 @@ public class AuthService : IAuthService
         await _apiKeys.TouchLastUsedAsync(apiKey.Id);
 
         var tenantName = membership != null ? await ResolveTenantNameAsync(membership.OwnerId) : null;
+
+        await AuditLoginSucceededAsync(user, membership?.OwnerId, "api_key");
 
         return Result<LoginResponse>.Success(
             new LoginResponse
@@ -708,6 +881,7 @@ public class AuthService : IAuthService
             );
             await _unitOfWork.SaveChangesAsync();
 
+            await AuditRegisterStakeholderAsync(identity, projectOwnerId, role.Id);
             return Result.Success(MessageKeys.Auth.RegistrationSubmitted);
         }
 
@@ -727,6 +901,7 @@ public class AuthService : IAuthService
                 _unitOfWork.Repository<WorkspaceMembership>().Update(membership);
                 await _unitOfWork.SaveChangesAsync();
 
+                await AuditRegisterStakeholderAsync(identity, projectOwnerId, role.Id);
                 return Result.Success(MessageKeys.Auth.RegistrationSubmitted);
             }
 
@@ -750,6 +925,7 @@ public class AuthService : IAuthService
         );
         await _unitOfWork.SaveChangesAsync();
 
+        await AuditRegisterStakeholderAsync(identity, projectOwnerId, role.Id);
         return Result.Success(MessageKeys.Auth.RegistrationSubmitted);
     }
 
@@ -834,6 +1010,7 @@ public class AuthService : IAuthService
         // Signup plan selector (workspace signup only). Free / none ⇒ today's flow (no subscription row;
         // effective plan resolves to Free). A paid, active, non-hidden plan ⇒ create a subscription in
         // PendingActivation; a super-admin activates it later (approval flip + IBillingProvider.Activate).
+        int? subscribedPlanId = null;
         if (request.PlanId is int planId)
         {
             var plan = await _unitOfWork
@@ -862,8 +1039,34 @@ public class AuthService : IAuthService
                         }
                     );
                 await _unitOfWork.SaveChangesAsync();
+                subscribedPlanId = plan.Id;
             }
         }
+
+        await _audit.WriteAsync(
+            new AuditEntry(
+                AuditActions.AuthRegisterAdmin,
+                AuditTargets.Workspace,
+                workspaceId.ToString(),
+                workspaceId,
+                After: subscribedPlanId is int spid
+                    ? new Dictionary<string, string> { ["plan_id"] = spid.ToString() }
+                    : null,
+                ActorUserIdOverride: identity.PublicId,
+                ActorKindOverride: AuditActorKind.User
+            )
+        );
+        await _audit.WriteAsync(
+            new AuditEntry(
+                AuditActions.WorkspaceCreated,
+                AuditTargets.Workspace,
+                workspaceId.ToString(),
+                workspaceId,
+                After: new Dictionary<string, string> { ["source"] = "self_serve" },
+                ActorUserIdOverride: identity.PublicId,
+                ActorKindOverride: AuditActorKind.User
+            )
+        );
 
         return Result.Success("Registration submitted. Your workspace is pending approval.");
     }
@@ -911,12 +1114,18 @@ public class AuthService : IAuthService
             .FirstOrDefaultAsync();
 
         if (link is null || link.RevokedAt != null || link.ExpiresAt <= now || link.OwnerId is not Guid ownerId)
+        {
+            await AuditMagicLinkFailedAsync("invalid_credentials");
             return Result<LoginResponse>.Failure(MessageKeys.Invite.LinkInvalid);
+        }
 
         // MaxUses 0 means unlimited within the TTL — the default. A client returning after the 12h
         // JWT expires has to be able to re-redeem, which single-use would break.
         if (link.MaxUses > 0 && link.Uses >= link.MaxUses)
+        {
+            await AuditMagicLinkFailedAsync("revoked_key");
             return Result<LoginResponse>.Failure(MessageKeys.Invite.LinkInvalid);
+        }
 
         var user = await _memberships.FindIdentityByPublicIdAsync(link.UserId);
         var membership = user == null ? null : await _memberships.GetMembershipAsync(user.Id, ownerId);
@@ -934,11 +1143,16 @@ public class AuthService : IAuthService
             // membership check — an identity can be deactivated independently of this membership.
             || !user.IsActive
         )
+        {
+            await AuditMagicLinkFailedAsync("disabled");
             return Result<LoginResponse>.Failure(MessageKeys.Invite.LinkInvalid);
+        }
 
         link.Uses += 1;
         link.LastUsedAt = now;
         await _unitOfWork.SaveChangesAsync();
+
+        await AuditLoginSucceededAsync(user, membership.OwnerId, "magic_link");
 
         return Result<LoginResponse>.Success(
             new LoginResponse

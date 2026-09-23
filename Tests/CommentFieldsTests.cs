@@ -89,9 +89,9 @@ public class CommentFieldsTests
         var user = new FakeCurrentUser { Id = author, TenantId = tenant, IsSuperAdmin = false };
         var db = BuildContext(user, dbName);
         var uow = new UnitOfWork(db);
-        var projectService = new ProjectService(uow, user, new PassThroughEntitlements(), TestProjectServiceDeps.Settings(), TestProjectServiceDeps.Configuration());
+        var projectService = new ProjectService(uow, user, new PassThroughEntitlements(), TestProjectServiceDeps.Settings(), TestProjectServiceDeps.Configuration(), new FakeAuditWriter());
         var actionService = new PredefinedActionService(uow, projectService, user, new PassThroughEntitlements());
-        var fieldService = new CommentFieldService(uow, user);
+        var fieldService = new CommentFieldService(uow, user, new FakeAuditWriter());
         var commentService = new CommentService(uow, projectService, actionService, new FakeFileStorage(), user, new FakeUploadSigner(), new FakeSettings(), new PassThroughEntitlements(), commentFields: fieldService);
 
         return new Harness { DbName = dbName, Db = db, CommentService = commentService, FieldService = fieldService, ProjectSvc = projectService, TenantId = tenant, AuthorId = author };
@@ -106,7 +106,7 @@ public class CommentFieldsTests
     {
         var db = BuildContext(user, dbName);
         var uow = new UnitOfWork(db);
-        var projectService = new ProjectService(uow, user, new PassThroughEntitlements(), TestProjectServiceDeps.Settings(), TestProjectServiceDeps.Configuration());
+        var projectService = new ProjectService(uow, user, new PassThroughEntitlements(), TestProjectServiceDeps.Settings(), TestProjectServiceDeps.Configuration(), new FakeAuditWriter());
         var actionService = new PredefinedActionService(uow, projectService, user, new PassThroughEntitlements());
         return new CommentService(uow, projectService, actionService, new FakeFileStorage(), user, new FakeUploadSigner(), new FakeSettings(), new PassThroughEntitlements());
     }
@@ -551,7 +551,7 @@ public class CommentFieldsTests
     {
         // Pure validation — no database needed.
         var defs = new List<CommentFieldDefinition> { Def("link", "Link", CommentFieldType.Url) };
-        var svc = new CommentFieldService(new UnitOfWork(BuildContext(new FakeCurrentUser(), Guid.NewGuid().ToString())), new FakeCurrentUser());
+        var svc = new CommentFieldService(new UnitOfWork(BuildContext(new FakeCurrentUser(), Guid.NewGuid().ToString())), new FakeCurrentUser(), new FakeAuditWriter());
 
         var ok = svc.ValidateValues(defs, new Dictionary<string, string> { ["link"] = "https://atlassian.net/browse/X" });
         Assert.True(ok.IsSuccess);

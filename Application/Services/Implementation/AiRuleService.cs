@@ -15,11 +15,13 @@ public class AiRuleService : IAiRuleService
 {
     private readonly IUnitOfWork _unitOfWork;
     private readonly ICurrentUser _currentUser;
+    private readonly IAuditWriter _audit;
 
-    public AiRuleService(IUnitOfWork unitOfWork, ICurrentUser currentUser)
+    public AiRuleService(IUnitOfWork unitOfWork, ICurrentUser currentUser, IAuditWriter? audit = null)
     {
         _unitOfWork = unitOfWork;
         _currentUser = currentUser;
+        _audit = audit ?? NoopAuditWriter.Instance;
     }
 
     public async Task<Result<List<AiRuleResponse>>> ListTenantAdminRulesAsync()
@@ -222,6 +224,18 @@ public class AiRuleService : IAiRuleService
         await _unitOfWork.Repository<AiRule>().AddAsync(entity);
         await _unitOfWork.SaveChangesAsync();
 
+        await _audit.WriteAsync(
+            new AuditEntry(
+                AuditActions.AiRuleCreated,
+                AuditTargets.AiRule,
+                entity.Id.ToString(),
+                owner,
+                After: entity.ProjectId is int pid
+                    ? new Dictionary<string, string> { ["project_id"] = pid.ToString() }
+                    : null
+            )
+        );
+
         return Result<AiRuleResponse>.Success(MapToResponse(entity, projectName, null));
     }
 
@@ -267,6 +281,18 @@ public class AiRuleService : IAiRuleService
         _unitOfWork.Repository<AiRule>().Update(rule);
         await _unitOfWork.SaveChangesAsync();
 
+        await _audit.WriteAsync(
+            new AuditEntry(
+                AuditActions.AiRuleUpdated,
+                AuditTargets.AiRule,
+                rule.Id.ToString(),
+                rule.OwnerId,
+                After: rule.ProjectId is int pid
+                    ? new Dictionary<string, string> { ["project_id"] = pid.ToString() }
+                    : null
+            )
+        );
+
         return Result<AiRuleResponse>.Success(MapToResponse(rule, null, null));
     }
 
@@ -296,6 +322,18 @@ public class AiRuleService : IAiRuleService
 
         _unitOfWork.Repository<AiRule>().Update(rule);
         await _unitOfWork.SaveChangesAsync();
+
+        await _audit.WriteAsync(
+            new AuditEntry(
+                AuditActions.AiRuleDeleted,
+                AuditTargets.AiRule,
+                rule.Id.ToString(),
+                rule.OwnerId,
+                After: rule.ProjectId is int pid
+                    ? new Dictionary<string, string> { ["project_id"] = pid.ToString() }
+                    : null
+            )
+        );
 
         return Result.Success();
     }

@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Pointer.API.Auth;
+using Pointer.Application.Common;
 using Pointer.Application.DTOs.Suggestion;
 using Pointer.Application.Services.Interfaces;
 
@@ -26,6 +27,7 @@ public class SuggestionsController(ISuggestionService service) : ControllerBase
     }
 
     [HttpPost("{id:int}/approve")]
+    [Audited(AuditActions.SuggestionApproved)]
     [ProducesResponseType(typeof(SuggestionResponse), StatusCodes.Status200OK)]
     public async Task<IActionResult> Approve(int id)
     {
@@ -36,6 +38,7 @@ public class SuggestionsController(ISuggestionService service) : ControllerBase
     }
 
     [HttpPost("{id:int}/reject")]
+    [Audited(AuditActions.SuggestionRejected)]
     [ProducesResponseType(typeof(SuggestionResponse), StatusCodes.Status200OK)]
     public async Task<IActionResult> Reject(int id)
     {
@@ -46,6 +49,7 @@ public class SuggestionsController(ISuggestionService service) : ControllerBase
     }
 
     [HttpPost("{id:int}/request-changes")]
+    [Audited(AuditActions.SuggestionChangesRequested)]
     [ProducesResponseType(typeof(SuggestionResponse), StatusCodes.Status200OK)]
     public async Task<IActionResult> RequestChanges(int id, [FromBody] RequestChangesRequest request)
     {

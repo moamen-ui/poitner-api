@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Pointer.API.Auth;
 using Pointer.Application.DTOs.Extension;
 using Pointer.Application.Response;
 using Pointer.Application.Services.Interfaces;
@@ -15,6 +16,7 @@ namespace Pointer.API.Controllers;
 [Tags("Extension")]
 public class ExtensionController(IExtensionService extensionService) : ControllerBase
 {
+    [NoAudit("extension activation telemetry; not a security mutation")]
     [HttpPost("api/extension/activate")]
     [ProducesResponseType(typeof(Result<ExtensionActivateResponse>), StatusCodes.Status200OK)]
     public async Task<IActionResult> Activate([FromBody] ExtensionActivateRequest request)

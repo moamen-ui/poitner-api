@@ -1,5 +1,7 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Pointer.API.Auth;
+using Pointer.Application.Common;
 using Pointer.Application.DTOs.Auth;
 using Pointer.Application.DTOs.Notification;
 using Pointer.Application.DTOs.Preferences;
@@ -18,6 +20,7 @@ public class MeController(
     INotificationService notificationService,
     Pointer.Application.Abstractions.ICurrentUser currentUser) : ControllerBase
 {
+    [Audited(AuditActions.AuthPasswordChanged)]
     [HttpPost("change-password")]
     [ProducesResponseType(StatusCodes.Status200OK)]
     public async Task<IActionResult> ChangePassword([FromBody] ChangePasswordRequest request)
@@ -27,6 +30,7 @@ public class MeController(
         return result.IsSuccess ? Ok(result) : BadRequest(result);
     }
 
+    [NoAudit("personal UI preference")]
     [HttpPatch("preferences")]
     [ProducesResponseType(typeof(MeResponse), StatusCodes.Status200OK)]
     public async Task<IActionResult> UpdatePreferences([FromBody] UpdatePreferencesRequest request)
@@ -36,6 +40,7 @@ public class MeController(
         return result.IsSuccess ? Ok(result) : BadRequest(result);
     }
 
+    [NoAudit("read of the caller's own profile")]
     [HttpGet("profile")]
     [ProducesResponseType(typeof(Pointer.Application.DTOs.Profile.UserProfileResponse), StatusCodes.Status200OK)]
     public async Task<IActionResult> Profile()
@@ -46,6 +51,7 @@ public class MeController(
         return result.IsSuccess ? Ok(result) : BadRequest(result);
     }
 
+    [NoAudit("read, not a mutation (creation-on-first-view is audited by apikey.created)")]
     [HttpGet("api-key")]
     [ProducesResponseType(typeof(Pointer.Application.DTOs.Profile.ApiKeyResponse), StatusCodes.Status200OK)]
     public async Task<IActionResult> GetApiKey()
@@ -56,6 +62,7 @@ public class MeController(
         return result.IsSuccess ? Ok(result) : BadRequest(result);
     }
 
+    [Audited(AuditActions.ApikeyRegenerated)]
     [HttpPost("api-key/regenerate")]
     [ProducesResponseType(typeof(Pointer.Application.DTOs.Profile.ApiKeyResponse), StatusCodes.Status200OK)]
     public async Task<IActionResult> RegenerateApiKey()
@@ -66,6 +73,7 @@ public class MeController(
         return result.IsSuccess ? Ok(result) : BadRequest(result);
     }
 
+    [NoAudit("inbox read")]
     [HttpGet("notifications")]
     [ProducesResponseType(typeof(Pointer.Application.Response.PagedData<NotificationDto>), StatusCodes.Status200OK)]
     public async Task<IActionResult> GetNotifications([FromQuery] bool? unread = null, [FromQuery] int page = 1, [FromQuery] int pageSize = 20)
@@ -74,6 +82,7 @@ public class MeController(
         return result.IsSuccess ? Ok(result) : BadRequest(result);
     }
 
+    [NoAudit("inbox read")]
     [HttpGet("notifications/unread-count")]
     [ProducesResponseType(typeof(UnreadCountResponse), StatusCodes.Status200OK)]
     public async Task<IActionResult> GetUnreadCount()
@@ -82,6 +91,7 @@ public class MeController(
         return result.IsSuccess ? Ok(result) : BadRequest(result);
     }
 
+    [NoAudit("inbox state")]
     [HttpPatch("notifications/{id:int}/read")]
     [ProducesResponseType(typeof(NotificationDto), StatusCodes.Status200OK)]
     public async Task<IActionResult> MarkRead(int id)
@@ -91,6 +101,7 @@ public class MeController(
         return result.IsSuccess ? Ok(result) : BadRequest(result);
     }
 
+    [NoAudit("inbox state")]
     [HttpPost("notifications/read-all")]
     [ProducesResponseType(typeof(ReadAllNotificationsResponse), StatusCodes.Status200OK)]
     public async Task<IActionResult> MarkAllRead()

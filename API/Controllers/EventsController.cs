@@ -2,6 +2,7 @@ using System.Threading.Tasks;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
+using Pointer.API.Auth;
 using Pointer.Application.DTOs.Event;
 using Pointer.Application.Response;
 using Pointer.Application.Services.Interfaces;
@@ -12,6 +13,7 @@ namespace Pointer.API.Controllers;
 [Tags("Events")]
 public class EventsController(IUsageEventService usageEventService) : ControllerBase
 {
+    [NoAudit("analytics beacon")]
     [HttpPost("api/events")]
     [Authorize]
     [EnableRateLimiting("events")]

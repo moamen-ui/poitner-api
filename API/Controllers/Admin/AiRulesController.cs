@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Pointer.API.Auth;
+using Pointer.Application.Common;
 using Pointer.Application.DTOs.AiRule;
 using Pointer.Application.Response;
 using Pointer.Application.Services.Interfaces;
@@ -32,6 +33,7 @@ public class AiRulesController(IAiRuleService service) : ControllerBase
     }
 
     [HttpPost]
+    [Audited(AuditActions.AiRuleCreated)]
     [ProducesResponseType(typeof(AiRuleResponse), StatusCodes.Status200OK)]
     public async Task<IActionResult> Create([FromBody] CreateAiRuleRequest request)
     {
@@ -42,6 +44,7 @@ public class AiRulesController(IAiRuleService service) : ControllerBase
     }
 
     [HttpPut("{id:int}")]
+    [Audited(AuditActions.AiRuleUpdated)]
     [ProducesResponseType(typeof(AiRuleResponse), StatusCodes.Status200OK)]
     public async Task<IActionResult> Update(int id, [FromBody] UpdateAiRuleRequest request)
     {
@@ -52,6 +55,7 @@ public class AiRulesController(IAiRuleService service) : ControllerBase
     }
 
     [HttpDelete("{id:int}")]
+    [Audited(AuditActions.AiRuleDeleted)]
     [ProducesResponseType(typeof(Result), StatusCodes.Status200OK)]
     public async Task<IActionResult> Delete(int id)
     {

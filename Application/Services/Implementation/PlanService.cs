@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using Pointer.Application.Abstractions;
+using Pointer.Application.Common;
 using Pointer.Application.DTOs.Plan;
 using Pointer.Application.Resources;
 using Pointer.Application.Response;
@@ -18,10 +19,12 @@ namespace Pointer.Application.Services.Implementation;
 public class PlanService : IPlanService
 {
     private readonly IUnitOfWork _unitOfWork;
+    private readonly IAuditWriter _audit;
 
-    public PlanService(IUnitOfWork unitOfWork)
+    public PlanService(IUnitOfWork unitOfWork, IAuditWriter? audit = null)
     {
         _unitOfWork = unitOfWork;
+        _audit = audit ?? NoopAuditWriter.Instance;
     }
 
     public async Task<Result<List<PlanAdminResponse>>> ListAsync()
@@ -77,6 +80,16 @@ public class PlanService : IPlanService
         await _unitOfWork.Repository<Plan>().AddAsync(plan);
         await _unitOfWork.SaveChangesAsync();
 
+        await _audit.WriteAsync(
+            new AuditEntry(
+                AuditActions.PlanCreated,
+                AuditTargets.Plan,
+                plan.Id.ToString(),
+                null,
+                After: new Dictionary<string, string> { ["name"] = plan.Name }
+            )
+        );
+
         return Result<PlanAdminResponse>.Success(MapAdmin(plan, 0), MessageKeys.Plan.Created);
     }
 
@@ -110,6 +123,16 @@ public class PlanService : IPlanService
         _unitOfWork.Repository<Plan>().Update(plan);
         await _unitOfWork.SaveChangesAsync();
 
+        await _audit.WriteAsync(
+            new AuditEntry(
+                AuditActions.PlanUpdated,
+                AuditTargets.Plan,
+                plan.Id.ToString(),
+                null,
+                After: new Dictionary<string, string> { ["name"] = plan.Name }
+            )
+        );
+
         var count = await ActiveSubCountAsync(plan.Id);
         return Result<PlanAdminResponse>.Success(MapAdmin(plan, count), MessageKeys.Plan.Updated);
     }
@@ -132,6 +155,17 @@ public class PlanService : IPlanService
         plan.DeletedAt = DateTime.UtcNow;
         _unitOfWork.Repository<Plan>().Update(plan);
         await _unitOfWork.SaveChangesAsync();
+
+        await _audit.WriteAsync(
+            new AuditEntry(
+                AuditActions.PlanDeleted,
+                AuditTargets.Plan,
+                plan.Id.ToString(),
+                null,
+                After: new Dictionary<string, string> { ["name"] = plan.Name }
+            )
+        );
+
         return Result.Success(MessageKeys.Plan.Deleted);
     }
 

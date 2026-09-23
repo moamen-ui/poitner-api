@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.StaticFiles;
 using Microsoft.EntityFrameworkCore;
+using Pointer.API.Auth;
 using Pointer.Application.Abstractions;
 using Pointer.Application.DTOs.Upload;
 using Pointer.Application.Response;
@@ -48,6 +49,7 @@ public class UploadsController(
 
     private static readonly Regex ProjectPattern = new("^[A-Za-z0-9._-]+$", RegexOptions.Compiled);
 
+    [NoAudit("content, not security")]
     [HttpPost("api/uploads")]
     [RequestSizeLimit(MaxBytes)]
     public async Task<IActionResult> Upload(IFormFile file, [FromForm] string project)

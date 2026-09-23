@@ -199,9 +199,7 @@ public class AuditCoverageTests
     /// mutating action on a controller under Pointer.API.Controllers.Admin, carries exactly one of
     /// the two attributes. Enable when DB-12 PART 2 lands (§5 tasks 10–11).
     /// </summary>
-    [Fact(
-        Skip = "DB-12 PART 2: enable when [Audited]/[NoAudit] ship on all ~70 actions (§5 tasks 10–11)."
-    )]
+    [Fact]
     public void EveryMutatingAction_CarriesExactlyOneAttribute()
     {
         var missing = AuditedSurfaces()

@@ -79,7 +79,7 @@ public class CommentLanguageTests
         var user = new FakeCurrentUser { Id = author, TenantId = tenant, IsSuperAdmin = false };
         var db = BuildContext(user, dbName);
         var uow = new UnitOfWork(db);
-        var projectService = new ProjectService(uow, user, new PassThroughEntitlements(), TestProjectServiceDeps.Settings(), TestProjectServiceDeps.Configuration());
+        var projectService = new ProjectService(uow, user, new PassThroughEntitlements(), TestProjectServiceDeps.Settings(), TestProjectServiceDeps.Configuration(), new FakeAuditWriter());
         var actionService = new PredefinedActionService(uow, projectService, user, new PassThroughEntitlements());
         var commentService = new CommentService(uow, projectService, actionService, new FakeFileStorage(), user, new FakeUploadSigner(), new FakeSettings(), new PassThroughEntitlements());
 

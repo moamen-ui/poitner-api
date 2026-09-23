@@ -70,7 +70,7 @@ public class PayloadFlagGatingTests
     private static CommentService Service(ICurrentUser user, string dbName, ICurrentClient? client)
     {
         var uow = new UnitOfWork(Ctx(user, dbName));
-        var projects = new ProjectService(uow, user, new PassThroughEntitlements(), TestProjectServiceDeps.Settings(), TestProjectServiceDeps.Configuration());
+        var projects = new ProjectService(uow, user, new PassThroughEntitlements(), TestProjectServiceDeps.Settings(), TestProjectServiceDeps.Configuration(), new FakeAuditWriter());
         var actions = new PredefinedActionService(uow, projects, user, new PassThroughEntitlements());
         return new CommentService(uow, projects, actions, new FakeFileStorage(), user,
             new FakeUploadSigner(), new FakeSettings(), new PassThroughEntitlements(), client);

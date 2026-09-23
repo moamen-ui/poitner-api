@@ -77,7 +77,7 @@ public class DemoCleanupService(
                 // failure doesn't poison the shared DbContext for other tenants.
                 using var scope = scopeFactory.CreateScope();
                 var tenantService = scope.ServiceProvider.GetRequiredService<ITenantService>();
-                var result = await tenantService.HardDeleteAsync(pid);
+                var result = await tenantService.HardDeleteAsync(pid, reason: "demo_expired");
                 if (result.IsSuccess)
                 {
                     deleted++;

@@ -25,6 +25,7 @@ public class DemoService : IDemoService
     private readonly ISettingsService _settings;
     private readonly IBrandingService _branding;
     private readonly IMembershipService _memberships;
+    private readonly IAuditWriter _audit;
 
     public DemoService(
         IUnitOfWork unitOfWork,
@@ -33,7 +34,8 @@ public class DemoService : IDemoService
         IEmailService emailService,
         ISettingsService settings,
         IBrandingService branding,
-        IMembershipService memberships
+        IMembershipService memberships,
+        IAuditWriter? audit = null
     )
     {
         _unitOfWork = unitOfWork;
@@ -43,6 +45,7 @@ public class DemoService : IDemoService
         _settings = settings;
         _branding = branding;
         _memberships = memberships;
+        _audit = audit ?? NoopAuditWriter.Instance;
     }
 
     public async Task<Result<DemoSessionResponse>> ProvisionAsync(
@@ -259,6 +262,25 @@ public class DemoService : IDemoService
             )
         );
 
+        await _audit.WriteAsync(
+            new AuditEntry(
+                AuditActions.AuthDemoProvisioned,
+                AuditTargets.Workspace,
+                workspaceId.ToString(),
+                workspaceId,
+                After: new Dictionary<string, string> { ["source"] = "demo" }
+            )
+        );
+        await _audit.WriteAsync(
+            new AuditEntry(
+                AuditActions.WorkspaceCreated,
+                AuditTargets.Workspace,
+                workspaceId.ToString(),
+                workspaceId,
+                After: new Dictionary<string, string> { ["source"] = "demo" }
+            )
+        );
+
         // h. Return response
         return Result<DemoSessionResponse>.Success(
             new DemoSessionResponse
@@ -348,6 +370,15 @@ public class DemoService : IDemoService
                 ? await _memberships.GetMembershipAsync(user.Id, demoOwnerId)
                 : null;
         var token = _tokenService.Issue(user, upgradeMembership);
+
+        await _audit.WriteAsync(
+            new AuditEntry(
+                AuditActions.AuthDemoUpgraded,
+                AuditTargets.Workspace,
+                user.OwnerId?.ToString(),
+                user.OwnerId
+            )
+        );
 
         // 11. Return token + MeResponse in the same shape as a successful login.
         return Result<UpgradeDemoResponse>.Success(

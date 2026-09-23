@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Pointer.API.Auth;
+using Pointer.Application.Common;
 using Pointer.Application.DTOs.Invite;
 using Pointer.Application.Response;
 using Pointer.Application.Services.Interfaces;
@@ -27,6 +28,7 @@ public class InvitesController(IInviteService service) : ControllerBase
     }
 
     [HttpPost]
+    [Audited(AuditActions.InviteCreated)]
     [ProducesResponseType(typeof(InviteResponse), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(Result), StatusCodes.Status403Forbidden)]
     public async Task<IActionResult> Create([FromBody] CreateInviteRequest request)
@@ -37,6 +39,7 @@ public class InvitesController(IInviteService service) : ControllerBase
     }
 
     [HttpDelete("{id:int}")]
+    [Audited(AuditActions.InviteRevoked)]
     [ProducesResponseType(typeof(Result), StatusCodes.Status200OK)]
     public async Task<IActionResult> Revoke(int id)
     {
@@ -51,6 +54,7 @@ public class InvitesController(IInviteService service) : ControllerBase
     /// after a leak without re-inviting anyone.
     /// </summary>
     [HttpPost("{id:int}/quick-link/rotate")]
+    [Audited(AuditActions.InviteQuickLinkRotated)]
     [ProducesResponseType(typeof(InviteResponse), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(Result), StatusCodes.Status404NotFound)]
     public async Task<IActionResult> RotateQuickLink(int id)

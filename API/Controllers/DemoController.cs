@@ -1,6 +1,8 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
+using Pointer.API.Auth;
+using Pointer.Application.Common;
 using Pointer.Application.DTOs.Demo;
 using Pointer.API.Extensions;
 using Pointer.Application.Response;
@@ -14,6 +16,7 @@ namespace Pointer.API.Controllers;
 public class DemoController(IDemoService demoService, IConfiguration configuration) : ControllerBase
 {
     [AllowAnonymous]
+    [Audited(AuditActions.AuthDemoProvisioned)]
     [EnableRateLimiting("demo")]
     [HttpPost]
     [ProducesResponseType(typeof(Result<DemoSessionResponse>), StatusCodes.Status200OK)]
@@ -35,6 +38,7 @@ public class DemoController(IDemoService demoService, IConfiguration configurati
     }
 
     [Authorize]
+    [Audited(AuditActions.AuthDemoUpgraded)]
     [HttpPost("upgrade")]
     [ProducesResponseType(typeof(UpgradeDemoResponse), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(Result), StatusCodes.Status400BadRequest)]

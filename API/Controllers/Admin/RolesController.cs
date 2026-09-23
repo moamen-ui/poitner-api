@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Pointer.API.Auth;
+using Pointer.Application.Common;
 using Pointer.Application.DTOs.Role;
 using Pointer.Application.Response;
 using Pointer.Application.Services.Interfaces;
@@ -21,6 +22,7 @@ public class RolesController(IRoleService roleService) : ControllerBase
     }
 
     [HttpPost]
+    [Audited(AuditActions.RoleCreated)]
     [ProducesResponseType(typeof(RoleResponse), StatusCodes.Status200OK)]
     public async Task<IActionResult> Create([FromBody] CreateRoleRequest request)
     {
@@ -30,6 +32,7 @@ public class RolesController(IRoleService roleService) : ControllerBase
     }
 
     [HttpPatch("{id:int}")]
+    [Audited(AuditActions.RoleUpdated)]
     [ProducesResponseType(typeof(RoleResponse), StatusCodes.Status200OK)]
     public async Task<IActionResult> Update(int id, [FromBody] UpdateRoleRequest request)
     {
@@ -43,6 +46,7 @@ public class RolesController(IRoleService roleService) : ControllerBase
     // to another role first (required in that case); the response reports how many
     // users were moved. The Admin/system role cannot be deleted.
     [HttpDelete("{id:int}")]
+    [Audited(AuditActions.RoleDeleted)]
     [ProducesResponseType(typeof(RoleDeleteResponse), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(Result), StatusCodes.Status409Conflict)]
     public async Task<IActionResult> Delete(int id, [FromQuery] int? reassignToRoleId)

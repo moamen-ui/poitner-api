@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Pointer.API.Auth;
+using Pointer.Application.Common;
 using Pointer.Application.DTOs.Plan;
 using Pointer.Application.Response;
 using Pointer.Application.Services.Interfaces;
@@ -22,6 +23,7 @@ public class PlansController(IPlanService planService) : ControllerBase
     }
 
     [HttpPost]
+    [Audited(AuditActions.PlanCreated)]
     [ProducesResponseType(typeof(Result<PlanAdminResponse>), StatusCodes.Status200OK)]
     public async Task<IActionResult> Create([FromBody] PlanWriteDto request)
     {
@@ -31,6 +33,7 @@ public class PlansController(IPlanService planService) : ControllerBase
     }
 
     [HttpPatch("{id:int}")]
+    [Audited(AuditActions.PlanUpdated)]
     [ProducesResponseType(typeof(Result<PlanAdminResponse>), StatusCodes.Status200OK)]
     public async Task<IActionResult> Update(int id, [FromBody] PlanWriteDto request)
     {
@@ -41,6 +44,7 @@ public class PlansController(IPlanService planService) : ControllerBase
     }
 
     [HttpDelete("{id:int}")]
+    [Audited(AuditActions.PlanDeleted)]
     [ProducesResponseType(typeof(Result), StatusCodes.Status200OK)]
     public async Task<IActionResult> Delete(int id)
     {

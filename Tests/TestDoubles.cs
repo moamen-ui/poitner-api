@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Data.Common;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore.Diagnostics;
@@ -7,6 +8,25 @@ using Pointer.Application.Services.Interfaces;
 using Pointer.Domain.ValueObjects;
 
 namespace Pointer.Tests;
+
+/// <summary>
+/// DB-12 test double for <see cref="IAuditWriter"/> — records every entry (thread-safe: xUnit can
+/// run async continuations off different threads) instead of writing to the database. Tests that
+/// assert on rows read <see cref="Entries"/> directly; tests that only need SOMETHING wired up so
+/// the service compiles (most of them) construct one and never look at it again.
+/// </summary>
+public sealed class FakeAuditWriter : IAuditWriter
+{
+    private readonly ConcurrentQueue<AuditEntry> _entries = new();
+
+    public IReadOnlyList<AuditEntry> Entries => _entries.ToList();
+
+    public Task WriteAsync(AuditEntry entry, CancellationToken ct = default)
+    {
+        _entries.Enqueue(entry);
+        return Task.CompletedTask;
+    }
+}
 
 public sealed class FakeLoginAttemptLimiter : ILoginAttemptLimiter
 {

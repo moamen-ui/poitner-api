@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Pointer.API.Auth;
+using Pointer.Application.Common;
 using Pointer.Application.DTOs.Comment;
 using Pointer.Application.DTOs.Project;
 using Pointer.Application.Response;
@@ -29,6 +30,7 @@ public class ProjectsController(IProjectService projectService, ICommentService 
     }
 
     [HttpPost]
+    [Audited(AuditActions.ProjectCreated)]
     [ProducesResponseType(typeof(ProjectResponse), StatusCodes.Status200OK)]
     public async Task<IActionResult> Create([FromBody] CreateProjectRequest request)
     {
@@ -40,6 +42,7 @@ public class ProjectsController(IProjectService projectService, ICommentService 
     }
 
     [HttpPatch("{id:int}")]
+    [Audited(AuditActions.ProjectUpdated)]
     [ProducesResponseType(typeof(ProjectResponse), StatusCodes.Status200OK)]
     public async Task<IActionResult> Update(int id, [FromBody] UpdateProjectRequest request)
     {
@@ -51,6 +54,7 @@ public class ProjectsController(IProjectService projectService, ICommentService 
     }
 
     [HttpDelete("{id:int}")]
+    [Audited(AuditActions.ProjectDeleted)]
     [ProducesResponseType(typeof(Result), StatusCodes.Status200OK)]
     public async Task<IActionResult> Delete(int id)
     {
@@ -72,6 +76,7 @@ public class ProjectsController(IProjectService projectService, ICommentService 
     }
 
     [HttpPut("{id:int}/app-urls/{environmentId:int}")]
+    [Audited(AuditActions.ProjectAppUrlSet)]
     [ProducesResponseType(typeof(ProjectAppUrlResponse), StatusCodes.Status200OK)]
     public async Task<IActionResult> SetAppUrl(int id, int environmentId, [FromBody] SetProjectAppUrlRequest request)
     {
@@ -82,6 +87,7 @@ public class ProjectsController(IProjectService projectService, ICommentService 
     }
 
     [HttpDelete("{id:int}/app-urls/{environmentId:int}")]
+    [Audited(AuditActions.ProjectAppUrlDeleted)]
     public async Task<IActionResult> DeleteAppUrl(int id, int environmentId)
     {
         var result = await projectService.DeleteAppUrlAsync(id, environmentId);
@@ -100,6 +106,7 @@ public class ProjectsController(IProjectService projectService, ICommentService 
     /// [Authorize] now — a non-admin must never reach the prompt-emitting queue.
     /// </summary>
     [HttpGet("{key}/apply-queue")]
+    [NoAudit("CLI/prompt-emitting read, not a mutation")]
     [Authorize(Policy = Policies.Admin)]
     [ProducesResponseType(typeof(PagedData<CommentApplyItemDto>), StatusCodes.Status200OK)]
     public async Task<IActionResult> ApplyQueue(string key, [FromQuery] CommentFilter filter)

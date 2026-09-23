@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Pointer.API.Auth;
+using Pointer.Application.Common;
 using Pointer.Application.DTOs.AppEnvironment;
 using Pointer.Application.Services.Interfaces;
 
@@ -20,6 +21,7 @@ public class AppEnvironmentsController(IAppEnvironmentService appEnvironmentServ
     }
 
     [HttpPost]
+    [Audited(AuditActions.EnvironmentCreated)]
     [ProducesResponseType(typeof(AppEnvironmentResponse), StatusCodes.Status200OK)]
     public async Task<IActionResult> Create([FromBody] CreateAppEnvironmentRequest request)
     {
@@ -29,6 +31,7 @@ public class AppEnvironmentsController(IAppEnvironmentService appEnvironmentServ
     }
 
     [HttpPatch("{id:int}")]
+    [Audited(AuditActions.EnvironmentUpdated)]
     [ProducesResponseType(typeof(AppEnvironmentResponse), StatusCodes.Status200OK)]
     public async Task<IActionResult> Update(int id, [FromBody] UpdateAppEnvironmentRequest request)
     {
@@ -40,6 +43,7 @@ public class AppEnvironmentsController(IAppEnvironmentService appEnvironmentServ
     }
 
     [HttpDelete("{id:int}")]
+    [Audited(AuditActions.EnvironmentDeleted)]
     public async Task<IActionResult> Delete(int id)
     {
         var result = await appEnvironmentService.DeleteAsync(id);

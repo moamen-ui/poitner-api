@@ -14,12 +14,18 @@ public class RoleService : IRoleService
     private readonly IUnitOfWork _unitOfWork;
     private readonly ICurrentUser _currentUser;
     private readonly IMembershipService _memberships;
+    private readonly IAuditWriter _audit;
 
-    public RoleService(IUnitOfWork unitOfWork, ICurrentUser currentUser, IMembershipService memberships)
+    public RoleService(
+        IUnitOfWork unitOfWork,
+        ICurrentUser currentUser,
+        IMembershipService memberships,
+        IAuditWriter? audit = null)
     {
         _unitOfWork = unitOfWork;
         _currentUser = currentUser;
         _memberships = memberships;
+        _audit = audit ?? NoopAuditWriter.Instance;
     }
 
     public async Task<Result<RoleResponse>> CreateAsync(CreateRoleRequest request)
@@ -51,6 +57,16 @@ public class RoleService : IRoleService
 
         await _unitOfWork.Repository<Role>().AddAsync(role);
         await _unitOfWork.SaveChangesAsync();
+
+        await _audit.WriteAsync(
+            new AuditEntry(
+                AuditActions.RoleCreated,
+                AuditTargets.Role,
+                role.Id.ToString(),
+                role.OwnerId,
+                After: new Dictionary<string, string> { ["name"] = role.Name }
+            )
+        );
 
         return Result<RoleResponse>.Success(MapToResponse(role));
     }
@@ -213,6 +229,16 @@ public class RoleService : IRoleService
         _unitOfWork.Repository<Role>().Update(role);
         await _unitOfWork.SaveChangesAsync();
 
+        await _audit.WriteAsync(
+            new AuditEntry(
+                AuditActions.RoleUpdated,
+                AuditTargets.Role,
+                role.Id.ToString(),
+                role.OwnerId,
+                After: new Dictionary<string, string> { ["name"] = role.Name }
+            )
+        );
+
         return Result<RoleResponse>.Success(MapToResponse(role));
     }
 
@@ -283,6 +309,16 @@ public class RoleService : IRoleService
         role.DeletedAt = DateTime.UtcNow;
         _unitOfWork.Repository<Role>().Update(role);
         await _unitOfWork.SaveChangesAsync();
+
+        await _audit.WriteAsync(
+            new AuditEntry(
+                AuditActions.RoleDeleted,
+                AuditTargets.Role,
+                role.Id.ToString(),
+                role.OwnerId,
+                After: new Dictionary<string, string> { ["count"] = reassigned.ToString() }
+            )
+        );
 
         return Result<RoleDeleteResponse>.Success(new RoleDeleteResponse
         {

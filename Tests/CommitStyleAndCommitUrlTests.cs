@@ -63,7 +63,7 @@ public class CommitStyleAndCommitUrlTests
     private static CommentService BuildCommentService(ICurrentUser user, string dbName)
     {
         var uow = new UnitOfWork(BuildContext(user, dbName));
-        var projectService = new ProjectService(uow, user, new PassThroughEntitlements(), TestProjectServiceDeps.Settings(), TestProjectServiceDeps.Configuration());
+        var projectService = new ProjectService(uow, user, new PassThroughEntitlements(), TestProjectServiceDeps.Settings(), TestProjectServiceDeps.Configuration(), new FakeAuditWriter());
         var actionService = new PredefinedActionService(uow, projectService, user, new PassThroughEntitlements());
         return new CommentService(uow, projectService, actionService, new FakeFileStorage(), user,
             new FakeUploadSigner(), new FakeSettings(), new PassThroughEntitlements());
@@ -149,7 +149,7 @@ public class CommitStyleAndCommitUrlTests
         var dbName = Guid.NewGuid().ToString();
         var tenant = Guid.NewGuid();
         var admin = new FakeCurrentUser { Id = Guid.NewGuid(), IsAdmin = true, TenantId = tenant };
-        var svc = new ProjectService(new UnitOfWork(BuildContext(admin, dbName)), admin, new PassThroughEntitlements(), TestProjectServiceDeps.Settings(), TestProjectServiceDeps.Configuration());
+        var svc = new ProjectService(new UnitOfWork(BuildContext(admin, dbName)), admin, new PassThroughEntitlements(), TestProjectServiceDeps.Settings(), TestProjectServiceDeps.Configuration(), new FakeAuditWriter());
 
         var created = (await svc.CreateAsync(new CreateProjectRequest { Key = "site", Name = "Site" })).Data!;
 
@@ -162,7 +162,7 @@ public class CommitStyleAndCommitUrlTests
         var dbName = Guid.NewGuid().ToString();
         var tenant = Guid.NewGuid();
         var admin = new FakeCurrentUser { Id = Guid.NewGuid(), IsAdmin = true, TenantId = tenant };
-        var svc = new ProjectService(new UnitOfWork(BuildContext(admin, dbName)), admin, new PassThroughEntitlements(), TestProjectServiceDeps.Settings(), TestProjectServiceDeps.Configuration());
+        var svc = new ProjectService(new UnitOfWork(BuildContext(admin, dbName)), admin, new PassThroughEntitlements(), TestProjectServiceDeps.Settings(), TestProjectServiceDeps.Configuration(), new FakeAuditWriter());
         var created = (await svc.CreateAsync(new CreateProjectRequest { Key = "site", Name = "Site" })).Data!;
 
         var updated = await svc.UpdateAsync(created.Id, new UpdateProjectRequest { CommitStyle = Domain.Enums.CommitStyle.Separate });
@@ -180,7 +180,7 @@ public class CommitStyleAndCommitUrlTests
         var dbName = Guid.NewGuid().ToString();
         var tenant = Guid.NewGuid();
         var admin = new FakeCurrentUser { Id = Guid.NewGuid(), IsAdmin = true, TenantId = tenant };
-        var svc = new ProjectService(new UnitOfWork(BuildContext(admin, dbName)), admin, new PassThroughEntitlements(), TestProjectServiceDeps.Settings(), TestProjectServiceDeps.Configuration());
+        var svc = new ProjectService(new UnitOfWork(BuildContext(admin, dbName)), admin, new PassThroughEntitlements(), TestProjectServiceDeps.Settings(), TestProjectServiceDeps.Configuration(), new FakeAuditWriter());
         var created = (await svc.CreateAsync(new CreateProjectRequest { Key = "site", Name = "Site" })).Data!;
 
         await svc.UpdateAsync(created.Id, new UpdateProjectRequest { CommitStyle = CommitStyle.Separate });
@@ -196,7 +196,7 @@ public class CommitStyleAndCommitUrlTests
         var dbName = Guid.NewGuid().ToString();
         var tenant = Guid.NewGuid();
         var admin = new FakeCurrentUser { Id = Guid.NewGuid(), IsAdmin = true, TenantId = tenant };
-        var svc = new ProjectService(new UnitOfWork(BuildContext(admin, dbName)), admin, new PassThroughEntitlements(), TestProjectServiceDeps.Settings(), TestProjectServiceDeps.Configuration());
+        var svc = new ProjectService(new UnitOfWork(BuildContext(admin, dbName)), admin, new PassThroughEntitlements(), TestProjectServiceDeps.Settings(), TestProjectServiceDeps.Configuration(), new FakeAuditWriter());
         await svc.CreateAsync(new CreateProjectRequest { Key = "site", Name = "Site" });
 
         var adminConfig = await svc.GetCaptureConfigAsync("site");
@@ -205,7 +205,7 @@ public class CommitStyleAndCommitUrlTests
         // A different, non-admin, non-creator stakeholder in the same tenant must not be able to
         // edit — same gate as ProjectService.UpdateAsync's Forbidden check.
         var developer = new FakeCurrentUser { Id = Guid.NewGuid(), TenantId = tenant };
-        var developerSvc = new ProjectService(new UnitOfWork(BuildContext(developer, dbName)), developer, new PassThroughEntitlements(), TestProjectServiceDeps.Settings(), TestProjectServiceDeps.Configuration());
+        var developerSvc = new ProjectService(new UnitOfWork(BuildContext(developer, dbName)), developer, new PassThroughEntitlements(), TestProjectServiceDeps.Settings(), TestProjectServiceDeps.Configuration(), new FakeAuditWriter());
         var developerConfig = await developerSvc.GetCaptureConfigAsync("site");
         Assert.False(developerConfig.Data!.CanEditSettings);
     }
@@ -217,7 +217,7 @@ public class CommitStyleAndCommitUrlTests
         var tenant = Guid.NewGuid();
         var creatorId = Guid.NewGuid();
         var creator = new FakeCurrentUser { Id = creatorId, TenantId = tenant };
-        var svc = new ProjectService(new UnitOfWork(BuildContext(creator, dbName)), creator, new PassThroughEntitlements(), TestProjectServiceDeps.Settings(), TestProjectServiceDeps.Configuration());
+        var svc = new ProjectService(new UnitOfWork(BuildContext(creator, dbName)), creator, new PassThroughEntitlements(), TestProjectServiceDeps.Settings(), TestProjectServiceDeps.Configuration(), new FakeAuditWriter());
         await svc.CreateAsync(new CreateProjectRequest { Key = "site", Name = "Site" });
 
         var config = await svc.GetCaptureConfigAsync("site");

@@ -1,6 +1,8 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Pointer.API.Auth;
+using Pointer.Application.Abstractions;
+using Pointer.Application.Common;
 using Pointer.Application.DTOs.Settings;
 using Pointer.Application.Response;
 using Pointer.Application.Services.Interfaces;
@@ -11,7 +13,8 @@ namespace Pointer.API.Controllers.Admin;
 [Route("api/admin/settings")]
 [Authorize(Policy = Policies.SuperAdmin)]
 [Tags("Settings")]
-public class SettingsController(ISettingsService settingsService, IConfiguration configuration) : ControllerBase
+public class SettingsController(ISettingsService settingsService, IConfiguration configuration, IAuditWriter audit)
+    : ControllerBase
 {
     private const int DefaultDailyCap = 250;
     private const int DefaultDemoMaxActive = 100;
@@ -33,6 +36,7 @@ public class SettingsController(ISettingsService settingsService, IConfiguration
     }
 
     [HttpPut]
+    [Audited(AuditActions.SettingsUpdated)]
     [ProducesResponseType(typeof(Result<SettingsResponse>), StatusCodes.Status200OK)]
     public async Task<IActionResult> Update([FromBody] UpdateSettingsRequest request)
     {
@@ -56,6 +60,35 @@ public class SettingsController(ISettingsService settingsService, IConfiguration
         // Extension
         await settingsService.SetStringAsync(ISettingsService.ExtensionStoreUrl, request.ExtensionStoreUrl?.Trim() ?? string.Empty);
         await settingsService.SetStringAsync(ISettingsService.ExtensionZipUrl, request.ExtensionZipUrl?.Trim() ?? string.Empty);
+
+        // DB-12: one row per batch update, naming the setting KEYS touched — never the values (some
+        // of which are effectively secrets-adjacent, e.g. from-email).
+        await audit.WriteAsync(
+            new AuditEntry(
+                AuditActions.SettingsUpdated,
+                AuditTargets.Settings,
+                "global",
+                null,
+                After: new Dictionary<string, string>
+                {
+                    ["keys"] = string.Join(
+                        ',',
+                        ISettingsService.ScopedAdminSignupEnabled,
+                        ISettingsService.AppBaseUrl,
+                        ISettingsService.EmailEnabled,
+                        ISettingsService.EmailFromEmail,
+                        ISettingsService.EmailFromName,
+                        ISettingsService.EmailDailyCap,
+                        ISettingsService.DemoMaxActive,
+                        ISettingsService.DemoTtlHours,
+                        ISettingsService.DemoPerEmailPerDay,
+                        ISettingsService.DemoCommentCap,
+                        ISettingsService.ExtensionStoreUrl,
+                        ISettingsService.ExtensionZipUrl
+                    ),
+                }
+            )
+        );
 
         return Ok(Result<SettingsResponse>.Success(await BuildResponseAsync()));
     }

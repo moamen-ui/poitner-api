@@ -48,7 +48,7 @@ public class ProjectAppUrlSyncTests
         SeedGlobalLocalEnvironment(dbName);
         var tenant = Guid.NewGuid();
         var admin = new FakeCurrentUser { Id = Guid.NewGuid(), IsAdmin = true, TenantId = tenant };
-        var svc = new ProjectService(new UnitOfWork(BuildContext(admin, dbName)), admin, new PassThroughEntitlements(), TestProjectServiceDeps.Settings(), TestProjectServiceDeps.Configuration());
+        var svc = new ProjectService(new UnitOfWork(BuildContext(admin, dbName)), admin, new PassThroughEntitlements(), TestProjectServiceDeps.Settings(), TestProjectServiceDeps.Configuration(), new FakeAuditWriter());
 
         var created = await svc.CreateAsync(new CreateProjectRequest { Key = "site", Name = "Site", AppUrl = "https://site.example.com" });
         Assert.True(created.IsSuccess);
@@ -66,7 +66,7 @@ public class ProjectAppUrlSyncTests
         SeedGlobalLocalEnvironment(dbName);
         var tenant = Guid.NewGuid();
         var admin = new FakeCurrentUser { Id = Guid.NewGuid(), IsAdmin = true, TenantId = tenant };
-        var projectSvc = new ProjectService(new UnitOfWork(BuildContext(admin, dbName)), admin, new PassThroughEntitlements(), TestProjectServiceDeps.Settings(), TestProjectServiceDeps.Configuration());
+        var projectSvc = new ProjectService(new UnitOfWork(BuildContext(admin, dbName)), admin, new PassThroughEntitlements(), TestProjectServiceDeps.Settings(), TestProjectServiceDeps.Configuration(), new FakeAuditWriter());
         await projectSvc.CreateAsync(new CreateProjectRequest { Key = "site", Name = "Site", AppUrl = "https://site.example.com" });
 
         var extSvc = new ExtensionService(new UnitOfWork(BuildContext(admin, dbName)), projectSvc, new PassThroughEntitlements());
@@ -83,7 +83,7 @@ public class ProjectAppUrlSyncTests
         SeedGlobalLocalEnvironment(dbName);
         var tenant = Guid.NewGuid();
         var admin = new FakeCurrentUser { Id = Guid.NewGuid(), IsAdmin = true, TenantId = tenant };
-        var projectSvc = new ProjectService(new UnitOfWork(BuildContext(admin, dbName)), admin, new PassThroughEntitlements(), TestProjectServiceDeps.Settings(), TestProjectServiceDeps.Configuration());
+        var projectSvc = new ProjectService(new UnitOfWork(BuildContext(admin, dbName)), admin, new PassThroughEntitlements(), TestProjectServiceDeps.Settings(), TestProjectServiceDeps.Configuration(), new FakeAuditWriter());
 
         var extSvc = new ExtensionService(new UnitOfWork(BuildContext(admin, dbName)), projectSvc, new PassThroughEntitlements());
         var result = await extSvc.FindProjectForOriginAsync("https://nowhere.example.com");
@@ -98,7 +98,7 @@ public class ProjectAppUrlSyncTests
         SeedGlobalLocalEnvironment(dbName);
         var tenant = Guid.NewGuid();
         var admin = new FakeCurrentUser { Id = Guid.NewGuid(), IsAdmin = true, TenantId = tenant };
-        var svc = new ProjectService(new UnitOfWork(BuildContext(admin, dbName)), admin, new PassThroughEntitlements(), TestProjectServiceDeps.Settings(), TestProjectServiceDeps.Configuration());
+        var svc = new ProjectService(new UnitOfWork(BuildContext(admin, dbName)), admin, new PassThroughEntitlements(), TestProjectServiceDeps.Settings(), TestProjectServiceDeps.Configuration(), new FakeAuditWriter());
         var created = (await svc.CreateAsync(new CreateProjectRequest { Key = "site", Name = "Site" })).Data!;
 
         int stagingEnvId;

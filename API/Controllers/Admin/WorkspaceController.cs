@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Pointer.API.Auth;
+using Pointer.Application.Common;
 using Pointer.Application.DTOs.Workspace;
 using Pointer.Application.Services.Interfaces;
 
@@ -32,6 +33,7 @@ public class WorkspaceController(ICommentFieldService commentFields, IWorkspaceS
 
     /// <summary>Renames the caller's workspace (1–120 chars). Header label and invite preview follow.</summary>
     [HttpPut("name")]
+    [Audited(AuditActions.WorkspaceRenamed)]
     [ProducesResponseType(typeof(WorkspaceResponse), StatusCodes.Status200OK)]
     public async Task<IActionResult> Rename([FromBody] UpdateWorkspaceNameRequest request)
     {
@@ -53,6 +55,7 @@ public class WorkspaceController(ICommentFieldService commentFields, IWorkspaceS
 
     /// <summary>Replaces the whole definition list (empty list deletes all definitions).</summary>
     [HttpPut("comment-fields")]
+    [Audited(AuditActions.WorkspaceCommentFieldsUpdated)]
     [ProducesResponseType(typeof(CommentFieldDefinitionsResponse), StatusCodes.Status200OK)]
     public async Task<IActionResult> UpdateCommentFields([FromBody] UpdateCommentFieldDefinitionsRequest request)
     {

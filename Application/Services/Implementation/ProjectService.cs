@@ -20,6 +20,7 @@ public class ProjectService : IProjectService
     private readonly ICurrentUser _currentUser;
     private readonly IEntitlementService _entitlements;
     private readonly ICommentFieldService _commentFields;
+    private readonly IAuditWriter _audit;
 
     public ProjectService(
         IUnitOfWork unitOfWork,
@@ -27,6 +28,7 @@ public class ProjectService : IProjectService
         IEntitlementService entitlements,
         ISettingsService settings,
         IConfiguration configuration,
+        IAuditWriter? audit = null,
         ICommentFieldService? commentFields = null)
     {
         _unitOfWork = unitOfWork;
@@ -34,7 +36,8 @@ public class ProjectService : IProjectService
         _entitlements = entitlements;
         _settings = settings;
         _configuration = configuration;
-        _commentFields = commentFields ?? new CommentFieldService(unitOfWork, currentUser);
+        _audit = audit ?? NoopAuditWriter.Instance;
+        _commentFields = commentFields ?? new CommentFieldService(unitOfWork, currentUser, _audit);
     }
 
     private readonly ISettingsService _settings;
@@ -324,6 +327,17 @@ public class ProjectService : IProjectService
 
         var actions = await LoadProjectActionsAsync(project.Id);
         var appUrls = await LoadProjectAppUrlsAsync(project.Id);
+
+        await _audit.WriteAsync(
+            new AuditEntry(
+                AuditActions.ProjectCreated,
+                AuditTargets.Project,
+                project.Id.ToString(),
+                project.OwnerId,
+                After: new Dictionary<string, string> { ["key"] = project.Key, ["name"] = project.Name }
+            )
+        );
+
         // Freshly-created project: no comments; creator is the caller.
         return Result<ProjectResponse>.Success(MapToResponse(project, actions, appUrls, 0,
             await ResolveCreatorNameAsync(project.CreatedBy)));
@@ -407,6 +421,20 @@ public class ProjectService : IProjectService
         if (!(_currentUser.IsAdmin || project.CreatedBy == _currentUser.Id))
             return Result<ProjectResponse>.Forbidden(MessageKeys.Project.NotFound);
 
+        var changedKeys = new List<string>();
+        if (request.Name != null && request.Name != project.Name)
+            changedKeys.Add("name");
+        if (request.IsActiveLocal.HasValue && request.IsActiveLocal.Value != project.IsActiveLocal)
+            changedKeys.Add("is_active_local");
+        if (request.IsActiveStaging.HasValue && request.IsActiveStaging.Value != project.IsActiveStaging)
+            changedKeys.Add("is_active_staging");
+        if (request.IsActiveProduction.HasValue && request.IsActiveProduction.Value != project.IsActiveProduction)
+            changedKeys.Add("is_active_production");
+        if (request.EnforceAllowedOrigins.HasValue && request.EnforceAllowedOrigins.Value != project.EnforceAllowedOrigins)
+            changedKeys.Add("enforce_allowed_origins");
+        if (request.CommitStyle.HasValue && request.CommitStyle.Value != project.CommitStyle)
+            changedKeys.Add("commit_style");
+
         if (request.Name != null)
             project.Name = request.Name;
 
@@ -471,6 +499,19 @@ public class ProjectService : IProjectService
         var commentsCount = await _unitOfWork.Repository<Comment>()
             .Query().AsNoTracking()
             .CountAsync(c => c.ProjectId == project.Id && c.DeletedAt == null);
+
+        // Always written (even a no-op update) — [Audited] on the controller action requires a row
+        // for every successful call, not just ones that actually changed a key.
+        await _audit.WriteAsync(
+            new AuditEntry(
+                AuditActions.ProjectUpdated,
+                AuditTargets.Project,
+                project.Id.ToString(),
+                project.OwnerId,
+                After: new Dictionary<string, string> { ["keys"] = string.Join(',', changedKeys) }
+            )
+        );
+
         return Result<ProjectResponse>.Success(MapToResponse(project, actions, appUrls, commentsCount,
             await ResolveCreatorNameAsync(project.CreatedBy)));
     }
@@ -592,6 +633,16 @@ public class ProjectService : IProjectService
             await _unitOfWork.SaveChangesAsync();
         }
 
+        await _audit.WriteAsync(
+            new AuditEntry(
+                AuditActions.ProjectAppUrlSet,
+                AuditTargets.ProjectAppUrl,
+                $"{projectId}:{environmentId}",
+                project.OwnerId,
+                After: new Dictionary<string, string> { ["url"] = url, ["environment_id"] = environmentId.ToString() }
+            )
+        );
+
         return Result<ProjectAppUrlResponse>.Success(new ProjectAppUrlResponse
         {
             AppEnvironmentId = environmentId,
@@ -620,6 +671,16 @@ public class ProjectService : IProjectService
         existing.DeletedAt = DateTime.UtcNow;
         _unitOfWork.Repository<ProjectAppUrl>().Update(existing);
         await _unitOfWork.SaveChangesAsync();
+
+        await _audit.WriteAsync(
+            new AuditEntry(
+                AuditActions.ProjectAppUrlDeleted,
+                AuditTargets.ProjectAppUrl,
+                $"{projectId}:{environmentId}",
+                project.OwnerId,
+                After: new Dictionary<string, string> { ["environment_id"] = environmentId.ToString() }
+            )
+        );
 
         return Result.Success();
     }
@@ -701,6 +762,16 @@ public class ProjectService : IProjectService
                 await _unitOfWork.SaveChangesAsync();
             });
 
+            await _audit.WriteAsync(
+                new AuditEntry(
+                    AuditActions.ProjectDeleted,
+                    AuditTargets.Project,
+                    project.Id.ToString(),
+                    project.OwnerId,
+                    After: new Dictionary<string, string> { ["key"] = project.Key, ["name"] = project.Name }
+                )
+            );
+
             return Result.Success();
         }
 
@@ -736,6 +807,16 @@ public class ProjectService : IProjectService
         project.DeletedAt = DateTime.UtcNow;
         _unitOfWork.Repository<Project>().Update(project);
         await _unitOfWork.SaveChangesAsync();
+
+        await _audit.WriteAsync(
+            new AuditEntry(
+                AuditActions.ProjectDeleted,
+                AuditTargets.Project,
+                project.Id.ToString(),
+                project.OwnerId,
+                After: new Dictionary<string, string> { ["key"] = project.Key, ["name"] = project.Name }
+            )
+        );
 
         return Result.Success();
     }

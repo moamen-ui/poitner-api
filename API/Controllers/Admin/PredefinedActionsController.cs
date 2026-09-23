@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Pointer.API.Auth;
+using Pointer.Application.Common;
 using Pointer.Application.DTOs.PredefinedAction;
 using Pointer.Application.Response;
 using Pointer.Application.Services.Interfaces;
@@ -28,6 +29,7 @@ public class PredefinedActionsController(IPredefinedActionService service) : Con
     }
 
     [HttpPost]
+    [Audited(AuditActions.PredefinedActionCreated)]
     [ProducesResponseType(typeof(PredefinedActionResponse), StatusCodes.Status200OK)]
     public async Task<IActionResult> Create([FromBody] CreatePredefinedActionRequest request)
     {
@@ -37,6 +39,7 @@ public class PredefinedActionsController(IPredefinedActionService service) : Con
     }
 
     [HttpPatch("{id:int}")]
+    [Audited(AuditActions.PredefinedActionUpdated)]
     [ProducesResponseType(typeof(PredefinedActionResponse), StatusCodes.Status200OK)]
     public async Task<IActionResult> Update(int id, [FromBody] UpdatePredefinedActionRequest request)
     {
@@ -46,6 +49,7 @@ public class PredefinedActionsController(IPredefinedActionService service) : Con
     }
 
     [HttpDelete("{id:int}")]
+    [Audited(AuditActions.PredefinedActionDeleted)]
     [ProducesResponseType(typeof(Result), StatusCodes.Status200OK)]
     public async Task<IActionResult> Delete(int id)
     {

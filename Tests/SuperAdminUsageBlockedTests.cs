@@ -68,7 +68,7 @@ public class SuperAdminUsageBlockedTests
         var db = Guid.NewGuid().ToString();
         var superAdmin = new FakeCurrentUser { Id = Guid.NewGuid(), IsSuperAdmin = true };
         var uow = new UnitOfWork(BuildContext(superAdmin, db));
-        var svc = new ProjectService(uow, superAdmin, new PassThroughEntitlements(), TestProjectServiceDeps.Settings(), TestProjectServiceDeps.Configuration());
+        var svc = new ProjectService(uow, superAdmin, new PassThroughEntitlements(), TestProjectServiceDeps.Settings(), TestProjectServiceDeps.Configuration(), new FakeAuditWriter());
 
         var result = await svc.CreateAsync(new CreateProjectRequest { Key = "ghost", Name = "Ghost" });
 
@@ -82,7 +82,7 @@ public class SuperAdminUsageBlockedTests
         var db = Guid.NewGuid().ToString();
         var superAdmin = new FakeCurrentUser { Id = Guid.NewGuid(), IsSuperAdmin = true };
         var uow = new UnitOfWork(BuildContext(superAdmin, db));
-        var projectService = new ProjectService(uow, superAdmin, new PassThroughEntitlements(), TestProjectServiceDeps.Settings(), TestProjectServiceDeps.Configuration());
+        var projectService = new ProjectService(uow, superAdmin, new PassThroughEntitlements(), TestProjectServiceDeps.Settings(), TestProjectServiceDeps.Configuration(), new FakeAuditWriter());
         var svc = new PredefinedActionService(uow, projectService, superAdmin, new PassThroughEntitlements());
 
         var result = await svc.CreateTenantAsync(new CreatePredefinedActionRequest { Text = "Do X", Prompt = "do x" });
@@ -105,7 +105,7 @@ public class SuperAdminUsageBlockedTests
 
         var superAdmin = new FakeCurrentUser { Id = Guid.NewGuid(), IsSuperAdmin = true };
         var uow = new UnitOfWork(BuildContext(superAdmin, db));
-        var projectService = new ProjectService(uow, superAdmin, new PassThroughEntitlements(), TestProjectServiceDeps.Settings(), TestProjectServiceDeps.Configuration());
+        var projectService = new ProjectService(uow, superAdmin, new PassThroughEntitlements(), TestProjectServiceDeps.Settings(), TestProjectServiceDeps.Configuration(), new FakeAuditWriter());
         var actionService = new PredefinedActionService(uow, projectService, superAdmin, new PassThroughEntitlements());
         var commentService = new CommentService(uow, projectService, actionService, new FakeFileStorage(), superAdmin, new FakeUploadSigner(), new FakeSettings(), new PassThroughEntitlements());
 

@@ -113,7 +113,7 @@ public class TenantInviteServiceTests
     private static (TenantInviteService Service, SpyInviteService Spy) Build(AppDbContext db, ICurrentUser user)
     {
         var spy = new SpyInviteService();
-        return (new TenantInviteService(new UnitOfWork(db), spy, user), spy);
+        return (new TenantInviteService(new UnitOfWork(db), spy, user, new FakeAuditWriter()), spy);
     }
 
     [Fact]

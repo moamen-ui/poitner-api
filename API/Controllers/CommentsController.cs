@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
+using Pointer.API.Auth;
 using Pointer.API.Extensions;
 using Pointer.Application.DTOs.Comment;
 using Pointer.Application.Services.Interfaces;
@@ -13,6 +14,7 @@ namespace Pointer.API.Controllers;
 [Tags("Comments")]
 public class CommentsController(ICommentService commentService) : ControllerBase
 {
+    [NoAudit("content, not security")]
     [HttpPost("api/projects/{key}/comments")]
     [RequestSizeLimit(262144)] // 256KB — an element capture (snapshot/styles/rules) is small; cap abuse.
     [EnableRateLimiting("comments")] // 30/min per user, sliding — see RateLimitingExtensions.
@@ -57,6 +59,7 @@ public class CommentsController(ICommentService commentService) : ControllerBase
         return result.IsSuccess ? Ok(result) : BadRequest(result);
     }
 
+    [NoAudit("content, not security")]
     [HttpPatch("api/comments/{id:int}")]
     [ProducesResponseType(typeof(CommentResponse), StatusCodes.Status200OK)]
     public async Task<IActionResult> UpdateStatus(int id, [FromBody] UpdateCommentStatusRequest request)
@@ -68,6 +71,7 @@ public class CommentsController(ICommentService commentService) : ControllerBase
         return result.IsSuccess ? Ok(result) : BadRequest(result);
     }
 
+    [NoAudit("content, not security")]
     [HttpPost("api/comments/{id:int}/verify")]
     [ProducesResponseType(typeof(CommentResponse), StatusCodes.Status200OK)]
     public async Task<IActionResult> Verify(int id, [FromBody] VerifyCommentRequest request)
@@ -80,6 +84,7 @@ public class CommentsController(ICommentService commentService) : ControllerBase
     }
 
     // Edit a comment's body and/or remove its uploaded image. Author-only (enforced in the service).
+    [NoAudit("content, not security")]
     [HttpPut("api/comments/{id:int}")]
     [ProducesResponseType(typeof(CommentResponse), StatusCodes.Status200OK)]
     public async Task<IActionResult> Edit(int id, [FromBody] EditCommentRequest request)
@@ -93,6 +98,7 @@ public class CommentsController(ICommentService commentService) : ControllerBase
     // Replace a comment's admin-defined field values (R4-01). Author (incl. quick-access) or a
     // workspace admin — the service loads through the tenant-filtered query, so another
     // workspace's admin gets 404 rather than access.
+    [NoAudit("content, not security")]
     [HttpPatch("api/comments/{id:int}/fields")]
     [ProducesResponseType(typeof(CommentResponse), StatusCodes.Status200OK)]
     public async Task<IActionResult> UpdateFields(int id, [FromBody] UpdateCommentFieldsRequest request)
@@ -105,6 +111,7 @@ public class CommentsController(ICommentService commentService) : ControllerBase
     }
 
     // Toggle a comment's private flag. Author-only (enforced in the service).
+    [NoAudit("content, not security")]
     [HttpPatch("api/comments/{id:int}/visibility")]
     [ProducesResponseType(typeof(CommentResponse), StatusCodes.Status200OK)]
     public async Task<IActionResult> SetVisibility(int id, [FromBody] SetVisibilityRequest request)
@@ -115,6 +122,7 @@ public class CommentsController(ICommentService commentService) : ControllerBase
         return result.IsSuccess ? Ok(result) : BadRequest(result);
     }
 
+    [NoAudit("content, not security")]
     [HttpDelete("api/comments/{id:int}")]
     [ProducesResponseType(typeof(Pointer.Application.Response.Result), StatusCodes.Status200OK)]
     public async Task<IActionResult> Delete(int id)

@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Pointer.API.Auth;
 using Pointer.Application.DTOs.Project;
 using Pointer.Application.Services.Interfaces;
 
@@ -29,6 +30,7 @@ public class ProjectStackController(IProjectService projectService) : Controller
         return result.IsSuccess ? Ok(result) : BadRequest(result);
     }
 
+    [NoAudit("CLI telemetry")]
     [HttpPost("api/projects/{key}/stack")]
     [ProducesResponseType(typeof(ProjectStackResponse), StatusCodes.Status200OK)]
     public async Task<IActionResult> Set(string key, [FromBody] SetProjectStackRequest request)

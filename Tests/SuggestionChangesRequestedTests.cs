@@ -52,7 +52,7 @@ public class SuggestionChangesRequestedTests
     {
         var db = BuildContext(user, dbName);
         var uow = new UnitOfWork(db);
-        return (new ProjectService(uow, user, new PassThroughEntitlements(), TestProjectServiceDeps.Settings(), TestProjectServiceDeps.Configuration()), uow, db);
+        return (new ProjectService(uow, user, new PassThroughEntitlements(), TestProjectServiceDeps.Settings(), TestProjectServiceDeps.Configuration(), new FakeAuditWriter()), uow, db);
     }
 
     private static (SuggestionService svc, AppDbContext db, NotificationService notifications) WireSuggestion(ICurrentUser user, string dbName)

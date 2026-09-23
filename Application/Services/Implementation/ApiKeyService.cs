@@ -1,6 +1,7 @@
 using System.Security.Cryptography;
 using Microsoft.EntityFrameworkCore;
 using Pointer.Application.Abstractions;
+using Pointer.Application.Common;
 using Pointer.Application.Services.Interfaces;
 using Pointer.Domain.Entity;
 
@@ -16,8 +17,11 @@ namespace Pointer.Application.Services.Implementation;
 /// zero rows. Tenant scoping is preserved by stamping <see cref="ApiKey.OwnerId"/> explicitly and by
 /// only ever reaching a row through that user's own id (+ workspace) or the raw key itself.
 /// </summary>
-public class ApiKeyService(IUnitOfWork unitOfWork, IApiKeyProtector protector) : IApiKeyService
+public class ApiKeyService(IUnitOfWork unitOfWork, IApiKeyProtector protector, IAuditWriter? audit = null)
+    : IApiKeyService
 {
+    private readonly IAuditWriter _audit = audit ?? NoopAuditWriter.Instance;
+
     /// <summary>How stale LastUsedAt may get before we write again. Keeps a busy agent off the write path.</summary>
     private static readonly TimeSpan TouchInterval = TimeSpan.FromMinutes(1);
 
@@ -36,7 +40,7 @@ public class ApiKeyService(IUnitOfWork unitOfWork, IApiKeyProtector protector) :
             return raw is null ? ApiKeyResult.Undecryptable(existing) : ApiKeyResult.Ok(existing, raw);
         }
 
-        return await MintAsync(user, workspaceId);
+        return await MintAsync(user, workspaceId, AuditActions.ApikeyCreated);
     }
 
     public async Task<ApiKeyResult> RegenerateAsync(Guid publicId, Guid? workspaceId)
@@ -55,7 +59,7 @@ public class ApiKeyService(IUnitOfWork unitOfWork, IApiKeyProtector protector) :
             await unitOfWork.SaveChangesAsync();
         }
 
-        return await MintAsync(user, workspaceId);
+        return await MintAsync(user, workspaceId, AuditActions.ApikeyRegenerated);
     }
 
     public async Task<ApiKey?> ResolveAsync(string rawKey)
@@ -108,13 +112,24 @@ public class ApiKeyService(IUnitOfWork unitOfWork, IApiKeyProtector protector) :
             .IgnoreQueryFilters()
             .Where(k => k.UserId == userId && k.OwnerId == ownerId && k.RevokedAt == null && k.DeletedAt == null);
 
-    private async Task<ApiKeyResult> MintAsync(User user, Guid? workspaceId)
+    private async Task<ApiKeyResult> MintAsync(User user, Guid? workspaceId, string auditAction)
     {
         var raw = await GenerateUniqueAsync();
         var key = BuildRow(user, workspaceId, raw);
 
         await unitOfWork.Repository<ApiKey>().AddAsync(key);
         await unitOfWork.SaveChangesAsync();
+
+        await _audit.WriteAsync(
+            new AuditEntry(
+                auditAction,
+                AuditTargets.ApiKey,
+                key.Id.ToString(),
+                workspaceId,
+                After: new Dictionary<string, string> { ["scopes"] = key.Scopes.ToString() },
+                ActorUserIdOverride: user.PublicId
+            )
+        );
 
         return ApiKeyResult.Ok(key, raw);
     }

@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Pointer.API.Auth;
+using Pointer.Application.Common;
 using Pointer.Application.DTOs.Tenant;
 using Pointer.Application.Response;
 using Pointer.Application.Services.Interfaces;
@@ -20,6 +21,7 @@ public class TenantsController(ITenantService tenantService, ITenantInviteServic
     // secondary, direct path for seeding and air-gapped installs.
 
     [HttpPost("invites")]
+    [Audited(AuditActions.TenantInviteCreated)]
     [ProducesResponseType(typeof(TenantInviteResponse), StatusCodes.Status200OK)]
     public async Task<IActionResult> CreateInvite([FromBody] CreateTenantInviteRequest request)
     {
@@ -40,6 +42,7 @@ public class TenantsController(ITenantService tenantService, ITenantInviteServic
     }
 
     [HttpPost("invites/{id:int}/resend")]
+    [Audited(AuditActions.TenantInviteResent)]
     [ProducesResponseType(typeof(TenantInviteResponse), StatusCodes.Status200OK)]
     public async Task<IActionResult> ResendInvite(int id, [FromQuery] bool rotate = false)
     {
@@ -50,6 +53,7 @@ public class TenantsController(ITenantService tenantService, ITenantInviteServic
     }
 
     [HttpDelete("invites/{id:int}")]
+    [Audited(AuditActions.TenantInviteRevoked)]
     // Revoke returns a payload-less Result — annotating a body type here would generate a client
     // method typed to a TenantInviteResponse the server never sends.
     [ProducesResponseType(StatusCodes.Status200OK)]
@@ -70,6 +74,7 @@ public class TenantsController(ITenantService tenantService, ITenantInviteServic
     }
 
     [HttpPost]
+    [Audited(AuditActions.TenantCreated)]
     [ProducesResponseType(typeof(TenantResponse), StatusCodes.Status200OK)]
     public async Task<IActionResult> Create([FromBody] CreateTenantRequest request)
     {
@@ -83,6 +88,7 @@ public class TenantsController(ITenantService tenantService, ITenantInviteServic
     // workspace (D13, this release's headline capability). Route gains an explicit "/status"
     // segment because the workspace-scoped routes below all key on the same {workspaceId:guid}.
     [HttpPatch("{workspaceId:guid}/status")]
+    [Audited(AuditActions.TenantStatusChanged)]
     [ProducesResponseType(typeof(Result), StatusCodes.Status200OK)]
     public async Task<IActionResult> SetStatus(Guid workspaceId, [FromBody] SetTenantStatusRequest request)
     {
@@ -92,6 +98,7 @@ public class TenantsController(ITenantService tenantService, ITenantInviteServic
     }
 
     [HttpPost("{id:int}/extend")]
+    [Audited(AuditActions.TenantDemoExtended)]
     [ProducesResponseType(typeof(Result), StatusCodes.Status200OK)]
     public async Task<IActionResult> ExtendDemo(int id)
     {
@@ -101,6 +108,7 @@ public class TenantsController(ITenantService tenantService, ITenantInviteServic
     }
 
     [HttpPatch("{id:int}/demo-config")]
+    [Audited(AuditActions.TenantDemoConfigChanged)]
     [ProducesResponseType(typeof(Result), StatusCodes.Status200OK)]
     public async Task<IActionResult> SetDemoConfig(int id, [FromBody] SetDemoConfigRequest request)
     {
@@ -111,6 +119,7 @@ public class TenantsController(ITenantService tenantService, ITenantInviteServic
 
     // F9 (DB-11a cross-review): keyed on the workspace id, not an admin's `users.id` (see SetStatus).
     [HttpPatch("{workspaceId:guid}/plan")]
+    [Audited(AuditActions.TenantPlanChanged)]
     [ProducesResponseType(typeof(Result), StatusCodes.Status200OK)]
     public async Task<IActionResult> ChangePlan(Guid workspaceId, [FromBody] ChangeTenantPlanRequest request)
     {
@@ -123,6 +132,7 @@ public class TenantsController(ITenantService tenantService, ITenantInviteServic
     // equals any admin's `public_id`, and it never required resolving through an admin membership
     // in the first place (HardDeleteAsync already took the workspace id).
     [HttpDelete("{workspaceId:guid}")]
+    [Audited(AuditActions.TenantHardDeleted)]
     [ProducesResponseType(typeof(Result), StatusCodes.Status200OK)]
     public async Task<IActionResult> Delete(Guid workspaceId)
     {

@@ -24,11 +24,13 @@ public class CommentFieldService : ICommentFieldService
 {
     private readonly IUnitOfWork _unitOfWork;
     private readonly ICurrentUser _currentUser;
+    private readonly IAuditWriter _audit;
 
-    public CommentFieldService(IUnitOfWork unitOfWork, ICurrentUser currentUser)
+    public CommentFieldService(IUnitOfWork unitOfWork, ICurrentUser currentUser, IAuditWriter? audit = null)
     {
         _unitOfWork = unitOfWork;
         _currentUser = currentUser;
+        _audit = audit ?? NoopAuditWriter.Instance;
     }
 
     public async Task<List<CommentFieldDefinition>> GetDefinitionsForOwnerAsync(Guid? ownerId, bool enabledOnly, CancellationToken ct = default)
@@ -285,6 +287,8 @@ public class CommentFieldService : ICommentFieldService
             .Where(x => x.OwnerId == owner && x.DeletedAt == null)
             .FirstOrDefaultAsync();
 
+        var previousDefs = row?.CommentFieldDefinitions ?? new List<CommentFieldDefinition>();
+
         if (row == null)
         {
             row = new WorkspaceSetting
@@ -302,6 +306,25 @@ public class CommentFieldService : ICommentFieldService
             _unitOfWork.Repository<WorkspaceSetting>().Update(row);
         }
         await _unitOfWork.SaveChangesAsync();
+
+        await _audit.WriteAsync(
+            new AuditEntry(
+                AuditActions.WorkspaceCommentFieldsUpdated,
+                AuditTargets.Workspace,
+                owner.ToString(),
+                owner,
+                Before: new Dictionary<string, string>
+                {
+                    ["count"] = previousDefs.Count.ToString(),
+                    ["keys"] = string.Join(',', previousDefs.Select(d => d.Key)),
+                },
+                After: new Dictionary<string, string>
+                {
+                    ["count"] = validated.Data!.Count.ToString(),
+                    ["keys"] = string.Join(',', validated.Data!.Select(d => d.Key)),
+                }
+            )
+        );
 
         return Result<CommentFieldDefinitionsResponse>.Success(new CommentFieldDefinitionsResponse
         {

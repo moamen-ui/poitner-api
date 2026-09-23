@@ -15,13 +15,20 @@ public class PredefinedActionService : IPredefinedActionService
     private readonly IProjectService _projectService;
     private readonly ICurrentUser _currentUser;
     private readonly IEntitlementService _entitlements;
+    private readonly IAuditWriter _audit;
 
-    public PredefinedActionService(IUnitOfWork unitOfWork, IProjectService projectService, ICurrentUser currentUser, IEntitlementService entitlements)
+    public PredefinedActionService(
+        IUnitOfWork unitOfWork,
+        IProjectService projectService,
+        ICurrentUser currentUser,
+        IEntitlementService entitlements,
+        IAuditWriter? audit = null)
     {
         _unitOfWork = unitOfWork;
         _projectService = projectService;
         _currentUser = currentUser;
         _entitlements = entitlements;
+        _audit = audit ?? NoopAuditWriter.Instance;
     }
 
     // ── Tenant-wide admin CRUD (ProjectId == null) ────────────────────────────
@@ -81,6 +88,15 @@ public class PredefinedActionService : IPredefinedActionService
         await _unitOfWork.Repository<PredefinedAction>().AddAsync(entity);
         await _unitOfWork.SaveChangesAsync();
 
+        await _audit.WriteAsync(
+            new AuditEntry(
+                AuditActions.PredefinedActionCreated,
+                AuditTargets.PredefinedAction,
+                entity.Id.ToString(),
+                owner
+            )
+        );
+
         return Result<PredefinedActionResponse>.Success(MapToResponse(entity));
     }
 
@@ -119,6 +135,15 @@ public class PredefinedActionService : IPredefinedActionService
         _unitOfWork.Repository<PredefinedAction>().Update(entity);
         await _unitOfWork.SaveChangesAsync();
 
+        await _audit.WriteAsync(
+            new AuditEntry(
+                AuditActions.PredefinedActionUpdated,
+                AuditTargets.PredefinedAction,
+                entity.Id.ToString(),
+                entity.OwnerId
+            )
+        );
+
         return Result<PredefinedActionResponse>.Success(MapToResponse(entity));
     }
 
@@ -132,6 +157,15 @@ public class PredefinedActionService : IPredefinedActionService
         entity.DeletedAt = DateTime.UtcNow;
         _unitOfWork.Repository<PredefinedAction>().Update(entity);
         await _unitOfWork.SaveChangesAsync();
+
+        await _audit.WriteAsync(
+            new AuditEntry(
+                AuditActions.PredefinedActionDeleted,
+                AuditTargets.PredefinedAction,
+                entity.Id.ToString(),
+                entity.OwnerId
+            )
+        );
 
         return Result.Success();
     }

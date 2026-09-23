@@ -91,7 +91,7 @@ public class ExportImportServiceTests
             user,
             new PassThroughEntitlements(),
             TestProjectServiceDeps.Settings(),
-            TestProjectServiceDeps.Configuration()
+            TestProjectServiceDeps.Configuration(), new FakeAuditWriter()
         );
         var service = new ExportImportService(uow, projects, user, new FakeSettingsService());
         return (uow, projects, service);

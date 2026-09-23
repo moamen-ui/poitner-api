@@ -21,11 +21,13 @@ public class WorkspaceService : IWorkspaceService
 
     private readonly IUnitOfWork _unitOfWork;
     private readonly ICurrentUser _currentUser;
+    private readonly IAuditWriter _audit;
 
-    public WorkspaceService(IUnitOfWork unitOfWork, ICurrentUser currentUser)
+    public WorkspaceService(IUnitOfWork unitOfWork, ICurrentUser currentUser, IAuditWriter? audit = null)
     {
         _unitOfWork = unitOfWork;
         _currentUser = currentUser;
+        _audit = audit ?? NoopAuditWriter.Instance;
     }
 
     public async Task<Result<WorkspaceResponse>> GetAsync()
@@ -77,10 +79,22 @@ public class WorkspaceService : IWorkspaceService
         if (row == null)
             return Result<WorkspaceResponse>.NotFound(MessageKeys.Workspace.NotFound);
 
+        var previousName = row.Name;
         row.Name = name;
         row.UpdatedAt = DateTime.UtcNow;
         row.UpdatedBy = _currentUser.Id;
         await _unitOfWork.SaveChangesAsync();
+
+        await _audit.WriteAsync(
+            new AuditEntry(
+                AuditActions.WorkspaceRenamed,
+                AuditTargets.Workspace,
+                owner.ToString(),
+                owner,
+                Before: new Dictionary<string, string> { ["name"] = previousName },
+                After: new Dictionary<string, string> { ["name"] = name }
+            )
+        );
 
         return Result<WorkspaceResponse>.Success(ToResponse(row));
     }

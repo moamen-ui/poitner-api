@@ -13,11 +13,13 @@ public class AppEnvironmentService : IAppEnvironmentService
 {
     private readonly IUnitOfWork _unitOfWork;
     private readonly ICurrentUser _currentUser;
+    private readonly IAuditWriter _audit;
 
-    public AppEnvironmentService(IUnitOfWork unitOfWork, ICurrentUser currentUser)
+    public AppEnvironmentService(IUnitOfWork unitOfWork, ICurrentUser currentUser, IAuditWriter? audit = null)
     {
         _unitOfWork = unitOfWork;
         _currentUser = currentUser;
+        _audit = audit ?? NoopAuditWriter.Instance;
     }
 
     public async Task<Result<List<AppEnvironmentResponse>>> ListAsync()
@@ -60,6 +62,16 @@ public class AppEnvironmentService : IAppEnvironmentService
         await _unitOfWork.Repository<AppEnvironment>().AddAsync(environment);
         await _unitOfWork.SaveChangesAsync();
 
+        await _audit.WriteAsync(
+            new AuditEntry(
+                AuditActions.EnvironmentCreated,
+                AuditTargets.Environment,
+                environment.Id.ToString(),
+                owner,
+                After: new Dictionary<string, string> { ["name"] = environment.Name }
+            )
+        );
+
         return Result<AppEnvironmentResponse>.Success(MapToResponse(environment));
     }
 
@@ -95,6 +107,16 @@ public class AppEnvironmentService : IAppEnvironmentService
         _unitOfWork.Repository<AppEnvironment>().Update(environment);
         await _unitOfWork.SaveChangesAsync();
 
+        await _audit.WriteAsync(
+            new AuditEntry(
+                AuditActions.EnvironmentUpdated,
+                AuditTargets.Environment,
+                environment.Id.ToString(),
+                environment.OwnerId,
+                After: new Dictionary<string, string> { ["name"] = environment.Name }
+            )
+        );
+
         return Result<AppEnvironmentResponse>.Success(MapToResponse(environment));
     }
 
@@ -119,6 +141,16 @@ public class AppEnvironmentService : IAppEnvironmentService
         environment.DeletedAt = DateTime.UtcNow;
         _unitOfWork.Repository<AppEnvironment>().Update(environment);
         await _unitOfWork.SaveChangesAsync();
+
+        await _audit.WriteAsync(
+            new AuditEntry(
+                AuditActions.EnvironmentDeleted,
+                AuditTargets.Environment,
+                environment.Id.ToString(),
+                environment.OwnerId,
+                After: new Dictionary<string, string> { ["name"] = environment.Name }
+            )
+        );
 
         return Result.Success();
     }

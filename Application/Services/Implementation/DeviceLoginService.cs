@@ -28,19 +28,22 @@ public class DeviceLoginService : IDeviceLoginService
     private readonly IApiKeyService _apiKeys;
     private readonly IBrandingService _branding;
     private readonly IMembershipService _memberships;
+    private readonly IAuditWriter _audit;
 
     public DeviceLoginService(
         IUnitOfWork unitOfWork,
         ICurrentUser currentUser,
         IApiKeyService apiKeys,
         IBrandingService branding,
-        IMembershipService memberships)
+        IMembershipService memberships,
+        IAuditWriter? audit = null)
     {
         _unitOfWork = unitOfWork;
         _currentUser = currentUser;
         _apiKeys = apiKeys;
         _branding = branding;
         _memberships = memberships;
+        _audit = audit ?? NoopAuditWriter.Instance;
     }
 
     public async Task<Result<DeviceLoginStartResponse>> StartAsync(DeviceLoginStartRequest request)
@@ -218,6 +221,15 @@ public class DeviceLoginService : IDeviceLoginService
         _unitOfWork.Repository<DeviceLogin>().Update(row);
         await _unitOfWork.SaveChangesAsync();
 
+        await _audit.WriteAsync(
+            new AuditEntry(
+                AuditActions.DeviceApproved,
+                AuditTargets.DeviceLogin,
+                row.Id.ToString(),
+                _currentUser.TenantId
+            )
+        );
+
         return Result<DeviceLoginInfoResponse>.Success(ToInfo(row, now));
     }
 
@@ -238,6 +250,15 @@ public class DeviceLoginService : IDeviceLoginService
         row.Status = DeviceLoginStatus.Denied;
         _unitOfWork.Repository<DeviceLogin>().Update(row);
         await _unitOfWork.SaveChangesAsync();
+
+        await _audit.WriteAsync(
+            new AuditEntry(
+                AuditActions.DeviceDenied,
+                AuditTargets.DeviceLogin,
+                row.Id.ToString(),
+                _currentUser.TenantId
+            )
+        );
 
         return Result<DeviceLoginInfoResponse>.Success(ToInfo(row, now));
     }

@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
+using Pointer.API.Auth;
 using Pointer.API.Extensions;
 using Pointer.Application.DTOs.Comment;
 using Pointer.Application.Services.Interfaces;
@@ -13,6 +14,7 @@ namespace Pointer.API.Controllers;
 [Tags("Comments")]
 public class RepliesController(ICommentService commentService) : ControllerBase
 {
+    [NoAudit("content, not security")]
     [HttpPost("api/comments/{id:int}/replies")]
     [ProducesResponseType(typeof(ReplyResponse), StatusCodes.Status200OK)]
     // Shares the comments budget deliberately: a reply is the same write, and leaving it
@@ -28,6 +30,7 @@ public class RepliesController(ICommentService commentService) : ControllerBase
     }
 
     // Edit a reply's body. Author-only (enforced in the service) — mirrors CommentsController.Edit.
+    [NoAudit("content, not security")]
     [HttpPut("api/replies/{id:int}")]
     [ProducesResponseType(typeof(ReplyResponse), StatusCodes.Status200OK)]
     public async Task<IActionResult> EditReply(int id, [FromBody] UpdateReplyRequest request)
@@ -39,6 +42,7 @@ public class RepliesController(ICommentService commentService) : ControllerBase
     }
 
     // Author or workspace admin — mirrors CommentsController.Delete.
+    [NoAudit("content, not security")]
     [HttpDelete("api/replies/{id:int}")]
     [ProducesResponseType(typeof(Pointer.Application.Response.Result), StatusCodes.Status200OK)]
     public async Task<IActionResult> DeleteReply(int id)

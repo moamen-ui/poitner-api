@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using Pointer.Application.Abstractions;
+using Pointer.Application.Common;
 using Pointer.Application.DTOs.Export;
 using Pointer.Application.Resources;
 using Pointer.Application.Response;
@@ -32,13 +33,15 @@ public class ExportImportService : IExportImportService
     private readonly ICurrentUser _currentUser;
     private readonly ISettingsService _settings;
     private readonly IMembershipService _memberships;
+    private readonly IAuditWriter _audit;
 
     public ExportImportService(
         IUnitOfWork unitOfWork,
         IProjectService projectService,
         ICurrentUser currentUser,
         ISettingsService settings,
-        IMembershipService? memberships = null
+        IMembershipService? memberships = null,
+        IAuditWriter? audit = null
     )
     {
         _unitOfWork = unitOfWork;
@@ -46,6 +49,7 @@ public class ExportImportService : IExportImportService
         _currentUser = currentUser;
         _settings = settings;
         _memberships = memberships ?? new MembershipService(unitOfWork);
+        _audit = audit ?? NoopAuditWriter.Instance;
     }
 
     // ===========================================================================
@@ -202,6 +206,16 @@ public class ExportImportService : IExportImportService
                 r.ExportId = $"r-{++replySeq}";
         }
 
+        await _audit.WriteAsync(
+            new AuditEntry(
+                AuditActions.ExportDownloaded,
+                projectId.HasValue ? AuditTargets.Project : AuditTargets.Workspace,
+                projectId?.ToString() ?? "workspace",
+                TenantStamp.OwnerFor(_currentUser),
+                After: new Dictionary<string, string> { ["count"] = ordered.Count.ToString() }
+            )
+        );
+
         return Result<ExportFileDto>.Success(
             new ExportFileDto
             {
@@ -269,6 +283,17 @@ public class ExportImportService : IExportImportService
             (comments, replies) = await InsertCommentsAsync(file.Comments, projectId, projectOwnerId, warnings);
             await _unitOfWork.SaveChangesAsync();
         });
+
+        await _audit.WriteAsync(
+            new AuditEntry(
+                AuditActions.ImportCompleted,
+                AuditTargets.Import,
+                projectId.ToString(),
+                projectOwnerId,
+                After: new Dictionary<string, string> { ["count"] = comments.ToString() }
+            )
+        );
+
         return Result<ImportResultDto>.Success(
             BuildResult(comments, replies, warnings),
             MessageKeys.ExportImport.Imported
@@ -327,6 +352,17 @@ public class ExportImportService : IExportImportService
             }
             await _unitOfWork.SaveChangesAsync();
         });
+
+        await _audit.WriteAsync(
+            new AuditEntry(
+                AuditActions.ImportCompleted,
+                AuditTargets.Workspace,
+                "workspace",
+                TenantStamp.OwnerFor(_currentUser),
+                After: new Dictionary<string, string> { ["count"] = totalComments.ToString() }
+            )
+        );
+
         return Result<ImportResultDto>.Success(
             BuildResult(totalComments, totalReplies, warnings),
             MessageKeys.ExportImport.Imported

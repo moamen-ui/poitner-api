@@ -69,7 +69,7 @@ public class ReplyAiAttributionTests
     private CommentService BuildService(ICurrentUser user, string dbName, ICurrentClient? currentClient = null)
     {
         var uow = new UnitOfWork(BuildContext(user, dbName));
-        var projectService = new ProjectService(uow, user, new PassThroughEntitlements(), TestProjectServiceDeps.Settings(), TestProjectServiceDeps.Configuration());
+        var projectService = new ProjectService(uow, user, new PassThroughEntitlements(), TestProjectServiceDeps.Settings(), TestProjectServiceDeps.Configuration(), new FakeAuditWriter());
         var actionService = new PredefinedActionService(uow, projectService, user, new PassThroughEntitlements());
         return new CommentService(uow, projectService, actionService, new FakeFileStorage(), user,
             new FakeUploadSigner(), new FakeSettings(), new PassThroughEntitlements(), currentClient);

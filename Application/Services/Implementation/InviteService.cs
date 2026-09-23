@@ -33,6 +33,7 @@ public class InviteService : IInviteService
     private readonly IEmailService _emailService;
     private readonly IBrandingService _branding;
     private readonly IMembershipService _memberships;
+    private readonly IAuditWriter _audit;
 
     private const int DefaultTtlDays = 7;
 
@@ -49,7 +50,8 @@ public class InviteService : IInviteService
         IEntitlementService entitlements,
         IEmailService emailService,
         IBrandingService branding,
-        IMembershipService memberships
+        IMembershipService memberships,
+        IAuditWriter? audit = null
     )
     {
         _unitOfWork = unitOfWork;
@@ -61,6 +63,7 @@ public class InviteService : IInviteService
         _emailService = emailService;
         _branding = branding;
         _memberships = memberships;
+        _audit = audit ?? NoopAuditWriter.Instance;
     }
 
     // ── Admin (auth, tenant-scoped) ────────────────────────────────────────────
@@ -224,6 +227,20 @@ public class InviteService : IInviteService
             }
         }
 
+        var createAfter = new Dictionary<string, string>
+        {
+            ["max_uses"] = invite.MaxUses?.ToString() ?? string.Empty,
+            ["expires_at"] = invite.ExpiresAt.ToString("O"),
+            ["kind"] = "admin",
+        };
+        if (invite.RoleId is int inviteRoleId)
+            createAfter["role_id"] = inviteRoleId.ToString();
+        if (emailNormalized != null)
+            createAfter["email_hash"] = PseudonymHasher.EmailHash(emailNormalized);
+        await _audit.WriteAsync(
+            new AuditEntry(AuditActions.InviteCreated, AuditTargets.Invite, invite.Id.ToString(), owner, After: createAfter)
+        );
+
         var response = MapToResponse(invite, role?.Name, url);
         response.EmailSent = emailSent;
         return Result<InviteResponse>.Success(response, MessageKeys.Invite.Created);
@@ -298,6 +315,19 @@ public class InviteService : IInviteService
 
         await _unitOfWork.SaveChangesAsync();
 
+        // after.count = invitee memberships this revoke returned (ended) — DB-11c wires the actual
+        // return-count once member.left exists; until then it is always 0 (revoking today only
+        // stops future use, it does not retroactively end an already-accepted membership).
+        await _audit.WriteAsync(
+            new AuditEntry(
+                AuditActions.InviteRevoked,
+                AuditTargets.Invite,
+                invite.Id.ToString(),
+                invite.OwnerId,
+                After: new Dictionary<string, string> { ["count"] = "0" }
+            )
+        );
+
         return Result.Success(MessageKeys.Invite.Revoked_Ok);
     }
 
@@ -363,6 +393,15 @@ public class InviteService : IInviteService
                 }
             );
         await _unitOfWork.SaveChangesAsync();
+
+        await _audit.WriteAsync(
+            new AuditEntry(
+                AuditActions.InviteQuickLinkRotated,
+                AuditTargets.Invite,
+                invite.Id.ToString(),
+                invite.OwnerId
+            )
+        );
 
         var role = invite.RoleId is int roleId
             ? await _unitOfWork
@@ -636,6 +675,19 @@ public class InviteService : IInviteService
 
         // 6. Auto-signin: return a login token + user (reuse the login response builder).
         var token = _tokenService.Issue(identity!, membership);
+
+        await _audit.WriteAsync(
+            new AuditEntry(
+                AuditActions.InviteAccepted,
+                AuditTargets.Invite,
+                invite.Id.ToString(),
+                ownerId,
+                After: new Dictionary<string, string> { ["role_id"] = role.Id.ToString(), ["kind"] = "join" },
+                ActorUserIdOverride: identity!.PublicId,
+                ActorKindOverride: AuditActorKind.User
+            )
+        );
+
         return Result<LoginResponse>.Success(
             new LoginResponse
             {
@@ -787,6 +839,34 @@ public class InviteService : IInviteService
         // re-insert the already-existing role row.
         membership.Role = workspaceAdminRole;
         var token = _tokenService.Issue(identity!, membership);
+
+        await _audit.WriteAsync(
+            new AuditEntry(
+                AuditActions.InviteAccepted,
+                AuditTargets.Invite,
+                invite.Id.ToString(),
+                workspaceId,
+                After: new Dictionary<string, string>
+                {
+                    ["role_id"] = workspaceAdminRole.Id.ToString(),
+                    ["kind"] = "new_workspace",
+                },
+                ActorUserIdOverride: identity!.PublicId,
+                ActorKindOverride: AuditActorKind.User
+            )
+        );
+        await _audit.WriteAsync(
+            new AuditEntry(
+                AuditActions.WorkspaceCreated,
+                AuditTargets.Workspace,
+                workspaceId.ToString(),
+                workspaceId,
+                After: new Dictionary<string, string> { ["source"] = "invite" },
+                ActorUserIdOverride: identity!.PublicId,
+                ActorKindOverride: AuditActorKind.User
+            )
+        );
+
         return Result<LoginResponse>.Success(
             new LoginResponse
             {
@@ -966,6 +1046,23 @@ public class InviteService : IInviteService
             { /* logged inside the sender; ignore here */
             }
         }
+
+        await _audit.WriteAsync(
+            new AuditEntry(
+                AuditActions.InviteCreated,
+                AuditTargets.Invite,
+                invite.Id.ToString(),
+                ownerId,
+                After: new Dictionary<string, string>
+                {
+                    ["role_id"] = role.Id.ToString(),
+                    ["max_uses"] = invite.MaxUses?.ToString() ?? string.Empty,
+                    ["expires_at"] = invite.ExpiresAt.ToString("O"),
+                    ["kind"] = "quick_access",
+                    ["email_hash"] = PseudonymHasher.EmailHash(emailNormalized),
+                }
+            )
+        );
 
         var response = MapToResponse(invite, role.Name, magicLink);
         response.EmailSent = emailSent;
@@ -1244,6 +1341,10 @@ public class InviteService : IInviteService
             { /* logged inside the sender; a failed send still returns the copyable link */
             }
         }
+
+        await _audit.WriteAsync(
+            new AuditEntry(AuditActions.InviteResent, AuditTargets.Invite, invite.Id.ToString(), invite.OwnerId)
+        );
 
         var response = MapToResponse(invite, null, url);
         response.EmailSent = emailSent;

@@ -9,10 +9,12 @@ using Pointer.Domain.Enums;
 
 namespace Pointer.Application.Services.Implementation;
 
-public class StatusAdminService(IUnitOfWork unitOfWork, ICurrentUser currentUser) : IStatusAdminService
+public class StatusAdminService(IUnitOfWork unitOfWork, ICurrentUser currentUser, IAuditWriter? audit = null)
+    : IStatusAdminService
 {
     private readonly IUnitOfWork _unitOfWork = unitOfWork;
     private readonly ICurrentUser _currentUser = currentUser;
+    private readonly IAuditWriter _audit = audit ?? NoopAuditWriter.Instance;
 
     public async Task<Result<List<StatusAdminItem>>> ListAsync()
     {
@@ -69,6 +71,16 @@ public class StatusAdminService(IUnitOfWork unitOfWork, ICurrentUser currentUser
 
         await _unitOfWork.SaveChangesAsync();
 
+        await _audit.WriteAsync(
+            new AuditEntry(
+                AuditActions.StatusUpdated,
+                AuditTargets.Status,
+                value.ToString(),
+                owner,
+                After: new Dictionary<string, string> { ["label"] = row.Label ?? string.Empty }
+            )
+        );
+
         var def = StatusCatalogService.Defaults.First(d => d.Value == value);
         return Result<StatusAdminItem>.Success(Merge(def, row));
     }
@@ -90,6 +102,16 @@ public class StatusAdminService(IUnitOfWork unitOfWork, ICurrentUser currentUser
         row.DeletedAt = DateTime.UtcNow;
         _unitOfWork.Repository<StatusPresentation>().Update(row);
         await _unitOfWork.SaveChangesAsync();
+
+        await _audit.WriteAsync(
+            new AuditEntry(
+                AuditActions.StatusReset,
+                AuditTargets.Status,
+                value.ToString(),
+                owner,
+                After: new Dictionary<string, string> { ["label"] = row.Label ?? string.Empty }
+            )
+        );
 
         return Result.Success();
     }
