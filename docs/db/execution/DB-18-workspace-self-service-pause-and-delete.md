@@ -364,6 +364,10 @@ near-immediate.
 
 ### 3.10 Owner decisions (defaults apply unless the owner says otherwise before §9)
 
+**Answered by the owner 2026-09-24:** D18.1 = 7-day cancellable grace; D18.2 = requester only receives the confirm link (all admins get
+the scheduled / reminder / cancelled / deleted notices); D18.8 = ship the existing comment export, labelled honestly; D18.10 = accounts that
+belong only to this workspace are deleted with it, listed in the preview. D18.3–D18.7, D18.9, D18.11: recommended defaults below apply.
+
 | # | Question | Recommended default |
 |---|---|---|
 | D18.1 | Immediate delete or grace period; length | **Grace 7 days** (`WORKSPACE_DELETION_GRACE_DAYS`), workspace frozen, any admin cancels; reminder 24 h before |
