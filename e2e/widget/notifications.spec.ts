@@ -54,8 +54,14 @@ async function createClientComment(clientToken: string, body: string): Promise<n
       body,
       // Must match the environment the widget is SHOWING, or the comment is filtered out of the
       // sidebar and no card (and so no verify button) ever renders. The smoke fixture sets no
-      // environment attribute, so the widget falls back to its default of 2 (element.ts:33).
-      environment: 2,
+      // environment attribute, and since 452c992 ("resolve comment environment server-side from
+      // the request origin") the widget no longer defaults to staging(2) for an unmatched origin —
+      // it resolves the CAPTURE-CONFIG request's Origin against ProjectService.ResolveEnvironmentAsync,
+      // and page.goto(SMOKE_PATH) here is served from playwright's localhost baseURL, which
+      // IsLocalhostOrigin short-circuits straight to Local(1) (see source-stamp.spec.ts's
+      // R3-01-03, which explicitly switches the widget's #fbk-env back to "staging" for the same
+      // reason before checking its own environment:2 comments).
+      environment: 1,
       element: { selector: '#checkout-btn', snapshot: '<button id="checkout-btn">Checkout</button>' },
     },
     { token: clientToken },
