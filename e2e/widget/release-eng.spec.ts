@@ -229,10 +229,17 @@ test('R3-03-04 — widget-nonce-csp-styles', async ({ page }) => {
     // without assuming which state this page produces.
     const launcher = widget.locator('#fbk-launcher');
     const addBtn = widget.locator('#fbk-add');
-    await expect(launcher.or(addBtn).first()).toBeVisible({ timeout: 15_000 });
+    // 30s, not 15s: the widget's boot here is gated on a real round trip
+    // (_checkWidgetActive()'s GET .../widget-status, then Promise.all([stylesReady, loadBranding]))
+    // against the SAME api container every earlier nightly phase (reset/seed/probe/api/docs/cli)
+    // has been hammering for tens of minutes by the time this phase runs — 15s had no margin left
+    // on a loaded CI runner even though this reproduces clean, every time, on an idle isolated
+    // stack (verified on an isolated local stack: 7/7 passes with the shorter timeout too, so this
+    // is headroom for CI load, not evidence the wait itself was ever the wrong mechanism).
+    await expect(launcher.or(addBtn).first()).toBeVisible({ timeout: 30_000 });
     if (await launcher.isVisible().catch(() => false)) await launcher.click();
 
-    await expect(widget.locator('#fbk-add')).toBeVisible({ timeout: 15_000 });
+    await expect(widget.locator('#fbk-add')).toBeVisible({ timeout: 30_000 });
 
     // Styles must have actually APPLIED. Under a nonce CSP with no 'unsafe-inline', a widget that
     // injected a <style> would render unstyled while every element still existed — so presence

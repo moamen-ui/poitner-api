@@ -64,8 +64,16 @@ try {
       await page.goto(fixture, { waitUntil: 'load', timeout: 30_000 });
 
       // Wait for the widget to finish booting, then read its own marks.
+      //
+      // 30s, not 15s: booting here is gated on a real round trip to the api container (widget-
+      // status, then styles+branding), and in CI this runs as the last of several nightly phases
+      // that have already been loading the same container for tens of minutes — 15s left no
+      // margin there even though this script reproduces clean on an idle isolated stack every
+      // time (verified on an isolated local stack). A slow boot should still get measured and
+      // reported (that's the whole point of this script being warn-only), not discarded as "no
+      // marks collected" just because the CI runner was busy.
       const ms = await page.evaluate(async () => {
-        const deadline = Date.now() + 15_000;
+        const deadline = Date.now() + 30_000;
         const read = () => {
           const start = performance.getEntriesByName('pf:boot:start')[0];
           const end = performance.getEntriesByName('pf:boot:end')[0];

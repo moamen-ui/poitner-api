@@ -117,11 +117,24 @@ test('R1-05-06 — origin-403 widget toast', async ({ page }) => {
   // call at the comment-create success path passes an actionLabel/onAction so the new comment can
   // be undone), so the toast's own textContent is "Comment addedUndo" — the message span is what
   // element.ts/templates.ts's toast() actually reserves for the message text.
+  //
+  // `.last()`, not the bare (implicitly-first/only) match: toast(msg, type = '') defaults an
+  // untyped call to the SAME 'success' variant as a real success toast, and startPicking() calls
+  // it exactly that way for "Click any element to comment on it — or press Esc to cancel" when
+  // #fbk-add was clicked above. Toasts stack (element.ts's toast() appends, never replaces) and
+  // each keeps its own length-scaled dismiss timer, so that hint can still be in the DOM —
+  // mid-fade-out, but still matching `.fbk-toast-success` — at the exact moment "Comment added"
+  // appears. Reproduced for real on an isolated stack: the bare locator then resolves to TWO
+  // elements and Playwright's strict mode throws, which the `.catch(() => null)` below silently
+  // turns into a failing poll instead of a clear error. `.last()` picks the most recently
+  // appended toast (DOM order — host.appendChild(el) — matches recency), which is always the one
+  // this assertion actually cares about.
   await expect
     .poll(
       async () => {
         const text = await widget
           .locator('.fbk-toast.fbk-toast-success .fbk-toast-message')
+          .last()
           .textContent()
           .catch(() => null);
         return text?.trim() ?? null;
