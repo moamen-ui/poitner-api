@@ -44,6 +44,12 @@ public class ActivationStatsService : IActivationStatsService
             query = query.IgnoreQueryFilters();
         else if (_currentUser.TenantId is Guid target)
             query = query.Where(e => e.OwnerId == target);
+        else
+            // DB-13: an impersonating operator with no tenant on the token (a broken/expired
+            // impersonation session) must not silently fall through — without an explicit filter
+            // here, the AppDbContext global filter (IsSuperAdmin || OwnerId == TenantId) would let
+            // a super admin's IsSuperAdmin=true show every workspace's events. Fail closed instead.
+            return Result<ActivationFunnelResponse>.Forbidden(MessageKeys.Common.Forbidden);
 
         var facts = await query
             .Where(e => UsageEventTypes.OneShotFacts.Contains(e.Type))
@@ -174,7 +180,10 @@ public class ActivationStatsService : IActivationStatsService
         return Result<ActivationFunnelResponse>.Success(
             new ActivationFunnelResponse
             {
-                From = weekStarts[0].ToDateTime(TimeOnly.MinValue),
+                From = DateTime.SpecifyKind(
+                    weekStarts[0].ToDateTime(TimeOnly.MinValue),
+                    DateTimeKind.Utc
+                ),
                 To = DateTime.UtcNow,
                 Steps = steps,
                 Weeks = weekly,
@@ -230,7 +239,7 @@ public class ActivationStatsService : IActivationStatsService
             .Query()
             .IgnoreQueryFilters()
             .AsNoTracking()
-            .Where(p => projectIds.Contains(p.Id))
+            .Where(p => projectIds.Contains(p.Id) && p.DeletedAt == null)
             .ToDictionaryAsync(p => p.Id, p => p.Key);
 
         var response = new WorkspaceActivationResponse

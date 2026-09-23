@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Diagnostics;
 using Microsoft.Extensions.Caching.Memory;
 using Pointer.Application.Abstractions;
 using Pointer.Application.Common;
@@ -34,12 +35,61 @@ public class WidgetActivationTests
         public bool IsImpersonating => ImpersonationSessionId != null;
     }
 
-    private static AppDbContext BuildContext(ICurrentUser user, string dbName) =>
-        new(
-            new DbContextOptionsBuilder<AppDbContext>().UseInMemoryDatabase(dbName).Options,
+    private static AppDbContext BuildContext(
+        ICurrentUser user,
+        string dbName,
+        IInterceptor? extraInterceptor = null
+    )
+    {
+        var builder = new DbContextOptionsBuilder<AppDbContext>().UseInMemoryDatabase(dbName);
+        if (extraInterceptor is not null)
+            builder.AddInterceptors(extraInterceptor);
+        return new(
+            builder.Options,
             user,
             new Microsoft.Extensions.Configuration.ConfigurationBuilder().Build()
         );
+    }
+
+    /// <summary>Review finding #3 (MEDIUM): deterministically fails any SaveChanges(Async) with a
+    /// pending Added widget_installed UsageEvent, with an exception that is NOT the 23505/19
+    /// duplicate-key shape — proving the general catch added after that case still swallows it
+    /// (never 500s this anonymous, public path).</summary>
+    private sealed class FailOnWidgetInstalledInsertInterceptor : SaveChangesInterceptor
+    {
+        private static void ThrowIfPending(DbContext? context)
+        {
+            if (
+                context?.ChangeTracker.Entries<UsageEvent>()
+                    .Any(e =>
+                        e.State == EntityState.Added
+                        && e.Entity.Type == UsageEventTypes.WidgetInstalled
+                    ) == true
+            )
+                throw new InvalidOperationException(
+                    "simulated non-23505 widget_installed insert failure (test)"
+                );
+        }
+
+        public override InterceptionResult<int> SavingChanges(
+            DbContextEventData eventData,
+            InterceptionResult<int> result
+        )
+        {
+            ThrowIfPending(eventData.Context);
+            return result;
+        }
+
+        public override ValueTask<InterceptionResult<int>> SavingChangesAsync(
+            DbContextEventData eventData,
+            InterceptionResult<int> result,
+            CancellationToken cancellationToken = default
+        )
+        {
+            ThrowIfPending(eventData.Context);
+            return ValueTask.FromResult(result);
+        }
+    }
 
     private static void SeedGlobalLocalEnvironment(string dbName)
     {
@@ -543,5 +593,57 @@ public class WidgetActivationTests
         var rows = BuildContext(admin, dbName).UsageEvents.IgnoreQueryFilters().ToList();
         var row = Assert.Single(rows);
         Assert.Equal(UsageEventTypes.WidgetInstalled, row.Type);
+    }
+
+    /// <summary>
+    /// Review finding #3 (MEDIUM): a non-23505 failure writing the widget_installed fact (e.g. a
+    /// transient DB error) must never 500 this anonymous, public widget-status path — the general
+    /// catch after the 23505 case must swallow it too, clearing the tracker and still caching so the
+    /// insert isn't retried on every hit.
+    /// </summary>
+    [Fact]
+    public async Task WidgetInstalled_NonDuplicateFailure_NeverThrows_AndCaches()
+    {
+        var dbName = Guid.NewGuid().ToString();
+        var tenant = Guid.NewGuid();
+        var admin = new FakeCurrentUser
+        {
+            Id = Guid.NewGuid(),
+            IsAdmin = true,
+            TenantId = tenant,
+        };
+        SeedGlobalLocalEnvironment(dbName);
+
+        using var cache = TestProjectServiceDeps.Cache();
+        var failingContext = BuildContext(
+            admin,
+            dbName,
+            extraInterceptor: new FailOnWidgetInstalledInsertInterceptor()
+        );
+        var svc = new ProjectService(
+            new UnitOfWork(failingContext),
+            admin,
+            new PassThroughEntitlements(),
+            TestProjectServiceDeps.Settings(),
+            TestProjectServiceDeps.Configuration(),
+            new FakeAuditWriter(),
+            cache: cache
+        );
+        var created = (
+            await svc.CreateAsync(new CreateProjectRequest { Key = "site", Name = "Site" })
+        ).Data!;
+
+        // The interceptor throws InvalidOperationException (not DbUpdateException/23505) — the
+        // general catch must swallow it: the call still succeeds, no exception escapes.
+        var result = await svc.CheckWidgetActiveAsync("site", "https://app.example.com");
+        Assert.True(result.IsSuccess);
+        Assert.True(result.Data!.Active);
+
+        // No row was actually persisted (the insert failed)…
+        Assert.Empty(BuildContext(admin, dbName).UsageEvents.IgnoreQueryFilters().ToList());
+
+        // …but the cache was still set on the failure path, so a second hit on this (or a fresh,
+        // same-process) service instance doesn't retry the write on every request.
+        Assert.True(cache.TryGetValue($"widget_installed:{created.Id}", out _));
     }
 }

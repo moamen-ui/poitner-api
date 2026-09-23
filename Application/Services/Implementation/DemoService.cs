@@ -258,7 +258,10 @@ public class DemoService : IDemoService
         }
         catch (Exception)
         {
-            /* analytics must never fail a demo */
+            // Analytics must never fail a demo — but the failed UsageEvent would otherwise stay
+            // tracked as Added on this (request-scoped) context and be resubmitted (and re-fail)
+            // by the AuditWriter's SaveChangesAsync that follows, poisoning the audit write.
+            _unitOfWork.ClearChangeTracker();
         }
 
         // e. Issue token. Role populated AFTER every SaveChangesAsync above has run, so EF never
@@ -419,7 +422,10 @@ public class DemoService : IDemoService
         }
         catch (Exception)
         {
-            /* analytics must never fail the upgrade */
+            // Analytics must never fail the upgrade — but the failed UsageEvent would otherwise
+            // stay tracked as Added on this (request-scoped) context and be resubmitted (and
+            // re-fail) by the AuditWriter's SaveChangesAsync that follows, poisoning the audit write.
+            _unitOfWork.ClearChangeTracker();
         }
 
         // 9-10. Role navigation is already loaded above; issue a fresh token with the real email.

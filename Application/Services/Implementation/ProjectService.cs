@@ -1512,6 +1512,20 @@ public class ProjectService : IProjectService
                     TimeSpan.FromHours(24)
                 );
             }
+            catch (Exception)
+            {
+                // Any other failure (transient DB error, etc.) must never 500 this anonymous,
+                // public path — widget-status is called on every widget load. Best-effort, like the
+                // 23505 case above: clear the tracker so the failed insert can't poison a later
+                // SaveChangesAsync on this scoped context, and still cache so we don't retry the
+                // write on every hit for 24h.
+                _unitOfWork.ClearChangeTracker();
+                _cache.Set(
+                    $"{WidgetInstalledCacheKeyPrefix}{project.Id}",
+                    true,
+                    TimeSpan.FromHours(24)
+                );
+            }
         }
 
         // Rows on DISABLED environments are included deliberately — see the block below.

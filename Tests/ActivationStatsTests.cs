@@ -271,4 +271,76 @@ public class ActivationStatsTests
 
         Assert.True(result.IsForbidden);
     }
+
+    // ---------------------------------------------------------------------------
+    // DB-15 review fixes
+    // ---------------------------------------------------------------------------
+
+    /// <summary>Review finding #5 (MEDIUM): From must be Utc-kinded — built from
+    /// DateOnly.ToDateTime(TimeOnly.MinValue), which is Unspecified unless fixed up.</summary>
+    [Fact]
+    public async Task Funnel_From_IsUtcKinded()
+    {
+        var dbName = Guid.NewGuid().ToString();
+
+        var result = await Service(SuperAdmin, dbName).GetFunnelAsync(weeks: 4);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(DateTimeKind.Utc, result.Data!.From.Kind);
+    }
+
+    /// <summary>Review finding #8 (LOW): an impersonating super admin whose token carries no
+    /// tenant (a broken/expired impersonation session) must fail closed rather than silently fall
+    /// through to the super-admin global filter, which would show every workspace's events.</summary>
+    [Fact]
+    public async Task Funnel_ImpersonatingWithNullTenant_ReturnsForbidden()
+    {
+        var dbName = Guid.NewGuid().ToString();
+        var impersonating = new FakeCurrentUser
+        {
+            IsSuperAdmin = true,
+            ImpersonationSessionId = 123,
+            TenantId = null,
+        };
+
+        var result = await Service(impersonating, dbName).GetFunnelAsync(weeks: 4);
+
+        Assert.True(result.IsForbidden);
+    }
+
+    /// <summary>Review finding #7 (LOW): a soft-deleted project must be excluded from the
+    /// ProjectKey lookup — a widget_installed fact against it is still Done, but with no key.</summary>
+    [Fact]
+    public async Task Activation_SoftDeletedProject_ExcludedFromProjectKeyLookup()
+    {
+        var dbName = Guid.NewGuid().ToString();
+        var owner = Guid.NewGuid();
+        await SeedWorkspaceAsync(dbName, owner);
+        var projectId = await SeedProjectAsync(dbName, owner, "gone-site");
+
+        using (var db = BuildContext(SuperAdmin, dbName))
+        {
+            var project = await db
+                .Set<Project>()
+                .IgnoreQueryFilters()
+                .SingleAsync(p => p.Id == projectId);
+            project.DeletedAt = DateTime.UtcNow;
+            await db.SaveChangesAsync();
+        }
+
+        await AddEventAsync(dbName, UsageEventTypes.WidgetInstalled, owner, projectId);
+
+        var tenant = new FakeCurrentUser
+        {
+            Id = Guid.NewGuid(),
+            IsAdmin = true,
+            TenantId = owner,
+        };
+        var result = await Service(tenant, dbName).GetActivationAsync();
+
+        Assert.True(result.IsSuccess);
+        var step = result.Data!.Steps.Single(s => s.Key == UsageEventTypes.WidgetInstalled);
+        Assert.True(step.Done);
+        Assert.Null(step.ProjectKey);
+    }
 }

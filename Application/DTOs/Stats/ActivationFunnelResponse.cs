@@ -51,12 +51,19 @@ public class ActivationStepStat
     public double? RateFromPrevious { get; set; }
 }
 
-/// <summary>One ISO week (Monday-start, UTC) of funnel counts. Every series is "first per
-/// workspace": a workspace counts in the week of its EARLIEST row of that type.</summary>
+/// <summary>One ISO week (Monday-start, UTC) of funnel counts. <see cref="DemosStarted"/> and
+/// <see cref="Converted"/> count raw rows of that type created in the week (one-shot per program
+/// flow, but not deduplicated by workspace). <see cref="WidgetInstalled"/>, <see cref="FirstComment"/>
+/// and <see cref="Activated"/> are "first per workspace": a workspace counts in the week of its
+/// EARLIEST row of that type.</summary>
 public class ActivationWeekStat
 {
     public DateOnly WeekStart { get; set; }
+
+    /// <summary>Count of demo_started rows created in the week (not first-per-workspace).</summary>
     public int DemosStarted { get; set; }
+
+    /// <summary>Count of workspace_converted rows created in the week (not first-per-workspace).</summary>
     public int Converted { get; set; }
     public int WidgetInstalled { get; set; }
     public int FirstComment { get; set; }

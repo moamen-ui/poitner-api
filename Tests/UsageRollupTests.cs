@@ -410,6 +410,66 @@ public class UsageRollupTests
         Assert.Equal(1, row.Count); // …but today's event was NOT rolled into it
     }
 
+    /// <summary>Review finding #4/#6: an eventless window must not be rescheduled — and
+    /// re-scanned — forever. The high-water mark (app_settings key) advances past the
+    /// always-recomputed recent window even when nothing was written, so the next pass's
+    /// backfill starts from there instead of a DISTINCT-day scan of the whole retention window.</summary>
+    [Fact]
+    public async Task Rollup_EventlessWindow_AdvancesHighWaterMark_NotRescheduledForever()
+    {
+        using var testDb = new TestDb();
+        var now = DateTime.UtcNow;
+
+        using (var db = testDb.MakeContext())
+        {
+            await SeedWorkspaceAsync(db); // seeded, but zero usage_events
+            var touched = await UsageRollup.RollupAsync(
+                db,
+                Options(rollupDays: 3, usageEventsDays: 30),
+                now,
+                NullLogger.Instance,
+                CancellationToken.None
+            );
+            Assert.Equal(0, touched); // nothing to upsert — no usage_daily row for an eventless day
+        }
+
+        Assert.Empty(await RowsAsync(testDb));
+
+        string? mark;
+        using (var db = testDb.MakeContext())
+        {
+            mark = await db
+                .AppSettings.Where(s => s.Key == UsageRollup.HighWaterMarkKey)
+                .Select(s => s.Value)
+                .SingleOrDefaultAsync();
+        }
+        var expected = DateOnly.FromDateTime(now).AddDays(-4); // today - RollupDays(3) - 1
+        Assert.Equal(expected.ToString("yyyy-MM-dd"), mark);
+
+        // Second pass, a day later: still nothing to touch, mark advances (never regresses), no
+        // exception from re-scanning the whole 30-day retention window every time.
+        using (var db = testDb.MakeContext())
+        {
+            var touched = await UsageRollup.RollupAsync(
+                db,
+                Options(rollupDays: 3, usageEventsDays: 30),
+                now.AddDays(1),
+                NullLogger.Instance,
+                CancellationToken.None
+            );
+            Assert.Equal(0, touched);
+        }
+
+        using (var db = testDb.MakeContext())
+        {
+            var markAfter = await db
+                .AppSettings.Where(s => s.Key == UsageRollup.HighWaterMarkKey)
+                .Select(s => s.Value)
+                .SingleOrDefaultAsync();
+            Assert.Equal(expected.AddDays(1).ToString("yyyy-MM-dd"), markAfter);
+        }
+    }
+
     [Fact]
     public void BindOptions_ReadsRollupDaysFromConfiguration()
     {

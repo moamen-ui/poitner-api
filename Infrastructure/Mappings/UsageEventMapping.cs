@@ -59,11 +59,12 @@ public class UsageEventMapping : IEntityTypeConfiguration<UsageEvent>
 
         // DB-15: widget_installed is one-shot per project — its own partial unique index rather than
         // a widened filter on the one above (widening would be DropIndex+CreateIndex, an index
-        // change marker under R7; a separate index is plain CreateIndex, additive R1). Declared
-        // with the columns REVERSED (type, project_id): EF identifies an index by its property
-        // list, so a second HasIndex on (ProjectId, Type) would silently RECONFIGURE the one above
-        // instead of adding a second index. Within the filter every row has type =
-        // 'widget_installed', so uniqueness/project-lookup semantics are identical.
+        // change marker under R7; a separate index is plain CreateIndex, additive R1). The column
+        // order here is (type, project_id) — deliberately REVERSED from the (project_id, type) index
+        // above — because EF identifies an index by its property list: a second HasIndex on
+        // (ProjectId, Type) would silently RECONFIGURE that index instead of adding this one. The
+        // reversed order costs nothing: every row under this filter already has type =
+        // 'widget_installed', so uniqueness and the project-id lookup behave identically either way.
         builder
             .HasIndex(e => new { e.Type, e.ProjectId })
             .IsUnique()
