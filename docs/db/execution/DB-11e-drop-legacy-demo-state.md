@@ -385,3 +385,9 @@ audit action strings; `clients/` (generated); the `pointer-dashboard` repo (no c
 
 **Dashboard:** none in source. After the production client regen: bump the package, typecheck + build, deploy with the next dashboard deploy (no urgency —
 the deployed build already works against the new API). **Widget:** none. **CLI:** none.
+
+## 12. Release record (2026-09-23/24)
+
+- **Implemented** `b8d75c9` + `2035749`; review fix `7056c68` — `.github/workflows/db-migrations.yml` inserted `users."DemoExtended"` in the DB-11a duplicate-e-mail probe (missed by §5; would have failed the DB-10 CI job after the drop). `dotnet test Tests` → 1312 passed; `has-pending-model-changes` → none. §7.3 awk one-liner bug: the closing pattern needs 16 spaces (`^                });`), not 12.
+- **Pre-checks** on the same-day prod dump `pointer-20260923T203948Z-pre-deploy.dump` (79 migrations): **P1 0 rows, P2 0 rows**; **P3 all zero** (`expires_at_set 0, extended 0, cap_set 0, ttl_set 0, dead_rows_with_ttl 0` — the drop destroys no value); **P4** 4 columns + `IX_users_expires_at` + 0 dependent views, `79 | 20260923155947_BackfillWorkspacesDemoState`.
+- **R11 rehearsal** (throwaway `postgres:15`): on `main` code — demo provisioned, extended (200), `/me.demoExpiresAt` = `2026-09-25T21:11:56.079576Z`, `demoCanExtend false`, unauth int route 401; census `8|3|6|125`. Idempotent script: only `…_DropUsersLegacyDemoColumns` pending, exactly the §3.2 DDL. `database update` → 0 columns, 0 index, census identical, 80 migrations. On DB-11e code — login 200, `/me` identical, extend 400 "already been extended once", int route 404, swagger 0 int routes / both Guid routes present, first cleanup sweep clean, no `42703`/`does not exist` in either log. Rollback drill (path A down-script, `-1`) → 4 columns + index back, `DemoExtended` all false, 79 migrations, workspace TTLs unchanged; re-`update` → 80. Fixed CI insert succeeds on the migrated schema.
