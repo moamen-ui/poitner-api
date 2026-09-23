@@ -26,4 +26,11 @@ public interface ICurrentUser
 
     /// <summary>True only for a super admin acting under a live impersonation session (scope=impersonate).</summary>
     bool IsImpersonating { get; }
+
+    /// <summary>DB-13 review fix #2: the impersonation token's own hard expiry (its JWT "exp" claim,
+    /// which equals the session's ExpiresAt — see JwtTokenService.IssueImpersonation), used to clamp
+    /// signed screenshot URLs so they never outlive the session. Null for every non-impersonating
+    /// caller. Default interface implementation so every hand-written test double implementing
+    /// ICurrentUser keeps compiling unchanged (only HttpCurrentUser overrides it).</summary>
+    DateTime? ImpersonationExpiresAt => null;
 }

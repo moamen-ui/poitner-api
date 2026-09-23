@@ -2,6 +2,7 @@ using System.Security.Cryptography;
 using Microsoft.EntityFrameworkCore;
 using Pointer.Application.Abstractions;
 using Pointer.Application.DTOs.Profile;
+using Pointer.Application.Resources;
 using Pointer.Application.Response;
 using Pointer.Application.Services.Interfaces;
 using Pointer.Domain.Entity;
@@ -48,10 +49,19 @@ public class ProfileService : IProfileService
             : await BuildAsync(user);
     }
 
-    public async Task<Result<ApiKeyResponse>> GetOrCreateApiKeyAsync(
-        Guid publicId,
-        Guid? workspaceId
-    ) => ToResponse(await _apiKeys.GetOrCreateAsync(publicId, workspaceId));
+    public async Task<Result<ApiKeyResponse>> GetOrCreateApiKeyAsync(Guid publicId, Guid? workspaceId)
+    {
+        // DB-13 review fix #1 (HIGH): this GET mints an api_keys row (Add + SaveChanges) and writes
+        // an apikey.created audit row the first time it's called for a given (user, workspace) —
+        // reachable under an impersonation token because the fence is method-based (GET is not proof
+        // of read-only; get-or-create GETs must self-guard). Left unguarded, the workspace admin
+        // would see an apikey.created row attributed to the operator's identity (D13.3 + D13.6
+        // broken). The key is minted normally for every non-impersonating caller.
+        if (_currentUser.IsImpersonating)
+            return Result<ApiKeyResponse>.Forbidden(MessageKeys.Impersonation.ReadOnly);
+
+        return ToResponse(await _apiKeys.GetOrCreateAsync(publicId, workspaceId));
+    }
 
     public async Task<Result<ApiKeyResponse>> RegenerateApiKeyAsync(
         Guid publicId,

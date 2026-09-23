@@ -1094,10 +1094,15 @@ public class CommentService : ICommentService
         AppliedCssRules = entity.AppliedCssRules,
         SourcePath = entity.SourcePath,
         ParentInfo = entity.ParentInfo,
-        // Re-sign at every read so the returned URL is always fresh (never a stale/leaked permanent path).
+        // Re-sign at every read so the returned URL is always fresh (never a stale/leaked permanent
+        // path). DB-13 review fix #2: clamped to the impersonating operator's session ExpiresAt
+        // (null for every ordinary caller) so the URL cannot outlive the session.
         ScreenshotUrl = string.IsNullOrEmpty(entity.ScreenshotUrl)
             ? entity.ScreenshotUrl
-            : _uploadSigner.SignedUrl(_uploadSigner.ExtractRelPath(entity.ScreenshotUrl)),
+            : _uploadSigner.SignedUrl(
+                _uploadSigner.ExtractRelPath(entity.ScreenshotUrl),
+                _currentUser.ImpersonationExpiresAt
+            ),
         PageUrl = entity.PageUrl,
         Route = entity.Route,
         PageTitle = entity.PageTitle,
@@ -1235,10 +1240,14 @@ public class CommentService : ICommentService
         Selector = comment.Element.Selector,
         Snapshot = comment.Element.Snapshot,
         SourcePath = comment.Element.SourcePath,
-        // Re-sign at every read so the returned URL is always fresh (never a stale/leaked permanent path).
+        // Re-sign at every read so the returned URL is always fresh (never a stale/leaked permanent
+        // path). DB-13 review fix #2: clamped to the impersonating operator's session ExpiresAt.
         ScreenshotUrl = string.IsNullOrEmpty(comment.Element.ScreenshotUrl)
             ? comment.Element.ScreenshotUrl
-            : _uploadSigner.SignedUrl(_uploadSigner.ExtractRelPath(comment.Element.ScreenshotUrl)),
+            : _uploadSigner.SignedUrl(
+                _uploadSigner.ExtractRelPath(comment.Element.ScreenshotUrl),
+                _currentUser.ImpersonationExpiresAt
+            ),
         Classes = ParseJsonOrRaw(comment.Element.Classes),
         ComputedStyles = ParseJsonOrRaw(comment.Element.ComputedStyles),
         AppliedCssRules = ParseJsonOrRaw(comment.Element.AppliedCssRules),

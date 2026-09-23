@@ -122,7 +122,11 @@ public class ImpersonationService(
                     ["reason"] = request.Reason,
                     ["minutes"] = request.Minutes.ToString(),
                     ["session_id"] = session.Id.ToString(),
-                }
+                },
+                // DB-13 review fix #3: the caller is still on a PLAIN super-admin token here — the
+                // session this row is about doesn't exist on any token yet — so ICurrentUser has no
+                // "imp" claim to fall back on.
+                ImpersonationSessionIdOverride: session.Id
             )
         );
 
@@ -156,8 +160,13 @@ public class ImpersonationService(
             return Result.NotFound(MessageKeys.Impersonation.NoSession);
 
         var now = DateTime.UtcNow;
+        // DB-13 review fix #6: a caller who ends a session AFTER its time box has already elapsed
+        // (but before the sweep got to it) recorded a false "manual" end — mirror the sweep's own
+        // classification here so end_reason (and the audit row) always reflect why the session
+        // actually ended, not just who happened to close it out.
+        var expired = now >= session.ExpiresAt;
         session.EndedAt = now;
-        session.EndReason = ImpersonationEndReason.Manual;
+        session.EndReason = expired ? ImpersonationEndReason.Expired : ImpersonationEndReason.Manual;
         await unitOfWork.SaveChangesAsync();
 
         var durationSeconds = (int)(now - session.StartedAt).TotalSeconds;
@@ -172,8 +181,12 @@ public class ImpersonationService(
                     ["session_id"] = session.Id.ToString(),
                     ["request_count"] = session.RequestCount.ToString(),
                     ["duration_seconds"] = durationSeconds.ToString(),
-                    ["reason"] = "manual",
-                }
+                    ["reason"] = expired ? "expired" : "manual",
+                },
+                // DB-13 review fix #3: `end` also accepts a PLAIN super-admin token with a body
+                // {SessionId} (§3.6) — currentUser.ImpersonationSessionId is null in that case even
+                // though this row is unambiguously about `session.Id`.
+                ImpersonationSessionIdOverride: session.Id
             )
         );
 
@@ -317,11 +330,12 @@ public class ImpersonationService(
                 }
                 catch (Exception ex)
                 {
+                    // DB-13 review fix #10: never log an admin's e-mail address in plaintext — the
+                    // workspace id is enough to find the row/correlate the failure.
                     logger.LogWarning(
                         ex,
-                        "impersonation of {WorkspaceId}: failed to notify {Email}",
-                        workspaceId,
-                        admin.Email
+                        "impersonation of {WorkspaceId}: failed to notify an admin",
+                        workspaceId
                     );
                 }
             }

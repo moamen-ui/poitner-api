@@ -14,6 +14,18 @@ public interface IUploadSigner
     string SignedUrl(string relPath);
 
     /// <summary>
+    /// DB-13 review fix #2: same as <see cref="SignedUrl(string)"/> but the URL expires at whichever
+    /// is sooner — the normal TTL, or <paramref name="notAfter"/> (the impersonating operator's
+    /// session <c>ExpiresAt</c>, from <c>ICurrentUser.ImpersonationExpiresAt</c>) — so a screenshot
+    /// URL handed out mid-session cannot outlive it. Pass null (or omit) for the ordinary,
+    /// non-impersonating case. Default interface implementation ignores <paramref name="notAfter"/>
+    /// and falls back to the plain TTL, so every hand-written test double implementing only the
+    /// single-arg overload keeps compiling unchanged; the concrete UploadSigner (Infrastructure)
+    /// is the only real override.
+    /// </summary>
+    string SignedUrl(string relPath, DateTime? notAfter) => SignedUrl(relPath);
+
+    /// <summary>
     /// Returns true when the signature is valid AND the expiry is still in the future.
     /// Constant-time comparison is used to prevent timing attacks.
     /// </summary>

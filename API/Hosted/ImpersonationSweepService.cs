@@ -97,7 +97,11 @@ public class ImpersonationSweepService(
                             ["duration_seconds"] = durationSeconds.ToString(),
                             ["reason"] = "expired",
                         },
-                        ActorKindOverride: AuditActorKind.System
+                        ActorKindOverride: AuditActorKind.System,
+                        // DB-13 review fix #3: the sweep runs with no ICurrentUser at all (a
+                        // background service, not a request) — without the override this row's
+                        // impersonation_session_id would be NULL.
+                        ImpersonationSessionIdOverride: session.Id
                     ),
                     ct
                 );

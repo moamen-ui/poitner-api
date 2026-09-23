@@ -39,4 +39,14 @@ public class HttpCurrentUser(IHttpContextAccessor accessor) : ICurrentUser
         long.TryParse(accessor.HttpContext?.User.FindFirst("imp")?.Value, out var imp) ? imp : null;
 
     public bool IsImpersonating => ImpersonationSessionId != null;
+
+    // DB-13 review fix #2: the token's own "exp" claim (Unix seconds) — for an impersonation token
+    // this is exactly the session's ExpiresAt (JwtTokenService.IssueImpersonation signs `expires:
+    // expiresAt`). Only meaningful while impersonating; null otherwise so callers never need to
+    // guard on IsImpersonating separately.
+    public DateTime? ImpersonationExpiresAt =>
+        IsImpersonating
+        && long.TryParse(accessor.HttpContext?.User.FindFirst("exp")?.Value, out var exp)
+            ? DateTimeOffset.FromUnixTimeSeconds(exp).UtcDateTime
+            : null;
 }

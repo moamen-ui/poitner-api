@@ -321,14 +321,17 @@ public class AppDbContext(
                 || (currentUser.TenantId != null && e.OwnerId == currentUser.TenantId)
             );
 
-        // ImpersonationSession: metadata (§3.1) — strict-own copy of UsageEvent (:273-278 above). A
-        // workspace admin may list the sessions that targeted THEIR workspace; the super admin sees
-        // all (unchanged — this table is never narrowed, only the six content filters above are).
+        // ImpersonationSession: metadata (§3.1). A workspace admin may list the sessions that
+        // targeted THEIR workspace; the super admin sees all (unchanged — this table is never
+        // narrowed, only the six content filters above are).
+        // DB-13 review fix #7: no legacy null-tenant/global branch — unlike UsageEvent/AuditEvent,
+        // OwnerId == null here is never a legitimate "operator-level, no workspace" row; it only
+        // ever means the target workspace was hard-deleted (the FK is ON DELETE SET NULL). Such a
+        // row must stay super-admin-only, strict-own like WorkspaceMembership.
         b.Entity<ImpersonationSession>()
             .HasQueryFilter(e =>
                 currentUser.IsSuperAdmin
                 || (currentUser.TenantId != null && e.OwnerId == currentUser.TenantId)
-                || (currentUser.TenantId == null && !strict && e.OwnerId == null)
             );
 
         // UserAlias: no query filter. It is a lookup table keyed by a uuid the caller already

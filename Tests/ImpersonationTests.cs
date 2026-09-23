@@ -16,6 +16,7 @@ using Pointer.Application.Services.Implementation;
 using Pointer.Application.Services.Interfaces;
 using Pointer.Domain.Entity;
 using Pointer.Domain.Enums;
+using Pointer.Domain.ValueObjects;
 using Pointer.Infrastructure;
 using Pointer.Infrastructure.Audit;
 using Pointer.Infrastructure.Auth;
@@ -45,6 +46,10 @@ public class ImpersonationTests
         public string? Scope { get; set; }
         public long? ImpersonationSessionId { get; set; }
         public bool IsImpersonating => ImpersonationSessionId != null;
+
+        // DB-13 review fix #2 — settable so the clamp tests can assert against a known expiry;
+        // defaults to the interface's own default (null) for every other test in this file.
+        public DateTime? ImpersonationExpiresAt { get; set; }
     }
 
     private sealed class CapturingEmail : IEmailService
@@ -1722,5 +1727,617 @@ public class ImpersonationTests
                 Assert.Null(i.ActorUserId);
             }
         );
+    }
+
+    // ===========================================================================
+    // DB-13 review fixes (2026-09-23) — Opus findings applied on top of the above.
+    // ===========================================================================
+
+    // ---------------------------------------------------------------------------
+    // Review fix #1 (HIGH) — GET /api/me/api-key mints a row + audits under an impersonation
+    // token (the fence is method-based; GET is not proof of read-only). Refused, no side effects.
+    // ---------------------------------------------------------------------------
+
+    [Fact]
+    public async Task MeApiKey_Impersonating_Refused_NoRowNoAuditRow()
+    {
+        var db = Guid.NewGuid().ToString();
+        var workspaceId = Guid.NewGuid();
+
+        using (var seed = InMemoryContext(new FakeCurrentUser { IsSuperAdmin = true }, db))
+        {
+            seed.Workspaces.Add(
+                new Workspace
+                {
+                    Id = workspaceId,
+                    Name = "W",
+                    CreatedAt = DateTime.UtcNow,
+                    CreatedBy = workspaceId,
+                }
+            );
+            seed.SaveChanges();
+        }
+
+        var impersonating = new FakeCurrentUser
+        {
+            IsSuperAdmin = true,
+            TenantId = workspaceId,
+            ImpersonationSessionId = 1,
+        };
+        var audit = new FakeAuditWriter();
+        using var ctx = InMemoryContext(impersonating, db);
+        var apiKeys = new ApiKeyService(new UnitOfWork(ctx), new TestApiKeyProtector(), audit);
+        var profile = new ProfileService(new UnitOfWork(ctx), apiKeys, impersonating);
+
+        var result = await profile.GetOrCreateApiKeyAsync(Guid.NewGuid(), workspaceId);
+
+        Assert.True(result.IsForbidden);
+        Assert.Equal(MessageKeys.Impersonation.ReadOnly, result.Message);
+        Assert.Empty(audit.Entries);
+
+        using var verify = InMemoryContext(new FakeCurrentUser { IsSuperAdmin = true }, db);
+        Assert.Empty(verify.ApiKeys.IgnoreQueryFilters().ToList());
+    }
+
+    // ---------------------------------------------------------------------------
+    // Review fix #2 (MEDIUM) — signed screenshot URLs clamped to the impersonation session's
+    // ExpiresAt; unaffected for every ordinary (non-impersonating) caller.
+    // ---------------------------------------------------------------------------
+
+    private sealed class CapturingUploadSigner : IUploadSigner
+    {
+        public List<DateTime?> NotAfterCalls { get; } = new();
+
+        public string SignedUrl(string relPath) => SignedUrl(relPath, null);
+
+        public string SignedUrl(string relPath, DateTime? notAfter)
+        {
+            NotAfterCalls.Add(notAfter);
+            return relPath;
+        }
+
+        public bool Validate(string relPath, long exp, string sig) => true;
+
+        public string ExtractRelPath(string stored) => stored;
+    }
+
+    private sealed class FakeFileStorage : IFileStorage
+    {
+        public Task<string> SaveAsync(
+            string ownerSegment,
+            string project,
+            Stream content,
+            string extension
+        ) => Task.FromResult("uploads/x");
+
+        public Task DeleteAsync(string relativePathOrUrl) => Task.CompletedTask;
+
+        public Task DeleteOwnerFilesAsync(string ownerSegment) => Task.CompletedTask;
+    }
+
+    private sealed class FakeSettings : ISettingsService
+    {
+        public Task<bool> GetBoolAsync(string key, bool fallback = false) =>
+            Task.FromResult(fallback);
+
+        public Task SetBoolAsync(string key, bool value) => Task.CompletedTask;
+
+        public Task<string> GetStringAsync(string key, string fallback = "") =>
+            Task.FromResult(fallback);
+
+        public Task SetStringAsync(string key, string value) => Task.CompletedTask;
+
+        public Task<int> GetIntAsync(string key, int fallback = 0) => Task.FromResult(fallback);
+
+        public Task SetIntAsync(string key, int value) => Task.CompletedTask;
+    }
+
+    private CommentService BuildCommentService(ICurrentUser user, string dbName, IUploadSigner signer)
+    {
+        var uow = new UnitOfWork(InMemoryContext(user, dbName));
+        var projectService = new ProjectService(
+            uow,
+            user,
+            new PassThroughEntitlements(),
+            TestProjectServiceDeps.Settings(),
+            TestProjectServiceDeps.Configuration(),
+            new FakeAuditWriter()
+        );
+        var actionService = new PredefinedActionService(
+            uow,
+            projectService,
+            user,
+            new PassThroughEntitlements()
+        );
+        return new CommentService(
+            uow,
+            projectService,
+            actionService,
+            new FakeFileStorage(),
+            user,
+            signer,
+            new FakeSettings(),
+            new PassThroughEntitlements()
+        );
+    }
+
+    [Fact]
+    public async Task ScreenshotUrl_Impersonating_ClampedToSessionExpiry_PlainCaller_NoClamp()
+    {
+        var db = Guid.NewGuid().ToString();
+        var tenant = Guid.NewGuid();
+        var author = Guid.NewGuid();
+        int commentId;
+
+        using (var seed = InMemoryContext(new FakeCurrentUser { IsSuperAdmin = true }, db))
+        {
+            seed.Workspaces.Add(
+                new Workspace
+                {
+                    Id = tenant,
+                    Name = "W",
+                    CreatedAt = DateTime.UtcNow,
+                    CreatedBy = tenant,
+                }
+            );
+            var project = new Project
+            {
+                Key = "shotproj",
+                Name = "ShotProj",
+                OwnerId = tenant,
+                IsActiveProduction = true,
+            };
+            seed.Projects.Add(project);
+            seed.SaveChanges();
+
+            var comment = new Comment
+            {
+                ProjectId = project.Id,
+                Environment = EnvironmentTag.Production,
+                Status = CommentStatus.Open,
+                AuthorId = author,
+                Body = "has a screenshot",
+                OwnerId = tenant,
+                Element = new ElementCapture { ScreenshotUrl = "uploads/global/shotproj/x.png" },
+            };
+            seed.Comments.Add(comment);
+            seed.SaveChanges();
+            commentId = comment.Id;
+        }
+
+        var expiry = DateTime.UtcNow.AddMinutes(12);
+        var impersonating = new FakeCurrentUser
+        {
+            IsSuperAdmin = true,
+            TenantId = tenant,
+            ImpersonationSessionId = 1,
+            ImpersonationExpiresAt = expiry,
+        };
+        var impSigner = new CapturingUploadSigner();
+        var impSvc = BuildCommentService(impersonating, db, impSigner);
+        var impResult = await impSvc.GetByIdAsync(commentId, author);
+        Assert.True(impResult.IsSuccess);
+        Assert.Contains((DateTime?)expiry, impSigner.NotAfterCalls);
+
+        var admin = new FakeCurrentUser { IsAdmin = true, TenantId = tenant };
+        var adminSigner = new CapturingUploadSigner();
+        var adminSvc = BuildCommentService(admin, db, adminSigner);
+        var adminResult = await adminSvc.GetByIdAsync(commentId, author);
+        Assert.True(adminResult.IsSuccess);
+        Assert.NotEmpty(adminSigner.NotAfterCalls);
+        Assert.All(adminSigner.NotAfterCalls, x => Assert.Null(x));
+    }
+
+    // ---------------------------------------------------------------------------
+    // Review fix #3 (MEDIUM) — audit_events.impersonation_session_id is set on start, on end (even
+    // via a PLAIN super-admin token, which carries no "imp" claim), and on the sweep (no
+    // ICurrentUser at all).
+    // ---------------------------------------------------------------------------
+
+    [Fact]
+    public async Task AuditRows_CarryImpersonationSessionId_OnStart_End_Sweep()
+    {
+        using var testDb = new TestDb();
+        var operatorPublicId = Guid.NewGuid();
+        Guid workspaceId;
+        using (var seed = testDb.MakeContext(new FakeCurrentUser { IsSuperAdmin = true }))
+        {
+            (workspaceId, _) = SeedWorkspaceWithAdmin(seed);
+            SeedOperator(seed, operatorPublicId);
+        }
+
+        var opUser = new FakeCurrentUser
+        {
+            Id = operatorPublicId,
+            IsAdmin = true,
+            IsSuperAdmin = true,
+        };
+        var startAudit = new FakeAuditWriter();
+        using var ctxStart = testDb.MakeContext(opUser);
+        var startSvc = BuildService(ctxStart, opUser, startAudit);
+        var started = await startSvc.StartAsync(
+            workspaceId,
+            new StartImpersonationRequest
+            {
+                Reason = "checking the audit session-id plumbing end to end",
+                Minutes = 30,
+            }
+        );
+        Assert.True(started.IsSuccess);
+
+        var startedEntry = Assert.Single(
+            startAudit.Entries,
+            e => e.Action == AuditActions.ImpersonationStarted
+        );
+        Assert.Equal((long?)started.Data!.SessionId, startedEntry.ImpersonationSessionIdOverride);
+
+        // End via a PLAIN super-admin token (no "imp" claim on it) — the case the override exists for.
+        var endAudit = new FakeAuditWriter();
+        using var ctxEnd = testDb.MakeContext(opUser);
+        var endSvc = BuildService(ctxEnd, opUser, endAudit);
+        var ended = await endSvc.EndAsync(started.Data!.SessionId);
+        Assert.True(ended.IsSuccess);
+        var endedEntry = Assert.Single(
+            endAudit.Entries,
+            e => e.Action == AuditActions.ImpersonationEnded
+        );
+        Assert.Equal((long?)started.Data!.SessionId, endedEntry.ImpersonationSessionIdOverride);
+
+        // Sweep — a second, expired session; no ICurrentUser exists on this code path at all.
+        long sweptId;
+        using (var seed2 = testDb.MakeContext(new FakeCurrentUser { IsSuperAdmin = true }))
+        {
+            var session = new ImpersonationSession
+            {
+                OwnerId = workspaceId,
+                OperatorUserId = operatorPublicId,
+                Reason = "will be swept for the session-id assertion",
+                StartedAt = DateTime.UtcNow.AddMinutes(-10),
+                ExpiresAt = DateTime.UtcNow.AddMinutes(-1),
+            };
+            seed2.ImpersonationSessions.Add(session);
+            seed2.SaveChanges();
+            sweptId = session.Id;
+        }
+        var sweepAudit = new FakeAuditWriter();
+        using var ctxSweep = testDb.MakeContext(new FakeCurrentUser { IsSuperAdmin = true });
+        await ImpersonationSweepService.SweepOnceAsync(
+            ctxSweep,
+            sweepAudit,
+            NullLogger.Instance,
+            CancellationToken.None
+        );
+        var sweptEntry = Assert.Single(
+            sweepAudit.Entries,
+            e => e.Action == AuditActions.ImpersonationEnded
+        );
+        Assert.Equal((long?)sweptId, sweptEntry.ImpersonationSessionIdOverride);
+    }
+
+    // ---------------------------------------------------------------------------
+    // Review fix #4 (§6 test 9) — StatsService still counts every workspace's comments for a plain
+    // (non-impersonating) operator; PlatformInsights' equivalent fact lives in
+    // PlatformInsightsServiceTests.PlatformInsights_PlainOperator_StillCountsAllComments.
+    // ---------------------------------------------------------------------------
+
+    private static (string db, Guid tenantA, Guid tenantB, int projectAId) SeedTwoTenantStats()
+    {
+        var db = Guid.NewGuid().ToString();
+        var tenantA = Guid.NewGuid();
+        var tenantB = Guid.NewGuid();
+        int projectAId;
+
+        using (var seed = InMemoryContext(new FakeCurrentUser { IsSuperAdmin = true }, db))
+        {
+            seed.Workspaces.Add(
+                new Workspace
+                {
+                    Id = tenantA,
+                    Name = "A",
+                    CreatedAt = DateTime.UtcNow,
+                    CreatedBy = tenantA,
+                }
+            );
+            seed.Workspaces.Add(
+                new Workspace
+                {
+                    Id = tenantB,
+                    Name = "B",
+                    CreatedAt = DateTime.UtcNow,
+                    CreatedBy = tenantB,
+                }
+            );
+            var projectA = new Project
+            {
+                Key = "sa",
+                Name = "SA",
+                OwnerId = tenantA,
+            };
+            var projectB = new Project
+            {
+                Key = "sb",
+                Name = "SB",
+                OwnerId = tenantB,
+            };
+            seed.Projects.AddRange(projectA, projectB);
+            seed.SaveChanges();
+            projectAId = projectA.Id;
+
+            seed.Comments.Add(
+                new Comment
+                {
+                    ProjectId = projectA.Id,
+                    Environment = EnvironmentTag.Staging,
+                    Status = CommentStatus.Open,
+                    AuthorId = Guid.NewGuid(),
+                    Body = "a",
+                    OwnerId = tenantA,
+                }
+            );
+            seed.Comments.Add(
+                new Comment
+                {
+                    ProjectId = projectB.Id,
+                    Environment = EnvironmentTag.Staging,
+                    Status = CommentStatus.Open,
+                    AuthorId = Guid.NewGuid(),
+                    Body = "b",
+                    OwnerId = tenantB,
+                }
+            );
+            seed.SaveChanges();
+        }
+
+        return (db, tenantA, tenantB, projectAId);
+    }
+
+    [Fact]
+    public async Task Stats_PlainOperator_CountsAllComments()
+    {
+        var (db, _, _, _) = SeedTwoTenantStats();
+
+        var plainOperator = new FakeCurrentUser { IsSuperAdmin = true };
+        using var ctx = InMemoryContext(plainOperator, db);
+        var svc = new StatsService(
+            new UnitOfWork(ctx),
+            plainOperator,
+            new MembershipService(new UnitOfWork(ctx))
+        );
+
+        var result = await svc.GetAsync();
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(2, result.Data!.Totals.Projects);
+        Assert.Equal(2, result.Data.Totals.Comments);
+    }
+
+    // ---------------------------------------------------------------------------
+    // Review fix #8 (MEDIUM) — under impersonation, StatsService scopes PROJECTS to the target
+    // workspace too (Project keeps its unconditional super-admin filter branch — it's metadata —
+    // so this can only be enforced with an explicit clamp in the service).
+    // ---------------------------------------------------------------------------
+
+    [Fact]
+    public async Task Stats_Impersonating_ScopesProjectsToTargetWorkspace()
+    {
+        var (db, tenantA, _, projectAId) = SeedTwoTenantStats();
+
+        var impersonatingA = new FakeCurrentUser
+        {
+            IsSuperAdmin = true,
+            TenantId = tenantA,
+            ImpersonationSessionId = 1,
+        };
+        using var ctx = InMemoryContext(impersonatingA, db);
+        var svc = new StatsService(
+            new UnitOfWork(ctx),
+            impersonatingA,
+            new MembershipService(new UnitOfWork(ctx))
+        );
+
+        var result = await svc.GetAsync();
+
+        Assert.True(result.IsSuccess);
+        Assert.Single(result.Data!.Projects);
+        Assert.Equal(projectAId, result.Data.Projects[0].ProjectId);
+        Assert.Equal(1, result.Data.Totals.Comments); // A's comment only, not B's
+    }
+
+    // ---------------------------------------------------------------------------
+    // Review fix #5 (LOW) — AiRuleService.ListAllRulesAsync refuses a non-super-admin caller with
+    // no tenant claim at all, rather than falling through to an unconditional IgnoreQueryFilters().
+    // ---------------------------------------------------------------------------
+
+    [Fact]
+    public async Task AiRules_ListAll_NonSuperAdminWithNoTenant_Forbidden_NoLeak()
+    {
+        var db = Guid.NewGuid().ToString();
+        var tenant = Guid.NewGuid();
+        using (var seed = InMemoryContext(new FakeCurrentUser { IsSuperAdmin = true }, db))
+        {
+            seed.Workspaces.Add(
+                new Workspace
+                {
+                    Id = tenant,
+                    Name = "W",
+                    CreatedAt = DateTime.UtcNow,
+                    CreatedBy = tenant,
+                }
+            );
+            seed.AiRules.Add(
+                new AiRule
+                {
+                    OwnerId = tenant,
+                    Title = "Leakable",
+                    Prompt = "p",
+                    IsActive = true,
+                }
+            );
+            seed.SaveChanges();
+        }
+
+        var noTenantAdmin = new FakeCurrentUser { Id = Guid.NewGuid(), IsAdmin = true };
+        using var ctx = InMemoryContext(noTenantAdmin, db);
+        var svc = new AiRuleService(new UnitOfWork(ctx), noTenantAdmin);
+
+        var result = await svc.ListAllRulesAsync();
+
+        Assert.True(result.IsForbidden);
+    }
+
+    // ---------------------------------------------------------------------------
+    // Review fix #6 (LOW) — ending a session whose time box already elapsed records EndReason /
+    // audit reason "expired", not "manual", mirroring the sweep's own classification.
+    // ---------------------------------------------------------------------------
+
+    [Fact]
+    public async Task End_AfterExpiry_RecordsReasonExpired_NotManual()
+    {
+        using var testDb = new TestDb();
+        var operatorPublicId = Guid.NewGuid();
+        Guid workspaceId;
+        long sessionId;
+        using (var seed = testDb.MakeContext(new FakeCurrentUser { IsSuperAdmin = true }))
+        {
+            (workspaceId, _) = SeedWorkspaceWithAdmin(seed);
+            var session = new ImpersonationSession
+            {
+                OwnerId = workspaceId,
+                OperatorUserId = operatorPublicId,
+                Reason = "time box elapsed before a manual end call landed",
+                StartedAt = DateTime.UtcNow.AddMinutes(-40),
+                ExpiresAt = DateTime.UtcNow.AddMinutes(-1),
+            };
+            seed.ImpersonationSessions.Add(session);
+            seed.SaveChanges();
+            sessionId = session.Id;
+        }
+
+        var opUser = new FakeCurrentUser
+        {
+            Id = operatorPublicId,
+            IsAdmin = true,
+            IsSuperAdmin = true,
+        };
+        var audit = new FakeAuditWriter();
+        using var ctx = testDb.MakeContext(opUser);
+        var svc = BuildService(ctx, opUser, audit);
+
+        var result = await svc.EndAsync(sessionId);
+        Assert.True(result.IsSuccess);
+
+        using var verify = testDb.MakeContext(new FakeCurrentUser { IsSuperAdmin = true });
+        var row = verify.ImpersonationSessions.IgnoreQueryFilters().Single(s => s.Id == sessionId);
+        Assert.Equal(ImpersonationEndReason.Expired, row.EndReason);
+
+        var entry = Assert.Single(audit.Entries, e => e.Action == AuditActions.ImpersonationEnded);
+        Assert.Equal("expired", entry.After!["reason"]);
+    }
+
+    // ---------------------------------------------------------------------------
+    // Review fix #7 (LOW) — the legacy null-tenant/global branch is gone: a session whose target
+    // workspace was hard-deleted (OwnerId SET NULL) is visible only to a super admin.
+    // ---------------------------------------------------------------------------
+
+    [Fact]
+    public void ImpersonationSession_NullOwner_VisibleOnlyToSuperAdmin()
+    {
+        var db = Guid.NewGuid().ToString();
+
+        using (var seed = InMemoryContext(new FakeCurrentUser { IsSuperAdmin = true }, db))
+        {
+            seed.ImpersonationSessions.Add(
+                new ImpersonationSession
+                {
+                    OwnerId = null,
+                    OperatorUserId = Guid.NewGuid(),
+                    Reason = "workspace since hard-deleted",
+                    StartedAt = DateTime.UtcNow,
+                    ExpiresAt = DateTime.UtcNow.AddMinutes(30),
+                }
+            );
+            seed.SaveChanges();
+        }
+
+        using var ctxNoTenant = InMemoryContext(new FakeCurrentUser(), db);
+        Assert.Empty(ctxNoTenant.ImpersonationSessions.ToList());
+
+        using var ctxSuperAdmin = InMemoryContext(new FakeCurrentUser { IsSuperAdmin = true }, db);
+        Assert.Single(ctxSuperAdmin.ImpersonationSessions.ToList());
+    }
+
+    // ---------------------------------------------------------------------------
+    // Review fix #9 (NIT) — the request counter never resurrects an already-ended session's
+    // counters (a request that raced the sweep/manual end past this filter).
+    // ---------------------------------------------------------------------------
+
+    [Fact]
+    public async Task RequestCounter_DoesNotBumpEndedSession()
+    {
+        using var testDb = new TestDb();
+        var operatorPublicId = Guid.NewGuid();
+        Guid workspaceId;
+        long sessionId;
+        using (var seed = testDb.MakeContext(new FakeCurrentUser { IsSuperAdmin = true }))
+        {
+            (workspaceId, _) = SeedWorkspaceWithAdmin(seed);
+            var session = new ImpersonationSession
+            {
+                OwnerId = workspaceId,
+                OperatorUserId = operatorPublicId,
+                Reason = "already ended before this stray request landed",
+                StartedAt = DateTime.UtcNow.AddMinutes(-20),
+                ExpiresAt = DateTime.UtcNow.AddMinutes(10),
+                EndedAt = DateTime.UtcNow.AddMinutes(-1),
+                EndReason = ImpersonationEndReason.Manual,
+            };
+            seed.ImpersonationSessions.Add(session);
+            seed.SaveChanges();
+            sessionId = session.Id;
+        }
+
+        var impersonating = new FakeCurrentUser
+        {
+            Id = operatorPublicId,
+            IsSuperAdmin = true,
+            TenantId = workspaceId,
+            ImpersonationSessionId = sessionId,
+        };
+        using var ctx = testDb.MakeContext(impersonating);
+        var counter = new ImpersonationRequestCounter(
+            impersonating,
+            ctx,
+            NullLogger<ImpersonationRequestCounter>.Instance
+        );
+
+        var httpContext = new DefaultHttpContext();
+        var actionContext = new Microsoft.AspNetCore.Mvc.ActionContext(
+            httpContext,
+            new Microsoft.AspNetCore.Routing.RouteData(),
+            new Microsoft.AspNetCore.Mvc.Abstractions.ActionDescriptor()
+        );
+        var executingContext = new Microsoft.AspNetCore.Mvc.Filters.ActionExecutingContext(
+            actionContext,
+            new List<Microsoft.AspNetCore.Mvc.Filters.IFilterMetadata>(),
+            new Dictionary<string, object?>(),
+            controller: new object()
+        );
+
+        await counter.OnActionExecutionAsync(
+            executingContext,
+            () =>
+                Task.FromResult(
+                    new Microsoft.AspNetCore.Mvc.Filters.ActionExecutedContext(
+                        actionContext,
+                        new List<Microsoft.AspNetCore.Mvc.Filters.IFilterMetadata>(),
+                        controller: new object()
+                    )
+                )
+        );
+
+        using var verify = testDb.MakeContext(new FakeCurrentUser { IsSuperAdmin = true });
+        var row = verify.ImpersonationSessions.IgnoreQueryFilters().Single(s => s.Id == sessionId);
+        Assert.Equal(0, row.RequestCount);
+        Assert.Null(row.LastRequestAt);
     }
 }

@@ -36,6 +36,8 @@ public class ChangeEmailTests
         public int? RoleId { get; set; }
         public string? KeyScopes { get; set; }
         public string? Scope { get; set; }
+        public long? ImpersonationSessionId { get; set; }
+        public bool IsImpersonating => ImpersonationSessionId != null;
     }
 
     private sealed class IdentityHasher : IPasswordHasher
@@ -102,6 +104,8 @@ public class ChangeEmailTests
         public string Issue(User user, WorkspaceMembership? membership, int? keyScopes = null) =>
             "token-for-" + user.PublicId.ToString("N");
         public string IssueSelection(User user) => "sel-for-" + user.PublicId.ToString("N");
+        public string IssueImpersonation(User operatorUser, Guid workspaceId, long sessionId, DateTime expiresAt) =>
+            "imp-token-for-" + operatorUser.PublicId.ToString("N");
     }
 
     /// <summary>
@@ -118,6 +122,7 @@ public class ChangeEmailTests
         public DbSet<Workspace> Workspaces => inner.Workspaces;
         public DbSet<UserAlias> UserAliases => inner.UserAliases;
         public DbSet<AuditEvent> AuditEvents => inner.AuditEvents;
+        public DbSet<ImpersonationSession> ImpersonationSessions => inner.ImpersonationSessions;
 
         public Task<int> SaveChangesAsync() =>
             throw new DbUpdateException(

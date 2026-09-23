@@ -24,9 +24,21 @@ public class UploadSigner : IUploadSigner
         _keyBytes = Encoding.UTF8.GetBytes(key);
     }
 
-    public string SignedUrl(string relPath)
+    public string SignedUrl(string relPath) => SignedUrl(relPath, null);
+
+    /// <summary>
+    /// DB-13 review fix #2: when <paramref name="notAfter"/> is given (an impersonating operator's
+    /// session ExpiresAt), the URL expires at whichever is sooner — the normal 3600s TTL, or the
+    /// session's remaining time — so a screenshot URL handed to an impersonating operator can never
+    /// outlive that session, even though the signature itself is otherwise identical.
+    /// </summary>
+    public string SignedUrl(string relPath, DateTime? notAfter)
     {
-        var exp = DateTimeOffset.UtcNow.ToUnixTimeSeconds() + TtlSeconds;
+        var normalExp = DateTimeOffset.UtcNow.ToUnixTimeSeconds() + TtlSeconds;
+        var exp =
+            notAfter is DateTime na
+                ? Math.Min(normalExp, new DateTimeOffset(DateTime.SpecifyKind(na, DateTimeKind.Utc)).ToUnixTimeSeconds())
+                : normalExp;
         var sig = ComputeSig(relPath, exp);
         var encodedPath = Uri.EscapeDataString(relPath);
         return $"/api/uploads/file?p={encodedPath}&exp={exp}&sig={sig}";

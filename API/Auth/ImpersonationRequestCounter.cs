@@ -13,6 +13,10 @@ namespace Pointer.API.Auth;
 /// best-effort <c>try/catch</c> — a failure here must never fail the request itself. Relational
 /// only: <c>ExecuteUpdateAsync</c> is not supported against the InMemory provider used by most
 /// tests, so it is skipped there (Sqlite-backed tests exercise it for real).
+///
+/// This runs after <c>next()</c> regardless of the resulting status code, so a 4xx/5xx response
+/// still counts as a request against the session's budget — deliberate: the token was used either
+/// way, and that is what the count is for.
 /// </summary>
 public class ImpersonationRequestCounter(
     ICurrentUser currentUser,
@@ -35,9 +39,12 @@ public class ImpersonationRequestCounter(
 
         try
         {
+            // DB-13 review fix #9 (NIT): don't resurrect a session's counters after it has ended —
+            // the row could still be matched by id alone (e.g. a request that raced the sweep/manual
+            // end past its own OnActionExecutionAsync).
             await db
                 .ImpersonationSessions.IgnoreQueryFilters()
-                .Where(s => s.Id == imp)
+                .Where(s => s.Id == imp && s.EndedAt == null)
                 .ExecuteUpdateAsync(s =>
                     s.SetProperty(x => x.RequestCount, x => x.RequestCount + 1)
                         .SetProperty(x => x.LastRequestAt, DateTime.UtcNow)

@@ -101,7 +101,11 @@ public class AuditWriter(
                 RequestId = ctx?.Items[RequestIdItemKey] as string,
                 IpHash = Hash(ctx?.Connection.RemoteIpAddress?.ToString()),
                 UserAgent = Truncate(ctx?.Request.Headers.UserAgent.ToString(), MaxUserAgentLength),
-                ImpersonationSessionId = currentUser.ImpersonationSessionId,
+                // DB-13 review fix #3: start/end/sweep rows are written by callers who are not
+                // themselves ON the impersonation token at that moment (see AuditEntry's doc comment)
+                // — the explicit override is what actually stamps the row on those paths.
+                ImpersonationSessionId =
+                    entry.ImpersonationSessionIdOverride ?? currentUser.ImpersonationSessionId,
             };
 
             db.AuditEvents.Add(ev);

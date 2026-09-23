@@ -21,5 +21,12 @@ public sealed record AuditEntry(
     IReadOnlyDictionary<string, string>? Before = null,
     IReadOnlyDictionary<string, string>? After = null,
     Guid? ActorUserIdOverride = null,
-    AuditActorKind? ActorKindOverride = null
+    AuditActorKind? ActorKindOverride = null,
+    // DB-13 review fix #3: same shape as ActorKindOverride, for the same reason — ICurrentUser
+    // carries no impersonation session id on the caller's OWN token at exactly the moments the row
+    // needs one: ImpersonationService.StartAsync (the caller is still a plain super admin; the
+    // session doesn't exist yet when the row is written), EndAsync (a plain super-admin token ending
+    // a session by id, per §3.6), and the expiry sweep (no ICurrentUser at all). Falls back to
+    // currentUser.ImpersonationSessionId (the ordinary in-session case) when omitted.
+    long? ImpersonationSessionIdOverride = null
 );

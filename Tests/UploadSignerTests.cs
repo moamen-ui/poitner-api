@@ -110,4 +110,60 @@ public class UploadSignerTests
         var signer = MakeSigner();
         Assert.Equal(string.Empty, signer.ExtractRelPath(string.Empty));
     }
+
+    // -----------------------------------------------------------------------
+    // DB-13 review fix #2 — the notAfter clamp for an impersonating operator's screenshot URLs.
+    // -----------------------------------------------------------------------
+
+    [Fact]
+    public void SignedUrl_WithNotAfterSoonerThanTtl_ClampsExpToNotAfter()
+    {
+        var signer = MakeSigner();
+        var relPath = "uploads/global/myproject/abc123.png";
+        var notAfter = DateTime.UtcNow.AddMinutes(5);
+
+        var url = signer.SignedUrl(relPath, notAfter);
+        var query = System.Web.HttpUtility.ParseQueryString(new Uri("http://localhost" + url).Query);
+        var exp = long.Parse(query["exp"]!);
+
+        // Clamped to notAfter, not the normal 3600s TTL.
+        Assert.True(exp <= new DateTimeOffset(notAfter).ToUnixTimeSeconds());
+        Assert.True(exp < DateTimeOffset.UtcNow.AddSeconds(3600).ToUnixTimeSeconds());
+
+        // And the URL still validates as a normal signed URL against that clamped expiry.
+        var p = query["p"]!;
+        var sig = query["sig"]!;
+        Assert.True(signer.Validate(p, exp, sig));
+    }
+
+    [Fact]
+    public void SignedUrl_WithNotAfterLaterThanTtl_UsesNormalTtl()
+    {
+        var signer = MakeSigner();
+        var relPath = "uploads/global/myproject/abc123.png";
+        // A notAfter far in the future must never LENGTHEN the URL's life past the normal TTL.
+        var notAfter = DateTime.UtcNow.AddDays(1);
+
+        var url = signer.SignedUrl(relPath, notAfter);
+        var query = System.Web.HttpUtility.ParseQueryString(new Uri("http://localhost" + url).Query);
+        var exp = long.Parse(query["exp"]!);
+
+        Assert.True(exp <= DateTimeOffset.UtcNow.AddSeconds(3601).ToUnixTimeSeconds());
+    }
+
+    [Fact]
+    public void SignedUrl_WithNullNotAfter_SameAsSingleArgOverload()
+    {
+        var signer = MakeSigner();
+        var relPath = "uploads/global/myproject/abc123.png";
+
+        var url = signer.SignedUrl(relPath, null);
+        var query = System.Web.HttpUtility.ParseQueryString(new Uri("http://localhost" + url).Query);
+        var p = query["p"]!;
+        var exp = long.Parse(query["exp"]!);
+        var sig = query["sig"]!;
+
+        Assert.True(signer.Validate(p, exp, sig));
+        Assert.True(exp > DateTimeOffset.UtcNow.AddSeconds(3500).ToUnixTimeSeconds());
+    }
 }

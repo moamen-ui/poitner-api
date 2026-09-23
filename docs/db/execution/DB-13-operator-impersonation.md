@@ -6,7 +6,7 @@ metadata only by default … requires an audited, time-boxed impersonation sessi
 `SelectionScopeFence` precedent), R17 (every start/end is an audit row).
 **Class: Additive** (one new table) **+ a permission narrowing in code** (six query filters lose their unconditional super-admin branch).
 Ships as an ordinary `bash scripts/deploy-api.sh`.
-**Status 2026-09-22: written; not implemented. Cross-reviewed 2026-09-22 (GLM, agy — `docs/db/reviews/`); amendments folded 2026-09-23 (§12).**
+**Status: implemented 2026-09-23 (feat/db-13-impersonation); reviewed (Gemini Pro MERGE, Opus MERGE WITH FIXES → applied).**
 Owner decisions D13.1–D13.7 have defaults (§3.8); none blocks.
 
 **Dependencies.** Requires **DB-12 merged** (`IAuditWriter`, `AuditActions.ImpersonationStarted/Ended`, `audit_events.impersonation_session_id`)
@@ -76,6 +76,15 @@ in that workspace's security log, and **read-only**. User-visible: the workspace
 `custom_fields`, `picked_actions`, `payload_flags`, replies), `replies`, `page_context_snapshots`, screenshot files (`/api/uploads/file` — only reachable
 through a comment), `predefined_action_suggestions` (stakeholder text, admin feedback), `ai_rules` (title, prompt), `predefined_actions` **tenant rows**
 (text, prompt — D13.2; global null-owner rows stay operator-managed), export files, **private comments — never, not even impersonating (D13.7)**.
+
+**Review fix #2 (2026-09-23, screenshot-URL clamp):** a signed screenshot URL (`UploadSigner`, 3600s TTL) handed to an impersonating operator must
+not keep working after their session ends. Decision taken: **Option 1 as written** (`IUploadSigner.SignedUrl` gains an optional `notAfter` clamp,
+`ICurrentUser.ImpersonationExpiresAt` sources it from the token's own `exp` claim), made non-invasive via C# default interface members — both new
+members have a default body (`SignedUrl(relPath, notAfter) => SignedUrl(relPath)`; `ImpersonationExpiresAt => null`), so none of the ~80 hand-written
+`ICurrentUser`/`IUploadSigner` test doubles across `Tests/` needed touching; only `HttpCurrentUser` and the concrete `UploadSigner` implement the real
+logic. `CommentService`'s two screenshot mappers pass `_currentUser.ImpersonationExpiresAt` unconditionally (null outside impersonation, so the URL's
+TTL is unaffected for every ordinary caller). The `IImpersonationClock`-style fallback in the review finding was not needed — the plumbing turned out
+cheap once expressed as a default interface member instead of a breaking signature change.
 
 **Metadata** (operator sees across all workspaces, unchanged): `workspaces`, `workspace_memberships`, `users` (names/e-mails of members — support needs
 them), `projects` (keys, names, URLs, tech stack, activation), `project_app_urls`, `app_environments`, `roles`, `role_tenant_overrides`,

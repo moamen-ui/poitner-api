@@ -388,6 +388,30 @@ public class PlatformInsightsServiceTests
         Assert.Equal(1, data.Features.Private); // c3
     }
 
+    // ---------------------------------------------------------------------------
+    // DB-13 review fix #4 (§6 test 9) — a PLAIN (non-impersonating) operator still gets the full
+    // cross-tenant view here: GetPlatformInsightsAsync's own `ignoreFilters: true` is unconditional
+    // (this endpoint is already super-admin-only), independent of the broader
+    // PlatformInsights_SuperAdmin_SeesEveryList assertion above. Pinned as its own named fact so a
+    // future change that gates this on `!IsImpersonating` (breaking the page for a plain operator)
+    // fails loudly.
+    // ---------------------------------------------------------------------------
+
+    [Fact]
+    public async Task PlatformInsights_PlainOperator_StillCountsAllComments()
+    {
+        var db = Guid.NewGuid().ToString();
+        Seed(db);
+        var plainOperator = new FakeCurrentUser { IsSuperAdmin = true };
+        Assert.False(plainOperator.IsImpersonating);
+        var service = BuildService(plainOperator, db);
+
+        var result = await service.GetPlatformInsightsAsync();
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(6, result.Data!.Features.Total); // every comment across BOTH tenants
+    }
+
     [Fact]
     public async Task PlatformInsights_NotFixedRate_IsNull_WhenDenominatorIsZero()
     {

@@ -27,11 +27,15 @@ public class StatsService : IStatsService
 
     public async Task<Result<StatsResponse>> GetAsync()
     {
-        var projects = await _unitOfWork
-            .Repository<Project>()
-            .Query()
-            .AsNoTracking()
-            .Where(p => p.DeletedAt == null)
+        // DB-13 review fix #8: Project keeps its unconditional super-admin filter branch (it is
+        // metadata, §3.1) — so without an explicit clamp here, an impersonating operator's stats
+        // page would still list every OTHER workspace's projects too, even though the comment counts
+        // grouped below are correctly pinned to the target by the (narrowed) Comment filter.
+        var projectsQuery = _unitOfWork.Repository<Project>().Query().AsNoTracking()
+            .Where(p => p.DeletedAt == null);
+        if (_currentUser.IsImpersonating)
+            projectsQuery = projectsQuery.Where(p => p.OwnerId == _currentUser.TenantId);
+        var projects = await projectsQuery
             .Select(p => new
             {
                 p.Id,

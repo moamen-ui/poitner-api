@@ -547,6 +547,13 @@ public class AiRuleService : IAiRuleService
         if (_currentUser.IsSuperAdmin && !_currentUser.IsImpersonating)
             return Result<List<AiRuleResponse>>.Forbidden(MessageKeys.Impersonation.Required);
 
+        // DB-13 review fix #5 (LOW): a non-super-admin caller with no tenant claim at all must never
+        // reach the query below — effectiveTenantId would be null, tenantId.HasValue would be false,
+        // and the unconditional IgnoreQueryFilters() a few lines down would then return every
+        // workspace's rule text to them.
+        if (!_currentUser.IsSuperAdmin && _currentUser.TenantId is null)
+            return Result<List<AiRuleResponse>>.Forbidden(MessageKeys.Common.Forbidden);
+
         if (
             !_currentUser.IsSuperAdmin
             && tenantId.HasValue
