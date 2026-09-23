@@ -44,6 +44,15 @@ services:
       JWT__SigningKey: "${JWT_SIGNING_KEY}"
       JWT__Issuer: "pointer-api"
       JWT__LifetimeHours: "12"
+      # R5-62: two-key rotation window (kid header). k0's secret is always JWT_SIGNING_KEY above —
+      # no new var needed for it. k1 is the new key being rotated in; unset (empty) by default, which
+      # ResolveAllKeys skips so it never trips the >= 32-byte startup check. See DEPLOY.md § JWT key
+      # rotation for the runbook.
+      JWT__ActiveKeyId: "${JWT_ACTIVE_KEY_ID:-k0}"
+      JWT__Keys__0__Id: "k0"
+      JWT__Keys__0__Secret: "${JWT_SIGNING_KEY}"
+      JWT__Keys__1__Id: "${JWT_KEY_1_ID:-}"
+      JWT__Keys__1__Secret: "${JWT_KEY_1_SECRET:-}"
       ADMIN__EMAIL: "${ADMIN_EMAIL}"
       ADMIN__PASSWORD: "${ADMIN_PASSWORD}"
       # Self-configuring embed/skills point at the public API origin.

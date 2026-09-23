@@ -262,6 +262,34 @@ Then bump `@moamen-ui/pointer-react` in each consumer (e.g. the dashboard) to th
 > Fire it from the VM at the end of the deploy with a token that has `repo` scope:
 > `curl -s -X POST -H "Authorization: Bearer $GH_DISPATCH_TOKEN" -H "Accept: application/vnd.github+json" https://api.github.com/repos/moamen-ui/poitner-api/dispatches -d '{"event_type":"api-deployed"}'`
 
+### JWT key rotation (R5-62)
+
+Rotating `JWT_SIGNING_KEY` used to invalidate every outstanding token — a global logout for every
+user and every CLI session. Tokens now carry a `kid` (key id) header and the API validates against
+every configured key, so a rotation is a config change + redeploy with zero user impact:
+
+1. Generate a new key: `openssl rand -hex 32`
+2. Add it to `.env.prod` (`JWT_SIGNING_KEY` — k0's secret — stays as-is):
+   ```
+   JWT_KEY_1_ID=k1
+   JWT_KEY_1_SECRET=<new key>
+   ```
+3. Deploy: `bash scripts/deploy-api.sh`. Both keys now validate; new tokens still use k0
+   (`JWT_ACTIVE_KEY_ID` is still unset ⇒ defaults to `k0`).
+4. Switch the active key: set `JWT_ACTIVE_KEY_ID=k1` in `.env.prod`. Deploy again. New tokens now
+   carry `kid: k1`; existing k0 tokens still validate (k0 is still in the list).
+5. Wait 12 hours (max token lifetime, `JWT__LifetimeHours`). All k0 tokens have expired.
+6. Retire k0: set `JWT_SIGNING_KEY` to the same value as `JWT_KEY_1_SECRET` (k0's secret becomes the
+   new key), then clear `JWT_KEY_1_ID`/`JWT_KEY_1_SECRET` and reset `JWT_ACTIVE_KEY_ID=` (empty, or
+   delete the line — `k0` is the default) in `.env.prod`. Deploy. The config is back to a single
+   active key — ready for the next rotation — and any token still carrying `kid: k1` is now rejected
+   (that key id is no longer in the list). `JWT_SIGNING_KEY` itself is never unset, only repointed —
+   the API refuses to boot without it.
+
+Verify a rotation step took effect from `docker compose logs api` (only key **ids** are logged, never
+secrets): `[JWT] active kid=k1; configured kids=[k0, k1]`. Decode a fresh token's header to confirm
+its `kid` directly: `echo '<token>' | cut -d. -f1 | base64 -d | jq .kid`.
+
 **Landing page change** — from your machine `git push origin main`, then on the VM.
 
 `landing/` is bind-mounted read-only into Caddy (`./landing:/srv/landing:ro`) and served by
