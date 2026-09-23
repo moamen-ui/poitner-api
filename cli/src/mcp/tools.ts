@@ -24,7 +24,10 @@ export type McpContext = {
 };
 
 export type McpError = {
-  code: 'auth' | 'not_found' | 'forbidden' | 'server_too_old' | 'git' | 'network';
+  // DB-18: 'paused' — a 423 (workspace paused / scheduled for deletion) mapped by server.ts's
+  // ApiError handling; thrown as a plain ApiError from api(), never constructed via mcpError()
+  // directly, but listed here so callers narrowing on `code` see it in the type.
+  code: 'auth' | 'not_found' | 'forbidden' | 'server_too_old' | 'git' | 'network' | 'paused';
   message: string;
 };
 

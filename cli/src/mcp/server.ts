@@ -64,6 +64,10 @@ export function createMcpServer(ctx: McpContext): Server {
         if (err.code === 401) code = 'auth';
         else if (err.code === 403) code = 'forbidden';
         else if (err.code === 404) code = 'not_found';
+        // DB-18: workspace paused / scheduled for deletion. Every write (and, for a key session,
+        // every read but /me and /events) gets 423 while frozen — surfaced as a tool error carrying
+        // the server's message, never a process.exit (this MCP server serves other tools' calls too).
+        else if (err.code === 423) code = 'paused';
         else code = 'network';
       }
 
