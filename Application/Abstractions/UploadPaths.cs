@@ -24,22 +24,30 @@ namespace Pointer.Application.Abstractions;
 /// </summary>
 public static class UploadPaths
 {
-    private static readonly char[] DisallowedChars = ['\\', '%', '?', '#', ':', '\0'];
+    // DB-16 re-review (LOW): '\n'/'\r' added — without them, a segment ending in a trailing
+    // newline (e.g. "<hex32>.png\n") is not caught by IndexOfAny alone before the regex stage; kept
+    // here too as a fast, allocation-free first guard, redundant with the \z fix below on purpose.
+    private static readonly char[] DisallowedChars = ['\\', '%', '?', '#', ':', '\0', '\n', '\r'];
 
-    private static readonly Regex OwnerGuidSegment = new("^[0-9a-f]{32}$", RegexOptions.Compiled);
+    // DB-16 re-review (LOW): every pattern anchors its end with \z, not $. In .NET, `$` (without
+    // RegexOptions.Multiline) matches BOTH the true end of the string AND the position immediately
+    // before a single trailing '\n' — so "<hex32>\n" would satisfy `^[0-9a-f]{32}$`. `\z` matches
+    // only the absolute end of the input, with no such exception.
+    private static readonly Regex OwnerGuidSegment = new(@"^[0-9a-f]{32}\z", RegexOptions.Compiled);
 
-    private static readonly Regex ProjectSegment = new("^[A-Za-z0-9._-]+$", RegexOptions.Compiled);
+    private static readonly Regex ProjectSegment = new(@"^[A-Za-z0-9._-]+\z", RegexOptions.Compiled);
 
     private static readonly Regex FileSegment = new(
-        @"^[0-9a-f]{32}\.(png|jpe?g|webp|gif)$",
+        @"^[0-9a-f]{32}\.(png|jpe?g|webp|gif)\z",
         RegexOptions.Compiled
     );
 
     /// <summary>
     /// True only when <paramref name="rel"/> is EXACTLY the canonical
     /// <c>uploads/&lt;owner&gt;/&lt;project&gt;/&lt;file&gt;</c> shape — four non-empty segments,
-    /// no <c>.</c> or <c>..</c> segment anywhere, none of <c>\ % ? # : \0</c> present at all (so no
-    /// unresolved percent-encoding, no backslash separators, no query string riding along), the
+    /// no <c>.</c> or <c>..</c> segment anywhere, none of <c>\ % ? # : \0 \n \r</c> present at all (so
+    /// no unresolved percent-encoding, no backslash separators, no query string riding along, and no
+    /// trailing-newline regex-anchor bypass — DB-16 re-review LOW), the
     /// owner segment a lower-case 32-hex GUID or "global", and the file segment a lower-case
     /// 32-hex GUID with an allowed image extension.
     /// </summary>

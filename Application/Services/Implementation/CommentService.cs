@@ -1045,7 +1045,30 @@ public class CommentService : ICommentService
                 && comment.OwnerId is Guid o
                 && rel.StartsWith($"uploads/{o:N}/", StringComparison.Ordinal)
             )
-                screenshotRelToDelete = rel;
+            {
+                // DB-16 re-review (MEDIUM): the same file may still be named by another comment in
+                // this workspace (live, or soft-deleted but not yet purged) — e.g. two comments that
+                // ended up pointing at one shared/duplicate upload. Deleting it would silently break
+                // that other comment's screenshot even though only THIS comment asked to remove it.
+                // Pre-filter by the 32-hex file key (never percent-encoded, safe as a raw Contains),
+                // then confirm the real match in memory the same way the purge job does.
+                var fileKey = rel.Split('/')[^1].Split('.')[0];
+                var sharedWithAnother = await _unitOfWork
+                    .Repository<Comment>()
+                    .Query()
+                    .IgnoreQueryFilters()
+                    .Where(c =>
+                        c.Id != comment.Id
+                        && (c.DeletedAt == null || c.ScreenshotPurgedAt == null)
+                        && c.Element.ScreenshotUrl != null
+                        && c.Element.ScreenshotUrl != ""
+                        && c.Element.ScreenshotUrl.Contains(fileKey)
+                    )
+                    .Select(c => c.Element.ScreenshotUrl!)
+                    .ToListAsync();
+                if (!sharedWithAnother.Any(u => _uploadSigner.ExtractRelPath(u) == rel))
+                    screenshotRelToDelete = rel;
+            }
             comment.Element.ScreenshotUrl = null;
         }
 

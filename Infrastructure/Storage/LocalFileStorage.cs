@@ -34,6 +34,13 @@ public class LocalFileStorage(IWebHostEnvironment env, IUploadSigner signer) : I
     ///       the result relative to web root with forward slashes and require it be byte-for-byte
     ///       the canonical value we started with — so no OS-specific normalization quirk could have
     ///       taken us somewhere <see cref="UploadPaths.IsCanonical"/> didn't examine.
+    ///   (4) DB-16 re-review (LOW): refuse when the file itself, its project folder, or its owner
+    ///       folder is a symlink (<see cref="FileSystemInfo.LinkTarget"/> non-null) — a link planted
+    ///       on disk (by anything with write access to the uploads volume) could otherwise point a
+    ///       canonical-looking path at an arbitrary target outside uploads/ entirely, bypassing
+    ///       guards (1)-(3), which only ever reason about the path STRING. Any exception while
+    ///       probing for a link is treated as "refuse" (fail closed), matching every other doubt in
+    ///       this method.
     /// </summary>
     private bool TryResolve(string relativePathOrUrl, out string resolved)
     {
@@ -64,6 +71,25 @@ public class LocalFileStorage(IWebHostEnvironment env, IUploadSigner signer) : I
         var relFromRoot = Path.GetRelativePath(webRoot, candidate).Replace(Path.DirectorySeparatorChar, '/');
         if (!string.Equals(relFromRoot, decoded, StringComparison.Ordinal))
             return false;
+
+        // Guard (4): no symlink anywhere on the path from uploads/ down to the file.
+        try
+        {
+            if (new FileInfo(candidate).LinkTarget != null)
+                return false;
+
+            var projectDir = Path.GetDirectoryName(candidate)!;
+            if (new DirectoryInfo(projectDir).LinkTarget != null)
+                return false;
+
+            var ownerDir = Path.GetDirectoryName(projectDir)!;
+            if (new DirectoryInfo(ownerDir).LinkTarget != null)
+                return false;
+        }
+        catch
+        {
+            return false;
+        }
 
         resolved = candidate;
         return true;
@@ -147,7 +173,21 @@ public class LocalFileStorage(IWebHostEnvironment env, IUploadSigner signer) : I
     {
         if (!TryResolve(relativePath, out var resolved))
             return Task.FromResult<bool?>(null);
-        return Task.FromResult<bool?>(File.Exists(resolved));
+
+        // DB-16 re-review (LOW): a thrown exception here means the existence check itself is
+        // unverifiable (permissions, a race on a path component, a path that grew too long after
+        // normalization) — that is NOT evidence the file is gone, so the caller must get null
+        // (unresolved), never a false positive "confirmed absent" that would stamp/count a row that
+        // may still have its file.
+        try
+        {
+            return Task.FromResult<bool?>(File.Exists(resolved));
+        }
+        catch (Exception ex)
+            when (ex is UnauthorizedAccessException or IOException or PathTooLongException)
+        {
+            return Task.FromResult<bool?>(null);
+        }
     }
 
     public Task<long> SizeAsync(string relativePath)
@@ -183,7 +223,16 @@ public class LocalFileStorage(IWebHostEnvironment env, IUploadSigner signer) : I
         // whole enumeration; the caller (OrphanSweepAsync) additionally wraps its consumption of
         // this sequence in a try/catch per owner folder, since Directory.EnumerateFiles is lazy —
         // an error deeper in the tree surfaces on a later MoveNext, not on this call.
-        var options = new EnumerationOptions { RecurseSubdirectories = true, IgnoreInaccessible = true };
+        // DB-16 re-review (LOW): AttributesToSkip = ReparsePoint — never recurse into a symlinked
+        // sub-directory and never yield a symlinked file. TryResolve's own guard (4) is the
+        // belt-and-braces check on the single-file delete/exists/size path; this is the equivalent
+        // for the bulk orphan-sweep enumeration.
+        var options = new EnumerationOptions
+        {
+            RecurseSubdirectories = true,
+            IgnoreInaccessible = true,
+            AttributesToSkip = FileAttributes.ReparsePoint,
+        };
         IEnumerable<string> files;
         try
         {

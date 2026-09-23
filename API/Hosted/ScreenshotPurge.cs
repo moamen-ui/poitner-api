@@ -13,7 +13,11 @@ public sealed record ScreenshotPurgeResult(
     int Failures,
     int Skipped,
     int WouldDelete,
-    long WouldBytes
+    long WouldBytes,
+    // DB-16 re-review (MEDIUM): a row eligible for purge whose file is STILL named by some other
+    // live-or-unpurged comment (same workspace, e.g. a duplicate/shared upload) — never deleted,
+    // never stamped, counted separately from Skipped (which means "foreign/unknown path").
+    int SharedWithLiveComment = 0
 );
 
 /// <summary>File/byte counts for one <see cref="ScreenshotPurge.OrphanSweepAsync"/> pass (step B).</summary>
@@ -26,7 +30,12 @@ public sealed record UploadSweepResult(
     int Young,
     int Failures,
     int Skipped,
-    bool DryRun
+    bool DryRun,
+    // DB-16 re-review (LOW): a disk file whose relative path is not UploadPaths.IsCanonical — never
+    // written by SaveAsync as such, so it is neither an orphan candidate nor a protected reference
+    // match; skipped before either check, not counted as a failure and never folded into the
+    // dry-run "would delete" total.
+    int SkippedNonCanonical = 0
 );
 
 /// <summary>
@@ -57,7 +66,7 @@ internal static class ScreenshotPurge
         if (o.DeletedCommentScreenshotDays <= 0)
         {
             log.LogInformation("Retention: deleted-comment screenshots skipped (period 0)");
-            return new ScreenshotPurgeResult(0, 0, 0, 0, 0, 0, 0);
+            return new ScreenshotPurgeResult(0, 0, 0, 0, 0, 0, 0, 0);
         }
         if (o.BatchSize <= 0)
             throw new ArgumentOutOfRangeException(nameof(o));
@@ -73,6 +82,7 @@ internal static class ScreenshotPurge
         var wouldDelete = 0;
         var wouldDeleteFiles = 0;
         long wouldBytes = 0;
+        var sharedWithLive = 0;
         var skippedIds = new List<int>();
 
         var lastId = 0;
@@ -138,6 +148,33 @@ internal static class ScreenshotPurge
                     skipped++;
                     skippedIds.Add(row.Id);
                     continue;
+                }
+
+                // DB-16 re-review (MEDIUM): this row is owned and eligible, but the SAME file may
+                // still be named by another comment (same workspace — e.g. two comments that ended
+                // up pointing at one shared/duplicate upload) that is either live or itself not yet
+                // purged. Deleting the file would silently break that other comment's screenshot.
+                // Pre-filter in SQL by the 32-hex file key (never percent-encoded, safe as a raw
+                // Contains) to keep this cheap, then confirm the real match in memory by decoding
+                // each candidate the same way production does — a substring hit is not proof of the
+                // same canonical path.
+                var fileKey = rel.Split('/')[^1].Split('.')[0];
+                var candidates = await db
+                    .Comments.IgnoreQueryFilters()
+                    .Where(c =>
+                        c.Id != row.Id
+                        && (c.DeletedAt == null || c.ScreenshotPurgedAt == null)
+                        && c.Element.ScreenshotUrl != null
+                        && c.Element.ScreenshotUrl != ""
+                        && c.Element.ScreenshotUrl.Contains(fileKey)
+                    )
+                    .Select(c => c.Element.ScreenshotUrl!)
+                    .ToListAsync(ct);
+
+                if (candidates.Any(u => signer.ExtractRelPath(u) == rel))
+                {
+                    sharedWithLive++;
+                    continue; // never delete, never stamp — the file is still in use.
                 }
 
                 try
@@ -210,13 +247,14 @@ internal static class ScreenshotPurge
         var loggedFiles = dryRun ? wouldDeleteFiles : filesDeleted;
         var loggedBytes = dryRun ? wouldBytes : bytesDeleted;
         log.LogInformation(
-            "Retention: deleted-comment screenshots {Mode} — {Comments} comment(s), {Files} file(s), {Bytes} bytes, {Failures} failure(s), {Skipped} skipped (foreign/unknown path), cutoff {Cutoff:u}",
+            "Retention: deleted-comment screenshots {Mode} — {Comments} comment(s), {Files} file(s), {Bytes} bytes, {Failures} failure(s), {Skipped} skipped (foreign/unknown path), {SharedWithLive} skipped (still referenced by another live/unpurged comment), cutoff {Cutoff:u}",
             mode,
             loggedComments,
             loggedFiles,
             loggedBytes,
             failures,
             skipped,
+            sharedWithLive,
             cutoff
         );
 
@@ -227,7 +265,8 @@ internal static class ScreenshotPurge
             failures,
             skipped,
             wouldDelete,
-            wouldBytes
+            wouldBytes,
+            sharedWithLive
         );
     }
 
@@ -260,6 +299,7 @@ internal static class ScreenshotPurge
         var young = 0;
         var failures = 0;
         var skippedSegments = 0;
+        var skippedNonCanonical = 0;
 
         // DB-16 review fix #3 (MEDIUM — orchestrator 2026-09-23: protect by path across owners).
         // A single GLOBAL protected set of canonical decoded paths, built from every live-or-unpurged
@@ -382,6 +422,18 @@ internal static class ScreenshotPurge
                     if (filesInSegment % 100 == 0)
                         ct.ThrowIfCancellationRequested();
 
+                    // DB-16 re-review (LOW): a non-canonical disk file (predates this shape, or was
+                    // placed by something other than SaveAsync) can never be a real reference match —
+                    // LocalFileStorage.ListOwnerFilesAsync only ever yields canonical relative paths
+                    // for files SaveAsync wrote, but nothing stops something ELSE from having dropped
+                    // a file here. Skip it before either check: it is not evidence of an orphan (we
+                    // cannot reason about it) and not eligible for the dry-run "would delete" count.
+                    if (!UploadPaths.IsCanonical(f.RelativePath))
+                    {
+                        skippedNonCanonical++;
+                        continue;
+                    }
+
                     if (protectedPaths.Contains(f.RelativePath))
                         continue;
 
@@ -460,7 +512,7 @@ internal static class ScreenshotPurge
 
         var mode = dryRun ? "DRY RUN (nothing deleted)" : "swept";
         log.LogInformation(
-            "Retention: uploads volume {Mode} — {Segments} workspace folder(s), {Files} file(s), {Bytes} bytes scanned; {Orphans} orphan file(s) / {OrphanBytes} bytes deleted; {Young} unreferenced file(s) inside the {GraceHours} h grace window kept; {Failures} failure(s); {Skipped} non-workspace folder(s) skipped",
+            "Retention: uploads volume {Mode} — {Segments} workspace folder(s), {Files} file(s), {Bytes} bytes scanned; {Orphans} orphan file(s) / {OrphanBytes} bytes deleted; {Young} unreferenced file(s) inside the {GraceHours} h grace window kept; {Failures} failure(s); {Skipped} non-workspace folder(s) skipped; {SkippedNonCanonical} non-canonical file(s) ignored",
             mode,
             segmentsProcessed,
             scannedFiles,
@@ -470,7 +522,8 @@ internal static class ScreenshotPurge
             young,
             o.UploadOrphanGraceHours,
             failures,
-            skippedSegments
+            skippedSegments,
+            skippedNonCanonical
         );
 
         return new UploadSweepResult(
@@ -482,7 +535,8 @@ internal static class ScreenshotPurge
             young,
             failures,
             skippedSegments,
-            dryRun
+            dryRun,
+            skippedNonCanonical
         );
     }
 }

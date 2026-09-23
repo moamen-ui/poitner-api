@@ -1125,6 +1125,41 @@ public class ScreenshotPurgeTests
         Assert.DoesNotContain("not-a-guid", recorder.ListedSegments);
     }
 
+    /// <summary>
+    /// DB-16 re-review (LOW): a non-canonical disk file — one LocalFileStorage.SaveAsync could never
+    /// have written (wrong extension, no 32-hex file segment, etc.) — is never a real reference
+    /// match (protectedPaths only ever holds canonical decoded paths) and must not be swept as an
+    /// orphan either, even though it is old enough and its owner segment is a real workspace folder.
+    /// It is skipped and counted separately (SkippedNonCanonical), not folded into Orphans/Failures.
+    /// </summary>
+    [Fact]
+    public async Task OrphanSweep_NonCanonicalDiskFile_SkippedNotDeleted_CountedSeparately()
+    {
+        using var testDb = new TestDb();
+        using var db = testDb.MakeContext();
+        var (ownerId, _) = await SeedTenantAsync(db);
+        var signer = RealSigner();
+        var recorder = new RecordingFileStorage();
+        recorder.Segments.Add(ownerId.ToString("N"));
+        var nonCanonical = $"uploads/{ownerId:N}/proj/readme.txt";
+        recorder.Files[nonCanonical] = new RecordingFileStorage.Entry(1, DateTime.UtcNow.AddDays(-10));
+
+        var result = await ScreenshotPurge.OrphanSweepAsync(
+            db,
+            recorder,
+            signer,
+            DefaultOptions(),
+            DateTime.UtcNow,
+            NullLogger.Instance,
+            CancellationToken.None
+        );
+
+        Assert.DoesNotContain(nonCanonical, recorder.Deleted);
+        Assert.Equal(0, result.Orphans);
+        Assert.Equal(0, result.Failures);
+        Assert.Equal(1, result.SkippedNonCanonical);
+    }
+
     [Fact]
     public async Task OrphanSweep_GlobalSegment_UsesReferencedGlobalPaths()
     {

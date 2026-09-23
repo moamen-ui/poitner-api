@@ -216,6 +216,21 @@ public class UploadTraversalBlockerTests : IDisposable
         return (workspaceId, project.Id);
     }
 
+    // ───────────────────────── DB-16 re-review: trailing-newline regex-anchor bypass ─────────────────────────
+
+    [Fact]
+    public void IsCanonical_RejectsFileSegmentWithTrailingNewline()
+    {
+        // In .NET, `$` (without RegexOptions.Multiline) matches both the true end of input AND the
+        // position just before a single trailing '\n' — so "^[0-9a-f]{32}\.png$" would (bug)
+        // accept "<hex32>.png\n". Every UploadPaths pattern now anchors with \z instead, and '\n'/
+        // '\r' are also in the disallowed-char set as a redundant first guard.
+        var owner = Guid.NewGuid().ToString("N");
+        var rel = $"uploads/{owner}/proj/{Guid.NewGuid():N}.png\n";
+
+        Assert.False(UploadPaths.IsCanonical(rel));
+    }
+
     // ───────────────────────── Purge site: ScreenshotPurge.PurgeDeletedAsync ─────────────────────────
 
     [Theory]
@@ -400,6 +415,385 @@ public class UploadTraversalBlockerTests : IDisposable
         Assert.True(res.IsSuccess, res.Message);
         Assert.Null(res.Data!.Element.ScreenshotUrl);
         Assert.True(File.Exists(victimPath), $"vector {vector}: victim file was deleted");
+    }
+
+    // ───────────────────── DB-16 re-review: nested vector against a B-owned row ─────────────────────
+    // The four vectors above are all crafted to literally start with "uploads/{ownerA}/" — the SAME
+    // owner as the comment row that names them. This one instead seeds the crafted path on an
+    // OWNER-B comment, so the naive "owned" prefix ("uploads/{ownerB}/…") belongs to the row's real
+    // owner, while the embedded second signed-URL layer names owner A's file as the real victim —
+    // exercising TryResolve's guard (1) (no second decode) end to end, not just IsCanonical's
+    // disallowed-char rejection alone.
+
+    private static string NestedVectorNamingVictim(Guid ownerOfRow, string victimRel) =>
+        "/api/uploads/file?p="
+        + Uri.EscapeDataString(
+            $"uploads/{ownerOfRow:N}/api/uploads/file?p=" + Uri.EscapeDataString($"uploads/{victimRel}")
+        );
+
+    [Fact]
+    public async Task PurgeDeletedAsync_NestedVectorOnBOwnedRow_NamesOwnerAFile_VictimSurvives()
+    {
+        using var testDb = new TestDb();
+        using var db = testDb.MakeContext();
+        var (ownerA, _) = await SeedTenantAsync(db, "A");
+        var (ownerB, projectB) = await SeedTenantAsync(db, "B");
+
+        var victimFile = $"{Guid.NewGuid():N}.png";
+        var victimRel = $"{ownerA:N}/proj/{victimFile}";
+        var victimPath = WriteVictimFile($"{ownerA:N}/proj", victimFile);
+
+        var crafted = NestedVectorNamingVictim(ownerB, victimRel);
+
+        var comment = new Comment
+        {
+            ProjectId = projectB,
+            Environment = EnvironmentTag.Local,
+            Status = CommentStatus.Open,
+            AuthorId = Guid.NewGuid(),
+            Body = "b",
+            OwnerId = ownerB,
+            Element = new ElementCapture { ScreenshotUrl = crafted },
+            DeletedAt = DateTime.UtcNow.AddDays(-31),
+            DeletedBy = Guid.NewGuid(),
+        };
+        db.Comments.Add(comment);
+        await db.SaveChangesAsync();
+        var commentId = comment.Id;
+
+        var result = await ScreenshotPurge.PurgeDeletedAsync(
+            db,
+            _storage,
+            _signer,
+            DefaultOptions(),
+            DateTime.UtcNow,
+            NullLogger.Instance,
+            CancellationToken.None
+        );
+
+        Assert.True(
+            File.Exists(victimPath),
+            "victim file (owner A) was deleted via a B-owned row's nested/double-decoded path"
+        );
+        Assert.Equal(1, result.Skipped);
+        Assert.Equal(0, result.CommentsPurged);
+
+        using var verify = testDb.MakeContext();
+        var row = await verify.Comments.IgnoreQueryFilters().SingleAsync(c => c.Id == commentId);
+        Assert.Null(row.ScreenshotPurgedAt);
+    }
+
+    [Fact]
+    public async Task EditAsync_RemoveScreenshot_NestedVectorOnBOwnedRow_NamesOwnerAFile_VictimSurvives()
+    {
+        using var testDb = new TestDb();
+        var authorId = Guid.NewGuid();
+
+        Guid ownerA;
+        Guid ownerB;
+        int commentId;
+        string victimPath;
+        using (var seedDb = testDb.MakeContext())
+        {
+            (ownerA, _) = await SeedTenantAsync(seedDb, "A");
+            (ownerB, var projectBId) = await SeedTenantAsync(seedDb, "B");
+
+            var victimFile = $"{Guid.NewGuid():N}.png";
+            var victimRel = $"{ownerA:N}/proj/{victimFile}";
+            victimPath = WriteVictimFile($"{ownerA:N}/proj", victimFile);
+
+            var crafted = NestedVectorNamingVictim(ownerB, victimRel);
+
+            var comment = new Comment
+            {
+                ProjectId = projectBId,
+                Environment = EnvironmentTag.Local,
+                Status = CommentStatus.Open,
+                AuthorId = authorId,
+                Body = "hi",
+                OwnerId = ownerB,
+                Element = new ElementCapture { ScreenshotUrl = crafted },
+            };
+            seedDb.Comments.Add(comment);
+            await seedDb.SaveChangesAsync();
+            commentId = comment.Id;
+        }
+
+        var editor = new FakeCurrentUser { Id = authorId, TenantId = ownerB };
+        using var editDb = testDb.MakeContext(editor);
+        var commentService = await BuildCommentServiceAsync(editDb, editor);
+
+        var req = new EditCommentRequest { Body = "hi (edited)", RemoveScreenshot = true };
+        var res = await commentService.EditAsync(commentId, req, authorId);
+
+        Assert.True(res.IsSuccess, res.Message);
+        Assert.Null(res.Data!.Element.ScreenshotUrl);
+        Assert.True(File.Exists(victimPath), "victim file (owner A) was deleted via owner B's edit");
+    }
+
+    // ───────────────────── DB-16 re-review: same-workspace shared-path protection ─────────────────────
+    // A file may be named by more than one comment in the SAME workspace (a duplicate/shared upload).
+    // Neither delete site may remove it while any OTHER comment (live, or soft-deleted but not yet
+    // purged) still names the same canonical path.
+
+    [Fact]
+    public async Task PurgeDeletedAsync_SharedWithLiveComment_NotDeleted_NotStamped()
+    {
+        using var testDb = new TestDb();
+        using var db = testDb.MakeContext();
+        var (ownerA, projectA) = await SeedTenantAsync(db, "A");
+
+        var fileName = $"{Guid.NewGuid():N}.png";
+        var rel = $"uploads/{ownerA:N}/proj/{fileName}";
+        var filePath = WriteVictimFile($"{ownerA:N}/proj", fileName);
+        var url = _signer.SignedUrl(rel);
+
+        var purgeEligible = new Comment
+        {
+            ProjectId = projectA,
+            Environment = EnvironmentTag.Local,
+            Status = CommentStatus.Open,
+            AuthorId = Guid.NewGuid(),
+            Body = "old",
+            OwnerId = ownerA,
+            Element = new ElementCapture { ScreenshotUrl = url },
+            DeletedAt = DateTime.UtcNow.AddDays(-31),
+            DeletedBy = Guid.NewGuid(),
+        };
+        db.Comments.Add(purgeEligible);
+        await db.SaveChangesAsync();
+        var purgeId = purgeEligible.Id;
+
+        var stillLive = new Comment
+        {
+            ProjectId = projectA,
+            Environment = EnvironmentTag.Local,
+            Status = CommentStatus.Open,
+            AuthorId = Guid.NewGuid(),
+            Body = "same upload, still live",
+            OwnerId = ownerA,
+            Element = new ElementCapture { ScreenshotUrl = url },
+        };
+        db.Comments.Add(stillLive);
+        await db.SaveChangesAsync();
+
+        var result = await ScreenshotPurge.PurgeDeletedAsync(
+            db,
+            _storage,
+            _signer,
+            DefaultOptions(),
+            DateTime.UtcNow,
+            NullLogger.Instance,
+            CancellationToken.None
+        );
+
+        Assert.True(File.Exists(filePath), "file still referenced by a live comment was deleted");
+        Assert.Equal(1, result.SharedWithLiveComment);
+        Assert.Equal(0, result.CommentsPurged);
+
+        using var verify = testDb.MakeContext();
+        var row = await verify.Comments.IgnoreQueryFilters().SingleAsync(c => c.Id == purgeId);
+        Assert.Null(row.ScreenshotPurgedAt);
+    }
+
+    [Fact]
+    public async Task PurgeDeletedAsync_PositiveControl_OwnedUnsharedPath_DeletedAndStamped()
+    {
+        using var testDb = new TestDb();
+        using var db = testDb.MakeContext();
+        var (ownerA, projectA) = await SeedTenantAsync(db, "A");
+
+        var fileName = $"{Guid.NewGuid():N}.png";
+        var rel = $"uploads/{ownerA:N}/proj/{fileName}";
+        var filePath = WriteVictimFile($"{ownerA:N}/proj", fileName);
+        var url = _signer.SignedUrl(rel);
+
+        var comment = new Comment
+        {
+            ProjectId = projectA,
+            Environment = EnvironmentTag.Local,
+            Status = CommentStatus.Open,
+            AuthorId = Guid.NewGuid(),
+            Body = "old",
+            OwnerId = ownerA,
+            Element = new ElementCapture { ScreenshotUrl = url },
+            DeletedAt = DateTime.UtcNow.AddDays(-31),
+            DeletedBy = Guid.NewGuid(),
+        };
+        db.Comments.Add(comment);
+        await db.SaveChangesAsync();
+        var commentId = comment.Id;
+
+        var result = await ScreenshotPurge.PurgeDeletedAsync(
+            db,
+            _storage,
+            _signer,
+            DefaultOptions(),
+            DateTime.UtcNow,
+            NullLogger.Instance,
+            CancellationToken.None
+        );
+
+        Assert.False(File.Exists(filePath));
+        Assert.Equal(1, result.CommentsPurged);
+        Assert.Equal(1, result.FilesDeleted);
+        Assert.Equal(0, result.SharedWithLiveComment);
+
+        using var verify = testDb.MakeContext();
+        var row = await verify.Comments.IgnoreQueryFilters().SingleAsync(c => c.Id == commentId);
+        Assert.NotNull(row.ScreenshotPurgedAt);
+    }
+
+    [Fact]
+    public async Task EditAsync_RemoveScreenshot_SharedWithAnotherLiveComment_UrlNulled_FileNotDeleted()
+    {
+        using var testDb = new TestDb();
+        var authorId = Guid.NewGuid();
+
+        Guid ownerA;
+        int commentId;
+        string filePath;
+        using (var seedDb = testDb.MakeContext())
+        {
+            (ownerA, var projectAId) = await SeedTenantAsync(seedDb, "A");
+            var fileName = $"{Guid.NewGuid():N}.png";
+            var rel = $"uploads/{ownerA:N}/proj/{fileName}";
+            filePath = WriteVictimFile($"{ownerA:N}/proj", fileName);
+            var url = _signer.SignedUrl(rel);
+
+            var comment = new Comment
+            {
+                ProjectId = projectAId,
+                Environment = EnvironmentTag.Local,
+                Status = CommentStatus.Open,
+                AuthorId = authorId,
+                Body = "hi",
+                OwnerId = ownerA,
+                Element = new ElementCapture { ScreenshotUrl = url },
+            };
+            seedDb.Comments.Add(comment);
+            await seedDb.SaveChangesAsync();
+            commentId = comment.Id;
+
+            var otherLive = new Comment
+            {
+                ProjectId = projectAId,
+                Environment = EnvironmentTag.Local,
+                Status = CommentStatus.Open,
+                AuthorId = Guid.NewGuid(),
+                Body = "same upload",
+                OwnerId = ownerA,
+                Element = new ElementCapture { ScreenshotUrl = url },
+            };
+            seedDb.Comments.Add(otherLive);
+            await seedDb.SaveChangesAsync();
+        }
+
+        var editor = new FakeCurrentUser { Id = authorId, TenantId = ownerA };
+        using var editDb = testDb.MakeContext(editor);
+        var commentService = await BuildCommentServiceAsync(editDb, editor);
+
+        var req = new EditCommentRequest { Body = "hi (edited)", RemoveScreenshot = true };
+        var res = await commentService.EditAsync(commentId, req, authorId);
+
+        Assert.True(res.IsSuccess, res.Message);
+        Assert.Null(res.Data!.Element.ScreenshotUrl);
+        Assert.True(File.Exists(filePath), "file still referenced by another live comment was deleted");
+    }
+
+    [Fact]
+    public async Task EditAsync_RemoveScreenshot_PositiveControl_OwnedUnsharedFile_Deleted()
+    {
+        using var testDb = new TestDb();
+        var authorId = Guid.NewGuid();
+
+        Guid ownerA;
+        int commentId;
+        string filePath;
+        using (var seedDb = testDb.MakeContext())
+        {
+            (ownerA, var projectAId) = await SeedTenantAsync(seedDb, "A");
+            var fileName = $"{Guid.NewGuid():N}.png";
+            var rel = $"uploads/{ownerA:N}/proj/{fileName}";
+            filePath = WriteVictimFile($"{ownerA:N}/proj", fileName);
+            var url = _signer.SignedUrl(rel);
+
+            var comment = new Comment
+            {
+                ProjectId = projectAId,
+                Environment = EnvironmentTag.Local,
+                Status = CommentStatus.Open,
+                AuthorId = authorId,
+                Body = "hi",
+                OwnerId = ownerA,
+                Element = new ElementCapture { ScreenshotUrl = url },
+            };
+            seedDb.Comments.Add(comment);
+            await seedDb.SaveChangesAsync();
+            commentId = comment.Id;
+        }
+
+        var editor = new FakeCurrentUser { Id = authorId, TenantId = ownerA };
+        using var editDb = testDb.MakeContext(editor);
+        var commentService = await BuildCommentServiceAsync(editDb, editor);
+
+        var req = new EditCommentRequest { Body = "hi (edited)", RemoveScreenshot = true };
+        var res = await commentService.EditAsync(commentId, req, authorId);
+
+        Assert.True(res.IsSuccess, res.Message);
+        Assert.Null(res.Data!.Element.ScreenshotUrl);
+        Assert.False(File.Exists(filePath));
+    }
+
+    // ───────────────────── DB-16 re-review: real round trip through the orphan sweep ─────────────────────
+
+    [Theory]
+    [InlineData(".png")]
+    [InlineData(".jpg")]
+    [InlineData(".jpeg")]
+    [InlineData(".webp")]
+    [InlineData(".gif")]
+    public async Task SaveAsync_RoundTrip_ReferencedFile_SurvivesOrphanSweep(string extension)
+    {
+        using var testDb = new TestDb();
+        using var db = testDb.MakeContext();
+        var (ownerA, projectA) = await SeedTenantAsync(db, "A");
+
+        using var content = new MemoryStream(new byte[] { 1, 2, 3, 4 });
+        var rel = await _storage.SaveAsync(ownerA.ToString("N"), "proj", content, extension);
+
+        Assert.True(UploadPaths.IsCanonical(rel), $"SaveAsync produced a non-canonical path: {rel}");
+
+        var url = _signer.SignedUrl(rel);
+
+        var comment = new Comment
+        {
+            ProjectId = projectA,
+            Environment = EnvironmentTag.Local,
+            Status = CommentStatus.Open,
+            AuthorId = Guid.NewGuid(),
+            Body = "b",
+            OwnerId = ownerA,
+            Element = new ElementCapture { ScreenshotUrl = url },
+        };
+        db.Comments.Add(comment);
+        await db.SaveChangesAsync();
+
+        var absolutePath = Path.Combine(_tempRoot, rel.Replace('/', Path.DirectorySeparatorChar));
+        Assert.True(File.Exists(absolutePath));
+        File.SetLastWriteTimeUtc(absolutePath, DateTime.UtcNow.AddHours(-72));
+
+        await ScreenshotPurge.OrphanSweepAsync(
+            db,
+            _storage,
+            _signer,
+            DefaultOptions(),
+            DateTime.UtcNow,
+            NullLogger.Instance,
+            CancellationToken.None
+        );
+
+        Assert.True(File.Exists(absolutePath), "a file still referenced by a live comment was swept as an orphan");
     }
 
     [Fact]

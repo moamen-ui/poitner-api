@@ -430,6 +430,13 @@ read before deploying so the size of the first real purge is known.
    `SELECT count(*) AS to_purge FROM comments WHERE deleted_at < now() - interval '30 days' AND element->>'ScreenshotUrl' <> '' AND element->>'ScreenshotUrl' IS NOT NULL;`
    and `docker compose exec api sh -c 'find /app/wwwroot/uploads -type f | wc -l; du -sh /app/wwwroot/uploads; ls /app/wwwroot/uploads'` — confirm the
    first-level folders are 32-hex segments, `global` (if present) and `branding` only. Paste both into the PR.
+   **Re-review addition (2026-09-23, §12):** also run a one-off count of rows whose screenshot URL is legacy/non-canonical, so the `{Skipped}`
+   number in step 4's dry-run log has a known ceiling before the deploy:
+   `SELECT count(*) AS legacy_or_non_canonical FROM comments WHERE deleted_at < now() - interval '30 days' AND element->>'ScreenshotUrl' <> '' AND element->>'ScreenshotUrl' IS NOT NULL AND element->>'ScreenshotUrl' !~ '^(/api/uploads/file\?p=|.*uploads/)[0-9a-f]{32}/[A-Za-z0-9._-]+/[0-9a-f]{32}\.(png|jpe?g|webp|gif)([?&].*)?$';`
+   (a rough SQL approximation of `UploadPaths.IsCanonical`; the real gate is the C# check — this is only a sizing query). These rows are skipped
+   every pass by design (§3.2 step 2 — never deleted, never stamped) and fold into `{Skipped}`; a non-zero count here is expected for any
+   pre-`20260827` `uploads/global/` rows and is not itself a problem — those rows' files leave the disk only via `TenantService.HardDeleteAsync`
+   (workspace deletion), which the privacy table already covers ("with the workspace").
 2. Ordinary R11 rehearsal with the uploads tarball (§7 criterion 7).
 3. `bash scripts/deploy-api.sh` (takes the dump + tarball first, R6). Expect one `Applying migration … AddCommentsScreenshotPurgedAt` line; 5 min later
    the two new `Retention: … DRY RUN (nothing deleted)` lines. `SELECT count(*) FROM comments WHERE screenshot_purged_at IS NOT NULL;` → 0 (dry-run).
@@ -475,3 +482,19 @@ was written — 76 migrations, newest `20260923102053_AddOperatorMfa`; none of t
 | Gemini Pro DB-16 #1 (NIT) | Use `Directory.EnumerateFileSystemEntries(dir).Any()` before deleting an empty directory | **Accepted** (folded into the Opus #6 relocation) | §3.3 step 6 |
 | **Cross-review 2026-09-23 (BLOCKER)** | A crafted screenshot path (dot-dot, encoded dot-dot, backslash, a nested/double-decoded signed URL, `../branding/...`) escapes the `StartsWith("uploads/{ownerId:N}/")` ownership check by literal string prefix while `Path.GetFullPath` resolves it outside that owner's folder | **Accepted** — `Application/Abstractions/UploadPaths.IsCanonical` (exact `uploads/<owner>/<project>/<file>` shape) gates every delete site BEFORE the ownership check, plus a no-second-decode + post-resolve exact-match guard in `LocalFileStorage.TryResolve` | §3.2 step 2, §3.4, `Tests/UploadTraversalBlockerTests.cs`, `Tests/LocalFileStorageTests.cs` |
 | Orchestrator 2026-09-23 (MEDIUM) | Orphan sweep trusted `owner_id == folder`, so a forged/foreign reference to a path didn't protect it | **Accepted** — protect by path across owners: one global protected set from every live-or-unpurged row's canonical path regardless of `OwnerId`; cross-owner mismatches logged (Warning) | §3.3 (orchestrator note above), `Tests/ScreenshotPurgeTests.cs OrphanSweep_ForgedForeignUrl_ProtectsAcrossOwners_LogsMismatch` |
+
+**Re-review (2026-09-23, second round, cross-workspace blocker already closed above).** New findings, all accepted: (MEDIUM) neither delete site
+checked whether the SAME workspace's own file was still named by some OTHER comment (a shared/duplicate upload) — both `ScreenshotPurge.PurgeDeletedAsync`
+and `CommentService.EditAsync`'s remove-screenshot now pre-filter by the file's 32-hex key (`Contains`, safe — never percent-encoded) and confirm the
+real match by decoding each candidate, skipping the delete (purge: counted as `SharedWithLiveComment`, never stamped; edit: URL nulled, file left alone)
+when any other live-or-unpurged row still names the path (`API/Hosted/ScreenshotPurge.cs`, `CommentService.cs:1039-1064`, `Tests/UploadTraversalBlockerTests.cs`
+shared-path + positive-control tests). (MEDIUM) test coverage gap — added the real nested-vector-against-a-B-owned-row test, real-storage positive
+controls, and a `SaveAsync`→`OrphanSweepAsync` round trip for every allowed extension, all driving genuine `LocalFileStorage` (`Tests/UploadTraversalBlockerTests.cs`).
+(LOW) `UploadPaths`'s regexes anchored with `$`, which in .NET also matches just before a single trailing `\n` — switched to `\z` and added `\n`/`\r`
+to the disallowed-char set (`Application/Abstractions/UploadPaths.cs`). (LOW) no symlink guard — `LocalFileStorage.TryResolve` now refuses when the
+file, its project folder, or its owner folder is a reparse point, and `ListOwnerFilesAsync`'s `EnumerationOptions` skips reparse points outright
+(`Tests/LocalFileStorageTests.cs TryResolve_RefusesSymlinkedProjectFolder`). (LOW) the orphan sweep now skips a non-canonical disk file before either
+check and counts it separately (`SkippedNonCanonical`), never as a failure or a dry-run would-delete. (LOW) `LocalFileStorage.ExistsAsync` returns
+`null` (not `false`) when the existence check itself throws `UnauthorizedAccessException`/`IOException`/`PathTooLongException`, so an unverifiable
+absence never stamps a row. §9 step 1 gained the legacy/non-canonical sizing query (above). Test count: 1241 → 1255, all green;
+`dotnet build`/`dotnet test`/`dotnet ef migrations has-pending-model-changes` all clean.

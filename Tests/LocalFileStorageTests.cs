@@ -203,6 +203,47 @@ public class LocalFileStorageTests : IDisposable
         Assert.True(File.Exists(logoPath));
     }
 
+    /// <summary>
+    /// DB-16 re-review (LOW): a symlinked PROJECT folder must never be traversed into — a link
+    /// planted anywhere under uploads/ (by anything with write access to the volume) could otherwise
+    /// point a canonical-looking path at a target entirely outside uploads/. Creating a symlink can
+    /// fail without elevated privileges on some CI/sandbox configurations (notably Windows without
+    /// Developer Mode); this test soft-skips (passes without asserting) when that happens, per the
+    /// task's instruction, rather than failing the whole suite on an environment limitation.
+    /// </summary>
+    [Fact]
+    public async Task TryResolve_RefusesSymlinkedProjectFolder()
+    {
+        var owner = Guid.NewGuid().ToString("N");
+        var realProjectDir = Path.Combine(_tempRoot, "uploads", owner, "real-proj");
+        Directory.CreateDirectory(realProjectDir);
+        var fileName = $"{Guid.NewGuid():N}.png";
+        File.WriteAllText(Path.Combine(realProjectDir, fileName), "victim-bytes");
+
+        var linkedProjectDir = Path.Combine(_tempRoot, "uploads", owner, "linked-proj");
+        try
+        {
+            Directory.CreateSymbolicLink(linkedProjectDir, realProjectDir);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or PlatformNotSupportedException)
+        {
+            // Symlink creation is not available in this environment — nothing to verify here.
+            return;
+        }
+
+        var relThroughLink = $"uploads/{owner}/linked-proj/{fileName}";
+
+        // Neither ExistsAsync nor DeleteAsync may resolve through the symlinked project folder.
+        Assert.Null(await _storage.ExistsAsync(relThroughLink));
+
+        await _storage.DeleteAsync(relThroughLink);
+
+        Assert.True(
+            File.Exists(Path.Combine(realProjectDir, fileName)),
+            "a file reached only through a symlinked project folder was deleted"
+        );
+    }
+
     [Fact]
     public async Task ListOwnerFilesAsync_ReturnsForwardSlashRelPaths_AndSizes()
     {
