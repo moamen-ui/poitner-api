@@ -8,7 +8,7 @@ import { execFileSync, spawn, type ChildProcess } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { expect, test } from '@playwright/test';
+import { expect, test, type Page } from '@playwright/test';
 import { BASE_URL } from '../scripts/lib/api.mjs';
 import { PORTS } from '../scripts/lib/constants.mjs';
 import { record } from '../scripts/lib/report.mjs';
@@ -16,6 +16,95 @@ import { servePinnedPage } from './lib/pinned-page.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const e2eRoot = resolve(here, '..');
+
+// Diagnostics for the two specs that fail deterministically in CI but not on an isolated local
+// stack (R3-03-04, R3-03-07): neither captured any browser-side signal, so a CI failure says only
+// "never became visible" / "no boot marks" and nothing about why. These helpers collect what the
+// browser saw and print a compact block to stdout ON FAILURE ONLY — Playwright's line reporter
+// prints a failed test's stdout in the CI log, so this is enough to explain the next run without
+// changing what passes or fails today.
+interface PageDiagnostics {
+  consoleMessages: { type: string; text: string }[];
+  pageErrors: string[];
+  failedRequests: { url: string; failure: string }[];
+  badResponses: { url: string; status: number }[];
+  getDocCspHeader: () => string | null;
+  getWidgetScriptStatus: () => { url: string; status: number } | null;
+}
+
+function attachPageDiagnostics(page: Page): PageDiagnostics {
+  const consoleMessages: { type: string; text: string }[] = [];
+  const pageErrors: string[] = [];
+  const failedRequests: { url: string; failure: string }[] = [];
+  const badResponses: { url: string; status: number }[] = [];
+  let docCspHeader: string | null = null;
+  let widgetScriptStatus: { url: string; status: number } | null = null;
+
+  page.on('console', (m) => consoleMessages.push({ type: m.type(), text: m.text() }));
+  page.on('pageerror', (err) => pageErrors.push(err?.message ?? String(err)));
+  page.on('requestfailed', (req) => {
+    failedRequests.push({ url: req.url(), failure: req.failure()?.errorText ?? 'unknown' });
+  });
+  page.on('response', (res) => {
+    const status = res.status();
+    if (status >= 400) badResponses.push({ url: res.url(), status });
+    // The document's own response carries the CSP header a meta tag would never show for a
+    // header-only policy (as the csp-nonce fixture uses) — capture the first one seen.
+    if (docCspHeader === null && res.request().resourceType() === 'document') {
+      docCspHeader = res.headers()['content-security-policy'] ?? null;
+    }
+    if (widgetScriptStatus === null && /\/(widget|embed)\.js(\?|$)/.test(res.url())) {
+      widgetScriptStatus = { url: res.url(), status };
+    }
+  });
+
+  return {
+    consoleMessages,
+    pageErrors,
+    failedRequests,
+    badResponses,
+    getDocCspHeader: () => docCspHeader,
+    getWidgetScriptStatus: () => widgetScriptStatus,
+  };
+}
+
+async function dumpWidgetDiagnostics(page: Page, diag: PageDiagnostics, label: string): Promise<void> {
+  const hostState = await page
+    .evaluate(() => {
+      const host = document.querySelector('pointer-feedback');
+      const metaCsp =
+        document.querySelector('meta[http-equiv="Content-Security-Policy"]')?.getAttribute('content') ?? null;
+      return {
+        metaCsp,
+        hostExists: !!host,
+        project: host?.getAttribute('project') ?? null,
+        server: host?.getAttribute('server') ?? null,
+        shadowRootChildCount: host?.shadowRoot?.childNodes.length ?? null,
+        shadowRootInnerHTMLLength: host?.shadowRoot?.innerHTML.length ?? null,
+      };
+    })
+    .catch((err) => ({ evalError: String(err) }));
+
+  const consoleErrorsAndWarnings = diag.consoleMessages
+    .filter((m) => m.type === 'error' || m.type === 'warning')
+    .slice(0, 40);
+
+  console.log(
+    [
+      `---- ${label} diagnostics (failure) ----`,
+      `page.url(): ${page.url()}`,
+      `CSP meta tag content: ${JSON.stringify((hostState as { metaCsp?: string | null }).metaCsp ?? null)}`,
+      `CSP header (document response): ${JSON.stringify(diag.getDocCspHeader())}`,
+      `widget/loader script response: ${JSON.stringify(diag.getWidgetScriptStatus())}`,
+      `pointer-feedback host: ${JSON.stringify(hostState)}`,
+      `failed requests (${diag.failedRequests.length}): ${JSON.stringify(diag.failedRequests)}`,
+      `>=400 responses (${diag.badResponses.length}): ${JSON.stringify(diag.badResponses)}`,
+      `console errors/warnings (${consoleErrorsAndWarnings.length} of ${diag.consoleMessages.length} total, capped at 40): ${JSON.stringify(consoleErrorsAndWarnings)}`,
+      `page errors (${diag.pageErrors.length}): ${JSON.stringify(diag.pageErrors)}`,
+      `---- end ${label} diagnostics ----`,
+    ].join('\n'),
+  );
+}
 
 test.describe.configure({ timeout: 180_000 });
 
@@ -195,6 +284,10 @@ test('R3-03-04 — widget-nonce-csp-styles', async ({ page }) => {
     const port = PORTS.cspNonce ?? 4176;
     const url = `http://localhost:${port}/`;
 
+    // Attached before any navigation so nothing that happens during boot is missed. Cheap when the
+    // test passes (nothing reads these arrays); on failure they are the whole point.
+    const diag = attachPageDiagnostics(page);
+
     const isUp = await fetch(url).then((r) => r.ok).catch(() => false);
     if (!isUp) {
       server = spawn(
@@ -236,10 +329,15 @@ test('R3-03-04 — widget-nonce-csp-styles', async ({ page }) => {
     // on a loaded CI runner even though this reproduces clean, every time, on an idle isolated
     // stack (verified on an isolated local stack: 7/7 passes with the shorter timeout too, so this
     // is headroom for CI load, not evidence the wait itself was ever the wrong mechanism).
-    await expect(launcher.or(addBtn).first()).toBeVisible({ timeout: 30_000 });
-    if (await launcher.isVisible().catch(() => false)) await launcher.click();
+    try {
+      await expect(launcher.or(addBtn).first()).toBeVisible({ timeout: 30_000 });
+      if (await launcher.isVisible().catch(() => false)) await launcher.click();
 
-    await expect(widget.locator('#fbk-add')).toBeVisible({ timeout: 30_000 });
+      await expect(widget.locator('#fbk-add')).toBeVisible({ timeout: 30_000 });
+    } catch (err) {
+      await dumpWidgetDiagnostics(page, diag, 'R3-03-04');
+      throw err;
+    }
 
     // Styles must have actually APPLIED. Under a nonce CSP with no 'unsafe-inline', a widget that
     // injected a <style> would render unstyled while every element still existed — so presence
@@ -299,11 +397,29 @@ test('R3-03-07 — perf-init long-task metric (warn-only)', async () => {
       expect(ready, `smoke fixture never came up on ${fixtureUrl}`).toBe(true);
     }
 
-    execFileSync(
-      'node',
-      [join('scripts', 'perf-init.mjs'), '--fixture', fixtureUrl, '--runs', '5', '--out', outPath],
-      { cwd: repoRoot, encoding: 'utf8', timeout: 180_000, stdio: 'pipe' },
-    );
+    try {
+      execFileSync(
+        'node',
+        [join('scripts', 'perf-init.mjs'), '--fixture', fixtureUrl, '--runs', '5', '--out', outPath],
+        { cwd: repoRoot, encoding: 'utf8', timeout: 180_000, stdio: 'pipe' },
+      );
+    } catch (err) {
+      // perf-init.mjs prints its own diagnostics (console errors, failed requests, >=400
+      // responses, whether the host element/marks exist) to stderr right before it exits
+      // non-zero. execFileSync captures that into the thrown error rather than letting it reach
+      // the CI log on its own — surface it here so the failure explains itself.
+      const e = err as { stdout?: string; stderr?: string; status?: number | null };
+      console.log(
+        [
+          '---- R3-03-07 perf-init.mjs diagnostics (failure) ----',
+          `exit status: ${e.status ?? 'unknown'}`,
+          `stdout:\n${e.stdout ?? '(none)'}`,
+          `stderr:\n${e.stderr ?? '(none)'}`,
+          '---- end R3-03-07 perf-init.mjs diagnostics ----',
+        ].join('\n'),
+      );
+      throw err;
+    }
 
     const report = JSON.parse(readFileSync(outPath, 'utf8'));
     expect(Number.isFinite(report.metricMs), 'perf-init must produce a finite metric').toBe(true);

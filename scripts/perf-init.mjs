@@ -23,6 +23,38 @@ function arg(name, fallback) {
 const fixture = arg('fixture', 'http://localhost:4173');
 const runs = Math.max(1, Number(arg('runs', '5')));
 const out = resolve(arg('out', 'e2e/state/perf-init.json'));
+// Prints the same diagnostic block that a zero-marks failure prints, even when the run succeeds —
+// for chasing a flake that only reproduces some of the time, not every one.
+const debug = process.argv.includes('--debug');
+
+// Diagnostics for the failure this script cannot otherwise explain: "no boot marks collected"
+// says only that the widget never reached pf:boot:end, not why. These mirror what
+// e2e/widget/release-eng.spec.ts collects for R3-03-04 — console output, failed requests, >=400
+// responses, and whatever the page itself can report — captured for the LAST run made (the one
+// most likely to still be representative if earlier runs behaved differently), and printed to
+// stderr before a non-zero exit, or always under --debug.
+function printDiagnostics(label, diag) {
+  if (!diag) {
+    console.error(`${label}: no diagnostics captured — no run completed far enough to attach them.`);
+    return;
+  }
+  const consoleErrorsAndWarnings = diag.consoleMessages
+    .filter((m) => m.type === 'error' || m.type === 'warning')
+    .slice(0, 40);
+  console.error(
+    [
+      `---- ${label} ----`,
+      `page.url(): ${diag.url}`,
+      `pointer-feedback host present: ${JSON.stringify(diag.hostState)}`,
+      `performance marks present: ${diag.hostState?.markCount ?? 'unknown'} (${JSON.stringify(diag.hostState?.markNames ?? [])})`,
+      `failed requests (${diag.failedRequests.length}): ${JSON.stringify(diag.failedRequests)}`,
+      `>=400 responses (${diag.badResponses.length}): ${JSON.stringify(diag.badResponses)}`,
+      `console errors/warnings (${consoleErrorsAndWarnings.length} of ${diag.consoleMessages.length} total, capped at 40): ${JSON.stringify(consoleErrorsAndWarnings)}`,
+      `page errors (${diag.pageErrors.length}): ${JSON.stringify(diag.pageErrors)}`,
+      `---- end ${label} ----`,
+    ].join('\n'),
+  );
+}
 
 const GATE = {
   warnMs: 50,
@@ -53,6 +85,10 @@ try {
 
 const browser = await chromium.launch();
 const samples = [];
+// Overwritten each run, so after the loop this holds diagnostics for the last run made — the one
+// most useful if the fixture degraded partway through (e.g. the api container got slower under
+// load), rather than the first, which may have looked fine.
+let lastDiagnostics = null;
 
 try {
   for (let i = 0; i < runs; i++) {
@@ -60,6 +96,21 @@ try {
     // that matters is a visitor's first one.
     const context = await browser.newContext();
     const page = await context.newPage();
+
+    const consoleMessages = [];
+    const pageErrors = [];
+    const failedRequests = [];
+    const badResponses = [];
+    page.on('console', (m) => consoleMessages.push({ type: m.type(), text: m.text() }));
+    page.on('pageerror', (err) => pageErrors.push(err?.message ?? String(err)));
+    page.on('requestfailed', (req) => {
+      failedRequests.push({ url: req.url(), failure: req.failure()?.errorText ?? 'unknown' });
+    });
+    page.on('response', (res) => {
+      const status = res.status();
+      if (status >= 400) badResponses.push({ url: res.url(), status });
+    });
+
     try {
       await page.goto(fixture, { waitUntil: 'load', timeout: 30_000 });
 
@@ -88,6 +139,20 @@ try {
       });
 
       if (typeof ms === 'number' && Number.isFinite(ms)) samples.push(Math.round(ms * 100) / 100);
+
+      const hostState = await page
+        .evaluate(() => {
+          const host = document.querySelector('pointer-feedback');
+          const marks = performance.getEntriesByType('mark');
+          return {
+            hostExists: !!host,
+            markCount: marks.length,
+            markNames: marks.map((m) => m.name),
+          };
+        })
+        .catch((err) => ({ evalError: String(err) }));
+
+      lastDiagnostics = { url: page.url(), consoleMessages, pageErrors, failedRequests, badResponses, hostState };
     } finally {
       await context.close();
     }
@@ -97,11 +162,16 @@ try {
 }
 
 if (samples.length === 0) {
+  printDiagnostics(`perf-init: no boot marks collected (last run of ${runs})`, lastDiagnostics);
   console.error(
     `No boot marks collected from ${fixture} — is the widget loading there? ` +
       `(it marks pf:boot:start / pf:boot:end)`,
   );
   process.exit(1);
+}
+
+if (debug) {
+  printDiagnostics(`perf-init --debug (last run of ${runs})`, lastDiagnostics);
 }
 
 // Median, not mean: one scheduling hiccup on a shared machine should not move the reported number,
