@@ -65,7 +65,7 @@ const ELEMENT_KEYS = [
 const REPLY_KEYS = ['authorName', 'body', 'isAi'];
 const PICKED_ACTION_KEYS = ['prompt', 'text'];
 // CommentSummaryDto (?view=summary) — the non-admin fallback shape R2-01-07 step 4 asserts.
-const SUMMARY_KEYS = ['authorName', 'body', 'createdAt', 'environment', 'id', 'route', 'sourcePath', 'status'];
+const SUMMARY_KEYS = ['authorName', 'body', 'createdAt', 'environment', 'id', 'language', 'route', 'sourcePath', 'status'];
 // R2-06 guarantee: these may exist on server DTOs but must never survive the CLI projection.
 const FORBIDDEN_KEY_RE = /"(hasPayloadFlag|payloadFlags|authorId|ownerId|editedBy)":/;
 
