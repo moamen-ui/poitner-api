@@ -116,6 +116,10 @@ Two callers:
 Dumps live on the same VM disk as the database. That protects against a bad migration or a bad
 deploy, **not** against losing the VM — see "Off-box copy" below.
 
+### Deploy history
+
+- **2026-09-23**: `pre-db12` contract deploy (`POINTER_APPLY_CONTRACT=1 POINTER_CONTRACT_LABEL=pre-db12 bash scripts/deploy-api.sh`, commit `30d1b46`), 70 migrations now in production (newest `20260923003835_AddAuditEventsAppendOnlyTrigger`).
+
 ### Off-box copy
 
 Nightly (and pre-deploy) backups are also copied off the VM to an Oracle Object Storage bucket

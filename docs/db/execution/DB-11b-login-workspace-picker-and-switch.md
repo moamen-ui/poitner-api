@@ -5,11 +5,13 @@ membership table, the `mstamp` claim and `IMembershipService`). Owner acceptance
 with an email that exists in several workspaces must offer a workspace choice instead of an
 arbitrary row". Rules: R8 (point 5 test), R13 (no migration — nothing to read), R16.
 **Class: Code only.** No migration. Ships as an ordinary `bash scripts/deploy-api.sh`.
-**Status 2026-09-22: written; not implemented.** Owner decision D11 has a default (§3.6).
+**Status 2026-09-23: implemented + deployed 2026-09-23 (API + widget; dashboard pending deploy).** Owner decision D11 has a default (§3.6).
 **Amended 2026-09-22 (evening)** after the cross-review (`docs/roadmap/meetings/2026-09-22-foundations/04-chair-synthesis.md`
 §1 rows D5/D6 = GLM A5/A6; cited below by finding id): **GLM A5** the new endpoint's rate limit is named
 explicitly — `[EnableRateLimiting("login")]` — because `Login` carries no such attribute to copy; **GLM A6**
 the selection-token fence compares the exact path, not a prefix.
+
+**Review outcome (2026-09-23):** API implemented by Sonnet; cross-reviewed by Gemini Pro (MERGE) and Opus (MERGE WITH FIXES). All 10 findings applied: live-workspace check, key-scoped sessions refused, lockout reset only from selection tokens, `/me.workspaceId` from tenant, fence pipeline test. Follow-up fix: `choose-workspace` is now a 200 success envelope (dashboard client rejects failure envelopes). Widget half implemented by Gemini Flash (`projectKey` at login, picker + no-workspace fallback, gzip 66,468 B of 67,584; RTL follow-ups in `650dc50`). Dashboard half committed in pointer-dashboard (`946c7a9`: LoginPage picker, Shell switcher, cli-login shows workspace) — deploying right after client publish.
 
 ## 1. Goal
 

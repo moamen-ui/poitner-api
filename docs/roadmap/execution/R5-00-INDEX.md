@@ -16,18 +16,17 @@ section for the verified facts; this index only summarizes.
 | [R5-58](R5-58-observability-baseline.md) | Observability baseline (JSON logs, request id, `/health`, Sentry, uptime ping) | 2–3 d | No | None — independent of DB-11/12/13 | No | **Shipped** `b3160c2`; live (`SENTRY_DSN`/`UPTIME_PING_URL` empty until owner supplies them) |
 | [R5-59](R5-59-security-headers-and-login-limit.md) | Security headers + login rate limit + `security.txt` | 1 d | No | None — independent of DB-11/12/13 | No (Caddy config only) | **Shipped** `5a37117`+`c55dc46`; **§12 amendment shipped** `6ca148b` (per-e-mail lockout); **hardening shipped** `bc5e9b4` (GLM review M1/F5/F6/F7); verified live; F3/F4 open |
 | [R5-60](R5-60-production-restore-drill.md) | Production-side restore drill | 0.5 d | No | None | No | **Shipped** `58f0fe7`; **drilled on production 2026-09-23** (4 s, counts matched, scratch dropped) |
-| [R5-61](R5-61-operator-mfa.md) | Operator MFA (TOTP on the super-admin account) | 1–2 d | **Yes** — `users.totp_secret`/`totp_enabled_at` (nullable), new `user_recovery_codes` table | None hard — designed independent of DB-11c/DB-12 (soft follow-up: audit MFA enroll/disable once DB-12 ships) | Yes — MFA settings card + login-flow MFA step | DB-11a deployed 2026-09-23 00:08 UTC; still queued behind the auth work (DB-11b API in progress, shared auth files) — not started |
-| [R5-62](R5-62-jwt-key-rotation.md) | JWT `kid` + two-key rotation window | 1 d | No | Coordinate with DB-11a/b (`ITokenService.Issue` signature changes) — not blocking; independent of DB-12/13 | No | DB-11a deployed 2026-09-23 00:08 UTC; still queued behind the auth work (DB-11b API in progress, shared auth files) — not started |
+| [R5-61](R5-61-operator-mfa.md) | Operator MFA (TOTP on the super-admin account) | 1–2 d | **Yes** — `users.totp_secret`/`totp_enabled_at` (nullable), new `user_recovery_codes` table | None hard — designed independent of DB-11c/DB-12 (soft follow-up: audit MFA enroll/disable once DB-12 ships) | Yes — MFA settings card + login-flow MFA step | DB-11a and DB-11b deployed 2026-09-23; queued behind remaining auth work — not started |
+| [R5-62](R5-62-jwt-key-rotation.md) | JWT `kid` + two-key rotation window | 1 d | No | Coordinate with DB-11a/b (`ITokenService.Issue` signature changes) — not blocking; independent of DB-12/13 | No | DB-11a and DB-11b deployed 2026-09-23; queued behind remaining auth work — not started |
 | [R5-63](R5-63-privacy-and-terms.md) | Privacy policy + Terms of Service | 3–5 d (writing) | No | Text describes the DB-11c/DB-12/DB-13 posture (operator access, erasure) — must be revised once those ship; not blocked from publishing now | No (landing pages, not the dashboard app) | **Shipped** `3afe171`+`ab0cc98`; live; `[LEGAL-REVIEW]` placeholders remain |
 | [R5-65](R5-65-arabic-rtl-audit.md) | Arabic/RTL completeness audit (checklist only, no fixes) | 1 d | No | None (one audit row, D9, covers the R5-61 MFA card *if* merged first — optional, not required) | Audit only — dashboard is the subject, not modified | **In progress** — static pass (GLM, `docs/runbooks/RTL-AUDIT-2026-09-23.md`); fix-now 1/3/4 shipped `db0dcb7` (widget `dir` follows language, localised `timeAgo`, four strings to i18n); fix-now 2 (e-mail RTL) and 5 (Arabic privacy/terms) and the browser pass still pending |
 | [R5-66](R5-66-export-and-dsar-runbook.md) | Export verification + DSAR runbook | 1 d | No | DB-11c (identity-erase outcome), DB-12 (audit logging) — both soft/non-blocking; usable against current schema today | No | **Shipped**; `docs/runbooks/DSAR.md` + `EXPORT-VERIFICATION-2026-09-23.md` live; follow-ups filed as DB-16 |
 | [R5-67](R5-67-tenant-isolation-ci-probe.md) | Tenant-isolation CI probe (e2e) | 1 d | No | None — independent of DB-11a (re-run recommended after DB-11a merges) | No | **Shipped** `86656df`; green in CI (23 tests) since run 35789122040 |
 | [R5-68](R5-68-versioning-policy-and-v1-alias.md) | Versioning policy + `/api/v1/*` alias | 1 d | No | None | No (explicitly none — policy doc + a routing alias) | **Shipped** `435f688`; live, parity verified in production |
 
-All ten depend on nothing outside this list except the soft/non-blocking notes above. None of DB-11a/b/c/d,
-DB-12, or DB-13 are implemented in this tree yet (all are "written 2026-09-22; not implemented" —
-DB-12 and DB-13 execution docs already exist at `docs/db/execution/DB-12-audit-log.md` and
-`DB-13-operator-impersonation.md`, contrary to any assumption that they don't exist yet).
+All ten depend on nothing outside this list except the soft/non-blocking notes above. DB-11a, DB-11b,
+and DB-12 part 1 are deployed to production (2026-09-23); DB-12 part 2 is in review on `feat/db-12-audit-call-sites`;
+DB-11c/d and DB-13 are written and awaiting implementation.
 
 ## Recommended implementation order
 
@@ -89,7 +88,9 @@ Per the final report's Sequence (§3, step 5–6) and this review's dependency f
 | R5-58 observability | `b3160c2` | Live — `/health` Healthy, `X-Request-Id` echoed, JSON logs; `SENTRY_DSN`/`UPTIME_PING_URL` empty in prod pending owner |
 | R5-65 RTL audit | (in progress); fix-now 1/3/4 `db0dcb7` | Static pass by GLM (`docs/runbooks/RTL-AUDIT-2026-09-23.md`); fix-now 1/3/4 (widget RTL shadow root, localised `timeAgo`, four strings to i18n) live in `pointer.js`; fix-now 2/5 and the browser pass pending |
 | DB-11a identity + memberships | `8140695` (code), deployed `pre-db11a` | **Deployed to production 2026-09-23 00:08 UTC**; migrations 65→68; 0 duplicate e-mails, 5 live memberships; client `@moamen-ui/pointer-react` 1.0.41 published; dashboard TenantsPage update in progress |
-| R5-61 / R5-62 | — | DB-11a deployed; still queued behind the auth work (DB-11b API in progress) — not started |
+| R5.1b (DB-11b login workspace picker + switch) | (API + widget) | **Deployed to production 2026-09-23** (API + widget; dashboard pending deploy). Follow-up fix: `choose-workspace` 200 envelope; widget RTL follow-ups in `650dc50` |
+| R5.2 part 1 (DB-12 audit log) | deployed `pre-db12` (`30d1b46`) | **Deployed to production 2026-09-23** (`pre-db12` contract deploy, 70 migrations, newest `20260923003835_AddAuditEventsAppendOnlyTrigger`). Part 2 (attributes on 103 actions, writer calls in 20 services) in review on `feat/db-12-audit-call-sites` |
+| R5-61 / R5-62 | — | DB-11a/b deployed; queued behind remaining auth work — not started |
 
 ## CI and CLI status (2026-09-23)
 
