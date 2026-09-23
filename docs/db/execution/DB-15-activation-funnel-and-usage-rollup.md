@@ -4,8 +4,7 @@ Roadmap: §64 (Release 5 row **R5.6** writing pack — this doc is the data half
 founder decision **F4** ("Activation funnel = demo → converted → widget installed → first comment → first apply"), foundations report §2 row 11 ("roll up
 before the 180 d sweep"). Rules: R1 (one new table, one new partial unique index), R5, R7 (additive → ordinary deploy), R8 (analytics table exemption, as
 amended by DB-12), R10 (event `type` strings are frozen identifiers once written — append only), R13.
-**Class: Additive.** Ships as an ordinary `bash scripts/deploy-api.sh`. **Status 2026-09-22: written; not implemented. Cross-reviewed 2026-09-22 (GLM, agy —
-`docs/db/reviews/`); amendments folded 2026-09-23 (§12).** Owner decisions D15.1–D15.4 have defaults (§3.7); none blocks.
+**Class: Additive.** Ships as an ordinary `bash scripts/deploy-api.sh`. **Status: deployed 2026-09-23 (~10:50 UTC, merged `2eabe72` + fixes `b2da554` + `a0363c6`; 75 migrations, newest `20260923073100_AddUsageDailyAndWidgetInstalledIndex`). Cross-reviewed 2026-09-22 (GLM, agy — `docs/db/reviews/`); amendments folded 2026-09-23 (§12); reviews applied (Gemini Pro 1 nit, Opus BLOCKER Npgsql Kind=Unspecified in rollup fixed and proven on real Postgres, change-tracker/efficiency fixes).** Owner decisions D15.1–D15.4 have defaults (§3.7); none blocks.
 
 **Dependencies.** None on DB-11/12/13/14 for the schema or the job. The **demo emission sites** (§3.2) are written against the DB-11a version of `DemoService`
 (workspace id ≠ admin `public_id`); implement after DB-11a is merged so `OwnerId` is the workspace. The endpoints use `TenantStamp.TryRequireOwner` (DB-11a §3.6).

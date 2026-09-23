@@ -4,8 +4,7 @@ Roadmap: §57, Release 5 row **R5.4**; foundations report §2 row 4 ("verificati
 column), R3 (one guarded backfill — grandfathering), R5, R7 (the backfill is raw SQL → marker + `[ContractMigration]` → explicit deploy path, alone as
 `pre-db14` or batched with DB-12 as `pre-db12-14` under R7.1), R8 (no new tenant data), R10, R11, R13, R14 (the normaliser; verification is bound to the
 **normalised** address), R16 (e-mailed one-time tokens are `IResetTokenService` scoped tokens with a purpose — **`TokenPurposes.VerifyEmail`**, never a table).
-**Class: Expand** (additive column + a one-time, idempotent backfill; no drop, no rename). **Status 2026-09-22: written; not implemented. Cross-reviewed
-2026-09-22 (GLM, agy — `docs/db/reviews/`); amendments folded 2026-09-23 (§12).** Owner decisions D14.1–D14.7 have defaults (§3.8); none blocks.
+**Class: Expand** (additive column + a one-time, idempotent backfill; no drop, no rename). **Status: deployed 2026-09-23 (~10:30 UTC via `pre-db14`, merged `335a993` + `7a042c3` + fixes `f0428a1`; 74 migrations). Cross-reviewed 2026-09-22 (GLM, agy — `docs/db/reviews/`); amendments folded 2026-09-23 (§12); reviews applied (Gemini Pro marker wording, Opus CORS header exposure, gate-cache invalidation, 1000-entry list).** Owner decisions D14.1–D14.7 have defaults (§3.8); none blocks.
 
 **Dependencies.** Requires **DB-11a in production** (`IMembershipService.FindIdentityByPublicIdAsync/FindIdentityByEmailAsync`, `EmailNormalizer`,
 `ITokenService.Issue(User, WorkspaceMembership?, …)`, the join-or-create rule — every "identity is created here" site below is the DB-11a version) and
