@@ -554,10 +554,14 @@ public class TenantService : ITenantService
                         && w.DemoExpiresAt < DateTime.UtcNow
                     ),
                 // Opus HIGH 3: an operator pause during the grace period holds the delete.
+                // Gemini MEDIUM: DeletedAt == null for consistency with every other lifecycle method
+                // (ExecuteDueDeletionAsync's own due query included) — defense in depth, even though
+                // nothing currently soft-deletes a workspace row ahead of the hard delete.
                 "owner_requested" => _unitOfWork
                     .Workspaces.IgnoreQueryFilters()
                     .AnyAsync(w =>
                         w.Id == workspaceId
+                        && w.DeletedAt == null
                         && w.DeletionScheduledFor != null
                         && w.DeletionScheduledFor <= DateTime.UtcNow
                         && !w.PausedByOperator
@@ -631,7 +635,10 @@ public class TenantService : ITenantService
                 );
                 var stillDueLocked = await StillDueAsync();
                 if (!stillDueLocked)
-                    throw new InvalidOperationException(
+                    // Opus MEDIUM: a DEDICATED exception type — never the bare InvalidOperationException
+                    // — so the hosted sweep loops can catch exactly this benign race as a "skip", without
+                    // also silently swallowing an unrelated bug that happens to throw the base type.
+                    throw new DeletionPreconditionChangedException(
                         reason == "demo_expired"
                             ? "demo converted during delete"
                             : "scheduled deletion cancelled during delete"
@@ -665,11 +672,16 @@ public class TenantService : ITenantService
             // another workspace it still belongs to) or is hard-deleted with it.
             await DeleteOwnedAsync<WorkspaceMembership>(x => x.OwnerId == workspaceId);
 
+            // Gemini BLOCKER (code review): NOT `&& u.DeletedAt == null` — see
+            // IdentitiesDeletedWithWorkspace's doc-comment. Every row whose legacy owner_id still
+            // points at this workspace must be resolved (deleted or re-homed) here, including one
+            // that was soft-deleted/erased after being created here, or the FK on the workspace
+            // delete below throws.
             var usersCreatedHere = await _unitOfWork
                 .Repository<User>()
                 .Query()
                 .IgnoreQueryFilters()
-                .Where(u => u.OwnerId == workspaceId && u.DeletedAt == null)
+                .Where(u => u.OwnerId == workspaceId)
                 .ToListAsync();
 
             // DB-18 (Opus HIGH 1): the delete set is the ONE shared query (also used by the deletion
@@ -759,9 +771,19 @@ public class TenantService : ITenantService
         uow.Repository<User>()
             .Query()
             .IgnoreQueryFilters()
+            // Gemini BLOCKER (code review): NOT `&& u.DeletedAt == null`. `users.owner_id` has a
+            // Restrict FK to `workspaces.id` (`fk_users_workspaces_owner_id`) — a row is still
+            // physically present and still references this workspace even after being
+            // soft-deleted/GDPR-erased (`IdentityEraseService` sets `DeletedAt` but never touches
+            // `OwnerId`). Excluding those rows here left them out of BOTH the delete set and the
+            // re-home loop in HardDeleteAsync below, so the workspace row's own delete then hit the
+            // FK (23503) the moment such an identity existed — pre-existing (operator delete, DB-17
+            // demo expiry), sharpened by DB-18 making self-service delete routine. Every identity
+            // whose legacy owner_id still points here — soft-deleted or not — is accounted for: no
+            // membership anywhere else ⇒ hard-deleted with the workspace (below); a membership row
+            // (any state) elsewhere ⇒ re-homed, never left dangling.
             .Where(u =>
                 u.OwnerId == workspaceId
-                && u.DeletedAt == null
                 && !uow.Repository<WorkspaceMembership>()
                     .Query()
                     .IgnoreQueryFilters()

@@ -122,6 +122,7 @@ public class TenantsController(
     [HttpPost("{workspaceId:guid}/pause")]
     [Audited(AuditActions.WorkspacePaused)]
     [ProducesResponseType(typeof(Result), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(Result), StatusCodes.Status409Conflict)]
     public async Task<IActionResult> OperatorPause(Guid workspaceId)
     {
         var result = await lifecycle.OperatorPauseAsync(workspaceId);
@@ -129,12 +130,17 @@ public class TenantsController(
             return StatusCode(StatusCodes.Status403Forbidden, result);
         if (result.IsNotFound)
             return NotFound(result);
+        // DB-18 (Gemini LOW): OperatorPause/Resume are now locked + re-checked like every other
+        // write and can return StateChanged on a genuine race — same 409 as OperatorCancelDeletion.
+        if (result.IsConflict)
+            return Conflict(result);
         return result.IsSuccess ? Ok(result) : BadRequest(result);
     }
 
     [HttpPost("{workspaceId:guid}/resume")]
     [Audited(AuditActions.WorkspaceResumed)]
     [ProducesResponseType(typeof(Result), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(Result), StatusCodes.Status409Conflict)]
     public async Task<IActionResult> OperatorResume(Guid workspaceId)
     {
         var result = await lifecycle.OperatorResumeAsync(workspaceId);
@@ -142,6 +148,8 @@ public class TenantsController(
             return StatusCode(StatusCodes.Status403Forbidden, result);
         if (result.IsNotFound)
             return NotFound(result);
+        if (result.IsConflict)
+            return Conflict(result);
         return result.IsSuccess ? Ok(result) : BadRequest(result);
     }
 

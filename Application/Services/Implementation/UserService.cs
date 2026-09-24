@@ -61,8 +61,13 @@ public class UserService : IUserService
     // Best-effort notification: a send failure must never fail the admin action.
     private async Task SafeSendAsync(string to, string subject, string html)
     {
-        try { await _emailService.SendAsync(to, subject, html); }
-        catch { /* logged inside the sender; ignore here */ }
+        try
+        {
+            await _emailService.SendAsync(to, subject, html);
+        }
+        catch
+        { /* logged inside the sender; ignore here */
+        }
     }
 
     /// <summary>
@@ -97,10 +102,13 @@ public class UserService : IUserService
             if (await _memberships.CurrentAdminAsync(targetOwnerId) == null)
                 return Result<UserResponse>.Failure(MessageKeys.User.WorkspaceNotFound);
 
-            var deputyRole = await _unitOfWork.Repository<Role>()
+            var deputyRole = await _unitOfWork
+                .Repository<Role>()
                 .Query()
                 .AsNoTracking()
-                .FirstOrDefaultAsync(r => r.Name == DeputyRoleName && r.DeletedAt == null && r.IsActive);
+                .FirstOrDefaultAsync(r =>
+                    r.Name == DeputyRoleName && r.DeletedAt == null && r.IsActive
+                );
             if (deputyRole == null)
                 return Result<UserResponse>.Failure(MessageKeys.Role.Invalid);
 
@@ -115,7 +123,10 @@ public class UserService : IUserService
 
             // Privilege-escalation guard: only a super admin may assign an admin-tier role — except
             // Deputy, which the current Workspace Admin may delegate to their own team.
-            if ((resolvedRole.GrantsAdmin || resolvedRole.IsSuperAdmin) && resolvedRole.Name != DeputyRoleName)
+            if (
+                (resolvedRole.GrantsAdmin || resolvedRole.IsSuperAdmin)
+                && resolvedRole.Name != DeputyRoleName
+            )
                 return Result<UserResponse>.Failure(MessageKeys.Role.EscalationNotAllowed);
 
             role = resolvedRole;
@@ -139,9 +150,16 @@ public class UserService : IUserService
 
         // MaxSeats: count LIVE memberships of this workspace. Grandfather-safe.
         var seatCount = await _memberships.InWorkspace(ownerId).CountAsync(m => m.LeftAt == null);
-        var seatCheck = await _entitlements.CheckCountAsync(ownerId, EntitlementCatalog.MaxSeats, seatCount);
+        var seatCheck = await _entitlements.CheckCountAsync(
+            ownerId,
+            EntitlementCatalog.MaxSeats,
+            seatCount
+        );
         if (!seatCheck.IsSuccess)
-            return Result<UserResponse>.LimitReached(seatCheck.Message ?? MessageKeys.Plan.LimitReached, seatCheck.Limit!);
+            return Result<UserResponse>.LimitReached(
+                seatCheck.Message ?? MessageKeys.Plan.LimitReached,
+                seatCheck.Limit!
+            );
 
         var isNewIdentity = identity == null;
         if (isNewIdentity)
@@ -212,7 +230,8 @@ public class UserService : IUserService
     /// </summary>
     private async Task<(User? Identity, WorkspaceMembership? Membership)> ResolveTargetAsync(int id)
     {
-        var identity = await _unitOfWork.Repository<User>()
+        var identity = await _unitOfWork
+            .Repository<User>()
             .Query()
             .IgnoreQueryFilters()
             .FirstOrDefaultAsync(u => u.Id == id && u.DeletedAt == null);
@@ -244,7 +263,11 @@ public class UserService : IUserService
 
         // Privilege-escalation guard: only a super admin may assign an admin-tier role — except
         // Deputy, which the current Workspace Admin may delegate to their own team.
-        if (!_currentUser.IsSuperAdmin && (role.GrantsAdmin || role.IsSuperAdmin) && role.Name != DeputyRoleName)
+        if (
+            !_currentUser.IsSuperAdmin
+            && (role.GrantsAdmin || role.IsSuperAdmin)
+            && role.Name != DeputyRoleName
+        )
             return Result<UserResponse>.Failure(MessageKeys.Role.EscalationNotAllowed);
 
         // S-13 (DB-11c review finding #2): approve can also change the role away from Workspace
@@ -255,7 +278,9 @@ public class UserService : IUserService
         {
             var soleAdmin = await _memberships.SoleAdminWorkspacesAsync(new[] { membership.Id });
             if (soleAdmin.Count > 0)
-                return Result<UserResponse>.Conflict(_memberships.SoleAdminConflict(soleAdmin).Message!);
+                return Result<UserResponse>.Conflict(
+                    _memberships.SoleAdminConflict(soleAdmin).Message!
+                );
         }
 
         var approveBeforeStatus = membership.ApprovalStatus;
@@ -298,20 +323,28 @@ public class UserService : IUserService
         var approveAppUrl = approveBrand.Urls.App.TrimEnd('/');
         // One lookup per send; null (missing row or still the DB-03 placeholder) falls back to the
         // pre-existing, workspace-agnostic wording.
-        var approveWorkspaceName = await WorkspaceNameResolver.ResolveForEmailAsync(_unitOfWork, membership.OwnerId);
-        var approveSubject = approveWorkspaceName != null
-            ? $"Your {approveProductName} account for {approveWorkspaceName} is approved"
-            : $"Your {approveProductName} account is approved";
-        var approveWorkspaceLine = approveWorkspaceName != null
-            ? $@"<p>You now have access to the <b>{System.Net.WebUtility.HtmlEncode(approveWorkspaceName)}</b> workspace.</p>"
-            : string.Empty;
-        await SafeSendAsync(identity.Email, approveSubject,
+        var approveWorkspaceName = await WorkspaceNameResolver.ResolveForEmailAsync(
+            _unitOfWork,
+            membership.OwnerId
+        );
+        var approveSubject =
+            approveWorkspaceName != null
+                ? $"Your {approveProductName} account for {approveWorkspaceName} is approved"
+                : $"Your {approveProductName} account is approved";
+        var approveWorkspaceLine =
+            approveWorkspaceName != null
+                ? $@"<p>You now have access to the <b>{System.Net.WebUtility.HtmlEncode(approveWorkspaceName)}</b> workspace.</p>"
+                : string.Empty;
+        await SafeSendAsync(
+            identity.Email,
+            approveSubject,
             $@"<div style=""font-family:system-ui,sans-serif;color:#0f172a;line-height:1.6"">
   <h2 style=""margin:0 0 8px"">You're in ✅</h2>
   <p>Your {approveProductName} account (<b>{identity.Email}</b>) has been approved and is now active.</p>
   {approveWorkspaceLine}
   <p><a href=""{approveAppUrl}"" style=""color:#2563eb"">Sign in to {approveProductName} →</a></p>
-</div>");
+</div>"
+        );
 
         return Result<UserResponse>.Success(MapToResponse(membership));
     }
@@ -327,7 +360,9 @@ public class UserService : IUserService
         // workspace's only live Workspace Admin bypassed the guard entirely.
         var soleAdmin = await _memberships.SoleAdminWorkspacesAsync(new[] { membership.Id });
         if (soleAdmin.Count > 0)
-            return Result<UserResponse>.Conflict(_memberships.SoleAdminConflict(soleAdmin).Message!);
+            return Result<UserResponse>.Conflict(
+                _memberships.SoleAdminConflict(soleAdmin).Message!
+            );
 
         if (identity.PublicId == _currentUser.Id)
             return Result<UserResponse>.Failure(MessageKeys.User.CannotRejectSelf);
@@ -368,19 +403,27 @@ public class UserService : IUserService
 
         var rejectBrand = await _branding.BuildResponseAsync("", new HashSet<string>());
         var rejectProductName = rejectBrand.ProductName;
-        var rejectWorkspaceName = await WorkspaceNameResolver.ResolveForEmailAsync(_unitOfWork, membership.OwnerId);
-        var rejectSubject = rejectWorkspaceName != null
-            ? $"Your {rejectProductName} account request for {rejectWorkspaceName}"
-            : $"Your {rejectProductName} account request";
-        var rejectWorkspaceLine = rejectWorkspaceName != null
-            ? $@"<p>This was for the <b>{System.Net.WebUtility.HtmlEncode(rejectWorkspaceName)}</b> workspace.</p>"
-            : string.Empty;
-        await SafeSendAsync(identity.Email, rejectSubject,
+        var rejectWorkspaceName = await WorkspaceNameResolver.ResolveForEmailAsync(
+            _unitOfWork,
+            membership.OwnerId
+        );
+        var rejectSubject =
+            rejectWorkspaceName != null
+                ? $"Your {rejectProductName} account request for {rejectWorkspaceName}"
+                : $"Your {rejectProductName} account request";
+        var rejectWorkspaceLine =
+            rejectWorkspaceName != null
+                ? $@"<p>This was for the <b>{System.Net.WebUtility.HtmlEncode(rejectWorkspaceName)}</b> workspace.</p>"
+                : string.Empty;
+        await SafeSendAsync(
+            identity.Email,
+            rejectSubject,
             $@"<div style=""font-family:system-ui,sans-serif;color:#0f172a;line-height:1.6"">
   <p>Thanks for your interest in {rejectProductName}. Unfortunately your account request for
   <b>{identity.Email}</b> was not approved at this time.</p>
   {rejectWorkspaceLine}
-</div>");
+</div>"
+        );
 
         return Result<UserResponse>.Success(MapToResponse(membership));
     }
@@ -408,18 +451,35 @@ public class UserService : IUserService
 
             // Privilege-escalation guard: only a super admin may assign an admin-tier role — except
             // Deputy, which the current Workspace Admin may delegate to their own team.
-            if (!_currentUser.IsSuperAdmin && (role.GrantsAdmin || role.IsSuperAdmin) && role.Name != DeputyRoleName)
+            if (
+                !_currentUser.IsSuperAdmin
+                && (role.GrantsAdmin || role.IsSuperAdmin)
+                && role.Name != DeputyRoleName
+            )
                 return Result<UserResponse>.Failure(MessageKeys.Role.EscalationNotAllowed);
         }
 
-        // DB-18 §3.5 (Opus HIGH 2): this route can also GRANT access — while the workspace is frozen,
-        // refuse any request that sets a password, activates the membership, or assigns an
-        // admin-tier role. Disabling, demoting to a non-admin role, and everything else pass
+        // DB-18 §3.5 (Opus HIGH 2, refined per Opus LOW): this route can also GRANT access — while
+        // the workspace is frozen, refuse a request that ACTUALLY sets a password, activates an
+        // inactive membership, assigns an admin-tier role, or upgrades a quick-access member to a
+        // full (non-quick-access) role. Every clause compares against the CURRENT state so a no-op
+        // resend (an already-active member re-PATCHed with IsActive:true, or the SAME role id) never
+        // trips the freeze guard; disabling, demoting to a non-admin role, and everything else pass
         // (the freeze must never stop an admin from locking someone out).
-        if (request.Password != null || request.IsActive == true || role?.GrantsAdmin == true)
+        var wasQuickAccess = membership.Role.QuickAccess;
+        var grantsAccess =
+            !string.IsNullOrEmpty(request.Password)
+            || (request.IsActive == true && !membership.IsActive)
+            || (
+                role != null
+                && role.Id != membership.RoleId
+                && (role.GrantsAdmin || (wasQuickAccess && !role.QuickAccess))
+            );
+        if (grantsAccess)
         {
             var frozen =
-                _workspaceState != null && (await _workspaceState.GetAsync(membership.OwnerId)).IsFrozen;
+                _workspaceState != null
+                && (await _workspaceState.GetAsync(membership.OwnerId)).IsFrozen;
             if (frozen)
                 return Result<UserResponse>.Forbidden(MessageKeys.Workspace.FrozenNoAccessGrant);
         }
@@ -439,7 +499,8 @@ public class UserService : IUserService
                 return Result<UserResponse>.Failure(MessageKeys.User.PasswordManagedElsewhere);
         }
 
-        var roleChangedAwayFromAdmin = role != null && role.Id != membership.RoleId && wasWorkspaceAdmin;
+        var roleChangedAwayFromAdmin =
+            role != null && role.Id != membership.RoleId && wasWorkspaceAdmin;
         var disablingAdmin = request.IsActive == false && wasWorkspaceAdmin;
         var adminSensitive = roleChangedAwayFromAdmin || disablingAdmin;
 
@@ -460,12 +521,19 @@ public class UserService : IUserService
             // self-only CannotChangeSelfFromAdmin guard, whose message is kept for the self case).
             if (roleChangedAwayFromAdmin)
             {
-                var soleAdmin = await _memberships.SoleAdminWorkspacesAsync(new[] { membership.Id });
+                var soleAdmin = await _memberships.SoleAdminWorkspacesAsync(
+                    new[] { membership.Id }
+                );
                 if (soleAdmin.Count > 0)
                 {
-                    earlyResult = identity.PublicId == _currentUser.Id
-                        ? Result<UserResponse>.Failure(MessageKeys.User.CannotChangeSelfFromAdmin)
-                        : Result<UserResponse>.Conflict(_memberships.SoleAdminConflict(soleAdmin).Message!);
+                    earlyResult =
+                        identity.PublicId == _currentUser.Id
+                            ? Result<UserResponse>.Failure(
+                                MessageKeys.User.CannotChangeSelfFromAdmin
+                            )
+                            : Result<UserResponse>.Conflict(
+                                _memberships.SoleAdminConflict(soleAdmin).Message!
+                            );
                     return;
                 }
             }
@@ -475,10 +543,14 @@ public class UserService : IUserService
             // active.
             if (disablingAdmin)
             {
-                var soleAdmin = await _memberships.SoleAdminWorkspacesAsync(new[] { membership.Id });
+                var soleAdmin = await _memberships.SoleAdminWorkspacesAsync(
+                    new[] { membership.Id }
+                );
                 if (soleAdmin.Count > 0)
                 {
-                    earlyResult = Result<UserResponse>.Conflict(_memberships.SoleAdminConflict(soleAdmin).Message!);
+                    earlyResult = Result<UserResponse>.Conflict(
+                        _memberships.SoleAdminConflict(soleAdmin).Message!
+                    );
                     return;
                 }
             }
@@ -573,7 +645,9 @@ public class UserService : IUserService
         // Fast pre-check (message ordering / early exit for the common case) — the authoritative,
         // race-safe recheck runs inside the transaction, under lock, immediately before the write
         // (review finding #5).
-        var soleAdminPreCheck = await _memberships.SoleAdminWorkspacesAsync(new[] { membership.Id });
+        var soleAdminPreCheck = await _memberships.SoleAdminWorkspacesAsync(
+            new[] { membership.Id }
+        );
         if (soleAdminPreCheck.Count > 0)
             return _memberships.SoleAdminConflict(soleAdminPreCheck);
 
@@ -583,14 +657,18 @@ public class UserService : IUserService
         // non-sole Workspace Admin.
         if (
             !_currentUser.IsSuperAdmin
-            && (membership.Role.Name == DeputyRoleName || membership.Role.Name == WorkspaceAdminRoleName)
+            && (
+                membership.Role.Name == DeputyRoleName
+                || membership.Role.Name == WorkspaceAdminRoleName
+            )
             && _currentUser.Id is Guid callerPublicId
         )
         {
             var callerIdentity = await _memberships.FindIdentityByPublicIdAsync(callerPublicId);
-            var callerMembership = callerIdentity != null
-                ? await _memberships.GetMembershipAsync(callerIdentity.Id, membership.OwnerId)
-                : null;
+            var callerMembership =
+                callerIdentity != null
+                    ? await _memberships.GetMembershipAsync(callerIdentity.Id, membership.OwnerId)
+                    : null;
             if (callerMembership?.Role.Name != WorkspaceAdminRoleName)
             {
                 return Result.Failure(
@@ -616,7 +694,9 @@ public class UserService : IUserService
             {
                 await LockWorkspaceMembershipsAsync(membership.OwnerId);
 
-                var soleAdmin = await _memberships.SoleAdminWorkspacesAsync(new[] { membership.Id });
+                var soleAdmin = await _memberships.SoleAdminWorkspacesAsync(
+                    new[] { membership.Id }
+                );
                 if (soleAdmin.Count > 0)
                 {
                     earlyResult = _memberships.SoleAdminConflict(soleAdmin);
@@ -675,7 +755,9 @@ public class UserService : IUserService
 
         // Fast pre-check; the authoritative, race-safe recheck runs inside the transaction, under
         // lock, immediately before the write (review finding #5).
-        var soleAdminPreCheck = await _memberships.SoleAdminWorkspacesAsync(new[] { membership.Id });
+        var soleAdminPreCheck = await _memberships.SoleAdminWorkspacesAsync(
+            new[] { membership.Id }
+        );
         if (soleAdminPreCheck.Count > 0)
             return _memberships.SoleAdminConflict(soleAdminPreCheck);
 
@@ -693,7 +775,9 @@ public class UserService : IUserService
             {
                 await LockWorkspaceMembershipsAsync(membership.OwnerId);
 
-                var soleAdmin = await _memberships.SoleAdminWorkspacesAsync(new[] { membership.Id });
+                var soleAdmin = await _memberships.SoleAdminWorkspacesAsync(
+                    new[] { membership.Id }
+                );
                 if (soleAdmin.Count > 0)
                 {
                     earlyResult = _memberships.SoleAdminConflict(soleAdmin);
@@ -761,24 +845,32 @@ public class UserService : IUserService
         if (!_currentUser.IsSuperAdmin && _currentUser.Id != currentAdminMembership.User.PublicId)
             return Result.Failure(MessageKeys.User.TransferNotAuthorized);
 
-        var adminRole = await _unitOfWork.Repository<Role>()
+        var adminRole = await _unitOfWork
+            .Repository<Role>()
             .Query()
             .AsNoTracking()
-            .FirstOrDefaultAsync(r => r.Name == WorkspaceAdminRoleName && r.DeletedAt == null && r.IsActive);
-        var deputyRole = await _unitOfWork.Repository<Role>()
+            .FirstOrDefaultAsync(r =>
+                r.Name == WorkspaceAdminRoleName && r.DeletedAt == null && r.IsActive
+            );
+        var deputyRole = await _unitOfWork
+            .Repository<Role>()
             .Query()
             .AsNoTracking()
-            .FirstOrDefaultAsync(r => r.Name == DeputyRoleName && r.DeletedAt == null && r.IsActive);
+            .FirstOrDefaultAsync(r =>
+                r.Name == DeputyRoleName && r.DeletedAt == null && r.IsActive
+            );
         if (adminRole == null || deputyRole == null)
             return Result.Failure(MessageKeys.Role.Invalid);
 
         await _unitOfWork.ExecuteInTransactionAsync(async () =>
         {
-            var trackedAdminM = await _unitOfWork.Repository<WorkspaceMembership>()
+            var trackedAdminM = await _unitOfWork
+                .Repository<WorkspaceMembership>()
                 .Query()
                 .IgnoreQueryFilters()
                 .FirstAsync(m => m.Id == currentAdminMembership.Id);
-            var trackedDeputyM = await _unitOfWork.Repository<WorkspaceMembership>()
+            var trackedDeputyM = await _unitOfWork
+                .Repository<WorkspaceMembership>()
                 .Query()
                 .IgnoreQueryFilters()
                 .FirstAsync(m => m.Id == deputyMembership.Id);
@@ -802,8 +894,14 @@ public class UserService : IUserService
                     AuditTargets.Membership,
                     trackedAdminM.Id.ToString(),
                     tenantOwnerId,
-                    Before: new Dictionary<string, string> { ["role_id"] = previousAdminRoleId.ToString() },
-                    After: new Dictionary<string, string> { ["role_id"] = trackedAdminM.RoleId.ToString() }
+                    Before: new Dictionary<string, string>
+                    {
+                        ["role_id"] = previousAdminRoleId.ToString(),
+                    },
+                    After: new Dictionary<string, string>
+                    {
+                        ["role_id"] = trackedAdminM.RoleId.ToString(),
+                    }
                 )
             );
             await _audit.WriteAsync(
@@ -812,8 +910,14 @@ public class UserService : IUserService
                     AuditTargets.Membership,
                     trackedDeputyM.Id.ToString(),
                     tenantOwnerId,
-                    Before: new Dictionary<string, string> { ["role_id"] = previousDeputyRoleId.ToString() },
-                    After: new Dictionary<string, string> { ["role_id"] = trackedDeputyM.RoleId.ToString() }
+                    Before: new Dictionary<string, string>
+                    {
+                        ["role_id"] = previousDeputyRoleId.ToString(),
+                    },
+                    After: new Dictionary<string, string>
+                    {
+                        ["role_id"] = trackedDeputyM.RoleId.ToString(),
+                    }
                 )
             );
         });
@@ -822,22 +926,24 @@ public class UserService : IUserService
     }
 
     private async Task<Role?> GetActiveRoleAsync(int roleId) =>
-        await _unitOfWork.Repository<Role>()
+        await _unitOfWork
+            .Repository<Role>()
             .Query()
             .AsNoTracking()
             .FirstOrDefaultAsync(r => r.Id == roleId && r.DeletedAt == null && r.IsActive);
 
-    private static UserResponse MapToResponse(WorkspaceMembership m) => new()
-    {
-        Id = m.User.Id,
-        PublicId = m.User.PublicId,
-        Email = m.User.Email,
-        DisplayName = m.User.DisplayName,
-        RoleId = m.RoleId,
-        RoleName = m.Role?.Name ?? string.Empty,
-        IsAdmin = m.Role?.GrantsAdmin ?? false,
-        IsActive = m.IsActive,
-        CreatedAt = m.JoinedAt,
-        ApprovalStatus = m.ApprovalStatus
-    };
+    private static UserResponse MapToResponse(WorkspaceMembership m) =>
+        new()
+        {
+            Id = m.User.Id,
+            PublicId = m.User.PublicId,
+            Email = m.User.Email,
+            DisplayName = m.User.DisplayName,
+            RoleId = m.RoleId,
+            RoleName = m.Role?.Name ?? string.Empty,
+            IsAdmin = m.Role?.GrantsAdmin ?? false,
+            IsActive = m.IsActive,
+            CreatedAt = m.JoinedAt,
+            ApprovalStatus = m.ApprovalStatus,
+        };
 }

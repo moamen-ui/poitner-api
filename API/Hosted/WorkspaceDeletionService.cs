@@ -163,9 +163,12 @@ public class WorkspaceDeletionService(
                         );
                 }
             }
-            catch (InvalidOperationException ex)
+            catch (DeletionPreconditionChangedException ex)
             {
-                // The locked re-check inside HardDeleteAsync aborted — a cancel/pause raced the job.
+                // Opus MEDIUM: catch ONLY the dedicated race-skip type — the locked re-check inside
+                // HardDeleteAsync aborted because a cancel/pause raced the job. A plain
+                // InvalidOperationException from anywhere else in the call graph is a real bug and
+                // must fall through to the generic handler below (failure counter, Critical after 3).
                 FailureCounts.TryRemove(id, out _);
                 log.LogInformation(
                     "WorkspaceDeletionService: {Id} skipped ({Reason})",

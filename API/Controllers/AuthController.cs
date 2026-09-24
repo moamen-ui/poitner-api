@@ -26,7 +26,8 @@ public class AuthController(
     IDeviceLoginService deviceLoginService,
     IIdentityEraseService eraseService,
     IEmailVerificationService emailVerification,
-    IWorkspaceLifecycleService workspaceLifecycle) : ControllerBase
+    IWorkspaceLifecycleService workspaceLifecycle
+) : ControllerBase
 {
     [AllowAnonymous]
     [Audited(AuditActions.AuthLoginSucceeded)]
@@ -47,8 +48,10 @@ public class AuthController(
             }
             return StatusCode(StatusCodes.Status429TooManyRequests, result);
         }
-        if (result.IsNotFound) return NotFound(result);
-        if (result.IsConflict) return Conflict(result);
+        if (result.IsNotFound)
+            return NotFound(result);
+        if (result.IsConflict)
+            return Conflict(result);
         return result.IsSuccess ? Ok(result) : BadRequest(result);
     }
 
@@ -91,7 +94,8 @@ public class AuthController(
     public async Task<IActionResult> SwitchWorkspace([FromBody] SwitchWorkspaceRequest request)
     {
         var result = await authService.SwitchWorkspaceAsync(request.WorkspaceId);
-        if (result.IsForbidden) return StatusCode(StatusCodes.Status403Forbidden, result);
+        if (result.IsForbidden)
+            return StatusCode(StatusCodes.Status403Forbidden, result);
         return result.IsSuccess ? Ok(result) : BadRequest(result);
     }
 
@@ -131,8 +135,10 @@ public class AuthController(
     public async Task<IActionResult> Register([FromBody] RegisterRequest request)
     {
         var result = await authService.RegisterAsync(request);
-        if (result.IsNotFound) return NotFound(result);
-        if (result.IsConflict) return Conflict(result);
+        if (result.IsNotFound)
+            return NotFound(result);
+        if (result.IsConflict)
+            return Conflict(result);
         return result.IsSuccess ? Ok(result) : BadRequest(result);
     }
 
@@ -146,8 +152,10 @@ public class AuthController(
     public async Task<IActionResult> Me()
     {
         var result = await authService.MeAsync();
-        if (result.IsNotFound) return NotFound(result);
-        if (result.IsConflict) return Conflict(result);
+        if (result.IsNotFound)
+            return NotFound(result);
+        if (result.IsConflict)
+            return Conflict(result);
         return result.IsSuccess ? Ok(result) : BadRequest(result);
     }
 
@@ -196,10 +204,13 @@ public class AuthController(
     [ProducesResponseType(typeof(Result), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(Result), StatusCodes.Status400BadRequest)]
     [ProducesResponseType(typeof(Result), StatusCodes.Status409Conflict)]
-    public async Task<IActionResult> ConfirmEmailChange([FromBody] ConfirmEmailChangeRequest request)
+    public async Task<IActionResult> ConfirmEmailChange(
+        [FromBody] ConfirmEmailChangeRequest request
+    )
     {
         var result = await authService.ConfirmEmailChangeAsync(request.Token);
-        if (result.IsConflict) return Conflict(result);
+        if (result.IsConflict)
+            return Conflict(result);
         return result.IsSuccess ? Ok(result) : BadRequest(result);
     }
 
@@ -214,7 +225,8 @@ public class AuthController(
     public async Task<IActionResult> ConfirmErase([FromBody] ConfirmEraseRequest request)
     {
         var result = await eraseService.EraseByTokenAsync(request.Token);
-        if (result.IsConflict) return Conflict(result);
+        if (result.IsConflict)
+            return Conflict(result);
         return result.IsSuccess ? Ok(result) : BadRequest(result);
     }
 
@@ -229,7 +241,9 @@ public class AuthController(
     [EnableRateLimiting("danger")]
     [ProducesResponseType(typeof(WorkspaceDeletionPreviewResponse), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(Result), StatusCodes.Status400BadRequest)]
-    public async Task<IActionResult> WorkspaceDeletionPreview([FromBody] WorkspaceDeletionTokenRequest request)
+    public async Task<IActionResult> WorkspaceDeletionPreview(
+        [FromBody] WorkspaceDeletionTokenRequest request
+    )
     {
         var result = await workspaceLifecycle.PreviewDeletionAsync(request.Token);
         return result.IsSuccess ? Ok(result) : BadRequest(result);
@@ -244,10 +258,18 @@ public class AuthController(
     [ProducesResponseType(typeof(WorkspaceDeletionScheduledResponse), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(Result), StatusCodes.Status400BadRequest)]
     [ProducesResponseType(typeof(Result), StatusCodes.Status403Forbidden)]
-    public async Task<IActionResult> WorkspaceDeletionConfirm([FromBody] ConfirmWorkspaceDeletionRequest request)
+    [ProducesResponseType(typeof(Result), StatusCodes.Status409Conflict)]
+    public async Task<IActionResult> WorkspaceDeletionConfirm(
+        [FromBody] ConfirmWorkspaceDeletionRequest request
+    )
     {
         var result = await workspaceLifecycle.ConfirmDeletionAsync(request);
-        if (result.IsForbidden) return StatusCode(StatusCodes.Status403Forbidden, result);
+        if (result.IsForbidden)
+            return StatusCode(StatusCodes.Status403Forbidden, result);
+        // DB-18 (Gemini + Opus HIGH): AlreadyDeleted / StateChanged are Result.Conflict — these fell
+        // through to a generic 400 before, indistinguishable from a wrong password or name mismatch.
+        if (result.IsConflict)
+            return Conflict(result);
         return result.IsSuccess ? Ok(result) : BadRequest(result);
     }
 
@@ -259,9 +281,14 @@ public class AuthController(
     [EnableRateLimiting("danger")]
     [ProducesResponseType(typeof(Result), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(Result), StatusCodes.Status400BadRequest)]
-    public async Task<IActionResult> WorkspaceDeletionPauseInstead([FromBody] WorkspaceDeletionTokenRequest request)
+    [ProducesResponseType(typeof(Result), StatusCodes.Status409Conflict)]
+    public async Task<IActionResult> WorkspaceDeletionPauseInstead(
+        [FromBody] WorkspaceDeletionTokenRequest request
+    )
     {
         var result = await workspaceLifecycle.PauseInsteadAsync(request.Token);
+        if (result.IsConflict)
+            return Conflict(result);
         return result.IsSuccess ? Ok(result) : BadRequest(result);
     }
 
@@ -271,7 +298,10 @@ public class AuthController(
     [ProducesResponseType(typeof(SignupEnabledResponse), StatusCodes.Status200OK)]
     public async Task<IActionResult> SignupEnabled()
     {
-        var enabled = await settingsService.GetBoolAsync(ISettingsService.ScopedAdminSignupEnabled, fallback: false);
+        var enabled = await settingsService.GetBoolAsync(
+            ISettingsService.ScopedAdminSignupEnabled,
+            fallback: false
+        );
         return Ok(new SignupEnabledResponse { Enabled = enabled });
     }
 
@@ -285,9 +315,12 @@ public class AuthController(
     public async Task<IActionResult> RegisterAdmin([FromBody] RegisterAdminRequest request)
     {
         var result = await authService.RegisterAdminAsync(request);
-        if (result.IsForbidden) return StatusCode(StatusCodes.Status403Forbidden, result);
-        if (result.IsConflict) return Conflict(result);
-        if (result.IsNotFound) return NotFound(result);
+        if (result.IsForbidden)
+            return StatusCode(StatusCodes.Status403Forbidden, result);
+        if (result.IsConflict)
+            return Conflict(result);
+        if (result.IsNotFound)
+            return NotFound(result);
         return result.IsSuccess ? Ok(result) : BadRequest(result);
     }
 
@@ -307,8 +340,10 @@ public class AuthController(
     public async Task<IActionResult> RegisterInvite([FromBody] AcceptInviteRequest request)
     {
         var result = await inviteService.AcceptAsync(request);
-        if (result.IsNotFound) return NotFound(result);
-        if (result.IsConflict) return Conflict(result);
+        if (result.IsNotFound)
+            return NotFound(result);
+        if (result.IsConflict)
+            return Conflict(result);
         return result.IsSuccess ? Ok(result) : BadRequest(result);
     }
 
@@ -352,8 +387,10 @@ public class AuthController(
     public async Task<IActionResult> DeviceInfo(string userCode)
     {
         var result = await deviceLoginService.GetInfoAsync(userCode);
-        if (result.IsForbidden) return StatusCode(StatusCodes.Status403Forbidden, result);
-        if (result.IsNotFound) return NotFound(result);
+        if (result.IsForbidden)
+            return StatusCode(StatusCodes.Status403Forbidden, result);
+        if (result.IsNotFound)
+            return NotFound(result);
         return result.IsSuccess ? Ok(result) : BadRequest(result);
     }
 
@@ -367,9 +404,12 @@ public class AuthController(
     public async Task<IActionResult> DeviceApprove([FromBody] DeviceLoginUserCodeRequest request)
     {
         var result = await deviceLoginService.ApproveAsync(request.UserCode);
-        if (result.IsForbidden) return StatusCode(StatusCodes.Status403Forbidden, result);
-        if (result.IsNotFound) return NotFound(result);
-        if (result.IsConflict) return Conflict(result);
+        if (result.IsForbidden)
+            return StatusCode(StatusCodes.Status403Forbidden, result);
+        if (result.IsNotFound)
+            return NotFound(result);
+        if (result.IsConflict)
+            return Conflict(result);
         return result.IsSuccess ? Ok(result) : BadRequest(result);
     }
 
@@ -383,9 +423,12 @@ public class AuthController(
     public async Task<IActionResult> DeviceDeny([FromBody] DeviceLoginUserCodeRequest request)
     {
         var result = await deviceLoginService.DenyAsync(request.UserCode);
-        if (result.IsForbidden) return StatusCode(StatusCodes.Status403Forbidden, result);
-        if (result.IsNotFound) return NotFound(result);
-        if (result.IsConflict) return Conflict(result);
+        if (result.IsForbidden)
+            return StatusCode(StatusCodes.Status403Forbidden, result);
+        if (result.IsNotFound)
+            return NotFound(result);
+        if (result.IsConflict)
+            return Conflict(result);
         return result.IsSuccess ? Ok(result) : BadRequest(result);
     }
 }

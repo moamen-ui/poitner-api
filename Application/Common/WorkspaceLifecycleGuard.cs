@@ -24,9 +24,12 @@ public static class WorkspaceLifecycleGuard
     {
         if (currentUser.KeyScopes != null)
             return false;
+        // Gemini NIT: IsSuperAdmin is already refused just above, so TenantStamp.TryRequireOwner's
+        // own !IsSuperAdmin check is redundant here — a plain TenantId comparison is exactly
+        // equivalent (a super admin's TenantId is never a real workspace's Id anyway) and simpler.
         if (currentUser.IsQuickAccess || currentUser.IsSuperAdmin || currentUser.IsImpersonating)
             return false;
-        if (!TenantStamp.TryRequireOwner(currentUser, out var ws) || ws != workspace.Id)
+        if (currentUser.TenantId != workspace.Id)
             return false;
         if (currentUser.Id is not Guid publicId)
             return false;
@@ -35,7 +38,7 @@ public static class WorkspaceLifecycleGuard
         if (identity == null)
             return false;
 
-        var membership = await memberships.GetMembershipAsync(identity.Id, ws);
+        var membership = await memberships.GetMembershipAsync(identity.Id, workspace.Id);
         if (
             membership == null
             || !membership.IsActive

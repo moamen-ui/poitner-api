@@ -64,6 +64,14 @@ public class WorkspaceFrozenFilter(ILogger<WorkspaceFrozenFilter> logger) : IAsy
             return;
         }
 
+        // Gemini LOW (code review — REJECTED, see adjudication): considered switching to
+        // ctx.ActionDescriptor.EndpointMetadata (walks inherited controllers/methods too, unlike
+        // GetCustomAttributes(inherit: false)) but every controller in this codebase declares the
+        // attribute directly (no inheritance chain reaches it), so the two approaches are behaviour-
+        // identical today, and WorkspaceFrozenFilterTests' hand-built ActionExecutingContext does
+        // NOT populate EndpointMetadata the way real ASP.NET Core routing does — only a real host
+        // would exercise the EndpointMetadata path, so switching would silently stop being covered
+        // by this suite. Kept as explicit reflection, which the tests DO exercise faithfully.
         var cad = ctx.ActionDescriptor as ControllerActionDescriptor;
         var attr =
             cad?.MethodInfo.GetCustomAttributes(typeof(AllowWhenWorkspacePausedAttribute), false)

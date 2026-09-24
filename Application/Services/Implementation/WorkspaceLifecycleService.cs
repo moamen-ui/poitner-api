@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Configuration;
 using Pointer.Application.Abstractions;
 using Pointer.Application.Common;
@@ -29,6 +30,8 @@ public class WorkspaceLifecycleService : IWorkspaceLifecycleService
     private readonly ILoginAttemptLimiter _lockout;
     private readonly IConfiguration? _config;
     private readonly IAuditWriter _audit;
+    private readonly IMemoryCache _linkAttempts;
+    private readonly object _linkAttemptsSync = new();
 
     public WorkspaceLifecycleService(
         IUnitOfWork unitOfWork,
@@ -43,7 +46,8 @@ public class WorkspaceLifecycleService : IWorkspaceLifecycleService
         ITenantService tenantService,
         ILoginAttemptLimiter lockout,
         IConfiguration? config = null,
-        IAuditWriter? audit = null
+        IAuditWriter? audit = null,
+        IMemoryCache? linkAttemptCache = null
     )
     {
         _unitOfWork = unitOfWork;
@@ -59,6 +63,37 @@ public class WorkspaceLifecycleService : IWorkspaceLifecycleService
         _lockout = lockout;
         _config = config;
         _audit = audit ?? NoopAuditWriter.Instance;
+        // Opus MEDIUM: a per-link failure counter, independent of the shared account-level login
+        // lockout (production threshold 10, shared with ordinary dashboard login failures) — the
+        // link itself must spend after ITS OWN 5th wrong password (D18.5), no more, no less. DI
+        // resolves the real singleton IMemoryCache (AuthenticationExtensions.cs); the fallback here
+        // only matters for a hand-constructed test/service instance.
+        _linkAttempts = linkAttemptCache ?? new MemoryCache(new MemoryCacheOptions());
+    }
+
+    private static string LinkFailureCacheKey(Guid workspaceId, DateTime requestedAt) =>
+        $"delws:{workspaceId:N}:{new DateTimeOffset(DateTime.SpecifyKind(requestedAt, DateTimeKind.Utc)).ToUnixTimeMilliseconds()}";
+
+    /// <summary>Records one more wrong-password attempt against THIS link (keyed by workspace +
+    /// the exact <c>DeletionRequestedAt</c> the link was minted for — a newer request gets its own
+    /// counter) and returns the new count. 30-minute TTL matches the link's own lifetime.</summary>
+    private int RecordLinkFailure(Guid workspaceId, DateTime requestedAt)
+    {
+        var key = LinkFailureCacheKey(workspaceId, requestedAt);
+        lock (_linkAttemptsSync)
+        {
+            var count = (_linkAttempts.TryGetValue(key, out int existing) ? existing : 0) + 1;
+            _linkAttempts.Set(key, count, TimeSpan.FromMinutes(30));
+            return count;
+        }
+    }
+
+    private void ResetLinkFailures(Guid workspaceId, DateTime requestedAt)
+    {
+        lock (_linkAttemptsSync)
+        {
+            _linkAttempts.Remove(LinkFailureCacheKey(workspaceId, requestedAt));
+        }
     }
 
     private sealed record LifecycleContext(
@@ -135,6 +170,8 @@ public class WorkspaceLifecycleService : IWorkspaceLifecycleService
         {
             // Bidi/formatting marks (LRM, RLM, ALM, ZWSP) that a copy-paste from a bidi UI can carry
             // invisibly — stripped before comparison so an Arabic workspace name still matches.
+            // \u escapes (Gemini/Opus NIT), not the literal invisible characters, so the source file
+            // stays legible and immune to an editor/encoding silently mangling them.
             if (ch is '‎' or '‏' or '؜' or '​')
                 continue;
             sb.Append(ch);
@@ -161,18 +198,58 @@ public class WorkspaceLifecycleService : IWorkspaceLifecycleService
                 MessageKeys.Workspace.DeletionAlreadyScheduled
             );
 
-        var tracked = await _unitOfWork.Workspaces.FirstOrDefaultAsync(w =>
-            w.Id == ctx.WorkspaceId
-        );
-        if (tracked == null)
-            return Result<WorkspaceResponse>.Conflict(MessageKeys.Workspace.AlreadyDeleted);
+        // Opus LOW: locked + re-checked, like every other write — an admin pause racing an
+        // operator pause (or a just-scheduled deletion) must not silently overwrite it.
+        Result<WorkspaceResponse>? outcome = null;
+        try
+        {
+            await _unitOfWork.ExecuteInTransactionAsync(async () =>
+            {
+                await _unitOfWork.ExecuteSqlRawAsync(
+                    "SELECT id FROM workspaces WHERE id = {0} FOR UPDATE",
+                    ctx.WorkspaceId
+                );
+                var tracked = await _unitOfWork
+                    .Workspaces.IgnoreQueryFilters()
+                    .FirstOrDefaultAsync(w => w.Id == ctx.WorkspaceId && w.DeletedAt == null);
+                if (tracked == null)
+                {
+                    outcome = Result<WorkspaceResponse>.Conflict(
+                        MessageKeys.Workspace.AlreadyDeleted
+                    );
+                    return;
+                }
+                if (tracked.PausedAt != null)
+                {
+                    outcome = Result<WorkspaceResponse>.Conflict(
+                        MessageKeys.Workspace.AlreadyPaused
+                    );
+                    return;
+                }
+                if (tracked.DeletionScheduledFor != null)
+                {
+                    outcome = Result<WorkspaceResponse>.Conflict(
+                        MessageKeys.Workspace.DeletionAlreadyScheduled
+                    );
+                    return;
+                }
 
-        tracked.PausedAt = DateTime.UtcNow;
-        tracked.PausedBy = ctx.Identity.PublicId;
-        tracked.PausedByOperator = false;
-        tracked.UpdatedAt = DateTime.UtcNow;
-        tracked.UpdatedBy = ctx.Identity.PublicId;
-        await _unitOfWork.SaveChangesAsync();
+                tracked.PausedAt = DateTime.UtcNow;
+                tracked.PausedBy = ctx.Identity.PublicId;
+                tracked.PausedByOperator = false;
+                tracked.UpdatedAt = DateTime.UtcNow;
+                tracked.UpdatedBy = ctx.Identity.PublicId;
+                await _unitOfWork.SaveChangesAsync();
+            });
+        }
+        catch (DbUpdateConcurrencyException)
+        {
+            return Result<WorkspaceResponse>.Conflict(MessageKeys.Workspace.StateChanged);
+        }
+
+        if (outcome != null)
+            return outcome;
+
         _workspaceState.Invalidate(ctx.WorkspaceId);
 
         await _audit.WriteAsync(
@@ -202,18 +279,64 @@ public class WorkspaceLifecycleService : IWorkspaceLifecycleService
         if (ctx.Workspace.DeletionScheduledFor != null)
             return Result<WorkspaceResponse>.Conflict(MessageKeys.Workspace.CancelDeletionFirst);
 
-        var tracked = await _unitOfWork.Workspaces.FirstOrDefaultAsync(w =>
-            w.Id == ctx.WorkspaceId
-        );
-        if (tracked == null)
-            return Result<WorkspaceResponse>.Conflict(MessageKeys.Workspace.AlreadyDeleted);
+        // Opus LOW: locked + re-checked — an admin resume racing an operator pause landing in the
+        // same instant must not clear it out from under the operator (only THIS admin's own prior
+        // self-pause may be cleared by this path).
+        Result<WorkspaceResponse>? outcome = null;
+        try
+        {
+            await _unitOfWork.ExecuteInTransactionAsync(async () =>
+            {
+                await _unitOfWork.ExecuteSqlRawAsync(
+                    "SELECT id FROM workspaces WHERE id = {0} FOR UPDATE",
+                    ctx.WorkspaceId
+                );
+                var tracked = await _unitOfWork
+                    .Workspaces.IgnoreQueryFilters()
+                    .FirstOrDefaultAsync(w => w.Id == ctx.WorkspaceId && w.DeletedAt == null);
+                if (tracked == null)
+                {
+                    outcome = Result<WorkspaceResponse>.Conflict(
+                        MessageKeys.Workspace.AlreadyDeleted
+                    );
+                    return;
+                }
+                if (tracked.PausedAt == null)
+                {
+                    outcome = Result<WorkspaceResponse>.Conflict(MessageKeys.Workspace.NotPaused);
+                    return;
+                }
+                if (tracked.PausedByOperator)
+                {
+                    outcome = Result<WorkspaceResponse>.Forbidden(
+                        MessageKeys.Workspace.PausedByOperator
+                    );
+                    return;
+                }
+                if (tracked.DeletionScheduledFor != null)
+                {
+                    outcome = Result<WorkspaceResponse>.Conflict(
+                        MessageKeys.Workspace.CancelDeletionFirst
+                    );
+                    return;
+                }
 
-        tracked.PausedAt = null;
-        tracked.PausedBy = null;
-        tracked.PausedByOperator = false;
-        tracked.UpdatedAt = DateTime.UtcNow;
-        tracked.UpdatedBy = ctx.Identity.PublicId;
-        await _unitOfWork.SaveChangesAsync();
+                tracked.PausedAt = null;
+                tracked.PausedBy = null;
+                tracked.PausedByOperator = false;
+                tracked.UpdatedAt = DateTime.UtcNow;
+                tracked.UpdatedBy = ctx.Identity.PublicId;
+                await _unitOfWork.SaveChangesAsync();
+            });
+        }
+        catch (DbUpdateConcurrencyException)
+        {
+            return Result<WorkspaceResponse>.Conflict(MessageKeys.Workspace.StateChanged);
+        }
+
+        if (outcome != null)
+            return outcome;
+
         _workspaceState.Invalidate(ctx.WorkspaceId);
 
         await _audit.WriteAsync(
@@ -379,9 +502,14 @@ public class WorkspaceLifecycleService : IWorkspaceLifecycleService
                 wasScheduled = fresh.DeletionScheduledFor != null;
                 stillPaused = fresh.PausedAt != null;
 
-                var tracked = await _unitOfWork.Workspaces.FirstOrDefaultAsync(w =>
-                    w.Id == ctx.WorkspaceId
-                );
+                // Gemini MEDIUM (consistency, priority 1): a session caller's TenantId already
+                // matches ctx.WorkspaceId, so the tenant query filter would let this through anyway
+                // — but every non-session-safe tracked load in this class now uses the same
+                // IgnoreQueryFilters + explicit Id/DeletedAt shape, so a copy-paste never silently
+                // reintroduces the anonymous/job blocker.
+                var tracked = await _unitOfWork
+                    .Workspaces.IgnoreQueryFilters()
+                    .FirstOrDefaultAsync(w => w.Id == ctx.WorkspaceId && w.DeletedAt == null);
                 if (tracked == null)
                 {
                     outcome = Result<WorkspaceResponse>.Conflict(
@@ -601,9 +729,20 @@ public class WorkspaceLifecycleService : IWorkspaceLifecycleService
             {
                 await _lockout.RecordFailureAsync(identity.Email);
 
-                // D18.5: after the 5th failure on this link, the link itself is spent.
-                if (await _lockout.IsLockedAsync(identity.Email))
-                    await SpendLinkAsync(workspace.Id);
+                // Opus MEDIUM (D18.5): spend the link on ITS OWN 5th wrong password — a dedicated
+                // per-link counter, never coupled to the shared account-level login lockout (whose
+                // production threshold is 10, and which a prior/unrelated failed dashboard login can
+                // already have partially tripped).
+                var linkFailures = RecordLinkFailure(
+                    workspace.Id,
+                    workspace.DeletionRequestedAt!.Value
+                );
+                if (linkFailures >= 5)
+                    await SpendLinkAsync(
+                        workspace.Id,
+                        workspace.DeletionRequestedAt!.Value,
+                        identity.PublicId
+                    );
 
                 return Result<WorkspaceDeletionScheduledResponse>.Failure(
                     MessageKeys.User.CurrentPasswordIncorrect
@@ -623,6 +762,12 @@ public class WorkspaceLifecycleService : IWorkspaceLifecycleService
                     workspace.Id
                 );
 
+                // Opus LOW: FindIdentityByPublicIdAsync/GetMembershipAsync are tracking queries —
+                // without clearing the tracker first, EF's identity resolution hands back the SAME
+                // instances loaded before the lock instead of re-reading the row, so a password
+                // change, demotion or removal committed in the race window would be missed here.
+                _unitOfWork.ClearChangeTracker();
+
                 // Re-run the token *state* checks on the fresh, locked row — a racing confirm/
                 // pause-instead/cancel makes this fail cleanly with DeletionLinkInvalid.
                 var revalidated = await ValidateTokenAsync(request.Token);
@@ -632,13 +777,29 @@ public class WorkspaceLifecycleService : IWorkspaceLifecycleService
                     return;
                 }
 
-                var tracked = await _unitOfWork.Workspaces.FirstOrDefaultAsync(w =>
-                    w.Id == workspace.Id
-                );
+                // BLOCKER (Gemini + Opus, priority 1): this call runs anonymously — no tenant
+                // claim, `IsSuperAdmin` false — so the strict-own Workspace query filter evaluates
+                // to false and a plain `_unitOfWork.Workspaces.FirstOrDefaultAsync` ALWAYS returns
+                // null here, making confirm 100% unreachable in production (AlreadyDeleted on every
+                // attempt). IgnoreQueryFilters + the explicit Id/DeletedAt predicate is required on
+                // every anonymous/job tracked load in this class.
+                var tracked = await _unitOfWork
+                    .Workspaces.IgnoreQueryFilters()
+                    .FirstOrDefaultAsync(w => w.Id == workspace.Id && w.DeletedAt == null);
                 if (tracked == null)
                 {
                     outcome = Result<WorkspaceDeletionScheduledResponse>.Conflict(
                         MessageKeys.Workspace.AlreadyDeleted
+                    );
+                    return;
+                }
+
+                // Opus LOW: the PausedByOperator check above only saw the pre-lock snapshot — an
+                // operator pause landing in the gap before the lock must still refuse the confirm.
+                if (tracked.PausedByOperator)
+                {
+                    outcome = Result<WorkspaceDeletionScheduledResponse>.Forbidden(
+                        MessageKeys.Workspace.PausedByOperator
                     );
                     return;
                 }
@@ -664,7 +825,10 @@ public class WorkspaceLifecycleService : IWorkspaceLifecycleService
             return outcome;
 
         if (!identity.PasswordlessOnly)
+        {
             await _lockout.ResetAsync(identity.Email);
+            ResetLinkFailures(workspace.Id, workspace.DeletionRequestedAt!.Value);
+        }
 
         _workspaceState.Invalidate(workspace.Id);
 
@@ -702,8 +866,14 @@ public class WorkspaceLifecycleService : IWorkspaceLifecycleService
     }
 
     /// <summary>D18.5 (5th wrong-password failure): clears the pending request so the link dies —
-    /// its own locked transaction (the confirm attempt that triggered this has already failed).</summary>
-    private async Task SpendLinkAsync(Guid workspaceId)
+    /// its own locked transaction (the confirm attempt that triggered this has already failed).
+    /// Opus MEDIUM: re-checks state under the lock against the EXACT request this failing attempt
+    /// validated against (<paramref name="requestedAt"/>/<paramref name="requestedBy"/>) — a
+    /// concurrent correct confirm in another tab may have already scheduled the deletion (which
+    /// never clears <c>DeletionRequestedAt</c>) or a newer request may have been issued; spending
+    /// blindly would either void a fresh, valid schedule's audit trail for no reason or clear a
+    /// different (newer) outstanding link than the one that just failed 5 times.</summary>
+    private async Task SpendLinkAsync(Guid workspaceId, DateTime requestedAt, Guid requestedBy)
     {
         try
         {
@@ -713,19 +883,29 @@ public class WorkspaceLifecycleService : IWorkspaceLifecycleService
                     "SELECT id FROM workspaces WHERE id = {0} FOR UPDATE",
                     workspaceId
                 );
-                var tracked = await _unitOfWork.Workspaces.FirstOrDefaultAsync(w =>
-                    w.Id == workspaceId
-                );
+                // BLOCKER: same anonymous-caller query-filter bug as ConfirmDeletionAsync — without
+                // IgnoreQueryFilters this always returns null, so the link is never actually spent
+                // after the 5th wrong password (D18.5 silently unenforced).
+                var tracked = await _unitOfWork
+                    .Workspaces.IgnoreQueryFilters()
+                    .FirstOrDefaultAsync(w => w.Id == workspaceId && w.DeletedAt == null);
                 if (tracked == null)
                     return;
+                if (
+                    tracked.DeletionScheduledFor != null
+                    || tracked.DeletionRequestedAt != requestedAt
+                    || tracked.DeletionRequestedBy != requestedBy
+                )
+                    return; // a racing confirm/cancel/newer request already moved the state on
                 tracked.DeletionRequestedAt = null;
                 tracked.DeletionRequestedBy = null;
                 await _unitOfWork.SaveChangesAsync();
             });
             _workspaceState.Invalidate(workspaceId);
         }
-        catch (DbUpdateConcurrencyException)
-        { /* already gone or changed by someone else — nothing to spend */
+        catch (DbUpdateException)
+        { /* already gone or changed by someone else (concurrency or a check-constraint race) —
+           nothing to spend; the confirm attempt that triggered this already failed on its own terms */
         }
     }
 
@@ -748,6 +928,9 @@ public class WorkspaceLifecycleService : IWorkspaceLifecycleService
                     workspace.Id
                 );
 
+                // Opus LOW: same stale-tracked-instance concern as ConfirmDeletionAsync.
+                _unitOfWork.ClearChangeTracker();
+
                 var revalidated = await ValidateTokenAsync(token);
                 if (!revalidated.IsSuccess)
                 {
@@ -755,9 +938,10 @@ public class WorkspaceLifecycleService : IWorkspaceLifecycleService
                     return;
                 }
 
-                var tracked = await _unitOfWork.Workspaces.FirstOrDefaultAsync(w =>
-                    w.Id == workspace.Id
-                );
+                // BLOCKER: same anonymous-caller query-filter bug as ConfirmDeletionAsync.
+                var tracked = await _unitOfWork
+                    .Workspaces.IgnoreQueryFilters()
+                    .FirstOrDefaultAsync(w => w.Id == workspace.Id && w.DeletedAt == null);
                 if (tracked == null)
                 {
                     outcome = Result.Conflict(MessageKeys.Workspace.AlreadyDeleted);
@@ -819,20 +1003,45 @@ public class WorkspaceLifecycleService : IWorkspaceLifecycleService
         if (!guard.IsSuccess)
             return guard;
 
-        var workspace = await _unitOfWork
-            .Workspaces.IgnoreQueryFilters()
-            .FirstOrDefaultAsync(w => w.Id == workspaceId && w.DeletedAt == null);
-        if (workspace == null)
-            return Result.NotFound(MessageKeys.Workspace.NotFound);
-
         var operatorId = _currentUser.Id ?? Guid.Empty;
-        // D18.6: an operator pause overrides a self-pause and admins cannot lift it.
-        workspace.PausedAt = DateTime.UtcNow;
-        workspace.PausedBy = operatorId;
-        workspace.PausedByOperator = true;
-        workspace.UpdatedAt = DateTime.UtcNow;
-        workspace.UpdatedBy = operatorId;
-        await _unitOfWork.SaveChangesAsync();
+        Result? outcome = null;
+
+        // Gemini MEDIUM: transaction + lock + concurrency handling, same shape as every other
+        // write — an operator pause racing a confirm/cancel/reminder must not 500.
+        try
+        {
+            await _unitOfWork.ExecuteInTransactionAsync(async () =>
+            {
+                await _unitOfWork.ExecuteSqlRawAsync(
+                    "SELECT id FROM workspaces WHERE id = {0} FOR UPDATE",
+                    workspaceId
+                );
+                var tracked = await _unitOfWork
+                    .Workspaces.IgnoreQueryFilters()
+                    .FirstOrDefaultAsync(w => w.Id == workspaceId && w.DeletedAt == null);
+                if (tracked == null)
+                {
+                    outcome = Result.NotFound(MessageKeys.Workspace.NotFound);
+                    return;
+                }
+
+                // D18.6: an operator pause overrides a self-pause and admins cannot lift it.
+                tracked.PausedAt = DateTime.UtcNow;
+                tracked.PausedBy = operatorId;
+                tracked.PausedByOperator = true;
+                tracked.UpdatedAt = DateTime.UtcNow;
+                tracked.UpdatedBy = operatorId;
+                await _unitOfWork.SaveChangesAsync();
+            });
+        }
+        catch (DbUpdateConcurrencyException)
+        {
+            return Result.Conflict(MessageKeys.Workspace.StateChanged);
+        }
+
+        if (outcome != null)
+            return outcome;
+
         _workspaceState.Invalidate(workspaceId);
 
         await _audit.WriteAsync(
@@ -854,21 +1063,62 @@ public class WorkspaceLifecycleService : IWorkspaceLifecycleService
         if (!guard.IsSuccess)
             return guard;
 
-        var workspace = await _unitOfWork
-            .Workspaces.IgnoreQueryFilters()
-            .FirstOrDefaultAsync(w => w.Id == workspaceId && w.DeletedAt == null);
-        if (workspace == null)
-            return Result.NotFound(MessageKeys.Workspace.NotFound);
-
         var operatorId = _currentUser.Id ?? Guid.Empty;
-        // Opus NIT (documented, not changed — D18.6): operator resume also clears an earlier admin
-        // self-pause; the admin can pause again.
-        workspace.PausedAt = null;
-        workspace.PausedBy = null;
-        workspace.PausedByOperator = false;
-        workspace.UpdatedAt = DateTime.UtcNow;
-        workspace.UpdatedBy = operatorId;
-        await _unitOfWork.SaveChangesAsync();
+        Result? outcome = null;
+        // Opus LOW: a schedule that is already past-due (or lands within 24h) must not delete on the
+        // very next sweep with no fresh notice — resuming from an operator pause reschedules it and
+        // clears the reminder flag so a new T-24h reminder can fire.
+        var rescheduled = false;
+        DateTime? newScheduledFor = null;
+
+        try
+        {
+            await _unitOfWork.ExecuteInTransactionAsync(async () =>
+            {
+                await _unitOfWork.ExecuteSqlRawAsync(
+                    "SELECT id FROM workspaces WHERE id = {0} FOR UPDATE",
+                    workspaceId
+                );
+                var tracked = await _unitOfWork
+                    .Workspaces.IgnoreQueryFilters()
+                    .FirstOrDefaultAsync(w => w.Id == workspaceId && w.DeletedAt == null);
+                if (tracked == null)
+                {
+                    outcome = Result.NotFound(MessageKeys.Workspace.NotFound);
+                    return;
+                }
+
+                // Opus NIT (documented, not changed — D18.6): operator resume also clears an earlier
+                // admin self-pause; the admin can pause again.
+                tracked.PausedAt = null;
+                tracked.PausedBy = null;
+                tracked.PausedByOperator = false;
+                tracked.UpdatedAt = DateTime.UtcNow;
+                tracked.UpdatedBy = operatorId;
+
+                var now = DateTime.UtcNow;
+                if (
+                    tracked.DeletionScheduledFor is DateTime scheduledFor
+                    && scheduledFor <= now.AddHours(24)
+                )
+                {
+                    tracked.DeletionScheduledFor = now.AddHours(24);
+                    tracked.DeletionReminderSentAt = null;
+                    rescheduled = true;
+                    newScheduledFor = tracked.DeletionScheduledFor;
+                }
+
+                await _unitOfWork.SaveChangesAsync();
+            });
+        }
+        catch (DbUpdateConcurrencyException)
+        {
+            return Result.Conflict(MessageKeys.Workspace.StateChanged);
+        }
+
+        if (outcome != null)
+            return outcome;
+
         _workspaceState.Invalidate(workspaceId);
 
         await _audit.WriteAsync(
@@ -880,6 +1130,22 @@ public class WorkspaceLifecycleService : IWorkspaceLifecycleService
                 After: new Dictionary<string, string> { ["source"] = "operator" }
             )
         );
+
+        if (rescheduled && newScheduledFor is DateTime sf)
+            await _audit.WriteAsync(
+                new AuditEntry(
+                    AuditActions.WorkspaceDeletionRescheduled,
+                    AuditTargets.Workspace,
+                    workspaceId.ToString(),
+                    workspaceId,
+                    After: new Dictionary<string, string>
+                    {
+                        ["scheduled_for"] = sf.ToString("O"),
+                        ["reason"] = "operator_resume",
+                    },
+                    ActorKindOverride: AuditActorKind.System
+                )
+            );
 
         return Result.Success();
     }
@@ -928,9 +1194,13 @@ public class WorkspaceLifecycleService : IWorkspaceLifecycleService
                 wasScheduled = fresh.DeletionScheduledFor != null;
                 stillPaused = fresh.PausedAt != null;
 
-                var tracked = await _unitOfWork.Workspaces.FirstOrDefaultAsync(w =>
-                    w.Id == workspaceId
-                );
+                // Gemini MEDIUM (consistency, priority 1): this is a super-admin caller so the
+                // tenant filter already lets it through, but every tracked load in this class now
+                // uses the same shape — no copy-paste can silently drop the IgnoreQueryFilters an
+                // anonymous/job caller actually needs.
+                var tracked = await _unitOfWork
+                    .Workspaces.IgnoreQueryFilters()
+                    .FirstOrDefaultAsync(w => w.Id == workspaceId && w.DeletedAt == null);
                 if (tracked == null)
                 {
                     outcome = Result.Conflict(MessageKeys.Workspace.AlreadyDeleted);
@@ -993,6 +1263,10 @@ public class WorkspaceLifecycleService : IWorkspaceLifecycleService
                 && w.DeletionScheduledFor <= now.AddHours(24)
                 && w.DeletionReminderSentAt == null
                 && w.DeletionConfirmedAt != null
+                // Opus LOW: an operator pause during the grace period holds the delete AND the
+                // reminder — sending "will be deleted in 24h" while an operator has frozen the
+                // countdown would be actively misleading.
+                && !w.PausedByOperator
                 // Grace < 2 days: no reminder — E2 (confirmed) is the only notice (Opus NIT).
                 && w.DeletionScheduledFor.Value - w.DeletionConfirmedAt.Value
                     >= TimeSpan.FromHours(48)
@@ -1026,13 +1300,22 @@ public class WorkspaceLifecycleService : IWorkspaceLifecycleService
                             && w.DeletionScheduledFor <= now.AddHours(24)
                             && w.DeletionReminderSentAt == null
                             && w.DeletionConfirmedAt != null
+                            && !w.PausedByOperator
                             && w.DeletionScheduledFor.Value - w.DeletionConfirmedAt.Value
                                 >= TimeSpan.FromHours(48)
                         );
                     if (!stillDue)
                         return;
 
-                    var tracked = await _unitOfWork.Workspaces.FirstOrDefaultAsync(w => w.Id == id);
+                    // BLOCKER: this job runs with no tenant context at all — `_currentUser.TenantId`
+                    // is null and `IsSuperAdmin` is false, so a plain `_unitOfWork.Workspaces` query
+                    // filter always evaluates to false and this tracked load returned null for every
+                    // row, meaning `DeletionReminderSentAt` was never stamped and — for a grace
+                    // period ≥ 48h — `ExecuteDueDeletionAsync` would then permanently skip the
+                    // scheduled delete (it requires a sent reminder or a sub-48h grace).
+                    var tracked = await _unitOfWork
+                        .Workspaces.IgnoreQueryFilters()
+                        .FirstOrDefaultAsync(w => w.Id == id && w.DeletedAt == null);
                     if (tracked == null)
                         return;
 
