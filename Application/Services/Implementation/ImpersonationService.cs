@@ -2,6 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using Pointer.Application.Abstractions;
 using Pointer.Application.Common;
+using Pointer.Application.Common.Email;
 using Pointer.Application.DTOs.Impersonation;
 using Pointer.Application.Resources;
 using Pointer.Application.Response;
@@ -310,19 +311,19 @@ public class ImpersonationService(
 
             var brand = await branding.BuildResponseAsync("", new HashSet<string>());
             var subject = $"An operator is viewing your {brand.ProductName} workspace";
-            var reasonEncoded = System.Net.WebUtility.HtmlEncode(reason);
-            var workspaceNameEncoded = System.Net.WebUtility.HtmlEncode(workspaceName);
 
             foreach (var admin in admins)
             {
-                var nameEncoded = System.Net.WebUtility.HtmlEncode(admin.DisplayName);
-                var html =
-                    $"<p>Hi {nameEncoded}, the {brand.ProductName} operator opened a read-only view "
-                    + $"of the <strong>{workspaceNameEncoded}</strong> workspace at {startedAt:u} for up to "
-                    + $"{minutes} minutes.</p>"
-                    + $"<p>Reason given: <em>{reasonEncoded}</em>.</p>"
-                    + "<p>This is logged in your Security log (Settings &rarr; Security log), where you will "
-                    + "also see when it ended. If you did not expect this, reply to this e-mail.</p>";
+                var html = EmailTemplateBuilder.ImpersonationNotice(
+                    admin.DisplayName,
+                    brand.ProductName,
+                    workspaceName,
+                    startedAt,
+                    minutes,
+                    reason,
+                    brand.PrimaryColor,
+                    brand.Urls.App
+                );
 
                 try
                 {

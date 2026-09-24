@@ -2,6 +2,7 @@ using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Logging;
 using Pointer.Application.Abstractions;
 using Pointer.Application.Common;
+using Pointer.Application.Common.Email;
 using Pointer.Application.Resources;
 using Pointer.Application.Response;
 using Pointer.Application.Services.Interfaces;
@@ -96,7 +97,13 @@ public class EmailVerificationService : IEmailVerificationService
             var sent = await _emailService.SendAsync(
                 identity.Email,
                 $"Verify your {brand.ProductName} e-mail address",
-                BuildVerifyEmailHtml(link, identity.Email, brand.ProductName)
+                EmailTemplateBuilder.VerifyEmail(
+                    link,
+                    identity.Email,
+                    brand.ProductName,
+                    brand.PrimaryColor,
+                    brand.Urls.App.TrimEnd('/')
+                )
             );
             if (!sent)
                 _logger.LogWarning(
@@ -230,17 +237,5 @@ public class EmailVerificationService : IEmailVerificationService
         );
 
         return Result.Success(MessageKeys.Auth.EmailVerified);
-    }
-
-    private static string BuildVerifyEmailHtml(string link, string email, string productName)
-    {
-        var encodedEmail = System.Net.WebUtility.HtmlEncode(email);
-        var encodedLink = System.Net.WebUtility.HtmlEncode(link);
-        return $@"<div style=""font-family:system-ui,sans-serif;color:#0f172a;line-height:1.6"">
-  <h2 style=""margin:0 0 8px"">Verify your e-mail address</h2>
-  <p style=""margin:0 0 16px"">Confirm that {encodedEmail} is yours to unlock admin actions in {productName}. The link expires in 30 minutes.</p>
-  <p><a href=""{encodedLink}"" style=""color:#2563eb"">Verify my e-mail &rarr;</a></p>
-  <p style=""color:#94a3b8;font-size:12px"">If you did not sign up, ignore this e-mail.</p>
-</div>";
     }
 }

@@ -277,7 +277,7 @@ public class UsageRollupTests
                     Type = "installed",
                     Source = "test",
                     OwnerId = owner,
-                    CreatedAt = now.AddHours(-1),
+                    CreatedAt = now.Date, // start of today (UTC): always "today" and never in the future, even just after midnight
                 }
             );
             await db.SaveChangesAsync();
@@ -390,7 +390,7 @@ public class UsageRollupTests
                     Type = "installed",
                     Source = "test",
                     OwnerId = null,
-                    CreatedAt = now.AddHours(-1),
+                    CreatedAt = now.Date, // start of today (UTC) — `now.AddHours(-1)` fell on yesterday between 00:00 and 01:00 UTC
                 }
             );
             await db.SaveChangesAsync();

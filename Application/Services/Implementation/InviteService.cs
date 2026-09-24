@@ -3,6 +3,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using Pointer.Application.Abstractions;
 using Pointer.Application.Common;
+using Pointer.Application.Common.Email;
 using Pointer.Application.DTOs.Auth;
 using Pointer.Application.DTOs.Invite;
 using Pointer.Application.Resources;
@@ -264,13 +265,15 @@ public class InviteService : IInviteService
                 emailSent = await _emailService.SendAsync(
                     emailNormalized,
                     subject,
-                    BuildInviteEmailHtml(
+                    EmailTemplateBuilder.WorkspaceInvite(
                         url,
                         role?.Name,
                         brand.ProductName,
                         invite.ExpiresAt,
                         invite.OwnerId is null,
-                        workspaceName
+                        workspaceName,
+                        brand.PrimaryColor,
+                        brand.Urls.App.TrimEnd('/')
                     )
                 );
             }
@@ -1221,13 +1224,15 @@ public class InviteService : IInviteService
                 emailSent = await _emailService.SendAsync(
                     emailNormalized,
                     $"You're invited to review {project.Name}",
-                    BuildQuickAccessInviteEmailHtml(
+                    EmailTemplateBuilder.QuickAccessInvite(
                         magicLink,
                         emailNormalized,
                         brand.ProductName,
                         project.Name!,
                         extensionStoreUrl,
-                        workspaceName
+                        workspaceName,
+                        brand.PrimaryColor,
+                        brand.Urls.App.TrimEnd('/')
                     )
                 );
             }
@@ -1365,80 +1370,6 @@ public class InviteService : IInviteService
     private static string BuildJoinUrl(string appBaseUrl, string code) =>
         $"{appBaseUrl}/join?code={Uri.EscapeDataString(code)}";
 
-    private static string BuildInviteEmailHtml(
-        string joinUrl,
-        string? roleName,
-        string productName,
-        DateTime expiresAtUtc,
-        bool isNewWorkspace = false,
-        string? workspaceName = null
-    )
-    {
-        // workspaceName is the RAW (not yet encoded) name resolved via WorkspaceNameResolver — null
-        // means "omit the workspace mention" (new-workspace invite, missing row, or still the DB-03
-        // placeholder). Encode here, once, right before it touches HTML.
-        var encodedWorkspaceName = workspaceName is null
-            ? null
-            : System.Net.WebUtility.HtmlEncode(workspaceName);
-
-        // A workspace invite has no role — without this branch the body was a bare heading and a
-        // button, which reads like a mis-sent email for the one invitation that matters most.
-        var roleLine =
-            isNewWorkspace
-                ? "<p style=\"margin:0 0 16px\">You've been invited to create a workspace. Open the link "
-                    + "below and choose your own password — nobody else ever sees it.</p>"
-            : encodedWorkspaceName != null && roleName != null
-                ? $"<p style=\"margin:0 0 16px\">You've been invited to join the <b>{encodedWorkspaceName}</b> workspace as <b>{roleName}</b>.</p>"
-            : encodedWorkspaceName != null
-                ? $"<p style=\"margin:0 0 16px\">You've been invited to join the <b>{encodedWorkspaceName}</b> workspace.</p>"
-            : roleName != null
-                ? $"<p style=\"margin:0 0 16px\">You've been invited to join as <b>{roleName}</b>.</p>"
-            : string.Empty;
-        return $@"<div style=""font-family:system-ui,sans-serif;color:#0f172a;line-height:1.6"">
-  <h2 style=""margin:0 0 8px"">You're invited to {productName} 🐕</h2>
-  {roleLine}
-  <p style=""margin:0 0 16px""><a href=""{joinUrl}"" style=""display:inline-block;background:#2563eb;color:#fff;padding:10px 20px;border-radius:8px;text-decoration:none"">Accept invite →</a></p>
-  <p style=""margin:0;color:#475569;font-size:13px"">This link expires on {expiresAtUtc:yyyy-MM-dd HH:mm} UTC. If you weren't expecting this, you can ignore this email.</p>
-</div>";
-    }
-
-    /// <summary>
-    /// The quick-access invitation e-mail. Carries the MAGIC LINK and no password — this template
-    /// used to include the generated password in plaintext (CWE-319), which is why the account is
-    /// now passwordless entirely.
-    /// </summary>
-    private static string BuildQuickAccessInviteEmailHtml(
-        string magicLink,
-        string email,
-        string productName,
-        string projectName,
-        string? extensionStoreUrl,
-        string? workspaceName = null
-    )
-    {
-        // Omitted (not just disabled) until a super admin sets ExtensionStoreUrl in Settings —
-        // no point linking a reader to a store page that doesn't exist yet.
-        var extensionLine = !string.IsNullOrWhiteSpace(extensionStoreUrl)
-            ? $@"<p style=""margin:0 0 16px""><a href=""{extensionStoreUrl}"" style=""display:inline-block;background:#0f172a;color:#fff;padding:10px 20px;border-radius:8px;text-decoration:none"">Get the Chrome extension →</a></p>"
-            : string.Empty;
-        // workspaceName is RAW (not yet encoded) — null means omit (missing row or still the DB-03
-        // placeholder).
-        var workspaceLine =
-            workspaceName != null
-                ? $@"<p style=""margin:0 0 16px;color:#475569"">This invite is from the <b>{System.Net.WebUtility.HtmlEncode(workspaceName)}</b> workspace.</p>"
-                : string.Empty;
-        return $@"<div style=""font-family:system-ui,sans-serif;color:#0f172a;line-height:1.6"">
-  <h2 style=""margin:0 0 8px"">You're invited to review {productName} 🐕</h2>
-  <p style=""margin:0 0 16px"">You've been invited to leave feedback on <b>{projectName}</b>. Open the link below — it signs you in automatically, so there is no password to set or remember.</p>
-  <p style=""margin:0 0 16px""><a href=""{magicLink}"" style=""display:inline-block;background:#2563eb;color:#fff;padding:10px 20px;border-radius:8px;text-decoration:none"">Open project →</a></p>
-  <p style=""margin:0 0 4px""><b>Project:</b> {projectName}</p>
-  <p style=""margin:0 0 16px""><b>Invited:</b> {email}</p>
-  {workspaceLine}
-  {extensionLine}
-  <p style=""margin:0;color:#475569;font-size:13px"">Treat this link like a password — anyone with it can comment as you. If you weren't expecting this, you can ignore this email.</p>
-</div>";
-    }
-
     private static InviteResponse MapToResponse(Invite i, string? roleName, string url) =>
         new()
         {
@@ -1516,13 +1447,15 @@ public class InviteService : IInviteService
                 emailSent = await _emailService.SendAsync(
                     invite.Email!,
                     subject,
-                    BuildInviteEmailHtml(
+                    EmailTemplateBuilder.WorkspaceInvite(
                         url,
                         roleName,
                         brand.ProductName,
                         invite.ExpiresAt,
                         invite.OwnerId is null,
-                        workspaceName
+                        workspaceName,
+                        brand.PrimaryColor,
+                        brand.Urls.App.TrimEnd('/')
                     )
                 );
             }

@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Pointer.Application.Abstractions;
 using Pointer.Application.Common;
+using Pointer.Application.Common.Email;
 using Pointer.Application.DTOs.User;
 using Pointer.Application.Resources;
 using Pointer.Application.Response;
@@ -117,13 +118,12 @@ public class IdentityEraseService : IIdentityEraseService
             await _emailService.SendAsync(
                 identity.Email,
                 $"Confirm deleting your {brand.ProductName} account",
-                $@"<div style=""font-family:system-ui,sans-serif;color:#0f172a;line-height:1.6"">
-  <h2 style=""margin:0 0 8px"">Confirm deleting your account</h2>
-  <p>You asked to delete your account. Click the link below to confirm — it expires in 30 minutes.</p>
-  <p><a href=""{link}"" style=""color:#2563eb"">Delete my account &rarr;</a></p>
-  <p>Your feedback stays with the workspaces you commented in and is shown as &quot;Deleted user&quot;.</p>
-  <p style=""color:#94a3b8;font-size:12px"">If you did not ask for this, ignore this e-mail; nothing happens.</p>
-</div>"
+                EmailTemplateBuilder.AccountEraseConfirm(
+                    link,
+                    brand.ProductName,
+                    brand.PrimaryColor,
+                    brand.Urls.App.TrimEnd('/')
+                )
             );
         }
         catch

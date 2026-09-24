@@ -2,6 +2,7 @@ using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using Pointer.Application.Abstractions;
 using Pointer.Application.Common;
+using Pointer.Application.Common.Email;
 using Pointer.Application.DTOs.Notification;
 using Pointer.Application.DTOs.Suggestion;
 using Pointer.Application.Resources;
@@ -20,6 +21,7 @@ public class SuggestionService : ISuggestionService
     private readonly INotificationService _notificationService;
     private readonly IMembershipService _memberships;
     private readonly IAuditWriter _audit;
+    private readonly IBrandingService? _branding;
 
     public SuggestionService(
         IUnitOfWork unitOfWork,
@@ -27,7 +29,11 @@ public class SuggestionService : ISuggestionService
         IEmailService emailService,
         INotificationService? notificationService = null,
         IMembershipService? memberships = null,
-        IAuditWriter? audit = null
+        IAuditWriter? audit = null,
+        // Optional-with-default so every hand-rolled test construction keeps compiling; DI
+        // resolves the real BrandingService. Only used to name the product in the review email —
+        // falls back to the compiled default below when absent.
+        IBrandingService? branding = null
     )
     {
         _unitOfWork = unitOfWork;
@@ -37,6 +43,7 @@ public class SuggestionService : ISuggestionService
             notificationService ?? new NotificationService(unitOfWork, currentUser);
         _memberships = memberships ?? new MembershipService(unitOfWork);
         _audit = audit ?? NoopAuditWriter.Instance;
+        _branding = branding;
     }
 
     public async Task<Result<SuggestionResponse>> SuggestAsync(
@@ -472,14 +479,19 @@ public class SuggestionService : ISuggestionService
                     workspaceName != null
                         ? $"New predefined-prompt suggestion for review — {workspaceName}"
                         : "New predefined-prompt suggestion for review";
-                var workspaceLine =
-                    workspaceName != null
-                        ? $"<p>Workspace: <b>{System.Net.WebUtility.HtmlEncode(workspaceName)}</b></p>"
-                        : string.Empty;
-                var html =
-                    $"<p>A stakeholder suggested a predefined prompt for project <b>{project.Name}</b>.</p>"
-                    + workspaceLine
-                    + "<p>Review it in your Pointer dashboard.</p>";
+                var brand = _branding != null
+                    ? await _branding.BuildResponseAsync("", new HashSet<string>())
+                    : null;
+                var productName = string.IsNullOrEmpty(brand?.ProductName)
+                    ? BrandingDefaults.ProductName
+                    : brand.ProductName;
+                var html = EmailTemplateBuilder.SuggestionReview(
+                    project.Name ?? string.Empty,
+                    workspaceName,
+                    productName,
+                    brand?.Urls.App,
+                    brand?.PrimaryColor
+                );
 
                 foreach (var admin in admins)
                 {
