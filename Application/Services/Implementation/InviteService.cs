@@ -121,7 +121,10 @@ public class InviteService : IInviteService
 
     // ── Admin (auth, tenant-scoped) ────────────────────────────────────────────
 
-    public async Task<Result<InviteResponse>> CreateAsync(CreateInviteRequest request, bool writeAudit = true)
+    public async Task<Result<InviteResponse>> CreateAsync(
+        CreateInviteRequest request,
+        bool writeAudit = true
+    )
     {
         Guid? owner;
         Role? role = null;
@@ -295,7 +298,13 @@ public class InviteService : IInviteService
         if (writeAudit)
         {
             await _audit.WriteAsync(
-                new AuditEntry(AuditActions.InviteCreated, AuditTargets.Invite, invite.Id.ToString(), owner, After: createAfter)
+                new AuditEntry(
+                    AuditActions.InviteCreated,
+                    AuditTargets.Invite,
+                    invite.Id.ToString(),
+                    owner,
+                    After: createAfter
+                )
             );
         }
 
@@ -770,26 +779,7 @@ public class InviteService : IInviteService
             if (invite.Email != null)
                 identity.EmailVerifiedAt = DateTime.UtcNow;
 
-            try
-            {
-                await _unitOfWork.Repository<User>().AddAsync(identity);
-                await _unitOfWork.SaveChangesAsync();
-            }
-            catch (Microsoft.EntityFrameworkCore.DbUpdateException)
-            {
-                // L2: duplicate-email insert race (two concurrent accepts with the same email both
-                // pass the check above; the second violates ux_users_email_live).
-                return Result<LoginResponse>.Conflict(MessageKeys.Auth.AccountExists);
-            }
-
-            // DB-17 review finding #7: after the save (so identity.Id is valid) — a brand-new
-            // identity has no other memberships yet, so this is a no-op in practice, but the site is
-            // still wired for consistency with every other EmailVerifiedAt flip in this service.
-            if (invite.Email != null)
-                await NotifyDemoEmailVerifiedAsync(identity);
-
-            if (invite.Email == null)
-                await _emailVerification.SendAsync(identity);
+            await _unitOfWork.Repository<User>().AddAsync(identity);
         }
 
         var membership = await _memberships.JoinAsync(
@@ -800,9 +790,26 @@ public class InviteService : IInviteService
             isActive: true,
             inviteId: invite.Id
         );
-        await _unitOfWork.SaveChangesAsync();
+        try
+        {
+            await _unitOfWork.SaveChangesAsync();
+        }
+        // L2: duplicate-email insert race (two concurrent accepts with the same email both
+        // pass the check above; the second violates ux_users_email_live).
+        catch (Microsoft.EntityFrameworkCore.DbUpdateException) when (isNewIdentity)
+        {
+            return Result<LoginResponse>.Conflict(MessageKeys.Auth.AccountExists);
+        }
         // Populated AFTER the save above so EF never tries to re-insert the already-existing role row.
         membership.Role = role;
+
+        // DB-17 review finding #7: after the save (so identity.Id is valid) — a brand-new
+        // identity has no other memberships yet, so this is a no-op in practice, but the site is
+        // still wired for consistency with every other EmailVerifiedAt flip in this service.
+        if (isNewIdentity && invite.Email != null)
+            await NotifyDemoEmailVerifiedAsync(identity!);
+        if (isNewIdentity && invite.Email == null)
+            await _emailVerification.SendAsync(identity!);
 
         // Review finding #3: invalidate the gate's cache only now that the flip above is actually
         // persisted (a claim failure or seat-limit refusal earlier would have returned before this
@@ -819,7 +826,11 @@ public class InviteService : IInviteService
                 AuditTargets.Invite,
                 invite.Id.ToString(),
                 ownerId,
-                After: new Dictionary<string, string> { ["role_id"] = role.Id.ToString(), ["kind"] = "join" },
+                After: new Dictionary<string, string>
+                {
+                    ["role_id"] = role.Id.ToString(),
+                    ["kind"] = "join",
+                },
                 ActorUserIdOverride: identity!.PublicId,
                 ActorKindOverride: AuditActorKind.User
             )
@@ -837,7 +848,11 @@ public class InviteService : IInviteService
             {
                 Status = "ok",
                 Token = token,
-                User = UserMapper.ToMeResponse(identity!, membership.Role, workspace: currentWorkspace),
+                User = UserMapper.ToMeResponse(
+                    identity!,
+                    membership.Role,
+                    workspace: currentWorkspace
+                ),
             }
         );
     }
@@ -904,6 +919,7 @@ public class InviteService : IInviteService
         var isNewIdentityJustVerified = false;
 
         Workspace newWorkspace;
+        WorkspaceMembership membership;
         try
         {
             if (isNewIdentity)
@@ -938,6 +954,14 @@ public class InviteService : IInviteService
                 CreatedBy = workspaceId,
             };
             await _unitOfWork.Workspaces.AddAsync(newWorkspace);
+            membership = await _memberships.JoinAsync(
+                identity!,
+                workspaceId,
+                workspaceAdminRole,
+                ApprovalStatus.Approved,
+                isActive: true,
+                inviteId: invite.Id
+            );
             await _unitOfWork.SaveChangesAsync();
         }
         catch (Microsoft.EntityFrameworkCore.DbUpdateException)
@@ -958,16 +982,6 @@ public class InviteService : IInviteService
 
         if (isNewIdentity && invite.Email == null)
             await _emailVerification.SendAsync(identity!);
-
-        var membership = await _memberships.JoinAsync(
-            identity!,
-            workspaceId,
-            workspaceAdminRole,
-            ApprovalStatus.Approved,
-            isActive: true,
-            inviteId: invite.Id
-        );
-        await _unitOfWork.SaveChangesAsync();
 
         // Apply the invited plan. Written inline rather than through TenantService.ChangePlanAsync:
         // TenantService already composes IInviteService, so calling back would be a DI cycle.
@@ -1158,16 +1172,11 @@ public class InviteService : IInviteService
 
         try
         {
-            if (isNewIdentity)
-                await _unitOfWork.Repository<User>().AddAsync(identity!);
             await _unitOfWork.Repository<Invite>().AddAsync(invite);
             await _unitOfWork.SaveChangesAsync();
 
-            // DB-17 review finding #7: after the save (so identity.Id is valid) — a brand-new
-            // identity has no other memberships yet, so this is a no-op in practice, but the site is
-            // still wired for consistency with every other EmailVerifiedAt flip in this service.
             if (isNewIdentity)
-                await NotifyDemoEmailVerifiedAsync(identity!);
+                await _unitOfWork.Repository<User>().AddAsync(identity!);
 
             membership = await _memberships.JoinAsync(
                 identity!,
@@ -1178,6 +1187,12 @@ public class InviteService : IInviteService
                 inviteId: invite.Id
             );
             await _unitOfWork.SaveChangesAsync();
+
+            // DB-17 review finding #7: after the save (so identity.Id is valid) — a brand-new
+            // identity has no other memberships yet, so this is a no-op in practice, but the site is
+            // still wired for consistency with every other EmailVerifiedAt flip in this service.
+            if (isNewIdentity)
+                await NotifyDemoEmailVerifiedAsync(identity!);
 
             await _unitOfWork
                 .Repository<QuickAccessLink>()
@@ -1385,7 +1400,11 @@ public class InviteService : IInviteService
             ProjectId = i.ProjectId,
         };
 
-    public async Task<Result<InviteResponse>> ResendAsync(int id, bool rotate = false, bool writeAudit = true)
+    public async Task<Result<InviteResponse>> ResendAsync(
+        int id,
+        bool rotate = false,
+        bool writeAudit = true
+    )
     {
         var invite = await LoadOwnAsync(id);
         if (invite is null)
@@ -1467,7 +1486,12 @@ public class InviteService : IInviteService
         if (writeAudit)
         {
             await _audit.WriteAsync(
-                new AuditEntry(AuditActions.InviteResent, AuditTargets.Invite, invite.Id.ToString(), invite.OwnerId)
+                new AuditEntry(
+                    AuditActions.InviteResent,
+                    AuditTargets.Invite,
+                    invite.Id.ToString(),
+                    invite.OwnerId
+                )
             );
         }
 

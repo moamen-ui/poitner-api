@@ -149,9 +149,7 @@ public class DemoService : IDemoService
             PasswordHash = _passwordHasher.Hash(password),
             DisplayName = "Demo User",
             RoleId = role.Id,
-            // Legacy (DB-11a/DB-17) — written once at creation, never read after DB-17; the
-            // pre-DB-17 cleanup and a rollback still depend on it (Opus DB-17 #5), and the R3
-            // backfill keys on it.
+            // Legacy (DB-11a) — written once at creation, never read (DB-11f Part A); dropped by DB-11f Part B.
             OwnerId = workspaceId,
             ApprovalStatus = ApprovalStatus.Approved,
             IsActive = true,
@@ -180,6 +178,16 @@ public class DemoService : IDemoService
         };
 
         await _unitOfWork.Repository<Project>().AddAsync(project);
+
+        // DB-11a: the demo admin's presence in its own workspace is a membership, not owner_id.
+        var demoMembership = await _memberships.JoinAsync(
+            demoUser,
+            workspaceId,
+            role,
+            ApprovalStatus.Approved,
+            isActive: true,
+            inviteId: null
+        );
         await _unitOfWork.SaveChangesAsync();
 
         // Seed ~3 sample Comments on the project
@@ -237,17 +245,6 @@ public class DemoService : IDemoService
 
         await _unitOfWork.SaveChangesAsync();
 
-        // DB-11a: the demo admin's presence in its own workspace is a membership, not owner_id.
-        var demoMembership = await _memberships.JoinAsync(
-            demoUser,
-            workspaceId,
-            role,
-            ApprovalStatus.Approved,
-            isActive: true,
-            inviteId: null
-        );
-        await _unitOfWork.SaveChangesAsync();
-
         // g. Record one demo against this email for today's per-email limit. Done BEFORE the Role
         // navigation is populated below, so this SaveChangesAsync never sees a detached Role
         // reference on the tracked membership (which EF would otherwise try to re-insert).
@@ -288,8 +285,8 @@ public class DemoService : IDemoService
         }
 
         // e. Issue token. Role populated AFTER every SaveChangesAsync above has run, so EF never
-        // tries to re-insert the already-existing role row.
-        demoUser.Role = role;
+        // tries to re-insert the already-existing role row. DB-11f: demoUser.Role is no longer set —
+        // UserMapper.SessionRole takes the membership's role, so nothing reads the identity navigation.
         demoMembership.Role = role;
         var token = _tokenService.Issue(demoUser, demoMembership);
 

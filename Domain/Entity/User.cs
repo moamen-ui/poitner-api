@@ -10,13 +10,13 @@ public class User : BaseEntity
     public string DisplayName { get; set; } = string.Empty;
 
     /// <summary>
-    /// <b>Legacy (DB-11a).</b> Written once at identity creation (first workspace / super-admin
-    /// role); never read by application code after DB-11a. Dropped by DB-11f (the DB-11a legacy-column
-    /// contract; DB-11e dropped the demo columns instead).
+    /// <b>Platform role (DB-11f).</b> Read ONLY for super admins (Role.IsSuperAdmin checks,
+    /// UserMapper.SessionRole). For every other identity it is a legacy copy of the first
+    /// membership's role — written at creation, never read — and DB-11f Part B sets it to NULL.
     /// </summary>
     public int RoleId { get; set; }
 
-    /// <summary>See <see cref="RoleId"/> — legacy, DB-11a.</summary>
+    /// <summary>See <see cref="RoleId"/> — the platform role (DB-11f).</summary>
     public Role Role { get; set; } = null!;
 
     /// <summary>
@@ -26,7 +26,8 @@ public class User : BaseEntity
     public bool IsActive { get; set; } = true;
 
     /// <summary>
-    /// Legacy for non-super-admins; per-workspace approval is
+    /// Legacy (DB-11a). Never read since DB-11f Part A (super admins are always Approved —
+    /// AdminSeeder); dropped by DB-11f Part B. Per-workspace approval is
     /// <see cref="WorkspaceMembership.ApprovalStatus"/>.
     /// </summary>
     public ApprovalStatus ApprovalStatus { get; set; } = ApprovalStatus.Approved;
@@ -48,6 +49,9 @@ public class User : BaseEntity
     /// </summary>
     public Guid SecurityStamp { get; set; } = Guid.NewGuid();
 
+    /// <summary><b>Legacy (DB-11a).</b> The creation workspace. Not read since DB-11f Part A (home =
+    /// IMembershipService.HomeWorkspaceIdAsync); only TenantService's legacy-pointer maintenance
+    /// writes it. Dropped by DB-11f Part B.</summary>
     public Guid? OwnerId { get; set; }
     public bool IsDemo { get; set; }
 

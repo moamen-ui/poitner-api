@@ -29,7 +29,6 @@ public class ProfileService : IProfileService
             .Repository<User>()
             .Query()
             .AsNoTracking()
-            .Include(u => u.Role)
             .FirstOrDefaultAsync(u => u.Id == userId && u.DeletedAt == null);
         return user is null
             ? Result<UserProfileResponse>.NotFound("User not found")
@@ -42,14 +41,16 @@ public class ProfileService : IProfileService
             .Repository<User>()
             .Query()
             .AsNoTracking()
-            .Include(u => u.Role)
             .FirstOrDefaultAsync(u => u.PublicId == publicId && u.DeletedAt == null);
         return user is null
             ? Result<UserProfileResponse>.NotFound("User not found")
             : await BuildAsync(user);
     }
 
-    public async Task<Result<ApiKeyResponse>> GetOrCreateApiKeyAsync(Guid publicId, Guid? workspaceId)
+    public async Task<Result<ApiKeyResponse>> GetOrCreateApiKeyAsync(
+        Guid publicId,
+        Guid? workspaceId
+    )
     {
         // DB-13 review fix #1 (HIGH): this GET mints an api_keys row (Add + SaveChanges) and writes
         // an apikey.created audit row the first time it's called for a given (user, workspace) —
@@ -238,6 +239,36 @@ public class ProfileService : IProfileService
             totals.Replies += p.Replies;
         }
 
+        // DB-11f D11f.7 (+ cross-review): the CURRENT role, never users.role_id for a member —
+        // the platform role for a super admin; else the caller-workspace's LIVE membership; with no
+        // workspace in hand, the earliest LIVE membership, else the earliest of any state.
+        var roleName = await _unitOfWork
+            .Repository<Role>()
+            .Query()
+            .IgnoreQueryFilters()
+            .Where(r => r.IsSuperAdmin && r.Id == user.RoleId)
+            .Select(r => r.Name)
+            .FirstOrDefaultAsync();
+        if (roleName is null)
+        {
+            var ms = _unitOfWork
+                .Repository<WorkspaceMembership>()
+                .Query()
+                .IgnoreQueryFilters()
+                .Where(m => m.UserId == user.Id);
+            roleName = _currentUser.TenantId is Guid tenant
+                ? await ms.Where(m =>
+                        m.OwnerId == tenant && m.LeftAt == null && m.DeletedAt == null
+                    )
+                    .Select(m => m.Role.Name)
+                    .FirstOrDefaultAsync()
+                : await ms.OrderBy(m => m.LeftAt != null || m.DeletedAt != null)
+                    .ThenBy(m => m.JoinedAt)
+                    .ThenBy(m => m.Id)
+                    .Select(m => m.Role.Name)
+                    .FirstOrDefaultAsync();
+        }
+
         return Result<UserProfileResponse>.Success(
             new UserProfileResponse
             {
@@ -246,7 +277,7 @@ public class ProfileService : IProfileService
                     Id = user.Id,
                     DisplayName = user.DisplayName,
                     Email = user.Email,
-                    RoleName = user.Role?.Name ?? string.Empty,
+                    RoleName = roleName ?? string.Empty,
                 },
                 Totals = totals,
                 Projects = perProject,

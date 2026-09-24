@@ -240,7 +240,7 @@ public class AuthService : IAuthService
                 // null (missing row or still the DB-03 placeholder) omits the line entirely.
                 var resetWorkspaceName = await WorkspaceNameResolver.ResolveForEmailAsync(
                     _unitOfWork,
-                    user.OwnerId
+                    await _memberships.HomeWorkspaceIdAsync(user.Id)
                 );
                 try
                 {
@@ -383,7 +383,7 @@ public class AuthService : IAuthService
         // to the pre-existing wording.
         var changeWorkspaceName = await WorkspaceNameResolver.ResolveForEmailAsync(
             _unitOfWork,
-            user.OwnerId
+            await _memberships.HomeWorkspaceIdAsync(user.Id)
         );
         try
         {
@@ -453,7 +453,7 @@ public class AuthService : IAuthService
             $"{brand.Urls.App.TrimEnd('/')}/confirm-email?token={Uri.EscapeDataString(token)}";
         var workspaceName = await WorkspaceNameResolver.ResolveForEmailAsync(
             _unitOfWork,
-            identity.OwnerId
+            await _memberships.HomeWorkspaceIdAsync(identity.Id)
         );
 
         // Review finding #1: the OLD-address security notice goes FIRST, and each send gets its
@@ -748,25 +748,8 @@ public class AuthService : IAuthService
 
         if (user.Role?.IsSuperAdmin == true)
         {
-            // Super admins own no workspace — unchanged, identity-level status.
-            if (user.ApprovalStatus == ApprovalStatus.Pending)
-            {
-                await AuditLoginFailedAsync(user, emailNormalized, "pending");
-                return Result<LoginResponse>.Failure(
-                    MessageKeys.Auth.PendingApproval,
-                    new LoginResponse { Status = "pending" }
-                );
-            }
-
-            if (user.ApprovalStatus == ApprovalStatus.Rejected)
-            {
-                await AuditLoginFailedAsync(user, emailNormalized, "rejected");
-                return Result<LoginResponse>.Failure(
-                    MessageKeys.Auth.Rejected,
-                    new LoginResponse { Status = "rejected" }
-                );
-            }
-
+            // Super admins own no workspace — identity-level IsActive only (DB-11f D11f.5: they are
+            // always Approved; AdminSeeder reconciles it every boot).
             if (!user.IsActive)
             {
                 await AuditLoginFailedAsync(user, emailNormalized, "disabled");
@@ -877,7 +860,10 @@ public class AuthService : IAuthService
                     // workspace is chosen).
                     // Landing on the picker with a CORRECT password is not a login failure (the
                     // response is 400 only because the client must choose; review finding #5).
-                    var choices = await BuildWorkspaceChoicesAsync(candidates, user.OwnerId);
+                    var choices = await BuildWorkspaceChoicesAsync(
+                        candidates,
+                        await _memberships.HomeWorkspaceIdAsync(user.Id)
+                    );
                     // DB-11b §3.1: returned as a SUCCESS envelope (HTTP 200), not a failure — the
                     // credentials were verified and a selection token was issued. The dashboard's
                     // generated client rejects any envelope with isSuccess==false before its caller
@@ -1105,7 +1091,7 @@ public class AuthService : IAuthService
         string? tenantName
     )
     {
-        var role = membership?.Role ?? identity.Role;
+        var role = UserMapper.SessionRole(identity, membership);
         // DB-17: the current workspace, loaded IgnoreQueryFilters by the tenant id already in hand —
         // carries DemoExpiresAt/DemoCanExtend into the response (null for super admins, who own none).
         var currentWorkspace = membership?.OwnerId is Guid currentWorkspaceId
@@ -1127,7 +1113,10 @@ public class AuthService : IAuthService
             var candidates = memberships
                 .Where(m => m.IsActive && m.ApprovalStatus == ApprovalStatus.Approved)
                 .ToList();
-            response.Workspaces = await BuildWorkspaceChoicesAsync(candidates, identity.OwnerId);
+            response.Workspaces = await BuildWorkspaceChoicesAsync(
+                candidates,
+                await _memberships.HomeWorkspaceIdAsync(identity.Id)
+            );
         }
 
         return response;
@@ -1189,7 +1178,7 @@ public class AuthService : IAuthService
         }
 
         WorkspaceMembership? membership = null;
-        Role? role = user.Role;
+        Role? role = UserMapper.SessionRole(user, null);
 
         if (apiKey.OwnerId is Guid ownerId)
         {
@@ -1226,23 +1215,13 @@ public class AuthService : IAuthService
         }
         else
         {
-            // Null-owner key = super admin path — identity-level status, unchanged.
-            if (user.ApprovalStatus == ApprovalStatus.Pending)
+            // Null-owner key = super admin path ONLY (DB-11f D11f.6). Any other identity holding one (a
+            // pre-DB-11a leftover — P5 proved none in production) is refused instead of signing in with no
+            // workspace and its legacy users.role_id.
+            if (user.Role?.IsSuperAdmin != true)
             {
-                await AuditApiKeyLoginFailedAsync(apiKey, "pending");
-                return Result<LoginResponse>.Failure(
-                    MessageKeys.Auth.PendingApproval,
-                    new LoginResponse { Status = "pending" }
-                );
-            }
-
-            if (user.ApprovalStatus == ApprovalStatus.Rejected)
-            {
-                await AuditApiKeyLoginFailedAsync(apiKey, "rejected");
-                return Result<LoginResponse>.Failure(
-                    MessageKeys.Auth.Rejected,
-                    new LoginResponse { Status = "rejected" }
-                );
+                await AuditApiKeyLoginFailedAsync(apiKey, "invalid_credentials");
+                return Result<LoginResponse>.Failure(MessageKeys.Auth.InvalidApiKey);
             }
 
             if (!user.IsActive)
@@ -1361,7 +1340,6 @@ public class AuthService : IAuthService
                 projectOwnerId
             );
             await _unitOfWork.Repository<User>().AddAsync(identity);
-            await _unitOfWork.SaveChangesAsync();
 
             await _memberships.JoinAsync(
                 identity,
@@ -1483,6 +1461,7 @@ public class AuthService : IAuthService
         );
         await _unitOfWork.SaveChangesAsync();
 
+        var isNewIdentity = identity == null;
         if (identity == null)
         {
             identity = _memberships.NewIdentity(
@@ -1496,10 +1475,6 @@ public class AuthService : IAuthService
             // identity, as today.
             identity.IsActive = false;
             await _unitOfWork.Repository<User>().AddAsync(identity);
-            await _unitOfWork.SaveChangesAsync();
-
-            // DB-14 §3.2: nobody vouched for this address — send the verification link.
-            await _emailVerification.SendAsync(identity);
         }
 
         await _memberships.JoinAsync(
@@ -1511,6 +1486,11 @@ public class AuthService : IAuthService
             inviteId: null
         );
         await _unitOfWork.SaveChangesAsync();
+        if (isNewIdentity)
+        {
+            // DB-14 §3.2: nobody vouched for this address — send the verification link.
+            await _emailVerification.SendAsync(identity);
+        }
 
         // Signup plan selector (workspace signup only). Free / none ⇒ today's flow (no subscription row;
         // effective plan resolves to Free). A paid, active, non-hidden plan ⇒ create a subscription in

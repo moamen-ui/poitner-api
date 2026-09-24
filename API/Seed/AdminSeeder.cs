@@ -13,7 +13,13 @@ public static class AdminSeeder
 {
     // Default roles seeded on first boot. "Admin" is a protected system role (grants dashboard
     // access, cannot be renamed/disabled). The rest are ordinary labels admins can manage.
-    private static readonly (string Name, bool GrantsAdmin, bool IsSystem, bool IsSuperAdmin, bool QuickAccess)[] DefaultRoles =
+    private static readonly (
+        string Name,
+        bool GrantsAdmin,
+        bool IsSystem,
+        bool IsSuperAdmin,
+        bool QuickAccess
+    )[] DefaultRoles =
     {
         ("Admin", true, true, true, false),
         ("Workspace Admin", true, true, false, false),
@@ -27,7 +33,13 @@ public static class AdminSeeder
     // Default global AppEnvironments seeded on first boot. "default" is what a project created via
     // the browser extension (or any caller that just sets AppUrl without picking an environment)
     // gets its URL written to.
-    private static readonly string[] DefaultAppEnvironments = { "local", "prod", "staging", "testing" };
+    private static readonly string[] DefaultAppEnvironments =
+    {
+        "local",
+        "prod",
+        "staging",
+        "testing",
+    };
 
     public static async Task SeedAsync(IServiceProvider services)
     {
@@ -41,17 +53,31 @@ public static class AdminSeeder
         // null and IsSuperAdmin is false — the standard tenant filter would otherwise hide existing
         // global roles whenever Tenancy:StrictNullTenantIsolation is true, making every boot try to
         // re-insert them and crash on the unique (name, owner_id IS NULL) index.
-        var existingRoleNames = await db.Roles.IgnoreQueryFilters().Select(r => r.Name).ToListAsync();
+        var existingRoleNames = await db
+            .Roles.IgnoreQueryFilters()
+            .Select(r => r.Name)
+            .ToListAsync();
         foreach (var (name, grantsAdmin, isSystem, isSuperAdmin, quickAccess) in DefaultRoles)
         {
             if (!existingRoleNames.Contains(name))
-                db.Roles.Add(new Role { Name = name, GrantsAdmin = grantsAdmin, IsSystem = isSystem, IsSuperAdmin = isSuperAdmin, QuickAccess = quickAccess });
+                db.Roles.Add(
+                    new Role
+                    {
+                        Name = name,
+                        GrantsAdmin = grantsAdmin,
+                        IsSystem = isSystem,
+                        IsSuperAdmin = isSuperAdmin,
+                        QuickAccess = quickAccess,
+                    }
+                );
         }
         await db.SaveChangesAsync();
 
         // Idempotently upgrade the existing "Admin" role to IsSuperAdmin (for databases seeded
         // before this flag existed). New databases already get it from the tuple above.
-        var adminRole = await db.Roles.IgnoreQueryFilters().FirstOrDefaultAsync(r => r.Name == "Admin");
+        var adminRole = await db
+            .Roles.IgnoreQueryFilters()
+            .FirstOrDefaultAsync(r => r.Name == "Admin");
         if (adminRole is not null && !adminRole.IsSuperAdmin)
         {
             adminRole.IsSuperAdmin = true;
@@ -60,7 +86,9 @@ public static class AdminSeeder
 
         // Idempotently upgrade the existing global "Client" role to QuickAccess (for databases
         // seeded before this flag existed). New databases already get it from the tuple above.
-        var clientRole = await db.Roles.IgnoreQueryFilters().FirstOrDefaultAsync(r => r.Name == "Client" && r.OwnerId == null);
+        var clientRole = await db
+            .Roles.IgnoreQueryFilters()
+            .FirstOrDefaultAsync(r => r.Name == "Client" && r.OwnerId == null);
         if (clientRole is not null && !clientRole.QuickAccess)
         {
             clientRole.QuickAccess = true;
@@ -69,7 +97,8 @@ public static class AdminSeeder
 
         // Idempotently retire the old global "default" environment (R1-09).
         // It is hidden from pickers but its existing URLs still render.
-        var legacyDefaultEnv = await db.AppEnvironments.IgnoreQueryFilters()
+        var legacyDefaultEnv = await db
+            .AppEnvironments.IgnoreQueryFilters()
             .FirstOrDefaultAsync(e => e.Name == "default" && e.OwnerId == null);
         if (legacyDefaultEnv is not null && legacyDefaultEnv.IsEnabled)
         {
@@ -80,8 +109,11 @@ public static class AdminSeeder
 
         // 1b) Seed any missing default global AppEnvironments — same IgnoreQueryFilters reasoning
         // as the roles above (no HttpContext/tenant at boot time).
-        var existingEnvNames = await db.AppEnvironments.IgnoreQueryFilters()
-            .Where(e => e.OwnerId == null).Select(e => e.Name).ToListAsync();
+        var existingEnvNames = await db
+            .AppEnvironments.IgnoreQueryFilters()
+            .Where(e => e.OwnerId == null)
+            .Select(e => e.Name)
+            .ToListAsync();
         foreach (var name in DefaultAppEnvironments)
         {
             if (!existingEnvNames.Contains(name))
@@ -94,24 +126,35 @@ public static class AdminSeeder
         // ExtensionService.FindProjectForOriginAsync (which now reads ProjectAppUrl first) doesn't
         // regress for a project nobody has re-saved since this shipped. Idempotent: only inserts for
         // a project that doesn't already have a "local" row.
-        var globalLocalEnv = await db.AppEnvironments.IgnoreQueryFilters()
+        var globalLocalEnv = await db
+            .AppEnvironments.IgnoreQueryFilters()
             .FirstOrDefaultAsync(e => e.Name == "local" && e.OwnerId == null);
         if (globalLocalEnv != null)
         {
-            var projectsNeedingBackfill = await db.Projects.IgnoreQueryFilters()
+            var projectsNeedingBackfill = await db
+                .Projects.IgnoreQueryFilters()
                 .Where(p => p.DeletedAt == null && p.AppUrl != null)
-                .Where(p => !db.ProjectAppUrls.IgnoreQueryFilters()
-                    .Any(u => u.DeletedAt == null && u.ProjectId == p.Id && u.AppEnvironmentId == globalLocalEnv.Id))
+                .Where(p =>
+                    !db
+                        .ProjectAppUrls.IgnoreQueryFilters()
+                        .Any(u =>
+                            u.DeletedAt == null
+                            && u.ProjectId == p.Id
+                            && u.AppEnvironmentId == globalLocalEnv.Id
+                        )
+                )
                 .ToListAsync();
             foreach (var p in projectsNeedingBackfill)
             {
-                db.ProjectAppUrls.Add(new ProjectAppUrl
-                {
-                    ProjectId = p.Id,
-                    AppEnvironmentId = globalLocalEnv.Id,
-                    Url = p.AppUrl!,
-                    OwnerId = p.OwnerId ?? Guid.Empty
-                });
+                db.ProjectAppUrls.Add(
+                    new ProjectAppUrl
+                    {
+                        ProjectId = p.Id,
+                        AppEnvironmentId = globalLocalEnv.Id,
+                        Url = p.AppUrl!,
+                        OwnerId = p.OwnerId ?? Guid.Empty,
+                    }
+                );
             }
             await db.SaveChangesAsync();
         }
@@ -129,44 +172,70 @@ public static class AdminSeeder
 
         try
         {
-            var adminRoleId = await db.Roles.IgnoreQueryFilters().Where(r => r.IsSuperAdmin).Select(r => r.Id).FirstAsync();
+            var adminRoleId = await db
+                .Roles.IgnoreQueryFilters()
+                .Where(r => r.IsSuperAdmin)
+                .Select(r => r.Id)
+                .FirstAsync();
 
             // Match the operator BY EMAIL (never rename an existing row into a duplicate email — that
             // would violate the unique-email index and crash startup). Create if absent, else ensure it
             // is an active, approved super-admin with the configured password.
-            var user = await db.Users
-                .IgnoreQueryFilters()
+            var user = await db
+                .Users.IgnoreQueryFilters()
                 .FirstOrDefaultAsync(u => u.DeletedAt == null && u.Email.ToLower() == adminEmail);
 
             if (user == null)
             {
-                db.Users.Add(new User
-                {
-                    Email = adminEmail,
-                    PasswordHash = hasher.Hash(adminPassword),
-                    DisplayName = "Administrator",
-                    RoleId = adminRoleId,
-                    IsActive = true,
-                    ApprovalStatus = ApprovalStatus.Approved,
-                    PublicId = Guid.NewGuid(),
-                    // DB-14: configured on the server — the operator vouches for it.
-                    EmailVerifiedAt = DateTime.UtcNow,
-                });
+                db.Users.Add(
+                    new User
+                    {
+                        Email = adminEmail,
+                        PasswordHash = hasher.Hash(adminPassword),
+                        DisplayName = "Administrator",
+                        RoleId = adminRoleId,
+                        IsActive = true,
+                        ApprovalStatus = ApprovalStatus.Approved,
+                        PublicId = Guid.NewGuid(),
+                        // DB-14: configured on the server — the operator vouches for it.
+                        EmailVerifiedAt = DateTime.UtcNow,
+                    }
+                );
             }
             else
             {
-                if (user.RoleId != adminRoleId) user.RoleId = adminRoleId;
-                if (!user.IsActive) user.IsActive = true;
-                if (user.ApprovalStatus != ApprovalStatus.Approved) user.ApprovalStatus = ApprovalStatus.Approved;
-                if (!hasher.Verify(adminPassword, user.PasswordHash)) user.PasswordHash = hasher.Hash(adminPassword);
+                // DB-11f (cross-review Opus LOW): never promote a workspace member to super admin — super admins
+                // hold no memberships (P4) and the membership-based workspace delete rule excludes them. Throwing
+                // lands in the catch below: this reconcile step is skipped and logged; boot continues.
+                if (
+                    user.RoleId != adminRoleId
+                    && await db
+                        .WorkspaceMemberships.IgnoreQueryFilters()
+                        .AnyAsync(m => m.UserId == user.Id)
+                )
+                    throw new InvalidOperationException(
+                        $"ADMIN__EMAIL matches workspace member identity {user.Id}; not promoted to super admin (DB-11f). Use an address that belongs to no workspace."
+                    );
+                if (user.RoleId != adminRoleId)
+                    user.RoleId = adminRoleId;
+                if (!user.IsActive)
+                    user.IsActive = true;
+                if (user.ApprovalStatus != ApprovalStatus.Approved)
+                    user.ApprovalStatus = ApprovalStatus.Approved;
+                if (!hasher.Verify(adminPassword, user.PasswordHash))
+                    user.PasswordHash = hasher.Hash(adminPassword);
                 // DB-14: an operator account seeded before this column existed reconciles to verified.
-                if (user.EmailVerifiedAt == null) user.EmailVerifiedAt = DateTime.UtcNow;
+                if (user.EmailVerifiedAt == null)
+                    user.EmailVerifiedAt = DateTime.UtcNow;
                 db.Users.Update(user);
             }
 
             // DB-14 §3.6: the seeded super-admin password is config-owned and never blocks startup —
             // just a Warning so an operator notices a weak ADMIN__PASSWORD.
-            if (Pointer.Application.Common.PasswordPolicy.Validate(adminPassword, adminEmail) is string pwWarning)
+            if (
+                Pointer.Application.Common.PasswordPolicy.Validate(adminPassword, adminEmail)
+                is string pwWarning
+            )
                 Console.Error.WriteLine($"[AdminSeeder] ADMIN__PASSWORD is weak: {pwWarning}");
 
             await db.SaveChangesAsync();
@@ -208,25 +277,27 @@ public static class AdminSeeder
             var emailDailyCap = await settings.GetIntAsync(ISettingsService.EmailDailyCap, 250);
             entitlements.EmailsPerMonth = emailDailyCap;
 
-            db.Plans.Add(new Plan
-            {
-                Name = "Free",
-                Slug = "free",
-                PriceMonthly = 0m,
-                Currency = "USD",
-                Interval = BillingInterval.Monthly,
-                SortOrder = 0,
-                IsActive = true,
-                DisplayState = PlanDisplayState.Visible,
-                FeatureBullets = new List<string>
+            db.Plans.Add(
+                new Plan
                 {
-                    "3 projects",
-                    "5 seats",
-                    "100 comments / month",
-                    "Community support"
-                },
-                Entitlements = entitlements
-            });
+                    Name = "Free",
+                    Slug = "free",
+                    PriceMonthly = 0m,
+                    Currency = "USD",
+                    Interval = BillingInterval.Monthly,
+                    SortOrder = 0,
+                    IsActive = true,
+                    DisplayState = PlanDisplayState.Visible,
+                    FeatureBullets = new List<string>
+                    {
+                        "3 projects",
+                        "5 seats",
+                        "100 comments / month",
+                        "Community support",
+                    },
+                    Entitlements = entitlements,
+                }
+            );
             await db.SaveChangesAsync();
         }
         // If Free already exists, leave its entitlements untouched (admin may have edited them).
@@ -246,7 +317,7 @@ public static class AdminSeeder
                 IsActive = false,
                 DisplayState = PlanDisplayState.Hidden,
                 FeatureBullets = new List<string>(),
-                Entitlements = BuildUnlimitedEntitlements()
+                Entitlements = BuildUnlimitedEntitlements(),
             };
             db.Plans.Add(legacy);
             await db.SaveChangesAsync();
@@ -262,8 +333,8 @@ public static class AdminSeeder
 
         // DB-11a: a tenant is a workspaces row, not a self-owned (OwnerId == PublicId) admin user —
         // that scheme no longer holds once workspace ids are minted independently of any identity.
-        var tenantPublicIds = await db.Workspaces
-            .IgnoreQueryFilters()
+        var tenantPublicIds = await db
+            .Workspaces.IgnoreQueryFilters()
             .Where(w => w.DeletedAt == null)
             .Select(w => w.Id)
             .ToListAsync();
@@ -275,8 +346,8 @@ public static class AdminSeeder
             return;
         }
 
-        var alreadySubscribed = await db.Subscriptions
-            .IgnoreQueryFilters()
+        var alreadySubscribed = await db
+            .Subscriptions.IgnoreQueryFilters()
             .Where(s => tenantPublicIds.Contains(s.OwnerId))
             .Select(s => s.OwnerId)
             .ToListAsync();
@@ -288,12 +359,14 @@ public static class AdminSeeder
         {
             if (subscribedSet.Contains(tenantId))
                 continue;
-            db.Subscriptions.Add(new Subscription
-            {
-                OwnerId = tenantId,
-                PlanId = legacy.Id,
-                Status = SubscriptionStatus.Active
-            });
+            db.Subscriptions.Add(
+                new Subscription
+                {
+                    OwnerId = tenantId,
+                    PlanId = legacy.Id,
+                    Status = SubscriptionStatus.Active,
+                }
+            );
             added = true;
         }
 

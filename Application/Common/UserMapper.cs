@@ -9,10 +9,19 @@ namespace Pointer.Application.Common;
 /// </summary>
 public static class UserMapper
 {
+    /// <summary>
+    /// DB-11f. The role a session carries: its membership's role when there is a membership (never
+    /// the identity's — a membership whose Role is not loaded yields no role); without one, the
+    /// identity's own role ONLY for a super admin (users.role_id is the platform role).
+    /// </summary>
+    public static Role? SessionRole(User identity, WorkspaceMembership? membership) =>
+        membership is not null
+            ? membership.Role
+            : (identity.Role is { IsSuperAdmin: true } platform ? platform : null);
+
     /// <param name="role">
-    /// DB-11a: the caller's role for THIS session — the membership's role for a tenant user, or the
-    /// identity's own (legacy) Role for a super admin with no membership. Callers resolve this once
-    /// (membership?.Role ?? user.Role) rather than this mapper reading user.Role directly.
+    /// DB-11f: the caller's role for THIS session — resolve it with <see cref="SessionRole"/>, never
+    /// read user.Role/RoleId directly.
     /// </param>
     /// <param name="workspace">DB-17: the caller's CURRENT workspace (loaded IgnoreQueryFilters by
     /// the tenant id already in hand), when the caller holds one — login "ok", /me, switch, upgrade.
@@ -35,7 +44,7 @@ public static class UserMapper
             Id = user.PublicId,
             Email = user.Email,
             DisplayName = user.DisplayName,
-            RoleId = role?.Id ?? user.RoleId,
+            RoleId = role?.Id ?? 0,
             RoleName = role?.Name ?? string.Empty,
             IsAdmin = isAdmin,
             IsSuperAdmin = isSuperAdmin,
