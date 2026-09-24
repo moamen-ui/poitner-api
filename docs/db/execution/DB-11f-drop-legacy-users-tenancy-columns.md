@@ -14,8 +14,11 @@ R6, **R7** (Part B only, `[ContractMigration("DB-11f")]` on both migrations), **
 inside a workspace hard delete), R15, R17 (no new endpoint and no new audited action; one new failure reason on an existing audit action, §3.6).
 **Class: Part A = Code only. Part B = Contract — Destructive (2 columns, 2 indexes, 1 FK dropped; `role_id` values nulled for members).**
 
-**Owner approval (Part B only). The owner must fill this in before Part B is merged. Paste it verbatim into the Part B PR and the two markers:**
-`Approved to drop users.owner_id, users.approval_status, ux_users_email_owner_live, IX_users_owner_id, fk_users_workspaces_owner_id and to null users.role_id for every non-super-admin identity (DB-11f), <yyyy-mm-dd>.`
+**Owner approval (Part B only) — given 2026-09-24 by Moamen (owner), who selected "Approve Part B" whose text was, verbatim:**
+`Approved to drop users.owner_id, users.approval_status, ux_users_email_owner_live, IX_users_owner_id, fk_users_workspaces_owner_id and make users.role_id super-admin-only (DB-11f Part B), 2026-09-24.`
+Paste it verbatim into the Part B PR and the two markers. Part B still ships only after Part A has been live ≥ 24 h, P1–P5 pass on production, and the R11 rehearsal passes.
+
+**Owner decisions answered 2026-09-24:** D11f.1 = two releases; D11f.2 = keep `role_id`, super-admin-only; D11f.3 = home = earliest membership. D11f.4–D11f.7: the recommended defaults below apply.
 → owner: ________ date: ________
 
 **Status: written 2026-09-24, not implemented.** Verified against `pointer-api` @ `8f97871` (81 migrations, newest
