@@ -169,7 +169,8 @@ public class AuditWriterTests
             Email = "actor@example.com",
             PasswordHash = "h",
             DisplayName = "Actor",
-            RoleId = role.Id,
+            // DB-11f: users.role_id is platform-role-only now — the tenant role lives on the
+            // membership below.
         };
         seed.Users.Add(user);
         await seed.SaveChangesAsync();

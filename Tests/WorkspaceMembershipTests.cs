@@ -557,7 +557,6 @@ public class WorkspaceMembershipTests
                 Email = "userx@example.com",
                 PasswordHash = "hash",
                 DisplayName = "User X",
-                RoleId = role.Id,
                 IsActive = true,
             };
             seed.Users.Add(userX);
@@ -569,7 +568,6 @@ public class WorkspaceMembershipTests
                 Email = "usery@example.com",
                 PasswordHash = "hash",
                 DisplayName = "User Y",
-                RoleId = role.Id,
                 IsActive = true,
             };
             seed.Users.Add(userY);
@@ -707,7 +705,6 @@ public class WorkspaceMembershipTests
                 Email = "multiadmin@example.com",
                 PasswordHash = "hash",
                 DisplayName = "Multi Admin",
-                RoleId = adminRole.Id,
                 IsActive = true,
             };
             seed.Users.Add(admin);
@@ -956,7 +953,6 @@ public class WorkspaceMembershipTests
                 Email = "adminA@x.com",
                 PasswordHash = "hash",
                 DisplayName = "Admin A",
-                RoleId = adminRole.Id,
                 IsActive = true,
             };
             seed.Users.Add(adminA);
@@ -968,7 +964,6 @@ public class WorkspaceMembershipTests
                 Email = "target@x.com",
                 PasswordHash = "hash",
                 DisplayName = "Target User",
-                RoleId = devRole.Id,
                 IsActive = true,
             };
             seed.Users.Add(sharedUser);
@@ -1050,7 +1045,6 @@ public class WorkspaceMembershipTests
                 Email = "adminA@x.com",
                 PasswordHash = "hash",
                 DisplayName = "Admin A",
-                RoleId = adminRole.Id,
                 IsActive = true,
             };
             seed.Users.Add(adminA);
@@ -1062,7 +1056,6 @@ public class WorkspaceMembershipTests
                 Email = "multi@x.com",
                 PasswordHash = initialHash,
                 DisplayName = "Multi User",
-                RoleId = devRole.Id,
                 IsActive = true,
             };
             seed.Users.Add(multiUser);
@@ -1073,7 +1066,6 @@ public class WorkspaceMembershipTests
                 Email = "single@x.com",
                 PasswordHash = initialHash,
                 DisplayName = "Single User",
-                RoleId = devRole.Id,
                 IsActive = true,
             };
             seed.Users.Add(singleUser);

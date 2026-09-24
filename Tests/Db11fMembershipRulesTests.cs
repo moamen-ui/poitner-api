@@ -1,8 +1,10 @@
 using System.IdentityModel.Tokens.Jwt;
+using Microsoft.AspNetCore.Http;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using Npgsql;
 using Pointer.API.Seed;
@@ -20,6 +22,7 @@ using Pointer.Application.Services.Interfaces;
 using Pointer.Domain.Entity;
 using Pointer.Domain.Enums;
 using Pointer.Infrastructure;
+using Pointer.Infrastructure.Audit;
 using Pointer.Infrastructure.Auth;
 using Pointer.Infrastructure.Billing;
 using Pointer.Infrastructure.Repository;
@@ -45,6 +48,11 @@ public class Db11fMembershipRulesTests
         public string? Scope { get; set; }
         public long? ImpersonationSessionId { get; set; }
         public bool IsImpersonating => ImpersonationSessionId != null;
+    }
+
+    private sealed class FakeHttpContextAccessor : IHttpContextAccessor
+    {
+        public HttpContext? HttpContext { get; set; } = new DefaultHttpContext();
     }
 
     private sealed class FakePasswordHasher : IPasswordHasher
@@ -1015,13 +1023,7 @@ public class Db11fMembershipRulesTests
             seed.Roles.AddRange(superRole, wRole);
             seed.SaveChanges();
 
-            User Make(
-                string email,
-                Guid? ownerId,
-                int roleId,
-                bool erased = false,
-                int? mergedInto = null
-            ) =>
+            User Make(string email, int roleId, bool erased = false, int? mergedInto = null) =>
                 new()
                 {
                     Email = email,
@@ -1035,14 +1037,14 @@ public class Db11fMembershipRulesTests
                     MergedIntoUserId = mergedInto,
                 };
 
-            var a = Make("a@x", w, wRole.Id);
-            var b = Make("b@x", w, wRole.Id);
-            var c = Make("c@x", x, wRole.Id);
-            var d = Make("d@x", w, wRole.Id, erased: true);
-            var e = Make("e@x", w, wRole.Id, erased: true);
-            var f = Make("f@x", null, superRole.Id);
-            var g = Make("g@x", null, superRole.Id);
-            var j = Make("j@x", w, wRole.Id);
+            var a = Make("a@x", wRole.Id);
+            var b = Make("b@x", wRole.Id);
+            var c = Make("c@x", wRole.Id);
+            var d = Make("d@x", wRole.Id, erased: true);
+            var e = Make("e@x", wRole.Id, erased: true);
+            var f = Make("f@x", superRole.Id);
+            var g = Make("g@x", superRole.Id);
+            var j = Make("j@x", wRole.Id);
             seed.Users.AddRange(a, b, c, d, e, f, g, j);
             seed.SaveChanges();
 
@@ -1075,8 +1077,8 @@ public class Db11fMembershipRulesTests
             // (j) owner W, no membership anywhere → out
             seed.SaveChanges();
 
-            var h = Make("h@x", null, wRole.Id, erased: true, mergedInto: a.Id); // (h) merged tombstone of (a) → in
-            var i = Make("i@x", null, wRole.Id, erased: true, mergedInto: c.Id); // (i) merged tombstone of (c) ...
+            var h = Make("h@x", wRole.Id, erased: true, mergedInto: a.Id); // (h) merged tombstone of (a) → in
+            var i = Make("i@x", wRole.Id, erased: true, mergedInto: c.Id); // (i) merged tombstone of (c) ...
             seed.Users.AddRange(h, i);
             seed.SaveChanges();
             seed.UserAliases.Add(
@@ -1102,14 +1104,16 @@ public class Db11fMembershipRulesTests
     }
 
     // ── 6. HardDelete_MembershipLessIdentity_Survives_AndDoesNotBlock ──────────────────────
-    // DB-11f Part B: tests 6 (DeleteSet_EqualsLegacyRule_WhenInvariantI1Holds), 7
-    // (HardDelete_RehomedIdentityWithTenantRole_Succeeds_UnderRealForeignKeys), 8
+    // DB-11f Part B: tests 6 (DeleteSet_EqualsLegacyRule_WhenInvariantI1Holds), 8
     // (HardDelete_MembershipLessIdentityReferencingWorkspace_RefusedBeforeAnySideEffect) and 8b
     // (HardDelete_NoLeastPrivilegeGlobalRole_RefusedBeforeAnySideEffect) are deleted here (doc §6
-    // item 16): all four read users.owner_id or exercise the Part A-only re-point/pre-flight code
-    // TenantService B6 removes. Test 7 is an explicit deviation from the doc text (which named only
-    // 6/8/8b) — its own rationale ("exercise Part A-only code") applies identically to test 7, and
-    // keeping it would assert behaviour (the legacy-pointer re-point) that no longer exists.
+    // item 16): all three read users.owner_id or exercise the Part A-only re-point/pre-flight code
+    // TenantService B6 removes. Test 7 (HardDelete_RehomedIdentityWithTenantRole_…) was ALSO
+    // deleted in the first Part B pass, beyond what §6 item 16 authorized — the code review (Gemini
+    // MEDIUM) caught this: it is the only test exercising a real-FK hard delete of a workspace-owned
+    // Role alongside a surviving multi-workspace identity. Re-added below, rewritten for Part B (no
+    // more users.role_id tenant role to re-point — RoleId stays null throughout). See §15 for the
+    // adjudication record.
 
     [Fact]
     public async Task HardDelete_MembershipLessIdentity_Survives_AndDoesNotBlock()
@@ -1211,6 +1215,118 @@ public class Db11fMembershipRulesTests
         Assert.NotNull(
             verify.Users.IgnoreQueryFilters().SingleOrDefault(u => u.Id == orphanUserId)
         );
+    }
+
+    // ── 7. HardDelete_RehomedIdentityWithWOwnedRoleMembership_Succeeds_UnderRealForeignKeys ─
+    // Re-added per the Part B code review (Gemini MEDIUM): the doc's §6 item 16 named only tests
+    // 6, 8 and 8b for deletion, but this one — the only test in the suite that hard-deletes a
+    // workspace-owned Role under REAL Sqlite foreign keys while a surviving multi-workspace
+    // identity keeps a membership elsewhere — was deleted too. Rewritten for Part B: `users.role_id`
+    // no longer carries a tenant role at all (it is nullable and platform-role-only, D11f.2), so the
+    // identity is seeded with RoleId = null throughout and its tenant role lives only on the
+    // WorkspaceMembership rows. This is a deviation from §6 item 16's list, recorded in §15.
+
+    [Fact]
+    public async Task HardDelete_RehomedIdentityWithWOwnedRoleMembership_Succeeds_UnderRealForeignKeys()
+    {
+        using var db = new TestDb();
+        var w = Guid.NewGuid();
+        var x = Guid.NewGuid();
+        int identityId;
+        int wRoleId;
+        int globalRoleId;
+
+        using (var seed = db.MakeContext(new FakeCurrentUser { IsSuperAdmin = true }))
+        {
+            seed.Workspaces.Add(
+                new Workspace
+                {
+                    Id = w,
+                    Name = "W",
+                    CreatedAt = DateTime.UtcNow,
+                    CreatedBy = w,
+                }
+            );
+            seed.Workspaces.Add(
+                new Workspace
+                {
+                    Id = x,
+                    Name = "X",
+                    CreatedAt = DateTime.UtcNow,
+                    CreatedBy = x,
+                }
+            );
+            var wRole = new Role
+            {
+                Name = "WOwnedRole",
+                OwnerId = w,
+                IsActive = true,
+            };
+            var globalRole = new Role { Name = "Developer", IsActive = true };
+            seed.Roles.AddRange(wRole, globalRole);
+            await seed.SaveChangesAsync();
+            wRoleId = wRole.Id;
+            globalRoleId = globalRole.Id;
+
+            var identity = new User
+            {
+                Email = "rehome@w.com",
+                PasswordHash = "h",
+                DisplayName = "Rehome",
+                PublicId = Guid.NewGuid(),
+                RoleId = null, // Part B: users.role_id is platform-role-only, never a tenant role
+                IsActive = true,
+            };
+            seed.Users.Add(identity);
+            await seed.SaveChangesAsync();
+            identityId = identity.Id;
+
+            seed.Set<WorkspaceMembership>()
+                .Add(
+                    new WorkspaceMembership
+                    {
+                        UserId = identity.Id,
+                        OwnerId = w,
+                        RoleId = wRole.Id,
+                        IsActive = true,
+                        ApprovalStatus = ApprovalStatus.Approved,
+                        JoinedAt = DateTime.UtcNow.AddDays(-2),
+                        SecurityStamp = Guid.NewGuid(),
+                    }
+                );
+            // Membership in X holds an ordinary GLOBAL role — the survivor keeps exactly this one.
+            seed.Set<WorkspaceMembership>()
+                .Add(
+                    new WorkspaceMembership
+                    {
+                        UserId = identity.Id,
+                        OwnerId = x,
+                        RoleId = globalRole.Id,
+                        IsActive = true,
+                        ApprovalStatus = ApprovalStatus.Approved,
+                        JoinedAt = DateTime.UtcNow.AddDays(-1),
+                        SecurityStamp = Guid.NewGuid(),
+                    }
+                );
+            await seed.SaveChangesAsync();
+        }
+
+        using var ctx = db.MakeContext(new FakeCurrentUser { IsSuperAdmin = true });
+        var svc = BuildTenantService(ctx);
+
+        var result = await svc.HardDeleteAsync(w);
+        Assert.True(result.IsSuccess, result.Message);
+
+        using var verify = db.MakeContext(new FakeCurrentUser { IsSuperAdmin = true });
+        var survivor = verify.Users.IgnoreQueryFilters().Single(u => u.Id == identityId);
+        Assert.Null(survivor.RoleId);
+        var survivingMembership = verify
+            .Set<WorkspaceMembership>()
+            .IgnoreQueryFilters()
+            .Single(m => m.UserId == identityId);
+        Assert.Equal(x, survivingMembership.OwnerId);
+        Assert.Equal(globalRoleId, survivingMembership.RoleId);
+        Assert.Null(verify.Roles.IgnoreQueryFilters().SingleOrDefault(r => r.Id == wRoleId));
     }
 
     // ── 9. HomeWorkspace_IsEarliestMembershipOfAnyState ─────────────────────────────────────
@@ -2251,6 +2367,17 @@ public class Db11fMembershipRulesTests
             db.Roles.Add(new Role { Name = "Workspace Admin", OwnerId = null });
             db.SaveChanges();
             var uow = new UnitOfWork(db);
+            // A REAL AuditWriter sharing the SAME DbContext as the UnitOfWork (the production
+            // shape) — not a no-op — so a re-added `demoUser.Role = role` write would actually be
+            // persisted by the audit write's SaveChangesAsync and would be caught below (review
+            // finding: the Noop default made this assertion vacuous).
+            var audit = new AuditWriter(
+                db,
+                new FakeCurrentUser { IsSuperAdmin = true },
+                new FakeHttpContextAccessor(),
+                new ConfigurationBuilder().Build(),
+                NullLogger<AuditWriter>.Instance
+            );
             var svc = new DemoService(
                 uow,
                 new FakePasswordHasher(),
@@ -2258,7 +2385,8 @@ public class Db11fMembershipRulesTests
                 new NoopEmail(),
                 new FakeSettings(),
                 new NoopBrandingService(),
-                new MembershipService(uow)
+                new MembershipService(uow),
+                audit
             );
 
             var result = await svc.ProvisionAsync(
@@ -2271,5 +2399,147 @@ public class Db11fMembershipRulesTests
         using var verify = Ctx(new FakeCurrentUser { IsSuperAdmin = true }, demoDbName);
         var demoUser = verify.Users.IgnoreQueryFilters().Single(u => u.IsDemo);
         Assert.Null(demoUser.RoleId);
+
+        // Part (3) of §6 item 18: AdminSeeder against an empty database leaves the seeded super
+        // admin's RoleId pointing at the (global) super-admin role.
+        var seederDbName = Guid.NewGuid().ToString();
+        const string seederAdminEmail = "empty-db-admin@x.com";
+        var provider = BuildSeederProvider(seederDbName, seederAdminEmail);
+        await AdminSeeder.SeedAsync(provider);
+        using var seederVerify = Ctx(new FakeCurrentUser { IsSuperAdmin = true }, seederDbName);
+        var seededAdmin = seederVerify
+            .Users.IgnoreQueryFilters()
+            .Single(u => u.Email == seederAdminEmail);
+        var seededSuperRole = seederVerify.Roles.IgnoreQueryFilters().Single(r => r.IsSuperAdmin);
+        Assert.Equal(seededSuperRole.Id, seededAdmin.RoleId);
+    }
+
+    // ── Review item 4: AppDbContext.EnforcePlatformRoleInvariant ────────────────────────────
+    // users.role_id must be null or point at a GLOBAL (OwnerId == null) IsSuperAdmin role — never a
+    // tenant role. Covers all three shapes on the async save path (the one production actually uses).
+
+    [Fact]
+    public async Task PlatformRoleInvariant_RefusesUserWithATenantRoleId()
+    {
+        var dbName = Guid.NewGuid().ToString();
+        using var ctx = Ctx(new FakeCurrentUser { IsSuperAdmin = true }, dbName);
+        var tenantRole = new Role
+        {
+            Name = "Developer",
+            OwnerId = Guid.NewGuid(),
+            IsActive = true,
+        };
+        ctx.Roles.Add(tenantRole);
+        await ctx.SaveChangesAsync();
+
+        ctx.Users.Add(
+            new User
+            {
+                Email = "member@x.com",
+                PasswordHash = "h",
+                DisplayName = "Member",
+                PublicId = Guid.NewGuid(),
+                RoleId = tenantRole.Id,
+                IsActive = true,
+            }
+        );
+
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() => ctx.SaveChangesAsync());
+        Assert.Contains("DB-11f invariant", ex.Message);
+    }
+
+    [Fact]
+    public async Task PlatformRoleInvariant_AllowsUserWithTheGlobalSuperAdminRoleId()
+    {
+        var dbName = Guid.NewGuid().ToString();
+        using var ctx = Ctx(new FakeCurrentUser { IsSuperAdmin = true }, dbName);
+        var superRole = new Role
+        {
+            Name = "Admin",
+            IsSuperAdmin = true,
+            IsActive = true,
+        };
+        ctx.Roles.Add(superRole);
+        await ctx.SaveChangesAsync();
+
+        ctx.Users.Add(
+            new User
+            {
+                Email = "super@x.com",
+                PasswordHash = "h",
+                DisplayName = "Super",
+                PublicId = Guid.NewGuid(),
+                RoleId = superRole.Id,
+                IsActive = true,
+            }
+        );
+
+        await ctx.SaveChangesAsync(); // must not throw
+
+        using var verify = Ctx(new FakeCurrentUser { IsSuperAdmin = true }, dbName);
+        var saved = verify.Users.IgnoreQueryFilters().Single(u => u.Email == "super@x.com");
+        Assert.Equal(superRole.Id, saved.RoleId);
+    }
+
+    [Fact]
+    public async Task PlatformRoleInvariant_AllowsUserWithNullRoleId()
+    {
+        var dbName = Guid.NewGuid().ToString();
+        using var ctx = Ctx(new FakeCurrentUser { IsSuperAdmin = true }, dbName);
+
+        ctx.Users.Add(
+            new User
+            {
+                Email = "member2@x.com",
+                PasswordHash = "h",
+                DisplayName = "Member2",
+                PublicId = Guid.NewGuid(),
+                RoleId = null,
+                IsActive = true,
+            }
+        );
+
+        await ctx.SaveChangesAsync(); // must not throw
+
+        using var verify = Ctx(new FakeCurrentUser { IsSuperAdmin = true }, dbName);
+        var saved = verify.Users.IgnoreQueryFilters().Single(u => u.Email == "member2@x.com");
+        Assert.Null(saved.RoleId);
+    }
+
+    [Fact]
+    public async Task PlatformRoleInvariant_RefusesReassigningAnExistingUserToATenantRoleId()
+    {
+        var dbName = Guid.NewGuid().ToString();
+        int userId;
+        using (var seed = Ctx(new FakeCurrentUser { IsSuperAdmin = true }, dbName))
+        {
+            var user = new User
+            {
+                Email = "member3@x.com",
+                PasswordHash = "h",
+                DisplayName = "Member3",
+                PublicId = Guid.NewGuid(),
+                RoleId = null,
+                IsActive = true,
+            };
+            seed.Users.Add(user);
+            await seed.SaveChangesAsync();
+            userId = user.Id;
+        }
+
+        using var ctx = Ctx(new FakeCurrentUser { IsSuperAdmin = true }, dbName);
+        var tenantRole = new Role
+        {
+            Name = "Developer",
+            OwnerId = Guid.NewGuid(),
+            IsActive = true,
+        };
+        ctx.Roles.Add(tenantRole);
+        await ctx.SaveChangesAsync();
+
+        var tracked = await ctx.Users.SingleAsync(u => u.Id == userId);
+        tracked.RoleId = tenantRole.Id; // a genuine reassignment, not an incidental touch
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() => ctx.SaveChangesAsync());
+        Assert.Contains("DB-11f invariant", ex.Message);
     }
 }

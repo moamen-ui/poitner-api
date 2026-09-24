@@ -431,7 +431,6 @@ public class WorkspaceTests
                 Email = "admin@delete-me.com",
                 PasswordHash = "hash",
                 DisplayName = "Admin",
-                RoleId = role.Id,
                 IsActive = true,
             };
             seed.Users.Add(admin);
@@ -577,7 +576,6 @@ public class WorkspaceTests
                 Email = "admin@delete-me-2.com",
                 PasswordHash = "hash",
                 DisplayName = "Admin",
-                RoleId = role.Id,
                 IsActive = true,
             };
             seed.Users.Add(admin);
@@ -595,7 +593,6 @@ public class WorkspaceTests
                 Email = $"erased+{Guid.NewGuid():N}@tombstone.invalid",
                 PasswordHash = "hash",
                 DisplayName = "Deleted user",
-                RoleId = role.Id,
                 IsActive = false,
                 DeletedAt = DateTime.UtcNow,
                 ErasedAt = DateTime.UtcNow,

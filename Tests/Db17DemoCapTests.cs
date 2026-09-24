@@ -115,7 +115,6 @@ public class Db17DemoCapTests
                     Email = $"demo-{author:N}@demo.pointer",
                     PasswordHash = "x",
                     DisplayName = "Demo Admin",
-                    RoleId = role.Id,
                     IsActive = true,
                     IsDemo = true,
                 }
@@ -232,7 +231,6 @@ public class Db17DemoCapTests
                     Email = $"real-{author:N}@user.com",
                     PasswordHash = "x",
                     DisplayName = "Real Admin",
-                    RoleId = role.Id,
                     IsActive = true,
                 }
             );
@@ -363,7 +361,6 @@ public class Db17DemoCapTests
                     Email = $"demo-{importer:N}@demo.pointer",
                     PasswordHash = "x",
                     DisplayName = "Demo Admin",
-                    RoleId = role.Id,
                     IsActive = true,
                     IsDemo = true,
                 }

@@ -111,7 +111,6 @@ public class SoftDeleteUniqueIndexTests
             userA = new User
             {
                 Email = "dup@example.com",
-                RoleId = role.Id,
                 PasswordHash = "hash",
                 DisplayName = "A",
             };
@@ -132,7 +131,6 @@ public class SoftDeleteUniqueIndexTests
                 new User
                 {
                     Email = "dup@example.com",
-                    RoleId = role.Id,
                     PasswordHash = "hash",
                     DisplayName = "B",
                 }
@@ -163,7 +161,6 @@ public class SoftDeleteUniqueIndexTests
                 new User
                 {
                     Email = "dup2@example.com",
-                    RoleId = role.Id,
                     PasswordHash = "hash",
                     DisplayName = "A",
                 }
@@ -177,7 +174,6 @@ public class SoftDeleteUniqueIndexTests
                 new User
                 {
                     Email = "dup2@example.com",
-                    RoleId = role.Id,
                     PasswordHash = "hash",
                     DisplayName = "B",
                 }

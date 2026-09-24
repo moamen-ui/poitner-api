@@ -1828,7 +1828,9 @@ public class InviteServiceTests
         );
 
         Assert.False(result.IsSuccess);
-        Assert.Empty(db.Users.IgnoreQueryFilters().Where(u => u.RoleId == clientRoleId));
+        Assert.Empty(
+            db.WorkspaceMemberships.IgnoreQueryFilters().Where(m => m.RoleId == clientRoleId)
+        );
     }
 
     [Fact]
@@ -1882,7 +1884,9 @@ public class InviteServiceTests
         );
 
         Assert.False(result.IsSuccess);
-        Assert.Empty(db.Users.IgnoreQueryFilters().Where(u => u.RoleId == clientRoleId));
+        Assert.Empty(
+            db.WorkspaceMemberships.IgnoreQueryFilters().Where(m => m.RoleId == clientRoleId)
+        );
     }
 
     [Fact]
