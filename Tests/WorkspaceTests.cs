@@ -524,6 +524,99 @@ public class WorkspaceTests
         Assert.Equal(0, verify.Workspaces.IgnoreQueryFilters().Count(w => w.Id == ownerPublicId));
     }
 
+    // ── 5b. HardDelete_SoftDeletedIdentityOwnedByWorkspace (DB-18 code review, Gemini BLOCKER) ──
+
+    [Fact]
+    public async Task HardDelete_SoftDeletedIdentityOwnedByWorkspace_RemovedNotOrphaned_UnderRealForeignKeys()
+    {
+        using var db = new TestDb();
+        var ownerPublicId = Guid.NewGuid();
+        var superAdmin = new FakeCurrentUser { IsSuperAdmin = true };
+        int erasedUserId;
+
+        using (var seed = db.MakeContext(superAdmin))
+        {
+            seed.Workspaces.Add(
+                new Workspace
+                {
+                    Id = ownerPublicId,
+                    Name = "Workspace",
+                    CreatedAt = DateTime.UtcNow,
+                    CreatedBy = ownerPublicId,
+                }
+            );
+
+            var role = new Role
+            {
+                Name = "Workspace Admin",
+                GrantsAdmin = true,
+                IsActive = true,
+                IsSystem = true,
+                OwnerId = ownerPublicId,
+            };
+            seed.Roles.Add(role);
+            await seed.SaveChangesAsync();
+
+            var admin = new User
+            {
+                PublicId = ownerPublicId,
+                Email = "admin@delete-me-2.com",
+                PasswordHash = "hash",
+                DisplayName = "Admin",
+                RoleId = role.Id,
+                OwnerId = ownerPublicId,
+                ApprovalStatus = ApprovalStatus.Approved,
+                IsActive = true,
+            };
+            seed.Users.Add(admin);
+            await seed.SaveChangesAsync();
+
+            // DB-18 code review (Gemini BLOCKER): an identity CREATED in this workspace (legacy
+            // owner_id — the FK `fk_users_workspaces_owner_id` is Restrict) that was later
+            // soft-deleted/GDPR-erased (IdentityEraseService sets DeletedAt but never clears
+            // OwnerId) and has no membership row anywhere. Before the fix, HardDeleteAsync's
+            // `usersCreatedHere` / `IdentitiesDeletedWithWorkspace` queries filtered on
+            // `DeletedAt == null`, so this row was never removed or re-homed — the workspace row's
+            // own delete then hit a real foreign-key violation (23503 under Postgres; Sqlite here
+            // enforces the same FK, unlike the InMemory provider most of this suite uses).
+            var erased = new User
+            {
+                PublicId = Guid.NewGuid(),
+                Email = $"erased+{Guid.NewGuid():N}@tombstone.invalid",
+                PasswordHash = "hash",
+                DisplayName = "Deleted user",
+                RoleId = role.Id,
+                OwnerId = ownerPublicId,
+                ApprovalStatus = ApprovalStatus.Approved,
+                IsActive = false,
+                DeletedAt = DateTime.UtcNow,
+                ErasedAt = DateTime.UtcNow,
+            };
+            seed.Users.Add(erased);
+            await seed.SaveChangesAsync();
+            erasedUserId = erased.Id;
+        }
+
+        using var ctx = db.MakeContext(superAdmin);
+        var svc = new TenantService(
+            new UnitOfWork(ctx),
+            new FakePasswordHasher(),
+            new NoopFileStorage(),
+            new FakeSettings(),
+            new NoopBillingProvider(),
+            new MembershipService(new UnitOfWork(ctx))
+        );
+
+        var result = await svc.HardDeleteAsync(ownerPublicId);
+        Assert.True(result.IsSuccess, result.Message);
+
+        using var verify = db.MakeContext(superAdmin);
+        Assert.Null(verify.Users.IgnoreQueryFilters().SingleOrDefault(u => u.Id == erasedUserId));
+        Assert.Null(
+            verify.Workspaces.IgnoreQueryFilters().SingleOrDefault(w => w.Id == ownerPublicId)
+        );
+    }
+
     // ── 6. Workspace_TenantB_CannotReadTenantA ──────────────────────────────────────────
 
     [Fact]

@@ -185,10 +185,29 @@ public class Db18WorkspaceLifecycleTests
         CapturingEmail? email = null,
         FakeAuditWriter? audit = null,
         ILoginAttemptLimiter? lockout = null,
-        IConfiguration? config = null
+        IConfiguration? config = null,
+        Microsoft.Extensions.Caching.Memory.IMemoryCache? linkAttemptCache = null
+    ) =>
+        BuildServiceWithUow(
+            new UnitOfWork(ctx),
+            user,
+            email,
+            audit,
+            lockout,
+            config,
+            linkAttemptCache
+        );
+
+    private static WorkspaceLifecycleService BuildServiceWithUow(
+        IUnitOfWork uow,
+        ICurrentUser user,
+        CapturingEmail? email = null,
+        FakeAuditWriter? audit = null,
+        ILoginAttemptLimiter? lockout = null,
+        IConfiguration? config = null,
+        Microsoft.Extensions.Caching.Memory.IMemoryCache? linkAttemptCache = null
     )
     {
-        var uow = new UnitOfWork(ctx);
         var memberships = new MembershipService(uow);
         var state = new WorkspaceStateService(uow);
         var workspaces = new WorkspaceService(uow, user, audit, memberships, config);
@@ -214,8 +233,57 @@ public class Db18WorkspaceLifecycleTests
             tenants,
             lockout ?? new FakeLoginAttemptLimiter(),
             config,
-            audit
+            audit,
+            linkAttemptCache
         );
+    }
+
+    /// <summary>
+    /// Models a genuinely separate concurrent transaction committing in the gap between a locked
+    /// method's pre-lock read and its own <c>FOR UPDATE</c> lock — copies
+    /// <c>Db17HardDeleteAndCleanupTests.ExtendingOnLockUnitOfWork</c>'s idea: decorate a real
+    /// <see cref="UnitOfWork"/> (InMemory-backed) so the moment <see cref="IUnitOfWork.ExecuteSqlRawAsync"/>
+    /// (the lock marker — a no-op under InMemory, same as production's real <c>FOR UPDATE</c> would
+    /// be a real lock under Postgres) is called for the FIRST time, a supplied callback runs — a
+    /// second, fully independent call through a SEPARATE <see cref="AppDbContext"/> against the SAME
+    /// named InMemory database, exactly as a second HTTP request would.
+    /// </summary>
+    private sealed class RacingUnitOfWork(UnitOfWork inner, Func<Task> onLock) : IUnitOfWork
+    {
+        private bool _fired;
+
+        public IRepository<T> Repository<T>()
+            where T : BaseEntity => inner.Repository<T>();
+
+        public DbSet<UsageEvent> UsageEvents => inner.UsageEvents;
+        public DbSet<UsageDaily> UsageDaily => inner.UsageDaily;
+        public DbSet<Workspace> Workspaces => inner.Workspaces;
+        public DbSet<UserAlias> UserAliases => inner.UserAliases;
+        public DbSet<AuditEvent> AuditEvents => inner.AuditEvents;
+        public DbSet<ImpersonationSession> ImpersonationSessions => inner.ImpersonationSessions;
+
+        public Task<int> SaveChangesAsync() => inner.SaveChangesAsync();
+
+        public Task ExecuteInTransactionAsync(Func<Task> action) =>
+            inner.ExecuteInTransactionAsync(action);
+
+        public void PreserveCreatedAtOnInsert(BaseEntity entity) =>
+            inner.PreserveCreatedAtOnInsert(entity);
+
+        public void ClearChangeTracker() => inner.ClearChangeTracker();
+
+        public Task<int> AtomicClaimInviteSlotAsync(int inviteId, DateTime now) =>
+            inner.AtomicClaimInviteSlotAsync(inviteId, now);
+
+        public async Task ExecuteSqlRawAsync(string sql, params object[] parameters)
+        {
+            if (!_fired)
+            {
+                _fired = true;
+                await onLock();
+            }
+            await inner.ExecuteSqlRawAsync(sql, parameters);
+        }
     }
 
     // ── Seeding ──────────────────────────────────────────────────────────────────────────────
@@ -1069,6 +1137,13 @@ public class Db18WorkspaceLifecycleTests
         var email = new CapturingEmail();
         var token = await RequestAndExtractTokenAsync(this, caller, db, email);
 
+        // Opus MEDIUM (code review fix pass): the link-spend decision now comes from a DEDICATED
+        // per-link counter (`delws:{ws}:{requestedAtMs}`), independent of the shared account-level
+        // login lockout — so this test shares ONE `IMemoryCache` across every ConfirmDeletionAsync
+        // call below (each call builds a fresh WorkspaceLifecycleService, as a fresh HTTP request
+        // would; only DI's singleton IMemoryCache — modelled here by this shared instance — carries
+        // the count between them). The lockout limiter is still passed (and still trips at its own
+        // threshold), but is no longer what spends the link.
         var lockout = new LoginAttemptLimiter(
             new Microsoft.Extensions.Caching.Memory.MemoryCache(
                 new Microsoft.Extensions.Caching.Memory.MemoryCacheOptions()
@@ -1077,11 +1152,20 @@ public class Db18WorkspaceLifecycleTests
                 new LoginLockoutOptions { Threshold = 5, WindowMinutes = 15 }
             )
         );
+        var linkAttemptCache = new Microsoft.Extensions.Caching.Memory.MemoryCache(
+            new Microsoft.Extensions.Caching.Memory.MemoryCacheOptions()
+        );
 
         for (var i = 0; i < 5; i++)
         {
             using var ctx = Ctx(caller, db);
-            var result = await BuildService(caller, ctx, email, lockout: lockout)
+            var result = await BuildService(
+                    caller,
+                    ctx,
+                    email,
+                    lockout: lockout,
+                    linkAttemptCache: linkAttemptCache
+                )
                 .ConfirmDeletionAsync(
                     new ConfirmWorkspaceDeletionRequest
                     {
@@ -1100,6 +1184,88 @@ public class Db18WorkspaceLifecycleTests
         Assert.Null(row.DeletionRequestedAt);
         Assert.Null(row.DeletionRequestedBy);
         Assert.True(await lockout.IsLockedAsync(ws.Admin.Email));
+    }
+
+    /// <summary>Gemini HIGH (code review): before the fix, the link was spent when the SHARED
+    /// account-level login lockout tripped (production threshold 10) — coupling a workspace-deletion
+    /// link's lifetime to unrelated dashboard login failures. With a realistic prod-like threshold
+    /// (10) the account is NOT locked after 5 wrong passwords, yet the link must already be dead —
+    /// proving the per-link counter, not the lockout, is what spends it.</summary>
+    [Fact]
+    public async Task Confirm_LinkSpentOnOwnFifthFailure_EvenWhenAccountLockoutThresholdIsHigher()
+    {
+        var db = Guid.NewGuid().ToString();
+        SeededWorkspace ws;
+        using (var seed = Ctx(new FakeCurrentUser { IsSuperAdmin = true }, db))
+            ws = SeedWorkspace(seed);
+
+        var caller = AdminCaller(ws);
+        var email = new CapturingEmail();
+        var token = await RequestAndExtractTokenAsync(this, caller, db, email);
+
+        // Production-shaped: threshold 10, well above the link's own 5-failure budget.
+        var lockout = new LoginAttemptLimiter(
+            new Microsoft.Extensions.Caching.Memory.MemoryCache(
+                new Microsoft.Extensions.Caching.Memory.MemoryCacheOptions()
+            ),
+            Microsoft.Extensions.Options.Options.Create(
+                new LoginLockoutOptions { Threshold = 10, WindowMinutes = 15 }
+            )
+        );
+        var linkAttemptCache = new Microsoft.Extensions.Caching.Memory.MemoryCache(
+            new Microsoft.Extensions.Caching.Memory.MemoryCacheOptions()
+        );
+
+        for (var i = 0; i < 5; i++)
+        {
+            using var ctx = Ctx(caller, db);
+            var result = await BuildService(
+                    caller,
+                    ctx,
+                    email,
+                    lockout: lockout,
+                    linkAttemptCache: linkAttemptCache
+                )
+                .ConfirmDeletionAsync(
+                    new ConfirmWorkspaceDeletionRequest
+                    {
+                        Token = token,
+                        Password = "wrong",
+                        WorkspaceName = "Acme",
+                    }
+                );
+            Assert.False(result.IsSuccess);
+        }
+
+        // The account itself is NOT locked (5 < 10) — proves the spend did not ride on the lockout.
+        Assert.False(await lockout.IsLockedAsync(ws.Admin.Email));
+
+        using var check = Ctx(new FakeCurrentUser { IsSuperAdmin = true }, db);
+        var row = await check
+            .Workspaces.IgnoreQueryFilters()
+            .FirstAsync(w => w.Id == ws.WorkspaceId);
+        Assert.Null(row.DeletionRequestedAt);
+        Assert.Null(row.DeletionRequestedBy);
+
+        // The link itself is dead: even the CORRECT password now fails as DeletionLinkInvalid.
+        using var retryCtx = Ctx(caller, db);
+        var retry = await BuildService(
+                caller,
+                retryCtx,
+                email,
+                lockout: lockout,
+                linkAttemptCache: linkAttemptCache
+            )
+            .ConfirmDeletionAsync(
+                new ConfirmWorkspaceDeletionRequest
+                {
+                    Token = token,
+                    Password = "pw-admin",
+                    WorkspaceName = "Acme",
+                }
+            );
+        Assert.False(retry.IsSuccess);
+        Assert.Equal(MessageKeys.Workspace.DeletionLinkInvalid, retry.Message);
     }
 
     // ── 4. Pause-instead ─────────────────────────────────────────────────────────────────────
@@ -1426,5 +1592,532 @@ public class Db18WorkspaceLifecycleTests
         Assert.True(
             await check.Workspaces.IgnoreQueryFilters().AnyAsync(w => w.Id == ws.WorkspaceId)
         );
+    }
+
+    // ── 9. No-tenant / non-super-admin caller (code review fix pass, BLOCKER priority 1) ────────
+    //
+    // Every test above that exercises an ANONYMOUS or JOB method still builds its service with
+    // `AdminCaller(ws)` (a tenant-scoped session caller) or a super-admin `op` — both bypass the
+    // Workspace query filter for reasons that have nothing to do with the code path being real. In
+    // production these methods run with NO usable tenant claim at all: `AuthController`'s anonymous
+    // actions resolve `ICurrentUser` from an unauthenticated `HttpContext` (TenantId/Id null,
+    // IsSuperAdmin false), and the hosted `WorkspaceDeletionService` resolves its DI scope with
+    // whatever `ICurrentUser` implementation is registered for a request-less scope — never a
+    // super-admin. `NoTenantCaller()` reproduces exactly that: no Id, no TenantId, not super admin.
+    // Every test below FAILED before the IgnoreQueryFilters fix (verified by temporarily reverting
+    // it and re-running) and passes after.
+
+    private static FakeCurrentUser NoTenantCaller() => new();
+
+    [Fact]
+    public async Task Confirm_NoTenantCurrentUser_Succeeds()
+    {
+        var db = Guid.NewGuid().ToString();
+        SeededWorkspace ws;
+        using (var seed = Ctx(new FakeCurrentUser { IsSuperAdmin = true }, db))
+            ws = SeedWorkspace(seed);
+
+        var admin = AdminCaller(ws);
+        var email = new CapturingEmail();
+        var token = await RequestAndExtractTokenAsync(this, admin, db, email);
+
+        using var ctx = Ctx(NoTenantCaller(), db);
+        var result = await BuildService(NoTenantCaller(), ctx, email)
+            .ConfirmDeletionAsync(
+                new ConfirmWorkspaceDeletionRequest
+                {
+                    Token = token,
+                    Password = "pw-admin",
+                    WorkspaceName = "Acme",
+                }
+            );
+
+        Assert.True(result.IsSuccess, result.Message);
+        Assert.Equal(ws.WorkspaceId, result.Data!.WorkspaceId);
+    }
+
+    [Fact]
+    public async Task PauseInstead_NoTenantCurrentUser_Succeeds()
+    {
+        var db = Guid.NewGuid().ToString();
+        SeededWorkspace ws;
+        using (var seed = Ctx(new FakeCurrentUser { IsSuperAdmin = true }, db))
+            ws = SeedWorkspace(seed);
+
+        var admin = AdminCaller(ws);
+        var email = new CapturingEmail();
+        var token = await RequestAndExtractTokenAsync(this, admin, db, email);
+
+        using var ctx = Ctx(NoTenantCaller(), db);
+        var result = await BuildService(NoTenantCaller(), ctx, email).PauseInsteadAsync(token);
+
+        Assert.True(result.IsSuccess, result.Message);
+
+        using var check = Ctx(new FakeCurrentUser { IsSuperAdmin = true }, db);
+        var row = await check
+            .Workspaces.IgnoreQueryFilters()
+            .FirstAsync(w => w.Id == ws.WorkspaceId);
+        Assert.NotNull(row.PausedAt);
+    }
+
+    [Fact]
+    public async Task Preview_NoTenantCurrentUser_Succeeds()
+    {
+        var db = Guid.NewGuid().ToString();
+        SeededWorkspace ws;
+        using (var seed = Ctx(new FakeCurrentUser { IsSuperAdmin = true }, db))
+            ws = SeedWorkspace(seed);
+
+        var admin = AdminCaller(ws);
+        var email = new CapturingEmail();
+        var token = await RequestAndExtractTokenAsync(this, admin, db, email);
+
+        using var ctx = Ctx(NoTenantCaller(), db);
+        var result = await BuildService(NoTenantCaller(), ctx, email).PreviewDeletionAsync(token);
+
+        Assert.True(result.IsSuccess, result.Message);
+        Assert.Equal(ws.WorkspaceId, result.Data!.WorkspaceId);
+    }
+
+    /// <summary>SpendLinkAsync's own tracked load (D18.5's 5th-wrong-password spend) — driven through
+    /// ConfirmDeletionAsync with a no-tenant caller so the underlying spend happens in the exact
+    /// context the anonymous confirm endpoint runs in.</summary>
+    [Fact]
+    public async Task Confirm_FiveWrongPasswords_NoTenantCurrentUser_LinkSpent()
+    {
+        var db = Guid.NewGuid().ToString();
+        SeededWorkspace ws;
+        using (var seed = Ctx(new FakeCurrentUser { IsSuperAdmin = true }, db))
+            ws = SeedWorkspace(seed);
+
+        var admin = AdminCaller(ws);
+        var email = new CapturingEmail();
+        var token = await RequestAndExtractTokenAsync(this, admin, db, email);
+
+        var lockout = new LoginAttemptLimiter(
+            new Microsoft.Extensions.Caching.Memory.MemoryCache(
+                new Microsoft.Extensions.Caching.Memory.MemoryCacheOptions()
+            ),
+            Microsoft.Extensions.Options.Options.Create(
+                new LoginLockoutOptions { Threshold = 5, WindowMinutes = 15 }
+            )
+        );
+        var linkAttemptCache = new Microsoft.Extensions.Caching.Memory.MemoryCache(
+            new Microsoft.Extensions.Caching.Memory.MemoryCacheOptions()
+        );
+
+        for (var i = 0; i < 5; i++)
+        {
+            using var ctx = Ctx(NoTenantCaller(), db);
+            var result = await BuildService(
+                    NoTenantCaller(),
+                    ctx,
+                    email,
+                    lockout: lockout,
+                    linkAttemptCache: linkAttemptCache
+                )
+                .ConfirmDeletionAsync(
+                    new ConfirmWorkspaceDeletionRequest
+                    {
+                        Token = token,
+                        Password = "wrong",
+                        WorkspaceName = "Acme",
+                    }
+                );
+            Assert.False(result.IsSuccess);
+        }
+
+        using var check = Ctx(new FakeCurrentUser { IsSuperAdmin = true }, db);
+        var row = await check
+            .Workspaces.IgnoreQueryFilters()
+            .FirstAsync(w => w.Id == ws.WorkspaceId);
+        Assert.Null(row.DeletionRequestedAt);
+        Assert.Null(row.DeletionRequestedBy);
+    }
+
+    [Fact]
+    public async Task SendDueRemindersAsync_NoTenantCurrentUser_StampsReminder_AndMails()
+    {
+        var db = Guid.NewGuid().ToString();
+        SeededWorkspace ws;
+        using (var seed = Ctx(new FakeCurrentUser { IsSuperAdmin = true }, db))
+            ws = SeedWorkspace(seed);
+
+        var now = DateTime.UtcNow;
+        using (var ctx = Ctx(new FakeCurrentUser { IsSuperAdmin = true }, db))
+        {
+            var w = await ctx
+                .Workspaces.IgnoreQueryFilters()
+                .SingleAsync(x => x.Id == ws.WorkspaceId);
+            w.DeletionRequestedAt = now.AddDays(-7);
+            w.DeletionRequestedBy = ws.Admin.PublicId;
+            w.DeletionConfirmedAt = now.AddDays(-7); // grace = 7 days >= 48h → reminder eligible
+            w.DeletionScheduledFor = now.AddHours(20); // due within the T-24h reminder window
+            await ctx.SaveChangesAsync();
+        }
+
+        var email = new CapturingEmail();
+        // BLOCKER regression: SendDueRemindersAsync runs on the hosted job's own DI scope — no
+        // tenant claim, not a super admin. Before the fix its locked tracked load always returned
+        // null, so DeletionReminderSentAt was NEVER stamped; for a grace period >= 48h that meant
+        // ExecuteDueDeletionAsync (which requires a sent reminder, or grace < 48h) would then
+        // PERMANENTLY refuse to ever hard-delete the workspace.
+        using (var ctx = Ctx(NoTenantCaller(), db))
+            await BuildService(NoTenantCaller(), ctx, email).SendDueRemindersAsync(now);
+
+        using var check = Ctx(new FakeCurrentUser { IsSuperAdmin = true }, db);
+        var row = await check
+            .Workspaces.IgnoreQueryFilters()
+            .SingleAsync(w => w.Id == ws.WorkspaceId);
+        Assert.NotNull(row.DeletionReminderSentAt);
+        Assert.NotEmpty(email.Sent);
+    }
+
+    [Fact]
+    public async Task ExecuteDueDeletionAsync_NoTenantCurrentUser_HardDeletes()
+    {
+        var db = Guid.NewGuid().ToString();
+        SeededWorkspace ws;
+        using (var seed = Ctx(new FakeCurrentUser { IsSuperAdmin = true }, db))
+            ws = SeedWorkspace(seed);
+
+        var now = DateTime.UtcNow;
+        using (var ctx = Ctx(new FakeCurrentUser { IsSuperAdmin = true }, db))
+        {
+            var w = await ctx
+                .Workspaces.IgnoreQueryFilters()
+                .SingleAsync(x => x.Id == ws.WorkspaceId);
+            w.DeletionRequestedAt = now.AddDays(-8);
+            w.DeletionRequestedBy = ws.Admin.PublicId;
+            w.DeletionConfirmedAt = now.AddDays(-8);
+            w.DeletionScheduledFor = now.AddMinutes(-5); // due
+            w.DeletionReminderSentAt = now.AddHours(-25); // already sent
+            await ctx.SaveChangesAsync();
+        }
+
+        var email = new CapturingEmail();
+        using var ctx2 = Ctx(NoTenantCaller(), db);
+        var result = await BuildService(NoTenantCaller(), ctx2, email)
+            .ExecuteDueDeletionAsync(ws.WorkspaceId);
+
+        Assert.True(result.IsSuccess, result.Message);
+
+        using var check = Ctx(new FakeCurrentUser { IsSuperAdmin = true }, db);
+        Assert.Null(
+            await check
+                .Workspaces.IgnoreQueryFilters()
+                .SingleOrDefaultAsync(w => w.Id == ws.WorkspaceId)
+        );
+    }
+
+    // ── 10. Concurrency (§6 test 9a, RacingUnitOfWork — as far as InMemory can model it: the real
+    // `FOR UPDATE` lock is Postgres-only and is proven in the R11 rehearsal / e2e stack, §9; these
+    // model the RACE — a second transaction committing in the gap before the lock — not the lock
+    // itself, exactly like Db17HardDeleteAndCleanupTests' own concurrency tests) ──────────────────
+
+    [Fact]
+    public async Task Confirm_Concurrent_OnlyOneSchedules()
+    {
+        var db = Guid.NewGuid().ToString();
+        SeededWorkspace ws;
+        using (var seed = Ctx(new FakeCurrentUser { IsSuperAdmin = true }, db))
+            ws = SeedWorkspace(seed);
+
+        var caller = AdminCaller(ws);
+        var email = new CapturingEmail();
+        var token = await RequestAndExtractTokenAsync(this, caller, db, email);
+
+        using var ctx = Ctx(caller, db);
+        var winnerCompleted = false;
+
+        var racingUow = new RacingUnitOfWork(
+            new UnitOfWork(ctx),
+            async () =>
+            {
+                // Models a second admin tab confirming the SAME link a moment earlier — its own
+                // transaction commits inside the gap between this call's pre-lock read and its lock.
+                using var concurrentCtx = Ctx(caller, db);
+                var concurrentResult = await BuildService(
+                        caller,
+                        concurrentCtx,
+                        new CapturingEmail()
+                    )
+                    .ConfirmDeletionAsync(
+                        new ConfirmWorkspaceDeletionRequest
+                        {
+                            Token = token,
+                            Password = "pw-admin",
+                            WorkspaceName = "Acme",
+                        }
+                    );
+                Assert.True(concurrentResult.IsSuccess, concurrentResult.Message);
+                winnerCompleted = true;
+            }
+        );
+
+        var result = await BuildServiceWithUow(racingUow, caller, email)
+            .ConfirmDeletionAsync(
+                new ConfirmWorkspaceDeletionRequest
+                {
+                    Token = token,
+                    Password = "pw-admin",
+                    WorkspaceName = "Acme",
+                }
+            );
+
+        Assert.True(winnerCompleted);
+        Assert.False(result.IsSuccess);
+        Assert.Equal(MessageKeys.Workspace.DeletionLinkInvalid, result.Message);
+
+        using var check = Ctx(new FakeCurrentUser { IsSuperAdmin = true }, db);
+        var row = await check
+            .Workspaces.IgnoreQueryFilters()
+            .SingleAsync(w => w.Id == ws.WorkspaceId);
+        Assert.NotNull(row.DeletionScheduledFor);
+    }
+
+    [Fact]
+    public async Task Cancel_WhileJobHoldsLock_Conflict()
+    {
+        var db = Guid.NewGuid().ToString();
+        SeededWorkspace ws;
+        using (var seed = Ctx(new FakeCurrentUser { IsSuperAdmin = true }, db))
+            ws = SeedWorkspace(seed);
+
+        var now = DateTime.UtcNow;
+        using (var seedCtx = Ctx(new FakeCurrentUser { IsSuperAdmin = true }, db))
+        {
+            var w = await seedCtx
+                .Workspaces.IgnoreQueryFilters()
+                .SingleAsync(x => x.Id == ws.WorkspaceId);
+            w.DeletionRequestedAt = now.AddDays(-8);
+            w.DeletionRequestedBy = ws.Admin.PublicId;
+            w.DeletionConfirmedAt = now.AddDays(-8);
+            w.DeletionScheduledFor = now.AddMinutes(-5); // due
+            w.DeletionReminderSentAt = now.AddHours(-25); // already sent
+            await seedCtx.SaveChangesAsync();
+        }
+
+        var caller = AdminCaller(ws);
+        using var ctx = Ctx(caller, db);
+
+        var racingUow = new RacingUnitOfWork(
+            new UnitOfWork(ctx),
+            async () =>
+            {
+                // Models the hosted job winning the race: it acquires the lock first, finds the
+                // grace period elapsed, and hard-deletes the workspace before this Cancel gets in.
+                using var jobCtx = Ctx(NoTenantCaller(), db);
+                var jobResult = await BuildService(NoTenantCaller(), jobCtx, new CapturingEmail())
+                    .ExecuteDueDeletionAsync(ws.WorkspaceId);
+                Assert.True(jobResult.IsSuccess, jobResult.Message);
+            }
+        );
+
+        var result = await BuildServiceWithUow(racingUow, caller).CancelDeletionAsync();
+
+        Assert.False(result.IsSuccess);
+        Assert.True(result.IsConflict);
+        Assert.Equal(MessageKeys.Workspace.AlreadyDeleted, result.Message);
+    }
+
+    [Fact]
+    public async Task Reminder_RacingCancel_NoConstraintViolation()
+    {
+        var db = Guid.NewGuid().ToString();
+        SeededWorkspace ws;
+        using (var seed = Ctx(new FakeCurrentUser { IsSuperAdmin = true }, db))
+            ws = SeedWorkspace(seed);
+
+        var now = DateTime.UtcNow;
+        using (var seedCtx = Ctx(new FakeCurrentUser { IsSuperAdmin = true }, db))
+        {
+            var w = await seedCtx
+                .Workspaces.IgnoreQueryFilters()
+                .SingleAsync(x => x.Id == ws.WorkspaceId);
+            w.DeletionRequestedAt = now.AddDays(-7);
+            w.DeletionRequestedBy = ws.Admin.PublicId;
+            w.DeletionConfirmedAt = now.AddDays(-7);
+            w.DeletionScheduledFor = now.AddHours(20); // due for the T-24h reminder
+            await seedCtx.SaveChangesAsync();
+        }
+
+        var caller = AdminCaller(ws);
+        var email = new CapturingEmail();
+        using var ctx = Ctx(NoTenantCaller(), db);
+
+        var racingUow = new RacingUnitOfWork(
+            new UnitOfWork(ctx),
+            async () =>
+            {
+                // Models an admin cancelling in the gap before the reminder job's own lock.
+                using var cancelCtx = Ctx(caller, db);
+                var cancelResult = await BuildService(caller, cancelCtx).CancelDeletionAsync();
+                Assert.True(cancelResult.IsSuccess, cancelResult.Message);
+            }
+        );
+
+        // Must not throw (the schedule-consistency check constraint would reject stamping a
+        // reminder on a now-unscheduled row under real Postgres) — the re-check inside the lock
+        // must skip cleanly instead.
+        await BuildServiceWithUow(racingUow, NoTenantCaller(), email).SendDueRemindersAsync(now);
+
+        using var check = Ctx(new FakeCurrentUser { IsSuperAdmin = true }, db);
+        var row = await check
+            .Workspaces.IgnoreQueryFilters()
+            .SingleAsync(w => w.Id == ws.WorkspaceId);
+        Assert.Null(row.DeletionReminderSentAt);
+        Assert.Null(row.DeletionScheduledFor);
+        Assert.Empty(email.Sent);
+    }
+
+    // ── 11. Reminder edge cases ───────────────────────────────────────────────────────────────
+
+    [Fact]
+    public async Task Reminder_Missed_ReschedulesPlus24h_Audited()
+    {
+        var db = Guid.NewGuid().ToString();
+        SeededWorkspace ws;
+        using (var seed = Ctx(new FakeCurrentUser { IsSuperAdmin = true }, db))
+            ws = SeedWorkspace(seed);
+
+        var now = DateTime.UtcNow;
+        using (var seedCtx = Ctx(new FakeCurrentUser { IsSuperAdmin = true }, db))
+        {
+            var w = await seedCtx
+                .Workspaces.IgnoreQueryFilters()
+                .SingleAsync(x => x.Id == ws.WorkspaceId);
+            w.DeletionRequestedAt = now.AddDays(-7);
+            w.DeletionRequestedBy = ws.Admin.PublicId;
+            w.DeletionConfirmedAt = now.AddDays(-7);
+            // Downtime across T-24h: already due (<= now+1h) and no reminder sent yet.
+            w.DeletionScheduledFor = now.AddMinutes(10);
+            await seedCtx.SaveChangesAsync();
+        }
+
+        var email = new CapturingEmail();
+        var audit = new FakeAuditWriter();
+        using (var ctx = Ctx(NoTenantCaller(), db))
+            await BuildService(NoTenantCaller(), ctx, email, audit).SendDueRemindersAsync(now);
+
+        using var check = Ctx(new FakeCurrentUser { IsSuperAdmin = true }, db);
+        var row = await check
+            .Workspaces.IgnoreQueryFilters()
+            .SingleAsync(w => w.Id == ws.WorkspaceId);
+        Assert.NotNull(row.DeletionReminderSentAt);
+        Assert.True(row.DeletionScheduledFor > now.AddHours(23));
+        Assert.Contains(audit.Entries, e => e.Action == AuditActions.WorkspaceDeletionRescheduled);
+        Assert.NotEmpty(email.Sent);
+    }
+
+    [Fact]
+    public async Task Reminder_GraceUnder2Days_NotSent()
+    {
+        var db = Guid.NewGuid().ToString();
+        SeededWorkspace ws;
+        using (var seed = Ctx(new FakeCurrentUser { IsSuperAdmin = true }, db))
+            ws = SeedWorkspace(seed);
+
+        var now = DateTime.UtcNow;
+        using (var seedCtx = Ctx(new FakeCurrentUser { IsSuperAdmin = true }, db))
+        {
+            var w = await seedCtx
+                .Workspaces.IgnoreQueryFilters()
+                .SingleAsync(x => x.Id == ws.WorkspaceId);
+            w.DeletionRequestedAt = now.AddHours(-1);
+            w.DeletionRequestedBy = ws.Admin.PublicId;
+            // Grace < 48h: E2 (confirmed) is the only notice — no separate T-24h reminder.
+            w.DeletionConfirmedAt = now.AddHours(-1);
+            w.DeletionScheduledFor = now.AddHours(23);
+            await seedCtx.SaveChangesAsync();
+        }
+
+        var email = new CapturingEmail();
+        using (var ctx = Ctx(NoTenantCaller(), db))
+            await BuildService(NoTenantCaller(), ctx, email).SendDueRemindersAsync(now);
+
+        using var check = Ctx(new FakeCurrentUser { IsSuperAdmin = true }, db);
+        var row = await check
+            .Workspaces.IgnoreQueryFilters()
+            .SingleAsync(w => w.Id == ws.WorkspaceId);
+        Assert.Null(row.DeletionReminderSentAt);
+        Assert.Empty(email.Sent);
+    }
+
+    // ── 12. Preview / actual parity (§6 test 9a) ─────────────────────────────────────────────
+
+    [Fact]
+    public async Task Preview_AccountsCount_EqualsRowsActuallyDeleted()
+    {
+        var db = Guid.NewGuid().ToString();
+        SeededWorkspace ws;
+        Guid otherWorkspaceId;
+        using (var seed = Ctx(new FakeCurrentUser { IsSuperAdmin = true }, db))
+        {
+            ws = SeedWorkspace(seed);
+            var other = SeedWorkspace(seed, "Other");
+            otherWorkspaceId = other.WorkspaceId;
+
+            // secondAdmin (created in `ws`) also has an ENDED membership in `other` — must NOT be
+            // counted as deleted-with-workspace (Opus HIGH 1: any state, ended included).
+            var endedMembership = new WorkspaceMembership
+            {
+                UserId = ws.SecondAdmin.Id,
+                OwnerId = otherWorkspaceId,
+                RoleId = other.AdminRole.Id,
+                Role = other.AdminRole,
+                IsActive = false,
+                ApprovalStatus = ApprovalStatus.Approved,
+                JoinedAt = DateTime.UtcNow.AddDays(-30),
+                LeftAt = DateTime.UtcNow.AddDays(-1),
+            };
+            seed.WorkspaceMemberships.Add(endedMembership);
+            await seed.SaveChangesAsync();
+        }
+
+        var caller = AdminCaller(ws);
+        var email = new CapturingEmail();
+        var token = await RequestAndExtractTokenAsync(this, caller, db, email);
+
+        using (var ctx = Ctx(caller, db))
+        {
+            var preview = await BuildService(caller, ctx, email).PreviewDeletionAsync(token);
+            Assert.True(preview.IsSuccess, preview.Message);
+
+            // admin + deputy are created here with no membership elsewhere → counted; secondAdmin
+            // has an ended membership elsewhere → NOT counted (re-homed instead).
+            Assert.Equal(2, preview.Data!.AccountsDeletedWithWorkspace);
+        }
+
+        // Parity only needs the SAME shared query used for the delete set — reason "admin" skips
+        // the "owner_requested" guarded pre-check (which would otherwise require the deletion to
+        // actually be due) without touching IdentitiesDeletedWithWorkspace at all.
+        using (var ctx = Ctx(new FakeCurrentUser { IsSuperAdmin = true }, db))
+        {
+            var uow = new UnitOfWork(ctx);
+            var tenants = new TenantService(
+                uow,
+                new IdentityHasher(),
+                new NoopFileStorage(),
+                new NoopSettings(),
+                new NoopBillingProvider(),
+                new MembershipService(uow)
+            );
+            var hardDelete = await tenants.HardDeleteAsync(ws.WorkspaceId, "admin");
+            Assert.True(hardDelete.IsSuccess, hardDelete.Message);
+        }
+
+        using var verify = Ctx(new FakeCurrentUser { IsSuperAdmin = true }, db);
+        // The two identities created only in `ws` are gone; the re-homed secondAdmin survives.
+        Assert.Null(
+            await verify.Users.IgnoreQueryFilters().SingleOrDefaultAsync(u => u.Id == ws.Admin.Id)
+        );
+        Assert.Null(
+            await verify.Users.IgnoreQueryFilters().SingleOrDefaultAsync(u => u.Id == ws.Deputy.Id)
+        );
+        var survivor = await verify
+            .Users.IgnoreQueryFilters()
+            .SingleAsync(u => u.Id == ws.SecondAdmin.Id);
+        Assert.Equal(otherWorkspaceId, survivor.OwnerId);
     }
 }

@@ -57,13 +57,14 @@ public class WorkspaceFreezeCoverageTests
             "InvitesController.Revoke",
             "InvitesController.RotateQuickLink",
             "UsersController.Delete",
+            // DB-18 code review (Opus LOW, fix pass 2026-09-24): rejecting a pending applicant
+            // removes access — access-removing actions are always exempt from the freeze (R19).
+            "UsersController.Reject",
             "UsersController.Update",
             "WorkspaceController.CancelDeletion",
             "WorkspaceController.RequestDeletion",
             "WorkspaceController.Resume",
-        }
-            .OrderBy(n => n, StringComparer.Ordinal)
-            .ToList();
+        }.OrderBy(n => n, StringComparer.Ordinal).ToList();
 
         Assert.Equal(expected, methodLevel);
     }

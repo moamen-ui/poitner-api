@@ -225,9 +225,11 @@ public class Db17HardDeleteAndCleanupTests
 
         // HardDeleteAsync's locked re-check throwing propagates OUT of ExecuteInTransactionAsync
         // uncaught (by design — the hosted sweep loop's own try/catch is what's meant to catch it,
-        // §3.5) — never converted into a Result.Failure here.
-        await Assert.ThrowsAsync<InvalidOperationException>(
-            () => svc.HardDeleteAsync(workspaceId, reason: "demo_expired")
+        // §3.5) — never converted into a Result.Failure here. DB-18 code review (Opus MEDIUM): now
+        // a dedicated DeletionPreconditionChangedException (still an InvalidOperationException, so
+        // WorkspaceDeletionService's own generic-Exception handler stays a safety net either way).
+        await Assert.ThrowsAsync<DeletionPreconditionChangedException>(() =>
+            svc.HardDeleteAsync(workspaceId, reason: "demo_expired")
         );
 
         Assert.Empty(files.DeletedOwners);
@@ -241,8 +243,11 @@ public class Db17HardDeleteAndCleanupTests
     /// <see cref="AppDbContext"/> against the SAME named InMemory database — modelling a genuinely
     /// separate concurrent connection) the instant <see cref="ExecuteSqlRawAsync"/> — the `FOR
     /// UPDATE` lock statement — is called, i.e. between the pre-check and the locked re-check.</summary>
-    private sealed class ExtendingOnLockUnitOfWork(UnitOfWork inner, string dbName, Guid workspaceId)
-        : IUnitOfWork
+    private sealed class ExtendingOnLockUnitOfWork(
+        UnitOfWork inner,
+        string dbName,
+        Guid workspaceId
+    ) : IUnitOfWork
     {
         public IRepository<T> Repository<T>()
             where T : BaseEntity => inner.Repository<T>();
@@ -271,7 +276,9 @@ public class Db17HardDeleteAndCleanupTests
         {
             using (var concurrent = Ctx(dbName))
             {
-                var ws = concurrent.Workspaces.IgnoreQueryFilters().Single(w => w.Id == workspaceId);
+                var ws = concurrent
+                    .Workspaces.IgnoreQueryFilters()
+                    .Single(w => w.Id == workspaceId);
                 ws.DemoExpiresAt = null;
                 ws.DemoExtendedAt = DateTime.UtcNow;
                 await concurrent.SaveChangesAsync();
@@ -300,21 +307,21 @@ public class Db17HardDeleteAndCleanupTests
         services.AddSingleton<IPasswordHasher>(new FakePasswordHasher());
         services.AddSingleton<IBillingProvider, NoopBillingProvider>();
         services.AddScoped(_ => Ctx(dbName));
-        services.AddScoped<IUnitOfWork>(sp => new UnitOfWork(sp.GetRequiredService<AppDbContext>()));
-        services.AddScoped<IMembershipService>(
-            sp => new MembershipService(sp.GetRequiredService<IUnitOfWork>())
-        );
-        services.AddScoped<ITenantService>(sp =>
-            new TenantService(
-                sp.GetRequiredService<IUnitOfWork>(),
-                sp.GetRequiredService<IPasswordHasher>(),
-                sp.GetRequiredService<IFileStorage>(),
-                sp.GetRequiredService<ISettingsService>(),
-                sp.GetRequiredService<IBillingProvider>(),
-                sp.GetRequiredService<IMembershipService>(),
-                sp.GetRequiredService<IAuditWriter>()
-            )
-        );
+        services.AddScoped<IUnitOfWork>(sp => new UnitOfWork(
+            sp.GetRequiredService<AppDbContext>()
+        ));
+        services.AddScoped<IMembershipService>(sp => new MembershipService(
+            sp.GetRequiredService<IUnitOfWork>()
+        ));
+        services.AddScoped<ITenantService>(sp => new TenantService(
+            sp.GetRequiredService<IUnitOfWork>(),
+            sp.GetRequiredService<IPasswordHasher>(),
+            sp.GetRequiredService<IFileStorage>(),
+            sp.GetRequiredService<ISettingsService>(),
+            sp.GetRequiredService<IBillingProvider>(),
+            sp.GetRequiredService<IMembershipService>(),
+            sp.GetRequiredService<IAuditWriter>()
+        ));
         return services.BuildServiceProvider();
     }
 
@@ -459,7 +466,9 @@ public class Db17HardDeleteAndCleanupTests
                 // run its per-item re-check — convert right before handing it over, modelling a
                 // concurrent UpgradeAsync that committed in exactly that gap.
                 using var concurrent = Ctx(dbName);
-                var ws = concurrent.Workspaces.IgnoreQueryFilters().Single(w => w.Id == workspaceId);
+                var ws = concurrent
+                    .Workspaces.IgnoreQueryFilters()
+                    .Single(w => w.Id == workspaceId);
                 ws.DemoExpiresAt = null;
                 ws.DemoConvertedAt = DateTime.UtcNow;
                 concurrent.SaveChanges();
