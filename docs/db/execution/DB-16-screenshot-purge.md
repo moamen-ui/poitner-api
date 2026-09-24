@@ -498,3 +498,9 @@ check and counts it separately (`SkippedNonCanonical`), never as a failure or a 
 `null` (not `false`) when the existence check itself throws `UnauthorizedAccessException`/`IOException`/`PathTooLongException`, so an unverifiable
 absence never stamps a row. §9 step 1 gained the legacy/non-canonical sizing query (above). Test count: 1241 → 1255, all green;
 `dotnet build`/`dotnet test`/`dotnet ef migrations has-pending-model-changes` all clean.
+
+## 13. Release record
+
+- Deployed 2026-09-23 ~18:50 UTC in dry-run (77 migrations, `a3b5826`).
+- **Live since 2026-09-24 ~02:03 UTC** (`RETENTION_SCREENSHOT_PURGE_DRY_RUN=false`, D16.6 step 5): dry-run review showed 0 due / 0 orphans with fresh local + off-site backups; first live sweep purged 0 and swept 0 orphans, 0 failures.
+- Note: screenshot links are absolute since `8f97871`; `ExtractRelPath` and the shared-path protection (`ScreenshotUrl.Contains(fileKey)`) handle both stored shapes.
