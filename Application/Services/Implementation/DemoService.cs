@@ -117,12 +117,17 @@ public class DemoService : IDemoService
                 "Demo is at capacity, please try again shortly."
             );
 
-        // b. Resolve the "Workspace Admin" role
+        // b. Resolve the "Workspace Admin" role. DB-11f F1: global lookup by name under
+        // IgnoreQueryFilters — `r.OwnerId == null` is the only thing keeping this resolved to the
+        // real global role instead of some other workspace's identically-named custom one
+        // (cross-review; this path has no super-admin caller, but the filter bypass is the same).
         var role = await _unitOfWork
             .Repository<Role>()
             .Query()
             .IgnoreQueryFilters()
-            .FirstOrDefaultAsync(r => r.Name == WorkspaceAdminRoleName && r.DeletedAt == null);
+            .FirstOrDefaultAsync(r =>
+                r.Name == WorkspaceAdminRoleName && r.DeletedAt == null && r.OwnerId == null
+            );
 
         if (role == null)
             return Result<DemoSessionResponse>.Failure(

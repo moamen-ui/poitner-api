@@ -93,6 +93,17 @@ public class MembershipService(IUnitOfWork unitOfWork) : IMembershipService
         int? inviteId
     )
     {
+        // DB-11f F1 defense-in-depth: every caller is expected to have already refused a
+        // super-admin or foreign-workspace role (UserService.CreateAsync/ApproveAsync/UpdateAsync,
+        // RoleService.DeleteAsync's reassignment, the invite/register/demo lookups — all fixed to
+        // this same predicate), but this is the one place every membership row is actually created,
+        // so it is refused here too as a backstop.
+        if (role.IsSuperAdmin || (role.OwnerId != null && role.OwnerId != workspaceId))
+            throw new InvalidOperationException(
+                $"DB-11f F1: refusing to join user {identity.Id} to workspace {workspaceId} on role {role.Id}"
+                    + " (super-admin or foreign-workspace role)."
+            );
+
         // Role is intentionally NOT set as a navigation here: `role` frequently comes from an
         // AsNoTracking() lookup upstream, and attaching a detached entity with an already-existing
         // PK to a soon-to-be-saved graph makes EF try to INSERT it again (duplicate-key). RoleId (the

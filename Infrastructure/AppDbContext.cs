@@ -98,13 +98,19 @@ public class AppDbContext(
         // users.owner_id. Any membership counts, INCLUDING ended ones — a person who left still
         // authored comments the workspace can see, and their name must resolve. Listing "current
         // members" always filters LeftAt == null explicitly at the call site (DB-RULES R8.7).
-        // DB-11f: the null-tenant (non-strict) bucket for identities is the platform role (super admins) — exactly today's users.owner_id IS NULL set. NOT !e.Memberships.Any(): the WorkspaceMembership filter hides every membership from a null-tenant caller, so that would match every identity (cross-review Opus HIGH).
-        // Deviation from the doc's literal `e.Role != null && e.Role.IsSuperAdmin`: that form (navigating
-        // the REQUIRED User.Role reference from inside a HasQueryFilter alongside the Memberships.Any
-        // disjunct) silently returns zero rows under this project's EF Core/InMemory combination —
-        // confirmed by a throwaway repro comparing the compiled C# predicate (true) against the
-        // executed query (empty). The logically-equivalent EXISTS-style subquery below translates
-        // correctly and was verified against Db11fMembershipRulesTests + TenantQueryFilterTests.
+        // DB-11f: the null-tenant (non-strict) bucket for identities is the platform role (super
+        // admins) — exactly today's users.owner_id IS NULL set. It is deliberately NOT an
+        // emptiness check on the Memberships collection: the WorkspaceMembership filter hides every
+        // membership from a null-tenant caller, so that form would match every identity
+        // (cross-review Opus HIGH).
+        // A real Role row is needed for the platform-role branch: the EXISTS-style subquery below
+        // (`Set<Role>().Any(...)`), not a navigation through the REQUIRED User.Role reference — that
+        // navigation form, combined with the Memberships.Any disjunct in the same filter, silently
+        // returns zero rows under this project's EF Core/InMemory combination (confirmed by a
+        // throwaway repro: compiled C# predicate true, executed query empty) but was verified
+        // identical to the subquery form on real Postgres 15 for 8 caller types × strict/non-strict
+        // (see the doc's §12 O1/A10 amendment). Verified against Db11fMembershipRulesTests +
+        // TenantQueryFilterTests.
         b.Entity<User>()
             .HasQueryFilter(e =>
                 currentUser.IsSuperAdmin

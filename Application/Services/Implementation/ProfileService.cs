@@ -262,6 +262,15 @@ public class ProfileService : IProfileService
                     )
                     .Select(m => m.Role.Name)
                     .FirstOrDefaultAsync()
+                    // DB-11f D11f.7 ex-member (orchestrator decision, 2026-09-24, not owner-asked):
+                    // a tenant-X caller viewing a former member of X (no LIVE membership there
+                    // anymore) falls back to that SAME workspace's latest ended membership role,
+                    // instead of "". Never crosses into another workspace's membership.
+                    ?? await ms.Where(m => m.OwnerId == tenant && m.LeftAt != null)
+                        .OrderByDescending(m => m.LeftAt)
+                        .ThenByDescending(m => m.Id)
+                        .Select(m => m.Role.Name)
+                        .FirstOrDefaultAsync()
                 : await ms.OrderBy(m => m.LeftAt != null || m.DeletedAt != null)
                     .ThenBy(m => m.JoinedAt)
                     .ThenBy(m => m.Id)

@@ -152,12 +152,19 @@ public class InviteService : IInviteService
                 if (targetAdmin == null)
                     return Result<InviteResponse>.Failure(MessageKeys.User.WorkspaceNotFound);
 
+                // DB-11f F1: global lookup by name — a super-admin caller bypasses the Role query
+                // filter entirely, so `r.OwnerId == null` is the only thing keeping this resolved to
+                // the real global Deputy role instead of some workspace's identically-named custom
+                // one (cross-review).
                 role = await _unitOfWork
                     .Repository<Role>()
                     .Query()
                     .AsNoTracking()
                     .FirstOrDefaultAsync(r =>
-                        r.Name == DeputyRoleName && r.DeletedAt == null && r.IsActive
+                        r.Name == DeputyRoleName
+                        && r.DeletedAt == null
+                        && r.IsActive
+                        && r.OwnerId == null
                     );
                 if (role == null)
                     return Result<InviteResponse>.Failure(MessageKeys.Role.Invalid);
@@ -1214,7 +1221,22 @@ public class InviteService : IInviteService
         }
         catch (Microsoft.EntityFrameworkCore.DbUpdateException)
         {
-            // Duplicate-email insert race (mirrors AcceptJoinExistingWorkspaceAsync).
+            // Duplicate-email insert race (mirrors AcceptJoinExistingWorkspaceAsync). DB-11f: the
+            // invite above was already saved (pre-marked "used") before this race was discovered —
+            // clear the tracker first (it may still hold the failed save's pending identity/
+            // membership/QuickAccessLink entries), then delete THIS request's own invite row by id,
+            // so a used invite with no member is never left behind.
+            _unitOfWork.ClearChangeTracker();
+            var orphanedInvite = await _unitOfWork
+                .Repository<Invite>()
+                .Query()
+                .IgnoreQueryFilters()
+                .FirstOrDefaultAsync(i => i.Id == invite.Id);
+            if (orphanedInvite != null)
+            {
+                _unitOfWork.Repository<Invite>().Remove(orphanedInvite);
+                await _unitOfWork.SaveChangesAsync();
+            }
             return Result<InviteResponse>.Conflict(MessageKeys.Auth.AccountExists);
         }
 

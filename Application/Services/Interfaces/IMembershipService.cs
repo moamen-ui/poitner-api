@@ -34,6 +34,11 @@ public interface IMembershipService
     /// Builds a new membership row (JoinedAt = UtcNow, SecurityStamp = NewGuid) and stages it via
     /// <c>AddAsync</c>. Does NOT call SaveChangesAsync — the caller's existing unit of work does.
     /// </summary>
+    /// <exception cref="InvalidOperationException">
+    /// DB-11f F1 defense-in-depth: <paramref name="role"/> is the super-admin role, or is owned by a
+    /// workspace other than <paramref name="workspaceId"/>. Every caller must have already refused
+    /// this; this is the backstop at the one place every membership row is created.
+    /// </exception>
     Task<WorkspaceMembership> JoinAsync(
         User identity,
         Guid workspaceId,

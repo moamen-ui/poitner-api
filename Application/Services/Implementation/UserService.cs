@@ -103,12 +103,18 @@ public class UserService : IUserService
             if (await _memberships.CurrentAdminAsync(targetOwnerId) == null)
                 return Result<UserResponse>.Failure(MessageKeys.User.WorkspaceNotFound);
 
+            // DB-11f F1: a global lookup by name, not id — must never resolve a tenant-owned role
+            // that happens to share the name (cross-review; a super admin bypasses the Role query
+            // filter entirely, so this is the only thing keeping it global).
             var deputyRole = await _unitOfWork
                 .Repository<Role>()
                 .Query()
                 .AsNoTracking()
                 .FirstOrDefaultAsync(r =>
-                    r.Name == DeputyRoleName && r.DeletedAt == null && r.IsActive
+                    r.Name == DeputyRoleName
+                    && r.DeletedAt == null
+                    && r.IsActive
+                    && r.OwnerId == null
                 );
             if (deputyRole == null)
                 return Result<UserResponse>.Failure(MessageKeys.Role.Invalid);
@@ -137,6 +143,13 @@ public class UserService : IUserService
                 return Result<UserResponse>.Forbidden(MessageKeys.Common.Forbidden);
             ownerId = o;
         }
+
+        // DB-11f F1: no membership role write may ever set the super-admin role or a role owned by
+        // another workspace than the membership's own — not even for a super admin (cross-review
+        // Opus MEDIUM/O4/O5; same predicate as ApproveAsync/UpdateAsync). Applied once both `role`
+        // and `ownerId` are resolved, for either branch above.
+        if (role.IsSuperAdmin || (role.OwnerId != null && role.OwnerId != ownerId))
+            return Result<UserResponse>.Failure(MessageKeys.Role.EscalationNotAllowed);
 
         // DB-11a join-or-create: admin-driven, so no password check — an existing identity is just
         // joined. "email taken" is scoped to THIS workspace (a live membership already here), never
@@ -854,19 +867,26 @@ public class UserService : IUserService
         if (!_currentUser.IsSuperAdmin && _currentUser.Id != currentAdminMembership.User.PublicId)
             return Result.Failure(MessageKeys.User.TransferNotAuthorized);
 
+        // DB-11f F1: global lookups by name, not id — a super-admin caller bypasses the Role query
+        // filter entirely (AppDbContext.cs), so `r.OwnerId == null` is the only thing keeping these
+        // two resolved to the real global roles instead of some workspace's identically-named
+        // custom one (cross-review).
         var adminRole = await _unitOfWork
             .Repository<Role>()
             .Query()
             .AsNoTracking()
             .FirstOrDefaultAsync(r =>
-                r.Name == WorkspaceAdminRoleName && r.DeletedAt == null && r.IsActive
+                r.Name == WorkspaceAdminRoleName
+                && r.DeletedAt == null
+                && r.IsActive
+                && r.OwnerId == null
             );
         var deputyRole = await _unitOfWork
             .Repository<Role>()
             .Query()
             .AsNoTracking()
             .FirstOrDefaultAsync(r =>
-                r.Name == DeputyRoleName && r.DeletedAt == null && r.IsActive
+                r.Name == DeputyRoleName && r.DeletedAt == null && r.IsActive && r.OwnerId == null
             );
         if (adminRole == null || deputyRole == null)
             return Result.Failure(MessageKeys.Role.Invalid);
