@@ -20,7 +20,8 @@ public class RoleService : IRoleService
         IUnitOfWork unitOfWork,
         ICurrentUser currentUser,
         IMembershipService memberships,
-        IAuditWriter? audit = null)
+        IAuditWriter? audit = null
+    )
     {
         _unitOfWork = unitOfWork;
         _currentUser = currentUser;
@@ -32,7 +33,8 @@ public class RoleService : IRoleService
     {
         var name = request.Name.Trim();
 
-        var exists = await _unitOfWork.Repository<Role>()
+        var exists = await _unitOfWork
+            .Repository<Role>()
             .Query()
             .AsNoTracking()
             .AnyAsync(r => r.DeletedAt == null && r.Name.ToLower() == name.ToLower());
@@ -52,7 +54,7 @@ public class RoleService : IRoleService
             IsSystem = false,
             IsActive = true,
             QuickAccess = request.QuickAccess,
-            OwnerId = TenantStamp.OwnerFor(_currentUser)
+            OwnerId = TenantStamp.OwnerFor(_currentUser),
         };
 
         await _unitOfWork.Repository<Role>().AddAsync(role);
@@ -73,7 +75,8 @@ public class RoleService : IRoleService
 
     public async Task<Result<List<RoleResponse>>> ListAsync()
     {
-        var roles = await _unitOfWork.Repository<Role>()
+        var roles = await _unitOfWork
+            .Repository<Role>()
             .Query()
             .AsNoTracking()
             .Where(r => r.DeletedAt == null)
@@ -88,7 +91,8 @@ public class RoleService : IRoleService
             var globalRoleIds = roles.Where(r => r.OwnerId == null).Select(r => r.Id).ToList();
             if (globalRoleIds.Count > 0)
             {
-                overridesByRoleId = await _unitOfWork.Repository<RoleTenantOverride>()
+                overridesByRoleId = await _unitOfWork
+                    .Repository<RoleTenantOverride>()
                     .Query()
                     .AsNoTracking()
                     .Where(o => o.OwnerId == tenantId && globalRoleIds.Contains(o.RoleId))
@@ -97,7 +101,9 @@ public class RoleService : IRoleService
         }
 
         var list = roles
-            .Select(r => MapToResponse(r, overridesByRoleId.TryGetValue(r.Id, out var ov) ? ov : (bool?)null))
+            .Select(r =>
+                MapToResponse(r, overridesByRoleId.TryGetValue(r.Id, out var ov) ? ov : (bool?)null)
+            )
             .ToList();
         return Result<List<RoleResponse>>.Success(list);
     }
@@ -113,7 +119,8 @@ public class RoleService : IRoleService
             // M15: keys are unique only per (key, owner_id). Fetch up to two and only scope to a tenant
             // when the key is UNAMBIGUOUS; on collision fall through to global-only roles rather than
             // leak an arbitrary tenant's role names.
-            var projectOwners = await _unitOfWork.Repository<Project>()
+            var projectOwners = await _unitOfWork
+                .Repository<Project>()
                 .Query()
                 .IgnoreQueryFilters()
                 .AsNoTracking()
@@ -129,7 +136,8 @@ public class RoleService : IRoleService
 
         // IgnoreQueryFilters() is required: anonymous caller has no tenant claim, so the global
         // query filter would hide all tenant-owned rows. We scope manually below.
-        var query = _unitOfWork.Repository<Role>()
+        var query = _unitOfWork
+            .Repository<Role>()
             .Query()
             .IgnoreQueryFilters()
             .AsNoTracking()
@@ -171,18 +179,23 @@ public class RoleService : IRoleService
                 return Result<RoleResponse>.Failure(MessageKeys.Role.GlobalRoleToggleOnly);
 
             var tenantId = _currentUser.TenantId!.Value; // a scoped caller always has one
-            var overrideRow = await _unitOfWork.Repository<RoleTenantOverride>()
+            var overrideRow = await _unitOfWork
+                .Repository<RoleTenantOverride>()
                 .Query()
                 .FirstOrDefaultAsync(o => o.RoleId == role.Id && o.OwnerId == tenantId);
 
             if (overrideRow == null)
             {
-                await _unitOfWork.Repository<RoleTenantOverride>().AddAsync(new RoleTenantOverride
-                {
-                    RoleId = role.Id,
-                    OwnerId = tenantId,
-                    IsActive = request.IsActive.Value
-                });
+                await _unitOfWork
+                    .Repository<RoleTenantOverride>()
+                    .AddAsync(
+                        new RoleTenantOverride
+                        {
+                            RoleId = role.Id,
+                            OwnerId = tenantId,
+                            IsActive = request.IsActive.Value,
+                        }
+                    );
             }
             else
             {
@@ -207,11 +220,13 @@ public class RoleService : IRoleService
         if (request.Name != null)
         {
             var name = request.Name.Trim();
-            var clash = await _unitOfWork.Repository<Role>()
+            var clash = await _unitOfWork
+                .Repository<Role>()
                 .Query()
                 .AsNoTracking()
                 .AnyAsync(r =>
-                    r.DeletedAt == null && r.Id != id && r.Name.ToLower() == name.ToLower());
+                    r.DeletedAt == null && r.Id != id && r.Name.ToLower() == name.ToLower()
+                );
             if (clash)
                 return Result<RoleResponse>.Conflict(MessageKeys.Role.NameTaken);
             role.Name = name;
@@ -259,9 +274,14 @@ public class RoleService : IRoleService
 
         // DB-11a: "in use" is a membership fact, not users.role_id — never read after this doc.
         var membershipsQuery = _currentUser.IsSuperAdmin
-            ? _unitOfWork.Repository<WorkspaceMembership>().Query().IgnoreQueryFilters()
+            ? _unitOfWork
+                .Repository<WorkspaceMembership>()
+                .Query()
+                .IgnoreQueryFilters()
                 .Where(m => m.DeletedAt == null && m.RoleId == id)
-            : _memberships.InWorkspace(_currentUser.TenantId ?? Guid.Empty).Where(m => m.RoleId == id);
+            : _memberships
+                .InWorkspace(_currentUser.TenantId ?? Guid.Empty)
+                .Where(m => m.RoleId == id);
         var memberships = await membershipsQuery.ToListAsync();
 
         var reassigned = 0;
@@ -276,12 +296,14 @@ public class RoleService : IRoleService
             // scoping) — never the leaky own-plus-global filter, which would let a scoped admin
             // reassign users onto a global (null-owner) or another tenant's role. Super-admins keep
             // full reach; scoped admins may only target their own tenant's roles.
-            var target = await _unitOfWork.Repository<Role>()
+            var target = await _unitOfWork
+                .Repository<Role>()
                 .Query()
                 .IgnoreQueryFilters()
                 .AsNoTracking()
                 .FirstOrDefaultAsync(r =>
-                    r.Id == reassignToRoleId && r.DeletedAt == null && r.IsActive);
+                    r.Id == reassignToRoleId && r.DeletedAt == null && r.IsActive
+                );
             if (target == null)
                 return Result<RoleDeleteResponse>.Conflict(MessageKeys.Role.Invalid);
 
@@ -295,8 +317,19 @@ public class RoleService : IRoleService
                     return Result<RoleDeleteResponse>.NotFound(MessageKeys.Role.NotFound);
 
                 if (target.GrantsAdmin || target.IsSuperAdmin)
-                    return Result<RoleDeleteResponse>.Failure(MessageKeys.Role.EscalationNotAllowed);
+                    return Result<RoleDeleteResponse>.Failure(
+                        MessageKeys.Role.EscalationNotAllowed
+                    );
             }
+            // DB-11f F1: not even a super admin may reassign a membership onto the super-admin role
+            // or a role owned by a workspace other than that membership's own (cross-review Opus
+            // MEDIUM/O4/O5) — the guard above exempts super admins entirely. A shared/global role's
+            // members can span more than one workspace, so every affected membership is checked.
+            else if (
+                target.IsSuperAdmin
+                || (target.OwnerId != null && memberships.Any(m => m.OwnerId != target.OwnerId))
+            )
+                return Result<RoleDeleteResponse>.Failure(MessageKeys.Role.EscalationNotAllowed);
 
             foreach (var m in memberships)
             {
@@ -320,29 +353,32 @@ public class RoleService : IRoleService
             )
         );
 
-        return Result<RoleDeleteResponse>.Success(new RoleDeleteResponse
-        {
-            Id = id,
-            ReassignedUsers = reassigned,
-            ReassignedToRoleId = reassigned > 0 ? reassignToRoleId : null
-        });
+        return Result<RoleDeleteResponse>.Success(
+            new RoleDeleteResponse
+            {
+                Id = id,
+                ReassignedUsers = reassigned,
+                ReassignedToRoleId = reassigned > 0 ? reassignToRoleId : null,
+            }
+        );
     }
 
     /// <param name="overrideIsActive">
     /// This tenant's own override of a GLOBAL role's active status, if one exists (see ListAsync) —
     /// null means "use the role's own IsActive as-is" (its normal case, or a super-admin's view).
     /// </param>
-    private RoleResponse MapToResponse(Role role, bool? overrideIsActive = null) => new()
-    {
-        Id = role.Id,
-        Name = role.Name,
-        GrantsAdmin = role.GrantsAdmin,
-        IsSystem = role.IsSystem,
-        IsActive = overrideIsActive ?? role.IsActive,
-        QuickAccess = role.QuickAccess,
-        CanManage = CanManage(role),
-        CanToggleActive = CanToggleActive(role)
-    };
+    private RoleResponse MapToResponse(Role role, bool? overrideIsActive = null) =>
+        new()
+        {
+            Id = role.Id,
+            Name = role.Name,
+            GrantsAdmin = role.GrantsAdmin,
+            IsSystem = role.IsSystem,
+            IsActive = overrideIsActive ?? role.IsActive,
+            QuickAccess = role.QuickAccess,
+            CanManage = CanManage(role),
+            CanToggleActive = CanToggleActive(role),
+        };
 
     /// <summary>
     /// The same two guards Update/Delete apply, evaluated for the current caller. Kept here (not in
