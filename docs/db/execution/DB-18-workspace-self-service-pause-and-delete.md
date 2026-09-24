@@ -711,3 +711,10 @@ Reports: `docs/db/reviews/REVIEW-DB18-2026-09-24.md` (Gemini 3.1 Pro via agy; Op
 | Gemini NIT — dashboard 429 handling on request | **Accepted** | §11 task 2 |
 | Gemini NITs — key-session reads blocked, confirm vs operator pause, anonymous upload GET, erase-token cross-use | **Confirmations, no change** | — |
 
+
+## 13. Release record (2026-09-24)
+
+- Implemented on `feat/db-18-api` (backend) + `feat/db-18-clients` (widget, CLI), merged; code review by Gemini 3.8 Flash (agy) + Opus → `docs/db/reviews/REVIEW-DB18-CODE-2026-09-24.md`; fix pass fixed 3 shared BLOCKERs (anonymous/job `Workspaces` loads under the tenant filter) and the pre-existing `HardDeleteAsync` FK violation on soft-deleted/erased identities (`fk_users_workspaces_owner_id`, Sqlite repro). `dotnet test` 1407; widget 109, 67,210 B gz; CLI 230.
+- **Local gate PASS** (all phases) incl. the new `e2e/mail/workspace-lifecycle-mail.spec.mjs` via Mailpit: E1 confirm link, E2 scheduled, E5 cancelled, pause-instead from a second E1; wrong password refused, link single-use, 423 + `X-Workspace-Paused` while paused/scheduled.
+- **R11 rehearsal** on `pointer-20260923T232253Z-pre-deploy.dump` (80 migrations): only `…_AddWorkspacesPauseAndDeletionState` pending; applied; 8 columns + 3 check constraints; all 3 workspaces active; counts unchanged (3 workspaces / 7 users / 122 comments); down to `…_DropUsersLegacyDemoColumns` and back up clean.
+- Not yet built: the dashboard half (§11 — danger-zone card, `/confirm-workspace-deletion` page, paused banner); until it ships, the e-mail link lands on a dashboard route that does not exist.
