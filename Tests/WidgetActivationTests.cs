@@ -60,7 +60,8 @@ public class WidgetActivationTests
         private static void ThrowIfPending(DbContext? context)
         {
             if (
-                context?.ChangeTracker.Entries<UsageEvent>()
+                context
+                    ?.ChangeTracker.Entries<UsageEvent>()
                     .Any(e =>
                         e.State == EntityState.Added
                         && e.Entity.Type == UsageEventTypes.WidgetInstalled
@@ -168,6 +169,66 @@ public class WidgetActivationTests
         var result = await svc.CheckWidgetActiveAsync("site", null);
         Assert.True(result.IsSuccess);
         Assert.True(result.Data!.Active);
+    }
+
+    /// <summary>DB-18 §3.6: reads stay available even while the workspace is frozen — the widget
+    /// still renders (Active stays true), but flips Paused so the front-end shows the read-only
+    /// banner.</summary>
+    [Fact]
+    public async Task WidgetStatus_Frozen_ActiveTrue_PausedTrue()
+    {
+        var dbName = Guid.NewGuid().ToString();
+        SeedGlobalLocalEnvironment(dbName);
+        var tenant = Guid.NewGuid();
+        var admin = new FakeCurrentUser
+        {
+            Id = Guid.NewGuid(),
+            IsAdmin = true,
+            TenantId = tenant,
+        };
+        using (var ctx = BuildContext(admin, dbName))
+        {
+            var svc = new ProjectService(
+                new UnitOfWork(ctx),
+                admin,
+                new PassThroughEntitlements(),
+                TestProjectServiceDeps.Settings(),
+                TestProjectServiceDeps.Configuration(),
+                new FakeAuditWriter()
+            );
+            await svc.CreateAsync(new CreateProjectRequest { Key = "site", Name = "Site" });
+        }
+
+        using (var seed = BuildContext(new FakeCurrentUser { IsSuperAdmin = true }, dbName))
+        {
+            seed.Workspaces.Add(
+                new Workspace
+                {
+                    Id = tenant,
+                    Name = "Acme",
+                    CreatedAt = DateTime.UtcNow,
+                    CreatedBy = tenant,
+                    PausedAt = DateTime.UtcNow,
+                }
+            );
+            seed.SaveChanges();
+        }
+
+        using var frozenCtx = BuildContext(admin, dbName);
+        var frozenSvc = new ProjectService(
+            new UnitOfWork(frozenCtx),
+            admin,
+            new PassThroughEntitlements(),
+            TestProjectServiceDeps.Settings(),
+            TestProjectServiceDeps.Configuration(),
+            new FakeAuditWriter(),
+            workspaceState: new WorkspaceStateService(new UnitOfWork(frozenCtx))
+        );
+
+        var result = await frozenSvc.CheckWidgetActiveAsync("site", null);
+        Assert.True(result.IsSuccess);
+        Assert.True(result.Data!.Active);
+        Assert.True(result.Data.Paused);
     }
 
     [Fact]

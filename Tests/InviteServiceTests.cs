@@ -127,7 +127,8 @@ public class InviteServiceTests
         AppDbContext db,
         IEmailService? email = null,
         IBrandingService? branding = null,
-        ISettingsService? settings = null
+        ISettingsService? settings = null,
+        IWorkspaceStateService? workspaceState = null
     )
     {
         var uow = new UnitOfWork(db);
@@ -140,7 +141,8 @@ public class InviteServiceTests
             new PassThroughEntitlements(),
             email ?? new SpyEmailService(),
             branding ?? new FakeBrandingService(),
-            new MembershipService(uow)
+            new MembershipService(uow),
+            workspaceState: workspaceState
         );
     }
 
@@ -921,6 +923,49 @@ public class InviteServiceTests
 
         var invite = db.Invites.IgnoreQueryFilters().Single(i => i.Id == inviteId);
         Assert.Equal(1, invite.Uses); // incremented
+    }
+
+    /// <summary>DB-18 (D18.11): a frozen workspace refuses new members — invite accept into an
+    /// EXISTING (paused) workspace must be refused, and nothing created (no user row, no membership,
+    /// no invite use consumed).</summary>
+    [Fact]
+    public async Task InviteAccept_FrozenWorkspace_Refused()
+    {
+        var dbName = Guid.NewGuid().ToString();
+        var (tenant, roleId) = SeedTenant(dbName);
+        using (var seed = BuildContext(new FakeCurrentUser { IsSuperAdmin = true }, dbName))
+        {
+            var row = seed.Workspaces.Single(w => w.Id == tenant);
+            row.PausedAt = DateTime.UtcNow;
+            seed.SaveChanges();
+        }
+        var inviteId = SeedInvite(dbName, tenant, i => i.RoleId = roleId);
+        var code = CodeOf(dbName, inviteId);
+
+        var anon = new FakeCurrentUser { };
+        using var db = BuildContext(anon, dbName);
+        var svc = BuildService(
+            anon,
+            db,
+            workspaceState: new WorkspaceStateService(new UnitOfWork(BuildContext(anon, dbName)))
+        );
+
+        var result = await svc.AcceptAsync(
+            new AcceptInviteRequest
+            {
+                Code = code,
+                Email = "blocked@user.com",
+                Password = "password123",
+                DisplayName = "Blocked User",
+            }
+        );
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(MessageKeys.Workspace.FrozenNoNewMembers, result.Message);
+        Assert.Null(
+            db.Users.IgnoreQueryFilters().SingleOrDefault(u => u.Email == "blocked@user.com")
+        );
+        Assert.Equal(0, db.Invites.IgnoreQueryFilters().Single(i => i.Id == inviteId).Uses);
     }
 
     /// <summary>DB-17 review finding #4 (MEDIUM): an addressed/open invite into a workspace whose

@@ -61,9 +61,16 @@ public class ApiKeyAuthTests
             return false;
         }
 
-        public string CreateScoped(Guid id, Guid stamp, string purpose, string? payload = null) => "r";
+        public string CreateScoped(Guid id, Guid stamp, string purpose, string? payload = null) =>
+            "r";
 
-        public bool TryValidateScoped(string token, string purpose, out Guid id, out Guid stamp, out string? payload)
+        public bool TryValidateScoped(
+            string token,
+            string purpose,
+            out Guid id,
+            out Guid stamp,
+            out string? payload
+        )
         {
             id = Guid.Empty;
             stamp = Guid.Empty;
@@ -150,7 +157,11 @@ public class ApiKeyAuthTests
             new Microsoft.Extensions.Configuration.ConfigurationBuilder().Build()
         );
 
-    private static AuthService BuildAuthService(AppDbContext db, ICurrentUser user) =>
+    private static AuthService BuildAuthService(
+        AppDbContext db,
+        ICurrentUser user,
+        IWorkspaceStateService? workspaceState = null
+    ) =>
         new(
             new UnitOfWork(db),
             new IdentityHasher(),
@@ -162,7 +173,8 @@ public class ApiKeyAuthTests
             new NoopBrandingService(),
             new ApiKeyService(new UnitOfWork(db), new TestApiKeyProtector()),
             new FakeLoginAttemptLimiter(),
-            new MembershipService(new UnitOfWork(db))
+            new MembershipService(new UnitOfWork(db)),
+            workspaceState: workspaceState
         );
 
     private static ProfileService BuildProfileService(AppDbContext db, ICurrentUser? user = null) =>
@@ -278,6 +290,38 @@ public class ApiKeyAuthTests
         Assert.Equal("ok", result.Data!.Status);
         Assert.False(string.IsNullOrEmpty(result.Data!.Token));
         Assert.Equal("dev@example.com", result.Data!.User!.Email);
+    }
+
+    /// <summary>DB-18 (Opus LOW): LoginWithApiKeyAsync passes the loaded workspace through to
+    /// UserMapper.ToMeResponse, same precedent as BuildMeAsync (login/me/switch) — the freeze
+    /// fields must reach a key/CLI login response too, not just the dashboard's own /me poll.</summary>
+    [Fact]
+    public async Task LoginWithKey_ResponseCarriesFreezeFields()
+    {
+        var db = Guid.NewGuid().ToString();
+        var publicId = SeedUser(db, out var tenant);
+        using (var seed = BuildContext(new FakeCurrentUser { IsSuperAdmin = true }, db))
+        {
+            // SeedUser (via TestSeed.Join) already created the Workspace row — just pause it.
+            var row = seed.Workspaces.Single(w => w.Id == tenant);
+            row.PausedAt = DateTime.UtcNow;
+            seed.SaveChanges();
+        }
+        var key = await BuildProfileService(
+                BuildContext(new FakeCurrentUser { Id = publicId, TenantId = tenant }, db)
+            )
+            .GetOrCreateApiKeyAsync(publicId, tenant);
+
+        var result = await BuildAuthService(
+                BuildContext(new FakeCurrentUser(), db),
+                new FakeCurrentUser()
+            )
+            .LoginWithApiKeyAsync(new LoginWithApiKeyRequest { ApiKey = key.Data!.ApiKey });
+
+        Assert.True(result.IsSuccess, result.Message);
+        Assert.NotNull(result.Data!.User!.WorkspacePausedAt);
+        Assert.False(result.Data.User.WorkspacePausedByOperator);
+        Assert.Null(result.Data.User.WorkspaceDeletionScheduledFor);
     }
 
     [Fact]

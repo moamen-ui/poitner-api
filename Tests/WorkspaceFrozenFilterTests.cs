@@ -314,6 +314,46 @@ public class WorkspaceFrozenFilterTests
         Assert.Equal(423, result.StatusCode);
     }
 
+    // EventsController.GetSummary carries no [AllowWhenWorkspacePaused] (unlike RecordEvent, which
+    // is a method-level, key-session-only exemption — see WorkspaceFreezeCoverageTests
+    // .EventsController_RecordEvent_IsMethodLevelOnly_NotClassLevel). A key session hitting it while
+    // the workspace is frozen must be blocked exactly like any other non-exempt GET (D18.4: every
+    // key-session call is checked, reads included).
+    private static MethodInfo EventsSummary =>
+        typeof(Pointer.API.Controllers.EventsController).GetMethod(
+            nameof(Pointer.API.Controllers.EventsController.GetSummary)
+        )!;
+
+    [Fact]
+    public async Task KeySession_EventsSummary_Returns423()
+    {
+        var current = new FakeCurrentUser
+        {
+            Id = Guid.NewGuid(),
+            TenantId = Guid.NewGuid(),
+            KeyScopes = "read",
+        };
+        var state = new FakeWorkspaceState
+        {
+            Freeze = new WorkspaceFreeze(true, true, false, null),
+        };
+        var filter = new WorkspaceFrozenFilter(new RecordingLogger());
+
+        var (ctx, executed) = Build(
+            typeof(Pointer.API.Controllers.EventsController),
+            EventsSummary,
+            "GET",
+            current,
+            Services(current, state)
+        );
+        var nextCalled = false;
+        await filter.OnActionExecutionAsync(ctx, Next(executed, () => nextCalled = true));
+
+        Assert.False(nextCalled);
+        var result = Assert.IsType<ObjectResult>(ctx.Result);
+        Assert.Equal(423, result.StatusCode);
+    }
+
     [Fact]
     public async Task Frozen_KeySession_AuthMe_Passes()
     {

@@ -27,7 +27,9 @@ public class AuthRateLimitingTests
         var method = typeof(AuthController).GetMethod("Login");
         Assert.NotNull(method);
 
-        var rateLimits = method!.GetCustomAttributes<EnableRateLimitingAttribute>(inherit: true).ToList();
+        var rateLimits = method!
+            .GetCustomAttributes<EnableRateLimitingAttribute>(inherit: true)
+            .ToList();
         Assert.Contains(rateLimits, a => a.PolicyName == "login-ip");
     }
 
@@ -53,7 +55,9 @@ public class AuthRateLimitingTests
         var method = typeof(AuthController).GetMethod("LoginWithKey");
         Assert.NotNull(method);
 
-        var rateLimits = method!.GetCustomAttributes<EnableRateLimitingAttribute>(inherit: true).ToList();
+        var rateLimits = method!
+            .GetCustomAttributes<EnableRateLimitingAttribute>(inherit: true)
+            .ToList();
         Assert.Contains(rateLimits, a => a.PolicyName == "login");
     }
 
@@ -65,7 +69,9 @@ public class AuthRateLimitingTests
         var method = typeof(AuthController).GetMethod("SwitchWorkspace");
         Assert.NotNull(method);
 
-        var rateLimits = method!.GetCustomAttributes<EnableRateLimitingAttribute>(inherit: true).ToList();
+        var rateLimits = method!
+            .GetCustomAttributes<EnableRateLimitingAttribute>(inherit: true)
+            .ToList();
         Assert.Contains(rateLimits, a => a.PolicyName == "login");
 
         var loginRateLimits = typeof(AuthController)
@@ -89,7 +95,9 @@ public class AuthRateLimitingTests
         var method = typeof(AuthController).GetMethod(action);
         Assert.NotNull(method);
 
-        var rateLimits = method!.GetCustomAttributes<EnableRateLimitingAttribute>(inherit: true).ToList();
+        var rateLimits = method!
+            .GetCustomAttributes<EnableRateLimitingAttribute>(inherit: true)
+            .ToList();
         Assert.Contains(rateLimits, a => a.PolicyName == "signup");
     }
 
@@ -100,7 +108,9 @@ public class AuthRateLimitingTests
         var method = typeof(MeController).GetMethod("RequestErase");
         Assert.NotNull(method);
 
-        var rateLimits = method!.GetCustomAttributes<EnableRateLimitingAttribute>(inherit: true).ToList();
+        var rateLimits = method!
+            .GetCustomAttributes<EnableRateLimitingAttribute>(inherit: true)
+            .ToList();
         Assert.Contains(rateLimits, a => a.PolicyName == "signup");
     }
 
@@ -111,7 +121,9 @@ public class AuthRateLimitingTests
         var method = typeof(MeController).GetMethod("ChangeEmail");
         Assert.NotNull(method);
 
-        var rateLimits = method!.GetCustomAttributes<EnableRateLimitingAttribute>(inherit: true).ToList();
+        var rateLimits = method!
+            .GetCustomAttributes<EnableRateLimitingAttribute>(inherit: true)
+            .ToList();
         Assert.Contains(rateLimits, a => a.PolicyName == "signup");
     }
 
@@ -123,7 +135,9 @@ public class AuthRateLimitingTests
         var method = typeof(MeController).GetMethod("ResendVerification");
         Assert.NotNull(method);
 
-        var rateLimits = method!.GetCustomAttributes<EnableRateLimitingAttribute>(inherit: true).ToList();
+        var rateLimits = method!
+            .GetCustomAttributes<EnableRateLimitingAttribute>(inherit: true)
+            .ToList();
         Assert.Contains(rateLimits, a => a.PolicyName == "signup");
     }
 
@@ -141,7 +155,9 @@ public class AuthRateLimitingTests
         var method = typeof(AuthController).GetMethod(action);
         Assert.NotNull(method);
 
-        var rateLimits = method!.GetCustomAttributes<EnableRateLimitingAttribute>(inherit: true).ToList();
+        var rateLimits = method!
+            .GetCustomAttributes<EnableRateLimitingAttribute>(inherit: true)
+            .ToList();
         Assert.Contains(rateLimits, a => a.PolicyName == policy);
         Assert.DoesNotContain(rateLimits, a => a.PolicyName == "signup");
     }
@@ -171,6 +187,49 @@ public class AuthRateLimitingTests
         await o.OnRejected!(ctx, CancellationToken.None);
 
         Assert.Equal("420", http.Response.Headers.RetryAfter.ToString());
+    }
+
+    /// <summary>DB-18 R16 amendment: "danger" (workspace pause/delete confirm/pause-instead)
+    /// partitions by identity (sub claim) + IP when authenticated, so one identity behind a shared
+    /// NAT does not share its 10/10min budget with everyone else on it — and never with a different
+    /// identity on the SAME connection either. Falls back to IP alone when anonymous (the token-
+    /// redemption endpoints have no identity yet).</summary>
+    [Fact]
+    public void DangerLimiter_PartitionsByIdentity()
+    {
+        var ip = System.Net.IPAddress.Parse("10.0.0.1");
+
+        var ctxUserA = new DefaultHttpContext();
+        ctxUserA.Connection.RemoteIpAddress = ip;
+        ctxUserA.User = new System.Security.Claims.ClaimsPrincipal(
+            new System.Security.Claims.ClaimsIdentity(
+                new[] { new System.Security.Claims.Claim("sub", "user-a") },
+                "Test"
+            )
+        );
+
+        var ctxUserB = new DefaultHttpContext();
+        ctxUserB.Connection.RemoteIpAddress = ip; // same IP/NAT as user A
+        ctxUserB.User = new System.Security.Claims.ClaimsPrincipal(
+            new System.Security.Claims.ClaimsIdentity(
+                new[] { new System.Security.Claims.Claim("sub", "user-b") },
+                "Test"
+            )
+        );
+
+        var keyA = RateLimitingExtensions.DangerPartitionKey(ctxUserA);
+        var keyB = RateLimitingExtensions.DangerPartitionKey(ctxUserB);
+
+        // Two identities sharing an IP get independent budgets.
+        Assert.NotEqual(keyA, keyB);
+
+        // The SAME identity always resolves to the SAME key (its own budget persists across calls).
+        Assert.Equal(keyA, RateLimitingExtensions.DangerPartitionKey(ctxUserA));
+
+        // Anonymous (no sub claim at all) falls back to IP alone.
+        var anon = new DefaultHttpContext();
+        anon.Connection.RemoteIpAddress = ip;
+        Assert.Equal("ip:10.0.0.1", RateLimitingExtensions.DangerPartitionKey(anon));
     }
 
     private sealed class RetryAfterLease(TimeSpan retryAfter) : RateLimitLease

@@ -130,7 +130,11 @@ public class UserGovernanceTests
             new Microsoft.Extensions.Configuration.ConfigurationBuilder().Build()
         );
 
-    private static UserService Svc(ICurrentUser user, AppDbContext ctx)
+    private static UserService Svc(
+        ICurrentUser user,
+        AppDbContext ctx,
+        IWorkspaceStateService? workspaceState = null
+    )
     {
         var uow = new UnitOfWork(ctx);
         return new UserService(
@@ -140,7 +144,8 @@ public class UserGovernanceTests
             new NoopEmail(),
             new EntitlementService(uow, user, new FakeSettings()),
             new NoopBrandingService(),
-            new MembershipService(uow)
+            new MembershipService(uow),
+            workspaceState: workspaceState
         );
     }
 
@@ -288,7 +293,10 @@ public class UserGovernanceTests
 
         var result = await Svc(superAdmin, ctx).DeleteAsync(adminRowId);
         Assert.True(result.IsConflict);
-        Assert.Equal(string.Format(MessageKeys.User.SoleAdminBlocked, "Test Workspace"), result.Message);
+        Assert.Equal(
+            string.Format(MessageKeys.User.SoleAdminBlocked, "Test Workspace"),
+            result.Message
+        );
     }
 
     [Fact]
@@ -417,7 +425,10 @@ public class UserGovernanceTests
 
         var result = await Svc(deputy, ctx).DeleteAsync(adminRowId);
         Assert.True(result.IsConflict);
-        Assert.Equal(string.Format(MessageKeys.User.SoleAdminBlocked, "Test Workspace"), result.Message);
+        Assert.Equal(
+            string.Format(MessageKeys.User.SoleAdminBlocked, "Test Workspace"),
+            result.Message
+        );
     }
 
     [Fact]
@@ -710,6 +721,97 @@ public class UserGovernanceTests
             .Single(m => m.UserId == ws.MemberRowId && m.OwnerId == ws.OwnerId && m.LeftAt == null)
             .SecurityStamp;
         Assert.NotEqual(before, after);
+    }
+
+    // ── UpdateAsync: frozen-workspace grant/revocation guard (D18.11, REVIEW-DB18 row G6/O25) ──
+
+    /// <summary>DB-18 §3.5 (Opus HIGH 2): while the workspace is frozen, UpdateAsync refuses any
+    /// request that ACTUALLY grants access (a password set, activating a currently-inactive
+    /// membership, or assigning an admin-tier role) but must never block a revocation (disabling a
+    /// member, or demoting an admin-tier role down to a non-admin one) — the freeze must never stop
+    /// an admin from locking someone out. Covers the exact clauses UserService.UpdateAsync's
+    /// `grantsAccess` guard compares (Application/Services/Implementation/UserService.cs).</summary>
+    [Fact]
+    public async Task Freeze_AllowsRevocations_RefusesGrants()
+    {
+        var db = Guid.NewGuid().ToString();
+        var ws = SeedWorkspace(db);
+        using (var seed = Ctx(new FakeCurrentUser { IsSuperAdmin = true }, db))
+        {
+            // TestSeed.Join (inside SeedWorkspace, above) already created the Workspace row —
+            // just pause it.
+            var row = seed.Workspaces.Single(w => w.Id == ws.OwnerId);
+            row.PausedAt = DateTime.UtcNow;
+            await seed.SaveChangesAsync();
+        }
+
+        var admin = new FakeCurrentUser
+        {
+            Id = ws.AdminPublicId,
+            TenantId = ws.OwnerId,
+            IsAdmin = true,
+        };
+
+        // Refused: setting a password is a grant.
+        {
+            var ctx = Ctx(admin, db);
+            var state = new WorkspaceStateService(new UnitOfWork(ctx));
+            var result = await Svc(admin, ctx, state)
+                .UpdateAsync(ws.MemberRowId, new UpdateUserRequest { Password = "newpassword123" });
+            Assert.True(result.IsForbidden);
+            Assert.Equal(MessageKeys.Workspace.FrozenNoAccessGrant, result.Message);
+        }
+
+        // Refused: assigning an admin-tier role (Deputy) is a grant — the admin is allowed to
+        // delegate Deputy (escalation guard's own exception), so this reaches the freeze check.
+        {
+            var ctx = Ctx(admin, db);
+            var state = new WorkspaceStateService(new UnitOfWork(ctx));
+            var result = await Svc(admin, ctx, state)
+                .UpdateAsync(ws.MemberRowId, new UpdateUserRequest { RoleId = ws.DeputyRoleId });
+            Assert.True(result.IsForbidden);
+            Assert.Equal(MessageKeys.Workspace.FrozenNoAccessGrant, result.Message);
+        }
+
+        // Allowed: demoting an admin-tier Deputy down to the regular role is a REVOCATION.
+        {
+            var ctx = Ctx(admin, db);
+            var state = new WorkspaceStateService(new UnitOfWork(ctx));
+            var result = await Svc(admin, ctx, state)
+                .UpdateAsync(ws.DeputyRowId, new UpdateUserRequest { RoleId = ws.MemberRoleId });
+            Assert.True(result.IsSuccess, result.Message);
+        }
+
+        // Deactivate the member first (outside the frozen guard's view) so the next two cases can
+        // exercise the isActive:true/false grant-vs-revoke split against a real state change.
+        using (var seed = Ctx(new FakeCurrentUser { IsSuperAdmin = true }, db))
+        {
+            var m = await seed.Set<WorkspaceMembership>()
+                .IgnoreQueryFilters()
+                .FirstAsync(x => x.UserId == ws.MemberRowId && x.OwnerId == ws.OwnerId);
+            m.IsActive = false;
+            await seed.SaveChangesAsync();
+        }
+
+        // Refused: activating a currently-inactive membership is a grant.
+        {
+            var ctx = Ctx(admin, db);
+            var state = new WorkspaceStateService(new UnitOfWork(ctx));
+            var result = await Svc(admin, ctx, state)
+                .UpdateAsync(ws.MemberRowId, new UpdateUserRequest { IsActive = true });
+            Assert.True(result.IsForbidden);
+            Assert.Equal(MessageKeys.Workspace.FrozenNoAccessGrant, result.Message);
+        }
+
+        // Allowed: disabling (isActive:false) is a REVOCATION — never blocked by the freeze, whether
+        // the member started active or (as here) already inactive.
+        {
+            var ctx = Ctx(admin, db);
+            var state = new WorkspaceStateService(new UnitOfWork(ctx));
+            var result = await Svc(admin, ctx, state)
+                .UpdateAsync(ws.MemberRowId, new UpdateUserRequest { IsActive = false });
+            Assert.True(result.IsSuccess, result.Message);
+        }
     }
 
     [Fact]

@@ -2,6 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Pointer.Application.Abstractions;
 using Pointer.Application.Common;
+using Pointer.Application.DTOs.Auth;
 using Pointer.Application.DTOs.Workspace;
 using Pointer.Application.Resources;
 using Pointer.Application.Services.Implementation;
@@ -74,6 +75,44 @@ public class Db18WorkspaceLifecycleTests
         public Task DeleteAsync(string relativePathOrUrl) => Task.CompletedTask;
 
         public Task DeleteOwnerFilesAsync(string ownerSegment) => Task.CompletedTask;
+    }
+
+    /// <summary>Records every workspace segment passed to DeleteOwnerFilesAsync — same shape as
+    /// Db17HardDeleteAndCleanupTests.RecordingFileStorage — used by the §9a HardDelete/job tests
+    /// below to prove a refused/raced delete never touches the filesystem, and a real one does.</summary>
+    private sealed class RecordingFileStorage : IFileStorage
+    {
+        public List<string> DeletedOwners { get; } = [];
+
+        public Task<string> SaveAsync(
+            string ownerSegment,
+            string project,
+            Stream content,
+            string extension
+        ) => Task.FromResult("");
+
+        public Task DeleteAsync(string relativePathOrUrl) => Task.CompletedTask;
+
+        public Task DeleteOwnerFilesAsync(string ownerSegment)
+        {
+            DeletedOwners.Add(ownerSegment);
+            return Task.CompletedTask;
+        }
+    }
+
+    private sealed class FakeTokenService : ITokenService
+    {
+        public string Issue(User user, WorkspaceMembership? membership, int? keyScopes = null) =>
+            "token-for-" + user.PublicId.ToString("N");
+
+        public string IssueSelection(User user) => "selection-for-" + user.PublicId.ToString("N");
+
+        public string IssueImpersonation(
+            User user,
+            Guid workspaceId,
+            long sessionId,
+            DateTime expiresAt
+        ) => "imp-for-" + user.PublicId.ToString("N");
     }
 
     private sealed class NoopBrandingService : IBrandingService
@@ -186,7 +225,8 @@ public class Db18WorkspaceLifecycleTests
         FakeAuditWriter? audit = null,
         ILoginAttemptLimiter? lockout = null,
         IConfiguration? config = null,
-        Microsoft.Extensions.Caching.Memory.IMemoryCache? linkAttemptCache = null
+        Microsoft.Extensions.Caching.Memory.IMemoryCache? linkAttemptCache = null,
+        IFileStorage? fileStorage = null
     ) =>
         BuildServiceWithUow(
             new UnitOfWork(ctx),
@@ -195,7 +235,8 @@ public class Db18WorkspaceLifecycleTests
             audit,
             lockout,
             config,
-            linkAttemptCache
+            linkAttemptCache,
+            fileStorage
         );
 
     private static WorkspaceLifecycleService BuildServiceWithUow(
@@ -205,7 +246,8 @@ public class Db18WorkspaceLifecycleTests
         FakeAuditWriter? audit = null,
         ILoginAttemptLimiter? lockout = null,
         IConfiguration? config = null,
-        Microsoft.Extensions.Caching.Memory.IMemoryCache? linkAttemptCache = null
+        Microsoft.Extensions.Caching.Memory.IMemoryCache? linkAttemptCache = null,
+        IFileStorage? fileStorage = null
     )
     {
         var memberships = new MembershipService(uow);
@@ -214,7 +256,7 @@ public class Db18WorkspaceLifecycleTests
         var tenants = new TenantService(
             uow,
             new IdentityHasher(),
-            new NoopFileStorage(),
+            fileStorage ?? new NoopFileStorage(),
             new NoopSettings(),
             new NoopBillingProvider(),
             memberships,
@@ -235,6 +277,32 @@ public class Db18WorkspaceLifecycleTests
             config,
             audit,
             linkAttemptCache
+        );
+    }
+
+    /// <summary>AuthService fixture for RegisterAsync's frozen-workspace guard (D18.11) — mirrors
+    /// ApiKeyAuthTests.BuildAuthService, reusing this file's IdentityHasher/CapturingEmail/
+    /// NoopBrandingService/FakeLoginAttemptLimiter/RealResetTokens doubles.</summary>
+    private static AuthService BuildAuthService(
+        ICurrentUser user,
+        AppDbContext ctx,
+        IWorkspaceStateService? workspaceState = null
+    )
+    {
+        var uow = new UnitOfWork(ctx);
+        return new AuthService(
+            uow,
+            new IdentityHasher(),
+            new FakeTokenService(),
+            user,
+            new NoopSettings(),
+            RealResetTokens(),
+            new CapturingEmail(),
+            new NoopBrandingService(),
+            new ApiKeyService(new UnitOfWork(ctx), new TestApiKeyProtector()),
+            new FakeLoginAttemptLimiter(),
+            new MembershipService(uow),
+            workspaceState: workspaceState
         );
     }
 
@@ -2119,5 +2187,510 @@ public class Db18WorkspaceLifecycleTests
             .Users.IgnoreQueryFilters()
             .SingleAsync(u => u.Id == ws.SecondAdmin.Id);
         Assert.Equal(otherWorkspaceId, survivor.OwnerId);
+    }
+
+    // ── 13. Review gaps (REVIEW-DB18-CODE-2026-09-24.md rows G6/O23/O24/O25) ────────────────────
+
+    /// <summary>Opus HIGH 3 / O24: HardDeleteAsync's "owner_requested" guarded pre-check refuses a
+    /// workspace that was never actually confirmed (no DeletionScheduledFor at all) — writes no
+    /// audit row and touches no files.</summary>
+    [Fact]
+    public async Task HardDelete_OwnerRequested_NotScheduled_Refused_NoAudit_NoFiles()
+    {
+        var db = Guid.NewGuid().ToString();
+        SeededWorkspace ws;
+        using (var seed = Ctx(new FakeCurrentUser { IsSuperAdmin = true }, db))
+            ws = SeedWorkspace(seed);
+
+        using var ctx = Ctx(new FakeCurrentUser { IsSuperAdmin = true }, db);
+        var uow = new UnitOfWork(ctx);
+        var files = new RecordingFileStorage();
+        var audit = new FakeAuditWriter();
+        var tenants = new TenantService(
+            uow,
+            new IdentityHasher(),
+            files,
+            new NoopSettings(),
+            new NoopBillingProvider(),
+            new MembershipService(uow),
+            audit
+        );
+
+        var result = await tenants.HardDeleteAsync(ws.WorkspaceId, "owner_requested");
+
+        Assert.False(result.IsSuccess);
+        Assert.Empty(files.DeletedOwners);
+        Assert.DoesNotContain(audit.Entries, e => e.Action == AuditActions.TenantHardDeleted);
+        Assert.NotNull(
+            await ctx
+                .Workspaces.IgnoreQueryFilters()
+                .SingleOrDefaultAsync(w => w.Id == ws.WorkspaceId)
+        );
+    }
+
+    /// <summary>Opus HIGH 3 / O24: an operator pause holds a DUE scheduled deletion — same guard,
+    /// driven directly against TenantService this time (ExecuteDueDeletionAsync's own pre-check
+    /// already covers the WorkspaceLifecycleService entry point via Job_OperatorPausedDuringGrace_
+    /// NotDeleted above; this proves TenantService.HardDeleteAsync refuses it too, on its own, no
+    /// audit/no files, in case anything ever calls it directly again).</summary>
+    [Fact]
+    public async Task HardDelete_OwnerRequested_OperatorPaused_Refused()
+    {
+        var db = Guid.NewGuid().ToString();
+        SeededWorkspace ws;
+        using (var seed = Ctx(new FakeCurrentUser { IsSuperAdmin = true }, db))
+            ws = SeedWorkspace(seed);
+
+        var now = DateTime.UtcNow;
+        using (var seedCtx = Ctx(new FakeCurrentUser { IsSuperAdmin = true }, db))
+        {
+            var w = await seedCtx
+                .Workspaces.IgnoreQueryFilters()
+                .SingleAsync(x => x.Id == ws.WorkspaceId);
+            w.DeletionRequestedAt = now.AddDays(-8);
+            w.DeletionRequestedBy = ws.Admin.PublicId;
+            w.DeletionConfirmedAt = now.AddDays(-8);
+            w.DeletionScheduledFor = now.AddMinutes(-5); // due
+            w.PausedAt = now.AddHours(-1);
+            w.PausedBy = Guid.NewGuid();
+            w.PausedByOperator = true; // held
+            await seedCtx.SaveChangesAsync();
+        }
+
+        using var ctx = Ctx(new FakeCurrentUser { IsSuperAdmin = true }, db);
+        var uow = new UnitOfWork(ctx);
+        var files = new RecordingFileStorage();
+        var audit = new FakeAuditWriter();
+        var tenants = new TenantService(
+            uow,
+            new IdentityHasher(),
+            files,
+            new NoopSettings(),
+            new NoopBillingProvider(),
+            new MembershipService(uow),
+            audit
+        );
+
+        var result = await tenants.HardDeleteAsync(ws.WorkspaceId, "owner_requested");
+
+        Assert.False(result.IsSuccess);
+        Assert.Empty(files.DeletedOwners);
+        Assert.DoesNotContain(audit.Entries, e => e.Action == AuditActions.TenantHardDeleted);
+    }
+
+    /// <summary>O24: the hosted job's real hard-delete path (ExecuteDueDeletionAsync →
+    /// TenantService.HardDeleteAsync("owner_requested")) actually deletes the owner's files and
+    /// writes exactly one System-actor audit row — the existing
+    /// ExecuteDueDeletionAsync_NoTenantCurrentUser_HardDeletes test only asserted the workspace row
+    /// was gone, never the file-delete/audit side effects.</summary>
+    [Fact]
+    public async Task Job_DueDeletion_HardDeletes_AuditsSystemActor_AndDeletesFiles()
+    {
+        var db = Guid.NewGuid().ToString();
+        SeededWorkspace ws;
+        using (var seed = Ctx(new FakeCurrentUser { IsSuperAdmin = true }, db))
+            ws = SeedWorkspace(seed);
+
+        var now = DateTime.UtcNow;
+        using (var ctx = Ctx(new FakeCurrentUser { IsSuperAdmin = true }, db))
+        {
+            var w = await ctx
+                .Workspaces.IgnoreQueryFilters()
+                .SingleAsync(x => x.Id == ws.WorkspaceId);
+            w.DeletionRequestedAt = now.AddDays(-8);
+            w.DeletionRequestedBy = ws.Admin.PublicId;
+            w.DeletionConfirmedAt = now.AddDays(-8);
+            w.DeletionScheduledFor = now.AddMinutes(-5); // due
+            w.DeletionReminderSentAt = now.AddHours(-25); // already sent
+            await ctx.SaveChangesAsync();
+        }
+
+        var email = new CapturingEmail();
+        var audit = new FakeAuditWriter();
+        var files = new RecordingFileStorage();
+        using var ctx2 = Ctx(NoTenantCaller(), db);
+        var result = await BuildService(NoTenantCaller(), ctx2, email, audit, fileStorage: files)
+            .ExecuteDueDeletionAsync(ws.WorkspaceId);
+
+        Assert.True(result.IsSuccess, result.Message);
+        Assert.Equal(new[] { ws.WorkspaceId.ToString("N") }, files.DeletedOwners);
+        var entry = Assert.Single(audit.Entries, e => e.Action == AuditActions.TenantHardDeleted);
+        Assert.Equal(AuditActorKind.System, entry.ActorKindOverride);
+        Assert.Null(entry.OwnerId);
+
+        using var check = Ctx(new FakeCurrentUser { IsSuperAdmin = true }, db);
+        Assert.Null(
+            await check
+                .Workspaces.IgnoreQueryFilters()
+                .SingleOrDefaultAsync(w => w.Id == ws.WorkspaceId)
+        );
+    }
+
+    /// <summary>O23/G6: the job's hard-delete races a concurrent Cancel that commits between the
+    /// job's own (already-passed) due pre-check and HardDeleteAsync's locked re-check — the locked
+    /// re-check must abort cleanly (DeletionPreconditionChangedException, caught by the hosted
+    /// loop as a benign skip — see WorkspaceDeletionService's own catch), never touching the
+    /// filesystem or writing the hard-deleted audit row. Uses the same RacingUnitOfWork technique as
+    /// Cancel_WhileJobHoldsLock_Conflict, roles reversed.</summary>
+    [Fact]
+    public async Task Job_CancelledBetweenQueryAndDelete_Skipped_NoFileDelete()
+    {
+        var db = Guid.NewGuid().ToString();
+        SeededWorkspace ws;
+        using (var seed = Ctx(new FakeCurrentUser { IsSuperAdmin = true }, db))
+            ws = SeedWorkspace(seed);
+
+        var now = DateTime.UtcNow;
+        using (var seedCtx = Ctx(new FakeCurrentUser { IsSuperAdmin = true }, db))
+        {
+            var w = await seedCtx
+                .Workspaces.IgnoreQueryFilters()
+                .SingleAsync(x => x.Id == ws.WorkspaceId);
+            w.DeletionRequestedAt = now.AddDays(-8);
+            w.DeletionRequestedBy = ws.Admin.PublicId;
+            w.DeletionConfirmedAt = now.AddDays(-8);
+            w.DeletionScheduledFor = now.AddMinutes(-5); // due
+            w.DeletionReminderSentAt = now.AddHours(-25);
+            await seedCtx.SaveChangesAsync();
+        }
+
+        var caller = AdminCaller(ws);
+        var files = new RecordingFileStorage();
+        var audit = new FakeAuditWriter();
+        using var ctx = Ctx(NoTenantCaller(), db);
+
+        var racingUow = new RacingUnitOfWork(
+            new UnitOfWork(ctx),
+            async () =>
+            {
+                // Models an admin cancelling in the gap between the job's own pre-check (already
+                // passed, above) and its FOR UPDATE lock inside HardDeleteAsync's transaction.
+                using var cancelCtx = Ctx(caller, db);
+                var cancelResult = await BuildService(caller, cancelCtx).CancelDeletionAsync();
+                Assert.True(cancelResult.IsSuccess, cancelResult.Message);
+            }
+        );
+
+        await Assert.ThrowsAsync<DeletionPreconditionChangedException>(() =>
+            BuildServiceWithUow(racingUow, NoTenantCaller(), audit: audit, fileStorage: files)
+                .ExecuteDueDeletionAsync(ws.WorkspaceId)
+        );
+
+        Assert.Empty(files.DeletedOwners);
+        Assert.DoesNotContain(audit.Entries, e => e.Action == AuditActions.TenantHardDeleted);
+
+        using var check = Ctx(new FakeCurrentUser { IsSuperAdmin = true }, db);
+        var row = await check
+            .Workspaces.IgnoreQueryFilters()
+            .SingleAsync(w => w.Id == ws.WorkspaceId);
+        Assert.Null(row.DeletionScheduledFor); // the race's Cancel won and survives
+    }
+
+    /// <summary>O23/G6: PauseInsteadAsync racing a Confirm that wins in the gap between its own
+    /// pre-lock read and its lock — the locked re-check's ValidateTokenAsync (which refuses once
+    /// DeletionScheduledFor != null) must fail cleanly with DeletionLinkInvalid, never a constraint
+    /// violation/500 and never clobbering the winner's schedule. Mirrors
+    /// Confirm_Concurrent_OnlyOneSchedules with the two calls' roles reversed.</summary>
+    [Fact]
+    public async Task PauseInstead_RacingConfirm_NoConstraintViolation()
+    {
+        var db = Guid.NewGuid().ToString();
+        SeededWorkspace ws;
+        using (var seed = Ctx(new FakeCurrentUser { IsSuperAdmin = true }, db))
+            ws = SeedWorkspace(seed);
+
+        var caller = AdminCaller(ws);
+        var email = new CapturingEmail();
+        var token = await RequestAndExtractTokenAsync(this, caller, db, email);
+
+        using var ctx = Ctx(caller, db);
+        var winnerCompleted = false;
+
+        var racingUow = new RacingUnitOfWork(
+            new UnitOfWork(ctx),
+            async () =>
+            {
+                // Models a concurrent Confirm winning the race — commits inside the gap between
+                // PauseInstead's pre-lock read and its own lock.
+                using var concurrentCtx = Ctx(caller, db);
+                var concurrentResult = await BuildService(
+                        caller,
+                        concurrentCtx,
+                        new CapturingEmail()
+                    )
+                    .ConfirmDeletionAsync(
+                        new ConfirmWorkspaceDeletionRequest
+                        {
+                            Token = token,
+                            Password = "pw-admin",
+                            WorkspaceName = "Acme",
+                        }
+                    );
+                Assert.True(concurrentResult.IsSuccess, concurrentResult.Message);
+                winnerCompleted = true;
+            }
+        );
+
+        var result = await BuildServiceWithUow(racingUow, caller, email).PauseInsteadAsync(token);
+
+        Assert.True(winnerCompleted);
+        Assert.False(result.IsSuccess);
+        Assert.Equal(MessageKeys.Workspace.DeletionLinkInvalid, result.Message);
+
+        using var check = Ctx(new FakeCurrentUser { IsSuperAdmin = true }, db);
+        var row = await check
+            .Workspaces.IgnoreQueryFilters()
+            .SingleAsync(w => w.Id == ws.WorkspaceId);
+        // The winner's schedule survives — PauseInstead's own write never landed.
+        Assert.NotNull(row.DeletionScheduledFor);
+        Assert.Null(row.PausedAt);
+    }
+
+    /// <summary>Gemini LOW #2 (StateService): a soft-deleted workspace row (DeletedAt != null) is
+    /// never frozen, whatever its PausedAt/DeletionScheduledFor columns still carry — the state
+    /// service's own explicit `w.DeletedAt == null` predicate.</summary>
+    [Fact]
+    public async Task StateService_SoftDeletedWorkspace_NotFrozen()
+    {
+        var db = Guid.NewGuid().ToString();
+        var workspaceId = Guid.NewGuid();
+        using (var seed = Ctx(new FakeCurrentUser { IsSuperAdmin = true }, db))
+        {
+            seed.Workspaces.Add(
+                new Workspace
+                {
+                    Id = workspaceId,
+                    Name = "Acme",
+                    CreatedAt = DateTime.UtcNow,
+                    CreatedBy = workspaceId,
+                    PausedAt = DateTime.UtcNow,
+                    DeletedAt = DateTime.UtcNow,
+                }
+            );
+            await seed.SaveChangesAsync();
+        }
+
+        using var ctx = Ctx(new FakeCurrentUser { IsSuperAdmin = true }, db);
+        var state = new WorkspaceStateService(new UnitOfWork(ctx));
+        var freeze = await state.GetAsync(workspaceId);
+
+        Assert.False(freeze.IsFrozen);
+        Assert.False(freeze.IsPaused);
+        Assert.False(freeze.PausedByOperator);
+        Assert.Null(freeze.DeletionScheduledFor);
+    }
+
+    /// <summary>Opus LOW (D18.9): a converted workspace still inside the 72h re-verify window
+    /// (DemoExpiresAt still set) but already converted (DemoConvertedAt != null) is a real workspace
+    /// — only a LIVE, unconverted demo is blocked from pausing (see Pause_LiveDemo_Refused).</summary>
+    [Fact]
+    public async Task ConvertedDemoInVerifyWindow_CanPause()
+    {
+        var db = Guid.NewGuid().ToString();
+        SeededWorkspace ws;
+        using (var seed = Ctx(new FakeCurrentUser { IsSuperAdmin = true }, db))
+        {
+            ws = SeedWorkspace(seed);
+            var row = await seed.Workspaces.FirstAsync(w => w.Id == ws.WorkspaceId);
+            row.DemoExpiresAt = DateTime.UtcNow.AddHours(70); // still inside the 72h window...
+            row.DemoConvertedAt = DateTime.UtcNow.AddHours(-2); // ...but already converted.
+            await seed.SaveChangesAsync();
+        }
+
+        var caller = AdminCaller(ws);
+        using var ctx = Ctx(caller, db);
+        var result = await BuildService(caller, ctx).PauseAsync();
+        Assert.True(result.IsSuccess, result.Message);
+    }
+
+    /// <summary>DB-18 §6 test 4 gap: once the requesting admin LEAVES the workspace (membership
+    /// LeftAt stamped — GetMembershipAsync's own `LeftAt == null` predicate), their still-unexpired
+    /// deletion-confirmation link must no longer validate. Mirrors Confirm_AfterDemotion_LinkInvalid,
+    /// using MembershipService.EndAsync (the real "leave" mechanic) instead of a role edit.</summary>
+    [Fact]
+    public async Task Confirm_AfterLeave_LinkInvalid()
+    {
+        var db = Guid.NewGuid().ToString();
+        SeededWorkspace ws;
+        using (var seed = Ctx(new FakeCurrentUser { IsSuperAdmin = true }, db))
+            ws = SeedWorkspace(seed);
+
+        var caller = AdminCaller(ws);
+        var email = new CapturingEmail();
+        var token = await RequestAndExtractTokenAsync(this, caller, db, email);
+
+        using (var ctx = Ctx(new FakeCurrentUser { IsSuperAdmin = true }, db))
+        {
+            var membership = await ctx.Set<WorkspaceMembership>()
+                .IgnoreQueryFilters()
+                .FirstAsync(m => m.UserId == ws.Admin.Id && m.OwnerId == ws.WorkspaceId);
+            await new MembershipService(new UnitOfWork(ctx)).EndAsync(
+                membership,
+                MembershipEndReason.Left,
+                ws.Admin.PublicId
+            );
+            await ctx.SaveChangesAsync();
+        }
+
+        using var ctx2 = Ctx(caller, db);
+        var result = await BuildService(caller, ctx2, email)
+            .ConfirmDeletionAsync(
+                new ConfirmWorkspaceDeletionRequest
+                {
+                    Token = token,
+                    Password = "pw-admin",
+                    WorkspaceName = "Acme",
+                }
+            );
+        Assert.False(result.IsSuccess);
+        Assert.Equal(MessageKeys.Workspace.DeletionLinkInvalid, result.Message);
+    }
+
+    // ── 14. Register frozen-workspace guard (D18.11) — AuthService fixture ─────────────────────
+
+    private static void SeedRegisterFixture(
+        AppDbContext seed,
+        Guid ownerId,
+        out int memberRoleId,
+        string projectKey = "reg-site"
+    )
+    {
+        var memberRole = new Role
+        {
+            Name = "Stakeholder",
+            GrantsAdmin = false,
+            IsActive = true,
+            OwnerId = ownerId,
+        };
+        seed.Roles.Add(memberRole);
+        seed.SaveChanges();
+        memberRoleId = memberRole.Id;
+
+        seed.Set<Project>()
+            .Add(
+                new Project
+                {
+                    Key = projectKey,
+                    Name = "Reg Site",
+                    OwnerId = ownerId,
+                }
+            );
+        seed.SaveChanges();
+    }
+
+    /// <summary>D18.11: a frozen workspace refuses a brand-new stakeholder registration — the guard
+    /// runs before any identity/membership lookup at all.</summary>
+    [Fact]
+    public async Task Register_FrozenWorkspace_Refused()
+    {
+        var db = Guid.NewGuid().ToString();
+        SeededWorkspace ws;
+        int memberRoleId;
+        using (var seed = Ctx(new FakeCurrentUser { IsSuperAdmin = true }, db))
+        {
+            ws = SeedWorkspace(seed);
+            SeedRegisterFixture(seed, ws.WorkspaceId, out memberRoleId);
+            var row = await seed.Workspaces.FirstAsync(w => w.Id == ws.WorkspaceId);
+            row.PausedAt = DateTime.UtcNow;
+            await seed.SaveChangesAsync();
+        }
+
+        using var ctx = Ctx(NoTenantCaller(), db);
+        var result = await BuildAuthService(
+                NoTenantCaller(),
+                ctx,
+                new WorkspaceStateService(new UnitOfWork(ctx))
+            )
+            .RegisterAsync(
+                new RegisterRequest
+                {
+                    Email = "newstakeholder@t.com",
+                    Password = "password123",
+                    DisplayName = "New Stakeholder",
+                    RoleId = memberRoleId,
+                    ProjectKey = "reg-site",
+                }
+            );
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(MessageKeys.Workspace.FrozenNoNewMembers, result.Message);
+
+        using var check = Ctx(new FakeCurrentUser { IsSuperAdmin = true }, db);
+        Assert.Null(
+            await check
+                .Users.IgnoreQueryFilters()
+                .SingleOrDefaultAsync(u => u.Email == "newstakeholder@t.com")
+        );
+    }
+
+    /// <summary>D18.11: the SAME frozen guard also blocks the "re-apply after rejection" path —
+    /// proves the freeze check runs unconditionally before RegisterAsync even inspects the existing
+    /// (Rejected) membership, so a rejected stakeholder cannot re-queue while the workspace is
+    /// frozen either.</summary>
+    [Fact]
+    public async Task Register_ReapplyAfterRejection_FrozenWorkspace_Refused()
+    {
+        var db = Guid.NewGuid().ToString();
+        SeededWorkspace ws;
+        int memberRoleId;
+        using (var seed = Ctx(new FakeCurrentUser { IsSuperAdmin = true }, db))
+        {
+            ws = SeedWorkspace(seed);
+            SeedRegisterFixture(seed, ws.WorkspaceId, out memberRoleId);
+
+            var memberRole = await seed.Roles.SingleAsync(r => r.Id == memberRoleId);
+            var identity = new User
+            {
+                Email = "rejected@t.com",
+                PasswordHash = "h:password123",
+                DisplayName = "Rejected",
+                PublicId = Guid.NewGuid(),
+                OwnerId = ws.WorkspaceId,
+                RoleId = memberRoleId,
+                IsActive = false,
+            };
+            seed.Users.Add(identity);
+            seed.SaveChanges();
+            TestSeed.Join(seed, identity, ws.WorkspaceId, memberRole);
+
+            var membership = await seed.Set<WorkspaceMembership>()
+                .IgnoreQueryFilters()
+                .SingleAsync(m => m.UserId == identity.Id && m.OwnerId == ws.WorkspaceId);
+            membership.ApprovalStatus = ApprovalStatus.Rejected;
+            await seed.SaveChangesAsync();
+
+            var row = await seed.Workspaces.FirstAsync(w => w.Id == ws.WorkspaceId);
+            row.PausedAt = DateTime.UtcNow;
+            await seed.SaveChangesAsync();
+        }
+
+        using var ctx = Ctx(NoTenantCaller(), db);
+        var result = await BuildAuthService(
+                NoTenantCaller(),
+                ctx,
+                new WorkspaceStateService(new UnitOfWork(ctx))
+            )
+            .RegisterAsync(
+                new RegisterRequest
+                {
+                    Email = "rejected@t.com",
+                    Password = "password123",
+                    DisplayName = "Rejected",
+                    RoleId = memberRoleId,
+                    ProjectKey = "reg-site",
+                }
+            );
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(MessageKeys.Workspace.FrozenNoNewMembers, result.Message);
+
+        using var check = Ctx(new FakeCurrentUser { IsSuperAdmin = true }, db);
+        var membershipAfter = await check
+            .Set<WorkspaceMembership>()
+            .IgnoreQueryFilters()
+            .Include(m => m.User)
+            .SingleAsync(m => m.OwnerId == ws.WorkspaceId && m.User.Email == "rejected@t.com");
+        // Still Rejected — the frozen guard fired before the re-queue logic was ever reached.
+        Assert.Equal(ApprovalStatus.Rejected, membershipAfter.ApprovalStatus);
     }
 }
