@@ -45,7 +45,12 @@
 > `demo_converted_at`, `demo_expiry_warned_at`, `demo_ttl_hours_override`, `demo_comment_cap_override` + partial index
 > `ix_workspaces_demo_expires_at`; backfill tagged live demos only. **DB-11e (not yet deployed):** users.expires_at / "DemoExtended" / "DemoCommentCapOverride" / "DemoTtlHoursOverride" and IX_users_expires_at dropped; the {id:int} tenant demo routes removed.
 >
-> All of DB-11a…DB-17, R5-61 and R5-62 are shipped and live in production (79 migrations).
+> **DB-18 deployed 2026-09-24 00:33 UTC** (ordinary, additive): `workspaces.paused_at`, `paused_by`, `paused_by_operator`,
+> `deletion_requested_at`, `deletion_requested_by`, `deletion_confirmed_at`, `deletion_scheduled_for`, `deletion_reminder_sent_at`
+> + check constraints `ck_workspaces_pause_consistent`, `ck_workspaces_deletion_request_consistent`,
+> `ck_workspaces_deletion_schedule_consistent`.
+>
+> All of DB-11a…DB-18, R5-61 and R5-62 are shipped and live in production (81 migrations).
 >
 > **R5-61 implemented on branch `feat/r5-61-operator-mfa`, not yet merged/deployed** (`users.totp_secret`,
 > `totp_enabled_at`, `totp_last_step` + new table `user_recovery_codes`; migration `AddOperatorMfa`,
