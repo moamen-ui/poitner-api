@@ -33,7 +33,9 @@ public static class EmailLayout
         var safeProductName = Html(productName);
         var isAr = string.Equals(lang, "ar", StringComparison.OrdinalIgnoreCase);
 
-        var htmlTagAttrs = isAr ? "lang=\"ar\" dir=\"rtl\"" : "lang=\"en\"";
+        // dir="rtl" goes on the content/header/footer cells, NOT on <html>: on <html> it flips the outer
+        // centering table (Chrome shifted the card off-screen) and Gmail strips <html> attributes anyway.
+        var htmlTagAttrs = isAr ? "lang=\"ar\"" : "lang=\"en\"";
         var rtlCellAttr = isAr ? " dir=\"rtl\"" : string.Empty;
         var rtlAlignStyle = isAr ? "text-align:right;" : string.Empty;
 
@@ -101,7 +103,7 @@ public static class EmailLayout
                     <td style="height:4px;line-height:4px;font-size:0;background-color:{{color}};">&nbsp;</td>
                   </tr>
                   <tr>
-                    <td class="email-header" style="padding:28px 32px 0 32px;">
+                    <td class="email-header"{{rtlCellAttr}} style="padding:28px 32px 0 32px;{{rtlAlignStyle}}">
                       {{headerHtml}}
                     </td>
                   </tr>

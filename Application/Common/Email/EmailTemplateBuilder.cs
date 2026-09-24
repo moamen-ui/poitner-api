@@ -534,15 +534,21 @@ public static class EmailTemplateBuilder
 
         if (isAr)
         {
-            var subjectAr = $"تأكيد حذف مساحة العمل {ws}";
+            var subjectAr = $"تأكيد حذف مساحة العمل {workspaceName}";
             var contentAr =
                 Heading($"تأكيد حذف مساحة العمل {ws}")
                 + Paragraph(
                     $"طلبتَ حذف مساحة العمل <strong>{ws}</strong> على {product}. للتأكيد، افتح الرابط أدناه وأدخل كلمة المرور. تنتهي صلاحية الرابط خلال 30 دقيقة ويعمل مرة واحدة فقط."
                 )
-                + EmailComponents.Button("مراجعة الحذف وتأكيده", link, primaryColor ?? "")
+                + EmailComponents.Button(
+                    "مراجعة الحذف وتأكيده",
+                    link,
+                    primaryColor ?? "",
+                    rtl: true
+                )
                 + EmailComponents.Callout(
-                    "قبل الحذف: يمكنك تصدير التعليقات من الإعدادات ← منطقة الخطر ← تصدير البيانات، أو إيقاف مساحة العمل مؤقتًا بدلًا من حذفها — الإيقاف المؤقت يحتفظ بمشاريعك وتعليقاتك وإعداداتك ويوقف استقبال الملاحظات الجديدة حتى تستأنفها."
+                    "قبل الحذف: يمكنك تصدير التعليقات من الإعدادات ← منطقة الخطر ← تصدير البيانات، أو إيقاف مساحة العمل مؤقتًا بدلًا من حذفها — الإيقاف المؤقت يحتفظ بمشاريعك وتعليقاتك وإعداداتك ويوقف استقبال الملاحظات الجديدة حتى تستأنفها.",
+                    rtl: true
                 )
                 + Paragraph(
                     $"بعد التأكيد تُحذف مساحة العمل بعد {graceDays} أيام، ويمكن لأي مسؤول في مساحة العمل إلغاء الحذف قبل ذلك."
@@ -565,7 +571,7 @@ public static class EmailTemplateBuilder
             );
         }
 
-        var subjectEn = $"Confirm deleting the {ws} workspace";
+        var subjectEn = $"Confirm deleting the {workspaceName} workspace";
         var contentEn =
             Heading($"Confirm deleting the {ws} workspace")
             + Paragraph(
@@ -618,7 +624,7 @@ public static class EmailTemplateBuilder
         if (isAr)
         {
             var name = EmailLayout.Html(actorName ?? "مشغّل المنصة");
-            var subjectAr = $"ستُحذف مساحة العمل {ws} في {scheduledForUtc}";
+            var subjectAr = $"ستُحذف مساحة العمل {workspaceName} في {scheduledForUtc}";
             var contentAr =
                 Heading($"ستُحذف مساحة العمل {ws} في {scheduledForUtc}")
                 + Paragraph(
@@ -643,9 +649,9 @@ public static class EmailTemplateBuilder
         }
 
         var nameEn = EmailLayout.Html(actorName ?? "the platform operator");
-        var subjectEn = $"{ws} will be deleted on {scheduledForUtc}";
+        var subjectEn = $"{workspaceName} will be deleted on {scheduledForUtc}";
         var contentEn =
-            Heading(subjectEn)
+            Heading(EmailLayout.Html(subjectEn))
             + Paragraph(
                 $"{nameEn} confirmed deleting the workspace <strong>{ws}</strong>. It will be permanently deleted on {scheduledForUtc} — projects, comments, replies, screenshots, settings, API keys, and the accounts that were created in this workspace and belong to no other workspace. Until then the workspace is read-only."
             )
@@ -687,12 +693,13 @@ public static class EmailTemplateBuilder
 
         if (isAr)
         {
-            var subjectAr = $"ستُحذف مساحة العمل {ws} خلال 24 ساعة";
+            var subjectAr = $"ستُحذف مساحة العمل {workspaceName} خلال 24 ساعة";
             var contentAr =
-                Heading(subjectAr)
+                Heading(EmailLayout.Html(subjectAr))
                 + EmailComponents.Callout(
                     $"تذكير: ستُحذف مساحة العمل <strong>{ws}</strong> نهائيًا في {scheduledForUtc}. للاحتفاظ بها افتح {settingsLink} واختر <strong>إلغاء الحذف</strong>. صدّر بياناتك قبل ذلك إذا أردت الاحتفاظ بنسخة.",
-                    "#f59e0b"
+                    "#f59e0b",
+                    rtl: true
                 );
 
             return (
@@ -709,9 +716,9 @@ public static class EmailTemplateBuilder
             );
         }
 
-        var subjectEn = $"{ws} will be deleted in 24 hours";
+        var subjectEn = $"{workspaceName} will be deleted in 24 hours";
         var contentEn =
-            Heading(subjectEn)
+            Heading(EmailLayout.Html(subjectEn))
             + EmailComponents.Callout(
                 $"Reminder: the workspace <strong>{ws}</strong> will be permanently deleted on {scheduledForUtc}. To keep it, open {settingsLink} and choose <strong>Cancel deletion</strong>. Export your data before then if you want a copy.",
                 "#f59e0b"
@@ -747,9 +754,9 @@ public static class EmailTemplateBuilder
 
         if (isAr)
         {
-            var subjectAr = $"حُذفت مساحة العمل {ws}";
+            var subjectAr = $"حُذفت مساحة العمل {workspaceName}";
             var contentAr =
-                Heading(subjectAr)
+                Heading(EmailLayout.Html(subjectAr))
                 + Paragraph(
                     $"حُذفت مساحة العمل <strong>{ws}</strong> نهائيًا في {deletedAtUtc} بناءً على طلب أحد مسؤوليها. تنتهي صلاحية النسخ المتبقية في نسخنا الاحتياطية خلال {backupDays} يومًا. لا يمكن التراجع عن هذا الإجراء."
                 );
@@ -768,9 +775,9 @@ public static class EmailTemplateBuilder
             );
         }
 
-        var subjectEn = $"The {ws} workspace has been deleted";
+        var subjectEn = $"The {workspaceName} workspace has been deleted";
         var contentEn =
-            Heading(subjectEn)
+            Heading(EmailLayout.Html(subjectEn))
             + Paragraph(
                 $"The workspace <strong>{ws}</strong> was permanently deleted on {deletedAtUtc} at the request of one of its admins. Remaining copies in our backups expire within {backupDays} days. This cannot be undone."
             );
@@ -806,16 +813,17 @@ public static class EmailTemplateBuilder
         if (isAr)
         {
             var name = EmailLayout.Html(actorName ?? "مشغّل المنصة");
-            var subjectAr = $"أُلغي حذف مساحة العمل {ws}";
+            var subjectAr = $"أُلغي حذف مساحة العمل {workspaceName}";
             var contentAr =
-                Heading(subjectAr)
+                Heading(EmailLayout.Html(subjectAr))
                 + Paragraph(
                     $"ألغى {name} الحذف المجدول لمساحة العمل <strong>{ws}</strong>. لم يُحذف أي شيء."
                 )
                 + (
                     stillPaused
                         ? EmailComponents.Callout(
-                            "ما زالت مساحة العمل موقوفة مؤقتًا، ويمكن لأي مسؤول استئنافها من الإعدادات."
+                            "ما زالت مساحة العمل موقوفة مؤقتًا، ويمكن لأي مسؤول استئنافها من الإعدادات.",
+                            rtl: true
                         )
                         : string.Empty
                 );
@@ -835,9 +843,9 @@ public static class EmailTemplateBuilder
         }
 
         var nameEn = EmailLayout.Html(actorName ?? "the platform operator");
-        var subjectEn = $"Deletion of {ws} was cancelled";
+        var subjectEn = $"Deletion of {workspaceName} was cancelled";
         var contentEn =
-            Heading(subjectEn)
+            Heading(EmailLayout.Html(subjectEn))
             + Paragraph(
                 $"{nameEn} cancelled the scheduled deletion of <strong>{ws}</strong>. Nothing was deleted."
             )

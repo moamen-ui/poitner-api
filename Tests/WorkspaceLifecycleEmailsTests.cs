@@ -84,9 +84,41 @@ public class WorkspaceLifecycleEmailsTests
     {
         var (_, html) = WorkspaceLifecycleEmails.Build(kind, "ar", Model());
 
-        Assert.Contains("<html lang=\"ar\" dir=\"rtl\">", html);
-        Assert.Contains("dir=\"rtl\"", html);
+        Assert.Contains("<html lang=\"ar\">", html);
+        Assert.DoesNotContain("<html lang=\"ar\" dir=", html);
+        Assert.Contains("class=\"email-content\" dir=\"rtl\"", html);
         Assert.Contains("text-align:right;", html);
+    }
+
+    [Fact]
+    public void Arabic_ConfirmDeletion_ButtonArrowAndCalloutBorderAreMirrored()
+    {
+        var (_, ar) = WorkspaceLifecycleEmails.Build(WorkspaceLifecycleEmailKind.ConfirmDeletion, "ar", Model());
+        var (_, en) = WorkspaceLifecycleEmails.Build(WorkspaceLifecycleEmailKind.ConfirmDeletion, "en", Model());
+
+        Assert.Contains("&larr;</a>", ar);
+        Assert.DoesNotContain("&rarr;</a>", ar);
+        Assert.Contains("border-right:4px solid", ar);
+        Assert.Contains("&rarr;</a>", en);
+        Assert.Contains("border-left:4px solid", en);
+    }
+
+    [Theory]
+    [MemberData(nameof(KindsData))]
+    public void Subject_UsesRawWorkspaceName_HtmlStaysEncoded(WorkspaceLifecycleEmailKind kind)
+    {
+        foreach (var lang in new[] { "en", "ar" })
+        {
+            var (subject, html) = WorkspaceLifecycleEmails.Build(kind, lang, Model() with { WorkspaceName = "R&D <Team>" });
+
+            // Subjects are plain-text headers: an HTML entity would show literally in the inbox.
+            Assert.Contains("R&D <Team>", subject);
+            Assert.DoesNotContain("&amp;", subject);
+            // The body (heading, preheader, paragraphs) is HTML: encoded exactly once.
+            Assert.Contains("R&amp;D &lt;Team&gt;", html);
+            Assert.DoesNotContain("&amp;amp;", html);
+            Assert.DoesNotContain("<Team>", html);
+        }
     }
 
     [Theory]

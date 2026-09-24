@@ -14,7 +14,7 @@ public static class EmailComponents
     /// on anchors). The URL is attribute-encoded; token-bearing links pass through unchanged since
     /// Uri.EscapeDataString output contains no HTML-significant characters.
     /// </summary>
-    public static string Button(string text, string url, string brandColor)
+    public static string Button(string text, string url, string brandColor, bool rtl = false)
     {
         var color = EmailLayout.NormalizeBrandColor(brandColor);
         return $"""
@@ -25,7 +25,7 @@ public static class EmailComponents
                 url
             )}" target="_blank" style="display:inline-block;padding:12px 24px;font-size:14px;font-weight:600;color:#ffffff;text-decoration:none;border-radius:8px;">{EmailLayout.Html(
                 text
-            )} &rarr;</a>
+            )} {(rtl ? "&larr;" : "&rarr;")}</a>
                 </td>
               </tr>
             </table>
@@ -36,10 +36,10 @@ public static class EmailComponents
     /// A bordered highlight box for secondary detail or warnings. <paramref name="htmlContent"/>
     /// is trusted markup — encode user input before passing it in.
     /// </summary>
-    public static string Callout(string htmlContent, string? borderColor = null)
+    public static string Callout(string htmlContent, string? borderColor = null, bool rtl = false)
     {
         var edge = string.IsNullOrWhiteSpace(borderColor) ? "#cbd5e1" : borderColor.Trim();
-        return $"<div style=\"background-color:#f8fafc;border:1px solid #e2e8f0;border-left:4px solid {edge};border-radius:6px;padding:12px 16px;margin:16px 0;font-size:14px;color:#334155;line-height:1.5;\">{htmlContent}</div>";
+        return $"<div style=\"background-color:#f8fafc;border:1px solid #e2e8f0;{(rtl ? "border-right" : "border-left")}:4px solid {edge};border-radius:6px;padding:12px 16px;margin:16px 0;font-size:14px;color:#334155;line-height:1.5;\">{htmlContent}</div>";
     }
 
     /// <summary>

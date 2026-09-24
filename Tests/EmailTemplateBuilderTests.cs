@@ -43,8 +43,13 @@ public class EmailTemplateBuilderTests
     {
         var html = EmailLayout.Wrap("<p>مرحبا</p>", "Pointer", lang: "ar");
 
-        Assert.Contains("<html lang=\"ar\" dir=\"rtl\">", html);
+        // dir sits on the cells, never on <html>: on <html> it flips the outer centering table
+        // (the card rendered shifted off-screen in Chrome) and Gmail strips <html> attributes.
+        Assert.Contains("<html lang=\"ar\">", html);
+        Assert.DoesNotContain("<html lang=\"ar\" dir=", html);
+        Assert.Contains("class=\"email-header\" dir=\"rtl\"", html);
         Assert.Contains("class=\"email-content\" dir=\"rtl\"", html);
+        Assert.Contains("class=\"email-footer\" dir=\"rtl\"", html);
         Assert.Contains("text-align:right;", html);
         // The card shell itself is unchanged — only lang/dir and text alignment differ.
         Assert.Contains("max-width:580px", html);
