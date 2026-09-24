@@ -232,9 +232,7 @@ public class PlanEnforcementTests
                 DisplayName = "WA",
                 RoleId = adminRole.Id,
                 PublicId = tenant,
-                OwnerId = tenant,
                 IsActive = true,
-                ApprovalStatus = ApprovalStatus.Approved,
             };
             seed.Users.Add(waUser);
             seed.SaveChanges();

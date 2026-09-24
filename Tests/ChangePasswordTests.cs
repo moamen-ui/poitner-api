@@ -210,7 +210,6 @@ public class ChangePasswordTests
             PasswordHash = "h:OldPass123",
             DisplayName = "User",
             PublicId = publicId,
-            OwnerId = ownerId,
             RoleId = role.Id,
             IsActive = true,
         };

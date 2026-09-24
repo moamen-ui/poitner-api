@@ -106,7 +106,6 @@ public class WorkspaceAdminOwnershipTests
             PasswordHash = "h",
             DisplayName = "Founder",
             PublicId = ownerId,
-            OwnerId = ownerId,
             RoleId = adminRole.Id,
             IsActive = true,
         };
@@ -187,8 +186,12 @@ public class WorkspaceAdminOwnershipTests
 
         Assert.True(result.IsSuccess);
         var created = ctx.Users.IgnoreQueryFilters().Single(u => u.Email == "deputy@tuwaiq.edu.sa");
-        Assert.Equal(deputyRoleId, created.RoleId);
-        Assert.Equal(existingWorkspaceOwnerId, created.OwnerId);
+        Assert.Null(created.RoleId);
+        var createdMembership = ctx
+            .WorkspaceMemberships.IgnoreQueryFilters()
+            .Single(m => m.UserId == created.Id && m.LeftAt == null);
+        Assert.Equal(deputyRoleId, createdMembership.RoleId);
+        Assert.Equal(existingWorkspaceOwnerId, createdMembership.OwnerId);
     }
 
     [Fact]
@@ -233,7 +236,12 @@ public class WorkspaceAdminOwnershipTests
 
         Assert.True(result.IsSuccess);
         var created = ctx.Users.IgnoreQueryFilters().Single(u => u.Email == "member@tuwaiq.edu.sa");
-        Assert.Equal(tenantId, created.OwnerId);
+        Assert.Contains(
+            ctx.WorkspaceMemberships.IgnoreQueryFilters()
+                .Where(m => m.UserId == created.Id)
+                .ToList(),
+            m => m.OwnerId == tenantId
+        );
     }
 
     [Fact]
@@ -282,8 +290,12 @@ public class WorkspaceAdminOwnershipTests
         var created = ctx
             .Users.IgnoreQueryFilters()
             .Single(u => u.Email == "deputy2@tuwaiq.edu.sa");
-        Assert.Equal(deputyRoleId, created.RoleId);
-        Assert.Equal(tenantId, created.OwnerId);
+        Assert.Null(created.RoleId);
+        var createdMembership = ctx
+            .WorkspaceMemberships.IgnoreQueryFilters()
+            .Single(m => m.UserId == created.Id && m.LeftAt == null);
+        Assert.Equal(deputyRoleId, createdMembership.RoleId);
+        Assert.Equal(tenantId, createdMembership.OwnerId);
     }
 
     // ── Test doubles ─────────────────────────────────────────────────────────

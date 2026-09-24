@@ -217,8 +217,6 @@ public class Db17DemoServiceTests
             DisplayName = "Demo User",
             RoleId = role.Id,
             Role = role,
-            OwnerId = workspaceId,
-            ApprovalStatus = ApprovalStatus.Approved,
             IsActive = true,
             IsDemo = true,
             RecipientEmail = recipientEmail,
@@ -343,9 +341,7 @@ public class Db17DemoServiceTests
             DisplayName = "Real",
             RoleId = role.Id,
             Role = role,
-            OwnerId = workspaceId,
             IsActive = true,
-            ApprovalStatus = ApprovalStatus.Approved,
         };
         db.Users.Add(user);
         db.SaveChanges();
@@ -781,8 +777,6 @@ public class Db17DemoServiceTests
             DisplayName = "Broken",
             RoleId = role.Id,
             Role = role,
-            OwnerId = brokenWorkspaceId,
-            ApprovalStatus = ApprovalStatus.Approved,
             IsActive = true,
             IsDemo = true,
         };
@@ -963,7 +957,14 @@ public class Db17DemoServiceTests
 
         Assert.True(result.IsSuccess, result.Message);
         var user = db.Users.IgnoreQueryFilters().Single(u => u.IsDemo);
-        var workspace = db.Workspaces.IgnoreQueryFilters().Single(w => w.Id == user.OwnerId);
+        var userHome = db
+            .WorkspaceMemberships.IgnoreQueryFilters()
+            .Where(m => m.UserId == user.Id)
+            .OrderBy(m => m.JoinedAt)
+            .ThenBy(m => m.Id)
+            .Select(m => m.OwnerId)
+            .First();
+        var workspace = db.Workspaces.IgnoreQueryFilters().Single(w => w.Id == userHome);
         Assert.Equal(result.Data!.ExpiresAt, workspace.DemoExpiresAt);
         Assert.Null(workspace.DemoConvertedAt);
         Assert.Null(workspace.DemoExtendedAt);

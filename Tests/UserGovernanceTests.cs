@@ -199,7 +199,6 @@ public class UserGovernanceTests
             PasswordHash = "h",
             DisplayName = "Admin",
             PublicId = ownerId,
-            OwnerId = ownerId,
             RoleId = adminRole.Id,
             IsActive = true,
         };
@@ -209,7 +208,6 @@ public class UserGovernanceTests
             PasswordHash = "h",
             DisplayName = "Deputy",
             PublicId = Guid.NewGuid(),
-            OwnerId = ownerId,
             RoleId = deputyRole.Id,
             IsActive = true,
         };
@@ -219,7 +217,6 @@ public class UserGovernanceTests
             PasswordHash = "h",
             DisplayName = "Deputy2",
             PublicId = Guid.NewGuid(),
-            OwnerId = ownerId,
             RoleId = deputyRole.Id,
             IsActive = true,
         };
@@ -229,7 +226,6 @@ public class UserGovernanceTests
             PasswordHash = "h",
             DisplayName = "Member",
             PublicId = Guid.NewGuid(),
-            OwnerId = ownerId,
             RoleId = memberRole.Id,
             IsActive = true,
         };
@@ -546,7 +542,6 @@ public class UserGovernanceTests
                 PasswordHash = "h",
                 DisplayName = "OtherAdmin",
                 PublicId = otherOwnerId,
-                OwnerId = otherOwnerId,
                 RoleId = adminRoleId,
                 IsActive = true,
             };
@@ -556,7 +551,6 @@ public class UserGovernanceTests
                 PasswordHash = "h",
                 DisplayName = "OtherDeputy",
                 PublicId = Guid.NewGuid(),
-                OwnerId = otherOwnerId,
                 RoleId = deputyRoleId,
                 IsActive = true,
             };

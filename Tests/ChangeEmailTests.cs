@@ -283,7 +283,6 @@ public class ChangeEmailTests
             PasswordHash = "h:pw-member",
             DisplayName = "Member",
             PublicId = Guid.NewGuid(),
-            OwnerId = ownerId,
             RoleId = memberRole.Id,
             IsActive = true,
         };
@@ -293,7 +292,6 @@ public class ChangeEmailTests
             PasswordHash = "h:pw-other",
             DisplayName = "Other",
             PublicId = Guid.NewGuid(),
-            OwnerId = ownerId,
             RoleId = memberRole.Id,
             IsActive = true,
         };
@@ -692,7 +690,6 @@ public class ChangeEmailTests
                 PasswordHash = "h:pw",
                 DisplayName = "Interloper",
                 PublicId = Guid.NewGuid(),
-                OwnerId = ws.OwnerId,
                 RoleId = role.Id,
                 IsActive = true,
             };

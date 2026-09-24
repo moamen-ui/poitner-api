@@ -298,7 +298,6 @@ public class WorkspaceMembershipTests
                 DisplayName = "A",
                 PublicId = Guid.NewGuid(),
                 RoleId = role.Id,
-                OwnerId = workspaceA,
                 IsActive = true,
             };
             var userB = new User
@@ -308,7 +307,6 @@ public class WorkspaceMembershipTests
                 DisplayName = "B",
                 PublicId = Guid.NewGuid(),
                 RoleId = role.Id,
-                OwnerId = workspaceB,
                 IsActive = true,
             };
             seed.Users.Add(userA);
@@ -359,9 +357,7 @@ public class WorkspaceMembershipTests
                 DisplayName = "Shared",
                 PublicId = Guid.NewGuid(),
                 RoleId = role.Id,
-                OwnerId = workspaceA, // home = A
                 IsActive = true,
-                ApprovalStatus = ApprovalStatus.Approved,
             };
             seed.Users.Add(identity);
             seed.SaveChanges();
@@ -406,9 +402,7 @@ public class WorkspaceMembershipTests
                 DisplayName = "Canonical",
                 PublicId = Guid.NewGuid(),
                 RoleId = role.Id,
-                OwnerId = workspaceA,
                 IsActive = true,
-                ApprovalStatus = ApprovalStatus.Approved,
             };
             seed.Users.Add(canonical);
             seed.SaveChanges();
@@ -423,9 +417,7 @@ public class WorkspaceMembershipTests
                 DisplayName = "Merged away",
                 PublicId = Guid.NewGuid(),
                 RoleId = role.Id,
-                OwnerId = workspaceA,
                 IsActive = false,
-                ApprovalStatus = ApprovalStatus.Approved,
                 DeletedAt = DateTime.UtcNow,
                 MergedIntoUserId = canonical.Id,
             };
@@ -460,9 +452,7 @@ public class WorkspaceMembershipTests
                 DisplayName = "Solo",
                 PublicId = Guid.NewGuid(),
                 RoleId = role.Id,
-                OwnerId = workspaceA,
                 IsActive = true,
-                ApprovalStatus = ApprovalStatus.Approved,
             };
             seed.Users.Add(user);
             seed.SaveChanges();
@@ -497,7 +487,6 @@ public class WorkspaceMembershipTests
                 DisplayName = "Merged Person",
                 PublicId = Guid.NewGuid(),
                 RoleId = role.Id,
-                OwnerId = workspaceA,
                 IsActive = true,
             };
             seed.Users.Add(identity);
@@ -569,8 +558,6 @@ public class WorkspaceMembershipTests
                 PasswordHash = "hash",
                 DisplayName = "User X",
                 RoleId = role.Id,
-                OwnerId = workspaceA,
-                ApprovalStatus = ApprovalStatus.Approved,
                 IsActive = true,
             };
             seed.Users.Add(userX);
@@ -583,8 +570,6 @@ public class WorkspaceMembershipTests
                 PasswordHash = "hash",
                 DisplayName = "User Y",
                 RoleId = role.Id,
-                OwnerId = workspaceA,
-                ApprovalStatus = ApprovalStatus.Approved,
                 IsActive = true,
             };
             seed.Users.Add(userY);
@@ -607,16 +592,22 @@ public class WorkspaceMembershipTests
 
         var result = await svc.HardDeleteAsync(workspaceA);
         Assert.True(result.IsSuccess, result.Message);
-        Assert.Equal(23, TenantService.HardDeleteOrder.Length);
+        Assert.Equal(22, TenantService.HardDeleteOrder.Length);
 
         using var verify = db.MakeContext(superAdmin);
 
-        // Identity X survives and is re-homed to workspace B
+        // Identity X survives via its remaining membership in B (DB-11f: membership-only, no re-home).
         var survivingX = await verify
             .Users.IgnoreQueryFilters()
             .FirstOrDefaultAsync(u => u.Email == "userx@example.com");
         Assert.NotNull(survivingX);
-        Assert.Equal(workspaceB, survivingX!.OwnerId);
+        Assert.Contains(
+            verify
+                .WorkspaceMemberships.IgnoreQueryFilters()
+                .Where(m => m.UserId == survivingX!.Id)
+                .ToList(),
+            m => m.OwnerId == workspaceB
+        );
 
         // Membership in B is untouched
         var xMembershipB = await verify
@@ -717,8 +708,6 @@ public class WorkspaceMembershipTests
                 PasswordHash = "hash",
                 DisplayName = "Multi Admin",
                 RoleId = adminRole.Id,
-                OwnerId = workspaceA,
-                ApprovalStatus = ApprovalStatus.Approved,
                 IsActive = true,
             };
             seed.Users.Add(admin);
@@ -790,7 +779,13 @@ public class WorkspaceMembershipTests
             .Users.IgnoreQueryFilters()
             .FirstOrDefaultAsync(u => u.Email == "multiadmin@example.com");
         Assert.NotNull(survivor);
-        Assert.Equal(workspaceB, survivor!.OwnerId);
+        Assert.Contains(
+            verify2
+                .WorkspaceMemberships.IgnoreQueryFilters()
+                .Where(m => m.UserId == survivor!.Id)
+                .ToList(),
+            m => m.OwnerId == workspaceB
+        );
     }
 
     [Fact]
@@ -962,8 +957,6 @@ public class WorkspaceMembershipTests
                 PasswordHash = "hash",
                 DisplayName = "Admin A",
                 RoleId = adminRole.Id,
-                OwnerId = workspaceA,
-                ApprovalStatus = ApprovalStatus.Approved,
                 IsActive = true,
             };
             seed.Users.Add(adminA);
@@ -976,8 +969,6 @@ public class WorkspaceMembershipTests
                 PasswordHash = "hash",
                 DisplayName = "Target User",
                 RoleId = devRole.Id,
-                OwnerId = workspaceA,
-                ApprovalStatus = ApprovalStatus.Approved,
                 IsActive = true,
             };
             seed.Users.Add(sharedUser);
@@ -1060,8 +1051,6 @@ public class WorkspaceMembershipTests
                 PasswordHash = "hash",
                 DisplayName = "Admin A",
                 RoleId = adminRole.Id,
-                OwnerId = workspaceA,
-                ApprovalStatus = ApprovalStatus.Approved,
                 IsActive = true,
             };
             seed.Users.Add(adminA);
@@ -1074,8 +1063,6 @@ public class WorkspaceMembershipTests
                 PasswordHash = initialHash,
                 DisplayName = "Multi User",
                 RoleId = devRole.Id,
-                OwnerId = workspaceA,
-                ApprovalStatus = ApprovalStatus.Approved,
                 IsActive = true,
             };
             seed.Users.Add(multiUser);
@@ -1087,8 +1074,6 @@ public class WorkspaceMembershipTests
                 PasswordHash = initialHash,
                 DisplayName = "Single User",
                 RoleId = devRole.Id,
-                OwnerId = workspaceA,
-                ApprovalStatus = ApprovalStatus.Approved,
                 IsActive = true,
             };
             seed.Users.Add(singleUser);

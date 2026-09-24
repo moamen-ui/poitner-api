@@ -113,9 +113,7 @@ public class DeviceLoginServiceTests
             PasswordHash = "h:pw",
             DisplayName = "Dev",
             RoleId = role.Id,
-            OwnerId = tenant,
             IsActive = true,
-            ApprovalStatus = ApprovalStatus.Approved,
         };
         seed.Users.Add(user);
         seed.SaveChanges();
@@ -325,9 +323,7 @@ public class DeviceLoginServiceTests
                 PasswordHash = "h:pw",
                 DisplayName = "Disabled Dev",
                 RoleId = role.Id,
-                OwnerId = tenant,
                 IsActive = true,
-                ApprovalStatus = ApprovalStatus.Approved,
             };
             seed.Users.Add(user);
             seed.SaveChanges();

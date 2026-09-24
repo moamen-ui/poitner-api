@@ -446,7 +446,6 @@ public class PasswordValidatorsTests
                 DisplayName = "U",
                 RoleId = role.Id,
                 IsActive = true,
-                OwnerId = tenant,
             };
             seed.Users.Add(user);
             seed.SaveChanges();
@@ -624,7 +623,6 @@ public class PasswordValidatorsTests
                 PasswordHash = "h:x",
                 DisplayName = "Target",
                 RoleId = role.Id,
-                OwnerId = ownerId,
                 IsActive = true,
             };
             seed.Users.Add(target);

@@ -690,7 +690,6 @@ public class MfaServiceTests
                 PasswordHash = "h:pw-member",
                 DisplayName = "Member",
                 PublicId = Guid.NewGuid(),
-                OwnerId = ownerId,
                 RoleId = role.Id,
                 IsActive = true,
             };

@@ -167,9 +167,7 @@ public class QuickAccessRotateTests
             DisplayName = "client",
             RoleId = clientRole.Id,
             PublicId = Guid.NewGuid(),
-            ApprovalStatus = ApprovalStatus.Approved,
             IsActive = true,
-            OwnerId = tenant,
         };
         db.Users.Add(user);
 

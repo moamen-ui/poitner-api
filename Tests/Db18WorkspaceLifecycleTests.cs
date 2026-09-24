@@ -402,7 +402,6 @@ public class Db18WorkspaceLifecycleTests
             PasswordHash = "h:pw-admin",
             DisplayName = "Admin",
             PublicId = Guid.NewGuid(),
-            OwnerId = workspaceId,
             RoleId = adminRole.Id,
             IsActive = true,
             EmailVerifiedAt = DateTime.UtcNow,
@@ -413,7 +412,6 @@ public class Db18WorkspaceLifecycleTests
             PasswordHash = "h:pw-second",
             DisplayName = "Second Admin",
             PublicId = Guid.NewGuid(),
-            OwnerId = workspaceId,
             RoleId = adminRole.Id,
             IsActive = true,
             EmailVerifiedAt = DateTime.UtcNow,
@@ -424,7 +422,6 @@ public class Db18WorkspaceLifecycleTests
             PasswordHash = "h:pw-deputy",
             DisplayName = "Deputy",
             PublicId = Guid.NewGuid(),
-            OwnerId = workspaceId,
             RoleId = deputyRole.Id,
             IsActive = true,
             EmailVerifiedAt = DateTime.UtcNow,
@@ -1022,7 +1019,7 @@ public class Db18WorkspaceLifecycleTests
             var membership = await ctx.Set<WorkspaceMembership>()
                 .IgnoreQueryFilters()
                 .FirstAsync(m => m.UserId == ws.Admin.Id && m.OwnerId == ws.WorkspaceId);
-            membership.RoleId = ws.Deputy.RoleId; // demote to Deputy
+            membership.RoleId = ws.Deputy.RoleId!.Value; // demote to Deputy
             membership.SecurityStamp = Guid.NewGuid();
             await ctx.SaveChangesAsync();
         }
@@ -2186,7 +2183,13 @@ public class Db18WorkspaceLifecycleTests
         var survivor = await verify
             .Users.IgnoreQueryFilters()
             .SingleAsync(u => u.Id == ws.SecondAdmin.Id);
-        Assert.Equal(otherWorkspaceId, survivor.OwnerId);
+        Assert.Contains(
+            verify
+                .WorkspaceMemberships.IgnoreQueryFilters()
+                .Where(m => m.UserId == survivor.Id)
+                .ToList(),
+            m => m.OwnerId == otherWorkspaceId
+        );
     }
 
     // ── 13. Review gaps (REVIEW-DB18-CODE-2026-09-24.md rows G6/O23/O24/O25) ────────────────────
@@ -2645,7 +2648,6 @@ public class Db18WorkspaceLifecycleTests
                 PasswordHash = "h:password123",
                 DisplayName = "Rejected",
                 PublicId = Guid.NewGuid(),
-                OwnerId = ws.WorkspaceId,
                 RoleId = memberRoleId,
                 IsActive = false,
             };

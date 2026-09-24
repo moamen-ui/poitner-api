@@ -167,9 +167,7 @@ public class InviteJoinUrlBaseTests
                 DisplayName = "Acme Inc",
                 RoleId = adminRole.Id,
                 PublicId = Guid.NewGuid(),
-                ApprovalStatus = ApprovalStatus.Approved,
                 IsActive = true,
-                OwnerId = tenant,
             }
         );
         seed.SaveChanges();

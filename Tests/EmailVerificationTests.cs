@@ -403,7 +403,6 @@ public class EmailVerificationTests
             PasswordHash = "h:pw",
             DisplayName = "Admin",
             PublicId = Guid.NewGuid(),
-            OwnerId = owner,
             RoleId = adminRole.Id,
             IsActive = true,
             EmailVerifiedAt = DateTime.UtcNow,
@@ -497,7 +496,6 @@ public class EmailVerificationTests
                 PasswordHash = "h:" + StrongPw,
                 DisplayName = "Existing",
                 RoleId = roleIdB,
-                OwnerId = ownerB,
                 IsActive = true,
                 EmailVerifiedAt = null,
             };
@@ -555,7 +553,6 @@ public class EmailVerificationTests
                 PasswordHash = "h:" + StrongPw,
                 DisplayName = "Existing",
                 RoleId = roleIdB,
-                OwnerId = ownerB,
                 IsActive = true,
                 EmailVerifiedAt = null,
             };
@@ -805,7 +802,6 @@ public class EmailVerificationTests
                 PasswordHash = "h:demo",
                 DisplayName = "Demo User",
                 RoleId = role.Id,
-                OwnerId = owner,
                 IsActive = true,
                 IsDemo = true,
                 EmailVerifiedAt = DateTime.UtcNow.AddDays(-1),

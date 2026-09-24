@@ -329,9 +329,7 @@ public class MonetizationSignupTests
                 DisplayName = "T",
                 RoleId = waRole.Id,
                 PublicId = pid,
-                OwnerId = pid,
                 IsActive = true,
-                ApprovalStatus = ApprovalStatus.Approved,
             };
             seed.Users.Add(tenantUser);
             seed.SaveChanges();

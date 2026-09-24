@@ -96,7 +96,6 @@ public class PlatformInsightsServiceTests
                 Email = "wa-a@x.com",
                 DisplayName = "Admin A",
                 RoleId = waRole.Id,
-                OwnerId = TenantA,
                 Language = null,
             },
             new User
@@ -104,7 +103,6 @@ public class PlatformInsightsServiceTests
                 Email = "wa-b@x.com",
                 DisplayName = "Admin B",
                 RoleId = waRole.Id,
-                OwnerId = TenantB,
                 Language = null,
             },
             new User
@@ -112,7 +110,6 @@ public class PlatformInsightsServiceTests
                 Email = "u1@x.com",
                 DisplayName = "U1",
                 RoleId = memberRole.Id,
-                OwnerId = TenantA,
                 Language = "en",
             },
             new User
@@ -120,7 +117,6 @@ public class PlatformInsightsServiceTests
                 Email = "u2@x.com",
                 DisplayName = "U2",
                 RoleId = memberRole.Id,
-                OwnerId = TenantA,
                 Language = null,
             },
             new User
@@ -128,7 +124,6 @@ public class PlatformInsightsServiceTests
                 Email = "u3@x.com",
                 DisplayName = "U3",
                 RoleId = memberRole.Id,
-                OwnerId = TenantB,
                 Language = "ar",
             }
         );

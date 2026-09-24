@@ -47,6 +47,15 @@ public class SoftDeleteUniqueIndexTests
 
             using var bootstrap = MakeContext(new FakeCurrentUser { IsSuperAdmin = true });
             bootstrap.Database.EnsureCreated();
+            // ux_users_email_live is deliberately NOT modelled in EF (lower(email) can't be
+            // expressed via HasIndex — UserMapping.cs), so EnsureCreated() never creates it. It is
+            // the ONLY thing enforcing global e-mail uniqueness since DB-11f dropped the modelled
+            // ux_users_email_owner_live index (per-owner uniqueness). Recreate it here (raw SQL
+            // migration 20260922205015_AddUsersEmailLiveUniqueIndex), same as production, so this
+            // Sqlite-only test harness still proves the real invariant.
+            bootstrap.Database.ExecuteSqlRaw(
+                "CREATE UNIQUE INDEX ux_users_email_live ON users (lower(email)) WHERE deleted_at IS NULL;"
+            );
         }
 
         public AppDbContext MakeContext(ICurrentUser user) =>
@@ -102,7 +111,6 @@ public class SoftDeleteUniqueIndexTests
             userA = new User
             {
                 Email = "dup@example.com",
-                OwnerId = ownerId,
                 RoleId = role.Id,
                 PasswordHash = "hash",
                 DisplayName = "A",
@@ -124,7 +132,6 @@ public class SoftDeleteUniqueIndexTests
                 new User
                 {
                     Email = "dup@example.com",
-                    OwnerId = ownerId,
                     RoleId = role.Id,
                     PasswordHash = "hash",
                     DisplayName = "B",
@@ -156,7 +163,6 @@ public class SoftDeleteUniqueIndexTests
                 new User
                 {
                     Email = "dup2@example.com",
-                    OwnerId = ownerId,
                     RoleId = role.Id,
                     PasswordHash = "hash",
                     DisplayName = "A",
@@ -171,7 +177,6 @@ public class SoftDeleteUniqueIndexTests
                 new User
                 {
                     Email = "dup2@example.com",
-                    OwnerId = ownerId,
                     RoleId = role.Id,
                     PasswordHash = "hash",
                     DisplayName = "B",

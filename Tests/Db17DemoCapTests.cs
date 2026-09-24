@@ -116,10 +116,8 @@ public class Db17DemoCapTests
                     PasswordHash = "x",
                     DisplayName = "Demo Admin",
                     RoleId = role.Id,
-                    OwnerId = tenant,
                     IsActive = true,
                     IsDemo = true,
-                    ApprovalStatus = ApprovalStatus.Approved,
                 }
             );
             seed.Projects.Add(
@@ -235,9 +233,7 @@ public class Db17DemoCapTests
                     PasswordHash = "x",
                     DisplayName = "Real Admin",
                     RoleId = role.Id,
-                    OwnerId = tenant,
                     IsActive = true,
-                    ApprovalStatus = ApprovalStatus.Approved,
                 }
             );
             seed.Projects.Add(
@@ -367,11 +363,9 @@ public class Db17DemoCapTests
                     Email = $"demo-{importer:N}@demo.pointer",
                     PasswordHash = "x",
                     DisplayName = "Demo Admin",
-                    OwnerId = tenant,
                     RoleId = role.Id,
                     IsActive = true,
                     IsDemo = true,
-                    ApprovalStatus = ApprovalStatus.Approved,
                 }
             );
             seed.Projects.Add(

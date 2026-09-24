@@ -216,9 +216,7 @@ public class ImpersonationTests
             DisplayName = "Acme Admin",
             PasswordHash = "x",
             RoleId = role.Id,
-            OwnerId = workspaceId,
             IsActive = true,
-            ApprovalStatus = ApprovalStatus.Approved,
         };
         db.Users.Add(admin);
         db.SaveChanges();
@@ -254,9 +252,7 @@ public class ImpersonationTests
             DisplayName = "Operator",
             PasswordHash = "x",
             RoleId = role.Id,
-            OwnerId = null,
             IsActive = true,
-            ApprovalStatus = ApprovalStatus.Approved,
         };
         db.Users.Add(op);
         db.SaveChanges();
@@ -612,9 +608,7 @@ public class ImpersonationTests
                 DisplayName = "Disabled",
                 PasswordHash = "x",
                 RoleId = adminRole.Id,
-                OwnerId = workspaceId,
                 IsActive = true,
-                ApprovalStatus = ApprovalStatus.Approved,
             };
             seed.Users.Add(disabledAdmin);
             seed.SaveChanges();
@@ -628,9 +622,7 @@ public class ImpersonationTests
                 DisplayName = "Second Admin",
                 PasswordHash = "x",
                 RoleId = adminRole.Id,
-                OwnerId = workspaceId,
                 IsActive = true,
-                ApprovalStatus = ApprovalStatus.Approved,
             };
             seed.Users.Add(secondAdmin);
             seed.SaveChanges();
@@ -1532,7 +1524,6 @@ public class ImpersonationTests
                 DisplayName = "Author",
                 PasswordHash = "x",
                 RoleId = role.Id,
-                OwnerId = tenantA,
             };
             seed.Users.Add(author);
             seed.SaveChanges();

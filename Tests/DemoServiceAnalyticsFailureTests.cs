@@ -231,8 +231,6 @@ public class DemoServiceAnalyticsFailureTests
             DisplayName = "Demo User",
             RoleId = role.Id,
             Role = role,
-            OwnerId = workspaceId,
-            ApprovalStatus = ApprovalStatus.Approved,
             IsActive = true,
             IsDemo = true,
             RecipientEmail = "real@user.com",

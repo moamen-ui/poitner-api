@@ -141,9 +141,7 @@ public class SuggestionChangesRequestedTests
                 DisplayName = "Tenant Admin",
                 RoleId = adminRole.Id,
                 PublicId = adminId,
-                ApprovalStatus = ApprovalStatus.Approved,
                 IsActive = true,
-                OwnerId = tenant,
             };
             seed.Users.Add(adminUser);
             seed.SaveChanges();
@@ -211,7 +209,6 @@ public class SuggestionChangesRequestedTests
                 PasswordHash = "x",
                 DisplayName = "Suggester",
                 RoleId = role.Id,
-                OwnerId = tenant,
                 IsActive = true,
             };
             seed.Users.Add(suggesterUser);

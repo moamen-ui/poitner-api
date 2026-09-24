@@ -282,7 +282,6 @@ public class CommentSummaryProjectionTests
                 PasswordHash = "x",
                 DisplayName = "Dev Person",
                 RoleId = role.Id,
-                OwnerId = tenant,
                 IsActive = true,
             };
             seed.Users.Add(author);

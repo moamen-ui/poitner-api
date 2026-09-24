@@ -219,8 +219,6 @@ public class DemoUpgradeTests
             DisplayName = "Demo User",
             RoleId = role.Id,
             Role = role,
-            OwnerId = workspaceId,
-            ApprovalStatus = ApprovalStatus.Approved,
             IsActive = true,
             IsDemo = true,
             RecipientEmail = "real@user.com",
@@ -292,7 +290,7 @@ public class DemoUpgradeTests
             db.UsageEvents.IgnoreQueryFilters()
                 .Where(e => e.Type == UsageEventTypes.WorkspaceConverted)
         );
-        Assert.Equal(demo.OwnerId, row.OwnerId);
+        Assert.Equal(demoWorkspaceId, row.OwnerId);
         Assert.Equal(demo.PublicId, row.UserId);
         Assert.Equal("api", row.Source);
     }
@@ -372,10 +370,8 @@ public class DemoUpgradeTests
                 DisplayName = "Normal",
                 RoleId = role.Id,
                 Role = role,
-                OwnerId = pid,
                 IsDemo = false,
                 IsActive = true,
-                ApprovalStatus = ApprovalStatus.Approved,
             }
         );
         db.SaveChanges();
@@ -427,10 +423,8 @@ public class DemoUpgradeTests
                 DisplayName = "Other-SameTenant",
                 RoleId = role.Id,
                 Role = role,
-                OwnerId = demo.PublicId, // same tenant as the demo user
                 IsDemo = false,
                 IsActive = true,
-                ApprovalStatus = ApprovalStatus.Approved,
             }
         );
         db.SaveChanges();
@@ -471,10 +465,8 @@ public class DemoUpgradeTests
                 DisplayName = "Other-DifferentTenant",
                 RoleId = role.Id,
                 Role = role,
-                OwnerId = otherOwner, // a DIFFERENT tenant
                 IsDemo = false,
                 IsActive = true,
-                ApprovalStatus = ApprovalStatus.Approved,
             }
         );
         db.SaveChanges();

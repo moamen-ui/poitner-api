@@ -482,8 +482,6 @@ public class WorkspaceServiceTests
                 PasswordHash = "hash",
                 DisplayName = "Jane Doe",
                 RoleId = role.Id,
-                OwnerId = tenant,
-                ApprovalStatus = ApprovalStatus.Approved,
                 IsActive = true,
             };
             seed.Users.Add(adminUser);
@@ -561,8 +559,6 @@ public class WorkspaceServiceTests
                 PasswordHash = "hash",
                 DisplayName = "Jane Doe",
                 RoleId = role.Id,
-                OwnerId = tenant,
-                ApprovalStatus = ApprovalStatus.Approved,
                 IsActive = true,
             };
             seed.Users.Add(adminUser);

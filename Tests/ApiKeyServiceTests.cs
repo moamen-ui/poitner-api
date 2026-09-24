@@ -61,9 +61,7 @@ public class ApiKeyServiceTests
                 DisplayName = "Dev",
                 RoleId = role.Id,
                 PublicId = publicId,
-                ApprovalStatus = ApprovalStatus.Approved,
                 IsActive = true,
-                OwnerId = tenant,
             }
         );
         db.SaveChanges();

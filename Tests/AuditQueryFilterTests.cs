@@ -218,7 +218,6 @@ public class AuditQueryFilterTests
                 PasswordHash = "h",
                 DisplayName = "Ann Member",
                 RoleId = role.Id,
-                OwnerId = tenantA,
             };
             seed.Users.Add(member);
             seed.SaveChanges();
@@ -232,7 +231,6 @@ public class AuditQueryFilterTests
                     PasswordHash = "h",
                     DisplayName = "Op Person",
                     RoleId = role.Id,
-                    OwnerId = null, // the operator is not a member of any workspace
                 }
             );
             seed.AuditEvents.AddRange(

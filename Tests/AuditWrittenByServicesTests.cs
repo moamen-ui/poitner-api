@@ -322,8 +322,6 @@ public class AuditWrittenByServicesTests
                 PasswordHash = "h:Passw0rd!",
                 DisplayName = "Member",
                 RoleId = roleId,
-                OwnerId = tenant,
-                ApprovalStatus = ApprovalStatus.Approved,
                 IsActive = true,
             };
             seed.Users.Add(user);
@@ -371,8 +369,6 @@ public class AuditWrittenByServicesTests
                 PasswordHash = "h:Correct1!",
                 DisplayName = "Member2",
                 RoleId = role.Id,
-                OwnerId = tenant,
-                ApprovalStatus = ApprovalStatus.Approved,
                 IsActive = true,
             };
             seed.Users.Add(user);
@@ -458,8 +454,6 @@ public class AuditWrittenByServicesTests
                 PasswordHash = "h:OldPass1!",
                 DisplayName = "Self",
                 RoleId = role.Id,
-                OwnerId = tenant,
-                ApprovalStatus = ApprovalStatus.Approved,
                 IsActive = true,
             };
             seed.Users.Add(user);
@@ -523,8 +517,6 @@ public class AuditWrittenByServicesTests
                 PasswordHash = "h:x",
                 DisplayName = "Target",
                 RoleId = oldRoleId,
-                OwnerId = tenant,
-                ApprovalStatus = ApprovalStatus.Approved,
                 IsActive = true,
             };
             seed.Users.Add(user);
@@ -578,8 +570,6 @@ public class AuditWrittenByServicesTests
                 PasswordHash = "h:x",
                 DisplayName = "Removable",
                 RoleId = memberRole.Id,
-                OwnerId = tenant,
-                ApprovalStatus = ApprovalStatus.Approved,
                 IsActive = true,
             };
             seed.Users.Add(member);
@@ -774,8 +764,6 @@ public class AuditWrittenByServicesTests
                 PasswordHash = "h:x",
                 DisplayName = "Tenant Admin",
                 RoleId = adminRole.Id,
-                OwnerId = workspaceId,
-                ApprovalStatus = ApprovalStatus.Pending,
                 IsActive = false,
             };
             seed.Users.Add(adminUser);
@@ -843,8 +831,6 @@ public class AuditWrittenByServicesTests
                 PasswordHash = "h:x",
                 DisplayName = "Admin",
                 RoleId = adminRole.Id,
-                OwnerId = tenant,
-                ApprovalStatus = ApprovalStatus.Approved,
                 IsActive = true,
             };
             var deputy = new User
@@ -854,8 +840,6 @@ public class AuditWrittenByServicesTests
                 PasswordHash = "h:x",
                 DisplayName = "Deputy",
                 RoleId = deputyRole.Id,
-                OwnerId = tenant,
-                ApprovalStatus = ApprovalStatus.Approved,
                 IsActive = true,
             };
             seed.Users.AddRange(admin, deputy);
@@ -1052,8 +1036,6 @@ public class AuditWrittenByServicesTests
                 PasswordHash = "h:x",
                 DisplayName = "Admin",
                 RoleId = adminRole.Id,
-                OwnerId = tenant,
-                ApprovalStatus = ApprovalStatus.Approved,
                 IsActive = true,
             };
             var member = new User
@@ -1063,8 +1045,6 @@ public class AuditWrittenByServicesTests
                 PasswordHash = "h:x",
                 DisplayName = "Leaver",
                 RoleId = memberRole.Id,
-                OwnerId = tenant,
-                ApprovalStatus = ApprovalStatus.Approved,
                 IsActive = true,
             };
             seed.Users.AddRange(admin, member);
@@ -1114,8 +1094,6 @@ public class AuditWrittenByServicesTests
                 PasswordHash = "h:x",
                 DisplayName = "Link Only",
                 RoleId = role.Id,
-                OwnerId = tenant,
-                ApprovalStatus = ApprovalStatus.Approved,
                 IsActive = true,
                 PasswordlessOnly = true,
             };
@@ -1174,8 +1152,6 @@ public class AuditWrittenByServicesTests
                 PasswordHash = "h:Passw0rd!",
                 DisplayName = "Multi",
                 RoleId = roleA.Id,
-                OwnerId = tenantA,
-                ApprovalStatus = ApprovalStatus.Approved,
                 IsActive = true,
             };
             seed.Users.Add(user);

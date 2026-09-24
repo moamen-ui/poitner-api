@@ -214,9 +214,7 @@ public class InviteServiceTests
             DisplayName = "Acme Inc",
             RoleId = adminRole.Id,
             PublicId = Guid.NewGuid(),
-            ApprovalStatus = ApprovalStatus.Approved,
             IsActive = true,
-            OwnerId = tenant,
         };
         seed.Users.Add(adminUser);
         seed.SaveChanges();
@@ -623,8 +621,19 @@ public class InviteServiceTests
 
         Assert.True(result.IsSuccess);
         var created = db.Users.IgnoreQueryFilters().Single(u => u.Email == "deputy@invited.com");
-        Assert.Equal(deputyRoleId, created.RoleId);
-        Assert.Equal(tenant, created.OwnerId);
+        Assert.Null(created.RoleId);
+        Assert.Equal(
+            deputyRoleId,
+            db.WorkspaceMemberships.IgnoreQueryFilters()
+                .Single(m => m.UserId == created.Id && m.LeftAt == null)
+                .RoleId
+        );
+        Assert.Contains(
+            db.WorkspaceMemberships.IgnoreQueryFilters()
+                .Where(m => m.UserId == created.Id)
+                .ToList(),
+            m => m.OwnerId == tenant
+        );
     }
 
     // ── New-workspace invites (invite.OwnerId == null) ────────────────────────────
@@ -723,9 +732,7 @@ public class InviteServiceTests
                 DisplayName = "Existing Owner",
                 RoleId = seed.Roles.First().Id,
                 PublicId = ownerId,
-                ApprovalStatus = Pointer.Domain.Enums.ApprovalStatus.Approved,
                 IsActive = true,
-                OwnerId = ownerId,
             }
         );
         seed.SaveChanges();
@@ -811,23 +818,18 @@ public class InviteServiceTests
         );
 
         Assert.True(result.IsSuccess);
-        var created = db
-            .Users.IgnoreQueryFilters()
-            .Include(u => u.Role)
-            .Single(u => u.Email == "founder@newco.com");
-        Assert.Equal("Workspace Admin", created.Role.Name);
+        var created = db.Users.IgnoreQueryFilters().Single(u => u.Email == "founder@newco.com");
+        Assert.Null(created.RoleId);
         // DB-11a: workspaces.id no longer equals anyone's public_id — a fresh id every time. The
         // identity's presence is a live, Approved, active Workspace Admin membership in it instead.
-        Assert.NotEqual(Guid.Empty, created.OwnerId ?? Guid.Empty);
         var membership = db.Set<WorkspaceMembership>()
             .IgnoreQueryFilters()
             .Include(m => m.Role)
             .Single(m => m.UserId == created.Id && m.LeftAt == null);
-        Assert.Equal(created.OwnerId, membership.OwnerId);
+        Assert.NotEqual(Guid.Empty, membership.OwnerId);
         Assert.Equal("Workspace Admin", membership.Role.Name);
         Assert.Equal(ApprovalStatus.Approved, membership.ApprovalStatus);
         Assert.True(membership.IsActive);
-        Assert.Equal(ApprovalStatus.Approved, created.ApprovalStatus);
         Assert.True(created.IsActive);
     }
 
@@ -858,8 +860,6 @@ public class InviteServiceTests
                     DisplayName = "Existing Founder",
                     RoleId = adminRoleId,
                     PublicId = existingPublicId,
-                    OwnerId = existingPublicId,
-                    ApprovalStatus = ApprovalStatus.Approved,
                     IsActive = true,
                 }
             );
@@ -916,10 +916,13 @@ public class InviteServiceTests
         Assert.False(string.IsNullOrWhiteSpace(result.Data.Token));
 
         var created = db.Users.IgnoreQueryFilters().Single(u => u.Email == "new@user.com");
-        Assert.Equal(ApprovalStatus.Approved, created.ApprovalStatus); // skips the pending queue
         Assert.True(created.IsActive);
-        Assert.Equal(tenant, created.OwnerId); // pre-scoped to the tenant
-        Assert.Equal(roleId, created.RoleId);
+        Assert.Null(created.RoleId);
+        var createdMembership = db
+            .WorkspaceMemberships.IgnoreQueryFilters()
+            .Single(m => m.UserId == created.Id && m.LeftAt == null);
+        Assert.Equal(tenant, createdMembership.OwnerId); // pre-scoped to the tenant
+        Assert.Equal(roleId, createdMembership.RoleId);
 
         var invite = db.Invites.IgnoreQueryFilters().Single(i => i.Id == inviteId);
         Assert.Equal(1, invite.Uses); // incremented
@@ -1031,9 +1034,13 @@ public class InviteServiceTests
         );
 
         Assert.True(result.IsSuccess);
+        var created = db.Users.IgnoreQueryFilters().Single(u => u.Email == "pick@role.com");
+        Assert.Null(created.RoleId);
         Assert.Equal(
             roleId,
-            db.Users.IgnoreQueryFilters().Single(u => u.Email == "pick@role.com").RoleId
+            db.WorkspaceMemberships.IgnoreQueryFilters()
+                .Single(m => m.UserId == created.Id && m.LeftAt == null)
+                .RoleId
         );
     }
 
@@ -1423,9 +1430,7 @@ public class InviteServiceTests
                 DisplayName = "Shared",
                 RoleId = otherRole.Id,
                 PublicId = Guid.NewGuid(),
-                OwnerId = otherTenant,
                 IsActive = true,
-                ApprovalStatus = ApprovalStatus.Approved,
             };
             seed.Users.Add(existing);
             seed.SaveChanges();
@@ -1497,9 +1502,7 @@ public class InviteServiceTests
                 DisplayName = "Shared",
                 RoleId = otherRole.Id,
                 PublicId = Guid.NewGuid(),
-                OwnerId = otherTenant,
                 IsActive = true,
-                ApprovalStatus = ApprovalStatus.Approved,
             };
             seed.Users.Add(existing);
             seed.SaveChanges();
@@ -1672,9 +1675,7 @@ public class InviteServiceTests
                 DisplayName = "TenantA User",
                 RoleId = roleIdA,
                 PublicId = Guid.NewGuid(),
-                ApprovalStatus = ApprovalStatus.Approved,
                 IsActive = true,
-                OwnerId = tenantA,
             };
             seed.Users.Add(sharedUser);
             seed.SaveChanges();
@@ -1713,9 +1714,7 @@ public class InviteServiceTests
                     DisplayName = "TenantB Workspace",
                     RoleId = adminRoleB.Id,
                     PublicId = Guid.NewGuid(),
-                    ApprovalStatus = ApprovalStatus.Approved,
                     IsActive = true,
-                    OwnerId = tenantB,
                 }
             );
             seed.SaveChanges();
@@ -1926,9 +1925,12 @@ public class InviteServiceTests
 
         // The user exists NOW — no accept step needed.
         var created = db.Users.IgnoreQueryFilters().Single(u => u.Email == "client@acme.com");
-        Assert.Equal(clientRoleId, created.RoleId);
-        Assert.Equal(tenant, created.OwnerId);
-        Assert.Equal(ApprovalStatus.Approved, created.ApprovalStatus);
+        Assert.Null(created.RoleId);
+        var createdMembership = db
+            .WorkspaceMemberships.IgnoreQueryFilters()
+            .Single(m => m.UserId == created.Id && m.LeftAt == null);
+        Assert.Equal(clientRoleId, createdMembership.RoleId);
+        Assert.Equal(tenant, createdMembership.OwnerId);
         Assert.True(created.IsActive);
 
         // The invite row is already fully consumed (audit trail only, no accept step left).

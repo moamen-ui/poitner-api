@@ -204,9 +204,7 @@ public class ApiKeyAuthTests
             PasswordHash = "h:pw",
             DisplayName = "Dev",
             RoleId = role.Id,
-            OwnerId = tenant,
             IsActive = true,
-            ApprovalStatus = ApprovalStatus.Approved,
         };
         seed.Users.Add(user);
         seed.SaveChanges();

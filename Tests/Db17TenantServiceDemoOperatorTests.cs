@@ -200,8 +200,6 @@ public class Db17TenantServiceDemoOperatorTests
             DisplayName = "Demo User",
             RoleId = role.Id,
             Role = role,
-            OwnerId = workspaceId,
-            ApprovalStatus = ApprovalStatus.Approved,
             IsActive = true,
             IsDemo = true,
         };

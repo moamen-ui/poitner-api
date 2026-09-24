@@ -342,10 +342,8 @@ public class Db17HardDeleteAndCleanupTests
             DisplayName = "Demo",
             RoleId = role.Id,
             Role = role,
-            OwnerId = workspaceId,
             IsActive = true,
             IsDemo = true,
-            ApprovalStatus = ApprovalStatus.Approved,
         };
         db.Users.Add(admin);
         db.SaveChanges();

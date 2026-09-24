@@ -109,9 +109,7 @@ public class PlanSeederTests
                 DisplayName = "Old",
                 RoleId = role.Id,
                 PublicId = pid,
-                OwnerId = pid,
                 IsActive = true,
-                ApprovalStatus = ApprovalStatus.Approved,
             }
         );
         // DB-11a: a tenant is a workspaces row (AdminSeeder's legacy backfill now enumerates

@@ -65,7 +65,6 @@ public class PreferencesServiceTests
             PasswordHash = "x",
             DisplayName = "U",
             RoleId = 1,
-            OwnerId = tenant,
         };
         db.Users.Add(dbUser);
         db.SaveChanges();

@@ -250,7 +250,10 @@ public class WorkspaceBeforeIdentityOrderingTests
             .Workspaces.IgnoreQueryFilters()
             .Single(w => w.Id == result.Data!.OwnerId);
         var user = ctx.Users.IgnoreQueryFilters().Single(u => u.Email == "new-tenant@example.com");
-        Assert.Equal(workspace.Id, user.OwnerId);
+        Assert.Contains(
+            ctx.WorkspaceMemberships.IgnoreQueryFilters().Where(m => m.UserId == user.Id).ToList(),
+            m => m.OwnerId == workspace.Id
+        );
     }
 
     // ── AuthService.RegisterAdminAsync (self-serve admin signup) ────────────────
@@ -291,7 +294,14 @@ public class WorkspaceBeforeIdentityOrderingTests
         Assert.True(result.IsSuccess, result.Message);
 
         var user = ctx.Users.IgnoreQueryFilters().Single(u => u.Email == "self-signup@example.com");
-        var workspace = ctx.Workspaces.IgnoreQueryFilters().Single(w => w.Id == user.OwnerId);
-        Assert.Equal(user.OwnerId, workspace.Id);
+        var userHome = ctx
+            .WorkspaceMemberships.IgnoreQueryFilters()
+            .Where(m => m.UserId == user.Id)
+            .OrderBy(m => m.JoinedAt)
+            .ThenBy(m => m.Id)
+            .Select(m => m.OwnerId)
+            .First();
+        var workspace = ctx.Workspaces.IgnoreQueryFilters().Single(w => w.Id == userHome);
+        Assert.Equal(userHome, workspace.Id);
     }
 }

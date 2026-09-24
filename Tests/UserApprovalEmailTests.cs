@@ -159,9 +159,7 @@ public class UserApprovalEmailTests
             DisplayName = "Pending User",
             RoleId = role.Id,
             PublicId = Guid.NewGuid(),
-            ApprovalStatus = ApprovalStatus.Pending,
             IsActive = false,
-            OwnerId = tenant,
         };
         seed.Users.Add(user);
         seed.SaveChanges();

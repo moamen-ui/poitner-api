@@ -126,7 +126,6 @@ public class TokenServiceTests
                 DisplayName = "Dev",
                 RoleId = role.Id,
                 Role = role,
-                OwnerId = tenantId,
             },
             membership
         );
@@ -145,7 +144,6 @@ public class TokenServiceTests
                 DisplayName = "Global",
                 RoleId = role.Id,
                 Role = role,
-                OwnerId = null,
             },
             null
         );

@@ -170,7 +170,6 @@ public class AuditWriterTests
             PasswordHash = "h",
             DisplayName = "Actor",
             RoleId = role.Id,
-            OwnerId = workspace,
         };
         seed.Users.Add(user);
         await seed.SaveChangesAsync();

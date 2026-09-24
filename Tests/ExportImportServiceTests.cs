@@ -130,7 +130,6 @@ public class ExportImportServiceTests
                 PublicId = alice,
                 Email = "alice@x",
                 DisplayName = "Alice",
-                OwnerId = tenant,
                 RoleId = role.Id,
             };
             var bobUser = new User
@@ -138,7 +137,6 @@ public class ExportImportServiceTests
                 PublicId = bob,
                 Email = "bob@x",
                 DisplayName = "Bob",
-                OwnerId = tenant,
                 RoleId = role.Id,
             };
             seed.Users.Add(aliceUser);
@@ -273,7 +271,6 @@ public class ExportImportServiceTests
                     PublicId = importer,
                     Email = "i@x",
                     DisplayName = "Importer",
-                    OwnerId = tenant,
                     RoleId = role.Id,
                 }
             );
@@ -423,7 +420,6 @@ public class ExportImportServiceTests
                     PublicId = alice,
                     Email = "a@x",
                     DisplayName = "Alice",
-                    OwnerId = tenant,
                     RoleId = role.Id,
                 }
             );
@@ -533,7 +529,6 @@ public class ExportImportServiceTests
                     PublicId = alice,
                     Email = "a@x",
                     DisplayName = "Alice",
-                    OwnerId = tenant,
                     RoleId = role.Id,
                 }
             );

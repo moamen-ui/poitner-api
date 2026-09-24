@@ -121,9 +121,7 @@ public class RoleServiceDeleteTests
             DisplayName = "Member",
             RoleId = deleteRole.Id,
             PublicId = Guid.NewGuid(),
-            ApprovalStatus = ApprovalStatus.Approved,
             IsActive = true,
-            OwnerId = tenant,
         };
         seed.Users.Add(member);
         seed.SaveChanges();

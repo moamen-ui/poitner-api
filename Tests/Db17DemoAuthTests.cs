@@ -224,10 +224,8 @@ public class Db17DemoAuthTests
             DisplayName = "Demo Admin",
             RoleId = role.Id,
             Role = role,
-            OwnerId = workspaceId,
             IsActive = true,
             IsDemo = true,
-            ApprovalStatus = ApprovalStatus.Approved,
         };
         db.Users.Add(user);
         db.SaveChanges();

@@ -265,9 +265,7 @@ public class WorkspaceSwitchTests
                 DisplayName = "Picker",
                 PublicId = Guid.NewGuid(),
                 RoleId = role.Id,
-                OwnerId = workspaceA, // home = A
                 IsActive = true,
-                ApprovalStatus = ApprovalStatus.Approved,
             };
             seed.Users.Add(identity);
             seed.SaveChanges();
@@ -324,9 +322,7 @@ public class WorkspaceSwitchTests
                 DisplayName = "Routed",
                 PublicId = Guid.NewGuid(),
                 RoleId = role.Id,
-                OwnerId = workspaceA,
                 IsActive = true,
-                ApprovalStatus = ApprovalStatus.Approved,
             };
             seed.Users.Add(identity);
             seed.SaveChanges();
@@ -400,9 +396,7 @@ public class WorkspaceSwitchTests
                 DisplayName = "Only A",
                 PublicId = Guid.NewGuid(),
                 RoleId = role.Id,
-                OwnerId = workspaceA,
                 IsActive = true,
-                ApprovalStatus = ApprovalStatus.Approved,
             };
             seed.Users.Add(identity);
             seed.SaveChanges();
@@ -437,9 +431,7 @@ public class WorkspaceSwitchTests
                 DisplayName = "Disabled In B",
                 PublicId = Guid.NewGuid(),
                 RoleId = role.Id,
-                OwnerId = workspaceA,
                 IsActive = true,
-                ApprovalStatus = ApprovalStatus.Approved,
             };
             seed.Users.Add(identity);
             seed.SaveChanges();
@@ -476,9 +468,7 @@ public class WorkspaceSwitchTests
                 DisplayName = "Switcher",
                 PublicId = Guid.NewGuid(),
                 RoleId = role.Id,
-                OwnerId = workspaceA,
                 IsActive = true,
-                ApprovalStatus = ApprovalStatus.Approved,
             };
             seed.Users.Add(identity);
             seed.SaveChanges();
@@ -528,9 +518,7 @@ public class WorkspaceSwitchTests
                 DisplayName = "Super",
                 PublicId = Guid.NewGuid(),
                 RoleId = superRole.Id,
-                OwnerId = null,
                 IsActive = true,
-                ApprovalStatus = ApprovalStatus.Approved,
             };
             seed.Users.Add(identity);
             seed.SaveChanges();
@@ -565,9 +553,7 @@ public class WorkspaceSwitchTests
                 DisplayName = "Deleted Workspace Member",
                 PublicId = Guid.NewGuid(),
                 RoleId = role.Id,
-                OwnerId = workspaceA,
                 IsActive = true,
-                ApprovalStatus = ApprovalStatus.Approved,
             };
             seed.Users.Add(identity);
             seed.SaveChanges();
@@ -611,9 +597,7 @@ public class WorkspaceSwitchTests
                 DisplayName = "Key Scoped",
                 PublicId = Guid.NewGuid(),
                 RoleId = role.Id,
-                OwnerId = workspaceA,
                 IsActive = true,
-                ApprovalStatus = ApprovalStatus.Approved,
             };
             seed.Users.Add(identity);
             seed.SaveChanges();
@@ -658,9 +642,7 @@ public class WorkspaceSwitchTests
                 DisplayName = "Nowhere",
                 PublicId = Guid.NewGuid(),
                 RoleId = role.Id,
-                OwnerId = null,
                 IsActive = true,
-                ApprovalStatus = ApprovalStatus.Approved,
             };
             seed.Users.Add(identity);
             seed.SaveChanges();
@@ -719,9 +701,7 @@ public class WorkspaceSwitchTests
                 DisplayName = "Me",
                 PublicId = Guid.NewGuid(),
                 RoleId = role.Id,
-                OwnerId = workspaceA,
                 IsActive = true,
-                ApprovalStatus = ApprovalStatus.Approved,
             };
             seed.Users.Add(identity);
             seed.SaveChanges();
@@ -767,9 +747,7 @@ public class WorkspaceSwitchTests
                 DisplayName = "Super2",
                 PublicId = Guid.NewGuid(),
                 RoleId = superRole.Id,
-                OwnerId = null,
                 IsActive = true,
-                ApprovalStatus = ApprovalStatus.Approved,
             };
             seed.Users.Add(identity);
             seed.SaveChanges();
@@ -806,9 +784,7 @@ public class WorkspaceSwitchTests
                 DisplayName = "Tenant Fallback",
                 PublicId = Guid.NewGuid(),
                 RoleId = role.Id,
-                OwnerId = workspaceA,
                 IsActive = true,
-                ApprovalStatus = ApprovalStatus.Approved,
             };
             seed.Users.Add(identity);
             seed.SaveChanges();
@@ -870,9 +846,7 @@ public class WorkspaceSwitchTests
                 DisplayName = "Lockout",
                 PublicId = Guid.NewGuid(),
                 RoleId = role.Id,
-                OwnerId = workspaceA,
                 IsActive = true,
-                ApprovalStatus = ApprovalStatus.Approved,
             };
             seed.Users.Add(identity);
             seed.SaveChanges();
@@ -921,9 +895,7 @@ public class WorkspaceSwitchTests
                 DisplayName = "Full Token Switch",
                 PublicId = Guid.NewGuid(),
                 RoleId = role.Id,
-                OwnerId = workspaceA,
                 IsActive = true,
-                ApprovalStatus = ApprovalStatus.Approved,
             };
             seed.Users.Add(identity);
             seed.SaveChanges();

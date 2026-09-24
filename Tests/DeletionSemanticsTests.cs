@@ -231,9 +231,9 @@ public class DeletionSemanticsTests
         seed.SaveChanges();
 
         var ownerId = Guid.NewGuid();
-        var admin = new User { Email = "admin@t.com", PasswordHash = "h:pw-admin", DisplayName = "Admin", PublicId = Guid.NewGuid(), OwnerId = ownerId, RoleId = adminRole.Id, IsActive = true };
-        var deputy = new User { Email = "deputy@t.com", PasswordHash = "h:pw-deputy", DisplayName = "Deputy", PublicId = Guid.NewGuid(), OwnerId = ownerId, RoleId = deputyRole.Id, IsActive = true };
-        var member = new User { Email = "member@t.com", PasswordHash = "h:pw-member", DisplayName = "Member", PublicId = Guid.NewGuid(), OwnerId = ownerId, RoleId = memberRole.Id, IsActive = true };
+        var admin = new User { Email = "admin@t.com", PasswordHash = "h:pw-admin", DisplayName = "Admin", PublicId = Guid.NewGuid(), RoleId = adminRole.Id, IsActive = true };
+        var deputy = new User { Email = "deputy@t.com", PasswordHash = "h:pw-deputy", DisplayName = "Deputy", PublicId = Guid.NewGuid(), RoleId = deputyRole.Id, IsActive = true };
+        var member = new User { Email = "member@t.com", PasswordHash = "h:pw-member", DisplayName = "Member", PublicId = Guid.NewGuid(), RoleId = memberRole.Id, IsActive = true };
         seed.Users.AddRange(admin, deputy, member);
         seed.SaveChanges();
 
@@ -280,7 +280,7 @@ public class DeletionSemanticsTests
             seed.Roles.Add(engineerRole);
             seed.Workspaces.Add(new Workspace { Id = workspaceA, Name = "A", CreatedAt = DateTime.UtcNow, CreatedBy = workspaceA });
             seed.Workspaces.Add(new Workspace { Id = workspaceB, Name = "B", CreatedAt = DateTime.UtcNow, CreatedBy = workspaceB });
-            member = new User { Email = "m@t.com", PasswordHash = "h:pw", DisplayName = "M", PublicId = Guid.NewGuid(), OwnerId = workspaceA, RoleId = engineerRole.Id, IsActive = true };
+            member = new User { Email = "m@t.com", PasswordHash = "h:pw", DisplayName = "M", PublicId = Guid.NewGuid(), RoleId = engineerRole.Id, IsActive = true };
             seed.Users.Add(member);
             seed.SaveChanges();
             TestSeed.Join(seed, member, workspaceA, engineerRole);
@@ -382,7 +382,7 @@ public class DeletionSemanticsTests
         {
             ws = SeedWorkspace(seed);
             var adminRole = seed.Roles.Single(r => r.Id == ws.AdminRoleId);
-            admin2 = new User { Email = "admin2@t.com", PasswordHash = "h:pw2", DisplayName = "Admin2", PublicId = Guid.NewGuid(), OwnerId = ws.OwnerId, RoleId = adminRole.Id, IsActive = true };
+            admin2 = new User { Email = "admin2@t.com", PasswordHash = "h:pw2", DisplayName = "Admin2", PublicId = Guid.NewGuid(), RoleId = adminRole.Id, IsActive = true };
             seed.Users.Add(admin2);
             seed.SaveChanges();
             TestSeed.Join(seed, admin2, ws.OwnerId, adminRole);
@@ -408,7 +408,7 @@ public class DeletionSemanticsTests
         {
             ws = SeedWorkspace(seed);
             var adminRole = seed.Roles.Single(r => r.Id == ws.AdminRoleId);
-            var admin2 = new User { Email = "admin2@t.com", PasswordHash = "h:pw2", DisplayName = "Admin2", PublicId = Guid.NewGuid(), OwnerId = ws.OwnerId, RoleId = adminRole.Id, IsActive = false };
+            var admin2 = new User { Email = "admin2@t.com", PasswordHash = "h:pw2", DisplayName = "Admin2", PublicId = Guid.NewGuid(), RoleId = adminRole.Id, IsActive = false };
             seed.Users.Add(admin2);
             seed.SaveChanges();
             TestSeed.Join(seed, admin2, ws.OwnerId, adminRole, isActive: false);
@@ -432,7 +432,7 @@ public class DeletionSemanticsTests
         {
             ws = SeedWorkspace(seed);
             var adminRole = seed.Roles.Single(r => r.Id == ws.AdminRoleId);
-            var admin2 = new User { Email = "admin2@t.com", PasswordHash = "h:pw2", DisplayName = "Admin2", PublicId = Guid.NewGuid(), OwnerId = ws.OwnerId, RoleId = adminRole.Id, IsActive = false };
+            var admin2 = new User { Email = "admin2@t.com", PasswordHash = "h:pw2", DisplayName = "Admin2", PublicId = Guid.NewGuid(), RoleId = adminRole.Id, IsActive = false };
             seed.Users.Add(admin2);
             seed.SaveChanges();
             TestSeed.Join(seed, admin2, ws.OwnerId, adminRole, isActive: false, status: ApprovalStatus.Rejected);
@@ -458,7 +458,7 @@ public class DeletionSemanticsTests
         {
             ws = SeedWorkspace(seed);
             var adminRole = seed.Roles.Single(r => r.Id == ws.AdminRoleId);
-            admin2 = new User { Email = "admin2@t.com", PasswordHash = "h:pw2", DisplayName = "Admin2", PublicId = Guid.NewGuid(), OwnerId = ws.OwnerId, RoleId = adminRole.Id, IsActive = true };
+            admin2 = new User { Email = "admin2@t.com", PasswordHash = "h:pw2", DisplayName = "Admin2", PublicId = Guid.NewGuid(), RoleId = adminRole.Id, IsActive = true };
             seed.Users.Add(admin2);
             seed.SaveChanges();
             TestSeed.Join(seed, admin2, ws.OwnerId, adminRole);
@@ -512,7 +512,7 @@ public class DeletionSemanticsTests
         {
             ws = SeedWorkspace(seed);
             var role = seed.Roles.Single(r => r.Id == ws.MemberRoleId);
-            pending = new User { Email = "pending@t.com", PasswordHash = "h:pw", DisplayName = "Pending", PublicId = Guid.NewGuid(), OwnerId = ws.OwnerId, RoleId = role.Id, IsActive = false, ApprovalStatus = ApprovalStatus.Pending };
+            pending = new User { Email = "pending@t.com", PasswordHash = "h:pw", DisplayName = "Pending", PublicId = Guid.NewGuid(), RoleId = role.Id, IsActive = false };
             seed.Users.Add(pending);
             seed.SaveChanges();
             TestSeed.Join(seed, pending, ws.OwnerId, role, isActive: false, status: ApprovalStatus.Pending);
@@ -952,7 +952,7 @@ public class DeletionSemanticsTests
             seed.SaveChanges();
             inviteId = invite.Id;
 
-            var invitee = new User { Email = "invitee@t.com", PasswordHash = "h:pw", DisplayName = "Invitee", PublicId = Guid.NewGuid(), OwnerId = ws.OwnerId, RoleId = ws.MemberRoleId, IsActive = true };
+            var invitee = new User { Email = "invitee@t.com", PasswordHash = "h:pw", DisplayName = "Invitee", PublicId = Guid.NewGuid(), RoleId = ws.MemberRoleId, IsActive = true };
             seed.Users.Add(invitee);
             seed.SaveChanges();
             var memberRole = seed.Roles.Single(r => r.Id == ws.MemberRoleId);
@@ -1131,9 +1131,7 @@ public class DeletionSemanticsTests
                 RecipientEmail = "member@t.com",
                 PublicId = Guid.NewGuid(),
                 RoleId = ws.MemberRoleId,
-                OwnerId = ws.OwnerId,
                 IsActive = false,
-                ApprovalStatus = ApprovalStatus.Approved,
                 DeletedAt = DateTime.UtcNow,
                 MergedIntoUserId = ws.Member.Id,
             };

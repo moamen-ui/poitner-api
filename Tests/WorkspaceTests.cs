@@ -325,7 +325,14 @@ public class WorkspaceTests
 
         Assert.True(result.IsSuccess, result.Message);
         var newUser = db.Users.IgnoreQueryFilters().Single(u => u.Email == "founder@newco.com");
-        var workspace = db.Workspaces.IgnoreQueryFilters().Single(w => w.Id == newUser.OwnerId);
+        var newUserHome = db
+            .WorkspaceMemberships.IgnoreQueryFilters()
+            .Where(m => m.UserId == newUser.Id)
+            .OrderBy(m => m.JoinedAt)
+            .ThenBy(m => m.Id)
+            .Select(m => m.OwnerId)
+            .First();
+        var workspace = db.Workspaces.IgnoreQueryFilters().Single(w => w.Id == newUserHome);
         Assert.Equal("Acme Inc", workspace.Name);
     }
 
@@ -379,7 +386,7 @@ public class WorkspaceTests
                 + string.Join(", ", missing.Select(t => t.Name))
         );
 
-        Assert.Equal(23, TenantService.HardDeleteOrder.Length);
+        Assert.Equal(22, TenantService.HardDeleteOrder.Length);
     }
 
     // ── 5. HardDelete_RemovesEverything_EvenWithSuggestionNotification ──────────────────
@@ -393,7 +400,8 @@ public class WorkspaceTests
 
         int projectId,
             suggestionId,
-            planId;
+            planId,
+            adminId;
         using (var seed = db.MakeContext(superAdmin))
         {
             seed.Workspaces.Add(
@@ -424,11 +432,11 @@ public class WorkspaceTests
                 PasswordHash = "hash",
                 DisplayName = "Admin",
                 RoleId = role.Id,
-                OwnerId = ownerPublicId,
-                ApprovalStatus = ApprovalStatus.Approved,
                 IsActive = true,
             };
             seed.Users.Add(admin);
+            await seed.SaveChangesAsync();
+            adminId = admin.Id;
 
             var project = new Project
             {
@@ -525,6 +533,9 @@ public class WorkspaceTests
         }
 
         Assert.Equal(0, verify.Workspaces.IgnoreQueryFilters().Count(w => w.Id == ownerPublicId));
+        // DB-11f: User is no longer in HardDeleteOrder (it carries no owner_id), so the per-type
+        // loop above no longer covers it — assert directly that the admin identity is gone.
+        Assert.Null(verify.Users.IgnoreQueryFilters().SingleOrDefault(u => u.Id == adminId));
     }
 
     // ── 5b. HardDelete_SoftDeletedIdentityOwnedByWorkspace (DB-18 code review, Gemini BLOCKER) ──
@@ -567,8 +578,6 @@ public class WorkspaceTests
                 PasswordHash = "hash",
                 DisplayName = "Admin",
                 RoleId = role.Id,
-                OwnerId = ownerPublicId,
-                ApprovalStatus = ApprovalStatus.Approved,
                 IsActive = true,
             };
             seed.Users.Add(admin);
@@ -587,8 +596,6 @@ public class WorkspaceTests
                 PasswordHash = "hash",
                 DisplayName = "Deleted user",
                 RoleId = role.Id,
-                OwnerId = ownerPublicId,
-                ApprovalStatus = ApprovalStatus.Approved,
                 IsActive = false,
                 DeletedAt = DateTime.UtcNow,
                 ErasedAt = DateTime.UtcNow,
@@ -715,8 +722,6 @@ public class WorkspaceTests
                     PasswordHash = "hash",
                     DisplayName = "Jane Doe",
                     RoleId = role.Id,
-                    OwnerId = tenant,
-                    ApprovalStatus = ApprovalStatus.Approved,
                     IsActive = true,
                 }
             );

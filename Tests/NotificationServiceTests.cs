@@ -153,7 +153,6 @@ public class NotificationServiceTests
                 PasswordHash = "x",
                 DisplayName = "Author",
                 RoleId = role.Id,
-                OwnerId = tenant,
                 IsActive = true,
             };
             seed.Users.Add(authorUser);
@@ -472,7 +471,6 @@ public class NotificationServiceTests
                 PasswordHash = "x",
                 DisplayName = "Ended",
                 RoleId = role.Id,
-                OwnerId = tenant,
                 IsActive = true,
             };
             var disabled = new User
@@ -482,7 +480,6 @@ public class NotificationServiceTests
                 PasswordHash = "x",
                 DisplayName = "Disabled",
                 RoleId = role.Id,
-                OwnerId = tenant,
                 IsActive = true,
             };
             var pending = new User
@@ -492,7 +489,6 @@ public class NotificationServiceTests
                 PasswordHash = "x",
                 DisplayName = "Pending",
                 RoleId = role.Id,
-                OwnerId = tenant,
                 IsActive = true,
             };
             var live = new User
@@ -502,7 +498,6 @@ public class NotificationServiceTests
                 PasswordHash = "x",
                 DisplayName = "Live",
                 RoleId = role.Id,
-                OwnerId = tenant,
                 IsActive = true,
             };
             seed.Users.AddRange(ended, disabled, pending, live);

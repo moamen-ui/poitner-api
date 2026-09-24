@@ -184,9 +184,7 @@ public class Db11fRoleWriteGuardTests
             DisplayName = "Member",
             RoleId = ownRole.Id,
             PublicId = Guid.NewGuid(),
-            ApprovalStatus = ApprovalStatus.Approved,
             IsActive = true,
-            OwnerId = workspace,
         };
         seed.Users.Add(member);
         seed.SaveChanges();
@@ -402,7 +400,6 @@ public class Db11fRoleWriteGuardTests
                 PublicId = Guid.NewGuid(),
                 RoleId = realAdminRole.Id,
                 IsActive = true,
-                OwnerId = target,
             };
             seed.Users.Add(admin);
             seed.SaveChanges();

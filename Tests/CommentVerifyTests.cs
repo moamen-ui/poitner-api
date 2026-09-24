@@ -289,7 +289,6 @@ public class CommentVerifyTests
             PasswordHash = "x",
             DisplayName = "Dev",
             RoleId = role.Id,
-            OwnerId = tenant,
             IsActive = true,
         };
         seed.Users.Add(appliedByUser);

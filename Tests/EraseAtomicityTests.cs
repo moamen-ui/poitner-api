@@ -216,8 +216,6 @@ public class EraseAtomicityTests
                 PasswordHash = originalPasswordHash,
                 DisplayName = "Member",
                 RoleId = role.Id,
-                OwnerId = workspaceId,
-                ApprovalStatus = ApprovalStatus.Approved,
                 IsActive = true,
             };
             seed.Users.Add(member);

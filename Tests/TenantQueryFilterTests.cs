@@ -166,7 +166,6 @@ public class TenantQueryFilterTests
                 PasswordHash = "h",
                 DisplayName = "a",
                 PublicId = Guid.NewGuid(),
-                OwnerId = tenantA,
                 RoleId = role.Id,
             };
             seed.Users.Add(tenantAUser);
@@ -177,7 +176,6 @@ public class TenantQueryFilterTests
                     PasswordHash = "h",
                     DisplayName = "super",
                     PublicId = Guid.NewGuid(),
-                    OwnerId = null,
                     RoleId = role.Id,
                 }
             );
@@ -238,7 +236,6 @@ public class TenantQueryFilterTests
                 PasswordHash = "h",
                 DisplayName = "a",
                 PublicId = Guid.NewGuid(),
-                OwnerId = tenantA,
                 RoleId = memberRole.Id,
             };
             seed.Users.Add(a);
@@ -249,7 +246,6 @@ public class TenantQueryFilterTests
                     PasswordHash = "h",
                     DisplayName = "n1",
                     PublicId = Guid.NewGuid(),
-                    OwnerId = null,
                     RoleId = superRole.Id,
                 }
             );
@@ -260,7 +256,6 @@ public class TenantQueryFilterTests
                     PasswordHash = "h",
                     DisplayName = "n2",
                     PublicId = Guid.NewGuid(),
-                    OwnerId = null,
                     RoleId = superRole.Id,
                 }
             );
@@ -298,7 +293,6 @@ public class TenantQueryFilterTests
                     PasswordHash = "h",
                     DisplayName = "n",
                     PublicId = Guid.NewGuid(),
-                    OwnerId = null,
                     RoleId = 1,
                 }
             );
