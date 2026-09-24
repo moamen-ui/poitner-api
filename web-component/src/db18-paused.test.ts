@@ -48,7 +48,9 @@ describe('DB-18: workspace paused/frozen (widget)', () => {
     expect((el as any)._paused).toBe(true);
     expect((el as any).root.classList.contains('fbk-paused')).toBe(true);
     expect(toastSpy).toHaveBeenCalledTimes(1);
-    expect(toastSpy).toHaveBeenCalledWith(t('paused.notice'), 'error');
+    // DB-18 code review (Opus NIT): informational, not an error — pausing is an expected, reversible
+    // admin action.
+    expect(toastSpy).toHaveBeenCalledWith(t('paused.notice'));
 
     // A second 423 elsewhere on the page must NOT toast again ("once per page").
     const r2 = await (el as any).api('/api/comments/2', { method: 'DELETE' });
@@ -82,7 +84,7 @@ describe('DB-18: workspace paused/frozen (widget)', () => {
     await run();
     // Only the one paused toast from api() — never the method's own "failed"/"update failed" toast.
     expect(toastSpy).toHaveBeenCalledTimes(1);
-    expect(toastSpy).toHaveBeenCalledWith(t('paused.notice'), 'error');
+    expect(toastSpy).toHaveBeenCalledWith(t('paused.notice'));
   });
 
   it('_checkWidgetActive() reads the paused flag from the widget-status response', async () => {
@@ -110,5 +112,18 @@ describe('DB-18: workspace paused/frozen (widget)', () => {
     expect(url).toBeNull();
     expect((el as any)._paused).toBe(true);
     expect(toastSpy).toHaveBeenCalledTimes(1);
+  });
+
+  // DB-18 code review (Opus LOW): the add-comment keyboard shortcut calls startPicking() directly,
+  // bypassing the toolbar button render*() already hides while paused.
+  it('startPicking() is a no-op while paused', () => {
+    (el as any)._paused = true;
+    el.startPicking();
+    expect((el as any).picking).toBe(false);
+  });
+
+  it('startPicking() still works normally while not paused', () => {
+    el.startPicking();
+    expect((el as any).picking).toBe(true);
   });
 });
