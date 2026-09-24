@@ -516,6 +516,360 @@ public static class EmailTemplateBuilder
         );
     }
 
+    // ── 16. Workspace deletion — confirm (DB-18 E1) ────────────────────────────────────────
+
+    public static (string Subject, string Html) WorkspaceConfirmDeletion(
+        bool isAr,
+        string workspaceName,
+        string productName,
+        string appUrl,
+        string link,
+        int graceDays,
+        string? primaryColor = null,
+        string? logoUrl = null
+    )
+    {
+        var ws = EmailLayout.Html(workspaceName);
+        var product = EmailLayout.Html(productName);
+
+        if (isAr)
+        {
+            var subjectAr = $"تأكيد حذف مساحة العمل {workspaceName}";
+            var contentAr =
+                Heading($"تأكيد حذف مساحة العمل {ws}")
+                + Paragraph(
+                    $"طلبتَ حذف مساحة العمل <strong>{ws}</strong> على {product}. للتأكيد، افتح الرابط أدناه وأدخل كلمة المرور. تنتهي صلاحية الرابط خلال 30 دقيقة ويعمل مرة واحدة فقط."
+                )
+                + EmailComponents.Button(
+                    "مراجعة الحذف وتأكيده",
+                    link,
+                    primaryColor ?? "",
+                    rtl: true
+                )
+                + EmailComponents.Callout(
+                    "قبل الحذف: يمكنك تصدير التعليقات من الإعدادات ← منطقة الخطر ← تصدير البيانات، أو إيقاف مساحة العمل مؤقتًا بدلًا من حذفها — الإيقاف المؤقت يحتفظ بمشاريعك وتعليقاتك وإعداداتك ويوقف استقبال الملاحظات الجديدة حتى تستأنفها.",
+                    rtl: true
+                )
+                + Paragraph(
+                    $"بعد التأكيد تُحذف مساحة العمل بعد {graceDays} أيام، ويمكن لأي مسؤول في مساحة العمل إلغاء الحذف قبل ذلك."
+                )
+                + Disclaimer(
+                    "إذا لم تطلب ذلك فتجاهل هذه الرسالة ولن يحدث شيء، وننصحك بتغيير كلمة المرور."
+                );
+
+            return (
+                subjectAr,
+                EmailLayout.Wrap(
+                    contentAr,
+                    productName,
+                    brandColor: primaryColor,
+                    logoUrl: logoUrl,
+                    appUrl: appUrl,
+                    preheader: "تأكيد حذف مساحة العمل",
+                    lang: "ar"
+                )
+            );
+        }
+
+        var subjectEn = $"Confirm deleting the {workspaceName} workspace";
+        var contentEn =
+            Heading($"Confirm deleting the {ws} workspace")
+            + Paragraph(
+                $"You asked to delete the workspace <strong>{ws}</strong> on {product}. To confirm, open the link below and enter your password. The link expires in 30 minutes and works once."
+            )
+            + EmailComponents.Button("Review and confirm deletion", link, primaryColor ?? "")
+            + EmailComponents.Callout(
+                "Before you delete: you can export your comments from Settings &rarr; Danger zone &rarr; Export data, or pause the workspace instead — pausing keeps your projects, comments and settings and stops new feedback until you resume."
+            )
+            + Paragraph(
+                $"After you confirm, the workspace is deleted after {graceDays} days; until then any workspace admin can cancel."
+            )
+            + Disclaimer(
+                "If you did not ask for this, ignore this e-mail — nothing happens — and consider changing your password."
+            );
+
+        return (
+            subjectEn,
+            EmailLayout.Wrap(
+                contentEn,
+                productName,
+                primaryColor,
+                logoUrl: logoUrl,
+                appUrl: appUrl,
+                preheader: "Confirm deleting your workspace"
+            )
+        );
+    }
+
+    // ── 17. Workspace deletion — scheduled (DB-18 E2) ──────────────────────────────────────
+
+    public static (string Subject, string Html) WorkspaceDeletionScheduled(
+        bool isAr,
+        string workspaceName,
+        string? actorName,
+        string scheduledForUtc,
+        string productName,
+        string appUrl,
+        string? primaryColor = null,
+        string? logoUrl = null
+    )
+    {
+        var ws = EmailLayout.Html(workspaceName);
+        var brandColor = EmailLayout.NormalizeBrandColor(primaryColor);
+        var app = EmailLayout.Html(appUrl.TrimEnd('/'));
+        var settingsUrl = $"{app}/settings";
+        var settingsLink =
+            $"<a href=\"{settingsUrl}\" style=\"color:{brandColor};\">{settingsUrl}</a>";
+
+        if (isAr)
+        {
+            var name = EmailLayout.Html(actorName ?? "مشغّل المنصة");
+            var subjectAr = $"ستُحذف مساحة العمل {workspaceName} في {scheduledForUtc}";
+            var contentAr =
+                Heading($"ستُحذف مساحة العمل {ws} في {scheduledForUtc}")
+                + Paragraph(
+                    $"أكّد {name} حذف مساحة العمل <strong>{ws}</strong>. ستُحذف نهائيًا في {scheduledForUtc}، بما في ذلك المشاريع والتعليقات والردود ولقطات الشاشة والإعدادات ومفاتيح API والحسابات التي أُنشئت في مساحة العمل هذه ولا تنتمي إلى أي مساحة عمل أخرى. حتى ذلك الحين تكون مساحة العمل للقراءة فقط."
+                )
+                + Paragraph(
+                    $"للاحتفاظ بها افتح {settingsLink} واختر <strong>إلغاء الحذف</strong>، وللاحتفاظ بنسخة اختر <strong>تصدير البيانات</strong>."
+                );
+
+            return (
+                subjectAr,
+                EmailLayout.Wrap(
+                    contentAr,
+                    productName,
+                    brandColor: primaryColor,
+                    logoUrl: logoUrl,
+                    appUrl: appUrl,
+                    preheader: subjectAr,
+                    lang: "ar"
+                )
+            );
+        }
+
+        var nameEn = EmailLayout.Html(actorName ?? "the platform operator");
+        var subjectEn = $"{workspaceName} will be deleted on {scheduledForUtc}";
+        var contentEn =
+            Heading(EmailLayout.Html(subjectEn))
+            + Paragraph(
+                $"{nameEn} confirmed deleting the workspace <strong>{ws}</strong>. It will be permanently deleted on {scheduledForUtc} — projects, comments, replies, screenshots, settings, API keys, and the accounts that were created in this workspace and belong to no other workspace. Until then the workspace is read-only."
+            )
+            + Paragraph(
+                $"To keep it, open {settingsLink} and choose <strong>Cancel deletion</strong>. To keep a copy, choose <strong>Export data</strong>."
+            );
+
+        return (
+            subjectEn,
+            EmailLayout.Wrap(
+                contentEn,
+                productName,
+                primaryColor,
+                logoUrl: logoUrl,
+                appUrl: appUrl,
+                preheader: subjectEn
+            )
+        );
+    }
+
+    // ── 18. Workspace deletion — T-24h reminder (DB-18 E3) ─────────────────────────────────
+
+    public static (string Subject, string Html) WorkspaceDeletionReminder(
+        bool isAr,
+        string workspaceName,
+        string scheduledForUtc,
+        string productName,
+        string appUrl,
+        string? primaryColor = null,
+        string? logoUrl = null
+    )
+    {
+        var ws = EmailLayout.Html(workspaceName);
+        var brandColor = EmailLayout.NormalizeBrandColor(primaryColor);
+        var app = EmailLayout.Html(appUrl.TrimEnd('/'));
+        var settingsUrl = $"{app}/settings";
+        var settingsLink =
+            $"<a href=\"{settingsUrl}\" style=\"color:{brandColor};\">{settingsUrl}</a>";
+
+        if (isAr)
+        {
+            var subjectAr = $"ستُحذف مساحة العمل {workspaceName} خلال 24 ساعة";
+            var contentAr =
+                Heading(EmailLayout.Html(subjectAr))
+                + EmailComponents.Callout(
+                    $"تذكير: ستُحذف مساحة العمل <strong>{ws}</strong> نهائيًا في {scheduledForUtc}. للاحتفاظ بها افتح {settingsLink} واختر <strong>إلغاء الحذف</strong>. صدّر بياناتك قبل ذلك إذا أردت الاحتفاظ بنسخة.",
+                    "#f59e0b",
+                    rtl: true
+                );
+
+            return (
+                subjectAr,
+                EmailLayout.Wrap(
+                    contentAr,
+                    productName,
+                    brandColor: primaryColor,
+                    logoUrl: logoUrl,
+                    appUrl: appUrl,
+                    preheader: subjectAr,
+                    lang: "ar"
+                )
+            );
+        }
+
+        var subjectEn = $"{workspaceName} will be deleted in 24 hours";
+        var contentEn =
+            Heading(EmailLayout.Html(subjectEn))
+            + EmailComponents.Callout(
+                $"Reminder: the workspace <strong>{ws}</strong> will be permanently deleted on {scheduledForUtc}. To keep it, open {settingsLink} and choose <strong>Cancel deletion</strong>. Export your data before then if you want a copy.",
+                "#f59e0b"
+            );
+
+        return (
+            subjectEn,
+            EmailLayout.Wrap(
+                contentEn,
+                productName,
+                primaryColor,
+                logoUrl: logoUrl,
+                appUrl: appUrl,
+                preheader: subjectEn
+            )
+        );
+    }
+
+    // ── 19. Workspace deletion — executed (DB-18 E4) ───────────────────────────────────────
+
+    public static (string Subject, string Html) WorkspaceDeleted(
+        bool isAr,
+        string workspaceName,
+        string deletedAtUtc,
+        int backupDays,
+        string productName,
+        string appUrl,
+        string? primaryColor = null,
+        string? logoUrl = null
+    )
+    {
+        var ws = EmailLayout.Html(workspaceName);
+
+        if (isAr)
+        {
+            var subjectAr = $"حُذفت مساحة العمل {workspaceName}";
+            var contentAr =
+                Heading(EmailLayout.Html(subjectAr))
+                + Paragraph(
+                    $"حُذفت مساحة العمل <strong>{ws}</strong> نهائيًا في {deletedAtUtc} بناءً على طلب أحد مسؤوليها. تنتهي صلاحية النسخ المتبقية في نسخنا الاحتياطية خلال {backupDays} يومًا. لا يمكن التراجع عن هذا الإجراء."
+                );
+
+            return (
+                subjectAr,
+                EmailLayout.Wrap(
+                    contentAr,
+                    productName,
+                    brandColor: primaryColor,
+                    logoUrl: logoUrl,
+                    appUrl: appUrl,
+                    preheader: subjectAr,
+                    lang: "ar"
+                )
+            );
+        }
+
+        var subjectEn = $"The {workspaceName} workspace has been deleted";
+        var contentEn =
+            Heading(EmailLayout.Html(subjectEn))
+            + Paragraph(
+                $"The workspace <strong>{ws}</strong> was permanently deleted on {deletedAtUtc} at the request of one of its admins. Remaining copies in our backups expire within {backupDays} days. This cannot be undone."
+            );
+
+        return (
+            subjectEn,
+            EmailLayout.Wrap(
+                contentEn,
+                productName,
+                primaryColor,
+                logoUrl: logoUrl,
+                appUrl: appUrl,
+                preheader: subjectEn
+            )
+        );
+    }
+
+    // ── 20. Workspace deletion — cancelled (DB-18 E5) ──────────────────────────────────────
+
+    public static (string Subject, string Html) WorkspaceDeletionCancelled(
+        bool isAr,
+        string workspaceName,
+        string? actorName,
+        bool stillPaused,
+        string productName,
+        string appUrl,
+        string? primaryColor = null,
+        string? logoUrl = null
+    )
+    {
+        var ws = EmailLayout.Html(workspaceName);
+
+        if (isAr)
+        {
+            var name = EmailLayout.Html(actorName ?? "مشغّل المنصة");
+            var subjectAr = $"أُلغي حذف مساحة العمل {workspaceName}";
+            var contentAr =
+                Heading(EmailLayout.Html(subjectAr))
+                + Paragraph(
+                    $"ألغى {name} الحذف المجدول لمساحة العمل <strong>{ws}</strong>. لم يُحذف أي شيء."
+                )
+                + (
+                    stillPaused
+                        ? EmailComponents.Callout(
+                            "ما زالت مساحة العمل موقوفة مؤقتًا، ويمكن لأي مسؤول استئنافها من الإعدادات.",
+                            rtl: true
+                        )
+                        : string.Empty
+                );
+
+            return (
+                subjectAr,
+                EmailLayout.Wrap(
+                    contentAr,
+                    productName,
+                    brandColor: primaryColor,
+                    logoUrl: logoUrl,
+                    appUrl: appUrl,
+                    preheader: subjectAr,
+                    lang: "ar"
+                )
+            );
+        }
+
+        var nameEn = EmailLayout.Html(actorName ?? "the platform operator");
+        var subjectEn = $"Deletion of {workspaceName} was cancelled";
+        var contentEn =
+            Heading(EmailLayout.Html(subjectEn))
+            + Paragraph(
+                $"{nameEn} cancelled the scheduled deletion of <strong>{ws}</strong>. Nothing was deleted."
+            )
+            + (
+                stillPaused
+                    ? EmailComponents.Callout(
+                        "The workspace is still paused; an admin can resume it from Settings."
+                    )
+                    : string.Empty
+            );
+
+        return (
+            subjectEn,
+            EmailLayout.Wrap(
+                contentEn,
+                productName,
+                primaryColor,
+                logoUrl: logoUrl,
+                appUrl: appUrl,
+                preheader: subjectEn
+            )
+        );
+    }
+
     // ── Shared fragments ───────────────────────────────────────────────────────────────────
 
     private static string Heading(string text) =>

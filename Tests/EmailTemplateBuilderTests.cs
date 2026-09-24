@@ -27,6 +27,35 @@ public class EmailTemplateBuilderTests
     }
 
     [Fact]
+    public void Layout_Wrap_DefaultLang_IsEnglishByteForByte()
+    {
+        var contentHtml = "<p>hello</p>";
+        var withoutLang = EmailLayout.Wrap(contentHtml, "Pointer");
+        var withExplicitEn = EmailLayout.Wrap(contentHtml, "Pointer", lang: "en");
+
+        Assert.Equal(withoutLang, withExplicitEn);
+        Assert.Contains("<html lang=\"en\">", withoutLang);
+        Assert.DoesNotContain("dir=\"rtl\"", withoutLang);
+    }
+
+    [Fact]
+    public void Layout_Wrap_ArabicLang_RendersRtlShell()
+    {
+        var html = EmailLayout.Wrap("<p>مرحبا</p>", "Pointer", lang: "ar");
+
+        // dir sits on the cells, never on <html>: on <html> it flips the outer centering table
+        // (the card rendered shifted off-screen in Chrome) and Gmail strips <html> attributes.
+        Assert.Contains("<html lang=\"ar\">", html);
+        Assert.DoesNotContain("<html lang=\"ar\" dir=", html);
+        Assert.Contains("class=\"email-header\" dir=\"rtl\"", html);
+        Assert.Contains("class=\"email-content\" dir=\"rtl\"", html);
+        Assert.Contains("class=\"email-footer\" dir=\"rtl\"", html);
+        Assert.Contains("text-align:right;", html);
+        // The card shell itself is unchanged — only lang/dir and text alignment differ.
+        Assert.Contains("max-width:580px", html);
+    }
+
+    [Fact]
     public void Layout_DefaultsToBrandBlue_WhenNoPrimaryColorGiven()
     {
         var html = EmailTemplateBuilder.VerifyEmail(Link, "user@acme.com", "Pointer");
