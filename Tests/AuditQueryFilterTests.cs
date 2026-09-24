@@ -203,18 +203,26 @@ public class AuditQueryFilterTests
 
         using (var seed = BuildContext(new FakeCurrentUser { IsSuperAdmin = true }, dbName))
         {
+            // DB-11f: User.Role is a required navigation and the User filter now reads it — a
+            // RoleId with no matching Role row makes EF's required-navigation join drop the row from
+            // every filtered query (not just the one branch that used to read owner_id). A real Role
+            // row is needed, not a transient `new Role { Id = 1 }`.
+            var role = new Role { Name = "M", IsActive = true };
+            seed.Roles.Add(role);
+            seed.SaveChanges();
+
             var member = new User
             {
                 PublicId = memberPublicId,
                 Email = "member@a.com",
                 PasswordHash = "h",
                 DisplayName = "Ann Member",
-                RoleId = 1,
+                RoleId = role.Id,
                 OwnerId = tenantA,
             };
             seed.Users.Add(member);
             seed.SaveChanges();
-            TestSeed.Join(seed, member, tenantA, new Role { Id = 1 });
+            TestSeed.Join(seed, member, tenantA, role);
 
             seed.Users.Add(
                 new User
@@ -223,7 +231,7 @@ public class AuditQueryFilterTests
                     Email = "op@pointer.io",
                     PasswordHash = "h",
                     DisplayName = "Op Person",
-                    RoleId = 1,
+                    RoleId = role.Id,
                     OwnerId = null, // the operator is not a member of any workspace
                 }
             );

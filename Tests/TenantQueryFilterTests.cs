@@ -152,6 +152,14 @@ public class TenantQueryFilterTests
 
         using (var seed = SuperAdminContext(db))
         {
+            // DB-11f: User.Role is a required navigation, and the User filter now reads it (the
+            // null-tenant bucket is the platform role) — an unpersisted RoleId (no matching Role row)
+            // makes EF's required-navigation join drop the row from EVERY query, not just this
+            // filter's branch. A real Role row is needed, not a transient `new Role { Id = 1 }`.
+            var role = new Role { Name = "M", IsActive = true };
+            seed.Roles.Add(role);
+            seed.SaveChanges();
+
             var tenantAUser = new User
             {
                 Email = "a@x",
@@ -159,7 +167,7 @@ public class TenantQueryFilterTests
                 DisplayName = "a",
                 PublicId = Guid.NewGuid(),
                 OwnerId = tenantA,
-                RoleId = 1,
+                RoleId = role.Id,
             };
             seed.Users.Add(tenantAUser);
             seed.Users.Add(
@@ -170,13 +178,13 @@ public class TenantQueryFilterTests
                     DisplayName = "super",
                     PublicId = Guid.NewGuid(),
                     OwnerId = null,
-                    RoleId = 1,
+                    RoleId = role.Id,
                 }
             );
             seed.SaveChanges();
             // DB-11a: the User filter is membership-based — a live membership in tenantA is what
             // makes this row visible now, not owner_id alone.
-            TestSeed.Join(seed, tenantAUser, tenantA, new Role { Id = 1 });
+            TestSeed.Join(seed, tenantAUser, tenantA, role);
         }
 
         using var ctx = BuildContext(
@@ -186,7 +194,7 @@ public class TenantQueryFilterTests
         var results = ctx.Set<User>().ToList();
 
         Assert.Single(results);
-        Assert.Equal(tenantA, results[0].OwnerId);
+        Assert.Equal("a@x", results[0].Email);
     }
 
     // ---------------------------------------------------------------------------
@@ -208,17 +216,32 @@ public class TenantQueryFilterTests
 
         using (var seed = SuperAdminContext(db))
         {
-            seed.Users.Add(
-                new User
-                {
-                    Email = "a@x",
-                    PasswordHash = "h",
-                    DisplayName = "a",
-                    PublicId = Guid.NewGuid(),
-                    OwnerId = tenantA,
-                    RoleId = 1,
-                }
-            );
+            // DB-11f: the null-tenant, non-strict bucket is now the PLATFORM role (a super admin),
+            // not `owner_id IS NULL` (§3.3, Opus HIGH) — n1@x/n2@x hold the super-admin role, a@x
+            // holds an ordinary member role and a live membership in tenantA (so `!e.Memberships.Any()`
+            // would wrongly return it too, since the membership filter hides it from a null-tenant
+            // caller — the regression this test guards against).
+            var superRole = new Role
+            {
+                Name = "SA",
+                IsSuperAdmin = true,
+                GrantsAdmin = true,
+                IsActive = true,
+            };
+            var memberRole = new Role { Name = "M", IsActive = true };
+            seed.Roles.AddRange(superRole, memberRole);
+            seed.SaveChanges();
+
+            var a = new User
+            {
+                Email = "a@x",
+                PasswordHash = "h",
+                DisplayName = "a",
+                PublicId = Guid.NewGuid(),
+                OwnerId = tenantA,
+                RoleId = memberRole.Id,
+            };
+            seed.Users.Add(a);
             seed.Users.Add(
                 new User
                 {
@@ -227,7 +250,7 @@ public class TenantQueryFilterTests
                     DisplayName = "n1",
                     PublicId = Guid.NewGuid(),
                     OwnerId = null,
-                    RoleId = 1,
+                    RoleId = superRole.Id,
                 }
             );
             seed.Users.Add(
@@ -238,10 +261,11 @@ public class TenantQueryFilterTests
                     DisplayName = "n2",
                     PublicId = Guid.NewGuid(),
                     OwnerId = null,
-                    RoleId = 1,
+                    RoleId = superRole.Id,
                 }
             );
             seed.SaveChanges();
+            TestSeed.Join(seed, a, tenantA, memberRole);
         }
 
         using var ctx = BuildContext(
@@ -252,8 +276,8 @@ public class TenantQueryFilterTests
         var results = ctx.Set<User>().ToList();
 
         Assert.Equal(2, results.Count); // both null-owner rows
-        Assert.All(results, u => Assert.Null(u.OwnerId));
-        Assert.DoesNotContain(results, u => u.OwnerId == tenantA); // never another tenant's row
+        Assert.All(results, u => Assert.StartsWith("n", u.Email));
+        Assert.DoesNotContain(results, u => u.Email == "a@x");
     }
 
     [Fact]

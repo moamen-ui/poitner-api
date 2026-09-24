@@ -52,7 +52,8 @@ public class RoleServiceDeleteTests
         int OwnNonAdmin,
         int OwnAdmin,
         int Global,
-        int OtherTenant
+        int OtherTenant,
+        int SuperAdminRole
     );
 
     private static Seeded Seed(string dbName)
@@ -95,7 +96,21 @@ public class RoleServiceDeleteTests
             IsActive = true,
             GrantsAdmin = false,
         };
-        seed.Roles.AddRange(deleteRole, ownNonAdmin, ownAdmin, global, otherTenantRole);
+        var superAdminRole = new Role
+        {
+            Name = "SA",
+            OwnerId = null,
+            IsActive = true,
+            IsSuperAdmin = true,
+        };
+        seed.Roles.AddRange(
+            deleteRole,
+            ownNonAdmin,
+            ownAdmin,
+            global,
+            otherTenantRole,
+            superAdminRole
+        );
         seed.SaveChanges();
 
         // One user assigned to the role being deleted → reassignment is required.
@@ -120,7 +135,8 @@ public class RoleServiceDeleteTests
             ownNonAdmin.Id,
             ownAdmin.Id,
             global.Id,
-            otherTenantRole.Id
+            otherTenantRole.Id,
+            superAdminRole.Id
         );
     }
 
@@ -242,6 +258,52 @@ public class RoleServiceDeleteTests
                 .IgnoreQueryFilters()
                 .Single(m => m.UserId == memberUserId && m.LeftAt == null)
                 .RoleId
+        );
+    }
+
+    /// <summary>DB-11f F1: not even a super admin may reassign a membership onto another
+    /// workspace's role — the F1 guard is checked before the caller-scoped escalation guard, which
+    /// exempts super admins entirely.</summary>
+    [Fact]
+    public async Task SuperAdmin_CannotReassignTo_OtherTenantRole()
+    {
+        var dbName = Guid.NewGuid().ToString();
+        var s = Seed(dbName);
+        var superAdmin = new FakeCurrentUser { Id = Guid.NewGuid(), IsSuperAdmin = true };
+        using var db = BuildContext(superAdmin, dbName);
+        var svc = BuildService(superAdmin, db);
+
+        var result = await svc.DeleteAsync(s.DeleteRoleId, s.OtherTenant);
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(MessageKeys.Role.EscalationNotAllowed, result.Message);
+        Assert.Null(db.Roles.IgnoreQueryFilters().Single(r => r.Id == s.DeleteRoleId).DeletedAt);
+        Assert.Equal(
+            s.DeleteRoleId,
+            db.Users.IgnoreQueryFilters().Single(u => u.Email == "member@a.com").RoleId
+        );
+    }
+
+    /// <summary>DB-11f F1: not even a super admin may reassign a membership onto the platform
+    /// (super-admin) role — that would make the member's session in that workspace carry
+    /// is_super_admin=true (cross-review Opus MEDIUM, the P11 finding).</summary>
+    [Fact]
+    public async Task SuperAdmin_CannotReassignTo_SuperAdminRole()
+    {
+        var dbName = Guid.NewGuid().ToString();
+        var s = Seed(dbName);
+        var superAdmin = new FakeCurrentUser { Id = Guid.NewGuid(), IsSuperAdmin = true };
+        using var db = BuildContext(superAdmin, dbName);
+        var svc = BuildService(superAdmin, db);
+
+        var result = await svc.DeleteAsync(s.DeleteRoleId, s.SuperAdminRole);
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(MessageKeys.Role.EscalationNotAllowed, result.Message);
+        Assert.Null(db.Roles.IgnoreQueryFilters().Single(r => r.Id == s.DeleteRoleId).DeletedAt);
+        Assert.Equal(
+            s.DeleteRoleId,
+            db.Users.IgnoreQueryFilters().Single(u => u.Email == "member@a.com").RoleId
         );
     }
 }

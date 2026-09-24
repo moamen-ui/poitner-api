@@ -832,8 +832,10 @@ public class Db17DemoServiceTests
     /// <summary>Throws from <see cref="CurrentAdminAsync"/> for one specific workspace — models a
     /// per-workspace failure mid-loop (DB-17 review finding #8) without needing the send path,
     /// which already tolerates its own failures independently (D17.6).</summary>
-    private sealed class ThrowingCurrentAdminMembershipService(IMembershipService inner, Guid throwFor)
-        : IMembershipService
+    private sealed class ThrowingCurrentAdminMembershipService(
+        IMembershipService inner,
+        Guid throwFor
+    ) : IMembershipService
     {
         public Task<User?> FindIdentityByEmailAsync(string? email) =>
             inner.FindIdentityByEmailAsync(email);
@@ -880,6 +882,10 @@ public class Db17DemoServiceTests
                 firstWorkspaceId,
                 passwordlessOnly
             );
+
+        public Task<Guid?> HomeWorkspaceIdAsync(int userId) => inner.HomeWorkspaceIdAsync(userId);
+
+        public Task<Role?> PlatformRoleAsync(int userId) => inner.PlatformRoleAsync(userId);
 
         public Task<List<(Guid WorkspaceId, string Name)>> SoleAdminWorkspacesAsync(
             IEnumerable<int> membershipIds
