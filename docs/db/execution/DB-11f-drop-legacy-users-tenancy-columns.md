@@ -1187,3 +1187,4 @@ test 18's AdminSeeder-empty-DB leg was folded into the existing test method rath
 at the end); no regression anywhere else in the suite.
 
 - **Soak window shortened by the owner** (2026-09-24 ~16:15 UTC, owner's words: "I don't use the tool today and there is no users in the platform. So if you could run your tests in production so we can deploy B"). Evidence at ~11 h of Part A in production: 0 `DB-11f invariant` / 23503 / 42703 / Error lines since 05:04; DemoCleanup (every 15 min), WorkspaceDeletion sweeps and the daily Retention sweep (05:09) all ran clean; P1 0, P11 0, P6b 0, P9 3, 81 migrations; public smoke (health, branding, skill.md, widget.js, embed.js, pointer-init.md, widget-status, rejected login, forgot-password) clean with 0 new error lines.
+- **Part B deployed 2026-09-24 17:15 UTC** (contract, label `pre-db11f`): 83 migrations; dropped columns absent; 0 non-super `role_id`; 0 error lines in the first 3 min; `/health` 200.
