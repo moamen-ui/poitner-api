@@ -210,7 +210,8 @@ public class TenantService : ITenantService
         var isNewIdentity = identity == null;
 
         // The Workspace row must exist before any row that references it via a workspace-id FK
-        // (users.owner_id ⇒ fk_users_workspaces_owner_id, memberships, etc.) — save it first.
+        // (workspace_memberships.owner_id, etc. — DB-11f: users.owner_id/fk_users_workspaces_owner_id
+        // no longer exist) — save it first.
         await _unitOfWork.Workspaces.AddAsync(
             new Workspace
             {

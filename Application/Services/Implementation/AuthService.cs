@@ -1217,7 +1217,7 @@ public class AuthService : IAuthService
         {
             // Null-owner key = super admin path ONLY (DB-11f D11f.6). Any other identity holding one (a
             // pre-DB-11a leftover — P5 proved none in production) is refused instead of signing in with no
-            // workspace and its legacy users.role_id.
+            // workspace under its (non-super) platform role.
             if (user.Role?.IsSuperAdmin != true)
             {
                 await AuditApiKeyLoginFailedAsync(apiKey, "invalid_credentials");
@@ -1449,7 +1449,8 @@ public class AuthService : IAuthService
         }
 
         // The Workspace row must exist before any row that references it via a workspace-id FK
-        // (users.owner_id ⇒ fk_users_workspaces_owner_id, memberships, etc.) — save it first.
+        // (workspace_memberships.owner_id, etc. — DB-11f: users.owner_id/fk_users_workspaces_owner_id
+        // no longer exist) — save it first.
         await _unitOfWork.Workspaces.AddAsync(
             new Workspace
             {

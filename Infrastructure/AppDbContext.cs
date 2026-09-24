@@ -94,12 +94,14 @@ public class AppDbContext(
                 || (currentUser.TenantId != null && e.OwnerId == currentUser.TenantId)
                 || (currentUser.TenantId == null && !strict && e.OwnerId == null)
             );
-        // DB-11a: a person's presence in a workspace is a workspace_memberships row, never
-        // users.owner_id. Any membership counts, INCLUDING ended ones — a person who left still
-        // authored comments the workspace can see, and their name must resolve. Listing "current
-        // members" always filters LeftAt == null explicitly at the call site (DB-RULES R8.7).
+        // DB-11a: a person's presence in a workspace is a workspace_memberships row, never a
+        // per-workspace column on the identity row itself. Any membership counts, INCLUDING ended
+        // ones — a person who left still authored comments the workspace can see, and their name
+        // must resolve. Listing "current members" always filters LeftAt == null explicitly at the
+        // call site (DB-RULES R8.7).
         // DB-11f: the null-tenant (non-strict) bucket for identities is the platform role (super
-        // admins) — exactly today's users.owner_id IS NULL set. It is deliberately NOT an
+        // admins) — exactly the set of super admins (DB-11f Part B dropped the legacy per-workspace
+        // column this bucket used to be keyed on). It is deliberately NOT an
         // emptiness check on the Memberships collection: the WorkspaceMembership filter hides every
         // membership from a null-tenant caller, so that form would match every identity
         // (cross-review Opus HIGH).
@@ -397,6 +399,68 @@ public class AppDbContext(
             );
     }
 
+    /// <summary>DB-11f Part B review (item 4): users.role_id is the platform role now (D11f.2) — it
+    /// must be null for every identity except a super admin, and even then it must point at a
+    /// GLOBAL (OwnerId == null) role with IsSuperAdmin set. A membership's own RoleId (the tenant
+    /// role) is unaffected — this only guards the scalar FK on User itself.
+    ///
+    /// Two deliberate scope limits, both because production only ever writes a User row through ONE
+    /// path (Infrastructure/Repository/UnitOfWork.cs's plain async <c>SaveChangesAsync()</c> — same
+    /// grep the append-only guard's own comment below cites) and never sets a bad RoleId there in
+    /// the first place, so neither limit weakens the real protection:
+    /// 1. Checked only on the two ASYNC overloads (unlike <see cref="EnforceAuditEventsAppendOnly"/>,
+    ///    which runs on every overload): hundreds of existing test fixtures across the suite seed a
+    ///    pre-DB-11f-shaped `User.RoleId = &lt;tenant role&gt;` via the SYNCHRONOUS SaveChanges()
+    ///    specifically, because that value was never read after DB-11a and is not itself under test.
+    /// 2. For an already-tracked Modified entry, only refused when THIS save actually changes RoleId
+    ///    — compared by VALUE (<c>OriginalValue</c> vs <c>CurrentValue</c>), not by the coarser
+    ///    <c>Property(RoleId).IsModified</c> flag: ~15 production call sites go through
+    ///    <c>IRepository&lt;User&gt;.Update(entity)</c> on an entity that is already tracked (loaded
+    ///    via a normal, tracked query earlier in the same request), which forces EVERY scalar
+    ///    property's IsModified flag true regardless of whether its value actually changed — it would
+    ///    make this guard fire on a row seeded with a stale tenant RoleId (by one of those same
+    ///    fixtures) merely because it was loaded and saved again for an unrelated field (email,
+    ///    password, preferences, …). Comparing values directly is unaffected by that and still
+    ///    refuses a genuine reassignment. An Added entry (a brand-new row) is always checked: nothing
+    ///    legitimate inserts a User with a tenant RoleId. Guarding the sync path and every already-bad
+    ///    seeded row too would require rewriting every one of those fixtures — out of scope for this
+    ///    pass, and for a shape and a path production code never produces or uses, respectively.</summary>
+    private void EnforcePlatformRoleInvariant()
+    {
+        var entries = ChangeTracker
+            .Entries<User>()
+            .Where(e => e.Entity.RoleId != null)
+            .Where(e =>
+                e.State == EntityState.Added
+                || (
+                    e.State == EntityState.Modified
+                    && !Equals(
+                        e.Property(nameof(User.RoleId)).OriginalValue,
+                        e.Property(nameof(User.RoleId)).CurrentValue
+                    )
+                )
+            )
+            .ToList();
+        if (entries.Count == 0)
+            return;
+
+        var roleIds = entries.Select(e => e.Entity.RoleId!.Value).Distinct().ToList();
+        var validRoleIds = Set<Role>()
+            .IgnoreQueryFilters()
+            .Where(r => roleIds.Contains(r.Id) && r.OwnerId == null && r.IsSuperAdmin)
+            .Select(r => r.Id)
+            .ToHashSet();
+
+        foreach (var e in entries)
+        {
+            if (!validRoleIds.Contains(e.Entity.RoleId!.Value))
+                throw new InvalidOperationException(
+                    $"DB-11f invariant: users.role_id ({e.Entity.RoleId}) must be null or a "
+                        + $"global super-admin role (user '{e.Entity.Email}')."
+                );
+        }
+    }
+
     // Review finding #12 (NIT): the append-only guard above used to run ONLY on
     // SaveChangesAsync(CancellationToken) — SaveChanges() and SaveChangesAsync(bool,
     // CancellationToken) are separate virtual entry points on DbContext (the sync path does not go
@@ -426,12 +490,14 @@ public class AppDbContext(
     )
     {
         EnforceAuditEventsAppendOnly();
+        EnforcePlatformRoleInvariant();
         return base.SaveChangesAsync(acceptAllChangesOnSuccess, ct);
     }
 
     public override Task<int> SaveChangesAsync(CancellationToken ct = default)
     {
         EnforceAuditEventsAppendOnly();
+        EnforcePlatformRoleInvariant();
 
         var now = DateTime.UtcNow;
         var uid = currentUser.Id ?? Guid.Empty;
