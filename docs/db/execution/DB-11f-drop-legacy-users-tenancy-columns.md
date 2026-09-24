@@ -1136,3 +1136,4 @@ originally-written literal form).
 - **Rehearsal on the same dump:** main and Part A booted in turn; as the production super admin and as a two-workspace Workspace Admin (password hash set on the local copy only): `/api/auth/me` ×2, `/api/admin/tenants` (3), `/api/admin/users` (4 as admin), `/api/me/profile`, `/api/admin/workspace`, login workspace picker (same `isHome`) — **identical responses**; no `DB-11f invariant`, 23503 or 42703 in either log.
 - **Local e2e gate PASS** twice (before and after the review fixes).
 - Pre-existing, not DB-11f: a password login by a multi-workspace identity writes no `auth.login.succeeded` audit row (AUDIT GAP error line; strict coverage is off in production) — follow-up.
+- **Deployed 2026-09-24 05:05 UTC** (ordinary, via agy): deploy OK, `/health` 200, no pending migration, 0 invariant/23503/42703/Error lines in the first 3 min. 24 h watch → Part B not before **2026-09-25 05:05 UTC**.
