@@ -16,6 +16,14 @@ public static class AuditActions
     public const string AuthLoginSucceeded = "auth.login.succeeded";
     public const string AuthLoginFailed = "auth.login.failed";
 
+    /// <summary>An intermediate login step: credentials (password) verified but no session was
+    /// issued yet — DB-11b's choose-workspace picker (several live memberships) or R5-61's
+    /// mfa_required challenge (super admin with TOTP enrolled). The eventual `auth.login.succeeded`
+    /// row is written later, by SwitchWorkspaceAsync or VerifyMfaLoginAsync respectively — this row
+    /// exists so the coverage filter (AUDIT GAP) sees SOMETHING was written for the 200 the picker
+    /// / mfa_required branches return, without inventing a session that does not exist yet.</summary>
+    public const string AuthLoginCredentialsVerified = "auth.login.credentials_verified";
+
     /// <summary>Reserved: DB-11b <c>SwitchWorkspaceAsync</c>.</summary>
     public const string AuthWorkspaceSwitched = "auth.workspace_switched";
 

@@ -133,6 +133,33 @@ public class AuthService : IAuthService
             )
         );
 
+    /// <summary>auth.login.credentials_verified — an intermediate login step: credentials verified
+    /// but no session exists yet (DB-11b's choose-workspace picker, or R5-61's mfa_required
+    /// challenge). `owner` is always null — no workspace has been chosen. The caller is anonymous
+    /// (no bearer token, so `ICurrentUser` resolves to nothing to infer an actor from), same as
+    /// <see cref="AuditLoginFailedAsync"/> above — the identity is known from the verified
+    /// credentials, so the actor is always overridden to it, never left to the writer's ordinary
+    /// (anonymous ⇒ System) inference. `actorKind` defaults to User (the choose-workspace picker is
+    /// only reached by non-super-admin identities); the mfa_required call site below overrides it
+    /// to SuperAdmin, mirroring VerifyMfaLoginAsync's own AuditLoginSucceededAsync override.</summary>
+    private Task AuditLoginCredentialsVerifiedAsync(
+        User user,
+        string source,
+        string next,
+        AuditActorKind actorKind = AuditActorKind.User
+    ) =>
+        _audit.WriteAsync(
+            new AuditEntry(
+                AuditActions.AuthLoginCredentialsVerified,
+                AuditTargets.User,
+                user.PublicId.ToString(),
+                null,
+                After: new Dictionary<string, string> { ["source"] = source, ["next"] = next },
+                ActorUserIdOverride: user.PublicId,
+                ActorKindOverride: actorKind
+            )
+        );
+
     /// <summary>auth.login.failed — password path. Identity resolved (even with the wrong password)
     /// → target user/public_id (actor override); unknown e-mail → email_hash (D12.3: never the raw
     /// address).</summary>
@@ -870,6 +897,13 @@ public class AuthService : IAuthService
                     // ever sees `status`, and a bearer token has no business living in a 4xx body
                     // that proxies/error loggers may capture. The widget and CLI already branch on
                     // `status` (not HTTP status), so this changes nothing for them.
+                    //
+                    // AUDIT GAP fix: this 200 issues a selection token with no session yet — the
+                    // eventual session-establishing row (SwitchWorkspaceAsync's own
+                    // auth.workspace_switched) is written later, once a workspace is actually
+                    // chosen. Write the intermediate row now so the coverage filter sees this
+                    // request wrote SOMETHING (never auth.login.succeeded here — no session exists).
+                    await AuditLoginCredentialsVerifiedAsync(user, "password", "choose-workspace");
                     return Result<LoginResponse>.Success(
                         new LoginResponse
                         {
@@ -896,6 +930,16 @@ public class AuthService : IAuthService
         // same per-e-mail budget as a wrong password).
         if (user.Role?.IsSuperAdmin == true && user.TotpEnabledAt != null)
         {
+            // AUDIT GAP fix: same shape as the choose-workspace branch above — credentials
+            // verified, no session yet (the eventual auth.login.succeeded is written by
+            // VerifyMfaLoginAsync once the TOTP/recovery code checks out). ActorKind is SuperAdmin
+            // here, not the default User, mirroring VerifyMfaLoginAsync's own override.
+            await AuditLoginCredentialsVerifiedAsync(
+                user,
+                "password",
+                "mfa",
+                AuditActorKind.SuperAdmin
+            );
             return Result<LoginResponse>.Success(
                 new LoginResponse
                 {
