@@ -1164,7 +1164,7 @@ async function reportBuildFor(server, token, cwd2, project, sha) {
     applied = res?.items ?? res ?? [];
   } catch (err) {
     if (err instanceof ApiError && err.code === 423) {
-      console.warn("Pointer workspace is paused \u2014 build not reported.");
+      console.warn(`Pointer: ${err.message || "workspace is paused"} \u2014 build not reported.`);
       return 0;
     }
     console.error(`[${project}] Could not read applied comments: ${err?.message ?? err}`);
@@ -1182,7 +1182,7 @@ async function reportBuildFor(server, token, cwd2, project, sha) {
     return result?.deployedCommentIds?.length ?? 0;
   } catch (err) {
     if (err instanceof ApiError && err.code === 423) {
-      console.warn("Pointer workspace is paused \u2014 build not reported.");
+      console.warn(`Pointer: ${err.message || "workspace is paused"} \u2014 build not reported.`);
       return 0;
     }
     console.error(`[${project}] Could not report the build: ${err?.message ?? err}`);
@@ -12315,6 +12315,7 @@ async function whoamiCommand(cwd2, options = {}) {
 
 // src/cli.ts
 init_build_constants();
+init_api();
 import { argv, cwd } from "node:process";
 function parseArgs(args) {
   const parsed = {};
@@ -12671,6 +12672,10 @@ Options:
   }
 }
 main().catch((err) => {
+  if (err instanceof ApiError && err.code === 423) {
+    console.error(err.message || "Workspace is paused or scheduled for deletion.");
+    process.exit(2);
+  }
   console.error("Fatal error:", err);
   process.exit(1);
 });

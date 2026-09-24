@@ -61,7 +61,9 @@ async function reportBuildFor(
     // workspace must never fail their build, so this is a warning, not an error (exit 2 is
     // reserved for `apply`/`apply --plan`/`apply --mark`; the caller still exits 0).
     if (err instanceof ApiError && err.code === 423) {
-      console.warn('Pointer workspace is paused — build not reported.');
+      // DB-18 NIT: print the server's own message — it distinguishes "paused" from "scheduled for
+      // deletion", which a hard-coded "paused" string here would flatten into a misleading label.
+      console.warn(`Pointer: ${err.message || 'workspace is paused'} — build not reported.`);
       return 0;
     }
     console.error(`[${project}] Could not read applied comments: ${err?.message ?? err}`);
@@ -86,7 +88,7 @@ async function reportBuildFor(
     return result?.deployedCommentIds?.length ?? 0;
   } catch (err: any) {
     if (err instanceof ApiError && err.code === 423) {
-      console.warn('Pointer workspace is paused — build not reported.');
+      console.warn(`Pointer: ${err.message || 'workspace is paused'} — build not reported.`);
       return 0;
     }
     console.error(`[${project}] Could not report the build: ${err?.message ?? err}`);
