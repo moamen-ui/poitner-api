@@ -511,7 +511,9 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
     this.renderChrome();
     this.renderSidebar();
     this.renderPins();
-    this.toast(t('paused.notice'), 'error');
+    // DB-18 (Opus NIT): informational, not an error — the workspace being paused is an expected,
+    // reversible admin action, not a failure on the visitor's part.
+    this.toast(t('paused.notice'));
   }
 
   private _stylesPromise: Promise<void> | null = null;
@@ -1694,6 +1696,10 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
     this.picking ? this.stopPicking() : this.startPicking();
   }
   startPicking(): void {
+    // DB-18 (Opus LOW): the add-comment shortcut calls this directly, bypassing the toolbar button
+    // that render*() already hides while paused — guard here too so a stale keybinding never opens
+    // picking mode on a read-only workspace.
+    if (this._paused) return;
     this.picking = true;
     // Pins are `pointer-events: auto` so they can be clicked to open their comment — which means a
     // pin sitting over an element makes that element impossible to comment on: the click retargets
@@ -2197,7 +2203,10 @@ export class PointerFeedback extends HTMLElement implements PointerHost {
       if (blob) {
         const url = await this.uploadToServer(blob);
         if (url) element!.screenshotUrl = url;
-        else this.toast(t('toast.screenshotUploadFailed'), 'error');
+        // DB-18 (Opus LOW): uploadToServer's own 423 branch already flips to read-only and toasts
+        // paused.notice once — a generic "upload failed" toast on top of that is a double toast for
+        // the same event and is actively wrong (the upload was skipped, not failed).
+        else if (!this._paused) this.toast(t('toast.screenshotUploadFailed'), 'error');
       }
     }
 
