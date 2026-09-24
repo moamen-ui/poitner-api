@@ -17,6 +17,7 @@ public class UploadsController(
     IFileStorage fileStorage,
     IUnitOfWork unitOfWork,
     IUploadSigner uploadSigner,
+    IPublicBaseUrl publicBaseUrl,
     IWebHostEnvironment env) : ControllerBase
 {
     private const long MaxBytes = 5_242_880; // 5 MB
@@ -113,8 +114,11 @@ public class UploadsController(
             var relativePath = await fileStorage.SaveAsync(ownerSegment, keyNormalized, stream, extension.ToLowerInvariant());
 
             var fileName = Path.GetFileName(relativePath);
-            // Return a short-lived HMAC-signed URL instead of a permanent public path.
-            var url = uploadSigner.SignedUrl(relativePath);
+            // Return a short-lived HMAC-signed URL instead of a permanent public path. Made absolute
+            // (API public origin) — the widget runs on the customer's own origin and the dashboard on
+            // its own, so a relative "/api/uploads/file?..." path would resolve against THEIR origin,
+            // not the API's, and the <img> would 404/serve the wrong document.
+            var url = publicBaseUrl.Absolutize(uploadSigner.SignedUrl(relativePath));
 
             return Ok(Result<UploadResponse>.Success(new UploadResponse
             {

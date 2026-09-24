@@ -12,6 +12,7 @@ using Pointer.API.Middleware;
 using Pointer.API.Seed;
 using Pointer.API.Startup;
 using Pointer.Application;
+using Pointer.Application.Abstractions;
 using Pointer.Application.Common;
 using Pointer.Application.Response;
 using Pointer.Application.Services.Interfaces;
@@ -105,6 +106,13 @@ builder.Services.Configure<Microsoft.AspNetCore.Mvc.ApiBehaviorOptions>(options 
 });
 builder.Services.AddApplication();
 builder.Services.AddInfrastructure(builder.Configuration);
+
+// Screenshot-URL fix: Application-layer code that hands a signed upload URL to a client
+// (widget/dashboard/CLI) needs it absolute, not relative to whatever origin the client happens to be
+// running on. Implemented in the API layer (Application can't touch HttpContext). IHttpContextAccessor
+// is already registered by AddInfrastructure().
+builder.Services.AddScoped<IPublicBaseUrl, HttpContextPublicBaseUrl>();
+
 builder.Services.AddJwtAuth(builder.Configuration);
 builder.Services.AddAuthorization();
 builder.Services.AddHostedService<DemoCleanupService>();

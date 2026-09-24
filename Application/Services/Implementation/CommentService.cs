@@ -31,6 +31,7 @@ public class CommentService : ICommentService
     private readonly IAuditWriter _audit;
 
     private readonly ICurrentClient? _currentClient;
+    private readonly IPublicBaseUrl? _publicBaseUrl;
 
     public CommentService(
         IUnitOfWork unitOfWork,
@@ -45,7 +46,8 @@ public class CommentService : ICommentService
         INotificationService? notificationService = null,
         ICommentFieldService? commentFields = null,
         IMembershipService? memberships = null,
-        IAuditWriter? audit = null
+        IAuditWriter? audit = null,
+        IPublicBaseUrl? publicBaseUrl = null
     )
     {
         _unitOfWork = unitOfWork;
@@ -57,6 +59,7 @@ public class CommentService : ICommentService
         _settings = settings;
         _entitlements = entitlements;
         _currentClient = currentClient;
+        _publicBaseUrl = publicBaseUrl;
         _audit = audit ?? NoopAuditWriter.Instance;
         _notificationService =
             notificationService ?? new NotificationService(unitOfWork, currentUser);
@@ -1390,12 +1393,16 @@ public class CommentService : ICommentService
             ParentInfo = entity.ParentInfo,
             // Re-sign at every read so the returned URL is always fresh (never a stale/leaked permanent
             // path). DB-13 review fix #2: clamped to the impersonating operator's session ExpiresAt
-            // (null for every ordinary caller) so the URL cannot outlive the session.
+            // (null for every ordinary caller) so the URL cannot outlive the session. Made absolute
+            // (API public origin) so <img src> resolves correctly on the widget's/dashboard's own
+            // origin rather than the relative path's — the signature itself is unaffected.
             ScreenshotUrl = string.IsNullOrEmpty(entity.ScreenshotUrl)
                 ? entity.ScreenshotUrl
-                : _uploadSigner.SignedUrl(
-                    _uploadSigner.ExtractRelPath(entity.ScreenshotUrl),
-                    _currentUser.ImpersonationExpiresAt
+                : _publicBaseUrl.Absolutize(
+                    _uploadSigner.SignedUrl(
+                        _uploadSigner.ExtractRelPath(entity.ScreenshotUrl),
+                        _currentUser.ImpersonationExpiresAt
+                    )
                 ),
             PageUrl = entity.PageUrl,
             Route = entity.Route,
@@ -1564,11 +1571,15 @@ public class CommentService : ICommentService
             SourcePath = comment.Element.SourcePath,
             // Re-sign at every read so the returned URL is always fresh (never a stale/leaked permanent
             // path). DB-13 review fix #2: clamped to the impersonating operator's session ExpiresAt.
+            // Made absolute (API public origin): this DTO is handed to the apply queue / CLI / MCP,
+            // where a relative URL is useless to an AI agent operating outside any browser origin.
             ScreenshotUrl = string.IsNullOrEmpty(comment.Element.ScreenshotUrl)
                 ? comment.Element.ScreenshotUrl
-                : _uploadSigner.SignedUrl(
-                    _uploadSigner.ExtractRelPath(comment.Element.ScreenshotUrl),
-                    _currentUser.ImpersonationExpiresAt
+                : _publicBaseUrl.Absolutize(
+                    _uploadSigner.SignedUrl(
+                        _uploadSigner.ExtractRelPath(comment.Element.ScreenshotUrl),
+                        _currentUser.ImpersonationExpiresAt
+                    )
                 ),
             Classes = ParseJsonOrRaw(comment.Element.Classes),
             ComputedStyles = ParseJsonOrRaw(comment.Element.ComputedStyles),
