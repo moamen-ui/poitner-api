@@ -365,6 +365,21 @@ membership's workspace), `stamp` (identity `users.security_stamp`) and `mstamp` 
   `ICurrentUser` (`Infrastructure/CurrentUser/HttpCurrentUser.cs:9-16` is the one parser) and compare `Guid`s; a component that cannot use DI-scoped
   `ICurrentUser` (the token validator) uses `Guid.TryParse(FindFirst(Sub) ?? FindFirst("sub"))` and fails the request when it does not parse
   (`AuthenticationExtensions.cs:61-66`). A doc that writes `u.PublicId == sub` is wrong by construction.
+- *(added 2026-09-24, DB-18 §5 task 19 — R16 amendment)* **Two documented departures for a
+  workspace-scoped, multi-step, token-redeeming flow** (DB-18's e-mail-confirmed workspace deletion
+  is the precedent):
+  - **Rate limiting:** an anonymous endpoint that redeems a scoped token may use a dedicated
+    fixed-window policy instead of the general `"signup"` policy when the flow needs several calls
+    per link (preview, confirm, retries) — DB-18's `"danger"` policy is 10 requests / 10 min,
+    partitioned by `sub` claim + IP when authenticated, IP otherwise. `"signup"`'s 5/h/IP budget is
+    shared with signup and password reset and is too small for a flow with its own preview step.
+  - **Single-use without an identity-stamp rotation:** single-use may come from **state bound into
+    the token's payload** (DB-18: `deletion_requested_at` + `deletion_scheduled_for` on the
+    workspace row) instead of rotating an identity/membership stamp, when the event is
+    workspace-scoped and the session must survive it (the admin stays signed in to cancel or export
+    during the grace period). The token still binds the identity's current stamp for revocation
+    (a password change or erase still kills the link); it just does not rotate anything itself on
+    redemption.
 
 ## R17. Append-only tables and the audit obligation *(added 2026-09-22 late night, DB-12)*
 
@@ -414,3 +429,31 @@ Consequences for every later change:
 - **`TryRequireOwner` under impersonation** returns false (operators own nothing). Every workspace-scoped **read** endpoint that an impersonating operator
   should see uses the two-line branch `if (_currentUser.IsImpersonating && _currentUser.TenantId is Guid t) owner = t; else if (!TenantStamp.TryRequireOwner(...)) return Forbidden(...)`
   (DB-12 §3.8a, DB-15 §3.5). Writes never get that branch — the fence rejects them anyway.
+
+## R19. Workspace freeze (pause / scheduled deletion) coverage *(added 2026-09-24, DB-18 §5 task 19)*
+
+Every new mutating action is either gated by `WorkspaceFrozenFilter` (the default — no attribute
+needed) or carries `[AllowWhenWorkspacePaused]` with a one-line reason in the same commit explaining
+why it is safe to run against a frozen workspace. Consequences:
+
+- **`Tests/WorkspaceFreezeCoverageTests.cs` pins the exact list** of controllers/actions carrying
+  `[AllowWhenWorkspacePaused]` — a PR that adds or removes one updates the pinned list in the same
+  commit; the test failing is the signal that the change needs a reviewer's eyes, not a rubber stamp.
+- **A new anonymous path that can create a membership** (an invite-accept-style endpoint, a future
+  self-serve join flow) checks `IWorkspaceStateService.GetAsync(ownerId).IsFrozen` and refuses with
+  `MessageKeys.Workspace.FrozenNoNewMembers` — new members while frozen are refused by default (D18.11).
+- **Access-*removing* admin actions are always exempt**, even though they mutate: disabling,
+  demoting away from an admin role, removing a member, revoking an invite/quick-link, and rejecting a
+  pending applicant all carry `[AllowWhenWorkspacePaused]` — a freeze must never stop an admin from
+  locking someone out (Opus HIGH 2, DB-18 §3.5). A route that can both grant and revoke in the same
+  request (e.g. `PATCH users/{id}`) keeps the attribute (so the revoking cases pass) but the
+  **service** itself refuses the specific fields that would grant access (`Password`, `IsActive:
+  true`, an admin-tier `RoleId`) while frozen — never the whole route.
+- **Every tracked entity load that can run without a usable tenant claim** (an anonymous
+  token-redemption endpoint, a hosted job) uses `IgnoreQueryFilters()` with an explicit
+  `Id == x && DeletedAt == null` predicate — never a bare `_unitOfWork.<Set>.FirstOrDefaultAsync(...)`,
+  which silently returns nothing once the strict-own query filter has no tenant claim to match
+  against (DB-18 code review, both reviewers, BLOCKER — every anonymous confirm/pause-instead/
+  preview path and the reminder job hit exactly this before the fix). A PR touching a lifecycle-style
+  anonymous or job method greps its own diff for `.FirstOrDefaultAsync(w =>` and confirms
+  `IgnoreQueryFilters()` precedes every one that is not inside an already-tenant-scoped session guard.
