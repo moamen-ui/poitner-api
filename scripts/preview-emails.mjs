@@ -26,6 +26,7 @@ const outDir = join(workDir, 'html');
 
 const PROGRAM_CS = `
 using System.Text.Json;
+using Pointer.Application.Common;
 using Pointer.Application.Common.Email;
 
 var productName = "Pointer";
@@ -75,6 +76,52 @@ var templates = new Dictionary<string, string>
     ["17-impersonation-notice"] = EmailTemplateBuilder.ImpersonationNotice(
         "Ada Lovelace", productName, "Acme Inc", started, 15, "investigating a support ticket", brand, app),
 };
+
+// ── DB-18 workspace-lifecycle e-mails (en + rtl ar) — built via WorkspaceLifecycleEmails.Build,
+// same entry point WorkspaceLifecycleService uses. ─────────────────────────────────────────────
+var scheduledFor = DateTime.UtcNow.AddDays(14);
+var deletedAt = DateTime.UtcNow;
+foreach (var lang in new[] { "en", "ar" })
+{
+    var suffix = lang == "ar" ? "-ar" : "";
+
+    var confirmModel = new WorkspaceLifecycleEmailModel(
+        "Acme Inc", productName, app,
+        Link: $"{app}/confirm-workspace-deletion?token=preview-token",
+        GraceDays: 14, BrandColor: brand, LogoUrl: null);
+    var (_, confirmHtml) = WorkspaceLifecycleEmails.Build(
+        WorkspaceLifecycleEmailKind.ConfirmDeletion, lang, confirmModel);
+    templates[$"18-workspace-confirm-deletion{suffix}"] = confirmHtml;
+
+    var scheduledModel = new WorkspaceLifecycleEmailModel(
+        "Acme Inc", productName, app,
+        ScheduledFor: scheduledFor, ActorName: "Ada Lovelace",
+        BrandColor: brand, LogoUrl: null);
+    var (_, scheduledHtml) = WorkspaceLifecycleEmails.Build(
+        WorkspaceLifecycleEmailKind.Scheduled, lang, scheduledModel);
+    templates[$"19-workspace-deletion-scheduled{suffix}"] = scheduledHtml;
+
+    var reminderModel = new WorkspaceLifecycleEmailModel(
+        "Acme Inc", productName, app,
+        ScheduledFor: scheduledFor, BrandColor: brand, LogoUrl: null);
+    var (_, reminderHtml) = WorkspaceLifecycleEmails.Build(
+        WorkspaceLifecycleEmailKind.Reminder, lang, reminderModel);
+    templates[$"20-workspace-deletion-reminder{suffix}"] = reminderHtml;
+
+    var deletedModel = new WorkspaceLifecycleEmailModel(
+        "Acme Inc", productName, app,
+        ScheduledFor: deletedAt, BackupDays: 30, BrandColor: brand, LogoUrl: null);
+    var (_, deletedHtml) = WorkspaceLifecycleEmails.Build(
+        WorkspaceLifecycleEmailKind.Deleted, lang, deletedModel);
+    templates[$"21-workspace-deleted{suffix}"] = deletedHtml;
+
+    var cancelledModel = new WorkspaceLifecycleEmailModel(
+        "Acme Inc", productName, app,
+        ActorName: "Ada Lovelace", StillPaused: true, BrandColor: brand, LogoUrl: null);
+    var (_, cancelledHtml) = WorkspaceLifecycleEmails.Build(
+        WorkspaceLifecycleEmailKind.Cancelled, lang, cancelledModel);
+    templates[$"22-workspace-deletion-cancelled{suffix}"] = cancelledHtml;
+}
 
 Console.Write(JsonSerializer.Serialize(templates));
 

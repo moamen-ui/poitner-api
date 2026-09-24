@@ -443,7 +443,9 @@ public class WorkspaceLifecycleService : IWorkspaceLifecycleService
                     brand.ProductName,
                     brand.Urls.App,
                     Link: link,
-                    GraceDays: graceDays
+                    GraceDays: graceDays,
+                    BrandColor: brand.PrimaryColor,
+                    LogoUrl: brand.Assets.Logo
                 )
             );
             await _emailService.SendAsync(ctx.Identity.Email, subject, html);
@@ -1448,7 +1450,9 @@ public class WorkspaceLifecycleService : IWorkspaceLifecycleService
                         due.Name,
                         brand.ProductName,
                         brand.Urls.App,
-                        ScheduledFor: now
+                        ScheduledFor: now,
+                        BrandColor: brand.PrimaryColor,
+                        LogoUrl: brand.Assets.Logo
                     )
                 );
                 await _emailService.SendAsync(r.Email, subject, html);
@@ -1511,7 +1515,9 @@ public class WorkspaceLifecycleService : IWorkspaceLifecycleService
                         GraceDays: graceDays,
                         ScheduledFor: scheduledFor,
                         ActorName: actorName,
-                        StillPaused: stillPaused
+                        StillPaused: stillPaused,
+                        BrandColor: brand.PrimaryColor,
+                        LogoUrl: brand.Assets.Logo
                     )
                 );
                 await _emailService.SendAsync(r.Email, subject, html);

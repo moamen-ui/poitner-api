@@ -27,6 +27,30 @@ public class EmailTemplateBuilderTests
     }
 
     [Fact]
+    public void Layout_Wrap_DefaultLang_IsEnglishByteForByte()
+    {
+        var contentHtml = "<p>hello</p>";
+        var withoutLang = EmailLayout.Wrap(contentHtml, "Pointer");
+        var withExplicitEn = EmailLayout.Wrap(contentHtml, "Pointer", lang: "en");
+
+        Assert.Equal(withoutLang, withExplicitEn);
+        Assert.Contains("<html lang=\"en\">", withoutLang);
+        Assert.DoesNotContain("dir=\"rtl\"", withoutLang);
+    }
+
+    [Fact]
+    public void Layout_Wrap_ArabicLang_RendersRtlShell()
+    {
+        var html = EmailLayout.Wrap("<p>مرحبا</p>", "Pointer", lang: "ar");
+
+        Assert.Contains("<html lang=\"ar\" dir=\"rtl\">", html);
+        Assert.Contains("class=\"email-content\" dir=\"rtl\"", html);
+        Assert.Contains("text-align:right;", html);
+        // The card shell itself is unchanged — only lang/dir and text alignment differ.
+        Assert.Contains("max-width:580px", html);
+    }
+
+    [Fact]
     public void Layout_DefaultsToBrandBlue_WhenNoPrimaryColorGiven()
     {
         var html = EmailTemplateBuilder.VerifyEmail(Link, "user@acme.com", "Pointer");
