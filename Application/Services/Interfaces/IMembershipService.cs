@@ -50,9 +50,10 @@ public interface IMembershipService
 
     /// <summary>
     /// Builds (does not persist) a brand-new identity. PublicId = NewGuid; Email is normalised. The
-    /// legacy OwnerId/RoleId are dual-written (first workspace / first role) and never read after
-    /// DB-11a. The caller stages it via its own AddAsync.
+    /// caller stages it via its own AddAsync.
     /// </summary>
+    /// <remarks>DB-11f: firstRole/firstWorkspaceId are no longer stored on the identity — the
+    /// caller's JoinAsync records them on the membership. Kept for call-site stability.</remarks>
     User NewIdentity(
         string email,
         string passwordHash,

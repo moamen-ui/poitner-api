@@ -153,10 +153,6 @@ public class DemoService : IDemoService
             Email = email,
             PasswordHash = _passwordHasher.Hash(password),
             DisplayName = "Demo User",
-            RoleId = role.Id,
-            // Legacy (DB-11a) — written once at creation, never read (DB-11f Part A); dropped by DB-11f Part B.
-            OwnerId = workspaceId,
-            ApprovalStatus = ApprovalStatus.Approved,
             IsActive = true,
             IsDemo = true,
             RecipientEmail = recipientEmail,

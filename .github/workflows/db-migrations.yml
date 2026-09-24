@@ -60,8 +60,8 @@ jobs:
         run: |
           PGPASSWORD=pointer psql -h localhost -U pointer -d pointer -c "INSERT INTO roles (name, is_super_admin, grants_admin, quick_access, is_active, is_system, created_at, created_by) VALUES ('db11a-ci', false, false, false, true, false, now(), '00000000-0000-0000-0000-000000000000') ON CONFLICT DO NOTHING;" || true
           rid=$(PGPASSWORD=pointer psql -h localhost -U pointer -d pointer -tAc "SELECT id FROM roles ORDER BY id LIMIT 1")
-          PGPASSWORD=pointer psql -h localhost -U pointer -d pointer -c "INSERT INTO users (public_id, email, password_hash, display_name, role_id, is_active, approval_status, security_stamp, is_demo, created_at, created_by) VALUES (gen_random_uuid(), 'ci-dup@example.com', 'x', 'a', $rid, true, 1, gen_random_uuid(), false, now(), '00000000-0000-0000-0000-000000000000');"
-          err=$(PGPASSWORD=pointer psql -h localhost -U pointer -d pointer -v ON_ERROR_STOP=0 -c "INSERT INTO users (public_id, email, password_hash, display_name, role_id, is_active, approval_status, security_stamp, is_demo, created_at, created_by) VALUES (gen_random_uuid(), 'CI-Dup@Example.com', 'x', 'b', $rid, true, 1, gen_random_uuid(), false, now(), '00000000-0000-0000-0000-000000000000');" 2>&1 || true)
+          PGPASSWORD=pointer psql -h localhost -U pointer -d pointer -c "INSERT INTO users (public_id, email, password_hash, display_name, role_id, is_active, security_stamp, is_demo, created_at, created_by) VALUES (gen_random_uuid(), 'ci-dup@example.com', 'x', 'a', $rid, true, gen_random_uuid(), false, now(), '00000000-0000-0000-0000-000000000000');"
+          err=$(PGPASSWORD=pointer psql -h localhost -U pointer -d pointer -v ON_ERROR_STOP=0 -c "INSERT INTO users (public_id, email, password_hash, display_name, role_id, is_active, security_stamp, is_demo, created_at, created_by) VALUES (gen_random_uuid(), 'CI-Dup@Example.com', 'x', 'b', $rid, true, gen_random_uuid(), false, now(), '00000000-0000-0000-0000-000000000000');" 2>&1 || true)
           echo "$err" | grep -q "ux_users_email_live"
       - name: audit_events is append-only (DB-12 trigger)
         run: |

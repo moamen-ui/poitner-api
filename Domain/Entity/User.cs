@@ -10,14 +10,13 @@ public class User : BaseEntity
     public string DisplayName { get; set; } = string.Empty;
 
     /// <summary>
-    /// <b>Platform role (DB-11f).</b> Read ONLY for super admins (Role.IsSuperAdmin checks,
-    /// UserMapper.SessionRole). For every other identity it is a legacy copy of the first
-    /// membership's role — written at creation, never read — and DB-11f Part B sets it to NULL.
+    /// <b>Platform role (DB-11f).</b> Non-null only for super admins (the global is_super_admin
+    /// role); NULL for every other identity. Read via Role.IsSuperAdmin / UserMapper.SessionRole.
     /// </summary>
-    public int RoleId { get; set; }
+    public int? RoleId { get; set; }
 
     /// <summary>See <see cref="RoleId"/> — the platform role (DB-11f).</summary>
-    public Role Role { get; set; } = null!;
+    public Role? Role { get; set; }
 
     /// <summary>
     /// Identity-level switch (false only after erase/merge). Per-workspace enable/disable is
@@ -25,12 +24,6 @@ public class User : BaseEntity
     /// </summary>
     public bool IsActive { get; set; } = true;
 
-    /// <summary>
-    /// Legacy (DB-11a). Never read since DB-11f Part A (super admins are always Approved —
-    /// AdminSeeder); dropped by DB-11f Part B. Per-workspace approval is
-    /// <see cref="WorkspaceMembership.ApprovalStatus"/>.
-    /// </summary>
-    public ApprovalStatus ApprovalStatus { get; set; } = ApprovalStatus.Approved;
     public string? Language { get; set; }
     public string? Theme { get; set; }
 
@@ -49,10 +42,6 @@ public class User : BaseEntity
     /// </summary>
     public Guid SecurityStamp { get; set; } = Guid.NewGuid();
 
-    /// <summary><b>Legacy (DB-11a).</b> The creation workspace. Not read since DB-11f Part A (home =
-    /// IMembershipService.HomeWorkspaceIdAsync); only TenantService's legacy-pointer maintenance
-    /// writes it. Dropped by DB-11f Part B.</summary>
-    public Guid? OwnerId { get; set; }
     public bool IsDemo { get; set; }
 
     /// <summary>The real human email entered at demo provisioning time. Null for non-demo users. Cleared on upgrade.</summary>

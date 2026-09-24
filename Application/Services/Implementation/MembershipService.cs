@@ -139,12 +139,8 @@ public class MembershipService(IUnitOfWork unitOfWork) : IMembershipService
             Email = EmailNormalizer.NormalizeRequired(email),
             PasswordHash = passwordHash,
             DisplayName = displayName,
-            // Legacy dual-write, never read since DB-11f Part A (RoleId only, no Role navigation — see JoinAsync); removed by DB-11f Part B.
-            RoleId = firstRole.Id,
-            OwnerId = firstWorkspaceId,
             PasswordlessOnly = passwordlessOnly,
             IsActive = true,
-            ApprovalStatus = ApprovalStatus.Approved,
             SecurityStamp = Guid.NewGuid(),
         };
 

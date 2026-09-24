@@ -195,7 +195,6 @@ public static class AdminSeeder
                         DisplayName = "Administrator",
                         RoleId = adminRoleId,
                         IsActive = true,
-                        ApprovalStatus = ApprovalStatus.Approved,
                         PublicId = Guid.NewGuid(),
                         // DB-14: configured on the server — the operator vouches for it.
                         EmailVerifiedAt = DateTime.UtcNow,
@@ -220,8 +219,6 @@ public static class AdminSeeder
                     user.RoleId = adminRoleId;
                 if (!user.IsActive)
                     user.IsActive = true;
-                if (user.ApprovalStatus != ApprovalStatus.Approved)
-                    user.ApprovalStatus = ApprovalStatus.Approved;
                 if (!hasher.Verify(adminPassword, user.PasswordHash))
                     user.PasswordHash = hasher.Hash(adminPassword);
                 // DB-14: an operator account seeded before this column existed reconciles to verified.

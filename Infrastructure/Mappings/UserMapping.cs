@@ -26,34 +26,19 @@ public class UserMapping : IEntityTypeConfiguration<User>
         // *_AddUsersEmailLiveUniqueIndex (DB-11a GLM A1),
         // deliberately NOT modelled (EF cannot express lower()); do not add a HasIndex for it.
         b.Property(x => x.Email).HasColumnName("email").IsRequired().HasMaxLength(256);
-        b.HasIndex(x => new { x.Email, x.OwnerId })
-            .IsUnique()
-            .HasFilter("deleted_at IS NULL")
-            .AreNullsDistinct(false)
-            .HasDatabaseName("ux_users_email_owner_live");
         b.Property(x => x.PasswordHash).HasColumnName("password_hash").IsRequired();
         b.Property(x => x.PasswordlessOnly)
             .HasColumnName("passwordless_only")
             .HasDefaultValue(false);
         b.Property(x => x.DisplayName).HasColumnName("display_name").IsRequired().HasMaxLength(128);
-        b.Property(x => x.RoleId).HasColumnName("role_id").IsRequired();
+        b.Property(x => x.RoleId).HasColumnName("role_id");
         b.Property(x => x.IsActive).HasColumnName("is_active");
-        b.Property(x => x.ApprovalStatus)
-            .HasColumnName("approval_status")
-            .HasDefaultValue(Pointer.Domain.Enums.ApprovalStatus.Approved);
         b.Property(x => x.Language).HasColumnName("language").HasMaxLength(8);
         b.Property(x => x.Theme).HasColumnName("theme").HasMaxLength(8);
         b.Property(x => x.AddCommentShortcut)
             .HasColumnName("add_comment_shortcut")
             .HasMaxLength(40);
         b.Property(x => x.SecurityStamp).HasColumnName("security_stamp");
-        b.Property(x => x.OwnerId).HasColumnName("owner_id");
-        b.HasOne<Workspace>()
-            .WithMany()
-            .HasForeignKey(x => x.OwnerId)
-            .OnDelete(DeleteBehavior.Restrict)
-            .HasConstraintName("fk_users_workspaces_owner_id");
-        b.HasIndex(x => x.OwnerId);
         b.Property(x => x.IsDemo).HasColumnName("is_demo");
         b.Property(x => x.RecipientEmail).HasColumnName("recipient_email").HasMaxLength(256);
         b.Property(x => x.ErasedAt).HasColumnName("erased_at");
@@ -66,9 +51,11 @@ public class UserMapping : IEntityTypeConfiguration<User>
         // no existing column touched). See User.TotpLastStep doc comment.
         b.Property(x => x.TotpLastStep).HasColumnName("totp_last_step");
 
+        // DB-11f: the platform role — optional; non-null only for super admins.
         b.HasOne(x => x.Role)
             .WithMany(r => r.Users)
             .HasForeignKey(x => x.RoleId)
+            .IsRequired(false)
             .OnDelete(DeleteBehavior.Restrict);
 
         // Non-null ⇔ this row was merged into another identity by the DB-11a same-e-mail merge.

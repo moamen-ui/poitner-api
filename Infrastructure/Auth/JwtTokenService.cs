@@ -169,7 +169,7 @@ public class JwtTokenService(IOptions<JwtOptions> opts) : ITokenService
             new Claim(JwtRegisteredClaimNames.Sub, operatorUser.PublicId.ToString()),
             new Claim("email", operatorUser.Email),
             new Claim("name", operatorUser.DisplayName),
-            new Claim("role_id", operatorUser.RoleId.ToString()),
+            new Claim("role_id", (operatorUser.RoleId ?? 0).ToString()),
             new Claim("role", role?.Name ?? string.Empty),
             new Claim("is_admin", "true"),
             new Claim("is_super_admin", "true"),
