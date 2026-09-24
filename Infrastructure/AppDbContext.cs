@@ -98,6 +98,19 @@ public class AppDbContext(
         // users.owner_id. Any membership counts, INCLUDING ended ones — a person who left still
         // authored comments the workspace can see, and their name must resolve. Listing "current
         // members" always filters LeftAt == null explicitly at the call site (DB-RULES R8.7).
+        // DB-11f: the null-tenant (non-strict) bucket for identities is the platform role (super
+        // admins) — exactly today's users.owner_id IS NULL set. It is deliberately NOT an
+        // emptiness check on the Memberships collection: the WorkspaceMembership filter hides every
+        // membership from a null-tenant caller, so that form would match every identity
+        // (cross-review Opus HIGH).
+        // A real Role row is needed for the platform-role branch: the EXISTS-style subquery below
+        // (`Set<Role>().Any(...)`), not a navigation through the REQUIRED User.Role reference — that
+        // navigation form, combined with the Memberships.Any disjunct in the same filter, silently
+        // returns zero rows under this project's EF Core/InMemory combination (confirmed by a
+        // throwaway repro: compiled C# predicate true, executed query empty) but was verified
+        // identical to the subquery form on real Postgres 15 for 8 caller types × strict/non-strict
+        // (see the doc's §12 O1/A10 amendment). Verified against Db11fMembershipRulesTests +
+        // TenantQueryFilterTests.
         b.Entity<User>()
             .HasQueryFilter(e =>
                 currentUser.IsSuperAdmin
@@ -105,7 +118,11 @@ public class AppDbContext(
                     currentUser.TenantId != null
                     && e.Memberships.Any(m => m.OwnerId == currentUser.TenantId)
                 )
-                || (currentUser.TenantId == null && !strict && e.OwnerId == null)
+                || (
+                    currentUser.TenantId == null
+                    && !strict
+                    && Set<Role>().Any(r => r.Id == e.RoleId && r.IsSuperAdmin)
+                )
             );
         // Strict-own like its owning User. Login and the backfill deliberately IgnoreQueryFilters —
         // they run before any tenant context exists — and stamp OwnerId from the user instead.

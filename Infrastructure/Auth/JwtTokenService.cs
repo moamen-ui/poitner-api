@@ -6,6 +6,7 @@ using System.Text;
 using Microsoft.Extensions.Options;
 using Microsoft.IdentityModel.Tokens;
 using Pointer.Application.Abstractions;
+using Pointer.Application.Common;
 using Pointer.Domain.Entity;
 
 namespace Pointer.Infrastructure.Auth;
@@ -75,10 +76,9 @@ public class JwtTokenService(IOptions<JwtOptions> opts) : ITokenService
             KeyId = activeKey.Id,
         };
         var creds = new SigningCredentials(key, SecurityAlgorithms.HmacSha256);
-        // DB-11a: the membership's role (per workspace) wins when present; a super-admin session
-        // (no membership) falls back to the identity's own (legacy) Role.
-        var role = membership?.Role ?? u.Role;
-        var roleId = membership?.RoleId ?? u.RoleId;
+        // DB-11f: UserMapper.SessionRole — the membership's role, or the identity's own role ONLY for a super admin.
+        var role = UserMapper.SessionRole(u, membership);
+        var roleId = membership?.RoleId ?? role?.Id ?? 0;
         var claims = new List<Claim>
         {
             new Claim(JwtRegisteredClaimNames.Sub, u.PublicId.ToString()),

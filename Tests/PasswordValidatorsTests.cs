@@ -44,88 +44,145 @@ public class PasswordValidatorsTests
         {
             "RegisterValidator",
             (Func<string, IEnumerable<ValidationFailure>>)(
-                pw => new RegisterValidator().TestValidate(
-                    new RegisterRequest { Email = "a@x.com", Password = pw, DisplayName = "D", RoleId = 1, ProjectKey = "k" }
-                ).Errors.Where(e => e.PropertyName == nameof(RegisterRequest.Password))
+                pw =>
+                    new RegisterValidator()
+                        .TestValidate(
+                            new RegisterRequest
+                            {
+                                Email = "a@x.com",
+                                Password = pw,
+                                DisplayName = "D",
+                                RoleId = 1,
+                                ProjectKey = "k",
+                            }
+                        )
+                        .Errors.Where(e => e.PropertyName == nameof(RegisterRequest.Password))
             ),
         };
         yield return new object[]
         {
             "RegisterAdminValidator",
             (Func<string, IEnumerable<ValidationFailure>>)(
-                pw => new RegisterAdminValidator().TestValidate(
-                    new RegisterAdminRequest { Email = "a@x.com", Password = pw, DisplayName = "D" }
-                ).Errors.Where(e => e.PropertyName == nameof(RegisterAdminRequest.Password))
+                pw =>
+                    new RegisterAdminValidator()
+                        .TestValidate(
+                            new RegisterAdminRequest
+                            {
+                                Email = "a@x.com",
+                                Password = pw,
+                                DisplayName = "D",
+                            }
+                        )
+                        .Errors.Where(e => e.PropertyName == nameof(RegisterAdminRequest.Password))
             ),
         };
         yield return new object[]
         {
             "CreateUserValidator",
             (Func<string, IEnumerable<ValidationFailure>>)(
-                pw => new CreateUserValidator().TestValidate(
-                    new CreateUserRequest { Email = "a@x.com", Password = pw, DisplayName = "D", RoleId = 1 }
-                ).Errors.Where(e => e.PropertyName == nameof(CreateUserRequest.Password))
+                pw =>
+                    new CreateUserValidator()
+                        .TestValidate(
+                            new CreateUserRequest
+                            {
+                                Email = "a@x.com",
+                                Password = pw,
+                                DisplayName = "D",
+                                RoleId = 1,
+                            }
+                        )
+                        .Errors.Where(e => e.PropertyName == nameof(CreateUserRequest.Password))
             ),
         };
         yield return new object[]
         {
             "CreateTenantValidator",
             (Func<string, IEnumerable<ValidationFailure>>)(
-                pw => new CreateTenantValidator().TestValidate(
-                    new CreateTenantRequest { Email = "a@x.com", Password = pw, DisplayName = "D" }
-                ).Errors.Where(e => e.PropertyName == nameof(CreateTenantRequest.Password))
+                pw =>
+                    new CreateTenantValidator()
+                        .TestValidate(
+                            new CreateTenantRequest
+                            {
+                                Email = "a@x.com",
+                                Password = pw,
+                                DisplayName = "D",
+                            }
+                        )
+                        .Errors.Where(e => e.PropertyName == nameof(CreateTenantRequest.Password))
             ),
         };
         yield return new object[]
         {
             "AcceptInviteRequestValidator",
             (Func<string, IEnumerable<ValidationFailure>>)(
-                pw => new AcceptInviteRequestValidator().TestValidate(
-                    new AcceptInviteRequest { Code = "c", Email = "a@x.com", Password = pw, DisplayName = "D" }
-                ).Errors.Where(e => e.PropertyName == nameof(AcceptInviteRequest.Password))
+                pw =>
+                    new AcceptInviteRequestValidator()
+                        .TestValidate(
+                            new AcceptInviteRequest
+                            {
+                                Code = "c",
+                                Email = "a@x.com",
+                                Password = pw,
+                                DisplayName = "D",
+                            }
+                        )
+                        .Errors.Where(e => e.PropertyName == nameof(AcceptInviteRequest.Password))
             ),
         };
         yield return new object[]
         {
             "UpgradeDemoValidator",
             (Func<string, IEnumerable<ValidationFailure>>)(
-                pw => new UpgradeDemoValidator().TestValidate(
-                    new UpgradeDemoRequest { Email = "a@x.com", Password = pw }
-                ).Errors.Where(e => e.PropertyName == nameof(UpgradeDemoRequest.Password))
+                pw =>
+                    new UpgradeDemoValidator()
+                        .TestValidate(new UpgradeDemoRequest { Email = "a@x.com", Password = pw })
+                        .Errors.Where(e => e.PropertyName == nameof(UpgradeDemoRequest.Password))
             ),
         };
         yield return new object[]
         {
             "ChangePasswordRequestValidator",
             (Func<string, IEnumerable<ValidationFailure>>)(
-                pw => new ChangePasswordRequestValidator().TestValidate(
-                    new ChangePasswordRequest { CurrentPassword = "x", NewPassword = pw }
-                ).Errors.Where(e => e.PropertyName == nameof(ChangePasswordRequest.NewPassword))
+                pw =>
+                    new ChangePasswordRequestValidator()
+                        .TestValidate(
+                            new ChangePasswordRequest { CurrentPassword = "x", NewPassword = pw }
+                        )
+                        .Errors.Where(e =>
+                            e.PropertyName == nameof(ChangePasswordRequest.NewPassword)
+                        )
             ),
         };
         yield return new object[]
         {
             "ResetPasswordValidator",
             (Func<string, IEnumerable<ValidationFailure>>)(
-                pw => new ResetPasswordValidator().TestValidate(
-                    new ResetPasswordRequest { Token = "t", NewPassword = pw }
-                ).Errors.Where(e => e.PropertyName == nameof(ResetPasswordRequest.NewPassword))
+                pw =>
+                    new ResetPasswordValidator()
+                        .TestValidate(new ResetPasswordRequest { Token = "t", NewPassword = pw })
+                        .Errors.Where(e =>
+                            e.PropertyName == nameof(ResetPasswordRequest.NewPassword)
+                        )
             ),
         };
         yield return new object[]
         {
             "UpdateUserValidator",
             (Func<string, IEnumerable<ValidationFailure>>)(
-                pw => new UpdateUserValidator().TestValidate(
-                    new UpdateUserRequest { RoleId = 1, Password = pw }
-                ).Errors.Where(e => e.PropertyName == nameof(UpdateUserRequest.Password))
+                pw =>
+                    new UpdateUserValidator()
+                        .TestValidate(new UpdateUserRequest { RoleId = 1, Password = pw })
+                        .Errors.Where(e => e.PropertyName == nameof(UpdateUserRequest.Password))
             ),
         };
     }
 
     [Theory]
     [MemberData(nameof(Sites))]
-    public void CommonPassword_IsInvalid(string name, Func<string, IEnumerable<ValidationFailure>> validate)
+    public void CommonPassword_IsInvalid(
+        string name,
+        Func<string, IEnumerable<ValidationFailure>> validate
+    )
     {
         var errors = validate(CommonPw).ToList();
         Assert.Contains(errors, e => e.ErrorMessage == MessageKeys.User.PasswordCommon);
@@ -133,7 +190,10 @@ public class PasswordValidatorsTests
 
     [Theory]
     [MemberData(nameof(Sites))]
-    public void StrongPassword_IsValid(string name, Func<string, IEnumerable<ValidationFailure>> validate)
+    public void StrongPassword_IsValid(
+        string name,
+        Func<string, IEnumerable<ValidationFailure>> validate
+    )
     {
         Assert.Empty(validate(StrongPw));
     }
@@ -141,7 +201,9 @@ public class PasswordValidatorsTests
     [Fact]
     public void UpdateUserValidator_PasswordNull_IsValid()
     {
-        var r = new UpdateUserValidator().TestValidate(new UpdateUserRequest { RoleId = 1, Password = null });
+        var r = new UpdateUserValidator().TestValidate(
+            new UpdateUserRequest { RoleId = 1, Password = null }
+        );
         r.ShouldNotHaveValidationErrorFor(x => x.Password);
     }
 
@@ -164,56 +226,100 @@ public class PasswordValidatorsTests
     private sealed class IdentityHasher : IPasswordHasher
     {
         public string Hash(string password) => "h:" + password;
+
         public bool Verify(string password, string hash) => hash == "h:" + password;
     }
 
     private sealed class NoopEmail : IEmailService
     {
-        public Task<bool> SendAsync(string to, string subject, string htmlBody, CancellationToken ct = default) =>
-            Task.FromResult(true);
+        public Task<bool> SendAsync(
+            string to,
+            string subject,
+            string htmlBody,
+            CancellationToken ct = default
+        ) => Task.FromResult(true);
     }
 
     private sealed class NoopFileStorage : IFileStorage
     {
-        public Task<string> SaveAsync(string ownerSegment, string project, Stream content, string extension) =>
-            Task.FromResult("");
+        public Task<string> SaveAsync(
+            string ownerSegment,
+            string project,
+            Stream content,
+            string extension
+        ) => Task.FromResult("");
+
         public Task DeleteAsync(string relativePathOrUrl) => Task.CompletedTask;
+
         public Task DeleteOwnerFilesAsync(string ownerSegment) => Task.CompletedTask;
     }
 
     private sealed class NoopSettings : ISettingsService
     {
-        public Task<bool> GetBoolAsync(string key, bool fallback = false) => Task.FromResult(fallback);
+        public Task<bool> GetBoolAsync(string key, bool fallback = false) =>
+            Task.FromResult(fallback);
+
         public Task SetBoolAsync(string key, bool value) => Task.CompletedTask;
-        public Task<string> GetStringAsync(string key, string fallback = "") => Task.FromResult(fallback);
+
+        public Task<string> GetStringAsync(string key, string fallback = "") =>
+            Task.FromResult(fallback);
+
         public Task SetStringAsync(string key, string value) => Task.CompletedTask;
+
         public Task<int> GetIntAsync(string key, int fallback = 0) => Task.FromResult(fallback);
+
         public Task SetIntAsync(string key, int value) => Task.CompletedTask;
     }
 
     private sealed class NoopBrandingService : IBrandingService
     {
-        private static Pointer.Application.DTOs.Branding.BrandingResponse DefaultBranding() => new()
-        {
-            ProductName = "Pointer",
-            Tagline = string.Empty,
-            PrimaryColor = "#2563eb",
-            Urls = new Pointer.Application.DTOs.Branding.BrandingUrlsResponse { App = "https://app.pointer.test" },
-            Assets = new Pointer.Application.DTOs.Branding.BrandingAssetsResponse(),
-        };
-        public Task<Result<Pointer.Application.DTOs.Branding.BrandingResponse>> GetAsync(string publicBase, IReadOnlySet<string> existingKinds) =>
-            Task.FromResult(Result<Pointer.Application.DTOs.Branding.BrandingResponse>.Success(DefaultBranding()));
-        public Task<Result<Pointer.Application.DTOs.Branding.BrandingResponse>> UpdateAsync(Pointer.Application.DTOs.Branding.BrandingWriteDto dto, string publicBase, IReadOnlySet<string> existingKinds) =>
-            Task.FromResult(Result<Pointer.Application.DTOs.Branding.BrandingResponse>.Success(DefaultBranding()));
+        private static Pointer.Application.DTOs.Branding.BrandingResponse DefaultBranding() =>
+            new()
+            {
+                ProductName = "Pointer",
+                Tagline = string.Empty,
+                PrimaryColor = "#2563eb",
+                Urls = new Pointer.Application.DTOs.Branding.BrandingUrlsResponse
+                {
+                    App = "https://app.pointer.test",
+                },
+                Assets = new Pointer.Application.DTOs.Branding.BrandingAssetsResponse(),
+            };
+
+        public Task<Result<Pointer.Application.DTOs.Branding.BrandingResponse>> GetAsync(
+            string publicBase,
+            IReadOnlySet<string> existingKinds
+        ) =>
+            Task.FromResult(
+                Result<Pointer.Application.DTOs.Branding.BrandingResponse>.Success(
+                    DefaultBranding()
+                )
+            );
+
+        public Task<Result<Pointer.Application.DTOs.Branding.BrandingResponse>> UpdateAsync(
+            Pointer.Application.DTOs.Branding.BrandingWriteDto dto,
+            string publicBase,
+            IReadOnlySet<string> existingKinds
+        ) =>
+            Task.FromResult(
+                Result<Pointer.Application.DTOs.Branding.BrandingResponse>.Success(
+                    DefaultBranding()
+                )
+            );
+
         public Task<int> BumpVersionAsync() => Task.FromResult(0);
-        public Task<Pointer.Application.DTOs.Branding.BrandingResponse> BuildResponseAsync(string publicBase, IReadOnlySet<string> existingKinds) =>
-            Task.FromResult(DefaultBranding());
+
+        public Task<Pointer.Application.DTOs.Branding.BrandingResponse> BuildResponseAsync(
+            string publicBase,
+            IReadOnlySet<string> existingKinds
+        ) => Task.FromResult(DefaultBranding());
     }
 
     private sealed class FakeTokenService : ITokenService
     {
         public string Issue(User user, WorkspaceMembership? membership, int? keyScopes = null) =>
             "token-for-" + user.PublicId.ToString("N");
+
         public string IssueSelection(User user) => "sel-for-" + user.PublicId.ToString("N");
 
         public string IssueImpersonation(
@@ -228,7 +334,15 @@ public class PasswordValidatorsTests
         new(
             new DbContextOptionsBuilder<AppDbContext>()
                 .UseInMemoryDatabase(db)
-                .ConfigureWarnings(w => w.Ignore(Microsoft.EntityFrameworkCore.Diagnostics.InMemoryEventId.TransactionIgnoredWarning))
+                .ConfigureWarnings(w =>
+                    w.Ignore(
+                        Microsoft
+                            .EntityFrameworkCore
+                            .Diagnostics
+                            .InMemoryEventId
+                            .TransactionIgnoredWarning
+                    )
+                )
                 .Options,
             u,
             new Microsoft.Extensions.Configuration.ConfigurationBuilder().Build()
@@ -237,7 +351,12 @@ public class PasswordValidatorsTests
     private static IResetTokenService RealResetTokens() =>
         new ResetTokenService(
             new Microsoft.Extensions.Configuration.ConfigurationBuilder()
-                .AddInMemoryCollection(new Dictionary<string, string?> { ["JWT:SigningKey"] = "test-key-0123456789abcdef0123456789" })
+                .AddInMemoryCollection(
+                    new Dictionary<string, string?>
+                    {
+                        ["JWT:SigningKey"] = "test-key-0123456789abcdef0123456789",
+                    }
+                )
                 .Build()
         );
 
@@ -250,7 +369,13 @@ public class PasswordValidatorsTests
         Guid stamp;
         using (var seed = Ctx(superAdmin, db))
         {
-            var role = new Role { Name = "Engineer", GrantsAdmin = false, IsSystem = false, IsActive = true };
+            var role = new Role
+            {
+                Name = "Engineer",
+                GrantsAdmin = false,
+                IsSystem = false,
+                IsActive = true,
+            };
             seed.Roles.Add(role);
             seed.SaveChanges();
             var user = new User
@@ -287,7 +412,9 @@ public class PasswordValidatorsTests
             new MembershipService(uow)
         );
 
-        var result = await svc.ResetPasswordAsync(new ResetPasswordRequest { Token = token, NewPassword = "reset@t.com" });
+        var result = await svc.ResetPasswordAsync(
+            new ResetPasswordRequest { Token = token, NewPassword = "reset@t.com" }
+        );
 
         Assert.False(result.IsSuccess);
         Assert.Equal(MessageKeys.User.PasswordIsEmail, result.Message);
@@ -299,12 +426,19 @@ public class PasswordValidatorsTests
         var db = Guid.NewGuid().ToString();
         var superAdmin = new FakeCurrentUser { IsSuperAdmin = true };
         var publicId = Guid.NewGuid();
+        var tenant = Guid.NewGuid();
         using (var seed = Ctx(superAdmin, db))
         {
-            var role = new Role { Name = "Engineer", GrantsAdmin = false, IsSystem = false, IsActive = true };
+            var role = new Role
+            {
+                Name = "Engineer",
+                GrantsAdmin = false,
+                IsSystem = false,
+                IsActive = true,
+            };
             seed.Roles.Add(role);
             seed.SaveChanges();
-            seed.Users.Add(new User
+            var user = new User
             {
                 PublicId = publicId,
                 Email = "change@t.com",
@@ -312,11 +446,18 @@ public class PasswordValidatorsTests
                 DisplayName = "U",
                 RoleId = role.Id,
                 IsActive = true,
-            });
+                OwnerId = tenant,
+            };
+            seed.Users.Add(user);
             seed.SaveChanges();
+            // DB-11f: the User filter's null-tenant bucket is now the platform role (super admins
+            // only), so a non-super caller with no membership can no longer see its own row via
+            // that branch — a real membership + tenant claim is required, as it always is for a
+            // real authenticated member.
+            TestSeed.Join(seed, user, tenant, role);
         }
 
-        var caller = new FakeCurrentUser { Id = publicId };
+        var caller = new FakeCurrentUser { Id = publicId, TenantId = tenant };
         using var ctx = Ctx(caller, db);
         var uow = new UnitOfWork(ctx);
         var svc = new AuthService(
@@ -348,7 +489,15 @@ public class PasswordValidatorsTests
         var superAdmin = new FakeCurrentUser { IsSuperAdmin = true };
         using (var seed = Ctx(superAdmin, db))
         {
-            seed.Roles.Add(new Role { Name = "Workspace Admin", GrantsAdmin = true, IsSystem = true, IsActive = true });
+            seed.Roles.Add(
+                new Role
+                {
+                    Name = "Workspace Admin",
+                    GrantsAdmin = true,
+                    IsSystem = true,
+                    IsActive = true,
+                }
+            );
             seed.SaveChanges();
         }
 
@@ -364,7 +513,12 @@ public class PasswordValidatorsTests
         );
 
         var result = await svc.CreateAsync(
-            new CreateTenantRequest { Email = "new-tenant@t.com", Password = CommonPw, DisplayName = "New" }
+            new CreateTenantRequest
+            {
+                Email = "new-tenant@t.com",
+                Password = CommonPw,
+                DisplayName = "New",
+            }
         );
 
         Assert.False(result.IsSuccess);
@@ -380,10 +534,25 @@ public class PasswordValidatorsTests
         int inviteId;
         using (var seed = Ctx(superAdmin, db))
         {
-            var role = new Role { Name = "Engineer", GrantsAdmin = false, IsSystem = false, IsActive = true };
+            var role = new Role
+            {
+                Name = "Engineer",
+                GrantsAdmin = false,
+                IsSystem = false,
+                IsActive = true,
+            };
             seed.Roles.Add(role);
             seed.SaveChanges();
-            seed.Set<Workspace>().Add(new Workspace { Id = ownerId, Name = "T", CreatedAt = DateTime.UtcNow, CreatedBy = ownerId });
+            seed.Set<Workspace>()
+                .Add(
+                    new Workspace
+                    {
+                        Id = ownerId,
+                        Name = "T",
+                        CreatedAt = DateTime.UtcNow,
+                        CreatedBy = ownerId,
+                    }
+                );
             var invite = new Invite
             {
                 OwnerId = ownerId,
@@ -417,7 +586,13 @@ public class PasswordValidatorsTests
         );
 
         var result = await svc.AcceptAsync(
-            new AcceptInviteRequest { Code = code, Email = "accept@t.com", Password = CommonPw, DisplayName = "A" }
+            new AcceptInviteRequest
+            {
+                Code = code,
+                Email = "accept@t.com",
+                Password = CommonPw,
+                DisplayName = "A",
+            }
         );
 
         Assert.False(result.IsSuccess);
@@ -433,7 +608,13 @@ public class PasswordValidatorsTests
         int targetUserId;
         using (var seed = Ctx(new FakeCurrentUser { IsSuperAdmin = true }, db))
         {
-            var role = new Role { Name = "Engineer", GrantsAdmin = false, IsSystem = false, IsActive = true };
+            var role = new Role
+            {
+                Name = "Engineer",
+                GrantsAdmin = false,
+                IsSystem = false,
+                IsActive = true,
+            };
             seed.Roles.Add(role);
             seed.SaveChanges();
             var target = new User
@@ -465,7 +646,10 @@ public class PasswordValidatorsTests
             new MembershipService(uow)
         );
 
-        var result = await svc.UpdateAsync(targetUserId, new UpdateUserRequest { Password = "target@t.com" });
+        var result = await svc.UpdateAsync(
+            targetUserId,
+            new UpdateUserRequest { Password = "target@t.com" }
+        );
 
         Assert.False(result.IsSuccess);
         Assert.Equal(MessageKeys.User.PasswordIsEmail, result.Message);

@@ -234,7 +234,6 @@ public class TenantService : ITenantService
             // DB-14 §3.2 D14.3: the operator vouches for the address.
             identity.EmailVerifiedAt = DateTime.UtcNow;
             await _unitOfWork.Repository<User>().AddAsync(identity);
-            await _unitOfWork.SaveChangesAsync();
         }
 
         var membership = await _memberships.JoinAsync(
@@ -580,6 +579,49 @@ public class TenantService : ITenantService
                 );
         }
 
+        // DB-11f PART A ONLY (deleted by Part B task B6): read-only invariant pre-flight BEFORE any side
+        // effect — the audit row and the file delete below run before the transaction for an ordinary
+        // reason (cross-review Opus MEDIUM). Same predicates as the in-transaction backstop.
+        var preflightDeleteSet = IdentitiesDeletedWithWorkspace(_unitOfWork, workspaceId)
+            .Select(u => u.Id);
+        var preflightRoleIds = _unitOfWork
+            .Repository<Role>()
+            .Query()
+            .IgnoreQueryFilters()
+            .Where(r => r.OwnerId == workspaceId)
+            .Select(r => r.Id);
+        var membershipsElsewhere = _unitOfWork
+            .Repository<WorkspaceMembership>()
+            .Query()
+            .IgnoreQueryFilters()
+            .Where(m => m.OwnerId != workspaceId);
+        var i1Broken = await _unitOfWork
+            .Repository<User>()
+            .Query()
+            .IgnoreQueryFilters()
+            .Where(u =>
+                (u.OwnerId == workspaceId || preflightRoleIds.Contains(u.RoleId))
+                && !preflightDeleteSet.Contains(u.Id)
+                && !membershipsElsewhere.Any(m => m.UserId == u.Id)
+            )
+            .Select(u => u.Id)
+            .ToListAsync();
+        if (i1Broken.Count > 0)
+            return Result.Failure(
+                $"DB-11f invariant I1 broken: user(s) {string.Join(",", i1Broken)} reference workspace {workspaceId} but belong to no other workspace; nothing was deleted."
+            );
+        var needsRoleRepoint = await _unitOfWork
+            .Repository<User>()
+            .Query()
+            .IgnoreQueryFilters()
+            .AnyAsync(u =>
+                !preflightDeleteSet.Contains(u.Id) && preflightRoleIds.Contains(u.RoleId)
+            );
+        if (needsRoleRepoint && await LeastPrivilegeGlobalRoleIdAsync() is null)
+            return Result.Failure(
+                "DB-11f: no global least-privilege role to re-point a surviving identity's legacy role_id; nothing was deleted."
+            );
+
         // Snapshot the comment count before anything is deleted — the audit row (below) records how
         // much content this deletion removed.
         var commentCount = await _unitOfWork
@@ -666,56 +708,82 @@ public class TenantService : ITenantService
             await DeleteOwnedAsync<ApiKey>(x => x.OwnerId == workspaceId);
             await DeleteOwnedAsync<DeviceLogin>(x => x.OwnerId == workspaceId);
 
-            // DB-11a: end/remove every membership of this workspace BEFORE touching `users` —
-            // `users.owner_id` is legacy (written once at creation, never read after DB-11a) and is
-            // used below only to decide whether an identity created HERE survives (re-homed to
-            // another workspace it still belongs to) or is hard-deleted with it.
+            // DB-11a: end/remove every membership of this workspace BEFORE touching `users`. Staged only — the
+            // queries below still see them (they run against the store), which the delete rule needs.
             await DeleteOwnedAsync<WorkspaceMembership>(x => x.OwnerId == workspaceId);
 
-            // Gemini BLOCKER (code review): NOT `&& u.DeletedAt == null` — see
-            // IdentitiesDeletedWithWorkspace's doc-comment. Every row whose legacy owner_id still
-            // points at this workspace must be resolved (deleted or re-homed) here, including one
-            // that was soft-deleted/erased after being created here, or the FK on the workspace
-            // delete below throws.
-            var usersCreatedHere = await _unitOfWork
-                .Repository<User>()
-                .Query()
-                .IgnoreQueryFilters()
-                .Where(u => u.OwnerId == workspaceId)
-                .ToListAsync();
-
-            // DB-18 (Opus HIGH 1): the delete set is the ONE shared query (also used by the deletion
-            // preview) — created here, no membership row of any state (ended/soft-deleted included)
-            // survives in another workspace. The re-home set is everything else in usersCreatedHere.
+            // DB-11f: the delete set is the ONE shared, membership-based query (also the deletion preview).
             var deleteIds = await IdentitiesDeletedWithWorkspace(_unitOfWork, workspaceId)
                 .Select(u => u.Id)
                 .ToListAsync();
-            var deleteIdSet = deleteIds.ToHashSet();
-
-            foreach (var u in usersCreatedHere)
+            if (deleteIds.Count > 0)
             {
-                if (deleteIdSet.Contains(u.Id))
-                {
-                    // No membership survives anywhere — hard-delete (api_keys cascade; aliases cascade).
-                    _unitOfWork.Repository<User>().Remove(u);
-                    continue;
-                }
-
-                var otherWorkspaceId = await _unitOfWork
-                    .Repository<WorkspaceMembership>()
+                var doomed = await _unitOfWork
+                    .Repository<User>()
                     .Query()
                     .IgnoreQueryFilters()
-                    .Where(m => m.UserId == u.Id && m.OwnerId != workspaceId)
-                    .Select(m => (Guid?)m.OwnerId)
-                    .FirstOrDefaultAsync();
+                    .Where(u => deleteIds.Contains(u.Id))
+                    .ToListAsync();
+                // api_keys, user_aliases, user_recovery_codes cascade.
+                _unitOfWork.Repository<User>().RemoveRange(doomed);
+            }
 
-                if (otherWorkspaceId is Guid otherOwner)
+            // DB-11f PART A ONLY — legacy pointer maintenance (deleted by DB-11f Part B task B6 together with
+            // users.owner_id). Nothing READS these values for behaviour; this only stops the two legacy FKs
+            // (fk_users_workspaces_owner_id, FK_users_roles_role_id) from blocking the deletes below. A surviving
+            // identity that points here is re-pointed: owner_id → its earliest membership elsewhere; role_id →
+            // the least-privilege global role (never an admin-tier or platform role, so the re-point can never
+            // grant anything — cross-review Opus MEDIUM). The read-only pre-flight at the top of this method has
+            // already refused every case the backstop throws below can hit.
+            var workspaceRoleIds = await _unitOfWork
+                .Repository<Role>()
+                .Query()
+                .IgnoreQueryFilters()
+                .Where(r => r.OwnerId == workspaceId)
+                .Select(r => r.Id)
+                .ToListAsync();
+            var legacyPointers = await _unitOfWork
+                .Repository<User>()
+                .Query()
+                .IgnoreQueryFilters()
+                .Where(u =>
+                    !deleteIds.Contains(u.Id)
+                    && (u.OwnerId == workspaceId || workspaceRoleIds.Contains(u.RoleId))
+                )
+                .ToListAsync();
+            var fallbackRoleId = legacyPointers.Any(u => workspaceRoleIds.Contains(u.RoleId))
+                ? await LeastPrivilegeGlobalRoleIdAsync()
+                : null;
+            foreach (var u in legacyPointers)
+            {
+                if (u.OwnerId == workspaceId)
                 {
-                    // Re-home: this identity still belongs elsewhere — keep the row (api_keys,
-                    // user_aliases, other memberships all reference it), just update the legacy column.
+                    var otherOwner = await _unitOfWork
+                        .Repository<WorkspaceMembership>()
+                        .Query()
+                        .IgnoreQueryFilters()
+                        .Where(m => m.UserId == u.Id && m.OwnerId != workspaceId)
+                        .OrderBy(m => m.JoinedAt)
+                        .ThenBy(m => m.Id)
+                        .Select(m => (Guid?)m.OwnerId)
+                        .FirstOrDefaultAsync();
+                    if (otherOwner is null)
+                        // Backstop only (invariant I1, D11f.4) — the pre-flight refuses this before any side effect.
+                        throw new InvalidOperationException(
+                            $"DB-11f invariant I1 broken: user {u.Id} references workspace {workspaceId} but has no membership in any other workspace and is not in the delete set."
+                        );
                     u.OwnerId = otherOwner;
-                    _unitOfWork.Repository<User>().Update(u);
                 }
+                if (workspaceRoleIds.Contains(u.RoleId))
+                {
+                    if (fallbackRoleId is not int fallback)
+                        // Backstop only — the pre-flight refuses this before any side effect (P9).
+                        throw new InvalidOperationException(
+                            "DB-11f: no global least-privilege role to re-point a surviving identity's legacy role_id."
+                        );
+                    u.RoleId = fallback;
+                }
+                _unitOfWork.Repository<User>().Update(u);
             }
 
             await DeleteOwnedAsync<Role>(x => x.OwnerId == workspaceId);
@@ -756,39 +824,47 @@ public class TenantService : ITenantService
     }
 
     /// <summary>
-    /// DB-18 (Opus HIGH 1). The exact "which accounts are deleted WITH this workspace" rule — a
-    /// legacy <c>users.owner_id</c> read (R8.7 exemption, same as <see cref="HardDeleteAsync"/>'s
-    /// own use of it above): created in this workspace (<c>OwnerId == ws</c>, live) and no
-    /// membership row of ANY state (ended/soft-deleted included, <c>IgnoreQueryFilters</c>) survives
-    /// in another workspace. Shared by <see cref="HardDeleteAsync"/> (the delete set) and
-    /// <c>WorkspaceLifecycleService</c>'s deletion preview (a count only, §3.4/§3.10 D18.10) — the
-    /// two must never diverge (§6 test 9a <c>Preview_AccountsCount_EqualsRowsActuallyDeleted</c>).
+    /// DB-11f. The exact "which accounts are deleted WITH this workspace" rule (owner decision D18.10:
+    /// accounts that belong only to this workspace) — membership-only, never users.owner_id:
+    /// an identity with a membership row of ANY state here and NO membership row of any state
+    /// (ended/soft-deleted included, IgnoreQueryFilters) in another workspace, never a super admin;
+    /// plus DB-11a merged tombstones whose canonical is deleted here or whose alias records this
+    /// workspace as their source (0 in production). Soft-deleted/erased identities are included (the
+    /// DB-18 Gemini BLOCKER). Shared by HardDeleteAsync (the delete set) and WorkspaceLifecycleService's
+    /// deletion preview (count only) — the two must never diverge
+    /// (Db18WorkspaceLifecycleTests.Preview_AccountsCount_EqualsRowsActuallyDeleted).
     /// </summary>
-    public static IQueryable<User> IdentitiesDeletedWithWorkspace(
-        IUnitOfWork uow,
-        Guid workspaceId
-    ) =>
-        uow.Repository<User>()
+    public static IQueryable<User> IdentitiesDeletedWithWorkspace(IUnitOfWork uow, Guid workspaceId)
+    {
+        var memberships = uow.Repository<WorkspaceMembership>().Query().IgnoreQueryFilters();
+        var superAdminRoleIds = uow.Repository<Role>()
             .Query()
             .IgnoreQueryFilters()
-            // Gemini BLOCKER (code review): NOT `&& u.DeletedAt == null`. `users.owner_id` has a
-            // Restrict FK to `workspaces.id` (`fk_users_workspaces_owner_id`) — a row is still
-            // physically present and still references this workspace even after being
-            // soft-deleted/GDPR-erased (`IdentityEraseService` sets `DeletedAt` but never touches
-            // `OwnerId`). Excluding those rows here left them out of BOTH the delete set and the
-            // re-home loop in HardDeleteAsync below, so the workspace row's own delete then hit the
-            // FK (23503) the moment such an identity existed — pre-existing (operator delete, DB-17
-            // demo expiry), sharpened by DB-18 making self-service delete routine. Every identity
-            // whose legacy owner_id still points here — soft-deleted or not — is accounted for: no
-            // membership anywhere else ⇒ hard-deleted with the workspace (below); a membership row
-            // (any state) elsewhere ⇒ re-homed, never left dangling.
+            .Where(r => r.IsSuperAdmin)
+            .Select(r => r.Id);
+        var users = uow.Repository<User>().Query().IgnoreQueryFilters();
+
+        var coreIds = users
             .Where(u =>
-                u.OwnerId == workspaceId
-                && !uow.Repository<WorkspaceMembership>()
-                    .Query()
-                    .IgnoreQueryFilters()
-                    .Any(m => m.UserId == u.Id && m.OwnerId != workspaceId)
-            );
+                memberships.Any(m => m.UserId == u.Id && m.OwnerId == workspaceId)
+                && !memberships.Any(m => m.UserId == u.Id && m.OwnerId != workspaceId)
+                && !superAdminRoleIds.Any(id => id == u.RoleId)
+            )
+            .Select(u => u.Id);
+
+        return users.Where(u =>
+            coreIds.Contains(u.Id)
+            || (
+                u.MergedIntoUserId != null
+                && (
+                    coreIds.Contains(u.MergedIntoUserId.Value)
+                    || uow.UserAliases.Any(a =>
+                        a.AliasPublicId == u.PublicId && a.SourceWorkspaceId == workspaceId
+                    )
+                )
+            )
+        );
+    }
 
     /// <summary>
     /// Loads every <typeparamref name="T"/> row matching <paramref name="ownedBy"/> (bypassing query
@@ -804,6 +880,25 @@ public class TenantService : ITenantService
         if (rows.Count > 0)
             repo.RemoveRange(rows);
     }
+
+    // DB-11f PART A ONLY (deleted by Part B task B6). The role a surviving identity's legacy
+    // users.role_id is re-pointed to: global, live, and none of super/admin/quick-access — never grants
+    // anything (cross-review Opus MEDIUM/LOW; same predicate as ClearUsersRoleIdForMembers.Down and P9).
+    private Task<int?> LeastPrivilegeGlobalRoleIdAsync() =>
+        _unitOfWork
+            .Repository<Role>()
+            .Query()
+            .IgnoreQueryFilters()
+            .Where(r =>
+                r.OwnerId == null
+                && r.DeletedAt == null
+                && !r.IsSuperAdmin
+                && !r.GrantsAdmin
+                && !r.QuickAccess
+            )
+            .OrderBy(r => r.Id)
+            .Select(r => (int?)r.Id)
+            .FirstOrDefaultAsync();
 
     // The same 23 types, in the same order as the DeleteOwnedAsync<T> calls above (DB-11a adds
     // WorkspaceMembership before User). Documentation + test input for the reflection test

@@ -103,12 +103,18 @@ public class UserService : IUserService
             if (await _memberships.CurrentAdminAsync(targetOwnerId) == null)
                 return Result<UserResponse>.Failure(MessageKeys.User.WorkspaceNotFound);
 
+            // DB-11f F1: a global lookup by name, not id — must never resolve a tenant-owned role
+            // that happens to share the name (cross-review; a super admin bypasses the Role query
+            // filter entirely, so this is the only thing keeping it global).
             var deputyRole = await _unitOfWork
                 .Repository<Role>()
                 .Query()
                 .AsNoTracking()
                 .FirstOrDefaultAsync(r =>
-                    r.Name == DeputyRoleName && r.DeletedAt == null && r.IsActive
+                    r.Name == DeputyRoleName
+                    && r.DeletedAt == null
+                    && r.IsActive
+                    && r.OwnerId == null
                 );
             if (deputyRole == null)
                 return Result<UserResponse>.Failure(MessageKeys.Role.Invalid);
@@ -137,6 +143,13 @@ public class UserService : IUserService
                 return Result<UserResponse>.Forbidden(MessageKeys.Common.Forbidden);
             ownerId = o;
         }
+
+        // DB-11f F1: no membership role write may ever set the super-admin role or a role owned by
+        // another workspace than the membership's own — not even for a super admin (cross-review
+        // Opus MEDIUM/O4/O5; same predicate as ApproveAsync/UpdateAsync). Applied once both `role`
+        // and `ownerId` are resolved, for either branch above.
+        if (role.IsSuperAdmin || (role.OwnerId != null && role.OwnerId != ownerId))
+            return Result<UserResponse>.Failure(MessageKeys.Role.EscalationNotAllowed);
 
         // DB-11a join-or-create: admin-driven, so no password check — an existing identity is just
         // joined. "email taken" is scoped to THIS workspace (a live membership already here), never
@@ -173,10 +186,6 @@ public class UserService : IUserService
                 ownerId
             );
             await _unitOfWork.Repository<User>().AddAsync(identity);
-            await _unitOfWork.SaveChangesAsync();
-
-            // DB-14 §3.2: the admin typed this address — the member proves it.
-            await _emailVerification.SendAsync(identity);
         }
 
         var membership = await _memberships.JoinAsync(
@@ -188,6 +197,11 @@ public class UserService : IUserService
             inviteId: null
         );
         await _unitOfWork.SaveChangesAsync();
+        if (isNewIdentity)
+        {
+            // DB-14 §3.2: the admin typed this address — the member proves it.
+            await _emailVerification.SendAsync(identity!);
+        }
         // Populated AFTER the save above so EF never tries to re-insert the already-existing role row.
         membership.Role = role;
 
@@ -262,6 +276,12 @@ public class UserService : IUserService
         if (role == null)
             return Result<UserResponse>.Failure(MessageKeys.Role.Invalid);
 
+        // DB-11f F1: no membership role write may ever set the super-admin role or a role owned by
+        // another workspace than the membership's own — not even for a super admin (cross-review
+        // Opus MEDIUM/O4/O5). Checked before the caller-scoped escalation guard below.
+        if (role.IsSuperAdmin || (role.OwnerId != null && role.OwnerId != membership.OwnerId))
+            return Result<UserResponse>.Failure(MessageKeys.Role.EscalationNotAllowed);
+
         // Privilege-escalation guard: only a super admin may assign an admin-tier role — except
         // Deputy, which the current Workspace Admin may delegate to their own team.
         if (
@@ -324,18 +344,25 @@ public class UserService : IUserService
         var approveAppUrl = approveBrand.Urls.App.TrimEnd('/');
         // One lookup per send; null (missing row or still the DB-03 placeholder) falls back to the
         // pre-existing, workspace-agnostic wording.
-        var approveWorkspaceName = await WorkspaceNameResolver.ResolveForEmailAsync(_unitOfWork, membership.OwnerId);
-        var approveSubject = approveWorkspaceName != null
-            ? $"Your {approveProductName} account for {approveWorkspaceName} is approved"
-            : $"Your {approveProductName} account is approved";
-        await SafeSendAsync(identity.Email, approveSubject,
+        var approveWorkspaceName = await WorkspaceNameResolver.ResolveForEmailAsync(
+            _unitOfWork,
+            membership.OwnerId
+        );
+        var approveSubject =
+            approveWorkspaceName != null
+                ? $"Your {approveProductName} account for {approveWorkspaceName} is approved"
+                : $"Your {approveProductName} account is approved";
+        await SafeSendAsync(
+            identity.Email,
+            approveSubject,
             EmailTemplateBuilder.UserApproved(
                 identity.Email,
                 approveProductName,
                 approveAppUrl,
                 approveWorkspaceName,
                 approveBrand.PrimaryColor
-            ));
+            )
+        );
 
         return Result<UserResponse>.Success(MapToResponse(membership));
     }
@@ -394,18 +421,25 @@ public class UserService : IUserService
 
         var rejectBrand = await _branding.BuildResponseAsync("", new HashSet<string>());
         var rejectProductName = rejectBrand.ProductName;
-        var rejectWorkspaceName = await WorkspaceNameResolver.ResolveForEmailAsync(_unitOfWork, membership.OwnerId);
-        var rejectSubject = rejectWorkspaceName != null
-            ? $"Your {rejectProductName} account request for {rejectWorkspaceName}"
-            : $"Your {rejectProductName} account request";
-        await SafeSendAsync(identity.Email, rejectSubject,
+        var rejectWorkspaceName = await WorkspaceNameResolver.ResolveForEmailAsync(
+            _unitOfWork,
+            membership.OwnerId
+        );
+        var rejectSubject =
+            rejectWorkspaceName != null
+                ? $"Your {rejectProductName} account request for {rejectWorkspaceName}"
+                : $"Your {rejectProductName} account request";
+        await SafeSendAsync(
+            identity.Email,
+            rejectSubject,
             EmailTemplateBuilder.UserRejected(
                 identity.Email,
                 rejectProductName,
                 rejectWorkspaceName,
                 rejectBrand.PrimaryColor,
                 rejectBrand.Urls.App.TrimEnd('/')
-            ));
+            )
+        );
 
         return Result<UserResponse>.Success(MapToResponse(membership));
     }
@@ -430,6 +464,12 @@ public class UserService : IUserService
             role = await GetActiveRoleAsync(request.RoleId.Value);
             if (role == null)
                 return Result<UserResponse>.Failure(MessageKeys.Role.Invalid);
+
+            // DB-11f F1: no membership role write may ever set the super-admin role or a role owned
+            // by another workspace than the membership's own — not even for a super admin
+            // (cross-review Opus MEDIUM/O4/O5). Checked before the caller-scoped escalation guard.
+            if (role.IsSuperAdmin || (role.OwnerId != null && role.OwnerId != membership.OwnerId))
+                return Result<UserResponse>.Failure(MessageKeys.Role.EscalationNotAllowed);
 
             // Privilege-escalation guard: only a super admin may assign an admin-tier role — except
             // Deputy, which the current Workspace Admin may delegate to their own team.
@@ -827,19 +867,26 @@ public class UserService : IUserService
         if (!_currentUser.IsSuperAdmin && _currentUser.Id != currentAdminMembership.User.PublicId)
             return Result.Failure(MessageKeys.User.TransferNotAuthorized);
 
+        // DB-11f F1: global lookups by name, not id — a super-admin caller bypasses the Role query
+        // filter entirely (AppDbContext.cs), so `r.OwnerId == null` is the only thing keeping these
+        // two resolved to the real global roles instead of some workspace's identically-named
+        // custom one (cross-review).
         var adminRole = await _unitOfWork
             .Repository<Role>()
             .Query()
             .AsNoTracking()
             .FirstOrDefaultAsync(r =>
-                r.Name == WorkspaceAdminRoleName && r.DeletedAt == null && r.IsActive
+                r.Name == WorkspaceAdminRoleName
+                && r.DeletedAt == null
+                && r.IsActive
+                && r.OwnerId == null
             );
         var deputyRole = await _unitOfWork
             .Repository<Role>()
             .Query()
             .AsNoTracking()
             .FirstOrDefaultAsync(r =>
-                r.Name == DeputyRoleName && r.DeletedAt == null && r.IsActive
+                r.Name == DeputyRoleName && r.DeletedAt == null && r.IsActive && r.OwnerId == null
             );
         if (adminRole == null || deputyRole == null)
             return Result.Failure(MessageKeys.Role.Invalid);

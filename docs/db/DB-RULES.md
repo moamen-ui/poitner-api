@@ -197,6 +197,15 @@ Every new entity that holds customer data:
    erase goes through `SoleAdminWorkspacesAsync` (DB-11c §3.2; super admins included; tenant
    suspension exempt by D10).
 
+   *(added 2026-09-24, DB-11f)* **"Belongs to W" is membership-only.** An identity belongs to W iff
+   it has a workspace_memberships row of any state in W, and belongs **only** to W iff it has none
+   elsewhere — TenantService.IdentitiesDeletedWithWorkspace is the one implementation (delete set
+   and deletion preview). Its **home** workspace is its earliest membership of any state
+   (IMembershipService.HomeWorkspaceIdAsync). No workspace-scoped fact is read from users: a
+   session's role comes from UserMapper.SessionRole; users.role_id is the platform role (super
+   admins only — DB-11f Part B nulls it for everyone else and drops
+   users.owner_id/approval_status).
+
 8. *(added 2026-09-22 late night, DB-12/13/15)* **Operator and analytics tables are exempt from point 5 by name.** `usage_events`, `audit_events`,
    `impersonation_sessions` and `usage_daily` carry `owner_id` for the filter shape (points 1–4 hold) but are **not** deleted with the workspace: their FK is
    `ON DELETE SET NULL`, the row survives as an operator/analytics record with `owner_id = NULL`, and the type is excluded **by name with a comment** in

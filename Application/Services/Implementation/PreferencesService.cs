@@ -16,7 +16,11 @@ public class PreferencesService : IPreferencesService
     private readonly ICurrentUser _currentUser;
     private readonly IMembershipService _memberships;
 
-    public PreferencesService(IUnitOfWork unitOfWork, ICurrentUser currentUser, IMembershipService memberships)
+    public PreferencesService(
+        IUnitOfWork unitOfWork,
+        ICurrentUser currentUser,
+        IMembershipService memberships
+    )
     {
         _unitOfWork = unitOfWork;
         _currentUser = currentUser;
@@ -26,7 +30,8 @@ public class PreferencesService : IPreferencesService
     public async Task<Result<MeResponse>> UpdateAsync(UpdatePreferencesRequest request)
     {
         var publicId = _currentUser.Id;
-        if (publicId == null) return Result<MeResponse>.Failure(MessageKeys.Auth.InvalidCredentials);
+        if (publicId == null)
+            return Result<MeResponse>.Failure(MessageKeys.Auth.InvalidCredentials);
 
         // Enforce allowed values here: the project registers FluentValidation validators but does
         // not auto-run them, so guard at the service layer (the path that actually executes).
@@ -35,32 +40,38 @@ public class PreferencesService : IPreferencesService
         if (request.Theme is not null and not ("light" or "dark"))
             return Result<MeResponse>.Failure(MessageKeys.Preferences.Invalid);
 
-        var user = await _unitOfWork.Repository<User>().Query()
-            .Include(u => u.Role)
+        var user = await _unitOfWork
+            .Repository<User>()
+            .Query()
             .Where(u => u.DeletedAt == null && u.PublicId == publicId.Value)
             .FirstOrDefaultAsync();
 
-        if (user == null) return Result<MeResponse>.NotFound(MessageKeys.Preferences.NotFound);
+        if (user == null)
+            return Result<MeResponse>.NotFound(MessageKeys.Preferences.NotFound);
 
-        if (request.Language != null) user.Language = request.Language;
-        if (request.Theme != null) user.Theme = request.Theme;
+        if (request.Language != null)
+            user.Language = request.Language;
+        if (request.Theme != null)
+            user.Theme = request.Theme;
         // Empty string clears the override (widget falls back to its built-in default);
         // null (property omitted) leaves the current value untouched.
         if (request.AddCommentShortcut != null)
         {
             if (request.AddCommentShortcut.Length > 40)
                 return Result<MeResponse>.Failure(MessageKeys.Preferences.Invalid);
-            user.AddCommentShortcut = request.AddCommentShortcut.Length == 0 ? null : request.AddCommentShortcut;
+            user.AddCommentShortcut =
+                request.AddCommentShortcut.Length == 0 ? null : request.AddCommentShortcut;
         }
         _unitOfWork.Repository<User>().Update(user);
         await _unitOfWork.SaveChangesAsync();
 
-        var role = user.Role;
+        var platformRole = await _memberships.PlatformRoleAsync(user.Id);
+        Role? role = platformRole;
         Workspace? workspace = null;
         if (_currentUser.TenantId is Guid tenant)
         {
             var membership = await _memberships.GetMembershipAsync(user.Id, tenant);
-            role = membership?.Role ?? user.Role;
+            role = membership is not null ? membership.Role : platformRole;
             // DB-17 review finding #11 (NIT): pass the workspace so MeResponse.DemoExpiresAt/
             // DemoCanExtend are populated here too.
             workspace = await _unitOfWork
@@ -68,6 +79,8 @@ public class PreferencesService : IPreferencesService
                 .FirstOrDefaultAsync(w => w.Id == tenant);
         }
 
-        return Result<MeResponse>.Success(UserMapper.ToMeResponse(user, role, workspace: workspace));
+        return Result<MeResponse>.Success(
+            UserMapper.ToMeResponse(user, role, workspace: workspace)
+        );
     }
 }

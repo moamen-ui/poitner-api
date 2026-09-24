@@ -17,6 +17,7 @@ public class WorkspaceChoice
     public string RoleName { get; set; } = string.Empty;
     public bool IsAdmin { get; set; }
 
-    /// <summary>True when this is the workspace recorded at identity creation (<c>OwnerId == identity.OwnerId</c>).</summary>
+    /// <summary>True for the identity's home workspace — its earliest membership of any state
+    /// (<c>IMembershipService.HomeWorkspaceIdAsync</c>, DB-11f; formerly users.owner_id).</summary>
     public bool IsHome { get; set; }
 }

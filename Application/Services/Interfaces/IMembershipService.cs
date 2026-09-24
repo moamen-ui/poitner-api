@@ -34,6 +34,11 @@ public interface IMembershipService
     /// Builds a new membership row (JoinedAt = UtcNow, SecurityStamp = NewGuid) and stages it via
     /// <c>AddAsync</c>. Does NOT call SaveChangesAsync — the caller's existing unit of work does.
     /// </summary>
+    /// <exception cref="InvalidOperationException">
+    /// DB-11f F1 defense-in-depth: <paramref name="role"/> is the super-admin role, or is owned by a
+    /// workspace other than <paramref name="workspaceId"/>. Every caller must have already refused
+    /// this; this is the backstop at the one place every membership row is created.
+    /// </exception>
     Task<WorkspaceMembership> JoinAsync(
         User identity,
         Guid workspaceId,
@@ -57,6 +62,12 @@ public interface IMembershipService
         bool passwordlessOnly = false
     );
 
+    /// <summary>DB-11f (D11f.3). The identity's HOME workspace: owner of its earliest membership row of ANY state (ended/soft-deleted included; ORDER BY JoinedAt, Id). Replaces the legacy users.owner_id. Null when the identity has no membership (super admins).</summary>
+    Task<Guid?> HomeWorkspaceIdAsync(int userId);
+
+    /// <summary>DB-11f. The identity's platform role — the is_super_admin role its users.role_id points at — loaded without query filters (never an INNER JOIN visibility gate). Null for every non-super-admin.</summary>
+    Task<Role?> PlatformRoleAsync(int userId);
+
     /// <summary>
     /// S-13 (DB-11c). Returns the workspaces (id, name) in which any of <paramref name="membershipIds"/>
     /// is the ONLY live Workspace Admin membership. Empty = safe. Applies to every actor, super admins
@@ -64,7 +75,9 @@ public interface IMembershipService
     /// (<c>TenantService.SetStatusAsync</c>) is exempt by design (D10): a disabled admin is
     /// recoverable, an admin-less workspace is not.
     /// </summary>
-    Task<List<(Guid WorkspaceId, string Name)>> SoleAdminWorkspacesAsync(IEnumerable<int> membershipIds);
+    Task<List<(Guid WorkspaceId, string Name)>> SoleAdminWorkspacesAsync(
+        IEnumerable<int> membershipIds
+    );
 
     /// <summary>The one Conflict shape for the S-13 guard, everywhere it's enforced.</summary>
     Result SoleAdminConflict(IEnumerable<(Guid WorkspaceId, string Name)> workspaces);

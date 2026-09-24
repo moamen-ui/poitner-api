@@ -93,6 +93,17 @@ public class MembershipService(IUnitOfWork unitOfWork) : IMembershipService
         int? inviteId
     )
     {
+        // DB-11f F1 defense-in-depth: every caller is expected to have already refused a
+        // super-admin or foreign-workspace role (UserService.CreateAsync/ApproveAsync/UpdateAsync,
+        // RoleService.DeleteAsync's reassignment, the invite/register/demo lookups — all fixed to
+        // this same predicate), but this is the one place every membership row is actually created,
+        // so it is refused here too as a backstop.
+        if (role.IsSuperAdmin || (role.OwnerId != null && role.OwnerId != workspaceId))
+            throw new InvalidOperationException(
+                $"DB-11f F1: refusing to join user {identity.Id} to workspace {workspaceId} on role {role.Id}"
+                    + " (super-admin or foreign-workspace role)."
+            );
+
         // Role is intentionally NOT set as a navigation here: `role` frequently comes from an
         // AsNoTracking() lookup upstream, and attaching a detached entity with an already-existing
         // PK to a soon-to-be-saved graph makes EF try to INSERT it again (duplicate-key). RoleId (the
@@ -128,7 +139,7 @@ public class MembershipService(IUnitOfWork unitOfWork) : IMembershipService
             Email = EmailNormalizer.NormalizeRequired(email),
             PasswordHash = passwordHash,
             DisplayName = displayName,
-            // Legacy dual-write (RoleId only, no Role navigation — see the JoinAsync comment above).
+            // Legacy dual-write, never read since DB-11f Part A (RoleId only, no Role navigation — see JoinAsync); removed by DB-11f Part B.
             RoleId = firstRole.Id,
             OwnerId = firstWorkspaceId,
             PasswordlessOnly = passwordlessOnly,
@@ -136,6 +147,35 @@ public class MembershipService(IUnitOfWork unitOfWork) : IMembershipService
             ApprovalStatus = ApprovalStatus.Approved,
             SecurityStamp = Guid.NewGuid(),
         };
+
+    /// <inheritdoc />
+    public Task<Guid?> HomeWorkspaceIdAsync(int userId) =>
+        unitOfWork
+            .Repository<WorkspaceMembership>()
+            .Query()
+            .IgnoreQueryFilters()
+            .Where(m => m.UserId == userId)
+            .OrderBy(m => m.JoinedAt)
+            .ThenBy(m => m.Id)
+            .Select(m => (Guid?)m.OwnerId)
+            .FirstOrDefaultAsync();
+
+    /// <inheritdoc />
+    public Task<Role?> PlatformRoleAsync(int userId) =>
+        unitOfWork
+            .Repository<Role>()
+            .Query()
+            .IgnoreQueryFilters()
+            .AsNoTracking()
+            .Where(r =>
+                r.IsSuperAdmin
+                && unitOfWork
+                    .Repository<User>()
+                    .Query()
+                    .IgnoreQueryFilters()
+                    .Any(u => u.Id == userId && u.RoleId == r.Id)
+            )
+            .FirstOrDefaultAsync();
 
     /// <inheritdoc />
     public async Task<int> CountLiveAdminsAsync(Guid workspaceId) =>
@@ -200,7 +240,10 @@ public class MembershipService(IUnitOfWork unitOfWork) : IMembershipService
 
     public Result SoleAdminConflict(IEnumerable<(Guid WorkspaceId, string Name)> workspaces) =>
         Result.Conflict(
-            string.Format(MessageKeys.User.SoleAdminBlocked, string.Join(", ", workspaces.Select(w => w.Name)))
+            string.Format(
+                MessageKeys.User.SoleAdminBlocked,
+                string.Join(", ", workspaces.Select(w => w.Name))
+            )
         );
 
     public async Task EndAsync(WorkspaceMembership m, MembershipEndReason reason, Guid actor)

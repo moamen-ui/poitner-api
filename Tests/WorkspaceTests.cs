@@ -439,6 +439,9 @@ public class WorkspaceTests
             seed.Projects.Add(project);
             await seed.SaveChangesAsync();
             projectId = project.Id;
+            // DB-11f: the delete rule is membership-only — a legacy OwnerId with no membership row
+            // is now an I1 violation the pre-flight refuses, so this admin needs its membership seeded.
+            TestSeed.Join(seed, admin, ownerPublicId, role);
 
             var comment = new Comment
             {
@@ -570,15 +573,13 @@ public class WorkspaceTests
             };
             seed.Users.Add(admin);
             await seed.SaveChangesAsync();
+            TestSeed.Join(seed, admin, ownerPublicId, role);
 
             // DB-18 code review (Gemini BLOCKER): an identity CREATED in this workspace (legacy
             // owner_id — the FK `fk_users_workspaces_owner_id` is Restrict) that was later
             // soft-deleted/GDPR-erased (IdentityEraseService sets DeletedAt but never clears
-            // OwnerId) and has no membership row anywhere. Before the fix, HardDeleteAsync's
-            // `usersCreatedHere` / `IdentitiesDeletedWithWorkspace` queries filtered on
-            // `DeletedAt == null`, so this row was never removed or re-homed — the workspace row's
-            // own delete then hit a real foreign-key violation (23503 under Postgres; Sqlite here
-            // enforces the same FK, unlike the InMemory provider most of this suite uses).
+            // OwnerId). DB-11f: the delete rule is membership-only — it keeps its ENDED membership
+            // (EndAsync never removes the row), so the membership rule selects it.
             var erased = new User
             {
                 PublicId = Guid.NewGuid(),
@@ -595,6 +596,23 @@ public class WorkspaceTests
             seed.Users.Add(erased);
             await seed.SaveChangesAsync();
             erasedUserId = erased.Id;
+
+            seed.Set<WorkspaceMembership>()
+                .Add(
+                    new WorkspaceMembership
+                    {
+                        UserId = erased.Id,
+                        OwnerId = ownerPublicId,
+                        RoleId = role.Id,
+                        IsActive = false,
+                        ApprovalStatus = ApprovalStatus.Approved,
+                        JoinedAt = DateTime.UtcNow.AddDays(-2),
+                        LeftAt = DateTime.UtcNow.AddDays(-1),
+                        LeftReason = MembershipEndReason.AccountErased,
+                        SecurityStamp = Guid.NewGuid(),
+                    }
+                );
+            await seed.SaveChangesAsync();
         }
 
         using var ctx = db.MakeContext(superAdmin);
