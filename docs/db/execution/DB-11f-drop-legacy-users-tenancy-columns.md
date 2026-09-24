@@ -1128,3 +1128,12 @@ originally-written literal form).
 | Gemini: "a selection/MFA token can't read its own row" | Identical on `main` — not a regression this doc introduces. The selection-token code path this doc's Part A touched (`SessionRole`, `HomeWorkspaceIdAsync`, the delete-set rule) does not intersect the MFA challenge's own row lookup, which reads the identity directly by id under `IgnoreQueryFilters()` exactly as it did before Part A. |
 | Gemini: "add an index on users.role_id" | Already exists. `IX_users_role_id`, created by `InitialCreate.cs:183` (snapshot `:2258`) and confirmed still present and unchanged in the shipped model — this doc's own §2 inventory already recorded it (`users.role_id` row, "Both stay (D11f.2)"). |
 
+
+## 14. Part A release record (2026-09-24)
+
+- Implemented `f0d56d9`, `1352b55`, `4c14aa4`; review fixes `fef6afc`, `b9d2fd5`, `c2d1fe2` (reviews: `docs/db/reviews/REVIEW-DB11F-PARTA-CODE-2026-09-24.md` — Gemini 3.8 Flash, Gemini 3.1 Pro, Opus on Postgres 15). `dotnet test` 1520; no model change; no migration.
+- **Pre-checks on the 03:00 UTC production dump** `pointer-20260924T030001Z.dump` (81 migrations): P1 0 rows, P2 0 rows, P3 0 rows, P4 2 super-admin rows (1 soft-deleted since 2026-07-01) with owner NULL / approval 1 / 0 memberships and 0 non-super NULL-owner identities, P5 0, P6 0, P6b 0, P9 Developer/PM/Tester, P11 0, P7 0|0.
+- **Rehearsal on the same dump:** main and Part A booted in turn; as the production super admin and as a two-workspace Workspace Admin (password hash set on the local copy only): `/api/auth/me` ×2, `/api/admin/tenants` (3), `/api/admin/users` (4 as admin), `/api/me/profile`, `/api/admin/workspace`, login workspace picker (same `isHome`) — **identical responses**; no `DB-11f invariant`, 23503 or 42703 in either log.
+- **Local e2e gate PASS** twice (before and after the review fixes).
+- Pre-existing, not DB-11f: a password login by a multi-workspace identity writes no `auth.login.succeeded` audit row (AUDIT GAP error line; strict coverage is off in production) — follow-up.
+- **Deployed 2026-09-24 05:05 UTC** (ordinary, via agy): deploy OK, `/health` 200, no pending migration, 0 invariant/23503/42703/Error lines in the first 3 min. 24 h watch → Part B not before **2026-09-25 05:05 UTC**.
