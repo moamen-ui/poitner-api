@@ -55,6 +55,28 @@ public class EmailTemplateBuilderTests
         Assert.Contains("max-width:580px", html);
     }
 
+    /// <summary>The footer's "Sent by {product}" is the one fixed English string in the layout
+    /// chrome itself — Arabic sends must not leak it untranslated.</summary>
+    [Fact]
+    public void Layout_ArabicLang_LocalizesFooter()
+    {
+        var html = EmailLayout.Wrap("<p>مرحبا</p>", "Pointer", lang: "ar");
+
+        Assert.Contains("أُرسلت بواسطة <strong>Pointer</strong>", html);
+        Assert.DoesNotContain("Sent by", html);
+    }
+
+    /// <summary>English output must stay byte-identical to before the Arabic footer localization —
+    /// only the `isAr` branch changed.</summary>
+    [Fact]
+    public void Layout_EnglishLang_FooterUnchanged()
+    {
+        var html = EmailLayout.Wrap("<p>hello</p>", "Pointer");
+
+        Assert.Contains("Sent by <strong>Pointer</strong>", html);
+        Assert.DoesNotContain("أُرسلت بواسطة", html);
+    }
+
     [Fact]
     public void Layout_DefaultsToBrandBlue_WhenNoPrimaryColorGiven()
     {

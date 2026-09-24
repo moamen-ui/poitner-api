@@ -143,9 +143,16 @@ public class WorkspaceServiceTests
             return false;
         }
 
-        public string CreateScoped(Guid id, Guid stamp, string purpose, string? payload = null) => "r";
+        public string CreateScoped(Guid id, Guid stamp, string purpose, string? payload = null) =>
+            "r";
 
-        public bool TryValidateScoped(string token, string purpose, out Guid id, out Guid stamp, out string? payload)
+        public bool TryValidateScoped(
+            string token,
+            string purpose,
+            out Guid id,
+            out Guid stamp,
+            out string? payload
+        )
         {
             id = Guid.Empty;
             stamp = Guid.Empty;
@@ -384,6 +391,58 @@ public class WorkspaceServiceTests
             Assert.Equal("Workspace A", verify.Workspaces.Single(w => w.Id == tenantA).Name);
             Assert.Equal("Renamed B", verify.Workspaces.Single(w => w.Id == tenantB).Name);
         }
+    }
+
+    /// <summary>DB-18 §3.4 R8 tenancy: GetAsync reads through the plain tenant query filter (never
+    /// IgnoreQueryFilters) keyed off the CALLER's own TenantId — a tenant-B admin's response must
+    /// carry only B's own pause/deletion state, never A's, even though A is paused and mid-grace.</summary>
+    [Fact]
+    public async Task WorkspaceResponse_TenantB_SeesNoStateOfA()
+    {
+        var dbName = Guid.NewGuid().ToString();
+        var tenantA = Guid.NewGuid();
+        var tenantB = Guid.NewGuid();
+
+        using (var seed = InMemoryContext(new FakeCurrentUser { IsSuperAdmin = true }, dbName))
+        {
+            seed.Workspaces.Add(
+                new Workspace
+                {
+                    Id = tenantA,
+                    Name = "Workspace A",
+                    CreatedAt = DateTime.UtcNow,
+                    CreatedBy = tenantA,
+                    PausedAt = DateTime.UtcNow,
+                    PausedBy = Guid.NewGuid(),
+                    DeletionRequestedAt = DateTime.UtcNow,
+                    DeletionScheduledFor = DateTime.UtcNow.AddDays(7),
+                }
+            );
+            seed.Workspaces.Add(
+                new Workspace
+                {
+                    Id = tenantB,
+                    Name = "Workspace B",
+                    CreatedAt = DateTime.UtcNow,
+                    CreatedBy = tenantB,
+                }
+            );
+            seed.SaveChanges();
+        }
+
+        var userB = new FakeCurrentUser { Id = Guid.NewGuid(), TenantId = tenantB };
+        using var db = InMemoryContext(userB, dbName);
+        var svc = new WorkspaceService(new UnitOfWork(db), userB);
+
+        var result = await svc.GetAsync();
+
+        Assert.True(result.IsSuccess, result.Message);
+        Assert.Equal(tenantB, result.Data!.Id);
+        Assert.Equal("Workspace B", result.Data.Name);
+        Assert.Null(result.Data.PausedAt);
+        Assert.False(result.Data.PausedByOperator);
+        Assert.Null(result.Data.DeletionRequestedAt);
+        Assert.Null(result.Data.DeletionScheduledFor);
     }
 
     // ── 5. MeResponse_TenantName_FollowsRename ──────────────────────────────────────────

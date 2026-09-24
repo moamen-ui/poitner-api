@@ -53,6 +53,10 @@ public static class EmailLayout
             ? $" &middot; <a href=\"{Html(appUrl)}\" style=\"color:#64748b;text-decoration:none;\">{Html(appUrl)}</a>"
             : string.Empty;
 
+        // The only fixed English string in the layout chrome itself (everything else — content,
+        // disclaimer, preheader — is already localized by the caller before it reaches Wrap).
+        var sentByLabel = isAr ? "أُرسلت بواسطة" : "Sent by";
+
         var disclaimerHtml = !string.IsNullOrWhiteSpace(disclaimer)
             ? $"<p style=\"margin:0;\">{disclaimer}</p>"
             : string.Empty;
@@ -114,7 +118,7 @@ public static class EmailLayout
                   </tr>
                   <tr>
                     <td class="email-footer"{{rtlCellAttr}} style="padding:20px 32px;background-color:#f8fafc;border-top:1px solid #e2e8f0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;font-size:12px;color:#64748b;line-height:1.5;{{rtlAlignStyle}}">
-                      <p style="margin:0 0 6px;">Sent by <strong>{{safeProductName}}</strong>{{appLine}}</p>
+                      <p style="margin:0 0 6px;">{{sentByLabel}} <strong>{{safeProductName}}</strong>{{appLine}}</p>
                       {{disclaimerHtml}}
                     </td>
                   </tr>

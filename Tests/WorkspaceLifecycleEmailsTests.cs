@@ -53,7 +53,13 @@ public class WorkspaceLifecycleEmailsTests
         // through it now, not the old hand-rolled <div style=...>.
         Assert.Contains("max-width:580px", html);
         Assert.Contains("background-color:#ffffff", html);
-        Assert.Contains("Sent by <strong>Pointer</strong>", html);
+        // The footer's "Sent by" is localized for Arabic (fix(email): Arabic footer).
+        Assert.Contains(
+            lang == "ar"
+                ? "أُرسلت بواسطة <strong>Pointer</strong>"
+                : "Sent by <strong>Pointer</strong>",
+            html
+        );
     }
 
     // ── Confirm-deletion button ─────────────────────────────────────────────────────────────
@@ -93,8 +99,16 @@ public class WorkspaceLifecycleEmailsTests
     [Fact]
     public void Arabic_ConfirmDeletion_ButtonArrowAndCalloutBorderAreMirrored()
     {
-        var (_, ar) = WorkspaceLifecycleEmails.Build(WorkspaceLifecycleEmailKind.ConfirmDeletion, "ar", Model());
-        var (_, en) = WorkspaceLifecycleEmails.Build(WorkspaceLifecycleEmailKind.ConfirmDeletion, "en", Model());
+        var (_, ar) = WorkspaceLifecycleEmails.Build(
+            WorkspaceLifecycleEmailKind.ConfirmDeletion,
+            "ar",
+            Model()
+        );
+        var (_, en) = WorkspaceLifecycleEmails.Build(
+            WorkspaceLifecycleEmailKind.ConfirmDeletion,
+            "en",
+            Model()
+        );
 
         Assert.Contains("&larr;</a>", ar);
         Assert.DoesNotContain("&rarr;</a>", ar);
@@ -109,7 +123,14 @@ public class WorkspaceLifecycleEmailsTests
     {
         foreach (var lang in new[] { "en", "ar" })
         {
-            var (subject, html) = WorkspaceLifecycleEmails.Build(kind, lang, Model() with { WorkspaceName = "R&D <Team>" });
+            var (subject, html) = WorkspaceLifecycleEmails.Build(
+                kind,
+                lang,
+                Model() with
+                {
+                    WorkspaceName = "R&D <Team>",
+                }
+            );
 
             // Subjects are plain-text headers: an HTML entity would show literally in the inbox.
             Assert.Contains("R&D <Team>", subject);
