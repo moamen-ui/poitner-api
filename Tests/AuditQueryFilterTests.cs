@@ -203,10 +203,10 @@ public class AuditQueryFilterTests
 
         using (var seed = BuildContext(new FakeCurrentUser { IsSuperAdmin = true }, dbName))
         {
-            // DB-11f: User.Role is a required navigation and the User filter now reads it — a
-            // RoleId with no matching Role row makes EF's required-navigation join drop the row from
-            // every filtered query (not just the one branch that used to read owner_id). A real Role
-            // row is needed, not a transient `new Role { Id = 1 }`.
+            // DB-11f: a real Role row is needed for the platform-role branch (the User filter's
+            // `Set<Role>().Any(r => r.Id == e.RoleId && r.IsSuperAdmin)` subquery), not a transient
+            // `new Role { Id = 1 }` — an unpersisted RoleId drops the row from every filtered query,
+            // not just the branch that used to read owner_id.
             var role = new Role { Name = "M", IsActive = true };
             seed.Roles.Add(role);
             seed.SaveChanges();

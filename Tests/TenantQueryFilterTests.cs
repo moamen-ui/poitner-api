@@ -152,10 +152,10 @@ public class TenantQueryFilterTests
 
         using (var seed = SuperAdminContext(db))
         {
-            // DB-11f: User.Role is a required navigation, and the User filter now reads it (the
-            // null-tenant bucket is the platform role) — an unpersisted RoleId (no matching Role row)
-            // makes EF's required-navigation join drop the row from EVERY query, not just this
-            // filter's branch. A real Role row is needed, not a transient `new Role { Id = 1 }`.
+            // DB-11f: a real Role row is needed for the platform-role branch (the User filter's
+            // null-tenant bucket, `Set<Role>().Any(r => r.Id == e.RoleId && r.IsSuperAdmin)`), not a
+            // transient `new Role { Id = 1 }` — an unpersisted RoleId drops the row from EVERY
+            // query, not just this filter's branch.
             var role = new Role { Name = "M", IsActive = true };
             seed.Roles.Add(role);
             seed.SaveChanges();

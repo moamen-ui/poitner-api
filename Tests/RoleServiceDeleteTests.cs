@@ -158,11 +158,18 @@ public class RoleServiceDeleteTests
 
         Assert.False(result.IsSuccess);
         Assert.Equal(MessageKeys.Role.EscalationNotAllowed, result.Message);
-        // The role was NOT deleted and the user was NOT reassigned.
+        // The role was NOT deleted and the MEMBERSHIP was NOT reassigned. Asserting on
+        // users.role_id here would be vacuous: DeleteAsync's reassignment only ever writes
+        // workspace_memberships.role_id (DB-11a), so a stale users.role_id assertion passes
+        // whether or not the guard actually fired.
         Assert.Null(db.Roles.IgnoreQueryFilters().Single(r => r.Id == s.DeleteRoleId).DeletedAt);
+        var memberUserId1 = db.Users.IgnoreQueryFilters().Single(u => u.Email == "member@a.com").Id;
         Assert.Equal(
             s.DeleteRoleId,
-            db.Users.IgnoreQueryFilters().Single(u => u.Email == "member@a.com").RoleId
+            db.Set<Pointer.Domain.Entity.WorkspaceMembership>()
+                .IgnoreQueryFilters()
+                .Single(m => m.UserId == memberUserId1 && m.LeftAt == null)
+                .RoleId
         );
     }
 
@@ -278,9 +285,15 @@ public class RoleServiceDeleteTests
         Assert.False(result.IsSuccess);
         Assert.Equal(MessageKeys.Role.EscalationNotAllowed, result.Message);
         Assert.Null(db.Roles.IgnoreQueryFilters().Single(r => r.Id == s.DeleteRoleId).DeletedAt);
+        // Assert the MEMBERSHIP's RoleId, not users.role_id (DeleteAsync never writes the latter —
+        // see the comment on the previous test).
+        var memberUserId2 = db.Users.IgnoreQueryFilters().Single(u => u.Email == "member@a.com").Id;
         Assert.Equal(
             s.DeleteRoleId,
-            db.Users.IgnoreQueryFilters().Single(u => u.Email == "member@a.com").RoleId
+            db.Set<Pointer.Domain.Entity.WorkspaceMembership>()
+                .IgnoreQueryFilters()
+                .Single(m => m.UserId == memberUserId2 && m.LeftAt == null)
+                .RoleId
         );
     }
 
@@ -301,9 +314,15 @@ public class RoleServiceDeleteTests
         Assert.False(result.IsSuccess);
         Assert.Equal(MessageKeys.Role.EscalationNotAllowed, result.Message);
         Assert.Null(db.Roles.IgnoreQueryFilters().Single(r => r.Id == s.DeleteRoleId).DeletedAt);
+        // Assert the MEMBERSHIP's RoleId, not users.role_id (DeleteAsync never writes the latter —
+        // see the comment on ScopedAdmin_CannotReassignTo_AdminGrantingRole).
+        var memberUserId3 = db.Users.IgnoreQueryFilters().Single(u => u.Email == "member@a.com").Id;
         Assert.Equal(
             s.DeleteRoleId,
-            db.Users.IgnoreQueryFilters().Single(u => u.Email == "member@a.com").RoleId
+            db.Set<Pointer.Domain.Entity.WorkspaceMembership>()
+                .IgnoreQueryFilters()
+                .Single(m => m.UserId == memberUserId3 && m.LeftAt == null)
+                .RoleId
         );
     }
 }

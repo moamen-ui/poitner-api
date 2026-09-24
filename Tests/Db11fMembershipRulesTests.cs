@@ -4,10 +4,15 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
+using Npgsql;
 using Pointer.API.Seed;
 using Pointer.Application.Abstractions;
 using Pointer.Application.Common;
 using Pointer.Application.DTOs.Auth;
+using Pointer.Application.DTOs.Invite;
+using Pointer.Application.DTOs.Preferences;
+using Pointer.Application.DTOs.Tenant;
+using Pointer.Application.DTOs.User;
 using Pointer.Application.Resources;
 using Pointer.Application.Response;
 using Pointer.Application.Services.Implementation;
@@ -294,6 +299,679 @@ public class Db11fMembershipRulesTests
             user
         );
 
+    private static PreferencesService BuildPreferencesService(
+        ICurrentUser user,
+        AppDbContext ctx
+    ) => new(new UnitOfWork(ctx), user, new MembershipService(new UnitOfWork(ctx)));
+
+    private static UserService BuildUserService(ICurrentUser user, AppDbContext ctx) =>
+        new(
+            new UnitOfWork(ctx),
+            new FakePasswordHasher(),
+            user,
+            new NoopEmail(),
+            new PassThroughEntitlements(),
+            new NoopBrandingService(),
+            new MembershipService(new UnitOfWork(ctx))
+        );
+
+    private static InviteService BuildInviteService(
+        ICurrentUser user,
+        AppDbContext ctx,
+        ISettingsService? settings = null,
+        IUnitOfWork? unitOfWork = null
+    ) =>
+        new(
+            unitOfWork ?? new UnitOfWork(ctx),
+            user,
+            new FakePasswordHasher(),
+            RealTokenService(),
+            settings ?? new FakeSettings(),
+            new PassThroughEntitlements(),
+            new NoopEmail(),
+            new NoopBrandingService(),
+            new MembershipService(new UnitOfWork(ctx))
+        );
+
+    /// <summary>
+    /// The EF Core InMemory provider never throws a 23505 duplicate-key violation on its own (no
+    /// unique constraints are enforced) — same precedent as ChangeEmailTests.ThrowDuplicateKeyUnitOfWork.
+    /// This variant throws only on the Nth <see cref="SaveChangesAsync"/> call, so the FIRST save in a
+    /// multi-save flow (e.g. the quick-access invite's own insert) succeeds normally and only a LATER
+    /// save (e.g. the identity+membership insert racing a concurrent duplicate) fails — simulating the
+    /// exact TOCTOU window the comment at InviteService.cs's quick-access catch describes.
+    /// </summary>
+    private sealed class ThrowOnNthSaveUnitOfWork(IUnitOfWork inner, int throwOnCallNumber)
+        : IUnitOfWork
+    {
+        private int _calls;
+
+        public IRepository<T> Repository<T>()
+            where T : BaseEntity => inner.Repository<T>();
+
+        public DbSet<UsageEvent> UsageEvents => inner.UsageEvents;
+        public DbSet<UsageDaily> UsageDaily => inner.UsageDaily;
+        public DbSet<Workspace> Workspaces => inner.Workspaces;
+        public DbSet<UserAlias> UserAliases => inner.UserAliases;
+        public DbSet<AuditEvent> AuditEvents => inner.AuditEvents;
+        public DbSet<ImpersonationSession> ImpersonationSessions => inner.ImpersonationSessions;
+
+        public Task<int> SaveChangesAsync()
+        {
+            _calls++;
+            if (_calls == throwOnCallNumber)
+                throw new DbUpdateException(
+                    "simulated 23505",
+                    new PostgresException(
+                        "duplicate key value violates unique constraint \"ux_users_email_owner_live\"",
+                        "ERROR",
+                        "ERROR",
+                        "23505",
+                        constraintName: "ux_users_email_owner_live"
+                    )
+                );
+            return inner.SaveChangesAsync();
+        }
+
+        public Task ExecuteInTransactionAsync(Func<Task> action) =>
+            inner.ExecuteInTransactionAsync(action);
+
+        public void PreserveCreatedAtOnInsert(BaseEntity entity) =>
+            inner.PreserveCreatedAtOnInsert(entity);
+
+        public void ClearChangeTracker() => inner.ClearChangeTracker();
+
+        public Task<int> AtomicClaimInviteSlotAsync(int inviteId, DateTime now) =>
+            inner.AtomicClaimInviteSlotAsync(inviteId, now);
+
+        public Task ExecuteSqlRawAsync(string sql, params object[] parameters) =>
+            inner.ExecuteSqlRawAsync(sql, parameters);
+    }
+
+    private static DemoService BuildDemoService(AppDbContext ctx) =>
+        new(
+            new UnitOfWork(ctx),
+            new FakePasswordHasher(),
+            RealTokenService(),
+            new NoopEmail(),
+            new FakeSettings(),
+            new NoopBrandingService(),
+            new MembershipService(new UnitOfWork(ctx))
+        );
+
+    /// <summary>Task A15 / test 14c: records, per SaveChangesAsync call, the set of entity CLR types
+    /// that were Added — same technique as DemoServiceAnalyticsFailureTests' interceptor, but via the
+    /// plain DbContext.SavingChanges event (no interceptor registration needed).</summary>
+    private static List<HashSet<Type>> TrackAddedTypesPerSave(AppDbContext ctx)
+    {
+        var saves = new List<HashSet<Type>>();
+        ctx.SavingChanges += (o, _) =>
+            saves.Add(
+                ((DbContext)o!)
+                    .ChangeTracker.Entries()
+                    .Where(e => e.State == EntityState.Added)
+                    .Select(e => e.Entity.GetType())
+                    .ToHashSet()
+            );
+        return saves;
+    }
+
+    /// <summary>Task A15 (cross-review Opus MEDIUM): the FIRST save that inserts a User must also
+    /// insert its first WorkspaceMembership in the SAME SaveChanges call — never a later one, which
+    /// would leave a membership-less identity if the process crashed in between (I1).</summary>
+    private static void AssertUserAndMembershipSavedTogether(List<HashSet<Type>> saves)
+    {
+        var firstWithUser = saves.FirstOrDefault(s => s.Contains(typeof(User)));
+        Assert.NotNull(firstWithUser);
+        Assert.Contains(typeof(WorkspaceMembership), firstWithUser!);
+    }
+
+    // ── 14c. Creators_SaveIdentityAndFirstMembership_InOneSaveChanges (task A15) ────────────
+
+    private sealed class AdminSignupEnabledSettings : ISettingsService
+    {
+        public Task<bool> GetBoolAsync(string key, bool fallback = false) =>
+            Task.FromResult(key == ISettingsService.ScopedAdminSignupEnabled || fallback);
+
+        public Task SetBoolAsync(string key, bool value) => Task.CompletedTask;
+
+        public Task<string> GetStringAsync(string key, string fallback = "") =>
+            Task.FromResult(fallback);
+
+        public Task SetStringAsync(string key, string value) => Task.CompletedTask;
+
+        public Task<int> GetIntAsync(string key, int fallback = 0) => Task.FromResult(fallback);
+
+        public Task SetIntAsync(string key, int value) => Task.CompletedTask;
+    }
+
+    private const string StrongPassword = "Str0ng!Passw0rd99";
+
+    [Fact]
+    public async Task Creators_SaveIdentityAndFirstMembership_InOneSaveChanges()
+    {
+        // 1. TenantService.CreateAsync (builder: WorkspaceTests.cs:601-608).
+        {
+            var dbName = Guid.NewGuid().ToString();
+            using (var seed = Ctx(new FakeCurrentUser { IsSuperAdmin = true }, dbName))
+            {
+                seed.Roles.Add(
+                    new Role
+                    {
+                        Name = "Workspace Admin",
+                        GrantsAdmin = true,
+                        IsActive = true,
+                    }
+                );
+                seed.SaveChanges();
+            }
+
+            using var ctx = Ctx(new FakeCurrentUser { IsSuperAdmin = true }, dbName);
+            var saves = TrackAddedTypesPerSave(ctx);
+            var svc = BuildTenantService(ctx);
+
+            var result = await svc.CreateAsync(
+                new CreateTenantRequest
+                {
+                    Email = "new-tenant-admin@x.com",
+                    Password = StrongPassword,
+                    DisplayName = "New Tenant Admin",
+                }
+            );
+
+            Assert.True(result.IsSuccess, result.Message);
+            AssertUserAndMembershipSavedTogether(saves);
+        }
+
+        // 2. UserService.CreateAsync (builder: WorkspaceAdminOwnershipTests.cs).
+        {
+            var dbName = Guid.NewGuid().ToString();
+            var tenant = Guid.NewGuid();
+            int devRoleId;
+            using (var seed = Ctx(new FakeCurrentUser { IsSuperAdmin = true }, dbName))
+            {
+                seed.Workspaces.Add(
+                    new Workspace
+                    {
+                        Id = tenant,
+                        Name = "T",
+                        CreatedAt = DateTime.UtcNow,
+                        CreatedBy = tenant,
+                    }
+                );
+                var devRole = new Role { Name = "Developer", IsActive = true };
+                seed.Roles.Add(devRole);
+                seed.SaveChanges();
+                devRoleId = devRole.Id;
+            }
+
+            var caller = new FakeCurrentUser { TenantId = tenant, IsAdmin = true };
+            using var ctx = Ctx(caller, dbName);
+            var saves = TrackAddedTypesPerSave(ctx);
+            var svc = BuildUserService(caller, ctx);
+
+            var result = await svc.CreateAsync(
+                new CreateUserRequest
+                {
+                    Email = "new-member@x.com",
+                    Password = StrongPassword,
+                    DisplayName = "New Member",
+                    RoleId = devRoleId,
+                }
+            );
+
+            Assert.True(result.IsSuccess, result.Message);
+            AssertUserAndMembershipSavedTogether(saves);
+        }
+
+        // 3. InviteService accept — join an EXISTING workspace (builder: InviteServiceTests.cs BuildService).
+        {
+            var dbName = Guid.NewGuid().ToString();
+            var tenant = Guid.NewGuid();
+            string inviteCode;
+            using (var seed = Ctx(new FakeCurrentUser { IsSuperAdmin = true }, dbName))
+            {
+                seed.Workspaces.Add(
+                    new Workspace
+                    {
+                        Id = tenant,
+                        Name = "T",
+                        CreatedAt = DateTime.UtcNow,
+                        CreatedBy = tenant,
+                    }
+                );
+                var devRole = new Role { Name = "Developer", IsActive = true };
+                seed.Roles.Add(devRole);
+                seed.SaveChanges();
+
+                inviteCode = Guid.NewGuid().ToString("N");
+                seed.Set<Invite>()
+                    .Add(
+                        new Invite
+                        {
+                            OwnerId = tenant,
+                            Code = inviteCode,
+                            RoleId = devRole.Id,
+                            ExpiresAt = DateTime.UtcNow.AddDays(7),
+                            MaxUses = null,
+                            Uses = 0,
+                        }
+                    );
+                seed.SaveChanges();
+            }
+
+            var anon = new FakeCurrentUser();
+            using var ctx = Ctx(anon, dbName);
+            var saves = TrackAddedTypesPerSave(ctx);
+            var svc = BuildInviteService(anon, ctx);
+
+            var result = await svc.AcceptAsync(
+                new AcceptInviteRequest
+                {
+                    Code = inviteCode,
+                    Email = "join-existing@x.com",
+                    Password = StrongPassword,
+                    DisplayName = "Join Existing",
+                }
+            );
+
+            Assert.True(result.IsSuccess, result.Message);
+            AssertUserAndMembershipSavedTogether(saves);
+        }
+
+        // 4. InviteService accept — CREATE a new workspace (invite.OwnerId == null).
+        {
+            var dbName = Guid.NewGuid().ToString();
+            string inviteCode;
+            using (var seed = Ctx(new FakeCurrentUser { IsSuperAdmin = true }, dbName))
+            {
+                seed.Roles.Add(
+                    new Role
+                    {
+                        Name = "Workspace Admin",
+                        GrantsAdmin = true,
+                        IsActive = true,
+                    }
+                );
+                seed.SaveChanges();
+
+                inviteCode = Guid.NewGuid().ToString("N");
+                seed.Set<Invite>()
+                    .Add(
+                        new Invite
+                        {
+                            OwnerId = null,
+                            Code = inviteCode,
+                            ExpiresAt = DateTime.UtcNow.AddDays(7),
+                            MaxUses = 1,
+                            Uses = 0,
+                        }
+                    );
+                seed.SaveChanges();
+            }
+
+            var anon = new FakeCurrentUser();
+            using var ctx = Ctx(anon, dbName);
+            var saves = TrackAddedTypesPerSave(ctx);
+            var svc = BuildInviteService(anon, ctx);
+
+            var result = await svc.AcceptAsync(
+                new AcceptInviteRequest
+                {
+                    Code = inviteCode,
+                    Email = "new-workspace@x.com",
+                    Password = StrongPassword,
+                    DisplayName = "New Workspace Owner",
+                }
+            );
+
+            Assert.True(result.IsSuccess, result.Message);
+            AssertUserAndMembershipSavedTogether(saves);
+        }
+
+        // 5. InviteService quick-access provisioning (CreateAsync with a QuickAccess-pinned role).
+        {
+            var dbName = Guid.NewGuid().ToString();
+            var tenant = Guid.NewGuid();
+            int quickRoleId;
+            int projectId;
+            using (var seed = Ctx(new FakeCurrentUser { IsSuperAdmin = true }, dbName))
+            {
+                seed.Workspaces.Add(
+                    new Workspace
+                    {
+                        Id = tenant,
+                        Name = "T",
+                        CreatedAt = DateTime.UtcNow,
+                        CreatedBy = tenant,
+                    }
+                );
+                var quickRole = new Role
+                {
+                    Name = "Client",
+                    QuickAccess = true,
+                    IsActive = true,
+                    OwnerId = tenant,
+                };
+                seed.Roles.Add(quickRole);
+                var project = new Project
+                {
+                    Key = "quick-access-app",
+                    Name = "App",
+                    AppUrl = "https://client.example.com",
+                    OwnerId = tenant,
+                };
+                seed.Projects.Add(project);
+                seed.SaveChanges();
+                quickRoleId = quickRole.Id;
+                projectId = project.Id;
+            }
+
+            var admin = new FakeCurrentUser { TenantId = tenant, IsAdmin = true };
+            using var ctx = Ctx(admin, dbName);
+            var saves = TrackAddedTypesPerSave(ctx);
+            var svc = BuildInviteService(admin, ctx);
+
+            var result = await svc.CreateAsync(
+                new CreateInviteRequest
+                {
+                    RoleId = quickRoleId,
+                    Email = "quick-access@x.com",
+                    ProjectId = projectId,
+                }
+            );
+
+            Assert.True(result.IsSuccess, result.Message);
+            AssertUserAndMembershipSavedTogether(saves);
+        }
+
+        // 6. AuthService.RegisterAsync (stakeholder register).
+        {
+            var dbName = Guid.NewGuid().ToString();
+            var tenant = Guid.NewGuid();
+            int stakeholderRoleId;
+            using (var seed = Ctx(new FakeCurrentUser { IsSuperAdmin = true }, dbName))
+            {
+                seed.Workspaces.Add(
+                    new Workspace
+                    {
+                        Id = tenant,
+                        Name = "T",
+                        CreatedAt = DateTime.UtcNow,
+                        CreatedBy = tenant,
+                    }
+                );
+                var stakeholderRole = new Role
+                {
+                    Name = "Stakeholder",
+                    IsActive = true,
+                    OwnerId = tenant,
+                };
+                seed.Roles.Add(stakeholderRole);
+                var project = new Project
+                {
+                    Key = "stakeholder-app",
+                    Name = "App",
+                    OwnerId = tenant,
+                };
+                seed.Projects.Add(project);
+                seed.SaveChanges();
+                stakeholderRoleId = stakeholderRole.Id;
+            }
+
+            var anon = new FakeCurrentUser();
+            using var ctx = Ctx(anon, dbName);
+            var saves = TrackAddedTypesPerSave(ctx);
+            var svc = BuildAuthService(anon, ctx);
+
+            var result = await svc.RegisterAsync(
+                new RegisterRequest
+                {
+                    Email = "stakeholder@x.com",
+                    Password = StrongPassword,
+                    DisplayName = "Stakeholder",
+                    RoleId = stakeholderRoleId,
+                    ProjectKey = "stakeholder-app",
+                }
+            );
+
+            Assert.True(result.IsSuccess, result.Message);
+            AssertUserAndMembershipSavedTogether(saves);
+        }
+
+        // 7. AuthService.RegisterAdminAsync (self-service workspace signup).
+        {
+            var dbName = Guid.NewGuid().ToString();
+            using (var seed = Ctx(new FakeCurrentUser { IsSuperAdmin = true }, dbName))
+            {
+                seed.Roles.Add(
+                    new Role
+                    {
+                        Name = "Workspace Admin",
+                        GrantsAdmin = true,
+                        IsActive = true,
+                    }
+                );
+                seed.SaveChanges();
+            }
+
+            var anon = new FakeCurrentUser();
+            using var ctx = Ctx(anon, dbName);
+            var saves = TrackAddedTypesPerSave(ctx);
+            var svc = BuildAuthService(anon, ctx);
+            // RegisterAdminAsync needs ScopedAdminSignupEnabled=true — swap the settings double via
+            // a fresh AuthService built the same way BuildAuthService does, but with that setting on.
+            var uow = new UnitOfWork(ctx);
+            var svcWithSignupEnabled = new AuthService(
+                uow,
+                new FakePasswordHasher(),
+                RealTokenService(),
+                anon,
+                new AdminSignupEnabledSettings(),
+                new FakeResetTokenService(),
+                new NoopEmail(),
+                new NoopBrandingService(),
+                new ApiKeyService(new UnitOfWork(ctx), new TestApiKeyProtector()),
+                new FakeLoginAttemptLimiter(),
+                new MembershipService(uow)
+            );
+
+            var result = await svcWithSignupEnabled.RegisterAdminAsync(
+                new RegisterAdminRequest
+                {
+                    Email = "self-signup-admin@x.com",
+                    Password = StrongPassword,
+                    DisplayName = "Self Signup",
+                }
+            );
+
+            Assert.True(result.IsSuccess, result.Message);
+            AssertUserAndMembershipSavedTogether(saves);
+        }
+
+        // 8. DemoService.ProvisionAsync (builder: Db17DemoServiceTests.cs).
+        {
+            var dbName = Guid.NewGuid().ToString();
+            using (var seed = Ctx(new FakeCurrentUser { IsSuperAdmin = true }, dbName))
+            {
+                seed.Roles.Add(
+                    new Role
+                    {
+                        Name = "Workspace Admin",
+                        GrantsAdmin = true,
+                        IsActive = true,
+                    }
+                );
+                seed.SaveChanges();
+            }
+
+            using var ctx = Ctx(new FakeCurrentUser(), dbName);
+            var saves = TrackAddedTypesPerSave(ctx);
+            var svc = BuildDemoService(ctx);
+
+            var result = await svc.ProvisionAsync(
+                "https://app.pointer.moamen.work",
+                "demo-recipient@x.com"
+            );
+
+            Assert.True(result.IsSuccess, result.Message);
+            AssertUserAndMembershipSavedTogether(saves);
+        }
+    }
+
+    // ── F1 (task item 1/2): InviteService.CreateAsync's super-admin-to-existing-workspace path
+    // must never mint an invite pinned to a role other than the REAL global Deputy role — even when
+    // a foreign workspace's decoy role shares its exact name (the name-lookup fix, InviteService.cs
+    // ~155-163: `&& r.OwnerId == null`).
+    [Fact]
+    public async Task InviteService_CreateAsync_SuperAdminBranch_NeverPinsAForeignDecoyDeputyRole()
+    {
+        var dbName = Guid.NewGuid().ToString();
+        var target = Guid.NewGuid();
+        var decoyOwner = Guid.NewGuid();
+        int realDeputyRoleId;
+        using (var seed = Ctx(new FakeCurrentUser { IsSuperAdmin = true }, dbName))
+        {
+            seed.Workspaces.Add(
+                new Workspace
+                {
+                    Id = target,
+                    Name = "Target",
+                    CreatedAt = DateTime.UtcNow,
+                    CreatedBy = target,
+                }
+            );
+            seed.Workspaces.Add(
+                new Workspace
+                {
+                    Id = decoyOwner,
+                    Name = "Decoy",
+                    CreatedAt = DateTime.UtcNow,
+                    CreatedBy = decoyOwner,
+                }
+            );
+            // Decoy seeded FIRST (lower id) and sharing the exact global Deputy role's name, but
+            // OWNED by an unrelated workspace — before the fix, a super-admin caller's Role query
+            // (which bypasses the tenant filter) could resolve THIS one instead of the real global
+            // role, because the lookup only matched on Name.
+            var decoyDeputy = new Role
+            {
+                Name = "Workspace Admin Deputy",
+                OwnerId = decoyOwner,
+                GrantsAdmin = true,
+                IsActive = true,
+            };
+            var realAdminRole = new Role
+            {
+                Name = "Workspace Admin",
+                OwnerId = null,
+                GrantsAdmin = true,
+                IsActive = true,
+            };
+            var realDeputyRole = new Role
+            {
+                Name = "Workspace Admin Deputy",
+                OwnerId = null,
+                GrantsAdmin = true,
+                IsActive = true,
+            };
+            seed.Roles.AddRange(decoyDeputy, realAdminRole, realDeputyRole);
+            seed.SaveChanges();
+            realDeputyRoleId = realDeputyRole.Id;
+
+            var targetAdmin = new User
+            {
+                Email = "target-admin@x.com",
+                PasswordHash = "h",
+                DisplayName = "TargetAdmin",
+                PublicId = Guid.NewGuid(),
+                RoleId = realAdminRole.Id,
+                IsActive = true,
+                OwnerId = target,
+            };
+            seed.Users.Add(targetAdmin);
+            seed.SaveChanges();
+            TestSeed.Join(seed, targetAdmin, target, realAdminRole);
+        }
+
+        var superAdmin = new FakeCurrentUser { IsSuperAdmin = true };
+        using var ctx = Ctx(superAdmin, dbName);
+        var svc = BuildInviteService(superAdmin, ctx);
+
+        var result = await svc.CreateAsync(new CreateInviteRequest { TargetOwnerId = target });
+
+        Assert.True(result.IsSuccess, result.Message);
+        var invite = ctx.Invites.IgnoreQueryFilters().Single(i => i.OwnerId == target);
+        Assert.Equal(realDeputyRoleId, invite.RoleId);
+    }
+
+    // ── Quick-access race (task item 5): on the duplicate-email Conflict, the invite use saved
+    // earlier is rolled back — no used invite is left behind with no member ever created.
+    [Fact]
+    public async Task QuickAccessInvite_DuplicateEmailRace_RollsBackTheOrphanedInvite()
+    {
+        var dbName = Guid.NewGuid().ToString();
+        var tenant = Guid.NewGuid();
+        int quickRoleId;
+        int projectId;
+        using (var seed = Ctx(new FakeCurrentUser { IsSuperAdmin = true }, dbName))
+        {
+            seed.Workspaces.Add(
+                new Workspace
+                {
+                    Id = tenant,
+                    Name = "T",
+                    CreatedAt = DateTime.UtcNow,
+                    CreatedBy = tenant,
+                }
+            );
+            var quickRole = new Role
+            {
+                Name = "Client",
+                QuickAccess = true,
+                IsActive = true,
+                OwnerId = tenant,
+            };
+            seed.Roles.Add(quickRole);
+            var project = new Project
+            {
+                Key = "race-app",
+                Name = "App",
+                AppUrl = "https://client.example.com",
+                OwnerId = tenant,
+            };
+            seed.Projects.Add(project);
+            seed.SaveChanges();
+            quickRoleId = quickRole.Id;
+            projectId = project.Id;
+        }
+
+        var admin = new FakeCurrentUser { TenantId = tenant, IsAdmin = true };
+        using var ctx = Ctx(admin, dbName);
+        // Call #1 (the invite's own insert) succeeds; call #2 (identity + membership) fails with the
+        // same shape a real duplicate-email race produces (a concurrent request created the same
+        // identity in the window between this request's "does it exist" check and its own insert).
+        var throwingUow = new ThrowOnNthSaveUnitOfWork(new UnitOfWork(ctx), throwOnCallNumber: 2);
+        var svc = BuildInviteService(admin, ctx, unitOfWork: throwingUow);
+
+        var result = await svc.CreateAsync(
+            new CreateInviteRequest
+            {
+                RoleId = quickRoleId,
+                Email = "raced@x.com",
+                ProjectId = projectId,
+            }
+        );
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(MessageKeys.Auth.AccountExists, result.Message);
+
+        // The invite the try-block saved BEFORE the race was discovered must be gone — not left
+        // behind as a "used" invite with no member ever created.
+        Assert.Empty(ctx.Invites.IgnoreQueryFilters().Where(i => i.Email == "raced@x.com"));
+        Assert.Empty(ctx.Users.IgnoreQueryFilters().Where(u => u.Email == "raced@x.com"));
+    }
+
     // ── 5. DeleteSet_IsMembershipOnly_EveryShape ────────────────────────────────────────────
 
     [Fact]
@@ -302,7 +980,6 @@ public class Db11fMembershipRulesTests
         var dbName = Guid.NewGuid().ToString();
         var w = Guid.NewGuid();
         var x = Guid.NewGuid();
-        var uow0 = new UnitOfWork(Ctx(new FakeCurrentUser { IsSuperAdmin = true }, dbName));
 
         using (var seed = Ctx(new FakeCurrentUser { IsSuperAdmin = true }, dbName))
         {
@@ -1166,6 +1843,77 @@ public class Db11fMembershipRulesTests
         Assert.Equal("1", jwt3.Claims.First(c => c.Type == "role_id").Value);
     }
 
+    // (iv) end-to-end through AuthService.MeAsync/BuildMeAsync: a tenant token whose membership has
+    // ENDED (GetMembershipAsync's LeftAt == null filter finds nothing — e.g. within the /me 60s
+    // cache window right after being removed) never falls back to the identity's own admin-tier
+    // role. On `main` (pre-DB-11f) the legacy `identity.Role` fallback made this `true`.
+    [Fact]
+    public async Task MeAsync_TenantToken_MembershipEnded_IsAdminFalse()
+    {
+        var dbName = Guid.NewGuid().ToString();
+        var tenant = Guid.NewGuid();
+        Guid publicId;
+
+        using (var seed = Ctx(new FakeCurrentUser { IsSuperAdmin = true }, dbName))
+        {
+            seed.Workspaces.Add(
+                new Workspace
+                {
+                    Id = tenant,
+                    Name = "T",
+                    CreatedAt = DateTime.UtcNow,
+                    CreatedBy = tenant,
+                }
+            );
+            var adminRole = new Role
+            {
+                Name = "Workspace Admin",
+                GrantsAdmin = true,
+                IsActive = true,
+            };
+            seed.Roles.Add(adminRole);
+            seed.SaveChanges();
+
+            var user = new User
+            {
+                Email = "ended-member@x.com",
+                PasswordHash = "h",
+                DisplayName = "Ended",
+                PublicId = Guid.NewGuid(),
+                RoleId = adminRole.Id, // legacy identity role is still admin-tier
+                IsActive = true,
+            };
+            seed.Users.Add(user);
+            seed.SaveChanges();
+            publicId = user.PublicId;
+
+            seed.Set<WorkspaceMembership>()
+                .Add(
+                    new WorkspaceMembership
+                    {
+                        UserId = user.Id,
+                        OwnerId = tenant,
+                        RoleId = adminRole.Id,
+                        ApprovalStatus = ApprovalStatus.Approved,
+                        IsActive = false,
+                        SecurityStamp = Guid.NewGuid(),
+                        JoinedAt = DateTime.UtcNow.AddDays(-1),
+                        LeftAt = DateTime.UtcNow,
+                    }
+                );
+            seed.SaveChanges();
+        }
+
+        var caller = new FakeCurrentUser { TenantId = tenant, Id = publicId };
+        using var ctx = Ctx(caller, dbName);
+        var auth = BuildAuthService(caller, ctx);
+
+        var me = await auth.MeAsync();
+
+        Assert.True(me.IsSuccess, me.Message);
+        Assert.False(me.Data!.IsAdmin);
+    }
+
     // ── 13. ApiKeyLogin_NullOwnerKey_NonSuperAdmin_Refused ──────────────────────────────────
 
     [Fact]
@@ -1210,6 +1958,7 @@ public class Db11fMembershipRulesTests
         }
 
         var anon = new FakeCurrentUser();
+        var audit = new FakeAuditWriter();
         var uow = new UnitOfWork(Ctx(anon, dbName));
         var auth = new AuthService(
             uow,
@@ -1223,7 +1972,7 @@ public class Db11fMembershipRulesTests
             new ApiKeyService(uow, protector),
             new FakeLoginAttemptLimiter(),
             new MembershipService(uow),
-            new FakeAuditWriter()
+            audit
         );
 
         var result = await auth.LoginWithApiKeyAsync(
@@ -1232,6 +1981,84 @@ public class Db11fMembershipRulesTests
 
         Assert.False(result.IsSuccess);
         Assert.Equal(MessageKeys.Auth.InvalidApiKey, result.Message);
+        Assert.Contains(
+            audit.Entries,
+            e =>
+                e.Action == AuditActions.AuthLoginFailed
+                && e.After != null
+                && e.After.TryGetValue("reason", out var reason)
+                && reason == "invalid_credentials"
+        );
+
+        // Positive case: the super admin's OWN null-owner key still signs in (MFA not enrolled).
+        var superRawKey = "ptr_test_raw_key_super_0000000";
+        var superDbName = Guid.NewGuid().ToString();
+        Guid superPublicId;
+        using (var seed = Ctx(new FakeCurrentUser { IsSuperAdmin = true }, superDbName))
+        {
+            var superRole = new Role
+            {
+                Name = "Admin",
+                IsSuperAdmin = true,
+                GrantsAdmin = true,
+                IsActive = true,
+            };
+            seed.Roles.Add(superRole);
+            seed.SaveChanges();
+
+            var superIdentity = new User
+            {
+                Email = "sa-key@x.com",
+                PasswordHash = "h",
+                DisplayName = "SA",
+                PublicId = Guid.NewGuid(),
+                RoleId = superRole.Id,
+                IsActive = true,
+                ApprovalStatus = ApprovalStatus.Approved,
+            };
+            seed.Users.Add(superIdentity);
+            seed.SaveChanges();
+            superPublicId = superIdentity.PublicId;
+
+            seed.Set<ApiKey>()
+                .Add(
+                    new ApiKey
+                    {
+                        UserId = superIdentity.Id,
+                        OwnerId = null,
+                        Prefix = superRawKey[..8],
+                        Hash = protector.Hash(superRawKey),
+                        Encrypted = protector.Encrypt(superRawKey),
+                        Scopes = 0,
+                    }
+                );
+            seed.SaveChanges();
+        }
+
+        var superAnon = new FakeCurrentUser();
+        var superUow = new UnitOfWork(Ctx(superAnon, superDbName));
+        var superAuth = new AuthService(
+            superUow,
+            new FakePasswordHasher(),
+            RealTokenService(),
+            superAnon,
+            new FakeSettings(),
+            new FakeResetTokenService(),
+            new NoopEmail(),
+            new NoopBrandingService(),
+            new ApiKeyService(superUow, protector),
+            new FakeLoginAttemptLimiter(),
+            new MembershipService(superUow),
+            new FakeAuditWriter()
+        );
+
+        var superResult = await superAuth.LoginWithApiKeyAsync(
+            new LoginWithApiKeyRequest { ApiKey = superRawKey }
+        );
+
+        Assert.True(superResult.IsSuccess, superResult.Message);
+        Assert.Equal(superPublicId, superResult.Data!.User!.Id);
+        Assert.True(superResult.Data!.User!.IsSuperAdmin);
     }
 
     // ── 14 / 14b. Profile role name ─────────────────────────────────────────────────────────
@@ -1282,6 +2109,113 @@ public class Db11fMembershipRulesTests
 
         Assert.True(result.IsSuccess, result.Message);
         Assert.Equal("PM", result.Data!.User.RoleName);
+
+        // Gemini MEDIUM (D11f.7): a super admin caller with NO tenant in hand (viewing a member from
+        // no workspace scope) sees the earliest LIVE membership's role, even when an EARLIER ended
+        // membership exists — never "earliest of any state" once a live one exists.
+        var tenant2 = Guid.NewGuid();
+        var tenant3 = Guid.NewGuid();
+        int multiWorkspaceUserId;
+        using (var seed2 = Ctx(new FakeCurrentUser { IsSuperAdmin = true }, dbName))
+        {
+            seed2.Workspaces.Add(
+                new Workspace
+                {
+                    Id = tenant2,
+                    Name = "T2",
+                    CreatedAt = DateTime.UtcNow,
+                    CreatedBy = tenant2,
+                }
+            );
+            seed2.Workspaces.Add(
+                new Workspace
+                {
+                    Id = tenant3,
+                    Name = "T3",
+                    CreatedAt = DateTime.UtcNow,
+                    CreatedBy = tenant3,
+                }
+            );
+            var oldRole = new Role { Name = "OldRole", IsActive = true };
+            var newRole = new Role { Name = "NewRole", IsActive = true };
+            var superRole = new Role
+            {
+                Name = "Admin",
+                IsSuperAdmin = true,
+                GrantsAdmin = true,
+                IsActive = true,
+            };
+            seed2.Roles.AddRange(oldRole, newRole, superRole);
+            seed2.SaveChanges();
+
+            var multiUser = new User
+            {
+                Email = "multi@x.com",
+                PasswordHash = "h",
+                DisplayName = "Multi",
+                PublicId = Guid.NewGuid(),
+                RoleId = oldRole.Id,
+                IsActive = true,
+            };
+            seed2.Users.Add(multiUser);
+            seed2.SaveChanges();
+            multiWorkspaceUserId = multiUser.Id;
+
+            // EARLIER, now-ended membership in T2.
+            seed2
+                .Set<WorkspaceMembership>()
+                .Add(
+                    new WorkspaceMembership
+                    {
+                        UserId = multiUser.Id,
+                        OwnerId = tenant2,
+                        RoleId = oldRole.Id,
+                        ApprovalStatus = ApprovalStatus.Approved,
+                        IsActive = false,
+                        SecurityStamp = Guid.NewGuid(),
+                        JoinedAt = DateTime.UtcNow.AddDays(-10),
+                        LeftAt = DateTime.UtcNow.AddDays(-5),
+                    }
+                );
+            seed2.SaveChanges();
+            // LATER, still-live membership in T3.
+            TestSeed.Join(seed2, multiUser, tenant3, newRole);
+        }
+
+        var superCaller = new FakeCurrentUser { IsSuperAdmin = true };
+        using var superCtx = Ctx(superCaller, dbName);
+        var superSvc = BuildProfileService(superCaller, superCtx);
+        var multiResult = await superSvc.GetByIdAsync(multiWorkspaceUserId);
+        Assert.True(multiResult.IsSuccess, multiResult.Message);
+        Assert.Equal("NewRole", multiResult.Data!.User.RoleName);
+
+        // The super admin's OWN profile shows the platform (super) role name.
+        var superRoleId2 = superCtx.Roles.IgnoreQueryFilters().Single(r => r.IsSuperAdmin).Id;
+        var superIdentity = new User
+        {
+            Email = "sa-profile@x.com",
+            PasswordHash = "h",
+            DisplayName = "SA",
+            PublicId = Guid.NewGuid(),
+            RoleId = superRoleId2,
+            IsActive = true,
+        };
+        superCtx.Users.Add(superIdentity);
+        superCtx.SaveChanges();
+        var superSelfCaller = new FakeCurrentUser
+        {
+            IsSuperAdmin = true,
+            Id = superIdentity.PublicId,
+        };
+        using var superSelfCtx = Ctx(superSelfCaller, dbName);
+        var superSelfSvc = BuildProfileService(superSelfCaller, superSelfCtx);
+        var superSelfResult = await superSelfSvc.GetByIdAsync(superIdentity.Id);
+        Assert.True(superSelfResult.IsSuccess, superSelfResult.Message);
+        var superRoleName = superSelfCtx
+            .Roles.IgnoreQueryFilters()
+            .Single(r => r.IsSuperAdmin)
+            .Name;
+        Assert.Equal(superRoleName, superSelfResult.Data!.User.RoleName);
     }
 
     [Fact]
@@ -1291,6 +2225,7 @@ public class Db11fMembershipRulesTests
         var w = Guid.NewGuid();
         var xTenant = Guid.NewGuid();
         int userId;
+        Guid userPublicId;
 
         using (var seed = Ctx(new FakeCurrentUser { IsSuperAdmin = true }, dbName))
         {
@@ -1339,6 +2274,7 @@ public class Db11fMembershipRulesTests
             seed.Users.Add(user);
             seed.SaveChanges();
             userId = user.Id;
+            userPublicId = user.PublicId;
             TestSeed.Join(seed, user, xTenant, xRole); // live membership in X only
         }
 
@@ -1351,6 +2287,112 @@ public class Db11fMembershipRulesTests
         // On `main` this 404s (the INNER JOIN via Include(u => u.Role) against the filtered Role set).
         Assert.True(result.IsSuccess, result.Message);
         Assert.Equal("XDev", result.Data!.User.RoleName);
+
+        var byPublicId = await svc.GetByPublicIdAsync(userPublicId);
+        Assert.True(byPublicId.IsSuccess, byPublicId.Message);
+        Assert.Equal("XDev", byPublicId.Data!.User.RoleName);
+
+        // The caller acts AS this identity (preferences are self-service) — same tenant X.
+        var selfCaller = new FakeCurrentUser { TenantId = xTenant, Id = userPublicId };
+        using var selfCtx = Ctx(selfCaller, dbName);
+        var prefs = BuildPreferencesService(selfCaller, selfCtx);
+        var prefsResult = await prefs.UpdateAsync(new UpdatePreferencesRequest { Theme = "dark" });
+        Assert.True(prefsResult.IsSuccess, prefsResult.Message);
+    }
+
+    // ── D11f.7 ex-member (orchestrator decision, 2026-09-24, not owner-asked): a tenant-X caller
+    // viewing a FORMER member of X (no live membership there anymore) falls back to that SAME
+    // workspace's latest ended membership role, instead of "".
+    [Fact]
+    public async Task Profile_ExMember_FallsBackToLatestEndedMembershipRoleInSameWorkspace()
+    {
+        var dbName = Guid.NewGuid().ToString();
+        var tenant = Guid.NewGuid();
+        var otherTenant = Guid.NewGuid();
+        int userId;
+
+        using (var seed = Ctx(new FakeCurrentUser { IsSuperAdmin = true }, dbName))
+        {
+            seed.Workspaces.Add(
+                new Workspace
+                {
+                    Id = tenant,
+                    Name = "T",
+                    CreatedAt = DateTime.UtcNow,
+                    CreatedBy = tenant,
+                }
+            );
+            seed.Workspaces.Add(
+                new Workspace
+                {
+                    Id = otherTenant,
+                    Name = "Other",
+                    CreatedAt = DateTime.UtcNow,
+                    CreatedBy = otherTenant,
+                }
+            );
+            var firstEndedRole = new Role { Name = "FirstEnded", IsActive = true };
+            var latestEndedRole = new Role { Name = "LatestEnded", IsActive = true };
+            var otherTenantRole = new Role { Name = "OtherTenantRole", IsActive = true };
+            seed.Roles.AddRange(firstEndedRole, latestEndedRole, otherTenantRole);
+            seed.SaveChanges();
+
+            var user = new User
+            {
+                Email = "ex-member@x.com",
+                PasswordHash = "h",
+                DisplayName = "ExMember",
+                PublicId = Guid.NewGuid(),
+                RoleId = firstEndedRole.Id,
+                IsActive = true,
+            };
+            seed.Users.Add(user);
+            seed.SaveChanges();
+            userId = user.Id;
+
+            // TWO ended memberships in tenant T — the LATEST one's role must win.
+            seed.Set<WorkspaceMembership>()
+                .Add(
+                    new WorkspaceMembership
+                    {
+                        UserId = user.Id,
+                        OwnerId = tenant,
+                        RoleId = firstEndedRole.Id,
+                        ApprovalStatus = ApprovalStatus.Approved,
+                        IsActive = false,
+                        SecurityStamp = Guid.NewGuid(),
+                        JoinedAt = DateTime.UtcNow.AddDays(-30),
+                        LeftAt = DateTime.UtcNow.AddDays(-20),
+                    }
+                );
+            seed.Set<WorkspaceMembership>()
+                .Add(
+                    new WorkspaceMembership
+                    {
+                        UserId = user.Id,
+                        OwnerId = tenant,
+                        RoleId = latestEndedRole.Id,
+                        ApprovalStatus = ApprovalStatus.Approved,
+                        IsActive = false,
+                        SecurityStamp = Guid.NewGuid(),
+                        JoinedAt = DateTime.UtcNow.AddDays(-10),
+                        LeftAt = DateTime.UtcNow.AddDays(-5),
+                    }
+                );
+            // A LIVE membership in an unrelated workspace must never leak into tenant T's fallback.
+            seed.SaveChanges();
+            TestSeed.Join(seed, user, otherTenant, otherTenantRole);
+        }
+
+        var caller = new FakeCurrentUser { TenantId = tenant };
+        using var ctx = Ctx(caller, dbName);
+        var svc = BuildProfileService(caller, ctx);
+
+        var result = await svc.GetByIdAsync(userId);
+
+        // On `main` (pre-fix) this returns "".
+        Assert.True(result.IsSuccess, result.Message);
+        Assert.Equal("LatestEnded", result.Data!.User.RoleName);
     }
 
     // ── 14d. AdminSeeder_DoesNotPromoteAWorkspaceMember ─────────────────────────────────────
@@ -1422,9 +2464,20 @@ public class Db11fMembershipRulesTests
         using var verify = Ctx(new FakeCurrentUser { IsSuperAdmin = true }, dbName);
         var member2 = verify.Users.IgnoreQueryFilters().Single(u => u.Email == memberEmail);
         var superRole = verify.Roles.IgnoreQueryFilters().SingleOrDefault(r => r.IsSuperAdmin);
-        Assert.True(superRole == null || member2.RoleId != superRole.Id);
+        Assert.NotNull(superRole);
+        Assert.NotEqual(superRole!.Id, member2.RoleId);
+        // The reconcile step's throw is caught in its own try/catch (task A17) — role seeding
+        // (step 1, runs before the reconcile) and plan seeding (step 3, its own try/catch after)
+        // must both still have run; boot is not blocked by the refused promotion.
+        Assert.True(
+            verify.Roles.IgnoreQueryFilters().Count() >= 7,
+            "the 7 default roles must still be seeded"
+        );
+        Assert.Single(verify.Plans.IgnoreQueryFilters().Where(p => p.Slug == "free"));
+        Assert.Single(verify.Plans.IgnoreQueryFilters().Where(p => p.Slug == "legacy"));
 
-        // Regression guard: a membership-less address still promotes.
+        // Regression guard: a membership-less address still promotes (the user == null branch —
+        // a brand-new identity created by the seeder itself).
         var dbName2 = Guid.NewGuid().ToString();
         const string freshEmail = "fresh-admin@x.com";
         var provider2 = BuildSeederProvider(dbName2, freshEmail);
@@ -1433,5 +2486,38 @@ public class Db11fMembershipRulesTests
         var fresh = verify2.Users.IgnoreQueryFilters().Single(u => u.Email == freshEmail);
         var superRole2 = verify2.Roles.IgnoreQueryFilters().Single(r => r.IsSuperAdmin);
         Assert.Equal(superRole2.Id, fresh.RoleId);
+
+        // Regression guard (the reconcile ELSE branch): an EXISTING identity with NO membership
+        // anywhere and a non-super RoleId, matching ADMIN__EMAIL, IS still promoted — D11f.8 only
+        // refuses a WORKSPACE MEMBER, never a membership-less existing identity.
+        var dbName3 = Guid.NewGuid().ToString();
+        const string existingNoMembershipEmail = "existing-no-membership-admin@x.com";
+        int existingUserId;
+        using (var seed3 = Ctx(new FakeCurrentUser { IsSuperAdmin = true }, dbName3))
+        {
+            var devRole = new Role { Name = "Developer", IsActive = true };
+            seed3.Roles.Add(devRole);
+            seed3.SaveChanges();
+
+            var existing = new User
+            {
+                Email = existingNoMembershipEmail,
+                PasswordHash = "h",
+                DisplayName = "Existing",
+                PublicId = Guid.NewGuid(),
+                RoleId = devRole.Id, // non-super — must be reconciled to the super role
+                IsActive = true,
+                ApprovalStatus = ApprovalStatus.Approved,
+            };
+            seed3.Users.Add(existing);
+            seed3.SaveChanges();
+            existingUserId = existing.Id; // no membership row is created for this identity
+        }
+        var provider3 = BuildSeederProvider(dbName3, existingNoMembershipEmail);
+        await AdminSeeder.SeedAsync(provider3);
+        using var verify3 = Ctx(new FakeCurrentUser { IsSuperAdmin = true }, dbName3);
+        var existingAfter = verify3.Users.IgnoreQueryFilters().Single(u => u.Id == existingUserId);
+        var superRole3 = verify3.Roles.IgnoreQueryFilters().Single(r => r.IsSuperAdmin);
+        Assert.Equal(superRole3.Id, existingAfter.RoleId);
     }
 }
