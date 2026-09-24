@@ -55,24 +55,8 @@ via Docker, API on `:8090`).
 
 ## Web component (`<pointer-feedback>`)
 
-The served `API/wwwroot/widget.js` and `API/wwwroot/widget.css` are **build artifacts** — do
-**not** edit them by hand. Source lives in [`web-component/`](web-component/) (TypeScript modules +
-SCSS, esbuild + sass; no runtime deps in the output).
-
-```bash
-cd web-component
-npm install            # first time
-npm run build          # → ../API/wwwroot/pointer.{js,css}
-npm run watch          # rebuild on change
-npm run typecheck      # tsc --noEmit
-```
-
-- Source: `web-component/src/` (`element.ts`, `auth-ui.ts`, `capture.ts`, `templates.ts`, …) and
-  `web-component/src/styles/` (SCSS partials + `_variables.scss`).
-- **Theming:** styles use `var(--fbk-*, default)` tokens (defaults in `_variables.scss`); consumers
-  override per project from their own CSS, e.g. `pointer-feedback { --fbk-primary: #0aa36e; }`.
-- After editing the component, run `npm run build` and commit the regenerated `wwwroot/pointer.*`
-  (the Docker image bakes in `wwwroot`, so a deploy just needs the built files present).
+**Never hand-edit `API/wwwroot/widget.*`** — they are build artifacts of [`web-component/`](web-component/);
+build and commit rules live in [`web-component/CLAUDE.md`](web-component/CLAUDE.md).
 
 ## Deploy
 

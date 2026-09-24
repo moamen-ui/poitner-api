@@ -4,29 +4,15 @@
 
 ## Essential Reading
 
-Since 2026-09-15 only the React dashboard exists (`pointer-dashboard/react`); Angular and Vue were
-retired at tag `last-three-apps` / branch `legacy/angular-vue`. Any dashboard work targets React only.
-
 - **[Cross-repo sync agents](../docs/roadmap/execution/01-OVERVIEW.md)** — read before changing API
   endpoints/DTOs: how the typed client is generated and who syncs the dashboard, and when.
-- **[Integrate Pointer Skill](../API/wwwroot/pointer-init.md)** — the consumer-facing init skill, served at
-  `/pointer-init.md` (same as the apply skill `skill.md`). Follow when asked to add/init the
-  `<pointer-feedback>` widget in a host app (ask for variables → detect stack → inject loader → verify).
 
-More on client generation:
+Client generation, beyond the root `CLAUDE.md`:
 
-- The React client is generated **in this repo** from the running API's Swagger spec —
-  `orval.config.ts` → `npm run generate-clients` (honours `POINTER_SWAGGER_URL`, default
-  `http://localhost:8090/swagger/v1/swagger.json`) → `npm run build-clients`.
-- Output lands in `clients/react/` which is **gitignored** — regenerated every run,
-  never hand-edited, never committed.
-- Published to **GitHub Packages** as `@moamen-ui/pointer-react` by the
-  *Publish API clients* workflow (that workflow generates from **production**, so an endpoint that is
-  not deployed cannot be published yet). Consumers install the package; `export NODE_AUTH_TOKEN=$(gh auth token)`.
-- `orval.config.ts` `filters.tags` gates everything: an action whose `[Tags("X")]` is not in that list
-  generates nothing, silently.
-- The API response envelope (`Result<T>`) is unwrapped by the app's interceptor/mutator; client types
-  are the **inner** type.
+- `npm run generate-clients` honours `POINTER_SWAGGER_URL` (default `http://localhost:8090/swagger/v1/swagger.json`).
+- The *Publish API clients* workflow generates from **production**, so an endpoint that is not deployed cannot
+  be published yet. Installing the package needs `export NODE_AUTH_TOKEN=$(gh auth token)`.
+- The `Result<T>` envelope is unwrapped by the app's interceptor/mutator; client types are the **inner** type.
 
 ## Quick Reference
 
