@@ -27,6 +27,9 @@ let meResponse: Record<string, unknown> = {};
 // Set whenever a request the frozen-check should have short-circuited (queue/apply-queue/PATCH)
 // reaches the stub — proves "before any git/AI work".
 let touchedQueueOrWrite = false;
+// DB-18 code review (Opus MEDIUM): simulates the workspace freezing in the gap between the /me
+// pre-check and the queue fetch — /me still answers "not frozen" but the queue GET itself 423s.
+let queueFrozen = false;
 
 before(async () => {
   server = http.createServer((req, res) => {
@@ -61,6 +64,11 @@ before(async () => {
       (req.method === 'PATCH' && url.startsWith('/api/comments/'))
     ) {
       touchedQueueOrWrite = true;
+      if (queueFrozen) {
+        res.writeHead(423, { 'x-workspace-paused': 'true' });
+        res.end(JSON.stringify({ isSuccess: false, message: 'This workspace is paused.' }));
+        return;
+      }
       res.end(JSON.stringify({ isSuccess: true, data: { items: [] } }));
       return;
     }
@@ -189,6 +197,28 @@ test('apply: an active (not frozen) workspace is unaffected — reaches the queu
     assert.strictEqual(touchedQueueOrWrite, true, 'an active workspace must reach the queue fetch');
   }));
 
+test('apply --json: a mid-run freeze (queue 423s after /me said "not frozen") still exits 2, never the generic 1', () =>
+  withTempDir(async (dir) => {
+    await writeSingleProjectRepo(dir);
+    meResponse = { tenantName: 'Acme Corp', workspacePausedAt: null, workspaceDeletionScheduledFor: null };
+    touchedQueueOrWrite = false;
+    queueFrozen = true;
+
+    try {
+      await assert.rejects(
+        execAsync(`node ${cliPath} apply --json`, { cwd: dir }),
+        (err: any) => {
+          assert.strictEqual(err.code, 2, `expected exit 2, got ${err.code}: ${err.stderr}`);
+          assert.match(err.stderr, /This workspace is paused\./);
+          return true;
+        },
+      );
+      assert.strictEqual(touchedQueueOrWrite, true, 'the queue fetch DID run — the race happened after /me');
+    } finally {
+      queueFrozen = false;
+    }
+  }));
+
 test('pointer status --deployed: a 423 from the server warns and exits 0 (never fails a customer CI)', () =>
   withTempDir(async (dir) => {
     spawnSync('git', ['init'], { cwd: dir });
@@ -232,7 +262,9 @@ test('pointer status --deployed: a 423 from the server warns and exits 0 (never 
       await fs.writeFile(path.join(dir, '.pointer/credentials.env'), 'POINTER_API_KEY=ptr_good\n', 'utf8');
 
       const { stdout, stderr } = await execAsync(`node ${cliPath} status --deployed`, { cwd: dir });
-      assert.match(stderr, /Pointer workspace is paused — build not reported\./);
+      // DB-18 code review (NIT): prints the server's OWN message (distinguishes "paused" from
+      // "scheduled for deletion") rather than a hard-coded "paused" string.
+      assert.match(stderr, /Pointer: This workspace is paused\. — build not reported\./);
       assert.match(stdout, /0 comments marked deployed/);
     } finally {
       await new Promise<void>((resolve) => deployedServer.close(() => resolve()));
