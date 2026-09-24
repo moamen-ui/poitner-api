@@ -18,7 +18,7 @@ inside a workspace hard delete), R15, R17 (no new endpoint and no new audited ac
 `Approved to drop users.owner_id, users.approval_status, ux_users_email_owner_live, IX_users_owner_id, fk_users_workspaces_owner_id and make users.role_id super-admin-only (DB-11f Part B), 2026-09-24.`
 Paste it verbatim into the Part B PR and the two markers. Part B still ships only after Part A has been live ≥ 24 h, P1–P5 pass on production, and the R11 rehearsal passes (plus the blocking checks the cross-review added: P6b, P9, P11 — §9).
 
-**Owner decisions answered 2026-09-24:** D11f.1 = two releases; D11f.2 = keep `role_id`, super-admin-only; D11f.3 = home = earliest membership. D11f.4–D11f.7: the recommended defaults below apply.
+**Owner decisions answered 2026-09-24:** D11f.1 = two releases; D11f.2 = keep `role_id`, super-admin-only; D11f.3 = home = earliest membership. **Later the same day:** D11f.7 = profile role with no workspace in hand = earliest **live** membership; D11f.8 = AdminSeeder refuses (log + skip) to promote an identity that has any membership; follow-up **F1 is IN SCOPE for Part A** — every membership role write refuses the super-admin role and any role owned by another workspace (403 / validation error), with tests. D11f.4–D11f.7: the recommended defaults below apply.
 → owner: Moamen, date: 2026-09-24 (recorded above).
 
 **Status: written 2026-09-24; cross-reviewed 2026-09-24 (Gemini 3.8 Flash + Opus, `docs/db/reviews/REVIEW-DB11F-2026-09-24.md`), every finding verified and adjudicated in §12; not implemented.**
